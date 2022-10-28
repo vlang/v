@@ -71,9 +71,9 @@ const expected_string_outputs = [
 
 fn test_find_between_pair_family() {
 	assert strings.find_between_pair_rune('xx♡ok❦yy', `♡`, `❦`) == 'ok'
-	assert strings.find_between_pair_u8('xx{ok}yy', `{`, `}`) == 'ok'
+	assert strings.find_between_pair_u8('xx\{ok}yy', `{`, `}`) == 'ok'
 	assert strings.find_between_pair_string('xx/*ok*/yy', '/*', '*/') == 'ok'
-	assert strings.find_between_pair_u8('xx{ok}yy', `{`, `}`) == 'ok'
+	assert strings.find_between_pair_u8('xx\{ok}yy', `{`, `}`) == 'ok'
 	assert strings.find_between_pair_string('xxxxokyyyy', 'xxx', 'yyy') == 'xok'
 
 	for i, tstr in test_rune_and_byte {

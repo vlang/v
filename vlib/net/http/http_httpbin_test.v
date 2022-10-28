@@ -25,7 +25,7 @@ fn http_fetch_mock(_methods []string, _config FetchConfig) ![]Response {
 		config.method = method_from_str(method)
 		res := fetch(FetchConfig{ ...config, url: url + lmethod })!
 		// TODO
-		// body := json.decode(HttpbinResponseBody,res.body)?
+		// body := json.decode(HttpbinResponseBody,res.body)!
 		result << res
 	}
 	return result

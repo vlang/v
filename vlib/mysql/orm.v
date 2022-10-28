@@ -7,20 +7,20 @@ type Prims = f32 | f64 | i16 | i64 | i8 | int | string | u16 | u32 | u64 | u8
 
 // sql expr
 
-pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ?[][]orm.Primitive {
+pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
 	query := orm.orm_select_gen(config, '`', false, '?', 0, where)
 	mut ret := [][]orm.Primitive{}
 	mut stmt := db.init_stmt(query)
-	stmt.prepare()?
+	stmt.prepare()!
 
-	mysql_stmt_binder(mut stmt, where)?
-	mysql_stmt_binder(mut stmt, data)?
+	mysql_stmt_binder(mut stmt, where)!
+	mysql_stmt_binder(mut stmt, data)!
 
 	if data.data.len > 0 || where.data.len > 0 {
-		stmt.bind_params()?
+		stmt.bind_params()!
 	}
 
-	mut status := stmt.execute()?
+	mut status := stmt.execute()!
 	num_fields := stmt.get_field_count()
 	metadata := stmt.gen_metadata()
 	fields := stmt.fetch_fields(metadata)
@@ -99,30 +99,30 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 		}
 	}
 
-	stmt.bind_result_buffer()?
-	stmt.store_result()?
+	stmt.bind_result_buffer()!
+	stmt.store_result()!
 	for {
-		status = stmt.fetch_stmt()?
+		status = stmt.fetch_stmt()!
 
 		if status == 1 || status == 100 {
 			break
 		}
 		row++
 
-		data_list := buffer_to_primitive(dataptr, types, field_types)?
+		data_list := buffer_to_primitive(dataptr, types, field_types)!
 		ret << data_list
 	}
 
-	stmt.close()?
+	stmt.close()!
 
 	return ret
 }
 
 // sql stmt
 
-pub fn (db Connection) insert(table string, data orm.QueryData) ? {
+pub fn (db Connection) insert(table string, data orm.QueryData) ! {
 	mut converted_primitive_array := db.factory_orm_primitive_converted_from_sql(table,
-		data)?
+		data)!
 
 	converted_primitive_data := orm.QueryData{
 		fields: data.fields
@@ -134,18 +134,18 @@ pub fn (db Connection) insert(table string, data orm.QueryData) ? {
 
 	query, converted_data := orm.orm_stmt_gen(table, '`', .insert, false, '?', 1, converted_primitive_data,
 		orm.QueryData{})
-	mysql_stmt_worker(db, query, converted_data, orm.QueryData{})?
+	mysql_stmt_worker(db, query, converted_data, orm.QueryData{})!
 }
 
-pub fn (db Connection) update(table string, data orm.QueryData, where orm.QueryData) ? {
+pub fn (db Connection) update(table string, data orm.QueryData, where orm.QueryData) ! {
 	query, _ := orm.orm_stmt_gen(table, '`', .update, false, '?', 1, data, where)
-	mysql_stmt_worker(db, query, data, where)?
+	mysql_stmt_worker(db, query, data, where)!
 }
 
-pub fn (db Connection) delete(table string, where orm.QueryData) ? {
+pub fn (db Connection) delete(table string, where orm.QueryData) ! {
 	query, _ := orm.orm_stmt_gen(table, '`', .delete, false, '?', 1, orm.QueryData{},
 		where)
-	mysql_stmt_worker(db, query, orm.QueryData{}, where)?
+	mysql_stmt_worker(db, query, orm.QueryData{}, where)!
 }
 
 pub fn (db Connection) last_id() orm.Primitive {
@@ -159,31 +159,31 @@ pub fn (db Connection) last_id() orm.Primitive {
 }
 
 // table
-pub fn (db Connection) create(table string, fields []orm.TableField) ? {
+pub fn (db Connection) create(table string, fields []orm.TableField) ! {
 	query := orm.orm_table_gen(table, '`', true, 0, fields, mysql_type_from_v, false) or {
 		return err
 	}
-	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})?
+	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
 
-pub fn (db Connection) drop(table string) ? {
+pub fn (db Connection) drop(table string) ! {
 	query := 'DROP TABLE `$table`;'
-	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})?
+	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
 
-fn mysql_stmt_worker(db Connection, query string, data orm.QueryData, where orm.QueryData) ? {
+fn mysql_stmt_worker(db Connection, query string, data orm.QueryData, where orm.QueryData) ! {
 	mut stmt := db.init_stmt(query)
-	stmt.prepare()?
-	mysql_stmt_binder(mut stmt, data)?
-	mysql_stmt_binder(mut stmt, where)?
+	stmt.prepare()!
+	mysql_stmt_binder(mut stmt, data)!
+	mysql_stmt_binder(mut stmt, where)!
 	if data.data.len > 0 || where.data.len > 0 {
-		stmt.bind_params()?
+		stmt.bind_params()!
 	}
-	stmt.execute()?
-	stmt.close()?
+	stmt.execute()!
+	stmt.close()!
 }
 
-fn mysql_stmt_binder(mut stmt Stmt, d orm.QueryData) ? {
+fn mysql_stmt_binder(mut stmt Stmt, d orm.QueryData) ! {
 	for data in d.data {
 		stmt_binder_match(mut stmt, data)
 	}
@@ -237,7 +237,7 @@ fn stmt_binder_match(mut stmt Stmt, data orm.Primitive) {
 	}
 }
 
-fn buffer_to_primitive(data_list []&u8, types []int, field_types []FieldType) ?[]orm.Primitive {
+fn buffer_to_primitive(data_list []&u8, types []int, field_types []FieldType) ![]orm.Primitive {
 	mut res := []orm.Primitive{}
 
 	for i, data in data_list {
@@ -287,7 +287,7 @@ fn buffer_to_primitive(data_list []&u8, types []int, field_types []FieldType) ?[
 					}
 					.type_datetime {
 						string_time := unsafe { cstring_to_vstring(&char(data)) }
-						primitive = time.parse(string_time)?
+						primitive = time.parse(string_time)!
 					}
 					else {}
 				}
@@ -302,7 +302,7 @@ fn buffer_to_primitive(data_list []&u8, types []int, field_types []FieldType) ?[
 	return res
 }
 
-fn mysql_type_from_v(typ int) ?string {
+fn mysql_type_from_v(typ int) !string {
 	str := match typ {
 		orm.type_idx['i8'], orm.type_idx['u8'] {
 			'TINYINT'
@@ -341,8 +341,8 @@ fn mysql_type_from_v(typ int) ?string {
 	return str
 }
 
-fn (db Connection) factory_orm_primitive_converted_from_sql(table string, data orm.QueryData) ?[]orm.Primitive {
-	mut map_val := db.get_table_data_type_map(table)?
+fn (db Connection) factory_orm_primitive_converted_from_sql(table string, data orm.QueryData) ![]orm.Primitive {
+	mut map_val := db.get_table_data_type_map(table)!
 
 	// adapt v type to sql time
 	mut converted_data := []orm.Primitive{}
@@ -363,11 +363,11 @@ fn (db Connection) factory_orm_primitive_converted_from_sql(table string, data o
 	return converted_data
 }
 
-fn (db Connection) get_table_data_type_map(table string) ?map[string]string {
+fn (db Connection) get_table_data_type_map(table string) !map[string]string {
 	data_type_querys := "SELECT COLUMN_NAME, DATA_TYPE  FROM INFORMATION_SCHEMA.COLUMNS  WHERE TABLE_NAME = '$table'"
 	mut map_val := map[string]string{}
 
-	results := db.query(data_type_querys)?
+	results := db.query(data_type_querys)!
 	db.use_result()
 
 	for row in results.rows() {

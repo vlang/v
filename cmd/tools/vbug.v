@@ -141,7 +141,7 @@ $vdoctor_output
 
 **What did you do?**
 `v -g -o vdbg cmd/v && vdbg $file_path`
-{file_content}
+\{file_content}
 
 **What did you expect to see?**
 
@@ -150,11 +150,11 @@ $expected_result
 **What did you see instead?**
 ```
 $build_output```'
-	mut encoded_body := urllib.query_escape(raw_body.replace_once('{file_content}', '```v\n$file_content\n```'))
+	mut encoded_body := urllib.query_escape(raw_body.replace_once(r'{file_content}', '```v\n$file_content\n```'))
 	mut generated_uri := 'https://github.com/vlang/v/issues/new?labels=Bug&body=$encoded_body'
 	if generated_uri.len > 8192 {
 		// GitHub doesn't support URLs longer than 8192 characters
-		encoded_body = urllib.query_escape(raw_body.replace_once('{file_content}', 'See attached file `$file_path`'))
+		encoded_body = urllib.query_escape(raw_body.replace_once(r'{file_content}', 'See attached file `$file_path`'))
 		generated_uri = 'https://github.com/vlang/v/issues/new?labels=Bug&body=$encoded_body'
 		println('Your file is too big to be submitted. Head over to the following URL and attach your file.')
 		println(generated_uri)

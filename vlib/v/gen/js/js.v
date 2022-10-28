@@ -152,9 +152,9 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		// builtin types
 		if g.file.mod.name == 'builtin' && !g.generated_builtin {
 			g.gen_builtin_type_defs()
-			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
-			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return new int(this.length);}, set: function(l) { } }); ')
-			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
+			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() { return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
+			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() { return new int(this.length);}, set: function(l) { } }); ')
+			g.writeln('Object.defineProperty(array.prototype,"length", { get: function() { return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
 			g.generated_builtin = true
 		}
 		if g.is_test && !tests_inited {
@@ -1075,7 +1075,7 @@ struct UnsupportedAssertCtempTransform {
 
 const unsupported_ctemp_assert_transform = IError(UnsupportedAssertCtempTransform{})
 
-fn (mut g JsGen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) ?ast.Expr {
+fn (mut g JsGen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) !ast.Expr {
 	match expr {
 		ast.CallExpr {
 			return g.new_ctemp_var_then_gen(expr, expr_type)

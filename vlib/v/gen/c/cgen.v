@@ -126,6 +126,7 @@ mut:
 	inside_match_result       bool
 	inside_vweb_tmpl          bool
 	inside_return             bool
+	inside_return_tmpl        bool
 	inside_struct_init        bool
 	inside_or_block           bool
 	inside_call               bool
@@ -159,9 +160,9 @@ mut:
 	array_sort_fn             shared []string
 	array_contains_types      []ast.Type
 	array_index_types         []ast.Type
-	auto_fn_definitions       []string // auto generated functions defination list
+	auto_fn_definitions       []string // auto generated functions definition list
 	sumtype_casting_fns       []SumtypeCastingFn
-	anon_fn_definitions       []string     // anon generated functions defination list
+	anon_fn_definitions       []string     // anon generated functions definition list
 	sumtype_definitions       map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
 	json_types                []ast.Type   // to avoid json gen duplicates
 	pcs                       []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
@@ -1250,7 +1251,7 @@ fn (mut g Gen) write_chan_pop_optional_fns() {
 static inline $opt_el_type __Option_${styp}_popval($styp ch) {
 	$opt_el_type _tmp = {0};
 	if (sync__Channel_try_pop_priv(ch, _tmp.data, false)) {
-		return ($opt_el_type){ .state = 2, .err = _v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
+		return ($opt_el_type){ .state = 2, .err = _v_error(_SLIT("channel closed")), .data = { EMPTY_STRUCT_INITIALIZATION} };
 	}
 	return _tmp;
 }')
@@ -1272,8 +1273,7 @@ fn (mut g Gen) write_chan_push_optional_fns() {
 		g.channel_definitions.writeln('
 static inline ${c.option_name}_void __Option_${styp}_pushval($styp ch, $el_type e) {
 	if (sync__Channel_try_push_priv(ch, &e, false)) {
-		return (${c.option_name}_void){ .state = 2, .err = _v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
-	}
+		return (${c.option_name}_void){ .state = 2, .err = _v_error(_SLIT("channel closed")), .data = { EMPTY_STRUCT_INITIALIZATION} };	}
 	return (${c.option_name}_void){0};
 }')
 	}
@@ -2289,7 +2289,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 		}
 	}
 	if got_styp == 'none' && !g.cur_fn.return_type.has_flag(.optional) {
-		g.write('(none){EMPTY_STRUCT_INITIALIZATION}')
+		g.write('(none){ EMPTY_STRUCT_INITIALIZATION}')
 	} else {
 		g.expr(expr)
 	}
@@ -2406,6 +2406,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 	// Generic dereferencing logic
 	neither_void := ast.voidptr_type !in [got_type, expected_type]
+		&& ast.nil_type !in [got_type, expected_type]
 	if expected_type.has_flag(.shared_f) && !got_type_raw.has_flag(.shared_f)
 		&& !expected_type.has_flag(.optional) && !expected_type.has_flag(.result) {
 		shared_styp := exp_styp[0..exp_styp.len - 1] // `shared` implies ptr, so eat one `*`
@@ -4259,7 +4260,7 @@ fn (mut g Gen) gen_result_error(target_type ast.Type, expr ast.Expr) {
 	styp := g.typ(target_type)
 	g.write('($styp){ .is_error=true, .err=')
 	g.expr(expr)
-	g.write(', .data={EMPTY_STRUCT_INITIALIZATION} }')
+	g.write(', .data={ EMPTY_STRUCT_INITIALIZATION} }')
 }
 
 // NB: remove this when optional has no errors anymore
@@ -4267,7 +4268,7 @@ fn (mut g Gen) gen_optional_error(target_type ast.Type, expr ast.Expr) {
 	styp := g.typ(target_type)
 	g.write('($styp){ .state=2, .err=')
 	g.expr(expr)
-	g.write(', .data={EMPTY_STRUCT_INITIALIZATION} }')
+	g.write(', .data={ EMPTY_STRUCT_INITIALIZATION} }')
 }
 
 fn (mut g Gen) return_stmt(node ast.Return) {
@@ -4281,7 +4282,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	if node.exprs.len > 0 {
 		// skip `return $vweb.html()`
 		if node.exprs[0] is ast.ComptimeCall && (node.exprs[0] as ast.ComptimeCall).is_vweb {
+			g.inside_return_tmpl = true
 			g.expr(node.exprs[0])
+			g.inside_return_tmpl = false
 			g.writeln(';')
 			return
 		}
@@ -5040,6 +5043,9 @@ fn (mut g Gen) write_init_function() {
 
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
 	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
+	if g.pref.trace_calls {
+		g.writeln('\tv__trace_calls__on_call(_SLIT("_vinit"));')
+	}
 
 	if g.use_segfault_handler {
 		// 11 is SIGSEGV. It is hardcoded here, to avoid FreeBSD compilation errors for trivial examples.
@@ -5095,6 +5101,9 @@ fn (mut g Gen) write_init_function() {
 	//
 	fn_vcleanup_start_pos := g.out.len
 	g.writeln('void _vcleanup(void) {')
+	if g.pref.trace_calls {
+		g.writeln('\tv__trace_calls__on_call(_SLIT("_vcleanup"));')
+	}
 	if g.is_autofree {
 		// g.writeln('puts("cleaning up...");')
 		reversed_table_modules := g.table.modules.reverse()
@@ -5117,13 +5126,13 @@ fn (mut g Gen) write_init_function() {
 		// Note: os.args in this case will be [].
 		g.writeln('__attribute__ ((constructor))')
 		g.writeln('void _vinit_caller() {')
-		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
+		g.writeln('\tstatic bool once = false; if (once) { return;} once = true;')
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
 
 		g.writeln('__attribute__ ((destructor))')
 		g.writeln('void _vcleanup_caller() {')
-		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
+		g.writeln('\tstatic bool once = false; if (once) { return;} once = true;')
 		g.writeln('\t_vcleanup();')
 		g.writeln('}')
 	}
@@ -5477,13 +5486,29 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 				if i == stmts.len - 1 {
 					expr_stmt := stmt as ast.ExprStmt
 					g.set_current_pos_as_last_stmt_pos()
-					g.write('*($mr_styp*) ${cvar_name}.data = ')
-					old_inside_opt_data := g.inside_opt_data
-					g.inside_opt_data = true
-					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flag(.optional).clear_flag(.result))
-					g.inside_opt_data = old_inside_opt_data
-					g.writeln(';')
-					g.stmt_path_pos.delete_last()
+					if g.inside_return && (expr_stmt.typ.idx() == ast.error_type_idx
+						|| expr_stmt.typ in [ast.none_type, ast.error_type]) {
+						// `return foo() or { error('failed') }`
+						if g.cur_fn != unsafe { nil } {
+							if g.cur_fn.return_type.has_flag(.result) {
+								g.write('return ')
+								g.gen_result_error(g.cur_fn.return_type, expr_stmt.expr)
+								g.writeln(';')
+							} else if g.cur_fn.return_type.has_flag(.optional) {
+								g.write('return ')
+								g.gen_optional_error(g.cur_fn.return_type, expr_stmt.expr)
+								g.writeln(';')
+							}
+						}
+					} else {
+						g.write('*($mr_styp*) ${cvar_name}.data = ')
+						old_inside_opt_data := g.inside_opt_data
+						g.inside_opt_data = true
+						g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flag(.optional).clear_flag(.result))
+						g.inside_opt_data = old_inside_opt_data
+						g.writeln(';')
+						g.stmt_path_pos.delete_last()
+					}
 				} else {
 					g.stmt(stmt)
 				}
@@ -5513,7 +5538,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			// In ordinary functions, `opt()!` call is sugar for:
 			// `opt() or { return err }`
 			// Since we *do* return, first we have to ensure that
-			// the defered statements are generated.
+			// the deferred statements are generated.
 			g.write_defer_stmts()
 			// Now that option types are distinct we need a cast here
 			if g.fn_decl.return_type == ast.void_type {
@@ -5542,7 +5567,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			// In ordinary functions, `opt()?` call is sugar for:
 			// `opt() or { return err }`
 			// Since we *do* return, first we have to ensure that
-			// the defered statements are generated.
+			// the deferred statements are generated.
 			g.write_defer_stmts()
 			// Now that option types are distinct we need a cast here
 			if g.fn_decl.return_type == ast.void_type {
@@ -5663,7 +5688,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 								if field_sym.info is ast.Struct && field_sym.language == .v {
 									if field_sym.info.fields.len == 0
 										&& field_sym.info.embeds.len == 0 {
-										zero_str = '{EMPTY_STRUCT_INITIALIZATION}'
+										zero_str = '{ EMPTY_STRUCT_INITIALIZATION}'
 									}
 								}
 							}
@@ -5934,7 +5959,7 @@ fn (mut g Gen) interface_table() string {
 					} else {
 						// the field is embedded in another struct
 						cast_struct.write_string('\t\t.$cname = ($field_styp*)((char*)x')
-						if st == ast.voidptr_type {
+						if st == ast.voidptr_type || st == ast.nil_type {
 							cast_struct.write_string('/*.... ast.voidptr_type */')
 						} else {
 							if st_sym.kind == .struct_ {
@@ -5982,7 +6007,7 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('\t{')
 			}
-			if st == ast.voidptr_type {
+			if st == ast.voidptr_type || st == ast.nil_type {
 				for mname, _ in methodidx {
 					if g.pref.build_mode != .build_module {
 						methods_struct.writeln('\t\t._method_${c_name(mname)} = (void*) 0,')
@@ -6094,7 +6119,8 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 					// .speak = Cat_speak_Interface_Animal_method_wrapper
 					method_call += iwpostfix
 				}
-				if g.pref.build_mode != .build_module && st != ast.voidptr_type {
+				if g.pref.build_mode != .build_module && st != ast.voidptr_type
+					&& st != ast.nil_type {
 					methods_struct.writeln('\t\t._method_${c_name(method.name)} = (void*) $method_call,')
 				}
 			}

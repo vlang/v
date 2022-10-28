@@ -9,20 +9,19 @@ fn (mut g Gen) comptime_at(node ast.AtExpr) string {
 	return node.val
 }
 
-fn (mut g Gen) comptime_conditional(node ast.IfExpr) {
+fn (mut g Gen) comptime_conditional(node ast.IfExpr) ?[]ast.Stmt {
 	if node.branches.len == 0 {
-		return
+		return none
 	}
 
 	for i, branch in node.branches {
 		// handle $else branch, which does not have a condition
-		if node.has_else && i + 1 == node.branches.len {
-			g.stmts(branch.stmts)
-		} else if g.comptime_is_truthy(branch.cond) {
-			g.stmts(branch.stmts)
-			break
+		if (node.has_else && i + 1 == node.branches.len) || g.comptime_is_truthy(branch.cond) {
+			return branch.stmts
 		}
 	}
+
+	return none
 }
 
 fn (mut g Gen) comptime_is_truthy(cond ast.Expr) bool {

@@ -38,9 +38,9 @@ struct Mount {
 	size u64
 }
 
-fn test_decode_u64() ? {
+fn test_decode_u64() {
 	data := '{"size": 10737418240}'
-	m := json.decode(Mount, data)?
+	m := json.decode(Mount, data)!
 	assert m.size == 10737418240
 	// println(m)
 }
@@ -62,9 +62,9 @@ mut:
 	comments       []Comment [skip]
 }
 
-fn test_skip_fields_should_be_initialised_by_json_decode() ? {
+fn test_skip_fields_should_be_initialised_by_json_decode() {
 	data := '{"total_comments": 55, "id": 123}'
-	mut task := json.decode(Task, data)?
+	mut task := json.decode(Task, data)!
 	assert task.id == 123
 	assert task.total_comments == 55
 	assert task.comments == []

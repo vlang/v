@@ -6,7 +6,7 @@ module builder
 import os
 import v.pref
 
-pub fn (mut v Builder) find_win_cc() ? {
+pub fn (mut v Builder) find_win_cc() ! {
 	$if !windows {
 		return
 	}

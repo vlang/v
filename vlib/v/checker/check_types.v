@@ -19,7 +19,7 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		if expected == ast.byteptr_type {
 			return true
 		}
-		if expected == ast.voidptr_type {
+		if expected == ast.voidptr_type || expected == ast.nil_type {
 			return true
 		}
 		if (expected == ast.bool_type && (got.is_any_kind_of_pointer() || got.is_int()))
@@ -112,7 +112,8 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if exp_idx == got_idx {
 		return true
 	}
-	if exp_idx == ast.voidptr_type_idx || exp_idx == ast.byteptr_type_idx
+	if exp_idx == ast.voidptr_type_idx || exp_idx == ast.nil_type_idx
+		|| exp_idx == ast.byteptr_type_idx
 		|| (expected.is_ptr() && expected.deref().idx() == ast.u8_type_idx) {
 		if got.is_ptr() || got.is_pointer() {
 			return true
@@ -125,7 +126,8 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			return true
 		}
 	}
-	if got_idx == ast.voidptr_type_idx || got_idx == ast.byteptr_type_idx
+	if got_idx == ast.voidptr_type_idx || got_idx == ast.nil_type_idx
+		|| got_idx == ast.byteptr_type_idx
 		|| (got_idx == ast.u8_type_idx && got.is_ptr()) {
 		if expected.is_ptr() || expected.is_pointer() {
 			return true
@@ -599,7 +601,7 @@ fn (c &Checker) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
 	}
 }
 
-pub fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ? {
+pub fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ! {
 	if !c.check_types(got, expected) {
 		return error(c.expected_msg(got, expected))
 	}

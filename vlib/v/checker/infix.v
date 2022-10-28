@@ -58,7 +58,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			if !c.inside_unsafe && !node.left.is_auto_deref_var() && !node.right.is_auto_deref_var() {
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', left_right_pos)
 			}
-			if left_type == ast.voidptr_type && !c.pref.translated {
+			if (left_type == ast.voidptr_type || left_type == ast.nil_type) && !c.pref.translated {
 				c.error('`$node.op` cannot be used with `voidptr`', left_pos)
 			}
 		}
@@ -613,12 +613,18 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	// TODO move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
 	left_is_optional := left_type.has_flag(.optional)
 	right_is_optional := right_type.has_flag(.optional)
-	if left_is_optional && right_is_optional {
-		c.error('unwrapped optionals cannot be used in an infix expression', left_right_pos)
-	} else if left_is_optional || right_is_optional {
+	if left_is_optional || right_is_optional {
 		opt_infix_pos := if left_is_optional { left_pos } else { right_pos }
 		c.error('unwrapped optional cannot be used in an infix expression', opt_infix_pos)
 	}
+
+	left_is_result := left_type.has_flag(.result)
+	right_is_result := right_type.has_flag(.result)
+	if left_is_result || right_is_result {
+		opt_infix_pos := if left_is_result { left_pos } else { right_pos }
+		c.error('unwrapped result cannot be used in an infix expression', opt_infix_pos)
+	}
+
 	// Dual sides check (compatibility check)
 	if node.left !is ast.ComptimeCall && node.right !is ast.ComptimeCall {
 		if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))

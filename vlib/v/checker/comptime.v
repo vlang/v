@@ -224,7 +224,7 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			if expr.typ == ast.f64_type {
 				return cast_expr_value.f64() or { return none }
 			}
-			if expr.typ == ast.voidptr_type {
+			if expr.typ == ast.voidptr_type || expr.typ == ast.nil_type {
 				ptrvalue := cast_expr_value.voidptr() or { return none }
 				return ast.ComptTimeConstValue(ptrvalue)
 			}

@@ -209,7 +209,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.expr(val)
 			} else {
 				if left_sym.kind == .function {
-					g.write('{void* _ = ')
+					g.write('{ void* _ = ')
 				} else {
 					g.write('{$styp _ = ')
 				}
@@ -448,7 +448,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					g.is_shared = var_type.has_flag(.shared_f)
 					if is_fixed_array_init && !has_val {
 						if val is ast.ArrayInit {
-							g.array_init(val, ident.name)
+							g.array_init(val, c_name(ident.name))
 						} else {
 							g.write('{0}')
 						}
@@ -460,7 +460,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.write('*')
 						}
 						if val is ast.ArrayInit {
-							g.array_init(val, ident.name)
+							g.array_init(val, c_name(ident.name))
 						} else if val_type.has_flag(.shared_f) {
 							g.expr_with_cast(val, val_type, var_type)
 						} else {

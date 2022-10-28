@@ -683,7 +683,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		is_varg := i == args.len - 1 && it.is_variadic
 		arg_name := g.js_name(arg.name)
 		if is_varg {
-			g.writeln('$arg_name = new array(new array_buffer({arr: $arg_name,len: new int(${arg_name}.length),index_start: new int(0)}));')
+			g.writeln('$arg_name = new array(new array_buffer({ arr: $arg_name,len: new int(${arg_name}.length),index_start: new int(0)}));')
 		} else {
 			asym := g.table.sym(arg.typ)
 			if asym.kind != .interface_ && asym.language != .js {

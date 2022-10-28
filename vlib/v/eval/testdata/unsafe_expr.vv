@@ -1,0 +1,3 @@
+unsafe {
+    println(true)
+}

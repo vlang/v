@@ -13,7 +13,7 @@ fn (db &DB) init_stmt(query string) (&C.sqlite3_stmt, int) {
 	return stmt, err
 }
 
-fn (db &DB) new_init_stmt(query string) ?Stmt {
+fn (db &DB) new_init_stmt(query string) !Stmt {
 	stmt, err := db.init_stmt(query)
 	if err != sqlite_ok {
 		return db.error_message(err, query)
@@ -66,7 +66,7 @@ fn (stmt &Stmt) step() int {
 	return C.sqlite3_step(stmt.stmt)
 }
 
-fn (stmt &Stmt) orm_step(query string) ? {
+fn (stmt &Stmt) orm_step(query string) ! {
 	res := stmt.step()
 	if res != sqlite_ok && res != sqlite_done && res != sqlite_row {
 		return stmt.db.error_message(res, query)

@@ -184,7 +184,7 @@ fn (mut g Gen) get_type_from_var(var Var) ast.Type {
 	}
 }
 
-fn get_backend(arch pref.Arch) ?CodeGen {
+fn get_backend(arch pref.Arch) !CodeGen {
 	match arch {
 		.arm64 {
 			return Arm64{
@@ -871,6 +871,23 @@ g.expr
 		ast.StringInterLiteral {
 			g.n_error('Interlaced string literals are not yet supported in the native backend.') // , expr.pos)
 		}
+		ast.IfExpr {
+			if expr.is_comptime {
+				if stmts := g.comptime_conditional(expr) {
+					for i, stmt in stmts {
+						if i + 1 == stmts.len && stmt is ast.ExprStmt {
+							g.gen_print_from_expr(stmt.expr, name)
+						} else {
+							g.stmt(stmt)
+						}
+					}
+				} else {
+					g.n_error('nothing to print')
+				}
+			} else {
+				g.n_error('non-comptime if exprs not yet implemented')
+			}
+		}
 		else {
 			dump(typeof(expr).name)
 			dump(expr)
@@ -1273,6 +1290,11 @@ fn (mut g Gen) gen_syscall(node ast.CallExpr) {
 	g.syscall()
 }
 
+union F64I64 {
+	f f64
+	i i64
+}
+
 fn (mut g Gen) expr(node ast.Expr) {
 	match node {
 		ast.ParExpr {
@@ -1296,14 +1318,29 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.call_fn(node)
 			}
 		}
-		ast.FloatLiteral {}
+		ast.FloatLiteral {
+			val := unsafe {
+				F64I64{
+					f: g.eval.expr(node, ast.float_literal_type_idx).float_val()
+				}.i
+			}
+			if g.pref.arch == .arm64 {
+			} else {
+				g.movabs(.rax, val)
+				g.println('; $node.val')
+				g.push(.rax)
+				g.pop_sse(.xmm0)
+			}
+		}
 		ast.Ident {
 			var := g.get_var_from_ident(node)
 			// XXX this is intel specific
 			match var {
 				LocalVar {
-					if var.typ.is_number() || var.typ.is_real_pointer() || var.typ.is_bool() {
+					if var.typ.is_pure_int() || var.typ.is_real_pointer() || var.typ.is_bool() {
 						g.mov_var_to_reg(.rax, node as ast.Ident)
+					} else if var.typ.is_pure_float() {
+						g.mov_var_to_ssereg(.xmm0, node as ast.Ident)
 					} else {
 						ts := g.table.sym(var.typ)
 						match ts.info {
@@ -1326,7 +1363,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.IfExpr {
 			if node.is_comptime {
-				g.comptime_conditional(node)
+				if stmts := g.comptime_conditional(node) {
+					g.stmts(stmts)
+				} else {
+				}
 			} else {
 				g.if_expr(node)
 			}
@@ -1337,7 +1377,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// save the result in rax
 		}
 		ast.IntegerLiteral {
-			g.mov64(.rax, node.val.int())
+			g.movabs(.rax, i64(node.val.u64()))
 			// g.gen_print_reg(.rax, 3, fd)
 		}
 		ast.PostfixExpr {
@@ -1368,8 +1408,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.mov_deref(.rax, .rax, node.typ)
 		}
 		ast.CastExpr {
-			g.expr(node.expr)
-			g.mov_extend_reg(.rax, .rax, node.typ)
+			if g.pref.arch == .arm64 {
+				//		g.gen_match_expr_arm64(node)
+			} else {
+				g.gen_cast_expr_amd64(node)
+			}
 		}
 		ast.EnumVal {
 			type_name := g.table.get_type_name(node.typ)

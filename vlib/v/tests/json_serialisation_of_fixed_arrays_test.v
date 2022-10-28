@@ -40,7 +40,7 @@ fn test_json_serialisation_of_fixed_arrays() {
 	]!}
 	s := json.encode(a)
 	dump(s)
-	b := json.decode(Fixed_Array, s)?
+	b := json.decode(Fixed_Array, s)!
 	dump(b)
 	assert a == b
 }

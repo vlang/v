@@ -165,8 +165,8 @@ fn (mut context Context) parse_options() ! {
 	context.verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
 	context.fail_on_maxtime = fp.int('max_time', `m`, max_time, 'Fail with exit code 2, when first cmd takes above M milliseconds (regression).')
 	context.fail_on_regress_percent = fp.int('fail_percent', `f`, max_fail_percent, 'Fail with exit code 3, when first cmd is X% slower than the rest (regression).')
-	context.cmd_template = fp.string('template', `t`, '{T}', 'Command template. {T} will be substituted with the current command.')
-	cmd_params := fp.string_multi('parameter', `p`, 'A parameter substitution list. `{p}=val1,val2,val2` means that {p} in the template, will be substituted with each of val1, val2, val3.')
+	context.cmd_template = fp.string('template', `t`, r'{T}', r'Command template. {T} will be substituted with the current command.')
+	cmd_params := fp.string_multi('parameter', `p`, r'A parameter substitution list. `{p}=val1,val2,val2` means that {p} in the template, will be substituted with each of val1, val2, val3.')
 	context.nmins = fp.int('nmins', `i`, 0, 'Ignore the BOTTOM X results (minimum execution time). Makes the results more robust to performance flukes.')
 	context.nmaxs = fp.int('nmaxs', `a`, 1, 'Ignore the TOP X results (maximum execution time). Makes the results more robust to performance flukes.')
 	for p in cmd_params {
@@ -212,7 +212,7 @@ fn (mut context Context) clear_line() {
 fn (mut context Context) expand_all_commands(commands []string) []string {
 	mut all_commands := []string{}
 	for cmd in commands {
-		maincmd := context.cmd_template.replace('{T}', cmd)
+		maincmd := context.cmd_template.replace(r'{T}', cmd)
 		mut substituted_commands := []string{}
 		substituted_commands << maincmd
 		for paramk, paramlist in context.cmd_params {

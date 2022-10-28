@@ -5,7 +5,7 @@ import time
 
 // iterates through a list of known diff cli commands
 // and returns it with basic options
-pub fn find_working_diff_command() ?string {
+pub fn find_working_diff_command() !string {
 	env_difftool := os.getenv('VDIFF_TOOL')
 	env_diffopts := os.getenv('VDIFF_OPTIONS')
 	if env_difftool != '' {

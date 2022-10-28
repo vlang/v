@@ -72,3 +72,32 @@ fn test_interface_fn_pointer_fields() {
 	nf := NofunInterface(Nofun{my_fn})
 	assert nf.foo(123) == 246
 }
+
+// For issue: 16198 errors when the reference interface type field of the struct is nil(init, assign...)
+interface Speaker {
+	speak() string
+}
+
+struct Wolf {}
+
+fn (w Wolf) speak() string {
+	return 'woof'
+}
+
+struct Foo {
+mut:
+	speaker &Speaker = unsafe { nil }
+}
+
+fn test_set_nil_to_ref_interface_type_fields() {
+	mut foo := Foo{
+		speaker: unsafe { nil }
+	}
+	assert true
+
+	foo.speaker = unsafe { nil }
+	assert true
+
+	foo.speaker = &Wolf{}
+	assert foo.speaker.speak() == 'woof'
+}

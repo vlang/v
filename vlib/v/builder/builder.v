@@ -88,7 +88,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	}
 }
 
-pub fn (mut b Builder) front_stages(v_files []string) ? {
+pub fn (mut b Builder) front_stages(v_files []string) ! {
 	mut timers := util.get_timers()
 	util.timing_start('PARSE')
 
@@ -106,7 +106,7 @@ pub fn (mut b Builder) front_stages(v_files []string) ? {
 	}
 }
 
-pub fn (mut b Builder) middle_stages() ? {
+pub fn (mut b Builder) middle_stages() ! {
 	util.timing_start('CHECK')
 
 	util.timing_start('Checker.generic_insts_to_concrete')
@@ -135,9 +135,9 @@ pub fn (mut b Builder) middle_stages() ? {
 	}
 }
 
-pub fn (mut b Builder) front_and_middle_stages(v_files []string) ? {
-	b.front_stages(v_files)?
-	b.middle_stages()?
+pub fn (mut b Builder) front_and_middle_stages(v_files []string) ! {
+	b.front_stages(v_files)!
+	b.middle_stages()!
 }
 
 // parse all deps from already parsed files

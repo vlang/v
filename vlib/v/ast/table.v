@@ -337,7 +337,7 @@ pub fn (mut t TypeSymbol) register_method(new_fn Fn) int {
 	return t.methods.len - 1
 }
 
-pub fn (t &Table) register_aggregate_method(mut sym TypeSymbol, name string) ?Fn {
+pub fn (t &Table) register_aggregate_method(mut sym TypeSymbol, name string) !Fn {
 	if sym.kind != .aggregate {
 		t.panic('Unexpected type symbol: $sym.kind')
 	}
@@ -369,21 +369,25 @@ pub fn (t &Table) has_method(s &TypeSymbol, name string) bool {
 }
 
 // find_method searches from current type up through each parent looking for method
-pub fn (t &Table) find_method(s &TypeSymbol, name string) ?Fn {
+pub fn (t &Table) find_method(s &TypeSymbol, name string) !Fn {
 	mut ts := unsafe { s }
 	for {
 		if method := ts.find_method(name) {
 			return method
 		}
 		if ts.kind == .aggregate {
-			return t.register_aggregate_method(mut ts, name)
+			if method := t.register_aggregate_method(mut ts, name) {
+				return method
+			} else {
+				return err
+			}
 		}
 		if ts.parent_idx == 0 {
 			break
 		}
 		ts = t.type_symbols[ts.parent_idx]
 	}
-	return none
+	return error('unknown method `$name`')
 }
 
 [params]
@@ -410,7 +414,7 @@ pub fn (t &Table) get_embeds(sym &TypeSymbol, options GetEmbedsOptions) [][]Type
 	return embeds
 }
 
-pub fn (t &Table) find_method_from_embeds(sym &TypeSymbol, method_name string) ?(Fn, []Type) {
+pub fn (t &Table) find_method_from_embeds(sym &TypeSymbol, method_name string) !(Fn, []Type) {
 	if sym.info is Struct {
 		mut found_methods := []Fn{}
 		mut embed_of_found_methods := []Type{}
@@ -460,17 +464,16 @@ pub fn (t &Table) find_method_from_embeds(sym &TypeSymbol, method_name string) ?
 			}
 		}
 	}
-	return none
+	return error('')
 }
 
 // find_method_with_embeds searches for a given method, also looking through embedded fields
-pub fn (t &Table) find_method_with_embeds(sym &TypeSymbol, method_name string) ?Fn {
+pub fn (t &Table) find_method_with_embeds(sym &TypeSymbol, method_name string) !Fn {
 	if func := t.find_method(sym, method_name) {
 		return func
 	} else {
 		// look for embedded field
-		first_err := err
-		func, _ := t.find_method_from_embeds(sym, method_name) or { return first_err }
+		func, _ := t.find_method_from_embeds(sym, method_name) or { return err }
 		return func
 	}
 }
@@ -487,7 +490,7 @@ pub fn (t &Table) get_embed_methods(sym &TypeSymbol) []Fn {
 	return methods
 }
 
-fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?StructField {
+fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) !StructField {
 	if sym.kind != .aggregate {
 		t.panic('Unexpected type symbol: $sym.kind')
 	}
@@ -537,7 +540,7 @@ pub fn (t &Table) struct_fields(sym &TypeSymbol) []StructField {
 }
 
 // search from current type up through each parent looking for field
-pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
+pub fn (t &Table) find_field(s &TypeSymbol, name string) !StructField {
 	mut ts := unsafe { s }
 	for {
 		match mut ts.info {
@@ -574,11 +577,11 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
 		}
 		ts = t.type_symbols[ts.parent_idx]
 	}
-	return none
+	return error('')
 }
 
 // find_field_from_embeds tries to find a field in the nested embeds
-pub fn (t &Table) find_field_from_embeds(sym &TypeSymbol, field_name string) ?(StructField, []Type) {
+pub fn (t &Table) find_field_from_embeds(sym &TypeSymbol, field_name string) !(StructField, []Type) {
 	if sym.info is Struct {
 		mut found_fields := []StructField{}
 		mut embeds_of_found_fields := []Type{}
@@ -611,11 +614,11 @@ pub fn (t &Table) find_field_from_embeds(sym &TypeSymbol, field_name string) ?(S
 		unalias_sym := t.sym(sym.info.parent_type)
 		return t.find_field_from_embeds(unalias_sym, field_name)
 	}
-	return none
+	return error('')
 }
 
 // find_field_with_embeds searches for a given field, also looking through embedded fields
-pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?StructField {
+pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) !StructField {
 	if field := t.find_field(sym, field_name) {
 		return field
 	} else {
@@ -1527,7 +1530,7 @@ pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 		}
 		// verify fields
 		for ifield in inter_sym.info.fields {
-			if ifield.typ == voidptr_type {
+			if ifield.typ == voidptr_type || ifield.typ == nil_type {
 				// Allow `voidptr` fields in interfaces for now. (for example
 				// to enable .db check in vweb)
 				if t.struct_has_field(sym, ifield.name) {
@@ -1546,7 +1549,9 @@ pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 			}
 			return false
 		}
-		inter_sym.info.types << typ
+		if typ != voidptr_type && typ != nil_type && !inter_sym.info.types.contains(typ) {
+			inter_sym.info.types << typ
+		}
 		if !inter_sym.info.types.contains(voidptr_type) {
 			inter_sym.info.types << voidptr_type
 		}

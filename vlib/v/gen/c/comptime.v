@@ -75,7 +75,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		} else {
 			// return $tmpl string
 			g.write(cur_line)
-			if g.inside_return {
+			if g.inside_return_tmpl {
 				g.write('return ')
 			}
 			g.write('_tmpl_res_$fn_name')
@@ -477,7 +477,8 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				rec_sym := g.table.sym(method.receiver_type)
 				if rec_sym.kind == .struct_ {
 					if _ := g.table.find_field_with_embeds(rec_sym, 'Context') {
-						if method.generic_names.len > 0 {
+						if method.generic_names.len > 0
+							|| (method.params.len > 1 && method.attrs.len == 0) {
 							continue
 						}
 					}

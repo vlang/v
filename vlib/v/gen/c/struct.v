@@ -182,7 +182,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			}
 			field_name := c_name(field.name)
 			if field.typ.has_flag(.optional) || field.typ.has_flag(.result) {
-				g.write('.$field_name = {EMPTY_STRUCT_INITIALIZATION},')
+				g.write('.$field_name = { EMPTY_STRUCT_INITIALIZATION },')
 				initialized = true
 				continue
 			}
@@ -436,7 +436,7 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 			}
 			g.write('}')
 		} else {
-			if sfield.typ != ast.nil_type
+			if sfield.typ != ast.voidptr_type && sfield.typ != ast.nil_type
 				&& (sfield.expected_type.is_ptr() && !sfield.expected_type.has_flag(.shared_f))
 				&& !(sfield.typ.is_ptr() || sfield.typ.is_pointer()) && !sfield.typ.is_number() {
 				g.write('/* autoref */&')
