@@ -60,8 +60,7 @@ fn float_fn_test() {
 	b := get_f64()
 	assert b == 3.6
 
-	// TODO pass float literal
-	c := add_float(3, f32(6.5), 2, f64(4.3))
+	c := add_float(3, 6.5, 2, 4.3)
 	assert c - 10.8 < 0.00001
 }
 
