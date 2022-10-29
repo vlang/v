@@ -62,6 +62,7 @@ mut:
 	structs              []Struct
 	eval                 eval.Eval
 	enum_vals            map[string]Enum
+	return_type          ast.Type
 	// macho specific
 	macho_ncmds   int
 	macho_cmdsize int
@@ -920,6 +921,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.register_function_address(name)
 	g.labels = &LabelTable{}
 	g.defer_stmts.clear()
+	g.return_type = node.return_type
 	if g.pref.arch == .arm64 {
 		g.fn_decl_arm64(node)
 	} else {
@@ -1157,8 +1159,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 						g.expr(e0)
 					}
 				}
-				// store the struct value
 				typ := node.types[0]
+				if typ == ast.float_literal_type_idx && g.return_type == ast.f32_type_idx {
+					if g.pref.arch == .amd64 {
+						g.write32(0xc05a0ff2)
+						g.println('cvtsd2ss xmm0, xmm0')
+					}
+				}
+				// store the struct value
 				if !typ.is_real_pointer() && !typ.is_number() && !typ.is_bool() {
 					ts := g.table.sym(typ)
 					size := g.get_type_size(typ)

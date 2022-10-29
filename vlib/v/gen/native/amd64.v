@@ -2422,6 +2422,7 @@ fn (mut g Gen) gen_left_value(node ast.Expr) {
 fn (mut g Gen) prefix_expr(node ast.PrefixExpr) {
 	match node.op {
 		.minus {
+			// TODO neg float
 			g.expr(node.right)
 			g.neg(.rax)
 		}

@@ -43,11 +43,11 @@ fn float_cast_test() {
 
 // TODO return float literal
 fn get_f32() f32 {
-	return f32(2.5)
+	return 2.5
 }
 
 fn get_f64() f64 {
-	return f64(3.6)
+	return 3.6
 }
 
 fn add_float(a int, b f32, c u64, d f64) f64 {
