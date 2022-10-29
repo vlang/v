@@ -205,7 +205,7 @@ if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
 set ObjFile=.v.c.obj
 
 echo  ^> Attempting to build v_win.c with MSVC
-cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no
+cl.exe /volatile:ms /Fo%ObjFile% /W0 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no
 if %ERRORLEVEL% NEQ 0 (
     echo In some cases, compile errors happen because of the MSVC compiler version
     cl.exe

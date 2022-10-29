@@ -1164,6 +1164,7 @@ pub:
 	comments         []Comment   // comments before the first EnumField
 	fields           []EnumField // all the enum fields
 	attrs            []Attr      // attributes of enum declaration
+	typ              Type        // the default is `int`; can be changed by `enum Big as u64 { a = 5 }`
 	pos              token.Pos
 }
 
