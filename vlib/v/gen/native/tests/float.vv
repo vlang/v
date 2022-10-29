@@ -41,7 +41,6 @@ fn float_cast_test() {
 	assert l == 10000000000000000000
 }
 
-// TODO return float literal
 fn get_f32() f32 {
 	return 2.5
 }
