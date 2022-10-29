@@ -2471,15 +2471,6 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 					g.pop_sse(.xmm1)
 				}
 			}
-			// left: xmm0, right: xmm1
-			if node.left is ast.FloatLiteral && node.right_type == ast.f32_type_idx {
-				g.write32(0xc05a0ff2)
-				g.println('cvtsd2ss xmm0, xmm0')
-			}
-			if node.left_type == ast.f32_type_idx && node.right is ast.FloatLiteral {
-				g.write32(0xc95a0ff2)
-				g.println('cvtsd2ss xmm1, xmm1')
-			}
 			match node.op {
 				.eq, .ne {
 					g.write32(0xc1c20ff3)

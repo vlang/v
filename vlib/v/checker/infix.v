@@ -29,10 +29,30 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	if left_type.is_number() && !left_type.is_ptr()
 		&& right_type in [ast.int_literal_type, ast.float_literal_type] {
 		node.right_type = left_type
+		if left_type in [ast.f32_type_idx, ast.f64_type_idx] && right_type == ast.float_literal_type {
+			defer {
+				node.right = ast.CastExpr{
+					expr: node.right
+					typ: left_type
+					typname: c.table.get_type_name(left_type)
+					expr_type: right_type
+				}
+			}
+		}
 	}
 	if right_type.is_number() && !right_type.is_ptr()
 		&& left_type in [ast.int_literal_type, ast.float_literal_type] {
 		node.left_type = right_type
+		if right_type in [ast.f32_type_idx, ast.f64_type_idx] && left_type == ast.float_literal_type {
+			defer {
+				node.left = ast.CastExpr{
+					expr: node.left
+					typ: right_type
+					typname: c.table.get_type_name(right_type)
+					expr_type: left_type
+				}
+			}
+		}
 	}
 	mut right_sym := c.table.sym(right_type)
 	right_final_sym := c.table.final_sym(right_type)
