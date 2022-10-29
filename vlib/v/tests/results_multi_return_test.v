@@ -16,9 +16,9 @@ fn foo() ?string {
 }
 
 fn bar() !(string, int) {
-	a := foo() or { return IError(Err{
+	a := foo() or { return Err{
 		msg: 'error test'
-	}) }
+	} }
 	return a, 1
 }
 
