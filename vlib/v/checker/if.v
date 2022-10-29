@@ -353,6 +353,15 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 							&& (node.left as ast.SelectorExpr).is_mut) {
 							c.fail_if_immutable(node.left)
 						}
+						// TODO: Add check for sum types in a way that it doesn't break a lot of compiler code
+						if node.left is ast.Ident
+							&& (left_sym.kind == .interface_ && right_sym.kind != .interface_) {
+							v := scope.find_var(node.left.name) or { &ast.Var{} }
+							if v.is_mut && !node.left.is_mut {
+								c.error('smart casting a mutable interface value requires `if mut $node.left.name is ...`',
+									node.left.pos)
+							}
+						}
 						if left_sym.kind in [.interface_, .sum_type] {
 							c.smartcast(node.left, node.left_type, right_type, mut scope)
 						}
