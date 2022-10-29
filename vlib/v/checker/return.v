@@ -94,6 +94,21 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
+		// `fn foo() !(int, string) { return Err{} }`
+		if (exp_is_optional || exp_is_result) && node.exprs.len == 1 {
+			got_typ := c.expr(node.exprs[0])
+			got_typ_sym := c.table.sym(got_typ)
+			if got_typ_sym.kind == .struct_ && c.type_implements(got_typ, ast.error_type, node.pos) {
+				node.exprs[0] = ast.CastExpr{
+					expr: node.exprs[0]
+					typname: 'IError'
+					typ: ast.error_type
+					expr_type: got_typ
+				}
+				node.types[0] = ast.error_type
+				return
+			}
+		}
 		arg := if expected_types.len == 1 { 'argument' } else { 'arguments' }
 		midx := imax(0, imin(expected_types.len, expr_idxs.len - 1))
 		mismatch_pos := node.exprs[expr_idxs[midx]].pos()
@@ -138,6 +153,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 					}
 					continue
 				}
+				// `fn foo() !int { return Err{} }`
 				if got_typ_sym.kind == .struct_
 					&& c.type_implements(got_typ, ast.error_type, node.pos) {
 					node.exprs[expr_idxs[i]] = ast.CastExpr{
