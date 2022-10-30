@@ -1214,7 +1214,7 @@ fn (mut s Scanner) ident_string() string {
 				u_escapes_pos << s.pos - 1
 			}
 		}
-		// ${var} (ignore in vfmt mode) (skip \$)
+		// '${var}' (ignore in vfmt mode) (skip \$)
 		if prevc == `$` && c == `{` && !is_raw
 			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
 			s.is_inside_string = true
@@ -1223,7 +1223,7 @@ fn (mut s Scanner) ident_string() string {
 			s.pos -= 2
 			break
 		}
-		// $var
+		// '$var'
 		if prevc == `$` && util.is_name_char(c) && !is_raw
 			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
 			s.is_inside_string = true
@@ -1231,7 +1231,7 @@ fn (mut s Scanner) ident_string() string {
 			s.pos -= 2
 			break
 		}
-		// {var} (ignore in vfmt mode) (skip \{)
+		// '{var}' (ignore in vfmt mode) (skip \{)
 		if c == `{` && util.is_name_char(s.text[s.pos + 1]) && prevc != `$` && !is_raw
 			&& s.count_symbol_before(s.pos - 1, scanner.backslash) % 2 == 0 {
 			// Detect certain strings with "{" that are not interpolation:
@@ -1255,6 +1255,33 @@ fn (mut s Scanner) ident_string() string {
 				s.is_enclosed_inter = true
 				// so that s.pos points to $ at the next step
 				s.pos -= 1
+				break
+			}
+		}
+		// '{var1}{var2}'
+		if prevc == `{` && util.is_name_char(c) && s.text[s.pos - 2] !in [`$`, `{`] && !is_raw
+			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
+			// Detect certain strings with "{" that are not interpolation:
+			// e.g. "{init: " (no "}" at the end)
+			mut is_valid_inter := true
+			for i := s.pos; i < s.text.len; i++ {
+				if s.text[i] == `}` {
+					// No } in this string, so it's not a valid `{x}` interpolation
+					break
+				}
+				if s.text[i] in [`=`, `:`, `\n`, s.inter_quote] {
+					// We reached the end of the line or string without reaching "}".
+					// Also if there's "=", there's no way it's a valid interpolation expression:
+					// e.g. `println("{a.b = 42}")` `println('{foo:bar}')`
+					is_valid_inter = false
+					break
+				}
+			}
+			if is_valid_inter {
+				s.is_inside_string = true
+				s.is_enclosed_inter = true
+				// so that s.pos points to $ at the next step
+				s.pos -= 2
 				break
 			}
 		}
