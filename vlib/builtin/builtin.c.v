@@ -611,7 +611,7 @@ pub fn memdup_uncollectable(src voidptr, sz int) voidptr {
 
 [inline]
 fn v_fixed_index(i int, len int) int {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i >= len {
 			s := 'fixed array index out of range (index: $i, len: $len)'
 			panic(s)

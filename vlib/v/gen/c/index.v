@@ -18,29 +18,28 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 		} else if sym.kind == .map {
 			g.index_of_map(node, sym)
 		} else if sym.kind == .string && !node.left_type.is_ptr() {
-			is_direct_array_access := (unsafe { g.fn_decl != 0 } && g.fn_decl.is_direct_arr)
-				|| node.is_direct
-			if is_direct_array_access {
+			gen_or := node.or_expr.kind != .absent || node.is_option
+			if gen_or {
+				tmp_opt := g.new_tmp_var()
+				cur_line := g.go_before_stmt(0)
+				g.out.write_string(util.tabs(g.indent))
+				opt_elem_type := g.typ(ast.u8_type.set_flag(.optional))
+				g.write('$opt_elem_type $tmp_opt = string_at_with_check(')
 				g.expr(node.left)
-				g.write('.str[ ')
+				g.write(', ')
 				g.expr(node.index)
-				g.write(']')
+				g.writeln(');')
+				if !node.is_option {
+					g.or_block(tmp_opt, node.or_expr, ast.u8_type)
+				}
+				g.write('\n$cur_line*(byte*)&${tmp_opt}.data')
 			} else {
-				gen_or := node.or_expr.kind != .absent || node.is_option
-				if gen_or {
-					tmp_opt := g.new_tmp_var()
-					cur_line := g.go_before_stmt(0)
-					g.out.write_string(util.tabs(g.indent))
-					opt_elem_type := g.typ(ast.u8_type.set_flag(.optional))
-					g.write('$opt_elem_type $tmp_opt = string_at_with_check(')
+				is_direct_array_access := g.is_direct_array_access || node.is_direct
+				if is_direct_array_access {
 					g.expr(node.left)
-					g.write(', ')
+					g.write('.str[ ')
 					g.expr(node.index)
-					g.writeln(');')
-					if !node.is_option {
-						g.or_block(tmp_opt, node.or_expr, ast.u8_type)
-					}
-					g.write('\n$cur_line*(byte*)&${tmp_opt}.data')
+					g.write(']')
 				} else {
 					g.write('string_at(')
 					g.expr(node.left)
@@ -175,8 +174,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	// `vals[i].field = x` is an exception and requires `array_get`:
 	// `(*(Val*)array_get(vals, i)).field = x;`
 	if g.is_assign_lhs && node.is_setter {
-		is_direct_array_access := (unsafe { g.fn_decl != 0 } && g.fn_decl.is_direct_arr)
-			|| node.is_direct
+		is_direct_array_access := g.is_direct_array_access || node.is_direct
 		is_op_assign := g.assign_op != .assign && info.elem_type != ast.string_type
 		if is_direct_array_access {
 			g.write('(($elem_type_str*)')
@@ -235,11 +233,11 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			}
 		}
 	} else {
-		is_direct_array_access := (unsafe { g.fn_decl != 0 } && g.fn_decl.is_direct_arr)
-			|| node.is_direct
+		is_direct_array_access := g.is_direct_array_access || node.is_direct
 		// do not clone inside `opt_ok(opt_ok(&(string[]) {..})` before returns
 		needs_clone := info.elem_type == ast.string_type_idx && g.is_autofree && !(g.inside_return
-			&& g.fn_decl.return_type.has_flag(.optional)) && !g.is_assign_lhs
+			&& g.fn_decl != unsafe { nil } && g.fn_decl.return_type.has_flag(.optional))
+			&& !g.is_assign_lhs
 		is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 		cur_line := if is_gen_or_and_assign_rhs {
 			line := g.go_before_stmt(0)
@@ -353,8 +351,7 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 	}
 	g.write('[')
-	direct := unsafe { g.fn_decl != 0 } && g.fn_decl.is_direct_arr
-	if (direct || node.index is ast.IntegerLiteral) || g.pref.translated {
+	if g.is_direct_array_access || g.pref.translated || node.index is ast.IntegerLiteral {
 		g.expr(node.index)
 	} else {
 		// bounds check

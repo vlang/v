@@ -57,6 +57,11 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			g.out_fn_start_pos << g.out.len
 		}
 	}
+	prev_is_direct_array_access := g.is_direct_array_access
+	g.is_direct_array_access = node.is_direct_arr || g.pref.no_bounds_checking
+	defer {
+		g.is_direct_array_access = prev_is_direct_array_access
+	}
 	g.gen_attrs(node.attrs)
 	mut skip := false
 	pos := g.out.len

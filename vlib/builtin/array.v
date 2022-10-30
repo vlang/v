@@ -219,7 +219,7 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 // c.insert(0, [1, 2])     // c now is [[1, 2], [3, 4]]
 // ```
 pub fn (mut a array) insert(i int, val voidptr) {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i > a.len {
 			panic('array.insert: index out of range (i == $i, a.len == $a.len)')
 		}
@@ -238,7 +238,7 @@ pub fn (mut a array) insert(i int, val voidptr) {
 // into an the array beginning at `i`.
 [unsafe]
 fn (mut a array) insert_many(i int, val voidptr, size int) {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i > a.len {
 			panic('array.insert_many: index out of range (i == $i, a.len == $a.len)')
 		}
@@ -297,7 +297,7 @@ pub fn (mut a array) delete(i int) {
 // dump(b) // b: [1, 2, 3, 4, 5, 6, 7, 8, 9] // `b` is still the same
 // ```
 pub fn (mut a array) delete_many(i int, size int) {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i + size > a.len {
 			endidx := if size > 1 { '..${i + size}' } else { '' }
 			panic('array.delete: index out of range (i == $i$endidx, a.len == $a.len)')
@@ -379,7 +379,7 @@ fn (a array) get_unsafe(i int) voidptr {
 
 // Private function. Used to implement array[] operator.
 fn (a array) get(i int) voidptr {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i >= a.len {
 			panic('array.get: index out of range (i == $i, a.len == $a.len)')
 		}
@@ -404,7 +404,7 @@ fn (a array) get_with_check(i int) voidptr {
 // However, `a[0]` returns an error object
 // so it can be handled with an `or` block.
 pub fn (a array) first() voidptr {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if a.len == 0 {
 			panic('array.first: array is empty')
 		}
@@ -415,7 +415,7 @@ pub fn (a array) first() voidptr {
 // last returns the last element of the `array`.
 // If the `array` is empty, this will panic.
 pub fn (a array) last() voidptr {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if a.len == 0 {
 			panic('array.last: array is empty')
 		}
@@ -442,7 +442,7 @@ pub fn (a array) last() voidptr {
 // ```
 pub fn (mut a array) pop() voidptr {
 	// in a sense, this is the opposite of `a << x`
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if a.len == 0 {
 			panic('array.pop: array is empty')
 		}
@@ -461,7 +461,7 @@ pub fn (mut a array) pop() voidptr {
 // See also: [trim](#array.trim)
 pub fn (mut a array) delete_last() {
 	// copy pasting code for performance
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if a.len == 0 {
 			panic('array.pop: array is empty')
 		}
@@ -480,7 +480,7 @@ pub fn (mut a array) delete_last() {
 // Alternative: `.slice_ni()` will always return an array.
 fn (a array) slice(start int, _end int) array {
 	mut end := _end
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if start > end {
 			panic('array.slice: invalid slice index ($start > $end)')
 		}
@@ -616,7 +616,7 @@ fn (mut a array) set_unsafe(i int, val voidptr) {
 
 // Private function. Used to implement assignment to the array element.
 fn (mut a array) set(i int, val voidptr) {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i >= a.len {
 			panic('array.set: index out of range (i == $i, a.len == $a.len)')
 		}

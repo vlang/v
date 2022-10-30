@@ -89,6 +89,7 @@ mut:
 	tmp_count_declarations    int  // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
 	global_tmp_count          int  // like tmp_count but global and not resetted in each function
 	discard_or_result         bool // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
+	is_direct_array_access    bool // inside a `[direct_array_access fn a() {}` function
 	is_assign_lhs             bool // inside left part of assign expr (for array_set(), etc)
 	is_void_expr_stmt         bool // ExprStmt whos result is discarded
 	is_arraymap_set           bool // map or array set value state
