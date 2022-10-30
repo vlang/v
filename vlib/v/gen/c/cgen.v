@@ -1666,8 +1666,10 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							g.expr(stmt.expr)
 							g.writeln(';')
 						} else {
+							ret_typ := g.fn_decl.return_type.clear_flag(.optional)
+							styp = g.base_type(ret_typ)
 							g.write('_option_ok(&($styp[]) { ')
-							g.expr(stmt.expr)
+							g.expr_with_cast(stmt.expr, stmt.typ, ret_typ)
 							g.writeln(' }, ($c.option_name*)(&$tmp_var), sizeof($styp));')
 						}
 					}
@@ -1696,8 +1698,10 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							g.expr(stmt.expr)
 							g.writeln(';')
 						} else {
+							ret_typ := g.fn_decl.return_type.clear_flag(.result)
+							styp = g.base_type(ret_typ)
 							g.write('_result_ok(&($styp[]) { ')
-							g.expr(stmt.expr)
+							g.expr_with_cast(stmt.expr, stmt.typ, ret_typ)
 							g.writeln(' }, ($c.result_name*)(&$tmp_var), sizeof($styp));')
 						}
 					}
