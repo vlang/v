@@ -37,6 +37,7 @@ pub mut:
 	is_inter_start              bool   // for hacky string interpolation TODO simplify
 	is_inter_end                bool
 	is_enclosed_inter           bool
+	is_inside_interpolation     bool // avoid nesting interpolation
 	line_comment                string
 	last_lt                     int = -1 // position of latest <
 	is_started                  bool
@@ -677,6 +678,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					s.is_inter_end = true
 					s.is_inter_start = false
 					s.is_inside_string = false
+					s.is_inside_interpolation = false
 				}
 			}
 			// end of `$expr`
@@ -692,6 +694,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			} else if s.is_inter_start && next_char != `.` {
 				s.is_inter_end = true
 				s.is_inter_start = false
+				s.is_inside_interpolation = false
 			}
 			return s.new_token(.name, name, name.len)
 		} else if c.is_digit() || (c == `.` && nextc.is_digit()) {
@@ -720,6 +723,7 @@ fn (mut s Scanner) text_scan() token.Token {
 				s.is_inter_start = false
 				if next_char == s.quote {
 					s.is_inside_string = false
+					s.is_inside_interpolation = false
 				}
 				return s.new_token(.rpar, '', 1)
 			}
@@ -806,10 +810,12 @@ fn (mut s Scanner) text_scan() token.Token {
 					prev_char := s.text[s.pos - 1]
 					next_char := s.text[s.pos + 1]
 					// Handle new `hello {name}` string interpolation
-					if !next_char.is_space() && next_char != `}` && prev_char !in [`$`, `{`] {
+					if !s.is_inside_interpolation && !next_char.is_space() && next_char != `}`
+						&& prev_char !in [`$`, `{`] {
+						s.is_inside_interpolation = true
 						return s.new_token(.str_dollar, '', 1)
 					}
-					if prev_char == `$` {
+					if s.is_inside_interpolation && prev_char == `$` {
 						// Skip { in `${` in strings
 						continue
 					} else {
@@ -820,6 +826,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			}
 			`$` {
 				if s.is_inside_string {
+					s.is_inside_interpolation = true
 					return s.new_token(.str_dollar, '', 1)
 				} else {
 					return s.new_token(.dollar, '', 1)
@@ -837,9 +844,11 @@ fn (mut s Scanner) text_scan() token.Token {
 					if s.text[s.pos] == s.quote {
 						s.is_inside_string = false
 						s.is_enclosed_inter = false
+						s.is_inside_interpolation = false
 						return s.new_token(.string, '', 1)
 					}
 					s.is_enclosed_inter = false
+					s.is_inside_interpolation = false
 					ident_string := s.ident_string()
 					return s.new_token(.string, ident_string, ident_string.len + 2) // + two quotes
 				} else {
@@ -1219,6 +1228,7 @@ fn (mut s Scanner) ident_string() string {
 			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
 			s.is_inside_string = true
 			s.is_enclosed_inter = true
+			s.is_inside_interpolation = true
 			// so that s.pos points to $ at the next step
 			s.pos -= 2
 			break
@@ -1228,6 +1238,7 @@ fn (mut s Scanner) ident_string() string {
 			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
 			s.is_inside_string = true
 			s.is_inter_start = true
+			s.is_inside_interpolation = true
 			s.pos -= 2
 			break
 		}
