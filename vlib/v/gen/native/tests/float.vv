@@ -41,13 +41,12 @@ fn float_cast_test() {
 	assert l == 10000000000000000000
 }
 
-// TODO return float literal
 fn get_f32() f32 {
-	return f32(2.5)
+	return 2.5
 }
 
 fn get_f64() f64 {
-	return f64(3.6)
+	return 3.6
 }
 
 fn add_float(a int, b f32, c u64, d f64) f64 {
@@ -60,8 +59,7 @@ fn float_fn_test() {
 	b := get_f64()
 	assert b == 3.6
 
-	// TODO pass float literal
-	c := add_float(3, f32(6.5), 2, f64(4.3))
+	c := add_float(3, 6.5, 2, 4.3)
 	assert c - 10.8 < 0.00001
 }
 

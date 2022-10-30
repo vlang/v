@@ -1681,6 +1681,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		}
 	}
 
+	args_offset := args.len
 	args << node.args
 	args_size := args.map(g.get_type_size(it.typ))
 	is_floats := args.map(it.typ.is_pure_float())
@@ -1751,6 +1752,10 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 			}
 		}
 		if is_floats[i] {
+			if args_size[i] == 8 && node.expected_arg_types[i + args_offset] == ast.f32_type_idx {
+				g.write32(0xc05a0ff2)
+				g.println('cvtsd2ss xmm0, xmm0')
+			}
 			g.push_sse(.xmm0)
 		} else {
 			match args_size[i] {
@@ -2417,6 +2422,7 @@ fn (mut g Gen) gen_left_value(node ast.Expr) {
 fn (mut g Gen) prefix_expr(node ast.PrefixExpr) {
 	match node.op {
 		.minus {
+			// TODO neg float
 			g.expr(node.right)
 			g.neg(.rax)
 		}
@@ -2470,15 +2476,6 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 					g.expr(node.left)
 					g.pop_sse(.xmm1)
 				}
-			}
-			// left: xmm0, right: xmm1
-			if node.left is ast.FloatLiteral && node.right_type == ast.f32_type_idx {
-				g.write32(0xc05a0ff2)
-				g.println('cvtsd2ss xmm0, xmm0')
-			}
-			if node.left_type == ast.f32_type_idx && node.right is ast.FloatLiteral {
-				g.write32(0xc95a0ff2)
-				g.println('cvtsd2ss xmm1, xmm1')
 			}
 			match node.op {
 				.eq, .ne {
