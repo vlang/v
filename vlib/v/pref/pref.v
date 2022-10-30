@@ -160,6 +160,7 @@ pub mut:
 	ccompiler_type     CompilerType // the type of the C compiler used
 	third_party_option string
 	building_v         bool
+	no_bounds_checking bool // `-no-bounds-checking` turns off *all* bounds checks for all functions at runtime, as if they all had been tagged with `[direct_array_access]`
 	autofree           bool // `v -manualfree` => false, `v -autofree` => true; false by default for now.
 	// Disabling `free()` insertion results in better performance in some applications (e.g. compilers)
 	trace_calls bool // -trace-calls true = the transformer stage will generate and inject print calls for tracing function calls
@@ -466,6 +467,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-glibc' {
 				res.is_musl = false
 				res.is_glibc = true
+				res.build_options << arg
+			}
+			'-no-bounds-checking' {
+				res.no_bounds_checking = true
+				res.compile_defines << 'no_bounds_checking'
+				res.compile_defines_all << 'no_bounds_checking'
 				res.build_options << arg
 			}
 			'-no-builtin' {
@@ -1016,6 +1023,9 @@ fn (mut prefs Preferences) parse_define(define string) {
 	if define_parts.len == 1 {
 		prefs.compile_defines << define
 		prefs.compile_defines_all << define
+		if define == 'no_bounds_checking' {
+			prefs.no_bounds_checking = true
+		}
 		return
 	}
 	if define_parts.len == 2 {
@@ -1040,6 +1050,9 @@ fn (mut prefs Preferences) parse_define(define string) {
 
 fn (mut prefs Preferences) diagnose_deprecated_defines(define_parts []string) {
 	if define_parts[0] == 'force_embed_file' {
-		eprintln('-d force_embed_file was deprecated in 2022/06/01. Now \$embed_file(file) always embeds the file, unless you pass `-d embed_only_metadata`.')
+		eprintln('`-d force_embed_file` was deprecated in 2022/06/01. Now \$embed_file(file) always embeds the file, unless you pass `-d embed_only_metadata`.')
+	}
+	if define_parts[0] == 'no_bounds_checking' {
+		eprintln('`-d no_bounds_checking` was deprecated in 2022/10/30. Use `-no-bounds-checking` instead.')
 	}
 }

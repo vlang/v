@@ -499,7 +499,7 @@ pub fn (s string) replace_each(vals []string) string {
 // Example: assert '\tHello!'.replace_char(`\t`,` `,8) == '        Hello!'
 [direct_array_access]
 pub fn (s string) replace_char(rep u8, with u8, repeat int) string {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if repeat <= 0 {
 			panic('string.replace_char(): tab length too short')
 		}
@@ -873,7 +873,7 @@ fn (s string) substr2(start int, _end int, end_max bool) string {
 // Example: assert 'ABCD'.substr(1,3) == 'BC'
 [direct_array_access]
 pub fn (s string) substr(start int, end int) string {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 			panic('substr($start, $end) out of bounds (len=$s.len)')
 		}
@@ -1582,7 +1582,7 @@ pub fn (s string) str() string {
 // at returns the byte at index `idx`.
 // Example: assert 'ABC'.at(1) == u8(`B`)
 fn (s string) at(idx int) byte {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if idx < 0 || idx >= s.len {
 			panic('string index out of range: $idx / $s.len')
 		}
