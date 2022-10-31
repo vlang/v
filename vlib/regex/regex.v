@@ -1839,6 +1839,11 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			//println("Finished text!!")
 			src_end = true
 
+			// we have fished the text, we must manage out pf bound indexes
+			if state.i >= in_txt_len {
+				state.i = in_txt_len - 1
+			}
+
 			// manage groups
 			if state.group_index >= 0 && state.match_index >= 0 {
 				//println("End text with open groups!")
@@ -1856,15 +1861,13 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 
 						// save group results
 						g_index := re.prog[tmp_pc].group_id * 2
+						//println("group_id: ${re.prog[tmp_pc].group_id} g_index: ${g_index}")
 						if start_i >= 0 {
 							re.groups[g_index] = start_i
 						} else {
 							re.groups[g_index] = 0
 						}
-						// we have fished the text, we must manage out pf bound indexes
-						if state.i >= in_txt_len {
-							state.i = in_txt_len - 1
-						}
+						
 						re.groups[g_index + 1] = state.i
 
 						if re.groups[g_index + 1] >= in_txt_len {
@@ -1878,6 +1881,8 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 					state.group_index--
 				}
 			}
+
+			// println("re.groups: ${re.groups}")
 
 			// the text is finished and the groups closed and we are the last group, ok exit
 			if ist == regex.ist_group_end && re.prog[state.pc + 1].ist == regex.ist_prog_end {
@@ -1899,30 +1904,11 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				return state.first_match, state.i
 			}
 
-			// we are in a last dot_ char case
-			if l_ist == regex.ist_dot_char {
-				// println("***** We have a last dot token")
-				// println("PC: ${state.pc} last_dot_flag:${re.prog[state.pc].last_dot_flag}")
-				// println("rep: ${re.prog[state.pc].group_rep} min: ${re.prog[state.pc].rep_min} max: ${re.prog[state.pc].rep_max}")
-				// println("first match: ${state.first_match}")
-				
-				// we have fished the text, we must manage out pf bound indexes
-				if state.i >= in_txt_len {
-					state.i = in_txt_len - 1
-				}
-
-				if re.prog[state.pc].last_dot_flag == true
-					&& re.prog[state.pc].rep >= re.prog[state.pc].rep_min
-					&& re.prog[state.pc].rep <= re.prog[state.pc].rep_max {
-					return state.first_match, state.i
-				}
-				// println("Not fitted!!")
-			}
-
 			if l_ist in [ 
 				rune(regex.ist_char_class_neg), 
 				regex.ist_char_class_pos, 
-				regex.ist_bsls_char
+				regex.ist_bsls_char,
+				regex.ist_dot_char
 			] {
 				
 				// println("***** We have a last special token")
@@ -1930,11 +1916,6 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				// println("rep: ${re.prog[state.pc].group_rep} min: ${re.prog[state.pc].rep_min} max: ${re.prog[state.pc].rep_max}")
 				// println("first match: ${state.first_match}")
 				
-				// we have fished the text, we must manage out pf bound indexes
-				if state.i >= in_txt_len {
-					state.i = in_txt_len - 1
-				}
-
 				if re.prog[state.pc].last_dot_flag == true
 					&& re.prog[state.pc].rep >= re.prog[state.pc].rep_min
 					&& re.prog[state.pc].rep <= re.prog[state.pc].rep_max {
@@ -1942,10 +1923,6 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				}
 				// println("Not fitted!!")
 			}
-
-			// m_state = .end
-			// break
-
 			// no groups open, check the last token quantifier
 			if ist != regex.ist_group_end && re.prog[state.pc + 1].ist == regex.ist_prog_end {
 				if re.prog[state.pc].rep >= re.prog[state.pc].rep_min
@@ -1955,7 +1932,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				}
 			}
 
-			print("No good exit!!")
+			// println("No good exit!!")
 			return regex.no_match_found, state.i
 		}
 
