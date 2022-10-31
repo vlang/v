@@ -133,7 +133,7 @@ To do so, run the command `v up`.
     * [v shader](#v-shader)
     * [Profiling](#profiling)
 * [Package Management](#package-management)
-    * [Package options](#package-options)
+    * [Package commands](#package-commands)
     * [Publish package](#publish-package)
 * [Advanced Topics](#advanced-topics)
     * [Attributes](#attributes)
@@ -4803,14 +4803,23 @@ fn main() {
 
 ## Package management
 
-Module consists of single folder. Package consists of multiple modules.
+A V *module* is a single folder with .v files inside. A V *package* can
+contain one or more V modules. A V *package* should have a `v.mod` file
+at its top folder, describing the contents of the package.
+
+V packages are installed normally in your `~/.vmodules` folder. That 
+location can be overriden by setting the env variable `VMODULES`.
+
+### Package commands
+
+You can use the V frontend to do package operations, just like you can
+use it for compiling code, formatting code, vetting code etc.
 
 ```powershell
-v [package option] [param]
+v [package_command] [param]
 ```
 
-### Package options
-
+where a package command can be one of:
 ```
    install           Install a package from VPM.
    remove            Remove a package that was installed from VPM.
@@ -4896,7 +4905,8 @@ Package are up to date.
 ### Publish package
 
 1. Put a `v.mod` file inside the toplevel folder of your package (if you
-	created your package with the command `v new mypackage` or `v init` you already have a v.mod file).
+	created your package with the command `v new mypackage` or `v init` 
+	you already have a `v.mod` file).
 
 	```sh
 	v new mypackage
