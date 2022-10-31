@@ -259,6 +259,7 @@ mut:
 	// dot_char token variables
 	dot_check_pc  int = -1 // pc of the next token to check for dots
 	bsls_check_pc int = -1 // pc of the next token to check for bsls
+	cc_check_pc   int = -1 // pc of the next token to check for CC
 	last_dot_flag bool // if true indicate that is the last dot_char in the regex
 	// debug fields
 	source_index int
@@ -1270,7 +1271,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		pc1++
 	}
 
-	// println("last_dot_char_pc: $last_dot_char_pc")
+	// println("last_dot_char_pc: ${last_dot_char_pc}")
 	if last_dot_char_pc >= 0 {
 		pc1 = last_dot_char_pc + 1
 		mut is_last_dot := true
@@ -1313,7 +1314,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		pc1++
 	}
 
-	// println('last_bsls_char_pc: $last_bsls_char_pc')
+	// println('last_bsls_char_pc: ${last_bsls_char_pc}')
 	if last_bsls_char_pc >= 0 {
 		pc1 = last_bsls_char_pc + 1
 		mut is_last_bsls := true
@@ -1326,6 +1327,47 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		}
 		if is_last_bsls {
 			re.prog[last_bsls_char_pc].last_dot_flag = true
+		}
+	}
+
+	//
+	// manage CC
+	//
+	pc1 = 0
+	mut cc_char_count := 0
+	mut last_cc_char_pc := -1
+	for pc1 < pc {
+		if re.prog[pc1].ist in [rune(regex.ist_char_class_pos), regex.ist_char_class_neg] {
+			
+			last_cc_char_pc = pc1
+			cc_char_count++
+			mut pc2 := pc1 + 1
+			for pc2 < pc {
+				if re.prog[pc2].ist !in [rune(regex.ist_prog_end), regex.ist_group_end,
+					regex.ist_group_start] {
+					// println("Next CC check is PC: ${pc2}")
+					re.prog[pc1].cc_check_pc = pc2
+					break
+				}
+				pc2++
+			}
+		}
+		pc1++
+	}
+
+	// println('last_cc_char_pc: ${last_cc_char_pc}')
+	if last_cc_char_pc >= 0 {
+		pc1 = last_cc_char_pc + 1
+		mut is_last_cc := true
+		for pc1 < pc {
+			if re.prog[pc1].ist !in [rune(regex.ist_prog_end), regex.ist_group_end] {
+				is_last_cc = false
+				break
+			}
+			pc1++
+		}
+		if is_last_cc {
+			re.prog[last_cc_char_pc].last_dot_flag = true
 		}
 	}
 
@@ -1417,6 +1459,9 @@ pub fn (re RE) get_code() string {
 		ist := tk.ist
 		if ist == regex.ist_bsls_char {
 			res.write_string('[\\${tk.ch:1c}]     BSLS')
+			if tk.last_dot_flag == true {
+				res.write_string(' last!')
+			}
 		} else if ist == regex.ist_prog_end {
 			res.write_string('PROG_END')
 			stop_flag = true
@@ -1424,8 +1469,14 @@ pub fn (re RE) get_code() string {
 			res.write_string('OR      ')
 		} else if ist == regex.ist_char_class_pos {
 			res.write_string('[${re.get_char_class(pc1)}]     CHAR_CLASS_POS')
+			if tk.last_dot_flag == true {
+				res.write_string(' last!')
+			}
 		} else if ist == regex.ist_char_class_neg {
 			res.write_string('[^${re.get_char_class(pc1)}]    CHAR_CLASS_NEG')
+			if tk.last_dot_flag == true {
+				res.write_string(' last!')
+			}
 		} else if ist == regex.ist_dot_char {
 			res.write_string('.        DOT_CHAR nx chk: $tk.dot_check_pc')
 			if tk.last_dot_flag == true {
@@ -1785,17 +1836,18 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 
 		// we're out of text, manage it
 		if state.i >= in_txt_len || m_state == .new_line {
-			// println("Finished text!!")
+			//println("Finished text!!")
 			src_end = true
 
 			// manage groups
 			if state.group_index >= 0 && state.match_index >= 0 {
-				// println("End text with open groups!")
+				//println("End text with open groups!")
+				//println("state.group_index: ${state.group_index}")
 				// close the groups
 				for state.group_index >= 0 {
 					tmp_pc := re.group_data[state.group_index]
 					re.prog[tmp_pc].group_rep++
-					// println("Closing group $state.group_index {${re.prog[tmp_pc].rep_min},${re.prog[tmp_pc].rep_max}}:${re.prog[tmp_pc].group_rep}")
+					//println("Closing group $state.group_index {${re.prog[tmp_pc].rep_min},${re.prog[tmp_pc].rep_max}}:${re.prog[tmp_pc].group_rep}")
 
 					if re.prog[tmp_pc].group_rep >= re.prog[tmp_pc].rep_min
 						&& re.prog[tmp_pc].group_id >= 0 {
@@ -1849,10 +1901,40 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 
 			// we are in a last dot_ char case
 			if l_ist == regex.ist_dot_char {
-				// println("***** We have a last dot_char")
+				// println("***** We have a last dot token")
 				// println("PC: ${state.pc} last_dot_flag:${re.prog[state.pc].last_dot_flag}")
 				// println("rep: ${re.prog[state.pc].group_rep} min: ${re.prog[state.pc].rep_min} max: ${re.prog[state.pc].rep_max}")
 				// println("first match: ${state.first_match}")
+				
+				// we have fished the text, we must manage out pf bound indexes
+				if state.i >= in_txt_len {
+					state.i = in_txt_len - 1
+				}
+
+				if re.prog[state.pc].last_dot_flag == true
+					&& re.prog[state.pc].rep >= re.prog[state.pc].rep_min
+					&& re.prog[state.pc].rep <= re.prog[state.pc].rep_max {
+					return state.first_match, state.i
+				}
+				// println("Not fitted!!")
+			}
+
+			if l_ist in [ 
+				rune(regex.ist_char_class_neg), 
+				regex.ist_char_class_pos, 
+				regex.ist_bsls_char
+			] {
+				
+				// println("***** We have a last special token")
+				// println("PC: ${state.pc} last_dot_flag:${re.prog[state.pc].last_dot_flag}")
+				// println("rep: ${re.prog[state.pc].group_rep} min: ${re.prog[state.pc].rep_min} max: ${re.prog[state.pc].rep_max}")
+				// println("first match: ${state.first_match}")
+				
+				// we have fished the text, we must manage out pf bound indexes
+				if state.i >= in_txt_len {
+					state.i = in_txt_len - 1
+				}
+
 				if re.prog[state.pc].last_dot_flag == true
 					&& re.prog[state.pc].rep >= re.prog[state.pc].rep_min
 					&& re.prog[state.pc].rep <= re.prog[state.pc].rep_max {
@@ -1868,12 +1950,12 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			if ist != regex.ist_group_end && re.prog[state.pc + 1].ist == regex.ist_prog_end {
 				if re.prog[state.pc].rep >= re.prog[state.pc].rep_min
 					&& re.prog[state.pc].rep <= re.prog[state.pc].rep_max {
-					// println("We are in good repetition")
+					//println("We are in good repetition")
 					return state.first_match, state.i
 				}
 			}
 
-			// print("No good exit!!")
+			print("No good exit!!")
 			return regex.no_match_found, state.i
 		}
 
