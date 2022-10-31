@@ -47,6 +47,7 @@ const verify_known_failing_exceptions = [
 	'vlib/builtin/int_test.v' /* special number formatting that should be tested */,
 	// TODOs and unfixed vfmt bugs
 	'vlib/v/gen/js/tests/js.v', /* local `hello` fn, gets replaced with module `hello` aliased as `hl` */
+	'vlib/v/tests/inout/string_interpolation_inner_expr_cbr.vv', /* for new string interpolation, prevent resolving to nested interpolation */
 	'vlib/v/tests/string_new_interpolation_test.v', /* new string interpolation */
 ]
 
