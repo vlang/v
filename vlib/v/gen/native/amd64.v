@@ -1225,9 +1225,8 @@ pub fn (mut g Gen) inline_strlen(r Register) {
 
 // TODO: strlen of string at runtime
 pub fn (mut g Gen) gen_print_reg(r Register, n int, fd int) {
-	mystrlen := true // if n < 0 maybe?
 	g.mov_reg(.rsi, r)
-	if mystrlen {
+	if n < 0 {
 		g.inline_strlen(.rsi)
 		g.mov_reg(.rdx, .rax)
 	} else {
@@ -2619,14 +2618,6 @@ fn (mut g Gen) trap() {
 		g.write8(0xcc)
 	}
 	g.println('trap')
-}
-
-fn (mut g Gen) gen_asm_stmt(asm_node ast.AsmStmt) {
-	if g.pref.arch == .arm64 {
-		g.gen_asm_stmt_arm64(asm_node)
-	} else {
-		g.gen_asm_stmt_amd64(asm_node)
-	}
 }
 
 fn (mut g Gen) gen_asm_stmt_amd64(asm_node ast.AsmStmt) {
