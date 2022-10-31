@@ -777,10 +777,6 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string)
 				g.gen_print(str, fd)
 			}
 		}
-		ast.CallExpr {
-			g.call_fn(expr)
-			g.gen_print_reg(.rax, -1, fd)
-		}
 		ast.Ident {
 			vo := g.try_var_offset(expr.name)
 
@@ -795,28 +791,41 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string)
 			}
 		}
 		ast.IntegerLiteral {
-			g.learel(.rax, g.allocate_string('$expr.val\n', 3, .rel32))
-			g.gen_print_reg(.rax, -1, fd)
+			if newline {
+				g.gen_print('$expr.val\n', fd)
+			} else {
+				g.gen_print('$expr.val', fd)
+			}
 		}
 		ast.BoolLiteral {
 			// register 'true' and 'false' strings // g.expr(expr)
 			// XXX mov64 shuoldnt be used for addressing
+			nl := if newline { '\n' } else { '' }
+
 			if expr.val {
-				g.learel(.rax, g.allocate_string('true', 3, .rel32))
-				g.gen_print_reg(.rax, 4, fd)
+				g.gen_print('true' + nl, fd)
 			} else {
-				g.learel(.rax, g.allocate_string('false', 3, .rel32))
-				g.gen_print_reg(.rax, 5, fd)
+				g.gen_print('false' + nl, fd)
 			}
 		}
-		ast.SizeOf {}
+		ast.SizeOf {
+			size := g.get_type_size(expr.typ)
+			if newline {
+				g.gen_print('$size\n', fd)
+			} else {
+				g.gen_print('$size', fd)
+			}
+		}
 		ast.OffsetOf {
 			styp := g.typ(expr.struct_type)
 			field_name := expr.field
 			if styp.kind == .struct_ {
 				off := g.get_field_offset(expr.struct_type, field_name)
-				g.learel(.rax, g.allocate_string('$off\n', 3, .rel32))
-				g.gen_print_reg(.rax, -1, fd)
+				if newline {
+					g.gen_print('$off\n', fd)
+				} else {
+					g.gen_print('$off', fd)
+				}
 			} else {
 				g.v_error('_offsetof expects a struct Type as first argument', expr.pos)
 			}
@@ -838,8 +847,8 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string)
 		ast.StringInterLiteral {
 			g.n_error('Interlaced string literals are not yet supported in the native backend.') // , expr.pos)
 		}
-		else {
-			if expr is ast.IfExpr && (expr as ast.IfExpr).is_comptime {
+		ast.IfExpr {
+			if expr.is_comptime {
 				if stmts := g.comptime_conditional(expr) {
 					for i, stmt in stmts {
 						if i + 1 == stmts.len && stmt is ast.ExprStmt {
@@ -852,12 +861,15 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string)
 					g.n_error('nothing to print')
 				}
 			} else {
-				g.expr(expr)
-				g.gen_to_string(.rax, typ)
-				g.gen_print_reg(.rax, -1, fd)
-				if newline {
-					g.gen_print('\n', fd)
-				}
+				g.n_error('non-comptime conditionals are not implemented yet.')
+			}
+		}
+		else {
+			g.expr(expr)
+			g.gen_to_string(.rax, typ)
+			g.gen_print_reg(.rax, -1, fd)
+			if newline {
+				g.gen_print('\n', fd)
 			}
 		}
 	}

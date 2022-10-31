@@ -72,7 +72,8 @@ fn test_idents() {
 
 fn test_exprs() {
 	t := true
-	println(t == false)
+	print(t == false)
+	print(' ')
 	println(t == true)
 
 	i := 123
@@ -84,6 +85,15 @@ fn test_exprs() {
 	println(none)
 }
 
+fn test_sizeof() {
+	i := 0
+
+	print('sizeof: ')
+	print(sizeof(i))
+	print(', ')
+	println(sizeof(Foo))
+}
+
 fn main() {
 	test_stdout()
 	test_stderr()
@@ -91,4 +101,5 @@ fn main() {
 	test_oof()
 	test_idents()
 	test_exprs()
+	test_sizeof()
 }
