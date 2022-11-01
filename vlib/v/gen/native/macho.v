@@ -478,8 +478,12 @@ fn (mut g Gen) write_symbol(s Symbol) {
 fn (mut g Gen) sym_string_table() int {
 	begin := g.buf.len
 	g.zeroes(1)
+
+	mut generated := map[string]int{}
+
 	for _, s in g.strs {
-		pos := g.buf.len - s.pos - 4
+		pos := generated[s.str] or { g.buf.len - s.pos - 4 }
+
 		match s.typ {
 			.rel32 {
 				g.write32_at(s.pos, pos)
@@ -493,7 +497,11 @@ fn (mut g Gen) sym_string_table() int {
 				}
 			}
 		}
-		g.write_string(s.str)
+
+		if s.str !in generated {
+			generated[s.str] = pos
+			g.write_string(s.str)
+		}
 	}
 	return g.buf.len - begin
 }
