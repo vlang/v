@@ -34,9 +34,9 @@ fn main() {
 	for {
 		elog('------------------- Checking for updates ... -------------------')
 		res_pull := os.execute('git pull --rebase')
+		elog('> res_pull.output:\n $res_pull.output')
 		if res_pull.exit_code != 0 {
-			println('failed to git pull. uncommitted changes?')
-			println('res_pull.output: $res_pull.output')
+			elog('Git pull failed. You may have uncommitted changes?')
 			delay()
 			continue
 		}
@@ -44,7 +44,6 @@ fn main() {
 			if os.args[1] or { '' } == '-force-update' {
 				elog('The repository was already updated, but -force-update was passed too.')
 			} else {
-				elog('Already updated.')
 				delay()
 				continue
 			}
@@ -52,6 +51,7 @@ fn main() {
 
 		elog('recompiling V')
 		os.system('${os.quoted_path(vexe)} self')
+		os.system('ls -la ${os.quoted_path(vexe)}')
 
 		elog('recompiling ./fast')
 		os.execute('${os.quoted_path(vexe)} fast.v')
