@@ -1338,7 +1338,6 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 	mut last_cc_char_pc := -1
 	for pc1 < pc {
 		if re.prog[pc1].ist in [rune(regex.ist_char_class_pos), regex.ist_char_class_neg] {
-			
 			last_cc_char_pc = pc1
 			cc_char_count++
 			mut pc2 := pc1 + 1
@@ -1836,7 +1835,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 
 		// we're out of text, manage it
 		if state.i >= in_txt_len || m_state == .new_line {
-			//println("Finished text!!")
+			// println("Finished text!!")
 			src_end = true
 
 			// we have fished the text, we must manage out pf bound indexes
@@ -1846,13 +1845,13 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 
 			// manage groups
 			if state.group_index >= 0 && state.match_index >= 0 {
-				//println("End text with open groups!")
-				//println("state.group_index: ${state.group_index}")
+				// println("End text with open groups!")
+				// println("state.group_index: ${state.group_index}")
 				// close the groups
 				for state.group_index >= 0 {
 					tmp_pc := re.group_data[state.group_index]
 					re.prog[tmp_pc].group_rep++
-					//println("Closing group $state.group_index {${re.prog[tmp_pc].rep_min},${re.prog[tmp_pc].rep_max}}:${re.prog[tmp_pc].group_rep}")
+					// println("Closing group $state.group_index {${re.prog[tmp_pc].rep_min},${re.prog[tmp_pc].rep_max}}:${re.prog[tmp_pc].group_rep}")
 
 					if re.prog[tmp_pc].group_rep >= re.prog[tmp_pc].rep_min
 						&& re.prog[tmp_pc].group_id >= 0 {
@@ -1861,13 +1860,13 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 
 						// save group results
 						g_index := re.prog[tmp_pc].group_id * 2
-						//println("group_id: ${re.prog[tmp_pc].group_id} g_index: ${g_index}")
+						// println("group_id: ${re.prog[tmp_pc].group_id} g_index: ${g_index}")
 						if start_i >= 0 {
 							re.groups[g_index] = start_i
 						} else {
 							re.groups[g_index] = 0
 						}
-						
+
 						re.groups[g_index + 1] = state.i
 
 						if re.groups[g_index + 1] >= in_txt_len {
@@ -1904,18 +1903,17 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				return state.first_match, state.i
 			}
 
-			if l_ist in [ 
-				rune(regex.ist_char_class_neg), 
-				regex.ist_char_class_pos, 
+			if l_ist in [
+				rune(regex.ist_char_class_neg),
+				regex.ist_char_class_pos,
 				regex.ist_bsls_char,
-				regex.ist_dot_char
+				regex.ist_dot_char,
 			] {
-				
 				// println("***** We have a last special token")
 				// println("PC: ${state.pc} last_dot_flag:${re.prog[state.pc].last_dot_flag}")
 				// println("rep: ${re.prog[state.pc].group_rep} min: ${re.prog[state.pc].rep_min} max: ${re.prog[state.pc].rep_max}")
 				// println("first match: ${state.first_match}")
-				
+
 				if re.prog[state.pc].last_dot_flag == true
 					&& re.prog[state.pc].rep >= re.prog[state.pc].rep_min
 					&& re.prog[state.pc].rep <= re.prog[state.pc].rep_max {
@@ -1927,7 +1925,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			if ist != regex.ist_group_end && re.prog[state.pc + 1].ist == regex.ist_prog_end {
 				if re.prog[state.pc].rep >= re.prog[state.pc].rep_min
 					&& re.prog[state.pc].rep <= re.prog[state.pc].rep_max {
-					//println("We are in good repetition")
+					// println("We are in good repetition")
 					return state.first_match, state.i
 				}
 			}
