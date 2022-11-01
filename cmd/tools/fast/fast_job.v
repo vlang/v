@@ -4,10 +4,17 @@
 import os
 import time
 
+fn elog(msg string) {
+	eprintln('$time.now().format_ss_micro() $msg')
+}
+
 // A job that runs in the background, checks for repo updates,
 // runs fast.v, pushes the HTML result to the fast.vlang.io GH pages repo.
 fn main() {
-	println(time.now())
+	elog('fast_job start')
+	defer {
+		elog('fast_job end')
+	}
 	if !os.exists('website') {
 		println('cloning the website repo...')
 		os.system('git clone git@github.com:/vlang/website.git')
@@ -17,12 +24,14 @@ fn main() {
 		return
 	}
 	for {
+		eprintln('$time.now().format_ss_micro() checking for updates ...')
 		res_pull := os.execute('git pull --rebase')
 		if res_pull.exit_code != 0 {
 			println('failed to git pull. uncommitted changes?')
 			return
 		}
 		// println('running ./fast')
+		elog('running ./fast -upload')
 		resp := os.execute('./fast -upload')
 		if resp.exit_code < 0 {
 			println(resp.output)
@@ -32,6 +41,7 @@ fn main() {
 			println('resp != 0, skipping')
 			println(resp.output)
 		}
+		elog('sleeping for 180 seconds...')
 		time.sleep(180 * time.second)
 	}
 }
