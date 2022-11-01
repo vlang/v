@@ -170,7 +170,7 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 
 fn (c Checker) check_multiple_ptr_match(got ast.Type, expected ast.Type, param ast.Param, arg ast.CallArg) bool {
 	param_nr_muls := if param.is_mut && !expected.is_ptr() { 1 } else { expected.nr_muls() }
-	if got.is_ptr() && got.nr_muls() != param_nr_muls {
+	if got.is_ptr() && got.nr_muls() > 1 && got.nr_muls() != param_nr_muls {
 		if arg.expr is ast.PrefixExpr && (arg.expr as ast.PrefixExpr).op == .amp {
 			return false
 		}

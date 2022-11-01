@@ -1048,7 +1048,8 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				}
 			}
 
-			if !c.check_multiple_ptr_match(arg_typ, param.typ, param, call_arg) {
+			if arg_typ !in [ast.voidptr_type, ast.nil_type]
+				&& !c.check_multiple_ptr_match(arg_typ, param.typ, param, call_arg) {
 				got_typ_str, expected_typ_str := c.get_string_names_of(arg_typ, param.typ)
 				c.error('cannot use `$got_typ_str` as `$expected_typ_str` in argument ${i + 1} to `$fn_name`',
 					call_arg.pos)
@@ -1678,7 +1679,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					}
 				}
 
-				if !c.check_multiple_ptr_match(got_arg_typ, param.typ, param, arg) {
+				if got_arg_typ !in [ast.voidptr_type, ast.nil_type]
+					&& !c.check_multiple_ptr_match(got_arg_typ, param.typ, param, arg) {
 					got_typ_str, expected_typ_str := c.get_string_names_of(got_arg_typ,
 						param.typ)
 					c.error('cannot use `$got_typ_str` as `$expected_typ_str` in argument ${i + 1} to `$method_name`',
