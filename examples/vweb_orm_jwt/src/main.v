@@ -20,7 +20,7 @@ fn main() {
 
 	sql db {
 		create table User
-	}
+	} or { panic('error on create table: $err') }
 
 	db.close() or { panic(err) }
 
