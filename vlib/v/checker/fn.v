@@ -404,10 +404,11 @@ fn (c Checker) check_same_type_ignoring_pointers(type_a ast.Type, type_b ast.Typ
 fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 	keep_fn := c.table.cur_fn
 	keep_inside_anon := c.inside_anon_fn
+	keep_anon_fn := c.cur_anon_fn
 	defer {
 		c.table.cur_fn = keep_fn
 		c.inside_anon_fn = keep_inside_anon
-		c.cur_anon_fn = unsafe { nil }
+		c.cur_anon_fn = keep_anon_fn
 	}
 	for param in node.decl.params {
 		if param.name.len == 0 {
