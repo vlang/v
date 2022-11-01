@@ -108,6 +108,7 @@ mut:
 	files                            []ast.File
 	expr_level                       int // to avoid infinite recursion segfaults due to compiler bugs
 	cur_orm_ts                       ast.TypeSymbol
+	cur_anon_fn                      &ast.AnonFn = unsafe { nil }
 	error_details                    []string
 	vmod_file_content                string     // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	loop_label                       string     // set when inside a labelled for loop

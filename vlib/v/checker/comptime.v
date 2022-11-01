@@ -62,6 +62,9 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		return rtyp
 	}
 	if node.method_name == 'method' {
+		if c.inside_anon_fn && 'method' !in c.cur_anon_fn.inherited_vars.map(it.name) {
+			c.error('undefined ident `method` in the anonymous function', node.pos)
+		}
 		for i, arg in node.args {
 			// check each arg expression
 			node.args[i].typ = c.expr(arg.expr)
