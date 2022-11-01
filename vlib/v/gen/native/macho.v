@@ -486,14 +486,14 @@ fn (mut g Gen) sym_string_table() int {
 
 		match s.typ {
 			.rel32 {
-				g.write32_at(s.pos, pos)
+				g.write32_at(s.pos, pos - s.pos - 4)
 			}
 			else {
 				if g.pref.os == .windows {
 					// that should be .rel32, not windows-specific
-					g.write32_at(s.pos, pos)
+					g.write32_at(s.pos, pos - s.pos - 4)
 				} else {
-					g.write64_at(s.pos, pos - s.pos - 4 + native.base_addr)
+					g.write64_at(s.pos, pos + native.base_addr)
 				}
 			}
 		}
