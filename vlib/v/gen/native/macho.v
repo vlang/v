@@ -482,7 +482,7 @@ fn (mut g Gen) sym_string_table() int {
 	mut generated := map[string]int{}
 
 	for _, s in g.strs {
-		pos := generated[s.str] or { g.buf.len - s.pos - 4 }
+		pos := generated[s.str] or { g.buf.len }
 
 		match s.typ {
 			.rel32 {
@@ -493,7 +493,7 @@ fn (mut g Gen) sym_string_table() int {
 					// that should be .rel32, not windows-specific
 					g.write32_at(s.pos, pos)
 				} else {
-					g.write64_at(s.pos, pos + native.base_addr)
+					g.write64_at(s.pos, pos - s.pos - 4 + native.base_addr)
 				}
 			}
 		}
