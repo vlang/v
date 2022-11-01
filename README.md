@@ -198,8 +198,12 @@ NB: In order to build Tetris or 2048 (or anything else using `sokol` or  `gg` gr
 on some Linux systems, you need to install `libxi-dev` and `libxcursor-dev` .
 
 ## V net.http, net.websocket, `v install`
-If you plan to use the net.http module, or the net.websocket module, you also need to install
-OpenSSL on non-Windows systems:
+The net.http module, the net.websocket module, and the `v install` command may all use SSL.
+V comes with a version of mbedtls, which should work on all systems.  If you find a need to
+usee OpenSSL instead, you can will need to make sure that it is installed on your system,
+then use the `-d use_openssl` switch when you compile.
+
+To install OpenSSL on non-Windows systems:
 
 ```bash
 macOS:
@@ -214,6 +218,9 @@ openssl is installed by default
 Fedora:
 sudo dnf install openssl-devel
 ```
+
+On Windows, OpenSSL is simply hard to get working correctly.  The instructions
+[here](https://tecadmin.net/install-openssl-on-windows/) may (or may not) help.
 
 ## V sync
 V's `sync` module and channel implementation uses libatomic.
