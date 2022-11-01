@@ -1047,6 +1047,12 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 					c.mark_as_referenced(mut &call_arg.expr, true)
 				}
 			}
+
+			if !c.check_multiple_ptr_match(arg_typ, param.typ, param, call_arg) {
+				got_typ_str, expected_typ_str := c.get_string_names_of(arg_typ, param.typ)
+				c.error('cannot use `$got_typ_str` as `$expected_typ_str` in argument ${i + 1} to `$fn_name`',
+					call_arg.pos)
+			}
 			continue
 		}
 		if param.typ.is_ptr() && !param.is_mut && !call_arg.typ.is_real_pointer()
@@ -1149,6 +1155,12 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				}
 			}
 			c.error('$err.msg() in argument ${i + 1} to `$fn_name`', call_arg.pos)
+		}
+		if final_param_sym.kind == .struct_ && arg_typ !in [ast.voidptr_type, ast.nil_type]
+			&& !c.check_multiple_ptr_match(arg_typ, param.typ, param, call_arg) {
+			got_typ_str, expected_typ_str := c.get_string_names_of(arg_typ, param.typ)
+			c.error('cannot use `$got_typ_str` as `$expected_typ_str` in argument ${i + 1} to `$fn_name`',
+				call_arg.pos)
 		}
 		// Warn about automatic (de)referencing, which will be removed soon.
 		if func.language != .c && !c.inside_unsafe && arg_typ.nr_muls() != param.typ.nr_muls()
@@ -1665,6 +1677,13 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 						}
 					}
 				}
+
+				if !c.check_multiple_ptr_match(got_arg_typ, param.typ, param, arg) {
+					got_typ_str, expected_typ_str := c.get_string_names_of(got_arg_typ,
+						param.typ)
+					c.error('cannot use `$got_typ_str` as `$expected_typ_str` in argument ${i + 1} to `$method_name`',
+						arg.pos)
+				}
 				continue
 			}
 			if param.typ.is_ptr() && !arg.typ.is_real_pointer() && arg.expr.is_literal()
@@ -1691,6 +1710,13 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					}
 				}
 				c.error('$err.msg() in argument ${i + 1} to `${left_sym.name}.$method_name`',
+					arg.pos)
+			}
+			param_typ_sym := c.table.sym(exp_arg_typ)
+			if param_typ_sym.kind == .struct_ && got_arg_typ !in [ast.voidptr_type, ast.nil_type]
+				&& !c.check_multiple_ptr_match(got_arg_typ, param.typ, param, arg) {
+				got_typ_str, expected_typ_str := c.get_string_names_of(got_arg_typ, param.typ)
+				c.error('cannot use `$got_typ_str` as `$expected_typ_str` in argument ${i + 1} to `$method_name`',
 					arg.pos)
 			}
 		}
