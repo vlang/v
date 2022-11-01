@@ -11,6 +11,10 @@ struct App {
 	vweb.Context
 }
 
+pub fn (app App) before_request() {
+	println('[Vweb] $app.Context.req.method $app.Context.req.url')
+}
+
 fn main() {
 	mut db := databases.create_db_connection() or { panic(err) }
 

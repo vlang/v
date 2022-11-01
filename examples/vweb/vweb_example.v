@@ -18,6 +18,10 @@ mut:
 	cnt int
 }
 
+pub fn (app App) before_request() {
+	println('[Vweb] $app.Context.req.method $app.Context.req.url')
+}
+
 fn main() {
 	println('vweb example')
 	vweb.run(&App{}, port)
