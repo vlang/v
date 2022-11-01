@@ -200,8 +200,8 @@ on some Linux systems, you need to install `libxi-dev` and `libxcursor-dev` .
 ## V net.http, net.websocket, `v install`
 The net.http module, the net.websocket module, and the `v install` command may all use SSL.
 V comes with a version of mbedtls, which should work on all systems.  If you find a need to
-usee OpenSSL instead, you can will need to make sure that it is installed on your system,
-then use the `-d use_openssl` switch when you compile.
+use OpenSSL instead, you will need to make sure that it is installed on your system, then
+use the `-d use_openssl` switch when you compile.
 
 To install OpenSSL on non-Windows systems:
 
