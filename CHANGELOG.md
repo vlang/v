@@ -1,5 +1,6 @@
 ## V 0.3.2
-*Not yet released*
+*31 Oct 2022*
+*Changelog is not full yet*
 - New stunnig playground with an improved look and feel, much better and responsive editor,
   code sharing by link, more convenient keyboard control, reusability for potential embedding:
   https://play.vlang.io.
