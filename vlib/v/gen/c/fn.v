@@ -847,7 +847,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.expr(node.left)
 		}
 		g.write('${dot}_object')
-		if node.args.len > 0 {
+		is_variadic := node.expected_arg_types.len > 0
+			&& node.expected_arg_types[node.expected_arg_types.len - 1].has_flag(.variadic)
+		if node.args.len > 0 || is_variadic {
 			g.write(', ')
 			g.call_args(node)
 		}
