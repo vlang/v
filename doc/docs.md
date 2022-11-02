@@ -137,19 +137,18 @@ To do so, run the command `v up`.
     * [Publish package](#publish-package)
 * [Advanced Topics](#advanced-topics)
     * [Attributes](#attributes)
-    * [Memory-unsafe code](#memory-unsafe-code)
-    * [Structs with reference fields](#structs-with-reference-fields)
-    * [sizeof and __offsetof](#sizeof-and-__offsetof)
-    * [Limited operator overloading](#limited-operator-overloading)
-    * [Performance tuning](#performance-tuning)
-    * [Export to shared library](#export-to-shared-library)
-	* [Atomics](#atomics)
-	* [Global Variables](#global-variables)
 	* [Conditional compilation](#conditional-compilation)
         * [Compile time pseudo variables](#compile-time-pseudo-variables)
         * [Compile-time reflection](#compile-time-reflection)
         * [Compile time code](#compile-time-code)
         * [Environment specific files](#environment-specific-files)
+    * [Memory-unsafe code](#memory-unsafe-code)
+    * [Structs with reference fields](#structs-with-reference-fields)
+    * [sizeof and __offsetof](#sizeof-and-__offsetof)
+    * [Limited operator overloading](#limited-operator-overloading)
+    * [Performance tuning](#performance-tuning)
+	* [Atomics](#atomics)
+	* [Global Variables](#global-variables)
     * [Cross compilation](#cross-compilation)
 	* [Debugging](#debugging)
         * [C Backend binaries Default](#c-backend-binaries-default)
@@ -163,6 +162,7 @@ To do so, run the command `v up`.
 		* [Including C code](#including-c-code)
 		* [C types](#c-types)
 		* [C Declarations](#c-declarations)
+        * [Export to shared library](#export-to-shared-library)
         * [Translating C to V](#translating-c-to-v)
     * [Other V Features](#other-v-features)
         * [Inline assembly](#inline-assembly)
@@ -5139,330 +5139,6 @@ fn main() {
 }
 ```
 
-## Memory-unsafe code
-
-Sometimes for efficiency you may want to write low-level code that can potentially
-corrupt memory or be vulnerable to security exploits. V supports writing such code,
-but not by default.
-
-V requires that any potentially memory-unsafe operations are marked intentionally.
-Marking them also indicates to anyone reading the code that there could be
-memory-safety violations if there was a mistake.
-
-Examples of potentially memory-unsafe operations are:
-
-* Pointer arithmetic
-* Pointer indexing
-* Conversion to pointer from an incompatible type
-* Calling certain C functions, e.g. `free`, `strlen` and `strncmp`.
-
-To mark potentially memory-unsafe operations, enclose them in an `unsafe` block:
-
-```v wip
-// allocate 2 uninitialized bytes & return a reference to them
-mut p := unsafe { malloc(2) }
-p[0] = `h` // Error: pointer indexing is only allowed in `unsafe` blocks
-unsafe {
-    p[0] = `h` // OK
-    p[1] = `i`
-}
-p++ // Error: pointer arithmetic is only allowed in `unsafe` blocks
-unsafe {
-    p++ // OK
-}
-assert *p == `i`
-```
-
-Best practice is to avoid putting memory-safe expressions inside an `unsafe` block,
-so that the reason for using `unsafe` is as clear as possible. Generally any code
-you think is memory-safe should not be inside an `unsafe` block, so the compiler
-can verify it.
-
-If you suspect your program does violate memory-safety, you have a head start on
-finding the cause: look at the `unsafe` blocks (and how they interact with
-surrounding code).
-
-* Note: This is work in progress.
-
-## Structs with reference fields
-
-Structs with references require explicitly setting the initial value to a
-reference value unless the struct already defines its own initial value.
-
-Zero-value references, or nil pointers, will **NOT** be supported in the future,
-for now data structures such as Linked Lists or Binary Trees that rely on reference
-fields that can use the value `0`, understanding that it is unsafe, and that it can
-cause a panic.
-
-```v
-struct Node {
-	a &Node
-	b &Node = 0 // Auto-initialized to nil, use with caution!
-}
-
-// Reference fields must be initialized unless an initial value is declared.
-// Zero (0) is OK but use with caution, it's a nil pointer.
-foo := Node{
-	a: 0
-}
-bar := Node{
-	a: &foo
-}
-baz := Node{
-	a: 0
-	b: 0
-}
-qux := Node{
-	a: &foo
-	b: &bar
-}
-println(baz)
-println(qux)
-```
-
-## sizeof and __offsetof
-
-* `sizeof(Type)` gives the size of a type in bytes.
-* `__offsetof(Struct, field_name)` gives the offset in bytes of a struct field.
-
-```v
-struct Foo {
-	a int
-	b int
-}
-
-assert sizeof(Foo) == 8
-assert __offsetof(Foo, a) == 0
-assert __offsetof(Foo, b) == 4
-```
-
-## Limited operator overloading
-
-```v
-struct Vec {
-	x int
-	y int
-}
-
-fn (a Vec) str() string {
-	return '{$a.x, $a.y}'
-}
-
-fn (a Vec) + (b Vec) Vec {
-	return Vec{a.x + b.x, a.y + b.y}
-}
-
-fn (a Vec) - (b Vec) Vec {
-	return Vec{a.x - b.x, a.y - b.y}
-}
-
-fn main() {
-	a := Vec{2, 3}
-	b := Vec{4, 5}
-	mut c := Vec{1, 2}
-	println(a + b) // "{6, 8}"
-	println(a - b) // "{-2, -2}"
-	c += a
-	println(c) // "{3, 5}"
-}
-```
-
-Operator overloading goes against V's philosophy of simplicity and predictability.
-But since scientific and graphical applications are among V's domains,
-operator overloading is an important feature to have in order to improve readability:
-
-`a.add(b).add(c.mul(d))` is a lot less readable than `a + b + c * d`.
-
-To improve safety and maintainability, operator overloading is limited:
-
-- It's only possible to overload `+, -, *, /, %, <, >, ==, !=, <=, >=` operators.
-- `==` and `!=` are self generated by the compiler but can be overridden.
-- Calling other functions inside operator functions is not allowed.
-- Operator functions can't modify their arguments.
-- When using `<` and `==` operators, the return type must be `bool`.
-- `!=`, `>`, `<=` and `>=` are auto generated when `==` and `<` are defined.
-- Both arguments must have the same type (just like with all operators in V).
-- Assignment operators (`*=`, `+=`, `/=`, etc)
-are auto generated when the corresponding operators are defined and operands are of the same type.
-
-## Performance tuning
-
-The generated C code is usually fast enough, when you compile your code
-with `-prod`. There are some situations though, where you may want to give
-additional hints to the compiler, so that it can further optimize some
-blocks of code.
-
-NB: These are *rarely* needed, and should not be used, unless you
-*profile your code*, and then see that there are significant benefits for them.
-To cite gcc's documentation: "programmers are notoriously bad at predicting
-how their programs actually perform".
-
-`[inline]` - you can tag functions with `[inline]`, so the C compiler will
-try to inline them, which in some cases, may be beneficial for performance,
-but may impact the size of your executable.
-
-`[direct_array_access]` - in functions tagged with `[direct_array_access]`
-the compiler will translate array operations directly into C array operations -
-omitting bounds checking. This may save a lot of time in a function that iterates
-over an array but at the cost of making the function unsafe - unless
-the boundaries will be checked by the user.
-
-`if _likely_(bool expression) {` this hints the C compiler, that the passed
-boolean expression is very likely to be true, so it can generate assembly
-code, with less chance of branch misprediction. In the JS backend,
-that does nothing.
-
-`if _unlikely_(bool expression) {` similar to `_likely_(x)`, but it hints that
-the boolean expression is highly improbable. In the JS backend, that does nothing.
-
-<a id='Reflection via codegen'>
-
-## Export to shared library
-
-By default all V functions have the following naming scheme in C: `[module name]__[fn_name]`.
-
-For example, `fn foo() {}` in module `bar` will result in `bar__foo()`.
-
-To use a custom export name, use the `[export]` attribute:
-
-```
-[export: 'my_custom_c_name']
-fn foo() {
-}
-```
-
-## Atomics
-
-V has no special support for atomics, yet, nevertheless it's possible to treat variables as atomics
-by calling C functions from V. The standard C11 atomic functions like `atomic_store()` are usually
-defined with the help of macros and C compiler magic to provide a kind of *overloaded C functions*.
-Since V does not support overloading functions by intention there are wrapper functions defined in
-C headers named `atomic.h` that are part of the V compiler infrastructure.
-
-There are dedicated wrappers for all unsigned integer types and for pointers.
-(`byte` is not fully supported on Windows) &ndash; the function names include the type name
-as suffix. e.g. `C.atomic_load_ptr()` or `C.atomic_fetch_add_u64()`.
-
-To use these functions the C header for the used OS has to be included and the functions
-that are intended to be used have to be declared. Example:
-
-```v globals
-$if windows {
-	#include "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
-} $else {
-	#include "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
-}
-
-// declare functions we want to use - V does not parse the C header
-fn C.atomic_store_u32(&u32, u32)
-fn C.atomic_load_u32(&u32) u32
-fn C.atomic_compare_exchange_weak_u32(&u32, &u32, u32) bool
-fn C.atomic_compare_exchange_strong_u32(&u32, &u32, u32) bool
-
-const num_iterations = 10000000
-
-// see section "Global Variables" below
-__global (
-	atom u32 // ordinary variable but used as atomic
-)
-
-fn change() int {
-	mut races_won_by_change := 0
-	for {
-		mut cmp := u32(17) // addressable value to compare with and to store the found value
-		// atomic version of `if atom == 17 { atom = 23 races_won_by_change++ } else { cmp = atom }`
-		if C.atomic_compare_exchange_strong_u32(&atom, &cmp, 23) {
-			races_won_by_change++
-		} else {
-			if cmp == 31 {
-				break
-			}
-			cmp = 17 // re-assign because overwritten with value of atom
-		}
-	}
-	return races_won_by_change
-}
-
-fn main() {
-	C.atomic_store_u32(&atom, 17)
-	t := go change()
-	mut races_won_by_main := 0
-	mut cmp17 := u32(17)
-	mut cmp23 := u32(23)
-	for i in 0 .. num_iterations {
-		// atomic version of `if atom == 17 { atom = 23 races_won_by_main++ }`
-		if C.atomic_compare_exchange_strong_u32(&atom, &cmp17, 23) {
-			races_won_by_main++
-		} else {
-			cmp17 = 17
-		}
-		desir := if i == num_iterations - 1 { u32(31) } else { u32(17) }
-		// atomic version of `for atom != 23 {} atom = desir`
-		for !C.atomic_compare_exchange_weak_u32(&atom, &cmp23, desir) {
-			cmp23 = 23
-		}
-	}
-	races_won_by_change := t.wait()
-	atom_new := C.atomic_load_u32(&atom)
-	println('atom: $atom_new, #exchanges: ${races_won_by_main + races_won_by_change}')
-	// prints `atom: 31, #exchanges: 10000000`)
-	println('races won by\n- `main()`: $races_won_by_main\n- `change()`: $races_won_by_change')
-}
-```
-
-In this example both `main()` and the spawned thread `change()` try to replace a value of `17`
-in the global `atom` with a value of `23`. The replacement in the opposite direction is
-done exactly 10000000 times. The last replacement will be with `31` which makes the spawned
-thread finish.
-
-It is not predictable how many replacements occur in which thread, but the sum will always
-be 10000000. (With the non-atomic commands from the comments the value will be higher or the program
-will hang &ndash; dependent on the compiler optimization used.)
-
-## Global Variables
-
-By default V does not allow global variables. However, in low level applications they have their
-place so their usage can be enabled with the compiler flag `-enable-globals`.
-Declarations of global variables must be surrounded with a `__global ( ... )`
-specification &ndash; as in the example [above](#atomics).
-
-An initializer for global variables must be explicitly converted to the
-desired target type. If no initializer is given a default initialization is done.
-Some objects like semaphores and mutexes require an explicit initialization *in place*, i.e.
-not with a value returned from a function call but with a method call by reference.
-A separate `init()` function can be used for this purpose &ndash; it will be called before `main()`:
-
-```v globals
-import sync
-
-__global (
-	sem   sync.Semaphore // needs initialization in `init()`
-	mtx   sync.RwMutex // needs initialization in `init()`
-	f1    = f64(34.0625) // explicily initialized
-	shmap shared map[string]f64 // initialized as empty `shared` map
-	f2    f64 // initialized to `0.0`
-)
-
-fn init() {
-	sem.init(0)
-	mtx.init()
-}
-```
-Be aware that in multi threaded applications the access to global variables is subject
-to race conditions. There are several approaches to deal with these:
-
-- use `shared` types for the variable declarations and use `lock` blocks for access.
-  This is most appropriate for larger objects like structs, arrays or maps.
-- handle primitive data types as "atomics" using special C-functions (see [above](#atomics)).
-- use explicit synchronization primitives like mutexes to control access. The compiler
-  cannot really help in this case, so you have to know what you are doing.
-- don't care &ndash; this approach is possible but makes only sense if the exact values
-  of global variables do not really matter. An example can be found in the `rand` module
-  where global variables are used to generate (non cryptographic) pseudo random numbers.
-  In this case data races lead to random numbers in different threads becoming somewhat
-  correlated, which is acceptable considering the performance penalty that using
-  synchonization primitives would represent.
-
 ## Conditional compilation
 
 ### Compile time pseudo variables
@@ -5766,6 +5442,316 @@ conditional blocks inside it, i.e. `$if linux {}` etc.
 
 - `_notd_customflag.v` => similar to _d_customflag.v, but will be used
 *only* if you do NOT pass `-d customflag` to V.
+
+## Memory-unsafe code
+
+Sometimes for efficiency you may want to write low-level code that can potentially
+corrupt memory or be vulnerable to security exploits. V supports writing such code,
+but not by default.
+
+V requires that any potentially memory-unsafe operations are marked intentionally.
+Marking them also indicates to anyone reading the code that there could be
+memory-safety violations if there was a mistake.
+
+Examples of potentially memory-unsafe operations are:
+
+* Pointer arithmetic
+* Pointer indexing
+* Conversion to pointer from an incompatible type
+* Calling certain C functions, e.g. `free`, `strlen` and `strncmp`.
+
+To mark potentially memory-unsafe operations, enclose them in an `unsafe` block:
+
+```v wip
+// allocate 2 uninitialized bytes & return a reference to them
+mut p := unsafe { malloc(2) }
+p[0] = `h` // Error: pointer indexing is only allowed in `unsafe` blocks
+unsafe {
+    p[0] = `h` // OK
+    p[1] = `i`
+}
+p++ // Error: pointer arithmetic is only allowed in `unsafe` blocks
+unsafe {
+    p++ // OK
+}
+assert *p == `i`
+```
+
+Best practice is to avoid putting memory-safe expressions inside an `unsafe` block,
+so that the reason for using `unsafe` is as clear as possible. Generally any code
+you think is memory-safe should not be inside an `unsafe` block, so the compiler
+can verify it.
+
+If you suspect your program does violate memory-safety, you have a head start on
+finding the cause: look at the `unsafe` blocks (and how they interact with
+surrounding code).
+
+* Note: This is work in progress.
+
+## Structs with reference fields
+
+Structs with references require explicitly setting the initial value to a
+reference value unless the struct already defines its own initial value.
+
+Zero-value references, or nil pointers, will **NOT** be supported in the future,
+for now data structures such as Linked Lists or Binary Trees that rely on reference
+fields that can use the value `0`, understanding that it is unsafe, and that it can
+cause a panic.
+
+```v
+struct Node {
+	a &Node
+	b &Node = 0 // Auto-initialized to nil, use with caution!
+}
+
+// Reference fields must be initialized unless an initial value is declared.
+// Zero (0) is OK but use with caution, it's a nil pointer.
+foo := Node{
+	a: 0
+}
+bar := Node{
+	a: &foo
+}
+baz := Node{
+	a: 0
+	b: 0
+}
+qux := Node{
+	a: &foo
+	b: &bar
+}
+println(baz)
+println(qux)
+```
+
+## sizeof and __offsetof
+
+* `sizeof(Type)` gives the size of a type in bytes.
+* `__offsetof(Struct, field_name)` gives the offset in bytes of a struct field.
+
+```v
+struct Foo {
+	a int
+	b int
+}
+
+assert sizeof(Foo) == 8
+assert __offsetof(Foo, a) == 0
+assert __offsetof(Foo, b) == 4
+```
+
+## Limited operator overloading
+
+```v
+struct Vec {
+	x int
+	y int
+}
+
+fn (a Vec) str() string {
+	return '{$a.x, $a.y}'
+}
+
+fn (a Vec) + (b Vec) Vec {
+	return Vec{a.x + b.x, a.y + b.y}
+}
+
+fn (a Vec) - (b Vec) Vec {
+	return Vec{a.x - b.x, a.y - b.y}
+}
+
+fn main() {
+	a := Vec{2, 3}
+	b := Vec{4, 5}
+	mut c := Vec{1, 2}
+	println(a + b) // "{6, 8}"
+	println(a - b) // "{-2, -2}"
+	c += a
+	println(c) // "{3, 5}"
+}
+```
+
+Operator overloading goes against V's philosophy of simplicity and predictability.
+But since scientific and graphical applications are among V's domains,
+operator overloading is an important feature to have in order to improve readability:
+
+`a.add(b).add(c.mul(d))` is a lot less readable than `a + b + c * d`.
+
+To improve safety and maintainability, operator overloading is limited:
+
+- It's only possible to overload `+, -, *, /, %, <, >, ==, !=, <=, >=` operators.
+- `==` and `!=` are self generated by the compiler but can be overridden.
+- Calling other functions inside operator functions is not allowed.
+- Operator functions can't modify their arguments.
+- When using `<` and `==` operators, the return type must be `bool`.
+- `!=`, `>`, `<=` and `>=` are auto generated when `==` and `<` are defined.
+- Both arguments must have the same type (just like with all operators in V).
+- Assignment operators (`*=`, `+=`, `/=`, etc)
+are auto generated when the corresponding operators are defined and operands are of the same type.
+
+## Performance tuning
+
+The generated C code is usually fast enough, when you compile your code
+with `-prod`. There are some situations though, where you may want to give
+additional hints to the compiler, so that it can further optimize some
+blocks of code.
+
+NB: These are *rarely* needed, and should not be used, unless you
+*profile your code*, and then see that there are significant benefits for them.
+To cite gcc's documentation: "programmers are notoriously bad at predicting
+how their programs actually perform".
+
+`[inline]` - you can tag functions with `[inline]`, so the C compiler will
+try to inline them, which in some cases, may be beneficial for performance,
+but may impact the size of your executable.
+
+`[direct_array_access]` - in functions tagged with `[direct_array_access]`
+the compiler will translate array operations directly into C array operations -
+omitting bounds checking. This may save a lot of time in a function that iterates
+over an array but at the cost of making the function unsafe - unless
+the boundaries will be checked by the user.
+
+`if _likely_(bool expression) {` this hints the C compiler, that the passed
+boolean expression is very likely to be true, so it can generate assembly
+code, with less chance of branch misprediction. In the JS backend,
+that does nothing.
+
+`if _unlikely_(bool expression) {` similar to `_likely_(x)`, but it hints that
+the boolean expression is highly improbable. In the JS backend, that does nothing.
+
+<a id='Reflection via codegen'>
+
+## Atomics
+
+V has no special support for atomics, yet, nevertheless it's possible to treat variables as atomics
+by calling C functions from V. The standard C11 atomic functions like `atomic_store()` are usually
+defined with the help of macros and C compiler magic to provide a kind of *overloaded C functions*.
+Since V does not support overloading functions by intention there are wrapper functions defined in
+C headers named `atomic.h` that are part of the V compiler infrastructure.
+
+There are dedicated wrappers for all unsigned integer types and for pointers.
+(`byte` is not fully supported on Windows) &ndash; the function names include the type name
+as suffix. e.g. `C.atomic_load_ptr()` or `C.atomic_fetch_add_u64()`.
+
+To use these functions the C header for the used OS has to be included and the functions
+that are intended to be used have to be declared. Example:
+
+```v globals
+$if windows {
+	#include "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
+} $else {
+	#include "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
+}
+
+// declare functions we want to use - V does not parse the C header
+fn C.atomic_store_u32(&u32, u32)
+fn C.atomic_load_u32(&u32) u32
+fn C.atomic_compare_exchange_weak_u32(&u32, &u32, u32) bool
+fn C.atomic_compare_exchange_strong_u32(&u32, &u32, u32) bool
+
+const num_iterations = 10000000
+
+// see section "Global Variables" below
+__global (
+	atom u32 // ordinary variable but used as atomic
+)
+
+fn change() int {
+	mut races_won_by_change := 0
+	for {
+		mut cmp := u32(17) // addressable value to compare with and to store the found value
+		// atomic version of `if atom == 17 { atom = 23 races_won_by_change++ } else { cmp = atom }`
+		if C.atomic_compare_exchange_strong_u32(&atom, &cmp, 23) {
+			races_won_by_change++
+		} else {
+			if cmp == 31 {
+				break
+			}
+			cmp = 17 // re-assign because overwritten with value of atom
+		}
+	}
+	return races_won_by_change
+}
+
+fn main() {
+	C.atomic_store_u32(&atom, 17)
+	t := go change()
+	mut races_won_by_main := 0
+	mut cmp17 := u32(17)
+	mut cmp23 := u32(23)
+	for i in 0 .. num_iterations {
+		// atomic version of `if atom == 17 { atom = 23 races_won_by_main++ }`
+		if C.atomic_compare_exchange_strong_u32(&atom, &cmp17, 23) {
+			races_won_by_main++
+		} else {
+			cmp17 = 17
+		}
+		desir := if i == num_iterations - 1 { u32(31) } else { u32(17) }
+		// atomic version of `for atom != 23 {} atom = desir`
+		for !C.atomic_compare_exchange_weak_u32(&atom, &cmp23, desir) {
+			cmp23 = 23
+		}
+	}
+	races_won_by_change := t.wait()
+	atom_new := C.atomic_load_u32(&atom)
+	println('atom: $atom_new, #exchanges: ${races_won_by_main + races_won_by_change}')
+	// prints `atom: 31, #exchanges: 10000000`)
+	println('races won by\n- `main()`: $races_won_by_main\n- `change()`: $races_won_by_change')
+}
+```
+
+In this example both `main()` and the spawned thread `change()` try to replace a value of `17`
+in the global `atom` with a value of `23`. The replacement in the opposite direction is
+done exactly 10000000 times. The last replacement will be with `31` which makes the spawned
+thread finish.
+
+It is not predictable how many replacements occur in which thread, but the sum will always
+be 10000000. (With the non-atomic commands from the comments the value will be higher or the program
+will hang &ndash; dependent on the compiler optimization used.)
+
+## Global Variables
+
+By default V does not allow global variables. However, in low level applications they have their
+place so their usage can be enabled with the compiler flag `-enable-globals`.
+Declarations of global variables must be surrounded with a `__global ( ... )`
+specification &ndash; as in the example [above](#atomics).
+
+An initializer for global variables must be explicitly converted to the
+desired target type. If no initializer is given a default initialization is done.
+Some objects like semaphores and mutexes require an explicit initialization *in place*, i.e.
+not with a value returned from a function call but with a method call by reference.
+A separate `init()` function can be used for this purpose &ndash; it will be called before `main()`:
+
+```v globals
+import sync
+
+__global (
+	sem   sync.Semaphore // needs initialization in `init()`
+	mtx   sync.RwMutex // needs initialization in `init()`
+	f1    = f64(34.0625) // explicily initialized
+	shmap shared map[string]f64 // initialized as empty `shared` map
+	f2    f64 // initialized to `0.0`
+)
+
+fn init() {
+	sem.init(0)
+	mtx.init()
+}
+```
+Be aware that in multi threaded applications the access to global variables is subject
+to race conditions. There are several approaches to deal with these:
+
+- use `shared` types for the variable declarations and use `lock` blocks for access.
+  This is most appropriate for larger objects like structs, arrays or maps.
+- handle primitive data types as "atomics" using special C-functions (see [above](#atomics)).
+- use explicit synchronization primitives like mutexes to control access. The compiler
+  cannot really help in this case, so you have to know what you are doing.
+- don't care &ndash; this approach is possible but makes only sense if the exact values
+  of global variables do not really matter. An example can be found in the `rand` module
+  where global variables are used to generate (non cryptographic) pseudo random numbers.
+  In this case data races lead to random numbers in different threads becoming somewhat
+  correlated, which is acceptable considering the performance penalty that using
+  synchonization primitives would represent.
 
 ## Cross compilation
 
@@ -6115,6 +6101,20 @@ re-creating the original structure exactly.
 
 Alternatively, you may [embed](#embedded-structs) the sub-data-structures to maintain
 a parallel code structure.
+
+### Export to shared library
+
+By default all V functions have the following naming scheme in C: `[module name]__[fn_name]`.
+
+For example, `fn foo() {}` in module `bar` will result in `bar__foo()`.
+
+To use a custom export name, use the `[export]` attribute:
+
+```
+[export: 'my_custom_c_name']
+fn foo() {
+}
+```
 
 ### Translating C to V
 
