@@ -5,7 +5,7 @@ fn f(x u8) u8 {
 	}
 	mut local := [131072]u8{}
 	local[local.len - 1] = x + f(x - 1)
-	return local[0] + local.last()
+	return local[0] + local[local.len - 1]
 }
 
 fn abc(depth u8) u8 {
