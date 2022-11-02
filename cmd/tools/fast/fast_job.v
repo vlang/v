@@ -4,7 +4,11 @@
 import os
 import time
 
-const vexe = @VEXE
+const fast_dir = os.dir(@FILE)
+
+const vdir = os.dir(os.dir(os.dir(fast_dir)))
+
+const vexe = os.join_path(vdir, 'v')
 
 const sleep_period = 120
 
@@ -20,8 +24,11 @@ fn delay() {
 // A job that runs in the background, checks for repo updates,
 // runs fast.v, pushes the HTML result to the fast.vlang.io GH pages repo.
 fn main() {
-	os.chdir(os.dir(@FILE))!
 	os.setenv('LANG', 'C', true)
+	elog('fast_job fast_dir: $fast_dir | vdir: $vdir | vexe: $vexe')
+
+	os.chdir(fast_dir)!
+
 	elog('fast_job start in os.getwd(): $os.getwd()')
 	defer {
 		elog('fast_job end')
@@ -34,7 +41,7 @@ fn main() {
 	for {
 		elog('------------------- Checking for updates ... -------------------')
 		res_pull := os.execute('git pull --rebase')
-		elog('> res_pull.output:\n $res_pull.output')
+		elog('> res_pull.output: $res_pull.output')
 		if res_pull.exit_code != 0 {
 			elog('Git pull failed. You may have uncommitted changes?')
 			delay()
@@ -54,14 +61,18 @@ fn main() {
 		os.system('ls -la ${os.quoted_path(vexe)}')
 
 		elog('recompiling ./fast')
-		os.execute('${os.quoted_path(vexe)} fast.v')
+		recompile_fast_v_code := os.system('${os.quoted_path(vexe)} fast.v')
+		if recompile_fast_v_code != 0 {
+			elog('WARNING: could not recompile fast.v')
+			delay()
+			continue
+		}
 		os.system('ls -la fast fast.v')
 
 		elog('running ./fast -upload')
-		resp := os.execute('./fast -upload')
-		if resp.exit_code != 0 {
-			println('resp.exit_code = $resp.exit_code != 0')
-			println(resp.output)
+		fast_exit_code := os.system('./fast -upload')
+		if fast_exit_code != 0 {
+			println('fast_exit_code = $fast_exit_code, != 0')
 		}
 
 		delay()
