@@ -41,7 +41,7 @@ fn main() {
 			continue
 		}
 		if res_pull.output.contains('Already up to date.') {
-			if os.args[1] or { '' } == '-force-update' {
+			if os.args.contains('-force-update') {
 				elog('The repository was already updated, but -force-update was passed too.')
 			} else {
 				delay()
