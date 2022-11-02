@@ -137,31 +137,38 @@ To do so, run the command `v up`.
     * [Publish package](#publish-package)
 * [Advanced Topics](#advanced-topics)
     * [Attributes](#attributes)
+	* [Conditional compilation](#conditional-compilation)
+        * [Compile time pseudo variables](#compile-time-pseudo-variables)
+        * [Compile-time reflection](#compile-time-reflection)
+        * [Compile time code](#compile-time-code)
+        * [Environment specific files](#environment-specific-files)
     * [Memory-unsafe code](#memory-unsafe-code)
     * [Structs with reference fields](#structs-with-reference-fields)
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
-    * [Calling C from V](#calling-c-from-v)
-    * [Calling V from C](#calling-v-from-c)
-    * [Export to shared library](#export-to-shared-library)
+    * [Limited operator overloading](#limited-operator-overloading)
+    * [Performance tuning](#performance-tuning)
 	* [Atomics](#atomics)
 	* [Global Variables](#global-variables)
-	* [Passing C compilation flags](#passing-c-compilation-flags)
-	* [#pkgconfig](#pkgconfig)
-	* [Including C code](#including-c-code)
-	* [C types](#c-types)
-	* [C Declarations](#c-declarations)
-    * [Debugging](#debugging)
-    * [Conditional compilation](#conditional-compilation)
-    * [Compile time pseudo variables](#compile-time-pseudo-variables)
-    * [Performance tuning](#performance-tuning)
-    * [Compile-time reflection](#compile-time-reflection)
-    * [Limited operator overloading](#limited-operator-overloading)
-    * [Inline assembly](#inline-assembly)
-    * [Translating C to V](#translating-c-to-v)
-    * [Hot code reloading](#hot-code-reloading)
     * [Cross compilation](#cross-compilation)
-    * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
-	* [Vsh scripts with no extension](#vsh-scripts-with-no-extension)
+	* [Debugging](#debugging)
+        * [C Backend binaries Default](#c-backend-binaries-default)
+        * [Native Backend binaries](#native-backend-binaries)
+        * [Javascript Backend](#javascript-backend)
+    * [V and C](#v-and-c)
+		* [Calling C from V](#calling-c-from-v)
+		* [Calling V from C](#calling-v-from-c)
+		* [Passing C compilation flags](#passing-c-compilation-flags)
+		* [#pkgconfig](#pkgconfig)
+		* [Including C code](#including-c-code)
+		* [C types](#c-types)
+		* [C Declarations](#c-declarations)
+        * [Export to shared library](#export-to-shared-library)
+        * [Translating C to V](#translating-c-to-v)
+    * [Other V Features](#other-v-features)
+        * [Inline assembly](#inline-assembly)
+        * [Hot code reloading](#hot-code-reloading)
+        * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
+	    * [Vsh scripts with no extension](#vsh-scripts-with-no-extension)
 * [Appendices](#appendices)
     * [Keywords](#appendix-i-keywords)
     * [Operators](#appendix-ii-operators)
@@ -4967,6 +4974,7 @@ Package are up to date.
 to allow for a better search experience.
 
 # Advanced Topics
+
 ## Attributes
 
 V has several attributes that modify the behavior of functions and structs.
@@ -5131,571 +5139,66 @@ fn main() {
 }
 ```
 
-## Memory-unsafe code
-
-Sometimes for efficiency you may want to write low-level code that can potentially
-corrupt memory or be vulnerable to security exploits. V supports writing such code,
-but not by default.
-
-V requires that any potentially memory-unsafe operations are marked intentionally.
-Marking them also indicates to anyone reading the code that there could be
-memory-safety violations if there was a mistake.
-
-Examples of potentially memory-unsafe operations are:
-
-* Pointer arithmetic
-* Pointer indexing
-* Conversion to pointer from an incompatible type
-* Calling certain C functions, e.g. `free`, `strlen` and `strncmp`.
-
-To mark potentially memory-unsafe operations, enclose them in an `unsafe` block:
-
-```v wip
-// allocate 2 uninitialized bytes & return a reference to them
-mut p := unsafe { malloc(2) }
-p[0] = `h` // Error: pointer indexing is only allowed in `unsafe` blocks
-unsafe {
-    p[0] = `h` // OK
-    p[1] = `i`
-}
-p++ // Error: pointer arithmetic is only allowed in `unsafe` blocks
-unsafe {
-    p++ // OK
-}
-assert *p == `i`
-```
-
-Best practice is to avoid putting memory-safe expressions inside an `unsafe` block,
-so that the reason for using `unsafe` is as clear as possible. Generally any code
-you think is memory-safe should not be inside an `unsafe` block, so the compiler
-can verify it.
-
-If you suspect your program does violate memory-safety, you have a head start on
-finding the cause: look at the `unsafe` blocks (and how they interact with
-surrounding code).
-
-* Note: This is work in progress.
-
-## Structs with reference fields
-
-Structs with references require explicitly setting the initial value to a
-reference value unless the struct already defines its own initial value.
-
-Zero-value references, or nil pointers, will **NOT** be supported in the future,
-for now data structures such as Linked Lists or Binary Trees that rely on reference
-fields that can use the value `0`, understanding that it is unsafe, and that it can
-cause a panic.
-
-```v
-struct Node {
-	a &Node
-	b &Node = 0 // Auto-initialized to nil, use with caution!
-}
-
-// Reference fields must be initialized unless an initial value is declared.
-// Zero (0) is OK but use with caution, it's a nil pointer.
-foo := Node{
-	a: 0
-}
-bar := Node{
-	a: &foo
-}
-baz := Node{
-	a: 0
-	b: 0
-}
-qux := Node{
-	a: &foo
-	b: &bar
-}
-println(baz)
-println(qux)
-```
-
-## sizeof and __offsetof
-
-* `sizeof(Type)` gives the size of a type in bytes.
-* `__offsetof(Struct, field_name)` gives the offset in bytes of a struct field.
-
-```v
-struct Foo {
-	a int
-	b int
-}
-
-assert sizeof(Foo) == 8
-assert __offsetof(Foo, a) == 0
-assert __offsetof(Foo, b) == 4
-```
-
-## Calling C from V
-
-**Example**
-```v
-#flag -lsqlite3
-#include "sqlite3.h"
-// See also the example from https://www.sqlite.org/quickstart.html
-struct C.sqlite3 {
-}
-
-struct C.sqlite3_stmt {
-}
-
-type FnSqlite3Callback = fn (voidptr, int, &&char, &&char) int
-
-fn C.sqlite3_open(&char, &&C.sqlite3) int
-
-fn C.sqlite3_close(&C.sqlite3) int
-
-fn C.sqlite3_column_int(stmt &C.sqlite3_stmt, n int) int
-
-// ... you can also just define the type of parameter and leave out the C. prefix
-fn C.sqlite3_prepare_v2(&C.sqlite3, &char, int, &&C.sqlite3_stmt, &&char) int
-
-fn C.sqlite3_step(&C.sqlite3_stmt)
-
-fn C.sqlite3_finalize(&C.sqlite3_stmt)
-
-fn C.sqlite3_exec(db &C.sqlite3, sql &char, cb FnSqlite3Callback, cb_arg voidptr, emsg &&char) int
-
-fn C.sqlite3_free(voidptr)
-
-fn my_callback(arg voidptr, howmany int, cvalues &&char, cnames &&char) int {
-	unsafe {
-		for i in 0 .. howmany {
-			print('| ${cstring_to_vstring(cnames[i])}: ${cstring_to_vstring(cvalues[i]):20} ')
-		}
-	}
-	println('|')
-	return 0
-}
-
-fn main() {
-	db := &C.sqlite3(0) // this means `sqlite3* db = 0`
-	// passing a string literal to a C function call results in a C string, not a V string
-	C.sqlite3_open(c'users.db', &db)
-	// C.sqlite3_open(db_path.str, &db)
-	query := 'select count(*) from users'
-	stmt := &C.sqlite3_stmt(0)
-	// NB: you can also use the `.str` field of a V string,
-	// to get its C style zero terminated representation
-	C.sqlite3_prepare_v2(db, &char(query.str), -1, &stmt, 0)
-	C.sqlite3_step(stmt)
-	nr_users := C.sqlite3_column_int(stmt, 0)
-	C.sqlite3_finalize(stmt)
-	println('There are $nr_users users in the database.')
-	//
-	error_msg := &char(0)
-	query_all_users := 'select * from users'
-	rc := C.sqlite3_exec(db, &char(query_all_users.str), my_callback, voidptr(7), &error_msg)
-	if rc != C.SQLITE_OK {
-		eprintln(unsafe { cstring_to_vstring(error_msg) })
-		C.sqlite3_free(error_msg)
-	}
-	C.sqlite3_close(db)
-}
-```
-
-## Calling V from C
-
-Since V can compile to C, calling V code from C is very easy, once you know how.
-
-Use `v -o file.c your_file.v` to generate a C file, corresponding to the V code.
-
-More details in [call_v_from_c example](../examples/call_v_from_c).
-
-## Export to shared library
-
-By default all V functions have the following naming scheme in C: `[module name]__[fn_name]`.
-
-For example, `fn foo() {}` in module `bar` will result in `bar__foo()`.
-
-To use a custom export name, use the `[export]` attribute:
-
-```
-[export: 'my_custom_c_name']
-fn foo() {
-}
-```
-
-
-## Atomics
-
-V has no special support for atomics, yet, nevertheless it's possible to treat variables as atomics
-by calling C functions from V. The standard C11 atomic functions like `atomic_store()` are usually
-defined with the help of macros and C compiler magic to provide a kind of *overloaded C functions*.
-Since V does not support overloading functions by intention there are wrapper functions defined in
-C headers named `atomic.h` that are part of the V compiler infrastructure.
-
-There are dedicated wrappers for all unsigned integer types and for pointers.
-(`byte` is not fully supported on Windows) &ndash; the function names include the type name
-as suffix. e.g. `C.atomic_load_ptr()` or `C.atomic_fetch_add_u64()`.
-
-To use these functions the C header for the used OS has to be included and the functions
-that are intended to be used have to be declared. Example:
-
-```v globals
-$if windows {
-	#include "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
-} $else {
-	#include "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
-}
-
-// declare functions we want to use - V does not parse the C header
-fn C.atomic_store_u32(&u32, u32)
-fn C.atomic_load_u32(&u32) u32
-fn C.atomic_compare_exchange_weak_u32(&u32, &u32, u32) bool
-fn C.atomic_compare_exchange_strong_u32(&u32, &u32, u32) bool
-
-const num_iterations = 10000000
-
-// see section "Global Variables" below
-__global (
-	atom u32 // ordinary variable but used as atomic
-)
-
-fn change() int {
-	mut races_won_by_change := 0
-	for {
-		mut cmp := u32(17) // addressable value to compare with and to store the found value
-		// atomic version of `if atom == 17 { atom = 23 races_won_by_change++ } else { cmp = atom }`
-		if C.atomic_compare_exchange_strong_u32(&atom, &cmp, 23) {
-			races_won_by_change++
-		} else {
-			if cmp == 31 {
-				break
-			}
-			cmp = 17 // re-assign because overwritten with value of atom
-		}
-	}
-	return races_won_by_change
-}
-
-fn main() {
-	C.atomic_store_u32(&atom, 17)
-	t := go change()
-	mut races_won_by_main := 0
-	mut cmp17 := u32(17)
-	mut cmp23 := u32(23)
-	for i in 0 .. num_iterations {
-		// atomic version of `if atom == 17 { atom = 23 races_won_by_main++ }`
-		if C.atomic_compare_exchange_strong_u32(&atom, &cmp17, 23) {
-			races_won_by_main++
-		} else {
-			cmp17 = 17
-		}
-		desir := if i == num_iterations - 1 { u32(31) } else { u32(17) }
-		// atomic version of `for atom != 23 {} atom = desir`
-		for !C.atomic_compare_exchange_weak_u32(&atom, &cmp23, desir) {
-			cmp23 = 23
-		}
-	}
-	races_won_by_change := t.wait()
-	atom_new := C.atomic_load_u32(&atom)
-	println('atom: $atom_new, #exchanges: ${races_won_by_main + races_won_by_change}')
-	// prints `atom: 31, #exchanges: 10000000`)
-	println('races won by\n- `main()`: $races_won_by_main\n- `change()`: $races_won_by_change')
-}
-```
-
-In this example both `main()` and the spawned thread `change()` try to replace a value of `17`
-in the global `atom` with a value of `23`. The replacement in the opposite direction is
-done exactly 10000000 times. The last replacement will be with `31` which makes the spawned
-thread finish.
-
-It is not predictable how many replacements occur in which thread, but the sum will always
-be 10000000. (With the non-atomic commands from the comments the value will be higher or the program
-will hang &ndash; dependent on the compiler optimization used.)
-
-## Global Variables
-
-By default V does not allow global variables. However, in low level applications they have their
-place so their usage can be enabled with the compiler flag `-enable-globals`.
-Declarations of global variables must be surrounded with a `__global ( ... )`
-specification &ndash; as in the example [above](#atomics).
-
-An initializer for global variables must be explicitly converted to the
-desired target type. If no initializer is given a default initialization is done.
-Some objects like semaphores and mutexes require an explicit initialization *in place*, i.e.
-not with a value returned from a function call but with a method call by reference.
-A separate `init()` function can be used for this purpose &ndash; it will be called before `main()`:
-
-```v globals
-import sync
-
-__global (
-	sem   sync.Semaphore // needs initialization in `init()`
-	mtx   sync.RwMutex // needs initialization in `init()`
-	f1    = f64(34.0625) // explicily initialized
-	shmap shared map[string]f64 // initialized as empty `shared` map
-	f2    f64 // initialized to `0.0`
-)
-
-fn init() {
-	sem.init(0)
-	mtx.init()
-}
-```
-Be aware that in multi threaded applications the access to global variables is subject
-to race conditions. There are several approaches to deal with these:
-
-- use `shared` types for the variable declarations and use `lock` blocks for access.
-  This is most appropriate for larger objects like structs, arrays or maps.
-- handle primitive data types as "atomics" using special C-functions (see [above](#atomics)).
-- use explicit synchronization primitives like mutexes to control access. The compiler
-  cannot really help in this case, so you have to know what you are doing.
-- don't care &ndash; this approach is possible but makes only sense if the exact values
-  of global variables do not really matter. An example can be found in the `rand` module
-  where global variables are used to generate (non cryptographic) pseudo random numbers.
-  In this case data races lead to random numbers in different threads becoming somewhat
-  correlated, which is acceptable considering the performance penalty that using
-  synchonization primitives would represent.
-
-## Passing C compilation flags
-
-Add `#flag` directives to the top of your V files to provide C compilation flags like:
-
-- `-I` for adding C include files search paths
-- `-l` for adding C library names that you want to get linked
-- `-L` for adding C library files search paths
-- `-D` for setting compile time variables
-
-You can (optionally) use different flags for different targets.
-Currently the `linux`, `darwin` , `freebsd`, and `windows` flags are supported.
-
-NB: Each flag must go on its own line (for now)
-
-```v oksyntax
-#flag linux -lsdl2
-#flag linux -Ivig
-#flag linux -DCIMGUI_DEFINE_ENUMS_AND_STRUCTS=1
-#flag linux -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS=1
-#flag linux -DIMGUI_IMPL_API=
-```
-
-In the console build command, you can use:
-* `-cflags` to pass custom flags to the backend C compiler.
-* `-cc` to change the default C backend compiler.
-* For example: `-cc gcc-9 -cflags -fsanitize=thread`.
-
-You can define a `VFLAGS` environment variable in your terminal to store your `-cc`
-and `-cflags` settings, rather than including them in the build command each time.
-
-## #pkgconfig
-
-Add `#pkgconfig` directive is used to tell the compiler which modules should be used for compiling
-and linking using the pkg-config files provided by the respective dependencies.
-
-As long as backticks can't be used in `#flag` and spawning processes is not desirable for security
-and portability reasons, V uses its own pkgconfig library that is compatible with the standard
-freedesktop one.
-
-If no flags are passed it will add `--cflags` and `--libs`, both lines below do the same:
-
-```v oksyntax
-#pkgconfig r_core
-#pkgconfig --cflags --libs r_core
-```
-
-The `.pc` files are looked up into a hardcoded list of default pkg-config paths, the user can add
-extra paths by using the `PKG_CONFIG_PATH` environment variable. Multiple modules can be passed.
-
-To check the existence of a pkg-config use `$pkgconfig('pkg')` as a compile time "if" condition to
-check if a pkg-config exists. If it exists the branch will be created. Use `$else` or `$else $if`
-to handle other cases.
-
-```v ignore
-$if $pkgconfig('mysqlclient') {
-	#pkgconfig mysqlclient
-} $else $if $pkgconfig('mariadb') {
-	#pkgconfig mariadb
-}
-```
-
-## Including C code
-
-You can also include C code directly in your V module.
-For example, let's say that your C code is located in a folder named 'c' inside your module folder.
-Then:
-
-* Put a v.mod file inside the toplevel folder of your module (if you
-created your module with `v new` you already have v.mod file). For
-example:
-```v ignore
-Module {
-	name: 'mymodule',
-	description: 'My nice module wraps a simple C library.',
-	version: '0.0.1'
-	dependencies: []
-}
-```
-
-
-* Add these lines to the top of your module:
-```v oksyntax
-#flag -I @VMODROOT/c
-#flag @VMODROOT/c/implementation.o
-#include "header.h"
-```
-NB: @VMODROOT will be replaced by V with the *nearest parent folder, where there is a v.mod file*.
-Any .v file beside or below the folder where the v.mod file is,
-can use `#flag @VMODROOT/abc` to refer to this folder.
-The @VMODROOT folder is also *prepended* to the module lookup path,
-so you can *import* other modules under your @VMODROOT, by just naming them.
-
-The instructions above will make V look for an compiled .o file in
-your module `folder/c/implementation.o`.
-If V finds it, the .o file will get linked to the main executable, that used the module.
-If it does not find it, V assumes that there is a `@VMODROOT/c/implementation.c` file,
-and tries to compile it to a .o file, then will use that.
-
-This allows you to have C code, that is contained in a V module, so that its distribution is easier.
-You can see a complete minimal example for using C code in a V wrapper module here:
-[project_with_c_code](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code).
-Another example, demonstrating passing structs from C to V and back again:
-[interoperate between C to V to C](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code_2).
-
-## C types
-
-Ordinary zero terminated C strings can be converted to V strings with
-`unsafe { &char(cstring).vstring() }` or if you know their length already with
-`unsafe { &char(cstring).vstring_with_len(len) }`.
-
-NB: The .vstring() and .vstring_with_len() methods do NOT create a copy of the `cstring`,
-so you should NOT free it after calling the method `.vstring()`.
-If you need to make a copy of the C string (some libc APIs like `getenv` pretty much require that,
-since they return pointers to internal libc memory), you can use `cstring_to_vstring(cstring)`.
-
-On Windows, C APIs often return so called `wide` strings (utf16 encoding).
-These can be converted to V strings with `string_from_wide(&u16(cwidestring))` .
-
-V has these types for easier interoperability with C:
-
-- `voidptr` for C's `void*`,
-- `&byte` for C's `byte*` and
-- `&char` for C's `char*`.
-- `&&char` for C's `char**`
-
-To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
-
-`voidptr` can also be dereferenced into a V struct through casting: `user := User(user_void_ptr)`.
-
-[an example of a module that calls C code from V](https://github.com/vlang/v/blob/master/vlib/v/tests/project_with_c_code/mod1/wrapper.v)
-
-## C Declarations
-
-C identifiers are accessed with the `C` prefix similarly to how module-specific
-identifiers are accessed. Functions must be redeclared in V before they can be used.
-Any C types may be used behind the `C` prefix, but types must be redeclared in V in
-order to access type members.
-
-To redeclare complex types, such as in the following C code:
-
-```c
-struct SomeCStruct {
-	uint8_t implTraits;
-	uint16_t memPoolData;
-	union {
-		struct {
-			void* data;
-			size_t size;
-		};
-
-		DataView view;
-	};
-};
-```
-
-members of sub-data-structures may be directly declared in the containing struct as below:
-
-```v
-struct C.SomeCStruct {
-	implTraits  byte
-	memPoolData u16
-	// These members are part of sub data structures that can't currently be represented in V.
-	// Declaring them directly like this is sufficient for access.
-	// union {
-	// struct {
-	data voidptr
-	size usize
-	// }
-	view C.DataView
-	// }
-}
-```
-
-The existence of the data members is made known to V, and they may be used without
-re-creating the original structure exactly.
-
-Alternatively, you may [embed](#embedded-structs) the sub-data-structures to maintain
-a parallel code structure.
-
-## Debugging
-
-### C Backend binaries (Default)
-
-To debug issues in the generated binary (flag: `-b c`), you can pass these flags:
-
-- `-g` - produces a less optimized executable with more debug information in it.
-    V will enforce line numbers from the .v files in the stacktraces, that the
-    executable will produce on panic. It is usually better to pass -g, unless
-    you are writing low level code, in which case use the next option `-cg`.
-- `-cg` - produces a less optimized executable with more debug information in it.
-	The executable will use C source line numbers in this case. It is frequently
-    used in combination with `-keepc`, so that you can inspect the generated
-    C program in case of panic, or so that your debugger (`gdb`, `lldb` etc.)
-    can show you the generated C source code.
-- `-showcc` - prints the C command that is used to build the program.
-- `-show-c-output` - prints the output, that your C compiler produced
-    while compiling your program.
-- `-keepc` - do not delete the generated C source code file after a successful
-    compilation. Also keep using the same file path, so it is more stable,
-    and easier to keep opened in an editor/IDE.
-
-For best debugging experience if you are writing a low level wrapper for an existing
-C library, you can pass several of these flags at the same time:
-`v -keepc -cg -showcc yourprogram.v`, then just run your debugger (gdb/lldb) or IDE
-on the produced executable `yourprogram`.
-
-If you just want to inspect the generated C code,
-without further compilation, you can also use the `-o` flag (e.g. `-o file.c`).
-This will make V produce the `file.c` then stop.
-
-If you want to see the generated C source code for *just* a single C function,
-for example `main`, you can use: `-printfn main -o file.c`.
-
-To debug the V executable itself you need to compile from src with `./v -g -o v cmd/v`.
-
-You can debug tests with for example `v -g -keepc prog_test.v`. The `-keepc` flag is needed,
-so that the executable is not deleted, after it was created and ran.
-
-To see a detailed list of all flags that V supports,
-use `v help`, `v help build` and `v help build-c`.
-
-**Commandline Debugging**
-
-1. compile your binary with debugging info `v -g hello.v`
-2. debug with [lldb](https://lldb.llvm.org) or [GDB](https://www.gnu.org/software/gdb/) e.g. `lldb hello`
-
-[Troubleshooting (debugging) executables created with V in GDB](https://github.com/vlang/v/wiki/Troubleshooting-(debugging)-executables-created-with-V-in-GDB)
-
-**Visual debugging Setup:**
-* [Visual Studio Code](vscode.md)
-
-### Native Backend binaries
-
-Currently there is no debugging support for binaries, created by the
-native backend (flag: `-b native`).
-
-### Javascript Backend
-
-To debug the generated Javascript output you can activate source maps:
-`v -b js -sourcemap hello.v -o hello.js`
-
-For all supported options check the latest help:
-`v help build-js`
-
 ## Conditional compilation
+
+### Compile time pseudo variables
+
+V also gives your code access to a set of pseudo string variables,
+that are substituted at compile time:
+
+- `@FN` => replaced with the name of the current V function
+- `@METHOD` => replaced with ReceiverType.MethodName
+- `@MOD` => replaced with the name of the current V module
+- `@STRUCT` => replaced with the name of the current V struct
+- `@FILE` => replaced with the absolute path of the V source file
+- `@LINE` => replaced with the V line number where it appears (as a string).
+- `@FILE_LINE` => like `@FILE:@LINE`, but the file part is a relative path
+- `@COLUMN` => replaced with the column where it appears (as a string).
+- `@VEXE` => replaced with the path to the V compiler
+- `@VEXEROOT`  => will be substituted with the *folder*,
+   where the V executable is (as a string).
+- `@VHASH`  => replaced with the shortened commit hash of the V compiler (as a string).
+- `@VMOD_FILE` => replaced with the contents of the nearest v.mod file (as a string).
+- `@VMODROOT` => will be substituted with the *folder*,
+   where the nearest v.mod file is (as a string).
+
+That allows you to do the following example, useful while debugging/logging/tracing your code:
+```v
+eprintln('file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
+```
+
+Another example, is if you want to embed the version/name from v.mod *inside* your executable:
+```v ignore
+import v.vmod
+vm := vmod.decode( @VMOD_FILE ) or { panic(err) }
+eprintln('$vm.name $vm.version\n $vm.description')
+```
+
+### Compile-time reflection
+
+Having built-in JSON support is nice, but V also allows you to create efficient
+serializers for any data format. V has compile-time `if` and `for` constructs:
+
+```v
+struct User {
+	name string
+	age  int
+}
+
+fn main() {
+	$for field in User.fields {
+		$if field.typ is string {
+			println('$field.name is of type string')
+		}
+	}
+}
+
+// Output:
+// name is of type string
+```
+
+See [`examples/compiletime/reflection.v`](/examples/compiletime/reflection.v)
+for a more complete example.
 
 ### Compile time code
 
@@ -5940,96 +5443,102 @@ conditional blocks inside it, i.e. `$if linux {}` etc.
 - `_notd_customflag.v` => similar to _d_customflag.v, but will be used
 *only* if you do NOT pass `-d customflag` to V.
 
-## Compile time pseudo variables
+## Memory-unsafe code
 
-V also gives your code access to a set of pseudo string variables,
-that are substituted at compile time:
+Sometimes for efficiency you may want to write low-level code that can potentially
+corrupt memory or be vulnerable to security exploits. V supports writing such code,
+but not by default.
 
-- `@FN` => replaced with the name of the current V function
-- `@METHOD` => replaced with ReceiverType.MethodName
-- `@MOD` => replaced with the name of the current V module
-- `@STRUCT` => replaced with the name of the current V struct
-- `@FILE` => replaced with the absolute path of the V source file
-- `@LINE` => replaced with the V line number where it appears (as a string).
-- `@FILE_LINE` => like `@FILE:@LINE`, but the file part is a relative path
-- `@COLUMN` => replaced with the column where it appears (as a string).
-- `@VEXE` => replaced with the path to the V compiler
-- `@VEXEROOT`  => will be substituted with the *folder*,
-   where the V executable is (as a string).
-- `@VHASH`  => replaced with the shortened commit hash of the V compiler (as a string).
-- `@VMOD_FILE` => replaced with the contents of the nearest v.mod file (as a string).
-- `@VMODROOT` => will be substituted with the *folder*,
-   where the nearest v.mod file is (as a string).
+V requires that any potentially memory-unsafe operations are marked intentionally.
+Marking them also indicates to anyone reading the code that there could be
+memory-safety violations if there was a mistake.
 
-That allows you to do the following example, useful while debugging/logging/tracing your code:
-```v
-eprintln('file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
+Examples of potentially memory-unsafe operations are:
+
+* Pointer arithmetic
+* Pointer indexing
+* Conversion to pointer from an incompatible type
+* Calling certain C functions, e.g. `free`, `strlen` and `strncmp`.
+
+To mark potentially memory-unsafe operations, enclose them in an `unsafe` block:
+
+```v wip
+// allocate 2 uninitialized bytes & return a reference to them
+mut p := unsafe { malloc(2) }
+p[0] = `h` // Error: pointer indexing is only allowed in `unsafe` blocks
+unsafe {
+    p[0] = `h` // OK
+    p[1] = `i`
+}
+p++ // Error: pointer arithmetic is only allowed in `unsafe` blocks
+unsafe {
+    p++ // OK
+}
+assert *p == `i`
 ```
 
-Another example, is if you want to embed the version/name from v.mod *inside* your executable:
-```v ignore
-import v.vmod
-vm := vmod.decode( @VMOD_FILE ) or { panic(err) }
-eprintln('$vm.name $vm.version\n $vm.description')
-```
+Best practice is to avoid putting memory-safe expressions inside an `unsafe` block,
+so that the reason for using `unsafe` is as clear as possible. Generally any code
+you think is memory-safe should not be inside an `unsafe` block, so the compiler
+can verify it.
 
-## Performance tuning
+If you suspect your program does violate memory-safety, you have a head start on
+finding the cause: look at the `unsafe` blocks (and how they interact with
+surrounding code).
 
-The generated C code is usually fast enough, when you compile your code
-with `-prod`. There are some situations though, where you may want to give
-additional hints to the compiler, so that it can further optimize some
-blocks of code.
+* Note: This is work in progress.
 
-NB: These are *rarely* needed, and should not be used, unless you
-*profile your code*, and then see that there are significant benefits for them.
-To cite gcc's documentation: "programmers are notoriously bad at predicting
-how their programs actually perform".
+## Structs with reference fields
 
-`[inline]` - you can tag functions with `[inline]`, so the C compiler will
-try to inline them, which in some cases, may be beneficial for performance,
-but may impact the size of your executable.
+Structs with references require explicitly setting the initial value to a
+reference value unless the struct already defines its own initial value.
 
-`[direct_array_access]` - in functions tagged with `[direct_array_access]`
-the compiler will translate array operations directly into C array operations -
-omitting bounds checking. This may save a lot of time in a function that iterates
-over an array but at the cost of making the function unsafe - unless
-the boundaries will be checked by the user.
-
-`if _likely_(bool expression) {` this hints the C compiler, that the passed
-boolean expression is very likely to be true, so it can generate assembly
-code, with less chance of branch misprediction. In the JS backend,
-that does nothing.
-
-`if _unlikely_(bool expression) {` similar to `_likely_(x)`, but it hints that
-the boolean expression is highly improbable. In the JS backend, that does nothing.
-
-<a id='Reflection via codegen'>
-
-## Compile-time reflection
-
-Having built-in JSON support is nice, but V also allows you to create efficient
-serializers for any data format. V has compile-time `if` and `for` constructs:
+Zero-value references, or nil pointers, will **NOT** be supported in the future,
+for now data structures such as Linked Lists or Binary Trees that rely on reference
+fields that can use the value `0`, understanding that it is unsafe, and that it can
+cause a panic.
 
 ```v
-struct User {
-	name string
-	age  int
+struct Node {
+	a &Node
+	b &Node = 0 // Auto-initialized to nil, use with caution!
 }
 
-fn main() {
-	$for field in User.fields {
-		$if field.typ is string {
-			println('$field.name is of type string')
-		}
-	}
+// Reference fields must be initialized unless an initial value is declared.
+// Zero (0) is OK but use with caution, it's a nil pointer.
+foo := Node{
+	a: 0
 }
-
-// Output:
-// name is of type string
+bar := Node{
+	a: &foo
+}
+baz := Node{
+	a: 0
+	b: 0
+}
+qux := Node{
+	a: &foo
+	b: &bar
+}
+println(baz)
+println(qux)
 ```
 
-See [`examples/compiletime/reflection.v`](/examples/compiletime/reflection.v)
-for a more complete example.
+## sizeof and __offsetof
+
+* `sizeof(Type)` gives the size of a type in bytes.
+* `__offsetof(Struct, field_name)` gives the offset in bytes of a struct field.
+
+```v
+struct Foo {
+	a int
+	b int
+}
+
+assert sizeof(Foo) == 8
+assert __offsetof(Foo, a) == 0
+assert __offsetof(Foo, b) == 4
+```
 
 ## Limited operator overloading
 
@@ -6080,28 +5589,534 @@ To improve safety and maintainability, operator overloading is limited:
 - Assignment operators (`*=`, `+=`, `/=`, etc)
 are auto generated when the corresponding operators are defined and operands are of the same type.
 
-## Inline assembly
-<!-- ignore because it doesn't pass fmt test (why?) -->
-```v ignore
-a := 100
-b := 20
-mut c := 0
-asm amd64 {
-    mov eax, a
-    add eax, b
-    mov c, eax
-    ; =r (c) as c // output
-    ; r (a) as a // input
-      r (b) as b
+## Performance tuning
+
+The generated C code is usually fast enough, when you compile your code
+with `-prod`. There are some situations though, where you may want to give
+additional hints to the compiler, so that it can further optimize some
+blocks of code.
+
+NB: These are *rarely* needed, and should not be used, unless you
+*profile your code*, and then see that there are significant benefits for them.
+To cite gcc's documentation: "programmers are notoriously bad at predicting
+how their programs actually perform".
+
+`[inline]` - you can tag functions with `[inline]`, so the C compiler will
+try to inline them, which in some cases, may be beneficial for performance,
+but may impact the size of your executable.
+
+`[direct_array_access]` - in functions tagged with `[direct_array_access]`
+the compiler will translate array operations directly into C array operations -
+omitting bounds checking. This may save a lot of time in a function that iterates
+over an array but at the cost of making the function unsafe - unless
+the boundaries will be checked by the user.
+
+`if _likely_(bool expression) {` this hints the C compiler, that the passed
+boolean expression is very likely to be true, so it can generate assembly
+code, with less chance of branch misprediction. In the JS backend,
+that does nothing.
+
+`if _unlikely_(bool expression) {` similar to `_likely_(x)`, but it hints that
+the boolean expression is highly improbable. In the JS backend, that does nothing.
+
+<a id='Reflection via codegen'>
+
+## Atomics
+
+V has no special support for atomics, yet, nevertheless it's possible to treat variables as atomics
+by calling C functions from V. The standard C11 atomic functions like `atomic_store()` are usually
+defined with the help of macros and C compiler magic to provide a kind of *overloaded C functions*.
+Since V does not support overloading functions by intention there are wrapper functions defined in
+C headers named `atomic.h` that are part of the V compiler infrastructure.
+
+There are dedicated wrappers for all unsigned integer types and for pointers.
+(`byte` is not fully supported on Windows) &ndash; the function names include the type name
+as suffix. e.g. `C.atomic_load_ptr()` or `C.atomic_fetch_add_u64()`.
+
+To use these functions the C header for the used OS has to be included and the functions
+that are intended to be used have to be declared. Example:
+
+```v globals
+$if windows {
+	#include "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
+} $else {
+	#include "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
 }
-println('a: $a') // 100
-println('b: $b') // 20
-println('c: $c') // 120
+
+// declare functions we want to use - V does not parse the C header
+fn C.atomic_store_u32(&u32, u32)
+fn C.atomic_load_u32(&u32) u32
+fn C.atomic_compare_exchange_weak_u32(&u32, &u32, u32) bool
+fn C.atomic_compare_exchange_strong_u32(&u32, &u32, u32) bool
+
+const num_iterations = 10000000
+
+// see section "Global Variables" below
+__global (
+	atom u32 // ordinary variable but used as atomic
+)
+
+fn change() int {
+	mut races_won_by_change := 0
+	for {
+		mut cmp := u32(17) // addressable value to compare with and to store the found value
+		// atomic version of `if atom == 17 { atom = 23 races_won_by_change++ } else { cmp = atom }`
+		if C.atomic_compare_exchange_strong_u32(&atom, &cmp, 23) {
+			races_won_by_change++
+		} else {
+			if cmp == 31 {
+				break
+			}
+			cmp = 17 // re-assign because overwritten with value of atom
+		}
+	}
+	return races_won_by_change
+}
+
+fn main() {
+	C.atomic_store_u32(&atom, 17)
+	t := go change()
+	mut races_won_by_main := 0
+	mut cmp17 := u32(17)
+	mut cmp23 := u32(23)
+	for i in 0 .. num_iterations {
+		// atomic version of `if atom == 17 { atom = 23 races_won_by_main++ }`
+		if C.atomic_compare_exchange_strong_u32(&atom, &cmp17, 23) {
+			races_won_by_main++
+		} else {
+			cmp17 = 17
+		}
+		desir := if i == num_iterations - 1 { u32(31) } else { u32(17) }
+		// atomic version of `for atom != 23 {} atom = desir`
+		for !C.atomic_compare_exchange_weak_u32(&atom, &cmp23, desir) {
+			cmp23 = 23
+		}
+	}
+	races_won_by_change := t.wait()
+	atom_new := C.atomic_load_u32(&atom)
+	println('atom: $atom_new, #exchanges: ${races_won_by_main + races_won_by_change}')
+	// prints `atom: 31, #exchanges: 10000000`)
+	println('races won by\n- `main()`: $races_won_by_main\n- `change()`: $races_won_by_change')
+}
 ```
 
-For more examples, see [github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v](https://github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v)
+In this example both `main()` and the spawned thread `change()` try to replace a value of `17`
+in the global `atom` with a value of `23`. The replacement in the opposite direction is
+done exactly 10000000 times. The last replacement will be with `31` which makes the spawned
+thread finish.
 
-## Translating C to V
+It is not predictable how many replacements occur in which thread, but the sum will always
+be 10000000. (With the non-atomic commands from the comments the value will be higher or the program
+will hang &ndash; dependent on the compiler optimization used.)
+
+## Global Variables
+
+By default V does not allow global variables. However, in low level applications they have their
+place so their usage can be enabled with the compiler flag `-enable-globals`.
+Declarations of global variables must be surrounded with a `__global ( ... )`
+specification &ndash; as in the example [above](#atomics).
+
+An initializer for global variables must be explicitly converted to the
+desired target type. If no initializer is given a default initialization is done.
+Some objects like semaphores and mutexes require an explicit initialization *in place*, i.e.
+not with a value returned from a function call but with a method call by reference.
+A separate `init()` function can be used for this purpose &ndash; it will be called before `main()`:
+
+```v globals
+import sync
+
+__global (
+	sem   sync.Semaphore // needs initialization in `init()`
+	mtx   sync.RwMutex // needs initialization in `init()`
+	f1    = f64(34.0625) // explicily initialized
+	shmap shared map[string]f64 // initialized as empty `shared` map
+	f2    f64 // initialized to `0.0`
+)
+
+fn init() {
+	sem.init(0)
+	mtx.init()
+}
+```
+Be aware that in multi threaded applications the access to global variables is subject
+to race conditions. There are several approaches to deal with these:
+
+- use `shared` types for the variable declarations and use `lock` blocks for access.
+  This is most appropriate for larger objects like structs, arrays or maps.
+- handle primitive data types as "atomics" using special C-functions (see [above](#atomics)).
+- use explicit synchronization primitives like mutexes to control access. The compiler
+  cannot really help in this case, so you have to know what you are doing.
+- don't care &ndash; this approach is possible but makes only sense if the exact values
+  of global variables do not really matter. An example can be found in the `rand` module
+  where global variables are used to generate (non cryptographic) pseudo random numbers.
+  In this case data races lead to random numbers in different threads becoming somewhat
+  correlated, which is acceptable considering the performance penalty that using
+  synchonization primitives would represent.
+
+## Cross compilation
+
+To cross compile your project simply run
+
+```shell
+v -os windows .
+```
+
+or
+
+```shell
+v -os linux .
+```
+NB: Cross-compiling a windows binary on a linux machine requires the GNU C compiler for
+MinGW-w64 (targeting Win64) to first be installed.
+
+```shell
+sudo apt-get install gcc-mingw-w64-x86-64
+```
+(Cross compiling for macOS is temporarily not possible.)
+
+If you don't have any C dependencies, that's all you need to do. This works even
+when compiling GUI apps using the `ui` module or graphical apps using `gg`.
+
+You will need to install Clang, LLD linker, and download a zip file with
+libraries and include files for Windows and Linux. V will provide you with a link.
+
+## Debugging
+
+### C Backend binaries (Default)
+
+To debug issues in the generated binary (flag: `-b c`), you can pass these flags:
+
+- `-g` - produces a less optimized executable with more debug information in it.
+    V will enforce line numbers from the .v files in the stacktraces, that the
+    executable will produce on panic. It is usually better to pass -g, unless
+    you are writing low level code, in which case use the next option `-cg`.
+- `-cg` - produces a less optimized executable with more debug information in it.
+	The executable will use C source line numbers in this case. It is frequently
+    used in combination with `-keepc`, so that you can inspect the generated
+    C program in case of panic, or so that your debugger (`gdb`, `lldb` etc.)
+    can show you the generated C source code.
+- `-showcc` - prints the C command that is used to build the program.
+- `-show-c-output` - prints the output, that your C compiler produced
+    while compiling your program.
+- `-keepc` - do not delete the generated C source code file after a successful
+    compilation. Also keep using the same file path, so it is more stable,
+    and easier to keep opened in an editor/IDE.
+
+For best debugging experience if you are writing a low level wrapper for an existing
+C library, you can pass several of these flags at the same time:
+`v -keepc -cg -showcc yourprogram.v`, then just run your debugger (gdb/lldb) or IDE
+on the produced executable `yourprogram`.
+
+If you just want to inspect the generated C code,
+without further compilation, you can also use the `-o` flag (e.g. `-o file.c`).
+This will make V produce the `file.c` then stop.
+
+If you want to see the generated C source code for *just* a single C function,
+for example `main`, you can use: `-printfn main -o file.c`.
+
+To debug the V executable itself you need to compile from src with `./v -g -o v cmd/v`.
+
+You can debug tests with for example `v -g -keepc prog_test.v`. The `-keepc` flag is needed,
+so that the executable is not deleted, after it was created and ran.
+
+To see a detailed list of all flags that V supports,
+use `v help`, `v help build` and `v help build-c`.
+
+**Commandline Debugging**
+
+1. compile your binary with debugging info `v -g hello.v`
+2. debug with [lldb](https://lldb.llvm.org) or [GDB](https://www.gnu.org/software/gdb/) e.g. `lldb hello`
+
+[Troubleshooting (debugging) executables created with V in GDB](https://github.com/vlang/v/wiki/Troubleshooting-(debugging)-executables-created-with-V-in-GDB)
+
+**Visual debugging Setup:**
+* [Visual Studio Code](vscode.md)
+
+### Native Backend binaries
+
+Currently there is no debugging support for binaries, created by the
+native backend (flag: `-b native`).
+
+### Javascript Backend
+
+To debug the generated Javascript output you can activate source maps:
+`v -b js -sourcemap hello.v -o hello.js`
+
+For all supported options check the latest help:
+`v help build-js`
+
+## V and C
+
+### Calling C from V
+
+**Example**
+```v
+#flag -lsqlite3
+#include "sqlite3.h"
+// See also the example from https://www.sqlite.org/quickstart.html
+struct C.sqlite3 {
+}
+
+struct C.sqlite3_stmt {
+}
+
+type FnSqlite3Callback = fn (voidptr, int, &&char, &&char) int
+
+fn C.sqlite3_open(&char, &&C.sqlite3) int
+
+fn C.sqlite3_close(&C.sqlite3) int
+
+fn C.sqlite3_column_int(stmt &C.sqlite3_stmt, n int) int
+
+// ... you can also just define the type of parameter and leave out the C. prefix
+fn C.sqlite3_prepare_v2(&C.sqlite3, &char, int, &&C.sqlite3_stmt, &&char) int
+
+fn C.sqlite3_step(&C.sqlite3_stmt)
+
+fn C.sqlite3_finalize(&C.sqlite3_stmt)
+
+fn C.sqlite3_exec(db &C.sqlite3, sql &char, cb FnSqlite3Callback, cb_arg voidptr, emsg &&char) int
+
+fn C.sqlite3_free(voidptr)
+
+fn my_callback(arg voidptr, howmany int, cvalues &&char, cnames &&char) int {
+	unsafe {
+		for i in 0 .. howmany {
+			print('| ${cstring_to_vstring(cnames[i])}: ${cstring_to_vstring(cvalues[i]):20} ')
+		}
+	}
+	println('|')
+	return 0
+}
+
+fn main() {
+	db := &C.sqlite3(0) // this means `sqlite3* db = 0`
+	// passing a string literal to a C function call results in a C string, not a V string
+	C.sqlite3_open(c'users.db', &db)
+	// C.sqlite3_open(db_path.str, &db)
+	query := 'select count(*) from users'
+	stmt := &C.sqlite3_stmt(0)
+	// NB: you can also use the `.str` field of a V string,
+	// to get its C style zero terminated representation
+	C.sqlite3_prepare_v2(db, &char(query.str), -1, &stmt, 0)
+	C.sqlite3_step(stmt)
+	nr_users := C.sqlite3_column_int(stmt, 0)
+	C.sqlite3_finalize(stmt)
+	println('There are $nr_users users in the database.')
+	//
+	error_msg := &char(0)
+	query_all_users := 'select * from users'
+	rc := C.sqlite3_exec(db, &char(query_all_users.str), my_callback, voidptr(7), &error_msg)
+	if rc != C.SQLITE_OK {
+		eprintln(unsafe { cstring_to_vstring(error_msg) })
+		C.sqlite3_free(error_msg)
+	}
+	C.sqlite3_close(db)
+}
+```
+
+### Calling V from C
+
+Since V can compile to C, calling V code from C is very easy, once you know how.
+
+Use `v -o file.c your_file.v` to generate a C file, corresponding to the V code.
+
+More details in [call_v_from_c example](../examples/call_v_from_c).
+
+### Passing C compilation flags
+
+Add `#flag` directives to the top of your V files to provide C compilation flags like:
+
+- `-I` for adding C include files search paths
+- `-l` for adding C library names that you want to get linked
+- `-L` for adding C library files search paths
+- `-D` for setting compile time variables
+
+You can (optionally) use different flags for different targets.
+Currently the `linux`, `darwin` , `freebsd`, and `windows` flags are supported.
+
+NB: Each flag must go on its own line (for now)
+
+```v oksyntax
+#flag linux -lsdl2
+#flag linux -Ivig
+#flag linux -DCIMGUI_DEFINE_ENUMS_AND_STRUCTS=1
+#flag linux -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS=1
+#flag linux -DIMGUI_IMPL_API=
+```
+
+In the console build command, you can use:
+* `-cflags` to pass custom flags to the backend C compiler.
+* `-cc` to change the default C backend compiler.
+* For example: `-cc gcc-9 -cflags -fsanitize=thread`.
+
+You can define a `VFLAGS` environment variable in your terminal to store your `-cc`
+and `-cflags` settings, rather than including them in the build command each time.
+
+### #pkgconfig
+
+Add `#pkgconfig` directive is used to tell the compiler which modules should be used for compiling
+and linking using the pkg-config files provided by the respective dependencies.
+
+As long as backticks can't be used in `#flag` and spawning processes is not desirable for security
+and portability reasons, V uses its own pkgconfig library that is compatible with the standard
+freedesktop one.
+
+If no flags are passed it will add `--cflags` and `--libs`, both lines below do the same:
+
+```v oksyntax
+#pkgconfig r_core
+#pkgconfig --cflags --libs r_core
+```
+
+The `.pc` files are looked up into a hardcoded list of default pkg-config paths, the user can add
+extra paths by using the `PKG_CONFIG_PATH` environment variable. Multiple modules can be passed.
+
+To check the existence of a pkg-config use `$pkgconfig('pkg')` as a compile time "if" condition to
+check if a pkg-config exists. If it exists the branch will be created. Use `$else` or `$else $if`
+to handle other cases.
+
+```v ignore
+$if $pkgconfig('mysqlclient') {
+	#pkgconfig mysqlclient
+} $else $if $pkgconfig('mariadb') {
+	#pkgconfig mariadb
+}
+```
+
+### Including C code
+
+You can also include C code directly in your V module.
+For example, let's say that your C code is located in a folder named 'c' inside your module folder.
+Then:
+
+* Put a v.mod file inside the toplevel folder of your module (if you
+created your module with `v new` you already have v.mod file). For
+example:
+```v ignore
+Module {
+	name: 'mymodule',
+	description: 'My nice module wraps a simple C library.',
+	version: '0.0.1'
+	dependencies: []
+}
+```
+
+
+* Add these lines to the top of your module:
+```v oksyntax
+#flag -I @VMODROOT/c
+#flag @VMODROOT/c/implementation.o
+#include "header.h"
+```
+NB: @VMODROOT will be replaced by V with the *nearest parent folder, where there is a v.mod file*.
+Any .v file beside or below the folder where the v.mod file is,
+can use `#flag @VMODROOT/abc` to refer to this folder.
+The @VMODROOT folder is also *prepended* to the module lookup path,
+so you can *import* other modules under your @VMODROOT, by just naming them.
+
+The instructions above will make V look for an compiled .o file in
+your module `folder/c/implementation.o`.
+If V finds it, the .o file will get linked to the main executable, that used the module.
+If it does not find it, V assumes that there is a `@VMODROOT/c/implementation.c` file,
+and tries to compile it to a .o file, then will use that.
+
+This allows you to have C code, that is contained in a V module, so that its distribution is easier.
+You can see a complete minimal example for using C code in a V wrapper module here:
+[project_with_c_code](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code).
+Another example, demonstrating passing structs from C to V and back again:
+[interoperate between C to V to C](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code_2).
+
+### C types
+
+Ordinary zero terminated C strings can be converted to V strings with
+`unsafe { &char(cstring).vstring() }` or if you know their length already with
+`unsafe { &char(cstring).vstring_with_len(len) }`.
+
+NB: The .vstring() and .vstring_with_len() methods do NOT create a copy of the `cstring`,
+so you should NOT free it after calling the method `.vstring()`.
+If you need to make a copy of the C string (some libc APIs like `getenv` pretty much require that,
+since they return pointers to internal libc memory), you can use `cstring_to_vstring(cstring)`.
+
+On Windows, C APIs often return so called `wide` strings (utf16 encoding).
+These can be converted to V strings with `string_from_wide(&u16(cwidestring))` .
+
+V has these types for easier interoperability with C:
+
+- `voidptr` for C's `void*`,
+- `&byte` for C's `byte*` and
+- `&char` for C's `char*`.
+- `&&char` for C's `char**`
+
+To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
+
+`voidptr` can also be dereferenced into a V struct through casting: `user := User(user_void_ptr)`.
+
+[an example of a module that calls C code from V](https://github.com/vlang/v/blob/master/vlib/v/tests/project_with_c_code/mod1/wrapper.v)
+
+### C Declarations
+
+C identifiers are accessed with the `C` prefix similarly to how module-specific
+identifiers are accessed. Functions must be redeclared in V before they can be used.
+Any C types may be used behind the `C` prefix, but types must be redeclared in V in
+order to access type members.
+
+To redeclare complex types, such as in the following C code:
+
+```c
+struct SomeCStruct {
+	uint8_t implTraits;
+	uint16_t memPoolData;
+	union {
+		struct {
+			void* data;
+			size_t size;
+		};
+
+		DataView view;
+	};
+};
+```
+
+members of sub-data-structures may be directly declared in the containing struct as below:
+
+```v
+struct C.SomeCStruct {
+	implTraits  byte
+	memPoolData u16
+	// These members are part of sub data structures that can't currently be represented in V.
+	// Declaring them directly like this is sufficient for access.
+	// union {
+	// struct {
+	data voidptr
+	size usize
+	// }
+	view C.DataView
+	// }
+}
+```
+
+The existence of the data members is made known to V, and they may be used without
+re-creating the original structure exactly.
+
+Alternatively, you may [embed](#embedded-structs) the sub-data-structures to maintain
+a parallel code structure.
+
+### Export to shared library
+
+By default all V functions have the following naming scheme in C: `[module name]__[fn_name]`.
+
+For example, `fn foo() {}` in module `bar` will result in `bar__foo()`.
+
+To use a custom export name, use the `[export]` attribute:
+
+```
+[export: 'my_custom_c_name']
+fn foo() {
+}
+```
+
+### Translating C to V
 
 V can translate your C code to human readable V code, and generating V wrappers
 on top of C libraries.
@@ -6158,7 +6173,30 @@ Translating it to V gives you several advantages:
 - Cross-compilation becomes a lot easier. You don't have to worry about it at all.
 - No more build flags and include files either.
 
-## Hot code reloading
+## Other V Features
+
+### Inline assembly
+<!-- ignore because it doesn't pass fmt test (why?) -->
+```v ignore
+a := 100
+b := 20
+mut c := 0
+asm amd64 {
+    mov eax, a
+    add eax, b
+    mov c, eax
+    ; =r (c) as c // output
+    ; r (a) as a // input
+      r (b) as b
+}
+println('a: $a') // 100
+println('b: $b') // 20
+println('c: $c') // 120
+```
+
+For more examples, see [github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v](https://github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v)
+
+### Hot code reloading
 
 ```v live
 module main
@@ -6194,34 +6232,7 @@ Right now it's not possible to modify types while the program is running.
 More examples, including a graphical application:
 [github.com/vlang/v/tree/master/examples/hot_reload](https://github.com/vlang/v/tree/master/examples/hot_reload).
 
-## Cross compilation
-
-To cross compile your project simply run
-
-```shell
-v -os windows .
-```
-
-or
-
-```shell
-v -os linux .
-```
-NB: Cross-compiling a windows binary on a linux machine requires the GNU C compiler for
-MinGW-w64 (targeting Win64) to first be installed.
-
-```shell
-sudo apt-get install gcc-mingw-w64-x86-64
-```
-(Cross compiling for macOS is temporarily not possible.)
-
-If you don't have any C dependencies, that's all you need to do. This works even
-when compiling GUI apps using the `ui` module or graphical apps using `gg`.
-
-You will need to install Clang, LLD linker, and download a zip file with
-libraries and include files for Windows and Linux. V will provide you with a link.
-
-## Cross-platform shell scripts in V
+### Cross-platform shell scripts in V
 
 V can be used as an alternative to Bash to write deployment scripts, build scripts, etc.
 
@@ -6295,7 +6306,7 @@ Or just run it more like a traditional Bash script:
 On Unix-like platforms, the file can be run directly after making it executable using `chmod +x`:
 `./deploy.vsh`
 
-## Vsh scripts with no extension
+### Vsh scripts with no extension
 
 Whilst V does normally not allow vsh scripts without the designated file extension, there is a way
 to circumvent this rule and have a file with a fully custom name and shebang. Whilst this feature
