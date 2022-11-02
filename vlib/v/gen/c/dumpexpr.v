@@ -45,7 +45,12 @@ fn (mut g Gen) dump_expr_definitions() {
 		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, dump_type)
 		to_string_fn_name := g.get_str_fn(typ.clear_flag(.shared_f))
 		ptr_asterisk := if is_ptr { '*'.repeat(typ.nr_muls()) } else { '' }
-		mut str_dumparg_type := g.cc_type(dump_type, true) + ptr_asterisk
+		mut str_dumparg_type := ''
+		if dump_sym.kind == .none_ {
+			str_dumparg_type = 'IError' + ptr_asterisk
+		} else {
+			str_dumparg_type = g.cc_type(dump_type, true) + ptr_asterisk
+		}
 		if dump_sym.kind == .function {
 			fninfo := dump_sym.info as ast.FnType
 			str_dumparg_type = 'DumpFNType_$name'
@@ -67,6 +72,8 @@ fn (mut g Gen) dump_expr_definitions() {
 		surrounder.add('\tstring sline = int_str(line);', '\tstring_free(&sline);')
 		if dump_sym.kind == .function {
 			surrounder.add('\tstring value = ${to_string_fn_name}();', '\tstring_free(&value);')
+		} else if dump_sym.kind == .none_ {
+			surrounder.add('\tstring value = _SLIT("none");', '\tstring_free(&value);')
 		} else {
 			surrounder.add('\tstring value = ${to_string_fn_name}(${deref}dump_arg);',
 				'\tstring_free(&value);')
