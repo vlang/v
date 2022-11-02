@@ -153,7 +153,7 @@ fn (mut p Person) from_json(f json2.Any) {
 
 ```v oksyntax
 fn (p Person) to_json() string {
-	mut obj := map[string]json2.Any
+	mut obj := map[string]json2.Any{}
 	obj['nickname'] = p.name
 	return obj.str()
 }
