@@ -166,7 +166,7 @@ pub fn (mut f Gen) struct_init(node ast.StructInit) {
 		// fields_start := f.out.len
 		fields_loop: for {
 			if !single_line_fields {
-				if use_short_args && f.out[f.out.len - 1] == ` ` {
+				if use_short_args && f.out.last() == ` ` {
 					//           v Remove space at tail of line
 					// f(a, b, c, \n
 					//     f1: 0\n

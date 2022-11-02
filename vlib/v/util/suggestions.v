@@ -106,7 +106,7 @@ pub fn short_module_name(name string) string {
 		return name
 	}
 	mname := vals[vals.len - 2]
-	symname := vals[vals.len - 1]
+	symname := vals.last()
 	return '${mname}.$symname'
 }
 

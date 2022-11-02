@@ -925,7 +925,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 
 		param := if func.is_variadic && i >= func.params.len - 1 {
-			func.params[func.params.len - 1]
+			func.params.last()
 		} else {
 			func.params[i]
 		}
@@ -1182,7 +1182,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	if func.generic_names.len > 0 {
 		for i, mut call_arg in node.args {
 			param := if func.is_variadic && i >= func.params.len - 1 {
-				func.params[func.params.len - 1]
+				func.params.last()
 			} else {
 				func.params[i]
 			}

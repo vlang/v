@@ -848,7 +848,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 		g.write('${dot}_object')
 		is_variadic := node.expected_arg_types.len > 0
-			&& node.expected_arg_types[node.expected_arg_types.len - 1].has_flag(.variadic)
+			&& node.expected_arg_types.last().has_flag(.variadic)
 		if node.args.len > 0 || is_variadic {
 			g.write(', ')
 			g.call_args(node)
@@ -1202,7 +1202,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write(')')
 	}
 	is_variadic := node.expected_arg_types.len > 0
-		&& node.expected_arg_types[node.expected_arg_types.len - 1].has_flag(.variadic)
+		&& node.expected_arg_types.last().has_flag(.variadic)
 	if node.args.len > 0 || is_variadic {
 		g.write(', ')
 	}
@@ -1784,8 +1784,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			// Handle `foo(c'str')` for `fn foo(args ...&u8)`
 			// TODOC2V handle this in a better place
 			g.expr(args[0].expr)
-		} else if args.len > 0 && args[args.len - 1].expr is ast.ArrayDecompose {
-			g.expr(args[args.len - 1].expr)
+		} else if args.len > 0 && args.last().expr is ast.ArrayDecompose {
+			g.expr(args.last().expr)
 		} else {
 			if variadic_count > 0 {
 				if g.pref.translated || g.file.is_translated {

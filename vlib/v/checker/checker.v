@@ -996,8 +996,8 @@ pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_re
 		}
 		return
 	}
-	stmts_len := node.stmts.len
-	if stmts_len == 0 {
+
+	if node.stmts.len == 0 {
 		if ret_type != ast.void_type {
 			// x := f() or {}
 			c.error('assignment requires a non empty `or {}` block', node.pos)
@@ -1005,7 +1005,7 @@ pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_re
 		// allow `f() or {}`
 		return
 	}
-	last_stmt := node.stmts[stmts_len - 1]
+	last_stmt := node.stmts.last()
 	c.check_or_last_stmt(last_stmt, ret_type, expr_return_type.clear_flag(.optional).clear_flag(.result))
 }
 
@@ -1537,7 +1537,7 @@ pub fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 		} else {
 			if signed {
 				if iseen.len > 0 {
-					ilast := iseen[iseen.len - 1]
+					ilast := iseen.last()
 					if ilast == enum_imax {
 						c.error('enum value overflows type `$senum_type`, which has a maximum value of $enum_imax',
 							field.pos)
@@ -1551,7 +1551,7 @@ pub fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 				}
 			} else {
 				if useen.len > 0 {
-					ulast := useen[useen.len - 1]
+					ulast := useen.last()
 					if ulast == enum_umax {
 						c.error('enum value overflows type `$senum_type`, which has a maximum value of $enum_umax',
 							field.pos)
