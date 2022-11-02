@@ -2,12 +2,12 @@
 *31 Oct 2022*
 - New simplified string interpolation: `println("Hello, {name}!")`. It will be the only way, old syntax (`${name}` and `$name`)
   will be deprecated.
-- New stunnig playground with an improved look and feel, a much better and more responsive editor,
+- New stunning playground with an improved look and feel, a much better and more responsive editor,
   code sharing by link, more convenient keyboard control, reusability for potential embedding:
   https://play.vlang.io.
 - `net.ssl` has been migrated from a dynamically linked OpenSSL to a statically linked Mbed TLS. This means that V binaries will no
   longer have an OpenSSL dependency. OpenSSL can still be enabled via `-d use_openssl`.
-- msgpack module for decoding/encoding msgpack.
+- msgpack module for decoding/encoding msgpack. (`v install msgpack`)
 - Easier custom error creation: `return MyCustomErr{}` instead of `return IError(MyCustomErr)`.
 - Lots of native backend improvements, including library calls, comptime conditionals, enums, method definitions/calls, structs.
 - Removed the need for the `[console]` attribute in Windows GUI apps.
