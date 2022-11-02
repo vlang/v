@@ -823,20 +823,27 @@ pub fn (mut g Gen) generate_simple_elf_header() {
 }
 
 pub fn (mut g Gen) elf_string_table() {
+	mut generated := map[string]int{}
+
 	for _, s in g.strs {
+		pos := generated[s.str] or { g.buf.len }
+
 		match s.typ {
 			.abs64 {
-				// g.write64_at(native.segment_start + g.buf.len, int(g.str_pos[i]))
-				g.write64_at(s.pos, g.buf.len)
+				g.write64_at(s.pos, pos)
 			}
 			.rel32 {
-				g.write32_at(s.pos, g.buf.len - s.pos - 4)
+				g.write32_at(s.pos, pos - s.pos - 4)
 			}
 			else {
 				g.n_error('unsupported string reloc type')
 			}
 		}
-		g.write_string(s.str)
+
+		if s.str !in generated {
+			generated[s.str] = pos
+			g.write_string(s.str)
+		}
 	}
 }
 
