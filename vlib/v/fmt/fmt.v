@@ -132,7 +132,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if penalty_idx > 0 && f.line_len <= fmt.max_len[penalty_idx] {
 		return false
 	}
-	if f.out[f.out.len - 1] == ` ` {
+	if f.out.last() == ` ` {
 		f.out.go_back(1)
 	}
 	f.write('\n')
@@ -255,7 +255,7 @@ pub fn (mut f Fmt) short_module(name string) string {
 	}
 	idx := vals.len - 1
 	mname, tprefix := f.get_modname_prefix(vals[..idx].join('.'))
-	symname := vals[vals.len - 1]
+	symname := vals.last()
 	mut aname := f.mod2alias[mname]
 	if aname == '' {
 		for _, v in f.mod2alias {
@@ -1955,7 +1955,7 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 					// "v.fmt.foo" => "fmt.foo"
 					vals := full_name.split('.')
 					mod_prefix := vals[vals.len - 2]
-					const_name := vals[vals.len - 1]
+					const_name := vals.last()
 					if mod_prefix == 'main' {
 						f.write(const_name)
 						return
