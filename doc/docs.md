@@ -323,8 +323,8 @@ fn private_function() {
 ```
 
 Functions are private (not exported) by default.
-To allow other modules to use them, prepend `pub`. The same applies
-to constants and types.
+To allow other [modules](#module-imports) to use them, prepend `pub`. The same applies
+to [structs](#structs), [constants](#constants) and [types](#type-declarations).
 
 Note: `pub` can only be used from a named module.
 For information about creating a module, see [Modules](#modules).
@@ -2886,6 +2886,8 @@ the expression itself, and the expression value.
 Every file in the root of a folder is part of the same module.
 Simple programs don't need to specify module name, in which case it defaults to 'main'.
 
+See [symbol visibility](#symbol-visibility), [Access modifiers](#access-modifiers).
+
 ### Create modules
 
 V is a very modular language. Creating reusable modules is encouraged and is
@@ -2991,25 +2993,25 @@ of an interface.
 // interface-example.2
 module main
 
-pub interface Foo {
+interface Foo {
 	write(string) string
 }
 
 // => the method signature of a type, implementing interface Foo should be:
-// `pub fn (s Type) write(a string) string`
+// `fn (s Type) write(a string) string`
 
-pub interface Bar {
+interface Bar {
 mut:
 	write(string) string
 }
 
 // => the method signature of a type, implementing interface Bar should be:
-// `pub fn (mut s Type) write(a string) string`
+// `fn (mut s Type) write(a string) string`
 
 struct MyStruct {}
 
 // MyStruct implements the interface Foo, but *not* interface Bar
-pub fn (s MyStruct) write(a string) string {
+fn (s MyStruct) write(a string) string {
 	return a
 }
 
