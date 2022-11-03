@@ -558,7 +558,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				} else if left_sym.info is ast.Interface {
 					if typ_sym.kind != .interface_ && !c.type_implements(typ, left_type, right_pos) {
-						c.error("`$typ_sym.name` doesn't implemented interface `$left_sym.name`",
+						c.error("`$typ_sym.name` doesn't implement interface `$left_sym.name`",
 							right_pos)
 					}
 				}
