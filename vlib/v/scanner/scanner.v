@@ -813,7 +813,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					if !s.is_inside_interpolation && !next_char.is_space() && next_char != `}`
 						&& prev_char !in [`$`, `{`] {
 						s.is_inside_interpolation = true
-						return s.new_token(.str_dollar, '', 1)
+						return s.new_token(.str_lcbr, '', 1)
 					}
 					if s.is_inside_interpolation && prev_char == `$` {
 						// Skip { in `${` in strings
