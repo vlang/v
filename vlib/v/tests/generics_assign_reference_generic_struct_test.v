@@ -1,12 +1,12 @@
 pub struct List<T> {
 pub mut:
-	head &ListNode<T> = 0
+	head &ListNode<T> = unsafe { nil }
 }
 
 pub struct ListNode<T> {
 pub mut:
 	value T
-	next  &ListNode<T> = 0
+	next  &ListNode<T> = unsafe { nil }
 }
 
 pub fn list_new<T>() List<T> {
