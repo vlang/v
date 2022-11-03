@@ -34,7 +34,7 @@ fn test_giant_string() {
 
 fn test_script_tag() {
 	mut parser := Parser{}
-	script_content := "\nvar googletag = googletag || {};\ngoogletag.cmd = googletag.cmd || [];if(3 > 5) {console.log('Birl');}\n"
+	script_content := "\nvar googletag = googletag || {};\ngoogletag.cmd = googletag.cmd || [];if(3 > 5) { console.log('Birl');}\n"
 	temp_html := '<html><body><script>$script_content</script></body></html>'
 	parser.parse_html(temp_html)
 	assert parser.tags[2].content.len == script_content.replace('\n', '').len

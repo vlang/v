@@ -15,4 +15,16 @@ fn test_string_new_interpolation() {
 
 	println('{a}{{{{{b}}}}}')
 	assert '{a}{{{{{b}}}}}' == '1{{{{2}}}}'
+
+	s := 'hello'
+	println('{s == 'hello'}')
+	assert '{s == 'hello'}' == 'true'
+	println('{s != 'hello'}')
+	assert '{s != 'hello'}' == 'false'
+
+	n := 22
+	println('{n >= 10}')
+	assert '{n >= 10}' == 'true'
+	println('{n <= 10}')
+	assert '{n <= 10}' == 'false'
 }
