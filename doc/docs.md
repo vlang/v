@@ -70,6 +70,8 @@ To do so, run the command `v up`.
     * [Default field values](#default-field-values)
     * [Required fields](#required-fields)
     * [Short struct literal syntax](#short-struct-literal-syntax)
+    * [Struct update syntax](#struct-update-syntax)
+    * [Trailing struct literal arguments](#trailing-struct-literal-arguments)
     * [Access modifiers](#access-modifiers)
     * [Anonymous structs](#anonymous-structs)
     * [[noinit] structs](#noinit-structs)
@@ -2111,7 +2113,33 @@ println(points) // [Point{x: 10, y: 20}, Point{x: 20, y: 30}, Point{x: 40,y: 50}
 Omitting the struct name also works for returning a struct literal or passing one
 as a function argument.
 
-#### Trailing struct literal arguments
+### Struct update syntax
+
+V makes it easy to return a modified version of an object:
+
+```v
+struct User {
+	name          string
+	age           int
+	is_registered bool
+}
+
+fn register(u User) User {
+	return User{
+		...u
+		is_registered: true
+	}
+}
+
+mut user := User{
+	name: 'abc'
+	age: 23
+}
+user = register(user)
+println(user)
+```
+
+### Trailing struct literal arguments
 
 V doesn't have default function arguments or named arguments, for that trailing struct
 literal syntax can be used instead:
@@ -2469,32 +2497,6 @@ to reduce allocations and copying.
 
 For this reason V doesn't allow the modification of arguments with primitive types (e.g. integers).
 Only more complex types such as arrays and maps may be modified.
-
-#### Struct update syntax
-
-V makes it easy to return a modified version of an object:
-
-```v
-struct User {
-	name          string
-	age           int
-	is_registered bool
-}
-
-fn register(u User) User {
-	return User{
-		...u
-		is_registered: true
-	}
-}
-
-mut user := User{
-	name: 'abc'
-	age: 23
-}
-user = register(user)
-println(user)
-```
 
 ### Variable number of arguments
 
