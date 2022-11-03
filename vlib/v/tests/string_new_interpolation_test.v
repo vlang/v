@@ -6,4 +6,13 @@ fn test_string_new_interpolation() {
 
 	println('{a} {b} {c} {d}')
 	assert '{a} {b} {c} {d}' == '1 2 3 4'
+
+	println('{a}{{b}}')
+	assert '{a}{{b}}' == '1{2}'
+
+	println('{a}\{{b}}')
+	assert '{a}\{{b}}' == '1{2}'
+
+	println('{a}{{{{{b}}}}}')
+	assert '{a}{{{{{b}}}}}' == '1{{{{2}}}}'
 }
