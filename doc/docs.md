@@ -2075,7 +2075,7 @@ struct Foo {
 }
 ```
 
-You can mark a struct field with the `[required]` attribute, to tell V that
+You can mark a struct field with the `[required]` [attribute](#attributes), to tell V that
 that field must be initialized when creating an instance of that struct.
 
 This example will not compile, since the field `n` isn't explicitly initialized:
@@ -4532,7 +4532,7 @@ the compiler would complain about the assignment in `f()` because `s` *"might
 refer to an object stored on stack"*. The assumption made in `g()` that the call
 `r.f(&s)` would only borrow the reference to `s` is wrong.
 
-A solution to this dilemma is the `[heap]` attribute at the declaration of
+A solution to this dilemma is the `[heap]` [attribute](#attributes) at the declaration of
 `struct MyStruct`. It instructs the compiler to *always* allocate `MyStruct`-objects
 on the heap. This way the reference to `s` remains valid even after `g()` returns.
 The compiler takes into consideration that `MyStruct` objects are always heap
