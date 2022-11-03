@@ -2,12 +2,10 @@ module main
 
 import os
 import v.vcache
-import v.util
 
 fn main() {
 	wipe_path(vcache.new_cache_manager([]).basepath, 'V cache')
-	wipe_path(util.get_vtmp_folder(), 'V tmp.c')
-	wipe_path(os.join_path(os.temp_dir(), 'v'), 'V tests')
+	wipe_path(os.vtmp_dir(), 'V tmp.c and tests folder')
 }
 
 fn wipe_path(cpath string, label string) {

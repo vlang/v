@@ -1,7 +1,7 @@
 import os
 import net.unix
 
-const tfolder = os.join_path(os.temp_dir(), 'v', 'unix_test')
+const tfolder = os.join_path(os.vtmp_dir(), 'v', 'unix_test')
 
 const test_port = os.join_path(tfolder, 'unix_domain_socket')
 

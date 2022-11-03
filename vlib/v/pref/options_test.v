@@ -5,7 +5,7 @@ import time
 
 const vexe = @VEXE
 
-const tfolder = os.join_path(os.temp_dir(), 'v', 'custom_compile')
+const tfolder = os.join_path(os.vtmp_dir(), 'v', 'custom_compile')
 
 fn testsuite_begin() {
 	os.mkdir_all(tfolder) or {}

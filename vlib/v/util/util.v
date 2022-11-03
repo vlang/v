@@ -488,18 +488,10 @@ pub fn recompile_file(vexe string, file string) {
 	}
 }
 
+// get_vtmp_folder returns the path to a folder, that is writable to V programs,
+// and specific to the user. It can be overriden by setting the env variable `VTMP`.
 pub fn get_vtmp_folder() string {
-	mut vtmp := os.getenv('VTMP')
-	if vtmp.len > 0 {
-		return vtmp
-	}
-	uid := os.getuid()
-	vtmp = os.join_path_single(os.temp_dir(), 'v_$uid')
-	if !os.exists(vtmp) || !os.is_dir(vtmp) {
-		os.mkdir_all(vtmp, mode: 0o700) or { panic(err) } // keep directory private
-	}
-	os.setenv('VTMP', vtmp, true)
-	return vtmp
+	return os.vtmp_dir()
 }
 
 pub fn should_bundle_module(mod string) bool {

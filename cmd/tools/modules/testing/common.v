@@ -597,9 +597,12 @@ pub fn header(msg string) {
 	flush_stdout()
 }
 
+// setup_new_vtmp_folder creates a new nested folder inside VTMP, then resets VTMP to it,
+// so that V programs/tests will write their temporary files to new location.
+// The new nested folder, and its contents, will get removed after all tests/programs succeed.
 pub fn setup_new_vtmp_folder() string {
 	now := time.sys_mono_now()
-	new_vtmp_dir := os.join_path(os.temp_dir(), 'v', 'tsession_${sync.thread_id().hex()}_$now')
+	new_vtmp_dir := os.join_path(os.vtmp_dir(), 'tsession_${sync.thread_id().hex()}_$now')
 	os.mkdir_all(new_vtmp_dir) or { panic(err) }
 	os.setenv('VTMP', new_vtmp_dir, true)
 	return new_vtmp_dir

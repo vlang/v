@@ -6,7 +6,7 @@ struct User {
 	name string [unique]
 }
 
-const db_folder = os.join_path(os.temp_dir(), 'v', 'orm_sql')
+const db_folder = os.join_path(os.vtmp_dir(), 'v', 'orm_sql')
 
 const db_path = os.join_path(db_folder, 'sql_statement_or_blocks.db')
 

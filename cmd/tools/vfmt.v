@@ -33,7 +33,7 @@ mut:
 
 const (
 	formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
-	vtmp_folder          = util.get_vtmp_folder()
+	vtmp_folder          = os.vtmp_dir()
 	term_colors          = term.can_show_color_on_stderr()
 )
 

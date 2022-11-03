@@ -5,7 +5,7 @@ import net
 // ensure that `net` is used, i.e. no warnings
 const use_net = net.no_timeout
 
-const tfolder = os.join_path(os.temp_dir(), 'v', 'net_and_unix_together')
+const tfolder = os.join_path(os.vtmp_dir(), 'v', 'net_and_unix_together')
 
 const test_port = os.join_path(tfolder, 'unix_domain_socket')
 

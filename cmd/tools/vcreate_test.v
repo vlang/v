@@ -1,6 +1,6 @@
 import os
 
-const test_path = os.join_path(os.temp_dir(), 'v', 'vcreate_test')
+const test_path = os.join_path(os.vtmp_dir(), 'v', 'vcreate_test')
 
 fn init_and_check() ! {
 	os.execute_or_exit('${os.quoted_path(@VEXE)} init')

@@ -33,7 +33,7 @@ TODO: Cleanup this when/if v has better process control/communication primitives
 */
 const (
 	vexe                = os.getenv('VEXE')
-	vtmp_folder         = os.join_path(os.temp_dir(), 'v', 'tests', 'live')
+	vtmp_folder         = os.join_path(os.vtmp_dir(), 'v', 'tests', 'live')
 	tmp_file            = os.join_path(vtmp_folder, 'generated_live_program.tmp.v')
 	source_file         = os.join_path(vtmp_folder, 'generated_live_program.v')
 	genexe_file         = os.join_path(vtmp_folder, 'generated_live_program')

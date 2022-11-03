@@ -2,7 +2,7 @@ module main
 
 import os
 
-const test_path = os.join_path(os.temp_dir(), 'v', 'run_check')
+const test_path = os.join_path(os.vtmp_dir(), 'v', 'run_check')
 
 const vexe = @VEXE
 

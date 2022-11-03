@@ -66,7 +66,7 @@ fn test_all() {
 	mut files := os.ls(dir) or { panic(err) }
 	files.sort()
 	//
-	wrkdir := os.join_path(os.temp_dir(), 'v', 'tests', 'valgrind')
+	wrkdir := os.join_path(os.vtmp_dir(), 'v', 'tests', 'valgrind')
 	os.mkdir_all(wrkdir) or { panic(err) }
 	os.chdir(wrkdir) or {}
 	//

@@ -358,7 +358,7 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 }
 
 pub fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) string {
-	vtmp := util.get_vtmp_folder()
+	vtmp := os.vtmp_dir()
 	mut uniq := ''
 	if !b.pref.reuse_tmpc {
 		uniq = '.$rand.u64()'
