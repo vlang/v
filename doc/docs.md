@@ -122,10 +122,10 @@ To do so, run the command `v up`.
 * [Memory management](#memory-management)
     * [Control](#control)
     * [Stack and Heap](#stack-and-heap)
+* [ORM](#orm)
 
 </td><td valign=top>
 
-* [ORM](#orm)
 * [Writing documentation](#writing-documentation)
     * [Newlines in Documentation Comments](#newlines-in-documentation-comments)
 * [Tools](#tools)
