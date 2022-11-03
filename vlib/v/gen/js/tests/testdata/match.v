@@ -56,11 +56,11 @@ fn match_bool_cond() {
 	volume := 'c:'
 	rooted := false
 	path_separator := '/'
-	println( match true {
+	println(match true {
 		volume.len != 0 { volume }
 		!rooted { '.' }
 		else { path_separator }
-	} )
+	})
 }
 
 fn main() {
