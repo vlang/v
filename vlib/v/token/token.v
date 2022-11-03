@@ -46,7 +46,8 @@ pub enum Kind {
 	hash // #
 	dollar // $
 	at // @
-	str_dollar
+	str_dollar // ${} or $, old interpolation
+	str_lcbr // {interpolation
 	left_shift // <<
 	right_shift // >>
 	unsigned_right_shift // >>>
@@ -269,7 +270,8 @@ fn build_token_str() []string {
 	s[Kind.nl] = 'NLL'
 	s[Kind.dollar] = '$'
 	s[Kind.at] = '@'
-	s[Kind.str_dollar] = '$2'
+	s[Kind.str_dollar] = 'string interpolation1'
+	s[Kind.str_lcbr] = 'string interpolation2'
 	s[Kind.key_assert] = 'assert'
 	s[Kind.key_struct] = 'struct'
 	s[Kind.key_if] = 'if'
@@ -539,6 +541,7 @@ pub fn kind_to_string(k Kind) string {
 		.dollar { 'dollar' }
 		.at { 'at' }
 		.str_dollar { 'str_dollar' }
+		.str_lcbr { 'str_lcbr' }
 		.left_shift { 'left_shift' }
 		.right_shift { 'right_shift' }
 		.unsigned_right_shift { 'unsigned_right_shift' }
@@ -660,6 +663,7 @@ pub fn kind_from_string(s string) !Kind {
 		'dollar' { .dollar }
 		'at' { .at }
 		'str_dollar' { .str_dollar }
+		'str_lcbr' { .str_lcbr }
 		'left_shift' { .left_shift }
 		'right_shift' { .right_shift }
 		'unsigned_right_shift' { .unsigned_right_shift }

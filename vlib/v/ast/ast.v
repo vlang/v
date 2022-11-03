@@ -216,6 +216,7 @@ pub:
 	fills      []bool
 	fmt_poss   []token.Pos
 	pos        token.Pos
+	has_dollar []bool // two interpolation ways are temporarily supported
 pub mut:
 	exprs      []Expr
 	expr_types []Type
