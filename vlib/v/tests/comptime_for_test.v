@@ -48,18 +48,29 @@ fn test_comptime_for() {
 
 fn test_comptime_for_with_if() {
 	println(@FN)
+	mut methods_found := map[string]int{}
 	$for method in App.methods {
 		println('  method: ' + no_lines('$method'))
 		$if method.typ is fn () {
+			methods_found['fn()'] += 1
 			assert method.name in ['run', 'method2']
+		}
+		$if method.typ is fn () int {
+			methods_found['fn() int'] += 1
 		}
 		$if method.return_type is int {
 			assert method.name in ['int_method1', 'int_method2']
+		}
+		$if method.typ is fn (string) {
+			methods_found['fn(string)'] += 1
 		}
 		$if method.args[0].typ is string {
 			assert method.name == 'string_arg'
 		}
 	}
+	assert methods_found['fn()'] == 2
+	assert methods_found['fn() int'] == 2
+	assert methods_found['fn(string)'] == 1
 }
 
 fn test_comptime_for_fields() {

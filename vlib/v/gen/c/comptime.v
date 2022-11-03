@@ -512,20 +512,23 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				}
 				g.writeln('}));\n')
 			}
-			mut sig := 'anon_fn_'
+			mut sig := 'fn ('
 			// skip the first (receiver) arg
 			for j, arg in method.params[1..] {
 				// TODO: ignore mut/pts in sig for now
 				typ := arg.typ.set_nr_muls(0)
-				sig += '$typ'
+				sig += g.table.sym(typ).name
 				if j < method.params.len - 2 {
-					sig += '_'
+					sig += ', '
 				}
 			}
-			sig += '_$method.return_type'
+			sig += ')'
+			ret_type := g.table.sym(method.return_type).name
+			if ret_type != 'void' {
+				sig += ' $ret_type'
+			}
 			styp := g.table.find_type_idx(sig)
-			// println(styp)
-			// if styp == 0 { }
+
 			// TODO: type aliases
 			ret_typ := method.return_type.idx()
 			g.writeln('\t${node.val_var}.typ = $styp;')
