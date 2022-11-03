@@ -554,7 +554,12 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					c.error('`$op` can only be used with interfaces and sum types', node.pos)
 				} else if mut left_sym.info is ast.SumType {
 					if typ !in left_sym.info.variants {
-						c.error('`$left_sym.name` has no variant `$right_sym.name`', node.pos)
+						c.error('`$left_sym.name` has no variant `$right_sym.name`', right_pos)
+					}
+				} else if left_sym.info is ast.Interface {
+					if typ_sym.kind != .interface_ && !c.type_implements(typ, left_type, right_pos) {
+						c.error("`$typ_sym.name` doesn't implemented interface `$left_sym.name`",
+							right_pos)
 					}
 				}
 			}

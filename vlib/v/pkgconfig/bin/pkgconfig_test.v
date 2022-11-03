@@ -13,5 +13,5 @@ fn test_pkgconfig_can_be_compiled() {
 		assert false
 	}
 	assert os.exists(tmp_exe)
-	os.rm(tmp_exe)?
+	os.rm(tmp_exe)!
 }
