@@ -100,7 +100,7 @@ fn main() {
 			if op in ['<<', '>>'] && lt == 'f64' {
 				continue
 			}
-			b.write_string('$lt{match right{')
+			b.write_string('$lt{ match right{')
 			for ct2 in compound_types {
 				if op in ['<<', '>>'] && ct2 == 'Float' {
 					continue
