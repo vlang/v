@@ -451,7 +451,7 @@ f32 f64
 
 isize, usize // platform-dependent, the size is how many bytes it takes to reference any location in memory
 
-voidptr // this one is mostly used for C interoperability
+voidptr // this one is mostly used for [C interoperability](#v-and-c)
 
 any // similar to C's void* and Go's interface{}
 ```
@@ -685,8 +685,8 @@ See all methods of [string](https://modules.vlang.io/index.html#string)
 
 ### Runes
 
-A `rune` represents a single Unicode character and is an alias for `u32`. To denote them, use `
-(backticks) :
+A `rune` represents a single Unicode character and is an alias for `u32`.
+To denote them, use <code>`</code> (backticks) :
 
 ```v
 rocket := `🚀`
@@ -1344,7 +1344,7 @@ print(m)
 Maps are ordered by insertion, like dictionaries in Python. The order is a
 guaranteed language feature. This may change in the future.
 
-See all methods of [map](https://modules.vlang.io/index.html#map)
+See all methods of [map](https://modules.vlang.io/index.html#map) and [maps](https://modules.vlang.io/maps.html).
 
 ## Module imports
 
@@ -2009,7 +2009,7 @@ assert p.x == 10
 ### Heap structs
 
 Structs are allocated on the stack. To allocate a struct on the heap
-and get a reference to it, use the `&` prefix:
+and get a [reference](#references) to it, use the `&` prefix:
 
 ```v
 struct Point {
@@ -2667,6 +2667,8 @@ struct Node<T> {
 ```
 
 To dereference a reference, use the `*` operator, just like in C.
+
+see also [Stack and Heap](#stack-and-heap).
 
 ### Parameter evaluation order
 
@@ -5445,6 +5447,8 @@ conditional blocks inside it, i.e. `$if linux {}` etc.
 - `_notd_customflag.v` => similar to _d_customflag.v, but will be used
 *only* if you do NOT pass `-d customflag` to V.
 
+See also [Cross Compilation](#cross-compilation).
+
 ## Memory-unsafe code
 
 Sometimes for efficiency you may want to write low-level code that can potentially
@@ -5626,8 +5630,9 @@ the boolean expression is highly improbable. In the JS backend, that does nothin
 ## Atomics
 
 V has no special support for atomics, yet, nevertheless it's possible to treat variables as atomics
-by calling C functions from V. The standard C11 atomic functions like `atomic_store()` are usually
-defined with the help of macros and C compiler magic to provide a kind of *overloaded C functions*.
+by [calling C](#v-and-c) functions from V. The standard C11 atomic functions like `atomic_store()`
+are usually defined with the help of macros and C compiler magic to provide a kind of
+*overloaded C functions*.
 Since V does not support overloading functions by intention there are wrapper functions defined in
 C headers named `atomic.h` that are part of the V compiler infrastructure.
 
