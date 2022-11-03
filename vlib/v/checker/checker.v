@@ -3112,6 +3112,12 @@ pub fn (mut c Checker) concat_expr(mut node ast.ConcatExpr) ast.Type {
 		node.return_type = typ
 		return typ
 	} else {
+		for i := 0; i < mr_types.len; i++ {
+			if mr_types[i] == ast.void_type {
+				c.error('type `void` cannot be used in multi-return', node.vals[i].pos())
+				return ast.void_type
+			}
+		}
 		typ := c.table.find_or_register_multi_return(mr_types)
 		ast.new_type(typ)
 		node.return_type = typ
