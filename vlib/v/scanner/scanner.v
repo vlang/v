@@ -811,7 +811,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					next_char := s.text[s.pos + 1]
 					// Handle new `hello {name}` string interpolation
 					if !s.is_inside_interpolation && !next_char.is_space() && next_char != `}`
-						&& prev_char !in [`$`, `{`] {
+						&& prev_char != `$` {
 						s.is_inside_interpolation = true
 						return s.new_token(.str_lcbr, '', 1)
 					}
