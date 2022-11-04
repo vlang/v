@@ -108,7 +108,7 @@ int usersapi_get_number_of_users() {
 
 ```
 
-```
+```v
 module usersapi
 
 fn C.usersapi_create_user(name &i8, password &i8, age int)
