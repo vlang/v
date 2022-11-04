@@ -1395,6 +1395,20 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 				}
 			}
 		}
+
+		if field.typ == ast.int_type {
+			if mut field.expr is ast.IntegerLiteral {
+				mut is_large := field.expr.val.len > 13
+				if !is_large && field.expr.val.len > 8 {
+					val := field.expr.val.i64()
+					is_large = val > checker.int_max || val < checker.int_min
+				}
+				if is_large {
+					c.error('overflow in implicit type `int`, use explicit type casting instead',
+						field.expr.pos)
+				}
+			}
+		}
 		c.const_deps = []
 		c.const_var = prev_const_var
 	}
