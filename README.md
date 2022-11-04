@@ -67,7 +67,7 @@ functional `git` installation.
 
 To get started, simply try to execute the following in your terminal/shell:
 ```bash
-git clone https://github.com/vlang/v
+git clone --depth=1 https://github.com/vlang/v
 cd v
 make
 # HINT: Using Windows?: run make.bat in the cmd.exe shell
@@ -148,7 +148,7 @@ folder somewhere else.
 <details><summary>Expand Docker instructions</summary>
 
 ```bash
-git clone https://github.com/vlang/v
+git clone --depth=1 https://github.com/vlang/v
 cd v
 docker build -t vlang .
 docker run --rm -it vlang:latest
@@ -157,7 +157,7 @@ docker run --rm -it vlang:latest
 ### Docker with Alpine/musl
 
 ```bash
-git clone https://github.com/vlang/v
+git clone --depth=1 https://github.com/vlang/v
 cd v
 docker build -t vlang --file=Dockerfile.alpine .
 docker run --rm -it vlang:latest
