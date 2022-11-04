@@ -39,14 +39,11 @@ const verify_known_failing_exceptions = [
 	'examples/sokol/03_march_tracing_glsl/rt_glsl.v',
 	'examples/sokol/04_multi_shader_glsl/rt_glsl.v',
 	'examples/sokol/05_instancing_glsl/rt_glsl.v',
-	'examples/sokol/06_obj_viewer/show_obj.v',
 	'vlib/v/checker/tests/modules/deprecated_module/main.v' /* adds deprecated_module. module prefix to imports, even though the folder has v.mod */,
 	'vlib/gg/m4/graphic.v',
 	'vlib/gg/m4/m4_test.v',
 	'vlib/gg/m4/matrix.v',
-	'vlib/builtin/int_test.v' /* special number formatting that should be tested */,
 	// TODOs and unfixed vfmt bugs
-	'vlib/v/gen/js/tests/js.v', /* local `hello` fn, gets replaced with module `hello` aliased as `hl` */
 	'vlib/v/tests/inout/string_interpolation_inner_expr_cbr.vv', /* for new string interpolation, prevent resolving to nested interpolation */
 	'vlib/v/tests/string_new_interpolation_test.v', /* new string interpolation */
 ]
