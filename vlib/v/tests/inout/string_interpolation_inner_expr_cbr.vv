@@ -5,5 +5,5 @@ enum Foo {
 
 fn main() {
 	println('Foo = {Foo.def}')
-	println('Foo = {unsafe{Foo(1)}}')
+	println('Foo = {unsafe { Foo(1) }}')
 }
