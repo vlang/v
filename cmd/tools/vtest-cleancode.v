@@ -33,9 +33,7 @@ const vet_folders = [
 	'examples/term.ui',
 ]
 
-const verify_known_failing_exceptions = [
-	'do_not_delete_this',
-]
+const verify_known_failing_exceptions = []string{}
 
 const vfmt_verify_list = [
 	'cmd/',
@@ -44,11 +42,7 @@ const vfmt_verify_list = [
 	'vlib/',
 ]
 
-const vfmt_known_failing_exceptions = arrays.merge(verify_known_failing_exceptions, [
-	'vlib/regex/regex_test.v' /* contains meaningfull formatting of the test case data */,
-	'vlib/crypto/sha512/sha512block_generic.v' /* formatting of large constant arrays wraps to too many lines */,
-	'vlib/crypto/aes/const.v' /* formatting of large constant arrays wraps to too many lines */,
-])
+const vfmt_known_failing_exceptions = arrays.merge(verify_known_failing_exceptions, []string{})
 
 const vexe = os.getenv('VEXE')
 
