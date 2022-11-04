@@ -63,7 +63,7 @@ const (
 	symopt_load_lines            = 0x00000010
 	symopt_include_32bit_modules = 0x00002000
 	symopt_allow_zero_address    = 0x01000000
-	symopt_debug                 = 0x80000000
+	symopt_debug                 = u32(0x80000000)
 )
 
 // g_original_codepage - used to restore the original windows console code page when exiting
