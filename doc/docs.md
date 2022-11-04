@@ -60,9 +60,9 @@ To do so, run the command `v up`.
     * [Module import aliasing](#module-import-aliasing)
 * [Statements & expressions](#statements--expressions)
     * [If](#if)
+    * [Match](#match)
     * [In operator](#in-operator)
     * [For loop](#for-loop)
-    * [Match](#match)
     * [Defer](#defer)
     * [Goto](#goto)
 * [Structs](#structs)
@@ -2064,6 +2064,7 @@ struct Foo {
 
 All struct fields are zeroed by default during the creation of the struct.
 Array and map fields are allocated.
+In case of reference value, [see](#structs-with-reference-fields).
 
 It's also possible to define custom default values.
 
