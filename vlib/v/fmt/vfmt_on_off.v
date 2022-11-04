@@ -52,7 +52,7 @@ pub fn (mut f Fmt) vfmt_on(on_line int) {
 	f.out.cut_to(f.format_state.last_off_out_len)
 	f.out.writeln('')
 	source_lines := f.get_source_lines()#[f.format_state.last_off_source_line + 1..on_line]
-	for i, line in source_lines {
+	for line in source_lines {
 		f.out.writeln(line)
 	}
 	f.format_state.reset()
