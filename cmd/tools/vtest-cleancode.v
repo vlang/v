@@ -34,10 +34,6 @@ const vet_folders = [
 ]
 
 const verify_known_failing_exceptions = [
-	// Handcrafted meaningful formatting of code parts (mostly arrays)
-	'vlib/gg/m4/graphic.v',
-	'vlib/gg/m4/m4_test.v',
-	'vlib/gg/m4/matrix.v'
 	// TODOs and unfixed vfmt bugs
 	'vlib/v/tests/inout/string_interpolation_inner_expr_cbr.vv', /* for new string interpolation, prevent resolving to nested interpolation */
 	'vlib/v/tests/string_new_interpolation_test.v', /* new string interpolation */
