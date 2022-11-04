@@ -35,7 +35,6 @@ const vet_folders = [
 
 const verify_known_failing_exceptions = [
 	// Handcrafted meaningful formatting of code parts (mostly arrays)
-	'examples/sokol/02_cubes_glsl/cube_glsl.v',
 	'examples/sokol/03_march_tracing_glsl/rt_glsl.v',
 	'examples/sokol/04_multi_shader_glsl/rt_glsl.v',
 	'examples/sokol/05_instancing_glsl/rt_glsl.v',
