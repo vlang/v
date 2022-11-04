@@ -25,17 +25,17 @@ const (
 	init2     = 0x3C6EF372
 	init3     = u32(0xA54FF53A)
 	init4     = 0x510E527F
-	init5     = 0x9B05688C
+	init5     = u32(0x9B05688C)
 	init6     = 0x1F83D9AB
 	init7     = 0x5BE0CD19
-	init0_224 = 0xC1059ED8
+	init0_224 = u32(0xC1059ED8)
 	init1_224 = 0x367CD507
 	init2_224 = 0x3070DD17
-	init3_224 = 0xF70E5939
-	init4_224 = 0xFFC00B31
+	init3_224 = u32(0xF70E5939)
+	init4_224 = u32(0xFFC00B31)
 	init5_224 = 0x68581511
 	init6_224 = 0x64F98FA7
-	init7_224 = 0xBEFA4FA4
+	init7_224 = u32(0xBEFA4FA4)
 )
 
 // digest represents the partial evaluation of a checksum.
