@@ -27,4 +27,11 @@ fn test_string_new_interpolation() {
 	assert '{n >= 10}' == 'true'
 	println('{n <= 10}')
 	assert '{n <= 10}' == 'false'
+
+	println('{n:10}')
+	assert '{n:10}' == '        22'
+
+	f := 2.234
+	print('{f:05.2f}')
+	assert '{f:05.2f}' == '02.23'
 }
