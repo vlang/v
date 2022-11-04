@@ -567,7 +567,7 @@ fn (mut s Scanner) scan_all_tokens_in_buffer() {
 	s.tidx = 0
 	$if debugscanner ? {
 		for t in s.all_tokens {
-			eprintln('> tidx:{t.tidx:-5} | kind: {t.kind:-10} | lit: {t.lit}')
+			eprintln('> tidx:${t.tidx:-5} | kind: ${t.kind:-10} | lit: {t.lit}')
 		}
 	}
 }
@@ -1712,6 +1712,6 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 
 fn (mut s Scanner) trace(fbase string, message string) {
 	if s.file_base == fbase {
-		println('> s.trace | {fbase:-10s} | {message}')
+		println('> s.trace | ${fbase:-10s} | {message}')
 	}
 }

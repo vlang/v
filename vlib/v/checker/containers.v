@@ -196,7 +196,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 					}
 				}
 				c.check_expected(typ, elem_type) or {
-					c.error('invalid array element: $err.msg()', expr.pos())
+					c.error('invalid array element: {err.msg()}', expr.pos())
 				}
 			}
 		}
@@ -233,7 +233,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 						fixed_size = comptime_value.i64() or { fixed_size }
 					}
 				} else {
-					c.error('non-constant array bound `$init_expr.name`', init_expr.pos)
+					c.error('non-constant array bound `{init_expr.name}`', init_expr.pos)
 				}
 			}
 			ast.InfixExpr {
@@ -246,7 +246,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 		}
 		if fixed_size <= 0 {
-			c.error('fixed size cannot be zero or negative (fixed_size: $fixed_size)',
+			c.error('fixed size cannot be zero or negative (fixed_size: {fixed_size})',
 				init_expr.pos())
 		}
 		idx := c.table.find_or_register_array_fixed(node.elem_type, int(fixed_size), init_expr)
@@ -265,7 +265,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos token.Pos) {
 	sym := c.table.sym(c.unwrap_generic(c.expr(expr)))
 	if sym.kind !in [.int, .int_literal] {
-		c.error('array $para needs to be an int', pos)
+		c.error('array {para} needs to be an int', pos)
 	}
 }
 
@@ -288,7 +288,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			return node.typ
 		} else {
 			if sym.kind == .struct_ {
-				c.error('`{}` can not be used for initialising empty structs any more. Use `${c.table.type_to_str(c.expected_type)}{}` instead.',
+				c.error('`{}` can not be used for initialising empty structs any more. Use `{c.table.type_to_str(c.expected_type)}{}` instead.',
 					node.pos)
 			} else {
 				c.error('invalid empty map initialisation syntax, use e.g. map[string]int{} instead',
@@ -307,10 +307,10 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				if val_info.generic_types.len > 0 && val_info.concrete_types.len == 0
 					&& !info.value_type.has_flag(.generic) {
 					if c.table.cur_concrete_types.len == 0 {
-						c.error('generic struct `$val_sym.name` must specify type parameter, e.g. Foo<int>',
+						c.error('generic struct `{val_sym.name}` must specify type parameter, e.g. Foo<int>',
 							node.pos)
 					} else {
-						c.error('generic struct `$val_sym.name` must specify type parameter, e.g. Foo<T>',
+						c.error('generic struct `{val_sym.name}` must specify type parameter, e.g. Foo<T>',
 							node.pos)
 					}
 				}
@@ -358,13 +358,13 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			if !c.check_types(key_type, key0_type) || (i == 0 && key_type.is_number()
 				&& key0_type.is_number() && key0_type != ast.mktyp(key_type)) {
 				msg := c.expected_msg(key_type, key0_type)
-				c.error('invalid map key: $msg', key.pos())
+				c.error('invalid map key: {msg}', key.pos())
 				same_key_type = false
 			}
 			if !c.check_types(val_type, val0_type) || (i == 0 && val_type.is_number()
 				&& val0_type.is_number() && val0_type != ast.mktyp(val_type)) {
 				msg := c.expected_msg(val_type, val0_type)
-				c.error('invalid map value: $msg', val.pos())
+				c.error('invalid map value: {msg}', val.pos())
 			}
 		}
 		if same_key_type {

@@ -269,20 +269,20 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 			// the same type like `Type<int> and &Type<>`
 			if (got.is_ptr() != expected.is_ptr()) || !c.check_same_module(got, expected) {
 				got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
-				return error('cannot use `$got_typ_str` as `$expected_typ_str`')
+				return error('cannot use `{got_typ_str}` as `{expected_typ_str}`')
 			}
 			return
 		}
 		if got == ast.void_type {
-			return error('`$arg.expr` (no value) used as value')
+			return error('`{arg.expr}` (no value) used as value')
 		}
 		got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
-		return error('cannot use `$got_typ_str` as `$expected_typ_str`')
+		return error('cannot use `{got_typ_str}` as `{expected_typ_str}`')
 	}
 
 	if got != ast.void_type {
 		got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
-		return error('cannot use `$got_typ_str` as `$expected_typ_str`')
+		return error('cannot use `{got_typ_str}` as `{expected_typ_str}`')
 	}
 }
 
@@ -416,7 +416,7 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 				c.add_error_detail('expected argument ${i + 1} to be $exp_arg_pointedness, but the passed argument ${
 					i + 1} is $got_arg_pointedness')
 			} else {
-				c.add_error_detail('`$exp_fn.name`\'s expected argument `$exp_arg.name` to be $exp_arg_pointedness, but the passed argument `$got_arg.name` is $got_arg_pointedness')
+				c.add_error_detail('`{exp_fn.name}`\'s expected argument `{exp_arg.name}` to be {exp_arg_pointedness}, but the passed argument `{got_arg.name}` is {got_arg_pointedness}')
 			}
 			return false
 		} else if exp_arg_is_ptr && got_arg_is_ptr {
@@ -444,13 +444,13 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 			// allow `bool << 2` in translated C code
 			return ast.int_type
 		}
-		c.error('invalid operation: shift on type `$left_sym.name`', node.left.pos())
+		c.error('invalid operation: shift on type `{left_sym.name}`', node.left.pos())
 		return ast.void_type
 	}
 	if !right_type.is_int() && !c.pref.translated {
 		left_sym := c.table.sym(left_type)
 		right_sym := c.table.sym(right_type)
-		c.error('cannot shift non-integer type `$right_sym.name` into type `$left_sym.name`',
+		c.error('cannot shift non-integer type `{right_sym.name}` into type `{left_sym.name}`',
 			node.right.pos())
 		return ast.void_type
 	}
@@ -493,7 +493,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 			left_type_final := ast.Type(left_sym_final.idx)
 			if node.op == .left_shift && left_type_final.is_signed() && !(c.inside_unsafe
 				&& c.is_generated) {
-				c.note('shifting a value from a signed type `$left_sym_final.name` can change the sign',
+				c.note('shifting a value from a signed type `{left_sym_final.name}` can change the sign',
 					node.left.pos())
 			}
 			if node.ct_right_value_evaled {
@@ -518,7 +518,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 						else { 64 }
 					}
 					if ival > moffset && !c.pref.translated && !c.file.is_translated {
-						c.error('shift count for type `$left_sym_final.name` too large (maximum: $moffset bits)',
+						c.error('shift count for type `{left_sym_final.name}` too large (maximum: {moffset} bits)',
 							node.right.pos())
 						return left_type
 					}
@@ -537,7 +537,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 			}
 		}
 		else {
-			c.error('unknown shift operator: $node.op', node.pos)
+			c.error('unknown shift operator: {node.op}', node.pos)
 			return left_type
 		}
 	}
@@ -629,7 +629,7 @@ pub fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ! {
 fn (c &Checker) expected_msg(got ast.Type, expected ast.Type) string {
 	exps := c.table.type_to_str(expected)
 	gots := c.table.type_to_str(got)
-	return 'expected `$exps`, not `$gots`'
+	return 'expected `{exps}`, not `{gots}`'
 }
 
 pub fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
@@ -826,13 +826,13 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 			}
 		}
 		if typ == ast.void_type {
-			c.error('could not infer generic type `$gt_name` in call to `$func.name`',
+			c.error('could not infer generic type `{gt_name}` in call to `{func.name}`',
 				node.pos)
 			return
 		}
 		if c.pref.is_verbose {
 			s := c.table.type_to_str(typ)
-			println('inferred `$func.name<$s>`')
+			println('inferred `{func.name}<{s}>`')
 		}
 		inferred_types << c.unwrap_generic(typ)
 		node.concrete_types << typ

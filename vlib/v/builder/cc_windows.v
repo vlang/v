@@ -10,10 +10,10 @@ pub fn (mut v Builder) find_win_cc() ! {
 	$if !windows {
 		return
 	}
-	ccompiler_version_res := os.execute('${os.quoted_path(v.pref.ccompiler)} -v')
+	ccompiler_version_res := os.execute('{os.quoted_path(v.pref.ccompiler)} -v')
 	if ccompiler_version_res.exit_code != 0 {
 		if v.pref.is_verbose {
-			println('$v.pref.ccompiler not found, looking for msvc...')
+			println('{v.pref.ccompiler} not found, looking for msvc...')
 		}
 		find_msvc(v.pref.m64) or {
 			if v.pref.is_verbose {
@@ -21,7 +21,7 @@ pub fn (mut v Builder) find_win_cc() ! {
 			}
 			vpath := os.dir(pref.vexe_path())
 			thirdparty_tcc := os.join_path(vpath, 'thirdparty', 'tcc', 'tcc.exe')
-			tcc_version_res := os.execute('${os.quoted_path(thirdparty_tcc)} -v')
+			tcc_version_res := os.execute('{os.quoted_path(thirdparty_tcc)} -v')
 			if tcc_version_res.exit_code != 0 {
 				if v.pref.is_verbose {
 					println('tcc not found')

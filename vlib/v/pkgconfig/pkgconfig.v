@@ -149,13 +149,13 @@ fn (mut pc PkgConfig) resolve(pkgname string) ?string {
 			pc.paths << '.'
 		}
 		for path in pc.paths {
-			file := '$path/${pkgname}.pc'
+			file := '{path}/{pkgname}.pc'
 			if os.exists(file) {
 				return file
 			}
 		}
 	}
-	return error('Cannot find "$pkgname" pkgconfig file')
+	return error('Cannot find "{pkgname}" pkgconfig file')
 }
 
 pub fn atleast(v string) bool {
@@ -204,12 +204,12 @@ fn (mut pc PkgConfig) load_require(dep string) ? {
 	}
 	depfile := pcdep.resolve(dep) or {
 		if pc.options.debug {
-			eprintln('cannot resolve $dep')
+			eprintln('cannot resolve {dep}')
 		}
-		return error('could not resolve dependency $dep')
+		return error('could not resolve dependency {dep}')
 	}
 	if !pcdep.parse(depfile) {
-		return error('required file "$depfile" could not be parsed')
+		return error('required file "{depfile}" could not be parsed')
 	}
 	pcdep.load_requires()?
 	pc.extend(pcdep)?
@@ -251,7 +251,7 @@ pub fn load(pkgname string, options Options) ?&PkgConfig {
 	pc.load_paths()
 	file := pc.resolve(pkgname) or { return err }
 	if !pc.parse(file) {
-		return error('file "$file" could not be parsed')
+		return error('file "{file}" could not be parsed')
 	}
 	if !options.norecurse {
 		pc.load_requires()?

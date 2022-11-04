@@ -42,7 +42,7 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 			}
 			mut allowed := false
 			for cdefine in prefs.compile_defines {
-				file_postfixes := ['_d_${cdefine}.v', '_d_${cdefine}.c.v']
+				file_postfixes := ['_d_{cdefine}.v', '_d_{cdefine}.c.v']
 				for file_postfix in file_postfixes {
 					if file.ends_with(file_postfix) {
 						allowed = true
@@ -60,7 +60,7 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		if file.contains('_notd_') {
 			mut allowed := true
 			for cdefine in prefs.compile_defines {
-				file_postfixes := ['_notd_${cdefine}.v', '_notd_${cdefine}.c.v']
+				file_postfixes := ['_notd_{cdefine}.v', '_notd_{cdefine}.c.v']
 				for file_postfix in file_postfixes {
 					if file.ends_with(file_postfix) {
 						allowed = false
@@ -95,7 +95,7 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		no_postfix_key := fname_without_platform_postfix(file)
 		if no_postfix_key in fnames_no_postfixes {
 			if prefs.is_verbose {
-				println('>>> should_compile_filtered_files: skipping _default.c.v file $file ; the specialized versions are: ${fnames_no_postfixes[no_postfix_key]}')
+				println('>>> should_compile_filtered_files: skipping _default.c.v file {file} ; the specialized versions are: {fnames_no_postfixes[no_postfix_key]}')
 			}
 			continue
 		}
@@ -103,7 +103,7 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 	}
 	if prefs.is_verbose {
 		// println('>>> prefs: $prefs')
-		println('>>> should_compile_filtered_files: res: $res')
+		println('>>> should_compile_filtered_files: res: {res}')
 	}
 	return res
 }

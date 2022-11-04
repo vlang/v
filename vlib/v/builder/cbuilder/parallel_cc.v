@@ -9,7 +9,7 @@ import sync.pool
 
 fn parallel_cc(mut b builder.Builder, header string, res string, out_str string, out_fn_start_pos []int) {
 	c_files := util.nr_jobs
-	println('> c_files: $c_files | util.nr_jobs: $util.nr_jobs')
+	println('> c_files: {c_files} | util.nr_jobs: {util.nr_jobs}')
 	out_h := header.replace_once('static char * v_typeof_interface_IError', 'char * v_typeof_interface_IError')
 	os.write_file('out.h', out_h) or { panic(err) }
 	// Write generated stuff in `g.out` before and after the `out_fn_start_pos` locations,
@@ -25,7 +25,7 @@ fn parallel_cc(mut b builder.Builder, header string, res string, out_str string,
 	mut out_files := []os.File{len: c_files}
 	mut fnames := []string{}
 	for i in 0 .. c_files {
-		fname := 'out_${i + 1}.c'
+		fname := 'out_{i + 1}.c'
 		fnames << fname
 		out_files[i] = os.create(fname) or { panic(err) }
 		out_files[i].writeln('#include "out.h"\n') or { panic(err) }
@@ -33,7 +33,7 @@ fn parallel_cc(mut b builder.Builder, header string, res string, out_str string,
 	// out_fn_start_pos.sort()
 	for i, fn_pos in out_fn_start_pos {
 		if prev_fn_pos >= out_str.len || fn_pos >= out_str.len || prev_fn_pos > fn_pos {
-			println('> EXITING i=$i out of $out_fn_start_pos.len prev_pos=$prev_fn_pos fn_pos=$fn_pos')
+			println('> EXITING i={i} out of {out_fn_start_pos.len} prev_pos={prev_fn_pos} fn_pos={fn_pos}')
 			break
 		}
 		if i == 0 {
@@ -71,14 +71,14 @@ fn parallel_cc(mut b builder.Builder, header string, res string, out_str string,
 fn build_parallel_o_cb(p &pool.PoolProcessor, idx int, wid int) voidptr {
 	postfix := p.get_item<string>(idx)
 	sw := time.new_stopwatch()
-	cmd := '${os.quoted_path(cbuilder.cc_compiler)} $cbuilder.cc_cflags -c -w -o out_${postfix}.o out_${postfix}.c'
+	cmd := '{os.quoted_path(cbuilder.cc_compiler)} {cbuilder.cc_cflags} -c -w -o out_{postfix}.o out_{postfix}.c'
 	res := os.execute(cmd)
 	eprint_time('c cmd', cmd, res, sw)
 	return unsafe { nil }
 }
 
 fn eprint_time(label string, cmd string, res os.Result, sw time.StopWatch) {
-	eprintln('> $label: `$cmd` => $res.exit_code , $sw.elapsed().milliseconds() ms')
+	eprintln('> {label}: `{cmd}` => {res.exit_code} , {sw.elapsed().milliseconds()} ms')
 	if res.exit_code != 0 {
 		eprintln(res.output)
 	}
