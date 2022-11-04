@@ -441,7 +441,7 @@ pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 
 pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	if f.is_debug {
-		eprintln('stmt: ${node.pos:-42} | node: ${node.type_name():-20}')
+		eprintln('stmt ${node.type_name():-20} | pos: ${node.pos.line_str()}')
 	}
 	match node {
 		ast.EmptyStmt, ast.NodeError {}
@@ -544,7 +544,7 @@ fn stmt_is_single_line(stmt ast.Stmt) bool {
 pub fn (mut f Fmt) expr(node_ ast.Expr) {
 	mut node := unsafe { node_ }
 	if f.is_debug {
-		eprintln('expr: ${node.pos():-42} | node: ${node.type_name():-20} | $node.str()')
+		eprintln('expr ${node.type_name():-20} | pos: ${node.pos().line_str()} | $node.str()')
 	}
 	match mut node {
 		ast.NodeError {}
