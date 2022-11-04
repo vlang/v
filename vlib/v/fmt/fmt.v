@@ -336,9 +336,18 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 			continue
 		}
 		already_imported[import_text] = true
-		f.out_imports.writeln(import_text)
-		f.import_comments(imp.comments, inline: true)
-		f.import_comments(imp.next_comments)
+
+		if !f.format_state.is_vfmt_on {
+			import_original_source_lines := f.get_source_lines()#[imp.pos.line_nr..
+				imp.pos.last_line + 1].join('\n')
+			f.out_imports.writeln(import_original_source_lines)
+			// NOTE: imp.comments are on the *same line*, so they are already included in import_original_source_lines
+			f.import_comments(imp.next_comments)
+		} else {
+			f.out_imports.writeln(import_text)
+			f.import_comments(imp.comments, inline: true)
+			f.import_comments(imp.next_comments)
+		}
 		num_imports++
 	}
 	if num_imports > 0 {

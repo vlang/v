@@ -35,10 +35,7 @@ const vet_folders = [
 
 const verify_known_failing_exceptions = [
 	// Handcrafted meaningful formatting of code parts (mostly arrays)
-	'examples/sokol/03_march_tracing_glsl/rt_glsl.v',
-	'examples/sokol/04_multi_shader_glsl/rt_glsl.v',
 	'examples/sokol/05_instancing_glsl/rt_glsl.v',
-	'vlib/v/checker/tests/modules/deprecated_module/main.v' /* adds deprecated_module. module prefix to imports, even though the folder has v.mod */,
 	'vlib/gg/m4/graphic.v',
 	'vlib/gg/m4/m4_test.v',
 	'vlib/gg/m4/matrix.v'
