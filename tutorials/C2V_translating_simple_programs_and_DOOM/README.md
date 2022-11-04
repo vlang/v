@@ -113,13 +113,13 @@ module usersapi
 
 fn C.usersapi_create_user(name &i8, password &i8, age int)
 
-pub fn f create_user(name &i8, password &i8, age int)  {
+pub fn create_user(name &i8, password &i8, age int)  {
     C.usersapi_create_user(name, password, age)
 }
 
 fn C.usersapi_get_number_of_users() int
 
-pub fn f get_number_of_users() int {
+pub fn get_number_of_users() int {
     return C.usersapi_get_number_of_users()
 }
 ```
