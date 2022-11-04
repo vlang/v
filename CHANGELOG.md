@@ -1,3 +1,6 @@
+## V 0.3.3
+ -*Not yet released*
+ - vfmt now supports `// vfmt off` and `// vfmt on` for turning off the formatting locally for *short* snippets of code. Useful for keeping your carefully arranged matrices in tact.
 ## V 0.3.2
 *31 Oct 2022*
 - New simplified string interpolation: `println("Hello, {name}!")`. It will be the only way, old syntax (`${name}` and `$name`)
