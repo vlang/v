@@ -21,7 +21,7 @@ pub const (
 const (
 	chunk     = 64
 	init0     = 0x6A09E667
-	init1     = 0xBB67AE85
+	init1     = u32(0xBB67AE85)
 	init2     = 0x3C6EF372
 	init3     = 0xA54FF53A
 	init4     = 0x510E527F
