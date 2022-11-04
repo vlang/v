@@ -1931,6 +1931,12 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			}
 
 			// println("No good exit!!")
+			if re.prog[re.prog_len - 1].ist == regex.ist_group_end {
+				// println("last ist is a group end!")
+				if re.prog[re.prog_len - 1].group_rep >= re.prog[re.prog_len - 1].rep_min {
+					return state.first_match, state.i
+				}
+			}
 			return regex.no_match_found, state.i
 		}
 

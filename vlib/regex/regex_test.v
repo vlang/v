@@ -376,6 +376,12 @@ find_all_test_suite = [
 		r"([^\n]*)",
 		[0, 2],
 		['ab']
+	},
+	Test_find_all{
+		"ab",
+		r"([^\n]|a)*",
+		[0, 2],
+		['ab']
 	}
 
 ]
