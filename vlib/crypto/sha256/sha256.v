@@ -23,7 +23,7 @@ const (
 	init0     = 0x6A09E667
 	init1     = u32(0xBB67AE85)
 	init2     = 0x3C6EF372
-	init3     = 0xA54FF53A
+	init3     = u32(0xA54FF53A)
 	init4     = 0x510E527F
 	init5     = 0x9B05688C
 	init6     = 0x1F83D9AB
