@@ -50,9 +50,16 @@ pub mut:
 	is_mbranch_expr    bool // match a { x...y { } }
 	fn_scope           &ast.Scope = unsafe { nil }
 	wsinfix_depth      int
+	format_state       FormatState
+	source_text        string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
 }
 
-pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug bool) string {
+[params]
+pub struct FmtOptions {
+	source_text string
+}
+
+pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug bool, options FmtOptions) string {
 	mut f := Fmt{
 		file: file
 		table: table
@@ -61,6 +68,7 @@ pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug boo
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
 	}
+	f.source_text = options.source_text
 	f.process_file_imports(file)
 	f.set_current_module_name('main')
 	// As these are toplevel stmts, the indent increase done in f.stmts() has to be compensated
@@ -441,7 +449,7 @@ pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 
 pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	if f.is_debug {
-		eprintln('stmt ${node.type_name():-20} | pos: ${node.pos.line_str()}')
+		eprintln('stmt ${node.type_name():-20} | pos: $node.pos.line_str()')
 	}
 	match node {
 		ast.EmptyStmt, ast.NodeError {}
@@ -544,7 +552,7 @@ fn stmt_is_single_line(stmt ast.Stmt) bool {
 pub fn (mut f Fmt) expr(node_ ast.Expr) {
 	mut node := unsafe { node_ }
 	if f.is_debug {
-		eprintln('expr ${node.type_name():-20} | pos: ${node.pos().line_str()} | $node.str()')
+		eprintln('expr ${node.type_name():-20} | pos: $node.pos().line_str() | $node.str()')
 	}
 	match mut node {
 		ast.NodeError {}
