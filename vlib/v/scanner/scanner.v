@@ -1327,7 +1327,7 @@ fn (s Scanner) is_valid_interpolation(start_pos int) bool {
 	mut is_valid_inter := true
 	mut has_rcbr := false
 	mut is_assign := true
-	for i := start_pos; i < s.text.len; i++ {
+	for i := start_pos; i < s.text.len - 1; i++ {
 		if s.text[i] == s.quote {
 			break
 		}
