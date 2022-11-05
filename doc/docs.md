@@ -3802,9 +3802,9 @@ fn main() {
 }
 ```
 
-There's also a `go` keyword. Right now `go foo()` will be automatically renamed via vfmt to
-`spawn foo()`,
-and there will be a way to launch a coroutine with `go` (a lightweight thread managed by the runtime).
+There's also a `go` keyword. Right now `go foo()` will be automatically renamed via vfmt 
+to `spawn foo()`, and there will be a way to launch a coroutine with `go` (a lightweight
+thread managed by the runtime).
 
 Sometimes it is necessary to wait until a parallel thread has finished. This can
 be done by assigning a *handle* to the started thread and calling the `wait()` method
