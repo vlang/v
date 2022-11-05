@@ -132,6 +132,7 @@ pub enum Kind {
 	key_static
 	key_volatile
 	key_unsafe
+	key_spawn
 	keyword_end
 	_end_
 }
@@ -320,6 +321,7 @@ fn build_token_str() []string {
 	s[Kind.key_nil] = 'nil'
 	s[Kind.key_offsetof] = '__offsetof'
 	s[Kind.key_is] = 'is'
+	s[Kind.key_spawn] = 'spawn'
 	// The following kinds are not for tokens returned by the V scanner.
 	// They are used just for organisation/ease of checking:
 	s[Kind.keyword_beg] = 'keyword_beg'
@@ -625,6 +627,7 @@ pub fn kind_to_string(k Kind) string {
 		.key_static { 'key_static' }
 		.key_volatile { 'key_volatile' }
 		.key_unsafe { 'key_unsafe' }
+		.key_spawn { 'key_spawn' }
 		.keyword_end { 'keyword_end' }
 		._end_ { '_end_' }
 		.key_nil { 'key_nil' }
@@ -747,6 +750,7 @@ pub fn kind_from_string(s string) !Kind {
 		'key_static' { .key_static }
 		'key_volatile' { .key_volatile }
 		'key_unsafe' { .key_unsafe }
+		'key_spawn' { .key_spawn }
 		'keyword_end' { .keyword_end }
 		'_end_' { ._end_ }
 		else { error('unknown') }
