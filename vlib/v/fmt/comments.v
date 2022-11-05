@@ -26,6 +26,16 @@ pub struct CommentsOptions {
 }
 
 pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
+	if node.text.starts_with('\x01 vfmt on') {
+		f.vfmt_on(node.pos.line_nr)
+	}
+	defer {
+		// ensure that the `vfmt off` comment itself was sent to the output,
+		// by defering the check for that state transition:
+		if node.text.starts_with('\x01 vfmt off') {
+			f.vfmt_off(node.pos.line_nr)
+		}
+	}
 	// Shebang in .vsh files
 	if node.text.starts_with('#!') {
 		f.writeln(node.text)

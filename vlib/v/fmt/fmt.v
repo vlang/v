@@ -50,9 +50,16 @@ pub mut:
 	is_mbranch_expr    bool // match a { x...y { } }
 	fn_scope           &ast.Scope = unsafe { nil }
 	wsinfix_depth      int
+	format_state       FormatState
+	source_text        string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
 }
 
-pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug bool) string {
+[params]
+pub struct FmtOptions {
+	source_text string
+}
+
+pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug bool, options FmtOptions) string {
 	mut f := Fmt{
 		file: file
 		table: table
@@ -61,6 +68,7 @@ pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug boo
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
 	}
+	f.source_text = options.source_text
 	f.process_file_imports(file)
 	f.set_current_module_name('main')
 	// As these are toplevel stmts, the indent increase done in f.stmts() has to be compensated
@@ -328,9 +336,18 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 			continue
 		}
 		already_imported[import_text] = true
-		f.out_imports.writeln(import_text)
-		f.import_comments(imp.comments, inline: true)
-		f.import_comments(imp.next_comments)
+
+		if !f.format_state.is_vfmt_on {
+			import_original_source_lines := f.get_source_lines()#[imp.pos.line_nr..
+				imp.pos.last_line + 1].join('\n')
+			f.out_imports.writeln(import_original_source_lines)
+			// NOTE: imp.comments are on the *same line*, so they are already included in import_original_source_lines
+			f.import_comments(imp.next_comments)
+		} else {
+			f.out_imports.writeln(import_text)
+			f.import_comments(imp.comments, inline: true)
+			f.import_comments(imp.next_comments)
+		}
 		num_imports++
 	}
 	if num_imports > 0 {
@@ -441,7 +458,7 @@ pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 
 pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	if f.is_debug {
-		eprintln('stmt: ${node.pos:-42} | node: ${node.type_name():-20}')
+		eprintln('stmt ${node.type_name():-20} | pos: $node.pos.line_str()')
 	}
 	match node {
 		ast.EmptyStmt, ast.NodeError {}
@@ -544,7 +561,7 @@ fn stmt_is_single_line(stmt ast.Stmt) bool {
 pub fn (mut f Fmt) expr(node_ ast.Expr) {
 	mut node := unsafe { node_ }
 	if f.is_debug {
-		eprintln('expr: ${node.pos():-42} | node: ${node.type_name():-20} | $node.str()')
+		eprintln('expr ${node.type_name():-20} | pos: $node.pos().line_str() | $node.str()')
 	}
 	match mut node {
 		ast.NodeError {}
