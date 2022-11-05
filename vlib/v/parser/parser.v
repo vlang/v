@@ -1051,7 +1051,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 			}
 		}
-		.key_go {
+		.key_go, .key_spawn {
 			go_expr := p.go_expr()
 			return ast.ExprStmt{
 				expr: go_expr
