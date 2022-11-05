@@ -264,7 +264,7 @@ fn test_rand_ascii() {
 		'fsx!@uRc?re/fSPXj`Y&\\BU}p',
 		'fI_qM"):2;CUno!<dX:Yv*FX$',
 		'FnA(Fr|D`WZVWEzp<k)O;auub',
-		"QRkxH!kjXh&/j{)uSe&\{D'v?|",
+		"QRkxH!kjXh&/j{)uSe&{D'v?|",
 		"_CyaU\$z':#}At*v2|xDu6w=;1",
 	]
 	for output in outputs {
