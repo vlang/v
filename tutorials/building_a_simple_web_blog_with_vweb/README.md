@@ -18,7 +18,7 @@ The benefits of using V for web:
 
 _Please note that V and Vweb are at a very early stage and are changing rapidly._
 
-The code is available <a href='https://github.com/vlang/v/tree/master/tutorials/code/blog'>here</a>.
+The code is available [here](./code/blog).
 
 ### Installing V
 
