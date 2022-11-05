@@ -1395,7 +1395,7 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 				}
 			}
 		}
-
+		// Check for int overflow
 		if field.typ == ast.int_type {
 			if mut field.expr is ast.IntegerLiteral {
 				mut is_large := field.expr.val.len > 13
