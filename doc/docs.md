@@ -3774,7 +3774,7 @@ println(compare(1.1, 1.2)) //         -1
 ## Concurrency
 ### Spawning Concurrent Tasks
 V's model of concurrency is going to be very similar to Go's.
-For now, `go foo()` runs `foo()` concurrently in a different thread:
+For now, `spawn foo()` runs `foo()` concurrently in a different thread:
 
 ```v
 import math
@@ -3785,18 +3785,19 @@ fn p(a f64, b f64) { // ordinary function without return value
 }
 
 fn main() {
-	go p(3, 4)
+	spawn p(3, 4)
 	// p will be run in parallel thread
 	// It can also be written as follows
-	// go fn (a f64, b f64) {
+	// spawn fn (a f64, b f64) {
 	//	c := math.sqrt(a * a + b * b)
 	//	println(c)
 	// }(3, 4)
 }
 ```
 
-> In V 0.4 `go foo()` will be automatically renamed via vfmt to `spawn foo()`,
-and there will be a way to launch a coroutine (a lightweight thread managed by the runtime).
+There's also a `go` keyword. Right now `go foo()` will be automatically renamed via vfmt to
+`spawn foo()`,
+and there will be a way to launch a coroutine with `go` (a lightweight thread managed by the runtime).
 
 Sometimes it is necessary to wait until a parallel thread has finished. This can
 be done by assigning a *handle* to the started thread and calling the `wait()` method
@@ -3811,7 +3812,7 @@ fn p(a f64, b f64) { // ordinary function without return value
 }
 
 fn main() {
-	h := go p(3, 4)
+	h := spawn p(3, 4)
 	// p() runs in parallel thread
 	h.wait()
 	// p() has definitely finished
@@ -3831,7 +3832,7 @@ fn get_hypot(a f64, b f64) f64 { //       ordinary function returning a value
 }
 
 fn main() {
-	g := go get_hypot(54.06, 2.08) // spawn thread and get handle to it
+	g := spawn get_hypot(54.06, 2.08) // spawn thread and get handle to it
 	h1 := get_hypot(2.32, 16.74) //   do some other calculation here
 	h2 := g.wait() //                 get result from spawned thread
 	println('Results: $h1, $h2') //   prints `Results: 16.9, 54.1`
@@ -3852,9 +3853,9 @@ fn task(id int, duration int) {
 
 fn main() {
 	mut threads := []thread{}
-	threads << go task(1, 500)
-	threads << go task(2, 900)
-	threads << go task(3, 100)
+	threads << spawn task(1, 500)
+	threads << spawn task(2, 900)
+	threads << spawn task(3, 100)
 	threads.wait()
 	println('done')
 }
@@ -3880,7 +3881,7 @@ fn expensive_computing(i int) int {
 fn main() {
 	mut threads := []thread int{}
 	for i in 1 .. 10 {
-		threads << go expensive_computing(i)
+		threads << spawn expensive_computing(i)
 	}
 	// Join all tasks
 	r := threads.wait()
@@ -3915,7 +3916,7 @@ fn f(ch chan int) {
 
 fn main() {
 	ch := chan int{}
-	go f(ch)
+	spawn f(ch)
 	// ...
 }
 ```
@@ -3970,16 +3971,16 @@ fn main() {
 	ch3 := chan f64{}
 	mut b := 0.0
 	c := 1.0
-	// ... setup go threads that will send on ch/ch2
-	go fn (the_channel chan f64) {
+	// ... setup spawn threads that will send on ch/ch2
+	spawn fn (the_channel chan f64) {
 		time.sleep(5 * time.millisecond)
 		the_channel <- 1.0
 	}(ch)
-	go fn (the_channel chan f64) {
+	spawn fn (the_channel chan f64) {
 		time.sleep(1 * time.millisecond)
 		the_channel <- 1.0
 	}(ch2)
-	go fn (the_channel chan f64) {
+	spawn fn (the_channel chan f64) {
 		_ := <-the_channel
 	}(ch3)
 
@@ -4078,7 +4079,7 @@ fn main() {
 	shared a := St{
 		x: 10
 	}
-	go a.g()
+	spawn a.g()
 	// ...
 	rlock a {
 		// read a.x
@@ -4819,7 +4820,7 @@ A V *module* is a single folder with .v files inside. A V *package* can
 contain one or more V modules. A V *package* should have a `v.mod` file
 at its top folder, describing the contents of the package.
 
-V packages are installed normally in your `~/.vmodules` folder. That 
+V packages are installed normally in your `~/.vmodules` folder. That
 location can be overriden by setting the env variable `VMODULES`.
 
 ### Package commands
@@ -4917,7 +4918,7 @@ Package are up to date.
 ### Publish package
 
 1. Put a `v.mod` file inside the toplevel folder of your package (if you
-	created your package with the command `v new mypackage` or `v init` 
+	created your package with the command `v new mypackage` or `v init`
 	you already have a `v.mod` file).
 
 	```sh
@@ -5683,7 +5684,7 @@ fn change() int {
 
 fn main() {
 	C.atomic_store_u32(&atom, 17)
-	t := go change()
+	t := spawn change()
 	mut races_won_by_main := 0
 	mut cmp17 := u32(17)
 	mut cmp23 := u32(23)
