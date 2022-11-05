@@ -41,9 +41,9 @@ fn test_channel_push() {
 
 fn test_thread_wait() {
 	thrs := [
-		go f(3),
-		go f(-7),
-		go f(12),
+		spawn f(3),
+		spawn f(-7),
+		spawn f(12),
 	]
 	mut res := []int{cap: 3}
 	for t in thrs {

@@ -19,7 +19,7 @@ fn testsuite_end() {
 
 fn test_that_net_and_net_unix_can_be_imported_together_without_conflicts() {
 	mut l := unix.listen_stream(test_port) or { panic(err) }
-	go echo_server(mut l)
+	spawn echo_server(mut l)
 	defer {
 		l.close() or {}
 	}

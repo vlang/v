@@ -38,7 +38,7 @@ fn main() {
 	mut no := nobj
 	for i in 0 .. nrec {
 		n := no / (nrec - i)
-		go do_rec(ch, resch, n)
+		spawn do_rec(ch, resch, n)
 		no -= n
 	}
 	$if debug {
@@ -49,7 +49,7 @@ fn main() {
 		n := no / (nsend - i)
 		end := no
 		no -= n
-		go do_send(ch, no, end)
+		spawn do_send(ch, no, end)
 	}
 	assert no == 0
 	mut sum := i64(0)

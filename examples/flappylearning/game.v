@@ -198,7 +198,7 @@ fn main() {
 		network: [2, 2, 1]
 	}
 	app.start()
-	go app.run()
+	spawn app.run()
 	app.gg.run()
 }
 

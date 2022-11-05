@@ -34,10 +34,10 @@ fn main() {
 	}
 
 	for id in 0 .. args.workers {
-		workers << go sim.sim_worker(id, request_chan, [result_chan])
+		workers << spawn sim.sim_worker(id, request_chan, [result_chan])
 	}
 
-	workers << go img.image_worker(mut writer, result_chan, img_settings)
+	workers << spawn img.image_worker(mut writer, result_chan, img_settings)
 
 	handle_request := fn [request_chan] (request &sim.SimRequest) ! {
 		request_chan <- request

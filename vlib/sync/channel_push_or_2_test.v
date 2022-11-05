@@ -16,7 +16,7 @@ fn do_send(ch chan f64, val f64) ?f64 {
 
 fn test_push_propargate() {
 	ch := chan f64{}
-	go f(ch)
+	spawn f(ch)
 	mut s := 1.0
 	for {
 		s = do_send(ch, s) or { break }

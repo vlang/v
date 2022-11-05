@@ -54,7 +54,7 @@ fn echo() ! {
 fn test_udp() {
 	mut l := net.listen_udp(server_addr) or { panic('could not listen_udp: $err') }
 
-	go echo_server(mut l)
+	spawn echo_server(mut l)
 	echo() or { panic('could not echo: $err') }
 
 	l.close() or {}

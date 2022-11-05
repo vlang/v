@@ -51,15 +51,15 @@ fn test_select() {
 	chsum2 := chan i64{}
 	chsumf1 := chan f64{}
 	chsumf2 := chan f64{}
-	go do_send_int(ch1, 3)
-	go do_select(ch1, ch2, chf1, chf2, chsum1, chsum2)
-	go do_rec_f64(chf1, chsumf1)
-	go do_rec_f64(chf2, chsumf2)
-	go do_rec_f64(chf2, chsumf2)
-	go do_select(ch1, ch2, chf1, chf2, chsum1, chsum2)
-	go do_send_int(ch2, 7)
-	go do_send_int(ch2, 17)
-	go do_select(ch1, ch2, chf1, chf2, chsum1, chsum2)
+	spawn do_send_int(ch1, 3)
+	spawn do_select(ch1, ch2, chf1, chf2, chsum1, chsum2)
+	spawn do_rec_f64(chf1, chsumf1)
+	spawn do_rec_f64(chf2, chsumf2)
+	spawn do_rec_f64(chf2, chsumf2)
+	spawn do_select(ch1, ch2, chf1, chf2, chsum1, chsum2)
+	spawn do_send_int(ch2, 7)
+	spawn do_send_int(ch2, 17)
+	spawn do_select(ch1, ch2, chf1, chf2, chsum1, chsum2)
 
 	sum1 := <-chsum1 + <-chsum1 + <-chsum1
 	sum2 := <-chsum2 + <-chsum2 + <-chsum2

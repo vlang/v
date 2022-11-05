@@ -67,7 +67,7 @@ fn start_server(schannel chan int, shared ctx Context) {
 			}
 			continue
 		}
-		go receive_data(mut tcp_con, shared ctx)
+		spawn receive_data(mut tcp_con, shared ctx)
 		lock ctx {
 			ctx.ok_server_accepts++
 		}
@@ -109,11 +109,11 @@ fn test_tcp_self_dialing() {
 	start_time := time.now()
 	shared ctx := &Context{}
 	mut server_channel := chan int{cap: 1}
-	go start_server(server_channel, shared ctx)
+	spawn start_server(server_channel, shared ctx)
 	svalue := <-server_channel
 	elog('>>> server was started: ${svalue}. Starting clients:')
 	for i := int(0); i < 20; i++ {
-		go start_client(i, shared ctx)
+		spawn start_client(i, shared ctx)
 		elog('>>> started client $i')
 		// time.sleep(2 * time.millisecond)
 	}

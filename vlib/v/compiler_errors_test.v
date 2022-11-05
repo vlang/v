@@ -252,7 +252,7 @@ fn (mut tasks Tasks) run() {
 	}
 	work.close()
 	for _ in 0 .. vjobs {
-		go work_processor(work, results)
+		spawn work_processor(work, results)
 	}
 	if github_job == '' {
 		println('')

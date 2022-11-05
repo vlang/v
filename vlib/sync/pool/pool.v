@@ -89,7 +89,7 @@ pub fn (mut pool PoolProcessor) work_on_pointers(items []voidptr) {
 		pool.waitgroup.add(njobs)
 		for i := 0; i < njobs; i++ {
 			if njobs > 1 {
-				go process_in_thread(mut pool, i)
+				spawn process_in_thread(mut pool, i)
 			} else {
 				// do not run concurrently, just use the same thread:
 				process_in_thread(mut pool, i)

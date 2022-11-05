@@ -26,7 +26,7 @@ fn main() {
 	mut wg := sync.new_waitgroup()
 	wg.add(2)
 	// Run tasks async
-	go vlang_time(mut wg)
-	go remote_ip(mut wg)
+	spawn vlang_time(mut wg)
+	spawn remote_ip(mut wg)
 	wg.wait()
 }

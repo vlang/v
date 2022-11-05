@@ -42,7 +42,7 @@ fn main() {
 
 fn init(mut app App) {
 	// Spawn a new worker thread.
-	go worker(mut app)
+	spawn worker(mut app)
 }
 
 // worker simulates a workload. This should be run in a separate thread.

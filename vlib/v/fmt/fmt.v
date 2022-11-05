@@ -1170,7 +1170,7 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 }
 
 pub fn (mut f Fmt) go_expr(node ast.GoExpr) {
-	f.write('go ')
+	f.write('spawn ')
 	f.call_expr(node.call_expr)
 }
 

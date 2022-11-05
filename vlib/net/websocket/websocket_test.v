@@ -27,7 +27,7 @@ fn test_ws_ipv6() {
 	}
 	port := 30000 + rand.intn(1024) or { 0 }
 	eprintln('> port ipv6: $port')
-	go start_server(.ip6, port)
+	spawn start_server(.ip6, port)
 	time.sleep(1500 * time.millisecond)
 	ws_test(.ip6, 'ws://localhost:$port') or {
 		eprintln('> error while connecting .ip6, err: $err')
@@ -42,7 +42,7 @@ fn test_ws_ipv4() {
 	}
 	port := 30000 + rand.intn(1024) or { 0 }
 	eprintln('> port ipv4: $port')
-	go start_server(.ip, port)
+	spawn start_server(.ip, port)
 	time.sleep(1500 * time.millisecond)
 	ws_test(.ip, 'ws://localhost:$port') or {
 		eprintln('> error while connecting .ip, err: $err')
@@ -113,7 +113,7 @@ fn ws_test(family net.AddrFamily, uri string) ! {
 		}
 	}, test_results)
 	ws.connect() or { panic('fail to connect, err: $err') }
-	go ws.listen()
+	spawn ws.listen()
 	text := ['a'].repeat(2)
 	for msg in text {
 		ws.write(msg.bytes(), .text_frame) or { panic('fail to write to websocket, err: $err') }

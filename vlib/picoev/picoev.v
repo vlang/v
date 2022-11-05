@@ -240,7 +240,7 @@ pub fn new(config Config) &Picoev {
 	}
 
 	C.picoev_add(voidptr(loop), fd, int(Event.read), 0, accept_callback, pv)
-	go update_date(mut pv)
+	spawn update_date(mut pv)
 	return pv
 }
 

@@ -18,7 +18,7 @@ struct Article {
 }
 
 fn test_a_vweb_application_compiles() {
-	go fn () {
+	spawn fn () {
 		time.sleep(2 * time.second)
 		exit(0)
 	}()

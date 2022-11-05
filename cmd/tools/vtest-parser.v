@@ -57,7 +57,7 @@ fn main() {
 		mut source := os.read_file(context.path)!
 		source = source[..context.cut_index]
 
-		go fn (ms int) {
+		spawn fn (ms int) {
 			time.sleep(ms * time.millisecond)
 			exit(ecode_timeout)
 		}(context.timeout_ms)
@@ -248,7 +248,7 @@ fn (mut context Context) start_printing() {
 	if !context.is_linear && !context.is_silent {
 		println('\n')
 	}
-	go context.print_periodic_status()
+	spawn context.print_periodic_status()
 }
 
 fn (mut context Context) stop_printing() {

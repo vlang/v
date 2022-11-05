@@ -64,10 +64,10 @@ pub fn (mut s Server) listen() ! {
 	s.logger.info('websocket server: start listen on port $s.port')
 	s.ls = net.listen_tcp(s.family, ':$s.port')!
 	s.set_state(.open)
-	go s.handle_ping()
+	spawn s.handle_ping()
 	for {
 		mut c := s.accept_new_client() or { continue }
-		go s.serve_client(mut c)
+		spawn s.serve_client(mut c)
 	}
 	s.logger.info('websocket server: end listen on port $s.port')
 }

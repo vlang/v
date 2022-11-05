@@ -35,7 +35,7 @@ fn main() {
 	}
 
 	for id in 0 .. args.workers {
-		workers << go sim.sim_worker(id, request_chan, [result_chan])
+		workers << spawn sim.sim_worker(id, request_chan, [result_chan])
 	}
 
 	mut x := 0

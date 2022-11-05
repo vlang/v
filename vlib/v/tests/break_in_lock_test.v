@@ -13,8 +13,8 @@ const (
 fn test_return_lock() {
 	start := time.now()
 	shared s := AA{'3'}
-	go printer(shared s, start)
-	go fn (shared s AA, start time.Time) {
+	spawn printer(shared s, start)
+	spawn fn (shared s AA, start time.Time) {
 		for {
 			reader(shared s)
 			if time.now() - start > run_time {

@@ -195,7 +195,7 @@ fn new_x11_clipboard(selection AtomType) &Clipboard {
 	cb.selection = cb.get_atom(selection)
 	// start the listener on another thread or
 	// we will be locked and will have to hard exit
-	go cb.start_listener()
+	spawn cb.start_listener()
 	return cb
 }
 

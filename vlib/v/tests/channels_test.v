@@ -18,7 +18,7 @@ fn test_printing_of_channels() {
 		val: 1000
 		another: fch
 	}
-	res := (go fn1(ch)).wait()
+	res := (spawn fn1(ch)).wait()
 	println(res)
 	println(ch)
 	assert res.str().contains('another: chan f64{cap: 100, closed: 0}')
@@ -40,7 +40,7 @@ fn func(ch chan As) {
 
 fn test_chan_of_sumtype() {
 	a := chan As{}
-	go func(a)
+	spawn func(a)
 	ret := <-a
 	println(ret)
 	assert '$ret' == 'As(Aa{})'

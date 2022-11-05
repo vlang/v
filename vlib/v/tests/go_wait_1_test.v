@@ -3,7 +3,7 @@ fn f(x int, y f64) f64 {
 }
 
 fn test_go_return() {
-	r := go f(3, 4.0)
+	r := spawn f(3, 4.0)
 	z := r.wait()
 	assert typeof(z).name == 'f64'
 	assert z == 12.0

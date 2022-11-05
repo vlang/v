@@ -64,7 +64,7 @@ fn test_tcp_ip6() {
 
 fn start_echo_server(mut l net.TcpListener) {
 	ch_server_started := chan int{}
-	go one_shot_echo_server(mut l, ch_server_started)
+	spawn one_shot_echo_server(mut l, ch_server_started)
 	_ := <-ch_server_started
 }
 

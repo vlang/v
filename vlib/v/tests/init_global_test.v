@@ -14,7 +14,7 @@ fn test_global_init() {
 	intmap['two'] = 27
 	key := 'two'
 	assert intmap[key] == 27
-	t := go pushf64()
+	t := spawn pushf64()
 	numberfns['one'] = one
 	numberfns['two'] = fn () int {
 		return 2
@@ -124,7 +124,7 @@ fn test_global_shared() {
 		mys.x = 13.0
 		mys.y = -35.125
 	}
-	t := go switch()
+	t := spawn switch()
 	for _ in 0 .. 2500000 {
 		lock mys {
 			mys.x, mys.y = mys.y, mys.x
@@ -168,7 +168,7 @@ fn switch2() u64 {
 
 fn test_global_mutex() {
 	assert f1 == 34.0625
-	t := go switch2()
+	t := spawn switch2()
 	for _ in 0 .. 25000 {
 		mtx.@lock()
 		f1, f2 = f2, f1
