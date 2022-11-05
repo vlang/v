@@ -1002,7 +1002,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 				.name {
 					mut pos := p.tok.pos()
-					expr := p.comptime_call()
+					expr := p.expr(0)
 					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
 						expr: expr
