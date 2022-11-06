@@ -209,7 +209,7 @@ pub fn (b &Benchmark) total_message(msg string) string {
 			njobs_label = ', on ${term.colorize(term.bold, b.njobs.str())} parallel jobs'
 		}
 	}
-	tmsg += '$b.ntotal total. ${term.colorize(term.bold, 'Runtime:')} ${b.bench_timer.elapsed().microseconds() / 1000} ms${njobs_label}.\n'
+	tmsg += '$b.ntotal total. ${term.colorize(term.bold, "Runtime:")} ${b.bench_timer.elapsed().microseconds() / 1000} ms${njobs_label}.\n'
 	return tmsg
 }
 

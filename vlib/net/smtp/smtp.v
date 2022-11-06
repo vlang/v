@@ -233,9 +233,9 @@ fn (mut c Client) send_body(cfg Mail) ! {
 	nonascii_subject := cfg.subject.bytes().any(it < u8(` `) || it > u8(`~`))
 	mut sb := strings.new_builder(200)
 	sb.write_string('From: $cfg.from\r\n')
-	sb.write_string('To: <${cfg.to.split(';').join('>; <')}>\r\n')
-	sb.write_string('Cc: <${cfg.cc.split(';').join('>; <')}>\r\n')
-	sb.write_string('Bcc: <${cfg.bcc.split(';').join('>; <')}>\r\n')
+	sb.write_string('To: <${cfg.to.split(";").join(">; <")}>\r\n')
+	sb.write_string('Cc: <${cfg.cc.split(";").join(">; <")}>\r\n')
+	sb.write_string('Bcc: <${cfg.bcc.split(";").join(">; <")}>\r\n')
 	sb.write_string('Date: $date\r\n')
 	if nonascii_subject {
 		// handle UTF-8 subjects according RFC 1342

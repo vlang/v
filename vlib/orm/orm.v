@@ -496,7 +496,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 			for f in v {
 				tmp << '$q$f$q'
 			}
-			fs << '/* $k */UNIQUE(${tmp.join(', ')})'
+			fs << '/* $k */UNIQUE(${tmp.join(", ")})'
 		}
 	}
 	fs << 'PRIMARY KEY($q$primary$q)'

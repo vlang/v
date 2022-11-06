@@ -195,7 +195,7 @@ fn test_alexcrichton_toml_rs() {
 			}
 			if toml_doc := toml.parse_file(invalid_test_file) {
 				content_that_should_have_failed := os.read_file(invalid_test_file)!
-				println('     This TOML should have failed:\n${'-'.repeat(40)}\n$content_that_should_have_failed\n${'-'.repeat(40)}')
+				println('     This TOML should have failed:\n${"-".repeat(40)}\n$content_that_should_have_failed\n${"-".repeat(40)}')
 				assert false
 			} else {
 				if !hide_oks {

@@ -213,7 +213,7 @@ fn test_iarna_toml_spec_tests() {
 				cmd := [jq, '-S', '-f "$jq_normalize_path"', iarna_toml_json_path]
 				iarna_normalized_json := run(cmd) or {
 					contents := os.read_file(v_toml_json_path)?
-					panic(err.msg() + '\n$contents\n\ncmd: ${cmd.join(' ')}')
+					panic(err.msg() + '\n$contents\n\ncmd: ${cmd.join(" ")}')
 				}
 
 				assert iarna_normalized_json == v_normalized_json
@@ -246,7 +246,7 @@ fn test_iarna_toml_spec_tests() {
 			}
 			if toml_doc := toml.parse_file(invalid_test_file) {
 				content_that_should_have_failed := os.read_file(invalid_test_file)?
-				println('     This TOML should have failed:\n${'-'.repeat(40)}\n$content_that_should_have_failed\n${'-'.repeat(40)}')
+				println('     This TOML should have failed:\n${"-".repeat(40)}\n$content_that_should_have_failed\n${"-".repeat(40)}')
 				assert false
 			} else {
 				if !hide_oks {

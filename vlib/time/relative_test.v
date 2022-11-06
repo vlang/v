@@ -23,7 +23,7 @@ fn test_relative() {
 	assert date.relative() == '5 days ago'
 	assert date.relative_short() == '5d ago'
 	date = time.now().add_seconds(-75 * time.seconds_per_day)
-	assert date.relative() == 'last ${date.custom_format('MMM')} ${date.custom_format('D')}'
+	assert date.relative() == 'last ${date.custom_format("MMM")} ${date.custom_format("D")}'
 	assert date.relative_short() == '75d ago'
 	date = time.now().add_seconds(-400 * time.seconds_per_day)
 	assert date.relative() == '1 year ago'
@@ -50,7 +50,7 @@ fn test_relative() {
 	assert date.relative() == 'in 5 days'
 	assert date.relative_short() == 'in 5d'
 	date = time.now().add_seconds(75 * time.seconds_per_day)
-	assert date.relative() == 'on ${date.custom_format('MMM')} ${date.custom_format('D')}'
+	assert date.relative() == 'on ${date.custom_format("MMM")} ${date.custom_format("D")}'
 	assert date.relative_short() == 'in 75d'
 	date = time.now().add_seconds(400 * time.seconds_per_day)
 	assert date.relative() == 'in 1 year'

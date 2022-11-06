@@ -686,7 +686,7 @@ fn parse_headers(s string) !Header {
 		}
 		// handle header fold
 		if line[0] == ` ` || line[0] == `\t` {
-			last_value += ' ${line.trim(' \t')}'
+			last_value += ' ${line.trim(" \t")}'
 			continue
 		} else if last_key != '' {
 			h.add_custom(last_key, last_value)!
