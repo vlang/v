@@ -53,18 +53,18 @@ const (
 	// char class 11 0100 AA xxxxxxxx
 	// AA = 00  regular class
 	// AA = 01  Negated class ^ char
-	ist_char_class     = 0xD1000000 // MASK
-	ist_char_class_pos = 0xD0000000 // char class normal [abc]
-	ist_char_class_neg = 0xD1000000 // char class negate [^abc]
+	ist_char_class     = u32(0xD1000000) // MASK
+	ist_char_class_pos = u32(0xD0000000) // char class normal [abc]
+	ist_char_class_neg = u32(0xD1000000) // char class negate [^abc]
 	// dot char        10 0110 xx xxxxxxxx
-	ist_dot_char       = 0x98000000 // match any char except \n
+	ist_dot_char       = u32(0x98000000) // match any char except \n
 	// backslash chars 10 0100 xx xxxxxxxx
-	ist_bsls_char      = 0x90000000 // backslash char
+	ist_bsls_char      = u32(0x90000000) // backslash char
 	// OR |            10 010Y xx xxxxxxxx
-	ist_or_branch      = 0x91000000 // OR case
+	ist_or_branch      = u32(0x91000000) // OR case
 	// groups          10 010Y xx xxxxxxxx
-	ist_group_start    = 0x92000000 // group start (
-	ist_group_end      = 0x94000000 // group end   )
+	ist_group_start    = u32(0x92000000) // group start (
+	ist_group_end      = u32(0x94000000) // group end   )
 	// control instructions
 	ist_prog_end       = u32(0x88000000) // 10 0010 xx xxxxxxxx
 		//*************************************
