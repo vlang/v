@@ -46,6 +46,7 @@ pub mut:
 	requires         []string
 	requires_private []string
 	conflicts        []string
+	loaded           []string
 }
 
 fn (mut pc PkgConfig) parse_list_no_comma(s string) []string {
@@ -199,8 +200,13 @@ fn (mut pc PkgConfig) load_requires() ? {
 }
 
 fn (mut pc PkgConfig) load_require(dep string) ? {
+	if dep in pc.loaded {
+		return
+	}
+	pc.loaded << dep
 	mut pcdep := PkgConfig{
 		paths: pc.paths
+		loaded: pc.loaded
 	}
 	depfile := pcdep.resolve(dep) or {
 		if pc.options.debug {
@@ -211,7 +217,9 @@ fn (mut pc PkgConfig) load_require(dep string) ? {
 	if !pcdep.parse(depfile) {
 		return error('required file "$depfile" could not be parsed')
 	}
-	pcdep.load_requires()?
+	if !pc.options.norecurse {
+		pcdep.load_requires()?
+	}
 	pc.extend(pcdep)?
 }
 
