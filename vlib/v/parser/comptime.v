@@ -129,7 +129,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	mut embed_compression_type := 'none'
 	if is_embed_file {
 		if p.tok.kind == .comma {
-			p.check(.comma)
+			p.next()
 			p.check(.dot)
 			embed_compression_type = p.check_name()
 		}
@@ -351,7 +351,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		args := p.call_args()
 		p.check(.rpar)
 		if p.tok.kind == .key_orelse {
-			p.check(.key_orelse)
+			p.next()
 			p.check(.lcbr)
 		}
 		return ast.ComptimeCall{
@@ -366,7 +366,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 	}
 	mut has_parens := false
 	if p.tok.kind == .lpar {
-		p.check(.lpar)
+		p.next()
 		has_parens = true
 	} else {
 		p.warn_with_pos('use brackets instead e.g. `s.$(field.name)` - run vfmt', p.tok.pos())
