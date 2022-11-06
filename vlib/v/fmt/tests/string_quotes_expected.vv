@@ -14,7 +14,5 @@ _ := "<font color=\\\"warning\\\">message</font>\\n>${arr.join('\\n>')}"
 _ := "<font color=\\\"warning\\\">message</font>\\n>${arr.join('\\n>')}"
 _ := '<font color=\\"warning\\">message</font>\\n>'
 _ := '<font color=\\"warning\\">message</font>\\n>'
-_ := 'values: ${arr.join('\\n')}'
-_ := 'values: ${arr.join('\\n')}'
-_ := 'values: ${arr.join('\\n')}'
-_ := 'values: ${arr.join('\\n')}'
+_ := 'values: ${arr.join("\\n")}'
+_ := 'values: ${arr.join("\\n")}'

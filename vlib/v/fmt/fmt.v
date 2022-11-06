@@ -17,41 +17,43 @@ const (
 [minify]
 pub struct Fmt {
 pub mut:
-	file               ast.File
-	table              &ast.Table        = unsafe { nil }
-	pref               &pref.Preferences = unsafe { nil }
-	is_debug           bool
-	out                strings.Builder
-	out_imports        strings.Builder
-	indent             int
-	empty_line         bool
-	line_len           int    // the current line length, Note: it counts \t as 4 spaces, and starts at 0 after f.writeln
-	buffering          bool   // disables line wrapping for exprs that will be analyzed later
-	par_level          int    // how many parentheses are put around the current expression
-	array_init_break   []bool // line breaks after elements in hierarchy level of multi dimensional array
-	array_init_depth   int    // current level of hierarchy in array init
-	single_line_if     bool
-	cur_mod            string
-	did_imports        bool
-	is_assign          bool
-	is_struct_init     bool
-	auto_imports       []string          // automatically inserted imports that the user forgot to specify
-	import_pos         int               // position of the imports in the resulting string for later autoimports insertion
-	used_imports       []string          // to remove unused imports
-	import_syms_used   map[string]bool   // to remove unused import symbols.
-	mod2alias          map[string]string // for `import time as t`, will contain: 'time'=>'t'
-	mod2syms           map[string]string // import time { now } 'time.now'=>'now'
-	use_short_fn_args  bool
-	single_line_fields bool   // should struct fields be on a single line
-	it_name            string // the name to replace `it` with
-	in_lambda_depth    int
-	inside_const       bool
-	inside_unsafe      bool
-	is_mbranch_expr    bool // match a { x...y { } }
-	fn_scope           &ast.Scope = unsafe { nil }
-	wsinfix_depth      int
-	format_state       FormatState
-	source_text        string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
+	file                ast.File
+	table               &ast.Table        = unsafe { nil }
+	pref                &pref.Preferences = unsafe { nil }
+	is_debug            bool
+	out                 strings.Builder
+	out_imports         strings.Builder
+	indent              int
+	empty_line          bool
+	line_len            int    // the current line length, Note: it counts \t as 4 spaces, and starts at 0 after f.writeln
+	buffering           bool   // disables line wrapping for exprs that will be analyzed later
+	par_level           int    // how many parentheses are put around the current expression
+	array_init_break    []bool // line breaks after elements in hierarchy level of multi dimensional array
+	array_init_depth    int    // current level of hierarchy in array init
+	single_line_if      bool
+	cur_mod             string
+	did_imports         bool
+	is_assign           bool
+	is_struct_init      bool
+	auto_imports        []string          // automatically inserted imports that the user forgot to specify
+	import_pos          int               // position of the imports in the resulting string for later autoimports insertion
+	used_imports        []string          // to remove unused imports
+	import_syms_used    map[string]bool   // to remove unused import symbols.
+	mod2alias           map[string]string // for `import time as t`, will contain: 'time'=>'t'
+	mod2syms            map[string]string // import time { now } 'time.now'=>'now'
+	use_short_fn_args   bool
+	single_line_fields  bool   // should struct fields be on a single line
+	it_name             string // the name to replace `it` with
+	in_lambda_depth     int
+	inside_const        bool
+	inside_unsafe       bool
+	inside_string_inter bool
+	quote               string // which quote is used to denote current string: ' or "
+	is_mbranch_expr     bool   // match a { x...y { } }
+	fn_scope            &ast.Scope = unsafe { nil }
+	wsinfix_depth       int
+	format_state        FormatState
+	source_text         string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
 }
 
 [params]
@@ -97,10 +99,10 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 		f.mod2alias[imp.mod] = imp.alias
 		for sym in imp.syms {
 			f.mod2alias['${imp.mod}.$sym.name'] = sym.name
-			f.mod2alias['${imp.mod.all_after_last('.')}.$sym.name'] = sym.name
+			f.mod2alias['${imp.mod.all_after_last(".")}.$sym.name'] = sym.name
 			f.mod2alias[sym.name] = sym.name
 			f.mod2syms['${imp.mod}.$sym.name'] = sym.name
-			f.mod2syms['${imp.mod.all_after_last('.')}.$sym.name'] = sym.name
+			f.mod2syms['${imp.mod.all_after_last(".")}.$sym.name'] = sym.name
 			f.mod2syms[sym.name] = sym.name
 			f.import_syms_used[sym.name] = false
 		}
@@ -2647,7 +2649,10 @@ pub fn (mut f Fmt) char_literal(node ast.CharLiteral) {
 }
 
 pub fn (mut f Fmt) string_literal(node ast.StringLiteral) {
-	quote := if node.val.contains("'") && !node.val.contains('"') { '"' } else { "'" }
+	mut quote := if node.val.contains("'") && !node.val.contains('"') { '"' } else { "'" }
+	if f.inside_string_inter {
+		quote = if f.quote == "'" { '"' } else { "'" }
+	}
 	if node.is_raw {
 		f.write('r')
 	} else if node.language == ast.Language.c {
@@ -2689,6 +2694,8 @@ pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
 	// serkonda7: it can not fully be replaced tho as ´f.expr()´ and `ast.Expr.str()`
 	//	work too different for the various exprs that are interpolated
 	f.write(quote)
+	f.quote = quote
+	f.inside_string_inter = true
 	for i, val in node.vals {
 		unescaped_val := val.replace('$fmt.bs$fmt.bs', '\x01').replace_each([
 			"$fmt.bs'",
@@ -2715,6 +2722,7 @@ pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
 		}
 	}
 	f.write(quote)
+	f.inside_string_inter = false
 }
 
 pub fn (mut f Fmt) type_expr(node ast.TypeNode) {

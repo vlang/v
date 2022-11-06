@@ -31,8 +31,8 @@ fn interp_test(expression string, expected string) ! {
 		eprintln('     expected: |$expected|')
 		return error('test')
 	}
-	println('${term.colorize(term.green, 'OK')} ${term.colorize(term.bright_blue, expression.replace('\n',
-		' '))}')
+	println('${term.colorize(term.green, "OK")} ${term.colorize(term.bright_blue, expression.replace("\n",
+		" "))}')
 	println('   >> ${term.colorize(term.bright_yellow, output)}')
 }
 

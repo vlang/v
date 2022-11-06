@@ -48,7 +48,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 				continue
 			}
 			if comment.pos.pos > field.pos.pos {
-				comments_len += '/* ${comment.text.trim_left('\x01')} */ '.len
+				comments_len += '/* ${comment.text.trim_left("\x01")} */ '.len
 			}
 		}
 		field_aligns.add_info(comments_len + field.name.len, ft.len, field.pos.line_nr)

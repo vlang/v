@@ -185,7 +185,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.guessed_compiler = v.pref.ccompiler
 	if ccoptions.guessed_compiler == 'cc' && v.pref.is_prod {
 		// deliberately guessing only for -prod builds for performance reasons
-		ccversion := os.execute('${os.quoted_path('cc')} --version')
+		ccversion := os.execute('${os.quoted_path("cc")} --version')
 		if ccversion.exit_code == 0 {
 			if ccversion.output.contains('This is free software;')
 				&& ccversion.output.contains('Free Software Foundation, Inc.') {

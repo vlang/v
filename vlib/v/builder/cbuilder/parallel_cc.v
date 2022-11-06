@@ -61,8 +61,8 @@ fn parallel_cc(mut b builder.Builder, header string, res string, out_str string,
 	pp.set_max_jobs(nthreads)
 	pp.work_on_items(o_postfixes)
 	eprintln('> C compilation on $nthreads threads, working on $o_postfixes.len files took: $sw.elapsed().milliseconds() ms')
-	link_cmd := '${os.quoted_path(cbuilder.cc_compiler)} -o ${os.quoted_path(b.pref.out_name)} out_0.o ${fnames.map(it.replace('.c',
-		'.o')).join(' ')} out_x.o -lpthread $cbuilder.cc_ldflags'
+	link_cmd := '${os.quoted_path(cbuilder.cc_compiler)} -o ${os.quoted_path(b.pref.out_name)} out_0.o ${fnames.map(it.replace(".c",
+		".o")).join(" ")} out_x.o -lpthread $cbuilder.cc_ldflags'
 	sw_link := time.new_stopwatch()
 	link_res := os.execute(link_cmd)
 	eprint_time('link_cmd', link_cmd, link_res, sw_link)

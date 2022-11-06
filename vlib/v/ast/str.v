@@ -326,7 +326,7 @@ pub fn (x Expr) str() string {
 				fields << 'init: $x.default_expr.str()'
 			}
 			if fields.len > 0 {
-				return '[]T{${fields.join(', ')}}'
+				return '[]T{${fields.join(", ")}}'
 			} else {
 				return x.exprs.str()
 			}
@@ -430,7 +430,7 @@ pub fn (x Expr) str() string {
 				mv := x.vals[ik].str()
 				pairs << '$kv: $mv'
 			}
-			return 'map{ ${pairs.join(' ')} }'
+			return 'map{ ${pairs.join(" ")} }'
 		}
 		Nil {
 			return 'nil'
@@ -625,7 +625,7 @@ pub fn (node Stmt) str() string {
 		}
 		ConstDecl {
 			fields := node.fields.map(field_to_string)
-			return 'const (${fields.join(' ')})'
+			return 'const (${fields.join(" ")})'
 		}
 		ExprStmt {
 			return node.expr.str()
