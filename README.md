@@ -167,11 +167,11 @@ docker run --rm -it vlang:latest
 
 ### Termux/Android
 
-On Termux, V needs some packages preinstalled - a working C compiler,
-also `libgc` and `libgc-static`. After installing them, you can use the
-same script, like on Linux/macos:
+On Termux, V needs some packages preinstalled - a working C compiler, also `libexecinfo`,
+`libgc` and `libgc-static`. After installing them, you can use the same script, like on
+Linux/macos:
 ```bash
-pkg install clang libgc libgc-static
+pkg install clang libexecinfo libgc libgc-static
 git clone https://github.com/vlang/v
 cd v
 make
