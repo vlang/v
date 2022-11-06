@@ -34,7 +34,7 @@ fn test_map_assign_array_of_interface() {
 	println(owner_and_animals)
 	assert owner_and_animals['John Doe'].len == 2
 	println(owner_and_animals['John Doe'][0])
-	assert '${owner_and_animals['John Doe'][0]}'.contains("name: 'Bobby'")
+	assert '${owner_and_animals["John Doe"][0]}'.contains("name: 'Bobby'")
 	println(owner_and_animals['John Doe'][1])
-	assert '${owner_and_animals['John Doe'][1]}'.contains("name: 'Hulk'")
+	assert '${owner_and_animals["John Doe"][1]}'.contains("name: 'Hulk'")
 }

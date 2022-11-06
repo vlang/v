@@ -317,7 +317,7 @@ pub fn (mut p Parser) parse_inline_sum_type() ast.Type {
 		mut variant_names := variants.map(p.table.sym(it.typ).name)
 		variant_names.sort()
 		// deterministic name
-		name := '_v_anon_sum_type_${variant_names.join('_')}'
+		name := '_v_anon_sum_type_${variant_names.join("_")}'
 		variant_types := variants.map(it.typ)
 		prepend_mod_name := p.prepend_mod(name)
 		mut idx := p.table.find_type_idx(prepend_mod_name)

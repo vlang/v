@@ -420,7 +420,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// `users.sort(a.age > b.age)`
 	// Generate a comparison function for a custom type
 	elem_stype := g.typ(info.elem_type)
-	mut compare_fn := 'compare_${g.unique_file_path_hash}_${elem_stype.replace('*', '_ptr')}'
+	mut compare_fn := 'compare_${g.unique_file_path_hash}_${elem_stype.replace("*", "_ptr")}'
 	mut comparison_type := g.unwrap(ast.void_type)
 	mut left_expr, mut right_expr := '', ''
 	// the only argument can only be an infix expression like `a < b` or `b.field > a.field`

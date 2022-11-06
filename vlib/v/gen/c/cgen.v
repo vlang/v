@@ -1036,7 +1036,7 @@ fn (mut g Gen) optional_type_name(t ast.Type) (string, string) {
 	mut styp := ''
 	sym := g.table.sym(t)
 	if sym.language == .c && sym.kind == .struct_ {
-		styp = '${c.option_name}_${base.replace(' ', '_')}'
+		styp = '${c.option_name}_${base.replace(" ", "_")}'
 	} else {
 		styp = '${c.option_name}_$base'
 	}
@@ -1051,7 +1051,7 @@ fn (mut g Gen) result_type_name(t ast.Type) (string, string) {
 	mut styp := ''
 	sym := g.table.sym(t)
 	if sym.language == .c && sym.kind == .struct_ {
-		styp = '${c.result_name}_${base.replace(' ', '_')}'
+		styp = '${c.result_name}_${base.replace(" ", "_")}'
 	} else {
 		styp = '${c.result_name}_$base'
 	}
@@ -1779,7 +1779,7 @@ fn (mut g Gen) write_v_source_line_info(pos token.Pos) {
 		nline := pos.line_nr + 1
 		lineinfo := '\n#line $nline "$g.vlines_path"'
 		$if trace_gen_source_line_info ? {
-			eprintln('> lineinfo: ${lineinfo.replace('\n', '')}')
+			eprintln('> lineinfo: ${lineinfo.replace("\n", "")}')
 		}
 		g.writeln(lineinfo)
 	}
@@ -6147,9 +6147,9 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 						methods_wrapper.writeln('$args);')
 					} else {
 						if parameter_name.starts_with('__shared__') {
-							methods_wrapper.writeln('${method_call}(${fargs.join(', ')}->val);')
+							methods_wrapper.writeln('${method_call}(${fargs.join(", ")}->val);')
 						} else {
-							methods_wrapper.writeln('${method_call}(*${fargs.join(', ')});')
+							methods_wrapper.writeln('${method_call}(*${fargs.join(", ")});')
 						}
 					}
 					methods_wrapper.writeln('}')

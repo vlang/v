@@ -95,7 +95,7 @@ fn (mut g Gen) gen_embedded_metadata() {
 		g.embedded_data.writeln('\t\t\tres.path = ${ctoslit(emfile.rpath)};')
 		if g.should_really_embed_file() {
 			// apath is not needed in production and may leak information
-			g.embedded_data.writeln('\t\t\tres.apath = ${ctoslit('')};')
+			g.embedded_data.writeln('\t\t\tres.apath = ${ctoslit("")};')
 		} else {
 			g.embedded_data.writeln('\t\t\tres.apath = ${ctoslit(emfile.apath)};')
 		}

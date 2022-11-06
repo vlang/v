@@ -240,7 +240,7 @@ fn (mut g JsGen) gen_str_for_option(typ ast.Type, styp string, str_fn_name strin
 	g.definitions.writeln('\t\tres = $tmp_str;')
 	g.definitions.writeln('\t}')
 
-	g.definitions.writeln('\treturn ${str_intp_sub('Option(%%)', 'res')};')
+	g.definitions.writeln('\treturn ${str_intp_sub("Option(%%)", "res")};')
 	g.definitions.writeln('}')
 }
 

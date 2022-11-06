@@ -187,7 +187,7 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	g.auto_str_funcs.writeln('\t\tres = $tmp_str;')
 	g.auto_str_funcs.writeln('\t}')
 
-	g.auto_str_funcs.writeln('\treturn ${str_intp_sub('Option(%%)', 'res')};')
+	g.auto_str_funcs.writeln('\treturn ${str_intp_sub("Option(%%)", "res")};')
 	g.auto_str_funcs.writeln('}')
 }
 
@@ -220,7 +220,7 @@ fn (mut g Gen) gen_str_for_result(typ ast.Type, styp string, str_fn_name string)
 	g.auto_str_funcs.writeln('\t\tres = $tmp_str;')
 	g.auto_str_funcs.writeln('\t}')
 
-	g.auto_str_funcs.writeln('\treturn ${str_intp_sub('result(%%)', 'res')};')
+	g.auto_str_funcs.writeln('\treturn ${str_intp_sub("result(%%)", "res")};')
 	g.auto_str_funcs.writeln('}')
 }
 
@@ -405,7 +405,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 	mut clean_sum_type_v_type_name := ''
 	if info.is_anon {
 		variant_names := info.variants.map(util.strip_main_name(g.table.sym(it).name))
-		clean_sum_type_v_type_name = '${variant_names.join('|')}'
+		clean_sum_type_v_type_name = '${variant_names.join("|")}'
 	} else {
 		clean_sum_type_v_type_name = styp.replace('__', '.')
 		if styp.ends_with('*') {
@@ -569,9 +569,9 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 			}
 		} else if sym.kind in [.f32, .f64] {
 			if sym.kind == .f32 {
-				g.auto_str_funcs.writeln('\t\tstring x = ${str_intp_g32('it')};')
+				g.auto_str_funcs.writeln('\t\tstring x = ${str_intp_g32("it")};')
 			} else {
-				g.auto_str_funcs.writeln('\t\tstring x = ${str_intp_g64('it')};')
+				g.auto_str_funcs.writeln('\t\tstring x = ${str_intp_g64("it")};')
 			}
 		} else if sym.kind == .rune {
 			// Rune are managed at this level as strings
@@ -654,12 +654,12 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 			}
 		} else if sym.kind in [.f32, .f64] {
 			if sym.kind == .f32 {
-				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_g32('a[i]')} );')
+				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_g32("a[i]")} );')
 			} else {
-				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_g64('a[i]')} );')
+				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_g64("a[i]")} );')
 			}
 		} else if sym.kind == .string {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_sq('a[i]')});')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_sq("a[i]")});')
 		} else if sym.kind == .rune {
 			tmp_str := str_intp_rune('${elem_str_fn_name}(  $deref a[i])')
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, $tmp_str);')
@@ -721,7 +721,7 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 		g.auto_str_funcs.writeln('\t\t$key_styp key = *($key_styp*)DenseArray_key(&m.key_values, i);')
 	}
 	if key_sym.kind == .string {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_sq('key')});')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_sq("key")});')
 	} else if key_sym.kind == .rune {
 		tmp_str := str_intp_rune('${key_str_fn_name}(key)')
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, $tmp_str);')

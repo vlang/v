@@ -34,6 +34,6 @@ fn test_v_profile_works() {
 		assert res.output.len > 0
 		assert res.output.contains('OK')
 		term.clear_previous_line()
-		println('${term.bold('OK')} in ${delta:4}ms  v run $local_path/')
+		println('${term.bold("OK")} in ${delta:4}ms  v run $local_path/')
 	}
 }

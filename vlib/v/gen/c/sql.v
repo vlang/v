@@ -117,7 +117,7 @@ fn (mut g Gen) sql_create_table(node ast.SqlStmtLine, expr string, table_name st
 			}
 			g.write('.typ = $typ,')
 			g.write('.is_arr = ${sym.kind == .array}, ')
-			g.write('.is_time = ${g.table.get_type_name(field.typ) == 'time__Time'},')
+			g.write('.is_time = ${g.table.get_type_name(field.typ) == "time__Time"},')
 			g.write('.default_val = (string){.str = (byteptr) "$field.default_val", .is_lit = 1},')
 			g.write('.attrs = new_array_from_c_array($field.attrs.len, $field.attrs.len, sizeof(StructAttribute),')
 			if field.attrs.len > 0 {

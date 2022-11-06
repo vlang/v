@@ -223,7 +223,7 @@ fn (mut g JsGen) gen_array_sort(node ast.CallExpr) {
 	info := rec_sym.info as ast.Array
 
 	elem_stype := g.typ(info.elem_type)
-	mut compare_fn := 'compare_${elem_stype.replace('*', '_ptr')}'
+	mut compare_fn := 'compare_${elem_stype.replace("*", "_ptr")}'
 	mut comparison_type := g.unwrap(ast.void_type)
 	mut left_expr, mut right_expr := '', ''
 

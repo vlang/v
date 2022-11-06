@@ -23,7 +23,7 @@ fn test_innermost_value_of_map_fixed_array() {
 	println(m['foo'][0][0]['bar'])
 	println(m['foo'][0][0]['bar'] == 1)
 	assert m['foo'][0][0]['bar'] == 1
-	assert '${m['foo'][0][0]['bar']}' == '1'
+	assert '${m["foo"][0][0]["bar"]}' == '1'
 }
 
 fn test_complex_map_high_order_fixed_array() {

@@ -137,9 +137,9 @@ fn test_big_closure_${typ}_${i}() {
 			values := all_param_values[..i]
 
 			assert_line := if !return_type.no_assert_kw {
-				'assert c(${values.join(', ')}) $assertion'
+				'assert c(${values.join(", ")}) $assertion'
 			} else {
-				'c(${values.join(', ')}) $assertion'
+				'c(${values.join(", ")}) $assertion'
 			}
 			// Note: the captured arg doesn't matter for this test, as closures always receive
 			// a pointer to the entire closure context as their last argument anyways
@@ -161,7 +161,7 @@ fn test_closure_return_${styp}_${i}() ? {
 	}
 
 	code := v_code.str()
-	println('Compiling V code (${code.count('\n')} lines) ...')
+	println('Compiling V code (${code.count("\n")} lines) ...')
 	wrkdir := os.join_path(os.vtmp_dir(), 'v', 'tests', 'closures')
 	os.mkdir_all(wrkdir)?
 	os.chdir(wrkdir)?

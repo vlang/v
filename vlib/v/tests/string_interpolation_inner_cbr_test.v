@@ -14,7 +14,7 @@ fn test_string_interpolation_inner_cbr() {
 	assert s2 == 'St{}'
 
 	s3 := '${{
-		'a': 1
+		"a": 1
 	}}'
 	println(s3)
 	assert s3 == "{'a': 1}"
