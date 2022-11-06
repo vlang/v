@@ -224,7 +224,7 @@ fn (mut r Repl) pin() {
 // print source code
 fn (mut r Repl) list_source() {
 	source_code := r.current_source_code(true, true)
-	println('\n${source_code.replace('\n\n', '\n')}')
+	println('\n${source_code.replace("\n\n", "\n")}')
 }
 
 fn highlight_console_command(command string) string {

@@ -228,7 +228,7 @@ fn (upd VlsUpdater) download_prebuilt() ! {
 fn (upd VlsUpdater) print_new_vls_version(new_vls_exec_path string) {
 	exec_version := os.execute('$new_vls_exec_path --version')
 	if exec_version.exit_code == 0 {
-		upd.log('VLS was updated to version: ${exec_version.output.all_after('vls version ').trim_space()}')
+		upd.log('VLS was updated to version: ${exec_version.output.all_after("vls version ").trim_space()}')
 	}
 }
 
@@ -269,7 +269,7 @@ fn (upd VlsUpdater) compile_from_source() ! {
 		return error('Cannot compile VLS from source: no appropriate C compiler found.')
 	}
 
-	compile_result := os.execute('v run ${os.join_path(vls_src_folder, 'build.vsh')} ${possible_compilers[selected_compiler_idx]}')
+	compile_result := os.execute('v run ${os.join_path(vls_src_folder, "build.vsh")} ${possible_compilers[selected_compiler_idx]}')
 	if compile_result.exit_code != 0 {
 		return error('Cannot compile VLS from source: $compile_result.output')
 	}
@@ -457,7 +457,7 @@ fn (upd VlsUpdater) run(fp flag.FlagParser) ! {
 			}
 		}
 	} else if upd.pass_to_ls {
-		exit(os.system('$upd.ls_path ${upd.args.join(' ')}'))
+		exit(os.system('$upd.ls_path ${upd.args.join(" ")}'))
 	} else if upd.is_help {
 		println(fp.usage())
 		exit(0)

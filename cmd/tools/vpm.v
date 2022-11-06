@@ -795,7 +795,7 @@ Homepage: $mod.repo_url
 Author: $mod.author
 License: $mod.license
 Location: $path
-Requires: ${mod.dependencies.join(', ')}
+Requires: ${mod.dependencies.join(", ")}
 --------
 ')
 	}

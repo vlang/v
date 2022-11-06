@@ -232,7 +232,7 @@ fn (mut context Context) run_after_cmd() {
 }
 
 fn (mut context Context) compilation_runner_loop() {
-	cmd := '"$context.vexe" ${context.opts.join(' ')}'
+	cmd := '"$context.vexe" ${context.opts.join(" ")}'
 	_ := <-context.rerun_channel
 	for {
 		context.elog('>> loop: v_cycles: $context.v_cycles')

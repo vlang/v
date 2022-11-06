@@ -150,7 +150,7 @@ fn main() {
 	all_commands << other_commands
 	all_commands.sort()
 	eprintln(util.new_suggestion(command, all_commands).say('v: unknown command `$command`'))
-	eprintln('Run ${term.highlight_command('v help')} for usage.')
+	eprintln('Run ${term.highlight_command("v help")} for usage.')
 	exit(1)
 }
 
@@ -160,8 +160,8 @@ fn invoke_help_and_exit(remaining []string) {
 		2 { help.print_and_exit(remaining[1]) }
 		else {}
 	}
-	eprintln('${term.highlight_command('v help')}: provide only one help topic.')
-	eprintln('For usage information, use ${term.highlight_command('v help')}.')
+	eprintln('${term.highlight_command("v help")}: provide only one help topic.')
+	eprintln('For usage information, use ${term.highlight_command("v help")}.')
 	exit(1)
 }
 
