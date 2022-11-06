@@ -34,6 +34,9 @@ fn test_string_new_interpolation() {
 	assert '{n:10}' == '        22'
 
 	f := 2.234
-	print('{f:05.2f}')
+	println('{f:05.2f}')
 	assert '{f:05.2f}' == '02.23'
+
+	println('{@FILE}')
+	assert '{@FILE}'.contains('string_new_interpolation_test.v')
 }

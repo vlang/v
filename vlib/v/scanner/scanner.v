@@ -1185,6 +1185,7 @@ fn (mut s Scanner) ident_string() string {
 		}
 		c := s.text[s.pos]
 		prevc := s.text[s.pos - 1]
+		nextc := s.text[s.pos + 1]
 		if c == scanner.backslash {
 			backslash_count++
 		}
@@ -1206,18 +1207,17 @@ fn (mut s Scanner) ident_string() string {
 		if backslash_count % 2 == 1 && !is_raw && !is_cstr {
 			// Escape `\x`
 			if c == `x` {
-				if s.text[s.pos + 1] == s.quote || !(s.text[s.pos + 1].is_hex_digit()
-					&& s.text[s.pos + 2].is_hex_digit()) {
+				if nextc == s.quote || !(nextc.is_hex_digit() && s.text[s.pos + 2].is_hex_digit()) {
 					s.error(r'`\x` used without two following hex digits')
 				}
 				h_escapes_pos << s.pos - 1
 			}
 			// Escape `\u`
 			if c == `u` {
-				if s.text[s.pos + 1] == s.quote || s.text[s.pos + 2] == s.quote
-					|| s.text[s.pos + 3] == s.quote || s.text[s.pos + 4] == s.quote
-					|| !s.text[s.pos + 1].is_hex_digit() || !s.text[s.pos + 2].is_hex_digit()
-					|| !s.text[s.pos + 3].is_hex_digit() || !s.text[s.pos + 4].is_hex_digit() {
+				if nextc == s.quote || s.text[s.pos + 2] == s.quote || s.text[s.pos + 3] == s.quote
+					|| s.text[s.pos + 4] == s.quote || !nextc.is_hex_digit()
+					|| !s.text[s.pos + 2].is_hex_digit() || !s.text[s.pos + 3].is_hex_digit()
+					|| !s.text[s.pos + 4].is_hex_digit() {
 					s.error(r'`\u` incomplete unicode character value')
 				}
 				u_escapes_pos << s.pos - 1
@@ -1243,7 +1243,7 @@ fn (mut s Scanner) ident_string() string {
 			break
 		}
 		// '{var}' (ignore in vfmt mode) (skip \{)
-		if c == `{` && util.is_name_char(s.text[s.pos + 1]) && prevc != `$` && !is_raw
+		if c == `{` && (util.is_name_char(nextc) || nextc == `@`) && prevc != `$` && !is_raw
 			&& s.count_symbol_before(s.pos - 1, scanner.backslash) % 2 == 0 {
 			// Detect certain strings with "{" that are not interpolation:
 			// e.g. "{init: " (no "}" at the end)
@@ -1256,8 +1256,8 @@ fn (mut s Scanner) ident_string() string {
 			}
 		}
 		// '{var1}{var2}'
-		if prevc == `{` && util.is_name_char(c) && s.text[s.pos - 2] !in [`$`, `{`] && !is_raw
-			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
+		if prevc == `{` && (util.is_name_char(c) || c == `@`) && s.text[s.pos - 2] !in [`$`, `{`]
+			&& !is_raw && s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
 			// Detect certain strings with "{" that are not interpolation:
 			// e.g. "{init: " (no "}" at the end)
 			if s.is_valid_interpolation(s.pos) {
