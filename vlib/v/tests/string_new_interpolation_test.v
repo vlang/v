@@ -40,7 +40,7 @@ fn test_string_new_interpolation() {
 
 	ret := foo()
 	println(ret)
-	assert ret == '[]T\{aaa, bbb, ccc}'
+	assert ret == r'[]T{aaa, bbb, ccc}'
 }
 
 fn foo() string {
