@@ -1,0 +1,7 @@
+vlib/v/checker/tests/fn_array_param_to_voidptr_arg_err.vv:8:6: error: cannot pass an array to voidptr, use []i16.data instead
+    6 | 
+    7 | fn foo(a []i16) {
+    8 |     bar(a)
+      |         ^
+    9 |     bar(a.data)
+   10 | }

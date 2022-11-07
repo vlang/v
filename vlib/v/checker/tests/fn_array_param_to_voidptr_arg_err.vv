@@ -1,0 +1,14 @@
+module main
+
+fn main() {
+	foo([]i16{len:10, init: 1})
+}
+
+fn foo(a []i16) {
+	bar(a)
+	bar(a.data)
+}
+
+fn bar(b voidptr) {
+	println(b)
+}

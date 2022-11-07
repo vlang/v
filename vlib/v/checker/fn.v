@@ -1042,6 +1042,13 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			&& !c.file.is_translated {
 			c.error('expression cannot be passed as `voidptr`', call_arg.expr.pos())
 		}
+
+		// Disallow passing array to voidptr when array.data can be used
+		if param.typ == ast.voidptr_type && arg_typ_sym.kind == .array {
+			c.error('cannot pass an array to voidptr, use {arg_typ_sym.name}.data instead',
+				call_arg.pos)
+		}
+
 		// Handle expected interface
 		if final_param_sym.kind == .interface_ {
 			if c.type_implements(arg_typ, final_param_typ, call_arg.expr.pos()) {
