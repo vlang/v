@@ -8,6 +8,12 @@ import v.util.recompilation
 const is_debug = os.args.contains('-debug')
 
 fn main() {
+	// make testing `v up` easier, by providing a way to force `v self` to fail,
+	// to test the fallback logic:
+	if os.getenv('VSELF_SHOULD_FAIL') != '' {
+		eprintln('v self failed')
+		exit(1)
+	}
 	// support a renamed `v` executable too:
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
