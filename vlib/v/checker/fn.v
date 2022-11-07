@@ -1044,7 +1044,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 
 		// Disallow passing array to voidptr when array.data can be used
-		if param.typ == ast.voidptr_type && arg_typ_sym.kind == .array {
+		if param.typ == ast.voidptr_type && arg_typ_sym.kind == .array && func.name != 'json.encode' {
 			c.error('cannot pass an array to voidptr, use {arg_typ_sym.name}.data instead',
 				call_arg.pos)
 		}
