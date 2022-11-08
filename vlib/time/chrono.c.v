@@ -13,6 +13,6 @@ pub fn portable_timegm(t &C.tm) i64 {
 		year -= years_diff
 		month += 12 * years_diff
 	}
-	days_since_1970 := i64(days_from_civil(year, month + 1, t.tm_mday))
+	days_since_1970 := i64(days_from_unix_epoch(year, month + 1, t.tm_mday))
 	return 60 * (60 * (24 * days_since_1970 + t.tm_hour) + t.tm_min) + t.tm_sec
 }

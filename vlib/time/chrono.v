@@ -1,10 +1,10 @@
 module time
 
-// days_from_civil - return the number of days since the
+// days_from_unix_epoch - return the number of days since the
 // Unix epoch 1970-01-01. A detailed description of the algorithm here
 // is in: http://howardhinnant.github.io/date_algorithms.html
 // Note that it will return negative values for days before 1970-01-01.
-pub fn days_from_civil(oy int, m int, d int) int {
+pub fn days_from_unix_epoch(oy int, m int, d int) int {
 	y := if m <= 2 { oy - 1 } else { oy }
 	era := y / 400
 	yoe := y - era * 400 // [0, 399]
