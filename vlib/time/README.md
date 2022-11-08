@@ -3,11 +3,13 @@
 A time library
 
 ## Features
+
 TODO
 
 ## Description:
 
 `time` provides utilities for working with time and dates:
+
 - parsing of time values expressed in one of the commonly used standard time/date formats
 - formatting of time values
 - arithmetic over times/durations
@@ -19,20 +21,14 @@ TODO
 time can be comparable
 
 see: [V Playground](https://play.vlang.io/p/c121a6dda7)
+
 ```v
 import time
 
 println(time.now())
 ```
-### format
 
-**v doc:**
-```v ignore
-fn (t Time) format() string
-fn (t Time) format_ss() string
-fn (t Time) format_ss_milli() string
-fn (t Time) format_ss_micro() string
-```
+### format
 
 **Example:**
 
@@ -43,19 +39,21 @@ assert time_to_test.format_ss_milli() =='1980-07-11 21:23:42.123'
 assert time_to_test.format_ss_micro() =='1980-07-11 21:23:42.123456'
 ```
 
-### parse
-
 **v doc:**
+
 ```v ignore
-fn parse(s string) !Time
-fn parse_iso8601(s string) !Time
-fn parse_rfc2822(s string) !Time
-fn parse_rfc3339(s string) !Time
+fn (t Time) format() string
+fn (t Time) format_ss() string
+fn (t Time) format_ss_milli() string
+fn (t Time) format_ss_micro() string
 ```
+
+### parse
 
 **Example:**
 
 see: [V Playground](https://play.vlang.io/p/b02ca6027f)
+
 ```v
 import time
 
@@ -66,6 +64,16 @@ t := time.parse(s) or {
 println(t)
 println(t.unix)
 ```
+
+**v doc:**
+
+```v ignore
+fn parse(s string) !Time
+fn parse_iso8601(s string) !Time
+fn parse_rfc2822(s string) !Time
+fn parse_rfc3339(s string) !Time
+```
+
 ### stopwatch
 
 **Example:**
@@ -73,6 +81,7 @@ println(t.unix)
 ```v
 
 ```
+
 ### unix
 
 **Example:**
@@ -80,7 +89,9 @@ println(t.unix)
 ```v
 
 ```
+
 ### chrono
+
 // days_from_civil - return the number of days since the
 // Unix epoch 1970-01-01. A detailed description of the algorithm here
 // is in: http://howardhinnant.github.io/date_algorithms.html
