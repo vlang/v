@@ -32,11 +32,30 @@ println(time.now())
 
 **Example:**
 
+see: [V Playground](https://play.vlang.io/p/133d1a0ce5)
+
 ```v
-assert time_to_test.format() =='1980-07-11 21:23'
-assert time_to_test.format_ss() =='1980-07-11 21:23:42'
-assert time_to_test.format_ss_milli() =='1980-07-11 21:23:42.123'
-assert time_to_test.format_ss_micro() =='1980-07-11 21:23:42.123456'
+import time
+
+const (
+	time_to_test = time.Time{
+		year: 1980
+		month: 7
+		day: 11
+		hour: 21
+		minute: 23
+		second: 42
+		microsecond: 123456
+		unix: 332198622
+	}
+)
+
+println(time_to_test.format())
+
+assert '1980-07-11 21:23' == time_to_test.format()
+assert '1980-07-11 21:23:42'== time_to_test.format_ss()
+assert '1980-07-11 21:23:42.123' == time_to_test.format_ss_milli()
+assert '1980-07-11 21:23:42.123456' == time_to_test.format_ss_micro()
 ```
 
 **v doc:**
