@@ -16,13 +16,11 @@ fn test_string_new_interpolation() {
 	println('{a}{{{{{b}}}}}')
 	assert '{a}{{{{{b}}}}}' == '1{{{{2}}}}'
 
-	// vfmt off
 	s := 'hello'
-	println('{s == "hello"}')
-	assert '{s == "hello"}' == 'true'
-	println('{s != "hello"}')
-	assert '{s != "hello"}' == 'false'
-	// vfmt on
+	println('{s == 'hello'}')
+	assert '{s == 'hello'}' == 'true'
+	println('{s != 'hello'}')
+	assert '{s != 'hello'}' == 'false'
 
 	n := 22
 	println('{n >= 10}')
@@ -39,4 +37,21 @@ fn test_string_new_interpolation() {
 
 	println('{@FILE}')
 	assert '{@FILE}'.contains('string_new_interpolation_test.v')
+
+	ret := foo()
+	println(ret)
+	assert ret == r'[]T{aaa, bbb, ccc}'
+}
+
+fn foo() string {
+	match true {
+		true {
+			fields := ['aaa', 'bbb', 'ccc']
+			return '[]T{{fields.join(', ')}}'
+		}
+		else {
+			fields := ['aaa', 'bbb', 'ccc']
+			return 'const ({fields.join(' ')})'
+		}
+	}
 }
