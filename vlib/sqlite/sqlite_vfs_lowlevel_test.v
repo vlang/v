@@ -90,14 +90,18 @@ mut:
 fn to_vfsstate(t &sqlite.Sqlite3_vfs) &ExampleVfsState {
 	unsafe {
 		p := t.pAppData
-		assert 0 != p
+		if p == 0 {
+			assert false, 'p should not be 0'
+		}
 		return &ExampleVfsState(p)
 	}
 }
 
 fn to_vfsopenedfile(t &sqlite.Sqlite3_file) &ExampleVfsOpenedFile {
 	unsafe {
-		assert 0 != t
+		if t == 0 {
+			assert false, 't should not be 0'
+		}
 		return &ExampleVfsOpenedFile(t)
 	}
 }
