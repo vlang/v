@@ -7,6 +7,7 @@ import strings
 import v.ast
 import v.util
 import v.pref
+import v.checker.constants
 
 const (
 	bs      = '\\'
@@ -1936,6 +1937,10 @@ pub fn (mut f Fmt) enum_val(node ast.EnumVal) {
 
 pub fn (mut f Fmt) ident(node ast.Ident) {
 	if node.info is ast.IdentVar {
+		if node.comptime && node.name in constants.valid_comptime_not_user_defined {
+			f.write(node.name)
+			return
+		}
 		if node.info.is_mut {
 			f.write(node.info.share.str() + ' ')
 		}
