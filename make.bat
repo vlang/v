@@ -44,7 +44,7 @@ if !shift_counter! LSS 1 (
     if "%~1" == "help" (
         if not ["%~2"] == [""] set "subcmd=%~2"& shift& set /a shift_counter+=1
     )
-    for %%z in (build clean cleanall check help) do (
+    for %%z in (build clean cleanall check help rebuild) do (
         if "%~1" == "%%z" set target=%1& shift& set /a shift_counter+=1& goto :verifyopt
     )
 )
@@ -97,6 +97,10 @@ del *.pdb *.lib *.bak *.out *.ilk *.exp *.obj *.o *.a *.so
 echo  ^> Delete old V executable(s)
 del v*.exe
 exit /b 0
+
+:rebuild
+call :cleanall
+goto :build
 
 :help
 if [!subcmd!] == [] (
@@ -271,6 +275,7 @@ echo     clean             Clean build artifacts and debugging symbols
 echo     cleanall          Cleanup entire ALL build artifacts and vc repository
 echo     check             Check that tests pass, and the repository is in a good shape for Pull Requests
 echo     help              Display help for the given target
+echo     rebuild           Fully clean/reset repository and rebuild V
 echo.
 echo Examples:
 echo     make.bat -msvc
@@ -307,6 +312,18 @@ exit /b 0
 :help_build
 echo Usage:
 echo     make.bat build [compiler] [options]
+echo.
+echo Compiler:
+echo     -msvc ^| -gcc ^| -tcc ^| -tcc32 ^| -clang    Set C compiler
+echo.
+echo Options:
+echo    --local     Use the local vc repository without
+echo                syncing with remote
+exit /b 0
+
+:help_rebuild
+echo Usage:
+echo     make.bat rebuild [compiler] [options]
 echo.
 echo Compiler:
 echo     -msvc ^| -gcc ^| -tcc ^| -tcc32 ^| -clang    Set C compiler
