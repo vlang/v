@@ -14,7 +14,7 @@ pub fn days_from_unix_epoch(oy int, m int, d int) int {
 }
 
 // days_from_unix_epoch - return the number of days since the
-// Unix epoch 1970-01-01. 
+// Unix epoch 1970-01-01.
 // deprecated: use time.days_from_unix_epoch instead
 [deprecated: 'use time.days_from_unix_epoch instead']
 [deprecated_after: '2022-11-23']
