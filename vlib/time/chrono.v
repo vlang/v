@@ -16,5 +16,5 @@ pub fn days_from_unix_epoch(oy int, m int, d int) int {
 [deprecated: 'use time.days_from_unix_epoch instead']
 [deprecated_after: '2022-11-23']
 pub fn days_from_civil(oy int, m int, d int) int {
-    return days_from_unix_epoch(oy, m, d)
+	return days_from_unix_epoch(oy, m, d)
 }
