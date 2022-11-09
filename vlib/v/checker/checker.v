@@ -440,6 +440,10 @@ pub fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 			node.type_pos)
 	} else if typ_sym.kind == .chan {
 		c.error('aliases of `chan` types are not allowed.', node.type_pos)
+	} else if typ_sym.kind == .function {
+		orig_sym := c.table.type_to_str(node.parent_type)
+		c.error('type `$typ_sym.str()` is an alias, use the original alias type `$orig_sym` instead',
+			node.type_pos)
 	}
 }
 
