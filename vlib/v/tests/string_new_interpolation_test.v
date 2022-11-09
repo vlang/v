@@ -1,4 +1,4 @@
-fn test_string_new_interpolation() {
+fn test_string_new_interpolation_1() {
 	a, b, c, d := 1, 2, 3, 4
 
 	println('{a}{b}{c}{d}')
@@ -54,4 +54,12 @@ fn foo() string {
 			return 'const ({fields.join(' ')})'
 		}
 	}
+}
+
+// For issue: 16368
+fn test_string_new_interpolation_2() {
+	y := 1
+	x := y
+
+	assert '{x} = {y}' == '1 = 1'
 }

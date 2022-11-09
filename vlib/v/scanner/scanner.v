@@ -1340,6 +1340,7 @@ fn (s Scanner) is_valid_interpolation(start_pos int) bool {
 		if s.text[i] == `}` {
 			// No } in this string, so it's not a valid `{x}` interpolation
 			has_rcbr = true
+			break
 		}
 		if s.text[i] == `=` && (s.text[i - 1] in [`!`, `>`, `<`] || s.text[i + 1] == `=`) {
 			// `!=` `>=` `<=` `==`
