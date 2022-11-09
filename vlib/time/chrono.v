@@ -13,7 +13,7 @@ pub fn days_from_unix_epoch(oy int, m int, d int) int {
 	return era * 146097 + doe - 719468
 }
 
-// days_from_unix_epoch - return the number of days since the
+// days_from_civil - return the number of days since the
 // Unix epoch 1970-01-01.
 // deprecated: use time.days_from_unix_epoch instead
 [deprecated: 'use time.days_from_unix_epoch instead']
