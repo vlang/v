@@ -12,3 +12,9 @@ pub fn days_from_unix_epoch(oy int, m int, d int) int {
 	doe := yoe * 365 + yoe / 4 - yoe / 100 + doy // [0, 146096]
 	return era * 146097 + doe - 719468
 }
+
+[deprecated: 'use time.days_from_unix_epoch instead']
+[deprecated_after: '2022-11-23']
+pub fn days_from_civil(oy int, m int, d int) int {
+    return days_from_unix_epoch(oy, m, d)
+}
