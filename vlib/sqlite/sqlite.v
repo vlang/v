@@ -14,6 +14,7 @@ $if windows {
 
 #include "sqlite3.h"
 
+// https://www.sqlite.org/rescode.html
 pub const (
 	sqlite_ok                 = 0
 	sqlite_error              = 1

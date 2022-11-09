@@ -85,6 +85,8 @@ fn C.sqlite3_vfs_find(&char) &C.sqlite3_vfs
 fn C.sqlite3_vfs_register(&C.sqlite3_vfs, int) int
 fn C.sqlite3_vfs_unregister(&C.sqlite3_vfs) int
 
+// get_vfs Requests sqlite to return instance of VFS with given name.
+// when such vfs is not known, `none` is returned
 pub fn get_vfs(name string) ?&Sqlite3_vfs {
 	res := C.sqlite3_vfs_find(name.str)
 
@@ -97,6 +99,7 @@ pub fn get_vfs(name string) ?&Sqlite3_vfs {
 	}
 }
 
+// get_default_vfs Asks sqlite for default VFS instance
 pub fn get_default_vfs() ?&Sqlite3_vfs {
 	unsafe {
 		res := C.sqlite3_vfs_find(nil)
@@ -108,12 +111,17 @@ pub fn get_default_vfs() ?&Sqlite3_vfs {
 	}
 }
 
+// register_as_nondefault Asks sqlite to register VFS passed in receiver argument as the known VFS.
+// more info about VFS: https://www.sqlite.org/c3ref/vfs.html
+// 'not TODOs' to prevent corruption: https://sqlite.org/howtocorrupt.html
+// example VFS: https://www.sqlite.org/src/doc/trunk/src/test_demovfs.c
 pub fn (mut v Sqlite3_vfs) register_as_nondefault() ? {
 	res := C.sqlite3_vfs_register(v, 0)
 
 	return if sqlite_ok == res { none } else { error('sqlite3_vfs_register returned $res') }
 }
 
+// unregister Requests sqlite to stop using VFS as passed in receiver argument
 pub fn (mut v Sqlite3_vfs) unregister() ? {
 	res := C.sqlite3_vfs_unregister(v)
 
@@ -138,6 +146,8 @@ pub enum OpenModeFlag {
 	nofollow = 0x01000000
 }
 
+// connect_full Opens connection to sqlite database. It gives more control than `open`. 
+// Flags give control over readonly and create decisions. Specific VFS can be chosen.
 pub fn connect_full(path string, mode_flags []OpenModeFlag, vfs_name string) !DB {
 	db := &C.sqlite3(0)
 
