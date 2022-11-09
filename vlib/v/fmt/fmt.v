@@ -2706,9 +2706,7 @@ pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
 		if i >= node.exprs.len {
 			break
 		}
-		if node.has_dollar[i] {
-			f.write('$')
-		}
+		f.write('$')
 		fspec_str, needs_braces := node.get_fspec_braces(i)
 		if needs_braces {
 			f.write('{')
