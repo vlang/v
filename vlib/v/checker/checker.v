@@ -444,6 +444,16 @@ pub fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 		orig_sym := c.table.type_to_str(node.parent_type)
 		c.error('type `$typ_sym.str()` is an alias, use the original alias type `$orig_sym` instead',
 			node.type_pos)
+	} else if typ_sym.kind == .struct_ {
+		if mut typ_sym.info is ast.Struct {
+			// check if the generic param types have been defined
+			for ct in typ_sym.info.concrete_types {
+				ct_sym := c.table.sym(ct)
+				if ct_sym.kind == .placeholder {
+					c.error('unknown type `$ct_sym.name`', node.type_pos)
+				}
+			}
+		}
 	}
 }
 
