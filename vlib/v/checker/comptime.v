@@ -44,30 +44,27 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 			mut escaped_path := raw_path.replace('/', os.path_separator)
 			// Validate that the epath exists, and that it is actually a file.
 			if escaped_path == '' {
-				c.error('supply a valid relative or absolute file path to the file to embed',
+				c.error('supply a valid relative or absolute file path to the file to embed, that is known at compile time',
 					node.pos)
 				return ast.string_type
 			}
-			if !c.pref.is_fmt {
-				abs_path := os.real_path(escaped_path)
-				// check absolute path first
-				if !os.exists(abs_path) {
-					// ... look relative to the source file:
-					escaped_path = os.real_path(os.join_path_single(os.dir(c.file.path),
-						escaped_path))
-					if !os.exists(escaped_path) {
-						c.error('"$escaped_path" does not exist so it cannot be embedded',
-							node.pos)
-						return ast.string_type
-					}
-					if !os.is_file(escaped_path) {
-						c.error('"$escaped_path" is not a file so it cannot be embedded',
-							node.pos)
-						return ast.string_type
-					}
-				} else {
-					escaped_path = abs_path
+			abs_path := os.real_path(escaped_path)
+			// check absolute path first
+			if !os.exists(abs_path) {
+				// ... look relative to the source file:
+				escaped_path = os.real_path(os.join_path_single(os.dir(c.file.path), escaped_path))
+				if !os.exists(escaped_path) {
+					c.error('"$escaped_path" does not exist so it cannot be embedded',
+						node.pos)
+					return ast.string_type
 				}
+				if !os.is_file(escaped_path) {
+					c.error('"$escaped_path" is not a file so it cannot be embedded',
+						node.pos)
+					return ast.string_type
+				}
+			} else {
+				escaped_path = abs_path
 			}
 			node.embed_file.rpath = raw_path
 			node.embed_file.apath = escaped_path
