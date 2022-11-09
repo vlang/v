@@ -12,6 +12,7 @@ import v.util
 import v.util.version
 import v.errors
 import v.pkgconfig
+import v.checker.constants
 
 const (
 	int_min                  = int(0x80000000)
@@ -23,36 +24,15 @@ const (
 )
 
 pub const (
-	valid_comptime_if_os             = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
-		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'termux',
-		'solaris', 'haiku', 'serenity', 'vinix']
-	valid_comptime_compression_types = ['none', 'zlib']
-	valid_comptime_if_compilers      = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
-	valid_comptime_if_platforms      = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
-	valid_comptime_if_cpu_features   = ['x64', 'x32', 'little_endian', 'big_endian']
-	valid_comptime_if_other          = ['apk', 'js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
-		'no_bounds_checking', 'freestanding', 'threads', 'js_node', 'js_browser', 'js_freestanding',
-		'interpreter', 'es5', 'profile', 'wasm32_emscripten']
-	valid_comptime_not_user_defined  = all_valid_comptime_idents()
-	array_builtin_methods            = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice',
-		'sort', 'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
-	array_builtin_methods_chk        = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
+	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
+		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
+	array_builtin_methods_chk   = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
 	// TODO: remove `byte` from this list when it is no longer supported
-	reserved_type_names              = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8',
-		'u16', 'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune']
-	reserved_type_names_chk          = token.new_keywords_matcher_from_array_trie(reserved_type_names)
-	vroot_is_deprecated_message      = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
+	reserved_type_names         = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16',
+		'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune']
+	reserved_type_names_chk     = token.new_keywords_matcher_from_array_trie(reserved_type_names)
+	vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 )
-
-fn all_valid_comptime_idents() []string {
-	mut res := []string{}
-	res << checker.valid_comptime_if_os
-	res << checker.valid_comptime_if_compilers
-	res << checker.valid_comptime_if_platforms
-	res << checker.valid_comptime_if_cpu_features
-	res << checker.valid_comptime_if_other
-	return res
-}
 
 [heap; minify]
 pub struct Checker {
@@ -1644,7 +1624,7 @@ fn (mut c Checker) stmt(node_ ast.Stmt) {
 			for i, ident in node.defer_vars {
 				mut id := ident
 				if mut id.info is ast.IdentVar {
-					if id.comptime && id.name in checker.valid_comptime_not_user_defined {
+					if id.comptime && id.name in constants.valid_comptime_not_user_defined {
 						node.defer_vars[i] = ast.Ident{
 							scope: 0
 							name: ''
