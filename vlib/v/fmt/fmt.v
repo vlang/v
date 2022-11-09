@@ -1882,9 +1882,9 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 	} else {
 		if node.is_embed {
 			if node.embed_file.compression_type == 'none' {
-				f.write("\$embed_file('$node.embed_file.rpath')")
+				f.write('\$embed_file(${node.args[0].expr})')
 			} else {
-				f.write("\$embed_file('$node.embed_file.rpath', .$node.embed_file.compression_type)")
+				f.write('\$embed_file(${node.args[0].expr}, .$node.embed_file.compression_type)')
 			}
 		} else if node.is_env {
 			f.write("\$env('$node.args_var')")

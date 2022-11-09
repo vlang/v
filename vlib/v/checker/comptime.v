@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
+import os
 import v.ast
 import v.pref
 import v.token
@@ -28,6 +29,49 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		return ast.string_type
 	}
 	if node.is_embed {
+		if node.args.len == 1 {
+			embed_arg := node.args[0]
+			mut raw_path := ''
+			if embed_arg.expr is ast.StringLiteral {
+				raw_path = embed_arg.expr.val
+			} else if embed_arg.expr is ast.Ident {
+				if var := c.fn_scope.find_var(embed_arg.expr.name) {
+					if var.expr is ast.StringLiteral {
+						raw_path = var.expr.val
+					}
+				}
+			}
+			mut escaped_path := raw_path.replace('/', os.path_separator)
+			// Validate that the epath exists, and that it is actually a file.
+			if escaped_path == '' {
+				c.error('supply a valid relative or absolute file path to the file to embed',
+					node.pos)
+				return ast.string_type
+			}
+			if !c.pref.is_fmt {
+				abs_path := os.real_path(escaped_path)
+				// check absolute path first
+				if !os.exists(abs_path) {
+					// ... look relative to the source file:
+					escaped_path = os.real_path(os.join_path_single(os.dir(c.file.path),
+						escaped_path))
+					if !os.exists(escaped_path) {
+						c.error('"$escaped_path" does not exist so it cannot be embedded',
+							node.pos)
+						return ast.string_type
+					}
+					if !os.is_file(escaped_path) {
+						c.error('"$escaped_path" is not a file so it cannot be embedded',
+							node.pos)
+						return ast.string_type
+					}
+				} else {
+					escaped_path = abs_path
+				}
+			}
+			node.embed_file.rpath = raw_path
+			node.embed_file.apath = escaped_path
+		}
 		// c.file.embedded_files << node.embed_file
 		if node.embed_file.compression_type !in valid_comptime_compression_types {
 			supported := valid_comptime_compression_types.map('.$it').join(', ')
