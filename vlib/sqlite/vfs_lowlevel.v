@@ -146,7 +146,7 @@ pub enum OpenModeFlag {
 	nofollow = 0x01000000
 }
 
-// connect_full Opens connection to sqlite database. It gives more control than `open`. 
+// connect_full Opens connection to sqlite database. It gives more control than `open`.
 // Flags give control over readonly and create decisions. Specific VFS can be chosen.
 pub fn connect_full(path string, mode_flags []OpenModeFlag, vfs_name string) !DB {
 	db := &C.sqlite3(0)
