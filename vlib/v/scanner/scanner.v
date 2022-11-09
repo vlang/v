@@ -803,13 +803,11 @@ fn (mut s Scanner) text_scan() token.Token {
 			}
 			`{` {
 				if s.is_inside_string {
-					prev_char := s.text[s.pos - 1]
-					next_char := s.text[s.pos + 1]
 					// Handle new `hello {name}` string interpolation
-					if !next_char.is_space() && next_char != `}` && prev_char != `$` {
+					if !s.text[s.pos + 1].is_space() && s.text[s.pos - 1] != `$` {
 						return s.new_token(.str_dollar, '', 1)
 					}
-					if prev_char == `$` {
+					if s.text[s.pos - 1] == `$` {
 						// Skip { in `${` in strings
 						continue
 					} else {
@@ -1176,7 +1174,6 @@ fn (mut s Scanner) ident_string() string {
 		}
 		c := s.text[s.pos]
 		prevc := s.text[s.pos - 1]
-		nextc := s.text[s.pos + 1]
 		if c == scanner.backslash {
 			backslash_count++
 		}
@@ -1198,23 +1195,24 @@ fn (mut s Scanner) ident_string() string {
 		if backslash_count % 2 == 1 && !is_raw && !is_cstr {
 			// Escape `\x`
 			if c == `x` {
-				if nextc == s.quote || !(nextc.is_hex_digit() && s.text[s.pos + 2].is_hex_digit()) {
+				if s.text[s.pos + 1] == s.quote || !(s.text[s.pos + 1].is_hex_digit()
+					&& s.text[s.pos + 2].is_hex_digit()) {
 					s.error(r'`\x` used without two following hex digits')
 				}
 				h_escapes_pos << s.pos - 1
 			}
 			// Escape `\u`
 			if c == `u` {
-				if nextc == s.quote || s.text[s.pos + 2] == s.quote || s.text[s.pos + 3] == s.quote
-					|| s.text[s.pos + 4] == s.quote || !nextc.is_hex_digit()
-					|| !s.text[s.pos + 2].is_hex_digit() || !s.text[s.pos + 3].is_hex_digit()
-					|| !s.text[s.pos + 4].is_hex_digit() {
+				if s.text[s.pos + 1] == s.quote || s.text[s.pos + 2] == s.quote
+					|| s.text[s.pos + 3] == s.quote || s.text[s.pos + 4] == s.quote
+					|| !s.text[s.pos + 1].is_hex_digit() || !s.text[s.pos + 2].is_hex_digit()
+					|| !s.text[s.pos + 3].is_hex_digit() || !s.text[s.pos + 4].is_hex_digit() {
 					s.error(r'`\u` incomplete unicode character value')
 				}
 				u_escapes_pos << s.pos - 1
 			}
 		}
-		// '${var}' (ignore in vfmt mode) (skip \$)
+		// ${var} (ignore in vfmt mode) (skip \$)
 		if prevc == `$` && c == `{` && !is_raw
 			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
 			s.is_inside_string = true
@@ -1223,7 +1221,7 @@ fn (mut s Scanner) ident_string() string {
 			s.pos -= 2
 			break
 		}
-		// '$var'
+		// $var
 		if prevc == `$` && util.is_name_char(c) && !is_raw
 			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
 			s.is_inside_string = true
@@ -1231,29 +1229,29 @@ fn (mut s Scanner) ident_string() string {
 			s.pos -= 2
 			break
 		}
-		// '{var}' (ignore in vfmt mode) (skip \{)
-		if c == `{` && (util.is_name_char(nextc) || nextc == `@`) && prevc != `$` && !is_raw
+		// {var} (ignore in vfmt mode) (skip \{)
+		if c == `{` && util.is_name_char(s.text[s.pos + 1]) && prevc != `$` && !is_raw
 			&& s.count_symbol_before(s.pos - 1, scanner.backslash) % 2 == 0 {
 			// Detect certain strings with "{" that are not interpolation:
 			// e.g. "{init: " (no "}" at the end)
-			if s.is_valid_interpolation(s.pos + 1) {
+			mut is_valid_inter := true
+			for i := s.pos + 1; i < s.text.len; i++ {
+				if s.text[i] == `}` {
+					break
+				}
+				if s.text[i] in [`=`, `:`, `\n`, s.inter_quote] {
+					// We reached the end of the line or string without reaching "}".
+					// Also if there's "=", there's no way it's a valid interpolation expression:
+					// e.g. `println("{a.b = 42}")` `println('{foo:bar}')`
+					is_valid_inter = false
+					break
+				}
+			}
+			if is_valid_inter {
 				s.is_inside_string = true
 				s.is_enclosed_inter = true
 				// so that s.pos points to $ at the next step
 				s.pos -= 1
-				break
-			}
-		}
-		// '{var1}{var2}'
-		if prevc == `{` && (util.is_name_char(c) || c == `@`) && s.text[s.pos - 2] !in [`$`, `{`]
-			&& !is_raw && s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
-			// Detect certain strings with "{" that are not interpolation:
-			// e.g. "{init: " (no "}" at the end)
-			if s.is_valid_interpolation(s.pos) {
-				s.is_inside_string = true
-				s.is_enclosed_inter = true
-				// so that s.pos points to $ at the next step
-				s.pos -= 2
 				break
 			}
 		}
@@ -1310,39 +1308,6 @@ fn (mut s Scanner) ident_string() string {
 		}
 	}
 	return lit
-}
-
-fn (s Scanner) is_valid_interpolation(start_pos int) bool {
-	mut is_valid_inter := true
-	mut has_rcbr := false
-	mut inside_par := false
-	for i := start_pos; i < s.text.len - 1; i++ {
-		if s.text[i] == `(` {
-			inside_par = true
-		}
-		if s.text[i] == `)` && inside_par {
-			inside_par = false
-		}
-		if s.text[i] == s.quote && !inside_par {
-			break
-		}
-		if s.text[i] == `}` {
-			// No } in this string, so it's not a valid `{x}` interpolation
-			has_rcbr = true
-		}
-		if s.text[i] == `=` && (s.text[i - 1] in [`!`, `>`, `<`] || s.text[i + 1] == `=`) {
-			// `!=` `>=` `<=` `==`
-			return true
-		}
-		if s.text[i] == `=` || (s.text[i] == `:` && s.text[i + 1].is_space()) {
-			// We reached the end of the line or string without reaching "}".
-			// Also if there's "=", there's no way it's a valid interpolation expression:
-			// e.g. `println("{a.b = 42}")` `println('{foo: bar}')`
-			is_valid_inter = false
-			break
-		}
-	}
-	return is_valid_inter && has_rcbr
 }
 
 fn decode_h_escape_single(str string, idx int) (int, string) {
