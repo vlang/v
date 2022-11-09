@@ -230,7 +230,7 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 	needs_fspec := lit.need_fmts[i] || lit.pluss[i]
 		|| (lit.fills[i] && lit.fwidths[i] >= 0) || lit.fwidths[i] != 0
 		|| lit.precisions[i] != 987698
-	mut needs_braces := !lit.has_dollar[i] || needs_fspec
+	mut needs_braces := needs_fspec
 	sx := lit.exprs[i].str()
 	if sx.contains(r'"') || sx.contains(r"'") {
 		needs_braces = true
@@ -480,9 +480,7 @@ pub fn (x Expr) str() string {
 				if i >= x.exprs.len {
 					break
 				}
-				if x.has_dollar[i] {
-					res.write_string('$')
-				}
+				res.write_string('$')
 				fspec_str, needs_braces := x.get_fspec_braces(i)
 				if needs_braces {
 					res.write_string('{')

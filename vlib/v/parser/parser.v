@@ -3056,7 +3056,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 	val := p.tok.lit
 	mut pos := p.tok.pos()
 	pos.last_line = pos.line_nr + val.count('\n')
-	if p.peek_tok.kind != .str_dollar && p.peek_tok.kind != .str_lcbr {
+	if p.peek_tok.kind != .str_dollar {
 		p.next()
 		p.filter_string_vet_errors(pos)
 		node = ast.StringLiteral{
@@ -3076,16 +3076,14 @@ fn (mut p Parser) string_expr() ast.Expr {
 	mut fills := []bool{}
 	mut fmts := []u8{}
 	mut fposs := []token.Pos{}
-	mut has_dollar := []bool{}
 	// Handle $ interpolation
 	p.inside_str_interp = true
 	for p.tok.kind == .string {
 		vals << p.tok.lit
 		p.next()
-		if p.tok.kind != .str_dollar && p.tok.kind != .str_lcbr {
+		if p.tok.kind != .str_dollar {
 			break
 		}
-		has_dollar_ := p.tok.kind == .str_dollar
 		p.next()
 		exprs << p.expr(0)
 		mut has_fmt := false
@@ -3138,7 +3136,6 @@ fn (mut p Parser) string_expr() ast.Expr {
 		fmts << fmt
 		fills << fill
 		fposs << p.prev_tok.pos()
-		has_dollar << has_dollar_
 	}
 	pos = pos.extend(p.prev_tok.pos())
 	p.filter_string_vet_errors(pos)
@@ -3153,7 +3150,6 @@ fn (mut p Parser) string_expr() ast.Expr {
 		fmts: fmts
 		fmt_poss: fposs
 		pos: pos
-		has_dollar: has_dollar
 	}
 	// need_fmts: prelimery - until checker finds out if really needed
 	p.inside_str_interp = false

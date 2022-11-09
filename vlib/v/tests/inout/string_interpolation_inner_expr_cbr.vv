@@ -1,9 +1,0 @@
-enum Foo {
-	abc
-	def
-}
-
-fn main() {
-	println('Foo = {Foo.def}')
-	println('Foo = {unsafe { Foo(1) }}')
-}
