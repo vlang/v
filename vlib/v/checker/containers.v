@@ -322,6 +322,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		node.value_type = info.value_type
 		return node.typ
 	}
+
 	if node.keys.len > 0 && node.vals.len > 0 {
 		mut key0_type := ast.void_type
 		mut val0_type := ast.void_type
@@ -344,6 +345,15 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			}
 			node.val_types << val0_type
 		}
+		key0_type = c.unwrap_generic(key0_type)
+		val0_type = c.unwrap_generic(val0_type)
+		map_type := ast.new_type(c.table.find_or_register_map(key0_type, val0_type))
+		node.typ = map_type
+		node.key_type = key0_type
+		node.value_type = val0_type
+		map_value_sym := c.table.sym(node.value_type)
+		expecting_interface_map := map_value_sym.kind == .interface_
+		//
 		mut same_key_type := true
 		for i, key in node.keys {
 			if i == 0 && !use_expected_type {
@@ -355,11 +365,31 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			c.expected_type = val0_type
 			val_type := c.expr(val)
 			node.val_types << val_type
+			val_type_sym := c.table.sym(val_type)
 			if !c.check_types(key_type, key0_type) || (i == 0 && key_type.is_number()
 				&& key0_type.is_number() && key0_type != ast.mktyp(key_type)) {
 				msg := c.expected_msg(key_type, key0_type)
 				c.error('invalid map key: $msg', key.pos())
 				same_key_type = false
+			}
+			if expecting_interface_map {
+				if val_type == node.value_type {
+					continue
+				}
+				if val_type_sym.kind == .struct_
+					&& c.type_implements(val_type, node.value_type, val.pos()) {
+					node.vals[i] = ast.CastExpr{
+						expr: val
+						typname: c.table.get_type_name(node.value_type)
+						typ: node.value_type
+						expr_type: val_type
+						pos: val.pos()
+					}
+					continue
+				} else {
+					msg := c.expected_msg(val_type, node.value_type)
+					c.error('invalid map value: $msg', val.pos())
+				}
 			}
 			if !c.check_types(val_type, val0_type) || (i == 0 && val_type.is_number()
 				&& val0_type.is_number() && val0_type != ast.mktyp(val_type)) {
@@ -372,12 +402,6 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				c.check_dup_keys(node, i)
 			}
 		}
-		key0_type = c.unwrap_generic(key0_type)
-		val0_type = c.unwrap_generic(val0_type)
-		mut map_type := ast.new_type(c.table.find_or_register_map(key0_type, val0_type))
-		node.typ = map_type
-		node.key_type = key0_type
-		node.value_type = val0_type
 		return map_type
 	}
 	return node.typ
