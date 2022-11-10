@@ -95,8 +95,8 @@ fn test_parse_form() {
 		'a': 'b'
 		'c': ' d '
 	}
-	assert parse_form(r'{json}') == {
-		'json': r'{json}'
+	assert parse_form('{json}') == {
+		'json': '{json}'
 	}
 	assert parse_form('{
     "_id": "76c",

@@ -812,18 +812,18 @@ fn struct_auto_str_func(mut g JsGen, sym &ast.TypeSymbol, field_type ast.Type, f
 			// ptr int can be "nil", so this needs to be casted to a string
 			if sym.kind == .f32 {
 				return 'str_intp(1, _MOV((StrIntpData[]){
-					{ _SLIT0, $si_g32_code, {.d_f32 = *$method_str }}
+					{_SLIT0, $si_g32_code, {.d_f32 = *$method_str }}
 				}))'
 			} else if sym.kind == .f64 {
 				return 'str_intp(1, _MOV((StrIntpData[]){
-					{ _SLIT0, $si_g64_code, {.d_f64 = *$method_str }}
+					{_SLIT0, $si_g64_code, {.d_f64 = *$method_str }}
 				}))'
 			} else if sym.kind == .u64 {
 				fmt_type := StrIntpType.si_u64
-				return 'str_intp(1, _MOV((StrIntpData[]){{ _SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_u64 = *$method_str }}}))'
+				return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_u64 = *$method_str }}}))'
 			}
 			fmt_type := StrIntpType.si_i32
-			return 'str_intp(1, _MOV((StrIntpData[]){{ _SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i32 = *$method_str }}}))'
+			return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i32 = *$method_str }}}))'
 		}
 		return method_str
 	}

@@ -1685,7 +1685,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		}
 		f.write(f.table.type_to_str_using_aliases(node.elem_type, f.mod2alias))
 		if node.has_default {
-			f.write('\{init: ')
+			f.write('{init: ')
 			f.expr(node.default_expr)
 			f.write('}')
 		} else {

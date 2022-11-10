@@ -29,7 +29,7 @@ const (
 		'hg':  'hg clone'
 	}
 	supported_vcs_outdated_steps = {
-		'git': ['git fetch', 'git rev-parse @', 'git rev-parse @\{u}']
+		'git': ['git fetch', 'git rev-parse @', 'git rev-parse @{u}']
 		'hg':  ['hg incoming']
 	}
 	supported_vcs_version_cmds = {
