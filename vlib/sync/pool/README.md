@@ -16,7 +16,7 @@ pub struct SResult {
 	s string
 }
 
-fn sprocess(pp &pool.PoolProcessor, idx int, wid int) &SResult {
+fn sprocess(mut pp pool.PoolProcessor, idx int, wid int) &SResult {
 	item := pp.get_item<string>(idx)
 	println('idx: $idx, wid: $wid, item: ' + item)
 	return &SResult{item.reverse()}
