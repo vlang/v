@@ -7,6 +7,7 @@ import strings
 import v.ast
 import v.util
 import v.pref
+import v.checker.constants
 
 const (
 	bs      = '\\'
@@ -50,9 +51,16 @@ pub mut:
 	is_mbranch_expr    bool // match a { x...y { } }
 	fn_scope           &ast.Scope = unsafe { nil }
 	wsinfix_depth      int
+	format_state       FormatState
+	source_text        string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
 }
 
-pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug bool) string {
+[params]
+pub struct FmtOptions {
+	source_text string
+}
+
+pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug bool, options FmtOptions) string {
 	mut f := Fmt{
 		file: file
 		table: table
@@ -61,6 +69,7 @@ pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug boo
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
 	}
+	f.source_text = options.source_text
 	f.process_file_imports(file)
 	f.set_current_module_name('main')
 	// As these are toplevel stmts, the indent increase done in f.stmts() has to be compensated
@@ -132,7 +141,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if penalty_idx > 0 && f.line_len <= fmt.max_len[penalty_idx] {
 		return false
 	}
-	if f.out[f.out.len - 1] == ` ` {
+	if f.out.last() == ` ` {
 		f.out.go_back(1)
 	}
 	f.write('\n')
@@ -255,7 +264,7 @@ pub fn (mut f Fmt) short_module(name string) string {
 	}
 	idx := vals.len - 1
 	mname, tprefix := f.get_modname_prefix(vals[..idx].join('.'))
-	symname := vals[vals.len - 1]
+	symname := vals.last()
 	mut aname := f.mod2alias[mname]
 	if aname == '' {
 		for _, v in f.mod2alias {
@@ -328,9 +337,18 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 			continue
 		}
 		already_imported[import_text] = true
-		f.out_imports.writeln(import_text)
-		f.import_comments(imp.comments, inline: true)
-		f.import_comments(imp.next_comments)
+
+		if !f.format_state.is_vfmt_on {
+			import_original_source_lines := f.get_source_lines()#[imp.pos.line_nr..
+				imp.pos.last_line + 1].join('\n')
+			f.out_imports.writeln(import_original_source_lines)
+			// NOTE: imp.comments are on the *same line*, so they are already included in import_original_source_lines
+			f.import_comments(imp.next_comments)
+		} else {
+			f.out_imports.writeln(import_text)
+			f.import_comments(imp.comments, inline: true)
+			f.import_comments(imp.next_comments)
+		}
 		num_imports++
 	}
 	if num_imports > 0 {
@@ -441,7 +459,7 @@ pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 
 pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	if f.is_debug {
-		eprintln('stmt: ${node.pos:-42} | node: ${node.type_name():-20}')
+		eprintln('stmt ${node.type_name():-20} | pos: $node.pos.line_str()')
 	}
 	match node {
 		ast.EmptyStmt, ast.NodeError {}
@@ -544,7 +562,7 @@ fn stmt_is_single_line(stmt ast.Stmt) bool {
 pub fn (mut f Fmt) expr(node_ ast.Expr) {
 	mut node := unsafe { node_ }
 	if f.is_debug {
-		eprintln('expr: ${node.pos():-42} | node: ${node.type_name():-20} | $node.str()')
+		eprintln('expr ${node.type_name():-20} | pos: $node.pos().line_str() | $node.str()')
 	}
 	match mut node {
 		ast.NodeError {}
@@ -938,7 +956,11 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 	if node.is_pub {
 		f.write('pub ')
 	}
-	name := node.name.after('.')
+	mut name := node.name.after('.')
+	if node.typ != ast.int_type {
+		senum_type := f.table.type_to_str_using_aliases(node.typ, f.mod2alias)
+		name += ' as $senum_type'
+	}
 	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
 		f.writeln('enum $name {}\n')
 		return
@@ -1149,7 +1171,7 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 }
 
 pub fn (mut f Fmt) go_expr(node ast.GoExpr) {
-	f.write('go ')
+	f.write('spawn ')
 	f.call_expr(node.call_expr)
 }
 
@@ -1663,7 +1685,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		}
 		f.write(f.table.type_to_str_using_aliases(node.elem_type, f.mod2alias))
 		if node.has_default {
-			f.write('\{init: ')
+			f.write('{init: ')
 			f.expr(node.default_expr)
 			f.write('}')
 		} else {
@@ -1860,14 +1882,16 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 	} else {
 		if node.is_embed {
 			if node.embed_file.compression_type == 'none' {
-				f.write("\$embed_file('$node.embed_file.rpath')")
+				f.write('\$embed_file(${node.args[0].expr})')
 			} else {
-				f.write("\$embed_file('$node.embed_file.rpath', .$node.embed_file.compression_type)")
+				f.write('\$embed_file(${node.args[0].expr}, .$node.embed_file.compression_type)')
 			}
 		} else if node.is_env {
 			f.write("\$env('$node.args_var')")
 		} else if node.is_pkgconfig {
 			f.write("\$pkgconfig('$node.args_var')")
+		} else if node.method_name == 'compile_error' {
+			f.write("\$compile_error('$node.args_var')")
 		} else {
 			inner_args := if node.args_var != '' {
 				node.args_var
@@ -1913,6 +1937,10 @@ pub fn (mut f Fmt) enum_val(node ast.EnumVal) {
 
 pub fn (mut f Fmt) ident(node ast.Ident) {
 	if node.info is ast.IdentVar {
+		if node.comptime && node.name in constants.valid_comptime_not_user_defined {
+			f.write(node.name)
+			return
+		}
 		if node.info.is_mut {
 			f.write(node.info.share.str() + ' ')
 		}
@@ -1949,7 +1977,7 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 					// "v.fmt.foo" => "fmt.foo"
 					vals := full_name.split('.')
 					mod_prefix := vals[vals.len - 2]
-					const_name := vals[vals.len - 1]
+					const_name := vals.last()
 					if mod_prefix == 'main' {
 						f.write(const_name)
 						return

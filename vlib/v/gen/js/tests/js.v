@@ -90,7 +90,7 @@ fn main() {
 	for m, n in ma {
 		iss := m
 	}
-	go async(0, 'hello')
+	spawn async(0, 'hello')
 	fn_in_var := fn (number int) {
 		println('number: $number')
 	}

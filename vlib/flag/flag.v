@@ -620,29 +620,29 @@ pub fn (mut fs FlagParser) finalize() ![]string {
 	if !fs.allow_unknown_args {
 		for a in remaining {
 			if (a.len >= 2 && a[..2] == '--') || (a.len == 2 && a[0] == `-`) {
-				return IError(&UnkownFlagError{
+				return &UnkownFlagError{
 					flag: a
-				})
+				}
 			}
 		}
 	}
 	if remaining.len < fs.min_free_args && fs.min_free_args > 0 {
-		return IError(&ArgsCountError{
+		return &ArgsCountError{
 			want: fs.min_free_args
 			got: remaining.len
-		})
+		}
 	}
 	if remaining.len > fs.max_free_args && fs.max_free_args > 0 {
-		return IError(&ArgsCountError{
+		return &ArgsCountError{
 			want: fs.max_free_args
 			got: remaining.len
-		})
+		}
 	}
 	if remaining.len > 0 && fs.max_free_args == 0 && fs.min_free_args == 0 {
-		return IError(&ArgsCountError{
+		return &ArgsCountError{
 			want: 0
 			got: remaining.len
-		})
+		}
 	}
 	remaining << fs.all_after_dashdash
 	return remaining

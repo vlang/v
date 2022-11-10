@@ -404,9 +404,14 @@ fn (c Checker) check_same_type_ignoring_pointers(type_a ast.Type, type_b ast.Typ
 fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 	keep_fn := c.table.cur_fn
 	keep_inside_anon := c.inside_anon_fn
+	keep_anon_fn := c.cur_anon_fn
 	defer {
 		c.table.cur_fn = keep_fn
 		c.inside_anon_fn = keep_inside_anon
+		c.cur_anon_fn = keep_anon_fn
+	}
+	if node.decl.no_body {
+		c.error('anonymous function must declare a body', node.decl.pos)
 	}
 	for param in node.decl.params {
 		if param.name.len == 0 {
@@ -415,6 +420,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 	}
 	c.table.cur_fn = unsafe { &node.decl }
 	c.inside_anon_fn = true
+	c.cur_anon_fn = unsafe { &node }
 	mut has_generic := false
 	for mut var in node.inherited_vars {
 		parent_var := node.decl.scope.parent.find_var(var.name) or {
@@ -922,7 +928,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 
 		param := if func.is_variadic && i >= func.params.len - 1 {
-			func.params[func.params.len - 1]
+			func.params.last()
 		} else {
 			func.params[i]
 		}
@@ -1047,6 +1053,13 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 					c.mark_as_referenced(mut &call_arg.expr, true)
 				}
 			}
+
+			if arg_typ !in [ast.voidptr_type, ast.nil_type]
+				&& !c.check_multiple_ptr_match(arg_typ, param.typ, param, call_arg) {
+				got_typ_str, expected_typ_str := c.get_string_names_of(arg_typ, param.typ)
+				c.error('cannot use `$got_typ_str` as `$expected_typ_str` in argument ${i + 1} to `$fn_name`',
+					call_arg.pos)
+			}
 			continue
 		}
 		if param.typ.is_ptr() && !param.is_mut && !call_arg.typ.is_real_pointer()
@@ -1150,6 +1163,12 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			}
 			c.error('$err.msg() in argument ${i + 1} to `$fn_name`', call_arg.pos)
 		}
+		if final_param_sym.kind == .struct_ && arg_typ !in [ast.voidptr_type, ast.nil_type]
+			&& !c.check_multiple_ptr_match(arg_typ, param.typ, param, call_arg) {
+			got_typ_str, expected_typ_str := c.get_string_names_of(arg_typ, param.typ)
+			c.error('cannot use `$got_typ_str` as `$expected_typ_str` in argument ${i + 1} to `$fn_name`',
+				call_arg.pos)
+		}
 		// Warn about automatic (de)referencing, which will be removed soon.
 		if func.language != .c && !c.inside_unsafe && arg_typ.nr_muls() != param.typ.nr_muls()
 			&& !(call_arg.is_mut && param.is_mut) && !(!call_arg.is_mut && !param.is_mut)
@@ -1166,7 +1185,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	if func.generic_names.len > 0 {
 		for i, mut call_arg in node.args {
 			param := if func.is_variadic && i >= func.params.len - 1 {
-				func.params[func.params.len - 1]
+				func.params.last()
 			} else {
 				func.params[i]
 			}
@@ -1665,6 +1684,14 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 						}
 					}
 				}
+
+				if got_arg_typ !in [ast.voidptr_type, ast.nil_type]
+					&& !c.check_multiple_ptr_match(got_arg_typ, param.typ, param, arg) {
+					got_typ_str, expected_typ_str := c.get_string_names_of(got_arg_typ,
+						param.typ)
+					c.error('cannot use `$got_typ_str` as `$expected_typ_str` in argument ${i + 1} to `$method_name`',
+						arg.pos)
+				}
 				continue
 			}
 			if param.typ.is_ptr() && !arg.typ.is_real_pointer() && arg.expr.is_literal()
@@ -1691,6 +1718,13 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					}
 				}
 				c.error('$err.msg() in argument ${i + 1} to `${left_sym.name}.$method_name`',
+					arg.pos)
+			}
+			param_typ_sym := c.table.sym(exp_arg_typ)
+			if param_typ_sym.kind == .struct_ && got_arg_typ !in [ast.voidptr_type, ast.nil_type]
+				&& !c.check_multiple_ptr_match(got_arg_typ, param.typ, param, arg) {
+				got_typ_str, expected_typ_str := c.get_string_names_of(got_arg_typ, param.typ)
+				c.error('cannot use `$got_typ_str` as `$expected_typ_str` in argument ${i + 1} to `$method_name`',
 					arg.pos)
 			}
 		}

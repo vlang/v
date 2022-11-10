@@ -1,12 +1,12 @@
 struct Node<T> {
 mut:
 	data T
-	next &Node<T> = 0
+	next &Node<T> = unsafe { nil }
 }
 
 struct SinglyLinkedList<T> {
 mut:
-	first_node &Node<T> = 0
+	first_node &Node<T> = unsafe { nil }
 }
 
 fn init_singlylinkedlist<T>(nodes []Node<T>) SinglyLinkedList<T> {

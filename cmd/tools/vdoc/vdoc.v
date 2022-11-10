@@ -210,7 +210,7 @@ fn (vd VDoc) render_parallel(out Output) {
 	work.close()
 	wg.add(vjobs)
 	for _ in 0 .. vjobs {
-		go vd.work_processor(mut work, mut wg)
+		spawn vd.work_processor(mut work, mut wg)
 	}
 	wg.wait()
 }

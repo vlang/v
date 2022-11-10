@@ -139,10 +139,10 @@ fn (stmt Stmt) get_error_msg() string {
 
 pub fn (stmt Stmt) error(code int) IError {
 	msg := stmt.get_error_msg()
-	return IError(&SQLError{
+	return &SQLError{
 		msg: '$msg ($code) ($stmt.query)'
 		code: code
-	})
+	}
 }
 
 fn (stmt Stmt) get_field_count() u16 {

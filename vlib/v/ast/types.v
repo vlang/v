@@ -282,6 +282,9 @@ pub fn (t Type) debug() []string {
 	if t.has_flag(.optional) {
 		res << 'optional'
 	}
+	if t.has_flag(.result) {
+		res << 'result'
+	}
 	if t.has_flag(.variadic) {
 		res << 'variadic'
 	}

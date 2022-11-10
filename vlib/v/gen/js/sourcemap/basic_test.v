@@ -3,7 +3,7 @@ module sourcemap
 fn test_simple() {
 	mut sg := generate_empty_map()
 	mut sm := sg.add_map('hello.js', '/', true, 0, 0)
-	sm.set_source_content('hello.v', "fn main(){ nprintln('Hello World! Helo \$a')\n}")
+	sm.set_source_content('hello.v', "fn main(){nprintln('Hello World! Helo \$a')\n}")
 
 	mlist := [
 		MappingInput{
@@ -132,7 +132,7 @@ fn test_simple() {
 
 	json_data := sm.to_json()
 
-	expected := '{"version":3,"file":"hello.js","sourceRoot":"\\/","sources":["hello.v"],"sourcesContent":["fn main(){ nprintln(\'Hello World! Helo \$a\')\\n}"],"names":["hello_name"],"mappings":"AAAA;AAAA,EAAA,OAAO,CAACA,GAAR,CAAY,aAAZ,CAAA,CAAA;AAAA"}'
+	expected := '{"version":3,"file":"hello.js","sourceRoot":"\\/","sources":["hello.v"],"sourcesContent":["fn main(){nprintln(\'Hello World! Helo \$a\')\\n}"],"names":["hello_name"],"mappings":"AAAA;AAAA,EAAA,OAAO,CAACA,GAAR,CAAY,aAAZ,CAAA,CAAA;AAAA"}'
 	assert json_data.str() == expected
 }
 

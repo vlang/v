@@ -5,7 +5,7 @@ fn expensive_computing(i int) int {
 fn main() {
 	mut threads := []thread int{}
 	for i in 1 .. 10 {
-		threads << go expensive_computing(i)
+		threads << spawn expensive_computing(i)
 	}
 	// Join all tasks
 	r := threads.wait()

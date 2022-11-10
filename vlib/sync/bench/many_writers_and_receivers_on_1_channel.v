@@ -117,11 +117,11 @@ fn main() {
 	}
 	ctx.pops_wg.add(n_readers)
 	for i := 0; i < n_readers; i++ {
-		go do_rec(ch, i, mut ctx)
+		spawn do_rec(ch, i, mut ctx)
 	}
 	ctx.pushes_wg.add(n_writers)
 	for i := 0; i < n_writers; i++ {
-		go do_send(ch, i, mut ctx)
+		spawn do_send(ch, i, mut ctx)
 	}
 	ctx.pushes_wg.wait()
 	eprintln('>> all pushes done')

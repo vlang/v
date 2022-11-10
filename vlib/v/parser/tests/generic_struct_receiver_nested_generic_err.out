@@ -1,0 +1,5 @@
+vlib/v/parser/tests/generic_struct_receiver_nested_generic_err.vv:5:11: error: the parameter type name of a generic struct, must be a single capital letter placeholder name, like T or X, or a non-generic type name like int, string, etc.
+    3 | }
+    4 | 
+    5 | fn (a Foo<Foo<T>>) baz() {}
+      |           ~~~~~~

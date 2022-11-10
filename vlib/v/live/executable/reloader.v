@@ -45,7 +45,7 @@ pub fn start_reloader(mut r live.LiveReloadInfo) {
 		eprintln(err)
 		exit(1)
 	}
-	go reloader(mut r)
+	spawn reloader(mut r)
 }
 
 fn elog(r &live.LiveReloadInfo, s string) {

@@ -24,7 +24,7 @@ fn test_once() {
 
 	// It is executed 10 times, but only once actually.
 	for i := 0; i < n; i++ {
-		go run(mut once, mut o, c)
+		spawn run(mut once, mut o, c)
 	}
 	for i := 0; i < n; i++ {
 		<-c

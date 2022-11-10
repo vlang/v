@@ -13,7 +13,7 @@ fn run_forever(shared foo []int, mut sem sync.Semaphore) {
 fn test_semaphore() {
 	shared abc := &[0]
 	mut sem := sync.new_semaphore()
-	go run_forever(shared abc, mut sem)
+	spawn run_forever(shared abc, mut sem)
 	for _ in 0 .. 1000 {
 		unsafe { abc[0]-- }
 	}

@@ -712,10 +712,10 @@ pub mut:
 [minify]
 pub struct EmbeddedFile {
 pub:
-	rpath            string // used in the source code, as an ID/key to the embed
-	apath            string // absolute path during compilation to the resource
 	compression_type string
 pub mut:
+	rpath string // used in the source code, as an ID/key to the embed
+	apath string // absolute path during compilation to the resource
 	// these are set by gen_embed_file_init in v/gen/c/embed
 	is_compressed bool
 	bytes         []u8
@@ -1167,6 +1167,7 @@ pub:
 	comments         []Comment   // comments before the first EnumField
 	fields           []EnumField // all the enum fields
 	attrs            []Attr      // attributes of enum declaration
+	typ              Type        // the default is `int`; can be changed by `enum Big as u64 { a = 5 }`
 	pos              token.Pos
 }
 
@@ -1685,7 +1686,6 @@ pub:
 	method_pos  token.Pos
 	scope       &Scope = unsafe { nil }
 	left        Expr
-	args_var    string
 	//
 	is_vweb   bool
 	vweb_tmpl File
@@ -1700,6 +1700,7 @@ pub mut:
 	left_type   Type
 	result_type Type
 	env_value   string
+	args_var    string
 	args        []CallArg
 	embed_file  EmbeddedFile
 }

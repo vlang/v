@@ -129,7 +129,7 @@ fn main() {
 	)
 	app.qt = app.qt.create(0, 0, 1340, 640, 8, 4, 0)
 	app.start()
-	go app.run()
+	spawn app.run()
 	app.gg.run()
 }
 

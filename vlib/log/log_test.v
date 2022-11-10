@@ -63,7 +63,7 @@ fn test_log_mutable_reference() {
 	println(@FN + ' start')
 	mut log := new_log()
 	assert typeof(log).name == '&log.Log'
-	go log_mutable_statements(mut log)
+	spawn log_mutable_statements(mut log)
 	delay() // wait to finish
 	assert true
 	println(@FN + ' end')
@@ -75,7 +75,7 @@ fn test_logger_mutable_reference() {
 	mut logger := new_log_as_logger()
 	logger.set_level(.warn)
 	assert typeof(logger).name == '&log.Logger'
-	go logger_mutable_statements(mut logger)
+	spawn logger_mutable_statements(mut logger)
 	delay() // wait to finish
 	assert true
 	println(@FN + ' end')

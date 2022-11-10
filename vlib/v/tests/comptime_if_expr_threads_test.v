@@ -16,7 +16,7 @@ fn test_comptime_if_expr_of_threads() {
 	println('Async')
 	mut results := []thread f64{cap: 16}
 	for num in 0 .. 15 {
-		results << go async(size, num)
+		results << spawn async(size, num)
 	}
 	waited_results := results.wait()
 

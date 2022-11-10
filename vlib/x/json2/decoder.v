@@ -104,11 +104,11 @@ fn (mut p Parser) next() {
 fn (mut p Parser) next_with_err() ! {
 	p.next()
 	if p.tok.kind == .error {
-		return IError(DecodeError{
+		return DecodeError{
 			line: p.tok.line
 			column: p.tok.full_col()
 			message: p.tok.lit.bytestr()
-		})
+		}
 	}
 }
 
@@ -145,18 +145,18 @@ fn (mut p Parser) decode() !Any {
 	p.next_with_err()!
 	fi := p.decode_value()!
 	if p.tok.kind != .eof {
-		return IError(InvalidTokenError{
+		return InvalidTokenError{
 			token: p.tok
-		})
+		}
 	}
 	return fi
 }
 
 fn (mut p Parser) decode_value() !Any {
 	if p.n_level + 1 == 500 {
-		return IError(DecodeError{
+		return DecodeError{
 			message: 'reached maximum nesting level of 500'
-		})
+		}
 	}
 	match p.tok.kind {
 		.lsbr {
@@ -200,9 +200,9 @@ fn (mut p Parser) decode_value() !Any {
 			return Any(str)
 		}
 		else {
-			return IError(InvalidTokenError{
+			return InvalidTokenError{
 				token: p.tok
-			})
+			}
 		}
 	}
 	return Any(null)
@@ -219,15 +219,15 @@ fn (mut p Parser) decode_array() !Any {
 		if p.tok.kind == .comma {
 			p.next_with_err()!
 			if p.tok.kind == .rsbr {
-				return IError(InvalidTokenError{
+				return InvalidTokenError{
 					token: p.tok
-				})
+				}
 			}
 		} else if p.tok.kind != .rsbr {
-			return IError(UnknownTokenError{
+			return UnknownTokenError{
 				token: p.tok
 				kind: .array
-			})
+			}
 		}
 	}
 	p.next_with_err()!
@@ -241,28 +241,28 @@ fn (mut p Parser) decode_object() !Any {
 	p.n_level++
 	for p.tok.kind != .rcbr {
 		if p.tok.kind != .str_ {
-			return IError(InvalidTokenError{
+			return InvalidTokenError{
 				token: p.tok
 				expected: .str_
-			})
+			}
 		}
 
 		cur_key := p.tok.lit.bytestr()
 		p.next_with_err()!
 		if p.tok.kind != .colon {
-			return IError(InvalidTokenError{
+			return InvalidTokenError{
 				token: p.tok
 				expected: .colon
-			})
+			}
 		}
 
 		p.next_with_err()!
 		fields[cur_key] = p.decode_value()!
 		if p.tok.kind != .comma && p.tok.kind != .rcbr {
-			return IError(UnknownTokenError{
+			return UnknownTokenError{
 				token: p.tok
 				kind: .object
-			})
+			}
 		} else if p.tok.kind == .comma {
 			p.next_with_err()!
 		}

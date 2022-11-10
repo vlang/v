@@ -310,7 +310,7 @@ pub fn (mut p Parser) parse_inline_sum_type() ast.Type {
 	variants := p.parse_sum_type_variants()
 	if variants.len > 1 {
 		if variants.len > parser.maximum_inline_sum_type_variants {
-			pos := variants[0].pos.extend(variants[variants.len - 1].pos)
+			pos := variants[0].pos.extend(variants.last().pos)
 			p.warn_with_pos('an inline sum type expects a maximum of $parser.maximum_inline_sum_type_variants types ($variants.len were given)',
 				pos)
 		}
@@ -682,7 +682,7 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 			p.error_with_pos('cannot use multi return as generic concrete type', type_pos)
 		}
 		if !is_instance && gts.name.len > 1 {
-			p.error_with_pos('generic struct parameter name needs to be exactly one char',
+			p.error_with_pos('the parameter type name of a generic struct, must be a single capital letter placeholder name, like T or X, or a non-generic type name like int, string, etc.',
 				type_pos)
 		}
 		bs_name += gts.name

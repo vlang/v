@@ -36,13 +36,13 @@ fn test_channel_polling() {
 	ch := chan int{cap: buflen}
 	resch := chan i64{}
 	for _ in 0 .. nrec {
-		go do_rec(ch, resch, objs_per_thread)
+		spawn do_rec(ch, resch, objs_per_thread)
 	}
 	mut n := nobj
 	for _ in 0 .. nsend {
 		end := n
 		n -= objs_per_thread
-		go do_send(ch, n, end)
+		spawn do_send(ch, n, end)
 	}
 	mut sum := i64(0)
 	for _ in 0 .. nrec {

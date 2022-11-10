@@ -455,7 +455,7 @@ pub fn (err ExecutableNotFoundError) msg() string {
 }
 
 fn error_failed_to_find_executable() IError {
-	return IError(&ExecutableNotFoundError{})
+	return &ExecutableNotFoundError{}
 }
 
 // find_abs_path_of_executable walks the environment PATH, just like most shell do, it returns
@@ -717,6 +717,23 @@ pub fn temp_dir() string {
 		path = '/tmp'
 	}
 	return path
+}
+
+// vtmp_dir returns the path to a folder, that is writable to V programs, *and* specific
+// to the OS user. It can be overriden by setting the env variable `VTMP`.
+pub fn vtmp_dir() string {
+	mut vtmp := getenv('VTMP')
+	if vtmp.len > 0 {
+		return vtmp
+	}
+	uid := getuid()
+	vtmp = join_path_single(temp_dir(), 'v_$uid')
+	if !exists(vtmp) || !is_dir(vtmp) {
+		// create a new directory, that is private to the user:
+		mkdir_all(vtmp, mode: 0o700) or { panic(err) }
+	}
+	setenv('VTMP', vtmp, true)
+	return vtmp
 }
 
 fn default_vmodules_path() string {

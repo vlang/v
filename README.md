@@ -56,20 +56,14 @@ Unlike many other languages, V is not going to be always changing, with new feat
 being introduced and old features modified. It is always going to be a small and simple
 language, very similar to the way it is right now.
 
-## Installing V - from source *(preferred method)*
+## Installing V from source
+
+*(this is the preferred method)*
 
 ### Linux, macOS, Windows, *BSD, Solaris, WSL, Android, etc.
 
 Usually installing V is quite simple if you have an environment that already has a
 functional `git` installation.
-
-* *(* ***PLEASE NOTE:*** *If you run into any trouble or you have a different operating
-system or Linux distribution that doesn't install or work immediately, please see
-[Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues)
-and search for your OS and problem. If you can't find your problem, please add it to an
-existing discussion if one exists for your OS, or create a new one if a main discussion
-doesn't yet exist for your OS.)*
-
 
 To get started, simply try to execute the following in your terminal/shell:
 ```bash
@@ -95,6 +89,13 @@ V is constantly being updated. To update V, simply run:
 ```bash
 v up
 ```
+
+* *(* ***NOTE:*** *If you run into any trouble or you have a different operating
+system or Linux distribution that doesn't install or work immediately, please see
+[Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues)
+and search for your OS and problem. If you can't find your problem, please add it to an
+existing discussion if one exists for your OS, or create a new one if a main discussion
+doesn't yet exist for your OS.)*
 
 ### C compiler
 
@@ -164,6 +165,18 @@ docker run --rm -it vlang:latest
 
 </details>
 
+### Termux/Android
+
+On Termux, V needs some packages preinstalled - a working C compiler, also `libexecinfo`,
+`libgc` and `libgc-static`. After installing them, you can use the same script, like on
+Linux/macos:
+```bash
+pkg install clang libexecinfo libgc libgc-static
+git clone https://github.com/vlang/v
+cd v
+make
+```
+
 ## Testing and running the examples
 
 Make sure V can compile itself:
@@ -198,8 +211,12 @@ NB: In order to build Tetris or 2048 (or anything else using `sokol` or  `gg` gr
 on some Linux systems, you need to install `libxi-dev` and `libxcursor-dev` .
 
 ## V net.http, net.websocket, `v install`
-If you plan to use the net.http module, or the net.websocket module, you also need to install
-OpenSSL on non-Windows systems:
+The net.http module, the net.websocket module, and the `v install` command may all use SSL.
+V comes with a version of mbedtls, which should work on all systems.  If you find a need to
+use OpenSSL instead, you will need to make sure that it is installed on your system, then
+use the `-d use_openssl` switch when you compile.
+
+To install OpenSSL on non-Windows systems:
 
 ```bash
 macOS:
@@ -214,6 +231,9 @@ openssl is installed by default
 Fedora:
 sudo dnf install openssl-devel
 ```
+
+On Windows, OpenSSL is simply hard to get working correctly.  The instructions
+[here](https://tecadmin.net/install-openssl-on-windows/) may (or may not) help.
 
 ## V sync
 V's `sync` module and channel implementation uses libatomic.
@@ -299,7 +319,7 @@ Please see the [Troubleshooting](https://github.com/vlang/v/wiki/Troubleshooting
 
 [WorkflowBadge]: https://github.com/vlang/v/workflows/CI/badge.svg
 [DiscordBadge]: https://img.shields.io/discord/592103645835821068?label=Discord&logo=discord&logoColor=white
-[PatreonBadge]: https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.vercel.app%2Fapi%3Fusername%3Dvlang%26type%3Dpledges
+[PatreonBadge]: https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.vercel.app%2Fapi%3Fusername%3Dvlang%26type%3Dpatrons&style=flat
 [SponsorBadge]: https://camo.githubusercontent.com/da8bc40db5ed31e4b12660245535b5db67aa03ce/68747470733a2f2f696d672e736869656c64732e696f2f7374617469632f76313f6c6162656c3d53706f6e736f72266d6573736167653d254532253944254134266c6f676f3d476974487562
 [TwitterBadge]: https://twitter.com/v_language
 

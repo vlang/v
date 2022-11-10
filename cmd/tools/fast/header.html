@@ -8,23 +8,34 @@
 *, body {
 	font-family: Menlo, Monospace, 'Courier New';
 }
-table {
-	width: 1800px;
-}
-table, td {
+table, td, th {
 	border-collapse: collapse;
 	border: 1px solid #dfdfdf;
+}
+th {
+	background-color: lightgray;
+	color: black;
+	padding: 5px;
 }
 td {
 	padding: 5px;
 	position: relative;
+}
+table td:nth-child(3) {
+	width: 650px!important;
+	overflow: hidden;
+	display: block;
+	border: 0px;
+	border-bottom: 1px solid lightgray;
 }
 .diff {
 	border-radius: 2.5px;
 	color: #ffffff;
 	padding: 0 5px 0 5px;
 	position: absolute;
-	right: 5px;
+	font-size: 14px;
+	bottom: 0px;
+	right: 0px;
 }
 .minus {
 	background-color: rgb(195, 74, 104);
@@ -44,22 +55,21 @@ Monitoring compilation speed for each commit. <br><br>
 Running on a free tier AWS t2.micro instance (1 vCPU). Typical desktop hardware is 2-3 times faster. <br><br>
 Source code: <a target=blank href='https://github.com/vlang/v/blob/master/cmd/tools/fast/fast.v'>fast.v</a> <br><br>
 
-
-
 <table>
 	<tr>
-		<td style='width:180px'>timestamp</td>
-		<td style='width:85px'>commit</td>
-		<td>commit message</td>
-		<td style='width:120px'>v -o v.c</td>
-		<td style='width:120px'>v -o v</td>
-		<td style='width:130px'>v -native 1mil.v</td>
-		<td style='width:120px'>v hello.v</td>
-		<td style='width:85px'>v.c size</td>
-		<td style='width:55px'>parse</td>
-		<td style='width:55px'>check</td>
-		<td style='width:55px'>cgen</td>
-		<td style='width:55px'>scan</td>
-		<td style='width:80px'>V lines</td>
-		<td style='width:95px'>V lines/s</td>
+		<th style='width:180px'>&nbsp;&nbsp;&nbsp;&nbsp;Timestamp&nbsp;&nbsp;&nbsp;&nbsp;</th>
+		<th style='width:85px'>Commit</th>
+		<th class='cmessage'>Commit Message</td>
+		<th style='width:120px;white-space: nowrap'>v -o v.c</th>
+		<th style='width:120px;white-space: nowrap'>v -o v</th>
+		<th style='width:130px'>v -native 1mil.v</th>
+		<th style='width:120px;white-space: nowrap'>v hello.v</th>
+		<th style='width:85px;white-space: nowrap'>v.c size</th>
+		<th style='width:55px;white-space: nowrap'>parse</th>
+		<th style='width:55px'>check</th>
+		<th style='width:55px'>cgen</th>
+		<th style='width:55px'>scan</th>
+		<th style='width:80px;white-space: nowrap'>V lines</th>
+		<th style='width:95px;white-space: nowrap'>V lines/s</th>
 	</tr>
+

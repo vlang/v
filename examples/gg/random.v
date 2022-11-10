@@ -58,6 +58,6 @@ fn main() {
 		frame_fn: graphics_frame
 		user_data: state
 	)
-	go state.update()
+	spawn state.update()
 	state.gg.run()
 }

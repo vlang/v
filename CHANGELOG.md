@@ -1,13 +1,53 @@
-## V 0.3.2
+## V 0.3.3
 *Not yet released*
-- New stunnig playground with an improved look and feel, much better and responsive editor,
+- `go foo()` has been replaced with `spawn foo()` (launches an OS thread, `go` will be used for
+  upcoming coroutines instead).
+- vfmt now supports `// vfmt off` and `// vfmt on` for turning off the formatting locally for *short* snippets of code. Useful for keeping your carefully arranged matrices in tact.
+
+## V 0.3.2
+*31 Oct 2022*
+- New simplified string interpolation: `println("Hello, {name}!")`. It will be the only way, old syntax (`${name}` and `$name`)
+  will be deprecated.
+- New stunning playground with an improved look and feel, a much better and more responsive editor,
   code sharing by link, more convenient keyboard control, reusability for potential embedding:
   https://play.vlang.io.
-- msgpack module for decoding/encoding msgpack.
+- `net.ssl` has been migrated from a dynamically linked OpenSSL to a statically linked Mbed TLS. This means that V binaries will no
+  longer have an OpenSSL dependency. OpenSSL can still be enabled via `-d use_openssl`.
+- msgpack module for decoding/encoding msgpack. (`v install msgpack`)
 - Easier custom error creation: `return MyCustomErr{}` instead of `return IError(MyCustomErr)`.
-- Remove the need for the `[console]` attribute in Windows GUI apps.
+- Lots of native backend improvements, including library calls, comptime conditionals, enums, method definitions/calls, structs.
+- Removed the need for the `[console]` attribute in Windows GUI apps.
 - All floats outputs now have `.0` conditionally appended to them to improve clarity.
-
+- Improved type checker: lots of new type checks and fixed checker bugs.
+- Custom integer enum types: `enum Xyz as u64 {`.
+- Some further interpreter work.
+- Improved call tracing via `-trace-calls`.
+- Most of vlib has been updated to use the new Option/Result types.
+- Lots of documentation improvements, including a better documentation of the recent Option/Result split.
+- net, net.http, vweb bugs and fixes.
+- V REPL: Home/End keys support. Lots of clean up.
+- QuadTree and RingBuffer types in `datatypes`.
+- Forward iterator for `datatypes.LinkedList<T>`, forward and backward iterators for `datatypes.DoublyLinkedList<T>`.
+- More precise WINAPI declarations for easier integration on Windows.
+- Unused last expression in `if` is now checked.
+- AST transformer fixes and optimizations.
+- cgen cleanups.
+- Lots of fixes in the builtin `dump()` function.
+- Stylistic improvements and bug fixes in vfmt.
+- Casting integers to enums now requires `unsafe{}`.
+- Improved error and warning messages.
+- A new `maps` module, similar to existing `arrays`. It has generic `filter`, `flatten`, `invert`, `to_map`, `to_array`, `from_array`
+  functions.
+- Parallel compilation now uses `sync.Pool`.
+- `utf8.is_number()`, `utf8.is_space()` functions.
+- New `encoding.base32` module.
+- `-skip-unused` fixes, soon to be made the default.
+- `gg.TouchPoint` to differenciate between different types of touch input.
+- Anonymous structs visibility issues fixed.
+- orm: support parenthesized expressions like `select from User where (name == 'Sam' && is_customer == true) || id == 1`.
+- `vweb.csrf` module.
+- `str.int()` conversion speedup (without -prod).
+- More CI tests on FreeBSD.
 
 ## V 0.3.1
 *31 Aug 2022*

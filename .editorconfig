@@ -10,6 +10,10 @@ trim_trailing_whitespace = true
 indent_style = tab
 indent_size = 4
 
+[*.{bat,cmd}]
+# BAT/CMD ~ DOS/Win requires BAT/CMD files to have CRLF EOLNs
+end_of_line = crlf
+
 [*.{yml,yaml}]
 indent_style = space
 indent_size = 2

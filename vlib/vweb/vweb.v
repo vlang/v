@@ -433,7 +433,7 @@ pub fn run_at<T>(global_app &T, params RunParams) ! {
 			eprintln('accept() failed with error: $err.msg()')
 			continue
 		}
-		go handle_conn<T>(mut conn, mut request_app, routes)
+		spawn handle_conn<T>(mut conn, mut request_app, routes)
 	}
 }
 

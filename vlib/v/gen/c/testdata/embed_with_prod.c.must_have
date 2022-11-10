@@ -5,7 +5,7 @@ static const unsigned char _v_embed_blob_0[138] = {
 0x66,0x6e,0x20,0x6d,0x61,0x69,0x6e,0x28,0x29,0x20,0x7b,0x0a,0x09,0x6d,0x75,0x74,
 
 const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[] = {
-	{0, { .str=(byteptr)("embed.vv"), .len=8, .is_lit=1 }, { .str=(byteptr)("none"), .len=4, .is_lit=1 }, _v_embed_blob_0},
+	{0, { .str=(byteptr)("embed.vv"), .len=8, .is_lit=1 }, { .str=(byteptr)("none"), .len=4, .is_lit=1 }, (byteptr)_v_embed_blob_0},
 	{-1, { .str=(byteptr)(""), .len=0, .is_lit=1 }, { .str=(byteptr)(""), .len=0, .is_lit=1 }, NULL}
 };
 

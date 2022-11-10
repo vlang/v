@@ -33,7 +33,7 @@ fn main() {
 	assert http_port > 0
 	timeout := os.args[2].int()
 	assert timeout > 0
-	go exit_after_timeout(timeout)
+	spawn exit_after_timeout(timeout)
 	//
 	shared config := &Config{
 		max_ping: 50
@@ -108,7 +108,7 @@ pub fn (mut app App) shutdown() vweb.Result {
 	if session_key != 'superman' {
 		return app.not_found()
 	}
-	go app.gracefull_exit()
+	spawn app.gracefull_exit()
 	return app.ok('good bye')
 }
 

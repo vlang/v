@@ -14,7 +14,7 @@ fn main() {
 	eprintln('Listen on $laddr ...')
 	for {
 		mut socket := server.accept()!
-		go handle_client(mut socket)
+		spawn handle_client(mut socket)
 	}
 }
 

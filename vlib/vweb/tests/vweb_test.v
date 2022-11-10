@@ -46,7 +46,7 @@ fn test_a_simple_vweb_app_runs_in_the_background() {
 		eprintln('running:\n$server_exec_cmd')
 	}
 	$if windows {
-		go os.system(server_exec_cmd)
+		spawn os.system(server_exec_cmd)
 	} $else {
 		res := os.system(server_exec_cmd)
 		assert res == 0

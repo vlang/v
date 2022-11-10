@@ -6,7 +6,7 @@ fn test_go_anon_fn_call_with_ref_arg() {
 	foo := &Foo{
 		bar: 'hello'
 	}
-	g := go fn (foo Foo) string {
+	g := spawn fn (foo Foo) string {
 		return foo.bar
 	}(foo)
 	ret := g.wait()

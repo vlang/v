@@ -31,7 +31,7 @@ fn match_test() {
 			assert false
 		}
 	}
-//	println(color)
+	//	println(color)
 	assert num == 3
 }
 
@@ -43,7 +43,7 @@ fn (_ Bar) baz() {}
 
 fn test_enum_variant_and_method_name_clash() {
 	x := Bar.baz
-//	println(x)
+	//	println(x)
 	x.baz()
 }
 
@@ -73,4 +73,5 @@ fn main() {
 	match_test()
 	test_enum_variant_and_method_name_clash()
 	value_test()
+	println('OK')
 }

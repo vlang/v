@@ -1,12 +1,13 @@
-vlib/v/checker/tests/modules/deprecated_module/main.v:2:1: notice: module `deprecated_module.www.ttt` will be deprecated after 2999-01-01, and will become an error after 2999-06-30; use xxx.yyy
-    1 | import bbb.ccc
-    2 | import www.ttt
+vlib/v/checker/tests/modules/deprecated_module/main.v:5:1: notice: module `deprecated_module.www.ttt` will be deprecated after 2999-01-01, and will become an error after 2999-06-30; use xxx.yyy
+    3 | // That is unrelated to what this file tests, but should be investigated further and fixed when the module lookup disrepancy is fixed.
+    4 | import bbb.ccc
+    5 | import www.ttt
       | ~~~~~~~~~~~~~~
-    3 | import xxx.yyy
-    4 |
-vlib/v/checker/tests/modules/deprecated_module/main.v:12:11: error: undefined ident: `deprecated_module.www.ttt.non_existing`
-   10 |     dump(ttt.f())
-   11 |     dump(yyy.f())
-   12 |     dump(ttt.non_existing)
+    6 | import xxx.yyy
+    7 | // vfmt on
+vlib/v/checker/tests/modules/deprecated_module/main.v:16:11: error: undefined ident: `deprecated_module.www.ttt.non_existing`
+   14 |     dump(ttt.f())
+   15 |     dump(yyy.f())
+   16 |     dump(ttt.non_existing)
       |              ~~~~~~~~~~~~
-   13 | }
+   17 | }

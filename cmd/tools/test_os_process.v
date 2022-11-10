@@ -73,7 +73,7 @@ fn main() {
 	if ctx.is_verbose {
 		eprintln('> args: $args | context: $ctx')
 	}
-	go do_timeout(&ctx)
+	spawn do_timeout(&ctx)
 	for i := 1; true; i++ {
 		ctx.println('$i')
 		time.sleep(ctx.period_ms * time.millisecond)

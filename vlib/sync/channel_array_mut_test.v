@@ -22,7 +22,7 @@ fn do_rec_calc_send(chs []chan mut St) {
 
 fn test_channel_array_mut() {
 	mut chs := [chan mut St{cap: 1}, chan mut St{}]
-	go do_rec_calc_send(chs)
+	spawn do_rec_calc_send(chs)
 	mut t := &St{
 		n: 100
 	}

@@ -67,9 +67,9 @@ fn test_mixed_order_lock_rlock() {
 		h: u64(-1)
 	}
 	// spawn 3 threads for doubling with different orders of objects
-	t1 := go doub_large(shared a, shared b, shared c, shared d, shared e)
-	t2 := go doub_large(shared e, shared b, shared a, shared c, shared d)
-	t3 := go doub_large(shared b, shared a, shared e, shared d, shared c)
+	t1 := spawn doub_large(shared a, shared b, shared c, shared d, shared e)
+	t2 := spawn doub_large(shared e, shared b, shared a, shared c, shared d)
+	t3 := spawn doub_large(shared b, shared a, shared e, shared d, shared c)
 	t1.wait()
 	t2.wait()
 	t3.wait()

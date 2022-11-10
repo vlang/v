@@ -89,6 +89,7 @@ mut:
 	tmp_count_declarations    int  // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
 	global_tmp_count          int  // like tmp_count but global and not resetted in each function
 	discard_or_result         bool // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
+	is_direct_array_access    bool // inside a `[direct_array_access fn a() {}` function
 	is_assign_lhs             bool // inside left part of assign expr (for array_set(), etc)
 	is_void_expr_stmt         bool // ExprStmt whos result is discarded
 	is_arraymap_set           bool // map or array set value state
@@ -126,6 +127,7 @@ mut:
 	inside_match_result       bool
 	inside_vweb_tmpl          bool
 	inside_return             bool
+	inside_return_tmpl        bool
 	inside_struct_init        bool
 	inside_or_block           bool
 	inside_call               bool
@@ -596,7 +598,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 	return header, res, out_str, out_fn_start_pos
 }
 
-fn cgen_process_one_file_cb(p &pool.PoolProcessor, idx int, wid int) &Gen {
+fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 	file := p.get_item<&ast.File>(idx)
 	mut global_g := &Gen(p.get_shared_context())
 	mut g := &Gen{
@@ -1664,8 +1666,10 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							g.expr(stmt.expr)
 							g.writeln(';')
 						} else {
+							ret_typ := g.fn_decl.return_type.clear_flag(.optional)
+							styp = g.base_type(ret_typ)
 							g.write('_option_ok(&($styp[]) { ')
-							g.expr(stmt.expr)
+							g.expr_with_cast(stmt.expr, stmt.typ, ret_typ)
 							g.writeln(' }, ($c.option_name*)(&$tmp_var), sizeof($styp));')
 						}
 					}
@@ -1694,8 +1698,10 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							g.expr(stmt.expr)
 							g.writeln(';')
 						} else {
+							ret_typ := g.fn_decl.return_type.clear_flag(.result)
+							styp = g.base_type(ret_typ)
 							g.write('_result_ok(&($styp[]) { ')
-							g.expr(stmt.expr)
+							g.expr_with_cast(stmt.expr, stmt.typ, ret_typ)
 							g.writeln(' }, ($c.result_name*)(&$tmp_var), sizeof($styp));')
 						}
 					}
@@ -2523,7 +2529,7 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 		}
 		// swap destionation and operands for att syntax
 		if template.args.len != 0 && !template.is_directive {
-			template.args.prepend(template.args[template.args.len - 1])
+			template.args.prepend(template.args.last())
 			template.args.delete(template.args.len - 1)
 		}
 
@@ -3676,6 +3682,33 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 	enum_name := util.no_dots(node.name)
 	is_flag := node.is_flag
+	if g.pref.ccompiler == 'msvc' {
+		mut last_value := '0'
+		enum_typ_name := g.table.get_type_name(node.typ)
+		g.enum_typedefs.writeln('typedef $enum_typ_name $enum_name;')
+		for i, field in node.fields {
+			g.enum_typedefs.write_string('\t#define ${enum_name}__$field.name ')
+			g.enum_typedefs.write_string('(')
+			if is_flag {
+				g.enum_typedefs.write_string((u64(1) << i).str())
+				g.enum_typedefs.write_string('ULL')
+			} else if field.has_expr {
+				expr_str := g.expr_string(field.expr)
+				g.enum_typedefs.write_string(expr_str)
+				last_value = expr_str
+			} else {
+				if i != 0 {
+					last_value += '+1'
+				}
+				g.enum_typedefs.write_string(last_value)
+			}
+			g.enum_typedefs.writeln(')')
+		}
+		return
+	}
+	if node.typ != ast.int_type {
+		g.enum_typedefs.writeln('#pragma pack(push, 1)')
+	}
 	g.enum_typedefs.writeln('typedef enum {')
 	mut cur_enum_expr := ''
 	mut cur_enum_offset := 0
@@ -3689,8 +3722,9 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 			cur_enum_offset = 0
 		} else if is_flag {
 			g.enum_typedefs.write_string(' = ')
-			cur_enum_expr = '1 << $i'
-			g.enum_typedefs.write_string((1 << i).str())
+			cur_enum_expr = 'u64(1) << $i'
+			g.enum_typedefs.write_string((u64(1) << i).str())
+			g.enum_typedefs.write_string('U')
 			cur_enum_offset = 0
 		}
 		cur_value := if cur_enum_offset > 0 {
@@ -3701,7 +3735,11 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 		g.enum_typedefs.writeln(', // $cur_value')
 		cur_enum_offset++
 	}
-	g.enum_typedefs.writeln('} $enum_name;\n')
+	packed_attribute := if node.typ != ast.int_type { '__attribute__((packed))' } else { '' }
+	g.enum_typedefs.writeln('} $packed_attribute $enum_name;')
+	if node.typ != ast.int_type {
+		g.enum_typedefs.writeln('#pragma pack(pop)\n')
+	}
 }
 
 fn (mut g Gen) enum_expr(node ast.Expr) {
@@ -4281,7 +4319,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	if node.exprs.len > 0 {
 		// skip `return $vweb.html()`
 		if node.exprs[0] is ast.ComptimeCall && (node.exprs[0] as ast.ComptimeCall).is_vweb {
+			g.inside_return_tmpl = true
 			g.expr(node.exprs[0])
+			g.inside_return_tmpl = false
 			g.writeln(';')
 			return
 		}

@@ -21,7 +21,7 @@ const (
 	show_progress                  = os.getenv('GITHUB_JOB') == '' && '-silent' !in os.args
 	non_option_args                = cmdline.only_non_options(os.args[2..])
 	is_verbose                     = os.getenv('VERBOSE') != ''
-	vcheckfolder                   = os.join_path(os.temp_dir(), 'v', 'vcheck_$os.getuid()')
+	vcheckfolder                   = os.join_path(os.vtmp_dir(), 'v', 'vcheck_$os.getuid()')
 	should_autofix                 = os.getenv('VAUTOFIX') != ''
 	vexe                           = @VEXE
 )
@@ -517,6 +517,24 @@ fn (mut f MDFile) check_examples() CheckResult {
 					}
 					oks++
 				}
+				'shared' {
+					res := cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -shared -o ${os.quoted_path(cfile)} ${os.quoted_path(vfile)}')
+					if res != 0 || fmt_res != 0 {
+						if res != 0 {
+							eprintln(eline(f.path, e.sline, 0, 'module example failed to compile with -shared'))
+						}
+						f.report_not_formatted_example_if_needed(e, fmt_res, vfile) or {
+							unsafe {
+								goto recheck_all_examples
+							}
+						}
+						eprintln(vcontent)
+						should_cleanup_vfile = false
+						errors++
+						continue
+					}
+					oks++
+				}
 				'failcompile' {
 					res := silent_cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -o ${os.quoted_path(cfile)} ${os.quoted_path(vfile)}')
 					if res == 0 || fmt_res != 0 {
@@ -580,7 +598,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 				}
 				'nofmt' {}
 				else {
-					eprintln(eline(f.path, e.sline, 0, 'unrecognized command: "$command", use one of: wip/ignore/compile/cgen/failcompile/okfmt/oksyntax/badsyntax/nofmt'))
+					eprintln(eline(f.path, e.sline, 0, 'unrecognized command: "$command", use one of: wip/ignore/compile/failcompile/okfmt/nofmt/oksyntax/badsyntax/cgen/globals/live/shared'))
 					should_cleanup_vfile = false
 					errors++
 				}

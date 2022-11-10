@@ -75,7 +75,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		} else {
 			// return $tmpl string
 			g.write(cur_line)
-			if g.inside_return {
+			if g.inside_return_tmpl {
 				g.write('return ')
 			}
 			g.write('_tmpl_res_$fn_name')
@@ -98,7 +98,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			g.error('method `${m.name}()` (no value) used as value', node.pos)
 		}
 		expand_strs := if node.args.len > 0 && m.params.len - 1 >= node.args.len {
-			arg := node.args[node.args.len - 1]
+			arg := node.args.last()
 			param := m.params[node.args.len]
 
 			arg.expr is ast.Ident && g.table.type_to_str(arg.typ) == '[]string'
@@ -512,20 +512,23 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				}
 				g.writeln('}));\n')
 			}
-			mut sig := 'anon_fn_'
+			mut sig := 'fn ('
 			// skip the first (receiver) arg
 			for j, arg in method.params[1..] {
 				// TODO: ignore mut/pts in sig for now
 				typ := arg.typ.set_nr_muls(0)
-				sig += '$typ'
+				sig += g.table.sym(typ).name
 				if j < method.params.len - 2 {
-					sig += '_'
+					sig += ', '
 				}
 			}
-			sig += '_$method.return_type'
+			sig += ')'
+			ret_type := g.table.sym(method.return_type).name
+			if ret_type != 'void' {
+				sig += ' $ret_type'
+			}
 			styp := g.table.find_type_idx(sig)
-			// println(styp)
-			// if styp == 0 { }
+
 			// TODO: type aliases
 			ret_typ := method.return_type.idx()
 			g.writeln('\t${node.val_var}.typ = $styp;')

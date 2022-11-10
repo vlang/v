@@ -71,7 +71,7 @@ fn test_defer_with_anon_fn() {
 		assert f.add(1) == 111
 	}
 
-	go fn () {
+	spawn fn () {
 		defer {
 			println('deferred 1')
 		}

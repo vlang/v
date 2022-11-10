@@ -33,7 +33,7 @@ mut:
 
 const (
 	formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
-	vtmp_folder          = util.get_vtmp_folder()
+	vtmp_folder          = os.vtmp_dir()
 	term_colors          = term.can_show_color_on_stderr()
 )
 
@@ -181,7 +181,7 @@ fn (foptions &FormatOptions) format_pipe() {
 	input_text := os.get_raw_lines_joined()
 	file_ast := parser.parse_text(input_text, '', table, .parse_comments, prefs)
 	// checker.new_checker(table, prefs).check(file_ast)
-	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug)
+	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug, source_text: input_text)
 	print(formatted_content)
 	flush_stdout()
 	foptions.vlog('fmt.fmt worked and $formatted_content.len bytes were written to stdout.')

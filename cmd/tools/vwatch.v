@@ -381,6 +381,6 @@ fn (mut context Context) worker_main() {
 		context.is_exiting = true
 		context.kill_pgroup()
 	}) or { panic(err) }
-	go context.compilation_runner_loop()
+	spawn context.compilation_runner_loop()
 	change_detection_loop(context)
 }

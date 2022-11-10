@@ -6,7 +6,7 @@ fn test_go_call_anon_fn_with_closure1() {
 		return a
 	}
 
-	g := go b()
+	g := spawn b()
 	ret := g.wait()
 	assert ret == 1
 }
@@ -17,7 +17,7 @@ fn test_go_call_anon_fn_with_closure2() {
 		'key2': 2
 	}
 
-	h := go fn [m] () int {
+	h := spawn fn [m] () int {
 		println(m['key2'])
 		return m['key2']
 	}()

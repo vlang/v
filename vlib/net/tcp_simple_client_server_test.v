@@ -14,7 +14,7 @@ fn setup() (&net.TcpListener, &net.TcpConn, &net.TcpConn) {
 	mut server := net.listen_tcp(.ip6, server_port) or { panic(err) }
 
 	c := chan &net.TcpConn{}
-	go accept(mut server, c)
+	spawn accept(mut server, c)
 	mut client := net.dial_tcp('localhost$server_port') or { panic(err) }
 
 	socket := <-c

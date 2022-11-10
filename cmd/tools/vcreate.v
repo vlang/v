@@ -70,15 +70,23 @@ $name
 *.so
 *.dylib
 *.dll
-vls.log
+
+# Ignore common editor/system specific metadata
+.DS_Store
+.idea/
+.vscode/
+*.iml
 '
 }
 
 fn gitattributes_content() string {
-	return '*.v linguist-language=V text=auto eol=lf
-*.vv linguist-language=V text=auto eol=lf
-*.vsh linguist-language=V text=auto eol=lf
-**/v.mod linguist-language=V text=auto eol=lf
+	return '* text=auto eol=lf
+*.bat eol=crlf
+
+**/*.v linguist-language=V
+**/*.vv linguist-language=V
+**/*.vsh linguist-language=V
+**/v.mod linguist-language=V
 '
 }
 

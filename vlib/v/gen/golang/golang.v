@@ -113,7 +113,7 @@ pub fn (mut f Gen) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if f.buffering {
 		return false
 	}
-	if f.out[f.out.len - 1] == ` ` {
+	if f.out.last() == ` ` {
 		f.out.go_back(1)
 	}
 	f.write('\n')
@@ -220,7 +220,7 @@ pub fn (mut f Gen) short_module(name string) string {
 	}
 	idx := vals.len - 1
 	mname, tprefix := f.get_modname_prefix(vals[..idx].join('.'))
-	symname := vals[vals.len - 1]
+	symname := vals.last()
 	mut aname := f.mod2alias[mname]
 	if aname == '' {
 		for _, v in f.mod2alias {

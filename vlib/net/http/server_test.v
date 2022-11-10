@@ -5,7 +5,7 @@ fn test_server_stop() {
 	mut server := &http.Server{
 		accept_timeout: 1 * time.second
 	}
-	t := go server.listen_and_serve()
+	t := spawn server.listen_and_serve()
 	time.sleep(250 * time.millisecond)
 	mut watch := time.new_stopwatch()
 	server.stop()
@@ -20,7 +20,7 @@ fn test_server_close() {
 		accept_timeout: 1 * time.second
 		handler: MyHttpHandler{}
 	}
-	t := go server.listen_and_serve()
+	t := spawn server.listen_and_serve()
 	time.sleep(250 * time.millisecond)
 	mut watch := time.new_stopwatch()
 	server.close()
@@ -67,7 +67,7 @@ fn test_server_custom_handler() {
 		handler: handler
 		port: cport
 	}
-	t := go server.listen_and_serve()
+	t := spawn server.listen_and_serve()
 	for server.status() != .running {
 		time.sleep(10 * time.millisecond)
 	}

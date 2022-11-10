@@ -52,9 +52,21 @@ fn match_classic_string() {
 	}
 }
 
+fn match_bool_cond() {
+	volume := 'c:'
+	rooted := false
+	path_separator := '/'
+	println(match true {
+		volume.len != 0 { volume }
+		!rooted { '.' }
+		else { path_separator }
+	})
+}
+
 fn main() {
 	match_vec(Vec2d{42, 43})
 	match_vec(Vec3d{46, 74, 21})
 	match_classic_num()
 	match_classic_string()
+	match_bool_cond()
 }

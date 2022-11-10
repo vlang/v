@@ -42,7 +42,7 @@ fn main() {
 	// the internal routine started by gen.
 	gen := fn (mut ctx context.Context) chan int {
 		dst := chan int{}
-		go fn (mut ctx context.Context, dst chan int) {
+		spawn fn (mut ctx context.Context, dst chan int) {
 			mut v := 0
 			ch := ctx.done()
 			for {

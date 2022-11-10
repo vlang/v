@@ -1,7 +1,7 @@
 import os
 import net.unix
 
-const tfolder = os.join_path(os.temp_dir(), 'v', 'unix_test')
+const tfolder = os.join_path(os.vtmp_dir(), 'v', 'unix_test')
 
 const test_port = os.join_path(tfolder, 'unix_domain_socket')
 
@@ -30,7 +30,7 @@ fn handle_conn(mut c unix.StreamConn) {
 fn echo_server(mut l unix.StreamListener) ! {
 	for {
 		mut new_conn := l.accept() or { continue }
-		go handle_conn(mut new_conn)
+		spawn handle_conn(mut new_conn)
 	}
 }
 
@@ -54,7 +54,7 @@ fn echo() ! {
 fn test_tcp() {
 	assert os.exists(test_port) == false
 	mut l := unix.listen_stream(test_port) or { panic(err) }
-	go echo_server(mut l)
+	spawn echo_server(mut l)
 	echo() or { panic(err) }
 	l.close() or {}
 }

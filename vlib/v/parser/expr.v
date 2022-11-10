@@ -114,7 +114,7 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				node = p.prefix_expr()
 			}
 		}
-		.key_go {
+		.key_go, .key_spawn {
 			mut go_expr := p.go_expr()
 			go_expr.is_expr = true
 			node = go_expr

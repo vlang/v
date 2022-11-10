@@ -125,10 +125,10 @@ fn main() {
 		exit(1)
 	}
 	mut sem := sync.new_semaphore()
-	go do_rec(mut sem, timed)
-	go do_send(mut sem)
+	spawn do_rec(mut sem, timed)
+	spawn do_send(mut sem)
 	for _ in 0 .. 4 {
-		go waste_mem()
+		spawn waste_mem()
 	}
 	mut last := time.sys_mono_now()
 	for _ in 0 .. n_iterations {

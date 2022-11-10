@@ -85,7 +85,7 @@ endif
 endif
 endif
 
-.PHONY: all clean check fresh_vc fresh_tcc fresh_legacy check_for_working_tcc
+.PHONY: all clean rebuild check fresh_vc fresh_tcc fresh_legacy check_for_working_tcc
 
 ifdef prod
 VFLAGS+=-prod
@@ -118,6 +118,8 @@ clean:
 	rm -rf $(TMPTCC)
 	rm -rf $(LEGACYLIBS)
 	rm -rf $(VC)
+
+rebuild: clean all
 
 ifndef local
 latest_vc: $(VC)/.git/config

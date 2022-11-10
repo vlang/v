@@ -2,6 +2,8 @@ import regex
 import rand
 import strings
 
+const debug = true // true for debug println
+
 /******************************************************************************
 *
 * Test section
@@ -14,6 +16,7 @@ struct TestItem {
 	e   int
 }
 
+// vfmt off
 const(
 match_test_suite = [
 	// minus in CC
@@ -364,6 +367,24 @@ find_all_test_suite = [
 		r"\+{3}.*\+{3}",
 		[0, 11, 18, 32, 33, 44],
 		['+++pippo+++', '+++ pippo2 +++', '+++ oggi+++']
+	},
+	Test_find_all{
+		"ab",
+		r"[^\n]*",
+		[0, 2],
+		['ab']
+	},
+	Test_find_all{
+		"ab",
+		r"([^\n]*)",
+		[0, 2],
+		['ab']
+	},
+	Test_find_all{
+		"ab",
+		r"([^\n]|a)*",
+		[0, 2],
+		['ab']
 	}
 
 ]
@@ -404,10 +425,7 @@ const (
 		Test_split{'1234', r'\d+', []},
 	]
 )
-
-const (
-	debug = true // true for debug println
-)
+// vfmt on
 
 fn test_regex() {
 	// check capturing groups
@@ -572,7 +590,9 @@ fn test_regex() {
 	// check replace simple
 	for c, to in match_test_suite_replace_simple {
 		// debug print
-		if debug { println('#$c [$to.src] q[$to.q] $to.r') }
+		if debug {
+			println('#$c [$to.src] q[$to.q] $to.r')
+		}
 
 		mut re := regex.regex_opt(to.q) or {
 			eprintln('err: $err')
@@ -591,7 +611,9 @@ fn test_regex() {
 	// check match and find
 	for c, to in match_test_suite {
 		// debug print
-		if debug { println('#$c [$to.src] q[$to.q] $to.s $to.e') }
+		if debug {
+			println('#$c [$to.src] q[$to.q] $to.s $to.e')
+		}
 
 		// test the find
 		if to.s > 0 {
@@ -657,7 +679,9 @@ fn test_regex() {
 		}
 	}
 
-	if debug { println('DONE!') }
+	if debug {
+		println('DONE!')
+	}
 }
 
 // test regex_base function
@@ -772,6 +796,7 @@ struct Test_find_groups {
 	res []int // groups indexes
 }
 
+// vfmt off
 const (
 find_groups_test_suite = [
 	Test_find_groups{
@@ -797,6 +822,7 @@ find_groups_test_suite = [
 	},
 ]
 )
+// vfmt on
 
 fn test_groups_in_find() {
 	for test_obj in find_groups_test_suite {

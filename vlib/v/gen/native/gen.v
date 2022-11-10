@@ -62,6 +62,7 @@ mut:
 	structs              []Struct
 	eval                 eval.Eval
 	enum_vals            map[string]Enum
+	return_type          ast.Type
 	// macho specific
 	macho_ncmds   int
 	macho_cmdsize int
@@ -659,11 +660,11 @@ fn (mut g Gen) eval_escape_codes(str_lit ast.StringLiteral) string {
 		// skip \
 		i++
 		match str[i] {
-			`\\` {
-				buffer << `\\`
+			`\\`, `'`, `"` {
+				buffer << str[i]
 				i++
 			}
-			`a` | `b` | `f` {
+			`a`, `b`, `f` {
 				buffer << str[i] - u8(90)
 				i++
 			}
@@ -719,6 +720,33 @@ fn (mut g Gen) eval_escape_codes(str_lit ast.StringLiteral) string {
 	return buffer.bytestr()
 }
 
+fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
+	if typ.is_int() {
+		buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
+		g.lea_var_to_reg(g.get_builtin_arg_reg('int_to_string', 1), buffer)
+
+		arg0_reg := g.get_builtin_arg_reg('int_to_string', 0)
+		if arg0_reg != reg {
+			g.mov_reg(arg0_reg, reg)
+		}
+
+		g.call_builtin('int_to_string')
+		g.lea_var_to_reg(.rax, buffer)
+	} else if typ.is_bool() {
+		arg_reg := g.get_builtin_arg_reg('bool_to_string', 0)
+		if arg_reg != reg {
+			g.mov_reg(arg_reg, reg)
+		}
+		g.call_builtin('bool_to_string')
+	} else if typ.is_string() {
+		if reg != .rax {
+			g.mov_reg(.rax, reg)
+		}
+	} else {
+		g.n_error('int-to-string conversion not implemented for type $typ')
+	}
+}
+
 fn (mut g Gen) gen_var_to_string(reg Register, var Var, config VarConfig) {
 	typ := g.get_type_from_var(var)
 	if typ.is_int() {
@@ -737,7 +765,7 @@ fn (mut g Gen) gen_var_to_string(reg Register, var Var, config VarConfig) {
 	}
 }
 
-pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
+pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 	newline := name in ['println', 'eprintln']
 	fd := if name in ['eprint', 'eprintln'] { 2 } else { 1 }
 	match expr {
@@ -749,124 +777,72 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 				g.gen_print(str, fd)
 			}
 		}
-		ast.CallExpr {
-			g.call_fn(expr)
-			g.gen_print_reg(.rax, 3, fd)
-		}
 		ast.Ident {
 			vo := g.try_var_offset(expr.name)
 
 			if vo != -1 {
 				g.gen_var_to_string(.rax, expr as ast.Ident)
-				g.gen_print_reg(.rax, 3, fd)
+				g.gen_print_reg(.rax, -1, fd)
 				if newline {
 					g.gen_print('\n', fd)
 				}
 			} else {
-				g.gen_print_reg(.rax, 3, fd)
+				g.gen_print_reg(.rax, -1, fd)
 			}
 		}
 		ast.IntegerLiteral {
-			g.learel(.rax, g.allocate_string('$expr.val\n', 3, .rel32))
-			g.gen_print_reg(.rax, 3, fd)
+			if newline {
+				g.gen_print('$expr.val\n', fd)
+			} else {
+				g.gen_print('$expr.val', fd)
+			}
 		}
 		ast.BoolLiteral {
 			// register 'true' and 'false' strings // g.expr(expr)
 			// XXX mov64 shuoldnt be used for addressing
+			nl := if newline { '\n' } else { '' }
+
 			if expr.val {
-				g.learel(.rax, g.allocate_string('true', 3, .rel32))
+				g.gen_print('true' + nl, fd)
 			} else {
-				g.learel(.rax, g.allocate_string('false', 3, .rel32))
+				g.gen_print('false' + nl, fd)
 			}
-			g.gen_print_reg(.rax, 3, fd)
 		}
-		ast.SizeOf {}
+		ast.SizeOf {
+			size := g.get_type_size(expr.typ)
+			if newline {
+				g.gen_print('$size\n', fd)
+			} else {
+				g.gen_print('$size', fd)
+			}
+		}
 		ast.OffsetOf {
 			styp := g.typ(expr.struct_type)
 			field_name := expr.field
 			if styp.kind == .struct_ {
 				off := g.get_field_offset(expr.struct_type, field_name)
-				g.learel(.rax, g.allocate_string('$off\n', 3, .rel32))
-				g.gen_print_reg(.rax, 3, fd)
+				if newline {
+					g.gen_print('$off\n', fd)
+				} else {
+					g.gen_print('$off', fd)
+				}
 			} else {
 				g.v_error('_offsetof expects a struct Type as first argument', expr.pos)
 			}
 		}
-		ast.None {}
-		ast.EmptyExpr {
-			g.n_error('unhandled EmptyExpr')
-		}
-		ast.PostfixExpr {}
-		ast.PrefixExpr {}
-		ast.SelectorExpr {
-			// struct.field
-			g.expr(expr)
-			g.gen_print_reg(.rax, 3, fd)
-			/*
-			field_name := expr.field_name
-g.expr
-			if expr.is_mut {
-				// mutable field access (rw)
+		ast.None {
+			if newline {
+				g.gen_print('<none>\n', fd)
+			} else {
+				g.gen_print('<none>', fd)
 			}
-			*/
-			dump(expr)
-			g.v_error('struct.field selector not yet implemented for this backend', expr.pos)
 		}
-		ast.NodeError {}
 		ast.AtExpr {
 			if newline {
 				g.gen_print(g.comptime_at(expr) + '\n', fd)
 			} else {
 				g.gen_print(g.comptime_at(expr), fd)
 			}
-		}
-		/*
-		ast.AnonFn {}
-		ast.ArrayDecompose {}
-		ast.ArrayInit {}
-		ast.AsCast {}
-		ast.Assoc {}
-		ast.CTempVar {}
-		ast.CastExpr {}
-		ast.ChanInit {}
-		ast.CharLiteral {}
-		ast.Comment {}
-		ast.ComptimeCall {}
-		ast.ComptimeSelector {}
-		ast.ConcatExpr {}
-		ast.DumpExpr {}
-		ast.EnumVal {}
-		ast.GoExpr {}
-		ast.IfGuardExpr {}
-		ast.IndexExpr {}
-		ast.InfixExpr {}
-		ast.IsRefType {}
-		ast.MapInit {}
-		ast.OrExpr {}
-		ast.ParExpr {}
-		ast.RangeExpr {}
-		ast.SelectExpr {}
-		ast.SqlExpr {}
-		ast.TypeNode {}
-		*/
-		ast.MatchExpr {
-			g.gen_match_expr(expr)
-		}
-		ast.TypeOf {
-			g.gen_typeof_expr(expr, newline)
-		}
-		ast.LockExpr {
-			// passthru
-			eprintln('Warning: locks not implemented yet in the native backend')
-			g.expr(expr)
-		}
-		ast.Likely {
-			// passthru
-			g.expr(expr)
-		}
-		ast.UnsafeExpr {
-			// passthru
-			g.expr(expr)
 		}
 		ast.StringInterLiteral {
 			g.n_error('Interlaced string literals are not yet supported in the native backend.') // , expr.pos)
@@ -876,7 +852,7 @@ g.expr
 				if stmts := g.comptime_conditional(expr) {
 					for i, stmt in stmts {
 						if i + 1 == stmts.len && stmt is ast.ExprStmt {
-							g.gen_print_from_expr(stmt.expr, name)
+							g.gen_print_from_expr(stmt.expr, stmt.typ, name)
 						} else {
 							g.stmt(stmt)
 						}
@@ -885,14 +861,16 @@ g.expr
 					g.n_error('nothing to print')
 				}
 			} else {
-				g.n_error('non-comptime if exprs not yet implemented')
+				g.n_error('non-comptime conditionals are not implemented yet.')
 			}
 		}
 		else {
-			dump(typeof(expr).name)
-			dump(expr)
-			//	g.v_error('expected string as argument for print', expr.pos)
-			g.n_error('expected string as argument for print') // , expr.pos)
+			g.expr(expr)
+			g.gen_to_string(.rax, typ)
+			g.gen_print_reg(.rax, -1, fd)
+			if newline {
+				g.gen_print('\n', fd)
+			}
 		}
 	}
 }
@@ -920,6 +898,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.register_function_address(name)
 	g.labels = &LabelTable{}
 	g.defer_stmts.clear()
+	g.return_type = node.return_type
 	if g.pref.arch == .arm64 {
 		g.fn_decl_arm64(node)
 	} else {
@@ -1157,8 +1136,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 						g.expr(e0)
 					}
 				}
-				// store the struct value
 				typ := node.types[0]
+				if typ == ast.float_literal_type_idx && g.return_type == ast.f32_type_idx {
+					if g.pref.arch == .amd64 {
+						g.write32(0xc05a0ff2)
+						g.println('cvtsd2ss xmm0, xmm0')
+					}
+				}
+				// store the struct value
 				if !typ.is_real_pointer() && !typ.is_number() && !typ.is_bool() {
 					ts := g.table.sym(typ)
 					size := g.get_type_size(typ)
@@ -1233,6 +1218,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		else {
 			eprintln('native.stmt(): bad node: ' + node.type_name())
 		}
+	}
+}
+
+fn (mut g Gen) gen_asm_stmt(asm_node ast.AsmStmt) {
+	if g.pref.arch == .arm64 {
+		g.gen_asm_stmt_arm64(asm_node)
+	} else {
+		g.gen_asm_stmt_amd64(asm_node)
 	}
 }
 
@@ -1313,7 +1306,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.gen_exit(node.args[0].expr)
 			} else if node.name in ['println', 'print', 'eprintln', 'eprint'] {
 				expr := node.args[0].expr
-				g.gen_print_from_expr(expr, node.name)
+				typ := node.args[0].typ
+				g.gen_print_from_expr(expr, typ, node.name)
 			} else {
 				g.call_fn(node)
 			}

@@ -38,16 +38,16 @@ fn main() {
 
 	// start a worker on each core
 	for id in 0 .. app.args.workers {
-		workers << go sim.sim_worker(id, app.request_chan, [app.result_chan, img_result_chan])
+		workers << spawn sim.sim_worker(id, app.request_chan, [app.result_chan, img_result_chan])
 	}
 
 	handle_request := fn [app] (request &sim.SimRequest) ! {
 		app.request_chan <- request
 	}
 
-	workers << go img.image_worker(mut writer, img_result_chan, img_settings)
+	workers << spawn img.image_worker(mut writer, img_result_chan, img_settings)
 
-	go app.gg.run()
+	spawn app.gg.run()
 
 	sim.run(app.args.params,
 		grid: app.args.grid

@@ -14,11 +14,28 @@ $if windows {
 
 #include "sqlite3.h"
 
+// https://www.sqlite.org/rescode.html
 pub const (
-	sqlite_ok    = 0
-	sqlite_error = 1
-	sqlite_row   = 100
-	sqlite_done  = 101
+	sqlite_ok                 = 0
+	sqlite_error              = 1
+	sqlite_row                = 100
+	sqlite_done               = 101
+	sqlite_cantopen           = 14
+	sqlite_ioerr_read         = 266
+	sqlite_ioerr_short_read   = 522
+	sqlite_ioerr_write        = 778
+	sqlite_ioerr_fsync        = 1034
+	sqlite_ioerr_fstat        = 1802
+	sqlite_ioerr_delete       = 2570
+
+	sqlite_open_main_db       = 0x00000100
+	sqlite_open_temp_db       = 0x00000200
+	sqlite_open_transient_db  = 0x00000400
+	sqlite_open_main_journal  = 0x00000800
+	sqlite_open_temp_journal  = 0x00001000
+	sqlite_open_subjournal    = 0x00002000
+	sqlite_open_super_journal = 0x00004000
+	sqlite_open_wal           = 0x00080000
 )
 
 pub enum SyncMode {
@@ -110,10 +127,10 @@ pub fn connect(path string) !DB {
 	db := &C.sqlite3(0)
 	code := C.sqlite3_open(&char(path.str), &db)
 	if code != 0 {
-		return IError(&SQLError{
+		return &SQLError{
 			msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errstr(code))) }
 			code: code
-		})
+		}
 	}
 	return DB{
 		conn: db
@@ -129,10 +146,10 @@ pub fn (mut db DB) close() !bool {
 	if code == 0 {
 		db.is_open = false
 	} else {
-		return IError(&SQLError{
+		return &SQLError{
 			msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errstr(code))) }
 			code: code
-		})
+		}
 	}
 	return true // successfully closed
 }
@@ -223,15 +240,15 @@ pub fn (db &DB) exec_one(query string) !Row {
 		unsafe { rows.free() }
 	}
 	if rows.len == 0 {
-		return IError(&SQLError{
+		return &SQLError{
 			msg: 'No rows'
 			code: code
-		})
+		}
 	} else if code != 101 {
-		return IError(&SQLError{
+		return &SQLError{
 			msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errstr(code))) }
 			code: code
-		})
+		}
 	}
 	res := rows[0]
 	return res

@@ -21,10 +21,10 @@ pub struct ErrSizeOfTypeIs0 {
 	code int
 }
 fn error_file_not_opened() IError {
-	return IError(&ErrFileNotOpened{})
+	return (&ErrFileNotOpened{})
 }
 fn error_size_of_type_0() IError {
-	return IError(&ErrSizeOfTypeIs0{})
+	return (&ErrSizeOfTypeIs0{})
 }
 */
 pub fn open_file(path string, mode string, options ...int) !File {

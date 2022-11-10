@@ -19,7 +19,7 @@ fn (mut app App) index() vweb.Result {
 }
 
 fn test_send_a_request_to_homepage_expecting_a_csrf_cookie() {
-	go vweb.run_at(&App{}, vweb.RunParams{ port: sport })
+	spawn vweb.run_at(&App{}, vweb.RunParams{ port: sport })
 	time.sleep(500 * time.millisecond)
 	res := http.get('http://localhost:$sport/')?
 	if res.header.str().contains('__Host-Csrf-Token') {

@@ -9,9 +9,9 @@ fn expensive_computing(id int, duration int) {
 
 fn main() {
 	mut threads := []thread{}
-	threads << go expensive_computing(1, 100)
-	threads << go expensive_computing(2, 500)
-	threads << go expensive_computing(3, 1000)
+	threads << spawn expensive_computing(1, 100)
+	threads << spawn expensive_computing(2, 500)
+	threads << spawn expensive_computing(3, 1000)
 	// Join all tasks
 	threads.wait()
 	println('All jobs finished!')

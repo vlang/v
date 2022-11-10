@@ -40,14 +40,12 @@ pub fn (err InvalidVersionFormatError) msg() string {
 // from returns a `Version` structure parsed from `input` `string`.
 pub fn from(input string) ?Version {
 	if input.len == 0 {
-		return IError(&EmptyInputError{})
+		return &EmptyInputError{}
 	}
 	raw_version := parse(input)
-	version := raw_version.validate() or {
-		return IError(&InvalidVersionFormatError{
-			input: input
-		})
-	}
+	version := raw_version.validate() or { return &InvalidVersionFormatError{
+		input: input
+	} }
 	return version
 }
 

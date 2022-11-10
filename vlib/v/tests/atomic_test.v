@@ -11,7 +11,7 @@ mut:
 fn test_atomic() {
 	mut app := &App{}
 	for i in 0 .. 10 {
-		go app.run()
+		spawn app.run()
 	}
 	time.sleep(200 * time.millisecond)
 	println('idx=$app.idx')

@@ -16,7 +16,8 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	if g.table.sym(node.expr_type).language == .c {
 		name = name[3..]
 	}
-	dump_fn_name := '_v_dump_expr_$name' + (if node.expr_type.is_ptr() { '_ptr' } else { '' })
+	dump_fn_name := '_v_dump_expr_$name' +
+		(if node.expr_type.is_ptr() { '_ptr'.repeat(node.expr_type.nr_muls()) } else { '' })
 	g.write(' ${dump_fn_name}(${ctoslit(fpath)}, $line, $sexpr, ')
 	if node.expr_type.has_flag(.shared_f) {
 		g.write('&')
@@ -39,11 +40,17 @@ fn (mut g Gen) dump_expr_definitions() {
 			name = name[3..]
 		}
 		_, str_method_expects_ptr, _ := dump_sym.str_method_info()
-		is_ptr := ast.Type(dump_type).is_ptr()
+		typ := ast.Type(dump_type)
+		is_ptr := typ.is_ptr()
 		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, dump_type)
-		to_string_fn_name := g.get_str_fn(ast.Type(dump_type).clear_flag(.shared_f))
-		ptr_asterisk := if is_ptr { '*' } else { '' }
-		mut str_dumparg_type := g.cc_type(dump_type, true) + ptr_asterisk
+		to_string_fn_name := g.get_str_fn(typ.clear_flag(.shared_f))
+		ptr_asterisk := if is_ptr { '*'.repeat(typ.nr_muls()) } else { '' }
+		mut str_dumparg_type := ''
+		if dump_sym.kind == .none_ {
+			str_dumparg_type = 'IError' + ptr_asterisk
+		} else {
+			str_dumparg_type = g.cc_type(dump_type, true) + ptr_asterisk
+		}
 		if dump_sym.kind == .function {
 			fninfo := dump_sym.info as ast.FnType
 			str_dumparg_type = 'DumpFNType_$name'
@@ -53,7 +60,8 @@ fn (mut g Gen) dump_expr_definitions() {
 			g.go_back(str_tdef.len)
 			dump_typedefs['typedef $str_tdef;'] = true
 		}
-		dump_fn_name := '_v_dump_expr_$name' + (if is_ptr { '_ptr' } else { '' })
+		dump_fn_name := '_v_dump_expr_$name' +
+			(if is_ptr { '_ptr'.repeat(typ.nr_muls()) } else { '' })
 		dump_fn_defs.writeln('$str_dumparg_type ${dump_fn_name}(string fpath, int line, string sexpr, $str_dumparg_type dump_arg);')
 		if g.writeln_fn_header('$str_dumparg_type ${dump_fn_name}(string fpath, int line, string sexpr, $str_dumparg_type dump_arg)', mut
 			dump_fns)
@@ -64,6 +72,8 @@ fn (mut g Gen) dump_expr_definitions() {
 		surrounder.add('\tstring sline = int_str(line);', '\tstring_free(&sline);')
 		if dump_sym.kind == .function {
 			surrounder.add('\tstring value = ${to_string_fn_name}();', '\tstring_free(&value);')
+		} else if dump_sym.kind == .none_ {
+			surrounder.add('\tstring value = _SLIT("none");', '\tstring_free(&value);')
 		} else {
 			surrounder.add('\tstring value = ${to_string_fn_name}(${deref}dump_arg);',
 				'\tstring_free(&value);')
@@ -88,7 +98,9 @@ fn (mut g Gen) dump_expr_definitions() {
 		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ':');")
 		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ' ');")
 		if is_ptr {
-			dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '&');")
+			for i := 0; i < typ.nr_muls(); i++ {
+				dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '&');")
+			}
 		}
 		dump_fns.writeln('\tstrings__Builder_write_string(&sb, value);')
 		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '\\n');")

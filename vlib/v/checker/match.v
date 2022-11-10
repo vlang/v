@@ -338,7 +338,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			}
 		}
 	}
-	mut else_branch := node.branches[node.branches.len - 1]
+	mut else_branch := node.branches.last()
 	mut has_else := else_branch.is_else
 	if !has_else {
 		for i, branch in node.branches {

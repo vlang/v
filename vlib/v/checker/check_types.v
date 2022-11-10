@@ -168,6 +168,22 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	return true
 }
 
+fn (c Checker) check_multiple_ptr_match(got ast.Type, expected ast.Type, param ast.Param, arg ast.CallArg) bool {
+	param_nr_muls := if param.is_mut && !expected.is_ptr() { 1 } else { expected.nr_muls() }
+	if got.is_ptr() && got.nr_muls() > 1 && got.nr_muls() != param_nr_muls {
+		if arg.expr is ast.PrefixExpr && (arg.expr as ast.PrefixExpr).op == .amp {
+			return false
+		}
+		if arg.expr is ast.UnsafeExpr {
+			expr := (arg.expr as ast.UnsafeExpr).expr
+			if expr is ast.PrefixExpr && (expr as ast.PrefixExpr).op == .amp {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, language ast.Language, arg ast.CallArg) ? {
 	if got == 0 {
 		return error('unexpected 0 type')
@@ -381,6 +397,9 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 	if got_fn.return_type.has_flag(.optional) != exp_fn.return_type.has_flag(.optional) {
 		return false
 	}
+	if got_fn.return_type.has_flag(.result) != exp_fn.return_type.has_flag(.result) {
+		return false
+	}
 	if !c.check_basic(got_fn.return_type, exp_fn.return_type) {
 		return false
 	}
@@ -390,6 +409,9 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 		got_arg_typ := c.unwrap_generic(got_arg.typ)
 		exp_arg_is_ptr := exp_arg_typ.is_ptr() || exp_arg_typ.is_pointer()
 		got_arg_is_ptr := got_arg_typ.is_ptr() || got_arg_typ.is_pointer()
+		if exp_arg.is_mut && !got_arg.is_mut {
+			return false
+		}
 		if exp_arg_is_ptr != got_arg_is_ptr {
 			exp_arg_pointedness := if exp_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
 			got_arg_pointedness := if got_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }

@@ -25,7 +25,7 @@ The commandline tool is available in `vlib/v/pkgconfig/bin/pkgconfig.v`
 
 ```
 $ ./bin/pkgconfig -h
-pkgconfig 0.3.1
+pkgconfig 0.3.2
 -----------------------------------------------
 Usage: pkgconfig [options] [ARGS]
 

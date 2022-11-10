@@ -58,7 +58,7 @@ fn (mut state AppState) update() {
 		threads.wait()
 	}
 	for t in 0 .. state.ntasks {
-		threads << go state.worker(t, chunk_channel, chunk_ready_channel)
+		threads << spawn state.worker(t, chunk_channel, chunk_ready_channel)
 	}
 	//
 	mut oview := ViewRect{}
@@ -237,6 +237,6 @@ fn main() {
 		scroll_fn: graphics_scroll
 		user_data: state
 	)
-	go state.update()
+	spawn state.update()
 	state.gg.run()
 }

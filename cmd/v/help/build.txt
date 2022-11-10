@@ -75,6 +75,12 @@ NB: the build flags are shared with the run command too:
       Compile the executable in production mode, where most optimizations are enabled.
       Note that most V warnings turn to errors, if you pass -prod, so you will have
       to fix them first.
+	  
+   -no-bounds-checking
+      Programs compiled with this option, will do no runtime checking of array access operations.
+      Note that the performance impact of the bounds checking is usually below 3%, so in most
+      cases, it is preferable to not turn it off, than disable it, and have a program that may
+      do out of bounds accesses.
 
    -prof, -profile <file.txt>
       Compile the executable with all functions profiled.	  

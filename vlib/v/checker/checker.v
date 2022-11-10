@@ -12,6 +12,7 @@ import v.util
 import v.util.version
 import v.errors
 import v.pkgconfig
+import v.checker.constants
 
 const (
 	int_min                  = int(0x80000000)
@@ -23,36 +24,15 @@ const (
 )
 
 pub const (
-	valid_comptime_if_os             = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
-		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'termux',
-		'solaris', 'haiku', 'serenity', 'vinix']
-	valid_comptime_compression_types = ['none', 'zlib']
-	valid_comptime_if_compilers      = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
-	valid_comptime_if_platforms      = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
-	valid_comptime_if_cpu_features   = ['x64', 'x32', 'little_endian', 'big_endian']
-	valid_comptime_if_other          = ['apk', 'js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
-		'no_bounds_checking', 'freestanding', 'threads', 'js_node', 'js_browser', 'js_freestanding',
-		'interpreter', 'es5', 'profile', 'wasm32_emscripten']
-	valid_comptime_not_user_defined  = all_valid_comptime_idents()
-	array_builtin_methods            = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice',
-		'sort', 'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
-	array_builtin_methods_chk        = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
+	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
+		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
+	array_builtin_methods_chk   = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
 	// TODO: remove `byte` from this list when it is no longer supported
-	reserved_type_names              = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8',
-		'u16', 'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune']
-	reserved_type_names_chk          = token.new_keywords_matcher_from_array_trie(reserved_type_names)
-	vroot_is_deprecated_message      = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
+	reserved_type_names         = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16',
+		'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune']
+	reserved_type_names_chk     = token.new_keywords_matcher_from_array_trie(reserved_type_names)
+	vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 )
-
-fn all_valid_comptime_idents() []string {
-	mut res := []string{}
-	res << checker.valid_comptime_if_os
-	res << checker.valid_comptime_if_compilers
-	res << checker.valid_comptime_if_platforms
-	res << checker.valid_comptime_if_cpu_features
-	res << checker.valid_comptime_if_other
-	return res
-}
 
 [heap; minify]
 pub struct Checker {
@@ -108,6 +88,7 @@ mut:
 	files                            []ast.File
 	expr_level                       int // to avoid infinite recursion segfaults due to compiler bugs
 	cur_orm_ts                       ast.TypeSymbol
+	cur_anon_fn                      &ast.AnonFn = unsafe { nil }
 	error_details                    []string
 	vmod_file_content                string     // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	loop_label                       string     // set when inside a labelled for loop
@@ -459,6 +440,20 @@ pub fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 			node.type_pos)
 	} else if typ_sym.kind == .chan {
 		c.error('aliases of `chan` types are not allowed.', node.type_pos)
+	} else if typ_sym.kind == .function {
+		orig_sym := c.table.type_to_str(node.parent_type)
+		c.error('type `$typ_sym.str()` is an alias, use the original alias type `$orig_sym` instead',
+			node.type_pos)
+	} else if typ_sym.kind == .struct_ {
+		if mut typ_sym.info is ast.Struct {
+			// check if the generic param types have been defined
+			for ct in typ_sym.info.concrete_types {
+				ct_sym := c.table.sym(ct)
+				if ct_sym.kind == .placeholder {
+					c.error('unknown type `$ct_sym.name`', node.type_pos)
+				}
+			}
+		}
 	}
 }
 
@@ -995,8 +990,8 @@ pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_re
 		}
 		return
 	}
-	stmts_len := node.stmts.len
-	if stmts_len == 0 {
+
+	if node.stmts.len == 0 {
 		if ret_type != ast.void_type {
 			// x := f() or {}
 			c.error('assignment requires a non empty `or {}` block', node.pos)
@@ -1004,7 +999,7 @@ pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_re
 		// allow `f() or {}`
 		return
 	}
-	last_stmt := node.stmts[stmts_len - 1]
+	last_stmt := node.stmts.last()
 	c.check_or_last_stmt(last_stmt, ret_type, expr_return_type.clear_flag(.optional).clear_flag(.result))
 }
 
@@ -1394,6 +1389,20 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 				}
 			}
 		}
+		// Check for int overflow
+		if field.typ == ast.int_type {
+			if mut field.expr is ast.IntegerLiteral {
+				mut is_large := field.expr.val.len > 13
+				if !is_large && field.expr.val.len > 8 {
+					val := field.expr.val.i64()
+					is_large = val > checker.int_max || val < checker.int_min
+				}
+				if is_large {
+					c.error('overflow in implicit type `int`, use explicit type casting instead',
+						field.expr.pos)
+				}
+			}
+		}
 		c.const_deps = []
 		c.const_var = prev_const_var
 	}
@@ -1401,7 +1410,9 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 
 pub fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 	c.check_valid_pascal_case(node.name, 'enum name', node.pos)
-	mut seen := []i64{cap: node.fields.len}
+	mut useen := []u64{}
+	mut iseen := []i64{}
+	mut seen_enum_field_names := map[string]int{}
 	if node.fields.len == 0 {
 		c.error('enum cannot be empty', node.pos)
 	}
@@ -1410,35 +1421,114 @@ pub fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 		c.error('`builtin` module cannot have enums', node.pos)
 	}
 	*/
+	mut enum_imin := i64(0)
+	mut enum_imax := i64(0)
+	mut enum_umin := u64(0)
+	mut enum_umax := u64(0)
+	mut signed := true
+	senum_type := c.table.type_to_str(node.typ)
+	match node.typ {
+		ast.i8_type {
+			signed, enum_imin, enum_imax = true, -128, 0x7F
+		}
+		ast.i16_type {
+			signed, enum_imin, enum_imax = true, -32_768, 0x7FFF
+		}
+		ast.int_type {
+			signed, enum_imin, enum_imax = true, -2_147_483_648, 0x7FFF_FFFF
+		}
+		ast.i64_type {
+			signed, enum_imin, enum_imax = true, i64(-9223372036854775807 - 1), i64(0x7FFF_FFFF_FFFF_FFFF)
+		}
+		//
+		ast.u8_type {
+			signed, enum_umin, enum_umax = false, 0, 0xFF
+		}
+		ast.u16_type {
+			signed, enum_umin, enum_umax = false, 0, 0xFFFF
+		}
+		ast.u32_type {
+			signed, enum_umin, enum_umax = false, 0, 0xFFFF_FFFF
+		}
+		ast.u64_type {
+			signed, enum_umin, enum_umax = false, 0, 0xFFFF_FFFF_FFFF_FFFF
+		}
+		else {
+			c.error('`$senum_type` is not one of `i8`,`i16`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`',
+				node.pos)
+		}
+	}
+	if enum_imin > 0 {
+		// ensure that the minimum value is negative, even with msvc, which has a bug that makes -2147483648 positive ...
+		enum_imin *= -1
+	}
 	for i, mut field in node.fields {
 		if !c.pref.experimental && util.contains_capital(field.name) {
 			// TODO C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
 			c.error('field name `$field.name` cannot contain uppercase letters, use snake_case instead',
 				field.pos)
 		}
-		for j in 0 .. i {
-			if field.name == node.fields[j].name {
-				c.error('field name `$field.name` duplicate', field.pos)
-			}
+		if _ := seen_enum_field_names[field.name] {
+			c.error('duplicate enum field name `$field.name`', field.pos)
 		}
+		seen_enum_field_names[field.name] = i
 		if field.has_expr {
 			match mut field.expr {
 				ast.IntegerLiteral {
-					val := field.expr.val.i64()
-					if val < checker.int_min || val > checker.int_max {
-						c.error('enum value `$val` overflows int', field.expr.pos)
-					} else if !c.pref.translated && !c.file.is_translated && !node.is_multi_allowed
-						&& i64(val) in seen {
-						c.error('enum value `$val` already exists', field.expr.pos)
+					mut overflows := false
+					mut uval := u64(0)
+					mut ival := i64(0)
+					if signed {
+						val := field.expr.val.i64()
+						ival = val
+						if val < enum_imin || val >= enum_imax {
+							c.error('enum value `$field.expr.val` overflows the enum type `$senum_type`, values of which have to be in [$enum_imin, $enum_imax]',
+								field.expr.pos)
+							overflows = true
+						}
+					} else {
+						val := field.expr.val.u64()
+						uval = val
+						if val >= enum_umax {
+							c.error('enum value `$field.expr.val` overflows the enum type `$senum_type`, values of which have to be in [$enum_umin, $enum_umax]',
+								field.expr.pos)
+							overflows = true
+						}
 					}
-					seen << i64(val)
+					if !overflows && !c.pref.translated && !c.file.is_translated
+						&& !node.is_multi_allowed {
+						if (signed && ival in iseen) || (!signed && uval in useen) {
+							c.error('enum value `$field.expr.val` already exists', field.expr.pos)
+						}
+					}
+					if signed {
+						iseen << ival
+					} else {
+						useen << uval
+					}
 				}
-				ast.PrefixExpr {}
+				ast.PrefixExpr {
+					dump(field.expr)
+				}
 				ast.InfixExpr {
 					// Handle `enum Foo { x = 1 + 2 }`
 					c.infix_expr(mut field.expr)
 				}
-				// ast.ParExpr {} // TODO allow `.x = (1+2)`
+				ast.ParExpr {
+					c.expr(field.expr)
+				}
+				ast.CastExpr {
+					fe_type := c.cast_expr(mut field.expr)
+					if node.typ != fe_type {
+						sfe_type := c.table.type_to_str(fe_type)
+						c.error('the type of the enum value `$sfe_type` != the enum type itself `$senum_type`',
+							field.expr.pos)
+					}
+					if !fe_type.is_pure_int() {
+						c.error('the type of an enum value must be an integer type, like i8, u8, int, u64 etc.',
+							field.expr.pos)
+					}
+				}
 				else {
 					if mut field.expr is ast.Ident {
 						if field.expr.language == .c {
@@ -1449,21 +1539,38 @@ pub fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 					if pos.pos == 0 {
 						pos = field.pos
 					}
-					c.error('default value for enum has to be an integer', pos)
+					c.error('the default value for an enum has to be an integer', pos)
 				}
 			}
 		} else {
-			if seen.len > 0 {
-				last := seen[seen.len - 1]
-				if last == checker.int_max {
-					c.error('enum value overflows', field.pos)
-				} else if !c.pref.translated && !c.file.is_translated && !node.is_multi_allowed
-					&& last + 1 in seen {
-					c.error('enum value `${last + 1}` already exists', field.pos)
+			if signed {
+				if iseen.len > 0 {
+					ilast := iseen.last()
+					if ilast == enum_imax {
+						c.error('enum value overflows type `$senum_type`, which has a maximum value of $enum_imax',
+							field.pos)
+					} else if !c.pref.translated && !c.file.is_translated && !node.is_multi_allowed
+						&& ilast + 1 in iseen {
+						c.error('enum value `${ilast + 1}` already exists', field.pos)
+					}
+					iseen << ilast + 1
+				} else {
+					iseen << 0
 				}
-				seen << last + 1
 			} else {
-				seen << 0
+				if useen.len > 0 {
+					ulast := useen.last()
+					if ulast == enum_umax {
+						c.error('enum value overflows type `$senum_type`, which has a maximum value of $enum_umax',
+							field.pos)
+					} else if !c.pref.translated && !c.file.is_translated && !node.is_multi_allowed
+						&& ulast + 1 in useen {
+						c.error('enum value `${ulast + 1}` already exists', field.pos)
+					}
+					useen << ulast + 1
+				} else {
+					useen << 0
+				}
 			}
 		}
 	}
@@ -1531,7 +1638,7 @@ fn (mut c Checker) stmt(node_ ast.Stmt) {
 			for i, ident in node.defer_vars {
 				mut id := ident
 				if mut id.info is ast.IdentVar {
-					if id.comptime && id.name in checker.valid_comptime_not_user_defined {
+					if id.comptime && id.name in constants.valid_comptime_not_user_defined {
 						node.defer_vars[i] = ast.Ident{
 							scope: 0
 							name: ''
@@ -2637,21 +2744,25 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if to_sym.kind == .enum_ {
 		if mut node.expr is ast.IntegerLiteral {
 			enum_typ_name := c.table.get_type_name(to_type)
-			node_val := node.expr.val.int()
+			node_val := node.expr.val.i64()
 
 			if enum_decl := c.table.enum_decls[to_sym.name] {
 				mut in_range := false
 				if enum_decl.is_flag {
 					// if a flag enum has 4 variants, the maximum possible value would have all 4 flags set (0b1111)
-					max_val := (1 << enum_decl.fields.len) - 1
-					in_range = node_val >= 0 && node_val <= max_val
+					max_val := (u64(1) << enum_decl.fields.len) - 1
+					in_range = node_val >= 0 && u64(node_val) <= max_val
 				} else {
-					mut enum_val := 0
+					mut enum_val := i64(0)
 
 					for enum_field in enum_decl.fields {
 						// check if the field of the enum value is an integer literal
 						if enum_field.expr is ast.IntegerLiteral {
-							enum_val = enum_field.expr.val.int()
+							enum_val = enum_field.expr.val.i64()
+						} else if comptime_value := c.eval_comptime_const_expr(enum_field.expr,
+							0)
+						{
+							enum_val = comptime_value.i64() or { -1 }
 						}
 						if node_val == enum_val {
 							in_range = true
@@ -3009,6 +3120,12 @@ pub fn (mut c Checker) concat_expr(mut node ast.ConcatExpr) ast.Type {
 		node.return_type = typ
 		return typ
 	} else {
+		for i := 0; i < mr_types.len; i++ {
+			if mr_types[i] == ast.void_type {
+				c.error('type `void` cannot be used in multi-return', node.vals[i].pos())
+				return ast.void_type
+			}
+		}
 		typ := c.table.find_or_register_multi_return(mr_types)
 		ast.new_type(typ)
 		node.return_type = typ

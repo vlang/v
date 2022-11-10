@@ -22,7 +22,7 @@ mut:
 	thread_contexts []voidptr
 }
 
-pub type ThreadCB = fn (p &PoolProcessor, idx int, task_id int) voidptr
+pub type ThreadCB = fn (mut p PoolProcessor, idx int, task_id int) voidptr
 
 pub struct PoolProcessorConfig {
 	maxjobs  int
@@ -89,7 +89,7 @@ pub fn (mut pool PoolProcessor) work_on_pointers(items []voidptr) {
 		pool.waitgroup.add(njobs)
 		for i := 0; i < njobs; i++ {
 			if njobs > 1 {
-				go process_in_thread(mut pool, i)
+				spawn process_in_thread(mut pool, i)
 			} else {
 				// do not run concurrently, just use the same thread:
 				process_in_thread(mut pool, i)
@@ -110,7 +110,7 @@ fn process_in_thread(mut pool PoolProcessor, task_id int) {
 		if idx >= ilen {
 			break
 		}
-		pool.results[idx] = cb(pool, idx, task_id)
+		pool.results[idx] = cb(mut pool, idx, task_id)
 	}
 	pool.waitgroup.done()
 }

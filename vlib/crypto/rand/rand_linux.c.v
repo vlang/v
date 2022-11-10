@@ -24,7 +24,7 @@ pub fn read(bytes_needed int) ![]u8 {
 		rbytes := unsafe { getrandom(batch_size, buffer + bytes_read) }
 		if rbytes == -1 {
 			unsafe { free(buffer) }
-			return IError(&ReadError{})
+			return &ReadError{}
 		}
 		bytes_read += rbytes
 	}

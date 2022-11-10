@@ -11,7 +11,7 @@ fn f(ch chan int) {
 
 fn test_push_or_unbuffered() {
 	ch := chan int{}
-	go f(ch)
+	spawn f(ch)
 	mut j := 0
 	for {
 		ch <- j or { break }
@@ -23,7 +23,7 @@ fn test_push_or_unbuffered() {
 
 fn test_push_or_buffered() {
 	ch := chan int{cap: c}
-	go f(ch)
+	spawn f(ch)
 	mut j := 0
 	for {
 		ch <- j or { break }
@@ -50,9 +50,9 @@ fn g(ch chan int, res chan int) {
 fn test_many_senders() {
 	ch := chan int{}
 	res := chan int{}
-	go g(ch, res)
-	go g(ch, res)
-	go g(ch, res)
+	spawn g(ch, res)
+	spawn g(ch, res)
+	spawn g(ch, res)
 	mut k := 0
 	for _ in 0 .. 3 * n {
 		k = <-ch

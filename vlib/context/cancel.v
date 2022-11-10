@@ -141,7 +141,7 @@ fn propagate_cancel(mut parent Context, mut child Canceler) {
 		}
 	}
 	mut p := parent_cancel_context(mut parent) or {
-		go fn (mut parent Context, mut child Canceler) {
+		spawn fn (mut parent Context, mut child Canceler) {
 			pdone := parent.done()
 			select {
 				_ := <-pdone {

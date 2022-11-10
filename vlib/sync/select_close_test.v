@@ -44,10 +44,10 @@ fn test_select() {
 	mut chl := new_channel<i64>(1)
 	mut chb := new_channel<u8>(10)
 	mut recch := new_channel<i64>(0)
-	go do_rec_i64(mut recch)
-	go do_send_int(mut chi)
-	go do_send_u8(mut chb)
-	go do_send_i64(mut chl)
+	spawn do_rec_i64(mut recch)
+	spawn do_send_int(mut chi)
+	spawn do_send_u8(mut chb)
+	spawn do_send_i64(mut chl)
 	mut channels := [chi, recch, chl, chb]
 	directions := [Direction.pop, .push, .pop, .pop]
 	mut sum := i64(0)

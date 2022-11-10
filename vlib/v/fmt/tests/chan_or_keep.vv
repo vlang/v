@@ -24,7 +24,7 @@ fn do_send_2(ch chan int, val int) ?int {
 
 fn main() {
 	ch := chan int{}
-	go f(ch)
+	spawn f(ch)
 	mut s := 1
 	for {
 		s = do_send(ch, s) or { break }

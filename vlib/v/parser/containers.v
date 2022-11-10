@@ -208,8 +208,13 @@ fn (mut p Parser) map_init() ast.MapInit {
 	mut comments := [][]ast.Comment{}
 	pre_cmnts := p.eat_comments()
 	for p.tok.kind !in [.rcbr, .eof] {
-		key := p.expr(0)
-		keys << key
+		if p.tok.kind == .name && p.tok.lit in ['r', 'c', 'js'] {
+			key := p.string_expr()
+			keys << key
+		} else {
+			key := p.expr(0)
+			keys << key
+		}
 		p.check(.colon)
 		val := p.expr(0)
 		vals << val

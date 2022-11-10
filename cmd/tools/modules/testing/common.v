@@ -151,13 +151,11 @@ pub fn (mut ts TestSession) print_messages() {
 
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	mut skip_files := []string{}
-
-	// Skip the call_v_from_c files. They need special instructions for compilation.
-	// Check the README.md for detailed information.
-	skip_files << 'examples/call_v_from_c/v_test_print.v'
-	skip_files << 'examples/call_v_from_c/v_test_math.v'
-
 	if will_compile {
+		// Skip the call_v_from_c files. They need special instructions for compilation.
+		// Check the README.md for detailed information.
+		skip_files << 'examples/call_v_from_c/v_test_print.v'
+		skip_files << 'examples/call_v_from_c/v_test_math.v'
 		$if msvc {
 			skip_files << 'vlib/v/tests/const_comptime_eval_before_vinit_test.v' // _constructor used
 		}
@@ -300,7 +298,7 @@ pub fn (mut ts TestSession) test() {
 	ts.nmessages = chan LogMessage{cap: 10000}
 	ts.nprint_ended = chan int{cap: 0}
 	ts.nmessage_idx = 0
-	go ts.print_messages()
+	spawn ts.print_messages()
 	pool_of_test_runners.set_shared_context(ts)
 	pool_of_test_runners.work_on_pointers(unsafe { remaining_files.pointers() })
 	ts.benchmark.stop()
@@ -597,9 +595,12 @@ pub fn header(msg string) {
 	flush_stdout()
 }
 
+// setup_new_vtmp_folder creates a new nested folder inside VTMP, then resets VTMP to it,
+// so that V programs/tests will write their temporary files to new location.
+// The new nested folder, and its contents, will get removed after all tests/programs succeed.
 pub fn setup_new_vtmp_folder() string {
 	now := time.sys_mono_now()
-	new_vtmp_dir := os.join_path(os.temp_dir(), 'v', 'tsession_${sync.thread_id().hex()}_$now')
+	new_vtmp_dir := os.join_path(os.vtmp_dir(), 'tsession_${sync.thread_id().hex()}_$now')
 	os.mkdir_all(new_vtmp_dir) or { panic(err) }
 	os.setenv('VTMP', new_vtmp_dir, true)
 	return new_vtmp_dir

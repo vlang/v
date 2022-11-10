@@ -19,7 +19,7 @@ pub fn read(bytes_needed int) ![]u8 {
 	// use bcrypt_use_system_preferred_rng because we passed null as algo
 	status := C.BCryptGenRandom(0, buffer.data, bytes_needed, rand.bcrypt_use_system_preferred_rng)
 	if status != rand.status_success {
-		return IError(&ReadError{})
+		return &ReadError{}
 	}
 	return buffer
 }

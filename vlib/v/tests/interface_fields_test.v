@@ -26,12 +26,12 @@ fn use_interface(a Animal) {
 }
 
 fn mutate_interface(mut a Animal) {
-	if a is Cat {
+	if mut a is Cat {
 		a.breed = 'Siamese'
 	} else {
 		a.breed = 'Golden Retriever'
 	}
-	if a is Cat {
+	if mut a is Cat {
 		assert a.breed == 'Siamese'
 	} else {
 		assert a.breed == 'Golden Retriever'

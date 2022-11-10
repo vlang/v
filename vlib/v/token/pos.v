@@ -18,7 +18,7 @@ pub fn (mut p Pos) free() {
 }
 
 pub fn (p Pos) line_str() string {
-	return '\{l: ${p.line_nr + 1:5}, c: ${p.col:3}, p: ${p.pos:5}, ll: ${p.last_line + 1:5}}'
+	return '{l: ${p.line_nr + 1:5}, c: ${p.col:3}, p: ${p.pos:5}, ll: ${p.last_line + 1:5}}'
 }
 
 pub fn (pos Pos) extend(end Pos) Pos {

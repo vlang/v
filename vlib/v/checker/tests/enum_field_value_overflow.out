@@ -1,7 +1,90 @@
-vlib/v/checker/tests/enum_field_value_overflow.vv:3:10: error: enum value `2147483648` overflows int
+vlib/v/checker/tests/enum_field_value_overflow.vv:3:10: error: enum value `2147483648` overflows the enum type `int`, values of which have to be in [-2147483648, 2147483647]
     1 | enum Color {
     2 |     red
     3 |     green = 2147483648
       |             ~~~~~~~~~~
     4 |     blue
     5 | }
+vlib/v/checker/tests/enum_field_value_overflow.vv:7:1: error: `string` is not one of `i8`,`i16`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`
+    5 | }
+    6 | 
+    7 | enum ColorString as string {
+      | ~~~~~~~~~~~~~~~~
+    8 |     red
+    9 |     green = 'abc'
+vlib/v/checker/tests/enum_field_value_overflow.vv:9:10: error: the default value for an enum has to be an integer
+    7 | enum ColorString as string {
+    8 |     red
+    9 |     green = 'abc'
+      |             ~~~~~
+   10 |     blue
+   11 | }
+vlib/v/checker/tests/enum_field_value_overflow.vv:10:2: error: enum value overflows type `string`, which has a maximum value of 0
+    8 |     red
+    9 |     green = 'abc'
+   10 |     blue
+      |     ~~~~
+   11 | }
+   12 |
+vlib/v/checker/tests/enum_field_value_overflow.vv:15:10: error: enum value `128` overflows the enum type `i8`, values of which have to be in [-128, 127]
+   13 | enum ColorI8 as i8 {
+   14 |     red
+   15 |     green = 128
+      |             ~~~
+   16 |     blue
+   17 | }
+vlib/v/checker/tests/enum_field_value_overflow.vv:21:10: error: enum value `32769` overflows the enum type `i16`, values of which have to be in [-32768, 32767]
+   19 | enum ColorI16 as i16 {
+   20 |     red
+   21 |     green = 32769
+      |             ~~~~~
+   22 |     blue
+   23 | }
+vlib/v/checker/tests/enum_field_value_overflow.vv:27:10: error: enum value `2147483648` overflows the enum type `int`, values of which have to be in [-2147483648, 2147483647]
+   25 | enum ColorI32 {
+   26 |     red
+   27 |     green = 2147483648
+      |             ~~~~~~~~~~
+   28 |     blue
+   29 | }
+vlib/v/checker/tests/enum_field_value_overflow.vv:33:10: error: enum value `9223372036854775808` overflows the enum type `i64`, values of which have to be in [-9223372036854775808, 9223372036854775807]
+   31 | enum ColorI64 as i64 {
+   32 |     red
+   33 |     green = 9223372036854775808
+      |             ~~~~~~~~~~~~~~~~~~~
+   34 |     blue
+   35 | }
+vlib/v/checker/tests/enum_field_value_overflow.vv:34:2: error: enum value overflows type `i64`, which has a maximum value of 9223372036854775807
+   32 |     red
+   33 |     green = 9223372036854775808
+   34 |     blue
+      |     ~~~~
+   35 | }
+   36 |
+vlib/v/checker/tests/enum_field_value_overflow.vv:56:10: error: enum value `256` overflows the enum type `u8`, values of which have to be in [0, 255]
+   54 | // These should work however, since the type is unsigned:
+   55 | enum ColorU8ShouldFail as u8 {
+   56 |     green = 256
+      |             ~~~
+   57 | }
+   58 |
+vlib/v/checker/tests/enum_field_value_overflow.vv:60:10: error: enum value `65536` overflows the enum type `u16`, values of which have to be in [0, 65535]
+   58 | 
+   59 | enum ColorU16ShouldFail as u16 {
+   60 |     green = 65536
+      |             ~~~~~
+   61 | }
+   62 |
+vlib/v/checker/tests/enum_field_value_overflow.vv:64:10: error: enum value `4294967296` overflows the enum type `u32`, values of which have to be in [0, 4294967295]
+   62 | 
+   63 | enum ColorU32ShouldFail as u32 {
+   64 |     green = 4294967296
+      |             ~~~~~~~~~~
+   65 | }
+   66 |
+vlib/v/checker/tests/enum_field_value_overflow.vv:68:10: error: enum value `18446744073709551616` overflows the enum type `u64`, values of which have to be in [0, 18446744073709551615]
+   66 | 
+   67 | enum ColorU64ShouldFail as u64 {
+   68 |     green = 18446744073709551616
+      |             ~~~~~~~~~~~~~~~~~~~~
+   69 | }

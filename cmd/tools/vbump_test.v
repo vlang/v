@@ -2,7 +2,7 @@ import os
 
 const vexe = @VEXE
 
-const tfolder = os.join_path(os.temp_dir(), 'v', 'vbump')
+const tfolder = os.join_path(os.vtmp_dir(), 'v', 'vbump')
 
 fn testsuite_begin() {
 	os.mkdir_all(tfolder) or {}

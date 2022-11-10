@@ -51,7 +51,7 @@ Examples:
   Compare screenshots in `/tmp/src` to existing screenshots in `/tmp/dst`
     v gret --compare-only /tmp/src /tmp/dst
 '
-	tmp_dir    = os.join_path(os.temp_dir(), 'v', tool_name)
+	tmp_dir    = os.join_path(os.vtmp_dir(), 'v', tool_name)
 	runtime_os = os.user_os()
 	v_root     = os.real_path(@VMODROOT)
 )
@@ -271,7 +271,7 @@ fn compare_screenshots(opt Options, output_path string, target_path string) ! {
 				if idiff_exe == '' {
 					return error('$tool_name need the `idiff` tool installed. It can be installed on Ubuntu with `sudo apt install openimageio-tools`')
 				}
-				diff_file := os.join_path(os.temp_dir(), os.file_name(src).all_before_last('.') +
+				diff_file := os.join_path(os.vtmp_dir(), os.file_name(src).all_before_last('.') +
 					'.diff.tif')
 				flags := app_config.compare.flags.join(' ')
 				diff_cmd := '${os.quoted_path(idiff_exe)} $flags -abs -od -o ${os.quoted_path(diff_file)} -abs ${os.quoted_path(src)} ${os.quoted_path(target)}'
@@ -305,18 +305,18 @@ fn compare_screenshots(opt Options, output_path string, target_path string) ! {
 			eprintln('$fail_src != $fail_target')
 		}
 		first := fails.keys()[0]
-		fail_copy := os.join_path(os.temp_dir(), 'fail.' + first.all_after_last('.'))
+		fail_copy := os.join_path(os.vtmp_dir(), 'fail.' + first.all_after_last('.'))
 		os.cp(first, fail_copy)!
 		eprintln('First failed file `$first` is copied to `$fail_copy`')
 
-		diff_file := os.join_path(os.temp_dir(), os.file_name(first).all_before_last('.') +
+		diff_file := os.join_path(os.vtmp_dir(), os.file_name(first).all_before_last('.') +
 			'.diff.tif')
-		diff_copy := os.join_path(os.temp_dir(), 'diff.tif')
+		diff_copy := os.join_path(os.vtmp_dir(), 'diff.tif')
 		if os.is_file(diff_file) {
 			os.cp(diff_file, diff_copy)!
 			eprintln('First failed diff file `$diff_file` is copied to `$diff_copy`')
 			eprintln('Removing alpha channel from $diff_copy ...')
-			final_fail_result_file := os.join_path(os.temp_dir(), 'diff.png')
+			final_fail_result_file := os.join_path(os.vtmp_dir(), 'diff.png')
 			opt.verbose_execute('convert ${os.quoted_path(diff_copy)} -alpha off ${os.quoted_path(final_fail_result_file)}')
 			eprintln('Final diff file: `$final_fail_result_file`')
 		}

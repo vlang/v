@@ -148,7 +148,7 @@ pub fn (graph &DepGraph) resolve() &DepGraph {
 }
 
 pub fn (graph &DepGraph) last_node() DepGraphNode {
-	return graph.nodes[graph.nodes.len - 1]
+	return graph.nodes.last()
 }
 
 pub fn (graph &DepGraph) display() string {

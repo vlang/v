@@ -1,46 +1,46 @@
-module os
+import os
 
 fn test_find_abs_path_of_executable() {
-	tfolder := join_path(temp_dir(), 'v', 'tests', 'filepath_test')
-	rmdir_all(tfolder) or {}
-	assert !is_dir(tfolder)
-	mkdir_all(tfolder)?
+	tfolder := os.join_path(os.vtmp_dir(), 'v', 'tests', 'filepath_test')
+	os.rmdir_all(tfolder) or {}
+	assert !os.is_dir(tfolder)
+	os.mkdir_all(tfolder)!
 	defer {
-		rmdir_all(tfolder) or {}
+		os.rmdir_all(tfolder) or {}
 	}
 	//
-	original_path := getenv('PATH')
-	original_wdir := getwd()
+	original_path := os.getenv('PATH')
+	original_wdir := os.getwd()
 	defer {
-		chdir(original_wdir) or {}
+		os.chdir(original_wdir) or {}
 	}
 	//
-	new_path := tfolder + path_delimiter + original_path
-	setenv('PATH', new_path, true)
+	new_path := tfolder + os.path_delimiter + original_path
+	os.setenv('PATH', new_path, true)
 	//
 	mut myclang_file := 'myclang'
 	$if windows {
 		myclang_file += '.bat'
 	}
 	//
-	chdir(tfolder)?
-	write_file(myclang_file, 'echo hello')?
-	chmod(myclang_file, 0o0777)!
-	dump(real_path(myclang_file))
-	dump(is_executable(myclang_file))
+	os.chdir(tfolder)!
+	os.write_file(myclang_file, 'echo hello')!
+	os.chmod(myclang_file, 0o0777)!
+	dump(os.real_path(myclang_file))
+	dump(os.is_executable(myclang_file))
 	defer {
-		rm(myclang_file) or {}
+		os.rm(myclang_file) or {}
 	}
 	//
-	fpath := find_abs_path_of_executable('myclang') or {
+	fpath := os.find_abs_path_of_executable('myclang') or {
 		assert false
 		return
 	}
 	dump(fpath)
 	//
-	setenv('PATH', original_path, true)
-	chdir(home_dir())! // change to a *completely* different folder, to avoid the original PATH containing `.`
-	if x := find_abs_path_of_executable('myclang') {
+	os.setenv('PATH', original_path, true)
+	os.chdir(os.home_dir())! // change to a *completely* different folder, to avoid the original PATH containing `.`
+	if x := os.find_abs_path_of_executable('myclang') {
 		eprintln('> find_abs_path_of_executable should have failed, but instead it found: $x')
 		assert false
 	}

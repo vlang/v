@@ -67,6 +67,9 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 	if typ.has_flag(.optional) {
 		unwrapped.set_flag(.optional)
 	}
+	if typ.has_flag(.result) {
+		unwrapped.set_flag(.result)
+	}
 	styp := g.typ(unwrapped)
 	mut sym := g.table.sym(unwrapped)
 	mut str_fn_name := styp_to_str_fn_name(styp)
@@ -76,8 +79,14 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 			str_fn_name = styp_to_str_fn_name(sym.name)
 		}
 	}
-	if sym.has_method_with_generic_parent('str') && mut sym.info is ast.Struct {
-		str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name)
+	if sym.has_method_with_generic_parent('str') {
+		if mut sym.info is ast.Struct {
+			str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name)
+		} else if mut sym.info is ast.SumType {
+			str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name)
+		} else if mut sym.info is ast.Interface {
+			str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name)
+		}
 	}
 	g.str_types << StrType{
 		typ: unwrapped
@@ -306,8 +315,10 @@ fn (mut g Gen) gen_str_for_enum(info ast.Enum, styp string, str_fn_name string) 
 		clean_name := util.strip_main_name(styp.replace('__', '.'))
 		g.auto_str_funcs.writeln('\tstring ret = _SLIT("$clean_name{");')
 		g.auto_str_funcs.writeln('\tint first = 1;')
+		g.auto_str_funcs.writeln('\tu64 zit = (u64)it;')
 		for i, val in info.vals {
-			g.auto_str_funcs.writeln('\tif (it & (1 << $i)) { if (!first) { ret = string__plus(ret, _SLIT(" | "));} ret = string__plus(ret, _SLIT(".$val")); first = 0;}')
+			mask := u64(1) << i
+			g.auto_str_funcs.writeln('\tif (zit & 0x${mask:016x}U) { if (!first) { ret = string__plus(ret, _SLIT(" | "));} ret = string__plus(ret, _SLIT(".$val")); first = 0;}')
 		}
 		g.auto_str_funcs.writeln('\tret = string__plus(ret, _SLIT("}"));')
 		g.auto_str_funcs.writeln('\treturn ret;')

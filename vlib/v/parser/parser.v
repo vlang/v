@@ -1002,7 +1002,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 				.name {
 					mut pos := p.tok.pos()
-					expr := p.comptime_call()
+					expr := p.expr(0)
 					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
 						expr: expr
@@ -1051,7 +1051,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 			}
 		}
-		.key_go {
+		.key_go, .key_spawn {
 			go_expr := p.go_expr()
 			return ast.ExprStmt{
 				expr: go_expr
@@ -3665,8 +3665,14 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		return ast.EnumDecl{}
 	}
 	name := p.prepend_mod(enum_name)
+	mut enum_type := ast.int_type
+	if p.tok.kind == .key_as {
+		p.next()
+		enum_type = p.parse_type()
+	}
 	p.check(.lcbr)
 	enum_decl_comments := p.eat_comments()
+	senum_type := p.table.get_type_name(enum_type)
 	mut vals := []string{}
 	// mut default_exprs := []ast.Expr{}
 	mut fields := []ast.EnumField{}
@@ -3698,8 +3704,8 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	is_flag := p.attrs.contains('flag')
 	is_multi_allowed := p.attrs.contains('_allow_multiple_values')
 	if is_flag {
-		if fields.len > 32 {
-			p.error('when an enum is used as bit field, it must have a max of 32 fields')
+		if fields.len > 64 {
+			p.error('when an enum is used as bit field, it must have a max of 64 fields')
 			return ast.EnumDecl{}
 		}
 		for f in fields {
@@ -3712,12 +3718,12 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
 		p.codegen('
 //
-[inline] $pubfn (    e &$enum_name) is_empty() bool           { return  int(*e) == 0 }
-[inline] $pubfn (    e &$enum_name) has(flag $enum_name) bool { return  (int(*e) &  (int(flag))) != 0 }
-[inline] $pubfn (    e &$enum_name) all(flag $enum_name) bool { return  (int(*e) &  (int(flag))) == int(flag) }
-[inline] $pubfn (mut e  $enum_name) set(flag $enum_name)      { unsafe{ *e = ${enum_name}(int(*e) |  (int(flag))) } }
-[inline] $pubfn (mut e  $enum_name) clear(flag $enum_name)    { unsafe{ *e = ${enum_name}(int(*e) & ~(int(flag))) } }
-[inline] $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = ${enum_name}(int(*e) ^  (int(flag))) } }
+[inline] $pubfn (    e &$enum_name) is_empty() bool           { return  ${senum_type}(*e) == 0 }
+[inline] $pubfn (    e &$enum_name) has(flag $enum_name) bool { return  (${senum_type}(*e) &  (${senum_type}(flag))) != 0 }
+[inline] $pubfn (    e &$enum_name) all(flag $enum_name) bool { return  (${senum_type}(*e) &  (${senum_type}(flag))) == ${senum_type}(flag) }
+[inline] $pubfn (mut e  $enum_name) set(flag $enum_name)      { unsafe{ *e = ${enum_name}(${senum_type}(*e) |  (${senum_type}(flag))) } }
+[inline] $pubfn (mut e  $enum_name) clear(flag $enum_name)    { unsafe{ *e = ${enum_name}(${senum_type}(*e) & ~(${senum_type}(flag))) } }
+[inline] $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = ${enum_name}(${senum_type}(*e) ^  (${senum_type}(flag))) } }
 //
 ')
 	}
@@ -3741,6 +3747,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 
 	enum_decl := ast.EnumDecl{
 		name: name
+		typ: enum_type
 		is_pub: is_pub
 		is_flag: is_flag
 		is_multi_allowed: is_multi_allowed

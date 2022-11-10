@@ -11,8 +11,8 @@ import math.bits
 const (
 	_k0 = 0x5A827999
 	_k1 = 0x6ED9EBA1
-	_k2 = 0x8F1BBCDC
-	_k3 = 0xCA62C1D6
+	_k2 = u32(0x8F1BBCDC)
+	_k3 = u32(0xCA62C1D6)
 )
 
 fn block_generic(mut dig Digest, p_ []u8) {

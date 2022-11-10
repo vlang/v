@@ -1,6 +1,6 @@
 import os
 
-const test_path = os.join_path(os.temp_dir(), 'v', 'vcreate_test')
+const test_path = os.join_path(os.vtmp_dir(), 'v', 'vcreate_test')
 
 fn init_and_check() ! {
 	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
@@ -33,15 +33,23 @@ fn init_and_check() ! {
 		'*.so',
 		'*.dylib',
 		'*.dll',
-		'vls.log',
+		'',
+		'# Ignore common editor/system specific metadata',
+		'.DS_Store',
+		'.idea/',
+		'.vscode/',
+		'*.iml',
 		'',
 	].join_lines()
 
 	assert os.read_file('.gitattributes')! == [
-		'*.v linguist-language=V text=auto eol=lf',
-		'*.vv linguist-language=V text=auto eol=lf',
-		'*.vsh linguist-language=V text=auto eol=lf',
-		'**/v.mod linguist-language=V text=auto eol=lf',
+		'* text=auto eol=lf',
+		'*.bat eol=crlf',
+		'',
+		'**/*.v linguist-language=V',
+		'**/*.vv linguist-language=V',
+		'**/*.vsh linguist-language=V',
+		'**/v.mod linguist-language=V',
 		'',
 	].join_lines()
 

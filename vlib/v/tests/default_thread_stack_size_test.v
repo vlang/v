@@ -20,7 +20,7 @@ fn test_default_stack_depth() {
 	// and would have failed on macos, where the default thread size
 	// is just 512KB, if V was not changed to have a default for
 	// `-thread-stack-size` of 8MB.
-	t := go abc(10)
+	t := spawn abc(10)
 	res := t.wait()
 	assert res == 55
 }
