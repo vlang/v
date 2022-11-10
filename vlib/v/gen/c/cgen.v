@@ -598,7 +598,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 	return header, res, out_str, out_fn_start_pos
 }
 
-fn cgen_process_one_file_cb(p &pool.PoolProcessor, idx int, wid int) &Gen {
+fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 	file := p.get_item<&ast.File>(idx)
 	mut global_g := &Gen(p.get_shared_context())
 	mut g := &Gen{

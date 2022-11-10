@@ -129,7 +129,7 @@ fn works_check_on_sign_input_string(item string) bool {
 	return true
 }
 
-fn worker_for_string_content(p &pool.PoolProcessor, idx int, worker_id int) &SignResult {
+fn worker_for_string_content(mut p pool.PoolProcessor, idx int, worker_id int) &SignResult {
 	item := p.get_item<string>(idx)
 	// println('worker_s worker_id: $worker_id | idx: $idx ')
 	res := works_check_on_sign_input_string(item)

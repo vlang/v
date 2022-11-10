@@ -22,7 +22,7 @@ mut:
 	thread_contexts []voidptr
 }
 
-pub type ThreadCB = fn (p &PoolProcessor, idx int, task_id int) voidptr
+pub type ThreadCB = fn (mut p PoolProcessor, idx int, task_id int) voidptr
 
 pub struct PoolProcessorConfig {
 	maxjobs  int
@@ -110,7 +110,7 @@ fn process_in_thread(mut pool PoolProcessor, task_id int) {
 		if idx >= ilen {
 			break
 		}
-		pool.results[idx] = cb(pool, idx, task_id)
+		pool.results[idx] = cb(mut pool, idx, task_id)
 	}
 	pool.waitgroup.done()
 }
