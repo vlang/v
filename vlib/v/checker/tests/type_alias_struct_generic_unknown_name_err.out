@@ -1,0 +1,7 @@
+vlib/v/checker/tests/type_alias_struct_generic_unknown_name_err.vv:7:16: error: unknown type `UnknownType`
+    5 | }
+    6 | 
+    7 | type NewType = Foo<UnknownType>
+      |                ~~~~~~~~~~~~~~~~
+    8 | 
+    9 | fn main() {

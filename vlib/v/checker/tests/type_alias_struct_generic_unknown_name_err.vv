@@ -1,0 +1,10 @@
+module main
+
+struct Foo<T> {
+	value T
+}
+
+type NewType = Foo<UnknownType>
+
+fn main() {
+}
