@@ -169,10 +169,10 @@ pub fn (mut ws WebhookServer) genhook() {
 	ws.gen_vc.generate()
 	// error in generate
 	if ws.gen_vc.gen_error {
-		ws.json('{ status: "failed" }')
+		ws.json('{status: "failed"}')
 		return
 	}
-	ws.json('{ status: "ok" }')
+	ws.json('{status: "ok"}')
 }
 
 pub fn (ws &WebhookServer) reset() {
