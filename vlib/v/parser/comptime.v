@@ -123,8 +123,12 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 	literal_string_param := if is_html { '' } else { p.tok.lit }
 	path_of_literal_string_param := literal_string_param.replace('/', os.path_separator)
+	mut arg := ast.CallArg{}
 	if !is_html {
-		p.check(.string)
+		arg_expr := p.expr(0)
+		arg = ast.CallArg{
+			expr: arg_expr
+		}
 	}
 	mut embed_compression_type := 'none'
 	if is_embed_file {
@@ -137,33 +141,6 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	p.check(.rpar)
 	// $embed_file('/path/to/file')
 	if is_embed_file {
-		mut epath := path_of_literal_string_param
-		// Validate that the epath exists, and that it is actually a file.
-		if epath == '' {
-			p.error_with_pos('supply a valid relative or absolute file path to the file to embed',
-				start_pos)
-			return err_node
-		}
-		if !p.pref.is_fmt {
-			abs_path := os.real_path(epath)
-			// check absolute path first
-			if !os.exists(abs_path) {
-				// ... look relative to the source file:
-				epath = os.real_path(os.join_path_single(os.dir(p.file_name), epath))
-				if !os.exists(epath) {
-					p.error_with_pos('"$epath" does not exist so it cannot be embedded',
-						start_pos)
-					return err_node
-				}
-				if !os.is_file(epath) {
-					p.error_with_pos('"$epath" is not a file so it cannot be embedded',
-						start_pos)
-					return err_node
-				}
-			} else {
-				epath = abs_path
-			}
-		}
 		p.register_auto_import('v.preludes.embed_file')
 		if embed_compression_type == 'zlib' {
 			p.register_auto_import('v.preludes.embed_file.zlib')
@@ -172,10 +149,9 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			scope: 0
 			is_embed: true
 			embed_file: ast.EmbeddedFile{
-				rpath: literal_string_param
-				apath: epath
 				compression_type: embed_compression_type
 			}
+			args: [arg]
 			pos: start_pos.extend(p.prev_tok.pos())
 		}
 	}
