@@ -1,16 +1,16 @@
 module time
 
 fn test_days_from_unix_epoch() {
-	time_test := Time{
-		year: 2000
-		month: 5
-		day: 10
-		hour: 22
-		minute: 11
-		second: 3
-		microsecond: 100
+	s := '2000-05-10 22:11:03'
+	time_test := parse(s) or {
+		eprintln('> failing format: $s | err: $err')
+		assert false
+		return
 	}
+	one_day_in_seconds := 86400
+
 	assert time_test.days_from_unix_epoch() == 11087
+	assert time_test.days_from_unix_epoch() == int(time_test.unix / one_day_in_seconds)
 
 	assert date_from_days_after_unix_epoch(11087).year == 2000
 	assert date_from_days_after_unix_epoch(11087).month == 5
