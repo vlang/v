@@ -501,6 +501,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								expr: node.left[0]
 								typ: modified_left_type
 								typname: c.table.type_str(modified_left_type)
+								expr_type: left_type
 								pos: node.pos
 							}
 							op: .right_shift

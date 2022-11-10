@@ -104,6 +104,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 					typname: 'IError'
 					typ: ast.error_type
 					expr_type: got_typ
+					pos: node.pos
 				}
 				node.types[0] = ast.error_type
 				return
@@ -161,6 +162,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 						typname: 'IError'
 						typ: ast.error_type
 						expr_type: got_typ
+						pos: node.pos
 					}
 					node.types[expr_idxs[i]] = ast.error_type
 					continue

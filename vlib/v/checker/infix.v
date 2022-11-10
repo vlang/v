@@ -36,6 +36,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					typ: left_type
 					typname: c.table.get_type_name(left_type)
 					expr_type: right_type
+					pos: node.right.pos()
 				}
 			}
 		}
@@ -512,6 +513,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					expr: node.left
 					typ: modified_left_type
 					typname: c.table.type_str(modified_left_type)
+					expr_type: left_type
 					pos: node.pos
 				}
 				left_type: left_type
