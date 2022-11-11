@@ -183,7 +183,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 
 	for sub in subs {
 		g.sql_stmt_line(sub, expr, or_expr)
-		g.writeln('array_push(&$last_ids_arr, _MOV((orm__Primitive[]){ orm__Connection_name_table[${expr}._typ]._method_last_id(${expr}._object)}));')
+		g.writeln('array_push(&$last_ids_arr, _MOV((orm__Primitive[]){orm__Connection_name_table[${expr}._typ]._method_last_id(${expr}._object)}));')
 	}
 
 	g.write('${result_name}_void $res = orm__Connection_name_table[${expr}._typ]._method_')

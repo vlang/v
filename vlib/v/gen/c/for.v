@@ -290,7 +290,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.writeln('\t$idx = -1;')
 		g.writeln('\tcontinue;')
 		g.writeln('}')
-		g.writeln('if (!DenseArray_has_index(&$cond_var${arw_or_pt}key_values, $idx)) { continue;}')
+		g.writeln('if (!DenseArray_has_index(&$cond_var${arw_or_pt}key_values, $idx)) {continue;}')
 		if node.key_var != '_' {
 			key_styp := g.typ(node.key_type)
 			key := c_name(node.key_var)
