@@ -17,6 +17,7 @@ pub:
 	rotate    int  // amount to rotate the image in degrees
 	z         f32
 	color     gx.Color = gx.white
+	additive  bool // Whether to draw the image with additive effect or not.
 }
 
 // Rect represents a rectangular shape in `gg`.

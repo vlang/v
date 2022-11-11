@@ -121,6 +121,7 @@ pub mut:
 	clear_pass  gfx.PassAction
 	window      sapp.Desc
 	timage_pip  sgl.Pipeline
+	timage_additive_pip sgl.Pipeline // For drawing additive images (and maybe shapes)
 	config      Config
 	user_data   voidptr
 	ft          &FT = unsafe { nil }
@@ -205,7 +206,8 @@ fn gg_init_sokol_window(user_data voidptr) {
 			ctx.font_inited = true
 		}
 	}
-	//
+
+	// Alpha Pipeline
 	mut pipdesc := gfx.PipelineDesc{
 		label: c'alpha_image'
 	}
@@ -221,6 +223,25 @@ fn gg_init_sokol_window(user_data voidptr) {
 	pipdesc.colors[0] = color_state
 
 	ctx.timage_pip = sgl.make_pipeline(&pipdesc)
+
+	// Additive Pipeline
+	mut additive_pipdesc := gfx.PipelineDesc{
+		label: c'additive_alpha_image'
+	}
+	unsafe { vmemset(&additive_pipdesc, 0, int(sizeof(additive_pipdesc))) }
+
+	additive_color_state := gfx.ColorState{
+		blend: gfx.BlendState{
+			enabled: true
+			src_factor_rgb: .src_alpha
+			dst_factor_rgb: .one
+		}
+	}
+
+	additive_pipdesc.colors[0] = additive_color_state
+
+	ctx.timage_additive_pip = sgl.make_pipeline(&additive_pipdesc)
+
 	//
 	if ctx.config.init_fn != unsafe { nil } {
 		$if android {
