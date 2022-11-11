@@ -44,7 +44,6 @@ fn string_array_to_map(a []string) map[string]bool {
 }
 
 pub struct Gen {
-	ast_files           []&ast.File
 	pref                &pref.Preferences = unsafe { nil }
 	field_data_type     ast.Type // cache her to avoid map lookups
 	module_built        string
@@ -169,6 +168,7 @@ mut:
 	json_types                []ast.Type   // to avoid json gen duplicates
 	pcs                       []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	hotcode_fn_names          []string
+	hotcode_fpaths            []string
 	embedded_files            []ast.EmbeddedFile
 	sql_i                     int
 	sql_stmt_name             string
@@ -259,7 +259,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 		timers_should_print = true
 	}
 	mut global_g := Gen{
-		ast_files: files
 		file: 0
 		out: strings.new_builder(512000)
 		cheaders: strings.new_builder(15000)
@@ -406,6 +405,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 			global_g.pcs << g.pcs
 			global_g.json_types << g.json_types
 			global_g.hotcode_fn_names << g.hotcode_fn_names
+			global_g.hotcode_fpaths << g.hotcode_fpaths
 			global_g.test_function_names << g.test_function_names
 			unsafe { g.free_builders() }
 			for k, v in g.autofree_methods {
