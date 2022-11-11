@@ -3,6 +3,9 @@ module main
 import time
 import os
 import v.live
+import math
+
+const some_constant = f64(5.5)
 
 fn append_to_file(fname string, s string) {
 	mut f := os.open_append(fname) or {
@@ -26,6 +29,7 @@ fn myprintln(s string) {
 
 [live]
 fn pmessage() string {
+	_ := some_constant * math.sin(2.0 * math.pi * f64(time.ticks() % 6000) / 6000)
 	return 'ORIGINAL'
 }
 
