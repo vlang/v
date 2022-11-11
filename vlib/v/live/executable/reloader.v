@@ -150,7 +150,9 @@ fn reloader(mut r live.LiveReloadInfo) {
 		}
 		sw := time.new_stopwatch()
 		now_ts := get_latest_ts_from_monitored_files(monitored_file_paths, last_ts)
-		elog(r, 'check if last_ts: $last_ts < now_ts: $now_ts , took $sw.elapsed().microseconds() microseconds')
+		$if trace_check_monitored_files ? {
+			eprintln('check if last_ts: $last_ts < now_ts: $now_ts , took $sw.elapsed().microseconds() microseconds')
+		}
 		if last_ts < now_ts {
 			r.reloads++
 			last_ts = now_ts
