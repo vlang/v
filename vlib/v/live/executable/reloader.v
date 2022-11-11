@@ -46,6 +46,19 @@ pub fn start_reloader(mut r live.LiveReloadInfo) {
 	spawn reloader(mut r)
 }
 
+// add_live_monitored_file will be called by the generated code inside main(), to add a list of all the .v files
+// that were used during the main program compilation. Any change to any of them, will later trigger a
+// recompilation and reloading of the produced shared library. This makes it possible for [live] functions
+// inside modules to also work, not just in the top level program.
+pub fn add_live_monitored_file(mut lri live.LiveReloadInfo, path string) {
+	mtime := os.file_last_mod_unix(path)
+	lri.monitored_files << path
+	elog(lri, '${@FN} mtime: ${mtime:12} path: $path')
+	if lri.last_mod_ts < mtime {
+		lri.last_mod_ts = mtime
+	}
+}
+
 [if debuglive ?]
 fn elog(r &live.LiveReloadInfo, s string) {
 	eprintln(s)
@@ -126,13 +139,21 @@ fn protected_load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 // Note: r.reloader() is executed in a new, independent thread
 fn reloader(mut r live.LiveReloadInfo) {
 	//	elog(r,'reloader, r: $r')
-	mut last_ts := os.file_last_mod_unix(r.original)
+	mut last_ts := r.last_mod_ts
+	mut monitored_file_paths := r.monitored_files.clone()
+	// it is much more likely that the user will be changing *the latest* files
+	// => put them first, so the search can be cut earlier:
+	monitored_file_paths.reverse_in_place()
 	for {
 		if r.cb_recheck != unsafe { nil } {
 			r.cb_recheck(r)
 		}
-		now_ts := os.file_last_mod_unix(r.original)
-		if last_ts != now_ts {
+		sw := time.new_stopwatch()
+		now_ts := get_latest_ts_from_monitored_files(monitored_file_paths, last_ts)
+		$if trace_check_monitored_files ? {
+			eprintln('check if last_ts: $last_ts < now_ts: $now_ts , took $sw.elapsed().microseconds() microseconds')
+		}
+		if last_ts < now_ts {
 			r.reloads++
 			last_ts = now_ts
 			r.last_mod_ts = last_ts
@@ -156,4 +177,19 @@ fn reloader(mut r live.LiveReloadInfo) {
 			time.sleep(r.recheck_period_ms * time.millisecond)
 		}
 	}
+}
+
+fn get_latest_ts_from_monitored_files(monitored_file_paths []string, last_ts i64) i64 {
+	mut latest_ts := i64(0)
+	for f in monitored_file_paths {
+		mtime := os.file_last_mod_unix(f)
+		if mtime > latest_ts {
+			latest_ts = mtime
+			if mtime > last_ts {
+				// no need to check further, since we already know, that there is a newer file, so return early its timestamp
+				return mtime
+			}
+		}
+	}
+	return latest_ts
 }

@@ -168,6 +168,7 @@ mut:
 	json_types                []ast.Type   // to avoid json gen duplicates
 	pcs                       []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	hotcode_fn_names          []string
+	hotcode_fpaths            []string
 	embedded_files            []ast.EmbeddedFile
 	sql_i                     int
 	sql_stmt_name             string
@@ -404,6 +405,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 			global_g.pcs << g.pcs
 			global_g.json_types << g.json_types
 			global_g.hotcode_fn_names << g.hotcode_fn_names
+			global_g.hotcode_fpaths << g.hotcode_fpaths
 			global_g.test_function_names << g.test_function_names
 			unsafe { g.free_builders() }
 			for k, v in g.autofree_methods {
