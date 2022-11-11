@@ -297,11 +297,11 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	mut v1f := if !flip_y { v1 } else { v0 }
 
 	if config.additive {
-		sgl.load_pipeline(ctx.timage_additive_pip)	
+		sgl.load_pipeline(ctx.timage_additive_pip)
 	} else {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
-	
+
 	sgl.enable_texture()
 	sgl.texture(img.simg)
 

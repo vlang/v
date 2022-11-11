@@ -115,19 +115,19 @@ mut:
 pub:
 	native_rendering bool
 pub mut:
-	scale       f32 = 1.0 // will get set to 2.0 for retina, will remain 1.0 for normal
-	width       int
-	height      int
-	clear_pass  gfx.PassAction
-	window      sapp.Desc
-	timage_pip  sgl.Pipeline
+	scale               f32 = 1.0 // will get set to 2.0 for retina, will remain 1.0 for normal
+	width               int
+	height              int
+	clear_pass          gfx.PassAction
+	window              sapp.Desc
+	timage_pip          sgl.Pipeline
 	timage_additive_pip sgl.Pipeline // For drawing additive images (and maybe shapes)
-	config      Config
-	user_data   voidptr
-	ft          &FT = unsafe { nil }
-	font_inited bool
-	ui_mode     bool // do not redraw everything 60 times/second, but only when the user requests
-	frame       u64  // the current frame counted from the start of the application; always increasing
+	config              Config
+	user_data           voidptr
+	ft                  &FT = unsafe { nil }
+	font_inited         bool
+	ui_mode             bool         // do not redraw everything 60 times/second, but only when the user requests
+	frame               u64  // the current frame counted from the start of the application; always increasing
 	//
 	mbtn_mask     u8
 	mouse_buttons MouseButtons // typed version of mbtn_mask; easier to use for user programs
