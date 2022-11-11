@@ -1,5 +1,6 @@
 module c
 
+import os
 import v.pref
 import v.util
 
@@ -95,9 +96,15 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	g.writeln('\t\t\t\t\t &live_fn_mutex,')
 	g.writeln('\t\t\t\t\t v_bind_live_symbols')
 	g.writeln('\t\t);')
+	for idx, f in g.ast_files {
+		fpath := os.real_path(f.path)
+		g.writeln('\t\tv__live__executable__add_live_monitored_file(live_info, ${ctoslit(fpath)}); // source V file ${
+			idx + 1}/$g.ast_files.len')
+	}
+	g.writeln('')
 	// g_live_info gives access to the LiveReloadInfo methods,
 	// to the custom user code, through calling v_live_info()
-	g.writeln('\t\t   g_live_info = (void*)live_info;')
+	g.writeln('\t\tg_live_info = (void*)live_info;')
 	g.writeln('\t\tv__live__executable__start_reloader(live_info);')
 	g.writeln('\t}\t// end of live code initialization section')
 	g.writeln('')

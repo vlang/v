@@ -44,6 +44,7 @@ fn string_array_to_map(a []string) map[string]bool {
 }
 
 pub struct Gen {
+	ast_files           []&ast.File
 	pref                &pref.Preferences = unsafe { nil }
 	field_data_type     ast.Type // cache her to avoid map lookups
 	module_built        string
@@ -258,6 +259,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 		timers_should_print = true
 	}
 	mut global_g := Gen{
+		ast_files: files
 		file: 0
 		out: strings.new_builder(512000)
 		cheaders: strings.new_builder(15000)
