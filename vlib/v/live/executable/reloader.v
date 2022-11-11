@@ -5,9 +5,7 @@ import time
 import dl
 import v.live
 
-pub const (
-	is_used = 1
-)
+pub const is_used = 1
 
 // The live reloader code is implemented here.
 // Note: new_live_reload_info will be called by generated C code inside main()
@@ -48,10 +46,9 @@ pub fn start_reloader(mut r live.LiveReloadInfo) {
 	spawn reloader(mut r)
 }
 
+[if debuglive ?]
 fn elog(r &live.LiveReloadInfo, s string) {
-	$if debuglive ? {
-		eprintln(s)
-	}
+	eprintln(s)
 }
 
 fn compile_and_reload_shared_lib(mut r live.LiveReloadInfo) !bool {
