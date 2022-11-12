@@ -38,7 +38,7 @@ To do so, run the command `v up`.
 ## Table of Contents
 
 <table>
-    <tr><td width=33% valign=top>
+<tr><td width=33% valign=top>
 
 * [Hello world](#hello-world)
 * [Running a project folder](#running-a-project-folder-with-several-files)
@@ -62,6 +62,9 @@ To do so, run the command `v up`.
         * [Array slices](#array-slices)
     * [Fixed size arrays](#fixed-size-arrays)
     * [Maps](#maps)
+
+</td><td width=33% valign=top>
+
 * [Module imports](#module-imports)
     * [Selective imports](#selective-imports)
     * [Module import aliasing](#module-import-aliasing)
@@ -86,7 +89,7 @@ To do so, run the command `v up`.
     * [Embedded structs](#embedded-structs)
 * [Unions](#unions)
 
-</td><td width=33% valign=top>
+</td><td valign=top>
 
 * [Functions 2](#functions-2)
     * [Immutable function args by default](#immutable-function-args-by-default)
@@ -105,6 +108,10 @@ To do so, run the command `v up`.
 * [Modules](#modules)
     * [Create modules](#create-modules)
     * [init functions](#init-functions)
+
+</td></tr>
+<tr><td width=33% valign=top>
+
 * [Type Declarations](#type-declarations)
     * [Interfaces](#interfaces)
     * [Function Types](#function-types)
@@ -132,11 +139,11 @@ To do so, run the command `v up`.
     * [Control](#control)
     * [Stack and Heap](#stack-and-heap)
 * [ORM](#orm)
-
-</td><td valign=top>
-
 * [Writing documentation](#writing-documentation)
     * [Newlines in Documentation Comments](#newlines-in-documentation-comments)
+
+</td><td width=33% valign=top>
+
 * [Tools](#tools)
     * [v fmt](#v-fmt)
     * [v shader](#v-shader)
@@ -163,21 +170,24 @@ To do so, run the command `v up`.
         * [C Backend binaries Default](#c-backend-binaries-default)
         * [Native Backend binaries](#native-backend-binaries)
         * [Javascript Backend](#javascript-backend)
-    * [V and C](#v-and-c)
-		* [Calling C from V](#calling-c-from-v)
-		* [Calling V from C](#calling-v-from-c)
-		* [Passing C compilation flags](#passing-c-compilation-flags)
-		* [#pkgconfig](#pkgconfig)
-		* [Including C code](#including-c-code)
-		* [C types](#c-types)
-		* [C Declarations](#c-declarations)
-        * [Export to shared library](#export-to-shared-library)
-        * [Translating C to V](#translating-c-to-v)
-    * [Other V Features](#other-v-features)
-        * [Inline assembly](#inline-assembly)
-        * [Hot code reloading](#hot-code-reloading)
-        * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
-	    * [Vsh scripts with no extension](#vsh-scripts-with-no-extension)
+
+</td><td valign=top>
+
+* [V and C](#v-and-c)
+	* [Calling C from V](#calling-c-from-v)
+	* [Calling V from C](#calling-v-from-c)
+	* [Passing C compilation flags](#passing-c-compilation-flags)
+	* [#pkgconfig](#pkgconfig)
+	* [Including C code](#including-c-code)
+	* [C types](#c-types)
+	* [C Declarations](#c-declarations)
+	* [Export to shared library](#export-to-shared-library)
+	* [Translating C to V](#translating-c-to-v)
+* [Other V Features](#other-v-features)
+	* [Inline assembly](#inline-assembly)
+	* [Hot code reloading](#hot-code-reloading)
+	* [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
+	* [Vsh scripts with no extension](#vsh-scripts-with-no-extension)
 * [Appendices](#appendices)
     * [Keywords](#appendix-i-keywords)
     * [Operators](#appendix-ii-operators)
