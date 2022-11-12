@@ -29,7 +29,7 @@ pub fn (mut window Window) draw(_ voidptr) {
 			width: window.image.width
 			height: window.image.height
 		}
-		// additive: false <-- this can be omitted completely as it is false by default.
+		// effect: .alpha <-- this can be omitted completely as it is alpha by default.
 	)
 
 	// Red
@@ -43,7 +43,7 @@ pub fn (mut window Window) draw(_ voidptr) {
 			height: window.image.height
 		}
 		color: gx.Color{255, 0, 0, 255}
-		additive: true
+		effect: .add
 	)
 
 	// Green
@@ -57,7 +57,7 @@ pub fn (mut window Window) draw(_ voidptr) {
 			height: window.image.height
 		}
 		color: gx.Color{0, 255, 0, 255}
-		additive: true
+		effect: .add
 	)
 
 	// Blue
@@ -71,7 +71,47 @@ pub fn (mut window Window) draw(_ voidptr) {
 			height: window.image.height
 		}
 		color: gx.Color{0, 0, 255, 255}
-		additive: true
+		effect: .add
+	)
+
+	// More examples
+	window.ctx.draw_image_with_config(
+		img: &window.image
+		img_id: window.image.id
+		img_rect: gg.Rect{
+			x: 50,
+			y: 0,
+			width: window.image.width
+			height: window.image.height
+		}
+		color: gx.Color{255, 0, 0, 255}
+		effect: .add
+	)
+
+	window.ctx.draw_image_with_config(
+		img: &window.image
+		img_id: window.image.id
+		img_rect: gg.Rect{
+			x: 50,
+			y: 50,
+			width: window.image.width
+			height: window.image.height
+		}
+		color: gx.Color{0, 255, 0, 255}
+		effect: .add
+	)
+
+	window.ctx.draw_image_with_config(
+		img: &window.image
+		img_id: window.image.id
+		img_rect: gg.Rect{
+			x: 50,
+			y: 100,
+			width: window.image.width
+			height: window.image.height
+		}
+		color: gx.Color{0, 0, 255, 255}
+		effect: .add
 	)
 
 	window.ctx.end()
