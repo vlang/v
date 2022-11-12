@@ -104,6 +104,51 @@ pub:
 }
 
 [heap]
+pub struct PipelineContainer {
+pub mut:
+	alpha sgl.Pipeline
+	add   sgl.Pipeline
+}
+
+fn (mut container PipelineContainer) init_pipeline() {
+	// FIXME(FireRedz): this looks kinda funny, find a better way to initialize pipeline.
+
+	// Alpha
+	mut alpha_pipdesc := gfx.PipelineDesc{
+		label: c'alpha-pipeline'
+	}
+
+	unsafe { vmemset(&alpha_pipdesc, 0, int(sizeof(alpha_pipdesc))) }
+
+	alpha_pipdesc.colors[0] = gfx.ColorState{
+		blend: gfx.BlendState{
+			enabled: true
+			src_factor_rgb: .src_alpha
+			dst_factor_rgb: .one_minus_src_alpha
+		}
+	}
+
+	container.alpha = sgl.make_pipeline(&alpha_pipdesc)
+
+	// Add
+	mut add_pipdesc := gfx.PipelineDesc{
+		label: c'additive-pipeline'
+	}
+
+	unsafe { vmemset(&add_pipdesc, 0, int(sizeof(add_pipdesc))) }
+
+	add_pipdesc.colors[0] = gfx.ColorState{
+		blend: gfx.BlendState{
+			enabled: true
+			src_factor_rgb: .src_alpha
+			dst_factor_rgb: .one
+		}
+	}
+
+	container.add = sgl.make_pipeline(&add_pipdesc)
+}
+
+[heap]
 pub struct Context {
 mut:
 	render_text bool = true
@@ -120,7 +165,8 @@ pub mut:
 	height      int
 	clear_pass  gfx.PassAction
 	window      sapp.Desc
-	timage_pip  sgl.Pipeline
+	timage_pip  sgl.Pipeline       [deprecated: 'Use `Context.pipeline.alpha` instead!']
+	pipeline    &PipelineContainer = unsafe { nil }
 	config      Config
 	user_data   voidptr
 	ft          &FT = unsafe { nil }
@@ -205,22 +251,14 @@ fn gg_init_sokol_window(user_data voidptr) {
 			ctx.font_inited = true
 		}
 	}
-	//
-	mut pipdesc := gfx.PipelineDesc{
-		label: c'alpha_image'
-	}
-	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
 
-	color_state := gfx.ColorState{
-		blend: gfx.BlendState{
-			enabled: true
-			src_factor_rgb: .src_alpha
-			dst_factor_rgb: .one_minus_src_alpha
-		}
-	}
-	pipdesc.colors[0] = color_state
+	// Pipeline
+	ctx.pipeline = &PipelineContainer{}
+	ctx.pipeline.init_pipeline()
 
-	ctx.timage_pip = sgl.make_pipeline(&pipdesc)
+	// Keep the old pipeline for now, cuz v ui used it.
+	ctx.timage_pip = ctx.pipeline.alpha
+
 	//
 	if ctx.config.init_fn != unsafe { nil } {
 		$if android {

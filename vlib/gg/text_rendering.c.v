@@ -138,7 +138,7 @@ pub fn (ctx &Context) set_text_cfg(cfg gx.TextCfg) {
 	ctx.ft.fons.set_align(int(cfg.align) | int(cfg.vertical_align))
 	color := sfons.rgba(cfg.color.r, cfg.color.g, cfg.color.b, cfg.color.a)
 	if cfg.color.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	ctx.ft.fons.set_color(color)
 	ascender := f32(0.0)

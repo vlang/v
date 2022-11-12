@@ -296,7 +296,12 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	mut v0f := if !flip_y { v0 } else { v1 }
 	mut v1f := if !flip_y { v1 } else { v0 }
 
-	sgl.load_pipeline(ctx.timage_pip)
+	// FIXME: is this okay?
+	match config.effect {
+		.alpha { sgl.load_pipeline(ctx.pipeline.alpha) }
+		.add { sgl.load_pipeline(ctx.pipeline.add) }
+	}
+
 	sgl.enable_texture()
 	sgl.texture(img.simg)
 
