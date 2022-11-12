@@ -381,15 +381,23 @@ pub fn (mut p Parser) parse_type() ast.Type {
 		p.next()
 		is_result = true
 	}
-	if (is_optional || is_result) && (p.tok.line_nr > line_nr || p.tok.kind in [.comma, .rpar]) {
-		mut typ := ast.void_type
-		if is_optional {
-			typ = typ.set_flag(.optional)
-		} else if is_result {
-			typ = typ.set_flag(.result)
+
+	if is_optional || is_result {
+		// maybe the '[' is the start of the field attribute
+		is_required_field := p.inside_struct_field_decl && p.tok.kind == .lsbr
+			&& p.peek_tok.kind == .name && p.peek_tok.lit == 'required'
+
+		if p.tok.line_nr > line_nr || p.tok.kind in [.comma, .rpar] || is_required_field {
+			mut typ := ast.void_type
+			if is_optional {
+				typ = typ.set_flag(.optional)
+			} else if is_result {
+				typ = typ.set_flag(.result)
+			}
+			return typ
 		}
-		return typ
 	}
+
 	is_shared := p.tok.kind == .key_shared
 	is_atomic := p.tok.kind == .key_atomic
 	if is_shared {
