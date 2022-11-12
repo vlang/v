@@ -110,7 +110,7 @@ pub mut:
 	add   sgl.Pipeline
 }
 
-pub fn (mut container PipelineContainer) init_pipeline() {
+fn (mut container PipelineContainer) init_pipeline() {
 	// FIXME(FireRedz): this looks kinda funny, find a better way to initialize pipeline.
 
 	// Alpha
