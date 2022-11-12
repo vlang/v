@@ -1,0 +1,7 @@
+vlib/v/parser/tests/struct_field_required_fn_optional_type.vv:6:7: error: field `Foo.foo` must be initialized
+    4 |
+    5 | fn main() {
+    6 |     f := Foo{}
+      |          ~~~~~
+    7 |     println(f)
+    8 | }
