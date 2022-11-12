@@ -79,8 +79,8 @@ pub fn (mut window Window) draw(_ voidptr) {
 		img: &window.image
 		img_id: window.image.id
 		img_rect: gg.Rect{
-			x: 50,
-			y: 0,
+			x: 50
+			y: 0
 			width: window.image.width
 			height: window.image.height
 		}
@@ -92,8 +92,8 @@ pub fn (mut window Window) draw(_ voidptr) {
 		img: &window.image
 		img_id: window.image.id
 		img_rect: gg.Rect{
-			x: 50,
-			y: 50,
+			x: 50
+			y: 50
 			width: window.image.width
 			height: window.image.height
 		}
@@ -105,8 +105,8 @@ pub fn (mut window Window) draw(_ voidptr) {
 		img: &window.image
 		img_id: window.image.id
 		img_rect: gg.Rect{
-			x: 50,
-			y: 100,
+			x: 50
+			y: 100
 			width: window.image.width
 			height: window.image.height
 		}
