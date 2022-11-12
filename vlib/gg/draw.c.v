@@ -15,7 +15,7 @@ import math
 [inline]
 pub fn (ctx &Context) draw_pixel(x f32, y f32, c gx.Color) {
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -37,7 +37,7 @@ pub fn (ctx &Context) draw_pixels(points []f32, c gx.Color) {
 	len := points.len / 2
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -67,7 +67,7 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -80,7 +80,7 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 // draw_line_with_config draws a line between the points `x,y` and `x2,y2` using `PenConfig`.
 pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config PenConfig) {
 	if config.color.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 
 	if config.thickness <= 0 {
@@ -137,7 +137,7 @@ pub fn (ctx &Context) draw_poly_empty(points []f32, c gx.Color) {
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -159,7 +159,7 @@ pub fn (ctx &Context) draw_convex_poly(points []f32, c gx.Color) {
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -182,7 +182,7 @@ pub fn (ctx &Context) draw_convex_poly(points []f32, c gx.Color) {
 // `w` is the width, `h` is the height and `c` is the color of the outline.
 pub fn (ctx &Context) draw_rect_empty(x f32, y f32, w f32, h f32, c gx.Color) {
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -207,7 +207,7 @@ pub fn (ctx &Context) draw_rect_filled(x f32, y f32, w f32, h f32, c gx.Color) {
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -230,7 +230,7 @@ pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -329,7 +329,7 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -435,7 +435,7 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 // `c` is the color of the outline.
 pub fn (ctx &Context) draw_triangle_empty(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -454,7 +454,7 @@ pub fn (ctx &Context) draw_triangle_empty(x f32, y f32, x2 f32, y2 f32, x3 f32, 
 // `c` is the color of the outline.
 pub fn (ctx &Context) draw_triangle_filled(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -505,7 +505,7 @@ fn radius_to_segments(r f32) int {
 // `c` is the color of the outline.
 pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c gx.Color) {
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -554,7 +554,7 @@ pub fn (ctx &Context) draw_polygon_filled(x f32, y f32, size f32, edges int, rot
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -604,7 +604,7 @@ pub fn (ctx &Context) draw_circle_line(x f32, y f32, radius int, segments int, c
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -631,7 +631,7 @@ pub fn (ctx &Context) draw_slice_empty(x f32, y f32, radius f32, start_angle f32
 		return
 	}
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -672,7 +672,7 @@ pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f3
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -721,7 +721,7 @@ pub fn (ctx Context) draw_arc_line(x f32, y f32, radius f32, start_angle f32, en
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -768,7 +768,7 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -835,7 +835,7 @@ pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_radius f32, thickness 
 	}
 
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -874,7 +874,7 @@ pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_radius f32, thickness 
 // `c` is the color of the outline.
 pub fn (ctx &Context) draw_ellipse_empty(x f32, y f32, rw f32, rh f32, c gx.Color) {
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -894,7 +894,7 @@ pub fn (ctx &Context) draw_ellipse_empty(x f32, y f32, rw f32, rh f32, c gx.Colo
 // `c` is the fill color.
 pub fn (ctx &Context) draw_ellipse_filled(x f32, y f32, rw f32, rh f32, c gx.Color) {
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
@@ -926,7 +926,7 @@ pub fn (ctx &Context) draw_cubic_bezier_in_steps(points []f32, steps u32, c gx.C
 		return
 	}
 	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 

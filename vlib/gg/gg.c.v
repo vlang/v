@@ -104,6 +104,51 @@ pub:
 }
 
 [heap]
+pub struct PipelineContainer {
+pub mut:
+	alpha sgl.Pipeline
+	add   sgl.Pipeline
+}
+
+pub fn (mut container PipelineContainer) init_pipeline() {
+	// FIXME(FireRedz): this looks kinda funny, find a better way to initialize pipeline.
+
+	// Alpha
+	mut alpha_pipdesc := gfx.PipelineDesc{
+		label: c'alpha-pipeline'
+	}
+
+	unsafe { vmemset(&alpha_pipdesc, 0, int(sizeof(alpha_pipdesc))) }
+
+	alpha_pipdesc.colors[0] = gfx.ColorState{
+		blend: gfx.BlendState{
+			enabled: true
+			src_factor_rgb: .src_alpha
+			dst_factor_rgb: .one_minus_src_alpha
+		}
+	}
+
+	container.alpha = sgl.make_pipeline(&alpha_pipdesc)
+
+	// Add
+	mut add_pipdesc := gfx.PipelineDesc{
+		label: c'additive-pipeline'
+	}
+
+	unsafe { vmemset(&add_pipdesc, 0, int(sizeof(add_pipdesc))) }
+
+	add_pipdesc.colors[0] = gfx.ColorState{
+		blend: gfx.BlendState{
+			enabled: true
+			src_factor_rgb: .src_alpha
+			dst_factor_rgb: .one
+		}
+	}
+
+	container.add = sgl.make_pipeline(&add_pipdesc)
+}
+
+[heap]
 pub struct Context {
 mut:
 	render_text bool = true
@@ -115,19 +160,19 @@ mut:
 pub:
 	native_rendering bool
 pub mut:
-	scale               f32 = 1.0 // will get set to 2.0 for retina, will remain 1.0 for normal
-	width               int
-	height              int
-	clear_pass          gfx.PassAction
-	window              sapp.Desc
-	timage_pip          sgl.Pipeline
-	timage_additive_pip sgl.Pipeline // For drawing additive images (and maybe shapes)
-	config              Config
-	user_data           voidptr
-	ft                  &FT = unsafe { nil }
-	font_inited         bool
-	ui_mode             bool         // do not redraw everything 60 times/second, but only when the user requests
-	frame               u64  // the current frame counted from the start of the application; always increasing
+	scale       f32 = 1.0 // will get set to 2.0 for retina, will remain 1.0 for normal
+	width       int
+	height      int
+	clear_pass  gfx.PassAction
+	window      sapp.Desc
+	timage_pip  sgl.Pipeline       [deprecated: 'Use `Context.pipeline.alpha` instead!']
+	pipeline    &PipelineContainer = unsafe { nil }
+	config      Config
+	user_data   voidptr
+	ft          &FT = unsafe { nil }
+	font_inited bool
+	ui_mode     bool // do not redraw everything 60 times/second, but only when the user requests
+	frame       u64  // the current frame counted from the start of the application; always increasing
 	//
 	mbtn_mask     u8
 	mouse_buttons MouseButtons // typed version of mbtn_mask; easier to use for user programs
@@ -207,40 +252,12 @@ fn gg_init_sokol_window(user_data voidptr) {
 		}
 	}
 
-	// Alpha Pipeline
-	mut pipdesc := gfx.PipelineDesc{
-		label: c'alpha_image'
-	}
-	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
+	// Pipeline
+	ctx.pipeline = &PipelineContainer{}
+	ctx.pipeline.init_pipeline()
 
-	color_state := gfx.ColorState{
-		blend: gfx.BlendState{
-			enabled: true
-			src_factor_rgb: .src_alpha
-			dst_factor_rgb: .one_minus_src_alpha
-		}
-	}
-	pipdesc.colors[0] = color_state
-
-	ctx.timage_pip = sgl.make_pipeline(&pipdesc)
-
-	// Additive Pipeline
-	mut additive_pipdesc := gfx.PipelineDesc{
-		label: c'additive_alpha_image'
-	}
-	unsafe { vmemset(&additive_pipdesc, 0, int(sizeof(additive_pipdesc))) }
-
-	additive_color_state := gfx.ColorState{
-		blend: gfx.BlendState{
-			enabled: true
-			src_factor_rgb: .src_alpha
-			dst_factor_rgb: .one
-		}
-	}
-
-	additive_pipdesc.colors[0] = additive_color_state
-
-	ctx.timage_additive_pip = sgl.make_pipeline(&additive_pipdesc)
+	// Keep the old pipeline for now, cuz v ui used it.
+	ctx.timage_pip = ctx.pipeline.alpha
 
 	//
 	if ctx.config.init_fn != unsafe { nil } {
