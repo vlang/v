@@ -1428,18 +1428,21 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		rec_sym := c.table.final_sym(node.left_type)
 		rec_is_generic := left_type.has_flag(.generic)
 		mut rec_concrete_types := []ast.Type{}
-		if rec_sym.info is ast.Struct {
-			rec_concrete_types = rec_sym.info.concrete_types.clone()
-			if rec_is_generic && node.concrete_types.len == 0
-				&& method.generic_names.len == rec_sym.info.generic_types.len {
-				node.concrete_types = rec_sym.info.generic_types
-			} else if !rec_is_generic && rec_sym.info.concrete_types.len > 0
-				&& node.concrete_types.len > 0
-				&& rec_sym.info.concrete_types.len + node.concrete_types.len == method.generic_names.len {
-				t_concrete_types := node.concrete_types.clone()
-				node.concrete_types = rec_sym.info.concrete_types
-				node.concrete_types << t_concrete_types
+		match rec_sym.info {
+			ast.Struct, ast.SumType, ast.Interface {
+				rec_concrete_types = rec_sym.info.concrete_types.clone()
+				if rec_is_generic && node.concrete_types.len == 0
+					&& method.generic_names.len == rec_sym.info.generic_types.len {
+					node.concrete_types = rec_sym.info.generic_types
+				} else if !rec_is_generic && rec_sym.info.concrete_types.len > 0
+					&& node.concrete_types.len > 0
+					&& rec_sym.info.concrete_types.len + node.concrete_types.len == method.generic_names.len {
+					t_concrete_types := node.concrete_types.clone()
+					node.concrete_types = rec_sym.info.concrete_types
+					node.concrete_types << t_concrete_types
+				}
 			}
+			else {}
 		}
 		mut concrete_types := []ast.Type{}
 		for concrete_type in node.concrete_types {
