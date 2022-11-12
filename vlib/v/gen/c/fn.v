@@ -245,6 +245,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// with 'impl_live_' .
 	if is_livemain {
 		g.hotcode_fn_names << name
+		g.hotcode_fpaths << g.file.path
 	}
 	mut impl_fn_name := name
 	if is_live_wrap {
