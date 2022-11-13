@@ -2421,9 +2421,19 @@ fn (mut g Gen) gen_left_value(node ast.Expr) {
 fn (mut g Gen) prefix_expr(node ast.PrefixExpr) {
 	match node.op {
 		.minus {
-			// TODO neg float
 			g.expr(node.right)
-			g.neg(.rax)
+			if node.right_type.is_pure_float() {
+				g.mov_ssereg_to_reg(.rax, .xmm0, node.right_type)
+				if node.right_type == ast.f32_type_idx {
+					g.mov32(.rax, int(u32(0x80000000)))
+				} else {
+					g.movabs(.rax, i64(u64(0x8000000000000000)))
+				}
+				g.bitxor_reg(.rax, .rdx)
+				g.mov_reg_to_ssereg(.xmm0, .rax, node.right_type)
+			} else {
+				g.neg(.rax)
+			}
 		}
 		.amp {
 			g.gen_left_value(node.right)
@@ -2482,8 +2492,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 					g.write8(if node.op == .eq { 0x00 } else { 0x04 })
 					inst := if node.op == .eq { 'cmpeqss' } else { 'cmpneqss' }
 					g.println('$inst xmm0, xmm1')
-					g.write32(0xc07e0f66)
-					g.println('movd eax, xmm0')
+					g.mov_ssereg_to_reg(.xmm0, .rax, ast.f32_type_idx)
 					g.write([u8(0x83), 0xe0, 0x01])
 					g.println('and eax, 0x1')
 				}
@@ -3581,6 +3590,36 @@ fn (mut g Gen) mov_ssereg(a SSERegister, b SSERegister) {
 	g.write16(0x100f)
 	g.write8(0xc0 + int(a) % 8 * 8 + int(b) % 8)
 	g.println('movsd $a, $b')
+}
+
+fn (mut g Gen) mov_ssereg_to_reg(a Register, b SSERegister, typ ast.Type) {
+	g.write8(0x66)
+	rex_base, inst := if typ == ast.f32_type_idx {
+		0x40, 'movd'
+	} else {
+		0x48, 'movq'
+	}
+	if rex_base == 0x48 || int(a) >= int(Register.r8) || int(b) >= int(SSERegister.xmm8) {
+		g.write8(rex_base + int(a) / 8 * 4 + int(b) / 8)
+	}
+	g.write16(0x7e0f)
+	g.write8(0xc0 + int(a) % 8 * 8 + int(b) % 8)
+	g.println('$inst $a, $b')
+}
+
+fn (mut g Gen) mov_reg_to_ssereg(a SSERegister, b Register, typ ast.Type) {
+	g.write8(0x66)
+	rex_base, inst := if typ == ast.f32_type_idx {
+		0x40, 'movd'
+	} else {
+		0x48, 'movq'
+	}
+	if rex_base == 0x48 || int(a) >= int(SSERegister.xmm8) || int(b) >= int(Register.r8) {
+		g.write8(rex_base + int(a) / 8 * 4 + int(b) / 8)
+	}
+	g.write16(0x6e0f)
+	g.write8(0xc0 + int(a) % 8 * 8 + int(b) % 8)
+	g.println('$inst $a, $b')
 }
 
 fn (mut g Gen) add_sse(a SSERegister, b SSERegister, typ ast.Type) {

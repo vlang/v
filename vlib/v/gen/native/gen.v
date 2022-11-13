@@ -1322,8 +1322,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			} else {
 				g.movabs(.rax, val)
 				g.println('; $node.val')
-				g.push(.rax)
-				g.pop_sse(.xmm0)
+				g.mov_reg_to_ssereg(.xmm0, .rax, ast.f64_type_idx)
 			}
 		}
 		ast.Ident {
