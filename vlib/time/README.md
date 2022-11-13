@@ -10,7 +10,7 @@ V's `time` module, provides utilities for working with time and dates:
 
 ## Examples:
 
-You can see the current time with:
+You can see the current time. [See](https://play.vlang.io/?query=c121a6dda7):
 ```v
 import time
 
@@ -61,7 +61,7 @@ fn parse_rfc3339(s string) !Time
 
 Another very useful feature of the `time` module is the stop watch,
 for when you want to measure short time periods, elapsed while you
-executed other tasks:
+executed other tasks. [See](https://play.vlang.io/?query=550658437e):
 ```v
 import time
 
