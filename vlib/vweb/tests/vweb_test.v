@@ -264,7 +264,7 @@ struct SimpleTcpClientConfig {
 	content string
 }
 
-fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
+fn simple_tcp_client(config SimpleTcpClientConfig) !string {
 	mut client := &net.TcpConn(0)
 	mut tries := 0
 	for tries < config.retries {
