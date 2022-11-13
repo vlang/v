@@ -11,18 +11,16 @@ fn test_days_from_unix_epoch() {
 
 	assert time_test.days_from_unix_epoch() == 11087
 	assert time_test.days_from_unix_epoch() == int(time_test.unix / one_day_in_seconds)
+	assert days_from_unix_epoch(1970, 1, 1) == 0
+	assert days_from_unix_epoch(1970, 2, 1) == 31
+	assert days_from_unix_epoch(1970, 3, 1) == 59
+	assert days_from_unix_epoch(2022, 11, 10) == 19306
+}
 
+fn test_date_from_days_after_unix_epoch() {
 	assert date_from_days_after_unix_epoch(11087).year == 2000
 	assert date_from_days_after_unix_epoch(11087).month == 5
 	assert date_from_days_after_unix_epoch(11087).day == 10
-
-	assert days_from_unix_epoch(1970, 1, 1) == 0
-
-	assert days_from_unix_epoch(1970, 2, 1) == 31
-	assert days_from_unix_epoch(1970, 3, 1) == 59
-
-	assert days_from_unix_epoch(2022, 11, 10) == 19306
-
 	assert date_from_days_after_unix_epoch(1).year == 1970
 	assert date_from_days_after_unix_epoch(1).month == 1
 	assert date_from_days_after_unix_epoch(1).day == 2
