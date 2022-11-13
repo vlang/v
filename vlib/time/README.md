@@ -46,7 +46,7 @@ You can also parse strings to produce time.Time values,
 import time
 
 s := '2018-01-27 12:48:34'
-t := time.parse(s) or { panic('> failing format: $s | err: $err') }
+t := time.parse(s) or { panic('failing format: $s | err: $err') }
 println(t)
 println(t.unix)
 ```
@@ -61,7 +61,7 @@ fn parse_rfc3339(s string) !Time
 
 Another very useful feature of the `time` module is the stop watch,
 for when you want to measure short time periods, elapsed while you
-executed other tasks. [See](https://play.vlang.io/?query=550658437e):
+executed other tasks. [See](https://play.vlang.io/?query=f6c008bc34):
 ```v
 import time
 
@@ -69,7 +69,9 @@ fn do_something() {
 	time.sleep(510 * time.millisecond)
 }
 
-sw := time.new_stopwatch()
-do_something()
-println('> do_something() took: $sw.elapsed().milliseconds() ms')
+fn main() {
+	sw := time.new_stopwatch()
+	do_something()
+	println('Note: do_something() took: $sw.elapsed().milliseconds() ms')
+}	
 ```
