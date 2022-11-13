@@ -73,5 +73,5 @@ fn main() {
 	sw := time.new_stopwatch()
 	do_something()
 	println('Note: do_something() took: $sw.elapsed().milliseconds() ms')
-}	
+}
 ```
