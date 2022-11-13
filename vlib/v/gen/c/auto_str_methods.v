@@ -80,12 +80,11 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 		}
 	}
 	if sym.has_method_with_generic_parent('str') {
-		if mut sym.info is ast.Struct {
-			str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name)
-		} else if mut sym.info is ast.SumType {
-			str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name)
-		} else if mut sym.info is ast.Interface {
-			str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name)
+		match mut sym.info {
+			ast.Struct, ast.SumType, ast.Interface {
+				str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name)
+			}
+			else {}
 		}
 	}
 	g.str_types << StrType{
