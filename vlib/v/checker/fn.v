@@ -1381,19 +1381,16 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	} else {
 		if final_left_sym.kind in [.struct_, .sum_type, .interface_, .alias, .array] {
 			mut parent_type := ast.void_type
-			if final_left_sym.info is ast.Struct {
-				parent_type = final_left_sym.info.parent_type
-			} else if final_left_sym.info is ast.SumType {
-				parent_type = final_left_sym.info.parent_type
-			} else if final_left_sym.info is ast.Interface {
-				parent_type = final_left_sym.info.parent_type
-			} else if final_left_sym.info is ast.Alias {
-				parent_type = final_left_sym.info.parent_type
-			} else if final_left_sym.info is ast.Array {
-				typ := c.table.unaliased_type(final_left_sym.info.elem_type)
-				parent_type = ast.Type(c.table.find_or_register_array(typ))
+			match final_left_sym.info {
+				ast.Struct, ast.SumType, ast.Interface, ast.Alias {
+					parent_type = final_left_sym.info.parent_type
+				}
+				ast.Array {
+					typ := c.table.unaliased_type(final_left_sym.info.elem_type)
+					parent_type = ast.Type(c.table.find_or_register_array(typ))
+				}
+				else {}
 			}
-
 			if parent_type != 0 {
 				type_sym := c.table.sym(parent_type)
 				if m := c.table.find_method(type_sym, method_name) {
@@ -1430,7 +1427,9 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		mut rec_concrete_types := []ast.Type{}
 		match rec_sym.info {
 			ast.Struct, ast.SumType, ast.Interface {
-				rec_concrete_types = rec_sym.info.concrete_types.clone()
+				if rec_sym.info.concrete_types.len > 0 {
+					rec_concrete_types = rec_sym.info.concrete_types.clone()
+				}
 				if rec_is_generic && node.concrete_types.len == 0
 					&& method.generic_names.len == rec_sym.info.generic_types.len {
 					node.concrete_types = rec_sym.info.generic_types
