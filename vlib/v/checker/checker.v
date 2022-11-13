@@ -2557,7 +2557,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		}
 	} else if mut to_sym.info is ast.Alias && !(final_to_sym.kind == .struct_ && to_type.is_ptr()) {
 		if !c.check_types(from_type, to_sym.info.parent_type) && !(final_to_sym.is_int()
-			&& final_from_sym.kind in [.enum_, .bool, .i8, .char]) {
+			&& final_from_sym.kind in [.enum_, .bool, .i8, .u8, .char]) {
 			ft := c.table.type_to_str(from_type)
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `$ft` to `$tt` (alias to `$final_to_sym.name`)', node.pos)
