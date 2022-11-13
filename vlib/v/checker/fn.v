@@ -1647,12 +1647,16 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				}
 
 				if got_arg_typ.has_flag(.generic) {
-					if got_utyp := c.table.resolve_generic_to_concrete(got_arg_typ, method.generic_names,
-						method_concrete_types)
-					{
-						got_arg_typ = got_utyp
+					if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len > 0 {
+						got_arg_typ = c.unwrap_generic(got_arg_typ)
 					} else {
-						continue
+						if got_utyp := c.table.resolve_generic_to_concrete(got_arg_typ,
+							method.generic_names, method_concrete_types)
+						{
+							got_arg_typ = got_utyp
+						} else {
+							continue
+						}
 					}
 				}
 			}
