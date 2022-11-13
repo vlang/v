@@ -25,7 +25,7 @@ import term
 
 fn main() {
 	// This hook cares only about the changed V files, that will be commited, as reported by git itself:
-	changed := os.execute("git diff --cached --name-only --diff-filter=ACMR -- '*.v' '*.vsh' '*.vv'")
+	changed := os.execute('git diff --cached --name-only --diff-filter=ACMR -- "*.v" "*.vsh" "*.vv"')
 	if changed.output == '' {
 		eprintln('>>> 0 changed V files found.')
 		exit(0)
@@ -43,7 +43,8 @@ fn main() {
 		for vfile in vfiles {
 			eprintln('    ${term.bold('$vfile')}')
 		}
-		os.system('v fmt -w ${vfiles.join(' ')}')
-		os.system('git add ${vfiles.join(' ')}')
+		all_vfiles_on_a_line := vfiles.map(os.quoted_path(it)).join(' ')
+		os.system('v fmt -w $all_vfiles_on_a_line')
+		os.system('git add $all_vfiles_on_a_line')
 	}
 }
