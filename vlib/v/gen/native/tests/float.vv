@@ -13,6 +13,9 @@ fn float_test() {
 	assert b >= a
 	assert a == 0.5
 	assert b != 0.5
+
+	assert -a == -0.5
+	assert -b == -3.2
 }
 
 fn float_cast_test() {

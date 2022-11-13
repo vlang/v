@@ -2425,9 +2425,9 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr) {
 			if node.right_type.is_pure_float() {
 				g.mov_ssereg_to_reg(.rax, .xmm0, node.right_type)
 				if node.right_type == ast.f32_type_idx {
-					g.mov32(.rax, int(u32(0x80000000)))
+					g.mov32(.rdx, int(u32(0x80000000)))
 				} else {
-					g.movabs(.rax, i64(u64(0x8000000000000000)))
+					g.movabs(.rdx, i64(u64(0x8000000000000000)))
 				}
 				g.bitxor_reg(.rax, .rdx)
 				g.mov_reg_to_ssereg(.xmm0, .rax, node.right_type)
@@ -2492,7 +2492,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 					g.write8(if node.op == .eq { 0x00 } else { 0x04 })
 					inst := if node.op == .eq { 'cmpeqss' } else { 'cmpneqss' }
 					g.println('$inst xmm0, xmm1')
-					g.mov_ssereg_to_reg(.xmm0, .rax, ast.f32_type_idx)
+					g.mov_ssereg_to_reg(.rax, .xmm0, ast.f32_type_idx)
 					g.write([u8(0x83), 0xe0, 0x01])
 					g.println('and eax, 0x1')
 				}
