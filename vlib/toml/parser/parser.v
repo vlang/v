@@ -773,7 +773,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
 						' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
 				}
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comma table value seperator "$p.tok.lit"')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comma table value separator "$p.tok.lit"')
 				continue
 			}
 			.rcbr {
@@ -1109,7 +1109,7 @@ pub fn (mut p Parser) array() ![]ast.Value {
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
 						' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
 				}
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comma table value seperator "$p.tok.lit"')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comma table value separator "$p.tok.lit"')
 				continue
 			}
 			.eof {
