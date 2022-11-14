@@ -295,8 +295,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	}
 }
 
-fn gg_frame_fn(user_data voidptr) {
-	mut ctx := unsafe { &Context(user_data) }
+fn gg_frame_fn(mut ctx Context) {
 	ctx.frame++
 	if ctx.config.frame_fn == unsafe { nil } {
 		return

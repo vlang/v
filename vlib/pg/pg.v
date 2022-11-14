@@ -31,8 +31,8 @@ struct C.PGResult {
 
 pub struct Config {
 pub:
-	host     string
-	port     int = 5432
+	host     string = 'localhost'
+	port     int    = 5432
 	user     string
 	password string
 	dbname   string

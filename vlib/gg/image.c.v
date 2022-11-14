@@ -25,8 +25,8 @@ pub mut:
 }
 
 // create_image creates an `Image` from `file`.
-// TODO return ?Image
-pub fn (mut ctx Context) create_image(file string) Image {
+// TODO return !Image
+pub fn (ctx &Context) create_image(file string) Image {
 	// println('\ncreate_image("$file")')
 	if !os.exists(file) {
 		return Image{}
@@ -38,7 +38,9 @@ pub fn (mut ctx Context) create_image(file string) Image {
 			// println('created macos image: $img.path w=$img.width')
 			// C.printf('p = %p\n', img.data)
 			img.id = ctx.image_cache.len
-			ctx.image_cache << img
+			unsafe {
+				ctx.image_cache << img
+			}
 			return img
 		}
 	}
@@ -56,12 +58,16 @@ pub fn (mut ctx Context) create_image(file string) Image {
 			path: file
 			id: ctx.image_cache.len
 		}
-		ctx.image_cache << img
+		unsafe {
+			ctx.image_cache << img
+		}
 		return img
 	}
 	mut img := create_image(file)
 	img.id = ctx.image_cache.len
-	ctx.image_cache << img
+	unsafe {
+		ctx.image_cache << img
+	}
 	return img
 }
 
