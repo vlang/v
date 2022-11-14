@@ -167,7 +167,7 @@ fn test_sqlite_orm() {
 	}
 }
 
-fn test_last_insert_rowid_and_get_affected_rows_count() {
+fn test_get_affected_rows_count() {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	defer {
 		db.close() or { panic(err) }

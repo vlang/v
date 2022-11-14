@@ -21,7 +21,7 @@ fn test_sqlite() {
 	assert name == 'Sam'
 
 	// this insert will be rejected due to duplicated id
-	res12, res22 := db.exec("insert into users (id,name) values (1,'Sam')")
+	db.exec("insert into users (id,name) values (1,'Sam')")
 	assert db.get_affected_rows_count() == 0
 
 	users, mut code := db.exec('select * from users')
