@@ -42,6 +42,12 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		if typ == 0 {
 			return
 		}
+		// Handle `return unsafe { none }`
+		if expr is ast.UnsafeExpr {
+			if expr.expr is ast.None {
+				c.error('cannot return `none` in unsafe block', expr.expr.pos)
+			}
+		}
 		if typ == ast.void_type {
 			c.error('`$expr` used as value', node.pos)
 			return

@@ -54,7 +54,13 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		}
 		if mut right is ast.None {
-			c.error('you can not assign a `none` value to a variable', right.pos)
+			c.error('cannot assign a `none` value to a variable', right.pos)
+		}
+		// Handle `left_name := unsafe { none }`
+		if mut right is ast.UnsafeExpr {
+			if mut right.expr is ast.None {
+				c.error('cannot use `none` in `unsafe` blocks', right.expr.pos)
+			}
 		}
 	}
 	if node.left.len != right_len {
