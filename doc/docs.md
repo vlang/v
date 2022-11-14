@@ -5724,7 +5724,7 @@ fn main() {
 	}
 	races_won_by_change := t.wait()
 	atom_new := C.atomic_load_u32(&atom)
-	println('atom: $atom_new, #exchanges: ${races_won_by_main + races_won_by_change}')
+	println('atom: ${atom_new}, #exchanges: ${races_won_by_main + races_won_by_change}')
 	// prints `atom: 31, #exchanges: 10000000`)
 	println('races won by\n- `main()`: ${races_won_by_main}\n- `change()`: ${races_won_by_change}')
 }
