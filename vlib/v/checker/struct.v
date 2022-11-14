@@ -84,6 +84,10 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				c.error('cannot use multi return as field type', field.type_pos)
 			}
 
+			if sym.kind == .none_ {
+				c.error('cannot use `none` as field type', field.type_pos)
+			}
+
 			if field.has_default_expr {
 				c.expected_type = field.typ
 				default_expr_type := c.expr(field.default_expr)
