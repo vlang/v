@@ -91,7 +91,7 @@ pub fn resolve_env_value(str string, check_for_presence bool) !string {
 				if ch == `$` {
 					return error('cannot use string interpolation in compile time \$env() expression')
 				}
-				return error('invalid environment variable name in "$str", invalid character "$ch.ascii_str()"')
+				return error('invalid environment variable name in "$str", invalid character "${ch.ascii_str()}"')
 			}
 		}
 	}
@@ -187,7 +187,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 				break
 			} else {
 				if i == retry_max_count - 1 {
-					eprintln('cannot compile `$tool_source`: \n$tool_compilation.output')
+					eprintln('cannot compile `$tool_source`: \n${tool_compilation.output}')
 					exit(1)
 				}
 				time.sleep(20 * time.millisecond)
@@ -383,7 +383,7 @@ pub fn check_module_is_installed(modulename string, is_verbose bool) !bool {
 		}
 		update_res := os.execute(update_cmd)
 		if update_res.exit_code < 0 {
-			return error('can not start $update_cmd, error: $update_res.output')
+			return error('can not start $update_cmd, error: ${update_res.output}')
 		}
 		if update_res.exit_code != 0 {
 			eprintln('Warning: `$modulename` exists, but is not updated.
@@ -402,10 +402,10 @@ and the existing module `$modulename` may still work.')
 	}
 	cloning_res := os.execute('git clone ${os.quoted_path(murl)} ${os.quoted_path(mpath)}')
 	if cloning_res.exit_code < 0 {
-		return error_with_code('git is not installed, error: $cloning_res.output', cloning_res.exit_code)
+		return error_with_code('git is not installed, error: ${cloning_res.output}', cloning_res.exit_code)
 	}
 	if cloning_res.exit_code != 0 {
-		return error_with_code('cloning failed, details: $cloning_res.output', cloning_res.exit_code)
+		return error_with_code('cloning failed, details: ${cloning_res.output}', cloning_res.exit_code)
 	}
 	if !os.exists(mod_v_file) {
 		return error('even after cloning, $mod_v_file is still missing')

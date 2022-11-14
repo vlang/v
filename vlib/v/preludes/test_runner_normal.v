@@ -134,8 +134,8 @@ fn (mut runner NormalTestRunner) assert_fail(i &VAssertMetaInfo) {
 	if i.op.len > 0 && i.op != 'call' {
 		mut lvtitle := '    Left value:'
 		mut rvtitle := '    Right value:'
-		mut slvalue := '$i.lvalue'
-		mut srvalue := '$i.rvalue'
+		mut slvalue := '${i.lvalue}'
+		mut srvalue := '${i.rvalue}'
 		if runner.use_color {
 			slvalue = term.yellow(slvalue)
 			srvalue = term.yellow(srvalue)
@@ -159,7 +159,7 @@ fn (mut runner NormalTestRunner) assert_fail(i &VAssertMetaInfo) {
 	}
 	if i.has_msg {
 		mut mtitle := '        Message:'
-		mut mvalue := '$i.message'
+		mut mvalue := '${i.message}'
 		if runner.use_color {
 			mvalue = term.yellow(mvalue)
 			mtitle = term.gray(mtitle)

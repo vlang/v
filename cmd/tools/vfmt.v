@@ -171,7 +171,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 	ulid := rand.ulid()
 	vfmt_output_path := os.join_path(vtmp_folder, 'vfmt_${ulid}_$file_name')
 	os.write_file(vfmt_output_path, formatted_content) or { panic(err) }
-	foptions.vlog('fmt.fmt worked and $formatted_content.len bytes were written to $vfmt_output_path .')
+	foptions.vlog('fmt.fmt worked and ${formatted_content.len} bytes were written to $vfmt_output_path .')
 	eprintln('$formatted_file_token$vfmt_output_path')
 }
 
@@ -184,20 +184,20 @@ fn (foptions &FormatOptions) format_pipe() {
 	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug, source_text: input_text)
 	print(formatted_content)
 	flush_stdout()
-	foptions.vlog('fmt.fmt worked and $formatted_content.len bytes were written to stdout.')
+	foptions.vlog('fmt.fmt worked and ${formatted_content.len} bytes were written to stdout.')
 }
 
 fn print_compiler_options(compiler_params &pref.Preferences) {
 	eprintln('         os: ' + compiler_params.os.str())
-	eprintln('  ccompiler: $compiler_params.ccompiler')
-	eprintln('       path: $compiler_params.path ')
-	eprintln('   out_name: $compiler_params.out_name ')
-	eprintln('      vroot: $compiler_params.vroot ')
-	eprintln('lookup_path: $compiler_params.lookup_path ')
-	eprintln('   out_name: $compiler_params.out_name ')
-	eprintln('     cflags: $compiler_params.cflags ')
-	eprintln('    is_test: $compiler_params.is_test ')
-	eprintln('  is_script: $compiler_params.is_script ')
+	eprintln('  ccompiler: ${compiler_params.ccompiler}')
+	eprintln('       path: ${compiler_params.path} ')
+	eprintln('   out_name: ${compiler_params.out_name} ')
+	eprintln('      vroot: ${compiler_params.vroot} ')
+	eprintln('lookup_path: ${compiler_params.lookup_path} ')
+	eprintln('   out_name: ${compiler_params.out_name} ')
+	eprintln('     cflags: ${compiler_params.cflags} ')
+	eprintln('    is_test: ${compiler_params.is_test} ')
+	eprintln('  is_script: ${compiler_params.is_script} ')
 }
 
 fn (mut foptions FormatOptions) find_diff_cmd() string {
@@ -285,9 +285,9 @@ fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_pa
 
 fn (f FormatOptions) str() string {
 	return
-		'FormatOptions{ is_l: $f.is_l, is_w: $f.is_w, is_diff: $f.is_diff, is_verbose: $f.is_verbose,' +
-		' is_all: $f.is_all, is_worker: $f.is_worker, is_debug: $f.is_debug, is_noerror: $f.is_noerror,' +
-		' is_verify: $f.is_verify" }'
+		'FormatOptions{ is_l: ${f.is_l}, is_w: ${f.is_w}, is_diff: ${f.is_diff}, is_verbose: ${f.is_verbose},' +
+		' is_all: ${f.is_all}, is_worker: ${f.is_worker}, is_debug: ${f.is_debug}, is_noerror: ${f.is_noerror},' +
+		' is_verify: ${f.is_verify}" }'
 }
 
 fn file_to_mod_name_and_is_module_file(file string) (string, bool) {

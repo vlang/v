@@ -286,7 +286,7 @@ fn (mut s Scanner) ident_bin_number() string {
 		s.error('number part of this binary is not provided')
 	} else if has_wrong_digit {
 		s.pos = first_wrong_digit_pos // adjust error position
-		s.error('this binary number has unsuitable digit `$first_wrong_digit.str()`')
+		s.error('this binary number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := s.num_lit(start_pos, s.pos)
 	s.pos--
@@ -330,7 +330,7 @@ fn (mut s Scanner) ident_hex_number() string {
 		s.error('number part of this hexadecimal is not provided')
 	} else if has_wrong_digit {
 		s.pos = first_wrong_digit_pos // adjust error position
-		s.error('this hexadecimal number has unsuitable digit `$first_wrong_digit.str()`')
+		s.error('this hexadecimal number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := s.num_lit(start_pos, s.pos)
 	s.pos--
@@ -370,7 +370,7 @@ fn (mut s Scanner) ident_oct_number() string {
 		s.error('number part of this octal is not provided')
 	} else if has_wrong_digit {
 		s.pos = first_wrong_digit_pos // adjust error position
-		s.error('this octal number has unsuitable digit `$first_wrong_digit.str()`')
+		s.error('this octal number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := s.num_lit(start_pos, s.pos)
 	s.pos--
@@ -480,7 +480,7 @@ fn (mut s Scanner) ident_dec_number() string {
 		// error check: wrong digit
 		s.pos = first_wrong_digit_pos // adjust error position
 		if !s.pref.translated {
-			s.error('this number has unsuitable digit `$first_wrong_digit.str()`')
+			s.error('this number has unsuitable digit `${first_wrong_digit.str()}`')
 		}
 	} else if s.text[s.pos - 1] in [`e`, `E`] {
 		// error check: 5e
@@ -543,7 +543,7 @@ fn (mut s Scanner) end_of_file() token.Token {
 	if s.eofs > 50 {
 		s.line_nr--
 		panic(
-			'the end of file `$s.file_path` has been reached 50 times already, the v parser is probably stuck.\n' +
+			'the end of file `${s.file_path}` has been reached 50 times already, the v parser is probably stuck.\n' +
 			'This should not happen. Please report the bug here, and include the last 2-3 lines of your source code:\n' +
 			'https://github.com/vlang/v/issues/new?labels=Bug&template=bug_report.md')
 	}
@@ -566,7 +566,7 @@ fn (mut s Scanner) scan_all_tokens_in_buffer() {
 	s.tidx = 0
 	$if debugscanner ? {
 		for t in s.all_tokens {
-			eprintln('> tidx:${t.tidx:-5} | kind: ${t.kind:-10} | lit: $t.lit')
+			eprintln('> tidx:${t.tidx:-5} | kind: ${t.kind:-10} | lit: ${t.lit}')
 		}
 	}
 }

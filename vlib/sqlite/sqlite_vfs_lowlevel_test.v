@@ -213,7 +213,7 @@ fn example_vfsfile_read(file &sqlite.Sqlite3_file, output voidptr, amount int, o
 
 	mut vfsfile := to_vfsopenedfile(file)
 
-	vfsfile.vfs_state.log << 'read file=$vfsfile.name'
+	vfsfile.vfs_state.log << 'read file=${vfsfile.name}'
 
 	unsafe {
 		C.memset(output, 0, amount)
@@ -263,7 +263,7 @@ fn example_vfsfile_close(file &sqlite.Sqlite3_file) int {
 
 	mut vfsfile := to_vfsopenedfile(file)
 
-	vfsfile.vfs_state.log << 'close file=$vfsfile.name'
+	vfsfile.vfs_state.log << 'close file=${vfsfile.name}'
 
 	return sqlite.sqlite_ok
 }

@@ -26,7 +26,7 @@ fn test_known_failures_are_still_failures() {
 			assert true
 		}
 	}
-	println('Summary: $files.len files, $oks.len unexpectedly succeeded.')
+	println('Summary: ${files.len} files, ${oks.len} unexpectedly succeeded.')
 	if oks.len != 0 {
 		for cmd in oks {
 			println('    expected to fail, but SUCCEEDED command: $cmd')

@@ -212,7 +212,7 @@ pub fn (mut b Builder) parse_imports() {
 				sname := name.all_after_last('.')
 				smod := mod.all_after_last('.')
 				if sname != smod {
-					msg := 'bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$name`'
+					msg := 'bad module definition: ${ast_file.path} imports module "$mod" but ${file.path} is defined as module `$name`'
 					b.parsed_files[i].errors << b.error_with_pos(msg, ast_file.path, imp.pos)
 				}
 			}
@@ -457,7 +457,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 			if !b.pref.skip_warnings {
 				for err in file.notices {
 					kind := if b.pref.is_verbose {
-						'$err.reporter notice #$b.nr_notices:'
+						'${err.reporter} notice #${b.nr_notices}:'
 					} else {
 						'notice:'
 					}
@@ -469,7 +469,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 		for file in b.parsed_files {
 			for err in file.errors {
 				kind := if b.pref.is_verbose {
-					'$err.reporter error #$b.nr_errors:'
+					'${err.reporter} error #${b.nr_errors}:'
 				} else {
 					'error:'
 				}
@@ -481,7 +481,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 			if !b.pref.skip_warnings {
 				for err in file.warnings {
 					kind := if b.pref.is_verbose {
-						'$err.reporter warning #$b.nr_warnings:'
+						'${err.reporter} warning #${b.nr_warnings}:'
 					} else {
 						'warning:'
 					}
@@ -498,15 +498,15 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 	}
 
 	if b.pref.is_verbose && b.checker.nr_warnings > 1 {
-		println('$b.checker.nr_warnings warnings')
+		println('${b.checker.nr_warnings} warnings')
 	}
 	if b.pref.is_verbose && b.checker.nr_notices > 1 {
-		println('$b.checker.nr_notices notices')
+		println('${b.checker.nr_notices} notices')
 	}
 	if b.checker.nr_notices > 0 && !b.pref.skip_warnings {
 		for err in b.checker.notices {
 			kind := if b.pref.is_verbose {
-				'$err.reporter notice #$b.checker.nr_notices:'
+				'${err.reporter} notice #${b.checker.nr_notices}:'
 			} else {
 				'notice:'
 			}
@@ -516,7 +516,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 	if b.checker.nr_warnings > 0 && !b.pref.skip_warnings {
 		for err in b.checker.warnings {
 			kind := if b.pref.is_verbose {
-				'$err.reporter warning #$b.checker.nr_warnings:'
+				'${err.reporter} warning #${b.checker.nr_warnings}:'
 			} else {
 				'warning:'
 			}
@@ -525,12 +525,12 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 	}
 	//
 	if b.pref.is_verbose && b.checker.nr_errors > 1 {
-		println('$b.checker.nr_errors errors')
+		println('${b.checker.nr_errors} errors')
 	}
 	if b.checker.nr_errors > 0 {
 		for err in b.checker.errors {
 			kind := if b.pref.is_verbose {
-				'$err.reporter error #$b.checker.nr_errors:'
+				'${err.reporter} error #${b.checker.nr_errors}:'
 			} else {
 				'error:'
 			}

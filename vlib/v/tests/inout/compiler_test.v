@@ -42,7 +42,7 @@ fn test_all() {
 			panic(compilation.output)
 		}
 		if compilation.exit_code != 0 {
-			panic('compilation failed: $compilation.output')
+			panic('compilation failed: ${compilation.output}')
 		}
 		res := os.execute('./$tname')
 		if res.exit_code < 0 {

@@ -106,7 +106,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	mut run_process := os.new_process(run_file)
 	run_process.set_args(run_args)
 	if b.pref.is_verbose {
-		println('running $run_process.filename with arguments $run_process.args')
+		println('running ${run_process.filename} with arguments ${run_process.args}')
 	}
 	// Ignore sigint and sigquit while running the compiled file,
 	// so ^C doesn't prevent v from deleting the compiled file.
@@ -188,7 +188,7 @@ pub fn (v Builder) get_builtin_files() []string {
 		v.log('v.pref.no_builtin is true, get_builtin_files == []')
 		return []
 	}
-	v.log('v.pref.lookup_path: $v.pref.lookup_path')
+	v.log('v.pref.lookup_path: ${v.pref.lookup_path}')
 	// Lookup for built-in folder in lookup path.
 	// Assumption: `builtin/` folder implies usable implementation of builtin
 	for location in v.pref.lookup_path {

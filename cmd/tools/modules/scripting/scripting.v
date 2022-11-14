@@ -50,14 +50,14 @@ pub fn cprintln_strong(omessage string) {
 
 pub fn verbose_trace(label string, message string) {
 	if os.getenv('VERBOSE').len > 0 {
-		slabel := '$time.now().format_ss_milli() $label'
+		slabel := '${time.now().format_ss_milli()} $label'
 		cprintln('# ${slabel:-43s} : $message')
 	}
 }
 
 pub fn verbose_trace_strong(label string, omessage string) {
 	if os.getenv('VERBOSE').len > 0 {
-		slabel := '$time.now().format_ss_milli() $label'
+		slabel := '${time.now().format_ss_milli()} $label'
 		mut message := omessage
 		if scripting.term_colors {
 			message = term.bright_green(message)

@@ -176,7 +176,7 @@ fn test_multipart_form_body() {
 
 fn test_parse_large_body() {
 	body := 'A'.repeat(101) // greater than max_bytes
-	req := 'GET / HTTP/1.1\r\nContent-Length: $body.len\r\n\r\n$body'
+	req := 'GET / HTTP/1.1\r\nContent-Length: ${body.len}\r\n\r\n$body'
 	mut reader_ := reader(req)
 	result := parse_request(mut reader_)!
 	assert result.data.len == body.len

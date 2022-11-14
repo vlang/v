@@ -385,7 +385,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			r.line = 'println(' + r.line[1..] + ')'
 		}
 		if r.line.starts_with('print') {
-			source_code := r.current_source_code(false, false) + '\n$r.line\n'
+			source_code := r.current_source_code(false, false) + '\n${r.line}\n'
 			os.write_file(temp_file, source_code) or { panic(err) }
 			s := repl_run_vfile(temp_file) or { return 1 }
 			if s.output.len > r.last_output.len {
@@ -438,7 +438,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 				is_statement = true
 			}
 			if !is_statement && (!func_call || fntype == FnType.fn_type) && r.line != '' {
-				temp_line = 'println($r.line)'
+				temp_line = 'println(${r.line})'
 				source_code := r.current_source_code(false, false) + '\n$temp_line\n'
 				os.write_file(temp_file, source_code) or { panic(err) }
 				s := repl_run_vfile(temp_file) or { return 1 }

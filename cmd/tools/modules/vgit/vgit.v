@@ -111,17 +111,17 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	mut command_for_building_v_from_c_source := ''
 	mut command_for_selfbuilding := ''
 	if 'windows' == os.user_os() {
-		command_for_building_v_from_c_source = '$vgit_context.cc -std=c99 -I ./thirdparty/stdatomic/win -municode -w -o cv.exe  "$vgit_context.path_vc/v_win.c" '
-		command_for_selfbuilding = './cv.exe -o $vgit_context.vexename {SOURCE}'
+		command_for_building_v_from_c_source = '${vgit_context.cc} -std=c99 -I ./thirdparty/stdatomic/win -municode -w -o cv.exe  "${vgit_context.path_vc}/v_win.c" '
+		command_for_selfbuilding = './cv.exe -o ${vgit_context.vexename} {SOURCE}'
 	} else {
-		command_for_building_v_from_c_source = '$vgit_context.cc -std=gnu11 -I ./thirdparty/stdatomic/nix -w -o cv "$vgit_context.path_vc/v.c"  -lm -lpthread'
-		command_for_selfbuilding = './cv -o $vgit_context.vexename {SOURCE}'
+		command_for_building_v_from_c_source = '${vgit_context.cc} -std=gnu11 -I ./thirdparty/stdatomic/nix -w -o cv "${vgit_context.path_vc}/v.c"  -lm -lpthread'
+		command_for_selfbuilding = './cv -o ${vgit_context.vexename} {SOURCE}'
 	}
 	scripting.chdir(vgit_context.workdir)
 	clone_or_pull(vgit_context.v_repo_url, vgit_context.path_v)
 	clone_or_pull(vgit_context.vc_repo_url, vgit_context.path_vc)
 	scripting.chdir(vgit_context.path_v)
-	scripting.run('git checkout --quiet $vgit_context.commit_v')
+	scripting.run('git checkout --quiet ${vgit_context.commit_v}')
 	if os.is_dir(vgit_context.path_v) && os.exists(vgit_context.vexepath) {
 		// already compiled, so no need to compile v again
 		vgit_context.commit_v__hash = get_current_folder_commit_hash()

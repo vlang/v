@@ -60,7 +60,7 @@ fn (vd VDoc) render_search_index(out Output) {
 	for i, title in vd.search_module_index {
 		data := vd.search_module_data[i]
 		js_search_index.write_string('"$title",')
-		js_search_data.write_string('["$data.description","$data.link"],')
+		js_search_data.write_string('["${data.description}","${data.link}"],')
 	}
 	js_search_index.writeln('];')
 	js_search_index.write_string('var searchIndex = [')
@@ -70,7 +70,7 @@ fn (vd VDoc) render_search_index(out Output) {
 		data := vd.search_data[i]
 		js_search_index.write_string('"$title",')
 		// array instead of object to reduce file size
-		js_search_data.write_string('["$data.badge","$data.description","$data.link","$data.prefix"],')
+		js_search_data.write_string('["${data.badge}","${data.description}","${data.link}","${data.prefix}"],')
 	}
 	js_search_index.writeln('];')
 	js_search_data.writeln('];')
@@ -110,7 +110,7 @@ fn (vd VDoc) get_resource(name string, out Output) string {
 	} else {
 		output_path := os.join_path(out.path, name)
 		if !os.exists(output_path) {
-			println('Generating $out.typ in "$output_path"')
+			println('Generating ${out.typ} in "$output_path"')
 			os.write_file(output_path, res) or { panic(err) }
 		}
 		return name
@@ -150,7 +150,7 @@ fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
 	dn_description := trim_doc_node_description(comments)
 	vd.search_index << dn.name
 	vd.search_data << SearchResult{
-		prefix: if dn.parent_name != '' { '$dn.kind ($dn.parent_name)' } else { '$dn.kind ' }
+		prefix: if dn.parent_name != '' { '${dn.kind} (${dn.parent_name})' } else { '${dn.kind} ' }
 		description: dn_description
 		badge: mod
 		link: vd.get_file_name(mod, out) + '#' + get_node_id(dn)
@@ -299,11 +299,11 @@ fn html_highlight(code string, tb &ast.Table) string {
 		lit := if typ in [.unone, .operator, .punctuation] {
 			tok.kind.str()
 		} else if typ == .string {
-			"'$tok.lit'"
+			"'${tok.lit}'"
 		} else if typ == .char {
-			'`$tok.lit`'
+			'`${tok.lit}`'
 		} else if typ == .comment {
-			if tok.lit != '' && tok.lit[0] == 1 { '//${tok.lit[1..]}' } else { '//$tok.lit' }
+			if tok.lit != '' && tok.lit[0] == 1 { '//${tok.lit[1..]}' } else { '//${tok.lit}' }
 		} else {
 			tok.lit
 		}
@@ -408,7 +408,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		if dn.kind == .const_group {
 			dnw.write_string('${tabs[2]}<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
 		} else {
-			dnw.write_string('${tabs[2]}<div class="title"><$head_tag>$dn.kind $sym_name$hash_link</$head_tag>')
+			dnw.write_string('${tabs[2]}<div class="title"><$head_tag>${dn.kind} $sym_name$hash_link</$head_tag>')
 		}
 		if link.len != 0 {
 			dnw.write_string('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
@@ -490,15 +490,15 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 		}
 		toc.write_string('<li class="open"><a href="#readme_$toc_slug">README</a>')
 	} else if dn.name != 'Constants' {
-		toc.write_string('<li class="open"><a href="#$toc_slug">$dn.kind $dn.name</a>')
+		toc.write_string('<li class="open"><a href="#$toc_slug">${dn.kind} ${dn.name}</a>')
 		toc.writeln('        <ul>')
 		for child in dn.children {
 			cname := dn.name + '.' + child.name
-			toc.writeln('<li><a href="#${slug(cname)}">$child.kind $child.name</a></li>')
+			toc.writeln('<li><a href="#${slug(cname)}">${child.kind} ${child.name}</a></li>')
 		}
 		toc.writeln('</ul>')
 	} else {
-		toc.write_string('<li class="open"><a href="#$toc_slug">$dn.name</a>')
+		toc.write_string('<li class="open"><a href="#$toc_slug">${dn.name}</a>')
 	}
 	toc.writeln('</li>')
 }

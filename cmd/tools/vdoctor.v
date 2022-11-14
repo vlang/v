@@ -17,7 +17,7 @@ fn (mut a App) println(s string) {
 fn (mut a App) collect_info() {
 	mut os_kind := os.user_os()
 	mut arch_details := []string{}
-	arch_details << '$runtime.nr_cpus() cpus'
+	arch_details << '${runtime.nr_cpus()} cpus'
 	if runtime.is_32bit() {
 		arch_details << '32bit'
 	}
@@ -92,7 +92,7 @@ fn (mut a App) collect_info() {
 		os_details = '$caption v$build_number $os_arch'
 	} else {
 		ouname := os.uname()
-		os_details = '$ouname.release, $ouname.version'
+		os_details = '${ouname.release}, ${ouname.version}'
 	}
 	a.line('OS', '$os_kind, $os_details')
 	a.line('Processor', arch_details.join(', '))
@@ -146,7 +146,7 @@ fn (mut a App) cmd(c CmdConfig) string {
 			return output[c.line]
 		}
 	}
-	return 'Error: $x.output'
+	return 'Error: ${x.output}'
 }
 
 fn (mut a App) line(label string, value string) {
@@ -204,7 +204,7 @@ fn (mut a App) get_linux_os_name() string {
 			}
 			'uname' {
 				ouname := os.uname()
-				os_details = '$ouname.release, $ouname.version'
+				os_details = '${ouname.release}, ${ouname.version}'
 				break
 			}
 			else {}

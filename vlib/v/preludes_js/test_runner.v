@@ -50,8 +50,8 @@ fn cb_assertion_failed(i VAssertMetaInfo) {
 	if i.op.len > 0 && i.op != 'call' {
 		mut lvtitle := '    Left value:'
 		mut rvtitle := '    Right value:'
-		mut slvalue := '$i.lvalue'
-		mut srvalue := '$i.rvalue'
+		mut slvalue := '${i.lvalue}'
+		mut srvalue := '${i.rvalue}'
 		cutoff_limit := 30
 		if slvalue.len > cutoff_limit || srvalue.len > cutoff_limit {
 			myeprintln('  > $final_src')

@@ -63,7 +63,7 @@ normalize'
 fn run(args []string) ?string {
 	res := os.execute(args.join(' '))
 	if res.exit_code != 0 {
-		return error('${args[0]} failed with return code ${res.exit_code}.\n$res.output')
+		return error('${args[0]} failed with return code ${res.exit_code}.\n${res.output}')
 	}
 	return res.output
 }
@@ -74,7 +74,7 @@ fn test_iarna_toml_spec_tests() {
 	test_root := os.join_path(os.dir(this_file), 'testdata', 'iarna', 'toml-test')
 	if os.is_dir(test_root) {
 		valid_test_files := os.walk_ext(os.join_path(test_root, 'values'), '.toml')
-		println('Testing $valid_test_files.len valid TOML files...')
+		println('Testing ${valid_test_files.len} valid TOML files...')
 		mut valid := 0
 		mut e := 0
 		for i, valid_test_file in valid_test_files {
@@ -85,31 +85,31 @@ fn test_iarna_toml_spec_tests() {
 
 			if !do_large_files && valid_test_file.contains('qa-') {
 				e++
-				println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" LARGE FILE...')
+				println('SKIP [${i + 1}/${valid_test_files.len}] "$valid_test_file" LARGE FILE...')
 				continue
 			}
 
 			if relative in valid_exceptions {
 				e++
 				idx := valid_exceptions.index(relative) + 1
-				println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" VALID EXCEPTION [$idx/$valid_exceptions.len]...')
+				println('SKIP [${i + 1}/${valid_test_files.len}] "$valid_test_file" VALID EXCEPTION [$idx/${valid_exceptions.len}]...')
 				continue
 			}
 
 			if !hide_oks {
-				println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
+				println('OK   [${i + 1}/${valid_test_files.len}] "$valid_test_file"...')
 			}
 			toml_doc := toml.parse_file(valid_test_file)?
 			valid++
 		}
-		println('$valid/$valid_test_files.len TOML files were parsed correctly')
+		println('$valid/${valid_test_files.len} TOML files were parsed correctly')
 		if valid_exceptions.len > 0 {
 			println('TODO Skipped parsing of $e valid TOML files...')
 		}
 
 		// If the command-line tool `jq` is installed, value tests can be run as well.
 		if jq != '' {
-			println('Testing value output of $valid_test_files.len valid TOML files using "$jq"...')
+			println('Testing value output of ${valid_test_files.len} valid TOML files using "$jq"...')
 
 			if os.exists(compare_work_dir_root) {
 				os.rmdir_all(compare_work_dir_root)?
@@ -131,14 +131,14 @@ fn test_iarna_toml_spec_tests() {
 				if relative in valid_exceptions {
 					e++
 					idx := valid_exceptions.index(relative) + 1
-					println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" VALID EXCEPTION [$idx/$valid_exceptions.len]...')
+					println('SKIP [${i + 1}/${valid_test_files.len}] "$valid_test_file" VALID EXCEPTION [$idx/${valid_exceptions.len}]...')
 					continue
 				}
 
 				if relative in valid_value_exceptions {
 					e++
 					idx := valid_value_exceptions.index(relative) + 1
-					println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" VALID VALUE EXCEPTION [$idx/$valid_value_exceptions.len]...')
+					println('SKIP [${i + 1}/${valid_test_files.len}] "$valid_test_file" VALID VALUE EXCEPTION [$idx/${valid_value_exceptions.len}]...')
 					continue
 				}
 
@@ -151,23 +151,23 @@ fn test_iarna_toml_spec_tests() {
 				mut converted_json_path := ''
 				if !uses_json_format {
 					$if windows {
-						println('N/A  [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
+						println('N/A  [${i + 1}/${valid_test_files.len}] "$valid_test_file"...')
 						continue
 					}
 					if python == '' {
-						println('N/A  [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
+						println('N/A  [${i + 1}/${valid_test_files.len}] "$valid_test_file"...')
 						continue
 					}
 					if !do_yaml_conversion || relative in yaml_value_exceptions {
 						e++
 						idx := yaml_value_exceptions.index(relative) + 1
-						println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" YAML VALUE EXCEPTION [$idx/$valid_value_exceptions.len]...')
+						println('SKIP [${i + 1}/${valid_test_files.len}] "$valid_test_file" YAML VALUE EXCEPTION [$idx/${valid_value_exceptions.len}]...')
 						continue
 					}
 
 					if !do_large_files && valid_test_file.contains('qa-') {
 						e++
-						println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" LARGE FILE...')
+						println('SKIP [${i + 1}/${valid_test_files.len}] "$valid_test_file" LARGE FILE...')
 						continue
 					}
 
@@ -183,7 +183,7 @@ fn test_iarna_toml_spec_tests() {
 							// Uncomment this print to see/check them.
 							// eprintln(err.msg() + '\n$contents')
 							e++
-							println('ERR  [${i + 1}/$valid_test_files.len] "$valid_test_file" EXCEPTION [$e/$valid_value_exceptions.len]...')
+							println('ERR  [${i + 1}/${valid_test_files.len}] "$valid_test_file" EXCEPTION [$e/${valid_value_exceptions.len}]...')
 							continue
 						}
 						converted_from_yaml = true
@@ -191,7 +191,7 @@ fn test_iarna_toml_spec_tests() {
 				}
 
 				if !hide_oks {
-					println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
+					println('OK   [${i + 1}/${valid_test_files.len}] "$valid_test_file"...')
 				}
 				toml_doc := toml.parse_file(valid_test_file)?
 
@@ -220,14 +220,14 @@ fn test_iarna_toml_spec_tests() {
 
 				valid++
 			}
-			println('$valid/$valid_test_files.len TOML files were parsed correctly and value checked')
+			println('$valid/${valid_test_files.len} TOML files were parsed correctly and value checked')
 			if valid_value_exceptions.len > 0 {
 				println('TODO Skipped value checks of $e valid TOML files...')
 			}
 		}
 
 		invalid_test_files := os.walk_ext(os.join_path(test_root, 'errors'), '.toml')
-		println('Testing $invalid_test_files.len invalid TOML files...')
+		println('Testing ${invalid_test_files.len} invalid TOML files...')
 		mut invalid := 0
 		e = 0
 		for i, invalid_test_file in invalid_test_files {
@@ -238,11 +238,11 @@ fn test_iarna_toml_spec_tests() {
 			if relative in invalid_exceptions {
 				e++
 				idx := invalid_exceptions.index(relative) + 1
-				println('SKIP [${i + 1}/$invalid_test_files.len] "$invalid_test_file" INVALID EXCEPTION [$idx/$invalid_exceptions.len]...')
+				println('SKIP [${i + 1}/${invalid_test_files.len}] "$invalid_test_file" INVALID EXCEPTION [$idx/${invalid_exceptions.len}]...')
 				continue
 			}
 			if !hide_oks {
-				println('OK   [${i + 1}/$invalid_test_files.len] "$invalid_test_file"...')
+				println('OK   [${i + 1}/${invalid_test_files.len}] "$invalid_test_file"...')
 			}
 			if toml_doc := toml.parse_file(invalid_test_file) {
 				content_that_should_have_failed := os.read_file(invalid_test_file)?
@@ -250,15 +250,15 @@ fn test_iarna_toml_spec_tests() {
 				assert false
 			} else {
 				if !hide_oks {
-					println('     $err.msg()')
+					println('     ${err.msg()}')
 				}
 				assert true
 			}
 			invalid++
 		}
-		println('$invalid/$invalid_test_files.len TOML files were parsed correctly')
+		println('$invalid/${invalid_test_files.len} TOML files were parsed correctly')
 		if invalid_exceptions.len > 0 {
-			println('TODO Skipped parsing of $invalid_exceptions.len invalid TOML files...')
+			println('TODO Skipped parsing of ${invalid_exceptions.len} invalid TOML files...')
 		}
 	} else {
 		println('No test data directory found in "$test_root"')
@@ -359,7 +359,7 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 			}
 			if !value.text.starts_with('0x')
 				&& (value.text.contains('.') || value.text.to_lower().contains('e')) {
-				mut val := '$value.f64()'.replace('.e+', '.0e') // json notation
+				mut val := '${value.f64()}'.replace('.e+', '.0e') // json notation
 				if !val.contains('.') && val != '0' { // json notation
 					val += '.0'
 				}

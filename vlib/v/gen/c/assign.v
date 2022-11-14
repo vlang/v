@@ -50,7 +50,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 			}
 			if ok {
-				sref_name = '_sref$node.pos.pos'
+				sref_name = '_sref${node.pos.pos}'
 				g.write('$type_to_free $sref_name = (') // TODO we are copying the entire string here, optimize
 				// we can't just do `.str` since we need the extra data from the string struct
 				// doing `&string` is also not an option since the stack memory with the data will be overwritten
@@ -325,9 +325,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					match attr.name {
 						'callconv' {
 							if g.is_cc_msvc {
-								msvc_call_conv = '__$attr.arg '
+								msvc_call_conv = '__${attr.arg} '
 							} else {
-								call_conv = '$attr.arg'
+								call_conv = '${attr.arg}'
 							}
 						}
 						else {}
@@ -507,7 +507,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	// multi return
 	// TODO Handle in if_expr
 	is_opt := return_type.has_flag(.optional) || return_type.has_flag(.result)
-	mr_var_name := 'mr_$node.pos.pos'
+	mr_var_name := 'mr_${node.pos.pos}'
 	mr_styp := g.typ(return_type.clear_flag(.optional).clear_flag(.result))
 	g.write('$mr_styp $mr_var_name = ')
 	g.expr(node.right[0])
@@ -622,11 +622,11 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 				left_sym := g.table.sym(left_typ)
 				anon_ctx := if g.anon_fn { '$closure_ctx->' } else { '' }
 				if left_sym.kind == .function {
-					g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_$left.pos.pos')
+					g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_${left.pos.pos}')
 					g.writeln(' = $anon_ctx${c_name(left.name)};')
 				} else {
 					styp := g.typ(left_typ)
-					g.writeln('$styp _var_$left.pos.pos = $anon_ctx${c_name(left.name)};')
+					g.writeln('$styp _var_${left.pos.pos} = $anon_ctx${c_name(left.name)};')
 				}
 			}
 			ast.IndexExpr {
@@ -637,11 +637,11 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 					if elem_typ.kind == .function {
 						left_typ := node.left_types[i]
 						left_sym := g.table.sym(left_typ)
-						g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_$left.pos.pos')
+						g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_${left.pos.pos}')
 						g.write(' = *(voidptr*)array_get(')
 					} else {
 						styp := g.typ(info.elem_type)
-						g.write('$styp _var_$left.pos.pos = *($styp*)array_get(')
+						g.write('$styp _var_${left.pos.pos} = *($styp*)array_get(')
 					}
 					if left.left_type.is_ptr() {
 						g.write('*')
@@ -663,11 +663,11 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 					if elem_typ.kind == .function {
 						left_typ := node.left_types[i]
 						left_sym := g.table.sym(left_typ)
-						g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_$left.pos.pos')
+						g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_${left.pos.pos}')
 						g.write(' = *(voidptr*)')
 					} else {
 						styp := g.typ(info.elem_type)
-						g.write('$styp _var_$left.pos.pos = ')
+						g.write('$styp _var_${left.pos.pos} = ')
 					}
 					if left.left_type.is_ptr() {
 						g.write('*')
@@ -690,10 +690,10 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 					if val_typ.kind == .function {
 						left_type := node.left_types[i]
 						left_sym := g.table.sym(left_type)
-						g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_$left.pos.pos')
+						g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_${left.pos.pos}')
 						g.write(' = *(voidptr*)map_get(')
 					} else {
-						g.write('$styp _var_$left.pos.pos = *($styp*)map_get(')
+						g.write('$styp _var_${left.pos.pos} = *($styp*)map_get(')
 					}
 					if !left.left_type.is_ptr() {
 						g.write('ADDR(map, ')
@@ -714,7 +714,7 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 			}
 			ast.SelectorExpr {
 				styp := g.typ(left.typ)
-				g.write('$styp _var_$left.pos.pos = ')
+				g.write('$styp _var_${left.pos.pos} = ')
 				g.expr(left.expr)
 				mut sel := '.'
 				if left.expr_type.is_ptr() {
@@ -724,7 +724,7 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 						sel = '->'
 					}
 				}
-				g.writeln('$sel$left.field_name;')
+				g.writeln('$sel${left.field_name};')
 			}
 			else {}
 		}

@@ -12,7 +12,7 @@ fn main() {
 	}
 	println('Graph: $graph')
 	path := breadth_first_search_path(graph, 'A', 'F')
-	println('\n The shortest path from node A to node F is: $path.reverse()')
+	println('\n The shortest path from node A to node F is: ${path.reverse()}')
 }
 
 // Breadth-First Search (BFS) allows you to find the shortest distance between two nodes in the graph.

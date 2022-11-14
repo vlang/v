@@ -63,7 +63,7 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 	//
 	mut args := _args.clone()
 	if func.params.len != args.len && !func.is_variadic {
-		e.error('mismatched parameter length for $func.name: got `$args.len`, expected `$func.params.len`')
+		e.error('mismatched parameter length for ${func.name}: got `${args.len}`, expected `${func.params.len}`')
 	}
 
 	if func.name in ['print', 'println', 'eprint', 'eprintln', 'panic'] {
@@ -213,12 +213,12 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 					}
 				}
 				else {
-					e.error('unknown declaration expression statement $x.type_name()')
+					e.error('unknown declaration expression statement ${x.type_name()}')
 				}
 			}
 		}
 		else {
-			e.error('unhandled declaration statement $stmt.type_name()')
+			e.error('unhandled declaration statement ${stmt.type_name()}')
 		}
 	}
 }

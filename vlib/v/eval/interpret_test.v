@@ -42,8 +42,8 @@ fn test_interpret() {
 		if expected != found {
 			println(term.red('FAIL'))
 			println('========================================================\n')
-			println('============ expected len=$expected.len: "$expected"')
-			println('============ found    len=$found.len: "$found"')
+			println('============ expected len=${expected.len}: "$expected"')
+			println('============ found    len=${found.len}: "$found"')
 			println('========================================================\n')
 			bench.fail()
 			continue

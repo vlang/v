@@ -150,7 +150,7 @@ struct Sss {
 }
 
 fn (s Sss) str() string {
-	return '[$s.v1, ${s.v2:.3f}]'
+	return '[${s.v1}, ${s.v2:.3f}]'
 }
 
 fn test_string_interpolation_str_evaluation() {
@@ -187,8 +187,8 @@ fn test_method_interpolation() {
 			a: 2
 		}
 	}
-	assert '>$y.f().a<' == '>2<'
-	assert '>$y.f().a<' == '>2<'
+	assert '>${y.f().a}<' == '>2<'
+	assert '>${y.f().a}<' == '>2<'
 }
 
 fn f(i int) int {

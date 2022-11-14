@@ -259,7 +259,7 @@ fn (mut g JsGen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name stri
 fn (mut g JsGen) gen_str_for_multi_return(info ast.MultiReturn, styp string, str_fn_name string) {
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('function ${str_fn_name}(a) {')
-	fn_builder.writeln('\tlet sb = strings__new_builder($info.types.len * 10);')
+	fn_builder.writeln('\tlet sb = strings__new_builder(${info.types.len} * 10);')
 	fn_builder.writeln('\tstrings__Builder_write_string(sb, new string("("));')
 	for i, typ in info.types {
 		sym := g.table.sym(typ)
@@ -367,7 +367,7 @@ fn (mut g JsGen) gen_str_for_interface(info ast.Interface, styp string, str_fn_n
 			}
 			val += ')'
 
-			fn_builder.write_string('\tif (x.val instanceof $subtype.cname)')
+			fn_builder.write_string('\tif (x.val instanceof ${subtype.cname})')
 			fn_builder.write_string(' return new string("${clean_interface_v_type_name}(" + ${val}.str + ")");\n')
 		}
 	}
@@ -532,9 +532,9 @@ fn (mut g JsGen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_f
 	g.definitions.writeln('function ${str_fn_name}(a) { return indent_${str_fn_name}(a, 0);}')
 
 	g.definitions.writeln('function indent_${str_fn_name}(a, indent_count) {')
-	g.definitions.writeln('\tlet sb = strings__new_builder($info.size * 10);')
+	g.definitions.writeln('\tlet sb = strings__new_builder(${info.size} * 10);')
 	g.definitions.writeln('\tstrings__Builder_write_string(sb, new string("["));')
-	g.definitions.writeln('\tfor (let i = 0; i < $info.size; ++i) {')
+	g.definitions.writeln('\tfor (let i = 0; i < ${info.size}; ++i) {')
 	if sym.kind == .function {
 		g.definitions.writeln('\t\tstring x = ${elem_str_fn_name}();')
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, x);')
@@ -731,9 +731,9 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 		sym := g.table.sym(g.unwrap_generic(field.typ))
 		// first fields doesn't need \n
 		if i == 0 {
-			fn_builder.write_string('res.str += "    $field.name: $ptr_amp$prefix" + ')
+			fn_builder.write_string('res.str += "    ${field.name}: $ptr_amp$prefix" + ')
 		} else {
-			fn_builder.write_string('res.str += "\\n    $field.name: $ptr_amp$prefix" + ')
+			fn_builder.write_string('res.str += "\\n    ${field.name}: $ptr_amp$prefix" + ')
 		}
 
 		// custom methods management
@@ -747,7 +747,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 
 		mut func := struct_auto_str_func(mut g, sym, field.typ, field_styp_fn_name, field.name)
 		if field.typ in ast.cptr_types {
-			func = '(voidptr) it.$field.name'
+			func = '(voidptr) it.${field.name}'
 		} else if field.typ.is_ptr() {
 			// reference types can be "nil"
 			fn_builder.write_string('isnil(it.${g.js_name(field.name)})')

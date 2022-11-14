@@ -48,7 +48,7 @@ fn (mut d JsDoc) gen_fac_fn(fields []ast.StructField) {
 	for i, field in fields {
 		// Marked as optional: structs have default default values,
 		// so all struct members don't have to be initialized.
-		d.write('$field.name?: ${d.gen.typ(field.typ)}')
+		d.write('${field.name}?: ${d.gen.typ(field.typ)}')
 		if i < fields.len - 1 {
 			d.write(', ')
 		}

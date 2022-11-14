@@ -82,7 +82,7 @@ fn option_return_err(mut a Qwe) ?Qwe {
 		a.n += 5
 	}
 	a.n += 2
-	return error('Error: $a.n')
+	return error('Error: ${a.n}')
 }
 
 fn test_defer_err_return() {

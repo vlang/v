@@ -12,7 +12,7 @@ fn imin(a int, b int) int {
 
 fn (mut s StringReader) read(mut buf []u8) !int {
 	$if debug {
-		eprintln('>>>> StringReader.read output buf.len: $buf.len')
+		eprintln('>>>> StringReader.read output buf.len: ${buf.len}')
 	}
 	if s.place > s.text.len + 1 {
 		return io.Eof{}

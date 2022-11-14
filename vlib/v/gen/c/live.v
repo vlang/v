@@ -81,7 +81,7 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	}
 	vexe := util.cescaped_path(pref.vexe_path())
 	file := util.cescaped_path(g.pref.path)
-	ccompiler := '-cc $g.pref.ccompiler'
+	ccompiler := '-cc ${g.pref.ccompiler}'
 	so_debug_flag := if g.pref.is_debug { '-cg' } else { '' }
 	vopts := '$ccompiler $so_debug_flag -sharedlive -shared'
 	//
@@ -104,7 +104,7 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	for f, _ in already_added {
 		fpath := os.real_path(f)
 		g.writeln('\t\tv__live__executable__add_live_monitored_file(live_info, ${ctoslit(fpath)}); // source V file with [live] ${
-			idx + 1}/$already_added.len')
+			idx + 1}/${already_added.len}')
 		idx++
 	}
 	g.writeln('')

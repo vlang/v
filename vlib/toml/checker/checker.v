@@ -441,7 +441,7 @@ fn (c Checker) check_quoted_escapes(q ast.Quoted) ! {
 						if !contains_newlines {
 							st := s.state()
 							return error(@MOD + '.' + @STRUCT + '.' + @FN +
-								' can not escape whitespaces in multi-line strings (`\\ `) at `$escape` ($st.line_nr,$st.col) in ...${c.excerpt(q.pos)}...')
+								' can not escape whitespaces in multi-line strings (`\\ `) at `$escape` (${st.line_nr},${st.col}) in ...${c.excerpt(q.pos)}...')
 						}
 						// Rest of line must only be space chars from this point on
 						for {
@@ -452,7 +452,7 @@ fn (c Checker) check_quoted_escapes(q ast.Quoted) ! {
 							if !(ch_ == ` ` || ch_ == `\t`) {
 								st := s.state()
 								return error(@MOD + '.' + @STRUCT + '.' + @FN +
-									' invalid character `${u8(ch_).ascii_str()}` after `$escape` at ($st.line_nr,$st.col) in ...${c.excerpt(q.pos)}...')
+									' invalid character `${u8(ch_).ascii_str()}` after `$escape` at (${st.line_nr},${st.col}) in ...${c.excerpt(q.pos)}...')
 							}
 						}
 					}
@@ -464,7 +464,7 @@ fn (c Checker) check_quoted_escapes(q ast.Quoted) ! {
 				if next_ch !in checker.allowed_basic_escape_chars {
 					st := s.state()
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
-						' unknown basic string escape character `$next_ch.ascii_str()` in `$escape` ($st.line_nr,$st.col) in ...${c.excerpt(q.pos)}...')
+						' unknown basic string escape character `${next_ch.ascii_str()}` in `$escape` (${st.line_nr},${st.col}) in ...${c.excerpt(q.pos)}...')
 				}
 			}
 			// Check Unicode escapes
@@ -477,14 +477,14 @@ fn (c Checker) check_quoted_escapes(q ast.Quoted) ! {
 					c.check_unicode_escape(s.text[pos..pos + 11]) or {
 						st := s.state()
 						return error(@MOD + '.' + @STRUCT + '.' + @FN +
-							' escaped Unicode is invalid. $err.msg().capitalize() ($st.line_nr,$st.col) in ...${c.excerpt(q.pos)}...')
+							' escaped Unicode is invalid. ${err.msg().capitalize()} (${st.line_nr},${st.col}) in ...${c.excerpt(q.pos)}...')
 					}
 				} else {
 					pos := s.state().pos
 					c.check_unicode_escape(s.text[pos..]) or {
 						st := s.state()
 						return error(@MOD + '.' + @STRUCT + '.' + @FN +
-							' escaped Unicode is invalid. $err.msg().capitalize() ($st.line_nr,$st.col) in ...${c.excerpt(q.pos)}...')
+							' escaped Unicode is invalid. ${err.msg().capitalize()} (${st.line_nr},${st.col}) in ...${c.excerpt(q.pos)}...')
 					}
 				}
 			}
@@ -563,13 +563,13 @@ pub fn (c Checker) check_comment(comment ast.Comment) ! {
 		if ch_byte == 0x0D {
 			st := s.state()
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' carrige return character `$ch_byte.hex()` is not allowed in comments ($st.line_nr,$st.col).')
+				' carrige return character `${ch_byte.hex()}` is not allowed in comments (${st.line_nr},${st.col}).')
 		}
 		// Check for control characters (allow TAB)
 		if util.is_illegal_ascii_control_character(ch_byte) {
 			st := s.state()
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' control character `$ch_byte.hex()` is not allowed ($st.line_nr,$st.col) "${u8(s.at()).ascii_str()}" near ...${s.excerpt(st.pos, 10)}...')
+				' control character `${ch_byte.hex()}` is not allowed (${st.line_nr},${st.col}) "${u8(s.at()).ascii_str()}" near ...${s.excerpt(st.pos, 10)}...')
 		}
 	}
 

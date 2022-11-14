@@ -245,7 +245,7 @@ pub fn orm_stmt_gen(table string, q string, kind StmtKind, num bool, qm string, 
 								'/'
 							}
 						}
-						str += '$d.name $op $qm'
+						str += '${d.name} $op $qm'
 					} else {
 						str += '$qm'
 					}
@@ -320,7 +320,7 @@ pub fn orm_select_gen(orm SelectConfig, q string, num bool, qm string, start_pos
 		}
 	}
 
-	str += ' FROM $q$orm.table$q'
+	str += ' FROM $q${orm.table}$q'
 
 	mut c := start_pos
 
@@ -360,7 +360,7 @@ pub fn orm_select_gen(orm SelectConfig, q string, num bool, qm string, start_pos
 	// ordering is *slow*, especially if there are no indexes!
 	if orm.has_order {
 		str += ' ORDER BY '
-		str += '$q$orm.order$q '
+		str += '$q${orm.order}$q '
 		str += orm.order_type.to_str()
 	}
 
@@ -444,13 +444,13 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 				}
 				'sql_type' {
 					if attr.kind != .string {
-						return error("sql_type attribute need be string. Try [sql_type: '$attr.arg'] instead of [sql_type: $attr.arg]")
+						return error("sql_type attribute need be string. Try [sql_type: '${attr.arg}'] instead of [sql_type: ${attr.arg}]")
 					}
 					ctyp = attr.arg
 				}
 				'default' {
 					if attr.kind != .string {
-						return error("default attribute need be string. Try [default: '$attr.arg'] instead of [default: $attr.arg]")
+						return error("default attribute need be string. Try [default: '${attr.arg}'] instead of [default: ${attr.arg}]")
 					}
 					if default_val == '' {
 						default_val = attr.arg
@@ -464,7 +464,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 		}
 		mut stmt := ''
 		if ctyp == '' {
-			return error('Unknown type ($field.typ) for field $field.name in struct $table')
+			return error('Unknown type (${field.typ}) for field ${field.name} in struct $table')
 		}
 		stmt = '$q$field_name$q $ctyp'
 		if defaults && default_val != '' {

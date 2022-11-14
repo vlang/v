@@ -111,7 +111,7 @@ fn (mut ws Client) read_payload(frame &Frame) ![]u8 {
 // - Future implementation needs to support fail fast utf errors for strict autobahn conformance
 fn (mut ws Client) validate_utf_8(opcode OPCode, payload []u8) ! {
 	if opcode in [.text_frame, .close] && !utf8.validate(payload.data, payload.len) {
-		ws.logger.error('malformed utf8 payload, payload len: ($payload.len)')
+		ws.logger.error('malformed utf8 payload, payload len: (${payload.len})')
 		ws.send_error_event('Recieved malformed utf8.')
 		ws.close(1007, 'malformed utf8 payload')!
 		return error('malformed utf8 payload')
@@ -146,8 +146,8 @@ pub fn (mut ws Client) read_next_message() !Message {
 		}
 		if ws.fragments.len == 0 {
 			ws.validate_utf_8(frame.opcode, frame_payload) or {
-				ws.logger.error('UTF8 validation error: $err, len of payload($frame_payload.len)')
-				ws.send_error_event('UTF8 validation error: $err, len of payload($frame_payload.len)')
+				ws.logger.error('UTF8 validation error: $err, len of payload(${frame_payload.len})')
+				ws.send_error_event('UTF8 validation error: $err, len of payload(${frame_payload.len})')
 				return err
 			}
 			msg := Message{

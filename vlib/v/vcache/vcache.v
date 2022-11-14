@@ -75,7 +75,7 @@ pub fn new_cache_manager(opts []string) CacheManager {
 // without affecting the .original_vopts
 pub fn (mut cm CacheManager) set_temporary_options(new_opts []string) {
 	cm.vopts = cm.original_vopts + '#' + new_opts.join('|')
-	dlog(@FN, 'cm.vopts:\n     $cm.vopts')
+	dlog(@FN, 'cm.vopts:\n     ${cm.vopts}')
 }
 
 pub fn (mut cm CacheManager) key2cpath(key string) string {
@@ -94,7 +94,7 @@ pub fn (mut cm CacheManager) key2cpath(key string) string {
 		dlog(@FN, 'new hk')
 		dlog(@FN, '       key: $key')
 		dlog(@FN, '     cpath: $cpath')
-		dlog(@FN, '  cm.vopts:\n     $cm.vopts')
+		dlog(@FN, '  cm.vopts:\n     ${cm.vopts}')
 		cm.k2cpath[key] = cpath
 	}
 	dlog(@FN, 'key: ${key:-30} => cpath: $cpath')

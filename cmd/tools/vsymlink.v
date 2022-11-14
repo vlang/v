@@ -44,7 +44,7 @@ fn setup_symlink_github() {
 	mut content := os.read_file(os.getenv('GITHUB_PATH')) or {
 		panic('Failed to read GITHUB_PATH.')
 	}
-	content += '\n$os.getwd()\n'
+	content += '\n${os.getwd()}\n'
 	os.write_file(os.getenv('GITHUB_PATH'), content) or { panic('Failed to write to GITHUB_PATH.') }
 }
 

@@ -10,7 +10,7 @@ fn get_vdoctor_output(is_verbose bool) string {
 	verbose_flag := if is_verbose { '-v' } else { '' }
 	result := os.execute('${os.quoted_path(vexe)} $verbose_flag doctor')
 	if result.exit_code != 0 {
-		eprintln('unable to get `v doctor` output: $result.output')
+		eprintln('unable to get `v doctor` output: ${result.output}')
 		return ''
 	}
 	return result.output
@@ -30,7 +30,7 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 	if vdbg_result.exit_code == 0 {
 		vexe = vdbg_path
 	} else {
-		eprintln('unable to compile V in debug mode: $vdbg_result.output\ncommand: $vdbg_compilation_cmd\n')
+		eprintln('unable to compile V in debug mode: ${vdbg_result.output}\ncommand: $vdbg_compilation_cmd\n')
 	}
 	//
 	mut result := os.execute('${os.quoted_path(vexe)} $verbose_flag ${os.quoted_path(file_path)}')

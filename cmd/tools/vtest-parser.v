@@ -44,7 +44,7 @@ fn main() {
 	mut context := process_cli_args()
 	if context.is_worker {
 		pid := os.getpid()
-		context.log('> worker ${pid:5} starts parsing at cut_index: ${context.cut_index:5} | $context.path')
+		context.log('> worker ${pid:5} starts parsing at cut_index: ${context.cut_index:5} | ${context.path}')
 		// A worker's process job is to try to parse a single given file in context.path.
 		// It can crash/panic freely.
 		context.table = ast.new_table()
@@ -62,7 +62,7 @@ fn main() {
 			exit(ecode_timeout)
 		}(context.timeout_ms)
 		_ := parser.parse_text(source, context.path, context.table, .skip_comments, context.pref)
-		context.log('> worker ${pid:5} finished parsing $context.path')
+		context.log('> worker ${pid:5} finished parsing ${context.path}')
 		exit(0)
 	} else {
 		// The process supervisor should NOT crash/panic, unlike the workers.
@@ -171,7 +171,7 @@ fn (mut context Context) error(msg string) {
 }
 
 fn (mut context Context) expand_all_paths() {
-	context.log('> context.all_paths before: $context.all_paths')
+	context.log('> context.all_paths before: ${context.all_paths}')
 	mut files := []string{}
 	for path in context.all_paths {
 		if os.is_dir(path) {
@@ -190,7 +190,7 @@ fn (mut context Context) expand_all_paths() {
 		files << path
 	}
 	context.all_paths = files
-	context.log('> context.all_paths after: $context.all_paths')
+	context.log('> context.all_paths after: ${context.all_paths}')
 }
 
 fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
@@ -215,7 +215,7 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 		cmd := '${os.quoted_path(context.myself)} $verbosity --worker --timeout_ms ${context.timeout_ms:5} --cut_index ${i:5} --path ${os.quoted_path(path)} '
 		context.log(cmd)
 		mut res := os.execute(cmd)
-		context.log('worker exit_code: $res.exit_code | worker output:\n$res.output')
+		context.log('worker exit_code: ${res.exit_code} | worker output:\n${res.output}')
 		if res.exit_code != 0 {
 			fails++
 			mut is_panic := false

@@ -25,7 +25,7 @@ fn (mut g JsGen) comptime_if(node ast.IfExpr) {
 		}
 
 		if node.is_expr {
-			print('$branch.stmts')
+			print('${branch.stmts}')
 			len := branch.stmts.len
 			if len > 0 {
 				last := branch.stmts.last() as ast.ExprStmt
@@ -84,7 +84,7 @@ fn (mut g JsGen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 			match cond.op {
 				.and, .logical_or {
 					l := g.comptime_if_cond(cond.left, pkg_exist)
-					g.write(' $cond.op ')
+					g.write(' ${cond.op} ')
 					r := g.comptime_if_cond(cond.right, pkg_exist)
 					return if cond.op == .and { l && r } else { l || r }
 				}
@@ -126,7 +126,7 @@ fn (mut g JsGen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 							//}
 						}
 					} else if left is ast.SelectorExpr {
-						name = '${left.expr}.$left.field_name'
+						name = '${left.expr}.${left.field_name}'
 						exp_type = g.comptime_var_type_map[name]
 					} else if left is ast.TypeNode {
 						// this is only allowed for generics currently, otherwise blocked by checker

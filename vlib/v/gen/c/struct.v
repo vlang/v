@@ -309,7 +309,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	for attr in s.attrs {
 		match attr.name {
 			'_pack' {
-				pre_pragma += '#pragma pack(push, $attr.arg)\n'
+				pre_pragma += '#pragma pack(push, ${attr.arg})\n'
 				post_pragma += '#pragma pack(pop)'
 			}
 			'packed' {

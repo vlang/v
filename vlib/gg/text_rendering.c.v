@@ -58,7 +58,7 @@ fn new_ft(c FTConfig) ?&FT {
 
 	if c.font_path == '' || !os.exists(c.font_path) {
 		$if !android {
-			println('failed to load font "$c.font_path"')
+			println('failed to load font "${c.font_path}"')
 			return none
 		}
 	}
@@ -71,13 +71,13 @@ fn new_ft(c FTConfig) ?&FT {
 		if bytes.len == 0 {
 			// ... then try the APK asset path
 			bytes = os.read_apk_asset(c.font_path) or {
-				println('failed to load font "$c.font_path"')
+				println('failed to load font "${c.font_path}"')
 				return none
 			}
 		}
 	} $else {
 		bytes = os.read_bytes(c.font_path) or {
-			println('failed to load font "$c.font_path"')
+			println('failed to load font "${c.font_path}"')
 			return none
 		}
 	}

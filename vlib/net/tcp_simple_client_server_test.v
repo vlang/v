@@ -20,7 +20,7 @@ fn setup() (&net.TcpListener, &net.TcpConn, &net.TcpConn) {
 	socket := <-c
 
 	$if debug_peer_ip ? {
-		eprintln('$server.addr()\n$client.peer_addr(), $client.addr()\n$socket.peer_addr(), $socket.addr()')
+		eprintln('${server.addr()}\n${client.peer_addr()}, ${client.addr()}\n${socket.peer_addr()}, ${socket.addr()}')
 	}
 	assert true
 	return server, client, socket
@@ -47,7 +47,7 @@ fn test_socket() {
 		println('message send: $message')
 	}
 	$if debug {
-		println('send socket: $socket.sock.handle')
+		println('send socket: ${socket.sock.handle}')
 	}
 	mut buf := []u8{len: 1024}
 	nbytes := client.read(mut buf) or {
@@ -59,7 +59,7 @@ fn test_socket() {
 		println('message received: $received')
 	}
 	$if debug {
-		println('client: $client.sock.handle')
+		println('client: ${client.sock.handle}')
 	}
 	assert message == received
 }

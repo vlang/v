@@ -26,7 +26,7 @@ pub struct TimerParams {
 
 pub fn new_timers(params TimerParams) &Timers {
 	$if trace_timers_creation ? {
-		eprintln('>>>> new_timers, should_print: $params.should_print | label: $params.label')
+		eprintln('>>>> new_timers, should_print: ${params.should_print} | label: ${params.label}')
 	}
 	return &Timers{
 		label: params.label

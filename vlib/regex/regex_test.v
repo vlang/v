@@ -432,7 +432,7 @@ fn test_regex() {
 	for c, to in cgroups_test_suite {
 		// debug print
 		if debug {
-			println('$c [$to.src] [q$to.q] ($to.s, $to.e)')
+			println('$c [${to.src}] [q${to.q}] (${to.s}, ${to.e})')
 		}
 
 		mut re := regex.regex_opt(to.q) or {
@@ -461,7 +461,7 @@ fn test_regex() {
 		}
 
 		if start != to.s || end != to.e {
-			println('#$c [$to.src] q[$to.q] res[$tmp_str] base:[$to.s,$to.e] $start, $end')
+			println('#$c [${to.src}] q[${to.q}] res[$tmp_str] base:[${to.s},${to.e}] $start, $end')
 			eprintln('ERROR!')
 			assert false
 			continue
@@ -501,8 +501,8 @@ fn test_regex() {
 			for ln := 0; ln < re.groups.len; ln++ {
 				if re.groups[ln] != to.cg[ln] {
 					eprintln("Capture group doesn't match:")
-					eprintln('true ground: $to.cg')
-					eprintln('elaborated : $re.groups')
+					eprintln('true ground: ${to.cg}')
+					eprintln('elaborated : ${re.groups}')
 					assert false
 				}
 			}
@@ -513,7 +513,7 @@ fn test_regex() {
 	for c, to in find_all_test_suite {
 		// debug print
 		if debug {
-			println('#$c [$to.src] q[$to.q] ($to.res, $to.res_str)')
+			println('#$c [${to.src}] q[${to.q}] (${to.res}, ${to.res_str})')
 		}
 
 		mut re := regex.regex_opt(to.q) or {
@@ -527,7 +527,7 @@ fn test_regex() {
 		if res != to.res {
 			eprintln('err: find_all !!')
 			if debug {
-				println('#$c exp: $to.res calculated: $res')
+				println('#$c exp: ${to.res} calculated: $res')
 			}
 			assert false
 		}
@@ -536,7 +536,7 @@ fn test_regex() {
 		if res_str != to.res_str {
 			eprintln('err: find_all_str !!')
 			if debug {
-				println('#$c exp: $to.res_str calculated: $res_str')
+				println('#$c exp: ${to.res_str} calculated: $res_str')
 			}
 			assert false
 		}
@@ -546,7 +546,7 @@ fn test_regex() {
 	for c, to in split_test_suite {
 		// debug print
 		if debug {
-			println('#$c [$to.src] q[$to.q] ($to.res)')
+			println('#$c [${to.src}] q[${to.q}] (${to.res})')
 		}
 
 		mut re := regex.regex_opt(to.q) or {
@@ -560,7 +560,7 @@ fn test_regex() {
 		if res != to.res {
 			eprintln('err: split !!')
 			if debug {
-				println('#$c exp: $to.res calculated: $res')
+				println('#$c exp: ${to.res} calculated: $res')
 			}
 			assert false
 		}
@@ -570,7 +570,7 @@ fn test_regex() {
 	for c, to in match_test_suite_replace {
 		// debug print
 		if debug {
-			println('#$c [$to.src] q[$to.q] $to.r')
+			println('#$c [${to.src}] q[${to.q}] ${to.r}')
 		}
 
 		mut re := regex.regex_opt(to.q) or {
@@ -591,7 +591,7 @@ fn test_regex() {
 	for c, to in match_test_suite_replace_simple {
 		// debug print
 		if debug {
-			println('#$c [$to.src] q[$to.q] $to.r')
+			println('#$c [${to.src}] q[${to.q}] ${to.r}')
 		}
 
 		mut re := regex.regex_opt(to.q) or {
@@ -612,7 +612,7 @@ fn test_regex() {
 	for c, to in match_test_suite {
 		// debug print
 		if debug {
-			println('#$c [$to.src] q[$to.q] $to.s $to.e')
+			println('#$c [${to.src}] q[${to.q}] ${to.s} ${to.e}')
 		}
 
 		// test the find
@@ -656,7 +656,7 @@ fn test_regex() {
 		}
 
 		if start != to.s || end != to.e {
-			eprintln('#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end')
+			eprintln('#$c [${to.src}] q[${to.q}] res[$tmp_str] $start, $end')
 			eprintln('ERROR!')
 			assert false
 			continue

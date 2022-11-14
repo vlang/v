@@ -575,10 +575,10 @@ pub fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 			stmts << p.stmt(is_top_level)
 			count++
 			if count % 100000 == 0 {
-				eprintln('parsed $count statements so far from fn $p.cur_fn_name ...')
+				eprintln('parsed $count statements so far from fn ${p.cur_fn_name} ...')
 			}
 			if count > 1000000 {
-				p.error_with_pos('parsed over $count statements from fn $p.cur_fn_name, the parser is probably stuck',
+				p.error_with_pos('parsed over $count statements from fn ${p.cur_fn_name}, the parser is probably stuck',
 					p.tok.pos())
 				return []
 			}
@@ -628,18 +628,18 @@ fn (mut p Parser) unexpected(params ParamsForUnexpected) ast.NodeError {
 
 fn (mut p Parser) unexpected_with_pos(pos token.Pos, params ParamsForUnexpected) ast.NodeError {
 	mut msg := if params.got != '' {
-		'unexpected $params.got'
+		'unexpected ${params.got}'
 	} else {
-		'unexpected $p.tok'
+		'unexpected ${p.tok}'
 	}
 	if params.expecting != '' {
-		msg += ', expecting $params.expecting'
+		msg += ', expecting ${params.expecting}'
 	}
 	if params.prepend_msg != '' {
-		msg = '$params.prepend_msg ' + msg
+		msg = '${params.prepend_msg} ' + msg
 	}
 	if params.additional_msg != '' {
-		msg += ', $params.additional_msg'
+		msg += ', ${params.additional_msg}'
 	}
 	return p.error_with_pos(msg, pos)
 }
@@ -969,10 +969,10 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					pos: spos.extend(p.tok.pos())
 				}
 			} else if p.peek_tok.kind == .name {
-				return p.unexpected(got: 'name `$p.tok.lit`')
+				return p.unexpected(got: 'name `${p.tok.lit}`')
 			} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr
 				&& p.peek_tok.kind in [.rcbr, .eof] && !p.mark_var_as_used(p.tok.lit) {
-				return p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.pos())
+				return p.error_with_pos('`${p.tok.lit}` evaluated but not used', p.tok.pos())
 			}
 			return p.parse_multi_expr(is_top_level)
 		}
@@ -1738,12 +1738,12 @@ fn (mut p Parser) attributes() {
 		start_pos := p.tok.pos()
 		attr := p.parse_attr()
 		if p.attrs.contains(attr.name) && attr.name != 'wasm_export' {
-			p.error_with_pos('duplicate attribute `$attr.name`', start_pos.extend(p.prev_tok.pos()))
+			p.error_with_pos('duplicate attribute `${attr.name}`', start_pos.extend(p.prev_tok.pos()))
 			return
 		}
 		if attr.kind == .comptime_define {
 			if has_ctdefine {
-				p.error_with_pos('only one `[if flag]` may be applied at a time `$attr.name`',
+				p.error_with_pos('only one `[if flag]` may be applied at a time `${attr.name}`',
 					start_pos.extend(p.prev_tok.pos()))
 				return
 			} else {
@@ -2110,7 +2110,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 		if is_mut || is_static || is_volatile {
 			p.error_with_pos('the `$modifier_kind` keyword is invalid here', mut_pos)
 		} else {
-			p.unexpected(got: 'token `$p.tok.lit`')
+			p.unexpected(got: 'token `${p.tok.lit}`')
 		}
 		return ast.Ident{
 			scope: p.scope
@@ -2354,7 +2354,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			return p.string_expr()
 		} else {
 			// don't allow any other string prefix except `r`, `js` and `c`
-			return p.error('only `c`, `r`, `js` are recognized string prefixes, but you tried to use `$p.tok.lit`')
+			return p.error('only `c`, `r`, `js` are recognized string prefixes, but you tried to use `${p.tok.lit}`')
 		}
 	}
 	// don't allow r`byte` and c`byte`
@@ -2477,7 +2477,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			// fn call
 			if is_optional {
 				p.unexpected_with_pos(p.prev_tok.pos(),
-					got: '$p.prev_tok'
+					got: '${p.prev_tok}'
 				)
 			}
 			node = p.call_expr(language, mod)
@@ -2971,7 +2971,7 @@ fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 			p.error('generic parameter name needs to be exactly one char')
 		}
 		if !util.is_generic_type_name(p.tok.lit) {
-			p.error('`$p.tok.lit` is a reserved name and cannot be used for generics')
+			p.error('`${p.tok.lit}` is a reserved name and cannot be used for generics')
 		}
 		if name in param_names {
 			p.error('duplicated generic parameter `$name`')
@@ -3217,13 +3217,13 @@ fn (mut p Parser) module_decl() ast.Module {
 			if p.tok.kind == .name {
 				p.unexpected_with_pos(n_pos,
 					prepend_msg: '`module $name`, you can only declare one module,'
-					got: '`$p.tok.lit`'
+					got: '`${p.tok.lit}`'
 				)
 				return mod_node
 			} else {
 				p.unexpected_with_pos(n_pos,
 					prepend_msg: '`module $name`,'
-					got: '`$p.tok.kind` after module name'
+					got: '`${p.tok.kind}` after module name'
 				)
 				return mod_node
 			}
@@ -3266,7 +3266,7 @@ fn (mut p Parser) module_decl() ast.Module {
 					p.is_translated = true
 				}
 				else {
-					p.error_with_pos('unknown module attribute `[$ma.name]`', ma.pos)
+					p.error_with_pos('unknown module attribute `[${ma.name}]`', ma.pos)
 					return mod_node
 				}
 			}
@@ -3380,7 +3380,7 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 	p.next()
 	pos_t := p.tok.pos()
 	if p.tok.kind == .rcbr { // closed too early
-		p.error_with_pos('empty `$parent.mod` import set, remove `{}`', pos_t)
+		p.error_with_pos('empty `${parent.mod}` import set, remove `{}`', pos_t)
 		return
 	}
 	if p.tok.kind != .name { // not a valid inner name
@@ -3950,7 +3950,7 @@ fn (mut p Parser) top_level_statement_start() {
 		p.scanner.set_is_inside_toplevel_statement(true)
 		p.rewind_scanner_to_current_token_in_new_mode()
 		$if debugscanner ? {
-			eprintln('>> p.top_level_statement_start | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: $p.tok.lit $p.peek_tok.lit ${p.peek_token(2).lit} ${p.peek_token(3).lit} ...')
+			eprintln('>> p.top_level_statement_start | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: ${p.tok.lit} ${p.peek_tok.lit} ${p.peek_token(2).lit} ${p.peek_token(3).lit} ...')
 		}
 	}
 }
@@ -3960,7 +3960,7 @@ fn (mut p Parser) top_level_statement_end() {
 		p.scanner.set_is_inside_toplevel_statement(false)
 		p.rewind_scanner_to_current_token_in_new_mode()
 		$if debugscanner ? {
-			eprintln('>> p.top_level_statement_end   | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: $p.tok.lit $p.peek_tok.lit ${p.peek_token(2).lit} ${p.peek_token(3).lit} ...')
+			eprintln('>> p.top_level_statement_end   | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: ${p.tok.lit} ${p.peek_tok.lit} ${p.peek_token(2).lit} ${p.peek_token(3).lit} ...')
 		}
 	}
 }

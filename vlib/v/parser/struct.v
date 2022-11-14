@@ -44,7 +44,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	}
 	mut name := if is_anon {
 		p.table.anon_struct_counter++
-		'_VAnonStruct$p.table.anon_struct_counter'
+		'_VAnonStruct${p.table.anon_struct_counter}'
 	} else {
 		p.check_name()
 	}
@@ -65,7 +65,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	generic_types, _ := p.parse_generic_types()
 	no_body := p.tok.kind != .lcbr
 	if language == .v && no_body {
-		p.error('`$p.tok.lit` lacks body')
+		p.error('`${p.tok.lit}` lacks body')
 		return ast.StructDecl{}
 	}
 	if language == .v && !p.builtin_mod && !p.is_translated && name.len > 0 && !name[0].is_capital()
@@ -215,7 +215,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				}
 				sym := p.table.sym(typ)
 				if typ in embed_types {
-					p.error_with_pos('cannot embed `$sym.name` more than once', type_pos)
+					p.error_with_pos('cannot embed `${sym.name}` more than once', type_pos)
 					return ast.StructDecl{}
 				}
 				field_name = sym.embed_name()
@@ -586,12 +586,12 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		// Check embedded interface from external module
 		if p.tok.kind == .name && p.peek_tok.kind == .dot {
 			if p.tok.lit !in p.imports {
-				p.error_with_pos('mod `$p.tok.lit` not imported', p.tok.pos())
+				p.error_with_pos('mod `${p.tok.lit}` not imported', p.tok.pos())
 				break
 			}
 			mod_name := p.tok.lit
 			from_mod_typ := p.parse_type()
-			from_mod_name := '${mod_name}.$p.prev_tok.lit'
+			from_mod_name := '${mod_name}.${p.prev_tok.lit}'
 			if from_mod_name.is_lower() {
 				p.error_with_pos('The interface name need to have the pascal case', p.prev_tok.pos())
 				break

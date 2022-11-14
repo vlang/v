@@ -39,7 +39,7 @@ fn main() {
 		}
 		exit(verify_result.exit_code)
 	} else {
-		eprintln('The V pre commit hook will format $vfiles.len V file(s):')
+		eprintln('The V pre commit hook will format ${vfiles.len} V file(s):')
 		for vfile in vfiles {
 			eprintln('    ${term.bold('$vfile')}')
 		}

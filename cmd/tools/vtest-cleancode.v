@@ -93,10 +93,10 @@ fn v_test_vetting(vargs string) {
 	if vet_session.benchmark.nfail > 0 || verify_session.benchmark.nfail > 0 {
 		eprintln('\n')
 		if vet_session.benchmark.nfail > 0 {
-			eprintln('WARNING: `v vet` failed $vet_session.benchmark.nfail times.')
+			eprintln('WARNING: `v vet` failed ${vet_session.benchmark.nfail} times.')
 		}
 		if verify_session.benchmark.nfail > 0 {
-			eprintln('WARNING: `v fmt -verify` failed $verify_session.benchmark.nfail times.')
+			eprintln('WARNING: `v fmt -verify` failed ${verify_session.benchmark.nfail} times.')
 		}
 		exit(1)
 	}

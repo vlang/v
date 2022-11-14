@@ -351,7 +351,7 @@ pub fn (mut c Command) start() ! {
 	}
 	c.f = vpopen(pcmd)
 	if isnil(c.f) {
-		return error('exec("$c.path") failed')
+		return error('exec("${c.path}") failed')
 	}
 }
 

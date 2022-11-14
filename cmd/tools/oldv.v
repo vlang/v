@@ -150,11 +150,11 @@ fn main() {
 	} else {
 		context.commit_v = scripting.run('git rev-list -n1 HEAD')
 	}
-	scripting.cprintln('#################  context.commit_v: $context.commit_v #####################')
+	scripting.cprintln('#################  context.commit_v: ${context.commit_v} #####################')
 	context.path_v = vgit.normalized_workpath_for_commit(context.vgo.workdir, context.commit_v)
 	context.path_vc = vgit.normalized_workpath_for_commit(context.vgo.workdir, 'vc')
 	if !os.is_dir(context.vgo.workdir) {
-		eprintln('Work folder: $context.vgo.workdir , does not exist.')
+		eprintln('Work folder: ${context.vgo.workdir} , does not exist.')
 		exit(2)
 	}
 	ecc := os.getenv('CC')
@@ -168,7 +168,7 @@ fn main() {
 	context.compile_oldv_if_needed()
 	scripting.chdir(context.path_v)
 	shorter_hash := context.commit_v_hash[0..10]
-	scripting.cprintln('#     v commit hash: $shorter_hash | folder: $context.path_v')
+	scripting.cprintln('#     v commit hash: $shorter_hash | folder: ${context.path_v}')
 	if context.cmd_to_run.len > 0 {
 		scripting.cprintln_strong('#           command: ${context.cmd_to_run:-34s}')
 		cmdres := os.execute_or_exit(context.cmd_to_run)

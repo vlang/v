@@ -13,7 +13,7 @@ pub:
 }
 
 pub fn (c Color) hex() string {
-	return '#$c.r.hex()$c.g.hex()$c.b.hex()'
+	return '#${c.r.hex()}${c.g.hex()}${c.b.hex()}'
 }
 
 // Synchronized Updates spec, designed to avoid tearing during renders

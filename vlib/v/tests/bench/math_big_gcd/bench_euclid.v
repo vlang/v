@@ -87,7 +87,7 @@ fn main() {
 		['biggest', 'crazy', 'giga'],
 	].map(PrimeCfg{it[0], it[1], it[2]})
 
-	println('\n$cfgs.len x Tests')
+	println('\n${cfgs.len} x Tests')
 
 	for i, prime_cfg in cfgs {
 		println('\n#-${i + 1}(Stack) "$prime_cfg"')
@@ -165,7 +165,7 @@ fn run_benchmark(data []DataI, heap bool, mut clocks Clocks) bool {
 		'avg-$ratio-byte/Prime, $min_byte-byte < Prime < $max_byte-byte \n',
 		'~${buffer_space * 4 / 1024}-Kb-',
 		if heap { 'Heap' } else { 'Stack' },
-		'-space for $testdata.len-items x ',
+		'-space for ${testdata.len}-items x ',
 		'$rounds-rounds',
 	].join('')
 	println(msg)
@@ -305,9 +305,9 @@ pub mut:
 
 pub fn (hd HeapData) to_primeset() PrimeSet {
 	return PrimeSet{
-		r: '$hd.r'
-		a: '$hd.aa'
-		b: '$hd.bb'
+		r: '${hd.r}'
+		a: '${hd.aa}'
+		b: '${hd.bb}'
 	}
 }
 
@@ -328,9 +328,9 @@ pub mut:
 
 pub fn (sd StackData) to_primeset() PrimeSet {
 	return PrimeSet{
-		r: '$sd.r'
-		a: '$sd.aa'
-		b: '$sd.bb'
+		r: '${sd.r}'
+		a: '${sd.aa}'
+		b: '${sd.bb}'
 	}
 }
 

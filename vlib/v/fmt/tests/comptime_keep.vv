@@ -17,7 +17,7 @@ pub mut:
 fn comptime_for() {
 	println(@FN)
 	$for method in App.methods {
-		println('  method: $method.name | $method')
+		println('  method: ${method.name} | $method')
 	}
 }
 
@@ -40,7 +40,7 @@ fn comptime_for_with_if() {
 fn comptime_for_fields() {
 	println(@FN)
 	$for field in App.fields {
-		println('  field: $field.name | $field')
+		println('  field: ${field.name} | $field')
 		$if field.typ is string {
 			assert field.name in ['a', 'b', 'g']
 		}

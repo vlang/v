@@ -16,7 +16,7 @@ struct UnkownFlagError {
 }
 
 fn (err UnkownFlagError) msg() string {
-	return 'Unknown flag `$err.flag`'
+	return 'Unknown flag `${err.flag}`'
 }
 
 struct ArgsCountError {
@@ -27,11 +27,11 @@ struct ArgsCountError {
 
 fn (err ArgsCountError) msg() string {
 	if err.want == 0 {
-		return 'Expected no arguments, but got $err.got'
+		return 'Expected no arguments, but got ${err.got}'
 	} else if err.got > err.want {
-		return 'Expected at most $err.want arguments, but got $err.got'
+		return 'Expected at most ${err.want} arguments, but got ${err.got}'
 	} else {
-		return 'Expected at least $err.want arguments, but got $err.got'
+		return 'Expected at least ${err.want} arguments, but got ${err.got}'
 	}
 }
 
@@ -51,9 +51,9 @@ fn (mut f Flag) free() {
 
 // str returns a string representation of the given Flag
 pub fn (f Flag) str() string {
-	return '' + '    flag:\n' + '            name: $f.name\n' +
-		'            abbr: `$f.abbr.ascii_str()`\n' + '            usag: $f.usage\n' +
-		'            desc: $f.val_desc'
+	return '' + '    flag:\n' + '            name: ${f.name}\n' +
+		'            abbr: `${f.abbr.ascii_str()}`\n' + '            usag: ${f.usage}\n' +
+		'            desc: ${f.val_desc}'
 }
 
 // str returns a string representation of the given array of Flags
@@ -505,23 +505,23 @@ pub fn (fs FlagParser) usage() string {
 	}
 	mut use := []string{}
 	if fs.application_version != '' {
-		use << '$fs.application_name $fs.application_version'
+		use << '${fs.application_name} ${fs.application_version}'
 		use << '$flag.underline'
 	}
 	if fs.usage_examples.len == 0 {
-		use << 'Usage: $fs.application_name [options] $adesc'
+		use << 'Usage: ${fs.application_name} [options] $adesc'
 	} else {
 		for i, example in fs.usage_examples {
 			if i == 0 {
-				use << 'Usage: $fs.application_name $example'
+				use << 'Usage: ${fs.application_name} $example'
 			} else {
-				use << '   or: $fs.application_name $example'
+				use << '   or: ${fs.application_name} $example'
 			}
 		}
 	}
 	use << ''
 	if fs.application_description != '' {
-		use << 'Description: $fs.application_description'
+		use << 'Description: ${fs.application_description}'
 		use << ''
 	}
 	// show a message about the [ARGS]:
@@ -532,13 +532,13 @@ pub fn (fs FlagParser) usage() string {
 		} else {
 			mut s := []string{}
 			if positive_min_arg {
-				s << 'at least $fs.min_free_args'
+				s << 'at least ${fs.min_free_args}'
 			}
 			if positive_max_arg {
-				s << 'at most $fs.max_free_args'
+				s << 'at most ${fs.max_free_args}'
 			}
 			if positive_min_arg && positive_max_arg && fs.min_free_args == fs.max_free_args {
-				s = ['exactly $fs.min_free_args']
+				s = ['exactly ${fs.min_free_args}']
 			}
 			sargs := s.join(' and ')
 			use << 'The arguments should be $sargs in number.'
@@ -550,13 +550,13 @@ pub fn (fs FlagParser) usage() string {
 		for f in fs.flags {
 			mut onames := []string{}
 			if f.abbr != 0 {
-				onames << '-$f.abbr.ascii_str()'
+				onames << '-${f.abbr.ascii_str()}'
 			}
 			if f.name != '' {
 				if !f.val_desc.contains('<bool>') {
-					onames << '--$f.name $f.val_desc'
+					onames << '--${f.name} ${f.val_desc}'
 				} else {
-					onames << '--$f.name'
+					onames << '--${f.name}'
 				}
 			}
 			option_names := '  ' + onames.join(', ')
@@ -566,7 +566,7 @@ pub fn (fs FlagParser) usage() string {
 			} else {
 				xspace = flag.space[option_names.len..]
 			}
-			fdesc := '$option_names$xspace$f.usage'
+			fdesc := '$option_names$xspace${f.usage}'
 			use << fdesc
 		}
 	}
@@ -604,7 +604,7 @@ fn (mut fs FlagParser) handle_builtin_options() {
 		exit(0)
 	}
 	if show_version {
-		println('$fs.application_name $fs.application_version')
+		println('${fs.application_name} ${fs.application_version}')
 		exit(0)
 	}
 }

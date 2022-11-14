@@ -23,7 +23,7 @@ mut:
 }
 
 fn elog(msg string) {
-	eprintln('$time.now().format_ss_micro() | $msg')
+	eprintln('${time.now().format_ss_micro()} | $msg')
 }
 
 fn receive_data(mut con net.TcpConn, shared ctx Context) {
@@ -71,7 +71,7 @@ fn start_server(schannel chan int, shared ctx Context) {
 		lock ctx {
 			ctx.ok_server_accepts++
 		}
-		elog('server: new tcp connection con.sock.handle: $tcp_con.sock.handle')
+		elog('server: new tcp connection con.sock.handle: ${tcp_con.sock.handle}')
 		continue
 	}
 }
@@ -88,7 +88,7 @@ fn start_client(i int, shared ctx Context) {
 	lock ctx {
 		ctx.ok_client_dials++
 	}
-	elog('client [$i]: conn is connected, con.sock.handle: $tcp_con.sock.handle')
+	elog('client [$i]: conn is connected, con.sock.handle: ${tcp_con.sock.handle}')
 	tcp_con.write([u8(i)]) or { elog('client [$i]: write failed, err: $err') }
 	time.sleep(1 * time.second)
 	elog('client [$i]: closing connection...')
@@ -122,12 +122,12 @@ fn test_tcp_self_dialing() {
 		t := time.now()
 		dt := t - start_time
 		if dt > max_dt {
-			elog('>>> exiting after $dt.milliseconds() ms ...')
+			elog('>>> exiting after ${dt.milliseconds()} ms ...')
 			lock ctx {
 				// TODO: fix `dump(ctx)`, when `shared ctx := Type{}`
 				final_value_for_ctx := ctx // make a value copy as a temporary workaround. TODO: remove when dump(ctx) works.
 				dump(final_value_for_ctx)
-				assert ctx.fail_client_dials < 2, 'allowed failed client dials, from $ctx.ok_server_accepts connections'
+				assert ctx.fail_client_dials < 2, 'allowed failed client dials, from ${ctx.ok_server_accepts} connections'
 				assert ctx.received.len > ctx.ok_server_accepts / 2, 'at least half the clients sent some data, that was later received by the server'
 			}
 			elog('>>> goodbye')

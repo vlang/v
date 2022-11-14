@@ -73,9 +73,9 @@ fn test_native() {
 			if err_expected != err_found {
 				println(term.red('FAIL'))
 				println('============')
-				println('stderr expected: "$err_expected" len=$err_expected.len')
+				println('stderr expected: "$err_expected" len=${err_expected.len}')
 				println('============')
-				println('stderr found:"$err_found" len=$err_found.len')
+				println('stderr found:"$err_found" len=${err_found.len}')
 				println('============\n')
 				bench.fail()
 				continue
@@ -88,9 +88,9 @@ fn test_native() {
 		if expected != found {
 			println(term.red('FAIL'))
 			println('============')
-			println('expected: "$expected" len=$expected.len')
+			println('expected: "$expected" len=${expected.len}')
 			println('============')
-			println('found:"$found" len=$found.len')
+			println('found:"$found" len=${found.len}')
 			println('============\n')
 			bench.fail()
 			continue

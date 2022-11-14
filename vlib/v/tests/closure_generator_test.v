@@ -172,7 +172,7 @@ fn test_closure_return_${styp}_${i}() ? {
 		eprintln(res.output)
 		assert false
 	}
-	println('Process exited with code $res.exit_code')
+	println('Process exited with code ${res.exit_code}')
 
 	os.chdir(os.dir(vexe)) or {}
 	os.rmdir_all(wrkdir) or {}

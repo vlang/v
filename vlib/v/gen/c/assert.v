@@ -110,7 +110,7 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt) string {
 		src += ', ' + node.extra.str()
 	}
 	src = cestring(src)
-	metaname := 'v_assert_meta_info_$g.new_tmp_var()'
+	metaname := 'v_assert_meta_info_${g.new_tmp_var()}'
 	g.writeln('\tVAssertMetaInfo $metaname = {0};')
 	g.writeln('\t${metaname}.fpath = ${ctoslit(mod_path)};')
 	g.writeln('\t${metaname}.line_nr = $line_nr;')
@@ -175,7 +175,7 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 		}
 		ast.TypeNode {
 			sym := g.table.sym(g.unwrap_generic(typ))
-			g.write(ctoslit('$sym.name'))
+			g.write(ctoslit('${sym.name}'))
 		}
 		else {
 			mut should_clone := true

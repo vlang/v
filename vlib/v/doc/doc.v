@@ -194,7 +194,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 		platform: platform_from_filename(filename)
 	}
 	if (!node.is_pub && d.pub_only) || stmt is ast.GlobalDecl {
-		return error('symbol $node.name not public')
+		return error('symbol ${node.name} not public')
 	}
 	if node.name.starts_with(d.orig_mod_name + '.') {
 		node.name = node.name.all_after(d.orig_mod_name + '.')
@@ -497,7 +497,7 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 	if d.filter_symbol_names.len != 0 && d.contents.len != 0 {
 		for filter_name in d.filter_symbol_names {
 			if filter_name !in d.contents {
-				return error('vdoc: `$filter_name` symbol in module `$d.orig_mod_name` not found')
+				return error('vdoc: `$filter_name` symbol in module `${d.orig_mod_name}` not found')
 			}
 		}
 	}

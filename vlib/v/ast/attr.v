@@ -30,14 +30,14 @@ pub mut:
 }
 
 pub fn (a Attr) debug() string {
-	return 'Attr{ name: "$a.name", has_arg: $a.has_arg, arg: "$a.arg", kind: $a.kind, ct_expr: $a.ct_expr, ct_opt: $a.ct_opt, ct_skip: $a.ct_skip}'
+	return 'Attr{ name: "${a.name}", has_arg: ${a.has_arg}, arg: "${a.arg}", kind: ${a.kind}, ct_expr: ${a.ct_expr}, ct_opt: ${a.ct_opt}, ct_skip: ${a.ct_skip}}'
 }
 
 // str returns the string representation without square brackets
 pub fn (a Attr) str() string {
 	mut s := ''
 	mut arg := if a.has_arg {
-		s += '$a.name: '
+		s += '${a.name}: '
 		a.arg
 	} else {
 		a.name

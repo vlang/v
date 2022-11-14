@@ -70,7 +70,7 @@ fn (am AssetManager) combine(asset_type string, to_file bool) string {
 		panic('vweb.assets: you must set a cache dir.')
 	}
 	cache_key := am.get_cache_key(asset_type)
-	out_file := '$am.cache_dir/${cache_key}.$asset_type'
+	out_file := '${am.cache_dir}/${cache_key}.$asset_type'
 	mut out := ''
 	// use cache
 	if os.exists(out_file) {
@@ -126,7 +126,7 @@ fn (am AssetManager) include(asset_type string, combine bool) string {
 			return '<link rel="stylesheet" href="$file">\n'
 		}
 		for asset in assets {
-			out += '<link rel="stylesheet" href="$asset.file_path">\n'
+			out += '<link rel="stylesheet" href="${asset.file_path}">\n'
 		}
 	}
 	if asset_type == 'js' {
@@ -135,7 +135,7 @@ fn (am AssetManager) include(asset_type string, combine bool) string {
 			return '<script type="text/javascript" src="$file"></script>\n'
 		}
 		for asset in assets {
-			out += '<script type="text/javascript" src="$asset.file_path"></script>\n'
+			out += '<script type="text/javascript" src="${asset.file_path}"></script>\n'
 		}
 	}
 	return out

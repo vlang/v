@@ -59,7 +59,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			if sym.kind == .multi_return {
 				mr_info := sym.info as ast.MultiReturn
 				if branch.cond.vars.len != mr_info.types.len {
-					c.error('if guard expects $mr_info.types.len variables, but got $branch.cond.vars.len',
+					c.error('if guard expects ${mr_info.types.len} variables, but got ${branch.cond.vars.len}',
 						branch.pos)
 					continue
 				} else {
@@ -92,7 +92,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						got_type := c.unwrap_generic((right as ast.TypeNode).typ)
 						sym := c.table.sym(got_type)
 						if sym.kind == .placeholder || got_type.has_flag(.generic) {
-							c.error('unknown type `$sym.name`', branch.cond.right.pos())
+							c.error('unknown type `${sym.name}`', branch.cond.right.pos())
 						}
 
 						if left is ast.SelectorExpr {
@@ -358,7 +358,7 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 							&& (left_sym.kind == .interface_ && right_sym.kind != .interface_) {
 							v := scope.find_var(node.left.name) or { &ast.Var{} }
 							if v.is_mut && !node.left.is_mut {
-								c.error('smart casting a mutable interface value requires `if mut $node.left.name is ...`',
+								c.error('smart casting a mutable interface value requires `if mut ${node.left.name} is ...`',
 									node.left.pos)
 							}
 						}

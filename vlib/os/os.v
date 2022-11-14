@@ -396,7 +396,7 @@ pub fn user_names() ![]string {
 	$if windows {
 		result := execute('wmic useraccount get name')
 		if result.exit_code != 0 {
-			return error('Failed to get user names. Exited with code $result.exit_code: $result.output')
+			return error('Failed to get user names. Exited with code ${result.exit_code}: ${result.output}')
 		}
 		mut users := result.output.split_into_lines()
 		// windows command prints an empty line at the end of output
@@ -818,7 +818,7 @@ pub fn execute_or_panic(cmd string) Result {
 	res := execute(cmd)
 	if res.exit_code != 0 {
 		eprintln('failed    cmd: $cmd')
-		eprintln('failed   code: $res.exit_code')
+		eprintln('failed   code: ${res.exit_code}')
 		panic(res.output)
 	}
 	return res
@@ -828,7 +828,7 @@ pub fn execute_or_exit(cmd string) Result {
 	res := execute(cmd)
 	if res.exit_code != 0 {
 		eprintln('failed    cmd: $cmd')
-		eprintln('failed   code: $res.exit_code')
+		eprintln('failed   code: ${res.exit_code}')
 		eprintln(res.output)
 		exit(1)
 	}

@@ -43,10 +43,10 @@ fn check_name(name string) string {
 
 fn vmod_content(c Create) string {
 	return "Module {
-	name: '$c.name'
-	description: '$c.description'
-	version: '$c.version'
-	license: '$c.license'
+	name: '${c.name}'
+	description: '${c.description}'
+	version: '${c.version}'
+	license: '${c.license}'
 	dependencies: []
 }
 "
@@ -104,7 +104,7 @@ indent_size = 4
 }
 
 fn (c &Create) write_vmod(new bool) {
-	vmod_path := if new { '$c.name/v.mod' } else { 'v.mod' }
+	vmod_path := if new { '${c.name}/v.mod' } else { 'v.mod' }
 	os.write_file(vmod_path, vmod_content(c)) or { panic(err) }
 }
 
@@ -112,12 +112,12 @@ fn (c &Create) write_main(new bool) {
 	if !new && (os.exists('${c.name}.v') || os.exists('src/${c.name}.v')) {
 		return
 	}
-	main_path := if new { '$c.name/${c.name}.v' } else { '${c.name}.v' }
+	main_path := if new { '${c.name}/${c.name}.v' } else { '${c.name}.v' }
 	os.write_file(main_path, main_content()) or { panic(err) }
 }
 
 fn (c &Create) write_gitattributes(new bool) {
-	gitattributes_path := if new { '$c.name/.gitattributes' } else { '.gitattributes' }
+	gitattributes_path := if new { '${c.name}/.gitattributes' } else { '.gitattributes' }
 	if !new && os.exists(gitattributes_path) {
 		return
 	}
@@ -125,7 +125,7 @@ fn (c &Create) write_gitattributes(new bool) {
 }
 
 fn (c &Create) write_editorconfig(new bool) {
-	editorconfig_path := if new { '$c.name/.editorconfig' } else { '.editorconfig' }
+	editorconfig_path := if new { '${c.name}/.editorconfig' } else { '.editorconfig' }
 	if !new && os.exists(editorconfig_path) {
 		return
 	}
@@ -155,11 +155,11 @@ fn create(args []string) {
 		exit(1)
 	}
 	if c.name.contains('-') {
-		cerror('"$c.name" should not contain hyphens')
+		cerror('"${c.name}" should not contain hyphens')
 		exit(1)
 	}
 	if os.is_dir(c.name) {
-		cerror('$c.name folder already exists')
+		cerror('${c.name} folder already exists')
 		exit(3)
 	}
 	c.description = if args.len > 1 { args[1] } else { os.input('Input your project description: ') }

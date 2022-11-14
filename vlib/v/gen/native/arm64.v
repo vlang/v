@@ -288,7 +288,7 @@ pub fn (mut c Arm64) gen_exit(mut g Gen, expr ast.Expr) {
 			c.g.mov_arm(.x0, 0)
 		}
 		else {
-			g.n_error('unsupported os $c.g.pref.os')
+			g.n_error('unsupported os ${c.g.pref.os}')
 		}
 	}
 	g.svc()

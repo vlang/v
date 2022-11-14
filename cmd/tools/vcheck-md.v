@@ -21,7 +21,7 @@ const (
 	show_progress                  = os.getenv('GITHUB_JOB') == '' && '-silent' !in os.args
 	non_option_args                = cmdline.only_non_options(os.args[2..])
 	is_verbose                     = os.getenv('VERBOSE') != ''
-	vcheckfolder                   = os.join_path(os.vtmp_dir(), 'v', 'vcheck_$os.getuid()')
+	vcheckfolder                   = os.join_path(os.vtmp_dir(), 'v', 'vcheck_${os.getuid()}')
 	should_autofix                 = os.getenv('VAUTOFIX') != ''
 	vexe                           = @VEXE
 )
@@ -85,7 +85,7 @@ fn main() {
 		clear_previous_line()
 	}
 	if res.warnings > 0 || res.errors > 0 || res.oks > 0 {
-		println('\nWarnings: $res.warnings | Errors: $res.errors | OKs: $res.oks')
+		println('\nWarnings: ${res.warnings} | Errors: ${res.errors} | OKs: ${res.oks}')
 	}
 	if res.errors > 0 {
 		exit(1)
@@ -338,7 +338,7 @@ fn (mut ad AnchorData) check_link_target_match(fpath string, mut res CheckResult
 			found_error_warning = true
 			res.errors++
 			for brokenlink in linkdata {
-				eprintln(eline(fpath, brokenlink.line, 0, 'no link target found for existing link [$brokenlink.lable](#$link)'))
+				eprintln(eline(fpath, brokenlink.line, 0, 'no link target found for existing link [${brokenlink.lable}](#$link)'))
 			}
 		}
 	}
@@ -394,7 +394,7 @@ fn create_ref_link(s string) string {
 
 fn (mut f MDFile) debug() {
 	for e in f.examples {
-		eprintln('f.path: $f.path | example: $e')
+		eprintln('f.path: ${f.path} | example: $e')
 	}
 }
 
@@ -442,7 +442,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 		mut acommands := e.command.split(' ')
 		nofmt := 'nofmt' in acommands
 		for command in acommands {
-			f.progress('example from $e.sline to $e.eline, command: $command')
+			f.progress('example from ${e.sline} to ${e.eline}, command: $command')
 			fmt_res := if nofmt { 0 } else { get_fmt_exit_code(vfile, vexe) }
 			match command {
 				'compile' {
@@ -639,10 +639,10 @@ fn (mut f MDFile) report_not_formatted_example_if_needed(e VCodeExample, fmt_res
 	}
 	f.autofix_example(e, vfile) or {
 		if err is ExampleWasRewritten {
-			eprintln('>> f.path: $f.path | example from $e.sline to $e.eline was re-formated by vfmt')
+			eprintln('>> f.path: ${f.path} | example from ${e.sline} to ${e.eline} was re-formated by vfmt')
 			return err
 		}
-		eprintln('>> f.path: $f.path | encountered error while autofixing the example: $err')
+		eprintln('>> f.path: ${f.path} | encountered error while autofixing the example: $err')
 	}
 }
 
@@ -651,7 +651,7 @@ struct ExampleWasRewritten {
 }
 
 fn (mut f MDFile) autofix_example(e VCodeExample, vfile string) ! {
-	eprintln('>>> AUTOFIXING f.path: $f.path | e.sline: $e.sline | vfile: $vfile')
+	eprintln('>>> AUTOFIXING f.path: ${f.path} | e.sline: ${e.sline} | vfile: $vfile')
 	res := cmdexecute('${os.quoted_path(vexe)} fmt -w ${os.quoted_path(vfile)}')
 	if res != 0 {
 		return error('could not autoformat the example')

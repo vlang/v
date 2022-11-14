@@ -12,7 +12,7 @@ struct App {
 }
 
 pub fn (app App) before_request() {
-	println('[Vweb] $app.Context.req.method $app.Context.req.url')
+	println('[Vweb] ${app.Context.req.method} ${app.Context.req.url}')
 }
 
 fn main() {

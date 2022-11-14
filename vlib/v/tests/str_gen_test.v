@@ -333,7 +333,7 @@ fn create_option_err() ?string {
 }
 
 fn test_option_err() {
-	assert '$create_option_err()' == 'Option(error: this is an error)'
+	assert '${create_option_err()}' == 'Option(error: this is an error)'
 }
 
 fn create_option_none() ?string {
@@ -341,7 +341,7 @@ fn create_option_none() ?string {
 }
 
 fn test_option_none() {
-	assert '$create_option_none()' == 'Option(error: none)'
+	assert '${create_option_none()}' == 'Option(error: none)'
 }
 
 fn create_option_string() ?string {
@@ -349,7 +349,7 @@ fn create_option_string() ?string {
 }
 
 fn test_option_string() {
-	assert '$create_option_string()' == "Option('this is a string')"
+	assert '${create_option_string()}' == "Option('this is a string')"
 }
 
 fn create_option_int() ?int {
@@ -357,7 +357,7 @@ fn create_option_int() ?int {
 }
 
 fn test_option_int() {
-	assert '$create_option_int()' == 'Option(5)'
+	assert '${create_option_int()}' == 'Option(5)'
 }
 
 fn create_option_array() ?[]int {
@@ -365,7 +365,7 @@ fn create_option_array() ?[]int {
 }
 
 fn test_option_array() {
-	assert '$create_option_array()' == 'Option([1, 2, 3])'
+	assert '${create_option_array()}' == 'Option([1, 2, 3])'
 }
 
 fn create_option_struct() ?TestStruct {
@@ -373,7 +373,7 @@ fn create_option_struct() ?TestStruct {
 }
 
 fn test_option_struct() {
-	assert '$create_option_struct()' == 'Option(TestStruct{\n    x: 0\n})'
+	assert '${create_option_struct()}' == 'Option(TestStruct{\n    x: 0\n})'
 }
 
 // struct OptionWrapper {
@@ -422,9 +422,9 @@ fn mr_fn_fn() (fn (int), fn (int)) {
 }
 
 fn test_multi_return() {
-	assert '$mr_int_int()' == '(111, 222)'
-	assert '$mr_fn_fn()' == '(fn (int), fn (int))'
-	assert '$mr_one_two()' == "(One{
+	assert '${mr_int_int()}' == '(111, 222)'
+	assert '${mr_fn_fn()}' == '(fn (int), fn (int))'
+	assert '${mr_one_two()}' == "(One{
     value: 'one'
 }, Two{
     value: 'two'
@@ -434,7 +434,7 @@ fn test_multi_return() {
 		two := Two{}
 		return one, two
 	}
-	assert '$anon_a()' == "(One{
+	assert '${anon_a()}' == "(One{
     value: 'one'
 }, Two{
     value: 'two'

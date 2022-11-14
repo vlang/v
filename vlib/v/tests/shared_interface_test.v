@@ -77,5 +77,5 @@ struct MyOtherImplementor {
 
 fn (m MyOtherImplementor) foo() string {
 	// Different implementation:
-	return 'Hello World ($m.x, $m.y, $m.s)!'
+	return 'Hello World (${m.x}, ${m.y}, ${m.s})!'
 }

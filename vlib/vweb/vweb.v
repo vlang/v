@@ -313,10 +313,10 @@ pub fn (mut ctx Context) set_cookie(cookie http.Cookie) {
 	secure += if cookie.http_only { ' HttpOnly' } else { ' ' }
 	cookie_data << secure
 	if cookie.expires.unix > 0 {
-		cookie_data << 'expires=$cookie.expires.utc_string()'
+		cookie_data << 'expires=${cookie.expires.utc_string()}'
 	}
 	data := cookie_data.join(' ')
-	ctx.add_header('Set-Cookie', '$cookie.name=$cookie.value; $data')
+	ctx.add_header('Set-Cookie', '${cookie.name}=${cookie.value}; $data')
 }
 
 // Sets the response content type
@@ -327,7 +327,7 @@ pub fn (mut ctx Context) set_content_type(typ string) {
 // TODO - test
 // Sets a cookie with a `expire_data`
 pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, expire_date time.Time) {
-	ctx.add_header('Set-Cookie', '$key=$val;  Secure; HttpOnly; expires=$expire_date.utc_string()')
+	ctx.add_header('Set-Cookie', '$key=$val;  Secure; HttpOnly; expires=${expire_date.utc_string()}')
 }
 
 // Gets a cookie by a key
@@ -393,9 +393,9 @@ pub struct RunParams {
 [manualfree]
 pub fn run_at<T>(global_app &T, params RunParams) ! {
 	if params.port <= 0 || params.port > 65535 {
-		return error('invalid port number `$params.port`, it should be between 1 and 65535')
+		return error('invalid port number `${params.port}`, it should be between 1 and 65535')
 	}
-	mut l := net.listen_tcp(params.family, '$params.host:$params.port') or {
+	mut l := net.listen_tcp(params.family, '${params.host}:${params.port}') or {
 		ecode := err.code()
 		return error('failed to listen $ecode $err')
 	}
@@ -413,7 +413,7 @@ pub fn run_at<T>(global_app &T, params RunParams) ! {
 		}
 	}
 	host := if params.host == '' { 'localhost' } else { params.host }
-	println('[Vweb] Running app on http://$host:$params.port/')
+	println('[Vweb] Running app on http://$host:${params.port}/')
 	for {
 		// Create a new app object for each connection, copy global data like db connections
 		mut request_app := &T{}
@@ -430,7 +430,7 @@ pub fn run_at<T>(global_app &T, params RunParams) ! {
 		request_app.Context = global_app.Context // copy the context ref that contains static files map etc
 		mut conn := l.accept() or {
 			// failures should not panic
-			eprintln('accept() failed with error: $err.msg()')
+			eprintln('accept() failed with error: ${err.msg()}')
 			continue
 		}
 		spawn handle_conn<T>(mut conn, mut request_app, routes)
@@ -512,7 +512,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route) {
 	$for method in T.methods {
 		$if method.return_type is Result {
 			route := routes[method.name] or {
-				eprintln('parsed attributes for the `$method.name` are not found, skipping...')
+				eprintln('parsed attributes for the `${method.name}` are not found, skipping...')
 				Route{}
 			}
 
@@ -547,7 +547,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route) {
 				if params := route_matches(url_words, route_words) {
 					method_args := params.clone()
 					if method_args.len != method.args.len {
-						eprintln('warning: uneven parameters count ($method.args.len) in `$method.name`, compared to the vweb route `$method.attrs` ($method_args.len)')
+						eprintln('warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the vweb route `${method.attrs}` (${method_args.len})')
 					}
 					app.$method(method_args)
 					return

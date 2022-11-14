@@ -28,7 +28,7 @@ fn (mut app App) sse() vweb.Result {
 	session.start() or { return app.server_error(501) }
 	session.send_message(data: 'ok') or { return app.server_error(501) }
 	for {
-		data := '{"time": "$time.now().str()", "random_id": "$rand.ulid()"}'
+		data := '{"time": "${time.now().str()}", "random_id": "${rand.ulid()}"}'
 		session.send_message(event: 'ping', data: data) or { return app.server_error(501) }
 		println('> sent event: $data')
 		time.sleep(1 * time.second)

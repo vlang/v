@@ -159,7 +159,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		g.empty_line = true
 		g.writeln('$styp $tmp; /* if prepend */')
 		if g.infix_left_var_name.len > 0 {
-			g.writeln('if ($g.infix_left_var_name) {')
+			g.writeln('if (${g.infix_left_var_name}) {')
 			g.indent++
 		}
 	} else if node.is_expr || g.inside_ternary != 0 {

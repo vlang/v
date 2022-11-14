@@ -48,7 +48,7 @@ pub fn (mut d DotGraph) new_node(nlabel string, cfg NewNodeConfig) {
 		nname = cfg.node_name
 	}
 	if cfg.should_highlight {
-		d.writeln('\t$nname [label="$nlabel",color="blue",height=0.2,width=0.4,fillcolor="#00FF00",tooltip="$cfg.tooltip",shape=oval];')
+		d.writeln('\t$nname [label="$nlabel",color="blue",height=0.2,width=0.4,fillcolor="#00FF00",tooltip="${cfg.tooltip}",shape=oval];')
 	} else {
 		d.writeln('\t$nname [shape="box",label="$nlabel"];')
 	}

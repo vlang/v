@@ -82,9 +82,9 @@ fn (vd VDoc) gen_json(d doc.Doc) string {
 	} else {
 		d.head.merge_comments_without_examples()
 	}
-	jw.write_string('{"module_name":"$d.head.name","description":"${escape(comments)}","contents":')
+	jw.write_string('{"module_name":"${d.head.name}","description":"${escape(comments)}","contents":')
 	jw.write_string(json.encode(d.contents.keys().map(d.contents[it])))
-	jw.write_string(',"generator":"vdoc","time_generated":"$d.time_generated.str()"}')
+	jw.write_string(',"generator":"vdoc","time_generated":"${d.time_generated.str()}"}')
 	return jw.str()
 }
 
@@ -95,7 +95,7 @@ fn (vd VDoc) gen_plaintext(d doc.Doc) string {
 		content_arr := d.head.content.split(' ')
 		pw.writeln('${term.bright_blue(content_arr[0])} ${term.green(content_arr[1])}\n')
 	} else {
-		pw.writeln('$d.head.content\n')
+		pw.writeln('${d.head.content}\n')
 	}
 	if cfg.include_comments {
 		comments := if cfg.include_examples {
@@ -145,7 +145,7 @@ fn (vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Buil
 				}
 			}
 			if cfg.show_loc {
-				pw.writeln('Location: $cn.file_path:${cn.pos.line_nr + 1}\n')
+				pw.writeln('Location: ${cn.file_path}:${cn.pos.line_nr + 1}\n')
 			}
 		}
 		vd.write_plaintext_content(cn.children, mut pw)
@@ -193,7 +193,7 @@ fn (vd VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 		}
 		file_name, content := vd.render_doc(pdoc.d, pdoc.out)
 		output_path := os.join_path(pdoc.out.path, file_name)
-		println('Generating $pdoc.out.typ in "$output_path"')
+		println('Generating ${pdoc.out.typ} in "$output_path"')
 		os.write_file(output_path, content) or { panic(err) }
 	}
 	wg.done()
@@ -313,7 +313,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			cfg.input_path,
 		] }
 	for dirpath in dirs {
-		vd.vprintln('Generating $out.typ docs for "$dirpath"')
+		vd.vprintln('Generating ${out.typ} docs for "$dirpath"')
 		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {
 			vd.emit_generate_err(err)
 			exit(1)
@@ -544,6 +544,6 @@ fn main() {
 			repo_url: ''
 		}
 	}
-	vd.vprintln('Setting output type to "$cfg.output_type"')
+	vd.vprintln('Setting output type to "${cfg.output_type}"')
 	vd.generate_docs_from_file()
 }

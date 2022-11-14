@@ -94,7 +94,7 @@ fn ws_test(family net.AddrFamily, uri string) ! {
 	})
 
 	ws.on_message_ref(fn (mut ws websocket.Client, msg &websocket.Message, mut res WebsocketTestResults) ! {
-		println('client got type: $msg.opcode payload:\n$msg.payload')
+		println('client got type: ${msg.opcode} payload:\n${msg.payload}')
 		if msg.opcode == .text_frame {
 			smessage := msg.payload.bytestr()
 			match smessage {

@@ -541,7 +541,7 @@ fn sumtype_match_with_string_interpolation(code int) string {
 				Color { return "shouldn't happen" }
 				f64 { return "shouldn't happen" }
 				bool { return "shouldn't happen" }
-				IntAndStr { return "it's an IntAndStr: ${bar.foo}_${bar.bar}_${bar.baz.foo}_$bar.baz.bar" }
+				IntAndStr { return "it's an IntAndStr: ${bar.foo}_${bar.bar}_${bar.baz.foo}_${bar.baz.bar}" }
 			}
 		}
 		else {

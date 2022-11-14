@@ -58,7 +58,7 @@ pub fn print_help_for_command(help_cmd Command) ! {
 // help_message returns a generated help message as a `string` for the `Command`.
 pub fn (cmd Command) help_message() string {
 	mut help := ''
-	help += 'Usage: $cmd.full_name()'
+	help += 'Usage: ${cmd.full_name()}'
 	if cmd.flags.len > 0 {
 		help += ' [flags]'
 	}
@@ -66,7 +66,7 @@ pub fn (cmd Command) help_message() string {
 		help += ' [commands]'
 	}
 	if cmd.usage.len > 0 {
-		help += ' $cmd.usage'
+		help += ' ${cmd.usage}'
 	} else {
 		for i in 0 .. cmd.required_args {
 			help += ' <arg$i>'
@@ -74,7 +74,7 @@ pub fn (cmd Command) help_message() string {
 	}
 	help += '\n'
 	if cmd.description != '' {
-		help += '\n$cmd.description\n'
+		help += '\n${cmd.description}\n'
 	}
 	mut abbrev_len := 0
 	mut name_len := cli.min_description_indent_len
@@ -106,10 +106,10 @@ pub fn (cmd Command) help_message() string {
 			prefix := if cmd.posix_mode { '--' } else { '-' }
 			if flag.abbrev != '' {
 				abbrev_indent := ' '.repeat(abbrev_len - flag.abbrev.len - 1) // - 1 for '-' in front
-				flag_name = '-$flag.abbrev$abbrev_indent$prefix$flag.name'
+				flag_name = '-${flag.abbrev}$abbrev_indent$prefix${flag.name}'
 			} else {
 				abbrev_indent := ' '.repeat(abbrev_len)
-				flag_name = '$abbrev_indent$prefix$flag.name'
+				flag_name = '$abbrev_indent$prefix${flag.name}'
 			}
 			mut required := ''
 			if flag.required {
@@ -127,7 +127,7 @@ pub fn (cmd Command) help_message() string {
 		for command in cmd.commands {
 			base_indent := ' '.repeat(cli.base_indent_len)
 			description_indent := ' '.repeat(name_len - command.name.len)
-			help += '$base_indent$command.name$description_indent' +
+			help += '$base_indent${command.name}$description_indent' +
 				pretty_description(command.description, name_len) + '\n'
 		}
 	}

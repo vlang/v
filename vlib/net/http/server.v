@@ -38,12 +38,12 @@ pub fn (mut s Server) listen_and_serve() {
 	if s.handler is DebugHandler {
 		eprintln('Server handler not set, using debug handler')
 	}
-	s.listener = net.listen_tcp(.ip6, ':$s.port') or {
-		eprintln('Listening on :$s.port failed')
+	s.listener = net.listen_tcp(.ip6, ':${s.port}') or {
+		eprintln('Listening on :${s.port} failed')
 		return
 	}
 	s.listener.set_accept_timeout(s.accept_timeout)
-	eprintln('Listening on :$s.port')
+	eprintln('Listening on :${s.port}')
 	s.state = .running
 	for {
 		// break if we have a stop signal
@@ -117,9 +117,9 @@ struct DebugHandler {}
 
 fn (d DebugHandler) handle(req Request) Response {
 	$if debug {
-		eprintln('[$time.now()] $req.method $req.url\n\r$req.header\n\r$req.data - 200 OK')
+		eprintln('[${time.now()}] ${req.method} ${req.url}\n\r${req.header}\n\r${req.data} - 200 OK')
 	} $else {
-		eprintln('[$time.now()] $req.method $req.url - 200')
+		eprintln('[${time.now()}] ${req.method} ${req.url} - 200')
 	}
 	mut r := Response{
 		body: req.data

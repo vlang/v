@@ -335,7 +335,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		}
 	}
 	// The C file we are compiling
-	ccoptions.source_args << '"$v.out_name_c"'
+	ccoptions.source_args << '"${v.out_name_c}"'
 	if v.pref.os == .macos {
 		ccoptions.source_args << '-x none'
 	}
@@ -447,7 +447,7 @@ fn (mut v Builder) setup_output_name() {
 		v.pref.out_name += '.exe'
 	}
 	// Output executable name
-	v.log('cc() isprod=$v.pref.is_prod outname=$v.pref.out_name')
+	v.log('cc() isprod=${v.pref.is_prod} outname=${v.pref.out_name}')
 	if v.pref.is_shared {
 		if !v.pref.out_name.ends_with(v.ccoptions.shared_postfix) {
 			v.pref.out_name += v.ccoptions.shared_postfix
@@ -457,18 +457,18 @@ fn (mut v Builder) setup_output_name() {
 		v.pref.out_name = v.pref.cache_manager.mod_postfix_with_key2cpath(v.pref.path,
 			'.o', v.pref.path) // v.out_name
 		if v.pref.is_verbose {
-			println('Building $v.pref.path to $v.pref.out_name ...')
+			println('Building ${v.pref.path} to ${v.pref.out_name} ...')
 		}
-		v.pref.cache_manager.mod_save(v.pref.path, '.description.txt', v.pref.path, '${v.pref.path:-30} @ $v.pref.cache_manager.vopts\n') or {
+		v.pref.cache_manager.mod_save(v.pref.path, '.description.txt', v.pref.path, '${v.pref.path:-30} @ ${v.pref.cache_manager.vopts}\n') or {
 			panic(err)
 		}
 		// println('v.ast.imports:')
 		// println(v.ast.imports)
 	}
 	if os.is_dir(v.pref.out_name) {
-		verror("'$v.pref.out_name' is a directory")
+		verror("'${v.pref.out_name}' is a directory")
 	}
-	v.ccoptions.o_args << '-o "$v.pref.out_name"'
+	v.ccoptions.o_args << '-o "${v.pref.out_name}"'
 }
 
 pub fn (mut v Builder) cc() {
@@ -476,7 +476,7 @@ pub fn (mut v Builder) cc() {
 		return
 	}
 	if v.pref.is_verbose {
-		println('builder.cc() pref.out_name="$v.pref.out_name"')
+		println('builder.cc() pref.out_name="${v.pref.out_name}"')
 	}
 	if v.pref.only_check_syntax {
 		if v.pref.is_verbose {
@@ -502,7 +502,7 @@ pub fn (mut v Builder) cc() {
 	ends_with_js := v.pref.out_name.ends_with('.js')
 	if ends_with_c || ends_with_js {
 		v.pref.skip_running = true
-		msg_mv := 'os.mv_by_cp $v.out_name_c => $v.pref.out_name'
+		msg_mv := 'os.mv_by_cp ${v.out_name_c} => ${v.pref.out_name}'
 		util.timing_start(msg_mv)
 		// v.out_name_c may be on a different partition than v.out_name
 		os.mv_by_cp(v.out_name_c, v.pref.out_name) or { panic(err) }
@@ -606,8 +606,8 @@ pub fn (mut v Builder) cc() {
 			v.show_c_compiler_output(res)
 		}
 		os.chdir(original_pwd) or {}
-		vcache.dlog('| Builder.' + @FN, '>       v.pref.use_cache: $v.pref.use_cache | v.pref.retry_compilation: $v.pref.retry_compilation')
-		vcache.dlog('| Builder.' + @FN, '>      cmd res.exit_code: $res.exit_code | cmd: $cmd')
+		vcache.dlog('| Builder.' + @FN, '>       v.pref.use_cache: ${v.pref.use_cache} | v.pref.retry_compilation: ${v.pref.retry_compilation}')
+		vcache.dlog('| Builder.' + @FN, '>      cmd res.exit_code: ${res.exit_code} | cmd: $cmd')
 		vcache.dlog('| Builder.' + @FN, '>  response_file_content:\n$response_file_content')
 		if res.exit_code != 0 {
 			if ccompiler.contains('tcc.exe') {
@@ -623,7 +623,7 @@ pub fn (mut v Builder) cc() {
 					tcc_output = res
 					v.pref.default_c_compiler()
 					if v.pref.is_verbose {
-						eprintln('Compilation with tcc failed. Retrying with $v.pref.ccompiler ...')
+						eprintln('Compilation with tcc failed. Retrying with ${v.pref.ccompiler} ...')
 					}
 					continue
 				}
@@ -655,16 +655,16 @@ pub fn (mut v Builder) cc() {
 		break
 	}
 	if v.pref.compress {
-		ret := os.system('strip $v.pref.out_name')
+		ret := os.system('strip ${v.pref.out_name}')
 		if ret != 0 {
 			println('strip failed')
 			return
 		}
 		// Note: upx --lzma can sometimes fail with NotCompressibleException
 		// See https://github.com/vlang/v/pull/3528
-		mut ret2 := os.system('upx --lzma -qqq $v.pref.out_name')
+		mut ret2 := os.system('upx --lzma -qqq ${v.pref.out_name}')
 		if ret2 != 0 {
-			ret2 = os.system('upx -qqq $v.pref.out_name')
+			ret2 = os.system('upx -qqq ${v.pref.out_name}')
 		}
 		if ret2 != 0 {
 			println('upx failed')
@@ -726,7 +726,7 @@ fn (mut b Builder) cc_linux_cross() {
 	cc_args << '-I $sysroot/include '
 	cc_args << others
 	cc_args << '-o "$obj_file"'
-	cc_args << '-c "$b.out_name_c"'
+	cc_args << '-c "${b.out_name_c}"'
 	cc_args << libs
 	b.dump_c_options(cc_args)
 	mut cc_name := 'cc'
@@ -782,8 +782,8 @@ fn (mut c Builder) cc_windows_cross() {
 	}
 	c.pref.out_name = os.quoted_path(c.pref.out_name)
 	mut args := []string{}
-	args << '$c.pref.cflags'
-	args << '-o $c.pref.out_name'
+	args << '${c.pref.cflags}'
+	args << '-o ${c.pref.out_name}'
 	args << '-w -L.'
 	//
 	cflags := c.get_os_cflags()
@@ -882,7 +882,7 @@ fn (mut c Builder) cc_windows_cross() {
 }
 
 fn (mut b Builder) build_thirdparty_obj_files() {
-	b.log('build_thirdparty_obj_files: v.ast.cflags: $b.table.cflags')
+	b.log('build_thirdparty_obj_files: v.ast.cflags: ${b.table.cflags}')
 	for flag in b.get_os_cflags() {
 		if flag.value.ends_with('.o') {
 			rest_of_module_flags := b.get_rest_of_module_cflags(flag)

@@ -109,21 +109,21 @@ pub fn new_client(address string, opt ClientOpt) !&Client {
 pub fn (mut ws Client) connect() ! {
 	ws.assert_not_connected()!
 	ws.set_state(.connecting)
-	ws.logger.info('connecting to host $ws.uri')
+	ws.logger.info('connecting to host ${ws.uri}')
 	ws.conn = ws.dial_socket()!
 	ws.handshake()!
 	ws.set_state(.open)
-	ws.logger.info('successfully connected to host $ws.uri')
+	ws.logger.info('successfully connected to host ${ws.uri}')
 	ws.send_open_event()
 }
 
 // listen listens and processes incoming messages
 pub fn (mut ws Client) listen() ! {
-	mut log := 'Starting client listener, server($ws.is_server)...'
+	mut log := 'Starting client listener, server(${ws.is_server})...'
 	ws.logger.info(log)
 	unsafe { log.free() }
 	defer {
-		ws.logger.info('Quit client listener, server($ws.is_server)...')
+		ws.logger.info('Quit client listener, server(${ws.is_server})...')
 		if ws.state == .open {
 			ws.close(1000, 'closed by client') or {}
 		}
@@ -140,7 +140,7 @@ pub fn (mut ws Client) listen() ! {
 		if ws.state in [.closed, .closing] {
 			return
 		}
-		ws.debug_log('got message: $msg.opcode')
+		ws.debug_log('got message: ${msg.opcode}')
 		match msg.opcode {
 			.text_frame {
 				log = 'read: text'
@@ -330,7 +330,7 @@ pub fn (mut ws Client) write_string(str string) !int {
 pub fn (mut ws Client) close(code int, message string) ! {
 	ws.debug_log('sending close, $code, $message')
 	if ws.state in [.closed, .closing] || ws.conn.sock.handle <= 1 {
-		ws.debug_log('close: Websocket allready closed ($ws.state), $message, $code handle($ws.conn.sock.handle)')
+		ws.debug_log('close: Websocket allready closed (${ws.state}), $message, $code handle(${ws.conn.sock.handle})')
 		err_msg := 'Socket allready closed: $code'
 		return error(err_msg)
 	}

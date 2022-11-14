@@ -538,7 +538,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 	}
 
 	if p_index != pt.len {
-		panic('$p_index % conversion specifiers, but given $pt.len args')
+		panic('$p_index % conversion specifiers, but given ${pt.len} args')
 	}
 
 	return res.str()

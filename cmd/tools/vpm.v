@@ -219,14 +219,14 @@ fn vpm_install_from_vpm(module_names []string) {
 			vpm_update([name])
 			continue
 		}
-		println('Installing module "$name" from "$mod.url" to "$minfo.final_module_path" ...')
+		println('Installing module "$name" from "${mod.url}" to "${minfo.final_module_path}" ...')
 		vcs_install_cmd := supported_vcs_install_cmds[vcs]
-		cmd := '$vcs_install_cmd "$mod.url" "$minfo.final_module_path"'
+		cmd := '$vcs_install_cmd "${mod.url}" "${minfo.final_module_path}"'
 		verbose_println('      command: $cmd')
 		cmdres := os.execute(cmd)
 		if cmdres.exit_code != 0 {
 			errors++
-			eprintln('Failed installing module "$name" to "$minfo.final_module_path" .')
+			eprintln('Failed installing module "$name" to "${minfo.final_module_path}" .')
 			print_failed_cmd(cmd, cmdres)
 			continue
 		}
@@ -239,7 +239,7 @@ fn vpm_install_from_vpm(module_names []string) {
 
 fn print_failed_cmd(cmd string, cmdres os.Result) {
 	verbose_println('Failed command: $cmd')
-	verbose_println('Failed command output:\n$cmdres.output')
+	verbose_println('Failed command output:\n${cmdres.output}')
 }
 
 fn ensure_vcs_is_installed(vcs string) bool {
@@ -306,13 +306,13 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 				return
 			}
 			minfo := mod_name_info(vmod.name)
-			println('Relocating module from "$name" to "$vmod.name" ( "$minfo.final_module_path" ) ...')
+			println('Relocating module from "$name" to "${vmod.name}" ( "${minfo.final_module_path}" ) ...')
 			if os.exists(minfo.final_module_path) {
-				eprintln('Warning module "$minfo.final_module_path" already exsits!')
-				eprintln('Removing module "$minfo.final_module_path" ...')
+				eprintln('Warning module "${minfo.final_module_path}" already exsits!')
+				eprintln('Removing module "${minfo.final_module_path}" ...')
 				os.rmdir_all(minfo.final_module_path) or {
 					errors++
-					println('Errors while removing "$minfo.final_module_path" :')
+					println('Errors while removing "${minfo.final_module_path}" :')
 					println(err)
 					continue
 				}
@@ -329,7 +329,7 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 				}
 				continue
 			}
-			println('Module "$name" relocated to "$vmod.name" successfully.')
+			println('Module "$name" relocated to "${vmod.name}" successfully.')
 			final_module_path = minfo.final_module_path
 			name = vmod.name
 		}
@@ -403,7 +403,7 @@ fn vpm_update(m []string) {
 			print_failed_cmd(vcs_cmd, vcs_res)
 			continue
 		} else {
-			verbose_println('    $vcs_res.output.trim_space()')
+			verbose_println('    ${vcs_res.output.trim_space()}')
 		}
 		resolve_dependencies(modulename, final_module_path, module_names)
 	}
@@ -425,7 +425,7 @@ fn get_outdated() ?[]string {
 			res := os.execute(step)
 			if res.exit_code < 0 {
 				verbose_println('Error command: $step')
-				verbose_println('Error details:\n$res.output')
+				verbose_println('Error details:\n${res.output}')
 				return error('Error while checking latest commits for "$name" .')
 			}
 			if vcs[0] == 'hg' {
@@ -489,7 +489,7 @@ fn vpm_remove(module_names []string) {
 		eprintln('Removing module "$name" ...')
 		verbose_println('removing folder $final_module_path')
 		os.rmdir_all(final_module_path) or {
-			verbose_println('error while removing "$final_module_path": $err.msg()')
+			verbose_println('error while removing "$final_module_path": ${err.msg()}')
 		}
 		// delete author directory if it is empty
 		author := name.split('.')[0]
@@ -500,7 +500,7 @@ fn vpm_remove(module_names []string) {
 		if os.is_dir_empty(author_dir) {
 			verbose_println('removing author folder $author_dir')
 			os.rmdir(author_dir) or {
-				verbose_println('error while removing "$author_dir": $err.msg()')
+				verbose_println('error while removing "$author_dir": ${err.msg()}')
 			}
 		}
 	}
@@ -510,15 +510,15 @@ fn valid_final_path_of_existing_module(modulename string) ?string {
 	name := if mod := get_mod_by_url(modulename) { mod.name } else { modulename }
 	minfo := mod_name_info(name)
 	if !os.exists(minfo.final_module_path) {
-		eprintln('No module with name "$minfo.mname_normalised" exists at $minfo.final_module_path')
+		eprintln('No module with name "${minfo.mname_normalised}" exists at ${minfo.final_module_path}')
 		return none
 	}
 	if !os.is_dir(minfo.final_module_path) {
-		eprintln('Skipping "$minfo.final_module_path", since it is not a folder.')
+		eprintln('Skipping "${minfo.final_module_path}", since it is not a folder.')
 		return none
 	}
 	vcs_used_in_dir(minfo.final_module_path) or {
-		eprintln('Skipping "$minfo.final_module_path", since it does not use a supported vcs.')
+		eprintln('Skipping "${minfo.final_module_path}", since it does not use a supported vcs.')
 		return none
 	}
 	return minfo.final_module_path
@@ -526,7 +526,7 @@ fn valid_final_path_of_existing_module(modulename string) ?string {
 
 fn ensure_vmodules_dir_exist() {
 	if !os.is_dir(settings.vmodules_path) {
-		println('Creating "$settings.vmodules_path/" ...')
+		println('Creating "${settings.vmodules_path}/" ...')
 		os.mkdir(settings.vmodules_path) or { panic(err) }
 	}
 }
@@ -601,7 +601,7 @@ fn get_all_modules() []string {
 	url := get_working_server_url()
 	r := http.get(url) or { panic(err) }
 	if r.status_code != 200 {
-		eprintln('Failed to search vpm.vlang.io. Status code: $r.status_code')
+		eprintln('Failed to search vpm.vlang.io. Status code: ${r.status_code}')
 		exit(1)
 	}
 	s := r.body
@@ -656,7 +656,7 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 		}
 	}
 	if deps.len > 0 {
-		println('Resolving $deps.len dependencies for module "$name" ...')
+		println('Resolving ${deps.len} dependencies for module "$name" ...')
 		verbose_println('Found dependencies: $deps')
 		vpm_install(deps, Source.vpm)
 	}
@@ -750,7 +750,7 @@ fn get_module_meta_info(name string) ?Mod {
 			continue
 		}
 		if r.status_code != 200 {
-			errors << 'Skipping module "$name", since "$server_url" responded with $r.status_code http status code. Please try again later.'
+			errors << 'Skipping module "$name", since "$server_url" responded with ${r.status_code} http status code. Please try again later.'
 			continue
 		}
 		s := r.body
@@ -778,9 +778,9 @@ fn vpm_show(module_names []string) {
 		if module_name !in installed_modules {
 			module_meta_info := get_module_meta_info(module_name) or { continue }
 			print('
-Name: $module_meta_info.name
-Homepage: $module_meta_info.url
-Downloads: $module_meta_info.nr_downloads
+Name: ${module_meta_info.name}
+Homepage: ${module_meta_info.url}
+Downloads: ${module_meta_info.nr_downloads}
 Installed: False
 --------
 ')
@@ -788,12 +788,12 @@ Installed: False
 		}
 		path := os.join_path(os.vmodules_dir(), module_name.replace('.', os.path_separator))
 		mod := vmod.from_file(os.join_path(path, 'v.mod')) or { continue }
-		print('Name: $mod.name
-Version: $mod.version
-Description: $mod.description
-Homepage: $mod.repo_url
-Author: $mod.author
-License: $mod.license
+		print('Name: ${mod.name}
+Version: ${mod.version}
+Description: ${mod.description}
+Homepage: ${mod.repo_url}
+Author: ${mod.author}
+License: ${mod.license}
 Location: $path
 Requires: ${mod.dependencies.join(', ')}
 --------

@@ -21,7 +21,7 @@ pub fn (mut l FileLock) acquire() ! {
 	}
 	fd := open(l.name)
 	if fd == -1 {
-		return error_with_code('cannot create lock file $l.name', -1)
+		return error_with_code('cannot create lock file ${l.name}', -1)
 	}
 	l.fd = fd
 }

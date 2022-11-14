@@ -155,7 +155,7 @@ pub fn (graph &DepGraph) display() string {
 	mut out := []string{}
 	for node in graph.nodes {
 		for dep in node.deps {
-			out << ' * $node.name -> $dep'
+			out << ' * ${node.name} -> $dep'
 		}
 	}
 	return out.join('\n')

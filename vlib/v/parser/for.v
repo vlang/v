@@ -56,7 +56,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		if p.tok.kind != .semicolon {
 			// Disallow `for i := 0; i++; i < ...`
 			if p.tok.kind == .name && p.peek_tok.kind in [.inc, .dec] {
-				return p.error('cannot use $p.tok.lit$p.peek_tok.kind as value')
+				return p.error('cannot use ${p.tok.lit}${p.peek_tok.kind} as value')
 			}
 			comments << p.eat_comments()
 			cond = p.expr(0)
@@ -140,7 +140,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		comments << p.eat_comments()
 		p.check(.key_in)
 		if p.tok.kind == .name && p.tok.lit in [key_var_name, val_var_name] {
-			return p.error('in a `for x in array` loop, the key or value iteration variable `$p.tok.lit` can not be the same as the array variable')
+			return p.error('in a `for x in array` loop, the key or value iteration variable `${p.tok.lit}` can not be the same as the array variable')
 		}
 		comments << p.eat_comments()
 		// arr_expr

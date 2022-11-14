@@ -193,13 +193,13 @@ pub fn (b &Benchmark) total_message(msg string) string {
 	the_label := term.colorize(term.gray, msg)
 	mut tmsg := '${term.colorize(term.bold, 'Summary for $the_label:')} '
 	if b.nfail > 0 {
-		tmsg += term.colorize(term.bold, term.colorize(term.red, '$b.nfail failed')) + ', '
+		tmsg += term.colorize(term.bold, term.colorize(term.red, '${b.nfail} failed')) + ', '
 	}
 	if b.nok > 0 {
-		tmsg += term.colorize(term.bold, term.colorize(term.green, '$b.nok passed')) + ', '
+		tmsg += term.colorize(term.bold, term.colorize(term.green, '${b.nok} passed')) + ', '
 	}
 	if b.nskip > 0 {
-		tmsg += term.colorize(term.bold, term.colorize(term.yellow, '$b.nskip skipped')) + ', '
+		tmsg += term.colorize(term.bold, term.colorize(term.yellow, '${b.nskip} skipped')) + ', '
 	}
 	mut njobs_label := ''
 	if b.njobs > 0 {
@@ -209,7 +209,7 @@ pub fn (b &Benchmark) total_message(msg string) string {
 			njobs_label = ', on ${term.colorize(term.bold, b.njobs.str())} parallel jobs'
 		}
 	}
-	tmsg += '$b.ntotal total. ${term.colorize(term.bold, 'Runtime:')} ${b.bench_timer.elapsed().microseconds() / 1000} ms${njobs_label}.\n'
+	tmsg += '${b.ntotal} total. ${term.colorize(term.bold, 'Runtime:')} ${b.bench_timer.elapsed().microseconds() / 1000} ms${njobs_label}.\n'
 	return tmsg
 }
 

@@ -13,7 +13,7 @@ pub fn (mut v Builder) find_win_cc() ! {
 	ccompiler_version_res := os.execute('${os.quoted_path(v.pref.ccompiler)} -v')
 	if ccompiler_version_res.exit_code != 0 {
 		if v.pref.is_verbose {
-			println('$v.pref.ccompiler not found, looking for msvc...')
+			println('${v.pref.ccompiler} not found, looking for msvc...')
 		}
 		find_msvc(v.pref.m64) or {
 			if v.pref.is_verbose {

@@ -13,7 +13,7 @@ const vexe = os.join_path(vdir, 'v')
 const sleep_period = 120
 
 fn elog(msg string) {
-	eprintln('$time.now().format_ss_micro() $msg')
+	eprintln('${time.now().format_ss_micro()} $msg')
 }
 
 fn delay() {
@@ -29,7 +29,7 @@ fn main() {
 
 	os.chdir(fast_dir)!
 
-	elog('fast_job start in os.getwd(): $os.getwd()')
+	elog('fast_job start in os.getwd(): ${os.getwd()}')
 	defer {
 		elog('fast_job end')
 	}
@@ -41,7 +41,7 @@ fn main() {
 	for {
 		elog('------------------- Checking for updates ... -------------------')
 		res_pull := os.execute('git pull --rebase')
-		elog('> res_pull.output: $res_pull.output')
+		elog('> res_pull.output: ${res_pull.output}')
 		if res_pull.exit_code != 0 {
 			elog('Git pull failed. You may have uncommitted changes?')
 			delay()

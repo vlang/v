@@ -9,7 +9,7 @@ import v.util
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	if node.auto_locked != '' {
-		g.writeln('sync__RwMutex_lock(&$node.auto_locked->mtx);')
+		g.writeln('sync__RwMutex_lock(&${node.auto_locked}->mtx);')
 	}
 	match node.op {
 		.arrow {
@@ -50,7 +50,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	}
 	if node.auto_locked != '' {
 		g.writeln(';')
-		g.write('sync__RwMutex_unlock(&$node.auto_locked->mtx)')
+		g.write('sync__RwMutex_unlock(&${node.auto_locked}->mtx)')
 	}
 }
 
@@ -101,7 +101,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.expr(node.left)
 		g.write(')')
 		arrow := if left.typ.is_ptr() { '->' } else { '.' }
-		g.write('${arrow}len $node.op 0')
+		g.write('${arrow}len ${node.op} 0')
 	} else if has_defined_eq_operator {
 		if node.op == .ne {
 			g.write('!')
@@ -589,7 +589,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	cmp_op := if node.op == .key_is { '==' } else { '!=' }
 	g.write('(')
 	if is_aggregate {
-		g.write('$node.left')
+		g.write('${node.left}')
 	} else {
 		g.expr(node.left)
 	}
@@ -620,7 +620,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 		g.write('_typ $cmp_op ')
 	}
 	if node.right is ast.None {
-		g.write('$ast.none_type.idx() /* none */')
+		g.write('${ast.none_type.idx()} /* none */')
 	} else {
 		g.expr(node.right)
 	}
@@ -822,7 +822,7 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 			g.expr(node.left)
 			g.writeln(');')
 			g.set_current_pos_as_last_stmt_pos()
-			g.write('$cur_line $tmp $node.op.str() ')
+			g.write('$cur_line $tmp ${node.op.str()} ')
 			g.infix_left_var_name = if node.op == .and { tmp } else { '!$tmp' }
 			g.expr(node.right)
 			g.infix_left_var_name = ''
@@ -836,14 +836,14 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 		cur_line := g.go_before_stmt(0).trim_space()
 		g.empty_line = true
 		if g.infix_left_var_name.len > 0 {
-			g.write('bool $tmp = (($g.infix_left_var_name) $node.op.str() ')
+			g.write('bool $tmp = ((${g.infix_left_var_name}) ${node.op.str()} ')
 		} else {
 			g.write('bool $tmp = (')
 		}
 		g.expr(node.left)
 		g.writeln(');')
 		g.set_current_pos_as_last_stmt_pos()
-		g.write('$cur_line $tmp $node.op.str() ')
+		g.write('$cur_line $tmp ${node.op.str()} ')
 		g.infix_left_var_name = if node.op == .and { tmp } else { '!$tmp' }
 		g.expr(node.right)
 		g.infix_left_var_name = ''
@@ -862,7 +862,7 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		g.write('*')
 	}
 	g.expr(node.left)
-	g.write(' $node.op.str() ')
+	g.write(' ${node.op.str()} ')
 	g.expr_with_cast(node.right, node.right_type, node.left_type)
 }
 

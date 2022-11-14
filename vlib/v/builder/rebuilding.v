@@ -77,7 +77,7 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 				for mm in b.mod_invalidates_mods[k] {
 					m[mm] = true
 				}
-				eprintln('> module `$k` invalidates: $m.keys()')
+				eprintln('> module `$k` invalidates: ${m.keys()}')
 				for fpath in v {
 					eprintln('         $fpath')
 				}
@@ -199,7 +199,7 @@ fn (mut b Builder) rebuild_cached_module(vexe string, imp_path string) string {
 		}
 		b.v_build_module(vexe, imp_path)
 		rebuilded_o := b.pref.cache_manager.mod_exists(imp_path, '.o', imp_path) or {
-			panic('could not rebuild cache module for $imp_path, error: $err.msg()')
+			panic('could not rebuild cache module for $imp_path, error: ${err.msg()}')
 		}
 		return rebuilded_o
 	}
@@ -217,7 +217,7 @@ fn (mut b Builder) handle_usecache(vexe string) {
 	for ast_file in b.parsed_files {
 		if b.pref.is_test && ast_file.mod.name != 'main' {
 			imp_path := b.find_module_path(ast_file.mod.name, ast_file.path) or {
-				verror('cannot import module "$ast_file.mod.name" (not found)')
+				verror('cannot import module "${ast_file.mod.name}" (not found)')
 				break
 			}
 			obj_path := b.rebuild_cached_module(vexe, imp_path)
@@ -361,7 +361,7 @@ pub fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) 
 	vtmp := os.vtmp_dir()
 	mut uniq := ''
 	if !b.pref.reuse_tmpc {
-		uniq = '.$rand.u64()'
+		uniq = '.${rand.u64()}'
 	}
 	fname := os.file_name(os.real_path(base_file_name)) + '$uniq$postfix'
 	return os.real_path(os.join_path(vtmp, fname))

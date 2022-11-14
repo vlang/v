@@ -128,7 +128,7 @@ pub fn (mut l Log) set_output_path(output_file_path string) {
 	l.output_target = .file
 	l.output_file_name = os.join_path(os.real_path(output_file_path), l.output_label)
 	ofile := os.open_append(l.output_file_name) or {
-		panic('error while opening log file $l.output_file_name for appending')
+		panic('error while opening log file ${l.output_file_name} for appending')
 	}
 	l.ofile = ofile
 }
@@ -185,7 +185,7 @@ pub fn (mut l Log) fatal(s string) {
 		l.send_output(s, .fatal)
 		l.ofile.close()
 	}
-	panic('$l.output_label: $s')
+	panic('${l.output_label}: $s')
 }
 
 // error logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.error` category.

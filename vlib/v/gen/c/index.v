@@ -116,7 +116,7 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		}
 		g.write('new_array_from_c_array${noscan}(')
 		ctype := g.typ(info.elem_type)
-		g.write('$info.size, $info.size, sizeof($ctype), ')
+		g.write('${info.size}, ${info.size}, sizeof($ctype), ')
 		if node.left_type.is_ptr() {
 			g.write('*')
 		}
@@ -136,7 +136,7 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		g.expr(range.high)
 	} else if sym.kind == .array_fixed {
 		info := sym.info as ast.ArrayFixed
-		g.write('$info.size')
+		g.write('${info.size}')
 	} else if sym.kind == .array {
 		if node.left_type.is_ptr() {
 			g.write('$tmp_left->')
@@ -357,7 +357,7 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		// bounds check
 		g.write('v_fixed_index(')
 		g.expr(node.index)
-		g.write(', $info.size)')
+		g.write(', ${info.size})')
 	}
 	g.write(']')
 	if is_fn_index_call {

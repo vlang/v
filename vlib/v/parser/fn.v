@@ -11,11 +11,11 @@ import os
 pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.pos()
 	mut fn_name := if language == .c {
-		'C.$p.check_name()'
+		'C.${p.check_name()}'
 	} else if language == .js {
-		'JS.$p.check_js_name()'
+		'JS.${p.check_js_name()}'
 	} else if mod.len > 0 {
-		'${mod}.$p.check_name()'
+		'${mod}.${p.check_name()}'
 	} else {
 		p.check_name()
 	}
@@ -357,7 +357,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if !are_args_type_only {
 		for param in params {
 			if p.scope.known_var(param.name) {
-				p.error_with_pos('redefinition of parameter `$param.name`', param.pos)
+				p.error_with_pos('redefinition of parameter `${param.name}`', param.pos)
 				return ast.FnDecl{
 					scope: 0
 				}
@@ -424,7 +424,7 @@ run them via `v file.v` instead',
 				&& elem_type_sym.language == .v
 		}
 		if is_non_local {
-			p.error_with_pos('cannot define new methods on non-local type $type_sym.name',
+			p.error_with_pos('cannot define new methods on non-local type ${type_sym.name}',
 				rec.type_pos)
 			return ast.FnDecl{
 				scope: 0
@@ -715,7 +715,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			return_type = p.parse_type()
 			return_type_pos = return_type_pos.extend(p.tok.pos())
 		} else if p.tok.kind != .lcbr {
-			p.error_with_pos('expected return type, not $p.tok for anonymous function',
+			p.error_with_pos('expected return type, not ${p.tok} for anonymous function',
 				p.tok.pos())
 		}
 	}
@@ -723,7 +723,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	no_body := p.tok.kind != .lcbr
 	same_line = p.tok.line_nr == p.prev_tok.line_nr
 	if no_body && same_line {
-		p.unexpected(got: '$p.tok after anonymous function signature', expecting: '`{`')
+		p.unexpected(got: '${p.tok} after anonymous function signature', expecting: '`{`')
 	}
 	mut label_names := []string{}
 	mut func := ast.Fn{
@@ -732,7 +732,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		return_type: return_type
 		is_method: false
 	}
-	name := 'anon_fn_${p.unique_prefix}_${p.table.fn_type_signature(func)}_$p.tok.pos'
+	name := 'anon_fn_${p.unique_prefix}_${p.table.fn_type_signature(func)}_${p.tok.pos}'
 	keep_fn_name := p.cur_fn_name
 	p.cur_fn_name = name
 	if p.tok.kind == .lcbr {
@@ -752,7 +752,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		for arg in args {
 			for var in inherited_vars {
 				if arg.name == var.name {
-					p.error_with_pos('the parameter name `$arg.name` conflicts with the captured value name',
+					p.error_with_pos('the parameter name `${arg.name}` conflicts with the captured value name',
 						arg.pos)
 					break
 				}
@@ -916,7 +916,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				if !p.pref.is_fmt {
 					p.warn(
 						'`fn f(x, y Type)` syntax has been deprecated and will soon be removed. ' +
-						'Use `fn f(x Type, y Type)` instead. You can run `v fmt -w "$p.scanner.file_path"` to automatically fix your code.')
+						'Use `fn f(x Type, y Type)` instead. You can run `v fmt -w "${p.scanner.file_path}"` to automatically fix your code.')
 				}
 				p.next()
 				arg_pos << p.tok.pos()
@@ -1092,7 +1092,7 @@ fn (mut p Parser) check_fn_mutable_arguments(typ ast.Type, pos token.Pos) {
 	}
 	p.error_with_pos(
 		'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\n' +
-		'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`',
+		'return values instead: `fn foo(mut n ${sym.name}) {` => `fn foo(n ${sym.name}) ${sym.name} {`',
 		pos)
 }
 
@@ -1108,7 +1108,7 @@ fn (mut p Parser) check_fn_atomic_arguments(typ ast.Type, pos token.Pos) {
 	sym := p.table.sym(typ)
 	if sym.kind !in [.u32, .int, .u64] {
 		p.error_with_pos('atomic arguments are only allowed for 32/64 bit integers\n' +
-			'use shared arguments instead: `fn foo(atomic n $sym.name) {` => `fn foo(shared n $sym.name) {`',
+			'use shared arguments instead: `fn foo(atomic n ${sym.name}) {` => `fn foo(shared n ${sym.name}) {`',
 			pos)
 	}
 }

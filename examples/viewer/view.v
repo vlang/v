@@ -532,7 +532,7 @@ fn frame(mut app App) {
 			scale_str := '${app.scale:.2}'
 			app.bl.clear()
 			app.bl.write_string('$num/$of_num')
-			app.bl.write_string(' [${app.img_w}x$app.img_h]=>[${x_screen}x$y_screen]')
+			app.bl.write_string(' [${app.img_w}x${app.img_h}]=>[${x_screen}x$y_screen]')
 			app.bl.write_string(' ${app.item_list.lst[app.item_list.item_index].name}')
 			app.bl.write_string(' scale: $scale_str rotation: $rotation_angle')
 			draw_text(mut app, app.bl.str(), 10, 10, 20)
@@ -723,7 +723,7 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 
 			// full screen
 			if ev.key_code == .f {
-				println('Full screen state: $sapp.is_fullscreen()')
+				println('Full screen state: ${sapp.is_fullscreen()}')
 				sapp.toggle_fullscreen()
 			}
 		}

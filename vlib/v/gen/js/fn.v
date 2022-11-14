@@ -330,7 +330,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 		g.expr(it.left)
 		g.write('.promise')
 	} else {
-		mut name := util.no_dots('${receiver_type_name}_$node.name')
+		mut name := util.no_dots('${receiver_type_name}_${node.name}')
 
 		name = g.generic_fn_name(node.concrete_types, name)
 		g.write('${name}(')
@@ -516,16 +516,16 @@ fn (mut g JsGen) is_used_by_main(node ast.FnDecl) bool {
 		fkey := node.fkey()
 		is_used_by_main = g.table.used_fns[fkey]
 		$if trace_skip_unused_fns ? {
-			println('> is_used_by_main: $is_used_by_main | node.name: $node.name | fkey: $fkey | node.is_method: $node.is_method')
+			println('> is_used_by_main: $is_used_by_main | node.name: ${node.name} | fkey: $fkey | node.is_method: ${node.is_method}')
 		}
 		if !is_used_by_main {
 			$if trace_skip_unused_fns_in_js_code ? {
-				g.writeln('// trace_skip_unused_fns_in_js_code, $node.name, fkey: $fkey')
+				g.writeln('// trace_skip_unused_fns_in_js_code, ${node.name}, fkey: $fkey')
 			}
 		}
 	} else {
 		$if trace_skip_unused_fns_in_js_code ? {
-			g.writeln('// trace_skip_unused_fns_in_js_code, $node.name, fkey: $node.fkey()')
+			g.writeln('// trace_skip_unused_fns_in_js_code, ${node.name}, fkey: ${node.fkey()}')
 		}
 	}
 	return is_used_by_main
@@ -594,7 +594,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 			if g.pref.is_verbose {
 				syms := concrete_types.map(g.table.sym(it))
 				the_type := syms.map(it.name).join(', ')
-				println('gen fn `$node.name` for type `$the_type`')
+				println('gen fn `${node.name}` for type `$the_type`')
 			}
 			g.cur_concrete_types = concrete_types
 			g.gen_method_decl(node, typ)
@@ -631,7 +631,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		g.push_pub_var(name)
 	}
 	if it.language == .js && it.is_method {
-		g.writeln('${g.typ(it.receiver.typ)}.prototype.$it.name = ')
+		g.writeln('${g.typ(it.receiver.typ)}.prototype.${it.name} = ')
 	}
 
 	mut has_go := fn_has_go(it) || it.has_await
@@ -712,7 +712,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	for attr in it.attrs {
 		match attr.name {
 			'export' {
-				g.writeln('globalThis.$attr.arg = ${g.js_name(it.name)};')
+				g.writeln('globalThis.${attr.arg} = ${g.js_name(it.name)};')
 			}
 			'wasm_export' {
 				mut x := g.wasm_export[attr.arg] or { []string{} }
@@ -830,7 +830,7 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 
 	for inherited in fun.inherited_vars {
 		if !inherited.is_mut {
-			g.writeln('let $inherited.name = ${inherited2copy[inherited.name]};')
+			g.writeln('let ${inherited.name} = ${inherited2copy[inherited.name]};')
 		}
 	}
 	g.stmts(it.stmts)

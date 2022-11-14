@@ -280,7 +280,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) !string {
 		break
 	}
 	if client == unsafe { nil } {
-		eprintln('coult not create a tcp client connection to $localserver after $config.retries retries')
+		eprintln('coult not create a tcp client connection to $localserver after ${config.retries} retries')
 		exit(1)
 	}
 	client.set_read_timeout(tcp_r_timeout)
@@ -288,12 +288,12 @@ fn simple_tcp_client(config SimpleTcpClientConfig) !string {
 	defer {
 		client.close() or {}
 	}
-	message := 'GET $config.path HTTP/1.1
-Host: $config.host
-User-Agent: $config.agent
+	message := 'GET ${config.path} HTTP/1.1
+Host: ${config.host}
+User-Agent: ${config.agent}
 Accept: */*
-$config.headers
-$config.content'
+${config.headers}
+${config.content}'
 	$if debug_net_socket_client ? {
 		eprintln('sending:\n$message')
 	}

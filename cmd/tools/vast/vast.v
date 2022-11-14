@@ -60,7 +60,7 @@ fn (ctx Context) write_file_or_print(file string) {
 	if ctx.is_print {
 		println(json(file))
 	} else {
-		println('$time.now(): AST written to: ' + json_file(file))
+		println('${time.now()}: AST written to: ' + json_file(file))
 	}
 }
 
@@ -224,7 +224,7 @@ fn (t Tree) type_node(typ ast.Type) &Node {
 
 // token type node
 fn (t Tree) token_node(tok_kind token.Kind) &Node {
-	return t.string_node('token:${int(tok_kind)}($tok_kind.str())')
+	return t.string_node('token:${int(tok_kind)}(${tok_kind.str()})')
 }
 
 // enum type node

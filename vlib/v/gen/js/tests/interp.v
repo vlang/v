@@ -153,7 +153,7 @@ struct Sss {
 }
 
 fn (s Sss) str() string {
-	return '[$s.v1, ${s.v2:.3f}]'
+	return '[${s.v1}, ${s.v2:.3f}]'
 }
 
 fn string_interpolation_str_evaluation() {

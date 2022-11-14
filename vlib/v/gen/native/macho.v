@@ -340,7 +340,7 @@ pub fn (mut g Gen) generate_macho_object_header() {
 		g.write32(0)
 	}
 	if g.pref.is_verbose {
-		println('commands size = $g.buf.len')
+		println('commands size = ${g.buf.len}')
 		if g.buf.len != 0x138 {
 			println('macho: invalid header size')
 		}
@@ -441,7 +441,7 @@ pub fn (mut g Gen) zeroes(n int) {
 
 fn (mut g Gen) write_relocs() {
 	if g.pref.is_verbose {
-		println('relocs at $g.buf.len should be 0x160')
+		println('relocs at ${g.buf.len} should be 0x160')
 	}
 	g.write32(0x8)
 	g.write32(0x2d000003)

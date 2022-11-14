@@ -634,7 +634,7 @@ struct HeaderKeyError {
 }
 
 pub fn (err HeaderKeyError) msg() string {
-	return "Invalid header key: '$err.header'"
+	return "Invalid header key: '${err.header}'"
 }
 
 pub fn (err HeaderKeyError) code() int {

@@ -14,7 +14,7 @@ fn test_tracing() {
 		}
 		res := os.execute('${os.quoted_path(vexe)} -trace-calls run ${os.quoted_path(fpath)}')
 		if res.exit_code != 0 {
-			eprintln('> compilation output:\n$res.output')
+			eprintln('> compilation output:\n${res.output}')
 			assert res.exit_code == 0, 'compilation of $fpath failed'
 		}
 		lines := os.read_lines(should_match_fpath) or {

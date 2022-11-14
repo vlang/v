@@ -37,10 +37,10 @@ fn (c Context) compare_versions() {
 	// Input is validated at this point...
 	// Cleanup artifacts from previous runs of this tool:
 	scripting.chdir(c.vgo.workdir)
-	scripting.run('rm -rf "$c.a" "$c.b" "$c.vc" ')
+	scripting.run('rm -rf "${c.a}" "${c.b}" "${c.vc}" ')
 	// clone the VC source *just once per comparison*, and reuse it:
-	scripting.run('git clone --quiet "$c.vgo.vc_repo_url" "$c.vc" ')
-	println('Comparing V performance of commit $c.commit_before (before) vs commit $c.commit_after (after) ...')
+	scripting.run('git clone --quiet "${c.vgo.vc_repo_url}" "${c.vc}" ')
+	println('Comparing V performance of commit ${c.commit_before} (before) vs commit ${c.commit_after} (after) ...')
 	c.prepare_v(c.b, c.commit_before)
 	c.prepare_v(c.a, c.commit_after)
 	scripting.chdir(c.vgo.workdir)
@@ -93,9 +93,9 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 	vgit_context.compile_oldv_if_needed()
 	scripting.chdir(cdir)
 	println('Making a v compiler in $cdir')
-	scripting.run('./v -cc $cc       -o v     $vgit_context.vvlocation')
+	scripting.run('./v -cc $cc       -o v     ${vgit_context.vvlocation}')
 	println('Making a vprod compiler in $cdir')
-	scripting.run('./v -cc $cc -prod -o vprod $vgit_context.vvlocation')
+	scripting.run('./v -cc $cc -prod -o vprod ${vgit_context.vvlocation}')
 	println('Stripping and compressing cv v and vprod binaries in $cdir')
 	scripting.run('cp    cv     cv_stripped')
 	scripting.run('cp     v      v_stripped')
@@ -135,18 +135,18 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 	println('Compare v performance when doing the following commands ($label):')
 	mut source_location_a := ''
 	mut source_location_b := ''
-	if os.exists('$c.a/cmd/v') {
+	if os.exists('${c.a}/cmd/v') {
 		source_location_a = 'cmd/v'
 	} else {
-		source_location_a = if os.exists('$c.a/v.v') { 'v.v       ' } else { 'compiler/ ' }
+		source_location_a = if os.exists('${c.a}/v.v') { 'v.v       ' } else { 'compiler/ ' }
 	}
-	if os.exists('$c.b/cmd/v') {
+	if os.exists('${c.b}/cmd/v') {
 		source_location_b = 'cmd/v'
 	} else {
-		source_location_b = if os.exists('$c.b/v.v') { 'v.v       ' } else { 'compiler/ ' }
+		source_location_b = if os.exists('${c.b}/v.v') { 'v.v       ' } else { 'compiler/ ' }
 	}
-	timestamp_a, _ := vgit.line_to_timestamp_and_commit(scripting.run('cd $c.a/ ; git rev-list -n1 --timestamp HEAD'))
-	timestamp_b, _ := vgit.line_to_timestamp_and_commit(scripting.run('cd $c.b/ ; git rev-list -n1 --timestamp HEAD'))
+	timestamp_a, _ := vgit.line_to_timestamp_and_commit(scripting.run('cd ${c.a}/ ; git rev-list -n1 --timestamp HEAD'))
+	timestamp_b, _ := vgit.line_to_timestamp_and_commit(scripting.run('cd ${c.b}/ ; git rev-list -n1 --timestamp HEAD'))
 	debug_option_a := if timestamp_a > 1570877641 { '-cg    ' } else { '-debug ' }
 	debug_option_b := if timestamp_b > 1570877641 { '-cg    ' } else { '-debug ' }
 	mut hyperfine_commands_arguments := []string{}
@@ -171,8 +171,8 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 	}
 	// /////////////////////////////////////////////////////////////////////////////
 	cmd_stats_file := os.real_path([c.vgo.workdir, 'v_performance_stats_${label}.json'].join(os.path_separator))
-	comparison_cmd := 'hyperfine $c.hyperfineopts ' + '--export-json $cmd_stats_file ' +
-		'--time-unit millisecond ' + '--style full --warmup $c.warmups ' +
+	comparison_cmd := 'hyperfine ${c.hyperfineopts} ' + '--export-json $cmd_stats_file ' +
+		'--time-unit millisecond ' + '--style full --warmup ${c.warmups} ' +
 		hyperfine_commands_arguments.join(' ')
 	// /////////////////////////////////////////////////////////////////////////////
 	if c.vgo.verbose {

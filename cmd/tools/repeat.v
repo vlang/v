@@ -346,7 +346,7 @@ fn (mut context Context) show_diff_summary() {
 		}
 		return 0
 	})
-	println('Summary (commands are ordered by ascending mean time), after $context.series series of $context.count repetitions:')
+	println('Summary (commands are ordered by ascending mean time), after ${context.series} series of ${context.count} repetitions:')
 	base := context.results[0].atiming.average
 	mut first_cmd_percentage := f64(100.0)
 	mut first_marker := ''
@@ -357,14 +357,14 @@ fn (mut context Context) show_diff_summary() {
 			first_marker = bold('>')
 			first_cmd_percentage = cpercent
 		}
-		println(' $first_marker${(i + 1):3} | ${cpercent:5.1f}% slower | ${r.cmd:-57s} | $r.atiming')
+		println(' $first_marker${(i + 1):3} | ${cpercent:5.1f}% slower | ${r.cmd:-57s} | ${r.atiming}')
 	}
 	$if debugcontext ? {
 		println('context: $context')
 	}
 	if int(base) > context.fail_on_maxtime {
 		flushed_print(performance_regression_label)
-		println('average time: ${base:6.1f} ms > $context.fail_on_maxtime ms threshold.')
+		println('average time: ${base:6.1f} ms > ${context.fail_on_maxtime} ms threshold.')
 		exit(2)
 	}
 	if context.fail_on_regress_percent == max_fail_percent || context.results.len < 2 {

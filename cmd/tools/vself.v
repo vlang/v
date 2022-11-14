@@ -43,7 +43,7 @@ fn main() {
 fn compile(vroot string, cmd string) {
 	result := os.execute_or_exit(cmd)
 	if result.exit_code != 0 {
-		eprintln('cannot compile to `$vroot`: \n$result.output')
+		eprintln('cannot compile to `$vroot`: \n${result.output}')
 		exit(1)
 	}
 	if result.output.len > 0 {
@@ -77,7 +77,7 @@ fn backup_old_version_and_rename_newer(short_v_name string) !bool {
 
 	list_folder(short_v_name, 'before:', 'removing $bak_file ...')
 	if os.exists(bak_file) {
-		os.rm(bak_file) or { errors << 'failed removing $bak_file: $err.msg()' }
+		os.rm(bak_file) or { errors << 'failed removing $bak_file: ${err.msg()}' }
 	}
 
 	list_folder(short_v_name, '', 'moving $v_file to $bak_file ...')

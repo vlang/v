@@ -56,7 +56,7 @@ fn start_client() ! {
 	ws.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ! {
 		if msg.payload.len > 0 {
 			message := msg.payload.bytestr()
-			println('client got type: $msg.opcode payload:\n$message')
+			println('client got type: ${msg.opcode} payload:\n$message')
 		}
 	})
 	// you can add any pointer reference to use in callback

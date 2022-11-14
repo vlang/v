@@ -401,7 +401,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-debug-tcc' {
 				res.ccompiler = 'tcc'
-				res.build_options << '$arg "$res.ccompiler"'
+				res.build_options << '$arg "${res.ccompiler}"'
 				res.retry_compilation = false
 				res.show_cc = true
 				res.show_c_output = true
@@ -486,7 +486,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-prof', '-profile' {
 				res.profile_file = cmdline.option(current_args, arg, '-')
 				res.is_prof = true
-				res.build_options << '$arg $res.profile_file'
+				res.build_options << '$arg ${res.profile_file}'
 				i++
 			}
 			'-profile-fns' {
@@ -640,7 +640,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-cflags' {
 				res.cflags += ' ' + cmdline.option(current_args, '-cflags', '')
-				res.build_options << '$arg "$res.cflags.trim_space()"'
+				res.build_options << '$arg "${res.cflags.trim_space()}"'
 				i++
 			}
 			'-d', '-define' {
@@ -660,7 +660,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-cc' {
 				res.ccompiler = cmdline.option(current_args, '-cc', 'cc')
-				res.build_options << '$arg "$res.ccompiler"'
+				res.build_options << '$arg "${res.ccompiler}"'
 				i++
 			}
 			'-checker-match-exhaustive-cutoff-limit' {
@@ -823,7 +823,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		must_exist(res.path)
 		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
 			&& os.is_file(res.path + '.v') {
-			eprintln_cond(show_output, 'It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "$res.path" is an executable.')
+			eprintln_cond(show_output, 'It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
 			res.path += '.v'
 		}
 	} else if is_source_file(command) {
@@ -851,7 +851,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		must_exist(res.path)
 		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
 			&& os.is_file(res.path + '.v') {
-			eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "$res.path" is an executable.')
+			eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
 			res.path += '.v'
 		}
 	}

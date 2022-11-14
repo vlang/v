@@ -34,7 +34,7 @@ fn start_server() ! {
 	}, s)
 
 	s.on_close(fn (mut ws websocket.Client, code int, reason string) ! {
-		println(term.green('client ($ws.id) closed connection'))
+		println(term.green('client (${ws.id}) closed connection'))
 	})
 	s.listen() or { println(term.red('error on server listen: $err')) }
 	unsafe {

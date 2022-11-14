@@ -39,7 +39,7 @@ fn test_out_files() {
 		pexe := os.join_path(output_path, '${basename}.exe')
 		//
 		file_options := get_file_options(path)
-		alloptions := '-o ${os.quoted_path(pexe)} $file_options.vflags'
+		alloptions := '-o ${os.quoted_path(pexe)} ${file_options.vflags}'
 		print(mm('v $alloptions run $relpath') + ' == ${mm(out_relpath)} ')
 		//
 		compilation := os.execute('${os.quoted_path(vexe)} $alloptions ${os.quoted_path(path)}')
@@ -109,7 +109,7 @@ fn test_c_must_have_files() {
 	for must_have_path in paths {
 		basename, path, relpath, must_have_relpath := target2paths(must_have_path, '.c.must_have')
 		file_options := get_file_options(path)
-		alloptions := '-o - $file_options.vflags'
+		alloptions := '-o - ${file_options.vflags}'
 		description := mm('v $alloptions $relpath') +
 			' matches all line patterns in ${mm(must_have_relpath)} '
 		print(description)
@@ -193,7 +193,7 @@ fn ensure_compilation_succeeded(compilation os.Result) {
 		panic(compilation.output)
 	}
 	if compilation.exit_code != 0 {
-		panic('compilation failed: $compilation.output')
+		panic('compilation failed: ${compilation.output}')
 	}
 }
 

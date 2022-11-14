@@ -52,5 +52,5 @@ fn main() {
 }
 
 fn trailing_struct_with_update_expr() {
-	c.error('duplicate const `$field.name`', Position{ ...field.pos, len: name_len })
+	c.error('duplicate const `${field.name}`', Position{ ...field.pos, len: name_len })
 }

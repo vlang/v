@@ -209,7 +209,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			}
 		}
 	}
-	g.write(' str_intp($node.vals.len, ')
+	g.write(' str_intp(${node.vals.len}, ')
 	g.write('_MOV((StrIntpData[]){')
 	for i, val in node.vals {
 		escaped_val := util.smart_quote(val, false)
@@ -227,7 +227,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		}
 
 		ft_u64, ft_str := g.str_format(node, i)
-		g.write('0x$ft_u64.hex(), {.d_$ft_str = ')
+		g.write('0x${ft_u64.hex()}, {.d_$ft_str = ')
 
 		// for pointers we need a void* cast
 		if unsafe { ft_str.str[0] } == `p` {

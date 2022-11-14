@@ -5,7 +5,7 @@ struct Gen<G> {
 }
 
 fn (g Gen<G>) str() string {
-	return 'Gen<$G.name>{$g.id, $g.data, $g.size}'
+	return 'Gen<${G.name}>{${g.id}, ${g.data}, ${g.size}}'
 }
 
 fn test_generics_method_str_overload() {

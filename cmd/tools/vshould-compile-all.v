@@ -41,5 +41,5 @@ fn main() {
 		println('Summary: ${failed_commands.len:4}/${files.len:-4} file(s) failed to compile.')
 		exit(1)
 	}
-	println('Summary: all $files.len file(s) compiled successfully.')
+	println('Summary: all ${files.len} file(s) compiled successfully.')
 }

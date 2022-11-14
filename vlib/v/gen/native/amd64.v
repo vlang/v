@@ -240,7 +240,7 @@ fn (mut g Gen) cmp_var_reg(var Var, reg Register, config VarConfig) {
 			} else {
 				g.write8((0xff - offset + 1) % 0x100)
 			}
-			g.println('cmp var `$var.name`, $reg')
+			g.println('cmp var `${var.name}`, $reg')
 		}
 		GlobalVar {
 			// TODO
@@ -277,7 +277,7 @@ fn (mut g Gen) cmp_var(var Var, val int, config VarConfig) {
 				g.write8((0xff - offset + 1) % 0x100)
 			}
 			g.write32(val)
-			g.println('cmp var `$var.name` $val')
+			g.println('cmp var `${var.name}` $val')
 		}
 		GlobalVar {
 			// TODO
@@ -315,7 +315,7 @@ fn (mut g Gen) dec_var(var Var, config VarConfig) {
 				g.write8((0xff - offset + 1) % 0x100)
 			}
 			g.write32(1)
-			g.println('dec_var `$var.name`')
+			g.println('dec_var `${var.name}`')
 		}
 		GlobalVar {
 			// TODO
@@ -353,7 +353,7 @@ fn (mut g Gen) inc_var(var Var, config VarConfig) {
 				g.write8((0xff - offset + 1) % 0x100)
 			}
 			g.write32(1)
-			g.println('inc_var `$var.name`')
+			g.println('inc_var `${var.name}`')
 		}
 		GlobalVar {
 			// TODO
@@ -644,7 +644,7 @@ fn (mut g Gen) mov_reg_to_var(var Var, reg Register, config VarConfig) {
 			} else {
 				g.write8((0xff - offset + 1) % 0x100)
 			}
-			g.println('mov $size_str PTR [rbp-$offset.hex2()],$reg')
+			g.println('mov $size_str PTR [rbp-${offset.hex2()}],$reg')
 		}
 		GlobalVar {
 			// TODO
@@ -683,7 +683,7 @@ fn (mut g Gen) mov_int_to_var(var Var, integer int, config VarConfig) {
 						g.write8((0xff - offset + 1) % 0x100)
 					}
 					g.write8(u8(integer))
-					g.println('mov BYTE PTR[rbp-$offset.hex2()], $integer')
+					g.println('mov BYTE PTR[rbp-${offset.hex2()}], $integer')
 				}
 				ast.i16_type_idx, ast.u16_type_idx {
 					g.write16(0xc766)
@@ -694,7 +694,7 @@ fn (mut g Gen) mov_int_to_var(var Var, integer int, config VarConfig) {
 						g.write8((0xff - offset + 1) % 0x100)
 					}
 					g.write16(u16(integer))
-					g.println('mov WORD PTR[rbp-$offset.hex2()], $integer')
+					g.println('mov WORD PTR[rbp-${offset.hex2()}], $integer')
 				}
 				ast.int_type_idx, ast.u32_type_idx, ast.rune_type_idx {
 					g.write8(0xc7)
@@ -705,7 +705,7 @@ fn (mut g Gen) mov_int_to_var(var Var, integer int, config VarConfig) {
 						g.write8((0xff - offset + 1) % 0x100)
 					}
 					g.write32(integer)
-					g.println('mov DWORD PTR[rbp-$offset.hex2()], $integer')
+					g.println('mov DWORD PTR[rbp-${offset.hex2()}], $integer')
 				}
 				ast.i64_type_idx, ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx,
 				ast.int_literal_type_idx {
@@ -718,7 +718,7 @@ fn (mut g Gen) mov_int_to_var(var Var, integer int, config VarConfig) {
 						g.write8((0xff - offset + 1) % 0x100)
 					}
 					g.write32(integer)
-					g.println('mov QWORD PTR[rbp-$offset.hex2()], $integer')
+					g.println('mov QWORD PTR[rbp-${offset.hex2()}], $integer')
 				}
 				else {
 					g.n_error('unhandled mov int type: $typ')
@@ -755,7 +755,7 @@ fn (mut g Gen) lea_var_to_reg(reg Register, var_offset int) {
 	} else {
 		g.write8((0xff - var_offset + 1) % 0x100)
 	}
-	g.println('lea $reg, [rbp-$var_offset.hex2()]')
+	g.println('lea $reg, [rbp-${var_offset.hex2()}]')
 }
 
 fn (mut g Gen) mov_var_to_reg(reg Register, var Var, config VarConfig) {
@@ -833,7 +833,7 @@ fn (mut g Gen) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 			} else {
 				g.write8((0xff - offset + 1) % 0x100)
 			}
-			g.println('$instruction $reg, $size_str PTR [rbp-$offset.hex2()]')
+			g.println('$instruction $reg, $size_str PTR [rbp-${offset.hex2()}]')
 		}
 		GlobalVar {
 			// TODO
@@ -904,7 +904,7 @@ fn (mut g Gen) extern_call(addr int) {
 			g.println('call *@GOTPCREL(%rip)')
 		}
 		else {
-			g.n_error('extern calls are not implemented for $g.pref.os')
+			g.n_error('extern calls are not implemented for ${g.pref.os}')
 		}
 	}
 }
@@ -961,7 +961,7 @@ pub fn (mut g Gen) sub8(reg Register, val int) {
 	g.write8(0x83)
 	g.write8(0xe8 + int(reg)) // TODO rax is different?
 	g.write8(val)
-	g.println('sub8 $reg,$val.hex2()')
+	g.println('sub8 $reg,${val.hex2()}')
 }
 
 pub fn (mut g Gen) sub(reg Register, val int) {
@@ -973,7 +973,7 @@ pub fn (mut g Gen) sub(reg Register, val int) {
 		g.write8(0xe8 + int(reg))
 	}
 	g.write32(val)
-	g.println('sub $reg,$val.hex2()')
+	g.println('sub $reg,${val.hex2()}')
 }
 
 pub fn (mut g Gen) add(reg Register, val int) {
@@ -985,7 +985,7 @@ pub fn (mut g Gen) add(reg Register, val int) {
 		g.write8(0xc0 + int(reg))
 	}
 	g.write32(val)
-	g.println('add $reg,$val.hex2()')
+	g.println('add $reg,${val.hex2()}')
 }
 
 pub fn (mut g Gen) add8(reg Register, val int) {
@@ -993,7 +993,7 @@ pub fn (mut g Gen) add8(reg Register, val int) {
 	g.write8(0x83)
 	g.write8(0xc0 + int(reg))
 	g.write8(val)
-	g.println('add8 $reg,$val.hex2()')
+	g.println('add8 $reg,${val.hex2()}')
 }
 
 [deprecated: 'use add_reg']
@@ -1005,7 +1005,7 @@ fn (mut g Gen) add8_var(reg Register, var_offset int) {
 		else { g.n_error('add8_var') }
 	}
 	g.write8(0xff - var_offset + 1)
-	g.println('add8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
+	g.println('add8 $reg,DWORD PTR[rbp-${var_offset.hex2()}]')
 }
 
 [deprecated: 'use sub_reg']
@@ -1017,7 +1017,7 @@ fn (mut g Gen) sub8_var(reg Register, var_offset int) {
 		else { g.n_error('sub8_var') }
 	}
 	g.write8(0xff - var_offset + 1)
-	g.println('sub8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
+	g.println('sub8 $reg,DWORD PTR[rbp-${var_offset.hex2()}]')
 }
 
 [deprecated: 'use div_reg']
@@ -1042,7 +1042,7 @@ fn (mut g Gen) mul8_var(reg Register, var_offset int) {
 		else { g.n_error('mul8_var') }
 	}
 	g.write8(0xff - var_offset + 1)
-	g.println('mul8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
+	g.println('mul8 $reg,DWORD PTR[rbp-${var_offset.hex2()}]')
 }
 
 fn (mut g Gen) bitand_reg(a Register, b Register) {
@@ -1112,7 +1112,7 @@ fn (mut g Gen) leave() {
 		// save return value
 		g.push(.rax)
 		for defer_stmt in g.defer_stmts.reverse() {
-			name := '_defer$defer_stmt.idx_in_fn'
+			name := '_defer${defer_stmt.idx_in_fn}'
 			defer_var := g.get_var_offset(name)
 			g.mov_var_to_reg(.rax, LocalVar{defer_var, ast.i64_type_idx, name})
 			g.cmp_zero(.rax)
@@ -1642,7 +1642,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		n = 'main.$n'
 	}
 	if node.is_method {
-		n = '${g.table.get_type_name(node.receiver_type)}.$node.name'
+		n = '${g.table.get_type_name(node.receiver_type)}.${node.name}'
 	}
 	addr := g.fn_addr[n]
 
@@ -1856,7 +1856,7 @@ fn (mut g Gen) patch_calls() {
 	for c in g.callpatches {
 		addr := g.fn_addr[c.name]
 		if addr == 0 {
-			g.n_error('fn addr of `$c.name` = 0')
+			g.n_error('fn addr of `${c.name}` = 0')
 			return
 		}
 		last := g.buf.len
@@ -2157,7 +2157,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 					g.init_struct(ident, right)
 				}
 				else {
-					g.n_error('Unexpected operator `$node.op`')
+					g.n_error('Unexpected operator `${node.op}`')
 				}
 			}
 		}
@@ -2190,7 +2190,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 			// a := arr[0]
 			offset := g.allocate_var(name, g.get_sizeof_ident(ident), 0)
 			if g.pref.is_verbose {
-				println('infix assignment $name offset=$offset.hex2()')
+				println('infix assignment $name offset=${offset.hex2()}')
 			}
 			ie := right as ast.IndexExpr
 			var := ie.left as ast.Ident
@@ -2253,7 +2253,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 			// dump(node)
 			size := g.get_type_size(node.left_types[i])
 			if size !in [1, 2, 4, 8] || node.op !in [.assign, .decl_assign] {
-				g.v_error('unhandled assign_stmt expression: $right.type_name()', right.pos())
+				g.v_error('unhandled assign_stmt expression: ${right.type_name()}', right.pos())
 			}
 			if node.op == .decl_assign {
 				g.allocate_var(name, size, 0)
@@ -2511,7 +2511,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 					g.div_sse(.xmm0, .xmm1, typ)
 				}
 				else {
-					g.n_error('`$node.op` expression is not supported right now')
+					g.n_error('`${node.op}` expression is not supported right now')
 				}
 			}
 			return
@@ -2536,7 +2536,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 		if node.left_type !in ast.integer_type_idxs && node.left_type != ast.bool_type_idx
 			&& g.table.sym(node.left_type).info !is ast.Enum {
-			g.n_error('unsupported type for `$node.op`: $node.left_type')
+			g.n_error('unsupported type for `${node.op}`: ${node.left_type}')
 		}
 		// left: rax, right: rdx
 		match node.op {
@@ -2604,7 +2604,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				g.shr_reg(.rax, .rcx)
 			}
 			else {
-				g.n_error('`$node.op` expression is not supported right now')
+				g.n_error('`${node.op}` expression is not supported right now')
 			}
 		}
 	}
@@ -2722,7 +2722,7 @@ fn (mut g Gen) gen_asm_stmt_amd64(asm_node ast.AsmStmt) {
 				g.println('mov $reg, $imm')
 			}
 			else {
-				g.v_error('unsupported instruction $t.name', asm_node.pos)
+				g.v_error('unsupported instruction ${t.name}', asm_node.pos)
 			}
 		}
 	}
@@ -3033,7 +3033,7 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	g.stack_var_pos += 23
 	g.stack_var_pos /= 16
 	g.stack_var_pos *= 16
-	g.println('; stack frame size: $g.stack_var_pos')
+	g.println('; stack frame size: ${g.stack_var_pos}')
 	g.write32_at(local_alloc_pos + 3, g.stack_var_pos)
 	is_main := node.name == 'main.main'
 	if is_main && g.pref.os != .linux {
@@ -3058,7 +3058,7 @@ pub fn (mut g Gen) builtin_decl_amd64(builtin BuiltinFn) {
 	g.stack_var_pos += 7
 	g.stack_var_pos /= 16
 	g.stack_var_pos *= 16
-	g.println('; stack frame size: $g.stack_var_pos')
+	g.println('; stack frame size: ${g.stack_var_pos}')
 	g.write32_at(local_alloc_pos + 3, g.stack_var_pos)
 
 	g.labels.addrs[0] = g.pos()
@@ -3135,7 +3135,7 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 	}
 
 	// println('allocate_var(size=$size, initial_val=$initial_val)')
-	g.println('mov [rbp-$n.hex2()], $initial_val ; Allocate var `$name`')
+	g.println('mov [rbp-${n.hex2()}], $initial_val ; Allocate var `$name`')
 	return g.stack_var_pos
 }
 
@@ -3217,7 +3217,7 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) {
 			}
 			for f in init.fields {
 				field := ts.find_field(f.name) or {
-					g.n_error('Could not find field `$f.name` on init')
+					g.n_error('Could not find field `${f.name}` on init')
 				}
 				offset := g.structs[var.typ.idx()].offsets[field.i]
 
@@ -3525,7 +3525,7 @@ fn (mut g Gen) mov_ssereg_to_var(var Var, reg SSERegister, config VarConfig) {
 				g.write8((0xff - offset + 1) % 0x100)
 			}
 			inst := if typ == ast.f32_type_idx { 'movss' } else { 'movsd' }
-			g.println('$inst [rbp-$offset.hex2()], $reg')
+			g.println('$inst [rbp-${offset.hex2()}], $reg')
 		}
 		GlobalVar {
 			// TODO
@@ -3565,7 +3565,7 @@ fn (mut g Gen) mov_var_to_ssereg(reg SSERegister, var Var, config VarConfig) {
 				g.write8((0xff - offset + 1) % 0x100)
 			}
 			inst := if typ == ast.f32_type_idx { 'movss' } else { 'movsd' }
-			g.println('$inst $reg, [rbp-$offset.hex2()]')
+			g.println('$inst $reg, [rbp-${offset.hex2()}]')
 		}
 		GlobalVar {
 			// TODO

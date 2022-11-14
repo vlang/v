@@ -8,12 +8,12 @@ fn (mut w Wrapper<S>) next<T>(input T) f64 {
 		$if T is f64 {
 			return w.calc.next(input)
 		} $else {
-			panic('"$T.name" is not supported')
+			panic('"${T.name}" is not supported')
 			return -1
 		}
 		return -1
 	} $else {
-		panic('"$S.name" is not supported')
+		panic('"${S.name}" is not supported')
 		return -1
 	}
 }
@@ -32,10 +32,10 @@ fn (mut c Calc<S>) next<T>(input T) f64 {
 		$if T is f64 {
 			return c.typ.next(input)
 		} $else {
-			panic('Unsupported type $T.name')
+			panic('Unsupported type ${T.name}')
 		}
 	} $else {
-		panic('Unsupported type $S.name')
+		panic('Unsupported type ${S.name}')
 	}
 }
 

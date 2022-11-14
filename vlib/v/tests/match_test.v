@@ -104,7 +104,7 @@ fn test_match_enums() {
 			b = .blue
 		}
 		else {
-			println('b is $b.str()')
+			println('b is ${b.str()}')
 			b = .red
 		}
 	}
@@ -114,7 +114,7 @@ fn test_match_enums() {
 			b = .green
 		}
 		else {
-			println('b is $b.str()')
+			println('b is ${b.str()}')
 			b = .blue
 		}
 	}

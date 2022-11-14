@@ -30,7 +30,7 @@ pub fn (err IError) str() string {
 			// TODO: remove once deprecation period for `IError` methods has ended
 			// old_error_style := unsafe { voidptr(&err.msg) != voidptr(&err.code) } // if fields are not defined (new style) they don't have an offset between
 			// <<
-			'$err.type_name(): $err.msg()'
+			'${err.type_name()}: ${err.msg()}'
 		}
 	}
 }
@@ -56,7 +56,7 @@ pub:
 // msg returns the message of MessageError
 pub fn (err MessageError) msg() string {
 	if err.code > 0 {
-		return '$err.msg; code: $err.code'
+		return '${err.msg}; code: ${err.code}'
 	}
 	return err.msg
 }

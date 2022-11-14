@@ -74,7 +74,7 @@ pub fn (mut f Gen) struct_decl(node ast.StructDecl) {
 		}
 		// end_pos := field.pos.pos + field.pos.len
 		volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
-		f.write('\t$volatile_prefix$field.name ')
+		f.write('\t$volatile_prefix${field.name} ')
 		// before_len := f.line_len
 		// mut field_align := field_aligns[field_align_i]
 		// if field_align.line_nr < field.pos.line_nr {
@@ -189,7 +189,7 @@ pub fn (mut f Gen) struct_init(node ast.StructInit) {
 				}
 			}
 			for i, field in node.fields {
-				f.write('$field.name: ')
+				f.write('${field.name}: ')
 				f.expr(field.expr)
 				if single_line_fields {
 					if i < node.fields.len - 1 {

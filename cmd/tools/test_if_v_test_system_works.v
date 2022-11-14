@@ -92,7 +92,7 @@ fn check_ok(cmd string) MyResult {
 	println('>   check_ok cmd: $cmd')
 	res := os.execute(cmd)
 	if res.exit_code != 0 {
-		eprintln('>   check_ok failed.\n$res.output')
+		eprintln('>   check_ok failed.\n${res.output}')
 		exit(1)
 	}
 	return res.output
@@ -102,7 +102,7 @@ fn check_fail(cmd string) MyResult {
 	println('> check_fail cmd: $cmd')
 	res := os.execute(cmd)
 	if res.exit_code == 0 {
-		eprintln('> check_fail succeeded, but it should have failed.\n$res.output')
+		eprintln('> check_fail succeeded, but it should have failed.\n${res.output}')
 		exit(1)
 	}
 	return res.output

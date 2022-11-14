@@ -106,7 +106,7 @@ mut:
 
 fn (co CaptureOptions) validate() ! {
 	if co.method !in supported_capture_methods {
-		return error('capture method "$co.method" is not supported. Supported methods are: $supported_capture_methods')
+		return error('capture method "${co.method}" is not supported. Supported methods are: $supported_capture_methods')
 	}
 }
 
@@ -230,7 +230,7 @@ fn generate_screenshots(mut opt Options, output_path string) ! {
 			opt.verbose_eprintln('Compiling shaders (if needed) for `$file`')
 			sh_result := opt.verbose_execute('${os.quoted_path(v_exe)} shader ${os.quoted_path(app_path)}')
 			if sh_result.exit_code != 0 {
-				opt.verbose_eprintln('Skipping shader compile for `$file` v shader failed with:\n$sh_result.output')
+				opt.verbose_eprintln('Skipping shader compile for `$file` v shader failed with:\n${sh_result.output}')
 				continue
 			}
 		}
@@ -249,7 +249,7 @@ fn generate_screenshots(mut opt Options, output_path string) ! {
 
 		app_config.screenshots_path = screenshot_path
 		app_config.screenshots = take_screenshots(opt, app_config) or {
-			return error('Failed taking screenshots of `$app_path`:\n$err.msg()')
+			return error('Failed taking screenshots of `$app_path`:\n${err.msg()}')
 		}
 	}
 }
@@ -259,13 +259,13 @@ fn compare_screenshots(opt Options, output_path string, target_path string) ! {
 	mut warns := map[string]string{}
 	for app_config in opt.config.apps {
 		screenshots := app_config.screenshots
-		opt.verbose_eprintln('Comparing $screenshots.len screenshots in `$output_path` with `$target_path`')
+		opt.verbose_eprintln('Comparing ${screenshots.len} screenshots in `$output_path` with `$target_path`')
 		for screenshot in screenshots {
 			relative_screenshot := screenshot.all_after(output_path + os.path_separator)
 
 			src := screenshot
 			target := os.join_path(target_path, relative_screenshot)
-			opt.verbose_eprintln('Comparing `$src` with `$target` with $app_config.compare.method')
+			opt.verbose_eprintln('Comparing `$src` with `$target` with ${app_config.compare.method}')
 
 			if app_config.compare.method == 'idiff' {
 				if idiff_exe == '' {
@@ -277,10 +277,10 @@ fn compare_screenshots(opt Options, output_path string, target_path string) ! {
 				diff_cmd := '${os.quoted_path(idiff_exe)} $flags -abs -od -o ${os.quoted_path(diff_file)} -abs ${os.quoted_path(src)} ${os.quoted_path(target)}'
 				result := opt.verbose_execute(diff_cmd)
 				if result.exit_code == 0 {
-					opt.verbose_eprintln('OUTPUT: \n$result.output')
+					opt.verbose_eprintln('OUTPUT: \n${result.output}')
 				}
 				if result.exit_code != 0 {
-					eprintln('OUTPUT: \n$result.output')
+					eprintln('OUTPUT: \n${result.output}')
 					if result.exit_code == 1 {
 						warns[src] = target
 					} else {
@@ -327,7 +327,7 @@ fn compare_screenshots(opt Options, output_path string, target_path string) ! {
 fn take_screenshots(opt Options, app AppConfig) ![]string {
 	out_path := app.screenshots_path
 	if !opt.compare_only {
-		opt.verbose_eprintln('Taking screenshot(s) of `$app.path` to `$out_path`')
+		opt.verbose_eprintln('Taking screenshot(s) of `${app.path}` to `$out_path`')
 		match app.capture.method {
 			'gg_record' {
 				for k, v in app.capture.env {
@@ -339,7 +339,7 @@ fn take_screenshots(opt Options, app AppConfig) ![]string {
 				flags := app.capture.flags.join(' ')
 				result := opt.verbose_execute('${os.quoted_path(v_exe)} $flags -d gg_record run ${os.quoted_path(app.abs_path)}')
 				if result.exit_code != 0 {
-					return error('Failed taking screenshot of `$app.abs_path`:\n$result.output')
+					return error('Failed taking screenshot of `${app.abs_path}`:\n${result.output}')
 				}
 			}
 			'generic_screenshot' {
@@ -354,9 +354,9 @@ fn take_screenshots(opt Options, app AppConfig) ![]string {
 				flags := app.capture.flags
 
 				if !os.exists(app.abs_path) {
-					return error('Failed starting app `$app.abs_path`, the path does not exist')
+					return error('Failed starting app `${app.abs_path}`, the path does not exist')
 				}
-				opt.verbose_eprintln('Running $app.abs_path $flags')
+				opt.verbose_eprintln('Running ${app.abs_path} $flags')
 				mut p_app := os.new_process(app.abs_path)
 				p_app.set_args(flags)
 				p_app.set_redirect_stdio()
@@ -364,15 +364,15 @@ fn take_screenshots(opt Options, app AppConfig) ![]string {
 
 				if !p_app.is_alive() {
 					output := p_app.stdout_read() + '\n' + p_app.stderr_read()
-					return error('Failed starting app `$app.abs_path` (before screenshot):\n$output')
+					return error('Failed starting app `${app.abs_path}` (before screenshot):\n$output')
 				}
 				if app.capture.wait_ms > 0 {
-					opt.verbose_eprintln('Waiting $app.capture.wait_ms before capturing')
+					opt.verbose_eprintln('Waiting ${app.capture.wait_ms} before capturing')
 					time.sleep(app.capture.wait_ms * time.millisecond)
 				}
 				if !p_app.is_alive() {
 					output := p_app.stdout_slurp() + '\n' + p_app.stderr_slurp()
-					return error('App `$app.abs_path` exited ($p_app.code) before a screenshot could be captured:\n$output')
+					return error('App `${app.abs_path}` exited (${p_app.code}) before a screenshot could be captured:\n$output')
 				}
 				// Use ImageMagick's `import` tool to take the screenshot
 				out_file := os.join_path(out_path, os.file_name(app.path) +
@@ -380,14 +380,14 @@ fn take_screenshots(opt Options, app AppConfig) ![]string {
 				result := opt.verbose_execute('import -window root "$out_file"')
 				if result.exit_code != 0 {
 					p_app.signal_kill()
-					return error('Failed taking screenshot of `$app.abs_path` to "$out_file":\n$result.output')
+					return error('Failed taking screenshot of `${app.abs_path}` to "$out_file":\n${result.output}')
 				}
 
 				// When using regions the capture is split up into regions.len
 				// And name the output based on each region's properties
 				if app.capture.regions.len > 0 {
 					for region in app.capture.regions {
-						region_id := 'x${region.x}y${region.y}w${region.width}h$region.height'
+						region_id := 'x${region.x}y${region.y}w${region.width}h${region.height}'
 						region_out_file := os.join_path(out_path, os.file_name(app.path) +
 							'_screenshot_${existing_screenshots.len:02}_region_${region_id}.png')
 						// If the region is empty (w, h == 0, 0) infer a full screenshot,
@@ -398,10 +398,10 @@ fn take_screenshots(opt Options, app AppConfig) ![]string {
 							}
 							continue
 						}
-						extract_result := opt.verbose_execute('convert -extract ${region.width}x$region.height+$region.x+$region.y "$out_file" "$region_out_file"')
+						extract_result := opt.verbose_execute('convert -extract ${region.width}x${region.height}+${region.x}+${region.y} "$out_file" "$region_out_file"')
 						if extract_result.exit_code != 0 {
 							p_app.signal_kill()
-							return error('Failed extracting region $region_id from screenshot of `$app.abs_path` to "$region_out_file":\n$result.output')
+							return error('Failed extracting region $region_id from screenshot of `${app.abs_path}` to "$region_out_file":\n${result.output}')
 						}
 					}
 					// When done, remove the original file that was split into regions.
@@ -413,7 +413,7 @@ fn take_screenshots(opt Options, app AppConfig) ![]string {
 				p_app.signal_kill()
 			}
 			else {
-				return error('Unsupported capture method "$app.capture.method"')
+				return error('Unsupported capture method "${app.capture.method}"')
 			}
 		}
 	}

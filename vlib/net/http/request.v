@@ -54,7 +54,7 @@ pub fn (mut req Request) add_custom_header(key string, val string) ! {
 
 // do will send the HTTP request and returns `http.Response` as soon as the response is recevied
 pub fn (req &Request) do() !Response {
-	mut url := urllib.parse(req.url) or { return error('http.Request.do: invalid url $req.url') }
+	mut url := urllib.parse(req.url) or { return error('http.Request.do: invalid url ${req.url}') }
 	mut rurl := url
 	mut resp := Response{}
 	mut no_redirects := 0
@@ -92,7 +92,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 	host_name := url.hostname()
 	scheme := url.scheme
 	p := url.escaped_path().trim_left('/')
-	path := if url.query().len > 0 { '/$p?$url.query().encode()' } else { '/$p' }
+	path := if url.query().len > 0 { '/$p?${url.query().encode()}' } else { '/$p' }
 	mut nport := url.port().int()
 	if nport == 0 {
 		if scheme == 'http' {
@@ -125,7 +125,7 @@ fn (req &Request) build_request_headers(method Method, host_name string, path st
 		uheaders << 'User-Agent: $ua\r\n'
 	}
 	if req.data.len > 0 && !req.header.contains(.content_length) {
-		uheaders << 'Content-Length: $req.data.len\r\n'
+		uheaders << 'Content-Length: ${req.data.len}\r\n'
 	}
 	for key in req.header.keys() {
 		if key == CommonHeader.cookie.str() {
@@ -286,7 +286,7 @@ pub struct UnexpectedExtraAttributeError {
 }
 
 pub fn (err UnexpectedExtraAttributeError) msg() string {
-	return 'Encountered unexpected extra attributes: $err.attributes'
+	return 'Encountered unexpected extra attributes: ${err.attributes}'
 }
 
 pub struct MultiplePathAttributesError {

@@ -486,11 +486,11 @@ fn (ta []Test2) str() string {
 }
 
 fn (t Test2) str() string {
-	return '{$t.one $t.two}'
+	return '{${t.one} ${t.two}}'
 }
 
 fn (t Test) str() string {
-	return '{$t.a $t.b}'
+	return '{${t.a} ${t.b}}'
 }
 
 fn test_struct_print() {

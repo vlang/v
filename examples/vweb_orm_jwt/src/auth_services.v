@@ -58,8 +58,8 @@ fn make_token(user User) string {
 
 	jwt_header := JwtHeader{'HS256', 'JWT'}
 	jwt_payload := JwtPayload{
-		sub: '$user.id'
-		name: '$user.username'
+		sub: '${user.id}'
+		name: '${user.username}'
 		iat: time.now()
 	}
 

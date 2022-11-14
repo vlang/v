@@ -49,7 +49,7 @@ fn get_parent_mod(input_dir string) ?string {
 	}
 	parent_mod := get_parent_mod(base_dir) or { return input_dir_name }
 	if parent_mod.len > 0 {
-		return '${parent_mod}.$file_ast.mod.name'
+		return '${parent_mod}.${file_ast.mod.name}'
 	}
 	return file_ast.mod.name
 }

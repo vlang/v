@@ -209,7 +209,7 @@ fn (mut gen_vc GenVC) generate() {
 		os.mkdir(gen_vc.options.work_dir) or { panic(err) }
 		// still dosen't exist... we have a problem
 		if !os.is_dir(gen_vc.options.work_dir) {
-			gen_vc.logger.error('error creating directory: $gen_vc.options.work_dir')
+			gen_vc.logger.error('error creating directory: ${gen_vc.options.work_dir}')
 			gen_vc.gen_error = true
 			return
 		}
@@ -342,12 +342,12 @@ fn (mut gen_vc GenVC) command_execute_dry(cmd string) string {
 // delete repo directories
 fn (mut gen_vc GenVC) purge_repos() {
 	// delete old repos (better to be fully explicit here, since these are destructive operations)
-	mut repo_dir := '$gen_vc.options.work_dir/$git_repo_dir_v'
+	mut repo_dir := '${gen_vc.options.work_dir}/$git_repo_dir_v'
 	if os.is_dir(repo_dir) {
 		gen_vc.logger.info('purging local repo: "$repo_dir"')
 		gen_vc.cmd_exec('rm -rf $repo_dir')
 	}
-	repo_dir = '$gen_vc.options.work_dir/$git_repo_dir_vc'
+	repo_dir = '${gen_vc.options.work_dir}/$git_repo_dir_vc'
 	if os.is_dir(repo_dir) {
 		gen_vc.logger.info('purging local repo: "$repo_dir"')
 		gen_vc.cmd_exec('rm -rf $repo_dir')

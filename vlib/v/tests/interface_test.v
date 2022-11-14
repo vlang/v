@@ -27,7 +27,7 @@ fn (c &Cat) speak(s string) {
 }
 
 fn (c Cat) name_detailed(pet_name string) string {
-	return '$pet_name the ${typeof(c).name}, breed:$c.breed'
+	return '$pet_name the ${typeof(c).name}, breed:${c.breed}'
 }
 
 fn (mut c Cat) set_breed(new string) {
@@ -36,7 +36,7 @@ fn (mut c Cat) set_breed(new string) {
 
 // utility function to override default conversion to string, as a sample
 fn (c Cat) str() string {
-	return 'Custom string conversion for Cat: $c.breed'
+	return 'Custom string conversion for Cat: ${c.breed}'
 }
 
 fn (d Dog) speak(s string) {
@@ -50,7 +50,7 @@ fn (d Dog) name() string {
 }
 
 fn (d Dog) name_detailed(pet_name string) string {
-	return '$pet_name the ${typeof(d).name}, breed:$d.breed'
+	return '$pet_name the ${typeof(d).name}, breed:${d.breed}'
 }
 
 fn (mut d Dog) set_breed(new string) {
@@ -73,7 +73,7 @@ fn (b Bird) name() string {
 }
 
 fn (b Bird) name_detailed(pet_name string) string {
-	return '$pet_name the ${typeof(b).name}, breed:$b.breed'
+	return '$pet_name the ${typeof(b).name}, breed:${b.breed}'
 }
 
 fn (mut b Bird) set_breed(new string) {
@@ -248,7 +248,7 @@ fn (b Boss) name() string {
 }
 
 fn (b Boss) speak() {
-	println("i'm $b.name")
+	println("i'm ${b.name}")
 }
 
 fn (b &Boss) return_speaker() Speaker2 {

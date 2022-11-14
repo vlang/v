@@ -101,7 +101,7 @@ fn (image Image) save_as_ppm(file_name string) {
 	npixels := image.width * image.height
 	mut f_out := os.create(file_name) or { panic(err) }
 	f_out.writeln('P3') or { panic(err) }
-	f_out.writeln('$image.width $image.height') or { panic(err) }
+	f_out.writeln('${image.width} ${image.height}') or { panic(err) }
 	f_out.writeln('255') or { panic(err) }
 	for i in 0 .. npixels {
 		c_r := to_int(unsafe { image.data[i] }.x)

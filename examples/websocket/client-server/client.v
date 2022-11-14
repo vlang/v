@@ -9,7 +9,7 @@ import term
 // to all other connected clients
 fn main() {
 	mut ws := start_client()!
-	println(term.green('client $ws.id ready'))
+	println(term.green('client ${ws.id} ready'))
 	println('Write message and enter to send...')
 	for {
 		line := os.get_line()

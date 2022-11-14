@@ -45,7 +45,7 @@ fn (mut g Gen) gen_vlines_reset() {
 		g.vlines_path = util.vlines_escape_path(g.pref.out_name_c, g.pref.ccompiler)
 		g.writeln('')
 		g.writeln('\n// Reset the file/line numbers')
-		g.writeln('\n#line $lines_so_far "$g.vlines_path"')
+		g.writeln('\n#line $lines_so_far "${g.vlines_path}"')
 		g.writeln('')
 	}
 }
@@ -256,15 +256,15 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	all_tfuncs = g.filter_only_matching_fn_names(all_tfuncs)
 	g.writeln('\tstring v_test_file = ${ctoslit(g.pref.path)};')
 	if g.pref.is_stats {
-		g.writeln('\tmain__BenchedTests bt = main__start_testing($all_tfuncs.len, v_test_file);')
+		g.writeln('\tmain__BenchedTests bt = main__start_testing(${all_tfuncs.len}, v_test_file);')
 	}
 	g.writeln('')
 	g.writeln('\tstruct _main__TestRunner_interface_methods _vtrunner = main__TestRunner_name_table[test_runner._typ];')
 	g.writeln('\tvoid * _vtobj = test_runner._object;')
 	g.writeln('')
 	g.writeln('\tmain__VTestFileMetaInfo_free(test_runner.file_test_info);')
-	g.writeln('\t*(test_runner.file_test_info) = main__vtest_new_filemetainfo(v_test_file, $all_tfuncs.len);')
-	g.writeln('\t_vtrunner._method_start(_vtobj, $all_tfuncs.len);')
+	g.writeln('\t*(test_runner.file_test_info) = main__vtest_new_filemetainfo(v_test_file, ${all_tfuncs.len});')
+	g.writeln('\t_vtrunner._method_start(_vtobj, ${all_tfuncs.len});')
 	g.writeln('')
 	for tnumber, tname in all_tfuncs {
 		tcname := util.no_dots(tname)
@@ -272,7 +272,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		lnum := testfn.pos.line_nr + 1
 		g.writeln('\tmain__VTestFnMetaInfo_free(test_runner.fn_test_info);')
 		g.writeln('\tstring tcname_$tnumber = _SLIT("$tcname");')
-		g.writeln('\tstring tcmod_$tnumber  = _SLIT("$testfn.mod");')
+		g.writeln('\tstring tcmod_$tnumber  = _SLIT("${testfn.mod}");')
 		g.writeln('\tstring tcfile_$tnumber = ${ctoslit(testfn.file)};')
 		g.writeln('\t*(test_runner.fn_test_info) = main__vtest_new_metainfo(tcname_$tnumber, tcmod_$tnumber, tcfile_$tnumber, $lnum);')
 		g.writeln('\t_vtrunner._method_fn_start(_vtobj);')

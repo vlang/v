@@ -134,7 +134,7 @@ fn (mut c Checker) check_match_branch_last_stmt(last_stmt ast.ExprStmt, ret_type
 					return
 				}
 			}
-			c.error('return type mismatch, it should be `$ret_sym.name`', last_stmt.pos)
+			c.error('return type mismatch, it should be `${ret_sym.name}`', last_stmt.pos)
 		}
 	}
 }
@@ -164,7 +164,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 							c.error('start value is higher than end value', branch.pos)
 						}
 					} else {
-						c.error('mismatched range types - $expr.low is an integer, but $expr.high is not',
+						c.error('mismatched range types - ${expr.low} is an integer, but ${expr.high} is not',
 							low_expr.pos)
 					}
 				} else if low_expr is ast.CharLiteral {
@@ -176,7 +176,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						}
 					} else {
 						typ := c.table.type_to_str(c.expr(node.cond))
-						c.error('mismatched range types - trying to match `$node.cond`, which has type `$typ`, against a range of `rune`',
+						c.error('mismatched range types - trying to match `${node.cond}`, which has type `$typ`, against a range of `rune`',
 							low_expr.pos)
 					}
 				} else {

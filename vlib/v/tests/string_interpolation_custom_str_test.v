@@ -3,7 +3,7 @@ struct Foo {
 }
 
 fn (f &Foo) str() string {
-	return '$f.bar'
+	return '${f.bar}'
 }
 
 struct Bar {

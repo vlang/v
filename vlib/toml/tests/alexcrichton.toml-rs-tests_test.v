@@ -57,7 +57,7 @@ normalize'
 fn run(args []string) !string {
 	res := os.execute(args.join(' '))
 	if res.exit_code != 0 {
-		return error('${args[0]} failed with return code ${res.exit_code}.\n$res.output')
+		return error('${args[0]} failed with return code ${res.exit_code}.\n${res.output}')
 	}
 	return res.output
 }
@@ -69,7 +69,7 @@ fn test_alexcrichton_toml_rs() {
 	if os.is_dir(test_root) {
 		valid_test_files := os.walk_ext(os.join_path(test_root, 'test-suite', 'tests',
 			'valid'), '.toml')
-		println('Testing $valid_test_files.len valid TOML files...')
+		println('Testing ${valid_test_files.len} valid TOML files...')
 		mut valid := 0
 		mut e := 0
 		for i, valid_test_file in valid_test_files {
@@ -81,23 +81,23 @@ fn test_alexcrichton_toml_rs() {
 			if relative in valid_exceptions {
 				e++
 				idx := valid_exceptions.index(relative) + 1
-				println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" VALID EXCEPTION [$idx/$valid_exceptions.len]...')
+				println('SKIP [${i + 1}/${valid_test_files.len}] "$valid_test_file" VALID EXCEPTION [$idx/${valid_exceptions.len}]...')
 				continue
 			}
 			if !hide_oks {
-				println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
+				println('OK   [${i + 1}/${valid_test_files.len}] "$valid_test_file"...')
 			}
 			toml_doc := toml.parse_file(valid_test_file)!
 			valid++
 		}
-		println('$valid/$valid_test_files.len TOML files were parsed correctly')
+		println('$valid/${valid_test_files.len} TOML files were parsed correctly')
 		if valid_exceptions.len > 0 {
 			println('TODO Skipped parsing of $e valid TOML files...')
 		}
 
 		// If the command-line tool `jq` is installed, value tests can be run as well.
 		if jq != '' {
-			println('Testing value output of $valid_test_files.len valid TOML files using "$jq"...')
+			println('Testing value output of ${valid_test_files.len} valid TOML files using "$jq"...')
 
 			if os.exists(compare_work_dir_root) {
 				os.rmdir_all(compare_work_dir_root)!
@@ -115,25 +115,25 @@ fn test_alexcrichton_toml_rs() {
 					relative = relative.replace('/', '\\')
 				}
 				if !os.exists(valid_test_file.all_before_last('.') + '.json') {
-					println('N/A  [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
+					println('N/A  [${i + 1}/${valid_test_files.len}] "$valid_test_file"...')
 					continue
 				}
 				// Skip the file if we know it can't be parsed or we know that the value retrieval needs work.
 				if relative in valid_exceptions {
 					e++
 					idx := valid_exceptions.index(relative) + 1
-					println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" VALID EXCEPTION [$idx/$valid_exceptions.len]...')
+					println('SKIP [${i + 1}/${valid_test_files.len}] "$valid_test_file" VALID EXCEPTION [$idx/${valid_exceptions.len}]...')
 					continue
 				}
 				if relative in valid_value_exceptions {
 					e++
 					idx := valid_value_exceptions.index(relative) + 1
-					println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" VALID VALUE EXCEPTION [$idx/$valid_value_exceptions.len]...')
+					println('SKIP [${i + 1}/${valid_test_files.len}] "$valid_test_file" VALID VALUE EXCEPTION [$idx/${valid_value_exceptions.len}]...')
 					continue
 				}
 
 				if !hide_oks {
-					println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
+					println('OK   [${i + 1}/${valid_test_files.len}] "$valid_test_file"...')
 				}
 				toml_doc := toml.parse_file(valid_test_file)?
 
@@ -167,7 +167,7 @@ fn test_alexcrichton_toml_rs() {
 
 				valid++
 			}
-			println('$valid/$valid_test_files.len TOML files were parsed correctly and value checked')
+			println('$valid/${valid_test_files.len} TOML files were parsed correctly and value checked')
 			if valid_value_exceptions.len > 0 {
 				println('TODO Skipped value checks of $e valid TOML files...')
 			}
@@ -175,7 +175,7 @@ fn test_alexcrichton_toml_rs() {
 
 		invalid_test_files := os.walk_ext(os.join_path(test_root, 'test-suite', 'tests',
 			'invalid'), '.toml')
-		println('Testing $invalid_test_files.len invalid TOML files...')
+		println('Testing ${invalid_test_files.len} invalid TOML files...')
 		mut invalid := 0
 		e = 0
 		for i, invalid_test_file in invalid_test_files {
@@ -186,12 +186,12 @@ fn test_alexcrichton_toml_rs() {
 			if relative in invalid_exceptions {
 				e++
 				idx := invalid_exceptions.index(relative) + 1
-				println('SKIP [${i + 1}/$invalid_test_files.len] "$invalid_test_file" INVALID EXCEPTION [$idx/$invalid_exceptions.len]...')
+				println('SKIP [${i + 1}/${invalid_test_files.len}] "$invalid_test_file" INVALID EXCEPTION [$idx/${invalid_exceptions.len}]...')
 				continue
 			}
 
 			if !hide_oks {
-				println('OK   [${i + 1}/$invalid_test_files.len] "$invalid_test_file"...')
+				println('OK   [${i + 1}/${invalid_test_files.len}] "$invalid_test_file"...')
 			}
 			if toml_doc := toml.parse_file(invalid_test_file) {
 				content_that_should_have_failed := os.read_file(invalid_test_file)!
@@ -199,15 +199,15 @@ fn test_alexcrichton_toml_rs() {
 				assert false
 			} else {
 				if !hide_oks {
-					println('     $err.msg()')
+					println('     ${err.msg()}')
 				}
 				assert true
 			}
 			invalid++
 		}
-		println('$invalid/$invalid_test_files.len TOML files were parsed correctly')
+		println('$invalid/${invalid_test_files.len} TOML files were parsed correctly')
 		if invalid_exceptions.len > 0 {
-			println('TODO Skipped parsing of $invalid_exceptions.len invalid TOML files...')
+			println('TODO Skipped parsing of ${invalid_exceptions.len} invalid TOML files...')
 		}
 	} else {
 		println('No test data directory found in "$test_root"')
@@ -275,14 +275,14 @@ fn to_alexcrichton(value ast.Value, array_type int) string {
 		ast.Number {
 			text := value.text
 			if text.contains('inf') || text.contains('nan') {
-				return '{ "type": "float", "value": $value.text }'
+				return '{ "type": "float", "value": ${value.text} }'
 			}
 			if !text.starts_with('0x') && (text.contains('.') || text.to_lower().contains('e')) {
 				mut val := ''
 				if text.to_lower().contains('e') && !text.contains('-') {
 					val = '${value.f64():.1f}'
 				} else {
-					val = '$value.f64()'
+					val = '${value.f64()}'
 				}
 				return '{ "type": "float", "value": "$val" }'
 			}

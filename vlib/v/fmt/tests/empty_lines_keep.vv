@@ -87,7 +87,7 @@ bar'
 	env_value = environ()[env_lit] or {
 		return error('the environment variable "$env_lit" does not exist.')
 	}
-	assert '$mr_one_two()' == "(One{
+	assert '${mr_one_two()}' == "(One{
     value: 'one'
 }, Two{
     value: 'two'

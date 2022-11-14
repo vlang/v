@@ -110,12 +110,12 @@ fn (opt &Options) report_undocumented_functions_in_path(path string) int {
 fn (opt &Options) report_undocumented_functions(list []UndocumentedFN) {
 	if list.len > 0 {
 		for undocumented_fn in list {
-			mut line_numbers := '$undocumented_fn.line:0:'
+			mut line_numbers := '${undocumented_fn.line}:0:'
 			if opt.no_line_numbers {
 				line_numbers = ''
 			}
 			tags_str := if opt.collect_tags && undocumented_fn.tags.len > 0 {
-				'$undocumented_fn.tags'
+				'${undocumented_fn.tags}'
 			} else {
 				''
 			}
@@ -126,7 +126,7 @@ fn (opt &Options) report_undocumented_functions(list []UndocumentedFN) {
 				os.real_path(file)
 			}
 			if opt.deprecated {
-				println('$ofile:$line_numbers$undocumented_fn.signature $tags_str')
+				println('$ofile:$line_numbers${undocumented_fn.signature} $tags_str')
 			} else {
 				mut has_deprecation_tag := false
 				for tag in undocumented_fn.tags {
@@ -136,7 +136,7 @@ fn (opt &Options) report_undocumented_functions(list []UndocumentedFN) {
 					}
 				}
 				if !has_deprecation_tag {
-					println('$ofile:$line_numbers$undocumented_fn.signature $tags_str')
+					println('$ofile:$line_numbers${undocumented_fn.signature} $tags_str')
 				}
 			}
 		}

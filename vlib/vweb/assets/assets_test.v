@@ -141,7 +141,7 @@ fn test_include_css() {
 	clean_cache_dir(am.cache_dir)
 	actual3 := am.include_css(true)
 	assert actual3.contains(expected2) == false
-	assert actual3.starts_with('<link rel="stylesheet" href="$am.cache_dir/') == true
+	assert actual3.starts_with('<link rel="stylesheet" href="${am.cache_dir}/') == true
 	// Test cache path doesn't change when input files and minify setting do not.
 	clean_cache_dir(am.cache_dir)
 	actual4 := am.include_css(true)
@@ -170,7 +170,7 @@ fn test_include_js() {
 	clean_cache_dir(am.cache_dir)
 	actual3 := am.include_js(true)
 	assert actual3.contains(expected2) == false
-	assert actual3.starts_with('<script type="text/javascript" src="$am.cache_dir/')
+	assert actual3.starts_with('<script type="text/javascript" src="${am.cache_dir}/')
 	// Test cache path doesn't change when input files and minify setting do not.
 	clean_cache_dir(am.cache_dir)
 	actual4 := am.include_js(true)

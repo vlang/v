@@ -222,8 +222,8 @@ fn (vt &Vet) vprintln(s string) {
 }
 
 fn (vt &Vet) e2string(err vet.Error) string {
-	mut kind := '$err.kind:'
-	mut location := '$err.file_path:$err.pos.line_nr:'
+	mut kind := '${err.kind}:'
+	mut location := '${err.file_path}:${err.pos.line_nr}:'
 	if vt.opt.use_color {
 		kind = match err.kind {
 			.warning { term.magenta(kind) }
@@ -232,7 +232,7 @@ fn (vt &Vet) e2string(err vet.Error) string {
 		kind = term.bold(kind)
 		location = term.bold(location)
 	}
-	return '$location $kind $err.message'
+	return '$location $kind ${err.message}'
 }
 
 fn (mut vt Vet) error(msg string, line int, fix vet.FixKind) {

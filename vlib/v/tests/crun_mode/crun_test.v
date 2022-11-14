@@ -44,7 +44,7 @@ fn test_crun_simple_v_program_several_times() {
 
 fn vcrun() {
 	cmd := '${os.quoted_path(vexe)} crun ${os.quoted_path(vprogram_file)}'
-	eprintln('now: $time.now().format_ss_milli() | cmd: $cmd')
+	eprintln('now: ${time.now().format_ss_milli()} | cmd: $cmd')
 	res := os.execute(cmd)
 	assert res.exit_code == 0
 	assert res.output == 'hello'

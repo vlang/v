@@ -344,23 +344,23 @@ fn (mut cmd Command) run() {
 	}
 	//
 	run_label := if is_failed { term.failed('FAILED') } else { term_highlight('OK') }
-	println('> Running: "$cmd.line" took: $spent ms ... $run_label')
+	println('> Running: "${cmd.line}" took: $spent ms ... $run_label')
 	//
 	if is_failed && is_failed_expected {
-		eprintln('> expected:\n$cmd.expect')
-		eprintln('>   output:\n$cmd.output')
+		eprintln('> expected:\n${cmd.expect}')
+		eprintln('>   output:\n${cmd.output}')
 	}
 	if is_failed && is_failed_starts_with {
-		eprintln('> expected to start with:\n$cmd.starts_with')
+		eprintln('> expected to start with:\n${cmd.starts_with}')
 		eprintln('>                 output:\n${cmd.output#[..cmd.starts_with.len]}')
 	}
 	if is_failed && is_failed_ends_with {
-		eprintln('> expected to end with:\n$cmd.ends_with')
+		eprintln('> expected to end with:\n${cmd.ends_with}')
 		eprintln('>               output:\n${cmd.output#[-cmd.starts_with.len..]}')
 	}
 	if is_failed && is_failed_contains {
-		eprintln('> expected to contain:\n$cmd.contains')
-		eprintln('>              output:\n$cmd.output')
+		eprintln('> expected to contain:\n${cmd.contains}')
+		eprintln('>              output:\n${cmd.output}')
 	}
 	if vtest_nocleanup {
 		return
@@ -371,7 +371,7 @@ fn (mut cmd Command) run() {
 			file_existed = file_existed || rm_existing(cmd.rmfile + '.exe')
 		}
 		if !file_existed {
-			eprintln('Expected file did not exist: $cmd.rmfile')
+			eprintln('Expected file did not exist: ${cmd.rmfile}')
 			cmd.ecode = 999
 		}
 	}

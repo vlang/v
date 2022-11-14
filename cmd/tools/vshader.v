@@ -201,7 +201,7 @@ fn compile_shader(opt CompileOptions, shader_file string) ! {
 	}
 	res := os.execute(cmd)
 	if res.exit_code != 0 {
-		eprintln('$tool_name failed generating shader includes:\n        $res.output\n        $cmd')
+		eprintln('$tool_name failed generating shader includes:\n        ${res.output}\n        $cmd')
 		exit(1)
 	}
 	if opt.verbose {

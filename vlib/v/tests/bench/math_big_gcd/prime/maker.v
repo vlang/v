@@ -18,7 +18,7 @@ pub fn (di DataI) cast<T>() DataI {
 pub type PrimeCfg = PrimeSet
 
 pub fn (pc PrimeCfg) short() string {
-	return "r: '$pc.r' a: '$pc.a' b: '$pc.b'"
+	return "r: '${pc.r}' a: '${pc.a}' b: '${pc.b}'"
 }
 
 [heap]
@@ -153,8 +153,8 @@ pub fn random_set(cfg PrimeCfg) ?[]PrimeSet {
 		msg := [
 			'bad config was :\n\n"$cfg"',
 			"maybe try e.g { r: 'l.5' a: 'xxl.5 b: 'xl.10' } makes a set of 250",
-			'your config was { $cfg.short() }',
-			'sizes $usage()\n',
+			'your config was { ${cfg.short()} }',
+			'sizes ${usage()}\n',
 		].join('\n\n')
 
 		return error(msg)

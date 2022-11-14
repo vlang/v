@@ -40,7 +40,7 @@ fn test_comptime_for() {
 	methods := ['run', 'method2', 'int_method1', 'int_method2', 'string_arg']
 	$for method in App.methods {
 		// ensure each method is scoped under a new block in the generated code
-		x := '  method: $method.name | ' + no_lines('$method')
+		x := '  method: ${method.name} | ' + no_lines('$method')
 		println(x)
 		assert method.name in methods
 	}
@@ -77,7 +77,7 @@ fn test_comptime_for_fields() {
 	println(@FN)
 	mut fields_found := 0
 	$for field in App.fields {
-		println('  field: $field.name | ' + no_lines('$field'))
+		println('  field: ${field.name} | ' + no_lines('$field'))
 		$if field.typ is string {
 			assert field.name in ['a', 'b', 'g']
 		}

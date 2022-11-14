@@ -76,8 +76,8 @@ fn f(mut x St) {
 	b := y
 	x.n = 3
 	y.n = 4
-	println('$a.n $b.n')
-	assert '$a.n $b.n' == '1 2'
+	println('${a.n} ${b.n}')
+	assert '${a.n} ${b.n}' == '1 2'
 }
 
 fn test_mut_4() {

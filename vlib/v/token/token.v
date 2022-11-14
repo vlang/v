@@ -374,7 +374,7 @@ pub fn (t Token) str() string {
 	}
 	if t.lit != '' {
 		// string contents etc
-		s += ' `$t.lit`'
+		s += ' `${t.lit}`'
 	}
 	return s
 }

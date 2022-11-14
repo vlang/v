@@ -261,7 +261,7 @@ pub fn (mut v Builder) cc_msvc() {
 	mut a := []string{}
 	//
 	env_cflags := os.getenv('CFLAGS')
-	mut all_cflags := '$env_cflags $v.pref.cflags'
+	mut all_cflags := '$env_cflags ${v.pref.cflags}'
 	if all_cflags != ' ' {
 		a << all_cflags
 	}
@@ -341,7 +341,7 @@ pub fn (mut v Builder) cc_msvc() {
 	a << real_libs.join(' ')
 	a << '/link'
 	a << '/NOLOGO'
-	a << '/OUT:"$v.pref.out_name"'
+	a << '/OUT:"${v.pref.out_name}"'
 	a << r.library_paths()
 	if !all_cflags.contains('/DEBUG') {
 		// only use /DEBUG, if the user *did not* provide its own:
@@ -363,12 +363,12 @@ pub fn (mut v Builder) cc_msvc() {
 	os.write_file(out_name_cmd_line, args) or {
 		verror('Unable to write response file to "$out_name_cmd_line"')
 	}
-	cmd := '"$r.full_cl_exe_path" "@$out_name_cmd_line"'
+	cmd := '"${r.full_cl_exe_path}" "@$out_name_cmd_line"'
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
 	v.show_cc(cmd, out_name_cmd_line, args)
 	if os.user_os() != 'windows' && !v.pref.out_name.ends_with('.c') {
-		verror('Cannot build with msvc on $os.user_os()')
+		verror('Cannot build with msvc on ${os.user_os()}')
 	}
 	util.timing_start('C msvc')
 	res := os.execute(cmd)
@@ -409,7 +409,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 	//
 	mut oargs := []string{}
 	env_cflags := os.getenv('CFLAGS')
-	mut all_cflags := '$env_cflags $v.pref.cflags'
+	mut all_cflags := '$env_cflags ${v.pref.cflags}'
 	if all_cflags != ' ' {
 		oargs << all_cflags
 	}
@@ -435,7 +435,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 	}
 	v.dump_c_options(oargs)
 	str_oargs := oargs.join(' ')
-	cmd := '"$msvc.full_cl_exe_path" $str_oargs'
+	cmd := '"${msvc.full_cl_exe_path}" $str_oargs'
 	// Note: the quotes above ARE balanced.
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_file_with_msvc cmd: $cmd')
@@ -471,7 +471,7 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 		// by the compiler
 		if flag.name == '-l' {
 			if flag.value.ends_with('.dll') {
-				verror('MSVC cannot link against a dll (`#flag -l $flag.value`)')
+				verror('MSVC cannot link against a dll (`#flag -l ${flag.value}`)')
 			}
 			// MSVC has no method of linking against a .dll
 			// TODO: we should look for .defs aswell
@@ -480,7 +480,7 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 		} else if flag.name == '-I' {
 			inc_paths << flag.format()
 		} else if flag.name == '-D' {
-			defines << '/D$flag.value'
+			defines << '/D${flag.value}'
 		} else if flag.name == '-L' {
 			lib_paths << flag.value
 			lib_paths << flag.value + os.path_separator + 'msvc'
@@ -514,16 +514,16 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 fn (r MsvcResult) include_paths() []string {
 	mut res := []string{cap: 4}
 	if r.ucrt_include_path != '' {
-		res << '-I "$r.ucrt_include_path"'
+		res << '-I "${r.ucrt_include_path}"'
 	}
 	if r.vs_include_path != '' {
-		res << '-I "$r.vs_include_path"'
+		res << '-I "${r.vs_include_path}"'
 	}
 	if r.um_include_path != '' {
-		res << '-I "$r.um_include_path"'
+		res << '-I "${r.um_include_path}"'
 	}
 	if r.shared_include_path != '' {
-		res << '-I "$r.shared_include_path"'
+		res << '-I "${r.shared_include_path}"'
 	}
 	return res
 }
@@ -531,13 +531,13 @@ fn (r MsvcResult) include_paths() []string {
 fn (r MsvcResult) library_paths() []string {
 	mut res := []string{cap: 3}
 	if r.ucrt_lib_path != '' {
-		res << '/LIBPATH:"$r.ucrt_lib_path"'
+		res << '/LIBPATH:"${r.ucrt_lib_path}"'
 	}
 	if r.um_lib_path != '' {
-		res << '/LIBPATH:"$r.um_lib_path"'
+		res << '/LIBPATH:"${r.um_lib_path}"'
 	}
 	if r.vs_lib_path != '' {
-		res << '/LIBPATH:"$r.vs_lib_path"'
+		res << '/LIBPATH:"${r.vs_lib_path}"'
 	}
 	return res
 }

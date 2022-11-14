@@ -33,7 +33,7 @@ fn parallel_cc(mut b builder.Builder, header string, res string, out_str string,
 	// out_fn_start_pos.sort()
 	for i, fn_pos in out_fn_start_pos {
 		if prev_fn_pos >= out_str.len || fn_pos >= out_str.len || prev_fn_pos > fn_pos {
-			println('> EXITING i=$i out of $out_fn_start_pos.len prev_pos=$prev_fn_pos fn_pos=$fn_pos')
+			println('> EXITING i=$i out of ${out_fn_start_pos.len} prev_pos=$prev_fn_pos fn_pos=$fn_pos')
 			break
 		}
 		if i == 0 {
@@ -60,7 +60,7 @@ fn parallel_cc(mut b builder.Builder, header string, res string, out_str string,
 	nthreads := c_files + 2
 	pp.set_max_jobs(nthreads)
 	pp.work_on_items(o_postfixes)
-	eprintln('> C compilation on $nthreads threads, working on $o_postfixes.len files took: $sw.elapsed().milliseconds() ms')
+	eprintln('> C compilation on $nthreads threads, working on ${o_postfixes.len} files took: ${sw.elapsed().milliseconds()} ms')
 	link_cmd := '${os.quoted_path(cbuilder.cc_compiler)} -o ${os.quoted_path(b.pref.out_name)} out_0.o ${fnames.map(it.replace('.c',
 		'.o')).join(' ')} out_x.o -lpthread $cbuilder.cc_ldflags'
 	sw_link := time.new_stopwatch()
@@ -78,7 +78,7 @@ fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr {
 }
 
 fn eprint_time(label string, cmd string, res os.Result, sw time.StopWatch) {
-	eprintln('> $label: `$cmd` => $res.exit_code , $sw.elapsed().milliseconds() ms')
+	eprintln('> $label: `$cmd` => ${res.exit_code} , ${sw.elapsed().milliseconds()} ms')
 	if res.exit_code != 0 {
 		eprintln(res.output)
 	}

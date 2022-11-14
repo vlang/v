@@ -66,7 +66,7 @@ fn elog(r &live.LiveReloadInfo, s string) {
 
 fn compile_and_reload_shared_lib(mut r live.LiveReloadInfo) !bool {
 	sw := time.new_stopwatch()
-	new_lib_path := compile_lib(mut r) or { return error('errors while compiling $r.original') }
+	new_lib_path := compile_lib(mut r) or { return error('errors while compiling ${r.original}') }
 	elog(r, '> compile_and_reload_shared_lib compiled: $new_lib_path')
 	load_lib(mut r, new_lib_path)
 	r.reload_time_ms = int(sw.elapsed().milliseconds())
@@ -75,7 +75,7 @@ fn compile_and_reload_shared_lib(mut r live.LiveReloadInfo) !bool {
 
 fn compile_lib(mut r live.LiveReloadInfo) ?string {
 	new_lib_path, new_lib_path_with_extension := current_shared_library_path(mut r)
-	cmd := '${os.quoted_path(r.vexe)} $r.vopts -o ${os.quoted_path(new_lib_path)} ${os.quoted_path(r.original)}'
+	cmd := '${os.quoted_path(r.vexe)} ${r.vopts} -o ${os.quoted_path(new_lib_path)} ${os.quoted_path(r.original)}'
 	elog(r, '>       compilation cmd: $cmd')
 	cwatch := time.new_stopwatch()
 	recompilation_result := os.execute(cmd)
@@ -130,7 +130,7 @@ fn protected_load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 		exit(1)
 	}
 	r.live_linkfn(r.live_lib)
-	elog(r, '> load_lib OK, new live_lib: $r.live_lib')
+	elog(r, '> load_lib OK, new live_lib: ${r.live_lib}')
 	// removing the .so file from the filesystem after dlopen-ing
 	// it is safe, since it will still be mapped in memory
 	os.rm(new_lib_path) or {}
@@ -151,7 +151,7 @@ fn reloader(mut r live.LiveReloadInfo) {
 		sw := time.new_stopwatch()
 		now_ts := get_latest_ts_from_monitored_files(monitored_file_paths, last_ts)
 		$if trace_check_monitored_files ? {
-			eprintln('check if last_ts: $last_ts < now_ts: $now_ts , took $sw.elapsed().microseconds() microseconds')
+			eprintln('check if last_ts: $last_ts < now_ts: $now_ts , took ${sw.elapsed().microseconds()} microseconds')
 		}
 		if last_ts < now_ts {
 			r.reloads++

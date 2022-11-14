@@ -244,7 +244,7 @@ fn (upd VlsUpdater) compile_from_source() ! {
 		upd.log('Cloning VLS repo...')
 		clone_result := os.execute('$git clone https://github.com/nedpals/vls $vls_src_folder')
 		if clone_result.exit_code != 0 {
-			return error('Failed to build VLS from source. Reason: $clone_result.output')
+			return error('Failed to build VLS from source. Reason: ${clone_result.output}')
 		}
 	} else {
 		upd.log('Updating VLS repo...')
@@ -271,7 +271,7 @@ fn (upd VlsUpdater) compile_from_source() ! {
 
 	compile_result := os.execute('v run ${os.join_path(vls_src_folder, 'build.vsh')} ${possible_compilers[selected_compiler_idx]}')
 	if compile_result.exit_code != 0 {
-		return error('Cannot compile VLS from source: $compile_result.output')
+		return error('Cannot compile VLS from source: ${compile_result.output}')
 	}
 
 	exec_path := os.join_path(vls_src_folder, 'bin', 'vls')
@@ -413,7 +413,7 @@ fn (upd VlsUpdater) error_details(err IError) string {
 fn (upd VlsUpdater) cli_error(err IError) {
 	match upd.output {
 		.text {
-			eprintln('v ls error: $err.msg() ($err.code())')
+			eprintln('v ls error: ${err.msg()} (${err.code()})')
 			if err !is none {
 				eprintln(upd.error_details(err))
 			}
@@ -421,7 +421,7 @@ fn (upd VlsUpdater) cli_error(err IError) {
 			print_backtrace()
 		}
 		.json {
-			print('{"error":{"message":${json.encode(err.msg())},"code":"$err.code()","details":${json.encode(upd.error_details(err).trim_space())}}}')
+			print('{"error":{"message":${json.encode(err.msg())},"code":"${err.code()}","details":${json.encode(upd.error_details(err).trim_space())}}}')
 			flush_stdout()
 		}
 		.silent {}
@@ -433,7 +433,7 @@ fn (upd VlsUpdater) check_installation() {
 	if upd.ls_path.len == 0 {
 		upd.log('Language server is not installed')
 	} else {
-		upd.log('Language server is installed at: $upd.ls_path')
+		upd.log('Language server is installed at: ${upd.ls_path}')
 	}
 }
 
@@ -457,7 +457,7 @@ fn (upd VlsUpdater) run(fp flag.FlagParser) ! {
 			}
 		}
 	} else if upd.pass_to_ls {
-		exit(os.system('$upd.ls_path ${upd.args.join(' ')}'))
+		exit(os.system('${upd.ls_path} ${upd.args.join(' ')}'))
 	} else if upd.is_help {
 		println(fp.usage())
 		exit(0)

@@ -331,7 +331,7 @@ pub mut:
 
 // debug returns a string representation of *ALL* the fields of the given URL
 pub fn (url &URL) debug() string {
-	return 'URL{\n  scheme: $url.scheme\n  opaque: $url.opaque\n  user: $url.user\n  host: $url.host\n  path: $url.path\n  raw_path: $url.raw_path\n  force_query: $url.force_query\n  raw_query: $url.raw_query\n  fragment: $url.fragment\n}'
+	return 'URL{\n  scheme: ${url.scheme}\n  opaque: ${url.opaque}\n  user: ${url.user}\n  host: ${url.host}\n  path: ${url.path}\n  raw_path: ${url.raw_path}\n  force_query: ${url.force_query}\n  raw_query: ${url.raw_query}\n  fragment: ${url.fragment}\n}'
 }
 
 // user returns a Userinfo containing the provided username

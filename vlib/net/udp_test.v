@@ -46,7 +46,7 @@ fn echo() ! {
 		assert buf[i] == data[i]
 	}
 
-	println('Got "$buf.bytestr()"')
+	println('Got "${buf.bytestr()}"')
 
 	c.close()!
 }

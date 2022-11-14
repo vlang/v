@@ -10,7 +10,7 @@ fn (mut p Parser) lockable() ast.Expr {
 	mut pos := p.tok.pos()
 	for {
 		if p.tok.kind != .name {
-			p.unexpected(got: '`$p.tok.lit`', expecting: 'field or variable name')
+			p.unexpected(got: '`${p.tok.lit}`', expecting: 'field or variable name')
 		}
 		names << p.tok.lit
 		positions << pos

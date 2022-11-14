@@ -18,7 +18,7 @@ const fast_dir = os.dir(@FILE)
 const vdir = os.dir(os.dir(os.dir(fast_dir)))
 
 fn elog(msg string) {
-	eprintln('$time.now().format_ss_micro() $msg')
+	eprintln('${time.now().format_ss_micro()} $msg')
 }
 
 fn main() {
@@ -113,7 +113,7 @@ fn main() {
 	table := os.read_file('table.html')!
 	new_table :=
 		'	<tr>
-		<td>$date.format()</td>
+		<td>${date.format()}</td>
 		<td><a target=_blank href="https://github.com/vlang/v/commit/$commit">$commit</a></td>
 		<td>$html_message</td>
 		<td>${diff1}ms</td>

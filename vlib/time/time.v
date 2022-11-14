@@ -182,9 +182,9 @@ pub fn (t Time) relative() string {
 	}
 	if secs < time.seconds_per_hour * 24 * time.days_in_year {
 		if prefix == 'in ' {
-			return 'on $t.md()'
+			return 'on ${t.md()}'
 		}
-		return 'last $t.md()'
+		return 'last ${t.md()}'
 	}
 	y := secs / time.seconds_per_hour / 24 / time.days_in_year
 	if y == 1 {

@@ -153,7 +153,7 @@ type IdentVar = GlobalVar | LocalVar | Register
 fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 	mut obj := ident.obj
 	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
-		obj = ident.scope.find(ident.name) or { g.n_error('unknown variable $ident.name') }
+		obj = ident.scope.find(ident.name) or { g.n_error('unknown variable ${ident.name}') }
 	}
 	match obj {
 		ast.Var {
@@ -166,7 +166,7 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 			}
 		}
 		else {
-			g.n_error('unsupported variable type type:$obj name:$ident.name')
+			g.n_error('unsupported variable type type:$obj name:${ident.name}')
 		}
 	}
 }
@@ -341,7 +341,7 @@ pub fn (mut g Gen) create_executable() {
 
 	os.chmod(g.out_name, 0o775) or { panic(err) } // make it executable
 	if g.pref.is_verbose {
-		eprintln('\n$g.out_name: native binary has been successfully generated')
+		eprintln('\n${g.out_name}: native binary has been successfully generated')
 	}
 }
 
@@ -373,7 +373,7 @@ pub fn (mut g Gen) link(obj_name string) {
 			g.link_elf_file(obj_name)
 		}
 		else {
-			g.n_error('native linking is not implemented for $g.pref.os')
+			g.n_error('native linking is not implemented for ${g.pref.os}')
 		}
 	}
 }
@@ -792,9 +792,9 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string)
 		}
 		ast.IntegerLiteral {
 			if newline {
-				g.gen_print('$expr.val\n', fd)
+				g.gen_print('${expr.val}\n', fd)
 			} else {
-				g.gen_print('$expr.val', fd)
+				g.gen_print('${expr.val}', fd)
 			}
 		}
 		ast.BoolLiteral {
@@ -877,7 +877,7 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string)
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	name := if node.is_method {
-		'${g.table.get_type_name(node.receiver.typ)}.$node.name'
+		'${g.table.get_type_name(node.receiver.typ)}.${node.name}'
 	} else {
 		node.name
 	}
@@ -1082,14 +1082,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 						id: label
 						pos: jump_addr
 					}
-					g.println('; jump to $label: $node.kind')
+					g.println('; jump to $label: ${node.kind}')
 					break
 				}
 			}
 		}
 		ast.ConstDecl {}
 		ast.DeferStmt {
-			name := '_defer$g.defer_stmts.len'
+			name := '_defer${g.defer_stmts.len}'
 			defer_var := g.get_var_offset(name)
 			g.mov_int_to_var(LocalVar{defer_var, ast.i64_type_idx, name}, 1)
 			g.defer_stmts << node
@@ -1274,7 +1274,7 @@ fn (mut g Gen) gen_syscall(node ast.CallExpr) {
 				g.mov64(ra[i], 1)
 			}
 			else {
-				g.v_error('Unknown syscall $expr.type_name() argument type $expr', node.pos)
+				g.v_error('Unknown syscall ${expr.type_name()} argument type $expr', node.pos)
 				return
 			}
 		}
@@ -1321,7 +1321,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			if g.pref.arch == .arm64 {
 			} else {
 				g.movabs(.rax, val)
-				g.println('; $node.val')
+				g.println('; ${node.val}')
 				g.push(.rax)
 				g.pop_sse(.xmm0)
 			}
@@ -1416,7 +1416,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.expr(node.expr)
 		}
 		else {
-			g.n_error('expr: unhandled node type: $node.type_name()')
+			g.n_error('expr: unhandled node type: ${node.type_name()}')
 		}
 	}
 }

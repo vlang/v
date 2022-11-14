@@ -274,8 +274,8 @@ fn (mut tasks Tasks) run() {
 			bench.fail()
 			eprintln(bstep_message(mut bench, benchmark.b_fail, task.path, task.took))
 			println('============')
-			println('failed cmd: $task.cli_cmd')
-			println('expected_out_path: $task.expected_out_path')
+			println('failed cmd: ${task.cli_cmd}')
+			println('expected_out_path: ${task.expected_out_path}')
 			println('============')
 			println('expected:')
 			println(task.expected)
@@ -289,7 +289,7 @@ fn (mut tasks Tasks) run() {
 			bench.ok()
 			assert true
 			if tasks.show_cmd {
-				eprintln(bstep_message(mut bench, benchmark.b_ok, '$task.cli_cmd', task.took))
+				eprintln(bstep_message(mut bench, benchmark.b_ok, '${task.cli_cmd}', task.took))
 			} else {
 				if github_job == '' {
 					// local mode:
@@ -328,8 +328,8 @@ fn (mut task TaskDescription) execute() {
 		return
 	}
 	program := task.path
-	cmd_prefix := if task.evars.len > 0 { '$task.evars ' } else { '' }
-	cli_cmd := '$cmd_prefix${os.quoted_path(task.vexe)} $task.voptions ${os.quoted_path(program)}'
+	cmd_prefix := if task.evars.len > 0 { '${task.evars} ' } else { '' }
+	cli_cmd := '$cmd_prefix${os.quoted_path(task.vexe)} ${task.voptions} ${os.quoted_path(program)}'
 	res := os.execute(cli_cmd)
 	expected_out_path := program.replace('.vv', '') + task.result_extension
 	task.expected_out_path = expected_out_path

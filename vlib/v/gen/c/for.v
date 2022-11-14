@@ -11,7 +11,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		g.is_vlines_enabled = false
 		g.inside_for_c_stmt = true
 		if node.label.len > 0 {
-			g.writeln('$node.label:')
+			g.writeln('${node.label}:')
 		}
 		g.writeln('{')
 		g.indent++
@@ -51,7 +51,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		g.is_vlines_enabled = false
 		g.inside_for_c_stmt = true
 		if node.label.len > 0 {
-			g.writeln('$node.label:')
+			g.writeln('${node.label}:')
 		}
 		g.write('for (')
 		if !node.has_init {
@@ -105,7 +105,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	g.loop_depth++
 	g.is_vlines_enabled = false
 	if node.label.len > 0 {
-		g.writeln('$node.label:')
+		g.writeln('${node.label}:')
 	}
 	g.writeln('for (;;) {')
 	if !node.is_inf {
@@ -149,7 +149,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	}
 	g.loop_depth++
 	if node.label.len > 0 {
-		g.writeln('\t$node.label: {}')
+		g.writeln('\t${node.label}: {}')
 	}
 	if node.is_range {
 		// `for x in 1..10 {`
@@ -230,7 +230,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		idx := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
 		cond_sym := g.table.sym(node.cond_type)
 		info := cond_sym.info as ast.ArrayFixed
-		g.writeln('for (int $idx = 0; $idx != $info.size; ++$idx) {')
+		g.writeln('for (int $idx = 0; $idx != ${info.size}; ++$idx) {')
 		if node.val_var != '_' {
 			val_sym := g.table.sym(node.val_type)
 			is_fixed_array := val_sym.kind == .array_fixed && !node.val_is_mut
@@ -355,7 +355,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		if node.key_var in ['', '_'] {
 			g.writeln('while (1) {')
 		} else {
-			g.writeln('for (size_t $node.key_var = 0;; ++$node.key_var) {')
+			g.writeln('for (size_t ${node.key_var} = 0;; ++${node.key_var}) {')
 		}
 		t_var := g.new_tmp_var()
 		receiver_typ := g.unwrap_generic(next_fn.params[0].typ)
@@ -382,7 +382,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 	} else {
 		typ_str := g.table.type_to_str(node.cond_type)
-		g.error('for in: unhandled symbol `$node.cond` of type `$typ_str`', node.pos)
+		g.error('for in: unhandled symbol `${node.cond}` of type `$typ_str`', node.pos)
 	}
 	g.stmts(node.stmts)
 	if node.label.len > 0 {

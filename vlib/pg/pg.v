@@ -77,7 +77,7 @@ fn C.PQfinish(voidptr)
 // the parameters from the `Config` structure, returning
 // a connection error when something goes wrong
 pub fn connect(config Config) !DB {
-	conninfo := 'host=$config.host port=$config.port user=$config.user dbname=$config.dbname password=$config.password'
+	conninfo := 'host=${config.host} port=${config.port} user=${config.user} dbname=${config.dbname} password=${config.password}'
 	conn := C.PQconnectdb(conninfo.str)
 	if conn == 0 {
 		return error('libpq memory allocation error')

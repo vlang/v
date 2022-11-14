@@ -9,12 +9,12 @@ struct Foo {
 
 fn create(x int) &Foo {
 	res := &Foo{x}
-	println('> creating Foo $res.x at address: ${voidptr(res)}')
+	println('> creating Foo ${res.x} at address: ${voidptr(res)}')
 	return res
 }
 
 fn (f &Foo) free() {
-	println('> freeing Foo $f.x at address: ${voidptr(f)} | frees.len: $frees.len')
+	println('> freeing Foo ${f.x} at address: ${voidptr(f)} | frees.len: ${frees.len}')
 	frees << f.x
 }
 
@@ -24,8 +24,8 @@ fn create_some_foos() {
 	assert frees.len == starting
 	b := create(222)
 	assert frees.len == starting
-	println('  > create_some_foos a: $a.x')
-	println('  > create_some_foos b: $b.x')
+	println('  > create_some_foos a: ${a.x}')
+	println('  > create_some_foos b: ${b.x}')
 	assert frees.len == starting
 }
 

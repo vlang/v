@@ -196,7 +196,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 					}
 				}
 				c.check_expected(typ, elem_type) or {
-					c.error('invalid array element: $err.msg()', expr.pos())
+					c.error('invalid array element: ${err.msg()}', expr.pos())
 				}
 			}
 		}
@@ -233,7 +233,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 						fixed_size = comptime_value.i64() or { fixed_size }
 					}
 				} else {
-					c.error('non-constant array bound `$init_expr.name`', init_expr.pos)
+					c.error('non-constant array bound `${init_expr.name}`', init_expr.pos)
 				}
 			}
 			ast.InfixExpr {
@@ -307,10 +307,10 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				if val_info.generic_types.len > 0 && val_info.concrete_types.len == 0
 					&& !info.value_type.has_flag(.generic) {
 					if c.table.cur_concrete_types.len == 0 {
-						c.error('generic struct `$val_sym.name` must specify type parameter, e.g. Foo<int>',
+						c.error('generic struct `${val_sym.name}` must specify type parameter, e.g. Foo<int>',
 							node.pos)
 					} else {
-						c.error('generic struct `$val_sym.name` must specify type parameter, e.g. Foo<T>',
+						c.error('generic struct `${val_sym.name}` must specify type parameter, e.g. Foo<T>',
 							node.pos)
 					}
 				}

@@ -25,7 +25,7 @@ fn v_test_formatting(vargs string) {
 	vfmt_test_session.test()
 	eprintln(vfmt_test_session.benchmark.total_message('running vfmt over V files'))
 	if vfmt_test_session.benchmark.nfail > 0 {
-		eprintln('\nWARNING: v fmt failed $vfmt_test_session.benchmark.nfail times.\n')
+		eprintln('\nWARNING: v fmt failed ${vfmt_test_session.benchmark.nfail} times.\n')
 		exit(1)
 	}
 }

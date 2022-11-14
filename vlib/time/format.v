@@ -390,7 +390,7 @@ pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate)
 		.ddmmyyyy { '${t.day:02d}|${t.month:02d}|${t.year:04d}' }
 		.mmddyy { '${t.month:02d}|${t.day:02d}|$year' }
 		.mmddyyyy { '${t.month:02d}|${t.day:02d}|${t.year:04d}' }
-		.mmmd { '$month|$t.day' }
+		.mmmd { '$month|${t.day}' }
 		.mmmdd { '$month|${t.day:02d}' }
 		.mmmddyy { '$month|${t.day:02d}|$year' }
 		.mmmddyyyy { '$month|${t.day:02d}|${t.year:04d}' }
@@ -435,7 +435,7 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
 pub fn (t Time) utc_string() string {
 	day_str := t.weekday_str()
 	month_str := t.smonth()
-	utc_string := '$day_str, $t.day $month_str $t.year ${t.hour:02d}:${t.minute:02d}:${t.second:02d} UTC'
+	utc_string := '$day_str, ${t.day} $month_str ${t.year} ${t.hour:02d}:${t.minute:02d}:${t.second:02d} UTC'
 	return utc_string
 }
 

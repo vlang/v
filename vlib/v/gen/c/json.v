@@ -133,22 +133,22 @@ $enc_fn_dec {
 			if psym.info is ast.Struct {
 				g.gen_struct_enc_dec(psym.info, styp, mut enc, mut dec)
 			} else if psym.kind == .sum_type {
-				verror('json: $sym.name aliased sumtypes does not work at the moment')
+				verror('json: ${sym.name} aliased sumtypes does not work at the moment')
 			} else {
-				verror('json: $sym.name is not struct')
+				verror('json: ${sym.name} is not struct')
 			}
 		} else if sym.kind == .sum_type {
 			enc.writeln('\to = cJSON_CreateObject();')
 			// Sumtypes. Range through variants of sumtype
 			if sym.info !is ast.SumType {
-				verror('json: $sym.name is not a sumtype')
+				verror('json: ${sym.name} is not a sumtype')
 			}
 			g.gen_sumtype_enc_dec(sym, mut enc, mut dec)
 		} else {
 			enc.writeln('\to = cJSON_CreateObject();')
 			// Structs. Range through fields
 			if sym.info !is ast.Struct {
-				verror('json: $sym.name is not struct')
+				verror('json: ${sym.name} is not struct')
 			}
 			g.gen_struct_enc_dec(sym.info, styp, mut enc, mut dec)
 		}
@@ -195,10 +195,10 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 
 		// Helpers for decoding
 		g.get_sumtype_casting_fn(variant, typ)
-		g.definitions.writeln('static inline $sym.cname ${variant_typ}_to_sumtype_${sym.cname}($variant_typ* x);')
+		g.definitions.writeln('static inline ${sym.cname} ${variant_typ}_to_sumtype_${sym.cname}($variant_typ* x);')
 
 		// ENCODING
-		enc.writeln('\tif (val._typ == $variant.idx()) {')
+		enc.writeln('\tif (val._typ == ${variant.idx()}) {')
 		$if json_no_inline_sumtypes ? {
 			if variant_sym.kind == .enum_ {
 				enc.writeln('\t\tcJSON_AddItemToObject(o, "$unmangled_variant_name", ${js_enc_name('u64')}(*val._$variant_typ));')
@@ -253,7 +253,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 				dec.writeln('\t\t\tif (strcmp("$unmangled_variant_name", $type_var) == 0) {')
 				dec.writeln('\t\t\t\t${result_name}_$variant_typ $tmp = ${js_dec_name(variant_typ)}(root);')
 				dec.writeln('\t\t\t\tif (${tmp}.is_error) {')
-				dec.writeln('\t\t\t\t\treturn (${result_name}_$sym.cname){ .is_error = true, .err = ${tmp}.err, .data = {0} };')
+				dec.writeln('\t\t\t\t\treturn (${result_name}_${sym.cname}){ .is_error = true, .err = ${tmp}.err, .data = {0} };')
 				dec.writeln('\t\t\t\t}')
 				dec.writeln('\t\t\t\tres = ${variant_typ}_to_sumtype_${sym.cname}(($variant_typ*)${tmp}.data);')
 				dec.writeln('\t\t\t}')
@@ -285,7 +285,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 					if number_is_met {
 						var_num := var_t.replace('__', '.')
 						last_num := last_number_type.replace('__', '.')
-						verror('json: can not decode `$sym.name` sumtype, too many numeric types (conflict of `$last_num` and `$var_num`), you can try to use alias for `$var_num` or compile v with `json_no_inline_sumtypes` flag')
+						verror('json: can not decode `${sym.name}` sumtype, too many numeric types (conflict of `$last_num` and `$var_num`), you can try to use alias for `$var_num` or compile v with `json_no_inline_sumtypes` flag')
 					}
 					number_is_met = true
 					last_number_type = var_t
@@ -298,7 +298,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 				if var_t in ['string', 'rune'] {
 					if string_is_met {
 						var_num := var_t.replace('__', '.')
-						verror('json: can not decode `$sym.name` sumtype, too many string types (conflict of `string` and `rune`), you can try to use alias for `$var_num` or compile v with `json_no_inline_sumtypes` flag')
+						verror('json: can not decode `${sym.name}` sumtype, too many string types (conflict of `string` and `rune`), you can try to use alias for `$var_num` or compile v with `json_no_inline_sumtypes` flag')
 					}
 					string_is_met = true
 					dec.writeln('\t\tif (cJSON_IsString(root)) {')
@@ -319,7 +319,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 					dec.writeln('\t\tif (cJSON_IsArray(root) && $judge_elem_typ) {')
 					dec.writeln('\t\t\t${result_name}_$var_t $tmp = ${js_dec_name(var_t)}(root);')
 					dec.writeln('\t\t\tif (${tmp}.is_error) {')
-					dec.writeln('\t\t\t\treturn (${result_name}_$sym.cname){ .is_error = true, .err = ${tmp}.err, .data = {0} };')
+					dec.writeln('\t\t\t\treturn (${result_name}_${sym.cname}){ .is_error = true, .err = ${tmp}.err, .data = {0} };')
 					dec.writeln('\t\t\t}')
 					dec.writeln('\t\t\tres = ${var_t}_to_sumtype_${sym.cname}(($var_t*)${tmp}.data);')
 					dec.writeln('\t\t}')
@@ -330,7 +330,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 					if number_is_met {
 						var_num := var_t.replace('__', '.')
 						last_num := last_number_type.replace('__', '.')
-						verror('json: can not decode `$sym.name` sumtype, too many numeric types (conflict of `$last_num` and `$var_num`), you can try to use alias for `$var_num` or compile v with `json_no_inline_sumtypes` flag')
+						verror('json: can not decode `${sym.name}` sumtype, too many numeric types (conflict of `$last_num` and `$var_num`), you can try to use alias for `$var_num` or compile v with `json_no_inline_sumtypes` flag')
 					}
 					number_is_met = true
 					last_number_type = var_t

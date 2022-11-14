@@ -19,7 +19,7 @@ fn test_http_get_from_vlang_utc_now() {
 		assert res.status() == .ok
 		assert res.body.len > 0
 		assert res.body.int() > 1566403696
-		println('Current time is: $res.body.int()')
+		println('Current time is: ${res.body.int()}')
 	}
 }
 

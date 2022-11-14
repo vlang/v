@@ -113,7 +113,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		arg := if expected_types.len == 1 { 'argument' } else { 'arguments' }
 		midx := imax(0, imin(expected_types.len, expr_idxs.len - 1))
 		mismatch_pos := node.exprs[expr_idxs[midx]].pos()
-		c.error('expected $expected_types.len $arg, but got $got_types.len', mismatch_pos)
+		c.error('expected ${expected_types.len} $arg, but got ${got_types.len}', mismatch_pos)
 		return
 	}
 	for i, exp_type in expected_types {
@@ -182,7 +182,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			if node.exprs[expr_idxs[i]].is_auto_deref_var() {
 				continue
 			}
-			c.error('fn `$c.table.cur_fn.name` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+			c.error('fn `${c.table.cur_fn.name}` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
 		if (exp_type.is_ptr() || exp_type.is_pointer())
@@ -192,7 +192,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			if node.exprs[expr_idxs[i]].is_auto_deref_var() {
 				continue
 			}
-			c.error('fn `$c.table.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+			c.error('fn `${c.table.cur_fn.name}` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
 		if exp_type.is_ptr() && got_typ.is_ptr() {
@@ -207,11 +207,11 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 						type_sym := c.table.sym(obj.typ.set_nr_muls(0))
 						if !type_sym.is_heap() && !c.pref.translated && !c.file.is_translated {
 							suggestion := if type_sym.kind == .struct_ {
-								'declaring `$type_sym.name` as `[heap]`'
+								'declaring `${type_sym.name}` as `[heap]`'
 							} else {
-								'wrapping the `$type_sym.name` object in a `struct` declared as `[heap]`'
+								'wrapping the `${type_sym.name}` object in a `struct` declared as `[heap]`'
 							}
-							c.error('`$r_expr.name` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
+							c.error('`${r_expr.name}` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
 								r_expr.pos)
 						}
 					}
