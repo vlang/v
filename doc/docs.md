@@ -1457,7 +1457,7 @@ fn main() {
 		day: 25
 	}
 	println(time.new_time(my_time).utc_string())
-	println('Century: $my_time.century()')
+	println('Century: ${my_time.century()}')
 }
 ```
 
@@ -1971,7 +1971,7 @@ fn write_log(s State) !int {
 		// the file will be closed after the `error()` function
 		// has returned - so the error message will still report
 		// it as open
-		return error('nothing written; file open: $f.is_opened')
+		return error('nothing written; file open: ${f.is_opened}')
 	}
 	// the file will be closed here, too
 	return 0
@@ -2444,7 +2444,7 @@ clr2 := Rgba32{
 
 sz := sizeof(Rgba32)
 unsafe {
-	println('Size: ${sz}B,clr1.b: $clr1.b,clr2.b: $clr2.b')
+	println('Size: ${sz}B,clr1.b: ${clr1.b},clr2.b: ${clr2.b}')
 }
 ```
 
@@ -2859,7 +2859,7 @@ struct Color {
 }
 
 pub fn (c Color) str() string {
-	return '{$c.r, $c.g, $c.b}'
+	return '{${c.r}, ${c.g}, ${c.b}}'
 }
 
 red := Color{
@@ -3177,7 +3177,7 @@ fn main() {
 	arr << dog
 	arr << cat
 	for item in arr {
-		println('a $item.breed says: $item.speak()')
+		println('a ${item.breed} says: ${item.speak()}')
 	}
 }
 ```
@@ -3240,9 +3240,9 @@ interface Something {}
 
 fn announce(s Something) {
 	if s is Dog {
-		println('a $s.breed dog') // `s` is automatically cast to `Dog` (smart cast)
+		println('a ${s.breed} dog') // `s` is automatically cast to `Dog` (smart cast)
 	} else if s is Cat {
-		println('a cat speaks $s.speak()')
+		println('a cat speaks ${s.speak()}')
 	} else {
 		println('something else')
 	}
@@ -3709,7 +3709,7 @@ struct PathError {
 }
 
 fn (err PathError) msg() string {
-	return 'Failed to open path: $err.path'
+	return 'Failed to open path: ${err.path}'
 }
 
 fn try_open(path string) ? {
@@ -4452,7 +4452,7 @@ struct RefStruct {
 
 fn main() {
 	q, w := f()
-	println('q: $q.r.n, w: $w.n')
+	println('q: ${q.r.n}, w: ${w.n}')
 }
 
 fn f() (RefStruct, &MyStruct) {
@@ -4718,13 +4718,13 @@ uk_customers := sql db {
 }
 println(uk_customers.len)
 for customer in uk_customers {
-	println('$customer.id - $customer.name')
+	println('${customer.id} - ${customer.name}')
 }
 // by adding `limit 1` we tell V that there will be only one object
 customer := sql db {
 	select from Customer where id == 1 limit 1
 }
-println('$customer.id - $customer.name')
+println('${customer.id} - ${customer.name}')
 // insert a new customer
 new_customer := Customer{
 	name: 'Bob'
@@ -5198,7 +5198,7 @@ Another example, is if you want to embed the version/name from v.mod *inside* yo
 ```v ignore
 import v.vmod
 vm := vmod.decode( @VMOD_FILE ) or { panic(err) }
-eprintln('$vm.name $vm.version\n $vm.description')
+eprintln('${vm.name} ${vm.version}\n ${vm.description}')
 ```
 
 ### Compile-time reflection
@@ -5215,7 +5215,7 @@ struct User {
 fn main() {
 	$for field in User.fields {
 		$if field.typ is string {
-			println('$field.name is of type string')
+			println('${field.name} is of type string')
 		}
 	}
 }
@@ -5578,7 +5578,7 @@ struct Vec {
 }
 
 fn (a Vec) str() string {
-	return '{$a.x, $a.y}'
+	return '{${a.x}, ${a.y}}'
 }
 
 fn (a Vec) + (b Vec) Vec {
