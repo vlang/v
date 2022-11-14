@@ -335,18 +335,18 @@ pub fn (x Expr) str() string {
 				''
 			}
 			if x.is_method {
-				return '${x.left.str()}.${x.name}($sargs)$propagate_suffix'
+				return '${x.left.str()}.${x.name}(${sargs})${propagate_suffix}'
 			}
 			if x.name.starts_with('${x.mod}.') {
-				return util.strip_main_name('${x.name}($sargs)$propagate_suffix')
+				return util.strip_main_name('${x.name}(${sargs})${propagate_suffix}')
 			}
 			if x.mod == '' && x.name == '' {
-				return x.left.str() + '($sargs)$propagate_suffix'
+				return x.left.str() + '(${sargs})${propagate_suffix}'
 			}
 			if x.name.contains('.') {
-				return '${x.name}($sargs)$propagate_suffix'
+				return '${x.name}(${sargs})${propagate_suffix}'
 			}
-			return '${x.mod}.${x.name}($sargs)$propagate_suffix'
+			return '${x.mod}.${x.name}(${sargs})${propagate_suffix}'
 		}
 		CharLiteral {
 			return '`${x.val}`'
@@ -357,7 +357,7 @@ pub fn (x Expr) str() string {
 				return '/* ${lines.len} lines comment */'
 			} else {
 				text := x.text.trim('\x01').trim_space()
-				return '´// $text´'
+				return '´// ${text}´'
 			}
 		}
 		ComptimeSelector {
@@ -407,7 +407,7 @@ pub fn (x Expr) str() string {
 			mut pairs := []string{}
 			for ik, kv in x.keys {
 				mv := x.vals[ik].str()
-				pairs << '$kv: $mv'
+				pairs << '${kv}: ${mv}'
 			}
 			return 'map{ ${pairs.join(' ')} }'
 		}
@@ -510,7 +510,7 @@ pub fn (x Expr) str() string {
 		}
 		StructInit {
 			sname := global_table.sym(x.typ).name
-			return '$sname{....}'
+			return '${sname}{....}'
 		}
 		ArrayDecompose {
 			return 'ast.ArrayDecompose'
@@ -632,7 +632,7 @@ pub fn (node Stmt) str() string {
 		Return {
 			mut out := 'return'
 			for i, val in node.exprs {
-				out += ' $val'
+				out += ' ${val}'
 				if i < node.exprs.len - 1 {
 					out += ','
 				}
@@ -650,7 +650,7 @@ pub fn (node Stmt) str() string {
 
 fn field_to_string(f ConstField) string {
 	x := f.name.trim_string_left(f.mod + '.')
-	return '$x = ${f.expr}'
+	return '${x} = ${f.expr}'
 }
 
 pub fn (e ComptimeForKind) str() string {

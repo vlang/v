@@ -47,7 +47,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 					for name in embed_generic_names {
 						if name !in node_generic_names {
 							interface_generic_names := node_generic_names.join(', ')
-							c.error('generic type name `$name` is not mentioned in interface `${node.name}<$interface_generic_names>`',
+							c.error('generic type name `${name}` is not mentioned in interface `${node.name}<${interface_generic_names}>`',
 								embed.pos)
 						}
 					}
@@ -80,7 +80,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 								if ifield.typ != field.typ {
 									exp := c.table.type_to_str(ifield.typ)
 									got := c.table.type_to_str(field.typ)
-									c.error('embedded interface `${embed_decl.name}` conflicts existing field: `${ifield.name}`, expecting type: `$exp`, got type: `$got`',
+									c.error('embedded interface `${embed_decl.name}` conflicts existing field: `${ifield.name}`, expecting type: `${exp}`, got type: `${got}`',
 										ifield.pos)
 								}
 							}
@@ -99,7 +99,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 									if msg.len > 0 {
 										em_sig := c.table.fn_signature(em_fn, skip_receiver: true)
 										m_sig := c.table.fn_signature(m_fn, skip_receiver: true)
-										c.error('embedded interface `${embed_decl.name}` causes conflict: $msg, for interface method `$em_sig` vs `$m_sig`',
+										c.error('embedded interface `${embed_decl.name}` causes conflict: ${msg}, for interface method `${em_sig}` vs `${m_sig}`',
 											imethod.pos)
 									}
 								}
@@ -134,7 +134,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 					for name in method_generic_names {
 						if name !in node_generic_names {
 							interface_generic_names := node_generic_names.join(', ')
-							c.error('generic type name `$name` is not mentioned in interface `${node.name}<$interface_generic_names>`',
+							c.error('generic type name `${name}` is not mentioned in interface `${node.name}<${interface_generic_names}>`',
 								method.return_type_pos)
 						}
 					}
@@ -159,7 +159,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 					for name in method_generic_names {
 						if name !in node_generic_names {
 							interface_generic_names := node_generic_names.join(', ')
-							c.error('generic type name `$name` is not mentioned in interface `${node.name}<$interface_generic_names>`',
+							c.error('generic type name `${name}` is not mentioned in interface `${node.name}<${interface_generic_names}>`',
 								param.type_pos)
 						}
 					}
@@ -306,7 +306,7 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 					}
 				}
 				if inferred_type == ast.void_type {
-					c.error('could not infer generic type `$gt_name` in interface `${inter_sym.name}`',
+					c.error('could not infer generic type `${gt_name}` in interface `${inter_sym.name}`',
 						pos)
 					return interface_type
 				}

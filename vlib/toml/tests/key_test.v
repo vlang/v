@@ -3,7 +3,7 @@ import toml
 import toml.to
 
 fn path_by_extension(ext string) string {
-	return os.join_path(os.dir(@VEXE), 'vlib/toml/tests/testdata/key_test.$ext')
+	return os.join_path(os.dir(@VEXE), 'vlib/toml/tests/testdata/key_test.${ext}')
 }
 
 fn test_keys() {

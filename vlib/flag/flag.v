@@ -181,7 +181,7 @@ pub fn (mut fs FlagParser) description(desc string) {
 	if fs.application_description.len == 0 {
 		fs.application_description = desc
 	} else {
-		fs.application_description += '\n$desc'
+		fs.application_description += '\n${desc}'
 	}
 }
 
@@ -220,7 +220,7 @@ fn (mut fs FlagParser) add_flag(name string, abbr u8, usage string, desc string)
 // - found arguments and corresponding values are removed from args list
 [manualfree]
 fn (mut fs FlagParser) parse_value(longhand string, shorthand u8) []string {
-	full := '--$longhand'
+	full := '--${longhand}'
 	defer {
 		unsafe { full.free() }
 	}
@@ -259,7 +259,7 @@ fn (mut fs FlagParser) parse_value(longhand string, shorthand u8) []string {
 			should_skip_one = true
 			continue
 		}
-		if arg.len > full.len + 1 && arg[..full.len + 1] == '$full=' {
+		if arg.len > full.len + 1 && arg[..full.len + 1] == '${full}=' {
 			found_entries << arg[full.len + 1..]
 			to_delete << i
 			continue
@@ -280,7 +280,7 @@ fn (mut fs FlagParser) parse_value(longhand string, shorthand u8) []string {
 // -> '--flag' is equal to '--flag=true'
 fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand u8) !string {
 	{
-		full := '--$longhand'
+		full := '--${longhand}'
 		for i, arg in fs.args {
 			if arg.len == 0 {
 				continue
@@ -299,7 +299,7 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand u8) !string {
 					return 'true'
 				}
 			}
-			if arg.len > full.len + 1 && arg[..full.len + 1] == '$full=' {
+			if arg.len > full.len + 1 && arg[..full.len + 1] == '${full}=' {
 				// Flag abc=true
 				val := arg[full.len + 1..]
 				fs.args.delete(i)
@@ -311,7 +311,7 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand u8) !string {
 			}
 		}
 	}
-	return error("parameter '$longhand' not found")
+	return error("parameter '${longhand}' not found")
 }
 
 // bool_opt returns an option with the bool value of the given command line flag, named `name`.
@@ -322,7 +322,7 @@ pub fn (mut fs FlagParser) bool_opt(name string, abbr u8, usage string) !bool {
 	{
 		fs.add_flag(name, abbr, usage, '<bool>')
 		parsed := fs.parse_bool_value(name, abbr) or {
-			return error("parameter '$name' not provided")
+			return error("parameter '${name}' not provided")
 		}
 		res = parsed == 'true'
 	}
@@ -360,7 +360,7 @@ pub fn (mut fs FlagParser) int_opt(name string, abbr u8, usage string) !int {
 		fs.add_flag(name, abbr, usage, '<int>')
 		parsed := fs.parse_value(name, abbr)
 		if parsed.len == 0 {
-			return error("parameter '$name' not provided")
+			return error("parameter '${name}' not provided")
 		}
 		parsed0 := parsed[0]
 		res = parsed0.int()
@@ -399,7 +399,7 @@ pub fn (mut fs FlagParser) float_opt(name string, abbr u8, usage string) !f64 {
 		fs.add_flag(name, abbr, usage, '<float>')
 		parsed := fs.parse_value(name, abbr)
 		if parsed.len == 0 {
-			return error("parameter '$name' not provided")
+			return error("parameter '${name}' not provided")
 		}
 		res = parsed[0].f64()
 	}
@@ -432,7 +432,7 @@ pub fn (mut fs FlagParser) string_opt(name string, abbr u8, usage string) !strin
 		fs.add_flag(name, abbr, usage, '<string>')
 		parsed := fs.parse_value(name, abbr)
 		if parsed.len == 0 {
-			return error("parameter '$name' not provided")
+			return error("parameter '${name}' not provided")
 		}
 		res = parsed[0]
 	}
@@ -453,7 +453,7 @@ pub fn (mut fs FlagParser) string(name string, abbr u8, sdefault string, usage s
 // the parser will return an error.
 pub fn (mut fs FlagParser) limit_free_args_to_at_least(n int) ! {
 	if n > flag.max_args_number {
-		return error('flag.limit_free_args_to_at_least expect n to be smaller than $flag.max_args_number')
+		return error('flag.limit_free_args_to_at_least expect n to be smaller than ${flag.max_args_number}')
 	}
 	if n <= 0 {
 		return error('flag.limit_free_args_to_at_least expect n to be a positive number')
@@ -466,7 +466,7 @@ pub fn (mut fs FlagParser) limit_free_args_to_at_least(n int) ! {
 // the parser will return an error.
 pub fn (mut fs FlagParser) limit_free_args_to_exactly(n int) ! {
 	if n > flag.max_args_number {
-		return error('flag.limit_free_args_to_exactly expect n to be smaller than $flag.max_args_number')
+		return error('flag.limit_free_args_to_exactly expect n to be smaller than ${flag.max_args_number}')
 	}
 	if n < 0 {
 		return error('flag.limit_free_args_to_exactly expect n to be a non negative number')
@@ -480,7 +480,7 @@ pub fn (mut fs FlagParser) limit_free_args_to_exactly(n int) ! {
 // the parser will return an error.
 pub fn (mut fs FlagParser) limit_free_args(min int, max int) ! {
 	if min > max {
-		return error('flag.limit_free_args expect min < max, got $min >= $max')
+		return error('flag.limit_free_args expect min < max, got ${min} >= ${max}')
 	}
 	fs.min_free_args = min
 	fs.max_free_args = max
@@ -506,16 +506,16 @@ pub fn (fs FlagParser) usage() string {
 	mut use := []string{}
 	if fs.application_version != '' {
 		use << '${fs.application_name} ${fs.application_version}'
-		use << '$flag.underline'
+		use << '${flag.underline}'
 	}
 	if fs.usage_examples.len == 0 {
-		use << 'Usage: ${fs.application_name} [options] $adesc'
+		use << 'Usage: ${fs.application_name} [options] ${adesc}'
 	} else {
 		for i, example in fs.usage_examples {
 			if i == 0 {
-				use << 'Usage: ${fs.application_name} $example'
+				use << 'Usage: ${fs.application_name} ${example}'
 			} else {
-				use << '   or: ${fs.application_name} $example'
+				use << '   or: ${fs.application_name} ${example}'
 			}
 		}
 	}
@@ -541,7 +541,7 @@ pub fn (fs FlagParser) usage() string {
 				s = ['exactly ${fs.min_free_args}']
 			}
 			sargs := s.join(' and ')
-			use << 'The arguments should be $sargs in number.'
+			use << 'The arguments should be ${sargs} in number.'
 			use << ''
 		}
 	}
@@ -562,11 +562,11 @@ pub fn (fs FlagParser) usage() string {
 			option_names := '  ' + onames.join(', ')
 			mut xspace := ''
 			if option_names.len > flag.space.len - 2 {
-				xspace = '\n$flag.space'
+				xspace = '\n${flag.space}'
 			} else {
 				xspace = flag.space[option_names.len..]
 			}
-			fdesc := '$option_names$xspace${f.usage}'
+			fdesc := '${option_names}${xspace}${f.usage}'
 			use << fdesc
 		}
 	}

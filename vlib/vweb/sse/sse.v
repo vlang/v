@@ -50,7 +50,7 @@ pub fn (mut sse SSEConnection) start() ! {
 	start_sb.write_string('\r\nCache-Control: no-cache')
 	start_sb.write_string('\r\nContent-Type: text/event-stream')
 	for k, v in sse.headers {
-		start_sb.write_string('\r\n$k: $v')
+		start_sb.write_string('\r\n${k}: ${v}')
 	}
 	start_sb.write_string('\r\n')
 	sse.conn.write(start_sb) or { return error('could not start sse response') }

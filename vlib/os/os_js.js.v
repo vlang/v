@@ -57,7 +57,7 @@ pub fn exists(path string) bool {
 
 pub fn ls(path string) ![]string {
 	if !is_dir(path) {
-		return error('ls(): cannot open dir $dir')
+		return error('ls(): cannot open dir ${dir}')
 	}
 
 	result := []string{}

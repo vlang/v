@@ -44,8 +44,8 @@ pub fn (a Attr) str() string {
 	}
 	s += match a.kind {
 		.plain, .number, .bool { arg }
-		.string { "'$arg'" }
-		.comptime_define { 'if $arg' }
+		.string { "'${arg}'" }
+		.comptime_define { 'if ${arg}' }
 	}
 	return s
 }

@@ -39,7 +39,7 @@ pub fn (v Value) str() string {
 		map[string]Value {
 			mut str := '{'
 			for key, val in v {
-				str += ' "$key": $val,'
+				str += ' "${key}": ${val},'
 			}
 			str = str.trim_right(',')
 			str += ' }'
@@ -48,7 +48,7 @@ pub fn (v Value) str() string {
 		[]Value {
 			mut str := '['
 			for val in v {
-				str += ' $val,'
+				str += ' ${val},'
 			}
 			str = str.trim_right(',')
 			str += ' ]'

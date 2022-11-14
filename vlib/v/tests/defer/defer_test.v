@@ -156,7 +156,7 @@ fn num() int {
 }
 
 fn close(i int) {
-	eprintln('Close $i')
+	eprintln('Close ${i}')
 }
 
 fn test_defer_with_reserved_words() {

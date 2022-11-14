@@ -55,7 +55,7 @@ fn flush_println(s string) {
 
 fn (mut runner TAPTestRunner) start(ntests int) {
 	runner.plan_tests = ntests
-	flush_println('1..$ntests')
+	flush_println('1..${ntests}')
 }
 
 fn (mut runner TAPTestRunner) finish() {
@@ -93,7 +93,7 @@ fn (mut runner TAPTestRunner) fn_fail() {
 }
 
 fn (mut runner TAPTestRunner) fn_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
-	flush_println('# test function propagated error: ${runner.fname}, line_nr: $line_nr, file: $file, mod: $mod, fn_name: $fn_name, errmsg: $errmsg')
+	flush_println('# test function propagated error: ${runner.fname}, line_nr: ${line_nr}, file: ${file}, mod: ${mod}, fn_name: ${fn_name}, errmsg: ${errmsg}')
 }
 
 //

@@ -49,9 +49,9 @@ pub fn (tag &Tag) str() string {
 	mut html_str := strings.new_builder(200)
 	html_str.write_string('<${tag.name}')
 	for key, value in tag.attributes {
-		html_str.write_string(' $key')
+		html_str.write_string(' ${key}')
 		if value.len > 0 {
-			html_str.write_string('="$value"')
+			html_str.write_string('="${value}"')
 		}
 	}
 	html_str.write_string(if tag.closed && tag.close_type == .in_name { '/>' } else { '>' })

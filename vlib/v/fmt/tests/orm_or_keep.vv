@@ -13,7 +13,7 @@ fn main() {
 	sql db {
 		insert user into User
 	} or {
-		println('user should have been inserted, but could not, err: $err')
+		println('user should have been inserted, but could not, err: ${err}')
 		exit(1)
 	}
 }

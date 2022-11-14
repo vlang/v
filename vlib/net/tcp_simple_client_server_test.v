@@ -15,7 +15,7 @@ fn setup() (&net.TcpListener, &net.TcpConn, &net.TcpConn) {
 
 	c := chan &net.TcpConn{}
 	spawn accept(mut server, c)
-	mut client := net.dial_tcp('localhost$server_port') or { panic(err) }
+	mut client := net.dial_tcp('localhost${server_port}') or { panic(err) }
 
 	socket := <-c
 
@@ -44,7 +44,7 @@ fn test_socket() {
 	}
 	assert true
 	$if debug {
-		println('message send: $message')
+		println('message send: ${message}')
 	}
 	$if debug {
 		println('send socket: ${socket.sock.handle}')
@@ -56,7 +56,7 @@ fn test_socket() {
 	}
 	received := buf[0..nbytes].bytestr()
 	$if debug {
-		println('message received: $received')
+		println('message received: ${received}')
 	}
 	$if debug {
 		println('client: ${client.sock.handle}')
@@ -87,7 +87,7 @@ fn test_socket_read_line() {
 		cleanup(mut server, mut client, mut socket)
 	}
 	message1, message2 := 'message1', 'message2'
-	message := '$message1\n$message2\n'
+	message := '${message1}\n${message2}\n'
 	socket.write_string(message) or { assert false }
 	assert true
 	//
@@ -124,7 +124,7 @@ fn test_socket_write_fail_without_panic() {
 	// TODO: fix segfaulting on Solaris and FreeBSD
 	for i := 0; i < 3; i++ {
 		socket.write_string(message2) or {
-			println('write to a socket without a recipient should produce an option fail: $err | $message2')
+			println('write to a socket without a recipient should produce an option fail: ${err} | ${message2}')
 			assert true
 		}
 	}

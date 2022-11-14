@@ -77,7 +77,7 @@ pub fn (mut s SSLConn) shutdown() ! {
 					if s.sslctx != 0 {
 						C.SSL_CTX_free(s.sslctx)
 					}
-					return error('unexepedted ssl error $err_res')
+					return error('unexepedted ssl error ${err_res}')
 				}
 				if s.ssl != 0 {
 					unsafe { C.SSL_free(voidptr(s.ssl)) }
@@ -85,7 +85,7 @@ pub fn (mut s SSLConn) shutdown() ! {
 				if s.sslctx != 0 {
 					C.SSL_CTX_free(s.sslctx)
 				}
-				return error('Could not connect using SSL. ($err_res),err')
+				return error('Could not connect using SSL. (${err_res}),err')
 			} else if res == 0 {
 				continue
 			} else if res == 1 {
@@ -155,14 +155,14 @@ fn (mut s SSLConn) init() ! {
 		if s.config.cert != '' {
 			res = C.SSL_CTX_use_certificate_file(voidptr(s.sslctx), &char(cert.str), C.SSL_FILETYPE_PEM)
 			if s.config.validate && res != 1 {
-				return error('http: openssl: SSL_CTX_use_certificate_file failed, res: $res')
+				return error('http: openssl: SSL_CTX_use_certificate_file failed, res: ${res}')
 			}
 		}
 		if s.config.cert_key != '' {
 			res = C.SSL_CTX_use_PrivateKey_file(voidptr(s.sslctx), &char(cert_key.str),
 				C.SSL_FILETYPE_PEM)
 			if s.config.validate && res != 1 {
-				return error('http: openssl: SSL_CTX_use_PrivateKey_file failed, res: $res')
+				return error('http: openssl: SSL_CTX_use_PrivateKey_file failed, res: ${res}')
 			}
 		}
 
@@ -194,7 +194,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 // dial opens an ssl connection on hostname:port
 pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	s.owns_socket = true
-	mut tcp_conn := net.dial_tcp('$hostname:$port') or { return err }
+	mut tcp_conn := net.dial_tcp('${hostname}:${port}') or { return err }
 	$if macos {
 		tcp_conn.set_blocking(true) or { return err }
 	}
@@ -223,7 +223,7 @@ fn (mut s SSLConn) complete_connect() ! {
 				}
 				continue
 			}
-			return error('Could not connect using SSL. ($err_res),err')
+			return error('Could not connect using SSL. (${err_res}),err')
 		}
 		break
 	}
@@ -250,7 +250,7 @@ fn (mut s SSLConn) complete_connect() ! {
 					}
 					continue
 				}
-				return error('Could not validate SSL certificate. ($err_res),err')
+				return error('Could not validate SSL certificate. (${err_res}),err')
 			}
 			break
 		}
@@ -294,7 +294,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 					return 0
 				}
 				else {
-					return error('Could not read using SSL. ($err_res)')
+					return error('Could not read using SSL. (${err_res})')
 				}
 			}
 		}
@@ -336,7 +336,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 				} else if err_res == .ssl_error_zero_return {
 					return error('ssl write on closed connection') // Todo error_with_code close
 				}
-				return error_with_code('Could not write SSL. ($err_res),err', int(err_res))
+				return error_with_code('Could not write SSL. (${err_res}),err', int(err_res))
 			}
 			total_sent += sent
 		}

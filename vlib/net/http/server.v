@@ -55,7 +55,7 @@ pub fn (mut s Server) listen_and_serve() {
 				// just skip network timeouts, they are normal
 				continue
 			}
-			eprintln('accept() failed, reason: $err; skipping')
+			eprintln('accept() failed, reason: ${err}; skipping')
 			continue
 		}
 		conn.set_read_timeout(s.read_timeout)
@@ -88,7 +88,7 @@ pub fn (s &Server) status() ServerStatus {
 
 fn (mut s Server) parse_and_respond(mut conn net.TcpConn) {
 	defer {
-		conn.close() or { eprintln('close() failed: $err') }
+		conn.close() or { eprintln('close() failed: ${err}') }
 	}
 
 	mut reader := io.new_buffered_reader(reader: conn)
@@ -100,7 +100,7 @@ fn (mut s Server) parse_and_respond(mut conn net.TcpConn) {
 	req := parse_request(mut reader) or {
 		$if debug {
 			// only show in debug mode to prevent abuse
-			eprintln('error parsing request: $err')
+			eprintln('error parsing request: ${err}')
 		}
 		return
 	}
@@ -108,7 +108,7 @@ fn (mut s Server) parse_and_respond(mut conn net.TcpConn) {
 	if resp.version() == .unknown {
 		resp.set_version(req.version)
 	}
-	conn.write(resp.bytes()) or { eprintln('error sending response: $err') }
+	conn.write(resp.bytes()) or { eprintln('error sending response: ${err}') }
 }
 
 // DebugHandler implements the Handler interface by echoing the request

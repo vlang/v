@@ -21,7 +21,7 @@ pub fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 	p.check(.dollar)
 	name := p.check_name()
 	if name !in parser.comptime_types {
-		p.error('unsupported compile-time type `$name`: only $parser.comptime_types are supported')
+		p.error('unsupported compile-time type `${name}`: only ${parser.comptime_types} are supported')
 	}
 	mut cty := ast.ComptimeTypeKind.map_
 	match name {
@@ -63,7 +63,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 	p.next()
 	mut main_str := ''
 	mut msg := ''
-	content := val.all_after('$kind ').all_before('//')
+	content := val.all_after('${kind} ').all_before('//')
 	if content.contains(' #') {
 		main_str = content.all_before(' #').trim_space()
 		msg = content.all_after(' #').trim_space()
@@ -190,9 +190,9 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 				}
 			}
 			if is_html {
-				p.error_with_pos('vweb HTML template "$tmpl_path" not found', arg_pos)
+				p.error_with_pos('vweb HTML template "${tmpl_path}" not found', arg_pos)
 			} else {
-				p.error_with_pos('template file "$tmpl_path" not found', arg_pos)
+				p.error_with_pos('template file "${tmpl_path}" not found', arg_pos)
 			}
 			return err_node
 		}
@@ -200,18 +200,18 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 	tmp_fn_name := p.cur_fn_name.replace('.', '__') + start_pos.pos.str()
 	$if trace_comptime ? {
-		println('>>> compiling comptime template file "$path" for $tmp_fn_name')
+		println('>>> compiling comptime template file "${path}" for ${tmp_fn_name}')
 	}
 	v_code := p.compile_template_file(path, tmp_fn_name)
 	$if print_vweb_template_expansions ? {
 		lines := v_code.split('\n')
 		for i, line in lines {
-			println('$path:${i + 1}: $line')
+			println('${path}:${i + 1}: ${line}')
 		}
 	}
 	$if trace_comptime ? {
 		println('')
-		println('>>> template for $path:')
+		println('>>> template for ${path}:')
 		println(v_code)
 		println('>>> end of template END')
 		println('')
@@ -269,7 +269,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 		})
 		kind = .attributes
 	} else {
-		p.error_with_pos('unknown kind `$for_val`, available are: `methods`, `fields` or `attributes`',
+		p.error_with_pos('unknown kind `${for_val}`, available are: `methods`, `fields` or `attributes`',
 			p.prev_tok.pos())
 		return ast.ComptimeFor{}
 	}

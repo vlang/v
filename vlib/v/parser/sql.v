@@ -196,7 +196,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		kind = .create
 		table := p.check_name()
 		if table != 'table' {
-			p.error('expected `table` got `$table`')
+			p.error('expected `table` got `${table}`')
 			return ast.SqlStmtLine{}
 		}
 		typ := p.parse_type()
@@ -213,7 +213,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		kind = .drop
 		table := p.check_name()
 		if table != 'table' {
-			p.error('expected `table` got `$table`')
+			p.error('expected `table` got `${table}`')
 			return ast.SqlStmtLine{}
 		}
 		typ := p.parse_type()
@@ -299,7 +299,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 
 fn (mut p Parser) check_sql_keyword(name string) ?bool {
 	if p.check_name() != name {
-		p.error('orm: expecting `$name`')
+		p.error('orm: expecting `${name}`')
 		return none
 	}
 	return true

@@ -98,7 +98,7 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Pos)
 	emsg := omsg.replace('main.', '')
 	path := path_styled_for_error_messages(filepath)
 	position := if filepath.len > 0 {
-		'$path:${pos.line_nr + 1}:${mu.max(1, pos.col + 1)}:'
+		'${path}:${pos.line_nr + 1}:${mu.max(1, pos.col + 1)}:'
 	} else {
 		''
 	}
@@ -106,9 +106,9 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Pos)
 	final_position := bold(position)
 	final_kind := bold(color(kind, kind))
 	final_msg := emsg
-	final_context := if scontext.len > 0 { '\n$scontext' } else { '' }
+	final_context := if scontext.len > 0 { '\n${scontext}' } else { '' }
 
-	return '$final_position $final_kind $final_msg$final_context'.trim_space()
+	return '${final_position} ${final_kind} ${final_msg}${final_context}'.trim_space()
 }
 
 [heap]
@@ -185,7 +185,7 @@ pub fn source_file_context(kind string, filepath string, pos token.Pos) []string
 [noreturn]
 pub fn verror(kind string, s string) {
 	final_kind := bold(color(kind, kind))
-	eprintln('$final_kind: $s')
+	eprintln('${final_kind}: ${s}')
 	exit(1)
 }
 

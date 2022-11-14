@@ -30,6 +30,6 @@ fn test_generic_sumtype_of_alias_generic_struct() {
 	c << BBbool{
 		val: 2
 	}
-	println('$c')
-	assert '$c' == '[1, 2]'
+	println('${c}')
+	assert '${c}' == '[1, 2]'
 }

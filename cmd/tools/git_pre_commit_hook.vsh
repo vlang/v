@@ -41,10 +41,10 @@ fn main() {
 	} else {
 		eprintln('The V pre commit hook will format ${vfiles.len} V file(s):')
 		for vfile in vfiles {
-			eprintln('    ${term.bold('$vfile')}')
+			eprintln('    ${term.bold('${vfile}')}')
 		}
 		all_vfiles_on_a_line := vfiles.map(os.quoted_path(it)).join(' ')
-		os.system('v fmt -w $all_vfiles_on_a_line')
-		os.system('git add $all_vfiles_on_a_line')
+		os.system('v fmt -w ${all_vfiles_on_a_line}')
+		os.system('git add ${all_vfiles_on_a_line}')
 	}
 }

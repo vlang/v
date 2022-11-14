@@ -105,7 +105,7 @@ __global codegen_files = unsafe { []&ast.File{} }
 // for tests
 pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
 	$if trace_parse_stmt ? {
-		eprintln('> ${@MOD}.${@FN} text: $text')
+		eprintln('> ${@MOD}.${@FN} text: ${text}')
 	}
 	mut p := Parser{
 		scanner: scanner.new_scanner(text, .skip_comments, &pref.Preferences{})
@@ -125,7 +125,7 @@ pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
 
 pub fn parse_comptime(tmpl_path string, text string, table &ast.Table, pref &pref.Preferences, scope &ast.Scope) &ast.File {
 	$if trace_parse_comptime ? {
-		eprintln('> ${@MOD}.${@FN} text: $text')
+		eprintln('> ${@MOD}.${@FN} text: ${text}')
 	}
 	mut p := Parser{
 		file_name: tmpl_path
@@ -143,7 +143,7 @@ pub fn parse_comptime(tmpl_path string, text string, table &ast.Table, pref &pre
 
 pub fn parse_text(text string, path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences) &ast.File {
 	$if trace_parse_text ? {
-		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: ${path:-20} | text: $text')
+		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: ${path:-20} | text: ${text}')
 	}
 	mut p := Parser{
 		scanner: scanner.new_scanner(text, comments_mode, pref)
@@ -220,7 +220,7 @@ pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsM
 	// all the tricky inner comments. This is needed because we do not have a good general solution
 	// for handling them, and should be removed when we do (the general solution is also needed for vfmt)
 	$if trace_parse_file ? {
-		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: $path')
+		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: ${path}')
 	}
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, comments_mode, pref) or { panic(err) }
@@ -242,7 +242,7 @@ pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsM
 
 pub fn parse_vet_file(path string, table_ &ast.Table, pref &pref.Preferences) (&ast.File, []vet.Error) {
 	$if trace_parse_vet_file ? {
-		eprintln('> ${@MOD}.${@FN} path: $path')
+		eprintln('> ${@MOD}.${@FN} path: ${path}')
 	}
 	global_scope := &ast.Scope{
 		parent: 0
@@ -399,7 +399,7 @@ fn (mut q Queue) run() {
 }
 */
 pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&ast.File {
-	mut timers := util.new_timers(should_print: false, label: 'parse_files: $paths')
+	mut timers := util.new_timers(should_print: false, label: 'parse_files: ${paths}')
 	$if time_parsing ? {
 		timers.should_print = true
 	}
@@ -429,9 +429,9 @@ pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&
 	unsafe {
 		mut files := []&ast.File{cap: paths.len}
 		for path in paths {
-			timers.start('parse_file $path')
+			timers.start('parse_file ${path}')
 			files << parse_file(path, table, .skip_comments, pref)
-			timers.show('parse_file $path')
+			timers.show('parse_file ${path}')
 		}
 		if codegen_files.len > 0 {
 			files << codegen_files
@@ -445,7 +445,7 @@ pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&
 // checked, markused, cgen-ed etc further, just like user's V code.
 pub fn (mut p Parser) codegen(code string) {
 	$if debug_codegen ? {
-		eprintln('parser.codegen:\n $code')
+		eprintln('parser.codegen:\n ${code}')
 	}
 	p.codegen_text += '\n' + code
 }
@@ -575,10 +575,10 @@ pub fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 			stmts << p.stmt(is_top_level)
 			count++
 			if count % 100000 == 0 {
-				eprintln('parsed $count statements so far from fn ${p.cur_fn_name} ...')
+				eprintln('parsed ${count} statements so far from fn ${p.cur_fn_name} ...')
 			}
 			if count > 1000000 {
-				p.error_with_pos('parsed over $count statements from fn ${p.cur_fn_name}, the parser is probably stuck',
+				p.error_with_pos('parsed over ${count} statements from fn ${p.cur_fn_name}, the parser is probably stuck',
 					p.tok.pos())
 				return []
 			}
@@ -608,7 +608,7 @@ fn (mut p Parser) check(expected token.Kind) {
 		mut s := expected.str()
 		// quote keywords, punctuation, operators
 		if token.is_key(s) || (s.len > 0 && !s[0].is_letter()) {
-			s = '`$s`'
+			s = '`${s}`'
 		}
 		p.unexpected(expecting: s)
 	}
@@ -670,7 +670,7 @@ fn (mut p Parser) check_name() string {
 
 [if trace_parser ?]
 fn (p &Parser) trace_parser(label string) {
-	eprintln('parsing: ${p.file_name:-30}|tok.pos: ${p.tok.pos().line_str():-39}|tok.kind: ${p.tok.kind:-10}|tok.lit: ${p.tok.lit:-10}|$label')
+	eprintln('parsing: ${p.file_name:-30}|tok.pos: ${p.tok.pos().line_str():-39}|tok.kind: ${p.tok.kind:-10}|tok.lit: ${p.tok.lit:-10}|${label}')
 }
 
 pub fn (mut p Parser) top_stmt() ast.Stmt {
@@ -893,7 +893,7 @@ pub fn (mut p Parser) eat_comments(cfg EatCommentsConfig) []ast.Comment {
 }
 
 pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
-	p.trace_parser('stmt($is_top_level)')
+	p.trace_parser('stmt(${is_top_level})')
 	p.is_stmt_ident = p.tok.kind == .name
 	match p.tok.kind {
 		.lcbr {
@@ -939,7 +939,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				spos := p.tok.pos()
 				name := p.check_name()
 				if name in p.label_names {
-					return p.error_with_pos('duplicate label `$name`', spos)
+					return p.error_with_pos('duplicate label `${name}`', spos)
 				}
 				p.label_names << name
 				p.next()
@@ -1211,7 +1211,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 								}
 							}
 							else {
-								verror('p.parse_number_literal() invalid output: `$number_lit`')
+								verror('p.parse_number_literal() invalid output: `${number_lit}`')
 							}
 						}
 					}
@@ -1845,13 +1845,13 @@ fn (mut p Parser) parse_attr() ast.Attr {
 
 pub fn (mut p Parser) language_not_allowed_error(language ast.Language, pos token.Pos) {
 	upcase_language := language.str().to_upper()
-	p.error_with_pos('$upcase_language code is not allowed in .${p.file_backend_mode}.v files, please move it to a .${language}.v file',
+	p.error_with_pos('${upcase_language} code is not allowed in .${p.file_backend_mode}.v files, please move it to a .${language}.v file',
 		pos)
 }
 
 pub fn (mut p Parser) language_not_allowed_warning(language ast.Language, pos token.Pos) {
 	upcase_language := language.str().to_upper()
-	p.warn_with_pos('$upcase_language code will not be allowed in pure .v files, please move it to a .${language}.v file instead',
+	p.warn_with_pos('${upcase_language} code will not be allowed in pure .v files, please move it to a .${language}.v file instead',
 		pos)
 }
 
@@ -2108,7 +2108,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	}
 	if p.tok.kind != .name {
 		if is_mut || is_static || is_volatile {
-			p.error_with_pos('the `$modifier_kind` keyword is invalid here', mut_pos)
+			p.error_with_pos('the `${modifier_kind}` keyword is invalid here', mut_pos)
 		} else {
 			p.unexpected(got: 'token `${p.tok.lit}`')
 		}
@@ -2137,7 +2137,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 		// p.warn('it')
 	}
 	if p.expr_mod.len > 0 {
-		name = '${p.expr_mod}.$name'
+		name = '${p.expr_mod}.${name}'
 	}
 	return ast.Ident{
 		tok_kind: p.tok.kind
@@ -2331,10 +2331,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 					cap_expr = p.expr(0)
 				}
 				'len', 'init' {
-					return p.error('`$key` cannot be initialized for `chan`. Did you mean `cap`?')
+					return p.error('`${key}` cannot be initialized for `chan`. Did you mean `cap`?')
 				}
 				else {
-					return p.error('wrong field `$key`, expecting `cap`')
+					return p.error('wrong field `${key}`, expecting `cap`')
 				}
 			}
 			last_pos = p.tok.pos()
@@ -2360,7 +2360,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	// don't allow r`byte` and c`byte`
 	if p.peek_tok.kind == .chartoken && p.tok.lit.len == 1 && p.tok.lit[0] in [`r`, `c`] {
 		opt := if p.tok.lit == 'r' { '`r` (raw string)' } else { '`c` (c string)' }
-		return p.error('cannot use $opt with `byte` and `rune`')
+		return p.error('cannot use ${opt} with `byte` and `rune`')
 	}
 	// Make sure that the var is not marked as used in assignments: `x = 1`, `x += 2` etc
 	// but only when it's actually used (e.g. `println(x)`)
@@ -2431,7 +2431,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// foo(), foo<int>() or type() cast
 		mut name := if is_optional { p.peek_tok.lit } else { p.tok.lit }
 		if mod.len > 0 {
-			name = '${mod}.$name'
+			name = '${mod}.${name}'
 		}
 		name_w_mod := p.prepend_mod(name)
 		// type cast. TODO: finish
@@ -2974,7 +2974,7 @@ fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 			p.error('`${p.tok.lit}` is a reserved name and cannot be used for generics')
 		}
 		if name in param_names {
-			p.error('duplicated generic parameter `$name`')
+			p.error('duplicated generic parameter `${name}`')
 		}
 		if count > 8 {
 			p.error('cannot have more than 9 generic parameters')
@@ -3206,7 +3206,7 @@ fn (mut p Parser) module_decl() ast.Module {
 			pos: module_pos
 		}
 		if module_pos.line_nr != name_pos.line_nr {
-			p.error_with_pos('`module` and `$name` must be at same line', name_pos)
+			p.error_with_pos('`module` and `${name}` must be at same line', name_pos)
 			return mod_node
 		}
 		// Note: this shouldn't be reassigned into name_pos
@@ -3216,13 +3216,13 @@ fn (mut p Parser) module_decl() ast.Module {
 		if module_pos.line_nr == n_pos.line_nr && p.tok.kind != .comment && p.tok.kind != .eof {
 			if p.tok.kind == .name {
 				p.unexpected_with_pos(n_pos,
-					prepend_msg: '`module $name`, you can only declare one module,'
+					prepend_msg: '`module ${name}`, you can only declare one module,'
 					got: '`${p.tok.lit}`'
 				)
 				return mod_node
 			} else {
 				p.unexpected_with_pos(n_pos,
-					prepend_msg: '`module $name`,'
+					prepend_msg: '`module ${name}`,'
 					got: '`${p.tok.kind}` after module name'
 				)
 				return mod_node
@@ -3336,7 +3336,8 @@ fn (mut p Parser) import_stmt() ast.Import {
 		alias_pos := p.tok.pos()
 		mod_alias = p.check_name()
 		if mod_alias == mod_name_arr.last() {
-			p.error_with_pos('import alias `$mod_name as $mod_alias` is redundant', p.prev_tok.pos())
+			p.error_with_pos('import alias `${mod_name} as ${mod_alias}` is redundant',
+				p.prev_tok.pos())
 			return import_node
 		}
 		import_node = ast.Import{
@@ -3660,7 +3661,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		return ast.EnumDecl{}
 	}
 	if enum_name in p.imported_symbols {
-		p.error_with_pos('cannot register enum `$enum_name`, this type was already imported',
+		p.error_with_pos('cannot register enum `${enum_name}`, this type was already imported',
 			end_pos)
 		return ast.EnumDecl{}
 	}
@@ -3718,12 +3719,12 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
 		p.codegen('
 //
-[inline] $pubfn (    e &$enum_name) is_empty() bool           { return  ${senum_type}(*e) == 0 }
-[inline] $pubfn (    e &$enum_name) has(flag $enum_name) bool { return  (${senum_type}(*e) &  (${senum_type}(flag))) != 0 }
-[inline] $pubfn (    e &$enum_name) all(flag $enum_name) bool { return  (${senum_type}(*e) &  (${senum_type}(flag))) == ${senum_type}(flag) }
-[inline] $pubfn (mut e  $enum_name) set(flag $enum_name)      { unsafe{ *e = ${enum_name}(${senum_type}(*e) |  (${senum_type}(flag))) } }
-[inline] $pubfn (mut e  $enum_name) clear(flag $enum_name)    { unsafe{ *e = ${enum_name}(${senum_type}(*e) & ~(${senum_type}(flag))) } }
-[inline] $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = ${enum_name}(${senum_type}(*e) ^  (${senum_type}(flag))) } }
+[inline] ${pubfn} (    e &${enum_name}) is_empty() bool           { return  ${senum_type}(*e) == 0 }
+[inline] ${pubfn} (    e &${enum_name}) has(flag ${enum_name}) bool { return  (${senum_type}(*e) &  (${senum_type}(flag))) != 0 }
+[inline] ${pubfn} (    e &${enum_name}) all(flag ${enum_name}) bool { return  (${senum_type}(*e) &  (${senum_type}(flag))) == ${senum_type}(flag) }
+[inline] ${pubfn} (mut e  ${enum_name}) set(flag ${enum_name})      { unsafe{ *e = ${enum_name}(${senum_type}(*e) |  (${senum_type}(flag))) } }
+[inline] ${pubfn} (mut e  ${enum_name}) clear(flag ${enum_name})    { unsafe{ *e = ${enum_name}(${senum_type}(*e) & ~(${senum_type}(flag))) } }
+[inline] ${pubfn} (mut e  ${enum_name}) toggle(flag ${enum_name})   { unsafe{ *e = ${enum_name}(${senum_type}(*e) ^  (${senum_type}(flag))) } }
 //
 ')
 	}
@@ -3741,7 +3742,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		is_pub: is_pub
 	})
 	if idx == -1 {
-		p.error_with_pos('cannot register enum `$name`, another type with this name exists',
+		p.error_with_pos('cannot register enum `${name}`, another type with this name exists',
 			end_pos)
 	}
 
@@ -3782,7 +3783,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		return ast.FnTypeDecl{}
 	}
 	if name in p.imported_symbols {
-		p.error_with_pos('cannot register alias `$name`, this type was already imported',
+		p.error_with_pos('cannot register alias `${name}`, this type was already imported',
 			end_pos)
 		return ast.AliasTypeDecl{}
 	}
@@ -3837,7 +3838,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			is_pub: is_pub
 		})
 		if typ == ast.invalid_type_idx {
-			p.error_with_pos('cannot register sum type `$name`, another type with this name exists',
+			p.error_with_pos('cannot register sum type `${name}`, another type with this name exists',
 				name_pos)
 			return ast.SumTypeDecl{}
 		}
@@ -3879,13 +3880,13 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	})
 	type_end_pos := p.prev_tok.pos()
 	if idx == ast.invalid_type_idx {
-		p.error_with_pos('cannot register alias `$name`, another type with this name exists',
+		p.error_with_pos('cannot register alias `${name}`, another type with this name exists',
 			name_pos)
 		return ast.AliasTypeDecl{}
 	}
 	if idx == pidx {
 		type_alias_pos := sum_variants[0].pos
-		p.error_with_pos('a type alias can not refer to itself: $name', decl_pos.extend(type_alias_pos))
+		p.error_with_pos('a type alias can not refer to itself: ${name}', decl_pos.extend(type_alias_pos))
 		return ast.AliasTypeDecl{}
 	}
 	comments = p.eat_comments(same_line: true)
@@ -3903,7 +3904,7 @@ fn (mut p Parser) assoc() ast.Assoc {
 	var_name := p.check_name()
 	pos := p.tok.pos()
 	mut v := p.scope.find_var(var_name) or {
-		p.error('unknown variable `$var_name`')
+		p.error('unknown variable `${var_name}`')
 		return ast.Assoc{
 			scope: 0
 		}
@@ -4078,6 +4079,6 @@ fn (mut p Parser) disallow_declarations_in_script_mode() bool {
 
 fn (mut p Parser) trace(fbase string, message string) {
 	if p.file_base == fbase {
-		println('> p.trace | ${fbase:-10s} | $message')
+		println('> p.trace | ${fbase:-10s} | ${message}')
 	}
 }

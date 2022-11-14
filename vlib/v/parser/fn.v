@@ -303,7 +303,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				}
 			}
 			if is_duplicate {
-				p.error_with_pos('duplicate method `$name`', name_pos)
+				p.error_with_pos('duplicate method `${name}`', name_pos)
 				return ast.FnDecl{
 					scope: 0
 				}
@@ -311,7 +311,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 		if !p.pref.is_fmt {
 			if name in p.imported_symbols {
-				p.error_with_pos('cannot redefine imported function `$name`', name_pos)
+				p.error_with_pos('cannot redefine imported function `${name}`', name_pos)
 				return ast.FnDecl{
 					scope: 0
 				}
@@ -459,9 +459,9 @@ run them via `v file.v` instead',
 		})
 	} else {
 		if language == .c {
-			name = 'C.$name'
+			name = 'C.${name}'
 		} else if language == .js {
-			name = 'JS.$name'
+			name = 'JS.${name}'
 		} else {
 			name = p.prepend_mod(name)
 		}
@@ -471,7 +471,7 @@ run them via `v file.v` instead',
 					if file_mode == .v && existing.file_mode != .v {
 						// a definition made in a .c.v file, should have a priority over a .v file definition of the same function
 						if !p.pref.is_fmt {
-							name = p.prepend_mod('pure_v_but_overriden_by_${existing.file_mode}_$short_fn_name')
+							name = p.prepend_mod('pure_v_but_overriden_by_${existing.file_mode}_${short_fn_name}')
 						}
 					} else {
 						p.table.redefined_fns << name
@@ -868,7 +868,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 
 			if p.tok.kind == .comma {
 				if is_variadic {
-					p.error_with_pos('cannot use ...(variadic) with non-final parameter no $arg_no',
+					p.error_with_pos('cannot use ...(variadic) with non-final parameter no ${arg_no}',
 						pos)
 					return []ast.Param{}, false, false
 				}
@@ -984,7 +984,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				}
 				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
 				if is_variadic && p.tok.kind == .comma && p.peek_tok.kind != .rpar {
-					p.error_with_pos('cannot use ...(variadic) with non-final parameter $arg_name',
+					p.error_with_pos('cannot use ...(variadic) with non-final parameter ${arg_name}',
 						arg_pos[i])
 					return []ast.Param{}, false, false
 				}
@@ -1039,11 +1039,11 @@ fn (mut p Parser) closure_vars() []ast.Param {
 		var_name := p.prev_tok.lit
 		mut var := p.scope.parent.find_var(var_name) or {
 			if p.table.global_scope.known_global(var_name) {
-				p.error_with_pos('no need to capture global variable `$var_name` in closure',
+				p.error_with_pos('no need to capture global variable `${var_name}` in closure',
 					p.prev_tok.pos())
 				continue
 			}
-			p.error_with_pos('undefined ident: `$var_name`', p.prev_tok.pos())
+			p.error_with_pos('undefined ident: `${var_name}`', p.prev_tok.pos())
 			continue
 		}
 		var.is_used = true

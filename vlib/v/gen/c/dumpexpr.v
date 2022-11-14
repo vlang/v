@@ -16,9 +16,9 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	if g.table.sym(node.expr_type).language == .c {
 		name = name[3..]
 	}
-	dump_fn_name := '_v_dump_expr_$name' +
+	dump_fn_name := '_v_dump_expr_${name}' +
 		(if node.expr_type.is_ptr() { '_ptr'.repeat(node.expr_type.nr_muls()) } else { '' })
-	g.write(' ${dump_fn_name}(${ctoslit(fpath)}, $line, $sexpr, ')
+	g.write(' ${dump_fn_name}(${ctoslit(fpath)}, ${line}, ${sexpr}, ')
 	if node.expr_type.has_flag(.shared_f) {
 		g.write('&')
 		g.expr(node.expr)
@@ -53,17 +53,17 @@ fn (mut g Gen) dump_expr_definitions() {
 		}
 		if dump_sym.kind == .function {
 			fninfo := dump_sym.info as ast.FnType
-			str_dumparg_type = 'DumpFNType_$name'
+			str_dumparg_type = 'DumpFNType_${name}'
 			tdef_pos := g.out.len
 			g.write_fn_ptr_decl(&fninfo, str_dumparg_type)
 			str_tdef := g.out.after(tdef_pos)
 			g.go_back(str_tdef.len)
-			dump_typedefs['typedef $str_tdef;'] = true
+			dump_typedefs['typedef ${str_tdef};'] = true
 		}
-		dump_fn_name := '_v_dump_expr_$name' +
+		dump_fn_name := '_v_dump_expr_${name}' +
 			(if is_ptr { '_ptr'.repeat(typ.nr_muls()) } else { '' })
-		dump_fn_defs.writeln('$str_dumparg_type ${dump_fn_name}(string fpath, int line, string sexpr, $str_dumparg_type dump_arg);')
-		if g.writeln_fn_header('$str_dumparg_type ${dump_fn_name}(string fpath, int line, string sexpr, $str_dumparg_type dump_arg)', mut
+		dump_fn_defs.writeln('${str_dumparg_type} ${dump_fn_name}(string fpath, int line, string sexpr, ${str_dumparg_type} dump_arg);')
+		if g.writeln_fn_header('${str_dumparg_type} ${dump_fn_name}(string fpath, int line, string sexpr, ${str_dumparg_type} dump_arg)', mut
 			dump_fns)
 		{
 			continue
@@ -117,9 +117,9 @@ fn (mut g Gen) dump_expr_definitions() {
 
 fn (mut g Gen) writeln_fn_header(s string, mut sb strings.Builder) bool {
 	if g.pref.build_mode == .build_module {
-		sb.writeln('$s;')
+		sb.writeln('${s};')
 		return true
 	}
-	sb.writeln('$s {')
+	sb.writeln('${s} {')
 	return false
 }

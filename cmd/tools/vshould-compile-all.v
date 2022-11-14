@@ -29,14 +29,14 @@ fn main() {
 	mut failed_commands := []string{}
 	for idx, example in files {
 		cmd := '${os.quoted_path(@VEXE)} ${os.quoted_path(example)}'
-		println('> compiling ${idx + 1:4}/${files.len:-4}: $cmd')
+		println('> compiling ${idx + 1:4}/${files.len:-4}: ${cmd}')
 		if 0 != os.system(cmd) {
 			failed_commands << cmd
 		}
 	}
 	if failed_commands.len > 0 {
 		for idx, fcmd in failed_commands {
-			eprintln('>>> FAILED command ${idx + 1:4}/${failed_commands.len:-4}: $fcmd')
+			eprintln('>>> FAILED command ${idx + 1:4}/${failed_commands.len:-4}: ${fcmd}')
 		}
 		println('Summary: ${failed_commands.len:4}/${files.len:-4} file(s) failed to compile.')
 		exit(1)

@@ -71,17 +71,17 @@ fn test_server_custom_handler() {
 	for server.status() != .running {
 		time.sleep(10 * time.millisecond)
 	}
-	x := http.fetch(url: 'http://localhost:$cport/endpoint?abc=xyz', data: 'my data')!
+	x := http.fetch(url: 'http://localhost:${cport}/endpoint?abc=xyz', data: 'my data')!
 	assert x.body == 'my data, /endpoint?abc=xyz'
 	assert x.status_code == 200
 	assert x.http_version == '1.1'
-	y := http.fetch(url: 'http://localhost:$cport/another/endpoint', data: 'abcde')!
+	y := http.fetch(url: 'http://localhost:${cport}/another/endpoint', data: 'abcde')!
 	assert y.body == 'abcde, /another/endpoint'
 	assert y.status_code == 200
 	assert y.status() == .ok
 	assert y.http_version == '1.1'
 	//
-	http.fetch(url: 'http://localhost:$cport/something/else')!
+	http.fetch(url: 'http://localhost:${cport}/something/else')!
 	server.stop()
 	t.wait()
 	assert handler.counter == 3

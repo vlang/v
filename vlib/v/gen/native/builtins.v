@@ -46,7 +46,7 @@ pub fn (mut g Gen) generate_builtins() {
 		}
 
 		if g.pref.is_verbose {
-			println(term.green('\n(builtin) $name:'))
+			println(term.green('\n(builtin) ${name}:'))
 		}
 
 		g.stack_var_pos = 0
@@ -71,9 +71,9 @@ pub fn (mut g Gen) generate_builtins() {
 }
 
 pub fn (mut g Gen) get_builtin_arg_reg(name string, index int) Register {
-	builtin := g.builtins[name] or { panic('undefined builtin function $name') }
+	builtin := g.builtins[name] or { panic('undefined builtin function ${name}') }
 	if index >= builtin.arg_regs.len {
-		g.n_error('builtin $name does only have ${builtin.arg_regs.len} arguments, wanted $index')
+		g.n_error('builtin ${name} does only have ${builtin.arg_regs.len} arguments, wanted ${index}')
 	}
 	return builtin.arg_regs[index]
 }

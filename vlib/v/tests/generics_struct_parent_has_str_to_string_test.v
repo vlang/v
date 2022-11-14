@@ -24,7 +24,7 @@ struct Pattern {
 }
 
 fn new_pattern(pattern string, handler fn (mut m Vm)) Pattern {
-	return Pattern{pattern.runes().map(u8('0x$it'.int())), handler}
+	return Pattern{pattern.runes().map(u8('0x${it}'.int())), handler}
 }
 
 fn test_generics_struct_parent_has_str_to_string() {

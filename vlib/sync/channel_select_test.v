@@ -81,7 +81,7 @@ fn test_select() {
 				sum += rb
 			}
 			else {
-				println('got $idx (timeout)')
+				println('got ${idx} (timeout)')
 			}
 		}
 	}

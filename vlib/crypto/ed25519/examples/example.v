@@ -15,7 +15,7 @@ fn main() {
 	sig := ed25519.sign(priv, m)!
 
 	println('=== Message ===')
-	println('Msg: $msg \nHash: $m')
+	println('Msg: ${msg} \nHash: ${m}')
 
 	println('=== Public key ===')
 	println('Public key (Hex): ${hex.encode(publ)}')
@@ -34,7 +34,7 @@ fn main() {
 	rtn := ed25519.verify(publ, m, sig)!
 
 	if rtn {
-		println('Signature verified :$rtn')
+		println('Signature verified :${rtn}')
 	} else {
 		println('signature does not verify :${!rtn}')
 	}

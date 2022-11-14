@@ -89,7 +89,7 @@ fn read() !string {
 fn test_results_if_guard() {
 	if fcontent := read() {
 		assert fcontent == ''
-		assert '$fcontent' == ''
+		assert '${fcontent}' == ''
 		return
 	}
 	assert false

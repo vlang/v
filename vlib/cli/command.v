@@ -191,7 +191,7 @@ fn (mut cmd Command) parse_flags() {
 					found = true
 					flag.found = true
 					cmd.args = flag.parse(cmd.args, cmd.posix_mode) or {
-						eprintln_exit('Failed to parse flag `${cmd.args[0]}`: $err')
+						eprintln_exit('Failed to parse flag `${cmd.args[0]}`: ${err}')
 					}
 					break
 				}
@@ -243,8 +243,8 @@ fn (mut cmd Command) parse_commands() {
 fn (mut cmd Command) handle_cb(cb FnCommandCallback, label string) {
 	if !isnil(cb) {
 		cb(*cmd) or {
-			label_message := term.ecolorize(term.bright_red, 'cli $label error:')
-			eprintln_exit('$label_message $err')
+			label_message := term.ecolorize(term.bright_red, 'cli ${label} error:')
+			eprintln_exit('${label_message} ${err}')
 		}
 	}
 }
@@ -284,7 +284,7 @@ fn (cmd Command) check_required_flags() {
 	for flag in cmd.flags {
 		if flag.required && flag.value.len == 0 {
 			full_name := cmd.full_name()
-			eprintln_exit('Flag `${flag.name}` is required by `$full_name`')
+			eprintln_exit('Flag `${flag.name}` is required by `${full_name}`')
 		}
 	}
 }
@@ -317,7 +317,7 @@ fn (cmds []Command) get(name string) !Command {
 			return cmd
 		}
 	}
-	return error('Command `$name` not found in $cmds')
+	return error('Command `${name}` not found in ${cmds}')
 }
 
 fn (cmds []Command) contains(name string) bool {

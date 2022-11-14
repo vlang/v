@@ -161,13 +161,13 @@ fn (mut context Context) log(msg string) {
 	if context.is_verbose {
 		label := yellow('info')
 		ts := time.now().format_ss_micro()
-		eprintln('$label: $ts | $msg')
+		eprintln('${label}: ${ts} | ${msg}')
 	}
 }
 
 fn (mut context Context) error(msg string) {
 	label := red('error')
-	eprintln('$label: $msg')
+	eprintln('${label}: ${msg}')
 }
 
 fn (mut context Context) expand_all_paths() {
@@ -180,11 +180,11 @@ fn (mut context Context) expand_all_paths() {
 			continue
 		}
 		if !path.ends_with('.v') && !path.ends_with('.vv') && !path.ends_with('.vsh') {
-			context.error('`v test-parser` can only be used on .v/.vv/.vsh files.\nOffending file: "$path".')
+			context.error('`v test-parser` can only be used on .v/.vv/.vsh files.\nOffending file: "${path}".')
 			continue
 		}
 		if !os.exists(path) {
-			context.error('"$path" does not exist.')
+			context.error('"${path}" does not exist.')
 			continue
 		}
 		files << path
@@ -195,9 +195,9 @@ fn (mut context Context) expand_all_paths() {
 
 fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 	context.path = path // needed for the progress bar
-	context.log('> context.process_whole_file_in_worker path: $path')
+	context.log('> context.process_whole_file_in_worker path: ${path}')
 	if !(os.is_file(path) && os.is_readable(path)) {
-		context.error('$path is not readable')
+		context.error('${path} is not readable')
 		return 1, 0
 	}
 	source := os.read_file(path) or { '' }
@@ -212,7 +212,7 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 	for i in 0 .. len {
 		verbosity := if context.is_verbose { '-v' } else { '' }
 		context.cut_index = i // needed for the progress bar
-		cmd := '${os.quoted_path(context.myself)} $verbosity --worker --timeout_ms ${context.timeout_ms:5} --cut_index ${i:5} --path ${os.quoted_path(path)} '
+		cmd := '${os.quoted_path(context.myself)} ${verbosity} --worker --timeout_ms ${context.timeout_ms:5} --cut_index ${i:5} --path ${os.quoted_path(path)} '
 		context.log(cmd)
 		mut res := os.execute(cmd)
 		context.log('worker exit_code: ${res.exit_code} | worker output:\n${res.output}')
@@ -232,10 +232,10 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 			} else {
 				red('parser failure: crash, ${ecode_details[res.exit_code]}')
 			}
-			path_to_line := bold('$path:$line:$col:')
+			path_to_line := bold('${path}:${line}:${col}:')
 			err_line := last_line.trim_left('\t')
-			println('$path_to_line $err')
-			println('\t$line | $err_line')
+			println('${path_to_line} ${err}')
+			println('\t${line} | ${err_line}')
 			println('')
 			eprintln(res.output)
 		}
@@ -269,7 +269,7 @@ fn (mut context Context) print_status() {
 		return
 	}
 	term.cursor_up(1)
-	eprint('\r  $msg\n')
+	eprint('\r  ${msg}\n')
 }
 
 fn (mut context Context) print_periodic_status() {

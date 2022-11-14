@@ -272,7 +272,7 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 				|| (!got.is_ptr() && !expected.is_ptr()
 				&& got_typ_sym.name != expected_typ_sym.name) {
 				got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
-				return error('cannot use `$got_typ_str` as `$expected_typ_str`')
+				return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 			}
 			return
 		}
@@ -280,12 +280,12 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 			return error('`${arg.expr}` (no value) used as value')
 		}
 		got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
-		return error('cannot use `$got_typ_str` as `$expected_typ_str`')
+		return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 	}
 
 	if got != ast.void_type {
 		got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
-		return error('cannot use `$got_typ_str` as `$expected_typ_str`')
+		return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 	}
 }
 
@@ -419,10 +419,10 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 			exp_arg_pointedness := if exp_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
 			got_arg_pointedness := if got_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
 			if exp_fn.name.len == 0 {
-				c.add_error_detail('expected argument ${i + 1} to be $exp_arg_pointedness, but the passed argument ${
-					i + 1} is $got_arg_pointedness')
+				c.add_error_detail('expected argument ${i + 1} to be ${exp_arg_pointedness}, but the passed argument ${
+					i + 1} is ${got_arg_pointedness}')
 			} else {
-				c.add_error_detail('`${exp_fn.name}`\'s expected argument `${exp_arg.name}` to be $exp_arg_pointedness, but the passed argument `${got_arg.name}` is $got_arg_pointedness')
+				c.add_error_detail('`${exp_fn.name}`\'s expected argument `${exp_arg.name}` to be ${exp_arg_pointedness}, but the passed argument `${got_arg.name}` is ${got_arg_pointedness}')
 			}
 			return false
 		} else if exp_arg_is_ptr && got_arg_is_ptr {
@@ -524,7 +524,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 						else { 64 }
 					}
 					if ival > moffset && !c.pref.translated && !c.file.is_translated {
-						c.error('shift count for type `${left_sym_final.name}` too large (maximum: $moffset bits)',
+						c.error('shift count for type `${left_sym_final.name}` too large (maximum: ${moffset} bits)',
 							node.right.pos())
 						return left_type
 					}
@@ -635,7 +635,7 @@ pub fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ! {
 fn (c &Checker) expected_msg(got ast.Type, expected ast.Type) string {
 	exps := c.table.type_to_str(expected)
 	gots := c.table.type_to_str(got)
-	return 'expected `$exps`, not `$gots`'
+	return 'expected `${exps}`, not `${gots}`'
 }
 
 pub fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
@@ -832,13 +832,13 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 			}
 		}
 		if typ == ast.void_type {
-			c.error('could not infer generic type `$gt_name` in call to `${func.name}`',
+			c.error('could not infer generic type `${gt_name}` in call to `${func.name}`',
 				node.pos)
 			return
 		}
 		if c.pref.is_verbose {
 			s := c.table.type_to_str(typ)
-			println('inferred `${func.name}<$s>`')
+			println('inferred `${func.name}<${s}>`')
 		}
 		inferred_types << c.unwrap_generic(typ)
 		node.concrete_types << typ

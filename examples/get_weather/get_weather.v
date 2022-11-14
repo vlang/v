@@ -38,7 +38,7 @@ fn main() {
 	}
 
 	rnd := rand.f32()
-	url := 'https://api.caiyunapp.com/v2.5/96Ly7wgKGq6FhllM/116.391912,40.010711/weather.jsonp?hourlysteps=120&random=$rnd'
+	url := 'https://api.caiyunapp.com/v2.5/96Ly7wgKGq6FhllM/116.391912,40.010711/weather.jsonp?hourlysteps=120&random=${rnd}'
 	// println(url)
 
 	resp := http.fetch(http.FetchConfig{ ...config, url: url }) or {

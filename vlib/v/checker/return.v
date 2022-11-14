@@ -20,7 +20,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		|| expected_type_sym.kind == .void) {
 		stype := c.table.type_to_str(expected_type)
 		arg := if expected_type_sym.kind == .multi_return { 'arguments' } else { 'argument' }
-		c.error('expected `$stype` $arg', node.pos)
+		c.error('expected `${stype}` ${arg}', node.pos)
 		return
 	}
 	if node.exprs.len == 0 {
@@ -43,7 +43,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			return
 		}
 		if typ == ast.void_type {
-			c.error('`$expr` used as value', node.pos)
+			c.error('`${expr}` used as value', node.pos)
 			return
 		}
 		// Unpack multi return types
@@ -113,7 +113,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		arg := if expected_types.len == 1 { 'argument' } else { 'arguments' }
 		midx := imax(0, imin(expected_types.len, expr_idxs.len - 1))
 		mismatch_pos := node.exprs[expr_idxs[midx]].pos()
-		c.error('expected ${expected_types.len} $arg, but got ${got_types.len}', mismatch_pos)
+		c.error('expected ${expected_types.len} ${arg}, but got ${got_types.len}', mismatch_pos)
 		return
 	}
 	for i, exp_type in expected_types {
@@ -172,7 +172,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 				} else {
 					got_typ_sym.name
 				}
-				c.error('cannot use `$got_typ_name` as type `${c.table.type_to_str(exp_type)}` in return argument',
+				c.error('cannot use `${got_typ_name}` as type `${c.table.type_to_str(exp_type)}` in return argument',
 					pos)
 			}
 		}

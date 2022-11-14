@@ -9,7 +9,7 @@ import os
 // and saves it in the output file path `out_file_path`.
 pub fn download_file(url string, out_file_path string) ! {
 	$if debug_http ? {
-		println('http.download_file url=$url out_file_path=$out_file_path')
+		println('http.download_file url=${url} out_file_path=${out_file_path}')
 	}
 	s := get(url) or { return err }
 	if s.status() != .ok {

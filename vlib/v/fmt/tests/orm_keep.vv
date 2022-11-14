@@ -20,7 +20,7 @@ fn main() {
 	nr_customers := sql db {
 		select count from Customer
 	}
-	println('number of all customers: $nr_customers')
+	println('number of all customers: ${nr_customers}')
 	// V syntax can be used to build queries
 	// db.select returns an array
 	uk_customers := sql db {

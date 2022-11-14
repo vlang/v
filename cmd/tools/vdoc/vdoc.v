@@ -193,7 +193,7 @@ fn (vd VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 		}
 		file_name, content := vd.render_doc(pdoc.d, pdoc.out)
 		output_path := os.join_path(pdoc.out.path, file_name)
-		println('Generating ${pdoc.out.typ} in "$output_path"')
+		println('Generating ${pdoc.out.typ} in "${output_path}"')
 		os.write_file(output_path, content) or { panic(err) }
 	}
 	wg.done()
@@ -237,7 +237,7 @@ fn (vd VDoc) get_readme(path string) string {
 		return ''
 	}
 	readme_path := os.join_path(path, '${fname}.md')
-	vd.vprintln('Reading README file from $readme_path')
+	vd.vprintln('Reading README file from ${readme_path}')
 	readme_contents := os.read_file(readme_path) or { '' }
 	return readme_contents
 }
@@ -287,7 +287,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 	}
 	manifest_path := os.join_path(dir_path, 'v.mod')
 	if os.exists(manifest_path) {
-		vd.vprintln('Reading v.mod info from $manifest_path')
+		vd.vprintln('Reading v.mod info from ${manifest_path}')
 		if manifest := vmod.from_file(manifest_path) {
 			vd.manifest = manifest
 		}
@@ -313,7 +313,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			cfg.input_path,
 		] }
 	for dirpath in dirs {
-		vd.vprintln('Generating ${out.typ} docs for "$dirpath"')
+		vd.vprintln('Generating ${out.typ} docs for "${dirpath}"')
 		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {
 			vd.emit_generate_err(err)
 			exit(1)
@@ -410,7 +410,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 
 fn (vd VDoc) vprintln(str string) {
 	if vd.cfg.is_verbose {
-		println('vdoc: $str')
+		println('vdoc: ${str}')
 	}
 }
 
@@ -428,7 +428,7 @@ fn parse_arguments(args []string) Config {
 				format := cmdline.option(current_args, '-f', '')
 				if format !in allowed_formats {
 					allowed_str := allowed_formats.join(', ')
-					eprintln('vdoc: "$format" is not a valid format. Only $allowed_str are allowed.')
+					eprintln('vdoc: "${format}" is not a valid format. Only ${allowed_str} are allowed.')
 					exit(1)
 				}
 				cfg.output_type = set_output_type_from_str(format)
@@ -517,7 +517,7 @@ fn parse_arguments(args []string) Config {
 	} else if !is_path {
 		// TODO vd.vprintln('Input "$cfg.input_path" is not a valid path. Looking for modules named "$cfg.input_path"...')
 		mod_path := doc.lookup_module(cfg.input_path) or {
-			eprintln('vdoc: $err')
+			eprintln('vdoc: ${err}')
 			exit(1)
 		}
 		cfg.input_path = mod_path

@@ -75,14 +75,14 @@ fn (app App) update_from_master() {
 fn (app App) recompile_v() bool {
 	// Note: app.vexe is more reliable than just v (which may be a symlink)
 	opts := if app.is_prod { '-prod' } else { '' }
-	vself := '${os.quoted_path(app.vexe)} $opts self'
-	app.vprintln('> recompiling v itself with `$vself` ...')
+	vself := '${os.quoted_path(app.vexe)} ${opts} self'
+	app.vprintln('> recompiling v itself with `${vself}` ...')
 	self_result := os.execute(vself)
 	if self_result.exit_code == 0 {
 		println(self_result.output.trim_space())
 		return true
 	} else {
-		app.vprintln('`$vself` failed, running `make`...')
+		app.vprintln('`${vself}` failed, running `make`...')
 		app.vprintln(self_result.output.trim_space())
 	}
 	return app.make(vself)
@@ -102,7 +102,7 @@ fn (app App) make(vself string) bool {
 	make := get_make_cmd_name()
 	make_result := os.execute(make)
 	if make_result.exit_code != 0 {
-		eprintln('> $make failed:')
+		eprintln('> ${make} failed:')
 		eprintln('> make output:')
 		eprintln(make_result.output)
 		return false
@@ -117,30 +117,30 @@ fn (app App) show_current_v_version() {
 		mut vversion := vout.output.trim_space()
 		if vout.exit_code == 0 {
 			latest_v_commit := vversion.split(' ').last().all_after('.')
-			latest_v_commit_time := os.execute('git show -s --format=%ci $latest_v_commit')
+			latest_v_commit_time := os.execute('git show -s --format=%ci ${latest_v_commit}')
 			if latest_v_commit_time.exit_code == 0 {
 				vversion += ', timestamp: ' + latest_v_commit_time.output.trim_space()
 			}
 		}
-		println('Current V version: $vversion')
+		println('Current V version: ${vversion}')
 	}
 }
 
 fn (app App) backup(file string) {
 	backup_file := '${file}_old.exe'
 	if os.exists(backup_file) {
-		os.rm(backup_file) or { eprintln('failed removing $backup_file: ${err.msg()}') }
+		os.rm(backup_file) or { eprintln('failed removing ${backup_file}: ${err.msg()}') }
 	}
-	os.mv(file, backup_file) or { eprintln('failed moving $file: ${err.msg()}') }
+	os.mv(file, backup_file) or { eprintln('failed moving ${file}: ${err.msg()}') }
 }
 
 fn (app App) git_command(command string) {
-	app.vprintln('git_command: git $command')
-	git_result := os.execute('git $command')
+	app.vprintln('git_command: git ${command}')
+	git_result := os.execute('git ${command}')
 	if git_result.exit_code < 0 {
 		app.get_git()
 		// Try it again with (maybe) git installed
-		os.execute_or_exit('git $command')
+		os.execute_or_exit('git ${command}')
 	}
 	if git_result.exit_code != 0 {
 		eprintln(git_result.output)

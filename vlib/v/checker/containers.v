@@ -246,7 +246,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 		}
 		if fixed_size <= 0 {
-			c.error('fixed size cannot be zero or negative (fixed_size: $fixed_size)',
+			c.error('fixed size cannot be zero or negative (fixed_size: ${fixed_size})',
 				init_expr.pos())
 		}
 		idx := c.table.find_or_register_array_fixed(node.elem_type, int(fixed_size), init_expr)
@@ -265,7 +265,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos token.Pos) {
 	sym := c.table.sym(c.unwrap_generic(c.expr(expr)))
 	if sym.kind !in [.int, .int_literal] {
-		c.error('array $para needs to be an int', pos)
+		c.error('array ${para} needs to be an int', pos)
 	}
 }
 
@@ -369,7 +369,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			if !c.check_types(key_type, key0_type) || (i == 0 && key_type.is_number()
 				&& key0_type.is_number() && key0_type != ast.mktyp(key_type)) {
 				msg := c.expected_msg(key_type, key0_type)
-				c.error('invalid map key: $msg', key.pos())
+				c.error('invalid map key: ${msg}', key.pos())
 				same_key_type = false
 			}
 			if expecting_interface_map {
@@ -388,13 +388,13 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 					continue
 				} else {
 					msg := c.expected_msg(val_type, node.value_type)
-					c.error('invalid map value: $msg', val.pos())
+					c.error('invalid map value: ${msg}', val.pos())
 				}
 			}
 			if !c.check_types(val_type, val0_type) || (i == 0 && val_type.is_number()
 				&& val0_type.is_number() && val0_type != ast.mktyp(val_type)) {
 				msg := c.expected_msg(val_type, val0_type)
-				c.error('invalid map value: $msg', val.pos())
+				c.error('invalid map value: ${msg}', val.pos())
 			}
 		}
 		if same_key_type {

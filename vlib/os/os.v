@@ -662,7 +662,7 @@ pub fn mkdir_all(opath string, params MkdirParams) ! {
 		if exists(p) && is_dir(p) {
 			continue
 		}
-		mkdir(p, params) or { return error('folder: $p, error: $err') }
+		mkdir(p, params) or { return error('folder: ${p}, error: ${err}') }
 	}
 }
 
@@ -727,7 +727,7 @@ pub fn vtmp_dir() string {
 		return vtmp
 	}
 	uid := getuid()
-	vtmp = join_path_single(temp_dir(), 'v_$uid')
+	vtmp = join_path_single(temp_dir(), 'v_${uid}')
 	if !exists(vtmp) || !is_dir(vtmp) {
 		// create a new directory, that is private to the user:
 		mkdir_all(vtmp, mode: 0o700) or { panic(err) }
@@ -817,7 +817,7 @@ pub mut:
 pub fn execute_or_panic(cmd string) Result {
 	res := execute(cmd)
 	if res.exit_code != 0 {
-		eprintln('failed    cmd: $cmd')
+		eprintln('failed    cmd: ${cmd}')
 		eprintln('failed   code: ${res.exit_code}')
 		panic(res.output)
 	}
@@ -827,7 +827,7 @@ pub fn execute_or_panic(cmd string) Result {
 pub fn execute_or_exit(cmd string) Result {
 	res := execute(cmd)
 	if res.exit_code != 0 {
-		eprintln('failed    cmd: $cmd')
+		eprintln('failed    cmd: ${cmd}')
 		eprintln('failed   code: ${res.exit_code}')
 		eprintln(res.output)
 		exit(1)
@@ -838,9 +838,13 @@ pub fn execute_or_exit(cmd string) Result {
 // quoted path - return a quoted version of the path, depending on the platform.
 pub fn quoted_path(path string) string {
 	$if windows {
-		return if path.ends_with(path_separator) { '"${path + path_separator}"' } else { '"$path"' }
+		return if path.ends_with(path_separator) {
+			'"${path + path_separator}"'
+		} else {
+			'"${path}"'
+		}
 	} $else {
-		return "'$path'"
+		return "'${path}'"
 	}
 }
 

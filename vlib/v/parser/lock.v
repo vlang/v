@@ -83,7 +83,7 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 			exprs, comms := p.lockable_list()
 			for e in exprs {
 				if !e.is_lockable() {
-					p.error_with_pos('`$e` cannot be locked - only `x` or `x.y` are supported',
+					p.error_with_pos('`${e}` cannot be locked - only `x` or `x.y` are supported',
 						e.pos())
 				}
 				lockeds << e

@@ -134,7 +134,7 @@ fn gen_footer_text(d &doc.Doc, include_timestamp bool) string {
 	}
 	generated_time := d.time_generated
 	time_str := '${generated_time.day} ${generated_time.smonth()} ${generated_time.year} ${generated_time.hhmmss()}'
-	return '$footer_text Generated on: $time_str'
+	return '${footer_text} Generated on: ${time_str}'
 }
 
 fn color_highlight(code string, tb &ast.Table) string {
@@ -152,10 +152,10 @@ fn color_highlight(code string, tb &ast.Table) string {
 					'"'])
 				if use_double_quote {
 					s := unescaped_val.replace_each(['\x01', '\\\\', '"', '\\"'])
-					lit = term.yellow('"$s"')
+					lit = term.yellow('"${s}"')
 				} else {
 					s := unescaped_val.replace_each(['\x01', '\\\\', "'", "\\'"])
-					lit = term.yellow("'$s'")
+					lit = term.yellow("'${s}'")
 				}
 			}
 			.char {

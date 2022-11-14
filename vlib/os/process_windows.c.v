@@ -25,7 +25,7 @@ fn failed_cfn_report_error(ok bool, label string) {
 	}
 	error_num := int(C.GetLastError())
 	error_msg := get_error_msg(error_num)
-	eprintln('failed $label: $error_msg')
+	eprintln('failed ${label}: ${error_msg}')
 	exit(1)
 }
 
@@ -171,7 +171,7 @@ fn (mut p Process) win_is_alive() bool {
 ///////////////
 
 fn (mut p Process) win_write_string(idx int, s string) {
-	panic('Process.write_string $idx is not implemented yet')
+	panic('Process.write_string ${idx} is not implemented yet')
 }
 
 fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {

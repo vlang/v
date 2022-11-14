@@ -50,7 +50,7 @@ fn bt_print_callback(data &BacktraceOptions, pc voidptr, filename_ptr &char, lin
 	}
 	// keep it for later
 	// pc_64 := u64(pc)
-	bt_str := '$filename:$line: by $fn_name'
+	bt_str := '${filename}:${line}: by ${fn_name}'
 	if data.stdin {
 		println(bt_str)
 	} else {
@@ -66,7 +66,7 @@ fn bt_error_callback(data voidptr, msg_ptr &char, errnum int) {
 	// }
 
 	msg := unsafe { msg_ptr.vstring() }
-	eprint('libbacktrace: $msg')
+	eprint('libbacktrace: ${msg}')
 	if errnum > 0 {
 		eprint(': ${C.strerror(errnum)}')
 	}

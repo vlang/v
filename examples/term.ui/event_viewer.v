@@ -10,7 +10,7 @@ fn event(e &tui.Event, x voidptr) {
 	app.tui.clear()
 	app.tui.set_cursor_position(0, 0)
 	app.tui.write('V term.input event viewer (press `esc` to exit)\n\n')
-	app.tui.write('$e')
+	app.tui.write('${e}')
 	app.tui.write('\n\nRaw event bytes: "${e.utf8.bytes().hex()}" = ${e.utf8.bytes()}')
 	if !e.modifiers.is_empty() {
 		app.tui.write('\nModifiers: ${e.modifiers} = ')

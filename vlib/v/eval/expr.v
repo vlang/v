@@ -111,7 +111,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							return e.return_values
 						}
 					}
-					e.error('unknown function: ${mod}.$name at line ${expr.pos.line_nr}')
+					e.error('unknown function: ${mod}.${name} at line ${expr.pos.line_nr}')
 				}
 				// .js {
 				// 	e.error('js is not supported')
@@ -585,7 +585,7 @@ fn (e Eval) get_escape(r rune) rune {
 		}
 	}
 	if res == `e` {
-		e.error('unknown escape: `$r`')
+		e.error('unknown escape: `${r}`')
 	}
 	return res
 }

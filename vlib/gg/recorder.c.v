@@ -10,7 +10,7 @@ pub fn (mut ctx Context) record_frame() {
 	if ctx.frame in gg.recorder_settings.screenshot_frames {
 		screenshot_file_path := '${gg.recorder_settings.screenshot_prefix}${ctx.frame}.png'
 		$if gg_record_trace ? {
-			eprintln('>>> screenshoting $screenshot_file_path')
+			eprintln('>>> screenshoting ${screenshot_file_path}')
 		}
 
 		sapp.screenshot_png(screenshot_file_path) or { panic(err) }

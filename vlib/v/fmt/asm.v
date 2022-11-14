@@ -80,7 +80,7 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 				}
 				.index_times_scale_plus_displacement {
 					f.asm_arg(index)
-					f.write(' * $scale + ')
+					f.write(' * ${scale} + ')
 					f.asm_arg(displacement)
 				}
 				.base_plus_index_plus_displacement {
@@ -94,7 +94,7 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 					f.asm_arg(base)
 					f.write(' + ')
 					f.asm_arg(index)
-					f.write(' * $scale + ')
+					f.write(' * ${scale} + ')
 					f.asm_arg(displacement)
 				}
 				.rip_plus_displacement {

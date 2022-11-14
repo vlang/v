@@ -21,7 +21,7 @@ pub fn get_mime_type(ext string) string {
 pub fn get_content_type(mt string) string {
 	mt_struct := db[mt]
 	charset := if mt_struct.charset.len > 0 { mt_struct.charset.to_lower() } else { 'utf-8' }
-	return '$mt; charset=$charset'
+	return '${mt}; charset=${charset}'
 }
 
 // returns the default extension for the given MIME type

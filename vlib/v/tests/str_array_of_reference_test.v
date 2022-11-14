@@ -3,7 +3,7 @@ fn test_creating_an_array_of_string_reference() {
 	a := unsafe { [&names[0], &names[1]] }
 	println(a[0])
 	println(a)
-	assert '$a' == "[&'John', &'Paul']"
+	assert '${a}' == "[&'John', &'Paul']"
 	assert typeof(a[0]).name == '&string'
 }
 

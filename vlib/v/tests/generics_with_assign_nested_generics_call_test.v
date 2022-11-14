@@ -10,7 +10,7 @@ fn (s SSS<T>) inner() T {
 fn (s SSS<T>) outer() string {
 	ret := s.inner<T>()
 	println(ret)
-	return '$ret'
+	return '${ret}'
 }
 
 fn test_generics_with_assign_nested_generic_method_call() {
@@ -28,7 +28,7 @@ fn fn_inner<T>(t T) T {
 fn fn_outer<T>(t T) string {
 	ret := fn_inner<T>(t)
 	println(ret)
-	return '$ret'
+	return '${ret}'
 }
 
 fn test_generics_with_assign_nested_generic_fn_call() {

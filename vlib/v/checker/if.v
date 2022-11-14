@@ -36,7 +36,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	for i in 0 .. node.branches.len {
 		mut branch := node.branches[i]
 		if branch.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {
-			c.error('unnecessary `()` in `$if_kind` condition, use `$if_kind expr {` instead of `$if_kind (expr) {`.',
+			c.error('unnecessary `()` in `${if_kind}` condition, use `${if_kind} expr {` instead of `${if_kind} (expr) {`.',
 				branch.pos)
 		}
 		if !node.has_else || i < node.branches.len - 1 {
@@ -266,11 +266,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							node.pos)
 					}
 				} else if !node.is_comptime {
-					c.error('`$if_kind` expression requires an expression as the last statement of every branch',
+					c.error('`${if_kind}` expression requires an expression as the last statement of every branch',
 						branch.pos)
 				}
 			} else if !node.is_comptime {
-				c.error('`$if_kind` expression requires an expression as the last statement of every branch',
+				c.error('`${if_kind}` expression requires an expression as the last statement of every branch',
 					branch.pos)
 			}
 		}
@@ -301,7 +301,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	node.typ = ast.mktyp(node.typ)
 	if expr_required && !node.has_else {
 		d := if node.is_comptime { '$' } else { '' }
-		c.error('`$if_kind` expression needs `${d}else` clause', node.pos)
+		c.error('`${if_kind}` expression needs `${d}else` clause', node.pos)
 	}
 	return node.typ
 }
@@ -321,7 +321,7 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 					ast.none_type_idx
 				}
 				else {
-					c.error('invalid type `$right_expr`', right_expr.pos())
+					c.error('invalid type `${right_expr}`', right_expr.pos())
 					ast.Type(0)
 				}
 			}
@@ -339,7 +339,7 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 				} else if !c.check_types(right_type, expr_type) && left_sym.kind != .sum_type {
 					expect_str := c.table.type_to_str(right_type)
 					expr_str := c.table.type_to_str(expr_type)
-					c.error('cannot use type `$expect_str` as type `$expr_str`', node.pos)
+					c.error('cannot use type `${expect_str}` as type `${expr_str}`', node.pos)
 				}
 				if node.left in [ast.Ident, ast.SelectorExpr] && node.right is ast.TypeNode {
 					is_variable := if node.left is ast.Ident {

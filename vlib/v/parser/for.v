@@ -121,10 +121,10 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 					val_var_pos)
 			}
 			if p.scope.known_var(key_var_name) {
-				return p.error('redefinition of key iteration variable `$key_var_name`')
+				return p.error('redefinition of key iteration variable `${key_var_name}`')
 			}
 			if p.scope.known_var(val_var_name) {
-				return p.error('redefinition of value iteration variable `$val_var_name`')
+				return p.error('redefinition of value iteration variable `${val_var_name}`')
 			}
 			p.scope.register(ast.Var{
 				name: key_var_name
@@ -134,7 +134,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 				is_stack_obj: true
 			})
 		} else if p.scope.known_var(val_var_name) {
-			return p.error_with_pos('redefinition of value iteration variable `$val_var_name`, use `for ($val_var_name in array) {` if you want to check for a condition instead',
+			return p.error_with_pos('redefinition of value iteration variable `${val_var_name}`, use `for (${val_var_name} in array) {` if you want to check for a condition instead',
 				val_var_pos)
 		}
 		comments << p.eat_comments()

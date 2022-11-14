@@ -17,7 +17,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 }
 
 pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
-	p.trace_parser('expr($precedence)')
+	p.trace_parser('expr(${precedence})')
 	mut node := ast.empty_expr
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false

@@ -31,7 +31,7 @@ pub fn (k ValueKind) str() string {
 }
 
 fn format_message(msg string, line int, column int) string {
-	return '[x.json2] $msg ($line:$column)'
+	return '[x.json2] ${msg} (${line}:${column})'
 }
 
 pub struct DecodeError {
@@ -64,7 +64,7 @@ pub fn (err InvalidTokenError) code() int {
 // msg returns the message of the InvalidTokenError
 pub fn (err InvalidTokenError) msg() string {
 	footer_text := if err.expected != .none_ { ', expecting `${err.expected}`' } else { '' }
-	return format_message('invalid token `${err.token.kind}`$footer_text', err.token.line,
+	return format_message('invalid token `${err.token.kind}`${footer_text}', err.token.line,
 		err.token.full_col())
 }
 

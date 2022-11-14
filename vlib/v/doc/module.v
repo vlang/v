@@ -74,7 +74,7 @@ pub fn lookup_module_with_path(mod string, base_path string) ?string {
 		}
 		return path
 	}
-	return error('module "$mod" not found.')
+	return error('module "${mod}" not found.')
 }
 
 // lookup_module returns the result of the `lookup_module_with_path`

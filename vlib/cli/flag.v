@@ -233,8 +233,8 @@ fn (mut flag Flag) parse(args []string, posix_mode bool) ![]string {
 // matches returns `true` if first arg in `args` matches this flag.
 fn (mut flag Flag) matches(args []string, posix_mode bool) bool {
 	prefix := if posix_mode { '--' } else { '-' }
-	return (flag.name != '' && args[0] == '$prefix${flag.name}')
-		|| (flag.name != '' && args[0].starts_with('$prefix${flag.name}='))
+	return (flag.name != '' && args[0] == '${prefix}${flag.name}')
+		|| (flag.name != '' && args[0].starts_with('${prefix}${flag.name}='))
 		|| (flag.abbrev != '' && args[0] == '-${flag.abbrev}')
 		|| (flag.abbrev != '' && args[0].starts_with('-${flag.abbrev}='))
 }
@@ -273,7 +273,7 @@ fn (flags []Flag) get(name string) !Flag {
 			return flag
 		}
 	}
-	return error('Flag `$name` not found in $flags')
+	return error('Flag `${name}` not found in ${flags}')
 }
 
 fn (flags []Flag) contains(name string) bool {

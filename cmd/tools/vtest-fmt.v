@@ -19,7 +19,7 @@ fn v_test_formatting(vargs string) {
 	all_v_files := v_files()
 	util.prepare_tool_when_needed('vfmt.v')
 	testing.eheader('Run "v fmt" over all .v files')
-	mut vfmt_test_session := testing.new_test_session('$vargs fmt -worker', false)
+	mut vfmt_test_session := testing.new_test_session('${vargs} fmt -worker', false)
 	vfmt_test_session.files << all_v_files
 	vfmt_test_session.skip_files << known_failing_exceptions
 	vfmt_test_session.test()

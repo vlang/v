@@ -87,27 +87,27 @@ fn new_ft(c FTConfig) ?&FT {
 		font.get_path_variant(c.font_path, .bold)
 	}
 	bytes_bold := os.read_bytes(bold_path) or {
-		debug_font_println('failed to load font "$bold_path"')
+		debug_font_println('failed to load font "${bold_path}"')
 		bold_path = c.font_path
 		bytes
 	}
 	mut mono_path := font.get_path_variant(c.font_path, .mono)
 	bytes_mono := os.read_bytes(mono_path) or {
-		debug_font_println('failed to load font "$mono_path"')
+		debug_font_println('failed to load font "${mono_path}"')
 		mono_path = c.font_path
 		bytes
 	}
 	mut italic_path := font.get_path_variant(c.font_path, .italic)
 	bytes_italic := os.read_bytes(italic_path) or {
-		debug_font_println('failed to load font "$italic_path"')
+		debug_font_println('failed to load font "${italic_path}"')
 		italic_path = c.font_path
 		bytes
 	}
 	fons := sfons.create(512, 512, 1)
-	debug_font_println('Font used for font_normal : $normal_path')
-	debug_font_println('Font used for font_bold   : $bold_path')
-	debug_font_println('Font used for font_mono   : $mono_path')
-	debug_font_println('Font used for font_italic : $italic_path')
+	debug_font_println('Font used for font_normal : ${normal_path}')
+	debug_font_println('Font used for font_bold   : ${bold_path}')
+	debug_font_println('Font used for font_mono   : ${mono_path}')
+	debug_font_println('Font used for font_italic : ${italic_path}')
 	return &FT{
 		fons: fons
 		font_normal: fons.add_font_mem('sans', bytes, false)

@@ -73,7 +73,7 @@ fn (mut m Mapper) fn_name(fname string, receiver_type ast.Type, is_method bool) 
 		return fname
 	}
 	rec_sym := m.table.sym(receiver_type)
-	return '${rec_sym.name}.$fname'
+	return '${rec_sym.name}.${fname}'
 }
 
 fn (mut m Mapper) dot_fn_name(fname string, recv_type ast.Type, is_method bool) string {

@@ -37,7 +37,7 @@ fn read_from_string(text string, capacity int) []u8 {
 		z := stream.read(mut buf) or { break }
 		res << buf
 		$if debug {
-			println('capacity: $capacity, i: $i, buf: $buf | z: $z')
+			println('capacity: ${capacity}, i: ${i}, buf: ${buf} | z: ${z}')
 		}
 		i++
 	}

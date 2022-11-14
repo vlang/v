@@ -3,9 +3,9 @@ fn fn_a<T>(data T, depth int, nl bool) {
 		print('\t')
 	}
 	$if T.typ is int {
-		print('int: $data')
+		print('int: ${data}')
 	} $else $if T.typ is string {
-		print('string: $data')
+		print('string: ${data}')
 	} $else $if T is $Array {
 		println('array: [')
 		for i, elem in data {

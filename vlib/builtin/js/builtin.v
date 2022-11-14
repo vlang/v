@@ -8,7 +8,7 @@ fn (a any) toString()
 
 [noreturn]
 pub fn panic(s string) {
-	eprintln('V panic: $s\n${js_stacktrace()}')
+	eprintln('V panic: ${s}\n${js_stacktrace()}')
 	exit(1)
 }
 
@@ -122,7 +122,7 @@ pub fn (o _option) str() string {
 
 // trace_error prints to stderr a string and a backtrace of the error
 fn trace_error(x string) {
-	eprintln('> ${@FN} | $x')
+	eprintln('> ${@FN} | ${x}')
 }
 
 // error returns a default error instance containing the error given in `message`.

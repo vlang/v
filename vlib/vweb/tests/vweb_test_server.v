@@ -71,7 +71,7 @@ pub fn (mut app App) settings(username string) vweb.Result {
 	if username !in known_users {
 		return app.not_found()
 	}
-	return app.html('username: $username')
+	return app.html('username: ${username}')
 }
 
 ['/:user/:repo/settings']
@@ -79,7 +79,7 @@ pub fn (mut app App) user_repo_settings(username string, repository string) vweb
 	if username !in known_users {
 		return app.not_found()
 	}
-	return app.html('username: $username | repository: $repository')
+	return app.html('username: ${username} | repository: ${repository}')
 }
 
 ['/json_echo'; post]

@@ -135,7 +135,7 @@ fn main() {
 	for font_path in font_paths {
 		mut tf := ttf.TTF_File{}
 		tf.buf = os.read_bytes(font_path) or { panic(err) }
-		println('TrueTypeFont file [$font_path] len: ${tf.buf.len}')
+		println('TrueTypeFont file [${font_path}] len: ${tf.buf.len}')
 		tf.init()
 		println('Unit per EM: ${tf.units_per_em}')
 		app.tf << tf

@@ -91,7 +91,7 @@ fn test_defer_err_return() {
 	}
 	mut e_msg := ''
 	y := option_return_err(mut x) or {
-		e_msg = '$err'
+		e_msg = '${err}'
 		Qwe{
 			n: -119
 		}

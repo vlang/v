@@ -17,7 +17,7 @@ mut:
 }
 
 fn cerror(e string) {
-	eprintln('\nerror: $e')
+	eprintln('\nerror: ${e}')
 }
 
 fn check_name(name string) string {
@@ -30,12 +30,12 @@ fn check_name(name string) string {
 		if cname.contains(' ') {
 			cname = cname.replace(' ', '_')
 		}
-		eprintln('warning: the project name cannot be capitalized, the name will be changed to `$cname`')
+		eprintln('warning: the project name cannot be capitalized, the name will be changed to `${cname}`')
 		return cname
 	}
 	if name.contains(' ') {
 		cname := name.replace(' ', '_')
-		eprintln('warning: the project name cannot contain spaces, the name will be changed to `$cname`')
+		eprintln('warning: the project name cannot contain spaces, the name will be changed to `${cname}`')
 		return cname
 	}
 	return name
@@ -64,7 +64,7 @@ fn main() {
 fn gen_gitignore(name string) string {
 	return '# Binaries for programs and plugins
 main
-$name
+${name}
 *.exe
 *.exe~
 *.so
@@ -134,14 +134,14 @@ fn (c &Create) write_editorconfig(new bool) {
 
 fn (c &Create) create_git_repo(dir string) {
 	// Create Git Repo and .gitignore file
-	if !os.is_dir('$dir/.git') {
-		res := os.execute('git init $dir')
+	if !os.is_dir('${dir}/.git') {
+		res := os.execute('git init ${dir}')
 		if res.exit_code != 0 {
 			cerror('Unable to create git repo')
 			exit(4)
 		}
 	}
-	gitignore_path := '$dir/.gitignore'
+	gitignore_path := '${dir}/.gitignore'
 	if !os.exists(gitignore_path) {
 		os.write_file(gitignore_path, gen_gitignore(c.name)) or {}
 	}
@@ -164,12 +164,12 @@ fn create(args []string) {
 	}
 	c.description = if args.len > 1 { args[1] } else { os.input('Input your project description: ') }
 	default_version := '0.0.0'
-	c.version = os.input('Input your project version: ($default_version) ')
+	c.version = os.input('Input your project version: (${default_version}) ')
 	if c.version == '' {
 		c.version = default_version
 	}
 	default_license := os.getenv_opt('VLICENSE') or { 'MIT' }
-	c.license = os.input('Input your project license: ($default_license) ')
+	c.license = os.input('Input your project license: (${default_license}) ')
 	if c.license == '' {
 		c.license = default_license
 	}
@@ -206,7 +206,7 @@ fn main() {
 			init_project()
 		}
 		else {
-			cerror('unknown command: $cmd')
+			cerror('unknown command: ${cmd}')
 			exit(1)
 		}
 	}

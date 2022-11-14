@@ -64,7 +64,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_file string, pref &pref.Pref
 		g.stmts(file.stmts)
 	}
 	os.write_file(out_file, g.out.str()) or { panic(err) }
-	os.system('go fmt "$out_file"')
+	os.system('go fmt "${out_file}"')
 	return g.nlines, 0 // g.buf.len
 }
 
@@ -209,7 +209,7 @@ pub fn (mut f Gen) short_module(name string) string {
 		mut res := '${f.short_module(generic_levels[0])}'
 		for i in 1 .. generic_levels.len {
 			genshorts := generic_levels[i].split(', ').map(f.short_module(it)).join(', ')
-			res += '<$genshorts'
+			res += '<${genshorts}'
 		}
 		res += '>'
 		return res
@@ -231,9 +231,9 @@ pub fn (mut f Gen) short_module(name string) string {
 		}
 	}
 	if aname == '' {
-		return '$tprefix$symname'
+		return '${tprefix}${symname}'
 	}
-	return '$tprefix${aname}.$symname'
+	return '${tprefix}${aname}.${symname}'
 }
 
 //=== Import-related methods ===//
@@ -314,7 +314,7 @@ pub fn (f Gen) imp_stmt_str(imp ast.Import) string {
 			' {\n\t' + syms.join(',\n\t') + ',\n}'
 		}
 	}
-	return '$mod$imp_alias_suffix'
+	return '${mod}${imp_alias_suffix}'
 }
 
 //=== Node helpers ===//
@@ -822,7 +822,7 @@ pub fn (mut f Gen) const_decl(node ast.ConstDecl) {
 			f.writeln('')
 		}
 		name := field.name.after('.')
-		f.write('$name ')
+		f.write('${name} ')
 		f.write(strings.repeat(` `, align_infos[align_idx].max - field.name.len))
 		f.write('= ')
 		f.expr(field.expr)
@@ -874,10 +874,10 @@ pub fn (mut f Gen) enum_decl(node ast.EnumDecl) {
 	}
 	name := node.name.after('.')
 	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
-		f.writeln('enum $name {}\n')
+		f.writeln('enum ${name} {}\n')
 		return
 	}
-	f.writeln('enum $name {')
+	f.writeln('enum ${name} {')
 	for field in node.fields {
 		f.write('\t${field.name}')
 		if field.has_expr {
@@ -1109,7 +1109,7 @@ pub fn (mut f Gen) interface_decl(node ast.InterfaceDecl) {
 pub fn (mut f Gen) interface_field(field ast.StructField) {
 	mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 	// end_pos := field.pos.pos + field.pos.len
-	f.write('\t${field.name} $ft')
+	f.write('\t${field.name} ${ft}')
 	f.writeln('')
 	f.mark_types_import_as_used(field.typ)
 }
@@ -1173,12 +1173,12 @@ pub fn (mut f Gen) sql_stmt_line(node ast.SqlStmtLine) {
 	f.write('\t')
 	match node.kind {
 		.insert {
-			f.writeln('insert ${node.object_var_name} into $table_name')
+			f.writeln('insert ${node.object_var_name} into ${table_name}')
 		}
 		.update {
-			f.write('update $table_name set ')
+			f.write('update ${table_name} set ')
 			for i, col in node.updated_columns {
-				f.write('$col = ')
+				f.write('${col} = ')
 				f.expr(node.update_exprs[i])
 				if i < node.updated_columns.len - 1 {
 					f.write(', ')
@@ -1192,15 +1192,15 @@ pub fn (mut f Gen) sql_stmt_line(node ast.SqlStmtLine) {
 			f.writeln('')
 		}
 		.delete {
-			f.write('delete from $table_name where ')
+			f.write('delete from ${table_name} where ')
 			f.expr(node.where_expr)
 			f.writeln('')
 		}
 		.create {
-			f.writeln('create table $table_name')
+			f.writeln('create table ${table_name}')
 		}
 		.drop {
-			f.writeln('drop table $table_name')
+			f.writeln('drop table ${table_name}')
 		}
 	}
 }
@@ -1219,7 +1219,7 @@ pub fn (mut f Gen) alias_type_decl(node ast.AliasTypeDecl) {
 		f.write('pub ')
 	}
 	ptype := f.table.type_to_str_using_aliases(node.parent_type, f.mod2alias)
-	f.write('type ${node.name} = $ptype')
+	f.write('type ${node.name} = ${ptype}')
 
 	f.mark_types_import_as_used(node.parent_type)
 }
@@ -1233,7 +1233,7 @@ pub fn (mut f Gen) fn_type_decl(node ast.FnTypeDecl) {
 	fn_typ_info := typ_sym.info as ast.FnType
 	fn_info := fn_typ_info.func
 	fn_name := f.no_cur_mod(node.name)
-	f.write('type $fn_name = fn (')
+	f.write('type ${fn_name} = fn (')
 	for i, arg in fn_info.params {
 		if arg.is_mut {
 			f.write(arg.typ.share().str() + ' ')
@@ -1267,7 +1267,7 @@ pub fn (mut f Gen) fn_type_decl(node ast.FnTypeDecl) {
 		f.mark_types_import_as_used(fn_info.return_type)
 		ret_str := f.no_cur_mod(f.table.type_to_str_using_aliases(fn_info.return_type,
 			f.mod2alias))
-		f.write(' $ret_str')
+		f.write(' ${ret_str}')
 	} else if fn_info.return_type.has_flag(.optional) {
 		f.write(' ?')
 	} else if fn_info.return_type.has_flag(.result) {
@@ -1375,7 +1375,7 @@ pub fn (mut f Gen) as_cast(node ast.AsCast) {
 	f.mark_types_import_as_used(node.typ)
 	type_str := f.table.type_to_str_using_aliases(node.typ, f.mod2alias)
 	f.expr(node.expr)
-	f.write(' as $type_str')
+	f.write(' as ${type_str}')
 }
 
 pub fn (mut f Gen) assoc(node ast.Assoc) {
@@ -1383,7 +1383,7 @@ pub fn (mut f Gen) assoc(node ast.Assoc) {
 	f.indent++
 	f.writeln('...${node.var_name}')
 	for i, field in node.fields {
-		f.write('$field: ')
+		f.write('${field}: ')
 		f.expr(node.exprs[i])
 		f.writeln('')
 	}
@@ -1421,7 +1421,7 @@ pub fn (mut f Gen) call_expr(node ast.CallExpr) {
 		} else {
 			mut name := f.short_module(node.name)
 			f.mark_import_as_used(name)
-			f.write('$name')
+			f.write('${name}')
 		}
 	}
 	if node.mod == '' && node.name == '' {
@@ -1545,11 +1545,11 @@ pub fn (mut f Gen) comptime_call(node ast.ComptimeCall) {
 				node.args.map(it.str()).join(', ')
 			}
 			method_expr := if node.has_parens {
-				'(${node.method_name}($inner_args))'
+				'(${node.method_name}(${inner_args}))'
 			} else {
-				'${node.method_name}($inner_args)'
+				'${node.method_name}(${inner_args})'
 			}
-			f.write('${node.left}.$$method_expr')
+			f.write('${node.left}.$${method_expr}')
 		}
 	}
 }
@@ -1770,20 +1770,20 @@ fn split_up_infix(infix_str string, ignore_paren bool, is_cond_infix bool) ([]st
 	for p in parts {
 		if is_cond_infix && p in ['&&', '||'] {
 			if inside_paren {
-				conditions[ind] += '$p '
+				conditions[ind] += '${p} '
 			} else {
 				pen := if p == '||' { or_pen } else { 5 }
 				penalties << pen
-				conditions << '$p '
+				conditions << '${p} '
 				ind++
 			}
 		} else if !is_cond_infix && p == '+' {
 			penalties << 5
-			conditions[ind] += '$p '
+			conditions[ind] += '${p} '
 			conditions << ''
 			ind++
 		} else {
-			conditions[ind] += '$p '
+			conditions[ind] += '${p} '
 			if ignore_paren {
 				continue
 			}
@@ -2166,7 +2166,7 @@ pub fn (mut f Gen) sql_expr(node ast.SqlExpr) {
 			}
 		}
 	}
-	f.write('from $table_name')
+	f.write('from ${table_name}')
 	if node.has_where {
 		f.write(' where ')
 		f.expr(node.where_expr)
@@ -2209,14 +2209,14 @@ pub fn (mut f Gen) string_literal(node ast.StringLiteral) {
 	if node.is_raw {
 		f.write('`${node.val}`')
 	} else {
-		unescaped_val := node.val.replace('$golang.bs$golang.bs', '\x01').replace_each([
-			"$golang.bs'",
+		unescaped_val := node.val.replace('${golang.bs}${golang.bs}', '\x01').replace_each([
+			"${golang.bs}'",
 			"'",
-			'$golang.bs"',
+			'${golang.bs}"',
 			'"',
 		])
-		s := unescaped_val.replace_each(['\x01', '$golang.bs$golang.bs', '"', '$golang.bs"'])
-		f.write('"$s"')
+		s := unescaped_val.replace_each(['\x01', '${golang.bs}${golang.bs}', '"', '${golang.bs}"'])
+		f.write('"${s}"')
 	}
 }
 
@@ -2227,7 +2227,7 @@ pub fn (mut f Gen) string_inter_literal(node ast.StringInterLiteral) {
 	//	work too different for the various exprs that are interpolated
 	f.write(quote)
 	for i, val in node.vals {
-		f.write(val.replace("$golang.bs'", "'"))
+		f.write(val.replace("${golang.bs}'", "'"))
 		if i >= node.exprs.len {
 			break
 		}

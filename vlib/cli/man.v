@@ -35,7 +35,7 @@ pub fn print_manpage_for_command(man_cmd Command) ! {
 			}
 			if !found {
 				args := man_cmd.args.join(' ')
-				println('Invalid command: $args')
+				println('Invalid command: ${args}')
 				return
 			}
 		}
@@ -92,7 +92,7 @@ pub fn (cmd Command) manpage() string {
 		mdoc += '\n'
 	}
 	for i in 0 .. cmd.required_args {
-		mdoc += '.Ar arg$i\n'
+		mdoc += '.Ar arg${i}\n'
 	}
 	if cmd.commands.len > 0 {
 		mdoc += '.Nm ${cmd.root().name}\n'
@@ -167,7 +167,7 @@ pub fn (cmd Command) manpage() string {
 		cmds.sort()
 		mut i := 1
 		for c in cmds {
-			mdoc += '.Xr $c 1'
+			mdoc += '.Xr ${c} 1'
 			if i == cmds.len {
 				mdoc += '\n'
 			} else {

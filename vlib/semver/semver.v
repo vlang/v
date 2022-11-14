@@ -102,7 +102,7 @@ pub fn (ver Version) str() string {
 	prerelease_string := if ver.prerelease.len > 0 { '-${ver.prerelease}' } else { '' }
 	metadata_string := if ver.metadata.len > 0 { '+${ver.metadata}' } else { '' }
 
-	return '$common_string$prerelease_string$metadata_string'
+	return '${common_string}${prerelease_string}${metadata_string}'
 }
 
 // * Utilites.

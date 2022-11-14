@@ -51,7 +51,7 @@ fn test_match_integers() {
 		}
 		else {
 			a = 3
-			println('a is $a')
+			println('a is ${a}')
 		}
 	}
 	assert a == 3

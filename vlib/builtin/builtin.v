@@ -36,7 +36,7 @@ fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 				expected_name = x.tname.clone()
 			}
 		}
-		panic('as cast: cannot cast `$obj_name` to `$expected_name`')
+		panic('as cast: cannot cast `${obj_name}` to `${expected_name}`')
 	}
 	return obj
 }

@@ -9,7 +9,7 @@ pub struct Element<T> {
 fn test_generics_with_nested_generic_type_parameter() {
 	a := new_randomizer<int>()
 	println(a)
-	assert '$a' == '&Randomizer<int>{}'
+	assert '${a}' == '&Randomizer<int>{}'
 }
 
 pub fn new_randomizer<T>() &Randomizer<T> {

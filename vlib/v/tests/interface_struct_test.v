@@ -25,7 +25,7 @@ fn (c Cat) say_hello() string {
 }
 
 fn (c Cat) speak(msg string) {
-	println('Meow $msg')
+	println('Meow ${msg}')
 }
 
 struct Baz {

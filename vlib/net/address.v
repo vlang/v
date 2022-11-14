@@ -77,7 +77,7 @@ fn (a Ip) str() string {
 	saddr := unsafe { cstring_to_vstring(&buf[0]) }
 	port := C.ntohs(a.port)
 
-	return '$saddr:$port'
+	return '${saddr}:${port}'
 }
 
 fn (a Ip6) str() string {
@@ -92,7 +92,7 @@ fn (a Ip6) str() string {
 	saddr := unsafe { cstring_to_vstring(&buf[0]) }
 	port := C.ntohs(a.port)
 
-	return '[$saddr]:$port'
+	return '[${saddr}]:${port}'
 }
 
 const aoffset = __offsetof(Addr, addr)
@@ -187,7 +187,7 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
 
 	results := &C.addrinfo(0)
 
-	sport := '$port'
+	sport := '${port}'
 
 	// This might look silly but is recommended by MSDN
 	$if windows {

@@ -5,7 +5,7 @@ fn f(ch chan int) {
 	for _ in 0 .. n {
 		s += <-ch or {
 			println('Something went wrong:')
-			println('got $err')
+			println('got ${err}')
 		}
 	}
 	assert s == n * (n + 1) / 2

@@ -99,7 +99,7 @@ mut:
 
 [if debug_vwatch ?]
 fn (mut context Context) elog(msg string) {
-	eprintln('> vwatch ${context.pid}, $msg')
+	eprintln('> vwatch ${context.pid}, ${msg}')
 }
 
 fn (context &Context) str() string {
@@ -112,7 +112,7 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 		// The next command will make V parse the program, and print all .v files,
 		// needed for its compilation, without actually compiling it.
 		copts := context.opts.join(' ')
-		cmd := '"${context.vexe}" -silent -print-v-files $copts'
+		cmd := '"${context.vexe}" -silent -print-v-files ${copts}'
 		// context.elog('> cmd: $cmd')
 		mut paths := []string{}
 		if context.add_files.len > 0 && context.add_files[0] != '' {
@@ -168,7 +168,7 @@ fn (mut context Context) get_changed_vfiles() int {
 			if existing_vfs.path == vfs.path {
 				found = true
 				if existing_vfs.mtime != vfs.mtime {
-					context.elog('> new updates for file: $vfs')
+					context.elog('> new updates for file: ${vfs}')
 					changed++
 				}
 				break
@@ -181,7 +181,7 @@ fn (mut context Context) get_changed_vfiles() int {
 	}
 	context.vfiles = newfiles
 	if changed > 0 {
-		context.elog('> get_changed_vfiles: $changed')
+		context.elog('> get_changed_vfiles: ${changed}')
 	}
 	return changed
 }
@@ -246,7 +246,7 @@ fn (mut context Context) compilation_runner_loop() {
 		context.child_process.set_args(context.opts)
 		context.child_process.run()
 		if !context.silent {
-			eprintln('$timestamp: $cmd | pid: ${context.child_process.pid:7d} | reload cycle: ${context.v_cycles:5d}')
+			eprintln('${timestamp}: ${cmd} | pid: ${context.child_process.pid:7d} | reload cycle: ${context.v_cycles:5d}')
 		}
 		for {
 			mut notalive_count := 0
@@ -286,7 +286,7 @@ fn (mut context Context) compilation_runner_loop() {
 				}
 			}
 			if !context.child_process.is_alive() {
-				context.elog('> child_process is no longer alive | notalive_count: $notalive_count')
+				context.elog('> child_process is no longer alive | notalive_count: ${notalive_count}')
 				context.child_process.wait()
 				context.child_process.close()
 				if notalive_count == 0 {
@@ -333,7 +333,7 @@ fn main() {
 		exit(0)
 	}
 	remaining_options := fp.finalize() or {
-		eprintln('Error: $err')
+		eprintln('Error: ${err}')
 		exit(1)
 	}
 	context.opts = remaining_options

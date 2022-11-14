@@ -492,7 +492,7 @@ fn (mut app App) ai_move() {
 			bestprediction = predictions[move_idx]
 		}
 	}
-	eprintln('Simulation time: ${think_time:4}ms |  best $bestprediction')
+	eprintln('Simulation time: ${think_time:4}ms |  best ${bestprediction}')
 	app.move(bestprediction.move)
 }
 
@@ -654,13 +654,13 @@ fn (app &App) draw_tiles() {
 						app.gg.draw_text(xpos, ypos, '${1 << tidx}', fmt)
 					}
 					.log {
-						app.gg.draw_text(xpos, ypos, '$tidx', fmt)
+						app.gg.draw_text(xpos, ypos, '${tidx}', fmt)
 					}
 					.exponent {
 						app.gg.draw_text(xpos, ypos, '2', fmt)
 						fs2 := int(f32(fmt.size) * 0.67)
 						app.gg.draw_text(xpos + app.ui.tile_size / 10, ypos - app.ui.tile_size / 8,
-							'$tidx', gx.TextCfg{
+							'${tidx}', gx.TextCfg{
 							...fmt
 							size: fs2
 							align: gx.HorizontalAlign.left

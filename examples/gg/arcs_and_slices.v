@@ -53,10 +53,10 @@ fn on_frame(mut app App) {
 	end := math.tau * app.mouse.x / (win_width * app.gg.scale)
 
 	segs := if app.sel == .segs { '[${app.segs}]' } else { '${app.segs}' }
-	app.gg.draw_text_def(10, 10, 'Segments: $segs')
+	app.gg.draw_text_def(10, 10, 'Segments: ${segs}')
 	app.gg.draw_text_def(250, 10, 'Drawing Angles (radians)')
-	app.gg.draw_text_def(200, 26, 'Start: $start°')
-	app.gg.draw_text_def(350, 26, 'End: $end°')
+	app.gg.draw_text_def(200, 26, 'Start: ${start}°')
+	app.gg.draw_text_def(350, 26, 'End: ${end}°')
 	mut x, mut y := 0, -80
 
 	y += 150

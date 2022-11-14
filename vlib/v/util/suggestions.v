@@ -107,7 +107,7 @@ pub fn short_module_name(name string) string {
 	}
 	mname := vals[vals.len - 2]
 	symname := vals.last()
-	return '${mname}.$symname'
+	return '${mname}.${symname}'
 }
 
 // highlight_suggestion returns a colorfull/highlighted version of `message`,

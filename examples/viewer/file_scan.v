@@ -151,13 +151,13 @@ fn (item_list Item_list) get_file_path() string {
 *
 ******************************************************************************/
 fn (mut item_list Item_list) scan_folder(path string, in_index int) ! {
-	println('Scanning [$path]')
+	println('Scanning [${path}]')
 	mut folder_list := []string{}
 	lst := os.ls(path)!
 
 	// manage the single files
 	for c, x in lst {
-		pt := '$path${item_list.path_sep}$x'
+		pt := '${path}${item_list.path_sep}${x}'
 		mut item := Item{
 			path: path
 			name: x
@@ -187,7 +187,7 @@ fn (mut item_list Item_list) scan_folder(path string, in_index int) ! {
 
 	// manage the folders
 	for x in folder_list {
-		pt := '$path${item_list.path_sep}$x'
+		pt := '${path}${item_list.path_sep}${x}'
 		item := Item{
 			path: path
 			name: x
@@ -217,7 +217,7 @@ fn (item_list Item_list) print_list() {
 
 fn (mut item_list Item_list) get_items_list(args []string) {
 	item_list.loaded = false
-	println('Args: $args')
+	println('Args: ${args}')
 
 	item_list.path_sep = $if windows { '\\' } $else { '/' }
 	for x in args {
@@ -231,7 +231,7 @@ fn (mut item_list Item_list) get_items_list(args []string) {
 			}
 			item_list.lst << item
 			item_list.scan_folder(x, item_list.lst.len - 1) or {
-				eprintln('ERROR: scanning folder [$x]!')
+				eprintln('ERROR: scanning folder [${x}]!')
 				continue
 			}
 		} else {
@@ -246,7 +246,7 @@ fn (mut item_list Item_list) get_items_list(args []string) {
 				item.i_type = .zip
 				item_list.lst << item
 				item_list.scan_zip(x, item_list.lst.len - 1) or {
-					eprintln('ERROR: scanning zip [$x]!')
+					eprintln('ERROR: scanning zip [${x}]!')
 					continue
 				}
 				continue

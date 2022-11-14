@@ -125,12 +125,12 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				if !is_left_type_signed && mut node.right is ast.IntegerLiteral {
 					if node.right.val.int() < 0 && left_type in ast.int_promoted_type_idxs {
 						lt := c.table.sym(left_type).name
-						c.error('`$lt` cannot be compared with negative value', node.right.pos)
+						c.error('`${lt}` cannot be compared with negative value', node.right.pos)
 					}
 				} else if !is_right_type_signed && mut node.left is ast.IntegerLiteral {
 					if node.left.val.int() < 0 && right_type in ast.int_promoted_type_idxs {
 						rt := c.table.sym(right_type).name
-						c.error('negative value cannot be compared with `$rt`', node.left.pos)
+						c.error('negative value cannot be compared with `${rt}`', node.left.pos)
 					}
 				} else if is_left_type_signed != is_right_type_signed
 					&& left_type != ast.int_literal_type_idx
@@ -143,7 +143,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						|| (is_right_type_signed && rs < ls)) {
 						lt := c.table.sym(left_type).name
 						rt := c.table.sym(right_type).name
-						c.error('`$lt` cannot be compared with `$rt`', node.pos)
+						c.error('`${lt}` cannot be compared with `${rt}`', node.pos)
 					}
 				}
 			}
@@ -222,10 +222,11 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					left_name := c.table.type_to_str(unwrapped_left_type)
 					right_name := c.table.type_to_str(unwrapped_right_type)
 					if left_name == right_name {
-						c.error('undefined operation `$left_name` ${node.op.str()} `$right_name`',
+						c.error('undefined operation `${left_name}` ${node.op.str()} `${right_name}`',
 							left_right_pos)
 					} else {
-						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
+						c.error('mismatched types `${left_name}` and `${right_name}`',
+							left_right_pos)
 					}
 				}
 			} else if !c.pref.translated && right_sym.kind == .alias && right_sym.info is ast.Alias
@@ -246,10 +247,11 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					left_name := c.table.type_to_str(unwrapped_left_type)
 					right_name := c.table.type_to_str(unwrapped_right_type)
 					if left_name == right_name {
-						c.error('undefined operation `$left_name` ${node.op.str()} `$right_name`',
+						c.error('undefined operation `${left_name}` ${node.op.str()} `${right_name}`',
 							left_right_pos)
 					} else {
-						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
+						c.error('mismatched types `${left_name}` and `${right_name}`',
+							left_right_pos)
 					}
 				}
 			}
@@ -265,10 +267,11 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					left_name := c.table.type_to_str(unwrapped_left_type)
 					right_name := c.table.type_to_str(unwrapped_right_type)
 					if left_name == right_name {
-						c.error('undefined operation `$left_name` ${node.op.str()} `$right_name`',
+						c.error('undefined operation `${left_name}` ${node.op.str()} `${right_name}`',
 							left_right_pos)
 					} else {
-						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
+						c.error('mismatched types `${left_name}` and `${right_name}`',
+							left_right_pos)
 					}
 				}
 			} else if !c.pref.translated && right_sym.kind in [.array, .array_fixed, .map, .struct_] {
@@ -282,10 +285,11 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					left_name := c.table.type_to_str(unwrapped_left_type)
 					right_name := c.table.type_to_str(unwrapped_right_type)
 					if left_name == right_name {
-						c.error('undefined operation `$left_name` ${node.op.str()} `$right_name`',
+						c.error('undefined operation `${left_name}` ${node.op.str()} `${right_name}`',
 							left_right_pos)
 					} else {
-						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
+						c.error('mismatched types `${left_name}` and `${right_name}`',
+							left_right_pos)
 					}
 				}
 			} else if node.left.is_auto_deref_var() || node.right.is_auto_deref_var() {
@@ -302,7 +306,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				left_name := c.table.type_to_str(ast.mktyp(deref_left_type))
 				right_name := c.table.type_to_str(ast.mktyp(deref_right_type))
 				if left_name != right_name {
-					c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
+					c.error('mismatched types `${left_name}` and `${right_name}`', left_right_pos)
 				}
 			} else {
 				unaliased_left_type := c.table.unalias_num_type(unwrapped_left_type)
@@ -318,10 +322,10 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				if promoted_type.idx() == ast.void_type_idx {
 					left_name := c.table.type_to_str(unwrapped_left_type)
 					right_name := c.table.type_to_str(unwrapped_right_type)
-					c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
+					c.error('mismatched types `${left_name}` and `${right_name}`', left_right_pos)
 				} else if promoted_type.has_flag(.optional) || promoted_type.has_flag(.result) {
 					s := c.table.type_to_str(promoted_type)
-					c.error('`${node.op}` cannot be used with `$s`', node.pos)
+					c.error('`${node.op}` cannot be used with `${s}`', node.pos)
 				} else if promoted_type.is_float() {
 					if node.op in [.mod, .xor, .amp, .pipe] {
 						side := if unwrapped_left_type == promoted_type { 'left' } else { 'right' }
@@ -339,7 +343,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							c.error('float modulo not allowed, use math.fmod() instead',
 								pos)
 						} else {
-							c.error('$side type of `${node.op.str()}` cannot be non-integer type `$name`',
+							c.error('${side} type of `${node.op.str()}` cannot be non-integer type `${name}`',
 								pos)
 						}
 					}
@@ -366,11 +370,12 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						if !(node.op == .lt && c.pref.translated) {
 							// Allow `&Foo < &Foo` in translated code.
 							// TODO maybe in unsafe as well?
-							c.error('undefined operation `$left_name` ${node.op.str()} `$right_name`',
+							c.error('undefined operation `${left_name}` ${node.op.str()} `${right_name}`',
 								left_right_pos)
 						}
 					} else {
-						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
+						c.error('mismatched types `${left_name}` and `${right_name}`',
+							left_right_pos)
 					}
 				}
 			}
@@ -538,7 +543,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					ast.none_type_idx
 				}
 				else {
-					c.error('invalid type `$right_expr`', right_expr.pos())
+					c.error('invalid type `${right_expr}`', right_expr.pos())
 					ast.Type(0)
 				}
 			}
@@ -546,14 +551,15 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				typ_sym := c.table.sym(typ)
 				op := node.op.str()
 				if typ_sym.kind == .placeholder {
-					c.error('$op: type `${typ_sym.name}` does not exist', right_expr.pos())
+					c.error('${op}: type `${typ_sym.name}` does not exist', right_expr.pos())
 				}
 				if left_sym.kind == .aggregate {
 					parent_left_type := (left_sym.info as ast.Aggregate).sum_type
 					left_sym = c.table.sym(parent_left_type)
 				}
 				if left_sym.kind !in [.interface_, .sum_type] {
-					c.error('`$op` can only be used with interfaces and sum types', node.pos)
+					c.error('`${op}` can only be used with interfaces and sum types',
+						node.pos)
 				} else if mut left_sym.info is ast.SumType {
 					if typ !in left_sym.info.variants {
 						c.error('`${left_sym.name}` has no variant `${right_sym.name}`',
@@ -673,7 +679,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			if left_sym.language == .v && !c.pref.translated && !c.inside_unsafe && !for_ptr_op
 				&& right_type.is_int() {
 				sugg := ' (you can use it inside an `unsafe` block)'
-				c.error('infix expr: cannot use `${right_sym.name}` (right expression) as `${left_sym.name}` $sugg',
+				c.error('infix expr: cannot use `${right_sym.name}` (right expression) as `${left_sym.name}` ${sugg}',
 					left_right_pos)
 			}
 		}
@@ -693,13 +699,13 @@ fn (mut c Checker) check_div_mod_by_zero(expr ast.Expr, op_kind token.Kind) {
 		ast.FloatLiteral {
 			if expr.val.f64() == 0.0 {
 				oper := if op_kind == .div { 'division' } else { 'modulo' }
-				c.error('$oper by zero', expr.pos)
+				c.error('${oper} by zero', expr.pos)
 			}
 		}
 		ast.IntegerLiteral {
 			if expr.val.int() == 0 {
 				oper := if op_kind == .div { 'division' } else { 'modulo' }
-				c.error('$oper by zero', expr.pos)
+				c.error('${oper} by zero', expr.pos)
 			}
 		}
 		ast.CastExpr {
@@ -712,5 +718,5 @@ fn (mut c Checker) check_div_mod_by_zero(expr ast.Expr, op_kind token.Kind) {
 pub fn (mut c Checker) invalid_operator_error(op token.Kind, left_type ast.Type, right_type ast.Type, pos token.Pos) {
 	left_name := c.table.type_to_str(left_type)
 	right_name := c.table.type_to_str(right_type)
-	c.error('invalid operator `$op` to `$left_name` and `$right_name`', pos)
+	c.error('invalid operator `${op}` to `${left_name}` and `${right_name}`', pos)
 }

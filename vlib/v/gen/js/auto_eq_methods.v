@@ -89,27 +89,27 @@ fn (mut g JsGen) gen_struct_equality_fn(left_type ast.Type) string {
 				fn_builder.write_string('a.${field_name}.str == b.${field_name}.str')
 			} else if field_type.sym.kind == .sum_type && !field.typ.is_ptr() {
 				eq_fn := g.gen_sumtype_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_sumtype_eq(a.$field_name, b.$field_name)')
+				fn_builder.write_string('${eq_fn}_sumtype_eq(a.${field_name}, b.${field_name})')
 			} else if field_type.sym.kind == .struct_ && !field.typ.is_ptr() {
 				eq_fn := g.gen_struct_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_struct_eq(a.$field_name, b.$field_name)')
+				fn_builder.write_string('${eq_fn}_struct_eq(a.${field_name}, b.${field_name})')
 			} else if field_type.sym.kind == .array && !field.typ.is_ptr() {
 				eq_fn := g.gen_array_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_arr_eq(a.$field_name, b.$field_name)')
+				fn_builder.write_string('${eq_fn}_arr_eq(a.${field_name}, b.${field_name})')
 			} else if field_type.sym.kind == .array_fixed && !field.typ.is_ptr() {
 				eq_fn := g.gen_fixed_array_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_arr_eq(a.$field_name, b.$field_name)')
+				fn_builder.write_string('${eq_fn}_arr_eq(a.${field_name}, b.${field_name})')
 			} else if field_type.sym.kind == .map && !field.typ.is_ptr() {
 				eq_fn := g.gen_map_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_map_eq(a.$field_name, b.$field_name)')
+				fn_builder.write_string('${eq_fn}_map_eq(a.${field_name}, b.${field_name})')
 			} else if field_type.sym.kind == .alias && !field.typ.is_ptr() {
 				eq_fn := g.gen_alias_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_alias_eq(a.$field_name, b.$field_name)')
+				fn_builder.write_string('${eq_fn}_alias_eq(a.${field_name}, b.${field_name})')
 			} else if field_type.sym.kind == .function {
-				fn_builder.write_string('a.$field_name == b.$field_name')
+				fn_builder.write_string('a.${field_name} == b.${field_name}')
 			} else {
 				// fallback to vEq for JS types or primitives.
-				fn_builder.write_string('vEq(a.$field_name,b.$field_name)')
+				fn_builder.write_string('vEq(a.${field_name},b.${field_name})')
 			}
 		}
 	} else {
@@ -231,7 +231,7 @@ fn (mut g JsGen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 		g.definitions.writeln(fn_builder.str())
 	}
 	fn_builder.writeln('function ${ptr_styp}_arr_eq(a,b) {')
-	fn_builder.writeln('\tfor (let i = 0; i < $size; ++i) {')
+	fn_builder.writeln('\tfor (let i = 0; i < ${size}; ++i) {')
 	// compare every pair of elements of the two fixed arrays
 	if elem.sym.kind == .string {
 		fn_builder.writeln('\t\tif (a.arr.get(new int(i)).str != b.arr.get(new int(i)).str) {')

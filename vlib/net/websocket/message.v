@@ -64,7 +64,7 @@ pub fn (mut ws Client) validate_frame(frame &Frame) ! {
 		}
 	}
 	if frame.fin == false && ws.fragments.len == 0 && frame.opcode == .continuation {
-		err_msg := 'unexecpected continuation, there are no frames to continue, $frame'
+		err_msg := 'unexecpected continuation, there are no frames to continue, ${frame}'
 		ws.close(1002, err_msg)!
 		return error(err_msg)
 	}
@@ -146,8 +146,8 @@ pub fn (mut ws Client) read_next_message() !Message {
 		}
 		if ws.fragments.len == 0 {
 			ws.validate_utf_8(frame.opcode, frame_payload) or {
-				ws.logger.error('UTF8 validation error: $err, len of payload(${frame_payload.len})')
-				ws.send_error_event('UTF8 validation error: $err, len of payload(${frame_payload.len})')
+				ws.logger.error('UTF8 validation error: ${err}, len of payload(${frame_payload.len})')
+				ws.send_error_event('UTF8 validation error: ${err}, len of payload(${frame_payload.len})')
 				return err
 			}
 			msg := Message{

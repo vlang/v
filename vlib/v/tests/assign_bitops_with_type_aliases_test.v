@@ -14,5 +14,5 @@ fn (mut s SteamId) set_id(i u32) {
 fn test_bitops_work_with_type_aliases() {
 	mut x := SteamId(123)
 	x.set_id(5)
-	assert 'x: $x' == 'x: 127'
+	assert 'x: ${x}' == 'x: 127'
 }

@@ -29,7 +29,7 @@ fn test_out_files() {
 	files := os.ls(testdata_folder) or { [] }
 	tests := files.filter(it.ends_with('.out'))
 	if tests.len == 0 {
-		eprintln('no `.out` tests found in $testdata_folder')
+		eprintln('no `.out` tests found in ${testdata_folder}')
 		return
 	}
 	paths := vtest.filter_vtest_only(tests, basepath: testdata_folder)
@@ -40,9 +40,9 @@ fn test_out_files() {
 		//
 		file_options := get_file_options(path)
 		alloptions := '-o ${os.quoted_path(pexe)} ${file_options.vflags}'
-		print(mm('v $alloptions run $relpath') + ' == ${mm(out_relpath)} ')
+		print(mm('v ${alloptions} run ${relpath}') + ' == ${mm(out_relpath)} ')
 		//
-		compilation := os.execute('${os.quoted_path(vexe)} $alloptions ${os.quoted_path(path)}')
+		compilation := os.execute('${os.quoted_path(vexe)} ${alloptions} ${os.quoted_path(path)}')
 		ensure_compilation_succeeded(compilation)
 		res := os.execute(os.quoted_path(pexe))
 		if res.exit_code < 0 {
@@ -100,7 +100,7 @@ fn test_c_must_have_files() {
 	files := os.ls(testdata_folder) or { [] }
 	tests := files.filter(it.ends_with('.c.must_have'))
 	if tests.len == 0 {
-		eprintln('no `.c.must_have` files found in $testdata_folder')
+		eprintln('no `.c.must_have` files found in ${testdata_folder}')
 		return
 	}
 	paths := vtest.filter_vtest_only(tests, basepath: testdata_folder)
@@ -110,10 +110,10 @@ fn test_c_must_have_files() {
 		basename, path, relpath, must_have_relpath := target2paths(must_have_path, '.c.must_have')
 		file_options := get_file_options(path)
 		alloptions := '-o - ${file_options.vflags}'
-		description := mm('v $alloptions $relpath') +
+		description := mm('v ${alloptions} ${relpath}') +
 			' matches all line patterns in ${mm(must_have_relpath)} '
 		print(description)
-		cmd := '${os.quoted_path(vexe)} $alloptions ${os.quoted_path(path)}'
+		cmd := '${os.quoted_path(vexe)} ${alloptions} ${os.quoted_path(path)}'
 		compilation := os.execute(cmd)
 		ensure_compilation_succeeded(compilation)
 		expected_lines := os.read_lines(must_have_path) or { [] }
@@ -127,8 +127,8 @@ fn test_c_must_have_files() {
 			} else {
 				failed_patterns << eline
 				println(term.red('FAIL'))
-				eprintln('$must_have_path:${idx_expected_line + 1}: expected match error:')
-				eprintln('`$cmd` did NOT produce expected line:')
+				eprintln('${must_have_path}:${idx_expected_line + 1}: expected match error:')
+				eprintln('`${cmd}` did NOT produce expected line:')
 				eprintln(term.colorize(term.red, eline))
 				if description !in failed_descriptions {
 					failed_descriptions << description
@@ -154,7 +154,7 @@ fn test_c_must_have_files() {
 	if failed_descriptions.len > 0 {
 		eprintln('--------- failed commands: -------------------------------------------')
 		for fd in failed_descriptions {
-			eprintln('  > $fd')
+			eprintln('  > ${fd}')
 		}
 		eprintln('----------------------------------------------------------------------')
 	}

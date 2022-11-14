@@ -598,7 +598,7 @@ fn (mut g Gen) gen_section_data(sections []Section) {
 				for str in data.strings {
 					g.write(str.bytes())
 					g.write8(0) // null-terminate string
-					g.println('; "$str"')
+					g.println('; "${str}"')
 				}
 				g.write8(0) // null-postfixed
 
@@ -936,7 +936,7 @@ pub fn (mut g Gen) get_lpaths() string {
 			['/dev/null']
 		}
 	}
-	return lpaths.map('-L$it').join(' ')
+	return lpaths.map('-L${it}').join(' ')
 }
 
 pub fn (mut g Gen) link_elf_file(obj_file string) {
@@ -967,7 +967,7 @@ pub fn (mut g Gen) link_elf_file(obj_file string) {
 	linker_args := [
 		'-v',
 		lpaths,
-		'-m $arch',
+		'-m ${arch}',
 		'-dynamic-linker',
 		dynamic_linker,
 		crt1,
@@ -976,7 +976,7 @@ pub fn (mut g Gen) link_elf_file(obj_file string) {
 		'-lm',
 		'-lpthread',
 		crtn,
-		'$obj_file',
+		'${obj_file}',
 		'-o ${g.out_name}',
 	]
 	slinker_args := linker_args.join(' ')
@@ -988,18 +988,18 @@ pub fn (mut g Gen) link_elf_file(obj_file string) {
 		ld = custom_linker
 	}
 	linker_path := os.real_path(ld)
-	linker_cmd := '${os.quoted_path(linker_path)} $slinker_args'
+	linker_cmd := '${os.quoted_path(linker_path)} ${slinker_args}'
 	if g.pref.is_verbose {
 		println(linker_cmd)
 	}
 
 	res := os.execute(linker_cmd)
 	if res.exit_code != 0 {
-		g.n_error('ELF linking failed ($ld):\n${res.output}')
+		g.n_error('ELF linking failed (${ld}):\n${res.output}')
 		return
 	}
 
 	if g.pref.is_verbose {
-		println('linking with $ld finished successfully:\n${res.output}')
+		println('linking with ${ld} finished successfully:\n${res.output}')
 	}
 }

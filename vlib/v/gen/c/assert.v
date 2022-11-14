@@ -27,10 +27,10 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 		g.decrement_inside_ternary()
 		g.writeln(' {')
 		metaname_ok := g.gen_assert_metainfo(node)
-		g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_assert_pass(test_runner._object, &$metaname_ok);')
+		g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_assert_pass(test_runner._object, &${metaname_ok});')
 		g.writeln('} else {')
 		metaname_fail := g.gen_assert_metainfo(node)
-		g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_assert_fail(test_runner._object, &$metaname_fail);')
+		g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_assert_fail(test_runner._object, &${metaname_fail});')
 		g.gen_assert_postfailure_mode(node)
 		g.writeln('}')
 	} else {
@@ -40,7 +40,7 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 		g.decrement_inside_ternary()
 		g.writeln(' {')
 		metaname_panic := g.gen_assert_metainfo(node)
-		g.writeln('\t__print_assert_failure(&$metaname_panic);')
+		g.writeln('\t__print_assert_failure(&${metaname_panic});')
 		g.gen_assert_postfailure_mode(node)
 		g.writeln('}')
 	}
@@ -111,20 +111,20 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt) string {
 	}
 	src = cestring(src)
 	metaname := 'v_assert_meta_info_${g.new_tmp_var()}'
-	g.writeln('\tVAssertMetaInfo $metaname = {0};')
+	g.writeln('\tVAssertMetaInfo ${metaname} = {0};')
 	g.writeln('\t${metaname}.fpath = ${ctoslit(mod_path)};')
-	g.writeln('\t${metaname}.line_nr = $line_nr;')
+	g.writeln('\t${metaname}.line_nr = ${line_nr};')
 	g.writeln('\t${metaname}.fn_name = ${ctoslit(fn_name)};')
 	metasrc := cnewlines(ctoslit(src))
-	g.writeln('\t${metaname}.src = $metasrc;')
+	g.writeln('\t${metaname}.src = ${metasrc};')
 	match node.expr {
 		ast.InfixExpr {
 			expr_op_str := ctoslit(node.expr.op.str())
 			expr_left_str := cnewlines(ctoslit(node.expr.left.str()))
 			expr_right_str := cnewlines(ctoslit(node.expr.right.str()))
-			g.writeln('\t${metaname}.op = $expr_op_str;')
-			g.writeln('\t${metaname}.llabel = $expr_left_str;')
-			g.writeln('\t${metaname}.rlabel = $expr_right_str;')
+			g.writeln('\t${metaname}.op = ${expr_op_str};')
+			g.writeln('\t${metaname}.llabel = ${expr_left_str};')
+			g.writeln('\t${metaname}.rlabel = ${expr_right_str};')
 			g.write('\t${metaname}.lvalue = ')
 			g.gen_assert_single_expr(node.expr.left, node.expr.left_type)
 			g.writeln(';')

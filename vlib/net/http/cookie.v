@@ -214,7 +214,7 @@ pub fn sanitize_cookie_value(v string) string {
 	}
 	// Check for the existence of a space or comma
 	if val.starts_with(' ') || val.ends_with(' ') || val.starts_with(',') || val.ends_with(',') {
-		return '"$v"'
+		return '"${v}"'
 	}
 	return v
 }

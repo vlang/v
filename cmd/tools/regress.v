@@ -56,7 +56,7 @@ fn main() {
 	}
 	if !os.exists(oldvexe) {
 		if 0 != execute('${os.quoted_path(vexe)} -o ${os.quoted_path(oldvexe)} ${os.quoted_path(oldv_source)}') {
-			panic('can not compile $oldvexe')
+			panic('can not compile ${oldvexe}')
 		}
 	}
 	os.execute('git checkout master')
@@ -74,6 +74,6 @@ fn main() {
 }
 
 fn execute(cmd string) int {
-	eprintln('### $cmd')
+	eprintln('### ${cmd}')
 	return os.system(cmd)
 }

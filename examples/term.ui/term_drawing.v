@@ -319,7 +319,7 @@ fn (mut app App) select_color(primary bool, idx int) {
 		app.secondary_color = color
 	}
 	c_str := if primary { 'primary' } else { 'secondary' }
-	app.show_msg('set $c_str color idx: $idx', 1)
+	app.show_msg('set ${c_str} color idx: ${idx}', 1)
 }
 
 fn (mut app App) set_pixel(x_ int, y_ int, c ui.Color) {
@@ -452,7 +452,7 @@ fn (mut app App) draw_footer() {
 	app.ui.reset_bg_color()
 	app.ui.draw_text(3, wh - 3, select_color)
 	app.ui.bold()
-	app.ui.draw_text(3, wh - 1, '$select_size ${app.size}')
+	app.ui.draw_text(3, wh - 1, '${select_size} ${app.size}')
 	app.ui.reset()
 
 	// TODO: help button

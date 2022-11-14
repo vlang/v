@@ -25,7 +25,7 @@ fn test_v_profile_works() {
 	for folder_path in folder_paths {
 		local_path := folder_path.replace(vroot + os.path_separator, '').replace('\\',
 			'/')
-		println('...........   v run $local_path/')
+		println('...........   v run ${local_path}/')
 		t := time.ticks()
 		res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(folder_path)}')
 		delta := time.ticks() - t
@@ -34,6 +34,6 @@ fn test_v_profile_works() {
 		assert res.output.len > 0
 		assert res.output.contains('OK')
 		term.clear_previous_line()
-		println('${term.bold('OK')} in ${delta:4}ms  v run $local_path/')
+		println('${term.bold('OK')} in ${delta:4}ms  v run ${local_path}/')
 	}
 }

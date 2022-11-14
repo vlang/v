@@ -713,7 +713,7 @@ fn test_raw() {
 	lines := raw.split('\n')
 	println(lines)
 	assert lines.len == 1
-	println('raw string: "$raw"')
+	println('raw string: "${raw}"')
 
 	raw2 := r'Hello V\0'
 	assert raw2[7] == `\\`
@@ -736,7 +736,7 @@ fn test_raw_with_quotes() {
 
 fn test_escape() {
 	a := 10
-	println("\"$a")
+	println("\"${a}")
 	// assert "\"$a" == '"10'
 }
 
@@ -761,9 +761,9 @@ fn test_raw_inter() {
 fn test_c_r() {
 	// This used to break because of r'' and c''
 	c := 42
-	println('$c')
+	println('${c}')
 	r := 50
-	println('$r')
+	println('${r}')
 }
 
 fn test_inter_before_comptime_if() {
@@ -778,9 +778,9 @@ fn test_inter_before_comptime_if() {
 fn test_double_quote_inter() {
 	a := 1
 	b := 2
-	println('$a $b')
-	assert '$a $b' == '1 2'
-	assert '$a $b' == '1 2'
+	println('${a} ${b}')
+	assert '${a} ${b}' == '1 2'
+	assert '${a} ${b}' == '1 2'
 }
 
 fn foo(b u8) u8 {

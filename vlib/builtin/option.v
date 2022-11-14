@@ -83,7 +83,7 @@ fn (_ None__) str() string {
 
 [if trace_error ?]
 fn trace_error(x string) {
-	eprintln('> ${@FN} | $x')
+	eprintln('> ${@FN} | ${x}')
 }
 
 // error returns a default error instance containing the error given in `message`.
@@ -100,7 +100,7 @@ pub fn error(message string) IError {
 // Example: if ouch { return error_with_code('an error occurred', 1) }
 [inline]
 pub fn error_with_code(message string, code int) IError {
-	trace_error('$message | code: $code')
+	trace_error('${message} | code: ${code}')
 	return &MessageError{
 		msg: message
 		code: code

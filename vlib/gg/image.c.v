@@ -203,7 +203,7 @@ pub fn (mut ctx Context) create_image_with_size(file string, width int, height i
 // TODO remove this
 fn create_image(file string) Image {
 	if !os.exists(file) {
-		println('gg.create_image(): file not found: $file')
+		println('gg.create_image(): file not found: ${file}')
 		return Image{} // none
 	}
 	stb_img := stbi.load(file) or { return Image{} }
@@ -262,7 +262,7 @@ pub struct StreamingImageConfig {
 pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	id := if !isnil(config.img) { config.img.id } else { config.img_id }
 	if id >= ctx.image_cache.len {
-		eprintln('gg: draw_image() bad img id $id (img cache len = ${ctx.image_cache.len})')
+		eprintln('gg: draw_image() bad img id ${id} (img cache len = ${ctx.image_cache.len})')
 		return
 	}
 

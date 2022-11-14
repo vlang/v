@@ -676,7 +676,7 @@ fn (mut tf TTF_File) read_offset_tables() {
 	tf.range_shift = tf.get_u16()
 
 	dprintln('scalar_type   : [0x${tf.scalar_type.hex()}]')
-	dprintln('num tables    : [$num_tables]')
+	dprintln('num tables    : [${num_tables}]')
 	dprintln('search_range  : [0x${tf.search_range.hex()}]')
 	dprintln('entry_selector: [0x${tf.entry_selector.hex()}]')
 	dprintln('range_shift   : [0x${tf.range_shift.hex()}]')
@@ -689,7 +689,7 @@ fn (mut tf TTF_File) read_offset_tables() {
 			offset: tf.get_u32()
 			length: tf.get_u32()
 		}
-		dprintln('Table: [$tag]')
+		dprintln('Table: [${tag}]')
 		// dprintln("${tf.tables[tag]}")
 
 		if tag != 'head' {
@@ -804,7 +804,7 @@ fn (mut tf TTF_File) read_cmap_table() {
 		platform_id := tf.get_u16()
 		platform_specific_id := tf.get_u16()
 		offset := tf.get_u32()
-		dprintln('CMap platform_id=$platform_id specific_id=$platform_specific_id offset=$offset')
+		dprintln('CMap platform_id=${platform_id} specific_id=${platform_specific_id} offset=${offset}')
 		if platform_id == 3 && platform_specific_id <= 1 {
 			tf.read_cmap(table_offset + offset)
 		}
@@ -818,7 +818,7 @@ fn (mut tf TTF_File) read_cmap(offset u32) {
 	length := tf.get_u16()
 	language := tf.get_u16()
 
-	dprintln('  Cmap format: $format length: $length language: $language')
+	dprintln('  Cmap format: ${format} length: ${length} language: ${language}')
 	if format == 0 {
 		dprintln('  Cmap 0 Init...')
 		mut cmap := TrueTypeCmap{}
@@ -858,7 +858,7 @@ fn (mut tm TrueTypeCmap) init_0(mut tf TTF_File) {
 	tm.format = 0
 	for i in 0 .. 256 {
 		glyph_index := tf.get_u8()
-		dprintln('   Glyph[$i] = %glyph_index')
+		dprintln('   Glyph[${i}] = %glyph_index')
 		tm.arr << glyph_index
 	}
 }
@@ -1021,7 +1021,7 @@ fn (mut tf TTF_File) create_kern_table0(vertical bool, cross bool) Kern0Table {
 	search_range := tf.get_u16()
 	entry_selector := tf.get_u16()
 	range_shift := tf.get_u16()
-	dprintln('n_pairs: $n_pairs search_range: $search_range entry_selector: $entry_selector range_shift: $range_shift')
+	dprintln('n_pairs: ${n_pairs} search_range: ${search_range} entry_selector: ${entry_selector} range_shift: ${range_shift}')
 
 	mut kt0 := Kern0Table{
 		swap: (vertical && !cross) || (!vertical && cross)
@@ -1053,7 +1053,7 @@ fn (mut tf TTF_File) read_kern_table() {
 	assert version == 0 // must be 0
 	n_tables := tf.get_u16()
 
-	dprintln('Kern Table version: $version Kern nTables: $n_tables')
+	dprintln('Kern Table version: ${version} Kern nTables: ${n_tables}')
 
 	for _ in 0 .. n_tables {
 		st_version := tf.get_u16() // sub table version
@@ -1062,7 +1062,7 @@ fn (mut tf TTF_File) read_kern_table() {
 		format := coverage >> 8
 		cross := coverage & 4
 		vertical := (coverage & 0x1) == 0
-		dprintln('Kerning subtable version [$st_version] format [$format] length [$length] coverage: [${coverage.hex()}]')
+		dprintln('Kerning subtable version [${st_version}] format [${format}] length [${length}] coverage: [${coverage.hex()}]')
 		if format == 0 {
 			dprintln('kern format: 0')
 			kern := tf.create_kern_table0(vertical, cross != 0)

@@ -45,7 +45,7 @@ fn (mut g Gen) gen_embed_file_init(mut node ast.ComptimeCall) {
 			vexe := pref.vexe_path()
 			compress_cmd := '${os.quoted_path(vexe)} compress ${node.embed_file.compression_type} ${os.quoted_path(node.embed_file.apath)} ${os.quoted_path(cache_path)}'
 			$if trace_embed_file ? {
-				eprintln('> gen_embed_file_init, compress_cmd: $compress_cmd')
+				eprintln('> gen_embed_file_init, compress_cmd: ${compress_cmd}')
 			}
 			result := os.execute(compress_cmd)
 			if result.exit_code != 0 {
@@ -120,10 +120,10 @@ fn (mut g Gen) gen_embedded_metadata() {
 			if file_size > 5242880 {
 				eprintln('Warning: embedding of files >= ~5MB is currently not supported')
 			}
-			g.embedded_data.writeln('\t\t\tres.len = $file_size;')
+			g.embedded_data.writeln('\t\t\tres.len = ${file_size};')
 		}
 		g.embedded_data.writeln('\t\t\tbreak;')
-		g.embedded_data.writeln('\t\t} // case $ef_idx')
+		g.embedded_data.writeln('\t\t} // case ${ef_idx}')
 	}
 	g.embedded_data.writeln('\t\tdefault: _v_panic(_SLIT("unknown embed file"));')
 	g.embedded_data.writeln('\t} // switch')
@@ -140,13 +140,13 @@ fn (mut g Gen) gen_embedded_data() {
 	// like the `rcc` tool in Qt?
 	*/
 	for i, emfile in g.embedded_files {
-		g.embedded_data.write_string('static const unsigned char _v_embed_blob_$i[${emfile.bytes.len}] = {\n    ')
+		g.embedded_data.write_string('static const unsigned char _v_embed_blob_${i}[${emfile.bytes.len}] = {\n    ')
 		for j := 0; j < emfile.bytes.len; j++ {
 			b := emfile.bytes[j].hex()
 			if j < emfile.bytes.len - 1 {
-				g.embedded_data.write_string('0x$b,')
+				g.embedded_data.write_string('0x${b},')
 			} else {
-				g.embedded_data.write_string('0x$b')
+				g.embedded_data.write_string('0x${b}')
 			}
 			if 0 == ((j + 1) % 16) {
 				g.embedded_data.write_string('\n    ')
@@ -157,7 +157,7 @@ fn (mut g Gen) gen_embedded_data() {
 	g.embedded_data.writeln('')
 	g.embedded_data.writeln('const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[] = {')
 	for i, emfile in g.embedded_files {
-		g.embedded_data.writeln('\t{$i, { .str=(byteptr)("${cestring(emfile.rpath)}"), .len=${emfile.rpath.len}, .is_lit=1 }, { .str=(byteptr)("${cestring(emfile.compression_type)}"), .len=${emfile.compression_type.len}, .is_lit=1 }, (byteptr)_v_embed_blob_$i},')
+		g.embedded_data.writeln('\t{${i}, { .str=(byteptr)("${cestring(emfile.rpath)}"), .len=${emfile.rpath.len}, .is_lit=1 }, { .str=(byteptr)("${cestring(emfile.compression_type)}"), .len=${emfile.compression_type.len}, .is_lit=1 }, (byteptr)_v_embed_blob_${i}},')
 	}
 	g.embedded_data.writeln('\t{-1, { .str=(byteptr)(""), .len=0, .is_lit=1 }, { .str=(byteptr)(""), .len=0, .is_lit=1 }, NULL}')
 	g.embedded_data.writeln('};')

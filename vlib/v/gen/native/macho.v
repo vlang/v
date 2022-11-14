@@ -374,7 +374,7 @@ pub fn (mut g Gen) generate_macho_footer() {
 	} else {
 		call_delta := int(g.main_fn_addr - g.code_start_pos)
 		if (call_delta % 4) != 0 || call_delta < 0 {
-			g.n_error('Invalid entrypoint->main delta ($call_delta)')
+			g.n_error('Invalid entrypoint->main delta (${call_delta})')
 		} else {
 			blop := (0x94 << 24) | (call_delta / 4)
 			g.write32_at(g.code_start_pos, int(blop))

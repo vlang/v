@@ -139,7 +139,7 @@ fn main() {
 	print('and these elements were deleted: ') // 0.0 0.3 0.6 1.0
 	for i in vals {
 		if !tree.search(i) {
-			print('$i ')
+			print('${i} ')
 		}
 	}
 	println('')

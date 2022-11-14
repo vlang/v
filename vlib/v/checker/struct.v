@@ -32,7 +32,7 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				for name in embed_generic_names {
 					if name !in node_generic_names {
 						struct_generic_names := node_generic_names.join(', ')
-						c.error('generic type name `$name` is not mentioned in struct `${node.name}<$struct_generic_names>`',
+						c.error('generic type name `${name}` is not mentioned in struct `${node.name}<${struct_generic_names}>`',
 							embed.pos)
 					}
 				}
@@ -151,7 +151,7 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				for name in field_generic_names {
 					if name !in node_generic_names {
 						struct_generic_names := node_generic_names.join(', ')
-						c.error('generic type name `$name` is not mentioned in struct `${node.name}<$struct_generic_names>`',
+						c.error('generic type name `${name}` is not mentioned in struct `${node.name}<${struct_generic_names}>`',
 							field.type_pos)
 					}
 				}
@@ -260,7 +260,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					gtyp_name := c.table.sym(gtyp).name
 					if gtyp_name !in c.table.cur_fn.generic_names {
 						cur_generic_names := '(' + c.table.cur_fn.generic_names.join(',') + ')'
-						c.error('generic struct init type parameter `$gtyp_name` must be within the parameters `$cur_generic_names` of the current generic function',
+						c.error('generic struct init type parameter `${gtyp_name}` must be within the parameters `${cur_generic_names}` of the current generic function',
 							node.pos)
 						break
 					}
@@ -281,7 +281,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 		if parent_sym.kind == .map {
 			alias_str := c.table.type_to_str(node.typ)
 			map_str := c.table.type_to_str(struct_sym.info.parent_type)
-			c.error('direct map alias init is not possible, use `${alias_str}($map_str{})` instead',
+			c.error('direct map alias init is not possible, use `${alias_str}(${map_str}{})` instead',
 				node.pos)
 			return ast.void_type
 		}
@@ -309,7 +309,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 	}
 	if type_sym.kind == .sum_type && node.fields.len == 1 {
 		sexpr := node.fields[0].expr.str()
-		c.error('cast to sum type using `${type_sym.name}($sexpr)` not `${type_sym.name}{$sexpr}`',
+		c.error('cast to sum type using `${type_sym.name}(${sexpr})` not `${type_sym.name}{${sexpr}}`',
 			node.pos)
 	}
 	if type_sym.kind == .interface_ && type_sym.language != .js {
@@ -374,7 +374,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				if exp_len != got_len && !c.pref.translated {
 					// XTODO remove !translated check
 					amount := if exp_len < got_len { 'many' } else { 'few' }
-					c.error('too $amount fields in `${type_sym.name}` literal (expecting $exp_len, got $got_len)',
+					c.error('too ${amount} fields in `${type_sym.name}` literal (expecting ${exp_len}, got ${got_len})',
 						node.pos)
 				}
 			}
@@ -410,7 +410,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 						continue
 					}
 					if field_name in inited_fields {
-						c.error('duplicate field name in struct literal: `$field_name`',
+						c.error('duplicate field name in struct literal: `${field_name}`',
 							field.pos)
 						continue
 					}
@@ -580,7 +580,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 		node.update_expr_type = update_type
 		if c.table.sym(update_type).kind != .struct_ {
 			s := c.table.type_to_str(update_type)
-			c.error('expected struct, found `$s`', node.update_expr.pos())
+			c.error('expected struct, found `${s}`', node.update_expr.pos())
 		} else if update_type != node.typ {
 			from_sym := c.table.sym(update_type)
 			to_sym := c.table.sym(node.typ)

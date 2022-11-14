@@ -72,7 +72,7 @@ fn (c Context) compare_versions() {
 	])
 	println('All performance files:')
 	for f in perf_files {
-		println('   $f')
+		println('   ${f}')
 	}
 }
 
@@ -92,11 +92,11 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 	}
 	vgit_context.compile_oldv_if_needed()
 	scripting.chdir(cdir)
-	println('Making a v compiler in $cdir')
-	scripting.run('./v -cc $cc       -o v     ${vgit_context.vvlocation}')
-	println('Making a vprod compiler in $cdir')
-	scripting.run('./v -cc $cc -prod -o vprod ${vgit_context.vvlocation}')
-	println('Stripping and compressing cv v and vprod binaries in $cdir')
+	println('Making a v compiler in ${cdir}')
+	scripting.run('./v -cc ${cc}       -o v     ${vgit_context.vvlocation}')
+	println('Making a vprod compiler in ${cdir}')
+	scripting.run('./v -cc ${cc} -prod -o vprod ${vgit_context.vvlocation}')
+	println('Stripping and compressing cv v and vprod binaries in ${cdir}')
 	scripting.run('cp    cv     cv_stripped')
 	scripting.run('cp     v      v_stripped')
 	scripting.run('cp vprod  vprod_stripped')
@@ -107,13 +107,13 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 	scripting.run('upx -qqq --lzma    cv_stripped_upxed')
 	scripting.run('upx -qqq --lzma     v_stripped_upxed')
 	scripting.run('upx -qqq --lzma vprod_stripped_upxed')
-	scripting.show_sizes_of_files(['$cdir/cv', '$cdir/cv_stripped', '$cdir/cv_stripped_upxed'])
-	scripting.show_sizes_of_files(['$cdir/v', '$cdir/v_stripped', '$cdir/v_stripped_upxed'])
-	scripting.show_sizes_of_files(['$cdir/vprod', '$cdir/vprod_stripped',
-		'$cdir/vprod_stripped_upxed'])
-	vversion := scripting.run('$cdir/v -version')
+	scripting.show_sizes_of_files(['${cdir}/cv', '${cdir}/cv_stripped', '${cdir}/cv_stripped_upxed'])
+	scripting.show_sizes_of_files(['${cdir}/v', '${cdir}/v_stripped', '${cdir}/v_stripped_upxed'])
+	scripting.show_sizes_of_files(['${cdir}/vprod', '${cdir}/vprod_stripped',
+		'${cdir}/vprod_stripped_upxed'])
+	vversion := scripting.run('${cdir}/v -version')
 	vcommit := scripting.run('git rev-parse --short  --verify HEAD')
-	println('V version is: $vversion , local source commit: $vcommit')
+	println('V version is: ${vversion} , local source commit: ${vcommit}')
 	if vgit_context.vvlocation == 'cmd/v' {
 		if os.exists('vlib/v/ast/ast.v') {
 			println('Source lines of the compiler: ' +
@@ -132,7 +132,7 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 
 fn (c Context) compare_v_performance(label string, commands []string) string {
 	println('---------------------------------------------------------------------------------')
-	println('Compare v performance when doing the following commands ($label):')
+	println('Compare v performance when doing the following commands (${label}):')
 	mut source_location_a := ''
 	mut source_location_b := ''
 	if os.exists('${c.a}/cmd/v') {
@@ -154,7 +154,7 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 		println(cmd)
 	}
 	for cmd in commands {
-		hyperfine_commands_arguments << ' \'cd ${c.b:-34s} ; ./$cmd \' '.replace_each([
+		hyperfine_commands_arguments << ' \'cd ${c.b:-34s} ; ./${cmd} \' '.replace_each([
 			'@COMPILER@',
 			source_location_b,
 			'@DEBUG@',
@@ -162,7 +162,7 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 		])
 	}
 	for cmd in commands {
-		hyperfine_commands_arguments << ' \'cd ${c.a:-34s} ; ./$cmd \' '.replace_each([
+		hyperfine_commands_arguments << ' \'cd ${c.a:-34s} ; ./${cmd} \' '.replace_each([
 			'@COMPILER@',
 			source_location_a,
 			'@DEBUG@',
@@ -171,7 +171,7 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 	}
 	// /////////////////////////////////////////////////////////////////////////////
 	cmd_stats_file := os.real_path([c.vgo.workdir, 'v_performance_stats_${label}.json'].join(os.path_separator))
-	comparison_cmd := 'hyperfine ${c.hyperfineopts} ' + '--export-json $cmd_stats_file ' +
+	comparison_cmd := 'hyperfine ${c.hyperfineopts} ' + '--export-json ${cmd_stats_file} ' +
 		'--time-unit millisecond ' + '--style full --warmup ${c.warmups} ' +
 		hyperfine_commands_arguments.join(' ')
 	// /////////////////////////////////////////////////////////////////////////////
@@ -179,7 +179,7 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 		println(comparison_cmd)
 	}
 	os.system(comparison_cmd)
-	println('The detailed performance comparison report was saved to: $cmd_stats_file .')
+	println('The detailed performance comparison report was saved to: ${cmd_stats_file} .')
 	println('')
 	return cmd_stats_file
 }
@@ -198,7 +198,7 @@ fn main() {
 	context.vflags = fp.string('vflags', 0, '', 'Additional options to pass to the v commands, for example "-cc tcc"')
 	context.hyperfineopts = fp.string('hyperfine_options', 0, '', 'Additional options passed to hyperfine.
 ${flag.space}For example on linux, you may want to pass:
-$flag.space--hyperfine_options "--prepare \'sync; echo 3 | sudo tee /proc/sys/vm/drop_caches\'"
+${flag.space}--hyperfine_options "--prepare \'sync; echo 3 | sudo tee /proc/sys/vm/drop_caches\'"
 ')
 	commits := vgit.add_common_tool_options(mut context.vgo, mut fp)
 	context.commit_before = commits[0]

@@ -32,7 +32,7 @@ fn awesome<T>(mut data T) {
 	println(values)
 	assert values == ['vlang', 'one', 'variable one', 'variable two']
 	println(data)
-	assert '$data'.contains("title: 'what a title'")
+	assert '${data}'.contains("title: 'what a title'")
 }
 
 fn test_generic_fn_infer_multi_paras() {

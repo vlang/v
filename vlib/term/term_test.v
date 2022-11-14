@@ -76,9 +76,9 @@ fn test_get_cursor_position() {
 	cursor_position_3 := term.get_cursor_position()!
 	//
 	term.set_cursor_position(original_position)
-	eprintln('original_position: $original_position')
-	eprintln('cursor_position_2: $cursor_position_2')
-	eprintln('cursor_position_3: $cursor_position_3')
+	eprintln('original_position: ${original_position}')
+	eprintln('cursor_position_2: ${cursor_position_2}')
+	eprintln('cursor_position_3: ${cursor_position_3}')
 	// 0,0 is returned on dumb terminals
 	if cursor_position_2.x == 0 && cursor_position_2.y == 0 {
 		return

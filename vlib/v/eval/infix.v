@@ -2205,7 +2205,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 			}
 		}
 		else {
-			e.error('unknown infix expression: $op')
+			e.error('unknown infix expression: ${op}')
 		}
 	}
 	return empty // should e.error before this anyway

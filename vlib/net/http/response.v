@@ -108,7 +108,7 @@ pub fn (mut r Response) set_version(v Version) {
 		return
 	}
 	maj, min := v.protos()
-	r.http_version = '${maj}.$min'
+	r.http_version = '${maj}.${min}'
 }
 
 pub struct ResponseConfig {

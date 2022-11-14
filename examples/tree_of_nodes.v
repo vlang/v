@@ -22,6 +22,6 @@ fn main() {
 	node1 := Node{30, Empty{}, Empty{}}
 	node2 := Node{20, Empty{}, Empty{}}
 	tree := Node{10, node1, node2}
-	println('tree structure:\n $tree')
+	println('tree structure:\n ${tree}')
 	println('tree size: ${size(tree)}')
 }

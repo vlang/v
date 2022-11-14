@@ -17,7 +17,7 @@ fn (mut g JsGen) to_js_typ_def_val(s string) string {
 fn (mut g JsGen) copy_val(t ast.Type, tmp string) string {
 	fun := g.get_copy_fn(t)
 	temp := g.new_tmp_var()
-	g.writeln('let $temp = ${fun}($tmp);')
+	g.writeln('let ${temp} = ${fun}(${tmp});')
 	return temp
 }
 
@@ -27,13 +27,13 @@ fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 	mut prefix := 'new '
 	match sym.kind {
 		.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .int_literal, .float_literal {
-			styp = '$prefix${g.sym_to_js_typ(sym)}(0)'
+			styp = '${prefix}${g.sym_to_js_typ(sym)}(0)'
 		}
 		.bool {
-			styp = '$prefix${g.sym_to_js_typ(sym)}(false)'
+			styp = '${prefix}${g.sym_to_js_typ(sym)}(false)'
 		}
 		.string {
-			styp = '$prefix${g.sym_to_js_typ(sym)}("")'
+			styp = '${prefix}${g.sym_to_js_typ(sym)}("")'
 		}
 		.map {
 			styp = 'new map(new Map())'
@@ -191,7 +191,7 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 			info := sym.info as ast.Map
 			key := g.typ(info.key_type)
 			val := g.typ(info.value_type)
-			styp = 'Map<$key, $val>'
+			styp = 'Map<${key}, ${val}>'
 		}
 		.any {
 			styp = 'any'
@@ -206,7 +206,7 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 			info := sym.info as ast.MultiReturn
 			types := info.types.map(g.typ(it))
 			joined := types.join(', ')
-			styp = '[$joined]'
+			styp = '[${joined}]'
 		}
 		.sum_type {
 			// TODO: Implement sumtypes
@@ -215,7 +215,7 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 		.alias {
 			fsym := g.table.final_sym(t)
 			name := g.js_name(fsym.name)
-			styp += '$name'
+			styp += '${name}'
 		}
 		.enum_ {
 			// Note: We could declare them as TypeScript enums but TS doesn't like
@@ -276,7 +276,7 @@ fn (mut g JsGen) struct_typ(s string) string {
 		if i == 0 {
 			styp = v
 		} else {
-			styp += '["$v"]'
+			styp += '["${v}"]'
 		}
 	}
 	if ns in ['', g.ns.name] {

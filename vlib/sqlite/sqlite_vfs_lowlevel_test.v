@@ -20,7 +20,7 @@ fn test_vfs_register() {
 		panic('expected that vfs is not known')
 	}
 
-	vfs_descr.register_as_nondefault() or { panic('vfs register failed $err') }
+	vfs_descr.register_as_nondefault() or { panic('vfs register failed ${err}') }
 
 	sqlite.get_vfs(vfs_name)?
 
@@ -28,7 +28,7 @@ fn test_vfs_register() {
 
 	assert now_default_vfs.zName == org_default_vfs.zName
 
-	vfs_descr.unregister() or { panic('vfs unregister failed $err') }
+	vfs_descr.unregister() or { panic('vfs unregister failed ${err}') }
 
 	if _ := sqlite.get_vfs(vfs_name) {
 		panic('vfs supposedly unregistered yet somehow still foundable')
@@ -119,7 +119,7 @@ fn example_vfs_fullpathname(vfs &sqlite.Sqlite3_vfs, input &char, size_of_output
 	}
 	result := unsafe { cstring_to_vstring(output) }
 
-	vfs_state.log << 'fullpathname from=$from to=$result}'
+	vfs_state.log << 'fullpathname from=${from} to=${result}}'
 
 	return sqlite.sqlite_ok
 }
@@ -174,7 +174,7 @@ fn example_vfs_open(vfs &sqlite.Sqlite3_vfs, file_name_or_null_for_tempfile &cha
 		outp.name = file_name.clone()
 		outp.vfs_state = vfs_state
 	}
-	vfs_state.log << 'open temp?=$is_temp name=$file_name'
+	vfs_state.log << 'open temp?=${is_temp} name=${file_name}'
 
 	return sqlite.sqlite_ok
 }

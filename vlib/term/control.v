@@ -25,7 +25,7 @@ pub fn set_cursor_position(c Coord) {
 // direction: C is forward / East
 // direction: D is backward / West
 pub fn move(n int, direction string) {
-	print('\x1b[$n$direction')
+	print('\x1b[${n}${direction}')
 	flush_stdout()
 }
 

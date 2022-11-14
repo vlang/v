@@ -125,7 +125,7 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 			return 0
 		}
 		s := p.table.type_to_str(key_type)
-		p.error_with_pos('maps only support string, integer, float, rune, enum or voidptr keys for now (not `$s`)',
+		p.error_with_pos('maps only support string, integer, float, rune, enum or voidptr keys for now (not `${s}`)',
 			p.tok.pos())
 		return 0
 	}
@@ -311,7 +311,7 @@ pub fn (mut p Parser) parse_inline_sum_type() ast.Type {
 	if variants.len > 1 {
 		if variants.len > parser.maximum_inline_sum_type_variants {
 			pos := variants[0].pos.extend(variants.last().pos)
-			p.warn_with_pos('an inline sum type expects a maximum of $parser.maximum_inline_sum_type_variants types (${variants.len} were given)',
+			p.warn_with_pos('an inline sum type expects a maximum of ${parser.maximum_inline_sum_type_variants} types (${variants.len} were given)',
 				pos)
 		}
 		mut variant_names := variants.map(p.table.sym(it.typ).name)
@@ -483,9 +483,9 @@ If you need to modify an array in a function, use a mutable argument instead: `f
 pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot bool) ast.Type {
 	mut name := p.tok.lit
 	if language == .c {
-		name = 'C.$name'
+		name = 'C.${name}'
 	} else if language == .js {
-		name = 'JS.$name'
+		name = 'JS.${name}'
 	} else if p.peek_tok.kind == .dot && check_dot {
 		// `module.Type`
 		mut mod := name
@@ -496,14 +496,14 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 		for p.peek_tok.kind == .dot {
 			mod_pos = mod_pos.extend(p.tok.pos())
 			mod_last_part = p.tok.lit
-			mod += '.$mod_last_part'
+			mod += '.${mod_last_part}'
 			p.next()
 			p.check(.dot)
 		}
 		if !p.known_import(mod) && !p.pref.is_fmt {
-			mut msg := 'unknown module `$mod`'
+			mut msg := 'unknown module `${mod}`'
 			if mod.len > mod_last_part.len && p.known_import(mod_last_part) {
-				msg += '; did you mean `$mod_last_part`?'
+				msg += '; did you mean `${mod_last_part}`?'
 			}
 			p.error_with_pos(msg, mod_pos)
 			return 0

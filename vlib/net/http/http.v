@@ -93,7 +93,7 @@ pub mut:
 pub fn post_multipart_form(url string, conf PostMultipartFormConfig) !Response {
 	body, boundary := multipart_form_body(conf.form, conf.files)
 	mut header := conf.header
-	header.set(.content_type, 'multipart/form-data; boundary="$boundary"')
+	header.set(.content_type, 'multipart/form-data; boundary="${boundary}"')
 	return fetch(
 		method: .post
 		url: url
@@ -170,7 +170,7 @@ pub fn url_encode_form_data(data map[string]string) string {
 	for key_, value_ in data {
 		key := urllib.query_escape(key_)
 		value := urllib.query_escape(value_)
-		pieces << '$key=$value'
+		pieces << '${key}=${value}'
 	}
 	return pieces.join('&')
 }
@@ -189,7 +189,7 @@ fn build_url_from_fetch(config FetchConfig) !string {
 	}
 	mut pieces := []string{cap: config.params.len}
 	for key, val in config.params {
-		pieces << '$key=$val'
+		pieces << '${key}=${val}'
 	}
 	mut query := pieces.join('&')
 	if url.raw_query.len > 1 {

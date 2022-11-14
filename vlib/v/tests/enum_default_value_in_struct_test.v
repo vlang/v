@@ -31,5 +31,5 @@ fn test_generation_of_string_interpolation_method_for_pointer_to_struct_containi
 	t := &MyStruct{
 		e: .third
 	}
-	assert 't: $t' == 't: &MyStruct{\n    e: third\n}'
+	assert 't: ${t}' == 't: &MyStruct{\n    e: third\n}'
 }

@@ -87,7 +87,7 @@ fn test_generics_with_generics_struct_string() {
 	data := ['foo', 'bar']
 	it := iter<string>(data)
 	println(it)
-	ret := '$it'
+	ret := '${it}'
 	assert ret.contains('ArrayIterator<string>{')
 	assert ret.contains("data: ['foo', 'bar']")
 	assert ret.contains('index: 11')
@@ -99,7 +99,7 @@ fn test_generics_struct_insts_to_concrete() {
 		index: 22
 	}
 	println(ai)
-	ret := '$ai'
+	ret := '${ai}'
 	assert ret.contains('ArrayIterator<int>{')
 	assert ret.contains('data: [11, 22]')
 	assert ret.contains('index: 22')

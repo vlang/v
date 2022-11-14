@@ -84,7 +84,7 @@ fn (b &BenchedTests) fn_name() string {
 fn (mut b BenchedTests) end_testing() {
 	b.bench.stop()
 	fname := os.file_name(b.test_suit_file)
-	msg := 'running V tests in "$fname"'
+	msg := 'running V tests in "${fname}"'
 	final := inner_indent + b.bench.total_message(msg)
 	println(final)
 }

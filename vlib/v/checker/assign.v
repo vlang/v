@@ -63,10 +63,10 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				// If it's a void type, it's an unknown variable, already had an error earlier.
 				return
 			}
-			c.error('assignment mismatch: ${node.left.len} variable(s) but `${right_first.name}()` returns $right_len value(s)',
+			c.error('assignment mismatch: ${node.left.len} variable(s) but `${right_first.name}()` returns ${right_len} value(s)',
 				node.pos)
 		} else {
-			c.error('assignment mismatch: ${node.left.len} variable(s) $right_len value(s)',
+			c.error('assignment mismatch: ${node.left.len} variable(s) ${right_len} value(s)',
 				node.pos)
 		}
 		return
@@ -283,7 +283,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						full_name := '${left.mod}.${left.name}'
 						if obj := c.file.global_scope.find(full_name) {
 							if obj is ast.ConstField {
-								c.warn('duplicate of a const name `$full_name`', left.pos)
+								c.warn('duplicate of a const name `${full_name}`', left.pos)
 							}
 						}
 					}
@@ -321,11 +321,11 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				}
 				if is_decl {
-					c.error('non-name `$left` on left side of `:=`', left.pos())
+					c.error('non-name `${left}` on left side of `:=`', left.pos())
 				}
 
 				if node.op == .assign && (left.is_literal() || left is ast.StructInit) {
-					c.error('non-name literal value `$left` on left side of `=`', left.pos())
+					c.error('non-name literal value `${left}` on left side of `=`', left.pos())
 				}
 			}
 		}
@@ -405,7 +405,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			right_is_ptr := right_type.is_ptr() || right_sym.is_pointer()
 			if !right_is_ptr && node.op == .assign && right_type_unwrapped.is_number() {
-				c.error('cannot assign to `$left`: ' +
+				c.error('cannot assign to `${left}`: ' +
 					c.expected_msg(right_type_unwrapped, left_type_unwrapped), right.pos())
 			}
 			if !right_sym.is_number() && !left_type.has_flag(.shared_f)
@@ -416,7 +416,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					rtype = rtype.deref()
 				}
 				right_name := c.table.type_to_str(rtype)
-				c.error('mismatched types `$left_name` and `$right_name`', node.pos)
+				c.error('mismatched types `${left_name}` and `${right_name}`', node.pos)
 			}
 		}
 		// Single side check
@@ -527,7 +527,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			right_name := c.table.type_to_str(right_type_unwrapped)
 			parent_sym := c.table.final_sym(left_type_unwrapped)
 			if left_sym.kind == .alias && right_sym.kind != .alias {
-				c.error('mismatched types `$left_name` and `$right_name`', node.pos)
+				c.error('mismatched types `${left_name}` and `${right_name}`', node.pos)
 			}
 			extracted_op := match node.op {
 				.plus_assign { '+' }
@@ -542,7 +542,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			if method := left_sym.find_method(extracted_op) {
 				if method.return_type != left_type_unwrapped {
-					c.error('operator `$extracted_op` must return `$left_name` to be used as an assignment operator',
+					c.error('operator `${extracted_op}` must return `${left_name}` to be used as an assignment operator',
 						node.pos)
 				}
 			} else {
@@ -551,10 +551,10 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						node.pos)
 				}
 				if left_name == right_name {
-					c.error('undefined operation `$left_name` $extracted_op `$right_name`',
+					c.error('undefined operation `${left_name}` ${extracted_op} `${right_name}`',
 						node.pos)
 				} else {
-					c.error('mismatched types `$left_name` and `$right_name`', node.pos)
+					c.error('mismatched types `${left_name}` and `${right_name}`', node.pos)
 				}
 			}
 		}
@@ -571,7 +571,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							node.pos)
 					}
 				} else {
-					c.error('cannot assign to `$left`: ${err.msg()}', right.pos())
+					c.error('cannot assign to `${left}`: ${err.msg()}', right.pos())
 				}
 			}
 		}

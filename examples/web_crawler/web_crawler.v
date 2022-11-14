@@ -18,8 +18,8 @@ fn main() {
 		el := tag.children[1].children[0].children[0].children[0]
 		href := el.attributes['href'] or { panic('key not found') }
 		title := el.attributes['title'] or { panic('key not found') }
-		println('href: $href')
-		println('title: $title')
+		println('href: ${href}')
+		println('title: ${title}')
 		println('')
 	}
 }

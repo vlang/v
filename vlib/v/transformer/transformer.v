@@ -155,7 +155,7 @@ pub fn (mut t Transformer) check_safe_array(mut node ast.IndexExpr) {
 			}
 		}
 		ast.EnumVal {
-			debug_bounds_checking('? $name[.${index.val}] safe?: no-idea (yet)!')
+			debug_bounds_checking('? ${name}[.${index.val}] safe?: no-idea (yet)!')
 		}
 		ast.Ident {
 			// we may be able to track const value in simple cases

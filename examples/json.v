@@ -18,7 +18,7 @@ fn main() {
 	}
 	println('')
 	for i, user in users {
-		println('$i) ${user.name}')
+		println('${i}) ${user.name}')
 		if !user.can_register() {
 			println('Cannot register ${user.name}, they are too young')
 		} else {

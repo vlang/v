@@ -90,7 +90,7 @@ fn (mut ctx Context) termios_setup() ! {
 		C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
 		// feature-test the SU spec
 		sx, sy := get_cursor_position()
-		print('$bsu$esu')
+		print('${bsu}${esu}')
 		flush_stdout()
 		ex, ey := get_cursor_position()
 		if sx == ex && sy == ey {
