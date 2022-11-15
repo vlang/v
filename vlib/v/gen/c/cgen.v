@@ -4890,11 +4890,15 @@ fn (mut g Gen) const_decl_simple_define(mod string, name string, val string) {
 	}
 }
 
+fn (mut g Gen) c_const_name(name string) string {
+	return if g.pref.translated && !g.is_builtin_mod { name } else { '_const_${name}' }
+}
+
 fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ ast.Type, unwrap_option bool) {
 	// Initialize more complex consts in `void _vinit/2{}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	mut styp := g.typ(typ)
-	cname := if g.pref.translated && !g.is_builtin_mod { name } else { '_const_${name}' }
+	cname := g.c_const_name(name)
 	mut init := strings.new_builder(100)
 	if cname == '_const_os__args' {
 		if g.pref.os == .windows {
@@ -4911,9 +4915,16 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 			init.writeln(g.expr_string_surround('\t${cname} = ', expr, ';'))
 		}
 	}
+	mut def := '${styp} ${cname}'
+	expr_sym := g.table.sym(typ)
+	if expr_sym.kind == .function {
+		// allow for: `const xyz = abc`, where `abc` is `fn abc() {}`
+		func := (expr_sym.info as ast.FnType).func
+		def = g.fn_var_signature(func.return_type, func.params.map(it.typ), cname)
+	}
 	g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
 		mod: mod
-		def: '${styp} ${cname}; // inited later'
+		def: '${def}; // inited later'
 		init: init.str().trim_right('\n')
 		dep_names: g.table.dependent_names_in_expr(expr)
 	}
