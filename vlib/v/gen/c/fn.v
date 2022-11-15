@@ -638,6 +638,9 @@ fn (mut g Gen) get_anon_fn_type_name(mut node ast.AnonFn, var_name string) strin
 }
 
 fn (mut g Gen) call_expr(node ast.CallExpr) {
+	if node.should_be_skipped {
+		return
+	}
 	// NOTE: everything could be done this way
 	// see my comment in parser near anon_fn
 	if node.left is ast.AnonFn {
@@ -658,9 +661,6 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.is_fn_index_call = false
 	} else if node.left is ast.CallExpr && node.name == '' {
 		g.expr(node.left)
-	}
-	if node.should_be_skipped {
-		return
 	}
 	old_inside_call := g.inside_call
 	g.inside_call = true
@@ -1357,6 +1357,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				}
 			}
 		}
+	}
+	if node.is_fn_a_const {
+		name = g.c_const_name(node.const_name.replace('.', '__'))
 	}
 	// TODO2
 	// cgen shouldn't modify ast nodes, this should be moved

@@ -1434,8 +1434,8 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 	return sb.str()
 }
 
-// Get the name of the complete quanlified name of the type
-// without the generic parts.
+// symbol_name_except_generic return the name of the complete qualified name of the type,
+// but without the generic parts. For example, `main.Abc<int>` -> `main.Abc`
 pub fn (t &TypeSymbol) symbol_name_except_generic() string {
 	// main.Abc<int>
 	mut embed_name := t.name

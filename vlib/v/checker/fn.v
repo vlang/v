@@ -832,12 +832,37 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			if obj.typ != 0 {
 				sym := c.table.sym(obj.typ)
 				if sym.kind == .function {
-					found = true
 					func = (sym.info as ast.FnType).func
+					found = true
 				}
 			}
 		}
 	}
+	// a same module constant?
+	if !found {
+		// allow for `const abc = myfunc`, then calling `abc()`
+		qualified_const_name := if fn_name.contains('.') { fn_name } else { '${c.mod}.${fn_name}' }
+		if mut obj := c.table.global_scope.find_const(qualified_const_name) {
+			if obj.typ == 0 {
+				obj.typ = c.expr(obj.expr)
+			}
+			if obj.typ != 0 {
+				sym := c.table.sym(obj.typ)
+				if sym.kind == .function {
+					// at this point, the const metadata should be already known,
+					// and we are sure that it is just a function
+					c.table.fns[qualified_const_name].usages++
+					c.table.fns[func.name].usages++
+					found = true
+					func = (sym.info as ast.FnType).func
+					node.is_fn_a_const = true
+					node.fn_var_type = obj.typ
+					node.const_name = qualified_const_name
+				}
+			}
+		}
+	}
+
 	if !found {
 		continue_check = false
 		if dot_index := fn_name.index('.') {
