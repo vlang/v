@@ -250,7 +250,7 @@ fn convert_html_rgb(in_col string) u32 {
 	// this is the regex query, it use the V string interpolation to customize the regex query
 	// NOTE: if you want use escaped code you must use the r"" (raw) strings,
 	// *** please remember that the V interpoaltion doesn't work on raw strings. ***
-	query := '#([a-fA-F0-9]{$n_digit})([a-fA-F0-9]{$n_digit})([a-fA-F0-9]{$n_digit})'
+	query := '#([a-fA-F0-9]{${n_digit}})([a-fA-F0-9]{${n_digit}})([a-fA-F0-9]{${n_digit}})'
 	mut re := regex.regex_opt(query) or { panic(err) }
 	start, end := re.match_string(in_col)
 	println('start: ${start}, end: ${end}')
