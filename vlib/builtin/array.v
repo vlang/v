@@ -464,8 +464,7 @@ pub fn (a array) last_or() voidptr {
 // single returns the single element of the `array`.
 // If the `array` is empty, this will error
 // so it can be handled with an `or` block.
-// If the `array` contains more than one element, this will error
-// so it can be handled with an `or` block.
+// If the `array` contains more than one element, this will panic.
 pub fn (a array) single_or() voidptr {
 	$if !no_bounds_checking {
 		if a.len > 1 {

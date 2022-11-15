@@ -1340,7 +1340,7 @@ fn test_array_first_or() {
 
 	// it defaults against empty
 	{
-		a := []
+		a := []int
 		assert a.first_or() or { -1 } == -1
 	}
 }
@@ -1372,7 +1372,7 @@ fn test_array_last_or() {
 
 	// it defaults against empty
 	{
-		a := []
+		a := []int
 		assert a.last_or() or { -1 } == -1
 	}
 }
@@ -1392,7 +1392,7 @@ fn test_array_single_or() {
 
 	// it defaults against empty
 	{
-		a := []
+		a := []int
 		assert a.single_or() or { -1 } == -1
 	}
 
