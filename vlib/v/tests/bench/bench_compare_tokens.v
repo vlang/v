@@ -15,7 +15,7 @@ fn main() {
 		bmark.measure('${max_repetitions} repetitions of token.keywords["${kw}"] = ${res}')
 
 		for _ in 0 .. max_repetitions {
-			res = token.Kind(km_trie.find(kw))
+			res = unsafe { token.Kind(km_trie.find(kw)) }
 		}
 		bmark.measure('${max_repetitions} repetitions of km_trie.find("${kw}") = ${res}')
 
