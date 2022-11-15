@@ -600,15 +600,15 @@ For more advanced `string` processing and conversions, refer to the
 
 #### String interpolation
 
-Basic interpolation syntax is pretty simple - use `$` before a variable name. The variable will be
-converted to a string and embedded into the literal:
+Basic interpolation syntax is pretty simple - use `${` before a variable name and `}` after. The
+variable will be converted to a string and embedded into the literal:
 
 ```v
 name := 'Bob'
 println('Hello, ${name}!') // Hello, Bob!
 ```
 
-It also works with fields: `'age = $user.age'`. If you need more complex expressions, use `${}`:
+It also works with fields: `'age = ${user.age}'`. You may also use more complex expressions:
 `'can register = ${user.age > 13}'`.
 
 Format specifiers similar to those in C's `printf()` are also supported. `f`, `g`, `x`, `o`, `b`,
