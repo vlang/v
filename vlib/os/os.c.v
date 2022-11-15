@@ -89,7 +89,7 @@ fn slurp_file_in_builder(fp &C.FILE) !strings.Builder {
 	mut sb := strings.new_builder(os.buf_size)
 	for {
 		mut read_bytes := fread(&buf[0], 1, os.buf_size, fp) or {
-			if err == IError(Eof{}) {
+			if err is Eof {
 				break
 			}
 			unsafe { sb.free() }

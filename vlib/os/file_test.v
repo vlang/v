@@ -144,7 +144,7 @@ fn test_read_eof_last_read_partial_buffer_fill() {
 		assert false
 	} else {
 		// Expected an error when received end-of-file.
-		assert err == IError(os.Eof{})
+		assert err is os.Eof
 	}
 	f.close()
 }
@@ -176,7 +176,7 @@ fn test_read_eof_last_read_full_buffer_fill() {
 		assert false
 	} else {
 		// Expect an error at EOF.
-		assert err == IError(os.Eof{})
+		assert err is os.Eof
 	}
 	f.close()
 }
