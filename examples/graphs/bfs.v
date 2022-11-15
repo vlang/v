@@ -7,9 +7,9 @@ fn main() {
 		'E': ['B', 'F']
 		'F': ['C', 'E']
 	}
-	println('Graph: $graph')
+	println('Graph: ${graph}')
 	path := breadth_first_search_path(graph, 'A', 'F')
-	println('The shortest path from node A to node F is: $path')
+	println('The shortest path from node A to node F is: ${path}')
 	assert path == ['A', 'C', 'F']
 }
 

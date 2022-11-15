@@ -2,5 +2,5 @@ fn main() {
 	i := 123
 	assert 4 == 2 * 2
 	assert 2 == 6 / 3, 'math works'
-	assert 10 == i - 120, 'i: $i'
+	assert 10 == i - 120, 'i: ${i}'
 }

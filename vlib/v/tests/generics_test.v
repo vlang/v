@@ -228,7 +228,7 @@ fn print_nice<T>(x T, indent int) string {
 	for _ in 0 .. indent {
 		space = space + ' '
 	}
-	return '$space$x'
+	return '${space}${x}'
 }
 
 fn test_generic_fn() {

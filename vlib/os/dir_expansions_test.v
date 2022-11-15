@@ -16,7 +16,7 @@ fn test_tmpdir() {
 fn test_ensure_folder_is_writable() {
 	tmp := os.temp_dir()
 	os.ensure_folder_is_writable(tmp) or {
-		eprintln('err: $err')
+		eprintln('err: ${err}')
 		assert false
 	}
 }
@@ -35,7 +35,7 @@ fn test_expand_tilde_to_home() {
 fn test_config_dir() {
 	cdir := os.config_dir()!
 	assert cdir.len > 0
-	adir := '$cdir/test-v-config'
+	adir := '${cdir}/test-v-config'
 	os.mkdir_all(adir)!
 	os.rmdir(adir)!
 	assert os.is_dir(cdir)

@@ -7,7 +7,7 @@ interface Animal {
 }
 
 fn (a Animal) info() string {
-	return "I'm a $a.breed ${typeof(a).name}"
+	return "I'm a ${a.breed} ${typeof(a).name}"
 }
 
 fn new_animal(breed string) Animal {

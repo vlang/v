@@ -23,7 +23,7 @@ pub fn (mut l FileLock) acquire() ! {
 	}
 	fd := open_lockfile(l.name)
 	if fd == -1 {
-		return error_with_code('cannot create lock file $l.name', -1)
+		return error_with_code('cannot create lock file ${l.name}', -1)
 	}
 	if C.flock(fd, C.LOCK_EX) == -1 {
 		C.close(fd)
@@ -66,7 +66,7 @@ pub fn (mut l FileLock) try_acquire() bool {
 	if l.fd != -1 {
 		return true
 	}
-	fd := open_lockfile('$l.name')
+	fd := open_lockfile('${l.name}')
 	if fd != -1 {
 		err := C.flock(fd, C.LOCK_EX | C.LOCK_NB)
 		if err == -1 {

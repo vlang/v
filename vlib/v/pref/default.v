@@ -78,7 +78,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		// If you do decide to break it, please *at the very least*, test it
 		// extensively, and make a PR about it, instead of commiting directly
 		// and breaking the CI, VC, and users doing `v up`.
-		if rpath == '$p.vroot/cmd/v' && os.is_dir('vlib/compiler') {
+		if rpath == '${p.vroot}/cmd/v' && os.is_dir('vlib/compiler') {
 			// Building V? Use v2, since we can't overwrite a running
 			// executable on Windows + the precompiled V is more
 			// optimized.
@@ -139,7 +139,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	p.cache_manager = vcache.new_cache_manager([
 		vhash,
 		// ensure that different v versions use separate build artefacts
-		'$p.backend | $p.os | $p.ccompiler | $p.is_prod | $p.sanitize',
+		'${p.backend} | ${p.os} | ${p.ccompiler} | ${p.is_prod} | ${p.sanitize}',
 		p.cflags.trim_space(),
 		p.third_party_option.trim_space(),
 		p.compile_defines_all.str(),
@@ -230,7 +230,7 @@ pub fn (mut p Preferences) default_c_compiler() {
 	if p.os == .ios {
 		$if !ios {
 			ios_sdk := if p.is_ios_simulator { 'iphonesimulator' } else { 'iphoneos' }
-			ios_sdk_path_res := os.execute_or_exit('xcrun --sdk $ios_sdk --show-sdk-path')
+			ios_sdk_path_res := os.execute_or_exit('xcrun --sdk ${ios_sdk} --show-sdk-path')
 			mut isysroot := ios_sdk_path_res.output.replace('\n', '')
 			arch := if p.is_ios_simulator {
 				'-arch x86_64 -arch arm64'
@@ -240,7 +240,7 @@ pub fn (mut p Preferences) default_c_compiler() {
 			// On macOS, /usr/bin/cc is a hardlink/wrapper for xcrun. clang on darwin hosts
 			// will automatically change the build target based off of the selected sdk, making xcrun -sdk iphoneos pointless
 			p.ccompiler = '/usr/bin/cc'
-			p.cflags = '-isysroot $isysroot $arch' + p.cflags
+			p.cflags = '-isysroot ${isysroot} ${arch}' + p.cflags
 			return
 		}
 	}
@@ -290,7 +290,7 @@ pub fn (p &Preferences) vcross_compiler_name() string {
 	if p.backend == .c && !p.out_name.ends_with('.c') {
 		eprintln('Note: V can only cross compile to windows and linux for now by default.')
 		eprintln('It will use `cc` as a cross compiler for now, although that will probably fail.')
-		eprintln('Set `VCROSS_COMPILER_NAME` to the name of your cross compiler, for your target OS: $p.os .')
+		eprintln('Set `VCROSS_COMPILER_NAME` to the name of your cross compiler, for your target OS: ${p.os} .')
 	}
 	return 'cc'
 }

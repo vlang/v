@@ -15,11 +15,11 @@ pub fn (mut b Builder) rebuild_modules() {
 	}
 	all_files := b.parsed_files.map(it.path)
 	$if trace_invalidations ? {
-		eprintln('> rebuild_modules all_files: $all_files')
+		eprintln('> rebuild_modules all_files: ${all_files}')
 	}
 	invalidations := b.find_invalidated_modules_by_files(all_files)
 	$if trace_invalidations ? {
-		eprintln('> rebuild_modules invalidations: $invalidations')
+		eprintln('> rebuild_modules invalidations: ${invalidations}')
 	}
 	if invalidations.len > 0 {
 		vexe := pref.vexe_path()
@@ -77,9 +77,9 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 				for mm in b.mod_invalidates_mods[k] {
 					m[mm] = true
 				}
-				eprintln('> module `$k` invalidates: $m.keys()')
+				eprintln('> module `${k}` invalidates: ${m.keys()}')
 				for fpath in v {
-					eprintln('         $fpath')
+					eprintln('         ${fpath}')
 				}
 			}
 		}
@@ -106,12 +106,12 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 			}
 		}
 		$if trace_invalidations ? {
-			eprintln('invalidated_paths: $invalidated_paths')
+			eprintln('invalidated_paths: ${invalidated_paths}')
 		}
 		mut rebuild_everything := false
 		for cycle := 0; true; cycle++ {
 			$if trace_invalidations ? {
-				eprintln('> cycle: $cycle | invalidated_paths: $invalidated_paths')
+				eprintln('> cycle: ${cycle} | invalidated_paths: ${invalidated_paths}')
 			}
 			mut new_invalidated_paths := map[string]int{}
 			for npath, _ in invalidated_paths {
@@ -136,7 +136,7 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 					}
 				}
 				$if trace_invalidations ? {
-					eprintln('> npath -> invalidated_mods | $npath -> $invalidated_mods')
+					eprintln('> npath -> invalidated_mods | ${npath} -> ${invalidated_mods}')
 				}
 				mpath := os.dir(npath)
 				invalidated_mod_paths[mpath]++
@@ -161,8 +161,8 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 			}
 		}
 		$if trace_invalidations ? {
-			eprintln('invalidated_mod_paths: $invalidated_mod_paths')
-			eprintln('rebuild_everything: $rebuild_everything')
+			eprintln('invalidated_mod_paths: ${invalidated_mod_paths}')
+			eprintln('rebuild_everything: ${rebuild_everything}')
 		}
 		if invalidated_mod_paths.len > 0 {
 			impaths := invalidated_mod_paths.keys()
@@ -184,10 +184,10 @@ fn (mut b Builder) v_build_module(vexe string, imp_path string) {
 	vroot := os.dir(vexe)
 	os.chdir(vroot) or {}
 	boptions := b.pref.build_options.join(' ')
-	rebuild_cmd := '${os.quoted_path(vexe)} $boptions build-module ${os.quoted_path(imp_path)}'
-	vcache.dlog('| Builder.' + @FN, 'vexe: $vexe | imp_path: $imp_path | rebuild_cmd: $rebuild_cmd')
+	rebuild_cmd := '${os.quoted_path(vexe)} ${boptions} build-module ${os.quoted_path(imp_path)}'
+	vcache.dlog('| Builder.' + @FN, 'vexe: ${vexe} | imp_path: ${imp_path} | rebuild_cmd: ${rebuild_cmd}')
 	$if trace_v_build_module ? {
-		eprintln('> Builder.v_build_module: $rebuild_cmd')
+		eprintln('> Builder.v_build_module: ${rebuild_cmd}')
 	}
 	os.system(rebuild_cmd)
 }
@@ -195,11 +195,11 @@ fn (mut b Builder) v_build_module(vexe string, imp_path string) {
 fn (mut b Builder) rebuild_cached_module(vexe string, imp_path string) string {
 	res := b.pref.cache_manager.mod_exists(imp_path, '.o', imp_path) or {
 		if b.pref.is_verbose {
-			println('Cached $imp_path .o file not found... Building .o file for $imp_path')
+			println('Cached ${imp_path} .o file not found... Building .o file for ${imp_path}')
 		}
 		b.v_build_module(vexe, imp_path)
 		rebuilded_o := b.pref.cache_manager.mod_exists(imp_path, '.o', imp_path) or {
-			panic('could not rebuild cache module for $imp_path, error: $err.msg()')
+			panic('could not rebuild cache module for ${imp_path}, error: ${err.msg()}')
 		}
 		return rebuilded_o
 	}
@@ -217,7 +217,7 @@ fn (mut b Builder) handle_usecache(vexe string) {
 	for ast_file in b.parsed_files {
 		if b.pref.is_test && ast_file.mod.name != 'main' {
 			imp_path := b.find_module_path(ast_file.mod.name, ast_file.path) or {
-				verror('cannot import module "$ast_file.mod.name" (not found)')
+				verror('cannot import module "${ast_file.mod.name}" (not found)')
 				break
 			}
 			obj_path := b.rebuild_cached_module(vexe, imp_path)
@@ -245,7 +245,7 @@ fn (mut b Builder) handle_usecache(vexe string) {
 				continue
 			}
 			imp_path := b.find_module_path(imp, ast_file.path) or {
-				verror('cannot import module "$imp" (not found)')
+				verror('cannot import module "${imp}" (not found)')
 				break
 			}
 			obj_path := b.rebuild_cached_module(vexe, imp_path)
@@ -343,17 +343,17 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 		mut sall_v_source_bytes := all_v_source_bytes.str()
 		sall_v_source_lines = util.bold('${sall_v_source_lines:10s}')
 		sall_v_source_bytes = util.bold('${sall_v_source_bytes:10s}')
-		println('        V  source  code size: $sall_v_source_lines lines, $sall_v_source_bytes bytes')
+		println('        V  source  code size: ${sall_v_source_lines} lines, ${sall_v_source_bytes} bytes')
 		//
 		mut slines := b.stats_lines.str()
 		mut sbytes := b.stats_bytes.str()
 		slines = util.bold('${slines:10s}')
 		sbytes = util.bold('${sbytes:10s}')
-		println('generated  target  code size: $slines lines, $sbytes bytes')
+		println('generated  target  code size: ${slines} lines, ${sbytes} bytes')
 		//
 		vlines_per_second := int(1_000_000.0 * f64(all_v_source_lines) / f64(compilation_time_micros))
 		svlines_per_second := util.bold(vlines_per_second.str())
-		println('compilation took: $scompilation_time_ms ms, compilation speed: $svlines_per_second vlines/s')
+		println('compilation took: ${scompilation_time_ms} ms, compilation speed: ${svlines_per_second} vlines/s')
 	}
 }
 
@@ -361,8 +361,8 @@ pub fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) 
 	vtmp := os.vtmp_dir()
 	mut uniq := ''
 	if !b.pref.reuse_tmpc {
-		uniq = '.$rand.u64()'
+		uniq = '.${rand.u64()}'
 	}
-	fname := os.file_name(os.real_path(base_file_name)) + '$uniq$postfix'
+	fname := os.file_name(os.real_path(base_file_name)) + '${uniq}${postfix}'
 	return os.real_path(os.join_path(vtmp, fname))
 }

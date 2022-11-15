@@ -7,7 +7,7 @@ struct Abc {}
 fn (a Abc) xyz() {}
 
 fn f(i &IAbc) string {
-	return '$i'
+	return '${i}'
 }
 
 fn test_passing_voidptr_as_an_interface_reference() {

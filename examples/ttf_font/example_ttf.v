@@ -36,7 +36,7 @@ fn my_init(mut app App_data) {
 }
 
 fn draw_frame(mut app App_data) {
-	cframe_txt := 'Current Frame: $app.frame_c'
+	cframe_txt := 'Current Frame: ${app.frame_c}'
 	app.gg.begin()
 	sgl.defaults()
 	sgl.matrix_mode_projection()
@@ -68,7 +68,7 @@ fn draw_frame(mut app App_data) {
 		// block test
 		block_txt := "Today it is a good day!
 Tommorow I'm not so sure :(
-Frame: $app.frame_c
+Frame: ${app.frame_c}
 But Vwill prevail for sure, V is the way!!
 òàèì@ò!£$%&
 "
@@ -96,7 +96,7 @@ But Vwill prevail for sure, V is the way!!
 		if app.mouse_x >= 0 {
 			txt1 = unsafe { &app.ttf_render[2] }
 			txt1.destroy_texture()
-			txt1.create_text('$app.mouse_x,$app.mouse_y', 25)
+			txt1.create_text('${app.mouse_x},${app.mouse_y}', 25)
 			txt1.create_texture()
 			r := app.mouse_x % 255
 			g := app.mouse_y % 255
@@ -135,9 +135,9 @@ fn main() {
 	for font_path in font_paths {
 		mut tf := ttf.TTF_File{}
 		tf.buf = os.read_bytes(font_path) or { panic(err) }
-		println('TrueTypeFont file [$font_path] len: $tf.buf.len')
+		println('TrueTypeFont file [${font_path}] len: ${tf.buf.len}')
 		tf.init()
-		println('Unit per EM: $tf.units_per_em')
+		println('Unit per EM: ${tf.units_per_em}')
 		app.tf << tf
 	}
 	// TTF render 0 Frame counter

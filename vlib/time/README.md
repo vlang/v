@@ -46,7 +46,7 @@ You can also parse strings to produce time.Time values,
 import time
 
 s := '2018-01-27 12:48:34'
-t := time.parse(s) or { panic('failing format: $s | err: $err') }
+t := time.parse(s) or { panic('failing format: ${s} | err: ${err}') }
 println(t)
 println(t.unix)
 ```
@@ -72,6 +72,6 @@ fn do_something() {
 fn main() {
 	sw := time.new_stopwatch()
 	do_something()
-	println('Note: do_something() took: $sw.elapsed().milliseconds() ms')
+	println('Note: do_something() took: ${sw.elapsed().milliseconds()} ms')
 }
 ```

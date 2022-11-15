@@ -250,17 +250,17 @@ fn convert_html_rgb(in_col string) u32 {
 	// this is the regex query, it use the V string interpolation to customize the regex query
 	// NOTE: if you want use escaped code you must use the r"" (raw) strings,
 	// *** please remember that the V interpoaltion doesn't work on raw strings. ***
-	query := '#([a-fA-F0-9]{$n_digit})([a-fA-F0-9]{$n_digit})([a-fA-F0-9]{$n_digit})'
+	query := '#([a-fA-F0-9]{${n_digit}})([a-fA-F0-9]{${n_digit}})([a-fA-F0-9]{${n_digit}})'
 	mut re := regex.regex_opt(query) or { panic(err) }
 	start, end := re.match_string(in_col)
-	println('start: $start, end: $end')
+	println('start: ${start}, end: ${end}')
 	mut res := u32(0)
 	if start >= 0 {
 		group_list := re.get_group_list() // this is the utility function
 		r := ('0x' + in_col[group_list[0].start..group_list[0].end]).int() << col_mul
 		g := ('0x' + in_col[group_list[1].start..group_list[1].end]).int() << col_mul
 		b := ('0x' + in_col[group_list[2].start..group_list[2].end]).int() << col_mul
-		println('r: $r g: $g b: $b')
+		println('r: ${r} g: ${g} b: ${b}')
 		res = u32(r) << 16 | u32(g) << 8 | u32(b)
 	}
 	return res
@@ -317,19 +317,19 @@ fn main(){
     re.group_csave_flag = true
     start, end := re.match_string(txt)
     if start >= 0 {
-        println("Match ($start, $end) => [${txt[start..end]}]")
+        println("Match (${start}, ${end}) => [${txt[start..end]}]")
     } else {
         println("No Match")
     }
 
     if re.group_csave_flag == true && start >= 0 && re.group_csave.len > 0{
-        println("cg: $re.group_csave")
+        println("cg: ${re.group_csave}")
         mut cs_i := 1
         for cs_i < re.group_csave[0]*3 {
             g_id := re.group_csave[cs_i]
             st   := re.group_csave[cs_i+1]
             en   := re.group_csave[cs_i+2]
-            println("cg[$g_id] $st $en:[${txt[st..en]}]")
+            println("cg[${g_id}] ${st} ${en}:[${txt[st..en]}]")
             cs_i += 3
         }
     }
@@ -381,13 +381,13 @@ fn main(){
     re.debug=0  // disable log
     start, end := re.match_string(txt)
     if start >= 0 {
-        println("Match ($start, $end) => [${txt[start..end]}]")
+        println("Match (${start}, ${end}) => [${txt[start..end]}]")
     } else {
         println("No Match")
     }
 
     for name in re.group_map.keys() {
-        println("group:'$name' \t=> [${re.get_group_by_name(txt, name)}] \
+        println("group:'${name}' \t=> [${re.get_group_by_name(txt, name)}] \
         bounds: ${re.get_group_bounds_by_name(name)}")
     }
 }
@@ -412,11 +412,11 @@ Here is a more complex example of using them:
 fn convert_html_rgb_n(in_col string) u32 {
 	mut n_digit := if in_col.len == 4 { 1 } else { 2 }
 	mut col_mul := if in_col.len == 4 { 4 } else { 0 }
-	query := '#(?P<red>[a-fA-F0-9]{$n_digit})' + '(?P<green>[a-fA-F0-9]{$n_digit})' +
-		'(?P<blue>[a-fA-F0-9]{$n_digit})'
+	query := '#(?P<red>[a-fA-F0-9]{${n_digit}})' + '(?P<green>[a-fA-F0-9]{${n_digit}})' +
+		'(?P<blue>[a-fA-F0-9]{${n_digit}})'
 	mut re := regex.regex_opt(query) or { panic(err) }
 	start, end := re.match_string(in_col)
-	println('start: $start, end: $end')
+	println('start: ${start}, end: ${end}')
 	mut res := u32(0)
 	if start >= 0 {
 		red_s, red_e := re.get_group_by_name('red')
@@ -425,7 +425,7 @@ fn convert_html_rgb_n(in_col string) u32 {
 		g := ('0x' + in_col[green_s..green_e]).int() << col_mul
 		blue_s, blue_e := re.get_group_by_name('blue')
 		b := ('0x' + in_col[blue_s..blue_e]).int() << col_mul
-		println('r: $r g: $g b: $b')
+		println('r: ${r} g: ${g} b: ${b}')
 		res = u32(r) << 16 | u32(g) << 8 | u32(b)
 	}
 	return res
@@ -438,7 +438,7 @@ that return the string of a group using its `name`:
 ```v ignore
 txt := "my used string...."
 for name in re.group_map.keys() {
-	println("group:'$name' \t=> [${re.get_group_by_name(txt, name)}] \
+	println("group:'${name}' \t=> [${re.get_group_by_name(txt, name)}] \
     bounds: ${re.get_group_bounds_by_name(name)}")
 }
 ```
@@ -646,7 +646,7 @@ fn my_repl(re regex.RE, in_txt string, start int, end int) string {
     g0 := re.get_group_by_id(in_txt, 0)
     g1 := re.get_group_by_id(in_txt, 1)
     g2 := re.get_group_by_id(in_txt, 2)
-    return "*$g0*$g1*$g2*"
+    return "*${g0}*${g1}*${g2}*"
 }
 
 fn main(){
@@ -787,7 +787,7 @@ output function:
 ```v oksyntax
 // custom print function, the input will be the regex debug string
 fn custom_print(txt string) {
-	println('my log: $txt')
+	println('my log: ${txt}')
 }
 
 mut re := new()
@@ -810,13 +810,13 @@ fn main(){
 
     start, end := re.match_string(txt)
     if start >= 0 {
-        println("Match ($start, $end) => [${txt[start..end]}]")
+        println("Match (${start}, ${end}) => [${txt[start..end]}]")
         for g_index := 0; g_index < re.group_count ; g_index++ {
             println("#${g_index} [${re.get_group_by_id(txt, g_index)}] \
             bounds: ${re.get_group_bounds_by_id(g_index)}")
         }
         for name in re.group_map.keys() {
-            println("group:'$name' \t=> [${re.get_group_by_name(txt, name)}] \
+            println("group:'${name}' \t=> [${re.get_group_by_name(txt, name)}] \
             bounds: ${re.get_group_bounds_by_name(name)}")
         }
     } else {
@@ -851,33 +851,33 @@ fn main(){
 
     start, end := re.match_string(txt)
     if start >= 0 {
-        println("Match ($start, $end) => [${txt[start..end]}]")
+        println("Match (${start}, ${end}) => [${txt[start..end]}]")
     } else {
         println("No Match")
     }
 
     // show results for continuos group saving
     if re.group_csave_flag == true && start >= 0 && re.group_csave.len > 0{
-        println("cg: $re.group_csave")
+        println("cg: ${re.group_csave}")
         mut cs_i := 1
         for cs_i < re.group_csave[0]*3 {
             g_id := re.group_csave[cs_i]
             st   := re.group_csave[cs_i+1]
             en   := re.group_csave[cs_i+2]
-            println("cg[$g_id] $st $en:[${txt[st..en]}]")
+            println("cg[${g_id}] ${st} ${en}:[${txt[st..en]}]")
             cs_i += 3
         }
     }
 
     // show results for captured groups
     if start >= 0 {
-        println("Match ($start, $end) => [${txt[start..end]}]")
+        println("Match (${start}, ${end}) => [${txt[start..end]}]")
         for g_index := 0; g_index < re.group_count ; g_index++ {
             println("#${g_index} [${re.get_group_by_id(txt, g_index)}] \
             bounds: ${re.get_group_bounds_by_id(g_index)}")
         }
         for name in re.group_map.keys() {
-            println("group:'$name' \t=> [${re.get_group_by_name(txt, name)}] \
+            println("group:'${name}' \t=> [${re.get_group_by_name(txt, name)}] \
             bounds: ${re.get_group_bounds_by_name(name)}")
         }
     } else {

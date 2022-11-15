@@ -36,11 +36,11 @@ fn main() {
 	}
 	ren := int(JS.eval('3'.str))
 	if ren != 0 {
-		println('ren=$ren')
+		println('ren=${ren}')
 	}
 	res := string(JS.eval('"3"'.str))
 	if res != '' {
-		println('res=$res')
+		println('res=${res}')
 	}
 	mut a := 1
 	a *= 2
@@ -63,9 +63,9 @@ fn main() {
 	_ = hl.Ccc.a
 	debugger := 'JS keywords'
 	// TODO: Implement interpolation
-	await := '$super: $debugger'
+	await := '${super}: ${debugger}'
 	mut finally := 'implemented'
-	println('$await $finally')
+	println('${await} ${finally}')
 	dun := i_am_a_const * 20 + 2
 	dunn := hl.hello // External constant
 	_ = hl1.nested()
@@ -92,7 +92,7 @@ fn main() {
 	}
 	spawn async(0, 'hello')
 	fn_in_var := fn (number int) {
-		println('number: $number')
+		println('number: ${number}')
 	}
 	hl.debugger()
 	anon_consumer(hl.excited(), fn (message string) {

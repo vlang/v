@@ -78,7 +78,7 @@ pub fn round(x f64) f64 {
 // Returns the rounded float, with sig_digits of precision.
 // i.e `assert round_sig(4.3239437319748394,6) == 4.323944`
 pub fn round_sig(x f64, sig_digits int) f64 {
-	mut ret_str := '$x'
+	mut ret_str := '${x}'
 
 	match sig_digits {
 		0 { ret_str = '${x:0.0f}' }
@@ -98,7 +98,7 @@ pub fn round_sig(x f64, sig_digits int) f64 {
 		14 { ret_str = '${x:0.14f}' }
 		15 { ret_str = '${x:0.15f}' }
 		16 { ret_str = '${x:0.16f}' }
-		else { ret_str = '$x' }
+		else { ret_str = '${x}' }
 	}
 
 	return ret_str.f64()

@@ -25,7 +25,7 @@ fn topog_sort_greedy(graph map[string][]string) []string {
 	 Maybe it seems the Kahn's algorithm
 	*/
 	mut v_degree := in_degree(graph) // return: map [string] int
-	print('V Degree $v_degree')
+	print('V Degree ${v_degree}')
 	mut small_degree := min_degree(v_degree)
 	mut new_graph := remove_node_from_graph(small_degree, graph)
 	top_order << small_degree
@@ -33,7 +33,7 @@ fn topog_sort_greedy(graph map[string][]string) []string {
 
 	for (count < n_nodes) {
 		v_degree = in_degree(new_graph) // return: map [string] int
-		print('\nV Degree $v_degree')
+		print('\nV Degree ${v_degree}')
 		small_degree = min_degree(v_degree)
 		new_graph = remove_node_from_graph(small_degree, new_graph)
 

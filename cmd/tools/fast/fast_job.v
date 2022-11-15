@@ -13,11 +13,11 @@ const vexe = os.join_path(vdir, 'v')
 const sleep_period = 120
 
 fn elog(msg string) {
-	eprintln('$time.now().format_ss_micro() $msg')
+	eprintln('${time.now().format_ss_micro()} ${msg}')
 }
 
 fn delay() {
-	elog('Sleeping for $sleep_period seconds...')
+	elog('Sleeping for ${sleep_period} seconds...')
 	time.sleep(sleep_period * time.second)
 }
 
@@ -25,11 +25,11 @@ fn delay() {
 // runs fast.v, pushes the HTML result to the fast.vlang.io GH pages repo.
 fn main() {
 	os.setenv('LANG', 'C', true)
-	elog('fast_job fast_dir: $fast_dir | vdir: $vdir | vexe: $vexe')
+	elog('fast_job fast_dir: ${fast_dir} | vdir: ${vdir} | vexe: ${vexe}')
 
 	os.chdir(fast_dir)!
 
-	elog('fast_job start in os.getwd(): $os.getwd()')
+	elog('fast_job start in os.getwd(): ${os.getwd()}')
 	defer {
 		elog('fast_job end')
 	}
@@ -41,7 +41,7 @@ fn main() {
 	for {
 		elog('------------------- Checking for updates ... -------------------')
 		res_pull := os.execute('git pull --rebase')
-		elog('> res_pull.output: $res_pull.output')
+		elog('> res_pull.output: ${res_pull.output}')
 		if res_pull.exit_code != 0 {
 			elog('Git pull failed. You may have uncommitted changes?')
 			delay()
@@ -72,7 +72,7 @@ fn main() {
 		elog('running ./fast -upload')
 		fast_exit_code := os.system('./fast -upload')
 		if fast_exit_code != 0 {
-			println('fast_exit_code = $fast_exit_code, != 0')
+			println('fast_exit_code = ${fast_exit_code}, != 0')
 		}
 
 		delay()

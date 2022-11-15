@@ -41,14 +41,14 @@ fn (mut fdr Finder) configure_from_arguments(args []string) {
 			}
 			fdr.visib.set_from_str(cmdline.option(args, '-vis', '${Visibility.all}'))
 			if fdr.symbol == .var && fdr.visib != .all {
-				make_and_print_error('-vis $fdr.visib just can be setted with symbol_type:',
+				make_and_print_error('-vis ${fdr.visib} just can be setted with symbol_type:',
 					['fn', 'method', 'const', 'struct', 'enum', 'interface', 'regexp'],
-					'$fdr.symbol')
+					'${fdr.symbol}')
 			}
 			fdr.mutab.set_from_str(cmdline.option(args, '-mut', '${Mutability.any}'))
 			if fdr.symbol != .var && fdr.mutab != .any {
-				make_and_print_error('-mut $fdr.mutab just can be setted with symbol_type:',
-					['var'], '$fdr.symbol')
+				make_and_print_error('-mut ${fdr.mutab} just can be setted with symbol_type:',
+					['var'], '${fdr.symbol}')
 			}
 			fdr.modul = cmdline.option(args, '-mod', '')
 			fdr.dirs = cmdline.options(args, '-dir')
@@ -95,28 +95,32 @@ fn (mut fdr Finder) search_for_matches() {
 	cp := r'\)'
 
 	// Build regex query
-	sy := '$fdr.symbol'
-	st := if fdr.receiver != '' { '$sp$op$sp[a-z].*$sp$fdr.receiver$cp$sp' } else { '.*' }
-	na := '$fdr.name'
+	sy := '${fdr.symbol}'
+	st := if fdr.receiver != '' {
+		'${sp}${op}${sp}[a-z].*${sp}${fdr.receiver}${cp}${sp}'
+	} else {
+		'.*'
+	}
+	na := '${fdr.name}'
 
 	query := match fdr.symbol {
 		.@fn {
-			'.*$sy$sp$na$sp${op}.*${cp}.*'
+			'.*${sy}${sp}${na}${sp}${op}.*${cp}.*'
 		}
 		.method {
-			'.*fn$st$na$sp${op}.*${cp}.*'
+			'.*fn${st}${na}${sp}${op}.*${cp}.*'
 		}
 		.var {
-			'.*$na$sp:=.*'
+			'.*${na}${sp}:=.*'
 		}
 		.@const {
-			'.*$na$sp = .*'
+			'.*${na}${sp} = .*'
 		}
 		.regexp {
-			'$na'
+			'${na}'
 		}
 		else {
-			'.*$sy$sp$na${sp}.*' // for struct, enum and interface
+			'.*${sy}${sp}${na}${sp}.*' // for struct, enum and interface
 		}
 	}
 	// println(query)
@@ -191,7 +195,7 @@ fn (fdr Finder) show_results() {
 		println(maybe_color(term.bright_yellow, 'No Matches found'))
 	} else if verbose || header {
 		print(fdr)
-		println(maybe_color(term.bright_green, '$fdr.matches.len matches Found\n'))
+		println(maybe_color(term.bright_green, '${fdr.matches.len} matches Found\n'))
 		for result in fdr.matches {
 			result.show()
 		}
@@ -203,13 +207,13 @@ fn (fdr Finder) show_results() {
 }
 
 fn (fdr Finder) str() string {
-	v := maybe_color(term.bright_red, '$fdr.visib')
-	m := maybe_color(term.bright_red, '$fdr.mutab')
-	st := if fdr.receiver != '' { ' ( _ $fdr.receiver)' } else { '' }
-	s := maybe_color(term.bright_magenta, '$fdr.symbol')
-	n := maybe_color(term.bright_cyan, '$fdr.name')
+	v := maybe_color(term.bright_red, '${fdr.visib}')
+	m := maybe_color(term.bright_red, '${fdr.mutab}')
+	st := if fdr.receiver != '' { ' ( _ ${fdr.receiver})' } else { '' }
+	s := maybe_color(term.bright_magenta, '${fdr.symbol}')
+	n := maybe_color(term.bright_cyan, '${fdr.name}')
 
-	mm := if fdr.modul != '' { maybe_color(term.blue, '$fdr.modul') } else { '' }
+	mm := if fdr.modul != '' { maybe_color(term.blue, '${fdr.modul}') } else { '' }
 	dd := if fdr.dirs.len != 0 {
 		fdr.dirs.map(maybe_color(term.blue, it))
 	} else {
@@ -219,14 +223,14 @@ fn (fdr Finder) str() string {
 	dm := if fdr.dirs.len == 0 && fdr.modul == '' {
 		'all the project scope'
 	} else if fdr.dirs.len == 0 && fdr.modul != '' {
-		'module $mm'
+		'module ${mm}'
 	} else if fdr.dirs.len != 0 && fdr.modul == '' {
-		'directories: $dd'
+		'directories: ${dd}'
 	} else {
-		'module $mm searching within directories: $dd'
+		'module ${mm} searching within directories: ${dd}'
 	}
 
-	return '\nFind: $s$st $n | visibility: $v mutability: $m\nwithin $dm '
+	return '\nFind: ${s}${st} ${n} | visibility: ${v} mutability: ${m}\nwithin ${dm} '
 }
 
 // Match is one result of the search_for_matches() process
@@ -238,11 +242,11 @@ struct Match {
 
 fn (mtc Match) show() {
 	path := maybe_color(term.bright_magenta, mtc.path)
-	line := maybe_color(term.bright_yellow, '$mtc.line')
-	text := maybe_color(term.bright_green, '$mtc.text')
+	line := maybe_color(term.bright_yellow, '${mtc.line}')
+	text := maybe_color(term.bright_green, '${mtc.text}')
 	if verbose || format {
-		println('$path\n$line : [ $text ]\n')
+		println('${path}\n${line} : [ ${text} ]\n')
 	} else {
-		println('$path:$line: $text')
+		println('${path}:${line}: ${text}')
 	}
 }

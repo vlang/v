@@ -37,7 +37,7 @@ fn create_node<T>(args []T) Tree<T> {
 }
 
 fn merge_nodes<T>(head Tree<T>) Tree<T> {
-	println('$head')
+	println('${head}')
 
 	return Empty{}
 }

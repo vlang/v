@@ -17,7 +17,7 @@ pub mut:
 }
 
 pub fn (c &CFlag) str() string {
-	return 'CFlag{ name: "$c.name" value: "$c.value" mod: "$c.mod" os: "$c.os" cached: "$c.cached" }'
+	return 'CFlag{ name: "${c.name}" value: "${c.value}" mod: "${c.mod}" os: "${c.os}" cached: "${c.cached}" }'
 }
 
 const fexisting_literal = r'$first_existing'
@@ -41,7 +41,7 @@ pub fn (cf &CFlag) eval() string {
 						continue cflag_eval_outer_loop
 					}
 				}
-				panic('>> error: none of the paths $svalues exist')
+				panic('>> error: none of the paths ${svalues} exist')
 				continue
 			}
 		}
@@ -59,13 +59,13 @@ pub fn (cf &CFlag) format() string {
 		value = cf.eval()
 	}
 	if cf.name in ['-l', '-Wa', '-Wl', '-Wp'] && value.len > 0 {
-		return '$cf.name$value'.trim_space()
+		return '${cf.name}${value}'.trim_space()
 	}
 	// convert to absolute path
 	if cf.name == '-I' || cf.name == '-L' || value.ends_with('.o') {
 		value = '"' + os.real_path(value) + '"'
 	}
-	return '$cf.name $value'.trim_space()
+	return '${cf.name} ${value}'.trim_space()
 }
 
 // TODO: implement msvc specific c_options_before_target and c_options_after_target ...
@@ -122,7 +122,7 @@ pub fn (cflags []CFlag) defines_others_libs() ([]string, []string, []string) {
 			continue
 		}
 		if copt.ends_with('.a') {
-			libs << '"$copt"'
+			libs << '"${copt}"'
 			continue
 		}
 		if copt.starts_with('-D') {

@@ -56,24 +56,24 @@ fn main() {
 	}
 	if !os.exists(oldvexe) {
 		if 0 != execute('${os.quoted_path(vexe)} -o ${os.quoted_path(oldvexe)} ${os.quoted_path(oldv_source)}') {
-			panic('can not compile $oldvexe')
+			panic('can not compile ${oldvexe}')
 		}
 	}
 	os.execute('git checkout master')
 	os.execute('git bisect reset')
-	os.execute('git checkout $context.new_commit')
+	os.execute('git checkout ${context.new_commit}')
 	os.execute('git bisect start')
 	os.execute('git bisect new')
-	os.execute('git checkout $context.old_commit')
+	os.execute('git checkout ${context.old_commit}')
 	os.execute('git bisect old')
 	println(term.colorize(term.bright_yellow, term.header('', '-')))
-	execute('git bisect run ${os.quoted_path(oldvexe)} --bisect -c "$context.command"')
+	execute('git bisect run ${os.quoted_path(oldvexe)} --bisect -c "${context.command}"')
 	println(term.colorize(term.bright_yellow, term.header('', '-')))
 	os.execute('git bisect reset')
 	os.execute('git checkout master')
 }
 
 fn execute(cmd string) int {
-	eprintln('### $cmd')
+	eprintln('### ${cmd}')
 	return os.system(cmd)
 }

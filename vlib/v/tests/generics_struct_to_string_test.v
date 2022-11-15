@@ -3,7 +3,7 @@ struct Info<T> {
 }
 
 fn get_info<T>(res Info<T>) string {
-	return '$res'
+	return '${res}'
 }
 
 fn test_generic_struct_to_string() {

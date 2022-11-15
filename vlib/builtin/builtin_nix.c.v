@@ -32,7 +32,7 @@ fn print_backtrace_skipping_top_frames(xskipframes int) bool {
 		} $else $if linux {
 			return print_backtrace_skipping_top_frames_linux(skipframes)
 		} $else {
-			println('print_backtrace_skipping_top_frames is not implemented. skipframes: $skipframes')
+			println('print_backtrace_skipping_top_frames is not implemented. skipframes: ${skipframes}')
 		}
 	}
 	return false
@@ -93,7 +93,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 				executable := sframe.all_before('(')
 				addr := sframe.all_after('[').all_before(']')
 				beforeaddr := sframe.all_before('[')
-				cmd := 'addr2line -e $executable $addr'
+				cmd := 'addr2line -e ${executable} ${addr}'
 				// taken from os, to avoid depending on the os module inside builtin.v
 				f := C.popen(&char(cmd.str), c'r')
 				if f == unsafe { nil } {
@@ -120,7 +120,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 				// Note: it is shortened here to just d. , just so that it fits, and so
 				// that the common error file:lineno: line format is enforced.
 				output = output.replace(' (discriminator', ': (d.')
-				eprintln('${output:-55s} | ${addr:14s} | $beforeaddr')
+				eprintln('${output:-55s} | ${addr:14s} | ${beforeaddr}')
 			}
 		}
 	}

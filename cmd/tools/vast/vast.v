@@ -60,7 +60,7 @@ fn (ctx Context) write_file_or_print(file string) {
 	if ctx.is_print {
 		println(json(file))
 	} else {
-		println('$time.now(): AST written to: ' + json_file(file))
+		println('${time.now()}: AST written to: ' + json_file(file))
 	}
 }
 
@@ -74,7 +74,7 @@ fn (ctx Context) watch_for_changes(file string) {
 			ctx.write_file_or_print(file)
 			if ctx.is_compile {
 				file_name := file[0..(file.len - os.file_ext(file).len)]
-				os.system('v -o ${file_name}.c $file')
+				os.system('v -o ${file_name}.c ${file}')
 			}
 		}
 		timestamp = new_timestamp
@@ -96,11 +96,11 @@ fn get_abs_path(path string) string {
 // check file is v file and exists
 fn check_file(file string) {
 	if os.file_ext(file) !in ['.v', '.vv', '.vsh'] {
-		eprintln('the file `$file` must be a v file or vsh file')
+		eprintln('the file `${file}` must be a v file or vsh file')
 		exit(1)
 	}
 	if !os.exists(file) {
-		eprintln('the v file `$file` does not exist')
+		eprintln('the v file `${file}` does not exist')
 		exit(1)
 	}
 }
@@ -224,12 +224,12 @@ fn (t Tree) type_node(typ ast.Type) &Node {
 
 // token type node
 fn (t Tree) token_node(tok_kind token.Kind) &Node {
-	return t.string_node('token:${int(tok_kind)}($tok_kind.str())')
+	return t.string_node('token:${int(tok_kind)}(${tok_kind.str()})')
 }
 
 // enum type node
 fn (t Tree) enum_node<T>(value T) &Node {
-	return t.string_node('enum:${int(value)}($value)')
+	return t.string_node('enum:${int(value)}(${value})')
 }
 
 // for [][]comment

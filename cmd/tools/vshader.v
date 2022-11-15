@@ -53,9 +53,9 @@ const (
 
 	shdc_version     = shdc_full_hash[0..8]
 	shdc_urls        = {
-		'windows': 'https://github.com/floooh/sokol-tools-bin/raw/$shdc_full_hash/bin/win32/sokol-shdc.exe'
-		'macos':   'https://github.com/floooh/sokol-tools-bin/raw/$shdc_full_hash/bin/osx/sokol-shdc'
-		'linux':   'https://github.com/floooh/sokol-tools-bin/raw/$shdc_full_hash/bin/linux/sokol-shdc'
+		'windows': 'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/win32/sokol-shdc.exe'
+		'macos':   'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/osx/sokol-shdc'
+		'linux':   'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/linux/sokol-shdc'
 	}
 	shdc_version_file = os.join_path(cache_dir, 'sokol-shdc.version')
 	shdc              = shdc_exe()
@@ -77,7 +77,7 @@ struct CompileOptions {
 
 fn main() {
 	if os.args.len == 1 {
-		println('Usage: $tool_name PATH \n$tool_description\n$tool_name -h for more help...')
+		println('Usage: ${tool_name} PATH \n${tool_description}\n${tool_name} -h for more help...')
 		exit(1)
 	}
 	mut fp := flag.new_flag_parser(os.args[1..])
@@ -91,7 +91,7 @@ fn main() {
 		show_help: fp.bool('help', `h`, false, 'Show this help text.')
 		force_update: fp.bool('force-update', `u`, false, 'Force update of the sokol-shdc tool.')
 		verbose: fp.bool('verbose', `v`, false, 'Be verbose about the tools progress.')
-		slangs: fp.string_multi('slang', `l`, 'Shader dialects to generate code for. Default is all.\n                            Available dialects: $supported_slangs')
+		slangs: fp.string_multi('slang', `l`, 'Shader dialects to generate code for. Default is all.\n                            Available dialects: ${supported_slangs}')
 	}
 	if opt.show_help {
 		println(fp.usage())
@@ -124,7 +124,7 @@ fn shader_program_name(shader_file string) string {
 // validate_shader_file returns an error if `shader_file` isn't valid.
 fn validate_shader_file(shader_file string) ! {
 	shader_program := os.read_lines(shader_file) or {
-		return error('shader program at "$shader_file" could not be opened for reading')
+		return error('shader program at "${shader_file}" could not be opened for reading')
 	}
 	mut has_program_directive := false
 	for line in shader_program {
@@ -134,7 +134,7 @@ fn validate_shader_file(shader_file string) ! {
 		}
 	}
 	if !has_program_directive {
-		return error('shader program at "$shader_file" is missing a "@program" directive.')
+		return error('shader program at "${shader_file}" is missing a "@program" directive.')
 	}
 }
 
@@ -152,7 +152,7 @@ fn compile_shaders(opt Options, input_path string) ! {
 
 	if shader_files.len == 0 {
 		if opt.verbose {
-			eprintln('$tool_name found no shader files to compile for "$path"')
+			eprintln('${tool_name} found no shader files to compile for "${path}"')
 		}
 		return
 	}
@@ -190,23 +190,23 @@ fn compile_shader(opt CompileOptions, shader_file string) ! {
 
 	header_name := os.file_name(out_file)
 	if opt.verbose {
-		eprintln('$tool_name generating shader code for $slangs in header "$header_name" in "$path" from $shader_file')
+		eprintln('${tool_name} generating shader code for ${slangs} in header "${header_name}" in "${path}" from ${shader_file}')
 	}
 
 	cmd :=
 		'${os.quoted_path(shdc)} --input ${os.quoted_path(shader_file)} --output ${os.quoted_path(out_file)} --slang ' +
 		os.quoted_path(slangs.join(':'))
 	if opt.verbose {
-		eprintln('$tool_name executing:\n$cmd')
+		eprintln('${tool_name} executing:\n${cmd}')
 	}
 	res := os.execute(cmd)
 	if res.exit_code != 0 {
-		eprintln('$tool_name failed generating shader includes:\n        $res.output\n        $cmd')
+		eprintln('${tool_name} failed generating shader includes:\n        ${res.output}\n        ${cmd}')
 		exit(1)
 	}
 	if opt.verbose {
 		program_name := shader_program_name(shader_file)
-		eprintln('$tool_name usage example in V:\n\nimport sokol.gfx\n\n#include "$header_name"\n\nfn C.${program_name}_shader_desc(gfx.Backend) &gfx.ShaderDesc\n')
+		eprintln('${tool_name} usage example in V:\n\nimport sokol.gfx\n\n#include "${header_name}"\n\nfn C.${program_name}_shader_desc(gfx.Backend) &gfx.ShaderDesc\n')
 	}
 }
 
@@ -245,7 +245,7 @@ fn ensure_external_tools(opt Options) ! {
 	if is_shdc_available && is_shdc_executable {
 		if opt.verbose {
 			version := os.read_file(shdc_version_file) or { 'unknown' }
-			eprintln('$tool_name using sokol-shdc version $version at "$shdc"')
+			eprintln('${tool_name} using sokol-shdc version ${version} at "${shdc}"')
 		}
 		return
 	}
@@ -265,15 +265,15 @@ fn download_shdc(opt Options) ! {
 	// We want to use the same, runtime, OS type as this tool is invoked on.
 	download_url := shdc_urls[runtime_os] or { '' }
 	if download_url == '' {
-		return error('$tool_name failed to download an external dependency "sokol-shdc" for ${runtime_os}.\nThe supported host platforms for shader compilation is $supported_hosts')
+		return error('${tool_name} failed to download an external dependency "sokol-shdc" for ${runtime_os}.\nThe supported host platforms for shader compilation is ${supported_hosts}')
 	}
 	update_to_shdc_version := os.read_file(shdc_version_file) or { shdc_version }
 	file := shdc_exe()
 	if opt.verbose {
 		if shdc_version != update_to_shdc_version && os.exists(file) {
-			eprintln('$tool_name updating sokol-shdc to version $update_to_shdc_version ...')
+			eprintln('${tool_name} updating sokol-shdc to version ${update_to_shdc_version} ...')
 		} else {
-			eprintln('$tool_name installing sokol-shdc version $update_to_shdc_version ...')
+			eprintln('${tool_name} installing sokol-shdc version ${update_to_shdc_version} ...')
 		}
 	}
 	if os.exists(file) {
@@ -283,11 +283,11 @@ fn download_shdc(opt Options) ! {
 	mut dtmp_file, dtmp_path := util.temp_file(util.TempFileOptions{ path: os.dir(file) })!
 	dtmp_file.close()
 	if opt.verbose {
-		eprintln('$tool_name downloading sokol-shdc from $download_url')
+		eprintln('${tool_name} downloading sokol-shdc from ${download_url}')
 	}
 	http.download_file(download_url, dtmp_path) or {
 		os.rm(dtmp_path)!
-		return error('$tool_name failed to download sokol-shdc needed for shader compiling: $err')
+		return error('${tool_name} failed to download sokol-shdc needed for shader compiling: ${err}')
 	}
 	// Make it executable
 	os.chmod(dtmp_path, 0o775)!

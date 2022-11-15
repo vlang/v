@@ -126,7 +126,7 @@ pub fn (mut zentry Zip) open_entry(name string) ! {
 pub fn (mut z Zip) open_entry_by_index(index int) ! {
 	res := C.zip_entry_openbyindex(z, index)
 	if res == -1 {
-		return error('szip: cannot open archive entry at index $index')
+		return error('szip: cannot open archive entry at index ${index}')
 	}
 }
 

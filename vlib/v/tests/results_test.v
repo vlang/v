@@ -21,7 +21,7 @@ fn test_return_err_var() {
 }
 
 fn test_str() {
-	assert '$foo()' == 'result(1)'
+	assert '${foo()}' == 'result(1)'
 }
 
 fn result_void(err bool) ! {
@@ -89,7 +89,7 @@ fn read() !string {
 fn test_results_if_guard() {
 	if fcontent := read() {
 		assert fcontent == ''
-		assert '$fcontent' == ''
+		assert '${fcontent}' == ''
 		return
 	}
 	assert false

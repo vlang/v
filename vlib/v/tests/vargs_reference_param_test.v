@@ -23,5 +23,5 @@ fn test_vargs_with_reference_params() {
 	foo22 := arr_stuff([foo1, foo2])
 	println(foo22)
 
-	assert '$foo11' == '$foo22'
+	assert '${foo11}' == '${foo22}'
 }

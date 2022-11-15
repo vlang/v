@@ -11,7 +11,7 @@ fn timed_println(msg string) {
 }
 
 fn timed_println_extended(t time.StopWatch, msg string) {
-	println('${t.elapsed().microseconds():12} | $msg')
+	println('${t.elapsed().microseconds():12} | ${msg}')
 }
 
 fn f(x big.Integer, y int) big.Integer {
@@ -40,7 +40,7 @@ fn calculate_and_measure(calc_label string, cb fn () big.Integer) string {
 	sw := time.new_stopwatch()
 	timed_println_extended(sw, 'start')
 	a := cb()
-	timed_println_extended(sw, 'done  $calc_label')
+	timed_println_extended(sw, 'done  ${calc_label}')
 	timed_println_extended(sw, 'a.bit_len(): ${a.bit_len():12}')
 
 	timed_println_extended(sw, 'before a.str()')

@@ -10,19 +10,19 @@ fn get_test<T>(v T) Test<T> {
 
 fn test_generics_assign_generics_struct() {
 	x1 := get_test(1)
-	println('$x1.v')
+	println('${x1.v}')
 	assert x1.v == 1
 
 	x2 := get_test(2.2)
-	println('$x2.v')
+	println('${x2.v}')
 	assert x2.v == 2.2
 
 	x3 := get_test('aaa')
-	println('$x3.v')
+	println('${x3.v}')
 	assert x3.v == 'aaa'
 
 	x4 := get_test(true)
-	println('$x4.v')
+	println('${x4.v}')
 	assert x4.v == true
 }
 

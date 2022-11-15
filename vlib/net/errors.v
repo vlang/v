@@ -19,7 +19,7 @@ pub const (
 )
 
 pub fn socket_error_message(potential_code int, s string) !int {
-	return socket_error(potential_code) or { return error('$err.msg(); $s') }
+	return socket_error(potential_code) or { return error('${err.msg()}; ${s}') }
 }
 
 pub fn socket_error(potential_code int) !int {
@@ -27,13 +27,13 @@ pub fn socket_error(potential_code int) !int {
 		if potential_code < 0 {
 			last_error_int := C.WSAGetLastError()
 			last_error := wsa_error(last_error_int)
-			return error_with_code('net: socket error: ($last_error_int) $last_error',
+			return error_with_code('net: socket error: (${last_error_int}) ${last_error}',
 				int(last_error))
 		}
 	} $else {
 		if potential_code < 0 {
 			last_error := error_code()
-			return error_with_code('net: socket error: $last_error', last_error)
+			return error_with_code('net: socket error: ${last_error}', last_error)
 		}
 	}
 
@@ -46,9 +46,9 @@ pub fn wrap_error(error_code int) ! {
 	}
 	$if windows {
 		enum_error := wsa_error(error_code)
-		return error_with_code('net: socket error: $enum_error', error_code)
+		return error_with_code('net: socket error: ${enum_error}', error_code)
 	} $else {
-		return error_with_code('net: socket error: $error_code', error_code)
+		return error_with_code('net: socket error: ${error_code}', error_code)
 	}
 }
 

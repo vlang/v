@@ -16,7 +16,7 @@ fn find_diff_cmd() string {
 
 [noreturn]
 fn exit_because(msg string) {
-	eprintln('$msg, tests will not run')
+	eprintln('${msg}, tests will not run')
 	exit(0)
 }
 
@@ -30,9 +30,9 @@ fn test_node_exists() {
 	}
 	version := res.output.trim_left('v').int()
 	if version < 10 {
-		exit_because('node should be at least version 10, but is currently version: $version')
+		exit_because('node should be at least version 10, but is currently version: ${version}')
 	}
-	println('Using node version: $version')
+	println('Using node version: ${version}')
 }
 
 fn test_running_programs_compiled_with_the_js_backend() {
@@ -70,7 +70,7 @@ fn check_path(dir string, tests []string) !int {
 		if expected != found {
 			println(term.red('FAIL'))
 			println('============')
-			println('expected $program_out content:')
+			println('expected ${program_out} content:')
 			println(expected)
 			println('============')
 			println('found:')

@@ -30,7 +30,7 @@ fn check_headers(expected []string, found []string) ! {
 	assert expected.len == found.len
 	for header in expected {
 		if !found.contains(header) {
-			return error('expected header "$header" not in $found')
+			return error('expected header "${header}" not in ${found}')
 		}
 	}
 }

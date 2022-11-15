@@ -17,6 +17,6 @@ fn abc() int {
 fn main() {
 	for i in 0 .. 5 {
 		nstrings := abc()
-		eprintln('nstrings ${i:10}: $nstrings')
+		eprintln('nstrings ${i:10}: ${nstrings}')
 	}
 }

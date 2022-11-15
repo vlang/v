@@ -173,7 +173,7 @@ pub fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
 	lit := node.val.replace('_', '').all_after('-')
 	is_neg := node.val.starts_with('-')
 	limit := if is_neg { '9223372036854775808' } else { '18446744073709551615' }
-	message := 'integer literal $node.val overflows int'
+	message := 'integer literal ${node.val} overflows int'
 
 	if lit.len > limit.len {
 		c.error(message, node.pos)

@@ -139,7 +139,7 @@ pub fn (a Any) as_map() map[string]Any {
 	} else if a is []Any {
 		mut mp := map[string]Any{}
 		for i, fi in a {
-			mp['$i'] = fi
+			mp['${i}'] = fi
 		}
 		return mp
 	}
@@ -223,9 +223,9 @@ pub fn (m map[string]Any) to_toml() string {
 	for k, v in m {
 		mut key := k
 		if key.contains(' ') {
-			key = '"$key"'
+			key = '"${key}"'
 		}
-		toml_text += '$key = ' + v.to_toml() + '\n'
+		toml_text += '${key} = ' + v.to_toml() + '\n'
 	}
 	toml_text = toml_text.trim_right('\n')
 	return toml_text
@@ -238,9 +238,9 @@ pub fn (m map[string]Any) to_inline_toml() string {
 	for k, v in m {
 		mut key := k
 		if key.contains(' ') {
-			key = '"$key"'
+			key = '"${key}"'
 		}
-		toml_text += ' $key = ' + v.to_toml() + ','
+		toml_text += ' ${key} = ' + v.to_toml() + ','
 	}
 	return toml_text + ' }'
 }

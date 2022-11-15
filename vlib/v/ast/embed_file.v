@@ -6,5 +6,5 @@ module ast
 import hash.fnv1a
 
 pub fn (e EmbeddedFile) hash() u64 {
-	return fnv1a.sum64_string('$e.apath, $e.compression_type, $e.is_compressed, $e.len')
+	return fnv1a.sum64_string('${e.apath}, ${e.compression_type}, ${e.is_compressed}, ${e.len}')
 }

@@ -139,7 +139,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		g.file = file
 		g.enter_namespace(g.file.mod.name)
 		if g.enable_doc {
-			g.writeln('/** @namespace $file.mod.name */')
+			g.writeln('/** @namespace ${file.mod.name} */')
 		}
 		g.is_test = g.pref.is_test
 		// store imports
@@ -188,7 +188,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 				} else {
 					g.js_name(iface_name) + '_' + method.name
 				}
-				g.write('${g.js_name(sym.name)}.prototype.$method.name = function(')
+				g.write('${g.js_name(sym.name)}.prototype.${method.name} = function(')
 				for i, param in method.params {
 					if i == 0 {
 						continue
@@ -219,9 +219,9 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	}
 
 	for mod_name in g.table.modules {
-		g.writeln('// Initializations for module $mod_name')
+		g.writeln('// Initializations for module ${mod_name}')
 		for global, expr in g.init_global[mod_name] {
-			g.write('$global = ')
+			g.write('${global} = ')
 			g.expr(expr)
 			g.writeln(';')
 		}
@@ -254,7 +254,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		out += 'const loadRoutine = async () => {\n'
 		for mod, functions in g.wasm_import {
 			if g.pref.backend == .js_browser {
-				out += '\nawait fetch("$mod").then(respone => respone.arrayBuffer()).then(bytes => '
+				out += '\nawait fetch("${mod}").then(respone => respone.arrayBuffer()).then(bytes => '
 				out += 'WebAssembly.instantiate(bytes,'
 				exports := g.wasm_export[mod]
 				out += '{ imports: { \n'
@@ -355,13 +355,13 @@ pub fn (mut g JsGen) gen_js_main_for_tests() {
 	g.writeln('')
 	g.writeln('globalThis.VTEST=1')
 	if g.pref.is_stats {
-		g.writeln('let bt = main__start_testing(new int($all_tfuncs.len), new string("$g.pref.path"))')
+		g.writeln('let bt = main__start_testing(new int(${all_tfuncs.len}), new string("${g.pref.path}"))')
 	}
 	for tname in all_tfuncs {
 		tcname := g.js_name(tname)
 
 		if g.pref.is_stats {
-			g.writeln('main__BenchedTests_testing_step_start(bt,new string("$tcname"))')
+			g.writeln('main__BenchedTests_testing_step_start(bt,new string("${tcname}"))')
 		}
 
 		g.writeln('try { let res = ${tcname}(); if (res instanceof Promise) { await res; } } catch (_e) {} ')
@@ -490,14 +490,14 @@ pub fn (mut g JsGen) init() {
 }
 
 pub fn (g JsGen) hashes() string {
-	mut res := '// V_COMMIT_HASH $version.vhash()\n'
+	mut res := '// V_COMMIT_HASH ${version.vhash()}\n'
 	res += '// V_CURRENT_COMMIT_HASH ${version.githash(g.pref.building_v)}\n'
 	return res
 }
 
 [noreturn]
 fn verror(msg string) {
-	eprintln('jsgen error: $msg')
+	eprintln('jsgen error: ${msg}')
 	exit(1)
 }
 
@@ -541,7 +541,7 @@ pub fn (mut g JsGen) writeln(s string) {
 [inline]
 pub fn (mut g JsGen) new_tmp_var() string {
 	g.tmp_count++
-	return '_tmp$g.tmp_count'
+	return '_tmp${g.tmp_count}'
 }
 
 // 'mod1.mod2.fn' => 'mod1.mod2'
@@ -572,7 +572,7 @@ fn (mut g JsGen) js_name(name_ string) string {
 	}
 	name = name_.replace('.', '__')
 	if name in js.js_reserved {
-		return '_v_$name'
+		return '_v_${name}'
 	}
 	return name
 }
@@ -594,7 +594,7 @@ fn (mut g JsGen) write_v_source_line_info(pos token.Pos) {
 		}
 	}
 	if g.pref.is_vlines && g.is_vlines_enabled {
-		g.write(' /* ${pos.line_nr + 1} $g.out.len */ ')
+		g.write(' /* ${pos.line_nr + 1} ${g.out.len} */ ')
 	}
 }
 
@@ -603,31 +603,31 @@ fn (mut g JsGen) gen_global_decl(node ast.GlobalDecl) {
 	for field in node.fields {
 		if field.has_expr {
 			tmp_var := g.new_tmp_var()
-			g.write('const $tmp_var = ')
+			g.write('const ${tmp_var} = ')
 			g.expr(field.expr)
 			g.writeln(';')
-			g.writeln('Object.defineProperty(\$global,"$field.name", {
+			g.writeln('Object.defineProperty(\$global,"${field.name}", {
 				configurable: false,
-				$mod ,
+				${mod} ,
 				writable: true,
-				value: $tmp_var
+				value: ${tmp_var}
 				}
 			); // global')
 		} else {
 			// TODO(playXE): Initialize with default value of type
 
 			if field.typ.is_ptr() {
-				g.writeln('Object.defineProperty(\$global,"$field.name", {
+				g.writeln('Object.defineProperty(\$global,"${field.name}", {
 					configurable: false,
-					$mod ,
+					${mod} ,
 					writable: true,
 					value: new \$ref({})
 					}
 				); // global')
 			} else {
-				g.writeln('Object.defineProperty(\$global,"$field.name", {
+				g.writeln('Object.defineProperty(\$global,"${field.name}", {
 					configurable: false,
-					$mod ,
+					${mod} ,
 					writable: true,
 					value: {}
 					}
@@ -638,7 +638,7 @@ fn (mut g JsGen) gen_global_decl(node ast.GlobalDecl) {
 }
 
 fn (mut g JsGen) gen_alias_type_decl(node ast.AliasTypeDecl) {
-	name := if g.ns.name == 'builtin' { node.name } else { '${g.js_name(g.ns.name)}__$node.name' }
+	name := if g.ns.name == 'builtin' { node.name } else { '${g.js_name(g.ns.name)}__${node.name}' }
 	g.writeln('function ${name}(val) { return val;  }')
 }
 
@@ -879,7 +879,7 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 			// TODO
 		}
 		ast.AtExpr {
-			g.write('"$node.val"')
+			g.write('"${node.val}"')
 		}
 		ast.BoolLiteral {
 			g.write('new bool(')
@@ -901,9 +901,9 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 		}
 		ast.CharLiteral {
 			if node.val.len_utf8() < node.val.len {
-				g.write("new rune('$node.val'.charCodeAt())")
+				g.write("new rune('${node.val}'.charCodeAt())")
 			} else {
-				g.write("new u8('$node.val')")
+				g.write("new u8('${node.val}')")
 			}
 		}
 		ast.Comment {}
@@ -917,15 +917,15 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 			// TODO
 		}
 		ast.CTempVar {
-			g.write('$node.name')
+			g.write('${node.name}')
 		}
 		ast.DumpExpr {
-			g.write('/* ast.DumpExpr: $node.expr */')
+			g.write('/* ast.DumpExpr: ${node.expr} */')
 		}
 		ast.EnumVal {
 			sym := g.table.sym(node.typ)
 			styp := g.js_name(sym.name)
-			g.write('${styp}.$node.val')
+			g.write('${styp}.${node.val}')
 		}
 		ast.FloatLiteral {
 			g.gen_float_literal_expr(node)
@@ -987,7 +987,7 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 			//		} else {
 			g.expr(node.expr)
 			if node.op in [.inc, .dec] {
-				g.write('.val $node.op')
+				g.write('.val ${node.op}')
 			} else {
 				g.write(node.op.str())
 			}
@@ -1117,7 +1117,7 @@ fn (mut g JsGen) new_ctemp_var_then_gen(expr ast.Expr, expr_type ast.Type) ast.C
 }
 
 fn (mut g JsGen) gen_ctemp_var(tvar ast.CTempVar) {
-	g.write('let $tvar.name = ')
+	g.write('let ${tvar.name} = ')
 	g.expr(tvar.orig)
 	g.writeln(';')
 }
@@ -1127,22 +1127,22 @@ fn (mut g JsGen) gen_assert_metainfo(node ast.AssertStmt) string {
 	fn_name := if g.fn_decl == unsafe { nil } || g.fn_decl.is_anon { 'anon' } else { g.fn_decl.name }
 	line_nr := node.pos.line_nr
 	src := node.expr.str()
-	metaname := 'v_assert_meta_info_$g.new_tmp_var()'
-	g.writeln('let $metaname = {}')
-	g.writeln('${metaname}.fpath = new string("$mod_path");')
-	g.writeln('${metaname}.line_nr = new int("$line_nr")')
-	g.writeln('${metaname}.fn_name = new string("$fn_name")')
+	metaname := 'v_assert_meta_info_${g.new_tmp_var()}'
+	g.writeln('let ${metaname} = {}')
+	g.writeln('${metaname}.fpath = new string("${mod_path}");')
+	g.writeln('${metaname}.line_nr = new int("${line_nr}")')
+	g.writeln('${metaname}.fn_name = new string("${fn_name}")')
 	metasrc := src
-	g.writeln('${metaname}.src = "$metasrc"')
+	g.writeln('${metaname}.src = "${metasrc}"')
 
 	match node.expr {
 		ast.InfixExpr {
 			expr_op_str := node.expr.op.str()
 			expr_left_str := node.expr.left.str()
 			expr_right_str := node.expr.right.str()
-			g.writeln('\t${metaname}.op = new string("$expr_op_str");')
-			g.writeln('\t${metaname}.llabel = new string("$expr_left_str");')
-			g.writeln('\t${metaname}.rlabel = new string("$expr_right_str");')
+			g.writeln('\t${metaname}.op = new string("${expr_op_str}");')
+			g.writeln('\t${metaname}.llabel = new string("${expr_left_str}");')
+			g.writeln('\t${metaname}.rlabel = new string("${expr_right_str}");')
 			g.write('\t${metaname}.lvalue = ')
 			g.gen_assert_single_expr(node.expr.left, node.expr.left_type)
 			g.writeln(';')
@@ -1163,21 +1163,21 @@ fn (mut g JsGen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 	unknown_value := '*unknown value*'
 	match expr {
 		ast.CastExpr, ast.IfExpr, ast.IndexExpr, ast.MatchExpr {
-			g.write('new string("$unknown_value")')
+			g.write('new string("${unknown_value}")')
 		}
 		ast.PrefixExpr {
 			if expr.right is ast.CastExpr {
 				// TODO: remove this check;
 				// vlib/builtin/map_test.v (a map of &int, set to &int(0)) fails
 				// without special casing ast.CastExpr here
-				g.write('new string("$unknown_value")')
+				g.write('new string("${unknown_value}")')
 			} else {
 				g.gen_expr_to_string(expr, typ)
 			}
 		}
 		ast.TypeNode {
 			sym := g.table.sym(g.unwrap_generic(typ))
-			g.write('new string("$sym.name"')
+			g.write('new string("${sym.name}"')
 		}
 		else {
 			mut should_clone := true
@@ -1233,11 +1233,11 @@ fn (mut g JsGen) gen_assert_stmt(mut node ast.AssertStmt) {
 	if g.is_test {
 		metaname_ok := g.gen_assert_metainfo(node)
 		g.writeln('	g_test_oks++;')
-		g.writeln('	main__cb_assertion_ok($metaname_ok);')
+		g.writeln('	main__cb_assertion_ok(${metaname_ok});')
 		g.writeln('} else {')
 		metaname_fail := g.gen_assert_metainfo(node)
 		g.writeln('	g_test_fails++;')
-		g.writeln('	main__cb_assertion_failed($metaname_fail);')
+		g.writeln('	main__cb_assertion_failed(${metaname_fail});')
 		g.writeln('	builtin__exit(1);')
 		g.writeln('}')
 		return
@@ -1245,7 +1245,7 @@ fn (mut g JsGen) gen_assert_stmt(mut node ast.AssertStmt) {
 	g.writeln('} else {')
 	g.inc_indent()
 	fname := if g.fn_decl == unsafe { nil } || g.fn_decl.is_anon { 'anon' } else { g.fn_decl.name }
-	g.writeln('builtin__eprintln(new string("$mod_path:${node.pos.line_nr + 1}: FAIL: fn ${fname}(): assert $s_assertion"));')
+	g.writeln('builtin__eprintln(new string("${mod_path}:${node.pos.line_nr + 1}: FAIL: fn ${fname}(): assert ${s_assertion}"));')
 	g.writeln('builtin__exit(1);')
 	g.dec_indent()
 	g.writeln('}')
@@ -1286,7 +1286,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				if left.kind == .blank_ident || left.name in ['', '_'] {
 					tmp_var := g.new_tmp_var()
 					// TODO: Can the tmp_var declaration be omitted?
-					g.write('const $tmp_var = ')
+					g.write('const ${tmp_var} = ')
 					g.expr(val)
 					g.writeln(';')
 					continue
@@ -1396,7 +1396,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 							g.write(' | ')
 						}
 						else {
-							panic('unexpected op $op')
+							panic('unexpected op ${op}')
 						}
 					}
 				} else if is_assign && !array_set {
@@ -1449,13 +1449,13 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 							g.write(' | ')
 						}
 						else {
-							panic('unexpected op $op')
+							panic('unexpected op ${op}')
 						}
 					}
 				} else {
 					if op == .assign && array_set {
 					} else {
-						g.write(' $op ')
+						g.write(' ${op} ')
 					}
 				}
 				// TODO: Multiple types??
@@ -1503,7 +1503,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 
 fn (mut g JsGen) gen_attrs(attrs []ast.Attr) {
 	for attr in attrs {
-		g.writeln('/* [$attr.name] */')
+		g.writeln('/* [${attr.name}] */')
 	}
 }
 
@@ -1526,7 +1526,7 @@ fn (mut g JsGen) gen_branch_stmt(it ast.BranchStmt) {
 				g.writeln('throw new ContinueException();')
 			}
 			else {
-				verror('unexpected branch stmt: $it.kind')
+				verror('unexpected branch stmt: ${it.kind}')
 			}
 		}
 		return
@@ -1572,11 +1572,11 @@ fn (mut g JsGen) gen_enum_decl(it ast.EnumDecl) {
 	g.inc_indent()
 	mut i := 0
 	for field in it.fields {
-		g.write('$field.name: ')
+		g.write('${field.name}: ')
 		if field.has_expr && field.expr is ast.IntegerLiteral {
 			i = field.expr.val.int()
 		}
-		g.writeln('$i,')
+		g.writeln('${i},')
 		i++
 	}
 	g.dec_indent()
@@ -1607,7 +1607,7 @@ fn (mut g JsGen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 				mut sgtyps := '_T'
 				for gt in sym.info.generic_types {
 					gts := g.table.sym(g.unwrap_generic(gt))
-					sgtyps += '_$gts.cname'
+					sgtyps += '_${gts.cname}'
 				}
 				styp += sgtyps
 			}
@@ -1660,11 +1660,11 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 			i = g.new_tmp_var()
 		}
 		g.inside_loop = true
-		g.write('for (let $i = ')
+		g.write('for (let ${i} = ')
 		g.expr(it.cond)
-		g.write('; $i < ')
+		g.write('; ${i} < ')
 		g.expr(it.high)
-		g.writeln('; $i = new int($i + 1)) {')
+		g.writeln('; ${i} = new int(${i} + 1)) {')
 		g.inside_loop = false
 		g.inc_indent()
 		g.writeln('try { ')
@@ -1682,18 +1682,18 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		val := if it.val_var in ['', '_'] { '_' } else { it.val_var }
 		// styp := g.typ(it.val_type)
 		if it.key_var.len > 0 {
-			g.write('for (const [$it.key_var, $val] of ')
+			g.write('for (const [${it.key_var}, ${val}] of ')
 			if it.kind == .string {
 				g.write('Array.from(')
 				g.expr(it.cond)
 				if it.cond_type.is_ptr() {
 					g.write('.valueOf()')
 				}
-				g.write('.str.split(\'\').entries(), ([$it.key_var, $val]) => [$it.key_var, ')
+				g.write('.str.split(\'\').entries(), ([${it.key_var}, ${val}]) => [${it.key_var}, ')
 
 				g.write('new ')
 
-				g.write('u8($val)])')
+				g.write('u8(${val})])')
 			} else {
 				g.expr(it.cond)
 				if it.cond_type.is_ptr() {
@@ -1702,7 +1702,7 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 				g.write('.entries()')
 			}
 		} else {
-			g.write('for (const $val of ')
+			g.write('for (const ${val} of ')
 			g.expr(it.cond)
 			if it.cond_type.is_ptr() {
 				g.write('.valueOf()')
@@ -1741,18 +1741,18 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		tmp2 := g.new_tmp_var()
 		if g.pref.output_es5 {
 			tmp3 := g.new_tmp_var()
-			g.write('let $tmp2 = ')
+			g.write('let ${tmp2} = ')
 			g.expr(it.cond)
 			if it.cond_type.is_ptr() {
 				g.write('.valueOf()')
 			}
 			g.writeln(';')
 
-			g.write('for (var $tmp3 = 0; $tmp3 < Object.keys(${tmp2}.map).length; $tmp3++) ')
+			g.write('for (var ${tmp3} = 0; ${tmp3} < Object.keys(${tmp2}.map).length; ${tmp3}++) ')
 			g.write('{')
-			g.writeln('\tlet $tmp = Object.keys(${tmp2}.map)')
-			g.writeln('\tlet $key = $tmp[$tmp3];')
-			g.writeln('\tlet $val = ${tmp2}.map[$tmp[$tmp3]];')
+			g.writeln('\tlet ${tmp} = Object.keys(${tmp2}.map)')
+			g.writeln('\tlet ${key} = ${tmp}[${tmp3}];')
+			g.writeln('\tlet ${val} = ${tmp2}.map[${tmp}[${tmp3}]];')
 			g.inc_indent()
 			g.writeln('try { ')
 			g.stmts(it.stmts)
@@ -1763,17 +1763,17 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 			g.dec_indent()
 			g.writeln('}')
 		} else {
-			g.write('let $tmp = ')
+			g.write('let ${tmp} = ')
 			g.expr(it.cond)
 			if it.cond_type.is_ptr() {
 				g.write('.valueOf()')
 			}
 			g.writeln(';')
-			g.writeln('for (var $tmp2 in ${tmp}.map) {')
+			g.writeln('for (var ${tmp2} in ${tmp}.map) {')
 
 			g.inc_indent()
-			g.writeln('let $val = ${tmp}.map[$tmp2];')
-			g.writeln('let $key = $tmp2;')
+			g.writeln('let ${val} = ${tmp}.map[${tmp2}];')
+			g.writeln('let ${key} = ${tmp2};')
 
 			g.writeln('try { ')
 			g.inc_indent()
@@ -1840,7 +1840,7 @@ fn (mut g JsGen) gen_interface_decl(it ast.InterfaceDecl) {
 	// This is a hack to make the interface's type accessible outside its namespace
 	// TODO: interfaces are always `pub`?
 	name := g.js_name(it.name)
-	g.push_pub_var('/** @type $name */\n\t\t$name')
+	g.push_pub_var('/** @type ${name} */\n\t\t${name}')
 	g.writeln('function ${g.js_name(it.name)} (arg) { return new \$ref(arg); }')
 }
 
@@ -1878,8 +1878,8 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 		if optional_none || is_regular_option || node.types[0] == ast.error_type_idx {
 			if !isnil(g.fn_decl) && g.fn_decl.is_test {
 				test_error_var := g.new_tmp_var()
-				g.writeln('let $test_error_var = "TODO";')
-				g.writeln('return $test_error_var;')
+				g.writeln('let ${test_error_var} = "TODO";')
+				g.writeln('return ${test_error_var};')
 				return
 			}
 			if !g.inside_or {
@@ -1897,7 +1897,7 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 	}
 	if fn_return_is_optional {
 		tmp := g.new_tmp_var()
-		g.write('const $tmp = new ')
+		g.write('const ${tmp} = new ')
 
 		g.writeln('${js.option_name}({});')
 		g.write('${tmp}.state = new u8(0);')
@@ -1909,9 +1909,9 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 		}
 		g.writeln('')
 		if g.inside_or {
-			g.write('throw new ReturnException($tmp);')
+			g.write('throw new ReturnException(${tmp});')
 		} else {
-			g.write('return $tmp;')
+			g.write('return ${tmp};')
 		}
 		return
 	}
@@ -1937,7 +1937,7 @@ fn (mut g JsGen) gen_hash_stmt(it ast.HashStmt) {
 
 fn (mut g JsGen) gen_sumtype_decl(it ast.SumTypeDecl) {
 	name := g.js_name(it.name)
-	g.push_pub_var('/** @type $name */\n\t\t$name')
+	g.push_pub_var('/** @type ${name} */\n\t\t${name}')
 	g.writeln('function ${g.js_name(it.name)} (arg) { return arg; }')
 }
 
@@ -1954,9 +1954,9 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	g.doc.gen_fac_fn(node.fields)
 	if g.pref.output_es5 {
 		obj := g.new_tmp_var()
-		g.writeln('function ${js_name}($obj) {')
+		g.writeln('function ${js_name}(${obj}) {')
 		g.inc_indent()
-		g.writeln('if ($obj === undefined) { obj = {}; }')
+		g.writeln('if (${obj} === undefined) { obj = {}; }')
 		for field in node.fields {
 			mut keep := true
 			for attr in field.attrs {
@@ -1965,8 +1965,8 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 				}
 			}
 			if keep {
-				g.writeln('if (${obj}.$field.name === undefined) {')
-				g.write('${obj}.$field.name = ')
+				g.writeln('if (${obj}.${field.name} === undefined) {')
+				g.write('${obj}.${field.name} = ')
 				if field.has_default_expr {
 					g.expr(field.default_expr)
 				} else {
@@ -1974,14 +1974,14 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 				}
 				g.writeln('\n}')
 			}
-			g.writeln('var $field.name = ${obj}.$field.name;')
+			g.writeln('var ${field.name} = ${obj}.${field.name};')
 		}
 
 		g.dec_indent()
 	} else {
 		g.write('function ${js_name}({ ')
 		for i, field in node.fields {
-			g.write('$field.name')
+			g.write('${field.name}')
 			mut keep := true
 			for attr in field.attrs {
 				if attr.name == 'noinit' {
@@ -2005,7 +2005,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	}
 	g.inc_indent()
 	for field in node.fields {
-		g.writeln('this.$field.name = $field.name')
+		g.writeln('this.${field.name} = ${field.name}')
 	}
 	g.dec_indent()
 	g.writeln('};')
@@ -2036,7 +2036,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 			g.writeln('toString() {')
 		}
 		g.inc_indent()
-		g.write('return `$js_name {')
+		g.write('return `${js_name} {')
 		for i, field in node.fields {
 			if i == 0 {
 				g.write(' ')
@@ -2044,8 +2044,8 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 				g.write(', ')
 			}
 			match g.typ(field.typ).split('.').last() {
-				'string' { g.write('$field.name: "\${this["$field.name"].toString()}"') }
-				else { g.write('$field.name: \${this["$field.name"].toString()} ') }
+				'string' { g.write('${field.name}: "\${this["${field.name}"].toString()}"') }
+				else { g.write('${field.name}: \${this["${field.name}"].toString()} ') }
 			}
 		}
 		g.writeln('}`')
@@ -2066,7 +2066,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 			}
 		}
 		if keep {
-			g.write('$field.name: ${g.to_js_typ_val(field.typ)}')
+			g.write('${field.name}: ${g.to_js_typ_val(field.typ)}')
 			g.writeln(',')
 		}
 	}
@@ -2097,7 +2097,7 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		t1 := g.new_tmp_var()
 		g.writeln('(function(length) {')
 		g.inc_indent()
-		g.writeln('const $t1 = [];')
+		g.writeln('const ${t1} = [];')
 		g.write('for (let it = 0; it < length')
 		g.writeln('; it++) {')
 		g.inc_indent()
@@ -2112,7 +2112,7 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.writeln(');')
 		g.dec_indent()
 		g.writeln('};')
-		g.writeln('return $t1;')
+		g.writeln('return ${t1};')
 		g.dec_indent()
 		g.write('})(')
 		g.expr(it.len_expr)
@@ -2128,10 +2128,10 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		t2 := g.new_tmp_var()
 		g.writeln('(function() {')
 		g.inc_indent()
-		g.writeln('const $t1 = [];')
-		g.write('for (let $t2 = 0; $t2 < ')
+		g.writeln('const ${t1} = [];')
+		g.write('for (let ${t2} = 0; ${t2} < ')
 		g.expr(it.exprs[0])
-		g.writeln('; $t2++) {')
+		g.writeln('; ${t2}++) {')
 		g.inc_indent()
 		g.write('${t1}.push(')
 		if it.has_default {
@@ -2144,7 +2144,7 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.writeln(');')
 		g.dec_indent()
 		g.writeln('};')
-		g.writeln('return $t1;')
+		g.writeln('return ${t1};')
 		g.dec_indent()
 		g.write('})(), len: new int(')
 		g.expr(it.exprs[0])
@@ -2159,7 +2159,7 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		} else {
 			g.gen_array_init_values(it.exprs)
 		}
-		g.write(', len: new int($c), cap: new int($c)')
+		g.write(', len: new int(${c}), cap: new int(${c})')
 	}
 	g.dec_indent()
 	g.write('}))')
@@ -2436,7 +2436,7 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 	} else {
 		s := g.new_tmp_var()
 		cond_var = CondString{s}
-		g.write('let $s = ')
+		g.write('let ${s} = ')
 		g.expr(node.cond)
 		g.writeln(';')
 	}
@@ -2444,7 +2444,7 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 		g.empty_line = true
 		cur_line = g.out.cut_to(g.stmt_start_pos).trim_left(' \t')
 		tmp_var = g.new_tmp_var()
-		g.writeln('let $tmp_var = undefined;')
+		g.writeln('let ${tmp_var} = undefined;')
 	}
 	if is_expr && !need_tmp_var {
 		g.write('(')
@@ -2460,7 +2460,7 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 	}
 	g.write(cur_line)
 	if need_tmp_var {
-		g.write('$tmp_var')
+		g.write('${tmp_var}')
 	}
 	if is_expr && !need_tmp_var {
 		g.write(')')
@@ -2486,11 +2486,11 @@ fn (mut g JsGen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 					} else {
 						g.write('opt_ok(')
 						g.stmt(stmt)
-						g.writeln(', $tmp_var);')
+						g.writeln(', ${tmp_var});')
 					}
 				}
 			} else {
-				g.write('$tmp_var = ')
+				g.write('${tmp_var} = ')
 				g.stmt(stmt)
 				g.writeln('')
 			}
@@ -2578,7 +2578,7 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 						tsym := g.table.sym(typ)
 						if tsym.language == .js && (tsym.name == 'Number'
 							|| tsym.name == 'Boolean' || tsym.name == 'String') {
-							g.write(' === $tsym.name.to_lower()')
+							g.write(' === ${tsym.name.to_lower()}')
 						} else {
 							g.write(' instanceof ')
 							g.expr(branch.exprs[sumtype_index])
@@ -2774,7 +2774,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 			g.inside_if_optional = true
 		}
 
-		g.writeln('let $tmp; /* if prepend */')
+		g.writeln('let ${tmp}; /* if prepend */')
 	} else if node.is_expr || g.inside_ternary {
 		g.write('(')
 		prev := g.inside_ternary
@@ -2811,7 +2811,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 			if cond.expr !is ast.IndexExpr && cond.expr !is ast.PrefixExpr {
 				var_name := g.new_tmp_var()
 				guard_vars[i] = var_name
-				g.writeln('let $var_name;')
+				g.writeln('let ${var_name};')
 			} else {
 				guard_vars[i] = ''
 			}
@@ -2842,7 +2842,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 						g.tmp_count--
 						g.writeln('if (${var_name}.state == 0) {')
 					} else {
-						g.write('if ($var_name = ')
+						g.write('if (${var_name} = ')
 						g.expr(branch.cond.expr)
 						g.writeln(', ${var_name}.state == 0) {')
 					}
@@ -2853,11 +2853,11 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 							} else {
 								branch.cond.vars[0].name
 							}
-							g.write('\tlet $cond_var_name = ')
+							g.write('\tlet ${cond_var_name} = ')
 							g.expr(branch.cond.expr)
 							g.writeln(';')
 						} else {
-							g.writeln('\tlet $branch.cond.vars[0].name = ${var_name}.data;')
+							g.writeln('\tlet ${branch.cond.vars}[0].name = ${var_name}.data;')
 						}
 					}
 				}
@@ -2880,7 +2880,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 		g.writeln('}')
 	}
 	if needs_tmp_var {
-		g.write('$tmp')
+		g.write('${tmp}')
 	}
 	if node.typ.has_flag(.optional) {
 		g.inside_if_optional = false
@@ -3013,7 +3013,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.expr(it.left)
 		g.gen_deref_ptr(it.left_type)
 		g.write(').\$toJS())')
-		g.write(' $it.op ')
+		g.write(' ${it.op} ')
 		g.write('BigInt((')
 		g.expr(it.right)
 		g.gen_deref_ptr(it.right_type)
@@ -3147,7 +3147,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 					''
 				}
 			}
-			g.write('.$name (')
+			g.write('.${name} (')
 			g.expr(it.right)
 			g.gen_deref_ptr(it.right_type)
 			g.write(')')
@@ -3172,7 +3172,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 
 			g.gen_deref_ptr(it.left_type)
 			// g.write('.val')
-			g.write(' $it.op ')
+			g.write(' ${it.op} ')
 
 			g.expr(it.right)
 			g.gen_deref_ptr(it.right_type)
@@ -3285,7 +3285,7 @@ fn (mut g JsGen) type_name(raw_type ast.Type) {
 	} else {
 		s = g.table.type_to_str(g.unwrap_generic(typ))
 	}
-	g.write('new string("$s")')
+	g.write('new string("${s}")')
 }
 
 fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
@@ -3314,7 +3314,7 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 					g.write(')')
 					return
 				}
-				panic('unknown generic field $it.pos')
+				panic('unknown generic field ${it.pos}')
 			}
 		}
 	}
@@ -3327,7 +3327,7 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 			ltyp = ltyp.deref()
 		}
 	}
-	g.write('.$it.field_name')
+	g.write('.${it.field_name}')
 }
 
 fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
@@ -3376,7 +3376,7 @@ fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 	if it.is_raw {
 		g.writeln('(function() { let s = String(); ')
 		for x in text {
-			g.writeln('s += String.fromCharCode($x);')
+			g.writeln('s += String.fromCharCode(${x});')
 		}
 		g.writeln('return s; })()')
 	} else {
@@ -3385,7 +3385,7 @@ fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 			if ch == `\n` {
 				g.write('\\n')
 			} else {
-				g.write('$ch.ascii_str()')
+				g.write('${ch.ascii_str()}')
 			}
 		}
 		g.write('"')
@@ -3415,7 +3415,7 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 		g.writeln('let tmp = new ${g.js_name(name)}()')
 
 		for field in it.fields {
-			g.write('tmp.$field.name = ')
+			g.write('tmp.${field.name} = ')
 			g.expr(field.expr)
 			g.writeln(';')
 		}
@@ -3427,7 +3427,7 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 		g.inc_indent()
 		for i, field in it.fields {
 			if field.name.len != 0 {
-				g.write('$field.name: ')
+				g.write('${field.name}: ')
 			}
 			g.expr(field.expr)
 			if i < it.fields.len - 1 {
@@ -3442,18 +3442,18 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 		g.writeln('(function() {')
 		g.inc_indent()
 		tmp := g.new_tmp_var()
-		g.writeln('let $tmp = new ${g.js_name(name)}({});')
+		g.writeln('let ${tmp} = new ${g.js_name(name)}({});')
 
 		for field in it.fields {
 			if field.name.len != 0 {
-				g.write('${tmp}.$field.name = ')
+				g.write('${tmp}.${field.name} = ')
 				g.expr(field.expr)
 			}
 			g.write(';')
 
 			g.writeln('')
 		}
-		g.writeln('return $tmp;')
+		g.writeln('return ${tmp};')
 		g.dec_indent()
 		g.writeln('})()')
 	}
@@ -3466,7 +3466,7 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 	} else if sym.kind == .array_fixed {
 		fixed_info := sym.info as ast.ArrayFixed
 		typ_name := g.table.get_type_name(fixed_info.elem_type)
-		g.write('"[$fixed_info.size]$typ_name"')
+		g.write('"[${fixed_info.size}]${typ_name}"')
 	} else if sym.kind == .function {
 		info := sym.info as ast.FnType
 		fn_info := info.func
@@ -3481,9 +3481,9 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 		if fn_info.return_type != ast.void_type {
 			repr += ' ${g.table.get_type_name(fn_info.return_type)}'
 		}
-		g.write('"$repr"')
+		g.write('"${repr}"')
 	} else {
-		g.write('"$sym.name"')
+		g.write('"${sym.name}"')
 	}
 }
 
@@ -3493,7 +3493,7 @@ fn (mut g JsGen) gen_cast_tmp(tmp string, typ_ ast.Type) {
 	if !g.pref.output_es5 && (tsym.kind == .i64 || tsym.kind == .u64) {
 		g.write('new ')
 
-		g.write('$tsym.kind.str()')
+		g.write('${tsym.kind.str()}')
 		g.write('(BigInt(')
 		g.write(tmp)
 		g.write('n))')
@@ -3577,7 +3577,7 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 		&& (tsym.kind == .i64 || tsym.kind == .u64) {
 		g.write('new ')
 
-		g.write('$tsym.kind.str()')
+		g.write('${tsym.kind.str()}')
 		g.write('(BigInt(')
 		g.write(it.expr.val)
 		g.write('n))')
@@ -3637,13 +3637,13 @@ fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 		if g.cast_stack.last() in ast.integer_type_idxs {
 			g.write('new ')
 
-			g.write('int($it.val)')
+			g.write('int(${it.val})')
 			return
 		}
 	}
 	g.write('new ')
 
-	g.write('${g.typ(typ)}($it.val)')
+	g.write('${g.typ(typ)}(${it.val})')
 }
 
 fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
@@ -3672,7 +3672,7 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 	// Skip cast if type is the same as the parrent caster
 	if g.cast_stack.len > 0 {
 		if g.cast_stack.last() in ast.float_type_idxs {
-			g.write('new f32($it.val)')
+			g.write('new f32(${it.val})')
 			return
 		} else if g.cast_stack.last() in ast.integer_type_idxs {
 			g.write(int(it.val.f64()).str())
@@ -3681,7 +3681,7 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 	}
 	g.write('new ')
 
-	g.write('${g.typ(typ)}($it.val)')
+	g.write('${g.typ(typ)}(${it.val})')
 }
 
 fn (mut g JsGen) unwrap_generic(typ ast.Type) ast.Type {

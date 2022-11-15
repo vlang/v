@@ -13,7 +13,7 @@ fn C.tinfl_decompress_mem_to_heap(source_buf voidptr, source_buf_len usize, out_
 [manualfree]
 pub fn compress(data []u8, flags int) ![]u8 {
 	if u64(data.len) > compress.max_size {
-		return error('data too large ($data.len > $compress.max_size)')
+		return error('data too large (${data.len} > ${compress.max_size})')
 	}
 	mut out_len := usize(0)
 
@@ -22,7 +22,7 @@ pub fn compress(data []u8, flags int) ![]u8 {
 		return error('compression failed')
 	}
 	if u64(out_len) > compress.max_size {
-		return error('compressed data is too large ($out_len > $compress.max_size)')
+		return error('compressed data is too large (${out_len} > ${compress.max_size})')
 	}
 	return unsafe { address.vbytes(int(out_len)) }
 }
@@ -38,7 +38,7 @@ pub fn decompress(data []u8, flags int) ![]u8 {
 		return error('decompression failed')
 	}
 	if u64(out_len) > compress.max_size {
-		return error('decompressed data is too large ($out_len > $compress.max_size)')
+		return error('decompressed data is too large (${out_len} > ${compress.max_size})')
 	}
 	return unsafe { address.vbytes(int(out_len)) }
 }

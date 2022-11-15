@@ -3,7 +3,7 @@ module time
 fn test_days_from_unix_epoch() {
 	s := '2000-05-10 22:11:03'
 	time_test := parse(s) or {
-		eprintln('> failing format: $s | err: $err')
+		eprintln('> failing format: ${s} | err: ${err}')
 		assert false
 		return
 	}

@@ -101,13 +101,13 @@ fn (image Image) save_as_ppm(file_name string) {
 	npixels := image.width * image.height
 	mut f_out := os.create(file_name) or { panic(err) }
 	f_out.writeln('P3') or { panic(err) }
-	f_out.writeln('$image.width $image.height') or { panic(err) }
+	f_out.writeln('${image.width} ${image.height}') or { panic(err) }
 	f_out.writeln('255') or { panic(err) }
 	for i in 0 .. npixels {
 		c_r := to_int(unsafe { image.data[i] }.x)
 		c_g := to_int(unsafe { image.data[i] }.y)
 		c_b := to_int(unsafe { image.data[i] }.z)
-		f_out.write_string('$c_r $c_g $c_b ') or { panic(err) }
+		f_out.write_string('${c_r} ${c_g} ${c_b} ') or { panic(err) }
 	}
 	f_out.close()
 }
@@ -390,7 +390,7 @@ const (
 //****************** main function for the radiance calculation *************
 fn radiance(r Ray, depthi int, scene_id int) Vec {
 	if depthi > 1024 {
-		eprintln('depthi: $depthi')
+		eprintln('depthi: ${depthi}')
 		eprintln('')
 		return Vec{}
 	}
@@ -595,7 +595,7 @@ fn main() {
 
 	t1 := time.ticks()
 
-	eprintln('Path tracing samples: $samples, file_name: $file_name, scene_id: $scene_id, width: $width, height: $height')
+	eprintln('Path tracing samples: ${samples}, file_name: ${file_name}, scene_id: ${scene_id}, width: ${width}, height: ${height}')
 	eprintln('')
 	image := ray_trace(width, height, samples, file_name, scene_id)
 	t2 := time.ticks()
@@ -605,5 +605,5 @@ fn main() {
 	image.save_as_ppm(file_name)
 	t3 := time.ticks()
 
-	eprintln('Image saved as [$file_name]. Took: ${(t3 - t2):5}ms')
+	eprintln('Image saved as [${file_name}]. Took: ${(t3 - t2):5}ms')
 }

@@ -268,6 +268,6 @@ fn sql_type_from_v(typ int) !string {
 	} else if typ == -1 {
 		'SERIAL'
 	} else {
-		error('Unknown type $typ')
+		error('Unknown type ${typ}')
 	}
 }

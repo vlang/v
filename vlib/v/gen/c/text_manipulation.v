@@ -8,9 +8,9 @@ import v.util
 fn (mut g Gen) write(s string) {
 	$if trace_gen ? {
 		if g.file == unsafe { nil } {
-			eprintln('gen file: <nil> | last_fn_c_name: ${g.last_fn_c_name:-45} | write: $s')
+			eprintln('gen file: <nil> | last_fn_c_name: ${g.last_fn_c_name:-45} | write: ${s}')
 		} else {
-			eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | write: $s')
+			eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | write: ${s}')
 		}
 	}
 	if g.indent > 0 && g.empty_line {
@@ -25,9 +25,9 @@ fn (mut g Gen) write(s string) {
 fn (mut g Gen) writeln(s string) {
 	$if trace_gen ? {
 		if g.file == unsafe { nil } {
-			eprintln('gen file: <nil> | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln: $s')
+			eprintln('gen file: <nil> | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln: ${s}')
 		} else {
-			eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln: $s')
+			eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln: ${s}')
 		}
 	}
 	if g.indent > 0 && g.empty_line {

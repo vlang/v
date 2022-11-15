@@ -11,7 +11,7 @@ pub struct TimeParseError {
 
 // msg implements the `IError.msg()` method for `TimeParseError`.
 pub fn (err TimeParseError) msg() string {
-	return 'Invalid time format code: $err.code'
+	return 'Invalid time format code: ${err.code}'
 }
 
 fn error_invalid_time(code int) IError {

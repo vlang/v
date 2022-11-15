@@ -164,7 +164,7 @@ pub fn parse_dotted_key(key string) ![]string {
 	}
 	if in_string {
 		return error(@FN +
-			': could not parse key, missing closing string delimiter `$delim.ascii_str()`')
+			': could not parse key, missing closing string delimiter `${delim.ascii_str()}`')
 	}
 	return out
 }

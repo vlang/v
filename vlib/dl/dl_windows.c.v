@@ -34,5 +34,5 @@ pub fn dlerror() string {
 	// https://docs.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-getlasterror
 	// Unlike dlerror(), GetLastError returns just an error code, that is function specific.
 	cerr := int(C.GetLastError())
-	return 'error code $cerr'
+	return 'error code ${cerr}'
 }

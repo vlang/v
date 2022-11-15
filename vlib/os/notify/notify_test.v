@@ -8,7 +8,7 @@ fn make_pipe() !(int, int) {
 	$if linux {
 		pipefd := [2]int{}
 		if C.pipe(&pipefd[0]) != 0 {
-			return error('error $C.errno: ' + os.posix_get_error_msg(C.errno))
+			return error('error ${C.errno}: ' + os.posix_get_error_msg(C.errno))
 		}
 		return pipefd[0], pipefd[1]
 	}

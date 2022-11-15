@@ -59,8 +59,8 @@ fn (vd VDoc) render_search_index(out Output) {
 	js_search_data.write_string('var searchModuleData = [')
 	for i, title in vd.search_module_index {
 		data := vd.search_module_data[i]
-		js_search_index.write_string('"$title",')
-		js_search_data.write_string('["$data.description","$data.link"],')
+		js_search_index.write_string('"${title}",')
+		js_search_data.write_string('["${data.description}","${data.link}"],')
 	}
 	js_search_index.writeln('];')
 	js_search_index.write_string('var searchIndex = [')
@@ -68,9 +68,9 @@ fn (vd VDoc) render_search_index(out Output) {
 	js_search_data.write_string('var searchData = [')
 	for i, title in vd.search_index {
 		data := vd.search_data[i]
-		js_search_index.write_string('"$title",')
+		js_search_index.write_string('"${title}",')
 		// array instead of object to reduce file size
-		js_search_data.write_string('["$data.badge","$data.description","$data.link","$data.prefix"],')
+		js_search_data.write_string('["${data.badge}","${data.description}","${data.link}","${data.prefix}"],')
 	}
 	js_search_index.writeln('];')
 	js_search_data.writeln('];')
@@ -94,7 +94,7 @@ fn (mut vd VDoc) render_static_html(out Output) {
 fn (vd VDoc) get_resource(name string, out Output) string {
 	cfg := vd.cfg
 	path := os.join_path(cfg.theme_dir, name)
-	mut res := os.read_file(path) or { panic('vdoc: could not read $path') }
+	mut res := os.read_file(path) or { panic('vdoc: could not read ${path}') }
 	/*
 	if minify {
 		if name.ends_with('.js') {
@@ -110,7 +110,7 @@ fn (vd VDoc) get_resource(name string, out Output) string {
 	} else {
 		output_path := os.join_path(out.path, name)
 		if !os.exists(output_path) {
-			println('Generating $out.typ in "$output_path"')
+			println('Generating ${out.typ} in "${output_path}"')
 			os.write_file(output_path, res) or { panic(err) }
 		}
 		return name
@@ -150,7 +150,7 @@ fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
 	dn_description := trim_doc_node_description(comments)
 	vd.search_index << dn.name
 	vd.search_data << SearchResult{
-		prefix: if dn.parent_name != '' { '$dn.kind ($dn.parent_name)' } else { '$dn.kind ' }
+		prefix: if dn.parent_name != '' { '${dn.kind} (${dn.parent_name})' } else { '${dn.kind} ' }
 		description: dn_description
 		badge: mod
 		link: vd.get_file_name(mod, out) + '#' + get_node_id(dn)
@@ -164,7 +164,7 @@ fn (vd VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) 
 	cfg := vd.cfg
 	base_dir := os.dir(os.real_path(cfg.input_path))
 	file_path_name := if cfg.is_multi {
-		cn.file_path.replace('$base_dir/', '')
+		cn.file_path.replace('${base_dir}/', '')
 	} else {
 		os.file_name(cn.file_path)
 	}
@@ -173,7 +173,7 @@ fn (vd VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) 
 		hw.write_string(doc_node_html(cn, src_link, false, cfg.include_examples, d.table))
 	}
 	for child in cn.children {
-		child_file_path_name := child.file_path.replace('$base_dir/', '')
+		child_file_path_name := child.file_path.replace('${base_dir}/', '')
 		child_src_link := get_src_link(vd.manifest.repo_url, child_file_path_name,
 			child.pos.line_nr + 1)
 		hw.write_string(doc_node_html(child, child_src_link, false, cfg.include_examples,
@@ -223,7 +223,7 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 			submodules := vd.docs.filter(it.head.name.starts_with(submod_prefix + '.'))
 			dropdown := if submodules.len > 0 { vd.assets['arrow_icon'] } else { '' }
 			active_class := if dc.head.name == d.head.name { ' active' } else { '' }
-			modules_toc.write_string('<li class="open$active_class"><div class="menu-row">$dropdown<a href="$href_name">$submod_prefix</a></div>')
+			modules_toc.write_string('<li class="open${active_class}"><div class="menu-row">${dropdown}<a href="${href_name}">${submod_prefix}</a></div>')
 			for j, cdoc in submodules {
 				if j == 0 {
 					modules_toc.write_string('<ul>')
@@ -234,7 +234,7 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 				} else {
 					''
 				}
-				modules_toc.write_string('<li$sub_selected_classes><a href="./${cdoc.head.name}.html">$submod_name</a></li>')
+				modules_toc.write_string('<li${sub_selected_classes}><a href="./${cdoc.head.name}.html">${submod_name}</a></li>')
 				if j == submodules.len - 1 {
 					modules_toc.write_string('</ul>')
 				}
@@ -280,15 +280,15 @@ fn get_src_link(repo_url string, file_name string, line_nr int) string {
 		return ''
 	}
 	url.path = url.path.trim_right('/') + match url.host {
-		'github.com' { '/blob/master/$file_name' }
-		'gitlab.com' { '/-/blob/master/$file_name' }
-		'git.sir.ht' { '/tree/master/$file_name' }
+		'github.com' { '/blob/master/${file_name}' }
+		'gitlab.com' { '/-/blob/master/${file_name}' }
+		'git.sir.ht' { '/tree/master/${file_name}' }
 		else { '' }
 	}
 	if url.path == '/' {
 		return ''
 	}
-	url.fragment = 'L$line_nr'
+	url.fragment = 'L${line_nr}'
 	return url.str()
 }
 
@@ -299,18 +299,18 @@ fn html_highlight(code string, tb &ast.Table) string {
 		lit := if typ in [.unone, .operator, .punctuation] {
 			tok.kind.str()
 		} else if typ == .string {
-			"'$tok.lit'"
+			"'${tok.lit}'"
 		} else if typ == .char {
-			'`$tok.lit`'
+			'`${tok.lit}`'
 		} else if typ == .comment {
-			if tok.lit != '' && tok.lit[0] == 1 { '//${tok.lit[1..]}' } else { '//$tok.lit' }
+			if tok.lit != '' && tok.lit[0] == 1 { '//${tok.lit[1..]}' } else { '//${tok.lit}' }
 		} else {
 			tok.lit
 		}
 		if typ in [.unone, .name] {
 			return lit
 		}
-		return '<span class="token $typ">$lit</span>'
+		return '<span class="token ${typ}">${lit}</span>'
 	}
 	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{})
 	mut tok := s.scan()
@@ -398,44 +398,44 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	mut tags := dn.tags.filter(!it.starts_with('deprecated'))
 	tags.sort()
 	mut node_id := get_node_id(dn)
-	mut hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
+	mut hash_link := if !head { ' <a href="#${node_id}">#</a>' } else { '' }
 	if head && is_module_readme(dn) {
-		node_id = 'readme_$node_id'
-		hash_link = ' <a href="#$node_id">#</a>'
+		node_id = 'readme_${node_id}'
+		hash_link = ' <a href="#${node_id}">#</a>'
 	}
-	dnw.writeln('${tabs[1]}<section id="$node_id" class="doc-node$node_class">')
+	dnw.writeln('${tabs[1]}<section id="${node_id}" class="doc-node${node_class}">')
 	if dn.name.len > 0 {
 		if dn.kind == .const_group {
-			dnw.write_string('${tabs[2]}<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
+			dnw.write_string('${tabs[2]}<div class="title"><${head_tag}>${sym_name}${hash_link}</${head_tag}>')
 		} else {
-			dnw.write_string('${tabs[2]}<div class="title"><$head_tag>$dn.kind $sym_name$hash_link</$head_tag>')
+			dnw.write_string('${tabs[2]}<div class="title"><${head_tag}>${dn.kind} ${sym_name}${hash_link}</${head_tag}>')
 		}
 		if link.len != 0 {
-			dnw.write_string('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
+			dnw.write_string('<a class="link" rel="noreferrer" target="_blank" href="${link}">${link_svg}</a>')
 		}
 		dnw.write_string('</div>')
 	}
 	if deprecated_tags.len > 0 {
 		attributes := deprecated_tags.map('<div class="attribute attribute-deprecated">${no_quotes(it)}</div>').join('')
-		dnw.writeln('<div class="attributes">$attributes</div>')
+		dnw.writeln('<div class="attributes">${attributes}</div>')
 	}
 	if tags.len > 0 {
-		attributes := tags.map('<div class="attribute">$it</div>').join('')
-		dnw.writeln('<div class="attributes">$attributes</div>')
+		attributes := tags.map('<div class="attribute">${it}</div>').join('')
+		dnw.writeln('<div class="attributes">${attributes}</div>')
 	}
 	if !head && dn.content.len > 0 {
-		dnw.writeln('<pre class="signature"><code>$highlighted_code</code></pre>')
+		dnw.writeln('<pre class="signature"><code>${highlighted_code}</code></pre>')
 	}
 	// do not mess with md_content further, its formatting is important, just output it 1:1 !
-	dnw.writeln('$md_content\n')
+	dnw.writeln('${md_content}\n')
 	// Write examples if any found
 	examples := dn.examples()
 	if include_examples && examples.len > 0 {
 		example_title := if examples.len > 1 { 'Examples' } else { 'Example' }
-		dnw.writeln('<section class="doc-node examples"><h4>$example_title</h4>')
+		dnw.writeln('<section class="doc-node examples"><h4>${example_title}</h4>')
 		for example in examples {
 			hl_example := html_highlight(example, tb)
-			dnw.writeln('<pre><code class="language-v">$hl_example</code></pre>')
+			dnw.writeln('<pre><code class="language-v">${hl_example}</code></pre>')
 		}
 		dnw.writeln('</section>')
 	}
@@ -488,17 +488,17 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 		if dn.comments.len == 0 || (dn.comments.len > 0 && dn.comments[0].text.len == 0) {
 			return
 		}
-		toc.write_string('<li class="open"><a href="#readme_$toc_slug">README</a>')
+		toc.write_string('<li class="open"><a href="#readme_${toc_slug}">README</a>')
 	} else if dn.name != 'Constants' {
-		toc.write_string('<li class="open"><a href="#$toc_slug">$dn.kind $dn.name</a>')
+		toc.write_string('<li class="open"><a href="#${toc_slug}">${dn.kind} ${dn.name}</a>')
 		toc.writeln('        <ul>')
 		for child in dn.children {
 			cname := dn.name + '.' + child.name
-			toc.writeln('<li><a href="#${slug(cname)}">$child.kind $child.name</a></li>')
+			toc.writeln('<li><a href="#${slug(cname)}">${child.kind} ${child.name}</a></li>')
 		}
 		toc.writeln('</ul>')
 	} else {
-		toc.write_string('<li class="open"><a href="#$toc_slug">$dn.name</a>')
+		toc.write_string('<li class="open"><a href="#${toc_slug}">${dn.name}</a>')
 	}
 	toc.writeln('</li>')
 }

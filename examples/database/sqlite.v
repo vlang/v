@@ -9,13 +9,13 @@ fn main() {
 	db.exec("insert into users (name) values ('Kate')")
 
 	nr_users := db.q_int('select count(*) from users')
-	println('nr users = $nr_users')
+	println('nr users = ${nr_users}')
 
 	name := db.q_string('select name from users where id = 1')
 	assert name == 'Sam'
 
 	users, code := db.exec('select * from users')
-	println('SQL Result code: $code')
+	println('SQL Result code: ${code}')
 	for row in users {
 		println(row.vals)
 	}

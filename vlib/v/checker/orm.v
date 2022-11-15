@@ -18,7 +18,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		c.cur_orm_ts = old_ts
 	}
 	if sym.info !is ast.Struct {
-		c.error('The table symbol `$sym.name` has to be a struct', node.table_expr.pos)
+		c.error('The table symbol `${sym.name}` has to be a struct', node.table_expr.pos)
 		return ast.void_type
 	}
 	info := sym.info as ast.Struct
@@ -148,7 +148,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		c.cur_orm_ts = old_ts
 	}
 	if table_sym.info !is ast.Struct {
-		c.error('unknown type `$table_sym.name`', node.pos)
+		c.error('unknown type `${table_sym.name}`', node.pos)
 		return ast.void_type
 	}
 	info := table_sym.info as ast.Struct
@@ -165,7 +165,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		} else {
 			ast.Type(0)
 		}
-		mut object_var_name := '${node.object_var_name}.$f.name'
+		mut object_var_name := '${node.object_var_name}.${f.name}'
 		if typ != f.typ {
 			object_var_name = node.object_var_name
 		}
@@ -188,7 +188,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	for i, column in node.updated_columns {
 		x := node.fields.filter(it.name == column)
 		if x.len == 0 {
-			c.error('type `$table_sym.name` has no field named `$column`', node.pos)
+			c.error('type `${table_sym.name}` has no field named `${column}`', node.pos)
 			continue
 		}
 		field := x[0]
@@ -214,11 +214,11 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, t
 		&& c.table.sym(c.table.sym(it.typ).array_info().elem_type).kind == .struct_))
 		&& !it.attrs.contains('skip'))
 	if fields.len == 0 {
-		c.error('V orm: select: empty fields in `$table_name`', pos)
+		c.error('V orm: select: empty fields in `${table_name}`', pos)
 		return []ast.StructField{}
 	}
 	if fields[0].name != 'id' {
-		c.error('V orm: `id int` must be the first field in `$table_name`', pos)
+		c.error('V orm: `id int` must be the first field in `${table_name}`', pos)
 	}
 	return fields
 }

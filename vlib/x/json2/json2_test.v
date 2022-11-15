@@ -45,14 +45,14 @@ fn (mut e Employee) from_json(any json2.Any) {
 fn test_simple() {
 	x := Employee{'Peter', 28, 95000.5, .worker}
 	s := json2.encode<Employee>(x)
-	eprintln('Employee x: $s')
+	eprintln('Employee x: ${s}')
 	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
 	y := json2.decode<Employee>(s) or {
 		println(err)
 		assert false
 		return
 	}
-	eprintln('Employee y: $y')
+	eprintln('Employee y: ${y}')
 	assert y.name == 'Peter'
 	assert y.age == 28
 	assert y.salary == 95000.5
@@ -83,7 +83,7 @@ fn test_character_unescape() {
 		return
 	}
 	lines := obj.as_map()
-	eprintln('$lines')
+	eprintln('${lines}')
 	assert lines['newline'] or { 0 }.str() == 'new\nline'
 	assert lines['tab'] or { 0 }.str() == '\ttab'
 	assert lines['backslash'] or { 0 }.str() == 'back\\slash'

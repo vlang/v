@@ -11,6 +11,6 @@ fn test_go_call_fn_using_map_value() {
 	g := spawn fns['sum'](2, 3)
 	x := g.wait()
 
-	println('$x')
+	println('${x}')
 	assert x == 5
 }

@@ -163,7 +163,7 @@ fn test_main() {
 	mut tf := ttf.TTF_File{}
 	$if create_data ? {
 		tf.buf = os.read_bytes(font_path) or { panic(err) }
-		println('TrueTypeFont file [$font_path] len: $tf.buf.len')
+		println('TrueTypeFont file [${font_path}] len: ${tf.buf.len}')
 		save_raw_data_as_array(tf.buf, 'test_ttf_Font_arr.bin')
 	} $else {
 		mut mut_font_bytes := font_bytes

@@ -7,7 +7,7 @@ pub fn (f Foo) str() string {
 }
 
 fn process_foo(foo &Foo) {
-	println('>process_foo, called for $foo === ${*foo}')
+	println('>process_foo, called for ${foo} === ${*foo}')
 }
 
 fn get_foo() Foo {

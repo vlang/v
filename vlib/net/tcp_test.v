@@ -25,7 +25,7 @@ fn one_shot_echo_server(mut l net.TcpListener, ch_started chan int) ? {
 	eprintln('> one_shot_echo_server')
 	ch_started <- 1
 	mut new_conn := l.accept() or { return error('could not accept') }
-	eprintln('    > new_conn: $new_conn')
+	eprintln('    > new_conn: ${new_conn}')
 	handle_conn(mut new_conn)
 	new_conn.close() or {}
 }
@@ -47,13 +47,13 @@ fn echo(address string) ? {
 	for i := 0; i < read; i++ {
 		assert buf[i] == data[i]
 	}
-	println('Got "$buf.bytestr()"')
+	println('Got "${buf.bytestr()}"')
 }
 
 fn test_tcp_ip6() {
 	eprintln('\n>>> ${@FN}')
-	address := 'localhost:$test_port'
-	mut l := net.listen_tcp(.ip6, ':$test_port') or { panic(err) }
+	address := 'localhost:${test_port}'
+	mut l := net.listen_tcp(.ip6, ':${test_port}') or { panic(err) }
 	dump(l)
 	start_echo_server(mut l)
 	echo(address) or { panic(err) }
@@ -70,7 +70,7 @@ fn start_echo_server(mut l net.TcpListener) {
 
 fn test_tcp_ip() {
 	eprintln('\n>>> ${@FN}')
-	address := 'localhost:$test_port'
+	address := 'localhost:${test_port}'
 	mut l := net.listen_tcp(.ip, address) or { panic(err) }
 	dump(l)
 	start_echo_server(mut l)
@@ -86,7 +86,7 @@ fn test_tcp_unix() {
 	$if !windows {
 		address := os.real_path('tcp-test.sock')
 		// address := 'tcp-test.sock'
-		println('$address')
+		println('${address}')
 
 		mut l := net.listen_tcp(.unix, address) or { panic(err) }
 		start_echo_server(mut l)

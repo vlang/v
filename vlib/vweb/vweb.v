@@ -255,7 +255,7 @@ pub fn (mut ctx Context) file(f_path string) Result {
 	}
 	content_type := vweb.mime_types[ext]
 	if content_type.len == 0 {
-		eprintln('no MIME type found for extension $ext')
+		eprintln('no MIME type found for extension ${ext}')
 		ctx.server_error(500)
 	} else {
 		ctx.send_response_to_client(content_type, data)
@@ -273,7 +273,7 @@ pub fn (mut ctx Context) ok(s string) Result {
 // Response a server error
 pub fn (mut ctx Context) server_error(ecode int) Result {
 	$if debug {
-		eprintln('> ctx.server_error ecode: $ecode')
+		eprintln('> ctx.server_error ecode: ${ecode}')
 	}
 	if ctx.done {
 		return Result{}
@@ -313,10 +313,10 @@ pub fn (mut ctx Context) set_cookie(cookie http.Cookie) {
 	secure += if cookie.http_only { ' HttpOnly' } else { ' ' }
 	cookie_data << secure
 	if cookie.expires.unix > 0 {
-		cookie_data << 'expires=$cookie.expires.utc_string()'
+		cookie_data << 'expires=${cookie.expires.utc_string()}'
 	}
 	data := cookie_data.join(' ')
-	ctx.add_header('Set-Cookie', '$cookie.name=$cookie.value; $data')
+	ctx.add_header('Set-Cookie', '${cookie.name}=${cookie.value}; ${data}')
 }
 
 // Sets the response content type
@@ -327,7 +327,7 @@ pub fn (mut ctx Context) set_content_type(typ string) {
 // TODO - test
 // Sets a cookie with a `expire_data`
 pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, expire_date time.Time) {
-	ctx.add_header('Set-Cookie', '$key=$val;  Secure; HttpOnly; expires=$expire_date.utc_string()')
+	ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly; expires=${expire_date.utc_string()}')
 }
 
 // Gets a cookie by a key
@@ -340,9 +340,9 @@ pub fn (ctx &Context) get_cookie(key string) !string { // TODO refactor
 	// println('cookie_header="$cookie_header"')
 	// println(ctx.req.header)
 	cookie := if cookie_header.contains(';') {
-		cookie_header.find_between(' $key=', ';')
+		cookie_header.find_between(' ${key}=', ';')
 	} else {
-		cookie_header.find_between(' $key=', '\r')
+		cookie_header.find_between(' ${key}=', '\r')
 	}
 	if cookie != '' {
 		return cookie.trim_space()
@@ -356,7 +356,7 @@ pub fn (mut ctx Context) set_status(code int, desc string) {
 	if code < 100 || code > 599 {
 		ctx.status = '500 Internal Server Error'
 	} else {
-		ctx.status = '$code $desc'
+		ctx.status = '${code} ${desc}'
 	}
 }
 
@@ -393,18 +393,18 @@ pub struct RunParams {
 [manualfree]
 pub fn run_at<T>(global_app &T, params RunParams) ! {
 	if params.port <= 0 || params.port > 65535 {
-		return error('invalid port number `$params.port`, it should be between 1 and 65535')
+		return error('invalid port number `${params.port}`, it should be between 1 and 65535')
 	}
-	mut l := net.listen_tcp(params.family, '$params.host:$params.port') or {
+	mut l := net.listen_tcp(params.family, '${params.host}:${params.port}') or {
 		ecode := err.code()
-		return error('failed to listen $ecode $err')
+		return error('failed to listen ${ecode} ${err}')
 	}
 
 	// Parsing methods attributes
 	mut routes := map[string]Route{}
 	$for method in T.methods {
 		http_methods, route_path := parse_attrs(method.name, method.attrs) or {
-			return error('error parsing method attributes: $err')
+			return error('error parsing method attributes: ${err}')
 		}
 
 		routes[method.name] = Route{
@@ -413,7 +413,7 @@ pub fn run_at<T>(global_app &T, params RunParams) ! {
 		}
 	}
 	host := if params.host == '' { 'localhost' } else { params.host }
-	println('[Vweb] Running app on http://$host:$params.port/')
+	println('[Vweb] Running app on http://${host}:${params.port}/')
 	for {
 		// Create a new app object for each connection, copy global data like db connections
 		mut request_app := &T{}
@@ -430,7 +430,7 @@ pub fn run_at<T>(global_app &T, params RunParams) ! {
 		request_app.Context = global_app.Context // copy the context ref that contains static files map etc
 		mut conn := l.accept() or {
 			// failures should not panic
-			eprintln('accept() failed with error: $err.msg()')
+			eprintln('accept() failed with error: ${err.msg()}')
 			continue
 		}
 		spawn handle_conn<T>(mut conn, mut request_app, routes)
@@ -460,8 +460,8 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route) {
 	// Request parse
 	req := http.parse_request(mut reader) or {
 		// Prevents errors from being thrown when BufferedReader is empty
-		if '$err' != 'none' {
-			eprintln('error parsing request: $err')
+		if '${err}' != 'none' {
+			eprintln('error parsing request: ${err}')
 		}
 		return
 	}
@@ -473,7 +473,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route) {
 	}
 	// URL Parse
 	url := urllib.parse(req.url) or {
-		eprintln('error parsing path: $err')
+		eprintln('error parsing path: ${err}')
 		return
 	}
 
@@ -512,7 +512,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route) {
 	$for method in T.methods {
 		$if method.return_type is Result {
 			route := routes[method.name] or {
-				eprintln('parsed attributes for the `$method.name` are not found, skipping...')
+				eprintln('parsed attributes for the `${method.name}` are not found, skipping...')
 				Route{}
 			}
 
@@ -547,7 +547,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route) {
 				if params := route_matches(url_words, route_words) {
 					method_args := params.clone()
 					if method_args.len != method.args.len {
-						eprintln('warning: uneven parameters count ($method.args.len) in `$method.name`, compared to the vweb route `$method.attrs` ($method_args.len)')
+						eprintln('warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the vweb route `${method.attrs}` (${method_args.len})')
 					}
 					app.$method(method_args)
 					return
@@ -673,7 +673,7 @@ pub fn (mut ctx Context) mount_static_folder_at(directory_path string, mount_pat
 	dir_path := directory_path.trim_right('/')
 
 	trim_mount_path := mount_path.trim_left('/').trim_right('/')
-	ctx.scan_static_directory(dir_path, '/$trim_mount_path')
+	ctx.scan_static_directory(dir_path, '/${trim_mount_path}')
 	return true
 }
 
@@ -705,7 +705,7 @@ pub fn (ctx &Context) ip() string {
 
 // Set s to the form error
 pub fn (mut ctx Context) error(s string) {
-	println('vweb error: $s')
+	println('vweb error: ${s}')
 	ctx.form_error = s
 }
 
@@ -716,7 +716,7 @@ pub fn not_found() Result {
 
 fn send_string(mut conn net.TcpConn, s string) ! {
 	$if trace_response ? {
-		eprintln('> send_string:\n$s\n')
+		eprintln('> send_string:\n${s}\n')
 	}
 	conn.write(s.bytes())!
 }

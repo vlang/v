@@ -114,14 +114,14 @@ fn main() {
 	println('enter `exit` to quit\n')
 	for {
 		cnt++
-		src := os.input('[$cnt] enter source string: ')
+		src := os.input('[${cnt}] enter source string: ')
 		if src == 'exit' {
 			break
 		}
-		pat := os.input('[$cnt] enter pattern string: ')
+		pat := os.input('[${cnt}] enter pattern string: ')
 		if pat == 'exit' {
 			break
 		}
-		println('[$cnt] whether `$src` matches `$pat`: ${regex_match(src, pat)}')
+		println('[${cnt}] whether `${src}` matches `${pat}`: ${regex_match(src, pat)}')
 	}
 }

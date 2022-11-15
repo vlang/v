@@ -1,5 +1,5 @@
 fn gen_fn2<T>(e T) string {
-	return '$e.str()'
+	return '${e.str()}'
 }
 
 fn gen_fn<T>(e T) string {

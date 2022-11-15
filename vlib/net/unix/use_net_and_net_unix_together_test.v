@@ -45,7 +45,7 @@ fn handle_conn(mut c unix.StreamConn) ! {
 	for {
 		mut buf := []u8{len: 100, init: 0}
 		read := c.read(mut buf) or { return perror('Server: connection dropped') }
-		eprintln('> server read ${read:3}, buf: |$buf.bytestr()|')
+		eprintln('> server read ${read:3}, buf: |${buf.bytestr()}|')
 		c.write(buf[..read]) or { return perror('Server: connection dropped') }
 	}
 }

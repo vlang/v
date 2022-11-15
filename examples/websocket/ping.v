@@ -29,7 +29,7 @@ fn start_server() ! {
 	s.on_close(fn (mut ws websocket.Client, code int, reason string) ! {
 		// println('client ($ws.id) closed connection')
 	})
-	s.listen() or { println('error on server listen: $err') }
+	s.listen() or { println('error on server listen: ${err}') }
 	unsafe {
 		s.free()
 	}
@@ -46,7 +46,7 @@ fn start_client() ! {
 	})
 	// use on_error_ref if you want to send any reference object
 	ws.on_error(fn (mut ws websocket.Client, err string) ! {
-		println('error: $err')
+		println('error: ${err}')
 	})
 	// use on_close_ref if you want to send any reference object
 	ws.on_close(fn (mut ws websocket.Client, code int, reason string) ! {
@@ -56,7 +56,7 @@ fn start_client() ! {
 	ws.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ! {
 		if msg.payload.len > 0 {
 			message := msg.payload.bytestr()
-			println('client got type: $msg.opcode payload:\n$message')
+			println('client got type: ${msg.opcode} payload:\n${message}')
 		}
 	})
 	// you can add any pointer reference to use in callback
@@ -64,9 +64,9 @@ fn start_client() ! {
 	// ws.on_message_ref(fn (mut ws websocket.Client, msg &websocket.Message, r &SomeRef) ? {
 	// // println('type: $msg.opcode payload:\n$msg.payload ref: $r')
 	// }, &r)
-	ws.connect() or { println('error on connect: $err') }
+	ws.connect() or { println('error on connect: ${err}') }
 	spawn write_echo(mut ws) // or { println('error on write_echo $err') }
-	ws.listen() or { println('error on listen $err') }
+	ws.listen() or { println('error on listen ${err}') }
 	unsafe {
 		ws.free()
 	}
@@ -76,8 +76,8 @@ fn write_echo(mut ws websocket.Client) ! {
 	message := 'echo this'
 	for i := 0; i <= 10; i++ {
 		// Server will send pings every 30 seconds
-		ws.write_string(message) or { println('panicing writing $err') }
+		ws.write_string(message) or { println('panicing writing ${err}') }
 		time.sleep(100 * time.millisecond)
 	}
-	ws.close(1000, 'normal') or { println('panicing $err') }
+	ws.close(1000, 'normal') or { println('panicing ${err}') }
 }

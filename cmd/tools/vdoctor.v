@@ -17,7 +17,7 @@ fn (mut a App) println(s string) {
 fn (mut a App) collect_info() {
 	mut os_kind := os.user_os()
 	mut arch_details := []string{}
-	arch_details << '$runtime.nr_cpus() cpus'
+	arch_details << '${runtime.nr_cpus()} cpus'
 	if runtime.is_32bit() {
 		arch_details << '32bit'
 	}
@@ -89,12 +89,12 @@ fn (mut a App) collect_info() {
 		)
 		p := a.parse(wmic_info, '=')
 		caption, build_number, os_arch := p['caption'], p['buildnumber'], p['osarchitecture']
-		os_details = '$caption v$build_number $os_arch'
+		os_details = '${caption} v${build_number} ${os_arch}'
 	} else {
 		ouname := os.uname()
-		os_details = '$ouname.release, $ouname.version'
+		os_details = '${ouname.release}, ${ouname.version}'
 	}
-	a.line('OS', '$os_kind, $os_details')
+	a.line('OS', '${os_kind}, ${os_details}')
 	a.line('Processor', arch_details.join(', '))
 	a.line('CC version', a.cmd(command: 'cc --version'))
 	a.println('')
@@ -113,11 +113,11 @@ fn (mut a App) collect_info() {
 	a.line('V full version', version.full_v_version(true))
 	vtmp := os.getenv('VTMP')
 	if vtmp != '' {
-		a.line('env VTMP', '"$vtmp"')
+		a.line('env VTMP', '"${vtmp}"')
 	}
 	vflags := os.getenv('VFLAGS')
 	if vflags != '' {
-		a.line('env VFLAGS', '"$vflags"')
+		a.line('env VFLAGS', '"${vflags}"')
 	}
 	a.println('')
 	a.line('Git version', a.cmd(command: 'git --version'))
@@ -146,11 +146,11 @@ fn (mut a App) cmd(c CmdConfig) string {
 			return output[c.line]
 		}
 	}
-	return 'Error: $x.output'
+	return 'Error: ${x.output}'
 }
 
 fn (mut a App) line(label string, value string) {
-	a.println('$label: ${term.colorize(term.bold, value)}')
+	a.println('${label}: ${term.colorize(term.bold, value)}')
 }
 
 fn (app &App) parse(config string, sep string) map[string]string {
@@ -204,7 +204,7 @@ fn (mut a App) get_linux_os_name() string {
 			}
 			'uname' {
 				ouname := os.uname()
-				os_details = '$ouname.release, $ouname.version'
+				os_details = '${ouname.release}, ${ouname.version}'
 				break
 			}
 			else {}
@@ -231,7 +231,7 @@ fn (mut a App) git_info() string {
 	os.execute('git -C . fetch V_REPO')
 	commit_count := a.cmd(command: 'git rev-list @{0}...V_REPO/master --right-only --count').int()
 	if commit_count > 0 {
-		out += ' ($commit_count commit(s) behind V master)'
+		out += ' (${commit_count} commit(s) behind V master)'
 	}
 	return out
 }
@@ -247,7 +247,7 @@ fn (mut a App) report_tcc_version(tccfolder string) {
 	tcc_commit := a.cmd(
 		command: 'git -C ${os.quoted_path(tccfolder)} describe --abbrev=8 --dirty --always --tags'
 	)
-	a.line('$tccfolder status', '$tcc_branch_name $tcc_commit')
+	a.line('${tccfolder} status', '${tcc_branch_name} ${tcc_commit}')
 }
 
 fn (mut a App) report_info() {

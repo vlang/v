@@ -27,13 +27,13 @@ fn test_match_reference_sumtype_var() {
 			entity.x += x_move
 			entity.y += y_move
 
-			println('Player is moved to $entity.x, $entity.y and its level is $entity.level')
+			println('Player is moved to ${entity.x}, ${entity.y} and its level is ${entity.level}')
 		}
 		Enemy {
 			entity.x += x_move
 			entity.y += y_move
 
-			println('Enemy is moved to $entity.x, $entity.y and its damage is $entity.damage')
+			println('Enemy is moved to ${entity.x}, ${entity.y} and its damage is ${entity.damage}')
 		}
 	}
 

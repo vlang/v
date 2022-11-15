@@ -9,5 +9,5 @@ fn test_reference_array_init() {
 		b = &a
 	}
 	println(b)
-	assert '$b' == '&[1, 2, 3]'
+	assert '${b}' == '&[1, 2, 3]'
 }

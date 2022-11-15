@@ -25,6 +25,6 @@ fn decode<T>(buf []u8) T {
 	} $else $if T is string {
 		return buf.bytestr()
 	} $else {
-		panic('"$T.name" is not supported for `decode`')
+		panic('"${T.name}" is not supported for `decode`')
 	}
 }

@@ -40,7 +40,7 @@ pub fn failed(s string) string {
 // If colors are not allowed, returns a given string.
 pub fn ok_message(s string) string {
 	if can_show_color_on_stdout() {
-		return green(' $s ')
+		return green(' ${s} ')
 	}
 	return s
 }
@@ -48,14 +48,14 @@ pub fn ok_message(s string) string {
 // fail_message returns a colored string with red color.
 // If colors are not allowed, returns a given string.
 pub fn fail_message(s string) string {
-	return failed(' $s ')
+	return failed(' ${s} ')
 }
 
 // warn_message returns a colored string with yellow color.
 // If colors are not allowed, returns a given string.
 pub fn warn_message(s string) string {
 	if can_show_color_on_stdout() {
-		return bright_yellow(' $s ')
+		return bright_yellow(' ${s} ')
 	}
 	return s
 }
@@ -148,7 +148,7 @@ pub fn header_left(text string, divider string) string {
 	hstart := relement.repeat(4)[0..4]
 	remaining_cols := imax(0, (cols - (hstart.len + 1 + plain_text.len + 1)))
 	hend := relement.repeat((remaining_cols + 1) / relement.len)[0..remaining_cols]
-	return '$hstart $text $hend'
+	return '${hstart} ${text} ${hend}'
 }
 
 // header returns a horizontal divider line with a centered text in the middle.

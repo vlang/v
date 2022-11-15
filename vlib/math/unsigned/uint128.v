@@ -422,7 +422,7 @@ pub fn uint128_from_dec_str(value string) ?Uint128 {
 	for b_ in value.bytes() {
 		b := b_ - '0'.bytes()[0]
 		if b > 9 {
-			return error('invalid character "$b"')
+			return error('invalid character "${b}"')
 		}
 
 		r, overflow := res.overflowing_mul_64(10)

@@ -36,7 +36,7 @@ fn process_files(files []string) ! {
 		total_us += f_us
 		total_bytes += s.text.len
 		total_tokens += s.all_tokens.len
-		println('${f_us:10}us ${s.all_tokens.len:10} ${s.text.len:10} ${(f64(s.text.len) / s.all_tokens.len):7.3f} $f')
+		println('${f_us:10}us ${s.all_tokens.len:10} ${s.text.len:10} ${(f64(s.text.len) / s.all_tokens.len):7.3f} ${f}')
 	}
 	println('${total_us:10}us ${total_tokens:10} ${total_bytes:10} ${(f64(total_tokens) / total_bytes):7.3f} | speed: ${(f64(total_bytes) / total_us):2.5f} MB/s')
 }

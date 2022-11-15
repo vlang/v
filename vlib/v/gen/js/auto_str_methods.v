@@ -101,7 +101,7 @@ fn (mut g JsGen) final_gen_str(typ StrType) {
 			g.gen_str_for_thread(sym.info, styp, str_fn_name)
 		}
 		else {
-			verror("could not generate string method $str_fn_name for type '$styp'")
+			verror("could not generate string method ${str_fn_name} for type '${styp}'")
 		}
 	}
 }
@@ -202,14 +202,14 @@ fn (mut g JsGen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name st
 		convertor = 'bool'
 		typename_ = 'bool'
 	} else {
-		panic("could not generate string method for type '$styp'")
+		panic("could not generate string method for type '${styp}'")
 	}
 
 	g.definitions.writeln('function ${str_fn_name}(it) {')
 	if convertor == 'bool' {
 		g.definitions.writeln('\tlet tmp1 = string__plus(new string("${styp}("), it.valueOf()? new string("true") : new string("false"));')
 	} else {
-		g.definitions.writeln('\tlet tmp1 = string__plus(new string("${styp}("), new string(${typename_}_str(($convertor)it).str));')
+		g.definitions.writeln('\tlet tmp1 = string__plus(new string("${styp}("), new string(${typename_}_str((${convertor})it).str));')
 	}
 	g.definitions.writeln('\tstring tmp2 = string__plus(tmp1, new string(")"));')
 	g.definitions.writeln('\treturn tmp2;')
@@ -237,7 +237,7 @@ fn (mut g JsGen) gen_str_for_option(typ ast.Type, styp string, str_fn_name strin
 	g.definitions.writeln('\t} else {')
 
 	tmp_str := str_intp_sub('error: %%', 'IError_str(it.err)')
-	g.definitions.writeln('\t\tres = $tmp_str;')
+	g.definitions.writeln('\t\tres = ${tmp_str};')
 	g.definitions.writeln('\t}')
 
 	g.definitions.writeln('\treturn ${str_intp_sub('Option(%%)', 'res')};')
@@ -259,7 +259,7 @@ fn (mut g JsGen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name stri
 fn (mut g JsGen) gen_str_for_multi_return(info ast.MultiReturn, styp string, str_fn_name string) {
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('function ${str_fn_name}(a) {')
-	fn_builder.writeln('\tlet sb = strings__new_builder($info.types.len * 10);')
+	fn_builder.writeln('\tlet sb = strings__new_builder(${info.types.len} * 10);')
 	fn_builder.writeln('\tstrings__Builder_write_string(sb, new string("("));')
 	for i, typ in info.types {
 		sym := g.table.sym(typ)
@@ -268,24 +268,24 @@ fn (mut g JsGen) gen_str_for_multi_return(info ast.MultiReturn, styp string, str
 		arg_str_fn_name := g.get_str_fn(typ)
 
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
-			fn_builder.writeln('\tstrings__Builder_write_string(sb, ${arg_str_fn_name}(a[$i]));')
+			fn_builder.writeln('\tstrings__Builder_write_string(sb, ${arg_str_fn_name}(a[${i}]));')
 		} else if sym.kind in [.f32, .f64] {
 			if sym.kind == .f32 {
-				tmp_val := str_intp_g32('a[$i]')
-				fn_builder.writeln('\tstrings__Builder_write_string(sb, $tmp_val);')
+				tmp_val := str_intp_g32('a[${i}]')
+				fn_builder.writeln('\tstrings__Builder_write_string(sb, ${tmp_val});')
 			} else {
-				tmp_val := str_intp_g64('a[$i]')
-				fn_builder.writeln('\tstrings__Builder_write_string(sb, $tmp_val);')
+				tmp_val := str_intp_g64('a[${i}]')
+				fn_builder.writeln('\tstrings__Builder_write_string(sb, ${tmp_val});')
 			}
 		} else if sym.kind == .string {
-			tmp_str := str_intp_sq('a[$i]')
-			fn_builder.writeln('\tstrings__Builder_write_string(sb, $tmp_str);')
+			tmp_str := str_intp_sq('a[${i}]')
+			fn_builder.writeln('\tstrings__Builder_write_string(sb, ${tmp_str});')
 		} else if sym.kind == .function {
 			fn_builder.writeln('\tstrings__Builder_write_string(sb, ${arg_str_fn_name}());')
 		} else {
 			deref, deref_label := deref_kind(str_method_expects_ptr, is_arg_ptr, typ)
-			fn_builder.writeln('\t\tstrings__Builder_write_string(sb, new string("$deref_label"));')
-			fn_builder.writeln('\tstrings__Builder_write_string(sb, ${arg_str_fn_name}( a[$i] $deref ));')
+			fn_builder.writeln('\t\tstrings__Builder_write_string(sb, new string("${deref_label}"));')
+			fn_builder.writeln('\tstrings__Builder_write_string(sb, ${arg_str_fn_name}( a[${i}] ${deref} ));')
 		}
 		if i != info.types.len - 1 {
 			fn_builder.writeln('\tstrings__Builder_write_string(sb, new string(", "));')
@@ -305,10 +305,10 @@ fn (mut g JsGen) gen_str_for_enum(info ast.Enum, styp string, str_fn_name string
 	// Enums tagged with `[flag]` are special in that they can be a combination of enum values
 	if info.is_flag {
 		clean_name := util.strip_main_name(styp.replace('__', '.'))
-		g.definitions.writeln('\tlet ret = new string("$clean_name{");')
+		g.definitions.writeln('\tlet ret = new string("${clean_name}{");')
 		g.definitions.writeln('\tlet first = 1;')
 		for i, val in info.vals {
-			g.definitions.writeln('\tif (it & (1 << $i)) {if (!first) {ret = string__plus(ret, new string(" | "));} ret = string__plus(ret, new string(".$val")); first = 0;}')
+			g.definitions.writeln('\tif (it & (1 << ${i})) {if (!first) {ret = string__plus(ret, new string(" | "));} ret = string__plus(ret, new string(".${val}")); first = 0;}')
 		}
 		g.definitions.writeln('\tret = string__plus(ret, new string("}"));')
 		g.definitions.writeln('\treturn ret;')
@@ -322,7 +322,7 @@ fn (mut g JsGen) gen_str_for_enum(info ast.Enum, styp string, str_fn_name string
 			} else if info.is_multi_allowed {
 				seen << val
 			}
-			g.definitions.writeln('\t\tcase ${s}.$val: return new string("$val");')
+			g.definitions.writeln('\t\tcase ${s}.${val}: return new string("${val}");')
 		}
 		g.definitions.writeln('\t\tdefault: return new string("unknown enum value");')
 		g.definitions.writeln('\t}')
@@ -352,7 +352,7 @@ fn (mut g JsGen) gen_str_for_interface(info ast.Interface, styp string, str_fn_n
 		mut func_name := g.get_str_fn(typ)
 		sym_has_str_method, str_method_expects_ptr, _ := subtype.str_method_info()
 		if should_use_indent_func(subtype.kind) && !sym_has_str_method {
-			func_name = 'indent_$func_name'
+			func_name = 'indent_${func_name}'
 		}
 		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '.valueOf()' }
 		// str_intp
@@ -361,13 +361,13 @@ fn (mut g JsGen) gen_str_for_interface(info ast.Interface, styp string, str_fn_n
 			fn_builder.write_string('\tif (x.val instanceof string)')
 			fn_builder.write_string(' return "new string(${clean_interface_v_type_name}(" + x.val.str + ")");')
 		} else {
-			mut val := '${func_name}(x $deref'
+			mut val := '${func_name}(x ${deref}'
 			if should_use_indent_func(subtype.kind) && !sym_has_str_method {
 				val += ', indent_count'
 			}
 			val += ')'
 
-			fn_builder.write_string('\tif (x.val instanceof $subtype.cname)')
+			fn_builder.write_string('\tif (x.val instanceof ${subtype.cname})')
 			fn_builder.write_string(' return new string("${clean_interface_v_type_name}(" + ${val}.str + ")");\n')
 		}
 	}
@@ -391,9 +391,9 @@ fn (mut g JsGen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_f
 			if typ.is_ptr() { '.valueOf()' } else { ' ' }
 		}
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
-			func_name = 'indent_$func_name'
+			func_name = 'indent_${func_name}'
 		}
-		fn_builder.writeln('if (x instanceof $typ_str) { return ${func_name}(x$deref); }')
+		fn_builder.writeln('if (x instanceof ${typ_str}) { return ${func_name}(x${deref}); }')
 	}
 	fn_builder.writeln('builtin__panic(new string("unknown sum type value"));\n}')
 	g.definitions.writeln(fn_builder.str())
@@ -418,9 +418,9 @@ fn (mut g JsGen) fn_decl_str(info ast.FnType) string {
 	} else if info.func.return_type != ast.void_type {
 		x := util.strip_main_name(g.table.get_type_name(g.unwrap_generic(info.func.return_type)))
 		if info.func.return_type.has_flag(.optional) {
-			fn_str += ' ?$x'
+			fn_str += ' ?${x}'
 		} else {
-			fn_str += ' $x'
+			fn_str += ' ${x}'
 		}
 	}
 	return fn_str
@@ -433,13 +433,13 @@ fn (mut g JsGen) gen_str_for_fn_type(info ast.FnType, styp string, str_fn_name s
 fn (mut g JsGen) gen_str_for_chan(info ast.Chan, styp string, str_fn_name string) {
 	elem_type_name := util.strip_main_name(g.table.get_type_name(g.unwrap_generic(info.elem_type)))
 
-	g.definitions.writeln('function ${str_fn_name}(x) { return sync__Channel_auto_str(x, new string("$elem_type_name")); }')
+	g.definitions.writeln('function ${str_fn_name}(x) { return sync__Channel_auto_str(x, new string("${elem_type_name}")); }')
 }
 
 fn (mut g JsGen) gen_str_for_thread(info ast.Thread, styp string, str_fn_name string) {
 	ret_type_name := util.strip_main_name(g.table.get_type_name(info.return_type))
 
-	g.definitions.writeln('function ${str_fn_name}(_) { return new string("thread($ret_type_name)");}')
+	g.definitions.writeln('function ${str_fn_name}(_) { return new string("thread(${ret_type_name})");}')
 }
 
 [inline]
@@ -502,8 +502,8 @@ fn (mut g JsGen) gen_str_for_array(info ast.Array, styp string, str_fn_name stri
 			// Note: we need to take account of whether the user has defined
 			// `fn (x T) str() {` or `fn (x &T) str() {`, and convert accordingly
 			deref, deref_label := deref_kind(str_method_expects_ptr, is_elem_ptr, typ)
-			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string("$deref_label"));')
-			g.definitions.writeln('\t\tlet x = ${elem_str_fn_name}( $deref it);')
+			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string("${deref_label}"));')
+			g.definitions.writeln('\t\tlet x = ${elem_str_fn_name}( ${deref} it);')
 		}
 	}
 	g.definitions.writeln('\t\tstrings__Builder_write_string(sb, x);')
@@ -532,9 +532,9 @@ fn (mut g JsGen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_f
 	g.definitions.writeln('function ${str_fn_name}(a) { return indent_${str_fn_name}(a, 0);}')
 
 	g.definitions.writeln('function indent_${str_fn_name}(a, indent_count) {')
-	g.definitions.writeln('\tlet sb = strings__new_builder($info.size * 10);')
+	g.definitions.writeln('\tlet sb = strings__new_builder(${info.size} * 10);')
 	g.definitions.writeln('\tstrings__Builder_write_string(sb, new string("["));')
-	g.definitions.writeln('\tfor (let i = 0; i < $info.size; ++i) {')
+	g.definitions.writeln('\tfor (let i = 0; i < ${info.size}; ++i) {')
 	if sym.kind == .function {
 		g.definitions.writeln('\t\tstring x = ${elem_str_fn_name}();')
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, x);')
@@ -542,11 +542,11 @@ fn (mut g JsGen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_f
 		deref, deref_label := deref_kind(str_method_expects_ptr, is_elem_ptr, typ)
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
 			if is_elem_ptr {
-				g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string("$deref_label"));')
+				g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string("${deref_label}"));')
 				g.definitions.writeln('\t\tif ( 0 == a.arr.get(new int(i)) ) {')
 				g.definitions.writeln('\t\t\tstrings__Builder_write_string(sb, new string("0"));')
 				g.definitions.writeln('\t\t}else{')
-				g.definitions.writeln('\t\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a.arr.get(new int(i)) $deref) );')
+				g.definitions.writeln('\t\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a.arr.get(new int(i)) ${deref}) );')
 				g.definitions.writeln('\t\t}')
 			} else {
 				g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a.arr.get(new int(i))) );')
@@ -559,7 +559,7 @@ fn (mut g JsGen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_f
 			g.definitions.writeln('\t\tlet x = new string("\`" + String.fromCharCode(a.arr.get(new int(i)).val) + "\`");')
 			g.definitions.writeln('\t\tstrings__Builder_write_string(sb,x);')
 		} else {
-			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a.arr.get(new int(i)) $deref));')
+			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, ${elem_str_fn_name}(a.arr.get(new int(i)) ${deref}));')
 		}
 	}
 	g.definitions.writeln('\t\tif (i < ${info.size - 1}) {')
@@ -705,12 +705,12 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 	clean_struct_v_type_name = util.strip_main_name(clean_struct_v_type_name)
 	// generate ident / indent length = 4 spaces
 	if info.fields.len == 0 {
-		fn_builder.writeln('\treturn new string("$clean_struct_v_type_name{}");')
+		fn_builder.writeln('\treturn new string("${clean_struct_v_type_name}{}");')
 		fn_builder.writeln('}')
 		return
 	}
 
-	fn_builder.writeln('\tlet res = /*struct name*/new string("$clean_struct_v_type_name{\\n")')
+	fn_builder.writeln('\tlet res = /*struct name*/new string("${clean_struct_v_type_name}{\\n")')
 
 	for i, field in info.fields {
 		mut ptr_amp := if field.typ.is_ptr() { '&' } else { '' }
@@ -731,9 +731,9 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 		sym := g.table.sym(g.unwrap_generic(field.typ))
 		// first fields doesn't need \n
 		if i == 0 {
-			fn_builder.write_string('res.str += "    $field.name: $ptr_amp$prefix" + ')
+			fn_builder.write_string('res.str += "    ${field.name}: ${ptr_amp}${prefix}" + ')
 		} else {
-			fn_builder.write_string('res.str += "\\n    $field.name: $ptr_amp$prefix" + ')
+			fn_builder.write_string('res.str += "\\n    ${field.name}: ${ptr_amp}${prefix}" + ')
 		}
 
 		// custom methods management
@@ -747,7 +747,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 
 		mut func := struct_auto_str_func(mut g, sym, field.typ, field_styp_fn_name, field.name)
 		if field.typ in ast.cptr_types {
-			func = '(voidptr) it.$field.name'
+			func = '(voidptr) it.${field.name}'
 		} else if field.typ.is_ptr() {
 			// reference types can be "nil"
 			fn_builder.write_string('isnil(it.${g.js_name(field.name)})')
@@ -763,7 +763,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 		} else {
 			// manage C charptr
 			if field.typ in ast.charptr_types {
-				fn_builder.write_string('tos4((byteptr)$func)')
+				fn_builder.write_string('tos4((byteptr)${func})')
 			} else {
 				if field.typ.is_ptr() && sym.kind == .struct_ {
 					fn_builder.write_string('(indent_count > 25)? new string("<probably circular>") : ')
@@ -787,12 +787,12 @@ fn struct_auto_str_func(mut g JsGen, sym &ast.TypeSymbol, field_type ast.Type, f
 	} else if should_use_indent_func(sym.kind) {
 		mut obj := 'it.${g.js_name(field_name)}'
 		if field_type.is_ptr() && !expects_ptr {
-			obj = '*$obj'
+			obj = '*${obj}'
 		}
 		if has_custom_str {
-			return '${fn_name}($obj)'
+			return '${fn_name}(${obj})'
 		}
-		return 'indent_${fn_name}($obj, indent_count + 1)'
+		return 'indent_${fn_name}(${obj}, indent_count + 1)'
 	} else if sym.kind in [.array, .array_fixed, .map, .sum_type] {
 		if has_custom_str {
 			return '${fn_name}(it.${g.js_name(field_name)})'
@@ -812,18 +812,18 @@ fn struct_auto_str_func(mut g JsGen, sym &ast.TypeSymbol, field_type ast.Type, f
 			// ptr int can be "nil", so this needs to be casted to a string
 			if sym.kind == .f32 {
 				return 'str_intp(1, _MOV((StrIntpData[]){
-					{_SLIT0, $si_g32_code, {.d_f32 = *$method_str }}
+					{_SLIT0, ${si_g32_code}, {.d_f32 = *${method_str} }}
 				}))'
 			} else if sym.kind == .f64 {
 				return 'str_intp(1, _MOV((StrIntpData[]){
-					{_SLIT0, $si_g64_code, {.d_f64 = *$method_str }}
+					{_SLIT0, ${si_g64_code}, {.d_f64 = *${method_str} }}
 				}))'
 			} else if sym.kind == .u64 {
 				fmt_type := StrIntpType.si_u64
-				return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_u64 = *$method_str }}}))'
+				return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_u64 = *${method_str} }}}))'
 			}
 			fmt_type := StrIntpType.si_i32
-			return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i32 = *$method_str }}}))'
+			return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i32 = *${method_str} }}}))'
 		}
 		return method_str
 	}

@@ -228,7 +228,7 @@ fn decode_unicode_escape(esc_unicode string) !(string, int, int) {
 	}
 	i64_val := strconv.parse_int(unicode_point, 16, 0)!
 	rn := rune(i64_val)
-	return '$rn', int(i64_val), sequence_len
+	return '${rn}', int(i64_val), sequence_len
 }
 
 // decode_date_time decodes the `dt ast.DateTime`.

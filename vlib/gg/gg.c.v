@@ -240,7 +240,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 		} else {
 			sfont := font.default()
 			if ctx.config.font_path != '' {
-				eprintln('font file "$ctx.config.font_path" does not exist, the system font ($sfont) was used instead.')
+				eprintln('font file "${ctx.config.font_path}" does not exist, the system font (${sfont}) was used instead.')
 			}
 
 			ctx.ft = new_ft(
@@ -441,7 +441,7 @@ fn gg_fail_fn(msg &char, user_data voidptr) {
 	if ctx.config.fail_fn != unsafe { nil } {
 		ctx.config.fail_fn(vmsg, ctx.config.user_data)
 	} else {
-		eprintln('gg error: $vmsg')
+		eprintln('gg error: ${vmsg}')
 	}
 }
 

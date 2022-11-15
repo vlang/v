@@ -29,7 +29,7 @@ pub fn (resp Response) bytes() []u8 {
 
 // Formats resp to a string suitable for HTTP response transmission
 pub fn (resp Response) bytestr() string {
-	return 'HTTP/$resp.http_version $resp.status_code $resp.status_msg\r\n' + '${resp.header.render(
+	return 'HTTP/${resp.http_version} ${resp.status_code} ${resp.status_msg}\r\n' + '${resp.header.render(
 		version: resp.version()
 	)}\r\n' + resp.body
 }
@@ -98,7 +98,7 @@ pub fn (mut r Response) set_status(s Status) {
 
 // version parses the version
 pub fn (r Response) version() Version {
-	return version_from_str('HTTP/$r.http_version')
+	return version_from_str('HTTP/${r.http_version}')
 }
 
 // set_version sets the http_version string of the response
@@ -108,7 +108,7 @@ pub fn (mut r Response) set_version(v Version) {
 		return
 	}
 	maj, min := v.protos()
-	r.http_version = '${maj}.$min'
+	r.http_version = '${maj}.${min}'
 }
 
 pub struct ResponseConfig {

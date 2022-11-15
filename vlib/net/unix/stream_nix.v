@@ -173,7 +173,7 @@ pub fn (mut c StreamConn) close() ! {
 pub fn (mut c StreamConn) write_ptr(b &u8, len int) !int {
 	$if trace_unix ? {
 		eprintln(
-			'>>> StreamConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +
+			'>>> StreamConn.write_ptr | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} len: ${len} |\n' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	unsafe {
@@ -211,7 +211,7 @@ pub fn (mut c StreamConn) write_string(s string) !int {
 pub fn (mut c StreamConn) read_ptr(buf_ptr &u8, len int) !int {
 	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))!
 	$if trace_unix ? {
-		eprintln('<<< StreamConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+		eprintln('<<< StreamConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
 	}
 	if res > 0 {
 		return res
@@ -221,7 +221,7 @@ pub fn (mut c StreamConn) read_ptr(buf_ptr &u8, len int) !int {
 		c.wait_for_read()!
 		res = wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))!
 		$if trace_unix ? {
-			eprintln('<<< StreamConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+			eprintln('<<< StreamConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
 		}
 		return net.socket_error(res)
 	} else {
@@ -284,5 +284,5 @@ pub fn (mut c StreamConn) wait_for_write() ! {
 
 pub fn (c StreamConn) str() string {
 	s := c.sock.str().replace('\n', ' ').replace('  ', ' ')
-	return 'StreamConn{ write_deadline: $c.write_deadline, read_deadline: $c.read_deadline, read_timeout: $c.read_timeout, write_timeout: $c.write_timeout, sock: $s }'
+	return 'StreamConn{ write_deadline: ${c.write_deadline}, read_deadline: ${c.read_deadline}, read_timeout: ${c.read_timeout}, write_timeout: ${c.write_timeout}, sock: ${s} }'
 }
