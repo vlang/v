@@ -1846,7 +1846,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 	}
 }
 
-fn (mut g Gen) call_builtin_amd64(name string) i64 {
+fn (mut g Gen) call_builtin_amd64(name Builtin) i64 {
 	call_addr := g.call(0)
 	g.println('call builtin `${name}`')
 	return call_addr
@@ -3363,9 +3363,9 @@ fn (mut g Gen) convert_int_to_string(r1 Register, r2 Register) {
 	g.labels.addrs[loop_label] = loop_start
 
 	// after all was converted, reverse the string
-	reg := g.get_builtin_arg_reg('reverse_string', 0)
+	reg := g.get_builtin_arg_reg(.reverse_string, 0)
 	g.mov_reg(reg, .r12)
-	g.call_builtin('reverse_string')
+	g.call_builtin(.reverse_string)
 
 	g.labels.addrs[end_label] = g.pos()
 	g.println('; label ${end_label}')
