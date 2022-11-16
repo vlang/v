@@ -436,7 +436,7 @@ fn (mut a App) draw_debug() {
 	snake := a.snake
 	a.termui.draw_text(block_size, 1 * block_size, 'Display_width: ${a.width:04d} Display_height: ${a.height:04d}')
 	a.termui.draw_text(block_size, 2 * block_size, 'Vx: ${snake.velocity.x:+02d} Vy: ${snake.velocity.y:+02d}')
-	a.termui.draw_text(block_size, 3 * block_size, 'F: $snake.direction')
+	a.termui.draw_text(block_size, 3 * block_size, 'F: ${snake.direction}')
 	snake_head := snake.get_head()
 	rat := a.rat
 	a.termui.draw_text(block_size, 4 * block_size, 'Sx: ${snake_head.pos.x:+03d} Sy: ${snake_head.pos.y:+03d}')

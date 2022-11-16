@@ -20,7 +20,7 @@ fn worker_fetch(mut p pool.PoolProcessor, cursor int, worker_id int) voidptr {
 		println('failed to decode a story')
 		return pool.no_result
 	}
-	println('# $cursor) $story.title | $story.url')
+	println('# ${cursor}) ${story.title} | ${story.url}')
 	return pool.no_result
 }
 

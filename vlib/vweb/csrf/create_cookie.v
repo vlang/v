@@ -25,7 +25,7 @@ fn generate() string {
 	mut out := ''
 	for _ in 0 .. 42 {
 		i := rand.intn(csrf.chars.len_utf8()) or {
-			panic('Error while trying to generate Csrf-Token: $err')
+			panic('Error while trying to generate Csrf-Token: ${err}')
 		}
 		out = out + csrf.chars[i..i + 1]
 	}

@@ -3,7 +3,7 @@ struct Node<T> {
 }
 
 fn foo<T>(n Node<T>) string {
-	return '$n'
+	return '${n}'
 }
 
 fn test_generics_fn_infer_struct() {

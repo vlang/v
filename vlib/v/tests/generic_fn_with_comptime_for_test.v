@@ -3,9 +3,9 @@ fn fn_a<T>(data T, depth int, nl bool) {
 		print('\t')
 	}
 	$if T.typ is int {
-		print('int: $data')
+		print('int: ${data}')
 	} $else $if T.typ is string {
-		print('string: $data')
+		print('string: ${data}')
 	} $else $if T is $Array {
 		println('array: [')
 		for i, elem in data {
@@ -26,9 +26,9 @@ fn fn_a<T>(data T, depth int, nl bool) {
 		}
 		print('}')
 	} $else $if T is $Struct {
-		println('struct $T.name: {')
+		println('struct ${T.name}: {')
 		$for field in T.fields {
-			print('\t($field.name) ')
+			print('\t(${field.name}) ')
 			fn_a(data.$(field.name), depth, true)
 			// uncommenting either of these lines will cause a C error in my branch as the type is
 			// set manually to the $for field type, it needs to be fixed to infer the type correctly.

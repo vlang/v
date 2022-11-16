@@ -6,7 +6,7 @@ pub fn send<T>(res T) string {
 	msg := Response<T>{
 		result: res
 	}
-	return '$msg'
+	return '${msg}'
 }
 
 struct Foo {}

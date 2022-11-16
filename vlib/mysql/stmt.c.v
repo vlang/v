@@ -140,7 +140,7 @@ fn (stmt Stmt) get_error_msg() string {
 pub fn (stmt Stmt) error(code int) IError {
 	msg := stmt.get_error_msg()
 	return &SQLError{
-		msg: '$msg ($code) ($stmt.query)'
+		msg: '${msg} (${code}) (${stmt.query})'
 		code: code
 	}
 }

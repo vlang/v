@@ -9,7 +9,7 @@ fn returns_sumtype_reverse() int|string {
 fn test_stringification() {
 	x := returns_sumtype()
 	y := returns_sumtype_reverse()
-	assert '$x' == '$y'
+	assert '${x}' == '${y}'
 }
 
 struct Milk {

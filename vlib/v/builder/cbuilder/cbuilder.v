@@ -60,7 +60,7 @@ pub fn gen_c(mut b builder.Builder, v_files []string) string {
 pub fn build_c(mut b builder.Builder, v_files []string, out_file string) {
 	b.out_name_c = out_file
 	b.pref.out_name_c = os.real_path(out_file)
-	b.info('build_c($out_file)')
+	b.info('build_c(${out_file})')
 	output2 := gen_c(mut b, v_files)
 	os.write_file(out_file, output2) or { panic(err) }
 	if b.pref.is_stats {

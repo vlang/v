@@ -263,11 +263,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				target_arch := cmdline.option(current_args, '-arch', '')
 				i++
 				target_arch_kind := arch_from_string(target_arch) or {
-					eprintln('unknown architecture target `$target_arch`')
+					eprintln('unknown architecture target `${target_arch}`')
 					exit(1)
 				}
 				res.arch = target_arch_kind
-				res.build_options << '$arg $target_arch'
+				res.build_options << '${arg} ${target_arch}'
 			}
 			'-assert' {
 				assert_mode := cmdline.option(current_args, '-assert', '')
@@ -282,7 +282,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						res.assert_failure_mode = .continues
 					}
 					else {
-						eprintln('unknown assert mode `-gc $assert_mode`, supported modes are:`')
+						eprintln('unknown assert mode `-gc ${assert_mode}`, supported modes are:`')
 						eprintln('  `-assert aborts`     .... calls abort() after assertion failure')
 						eprintln('  `-assert backtraces` .... calls print_backtrace() after assertion failure')
 						eprintln('  `-assert continues`  .... does not call anything, just continue after an assertion failure')
@@ -376,7 +376,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						res.parse_define('gcboehm_leak')
 					}
 					else {
-						eprintln('unknown garbage collection mode `-gc $gc_mode`, supported modes are:`')
+						eprintln('unknown garbage collection mode `-gc ${gc_mode}`, supported modes are:`')
 						eprintln('  `-gc boehm` ............ default GC-mode (currently `boehm_full_opt`)')
 						eprintln('  `-gc boehm_full` ....... classic full collection')
 						eprintln('  `-gc boehm_incr` ....... incremental collection')
@@ -401,7 +401,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-debug-tcc' {
 				res.ccompiler = 'tcc'
-				res.build_options << '$arg "$res.ccompiler"'
+				res.build_options << '${arg} "${res.ccompiler}"'
 				res.retry_compilation = false
 				res.show_cc = true
 				res.show_c_output = true
@@ -486,7 +486,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-prof', '-profile' {
 				res.profile_file = cmdline.option(current_args, arg, '-')
 				res.is_prof = true
-				res.build_options << '$arg $res.profile_file'
+				res.build_options << '${arg} ${res.profile_file}'
 				i++
 			}
 			'-profile-fns' {
@@ -522,7 +522,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-m32', '-m64' {
 				res.m64 = arg[2] == `6`
-				res.cflags += ' $arg'
+				res.cflags += ' ${arg}'
 			}
 			'-color' {
 				res.use_color = .always
@@ -619,7 +619,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						res.output_cross_c = true
 						continue
 					}
-					eprintln('unknown operating system target `$target_os`')
+					eprintln('unknown operating system target `${target_os}`')
 					exit(1)
 				}
 				if target_os_kind == .wasm32 {
@@ -632,7 +632,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					res.gc_mode = .no_gc // TODO: enable gc (turn off threads etc, in builtin_d_gcboehm.c.v, once `$if wasm32_emscripten {` works)
 				}
 				res.os = target_os_kind
-				res.build_options << '$arg $target_os'
+				res.build_options << '${arg} ${target_os}'
 			}
 			'-printfn' {
 				res.printfn_list << cmdline.option(current_args, '-printfn', '').split(',')
@@ -640,7 +640,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-cflags' {
 				res.cflags += ' ' + cmdline.option(current_args, '-cflags', '')
-				res.build_options << '$arg "$res.cflags.trim_space()"'
+				res.build_options << '${arg} "${res.cflags.trim_space()}"'
 				i++
 			}
 			'-d', '-define' {
@@ -660,7 +660,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-cc' {
 				res.ccompiler = cmdline.option(current_args, '-cc', 'cc')
-				res.build_options << '$arg "$res.ccompiler"'
+				res.build_options << '${arg} "${res.ccompiler}"'
 				i++
 			}
 			'-checker-match-exhaustive-cutoff-limit' {
@@ -686,7 +686,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-b', '-backend' {
 				sbackend := cmdline.option(current_args, arg, 'c')
-				res.build_options << '$arg $sbackend'
+				res.build_options << '${arg} ${sbackend}'
 				b := backend_from_string(sbackend) or { continue }
 				if b.is_js() {
 					res.output_cross_c = true
@@ -699,21 +699,21 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-path' {
 				path := cmdline.option(current_args, '-path', '')
-				res.build_options << '$arg "$path"'
+				res.build_options << '${arg} "${path}"'
 				res.lookup_path = path.replace('|', os.path_delimiter).split(os.path_delimiter)
 				i++
 			}
 			'-bare-builtin-dir' {
 				bare_builtin_dir := cmdline.option(current_args, arg, '')
-				res.build_options << '$arg "$bare_builtin_dir"'
+				res.build_options << '${arg} "${bare_builtin_dir}"'
 				res.bare_builtin_dir = bare_builtin_dir
 				i++
 			}
 			'-custom-prelude' {
 				path := cmdline.option(current_args, '-custom-prelude', '')
-				res.build_options << '$arg $path'
+				res.build_options << '${arg} ${path}'
 				prelude := os.read_file(path) or {
-					eprintln('cannot open custom prelude file: $err')
+					eprintln('cannot open custom prelude file: ${err}')
 					exit(1)
 				}
 				res.custom_prelude = prelude
@@ -729,7 +729,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			else {
 				if command == 'build' && is_source_file(arg) {
-					eprintln('Use `v $arg` instead.')
+					eprintln('Use `v ${arg}` instead.')
 					exit(1)
 				}
 				if arg.len != 0 && arg[0] == `-` {
@@ -761,8 +761,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					// arguments for e.g. fmt should be checked elsewhere
 					continue
 				}
-				extension := if command.len == 0 { '' } else { ' for command `$command`' }
-				eprintln('Unknown argument `$arg`$extension')
+				extension := if command.len == 0 { '' } else { ' for command `${command}`' }
+				eprintln('Unknown argument `${arg}`${extension}')
 				exit(1)
 			}
 		}
@@ -801,29 +801,29 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			tmp_v_file_path := '${tmp_file_path}.v'
 			contents := os.get_raw_lines_joined()
 			os.write_file(tmp_v_file_path, contents) or {
-				panic('Failed to create temporary file $tmp_v_file_path')
+				panic('Failed to create temporary file ${tmp_v_file_path}')
 			}
 			run_options := cmdline.options_before(args, ['run']).join(' ')
 			command_options := cmdline.options_after(args, ['run'])[1..].join(' ')
 			vexe := vexe_path()
-			tmp_cmd := '${os.quoted_path(vexe)} $output_option $run_options run ${os.quoted_path(tmp_v_file_path)} $command_options'
+			tmp_cmd := '${os.quoted_path(vexe)} ${output_option} ${run_options} run ${os.quoted_path(tmp_v_file_path)} ${command_options}'
 			//
-			res.vrun_elog('tmp_cmd: $tmp_cmd')
+			res.vrun_elog('tmp_cmd: ${tmp_cmd}')
 			tmp_result := os.system(tmp_cmd)
-			res.vrun_elog('exit code: $tmp_result')
+			res.vrun_elog('exit code: ${tmp_result}')
 			//
 			if output_option.len != 0 {
-				res.vrun_elog('remove tmp exe file: $tmp_exe_file_path')
+				res.vrun_elog('remove tmp exe file: ${tmp_exe_file_path}')
 				os.rm(tmp_exe_file_path) or {}
 			}
-			res.vrun_elog('remove tmp v file: $tmp_v_file_path')
+			res.vrun_elog('remove tmp v file: ${tmp_v_file_path}')
 			os.rm(tmp_v_file_path) or {}
 			exit(tmp_result)
 		}
 		must_exist(res.path)
 		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
 			&& os.is_file(res.path + '.v') {
-			eprintln_cond(show_output, 'It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "$res.path" is an executable.')
+			eprintln_cond(show_output, 'It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
 			res.path += '.v'
 		}
 	} else if is_source_file(command) {
@@ -851,7 +851,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		must_exist(res.path)
 		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
 			&& os.is_file(res.path + '.v') {
-			eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "$res.path" is an executable.')
+			eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
 			res.path += '.v'
 		}
 	}
@@ -892,7 +892,7 @@ pub fn eprintln_cond(condition bool, s string) {
 
 pub fn (pref &Preferences) vrun_elog(s string) {
 	if pref.is_verbose {
-		eprintln('> v run -, $s')
+		eprintln('> v run -, ${s}')
 	}
 }
 
@@ -942,14 +942,14 @@ pub fn arch_from_string(arch_str string) !Arch {
 			return ._auto
 		}
 		else {
-			return error('invalid arch: $arch_str')
+			return error('invalid arch: ${arch_str}')
 		}
 	}
 }
 
 fn must_exist(path string) {
 	if !os.exists(path) {
-		eprintln('v expects that `$path` exists, but it does not')
+		eprintln('v expects that `${path}` exists, but it does not')
 		exit(1)
 	}
 }
@@ -969,7 +969,7 @@ pub fn backend_from_string(s string) !Backend {
 		'js_freestanding' { return .js_freestanding }
 		'native' { return .native }
 		'interpret' { return .interpret }
-		else { return error('Unknown backend type $s') }
+		else { return error('Unknown backend type ${s}') }
 	}
 }
 
@@ -1018,7 +1018,7 @@ fn (mut prefs Preferences) parse_define(define string) {
 	define_parts := define.split('=')
 	prefs.diagnose_deprecated_defines(define_parts)
 	if !(prefs.is_debug && define == 'debug') {
-		prefs.build_options << '-d $define'
+		prefs.build_options << '-d ${define}'
 	}
 	if define_parts.len == 1 {
 		prefs.compile_defines << define

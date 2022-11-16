@@ -78,7 +78,7 @@ fn (mut ctx Context) termios_setup() ! {
 	}
 
 	if ctx.cfg.window_title != '' {
-		print('\x1b]0;$ctx.cfg.window_title\x07')
+		print('\x1b]0;${ctx.cfg.window_title}\x07')
 		flush_stdout()
 	}
 
@@ -90,7 +90,7 @@ fn (mut ctx Context) termios_setup() ! {
 		C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
 		// feature-test the SU spec
 		sx, sy := get_cursor_position()
-		print('$bsu$esu')
+		print('${bsu}${esu}')
 		flush_stdout()
 		ex, ey := get_cursor_position()
 		if sx == ex && sy == ey {

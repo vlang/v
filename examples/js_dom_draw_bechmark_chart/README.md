@@ -77,7 +77,7 @@ Create a service to request the benchmarks data by http
 Decode the info to `FrameworkBenchmarkResponse`
 ```v ignore
 fn typescript_sqlite_memory() ?FrameworkBenchmarkResponse {
-	url := 'http://localhost:3000/sqlite-memory/$benchmark_loop_length'
+	url := 'http://localhost:3000/sqlite-memory/${benchmark_loop_length}'
 	res := http.get(url) or { panic(err) }
 	framework_benchmark_response := json.decode(FrameworkBenchmarkResponse, res.body)!
 	return framework_benchmark_response
@@ -89,7 +89,7 @@ Create a service to request the benchmarks data by http
 Decode the info to `FrameworkBenchmarkResponse`
 ```v ignore
 fn typescript_sqlite_memory() ?FrameworkBenchmarkResponse {
-	url := 'http://localhost:3000/sqlite-memory/$benchmark_loop_length'
+	url := 'http://localhost:3000/sqlite-memory/${benchmark_loop_length}'
 	res := http.get(url) or { panic(err) }
 	framework_benchmark_response := json.decode(FrameworkBenchmarkResponse, res.body)!
 	return framework_benchmark_response

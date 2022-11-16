@@ -12,7 +12,7 @@ fn test_cast_int_to_interface() {
 		} else {
 			println('an is not an int!')
 		}
-		assert '$an' == 'Any(200)'
+		assert '${an}' == 'Any(200)'
 	} else {
 		assert false
 	}

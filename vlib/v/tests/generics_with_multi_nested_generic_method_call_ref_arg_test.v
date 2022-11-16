@@ -10,12 +10,12 @@ fn (mut w Wrapper<S>) next<T>(input T) f64 {
 		} $else $if T is SecretCase {
 			return w.calc.next(input)
 		} $else {
-			panic('"$T.name" is not supported')
+			panic('"${T.name}" is not supported')
 			return -1
 		}
 		return -1
 	} $else {
-		panic('"$S.name" is not supported')
+		panic('"${S.name}" is not supported')
 		return -1
 	}
 }
@@ -61,10 +61,10 @@ fn (mut c Calc<S>) next<T>(input T) f64 {
 		} $else $if T is SpecialCase {
 			return c.typ.next(input)
 		} $else {
-			panic('Unsupported type $T.name')
+			panic('Unsupported type ${T.name}')
 		}
 	} $else {
-		panic('Unsupported type $S.name')
+		panic('Unsupported type ${S.name}')
 	}
 }
 
@@ -90,7 +90,7 @@ fn new<S>() Wrapper<S> {
 			}
 		}
 	} $else {
-		panic('unknown type $S.name')
+		panic('unknown type ${S.name}')
 	}
 }
 

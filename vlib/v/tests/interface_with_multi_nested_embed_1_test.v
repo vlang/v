@@ -84,7 +84,7 @@ pub fn (mut ll LinearLayout) add(mut l Layoutable) {
 pub fn (mut ll LinearLayout) layout() {
 	for mut wl in ll.layoutables {
 		x, y := wl.get_pos()
-		println('$x, $y')
+		println('${x}, ${y}')
 		assert x == 10
 		assert y == 20
 	}

@@ -70,7 +70,7 @@ fn (am AssetManager) combine(asset_type string, to_file bool) string {
 		panic('vweb.assets: you must set a cache dir.')
 	}
 	cache_key := am.get_cache_key(asset_type)
-	out_file := '$am.cache_dir/${cache_key}.$asset_type'
+	out_file := '${am.cache_dir}/${cache_key}.${asset_type}'
 	mut out := ''
 	// use cache
 	if os.exists(out_file) {
@@ -114,7 +114,7 @@ fn (am AssetManager) get_cache_key(asset_type string) string {
 		}
 	}
 	hash := md5.sum(files_salt.bytes()).hex()
-	return '$hash-$latest_modified'
+	return '${hash}-${latest_modified}'
 }
 
 fn (am AssetManager) include(asset_type string, combine bool) string {
@@ -123,19 +123,19 @@ fn (am AssetManager) include(asset_type string, combine bool) string {
 	if asset_type == 'css' {
 		if combine {
 			file := am.combine(asset_type, true)
-			return '<link rel="stylesheet" href="$file">\n'
+			return '<link rel="stylesheet" href="${file}">\n'
 		}
 		for asset in assets {
-			out += '<link rel="stylesheet" href="$asset.file_path">\n'
+			out += '<link rel="stylesheet" href="${asset.file_path}">\n'
 		}
 	}
 	if asset_type == 'js' {
 		if combine {
 			file := am.combine(asset_type, true)
-			return '<script type="text/javascript" src="$file"></script>\n'
+			return '<script type="text/javascript" src="${file}"></script>\n'
 		}
 		for asset in assets {
-			out += '<script type="text/javascript" src="$asset.file_path"></script>\n'
+			out += '<script type="text/javascript" src="${asset.file_path}"></script>\n'
 		}
 	}
 	return out
@@ -159,7 +159,7 @@ fn (mut am AssetManager) add(asset_type string, file string) bool {
 	} else if asset_type == 'js' {
 		am.js << asset
 	} else {
-		panic('$assets.unknown_asset_type_error ($asset_type).')
+		panic('${assets.unknown_asset_type_error} (${asset_type}).')
 	}
 	return true
 }
@@ -176,7 +176,7 @@ fn (am AssetManager) exists(asset_type string, file string) bool {
 
 fn (am AssetManager) get_assets(asset_type string) []Asset {
 	if asset_type != 'css' && asset_type != 'js' {
-		panic('$assets.unknown_asset_type_error ($asset_type).')
+		panic('${assets.unknown_asset_type_error} (${asset_type}).')
 	}
 	assets := if asset_type == 'css' { am.css } else { am.js }
 	return assets

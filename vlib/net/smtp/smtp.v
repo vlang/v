@@ -77,7 +77,7 @@ pub fn (mut c Client) reconnect() ! {
 		return error('Already connected to server')
 	}
 
-	conn := net.dial_tcp('$c.server:$c.port') or { return error('Connecting to server failed') }
+	conn := net.dial_tcp('${c.server}:${c.port}') or { return error('Connecting to server failed') }
 	c.conn = conn
 
 	if c.ssl {
@@ -128,7 +128,7 @@ pub fn (mut c Client) quit() ! {
 fn (mut c Client) connect_ssl() ! {
 	c.ssl_conn = ssl.new_ssl_conn()!
 	c.ssl_conn.connect(mut c.conn, c.server) or {
-		return error('Connecting to server using OpenSSL failed: $err')
+		return error('Connecting to server using OpenSSL failed: ${err}')
 	}
 
 	c.reader = io.new_buffered_reader(reader: c.ssl_conn)
@@ -141,7 +141,7 @@ fn (mut c Client) expect_reply(expected ReplyCode) ! {
 	for {
 		str = c.reader.read_line()!
 		if str.len < 4 {
-			return error('Invalid SMTP response: $str')
+			return error('Invalid SMTP response: ${str}')
 		}
 
 		if str.runes()[3] == `-` {
@@ -159,10 +159,10 @@ fn (mut c Client) expect_reply(expected ReplyCode) ! {
 	if str.len >= 3 {
 		status := str[..3].int()
 		if unsafe { ReplyCode(status) } != expected {
-			return error('Received unexpected status code $status, expecting $expected')
+			return error('Received unexpected status code ${status}, expecting ${expected}')
 		}
 	} else {
-		return error('Recieved unexpected SMTP data: $str')
+		return error('Recieved unexpected SMTP data: ${str}')
 	}
 }
 
@@ -183,7 +183,7 @@ fn (mut c Client) send_str(s string) ! {
 
 [inline]
 fn (mut c Client) send_ehlo() ! {
-	c.send_str('EHLO $c.server\r\n')!
+	c.send_str('EHLO ${c.server}\r\n')!
 	c.expect_reply(.action_ok)!
 }
 
@@ -211,13 +211,13 @@ fn (mut c Client) send_auth() ! {
 }
 
 fn (mut c Client) send_mailfrom(from string) ! {
-	c.send_str('MAIL FROM: <$from>\r\n')!
+	c.send_str('MAIL FROM: <${from}>\r\n')!
 	c.expect_reply(.action_ok)!
 }
 
 fn (mut c Client) send_mailto(to string) ! {
 	for rcpt in to.split(';') {
-		c.send_str('RCPT TO: <$rcpt>\r\n')!
+		c.send_str('RCPT TO: <${rcpt}>\r\n')!
 		c.expect_reply(.action_ok)!
 	}
 }
@@ -232,16 +232,16 @@ fn (mut c Client) send_body(cfg Mail) ! {
 	date := cfg.date.custom_format('ddd, D MMM YYYY HH:mm ZZ')
 	nonascii_subject := cfg.subject.bytes().any(it < u8(` `) || it > u8(`~`))
 	mut sb := strings.new_builder(200)
-	sb.write_string('From: $cfg.from\r\n')
+	sb.write_string('From: ${cfg.from}\r\n')
 	sb.write_string('To: <${cfg.to.split(';').join('>; <')}>\r\n')
 	sb.write_string('Cc: <${cfg.cc.split(';').join('>; <')}>\r\n')
 	sb.write_string('Bcc: <${cfg.bcc.split(';').join('>; <')}>\r\n')
-	sb.write_string('Date: $date\r\n')
+	sb.write_string('Date: ${date}\r\n')
 	if nonascii_subject {
 		// handle UTF-8 subjects according RFC 1342
 		sb.write_string('Subject: =?utf-8?B?' + base64.encode_str(cfg.subject) + '?=\r\n')
 	} else {
-		sb.write_string('Subject: $cfg.subject\r\n')
+		sb.write_string('Subject: ${cfg.subject}\r\n')
 	}
 
 	if is_html {

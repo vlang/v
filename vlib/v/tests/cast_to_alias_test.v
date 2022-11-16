@@ -7,11 +7,11 @@ enum Enum {
 }
 
 fn foo(n int) string {
-	return '$n'
+	return '${n}'
 }
 
 fn bar(n CEnum) string {
-	return '$n'
+	return '${n}'
 }
 
 fn test_cast_to_alias() {

@@ -50,7 +50,7 @@ pub fn ppm_writer_for_fname(fname string, settings ImageSettings) !&PPMWriter {
 
 pub fn (mut writer PPMWriter) start_for_file(fname string, settings ImageSettings) ! {
 	writer.file = os.create(fname)!
-	writer.file.writeln('P6 $settings.width $settings.height 255')!
+	writer.file.writeln('P6 ${settings.width} ${settings.height} 255')!
 }
 
 pub fn (mut writer PPMWriter) handle_pixel(p gx.Color) ! {

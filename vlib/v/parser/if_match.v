@@ -102,7 +102,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				var_names << var.name
 
 				if p.scope.known_var(var.name) {
-					p.error_with_pos('redefinition of `$var.name`', var.pos)
+					p.error_with_pos('redefinition of `${var.name}`', var.pos)
 				}
 				vars << var
 				if p.tok.kind != .comma {

@@ -21,10 +21,10 @@ fn main() {
 	mut fails := 0
 	for sample in samples {
 		equal := math.abs(sample.value - sample.literal) < 0.00000000001
-		eprintln('> sample.value: ${sample.value:20.16f} | sample.literal: ${sample.literal:20.16f} | equal: $equal')
+		eprintln('> sample.value: ${sample.value:20.16f} | sample.literal: ${sample.literal:20.16f} | equal: ${equal}')
 		if !equal {
 			fails++
 		}
 	}
-	eprintln('> FAILS: $fails .')
+	eprintln('> FAILS: ${fails} .')
 }

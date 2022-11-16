@@ -36,7 +36,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	for i in 0 .. node.branches.len {
 		mut branch := node.branches[i]
 		if branch.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {
-			c.error('unnecessary `()` in `$if_kind` condition, use `$if_kind expr {` instead of `$if_kind (expr) {`.',
+			c.error('unnecessary `()` in `${if_kind}` condition, use `${if_kind} expr {` instead of `${if_kind} (expr) {`.',
 				branch.pos)
 		}
 		if branch.is_else && node.comptime_branch_idx == -1 {
@@ -66,7 +66,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			if sym.kind == .multi_return {
 				mr_info := sym.info as ast.MultiReturn
 				if branch.cond.vars.len != mr_info.types.len {
-					c.error('if guard expects $mr_info.types.len variables, but got $branch.cond.vars.len',
+					c.error('if guard expects ${mr_info.types.len} variables, but got ${branch.cond.vars.len}',
 						branch.pos)
 					continue
 				} else {
@@ -99,7 +99,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						got_type := c.unwrap_generic((right as ast.TypeNode).typ)
 						sym := c.table.sym(got_type)
 						if sym.kind == .placeholder || got_type.has_flag(.generic) {
-							c.error('unknown type `$sym.name`', branch.cond.right.pos())
+							c.error('unknown type `${sym.name}`', branch.cond.right.pos())
 						}
 
 						if left is ast.SelectorExpr {
@@ -273,11 +273,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							node.pos)
 					}
 				} else if !node.is_comptime {
-					c.error('`$if_kind` expression requires an expression as the last statement of every branch',
+					c.error('`${if_kind}` expression requires an expression as the last statement of every branch',
 						branch.pos)
 				}
 			} else if !node.is_comptime {
-				c.error('`$if_kind` expression requires an expression as the last statement of every branch',
+				c.error('`${if_kind}` expression requires an expression as the last statement of every branch',
 					branch.pos)
 			}
 		}
@@ -308,7 +308,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	node.typ = ast.mktyp(node.typ)
 	if expr_required && !node.has_else {
 		d := if node.is_comptime { '$' } else { '' }
-		c.error('`$if_kind` expression needs `${d}else` clause', node.pos)
+		c.error('`${if_kind}` expression needs `${d}else` clause', node.pos)
 	}
 	return node.typ
 }
@@ -328,7 +328,7 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 					ast.none_type_idx
 				}
 				else {
-					c.error('invalid type `$right_expr`', right_expr.pos())
+					c.error('invalid type `${right_expr}`', right_expr.pos())
 					ast.Type(0)
 				}
 			}
@@ -346,7 +346,7 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 				} else if !c.check_types(right_type, expr_type) && left_sym.kind != .sum_type {
 					expect_str := c.table.type_to_str(right_type)
 					expr_str := c.table.type_to_str(expr_type)
-					c.error('cannot use type `$expect_str` as type `$expr_str`', node.pos)
+					c.error('cannot use type `${expect_str}` as type `${expr_str}`', node.pos)
 				}
 				if node.left in [ast.Ident, ast.SelectorExpr] && node.right is ast.TypeNode {
 					is_variable := if node.left is ast.Ident {
@@ -365,7 +365,7 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 							&& (left_sym.kind == .interface_ && right_sym.kind != .interface_) {
 							v := scope.find_var(node.left.name) or { &ast.Var{} }
 							if v.is_mut && !node.left.is_mut {
-								c.error('smart casting a mutable interface value requires `if mut $node.left.name is ...`',
+								c.error('smart casting a mutable interface value requires `if mut ${node.left.name} is ...`',
 									node.left.pos)
 							}
 						}

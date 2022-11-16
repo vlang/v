@@ -7,7 +7,7 @@ import v.pref
 
 [if trace_util_qualify ?]
 fn trace_qualify(callfn string, mod string, file_path string, kind_res string, result string, detail string) {
-	eprintln('> ${callfn:15}: ${mod:-18} | file_path: ${file_path:-71} | => ${kind_res:14}: ${result:-18} ; $detail')
+	eprintln('> ${callfn:15}: ${mod:-18} | file_path: ${file_path:-71} | => ${kind_res:14}: ${result:-18} ; ${detail}')
 }
 
 // 2022-01-30 qualify_import - used by V's parser, to find the full module name of import statements
@@ -40,7 +40,7 @@ pub fn qualify_import(pref &pref.Preferences, mod string, file_path string) stri
 		// >  qualify_import: jsonrpc            | file_path: /v/vls/server/features.v | =>   import_res 2: jsonrpc            ; /v/vls/server/features.v
 		return m1
 	}
-	trace_qualify(@FN, mod, file_path, 'import_res 3', mod, '---, mod_path: $mod_path')
+	trace_qualify(@FN, mod, file_path, 'import_res 3', mod, '---, mod_path: ${mod_path}')
 	// >  qualify_import: server | file_path: cmd/vls/host.v | =>   import_res 3: server ; ---
 	// >  qualify_import: cli    | file_path: cmd/vls/main.v | =>   import_res 1: cli    ; /v/cleanv/vlib/cli
 	// >  qualify_import: server | file_path: cmd/vls/main.v | =>   import_res 3: server ; ---
@@ -65,11 +65,11 @@ pub fn qualify_module(pref &pref.Preferences, mod string, file_path string) stri
 	// TODO 2022-01-30: The lookup should be relative to the folder, in which the current file is,
 	// TODO 2022-01-30: *NOT* to the working folder of the compiler, which can change easily.
 	if clean_file_path.replace(os.getwd() + os.path_separator, '') == mod {
-		trace_qualify(@FN, mod, file_path, 'module_res 2', mod, 'clean_file_path - getwd == mod, clean_file_path: $clean_file_path')
+		trace_qualify(@FN, mod, file_path, 'module_res 2', mod, 'clean_file_path - getwd == mod, clean_file_path: ${clean_file_path}')
 		return mod
 	}
 	if m1 := mod_path_to_full_name(pref, mod, clean_file_path) {
-		trace_qualify(@FN, mod, file_path, 'module_res 3', m1, 'm1 == f($clean_file_path)')
+		trace_qualify(@FN, mod, file_path, 'module_res 3', m1, 'm1 == f(${clean_file_path})')
 		// >  qualify_module: net  | file_path: /v/cleanv/vlib/net/util.v     | =>   module_res 3: net     ; m1 == f(/v/cleanv/vlib/net)
 		// >  qualify_module: term | file_path: /v/cleanv/vlib/term/control.v | =>   module_res 3: term    ; m1 == f(/v/cleanv/vlib/term)
 		// >  qualify_module: log  | file_path: /v/vls/lsp/log/log.v          | =>   module_res 3: lsp.log ; m1 == f(/v/vls/lsp/log)
@@ -80,7 +80,7 @@ pub fn qualify_module(pref &pref.Preferences, mod string, file_path string) stri
 	}
 	// zzzzzzz WORKING, when there is NO ../v.mod:
 	// zzzzzzz >  qualify_module: help | file_path: /v/cleanv/cmd/v/help/help.v   | =>   module_res 4: help          ; ---, clean_file_path: /v/cleanv/cmd/v/help
-	trace_qualify(@FN, mod, file_path, 'module_res 4', mod, '---, clean_file_path: $clean_file_path')
+	trace_qualify(@FN, mod, file_path, 'module_res 4', mod, '---, clean_file_path: ${clean_file_path}')
 	return mod
 }
 

@@ -95,7 +95,7 @@ fn test_encode_decode_sumtype() {
 	enc := json.encode(game)
 	// eprintln('Encoded Game: $enc')
 
-	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},1,"Stool",{"_type":"Time","value":$t.unix_time()}]}'
+	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},1,"Stool",{"_type":"Time","value":${t.unix_time()}}]}'
 
 	dec := json.decode(SomeGame, enc)!
 	// eprintln('Decoded Game: $dec')
@@ -421,15 +421,15 @@ struct Info {
 fn test_decode_null_object() {
 	info := json.decode(Info, '{"id": 22, "items": null, "maps": null}')!
 	assert info.id == 22
-	assert '$info.items' == '[]'
-	assert '$info.maps' == '{}'
+	assert '${info.items}' == '[]'
+	assert '${info.maps}' == '{}'
 }
 
 fn test_decode_missing_maps_field() {
 	info := json.decode(Info, '{"id": 22, "items": null}')!
 	assert info.id == 22
-	assert '$info.items' == '[]'
-	assert '$info.maps' == '{}'
+	assert '${info.items}' == '[]'
+	assert '${info.maps}' == '{}'
 }
 
 struct Foo2 {

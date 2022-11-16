@@ -23,12 +23,12 @@ fn play_sounds(files []string) ! {
 	player.init()
 	for f in files {
 		if !os.exists(f) || os.is_dir(f) {
-			eprintln('skipping "$f" (does not exist)')
+			eprintln('skipping "${f}" (does not exist)')
 			continue
 		}
 		fext := os.file_ext(f).to_lower()
 		if fext != '.wav' {
-			eprintln('skipping "$f" (not a .wav file)')
+			eprintln('skipping "${f}" (not a .wav file)')
 			continue
 		}
 		player.play_wav_file(f)!
@@ -66,7 +66,7 @@ fn (mut p Player) stop() {
 }
 
 fn (mut p Player) play_wav_file(fpath string) ! {
-	println('> play_wav_file: $fpath')
+	println('> play_wav_file: ${fpath}')
 	samples := read_wav_file_samples(fpath)!
 	p.finished = true
 	p.samples << samples

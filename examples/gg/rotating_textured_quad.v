@@ -16,7 +16,7 @@ pub fn (mut window Window) init() {
 pub fn (mut window Window) draw() {
 	angle := f32(window.ctx.frame) / 64 // since window.ctx.frame is increased by 1 on every frame -> the angle will be increasing too
 	window.ctx.begin()
-	sgl.load_pipeline(window.ctx.timage_pip)
+	sgl.load_pipeline(window.ctx.pipeline.alpha)
 
 	sgl.translate(400, 400, 0) // center of the screen
 	sgl.rotate(angle, 0.0, 0.0, 1.0) // rotate around the Z axis pointing towards the camera

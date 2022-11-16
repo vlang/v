@@ -11,7 +11,7 @@ pub fn show(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.File) 
 	mut mapper := &Mapper{
 		pref: pref
 		table: table
-		dg: dotgraph.new('CallGraph', 'CallGraph for $pref.path', 'green')
+		dg: dotgraph.new('CallGraph', 'CallGraph for ${pref.path}', 'green')
 	}
 	// Node14 [shape="box",label="PrivateBase",URL="$classPrivateBase.html"];
 	// Node15 -> Node9 [dir=back,color="midnightblue",fontsize=10,style="solid"];
@@ -73,7 +73,7 @@ fn (mut m Mapper) fn_name(fname string, receiver_type ast.Type, is_method bool) 
 		return fname
 	}
 	rec_sym := m.table.sym(receiver_type)
-	return '${rec_sym.name}.$fname'
+	return '${rec_sym.name}.${fname}'
 }
 
 fn (mut m Mapper) dot_fn_name(fname string, recv_type ast.Type, is_method bool) string {

@@ -110,7 +110,7 @@ pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 	decompressed := compress.decompress(data[header_length..data.len - 8], 0)!
 	length_expected := (u32(data[data.len - 4]) << 24) | (u32(data[data.len - 3]) << 16) | (u32(data[data.len - 2]) << 8) | data[data.len - 1]
 	if params.verify_length && decompressed.len != length_expected {
-		return error('length verification failed, got $decompressed.len, expected $length_expected')
+		return error('length verification failed, got ${decompressed.len}, expected ${length_expected}')
 	}
 	checksum := crc32.sum(decompressed)
 	checksum_expected := (u32(data[data.len - 8]) << 24) | (u32(data[data.len - 7]) << 16) | (u32(data[data.len - 6]) << 8) | data[data.len - 5]

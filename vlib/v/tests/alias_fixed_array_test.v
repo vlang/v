@@ -8,5 +8,5 @@ fn test_alias_fixed_array() {
 }
 
 fn get(b Block) string {
-	return '$b'
+	return '${b}'
 }

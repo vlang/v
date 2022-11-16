@@ -54,7 +54,7 @@ pub fn (c Config) read_input() !string {
 	if text == '' && os.is_file(c.file_path) {
 		text = os.read_file(c.file_path) or {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' Could not read "$c.file_path": "$err.msg()"')
+				' Could not read "${c.file_path}": "${err.msg()}"')
 		}
 	}
 	return text

@@ -57,26 +57,26 @@ fn test_fails() ! {
 	a := -238
 	b := 0
 	if z := encode_int(a) {
-		return error(@MOD + '.' + @FN + ': expected encode_int to fail, got $z')
+		return error(@MOD + '.' + @FN + ': expected encode_int to fail, got ${z}')
 	}
 	if z := encode_int(b) {
-		return error(@MOD + '.' + @FN + ': expected encode_int to fail, got $z')
+		return error(@MOD + '.' + @FN + ': expected encode_int to fail, got ${z}')
 	}
 
 	c := '!'
 	if z := decode_int(c) {
-		return error(@MOD + '.' + @FN + ': expected decode_int to fail, got $z')
+		return error(@MOD + '.' + @FN + ': expected decode_int to fail, got ${z}')
 	}
 	if z := decode(c) {
-		return error(@MOD + '.' + @FN + ': expected decode to fail, got $z')
+		return error(@MOD + '.' + @FN + ': expected decode to fail, got ${z}')
 	}
 
 	// repeating character
 	if abc := new_alphabet('aaaaafghij\$lmnopqrstuvwxyz0123456789_ABCDEFGHIJLMNOPQRSTUV') {
-		return error(@MOD + '.' + @FN + ': expected new_alphabet to fail, got $abc')
+		return error(@MOD + '.' + @FN + ': expected new_alphabet to fail, got ${abc}')
 	}
 	// more than 58 characters long
 	if abc := new_alphabet('abcdefghij\$lmnopqrstuvwxyz0123456789_ABCDEFGHIJLMNOPQRSTUVWXYZ') {
-		return error(@MOD + '.' + @FN + ': expected new_alphabet to fail, got $abc')
+		return error(@MOD + '.' + @FN + ': expected new_alphabet to fail, got ${abc}')
 	}
 }

@@ -164,10 +164,10 @@ pub fn decode_walpha_bytes(input []u8, alphabet Alphabet) ![]u8 {
 	for _, r in input {
 		if r > 127 {
 			panic(@MOD + '.' + @FN +
-				': high-bit set on invalid digit; outside of ascii range ($r). This should never happen.')
+				': high-bit set on invalid digit; outside of ascii range (${r}). This should never happen.')
 		}
 		if alphabet.decode[r] == -1 {
-			return error(@MOD + '.' + @FN + ': invalid base58 digit ($r)')
+			return error(@MOD + '.' + @FN + ': invalid base58 digit (${r})')
 		}
 
 		c = u64(alphabet.decode[r])

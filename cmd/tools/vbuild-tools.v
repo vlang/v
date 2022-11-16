@@ -26,8 +26,8 @@ fn main() {
 	os.chdir(vroot)!
 	folder := os.join_path('cmd', 'tools')
 	tfolder := os.join_path(vroot, 'cmd', 'tools')
-	main_label := 'Building $folder ...'
-	finish_label := 'building $folder'
+	main_label := 'Building ${folder} ...'
+	finish_label := 'building ${folder}'
 	//
 	mut skips := []string{}
 	for stool in tools_in_subfolders {
@@ -68,7 +68,7 @@ fn main() {
 		os.mv_by_cp(tpath, target_path) or {
 			emsg := err.msg()
 			if !emsg.contains('vbuild-tools') && !emsg.contains('vtest-all') {
-				eprintln('error while moving $tpath to $target_path: $emsg')
+				eprintln('error while moving ${tpath} to ${target_path}: ${emsg}')
 			}
 			continue
 		}

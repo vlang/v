@@ -26,7 +26,7 @@ pub fn image_worker(mut writer PPMWriter, result_chan chan &sim.SimResult, setti
 			bmark.step()
 			writer.handle_pixel(pixel_buf[current_index].Color) or {
 				bmark.fail()
-				sim.log(@MOD + '.' + @FN + ': pixel handler failed. Error $err')
+				sim.log(@MOD + '.' + @FN + ': pixel handler failed. Error ${err}')
 				break
 			}
 			bmark.ok()

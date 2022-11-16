@@ -40,7 +40,7 @@ fn C.AAssetManager_open(&C.AAssetManager, &char, int) &C.AAsset
 pub fn (am &AssetManager) open(filename string, mode AssetMode) !&Asset {
 	asset := C.AAssetManager_open(am, filename.str, int(mode))
 	if isnil(asset) {
-		return error('file `$filename` not found')
+		return error('file `${filename}` not found')
 	}
 	return asset
 }

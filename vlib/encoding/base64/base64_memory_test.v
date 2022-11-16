@@ -54,6 +54,6 @@ fn test_long_encoding() {
 		assert resultsize == s_decoded.len
 	}
 
-	println('Final s: $s')
+	println('Final s: ${s}')
 	//	assert s == 39147008
 }

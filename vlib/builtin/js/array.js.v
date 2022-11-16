@@ -108,7 +108,7 @@ pub fn (mut a array) trim(index int) {
 [unsafe]
 pub fn (a array) repeat_to_depth(count int, depth int) array {
 	if count < 0 {
-		panic('array.repeat: count is negative: $count')
+		panic('array.repeat: count is negative: ${count}')
 	}
 	mut arr := empty_array()
 

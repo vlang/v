@@ -50,7 +50,7 @@ fn test_fmt() {
 		opath := ipath
 		expected_ocontent := os.read_file(opath) or {
 			fmt_bench.fail()
-			eprintln(fmt_bench.step_message_fail('cannot read from $vrelpath'))
+			eprintln(fmt_bench.step_message_fail('cannot read from ${vrelpath}'))
 			continue
 		}
 		table := ast.new_table()
@@ -58,7 +58,7 @@ fn test_fmt() {
 		result_ocontent := fmt.fmt(file_ast, table, fpref, false)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
-			eprintln(fmt_bench.step_message_fail('file $vrelpath after formatting, does not look as expected.'))
+			eprintln(fmt_bench.step_message_fail('file ${vrelpath} after formatting, does not look as expected.'))
 			if ipath.ends_with(b2v_keep_path) {
 				continue
 			}
@@ -66,7 +66,7 @@ fn test_fmt() {
 				eprintln('>> sorry, but no working "diff" CLI command can be found')
 				continue
 			}
-			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_$ifilename')
+			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${ifilename}')
 			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
 			eprintln(diff.color_compare_files(diff_cmd, opath, vfmt_result_file))
 			continue
@@ -75,7 +75,7 @@ fn test_fmt() {
 		eprintln(fmt_bench.step_message_ok(vrelpath))
 	}
 	restore_bin2v_placeholder() or {
-		eprintln('failed restoring vbin2v_keep.vv placeholder: $err.msg()')
+		eprintln('failed restoring vbin2v_keep.vv placeholder: ${err.msg()}')
 	}
 	fmt_bench.stop()
 	eprintln(term.h_divider('-'))
@@ -90,7 +90,7 @@ fn prepare_bin2v_file(mut fmt_bench benchmark.Benchmark) {
 	fmt_bench.step()
 	write_bin2v_keep_content() or {
 		fmt_bench.fail()
-		eprintln(fmt_bench.step_message_fail('Failed preparing bin2v_keep.vv: $err.msg()'))
+		eprintln(fmt_bench.step_message_fail('Failed preparing bin2v_keep.vv: ${err.msg()}'))
 		return
 	}
 	fmt_bench.ok()

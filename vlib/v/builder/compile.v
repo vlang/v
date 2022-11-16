@@ -86,12 +86,12 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	run_file := if b.pref.backend.is_js() {
 		node_basename := $if windows { 'node.exe' } $else { 'node' }
 		os.find_abs_path_of_executable(node_basename) or {
-			panic('Could not find `$node_basename` in system path. Do you have Node.js installed?')
+			panic('Could not find `${node_basename}` in system path. Do you have Node.js installed?')
 		}
 	} else if b.pref.backend == .golang {
 		go_basename := $if windows { 'go.exe' } $else { 'go' }
 		os.find_abs_path_of_executable(go_basename) or {
-			panic('Could not find `$go_basename` in system path. Do you have Go installed?')
+			panic('Could not find `${go_basename}` in system path. Do you have Go installed?')
 		}
 	} else {
 		compiled_file
@@ -106,7 +106,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	mut run_process := os.new_process(run_file)
 	run_process.set_args(run_args)
 	if b.pref.is_verbose {
-		println('running $run_process.filename with arguments $run_process.args')
+		println('running ${run_process.filename} with arguments ${run_process.args}')
 	}
 	// Ignore sigint and sigquit while running the compiled file,
 	// so ^C doesn't prevent v from deleting the compiled file.
@@ -132,7 +132,7 @@ fn eshcb(_ os.Signal) {
 
 [noreturn]
 fn serror(reason string, e IError) {
-	eprintln('could not $reason handler')
+	eprintln('could not ${reason} handler')
 	panic(e)
 }
 
@@ -141,11 +141,11 @@ fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
 		return
 	}
 	if v.pref.reuse_tmpc {
-		v.pref.vrun_elog('keeping executable: $exefile , because -keepc was passed')
+		v.pref.vrun_elog('keeping executable: ${exefile} , because -keepc was passed')
 		return
 	}
 	if !v.executable_exists {
-		v.pref.vrun_elog('remove run executable: $exefile')
+		v.pref.vrun_elog('remove run executable: ${exefile}')
 		os.rm(exefile) or {}
 	}
 }
@@ -173,7 +173,7 @@ pub fn (mut v Builder) set_module_lookup_paths() {
 	v.module_search_paths << v.compiled_dir
 	x := os.join_path(v.compiled_dir, 'modules')
 	if v.pref.is_verbose {
-		println('x: "$x"')
+		println('x: "${x}"')
 	}
 	v.module_search_paths << os.join_path(v.compiled_dir, 'modules')
 	v.module_search_paths << v.pref.lookup_path
@@ -188,7 +188,7 @@ pub fn (v Builder) get_builtin_files() []string {
 		v.log('v.pref.no_builtin is true, get_builtin_files == []')
 		return []
 	}
-	v.log('v.pref.lookup_path: $v.pref.lookup_path')
+	v.log('v.pref.lookup_path: ${v.pref.lookup_path}')
 	// Lookup for built-in folder in lookup path.
 	// Assumption: `builtin/` folder implies usable implementation of builtin
 	for location in v.pref.lookup_path {
@@ -226,7 +226,7 @@ pub fn (v &Builder) get_user_files() []string {
 		return []
 	}
 	mut dir := v.pref.path
-	v.log('get_v_files($dir)')
+	v.log('get_v_files(${dir})')
 	// Need to store user files separately, because they have to be added after
 	// libs, but we dont know	which libs need to be added yet
 	mut user_files := []string{}
@@ -263,7 +263,7 @@ pub fn (v &Builder) get_user_files() []string {
 			v_test_runner_prelude = os.join_path(preludes_path, 'test_runner_${v_test_runner_prelude}.v')
 		}
 		if !os.is_file(v_test_runner_prelude) || !os.is_readable(v_test_runner_prelude) {
-			eprintln('test runner error: File $v_test_runner_prelude should be readable.')
+			eprintln('test runner error: File ${v_test_runner_prelude} should be readable.')
 			verror('supported test runners are: tap, json, simple, normal')
 		}
 		user_files << v_test_runner_prelude
@@ -280,7 +280,7 @@ pub fn (v &Builder) get_user_files() []string {
 	is_test := v.pref.is_test
 	mut is_internal_module_test := false
 	if is_test {
-		tcontent := util.read_file(dir) or { verror('$dir does not exist') }
+		tcontent := util.read_file(dir) or { verror('${dir} does not exist') }
 		slines := tcontent.split_into_lines()
 		for sline in slines {
 			line := sline.trim_space()
@@ -299,7 +299,7 @@ pub fn (v &Builder) get_user_files() []string {
 		// v volt/slack_test.v: compile all .v files to get the environment
 		single_test_v_file := os.real_path(dir)
 		if v.pref.is_verbose {
-			v.log('> Compiling an internal module _test.v file $single_test_v_file .')
+			v.log('> Compiling an internal module _test.v file ${single_test_v_file} .')
 			v.log('> That brings in all other ordinary .v files in the same module too .')
 		}
 		user_files << single_test_v_file
@@ -307,7 +307,7 @@ pub fn (v &Builder) get_user_files() []string {
 	}
 	does_exist := os.exists(dir)
 	if !does_exist {
-		verror("$dir doesn't exist")
+		verror("${dir} doesn't exist")
 	}
 	is_real_file := does_exist && !os.is_dir(dir)
 	resolved_link := if is_real_file && os.is_link(dir) { os.real_path(dir) } else { dir }
@@ -317,18 +317,18 @@ pub fn (v &Builder) get_user_files() []string {
 		// Just compile one file and get parent dir
 		user_files << single_v_file
 		if v.pref.is_verbose {
-			v.log('> just compile one file: "$single_v_file"')
+			v.log('> just compile one file: "${single_v_file}"')
 		}
 	} else if os.is_dir(dir) {
 		if v.pref.is_verbose {
-			v.log('> add all .v files from directory "$dir" ...')
+			v.log('> add all .v files from directory "${dir}" ...')
 		}
 		// Add .v files from the directory being compiled
 		user_files << v.v_files_from_dir(dir)
 	} else {
 		println('usage: `v file.v` or `v directory`')
 		ext := os.file_ext(dir)
-		println('unknown file extension `$ext`')
+		println('unknown file extension `${ext}`')
 		exit(1)
 	}
 	if user_files.len == 0 {
@@ -336,7 +336,7 @@ pub fn (v &Builder) get_user_files() []string {
 		exit(1)
 	}
 	if v.pref.is_verbose {
-		v.log('user_files: $user_files')
+		v.log('user_files: ${user_files}')
 	}
 	return user_files
 }

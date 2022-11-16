@@ -17,7 +17,7 @@ fn test_generics_method_with_generic_anon_fn_argument() {
 
 	f2 := Foo<int>{}
 	r2 := f2.do('bar', fn (s int) {
-		println('s value is $s')
+		println('s value is ${s}')
 	}, 22)
 	assert r2 == 22
 }

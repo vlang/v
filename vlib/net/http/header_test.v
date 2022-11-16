@@ -374,7 +374,7 @@ fn test_parse_headers() ? {
 	assert parse_headers('foo: bar\r\nfoo:baz')?.custom_values('foo') == ['bar', 'baz']
 
 	if x := parse_headers(' oops: oh no') {
-		return error('should have errored, but got $x')
+		return error('should have errored, but got ${x}')
 	}
 }
 

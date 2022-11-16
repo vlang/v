@@ -20,6 +20,6 @@ fn version_cmd() Command {
 
 fn version_func(version_cmd Command) ! {
 	cmd := version_cmd.parent
-	version := '$cmd.name version $cmd.version'
+	version := '${cmd.name} version ${cmd.version}'
 	println(version)
 }

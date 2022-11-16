@@ -184,8 +184,8 @@ fn test_larger_closure_parameters() {
 	eprintln('app ptr: ${u64(app)}')
 	f := fn [mut app] (cmd Command) u64 {
 		p := u64(app)
-		println('>>   p: $p')
-		println('>> cmd: $cmd')
+		println('>>   p: ${p}')
+		println('>> cmd: ${cmd}')
 		assert cmd.a == 1234
 		assert cmd.b == 2345
 		assert cmd.c == 3456
@@ -195,7 +195,7 @@ fn test_larger_closure_parameters() {
 	}
 	cmd := Command{}
 	res := f(cmd)
-	println('> res: $res | sizeof Command: ${sizeof(Command)}')
+	println('> res: ${res} | sizeof Command: ${sizeof(Command)}')
 	assert res == u64(app)
 }
 
@@ -203,10 +203,10 @@ fn test_closure_in_for_in_loop() {
 	a := [2, 4, 6, 9]
 	for v in a {
 		func := fn [v] (msg string) string {
-			return '$msg: $v'
+			return '${msg}: ${v}'
 		}
 		res := func('hello')
-		assert res == 'hello: $v'
+		assert res == 'hello: ${v}'
 		// dump(res)
 	}
 }

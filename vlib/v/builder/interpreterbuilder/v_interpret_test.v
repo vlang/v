@@ -5,11 +5,11 @@ import term
 const vexe = @VEXE
 
 fn interpreter_wrap(a string) string {
-	return 'fn main() {$a}'
+	return 'fn main() {${a}}'
 }
 
 fn interp_test(expression string, expected string) ! {
-	tmpdir := os.join_path(os.vtmp_dir(), 'v', 'interpret_test_$rand.ulid()')
+	tmpdir := os.join_path(os.vtmp_dir(), 'v', 'interpret_test_${rand.ulid()}')
 	os.mkdir_all(tmpdir) or {}
 	defer {
 		os.rmdir_all(tmpdir) or {}
@@ -19,16 +19,16 @@ fn interp_test(expression string, expected string) ! {
 	outfile := os.join_path(tmpdir, 'output.txt')
 	os.write_file(tmpfile, interpreter_wrap(expression))!
 	if os.system('${os.quoted_path(vexe)} interpret ${os.quoted_path(tmpfile)} > ${os.quoted_path(outfile)}') != 0 {
-		eprintln('>>> Failed to interpret V expression: |$expression|')
+		eprintln('>>> Failed to interpret V expression: |${expression}|')
 		return error('v interp')
 	}
 	res := os.read_file(outfile)!
 	output := res.trim_space()
 	if output != expected {
 		eprintln('>>> The output of the V expression, is not the same as the expected one')
-		eprintln(' V expression: $expression')
-		eprintln('       output: |$output|')
-		eprintln('     expected: |$expected|')
+		eprintln(' V expression: ${expression}')
+		eprintln('       output: |${output}|')
+		eprintln('     expected: |${expected}|')
 		return error('test')
 	}
 	println('${term.colorize(term.green, 'OK')} ${term.colorize(term.bright_blue, expression.replace('\n',

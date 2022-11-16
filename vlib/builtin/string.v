@@ -875,7 +875,7 @@ fn (s string) substr2(start int, _end int, end_max bool) string {
 pub fn (s string) substr(start int, end int) string {
 	$if !no_bounds_checking {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-			panic('substr($start, $end) out of bounds (len=$s.len)')
+			panic('substr(${start}, ${end}) out of bounds (len=${s.len})')
 		}
 	}
 	len := end - start
@@ -902,7 +902,7 @@ pub fn (s string) substr(start int, end int) string {
 [direct_array_access]
 pub fn (s string) substr_with_check(start int, end int) ?string {
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-		return error('substr($start, $end) out of bounds (len=$s.len)')
+		return error('substr(${start}, ${end}) out of bounds (len=${s.len})')
 	}
 	len := end - start
 	if len == s.len {
@@ -1584,7 +1584,7 @@ pub fn (s string) str() string {
 fn (s string) at(idx int) byte {
 	$if !no_bounds_checking {
 		if idx < 0 || idx >= s.len {
-			panic('string index out of range: $idx / $s.len')
+			panic('string index out of range: ${idx} / ${s.len}')
 		}
 	}
 	unsafe {
@@ -1881,7 +1881,7 @@ pub fn (s string) bytes() []u8 {
 [direct_array_access]
 pub fn (s string) repeat(count int) string {
 	if count < 0 {
-		panic('string.repeat: count is negative: $count')
+		panic('string.repeat: count is negative: ${count}')
 	} else if count == 0 {
 		return ''
 	} else if count == 1 {

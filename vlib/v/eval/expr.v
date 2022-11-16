@@ -74,7 +74,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						// 	return Int{y, 32}
 						// }
 						else {
-							e.error('unknown c function: `$expr.name`')
+							e.error('unknown c function: `${expr.name}`')
 						}
 					}
 				}
@@ -94,13 +94,13 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							return e.return_values
 						}
 					}
-					e.error('unknown function: ${mod}.$name at line $expr.pos.line_nr')
+					e.error('unknown function: ${mod}.${name} at line ${expr.pos.line_nr}')
 				}
 				// .js {
 				// 	e.error('js is not supported')
 				// }
 				else {
-					e.error('$expr.language is not supported as a call expression language')
+					e.error('${expr.language} is not supported as a call expression language')
 				}
 			}
 		}
@@ -144,7 +144,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							break
 						}
 					} else {
-						e.error('non-bool expression: $b.cond')
+						e.error('non-bool expression: ${b.cond}')
 					}
 				}
 				return empty
@@ -166,7 +166,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		ast.IntegerLiteral {
 			// return u64(strconv.parse_uint(expr.val, 0, 64)
 			return i64(strconv.parse_int(expr.val, 0, 64) or {
-				e.error('invalid integer literal: $expr.val')
+				e.error('invalid integer literal: ${expr.val}')
 			}) // TODO: numbers larger than 2^63 (for u64)
 		}
 		ast.FloatLiteral {
@@ -189,7 +189,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					}[expr.name.all_after_last('.')] or { ast.EmptyStmt{} } as Object
 				}
 				else {
-					e.error('unknown ident kind for `$expr.name`: $expr.kind')
+					e.error('unknown ident kind for `${expr.name}`: ${expr.kind}')
 				}
 			}
 		}
@@ -384,7 +384,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							return Int{exp.len, 32}
 						}
 						else {
-							e.error('unknown selector to string: $expr.field_name')
+							e.error('unknown selector to string: ${expr.field_name}')
 						}
 					}
 				}
@@ -394,12 +394,12 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							return Int{exp.val.len, 32}
 						}
 						else {
-							e.error('unknown selector to array: $expr.field_name')
+							e.error('unknown selector to array: ${expr.field_name}')
 						}
 					}
 				}
 				else {
-					e.error('unknown selector expression: $exp.type_name()')
+					e.error('unknown selector expression: ${exp.type_name()}')
 				}
 			}
 			e.error(exp.str())
@@ -420,7 +420,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						val: []Object{}
 					}
 				} else {
-					e.error('unknown array init combination; len: $expr.has_len, cap: $expr.has_cap, init: $expr.has_default')
+					e.error('unknown array init combination; len: ${expr.has_len}, cap: ${expr.has_cap}, init: ${expr.has_default}')
 				}
 			}
 			if expr.is_fixed || expr.has_val {
@@ -437,7 +437,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		}
 		ast.CharLiteral {
 			if expr.val.len !in [1, 2] {
-				e.error('invalid size of char literal: $expr.val.len')
+				e.error('invalid size of char literal: ${expr.val.len}')
 			}
 			if expr.val[0] == `\\` { // is an escape
 				return e.get_escape(rune(expr.val[1]))
@@ -483,7 +483,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					return !(x as bool)
 				}
 				else {
-					e.error('unhandled prefix expression $expr.op')
+					e.error('unhandled prefix expression ${expr.op}')
 				}
 			}
 		}
@@ -498,7 +498,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					return e.expr(expr.expr, ast.i64_type_idx)
 				}
 				else {
-					e.error('unhandled postfix expression $expr.op')
+					e.error('unhandled postfix expression ${expr.op}')
 				}
 			}
 		}
@@ -569,7 +569,7 @@ fn (e Eval) get_escape(r rune) rune {
 		}
 	}
 	if res == `e` {
-		e.error('unknown escape: `$r`')
+		e.error('unknown escape: `${r}`')
 	}
 	return res
 }

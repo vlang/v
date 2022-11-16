@@ -49,7 +49,7 @@ pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 					}
 				}
 				else {
-					e.error('unknown assign statment: $stmt.op')
+					e.error('unknown assign statment: ${stmt.op}')
 				}
 			}
 		}
@@ -132,7 +132,7 @@ pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 			}
 		}
 		else {
-			e.error('unhandled statement $stmt.type_name()')
+			e.error('unhandled statement ${stmt.type_name()}')
 		}
 	}
 }

@@ -18,7 +18,7 @@ pub fn (di DataI) cast<T>() DataI {
 pub type PrimeCfg = PrimeSet
 
 pub fn (pc PrimeCfg) short() string {
-	return "r: '$pc.r' a: '$pc.a' b: '$pc.b'"
+	return "r: '${pc.r}' a: '${pc.a}' b: '${pc.b}'"
 }
 
 [heap]
@@ -68,7 +68,7 @@ pub fn sizes() []string {
 //
 pub fn usage() string {
 	primes := read_toml_file()
-	return sizes().map('$it[..${primes[it].len}]').join('\n\t')
+	return sizes().map('${it}[..${primes[it].len}]').join('\n\t')
 }
 
 // reads the Map[string] []string from disk
@@ -77,7 +77,7 @@ fn read_toml_file() map[string][]string {
 	fp := os.join_path(@VROOT, prime.toml_path)
 
 	tm_doc := toml.parse_file(fp) or {
-		err_msg := 'expected $fp'
+		err_msg := 'expected ${fp}'
 		eprintln(err_msg)
 		panic(err)
 	}
@@ -151,10 +151,10 @@ pub fn random_set(cfg PrimeCfg) ?[]PrimeSet {
 	//
 	if p_lists.any(it.len == 0) {
 		msg := [
-			'bad config was :\n\n"$cfg"',
+			'bad config was :\n\n"${cfg}"',
 			"maybe try e.g { r: 'l.5' a: 'xxl.5 b: 'xl.10' } makes a set of 250",
-			'your config was { $cfg.short() }',
-			'sizes $usage()\n',
+			'your config was { ${cfg.short()} }',
+			'sizes ${usage()}\n',
 		].join('\n\n')
 
 		return error(msg)

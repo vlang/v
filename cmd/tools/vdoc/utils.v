@@ -20,7 +20,7 @@ fn escape(str string) string {
 
 fn get_sym_name(dn doc.DocNode) string {
 	sym_name := if dn.parent_name.len > 0 && dn.parent_name != 'void' {
-		'($dn.parent_name) $dn.name'
+		'(${dn.parent_name}) ${dn.name}'
 	} else {
 		dn.name
 	}
@@ -29,7 +29,7 @@ fn get_sym_name(dn doc.DocNode) string {
 
 fn get_node_id(dn doc.DocNode) string {
 	tag := if dn.parent_name.len > 0 && dn.parent_name != 'void' {
-		'${dn.parent_name}.$dn.name'
+		'${dn.parent_name}.${dn.name}'
 	} else {
 		dn.name
 	}
@@ -37,7 +37,7 @@ fn get_node_id(dn doc.DocNode) string {
 }
 
 fn is_module_readme(dn doc.DocNode) bool {
-	if dn.comments.len > 0 && dn.content == 'module $dn.name' {
+	if dn.comments.len > 0 && dn.content == 'module ${dn.name}' {
 		return true
 	}
 	return false
@@ -133,8 +133,8 @@ fn gen_footer_text(d &doc.Doc, include_timestamp bool) string {
 		return footer_text
 	}
 	generated_time := d.time_generated
-	time_str := '$generated_time.day $generated_time.smonth() $generated_time.year $generated_time.hhmmss()'
-	return '$footer_text Generated on: $time_str'
+	time_str := '${generated_time.day} ${generated_time.smonth()} ${generated_time.year} ${generated_time.hhmmss()}'
+	return '${footer_text} Generated on: ${time_str}'
 }
 
 fn color_highlight(code string, tb &ast.Table) string {
@@ -152,20 +152,20 @@ fn color_highlight(code string, tb &ast.Table) string {
 					'"'])
 				if use_double_quote {
 					s := unescaped_val.replace_each(['\x01', '\\\\', '"', '\\"'])
-					lit = term.yellow('"$s"')
+					lit = term.yellow('"${s}"')
 				} else {
 					s := unescaped_val.replace_each(['\x01', '\\\\', "'", "\\'"])
-					lit = term.yellow("'$s'")
+					lit = term.yellow("'${s}'")
 				}
 			}
 			.char {
-				lit = term.yellow('`$tok.lit`')
+				lit = term.yellow('`${tok.lit}`')
 			}
 			.comment {
 				lit = if tok.lit != '' && tok.lit[0] == 1 {
 					'//${tok.lit[1..]}'
 				} else {
-					'//$tok.lit'
+					'//${tok.lit}'
 				}
 			}
 			.keyword {

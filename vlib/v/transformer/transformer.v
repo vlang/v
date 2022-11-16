@@ -155,7 +155,7 @@ pub fn (mut t Transformer) check_safe_array(mut node ast.IndexExpr) {
 			}
 		}
 		ast.EnumVal {
-			debug_bounds_checking('? $name[.$index.val] safe?: no-idea (yet)!')
+			debug_bounds_checking('? ${name}[.${index.val}] safe?: no-idea (yet)!')
 		}
 		ast.Ident {
 			// we may be able to track const value in simple cases
@@ -1051,9 +1051,9 @@ pub fn (mut t Transformer) fn_decl(mut node ast.FnDecl) {
 		}
 		fname := if node.is_method {
 			receiver_name := global_table.type_to_str(node.receiver.typ)
-			'$node.mod ${receiver_name}.$node.name/$node.params.len'
+			'${node.mod} ${receiver_name}.${node.name}/${node.params.len}'
 		} else {
-			'$node.mod $node.name/$node.params.len'
+			'${node.mod} ${node.name}/${node.params.len}'
 		}
 
 		expr_stmt := ast.ExprStmt{

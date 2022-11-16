@@ -31,8 +31,8 @@ struct C.PGResult {
 
 pub struct Config {
 pub:
-	host     string
-	port     int = 5432
+	host     string = 'localhost'
+	port     int    = 5432
 	user     string
 	password string
 	dbname   string
@@ -77,7 +77,7 @@ fn C.PQfinish(voidptr)
 // the parameters from the `Config` structure, returning
 // a connection error when something goes wrong
 pub fn connect(config Config) !DB {
-	conninfo := 'host=$config.host port=$config.port user=$config.user dbname=$config.dbname password=$config.password'
+	conninfo := 'host=${config.host} port=${config.port} user=${config.user} dbname=${config.dbname} password=${config.password}'
 	conn := C.PQconnectdb(conninfo.str)
 	if conn == 0 {
 		return error('libpq memory allocation error')
@@ -88,9 +88,9 @@ pub fn connect(config Config) !DB {
 		// error message will be freed by the next `PQfinish`
 		// call
 		c_error_msg := unsafe { C.PQerrorMessage(conn).vstring() }
-		error_msg := '$c_error_msg'
+		error_msg := '${c_error_msg}'
 		C.PQfinish(conn)
-		return error('Connection to a PG database failed: $error_msg')
+		return error('Connection to a PG database failed: ${error_msg}')
 	}
 	return DB{
 		conn: conn
@@ -128,7 +128,7 @@ pub fn (db DB) close() {
 pub fn (db DB) q_int(query string) !int {
 	rows := db.exec(query)!
 	if rows.len == 0 {
-		return error('q_int "$query" not found')
+		return error('q_int "${query}" not found')
 	}
 	row := rows[0]
 	if row.vals.len == 0 {
@@ -145,7 +145,7 @@ pub fn (db DB) q_int(query string) !int {
 pub fn (db DB) q_string(query string) !string {
 	rows := db.exec(query)!
 	if rows.len == 0 {
-		return error('q_string "$query" not found')
+		return error('q_string "${query}" not found')
 	}
 	row := rows[0]
 	if row.vals.len == 0 {
@@ -180,7 +180,7 @@ pub fn (db DB) exec_one(query string) !Row {
 	res := C.PQexec(db.conn, query.str)
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
-		return error('pg exec error: "$e"')
+		return error('pg exec error: "${e}"')
 	}
 	row := rows_first_or_empty(res_to_rows(res))!
 	return row
@@ -212,7 +212,7 @@ fn (db DB) handle_error_or_result(res voidptr, elabel string) ![]Row {
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
 		C.PQclear(res)
-		return error('pg $elabel error:\n$e')
+		return error('pg ${elabel} error:\n${e}')
 	}
 	return res_to_rows(res)
 }
@@ -229,7 +229,7 @@ pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) !int {
 
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
-		return error('pg copy error:\n$e')
+		return error('pg copy error:\n${e}')
 	}
 
 	if status == C.PGRES_COPY_IN {
@@ -246,14 +246,14 @@ pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) !int {
 
 			code := C.PQputCopyData(db.conn, buf.data, n)
 			if code == -1 {
-				return error('pg copy error: Failed to send data, code=$code')
+				return error('pg copy error: Failed to send data, code=${code}')
 			}
 		}
 
 		code := C.PQputCopyEnd(db.conn, 0)
 
 		if code != 1 {
-			return error('pg copy error: Failed to finish copy command, code: $code')
+			return error('pg copy error: Failed to finish copy command, code: ${code}')
 		}
 	} else if status == C.PGRES_COPY_OUT {
 		for {

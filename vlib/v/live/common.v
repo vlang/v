@@ -1,14 +1,11 @@
 module live
 
-pub const (
-	is_used = 1
-)
+pub const is_used = 1
 
 pub type FNLinkLiveSymbols = fn (linkcb voidptr)
 
 pub type FNLiveReloadCB = fn (info &LiveReloadInfo)
 
-[minify]
 pub struct LiveReloadInfo {
 pub:
 	vexe             string  // full path to the v compiler
@@ -17,8 +14,9 @@ pub:
 	live_fn_mutex    voidptr // the address of the C mutex, that locks the [live] fns during reloads.
 	live_linkfn      FNLinkLiveSymbols // generated C callback; receives a dlopen handle
 	so_extension     string // .so or .dll
-	so_name_template string // a sprintf template for the shared libraries location
+	so_name_template string // a template for the shared libraries location
 pub mut:
+	monitored_files   []string       // an array, containing all paths that should be monitored for changes
 	live_lib          voidptr        // the result of dl.open
 	reloads           int            // how many times a reloading was tried
 	reloads_ok        int            // how many times the reloads succeeded

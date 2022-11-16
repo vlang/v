@@ -18,7 +18,7 @@ pub struct SResult {
 
 fn sprocess(mut pp pool.PoolProcessor, idx int, wid int) &SResult {
 	item := pp.get_item<string>(idx)
-	println('idx: $idx, wid: $wid, item: ' + item)
+	println('idx: ${idx}, wid: ${wid}, item: ' + item)
 	return &SResult{item.reverse()}
 }
 
@@ -27,7 +27,7 @@ fn main() {
 	pp.work_on_items(['1abc', '2abc', '3abc', '4abc', '5abc', '6abc', '7abc'])
 	// optionally, you can iterate over the results too:
 	for x in pp.get_results<SResult>() {
-		println('result: $x.s')
+		println('result: ${x.s}')
 	}
 }
 ```

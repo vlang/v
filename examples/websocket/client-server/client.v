@@ -9,7 +9,7 @@ import term
 // to all other connected clients
 fn main() {
 	mut ws := start_client()!
-	println(term.green('client $ws.id ready'))
+	println(term.green('client ${ws.id} ready'))
 	println('Write message and enter to send...')
 	for {
 		line := os.get_line()
@@ -18,7 +18,7 @@ fn main() {
 		}
 		ws.write_string(line)!
 	}
-	ws.close(1000, 'normal') or { println(term.red('panicing $err')) }
+	ws.close(1000, 'normal') or { println(term.red('panicing ${err}')) }
 	unsafe {
 		ws.free()
 	}
@@ -33,7 +33,7 @@ fn start_client() !&websocket.Client {
 	})
 	// use on_error_ref if you want to send any reference object
 	ws.on_error(fn (mut ws websocket.Client, err string) ! {
-		println(term.red('error: $err'))
+		println(term.red('error: ${err}'))
 	})
 	// use on_close_ref if you want to send any reference object
 	ws.on_close(fn (mut ws websocket.Client, code int, reason string) ! {
@@ -43,11 +43,11 @@ fn start_client() !&websocket.Client {
 	ws.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ! {
 		if msg.payload.len > 0 {
 			message := msg.payload.bytestr()
-			println(term.blue('$message'))
+			println(term.blue('${message}'))
 		}
 	})
 
-	ws.connect() or { println(term.red('error on connect: $err')) }
+	ws.connect() or { println(term.red('error on connect: ${err}')) }
 
 	spawn ws.listen() // or { println(term.red('error on listen $err')) }
 	return ws

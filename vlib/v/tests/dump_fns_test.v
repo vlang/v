@@ -28,7 +28,7 @@ struct StructWithStrMethodTakingReference {
 }
 
 pub fn (t &StructWithStrMethodTakingReference) str() string {
-	return 'StructWithStrMethodTakingReference{x: $t.x}'
+	return 'StructWithStrMethodTakingReference{x: ${t.x}}'
 }
 
 fn test_dump_of_type_that_has_custom_str_method_with_reference_parameter() {
@@ -45,7 +45,7 @@ struct StructWithNormalStrMethod {
 }
 
 pub fn (t StructWithNormalStrMethod) str() string {
-	return 'StructWithNormalStrMethod{x: $t.x}'
+	return 'StructWithNormalStrMethod{x: ${t.x}}'
 }
 
 fn test_dump_of_type_that_has_normal_custom_str_method() {

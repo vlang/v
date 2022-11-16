@@ -39,7 +39,7 @@ mut:
 }
 
 fn (app &MyApp) on_menu_item_click(item TrayMenuItem) {
-	println('click $item.id')
+	println('click ${item.id}')
 	if item.id == 'quit' {
 		C.tray_app_exit(app.tray_info)
 	}

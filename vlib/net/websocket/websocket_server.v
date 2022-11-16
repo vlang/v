@@ -61,15 +61,15 @@ pub fn (mut s Server) set_ping_interval(seconds int) {
 
 // listen start listen and process to incoming connections from websocket clients
 pub fn (mut s Server) listen() ! {
-	s.logger.info('websocket server: start listen on port $s.port')
-	s.ls = net.listen_tcp(s.family, ':$s.port')!
+	s.logger.info('websocket server: start listen on port ${s.port}')
+	s.ls = net.listen_tcp(s.family, ':${s.port}')!
 	s.set_state(.open)
 	spawn s.handle_ping()
 	for {
 		mut c := s.accept_new_client() or { continue }
 		spawn s.serve_client(mut c)
 	}
-	s.logger.info('websocket server: end listen on port $s.port')
+	s.logger.info('websocket server: end listen on port ${s.port}')
 }
 
 // Close closes server (not implemented yet)
@@ -111,9 +111,9 @@ fn (mut s Server) handle_ping() {
 
 // serve_client accepts incoming connection and sets up the callbacks
 fn (mut s Server) serve_client(mut c Client) ! {
-	c.logger.debug('server-> Start serve client ($c.id)')
+	c.logger.debug('server-> Start serve client (${c.id})')
 	defer {
-		c.logger.debug('server-> End serve client ($c.id)')
+		c.logger.debug('server-> End serve client (${c.id})')
 	}
 	mut handshake_response, mut server_client := s.handle_server_handshake(mut c)!
 	accept := s.send_connect_event(mut server_client)!

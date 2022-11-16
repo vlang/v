@@ -119,7 +119,7 @@ fn (mut a App) footer() {
 	finfo := if a.cfile().len > 0 { ' (' + os.file_name(a.cfile()) + ')' } else { '' }
 	mut status := a.status
 	a.tui.draw_text(0, h - 1, '─'.repeat(w))
-	footer := '$finfo Line ${b.cursor.pos_y + 1:4}/${b.lines.len:-4}, Column ${b.cursor.pos_x + 1:3}/${b.cur_line().len:-3} index: ${b.cursor_index():5} (ESC = quit, Ctrl+s = save)'
+	footer := '${finfo} Line ${b.cursor.pos_y + 1:4}/${b.lines.len:-4}, Column ${b.cursor.pos_x + 1:3}/${b.cur_line().len:-3} index: ${b.cursor_index():5} (ESC = quit, Ctrl+s = save)'
 	if footer.len < w {
 		a.tui.draw_text((w - footer.len) / 2, h, footer)
 	} else if footer.len == w {
@@ -140,7 +140,7 @@ fn (mut a App) footer() {
 			g: 0
 			b: 0
 		)
-		a.tui.draw_text((w + 4 - status.len) / 2, h - 1, ' $status ')
+		a.tui.draw_text((w + 4 - status.len) / 2, h - 1, ' ${status} ')
 		a.tui.reset()
 		a.t -= 33
 	}
@@ -243,7 +243,7 @@ fn (mut b Buffer) put(s string) {
 	}
 	$if debug {
 		flat := s.replace('\n', r'\n')
-		eprintln(@MOD + '.' + @STRUCT + '::' + @FN + ' "$flat"')
+		eprintln(@MOD + '.' + @STRUCT + '::' + @FN + ' "${flat}"')
 	}
 }
 
@@ -349,7 +349,7 @@ fn (mut b Buffer) del(amount int) string {
 	}
 	$if debug {
 		flat := removed.replace('\n', r'\n')
-		eprintln(@MOD + '.' + @STRUCT + '::' + @FN + ' "$flat"')
+		eprintln(@MOD + '.' + @STRUCT + '::' + @FN + ' "${flat}"')
 	}
 	return removed
 }

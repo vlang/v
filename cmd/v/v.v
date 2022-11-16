@@ -149,7 +149,7 @@ fn main() {
 	all_commands << external_tools
 	all_commands << other_commands
 	all_commands.sort()
-	eprintln(util.new_suggestion(command, all_commands).say('v: unknown command `$command`'))
+	eprintln(util.new_suggestion(command, all_commands).say('v: unknown command `${command}`'))
 	eprintln('Run ${term.highlight_command('v help')} for usage.')
 	exit(1)
 }

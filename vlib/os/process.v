@@ -64,7 +64,7 @@ pub fn (mut p Process) set_environment(envs map[string]string) {
 	p.env_is_custom = true
 	p.env = []string{}
 	for k, v in envs {
-		p.env << '$k=$v'
+		p.env << '${k}=${v}'
 	}
 	return
 }

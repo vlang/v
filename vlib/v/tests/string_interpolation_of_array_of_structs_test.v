@@ -25,7 +25,7 @@ fn test_array_of_ptrs_to_structs_can_be_printed() {
 		println(test)
 		assert true
 	}
-	println('testing: $testing')
+	println('testing: ${testing}')
 	println(testing)
 	assert true
 }
@@ -57,7 +57,7 @@ fn test_array_of_ptrs_to_structs_can_be_printed_when_structs_have_str_with_ptr()
 		println(test)
 		assert true
 	}
-	println('testing: $testing')
+	println('testing: ${testing}')
 	println(testing)
 	assert true
 }
@@ -78,7 +78,7 @@ fn test_stack_array_of_structs_can_be_printed_when_structs_have_ordinary_str() {
 		println(test)
 		assert true
 	}
-	println('t: $t')
+	println('t: ${t}')
 	println(t)
 	println('t[0] := ${t[0]}')
 	assert true
@@ -100,7 +100,7 @@ fn test_stack_array_of_structs_can_be_printed_when_structs_have_str_with_ptr() {
 		println(test)
 		assert true
 	}
-	println('pt: $pt')
+	println('pt: ${pt}')
 	println(pt)
 	print('pt[0] := ')
 	print(pt[0])

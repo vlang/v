@@ -42,10 +42,10 @@ pub fn (mut ll LinearLayout) layout() string {
 	mut output := ''
 	for mut l in ll.layoutables {
 		dump(l.type_name())
-		output += '$l.type_name()\n'
+		output += '${l.type_name()}\n'
 		if mut l is Container {
 			dump(l.type_name())
-			output += '$l.type_name()\n'
+			output += '${l.type_name()}\n'
 		}
 	}
 	return output

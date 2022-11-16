@@ -13,8 +13,8 @@ fn pack_wire_type(w WireType) u8 {
 fn test_casting_an_enum_to_u8() {
 	x := WireType.length_prefixed
 	y := pack_wire_type(x)
-	assert 'x: $x' == 'x: length_prefixed'
-	assert 'y: $y.hex()' == 'y: 02'
+	assert 'x: ${x}' == 'x: length_prefixed'
+	assert 'y: ${y.hex()}' == 'y: 02'
 }
 
 //
@@ -22,20 +22,20 @@ fn test_casting_an_enum_to_u8() {
 fn test_casting_a_float_to_u8() {
 	x := 1.23
 	b := u8(x)
-	assert 'x: $x | b: $b.hex()' == 'x: 1.23 | b: 01'
+	assert 'x: ${x} | b: ${b.hex()}' == 'x: 1.23 | b: 01'
 }
 
 fn test_casting_an_int_to_u8() {
 	x := 12
 	b := u8(x)
-	assert 'x: $x | b: $b.hex()' == 'x: 12 | b: 0c'
+	assert 'x: ${x} | b: ${b.hex()}' == 'x: 12 | b: 0c'
 }
 
 fn test_casting_a_bool_to_u8() {
 	x := true
 	b1 := u8(x)
-	assert 'x: $x | b: $b1.hex()' == 'x: true | b: 01'
+	assert 'x: ${x} | b: ${b1.hex()}' == 'x: true | b: 01'
 	y := false
 	b2 := u8(y)
-	assert 'y: $y | b: $b2.hex()' == 'y: false | b: 00'
+	assert 'y: ${y} | b: ${b2.hex()}' == 'y: false | b: 00'
 }

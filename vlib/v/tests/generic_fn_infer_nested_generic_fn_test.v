@@ -14,7 +14,7 @@ fn load_item_spawns(mut spawns []ItemSpawn) {
 
 fn parse_json<T>(file string, mut array []T) {
 	data := os.read_file(file) or {
-		panic('error reading file $file')
+		panic('error reading file ${file}')
 		return
 	}
 	decoded_data := json.decode([]T, data) or {

@@ -29,14 +29,14 @@ fn main() {
 	flush_stdout()
 	println('')
 	println(term.header_left(term_highlight('Summary of `v test-all`:'), '-'))
-	println(term_highlight('Total runtime: $spent ms'))
+	println(term_highlight('Total runtime: ${spent} ms'))
 	for ocmd in oks {
 		msg := if ocmd.okmsg != '' { ocmd.okmsg } else { ocmd.line }
-		println(term.colorize(term.green, '>          OK: $msg '))
+		println(term.colorize(term.green, '>          OK: ${msg} '))
 	}
 	for fcmd in fails {
 		msg := if fcmd.errmsg != '' { fcmd.errmsg } else { fcmd.line }
-		println(term.failed('>      Failed:') + ' $msg')
+		println(term.failed('>      Failed:') + ' ${msg}')
 	}
 	flush_stdout()
 	if fails.len > 0 {
@@ -76,28 +76,28 @@ mut:
 fn get_all_commands() []Command {
 	mut res := []Command{}
 	res << Command{
-		line: '$vexe examples/hello_world.v'
+		line: '${vexe} examples/hello_world.v'
 		okmsg: 'V can compile hello world.'
 		rmfile: 'examples/hello_world'
 	}
 	res << Command{
-		line: '$vexe -o hhww.c examples/hello_world.v'
+		line: '${vexe} -o hhww.c examples/hello_world.v'
 		okmsg: 'V can output a .c file, without compiling further.'
 		rmfile: 'hhww.c'
 	}
 	res << Command{
-		line: '$vexe -skip-unused examples/hello_world.v'
+		line: '${vexe} -skip-unused examples/hello_world.v'
 		okmsg: 'V can compile hello world with -skip-unused.'
 		rmfile: 'examples/hello_world'
 	}
 	res << Command{
-		line: '$vexe -skip-unused -profile - examples/hello_world.v'
+		line: '${vexe} -skip-unused -profile - examples/hello_world.v'
 		okmsg: 'V can compile hello world with both -skip-unused and -profile .'
 		rmfile: 'examples/hello_world'
 	}
 	$if linux || macos {
 		res << Command{
-			line: '$vexe run examples/hello_world.v'
+			line: '${vexe} run examples/hello_world.v'
 			okmsg: 'V can run hello world.'
 			runcmd: .execute
 			expect: 'Hello, World!\n'
@@ -106,8 +106,8 @@ fn get_all_commands() []Command {
 			for compiler_name in ['clang', 'gcc'] {
 				if _ := os.find_abs_path_of_executable(compiler_name) {
 					res << Command{
-						line: '$vexe -cc $compiler_name -gc boehm run examples/hello_world.v'
-						okmsg: '`v -cc $compiler_name -gc boehm run examples/hello_world.v` works'
+						line: '${vexe} -cc ${compiler_name} -gc boehm run examples/hello_world.v'
+						okmsg: '`v -cc ${compiler_name} -gc boehm run examples/hello_world.v` works'
 						runcmd: .execute
 						expect: 'Hello, World!\n'
 					}
@@ -115,13 +115,13 @@ fn get_all_commands() []Command {
 			}
 		}
 		res << Command{
-			line: '$vexe interpret examples/hello_world.v'
+			line: '${vexe} interpret examples/hello_world.v'
 			okmsg: 'V can interpret hello world.'
 			runcmd: .execute
 			expect: 'Hello, World!\n'
 		}
 		res << Command{
-			line: '$vexe interpret examples/hanoi.v'
+			line: '${vexe} interpret examples/hanoi.v'
 			okmsg: 'V can interpret hanoi.v'
 			runcmd: .execute
 			starts_with: 'Disc 1 from A to C...\n'
@@ -129,121 +129,121 @@ fn get_all_commands() []Command {
 			contains: 'Disc 7 from A to C...\n'
 		}
 		res << Command{
-			line: '$vexe -o - examples/hello_world.v | grep "#define V_COMMIT_HASH" > /dev/null'
+			line: '${vexe} -o - examples/hello_world.v | grep "#define V_COMMIT_HASH" > /dev/null'
 			okmsg: 'V prints the generated source code to stdout with `-o -` .'
 		}
 		res << Command{
-			line: '$vexe run examples/v_script.vsh > /dev/null'
+			line: '${vexe} run examples/v_script.vsh > /dev/null'
 			okmsg: 'V can run the .VSH script file examples/v_script.vsh'
 		}
 		$if linux {
 			res << Command{
-				line: '$vexe -b native run examples/native/hello_world.v > /dev/null'
+				line: '${vexe} -b native run examples/native/hello_world.v > /dev/null'
 				okmsg: 'V compiles and runs examples/native/hello_world.v on the native backend for linux'
 			}
 		}
 		// only compilation:
 		res << Command{
-			line: '$vexe -os linux -b native -o hw.linux examples/hello_world.v'
+			line: '${vexe} -os linux -b native -o hw.linux examples/hello_world.v'
 			okmsg: 'V compiles hello_world.v on the native backend for linux'
 			rmfile: 'hw.linux'
 		}
 		res << Command{
-			line: '$vexe -os macos -b native -o hw.macos examples/hello_world.v'
+			line: '${vexe} -os macos -b native -o hw.macos examples/hello_world.v'
 			okmsg: 'V compiles hello_world.v on the native backend for macos'
 			rmfile: 'hw.macos'
 		}
 		res << Command{
-			line: '$vexe -os windows -b native -o hw.exe examples/hello_world.v'
+			line: '${vexe} -os windows -b native -o hw.exe examples/hello_world.v'
 			okmsg: 'V compiles hello_world.v on the native backend for windows'
 			rmfile: 'hw.exe'
 		}
 		//
 		res << Command{
-			line: '$vexe -b js -o hw.js examples/hello_world.v'
+			line: '${vexe} -b js -o hw.js examples/hello_world.v'
 			okmsg: 'V compiles hello_world.v on the JS backend'
 			rmfile: 'hw.js'
 		}
 		res << Command{
-			line: '$vexe -skip-unused -b js -o hw_skip_unused.js examples/hello_world.v'
+			line: '${vexe} -skip-unused -b js -o hw_skip_unused.js examples/hello_world.v'
 			okmsg: 'V compiles hello_world.v on the JS backend, with -skip-unused'
 			rmfile: 'hw_skip_unused.js'
 		}
 		res << Command{
-			line: '$vexe -skip-unused examples/2048'
+			line: '${vexe} -skip-unused examples/2048'
 			okmsg: 'V can compile 2048 with -skip-unused.'
 			rmfile: 'examples/2048/2048'
 		}
 	}
 	res << Command{
-		line: '$vexe -o vtmp cmd/v'
+		line: '${vexe} -o vtmp cmd/v'
 		okmsg: 'V can compile itself.'
 		rmfile: 'vtmp'
 	}
 	res << Command{
-		line: '$vexe -o vtmp_werror -cstrict cmd/v'
+		line: '${vexe} -o vtmp_werror -cstrict cmd/v'
 		okmsg: 'V can compile itself with -cstrict.'
 		rmfile: 'vtmp_werror'
 	}
 	res << Command{
-		line: '$vexe -o vtmp_autofree -autofree cmd/v'
+		line: '${vexe} -o vtmp_autofree -autofree cmd/v'
 		okmsg: 'V can compile itself with -autofree.'
 		rmfile: 'vtmp_autofree'
 	}
 	res << Command{
-		line: '$vexe -o vtmp_prealloc -prealloc cmd/v'
+		line: '${vexe} -o vtmp_prealloc -prealloc cmd/v'
 		okmsg: 'V can compile itself with -prealloc.'
 		rmfile: 'vtmp_prealloc'
 	}
 	res << Command{
-		line: '$vexe -o vtmp_unused -skip-unused cmd/v'
+		line: '${vexe} -o vtmp_unused -skip-unused cmd/v'
 		okmsg: 'V can compile itself with -skip-unused.'
 		rmfile: 'vtmp_unused'
 	}
 	$if linux {
 		res << Command{
-			line: '$vexe -cc gcc -keepc -freestanding -o bel vlib/os/bare/bare_example_linux.v'
+			line: '${vexe} -cc gcc -keepc -freestanding -o bel vlib/os/bare/bare_example_linux.v'
 			okmsg: 'V can compile with -freestanding on Linux with GCC.'
 			rmfile: 'bel'
 		}
 
 		res << Command{
-			line: '$vexe -cc gcc -keepc -freestanding -o str_array vlib/strconv/bare/str_array_example.v'
+			line: '${vexe} -cc gcc -keepc -freestanding -o str_array vlib/strconv/bare/str_array_example.v'
 			okmsg: 'V can compile & allocate memory with -freestanding on Linux with GCC.'
 			rmfile: 'str_array'
 		}
 	}
 	res << Command{
-		line: '$vexe $vargs -progress test-cleancode'
+		line: '${vexe} ${vargs} -progress test-cleancode'
 		okmsg: 'All .v files are invariant when processed with `v fmt`'
 	}
 	res << Command{
-		line: '$vexe $vargs -progress test-fmt'
+		line: '${vexe} ${vargs} -progress test-fmt'
 		okmsg: 'All .v files can be processed with `v fmt`. Note: the result may not always be compilable, but `v fmt` should not crash.'
 	}
 	res << Command{
-		line: '$vexe $vargs -progress test-self'
+		line: '${vexe} ${vargs} -progress test-self'
 		okmsg: 'There are no _test.v file regressions.'
 	}
 	res << Command{
-		line: '$vexe $vargs -progress -W build-tools'
+		line: '${vexe} ${vargs} -progress -W build-tools'
 		okmsg: 'All tools can be compiled.'
 	}
 	res << Command{
-		line: '$vexe $vargs -progress -W build-examples'
+		line: '${vexe} ${vargs} -progress -W build-examples'
 		okmsg: 'All examples can be compiled.'
 	}
 	res << Command{
-		line: '$vexe check-md -hide-warnings .'
+		line: '${vexe} check-md -hide-warnings .'
 		label: 'Check ```v ``` code examples and formatting of .MD files...'
 		okmsg: 'All .md files look good.'
 	}
 	res << Command{
-		line: '$vexe install nedpals.args'
+		line: '${vexe} install nedpals.args'
 		okmsg: '`v install` works.'
 	}
 	res << Command{
-		line: '$vexe -usecache -cg examples/hello_world.v'
+		line: '${vexe} -usecache -cg examples/hello_world.v'
 		okmsg: '`v -usecache -cg` works.'
 		rmfile: 'examples/hello_world'
 	}
@@ -251,13 +251,13 @@ fn get_all_commands() []Command {
 	// own #flags (tetris depends on gg, which uses sokol) can be compiled
 	// with -usecache:
 	res << Command{
-		line: '$vexe -usecache examples/tetris/tetris.v'
+		line: '${vexe} -usecache examples/tetris/tetris.v'
 		okmsg: '`v -usecache` works.'
 		rmfile: 'examples/tetris/tetris'
 	}
 	$if macos || linux {
 		res << Command{
-			line: '$vexe -o v.c cmd/v && cc -Werror v.c -lpthread -lm && rm -rf a.out'
+			line: '${vexe} -o v.c cmd/v && cc -Werror v.c -lpthread -lm && rm -rf a.out'
 			label: 'v.c should be buildable with no warnings...'
 			okmsg: 'v.c can be compiled without warnings. This is good :)'
 			rmfile: 'v.c'
@@ -265,7 +265,7 @@ fn get_all_commands() []Command {
 	}
 	$if linux {
 		res << Command{
-			line: '$vexe vlib/v/tests/bench/bench_stbi_load.v && prlimit -v10485760 vlib/v/tests/bench/bench_stbi_load'
+			line: '${vexe} vlib/v/tests/bench/bench_stbi_load.v && prlimit -v10485760 vlib/v/tests/bench/bench_stbi_load'
 			okmsg: 'STBI load does not leak with GC on, when loading images multiple times (use < 10MB)'
 			runcmd: .execute
 			contains: 'logo.png 1000 times.'
@@ -274,7 +274,7 @@ fn get_all_commands() []Command {
 	}
 	$if !windows {
 		res << Command{
-			line: '$vexe -raw-vsh-tmp-prefix tmp vlib/v/tests/script_with_no_extension'
+			line: '${vexe} -raw-vsh-tmp-prefix tmp vlib/v/tests/script_with_no_extension'
 			okmsg: 'V can crun a script, that lacks a .vsh extension'
 			runcmd: .execute
 			expect: 'Test\n'
@@ -282,7 +282,7 @@ fn get_all_commands() []Command {
 		}
 
 		res << Command{
-			line: '$vexe -raw-vsh-tmp-prefix tmp run vlib/v/tests/script_with_no_extension'
+			line: '${vexe} -raw-vsh-tmp-prefix tmp run vlib/v/tests/script_with_no_extension'
 			okmsg: 'V can run a script, that lacks a .vsh extension'
 			runcmd: .execute
 			expect: 'Test\n'
@@ -344,23 +344,23 @@ fn (mut cmd Command) run() {
 	}
 	//
 	run_label := if is_failed { term.failed('FAILED') } else { term_highlight('OK') }
-	println('> Running: "$cmd.line" took: $spent ms ... $run_label')
+	println('> Running: "${cmd.line}" took: ${spent} ms ... ${run_label}')
 	//
 	if is_failed && is_failed_expected {
-		eprintln('> expected:\n$cmd.expect')
-		eprintln('>   output:\n$cmd.output')
+		eprintln('> expected:\n${cmd.expect}')
+		eprintln('>   output:\n${cmd.output}')
 	}
 	if is_failed && is_failed_starts_with {
-		eprintln('> expected to start with:\n$cmd.starts_with')
+		eprintln('> expected to start with:\n${cmd.starts_with}')
 		eprintln('>                 output:\n${cmd.output#[..cmd.starts_with.len]}')
 	}
 	if is_failed && is_failed_ends_with {
-		eprintln('> expected to end with:\n$cmd.ends_with')
+		eprintln('> expected to end with:\n${cmd.ends_with}')
 		eprintln('>               output:\n${cmd.output#[-cmd.starts_with.len..]}')
 	}
 	if is_failed && is_failed_contains {
-		eprintln('> expected to contain:\n$cmd.contains')
-		eprintln('>              output:\n$cmd.output')
+		eprintln('> expected to contain:\n${cmd.contains}')
+		eprintln('>              output:\n${cmd.output}')
 	}
 	if vtest_nocleanup {
 		return
@@ -371,7 +371,7 @@ fn (mut cmd Command) run() {
 			file_existed = file_existed || rm_existing(cmd.rmfile + '.exe')
 		}
 		if !file_existed {
-			eprintln('Expected file did not exist: $cmd.rmfile')
+			eprintln('Expected file did not exist: ${cmd.rmfile}')
 			cmd.ecode = 999
 		}
 	}

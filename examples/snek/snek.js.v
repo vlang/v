@@ -153,7 +153,7 @@ fn on_frame(mut app App) {
 
 	// drawing top
 	app.gg.draw_rect(0, 0, canvas_size, top_height, gx.black)
-	app.gg.draw_text(350, top_height / 2, 'Score: $app.score', gx.TextCfg{
+	app.gg.draw_text(350, top_height / 2, 'Score: ${app.score}', gx.TextCfg{
 		color: gx.white
 		align: .center
 		vertical_align: .middle

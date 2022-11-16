@@ -32,7 +32,7 @@ fn test_to_array() {
 		`g`: 'hi'
 	}
 	assert to_array(m1, fn (k rune, v string) string {
-		return '$k$v'
+		return '${k}${v}'
 	}) == ['abc', 'def', 'ghi']
 }
 

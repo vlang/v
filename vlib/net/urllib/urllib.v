@@ -26,9 +26,9 @@ const (
 )
 
 fn error_msg(message string, val string) string {
-	mut msg := 'net.urllib.$message'
+	mut msg := 'net.urllib.${message}'
 	if val != '' {
-		msg = '$msg ($val)'
+		msg = '${msg} (${val})'
 	}
 	return msg
 }
@@ -211,7 +211,7 @@ fn unescape(s_ string, mode EncodingMode) !string {
 		}
 	}
 	if n == 0 && !has_plus {
-		return '$s' // TODO `return s` once an autofree bug is fixed
+		return '${s}' // TODO `return s` once an autofree bug is fixed
 	}
 	if s.len < 2 * n {
 		return error(error_msg('unescape: invalid escape sequence', ''))
@@ -331,7 +331,7 @@ pub mut:
 
 // debug returns a string representation of *ALL* the fields of the given URL
 pub fn (url &URL) debug() string {
-	return 'URL{\n  scheme: $url.scheme\n  opaque: $url.opaque\n  user: $url.user\n  host: $url.host\n  path: $url.path\n  raw_path: $url.raw_path\n  force_query: $url.force_query\n  raw_query: $url.raw_query\n  fragment: $url.fragment\n}'
+	return 'URL{\n  scheme: ${url.scheme}\n  opaque: ${url.opaque}\n  user: ${url.user}\n  host: ${url.host}\n  path: ${url.path}\n  raw_path: ${url.raw_path}\n  force_query: ${url.force_query}\n  raw_query: ${url.raw_query}\n  fragment: ${url.fragment}\n}'
 }
 
 // user returns a Userinfo containing the provided username
@@ -584,7 +584,7 @@ fn parse_host(host string) !string {
 		}
 		mut colon_port := host[i + 1..]
 		if !valid_optional_port(colon_port) {
-			return error(error_msg('parse_host: invalid port $colon_port after host ',
+			return error(error_msg('parse_host: invalid port ${colon_port} after host ',
 				''))
 		}
 		// RFC 6874 defines that %25 (%-encoded percent) introduces
@@ -602,7 +602,7 @@ fn parse_host(host string) !string {
 	} else if i := host.last_index(':') {
 		colon_port := host[i..]
 		if !valid_optional_port(colon_port) {
-			return error(error_msg('parse_host: invalid port $colon_port after host ',
+			return error(error_msg('parse_host: invalid port ${colon_port} after host ',
 				''))
 		}
 	}

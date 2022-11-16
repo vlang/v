@@ -805,7 +805,7 @@ fn test_raw() {
 	lines := raw.split('\n')
 	println(lines)
 	assert lines.len == 1
-	println('raw string: "$raw"')
+	println('raw string: "${raw}"')
 
 	raw2 := r'Hello V\0'
 	assert raw2[7] == `\\`
@@ -827,8 +827,8 @@ fn test_raw_with_quotes() {
 
 fn test_escape() {
 	a := 10
-	println("\"$a")
-	assert "\"$a" == '"10'
+	println("\"${a}")
+	assert "\"${a}" == '"10'
 }
 
 fn test_atoi() {
@@ -852,9 +852,9 @@ fn test_raw_inter() {
 fn test_c_r() {
 	// This used to break because of r'' and c''
 	c := 42
-	println('$c')
+	println('${c}')
 	r := 50
-	println('$r')
+	println('${r}')
 }
 
 fn test_inter_before_comptime_if() {
@@ -869,9 +869,9 @@ fn test_inter_before_comptime_if() {
 fn test_double_quote_inter() {
 	a := 1
 	b := 2
-	println('$a $b')
-	assert '$a $b' == '1 2'
-	assert '$a $b' == '1 2'
+	println('${a} ${b}')
+	assert '${a} ${b}' == '1 2'
+	assert '${a} ${b}' == '1 2'
 }
 
 fn foo(b u8) u8 {
@@ -884,7 +884,7 @@ fn filter(b u8) bool {
 
 fn test_split_into_lines() {
 	line_content := 'Line'
-	text_crlf := '$line_content\r\n$line_content\r\n$line_content'
+	text_crlf := '${line_content}\r\n${line_content}\r\n${line_content}'
 	lines_crlf := text_crlf.split_into_lines()
 
 	assert lines_crlf.len == 3
@@ -892,7 +892,7 @@ fn test_split_into_lines() {
 		assert line == line_content
 	}
 
-	text_lf := '$line_content\n$line_content\n$line_content'
+	text_lf := '${line_content}\n${line_content}\n${line_content}'
 	lines_lf := text_lf.split_into_lines()
 
 	assert lines_lf.len == 3
@@ -965,24 +965,24 @@ fn test_interpolation_after_quoted_variable_still_works() {
 	tt := 'xyz'
 
 	// Basic interpolation, no internal quotes
-	yy := 'Replacing $rr with $tt'
+	yy := 'Replacing ${rr} with ${tt}'
 	assert yy == 'Replacing abc with xyz'
 
 	// Interpolation after quoted variable ending with 'r'quote
 	// that may be mistaken with the start of a raw string,
 	// ensure that it is not.
-	ss := 'Replacing "$rr" with "$tt"'
+	ss := 'Replacing "${rr}" with "${tt}"'
 	assert ss == 'Replacing "abc" with "xyz"'
-	zz := "Replacing '$rr' with '$tt'"
+	zz := "Replacing '${rr}' with '${tt}'"
 	assert zz == "Replacing 'abc' with 'xyz'"
 
 	// Interpolation after quoted variable ending with 'c'quote
 	// may be mistaken with the start of a c string, so
 	// check it is not.
 	cc := 'abc'
-	ccc := "Replacing '$cc' with '$tt'"
+	ccc := "Replacing '${cc}' with '${tt}'"
 	assert ccc == "Replacing 'abc' with 'xyz'"
-	cccq := 'Replacing "$cc" with "$tt"'
+	cccq := 'Replacing "${cc}" with "${tt}"'
 	assert cccq == 'Replacing "abc" with "xyz"'
 }
 

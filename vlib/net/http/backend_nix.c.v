@@ -18,7 +18,7 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 
 	req_headers := req.build_request_headers(method, host_name, path)
 	$if trace_http_request ? {
-		eprintln('> $req_headers')
+		eprintln('> ${req_headers}')
 	}
 	// println(req_headers)
 	ssl_conn.write_string(req_headers) or { return err }
@@ -31,7 +31,7 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 		readcounter++
 		len := ssl_conn.socket_read_into_ptr(bp, bufsize) or { break }
 		$if debug_http ? {
-			eprintln('ssl_do, read ${readcounter:4d} | len: $len')
+			eprintln('ssl_do, read ${readcounter:4d} | len: ${len}')
 			eprintln('-'.repeat(20))
 			eprintln(unsafe { tos(bp, len) })
 			eprintln('-'.repeat(20))
@@ -41,7 +41,7 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 	ssl_conn.shutdown()!
 	response_text := content.str()
 	$if trace_http_response ? {
-		eprintln('< $response_text')
+		eprintln('< ${response_text}')
 	}
 	return parse_response(response_text)
 }

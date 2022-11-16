@@ -580,7 +580,8 @@ pub mut:
 	name               string // left.name()
 	is_method          bool
 	is_field           bool // temp hack, remove ASAP when re-impl CallExpr / Selector (joe)
-	is_fn_var          bool // fn variable
+	is_fn_var          bool // fn variable, `a := fn() {}`, then: `a()`
+	is_fn_a_const      bool // fn const, `const c = abc`, where `abc` is a function, then: `c()`
 	is_keep_alive      bool // GC must not free arguments before fn returns
 	is_noreturn        bool // whether the function/method is marked as [noreturn]
 	is_ctor_new        bool // if JS ctor calls requires `new` before call, marked as `[use_new]` in V
@@ -592,7 +593,8 @@ pub mut:
 	left_type          Type // type of `user`
 	receiver_type      Type // User
 	return_type        Type
-	fn_var_type        Type   // fn variable type
+	fn_var_type        Type   // the fn type, when `is_fn_a_const` or `is_fn_var` is true
+	const_name         string // the fully qualified name of the const, i.e. `main.c`, given `const c = abc`, and callexpr: `c()`
 	should_be_skipped  bool   // true for calls to `[if someflag?]` functions, when there is no `-d someflag`
 	concrete_types     []Type // concrete types, e.g. <int, string>
 	concrete_list_pos  token.Pos
@@ -2160,7 +2162,7 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 						hash_index := name.index('#') or {
 							panic('all_registers: no hashtag found')
 						}
-						assembled_name := '${name[..hash_index]}$i${name[hash_index + 1..]}'
+						assembled_name := '${name[..hash_index]}${i}${name[hash_index + 1..]}'
 						res[assembled_name] = AsmRegister{
 							name: assembled_name
 							typ: t.bitsize_to_type(bit_size)
@@ -2219,7 +2221,7 @@ fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[str
 	for name, max_num in with_numbers {
 		for i in 0 .. max_num {
 			hash_index := name.index('#') or { panic('all_registers: no hashtag found') }
-			assembled_name := '${name[..hash_index]}$i${name[hash_index + 1..]}'
+			assembled_name := '${name[..hash_index]}${i}${name[hash_index + 1..]}'
 			res[assembled_name] = AsmRegister{
 				name: assembled_name
 				typ: t.bitsize_to_type(bit_size)

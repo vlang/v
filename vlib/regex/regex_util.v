@@ -452,7 +452,7 @@ fn (re RE) parsed_replace_string(in_txt string, repl string) string {
 			group_id := int(tmp[0] - `0`)
 			group := re.get_group_by_id(in_txt, group_id)
 			// println("group: $group_id [$group]")
-			res += '$group${tmp[1..]}'
+			res += '${group}${tmp[1..]}'
 		} else {
 			res += '\\' + tmp
 		}

@@ -83,19 +83,19 @@ fn test_orm() {
 		select count from User
 	}
 	assert nr_all_users == 3
-	println('nr_all_users=$nr_all_users')
+	println('nr_all_users=${nr_all_users}')
 	//
 	nr_users1 := sql db {
 		select count from User where id == 1
 	}
 	assert nr_users1 == 1
-	println('nr_users1=$nr_users1')
+	println('nr_users1=${nr_users1}')
 	//
 	nr_peters := sql db {
 		select count from User where id == 2 && name == 'Peter'
 	}
 	assert nr_peters == 1
-	println('nr_peters=$nr_peters')
+	println('nr_peters=${nr_peters}')
 	//
 	nr_peters2 := sql db {
 		select count from User where id == 2 && name == name

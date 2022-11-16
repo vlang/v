@@ -25,14 +25,14 @@ mut:
 
 pub fn (mut w Walker) mark_fn_as_used(fkey string) {
 	$if trace_skip_unused_marked ? {
-		eprintln('    fn > |$fkey|')
+		eprintln('    fn > |${fkey}|')
 	}
 	w.used_fns[fkey] = true
 }
 
 pub fn (mut w Walker) mark_const_as_used(ckey string) {
 	$if trace_skip_unused_marked ? {
-		eprintln('    const > |$ckey|')
+		eprintln('    const > |${ckey}|')
 	}
 	if w.used_consts[ckey] {
 		return
@@ -44,7 +44,7 @@ pub fn (mut w Walker) mark_const_as_used(ckey string) {
 
 pub fn (mut w Walker) mark_global_as_used(ckey string) {
 	$if trace_skip_unused_marked ? {
-		eprintln('  global > |$ckey|')
+		eprintln('  global > |${ckey}|')
 	}
 	if w.used_globals[ckey] {
 		return
@@ -58,7 +58,7 @@ pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
 	for fn_name in all_fn_root_names {
 		if fn_name !in w.used_fns {
 			$if trace_skip_unused_roots ? {
-				println('>>>> $fn_name uses: ')
+				println('>>>> ${fn_name} uses: ')
 			}
 			w.fn_decl(mut w.all_fns[fn_name])
 		}

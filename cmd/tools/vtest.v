@@ -61,7 +61,7 @@ fn main() {
 				.ignore {}
 			}
 		} else {
-			eprintln('\nUnrecognized test file `$targ`.\n `v test` can only be used with folders and/or _test.v files.\n')
+			eprintln('\nUnrecognized test file `${targ}`.\n `v test` can only be used with folders and/or _test.v files.\n')
 			show_usage()
 			exit(1)
 		}
@@ -198,7 +198,7 @@ fn (mut ctx Context) should_test_when_it_contains_matching_fns(path string, back
 				}
 				if tname.match_glob(pat) {
 					if ctx.verbose {
-						println('> compiling path: $path, since test fn `$tname` matches glob pattern `$pat`')
+						println('> compiling path: ${path}, since test fn `${tname}` matches glob pattern `${pat}`')
 					}
 					return .test
 				}

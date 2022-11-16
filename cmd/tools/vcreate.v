@@ -17,7 +17,7 @@ mut:
 }
 
 fn cerror(e string) {
-	eprintln('\nerror: $e')
+	eprintln('\nerror: ${e}')
 }
 
 fn check_name(name string) string {
@@ -30,12 +30,12 @@ fn check_name(name string) string {
 		if cname.contains(' ') {
 			cname = cname.replace(' ', '_')
 		}
-		eprintln('warning: the project name cannot be capitalized, the name will be changed to `$cname`')
+		eprintln('warning: the project name cannot be capitalized, the name will be changed to `${cname}`')
 		return cname
 	}
 	if name.contains(' ') {
 		cname := name.replace(' ', '_')
-		eprintln('warning: the project name cannot contain spaces, the name will be changed to `$cname`')
+		eprintln('warning: the project name cannot contain spaces, the name will be changed to `${cname}`')
 		return cname
 	}
 	return name
@@ -43,10 +43,10 @@ fn check_name(name string) string {
 
 fn vmod_content(c Create) string {
 	return "Module {
-	name: '$c.name'
-	description: '$c.description'
-	version: '$c.version'
-	license: '$c.license'
+	name: '${c.name}'
+	description: '${c.description}'
+	version: '${c.version}'
+	license: '${c.license}'
 	dependencies: []
 }
 "
@@ -64,7 +64,7 @@ fn main() {
 fn gen_gitignore(name string) string {
 	return '# Binaries for programs and plugins
 main
-$name
+${name}
 *.exe
 *.exe~
 *.so
@@ -104,7 +104,7 @@ indent_size = 4
 }
 
 fn (c &Create) write_vmod(new bool) {
-	vmod_path := if new { '$c.name/v.mod' } else { 'v.mod' }
+	vmod_path := if new { '${c.name}/v.mod' } else { 'v.mod' }
 	os.write_file(vmod_path, vmod_content(c)) or { panic(err) }
 }
 
@@ -112,12 +112,12 @@ fn (c &Create) write_main(new bool) {
 	if !new && (os.exists('${c.name}.v') || os.exists('src/${c.name}.v')) {
 		return
 	}
-	main_path := if new { '$c.name/${c.name}.v' } else { '${c.name}.v' }
+	main_path := if new { '${c.name}/${c.name}.v' } else { '${c.name}.v' }
 	os.write_file(main_path, main_content()) or { panic(err) }
 }
 
 fn (c &Create) write_gitattributes(new bool) {
-	gitattributes_path := if new { '$c.name/.gitattributes' } else { '.gitattributes' }
+	gitattributes_path := if new { '${c.name}/.gitattributes' } else { '.gitattributes' }
 	if !new && os.exists(gitattributes_path) {
 		return
 	}
@@ -125,7 +125,7 @@ fn (c &Create) write_gitattributes(new bool) {
 }
 
 fn (c &Create) write_editorconfig(new bool) {
-	editorconfig_path := if new { '$c.name/.editorconfig' } else { '.editorconfig' }
+	editorconfig_path := if new { '${c.name}/.editorconfig' } else { '.editorconfig' }
 	if !new && os.exists(editorconfig_path) {
 		return
 	}
@@ -134,14 +134,14 @@ fn (c &Create) write_editorconfig(new bool) {
 
 fn (c &Create) create_git_repo(dir string) {
 	// Create Git Repo and .gitignore file
-	if !os.is_dir('$dir/.git') {
-		res := os.execute('git init $dir')
+	if !os.is_dir('${dir}/.git') {
+		res := os.execute('git init ${dir}')
 		if res.exit_code != 0 {
 			cerror('Unable to create git repo')
 			exit(4)
 		}
 	}
-	gitignore_path := '$dir/.gitignore'
+	gitignore_path := '${dir}/.gitignore'
 	if !os.exists(gitignore_path) {
 		os.write_file(gitignore_path, gen_gitignore(c.name)) or {}
 	}
@@ -155,21 +155,21 @@ fn create(args []string) {
 		exit(1)
 	}
 	if c.name.contains('-') {
-		cerror('"$c.name" should not contain hyphens')
+		cerror('"${c.name}" should not contain hyphens')
 		exit(1)
 	}
 	if os.is_dir(c.name) {
-		cerror('$c.name folder already exists')
+		cerror('${c.name} folder already exists')
 		exit(3)
 	}
 	c.description = if args.len > 1 { args[1] } else { os.input('Input your project description: ') }
 	default_version := '0.0.0'
-	c.version = os.input('Input your project version: ($default_version) ')
+	c.version = os.input('Input your project version: (${default_version}) ')
 	if c.version == '' {
 		c.version = default_version
 	}
 	default_license := os.getenv_opt('VLICENSE') or { 'MIT' }
-	c.license = os.input('Input your project license: ($default_license) ')
+	c.license = os.input('Input your project license: (${default_license}) ')
 	if c.license == '' {
 		c.license = default_license
 	}
@@ -206,7 +206,7 @@ fn main() {
 			init_project()
 		}
 		else {
-			cerror('unknown command: $cmd')
+			cerror('unknown command: ${cmd}')
 			exit(1)
 		}
 	}

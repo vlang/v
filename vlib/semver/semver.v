@@ -33,7 +33,7 @@ struct InvalidVersionFormatError {
 }
 
 pub fn (err InvalidVersionFormatError) msg() string {
-	return 'Invalid version format for input "$err.input"'
+	return 'Invalid version format for input "${err.input}"'
 }
 
 // * Constructor.
@@ -97,12 +97,12 @@ pub fn (v1 Version) le(v2 Version) bool {
 
 // str returns the `string` representation of the `Version`.
 pub fn (ver Version) str() string {
-	common_string := '${ver.major}.${ver.minor}.$ver.patch'
+	common_string := '${ver.major}.${ver.minor}.${ver.patch}'
 
-	prerelease_string := if ver.prerelease.len > 0 { '-$ver.prerelease' } else { '' }
-	metadata_string := if ver.metadata.len > 0 { '+$ver.metadata' } else { '' }
+	prerelease_string := if ver.prerelease.len > 0 { '-${ver.prerelease}' } else { '' }
+	metadata_string := if ver.metadata.len > 0 { '+${ver.metadata}' } else { '' }
 
-	return '$common_string$prerelease_string$metadata_string'
+	return '${common_string}${prerelease_string}${metadata_string}'
 }
 
 // * Utilites.
