@@ -7,18 +7,14 @@ import v.ast
 
 fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 	if node.is_expr && node.return_type != ast.void_type && node.return_type != 0 {
-		cond_sym := g.table.final_sym(node.cond_type)
-		sym := g.table.sym(node.return_type)
-		if g.table.type_kind(node.return_type) == .sum_type {
+		if g.table.sym(node.return_type).kind in [.sum_type, .multi_return]
+			|| node.return_type.has_flag(.optional) || node.return_type.has_flag(.result) {
 			return true
 		}
-		if node.return_type.has_flag(.optional) || node.return_type.has_flag(.result) {
+		if g.table.final_sym(node.cond_type).kind == .enum_ && node.branches.len > 5 {
 			return true
 		}
-		if sym.kind == .multi_return {
-			return false
-		}
-		if cond_sym.kind == .enum_ && node.branches.len > 5 {
+		if g.need_tmp_var_in_expr(node.cond) {
 			return true
 		}
 		for branch in node.branches {
