@@ -1,16 +1,17 @@
 module eval
 
 const empty = Void{}
+
 const none_ = None{}
 
 // Note: i64 is an int_literal, NOT an i64 (same with f64)
 type Object = Array
 	| Float
 	| Int
+	| None
 	| Ptr
 	| Uint
 	| Void
-	| None
 	| []Object
 	| bool
 	| char
@@ -52,7 +53,7 @@ pub fn (o Object) string() string {
 			return ''
 		}
 		None {
-			return "none"
+			return 'none'
 		}
 		[]Object {
 			mut res := '('
@@ -85,7 +86,7 @@ pub fn (o Object) string() string {
 		}
 		Ptr {
 			if o.val == unsafe { nil } {
-				return "nil"
+				return 'nil'
 			}
 			return o.val.str()
 		}

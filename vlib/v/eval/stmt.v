@@ -120,7 +120,7 @@ pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 					t.file_idx.str()
 				}
 				fn_name := e.trace_function_names[t.fn_idx] or { t.fn_idx.str() }
-				eprintln('$file_path:${stmt.pos.line_nr + 1}: FAIL: fn $fn_name: assert $stmt.expr')
+				eprintln('${file_path}:${stmt.pos.line_nr + 1}: FAIL: fn ${fn_name}: assert ${stmt.expr}')
 				e.panic('Assertion failed...')
 			}
 		}

@@ -26,7 +26,7 @@ pub mut:
 	local_vars             map[string]Var
 	local_vars_stack       []map[string]Var
 	scope_idx              int // this is increased when e.open_scope() is called, decreased when e.close_scope() (and all variables with that scope level deleted)
-	inside_main bool
+	inside_main            bool
 	returning              bool
 	return_values          []Object
 	cur_mod                string

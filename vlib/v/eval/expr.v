@@ -497,18 +497,17 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		}
 		ast.DumpExpr {
 			value := e.expr(expr.expr, expr.expr_type).string()
-			eprintln('[$e.trace_file_paths.last():$expr.pos.line_nr] $expr.expr: $value')
+			eprintln('[${e.trace_file_paths.last()}:${expr.pos.line_nr}] ${expr.expr}: ${value}')
 			return empty
 		}
 		ast.AtExpr {
 			return expr.val
 		}
-		ast.AnonFn, ast.ArrayDecompose, ast.AsCast, ast.Assoc, ast.CTempVar,
-		ast.ChanInit, ast.Comment, ast.ComptimeCall, ast.ComptimeSelector, ast.ComptimeType,
-		ast.ConcatExpr, ast.EmptyExpr, ast.EnumVal, ast.GoExpr, ast.IfGuardExpr, ast.IndexExpr,
-		ast.IsRefType, ast.Likely, ast.LockExpr, ast.MapInit, ast.MatchExpr, ast.NodeError,
-		ast.OffsetOf, ast.RangeExpr, ast.SelectExpr, ast.SqlExpr,
-		ast.TypeNode, ast.TypeOf {
+		ast.AnonFn, ast.ArrayDecompose, ast.AsCast, ast.Assoc, ast.CTempVar, ast.ChanInit,
+		ast.Comment, ast.ComptimeCall, ast.ComptimeSelector, ast.ComptimeType, ast.ConcatExpr,
+		ast.EmptyExpr, ast.EnumVal, ast.GoExpr, ast.IfGuardExpr, ast.IndexExpr, ast.IsRefType,
+		ast.Likely, ast.LockExpr, ast.MapInit, ast.MatchExpr, ast.NodeError, ast.OffsetOf,
+		ast.RangeExpr, ast.SelectExpr, ast.SqlExpr, ast.TypeNode, ast.TypeOf {
 			e.error('unhandled expression ${typeof(expr).name}')
 		}
 	}
@@ -523,13 +522,13 @@ fn (mut e Eval) or_expr(expr ast.OrExpr, expected_type ast.Type) Object {
 		}
 		.propagate_option {
 			if e.inside_main {
-				e.panic("optional not set")
+				e.panic('optional not set')
 			}
 			return none_
 		}
 		.propagate_result {
 			if e.inside_main {
-				e.panic("result not set ()")
+				e.panic('result not set ()')
 			}
 		}
 		else {
