@@ -26,6 +26,7 @@ pub mut:
 	local_vars             map[string]Var
 	local_vars_stack       []map[string]Var
 	scope_idx              int // this is increased when e.open_scope() is called, decreased when e.close_scope() (and all variables with that scope level deleted)
+	inside_main bool
 	returning              bool
 	return_values          []Object
 	cur_mod                string
@@ -44,18 +45,20 @@ pub struct EvalTrace {
 
 pub fn (mut e Eval) eval(mut files []&ast.File) {
 	e.register_symbols(mut files)
-	// println(files.map(it.path_base))
 	e.run_func(e.mods['main']['main'] or { ast.EmptyStmt{} } as ast.FnDecl)
 }
 
 // first arg is reciever (if method)
 pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 	e.back_trace << EvalTrace{func.idx, func.source_file.idx, func.pos.line_nr}
+	old_inside_main := e.inside_main
 	old_mod := e.cur_mod
 	old_file := e.cur_file
 	e.cur_mod = func.mod
 	e.cur_file = func.file
+	e.inside_main = func.is_main
 	defer {
+		e.inside_main = old_inside_main
 		e.cur_mod = old_mod
 		e.cur_file = old_file
 		e.back_trace.pop()

@@ -54,25 +54,6 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 								}
 							}
 						}
-						// 'printf' {
-						// 	mut voidptr_args := []voidptr{}
-						// 	for arg in args[1..] {
-						// 		// if arg is Int {
-						// 		// 	voidptr_args << voidptr(arg.val)
-						// 		// } else {
-						// 		voidptr_args << voidptr(&arg)
-						// 		// }
-						// 	}
-						// 	// println((e.local_vars['s'].val as string).str == voidptr_args[1])
-						// 	println('helo?$voidptr_args')
-						// 	// println((byteptr(voidptr_args[1])[0]))
-						// 	x := strconv.v_sprintf(args[0] as string, ...voidptr_args)
-						// 	// println('helo!')
-						// 	// println(x.len)
-						// 	y := C.write(1, x.str, x.len)
-						// 	println('aft')
-						// 	return Int{y, 32}
-						// }
 						else {
 							e.error('unknown c function: `${expr.name}`')
 						}
@@ -88,11 +69,15 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 
 					if func is ast.FnDecl {
 						e.run_func(func as ast.FnDecl, ...args)
-						if e.return_values.len == 1 {
-							return e.return_values[0]
+						mut ret_val := if e.return_values.len == 1 {
+							e.return_values[0]
 						} else {
-							return e.return_values
+							e.return_values
 						}
+						if mut ret_val is None {
+							ret_val = e.or_expr(expr.or_block, expr.return_type)
+						}
+						return ret_val
 					}
 					e.error('unknown function: ${mod}.${name} at line ${expr.pos.line_nr}')
 				}
@@ -441,14 +426,19 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			}
 			if expr.val[0] == `\\` { // is an escape
 				return e.get_escape(rune(expr.val[1]))
-			} else {
-				return rune(expr.val[0])
 			}
+			return rune(expr.val[0])
 		}
 		ast.Nil {
 			return Ptr{
 				val: unsafe { nil }
 			}
+		}
+		ast.None {
+			return none_
+		}
+		ast.OrExpr {
+			//
 		}
 		ast.StringInterLiteral {
 			mut res := expr.vals[0]
@@ -517,12 +507,36 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		ast.ChanInit, ast.Comment, ast.ComptimeCall, ast.ComptimeSelector, ast.ComptimeType,
 		ast.ConcatExpr, ast.EmptyExpr, ast.EnumVal, ast.GoExpr, ast.IfGuardExpr, ast.IndexExpr,
 		ast.IsRefType, ast.Likely, ast.LockExpr, ast.MapInit, ast.MatchExpr, ast.NodeError,
-		ast.None, ast.OffsetOf, ast.OrExpr, ast.RangeExpr, ast.SelectExpr, ast.SqlExpr,
+		ast.OffsetOf, ast.RangeExpr, ast.SelectExpr, ast.SqlExpr,
 		ast.TypeNode, ast.TypeOf {
 			e.error('unhandled expression ${typeof(expr).name}')
 		}
 	}
 	return empty
+}
+
+fn (mut e Eval) or_expr(expr ast.OrExpr, expected_type ast.Type) Object {
+	match expr.kind {
+		.block {
+			e.stmts(expr.stmts#[..-1])
+			return e.expr((expr.stmts.last() as ast.ExprStmt).expr, expected_type)
+		}
+		.propagate_option {
+			if e.inside_main {
+				e.panic("optional not set")
+			}
+			return none_
+		}
+		.propagate_result {
+			if e.inside_main {
+				e.panic("result not set ()")
+			}
+		}
+		else {
+			return none_
+		}
+	}
+	return none_
 }
 
 fn (e Eval) type_to_size(typ ast.Type) u64 {

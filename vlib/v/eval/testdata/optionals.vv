@@ -1,0 +1,14 @@
+fn ret(ret_none bool) ?int {
+    if ret_none {
+        return none
+    }
+    return 5
+}
+
+fn main() {
+    x := ret(false) or { 100 }
+    println(x)
+
+    y := ret(true) or { 100 }
+    println(y)
+}

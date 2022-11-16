@@ -68,15 +68,15 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	vhalt()
 }
 
-// panic_optional_not_set is called by V, when you use option error propagation in your main function.
-// It ends the program with a panic.
+// panic_optional_not_set is called by V, when you use option error propagation in
+// your main function. It ends the program with a panic.
 [noreturn]
 pub fn panic_optional_not_set(s string) {
 	panic('optional not set (${s})')
 }
 
-// panic_optional_not_set is called by V, when you use result error propagation in your main function
-// It ends the program with a panic.
+// panic_result_not_set is called by V, when you use result error propagation in
+// your main function. It ends the program with a panic.
 [noreturn]
 pub fn panic_result_not_set(s string) {
 	panic('result not set (${s})')

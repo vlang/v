@@ -1,6 +1,7 @@
 module eval
 
 const empty = Void{}
+const none_ = None{}
 
 // Note: i64 is an int_literal, NOT an i64 (same with f64)
 type Object = Array
@@ -9,6 +10,7 @@ type Object = Array
 	| Ptr
 	| Uint
 	| Void
+	| None
 	| []Object
 	| bool
 	| char
@@ -49,6 +51,9 @@ pub fn (o Object) string() string {
 		Void {
 			return ''
 		}
+		None {
+			return "none"
+		}
 		[]Object {
 			mut res := '('
 			for i, obj in o {
@@ -79,6 +84,9 @@ pub fn (o Object) string() string {
 			return res + ']'
 		}
 		Ptr {
+			if o.val == unsafe { nil } {
+				return "nil"
+			}
 			return o.val.str()
 		}
 	}
@@ -130,6 +138,8 @@ fn (o Object) as_i64() !i64 {
 }
 
 struct Void {}
+
+struct None {}
 
 pub struct Int {
 pub mut:
