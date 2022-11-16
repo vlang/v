@@ -11,7 +11,10 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 			return true
 		}
 		for branch in node.branches {
-			if branch.cond is ast.IfGuardExpr || branch.stmts.len > 1 {
+			if branch.stmts.len > 1 {
+				return true
+			}
+			if g.need_tmp_var_in_expr(branch.cond) {
 				return true
 			}
 			if branch.stmts.len == 1 {
@@ -34,6 +37,17 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 	match expr {
 		ast.IfExpr {
 			if g.need_tmp_var_in_if(expr) {
+				return true
+			}
+		}
+		ast.IfGuardExpr {
+			return true
+		}
+		ast.InfixExpr {
+			if g.need_tmp_var_in_expr(expr.left) {
+				return true
+			}
+			if g.need_tmp_var_in_expr(expr.right) {
 				return true
 			}
 		}
