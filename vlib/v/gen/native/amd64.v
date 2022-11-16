@@ -3815,12 +3815,12 @@ fn (mut g Gen) gen_cast_expr_amd64(expr ast.CastExpr) {
 				}
 				match g.get_type_size(expr.expr_type) {
 					4 {
-						g.write([u8(0xf3), 0x48, 0x0f, 0x2d, 0xc0])
-						g.println('cvtss2si rax, xmm0')
+						g.write([u8(0xf3), 0x48, 0x0f, 0x2c, 0xc0])
+						g.println('cvttss2si rax, xmm0')
 					}
 					8 {
-						g.write([u8(0xf2), 0x48, 0x0f, 0x2d, 0xc0])
-						g.println('cvtsd2si rax, xmm0')
+						g.write([u8(0xf2), 0x48, 0x0f, 0x2c, 0xc0])
+						g.println('cvttsd2si rax, xmm0')
 					}
 					else {}
 				}
@@ -3833,12 +3833,12 @@ fn (mut g Gen) gen_cast_expr_amd64(expr ast.CastExpr) {
 				g.sub_sse(.xmm0, .xmm1, expr.expr_type)
 				match g.get_type_size(expr.expr_type) {
 					4 {
-						g.write([u8(0xf3), 0x48, 0x0f, 0x2d, 0xc0])
-						g.println('cvtss2si rax, xmm0')
+						g.write([u8(0xf3), 0x48, 0x0f, 0x2c, 0xc0])
+						g.println('cvttss2si rax, xmm0')
 					}
 					8 {
-						g.write([u8(0xf2), 0x48, 0x0f, 0x2d, 0xc0])
-						g.println('cvtsd2si rax, xmm0')
+						g.write([u8(0xf2), 0x48, 0x0f, 0x2c, 0xc0])
+						g.println('cvttsd2si rax, xmm0')
 					}
 					else {}
 				}
@@ -3847,12 +3847,12 @@ fn (mut g Gen) gen_cast_expr_amd64(expr ast.CastExpr) {
 			} else {
 				match g.get_type_size(expr.expr_type) {
 					4 {
-						g.write([u8(0xf3), 0x48, 0x0f, 0x2d, 0xc0])
-						g.println('cvtss2si rax, xmm0')
+						g.write([u8(0xf3), 0x48, 0x0f, 0x2c, 0xc0])
+						g.println('cvttss2si rax, xmm0')
 					}
 					8 {
-						g.write([u8(0xf2), 0x48, 0x0f, 0x2d, 0xc0])
-						g.println('cvtsd2si rax, xmm0')
+						g.write([u8(0xf2), 0x48, 0x0f, 0x2c, 0xc0])
+						g.println('cvttsd2si rax, xmm0')
 					}
 					else {}
 				}
