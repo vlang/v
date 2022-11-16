@@ -23,6 +23,13 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		g.write('&')
 		g.expr(node.expr)
 		g.write('->val')
+	} else if node.expr_type.has_flag(.optional) || node.expr_type.has_flag(.result) {
+		old_inside_opt_or_res := g.inside_opt_or_res
+		g.inside_opt_or_res = true
+		g.write('(*(${name}*)')
+		g.expr(node.expr)
+		g.write('.data)')
+		g.inside_opt_or_res = old_inside_opt_or_res
 	} else {
 		g.expr(node.expr)
 	}
@@ -43,7 +50,7 @@ fn (mut g Gen) dump_expr_definitions() {
 		typ := ast.Type(dump_type)
 		is_ptr := typ.is_ptr()
 		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, dump_type)
-		to_string_fn_name := g.get_str_fn(typ.clear_flag(.shared_f))
+		to_string_fn_name := g.get_str_fn(typ.clear_flag(.shared_f).clear_flag(.optional).clear_flag(.result))
 		ptr_asterisk := if is_ptr { '*'.repeat(typ.nr_muls()) } else { '' }
 		mut str_dumparg_type := ''
 		if dump_sym.kind == .none_ {

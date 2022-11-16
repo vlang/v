@@ -997,7 +997,12 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, _field_type ast.Type, fn_name strin
 	} else if sym.kind == .chan {
 		return '${fn_name}(${deref}it.${c_name(field_name)}${sufix})', true
 	} else {
-		mut method_str := 'it.${c_name(field_name)}'
+		mut method_str := ''
+		if field_type.has_flag(.optional) || field_type.has_flag(.result) {
+			method_str = '(*(${sym.name}*)it.${c_name(field_name)}.data)'
+		} else {
+			method_str = 'it.${c_name(field_name)}'
+		}
 		if sym.kind == .bool {
 			return '${method_str} ? _SLIT("true") : _SLIT("false")', false
 		} else if (field_type.is_int_valptr() || field_type.is_float_valptr())

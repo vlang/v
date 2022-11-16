@@ -48,6 +48,9 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			}
 		}
 		for i, field in node.fields {
+			if field.typ.has_flag(.result) {
+				c.error('struct field does not support storing result', field.optional_pos)
+			}
 			c.ensure_type_exists(field.typ, field.type_pos) or { return }
 			if field.typ.has_flag(.generic) {
 				has_generic_types = true
@@ -457,14 +460,6 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				node.fields[i].typ = expr_type
 				node.fields[i].expected_type = field_info.typ
 
-				if field_info.typ.has_flag(.optional) {
-					c.error('field `${field_info.name}` is optional, but initialization of optional fields currently unsupported',
-						field.pos)
-				}
-				if field_info.typ.has_flag(.result) {
-					c.error('field `${field_info.name}` is result, but initialization of result fields currently unsupported',
-						field.pos)
-				}
 				if expr_type.is_ptr() && expected_type.is_ptr() {
 					if mut field.expr is ast.Ident {
 						if mut field.expr.obj is ast.Var {

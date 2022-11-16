@@ -17,13 +17,16 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	mut right_len := node.right.len
 	mut right_type0 := ast.void_type
 	for i, mut right in node.right {
-		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr] {
+		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr,
+			ast.SelectorExpr] {
 			if right in [ast.IfExpr, ast.MatchExpr] && node.left.len == node.right.len && !is_decl
 				&& node.left[i] in [ast.Ident, ast.SelectorExpr] && !node.left[i].is_blank_ident() {
 				c.expected_type = c.expr(node.left[i])
 			}
 			right_type := c.expr(right)
-			c.fail_if_unreadable(right, right_type, 'right-hand side of assignment')
+			if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr] {
+				c.fail_if_unreadable(right, right_type, 'right-hand side of assignment')
+			}
 			if i == 0 {
 				right_type0 = right_type
 				node.right_types = [
