@@ -44,7 +44,7 @@ fn test_utf8_strings_are_not_modified() {
 	assert deresult.str() == original
 }
 
-fn test_encoder_unescaped_utf32() {
+fn test_encoder_unescaped_utf32() ! {
 	jap_text := json2.Any('ひらがな')
 	enc := json2.Encoder{
 		escape_unicode: false
@@ -87,4 +87,35 @@ fn test_encoder_prettify() {
     "map": "map inside a map"
   }
 }'
+}
+
+pub struct Test {
+	val string
+}
+
+fn test_encode_struct() {
+	enc := json2.encode(Test{'hello!'})
+	assert enc == '{"val":"hello!"}'
+}
+
+pub struct Uri {
+	protocol string
+	path     string
+}
+
+pub fn (u Uri) json_str() string {
+	return '"${u.protocol}://${u.path}"'
+}
+
+fn test_encode_encodable() {
+	assert json2.encode(Uri{'file', 'path/to/file'}) == '"file://path/to/file"'
+}
+
+fn test_encode_array() {
+	assert json2.encode([1, 2, 3]) == '[1,2,3]'
+}
+
+fn test_encode_simple() {
+	assert json2.encode('hello!') == '"hello!"'
+	assert json2.encode(1) == '1'
 }
