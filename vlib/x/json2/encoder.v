@@ -192,7 +192,6 @@ fn (e &Encoder) encode_struct<U>(val U, level int, mut wr io.Writer) ! {
 fn (e &Encoder) encode_array<U>(val U, level int, mut wr io.Writer) ! {
 	$if U is $Array {
 		wr.write([u8(`[`)])!
-		// unsafe {
 		for i in 0 .. val.len {
 			e.encode_newline(level, mut wr)!
 			e.encode_value_with_level(&val[i], level + 1, mut wr)!
@@ -200,7 +199,6 @@ fn (e &Encoder) encode_array<U>(val U, level int, mut wr io.Writer) ! {
 				wr.write(json2.comma_bytes)!
 			}
 		}
-		// }
 		e.encode_newline(level - 1, mut wr)!
 		wr.write([u8(`]`)])!
 	} $else {
