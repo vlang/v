@@ -3,7 +3,7 @@ fn get_nil() ?&int {
 }
 
 fn get_voidptr() ?&int {
-	return unsafe { nil }
+	return voidptr(0)
 }
 
 fn main() {
