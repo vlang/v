@@ -2132,6 +2132,9 @@ fn (mut c Checker) import_stmt(node ast.Import) {
 			c.error('module `${node.mod}` has no type `${sym.name}`', sym.pos)
 			continue
 		}
+		if sym.name in ast.builtin_type_names {
+			c.error('cannot import or override builtin type', sym.pos)
+		}
 		if func := c.table.find_fn(name) {
 			if !func.is_pub {
 				c.error('module `${node.mod}` function `${sym.name}()` is private', sym.pos)
