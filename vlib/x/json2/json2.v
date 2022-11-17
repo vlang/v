@@ -40,6 +40,9 @@ pub fn decode<T>(src string) !T {
 // encode is a generic function that encodes a type into a JSON string.
 pub fn encode<T>(val T) string {
 	mut sb := strings.new_builder(64)
+	defer {
+		unsafe { sb.free() }
+	}
 	default_encoder.encode_value(val, mut sb) or {
 		dump(err)
 		default_encoder.encode_value<Null>(json2.null, mut sb) or {}

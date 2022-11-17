@@ -49,6 +49,9 @@ fn test_encoder_unescaped_utf32() ! {
 	}
 
 	mut sb := strings.new_builder(20)
+	defer {
+		unsafe { sb.free() }
+	}
 	enc.encode_value(jap_text, mut sb)!
 
 	assert sb.str() == '"${jap_text}"'
@@ -72,6 +75,9 @@ fn test_encoder_prettify() {
 		newline_spaces_count: 2
 	}
 	mut sb := strings.new_builder(20)
+	defer {
+		unsafe { sb.free() }
+	}
 	enc.encode_value(obj, mut sb)!
 	assert sb.str() == '{
   "hello": "world",
