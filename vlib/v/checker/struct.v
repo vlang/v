@@ -124,6 +124,14 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					}
 					continue
 				}
+				if field.typ in ast.unsigned_integer_type_idxs {
+					if field.default_expr is ast.IntegerLiteral {
+						if field.default_expr.val[0] == `-` {
+							c.error('Cannot assign negative value to unsigned integer type',
+								field.default_expr.pos)
+						}
+					}
+				}
 				if field.default_expr is ast.UnsafeExpr {
 					if field.default_expr.expr is ast.Nil && !field.typ.is_ptr()
 						&& c.table.sym(field.typ).kind != .function && !field.typ.is_pointer() {
@@ -479,6 +487,14 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 										field.expr.pos)
 								}
 							}
+						}
+					}
+				}
+				if field_info.typ in ast.unsigned_integer_type_idxs {
+					if mut field.expr is ast.IntegerLiteral {
+						if field.expr.val[0] == `-` {
+							c.error('Cannot assign negative value to unsigned integer type',
+								field.expr.pos)
 						}
 					}
 				}
