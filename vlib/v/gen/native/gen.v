@@ -58,7 +58,7 @@ mut:
 	strs                 []String
 	labels               &LabelTable = unsafe { nil }
 	defer_stmts          []ast.DeferStmt
-	builtins             map[string]BuiltinFn
+	builtins             map[Builtin]BuiltinFn
 	structs              []Struct
 	eval                 eval.Eval
 	enum_vals            map[string]Enum
@@ -723,21 +723,21 @@ fn (mut g Gen) eval_escape_codes(str_lit ast.StringLiteral) string {
 fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
 	if typ.is_int() {
 		buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
-		g.lea_var_to_reg(g.get_builtin_arg_reg('int_to_string', 1), buffer)
+		g.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), buffer)
 
-		arg0_reg := g.get_builtin_arg_reg('int_to_string', 0)
+		arg0_reg := g.get_builtin_arg_reg(.int_to_string, 0)
 		if arg0_reg != reg {
 			g.mov_reg(arg0_reg, reg)
 		}
 
-		g.call_builtin('int_to_string')
+		g.call_builtin(.int_to_string)
 		g.lea_var_to_reg(.rax, buffer)
 	} else if typ.is_bool() {
-		arg_reg := g.get_builtin_arg_reg('bool_to_string', 0)
+		arg_reg := g.get_builtin_arg_reg(.bool_to_string, 0)
 		if arg_reg != reg {
 			g.mov_reg(arg_reg, reg)
 		}
-		g.call_builtin('bool_to_string')
+		g.call_builtin(.bool_to_string)
 	} else if typ.is_string() {
 		if reg != .rax {
 			g.mov_reg(.rax, reg)
@@ -751,13 +751,13 @@ fn (mut g Gen) gen_var_to_string(reg Register, var Var, config VarConfig) {
 	typ := g.get_type_from_var(var)
 	if typ.is_int() {
 		buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
-		g.mov_var_to_reg(g.get_builtin_arg_reg('int_to_string', 0), var, config)
-		g.lea_var_to_reg(g.get_builtin_arg_reg('int_to_string', 1), buffer)
-		g.call_builtin('int_to_string')
+		g.mov_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 0), var, config)
+		g.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), buffer)
+		g.call_builtin(.int_to_string)
 		g.lea_var_to_reg(reg, buffer)
 	} else if typ.is_bool() {
-		g.mov_var_to_reg(g.get_builtin_arg_reg('bool_to_string', 0), var, config)
-		g.call_builtin('bool_to_string')
+		g.mov_var_to_reg(g.get_builtin_arg_reg(.bool_to_string, 0), var, config)
+		g.call_builtin(.bool_to_string)
 	} else if typ.is_string() {
 		g.mov_var_to_reg(.rax, var, config)
 	} else {
