@@ -209,7 +209,7 @@ pub fn (t Type) ref() Type {
 pub fn (t Type) deref() Type {
 	nr_muls := (int(t) >> 16) & 0xff
 	if nr_muls == 0 {
-		panic('deref: type `$t` is not a pointer')
+		panic('deref: type `${t}` is not a pointer')
 	}
 	return int(t) & 0xff00ffff | int(u32(nr_muls - 1) << 16)
 }
@@ -242,8 +242,8 @@ pub fn (t Type) has_flag(flag TypeFlag) bool {
 pub fn (ts TypeSymbol) debug() []string {
 	mut res := []string{}
 	ts.dbg_common(mut res)
-	res << 'info: $ts.info'
-	res << 'methods ($ts.methods.len): ' + ts.methods.map(it.str()).join(', ')
+	res << 'info: ${ts.info}'
+	res << 'methods (${ts.methods.len}): ' + ts.methods.map(it.str()).join(', ')
 	return res
 }
 
@@ -255,18 +255,18 @@ pub fn (ts TypeSymbol) dbg() []string {
 }
 
 fn (ts TypeSymbol) dbg_common(mut res []string) {
-	res << 'idx: 0x$ts.idx.hex()'
-	res << 'parent_idx: 0x$ts.parent_idx.hex()'
-	res << 'mod: $ts.mod'
-	res << 'name: $ts.name'
-	res << 'cname: $ts.cname'
-	res << 'kind: $ts.kind'
-	res << 'is_pub: $ts.is_pub'
-	res << 'language: $ts.language'
+	res << 'idx: 0x${ts.idx.hex()}'
+	res << 'parent_idx: 0x${ts.parent_idx.hex()}'
+	res << 'mod: ${ts.mod}'
+	res << 'name: ${ts.name}'
+	res << 'cname: ${ts.cname}'
+	res << 'kind: ${ts.kind}'
+	res << 'is_pub: ${ts.is_pub}'
+	res << 'language: ${ts.language}'
 }
 
 pub fn (t Type) str() string {
-	return 'ast.Type(0x$t.hex() = ${u32(t)})'
+	return 'ast.Type(0x${t.hex()} = ${u32(t)})'
 }
 
 pub fn (t &Table) type_str(typ Type) string {
@@ -278,7 +278,7 @@ pub fn (t Type) debug() []string {
 	mut res := []string{}
 	res << 'idx: 0x${t.idx().hex():-8}'
 	res << 'type: 0x${t.hex():-8}'
-	res << 'nr_muls: $t.nr_muls()'
+	res << 'nr_muls: ${t.nr_muls()}'
 	if t.has_flag(.optional) {
 		res << 'optional'
 	}
@@ -631,7 +631,7 @@ pub fn (t TypeSymbol) str() string {
 
 [noreturn]
 fn (t &TypeSymbol) no_info_panic(fname string) {
-	panic('$fname: no info for type: $t.name')
+	panic('${fname}: no info for type: ${t.name}')
 }
 
 [inline]
@@ -1192,7 +1192,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			} else {
 				if sym.info is Array {
 					elem_str := t.type_to_str_using_aliases(sym.info.elem_type, import_aliases)
-					res = '[]$elem_str'
+					res = '[]${elem_str}'
 				} else {
 					res = 'array'
 				}
@@ -1202,9 +1202,9 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			info := sym.info as ArrayFixed
 			elem_str := t.type_to_str_using_aliases(info.elem_type, import_aliases)
 			if info.size_expr is EmptyExpr {
-				res = '[$info.size]$elem_str'
+				res = '[${info.size}]${elem_str}'
 			} else {
-				res = '[$info.size_expr]$elem_str'
+				res = '[${info.size_expr}]${elem_str}'
 			}
 		}
 		.chan {
@@ -1218,7 +1218,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 					elem_type = elem_type.set_nr_muls(elem_type.nr_muls() - 1)
 				}
 				elem_str := t.type_to_str_using_aliases(elem_type, import_aliases)
-				res = 'chan $mut_str$elem_str'
+				res = 'chan ${mut_str}${elem_str}'
 			}
 		}
 		.function {
@@ -1246,7 +1246,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			info := sym.info as Map
 			key_str := t.type_to_str_using_aliases(info.key_type, import_aliases)
 			val_str := t.type_to_str_using_aliases(info.value_type, import_aliases)
-			res = 'map[$key_str]$val_str'
+			res = 'map[${key_str}]${val_str}'
 		}
 		.multi_return {
 			res = '('
@@ -1337,10 +1337,10 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		res = strings.repeat(`&`, nr_muls) + res
 	}
 	if typ.has_flag(.optional) {
-		res = '?$res'
+		res = '?${res}'
 	}
 	if typ.has_flag(.result) {
-		res = '!$res'
+		res = '!${res}'
 	}
 	return res
 }
@@ -1434,8 +1434,8 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 	return sb.str()
 }
 
-// Get the name of the complete quanlified name of the type
-// without the generic parts.
+// symbol_name_except_generic return the name of the complete qualified name of the type,
+// but without the generic parts. For example, `main.Abc<int>` -> `main.Abc`
 pub fn (t &TypeSymbol) symbol_name_except_generic() string {
 	// main.Abc<int>
 	mut embed_name := t.name
@@ -1627,7 +1627,7 @@ pub fn (s Struct) get_field(name string) StructField {
 	if field := s.find_field(name) {
 		return field
 	}
-	panic('unknown field `$name`')
+	panic('unknown field `${name}`')
 }
 
 pub fn (s &SumType) find_field(name string) ?StructField {

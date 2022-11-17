@@ -8,7 +8,7 @@ fn iterators_array<T>() []&Abcd<T> {
 fn test_generic_fn_return_array_of_generic_struct() {
 	a := iterators_array<f64>()
 	println(a)
-	assert '$a' == '[]'
+	assert '${a}' == '[]'
 }
 
 fn iterators_chan<T>() chan Abcd<T> {
@@ -28,5 +28,5 @@ fn iterators_map<T>() map[string]&Abcd<T> {
 fn test_generic_fn_return_map_of_generic_struct() {
 	a := iterators_map<f64>()
 	println(a)
-	assert '$a' == '{}'
+	assert '${a}' == '{}'
 }

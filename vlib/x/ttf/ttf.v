@@ -106,10 +106,10 @@ pub fn (mut tf TTF_File) init() {
 	tf.read_kern_table()
 	tf.read_panose_table()
 	tf.length = tf.glyph_count()
-	dprintln('Number of symbols: $tf.length')
+	dprintln('Number of symbols: ${tf.length}')
 	dprintln('*****************************')
-	dprintln('Unit per em: $tf.units_per_em')
-	dprintln('advance_width_max: $tf.advance_width_max')
+	dprintln('Unit per em: ${tf.units_per_em}')
+	dprintln('advance_width_max: ${tf.advance_width_max}')
 }
 
 /******************************************************************************
@@ -675,11 +675,11 @@ fn (mut tf TTF_File) read_offset_tables() {
 	tf.entry_selector = tf.get_u16()
 	tf.range_shift = tf.get_u16()
 
-	dprintln('scalar_type   : [0x$tf.scalar_type.hex()]')
-	dprintln('num tables    : [$num_tables]')
-	dprintln('search_range  : [0x$tf.search_range.hex()]')
-	dprintln('entry_selector: [0x$tf.entry_selector.hex()]')
-	dprintln('range_shift   : [0x$tf.range_shift.hex()]')
+	dprintln('scalar_type   : [0x${tf.scalar_type.hex()}]')
+	dprintln('num tables    : [${num_tables}]')
+	dprintln('search_range  : [0x${tf.search_range.hex()}]')
+	dprintln('entry_selector: [0x${tf.entry_selector.hex()}]')
+	dprintln('range_shift   : [0x${tf.range_shift.hex()}]')
 
 	mut i := 0
 	for i < num_tables {
@@ -689,7 +689,7 @@ fn (mut tf TTF_File) read_offset_tables() {
 			offset: tf.get_u32()
 			length: tf.get_u32()
 		}
-		dprintln('Table: [$tag]')
+		dprintln('Table: [${tag}]')
 		// dprintln("${tf.tables[tag]}")
 
 		if tag != 'head' {
@@ -708,7 +708,7 @@ fn (mut tf TTF_File) read_offset_tables() {
 fn (mut tf TTF_File) read_head_table() {
 	dprintln('*** READ HEAD TABLE ***')
 	tf.pos = tf.tables['head'].offset
-	dprintln('Offset: $tf.pos')
+	dprintln('Offset: ${tf.pos}')
 
 	tf.version = tf.get_fixed()
 	tf.font_revision = tf.get_fixed()
@@ -804,7 +804,7 @@ fn (mut tf TTF_File) read_cmap_table() {
 		platform_id := tf.get_u16()
 		platform_specific_id := tf.get_u16()
 		offset := tf.get_u32()
-		dprintln('CMap platform_id=$platform_id specific_id=$platform_specific_id offset=$offset')
+		dprintln('CMap platform_id=${platform_id} specific_id=${platform_specific_id} offset=${offset}')
 		if platform_id == 3 && platform_specific_id <= 1 {
 			tf.read_cmap(table_offset + offset)
 		}
@@ -818,7 +818,7 @@ fn (mut tf TTF_File) read_cmap(offset u32) {
 	length := tf.get_u16()
 	language := tf.get_u16()
 
-	dprintln('  Cmap format: $format length: $length language: $language')
+	dprintln('  Cmap format: ${format} length: ${length} language: ${language}')
 	if format == 0 {
 		dprintln('  Cmap 0 Init...')
 		mut cmap := TrueTypeCmap{}
@@ -858,7 +858,7 @@ fn (mut tm TrueTypeCmap) init_0(mut tf TTF_File) {
 	tm.format = 0
 	for i in 0 .. 256 {
 		glyph_index := tf.get_u8()
-		dprintln('   Glyph[$i] = %glyph_index')
+		dprintln('   Glyph[${i}] = %glyph_index')
 		tm.arr << glyph_index
 	}
 }
@@ -1021,7 +1021,7 @@ fn (mut tf TTF_File) create_kern_table0(vertical bool, cross bool) Kern0Table {
 	search_range := tf.get_u16()
 	entry_selector := tf.get_u16()
 	range_shift := tf.get_u16()
-	dprintln('n_pairs: $n_pairs search_range: $search_range entry_selector: $entry_selector range_shift: $range_shift')
+	dprintln('n_pairs: ${n_pairs} search_range: ${search_range} entry_selector: ${entry_selector} range_shift: ${range_shift}')
 
 	mut kt0 := Kern0Table{
 		swap: (vertical && !cross) || (!vertical && cross)
@@ -1053,7 +1053,7 @@ fn (mut tf TTF_File) read_kern_table() {
 	assert version == 0 // must be 0
 	n_tables := tf.get_u16()
 
-	dprintln('Kern Table version: $version Kern nTables: $n_tables')
+	dprintln('Kern Table version: ${version} Kern nTables: ${n_tables}')
 
 	for _ in 0 .. n_tables {
 		st_version := tf.get_u16() // sub table version
@@ -1062,7 +1062,7 @@ fn (mut tf TTF_File) read_kern_table() {
 		format := coverage >> 8
 		cross := coverage & 4
 		vertical := (coverage & 0x1) == 0
-		dprintln('Kerning subtable version [$st_version] format [$format] length [$length] coverage: [$coverage.hex()]')
+		dprintln('Kerning subtable version [${st_version}] format [${format}] length [${length}] coverage: [${coverage.hex()}]')
 		if format == 0 {
 			dprintln('kern format: 0')
 			kern := tf.create_kern_table0(vertical, cross != 0)
@@ -1135,18 +1135,18 @@ fn (mut tf TTF_File) read_panose_table() {
 ******************************************************************************/
 pub fn (tf TTF_File) get_info_string() string {
 	txt := '----- Font Info -----
-font_family     : $tf.font_family
-font_sub_family : $tf.font_sub_family
-full_name       : $tf.full_name
-postscript_name : $tf.postscript_name
-version         : $tf.version
-font_revision   : $tf.font_revision
-magic_number    : $tf.magic_number.hex()
-flags           : $tf.flags.hex()
-created  unixTS : $tf.created
-modified unixTS : $tf.modified
-box             : [x_min:$tf.x_min, y_min:$tf.y_min, x_Max:$tf.x_max, y_Max:$tf.y_max]
-mac_style       : $tf.mac_style
+font_family     : ${tf.font_family}
+font_sub_family : ${tf.font_sub_family}
+full_name       : ${tf.full_name}
+postscript_name : ${tf.postscript_name}
+version         : ${tf.version}
+font_revision   : ${tf.font_revision}
+magic_number    : ${tf.magic_number.hex()}
+flags           : ${tf.flags.hex()}
+created  unixTS : ${tf.created}
+modified unixTS : ${tf.modified}
+box             : [x_min:${tf.x_min}, y_min:${tf.y_min}, x_Max:${tf.x_max}, y_Max:${tf.y_max}]
+mac_style       : ${tf.mac_style}
 -----------------------
 '
 	return txt
@@ -1181,7 +1181,7 @@ fn tst() {
 	assert tf.get_u16().hex() == 'f1f2'
 	assert tf.get_u32().hex() == '81234567'
 
-	dprintln('buf len: $tf.buf.len')
+	dprintln('buf len: ${tf.buf.len}')
 	// dprintln( tf.get_u8().hex() )
 	// dprintln( tf.get_u16().hex() )
 	// dprintln( tf.get_u32().hex() )

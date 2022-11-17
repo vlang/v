@@ -162,35 +162,35 @@ pub fn (t Time) relative() string {
 	if secs < time.seconds_per_hour {
 		m := secs / time.seconds_per_minute
 		if m == 1 {
-			return '${prefix}1 minute$suffix'
+			return '${prefix}1 minute${suffix}'
 		}
-		return '$prefix$m minutes$suffix'
+		return '${prefix}${m} minutes${suffix}'
 	}
 	if secs < time.seconds_per_hour * 24 {
 		h := secs / time.seconds_per_hour
 		if h == 1 {
-			return '${prefix}1 hour$suffix'
+			return '${prefix}1 hour${suffix}'
 		}
-		return '$prefix$h hours$suffix'
+		return '${prefix}${h} hours${suffix}'
 	}
 	if secs < time.seconds_per_hour * 24 * 7 {
 		d := secs / time.seconds_per_hour / 24
 		if d == 1 {
-			return '${prefix}1 day$suffix'
+			return '${prefix}1 day${suffix}'
 		}
-		return '$prefix$d days$suffix'
+		return '${prefix}${d} days${suffix}'
 	}
 	if secs < time.seconds_per_hour * 24 * time.days_in_year {
 		if prefix == 'in ' {
-			return 'on $t.md()'
+			return 'on ${t.md()}'
 		}
-		return 'last $t.md()'
+		return 'last ${t.md()}'
 	}
 	y := secs / time.seconds_per_hour / 24 / time.days_in_year
 	if y == 1 {
-		return '${prefix}1 year$suffix'
+		return '${prefix}1 year${suffix}'
 	}
-	return '$prefix$y years$suffix'
+	return '${prefix}${y} years${suffix}'
 }
 
 // relative_short returns a string saying how long ago a time occured as follows:
@@ -224,29 +224,29 @@ pub fn (t Time) relative_short() string {
 	if secs < time.seconds_per_hour {
 		m := secs / time.seconds_per_minute
 		if m == 1 {
-			return '${prefix}1m$suffix'
+			return '${prefix}1m${suffix}'
 		}
-		return '$prefix${m}m$suffix'
+		return '${prefix}${m}m${suffix}'
 	}
 	if secs < time.seconds_per_hour * 24 {
 		h := secs / time.seconds_per_hour
 		if h == 1 {
-			return '${prefix}1h$suffix'
+			return '${prefix}1h${suffix}'
 		}
-		return '$prefix${h}h$suffix'
+		return '${prefix}${h}h${suffix}'
 	}
 	if secs < time.seconds_per_hour * 24 * time.days_in_year {
 		d := secs / time.seconds_per_hour / 24
 		if d == 1 {
-			return '${prefix}1d$suffix'
+			return '${prefix}1d${suffix}'
 		}
-		return '$prefix${d}d$suffix'
+		return '${prefix}${d}d${suffix}'
 	}
 	y := secs / time.seconds_per_hour / 24 / time.days_in_year
 	if y == 1 {
-		return '${prefix}1y$suffix'
+		return '${prefix}1y${suffix}'
 	}
-	return '$prefix${y}y$suffix'
+	return '${prefix}${y}y${suffix}'
 }
 
 // day_of_week returns the current day of a given year, month, and day,
@@ -287,7 +287,7 @@ pub fn is_leap_year(year int) bool {
 // days_in_month returns a number of days in a given month.
 pub fn days_in_month(month int, year int) ?int {
 	if month > 12 || month < 1 {
-		return error('Invalid month: $month')
+		return error('Invalid month: ${month}')
 	}
 	extra := if month == 2 && is_leap_year(year) { 1 } else { 0 }
 	res := time.month_days[month - 1] + extra
@@ -378,10 +378,10 @@ pub fn (d Duration) str() string {
 	ns := t
 
 	if hr > 0 {
-		return '$hr:${min:02}:${sec:02}'
+		return '${hr}:${min:02}:${sec:02}'
 	}
 	if min > 0 {
-		return '$min:${sec:02}.${ms:03}'
+		return '${min}:${sec:02}.${ms:03}'
 	}
 	if sec > 0 {
 		return '${sec}.${ms:03}s'

@@ -16,5 +16,5 @@ fn test_map_init_with_enum_keys() {
 	}
 
 	println(st.m)
-	assert '$st.m' == "{ea: 'a'}"
+	assert '${st.m}' == "{ea: 'a'}"
 }

@@ -21,16 +21,16 @@ pub fn full_hash() string {
 	if build_hash == current_hash {
 		return build_hash
 	}
-	return '${build_hash}.$current_hash'
+	return '${build_hash}.${current_hash}'
 }
 
 // full_v_version() returns the full version of the V compiler
 pub fn full_v_version(is_verbose bool) string {
 	if is_verbose {
-		return 'V $version.v_version $full_hash()'
+		return 'V ${version.v_version} ${full_hash()}'
 	}
 	hash := githash(false)
-	return 'V $version.v_version $hash'
+	return 'V ${version.v_version} ${hash}'
 }
 
 // githash(x) returns the current git commit hash.

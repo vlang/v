@@ -2,7 +2,7 @@ module os
 
 fn signal_str(signal Signal) string {
 	mut result := signal.str().to_upper()
-	result = 'SIG$result'
+	result = 'SIG${result}'
 	return result
 }
 
@@ -103,7 +103,7 @@ fn signal_from_str(str JS.String) Signal {
 			Signal.sys
 		}
 		else {
-			panic('unknown signal: $s')
+			panic('unknown signal: ${s}')
 		}
 	}
 }

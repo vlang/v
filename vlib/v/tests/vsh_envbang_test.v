@@ -7,15 +7,15 @@ fn test_envbang_script_runs() {
 		skip_test('windows does not support envbang lines')
 	}
 	if !os.exists(env_location) {
-		skip_test('$env_location does not exist')
+		skip_test('${env_location} does not exist')
 	}
 	if !os.is_executable(env_location) {
-		skip_test('$env_location is not executable')
+		skip_test('${env_location} is not executable')
 	}
 	os.find_abs_path_of_executable('v') or { skip_test('v is not in PATH') }
 	rndname := rand.ulid()
 	rnd_vsh_script_path := os.real_path(os.join_path(os.cache_dir(), '${rndname}.vsh'))
-	os.write_file(rnd_vsh_script_path, "#!$env_location v
+	os.write_file(rnd_vsh_script_path, "#!${env_location} v
 import os
 println('hello')
 println(os.args)
@@ -31,6 +31,6 @@ println(os.args)
 
 [noreturn]
 fn skip_test(reason string) {
-	println('skipping test, because $reason .')
+	println('skipping test, because ${reason} .')
 	exit(0)
 }

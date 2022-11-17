@@ -122,26 +122,26 @@ pub fn (r Result) fields() []Field {
 pub fn (f Field) str() string {
 	return '
 {
-	name: "$f.name"
-	org_name: "$f.org_name"
-	table: "$f.table"
-	org_table: "$f.org_table"
-	db: "$f.db"
-	catalog: "$f.catalog"
-	def: "$f.def"
-	length: $f.length
-	max_length: $f.max_length
-	name_length: $f.name_length
-	org_name_length: $f.org_name_length
-	table_length: $f.table_length
-	org_table_length: $f.org_table_length
-	db_length: $f.db_length
-	catalog_length: $f.catalog_length
-	def_length: $f.def_length
-	flags: $f.flags
-	decimals: $f.decimals
-	charsetnr: $f.charsetnr
-	type: $f.type_.str()
+	name: "${f.name}"
+	org_name: "${f.org_name}"
+	table: "${f.table}"
+	org_table: "${f.org_table}"
+	db: "${f.db}"
+	catalog: "${f.catalog}"
+	def: "${f.def}"
+	length: ${f.length}
+	max_length: ${f.max_length}
+	name_length: ${f.name_length}
+	org_name_length: ${f.org_name_length}
+	table_length: ${f.table_length}
+	org_table_length: ${f.org_table_length}
+	db_length: ${f.db_length}
+	catalog_length: ${f.catalog_length}
+	def_length: ${f.def_length}
+	flags: ${f.flags}
+	decimals: ${f.decimals}
+	charsetnr: ${f.charsetnr}
+	type: ${f.type_.str()}
 }
 '
 }

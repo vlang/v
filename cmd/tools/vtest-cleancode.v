@@ -58,9 +58,9 @@ fn main() {
 
 fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string, flist []string, slist []string) testing.TestSession {
 	os.chdir(vroot) or {}
-	title_message := 'running $tool_cmd over most .v files'
+	title_message := 'running ${tool_cmd} over most .v files'
 	testing.eheader(title_message)
-	mut test_session := testing.new_test_session('$vargs $tool_args', false)
+	mut test_session := testing.new_test_session('${vargs} ${tool_args}', false)
 	test_session.files << flist
 	test_session.skip_files << slist
 	util.prepare_tool_when_needed(tool_source)
@@ -93,10 +93,10 @@ fn v_test_vetting(vargs string) {
 	if vet_session.benchmark.nfail > 0 || verify_session.benchmark.nfail > 0 {
 		eprintln('\n')
 		if vet_session.benchmark.nfail > 0 {
-			eprintln('WARNING: `v vet` failed $vet_session.benchmark.nfail times.')
+			eprintln('WARNING: `v vet` failed ${vet_session.benchmark.nfail} times.')
 		}
 		if verify_session.benchmark.nfail > 0 {
-			eprintln('WARNING: `v fmt -verify` failed $verify_session.benchmark.nfail times.')
+			eprintln('WARNING: `v fmt -verify` failed ${verify_session.benchmark.nfail} times.')
 		}
 		exit(1)
 	}

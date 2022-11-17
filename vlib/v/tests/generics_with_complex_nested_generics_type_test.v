@@ -11,7 +11,7 @@ fn initial<K, V>(buf []u8) map[K]V {
 		ret[k] = v
 	}
 	println(ret)
-	assert '$ret' == "{'get': 22}"
+	assert '${ret}' == "{'get': 22}"
 	return ret
 }
 

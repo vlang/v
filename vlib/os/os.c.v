@@ -71,7 +71,7 @@ fn find_cfile_size(fp &C.FILE) !int {
 	len := int(raw_fsize)
 	// For files > 2GB, C.ftell can return values that, when cast to `int`, can result in values below 0.
 	if i64(len) < raw_fsize {
-		return error('int($raw_fsize) cast results in $len')
+		return error('int(${raw_fsize}) cast results in ${len}')
 	}
 	C.rewind(fp)
 	return len
@@ -89,7 +89,7 @@ fn slurp_file_in_builder(fp &C.FILE) !strings.Builder {
 	mut sb := strings.new_builder(os.buf_size)
 	for {
 		mut read_bytes := fread(&buf[0], 1, os.buf_size, fp) or {
-			if err == IError(Eof{}) {
+			if err is Eof {
 				break
 			}
 			unsafe { sb.free() }
@@ -222,12 +222,12 @@ pub fn mv(src string, dst string) ! {
 		w_dst := rdst.replace('/', '\\')
 		ret := C._wrename(w_src.to_wide(), w_dst.to_wide())
 		if ret != 0 {
-			return error_with_code('failed to rename $src to $dst', int(ret))
+			return error_with_code('failed to rename ${src} to ${dst}', int(ret))
 		}
 	} $else {
 		ret := C.rename(&char(src.str), &char(rdst.str))
 		if ret != 0 {
-			return error_with_code('failed to rename $src to $dst', ret)
+			return error_with_code('failed to rename ${src} to ${dst}', ret)
 		}
 	}
 }
@@ -239,17 +239,17 @@ pub fn cp(src string, dst string) ! {
 		w_dst := dst.replace('/', '\\')
 		if C.CopyFile(w_src.to_wide(), w_dst.to_wide(), false) == 0 {
 			result := C.GetLastError()
-			return error_with_code('failed to copy $src to $dst', int(result))
+			return error_with_code('failed to copy ${src} to ${dst}', int(result))
 		}
 	} $else {
 		fp_from := C.open(&char(src.str), C.O_RDONLY, 0)
 		if fp_from < 0 { // Check if file opened
-			return error_with_code('cp: failed to open $src', int(fp_from))
+			return error_with_code('cp: failed to open ${src}', int(fp_from))
 		}
 		fp_to := C.open(&char(dst.str), C.O_WRONLY | C.O_CREAT | C.O_TRUNC, C.S_IWUSR | C.S_IRUSR)
 		if fp_to < 0 { // Check if file opened (permissions problems ...)
 			C.close(fp_from)
-			return error_with_code('cp (permission): failed to write to $dst (fp_to: $fp_to)',
+			return error_with_code('cp (permission): failed to write to ${dst} (fp_to: ${fp_to})',
 				int(fp_to))
 		}
 		// TODO use defer{} to close files in case of error or return.
@@ -264,7 +264,7 @@ pub fn cp(src string, dst string) ! {
 			if C.write(fp_to, &buf[0], count) < 0 {
 				C.close(fp_to)
 				C.close(fp_from)
-				return error_with_code('cp: failed to write to $dst', int(-1))
+				return error_with_code('cp: failed to write to ${dst}', int(-1))
 			}
 		}
 		from_attr := C.stat{}
@@ -274,7 +274,7 @@ pub fn cp(src string, dst string) ! {
 		if C.chmod(&char(dst.str), from_attr.st_mode) < 0 {
 			C.close(fp_to)
 			C.close(fp_from)
-			return error_with_code('failed to set permissions for $dst', int(-1))
+			return error_with_code('failed to set permissions for ${dst}', int(-1))
 		}
 		C.close(fp_to)
 		C.close(fp_from)
@@ -295,7 +295,7 @@ pub fn vfopen(path string, mode string) !&C.FILE {
 		fp = C.fopen(&char(path.str), &char(mode.str))
 	}
 	if isnil(fp) {
-		return error('failed to open file "$path"')
+		return error('failed to open file "${path}"')
 	} else {
 		return fp
 	}
@@ -373,7 +373,7 @@ pub fn system(cmd string) int {
 	mut ret := 0
 	$if windows {
 		// overcome bug in system & _wsystem (cmd) when first char is quote `"`
-		wcmd := if cmd.len > 1 && cmd[0] == `"` && cmd[1] != `"` { '"$cmd"' } else { cmd }
+		wcmd := if cmd.len > 1 && cmd[0] == `"` && cmd[1] != `"` { '"${cmd}"' } else { cmd }
 		unsafe {
 			ret = C._wsystem(wcmd.to_wide())
 		}
@@ -487,7 +487,7 @@ pub fn rm(path string) ! {
 		rc = C.remove(&char(path.str))
 	}
 	if rc == -1 {
-		return error('Failed to remove "$path": ' + posix_get_error_msg(C.errno))
+		return error('Failed to remove "${path}": ' + posix_get_error_msg(C.errno))
 	}
 	// C.unlink(path.cstr())
 }
@@ -498,7 +498,7 @@ pub fn rmdir(path string) ! {
 		rc := C.RemoveDirectory(path.to_wide())
 		if !rc {
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 == false, is failure
-			return error('Failed to remove "$path": ' + posix_get_error_msg(C.errno))
+			return error('Failed to remove "${path}": ' + posix_get_error_msg(C.errno))
 		}
 	} $else {
 		rc := C.rmdir(&char(path.str))
@@ -512,7 +512,7 @@ pub fn rmdir(path string) ! {
 fn print_c_errno() {
 	e := C.errno
 	se := unsafe { tos_clone(&u8(C.strerror(e))) }
-	println('errno=$e err=$se')
+	println('errno=${e} err=${se}')
 }
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any.
@@ -612,7 +612,7 @@ pub fn read_file_array<T>(path string) []T {
 	// On some systems C.ftell can return values in the 64-bit range
 	// that, when cast to `int`, can result in values below 0.
 	if i64(allocate) < fsize {
-		panic('$fsize cast to int results in ${int(fsize)})')
+		panic('${fsize} cast to int results in ${int(fsize)})')
 	}
 	buf := unsafe {
 		malloc_noscan(allocate)
@@ -672,7 +672,7 @@ pub fn executable() string {
 		pid := C.getpid()
 		ret := proc_pidpath(pid, &result[0], max_path_len)
 		if ret <= 0 {
-			eprintln('os.executable() failed at calling proc_pidpath with pid: $pid . proc_pidpath returned $ret ')
+			eprintln('os.executable() failed at calling proc_pidpath with pid: ${pid} . proc_pidpath returned ${ret} ')
 			return executable_fallback()
 		}
 		res := unsafe { tos_clone(&result[0]) }
@@ -985,7 +985,7 @@ pub fn open_append(path string) !File {
 		}
 	}
 	if isnil(file.cfile) {
-		return error('failed to create(append) file "$path"')
+		return error('failed to create(append) file "${path}"')
 	}
 	file.is_opened = true
 	return file

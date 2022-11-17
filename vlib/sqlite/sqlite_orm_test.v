@@ -22,6 +22,11 @@ struct TestDefaultAtribute {
 	created_at2 string [default: 'CURRENT_TIMESTAMP']
 }
 
+struct EntityToTest {
+	id   int    [notnull; sql_type: 'INTEGER']
+	smth string [notnull; sql_type: 'TEXT']
+}
+
 fn test_sqlite_orm() {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	defer {
@@ -160,4 +165,65 @@ fn test_sqlite_orm() {
 	sql db {
 		drop table TestDefaultAtribute
 	}
+}
+
+fn test_get_affected_rows_count() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or { panic(err) }
+	}
+
+	db.exec('create table EntityToTest(
+		id integer not null constraint tbl_pk primary key,
+		smth  integer
+	);')
+
+	fst := EntityToTest{
+		id: 1
+		smth: '1'
+	}
+
+	sql db {
+		insert fst into EntityToTest
+	} or { panic('first insert failed') }
+
+	assert db.get_affected_rows_count() == 1
+
+	snd := EntityToTest{
+		id: 1
+		smth: '2'
+	}
+
+	mut sndfailed := false
+	sql db {
+		insert snd into EntityToTest
+	} or { sndfailed = true }
+
+	assert db.get_affected_rows_count() == 0
+	assert sndfailed
+
+	all := sql db {
+		select from EntityToTest
+	}
+	assert 1 == all.len
+
+	sql db {
+		update EntityToTest set smth = '2' where id == 1
+	}
+	assert db.get_affected_rows_count() == 1
+
+	sql db {
+		update EntityToTest set smth = '2' where id == 2
+	}
+	assert db.get_affected_rows_count() == 0
+
+	sql db {
+		delete from EntityToTest where id == 2
+	}
+	assert db.get_affected_rows_count() == 0
+
+	sql db {
+		delete from EntityToTest where id == 1
+	}
+	assert db.get_affected_rows_count() == 1
 }

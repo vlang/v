@@ -53,12 +53,12 @@ fn test_encoder_unescaped_utf32() {
 	mut sb := strings.new_builder(20)
 	enc.encode_value(jap_text, mut sb)!
 
-	assert sb.str() == '"$jap_text"'
+	assert sb.str() == '"${jap_text}"'
 	sb.go_back_to(0)
 
 	emoji_text := json2.Any('🐈')
 	enc.encode_value(emoji_text, mut sb)!
-	assert sb.str() == '"$emoji_text"'
+	assert sb.str() == '"${emoji_text}"'
 }
 
 fn test_encoder_prettify() {

@@ -61,6 +61,6 @@ fn main() {
 	}
 
 	// print the state of the interpreter at the end
-	println('Address: $address')
-	println('Memory: $memory')
+	println('Address: ${address}')
+	println('Memory: ${memory}')
 }

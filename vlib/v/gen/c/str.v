@@ -8,9 +8,9 @@ import v.util
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
 	escaped_val := cescape_nonascii(util.smart_quote(node.val, node.is_raw))
 	if node.language == .c {
-		g.write('"$escaped_val"')
+		g.write('"${escaped_val}"')
 	} else {
-		g.write('_SLIT("$escaped_val")')
+		g.write('_SLIT("${escaped_val}")')
 	}
 }
 
@@ -52,6 +52,11 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
+	old_inside_opt_or_res := g.inside_opt_or_res
+	g.inside_opt_or_res = true
+	defer {
+		g.inside_opt_or_res = old_inside_opt_or_res
+	}
 	is_shared := etype.has_flag(.shared_f)
 	mut typ := etype
 	if is_shared {
@@ -102,7 +107,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(typ)
 		if is_ptr && !is_var_mut {
-			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("&"), $si_s_code ,{.d_s = isnil(')
+			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("&"), ${si_s_code} ,{.d_s = isnil(')
 			g.expr(expr)
 			g.write(') ? _SLIT("nil") : ')
 		}
@@ -116,7 +121,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			if expr.is_fixed {
 				s := g.typ(expr.typ)
 				if !expr.has_it {
-					g.write('($s)')
+					g.write('(${s})')
 				}
 			}
 		}

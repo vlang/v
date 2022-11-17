@@ -100,13 +100,13 @@ fn print_solution(path []int, g [][]int) {
 	mut sum := 0
 	for node in 0 .. (path.len) {
 		if path[node] == -1 {
-			print('\n $node <== reference or start node')
+			print('\n ${node} <== reference or start node')
 		} else {
-			print('\n $node <--> ${path[node]} \t${g[node][path[node]]}')
+			print('\n ${node} <--> ${path[node]} \t${g[node][path[node]]}')
 			sum += g[node][path[node]]
 		}
 	}
-	print('\n Minimum Cost Spanning Tree: $sum\n\n')
+	print('\n Minimum Cost Spanning Tree: ${sum}\n\n')
 }
 
 // check structure from: https://www.geeksforgeeks.org/dijkstras-shortest-path-algorithm-greedy-algo-7/

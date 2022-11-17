@@ -35,7 +35,7 @@ fn test_parse_request_not_http() {
 
 fn test_parse_request_no_headers() {
 	mut reader_ := reader('GET / HTTP/1.1\r\n\r\n')
-	req := parse_request(mut reader_) or { panic('did not parse: $err') }
+	req := parse_request(mut reader_) or { panic('did not parse: ${err}') }
 	assert req.method == .get
 	assert req.url == '/'
 	assert req.version == .v1_1
@@ -43,27 +43,27 @@ fn test_parse_request_no_headers() {
 
 fn test_parse_request_two_headers() {
 	mut reader_ := reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2:  B\r\n\r\n')
-	req := parse_request(mut reader_) or { panic('did not parse: $err') }
+	req := parse_request(mut reader_) or { panic('did not parse: ${err}') }
 	assert req.header.custom_values('Test1') == ['a']
 	assert req.header.custom_values('Test2') == ['B']
 }
 
 fn test_parse_request_two_header_values() {
 	mut reader_ := reader('GET / HTTP/1.1\r\nTest1: a; b\r\nTest2: c\r\nTest2: d\r\n\r\n')
-	req := parse_request(mut reader_) or { panic('did not parse: $err') }
+	req := parse_request(mut reader_) or { panic('did not parse: ${err}') }
 	assert req.header.custom_values('Test1') == ['a; b']
 	assert req.header.custom_values('Test2') == ['c', 'd']
 }
 
 fn test_parse_request_body() {
 	mut reader_ := reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2: b\r\nContent-Length: 4\r\n\r\nbodyabc')
-	req := parse_request(mut reader_) or { panic('did not parse: $err') }
+	req := parse_request(mut reader_) or { panic('did not parse: ${err}') }
 	assert req.data == 'body'
 }
 
 fn test_parse_request_line() {
 	method, target, version := parse_request_line('GET /target HTTP/1.1') or {
-		panic('did not parse: $err')
+		panic('did not parse: ${err}')
 	}
 	assert method == .get
 	assert target.str() == '/target'
@@ -127,16 +127,16 @@ fn test_parse_multipart_form() {
 	file := 'bar.v'
 	ct := 'application/octet-stream'
 	contents := ['baz', 'buzz']
-	data := "--$boundary
-Content-Disposition: form-data; name=\"${names[0]}\"; filename=\"$file\"\r
-Content-Type: $ct\r
+	data := "--${boundary}
+Content-Disposition: form-data; name=\"${names[0]}\"; filename=\"${file}\"\r
+Content-Type: ${ct}\r
 \r
 ${contents[0]}\r
---$boundary\r
+--${boundary}\r
 Content-Disposition: form-data; name=\"${names[1]}\"\r
 \r
 ${contents[1]}\r
---$boundary--\r
+--${boundary}--\r
 "
 	form, files := parse_multipart_form(data, boundary)
 	assert files == {
@@ -176,7 +176,7 @@ fn test_multipart_form_body() {
 
 fn test_parse_large_body() {
 	body := 'A'.repeat(101) // greater than max_bytes
-	req := 'GET / HTTP/1.1\r\nContent-Length: $body.len\r\n\r\n$body'
+	req := 'GET / HTTP/1.1\r\nContent-Length: ${body.len}\r\n\r\n${body}'
 	mut reader_ := reader(req)
 	result := parse_request(mut reader_)!
 	assert result.data.len == body.len

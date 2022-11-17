@@ -66,7 +66,7 @@ fn is_html_open_tag(name string, s string) bool {
 		if sub.len <= len { // `<nam>` or `<meme>`
 			return false
 		}
-		if sub[..len + 1] != '$name ' { // not `<name ...>`
+		if sub[..len + 1] != '${name} ' { // not `<name ...>`
 			return false
 		}
 		return true
@@ -94,7 +94,7 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string) stri
 // compile_file compiles the content of a file by the given path as a template
 pub fn (mut p Parser) compile_template_file(template_file string, fn_name string) string {
 	mut lines := os.read_lines(template_file) or {
-		p.error('reading from $template_file failed')
+		p.error('reading from ${template_file} failed')
 		return ''
 	}
 	basepath := os.dir(template_file)
@@ -105,7 +105,7 @@ pub fn (mut p Parser) compile_template_file(template_file string, fn_name string
 import strings
 // === vweb html template ===
 fn vweb_tmpl_${fn_name}() string {
-	mut sb_$fn_name := strings.new_builder($lstartlength)\n
+	mut sb_${fn_name} := strings.new_builder(${lstartlength})\n
 
 ')
 	source.write_string(tmpl_str_start)
@@ -129,7 +129,7 @@ fn vweb_tmpl_${fn_name}() string {
 			state.update(line)
 		}
 		$if trace_tmpl ? {
-			eprintln('>>> tfile: $template_file, spos: ${start_of_line_pos:6}, epos:${end_of_line_pos:6}, fi: ${tline_number:5}, i: ${i:5}, state: ${state:10}, line: $line')
+			eprintln('>>> tfile: ${template_file}, spos: ${start_of_line_pos:6}, epos:${end_of_line_pos:6}, fi: ${tline_number:5}, i: ${i:5}, state: ${state:10}, line: ${line}')
 		}
 		if line.contains('@header') {
 			position := line.index('@header') or { 0 }
@@ -175,15 +175,15 @@ fn vweb_tmpl_${fn_name}() string {
 				// an absolute path
 				templates_folder = ''
 			}
-			file_path := os.real_path(os.join_path_single(templates_folder, '$file_name$file_ext'))
+			file_path := os.real_path(os.join_path_single(templates_folder, '${file_name}${file_ext}'))
 			$if trace_tmpl ? {
-				eprintln('>>> basepath: "$basepath" , template_file: "$template_file" , fn_name: "$fn_name" , @include line: "$line" , file_name: "$file_name" , file_ext: "$file_ext" , templates_folder: "$templates_folder" , file_path: "$file_path"')
+				eprintln('>>> basepath: "${basepath}" , template_file: "${template_file}" , fn_name: "${fn_name}" , @include line: "${line}" , file_name: "${file_name}" , file_ext: "${file_ext}" , templates_folder: "${templates_folder}" , file_path: "${file_path}"')
 			}
 			file_content := os.read_file(file_path) or {
 				position := line.index('@include ') or { 0 } + '@include '.len
 				p.error_with_error(errors.Error{
-					message: 'Reading file $file_name from path: $file_path failed'
-					details: "Failed to @include '$file_name'"
+					message: 'Reading file ${file_name} from path: ${file_path} failed'
+					details: "Failed to @include '${file_name}'"
 					file_path: template_file
 					pos: token.Pos{
 						len: '@include '.len + file_name.len
@@ -263,7 +263,7 @@ fn vweb_tmpl_${fn_name}() string {
 				if line_t.starts_with('span.') && line.ends_with('{') {
 					// `span.header {` => `<span class='header'>`
 					class := line.find_between('span.', '{').trim_space()
-					source.writeln('<span class="$class">')
+					source.writeln('<span class="${class}">')
 					in_span = true
 					continue
 				} else if line_t.starts_with('.') && line.ends_with('{') {
@@ -271,12 +271,12 @@ fn vweb_tmpl_${fn_name}() string {
 					class := line.find_between('.', '{').trim_space()
 					trimmed := line.trim_space()
 					source.write_string(strings.repeat(`\t`, line.len - trimmed.len)) // add the necessary indent to keep <div><div><div> code clean
-					source.writeln('<div class="$class">')
+					source.writeln('<div class="${class}">')
 					continue
 				} else if line_t.starts_with('#') && line.ends_with('{') {
 					// `#header {` => `<div id='header'>`
 					class := line.find_between('#', '{').trim_space()
-					source.writeln('<div id="$class">')
+					source.writeln('<div id="${class}">')
 					continue
 				} else if line_t == '}' {
 					source.write_string(strings.repeat(`\t`, line.len - line_t.len)) // add the necessary indent to keep <div><div><div> code clean
@@ -312,10 +312,10 @@ fn vweb_tmpl_${fn_name}() string {
 	}
 
 	source.writeln(parser.tmpl_str_end)
-	source.writeln('\t_tmpl_res_$fn_name := sb_${fn_name}.str() ')
-	source.writeln('\treturn _tmpl_res_$fn_name')
+	source.writeln('\t_tmpl_res_${fn_name} := sb_${fn_name}.str() ')
+	source.writeln('\treturn _tmpl_res_${fn_name}')
 	source.writeln('}')
-	source.writeln('// === end of vweb html template_file: $template_file ===')
+	source.writeln('// === end of vweb html template_file: ${template_file} ===')
 
 	result := source.str()
 	$if trace_tmpl_expansion ? {

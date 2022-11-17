@@ -38,7 +38,7 @@ To do so, run the command `v up`.
 ## Table of Contents
 
 <table>
-    <tr><td width=33% valign=top>
+<tr><td width=33% valign=top>
 
 * [Hello world](#hello-world)
 * [Running a project folder](#running-a-project-folder-with-several-files)
@@ -62,6 +62,9 @@ To do so, run the command `v up`.
         * [Array slices](#array-slices)
     * [Fixed size arrays](#fixed-size-arrays)
     * [Maps](#maps)
+
+</td><td width=33% valign=top>
+
 * [Module imports](#module-imports)
     * [Selective imports](#selective-imports)
     * [Module import aliasing](#module-import-aliasing)
@@ -86,7 +89,7 @@ To do so, run the command `v up`.
     * [Embedded structs](#embedded-structs)
 * [Unions](#unions)
 
-</td><td width=33% valign=top>
+</td><td valign=top>
 
 * [Functions 2](#functions-2)
     * [Immutable function args by default](#immutable-function-args-by-default)
@@ -105,12 +108,16 @@ To do so, run the command `v up`.
 * [Modules](#modules)
     * [Create modules](#create-modules)
     * [init functions](#init-functions)
+
+</td></tr>
+<tr><td width=33% valign=top>
+
 * [Type Declarations](#type-declarations)
-    * [Interfaces](#interfaces)
-    * [Function Types](#function-types)
-    * [Enums](#enums)
-    * [Sum types](#sum-types)
     * [Type aliases](#type-aliases)
+    * [Enums](#enums)
+    * [Function Types](#function-types)
+    * [Interfaces](#interfaces)
+    * [Sum types](#sum-types)
     * [Option/Result types & error handling](#optionresult-types-and-error-handling)
         * [Handling optionals/results](#handling-optionalsresults)
     * [Custom error types](#custom-error-types)
@@ -132,11 +139,11 @@ To do so, run the command `v up`.
     * [Control](#control)
     * [Stack and Heap](#stack-and-heap)
 * [ORM](#orm)
-
-</td><td valign=top>
-
 * [Writing documentation](#writing-documentation)
     * [Newlines in Documentation Comments](#newlines-in-documentation-comments)
+
+</td><td width=33% valign=top>
+
 * [Tools](#tools)
     * [v fmt](#v-fmt)
     * [v shader](#v-shader)
@@ -163,21 +170,24 @@ To do so, run the command `v up`.
         * [C Backend binaries Default](#c-backend-binaries-default)
         * [Native Backend binaries](#native-backend-binaries)
         * [Javascript Backend](#javascript-backend)
-    * [V and C](#v-and-c)
-		* [Calling C from V](#calling-c-from-v)
-		* [Calling V from C](#calling-v-from-c)
-		* [Passing C compilation flags](#passing-c-compilation-flags)
-		* [#pkgconfig](#pkgconfig)
-		* [Including C code](#including-c-code)
-		* [C types](#c-types)
-		* [C Declarations](#c-declarations)
-        * [Export to shared library](#export-to-shared-library)
-        * [Translating C to V](#translating-c-to-v)
-    * [Other V Features](#other-v-features)
-        * [Inline assembly](#inline-assembly)
-        * [Hot code reloading](#hot-code-reloading)
-        * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
-	    * [Vsh scripts with no extension](#vsh-scripts-with-no-extension)
+
+</td><td valign=top>
+
+* [V and C](#v-and-c)
+	* [Calling C from V](#calling-c-from-v)
+	* [Calling V from C](#calling-v-from-c)
+	* [Passing C compilation flags](#passing-c-compilation-flags)
+	* [#pkgconfig](#pkgconfig)
+	* [Including C code](#including-c-code)
+	* [C types](#c-types)
+	* [C Declarations](#c-declarations)
+	* [Export to shared library](#export-to-shared-library)
+	* [Translating C to V](#translating-c-to-v)
+* [Other V Features](#other-v-features)
+	* [Inline assembly](#inline-assembly)
+	* [Hot code reloading](#hot-code-reloading)
+	* [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
+	* [Vsh scripts with no extension](#vsh-scripts-with-no-extension)
 * [Appendices](#appendices)
     * [Keywords](#appendix-i-keywords)
     * [Operators](#appendix-ii-operators)
@@ -406,9 +416,9 @@ In this way, their values can be swapped without an intermediary variable.
 ```v
 mut a := 0
 mut b := 1
-println('$a, $b') // 0, 1
+println('${a}, ${b}') // 0, 1
 a, b = b, a
-println('$a, $b') // 1, 0
+println('${a}, ${b}') // 1, 0
 ```
 
 ### Declaration errors
@@ -590,15 +600,15 @@ For more advanced `string` processing and conversions, refer to the
 
 #### String interpolation
 
-Basic interpolation syntax is pretty simple - use `$` before a variable name. The variable will be
-converted to a string and embedded into the literal:
+Basic interpolation syntax is pretty simple - use `${` before a variable name and `}` after. The
+variable will be converted to a string and embedded into the literal:
 
 ```v
 name := 'Bob'
-println('Hello, $name!') // Hello, Bob!
+println('Hello, ${name}!') // Hello, Bob!
 ```
 
-It also works with fields: `'age = $user.age'`. If you need more complex expressions, use `${}`:
+It also works with fields: `'age = ${user.age}'`. You may also use more complex expressions:
 `'can register = ${user.age > 13}'`.
 
 Format specifiers similar to those in C's `printf()` are also supported. `f`, `g`, `x`, `o`, `b`,
@@ -687,10 +697,13 @@ or use string interpolation (preferred):
 
 ```v
 age := 12
-println('age = $age')
+println('age = ${age}')
 ```
 
 See all methods of [string](https://modules.vlang.io/index.html#string)
+and related modules [strings](https://modules.vlang.io/strings.html),
+[strconv](https://modules.vlang.io/strconv.html).
+
 
 ### Runes
 
@@ -1321,7 +1334,7 @@ m := {
 	'abc': 'def'
 }
 if v := m['abc'] {
-	println('the map value for that key is: $v')
+	println('the map value for that key is: ${v}')
 }
 ```
 
@@ -1367,7 +1380,7 @@ import os
 fn main() {
 	// read text from stdin
 	name := os.input('Enter your name: ')
-	println('Hello, $name!')
+	println('Hello, ${name}!')
 }
 ```
 This program can use any public definitions from the `os` module, such
@@ -1391,7 +1404,7 @@ import os { input }
 fn main() {
 	// read text from stdin
 	name := input('Enter your name: ')
-	println('Hello, $name!')
+	println('Hello, ${name}!')
 }
 ```
 Note: This will import the module as well. Also, this is not allowed for
@@ -1403,7 +1416,7 @@ You can import several specific symbols at once:
 import os { input, user_os }
 
 name := input('Enter your name: ')
-println('Name: $name')
+println('Name: ${name}')
 os := user_os()
 println('Your OS is ${os}.')
 ```
@@ -1444,7 +1457,7 @@ fn main() {
 		day: 25
 	}
 	println(time.new_time(my_time).utc_string())
-	println('Century: $my_time.century()')
+	println('Century: ${my_time.century()}')
 }
 ```
 
@@ -1456,11 +1469,11 @@ fn main() {
 a := 10
 b := 20
 if a < b {
-	println('$a < $b')
+	println('${a} < ${b}')
 } else if a > b {
-	println('$a > $b')
+	println('${a} > ${b}')
 } else {
-	println('$a == $b')
+	println('${a} == ${b}')
 }
 ```
 
@@ -1726,7 +1739,7 @@ for num in numbers {
 }
 names := ['Sam', 'Peter']
 for i, name in names {
-	println('$i) $name')
+	println('${i}) ${name}')
 	// Output: 0) Sam
 	//         1) Peter
 }
@@ -1794,7 +1807,7 @@ m := {
 	'two': 2
 }
 for key, value in m {
-	println('$key -> $value')
+	println('${key} -> ${value}')
 	// Output: one -> 1
 	//         two -> 2
 }
@@ -1958,7 +1971,7 @@ fn write_log(s State) !int {
 		// the file will be closed after the `error()` function
 		// has returned - so the error message will still report
 		// it as open
-		return error('nothing written; file open: $f.is_opened')
+		return error('nothing written; file open: ${f.is_opened}')
 	}
 	// the file will be closed here, too
 	return 0
@@ -1966,10 +1979,10 @@ fn write_log(s State) !int {
 
 fn main() {
 	n := write_log(.return_error) or {
-		println('Error: $err')
+		println('Error: ${err}')
 		0
 	}
-	println('$n bytes written')
+	println('${n} bytes written')
 }
 ```
 
@@ -2431,7 +2444,7 @@ clr2 := Rgba32{
 
 sz := sizeof(Rgba32)
 unsafe {
-	println('Size: ${sz}B,clr1.b: $clr1.b,clr2.b: $clr2.b')
+	println('Size: ${sz}B,clr1.b: ${clr1.b},clr2.b: ${clr2.b}')
 }
 ```
 
@@ -2846,7 +2859,7 @@ struct Color {
 }
 
 pub fn (c Color) str() string {
-	return '{$c.r, $c.g, $c.b}'
+	return '{${c.r}, ${c.g}, ${c.b}}'
 }
 
 red := Color{
@@ -2953,7 +2966,185 @@ particularly useful for initializing a C library.
 
 ## Type Declarations
 
+### Type aliases
+
+To define a new type `NewType` as an alias for `ExistingType`,
+do `type NewType = ExistingType`.<br/>
+This is a special case of a [sum type](#sum-types) declaration.
+
+### Enums
+
+```v
+enum Color as u8 {
+	red
+	green
+	blue
+}
+
+mut color := Color.red
+// V knows that `color` is a `Color`. No need to use `color = Color.green` here.
+color = .green
+println(color) // "green"
+match color {
+	.red { println('the color was red') }
+	.green { println('the color was green') }
+	.blue { println('the color was blue') }
+}
+```
+
+The enum type can be any integer type, but can be ommited, if it is `int`: `enum Color {`.
+
+Enum match must be exhaustive or have an `else` branch.
+This ensures that if a new enum field is added, it's handled everywhere in the code.
+
+Enum fields cannot re-use reserved keywords. However, reserved keywords may be escaped
+with an @.
+
+```v
+enum Color {
+	@none
+	red
+	green
+	blue
+}
+
+color := Color.@none
+println(color)
+```
+
+Integers may be assigned to enum fields.
+
+```v
+enum Grocery {
+	apple
+	orange = 5
+	pear
+}
+
+g1 := int(Grocery.apple)
+g2 := int(Grocery.orange)
+g3 := int(Grocery.pear)
+println('Grocery IDs: ${g1}, ${g2}, ${g3}')
+```
+
+Output: `Grocery IDs: 0, 5, 6`.
+
+Operations are not allowed on enum variables; they must be explicitly cast to `int`.
+
+Enums can have methods, just like structs.
+
+```v
+enum Cycle {
+	one
+	two
+	three
+}
+
+fn (c Cycle) next() Cycle {
+	match c {
+		.one {
+			return .two
+		}
+		.two {
+			return .three
+		}
+		.three {
+			return .one
+		}
+	}
+}
+
+mut c := Cycle.one
+for _ in 0 .. 10 {
+	println(c)
+	c = c.next()
+}
+```
+
+Output:
+```
+one
+two
+three
+one
+two
+three
+one
+two
+three
+one
+```
+
+### Function Types
+
+You can use type aliases for naming specific function signatures - for
+example:
+
+```v
+type Filter = fn (string) string
+```
+
+This works like any other type - for example, a function can accept an
+argument of a function type:
+
+```v
+type Filter = fn (string) string
+
+fn filter(s string, f Filter) string {
+	return f(s)
+}
+```
+
+V has duck-typing, so functions don't need to declare compatibility with
+a function type - they just have to be compatible:
+
+```v
+fn uppercase(s string) string {
+	return s.to_upper()
+}
+
+// now `uppercase` can be used everywhere where Filter is expected
+```
+
+Compatible functions can also be explicitly cast to a function type:
+
+```v oksyntax
+my_filter := Filter(uppercase)
+```
+
+The cast here is purely informational - again, duck-typing means that the
+resulting type is the same without an explicit cast:
+
+```v oksyntax
+my_filter := uppercase
+```
+
+You can pass the assigned function as an argument:
+
+```v oksyntax
+println(filter('Hello world', my_filter)) // prints `HELLO WORLD`
+```
+
+And you could of course have passed it directly as well, without using a
+local variable:
+
+```v oksyntax
+println(filter('Hello world', uppercase))
+```
+
+And this works with anonymous functions as well:
+
+```v oksyntax
+println(filter('Hello world', fn (s string) string {
+	return s.to_upper()
+}))
+```
+
+You can see the complete
+[example here](https://github.com/vlang/v/tree/master/examples/function_types.v).
+
 ### Interfaces
+
 ```v
 // interface-example.1
 struct Dog {
@@ -2986,7 +3177,7 @@ fn main() {
 	arr << dog
 	arr << cat
 	for item in arr {
-		println('a $item.breed says: $item.speak()')
+		println('a ${item.breed} says: ${item.speak()}')
 	}
 }
 ```
@@ -3049,9 +3240,9 @@ interface Something {}
 
 fn announce(s Something) {
 	if s is Dog {
-		println('a $s.breed dog') // `s` is automatically cast to `Dog` (smart cast)
+		println('a ${s.breed} dog') // `s` is automatically cast to `Dog` (smart cast)
 	} else if s is Cat {
-		println('a cat speaks $s.speak()')
+		println('a cat speaks ${s.speak()}')
 	} else {
 		println('something else')
 	}
@@ -3183,177 +3374,6 @@ pub interface ReaderWriter {
 	Reader
 	Writer
 }
-```
-
-### Function Types
-
-You can use type aliases for naming specific function signatures - for
-example:
-
-```v
-type Filter = fn (string) string
-```
-
-This works like any other type - for example, a function can accept an
-argument of a function type:
-
-```v
-type Filter = fn (string) string
-
-fn filter(s string, f Filter) string {
-	return f(s)
-}
-```
-
-V has duck-typing, so functions don't need to declare compatibility with
-a function type - they just have to be compatible:
-
-```v
-fn uppercase(s string) string {
-	return s.to_upper()
-}
-
-// now `uppercase` can be used everywhere where Filter is expected
-```
-
-Compatible functions can also be explicitly cast to a function type:
-
-```v oksyntax
-my_filter := Filter(uppercase)
-```
-
-The cast here is purely informational - again, duck-typing means that the
-resulting type is the same without an explicit cast:
-
-```v oksyntax
-my_filter := uppercase
-```
-
-You can pass the assigned function as an argument:
-
-```v oksyntax
-println(filter('Hello world', my_filter)) // prints `HELLO WORLD`
-```
-
-And you could of course have passed it directly as well, without using a
-local variable:
-
-```v oksyntax
-println(filter('Hello world', uppercase))
-```
-
-And this works with anonymous functions as well:
-
-```v oksyntax
-println(filter('Hello world', fn (s string) string {
-	return s.to_upper()
-}))
-```
-
-You can see the complete
-[example here](https://github.com/vlang/v/tree/master/examples/function_types.v).
-
-### Enums
-
-```v
-enum Color as u8 {
-	red
-	green
-	blue
-}
-
-mut color := Color.red
-// V knows that `color` is a `Color`. No need to use `color = Color.green` here.
-color = .green
-println(color) // "green"
-match color {
-	.red { println('the color was red') }
-	.green { println('the color was green') }
-	.blue { println('the color was blue') }
-}
-```
-
-The enum type can be any integer type, but can be ommited, if it is `int`: `enum Color {`.
-
-Enum match must be exhaustive or have an `else` branch.
-This ensures that if a new enum field is added, it's handled everywhere in the code.
-
-Enum fields cannot re-use reserved keywords. However, reserved keywords may be escaped
-with an @.
-
-```v
-enum Color {
-	@none
-	red
-	green
-	blue
-}
-
-color := Color.@none
-println(color)
-```
-
-Integers may be assigned to enum fields.
-
-```v
-enum Grocery {
-	apple
-	orange = 5
-	pear
-}
-
-g1 := int(Grocery.apple)
-g2 := int(Grocery.orange)
-g3 := int(Grocery.pear)
-println('Grocery IDs: $g1, $g2, $g3')
-```
-
-Output: `Grocery IDs: 0, 5, 6`.
-
-Operations are not allowed on enum variables; they must be explicitly cast to `int`.
-
-Enums can have methods, just like structs.
-
-```v
-enum Cycle {
-	one
-	two
-	three
-}
-
-fn (c Cycle) next() Cycle {
-	match c {
-		.one {
-			return .two
-		}
-		.two {
-			return .three
-		}
-		.three {
-			return .one
-		}
-	}
-}
-
-mut c := Cycle.one
-for _ in 0 .. 10 {
-	println(c)
-	c = c.next()
-}
-```
-
-Output:
-```
-one
-two
-three
-one
-two
-three
-one
-two
-three
-one
 ```
 
 ### Sum types
@@ -3520,12 +3540,6 @@ fn pass_time(w World) {
 }
 ```
 
-### Type aliases
-
-To define a new type `NewType` as an alias for `ExistingType`,
-do `type NewType = ExistingType`.<br/>
-This is a special case of a [sum type](#sum-types) declaration.
-
 ### Option/Result types and error handling
 
 Optional types are for types which may represent `none`. Result types may
@@ -3552,7 +3566,7 @@ fn (r Repo) find_user_by_id(id int) !User {
 			return user
 		}
 	}
-	return error('User $id not found')
+	return error('User ${id} not found')
 }
 
 // A version of the function using an optional
@@ -3695,7 +3709,7 @@ struct PathError {
 }
 
 fn (err PathError) msg() string {
-	return 'Failed to open path: $err.path'
+	return 'Failed to open path: ${err.path}'
 }
 
 fn try_open(path string) ? {
@@ -3736,7 +3750,7 @@ fn new_repo<T>(db DB) Repo<T> {
 // This is a generic function. V will generate it for every type it's used with.
 fn (r Repo<T>) find_by_id(id int) ?T {
     table_name := T.name // in this example getting the name of the type gives us the table name
-    return r.db.query_one<T>('select * from $table_name where id = ?', id)
+    return r.db.query_one<T>('select * from ${table_name} where id = ?', id)
 }
 
 db := new_db()
@@ -3842,7 +3856,7 @@ fn main() {
 	g := spawn get_hypot(54.06, 2.08) // spawn thread and get handle to it
 	h1 := get_hypot(2.32, 16.74) //   do some other calculation here
 	h2 := g.wait() //                 get result from spawned thread
-	println('Results: $h1, $h2') //   prints `Results: 16.9, 54.1`
+	println('Results: ${h1}, ${h2}') //   prints `Results: 16.9, 54.1`
 }
 ```
 
@@ -3853,9 +3867,9 @@ using an array of threads.
 import time
 
 fn task(id int, duration int) {
-	println('task $id begin')
+	println('task ${id} begin')
 	time.sleep(duration * time.millisecond)
-	println('task $id end')
+	println('task ${id} end')
 }
 
 fn main() {
@@ -3892,7 +3906,7 @@ fn main() {
 	}
 	// Join all tasks
 	r := threads.wait()
-	println('All jobs finished: $r')
+	println('All jobs finished: ${r}')
 }
 
 // Output: All jobs finished: [1, 4, 9, 16, 25, 36, 49, 64, 81]
@@ -3994,16 +4008,16 @@ fn main() {
 	select {
 		a := <-ch {
 			// do something with `a`
-			eprintln('> a: $a')
+			eprintln('> a: ${a}')
 		}
 		b = <-ch2 {
 			// do something with predeclared variable `b`
-			eprintln('> b: $b')
+			eprintln('> b: ${b}')
 		}
 		ch3 <- c {
 			// do something if `c` was sent
 			time.sleep(5 * time.millisecond)
-			eprintln('> c: $c was send on channel ch3')
+			eprintln('> c: ${c} was send on channel ch3')
 		}
 		500 * time.millisecond {
 			// do something if no channel has become ready within 0.5s
@@ -4127,7 +4141,7 @@ struct User {
 
 data := '{ "name": "Frodo", "lastName": "Baggins", "age": 25 }'
 user := json.decode(User, data) or {
-	eprintln('Failed to decode json, error: $err')
+	eprintln('Failed to decode json, error: ${err}')
 	return
 }
 println(user.name)
@@ -4198,7 +4212,7 @@ strings that interpolate variables, etc.
 ```v
 fn test_assertion_with_extra_message_failure() {
 	for i in 0 .. 100 {
-		assert i * 2 - 45 < 75 + 10, 'assertion failed for i: $i'
+		assert i * 2 - 45 < 75 + 10, 'assertion failed for i: ${i}'
 	}
 }
 ```
@@ -4374,8 +4388,8 @@ fn draw_scene() {
 	// ...
 	name1 := 'abc'
 	name2 := 'def ghi'
-	draw_text('hello $name1', 10, 10)
-	draw_text('hello $name2', 100, 10)
+	draw_text('hello ${name1}', 10, 10)
+	draw_text('hello ${name2}', 100, 10)
 	draw_text(strings.repeat(`X`, 10000), 10, 50)
 	// ...
 }
@@ -4438,7 +4452,7 @@ struct RefStruct {
 
 fn main() {
 	q, w := f()
-	println('q: $q.r.n, w: $w.n')
+	println('q: ${q.r.n}, w: ${w.n}')
 }
 
 fn f() (RefStruct, &MyStruct) {
@@ -4455,7 +4469,7 @@ fn f() (RefStruct, &MyStruct) {
 		r: &b
 	}
 	x := a.n + c.n
-	println('x: $x')
+	println('x: ${x}')
 	return e, &c
 }
 ```
@@ -4480,7 +4494,7 @@ fn main() {
 		n: 13
 	}
 	x := q.f(&w) // references of `q` and `w` are passed
-	println('q: $q\nx: $x')
+	println('q: ${q}\nx: ${x}')
 }
 
 fn (mut a MyStruct) f(b &MyStruct) int {
@@ -4523,7 +4537,7 @@ fn main() {
 		r: &m
 	}
 	r.g()
-	println('r: $r')
+	println('r: ${r}')
 }
 
 fn (mut r RefStruct) g() {
@@ -4616,7 +4630,7 @@ fn use_stack() {
 	x := 7.5
 	y := 3.25
 	z := x + y
-	println('$x $y $z')
+	println('${x} ${y} ${z}')
 }
 
 fn main() {
@@ -4626,7 +4640,7 @@ fn main() {
 	}
 	r.g()
 	use_stack() // to erase invalid stack contents
-	println('r: $r')
+	println('r: ${r}')
 }
 
 fn (mut r RefStruct) g() {
@@ -4697,20 +4711,20 @@ sql db {
 nr_customers := sql db {
 	select count from Customer
 }
-println('number of all customers: $nr_customers')
+println('number of all customers: ${nr_customers}')
 // V syntax can be used to build queries
 uk_customers := sql db {
 	select from Customer where country == 'uk' && nr_orders > 0
 }
 println(uk_customers.len)
 for customer in uk_customers {
-	println('$customer.id - $customer.name')
+	println('${customer.id} - ${customer.name}')
 }
 // by adding `limit 1` we tell V that there will be only one object
 customer := sql db {
 	select from Customer where id == 1 limit 1
 }
-println('$customer.id - $customer.name')
+println('${customer.id} - ${customer.name}')
 // insert a new customer
 new_customer := Customer{
 	name: 'Bob'
@@ -5184,7 +5198,7 @@ Another example, is if you want to embed the version/name from v.mod *inside* yo
 ```v ignore
 import v.vmod
 vm := vmod.decode( @VMOD_FILE ) or { panic(err) }
-eprintln('$vm.name $vm.version\n $vm.description')
+eprintln('${vm.name} ${vm.version}\n ${vm.description}')
 ```
 
 ### Compile-time reflection
@@ -5201,7 +5215,7 @@ struct User {
 fn main() {
 	$for field in User.fields {
 		$if field.typ is string {
-			println('$field.name is of type string')
+			println('${field.name} is of type string')
 		}
 	}
 }
@@ -5229,7 +5243,7 @@ fn main() {
 	}
 	// Usage as expression
 	os := $if windows { 'Windows' } $else { 'UNIX' }
-	println('Using $os')
+	println('Using ${os}')
 	// $else-$if branches
 	$if tinyc {
 		println('tinyc')
@@ -5564,7 +5578,7 @@ struct Vec {
 }
 
 fn (a Vec) str() string {
-	return '{$a.x, $a.y}'
+	return '{${a.x}, ${a.y}}'
 }
 
 fn (a Vec) + (b Vec) Vec {
@@ -5710,9 +5724,9 @@ fn main() {
 	}
 	races_won_by_change := t.wait()
 	atom_new := C.atomic_load_u32(&atom)
-	println('atom: $atom_new, #exchanges: ${races_won_by_main + races_won_by_change}')
+	println('atom: ${atom_new}, #exchanges: ${races_won_by_main + races_won_by_change}')
 	// prints `atom: 31, #exchanges: 10000000`)
-	println('races won by\n- `main()`: $races_won_by_main\n- `change()`: $races_won_by_change')
+	println('races won by\n- `main()`: ${races_won_by_main}\n- `change()`: ${races_won_by_change}')
 }
 ```
 
@@ -5918,7 +5932,7 @@ fn main() {
 	C.sqlite3_step(stmt)
 	nr_users := C.sqlite3_column_int(stmt, 0)
 	C.sqlite3_finalize(stmt)
-	println('There are $nr_users users in the database.')
+	println('There are ${nr_users} users in the database.')
 	//
 	error_msg := &char(0)
 	query_all_users := 'select * from users'
@@ -6205,9 +6219,9 @@ asm amd64 {
     ; r (a) as a // input
       r (b) as b
 }
-println('a: $a') // 100
-println('b: $b') // 20
-println('c: $c') // 120
+println('a: ${a}') // 100
+println('b: ${b}') // 20
+println('c: ${c}') // 120
 ```
 
 For more examples, see [github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v](https://github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v)
@@ -6275,7 +6289,7 @@ An example `deploy.vsh`:
 
 // print command then execute it
 fn sh(cmd string) {
-	println('❯ $cmd')
+	println('❯ ${cmd}')
 	print(execute_or_exit(cmd).output)
 }
 
@@ -6300,7 +6314,7 @@ sh('ls')
 //     for file in files {
 //         if file.ends_with('.v') {
 //              mv(file, 'build/') or {
-//                  println('err: $err')
+//                  println('err: ${err}')
 //                  return
 //              }
 //         }

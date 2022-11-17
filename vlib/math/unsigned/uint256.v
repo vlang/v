@@ -387,7 +387,7 @@ pub fn uint256_from_dec_str(value string) ?Uint256 {
 	for b_ in value.bytes() {
 		b := b_ - '0'.bytes()[0]
 		if b > 9 {
-			return error('invalid character "$b"')
+			return error('invalid character "${b}"')
 		}
 
 		r := res.mul_128(uint128_from_64(10))

@@ -80,11 +80,11 @@ fn do_rec(mut sem sync.Semaphore, timed bool) {
 		}
 		end := time.sys_mono_now()
 		dur := f64(end - start) / f64(time.millisecond)
-		res_str := if timed { ' result: `$r`' } else { '' }
+		res_str := if timed { ' result: `${r}`' } else { '' }
 		if dur < 450.0 || dur > 550.0 {
-			eprintln('Problem: time: ${dur:.3f}$res_str')
+			eprintln('Problem: time: ${dur:.3f}${res_str}')
 		} else {
-			eprintln('time: ${dur:.3f}$res_str')
+			eprintln('time: ${dur:.3f}${res_str}')
 		}
 		start = end
 	}

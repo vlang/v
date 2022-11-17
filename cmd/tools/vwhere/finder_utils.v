@@ -177,6 +177,6 @@ fn resolve_module(path string) !string {
 	} else if os.is_dir(os.join_path(vlib_dir, path)) {
 		return os.join_path(vlib_dir, path)
 	} else {
-		return error('Path: $path not found')
+		return error('Path: ${path} not found')
 	}
 }

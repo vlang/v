@@ -24,7 +24,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 	mut remove_tail_zeros := false
 	fspec := node.fmts[i]
 	mut fmt_type := StrIntpType{}
-	g.write('/*$fspec $sym*/')
+	g.write('/*${fspec} ${sym}*/')
 	// upper cases
 	if (fspec - `A`) <= (`Z` - `A`) {
 		upper_case = true
@@ -209,13 +209,13 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			}
 		}
 	}
-	g.write(' str_intp($node.vals.len, ')
+	g.write(' str_intp(${node.vals.len}, ')
 	g.write('_MOV((StrIntpData[]){')
 	for i, val in node.vals {
 		escaped_val := util.smart_quote(val, false)
 
 		if escaped_val.len > 0 {
-			g.write('{_SLIT("$escaped_val"), ')
+			g.write('{_SLIT("${escaped_val}"), ')
 		} else {
 			g.write('{_SLIT0, ')
 		}
@@ -227,7 +227,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		}
 
 		ft_u64, ft_str := g.str_format(node, i)
-		g.write('0x$ft_u64.hex(), {.d_$ft_str = ')
+		g.write('0x${ft_u64.hex()}, {.d_${ft_str} = ')
 
 		// for pointers we need a void* cast
 		if unsafe { ft_str.str[0] } == `p` {

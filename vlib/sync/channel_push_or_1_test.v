@@ -43,7 +43,7 @@ fn g(ch chan int, res chan int) {
 
 		j++
 	}
-	println('done $j')
+	println('done ${j}')
 	res <- j
 }
 

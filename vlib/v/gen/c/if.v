@@ -11,7 +11,10 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 			return true
 		}
 		for branch in node.branches {
-			if branch.cond is ast.IfGuardExpr || branch.stmts.len > 1 {
+			if branch.stmts.len > 1 {
+				return true
+			}
+			if g.need_tmp_var_in_expr(branch.cond) {
 				return true
 			}
 			if branch.stmts.len == 1 {
@@ -34,6 +37,17 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 	match expr {
 		ast.IfExpr {
 			if g.need_tmp_var_in_if(expr) {
+				return true
+			}
+		}
+		ast.IfGuardExpr {
+			return true
+		}
+		ast.InfixExpr {
+			if g.need_tmp_var_in_expr(expr.left) {
+				return true
+			}
+			if g.need_tmp_var_in_expr(expr.right) {
 				return true
 			}
 		}
@@ -157,9 +171,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		styp := g.typ(node.typ)
 		cur_line = g.go_before_stmt(0)
 		g.empty_line = true
-		g.writeln('$styp $tmp; /* if prepend */')
+		g.writeln('${styp} ${tmp}; /* if prepend */')
 		if g.infix_left_var_name.len > 0 {
-			g.writeln('if ($g.infix_left_var_name) {')
+			g.writeln('if (${g.infix_left_var_name}) {')
 			g.indent++
 		}
 	} else if node.is_expr || g.inside_ternary != 0 {
@@ -202,7 +216,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			if cond.expr !is ast.IndexExpr && cond.expr !is ast.PrefixExpr {
 				var_name := g.new_tmp_var()
 				guard_vars[i] = var_name
-				g.writeln('${g.typ(cond.expr_type)} $var_name;')
+				g.writeln('${g.typ(cond.expr_type)} ${var_name};')
 			} else {
 				guard_vars[i] = ''
 			}
@@ -234,7 +248,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					g.writeln('if (!${var_name}.is_error) {')
 				}
 			} else {
-				g.write('if ($var_name = ')
+				g.write('if (${var_name} = ')
 				g.expr(branch.cond.expr)
 				if branch.cond.expr_type.has_flag(.optional) {
 					g.writeln(', ${var_name}.state == 0) {')
@@ -250,7 +264,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					} else {
 						branch.cond.vars[0].name
 					}
-					g.write('\t$base_type $cond_var_name = ')
+					g.write('\t${base_type} ${cond_var_name} = ')
 					g.expr(branch.cond.expr)
 					g.writeln(';')
 				} else {
@@ -264,9 +278,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					if branch.cond.vars.len == 1 {
 						left_var_name := c_name(branch.cond.vars[0].name)
 						if is_auto_heap {
-							g.writeln('\t$base_type* $left_var_name = HEAP($base_type, *($base_type*)${var_name}.data);')
+							g.writeln('\t${base_type}* ${left_var_name} = HEAP(${base_type}, *(${base_type}*)${var_name}.data);')
 						} else {
-							g.writeln('\t$base_type $left_var_name = *($base_type*)${var_name}.data;')
+							g.writeln('\t${base_type} ${left_var_name} = *(${base_type}*)${var_name}.data;')
 						}
 					} else if branch.cond.vars.len > 1 {
 						sym := g.table.sym(branch.cond.expr_type)
@@ -276,9 +290,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 									var_typ := g.typ(sym.info.types[vi])
 									left_var_name := c_name(var.name)
 									if is_auto_heap {
-										g.writeln('\t$var_typ* $left_var_name = (HEAP($base_type, *($base_type*)${var_name}.data).arg$vi);')
+										g.writeln('\t${var_typ}* ${left_var_name} = (HEAP(${base_type}, *(${base_type}*)${var_name}.data).arg${vi});')
 									} else {
-										g.writeln('\t$var_typ $left_var_name = (*($base_type*)${var_name}.data).arg$vi;')
+										g.writeln('\t${var_typ} ${left_var_name} = (*(${base_type}*)${var_name}.data).arg${vi};')
 									}
 								}
 							}
@@ -331,6 +345,6 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.writeln('}')
 		}
 		g.empty_line = false
-		g.write('$cur_line $tmp')
+		g.write('${cur_line} ${tmp}')
 	}
 }

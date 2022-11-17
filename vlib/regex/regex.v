@@ -1444,7 +1444,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 pub fn (re RE) get_code() string {
 	mut pc1 := 0
 	mut res := strings.new_builder(re.cc.len * 2 * re.prog.len)
-	res.write_string('========================================\nv RegEx compiler v $regex.v_regex_version output:\n')
+	res.write_string('========================================\nv RegEx compiler v ${regex.v_regex_version} output:\n')
 
 	mut stop_flag := false
 
@@ -1477,24 +1477,24 @@ pub fn (re RE) get_code() string {
 				res.write_string(' last!')
 			}
 		} else if ist == regex.ist_dot_char {
-			res.write_string('.        DOT_CHAR nx chk: $tk.dot_check_pc')
+			res.write_string('.        DOT_CHAR nx chk: ${tk.dot_check_pc}')
 			if tk.last_dot_flag == true {
 				res.write_string(' last!')
 			}
 		} else if ist == regex.ist_group_start {
-			res.write_string('(        GROUP_START #:$tk.group_id')
+			res.write_string('(        GROUP_START #:${tk.group_id}')
 			if tk.group_id == -1 {
 				res.write_string(' ?:')
 			} else {
 				for x in re.group_map.keys() {
 					if re.group_map[x] == (tk.group_id + 1) {
-						res.write_string(' ?P<$x>')
+						res.write_string(' ?P<${x}>')
 						break
 					}
 				}
 			}
 		} else if ist == regex.ist_group_end {
-			res.write_string(')        GROUP_END   #:$tk.group_id')
+			res.write_string(')        GROUP_END   #:${tk.group_id}')
 		} else if ist == regex.ist_simple_char {
 			res.write_string('[${tk.ch:1c}]      query_ch')
 		}
@@ -1539,7 +1539,7 @@ pub fn (re RE) get_query() string {
 		// GROUP start
 		if ch == regex.ist_group_start {
 			if re.debug > 0 {
-				res.write_string('#$tk.group_id')
+				res.write_string('#${tk.group_id}')
 			}
 			res.write_string('(')
 
@@ -1551,7 +1551,7 @@ pub fn (re RE) get_query() string {
 
 			for x in re.group_map.keys() {
 				if re.group_map[x] == (tk.group_id + 1) {
-					res.write_string('?P<$x>')
+					res.write_string('?P<${x}>')
 					break
 				}
 			}
@@ -1569,7 +1569,7 @@ pub fn (re RE) get_query() string {
 		if ch == regex.ist_or_branch {
 			res.write_string('|')
 			if re.debug > 0 {
-				res.write_string('{$tk.rep_min,$tk.rep_max}')
+				res.write_string('{${tk.rep_min},${tk.rep_max}}')
 			}
 			i++
 			continue
@@ -1613,9 +1613,9 @@ pub fn (re RE) get_query() string {
 				res.write_string('*')
 			} else {
 				if tk.rep_max == regex.max_quantifier {
-					res.write_string('{$tk.rep_min,MAX}')
+					res.write_string('{${tk.rep_min},MAX}')
 				} else {
-					res.write_string('{$tk.rep_min,$tk.rep_max}')
+					res.write_string('{${tk.rep_min},${tk.rep_max}}')
 				}
 				if tk.greedy == true {
 					res.write_string('?')
@@ -1778,7 +1778,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 
 						buf2.write_string('# ${step_count:3d} s: ${state_str(m_state):12s} PC: ${state.pc:3d}=>')
 						buf2.write_string('${ist:8x}'.replace(' ', '0'))
-						buf2.write_string(" i,ch,len:[${state.i:3d},'${utf8_str(ch)}',$char_len] f.m:[${state.first_match:3d},${state.match_index:3d}] ")
+						buf2.write_string(" i,ch,len:[${state.i:3d},'${utf8_str(ch)}',${char_len}] f.m:[${state.first_match:3d},${state.match_index:3d}] ")
 
 						if ist == regex.ist_simple_char {
 							buf2.write_string('query_ch: [${re.prog[state.pc].ch:1c}]')
@@ -1798,9 +1798,9 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 							} else if ist == regex.ist_group_start {
 								tmp_gi := re.prog[state.pc].group_id
 								tmp_gr := re.prog[re.prog[state.pc].goto_pc].group_rep
-								buf2.write_string('GROUP_START #:$tmp_gi rep:$tmp_gr ')
+								buf2.write_string('GROUP_START #:${tmp_gi} rep:${tmp_gr} ')
 							} else if ist == regex.ist_group_end {
-								buf2.write_string('GROUP_END   #:${re.prog[state.pc].group_id} deep:$state.group_index')
+								buf2.write_string('GROUP_END   #:${re.prog[state.pc].group_id} deep:${state.group_index}')
 							}
 						}
 						if re.prog[state.pc].rep_max == regex.max_quantifier {
@@ -1811,7 +1811,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 						if re.prog[state.pc].greedy == true {
 							buf2.write_string('?')
 						}
-						buf2.write_string(' (#$state.group_index)')
+						buf2.write_string(' (#${state.group_index})')
 
 						if ist == regex.ist_dot_char {
 							buf2.write_string(' last!')

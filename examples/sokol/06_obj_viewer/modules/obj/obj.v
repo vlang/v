@@ -291,10 +291,10 @@ pub fn (mut obj_part ObjPart) parse_obj_buffer(rows []string, single_material bo
 		}
 		// if c == 2 { break }
 		if c % 100000 == 0 && c > 0 {
-			println('$c rows parsed')
+			println('${c} rows parsed')
 		}
 	}
-	println('$row_count .obj Rows parsed')
+	println('${row_count} .obj Rows parsed')
 	// remove default part if empty
 	if obj_part.part.len > 1 && obj_part.part[0].faces.len == 0 {
 		obj_part.part = obj_part.part[1..]
@@ -304,7 +304,7 @@ pub fn (mut obj_part ObjPart) parse_obj_buffer(rows []string, single_material bo
 // load the materials if found the .mtl file
 fn (mut obj_part ObjPart) load_materials() {
 	rows := read_lines_from_file(obj_part.material_file)
-	println('Material file [$obj_part.material_file] $rows.len Rows.')
+	println('Material file [${obj_part.material_file}] ${rows.len} Rows.')
 	for row in rows {
 		// println("$row")
 		mut i := 0
@@ -479,7 +479,7 @@ pub fn (mut obj_part ObjPart) get_buffer(in_part_list []int) Skl_buffer {
 				v_index := face[vertex_index][0] // vertex index
 				n_index := face[vertex_index][1] // normal index
 				t_index := face[vertex_index][2] // uv texture index
-				key := '${v_index}_${n_index}_$t_index'
+				key := '${v_index}_${n_index}_${t_index}'
 				if key !in cache {
 					cache[key] = v_count_index
 					mut pnct := Vertex_pnct{
@@ -529,10 +529,10 @@ pub fn (mut obj_part ObjPart) get_buffer(in_part_list []int) Skl_buffer {
 // print on the console the summary of the .obj model loaded
 pub fn (obj_part ObjPart) summary() {
 	println('---- Stats     ----')
-	println('vertices: $obj_part.v.len')
-	println('normals : $obj_part.vn.len')
-	println('uv      : $obj_part.vt.len')
-	println('parts   : $obj_part.part.len')
+	println('vertices: ${obj_part.v.len}')
+	println('normals : ${obj_part.vn.len}')
+	println('uv      : ${obj_part.vt.len}')
+	println('parts   : ${obj_part.part.len}')
 	// Parts
 	println('---- Parts     ----')
 	for c, x in obj_part.part {
@@ -540,17 +540,17 @@ pub fn (obj_part ObjPart) summary() {
 	}
 	// Materials
 	println('---- Materials ----')
-	println('Material dict: $obj_part.mat_map.keys()')
+	println('Material dict: ${obj_part.mat_map.keys()}')
 	for c, mat in obj_part.mat {
 		println('${c:3} [${mat.name:-16}]')
 		for k, v in mat.ks {
-			print('$k = $v')
+			print('${k} = ${v}')
 		}
 		for k, v in mat.ns {
-			println('$k = $v')
+			println('${k} = ${v}')
 		}
 		for k, v in mat.maps {
-			println('$k = $v')
+			println('${k} = ${v}')
 		}
 	}
 }

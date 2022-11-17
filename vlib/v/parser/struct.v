@@ -44,7 +44,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	}
 	mut name := if is_anon {
 		p.table.anon_struct_counter++
-		'_VAnonStruct$p.table.anon_struct_counter'
+		'_VAnonStruct${p.table.anon_struct_counter}'
 	} else {
 		p.check_name()
 	}
@@ -65,12 +65,12 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	generic_types, _ := p.parse_generic_types()
 	no_body := p.tok.kind != .lcbr
 	if language == .v && no_body {
-		p.error('`$p.tok.lit` lacks body')
+		p.error('`${p.tok.lit}` lacks body')
 		return ast.StructDecl{}
 	}
 	if language == .v && !p.builtin_mod && !p.is_translated && name.len > 0 && !name[0].is_capital()
 		&& !p.pref.translated && !p.is_translated && !is_anon {
-		p.error_with_pos('struct name `$name` must begin with capital letter', name_pos)
+		p.error_with_pos('struct name `${name}` must begin with capital letter', name_pos)
 		return ast.StructDecl{}
 	}
 	if name.len == 1 {
@@ -78,16 +78,16 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		return ast.StructDecl{}
 	}
 	if name in p.imported_symbols {
-		p.error_with_pos('cannot register struct `$name`, this type was already imported',
+		p.error_with_pos('cannot register struct `${name}`, this type was already imported',
 			name_pos)
 		return ast.StructDecl{}
 	}
 	mut orig_name := name
 	if language == .c {
-		name = 'C.$name'
+		name = 'C.${name}'
 		orig_name = name
 	} else if language == .js {
-		name = 'JS.$name'
+		name = 'JS.${name}'
 		orig_name = name
 	} else {
 		name = p.prepend_mod(name)
@@ -201,6 +201,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			mut typ := ast.Type(0)
 			mut type_pos := token.Pos{}
 			mut field_pos := token.Pos{}
+			mut optional_pos := token.Pos{}
 			mut anon_struct_decl := ast.StructDecl{}
 			if is_embed {
 				// struct embedding
@@ -215,12 +216,12 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				}
 				sym := p.table.sym(typ)
 				if typ in embed_types {
-					p.error_with_pos('cannot embed `$sym.name` more than once', type_pos)
+					p.error_with_pos('cannot embed `${sym.name}` more than once', type_pos)
 					return ast.StructDecl{}
 				}
 				field_name = sym.embed_name()
 				if field_name in embed_field_names {
-					p.error_with_pos('duplicate field `$field_name`', type_pos)
+					p.error_with_pos('duplicate field `${field_name}`', type_pos)
 					return ast.StructDecl{}
 				}
 				if p.tok.kind == .lsbr {
@@ -260,6 +261,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				}
 				type_pos = p.prev_tok.pos()
 				field_pos = field_start_pos.extend(type_pos)
+				if typ.has_flag(.optional) || typ.has_flag(.result) {
+					optional_pos = p.peek_token(-2).pos()
+				}
 			}
 			// Comments after type (same line)
 			comments << p.eat_comments()
@@ -292,6 +296,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					typ: typ
 					pos: field_pos
 					type_pos: type_pos
+					optional_pos: optional_pos
 					comments: comments
 					i: i
 					default_expr: default_expr
@@ -311,6 +316,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				typ: typ
 				pos: field_pos
 				type_pos: type_pos
+				optional_pos: optional_pos
 				comments: comments
 				i: i
 				default_expr: default_expr
@@ -351,7 +357,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		is_pub: is_pub
 	}
 	if p.table.has_deep_child_no_ref(&sym, name) {
-		p.error_with_pos('invalid recursive struct `$orig_name`', name_pos)
+		p.error_with_pos('invalid recursive struct `${orig_name}`', name_pos)
 		return ast.StructDecl{}
 	}
 	mut ret := p.table.register_sym(sym)
@@ -360,7 +366,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	}
 	// allow duplicate c struct declarations
 	if ret == -1 && language != .c {
-		p.error_with_pos('cannot register struct `$name`, another type with this name exists',
+		p.error_with_pos('cannot register struct `${name}`, another type with this name exists',
 			name_pos)
 		return ast.StructDecl{}
 	}
@@ -526,7 +532,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	p.check(.lcbr)
 	pre_comments := p.eat_comments()
 	if modless_name in p.imported_symbols {
-		p.error_with_pos('cannot register interface `$interface_name`, this type was already imported',
+		p.error_with_pos('cannot register interface `${interface_name}`, this type was already imported',
 			name_pos)
 		return ast.InterfaceDecl{}
 	}
@@ -545,7 +551,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		language: language
 	)
 	if reg_idx == -1 {
-		p.error_with_pos('cannot register interface `$interface_name`, another type with this name exists',
+		p.error_with_pos('cannot register interface `${interface_name}`, another type with this name exists',
 			name_pos)
 		return ast.InterfaceDecl{}
 	}
@@ -586,12 +592,12 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		// Check embedded interface from external module
 		if p.tok.kind == .name && p.peek_tok.kind == .dot {
 			if p.tok.lit !in p.imports {
-				p.error_with_pos('mod `$p.tok.lit` not imported', p.tok.pos())
+				p.error_with_pos('mod `${p.tok.lit}` not imported', p.tok.pos())
 				break
 			}
 			mod_name := p.tok.lit
 			from_mod_typ := p.parse_type()
-			from_mod_name := '${mod_name}.$p.prev_tok.lit'
+			from_mod_name := '${mod_name}.${p.prev_tok.lit}'
 			if from_mod_name.is_lower() {
 				p.error_with_pos('The interface name need to have the pascal case', p.prev_tok.pos())
 				break
@@ -629,11 +635,11 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			name := p.check_name()
 
 			if name in ['type_name', 'type_idx'] {
-				p.error_with_pos('cannot override built-in method `$name`', method_start_pos)
+				p.error_with_pos('cannot override built-in method `${name}`', method_start_pos)
 				return ast.InterfaceDecl{}
 			}
 			if ts.has_method(name) {
-				p.error_with_pos('duplicate method `$name`', method_start_pos)
+				p.error_with_pos('duplicate method `${name}`', method_start_pos)
 				return ast.InterfaceDecl{}
 			}
 			// field_names << name

@@ -1,23 +1,23 @@
-[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:19] '$T.name $input': int 1
-[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:26] '$T.name $input': int 1
+[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:19] '${T.name} $input': int 1
+[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:26] '${T.name} $input': int 1
 [vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:36] next(1): 0.0
-[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:19] '$T.name $input': f64 1.0
-[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:26] '$T.name $input': f64 1.0
+[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:19] '${T.name} $input': f64 1.0
+[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:26] '${T.name} $input': f64 1.0
 [vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:37] next(1.0): 64.0
-[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:19] '$T.name $input': f64 11.1
-[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:26] '$T.name $input': f64 11.1
+[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:19] '${T.name} $input': f64 11.1
+[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:26] '${T.name} $input': f64 11.1
 [vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:38] next(11.1): 64.0
-[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:15] '$T.name $input': Score Score{
+[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:15] '${T.name} $input': Score Score{
     ave: 23.4
 }
-[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:26] '$T.name $input': Score Score{
+[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:26] '${T.name} $input': Score Score{
     ave: 23.4
 }
 [vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:42] next(ave): 23.4
-[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:15] '$T.name $input': &Score &Score{
+[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:15] '${T.name} $input': &Score &Score{
     ave: 23.4
 }
-[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:26] '$T.name $input': &Score &Score{
+[vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:26] '${T.name} $input': &Score &Score{
     ave: 23.4
 }
 [vlib/v/tests/inout/dump_nested_generic_fn_call_ref_arg.vv:43] next(&ave): 23.4

@@ -68,25 +68,25 @@ fn test_closures_with_n_args() {
 
 	v_code.write_string('struct BigStruct {')
 	for i in 0 .. 64 {
-		v_code.write_string('\ta$i int ')
+		v_code.write_string('\ta${i} int ')
 	}
 	v_code.writeln('}')
 
 	for typ in ['byte', 'u16', 'int', 'i64', 'voidptr', 'string'] {
 		for i in 0 .. max_params {
 			param_names := all_param_names[..i]
-			params := param_names.map('$it $typ')
+			params := param_names.map('${it} ${typ}')
 
 			mut values := all_param_values[..i]
 			if typ == 'string' {
-				values = values.map("'$it'")
+				values = values.map("'${it}'")
 			} else {
-				values = values.map('${typ}($it)')
+				values = values.map('${typ}(${it})')
 			}
 
 			mut expected_val := if typ == 'string' {
 				s := all_param_values[..i].join('')
-				"'127' + '$s'"
+				"'127' + '${s}'"
 			} else {
 				'127 + ${i * (i + 1) / 2}'
 			}
@@ -101,11 +101,11 @@ fn test_closures_with_n_args() {
 			// a pointer to the entire closure context as their last argument anyways
 			v_code.writeln("
 fn test_big_closure_${typ}_${i}() {
-	println('test_big_closure_${typ}_$i')
+	println('test_big_closure_${typ}_${i}')
 	mut local := 123
 	mut local_2 := 234
-	mut z := $init_val
-	c := fn [z] (${params.join(', ')}) $return_type {
+	mut z := ${init_val}
+	c := fn [z] (${params.join(', ')}) ${return_type} {
 		mut sum := z")
 			for j in 0 .. i {
 				if return_type == 'string' {
@@ -117,7 +117,7 @@ fn test_big_closure_${typ}_${i}() {
 			v_code.writeln("
 		return sum
 	}
-	assert c(${values.join(', ')}) == $expected_val
+	assert c(${values.join(', ')}) == ${expected_val}
 	// ensure stack wasn't overwritten:
 	assert local == 123
 	assert local_2 == 234
@@ -133,26 +133,26 @@ fn test_big_closure_${typ}_${i}() {
 
 		for i in 0 .. 10 {
 			param_names := all_param_names[..i]
-			params := param_names.map('$it int')
+			params := param_names.map('${it} int')
 			values := all_param_values[..i]
 
 			assert_line := if !return_type.no_assert_kw {
-				'assert c(${values.join(', ')}) $assertion'
+				'assert c(${values.join(', ')}) ${assertion}'
 			} else {
-				'c(${values.join(', ')}) $assertion'
+				'c(${values.join(', ')}) ${assertion}'
 			}
 			// Note: the captured arg doesn't matter for this test, as closures always receive
 			// a pointer to the entire closure context as their last argument anyways
 			v_code.writeln("
 fn test_closure_return_${styp}_${i}() ? {
-	println('test_closure_return_${styp}_$i')
+	println('test_closure_return_${styp}_${i}')
 	mut local := 123
 	mut local_2 := 234
 	mut z := 1234
-	c := fn [z] (${params.join(', ')}) $typ {
-		return $init
+	c := fn [z] (${params.join(', ')}) ${typ} {
+		return ${init}
 	}
-	$assert_line
+	${assert_line}
 	// ensure stack wasn't overwritten:
 	assert local == 123
 	assert local_2 == 234
@@ -172,7 +172,7 @@ fn test_closure_return_${styp}_${i}() ? {
 		eprintln(res.output)
 		assert false
 	}
-	println('Process exited with code $res.exit_code')
+	println('Process exited with code ${res.exit_code}')
 
 	os.chdir(os.dir(vexe)) or {}
 	os.rmdir_all(wrkdir) or {}

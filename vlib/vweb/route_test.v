@@ -12,16 +12,16 @@ fn (rp RoutePair) test() ?[]string {
 }
 
 fn (rp RoutePair) test_match() {
-	rp.test() or { panic('should match: $rp') }
+	rp.test() or { panic('should match: ${rp}') }
 }
 
 fn (rp RoutePair) test_no_match() {
 	rp.test() or { return }
-	panic('should not match: $rp')
+	panic('should not match: ${rp}')
 }
 
 fn (rp RoutePair) test_param(expected []string) {
-	res := rp.test() or { panic('should match: $rp') }
+	res := rp.test() or { panic('should match: ${rp}') }
 	assert res == expected
 }
 

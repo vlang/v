@@ -110,12 +110,12 @@ fn (opt &Options) report_undocumented_functions_in_path(path string) int {
 fn (opt &Options) report_undocumented_functions(list []UndocumentedFN) {
 	if list.len > 0 {
 		for undocumented_fn in list {
-			mut line_numbers := '$undocumented_fn.line:0:'
+			mut line_numbers := '${undocumented_fn.line}:0:'
 			if opt.no_line_numbers {
 				line_numbers = ''
 			}
 			tags_str := if opt.collect_tags && undocumented_fn.tags.len > 0 {
-				'$undocumented_fn.tags'
+				'${undocumented_fn.tags}'
 			} else {
 				''
 			}
@@ -126,7 +126,7 @@ fn (opt &Options) report_undocumented_functions(list []UndocumentedFN) {
 				os.real_path(file)
 			}
 			if opt.deprecated {
-				println('$ofile:$line_numbers$undocumented_fn.signature $tags_str')
+				println('${ofile}:${line_numbers}${undocumented_fn.signature} ${tags_str}')
 			} else {
 				mut has_deprecation_tag := false
 				for tag in undocumented_fn.tags {
@@ -136,7 +136,7 @@ fn (opt &Options) report_undocumented_functions(list []UndocumentedFN) {
 					}
 				}
 				if !has_deprecation_tag {
-					println('$ofile:$line_numbers$undocumented_fn.signature $tags_str')
+					println('${ofile}:${line_numbers}${undocumented_fn.signature} ${tags_str}')
 				}
 			}
 		}
@@ -247,7 +247,7 @@ fn main() {
 	}
 	if opt.additional_args.len == 0 {
 		println(fp.usage())
-		eprintln('Error: $tool_name is missing PATH input')
+		eprintln('Error: ${tool_name} is missing PATH input')
 		exit(1)
 	}
 	// Allow short-long versions to prevent false positive situations, should
@@ -262,7 +262,7 @@ fn main() {
 	if opt.diff {
 		if opt.additional_args.len < 2 {
 			println(fp.usage())
-			eprintln('Error: $tool_name --diff needs two valid PATH inputs')
+			eprintln('Error: ${tool_name} --diff needs two valid PATH inputs')
 			exit(1)
 		}
 		path_old := opt.additional_args[0]
@@ -270,7 +270,7 @@ fn main() {
 		if !(os.is_file(path_old) || os.is_dir(path_old)) || !(os.is_file(path_new)
 			|| os.is_dir(path_new)) {
 			println(fp.usage())
-			eprintln('Error: $tool_name --diff needs two valid PATH inputs')
+			eprintln('Error: ${tool_name} --diff needs two valid PATH inputs')
 			exit(1)
 		}
 		list := opt.diff_undocumented_functions_in_paths(path_old, path_new)

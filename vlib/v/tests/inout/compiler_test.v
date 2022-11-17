@@ -37,14 +37,14 @@ fn test_all() {
 		}
 		program := path
 		tname := rand.ulid()
-		compilation := os.execute('${os.quoted_path(vexe)} -o $tname -cflags "-w" -cg ${os.quoted_path(program)}')
+		compilation := os.execute('${os.quoted_path(vexe)} -o ${tname} -cflags "-w" -cg ${os.quoted_path(program)}')
 		if compilation.exit_code < 0 {
 			panic(compilation.output)
 		}
 		if compilation.exit_code != 0 {
-			panic('compilation failed: $compilation.output')
+			panic('compilation failed: ${compilation.output}')
 		}
-		res := os.execute('./$tname')
+		res := os.execute('./${tname}')
 		if res.exit_code < 0 {
 			println('nope')
 			panic(res.output)
@@ -56,7 +56,7 @@ fn test_all() {
 				os.rm('./${tname}.pdb') or {}
 			}
 		} $else {
-			os.rm('./$tname') or {}
+			os.rm('./${tname}') or {}
 		}
 		// println('============')
 		// println(res.output)

@@ -12,14 +12,14 @@ fn trace_allocation(message string) {
 [export: 'stbi__callback_malloc']
 fn cb_malloc(s usize) voidptr {
 	res := unsafe { malloc(isize(s)) }
-	trace_allocation('> stbi__callback_malloc: $s => ${ptr_str(res)}')
+	trace_allocation('> stbi__callback_malloc: ${s} => ${ptr_str(res)}')
 	return res
 }
 
 [export: 'stbi__callback_realloc']
 fn cb_realloc(p voidptr, s usize) voidptr {
 	res := unsafe { v_realloc(p, isize(s)) }
-	trace_allocation('> stbi__callback_realloc: ${ptr_str(p)} , $s => ${ptr_str(res)}')
+	trace_allocation('> stbi__callback_realloc: ${ptr_str(p)} , ${s} => ${ptr_str(res)}')
 	return res
 }
 
@@ -126,7 +126,7 @@ pub fn load(path string) !Image {
 		res.nr_channels = 4
 	}
 	if isnil(res.data) {
-		return error('stbi_image failed to load from "$path"')
+		return error('stbi_image failed to load from "${path}"')
 	}
 	return res
 }
@@ -162,21 +162,21 @@ fn C.stbi_write_jpg(filename &char, w int, h int, comp int, buffer &u8, quality 
 // row_stride_in_bytes is usually equal to: w * comp
 pub fn stbi_write_png(path string, w int, h int, comp int, buf &u8, row_stride_in_bytes int) ! {
 	if 0 == C.stbi_write_png(&char(path.str), w, h, comp, buf, row_stride_in_bytes) {
-		return error('stbi_image failed to write png file to "$path"')
+		return error('stbi_image failed to write png file to "${path}"')
 	}
 }
 
 // stbi_write_png write on path a BMP file
 pub fn stbi_write_bmp(path string, w int, h int, comp int, buf &u8) ! {
 	if 0 == C.stbi_write_bmp(&char(path.str), w, h, comp, buf) {
-		return error('stbi_image failed to write bmp file to "$path"')
+		return error('stbi_image failed to write bmp file to "${path}"')
 	}
 }
 
 // stbi_write_png write on path a TGA file
 pub fn stbi_write_tga(path string, w int, h int, comp int, buf &u8) ! {
 	if 0 == C.stbi_write_tga(&char(path.str), w, h, comp, buf) {
-		return error('stbi_image failed to write tga file to "$path"')
+		return error('stbi_image failed to write tga file to "${path}"')
 	}
 }
 
@@ -185,7 +185,7 @@ pub fn stbi_write_tga(path string, w int, h int, comp int, buf &u8) ! {
 // quality is between 1 and 100. Higher quality looks better but results in a bigger image.
 pub fn stbi_write_jpg(path string, w int, h int, comp int, buf &u8, quality int) ! {
 	if 0 == C.stbi_write_jpg(&char(path.str), w, h, comp, buf, quality) {
-		return error('stbi_image failed to write jpg file to "$path"')
+		return error('stbi_image failed to write jpg file to "${path}"')
 	}
 }
 

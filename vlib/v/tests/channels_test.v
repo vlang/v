@@ -43,5 +43,5 @@ fn test_chan_of_sumtype() {
 	spawn func(a)
 	ret := <-a
 	println(ret)
-	assert '$ret' == 'As(Aa{})'
+	assert '${ret}' == 'As(Aa{})'
 }

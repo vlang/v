@@ -396,7 +396,7 @@ fn test_fields_array_of_fn() {
 		show: [a, b]
 	}
 	println(commands.show)
-	assert '$commands.show' == '[fn () string, fn () string]'
+	assert '${commands.show}' == '[fn () string, fn () string]'
 }
 
 fn test_struct_update() {

@@ -154,9 +154,9 @@ fn test_existing_path() {
 		assert existing_path('.') or { '' } == '.'
 		assert existing_path(wd) or { '' } == wd
 		assert existing_path('\\') or { '' } == '\\'
-		assert existing_path('$wd\\.\\\\does/not/exist\\.\\') or { '' } == '$wd\\.\\\\'
-		assert existing_path('$wd\\\\/\\.\\.\\/.') or { '' } == '$wd\\\\/\\.\\.\\/.'
-		assert existing_path('$wd\\././/\\/oh') or { '' } == '$wd\\././/\\/'
+		assert existing_path('${wd}\\.\\\\does/not/exist\\.\\') or { '' } == '${wd}\\.\\\\'
+		assert existing_path('${wd}\\\\/\\.\\.\\/.') or { '' } == '${wd}\\\\/\\.\\.\\/.'
+		assert existing_path('${wd}\\././/\\/oh') or { '' } == '${wd}\\././/\\/'
 		return
 	}
 	assert existing_path('') or { '' } == ''
@@ -164,9 +164,9 @@ fn test_existing_path() {
 	assert existing_path('.') or { '' } == '.'
 	assert existing_path(wd) or { '' } == wd
 	assert existing_path('/') or { '' } == '/'
-	assert existing_path('$wd/does/.///not/exist///.//') or { '' } == '$wd/'
-	assert existing_path('$wd//././/.//') or { '' } == '$wd//././/.//'
-	assert existing_path('$wd//././/.//oh') or { '' } == '$wd//././/.//'
+	assert existing_path('${wd}/does/.///not/exist///.//') or { '' } == '${wd}/'
+	assert existing_path('${wd}//././/.//') or { '' } == '${wd}//././/.//'
+	assert existing_path('${wd}//././/.//oh') or { '' } == '${wd}//././/.//'
 }
 
 fn test_windows_volume() {

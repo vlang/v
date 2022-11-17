@@ -172,7 +172,7 @@ fn test_allow_to_build_usage_message() {
 		'The arguments should be at least 1 and at most 4 in number.', 'Usage', 'Options:',
 		'Description:', 'some short information about this tool'] {
 		if !usage.contains(s) {
-			eprintln(" missing '$s' in usage message")
+			eprintln(" missing '${s}' in usage message")
 			all_strings_found = false
 		}
 	}

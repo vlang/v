@@ -141,8 +141,8 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 				dom.print_debug("Added ${tag.name} as child of '" + tag_list[temp_int].name +
 					"' which now has ${dom.btree.get_children().len} childrens")
 				*/
-				dom.print_debug("Added $tag.name as child of '" + temp_tag.name +
-					"' which now has $temp_tag.children.len childrens")
+				dom.print_debug("Added ${tag.name} as child of '" + temp_tag.name +
+					"' which now has ${temp_tag.children.len} childrens")
 			} else { // dom.new_root(tag)
 				stack.push(root_index)
 			}

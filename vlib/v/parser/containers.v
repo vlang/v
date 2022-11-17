@@ -84,7 +84,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 							p.error_with_pos('`len` and `cap` are invalid attributes for fixed array dimension',
 								pos)
 						} else {
-							p.error_with_pos('expected `init:`, not `$n`', pos)
+							p.error_with_pos('expected `init:`, not `${n}`', pos)
 						}
 						return ast.ArrayInit{}
 					}
@@ -163,7 +163,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					p.close_scope()
 				}
 				else {
-					p.error('wrong field `$key`, expecting `len`, `cap`, or `init`')
+					p.error('wrong field `${key}`, expecting `len`, `cap`, or `init`')
 					return ast.ArrayInit{}
 				}
 			}

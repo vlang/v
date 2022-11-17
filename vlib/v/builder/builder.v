@@ -190,14 +190,14 @@ pub fn (mut b Builder) parse_imports() {
 			import_path := b.find_module_path(mod, ast_file.path) or {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_ast.get_import_tok_idx(mod))
 				// break
-				b.parsed_files[i].errors << b.error_with_pos('cannot import module "$mod" (not found)',
+				b.parsed_files[i].errors << b.error_with_pos('cannot import module "${mod}" (not found)',
 					ast_file.path, imp.pos)
 				break
 			}
 			v_files := b.v_files_from_dir(import_path)
 			if v_files.len == 0 {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_ast.get_import_tok_idx(mod))
-				b.parsed_files[i].errors << b.error_with_pos('cannot import module "$mod" (no .v files in "$import_path")',
+				b.parsed_files[i].errors << b.error_with_pos('cannot import module "${mod}" (no .v files in "${import_path}")',
 					ast_file.path, imp.pos)
 				continue
 			}
@@ -212,7 +212,7 @@ pub fn (mut b Builder) parse_imports() {
 				sname := name.all_after_last('.')
 				smod := mod.all_after_last('.')
 				if sname != smod {
-					msg := 'bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$name`'
+					msg := 'bad module definition: ${ast_file.path} imports module "${mod}" but ${file.path} is defined as module `${name}`'
 					b.parsed_files[i].errors << b.error_with_pos(msg, ast_file.path, imp.pos)
 				}
 			}
@@ -313,13 +313,13 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 			println('looks like you are trying to build V with an old command')
 			println('use `v -o v cmd/v` instead of `v -o v compiler`')
 		}
-		verror("$dir doesn't exist")
+		verror("${dir} doesn't exist")
 	} else if !os.is_dir(dir) {
-		verror("$dir isn't a directory!")
+		verror("${dir} isn't a directory!")
 	}
 	mut files := os.ls(dir) or { panic(err) }
 	if b.pref.is_verbose {
-		println('v_files_from_dir ("$dir")')
+		println('v_files_from_dir ("${dir}")')
 	}
 	res := b.pref.should_compile_filtered_files(dir, files)
 	if res.len == 0 {
@@ -327,7 +327,7 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 		src_path := os.join_path(dir, 'src')
 		if os.is_dir(src_path) {
 			if b.pref.is_verbose {
-				println('v_files_from_dir ("$src_path") (/src/)')
+				println('v_files_from_dir ("${src_path}") (/src/)')
 			}
 			files = os.ls(src_path) or { panic(err) }
 			return b.pref.should_compile_filtered_files(src_path, files)
@@ -382,11 +382,11 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 	for search_path in module_lookup_paths {
 		try_path := os.join_path(search_path, mod_path)
 		if b.pref.is_verbose {
-			println('  >> trying to find $mod in $try_path ..')
+			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
 		if os.is_dir(try_path) {
 			if b.pref.is_verbose {
-				println('  << found $try_path .')
+				println('  << found ${try_path} .')
 			}
 			return try_path
 		}
@@ -397,14 +397,14 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 		p1 := path_parts[0..i].join(os.path_separator)
 		try_path := os.join_path(p1, mod_path)
 		if b.pref.is_verbose {
-			println('  >> trying to find $mod in $try_path ..')
+			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
 		if os.is_dir(try_path) {
 			return try_path
 		}
 	}
 	smodule_lookup_paths := module_lookup_paths.join(', ')
-	return error('module "$mod" not found in:\n$smodule_lookup_paths')
+	return error('module "${mod}" not found in:\n${smodule_lookup_paths}')
 }
 
 pub fn (b &Builder) show_total_warns_and_errors_stats() {
@@ -427,9 +427,9 @@ pub fn (b &Builder) show_total_warns_and_errors_stats() {
 		nstring := util.bold(nr_notices.str())
 
 		if b.pref.check_only {
-			println('summary: $estring V errors, $wstring V warnings, $nstring V notices')
+			println('summary: ${estring} V errors, ${wstring} V warnings, ${nstring} V notices')
 		} else {
-			println('checker summary: $estring V errors, $wstring V warnings, $nstring V notices')
+			println('checker summary: ${estring} V errors, ${wstring} V warnings, ${nstring} V notices')
 		}
 	}
 }
@@ -457,7 +457,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 			if !b.pref.skip_warnings {
 				for err in file.notices {
 					kind := if b.pref.is_verbose {
-						'$err.reporter notice #$b.nr_notices:'
+						'${err.reporter} notice #${b.nr_notices}:'
 					} else {
 						'notice:'
 					}
@@ -469,7 +469,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 		for file in b.parsed_files {
 			for err in file.errors {
 				kind := if b.pref.is_verbose {
-					'$err.reporter error #$b.nr_errors:'
+					'${err.reporter} error #${b.nr_errors}:'
 				} else {
 					'error:'
 				}
@@ -481,7 +481,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 			if !b.pref.skip_warnings {
 				for err in file.warnings {
 					kind := if b.pref.is_verbose {
-						'$err.reporter warning #$b.nr_warnings:'
+						'${err.reporter} warning #${b.nr_warnings}:'
 					} else {
 						'warning:'
 					}
@@ -498,15 +498,15 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 	}
 
 	if b.pref.is_verbose && b.checker.nr_warnings > 1 {
-		println('$b.checker.nr_warnings warnings')
+		println('${b.checker.nr_warnings} warnings')
 	}
 	if b.pref.is_verbose && b.checker.nr_notices > 1 {
-		println('$b.checker.nr_notices notices')
+		println('${b.checker.nr_notices} notices')
 	}
 	if b.checker.nr_notices > 0 && !b.pref.skip_warnings {
 		for err in b.checker.notices {
 			kind := if b.pref.is_verbose {
-				'$err.reporter notice #$b.checker.nr_notices:'
+				'${err.reporter} notice #${b.checker.nr_notices}:'
 			} else {
 				'notice:'
 			}
@@ -516,7 +516,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 	if b.checker.nr_warnings > 0 && !b.pref.skip_warnings {
 		for err in b.checker.warnings {
 			kind := if b.pref.is_verbose {
-				'$err.reporter warning #$b.checker.nr_warnings:'
+				'${err.reporter} warning #${b.checker.nr_warnings}:'
 			} else {
 				'warning:'
 			}
@@ -525,12 +525,12 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 	}
 	//
 	if b.pref.is_verbose && b.checker.nr_errors > 1 {
-		println('$b.checker.nr_errors errors')
+		println('${b.checker.nr_errors} errors')
 	}
 	if b.checker.nr_errors > 0 {
 		for err in b.checker.errors {
 			kind := if b.pref.is_verbose {
-				'$err.reporter error #$b.checker.nr_errors:'
+				'${err.reporter} error #${b.checker.nr_errors}:'
 			} else {
 				'error:'
 			}
@@ -563,7 +563,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 			}
 			if redefines.len > 0 {
 				util.show_compiler_message('builder error:',
-					message: 'redefinition of function `$fn_name`'
+					message: 'redefinition of function `${fn_name}`'
 				)
 				for redefine in redefines {
 					util.show_compiler_message('conflicting declaration:',

@@ -56,7 +56,7 @@ pub fn (mut tf_skl TTF_render_Sokol) create_text(in_txt string, in_font_size f32
 		if sz > 0 {
 			unsafe { free(tf_skl.bmp.buf) }
 		}
-		dprintln('create_text Alloc: $sz bytes')
+		dprintln('create_text Alloc: ${sz} bytes')
 		tf_skl.bmp.buf = unsafe { malloc_noscan(sz) }
 		tf_skl.bmp.buf_size = sz
 	}
@@ -94,7 +94,7 @@ pub fn (mut tf_skl TTF_render_Sokol) create_text_block(in_txt string, in_w int, 
 		if sz > 0 {
 			unsafe { free(tf_skl.bmp.buf) }
 		}
-		dprintln('Alloc: $sz bytes')
+		dprintln('Alloc: ${sz} bytes')
 		tf_skl.bmp.buf = unsafe { malloc_noscan(sz) }
 		tf_skl.bmp.buf_size = sz
 	}
@@ -196,7 +196,7 @@ pub fn (tf_skl TTF_render_Sokol) draw_text_bmp(ctx &gg.Context, x f32, y f32) {
 	]
 	sgl.mult_matrix(m)
 	//
-	sgl.load_pipeline(ctx.timage_pip)
+	sgl.load_pipeline(ctx.pipeline.alpha)
 	sgl.enable_texture()
 	sgl.texture(tf_skl.sg_img)
 	sgl.begin_quads()

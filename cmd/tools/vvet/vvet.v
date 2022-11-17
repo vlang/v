@@ -50,14 +50,14 @@ fn main() {
 	}
 	for path in paths {
 		if !os.exists(path) {
-			eprintln('File/folder $path does not exist')
+			eprintln('File/folder ${path} does not exist')
 			continue
 		}
 		if os.is_file(path) {
 			vt.vet_file(path)
 		}
 		if os.is_dir(path) {
-			vt.vprintln("vetting folder: '$path' ...")
+			vt.vprintln("vetting folder: '${path}' ...")
 			vfiles := os.walk_ext(path, '.v')
 			vvfiles := os.walk_ext(path, '.vv')
 			mut files := []string{}
@@ -91,7 +91,7 @@ fn (mut vt Vet) vet_file(path string) {
 		// skip all /tests/ files, since usually their content is not
 		// important enough to be documented/vetted, and they may even
 		// contain intentionally invalid code.
-		vt.vprintln("skipping test file: '$path' ...")
+		vt.vprintln("skipping test file: '${path}' ...")
 		return
 	}
 	vt.file = path
@@ -99,7 +99,7 @@ fn (mut vt Vet) vet_file(path string) {
 	prefs.is_vet = true
 	prefs.is_vsh = path.ends_with('.vsh')
 	table := ast.new_table()
-	vt.vprintln("vetting file '$path'...")
+	vt.vprintln("vetting file '${path}'...")
 	_, errors := parser.parse_vet_file(path, table, prefs)
 	// Transfer errors from scanner and parser
 	vt.errors << errors
@@ -175,7 +175,7 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 			}
 			if grab {
 				clean_line := line.all_before_last('{').trim(' ')
-				vt.warn('Function documentation seems to be missing for "$clean_line".',
+				vt.warn('Function documentation seems to be missing for "${clean_line}".',
 					lnumber, .doc)
 			}
 		} else {
@@ -189,14 +189,15 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 				prev_line := lines[j]
 				if prev_line.contains('}') { // We've looked back to the above scope, stop here
 					break
-				} else if prev_line.starts_with('// $fn_name ') {
+				} else if prev_line.starts_with('// ${fn_name} ') {
 					grab = false
 					break
-				} else if prev_line.starts_with('// $fn_name') && !prev_prev_line.starts_with('//') {
+				} else if prev_line.starts_with('// ${fn_name}')
+					&& !prev_prev_line.starts_with('//') {
 					grab = false
 					clean_line := line.all_before_last('{').trim(' ')
-					vt.warn('The documentation for "$clean_line" seems incomplete.', lnumber,
-						.doc)
+					vt.warn('The documentation for "${clean_line}" seems incomplete.',
+						lnumber, .doc)
 					break
 				} else if prev_line.starts_with('[') {
 					tags << collect_tags(prev_line)
@@ -207,7 +208,7 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 			}
 			if grab {
 				clean_line := line.all_before_last('{').trim(' ')
-				vt.warn('A function name is missing from the documentation of "$clean_line".',
+				vt.warn('A function name is missing from the documentation of "${clean_line}".',
 					lnumber, .doc)
 			}
 		}
@@ -222,8 +223,8 @@ fn (vt &Vet) vprintln(s string) {
 }
 
 fn (vt &Vet) e2string(err vet.Error) string {
-	mut kind := '$err.kind:'
-	mut location := '$err.file_path:$err.pos.line_nr:'
+	mut kind := '${err.kind}:'
+	mut location := '${err.file_path}:${err.pos.line_nr}:'
 	if vt.opt.use_color {
 		kind = match err.kind {
 			.warning { term.magenta(kind) }
@@ -232,7 +233,7 @@ fn (vt &Vet) e2string(err vet.Error) string {
 		kind = term.bold(kind)
 		location = term.bold(location)
 	}
-	return '$location $kind $err.message'
+	return '${location} ${kind} ${err.message}'
 }
 
 fn (mut vt Vet) error(msg string, line int, fix vet.FixKind) {

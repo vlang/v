@@ -20,5 +20,5 @@ interface Interface {
 }
 
 fn f(b Interface) string {
-	return '$b'
+	return '${b}'
 }

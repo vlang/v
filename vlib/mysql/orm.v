@@ -167,7 +167,7 @@ pub fn (db Connection) create(table string, fields []orm.TableField) ! {
 }
 
 pub fn (db Connection) drop(table string) ! {
-	query := 'DROP TABLE `$table`;'
+	query := 'DROP TABLE `${table}`;'
 	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
 
@@ -336,7 +336,7 @@ fn mysql_type_from_v(typ int) !string {
 		}
 	}
 	if str == '' {
-		return error('Unknown type $typ')
+		return error('Unknown type ${typ}')
 	}
 	return str
 }
@@ -364,7 +364,7 @@ fn (db Connection) factory_orm_primitive_converted_from_sql(table string, data o
 }
 
 fn (db Connection) get_table_data_type_map(table string) !map[string]string {
-	data_type_querys := "SELECT COLUMN_NAME, DATA_TYPE  FROM INFORMATION_SCHEMA.COLUMNS  WHERE TABLE_NAME = '$table'"
+	data_type_querys := "SELECT COLUMN_NAME, DATA_TYPE  FROM INFORMATION_SCHEMA.COLUMNS  WHERE TABLE_NAME = '${table}'"
 	mut map_val := map[string]string{}
 
 	results := db.query(data_type_querys)!

@@ -115,7 +115,7 @@ pub fn merge_doc_comments(comments []DocComment) string {
 pub fn (mut d Doc) stmt_signature(stmt ast.Stmt) string {
 	match stmt {
 		ast.Module {
-			return 'module $stmt.name'
+			return 'module ${stmt.name}'
 		}
 		ast.FnDecl {
 			return stmt.stringify(d.table, d.fmt.cur_mod, d.fmt.mod2alias)

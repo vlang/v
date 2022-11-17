@@ -21,7 +21,7 @@ struct Config {
 
 fn exit_after_timeout(timeout_in_ms int) {
 	time.sleep(timeout_in_ms * time.millisecond)
-	println('>> webserver: pid: $os.getpid(), exiting ...')
+	println('>> webserver: pid: ${os.getpid()}, exiting ...')
 	exit(0)
 }
 
@@ -43,8 +43,8 @@ fn main() {
 		timeout: timeout
 		global_config: config
 	}
-	eprintln('>> webserver: pid: $os.getpid(), started on http://localhost:$app.port/ , with maximum runtime of $app.timeout milliseconds.')
-	vweb.run_at(app, host: 'localhost', port: http_port, family: .ip)?
+	eprintln('>> webserver: pid: ${os.getpid()}, started on http://localhost:${app.port}/ , with maximum runtime of ${app.timeout} milliseconds.')
+	vweb.run_at(app, host: 'localhost', port: http_port, family: .ip)!
 }
 
 // pub fn (mut app App) init_server() {
@@ -71,7 +71,7 @@ pub fn (mut app App) settings(username string) vweb.Result {
 	if username !in known_users {
 		return app.not_found()
 	}
-	return app.html('username: $username')
+	return app.html('username: ${username}')
 }
 
 ['/:user/:repo/settings']
@@ -79,7 +79,7 @@ pub fn (mut app App) user_repo_settings(username string, repository string) vweb
 	if username !in known_users {
 		return app.not_found()
 	}
-	return app.html('username: $username | repository: $repository')
+	return app.html('username: ${username} | repository: ${repository}')
 }
 
 ['/json_echo'; post]

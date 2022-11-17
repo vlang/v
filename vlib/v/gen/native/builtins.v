@@ -5,6 +5,13 @@ module native
 
 import term
 
+enum Builtin {
+	int_to_string
+	bool_to_string
+	reverse_string
+	compare_strings
+}
+
 struct BuiltinFn {
 	body     fn (builtin BuiltinFn, mut g Gen)
 	arg_regs []Register
@@ -18,19 +25,20 @@ pub fn (mut g Gen) init_builtins() {
 	g.builtins = {
 		// longer algorithms and internal functions inaccessible to the user
 		// used to keep executable size small and the bytecode distraction-free
-		'int_to_string':  BuiltinFn{
+		.int_to_string:  BuiltinFn{
+			// 32-bit signed integer to string conversion
 			body: fn (builtin BuiltinFn, mut g Gen) {
 				g.convert_int_to_string(builtin.arg_regs[0], builtin.arg_regs[1])
 			}
 			arg_regs: [.rcx, .rdi]
 		}
-		'bool_to_string': BuiltinFn{
+		.bool_to_string: BuiltinFn{
 			body: fn (builtin BuiltinFn, mut g Gen) {
 				g.convert_bool_to_string(builtin.arg_regs[0])
 			}
 			arg_regs: [.rax]
 		}
-		'reverse_string': BuiltinFn{
+		.reverse_string: BuiltinFn{
 			body: fn (builtin BuiltinFn, mut g Gen) {
 				g.reverse_string(builtin.arg_regs[0])
 			}
@@ -46,7 +54,7 @@ pub fn (mut g Gen) generate_builtins() {
 		}
 
 		if g.pref.is_verbose {
-			println(term.green('\n(builtin) $name:'))
+			println(term.green('\n(builtin) ${name}:'))
 		}
 
 		g.stack_var_pos = 0
@@ -70,17 +78,17 @@ pub fn (mut g Gen) generate_builtins() {
 	}
 }
 
-pub fn (mut g Gen) get_builtin_arg_reg(name string, index int) Register {
-	builtin := g.builtins[name] or { panic('undefined builtin function $name') }
+pub fn (mut g Gen) get_builtin_arg_reg(name Builtin, index int) Register {
+	builtin := g.builtins[name] or { panic('undefined builtin function ${name}') }
 	if index >= builtin.arg_regs.len {
-		g.n_error('builtin $name does only have $builtin.arg_regs.len arguments, wanted $index')
+		g.n_error('builtin ${name} does only have ${builtin.arg_regs.len} arguments, requested ${index}')
 	}
 	return builtin.arg_regs[index]
 }
 
-pub fn (mut g Gen) call_builtin(name string) {
+pub fn (mut g Gen) call_builtin(name Builtin) {
 	if g.pref.arch == .arm64 {
-		g.n_error('builtin calls are not implemented for amd64')
+		g.n_error('builtin calls are not implemented for arm64')
 	} else {
 		g.builtins[name].calls << g.call_builtin_amd64(name)
 	}

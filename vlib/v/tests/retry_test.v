@@ -15,7 +15,7 @@ import os
 fn test_test_runner_retrying_failing_tests() {
 	n := os.getenv('VTEST_RETRY').int()
 	maxn := os.getenv('VTEST_RETRY_MAX').int()
-	eprintln('> n: $n | maxn: $maxn')
+	eprintln('> n: ${n} | maxn: ${maxn}')
 	if n > 0 && n == maxn {
 		assert true
 		return

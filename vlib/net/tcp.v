@@ -23,7 +23,7 @@ mut:
 
 pub fn dial_tcp(address string) !&TcpConn {
 	addrs := resolve_addrs_fuzzy(address, .tcp) or {
-		return error('$err.msg(); could not resolve address $address in dial_tcp')
+		return error('${err.msg()}; could not resolve address ${address} in dial_tcp')
 	}
 
 	// Keep track of dialing errors that take place
@@ -32,7 +32,7 @@ pub fn dial_tcp(address string) !&TcpConn {
 	// Very simple dialer
 	for addr in addrs {
 		mut s := new_tcp_socket(addr.family()) or {
-			return error('$err.msg(); could not create new tcp socket in dial_tcp')
+			return error('${err.msg()}; could not create new tcp socket in dial_tcp')
 		}
 		s.connect(addr) or {
 			errs << err
@@ -51,12 +51,12 @@ pub fn dial_tcp(address string) !&TcpConn {
 	// Once we've failed now try and explain why we failed to connect
 	// to any of these addresses
 	mut err_builder := strings.new_builder(1024)
-	err_builder.write_string('dial_tcp failed for address $address\n')
+	err_builder.write_string('dial_tcp failed for address ${address}\n')
 	err_builder.write_string('tried addrs:\n')
 	for i := 0; i < errs.len; i++ {
 		addr := addrs[i]
 		why := errs[i]
-		err_builder.write_string('\t$addr: $why\n')
+		err_builder.write_string('\t${addr}: ${why}\n')
 	}
 
 	// failed
@@ -66,13 +66,13 @@ pub fn dial_tcp(address string) !&TcpConn {
 // bind local address and dial.
 pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
 	addrs := resolve_addrs_fuzzy(saddr, .tcp) or {
-		return error('$err.msg(); could not resolve address $saddr in dial_tcp_with_bind')
+		return error('${err.msg()}; could not resolve address ${saddr} in dial_tcp_with_bind')
 	}
 
 	// Very simple dialer
 	for addr in addrs {
 		mut s := new_tcp_socket(addr.family()) or {
-			return error('$err.msg(); could not create new tcp socket in dial_tcp_with_bind')
+			return error('${err.msg()}; could not create new tcp socket in dial_tcp_with_bind')
 		}
 		s.bind(laddr) or {
 			s.close() or { continue }
@@ -91,7 +91,7 @@ pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
 		}
 	}
 	// failed
-	return error('dial_tcp_with_bind failed for address $saddr')
+	return error('dial_tcp_with_bind failed for address ${saddr}')
 }
 
 pub fn (mut c TcpConn) close() ! {
@@ -104,7 +104,7 @@ pub fn (mut c TcpConn) close() ! {
 pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))!
 	$if trace_tcp ? {
-		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
 	}
 	if res > 0 {
 		$if trace_tcp_data_read ? {
@@ -118,7 +118,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		c.wait_for_read()!
 		res = wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))!
 		$if trace_tcp ? {
-			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
 		}
 		$if trace_tcp_data_read ? {
 			if res > 0 {
@@ -153,7 +153,7 @@ pub fn (mut c TcpConn) read_deadline() !time.Time {
 pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 	$if trace_tcp ? {
 		eprintln(
-			'>>> TcpConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +
+			'>>> TcpConn.write_ptr | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} len: ${len} |\n' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	$if trace_tcp_data_write ? {
@@ -257,7 +257,7 @@ pub fn (c &TcpConn) addr() !Addr {
 
 pub fn (c TcpConn) str() string {
 	s := c.sock.str().replace('\n', ' ').replace('  ', ' ')
-	return 'TcpConn{ write_deadline: $c.write_deadline, read_deadline: $c.read_deadline, read_timeout: $c.read_timeout, write_timeout: $c.write_timeout, sock: $s }'
+	return 'TcpConn{ write_deadline: ${c.write_deadline}, read_deadline: ${c.read_deadline}, read_timeout: ${c.read_timeout}, write_timeout: ${c.write_timeout}, sock: ${s} }'
 }
 
 pub struct TcpListener {
@@ -269,10 +269,10 @@ mut:
 }
 
 pub fn listen_tcp(family AddrFamily, saddr string) !&TcpListener {
-	s := new_tcp_socket(family) or { return error('$err.msg(); could not create new socket') }
+	s := new_tcp_socket(family) or { return error('${err.msg()}; could not create new socket') }
 
 	addrs := resolve_addrs(saddr, family, .tcp) or {
-		return error('$err.msg(); could not resolve address $saddr')
+		return error('${err.msg()}; could not resolve address ${saddr}')
 	}
 
 	// TODO(logic to pick here)
@@ -280,8 +280,8 @@ pub fn listen_tcp(family AddrFamily, saddr string) !&TcpListener {
 
 	// cast to the correct type
 	alen := addr.len()
-	socket_error_message(C.bind(s.handle, voidptr(&addr), alen), 'binding to $saddr failed')!
-	socket_error_message(C.listen(s.handle, 128), 'listening on $saddr failed')!
+	socket_error_message(C.bind(s.handle, voidptr(&addr), alen), 'binding to ${saddr} failed')!
+	socket_error_message(C.listen(s.handle, 128), 'listening on ${saddr} failed')!
 	return &TcpListener{
 		sock: s
 		accept_deadline: no_deadline
@@ -434,7 +434,7 @@ pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ! {
 // bind a local rddress for TcpSocket
 pub fn (mut s TcpSocket) bind(addr string) ! {
 	addrs := resolve_addrs(addr, AddrFamily.ip, .tcp) or {
-		return error('$err.msg(); could not resolve address $addr')
+		return error('${err.msg()}; could not resolve address ${addr}')
 	}
 
 	// TODO(logic to pick here)
@@ -442,7 +442,7 @@ pub fn (mut s TcpSocket) bind(addr string) ! {
 
 	// cast to the correct type
 	alen := a.len()
-	socket_error_message(C.bind(s.handle, voidptr(&a), alen), 'binding to $addr failed') or {
+	socket_error_message(C.bind(s.handle, voidptr(&a), alen), 'binding to ${addr} failed') or {
 		return err
 	}
 }

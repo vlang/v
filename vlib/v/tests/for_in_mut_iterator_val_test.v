@@ -40,7 +40,7 @@ fn test_for_in_mut_interator_val() {
 
 	for mut packet in r {
 		println(packet.pid)
-		rets << '$packet.pid'
+		rets << '${packet.pid}'
 	}
 
 	println(rets)

@@ -31,5 +31,5 @@ pub fn (cfg TextCfg) to_css_string() string {
 	if cfg.italic {
 		font_style += 'italic '
 	}
-	return '$font_style ${cfg.size}px $cfg.family'
+	return '${font_style} ${cfg.size}px ${cfg.family}'
 }

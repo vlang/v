@@ -85,10 +85,10 @@ pub fn (x f32) str() string {
 			f: x
 		}
 		if f.u == strconv.single_minus_zero {
-			return '-0.'
+			return '-0.0'
 		}
 		if f.u == strconv.single_plus_zero {
-			return '0.'
+			return '0.0'
 		}
 	}
 	abs_x := f32_abs(x)

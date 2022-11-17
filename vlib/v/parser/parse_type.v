@@ -25,7 +25,7 @@ pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
 				}
 				ast.Ident {
 					mut show_non_const_error := false
-					if mut const_field := p.table.global_scope.find_const('${p.mod}.$size_expr.name') {
+					if mut const_field := p.table.global_scope.find_const('${p.mod}.${size_expr.name}') {
 						if mut const_field.expr is ast.IntegerLiteral {
 							fixed_size = const_field.expr.val.int()
 						} else {
@@ -53,7 +53,7 @@ pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
 						}
 					}
 					if show_non_const_error {
-						p.error_with_pos('non-constant array bound `$size_expr.name`',
+						p.error_with_pos('non-constant array bound `${size_expr.name}`',
 							size_expr.pos)
 					}
 				}
@@ -125,7 +125,7 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 			return 0
 		}
 		s := p.table.type_to_str(key_type)
-		p.error_with_pos('maps only support string, integer, float, rune, enum or voidptr keys for now (not `$s`)',
+		p.error_with_pos('maps only support string, integer, float, rune, enum or voidptr keys for now (not `${s}`)',
 			p.tok.pos())
 		return 0
 	}
@@ -311,7 +311,7 @@ pub fn (mut p Parser) parse_inline_sum_type() ast.Type {
 	if variants.len > 1 {
 		if variants.len > parser.maximum_inline_sum_type_variants {
 			pos := variants[0].pos.extend(variants.last().pos)
-			p.warn_with_pos('an inline sum type expects a maximum of $parser.maximum_inline_sum_type_variants types ($variants.len were given)',
+			p.warn_with_pos('an inline sum type expects a maximum of ${parser.maximum_inline_sum_type_variants} types (${variants.len} were given)',
 				pos)
 		}
 		mut variant_names := variants.map(p.table.sym(it.typ).name)
@@ -381,15 +381,23 @@ pub fn (mut p Parser) parse_type() ast.Type {
 		p.next()
 		is_result = true
 	}
-	if (is_optional || is_result) && (p.tok.line_nr > line_nr || p.tok.kind in [.comma, .rpar]) {
-		mut typ := ast.void_type
-		if is_optional {
-			typ = typ.set_flag(.optional)
-		} else if is_result {
-			typ = typ.set_flag(.result)
+
+	if is_optional || is_result {
+		// maybe the '[' is the start of the field attribute
+		is_required_field := p.inside_struct_field_decl && p.tok.kind == .lsbr
+			&& p.peek_tok.kind == .name && p.peek_tok.lit == 'required'
+
+		if p.tok.line_nr > line_nr || p.tok.kind in [.comma, .rpar] || is_required_field {
+			mut typ := ast.void_type
+			if is_optional {
+				typ = typ.set_flag(.optional)
+			} else if is_result {
+				typ = typ.set_flag(.result)
+			}
+			return typ
 		}
-		return typ
 	}
+
 	is_shared := p.tok.kind == .key_shared
 	is_atomic := p.tok.kind == .key_atomic
 	if is_shared {
@@ -475,9 +483,9 @@ If you need to modify an array in a function, use a mutable argument instead: `f
 pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot bool) ast.Type {
 	mut name := p.tok.lit
 	if language == .c {
-		name = 'C.$name'
+		name = 'C.${name}'
 	} else if language == .js {
-		name = 'JS.$name'
+		name = 'JS.${name}'
 	} else if p.peek_tok.kind == .dot && check_dot {
 		// `module.Type`
 		mut mod := name
@@ -488,14 +496,14 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 		for p.peek_tok.kind == .dot {
 			mod_pos = mod_pos.extend(p.tok.pos())
 			mod_last_part = p.tok.lit
-			mod += '.$mod_last_part'
+			mod += '.${mod_last_part}'
 			p.next()
 			p.check(.dot)
 		}
 		if !p.known_import(mod) && !p.pref.is_fmt {
-			mut msg := 'unknown module `$mod`'
+			mut msg := 'unknown module `${mod}`'
 			if mod.len > mod_last_part.len && p.known_import(mod_last_part) {
-				msg += '; did you mean `$mod_last_part`?'
+				msg += '; did you mean `${mod_last_part}`?'
 			}
 			p.error_with_pos(msg, mod_pos)
 			return 0
@@ -505,7 +513,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			mod = p.imports[mod]
 		}
 		// prefix with full module
-		name = '${mod}.$p.tok.lit'
+		name = '${mod}.${p.tok.lit}'
 		if p.tok.lit.len > 0 && !p.tok.lit[0].is_capital() {
 			p.error('imported types must start with a capital letter')
 			return 0
@@ -717,28 +725,28 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		match parent_sym.info {
 			ast.Struct {
 				if parent_sym.info.generic_types.len == 0 {
-					p.error_with_pos('struct `$parent_sym.name` is not a generic struct, cannot instantiate to the concrete types',
+					p.error_with_pos('struct `${parent_sym.name}` is not a generic struct, cannot instantiate to the concrete types',
 						concrete_types_pos)
 				} else if parent_sym.info.generic_types.len != concrete_types.len {
-					p.error_with_pos('the number of generic types of struct `$parent_sym.name` is inconsistent with the concrete types',
+					p.error_with_pos('the number of generic types of struct `${parent_sym.name}` is inconsistent with the concrete types',
 						concrete_types_pos)
 				}
 			}
 			ast.Interface {
 				if parent_sym.info.generic_types.len == 0 {
-					p.error_with_pos('interface `$parent_sym.name` is not a generic interface, cannot instantiate to the concrete types',
+					p.error_with_pos('interface `${parent_sym.name}` is not a generic interface, cannot instantiate to the concrete types',
 						concrete_types_pos)
 				} else if parent_sym.info.generic_types.len != concrete_types.len {
-					p.error_with_pos('the number of generic types of interfce `$parent_sym.name` is inconsistent with the concrete types',
+					p.error_with_pos('the number of generic types of interfce `${parent_sym.name}` is inconsistent with the concrete types',
 						concrete_types_pos)
 				}
 			}
 			ast.SumType {
 				if parent_sym.info.generic_types.len == 0 {
-					p.error_with_pos('sumtype `$parent_sym.name` is not a generic sumtype, cannot instantiate to the concrete types',
+					p.error_with_pos('sumtype `${parent_sym.name}` is not a generic sumtype, cannot instantiate to the concrete types',
 						concrete_types_pos)
 				} else if parent_sym.info.generic_types.len != concrete_types.len {
-					p.error_with_pos('the number of generic types of sumtype `$parent_sym.name` is inconsistent with the concrete types',
+					p.error_with_pos('the number of generic types of sumtype `${parent_sym.name}` is inconsistent with the concrete types',
 						concrete_types_pos)
 				}
 			}

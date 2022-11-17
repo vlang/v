@@ -133,7 +133,7 @@ fn fuzz6() {
 
 fn main() {
 	seed := u32(time.ticks())
-	println('seed: $seed.hex()')
+	println('seed: ${seed.hex()}')
 	rand.seed([seed, seed])
 	fuzz1()
 	fuzz2()

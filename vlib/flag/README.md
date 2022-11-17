@@ -37,7 +37,7 @@ fn main() {
 		println(fp.usage())
 		return
 	}
-	println('an_int: $an_int | a_bool: $a_bool | a_float: $a_float | a_string: "$a_string" ')
+	println('an_int: ${an_int} | a_bool: ${a_bool} | a_float: ${a_float} | a_string: "${a_string}" ')
 	println(additional_args.join_lines())
 }
 ```

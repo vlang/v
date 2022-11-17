@@ -15,15 +15,15 @@ struct Child {
 
 fn inspect<T>(t T) string {
 	mut output_str := ''
-	println('$T.name')
+	println('${T.name}')
 	$for field in T.fields {
 		val := t.$(field.name)
 		$if field.typ is string {
-			println('  $field.name = $val')
-			output_str += '  $field.name = $val\n'
+			println('  ${field.name} = ${val}')
+			output_str += '  ${field.name} = ${val}\n'
 		} $else $if field.typ is int {
-			println('  $field.name = $val')
-			output_str += '  $field.name = $val\n'
+			println('  ${field.name} = ${val}')
+			output_str += '  ${field.name} = ${val}\n'
 		} $else {
 			str := inspect(val)
 			output_str += str

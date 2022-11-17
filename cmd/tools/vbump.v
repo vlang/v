@@ -68,7 +68,7 @@ fn get_replacement_function(options Options) ReplacementFunction {
 }
 
 fn process_file(input_file string, options Options) {
-	lines := os.read_lines(input_file) or { panic('Failed to read file: $input_file') }
+	lines := os.read_lines(input_file) or { panic('Failed to read file: ${input_file}') }
 
 	mut re := regex.regex_opt(semver_query) or { panic('Could not create a RegEx parser.') }
 
@@ -103,28 +103,28 @@ fn process_file(input_file string, options Options) {
 	os.rm(backup_file) or {}
 
 	// Rename the original to the backup.
-	os.mv(input_file, backup_file) or { panic('Failed to copy file: $input_file') }
+	os.mv(input_file, backup_file) or { panic('Failed to copy file: ${input_file}') }
 
 	// Process the old file and write it back to the original.
 	os.write_file(input_file, new_lines.join_lines()) or {
-		panic('Failed to write file: $input_file')
+		panic('Failed to write file: ${input_file}')
 	}
 
 	// Remove the backup file.
 	os.rm(backup_file) or {}
 
 	if replacement_complete {
-		println('Bumped version in $input_file')
+		println('Bumped version in ${input_file}')
 	} else {
-		println('No changes made in $input_file')
+		println('No changes made in ${input_file}')
 	}
 }
 
 fn main() {
 	if os.args.len < 2 {
-		println('Usage: $tool_name [options] [file1 file2 ...]
-$tool_description
-Try $tool_name -h for more help...')
+		println('Usage: ${tool_name} [options] [file1 file2 ...]
+${tool_description}
+Try ${tool_name} -h for more help...')
 		exit(1)
 	}
 
@@ -162,7 +162,7 @@ Try $tool_name -h for more help...')
 
 	for input_file in files {
 		if !os.exists(input_file) {
-			println('File not found: $input_file')
+			println('File not found: ${input_file}')
 			exit(1)
 		}
 		process_file(input_file, options)

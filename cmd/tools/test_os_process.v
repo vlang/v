@@ -35,10 +35,10 @@ fn (mut ctx Context) println(s string) {
 		ctx.omode = if ctx.omode == .stderr { Target.stdout } else { Target.stderr }
 	}
 	if ctx.target in [.both, .stdout] || ctx.omode == .stdout {
-		println('stdout, $s')
+		println('stdout, ${s}')
 	}
 	if ctx.target in [.both, .stderr] || ctx.omode == .stderr {
-		eprintln('stderr, $s')
+		eprintln('stderr, ${s}')
 	}
 }
 
@@ -71,11 +71,11 @@ fn main() {
 		ctx.omode = .stdout
 	}
 	if ctx.is_verbose {
-		eprintln('> args: $args | context: $ctx')
+		eprintln('> args: ${args} | context: ${ctx}')
 	}
 	spawn do_timeout(&ctx)
 	for i := 1; true; i++ {
-		ctx.println('$i')
+		ctx.println('${i}')
 		time.sleep(ctx.period_ms * time.millisecond)
 	}
 	time.sleep(100 * time.second)

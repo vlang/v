@@ -1,4 +1,4 @@
-vlib/v/checker/tests/assing_none.vv:2:9: error: you can not assign a `none` value to a variable
+vlib/v/checker/tests/assign_none.vv:2:9: error: cannot assign a `none` value to a variable
     1 | fn main() {
     2 |     val := none
       |            ~~~~

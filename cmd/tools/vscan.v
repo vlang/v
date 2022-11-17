@@ -21,8 +21,8 @@ fn main() {
 		for tok.kind != .eof {
 			tok = scanner.scan()
 			pos := tok.pos()
-			location := '$path:${pos.line_nr + 1}:${pos.col + 1}:'
-			println('${location:-32} | pos: ${pos.pos:-5} | $tok.debug()')
+			location := '${path}:${pos.line_nr + 1}:${pos.col + 1}:'
+			println('${location:-32} | pos: ${pos.pos:-5} | ${tok.debug()}')
 		}
 	}
 }

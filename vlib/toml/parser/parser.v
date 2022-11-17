@@ -161,7 +161,7 @@ fn (mut p Parser) peek(n int) !token.Token {
 		} else {
 			mut token := token.Token{}
 			mut count := n - p.tokens.len
-			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'buffering $count tokens...')
+			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'buffering ${count} tokens...')
 			for token.kind != .eof && count != 0 {
 				token = p.scanner.scan()!
 				p.tokens << token
@@ -179,7 +179,7 @@ fn (mut p Parser) check(check_token token.Kind) ! {
 		p.next()!
 	} else {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' expected token "$check_token" but found "$p.tok.kind" in this (excerpt): "...${p.excerpt()}..."')
+			' expected token "${check_token}" but found "${p.tok.kind}" in this (excerpt): "...${p.excerpt()}..."')
 	}
 }
 
@@ -191,7 +191,7 @@ fn (mut p Parser) peek_for_correct_line_ending_or_fail() ! {
 	if peek_tok.kind !in [.cr, .nl, .hash, .eof] {
 		p.next()! // Forward to the peek_tok
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' unexpected EOL "$p.tok.kind" "$p.tok.lit" expected one of [.cr, .nl, .hash, .eof] at this (excerpt): "...${p.excerpt()}..."')
+			' unexpected EOL "${p.tok.kind}" "${p.tok.lit}" expected one of [.cr, .nl, .hash, .eof] at this (excerpt): "...${p.excerpt()}..."')
 	}
 }
 
@@ -202,7 +202,7 @@ fn (mut p Parser) check_one_of(tokens []token.Kind) ! {
 		p.next()!
 	} else {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' expected one of $tokens but found "$p.tok.kind" in this (excerpt): "...${p.excerpt()}..."')
+			' expected one of ${tokens} but found "${p.tok.kind}" in this (excerpt): "...${p.excerpt()}..."')
 	}
 }
 
@@ -211,7 +211,7 @@ fn (mut p Parser) check_one_of(tokens []token.Kind) ! {
 // a stream of formatting tokens.
 fn (mut p Parser) ignore_while(tokens []token.Kind) {
 	if p.tok.kind in tokens {
-		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'ignoring "$p.tok.kind" ...')
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'ignoring "${p.tok.kind}" ...')
 		p.next() or { return }
 		p.ignore_while(tokens)
 	}
@@ -224,7 +224,7 @@ fn (mut p Parser) ignore_while(tokens []token.Kind) {
 // sometimes necessary since not all parser calls forward using the `next()` call.
 fn (mut p Parser) ignore_while_peek(tokens []token.Kind) {
 	for p.peek_tok.kind in tokens {
-		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'eating "$p.tok.kind" ...')
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'eating "${p.tok.kind}" ...')
 		p.next() or { return }
 	}
 }
@@ -256,7 +256,7 @@ fn (mut p Parser) expect(expected_token token.Kind) ! {
 		return
 	} else {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' expected token "$expected_token" but found "$p.tok.kind" in this text "...${p.excerpt()}..."')
+			' expected token "${expected_token}" but found "${p.tok.kind}" in this text "...${p.excerpt()}..."')
 	}
 }
 
@@ -281,7 +281,7 @@ fn todo_msvc_astring2dkey(s []string) DottedKey {
 fn (p Parser) check_explicitly_declared(key DottedKey) ! {
 	if p.explicit_declared.len > 0 && p.explicit_declared.has(key) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' key `$key.str()` is already explicitly declared. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+			' key `${key.str()}` is already explicitly declared. Unexpected redeclaration at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 	}
 }
 
@@ -290,7 +290,7 @@ fn (p Parser) check_explicitly_declared(key DottedKey) ! {
 fn (p Parser) check_explicitly_declared_array_of_tables(key DottedKey) ! {
 	if p.explicit_declared_array_of_tables.len > 0 && p.explicit_declared_array_of_tables.has(key) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' key `$key.str()` is already an explicitly declared array of tables. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+			' key `${key.str()}` is already an explicitly declared array of tables. Unexpected redeclaration at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 	}
 }
 
@@ -298,7 +298,7 @@ fn (p Parser) check_explicitly_declared_array_of_tables(key DottedKey) ! {
 fn (p Parser) check_implicitly_declared(key DottedKey) ! {
 	if p.implicit_declared.len > 0 && p.implicit_declared.has(key) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' key `$key.str()` is already implicitly declared. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+			' key `${key.str()}` is already implicitly declared. Unexpected redeclaration at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 	}
 }
 
@@ -308,7 +308,7 @@ fn (p Parser) check_implicitly_declared(key DottedKey) ! {
 // reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
 // See also `find_in_table`.
 pub fn (mut p Parser) find_table() !&map[string]ast.Value {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$p.root_map_key" in map ${ptr_str(p.root_map)}')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "${p.root_map_key}" in map ${ptr_str(p.root_map)}')
 	mut t := unsafe { &p.root_map }
 	if p.root_map_key.len == 0 {
 		return t
@@ -319,7 +319,7 @@ pub fn (mut p Parser) find_table() !&map[string]ast.Value {
 
 // allocate_table allocates all tables in "dotted" `key` (`a.b.c`) in the *root* table.
 pub fn (mut p Parser) allocate_table(key DottedKey) ! {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'allocating "$key" in map ${ptr_str(p.root_map)}')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'allocating "${key}" in map ${ptr_str(p.root_map)}')
 	mut t := unsafe { &p.root_map }
 	if key.len == 0 {
 		return
@@ -347,7 +347,7 @@ pub fn (mut p Parser) find_sub_table(key DottedKey) !&map[string]ast.Value {
 	if p.root_map_key.len == 0 {
 		ky = key
 	}
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$ky" in map ${ptr_str(p.root_map)}')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "${ky}" in map ${ptr_str(p.root_map)}')
 	mut t := unsafe { &p.root_map }
 	if ky.len == 0 {
 		return t
@@ -364,20 +364,20 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key DottedKe
 	// NOTE This code is the result of much trial and error.
 	// I'm still not quite sure *exactly* why it works. All I can leave here is a hope
 	// that this kind of minefield someday will be easier in V :)
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$key" in map ${ptr_str(table)}')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "${key}" in map ${ptr_str(table)}')
 	mut t := unsafe { &table }
 	unsafe {
 		for k in key {
 			if val := t[k] {
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'found key "$k" in $t.keys()')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'found key "${k}" in ${t.keys()}')
 				if val is map[string]ast.Value {
 					t = &(val as map[string]ast.Value)
 				} else {
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
-						' "$k" in "$key" is not a map but `$val.type_name()`')
+						' "${k}" in "${key}" is not a map but `${val.type_name()}`')
 				}
 			} else {
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'no key "$k" in "$key" found, allocating new map at key "$k" in map ${ptr_str(t)}"')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'no key "${k}" in "${key}" found, allocating new map at key "${k}" in map ${ptr_str(t)}"')
 				t[k] = map[string]ast.Value{}
 				t = &(t[k] as map[string]ast.Value)
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'allocated new map ${ptr_str(t)}"')
@@ -397,35 +397,35 @@ pub fn (mut p Parser) find_array_of_tables() ![]ast.Value {
 	if key.len > 1 {
 		key = DottedKey([key[0]])
 	}
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$key" in map ${ptr_str(t)}')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "${key}" in map ${ptr_str(t)}')
 	unsafe {
 		if val := t[key.str()] {
-			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'found key "$key" in $t.keys()')
+			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'found key "${key}" in ${t.keys()}')
 			if val is []ast.Value {
 				arr := (val as []ast.Value)
 				return arr
 			}
 		}
 	}
-	return error(@MOD + '.' + @STRUCT + '.' + @FN + 'no key `$key` found in map ${ptr_str(t)}"')
+	return error(@MOD + '.' + @STRUCT + '.' + @FN + 'no key `${key}` found in map ${ptr_str(t)}"')
 }
 
 // allocate_in_table allocates all tables in "dotted" `key` (`a.b.c`) in `table`.
 pub fn (mut p Parser) allocate_in_table(mut table map[string]ast.Value, key DottedKey) ! {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'allocating "$key" in map ${ptr_str(table)}')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'allocating "${key}" in map ${ptr_str(table)}')
 	mut t := unsafe { &table }
 	unsafe {
 		for k in key {
 			if val := t[k] {
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'found key "$k" in $t.keys()')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'found key "${k}" in ${t.keys()}')
 				if val is map[string]ast.Value {
 					t = &(val as map[string]ast.Value)
 				} else {
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
-						' "$k" in "$key" is not a map ($val.type_name())')
+						' "${k}" in "${key}" is not a map (${val.type_name()})')
 				}
 			} else {
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'no key "$k" in "$key" found, allocating new map at key "$k" in map ${ptr_str(t)}"')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'no key "${k}" in "${key}" found, allocating new map at key "${k}" in map ${ptr_str(t)}"')
 				t[k] = map[string]ast.Value{}
 				t = &(t[k] as map[string]ast.Value)
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'allocated new map ${ptr_str(t)}"')
@@ -451,7 +451,7 @@ pub fn (mut p Parser) dotted_key() !DottedKey {
 		p.ignore_while_peek(parser.space_formatting)
 	}
 	p.next()!
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed dotted key `$dotted_key` now at "$p.tok.kind" "$p.tok.lit"')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed dotted key `${dotted_key}` now at "${p.tok.kind}" "${p.tok.lit}"')
 	return dotted_key
 }
 
@@ -467,15 +467,15 @@ pub fn (mut p Parser) root_table() ! {
 			p.skip_next = false
 		}
 
-		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind" "$p.tok.lit"')
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "${p.tok.kind}" "${p.tok.lit}"')
 		match p.tok.kind {
 			.hash {
 				c := p.comment()
 				p.ast_root.comments << c
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comment "$c.text"')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comment "${c.text}"')
 			}
 			.whitespace, .tab, .nl, .cr {
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping formatting "$p.tok.kind" "$p.tok.lit"')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping formatting "${p.tok.kind}" "${p.tok.lit}"')
 				continue
 			}
 			.bare, .quoted, .number, .minus, .underscore {
@@ -495,7 +495,7 @@ pub fn (mut p Parser) root_table() ! {
 
 						if p.build_abs_dotted_key(sub_table) == explicit_key {
 							return error(@MOD + '.' + @STRUCT + '.' + @FN +
-								' key `$sub_table` has already been explicitly declared. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+								' key `${sub_table}` has already been explicitly declared. Unexpected redeclaration at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 						}
 						if explicit_key.len == 1 || explicit_key == p.root_map_key {
 							continue
@@ -505,7 +505,7 @@ pub fn (mut p Parser) root_table() ! {
 						// https://github.com/BurntSushi/toml-test/blob/576db85/tests/invalid/table/injection-2.toml
 						if p.build_abs_dotted_key(sub_table).starts_with(explicit_key) {
 							return error(@MOD + '.' + @STRUCT + '.' + @FN +
-								' key `$dotted_key` has already been explicitly declared. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+								' key `${dotted_key}` has already been explicitly declared. Unexpected redeclaration at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 						}
 					}
 
@@ -520,7 +520,7 @@ pub fn (mut p Parser) root_table() ! {
 
 					t := p.find_sub_table(sub_table)!
 					unsafe {
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key" = $val in table ${ptr_str(t)}')
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "${key}" = ${val} in table ${ptr_str(t)}')
 						t[key.str()] = val
 					}
 				} else {
@@ -529,11 +529,11 @@ pub fn (mut p Parser) root_table() ! {
 
 					t := p.find_table()!
 					unsafe {
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key.str()" = $val in table ${ptr_str(t)}')
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "${key.str()}" = ${val} in table ${ptr_str(t)}')
 						key_str := key.str()
 						if _ := t[key_str] {
 							return error(@MOD + '.' + @STRUCT + '.' + @FN +
-								' key "$key" is already initialized with a value. At "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+								' key "${key}" is already initialized with a value. At "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 						}
 						t[key_str] = val
 					}
@@ -549,7 +549,7 @@ pub fn (mut p Parser) root_table() ! {
 					peek_tok, _ = p.peek_over(1, parser.space_formatting)!
 					if peek_tok.kind == .lsbr {
 						return error(@MOD + '.' + @STRUCT + '.' + @FN +
-							' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
+							' unexpected "${p.tok.kind}" "${p.tok.lit}" at this (excerpt): "...${p.excerpt()}..."')
 					}
 				}
 
@@ -565,7 +565,7 @@ pub fn (mut p Parser) root_table() ! {
 						p.array_of_tables(mut &p.root_map)!
 					}
 					p.skip_next = true // skip calling p.next() in coming iteration
-					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'leaving double bracket at "$p.tok.kind" "$p.tok.lit". NEXT is "$p.peek_tok.kind "$p.peek_tok.lit"')
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'leaving double bracket at "${p.tok.kind}" "${p.tok.lit}". NEXT is "${p.peek_tok.kind} "${p.peek_tok.lit}"')
 				} else if peek_tok.kind == .period {
 					// Parse `[d.e.f]`
 					dotted_key := p.dotted_key()!
@@ -602,13 +602,13 @@ pub fn (mut p Parser) root_table() ! {
 										sub_table, key := p.sub_table_key(new_key)
 										t := p.find_in_table(mut mut_val, sub_table)!
 										util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
-											'setting "$key" = $val in table ${ptr_str(t)}')
+											'setting "${key}" = ${val} in table ${ptr_str(t)}')
 										t[new_key.last().str()] = m
 									}
 								}
 							} else {
 								return error(@MOD + '.' + @STRUCT + '.' + @FN +
-									' "$p.last_aot_index" in array is not a map but `${typeof(val).name}`')
+									' "${p.last_aot_index}" in array is not a map but `${typeof(val).name}`')
 							}
 						}
 						continue
@@ -622,7 +622,7 @@ pub fn (mut p Parser) root_table() ! {
 
 					p.ignore_while(parser.space_formatting)
 
-					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$dotted_key` at "$p.tok.kind" "$p.tok.lit"')
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `${dotted_key}` at "${p.tok.kind}" "${p.tok.lit}"')
 					p.root_map_key = dotted_key
 					p.allocate_table(p.root_map_key)!
 					p.expect(.rsbr)!
@@ -641,13 +641,13 @@ pub fn (mut p Parser) root_table() ! {
 					// [tbl]
 					if p.last_aot == dotted_key {
 						return error(@MOD + '.' + @STRUCT + '.' + @FN +
-							' key `$dotted_key` has already been explicitly declared. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+							' key `${dotted_key}` has already been explicitly declared. Unexpected redeclaration at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 					}
 
 					// Allow [ key ]
 					p.ignore_while(parser.space_formatting)
 
-					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$dotted_key` at "$p.tok.kind" "$p.tok.lit"')
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `${dotted_key}` at "${p.tok.kind}" "${p.tok.lit}"')
 					p.root_map_key = dotted_key
 					p.allocate_table(p.root_map_key)!
 					p.next()!
@@ -660,7 +660,7 @@ pub fn (mut p Parser) root_table() ! {
 			}
 			else {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' could not parse "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+					' could not parse "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 			}
 		}
 	}
@@ -686,15 +686,15 @@ pub fn (mut p Parser) table_contents(mut tbl map[string]ast.Value) ! {
 			p.skip_next = false
 		}
 
-		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind" "$p.tok.lit"')
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "${p.tok.kind}" "${p.tok.lit}"')
 		match p.tok.kind {
 			.hash {
 				c := p.comment()
 				p.ast_root.comments << c
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comment "$c.text"')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comment "${c.text}"')
 			}
 			.whitespace, .tab, .nl, .cr {
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping formatting "$p.tok.kind" "$p.tok.lit"')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping formatting "${p.tok.kind}" "${p.tok.lit}"')
 				continue
 			}
 			.bare, .quoted, .number, .minus, .underscore {
@@ -708,7 +708,7 @@ pub fn (mut p Parser) table_contents(mut tbl map[string]ast.Value) ! {
 
 					t := p.find_in_table(mut tbl, sub_table)!
 					unsafe {
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key" = $val in table ${ptr_str(t)}')
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "${key}" = ${val} in table ${ptr_str(t)}')
 						t[key.str()] = val
 					}
 				} else {
@@ -716,11 +716,11 @@ pub fn (mut p Parser) table_contents(mut tbl map[string]ast.Value) ! {
 					key, val := p.key_value()!
 
 					unsafe {
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key.str()" = $val in table ${ptr_str(tbl)}')
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "${key.str()}" = ${val} in table ${ptr_str(tbl)}')
 						key_str := key.str()
 						if _ := tbl[key_str] {
 							return error(@MOD + '.' + @STRUCT + '.' + @FN +
-								' key "$key" is already initialized with a value. At "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+								' key "${key}" is already initialized with a value. At "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 						}
 						tbl[key_str] = val
 					}
@@ -732,7 +732,7 @@ pub fn (mut p Parser) table_contents(mut tbl map[string]ast.Value) ! {
 			}
 			else {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' could not parse "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+					' could not parse "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 			}
 		}
 	}
@@ -746,7 +746,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 	mut previous_token_was_value := false
 	for p.tok.kind != .eof {
 		p.next()!
-		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind"')
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "${p.tok.kind}"')
 
 		if previous_token_was_value {
 			p.ignore_while(parser.space_formatting)
@@ -763,7 +763,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping "$p.tok.kind" "$p.tok.lit"')
 					continue
 				}*/
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping formatting "$p.tok.kind" "$p.tok.lit"')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping formatting "${p.tok.kind}" "${p.tok.lit}"')
 				continue
 			}
 			.comma {
@@ -771,9 +771,9 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 				if p.peek_tok.kind in [.comma, .rcbr] {
 					p.next()! // Forward to the peek_tok
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
-						' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
+						' unexpected "${p.tok.kind}" "${p.tok.lit}" at this (excerpt): "...${p.excerpt()}..."')
 				}
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comma table value seperator "$p.tok.lit"')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comma table value separator "${p.tok.lit}"')
 				continue
 			}
 			.rcbr {
@@ -791,7 +791,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 
 					mut t := p.find_in_table(mut tbl, sub_table)!
 					unsafe {
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$key" = $val into ${ptr_str(t)}')
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "${key}" = ${val} into ${ptr_str(t)}')
 						t[key.str()] = val
 					}
 				} else {
@@ -800,28 +800,28 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 					key_str := key.str()
 					if _ := tbl[key_str] {
 						return error(@MOD + '.' + @STRUCT + '.' + @FN +
-							' key "$key_str" is already initialized with a value. At "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+							' key "${key_str}" is already initialized with a value. At "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 					}
-					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @5 "$key_str" = $val into ${ptr_str(tbl)}')
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @5 "${key_str}" = ${val} into ${ptr_str(tbl)}')
 					tbl[key_str] = val
 				}
 				previous_token_was_value = true
 			}
 			else {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
+					' unexpected "${p.tok.kind}" "${p.tok.lit}" at this (excerpt): "...${p.excerpt()}..."')
 			}
 		}
 	}
 	// Make sure the inline-table actually use the return at .rcbr match branch.
 	return error(@MOD + '.' + @STRUCT + '.' + @FN +
-		' unexpected end of inline-table "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
+		' unexpected end of inline-table "${p.tok.kind}" "${p.tok.lit}" at this (excerpt): "...${p.excerpt()}..."')
 }
 
 // array_of_tables parses next tokens into an array of `ast.Value`s.
 [autofree_bug; manualfree]
 pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ! {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array of tables "$p.tok.kind" "$p.tok.lit"')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array of tables "${p.tok.kind}" "${p.tok.lit}"')
 	// NOTE this is starting to get ugly. TOML isn't simple at this point
 	p.check(.lsbr)! // '[' bracket
 
@@ -862,7 +862,7 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ! {
 				table[dotted_key_str] = arr
 			} else {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' table[$dotted_key_str] is not an array. (excerpt): "...${p.excerpt()}..."')
+					' table[${dotted_key_str}] is not an array. (excerpt): "...${p.excerpt()}..."')
 			}
 		} else {
 			table[dotted_key_str] = p.array_of_tables_contents()!
@@ -878,21 +878,21 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ! {
 
 // array_of_tables_contents parses next tokens into an array of `ast.Value`s.
 pub fn (mut p Parser) array_of_tables_contents() ![]ast.Value {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing contents from "$p.tok.kind" "$p.tok.lit"')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing contents from "${p.tok.kind}" "${p.tok.lit}"')
 	mut tbl := map[string]ast.Value{}
 
 	p.table_contents(mut tbl)!
 
 	mut arr := []ast.Value{}
 	arr << tbl
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed array of tables ${ast.Value(arr)}. leaving at "$p.tok.kind" "$p.tok.lit"')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed array of tables ${ast.Value(arr)}. leaving at "${p.tok.kind}" "${p.tok.lit}"')
 	return arr
 }
 
 // double_array_of_tables parses next tokens into an array of tables of arrays of `ast.Value`s...
 [autofree_bug; manualfree]
 pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing nested array of tables "$p.tok.kind" "$p.tok.lit"')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing nested array of tables "${p.tok.kind}" "${p.tok.lit}"')
 
 	dotted_key := p.dotted_key()!
 	p.ignore_while(parser.space_formatting)
@@ -922,16 +922,16 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 	unsafe {
 		// NOTE this is starting to get EVEN uglier. TOML is not *at all* simple at this point...
 		if first != p.last_aot {
-			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, '$first != $p.last_aot')
+			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, '${first} != ${p.last_aot}')
 			// Implicit allocation
 			if p.last_aot.len == 0 {
 				p.last_aot = first
 				mut nm := &p.root_map
 				if first.str() in table.keys() {
-					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'adding to existing table entry at `$first`.')
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'adding to existing table entry at `${first}`.')
 					nm = &(table[first.str()] as map[string]ast.Value)
 				} else {
-					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'implicit allocation of map for `$first` in dotted key `$dotted_key`.')
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'implicit allocation of map for `${first}` in dotted key `${dotted_key}`.')
 					nm = &map[string]ast.Value{}
 					// We register this implicit allocation as *explicit* to be able to catch
 					// special cases like:
@@ -947,7 +947,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 				return
 			} else {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' nested array of tables key "$first" does not match "$p.last_aot". (excerpt): "...${p.excerpt()}..."')
+					' nested array of tables key "${first}" does not match "${p.last_aot}". (excerpt): "...${p.excerpt()}..."')
 			}
 		}
 
@@ -966,7 +966,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 				t[last.str()] = arr
 			} else {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' t[$last.str()] is not an array. (excerpt): "...${p.excerpt()}..."')
+					' t[${last.str()}] is not an array. (excerpt): "...${p.excerpt()}..."')
 			}
 		} else {
 			t[last.str()] = p.double_array_of_tables_contents(dotted_key)!
@@ -980,7 +980,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 
 // double_array_of_tables_contents parses next tokens into an array of `ast.Value`s.
 pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ![]ast.Value {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing contents from "$p.tok.kind" "$p.tok.lit"')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing contents from "${p.tok.kind}" "${p.tok.lit}"')
 	mut tbl := map[string]ast.Value{}
 
 	mut implicit_allocation_key := DottedKey([]string{})
@@ -989,7 +989,7 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ![]a
 
 	for p.tok.kind != .eof {
 		p.next()!
-		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind"')
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "${p.tok.kind}"')
 		p.ignore_while(parser.all_formatting)
 
 		// Peek forward as far as we can skipping over space formatting tokens.
@@ -1019,7 +1019,7 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ![]a
 
 					mut t := p.find_in_table(mut tbl, sub_table)!
 					unsafe {
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$key" = $val into ${ptr_str(t)}')
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "${key}" = ${val} into ${ptr_str(t)}')
 						t[key.str()] = val
 					}
 				} else {
@@ -1030,7 +1030,7 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ![]a
 						t = p.find_in_table(mut tbl, implicit_allocation_key)!
 					}
 					unsafe {
-						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @7 "$key" = $val into ${ptr_str(t)}')
+						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @7 "${key}" = ${val} into ${ptr_str(t)}')
 						t[key.str()] = val
 					}
 				}
@@ -1054,14 +1054,14 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ![]a
 						implicit_allocation_key = dotted_key[2..]
 					}
 					p.ignore_while(parser.space_formatting)
-					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'keys are: dotted `$dotted_key`, target `$target_key`, implicit `$implicit_allocation_key` at "$p.tok.kind" "$p.tok.lit"')
+					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'keys are: dotted `${dotted_key}`, target `${target_key}`, implicit `${implicit_allocation_key}` at "${p.tok.kind}" "${p.tok.lit}"')
 					p.expect(.rsbr)!
 					p.peek_for_correct_line_ending_or_fail()!
 					p.explicit_declared << dotted_key
 					continue
 				} else {
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
-						' could not parse "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+						' could not parse "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 				}
 			}
 			else {
@@ -1071,7 +1071,7 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ![]a
 	}
 	mut arr := []ast.Value{}
 	arr << tbl
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed array of tables ${ast.Value(arr)}. leaving at "$p.tok.kind" "$p.tok.lit"')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed array of tables ${ast.Value(arr)}. leaving at "${p.tok.kind}" "${p.tok.lit}"')
 	return arr
 }
 
@@ -1083,7 +1083,7 @@ pub fn (mut p Parser) array() ![]ast.Value {
 	mut previous_token_was_value := false
 	for p.tok.kind != .eof {
 		p.next()!
-		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind" "$p.tok.lit"')
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "${p.tok.kind}" "${p.tok.lit}"')
 
 		if previous_token_was_value {
 			p.ignore_while(parser.all_formatting)
@@ -1107,19 +1107,19 @@ pub fn (mut p Parser) array() ![]ast.Value {
 				if p.peek_tok.kind in [.comma, .bare] {
 					p.next()! // Forward to the peek_tok
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
-						' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
+						' unexpected "${p.tok.kind}" "${p.tok.lit}" at this (excerpt): "...${p.excerpt()}..."')
 				}
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comma table value seperator "$p.tok.lit"')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comma table value separator "${p.tok.lit}"')
 				continue
 			}
 			.eof {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' could not parse array. Reached EOF "$p.tok.kind" "$p.tok.lit" ("$p.tok.lit") in this (excerpt): "...${p.excerpt()}..."')
+					' could not parse array. Reached EOF "${p.tok.kind}" "${p.tok.lit}" ("${p.tok.lit}") in this (excerpt): "...${p.excerpt()}..."')
 			}
 			.hash {
 				c := p.comment()
 				p.ast_root.comments << c
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comment "$c.text"')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comment "${c.text}"')
 			}
 			.lcbr {
 				p.ignore_while(parser.space_formatting)
@@ -1138,7 +1138,7 @@ pub fn (mut p Parser) array() ![]ast.Value {
 				previous_token_was_value = true
 			}
 			.lsbr {
-				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array in array "$p.tok.kind" "$p.tok.lit"')
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array in array "${p.tok.kind}" "${p.tok.lit}"')
 				arr << ast.Value(p.array()!)
 				previous_token_was_value = true
 			}
@@ -1147,21 +1147,21 @@ pub fn (mut p Parser) array() ![]ast.Value {
 			}
 			else {
 				error(@MOD + '.' + @STRUCT + '.' + @FN +
-					' could not parse  "$p.tok.kind" "$p.tok.lit" ("$p.tok.lit") in this (excerpt): "...${p.excerpt()}..."')
+					' could not parse  "${p.tok.kind}" "${p.tok.lit}" ("${p.tok.lit}") in this (excerpt): "...${p.excerpt()}..."')
 			}
 		}
 	}
 	p.expect(.rsbr)! // ']' bracket
 	$if debug {
 		flat := arr.str().replace('\n', r'\n')
-		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed array: $flat . Currently @ token "$p.tok.kind"')
+		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed array: ${flat} . Currently @ token "${p.tok.kind}"')
 	}
 	return arr
 }
 
 // comment returns an `ast.Comment` type.
 pub fn (mut p Parser) comment() ast.Comment {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed hash comment "#$p.tok.lit"')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed hash comment "#${p.tok.lit}"')
 	return ast.Comment{
 		text: p.tok.lit
 		pos: p.tok.pos()
@@ -1171,7 +1171,7 @@ pub fn (mut p Parser) comment() ast.Comment {
 // key parse and returns an `ast.Key` type.
 // Keys are the token(s) appearing before an assignment operator (=).
 pub fn (mut p Parser) key() !ast.Key {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing key from "$p.tok.lit" ...')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing key from "${p.tok.lit}" ...')
 
 	mut key := ast.Key(ast.Null{})
 	if p.tok.kind == .number {
@@ -1214,7 +1214,7 @@ pub fn (mut p Parser) key() !ast.Key {
 
 	if key is ast.Null {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' key expected .bare, .underscore, .number, .quoted or .boolean but got "$p.tok.kind"')
+			' key expected .bare, .underscore, .number, .quoted or .boolean but got "${p.tok.kind}"')
 	}
 
 	// A few small exceptions that can't easily be done via `checker` or `decoder` *after* the
@@ -1252,7 +1252,7 @@ pub fn (mut p Parser) key_value() !(ast.Key, ast.Value) {
 	p.check(.assign)! // Assignment operator
 	p.ignore_while(parser.space_formatting)
 	value := p.value()!
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed key value pair. `$key = $value`')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed key value pair. `${key} = ${value}`')
 
 	p.explicit_declared << p.build_abs_dotted_key(DottedKey([
 		key.str(),
@@ -1271,7 +1271,7 @@ pub fn (mut p Parser) dotted_key_value() !(DottedKey, ast.Value) {
 	p.check(.assign)!
 	p.ignore_while(parser.space_formatting)
 	value := p.value()!
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed dotted key value pair `$dotted_key = $value`...')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed dotted key value pair `${dotted_key} = ${value}`...')
 
 	p.explicit_declared << p.build_abs_dotted_key(dotted_key)
 
@@ -1281,7 +1281,7 @@ pub fn (mut p Parser) dotted_key_value() !(DottedKey, ast.Value) {
 // value parse and returns an `ast.Value` type.
 // values are the token(s) appearing after an assignment operator (=).
 pub fn (mut p Parser) value() !ast.Value {
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing value from token "$p.tok.kind" "$p.tok.lit"...')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing value from token "${p.tok.kind}" "${p.tok.lit}"...')
 	mut value := ast.Value(ast.Null{})
 
 	if p.tok.kind == .number {
@@ -1310,10 +1310,10 @@ pub fn (mut p Parser) value() !ast.Value {
 		}
 		if value is ast.Null {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' value expected .boolean, .quoted, .lsbr, .lcbr or .number got "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
+				' value expected .boolean, .quoted, .lsbr, .lcbr or .number got "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 		}
 	}
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed "$p.tok.kind" as value $value')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed "${p.tok.kind}" as value ${value}')
 	return value
 }
 
@@ -1350,7 +1350,7 @@ pub fn (mut p Parser) bare() !ast.Bare {
 			continue
 		}
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' bare key expected .bare, .minus, or .underscore but got "$p.tok.kind"')
+			' bare key expected .bare, .minus, or .underscore but got "${p.tok.kind}"')
 	}
 	return ast.Bare{
 		text: lits
@@ -1387,7 +1387,7 @@ pub fn (mut p Parser) quoted() ast.Quoted {
 pub fn (mut p Parser) boolean() !ast.Bool {
 	if p.tok.lit !in ['true', 'false'] {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
-			' expected literal to be either `true` or `false` got "$p.tok.kind"')
+			' expected literal to be either `true` or `false` got "${p.tok.kind}"')
 	}
 	return ast.Bool{
 		text: p.tok.lit
@@ -1428,7 +1428,7 @@ pub fn (mut p Parser) date_time() !ast.DateTimeType {
 			time = p.time()!
 			lit += time.text
 
-			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed date-time: "$lit"')
+			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed date-time: "${lit}"')
 			return ast.DateTime{
 				text: lit
 				pos: pos
@@ -1463,7 +1463,7 @@ pub fn (mut p Parser) date() !ast.Date {
 	lit += p.tok.lit
 	p.expect(.number)!
 
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed date: "$lit"')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed date: "${lit}"')
 	return ast.Date{
 		text: lit
 		pos: pos
@@ -1524,7 +1524,7 @@ pub fn (mut p Parser) time() !ast.Time {
 		p.expect(.bare)!
 	}
 
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed time: "$lit"')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed time: "${lit}"')
 	return ast.Time{
 		text: lit
 		pos: pos

@@ -21,7 +21,7 @@ const (
 	show_progress                  = os.getenv('GITHUB_JOB') == '' && '-silent' !in os.args
 	non_option_args                = cmdline.only_non_options(os.args[2..])
 	is_verbose                     = os.getenv('VERBOSE') != ''
-	vcheckfolder                   = os.join_path(os.vtmp_dir(), 'v', 'vcheck_$os.getuid()')
+	vcheckfolder                   = os.join_path(os.vtmp_dir(), 'v', 'vcheck_${os.getuid()}')
 	should_autofix                 = os.getenv('VAUTOFIX') != ''
 	vexe                           = @VEXE
 )
@@ -71,7 +71,7 @@ fn main() {
 		}
 		real_path := os.real_path(file_path)
 		lines := os.read_lines(real_path) or {
-			println('"$file_path" does not exist')
+			println('"${file_path}" does not exist')
 			res.warnings++
 			continue
 		}
@@ -85,7 +85,7 @@ fn main() {
 		clear_previous_line()
 	}
 	if res.warnings > 0 || res.errors > 0 || res.oks > 0 {
-		println('\nWarnings: $res.warnings | Errors: $res.errors | OKs: $res.oks')
+		println('\nWarnings: ${res.warnings} | Errors: ${res.errors} | OKs: ${res.oks}')
 	}
 	if res.errors > 0 {
 		exit(1)
@@ -130,12 +130,12 @@ fn rtext(s string) string {
 }
 
 fn wline(file_path string, lnumber int, column int, message string) string {
-	return btext('$file_path:${lnumber + 1}:${column + 1}:') + btext(mtext(' warn:')) +
-		rtext(' $message')
+	return btext('${file_path}:${lnumber + 1}:${column + 1}:') + btext(mtext(' warn:')) +
+		rtext(' ${message}')
 }
 
 fn eline(file_path string, lnumber int, column int, message string) string {
-	return btext('$file_path:${lnumber + 1}:${column + 1}:') + btext(rtext(' error: $message'))
+	return btext('${file_path}:${lnumber + 1}:${column + 1}:') + btext(rtext(' error: ${message}'))
 }
 
 const default_command = 'compile'
@@ -166,7 +166,7 @@ mut:
 fn (mut f MDFile) progress(message string) {
 	if show_progress {
 		clear_previous_line()
-		println('File: ${f.path:-30s}, Lines: ${f.lines.len:5}, $message')
+		println('File: ${f.path:-30s}, Lines: ${f.lines.len:5}, ${message}')
 	}
 }
 
@@ -177,30 +177,30 @@ fn (mut f MDFile) check() CheckResult {
 		// f.progress('line: $j')
 		if f.state == .vexample {
 			if line.len > too_long_line_length_example {
-				wprintln(wline(f.path, j, line.len, 'example lines must be less than $too_long_line_length_example characters'))
+				wprintln(wline(f.path, j, line.len, 'example lines must be less than ${too_long_line_length_example} characters'))
 				wprintln(line)
 				res.warnings++
 			}
 		} else if f.state == .codeblock {
 			if line.len > too_long_line_length_codeblock {
-				wprintln(wline(f.path, j, line.len, 'code lines must be less than $too_long_line_length_codeblock characters'))
+				wprintln(wline(f.path, j, line.len, 'code lines must be less than ${too_long_line_length_codeblock} characters'))
 				wprintln(line)
 				res.warnings++
 			}
 		} else if line.starts_with('|') {
 			if line.len > too_long_line_length_table {
-				wprintln(wline(f.path, j, line.len, 'table lines must be less than $too_long_line_length_table characters'))
+				wprintln(wline(f.path, j, line.len, 'table lines must be less than ${too_long_line_length_table} characters'))
 				wprintln(line)
 				res.warnings++
 			}
 		} else if line.contains('http') {
 			if line.all_after('https').len > too_long_line_length_link {
-				wprintln(wline(f.path, j, line.len, 'link lines must be less than $too_long_line_length_link characters'))
+				wprintln(wline(f.path, j, line.len, 'link lines must be less than ${too_long_line_length_link} characters'))
 				wprintln(line)
 				res.warnings++
 			}
 		} else if line.len > too_long_line_length_other {
-			eprintln(eline(f.path, j, line.len, 'must be less than $too_long_line_length_other characters'))
+			eprintln(eline(f.path, j, line.len, 'must be less than ${too_long_line_length_other} characters'))
 			eprintln(line)
 			res.errors++
 		}
@@ -224,7 +224,7 @@ fn (mut f MDFile) parse_line(lnumber int, line string) {
 			if command == '' {
 				command = default_command
 			} else if command == 'nofmt' {
-				command += ' $default_command'
+				command += ' ${default_command}'
 			}
 			f.current = VCodeExample{
 				sline: lnumber
@@ -331,14 +331,14 @@ fn (mut ad AnchorData) check_link_target_match(fpath string, mut res CheckResult
 				found_error_warning = true
 				res.errors++
 				for anchordata in ad.anchors[link] {
-					eprintln(eline(fpath, anchordata.line, 0, 'multiple link targets of existing link (#$link)'))
+					eprintln(eline(fpath, anchordata.line, 0, 'multiple link targets of existing link (#${link})'))
 				}
 			}
 		} else {
 			found_error_warning = true
 			res.errors++
 			for brokenlink in linkdata {
-				eprintln(eline(fpath, brokenlink.line, 0, 'no link target found for existing link [$brokenlink.lable](#$link)'))
+				eprintln(eline(fpath, brokenlink.line, 0, 'no link target found for existing link [${brokenlink.lable}](#${link})'))
 			}
 		}
 	}
@@ -354,7 +354,7 @@ fn (mut ad AnchorData) check_link_target_match(fpath string, mut res CheckResult
 							anchor.line
 						}
 					}
-					wprintln(wline(fpath, line, 0, 'multiple link target for non existing link (#$link)'))
+					wprintln(wline(fpath, line, 0, 'multiple link target for non existing link (#${link})'))
 					found_error_warning = true
 					res.warnings++
 				}
@@ -394,7 +394,7 @@ fn create_ref_link(s string) string {
 
 fn (mut f MDFile) debug() {
 	for e in f.examples {
-		eprintln('f.path: $f.path | example: $e')
+		eprintln('f.path: ${f.path} | example: ${e}')
 	}
 }
 
@@ -442,7 +442,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 		mut acommands := e.command.split(' ')
 		nofmt := 'nofmt' in acommands
 		for command in acommands {
-			f.progress('example from $e.sline to $e.eline, command: $command')
+			f.progress('example from ${e.sline} to ${e.eline}, command: ${command}')
 			fmt_res := if nofmt { 0 } else { get_fmt_exit_code(vfile, vexe) }
 			match command {
 				'compile' {
@@ -598,7 +598,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 				}
 				'nofmt' {}
 				else {
-					eprintln(eline(f.path, e.sline, 0, 'unrecognized command: "$command", use one of: wip/ignore/compile/failcompile/okfmt/nofmt/oksyntax/badsyntax/cgen/globals/live/shared'))
+					eprintln(eline(f.path, e.sline, 0, 'unrecognized command: "${command}", use one of: wip/ignore/compile/failcompile/okfmt/nofmt/oksyntax/badsyntax/cgen/globals/live/shared'))
 					should_cleanup_vfile = false
 					errors++
 				}
@@ -639,10 +639,10 @@ fn (mut f MDFile) report_not_formatted_example_if_needed(e VCodeExample, fmt_res
 	}
 	f.autofix_example(e, vfile) or {
 		if err is ExampleWasRewritten {
-			eprintln('>> f.path: $f.path | example from $e.sline to $e.eline was re-formated by vfmt')
+			eprintln('>> f.path: ${f.path} | example from ${e.sline} to ${e.eline} was re-formated by vfmt')
 			return err
 		}
-		eprintln('>> f.path: $f.path | encountered error while autofixing the example: $err')
+		eprintln('>> f.path: ${f.path} | encountered error while autofixing the example: ${err}')
 	}
 }
 
@@ -651,7 +651,7 @@ struct ExampleWasRewritten {
 }
 
 fn (mut f MDFile) autofix_example(e VCodeExample, vfile string) ! {
-	eprintln('>>> AUTOFIXING f.path: $f.path | e.sline: $e.sline | vfile: $vfile')
+	eprintln('>>> AUTOFIXING f.path: ${f.path} | e.sline: ${e.sline} | vfile: ${vfile}')
 	res := cmdexecute('${os.quoted_path(vexe)} fmt -w ${os.quoted_path(vfile)}')
 	if res != 0 {
 		return error('could not autoformat the example')

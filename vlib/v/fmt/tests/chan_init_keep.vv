@@ -22,6 +22,6 @@ fn produce_events(ch chan FSMEvent) {
 
 fn main() {
 	ch_fsm_events := chan FSMEvent{cap: 1000}
-	eprintln('ch_fsm_events.len: $ch_fsm_events.len')
-	eprintln('ch_fsm_events.cap: $ch_fsm_events.cap')
+	eprintln('ch_fsm_events.len: ${ch_fsm_events.len}')
+	eprintln('ch_fsm_events.cap: ${ch_fsm_events.cap}')
 }

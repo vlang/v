@@ -107,7 +107,7 @@ fn (mut r Repl) checks() bool {
 
 fn (r &Repl) function_call(line string) (bool, FnType) {
 	for function in r.functions_name {
-		is_function_definition := line.replace(' ', '').starts_with('$function:=')
+		is_function_definition := line.replace(' ', '').starts_with('${function}:=')
 		if line.starts_with(function) && !is_function_definition {
 			// TODO(vincenzopalazzo) store the type of the function here
 			fntype := r.check_fn_type_kind(line)
@@ -141,7 +141,7 @@ fn (r &Repl) is_function_call(line string) bool {
 fn (r &Repl) import_to_source_code() []string {
 	mut imports_line := []string{}
 	for mod in r.modules {
-		mut import_str := 'import $mod'
+		mut import_str := 'import ${mod}'
 		if mod in r.alias {
 			import_str += ' as ${r.alias[mod]}'
 		}
@@ -177,7 +177,7 @@ fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool)
 // do not return anything, while others return results.
 // This function checks which one we have:
 fn (r &Repl) check_fn_type_kind(new_line string) FnType {
-	source_code := r.current_source_code(true, false) + '\nprintln($new_line)'
+	source_code := r.current_source_code(true, false) + '\nprintln(${new_line})'
 	check_file := os.join_path(r.folder, '${rand.ulid()}.vrepl.check.v')
 	os.write_file(check_file, source_code) or { panic(err) }
 	defer {
@@ -228,11 +228,11 @@ fn (mut r Repl) list_source() {
 }
 
 fn highlight_console_command(command string) string {
-	return term.bright_white(term.bright_bg_black(' $command '))
+	return term.bright_white(term.bright_bg_black(' ${command} '))
 }
 
 fn highlight_repl_command(command string) string {
-	return term.bright_white(term.bg_blue(' $command '))
+	return term.bright_white(term.bg_blue(' ${command} '))
 }
 
 fn print_welcome_screen() {
@@ -253,19 +253,19 @@ fn print_welcome_screen() {
 		term.bright_blue(r'     \__/     '),
 	]
 	help_text := [
-		'Welcome to the V REPL (for help with V itself, type $cmd_exit, then run $cmd_v_help).',
+		'Welcome to the V REPL (for help with V itself, type ${cmd_exit}, then run ${cmd_v_help}).',
 		'Note: the REPL is highly experimental. For best V experience, use a text editor, ',
-		'save your code in a $file_main file and execute: $cmd_v_run',
-		'${version.full_v_version(false)} . Use $cmd_list to see the accumulated program so far.',
-		'Use Ctrl-C or $cmd_exit to exit, or $cmd_help to see other available commands.',
+		'save your code in a ${file_main} file and execute: ${cmd_v_run}',
+		'${version.full_v_version(false)} . Use ${cmd_list} to see the accumulated program so far.',
+		'Use Ctrl-C or ${cmd_exit} to exit, or ${cmd_help} to see other available commands.',
 	]
 	if width >= 97 {
 		eprintln('${vlogo[0]}')
-		eprintln('${vlogo[1]} $vbar  ${help_text[0]}')
-		eprintln('${vlogo[2]} $vbar  ${help_text[1]}')
-		eprintln('${vlogo[3]} $vbar  ${help_text[2]}')
-		eprintln('${vlogo[4]} $vbar  ${help_text[3]}')
-		eprintln('${vlogo[5]} $vbar  ${help_text[4]}')
+		eprintln('${vlogo[1]} ${vbar}  ${help_text[0]}')
+		eprintln('${vlogo[2]} ${vbar}  ${help_text[1]}')
+		eprintln('${vlogo[3]} ${vbar}  ${help_text[2]}')
+		eprintln('${vlogo[4]} ${vbar}  ${help_text[3]}')
+		eprintln('${vlogo[5]} ${vbar}  ${help_text[4]}')
 		eprintln('')
 	} else {
 		if width >= 14 {
@@ -286,7 +286,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 	if vstartup != '' {
 		result := repl_run_vfile(vstartup) or {
 			os.Result{
-				output: '$vstartup file not found'
+				output: '${vstartup} file not found'
 			}
 		}
 		print('\n')
@@ -359,7 +359,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			r.line = ''
 		}
 		if r.line == 'debug_repl' {
-			eprintln('repl: $r')
+			eprintln('repl: ${r}')
 			continue
 		}
 		if r.line == 'reset' {
@@ -385,7 +385,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			r.line = 'println(' + r.line[1..] + ')'
 		}
 		if r.line.starts_with('print') {
-			source_code := r.current_source_code(false, false) + '\n$r.line\n'
+			source_code := r.current_source_code(false, false) + '\n${r.line}\n'
 			os.write_file(temp_file, source_code) or { panic(err) }
 			s := repl_run_vfile(temp_file) or { return 1 }
 			if s.output.len > r.last_output.len {
@@ -438,8 +438,8 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 				is_statement = true
 			}
 			if !is_statement && (!func_call || fntype == FnType.fn_type) && r.line != '' {
-				temp_line = 'println($r.line)'
-				source_code := r.current_source_code(false, false) + '\n$temp_line\n'
+				temp_line = 'println(${r.line})'
+				source_code := r.current_source_code(false, false) + '\n${temp_line}\n'
 				os.write_file(temp_file, source_code) or { panic(err) }
 				s := repl_run_vfile(temp_file) or { return 1 }
 				if s.output.len > r.last_output.len {
@@ -452,10 +452,10 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			if temp_line.starts_with('import ') {
 				mod := r.line.fields()[1]
 				if mod !in r.modules {
-					temp_source_code = '$temp_line\n' + r.current_source_code(false, true)
+					temp_source_code = '${temp_line}\n' + r.current_source_code(false, true)
 				}
 			} else if temp_line.starts_with('#include ') {
-				temp_source_code = '$temp_line\n' + r.current_source_code(false, false)
+				temp_source_code = '${temp_line}\n' + r.current_source_code(false, false)
 			} else {
 				for i, l in r.lines {
 					if (l.starts_with('for ') || l.starts_with('if ')) && l.contains('println') {
@@ -463,7 +463,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 						break
 					}
 				}
-				temp_source_code = r.current_source_code(true, false) + '\n$temp_line\n'
+				temp_source_code = r.current_source_code(true, false) + '\n${temp_line}\n'
 			}
 			os.write_file(temp_file, temp_source_code) or { panic(err) }
 			s := repl_run_vfile(temp_file) or { return 1 }
@@ -547,7 +547,7 @@ fn main() {
 }
 
 fn rerror(s string) {
-	println('V repl error: $s')
+	println('V repl error: ${s}')
 	os.flush()
 }
 
@@ -578,7 +578,7 @@ fn cleanup_files(file string) {
 
 fn repl_run_vfile(file string) ?os.Result {
 	$if trace_repl_temp_files ? {
-		eprintln('>> repl_run_vfile file: $file')
+		eprintln('>> repl_run_vfile file: ${file}')
 	}
 	s := os.execute('${os.quoted_path(vexe)} -repl run ${os.quoted_path(file)}')
 	if s.exit_code < 0 {

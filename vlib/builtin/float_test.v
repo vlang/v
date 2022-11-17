@@ -228,3 +228,12 @@ fn test_float_point_formatting_rounding() {
 	assert '${-239.55555555555:0.1f}' == '-239.6'
 	assert '${-239.55555555555:0.0f}' == '-240'
 }
+
+fn test_float_zero_str() {
+	f1 := f32(0.0)
+	f2 := 0.0
+	assert f1.str() == '0.0'
+	assert '${f1}' == '0.0'
+	assert f2.str() == '0.0'
+	assert '${f2}' == '0.0'
+}

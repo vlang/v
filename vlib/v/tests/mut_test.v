@@ -55,8 +55,8 @@ fn test_mut_3() {
 	for i, mut v in indices {
 		v = i
 		a := v
-		println('$i $v $a')
-		results << '$i $v $a'
+		println('${i} ${v} ${a}')
+		results << '${i} ${v} ${a}'
 	}
 	assert results[0] == '0 0 0'
 	assert results[1] == '1 1 1'
@@ -76,8 +76,8 @@ fn f(mut x St) {
 	b := y
 	x.n = 3
 	y.n = 4
-	println('$a.n $b.n')
-	assert '$a.n $b.n' == '1 2'
+	println('${a.n} ${b.n}')
+	assert '${a.n} ${b.n}' == '1 2'
 }
 
 fn test_mut_4() {
@@ -96,13 +96,13 @@ fn test_mut_5() {
 		for ii, mut vv in arr2 {
 			v = i
 			a := v
-			println('$i $v $a')
-			results << '$i $v $a'
+			println('${i} ${v} ${a}')
+			results << '${i} ${v} ${a}'
 
 			vv = ii
 			aa := vv
-			println('$ii $vv $aa')
-			results << '$ii $vv $aa'
+			println('${ii} ${vv} ${aa}')
+			results << '${ii} ${vv} ${aa}'
 		}
 	}
 
@@ -180,9 +180,9 @@ fn test_mut_9() {
 		println(v)
 		println(vv)
 		println(foo)
-		results << '$v'
-		results << '$vv'
-		results << '$foo'
+		results << '${v}'
+		results << '${vv}'
+		results << '${foo}'
 	}
 	assert results[0] == '1'
 	assert results[1] == '2'
@@ -252,7 +252,7 @@ fn foo3(mut arr [][]int) {
 	for _, mut j in arr {
 		j[0] += 2
 		println(j) // [2, 0]
-		results << '$j'
+		results << '${j}'
 	}
 	assert results[0] == '[2, 0]'
 }
@@ -360,8 +360,8 @@ fn foo8(mut a [1]int) {
 	a[0] = 100
 	println(a)
 	println(a2)
-	assert '$a' == '[100]'
-	assert '$a2' == '[1]'
+	assert '${a}' == '[100]'
+	assert '${a2}' == '[1]'
 }
 
 fn test_mut_18() {
