@@ -201,6 +201,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			mut typ := ast.Type(0)
 			mut type_pos := token.Pos{}
 			mut field_pos := token.Pos{}
+			mut optional_pos := token.Pos{}
 			mut anon_struct_decl := ast.StructDecl{}
 			if is_embed {
 				// struct embedding
@@ -260,6 +261,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				}
 				type_pos = p.prev_tok.pos()
 				field_pos = field_start_pos.extend(type_pos)
+				if typ.has_flag(.optional) || typ.has_flag(.result) {
+					optional_pos = p.peek_token(-2).pos()
+				}
 			}
 			// Comments after type (same line)
 			comments << p.eat_comments()
@@ -292,6 +296,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					typ: typ
 					pos: field_pos
 					type_pos: type_pos
+					optional_pos: optional_pos
 					comments: comments
 					i: i
 					default_expr: default_expr
@@ -311,6 +316,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				typ: typ
 				pos: field_pos
 				type_pos: type_pos
+				optional_pos: optional_pos
 				comments: comments
 				i: i
 				default_expr: default_expr

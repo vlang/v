@@ -52,6 +52,11 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
+	old_inside_opt_or_res := g.inside_opt_or_res
+	g.inside_opt_or_res = true
+	defer {
+		g.inside_opt_or_res = old_inside_opt_or_res
+	}
 	is_shared := etype.has_flag(.shared_f)
 	mut typ := etype
 	if is_shared {

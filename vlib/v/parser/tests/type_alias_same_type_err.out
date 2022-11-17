@@ -1,5 +1,5 @@
 vlib/v/parser/tests/type_alias_same_type_err.vv:1:1: error: a type alias can not refer to itself: Foo
     1 | type Foo = Foo
       | ~~~~~~~~~~~~~~
-    2 |
+    2 | 
     3 | fn main() {

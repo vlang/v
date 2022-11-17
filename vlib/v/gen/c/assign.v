@@ -192,7 +192,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			&& !g.pref.translated
 		g.is_assign_lhs = true
 		g.assign_op = node.op
-		if val_type.has_flag(.optional) {
+		if val_type.has_flag(.optional) || val_type.has_flag(.result) {
 			g.right_is_opt = true
 		}
 		if blank_assign {
@@ -434,7 +434,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				*/
 			}
 			if !cloned {
-				if is_fixed_array_var {
+				if (var_type.has_flag(.optional) && !val_type.has_flag(.optional))
+					|| (var_type.has_flag(.result) && !val_type.has_flag(.result)) {
+					tmp_var := g.new_tmp_var()
+					g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
+				} else if is_fixed_array_var {
 					// TODO Instead of the translated check, check if it's a pointer already
 					// and don't generate memcpy &
 					typ_str := g.typ(val_type).trim('*')

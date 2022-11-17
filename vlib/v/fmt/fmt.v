@@ -2568,6 +2568,7 @@ pub fn (mut f Fmt) selector_expr(node ast.SelectorExpr) {
 	f.expr(node.expr)
 	f.write('.')
 	f.write(node.field_name)
+	f.or_expr(node.or_block)
 }
 
 pub fn (mut f Fmt) size_of(node ast.SizeOf) {

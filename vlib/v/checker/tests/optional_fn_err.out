@@ -1,5 +1,5 @@
 vlib/v/checker/tests/optional_fn_err.vv:13:16: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
-   11 |
+   11 | 
    12 | const (
    13 |     const_value = bar(0)
       |                   ~~~~~~
@@ -31,21 +31,21 @@ vlib/v/checker/tests/optional_fn_err.vv:35:16: error: bar() returns an option, s
    34 |     _ := bar(0)
    35 |     println(twice(bar(0)))
       |                   ~~~~~~
-   36 |
+   36 | 
    37 |     // anon fn
 vlib/v/checker/tests/optional_fn_err.vv:38:16: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
-   36 |
+   36 | 
    37 |     // anon fn
    38 |     fn (_ int) {}(bar(0))
       |                   ~~~~~~
-   39 |
+   39 | 
    40 |     // assert
 vlib/v/checker/tests/optional_fn_err.vv:41:9: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
-   39 |
+   39 | 
    40 |     // assert
    41 |     assert bar(true)
       |            ~~~~~~~~~
-   42 |
+   42 | 
    43 |     // struct
 vlib/v/checker/tests/optional_fn_err.vv:46:10: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
    44 |     mut v := Data{
@@ -54,13 +54,6 @@ vlib/v/checker/tests/optional_fn_err.vv:46:10: error: bar() returns an option, s
       |                ~~~~~~
    47 |         opt: bar(0),
    48 |     }
-vlib/v/checker/tests/optional_fn_err.vv:47:3: error: field `opt` is optional, but initialization of optional fields currently unsupported
-   45 |         f: fn (_ int) {},
-   46 |         value: bar(0),
-   47 |         opt: bar(0),
-      |         ~~~~~~~~~~~
-   48 |     }
-   49 |     v.add(bar(0)) // call method
 vlib/v/checker/tests/optional_fn_err.vv:49:8: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
    47 |         opt: bar(0),
    48 |     }
@@ -73,7 +66,7 @@ vlib/v/checker/tests/optional_fn_err.vv:50:6: error: bar() returns an option, so
    49 |     v.add(bar(0)) // call method
    50 |     v.f(bar(0)) // call fn field
       |         ~~~~~~
-   51 |
+   51 | 
    52 |     // array
 vlib/v/checker/tests/optional_fn_err.vv:54:9: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
    52 |     // array
@@ -164,11 +157,11 @@ vlib/v/checker/tests/optional_fn_err.vv:70:18: error: bar() returns an option, s
    69 |     println(arr.any(bar(true)))
    70 |     println(arr.all(bar(true)))
       |                     ~~~~~~~~~
-   71 |
+   71 | 
    72 |     match bar(0) {
 vlib/v/checker/tests/optional_fn_err.vv:72:8: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
    70 |     println(arr.all(bar(true)))
-   71 |
+   71 | 
    72 |     match bar(0) {
       |           ~~~~~~
    73 |         0 { }

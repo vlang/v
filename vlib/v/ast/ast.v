@@ -260,6 +260,7 @@ pub mut:
 	expr_type           Type // type of `Foo` in `Foo.bar`
 	typ                 Type // type of the entire thing (`Foo.bar`)
 	name_type           Type // T in `T.name` or typeof in `typeof(expr).name`
+	or_block            OrExpr
 	gkind_field         GenericKindField // `T.name` => ast.GenericKindField.name, `T.typ` => ast.GenericKindField.typ, or .unknown
 	scope               &Scope = unsafe { nil }
 	from_embed_types    []Type // holds the type of the embed that the method is called from
@@ -295,6 +296,7 @@ pub struct StructField {
 pub:
 	pos              token.Pos
 	type_pos         token.Pos
+	optional_pos     token.Pos
 	comments         []Comment
 	i                int
 	has_default_expr bool

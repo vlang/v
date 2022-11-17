@@ -950,6 +950,35 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast
 			c.error('unexpected `!`, the function `${expr.name}` does not return a result',
 				expr.or_block.pos)
 		}
+	} else if expr is ast.SelectorExpr && c.table.sym(ret_type).kind != .chan {
+		if expr.typ.has_flag(.optional) || expr.typ.has_flag(.result) {
+			with_modifier_kind := if expr.typ.has_flag(.optional) {
+				'an option'
+			} else {
+				'a result'
+			}
+			with_modifier := if expr.typ.has_flag(.optional) { '?' } else { '!' }
+			if expr.or_block.kind == .absent {
+				if c.inside_defer {
+					c.error('field `${expr.field_name}` is ${with_modifier_kind}, so it should have an `or {}` block at the end',
+						expr.pos)
+				} else {
+					c.error('field `${expr.field_name}` is ${with_modifier_kind}, so it should have either an `or {}` block, or `${with_modifier}` at the end',
+						expr.pos)
+				}
+			} else {
+				c.check_or_expr(expr.or_block, ret_type, expr.typ)
+			}
+			return ret_type.clear_flag(.optional).clear_flag(.result)
+		} else if expr.or_block.kind == .block {
+			c.error('unexpected `or` block, the field `${expr.field_name}` is neither an optional, nor a result',
+				expr.or_block.pos)
+		} else if expr.or_block.kind == .propagate_option {
+			c.error('unexpected `?`, the field `${expr.field_name}` is not an optional',
+				expr.or_block.pos)
+		} else if expr.or_block.kind == .propagate_result {
+			c.error('unexpected `!`, result fields are not supported', expr.or_block.pos)
+		}
 	} else if expr is ast.IndexExpr {
 		if expr.or_expr.kind != .absent {
 			c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result))
@@ -1281,6 +1310,11 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			}
 		}
 		node.typ = field.typ
+		if node.or_block.kind == .block {
+			c.expected_or_type = node.typ.clear_flag(.optional).clear_flag(.result)
+			c.stmts_ending_with_expression(node.or_block.stmts)
+			c.expected_or_type = ast.void_type
+		}
 		return field.typ
 	}
 	if mut method := c.table.find_method(sym, field_name) {
@@ -2321,7 +2355,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 
 			unwrapped_expr_type := c.unwrap_generic(node.expr_type)
 			tsym := c.table.sym(unwrapped_expr_type)
-			c.table.dumps[int(unwrapped_expr_type)] = tsym.cname
+			c.table.dumps[int(unwrapped_expr_type.clear_flag(.optional).clear_flag(.result))] = tsym.cname
 			node.cname = tsym.cname
 			return node.expr_type
 		}
@@ -2422,7 +2456,32 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			return c.select_expr(mut node)
 		}
 		ast.SelectorExpr {
-			return c.selector_expr(mut node)
+			mut ret_type := c.selector_expr(mut node)
+			if c.table.sym(ret_type).kind == .chan {
+				return ret_type
+			}
+
+			if !ret_type.has_flag(.optional) && !ret_type.has_flag(.result) {
+				if node.or_block.kind == .block {
+					c.error('unexpected `or` block, the field `${node.field_name}` is neither an optional, nor a result',
+						node.or_block.pos)
+				} else if node.or_block.kind == .propagate_option {
+					c.error('unexpected `?`, the field `${node.field_name}` is neither an optional, nor a result',
+						node.or_block.pos)
+				} else if node.or_block.kind == .propagate_result {
+					c.error('unexpected `!`, the field `${node.field_name}` is neither an optional, nor a result',
+						node.or_block.pos)
+				}
+			}
+			if node.or_block.kind != .absent {
+				if ret_type.has_flag(.optional) {
+					ret_type = ret_type.clear_flag(.optional)
+				}
+				if ret_type.has_flag(.result) {
+					ret_type = ret_type.clear_flag(.result)
+				}
+			}
+			return ret_type
 		}
 		ast.SizeOf {
 			if !node.is_type {
