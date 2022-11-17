@@ -34,6 +34,17 @@ fn main() {
 	sum = f.bar or { 123 } + 1
 	println(sum)
 	dump(sum)
+	// `if guard` test
+	if c := f.bar {
+		println(c)
+	} else {
+		println(err)
+	}
+	if c := f.baz {
+		println(c)
+	} else {
+		println(err)
+	}
 	// others test
 	println(f)
 	dump(f)
