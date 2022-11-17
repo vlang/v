@@ -12,11 +12,13 @@
 [vlib/v/tests/inout/struct_field_optional.vv:33] sum: 4
 4
 [vlib/v/tests/inout/struct_field_optional.vv:36] sum: 4
+3
+none
 Foo{
     bar: 3
     baz: 0
 }
-[vlib/v/tests/inout/struct_field_optional.vv:39] f: Foo{
+[vlib/v/tests/inout/struct_field_optional.vv:50] f: Foo{
     bar: 3
     baz: 0
 }
