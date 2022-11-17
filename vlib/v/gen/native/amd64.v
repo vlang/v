@@ -444,20 +444,10 @@ fn (mut g Gen) jmp(addr i64) {
 */
 
 fn (mut g Gen) mov32(reg Register, val int) {
-	match reg {
-		.rax {
-			g.write8(0xb8)
-		}
-		.rdi {
-			g.write8(0xbf)
-		}
-		.rcx {
-			g.write8(0xb9)
-		}
-		else {
-			panic('unhandled mov32 ${reg}')
-		}
+	if int(reg) >= int(Register.r8) {
+		g.write8(0x41)
 	}
+	g.write8(0xb8 + int(reg) % 8)
 	g.write32(val)
 	g.println('mov32 ${reg}, ${val}')
 }
@@ -2283,7 +2273,12 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 		typ := node.left_types[i]
 		// this branch would be removed, but left for compatibility
 		if left is ast.Ident && !typ.is_pure_float() {
-			g.assign_right_expr(node, i, right, left.str(), left as ast.Ident)
+			ident := left as ast.Ident
+			g.assign_right_expr(node, i, right, ident.name, ident)
+			continue
+		}
+		if left is ast.Ident && node.op == .decl_assign {
+			g.allocate_var((left as ast.Ident).name, g.get_type_size(typ), 0)
 		}
 		g.gen_left_value(left)
 		g.push(.rax)
@@ -2305,20 +2300,9 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			}
 		} else if typ == ast.f32_type_idx {
 			match node.op {
-				.assign {
+				.assign, .decl_assign {
 					g.write32(0x02110ff3)
 					g.println('movss [rdx], xmm0')
-				}
-				.decl_assign {
-					ident := left as ast.Ident
-					g.allocate_var(ident.name, 4, 0)
-					var := g.get_var_from_ident(ident)
-					match var {
-						LocalVar { g.mov_ssereg_to_var(var as LocalVar, .xmm0) }
-						GlobalVar { g.mov_ssereg_to_var(var as GlobalVar, .xmm0) }
-						// Register { g.mov_ssereg(var as Register, .xmm0) }
-						else {}
-					}
 				}
 				else {
 					g.n_error('Unsupported assign instruction')
@@ -2326,20 +2310,9 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			}
 		} else if typ.is_pure_float() {
 			match node.op {
-				.assign {
+				.assign, .decl_assign {
 					g.write32(0x02110ff2)
 					g.println('movsd [rdx], xmm0')
-				}
-				.decl_assign {
-					ident := left as ast.Ident
-					g.allocate_var(ident.name, 8, 0)
-					var := g.get_var_from_ident(ident)
-					match var {
-						LocalVar { g.mov_ssereg_to_var(var as LocalVar, .xmm0) }
-						GlobalVar { g.mov_ssereg_to_var(var as GlobalVar, .xmm0) }
-						// Register { g.mov_ssereg(var as Register, .xmm0) }
-						else {}
-					}
 				}
 				else {
 					g.n_error('Unsupported assign instruction')
