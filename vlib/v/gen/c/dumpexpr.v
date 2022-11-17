@@ -76,7 +76,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			surrounder.add('\tstring value = _SLIT("none");', '\tstring_free(&value);')
 		} else if is_ptr {
 			surrounder.add('\tstring value = (dump_arg == NULL) ? _SLIT("nil") : ${to_string_fn_name}(${deref}dump_arg);',
-				'\tif (dump_arg != NULL) string_free(&value);')
+				'\tstring_free(&value);')
 		} else {
 			surrounder.add('\tstring value = ${to_string_fn_name}(${deref}dump_arg);',
 				'\tstring_free(&value);')
