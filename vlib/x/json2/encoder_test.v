@@ -38,9 +38,7 @@ fn test_json_string_non_ascii() {
 
 fn test_utf8_strings_are_not_modified() {
 	original := '{"s":"Schilddrüsenerkrankungen"}'
-	// dump(original)
 	deresult := json2.raw_decode(original)!
-	// dump(deresult)
 	assert deresult.str() == original
 }
 

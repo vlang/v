@@ -97,7 +97,6 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 			}
 			e.encode_newline(level - 1, mut wr)!
 			wr.write([u8(`}`)])!
-			// dump(">>>>>>>>>>>>>>>>>>>>>>>>>>> ${wr}")
 		}
 		[]Any {
 			wr.write([u8(`[`)])!
@@ -112,13 +111,10 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 
 			e.encode_newline(level - 1, mut wr)!
 			wr.write([u8(`]`)])!
-			// e.encode_array(val, level, mut wr)!
-			// dump('>>>>>>>>>>>>>>>>>>>>>>>>>>> ${wr}')
 		}
 		[]int {
 			wr.write([u8(`[`)])!
 			for i in 0 .. val.len {
-				// dump('val[${i}] ${val[i]}')
 				e.encode_newline(level, mut wr)!
 				e.encode_value_with_level(val[i], level + 1, mut wr)!
 				if i < val.len - 1 {
@@ -128,8 +124,6 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 
 			e.encode_newline(level - 1, mut wr)!
 			wr.write([u8(`]`)])!
-			// e.encode_array(val, level, mut wr)!
-			// dump('>>>>>>>>>>>>>>>>>>>>>>>>>>> ${wr}')
 		}
 		Null {
 			wr.write(json2.null_in_bytes)!
@@ -143,7 +137,6 @@ fn (e &Encoder) encode_value_with_level<T>(val T, level int, mut wr io.Writer) !
 	} $else $if T is Any {
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is map[string]Any {
-		// dump('encode_value_with_level ${val}')
 		// weird quirk but val is destructured immediately to Any
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is []Any {
@@ -156,8 +149,6 @@ fn (e &Encoder) encode_value_with_level<T>(val T, level int, mut wr io.Writer) !
 		// wr.write(val.str)!
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is $Struct {
-		dump(typeof(val).name)
-		dump('wr ${wr}')
 		e.encode_struct(val, level, mut wr)!
 	} $else $if T is $Enum {
 		e.encode_any(Any(int(val)), level, mut wr)!
@@ -203,7 +194,6 @@ fn (e &Encoder) encode_array<U>(val U, level int, mut wr io.Writer) ! {
 		wr.write([u8(`[`)])!
 		// unsafe {
 		for i in 0 .. val.len {
-			dump('val[${i}] ${val[i]}')
 			e.encode_newline(level, mut wr)!
 			e.encode_value_with_level(&val[i], level + 1, mut wr)!
 			if i < val.len - 1 {
@@ -213,7 +203,6 @@ fn (e &Encoder) encode_array<U>(val U, level int, mut wr io.Writer) ! {
 		// }
 		e.encode_newline(level - 1, mut wr)!
 		wr.write([u8(`]`)])!
-		dump('text ${wr}\n')
 	} $else {
 		return error('encoded array value is not an array')
 	}
