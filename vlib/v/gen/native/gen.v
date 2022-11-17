@@ -591,7 +591,7 @@ fn (mut g Gen) get_type_size(typ ast.Type) int {
 fn (mut g Gen) get_type_align(typ ast.Type) int {
 	// also calculate align of a struct
 	size := g.get_type_size(typ)
-	if typ in ast.number_type_idxs || typ.is_real_pointer() || typ.is_bool() {
+	if g.is_register_type(typ) || typ.is_pure_float() {
 		return size
 	}
 	ts := g.table.sym(typ)
@@ -600,6 +600,10 @@ fn (mut g Gen) get_type_align(typ ast.Type) int {
 	}
 	// g.n_error('unknown type align')
 	return 0
+}
+
+fn (g Gen) is_register_type(typ ast.Type) bool {
+	return typ.is_pure_int() || typ == ast.char_type_idx || typ.is_real_pointer() || typ.is_bool()
 }
 
 fn (mut g Gen) get_sizeof_ident(ident ast.Ident) int {
@@ -1144,7 +1148,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					}
 				}
 				// store the struct value
-				if !typ.is_real_pointer() && !typ.is_number() && !typ.is_bool() {
+				if !g.is_register_type(typ) && !typ.is_pure_float() {
 					ts := g.table.sym(typ)
 					size := g.get_type_size(typ)
 					if g.pref.arch == .amd64 {
@@ -1330,7 +1334,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// XXX this is intel specific
 			match var {
 				LocalVar {
-					if var.typ.is_pure_int() || var.typ.is_real_pointer() || var.typ.is_bool() {
+					if g.is_register_type(var.typ) {
 						g.mov_var_to_reg(.rax, node as ast.Ident)
 					} else if var.typ.is_pure_float() {
 						g.mov_var_to_ssereg(.xmm0, node as ast.Ident)

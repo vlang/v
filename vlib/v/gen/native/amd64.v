@@ -1895,7 +1895,6 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 	match right {
 		ast.IntegerLiteral {
 			// g.allocate_var(name, 4, right.val.int())
-			// TODO float
 			match node.op {
 				.plus_assign {
 					g.mov_var_to_reg(.rax, ident)
@@ -1946,7 +1945,6 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 		}
 		ast.Ident {
 			// eprintln('identr') dump(node) dump(right)
-			// TODO float
 			match node.op {
 				.plus_assign {
 					g.mov_var_to_reg(.rax, ident)
@@ -2282,87 +2280,128 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 	// `a := 1` | `a,b := 1,2`
 	for i, left in node.left {
 		right := node.right[i]
-		if left !is ast.Ident {
-			// TODO float
-			g.gen_left_value(left)
-			g.push(.rax)
-			g.expr(right)
-			g.pop(.rdx)
-			typ := node.left_types[i]
-			if typ.is_number() || typ.is_real_pointer() || typ.is_bool() {
-				match node.op {
-					.assign {
-						g.mov_store(.rdx, .rax, match g.get_type_size(typ) {
-							1 { ._8 }
-							2 { ._16 }
-							3 { ._32 }
-							else { ._64 }
-						})
-					}
-					else {
-						g.n_error('Unsupported assign instruction')
-					}
+		typ := node.left_types[i]
+		// this branch would be removed, but left for compatibility
+		if left is ast.Ident && !typ.is_pure_float() {
+			g.assign_right_expr(node, i, right, left.str(), left as ast.Ident)
+		}
+		g.gen_left_value(left)
+		g.push(.rax)
+		g.expr(right)
+		g.pop(.rdx)
+		if g.is_register_type(typ) {
+			match node.op {
+				.assign {
+					g.mov_store(.rdx, .rax, match g.get_type_size(typ) {
+						1 { ._8 }
+						2 { ._16 }
+						3 { ._32 }
+						else { ._64 }
+					})
 				}
-			} else {
-				if node.op != .assign {
+				else {
 					g.n_error('Unsupported assign instruction')
 				}
-				ts := g.table.sym(typ)
-				match ts.kind {
-					.struct_ {
-						size := g.get_type_size(typ)
-						if size >= 8 {
-							for j in 0 .. size / 8 {
-								g.mov_deref(.rcx, .rdx, ast.u64_type_idx)
-								g.mov_store(.rax, .rcx, ._64)
-								offset := if j == size / 8 - 1 && size % 8 != 0 {
-									size % 8
-								} else {
-									8
-								}
-								g.add(.rax, offset)
-								g.add(.rdx, offset)
-							}
-							if size % 8 != 0 {
-								g.mov_deref(.rcx, .rdx, ast.u64_type_idx)
-								g.mov_store(.rax, .rcx, ._64)
-							}
-						} else {
-							mut left_size := if size >= 4 {
-								g.mov_deref(.rcx, .rdx, ast.u32_type_idx)
-								g.mov_store(.rax, .rcx, ._32)
-								if size > 4 {
-									g.add(.rax, 4)
-									g.add(.rdx, 4)
-								}
-								size - 4
-							} else {
-								size
-							}
-							if left_size >= 2 {
-								g.mov_deref(.rcx, .rdx, ast.u16_type_idx)
-								g.mov_store(.rax, .rcx, ._16)
-								if left_size > 2 {
-									g.add(.rax, 2)
-									g.add(.rdx, 2)
-								}
-								left_size -= 2
-							}
-							if left_size == 1 {
-								g.mov_deref(.rcx, .rdx, ast.u8_type_idx)
-								g.mov_store(.rax, .rcx, ._8)
-							}
-						}
+			}
+		} else if typ == ast.f32_type_idx {
+			match node.op {
+				.assign {
+					g.write32(0x02110ff3)
+					g.println('movss [rdx], xmm0')
+				}
+				.decl_assign {
+					ident := left as ast.Ident
+					g.allocate_var(ident.name, 4, 0)
+					var := g.get_var_from_ident(ident)
+					match var {
+						LocalVar { g.mov_ssereg_to_var(var as LocalVar, .xmm0) }
+						GlobalVar { g.mov_ssereg_to_var(var as GlobalVar, .xmm0) }
+						// Register { g.mov_ssereg(var as Register, .xmm0) }
+						else {}
 					}
-					.enum_ {
-						g.mov_store(.rdx, .rax, ._32)
-					}
-					else {}
+				}
+				else {
+					g.n_error('Unsupported assign instruction')
 				}
 			}
-			continue
+		} else if typ.is_pure_float() {
+			match node.op {
+				.assign {
+					g.write32(0x02110ff2)
+					g.println('movsd [rdx], xmm0')
+				}
+				.decl_assign {
+					ident := left as ast.Ident
+					g.allocate_var(ident.name, 8, 0)
+					var := g.get_var_from_ident(ident)
+					match var {
+						LocalVar { g.mov_ssereg_to_var(var as LocalVar, .xmm0) }
+						GlobalVar { g.mov_ssereg_to_var(var as GlobalVar, .xmm0) }
+						// Register { g.mov_ssereg(var as Register, .xmm0) }
+						else {}
+					}
+				}
+				else {
+					g.n_error('Unsupported assign instruction')
+				}
+			}
+		} else {
+			if node.op != .assign {
+				g.n_error('Unsupported assign instruction')
+			}
+			ts := g.table.sym(typ)
+			match ts.kind {
+				.struct_ {
+					size := g.get_type_size(typ)
+					if size >= 8 {
+						for j in 0 .. size / 8 {
+							g.mov_deref(.rcx, .rdx, ast.u64_type_idx)
+							g.mov_store(.rax, .rcx, ._64)
+							offset := if j == size / 8 - 1 && size % 8 != 0 {
+								size % 8
+							} else {
+								8
+							}
+							g.add(.rax, offset)
+							g.add(.rdx, offset)
+						}
+						if size % 8 != 0 {
+							g.mov_deref(.rcx, .rdx, ast.u64_type_idx)
+							g.mov_store(.rax, .rcx, ._64)
+						}
+					} else {
+						mut left_size := if size >= 4 {
+							g.mov_deref(.rcx, .rdx, ast.u32_type_idx)
+							g.mov_store(.rax, .rcx, ._32)
+							if size > 4 {
+								g.add(.rax, 4)
+								g.add(.rdx, 4)
+							}
+							size - 4
+						} else {
+							size
+						}
+						if left_size >= 2 {
+							g.mov_deref(.rcx, .rdx, ast.u16_type_idx)
+							g.mov_store(.rax, .rcx, ._16)
+							if left_size > 2 {
+								g.add(.rax, 2)
+								g.add(.rdx, 2)
+							}
+							left_size -= 2
+						}
+						if left_size == 1 {
+							g.mov_deref(.rcx, .rdx, ast.u8_type_idx)
+							g.mov_store(.rax, .rcx, ._8)
+						}
+					}
+				}
+				.enum_ {
+					g.mov_store(.rdx, .rax, ._32)
+				}
+				else {}
+			}
 		}
-		g.assign_right_expr(node, i, right, left.str(), left as ast.Ident)
 	}
 }
 
