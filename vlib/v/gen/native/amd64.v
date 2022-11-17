@@ -3643,7 +3643,7 @@ fn (mut g Gen) mov_ssereg_to_reg(a Register, b SSERegister, typ ast.Type) {
 	}
 	g.write16(0x7e0f)
 	g.write8(0xc0 + int(a) % 8 * 8 + int(b) % 8)
-	g.println('$inst $a, $b')
+	g.println('${inst} ${a}, ${b}')
 }
 
 fn (mut g Gen) mov_reg_to_ssereg(a SSERegister, b Register, typ ast.Type) {
@@ -3658,7 +3658,7 @@ fn (mut g Gen) mov_reg_to_ssereg(a SSERegister, b Register, typ ast.Type) {
 	}
 	g.write16(0x6e0f)
 	g.write8(0xc0 + int(a) % 8 * 8 + int(b) % 8)
-	g.println('$inst $a, $b')
+	g.println('${inst} ${a}, ${b}')
 }
 
 fn (mut g Gen) add_sse(a SSERegister, b SSERegister, typ ast.Type) {
