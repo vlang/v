@@ -2298,25 +2298,40 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 					g.n_error('Unsupported assign instruction')
 				}
 			}
-		} else if typ == ast.f32_type_idx {
-			match node.op {
-				.assign, .decl_assign {
-					g.write32(0x02110ff3)
-					g.println('movss [rdx], xmm0')
-				}
-				else {
-					g.n_error('Unsupported assign instruction')
+		} else if typ.is_pure_float() {
+			// TODO when the right type is integer
+			is_f32 := typ == ast.f32_type_idx
+			if node.op !in [.assign, .decl_assign] {
+				g.mov_ssereg(.xmm1, .xmm0)
+				if is_f32 {
+					g.write32(0x02100ff3)
+					g.println('movss xmm0, [rdx]')
+				} else {
+					g.write32(0x02100ff2)
+					g.println('movsd xmm0, [rdx]')
 				}
 			}
-		} else if typ.is_pure_float() {
 			match node.op {
-				.assign, .decl_assign {
-					g.write32(0x02110ff2)
-					g.println('movsd [rdx], xmm0')
+				.plus_assign {
+					g.add_sse(.xmm0, .xmm1, typ)
 				}
-				else {
-					g.n_error('Unsupported assign instruction')
+				.minus_assign {
+					g.sub_sse(.xmm0, .xmm1, typ)
 				}
+				.mult_assign {
+					g.mul_sse(.xmm0, .xmm1, typ)
+				}
+				.div_assign {
+					g.div_sse(.xmm0, .xmm1, typ)
+				}
+				else {}
+			}
+			if is_f32 {
+				g.write32(0x02110ff3)
+				g.println('movss [rdx], xmm0')
+			} else {
+				g.write32(0x02110ff2)
+				g.println('movsd [rdx], xmm0')
 			}
 		} else {
 			if node.op != .assign {
