@@ -3482,7 +3482,7 @@ fn (mut g Gen) reverse_string(reg Register) {
 	g.cld()
 
 	g.write8(0xac)
-	g.println('lods al,cmp_reg BYTE PTR ds:[rsi]')
+	g.println('lods al, BYTE PTR ds:[rsi]')
 
 	g.write8(0xeb)
 	g.write8(0xf1)
