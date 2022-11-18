@@ -101,7 +101,6 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 		[]Any {
 			wr.write([u8(`[`)])!
 			for i in 0 .. val.len {
-				dump('val[${i}] ${val[i]}')
 				e.encode_newline(level, mut wr)!
 				e.encode_value_with_level(val[i], level + 1, mut wr)!
 				if i < val.len - 1 {
@@ -173,7 +172,11 @@ fn (e &Encoder) encode_struct<U>(val U, level int, mut wr io.Writer) ! {
 			}
 		}
 		e.encode_newline(level, mut wr)!
-		e.encode_string(if json_name != '' { json_name } else { field.name }, mut wr)!
+		if json_name != '' {
+			e.encode_string(json_name, mut wr)!
+		} else {
+			e.encode_string(field.name, mut wr)!
+		}
 		wr.write(json2.colon_bytes)!
 		if e.newline != 0 {
 			wr.write(json2.space_bytes)!
