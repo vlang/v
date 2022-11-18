@@ -1240,163 +1240,25 @@ fn test_array_string_pop() {
 }
 
 fn test_array_first() {
-	// it works agains single
-	{
-		a := [3]
-		assert a.first() == 3
-	}
-
-	// it works against multiple
-	{
-		a := [1, 2, 3, 4]
-		assert a.first() == 1
-	}
-
-	// it works against strings
-	{
-		a := ['abc', 'def']
-		assert a.first()[0] == `a`
-	}
-
-	// it works against chunks
-	{
-		a := [Chunk{'a'}]
-		assert a.first().val == 'a'
-	}
-
-	// TODO: it panics on empty
+	a := [3]
+	assert a.first() == 3
+	b := [1, 2, 3, 4]
+	assert b.first() == 1
+	c := ['abc', 'def']
+	assert c.first()[0] == `a`
+	s := [Chunk{'a'}]
+	assert s.first().val == 'a'
 }
 
 fn test_array_last() {
-	// it works agains single
-	{
-		a := [3]
-		assert a.last() == 3
-	}
-
-	// it works against multiple
-	{
-		a := [1, 2, 3, 4]
-		assert a.last() == 4
-	}
-
-	// it works against strings
-	{
-		a := ['abc', 'def']
-		assert a.last()[0] == `d`
-	}
-
-	// it works against chunks
-	{
-		a := [Chunk{'a'}]
-		assert a.last().val == 'a'
-	}
-
-	// TODO: it panics on empty
-}
-
-fn test_array_single() {
-	// it works against single
-	{
-		a := [3]
-		assert a.single() == 3
-	}
-
-	// it works against strings
-	{
-		a := ['abc']
-		assert a.single() == 'abc'
-	}
-
-	// TODO: it panics against empty
-
-	// TODO: it panics against multiple
-}
-
-fn test_array_first_or() {
-	// it works agains single
-	{
-		a := [3]
-		assert a.first_or() == 3
-	}
-
-	// it works against multiple
-	{
-		a := [1, 2, 3, 4]
-		assert a.first_or() == 1
-	}
-
-	// it works against strings
-	{
-		a := ['abc', 'def']
-		assert a.first_or()[0] == `a`
-	}
-
-	// it works against chunks
-	{
-		a := [Chunk{'a'}]
-		assert a.first_or().val == 'a'
-	}
-
-	// it defaults against empty
-	{
-		a := []int
-		assert a.first_or() or { -1 } == -1
-	}
-}
-
-fn test_array_last_or() {
-	// it works agains single
-	{
-		a := [3]
-		assert a.last_or() == 3
-	}
-
-	// it works against multiple
-	{
-		a := [1, 2, 3, 4]
-		assert a.last_or() == 4
-	}
-
-	// it works against strings
-	{
-		a := ['abc', 'def']
-		assert a.last_or()[0] == `d`
-	}
-
-	// it works against chunks
-	{
-		a := [Chunk{'a'}]
-		assert a.last_or().val == 'a'
-	}
-
-	// it defaults against empty
-	{
-		a := []int
-		assert a.last_or() or { -1 } == -1
-	}
-}
-
-fn test_array_single_or() {
-	// it works against single
-	{
-		a := [3]
-		assert a.single() == 3
-	}
-
-	// it works against strings
-	{
-		a := ['abc']
-		assert a.single() == 'abc'
-	}
-
-	// it defaults against empty
-	{
-		a := []int
-		assert a.single_or() or { -1 } == -1
-	}
-
-	// TODO: it panics against multiple
+	a := [3]
+	assert a.last() == 3
+	b := [1, 2, 3, 4]
+	assert b.last() == 4
+	c := ['abc', 'def']
+	assert c.last()[0] == `d`
+	s := [Chunk{'a'}]
+	assert s.last().val == 'a'
 }
 
 [direct_array_access]

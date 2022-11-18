@@ -401,6 +401,8 @@ fn (a array) get_with_check(i int) voidptr {
 
 // first returns the first element of the `array`.
 // If the `array` is empty, this will panic.
+// However, `a[0]` returns an error object
+// so it can be handled with an `or` block.
 pub fn (a array) first() voidptr {
 	$if !no_bounds_checking {
 		if a.len == 0 {
@@ -421,57 +423,6 @@ pub fn (a array) last() voidptr {
 	unsafe {
 		return &u8(a.data) + u64(a.len - 1) * u64(a.element_size)
 	}
-}
-
-// single returns the single element of the `array`.
-// If the `array` is empty, this will panic.
-// If the `array` contains more than one element, this will panic.
-pub fn (a array) single() voidptr {
-	$if !no_bounds_checking {
-		if a.len > 1 {
-			panic('array.single: array contains more than one element')
-		}
-	}
-	return a.first()
-}
-
-// first returns the first element of the `array`.
-// If the `array` is empty, this will error
-// so it can be handled with an `or` block.
-pub fn (a array) first_or() voidptr {
-	$if !no_bounds_checking {
-		if a.len == 0 {
-			return 0
-		}
-	}
-	return a.data
-}
-
-// last returns the last element of the `array`.
-// If the `array` is empty, this will error
-// so it can be handled with an `or` block.
-pub fn (a array) last_or() voidptr {
-	$if !no_bounds_checking {
-		if a.len == 0 {
-			return 0
-		}
-	}
-	unsafe {
-		return &u8(a.data) + u64(a.len - 1) * u64(a.element_size)
-	}
-}
-
-// single returns the single element of the `array`.
-// If the `array` is empty, this will error
-// so it can be handled with an `or` block.
-// If the `array` contains more than one element, this will panic.
-pub fn (a array) single_or() voidptr {
-	$if !no_bounds_checking {
-		if a.len > 1 {
-			panic('array.single_or: array contains more than one element')
-		}
-	}
-	return a.first_or()
 }
 
 // pop returns the last element of the array, and removes it.
