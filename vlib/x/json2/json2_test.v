@@ -1,4 +1,5 @@
 import x.json2
+import time
 
 enum JobTitle {
 	manager
@@ -45,14 +46,12 @@ fn (mut e Employee) from_json(any json2.Any) {
 fn test_simple() {
 	x := Employee{'Peter', 28, 95000.5, .worker}
 	s := json2.encode<Employee>(x)
-	eprintln('Employee x: ${s}')
 	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
 	y := json2.decode<Employee>(s) or {
 		println(err)
 		assert false
 		return
 	}
-	eprintln('Employee y: ${y}')
 	assert y.name == 'Peter'
 	assert y.age == 28
 	assert y.salary == 95000.5
@@ -83,18 +82,11 @@ fn test_character_unescape() {
 		return
 	}
 	lines := obj.as_map()
-	eprintln('${lines}')
 	assert lines['newline'] or { 0 }.str() == 'new\nline'
 	assert lines['tab'] or { 0 }.str() == '\ttab'
 	assert lines['backslash'] or { 0 }.str() == 'back\\slash'
 	assert lines['quotes'] or { 0 }.str() == '"quotes"'
 	assert lines['slash'] or { 0 }.str() == '/dev/null'
-}
-
-struct User2 {
-pub mut:
-	age  int
-	nums []int
 }
 
 fn (mut u User2) from_json(an json2.Any) {
@@ -114,6 +106,13 @@ fn (mut u User2) from_json(an json2.Any) {
 			else {}
 		}
 	}
+}
+
+struct User2 {
+mut:
+	age      int
+	nums     []int
+	reg_date time.Time
 }
 
 // User struct needs to be `pub mut` for now in order to access and manipulate values
@@ -166,17 +165,8 @@ fn (u User) to_json() string {
 
 fn test_parse_user() {
 	s := '{"age": 10, "nums": [1,2,3], "type": 1, "lastName": "Johnson", "IsRegistered": true, "pet_animals": {"name": "Bob", "animal": "Dog"}}'
-	u2 := json2.decode<User2>(s) or {
-		println(err)
-		assert false
-		return
-	}
-	println(u2)
-	u := json2.decode<User>(s) or {
-		println(err)
-		assert false
-		return
-	}
+	u2 := json2.decode<User2>(s)!
+	u := json2.decode<User>(s)!
 	assert u.age == 10
 	assert u.last_name == 'Johnson'
 	assert u.is_registered == true
@@ -188,8 +178,26 @@ fn test_parse_user() {
 	assert u.pets == '{"name":"Bob","animal":"Dog"}'
 }
 
+// fn test_encode_decode_time() {
+// 	user := User2{
+// 		age: 25
+// 		reg_date: time.new_time(year: 2020, month: 12, day: 22, hour: 7, minute: 23)
+// 	}
+// 	s := json2.encode(user)
+// 	// println(s) //{"age":25,"nums":[],"reg_date":{"year":2020,"month":12,"day":22,"hour":7,"minute":23,"second":0,"microsecond":0,"unix":1608621780,"is_local":false}}
+// 	assert s.contains('"reg_date":1608621780')
+// 	user2 := json2.decode<User2>(s)!
+// 	assert user2.reg_date.str() == '2020-12-22 07:23:00'
+// 	// println(user2)
+// 	// println(user2.reg_date)
+// }
+
+fn (mut u User) foo() string {
+	return json2.encode(u)
+}
+
 fn test_encode_user() {
-	usr := User{
+	mut usr := User{
 		age: 10
 		nums: [1, 2, 3]
 		last_name: 'Johnson'
@@ -200,6 +208,8 @@ fn test_encode_user() {
 	expected := '{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"foo"}'
 	out := json2.encode<User>(usr)
 	assert out == expected
+	// Test json.encode on mutable pointers
+	assert usr.foo() == expected
 }
 
 struct Color {
@@ -237,9 +247,8 @@ struct Country {
 	cities []City
 	name   string
 }
-
 fn test_struct_in_struct() {
-	country := json.decode(Country, '{ "name": "UK", "cities": [{"name":"London"}, {"name":"Manchester"}]}') or {
+	country := json2.decode<Country>('{ "name": "UK", "cities": [{"name":"London"}, {"name":"Manchester"}]}') or {
 		assert false
 		exit(1)
 	}
