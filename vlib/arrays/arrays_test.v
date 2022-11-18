@@ -138,6 +138,66 @@ fn test_chunk() {
 	assert chunk<int>([]int{}, 2) == [][]int{}
 }
 
+fn test_first() {
+	// returns number
+	{
+		a := [1, 2, 3]
+		assert first(a)! == 1
+	}
+
+	// returns string
+	{
+		a := ['abc', 'def', 'xyz']
+		assert first(a)! == 'abc'
+	}
+
+	// throws an error when empty
+	{
+		a := []int{}
+		first(a) or { assert err.msg == 'arrays.first: Array is empty.' }
+	}
+}
+
+fn test_last() {
+	// returns number
+	{
+		a := [1, 2, 3]
+		assert last(a)! == 3
+	}
+
+	// returns string
+	{
+		a := ['abc', 'def', 'xyz']
+		assert last(a)! == 'xyz'
+	}
+
+	// throws an error when empty
+	{
+		a := []int{}
+		last(a) or { assert err.msg == 'arrays.last: Array is empty.' }
+	}
+}
+
+fn test_single() {
+	// returns number
+	{
+		a := [1]
+		assert single(a)! == 1
+	}
+
+	// returns string
+	{
+		a := ['abc']
+		assert single(a)! == 'abc'
+	}
+
+	// throws an error when empty
+	{
+		a := []int{}
+		single(a) or { assert err.msg == 'arrays.single: Array is empty.' }
+	}
+}
+
 fn test_window() {
 	x := [1, 2, 3, 4, 5, 6]
 

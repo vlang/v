@@ -1261,6 +1261,15 @@ fn test_array_last() {
 	assert s.last().val == 'a'
 }
 
+fn test_array_single() {
+	a := [3]
+	assert a.single() == 3
+	c := ['abc']
+	assert c.single()[0] == `a`
+	s := [Chunk{'a'}]
+	assert s.single().val == 'a'
+}
+
 [direct_array_access]
 fn test_direct_array_access() {
 	mut a := [11, 22, 33, 44]

@@ -425,6 +425,20 @@ pub fn (a array) last() voidptr {
 	}
 }
 
+// single returns the single element of the `array`.
+// If the `array` is empty, this will panic.
+// If the `array` contains more than one element, this will panic.
+pub fn (a array) single() voidptr {
+	$if !no_bounds_checking {
+		if a.len == 0 {
+			panic('array.single: array is empty')
+		} else if a.len > 1 {
+			panic('array.single: array contains more than one element')
+		}
+	}
+	return a.data
+}
+
 // pop returns the last element of the array, and removes it.
 // If the `array` is empty, this will panic.
 // NOTE: this function reduces the length of the given array,

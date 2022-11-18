@@ -89,6 +89,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'22.clone_to_depth',
 		'22.first',
 		'22.last',
+		'22.single',
 		'22.pointers' /* TODO: handle generic methods calling array primitives more precisely in pool_test.v */,
 		'22.reverse',
 		'22.repeat_to_depth',

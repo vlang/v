@@ -1082,6 +1082,7 @@ There are further built-in methods for arrays:
 * `a.delete_last()` removes the last element
 * `a.first()` equivalent to `a[0]`
 * `a.last()` equivalent to `a[a.len - 1]`
+* `a.single()` equivalent to `a[0]` but also panics if it contains more that one element
 * `a.pop()` removes the last element and returns it
 * `a.reverse()` makes a new array with the elements of `a` in reverse order
 * `a.reverse_in_place()` reverses the order of elements in `a`

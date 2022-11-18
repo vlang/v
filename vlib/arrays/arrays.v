@@ -5,6 +5,8 @@ module arrays
 // - idx_min / idx_max - return the index of the first minumum / maximum
 // - merge - combine two sorted arrays and maintain sorted order
 // - chunk - chunk array to arrays with n elements
+// - first / last - return the first or last element of the array
+// - single - expect and return only one element in the array
 // - window - get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array
 // - group - merge two arrays by interleaving e.g. arrays.group([1,3,5], [2,4,6]) => [[1,2],[3,4],[5,6]]
 // - flatten - reduce dimensionality of array by one. e.g. arrays.flatten([[1,2],[3,4],[5,6]]) => [1,2,3,4,5,6]
@@ -13,7 +15,7 @@ module arrays
 // Example: arrays.min([1,2,3,0,9]) // => 0
 pub fn min<T>(array []T) !T {
 	if array.len == 0 {
-		return error('.min called on an empty array')
+		return error('arrays.min called on an empty array')
 	}
 	mut val := array[0]
 	for e in array {
@@ -28,7 +30,7 @@ pub fn min<T>(array []T) !T {
 // Example: arrays.max([1,2,3,0,9]) // => 9
 pub fn max<T>(array []T) !T {
 	if array.len == 0 {
-		return error('.max called on an empty array')
+		return error('arrays.max called on an empty array')
 	}
 	mut val := array[0]
 	for e in array {
@@ -43,7 +45,7 @@ pub fn max<T>(array []T) !T {
 // Example: arrays.idx_min([1,2,3,0,9]) // => 3
 pub fn idx_min<T>(array []T) !int {
 	if array.len == 0 {
-		return error('.idx_min called on an empty array')
+		return error('arrays.idx_min called on an empty array')
 	}
 	mut idx := 0
 	mut val := array[0]
@@ -60,7 +62,7 @@ pub fn idx_min<T>(array []T) !int {
 // Example: arrays.idx_max([1,2,3,0,9]) // => 4
 pub fn idx_max<T>(array []T) !int {
 	if array.len == 0 {
-		return error('.idx_max called on an empty array')
+		return error('arrays.idx_max called on an empty array')
 	}
 	mut idx := 0
 	mut val := array[0]
@@ -166,6 +168,36 @@ pub fn chunk<T>(array []T, size int) [][]T {
 	return chunks
 }
 
+// first returns the first element of the `array`.
+// If the `array` is empty, this will throw an error.
+pub fn first<T>(a []T) !T {
+	if a.len == 0 {
+		return error('arrays.first: Array is empty.')
+	}
+	return a[0]
+}
+
+// last returns the last element of the `array`.
+// If the `array` is empty, this will throw an error.
+pub fn last<T>(a []T) !T {
+	if a.len == 0 {
+		return error('arrays.last: Array is empty.')
+	}
+	return a[a.len - 1]
+}
+
+// single returns the single element of the `array`.
+// If the `array` is empty, this will throw an error.
+// If the `array` contains more than one element, this will panic.
+pub fn single<T>(a []T) !T {
+	if a.len == 0 {
+		return error('arrays.single: Array is empty.')
+	} else if a.len > 1 {
+		panic('arrays.single: Array contains more than one element.')
+	}
+	return a[0]
+}
+
 pub struct WindowAttribute {
 	size int
 	step int = 1
@@ -202,7 +234,7 @@ pub fn window<T>(array []T, attr WindowAttribute) [][]T {
 // Example: arrays.sum<int>([1, 2, 3, 4, 5])? // => 15
 pub fn sum<T>(array []T) !T {
 	if array.len == 0 {
-		return error('Cannot sum up array of nothing.')
+		return error('arrays.sum: Cannot sum up array of nothing.')
 	} else {
 		mut head := array[0]
 
