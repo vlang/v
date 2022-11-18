@@ -152,6 +152,7 @@ fn (e &Encoder) encode_value_with_level<T>(val T, level int, mut wr io.Writer) !
 	} $else $if T is $Enum {
 		e.encode_any(Any(int(val)), level, mut wr)!
 	} $else {
+		// dump(val.str())
 		return error('cannot encode value with ${typeof(val).name} type')
 	}
 }
@@ -181,8 +182,45 @@ fn (e &Encoder) encode_struct<U>(val U, level int, mut wr io.Writer) ! {
 		if e.newline != 0 {
 			wr.write(json2.space_bytes)!
 		}
-		field_value := val.$(field.name)
-		e.encode_value_with_level(field_value, level + 1, mut wr)!
+		if typeof(val.$(field.name)).name.contains('?') {
+			if field.typ == 20 {
+				if val.$(field.name).str() == 'Option(error: none)' {
+					// TODO?
+				} else {
+					e.encode_string(val.$(field.name).str().replace("Option('", '').trim_string_right("')"), mut
+						wr)!
+				}
+			}
+		} else {
+			match field.typ {
+				129 {
+					//! string
+					e.encode_string(val.$(field.name).str(), mut wr)!
+				}
+				130 {
+					wr.write(val.$(field.name).str().bytes())!
+				}
+				141 {
+					//! array
+					e.encode_array(val.$(field.name), level, mut wr)!
+				}
+				143 {
+					e.encode_struct(val.$(field.name), level, mut wr)!
+				}
+				144 {
+					//!struct normal
+					e.encode_struct(val.$(field.name), level, mut wr)!
+				}
+				147 {
+					//!circular
+					e.encode_value_with_level("---------", level, mut wr)!
+				}
+				else {
+					field_value := val.$(field.name)
+					e.encode_value_with_level(field_value, level + 1, mut wr)!
+				}
+			}
+		}
 		if i < fields_len - 1 {
 			wr.write(json2.comma_bytes)!
 		}
@@ -197,7 +235,7 @@ fn (e &Encoder) encode_array<U>(val U, level int, mut wr io.Writer) ! {
 		wr.write([u8(`[`)])!
 		for i in 0 .. val.len {
 			e.encode_newline(level, mut wr)!
-			e.encode_value_with_level(&val[i], level + 1, mut wr)!
+			e.encode_value_with_level(val[i], level + 1, mut wr)!
 			if i < val.len - 1 {
 				wr.write(json2.comma_bytes)!
 			}

@@ -546,9 +546,11 @@ pub:
 // }
 
 type ID = string
+type GG = int
 
 struct Message {
 	id ID
+	ij GG
 }
 
 // ! BUGFIX - .from_json(res)
@@ -558,13 +560,12 @@ struct Message {
 // 	assert msg.id.str() == '118499178790780929'
 // }
 
-// ! FIX: returning null
-// fn test_encode_alias_struct() {
-// 	expected := '{"id":"118499178790780929"}'
-// 	msg := Message{'118499178790780929'}
-// 	out := json2.encode(msg)
-// 	assert out == expected
-// }
+fn test_encode_alias_struct() {
+	expected := '{"id":"118499178790780929","ij":999998888}'
+	msg := Message{'118499178790780929', 999998888}
+	out := json2.encode<Message>(msg)
+	assert out == expected
+}
 
 struct List {
 	id    int
@@ -670,10 +671,9 @@ struct StByteArray {
 	ba []byte
 }
 
-// ! FIX: returning null
-// fn test_byte_array() {
-// 	assert json2.encode(StByteArray{ ba: [byte(1), 2, 3, 4, 5] }) == '{"ba":[1,2,3,4,5]}'
-// }
+fn test_byte_array() {
+	assert json2.encode(StByteArray{ ba: [byte(1), 2, 3, 4, 5] }) == '{"ba":[1,2,3,4,5]}'
+}
 
 struct Aa {
 	sub AliasType
@@ -692,7 +692,6 @@ type AliasType = Bb
 // 			a: 1
 // 		}
 // 	})
-// 	println(s)
 // 	assert s == '{"sub":{"a":1}}'
 // }
 
