@@ -153,7 +153,7 @@ fn (mut g Gen) cmp_reg(reg Register, reg2 Register) {
 					g.write([u8(0x48), 0x39, 0xd8])
 				}
 				else {
-					g.n_error('Cannot compare ${reg} and ${reg2}')
+					g.n_error('cannot compare ${reg} and ${reg2}')
 				}
 			}
 		}
@@ -163,7 +163,7 @@ fn (mut g Gen) cmp_reg(reg Register, reg2 Register) {
 					g.write([u8(0x48), 0x39, 0xc2])
 				}
 				else {
-					g.n_error('Cannot compare ${reg} and ${reg2}')
+					g.n_error('cannot compare ${reg} and ${reg2}')
 				}
 			}
 		}
@@ -173,7 +173,7 @@ fn (mut g Gen) cmp_reg(reg Register, reg2 Register) {
 					g.write([u8(0x48), 0x39, 0xc3])
 				}
 				else {
-					g.n_error('Cannot compare ${reg} and ${reg2}')
+					g.n_error('cannot compare ${reg} and ${reg2}')
 				}
 			}
 		}
@@ -183,7 +183,7 @@ fn (mut g Gen) cmp_reg(reg Register, reg2 Register) {
 					g.write([u8(0x48), 0x39, 0xf7])
 				}
 				else {
-					g.n_error('Cannot compare ${reg} and ${reg2}')
+					g.n_error('cannot compare ${reg} and ${reg2}')
 				}
 			}
 		}
@@ -193,7 +193,7 @@ fn (mut g Gen) cmp_reg(reg Register, reg2 Register) {
 					g.write([u8(0x48), 0x39, 0xf9])
 				}
 				else {
-					g.n_error('Cannot compare ${reg} and ${reg2}')
+					g.n_error('cannot compare ${reg} and ${reg2}')
 				}
 			}
 		}
@@ -203,7 +203,7 @@ fn (mut g Gen) cmp_reg(reg Register, reg2 Register) {
 					g.write([u8(0x48), 0x39, 0xd6])
 				}
 				else {
-					g.n_error('Cannot compare ${reg} and ${reg2}')
+					g.n_error('cannot compare ${reg} and ${reg2}')
 				}
 			}
 		}
@@ -213,12 +213,12 @@ fn (mut g Gen) cmp_reg(reg Register, reg2 Register) {
 					g.write([u8(0x49), 0x39, 0xc0])
 				}
 				else {
-					g.n_error('Cannot compare ${reg} and ${reg2}')
+					g.n_error('cannot compare ${reg} and ${reg2}')
 				}
 			}
 		}
 		else {
-			g.n_error('Cannot compare ${reg} and ${reg2}')
+			g.n_error('cannot compare ${reg} and ${reg2}')
 		}
 	}
 	g.println('cmp ${reg}, ${reg2}')
