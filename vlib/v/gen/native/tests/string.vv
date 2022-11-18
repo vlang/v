@@ -21,8 +21,24 @@ fn test_raw_string() {
 	println(raw)
 }
 
+fn test_compare_strings() {
+	assert 'abcde' == 'abcde'
+	assert 'abcde' != 'abcdef'
+	assert 'abcde' != '12345'
+	assert 'abcde' != 'abcdd'
+
+	if 'abcde' != 'abcde' {
+		assert false
+	}
+
+	if 'abcde' == '@#$&*' {
+		assert false
+	}
+}
+
 fn main() {
 	test_unicode_characters()
 	test_escape_codes()
 	test_raw_string()
+	test_compare_strings()
 }

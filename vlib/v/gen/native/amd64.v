@@ -62,15 +62,19 @@ const (
 )
 
 fn (mut g Gen) dec(reg Register) {
-	g.write16(0xff48)
-	match reg {
-		.rax { g.write8(0xc8) }
-		.rbx { g.write8(0xcb) }
-		.rcx { g.write8(0xc9) }
-		.rsi { g.write8(0xce) }
-		.rdi { g.write8(0xcf) }
-		.r12 { g.write8(0xc4) }
-		else { panic('unhandled inc ${reg}') }
+	if reg == .r8 {
+		g.write([u8(0x49), 0xff, 0xc8])
+	} else {
+		g.write16(0xff48)
+		match reg {
+			.rax { g.write8(0xc8) }
+			.rbx { g.write8(0xcb) }
+			.rcx { g.write8(0xc9) }
+			.rsi { g.write8(0xce) }
+			.rdi { g.write8(0xcf) }
+			.r12 { g.write8(0xc4) }
+			else { panic('unhandled dec ${reg}') }
+		}
 	}
 	g.println('dec ${reg}')
 }
@@ -183,6 +187,36 @@ fn (mut g Gen) cmp_reg(reg Register, reg2 Register) {
 				}
 			}
 		}
+		.rcx {
+			match reg2 {
+				.rdi {
+					g.write([u8(0x48), 0x39, 0xf9])
+				}
+				else {
+					g.n_error('Cannot compare ${reg} and ${reg2}')
+				}
+			}
+		}
+		.rsi {
+			match reg2 {
+				.rdx {
+					g.write([u8(0x48), 0x39, 0xd6])
+				}
+				else {
+					g.n_error('Cannot compare ${reg} and ${reg2}')
+				}
+			}
+		}
+		.r8 {
+			match reg2 {
+				.rax {
+					g.write([u8(0x49), 0x39, 0xc0])
+				}
+				else {
+					g.n_error('Cannot compare ${reg} and ${reg2}')
+				}
+			}
+		}
 		else {
 			g.n_error('Cannot compare ${reg} and ${reg2}')
 		}
@@ -199,6 +233,16 @@ fn (mut g Gen) cmp_zero(reg Register) {
 			g.write8(0xf8)
 		}
 		.eax {
+			g.write8(0x83)
+			g.write8(0xf8)
+		}
+		.rbx {
+			g.write8(0x48)
+			g.write8(0x83)
+			g.write8(0xfb)
+		}
+		.r8 {
+			g.write8(0x49)
 			g.write8(0x83)
 			g.write8(0xf8)
 		}
@@ -1605,6 +1649,11 @@ fn (mut g Gen) add_reg(a Register, b Register) {
 }
 
 fn (mut g Gen) mov_reg(a Register, b Register) {
+	if a == b {
+		g.println('mov ${a}, ${b} <-- skipped')
+		return
+	}
+
 	if int(a) <= int(Register.r15) && int(b) <= int(Register.r15) {
 		g.write8(0x48 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
 			if int(b) >= int(Register.r8) { 4 } else { 0 })
@@ -2516,6 +2565,31 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			}
 			return
 		}
+
+		if node.left_type.is_string() {
+			if node.op !in [.eq, .ne] {
+				g.n_error('`${node.op}` is not implemented for string types')
+			}
+
+			g.push(.rax)
+			g.expr(node.left)
+			g.pop(g.get_builtin_arg_reg(.strings_equal, 0))
+			g.mov_reg(g.get_builtin_arg_reg(.strings_equal, 1), .rax)
+			g.call_builtin(.strings_equal)
+
+			if node.op == .ne {
+				g.cmp_zero(.rax)
+				g.cset(.e)
+				g.write8(0x48)
+				g.write8(0x0f)
+				g.write8(0xb6)
+				g.write8(0xc0)
+				g.println('  movzx rax, al')
+			}
+
+			return
+		}
+
 		// optimize for ast.Ident
 		match node.left {
 			ast.Ident {
@@ -3261,13 +3335,8 @@ fn (mut g Gen) convert_bool_to_string(reg Register) {
 }
 
 fn (mut g Gen) convert_int_to_string(r1 Register, r2 Register) {
-	if r1 != .rax {
-		g.mov_reg(.rax, r1)
-	}
-
-	if r2 != .rdi {
-		g.mov_reg(.rdi, r2)
-	}
+	g.mov_reg(.rax, r1)
+	g.mov_reg(.rdi, r2)
 
 	// check if value in rax is zero
 	g.cmp_zero(.rax)
@@ -3413,11 +3482,112 @@ fn (mut g Gen) reverse_string(reg Register) {
 	g.cld()
 
 	g.write8(0xac)
-	g.println('lods al, BYTE PTR ds:[rsi]')
+	g.println('lods al,cmp_reg BYTE PTR ds:[rsi]')
 
 	g.write8(0xeb)
 	g.write8(0xf1)
 	g.println('jmp 0xf')
+}
+
+fn (mut g Gen) strings_equal(r1 Register, r2 Register) {
+	g.mov_reg(.rsi, r1)
+	g.mov_reg(.rdx, r2)
+
+	chk_len_label := g.labels.new_label()
+	iter_enter_label := g.labels.new_label()
+	false_label := g.labels.new_label()
+	end_label := g.labels.new_label()
+
+	// if both string pointers are equal, return immediately true
+	g.cmp_reg(.rsi, .rdx)
+	ptr_eq_cjmp_addr := g.cjmp(.jne)
+	g.labels.patches << LabelPatch{
+		id: chk_len_label
+		pos: ptr_eq_cjmp_addr
+	}
+
+	g.mov(.rax, 1)
+	ptr_eq_jmp_addr := g.jmp(0)
+	g.labels.patches << LabelPatch{
+		id: end_label
+		pos: ptr_eq_jmp_addr
+	}
+	g.println('; jump to ${end_label}')
+
+	g.labels.addrs[chk_len_label] = g.pos()
+	g.println('; label ${chk_len_label}: chk_len_label')
+
+	// if the length of the two strings don't match, return immediately false
+	g.inline_strlen(.rsi)
+	g.push(.rax)
+	g.inline_strlen(.rdx)
+	g.pop(.r8)
+
+	g.cmp_reg(.r8, .rax)
+	size_eq_cjmp_addr := g.cjmp(.je)
+	g.labels.patches << LabelPatch{
+		id: iter_enter_label
+		pos: size_eq_cjmp_addr
+	}
+	g.println('; jump to ${iter_enter_label}')
+
+	// if the length of .rsi and .r8 is not equal, return 0
+	size_ne_jmp_addr := g.jmp(0)
+	g.labels.patches << LabelPatch{
+		id: false_label
+		pos: size_ne_jmp_addr
+	}
+	g.println('; jump to ${false_label}')
+
+	g.labels.addrs[iter_enter_label] = g.pos()
+	g.println('; label ${iter_enter_label}: iter_enter_label')
+
+	// success return value
+	g.mov64(.rax, 1)
+
+	// start the loop checking every character on its own
+	iter_start_addr := g.pos()
+	g.println('; iter_start')
+
+	g.cmp_zero(.r8) // if the index (rbx) is <= 0, exit the loop
+	iter_exit_cjmp_addr := g.cjmp(.je)
+	g.labels.patches << LabelPatch{
+		id: end_label
+		pos: iter_exit_cjmp_addr
+	}
+	// decrement the string size, which is now used as a counter variable
+	g.dec(.r8)
+
+	g.write([u8(0x4a), 0x8b, 0x0c, 0x02]) // load the current char of string 1
+	g.println('mov rcx, [rdx + r8]')
+
+	g.write([u8(0x4a), 0x3b, 0x0c, 0x06]) // compare with the current char of string 2
+	g.println('cmp rcx, [rsi + r8]')
+
+	char_eq_cjmp_addr := g.cjmp(.jne) // if the two chars don't match, return with 0
+	g.labels.patches << LabelPatch{
+		id: false_label
+		pos: char_eq_cjmp_addr
+	}
+
+	g.jmp(int(0xffffffff - (g.pos() + 5 - iter_start_addr) + 1)) // repeat the loop
+	g.println('; jump to iter_start')
+
+	// jump to the end
+	skip_to_end_cjmp_addr := g.jmp(0)
+	g.labels.patches << LabelPatch{
+		id: end_label
+		pos: skip_to_end_cjmp_addr
+	}
+
+	// jump here, if the strings don't match
+	g.labels.addrs[false_label] = g.pos()
+	g.println('; label ${false_label}')
+	g.mov64(.rax, 0)
+
+	// finish
+	g.labels.addrs[end_label] = g.pos()
+	g.println('; label ${false_label}')
 }
 
 fn (mut g Gen) gen_match_expr_amd64(expr ast.MatchExpr) {

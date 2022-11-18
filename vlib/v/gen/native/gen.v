@@ -1383,7 +1383,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.StringLiteral {
 			str := g.eval_escape_codes(node)
-			g.allocate_string(str, 3, .rel32)
+			g.learel(.rax, g.allocate_string(str, 3, .rel32))
 		}
 		ast.StructInit {
 			pos := g.allocate_struct('_anonstruct', node.typ)

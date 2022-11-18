@@ -9,7 +9,7 @@ enum Builtin {
 	int_to_string
 	bool_to_string
 	reverse_string
-	compare_strings
+	strings_equal
 }
 
 struct BuiltinFn {
@@ -43,6 +43,12 @@ pub fn (mut g Gen) init_builtins() {
 				g.reverse_string(builtin.arg_regs[0])
 			}
 			arg_regs: [.rdi]
+		}
+		.strings_equal:  BuiltinFn{
+			body: fn (builtin BuiltinFn, mut g Gen) {
+				g.strings_equal(builtin.arg_regs[0], builtin.arg_regs[1])
+			}
+			arg_regs: [.rsi, .rdx]
 		}
 	}
 }
