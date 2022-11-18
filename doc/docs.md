@@ -5320,6 +5320,8 @@ fn main() {
 }
 ```
 
+`$embed_file` returns [EmbedFileData](https://modules.vlang.io/v.embed_file.html#EmbedFileData) which could be used to obtain the file contents as `string` or `[]u8`.
+
 #### `$tmpl` for embedding and parsing V template files
 
 V has a simple template language for text and html templates, and they can easily
