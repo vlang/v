@@ -213,7 +213,7 @@ fn (e &Encoder) encode_struct<U>(val U, level int, mut wr io.Writer) ! {
 				}
 				147 {
 					//!circular
-					e.encode_value_with_level("---------", level, mut wr)!
+					e.encode_value_with_level('---------', level, mut wr)!
 				}
 				else {
 					field_value := val.$(field.name)

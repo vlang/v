@@ -1,4 +1,4 @@
-import x.json2
+import x.json2 as json
 import time
 
 enum JobTitle {
@@ -25,17 +25,17 @@ pub mut:
 }
 
 fn (e Employee) to_json() string {
-	mut mp := map[string]json2.Any{}
-	mp['name'] = json2.Any(e.name)
-	mp['age'] = json2.Any(e.age)
-	mp['salary'] = json2.Any(e.salary)
-	mp['title'] = json2.Any(int(e.title))
+	mut mp := map[string]json.Any{}
+	mp['name'] = json.Any(e.name)
+	mp['age'] = json.Any(e.age)
+	mp['salary'] = json.Any(e.salary)
+	mp['title'] = json.Any(int(e.title))
 	/*
 	$for field in Employee.fields {
 		d := e.$(field.name)
 
 		$if field.typ is JobTitle {
-			mp[field.name] = json2.encode<int>(d)
+			mp[field.name] = json.encode<int>(d)
 		} $else {
 			mp[field.name] = d
 		}
@@ -44,19 +44,19 @@ fn (e Employee) to_json() string {
 	return mp.str()
 }
 
-fn (mut e Employee) from_json(any json2.Any) {
+fn (mut e Employee) from_json(any json.Any) {
 	mp := any.as_map()
-	e.name = mp['name'] or { json2.Any('') }.str()
-	e.age = mp['age'] or { json2.Any(0) }.int()
-	e.salary = mp['salary'] or { json2.Any(0) }.f32()
-	e.title = unsafe { JobTitle(mp['title'] or { json2.Any(0) }.int()) }
+	e.name = mp['name'] or { json.Any('') }.str()
+	e.age = mp['age'] or { json.Any(0) }.int()
+	e.salary = mp['salary'] or { json.Any(0) }.f32()
+	e.title = unsafe { JobTitle(mp['title'] or { json.Any(0) }.int()) }
 }
 
 fn test_simple() {
 	x := Employee{'Peter', 28, 95000.5, .worker}
-	s := json2.encode<Employee>(x)
+	s := json.encode<Employee>(x)
 	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
-	y := json2.decode<Employee>(s) or {
+	y := json.decode<Employee>(s) or {
 		println(err)
 		assert false
 		return
@@ -73,9 +73,9 @@ fn test_simple() {
 // 	x := EmployeeOp{
 // 		name: 'vshfvhsd'
 // 	}
-// 	s := json2.encode<EmployeeOp>(x)
+// 	s := json.encode<EmployeeOp>(x)
 // 	assert s == '{"name":"vshfvhsd","age":0,"salary":0.0,"title":0.0}'
-// 	// y := json2.decode<EmployeeOp>(s) or {
+// 	// y := json.decode<EmployeeOp>(s) or {
 // 	// 	println(err)
 // 	// 	assert false
 // 	// 	return
@@ -95,9 +95,9 @@ struct Price {
 
 fn test_fast_raw_decode() {
 	s := '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
-	o := json2.fast_raw_decode(s) or {
+	o := json.fast_raw_decode(s) or {
 		assert false
-		json2.Any(json2.null)
+		json.Any(json.null)
 	}
 	str := o.str()
 	assert str == '{"name":"Peter","age":"28","salary":"95000.5","title":"2"}'
@@ -111,7 +111,7 @@ fn test_character_unescape() {
 	"quotes": "\"quotes\"",
 	"slash":"\/dev\/null"
 }'
-	mut obj := json2.raw_decode(message) or {
+	mut obj := json.raw_decode(message) or {
 		println(err)
 		assert false
 		return
@@ -124,7 +124,7 @@ fn test_character_unescape() {
 	assert lines['slash'] or { 0 }.str() == '/dev/null'
 }
 
-fn (mut u User2) from_json(an json2.Any) {
+fn (mut u User2) from_json(an json.Any) {
 	mp := an.as_map()
 	mut js_field_name := ''
 	$for field in User.fields {
@@ -146,7 +146,7 @@ fn (mut u User2) from_json(an json2.Any) {
 // ! BUGFIX - .from_json(res)
 // fn test_field_with_default_expr() {
 // 	data := '[{"net":1},{"net":2,"currencyId":"cjson"}]'
-// 	prices := json2.decode<[]Price>(data)!
+// 	prices := json.decode<[]Price>(data)!
 // 	assert prices == [Price{
 // 		net: 1
 // 		currency_id: 'cconst'
@@ -159,7 +159,7 @@ fn (mut u User2) from_json(an json2.Any) {
 // ! BUGFIX - .from_json(res)
 // fn test_decode_top_level_array() {
 // 	s := '[{"name":"Peter", "age": 29}, {"name":"Bob", "age":31}]'
-// 	x := json2.decode<[]Employee>(s) or { panic(err) }
+// 	x := json.decode<[]Employee>(s) or { panic(err) }
 // 	assert x.len == 2
 // 	assert x[0].name == 'Peter'
 // 	assert x[0].age == 29
@@ -204,12 +204,12 @@ struct SomeGame {
 // 	}
 // 	// eprintln('Game: $game')
 
-// 	enc := json2.encode(game)
+// 	enc := json.encode(game)
 // 	// eprintln('Encoded Game: $enc')
 
 // 	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},1,"Stool",{"_type":"Time","value":${t.unix_time()}}]}'
 
-// 	dec := json2.decode<SomeGame>(enc)!
+// 	dec := json.decode<SomeGame>(enc)!
 // 	// eprintln('Decoded Game: $dec')
 
 // 	assert game.title == dec.title
@@ -219,7 +219,7 @@ struct SomeGame {
 // }
 
 fn bar<T>(payload string) !Bar { // ?T doesn't work currently
-	result := json2.decode<T>(payload)!
+	result := json.decode<T>(payload)!
 	return result
 }
 
@@ -251,7 +251,7 @@ pub mut:
 	pets          string [json: 'pet_animals'; raw]
 }
 
-fn (mut u User) from_json(an json2.Any) {
+fn (mut u User) from_json(an json.Any) {
 	mp := an.as_map()
 	mut js_field_name := ''
 	$for field in User.fields {
@@ -278,20 +278,20 @@ fn (mut u User) from_json(an json2.Any) {
 fn (u User) to_json() string {
 	// TODO: derive from field
 	mut mp := {
-		'age': json2.Any(u.age)
+		'age': json.Any(u.age)
 	}
-	mp['nums'] = u.nums.map(json2.Any(it))
-	mp['lastName'] = json2.Any(u.last_name)
-	mp['IsRegistered'] = json2.Any(u.is_registered)
-	mp['type'] = json2.Any(u.typ)
-	mp['pet_animals'] = json2.Any(u.pets)
+	mp['nums'] = u.nums.map(json.Any(it))
+	mp['lastName'] = json.Any(u.last_name)
+	mp['IsRegistered'] = json.Any(u.is_registered)
+	mp['type'] = json.Any(u.typ)
+	mp['pet_animals'] = json.Any(u.pets)
 	return mp.str()
 }
 
 fn test_parse_user() {
 	s := '{"age": 10, "nums": [1,2,3], "type": 1, "lastName": "Johnson", "IsRegistered": true, "pet_animals": {"name": "Bob", "animal": "Dog"}}'
-	u2 := json2.decode<User2>(s)!
-	u := json2.decode<User>(s)!
+	u2 := json.decode<User2>(s)!
+	u := json.decode<User>(s)!
 	assert u.age == 10
 	assert u.last_name == 'Johnson'
 	assert u.is_registered == true
@@ -309,17 +309,17 @@ fn test_parse_user() {
 // 		age: 25
 // 		reg_date: time.new_time(year: 2020, month: 12, day: 22, hour: 7, minute: 23)
 // 	}
-// 	s := json2.encode(user)
+// 	s := json.encode(user)
 // 	// println(s) //{"age":25,"nums":[],"reg_date":{"year":2020,"month":12,"day":22,"hour":7,"minute":23,"second":0,"microsecond":0,"unix":1608621780,"is_local":false}}
 // 	assert s.contains('"reg_date":1608621780')
-// 	user2 := json2.decode<User2>(s)!
+// 	user2 := json.decode<User2>(s)!
 // 	assert user2.reg_date.str() == '2020-12-22 07:23:00'
 // 	// println(user2)
 // 	// println(user2.reg_date)
 // }
 
 fn (mut u User) foo() string {
-	return json2.encode(u)
+	return json.encode(u)
 }
 
 fn test_encode_user() {
@@ -332,9 +332,9 @@ fn test_encode_user() {
 		pets: 'foo'
 	}
 	expected := '{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"foo"}'
-	out := json2.encode<User>(usr)
+	out := json.encode<User>(usr)
 	assert out == expected
-	// Test json2.encode on mutable pointers
+	// Test json.encode on mutable pointers
 	assert usr.foo() == expected
 }
 
@@ -344,7 +344,7 @@ pub mut:
 	point string [raw]
 }
 
-fn (mut c Color) from_json(an json2.Any) {
+fn (mut c Color) from_json(an json.Any) {
 	mp := an.as_map()
 	$for field in Color.fields {
 		match field.name {
@@ -356,7 +356,7 @@ fn (mut c Color) from_json(an json2.Any) {
 }
 
 fn test_raw_json_field() {
-	color := json2.decode<Color>('{"space": "YCbCr", "point": {"Y": 123}}') or {
+	color := json.decode<Color>('{"space": "YCbCr", "point": {"Y": 123}}') or {
 		assert false
 		Color{}
 	}
@@ -366,7 +366,7 @@ fn test_raw_json_field() {
 
 // ! FIX: returning 0
 // fn test_bad_raw_json_field() {
-// 	color := json2.decode<Color>('{"space": "YCbCr"}') or {
+// 	color := json.decode<Color>('{"space": "YCbCr"}') or {
 // 		// println('text')
 // 		return
 // 	}
@@ -385,7 +385,7 @@ struct Country {
 
 // ! BUGFIX - .from_json(res)
 // fn test_struct_in_struct() {
-// 	country := json2.decode<Country>('{ "name": "UK", "cities": [{"name":"London"}, {"name":"Manchester"}]}')!
+// 	country := json.decode<Country>('{ "name": "UK", "cities": [{"name":"London"}, {"name":"Manchester"}]}')!
 // 	assert country.name == 'UK'
 // 	assert country.cities.len == 2
 // 	assert country.cities[0].name == 'London'
@@ -395,10 +395,10 @@ struct Country {
 fn test_encode_map() {
 	expected := '{"one":1,"two":2,"three":3,"four":4}'
 	numbers := {
-		'one':   json2.Any(1)
-		'two':   json2.Any(2)
-		'three': json2.Any(3)
-		'four':  json2.Any(4)
+		'one':   json.Any(1)
+		'two':   json.Any(2)
+		'three': json.Any(3)
+		'four':  json.Any(4)
 	}
 	// 	numbers := {
 	// 		'one':   1
@@ -406,7 +406,7 @@ fn test_encode_map() {
 	// 		'three': 3
 	// 		'four':  4
 	// 	}
-	// 	out := json2.encode(numbers)
+	// 	out := json.encode(numbers)
 	out := numbers.str()
 	assert out == expected
 }
@@ -419,7 +419,7 @@ fn test_encode_map() {
 // 		'three': 3
 // 		'four':  4
 // 	}
-// 	out := json2.decode<map[string]int>('{"one":1,"two":2,"three":3,"four":4}')!
+// 	out := json.decode<map[string]int>('{"one":1,"two":2,"three":3,"four":4}')!
 // 	// println(out)
 // 	assert out == expected
 // }
@@ -478,10 +478,10 @@ struct Data {
 // 			},
 // 		}
 // 	}
-// 	out := json2.encode(data)
+// 	out := json.encode(data)
 // 	// println(out)
 // 	assert out == data_expected
-// 	data2 := json2.decode<Data>(data_expected)!
+// 	data2 := json.decode<Data>(data_expected)!
 // 	assert data2.countries.len == data.countries.len
 // 	for i in 0 .. 1 {
 // 		assert data2.countries[i].name == data.countries[i].name
@@ -511,7 +511,7 @@ struct Data {
 // fn test_errors() {
 // 	invalid_array := fn () {
 // 		data := '{"countries":[{"cities":[{"name":"London"},{"name":"Manchester"}],"name":"UK"},{"cities":{"name":"Donlon"},"name":"KU"}],"users":{"Foo":{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"little foo"},"Boo":{"age":20,"nums":[5,3,1],"lastName":"Smith","IsRegistered":false,"type":4,"pet_animals":"little boo"}},"extra":{"2":{"n1":2,"n2":4,"n3":8,"n4":16},"3":{"n1":3,"n2":9,"n3":27,"n4":81}}}'
-// 		json2.decode<Data>(data) or {
+// 		json.decode<Data>(data) or {
 // 			assert err.msg().starts_with('Json element is not an array:')
 // 			return
 // 		}
@@ -519,7 +519,7 @@ struct Data {
 // 	}
 // 	invalid_object := fn () {
 // 		data := '{"countries":[{"cities":[{"name":"London"},{"name":"Manchester"}],"name":"UK"},{"cities":[{"name":"Donlon"},{"name":"Termanches"}],"name":"KU"}],"users":[{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"little foo"},{"age":20,"nums":[5,3,1],"lastName":"Smith","IsRegistered":false,"type":4,"pet_animals":"little boo"}],"extra":{"2":{"n1":2,"n2":4,"n3":8,"n4":16},"3":{"n1":3,"n2":9,"n3":27,"n4":81}}}'
-// 		json2.decode<Data>(data) or {
+// 		json.decode<Data>(data) or {
 // 			assert err.msg().starts_with('Json element is not an object:')
 // 			return
 // 		}
@@ -538,9 +538,9 @@ pub:
 // ! BUGFIX - .from_json(res)
 // fn test_generic_struct() {
 // 	foo_int := Foo<int>{'bar', 12}
-// 	foo_enc := json2.encode(foo_int)
+// 	foo_enc := json.encode(foo_int)
 // 	assert foo_enc == '{"name":"bar","data":12}'
-// 	foo_dec := json2.decode<Foo<int>>(foo_enc)!
+// 	foo_dec := json.decode<Foo<int>>(foo_enc)!
 // 	assert foo_dec.name == 'bar'
 // 	assert foo_dec.data == 12
 // }
@@ -555,7 +555,7 @@ struct Message {
 
 // ! BUGFIX - .from_json(res)
 // fn test_decode_alias_struct() {
-// 	msg := json2.decode<Message>('{"id": "118499178790780929"}')!
+// 	msg := json.decode<Message>('{"id": "118499178790780929"}')!
 // 	// hacky way of comparing aliased strings
 // 	assert msg.id.str() == '118499178790780929'
 // }
@@ -563,7 +563,7 @@ struct Message {
 fn test_encode_alias_struct() {
 	expected := '{"id":"118499178790780929","ij":999998888}'
 	msg := Message{'118499178790780929', 999998888}
-	out := json2.encode<Message>(msg)
+	out := json.encode<Message>(msg)
 	assert out == expected
 }
 
@@ -574,21 +574,21 @@ struct List {
 
 // ! BUGFIX - .from_json(res)
 // fn test_list() {
-// 	list := json2.decode<List>('{"id": 1, "items": ["1", "2"]}')!
+// 	list := json.decode<List>('{"id": 1, "items": ["1", "2"]}')!
 // 	assert list.id == 1
 // 	assert list.items == ['1', '2']
 // }
 
 // ! BUGFIX - .from_json(res)
 // fn test_list_no_id() {
-// 	list := json2.decode<List>('{"items": ["1", "2"]}')!
+// 	list := json.decode<List>('{"items": ["1", "2"]}')!
 // 	assert list.id == 0
 // 	assert list.items == ['1', '2']
 // }
 
 // ! BUGFIX - .from_json(res)
 // fn test_list_no_items() {
-// 	list := json2.decode<List>('{"id": 1}')!
+// 	list := json.decode<List>('{"id": 1}')!
 // 	assert list.id == 1
 // 	assert list.items == []
 // }
@@ -601,7 +601,7 @@ struct Info {
 
 // ! BUGFIX - .from_json(res)
 // fn test_decode_null_object() {
-// 	info := json2.decode<Info>('{"id": 22, "items": null, "maps": null}')!
+// 	info := json.decode<Info>('{"id": 22, "items": null, "maps": null}')!
 // 	assert info.id == 22
 // 	assert '${info.items}' == '[]'
 // 	assert '${info.maps}' == '{}'
@@ -609,7 +609,7 @@ struct Info {
 
 // ! BUGFIX - .from_json(res)
 // fn test_decode_missing_maps_field() {
-// 	info := json2.decode<Info>('{"id": 22, "items": null}')!
+// 	info := json.decode<Info>('{"id": 22, "items": null}')!
 // 	assert info.id == 22
 // 	assert '${info.items}' == '[]'
 // 	assert '${info.maps}' == '{}'
@@ -622,7 +622,7 @@ struct Foo2 {
 // ! BUGFIX - .from_json(res)
 // fn test_pretty() {
 // 	foo := Foo2{'Bob'}
-// 	assert json2.encode_pretty(foo) == '{
+// 	assert json.encode_pretty(foo) == '{
 // 	"name":	"Bob"
 // }'
 // }
@@ -635,11 +635,11 @@ struct Foo3 {
 // ! BUGFIX - .from_json(res)
 // fn test_omit_empty() {
 // 	foo := Foo3{'Bob', 0}
-// 	assert json2.encode_pretty(foo) == '{
+// 	assert json.encode_pretty(foo) == '{
 // 	"name":	"Bob"
 // }'
 // 	// println('omitempty:')
-// 	// println(json2.encode_pretty(foo))
+// 	// println(json.encode_pretty(foo))
 // }
 
 struct Asdasd {
@@ -657,7 +657,7 @@ struct GPEquipItem {
 }
 
 fn create_game_packet(data &GamePacketData) string {
-	return json2.encode(data)
+	return json.encode(data)
 }
 
 // ! FIX: returning null
@@ -672,7 +672,7 @@ struct StByteArray {
 }
 
 fn test_byte_array() {
-	assert json2.encode(StByteArray{ ba: [byte(1), 2, 3, 4, 5] }) == '{"ba":[1,2,3,4,5]}'
+	assert json.encode(StByteArray{ ba: [byte(1), 2, 3, 4, 5] }) == '{"ba":[1,2,3,4,5]}'
 }
 
 struct Aa {
@@ -687,7 +687,7 @@ type AliasType = Bb
 
 // ! FIX: returning null
 // fn test_encode_alias_field() {
-// 	s := json2.encode(Aa{
+// 	s := json.encode(Aa{
 // 		sub: Bb{
 // 			a: 1
 // 		}
@@ -710,5 +710,5 @@ struct Association {
 // 		}
 // 		price: APrice{}
 // 	}
-// 	assert json2.encode(value) == '{"association":{"price":{}},"price":{}}'
+// 	assert json.encode(value) == '{"association":{"price":{}},"price":{}}'
 // }
