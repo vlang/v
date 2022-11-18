@@ -1,0 +1,8 @@
+import encoding.hex as hx
+
+fn main() {
+	bytes := '010000150107120508d37445a0d7e5c5071980710c64310d9e12043000777369ff0424ab78b91a05164b00e50034003300'
+	yr := i16(hx.decode(bytes.substr(6,8))?)
+	println(bytes)
+	println('yr: $yr')
+}

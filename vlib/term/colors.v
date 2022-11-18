@@ -4,11 +4,11 @@
 module term
 
 pub fn format(msg string, open string, close string) string {
-	return '\x1b[${open}m$msg\x1b[${close}m'
+	return '\x1b[${open}m${msg}\x1b[${close}m'
 }
 
 pub fn format_rgb(r int, g int, b int, msg string, open string, close string) string {
-	return '\x1b[$open;2;$r;$g;${b}m$msg\x1b[${close}m'
+	return '\x1b[${open};2;${r};${g};${b}m${msg}\x1b[${close}m'
 }
 
 pub fn rgb(r int, g int, b int, msg string) string {
@@ -194,5 +194,5 @@ pub fn bright_bg_white(msg string) string {
 // highlight_command highlights the command with an on-brand background
 // to make CLI commands immediately recognizable.
 pub fn highlight_command(command string) string {
-	return bright_white(bg_cyan(' $command '))
+	return bright_white(bg_cyan(' ${command} '))
 }

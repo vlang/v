@@ -19,8 +19,8 @@ pub const (
 
 const (
 	init0 = 0x67452301
-	init1 = 0xEFCDAB89
-	init2 = 0x98BADCFE
+	init1 = u32(0xEFCDAB89)
+	init2 = u32(0x98BADCFE)
 	init3 = 0x10325476
 )
 

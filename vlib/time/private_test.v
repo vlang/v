@@ -9,5 +9,6 @@ fn test_new_is_same_as_old_for_all_platforms() {
 	new_time := now()
 	diff := new_time.unix - old_time.unix
 	// could in very rare cases be that the second changed between calls
-	assert (diff >= 0 && diff <= 1) == true
+	dump(diff)
+	assert (diff >= -2 && diff <= 2) == true
 }

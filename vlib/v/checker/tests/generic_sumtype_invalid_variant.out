@@ -1,14 +1,14 @@
-vlib/v/checker/tests/generic_sumtype_invalid_variant.vv:5:7: error: `MultiGeneric<bool, int, string>` has no variant `u64`
+vlib/v/checker/tests/generic_sumtype_invalid_variant.vv:5:10: error: `MultiGeneric<bool, int, string>` has no variant `u64`
     3 | fn main() {
     4 |     mut m := MultiGeneric<bool, int, string>(true)
     5 |     if m is u64 {
-      |          ~~
+      |             ~~~
     6 |         println('hi')
     7 |     }
-vlib/v/checker/tests/generic_sumtype_invalid_variant.vv:8:7: error: `MultiGeneric<bool, int, string>` has no variant `X`
+vlib/v/checker/tests/generic_sumtype_invalid_variant.vv:8:10: error: `MultiGeneric<bool, int, string>` has no variant `X`
     6 |         println('hi')
     7 |     }
     8 |     if m is X {
-      |          ~~
+      |             ^
     9 |         println('hi again')
    10 |     }

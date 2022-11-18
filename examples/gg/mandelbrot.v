@@ -31,7 +31,7 @@ fn (v &ViewRect) height() f64 {
 
 struct AppState {
 mut:
-	gg      &gg.Context = 0
+	gg      &gg.Context = unsafe { nil }
 	iidx    int
 	pixels  &u32     = unsafe { vcalloc(pwidth * pheight * sizeof(u32)) }
 	npixels &u32     = unsafe { vcalloc(pwidth * pheight * sizeof(u32)) } // all drawing happens here, results are swapped at the end
@@ -58,7 +58,7 @@ fn (mut state AppState) update() {
 		threads.wait()
 	}
 	for t in 0 .. state.ntasks {
-		threads << go state.worker(t, chunk_channel, chunk_ready_channel)
+		threads << spawn state.worker(t, chunk_channel, chunk_ready_channel)
 	}
 	//
 	mut oview := ViewRect{}
@@ -191,7 +191,7 @@ fn graphics_keydown(code gg.KeyCode, mod gg.Modifier, mut state AppState) {
 	// movement
 	mut d_x, mut d_y := 0.0, 0.0
 	if code == .enter {
-		println('> ViewRect{$state.view.x_min, $state.view.x_max, $state.view.y_min, $state.view.y_max}')
+		println('> ViewRect{${state.view.x_min}, ${state.view.x_max}, ${state.view.y_min}, ${state.view.y_max}}')
 	}
 	if state.gg.pressed_keys[int(gg.KeyCode.left)] {
 		d_x -= s_x
@@ -222,7 +222,6 @@ fn graphics_keydown(code gg.KeyCode, mod gg.Modifier, mut state AppState) {
 	}
 }
 
-[console]
 fn main() {
 	mut state := &AppState{}
 	state.gg = gg.new_context(
@@ -238,6 +237,6 @@ fn main() {
 		scroll_fn: graphics_scroll
 		user_data: state
 	)
-	go state.update()
+	spawn state.update()
 	state.gg.run()
 }

@@ -14,6 +14,8 @@ fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) int
 
 fn C._getpid() int
 
+const executable_suffixes = ['.exe', '.bat', '.cmd', '']
+
 pub const (
 	path_separator = '\\'
 	path_delimiter = ';'
@@ -61,9 +63,9 @@ mut:
 struct StartupInfo {
 mut:
 	cb                 u32
-	lp_reserved        &u16
-	lp_desktop         &u16
-	lp_title           &u16
+	lp_reserved        &u16 = unsafe { nil }
+	lp_desktop         &u16 = unsafe { nil }
+	lp_title           &u16 = unsafe { nil }
 	dw_x               u32
 	dw_y               u32
 	dw_x_size          u32
@@ -74,7 +76,7 @@ mut:
 	dw_flags           u32
 	w_show_window      u16
 	cb_reserved2       u16
-	lp_reserved2       &u8
+	lp_reserved2       &u8 = unsafe { nil }
 	h_std_input        voidptr
 	h_std_output       voidptr
 	h_std_error        voidptr
@@ -102,7 +104,7 @@ fn init_os_args_wide(argc int, argv &&u8) []string {
 	return args_
 }
 
-fn native_glob_pattern(pattern string, mut matches []string) ? {
+fn native_glob_pattern(pattern string, mut matches []string) ! {
 	$if debug {
 		// FindFirstFile() and FindNextFile() both have a globbing function.
 		// Unfortunately this is not as pronounced as under Unix, but should provide some functionality
@@ -145,14 +147,14 @@ fn native_glob_pattern(pattern string, mut matches []string) ? {
 	}
 }
 
-pub fn utime(path string, actime int, modtime int) ? {
+pub fn utime(path string, actime int, modtime int) ! {
 	mut u := C._utimbuf{actime, modtime}
 	if C._utime(&char(path.str), voidptr(&u)) != 0 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
 	}
 }
 
-pub fn ls(path string) ?[]string {
+pub fn ls(path string) ![]string {
 	if path.len == 0 {
 		return error('ls() expects a folder, not an empty string')
 	}
@@ -165,11 +167,11 @@ pub fn ls(path string) ?[]string {
 	// }
 	// C.FindClose(h_find_dir)
 	if !is_dir(path) {
-		return error('ls() couldnt open dir "$path": directory does not exist')
+		return error('ls() couldnt open dir "${path}": directory does not exist')
 	}
 	// NOTE: Should eventually have path struct & os dependant path seperator (eg os.PATH_SEPERATOR)
 	// we need to add files to path eg. c:\windows\*.dll or :\windows\*
-	path_files := '$path\\*'
+	path_files := '${path}\\*'
 	// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
 	// we should use FindFirstFileW and FindNextFileW
 	h_find_files := C.FindFirstFile(path_files.to_wide(), voidptr(&find_file_data))
@@ -187,30 +189,16 @@ pub fn ls(path string) ?[]string {
 	return dir_files
 }
 
-/*
-pub fn is_dir(path string) bool {
-	_path := path.replace('/', '\\')
-	attr := C.GetFileAttributesW(_path.to_wide())
-	if int(attr) == int(C.INVALID_FILE_ATTRIBUTES) {
-		return false
-	}
-	if (int(attr) & C.FILE_ATTRIBUTE_DIRECTORY) != 0 {
-		return true
-	}
-	return false
-}
-*/
 // mkdir creates a new directory with the specified path.
-pub fn mkdir(path string) ?bool {
+pub fn mkdir(path string, params MkdirParams) ! {
 	if path == '.' {
-		return true
+		return
 	}
 	apath := real_path(path)
 	if !C.CreateDirectory(apath.to_wide(), 0) {
-		return error('mkdir failed for "$apath", because CreateDirectory returned: ' +
+		return error('mkdir failed for "${apath}", because CreateDirectory returned: ' +
 			get_error_msg(int(C.GetLastError())))
 	}
-	return true
 }
 
 // Ref - https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/get-osfhandle?view=vs-2019
@@ -224,7 +212,7 @@ pub fn get_file_handle(path string) HANDLE {
 // Ref - https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulefilenamea
 // get_module_filename retrieves the fully qualified path for the file that contains the specified module.
 // The module must have been loaded by the current process.
-pub fn get_module_filename(handle HANDLE) ?string {
+pub fn get_module_filename(handle HANDLE) !string {
 	unsafe {
 		mut sz := 4096 // Optimized length
 		mut buf := &u16(malloc_noscan(4096))
@@ -269,7 +257,7 @@ const (
 // ptr_win_get_error_msg return string (voidptr)
 // representation of error, only for windows.
 fn ptr_win_get_error_msg(code u32) voidptr {
-	mut buf := voidptr(0)
+	mut buf := unsafe { nil }
 	// Check for code overflow
 	if code > u32(os.max_error_code) {
 		return buf
@@ -323,7 +311,7 @@ pub fn raw_execute(cmd string) Result {
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output: 'exec failed (CreatePipe): $error_msg'
+			output: 'exec failed (CreatePipe): ${error_msg}'
 		}
 	}
 	set_handle_info_ok := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT,
@@ -333,7 +321,7 @@ pub fn raw_execute(cmd string) Result {
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output: 'exec failed (SetHandleInformation): $error_msg'
+			output: 'exec failed (SetHandleInformation): ${error_msg}'
 		}
 	}
 	proc_info := ProcessInformation{}
@@ -357,7 +345,7 @@ pub fn raw_execute(cmd string) Result {
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output: 'exec failed (CreateProcess) with code $error_num: $error_msg cmd: $cmd'
+			output: 'exec failed (CreateProcess) with code ${error_num}: ${error_msg} cmd: ${cmd}'
 		}
 	}
 	C.CloseHandle(child_stdin)
@@ -389,7 +377,7 @@ pub fn raw_execute(cmd string) Result {
 	}
 }
 
-pub fn symlink(origin string, target string) ?bool {
+pub fn symlink(origin string, target string) ! {
 	// this is a temporary fix for TCC32 due to runtime error
 	// TODO: find the cause why TCC32 for Windows does not work without the compiletime option
 	$if x64 || x32 {
@@ -408,12 +396,12 @@ pub fn symlink(origin string, target string) ?bool {
 		if !exists(target) {
 			return error('C.CreateSymbolicLinkW reported success, but symlink still does not exist')
 		}
-		return true
+		return
 	}
-	return false
+	return error('could not symlink')
 }
 
-pub fn link(origin string, target string) ?bool {
+pub fn link(origin string, target string) ! {
 	res := C.CreateHardLinkW(target.to_wide(), origin.to_wide(), C.NULL)
 	// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
 	if res != 1 {
@@ -422,7 +410,6 @@ pub fn link(origin string, target string) ?bool {
 	if !exists(target) {
 		return error('C.CreateHardLinkW reported success, but link still does not exist')
 	}
-	return true
 }
 
 pub fn (mut f File) close() {
@@ -439,7 +426,7 @@ pub:
 	// status_ constants
 	code        u32
 	flags       u32
-	record      &ExceptionRecord
+	record      &ExceptionRecord = unsafe { nil }
 	address     voidptr
 	param_count u32
 	// params []voidptr
@@ -451,8 +438,8 @@ pub struct ContextRecord {
 
 pub struct ExceptionPointers {
 pub:
-	exception_record &ExceptionRecord
-	context_record   &ContextRecord
+	exception_record &ExceptionRecord = unsafe { nil }
+	context_record   &ContextRecord   = unsafe { nil }
 }
 
 pub type VectoredExceptionHandler = fn (&ExceptionPointers) u32
@@ -505,19 +492,21 @@ pub fn loginname() string {
 	return unsafe { string_from_wide(&loginname[0]) }
 }
 
-// `is_writable_folder` - `folder` exists and is writable to the process
-pub fn is_writable_folder(folder string) ?bool {
+// ensure_folder_is_writable checks that `folder` exists, and is writable to the process
+// by creating an empty file in it, then deleting it.
+pub fn ensure_folder_is_writable(folder string) ! {
 	if !exists(folder) {
-		return error('`$folder` does not exist')
+		return error_with_code('`${folder}` does not exist', 1)
 	}
 	if !is_dir(folder) {
-		return error('`folder` is not a folder')
+		return error_with_code('`folder` is not a folder', 2)
 	}
 	tmp_folder_name := 'tmp_perm_check_pid_' + getpid().str()
 	tmp_perm_check := join_path_single(folder, tmp_folder_name)
-	write_file(tmp_perm_check, 'test') or { return error('cannot write to folder "$folder": $err') }
-	rm(tmp_perm_check)?
-	return true
+	write_file(tmp_perm_check, 'test') or {
+		return error_with_code('cannot write to folder "${folder}": ${err}', 3)
+	}
+	rm(tmp_perm_check)!
 }
 
 [inline]
@@ -556,7 +545,7 @@ pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 
 //
 
-pub fn (mut c Command) start() ? {
+pub fn (mut c Command) start() ! {
 	panic('not implemented')
 }
 
@@ -564,6 +553,6 @@ pub fn (mut c Command) read_line() string {
 	panic('not implemented')
 }
 
-pub fn (mut c Command) close() ? {
+pub fn (mut c Command) close() ! {
 	panic('not implemented')
 }

@@ -44,20 +44,20 @@ fn new_ip(port u16, addr [4]u8) Addr {
 	return a
 }
 
-fn temp_unix() ?Addr {
+fn temp_unix() !Addr {
 	// create a temp file to get a filename
 	// close it
 	// remove it
 	// then reuse the filename
-	mut file, filename := util.temp_file()?
+	mut file, filename := util.temp_file()!
 	file.close()
-	os.rm(filename)?
-	addrs := resolve_addrs(filename, .unix, .udp)?
+	os.rm(filename)!
+	addrs := resolve_addrs(filename, .unix, .udp)!
 	return addrs[0]
 }
 
 pub fn (a Addr) family() AddrFamily {
-	return AddrFamily(a.f)
+	return unsafe { AddrFamily(a.f) }
 }
 
 const (
@@ -77,7 +77,7 @@ fn (a Ip) str() string {
 	saddr := unsafe { cstring_to_vstring(&buf[0]) }
 	port := C.ntohs(a.port)
 
-	return '$saddr:$port'
+	return '${saddr}:${port}'
 }
 
 fn (a Ip6) str() string {
@@ -92,7 +92,7 @@ fn (a Ip6) str() string {
 	saddr := unsafe { cstring_to_vstring(&buf[0]) }
 	port := C.ntohs(a.port)
 
-	return '[$saddr]:$port'
+	return '[${saddr}]:${port}'
 }
 
 const aoffset = __offsetof(Addr, addr)
@@ -114,7 +114,7 @@ fn (a Addr) len() u32 {
 	}
 }
 
-pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ?[]Addr {
+pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ![]Addr {
 	match family {
 		.ip, .ip6, .unspec {
 			return resolve_ipaddrs(addr, family, @type)
@@ -143,9 +143,9 @@ pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ?[]Addr {
 	}
 }
 
-pub fn resolve_addrs_fuzzy(addr string, @type SocketType) ?[]Addr {
+pub fn resolve_addrs_fuzzy(addr string, @type SocketType) ![]Addr {
 	if addr.len == 0 {
-		return none
+		return error('none')
 	}
 
 	// Use a small heuristic to figure out what address family this is
@@ -160,8 +160,8 @@ pub fn resolve_addrs_fuzzy(addr string, @type SocketType) ?[]Addr {
 	return resolve_addrs(addr, .unix, @type)
 }
 
-pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
-	address, port := split_address(addr)?
+pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
+	address, port := split_address(addr)!
 
 	if addr[0] == `:` {
 		match family {
@@ -187,14 +187,14 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 
 	results := &C.addrinfo(0)
 
-	sport := '$port'
+	sport := '${port}'
 
 	// This might look silly but is recommended by MSDN
 	$if windows {
-		socket_error(0 - C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results))?
+		socket_error(0 - C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results))!
 	} $else {
 		x := C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results)
-		wrap_error(x)?
+		wrap_error(x)!
 	}
 
 	defer {
@@ -205,8 +205,8 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 	// convert them into an array
 	mut addresses := []Addr{}
 
-	for result := results; !isnil(result); result = result.ai_next {
-		match AddrFamily(result.ai_family) {
+	for result := unsafe { results }; !isnil(result); result = result.ai_next {
+		match unsafe { AddrFamily(result.ai_family) } {
 			.ip {
 				new_addr := Addr{
 					addr: AddrData{
@@ -230,7 +230,7 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 				addresses << new_addr
 			}
 			else {
-				panic('Unexpected address family $result.ai_family')
+				panic('Unexpected address family ${result.ai_family}')
 			}
 		}
 	}
@@ -239,7 +239,7 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 }
 
 fn (a Addr) str() string {
-	match AddrFamily(a.f) {
+	match unsafe { AddrFamily(a.f) } {
 		.ip {
 			unsafe {
 				return a.addr.Ip.str()

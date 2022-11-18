@@ -16,6 +16,17 @@ pub fn new_builder(initial_size int) Builder {
 	return res
 }
 
+// reuse_as_plain_u8_array allows using the Builder instance as a plain []u8 return value.
+// It is useful, when you have accumulated data in the builder, that you want to
+// pass/access as []u8 later, without copying or freeing the buffer.
+// NB: you *should NOT use* the string builder instance after calling this method.
+// Use only the return value after calling this method.
+[unsafe]
+pub fn (mut b Builder) reuse_as_plain_u8_array() []u8 {
+	unsafe { b.flags.clear(.noslices) }
+	return *b
+}
+
 // write_ptr writes `len` bytes provided byteptr to the accumulated buffer
 [unsafe]
 pub fn (mut b Builder) write_ptr(ptr &u8, len int) {
@@ -64,7 +75,7 @@ pub fn (mut b Builder) write_byte(data byte) {
 }
 
 // write implements the Writer interface
-pub fn (mut b Builder) write(data []u8) ?int {
+pub fn (mut b Builder) write(data []u8) !int {
 	if data.len == 0 {
 		return 0
 	}
@@ -191,7 +202,7 @@ pub fn (mut b Builder) ensure_cap(n int) {
 	}
 
 	new_data := vcalloc(n * b.element_size)
-	if b.data != voidptr(0) {
+	if b.data != unsafe { nil } {
 		unsafe { vmemcpy(new_data, b.data, b.len * b.element_size) }
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
 		if b.flags.has(.noslices) {
@@ -212,7 +223,7 @@ pub fn (mut b Builder) free() {
 	if b.data != 0 {
 		unsafe { free(b.data) }
 		unsafe {
-			b.data = voidptr(0)
+			b.data = nil
 		}
 	}
 }

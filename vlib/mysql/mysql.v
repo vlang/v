@@ -37,7 +37,7 @@ pub mut:
 }
 
 // connect - create a new connection to the MySQL server.
-pub fn (mut conn Connection) connect() ?bool {
+pub fn (mut conn Connection) connect() !bool {
 	instance := C.mysql_init(conn.conn)
 	conn.conn = C.mysql_real_connect(instance, conn.host.str, conn.username.str, conn.password.str,
 		conn.dbname.str, conn.port, 0, conn.flag)
@@ -50,7 +50,7 @@ pub fn (mut conn Connection) connect() ?bool {
 // query - make an SQL query and receive the results.
 // `query()` cannot be used for statements that contain binary data;
 // Use `real_query()` instead.
-pub fn (conn Connection) query(q string) ?Result {
+pub fn (conn Connection) query(q string) !Result {
 	if C.mysql_query(conn.conn, q.str) != 0 {
 		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
 	}
@@ -58,12 +58,24 @@ pub fn (conn Connection) query(q string) ?Result {
 	return Result{res}
 }
 
+// use_result - reads the result of a query
+// used after invoking mysql_real_query() or mysql_query(),
+// for every statement that successfully produces a result set
+// (SELECT, SHOW, DESCRIBE, EXPLAIN, CHECK TABLE, and so forth).
+// This reads the result of a query directly from the server
+// without storing it in a temporary table or local buffer,
+// mysql_use_result is faster and uses much less memory than C.mysql_store_result().
+// You must mysql_free_result() after you are done with the result set.
+pub fn (conn Connection) use_result() {
+	C.mysql_use_result(conn.conn)
+}
+
 // real_query - make an SQL query and receive the results.
 // `real_query()` can be used for statements containing binary data.
 // (Binary data may contain the `\0` character, which `query()`
 // interprets as the end of the statement string). In addition,
 // `real_query()` is faster than `query()`.
-pub fn (mut conn Connection) real_query(q string) ?Result {
+pub fn (mut conn Connection) real_query(q string) !Result {
 	if C.mysql_real_query(conn.conn, q.str, q.len) != 0 {
 		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
 	}
@@ -72,7 +84,7 @@ pub fn (mut conn Connection) real_query(q string) ?Result {
 }
 
 // select_db - change the default database for database queries.
-pub fn (mut conn Connection) select_db(dbname string) ?bool {
+pub fn (mut conn Connection) select_db(dbname string) !bool {
 	if C.mysql_select_db(conn.conn, dbname.str) != 0 {
 		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
 	}
@@ -82,7 +94,7 @@ pub fn (mut conn Connection) select_db(dbname string) ?bool {
 // change_user - change the mysql user for the connection.
 // Passing an empty string for the `dbname` parameter, resultsg in only changing
 // the user and not changing the default database for the connection.
-pub fn (mut conn Connection) change_user(username string, password string, dbname string) ?bool {
+pub fn (mut conn Connection) change_user(username string, password string, dbname string) !bool {
 	mut ret := true
 	if dbname != '' {
 		ret = C.mysql_change_user(conn.conn, username.str, password.str, dbname.str)
@@ -112,7 +124,7 @@ pub fn (mut conn Connection) autocommit(mode bool) {
 // The `wildcard` parameter may contain the wildcard characters `%` or `_`.
 // If an empty string is passed, it will return all tables.
 // Calling `tables()` is similar to executing query `SHOW TABLES [LIKE wildcard]`.
-pub fn (conn &Connection) tables(wildcard string) ?[]string {
+pub fn (conn &Connection) tables(wildcard string) ![]string {
 	cres := C.mysql_list_tables(conn.conn, wildcard.str)
 	if isnil(cres) {
 		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
@@ -145,8 +157,8 @@ pub fn (mut conn Connection) set_option(option_type int, val voidptr) {
 
 // get_option - return the value of an option, settable by `set_option`.
 // https://dev.mysql.com/doc/c-api/5.7/en/mysql-get-option.html
-pub fn (conn &Connection) get_option(option_type int) ?voidptr {
-	ret := voidptr(0)
+pub fn (conn &Connection) get_option(option_type int) !voidptr {
+	ret := unsafe { nil }
 	if C.mysql_get_option(conn.conn, option_type, &ret) != 0 {
 		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
 	}
@@ -155,7 +167,7 @@ pub fn (conn &Connection) get_option(option_type int) ?voidptr {
 
 // refresh - flush the tables or caches, or resets replication server
 // information. The connected user must have the `RELOAD` privilege.
-pub fn (mut conn Connection) refresh(options u32) ?bool {
+pub fn (mut conn Connection) refresh(options u32) !bool {
 	if C.mysql_refresh(conn.conn, options) != 0 {
 		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
 	}
@@ -163,7 +175,7 @@ pub fn (mut conn Connection) refresh(options u32) ?bool {
 }
 
 // reset - resets the connection, and clear the session state.
-pub fn (mut conn Connection) reset() ?bool {
+pub fn (mut conn Connection) reset() !bool {
 	if C.mysql_reset_connection(conn.conn) != 0 {
 		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
 	}
@@ -172,7 +184,7 @@ pub fn (mut conn Connection) reset() ?bool {
 
 // ping - pings a server connection, or tries to reconnect if the connection
 // has gone down.
-pub fn (mut conn Connection) ping() ?bool {
+pub fn (mut conn Connection) ping() !bool {
 	if C.mysql_ping(conn.conn) != 0 {
 		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
 	}
@@ -212,7 +224,7 @@ pub fn (conn &Connection) get_server_version() u64 {
 
 // dump_debug_info - instructs the server to write debugging information
 // to the error log. The connected user must have the `SUPER` privilege.
-pub fn (mut conn Connection) dump_debug_info() ?bool {
+pub fn (mut conn Connection) dump_debug_info() !bool {
 	if C.mysql_dump_debug_info(conn.conn) != 0 {
 		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
 	}

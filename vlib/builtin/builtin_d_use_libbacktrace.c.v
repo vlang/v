@@ -38,15 +38,19 @@ struct BacktraceOptions {
 }
 
 fn bt_print_callback(data &BacktraceOptions, pc voidptr, filename_ptr &char, line int, fn_name_ptr &char) int {
-	filename := if isnil(filename_ptr) { '???' } else { unsafe { filename_ptr.vstring() } }
-	fn_name := if isnil(fn_name_ptr) {
+	filename := if filename_ptr == unsafe { nil } {
+		'???'
+	} else {
+		unsafe { filename_ptr.vstring() }
+	}
+	fn_name := if fn_name_ptr == unsafe { nil } {
 		'???'
 	} else {
 		(unsafe { fn_name_ptr.vstring() }).replace('__', '.')
 	}
 	// keep it for later
 	// pc_64 := u64(pc)
-	bt_str := '$filename:$line: by $fn_name'
+	bt_str := '${filename}:${line}: by ${fn_name}'
 	if data.stdin {
 		println(bt_str)
 	} else {
@@ -56,13 +60,13 @@ fn bt_print_callback(data &BacktraceOptions, pc voidptr, filename_ptr &char, lin
 }
 
 fn bt_error_callback(data voidptr, msg_ptr &char, errnum int) {
-	// if !isnil(data) && !isnil(data.state) && !isnil(data.state.filename) {
+	// if data != unsafe { nil } && data.state != unsafe { nil } && data.state.filename != unsafe { nil } {
 	// 	filename := unsafe{ data.state.filename.vstring() }
 	// 	eprint('$filename: ')
 	// }
 
 	msg := unsafe { msg_ptr.vstring() }
-	eprint('libbacktrace: $msg')
+	eprint('libbacktrace: ${msg}')
 	if errnum > 0 {
 		eprint(': ${C.strerror(errnum)}')
 	}

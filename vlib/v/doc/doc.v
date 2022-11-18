@@ -39,6 +39,7 @@ pub enum Platform {
 	dragonfly
 	js // for interoperability in prefs.OS
 	android
+	termux // like android, but note that termux is running on devices natively, not cross compiling from other platforms
 	solaris
 	serenity
 	vinix
@@ -64,10 +65,11 @@ pub fn platform_from_string(platform_str string) ?Platform {
 		'serenity' { return .serenity }
 		'vinix' { return .vinix }
 		'android' { return .android }
+		'termux' { return .termux }
 		'haiku' { return .haiku }
 		'nix' { return .linux }
 		'' { return .auto }
-		else { return error('vdoc: invalid platform `$platform_str`') }
+		else { return error('vdoc: invalid platform `${platform_str}`') }
 	}
 }
 
@@ -192,7 +194,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 		platform: platform_from_filename(filename)
 	}
 	if (!node.is_pub && d.pub_only) || stmt is ast.GlobalDecl {
-		return error('symbol $node.name not public')
+		return error('symbol ${node.name} not public')
 	}
 	if node.name.starts_with(d.orig_mod_name + '.') {
 		node.name = node.name.all_after(d.orig_mod_name + '.')
@@ -464,7 +466,7 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 			// }
 			d.head = DocNode{
 				name: module_name
-				content: 'module $module_name'
+				content: 'module ${module_name}'
 				kind: .none_
 			}
 		} else if file_ast.mod.name != d.orig_mod_name {
@@ -495,7 +497,7 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 	if d.filter_symbol_names.len != 0 && d.contents.len != 0 {
 		for filter_name in d.filter_symbol_names {
 			if filter_name !in d.contents {
-				return error('vdoc: `$filter_name` symbol in module `$d.orig_mod_name` not found')
+				return error('vdoc: `${filter_name}` symbol in module `${d.orig_mod_name}` not found')
 			}
 		}
 	}
@@ -506,13 +508,17 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 // instance of `Doc` if it is successful. Otherwise, it will  throw an error.
 pub fn generate(input_path string, pub_only bool, with_comments bool, platform Platform, filter_symbol_names ...string) ?Doc {
 	if platform == .js {
-		return error('vdoc: Platform `$platform` is not supported.')
+		return error('vdoc: Platform `${platform}` is not supported.')
 	}
 	mut doc := new(input_path)
 	doc.pub_only = pub_only
 	doc.with_comments = with_comments
 	doc.filter_symbol_names = filter_symbol_names.filter(it.len != 0)
-	doc.prefs.os = if platform == .auto { pref.get_host_os() } else { pref.OS(int(platform)) }
+	doc.prefs.os = if platform == .auto {
+		pref.get_host_os()
+	} else {
+		unsafe { pref.OS(int(platform)) }
+	}
 	doc.generate()?
 	return doc
 }

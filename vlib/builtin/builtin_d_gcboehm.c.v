@@ -1,5 +1,7 @@
 module builtin
 
+#flag -DGC_THREADS=1
+
 $if dynamic_boehm ? {
 	$if windows {
 		$if tinyc {
@@ -27,23 +29,24 @@ $if dynamic_boehm ? {
 		}
 	}
 } $else {
-	#flag -DGC_THREADS=1
-	#flag -DGC_BUILTIN_ATOMIC=1
 	$if macos || linux {
-		#flag -DGC_PTHREADS=1
+		#flag -DGC_BUILTIN_ATOMIC=1
 		#flag -I @VEXEROOT/thirdparty/libgc/include
-		$if (!macos && prod && !tinyc && !debug) || !(amd64 || arm64 || i386 || arm32) {
+		$if (prod && !tinyc && !debug) || !(amd64 || arm64 || i386 || arm32) {
 			// TODO: replace the architecture check with a `!$exists("@VEXEROOT/thirdparty/tcc/lib/libgc.a")` comptime call
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		} $else {
 			#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
 		}
+		$if macos {
+			#flag -DMPROTECT_VDB=1
+		}
 		#flag -ldl
 		#flag -lpthread
 	} $else $if freebsd {
 		// Tested on FreeBSD 13.0-RELEASE-p3, with clang, gcc and tcc:
+		#flag -DGC_BUILTIN_ATOMIC=1
 		#flag -DBUS_PAGE_FAULT=T_PAGEFLT
-		#flag -DGC_PTHREADS=1
 		$if !tinyc {
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
@@ -55,6 +58,7 @@ $if dynamic_boehm ? {
 		}
 		#flag -lpthread
 	} $else $if openbsd {
+		#flag -DGC_BUILTIN_ATOMIC=1
 		#flag -I/usr/local/include
 		#flag $first_existing("/usr/local/lib/libgc.a", "/usr/lib/libgc.a")
 		#flag -lpthread
@@ -62,16 +66,27 @@ $if dynamic_boehm ? {
 		#flag -DGC_NOT_DLL=1
 		#flag -DGC_WIN32_THREADS=1
 		$if tinyc {
+			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
 			#flag -luser32
+		} $else $if msvc {
+			// Build libatomic_ops
+			#flag @VEXEROOT/thirdparty/libatomic_ops/atomic_ops.o
+			#flag -I  @VEXEROOT/thirdparty/libatomic_ops
+
+			#flag -I @VEXEROOT/thirdparty/libgc/include
+			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		} $else {
+			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 	} $else $if $pkgconfig('bdw-gc') {
+		#flag -DGC_BUILTIN_ATOMIC=1
 		#pkgconfig bdw-gc
 	} $else {
+		#flag -DGC_BUILTIN_ATOMIC=1
 		#flag -lgc
 	}
 }

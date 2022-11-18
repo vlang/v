@@ -17,9 +17,9 @@ fn (f Foo) method_with_or() int {
 fn unwrapped_single_line_if() {
 	namefound := publisher.name_fix_check(name_to_find, state.site.id, ispage) or {
 		if err.contains('Could not find') {
-			state.error('cannot find link: $name_to_find')
+			state.error('cannot find link: ${name_to_find}')
 		} else {
-			state.error('cannot find link: $name_to_find\n$err')
+			state.error('cannot find link: ${name_to_find}\n${err}')
 		}
 		println('Another stmt')
 	}

@@ -10,13 +10,20 @@ pub struct DrawImageConfig {
 pub:
 	flip_x    bool
 	flip_y    bool
-	img       &Image = voidptr(0)
+	img       &Image = unsafe { nil }
 	img_id    int
 	img_rect  Rect // defines the size and position on image when rendering to the screen
 	part_rect Rect // defines the size and position of part of the image to use when rendering
 	rotate    int  // amount to rotate the image in degrees
 	z         f32
-	color     gx.Color = gx.white
+	color     gx.Color    = gx.white
+	effect    ImageEffect = .alpha
+}
+
+pub enum ImageEffect {
+	// TODO(FireRedz): Add more effects
+	alpha
+	add
 }
 
 // Rect represents a rectangular shape in `gg`.

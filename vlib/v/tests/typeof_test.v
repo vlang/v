@@ -76,7 +76,7 @@ fn test_typeof_on_sumtypes() {
 	assert typeof(c).name == 'MySumType'
 
 	assert a.str() == '32'
-	assert b.str() == '123.'
+	assert b.str() == '123.0'
 	assert c.str() == 'FooBar'
 }
 

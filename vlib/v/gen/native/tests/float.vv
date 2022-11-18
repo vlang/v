@@ -1,0 +1,70 @@
+fn float_test() {
+	a := f64(0.5)
+	b := f64(3.2)
+
+	assert a + b == f64(3.7)
+	assert a - b == f64(-2.7)
+	assert a * b == f64(1.6)
+	assert a / b == f64(0.15625)
+
+	assert a < b
+	assert a <= b
+	assert b > a
+	assert b >= a
+	assert a == 0.5
+	assert b != 0.5
+}
+
+fn float_cast_test() {
+	a := f64(5.3)
+	b := f32(a)
+	assert b - 5.3 < 0.00001
+
+	c := f32(2.7)
+	d := f64(c)
+	assert d - 2.7 < 0.00001
+
+	e := int(24)
+	f := f64(e)
+	assert f == 24.0
+
+	g := f64(8.3)
+	h := int(g)
+	assert h == 8
+
+	i := u64(10000000000000000000)
+	j := f32(i)
+	assert j - 1.0e19 < 0.00001
+
+	k := f64(1.0e19)
+	l := u64(k)
+	assert l == 10000000000000000000
+}
+
+fn get_f32() f32 {
+	return 2.5
+}
+
+fn get_f64() f64 {
+	return 3.6
+}
+
+fn add_float(a int, b f32, c u64, d f64) f64 {
+	return f64(b) + d
+}
+
+fn float_fn_test() {
+	a := get_f32()
+	assert a == 2.5
+	b := get_f64()
+	assert b == 3.6
+
+	c := add_float(3, 6.5, 2, 4.3)
+	assert c - 10.8 < 0.00001
+}
+
+fn main() {
+	float_test()
+	float_cast_test()
+	float_fn_test()
+}

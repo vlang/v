@@ -3,13 +3,17 @@ module datatypes
 pub struct ListNode<T> {
 mut:
 	data T
-	next &ListNode<T> = 0
+	next &ListNode<T> = unsafe { 0 }
 }
 
 pub struct LinkedList<T> {
 mut:
-	head &ListNode<T> = 0
+	head &ListNode<T> = unsafe { 0 }
 	len  int
+	// Internal iter pointer for allowing safe modification
+	// of the list while iterating. TODO: use an option
+	// instead of a pointer to determine if it is initialized.
+	iter &ListIter<T> = unsafe { 0 }
 }
 
 // is_empty checks if the linked list is empty
@@ -83,18 +87,18 @@ pub fn (mut list LinkedList<T>) pop() ?T {
 		return error('Linked list is empty')
 	}
 	mut node := list.head
-	mut to_return := node.data
+	mut to_return := unsafe { node.data }
 	if unsafe { node.next == 0 } {
 		// first node case
 		// set to null
-		list.head = voidptr(0)
+		list.head = unsafe { nil }
 	} else {
 		for unsafe { node.next.next != 0 } {
 			node = node.next
 		}
-		to_return = node.next.data
+		to_return = unsafe { node.next.data }
 		// set to null
-		node.next = voidptr(0)
+		node.next = unsafe { nil }
 	}
 	list.len -= 1
 	return to_return
@@ -147,11 +151,63 @@ pub fn (mut list LinkedList<T>) prepend(item T) {
 
 // str returns a string representation of the linked list
 pub fn (list LinkedList<T>) str() string {
-	mut result_array := []T{}
+	return list.array().str()
+}
+
+// array returns a array representation of the linked list
+pub fn (list LinkedList<T>) array() []T {
+	mut result_array := []T{cap: list.len}
 	mut node := list.head
 	for unsafe { node != 0 } {
 		result_array << node.data
 		node = node.next
 	}
-	return result_array.str()
+	return result_array
+}
+
+// next implements the iteration interface to use LinkedList
+// with V's `for` loop syntax.
+pub fn (mut list LinkedList<T>) next() ?T {
+	if list.iter == unsafe { nil } {
+		// initialize new iter object
+		list.iter = &ListIter<T>{
+			node: list.head
+		}
+		return list.next()
+	}
+	if list.iter.node == unsafe { nil } {
+		list.iter = unsafe { nil }
+		return none
+	}
+	defer {
+		list.iter.node = list.iter.node.next
+	}
+	return list.iter.node.data
+}
+
+// iterator returns a new iterator instance for the `list`.
+pub fn (mut list LinkedList<T>) iterator() ListIter<T> {
+	return ListIter<T>{
+		node: list.head
+	}
+}
+
+// ListIter<T> is an iterator for LinkedList.
+// It can be used with V's `for x in iter {` construct.
+// One list can have multiple independent iterators, pointing to different positions/places in the list.
+// An iterator instance always traverses the list from start to finish.
+pub struct ListIter<T> {
+mut:
+	node &ListNode<T> = unsafe { 0 }
+}
+
+// next returns the next element of the list, or `none` when the end of the list is reached.
+// It is called by V's `for x in iter{` on each iteration.
+pub fn (mut iter ListIter<T>) next() ?T {
+	if iter.node == unsafe { nil } {
+		return none
+	}
+	res := iter.node.data
+	iter.node = iter.node.next
+	return res
 }

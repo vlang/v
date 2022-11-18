@@ -13,7 +13,6 @@ mut:
 	font_normal  int
 }
 
-[console]
 fn main() {
 	mut color_action := gfx.ColorAttachmentAction{
 		action: .clear
@@ -28,7 +27,7 @@ fn main() {
 	pass_action.colors[0] = color_action
 	state := &AppState{
 		pass_action: pass_action
-		font_context: voidptr(0) // &fontstash.Context(0)
+		font_context: unsafe { nil } // &fontstash.Context(0)
 	}
 	title := 'V Metal/GL Text Rendering'
 	desc := sapp.Desc{
@@ -51,7 +50,7 @@ fn init(mut state AppState) {
 	if bytes := os.read_bytes(os.resource_abs_path(os.join_path('..', 'assets', 'fonts',
 		'RobotoMono-Regular.ttf')))
 	{
-		println('loaded font: $bytes.len')
+		println('loaded font: ${bytes.len}')
 		state.font_normal = state.font_context.add_font_mem('sans', bytes, false)
 	}
 }

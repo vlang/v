@@ -21,13 +21,13 @@ pub struct ErrSizeOfTypeIs0 {
 	code int
 }
 fn error_file_not_opened() IError {
-	return IError(&ErrFileNotOpened{})
+	return (&ErrFileNotOpened{})
 }
 fn error_size_of_type_0() IError {
-	return IError(&ErrSizeOfTypeIs0{})
+	return (&ErrSizeOfTypeIs0{})
 }
 */
-pub fn open_file(path string, mode string, options ...int) ?File {
+pub fn open_file(path string, mode string, options ...int) !File {
 	mut res := File{}
 	$if js_node {
 		#if (!options) { options = new array([]); }
@@ -47,13 +47,13 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 }
 
 // open tries to open a file for reading and returns back a read-only `File` object.
-pub fn open(path string) ?File {
-	f := open_file(path, 'r')?
+pub fn open(path string) !File {
+	f := open_file(path, 'r')!
 	return f
 }
 
-pub fn create(path string) ?File {
-	f := open_file(path, 'w')?
+pub fn create(path string) !File {
+	f := open_file(path, 'w')!
 	return f
 }
 
@@ -78,7 +78,7 @@ pub fn stderr() File {
 	}
 }
 
-pub fn (f &File) read(mut buf []u8) ?int {
+pub fn (f &File) read(mut buf []u8) !int {
 	if buf.len == 0 {
 		return 0
 	}
@@ -93,7 +93,7 @@ pub fn (f &File) read(mut buf []u8) ?int {
 	return nbytes
 }
 
-pub fn (mut f File) write(buf []u8) ?int {
+pub fn (mut f File) write(buf []u8) !int {
 	if !f.is_opened {
 		return error('file is not opened')
 	}
@@ -107,13 +107,13 @@ pub fn (mut f File) write(buf []u8) ?int {
 
 // writeln writes the string `s` into the file, and appends a \n character.
 // It returns how many bytes were written, including the \n character.
-pub fn (mut f File) writeln(s string) ?int {
-	mut nbytes := f.write(s.bytes())?
-	nbytes += f.write('\n'.bytes())?
+pub fn (mut f File) writeln(s string) !int {
+	mut nbytes := f.write(s.bytes())!
+	nbytes += f.write('\n'.bytes())!
 	return nbytes
 }
 
-pub fn (mut f File) write_to(pos u64, buf []u8) ?int {
+pub fn (mut f File) write_to(pos u64, buf []u8) !int {
 	if !f.is_opened {
 		return error('file is not opened')
 	}
@@ -127,8 +127,8 @@ pub fn (mut f File) write_to(pos u64, buf []u8) ?int {
 
 // write_string writes the string `s` into the file
 // It returns how many bytes were actually written.
-pub fn (mut f File) write_string(s string) ?int {
-	nbytes := f.write(s.bytes())?
+pub fn (mut f File) write_string(s string) !int {
+	nbytes := f.write(s.bytes())!
 	return nbytes
 }
 
@@ -136,9 +136,9 @@ pub fn (mut f File) close() {
 	#$fs.closeSync(f.valueOf().fd.valueOf())
 }
 
-pub fn (mut f File) write_full_buffer(s voidptr, buffer_len usize) ? {}
+pub fn (mut f File) write_full_buffer(s voidptr, buffer_len usize) ! {}
 
-pub fn (mut f File) write_array(buffer array) ?int {
+pub fn (mut f File) write_array(buffer array) !int {
 	if !f.is_opened {
 		return error('file is not opened')
 	}

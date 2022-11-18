@@ -56,12 +56,11 @@ Let my heart be still a moment and this mystery explore;—
 struct AppState {
 mut:
 	pass_action gfx.PassAction
-	fons        &fontstash.Context
+	fons        &fontstash.Context = unsafe { nil }
 	font_normal int
 	inited      bool
 }
 
-[console]
 fn main() {
 	mut color_action := gfx.ColorAttachmentAction{
 		action: .clear
@@ -76,7 +75,7 @@ fn main() {
 	pass_action.colors[0] = color_action
 	state := &AppState{
 		pass_action: pass_action
-		fons: voidptr(0) // &fontstash.Context(0)
+		fons: unsafe { nil } // &fontstash.Context(0)
 	}
 	title := 'V Metal/GL Text Rendering'
 	desc := sapp.Desc{
@@ -103,7 +102,7 @@ fn init(user_data voidptr) {
 	if bytes := os.read_bytes(os.resource_abs_path(os.join_path('..', 'assets', 'fonts',
 		'RobotoMono-Regular.ttf')))
 	{
-		println('loaded font: $bytes.len')
+		println('loaded font: ${bytes.len}')
 		state.font_normal = state.fons.add_font_mem('sans', bytes, false)
 	}
 }

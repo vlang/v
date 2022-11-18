@@ -35,11 +35,11 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		bare_panic(s)
 	} $else {
 		eprintln('================ V panic ================')
-		eprintln('   module: $mod')
+		eprintln('   module: ${mod}')
 		eprintln(' function: ${fn_name}()')
-		eprintln('  message: $s')
-		eprintln('     file: $file:$line_no')
-		eprintln('   v hash: $vcommithash()')
+		eprintln('  message: ${s}')
+		eprintln('     file: ${file}:${line_no}')
+		eprintln('   v hash: ${vcommithash()}')
 		eprintln('=========================================')
 		$if exit_after_panic_message ? {
 			C.exit(1)
@@ -72,14 +72,14 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 // It ends the program with a panic.
 [noreturn]
 pub fn panic_optional_not_set(s string) {
-	panic('optional not set ($s)')
+	panic('optional not set (${s})')
 }
 
 // panic_optional_not_set is called by V, when you use result error propagation in your main function
 // It ends the program with a panic.
 [noreturn]
 pub fn panic_result_not_set(s string) {
-	panic('result not set ($s)')
+	panic('result not set (${s})')
 }
 
 // panic prints a nice error message, then exits the process with exit code of 1.
@@ -91,7 +91,7 @@ pub fn panic(s string) {
 	} $else {
 		eprint('V panic: ')
 		eprintln(s)
-		eprintln('v hash: $vcommithash()')
+		eprintln('v hash: ${vcommithash()}')
 		$if exit_after_panic_message ? {
 			C.exit(1)
 		} $else $if no_backtrace ? {
@@ -123,7 +123,7 @@ pub fn panic(s string) {
 pub fn c_error_number_str(errnum int) string {
 	mut err_msg := ''
 	$if freestanding {
-		err_msg = 'error $errnum'
+		err_msg = 'error ${errnum}'
 	} $else {
 		$if !vinix {
 			c_msg := C.strerror(errnum)
@@ -159,8 +159,8 @@ pub fn eprintln(s string) {
 		C.fflush(C.stdout)
 		C.fflush(C.stderr)
 		// eprintln is used in panics, so it should not fail at all
-		$if android {
-			C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
+		$if android && !termux {
+			C.android_print(C.stderr, c'%.*s\n', s.len, s.str)
 		}
 		_writeln_to_fd(2, s)
 		C.fflush(C.stderr)
@@ -182,8 +182,8 @@ pub fn eprint(s string) {
 	} $else {
 		C.fflush(C.stdout)
 		C.fflush(C.stderr)
-		$if android {
-			C.fprintf(C.stderr, c'%.*s', s.len, s.str)
+		$if android && !termux {
+			C.android_print(C.stderr, c'%.*s', s.len, s.str)
 		}
 		_write_buf_to_fd(2, s.str, s.len)
 		C.fflush(C.stderr)
@@ -211,11 +211,9 @@ pub fn flush_stderr() {
 // print prints a message to stdout. Unlike `println` stdout is not automatically flushed.
 [manualfree]
 pub fn print(s string) {
-	$if android {
-		C.fprintf(C.stdout, c'%.*s', s.len, s.str) // logcat
-	}
-	// no else if for android termux support
-	$if ios {
+	$if android && !termux {
+		C.android_print(C.stdout, c'%.*s\n', s.len, s.str)
+	} $else $if ios {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
 		C.WrappedNSLog(s.str)
 	} $else $if freestanding {
@@ -232,12 +230,10 @@ pub fn println(s string) {
 		println('println(NIL)')
 		return
 	}
-	$if android {
-		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str) // logcat
+	$if android && !termux {
+		C.android_print(C.stdout, c'%.*s\n', s.len, s.str)
 		return
-	}
-	// no else if for android termux support
-	$if ios {
+	} $else $if ios {
 		C.WrappedNSLog(s.str)
 		return
 	} $else $if freestanding {
@@ -301,7 +297,7 @@ __global total_m = i64(0)
 [unsafe]
 pub fn malloc(n isize) &u8 {
 	if n <= 0 {
-		panic('malloc($n <= 0)')
+		panic('malloc(${n} <= 0)')
 	}
 	$if vplayground ? {
 		if n > 10000 {
@@ -331,7 +327,7 @@ pub fn malloc(n isize) &u8 {
 		res = unsafe { C.malloc(n) }
 	}
 	if res == 0 {
-		panic('malloc($n) failed')
+		panic('malloc(${n}) failed')
 	}
 	$if debug_malloc ? {
 		// Fill in the memory with something != 0 i.e. `M`, so it is easier to spot
@@ -344,7 +340,7 @@ pub fn malloc(n isize) &u8 {
 [unsafe]
 pub fn malloc_noscan(n isize) &u8 {
 	if n <= 0 {
-		panic('malloc_noscan($n <= 0)')
+		panic('malloc_noscan(${n} <= 0)')
 	}
 	$if vplayground ? {
 		if n > 10000 {
@@ -378,7 +374,7 @@ pub fn malloc_noscan(n isize) &u8 {
 		res = unsafe { C.malloc(n) }
 	}
 	if res == 0 {
-		panic('malloc_noscan($n) failed')
+		panic('malloc_noscan(${n}) failed')
 	}
 	$if debug_malloc ? {
 		// Fill in the memory with something != 0 i.e. `M`, so it is easier to spot
@@ -393,7 +389,7 @@ pub fn malloc_noscan(n isize) &u8 {
 [unsafe]
 pub fn malloc_uncollectable(n isize) &u8 {
 	if n <= 0 {
-		panic('malloc_uncollectable($n <= 0)')
+		panic('malloc_uncollectable(${n} <= 0)')
 	}
 	$if vplayground ? {
 		if n > 10000 {
@@ -421,7 +417,7 @@ pub fn malloc_uncollectable(n isize) &u8 {
 		res = unsafe { C.malloc(n) }
 	}
 	if res == 0 {
-		panic('malloc_uncollectable($n) failed')
+		panic('malloc_uncollectable(${n}) failed')
 	}
 	$if debug_malloc ? {
 		// Fill in the memory with something != 0 i.e. `M`, so it is easier to spot
@@ -453,7 +449,7 @@ pub fn v_realloc(b &u8, n isize) &u8 {
 		new_ptr = unsafe { C.realloc(b, n) }
 	}
 	if new_ptr == 0 {
-		panic('realloc($n) failed')
+		panic('realloc(${n}) failed')
 	}
 	return new_ptr
 }
@@ -499,7 +495,7 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 		nptr = unsafe { C.realloc(old_data, new_size) }
 	}
 	if nptr == 0 {
-		panic('realloc_data($old_data, $old_size, $new_size) failed')
+		panic('realloc_data(${old_data}, ${old_size}, ${new_size}) failed')
 	}
 	return nptr
 }
@@ -509,7 +505,7 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 // Unlike `v_calloc` vcalloc checks for negative values given in `n`.
 pub fn vcalloc(n isize) &u8 {
 	if n < 0 {
-		panic('calloc($n < 0)')
+		panic('calloc(${n} < 0)')
 	} else if n == 0 {
 		return &u8(0)
 	}
@@ -542,7 +538,7 @@ pub fn vcalloc_noscan(n isize) &u8 {
 			}
 		}
 		if n < 0 {
-			panic('calloc_noscan($n < 0)')
+			panic('calloc_noscan(${n} < 0)')
 		}
 		return $if gcboehm_opt ? {
 			unsafe { &u8(C.memset(C.GC_MALLOC_ATOMIC(n), 0, n)) }
@@ -615,9 +611,9 @@ pub fn memdup_uncollectable(src voidptr, sz int) voidptr {
 
 [inline]
 fn v_fixed_index(i int, len int) int {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i >= len {
-			s := 'fixed array index out of range (index: $i, len: $len)'
+			s := 'fixed array index out of range (index: ${i}, len: ${len})'
 			panic(s)
 		}
 	}
@@ -657,4 +653,4 @@ pub fn print_backtrace() {
 __global g_main_argc = int(0)
 
 [markused]
-__global g_main_argv = voidptr(0)
+__global g_main_argv = unsafe { nil }

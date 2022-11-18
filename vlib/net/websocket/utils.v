@@ -27,7 +27,7 @@ fn create_masking_key() []u8 {
 }
 
 // create_key_challenge_response creates a key challange response from security key
-fn create_key_challenge_response(seckey string) ?string {
+fn create_key_challenge_response(seckey string) !string {
 	if seckey.len == 0 {
 		return error('unexpected seckey lengt zero')
 	}

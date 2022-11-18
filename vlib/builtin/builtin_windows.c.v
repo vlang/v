@@ -37,7 +37,7 @@ pub mut:
 	f_size_of_struct u32
 	f_key            voidptr
 	f_line_number    u32
-	f_file_name      &u8
+	f_file_name      &u8 = unsafe { nil }
 	f_address        u64
 }
 
@@ -63,7 +63,7 @@ const (
 	symopt_load_lines            = 0x00000010
 	symopt_include_32bit_modules = 0x00002000
 	symopt_allow_zero_address    = 0x01000000
-	symopt_debug                 = 0x80000000
+	symopt_debug                 = u32(0x80000000)
 )
 
 // g_original_codepage - used to restore the original windows console code page when exiting
@@ -156,23 +156,23 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 				if C.SymGetLineFromAddr64(handle, frame_addr, &offset, &sline64) == 1 {
 					file_name := unsafe { tos3(sline64.f_file_name) }
 					lnumber := sline64.f_line_number
-					lineinfo = '$file_name:$lnumber'
+					lineinfo = '${file_name}:${lnumber}'
 				} else {
-					addr:
+					// addr:
 					lineinfo = '?? : address = 0x${(&frame_addr):x}'
 				}
 				sfunc := unsafe { tos3(fname) }
-				eprintln('${nframe:-2d}: ${sfunc:-25s}  $lineinfo')
+				eprintln('${nframe:-2d}: ${sfunc:-25s}  ${lineinfo}')
 			} else {
 				// https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes
 				cerr := int(C.GetLastError())
 				if cerr == 87 {
-					eprintln('SymFromAddr failure: $cerr = The parameter is incorrect)')
+					eprintln('SymFromAddr failure: ${cerr} = The parameter is incorrect)')
 				} else if cerr == 487 {
 					// probably caused because the .pdb isn't in the executable folder
-					eprintln('SymFromAddr failure: $cerr = Attempt to access invalid address (Verify that you have the .pdb file in the right folder.)')
+					eprintln('SymFromAddr failure: ${cerr} = Attempt to access invalid address (Verify that you have the .pdb file in the right folder.)')
 				} else {
-					eprintln('SymFromAddr failure: $cerr (see https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes)')
+					eprintln('SymFromAddr failure: ${cerr} (see https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes)')
 				}
 			}
 		}
@@ -214,7 +214,7 @@ pub:
 	// status_ constants
 	code        u32
 	flags       u32
-	record      &ExceptionRecord
+	record      &ExceptionRecord = unsafe { nil }
 	address     voidptr
 	param_count u32
 	// params []voidptr
@@ -226,8 +226,8 @@ struct ContextRecord {
 
 struct ExceptionPointers {
 pub:
-	exception_record &ExceptionRecord
-	context_record   &ContextRecord
+	exception_record &ExceptionRecord = unsafe { nil }
+	context_record   &ContextRecord   = unsafe { nil }
 }
 
 type VectoredExceptionHandler = fn (&ExceptionPointers) int
@@ -267,7 +267,7 @@ fn break_if_debugger_attached() {
 	$if tinyc {
 		unsafe {
 			mut ptr := &voidptr(0)
-			*ptr = voidptr(0)
+			*ptr = nil
 			_ = ptr
 		}
 	} $else {
@@ -289,7 +289,7 @@ pub fn winapi_lasterr_str() string {
 		C.NULL, err_msg_id, C.MAKELANGID(C.LANG_NEUTRAL, C.SUBLANG_DEFAULT), &msgbuf,
 		0, C.NULL)
 	err_msg := if res == 0 {
-		'Win-API error $err_msg_id'
+		'Win-API error ${err_msg_id}'
 	} else {
 		unsafe { string_from_wide(msgbuf) }
 	}

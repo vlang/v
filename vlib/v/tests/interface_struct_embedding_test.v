@@ -17,7 +17,7 @@ struct EmbeddingStruct {
 }
 
 fn (s EmbeddingStruct) get() string {
-	return 'embedded: $s.msg'
+	return 'embedded: ${s.msg}'
 }
 
 fn test_struct_embedding() {

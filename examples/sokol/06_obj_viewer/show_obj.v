@@ -45,7 +45,7 @@ const (
 
 struct App {
 mut:
-	gg          &gg.Context
+	gg          &gg.Context = unsafe { nil }
 	texture     gfx.Image
 	init_flag   bool
 	frame_count int
@@ -265,8 +265,6 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 /******************************************************************************
 * Main
 ******************************************************************************/
-// is needed for easier diagnostics on windows
-[console]
 fn main() {
 	/*
 	obj.tst()
@@ -298,8 +296,8 @@ fn main() {
 		if os.args.len >= 3 {
 			app.single_material_flag = os.args[2].bool()
 		}
-		println('Loading model: $app.file_name')
-		println('Using single material: $app.single_material_flag')
+		println('Loading model: ${app.file_name}')
+		println('Using single material: ${app.single_material_flag}')
 	}
 
 	app.gg = gg.new_context(

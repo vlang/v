@@ -22,7 +22,7 @@ fn test_all() {
 	diff_cmd := diff.find_working_diff_command() or { '' }
 	dir := 'vlib/v/tests/inout'
 	files := os.ls(dir) or { panic(err) }
-	tests := files.filter(it.ends_with('.vv'))
+	tests := files.filter(it.ends_with('.vv') || it.ends_with('.vsh'))
 	if tests.len == 0 {
 		println('no compiler tests found')
 		assert false
@@ -37,14 +37,14 @@ fn test_all() {
 		}
 		program := path
 		tname := rand.ulid()
-		compilation := os.execute('${os.quoted_path(vexe)} -o $tname -cflags "-w" -cg ${os.quoted_path(program)}')
+		compilation := os.execute('${os.quoted_path(vexe)} -o ${tname} -cflags "-w" -cg ${os.quoted_path(program)}')
 		if compilation.exit_code < 0 {
 			panic(compilation.output)
 		}
 		if compilation.exit_code != 0 {
-			panic('compilation failed: $compilation.output')
+			panic('compilation failed: ${compilation.output}')
 		}
-		res := os.execute('./$tname')
+		res := os.execute('./${tname}')
 		if res.exit_code < 0 {
 			println('nope')
 			panic(res.output)
@@ -56,13 +56,15 @@ fn test_all() {
 				os.rm('./${tname}.pdb') or {}
 			}
 		} $else {
-			os.rm('./$tname') or {}
+			os.rm('./${tname}') or {}
 		}
 		// println('============')
 		// println(res.output)
 		// println('============')
 		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
-		mut expected := os.read_file(program.replace('.vv', '') + '.out') or { panic(err) }
+		mut expected := os.read_file(program.replace('.vv', '').replace('.vsh', '') + '.out') or {
+			panic(err)
+		}
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
 		if expected.contains('================ V panic ================') {
 			// panic include backtraces and absolute file paths, so can't do char by char comparison

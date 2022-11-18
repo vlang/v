@@ -33,30 +33,22 @@ TODO: Cleanup this when/if v has better process control/communication primitives
 */
 const (
 	vexe                = os.getenv('VEXE')
-	tmp_file            = os.join_path(os.temp_dir(), 'generated_live_program.tmp.v')
-	source_file         = os.join_path(os.temp_dir(), 'generated_live_program.v')
-	genexe_file         = os.join_path(os.temp_dir(), 'generated_live_program')
-	output_file         = os.join_path(os.temp_dir(), 'generated_live_program.output.txt')
-	res_original_file   = os.join_path(os.temp_dir(), 'ORIGINAL.txt')
-	res_changed_file    = os.join_path(os.temp_dir(), 'CHANGED.txt')
-	res_another_file    = os.join_path(os.temp_dir(), 'ANOTHER.txt')
-	res_stop_file       = os.join_path(os.temp_dir(), 'STOP.txt')
-	cleanup_files       = [tmp_file, source_file, genexe_file, output_file, res_original_file,
-		res_changed_file, res_another_file, res_stop_file]
+	vtmp_folder         = os.join_path(os.vtmp_dir(), 'v', 'tests', 'live')
+	main_source_file    = os.join_path(vtmp_folder, 'main.v')
+	tmp_file            = os.join_path(vtmp_folder, 'mymodule', 'generated_live_module.tmp')
+	source_file         = os.join_path(vtmp_folder, 'mymodule', 'mymodule.v')
+	genexe_file         = os.join_path(vtmp_folder, 'generated_live_program')
+	output_file         = os.join_path(vtmp_folder, 'generated_live_program.output.txt')
+	res_original_file   = os.join_path(vtmp_folder, 'ORIGINAL.txt')
+	res_changed_file    = os.join_path(vtmp_folder, 'CHANGED.txt')
+	res_another_file    = os.join_path(vtmp_folder, 'ANOTHER.txt')
+	res_stop_file       = os.join_path(vtmp_folder, 'STOP.txt')
 	live_program_source = get_source_template()
 )
 
 fn get_source_template() string {
 	src := os.read_file(os.join_path(os.dir(@FILE), 'live_test_template.vv')) or { panic(err) }
 	return src.replace('#OUTPUT_FILE#', output_file)
-}
-
-fn edefault(name string, default string) string {
-	res := os.getenv(name)
-	if res == '' {
-		return default
-	}
-	return res
 }
 
 fn atomic_write_source(source string) {
@@ -69,17 +61,24 @@ fn atomic_write_source(source string) {
 
 //
 fn testsuite_begin() {
+	os.rmdir_all(vtmp_folder) or {}
+	os.mkdir_all(vtmp_folder) or {}
+	os.mkdir_all(os.join_path(vtmp_folder, 'mymodule'))!
+	os.write_file(os.join_path(vtmp_folder, 'v.mod'), '')!
+	os.write_file(os.join_path(vtmp_folder, 'main.v'), '
+import mymodule
+fn main() {
+	mymodule.mymain()
+}
+')!
 	if os.user_os() !in ['linux', 'solaris'] && os.getenv('FORCE_LIVE_TEST').len == 0 {
 		eprintln('Testing the runtime behaviour of -live mode,')
 		eprintln('is reliable only on Linux/macOS for now.')
 		eprintln('You can still do it by setting FORCE_LIVE_TEST=1 .')
 		exit(0)
 	}
-	for f in [tmp_file, source_file, output_file, res_original_file, res_changed_file,
-		res_another_file, res_stop_file] {
-		os.rm(f) or {}
-	}
 	atomic_write_source(live_program_source)
+	// os.system('tree $vtmp_folder') exit(1)
 }
 
 [debuglivetest]
@@ -88,44 +87,44 @@ fn vprintln(s string) {
 }
 
 fn testsuite_end() {
-	vprintln('source: $source_file')
-	vprintln('output: $output_file')
+	// os.system('tree $vtmp_folder') exit(1)
+	vprintln('source: ${source_file}')
+	vprintln('output: ${output_file}')
 	vprintln('---------------------------------------------------------------------------')
 	output_lines := os.read_lines(output_file) or {
-		panic('could not read $output_file, error: $err')
+		panic('could not read ${output_file}, error: ${err}')
 	}
 	mut histogram := map[string]int{}
 	for line in output_lines {
 		histogram[line] = histogram[line] + 1
 	}
 	for k, v in histogram {
-		eprintln('> found ${v:5d} times: $k')
+		eprintln('> found ${v:5d} times: ${k}')
 	}
 	vprintln('---------------------------------------------------------------------------')
 	assert histogram['START'] > 0
 	assert histogram['ORIGINAL'] > 0
 	assert histogram['CHANGED'] + histogram['ANOTHER'] > 0
 	// assert histogram['END'] > 0
-	for tfile in cleanup_files {
-		os.rm(tfile) or {}
-	}
+	os.rmdir_all(vtmp_folder) or {}
 }
 
 fn change_source(new string) {
 	time.sleep(100 * time.millisecond)
-	vprintln('> change ORIGINAL to: $new')
+	vprintln('> change ORIGINAL to: ${new}')
 	atomic_write_source(live_program_source.replace('ORIGINAL', new))
 	wait_for_file(new)
 }
 
 fn wait_for_file(new string) {
 	time.sleep(100 * time.millisecond)
-	expected_file := os.join_path(os.temp_dir(), new + '.txt')
-	eprintln('waiting for $expected_file ...')
-	max_wait_cycles := edefault('WAIT_CYCLES', '1').int()
+	expected_file := os.join_path(vtmp_folder, new + '.txt')
+	eprintln('waiting for ${expected_file} ...')
+	// os.system('tree $vtmp_folder')
+	max_wait_cycles := os.getenv_opt('WAIT_CYCLES') or { '1' }.int()
 	for i := 0; i <= max_wait_cycles; i++ {
 		if i % 25 == 0 {
-			vprintln('   checking ${i:-10d} for $expected_file ...')
+			vprintln('   checking ${i:-10d} for ${expected_file} ...')
 		}
 		if os.exists(expected_file) {
 			assert true
@@ -144,18 +143,20 @@ fn setup_cycles_environment() {
 		//		max_live_cycles *= 5
 		//		max_wait_cycles *= 5
 	}
-	os.setenv('LIVE_CYCLES', '$max_live_cycles', true)
-	os.setenv('WAIT_CYCLES', '$max_wait_cycles', true)
+	os.setenv('LIVE_CYCLES', '${max_live_cycles}', true)
+	os.setenv('WAIT_CYCLES', '${max_wait_cycles}', true)
 }
 
 //
 fn test_live_program_can_be_compiled() {
 	setup_cycles_environment()
 	eprintln('Compiling...')
-	os.system('${os.quoted_path(vexe)} -nocolor -live -o ${os.quoted_path(genexe_file)} ${os.quoted_path(source_file)}')
+	compile_cmd := '${os.quoted_path(vexe)} -cg -keepc -nocolor -live -o ${os.quoted_path(genexe_file)} ${os.quoted_path(main_source_file)}'
+	eprintln('> compile_cmd: ${compile_cmd}')
+	os.system(compile_cmd)
 	//
 	cmd := '${os.quoted_path(genexe_file)} > /dev/null &'
-	eprintln('Running with: $cmd')
+	eprintln('Running with: ${cmd}')
 	res := os.system(cmd)
 	assert res == 0
 	eprintln('... running in the background')

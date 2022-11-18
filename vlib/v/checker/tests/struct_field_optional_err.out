@@ -1,0 +1,41 @@
+vlib/v/checker/tests/struct_field_optional_err.vv:3:6: error: struct field does not support storing result
+    1 | struct Foo {
+    2 | mut:
+    3 |     foo !int
+      |         ^
+    4 |     bar ?int = 1
+    5 |     baz int  = 1
+vlib/v/checker/tests/struct_field_optional_err.vv:11:8: error: field `bar` is an option, so it should have either an `or {}` block, or `?` at the end
+    9 |     mut f := Foo{}
+   10 | 
+   11 |     _ = f.bar
+      |           ~~~
+   12 |     _ = f.bar + 1
+   13 |
+vlib/v/checker/tests/struct_field_optional_err.vv:12:12: error: `+` cannot be used with `?int`
+   10 | 
+   11 |     _ = f.bar
+   12 |     _ = f.bar + 1
+      |               ^
+   13 | 
+   14 |     _ = f.bar!
+vlib/v/checker/tests/struct_field_optional_err.vv:14:11: error: to propagate a result, the call must also return a result type
+   12 |     _ = f.bar + 1
+   13 | 
+   14 |     _ = f.bar!
+      |              ^
+   15 | 
+   16 |     _ = f.bar or { _ = 1 }
+vlib/v/checker/tests/struct_field_optional_err.vv:16:19: error: last statement in the `or {}` block should be an expression of type `int` or exit parent scope
+   14 |     _ = f.bar!
+   15 | 
+   16 |     _ = f.bar or { _ = 1 }
+      |                      ^
+   17 | 
+   18 |     _ = f.baz?
+vlib/v/checker/tests/struct_field_optional_err.vv:18:11: error: unexpected `?`, the field `baz` is neither an optional, nor a result
+   16 |     _ = f.bar or { _ = 1 }
+   17 | 
+   18 |     _ = f.baz?
+      |              ^
+   19 | }

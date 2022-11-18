@@ -234,6 +234,9 @@ fn test_escape_string() {
 	result = scan_tokens(r"'\u2605'")
 	assert result[0].kind == .string
 	assert result[0].lit == r'★'
+	result = scan_tokens(r"'H\u2605H'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'H★H'
 
 	// STRING ESCAPED ASCII
 	result = scan_tokens(r"'\x61'")
@@ -245,6 +248,22 @@ fn test_escape_string() {
 	result = scan_tokens(r"'\xe29885'")
 	assert result[0].kind == .string
 	assert result[0].lit.bytes() == [u8(0xe2), `9`, `8`, `8`, `5`]
+
+	// MIX STRING ESCAPES
+	result = scan_tokens(r"'\x61\u2605'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'a★'
+	result = scan_tokens(r"'\u2605\x61'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'★a'
+
+	// MIX STRING ESCAPES with offset
+	result = scan_tokens(r"'x  \x61\u2605\x61'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'x  a★a'
+	result = scan_tokens(r"'x  \u2605\x61\u2605'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'x  ★a★'
 
 	// SHOULD RESULT IN ERRORS
 	// result = scan_tokens(r'`\x61\x61`') // should always result in an error

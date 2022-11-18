@@ -1,0 +1,17 @@
+module main
+
+fn shuffle_impl<T>(mut a []T) ? {
+	println('FN: ${@FN:20} | T: ${typeof(a).name}')
+}
+
+fn shuffle<T>(mut a []T) ? {
+	println('FN: ${@FN:20} | T: ${typeof(a).name}')
+	shuffle_impl(mut a)?
+}
+
+fn main() {
+	mut a := [1, 2]
+	mut b := [f64(1.0), 2.0]
+	shuffle(mut a)?
+	shuffle(mut b)?
+}

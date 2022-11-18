@@ -18,9 +18,9 @@ pub fn new_eval(table &ast.Table, pref &pref.Preferences) Eval {
 type Symbol = Object | ast.EmptyStmt | ast.FnDecl
 
 pub struct Eval {
-	pref &pref.Preferences
+	pref &pref.Preferences = unsafe { nil }
 pub mut:
-	table                  &ast.Table
+	table                  &ast.Table = unsafe { nil }
 	mods                   map[string]map[string]Symbol
 	future_register_consts map[string]map[string]map[string]ast.ConstField // mod:file:name:field
 	local_vars             map[string]Var
@@ -63,10 +63,10 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 	//
 	mut args := _args.clone()
 	if func.params.len != args.len && !func.is_variadic {
-		e.error('mismatched parameter length for $func.name: got `$args.len`, expected `$func.params.len`')
+		e.error('mismatched parameter length for ${func.name}: got `${args.len}`, expected `${func.params.len}`')
 	}
 
-	if func.name in ['print', 'println', 'eprint', 'eprintln'] {
+	if func.name in ['print', 'println', 'eprint', 'eprintln', 'panic'] {
 		s := args[0].string() // stringify because println accepts anything as argument
 		match func.name {
 			'print' {
@@ -80,6 +80,9 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 			}
 			'eprintln' {
 				eprintln(s)
+			}
+			'panic' {
+				e.panic(s)
 			}
 			else {}
 		}
@@ -186,7 +189,7 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 					}
 					for i, branch in x.branches {
 						mut do_if := false
-						println('branch:$branch')
+						println('branch:${branch}')
 						match branch.cond {
 							ast.Ident {
 								match (branch.cond as ast.Ident).name {
@@ -210,22 +213,40 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 					}
 				}
 				else {
-					e.error('unknown declaration expression statement $x.type_name()')
+					e.error('unknown declaration expression statement ${x.type_name()}')
 				}
 			}
 		}
 		else {
-			e.error('unhandled declaration statement $stmt.type_name()')
+			e.error('unhandled declaration statement ${stmt.type_name()}')
 		}
 	}
 }
 
 fn (e Eval) error(msg string) {
 	eprintln('> V interpeter backtrace:')
-	for t in e.back_trace {
-		file_path := e.trace_file_paths[t.file_idx] or { t.file_idx.str() }
-		fn_name := e.trace_function_names[t.fn_idx] or { t.fn_idx.str() }
-		eprintln('  $file_path:${t.line + 1}:$fn_name}')
-	}
+	e.print_backtrace()
 	util.verror('interpreter', msg)
+}
+
+fn (e Eval) panic(s string) {
+	commithash := unsafe { tos5(&char(C.V_CURRENT_COMMIT_HASH)) }
+	eprintln('V panic: ${s}')
+	eprintln('V hash: ${commithash}')
+	e.print_backtrace()
+	exit(1)
+}
+
+fn (e Eval) print_backtrace() {
+	for i := e.back_trace.len - 1; i >= 0; i-- {
+		t := e.back_trace[i]
+		file_path := if path := e.trace_file_paths[t.file_idx] {
+			util.path_styled_for_error_messages(path)
+		} else {
+			t.file_idx.str()
+		}
+		fn_name := e.trace_function_names[t.fn_idx] or { t.fn_idx.str() }
+		word := if i == e.back_trace.len - 1 { 'at' } else { 'by' }
+		eprintln('${file_path}:${t.line + 1}: ${word} ${fn_name}')
+	}
 }

@@ -1,0 +1,13 @@
+struct Foo {}
+
+fn main() {
+	1 = 2
+	u8(1) = u8(2)
+	1.0 = 2.0
+	'str' = 'string'
+	`a` = `b`
+	Foo{} = Foo{}
+	true = false
+	3 + 5 = 3 & 4
+	(3 + 3.5) = 4 + 6.4
+}

@@ -44,7 +44,7 @@ fn main() {
 	for hf in hfields.split(',') {
 		ctx.hide_names[hf] = true
 	}
-	fp.limit_free_args_to_at_least(1)?
+	fp.limit_free_args_to_at_least(1)!
 	rest_of_args := fp.remaining_parameters()
 	for vfile in rest_of_args {
 		file := get_abs_path(vfile)
@@ -60,7 +60,7 @@ fn (ctx Context) write_file_or_print(file string) {
 	if ctx.is_print {
 		println(json(file))
 	} else {
-		println('$time.now(): AST written to: ' + json_file(file))
+		println('${time.now()}: AST written to: ' + json_file(file))
 	}
 }
 
@@ -74,7 +74,7 @@ fn (ctx Context) watch_for_changes(file string) {
 			ctx.write_file_or_print(file)
 			if ctx.is_compile {
 				file_name := file[0..(file.len - os.file_ext(file).len)]
-				os.system('v -o ${file_name}.c $file')
+				os.system('v -o ${file_name}.c ${file}')
 			}
 		}
 		timestamp = new_timestamp
@@ -96,11 +96,11 @@ fn get_abs_path(path string) string {
 // check file is v file and exists
 fn check_file(file string) {
 	if os.file_ext(file) !in ['.v', '.vv', '.vsh'] {
-		eprintln('the file `$file` must be a v file or vsh file')
+		eprintln('the file `${file}` must be a v file or vsh file')
 		exit(1)
 	}
 	if !os.exists(file) {
-		eprintln('the v file `$file` does not exist')
+		eprintln('the v file `${file}` does not exist')
 		exit(1)
 	}
 }
@@ -140,8 +140,8 @@ fn json(file string) string {
 
 // the ast tree
 struct Tree {
-	table &ast.Table
-	pref  &pref.Preferences
+	table &ast.Table        = unsafe { nil }
+	pref  &pref.Preferences = unsafe { nil }
 mut:
 	root Node // the root of tree
 }
@@ -224,12 +224,12 @@ fn (t Tree) type_node(typ ast.Type) &Node {
 
 // token type node
 fn (t Tree) token_node(tok_kind token.Kind) &Node {
-	return t.string_node('token:${int(tok_kind)}($tok_kind.str())')
+	return t.string_node('token:${int(tok_kind)}(${tok_kind.str()})')
 }
 
 // enum type node
 fn (t Tree) enum_node<T>(value T) &Node {
-	return t.string_node('enum:${int(value)}($value)')
+	return t.string_node('enum:${int(value)}(${value})')
 }
 
 // for [][]comment
@@ -366,8 +366,7 @@ fn (t Tree) errors(errors []errors.Error) &Node {
 		obj.add_terse('message', t.string_node(e.message))
 		obj.add_terse('file_path', t.string_node(e.file_path))
 		obj.add('pos', t.pos(e.pos))
-		obj.add_terse('backtrace', t.string_node(e.backtrace))
-		obj.add_terse('reporter', t.enum_node(e.reporter))
+		obj.add('reporter', t.enum_node(e.reporter))
 		errs.add_item(obj)
 	}
 	return errs
@@ -377,8 +376,8 @@ fn (t Tree) warnings(warnings []errors.Warning) &Node {
 	mut warns := new_array()
 	for w in warnings {
 		mut obj := new_object()
-		obj.add('message', t.string_node(w.message))
-		obj.add('file_path', t.string_node(w.file_path))
+		obj.add_terse('message', t.string_node(w.message))
+		obj.add_terse('file_path', t.string_node(w.file_path))
 		obj.add('pos', t.pos(w.pos))
 		obj.add('reporter', t.enum_node(w.reporter))
 		warns.add_item(obj)
@@ -390,8 +389,8 @@ fn (t Tree) notices(notices []errors.Notice) &Node {
 	mut notice_array := new_array()
 	for n in notices {
 		mut obj := new_object()
-		obj.add('message', t.string_node(n.message))
-		obj.add('file_path', t.string_node(n.file_path))
+		obj.add_terse('message', t.string_node(n.message))
+		obj.add_terse('file_path', t.string_node(n.file_path))
 		obj.add('pos', t.pos(n.pos))
 		obj.add('reporter', t.enum_node(n.reporter))
 		notice_array.add_item(obj)
@@ -613,6 +612,7 @@ fn (t Tree) struct_field(node ast.StructField) &Node {
 	obj.add_terse('name', t.string_node(node.name))
 	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add('type_pos', t.pos(node.type_pos))
+	obj.add('optional_pos', t.pos(node.optional_pos))
 	obj.add_terse('has_default_expr', t.bool_node(node.has_default_expr))
 	obj.add_terse('default_expr_typ', t.type_node(node.default_expr_typ))
 	obj.add_terse('default_expr', t.expr(node.default_expr))
@@ -949,6 +949,10 @@ fn (t Tree) assert_stmt(node ast.AssertStmt) &Node {
 	obj.add_terse('ast_type', t.string_node('AssertStmt'))
 	obj.add_terse('expr', t.expr(node.expr))
 	obj.add_terse('is_used', t.bool_node(node.is_used))
+	if node.extra !is ast.EmptyExpr {
+		obj.add_terse('extra', t.expr(node.extra))
+		obj.add('extra_pos', t.pos(node.extra_pos))
+	}
 	obj.add('pos', t.pos(node.pos))
 	return obj
 }
@@ -1370,6 +1374,7 @@ fn (t Tree) selector_expr(node ast.SelectorExpr) &Node {
 	obj.add_terse('field_name', t.string_node(node.field_name))
 	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add_terse('name_type', t.type_node(node.name_type))
+	obj.add_terse('or_block', t.or_expr(node.or_block))
 	obj.add_terse('gkind_field', t.enum_node(node.gkind_field))
 	obj.add_terse('from_embed_types', t.array_node_type(node.from_embed_types))
 	obj.add_terse('next_token', t.token_node(node.next_token))
@@ -1516,7 +1521,9 @@ fn (t Tree) struct_init(node ast.StructInit) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('StructInit'))
 	obj.add_terse('typ', t.type_node(node.typ))
-	obj.add_terse('is_short', t.bool_node(node.is_short))
+	obj.add_terse('no_keys', t.bool_node(node.no_keys))
+	obj.add_terse('is_short_syntax', t.bool_node(node.is_short_syntax))
+	obj.add_terse('is_anon', t.bool_node(node.is_anon))
 	obj.add_terse('unresolved', t.bool_node(node.unresolved))
 	obj.add_terse('has_update_expr', t.bool_node(node.has_update_expr))
 	obj.add_terse('update_expr', t.expr(node.update_expr))

@@ -2,7 +2,7 @@ import orm
 import v.ast
 
 fn test_orm_stmt_gen_update() {
-	query := orm.orm_stmt_gen('Test', "'", .update, true, '?', 0, orm.QueryData{
+	query, _ := orm.orm_stmt_gen('Test', "'", .update, true, '?', 0, orm.QueryData{
 		fields: ['test', 'a']
 		data: []
 		types: []
@@ -17,7 +17,7 @@ fn test_orm_stmt_gen_update() {
 }
 
 fn test_orm_stmt_gen_insert() {
-	query := orm.orm_stmt_gen('Test', "'", .insert, true, '?', 0, orm.QueryData{
+	query, _ := orm.orm_stmt_gen('Test', "'", .insert, true, '?', 0, orm.QueryData{
 		fields: ['test', 'a']
 		data: []
 		types: []
@@ -27,7 +27,7 @@ fn test_orm_stmt_gen_insert() {
 }
 
 fn test_orm_stmt_gen_delete() {
-	query := orm.orm_stmt_gen('Test', "'", .delete, true, '?', 0, orm.QueryData{
+	query, _ := orm.orm_stmt_gen('Test', "'", .delete, true, '?', 0, orm.QueryData{
 		fields: ['test', 'a']
 		data: []
 		types: []
@@ -256,7 +256,7 @@ fn test_orm_table_gen() {
 	assert mult_unique_query == "CREATE TABLE IF NOT EXISTS 'test_table' ('id' SERIAL DEFAULT 10, 'test' TEXT, 'abc' INT64 DEFAULT 6754, /* test */UNIQUE('test', 'abc'), PRIMARY KEY('id'));"
 }
 
-fn sql_type_from_v(typ int) ?string {
+fn sql_type_from_v(typ int) !string {
 	return if typ in orm.nums {
 		'INT'
 	} else if typ in orm.num64 {
@@ -268,6 +268,6 @@ fn sql_type_from_v(typ int) ?string {
 	} else if typ == -1 {
 		'SERIAL'
 	} else {
-		error('Unknown type $typ')
+		error('Unknown type ${typ}')
 	}
 }

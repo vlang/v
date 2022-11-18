@@ -1,8 +1,8 @@
 Usage:
-  v update [MODULE]...
-	Updates each MODULE.
+  v update [PACKAGE]...
+	Updates each PACKAGE.
 
-	With no MODULE, ALL installed modules are updated to their latest versions.
+	With no PACKAGE, ALL installed packages are updated to their latest versions.
 
 Options:
   -help        - Show usage info.

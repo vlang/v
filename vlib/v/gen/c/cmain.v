@@ -45,7 +45,7 @@ fn (mut g Gen) gen_vlines_reset() {
 		g.vlines_path = util.vlines_escape_path(g.pref.out_name_c, g.pref.ccompiler)
 		g.writeln('')
 		g.writeln('\n// Reset the file/line numbers')
-		g.writeln('\n#line $lines_so_far "$g.vlines_path"')
+		g.writeln('\n#line ${lines_so_far} "${g.vlines_path}"')
 		g.writeln('')
 	}
 }
@@ -69,6 +69,20 @@ fn (mut g Gen) gen_c_main_function_only_header() {
 			g.writeln('\tcmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");')
 			g.writeln('\tint ___argc;')
 			g.writeln('\twchar_t** ___argv = CommandLineToArgvW(full_cmd_line, &___argc);')
+
+			g.writeln('BOOL con_valid = FALSE;')
+			if g.force_main_console {
+				g.writeln('con_valid = AllocConsole();')
+			} else {
+				g.writeln('con_valid = AttachConsole(ATTACH_PARENT_PROCESS);')
+			}
+			g.writeln('if (con_valid) {')
+			g.writeln('\tFILE* res_fp = 0;')
+			g.writeln('\terrno_t err;')
+			g.writeln('\terr = freopen_s(&res_fp, "CON", "w", stdout);')
+			g.writeln('\terr = freopen_s(&res_fp, "CON", "w", stderr);')
+			g.writeln('\t(void)err;')
+			g.writeln('}')
 			return
 		}
 		// Console application
@@ -80,6 +94,7 @@ fn (mut g Gen) gen_c_main_function_only_header() {
 
 fn (mut g Gen) gen_c_main_function_header() {
 	g.gen_c_main_function_only_header()
+	g.gen_c_main_trace_calls_hook()
 	g.writeln('\tg_main_argc = ___argc;')
 	g.writeln('\tg_main_argv = ___argv;')
 	if g.nr_closures > 0 {
@@ -138,10 +153,24 @@ void (_vsokol_cleanup_userdata_cb)(void* user_data) {
 	}
 	g.writeln('// The sokol_main entry point on Android
 sapp_desc sokol_main(int argc, char* argv[]) {
-	(void)argc; (void)argv;
+	(void)argc; (void)argv;')
+	g.gen_c_main_trace_calls_hook()
 
-	_vinit(argc, (voidptr)argv);
+	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
+		g.writeln('#if defined(_VGCBOEHM)')
+		if g.pref.gc_mode == .boehm_leak {
+			g.writeln('\tGC_set_find_leak(1);')
+		}
+		g.writeln('\tGC_set_pages_executable(0);')
+		g.writeln('\tGC_INIT();')
+		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
+			g.writeln('\tGC_enable_incremental();')
+		}
+		g.writeln('#endif')
+	}
+	g.writeln('\t_vinit(argc, (voidptr)argv);
 	')
+
 	g.gen_c_main_profile_hook()
 	g.writeln('\tmain__main();')
 	if g.is_autofree {
@@ -171,7 +200,7 @@ pub fn (mut g Gen) gen_failing_error_propagation_for_test_fn(or_block ast.OrExpr
 	// and the test is considered failed
 	paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
 	err_msg := 'IError_name_table[${cvar_name}.err._typ]._method_msg(${cvar_name}.err._object)'
-	g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_fn_error(test_runner._object, $paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), $err_msg );')
+	g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_fn_error(test_runner._object, ${paline}, tos3("${pafile}"), tos3("${pamod}"), tos3("${pafn}"), ${err_msg} );')
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
 
@@ -181,7 +210,7 @@ pub fn (mut g Gen) gen_failing_return_error_for_test_fn(return_stmt ast.Return, 
 	// and the test is considered failed
 	paline, pafile, pamod, pafn := g.panic_debug_info(return_stmt.pos)
 	err_msg := 'IError_name_table[${cvar_name}.err._typ]._method_msg(${cvar_name}.err._object)'
-	g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_fn_error(test_runner._object, $paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), $err_msg );')
+	g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_fn_error(test_runner._object, ${paline}, tos3("${pafile}"), tos3("${pamod}"), tos3("${pafn}"), ${err_msg} );')
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
 
@@ -227,30 +256,30 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	all_tfuncs = g.filter_only_matching_fn_names(all_tfuncs)
 	g.writeln('\tstring v_test_file = ${ctoslit(g.pref.path)};')
 	if g.pref.is_stats {
-		g.writeln('\tmain__BenchedTests bt = main__start_testing($all_tfuncs.len, v_test_file);')
+		g.writeln('\tmain__BenchedTests bt = main__start_testing(${all_tfuncs.len}, v_test_file);')
 	}
 	g.writeln('')
 	g.writeln('\tstruct _main__TestRunner_interface_methods _vtrunner = main__TestRunner_name_table[test_runner._typ];')
 	g.writeln('\tvoid * _vtobj = test_runner._object;')
 	g.writeln('')
 	g.writeln('\tmain__VTestFileMetaInfo_free(test_runner.file_test_info);')
-	g.writeln('\t*(test_runner.file_test_info) = main__vtest_new_filemetainfo(v_test_file, $all_tfuncs.len);')
-	g.writeln('\t_vtrunner._method_start(_vtobj, $all_tfuncs.len);')
+	g.writeln('\t*(test_runner.file_test_info) = main__vtest_new_filemetainfo(v_test_file, ${all_tfuncs.len});')
+	g.writeln('\t_vtrunner._method_start(_vtobj, ${all_tfuncs.len});')
 	g.writeln('')
 	for tnumber, tname in all_tfuncs {
 		tcname := util.no_dots(tname)
 		testfn := g.table.fns[tname]
 		lnum := testfn.pos.line_nr + 1
 		g.writeln('\tmain__VTestFnMetaInfo_free(test_runner.fn_test_info);')
-		g.writeln('\tstring tcname_$tnumber = _SLIT("$tcname");')
-		g.writeln('\tstring tcmod_$tnumber  = _SLIT("$testfn.mod");')
-		g.writeln('\tstring tcfile_$tnumber = ${ctoslit(testfn.file)};')
-		g.writeln('\t*(test_runner.fn_test_info) = main__vtest_new_metainfo(tcname_$tnumber, tcmod_$tnumber, tcfile_$tnumber, $lnum);')
+		g.writeln('\tstring tcname_${tnumber} = _SLIT("${tcname}");')
+		g.writeln('\tstring tcmod_${tnumber}  = _SLIT("${testfn.mod}");')
+		g.writeln('\tstring tcfile_${tnumber} = ${ctoslit(testfn.file)};')
+		g.writeln('\t*(test_runner.fn_test_info) = main__vtest_new_metainfo(tcname_${tnumber}, tcmod_${tnumber}, tcfile_${tnumber}, ${lnum});')
 		g.writeln('\t_vtrunner._method_fn_start(_vtobj);')
 		g.writeln('\tif (!setjmp(g_jump_buffer)) {')
 		//
 		if g.pref.is_stats {
-			g.writeln('\t\tmain__BenchedTests_testing_step_start(&bt, tcname_$tnumber);')
+			g.writeln('\t\tmain__BenchedTests_testing_step_start(&bt, tcname_${tnumber});')
 		}
 		g.writeln('\t\t${tcname}();')
 		g.writeln('\t\t_vtrunner._method_fn_pass(_vtobj);')
@@ -306,4 +335,11 @@ pub fn (mut g Gen) filter_only_matching_fn_names(fnames []string) []string {
 		res << tname
 	}
 	return res
+}
+
+pub fn (mut g Gen) gen_c_main_trace_calls_hook() {
+	if !g.pref.trace_calls {
+		return
+	}
+	g.writeln('\tu8 bottom_of_stack = 0; g_stack_base = &bottom_of_stack; v__trace_calls__on_c_main();')
 }

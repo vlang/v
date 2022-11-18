@@ -7,7 +7,8 @@ import v.token
 
 pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	mut elem_type := ast.void_type
-	// []string - was set in parser
+	// `x := []string{}` (the type was set in the parser)
+	// TODO type is not set for fixed arrays
 	if node.typ != ast.void_type {
 		if node.elem_type != 0 {
 			elem_sym := c.table.sym(node.elem_type)
@@ -20,6 +21,30 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 							node.elem_type_pos)
 					} else {
 						c.error('generic struct must specify type parameter, e.g. Foo<T>',
+							node.elem_type_pos)
+					}
+				}
+			} else if elem_sym.kind == .interface_ {
+				elem_info := elem_sym.info as ast.Interface
+				if elem_info.generic_types.len > 0 && elem_info.concrete_types.len == 0
+					&& !node.elem_type.has_flag(.generic) {
+					if c.table.cur_concrete_types.len == 0 {
+						c.error('generic interface must specify type parameter, e.g. Foo<int>',
+							node.elem_type_pos)
+					} else {
+						c.error('generic interface must specify type parameter, e.g. Foo<T>',
+							node.elem_type_pos)
+					}
+				}
+			} else if elem_sym.kind == .sum_type {
+				elem_info := elem_sym.info as ast.SumType
+				if elem_info.generic_types.len > 0 && elem_info.concrete_types.len == 0
+					&& !node.elem_type.has_flag(.generic) {
+					if c.table.cur_concrete_types.len == 0 {
+						c.error('generic sumtype must specify type parameter, e.g. Foo<int>',
+							node.elem_type_pos)
+					} else {
+						c.error('generic sumtype must specify type parameter, e.g. Foo<T>',
 							node.elem_type_pos)
 					}
 				}
@@ -52,15 +77,25 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.ensure_sumtype_array_has_default_value(node)
 		}
 		c.ensure_type_exists(node.elem_type, node.elem_type_pos) or {}
-		if node.typ.has_flag(.generic) && !isnil(c.table.cur_fn)
+		if node.typ.has_flag(.generic) && c.table.cur_fn != unsafe { nil }
 			&& c.table.cur_fn.generic_names.len == 0 {
-			c.error('generic struct cannot use in non-generic function', node.pos)
+			c.error('generic struct cannot be used in non-generic function', node.pos)
+		}
+
+		// &int{} check
+		if node.elem_type.is_any_kind_of_pointer() && !c.inside_unsafe && node.has_len {
+			c.warn('arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`)',
+				node.pos)
 		}
 		return node.typ
 	}
 	if node.is_fixed {
 		c.ensure_sumtype_array_has_default_value(node)
 		c.ensure_type_exists(node.elem_type, node.elem_type_pos) or {}
+		if node.elem_type.is_any_kind_of_pointer() && !c.inside_unsafe && !c.is_builtin_mod {
+			c.warn('fixed arrays of references need to be initialized right away (unless inside `unsafe`)',
+				node.pos)
+		}
 	}
 	// a = []
 	if node.exprs.len == 0 {
@@ -86,7 +121,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.expected_type.clear_flag(.shared_f).deref()
 		} else {
 			c.expected_type
-		}.clear_flag(.optional)
+		}.clear_flag(.optional).clear_flag(.result)
 	}
 	// [1,2,3]
 	if node.exprs.len > 0 && node.elem_type == ast.void_type {
@@ -161,12 +196,12 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 					}
 				}
 				c.check_expected(typ, elem_type) or {
-					c.error('invalid array element: $err.msg()', expr.pos())
+					c.error('invalid array element: ${err.msg()}', expr.pos())
 				}
 			}
 		}
 		if node.is_fixed {
-			idx := c.table.find_or_register_array_fixed(elem_type, node.exprs.len, ast.empty_expr())
+			idx := c.table.find_or_register_array_fixed(elem_type, node.exprs.len, ast.empty_expr)
 			if elem_type.has_flag(.generic) {
 				node.typ = ast.new_type(idx).set_flag(.generic)
 			} else {
@@ -198,7 +233,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 						fixed_size = comptime_value.i64() or { fixed_size }
 					}
 				} else {
-					c.error('non-constant array bound `$init_expr.name`', init_expr.pos)
+					c.error('non-constant array bound `${init_expr.name}`', init_expr.pos)
 				}
 			}
 			ast.InfixExpr {
@@ -211,7 +246,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 		}
 		if fixed_size <= 0 {
-			c.error('fixed size cannot be zero or negative (fixed_size: $fixed_size)',
+			c.error('fixed size cannot be zero or negative (fixed_size: ${fixed_size})',
 				init_expr.pos())
 		}
 		idx := c.table.find_or_register_array_fixed(node.elem_type, int(fixed_size), init_expr)
@@ -230,7 +265,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos token.Pos) {
 	sym := c.table.sym(c.unwrap_generic(c.expr(expr)))
 	if sym.kind !in [.int, .int_literal] {
-		c.error('array $para needs to be an int', pos)
+		c.error('array ${para} needs to be an int', pos)
 	}
 }
 
@@ -247,7 +282,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		sym := c.table.sym(c.expected_type)
 		if sym.kind == .map {
 			info := sym.map_info()
-			node.typ = c.expected_type.clear_flag(.optional)
+			node.typ = c.expected_type.clear_flag(.optional).clear_flag(.result)
 			node.key_type = info.key_type
 			node.value_type = info.value_type
 			return node.typ
@@ -272,10 +307,10 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				if val_info.generic_types.len > 0 && val_info.concrete_types.len == 0
 					&& !info.value_type.has_flag(.generic) {
 					if c.table.cur_concrete_types.len == 0 {
-						c.error('generic struct `$val_sym.name` must specify type parameter, e.g. Foo<int>',
+						c.error('generic struct `${val_sym.name}` must specify type parameter, e.g. Foo<int>',
 							node.pos)
 					} else {
-						c.error('generic struct `$val_sym.name` must specify type parameter, e.g. Foo<T>',
+						c.error('generic struct `${val_sym.name}` must specify type parameter, e.g. Foo<T>',
 							node.pos)
 					}
 				}
@@ -287,6 +322,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		node.value_type = info.value_type
 		return node.typ
 	}
+
 	if node.keys.len > 0 && node.vals.len > 0 {
 		mut key0_type := ast.void_type
 		mut val0_type := ast.void_type
@@ -309,6 +345,15 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			}
 			node.val_types << val0_type
 		}
+		key0_type = c.unwrap_generic(key0_type)
+		val0_type = c.unwrap_generic(val0_type)
+		map_type := ast.new_type(c.table.find_or_register_map(key0_type, val0_type))
+		node.typ = map_type
+		node.key_type = key0_type
+		node.value_type = val0_type
+		map_value_sym := c.table.sym(node.value_type)
+		expecting_interface_map := map_value_sym.kind == .interface_
+		//
 		mut same_key_type := true
 		for i, key in node.keys {
 			if i == 0 && !use_expected_type {
@@ -320,16 +365,36 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			c.expected_type = val0_type
 			val_type := c.expr(val)
 			node.val_types << val_type
+			val_type_sym := c.table.sym(val_type)
 			if !c.check_types(key_type, key0_type) || (i == 0 && key_type.is_number()
 				&& key0_type.is_number() && key0_type != ast.mktyp(key_type)) {
 				msg := c.expected_msg(key_type, key0_type)
-				c.error('invalid map key: $msg', key.pos())
+				c.error('invalid map key: ${msg}', key.pos())
 				same_key_type = false
+			}
+			if expecting_interface_map {
+				if val_type == node.value_type {
+					continue
+				}
+				if val_type_sym.kind == .struct_
+					&& c.type_implements(val_type, node.value_type, val.pos()) {
+					node.vals[i] = ast.CastExpr{
+						expr: val
+						typname: c.table.get_type_name(node.value_type)
+						typ: node.value_type
+						expr_type: val_type
+						pos: val.pos()
+					}
+					continue
+				} else {
+					msg := c.expected_msg(val_type, node.value_type)
+					c.error('invalid map value: ${msg}', val.pos())
+				}
 			}
 			if !c.check_types(val_type, val0_type) || (i == 0 && val_type.is_number()
 				&& val0_type.is_number() && val0_type != ast.mktyp(val_type)) {
 				msg := c.expected_msg(val_type, val0_type)
-				c.error('invalid map value: $msg', val.pos())
+				c.error('invalid map value: ${msg}', val.pos())
 			}
 		}
 		if same_key_type {
@@ -337,12 +402,6 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				c.check_dup_keys(node, i)
 			}
 		}
-		key0_type = c.unwrap_generic(key0_type)
-		val0_type = c.unwrap_generic(val0_type)
-		mut map_type := ast.new_type(c.table.find_or_register_map(key0_type, val0_type))
-		node.typ = map_type
-		node.key_type = key0_type
-		node.value_type = val0_type
 		return map_type
 	}
 	return node.typ

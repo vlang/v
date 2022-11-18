@@ -1,0 +1,24 @@
+1
+[vlib/v/tests/inout/struct_field_optional.vv:11] f.bar: 1
+2
+[vlib/v/tests/inout/struct_field_optional.vv:18] f.bar: 2
+3
+[vlib/v/tests/inout/struct_field_optional.vv:22] f.bar: 3
+3
+[vlib/v/tests/inout/struct_field_optional.vv:26] a: 3
+9999
+[vlib/v/tests/inout/struct_field_optional.vv:29] b: 9999
+4
+[vlib/v/tests/inout/struct_field_optional.vv:33] sum: 4
+4
+[vlib/v/tests/inout/struct_field_optional.vv:36] sum: 4
+3
+none
+Foo{
+    bar: 3
+    baz: 0
+}
+[vlib/v/tests/inout/struct_field_optional.vv:50] f: Foo{
+    bar: 3
+    baz: 0
+}

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_field_init_with_void_expr_err.vv:19:3: error: `app.test_func()` (no value) used as value
+   17 |         name: 'add'
+   18 |         description: 'Add something.'
+   19 |         execute: app.test_func()
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~
+   20 |     }
+   21 |

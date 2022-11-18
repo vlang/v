@@ -22,7 +22,6 @@ pub enum EventType {
 	unfocused
 	suspended
 	resumed
-	update_cursor
 	quit_requested
 	clipboard_pasted
 	files_droped
@@ -34,6 +33,20 @@ pub enum MouseButton {
 	left = 0
 	right = 1
 	middle = 2
+}
+
+pub enum MouseCursor {
+	default = C.SAPP_MOUSECURSOR_DEFAULT
+	arrow = C.SAPP_MOUSECURSOR_ARROW
+	ibeam = C.SAPP_MOUSECURSOR_IBEAM
+	crosshair = C.SAPP_MOUSECURSOR_CROSSHAIR
+	pointing_hand = C.SAPP_MOUSECURSOR_POINTING_HAND
+	resize_ew = C.SAPP_MOUSECURSOR_RESIZE_EW
+	resize_ns = C.SAPP_MOUSECURSOR_RESIZE_NS
+	resize_nwse = C.SAPP_MOUSECURSOR_RESIZE_NWSE
+	resize_nesw = C.SAPP_MOUSECURSOR_RESIZE_NESW
+	resize_all = C.SAPP_MOUSECURSOR_RESIZE_ALL
+	not_allowed = C.SAPP_MOUSECURSOR_NOT_ALLOWED
 }
 
 pub enum Modifier {
@@ -168,4 +181,13 @@ pub enum KeyCode {
 	right_alt = 346
 	right_super = 347
 	menu = 348
+}
+
+pub enum TouchToolType {
+	unknown
+	finger
+	stylus
+	mouse
+	eraser
+	palm
 }

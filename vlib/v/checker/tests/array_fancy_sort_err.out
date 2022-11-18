@@ -1,6 +1,6 @@
 vlib/v/checker/tests/array_fancy_sort_err.vv:6:8: error: `.sort()` can only use ident, index or selector as argument,
 e.g. `arr.sort(a < b)`, `arr.sort(a.id < b.id)`, `arr.sort(a[0] < b[0])`
-    4 |     text := os.read_file(os.args[0])?
+    4 |     text := os.read_file(os.args[0])!
     5 |     mut lines := text.split_into_lines()
     6 |     lines.sort(a.split('/').last() < b.split('/').last())
       |           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

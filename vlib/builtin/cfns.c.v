@@ -122,7 +122,7 @@ fn C.chdir(path &char) int
 
 fn C.rewind(stream &C.FILE) int
 
-fn C.ftell(&C.FILE) int
+fn C.ftell(&C.FILE) isize
 
 fn C.stat(&char, voidptr) int
 
@@ -184,6 +184,9 @@ fn C.strchr(s &char, c int) &char
 [trusted]
 fn C.getchar() int
 
+[trusted]
+fn C.putchar(int) int
+
 fn C.strdup(s &char) &char
 
 fn C.strncasecmp(s &char, s2 &char, n int) int
@@ -223,15 +226,15 @@ fn C._fileno(int) int
 
 fn C._get_osfhandle(fd int) C.intptr_t
 
-fn C.GetModuleFileName(hModule voidptr, lpFilename &u16, nSize u32) int
+fn C.GetModuleFileName(hModule voidptr, lpFilename &u16, nSize u32) u32
 
 fn C.GetModuleFileNameW(hModule voidptr, lpFilename &u16, nSize u32) u32
 
 fn C.CreateFile(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
 
-fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile voidptr) u32
+fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
 
-fn C.GetFinalPathNameByHandleW(hFile voidptr, lpFilePath &u16, nSize u32, dwFlags u32) int
+fn C.GetFinalPathNameByHandleW(hFile voidptr, lpFilePath &u16, nSize u32, dwFlags u32) u32
 
 fn C.CreatePipe(hReadPipe &voidptr, hWritePipe &voidptr, lpPipeAttributes voidptr, nSize u32) bool
 
@@ -244,9 +247,9 @@ fn C.GetComputerNameW(&u16, &u32) bool
 fn C.GetUserNameW(&u16, &u32) bool
 
 [trusted]
-fn C.SendMessageTimeout() u32
+fn C.SendMessageTimeout() isize
 
-fn C.SendMessageTimeoutW(hWnd voidptr, msg u32, wParam &u16, lParam &u32, fuFlags u32, uTimeout u32, lpdwResult &u64) u32
+fn C.SendMessageTimeoutW(hWnd voidptr, msg u32, wParam &u16, lParam &u32, fuFlags u32, uTimeout u32, lpdwResult &u64) isize
 
 fn C.CreateProcessW(lpApplicationName &u16, lpCommandLine &u16, lpProcessAttributes voidptr, lpThreadAttributes voidptr, bInheritHandles bool, dwCreationFlags u32, lpEnvironment voidptr, lpCurrentDirectory &u16, lpStartupInfo voidptr, lpProcessInformation voidptr) bool
 
@@ -254,33 +257,32 @@ fn C.ReadFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead u32, lpNumbe
 
 fn C.GetFileAttributesW(lpFileName &u8) u32
 
-fn C.RegQueryValueEx(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData &u8, lpcbData &u32) voidptr
+fn C.RegQueryValueEx(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData &u8, lpcbData &u32) int
 
 fn C.RegQueryValueExW(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData &u8, lpcbData &u32) int
 
-fn C.RegOpenKeyEx(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, phkResult voidptr) voidptr
+fn C.RegOpenKeyEx(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, phkResult voidptr) int
 
 fn C.RegOpenKeyExW(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, phkResult voidptr) int
 
-fn C.RegSetValueEx() voidptr
+fn C.RegSetValueEx(hKey voidptr, lpValueName &u16, dwType u32, lpData &u16, cbData u32) int
 
-fn C.RegSetValueExW(hKey voidptr, lpValueName &u16, reserved u32, dwType u32, lpData &u8, lpcbData u32) int
+fn C.RegSetValueExW(hKey voidptr, lpValueName &u16, reserved u32, dwType u32, const_lpData &u8, cbData u32) int
 
-fn C.RegCloseKey(hKey voidptr)
+fn C.RegCloseKey(hKey voidptr) int
 
-fn C.RemoveDirectory(lpPathName &u16) int
+fn C.RemoveDirectory(lpPathName &u16) bool
 
-// fn C.GetStdHandle() voidptr
+fn C.RemoveDirectoryW(lpPathName &u16) bool
+
 fn C.GetStdHandle(u32) voidptr
 
-// fn C.SetConsoleMode()
-fn C.SetConsoleMode(voidptr, u32) int
+fn C.SetConsoleMode(voidptr, u32) bool
 
-// fn C.GetConsoleMode() int
-fn C.GetConsoleMode(voidptr, &u32) int
+fn C.GetConsoleMode(voidptr, &u32) bool
 
 [trusted]
-fn C.GetCurrentProcessId() int
+fn C.GetCurrentProcessId() u32
 
 fn C.wprintf()
 
@@ -321,7 +323,7 @@ fn C.WriteConsole() voidptr
 
 fn C.WriteFile() voidptr
 
-fn C._wchdir(dirname &u16)
+fn C._wchdir(dirname &u16) int
 
 fn C._wgetcwd(buffer &u16, maxlen int) int
 
@@ -486,6 +488,9 @@ fn C.glTexImage2D()
 
 // used by ios for println
 fn C.WrappedNSLog(str &u8)
+
+// used by Android for (e)println to output to the Android log system / logcat
+pub fn C.android_print(voidptr, &char, ...voidptr)
 
 // absolute value
 fn C.abs(number int) int

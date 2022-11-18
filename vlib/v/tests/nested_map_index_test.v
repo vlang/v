@@ -8,7 +8,7 @@ mut:
 	bar map[int]string
 }
 
-fn test_nested_map_index() ? {
+fn test_nested_map_index() {
 	f := Foo{
 		foo: {
 			11: Bar{
@@ -18,7 +18,7 @@ fn test_nested_map_index() ? {
 			}
 		}
 	}
-	ret := f.foo[11]?.bar[22]?
+	ret := f.foo[11]!.bar[22]!
 	println(ret)
 	assert ret == 'hello'
 }

@@ -10,14 +10,14 @@ fn main() {
 	files := os.args#[1..]
 	if files.len > 0 && files[0].starts_with('@') {
 		lst_path := files[0].all_after('@')
-		listed_files := os.read_file(lst_path)?.split('\n')
-		process_files(listed_files)?
+		listed_files := os.read_file(lst_path)!.split('\n')
+		process_files(listed_files)!
 		return
 	}
-	process_files(files)?
+	process_files(files)!
 }
 
-fn process_files(files []string) ? {
+fn process_files(files []string) ! {
 	mut table := ast.new_table()
 	mut pref := pref.new_preferences()
 	pref.is_fmt = true
@@ -44,7 +44,7 @@ fn process_files(files []string) ? {
 		total_us += f_us
 		total_bytes += p.scanner.text.len
 		total_tokens += p.scanner.all_tokens.len
-		println('${f_us:10}us ${p.scanner.all_tokens.len:10} ${p.scanner.text.len:10} ${(f64(p.scanner.text.len) / p.scanner.all_tokens.len):7.3} ${p.errors.len:4} $f')
+		println('${f_us:10}us ${p.scanner.all_tokens.len:10} ${p.scanner.text.len:10} ${(f64(p.scanner.text.len) / p.scanner.all_tokens.len):7.3} ${p.errors.len:4} ${f}')
 	}
 	println('${total_us:10}us ${total_tokens:10} ${total_bytes:10} ${(f64(total_tokens) / total_bytes):7.3} | speed: ${(f64(total_bytes) / total_us):2.5f} MB/s')
 }

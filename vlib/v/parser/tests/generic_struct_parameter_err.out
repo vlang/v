@@ -1,4 +1,4 @@
-vlib/v/parser/tests/generic_struct_parameter_err.vv:10:17: error: generic struct parameter name needs to be exactly one char
+vlib/v/parser/tests/generic_struct_parameter_err.vv:10:17: error: the parameter type name of a generic struct, must be a single capital letter placeholder name, like T or X, or a non-generic type name like int, string, etc.
     8 | struct MyContainer<T> {
     9 | mut:
    10 |     lst LinkedList<MyNode<T>>

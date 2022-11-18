@@ -4,7 +4,7 @@ interface IAbc {
 }
 
 fn f(i &IAbc) string {
-	return '$i'
+	return '${i}'
 }
 
 struct Abc {
@@ -15,7 +15,7 @@ struct Abc {
 fn (a Abc) xyz() {}
 
 fn resource__null() &IAbc {
-	return voidptr(0)
+	return unsafe { nil }
 }
 
 fn test_fn_returning_voidptr_casted_as_interface_works() {

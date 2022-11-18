@@ -11,7 +11,7 @@ import v.util
 // should be compiled (v folder).
 // To implement that, these folders are initially skipped, then added
 // as a whole *after the testing.prepare_test_session call*.
-const tools_in_subfolders = ['vdoc', 'vvet', 'vast']
+const tools_in_subfolders = ['vdoc', 'vvet', 'vast', 'vwhere']
 
 // non_packaged_tools are tools that should not be packaged with
 // prebuild versions of V, to keep the size smaller.
@@ -23,11 +23,11 @@ fn main() {
 	args_string := os.args[1..].join(' ')
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	os.chdir(vroot)?
+	os.chdir(vroot)!
 	folder := os.join_path('cmd', 'tools')
 	tfolder := os.join_path(vroot, 'cmd', 'tools')
-	main_label := 'Building $folder ...'
-	finish_label := 'building $folder'
+	main_label := 'Building ${folder} ...'
+	finish_label := 'building ${folder}'
 	//
 	mut skips := []string{}
 	for stool in tools_in_subfolders {
@@ -47,7 +47,7 @@ fn main() {
 		exit(1)
 	}
 	//
-	mut executables := os.ls(session.vtmp_dir)?
+	mut executables := os.ls(session.vtmp_dir)!
 	executables.sort()
 	for texe in executables {
 		tname := texe.replace(os.file_ext(texe), '')
@@ -68,7 +68,7 @@ fn main() {
 		os.mv_by_cp(tpath, target_path) or {
 			emsg := err.msg()
 			if !emsg.contains('vbuild-tools') && !emsg.contains('vtest-all') {
-				eprintln('error while moving $tpath to $target_path: $emsg')
+				eprintln('error while moving ${tpath} to ${target_path}: ${emsg}')
 			}
 			continue
 		}

@@ -139,7 +139,7 @@ fn (mut a array) ensure_cap(required int) {
 	}
 	new_size := u64(cap) * u64(a.element_size)
 	new_data := unsafe { malloc(new_size) }
-	if a.data != voidptr(0) {
+	if a.data != unsafe { nil } {
 		unsafe { vmemcpy(new_data, a.data, u64(a.len) * u64(a.element_size)) }
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
 		if a.flags.has(.noslices) {
@@ -169,7 +169,7 @@ pub fn (a array) repeat(count int) array {
 [direct_array_access; unsafe]
 pub fn (a array) repeat_to_depth(count int, depth int) array {
 	if count < 0 {
-		panic('array.repeat: count is negative: $count')
+		panic('array.repeat: count is negative: ${count}')
 	}
 	mut size := u64(count) * u64(a.len) * u64(a.element_size)
 	if size == 0 {
@@ -219,9 +219,9 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 // c.insert(0, [1, 2])     // c now is [[1, 2], [3, 4]]
 // ```
 pub fn (mut a array) insert(i int, val voidptr) {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i > a.len {
-			panic('array.insert: index out of range (i == $i, a.len == $a.len)')
+			panic('array.insert: index out of range (i == ${i}, a.len == ${a.len})')
 		}
 	}
 	if a.len >= a.cap {
@@ -238,9 +238,9 @@ pub fn (mut a array) insert(i int, val voidptr) {
 // into an the array beginning at `i`.
 [unsafe]
 fn (mut a array) insert_many(i int, val voidptr, size int) {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i > a.len {
-			panic('array.insert_many: index out of range (i == $i, a.len == $a.len)')
+			panic('array.insert_many: index out of range (i == ${i}, a.len == ${a.len})')
 		}
 	}
 	a.ensure_cap(a.len + size)
@@ -297,10 +297,10 @@ pub fn (mut a array) delete(i int) {
 // dump(b) // b: [1, 2, 3, 4, 5, 6, 7, 8, 9] // `b` is still the same
 // ```
 pub fn (mut a array) delete_many(i int, size int) {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i + size > a.len {
 			endidx := if size > 1 { '..${i + size}' } else { '' }
-			panic('array.delete: index out of range (i == $i$endidx, a.len == $a.len)')
+			panic('array.delete: index out of range (i == ${i}${endidx}, a.len == ${a.len})')
 		}
 	}
 	if a.flags.all(.noshrink | .noslices) {
@@ -379,9 +379,9 @@ fn (a array) get_unsafe(i int) voidptr {
 
 // Private function. Used to implement array[] operator.
 fn (a array) get(i int) voidptr {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i >= a.len {
-			panic('array.get: index out of range (i == $i, a.len == $a.len)')
+			panic('array.get: index out of range (i == ${i}, a.len == ${a.len})')
 		}
 	}
 	unsafe {
@@ -404,7 +404,7 @@ fn (a array) get_with_check(i int) voidptr {
 // However, `a[0]` returns an error object
 // so it can be handled with an `or` block.
 pub fn (a array) first() voidptr {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if a.len == 0 {
 			panic('array.first: array is empty')
 		}
@@ -415,7 +415,7 @@ pub fn (a array) first() voidptr {
 // last returns the last element of the `array`.
 // If the `array` is empty, this will panic.
 pub fn (a array) last() voidptr {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if a.len == 0 {
 			panic('array.last: array is empty')
 		}
@@ -442,7 +442,7 @@ pub fn (a array) last() voidptr {
 // ```
 pub fn (mut a array) pop() voidptr {
 	// in a sense, this is the opposite of `a << x`
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if a.len == 0 {
 			panic('array.pop: array is empty')
 		}
@@ -461,7 +461,7 @@ pub fn (mut a array) pop() voidptr {
 // See also: [trim](#array.trim)
 pub fn (mut a array) delete_last() {
 	// copy pasting code for performance
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if a.len == 0 {
 			panic('array.pop: array is empty')
 		}
@@ -480,15 +480,15 @@ pub fn (mut a array) delete_last() {
 // Alternative: `.slice_ni()` will always return an array.
 fn (a array) slice(start int, _end int) array {
 	mut end := _end
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if start > end {
-			panic('array.slice: invalid slice index ($start > $end)')
+			panic('array.slice: invalid slice index (${start} > ${end})')
 		}
 		if end > a.len {
-			panic('array.slice: slice bounds out of range ($end >= $a.len)')
+			panic('array.slice: slice bounds out of range (${end} >= ${a.len})')
 		}
 		if start < 0 {
-			panic('array.slice: slice bounds out of range ($start < 0)')
+			panic('array.slice: slice bounds out of range (${start} < 0)')
 		}
 	}
 	// TODO: integrate reference counting
@@ -616,9 +616,9 @@ fn (mut a array) set_unsafe(i int, val voidptr) {
 
 // Private function. Used to implement assignment to the array element.
 fn (mut a array) set(i int, val voidptr) {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i >= a.len {
-			panic('array.set: index out of range (i == $i, a.len == $a.len)')
+			panic('array.set: index out of range (i == ${i}, a.len == ${a.len})')
 		}
 	}
 	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(i), val, a.element_size) }
@@ -636,7 +636,7 @@ fn (mut a array) push(val voidptr) {
 // `val` is array.data and user facing usage is `a << [1,2,3]`
 [unsafe]
 pub fn (mut a3 array) push_many(val voidptr, size int) {
-	if size <= 0 || isnil(val) {
+	if size <= 0 || val == unsafe { nil } {
 		return
 	}
 	a3.ensure_cap(a3.len + size)
@@ -898,7 +898,9 @@ pub fn copy(mut dst []u8, src []u8) int {
 // reduce executes a given reducer function on each element of the array,
 // resulting in a single output value.
 // NOTE: It exists as a method on `[]int` types only.
-// See also `arrays.fold`.
+// See also `arrays.reduce` for same name or `arrays.fold` for same functionality.
+[deprecated: 'use arrays.fold instead, this function has less flexibility than arrays.fold']
+[deprecated_after: '2022-10-11']
 pub fn (a []int) reduce(iter fn (int, int) int, accum_start int) int {
 	mut accum_ := accum_start
 	for i in a {

@@ -36,7 +36,7 @@ fn test_sumtype_assign() {
 			}
 			Foo {
 				a.num = 11
-				results << 'Num is $a.num'
+				results << 'Num is ${a.num}'
 			}
 		}
 	}

@@ -1,0 +1,5 @@
+vlib/v/checker/tests/modules/module_with_redeclaration/redeclare_time_structs.v:1:1: error: project must include a `main` module or be a shared library (compile with `v -shared`)
+    1 | module module_with_redeclaration
+      | ^
+    2 | 
+    3 | pub const used = 1

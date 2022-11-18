@@ -9,8 +9,9 @@ module sha512
 
 import math.bits
 
-const (
-	_k = [u64(0x428a2f98d728ae22), u64(0x7137449123ef65cd), u64(0xb5c0fbcfec4d3b2f), u64(0xe9b5dba58189dbbc),
+// vfmt off
+const _k = [
+		u64(0x428a2f98d728ae22), u64(0x7137449123ef65cd), u64(0xb5c0fbcfec4d3b2f), u64(0xe9b5dba58189dbbc),
 		u64(0x3956c25bf348b538), u64(0x59f111f1b605d019), u64(0x923f82a4af194f9b), u64(0xab1c5ed5da6d8118),
 		u64(0xd807aa98a3030242), u64(0x12835b0145706fbe), u64(0x243185be4ee4b28c), u64(0x550c7dc3d5ffb4e2),
 		u64(0x72be5d74f27b896f), u64(0x80deb1fe3b1696b1), u64(0x9bdc06a725c71235), u64(0xc19bf174cf692694),
@@ -29,8 +30,9 @@ const (
 		u64(0xca273eceea26619c), u64(0xd186b8c721c0c207), u64(0xeada7dd6cde0eb1e), u64(0xf57d4f7fee6ed178),
 		u64(0x06f067aa72176fba), u64(0x0a637dc5a2c898a6), u64(0x113f9804bef90dae), u64(0x1b710b35131c471b),
 		u64(0x28db77f523047d84), u64(0x32caab7b40c72493), u64(0x3c9ebe0a15c9bebc), u64(0x431d67c49c100d4c),
-		u64(0x4cc5d4becb3e42b6), u64(0x597f299cfc657e2a), u64(0x5fcb6fab3ad6faec), u64(0x6c44198c4a475817)]
-)
+		u64(0x4cc5d4becb3e42b6), u64(0x597f299cfc657e2a), u64(0x5fcb6fab3ad6faec), u64(0x6c44198c4a475817),
+	]
+// vfmt on
 
 fn block_generic(mut dig Digest, p_ []u8) {
 	unsafe {
@@ -47,16 +49,26 @@ fn block_generic(mut dig Digest, p_ []u8) {
 		for p.len >= chunk {
 			for i in 0 .. 16 {
 				j := i * 8
-				w[i] = (u64(p[j]) << 56) |
-					(u64(p[j + 1]) << 48) | (u64(p[j + 2]) << 40) |
-					(u64(p[j + 3]) << 32) | (u64(p[j + 4]) << 24) |
-					(u64(p[j + 5]) << 16) | (u64(p[j + 6]) << 8) | u64(p[j + 7])
+				// vfmt off
+				w[i] = (
+                     u64(p[j    ]) << 56) |
+                    (u64(p[j + 1]) << 48) |
+                    (u64(p[j + 2]) << 40) |
+                    (u64(p[j + 3]) << 32) |
+                    (u64(p[j + 4]) << 24) |
+                    (u64(p[j + 5]) << 16) |
+                    (u64(p[j + 6]) << 8)  |
+                     u64(p[j + 7]
+                )
+				// vfmt on
 			}
 			for i := 16; i < 80; i++ {
 				v1 := w[i - 2]
+				// vfmt off
 				t1 := bits.rotate_left_64(v1, -19) ^ bits.rotate_left_64(v1, -61) ^ (v1 >> 6)
 				v2 := w[i - 15]
-				t2 := bits.rotate_left_64(v2, -1) ^ bits.rotate_left_64(v2, -8) ^ (v2 >> 7)
+				t2 := bits.rotate_left_64(v2, -1)  ^ bits.rotate_left_64(v2, -8)  ^ (v2 >> 7)
+				// vfmt on
 				w[i] = t1 + w[i - 7] + t2 + w[i - 16]
 			}
 			mut a := h0
@@ -68,11 +80,10 @@ fn block_generic(mut dig Digest, p_ []u8) {
 			mut g := h6
 			mut h := h7
 			for i in 0 .. 80 {
-				t1 := h +
-					(bits.rotate_left_64(e, -14) ^ bits.rotate_left_64(e, -18) ^ bits.rotate_left_64(e, -41)) +
-					((e & f) ^ (~e & g)) + _k[i] + w[i]
-				t2 := (bits.rotate_left_64(a, -28) ^ bits.rotate_left_64(a, -34) ^ bits.rotate_left_64(a, -39)) +
-					((a & b) ^ (a & c) ^ (b & c))
+				// vfmt off
+				t1 := h + (bits.rotate_left_64(e, -14) ^ bits.rotate_left_64(e, -18) ^ bits.rotate_left_64(e, -41)) + ((e & f) ^ (~e & g))           + _k[i] + w[i]
+				t2 :=     (bits.rotate_left_64(a, -28) ^ bits.rotate_left_64(a, -34) ^ bits.rotate_left_64(a, -39)) + ((a & b) ^ (a & c) ^ (b & c))
+				// vfmt on
 				h = g
 				g = f
 				f = e

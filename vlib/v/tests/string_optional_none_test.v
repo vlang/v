@@ -11,8 +11,8 @@ fn (err MyError) code() int {
 	return err.code
 }
 
-fn foo() int | none | IError {
-	return IError(MyError{})
+fn foo() int|none|IError {
+	return MyError{}
 }
 
 fn test_string_optional_none() {

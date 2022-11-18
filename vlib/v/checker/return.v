@@ -7,7 +7,7 @@ import v.pref
 
 // TODO: non deferred
 pub fn (mut c Checker) return_stmt(mut node ast.Return) {
-	if isnil(c.table.cur_fn) {
+	if c.table.cur_fn == unsafe { nil } {
 		return
 	}
 	c.expected_type = c.table.cur_fn.return_type
@@ -20,7 +20,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		|| expected_type_sym.kind == .void) {
 		stype := c.table.type_to_str(expected_type)
 		arg := if expected_type_sym.kind == .multi_return { 'arguments' } else { 'argument' }
-		c.error('expected `$stype` $arg', node.pos)
+		c.error('expected `${stype}` ${arg}', node.pos)
 		return
 	}
 	if node.exprs.len == 0 {
@@ -30,7 +30,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	exp_is_result := expected_type.has_flag(.result)
 	mut expected_types := [expected_type]
 	if expected_type_sym.info is ast.MultiReturn {
-		expected_types = expected_type_sym.info.types
+		expected_types = expected_type_sym.info.types.clone()
 		if c.table.cur_concrete_types.len > 0 {
 			expected_types = expected_types.map(c.unwrap_generic(it))
 		}
@@ -39,8 +39,18 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	mut expr_idxs := []int{}
 	for i, expr in node.exprs {
 		mut typ := c.expr(expr)
+		if typ == 0 {
+			return
+		}
+		// Handle `return unsafe { none }`
+		if expr is ast.UnsafeExpr {
+			if expr.expr is ast.None {
+				c.error('cannot return `none` in unsafe block', expr.expr.pos)
+			}
+		}
 		if typ == ast.void_type {
-			c.error('`$expr` used as value', node.pos)
+			c.error('`${expr}` used as value', node.pos)
+			return
 		}
 		// Unpack multi return types
 		sym := c.table.sym(typ)
@@ -90,10 +100,26 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
+		// `fn foo() !(int, string) { return Err{} }`
+		if (exp_is_optional || exp_is_result) && node.exprs.len == 1 {
+			got_typ := c.expr(node.exprs[0])
+			got_typ_sym := c.table.sym(got_typ)
+			if got_typ_sym.kind == .struct_ && c.type_implements(got_typ, ast.error_type, node.pos) {
+				node.exprs[0] = ast.CastExpr{
+					expr: node.exprs[0]
+					typname: 'IError'
+					typ: ast.error_type
+					expr_type: got_typ
+					pos: node.pos
+				}
+				node.types[0] = ast.error_type
+				return
+			}
+		}
 		arg := if expected_types.len == 1 { 'argument' } else { 'arguments' }
 		midx := imax(0, imin(expected_types.len, expr_idxs.len - 1))
 		mismatch_pos := node.exprs[expr_idxs[midx]].pos()
-		c.error('expected $expected_types.len $arg, but got $got_types.len', mismatch_pos)
+		c.error('expected ${expected_types.len} ${arg}, but got ${got_types.len}', mismatch_pos)
 		return
 	}
 	for i, exp_type in expected_types {
@@ -104,21 +130,57 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
 				pos)
 		}
-		if !c.check_types(got_typ, exp_type) {
+		if got_typ.has_flag(.result) && (!exp_type.has_flag(.result)
+			|| c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
+			pos := node.exprs[expr_idxs[i]].pos()
+			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
+				pos)
+		}
+		if node.exprs[expr_idxs[i]] !is ast.ComptimeCall {
 			got_typ_sym := c.table.sym(got_typ)
-			mut exp_typ_sym := c.table.sym(exp_type)
-			if exp_typ_sym.kind == .interface_ {
-				if c.type_implements(got_typ, exp_type, node.pos) {
-					if !got_typ.is_ptr() && !got_typ.is_pointer() && got_typ_sym.kind != .interface_
-						&& !c.inside_unsafe {
-						c.mark_as_referenced(mut &node.exprs[expr_idxs[i]], true)
+			exp_typ_sym := c.table.sym(exp_type)
+			pos := node.exprs[expr_idxs[i]].pos()
+			if c.check_types(got_typ, exp_type) {
+				if exp_type.is_unsigned() && got_typ.is_int_literal() {
+					if node.exprs[expr_idxs[i]] is ast.IntegerLiteral {
+						var := (node.exprs[expr_idxs[i]] as ast.IntegerLiteral).val
+						if var[0] == `-` {
+							c.note('cannot use a negative value as value of type `${c.table.type_to_str(exp_type)}` in return argument',
+								pos)
+						}
 					}
 				}
-				continue
+			} else {
+				if exp_typ_sym.kind == .interface_ {
+					if c.type_implements(got_typ, exp_type, node.pos) {
+						if !got_typ.is_ptr() && !got_typ.is_pointer()
+							&& got_typ_sym.kind != .interface_ && !c.inside_unsafe {
+							c.mark_as_referenced(mut &node.exprs[expr_idxs[i]], true)
+						}
+					}
+					continue
+				}
+				// `fn foo() !int { return Err{} }`
+				if got_typ_sym.kind == .struct_
+					&& c.type_implements(got_typ, ast.error_type, node.pos) {
+					node.exprs[expr_idxs[i]] = ast.CastExpr{
+						expr: node.exprs[expr_idxs[i]]
+						typname: 'IError'
+						typ: ast.error_type
+						expr_type: got_typ
+						pos: node.pos
+					}
+					node.types[expr_idxs[i]] = ast.error_type
+					continue
+				}
+				got_typ_name := if got_typ_sym.kind == .function {
+					'${c.table.type_to_str(got_typ)}'
+				} else {
+					got_typ_sym.name
+				}
+				c.error('cannot use `${got_typ_name}` as type `${c.table.type_to_str(exp_type)}` in return argument',
+					pos)
 			}
-			pos := node.exprs[expr_idxs[i]].pos()
-			c.error('cannot use `$got_typ_sym.name` as type `${c.table.type_to_str(exp_type)}` in return argument',
-				pos)
 		}
 		if (got_typ.is_ptr() || got_typ.is_pointer())
 			&& (!exp_type.is_ptr() && !exp_type.is_pointer()) {
@@ -126,7 +188,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			if node.exprs[expr_idxs[i]].is_auto_deref_var() {
 				continue
 			}
-			c.error('fn `$c.table.cur_fn.name` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+			c.error('fn `${c.table.cur_fn.name}` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
 		if (exp_type.is_ptr() || exp_type.is_pointer())
@@ -136,7 +198,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			if node.exprs[expr_idxs[i]].is_auto_deref_var() {
 				continue
 			}
-			c.error('fn `$c.table.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+			c.error('fn `${c.table.cur_fn.name}` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
 		if exp_type.is_ptr() && got_typ.is_ptr() {
@@ -144,18 +206,18 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			if mut r_expr is ast.Ident {
 				if mut r_expr.obj is ast.Var {
 					mut obj := unsafe { &r_expr.obj }
-					if c.fn_scope != voidptr(0) {
+					if c.fn_scope != unsafe { nil } {
 						obj = c.fn_scope.find_var(r_expr.obj.name) or { obj }
 					}
 					if obj.is_stack_obj && !c.inside_unsafe {
 						type_sym := c.table.sym(obj.typ.set_nr_muls(0))
 						if !type_sym.is_heap() && !c.pref.translated && !c.file.is_translated {
 							suggestion := if type_sym.kind == .struct_ {
-								'declaring `$type_sym.name` as `[heap]`'
+								'declaring `${type_sym.name}` as `[heap]`'
 							} else {
-								'wrapping the `$type_sym.name` object in a `struct` declared as `[heap]`'
+								'wrapping the `${type_sym.name}` object in a `struct` declared as `[heap]`'
 							}
-							c.error('`$r_expr.name` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
+							c.error('`${r_expr.name}` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
 								r_expr.pos)
 						}
 					}

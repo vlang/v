@@ -25,14 +25,14 @@ fn test_get_parent_mod_current_folder() {
 	// }
 }
 
-fn test_get_parent_mod_on_temp_dir() ? {
+fn test_get_parent_mod_on_temp_dir() {
 	// TODO: fix this on windows
 	$if !windows {
 		assert get_parent_mod(os.temp_dir())? == ''
 	}
 }
 
-fn test_get_parent_mod_normal_cases() ? {
+fn test_get_parent_mod_normal_cases() {
 	assert '---' == get_parent_mod(os.join_path(@VMODROOT, 'vlib/v')) or {
 		assert err.msg() == 'No V files found.'
 		'---'

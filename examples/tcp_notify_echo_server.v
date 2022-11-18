@@ -14,21 +14,21 @@ fn main() {
 	}
 
 	// create TCP listener
-	mut listener := net.listen_tcp(.ip, 'localhost:9001')?
+	mut listener := net.listen_tcp(.ip, 'localhost:9001')!
 	defer {
 		listener.close() or {}
 	}
-	addr := listener.addr()?
-	eprintln('Listening on $addr')
+	addr := listener.addr()!
+	eprintln('Listening on ${addr}')
 	eprintln('Type `stop` to stop the server')
 
 	// create file descriptor notifier
-	mut notifier := notify.new()?
+	mut notifier := notify.new()!
 	defer {
 		notifier.close() or {}
 	}
-	notifier.add(os.stdin().fd, .read)?
-	notifier.add(listener.sock.handle, .read)?
+	notifier.add(os.stdin().fd, .read)!
+	notifier.add(listener.sock.handle, .read)!
 
 	for {
 		for event in notifier.wait(time.infinite) {
@@ -40,10 +40,10 @@ fn main() {
 						if _ := notifier.add(conn.sock.handle, .read | .peer_hangup) {
 							eprintln('connected')
 						} else {
-							eprintln('error adding to notifier: $err')
+							eprintln('error adding to notifier: ${err}')
 						}
 					} else {
-						eprintln('unable to accept: $err')
+						eprintln('unable to accept: ${err}')
 					}
 				}
 				0 {
@@ -60,7 +60,7 @@ fn main() {
 						if _ := notifier.remove(event.fd) {
 							eprintln('remote disconnected')
 						} else {
-							eprintln('error removing from notifier: $err')
+							eprintln('error removing from notifier: ${err}')
 						}
 					} else {
 						s, _ := os.fd_read(event.fd, 10)

@@ -26,7 +26,7 @@ pub struct TimerParams {
 
 pub fn new_timers(params TimerParams) &Timers {
 	$if trace_timers_creation ? {
-		eprintln('>>>> new_timers, should_print: $params.should_print | label: $params.label')
+		eprintln('>>>> new_timers, should_print: ${params.should_print} | label: ${params.label}')
 	}
 	return &Timers{
 		label: params.label
@@ -66,9 +66,9 @@ pub fn (mut t Timers) start(name string) {
 pub fn (mut t Timers) measure(name string) i64 {
 	if name !in t.swatches {
 		timer_keys := t.swatches.keys()
-		eprintln('> Timer `$name` was NOT started.')
+		eprintln('> Timer `${name}` was NOT started.')
 		eprintln('>   Available timers:')
-		eprintln('>   $timer_keys')
+		eprintln('>   ${timer_keys}')
 	}
 	ms := t.swatches[name].elapsed().microseconds()
 	return ms
@@ -106,7 +106,7 @@ pub fn (mut t Timers) measure_resume(name string) {
 pub fn (mut t Timers) message(name string) string {
 	ms := f64(t.measure(name)) / 1000.0
 	value := bold('${ms:-8.3f}')
-	formatted_message := '$value ms $name'
+	formatted_message := '${value} ms ${name}'
 	return formatted_message
 }
 

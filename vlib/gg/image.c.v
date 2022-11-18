@@ -25,8 +25,8 @@ pub mut:
 }
 
 // create_image creates an `Image` from `file`.
-// TODO return ?Image
-pub fn (mut ctx Context) create_image(file string) Image {
+// TODO return !Image
+pub fn (ctx &Context) create_image(file string) Image {
 	// println('\ncreate_image("$file")')
 	if !os.exists(file) {
 		return Image{}
@@ -38,7 +38,9 @@ pub fn (mut ctx Context) create_image(file string) Image {
 			// println('created macos image: $img.path w=$img.width')
 			// C.printf('p = %p\n', img.data)
 			img.id = ctx.image_cache.len
-			ctx.image_cache << img
+			unsafe {
+				ctx.image_cache << img
+			}
 			return img
 		}
 	}
@@ -56,12 +58,16 @@ pub fn (mut ctx Context) create_image(file string) Image {
 			path: file
 			id: ctx.image_cache.len
 		}
-		ctx.image_cache << img
+		unsafe {
+			ctx.image_cache << img
+		}
 		return img
 	}
 	mut img := create_image(file)
 	img.id = ctx.image_cache.len
-	ctx.image_cache << img
+	unsafe {
+		ctx.image_cache << img
+	}
 	return img
 }
 
@@ -92,7 +98,7 @@ pub fn (mut img Image) init_sokol_image() &Image {
 pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Image) {
 	$if macos {
 		if img_.id >= ctx.image_cache.len {
-			eprintln('gg: draw_image() bad img id $img_.id (img cache len = $ctx.image_cache.len)')
+			eprintln('gg: draw_image() bad img id ${img_.id} (img cache len = ${ctx.image_cache.len})')
 			return
 		}
 		if ctx.native_rendering {
@@ -197,7 +203,7 @@ pub fn (mut ctx Context) create_image_with_size(file string, width int, height i
 // TODO remove this
 fn create_image(file string) Image {
 	if !os.exists(file) {
-		println('gg.create_image(): file not found: $file')
+		println('gg.create_image(): file not found: ${file}')
 		return Image{} // none
 	}
 	stb_img := stbi.load(file) or { return Image{} }
@@ -256,7 +262,7 @@ pub struct StreamingImageConfig {
 pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	id := if !isnil(config.img) { config.img.id } else { config.img_id }
 	if id >= ctx.image_cache.len {
-		eprintln('gg: draw_image() bad img id $id (img cache len = $ctx.image_cache.len)')
+		eprintln('gg: draw_image() bad img id ${id} (img cache len = ${ctx.image_cache.len})')
 		return
 	}
 
@@ -296,7 +302,12 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	mut v0f := if !flip_y { v0 } else { v1 }
 	mut v1f := if !flip_y { v1 } else { v0 }
 
-	sgl.load_pipeline(ctx.timage_pip)
+	// FIXME: is this okay?
+	match config.effect {
+		.alpha { sgl.load_pipeline(ctx.pipeline.alpha) }
+		.add { sgl.load_pipeline(ctx.pipeline.add) }
+	}
+
 	sgl.enable_texture()
 	sgl.texture(img.simg)
 

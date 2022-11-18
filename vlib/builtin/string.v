@@ -495,6 +495,75 @@ pub fn (s string) replace_each(vals []string) string {
 	}
 }
 
+// replace_char replaces all occurences of the character `rep` multiple occurences of the character passed in `with` with respect to `repeat`.
+// Example: assert '\tHello!'.replace_char(`\t`,` `,8) == '        Hello!'
+[direct_array_access]
+pub fn (s string) replace_char(rep u8, with u8, repeat int) string {
+	$if !no_bounds_checking {
+		if repeat <= 0 {
+			panic('string.replace_char(): tab length too short')
+		}
+	}
+	if s.len == 0 {
+		return s.clone()
+	}
+	// TODO Allocating ints is expensive. Should be a stack array
+	// - string.replace()
+	mut idxs := []int{cap: s.len}
+	defer {
+		unsafe { idxs.free() }
+	}
+	// No need to do a contains(), it already traverses the entire string
+	for i, ch in s {
+		if ch == rep { // Found char? Mark its location
+			idxs << i
+		}
+	}
+	if idxs.len == 0 {
+		return s.clone()
+	}
+	// Now we know the number of replacements we need to do and we can calc the len of the new string
+	new_len := s.len + idxs.len * (repeat - 1)
+	mut b := unsafe { malloc_noscan(new_len + 1) } // add space for the null byte at the end
+	// Fill the new string
+	mut b_i := 0
+	mut s_idx := 0
+	for rep_pos in idxs {
+		for i in s_idx .. rep_pos { // copy everything up to piece being replaced
+			unsafe {
+				b[b_i] = s[i]
+			}
+			b_i++
+		}
+		s_idx = rep_pos + 1 // move string index past replacement
+		for _ in 0 .. repeat { // copy replacement piece
+			unsafe {
+				b[b_i] = with
+			}
+			b_i++
+		}
+	}
+	if s_idx < s.len { // if any original after last replacement, copy it
+		for i in s_idx .. s.len {
+			unsafe {
+				b[b_i] = s[i]
+			}
+			b_i++
+		}
+	}
+	unsafe {
+		b[new_len] = 0
+		return tos(b, new_len)
+	}
+}
+
+// normalize_tabs replaces all tab characters with `tab_len` amount of spaces
+// Example: assert '\t\tpop rax\t; pop rax'.normalize_tabs(2) == '    pop rax  ; pop rax'
+[inline]
+pub fn (s string) normalize_tabs(tab_len int) string {
+	return s.replace_char(`\t`, ` `, tab_len)
+}
+
 // bool returns `true` if the string equals the word "true" it will return `false` otherwise.
 pub fn (s string) bool() bool {
 	return s == 'true' || s == 't' // TODO t for pg, remove
@@ -555,7 +624,7 @@ pub fn (s string) u64() u64 {
 // This method directly exposes the `parse_int` function from `strconv`
 // as a method on `string`. For more advanced features,
 // consider calling `strconv.common_parse_int` directly.
-pub fn (s string) parse_uint(_base int, _bit_size int) ?u64 {
+pub fn (s string) parse_uint(_base int, _bit_size int) !u64 {
 	return strconv.parse_uint(s, _base, _bit_size)
 }
 
@@ -575,7 +644,7 @@ pub fn (s string) parse_uint(_base int, _bit_size int) ?u64 {
 // This method directly exposes the `parse_uint` function from `strconv`
 // as a method on `string`. For more advanced features,
 // consider calling `strconv.common_parse_uint` directly.
-pub fn (s string) parse_int(_base int, _bit_size int) ?i64 {
+pub fn (s string) parse_int(_base int, _bit_size int) !i64 {
 	return strconv.parse_int(s, _base, _bit_size)
 }
 
@@ -804,9 +873,9 @@ fn (s string) substr2(start int, _end int, end_max bool) string {
 // Example: assert 'ABCD'.substr(1,3) == 'BC'
 [direct_array_access]
 pub fn (s string) substr(start int, end int) string {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-			panic('substr($start, $end) out of bounds (len=$s.len)')
+			panic('substr(${start}, ${end}) out of bounds (len=${s.len})')
 		}
 	}
 	len := end - start
@@ -833,7 +902,7 @@ pub fn (s string) substr(start int, end int) string {
 [direct_array_access]
 pub fn (s string) substr_with_check(start int, end int) ?string {
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-		return error('substr($start, $end) out of bounds (len=$s.len)')
+		return error('substr(${start}, ${end}) out of bounds (len=${s.len})')
 	}
 	len := end - start
 	if len == s.len {
@@ -1130,6 +1199,23 @@ pub fn (s string) contains_any(chars string) bool {
 	return false
 }
 
+// contains_only returns `true`, if the string contains only the characters in `chars`.
+pub fn (s string) contains_only(chars string) bool {
+	if chars.len == 0 {
+		return false
+	}
+	for ch in s {
+		mut res := 0
+		for i := 0; i < chars.len && res == 0; i++ {
+			res += int(ch == unsafe { chars.str[i] })
+		}
+		if res == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // contains_any_substr returns `true` if the string contains any of the strings in `substrs`.
 pub fn (s string) contains_any_substr(substrs []string) bool {
 	if substrs.len == 0 {
@@ -1327,11 +1413,18 @@ pub fn (s string) trim_space() string {
 
 // trim strips any of the characters given in `cutset` from the start and end of the string.
 // Example: assert ' ffHello V ffff'.trim(' f') == 'Hello V'
-[direct_array_access]
 pub fn (s string) trim(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s.clone()
 	}
+	left, right := s.trim_indexes(cutset)
+	return s.substr(left, right)
+}
+
+// trim_indexes gets the new start and end indicies of a string when any of the characters given in `cutset` were stripped from the start and end of the string. Should be used as an input to `substr()`. If the string contains only the characters in `cutset`, both values returned are zero.
+// Example: left, right := '-hi-'.trim_indexes('-')
+[direct_array_access]
+pub fn (s string) trim_indexes(cutset string) (int, int) {
 	mut pos_left := 0
 	mut pos_right := s.len - 1
 	mut cs_match := true
@@ -1352,10 +1445,10 @@ pub fn (s string) trim(cutset string) string {
 			}
 		}
 		if pos_left > pos_right {
-			return ''
+			return 0, 0
 		}
 	}
-	return s.substr(pos_left, pos_right + 1)
+	return pos_left, pos_right + 1
 }
 
 // trim_left strips any of the characters given in `cutset` from the left of the string.
@@ -1489,9 +1582,9 @@ pub fn (s string) str() string {
 // at returns the byte at index `idx`.
 // Example: assert 'ABC'.at(1) == u8(`B`)
 fn (s string) at(idx int) byte {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if idx < 0 || idx >= s.len {
-			panic('string index out of range: $idx / $s.len')
+			panic('string index out of range: ${idx} / ${s.len}')
 		}
 	}
 	unsafe {
@@ -1650,6 +1743,18 @@ pub fn (s string) all_after_last(sub string) string {
 	return s[pos + sub.len..]
 }
 
+// all_after_first returns the contents after the first occurence of `sub` in the string.
+// If the substring is not found, it returns the full input string.
+// Example: assert '23:34:45.234'.all_after_first(':') == '34:45.234'
+// Example: assert 'abcd'.all_after_first('z') == 'abcd'
+pub fn (s string) all_after_first(sub string) string {
+	pos := s.index_(sub)
+	if pos == -1 {
+		return s.clone()
+	}
+	return s[pos + sub.len..]
+}
+
 // after returns the contents after the last occurence of `sub` in the string.
 // If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.after(':') == '45.234'
@@ -1720,6 +1825,7 @@ pub fn (s []string) join_lines() string {
 
 // reverse returns a reversed string.
 // Example: assert 'Hello V'.reverse() == 'V olleH'
+[direct_array_access]
 pub fn (s string) reverse() string {
 	if s.len == 0 || s.len == 1 {
 		return s.clone()
@@ -1772,9 +1878,10 @@ pub fn (s string) bytes() []u8 {
 }
 
 // repeat returns a new string with `count` number of copies of the string it was called on.
+[direct_array_access]
 pub fn (s string) repeat(count int) string {
 	if count < 0 {
-		panic('string.repeat: count is negative: $count')
+		panic('string.repeat: count is negative: ${count}')
 	} else if count == 0 {
 		return ''
 	} else if count == 1 {
@@ -1837,12 +1944,12 @@ pub fn (s string) fields() []string {
 // Example:
 // ```v
 // st := 'Hello there,
-// |this is a string,
-// |    Everything before the first | is removed'.strip_margin()
+//        |  this is a string,
+//        |  Everything before the first | is removed'.strip_margin()
 //
 // assert st == 'Hello there,
-// this is a string,
-// Everything before the first | is removed'
+//   this is a string,
+//   Everything before the first | is removed'
 // ```
 pub fn (s string) strip_margin() string {
 	return s.strip_margin_custom(`|`)

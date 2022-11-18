@@ -9,7 +9,7 @@ const pbytes = 4
 
 struct AppState {
 mut:
-	gg          &gg.Context = 0
+	gg          &gg.Context = unsafe { nil }
 	istream_idx int
 	pixels      [pheight][pwidth]u32
 }
@@ -58,6 +58,6 @@ fn main() {
 		frame_fn: graphics_frame
 		user_data: state
 	)
-	go state.update()
+	spawn state.update()
 	state.gg.run()
 }

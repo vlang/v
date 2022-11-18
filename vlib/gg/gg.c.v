@@ -61,26 +61,26 @@ pub:
 	borderless_window bool
 	always_on_top     bool
 	bg_color          gx.Color
-	init_fn           FNCb   = voidptr(0)
-	frame_fn          FNCb   = voidptr(0)
-	native_frame_fn   FNCb   = voidptr(0)
-	cleanup_fn        FNCb   = voidptr(0)
-	fail_fn           FNFail = voidptr(0)
+	init_fn           FNCb   = unsafe { nil }
+	frame_fn          FNCb   = unsafe { nil }
+	native_frame_fn   FNCb   = unsafe { nil }
+	cleanup_fn        FNCb   = unsafe { nil }
+	fail_fn           FNFail = unsafe { nil }
 	//
-	event_fn FNEvent = voidptr(0)
-	quit_fn  FNEvent = voidptr(0)
+	event_fn FNEvent = unsafe { nil }
+	quit_fn  FNEvent = unsafe { nil }
 	//
-	keydown_fn FNKeyDown = voidptr(0)
-	keyup_fn   FNKeyUp   = voidptr(0)
-	char_fn    FNChar    = voidptr(0)
+	keydown_fn FNKeyDown = unsafe { nil }
+	keyup_fn   FNKeyUp   = unsafe { nil }
+	char_fn    FNChar    = unsafe { nil }
 	//
-	move_fn    FNMove    = voidptr(0)
-	click_fn   FNClick   = voidptr(0)
-	unclick_fn FNUnClick = voidptr(0)
-	leave_fn   FNEvent   = voidptr(0)
-	enter_fn   FNEvent   = voidptr(0)
-	resized_fn FNEvent   = voidptr(0)
-	scroll_fn  FNEvent   = voidptr(0)
+	move_fn    FNMove    = unsafe { nil }
+	click_fn   FNClick   = unsafe { nil }
+	unclick_fn FNUnClick = unsafe { nil }
+	leave_fn   FNEvent   = unsafe { nil }
+	enter_fn   FNEvent   = unsafe { nil }
+	resized_fn FNEvent   = unsafe { nil }
+	scroll_fn  FNEvent   = unsafe { nil }
 	// wait_events       bool // set this to true for UIs, to save power
 	fullscreen    bool
 	scale         f32 = 1.0
@@ -104,6 +104,51 @@ pub:
 }
 
 [heap]
+pub struct PipelineContainer {
+pub mut:
+	alpha sgl.Pipeline
+	add   sgl.Pipeline
+}
+
+fn (mut container PipelineContainer) init_pipeline() {
+	// FIXME(FireRedz): this looks kinda funny, find a better way to initialize pipeline.
+
+	// Alpha
+	mut alpha_pipdesc := gfx.PipelineDesc{
+		label: c'alpha-pipeline'
+	}
+
+	unsafe { vmemset(&alpha_pipdesc, 0, int(sizeof(alpha_pipdesc))) }
+
+	alpha_pipdesc.colors[0] = gfx.ColorState{
+		blend: gfx.BlendState{
+			enabled: true
+			src_factor_rgb: .src_alpha
+			dst_factor_rgb: .one_minus_src_alpha
+		}
+	}
+
+	container.alpha = sgl.make_pipeline(&alpha_pipdesc)
+
+	// Add
+	mut add_pipdesc := gfx.PipelineDesc{
+		label: c'additive-pipeline'
+	}
+
+	unsafe { vmemset(&add_pipdesc, 0, int(sizeof(add_pipdesc))) }
+
+	add_pipdesc.colors[0] = gfx.ColorState{
+		blend: gfx.BlendState{
+			enabled: true
+			src_factor_rgb: .src_alpha
+			dst_factor_rgb: .one
+		}
+	}
+
+	container.add = sgl.make_pipeline(&add_pipdesc)
+}
+
+[heap]
 pub struct Context {
 mut:
 	render_text bool = true
@@ -120,10 +165,11 @@ pub mut:
 	height      int
 	clear_pass  gfx.PassAction
 	window      sapp.Desc
-	timage_pip  sgl.Pipeline
+	timage_pip  sgl.Pipeline       [deprecated: 'Use `Context.pipeline.alpha` instead!']
+	pipeline    &PipelineContainer = unsafe { nil }
 	config      Config
 	user_data   voidptr
-	ft          &FT
+	ft          &FT = unsafe { nil }
 	font_inited bool
 	ui_mode     bool // do not redraw everything 60 times/second, but only when the user requests
 	frame       u64  // the current frame counted from the start of the application; always increasing
@@ -194,7 +240,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 		} else {
 			sfont := font.default()
 			if ctx.config.font_path != '' {
-				eprintln('font file "$ctx.config.font_path" does not exist, the system font ($sfont) was used instead.')
+				eprintln('font file "${ctx.config.font_path}" does not exist, the system font (${sfont}) was used instead.')
 			}
 
 			ctx.ft = new_ft(
@@ -205,24 +251,16 @@ fn gg_init_sokol_window(user_data voidptr) {
 			ctx.font_inited = true
 		}
 	}
-	//
-	mut pipdesc := gfx.PipelineDesc{
-		label: c'alpha_image'
-	}
-	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
 
-	color_state := gfx.ColorState{
-		blend: gfx.BlendState{
-			enabled: true
-			src_factor_rgb: .src_alpha
-			dst_factor_rgb: .one_minus_src_alpha
-		}
-	}
-	pipdesc.colors[0] = color_state
+	// Pipeline
+	ctx.pipeline = &PipelineContainer{}
+	ctx.pipeline.init_pipeline()
 
-	ctx.timage_pip = sgl.make_pipeline(&pipdesc)
+	// Keep the old pipeline for now, cuz v ui used it.
+	ctx.timage_pip = ctx.pipeline.alpha
+
 	//
-	if ctx.config.init_fn != voidptr(0) {
+	if ctx.config.init_fn != unsafe { nil } {
 		$if android {
 			// NOTE on Android sokol can emit resize events *before* the init function is
 			// called (Android has to initialize a lot more through the Activity system to
@@ -233,7 +271,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 			if ctx.width != win_size.width || ctx.height != win_size.height {
 				ctx.width = win_size.width
 				ctx.height = win_size.height
-				if ctx.config.resized_fn != voidptr(0) {
+				if ctx.config.resized_fn != unsafe { nil } {
 					e := Event{
 						typ: .resized
 						window_width: ctx.width
@@ -257,10 +295,9 @@ fn gg_init_sokol_window(user_data voidptr) {
 	}
 }
 
-fn gg_frame_fn(user_data voidptr) {
-	mut ctx := unsafe { &Context(user_data) }
+fn gg_frame_fn(mut ctx Context) {
 	ctx.frame++
-	if ctx.config.frame_fn == voidptr(0) {
+	if ctx.config.frame_fn == unsafe { nil } {
 		return
 	}
 	if ctx.native_rendering {
@@ -290,12 +327,12 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 	if e.typ == .mouse_down {
 		bitplace := int(e.mouse_button)
 		ctx.mbtn_mask |= u8(1 << bitplace)
-		ctx.mouse_buttons = MouseButtons(ctx.mbtn_mask)
+		ctx.mouse_buttons = unsafe { MouseButtons(ctx.mbtn_mask) }
 	}
 	if e.typ == .mouse_up {
 		bitplace := int(e.mouse_button)
 		ctx.mbtn_mask &= ~(u8(1 << bitplace))
-		ctx.mouse_buttons = MouseButtons(ctx.mbtn_mask)
+		ctx.mouse_buttons = unsafe { MouseButtons(ctx.mbtn_mask) }
 	}
 	if e.typ == .mouse_move && e.mouse_button == .invalid {
 		if ctx.mbtn_mask & 0x01 > 0 {
@@ -314,7 +351,7 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 	ctx.mouse_dy = int(e.mouse_dy / ctx.scale)
 	ctx.scroll_x = int(e.scroll_x / ctx.scale)
 	ctx.scroll_y = int(e.scroll_y / ctx.scale)
-	ctx.key_modifiers = Modifier(e.modifiers)
+	ctx.key_modifiers = unsafe { Modifier(e.modifiers) }
 	ctx.key_repeat = e.key_repeat
 	if e.typ in [.key_down, .key_up] {
 		key_idx := int(e.key_code) % key_code_max
@@ -323,64 +360,64 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 		ctx.pressed_keys[key_idx] = next
 		ctx.pressed_keys_edge[key_idx] = prev != next
 	}
-	if ctx.config.event_fn != voidptr(0) {
+	if ctx.config.event_fn != unsafe { nil } {
 		ctx.config.event_fn(e, ctx.config.user_data)
 	}
 	match e.typ {
 		.mouse_move {
-			if ctx.config.move_fn != voidptr(0) {
+			if ctx.config.move_fn != unsafe { nil } {
 				ctx.config.move_fn(e.mouse_x / ctx.scale, e.mouse_y / ctx.scale, ctx.config.user_data)
 			}
 		}
 		.mouse_down {
-			if ctx.config.click_fn != voidptr(0) {
+			if ctx.config.click_fn != unsafe { nil } {
 				ctx.config.click_fn(e.mouse_x / ctx.scale, e.mouse_y / ctx.scale, e.mouse_button,
 					ctx.config.user_data)
 			}
 		}
 		.mouse_up {
-			if ctx.config.unclick_fn != voidptr(0) {
+			if ctx.config.unclick_fn != unsafe { nil } {
 				ctx.config.unclick_fn(e.mouse_x / ctx.scale, e.mouse_y / ctx.scale, e.mouse_button,
 					ctx.config.user_data)
 			}
 		}
 		.mouse_leave {
-			if ctx.config.leave_fn != voidptr(0) {
+			if ctx.config.leave_fn != unsafe { nil } {
 				ctx.config.leave_fn(e, ctx.config.user_data)
 			}
 		}
 		.mouse_enter {
-			if ctx.config.enter_fn != voidptr(0) {
+			if ctx.config.enter_fn != unsafe { nil } {
 				ctx.config.enter_fn(e, ctx.config.user_data)
 			}
 		}
 		.mouse_scroll {
-			if ctx.config.scroll_fn != voidptr(0) {
+			if ctx.config.scroll_fn != unsafe { nil } {
 				ctx.config.scroll_fn(e, ctx.config.user_data)
 			}
 		}
 		.key_down {
-			if ctx.config.keydown_fn != voidptr(0) {
-				ctx.config.keydown_fn(e.key_code, Modifier(e.modifiers), ctx.config.user_data)
+			if ctx.config.keydown_fn != unsafe { nil } {
+				ctx.config.keydown_fn(e.key_code, unsafe { Modifier(e.modifiers) }, ctx.config.user_data)
 			}
 		}
 		.key_up {
-			if ctx.config.keyup_fn != voidptr(0) {
-				ctx.config.keyup_fn(e.key_code, Modifier(e.modifiers), ctx.config.user_data)
+			if ctx.config.keyup_fn != unsafe { nil } {
+				ctx.config.keyup_fn(e.key_code, unsafe { Modifier(e.modifiers) }, ctx.config.user_data)
 			}
 		}
 		.char {
-			if ctx.config.char_fn != voidptr(0) {
+			if ctx.config.char_fn != unsafe { nil } {
 				ctx.config.char_fn(e.char_code, ctx.config.user_data)
 			}
 		}
 		.resized {
-			if ctx.config.resized_fn != voidptr(0) {
+			if ctx.config.resized_fn != unsafe { nil } {
 				ctx.config.resized_fn(e, ctx.config.user_data)
 			}
 		}
 		.quit_requested {
-			if ctx.config.quit_fn != voidptr(0) {
+			if ctx.config.quit_fn != unsafe { nil } {
 				ctx.config.quit_fn(e, ctx.config.user_data)
 			}
 		}
@@ -392,7 +429,7 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 
 fn gg_cleanup_fn(user_data voidptr) {
 	mut ctx := unsafe { &Context(user_data) }
-	if ctx.config.cleanup_fn != voidptr(0) {
+	if ctx.config.cleanup_fn != unsafe { nil } {
 		ctx.config.cleanup_fn(ctx.config.user_data)
 	}
 	gfx.shutdown()
@@ -401,10 +438,10 @@ fn gg_cleanup_fn(user_data voidptr) {
 fn gg_fail_fn(msg &char, user_data voidptr) {
 	mut ctx := unsafe { &Context(user_data) }
 	vmsg := unsafe { tos3(msg) }
-	if ctx.config.fail_fn != voidptr(0) {
+	if ctx.config.fail_fn != unsafe { nil } {
 		ctx.config.fail_fn(vmsg, ctx.config.user_data)
 	} else {
-		eprintln('gg error: $vmsg')
+		eprintln('gg error: ${vmsg}')
 	}
 }
 
@@ -421,7 +458,7 @@ pub fn new_context(cfg Config) &Context {
 		ui_mode: cfg.ui_mode
 		native_rendering: cfg.native_rendering
 	}
-	if isnil(cfg.user_data) {
+	if cfg.user_data == unsafe { nil } {
 		ctx.user_data = ctx
 	}
 	ctx.set_bg_color(cfg.bg_color)
@@ -539,7 +576,7 @@ pub fn (ctx &Context) show_fps() {
 	sgl.defaults()
 	sgl.matrix_mode_projection()
 	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
-	ctx.set_cfg(ctx.fps.text_config)
+	ctx.set_text_cfg(ctx.fps.text_config)
 	if ctx.fps.width == 0 {
 		mut fps := unsafe { &ctx.fps }
 		fps.width, fps.height = ctx.text_size('00') // maximum size; prevents blinking on variable width fonts

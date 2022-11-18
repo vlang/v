@@ -1,0 +1,6 @@
+vlib/v/scanner/tests/undefined_ident_in_string_literal_err.vv:2:15: error: undefined ident: `type`
+    1 | fn abc() string {
+    2 |     return 'abc $type'
+      |                  ~~~~
+    3 | }
+    4 |

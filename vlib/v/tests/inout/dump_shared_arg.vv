@@ -1,0 +1,14 @@
+module main
+
+struct AtomicStruct {
+	a int
+}
+
+fn main() {
+	shared inst := AtomicStruct{
+		a: 1
+	}
+	lock inst {
+		dump(inst)
+	}
+}

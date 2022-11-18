@@ -11,10 +11,10 @@ fn find_diff_cmd() string {
 	return res
 }
 
-fn test_vet() ? {
+fn test_vet() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	os.chdir(vroot)?
+	os.chdir(vroot)!
 	test_dir := 'cmd/tools/vvet/tests'
 	tests := get_tests_in_dir(test_dir)
 	fails := check_path(vexe, test_dir, tests)

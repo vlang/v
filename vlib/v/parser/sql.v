@@ -6,12 +6,13 @@ module parser
 import v.ast
 
 fn (mut p Parser) sql_expr() ast.Expr {
+	tmp_inside_match := p.inside_match
+	p.inside_match = true
 	// `sql db {`
 	pos := p.tok.pos()
 	p.check_name()
 	db_expr := p.check_expr(0) or {
-		p.error_with_pos('invalid expression: unexpected $p.tok, expecting database',
-			p.tok.pos())
+		p.unexpected(prepend_msg: 'invalid expression:', expecting: 'database')
 	}
 	p.check(.lcbr)
 	p.check(.key_select)
@@ -24,7 +25,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	}
 	table_pos := p.tok.pos()
 	table_type := p.parse_type() // `User`
-	mut where_expr := ast.empty_expr()
+	mut where_expr := ast.empty_expr
 	has_where := p.tok.kind == .name && p.tok.lit == 'where'
 	mut query_one := false // one object is returned, not an array
 	if has_where {
@@ -39,7 +40,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 			}
 			if mut where_expr.right is ast.Ident {
 				if !p.scope.known_var(where_expr.right.name) {
-					p.check_undefined_variables([where_expr.left], where_expr.right) or {
+					p.check_undefined_variables([where_expr.left.str()], where_expr.right) or {
 						return p.error_with_pos(err.msg(), where_expr.right.pos)
 					}
 				}
@@ -47,11 +48,11 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		}
 	}
 	mut has_limit := false
-	mut limit_expr := ast.empty_expr()
+	mut limit_expr := ast.empty_expr
 	mut has_offset := false
-	mut offset_expr := ast.empty_expr()
+	mut offset_expr := ast.empty_expr
 	mut has_order := false
-	mut order_expr := ast.empty_expr()
+	mut order_expr := ast.empty_expr
 	mut has_desc := false
 	if p.tok.kind == .name && p.tok.lit == 'order' {
 		p.check_name() // `order`
@@ -92,9 +93,13 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		typ = table_type
 	}
 	p.check(.rcbr)
+	p.inside_match = false
+	or_expr := p.parse_sql_or_block()
+	p.inside_match = tmp_inside_match
 	return ast.SqlExpr{
 		is_count: is_count
 		typ: typ
+		or_expr: or_expr
 		db_expr: db_expr
 		where_expr: where_expr
 		has_where: has_where
@@ -125,8 +130,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	// `sql db {`
 	p.check_name()
 	db_expr := p.check_expr(0) or {
-		p.error_with_pos('invalid expression: unexpected $p.tok, expecting database',
-			p.tok.pos())
+		p.unexpected(prepend_msg: 'invalid expression:', expecting: 'database')
 	}
 	// println(typeof(db_expr))
 	p.check(.lcbr)
@@ -138,11 +142,45 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	}
 
 	p.next()
+
+	mut or_expr := p.parse_sql_or_block()
+
 	pos.last_line = p.prev_tok.line_nr
 	return ast.SqlStmt{
 		pos: pos.extend(p.prev_tok.pos())
 		db_expr: db_expr
 		lines: lines
+		or_expr: or_expr
+	}
+}
+
+fn (mut p Parser) parse_sql_or_block() ast.OrExpr {
+	mut stmts := []ast.Stmt{}
+	mut kind := ast.OrKind.absent
+	mut pos := p.tok.pos()
+
+	if p.tok.kind == .key_orelse {
+		was_inside_or_expr := p.inside_or_expr
+		p.inside_or_expr = true
+		p.next()
+		p.open_scope()
+		p.scope.register(ast.Var{
+			name: 'err'
+			typ: ast.error_type
+			pos: p.tok.pos()
+			is_used: true
+		})
+		kind = .block
+		stmts = p.parse_block_no_scope(false)
+		pos = pos.extend(p.prev_tok.pos())
+		p.close_scope()
+		p.inside_or_expr = was_inside_or_expr
+	}
+
+	return ast.OrExpr{
+		stmts: stmts
+		kind: kind
+		pos: pos
 	}
 }
 
@@ -158,7 +196,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		kind = .create
 		table := p.check_name()
 		if table != 'table' {
-			p.error('expected `table` got `$table`')
+			p.error('expected `table` got `${table}`')
 			return ast.SqlStmtLine{}
 		}
 		typ := p.parse_type()
@@ -175,7 +213,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		kind = .drop
 		table := p.check_name()
 		if table != 'table' {
-			p.error('expected `table` got `$table`')
+			p.error('expected `table` got `${table}`')
 			return ast.SqlStmtLine{}
 		}
 		typ := p.parse_type()
@@ -232,7 +270,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 	}
 
 	mut table_pos := p.tok.pos()
-	mut where_expr := ast.empty_expr()
+	mut where_expr := ast.empty_expr
 	if kind == .insert {
 		table_pos = p.tok.pos()
 		table_type = p.parse_type()
@@ -261,7 +299,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 
 fn (mut p Parser) check_sql_keyword(name string) ?bool {
 	if p.check_name() != name {
-		p.error('orm: expecting `$name`')
+		p.error('orm: expecting `${name}`')
 		return none
 	}
 	return true

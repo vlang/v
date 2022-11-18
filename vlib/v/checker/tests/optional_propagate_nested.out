@@ -5,6 +5,13 @@ vlib/v/checker/tests/optional_propagate_nested.vv:10:18: error: to propagate the
       |                     ^
    11 |     return s
    12 | }
+Details: vlib/v/checker/tests/optional_propagate_nested.vv:9:14: details: prepend ? before the declaration of the return type of `xx_prop`
+    7 | }
+    8 | 
+    9 | fn xx_prop() string {
+      |              ~~~~~~
+   10 |     s := ret(raise()?)
+   11 |     return s
 vlib/v/checker/tests/optional_propagate_nested.vv:28:21: error: to propagate the optional call, `aa_propagate` must return an optional
    26 | 
    27 | fn (mut s St) aa_propagate() {
@@ -12,3 +19,10 @@ vlib/v/checker/tests/optional_propagate_nested.vv:28:21: error: to propagate the
       |                        ^
    29 |     s.z = 7.5
    30 |     println(f)
+Details: vlib/v/checker/tests/optional_propagate_nested.vv:27:30: details: prepend ? before the declaration of the return type of `aa_propagate`
+   25 | }
+   26 | 
+   27 | fn (mut s St) aa_propagate() {
+      |                              ^
+   28 |     f := retf(s.raise()?)
+   29 |     s.z = 7.5

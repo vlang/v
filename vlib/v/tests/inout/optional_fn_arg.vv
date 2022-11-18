@@ -1,0 +1,16 @@
+module main
+
+fn test(f fn () ?) ? {
+	return error('test')
+}
+
+fn test1() ? {
+	return error('test1')
+}
+
+fn main() {
+	test(test1) or {
+		println(err)
+		return
+	}
+}

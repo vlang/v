@@ -1,0 +1,51 @@
+struct Foo {
+mut:
+	bar ?int = 1
+	baz ?int = none
+}
+
+fn main() {
+	// `default value` test
+	mut f := Foo{}
+	println(f.bar?)
+	dump(f.bar?)
+	// `init` test
+	f = Foo{
+		bar: 2
+		baz: none
+	}
+	println(f.bar?)
+	dump(f.bar?)
+	// `assign` test
+	f.bar = 3
+	println(f.bar?)
+	dump(f.bar?)
+	// `or block` test
+	a := f.bar or { 123 }
+	println(a)
+	dump(a)
+	b := f.baz or { 9999 }
+	println(b)
+	dump(b)
+	// `infix expr` test
+	mut sum := f.bar? + 1
+	println(sum)
+	dump(sum)
+	sum = f.bar or { 123 } + 1
+	println(sum)
+	dump(sum)
+	// `if guard` test
+	if c := f.bar {
+		println(c)
+	} else {
+		println(err)
+	}
+	if c := f.baz {
+		println(c)
+	} else {
+		println(err)
+	}
+	// others test
+	println(f)
+	dump(f)
+}

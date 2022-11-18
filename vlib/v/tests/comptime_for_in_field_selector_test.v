@@ -14,7 +14,7 @@ fn print_field_values<T>(s T) {
 		val := s.$(field.name)
 		println(val)
 		var_value_list << val.str()
-		var_intp_value_list << 'field value: $val'
+		var_intp_value_list << 'field value: ${val}'
 	}
 	assert value_list.len == 4
 	assert value_list[0] == 'Simon'

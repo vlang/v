@@ -79,7 +79,7 @@ x := 10
 	prog := parse_file(s, table, .skip_comments, vpref)
 	mut checker := checker.new_checker(table, vpref)
 	checker.check(prog)
-	res := c.gen([prog], table, vpref)
+	res, _, _, _ := c.gen([prog], table, vpref)
 	println(res)
 }
 
@@ -107,7 +107,8 @@ fn test_one() {
 	}
 	mut checker := checker.new_checker(table, vpref)
 	checker.check(program)
-	res := c.gen([program], table, vpref).replace('\n', '').trim_space().after('#endif')
+	mut res, _, _, _ := c.gen([program], table, vpref)
+	res = res.replace('\n', '').trim_space().after('#endif')
 	println(res)
 	ok := expected == res
 	println(res)
@@ -139,7 +140,7 @@ fn test_parse_expr() {
 		parent: 0
 	}
 	for s in input {
-		println('\n\nst="$s"')
+		println('\n\nst="${s}"')
 		e << parse_stmt(s, table, scope)
 	}
 	program := &ast.File{
@@ -148,7 +149,8 @@ fn test_parse_expr() {
 		global_scope: scope
 	}
 	chk.check(program)
-	res := c.gen([program], table, vpref).after('#endif')
+	mut res, _, _, _ := c.gen([program], table, vpref)
+	res = res.after('#endif')
 	println('========')
 	println(res)
 	println('========')
@@ -159,10 +161,10 @@ fn test_parse_expr() {
 			continue
 		}
 		if line != expecting[i] {
-			println('V:"$line" expecting:"${expecting[i]}"')
+			println('V:"${line}" expecting:"${expecting[i]}"')
 		}
 		assert line == expecting[i]
-		println(term.green('$i OK'))
+		println(term.green('${i} OK'))
 		println(line)
 		println('')
 		i++
@@ -260,4 +262,8 @@ fn test_fn_is_html_open_tag() {
 	s = '<sript>'
 	b = is_html_open_tag('style', s)
 	assert b == false
+}
+
+// For issue #15516
+fn test_anon_struct() {
 }

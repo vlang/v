@@ -1,5 +1,7 @@
 module net
 
+const is_windows = true
+
 // WsaError is all of the socket errors that WSA provides from WSAGetLastError
 pub enum WsaError {
 	//
@@ -734,11 +736,12 @@ pub enum WsaError {
 
 // wsa_error casts an int to its WsaError value
 pub fn wsa_error(code int) WsaError {
-	return WsaError(code)
+	return unsafe { WsaError(code) }
 }
 
 const (
 	error_ewouldblock = WsaError.wsaewouldblock
+	error_einprogress = WsaError.wsaeinprogress
 )
 
 // Link to Winsock library

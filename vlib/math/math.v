@@ -69,7 +69,7 @@ pub fn digits(num i64, params DigitParams) []int {
 	// set base to 10 initially and change only if base is explicitly set.
 	mut b := params.base
 	if b < 2 {
-		panic('digits: Cannot find digits of n with base $b')
+		panic('digits: Cannot find digits of n with base ${b}')
 	}
 	mut n := num
 	mut sign := 1

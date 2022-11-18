@@ -60,7 +60,7 @@ pub fn eprint(s string) {
 [noreturn]
 pub fn exit(c int) {
 	JS.process.exit(c)
-	js_throw('exit($c)')
+	js_throw('exit(${c})')
 }
 
 fn opt_ok(data voidptr, option Option) {

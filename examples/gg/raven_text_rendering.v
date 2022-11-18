@@ -60,7 +60,7 @@ Let my heart be still a moment and this mystery explore;—
 
 struct App {
 mut:
-	gg &gg.Context
+	gg &gg.Context = unsafe { nil }
 }
 
 fn main() {

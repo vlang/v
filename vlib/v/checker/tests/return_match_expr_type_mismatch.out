@@ -1,0 +1,7 @@
+vlib/v/checker/tests/return_match_expr_type_mismatch.vv:18:16: error: return type mismatch, it should be `SomeTuple`
+   16 | fn get_file(item PossOwner) ?SomeTuple {
+   17 |     return match item.pos {
+   18 |         Poss1 { item.pos }
+      |                      ~~~
+   19 |         else { error('not poss1') }
+   20 |     }

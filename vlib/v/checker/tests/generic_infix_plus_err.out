@@ -1,0 +1,6 @@
+vlib/v/checker/tests/generic_infix_plus_err.vv:2:9: error: undefined operation `map[string]int` + `map[string]int`
+    1 | fn sum<T>(a T, b T) T {
+    2 |     return a + b
+      |            ~~~~~
+    3 | }
+    4 |

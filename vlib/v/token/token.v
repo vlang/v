@@ -108,6 +108,7 @@ pub enum Kind {
 	key_match
 	key_module
 	key_mut
+	key_nil
 	key_shared
 	key_lock
 	key_rlock
@@ -130,6 +131,7 @@ pub enum Kind {
 	key_static
 	key_volatile
 	key_unsafe
+	key_spawn
 	keyword_end
 	_end_
 }
@@ -172,6 +174,7 @@ pub enum AtKind {
 	vmodroot_path
 	vroot_path // obsolete
 	vexeroot_path
+	file_path_line_nr
 }
 
 pub const (
@@ -180,14 +183,14 @@ pub const (
 		.unsigned_right_shift_assign]
 
 	valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
-		'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VMOD_FILE']
+		'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VMOD_FILE', '@FILE_LINE']
 
 	token_str       = build_token_str()
 
 	keywords        = build_keys()
-
-	matcher         = new_keywords_matcher<Kind>(keywords)
 )
+
+pub const scanner_matcher = new_keywords_matcher_trie<Kind>(keywords)
 
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return
@@ -195,7 +198,7 @@ fn build_keys() map[string]Kind {
 	mut res := map[string]Kind{}
 	for t in int(Kind.keyword_beg) + 1 .. int(Kind.keyword_end) {
 		key := token.token_str[t]
-		res[key] = Kind(t)
+		res[key] = unsafe { Kind(t) }
 	}
 	return res
 }
@@ -313,8 +316,10 @@ fn build_token_str() []string {
 	s[Kind.key_match] = 'match'
 	s[Kind.key_select] = 'select'
 	s[Kind.key_none] = 'none'
+	s[Kind.key_nil] = 'nil'
 	s[Kind.key_offsetof] = '__offsetof'
 	s[Kind.key_is] = 'is'
+	s[Kind.key_spawn] = 'spawn'
 	// The following kinds are not for tokens returned by the V scanner.
 	// They are used just for organisation/ease of checking:
 	s[Kind.keyword_beg] = 'keyword_beg'
@@ -323,7 +328,7 @@ fn build_token_str() []string {
 	$if debug_build_token_str ? {
 		for k, v in s {
 			if v == '' {
-				eprintln('>>> ${@MOD}.${@METHOD} missing k: $k | .${kind_to_string(Kind(k))}')
+				eprintln('>>> ${@MOD}.${@METHOD} missing k: ${k} | .${kind_to_string(unsafe { Kind(k) })}')
 			}
 		}
 	}
@@ -349,7 +354,11 @@ pub fn (t Kind) is_assign() bool {
 // note: used for some code generation, so no quoting
 [inline]
 pub fn (t Kind) str() string {
-	return token.token_str[int(t)]
+	idx := int(t)
+	if idx < 0 || token.token_str.len <= idx {
+		return 'unknown'
+	}
+	return token.token_str[idx]
 }
 
 pub fn (t Token) str() string {
@@ -358,14 +367,14 @@ pub fn (t Token) str() string {
 		eprintln('missing token kind string')
 	} else if !s[0].is_letter() {
 		// punctuation, operators
-		return 'token `$s`'
+		return 'token `${s}`'
 	}
 	if is_key(t.lit) {
 		s = 'keyword'
 	}
 	if t.lit != '' {
 		// string contents etc
-		s += ' `$t.lit`'
+		s += ' `${t.lit}`'
 	}
 	return s
 }
@@ -373,7 +382,7 @@ pub fn (t Token) str() string {
 pub fn (t Token) debug() string {
 	ks := kind_to_string(t.kind)
 	s := if t.lit == '' { t.kind.str() } else { t.lit }
-	return 'tok: .${ks:-12} | lit: `$s`'
+	return 'tok: .${ks:-12} | lit: `${s}`'
 }
 
 // Representation of highest and lowest precedence
@@ -615,12 +624,14 @@ pub fn kind_to_string(k Kind) string {
 		.key_static { 'key_static' }
 		.key_volatile { 'key_volatile' }
 		.key_unsafe { 'key_unsafe' }
+		.key_spawn { 'key_spawn' }
 		.keyword_end { 'keyword_end' }
 		._end_ { '_end_' }
+		.key_nil { 'key_nil' }
 	}
 }
 
-pub fn kind_from_string(s string) ?Kind {
+pub fn kind_from_string(s string) !Kind {
 	return match s {
 		'unknown' { .unknown }
 		'eof' { .eof }
@@ -735,8 +746,26 @@ pub fn kind_from_string(s string) ?Kind {
 		'key_static' { .key_static }
 		'key_volatile' { .key_volatile }
 		'key_unsafe' { .key_unsafe }
+		'key_spawn' { .key_spawn }
 		'keyword_end' { .keyword_end }
 		'_end_' { ._end_ }
 		else { error('unknown') }
+	}
+}
+
+pub fn assign_op_to_infix_op(op Kind) Kind {
+	return match op {
+		.plus_assign { .plus }
+		.minus_assign { .minus }
+		.mult_assign { .mul }
+		.div_assign { .div }
+		.xor_assign { .xor }
+		.mod_assign { .mod }
+		.or_assign { .pipe }
+		.and_assign { .amp }
+		.right_shift_assign { .right_shift }
+		.unsigned_right_shift_assign { .unsigned_right_shift }
+		.left_shift_assign { .left_shift }
+		else { ._end_ }
 	}
 }

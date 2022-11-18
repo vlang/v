@@ -21,7 +21,7 @@ fn test_return_err_var() {
 }
 
 fn test_str() {
-	assert '$foo()' == 'result(1)'
+	assert '${foo()}' == 'result(1)'
 }
 
 fn result_void(err bool) ! {
@@ -89,8 +89,29 @@ fn read() !string {
 fn test_results_if_guard() {
 	if fcontent := read() {
 		assert fcontent == ''
-		assert '$fcontent' == ''
+		assert '${fcontent}' == ''
 		return
 	}
 	assert false
+}
+
+fn res_err_with_code(code int) !string {
+	return error_with_code('hi', code)
+}
+
+fn test_err_with_code() {
+	if w := res_err_with_code(137) {
+		assert false
+		_ := w
+	} else {
+		assert err.msg() == 'hi; code: 137'
+		assert err.code() == 137
+	}
+	v := res_err_with_code(56) or {
+		assert err.msg() == 'hi; code: 56'
+		assert err.code() == 56
+		return
+	}
+	assert false
+	_ := v
 }

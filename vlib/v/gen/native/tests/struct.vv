@@ -1,0 +1,63 @@
+struct Size7 {
+	a i8
+	b u8
+	c i8
+	d i8
+	e u8
+	f i8
+	g u8
+}
+
+struct Size28 {
+	a int
+	b i16
+	c int
+	d u32
+	e i8
+	f int
+	g int
+}
+
+struct StructWithDefault {
+	a int = 8
+	b int
+	c int = 5
+}
+
+struct Mutable {
+mut:
+	a int
+}
+
+fn struct_test() {
+	a := Size7{1, 2, 3, 4, 5, 6, 7}
+	b := a
+	assert a.c == 3
+	assert b.f == 6
+	c := Size28{
+		d: 1
+		f: 2
+		a: 3
+		c: 4
+	}
+	assert c.a == 3
+	assert c.f == 2
+	assert c.e == 0
+	d := StructWithDefault{
+		b: 2
+		c: 3
+	}
+	assert d.a == 8
+	assert d.b == 2
+	assert d.c == 3
+	mut e := Mutable{1}
+	e.a = 2
+	assert e.a == 2
+	mut f := &e
+	f.a = 3
+	assert e.a == 3
+}
+
+fn main() {
+	struct_test()
+}

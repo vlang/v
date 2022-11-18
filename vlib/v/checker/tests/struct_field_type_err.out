@@ -19,7 +19,7 @@ vlib/v/checker/tests/struct_field_type_err.vv:14:3: error: cannot assign to fiel
       |         ~~~~~~~~~~~~~~~~~~~~~~~~
    15 |         f2: fn (v voidptr) {}
    16 |         data: true
-Details: ``'s expected fn argument: `` is a pointer, but the passed fn argument: `v` is NOT a pointer
+Details: expected argument 1 to be a pointer, but the passed argument 1 is NOT a pointer
 vlib/v/checker/tests/struct_field_type_err.vv:15:3: error: cannot assign to field `f2`: expected `fn (...voidptr)`, not `fn (voidptr)`
    13 |         b: 0
    14 |         f1: fn (v ...voidptr) {}
@@ -27,7 +27,7 @@ vlib/v/checker/tests/struct_field_type_err.vv:15:3: error: cannot assign to fiel
       |         ~~~~~~~~~~~~~~~~~~~~~
    16 |         data: true
    17 |     }
-Details: ``'s expected fn argument: `` is NOT a pointer, but the passed fn argument: `v` is a pointer
+Details: expected argument 1 to be NOT a pointer, but the passed argument 1 is a pointer
 vlib/v/checker/tests/struct_field_type_err.vv:16:3: error: cannot assign to field `data`: expected `&Data`, not `bool`
    14 |         f1: fn (v ...voidptr) {}
    15 |         f2: fn (v voidptr) {}
@@ -37,7 +37,7 @@ vlib/v/checker/tests/struct_field_type_err.vv:16:3: error: cannot assign to fiel
    18 |
 vlib/v/checker/tests/struct_field_type_err.vv:19:11: error: cannot assign to `data.n`: expected `int`, not `bool`
    17 |     }
-   18 | 
+   18 |
    19 |     data.n = true
       |              ~~~~
    20 | }

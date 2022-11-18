@@ -19,7 +19,7 @@ type BBbool = BB<bool>
 type CC = AAbool | AAint | BBbool | BBint
 
 fn (c CC) str() string {
-	return '$c.val'
+	return '${c.val}'
 }
 
 fn test_generic_sumtype_of_alias_generic_struct() {
@@ -30,6 +30,6 @@ fn test_generic_sumtype_of_alias_generic_struct() {
 	c << BBbool{
 		val: 2
 	}
-	println('$c')
-	assert '$c' == '[1, 2]'
+	println('${c}')
+	assert '${c}' == '[1, 2]'
 }

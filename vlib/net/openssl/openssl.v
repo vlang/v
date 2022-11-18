@@ -1,22 +1,22 @@
 module openssl
 
 // ssl_error returns non error ssl code or error if unrecoverable and we should panic
-pub fn ssl_error(ret int, ssl voidptr) ?SSLError {
+fn ssl_error(ret int, ssl voidptr) !SSLError {
 	res := C.SSL_get_error(ssl, ret)
-	match SSLError(res) {
+	match unsafe { SSLError(res) } {
 		.ssl_error_syscall {
-			return error_with_code('unrecoverable syscall ($res)', res)
+			return error_with_code('unrecoverable syscall (${res})', res)
 		}
 		.ssl_error_ssl {
-			return error_with_code('unrecoverable ssl protocol error ($res)', res)
+			return error_with_code('unrecoverable ssl protocol error (${res})', res)
 		}
 		else {
-			return SSLError(res)
+			return unsafe { SSLError(res) }
 		}
 	}
 }
 
-pub enum SSLError {
+enum SSLError {
 	ssl_error_none = 0 // SSL_ERROR_NONE
 	ssl_error_ssl = 1 // SSL_ERROR_SSL
 	ssl_error_want_read = 2 // SSL_ERROR_WANT_READ

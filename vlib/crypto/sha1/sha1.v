@@ -20,10 +20,10 @@ pub const (
 const (
 	chunk = 64
 	init0 = 0x67452301
-	init1 = 0xEFCDAB89
-	init2 = 0x98BADCFE
+	init1 = u32(0xEFCDAB89)
+	init2 = u32(0x98BADCFE)
 	init3 = 0x10325476
-	init4 = 0xC3D2E1F0
+	init4 = u32(0xC3D2E1F0)
 )
 
 // digest represents the partial evaluation of a checksum.
@@ -56,7 +56,7 @@ pub fn new() &Digest {
 
 // write writes the contents of `p_` to the internal hash representation.
 [manualfree]
-pub fn (mut d Digest) write(p_ []u8) ?int {
+pub fn (mut d Digest) write(p_ []u8) !int {
 	nn := p_.len
 	unsafe {
 		mut p := p_

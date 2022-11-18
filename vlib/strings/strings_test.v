@@ -79,19 +79,19 @@ fn test_find_between_pair_family() {
 	for i, tstr in test_rune_and_byte {
 		e1 := strings.find_between_pair_rune(tstr, `[`, `]`)
 		e2 := expected_rune_and_byte_outputs[i]
-		assert '$e1' == '$e2'
+		assert '${e1}' == '${e2}'
 	}
 
 	for i, tstr in test_rune_and_byte {
 		e1 := strings.find_between_pair_u8(tstr, `[`, `]`)
 		e2 := expected_rune_and_byte_outputs[i]
-		assert '$e1' == '$e2'
+		assert '${e1}' == '${e2}'
 	}
 
 	for i, tstr in test_strings {
 		e1 := strings.find_between_pair_string(tstr, '/*', '*/')
 		e2 := expected_string_outputs[i]
-		assert '$e1' == '$e2'
+		assert '${e1}' == '${e2}'
 	}
 }
 

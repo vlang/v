@@ -1,5 +1,12 @@
+vlib/v/checker/tests/struct_field_reference_type_err.vv:12:16: warning: reference field `Animal.duck.age` must be initialized (part of struct `Duck`)
+   10 | 
+   11 | fn main() {
+   12 |     mut animal := Animal{
+      |                   ~~~~~~~
+   13 |         ageee: 20
+   14 |     }
 vlib/v/checker/tests/struct_field_reference_type_err.vv:17:3: error: reference field must be initialized with reference
-   15 |
+   15 | 
    16 |     animal.duck = Duck{
    17 |         age: animal.ageee
       |         ~~~~~~~~~~~~~~~~~

@@ -14,7 +14,7 @@ struct HttpbinResponseBody {
 	url     string
 }
 
-fn http_fetch_mock(_methods []string, _config FetchConfig) ?[]Response {
+fn http_fetch_mock(_methods []string, _config FetchConfig) ![]Response {
 	url := 'https://httpbin.org/'
 	methods := if _methods.len == 0 { ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'] } else { _methods }
 	mut config := _config
@@ -23,9 +23,9 @@ fn http_fetch_mock(_methods []string, _config FetchConfig) ?[]Response {
 	for method in methods {
 		lmethod := method.to_lower()
 		config.method = method_from_str(method)
-		res := fetch(FetchConfig{ ...config, url: url + lmethod })?
+		res := fetch(FetchConfig{ ...config, url: url + lmethod })!
 		// TODO
-		// body := json.decode(HttpbinResponseBody,res.body)?
+		// body := json.decode(HttpbinResponseBody,res.body)!
 		result << res
 	}
 	return result
@@ -75,12 +75,12 @@ fn test_http_fetch_with_params() {
 	}
 }
 
-fn test_http_fetch_with_headers() ? {
+fn test_http_fetch_with_headers() ! {
 	$if !network ? {
 		return
 	}
 	mut header := new_header()
-	header.add_custom('Test-Header', 'hello world')?
+	header.add_custom('Test-Header', 'hello world')!
 	responses := http_fetch_mock([],
 		header: header
 	) or { panic(err) }

@@ -2,11 +2,13 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
+import os
 import v.ast
 import v.pref
 import v.token
 import v.util
 import v.pkgconfig
+import v.checker.constants
 
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	if node.left !is ast.EmptyExpr {
@@ -20,7 +22,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		return ast.void_type
 	}
 	if node.is_env {
-		env_value := util.resolve_env_value("\$env('$node.args_var')", false) or {
+		env_value := util.resolve_env_value("\$env('${node.args_var}')", false) or {
 			c.error(err.msg(), node.env_pos)
 			return ast.string_type
 		}
@@ -28,10 +30,50 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		return ast.string_type
 	}
 	if node.is_embed {
+		if node.args.len == 1 {
+			embed_arg := node.args[0]
+			mut raw_path := ''
+			if embed_arg.expr is ast.StringLiteral {
+				raw_path = embed_arg.expr.val
+			} else if embed_arg.expr is ast.Ident {
+				if var := c.fn_scope.find_var(embed_arg.expr.name) {
+					if var.expr is ast.StringLiteral {
+						raw_path = var.expr.val
+					}
+				}
+			}
+			mut escaped_path := raw_path.replace('/', os.path_separator)
+			// Validate that the epath exists, and that it is actually a file.
+			if escaped_path == '' {
+				c.error('supply a valid relative or absolute file path to the file to embed, that is known at compile time',
+					node.pos)
+				return ast.string_type
+			}
+			abs_path := os.real_path(escaped_path)
+			// check absolute path first
+			if !os.exists(abs_path) {
+				// ... look relative to the source file:
+				escaped_path = os.real_path(os.join_path_single(os.dir(c.file.path), escaped_path))
+				if !os.exists(escaped_path) {
+					c.error('"${escaped_path}" does not exist so it cannot be embedded',
+						node.pos)
+					return ast.string_type
+				}
+				if !os.is_file(escaped_path) {
+					c.error('"${escaped_path}" is not a file so it cannot be embedded',
+						node.pos)
+					return ast.string_type
+				}
+			} else {
+				escaped_path = abs_path
+			}
+			node.embed_file.rpath = raw_path
+			node.embed_file.apath = escaped_path
+		}
 		// c.file.embedded_files << node.embed_file
-		if node.embed_file.compression_type !in valid_comptime_compression_types {
-			supported := valid_comptime_compression_types.map('.$it').join(', ')
-			c.error('not supported compression type: .${node.embed_file.compression_type}. supported: $supported',
+		if node.embed_file.compression_type !in constants.valid_comptime_compression_types {
+			supported := constants.valid_comptime_compression_types.map('.${it}').join(', ')
+			c.error('not supported compression type: .${node.embed_file.compression_type}. supported: ${supported}',
 				node.pos)
 		}
 		return c.table.find_type_idx('v.embed_file.EmbedFileData')
@@ -62,6 +104,9 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		return rtyp
 	}
 	if node.method_name == 'method' {
+		if c.inside_anon_fn && 'method' !in c.cur_anon_fn.inherited_vars.map(it.name) {
+			c.error('undefined ident `method` in the anonymous function', node.pos)
+		}
 		for i, arg in node.args {
 			// check each arg expression
 			node.args[i].typ = c.expr(arg.expr)
@@ -74,12 +119,12 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	}
 	// s.$my_str()
 	v := node.scope.find_var(node.method_name) or {
-		c.error('unknown identifier `$node.method_name`', node.method_pos)
+		c.error('unknown identifier `${node.method_name}`', node.method_pos)
 		return ast.void_type
 	}
 	if v.typ != ast.string_type {
 		s := c.expected_msg(v.typ, ast.string_type)
-		c.error('invalid string method call: $s', node.method_pos)
+		c.error('invalid string method call: ${s}', node.method_pos)
 		return ast.void_type
 	}
 	// note: we should use a compile-time evaluation function rather than handle here
@@ -92,7 +137,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	}
 	left_sym := c.table.sym(c.unwrap_generic(node.left_type))
 	f := left_sym.find_method(method_name) or {
-		c.error('could not find method `$method_name`', node.method_pos)
+		c.error('could not find method `${method_name}`', node.method_pos)
 		return ast.void_type
 	}
 	node.result_type = f.return_type
@@ -104,7 +149,8 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 	expr_type := c.unwrap_generic(c.expr(node.field_expr))
 	expr_sym := c.table.sym(expr_type)
 	if expr_type != ast.string_type {
-		c.error('expected `string` instead of `$expr_sym.name` (e.g. `field.name`)', node.field_expr.pos())
+		c.error('expected `string` instead of `${expr_sym.name}` (e.g. `field.name`)',
+			node.field_expr.pos())
 	}
 	if mut node.field_expr is ast.SelectorExpr {
 		left_pos := node.field_expr.expr.pos()
@@ -116,7 +162,7 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 		if expr_name in c.comptime_fields_type {
 			return c.comptime_fields_type[expr_name]
 		}
-		c.error('unknown `\$for` variable `$expr_name`', left_pos)
+		c.error('unknown `\$for` variable `${expr_name}`', left_pos)
 	} else {
 		c.error('expected selector expression e.g. `$(field.name)`', node.field_expr.pos())
 	}
@@ -127,7 +173,7 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 	typ := c.unwrap_generic(node.typ)
 	sym := c.table.sym(typ)
 	if sym.kind == .placeholder || typ.has_flag(.generic) {
-		c.error('unknown type `$sym.name`', node.typ_pos)
+		c.error('unknown type `${sym.name}`', node.typ_pos)
 	}
 	if node.kind == .fields {
 		if sym.kind == .struct_ {
@@ -205,7 +251,7 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 				return cast_expr_value.i64() or { return none }
 			}
 			//
-			if expr.typ == ast.byte_type {
+			if expr.typ == ast.u8_type {
 				return cast_expr_value.u8() or { return none }
 			}
 			if expr.typ == ast.u16_type {
@@ -223,6 +269,10 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			}
 			if expr.typ == ast.f64_type {
 				return cast_expr_value.f64() or { return none }
+			}
+			if expr.typ == ast.voidptr_type || expr.typ == ast.nil_type {
+				ptrvalue := cast_expr_value.voidptr() or { return none }
+				return ast.ComptTimeConstValue(ptrvalue)
 			}
 		}
 		ast.InfixExpr {
@@ -337,7 +387,7 @@ fn (mut c Checker) verify_vweb_params_for_method(node ast.Fn) (bool, int, int) {
 			param_sym := c.table.final_sym(param.typ)
 			if !(param_sym.is_string() || param_sym.is_number() || param_sym.is_float()
 				|| param_sym.kind == .bool) {
-				c.error('invalid type `$param_sym.name` for parameter `$param.name` in vweb app method `$node.name`',
+				c.error('invalid type `${param_sym.name}` for parameter `${param.name}` in vweb app method `${node.name}`',
 					param.pos)
 			}
 		}
@@ -365,13 +415,13 @@ fn (mut c Checker) verify_all_vweb_routes() {
 				is_ok, nroute_attributes, nargs := c.verify_vweb_params_for_method(m)
 				if !is_ok {
 					f := &ast.FnDecl(m.source_fn)
-					if isnil(f) {
+					if f == unsafe { nil } {
 						continue
 					}
 					if f.return_type == typ_vweb_result && f.receiver.typ == m.params[0].typ
 						&& f.name == m.name && !f.attrs.contains('post') {
 						c.change_current_file(f.source_file) // setup of file path for the warning
-						c.warn('mismatched parameters count between vweb method `${sym_app.name}.$m.name` ($nargs) and route attribute $m.attrs ($nroute_attributes)',
+						c.warn('mismatched parameters count between vweb method `${sym_app.name}.${m.name}` (${nargs}) and route attribute ${m.attrs} (${nroute_attributes})',
 							f.pos)
 					}
 				}
@@ -387,7 +437,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 	}
 	if node.ct_expr is ast.Ident {
 		if node.ct_opt {
-			if node.ct_expr.name in valid_comptime_not_user_defined {
+			if node.ct_expr.name in constants.valid_comptime_not_user_defined {
 				c.error('optional `[if expression ?]` tags, can be used only for user defined identifiers',
 					node.pos)
 				node.ct_skip = true
@@ -397,8 +447,8 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 			node.ct_evaled = true
 			return node.ct_skip
 		} else {
-			if node.ct_expr.name !in valid_comptime_not_user_defined {
-				c.note('`[if $node.ct_expr.name]` is deprecated. Use `[if $node.ct_expr.name ?]` instead',
+			if node.ct_expr.name !in constants.valid_comptime_not_user_defined {
+				c.note('`[if ${node.ct_expr.name}]` is deprecated. Use `[if ${node.ct_expr.name} ?]` instead',
 					node.pos)
 				node.ct_skip = node.ct_expr.name !in c.pref.compile_defines
 				node.ct_evaled = true
@@ -517,7 +567,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 						if !c.check_types(right_type, left_type) {
 							left_name := c.table.type_to_str(left_type)
 							right_name := c.table.type_to_str(right_type)
-							c.error('mismatched types `$left_name` and `$right_name`',
+							c.error('mismatched types `${left_name}` and `${right_name}`',
 								cond.pos)
 						}
 						// :)
@@ -548,20 +598,20 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 		}
 		ast.Ident {
 			cname := cond.name
-			if cname in valid_comptime_if_os {
+			if cname in constants.valid_comptime_if_os {
 				mut is_os_target_equal := true
 				if !c.pref.output_cross_c {
 					target_os := c.pref.os.str().to_lower()
 					is_os_target_equal = cname == target_os
 				}
 				return if is_os_target_equal { .eval } else { .skip }
-			} else if cname in valid_comptime_if_compilers {
+			} else if cname in constants.valid_comptime_if_compilers {
 				return if pref.cc_from_string(cname) == c.pref.ccompiler_type {
 					.eval
 				} else {
 					.skip
 				}
-			} else if cname in valid_comptime_if_platforms {
+			} else if cname in constants.valid_comptime_if_platforms {
 				if cname == 'aarch64' {
 					c.note('use `arm64` instead of `aarch64`', pos)
 				}
@@ -575,9 +625,9 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 					'rv32' { return if c.pref.arch == .rv32 { .eval } else { .skip } }
 					else { return .unknown }
 				}
-			} else if cname in valid_comptime_if_cpu_features {
+			} else if cname in constants.valid_comptime_if_cpu_features {
 				return .unknown
-			} else if cname in valid_comptime_if_other {
+			} else if cname in constants.valid_comptime_if_other {
 				match cname {
 					'apk' {
 						return if c.pref.is_apk { .eval } else { .skip }
@@ -633,7 +683,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 				if cond.obj !is ast.Var && cond.obj !is ast.ConstField
 					&& cond.obj !is ast.GlobalField {
 					if !c.inside_ct_attr {
-						c.error('unknown var: `$cname`', pos)
+						c.error('unknown var: `${cname}`', pos)
 					}
 					return .unknown
 				}
@@ -643,7 +693,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 				}
 				if !c.check_types(typ, ast.bool_type) {
 					type_name := c.table.type_to_str(typ)
-					c.error('non-bool type `$type_name` used as \$if condition', cond.pos)
+					c.error('non-bool type `${type_name}` used as \$if condition', cond.pos)
 				}
 				// :)
 				// until `v.eval` is stable, I can't think of a better way to do this

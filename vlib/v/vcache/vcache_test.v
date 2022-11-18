@@ -2,7 +2,7 @@ import os
 import v.vcache
 
 const (
-	vcache_folder = os.join_path(os.temp_dir(), 'vcache_folder')
+	vcache_folder = os.join_path(os.vtmp_dir(), 'v', 'cache_folder')
 )
 
 fn check_cache_entry_fpath_invariants(x string, extension string) {

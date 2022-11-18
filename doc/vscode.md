@@ -7,10 +7,10 @@
 
 ## V language support
 
-The [V VS Code Extention](https://marketplace.visualstudio.com/items?itemName=vlanguage.vscode-vlang)
+The [V VS Code Extension](https://marketplace.visualstudio.com/items?itemName=vlanguage.vscode-vlang)
 provides V language support for Visual Studio Code.
 
-![Screenshot Code with activated extention](https://github.com/vlang/vscode-vlang/raw/HEAD/images/demo.png)
+![Screenshot Code with activated extension](https://github.com/vlang/vscode-vlang/raw/HEAD/images/demo.png)
 
 **Features:**
 * Syntax Highlighting.
@@ -96,7 +96,7 @@ The `-g` option will add the needed debugging information.
 You can find more debugging options in the [docs](docs.md#debugging).
 
 VS Code provides a hook called `preLaunchTask`, which can be used to compile
-the application automatially every time you call the debugger. 
+the application automatically every time you call the debugger. 
 [preLaunchTask](https://code.visualstudio.com/docs/editor/debugging#_launchjson-attributes) launches
 a task before the start of a debug session, set this attribute to the label of a task specified
 in [task.json](https://code.visualstudio.com/docs/editor/tasks) (in the workspace's .vscode folder).

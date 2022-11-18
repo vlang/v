@@ -118,7 +118,7 @@ pub enum ImageType {
 	_num
 }
 
-pub enum CubeFace {
+pub enum CubeFace as u32 {
 	pos_x
 	neg_x
 	pos_y

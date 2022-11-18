@@ -210,8 +210,8 @@ fn test_various_map_value() {
 	// m13['test'] = rune(0)
 	// assert m13['test'] == rune(0)
 	mut m14 := map[string]voidptr{}
-	m14['test'] = voidptr(0)
-	assert m14['test'] == voidptr(0)
+	m14['test'] = unsafe { nil }
+	assert m14['test'] == unsafe { nil }
 	mut m15 := map[string]&u8{}
 	m15['test'] = &u8(0)
 	assert m15['test'] == &u8(0)
@@ -519,10 +519,10 @@ fn test_map_str_after_delete() {
 		'second': 2
 		'third':  3
 	}
-	osm := '$m'
+	osm := '${m}'
 	m.delete('second')
-	nsm := '$m'
-	println('m: $m')
+	nsm := '${m}'
+	println('m: ${m}')
 	assert osm == "{'first': 1, 'second': 2, 'third': 3}"
 	assert nsm == "{'first': 1, 'third': 3}"
 }
@@ -683,7 +683,7 @@ fn test_rune_keys() {
 	m[`@`] = 7
 	assert m.len == 3
 	println(m)
-	assert '$m' == '{`!`: 2, `%`: 3, `@`: 7}'
+	assert '${m}' == '{`!`: 2, `%`: 3, `@`: 7}'
 
 	mut a := []rune{}
 	for k, v in m {
@@ -777,7 +777,7 @@ fn test_map_assign_empty_map_init() {
 	a = {}
 	println(a)
 	assert a == map[string]int{}
-	assert '$a' == '{}'
+	assert '${a}' == '{}'
 }
 
 fn test_in_map_literal() {
@@ -972,11 +972,24 @@ fn test_map_set_fixed_array_variable() {
 	mut m := map[string][2]f64{}
 	m['A'] = [1.1, 2.2]!
 	println(m)
-	assert '$m' == "{'A': [1.1, 2.2]}"
+	assert '${m}' == "{'A': [1.1, 2.2]}"
 
 	mut m2 := map[string][2]f64{}
 	arr := [1.1, 2.2]!
 	m2['A'] = arr
 	println(m2)
-	assert '$m2' == "{'A': [1.1, 2.2]}"
+	assert '${m2}' == "{'A': [1.1, 2.2]}"
+}
+
+type Map = map[int]int
+
+fn test_alias_of_map_delete() {
+	mut m := Map(map[int]int{})
+	m[11] = 111
+	m[22] = 222
+	println(m)
+	m.delete(11)
+	println(m)
+	assert m.len == 1
+	assert m[22] == 222
 }

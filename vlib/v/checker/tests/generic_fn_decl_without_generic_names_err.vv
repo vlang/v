@@ -30,5 +30,13 @@ fn g_worker(g Generic<T>) {
 }
 
 fn handle(t T) {
-	println("hi")
+	println('hi')
+}
+
+struct None {}
+
+type MayBe<T> = None | T
+
+fn (m MayBe<T>) is_some() bool {
+	return m is T
 }

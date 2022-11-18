@@ -143,7 +143,7 @@ pub fn (c &Cookie) str() string {
 	}
 	if c.expires.year > 1600 {
 		e := c.expires
-		time_str := '$e.weekday_str(), $e.day.str() $e.smonth() $e.year $e.hhmmss() GMT'
+		time_str := '${e.weekday_str()}, ${e.day.str()} ${e.smonth()} ${e.year} ${e.hhmmss()} GMT'
 		b.write_string('; expires=')
 		b.write_string(time_str)
 	}
@@ -214,7 +214,7 @@ pub fn sanitize_cookie_value(v string) string {
 	}
 	// Check for the existence of a space or comma
 	if val.starts_with(' ') || val.ends_with(' ') || val.starts_with(',') || val.ends_with(',') {
-		return '"$v"'
+		return '"${v}"'
 	}
 	return v
 }
@@ -294,7 +294,7 @@ pub fn is_cookie_domain_name(_s string) bool {
 	return ok
 }
 
-fn parse_cookie_value(_raw string, allow_double_quote bool) ?string {
+fn parse_cookie_value(_raw string, allow_double_quote bool) !string {
 	mut raw := _raw
 	// Strip the quotes, if present
 	if allow_double_quote && raw.len > 1 && raw[0] == `"` && raw[raw.len - 1] == `"` {
@@ -320,7 +320,7 @@ fn is_cookie_name_valid(name string) bool {
 	return true
 }
 
-fn parse_cookie(line string) ?Cookie {
+fn parse_cookie(line string) !Cookie {
 	mut parts := line.trim_space().split(';')
 	if parts.len == 1 && parts[0] == '' {
 		return error('malformed cookie')

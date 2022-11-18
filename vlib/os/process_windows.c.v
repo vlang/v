@@ -25,7 +25,7 @@ fn failed_cfn_report_error(ok bool, label string) {
 	}
 	error_num := int(C.GetLastError())
 	error_msg := get_error_msg(error_num)
-	eprintln('failed $label: $error_msg')
+	eprintln('failed ${label}: ${error_msg}')
 	exit(1)
 }
 
@@ -48,13 +48,13 @@ pub struct WProcess {
 pub mut:
 	proc_info    ProcessInformation
 	command_line [65536]u8
-	child_stdin  &u32
+	child_stdin  &u32 = unsafe { nil }
 	//
-	child_stdout_read  &u32
-	child_stdout_write &u32
+	child_stdout_read  &u32 = unsafe { nil }
+	child_stdout_write &u32 = unsafe { nil }
 	//
-	child_stderr_read  &u32
-	child_stderr_write &u32
+	child_stderr_read  &u32 = unsafe { nil }
+	child_stderr_write &u32 = unsafe { nil }
 }
 
 fn (mut p Process) win_spawn_process() int {
@@ -94,7 +94,7 @@ fn (mut p Process) win_spawn_process() int {
 		start_info.h_std_error = wdata.child_stderr_write
 		start_info.dw_flags = u32(C.STARTF_USESTDHANDLES)
 	}
-	cmd := '$p.filename ' + p.args.join(' ')
+	cmd := '${p.filename} ' + p.args.join(' ')
 	C.ExpandEnvironmentStringsW(cmd.to_wide(), voidptr(&wdata.command_line[0]), 32768)
 
 	mut creation_flags := int(C.NORMAL_PRIORITY_CLASS)
@@ -171,7 +171,7 @@ fn (mut p Process) win_is_alive() bool {
 ///////////////
 
 fn (mut p Process) win_write_string(idx int, s string) {
-	panic('Process.write_string $idx is not implemented yet')
+	panic('Process.write_string ${idx} is not implemented yet')
 }
 
 fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {
@@ -190,7 +190,8 @@ fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {
 		return '', 0
 	}
 	mut bytes_avail := int(0)
-	if !C.PeekNamedPipe(rhandle, voidptr(0), int(0), voidptr(0), &bytes_avail, voidptr(0)) {
+	if !C.PeekNamedPipe(rhandle, unsafe { nil }, int(0), unsafe { nil }, &bytes_avail,
+		unsafe { nil }) {
 		return '', 0
 	}
 	if bytes_avail == 0 {
@@ -235,12 +236,12 @@ fn (mut p Process) win_slurp(idx int) string {
 	}
 	soutput := read_data.str()
 	unsafe { read_data.free() }
-	if idx == 1 {
-		close_valid_handle(&wdata.child_stdout_read)
-	}
-	if idx == 2 {
-		close_valid_handle(&wdata.child_stderr_read)
-	}
+	//	if idx == 1 {
+	//		close_valid_handle(&wdata.child_stdout_read)
+	//	}
+	//	if idx == 2 {
+	//		close_valid_handle(&wdata.child_stderr_read)
+	//	}
 	return soutput
 }
 

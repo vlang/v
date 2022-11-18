@@ -25,6 +25,15 @@ $if ios {
 	#flag -DSOKOL_METAL
 	#flag -framework Foundation -framework Metal -framework MetalKit -framework UIKit
 }
+
+$if emscripten ? {
+	#flag -DSOKOL_GLES2
+	#flag -DSOKOL_NO_ENTRY
+	#flag -s ERROR_ON_UNDEFINED_SYMBOLS=0
+	#flag -s ASSERTIONS=1
+	#flag -s MODULARIZE
+}
+
 // OPENGL
 #flag linux -DSOKOL_GLCORE33
 #flag freebsd -DSOKOL_GLCORE33
@@ -56,8 +65,11 @@ $if gcboehm ? {
 	#define SOKOL_FREE GC_FREE
 }
 
-#include "sokol_v.pre.h"
-#include "sokol_app.h"
+// To allow for thirdparty initializing window / acceleration contexts
+// but still be able to use sokol.gfx e.g. SDL+sokol_gfx
+$if !no_sokol_app ? {
+	#include "sokol_app.h"
+}
 #define SOKOL_IMPL
 #define SOKOL_NO_DEPRECATED
 #include "sokol_gfx.h"

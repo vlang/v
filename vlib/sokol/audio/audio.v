@@ -98,8 +98,8 @@ fn C.saudio_expect() int
 fn C.saudio_push(frames &f32, num_frames int) int
 
 // setup - setup sokol-audio
-pub fn setup(desc C.saudio_desc) {
-	C.saudio_setup(&desc)
+pub fn setup(desc &C.saudio_desc) {
+	C.saudio_setup(desc)
 }
 
 // shutdown - shutdown sokol-audio

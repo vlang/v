@@ -8,9 +8,9 @@ import v.util
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
 	escaped_val := cescape_nonascii(util.smart_quote(node.val, node.is_raw))
 	if node.language == .c {
-		g.write('"$escaped_val"')
+		g.write('"${escaped_val}"')
 	} else {
-		g.write('_SLIT("$escaped_val")')
+		g.write('_SLIT("${escaped_val}")')
 	}
 }
 
@@ -19,29 +19,18 @@ fn (mut g Gen) string_literal(node ast.StringLiteral) {
 // `sb.writeln('a='); sb.writeln(a.str())`
 fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 	node := call_expr.args[0].expr as ast.StringInterLiteral
-	// sb_name := g.cur_call_expr.left
-	// g.go_before_stmt(0)
 	g.writeln('// sb inter opt')
 	is_nl := call_expr.name == 'writeln'
-	// println('optimize sb $call_expr.name')
 	for i, val in node.vals {
 		escaped_val := cescape_nonascii(util.smart_quote(val, false))
-		// if val == '' {
-		// break
-		// continue
-		// }
 		g.write('strings__Builder_write_string(&')
 		g.expr(call_expr.left)
 		g.write(', _SLIT("')
 		g.write(escaped_val)
 		g.writeln('"));')
-		//
 		if i >= node.exprs.len {
 			break
 		}
-		// if node.expr_types.len <= i || node.exprs.len <= i {
-		// continue
-		// }
 		if is_nl && i == node.exprs.len - 1 {
 			g.write('strings__Builder_writeln(&')
 		} else {
@@ -59,11 +48,15 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		g.writeln('));')
 	}
 	g.writeln('')
-	// println(node.vals)
 	return
 }
 
 fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
+	old_inside_opt_or_res := g.inside_opt_or_res
+	g.inside_opt_or_res = true
+	defer {
+		g.inside_opt_or_res = old_inside_opt_or_res
+	}
 	is_shared := etype.has_flag(.shared_f)
 	mut typ := etype
 	if is_shared {
@@ -98,6 +91,9 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		if expr !is ast.EnumVal {
 			str_fn_name := g.get_str_fn(typ)
 			g.write('${str_fn_name}(')
+			if typ.is_ptr() {
+				g.write('*')
+			}
 			g.enum_expr(expr)
 			g.write(')')
 		} else {
@@ -111,19 +107,21 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(typ)
 		if is_ptr && !is_var_mut {
-			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("&"), $si_s_code ,{.d_s=')
+			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("&"), ${si_s_code} ,{.d_s = isnil(')
+			g.expr(expr)
+			g.write(') ? _SLIT("nil") : ')
 		}
 		g.write('${str_fn_name}(')
 		if str_method_expects_ptr && !is_ptr {
 			g.write('&')
-		} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
+		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
 			g.write('*')
 		}
 		if expr is ast.ArrayInit {
 			if expr.is_fixed {
 				s := g.typ(expr.typ)
 				if !expr.has_it {
-					g.write('($s)')
+					g.write('(${s})')
 				}
 			}
 		}
@@ -134,12 +132,15 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.write(')')
 		if is_ptr && !is_var_mut {
 			g.write('}}}))')
-			// g.write(')')
 		}
 	} else {
+		is_ptr := typ.is_ptr()
+		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(typ)
 		g.write('${str_fn_name}(')
-		if expr.is_auto_deref_var() {
+		if str_method_expects_ptr && !is_ptr {
+			g.write('&')
+		} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
 			g.write('*')
 		}
 		if sym.kind != .function {

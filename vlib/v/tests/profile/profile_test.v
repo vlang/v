@@ -67,16 +67,16 @@ fn counter_value(lines []string, what string) int {
 }
 
 fn validate_output(fn_name string, vopts string, fsource string, expected map[string]int) []string {
-	println('> validating $fn_name with: `v $vopts -profile - run $fsource`')
+	println('> validating ${fn_name} with: `v ${vopts} -profile - run ${fsource}`')
 	os.chdir(vroot) or {}
 	program_source := os.join_path(vroot, fsource)
-	res := os.execute('${os.quoted_path(vexe)} $vopts -profile - run ${os.quoted_path(program_source)}')
+	res := os.execute('${os.quoted_path(vexe)} ${vopts} -profile - run ${os.quoted_path(program_source)}')
 	assert res.exit_code == 0
 	assert res.output.len > 0
 	res_lines := res.output.split_into_lines()
 	for expected_counter_name, expected_counter_value in expected {
 		produced_value := counter_value(res_lines, expected_counter_name)
-		println('    counter_name: $expected_counter_name')
+		println('    counter_name: ${expected_counter_name}')
 		assert produced_value == expected_counter_value
 	}
 	return res_lines

@@ -1,0 +1,20 @@
+vlib/v/checker/tests/struct_field_unsign_type_check_err.vv:3:10: error: Cannot assign negative value to unsigned integer type
+    1 | struct Foo {
+    2 | mut:
+    3 |     n u32 = -1
+      |             ~~
+    4 | }
+    5 |
+vlib/v/checker/tests/struct_field_unsign_type_check_err.vv:8:6: error: Cannot assign negative value to unsigned integer type
+    6 | fn main() {
+    7 |     mut foo := Foo{
+    8 |         n: -1
+      |            ~~
+    9 |     }
+   10 |
+vlib/v/checker/tests/struct_field_unsign_type_check_err.vv:11:10: error: Cannot assign negative value to unsigned integer type
+    9 |     }
+   10 | 
+   11 |     foo.n = -1
+      |             ~~
+   12 | }

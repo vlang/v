@@ -7,7 +7,7 @@ import runtime
 fn C.atomic_fetch_add_u32(voidptr, u32) u32
 
 pub const (
-	no_result = voidptr(0)
+	no_result = unsafe { nil }
 )
 
 pub struct PoolProcessor {
@@ -22,7 +22,7 @@ mut:
 	thread_contexts []voidptr
 }
 
-pub type ThreadCB = fn (p &PoolProcessor, idx int, task_id int) voidptr
+pub type ThreadCB = fn (mut p PoolProcessor, idx int, task_id int) voidptr
 
 pub struct PoolProcessorConfig {
 	maxjobs  int
@@ -42,13 +42,13 @@ pub struct PoolProcessorConfig {
 //      3) task_id - the index of the worker thread in which the callback
 //            function is running.
 pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
-	if isnil(context.callback) {
+	if context.callback == unsafe { nil } {
 		panic('You need to pass a valid callback to new_pool_processor.')
 	}
 	mut pool := PoolProcessor{
 		items: []
 		results: []
-		shared_context: voidptr(0)
+		shared_context: unsafe { nil }
 		thread_contexts: []
 		njobs: context.maxjobs
 		ntask: 0
@@ -66,7 +66,7 @@ pub fn (mut pool PoolProcessor) set_max_jobs(njobs int) {
 
 // work_on_items receives a list of items of type T,
 // then starts a work pool of pool.njobs threads, each running
-// pool.thread_cb in a loop, untill all items in the list,
+// pool.thread_cb in a loop, until all items in the list,
 // are processed.
 // When pool.njobs is 0, the number of jobs is determined
 // by the number of available cores on the system.
@@ -81,17 +81,19 @@ pub fn (mut pool PoolProcessor) work_on_pointers(items []voidptr) {
 	if pool.njobs > 0 {
 		njobs = pool.njobs
 	}
-	pool.thread_contexts = []voidptr{len: items.len}
-	pool.results = []voidptr{len: items.len}
-	pool.items = []voidptr{cap: items.len}
-	pool.items << items
-	pool.waitgroup.add(njobs)
-	for i := 0; i < njobs; i++ {
-		if njobs > 1 {
-			go process_in_thread(mut pool, i)
-		} else {
-			// do not run concurrently, just use the same thread:
-			process_in_thread(mut pool, i)
+	unsafe {
+		pool.thread_contexts = []voidptr{len: items.len}
+		pool.results = []voidptr{len: items.len}
+		pool.items = []voidptr{cap: items.len}
+		pool.items << items
+		pool.waitgroup.add(njobs)
+		for i := 0; i < njobs; i++ {
+			if njobs > 1 {
+				spawn process_in_thread(mut pool, i)
+			} else {
+				// do not run concurrently, just use the same thread:
+				process_in_thread(mut pool, i)
+			}
 		}
 	}
 	pool.waitgroup.wait()
@@ -108,7 +110,7 @@ fn process_in_thread(mut pool PoolProcessor, task_id int) {
 		if idx >= ilen {
 			break
 		}
-		pool.results[idx] = cb(pool, idx, task_id)
+		pool.results[idx] = cb(mut pool, idx, task_id)
 	}
 	pool.waitgroup.done()
 }

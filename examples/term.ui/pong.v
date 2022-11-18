@@ -19,11 +19,11 @@ const (
 [heap]
 struct App {
 mut:
-	tui    &ui.Context = 0
+	tui    &ui.Context = unsafe { nil }
 	mode   Mode        = Mode.menu
 	width  int
 	height int
-	game   &Game = 0
+	game   &Game = unsafe { nil }
 	dt     f32
 	ticks  i64
 }
@@ -191,7 +191,7 @@ fn (mut a App) draw_game() {
 
 struct Player {
 mut:
-	game        &Game
+	game        &Game = unsafe { nil }
 	pos         Vec
 	racket_size int = 4
 	score       int
@@ -242,7 +242,7 @@ fn (mut b Ball) update(dt f32) {
 [heap]
 struct Game {
 mut:
-	app     &App = 0
+	app     &App = unsafe { nil }
 	players []Player
 	ball    Ball
 }
@@ -470,7 +470,9 @@ fn frame(x voidptr) {
 
 fn cleanup(x voidptr) {
 	mut app := &App(x)
-	app.free()
+	unsafe {
+		app.free()
+	}
 }
 
 fn fail(error string) {

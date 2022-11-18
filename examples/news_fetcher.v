@@ -10,7 +10,7 @@ struct Story {
 	url   string
 }
 
-fn worker_fetch(p &pool.PoolProcessor, cursor int, worker_id int) voidptr {
+fn worker_fetch(mut p pool.PoolProcessor, cursor int, worker_id int) voidptr {
 	id := p.get_item<int>(cursor)
 	resp := http.get('https://hacker-news.firebaseio.com/v0/item/${id}.json') or {
 		println('failed to fetch data from /v0/item/${id}.json')
@@ -20,7 +20,7 @@ fn worker_fetch(p &pool.PoolProcessor, cursor int, worker_id int) voidptr {
 		println('failed to decode a story')
 		return pool.no_result
 	}
-	println('# $cursor) $story.title | $story.url')
+	println('# ${cursor}) ${story.title} | ${story.url}')
 	return pool.no_result
 }
 

@@ -12,7 +12,7 @@ fn test_method_go_wait() {
 			test: 'hi'
 		}
 	}
-	thread := go a.sub.get()
+	thread := spawn a.sub.get()
 	r := thread.wait()
 	assert r == 'hi'
 }

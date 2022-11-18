@@ -25,9 +25,9 @@ fn main() {
 	}
 	// println('Graph: $graph')
 	path_01 := depth_first_search_path(graph_01, 'A', 'F')
-	println('\n Graph_01: a first path from node A to node F is: $path_01.reverse()')
+	println('\n Graph_01: a first path from node A to node F is: ${path_01.reverse()}')
 	path_02 := depth_first_search_path(graph_02, 'A', 'H')
-	println('\n Graph_02: a first path from node A to node F is: $path_02.reverse()')
+	println('\n Graph_02: a first path from node A to node F is: ${path_02.reverse()}')
 }
 
 // Depth-First Search (BFS) allows you to find a path between two nodes in the graph.
@@ -51,7 +51,7 @@ fn depth_first_search_path(graph map[string][]string, start string, target strin
 				return path
 			}
 			//  Exploring of node removed from  stack and add its relatives
-			print('\n Exploring of node $node (true/false): ${graph[node]}')
+			print('\n Exploring of node ${node} (true/false): ${graph[node]}')
 			// graph[node].reverse() take a classical choice for DFS
 			// at most os left in this case.
 			// use vertex in graph[node] the choice is right
@@ -64,7 +64,7 @@ fn depth_first_search_path(graph map[string][]string, start string, target strin
 					stack << vertex
 				}
 			}
-			print('\n Stack: $stack (only not visited) \n Visited: $visited')
+			print('\n Stack: ${stack} (only not visited) \n Visited: ${visited}')
 		}
 	}
 	path = ['Path not found, problem in the Graph, start or end nodes! ']
@@ -84,7 +84,7 @@ fn visited_init(a_graph map[string][]string) map[string]bool {
 
 // Based in the current node that is final, search for his parent, that is already visited, up to the root or start node
 fn build_path_reverse(graph map[string][]string, start string, final string, visited map[string]bool) []string {
-	print('\n\n Nodes visited (true) or no (false): $visited')
+	print('\n\n Nodes visited (true) or no (false): ${visited}')
 	array_of_nodes := graph.keys()
 	mut current := final
 	mut path := []string{}

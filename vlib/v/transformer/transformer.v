@@ -8,7 +8,7 @@ pub struct Transformer {
 	pref &pref.Preferences
 pub mut:
 	index &IndexState
-	table &ast.Table = 0
+	table &ast.Table = unsafe { nil }
 mut:
 	is_assert bool
 }
@@ -155,7 +155,7 @@ pub fn (mut t Transformer) check_safe_array(mut node ast.IndexExpr) {
 			}
 		}
 		ast.EnumVal {
-			debug_bounds_checking('? $name[.$index.val] safe?: no-idea (yet)!')
+			debug_bounds_checking('? ${name}[.${index.val}] safe?: no-idea (yet)!')
 		}
 		ast.Ident {
 			// we may be able to track const value in simple cases
@@ -226,6 +226,7 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 			}
 		}
 		ast.FnDecl {
+			t.fn_decl(mut node)
 			t.index.indent(true)
 			for mut stmt in node.stmts {
 				stmt = t.stmt(mut stmt)
@@ -374,7 +375,7 @@ pub fn (mut t Transformer) expr_stmt_if_expr(mut node ast.IfExpr) ast.Expr {
 	/*
 	FIXME: optimization causes cgen error `g.expr(): unhandled EmptyExpr`
 	if original.branches.len == 0 { // no remain branches to walk through
-		return ast.EmptyExpr{}
+		return ast.empty_expr
 	}*/
 	if node.branches.len == 1 && node.branches[0].cond.type_name() == 'unknown v.ast.Expr' {
 		node.branches[0].cond = ast.BoolLiteral{
@@ -484,7 +485,7 @@ pub fn (mut t Transformer) for_stmt(mut node ast.ForStmt) ast.Stmt {
 	match node.cond {
 		ast.BoolLiteral {
 			if !(node.cond as ast.BoolLiteral).val { // for false { ... } should be eleminated
-				return ast.EmptyStmt{}
+				return ast.empty_stmt
 			}
 		}
 		else {
@@ -865,8 +866,8 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 			ast.FloatLiteral {
 				match mut node.right {
 					ast.FloatLiteral {
-						left_val := node.left.val.f32()
-						right_val := node.right.val.f32()
+						left_val := node.left.val.f64()
+						right_val := node.right.val.f64()
 						match node.op {
 							.eq {
 								return ast.BoolLiteral{
@@ -1033,4 +1034,45 @@ pub fn (mut t Transformer) sql_expr(mut node ast.SqlExpr) ast.Expr {
 		sub_struct = t.expr(mut sub_struct) as ast.SqlExpr
 	}
 	return node
+}
+
+// fn_decl mutates `node`.
+// if `pref.trace_calls` is true ast Nodes for `eprintln(...)` is prepended to the `FnDecl`'s
+// stmts list to let the gen backend generate the target specific code for the print.
+pub fn (mut t Transformer) fn_decl(mut node ast.FnDecl) {
+	if t.pref.trace_calls {
+		if node.no_body {
+			// Skip `C.fn()` calls
+			return
+		}
+		if node.name.starts_with('v.trace_calls.') {
+			// do not instrument the tracing functions, to avoid infinite regress
+			return
+		}
+		fname := if node.is_method {
+			receiver_name := global_table.type_to_str(node.receiver.typ)
+			'${node.mod} ${receiver_name}.${node.name}/${node.params.len}'
+		} else {
+			'${node.mod} ${node.name}/${node.params.len}'
+		}
+
+		expr_stmt := ast.ExprStmt{
+			expr: ast.CallExpr{
+				mod: node.mod
+				pos: node.pos
+				language: .v
+				scope: node.scope
+				name: 'v.trace_calls.on_call'
+				args: [
+					ast.CallArg{
+						expr: ast.StringLiteral{
+							val: fname
+						}
+						typ: ast.string_type_idx
+					},
+				]
+			}
+		}
+		node.stmts.prepend(expr_stmt)
+	}
 }

@@ -6,6 +6,20 @@ import v.util
 import math
 import strconv
 
+fn (o Object) as_i64() !i64 {
+	match o {
+		i64 {
+			return o
+		}
+		Int {
+			return o.val
+		}
+		else {
+			return error('can not cast object to i64')
+		}
+	}
+}
+
 pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 	match expr {
 		ast.CallExpr {
@@ -77,7 +91,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						// 	return Int{y, 32}
 						// }
 						else {
-							e.error('unknown c function: `$expr.name`')
+							e.error('unknown c function: `${expr.name}`')
 						}
 					}
 				}
@@ -97,13 +111,13 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							return e.return_values
 						}
 					}
-					e.error('unknown function: ${mod}.$name at line $expr.pos.line_nr')
+					e.error('unknown function: ${mod}.${name} at line ${expr.pos.line_nr}')
 				}
 				// .js {
 				// 	e.error('js is not supported')
 				// }
 				else {
-					e.error('$expr.language is not supported as a call expression language')
+					e.error('${expr.language} is not supported as a call expression language')
 				}
 			}
 		}
@@ -143,7 +157,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 										do_if = e.pref.prealloc
 									}
 									else {
-										e.error('unknown compile time if: $branch.cond.name')
+										e.error('unknown compile time if: ${branch.cond.name}')
 									}
 								}
 							}
@@ -171,7 +185,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							break
 						}
 					} else {
-						e.error('non-bool expression: $b.cond')
+						e.error('non-bool expression: ${b.cond}')
 					}
 				}
 				return empty
@@ -185,7 +199,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		ast.IntegerLiteral {
 			// return u64(strconv.parse_uint(expr.val, 0, 64)
 			return i64(strconv.parse_int(expr.val, 0, 64) or {
-				e.error('invalid integer literal: $expr.val')
+				e.error('invalid integer literal: ${expr.val}')
 			}) // TODO: numbers larger than 2^63 (for u64)
 		}
 		ast.FloatLiteral {
@@ -208,7 +222,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					}[expr.name.all_after_last('.')] or { ast.EmptyStmt{} } as Object
 				}
 				else {
-					e.error('unknown ident kind for `$expr.name`: $expr.kind')
+					e.error('unknown ident kind for `${expr.name}`: ${expr.kind}')
 				}
 			}
 		}
@@ -352,7 +366,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							e.error('unknown cast: ${e.table.sym(expr.expr_type).str()} to ${e.table.sym(expr.typ).str()}')
 						}
 					}
-				} else if expr.typ == ast.voidptr_type_idx {
+				} else if expr.typ == ast.voidptr_type_idx || expr.typ == ast.nil_type_idx {
 					match y {
 						char, Int {
 							unsafe {
@@ -379,8 +393,11 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 				}
 			} else if e.table.sym(expr.typ).kind in [.interface_, .sum_type] {
 				if e.pref.is_verbose {
-					eprintln(util.formatted_error('warning:', 'sumtype or interface casts return void currently',
-						e.cur_file, expr.pos))
+					util.show_compiler_message('warning:',
+						pos: expr.pos
+						file_path: e.cur_file
+						message: 'sumtype or interface casts return void currently'
+					)
 				}
 			} else {
 				e.error('unknown cast: ${e.table.sym(expr.expr_type).str()} to ${e.table.sym(expr.typ).str()}')
@@ -400,7 +417,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							return Int{exp.len, 32}
 						}
 						else {
-							e.error('unknown selector to string: $expr.field_name')
+							e.error('unknown selector to string: ${expr.field_name}')
 						}
 					}
 				}
@@ -410,12 +427,12 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							return Int{exp.val.len, 32}
 						}
 						else {
-							e.error('unknown selector to array: $expr.field_name')
+							e.error('unknown selector to array: ${expr.field_name}')
 						}
 					}
 				}
 				else {
-					e.error('unknown selector expression: $exp.type_name()')
+					e.error('unknown selector expression: ${exp.type_name()}')
 				}
 			}
 			e.error(exp.str())
@@ -436,7 +453,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						val: []Object{}
 					}
 				} else {
-					e.error('unknown array init combination; len: $expr.has_len, cap: $expr.has_cap, init: $expr.has_default')
+					e.error('unknown array init combination; len: ${expr.has_len}, cap: ${expr.has_cap}, init: ${expr.has_default}')
 				}
 			}
 			if expr.is_fixed || expr.has_val {
@@ -453,7 +470,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		}
 		ast.CharLiteral {
 			if expr.val.len !in [1, 2] {
-				e.error('invalid size of char literal: $expr.val.len')
+				e.error('invalid size of char literal: ${expr.val.len}')
 			}
 			if expr.val[0] == `\\` { // is an escape
 				return e.get_escape(rune(expr.val[1]))
@@ -480,7 +497,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					}
 				}
 				else {
-					e.error('unhandled prefix expression $expr.op')
+					e.error('unhandled prefix expression ${expr.op}')
 				}
 			}
 		}
@@ -495,7 +512,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					return e.expr(expr.expr, ast.i64_type_idx)
 				}
 				else {
-					e.error('unhandled postfix expression $expr.op')
+					e.error('unhandled postfix expression ${expr.op}')
 				}
 			}
 		}
@@ -509,12 +526,15 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 
 			return res
 		}
+		ast.UnsafeExpr {
+			return e.expr(expr.expr, expecting)
+		}
 		ast.AnonFn, ast.ArrayDecompose, ast.AsCast, ast.Assoc, ast.AtExpr, ast.CTempVar,
 		ast.ChanInit, ast.Comment, ast.ComptimeCall, ast.ComptimeSelector, ast.ComptimeType,
 		ast.ConcatExpr, ast.DumpExpr, ast.EmptyExpr, ast.EnumVal, ast.GoExpr, ast.IfGuardExpr,
 		ast.IndexExpr, ast.IsRefType, ast.Likely, ast.LockExpr, ast.MapInit, ast.MatchExpr,
-		ast.NodeError, ast.None, ast.OffsetOf, ast.OrExpr, ast.RangeExpr, ast.SelectExpr,
-		ast.SqlExpr, ast.TypeNode, ast.TypeOf, ast.UnsafeExpr {
+		ast.Nil, ast.NodeError, ast.None, ast.OffsetOf, ast.OrExpr, ast.RangeExpr, ast.SelectExpr,
+		ast.SqlExpr, ast.TypeNode, ast.TypeOf {
 			e.error('unhandled expression ${typeof(expr).name}')
 		}
 	}
@@ -523,7 +543,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 
 fn (e Eval) type_to_size(typ ast.Type) u64 {
 	match typ {
-		ast.voidptr_type_idx, ast.byteptr_type_idx, ast.charptr_type_idx {
+		ast.voidptr_type_idx, ast.nil_type_idx, ast.byteptr_type_idx, ast.charptr_type_idx {
 			return u64(if e.pref.m64 {
 				64
 			} else {
@@ -533,7 +553,7 @@ fn (e Eval) type_to_size(typ ast.Type) u64 {
 		ast.i8_type_idx, ast.i16_type_idx, ast.int_type_idx, ast.i64_type_idx {
 			return u64(math.exp2(f64(typ - 2))) // this formula converts the type number to the bitsize
 		}
-		ast.byte_type_idx, ast.u16_type_idx, ast.u32_type_idx, ast.u64_type_idx {
+		ast.u8_type_idx, ast.u16_type_idx, ast.u32_type_idx, ast.u64_type_idx {
 			return u64(math.exp2(f64(typ - 6))) // this formula converts the type number to the bitsize
 		}
 		ast.int_literal_type_idx, ast.float_literal_type_idx {
@@ -544,7 +564,7 @@ fn (e Eval) type_to_size(typ ast.Type) u64 {
 		}
 		else {
 			e.error('type_to_size(): unknown type: ${e.table.sym(typ).str()}')
-			return -1
+			return u64(-1)
 		}
 	}
 }
@@ -565,7 +585,7 @@ fn (e Eval) get_escape(r rune) rune {
 		}
 	}
 	if res == `e` {
-		e.error('unknown escape: `$r`')
+		e.error('unknown escape: `${r}`')
 	}
 	return res
 }

@@ -14,8 +14,8 @@ fn inc_elements(shared foo []int, n int, mut sem sync.Semaphore) {
 fn test_autolocked_array_2() {
 	shared abc := &[0, 0, 0]
 	mut sem := sync.new_semaphore()
-	go inc_elements(shared abc, 1, mut sem)
-	go inc_elements(shared abc, 2, mut sem)
+	spawn inc_elements(shared abc, 1, mut sem)
+	spawn inc_elements(shared abc, 2, mut sem)
 	for _ in 0 .. iterations_per_thread2 {
 		unsafe {
 			abc[2]++

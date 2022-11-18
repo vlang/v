@@ -42,7 +42,7 @@ fn main() {
 	// the internal routine started by gen.
 	gen := fn (mut ctx context.Context) chan int {
 		dst := chan int{}
-		go fn (mut ctx context.Context, dst chan int) {
+		spawn fn (mut ctx context.Context, dst chan int) {
 			mut v := 0
 			ch := ctx.done()
 			for {
@@ -73,7 +73,7 @@ fn main() {
 	ch := gen(mut ctx2)
 	for i in 0 .. 5 {
 		v := <-ch
-		println('> received value: $v')
+		println('> received value: ${v}')
 		assert i == v
 	}
 	println('> main is finished here')

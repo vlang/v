@@ -16,6 +16,7 @@ Know limitation:
 */
 
 // atof_quick return a f64 number from a string in a quick way
+[direct_array_access]
 pub fn atof_quick(s string) f64 {
 	mut f := Float64u{} // result
 	mut sign := f64(1.0) // result sign

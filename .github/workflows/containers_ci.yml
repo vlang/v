@@ -4,9 +4,11 @@ on:
   push:
     paths-ignore:
       - "**.md"
+      - "**.yml"
   pull_request:
     paths-ignore:
       - "**.md"
+      - "**.yml"
 
 concurrency:
   group: build-containers-${{ github.event.pull_request.number || github.sha }}
@@ -39,6 +41,13 @@ jobs:
           env
           echo "C Compiler:"
           gcc --version
+
+## TODO: fix the container thevlang/vlang:alpine-build, instead of using apk add here:
+      - name: Add dependencies
+        run: |
+          apk add libexecinfo-static
+          apk add libexecinfo-dev
+          apk add libc6-compat
 
       - name: Build V
         run: CC=gcc make

@@ -30,6 +30,8 @@ fn test_stderr() {
 }
 
 fn test_idents() {
+	// signed integer
+
 	x := 0
 	println(x)
 
@@ -44,6 +46,52 @@ fn test_idents() {
 
 	b := -456
 	println(b)
+
+	// booleans
+
+	bool_true := true
+	println(bool_true)
+
+	bool_false := false
+	println(bool_false)
+
+	// strings
+
+	str := 'string blah blah blah'
+	println(str)
+
+	unicode := '😀😆😎💻🌎'
+	println(unicode)
+
+	cjk := 'こんにちは'
+	println(cjk)
+
+	// raw string
+	println(r'hello\tworld\n')
+}
+
+fn test_exprs() {
+	t := true
+	print(t == false)
+	print(' ')
+	println(t == true)
+
+	i := 123
+	println(i + 456)
+
+	j := 2
+	println(j + j * j)
+
+	println(none)
+}
+
+fn test_sizeof() {
+	i := 0
+
+	print('sizeof: ')
+	print(sizeof(i))
+	print(', ')
+	println(sizeof(Foo))
 }
 
 fn main() {
@@ -52,4 +100,6 @@ fn main() {
 	test_numbers()
 	test_oof()
 	test_idents()
+	test_exprs()
+	test_sizeof()
 }

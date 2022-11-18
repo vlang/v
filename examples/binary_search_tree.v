@@ -130,16 +130,16 @@ fn main() {
 	for i in vals {
 		tree = tree.insert(i)
 	}
-	println('[1] after insertion tree size is $tree.size()') // 11
+	println('[1] after insertion tree size is ${tree.size()}') // 11
 	del_vals := [-0.3, 0.0, 0.3, 0.6, 1.0, 1.5]
 	for i in del_vals {
 		tree = tree.delete(i)
 	}
-	print('[2] after deletion tree size is $tree.size(), ') // 7
+	print('[2] after deletion tree size is ${tree.size()}, ') // 7
 	print('and these elements were deleted: ') // 0.0 0.3 0.6 1.0
 	for i in vals {
 		if !tree.search(i) {
-			print('$i ')
+			print('${i} ')
 		}
 	}
 	println('')

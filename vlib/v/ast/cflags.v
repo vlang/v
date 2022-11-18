@@ -17,22 +17,22 @@ fn (t &Table) has_cflag(flag cflag.CFlag) bool {
 
 // parse the flags to (ast.cflags) []CFlag
 // Note: clean up big time (joe-c)
-pub fn (mut t Table) parse_cflag(cflg string, mod string, ctimedefines []string) ?bool {
+pub fn (mut t Table) parse_cflag(cflg string, mod string, ctimedefines []string) ! {
 	allowed_flags := ['framework', 'library', 'Wa', 'Wl', 'Wp', 'I', 'l', 'L', 'D']
 	flag_orig := cflg.trim_space()
 	mut flag := flag_orig
 	if flag == '' {
-		return none
+		return error('flag is empty')
 	}
 	mut fos := ''
 	mut allowed_os_overrides := ['linux', 'darwin', 'freebsd', 'openbsd', 'windows', 'mingw',
-		'solaris']
+		'solaris', 'android', 'termux']
 	allowed_os_overrides << ctimedefines
 	for os_override in allowed_os_overrides {
 		if !flag.starts_with(os_override) {
 			continue
 		}
-		pos := flag.index(' ') or { return none }
+		pos := flag.index(' ') or { return error('none') }
 		fos = flag[..pos].trim_space()
 		flag = flag[pos..].trim_space()
 	}
@@ -71,7 +71,7 @@ pub fn (mut t Table) parse_cflag(cflg string, mod string, ctimedefines []string)
 		}
 		if (name in ['-I', '-l', '-L']) && value == '' {
 			hint := if name == '-l' { 'library name' } else { 'path' }
-			return error('bad #flag `$flag_orig`: missing $hint after `$name`')
+			return error('bad #flag `${flag_orig}`: missing ${hint} after `${name}`')
 		}
 		cf := cflag.CFlag{
 			mod: mod
@@ -86,5 +86,4 @@ pub fn (mut t Table) parse_cflag(cflg string, mod string, ctimedefines []string)
 			break
 		}
 	}
-	return true
 }

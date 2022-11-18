@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generics_method_sumtype_arg_mismatch.vv:56:13: error: cannot use `Maybe<string>` as `Maybe<int>` in argument 1 to `Maybe<int>.or`
+   54 |     b := some('abc')
+   55 |
+   56 |     c := a.@or(b)
+      |                ^
+   57 |     println(c)
+   58 | }

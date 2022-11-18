@@ -32,7 +32,7 @@ pub fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 		}
 		if ftyp in [ast.string_type, ast.bool_type]
 			|| sym.kind in [.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type, .interface_, .none_]
-			|| ftyp.has_flag(.optional) || sym.has_method('str') {
+			|| ftyp.has_flag(.optional) || ftyp.has_flag(.result) || sym.has_method('str') {
 			return `s`
 		} else {
 			return `_`
@@ -94,11 +94,16 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 				c.error('illegal format specifier `${fmt:c}` for type `${c.table.get_type_name(ftyp)}`',
 					node.fmt_poss[i])
 			}
+			if c.table.final_sym(typ).kind in [.array, .array_fixed, .struct_, .interface_, .none_, .map, .sum_type]
+				&& fmt in [`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `p`, `b`] {
+				c.error('illegal format specifier `${fmt:c}` for type `${c.table.get_type_name(ftyp)}`',
+					node.fmt_poss[i])
+			}
 			node.need_fmts[i] = fmt != c.get_default_fmt(ftyp, typ)
 		}
 		// check recursive str
-		if !isnil(c.table.cur_fn) && c.table.cur_fn.is_method && c.table.cur_fn.name == 'str'
-			&& c.table.cur_fn.receiver.name == expr.str() {
+		if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.is_method
+			&& c.table.cur_fn.name == 'str' && c.table.cur_fn.receiver.name == expr.str() {
 			c.error('cannot call `str()` method recursively', expr.pos())
 		}
 	}
@@ -168,7 +173,7 @@ pub fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
 	lit := node.val.replace('_', '').all_after('-')
 	is_neg := node.val.starts_with('-')
 	limit := if is_neg { '9223372036854775808' } else { '18446744073709551615' }
-	message := 'integer literal $node.val overflows int'
+	message := 'integer literal ${node.val} overflows int'
 
 	if lit.len > limit.len {
 		c.error(message, node.pos)

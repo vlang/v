@@ -9,7 +9,7 @@ pub mut:
 	// mut:
 	objects              map[string]ScopeObject
 	struct_fields        map[string]ScopeStructField
-	parent               &Scope
+	parent               &Scope = unsafe { nil }
 	detached_from_parent bool
 	children             []&Scope
 	start_pos            int
@@ -38,11 +38,11 @@ pub fn new_scope(parent &Scope, start_pos int) &Scope {
 */
 
 fn (s &Scope) dont_lookup_parent() bool {
-	return isnil(s.parent) || s.detached_from_parent
+	return s.parent == unsafe { nil } || s.detached_from_parent
 }
 
 pub fn (s &Scope) find(name string) ?ScopeObject {
-	for sc := s; true; sc = sc.parent {
+	for sc := unsafe { s }; true; sc = sc.parent {
 		if name in sc.objects {
 			return unsafe { sc.objects[name] }
 		}
@@ -55,7 +55,7 @@ pub fn (s &Scope) find(name string) ?ScopeObject {
 
 // selector_expr:  name.field_name
 pub fn (s &Scope) find_struct_field(name string, struct_type Type, field_name string) ?ScopeStructField {
-	for sc := s; true; sc = sc.parent {
+	for sc := unsafe { s }; true; sc = sc.parent {
 		if field := sc.struct_fields[name] {
 			if field.struct_type == struct_type && field.name == field_name {
 				return field
@@ -100,6 +100,11 @@ pub fn (s &Scope) find_const(name string) ?&ConstField {
 
 pub fn (s &Scope) known_var(name string) bool {
 	s.find_var(name) or { return false }
+	return true
+}
+
+pub fn (s &Scope) known_global(name string) bool {
+	s.find_global(name) or { return false }
 	return true
 }
 
@@ -185,16 +190,16 @@ pub fn (sc Scope) show(depth int, max_depth int) string {
 	for _ in 0 .. depth * 4 {
 		indent += ' '
 	}
-	out += '$indent# $sc.start_pos - $sc.end_pos\n'
+	out += '${indent}# ${sc.start_pos} - ${sc.end_pos}\n'
 	for _, obj in sc.objects {
 		match obj {
-			ConstField { out += '$indent  * const: $obj.name - $obj.typ\n' }
-			Var { out += '$indent  * var: $obj.name - $obj.typ\n' }
+			ConstField { out += '${indent}  * const: ${obj.name} - ${obj.typ}\n' }
+			Var { out += '${indent}  * var: ${obj.name} - ${obj.typ}\n' }
 			else {}
 		}
 	}
 	for _, field in sc.struct_fields {
-		out += '$indent  * struct_field: $field.struct_type $field.name - $field.typ\n'
+		out += '${indent}  * struct_field: ${field.struct_type} ${field.name} - ${field.typ}\n'
 	}
 	if max_depth == 0 || depth < max_depth - 1 {
 		for i, _ in sc.children {

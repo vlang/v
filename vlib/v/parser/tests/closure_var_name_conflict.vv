@@ -1,0 +1,10 @@
+fn main() {
+	x := 1
+
+	y := fn [x] (x int) {
+		println(x)
+	}
+
+	y(x)
+	y(2)
+}

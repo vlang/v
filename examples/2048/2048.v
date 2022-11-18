@@ -7,7 +7,7 @@ import time
 
 struct App {
 mut:
-	gg          &gg.Context = 0
+	gg          &gg.Context = unsafe { nil }
 	touch       TouchInfo
 	ui          Ui
 	theme       &Theme = themes[0]
@@ -18,7 +18,7 @@ mut:
 	state       GameState  = .play
 	tile_format TileFormat = .normal
 	moves       int
-	perf        &Perf = 0
+	perf        &Perf = unsafe { nil }
 	is_ai_mode  bool
 }
 
@@ -492,7 +492,7 @@ fn (mut app App) ai_move() {
 			bestprediction = predictions[move_idx]
 		}
 	}
-	eprintln('Simulation time: ${think_time:4}ms |  best $bestprediction')
+	eprintln('Simulation time: ${think_time:4}ms |  best ${bestprediction}')
 	app.move(bestprediction.move)
 }
 
@@ -613,8 +613,8 @@ fn (app &App) draw() {
 		app.gg.draw_text(ww / 2, (m * 8 / 10) + ypad, msg2, app.label_format(.score_end))
 	}
 	// Draw at the end, so that it's on top of the victory / game over overlays
-	app.gg.draw_text(labelx, labely, 'Points: $app.board.points', app.label_format(.points))
-	app.gg.draw_text(ww - labelx, labely, 'Moves: $app.moves', app.label_format(.moves))
+	app.gg.draw_text(labelx, labely, 'Points: ${app.board.points}', app.label_format(.points))
+	app.gg.draw_text(ww - labelx, labely, 'Moves: ${app.moves}', app.label_format(.moves))
 }
 
 fn (app &App) draw_tiles() {
@@ -654,13 +654,13 @@ fn (app &App) draw_tiles() {
 						app.gg.draw_text(xpos, ypos, '${1 << tidx}', fmt)
 					}
 					.log {
-						app.gg.draw_text(xpos, ypos, '$tidx', fmt)
+						app.gg.draw_text(xpos, ypos, '${tidx}', fmt)
 					}
 					.exponent {
 						app.gg.draw_text(xpos, ypos, '2', fmt)
 						fs2 := int(f32(fmt.size) * 0.67)
 						app.gg.draw_text(xpos + app.ui.tile_size / 10, ypos - app.ui.tile_size / 8,
-							'$tidx', gx.TextCfg{
+							'${tidx}', gx.TextCfg{
 							...fmt
 							size: fs2
 							align: gx.HorizontalAlign.left
@@ -768,7 +768,7 @@ fn (mut app App) next_theme() {
 
 [inline]
 fn (mut app App) next_tile_format() {
-	app.tile_format = TileFormat(int(app.tile_format) + 1)
+	app.tile_format = unsafe { TileFormat(int(app.tile_format) + 1) }
 	if app.tile_format == .end_ {
 		app.tile_format = .normal
 	}
@@ -787,7 +787,7 @@ fn (mut app App) undo() {
 fn (mut app App) on_key_down(key gg.KeyCode) {
 	// these keys are independent from the game state:
 	match key {
-		.a { app.is_ai_mode = !app.is_ai_mode }
+		.c { app.is_ai_mode = !app.is_ai_mode }
 		.escape { app.gg.quit() }
 		.n, .r { app.new_game() }
 		.backspace { app.undo() }
@@ -797,12 +797,14 @@ fn (mut app App) on_key_down(key gg.KeyCode) {
 		else {}
 	}
 	if app.state in [.play, .freeplay] {
-		match key {
-			.w, .up { app.move(.up) }
-			.a, .left { app.move(.left) }
-			.s, .down { app.move(.down) }
-			.d, .right { app.move(.right) }
-			else {}
+		if !app.is_ai_mode {
+			match key {
+				.w, .up { app.move(.up) }
+				.a, .left { app.move(.left) }
+				.s, .down { app.move(.down) }
+				.d, .right { app.move(.right) }
+				else {}
+			}
 		}
 	}
 	if app.state == .victory {
@@ -905,6 +907,10 @@ fn (mut app App) showfps() {
 		app.perf.second_sw.restart()
 		app.perf.frame_old = f
 	}
+}
+
+$if emscripten ? {
+	#flag --embed-file ./examples/assets/fonts/RobotoMono-Regular.ttf@/assets/fonts/RobotoMono-Regular.ttf
 }
 
 fn main() {

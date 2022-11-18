@@ -44,3 +44,8 @@ pub fn (mut queue Queue<T>) pop() ?T {
 pub fn (queue Queue<T>) str() string {
 	return queue.elements.str()
 }
+
+// array returns a array representation of the queue
+pub fn (queue Queue<T>) array() []T {
+	return queue.elements.array()
+}

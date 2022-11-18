@@ -68,7 +68,7 @@ fn test_toml() {
 }
 
 fn test_toml_file() {
-	out_path := os.join_path(os.temp_dir(), 'v_toml_tests')
+	out_path := os.join_path(os.vtmp_dir(), 'v', 'toml_tests')
 	test_file := os.join_path(out_path, 'toml_example.toml')
 	os.mkdir_all(out_path) or { assert false }
 	defer {

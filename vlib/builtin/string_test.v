@@ -144,16 +144,16 @@ fn test_ranges() {
 	assert s6 == 'first'
 }
 
-fn ranges_propagate_first(s string) ?string {
-	return s[10..]?
+fn ranges_propagate_first(s string) !string {
+	return s[10..]!
 }
 
-fn ranges_propagate_last(s string) ?string {
-	return s[..20]?
+fn ranges_propagate_last(s string) !string {
+	return s[..20]!
 }
 
-fn ranges_propagate_both(s string) ?string {
-	return s[1..20]?
+fn ranges_propagate_both(s string) !string {
+	return s[1..20]!
 }
 
 fn test_split_nth() {
@@ -380,6 +380,18 @@ fn test_replace_each() {
 	assert s2.replace_each(['hello_world', 'aaa', 'hello', 'bbb']) == 'aaa bbb'
 }
 
+fn test_replace_char() {
+	assert 'azert'.replace_char(`z`, `s`, 2) == 'assert'
+	assert '\rHello!\r'.replace_char(`\r`, `\n`, 1) == '\nHello!\n'
+	assert 'Hello!'.replace_char(`l`, `e`, 4) == 'Heeeeeeeeeo!'
+	assert '1141'.replace_char(`1`, `8`, 2) == '8888488'
+}
+
+fn test_normalize_tabs() {
+	assert '\t\tHello!'.normalize_tabs(4) == '        Hello!'
+	assert '\t\tHello!\t; greeting'.normalize_tabs(1) == '  Hello! ; greeting'
+}
+
 fn test_itoa() {
 	num := 777
 	assert num.str() == '777'
@@ -445,6 +457,13 @@ fn test_contains_any() {
 	assert 'failure'.contains_any('ui')
 	assert !'foo'.contains_any('')
 	assert !''.contains_any('')
+}
+
+fn test_contains_only() {
+	assert '23885'.contains_only('0123456789')
+	assert '23gg885'.contains_only('01g23456789')
+	assert !'hello;'.contains_only('hello')
+	assert !''.contains_only('')
 }
 
 fn test_contains_any_substr() {
@@ -517,6 +536,16 @@ fn test_trim() {
 	assert 'banana'.trim('bna') == ''
 	assert 'abc'.trim('ac') == 'b'
 	assert 'aaabccc'.trim('ac') == 'b'
+}
+
+fn test_trim_indexes() {
+	mut left, mut right := 0, 0
+	left, right = '- -- - '.trim_indexes(' -')
+	assert left == 0 && right == 0
+	left, right = '- hello-world!\t'.trim_indexes(' -\t')
+	assert left == 2 && right == 14
+	left, right = 'abc'.trim_indexes('ac')
+	assert left == 1 && right == 2
 }
 
 fn test_trim_left() {
@@ -776,7 +805,7 @@ fn test_raw() {
 	lines := raw.split('\n')
 	println(lines)
 	assert lines.len == 1
-	println('raw string: "$raw"')
+	println('raw string: "${raw}"')
 
 	raw2 := r'Hello V\0'
 	assert raw2[7] == `\\`
@@ -798,8 +827,8 @@ fn test_raw_with_quotes() {
 
 fn test_escape() {
 	a := 10
-	println("\"$a")
-	assert "\"$a" == '"10'
+	println("\"${a}")
+	assert "\"${a}" == '"10'
 }
 
 fn test_atoi() {
@@ -823,9 +852,9 @@ fn test_raw_inter() {
 fn test_c_r() {
 	// This used to break because of r'' and c''
 	c := 42
-	println('$c')
+	println('${c}')
 	r := 50
-	println('$r')
+	println('${r}')
 }
 
 fn test_inter_before_comptime_if() {
@@ -840,9 +869,9 @@ fn test_inter_before_comptime_if() {
 fn test_double_quote_inter() {
 	a := 1
 	b := 2
-	println('$a $b')
-	assert '$a $b' == '1 2'
-	assert '$a $b' == '1 2'
+	println('${a} ${b}')
+	assert '${a} ${b}' == '1 2'
+	assert '${a} ${b}' == '1 2'
 }
 
 fn foo(b u8) u8 {
@@ -855,7 +884,7 @@ fn filter(b u8) bool {
 
 fn test_split_into_lines() {
 	line_content := 'Line'
-	text_crlf := '$line_content\r\n$line_content\r\n$line_content'
+	text_crlf := '${line_content}\r\n${line_content}\r\n${line_content}'
 	lines_crlf := text_crlf.split_into_lines()
 
 	assert lines_crlf.len == 3
@@ -863,7 +892,7 @@ fn test_split_into_lines() {
 		assert line == line_content
 	}
 
-	text_lf := '$line_content\n$line_content\n$line_content'
+	text_lf := '${line_content}\n${line_content}\n${line_content}'
 	lines_lf := text_lf.split_into_lines()
 
 	assert lines_lf.len == 3
@@ -936,24 +965,24 @@ fn test_interpolation_after_quoted_variable_still_works() {
 	tt := 'xyz'
 
 	// Basic interpolation, no internal quotes
-	yy := 'Replacing $rr with $tt'
+	yy := 'Replacing ${rr} with ${tt}'
 	assert yy == 'Replacing abc with xyz'
 
 	// Interpolation after quoted variable ending with 'r'quote
 	// that may be mistaken with the start of a raw string,
 	// ensure that it is not.
-	ss := 'Replacing "$rr" with "$tt"'
+	ss := 'Replacing "${rr}" with "${tt}"'
 	assert ss == 'Replacing "abc" with "xyz"'
-	zz := "Replacing '$rr' with '$tt'"
+	zz := "Replacing '${rr}' with '${tt}'"
 	assert zz == "Replacing 'abc' with 'xyz'"
 
 	// Interpolation after quoted variable ending with 'c'quote
 	// may be mistaken with the start of a c string, so
 	// check it is not.
 	cc := 'abc'
-	ccc := "Replacing '$cc' with '$tt'"
+	ccc := "Replacing '${cc}' with '${tt}'"
 	assert ccc == "Replacing 'abc' with 'xyz'"
-	cccq := 'Replacing "$cc" with "$tt"'
+	cccq := 'Replacing "${cc}" with "${tt}"'
 	assert cccq == 'Replacing "abc" with "xyz"'
 }
 

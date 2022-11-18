@@ -47,7 +47,9 @@ fn (mut a App) init() {
 }
 
 fn (mut a App) cleanup() {
-	a.ps.free()
+	unsafe {
+		a.ps.free()
+	}
 }
 
 fn (mut a App) run() {

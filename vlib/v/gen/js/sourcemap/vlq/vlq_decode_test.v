@@ -16,7 +16,7 @@ struct TestData {
 
 type TestDataList = []TestData
 
-fn test_decode_a() ? {
+fn test_decode_a() {
 	decode_values := [
 		TestData{'A', 0},
 		TestData{'C', 1},
@@ -30,14 +30,14 @@ fn test_decode_a() ? {
 	for _, test_data in decode_values {
 		mut input := make_test_reader(test_data.decode_val)
 
-		res := decode(mut &input)?
+		res := decode(mut &input)!
 		assert res == test_data.expected
 	}
 }
 
-fn (mut b TestReader) read(mut buf []u8) ?int {
+fn (mut b TestReader) read(mut buf []u8) !int {
 	if !(b.i < b.bytes.len) {
-		return none
+		return io.Eof{}
 	}
 	n := copy(mut buf, b.bytes[b.i..])
 	b.i += n

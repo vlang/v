@@ -1,5 +1,17 @@
 import os
 
+const vexe = @VEXE
+
+const tfolder = os.join_path(os.vtmp_dir(), 'v', 'vbump')
+
+fn testsuite_begin() {
+	os.mkdir_all(tfolder) or {}
+}
+
+fn testsuite_end() {
+	os.rmdir_all(tfolder) or {}
+}
+
 struct BumpTestCase {
 	file_name      string
 	contents       string
@@ -61,28 +73,25 @@ fn main() {
 	},
 ]
 
-fn run_individual_test(case BumpTestCase) ? {
-	vexe := @VEXE
-
-	temp_dir := os.temp_dir()
-	test_file := os.join_path_single(temp_dir, case.file_name)
+fn run_individual_test(case BumpTestCase) ! {
+	test_file := os.join_path_single(tfolder, case.file_name)
 
 	os.rm(test_file) or {}
-	os.write_file(test_file, case.contents)?
+	os.write_file(test_file, case.contents)!
 	//
 	os.execute_or_exit('${os.quoted_path(vexe)} bump --patch ${os.quoted_path(test_file)}')
-	patch_lines := os.read_lines(test_file)?
+	patch_lines := os.read_lines(test_file)!
 	assert patch_lines[case.line] == case.expected_patch
 
 	os.execute_or_exit('${os.quoted_path(vexe)} bump --minor ${os.quoted_path(test_file)}')
-	minor_lines := os.read_lines(test_file)?
+	minor_lines := os.read_lines(test_file)!
 	assert minor_lines[case.line] == case.expected_minor
 
 	os.execute_or_exit('${os.quoted_path(vexe)} bump --major ${os.quoted_path(test_file)}')
-	major_lines := os.read_lines(test_file)?
+	major_lines := os.read_lines(test_file)!
 	assert major_lines[case.line] == case.expected_major
 	//
-	os.rm(test_file)?
+	os.rm(test_file)!
 }
 
 fn test_all_bump_cases() {

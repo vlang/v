@@ -157,7 +157,7 @@ fn (mut s Scanner) text_scan() Token {
 							break
 						} else if !s.text[s.pos].is_hex_digit() {
 							x := s.text[s.pos].ascii_str()
-							return s.error('`$x` is not a hex digit')
+							return s.error('`${x}` is not a hex digit')
 						}
 						codepoint << s.text[s.pos]
 					}
@@ -248,10 +248,10 @@ fn (mut s Scanner) num_scan() Token {
 fn (s Scanner) invalid_token() Token {
 	if s.text[s.pos] >= 32 && s.text[s.pos] <= 126 {
 		x := s.text[s.pos].ascii_str()
-		return s.error('invalid token `$x`')
+		return s.error('invalid token `${x}`')
 	} else {
 		x := s.text[s.pos].str_escaped()
-		return s.error('invalid token `$x`')
+		return s.error('invalid token `${x}`')
 	}
 }
 
@@ -298,7 +298,7 @@ fn (mut s Scanner) scan() Token {
 		return s.invalid_token()
 	} else if s.text[s.pos] in json2.char_list {
 		chr := s.text[s.pos]
-		tok := s.tokenize([]u8{}, TokenKind(int(chr)))
+		tok := s.tokenize([]u8{}, unsafe { TokenKind(int(chr)) })
 		s.move()
 		return tok
 	} else if s.text[s.pos] == `"` {

@@ -4,9 +4,15 @@ on:
   push:
     paths-ignore:
       - "**.md"
+      - "**.yml"
   pull_request:
     paths-ignore:
       - "**.md"
+      - "**.yml"
+
+concurrency:
+  group: sdl-ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
 
 jobs:
   v-compiles-sdl-examples:
@@ -42,7 +48,4 @@ jobs:
       - name: Build sdl examples
         run: |
           v shader sdl/examples/sdl_opengl_and_sokol
-          for example in sdl/examples/*; do
-              echo "v $example"
-              v "$example";
-          done
+          v should-compile-all sdl/examples/

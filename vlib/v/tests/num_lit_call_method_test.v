@@ -23,7 +23,7 @@ fn test_float_lit_call_method() {
 	x5 := 2.e-3.str()
 	assert x5 == '0.002'
 	x6 := 5.0.str()
-	assert x6 == '5.'
+	assert x6 == '5.0'
 	// x7 := 5..str()    Syntax `5.` is allowed, but do not call method on it (`5..str()` is parsed as a range). Use `5.0.str()` instead.
 	x8 := 7.345e-7.str()
 	assert x8 == '7.345e-07'

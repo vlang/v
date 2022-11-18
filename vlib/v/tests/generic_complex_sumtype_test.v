@@ -137,7 +137,7 @@ fn test_generics_complex_sumtype() {
 	print('and these elements were deleted: ') // 0.0 0.3 0.6 1.0
 	for i in input {
 		if !search(tree, i) {
-			print('$i ')
+			print('${i} ')
 		}
 	}
 	println('')

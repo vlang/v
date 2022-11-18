@@ -7,6 +7,7 @@ const (
 	max_iconimages   = 8
 )
 
+[typedef]
 pub struct C.sapp_range {
 pub:
 	ptr  voidptr
@@ -15,6 +16,7 @@ pub:
 
 pub type Range = C.sapp_range
 
+[typedef]
 pub struct C.sapp_image_desc {
 pub:
 	width  int
@@ -24,6 +26,7 @@ pub:
 
 pub type ImageDesc = C.sapp_image_desc
 
+[typedef]
 pub struct C.sapp_icon_desc {
 	sokol_default bool
 	images        [max_iconimages]ImageDesc
@@ -31,6 +34,7 @@ pub struct C.sapp_icon_desc {
 
 pub type IconDesc = C.sapp_icon_desc
 
+[typedef]
 pub struct C.sapp_desc {
 pub:
 	init_cb    fn () // these are the user-provided callbacks without user data
@@ -54,7 +58,6 @@ pub:
 	fullscreen                   bool  // whether the window should be created in fullscreen mode
 	alpha                        bool  // whether the framebuffer should have an alpha channel (ignored on some platforms)
 	window_title                 &char // the window title as UTF-8 encoded string
-	user_cursor                  bool  // if true, user is expected to manage cursor image in SAPP_EVENTTYPE_UPDATE_CURSOR
 	enable_clipboard             bool  // enable clipboard access, default is false
 	clipboard_size               int   // max size of clipboard content in bytes
 	enable_dragndrop             bool  // enable file dropping (drag'n'drop), default is false
@@ -78,6 +81,7 @@ pub:
 
 pub type Desc = C.sapp_desc
 
+[typedef]
 pub struct C.sapp_event {
 pub:
 	frame_count        u64
@@ -104,15 +108,16 @@ pub:
 pub type Event = C.sapp_event
 
 pub fn (e &C.sapp_event) str() string {
-	t := e.@type
-	return 'evt: frame_count=$e.frame_count, type=$t'
+	return 'evt: frame_count=${e.frame_count}, type=${e.@type}'
 }
 
+[typedef]
 pub struct C.sapp_touchpoint {
 pub:
 	identifier u64
 	pos_x      f32
 	pos_y      f32
+	tool_type  TouchToolType
 	changed    bool
 }
 

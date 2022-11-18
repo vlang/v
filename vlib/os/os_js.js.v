@@ -1,15 +1,15 @@
 module os
 
-pub fn mkdir(path string) ?bool {
+pub fn mkdir(path string, params MkdirParams) ! {
 	$if js_node {
 		if path == '.' {
-			return true
+			return
 		}
 		#$fs.mkdirSync(path.valueOf())
 
-		return true
+		return
 	} $else {
-		return false
+		return error('could not create folder')
 	}
 }
 
@@ -29,6 +29,24 @@ pub fn is_link(path string) bool {
 	return res
 }
 
+struct PathKind {
+	is_dir  bool
+	is_link bool
+}
+
+fn kind_of_existing_path(path string) PathKind {
+	is_link := false
+	is_dir := false
+	$if js_node {
+		#is_link.val = $fs.existsSync(path.str) && $fs.lstatSync(path.str).isSymbolicLink()
+		#is_dir.val = $fs.existsSync(path,str) && $fs.lstatSync(path.str).isDirectory()
+	}
+	return PathKind{
+		is_dir: is_dir
+		is_link: is_link
+	}
+}
+
 pub fn exists(path string) bool {
 	res := false
 	$if js_node {
@@ -37,9 +55,9 @@ pub fn exists(path string) bool {
 	return res
 }
 
-pub fn ls(path string) ?[]string {
+pub fn ls(path string) ![]string {
 	if !is_dir(path) {
-		return error('ls(): cannot open dir $dir')
+		return error('ls(): cannot open dir ${dir}')
 	}
 
 	result := []string{}
@@ -63,7 +81,7 @@ pub fn is_executable(path string) bool {
 	return false
 }
 
-pub fn rmdir(path string) ? {
+pub fn rmdir(path string) ! {
 	$if js_node {
 		err := ''
 		#try {
@@ -77,7 +95,7 @@ pub fn rmdir(path string) ? {
 	}
 }
 
-pub fn rm(path string) ? {
+pub fn rm(path string) ! {
 	$if js_node {
 		err := ''
 		#try {
@@ -91,7 +109,7 @@ pub fn rm(path string) ? {
 	}
 }
 
-pub fn cp(src string, dst string) ? {
+pub fn cp(src string, dst string) ! {
 	$if js_node {
 		err := ''
 		#try {
@@ -105,7 +123,7 @@ pub fn cp(src string, dst string) ? {
 	}
 }
 
-pub fn read_file(s string) ?string {
+pub fn read_file(s string) !string {
 	mut err := ''
 	err = err
 	res := ''
@@ -133,7 +151,7 @@ pub fn getuid() int {
 	return res
 }
 
-pub fn execvp(cmd string, args []string) ? {
+pub fn execvp(cmd string, args []string) ! {
 	panic('os.execvp() is not available on JS backend')
 }
 

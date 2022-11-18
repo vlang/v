@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module os
 
-enum FileType {
+pub enum FileType {
 	regular
 	directory
 	character_device

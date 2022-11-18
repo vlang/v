@@ -66,7 +66,7 @@ fn test_all() {
 	mut files := os.ls(dir) or { panic(err) }
 	files.sort()
 	//
-	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'valgrind')
+	wrkdir := os.join_path(os.vtmp_dir(), 'v', 'tests', 'valgrind')
 	os.mkdir_all(wrkdir) or { panic(err) }
 	os.chdir(wrkdir) or {}
 	//
@@ -84,16 +84,16 @@ fn test_all() {
 		}
 		//
 		base_filename := os.file_name(test).replace('.v', '')
-		exe_filename := '$wrkdir/$base_filename'
+		exe_filename := '${wrkdir}/${base_filename}'
 		full_path_to_source_file := os.join_path(vroot, test)
 		compile_cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_filename)} -cg -cflags "-w" -experimental -gc none -autofree ${os.quoted_path(full_path_to_source_file)}'
 		vprintln('compile cmd: ${bold(compile_cmd)}')
 		res := os.execute(compile_cmd)
 		if res.exit_code != 0 {
 			bench.fail()
-			eprintln(bench.step_message_fail('file: $test could not be compiled.'))
+			eprintln(bench.step_message_fail('file: ${test} could not be compiled.'))
 			eprintln(res.output)
-			eprintln('You can reproduce the failure with:\n$compile_cmd')
+			eprintln('You can reproduce the failure with:\n${compile_cmd}')
 			continue
 		}
 		if test in skip_valgrind_files {
@@ -110,7 +110,7 @@ fn test_all() {
 			bench.fail()
 			eprintln(bench.step_message_fail('failed valgrind check for ${bold(test)}'))
 			eprintln(valgrind_res.output)
-			eprintln('You can reproduce the failure with:\n$compile_cmd && $valgrind_cmd')
+			eprintln('You can reproduce the failure with:\n${compile_cmd} && ${valgrind_cmd}')
 			continue
 		}
 		bench.ok()
@@ -122,4 +122,5 @@ fn test_all() {
 	if bench.nfail > 0 {
 		exit(1)
 	}
+	os.rmdir_all(wrkdir) or {}
 }

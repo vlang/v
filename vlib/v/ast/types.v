@@ -13,6 +13,7 @@ module ast
 
 import strings
 import v.pref
+import v.token
 
 pub type Type = int
 
@@ -41,6 +42,7 @@ pub enum Language {
 	arm32 // 32-bit arm
 	rv64 // 64-bit risc-v
 	rv32 // 32-bit risc-v
+	wasm32
 }
 
 pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
@@ -65,6 +67,9 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 		}
 		.js_node, .js_browser, .js_freestanding {
 			.js
+		}
+		.wasm32 {
+			.wasm32
 		}
 		._auto, ._max {
 			.v
@@ -109,7 +114,7 @@ pub enum TypeFlag {
 
 /*
 To save precious TypeFlag bits the 4 possible ShareTypes are coded in the two
-	bits `shared` and `atomic_or_rw` (see sharetype_from_flags() below).
+bits `shared` and `atomic_or_rw` (see sharetype_from_flags() below).
 */
 pub enum ShareType {
 	mut_t
@@ -138,7 +143,7 @@ pub fn (t Type) atomic_typename() string {
 }
 
 pub fn sharetype_from_flags(is_shared bool, is_atomic bool) ShareType {
-	return ShareType(int(u32(is_atomic) << 1) | int(is_shared))
+	return unsafe { ShareType(int(u32(is_atomic) << 1) | int(is_shared)) }
 }
 
 pub fn (t Type) share() ShareType {
@@ -204,7 +209,7 @@ pub fn (t Type) ref() Type {
 pub fn (t Type) deref() Type {
 	nr_muls := (int(t) >> 16) & 0xff
 	if nr_muls == 0 {
-		panic('deref: type `$t` is not a pointer')
+		panic('deref: type `${t}` is not a pointer')
 	}
 	return int(t) & 0xff00ffff | int(u32(nr_muls - 1) << 16)
 }
@@ -237,8 +242,8 @@ pub fn (t Type) has_flag(flag TypeFlag) bool {
 pub fn (ts TypeSymbol) debug() []string {
 	mut res := []string{}
 	ts.dbg_common(mut res)
-	res << 'info: $ts.info'
-	res << 'methods ($ts.methods.len): ' + ts.methods.map(it.str()).join(', ')
+	res << 'info: ${ts.info}'
+	res << 'methods (${ts.methods.len}): ' + ts.methods.map(it.str()).join(', ')
 	return res
 }
 
@@ -250,18 +255,18 @@ pub fn (ts TypeSymbol) dbg() []string {
 }
 
 fn (ts TypeSymbol) dbg_common(mut res []string) {
-	res << 'idx: 0x$ts.idx.hex()'
-	res << 'parent_idx: 0x$ts.parent_idx.hex()'
-	res << 'mod: $ts.mod'
-	res << 'name: $ts.name'
-	res << 'cname: $ts.cname'
-	res << 'kind: $ts.kind'
-	res << 'is_pub: $ts.is_pub'
-	res << 'language: $ts.language'
+	res << 'idx: 0x${ts.idx.hex()}'
+	res << 'parent_idx: 0x${ts.parent_idx.hex()}'
+	res << 'mod: ${ts.mod}'
+	res << 'name: ${ts.name}'
+	res << 'cname: ${ts.cname}'
+	res << 'kind: ${ts.kind}'
+	res << 'is_pub: ${ts.is_pub}'
+	res << 'language: ${ts.language}'
 }
 
 pub fn (t Type) str() string {
-	return 'ast.Type(0x$t.hex() = ${u32(t)})'
+	return 'ast.Type(0x${t.hex()} = ${u32(t)})'
 }
 
 pub fn (t &Table) type_str(typ Type) string {
@@ -273,9 +278,12 @@ pub fn (t Type) debug() []string {
 	mut res := []string{}
 	res << 'idx: 0x${t.idx().hex():-8}'
 	res << 'type: 0x${t.hex():-8}'
-	res << 'nr_muls: $t.nr_muls()'
+	res << 'nr_muls: ${t.nr_muls()}'
 	if t.has_flag(.optional) {
 		res << 'optional'
+	}
+	if t.has_flag(.result) {
+		res << 'result'
 	}
 	if t.has_flag(.variadic) {
 		res << 'variadic'
@@ -332,6 +340,11 @@ pub fn (typ Type) is_pointer() bool {
 }
 
 [inline]
+pub fn (typ Type) is_voidptr() bool {
+	return typ.idx() == ast.voidptr_type_idx
+}
+
+[inline]
 pub fn (typ Type) is_real_pointer() bool {
 	return typ.is_ptr() || typ.is_pointer()
 }
@@ -378,12 +391,12 @@ pub fn (typ Type) is_unsigned() bool {
 
 pub fn (typ Type) flip_signedness() Type {
 	return match typ {
-		ast.i8_type { ast.byte_type }
+		ast.i8_type { ast.u8_type }
 		ast.i16_type { ast.u16_type }
 		ast.int_type { ast.u32_type }
 		ast.isize_type { ast.usize_type }
 		ast.i64_type { ast.u64_type }
-		ast.byte_type { ast.i8_type }
+		ast.u8_type { ast.i8_type }
 		ast.u16_type { ast.i16_type }
 		ast.u32_type { ast.int_type }
 		ast.usize_type { ast.isize_type }
@@ -422,7 +435,7 @@ pub const (
 	int_type_idx           = 7
 	i64_type_idx           = 8
 	isize_type_idx         = 9
-	byte_type_idx          = 10
+	u8_type_idx            = 10
 	u16_type_idx           = 11
 	u32_type_idx           = 12
 	u64_type_idx           = 13
@@ -442,33 +455,31 @@ pub const (
 	int_literal_type_idx   = 27
 	thread_type_idx        = 28
 	error_type_idx         = 29
-		// u8_type_idx            = 30
+	nil_type_idx           = 30
 )
 
 // Note: builtin_type_names must be in the same order as the idx consts above
 pub const builtin_type_names = ['void', 'voidptr', 'byteptr', 'charptr', 'i8', 'i16', 'int', 'i64',
 	'isize', 'u8', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'char', 'bool', 'none', 'string',
-	'rune', 'array', 'map', 'chan', 'any', 'float_literal', 'int_literal', 'thread', 'Error', 'u8']
+	'rune', 'array', 'map', 'chan', 'any', 'float_literal', 'int_literal', 'thread', 'Error', 'nil']
 
-pub const builtin_type_names_matcher = build_builtin_type_names_matcher()
+pub const builtin_type_names_matcher = token.new_keywords_matcher_from_array_trie(builtin_type_names)
 
 pub const (
-	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
-		byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx,
+	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, u8_type_idx,
+		u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx,
 		int_literal_type_idx, rune_type_idx]
 	signed_integer_type_idxs   = [char_type_idx, i8_type_idx, i16_type_idx, int_type_idx,
 		i64_type_idx, isize_type_idx]
-	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx,
+	unsigned_integer_type_idxs = [u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx,
 		usize_type_idx]
 	// C will promote any type smaller than int to int in an expression
-	int_promoted_type_idxs     = [char_type_idx, i8_type_idx, i16_type_idx, byte_type_idx,
-		u16_type_idx]
+	int_promoted_type_idxs     = [char_type_idx, i8_type_idx, i16_type_idx, u8_type_idx, u16_type_idx]
 	float_type_idxs            = [f32_type_idx, f64_type_idx, float_literal_type_idx]
-	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
-		byte_type_idx, char_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx,
-		usize_type_idx, f32_type_idx, f64_type_idx, int_literal_type_idx, float_literal_type_idx,
-		rune_type_idx]
-	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
+	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, u8_type_idx,
+		char_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx,
+		f32_type_idx, f64_type_idx, int_literal_type_idx, float_literal_type_idx, rune_type_idx]
+	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx, nil_type_idx]
 	string_type_idxs           = [string_type_idx]
 )
 
@@ -484,8 +495,7 @@ pub const (
 	i16_type           = new_type(i16_type_idx)
 	i64_type           = new_type(i64_type_idx)
 	isize_type         = new_type(isize_type_idx)
-	byte_type          = new_type(byte_type_idx)
-	// u8_type            = new_type(u8_type_idx)
+	u8_type            = new_type(u8_type_idx)
 	u16_type           = new_type(u16_type_idx)
 	u32_type           = new_type(u32_type_idx)
 	u64_type           = new_type(u64_type_idx)
@@ -509,6 +519,7 @@ pub const (
 	byteptr_types      = new_byteptr_types()
 	voidptr_types      = new_voidptr_types()
 	cptr_types         = merge_types(voidptr_types, byteptr_types, charptr_types)
+	nil_type           = new_type(nil_type_idx)
 )
 
 fn new_charptr_types() []Type {
@@ -516,7 +527,7 @@ fn new_charptr_types() []Type {
 }
 
 fn new_byteptr_types() []Type {
-	return [ast.byteptr_type, new_type(ast.byte_type_idx).set_nr_muls(1)]
+	return [ast.byteptr_type, new_type(ast.u8_type_idx).set_nr_muls(1)]
 }
 
 fn new_voidptr_types() []Type {
@@ -557,7 +568,7 @@ pub mut:
 
 // returns TypeSymbol kind only if there are no type modifiers
 pub fn (t &Table) type_kind(typ Type) Kind {
-	if typ.nr_muls() > 0 || typ.has_flag(.optional) {
+	if typ.nr_muls() > 0 || typ.has_flag(.optional) || typ.has_flag(.result) {
 		return Kind.placeholder
 	}
 	return t.sym(typ).kind
@@ -620,7 +631,7 @@ pub fn (t TypeSymbol) str() string {
 
 [noreturn]
 fn (t &TypeSymbol) no_info_panic(fname string) {
-	panic('$fname: no info for type: $t.name')
+	panic('${fname}: no info for type: ${t.name}')
 }
 
 [inline]
@@ -809,7 +820,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		}
 	)
 	t.register_sym(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin')
-	t.register_sym(kind: .u8, name: 'zu8', cname: 'zu8', mod: 'builtin')
+	t.register_sym(kind: .voidptr, name: 'nil', cname: 'voidptr', mod: 'builtin')
 }
 
 [inline]
@@ -854,7 +865,7 @@ pub fn (t &TypeSymbol) is_builtin() bool {
 
 // type_size returns the size and alignment (in bytes) of `typ`, similarly to  C's `sizeof()` and `alignof()`.
 pub fn (t &Table) type_size(typ Type) (int, int) {
-	if typ.has_flag(.optional) {
+	if typ.has_flag(.optional) || typ.has_flag(.result) {
 		return t.type_size(ast.error_type_idx)
 	}
 	if typ.nr_muls() > 0 {
@@ -1022,6 +1033,7 @@ pub mut:
 	is_union       bool
 	is_heap        bool
 	is_minify      bool
+	is_anon        bool
 	is_generic     bool
 	generic_types  []Type
 	concrete_types []Type
@@ -1122,7 +1134,7 @@ pub mut:
 	parent_type    Type
 }
 
-// human readable type name
+// human readable type name, also used by vfmt
 pub fn (t &Table) type_to_str(typ Type) string {
 	return t.type_to_str_using_aliases(typ, map[string]string{})
 }
@@ -1180,7 +1192,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			} else {
 				if sym.info is Array {
 					elem_str := t.type_to_str_using_aliases(sym.info.elem_type, import_aliases)
-					res = '[]$elem_str'
+					res = '[]${elem_str}'
 				} else {
 					res = 'array'
 				}
@@ -1190,9 +1202,9 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			info := sym.info as ArrayFixed
 			elem_str := t.type_to_str_using_aliases(info.elem_type, import_aliases)
 			if info.size_expr is EmptyExpr {
-				res = '[$info.size]$elem_str'
+				res = '[${info.size}]${elem_str}'
 			} else {
-				res = '[$info.size_expr]$elem_str'
+				res = '[${info.size_expr}]${elem_str}'
 			}
 		}
 		.chan {
@@ -1206,7 +1218,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 					elem_type = elem_type.set_nr_muls(elem_type.nr_muls() - 1)
 				}
 				elem_str := t.type_to_str_using_aliases(elem_type, import_aliases)
-				res = 'chan $mut_str$elem_str'
+				res = 'chan ${mut_str}${elem_str}'
 			}
 		}
 		.function {
@@ -1234,7 +1246,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			info := sym.info as Map
 			key_str := t.type_to_str_using_aliases(info.key_type, import_aliases)
 			val_str := t.type_to_str_using_aliases(info.value_type, import_aliases)
-			res = 'map[$key_str]$val_str'
+			res = 'map[${key_str}]${val_str}'
 		}
 		.multi_return {
 			res = '('
@@ -1265,7 +1277,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			} else if sym.info is SumType && (sym.info as SumType).is_anon {
 				variant_names := sym.info.variants.map(t.shorten_user_defined_typenames(t.sym(it).name,
 					import_aliases))
-				res = '${variant_names.join(' | ')}'
+				res = '${variant_names.join('|')}'
 			} else {
 				res = t.shorten_user_defined_typenames(res, import_aliases)
 			}
@@ -1325,10 +1337,10 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		res = strings.repeat(`&`, nr_muls) + res
 	}
 	if typ.has_flag(.optional) {
-		res = '?$res'
+		res = '?${res}'
 	}
 	if typ.has_flag(.result) {
-		res = '!$res'
+		res = '!${res}'
 	}
 	return res
 }
@@ -1422,8 +1434,8 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 	return sb.str()
 }
 
-// Get the name of the complete quanlified name of the type
-// without the generic parts.
+// symbol_name_except_generic return the name of the complete qualified name of the type,
+// but without the generic parts. For example, `main.Abc<int>` -> `main.Abc`
 pub fn (t &TypeSymbol) symbol_name_except_generic() string {
 	// main.Abc<int>
 	mut embed_name := t.name
@@ -1615,7 +1627,7 @@ pub fn (s Struct) get_field(name string) StructField {
 	if field := s.find_field(name) {
 		return field
 	}
-	panic('unknown field `$name`')
+	panic('unknown field `${name}`')
 }
 
 pub fn (s &SumType) find_field(name string) ?StructField {

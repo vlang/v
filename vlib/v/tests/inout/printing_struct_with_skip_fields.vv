@@ -1,0 +1,9 @@
+struct Foo {
+	age  int    [str: skip]
+	name string
+}
+
+fn main() {
+	x := Foo{25, 'Peter'}
+	println(x)
+}

@@ -1,18 +1,19 @@
-fn opt_err_with_code() ?string {
-	return error_with_code('hi', 137)
+// TODO: remove this after the deprecation period for `?Type` representing both Result and Option passes.
+fn opt_err_with_code(code int) ?string {
+	return error_with_code('hi', code)
 }
 
 fn test_err_with_code() {
-	if w := opt_err_with_code() {
+	if w := opt_err_with_code(137) {
 		assert false
 		_ := w
 	} else {
-		assert err.msg() == 'hi'
+		assert err.msg() == 'hi; code: 137'
 		assert err.code() == 137
 	}
-	v := opt_err_with_code() or {
-		assert err.msg() == 'hi'
-		assert err.code() == 137
+	v := opt_err_with_code(56) or {
+		assert err.msg() == 'hi; code: 56'
+		assert err.code() == 56
 		return
 	}
 	assert false
@@ -127,7 +128,7 @@ fn test_propagation() {
 	println(6)
 }
 
-fn test_q() ? {
+fn test_q() {
 	assert foo_ok()? == 777
 }
 
@@ -378,4 +379,46 @@ fn foo2() ?int {
 fn test_return_or() {
 	x := foo2() or { return }
 	assert x == 0
+}
+
+// For issue #16058: cgen error: exists spaces in the name of the ?&C.struct
+fn get_opt_pointer_to_c_struct() ?&C.stat {
+	return none
+}
+
+fn test_optional_ref_c_struct_gen() {
+	_ := get_opt_pointer_to_c_struct() or { &C.stat{} }
+}
+
+// For issue #16070: cgen error: missing * of optional non-ref structs
+fn get_opt_to_c_struct() ?C.stat {
+	return none
+}
+
+fn test_optional_c_struct_gen() {
+	_ := get_opt_to_c_struct() or { C.stat{} }
+}
+
+// For issue #16062: checker disallow the return of voidptr(nil) in or block
+struct Bar {}
+
+fn get_bar(should_return_value bool) ?&Bar {
+	if should_return_value {
+		return unsafe { nil }
+	}
+	return none
+}
+
+fn test_() {
+	a := get_bar(true)?
+	assert a == unsafe { nil }
+	//
+	x := get_bar(false) or {
+		assert true
+		unsafe { nil }
+	}
+	assert x == unsafe { nil }
+	//
+	get_bar(false) or { unsafe { nil } }
+	assert true
 }

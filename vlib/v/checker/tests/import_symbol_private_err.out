@@ -52,7 +52,7 @@ vlib/v/checker/tests/import_symbol_private_err.vv:12:4: error: method `map[strin
       |       ~~~~~~~~~~~
    13 |     _ = ReaderWriterImpl{}
    14 | }
-vlib/v/checker/tests/import_symbol_private_err.vv:13:6: error: type `io.ReaderWriterImpl` is private
+vlib/v/checker/tests/import_symbol_private_err.vv:13:6: error: struct `io.ReaderWriterImpl` was declared as private to module `io`, so it can not be used inside module `main`
    11 |         'h': 2
    12 |     }.exists('h')
    13 |     _ = ReaderWriterImpl{}

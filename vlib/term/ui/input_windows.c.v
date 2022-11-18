@@ -45,17 +45,17 @@ pub fn init(cfg Config) &Context {
 		panic('could not get stdin handle')
 	}
 	// save the current input mode, to be restored on exit
-	if C.GetConsoleMode(stdin_handle, &ui.stdin_at_startup) == 0 {
+	if !C.GetConsoleMode(stdin_handle, &ui.stdin_at_startup) {
 		panic('could not get stdin console mode')
 	}
 
 	// enable extended input flags (see https://stackoverflow.com/a/46802726)
 	// 0x80 == C.ENABLE_EXTENDED_FLAGS
-	if C.SetConsoleMode(stdin_handle, 0x80) == 0 {
+	if !C.SetConsoleMode(stdin_handle, 0x80) {
 		panic('could not set raw input mode')
 	}
 	// enable window and mouse input events.
-	if C.SetConsoleMode(stdin_handle, C.ENABLE_WINDOW_INPUT | C.ENABLE_MOUSE_INPUT) == 0 {
+	if !C.SetConsoleMode(stdin_handle, C.ENABLE_WINDOW_INPUT | C.ENABLE_MOUSE_INPUT) {
 		panic('could not set raw input mode')
 	}
 	// store the current title, so restore_terminal_state can get it back
@@ -75,7 +75,7 @@ pub fn init(cfg Config) &Context {
 	}
 
 	if ctx.cfg.window_title != '' {
-		print('\x1b]0;$ctx.cfg.window_title\x07')
+		print('\x1b]0;${ctx.cfg.window_title}\x07')
 		flush_stdout()
 	}
 
@@ -86,7 +86,7 @@ pub fn init(cfg Config) &Context {
 	C.atexit(restore_terminal_state)
 	for code in ctx.cfg.reset {
 		os.signal_opt(code, fn (_ os.Signal) {
-			mut c := ui.ctx_ptr
+			mut c := unsafe { ui.ctx_ptr }
 			if unsafe { c != 0 } {
 				c.cleanup()
 			}
@@ -114,7 +114,7 @@ pub fn (mut ctx Context) run() ? {
 		}
 		if !ctx.paused {
 			sw.restart()
-			if ctx.cfg.event_fn != voidptr(0) {
+			if ctx.cfg.event_fn != unsafe { nil } {
 				ctx.parse_events()
 			}
 			ctx.frame()
@@ -165,11 +165,11 @@ fn (mut ctx Context) parse_events() {
 					C.VK_DOWN { KeyCode.down }
 					C.VK_INSERT { KeyCode.insert }
 					C.VK_DELETE { KeyCode.delete }
-					65...90 { KeyCode(ch + 32) } // letters
+					65...90 { unsafe { KeyCode(ch + 32) } } // letters
 					91...93 { KeyCode.null } // special keys
-					96...105 { KeyCode(ch - 48) } // numpad numbers
-					112...135 { KeyCode(ch + 178) } // f1 - f24
-					else { KeyCode(ascii) }
+					96...105 { unsafe { KeyCode(ch - 48) } } // numpad numbers
+					112...135 { unsafe { KeyCode(ch + 178) } } // f1 - f24
+					else { unsafe { KeyCode(ascii) } }
 				}
 
 				mut modifiers := Modifiers{}
@@ -293,7 +293,7 @@ fn (mut ctx Context) parse_events() {
 				}
 				w := sb.srWindow.Right - sb.srWindow.Left + 1
 				h := sb.srWindow.Bottom - sb.srWindow.Top + 1
-				utf8 := '($ctx.window_width, $ctx.window_height) -> ($w, $h)'
+				utf8 := '(${ctx.window_width}, ${ctx.window_height}) -> (${w}, ${h})'
 				if w != ctx.window_width || h != ctx.window_height {
 					ctx.window_width, ctx.window_height = w, h
 					mut event := &Event{

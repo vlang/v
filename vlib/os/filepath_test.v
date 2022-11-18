@@ -53,6 +53,22 @@ fn test_clean_path() {
 	assert clean_path('//////////') == '/'
 }
 
+fn test_to_slash() {
+	sep := path_separator
+	assert to_slash('') == ''
+	assert to_slash(sep) == ('/')
+	assert to_slash([sep, 'a', sep, 'b'].join('')) == '/a/b'
+	assert to_slash(['a', sep, sep, 'b'].join('')) == 'a//b'
+}
+
+fn test_from_slash() {
+	sep := path_separator
+	assert from_slash('') == ''
+	assert from_slash('/') == sep
+	assert from_slash('/a/b') == [sep, 'a', sep, 'b'].join('')
+	assert from_slash('a//b') == ['a', sep, sep, 'b'].join('')
+}
+
 fn test_norm_path() {
 	$if windows {
 		assert norm_path(r'C:/path/to//file.v\\') == r'C:\path\to\file.v'
@@ -138,9 +154,9 @@ fn test_existing_path() {
 		assert existing_path('.') or { '' } == '.'
 		assert existing_path(wd) or { '' } == wd
 		assert existing_path('\\') or { '' } == '\\'
-		assert existing_path('$wd\\.\\\\does/not/exist\\.\\') or { '' } == '$wd\\.\\\\'
-		assert existing_path('$wd\\\\/\\.\\.\\/.') or { '' } == '$wd\\\\/\\.\\.\\/.'
-		assert existing_path('$wd\\././/\\/oh') or { '' } == '$wd\\././/\\/'
+		assert existing_path('${wd}\\.\\\\does/not/exist\\.\\') or { '' } == '${wd}\\.\\\\'
+		assert existing_path('${wd}\\\\/\\.\\.\\/.') or { '' } == '${wd}\\\\/\\.\\.\\/.'
+		assert existing_path('${wd}\\././/\\/oh') or { '' } == '${wd}\\././/\\/'
 		return
 	}
 	assert existing_path('') or { '' } == ''
@@ -148,9 +164,9 @@ fn test_existing_path() {
 	assert existing_path('.') or { '' } == '.'
 	assert existing_path(wd) or { '' } == wd
 	assert existing_path('/') or { '' } == '/'
-	assert existing_path('$wd/does/.///not/exist///.//') or { '' } == '$wd/'
-	assert existing_path('$wd//././/.//') or { '' } == '$wd//././/.//'
-	assert existing_path('$wd//././/.//oh') or { '' } == '$wd//././/.//'
+	assert existing_path('${wd}/does/.///not/exist///.//') or { '' } == '${wd}/'
+	assert existing_path('${wd}//././/.//') or { '' } == '${wd}//././/.//'
+	assert existing_path('${wd}//././/.//oh') or { '' } == '${wd}//././/.//'
 }
 
 fn test_windows_volume() {

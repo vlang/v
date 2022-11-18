@@ -9,13 +9,13 @@ mut:
 	// Value of the node
 	value T
 	// The parent of the node
-	parent &BSTreeNode<T> = 0
+	parent &BSTreeNode<T> = unsafe { 0 }
 	// The left side with value less than the
 	// value of this node
-	left &BSTreeNode<T> = 0
+	left &BSTreeNode<T> = unsafe { 0 }
 	// The right side with value grater than the
 	// value of thiss node
-	right &BSTreeNode<T> = 0
+	right &BSTreeNode<T> = unsafe { 0 }
 }
 
 // Create new root bst node
@@ -61,7 +61,7 @@ fn (mut node BSTreeNode<T>) bind(mut to_bind BSTreeNode<T>, left bool) {
 // Space complexity O(N)
 pub struct BSTree<T> {
 mut:
-	root &BSTreeNode<T> = 0
+	root &BSTreeNode<T> = unsafe { 0 }
 }
 
 // insert give the possibility to insert an element in the BST.

@@ -36,7 +36,7 @@ fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 				expected_name = x.tname.clone()
 			}
 		}
-		panic('as cast: cannot cast `$obj_name` to `$expected_name`')
+		panic('as cast: cannot cast `${obj_name}` to `${expected_name}`')
 	}
 	return obj
 }
@@ -54,6 +54,8 @@ pub:
 	rlabel  string // the right side of the infix expressions as source
 	lvalue  string // the stringified *actual value* of the left side of a failed assertion
 	rvalue  string // the stringified *actual value* of the right side of a failed assertion
+	message string // the value of the `message` from `assert cond, message`
+	has_msg bool   // false for assertions like `assert cond`, true for `assert cond, 'oh no'`
 }
 
 // free frees the memory occupied by the assertion meta data. It is called automatically by
@@ -69,17 +71,21 @@ pub fn (ami &VAssertMetaInfo) free() {
 		ami.rlabel.free()
 		ami.lvalue.free()
 		ami.rvalue.free()
+		ami.message.free()
 	}
 }
 
 fn __print_assert_failure(i &VAssertMetaInfo) {
-	eprintln('$i.fpath:${i.line_nr + 1}: FAIL: fn $i.fn_name: assert $i.src')
+	eprintln('${i.fpath}:${i.line_nr + 1}: FAIL: fn ${i.fn_name}: assert ${i.src}')
 	if i.op.len > 0 && i.op != 'call' {
-		eprintln('   left value: $i.llabel = $i.lvalue')
+		eprintln('   left value: ${i.llabel} = ${i.lvalue}')
 		if i.rlabel == i.rvalue {
-			eprintln('  right value: $i.rlabel')
+			eprintln('  right value: ${i.rlabel}')
 		} else {
-			eprintln('  right value: $i.rlabel = $i.rvalue')
+			eprintln('  right value: ${i.rlabel} = ${i.rvalue}')
+		}
+		if i.has_msg {
+			eprintln('      message: ${i.message}')
 		}
 	}
 }

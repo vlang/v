@@ -421,11 +421,11 @@ fn test_abs() {
 fn test_abs_zero() {
 	ret1 := abs(0)
 	println(ret1)
-	assert '$ret1' == '0'
+	assert '${ret1}' == '0'
 
 	ret2 := abs(0.0)
 	println(ret2)
-	assert '$ret2' == '0'
+	assert '${ret2}' == '0.0'
 }
 
 fn test_floor() {
@@ -808,6 +808,17 @@ fn test_round() {
 	}
 }
 
+fn fn_test_round_sig() {
+	assert round_sig(4.3239437319748394, -1) == 4.3239437319748394
+	assert round_sig(4.3239437319748394, 0) == 4.0000000000000000
+	assert round_sig(4.3239437319748394, 1) == 4.3000000000000000
+	assert round_sig(4.3239437319748394, 2) == 4.3200000000000000
+	assert round_sig(4.3239437319748394, 3) == 4.3240000000000000
+	assert round_sig(4.3239437319748394, 6) == 4.3239440000000000
+	assert round_sig(4.3239437319748394, 12) == 4.323943731975
+	assert round_sig(4.3239437319748394, 17) == 4.3239437319748394
+}
+
 fn test_sin() {
 	for i := 0; i < math.vf_.len; i++ {
 		f := sin(math.vf_[i])
@@ -1036,4 +1047,15 @@ fn test_count_digits() {
 	assert count_digits(12345) == 5
 	assert count_digits(123456789012345) == 15
 	assert count_digits(-67345) == 5
+}
+
+fn test_min_max_int_str() {
+	assert min_i64.str() == '-9223372036854775808'
+	assert max_i64.str() == '9223372036854775807'
+	assert min_i32.str() == '-2147483648'
+	assert max_i32.str() == '2147483647'
+	assert min_i16.str() == '-32768'
+	assert max_i16.str() == '32767'
+	assert min_i8.str() == '-128'
+	assert max_i8.str() == '127'
 }

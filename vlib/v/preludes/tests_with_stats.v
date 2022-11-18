@@ -32,7 +32,7 @@ fn start_testing(total_number_of_tests int, vfilename string) BenchedTests {
 	}
 	benched_tests_res.bench.set_total_expected_steps(total_number_of_tests)
 	benched_tests_res.test_suit_file = vfilename
-	println('running tests in: $benched_tests_res.test_suit_file')
+	println('running tests in: ${benched_tests_res.test_suit_file}')
 	return benched_tests_res
 }
 
@@ -84,7 +84,7 @@ fn (b &BenchedTests) fn_name() string {
 fn (mut b BenchedTests) end_testing() {
 	b.bench.stop()
 	fname := os.file_name(b.test_suit_file)
-	msg := 'running V tests in "$fname"'
+	msg := 'running V tests in "${fname}"'
 	final := inner_indent + b.bench.total_message(msg)
 	println(final)
 }

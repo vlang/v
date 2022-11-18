@@ -57,7 +57,6 @@ Let's start with a simple snippet of code:
 import os
 import x.ttf
 
-[console]
 fn main() {
 	mut ttf_font := ttf.TTF_File{}
 	ttf_font.buf = os.read_bytes('arial.ttf') or { panic(err) }
@@ -75,7 +74,6 @@ At this point we can render a simple text:
 import os
 import x.ttf
 
-[console]
 fn main() {
 	mut ttf_font := ttf.TTF_File{}
 	ttf_font.buf = os.read_bytes('arial.ttf') or { panic(err) }
@@ -139,7 +137,6 @@ Draw text block draw a justified and indented block of multiline text in the bit
 import os
 import x.ttf
 
-[console]
 fn main() {
 	mut ttf_font := ttf.TTF_File{}
 	ttf_font.buf = os.read_bytes('arial.ttf') or { panic(err) }
@@ -247,7 +244,7 @@ fn my_init(mut app App_data) {
 }
 
 fn draw_frame(mut app App_data) {
-	cframe_txt := 'Current Frame: $app.frame_c'
+	cframe_txt := 'Current Frame: ${app.frame_c}'
 
 	app.gg.begin()
 
@@ -268,7 +265,6 @@ fn draw_frame(mut app App_data) {
 	app.gg.end()
 }
 
-[console]
 fn main() {
 	mut app := &App_data{
 		gg: 0
@@ -289,7 +285,7 @@ fn main() {
 	for font_path in font_paths {
 		mut tf := ttf.TTF_File{}
 		tf.buf = os.read_bytes(font_path) or { panic(err) }
-		println('TrueTypeFont file [$font_path] len: $tf.buf.len')
+		println('TrueTypeFont file [${font_path}] len: ${tf.buf.len}')
 		tf.init()
 		println(tf.get_info_string())
 		app.tf << tf

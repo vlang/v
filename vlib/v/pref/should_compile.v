@@ -30,6 +30,9 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		if file.starts_with('.#') {
 			continue
 		}
+		if !prefs.prealloc && !prefs.output_cross_c && file.ends_with('prealloc.c.v') {
+			continue
+		}
 		if prefs.nofloat && file.ends_with('float.c.v') {
 			continue
 		}
@@ -92,7 +95,7 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		no_postfix_key := fname_without_platform_postfix(file)
 		if no_postfix_key in fnames_no_postfixes {
 			if prefs.is_verbose {
-				println('>>> should_compile_filtered_files: skipping _default.c.v file $file ; the specialized versions are: ${fnames_no_postfixes[no_postfix_key]}')
+				println('>>> should_compile_filtered_files: skipping _default.c.v file ${file} ; the specialized versions are: ${fnames_no_postfixes[no_postfix_key]}')
 			}
 			continue
 		}
@@ -100,7 +103,7 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 	}
 	if prefs.is_verbose {
 		// println('>>> prefs: $prefs')
-		println('>>> should_compile_filtered_files: res: $res')
+		println('>>> should_compile_filtered_files: res: ${res}')
 	}
 	return res
 }
@@ -120,6 +123,10 @@ fn fname_without_platform_postfix(file string) string {
 		'macos.c.v',
 		'_',
 		'android.c.v',
+		'_',
+		'termux.c.v',
+		'_',
+		'android_outside_termux.c.v',
 		'_',
 		'freebsd.c.v',
 		'_',
@@ -157,6 +164,10 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if prefs.backend != .native && file.ends_with('_native.v') {
 		return false
 	}
+	if prefs.building_v && prefs.output_cross_c && file.ends_with('_windows.v') {
+		// TODO temp hack to make msvc_windows.v work with -os cross
+		return true
+	}
 	if prefs.os == .windows && (file.ends_with('_nix.c.v') || file.ends_with('_nix.v')) {
 		return false
 	}
@@ -178,10 +189,6 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if prefs.os != .ios && (file.ends_with('_ios.c.v') || file.ends_with('_ios.v')) {
 		return false
 	}
-	//
-	if prefs.os != .android && file.ends_with('_android.c.v') {
-		return false
-	}
 	if prefs.os != .freebsd && file.ends_with('_freebsd.c.v') {
 		return false
 	}
@@ -201,6 +208,30 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 		return false
 	}
 	if prefs.os != .vinix && file.ends_with('_vinix.c.v') {
+		return false
+	}
+	if prefs.os in [.android, .termux] {
+		// Note: Termux is running natively on Android devices, but the compilers there (clang) usually do not have access
+		// to the Android SDK. The code here ensures that you can have `_termux.c.v` and `_android_outside_termux.c.v` postfixes,
+		// to target both the cross compilation case (where the SDK headers are used and available), and the Termux case,
+		// where the Android SDK is not used.
+		if file.ends_with('_android.c.v') {
+			// common case, should compile for both cross android and termux
+			// eprintln('prefs.os: $prefs.os | file: $file | common')
+			return true
+		}
+		if file.ends_with('_android_outside_termux.c.v') {
+			// compile code that targets Android, but NOT Termux (i.e. the SDK is available)
+			// eprintln('prefs.os: $prefs.os | file: $file | android_outside_termux')
+			return prefs.os == .android
+		}
+		if file.ends_with('_termux.c.v') {
+			// compile Termux specific code
+			// eprintln('prefs.os: $prefs.os | file: $file | termux specific')
+			return prefs.os == .termux
+		}
+	} else if file.ends_with('_android.c.v') || file.ends_with('_termux.c.v')
+		|| file.ends_with('_android_outside_termux.c.v') {
 		return false
 	}
 	return true

@@ -2,15 +2,15 @@ module main
 
 import os
 
-fn list_files() ?[][]string {
-	mut unchecked_files := os.ls('utilities/modules')?
+fn list_files() ![][]string {
+	mut unchecked_files := os.ls('utilities/modules')!
 	println(unchecked_files)
 	for files in unchecked_files {
 		println(files)
 		if os.is_file(files) == true {
 			println(files)
 		} else {
-			println(os.ls(os.chdir(files)?)?)
+			println(os.ls(os.chdir(files)!)!)
 		}
 		println(files)
 	}

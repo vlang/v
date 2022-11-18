@@ -12,7 +12,7 @@ const mainvv = os.join_path(basepath, 'main.vv')
 
 fn test_vexe_is_set() {
 	assert vexe != ''
-	println('vexe: $vexe')
+	println('vexe: ${vexe}')
 }
 
 fn test_compiling_without_vmodules_fails() {

@@ -46,9 +46,9 @@ fn test_shared_receiver_lock() {
 	shared z := &St{
 		a: 1
 	}
-	t1 := go x.f(shared y, shared z)
-	t2 := go x.f(shared y, shared z)
-	t3 := go h(shared x, shared y, shared z)
+	t1 := spawn x.f(shared y, shared z)
+	t2 := spawn x.f(shared y, shared z)
+	t3 := spawn h(shared x, shared y, shared z)
 	for _ in 0 .. 10000 {
 		lock z, y, x {
 			tmp := y.a

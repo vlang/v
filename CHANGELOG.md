@@ -1,17 +1,197 @@
--## V 0.2.5
--*Not yet released, changelog is not full*
+## V 0.3.3
+*Not yet released*
+- `go foo()` has been replaced with `spawn foo()` (launches an OS thread, `go` will be used for
+  upcoming coroutines instead).
+- vfmt now supports `// vfmt off` and `// vfmt on` for turning off the formatting locally for *short* snippets of code. Useful for keeping your carefully arranged matrices in tact.
+
+## V 0.3.2
+*31 Oct 2022*
+- New simplified string interpolation: `println("Hello, {name}!")`. It will be the only way, old syntax (`${name}` and `$name`)
+  will be deprecated.
+- New stunning playground with an improved look and feel, a much better and more responsive editor,
+  code sharing by link, more convenient keyboard control, reusability for potential embedding:
+  https://play.vlang.io.
+- `net.ssl` has been migrated from a dynamically linked OpenSSL to a statically linked Mbed TLS. This means that V binaries will no
+  longer have an OpenSSL dependency. OpenSSL can still be enabled via `-d use_openssl`.
+- msgpack module for decoding/encoding msgpack. (`v install msgpack`)
+- Easier custom error creation: `return MyCustomErr{}` instead of `return IError(MyCustomErr)`.
+- Lots of native backend improvements, including library calls, comptime conditionals, enums, method definitions/calls, structs.
+- Removed the need for the `[console]` attribute in Windows GUI apps.
+- All floats outputs now have `.0` conditionally appended to them to improve clarity.
+- Improved type checker: lots of new type checks and fixed checker bugs.
+- Custom integer enum types: `enum Xyz as u64 {`.
+- Some further interpreter work.
+- Improved call tracing via `-trace-calls`.
+- Most of vlib has been updated to use the new Option/Result types.
+- Lots of documentation improvements, including a better documentation of the recent Option/Result split.
+- net, net.http, vweb bugs and fixes.
+- V REPL: Home/End keys support. Lots of clean up.
+- QuadTree and RingBuffer types in `datatypes`.
+- Forward iterator for `datatypes.LinkedList<T>`, forward and backward iterators for `datatypes.DoublyLinkedList<T>`.
+- More precise WINAPI declarations for easier integration on Windows.
+- Unused last expression in `if` is now checked.
+- AST transformer fixes and optimizations.
+- cgen cleanups.
+- Lots of fixes in the builtin `dump()` function.
+- Stylistic improvements and bug fixes in vfmt.
+- Casting integers to enums now requires `unsafe{}`.
+- Improved error and warning messages.
+- A new `maps` module, similar to existing `arrays`. It has generic `filter`, `flatten`, `invert`, `to_map`, `to_array`, `from_array`
+  functions.
+- Parallel compilation now uses `sync.Pool`.
+- `utf8.is_number()`, `utf8.is_space()` functions.
+- New `encoding.base32` module.
+- `-skip-unused` fixes, soon to be made the default.
+- `gg.TouchPoint` to differenciate between different types of touch input.
+- Anonymous structs visibility issues fixed.
+- orm: support parenthesized expressions like `select from User where (name == 'Sam' && is_customer == true) || id == 1`.
+- `vweb.csrf` module.
+- `str.int()` conversion speedup (without -prod).
+- More CI tests on FreeBSD.
+
+## V 0.3.1
+*31 Aug 2022*
+- Anonymous structs.
+- Lots of bug fixes: 90% of all bugs ever submitted are closed.
+- Major improvements to the fast native backend including linking support on Linux. The goal is to be able to self host V soon.
+- Parallelized cc step. Speeds up -prod and clang/gcc compilation by 300-500% (depending on
+  the number of cores). Experimental and hidden behind a -parallel-cc flag, soon to be the default.
+- New keyword/type: `nil`. Only to be used inside `unsafe`. Replaces `voidptr(0)`.
+- V can now find code in the `src/` directory. This allows making V repos much cleaner.
+- Intel C compiler support.
+- Older macOS support (<10.12).
+- `os.mkdir()` now has an optional `mode` parameter.
+- Full termux support via `$if termux {`, more predictable logging on Android.
+- Go backend fixes.
+- More type checks.
+- DOOM is now translated/compiled and launched on CI servers. A screenshot of the running game
+  is made via `vgret` and is compared to the expected result.
+- VLS performance improvements, especially on Windows.
+- `v ls` tool for installing, for updating, and for launching VLS (V Language Server).
+- Support `assert condition, extra_message`, where the `extra_message` will be evaluated and shown if the assertion fails.
+- Anonymous sumtypes have been removed (deprecated for now) due to complicating the language and the compiler too much.
+- `encoding.csv` is now generic, supports bools, accepts a custom delimiter, and is compatible with io.Reader/io.Writer.
+- Operator overloading now works with aliases and generics.
+- `datatypes` module now uses operator overloading.
+- All `datatypes` types can be converted to V arrays.
+- `smtp` improvements including multiple recipients and base64/utf8 support.
+- `v doc` now has syntax highlighting.
+- `arrays.carray_to_varray<T>()` for converting C arrays to V arrays.
+- `strconv.v_sprintf()` has been deprecated in favor of string interpolation.
+- TOML module now supports `[toml:...]` attributes, just like the JSON module.
+- `os.walk()` is no longer recursive (still works the same).
+- Windows code has been removed from `v.c` distributed on non-Windows systems. (`v_windows.c` is used on Windows.)
+- ORM functions now return `Result`, so the errors can be handled.
+- `#preinclude` for low level C interop.
+- `net.urllib` ipv6 support.
+- Lots of fixes in `shared` types.
+- `io` has been migrated to `Result`.
+- Third party window control in Sokol.
+- Scanner optimizations.
+- `string.replace_char()`, `math.round_sig()`.
+- Improved multiplication performance in `math.big`.
+- `net.Http.Response.text` renamed to `body`.
+- Using C's #define is no longer allowed in normal V code, only in `.c.v` files.
+- V interpreter improvements.
+- `net.websocket` timeout is now configurable.
+
+
+## V 0.3
+*30 Jun 2022*
+- C to V translation via C2V: `v translate file.c`. (Demo video: [Translating DOOM from C to V, building it in under a second and running it!](https://www.youtube.com/watch?v=6oXrz3oRoEg))
+- Lots of bug fixes in V, cgen, and C interop to allow running translated DOOM.v.
+- Programs built with the V compiler no longer leak memory by default.
+- Closures. All operating systems are supported. ([Demo](https://twitter.com/v_language/status/1528710491882852352))
+- `Option` and `Result` are now separate types: `?Foo` and `!Foo` respectively. Old code will continue working for 1 year and will result in a warning/hint.
+- Hundreds of new checks in the type checker.
+- All V's backends have been split up into separate processes.  As the result, building V got 26% faster.
+- Maps and arrays can now return optionals: `m[bad_key] or { ... }`, `if x := arr[key] { ... }`.
+- `ustring` has been replaced with `[]rune` (works just like in Go).
+- Maps can now have non-string keys.
+- A new compiler pass for transforming the AST (doesn't slow the compiler too much, adds about 25ms to `v self`). It eliminates unreachable branches and performs other simple optimizations and transformations.
+- C backend is now parallel (just the cgen part for now).
+- Lots of compiler source code clean up and minor optimizations. The compiler got ~30% faster according to fast.vlang.io.
+- Better compiler source code organization (absolutely necessary as it's surpassed 100k loc).
+- The naming of V's integer types is now more consistent: `byte` has been renamed to `u8`.  Old code will continue working for 1 year and will result in a warning/hint.
+- The typo detector now highlights the suggested name so that it's more visible.
+- `datatypes` module now has `Heap, Queue, Stack, BSTree, LinkedList`.
+- Interfaces can now be embedded (like structs).
+- vlib now has a TOML parser, fully compatible with TOML 1.0.
+- Lots of work done on the V.js backend, including the graphics library, which has been ported to V.js.
+- JS promises, await (V.js).
+- It's now possible to do more complex array initialization by using each individual element of the array (`[]int{init: it}`).
+- Unsigned right shift operators `>>>` and `>>>=` have been added to V. (They work exactly like in Java.)
+- `-nofloat` option, which is useful for writing kernels and for embedded systems without an FPU (used in Vinix).
+- Generic interfaces.
+- TCC is now bundled with the language, this allows building V programs without an external C compiler dependency.
+- Null can be used in `unsafe` only (for example, for C interop).
+- Pointer arithmetics and comparing pointers to numbers is now also only allowed in `unsafe`.
+- Inline sumtypes.
+- New module `compress.gzip`.
+- Lots of `net`/`net.http`/`vweb` fixes (also used for the upcoming Gitly launch).
+- IPv6 support.
+- `net.http` headers are now enum fields instead of strings. This allows to avoid typos and offers autocomplete.
+- Struct field deprecation.
+- Static GC (no longer a dynamic lib dependency).
+- New various algorithms for random number generation: MT19937RNG, etc  (module `rand`).
+- Fix immutability bugs that allowed to bypass compiler immutability checks and modify const/immutable values.
+- Lots of fixes in the JSON serializer.
+- Heap allocated only structs marked with `[heap]`.
+- Significantly improve lots of error messages, make them more clear, suggest hints.
+- Bug fixes and new features in the pure V `regex` module.
+- Lots of new drawing functions in the graphics module (like `gg.draw_polygon_filled(), gg.draw_arc_empty()` etc)
+- Builtin FPS display in `gg`.
+- Latest Sokol backend in `gg`.
+- Advanced CI tests for the graphics module. Graphical apps are run on GitHub Actions instances, their output is saved to an image, uploaded, and compared to the expected result.
+- More bug fixes in generics.
+- Bug fixes in aliases. They can now fully replace the types they alias.
+- `[minify]` struct attribute for struct minification.
+- `for in` now works with fixed arrays.
+- The parser was made a bit faster by skipping `vfmt` code when not in `vfmt` mode (by using `-d vfmt`).
+- Lots of vfmt improvements, especially with comments.
+- Experimental `#[index]` syntax for negative indexing (like in Python, but needs special syntax instead of being used by default).
+- Visibility bug fixes in modules (`pub`).
+- Error propagation in complex expressions (e.g. `foo(bar()?)`).
+- Optionals can now by used in consts (`const x := opt() or {}`).
+- Lots of new documentation, including vlib modules documentation and the official V Documentation.
+- vpm improvements (including a new vpm mirror).
+- `sync` improvements including `sync.thread_id()`, `sync.Once`..
+- V can now be used to generate object files (`foo.o`) that can be used in existing C projects.
+- `-usecache` and `-skip-unused` fixes, they are close to being on by default.
+- Lots of Windows issues fixed.
+- Amazon Linux support.
+- Fixes in shared maps and arrays.
+- `term.ui` improvements, including multi byte/UTF-8 events.
+- New `crypto` modules, including `crypto.des, crypto.cipher, crypto.blowfish`.
+- Comptime fixes.
+- 4 byte bool option (`-d 4bytebool`) for compatibility with some C software.
+- `strconv` (pure V formatting module used in string interpolation) fixes and performance improvements.
+- ORM fixes (pg, mysql, sqlite). Tables are now created automatically based on the V structs, no more need in sql files to create tables for apps.
+- `volatile` keyword.
+- `"stringliteral".len` optimization (replaced by the actual number by the new `transform` pass).
+- Lots of inline assembler improvements (it's used a lot in Vinix).
+- Many new functions in the `math` module.
+- Separators in number literals: `1_000_000`.
+- `strings.Builder` optimizations and new methods.
+- Autofree fixes (still not production ready, hidden behind the `-autofree` flag).
+- Lots of Android fixes in V and in vab.
+- Lots of commits to the native backend (amd64/arm64).
+- V interpreter fixes. (Still at an early stage.)
+- Go2V translator has been started by the community, and can already translate simple programs.
+- An early version of the Go backend (`v -b go -o file.go file.v`).
+
+## V 0.2.4
+*30 Aug 2021*
 - Introduce `isize` and `usize` types, deprecate `size_t` in favor of `usize`.
 - Add `datatypes` and `datatypes.fsm` modules.
 - Add `compile_error` and `compile_warn` comptime functions.
-
--## V 0.2.4
--*Not yet released, changelog is not full*
 - Bare metal support. Vinix OS kernel is now being developed in V.
 - Builtin web framework vweb is now multithreaded, all CPU cores are used.
 - String interpolation and struct stringers are now implemented in pure V
 with a much cleaner and faster implementation. Previously libc's `sprintf`
 was used.
 - Improved `unused variable` warning. Assigning to a variable no longer marks it as used.
+*... lots of missing changelog for this version, sorry (will update a bit later)*
 
 ## V 0.2.2 - 0.2.3
 *22 Jan 2021*
@@ -51,12 +231,11 @@ from local variables.
 
 ## V 0.2
 *22 Dec 2020*
-- Compile-time memory management via `-autofree`. [Video demonstration](https://www.youtube.com/watch?v=gmB8ea8uLsM).
-It will be enabled by default in 0.3
+- Compile-time memory management via `-autofree` (not production ready yet). [Video demonstration](https://www.youtube.com/watch?v=gmB8ea8uLsM).
 - Channels and locks.
 - Thread safe typed arrays via keyword `shared`.
 - Struct embedding.
-- IO streams.
+- IO streams (`io.Reader`, `io.Writer` etc).
 - A powerful websocket module that conforms to RFC 6455 and passes the Autobahn test suite (498 client tests and 249 server tests).
 - The `net` module is now non blocking and is more feature complete providing similar API to Go.
 - V's graphics module now uses Metal/DirectX/OpenGL instead of just OpenGL.

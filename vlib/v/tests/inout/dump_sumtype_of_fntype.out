@@ -1,0 +1,1 @@
+[vlib/v/tests/inout/dump_sumtype_of_fntype.vv:10] main.MyFnSumtype(main.f): MyFnSumtype(fn (int) v.ast.Expr)

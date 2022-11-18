@@ -30,7 +30,7 @@ pub fn (err IError) str() string {
 			// TODO: remove once deprecation period for `IError` methods has ended
 			// old_error_style := unsafe { voidptr(&err.msg) != voidptr(&err.code) } // if fields are not defined (new style) they don't have an offset between
 			// <<
-			'$err.type_name(): $err.msg()'
+			'${err.type_name()}: ${err.msg()}'
 		}
 	}
 }
@@ -55,6 +55,9 @@ pub:
 
 // msg returns the message of MessageError
 pub fn (err MessageError) msg() string {
+	if err.code > 0 {
+		return '${err.msg}; code: ${err.code}'
+	}
 	return err.msg
 }
 
@@ -80,7 +83,7 @@ fn (_ None__) str() string {
 
 [if trace_error ?]
 fn trace_error(x string) {
-	eprintln('> ${@FN} | $x')
+	eprintln('> ${@FN} | ${x}')
 }
 
 // error returns a default error instance containing the error given in `message`.
@@ -97,7 +100,7 @@ pub fn error(message string) IError {
 // Example: if ouch { return error_with_code('an error occurred', 1) }
 [inline]
 pub fn error_with_code(message string, code int) IError {
-	trace_error('$message | code: $code')
+	trace_error('${message} | code: ${code}')
 	return &MessageError{
 		msg: message
 		code: code
@@ -123,14 +126,6 @@ struct _option {
 }
 
 fn _option_ok(data voidptr, mut option _option, size int) {
-	unsafe {
-		*option = _option{}
-		// use err to get the end of OptionBase and then memcpy into it
-		vmemcpy(&u8(&option.err) + sizeof(IError), data, size)
-	}
-}
-
-fn opt_ok2(data voidptr, mut option _option, size int) {
 	unsafe {
 		*option = _option{}
 		// use err to get the end of OptionBase and then memcpy into it

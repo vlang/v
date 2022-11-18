@@ -17,10 +17,10 @@ fn test_comptime_for_method_call() {
 
 		println(x)
 		println(x.str())
-		println('$x')
+		println('${x}')
 
 		rets << x.str()
-		rets << '$x'
+		rets << '${x}'
 	}
 	assert rets.len == 4
 	assert rets[0] == '1'

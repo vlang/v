@@ -140,12 +140,12 @@ enum AtomType {
 
 [heap]
 pub struct Clipboard {
-	display &C.Display
+	display &C.Display = unsafe { nil }
 mut:
 	selection Atom // the selection atom
 	window    Window
 	atoms     []Atom
-	mutex     &sync.Mutex
+	mutex     &sync.Mutex = unsafe { nil }
 	text      string // text data sent or received
 	got_text  bool   // used to confirm that we have got the text
 	is_owner  bool   // to save selection owner state
@@ -155,7 +155,7 @@ struct Property {
 	actual_type   Atom
 	actual_format int
 	nitems        u64
-	data          &u8
+	data          &u8 = unsafe { nil }
 }
 
 // new_clipboard returns a new `Clipboard` instance allocated on the heap.
@@ -195,7 +195,7 @@ fn new_x11_clipboard(selection AtomType) &Clipboard {
 	cb.selection = cb.get_atom(selection)
 	// start the listener on another thread or
 	// we will be locked and will have to hard exit
-	go cb.start_listener()
+	spawn cb.start_listener()
 	return cb
 }
 

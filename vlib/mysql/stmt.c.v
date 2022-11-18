@@ -78,21 +78,21 @@ pub fn (db Connection) init_stmt(query string) Stmt {
 	}
 }
 
-pub fn (stmt Stmt) prepare() ? {
+pub fn (stmt Stmt) prepare() ! {
 	res := C.mysql_stmt_prepare(stmt.stmt, stmt.query.str, stmt.query.len)
 	if res != 0 && stmt.get_error_msg() != '' {
 		return stmt.error(res)
 	}
 }
 
-pub fn (stmt Stmt) bind_params() ? {
+pub fn (stmt Stmt) bind_params() ! {
 	res := C.mysql_stmt_bind_param(stmt.stmt, &C.MYSQL_BIND(stmt.binds.data))
 	if res && stmt.get_error_msg() != '' {
 		return stmt.error(1)
 	}
 }
 
-pub fn (stmt Stmt) execute() ?int {
+pub fn (stmt Stmt) execute() !int {
 	res := C.mysql_stmt_execute(stmt.stmt)
 	if res != 0 && stmt.get_error_msg() != '' {
 		return stmt.error(res)
@@ -100,7 +100,7 @@ pub fn (stmt Stmt) execute() ?int {
 	return res
 }
 
-pub fn (stmt Stmt) next() ?int {
+pub fn (stmt Stmt) next() !int {
 	res := C.mysql_stmt_next_result(stmt.stmt)
 	if res > 0 && stmt.get_error_msg() != '' {
 		return stmt.error(res)
@@ -116,7 +116,7 @@ pub fn (stmt Stmt) fetch_fields(res &C.MYSQL_RES) &C.MYSQL_FIELD {
 	return C.mysql_fetch_fields(res)
 }
 
-pub fn (stmt Stmt) fetch_stmt() ?int {
+pub fn (stmt Stmt) fetch_stmt() !int {
 	res := C.mysql_stmt_fetch(stmt.stmt)
 	if res !in [0, 100] && stmt.get_error_msg() != '' {
 		return stmt.error(res)
@@ -124,7 +124,7 @@ pub fn (stmt Stmt) fetch_stmt() ?int {
 	return res
 }
 
-pub fn (stmt Stmt) close() ? {
+pub fn (stmt Stmt) close() ! {
 	if !C.mysql_stmt_close(stmt.stmt) && stmt.get_error_msg() != '' {
 		return stmt.error(1)
 	}
@@ -139,10 +139,10 @@ fn (stmt Stmt) get_error_msg() string {
 
 pub fn (stmt Stmt) error(code int) IError {
 	msg := stmt.get_error_msg()
-	return IError(&SQLError{
-		msg: '$msg ($code) ($stmt.query)'
+	return &SQLError{
+		msg: '${msg} (${code}) (${stmt.query})'
 		code: code
-	})
+	}
 }
 
 fn (stmt Stmt) get_field_count() u16 {
@@ -212,7 +212,7 @@ pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 
 pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lens []u32, num_fields int) {
 	for i in 0 .. num_fields {
-		len := FieldType(unsafe { fields[i].@type }).get_len()
+		len := unsafe { FieldType(fields[i].@type).get_len() }
 		stmt.res << C.MYSQL_BIND{
 			buffer_type: unsafe { fields[i].@type }
 			buffer: dataptr[i]
@@ -222,14 +222,14 @@ pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lens []u32
 	}
 }
 
-pub fn (mut stmt Stmt) bind_result_buffer() ? {
+pub fn (mut stmt Stmt) bind_result_buffer() ! {
 	res := C.mysql_stmt_bind_result(stmt.stmt, &C.MYSQL_BIND(stmt.res.data))
 	if res && stmt.get_error_msg() != '' {
 		return stmt.error(1)
 	}
 }
 
-pub fn (mut stmt Stmt) store_result() ? {
+pub fn (mut stmt Stmt) store_result() ! {
 	res := C.mysql_stmt_store_result(stmt.stmt)
 	if res != 0 && stmt.get_error_msg() != '' {
 		return stmt.error(res)

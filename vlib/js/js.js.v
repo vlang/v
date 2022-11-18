@@ -23,7 +23,7 @@ pub interface JS.Response {
 }
 
 pub fn fetch(input string, init map[string]JS.Any) promise.Promise<JS.Response, JS.String> {
-	p_init := JS.Any(voidptr(0))
+	p_init := JS.Any(unsafe { nil })
 	p := promise.Promise<JS.Response, String>{p_init}
 
 	#let obj = {}; for (let [key,val] of init.map) { obj[key] = val; }

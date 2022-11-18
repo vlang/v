@@ -10,10 +10,10 @@ import net.http
 
 fn main() {
 	// Decoding
-	resp := http.get('https://example.com')?
+	resp := http.get('https://example.com')!
 
 	// raw decode
-	raw_person := json2.raw_decode(resp.body)?
+	raw_person := json2.raw_decode(resp.body)!
 
 	// Casting `Any` type / Navigating
 	person := raw_person.as_map()
@@ -90,8 +90,8 @@ fn (p Person) to_json() string {
 }
 
 fn main() {
-    resp := os.read_file('./person.json')?
-    person := json2.decode<Person>(resp)?
+    resp := os.read_file('./person.json')!
+    person := json2.decode<Person>(resp)!
     println(person) // Person{name: 'Bob', age: 28, pets: ['Floof']}
     person_json := json2.encode<Person>(person)
     println(person_json) // {"name": "Bob", "age": 28, "pets": ["Floof"]}
@@ -152,8 +152,10 @@ fn (mut p Person) from_json(f json2.Any) {
 ```
 
 ```v oksyntax
-fn (mut p Person) to_json() string {
-	obj := f.as_map()
+import x.json2
+
+fn (p Person) to_json() string {
+	mut obj := map[string]json2.Any{}
 	obj['nickname'] = p.name
 	return obj.str()
 }

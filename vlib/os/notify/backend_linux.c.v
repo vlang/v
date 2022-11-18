@@ -3,7 +3,7 @@ module notify
 import time
 import os
 
-#include <sys/epoll.h>
+#insert "@VEXEROOT/vlib/os/notify/epoll.h"
 
 struct C.epoll_event {
 	events u32
@@ -43,7 +43,7 @@ pub:
 // new creates a new EpollNotifier
 // The FdNotifier interface is returned to allow OS specific
 // implementations without exposing the concrete type
-pub fn new() ?FdNotifier {
+pub fn new() !FdNotifier {
 	fd := C.epoll_create1(0) // 0 indicates default behavior
 	if fd == -1 {
 		return error(os.posix_get_error_msg(C.errno))
@@ -69,7 +69,7 @@ const (
 )
 
 // ctl is a helper method for add, modify, and remove
-fn (mut en EpollNotifier) ctl(fd int, op int, mask u32) ? {
+fn (mut en EpollNotifier) ctl(fd int, op int, mask u32) ! {
 	event := C.epoll_event{
 		events: mask
 		data: C.epoll_data_t{
@@ -82,20 +82,20 @@ fn (mut en EpollNotifier) ctl(fd int, op int, mask u32) ? {
 }
 
 // add adds a file descriptor to the watch list
-fn (mut en EpollNotifier) add(fd int, events FdEventType, conf ...FdConfigFlags) ? {
+fn (mut en EpollNotifier) add(fd int, events FdEventType, conf ...FdConfigFlags) ! {
 	mask := flags_to_mask(events, ...conf)
-	en.ctl(fd, C.EPOLL_CTL_ADD, mask)?
+	en.ctl(fd, C.EPOLL_CTL_ADD, mask)!
 }
 
 // modify sets an existing entry in the watch list to the provided events and configuration
-fn (mut en EpollNotifier) modify(fd int, events FdEventType, conf ...FdConfigFlags) ? {
+fn (mut en EpollNotifier) modify(fd int, events FdEventType, conf ...FdConfigFlags) ! {
 	mask := flags_to_mask(events, ...conf)
-	en.ctl(fd, C.EPOLL_CTL_MOD, mask)?
+	en.ctl(fd, C.EPOLL_CTL_MOD, mask)!
 }
 
 // remove removes a file descriptor from the watch list
-fn (mut en EpollNotifier) remove(fd int) ? {
-	en.ctl(fd, C.EPOLL_CTL_DEL, 0)?
+fn (mut en EpollNotifier) remove(fd int) ! {
+	en.ctl(fd, C.EPOLL_CTL_DEL, 0)!
 }
 
 // wait waits to be notified of events on the watch list,
@@ -133,7 +133,7 @@ fn (mut en EpollNotifier) wait(timeout time.Duration) []FdEvent {
 
 // close closes the EpollNotifier,
 // any successive calls to add, modify, remove, and wait should fail
-fn (mut en EpollNotifier) close() ? {
+fn (mut en EpollNotifier) close() ! {
 	if C.close(en.epoll_fd) == -1 {
 		return error(os.posix_get_error_msg(C.errno))
 	}

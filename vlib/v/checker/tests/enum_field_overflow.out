@@ -1,4 +1,11 @@
-vlib/v/checker/tests/enum_field_overflow.vv:4:2: error: enum value overflows
+vlib/v/checker/tests/enum_field_overflow.vv:3:10: error: enum value `2147483647` overflows the enum type `int`, values of which have to be in [-2147483648, 2147483647]
+    1 | enum Color {
+    2 |     red
+    3 |     green = 2147483647
+      |             ~~~~~~~~~~
+    4 |     blue
+    5 | }
+vlib/v/checker/tests/enum_field_overflow.vv:4:2: error: enum value overflows type `int`, which has a maximum value of 2147483647
     2 |     red
     3 |     green = 2147483647
     4 |     blue

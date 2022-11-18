@@ -27,7 +27,7 @@ fn main() {
 	assert 'abc' == def()
 	abc_str1 := ptr_str(abc().str)
 	abc_str2 := ptr_str(abc().str)
-	println('abc_str1: $abc_str1')
-	println('abc_str2: $abc_str2')
+	println('abc_str1: ${abc_str1}')
+	println('abc_str2: ${abc_str2}')
 	assert abc_str1 != abc_str2
 }

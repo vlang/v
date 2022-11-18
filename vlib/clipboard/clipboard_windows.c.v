@@ -15,9 +15,9 @@ struct WndClassEx {
 	h_icon          C.HICON
 	h_cursor        C.HCURSOR
 	hbr_background  C.HBRUSH
-	lpsz_menu_name  &u16 // LPCWSTR
-	lpsz_class_name &u16
-	h_icon_sm       &u16
+	lpsz_menu_name  &u16 = unsafe { nil } // LPCWSTR
+	lpsz_class_name &u16 = unsafe { nil }
+	h_icon_sm       &u16 = unsafe { nil }
 }
 
 fn C.RegisterClassEx(class &WndClassEx) int
@@ -55,7 +55,7 @@ fn C.DestroyWindow(hwnd C.HWND)
 //
 // System "copy" and "paste" actions utilize the clipboard for temporary storage.
 [heap]
-struct Clipboard {
+pub struct Clipboard {
 	max_retries int
 	retry_delay int
 mut:

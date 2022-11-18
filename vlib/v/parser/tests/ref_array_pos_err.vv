@@ -1,0 +1,4 @@
+struct Foo {
+	b &[]u8
+	n int
+}

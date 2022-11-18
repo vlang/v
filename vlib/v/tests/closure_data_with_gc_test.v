@@ -1,7 +1,7 @@
 fn create_closure() fn () int {
 	x := 1234
 	c := fn [x] () int {
-		println(' >> x = $x')
+		println(' >> x = ${x}')
 		return x
 	}
 	return c

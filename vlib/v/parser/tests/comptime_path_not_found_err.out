@@ -1,0 +1,6 @@
+vlib/v/parser/tests/comptime_path_not_found_err.vv:2:15: error: template file "tempate.txt" not found
+    1 | fn main() {
+    2 |     tmp := $tmpl('tempate.txt')
+      |                  ~~~~~~~~~~~~~
+    3 |     a := tmp
+    4 | }

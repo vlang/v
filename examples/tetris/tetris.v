@@ -113,7 +113,7 @@ mut:
 	// Index of the rotation (0-3)
 	rotation_idx int
 	// gg context for drawing
-	gg          &gg.Context = voidptr(0)
+	gg          &gg.Context = unsafe { nil }
 	font_loaded bool
 	show_ghost  bool = true
 	// frame/time counters:
@@ -171,7 +171,7 @@ fn main() {
 		width: win_width
 		height: win_height
 		create_window: true
-		window_title: 'V Tetris' //
+		window_title: 'V Tetris'
 		user_data: game
 		frame_fn: frame
 		event_fn: on_event

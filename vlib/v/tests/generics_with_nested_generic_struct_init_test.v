@@ -1,11 +1,11 @@
 fn test_nested_generic_struct_init() {
 	mut list1 := &List<int>{}
 	println(list1)
-	assert '$list1'.contains('head: &nil')
+	assert '${list1}'.contains('head: &nil')
 
 	mut list2 := list_new<int>()
 	println(list2)
-	assert '$list2'.contains('head: &nil')
+	assert '${list2}'.contains('head: &nil')
 }
 
 struct List<T> {

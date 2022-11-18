@@ -10,7 +10,7 @@ import time
 #include <sys/ioctl.h>
 #include <signal.h>
 
-struct C.winsize {
+pub struct C.winsize {
 	ws_row u16
 	ws_col u16
 }
@@ -43,7 +43,7 @@ fn restore_terminal_state_signal(_ os.Signal) {
 
 fn restore_terminal_state() {
 	termios_reset()
-	mut c := ctx_ptr
+	mut c := unsafe { ctx_ptr }
 	if unsafe { c != 0 } {
 		c.paused = true
 		load_title()
@@ -51,7 +51,7 @@ fn restore_terminal_state() {
 	os.flush()
 }
 
-fn (mut ctx Context) termios_setup() ? {
+fn (mut ctx Context) termios_setup() ! {
 	// store the current title, so restore_terminal_state can get it back
 	save_title()
 
@@ -78,7 +78,7 @@ fn (mut ctx Context) termios_setup() ? {
 	}
 
 	if ctx.cfg.window_title != '' {
-		print('\x1b]0;$ctx.cfg.window_title\x07')
+		print('\x1b]0;${ctx.cfg.window_title}\x07')
 		flush_stdout()
 	}
 
@@ -90,7 +90,7 @@ fn (mut ctx Context) termios_setup() ? {
 		C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
 		// feature-test the SU spec
 		sx, sy := get_cursor_position()
-		print('$bsu$esu')
+		print('${bsu}${esu}')
 		flush_stdout()
 		ex, ey := get_cursor_position()
 		if sx == ex && sy == ey {
@@ -125,7 +125,7 @@ fn (mut ctx Context) termios_setup() ? {
 	C.atexit(restore_terminal_state)
 	os.signal_opt(.tstp, restore_terminal_state_signal) or {}
 	os.signal_opt(.cont, fn (_ os.Signal) {
-		mut c := ctx_ptr
+		mut c := unsafe { ctx_ptr }
 		if unsafe { c != 0 } {
 			c.termios_setup() or { panic(err) }
 			c.window_height, c.window_width = get_terminal_size()
@@ -140,7 +140,7 @@ fn (mut ctx Context) termios_setup() ? {
 	}) or {}
 	for code in ctx.cfg.reset {
 		os.signal_opt(code, fn (_ os.Signal) {
-			mut c := ctx_ptr
+			mut c := unsafe { ctx_ptr }
 			if unsafe { c != 0 } {
 				c.cleanup()
 			}
@@ -149,7 +149,7 @@ fn (mut ctx Context) termios_setup() ? {
 	}
 
 	os.signal_opt(.winch, fn (_ os.Signal) {
-		mut c := ctx_ptr
+		mut c := unsafe { ctx_ptr }
 		if unsafe { c != 0 } {
 			c.window_height, c.window_width = get_terminal_size()
 
@@ -233,7 +233,7 @@ fn (mut ctx Context) termios_loop() {
 		}
 		if !ctx.paused {
 			sw.restart()
-			if ctx.cfg.event_fn != voidptr(0) {
+			if ctx.cfg.event_fn != unsafe { nil } {
 				unsafe {
 					len := C.read(C.STDIN_FILENO, &u8(ctx.read_buf.data) + ctx.read_buf.len,
 						ctx.read_buf.cap - ctx.read_buf.len)
@@ -289,7 +289,7 @@ fn single_char(buf string) &Event {
 	mut event := &Event{
 		typ: .key_down
 		ascii: ch
-		code: KeyCode(ch)
+		code: unsafe { KeyCode(ch) }
 		utf8: ch.ascii_str()
 	}
 
@@ -305,7 +305,7 @@ fn single_char(buf string) &Event {
 				typ: event.typ
 				ascii: event.ascii
 				utf8: event.utf8
-				code: KeyCode(96 | ch)
+				code: unsafe { KeyCode(96 | ch) }
 				modifiers: .ctrl
 			}
 		}
@@ -314,7 +314,7 @@ fn single_char(buf string) &Event {
 				typ: event.typ
 				ascii: event.ascii
 				utf8: event.utf8
-				code: KeyCode(32 | ch)
+				code: unsafe { KeyCode(32 | ch) }
 				modifiers: .shift
 			}
 		}
@@ -330,7 +330,7 @@ fn multi_char(buf string) (&Event, int) {
 	mut event := &Event{
 		typ: .key_down
 		ascii: ch
-		code: KeyCode(ch)
+		code: unsafe { KeyCode(ch) }
 		utf8: buf
 	}
 
@@ -346,7 +346,7 @@ fn multi_char(buf string) (&Event, int) {
 				typ: event.typ
 				ascii: event.ascii
 				utf8: event.utf8
-				code: KeyCode(96 | ch)
+				code: unsafe { KeyCode(96 | ch) }
 				modifiers: .ctrl
 			}
 		}
@@ -355,7 +355,7 @@ fn multi_char(buf string) (&Event, int) {
 				typ: event.typ
 				ascii: event.ascii
 				utf8: event.utf8
-				code: KeyCode(32 | ch)
+				code: unsafe { KeyCode(32 | ch) }
 				modifiers: .shift
 			}
 		}
@@ -447,7 +447,7 @@ fn escape_sequence(buf_ string) (&Event, int) {
 		match typ {
 			0...31 {
 				last := buf[buf.len - 1]
-				button := if lo < 3 { MouseButton(lo + 1) } else { MouseButton.unknown }
+				button := if lo < 3 { unsafe { MouseButton(lo + 1) } } else { MouseButton.unknown }
 				event := if last == `m` || lo == 3 {
 					EventType.mouse_up
 				} else {
@@ -465,7 +465,7 @@ fn escape_sequence(buf_ string) (&Event, int) {
 			}
 			32...63 {
 				button, event := if lo < 3 {
-					MouseButton(lo + 1), EventType.mouse_drag
+					unsafe { MouseButton(lo + 1), EventType.mouse_drag }
 				} else {
 					MouseButton.unknown, EventType.mouse_move
 				}

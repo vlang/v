@@ -10,15 +10,15 @@ import v.token
 pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	return p.check_expr(precedence) or {
 		if token.is_decl(p.tok.kind) && p.disallow_declarations_in_script_mode() {
-			return ast.empty_expr()
+			return ast.empty_expr
 		}
-		p.error_with_pos('invalid expression: unexpected $p.tok', p.tok.pos())
+		p.unexpected(prepend_msg: 'invalid expression:')
 	}
 }
 
-pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
-	p.trace_parser('expr($precedence)')
-	mut node := ast.empty_expr()
+pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
+	p.trace_parser('expr(${precedence})')
+	mut node := ast.empty_expr
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false
 	if !p.pref.is_fmt {
@@ -47,9 +47,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 		}
 		.name, .question {
 			if p.tok.lit == 'sql' && p.peek_tok.kind == .name {
-				p.inside_match = true // reuse the same var for perf instead of inside_sql TODO rename
 				node = p.sql_expr()
-				p.inside_match = false
 			} else if p.tok.lit == 'map' && p.peek_tok.kind == .lcbr && !(p.builtin_mod
 				&& p.file_base in ['map.v', 'map_d_gcboehm_opt.v']) {
 				p.error_with_pos("deprecated map syntax, use syntax like `{'age': 20}`",
@@ -91,7 +89,9 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 					return p.if_expr(true)
 				}
 				else {
-					return p.error_with_pos('unexpected `$`', p.peek_tok.pos())
+					return p.unexpected_with_pos(p.peek_tok.pos(),
+						got: '`$`'
+					)
 				}
 			}
 		}
@@ -114,7 +114,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 				node = p.prefix_expr()
 			}
 		}
-		.key_go {
+		.key_go, .key_spawn {
 			mut go_expr := p.go_expr()
 			go_expr.is_expr = true
 			node = go_expr
@@ -131,6 +131,12 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 		}
 		.key_select {
 			node = p.select_expr()
+		}
+		.key_nil {
+			node = ast.Nil{
+				pos: p.tok.pos()
+			}
+			p.next()
 		}
 		.number {
 			node = p.parse_number_literal()
@@ -288,8 +294,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			st := p.parse_type()
 			p.check(.comma)
 			if p.tok.kind != .name {
-				return p.error_with_pos('unexpected `$p.tok.lit`, expecting struct field',
-					p.tok.pos())
+				return p.unexpected(got: '`${p.tok.lit}`', additional_msg: 'expecting struct field')
 			}
 			field := p.tok.lit
 			p.next()
@@ -351,10 +356,15 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			}
 		}
 		else {
+			if p.tok.kind == .key_struct && p.peek_tok.kind == .lcbr {
+				// Anonymous struct
+				p.next()
+				return p.struct_init('', .anon)
+			}
 			if p.tok.kind != .eof && !(p.tok.kind == .rsbr && p.inside_asm) {
 				// eof should be handled where it happens
-				return none
-				// return p.error_with_pos('invalid expression: unexpected $p.tok', p.tok.pos())
+				return error('none')
+				// return p.unexpected(prepend_msg: 'invalid expression: ')
 			}
 		}
 	}
@@ -377,13 +387,11 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 	}
 	// Infix
 	for precedence < p.tok.precedence() {
-		if p.tok.kind == .dot { //&& (p.tok.line_nr == p.prev_tok.line_nr
-			// TODO fix a bug with prev_tok.last_line
-			//|| p.prev_tok.pos().last_line == p.tok.line_nr) {
-			// if p.fileis('vcache.v') {
-			// p.warn('tok.line_nr = $p.tok.line_nr; prev_tok.line_nr=$p.prev_tok.line_nr;
-			// prev_tok.last_line=$p.prev_tok.pos().last_line')
-			//}
+		if p.tok.kind == .dot {
+			// no spaces or line break before dot in map_init
+			if p.inside_map_init && p.tok.pos - p.prev_tok.pos > p.prev_tok.len {
+				return node
+			}
 			node = p.dot_expr(node)
 			if p.name_error {
 				return node
@@ -456,12 +464,12 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			// detect `f(x++)`, `a[x++]`
 			if p.peek_tok.kind in [.rpar, .rsbr] {
 				if !p.inside_ct_if_expr {
-					p.warn_with_pos('`$p.tok.kind` operator can only be used as a statement',
-						p.peek_tok.pos())
+					p.warn_with_pos('`${p.tok.kind}` operator can only be used as a statement',
+						p.tok.pos())
 				}
 			}
 			if p.tok.kind in [.inc, .dec] && p.prev_tok.line_nr != p.tok.line_nr {
-				p.error_with_pos('$p.tok must be on the same line as the previous token',
+				p.error_with_pos('${p.tok} must be on the same line as the previous token',
 					p.tok.pos())
 			}
 			if mut node is ast.IndexExpr {
@@ -498,7 +506,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	if p.inside_if_cond {
 		p.if_cond_comments << p.eat_comments()
 	}
-	mut right := ast.empty_expr()
+	mut right := ast.empty_expr
 	prev_expecting_type := p.expecting_type
 	if op in [.key_is, .not_is] {
 		p.expecting_type = true
@@ -524,22 +532,8 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	// allow `x := <-ch or {...}` to handle closed channel
 	if op == .arrow {
 		if p.tok.kind == .key_orelse {
-			was_inside_or_expr := p.inside_or_expr
-			p.inside_or_expr = true
-			p.next()
-			p.open_scope()
-			p.scope.register(ast.Var{
-				name: 'err'
-				typ: ast.error_type
-				pos: p.tok.pos()
-				is_used: true
-				is_stack_obj: true
-			})
 			or_kind = .block
-			or_stmts = p.parse_block_no_scope(false)
-			or_pos = or_pos.extend(p.prev_tok.pos())
-			p.close_scope()
-			p.inside_or_expr = was_inside_or_expr
+			or_stmts, or_pos = p.or_block(.with_err_var)
 		}
 		if p.tok.kind == .question {
 			p.next()
@@ -604,10 +598,14 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 		}
 		if mut right is ast.ParExpr {
 			if right.expr is ast.StructInit {
-				p.note_with_pos('unnecessary `()`, use `&$right.expr` instead of `&($right.expr)`',
+				p.note_with_pos('unnecessary `()`, use `&${right.expr}` instead of `&(${right.expr})`',
 					right.pos)
 				right = right.expr
 			}
+		}
+		if mut right is ast.TypeNode {
+			right.typ = right.typ.ref()
+			return right
 		}
 	}
 	mut or_stmts := []ast.Stmt{}
@@ -616,22 +614,8 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 	// allow `x := <-ch or {...}` to handle closed channel
 	if op == .arrow {
 		if p.tok.kind == .key_orelse {
-			was_inside_or_expr := p.inside_or_expr
-			p.inside_or_expr = true
-			p.next()
-			p.open_scope()
-			p.scope.register(ast.Var{
-				name: 'err'
-				typ: ast.error_type
-				pos: p.tok.pos()
-				is_used: true
-				is_stack_obj: true
-			})
 			or_kind = .block
-			or_stmts = p.parse_block_no_scope(false)
-			or_pos = or_pos.extend(p.prev_tok.pos())
-			p.close_scope()
-			p.inside_or_expr = was_inside_or_expr
+			or_stmts, or_pos = p.or_block(.with_err_var)
 		}
 		if p.tok.kind == .question {
 			p.next()

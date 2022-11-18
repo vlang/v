@@ -7,6 +7,7 @@ module util
 import os
 import strings
 import term
+import v.errors
 import v.token
 import v.mathutil as mu
 
@@ -66,15 +67,18 @@ fn color(kind string, msg string) string {
 	if kind.contains('notice') {
 		return term.yellow(msg)
 	}
+	if kind.contains('details') {
+		return term.bright_blue(msg)
+	}
 	return term.magenta(msg)
 }
 
 const normalised_workdir = os.wd_at_startup.replace('\\', '/') + '/'
 
-// formatted_error - `kind` may be 'error' or 'warn'
-pub fn formatted_error(kind string, omsg string, filepath string, pos token.Pos) string {
-	emsg := omsg.replace('main.', '')
-	mut path := filepath
+// path_styled_for_error_messages returns the modified file path according
+// to the user's preference (`VERROR_PATHS` env-var)
+pub fn path_styled_for_error_messages(path_ string) string {
+	mut path := path_
 	verror_paths_override := os.getenv('VERROR_PATHS')
 	if verror_paths_override == 'absolute' {
 		path = os.real_path(path)
@@ -86,9 +90,15 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Pos)
 			path = path.replace_once(util.normalised_workdir, '')
 		}
 	}
+	return path
+}
 
+// formatted_error - `kind` may be 'error' or 'warn'
+pub fn formatted_error(kind string, omsg string, filepath string, pos token.Pos) string {
+	emsg := omsg.replace('main.', '')
+	path := path_styled_for_error_messages(filepath)
 	position := if filepath.len > 0 {
-		'$path:${pos.line_nr + 1}:${mu.max(1, pos.col + 1)}:'
+		'${path}:${pos.line_nr + 1}:${mu.max(1, pos.col + 1)}:'
 	} else {
 		''
 	}
@@ -96,9 +106,9 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Pos)
 	final_position := bold(position)
 	final_kind := bold(color(kind, kind))
 	final_msg := emsg
-	final_context := if scontext.len > 0 { '\n$scontext' } else { '' }
+	final_context := if scontext.len > 0 { '\n${scontext}' } else { '' }
 
-	return '$final_position $final_kind $final_msg$final_context'.trim_space()
+	return '${final_position} ${final_kind} ${final_msg}${final_context}'.trim_space()
 }
 
 [heap]
@@ -175,7 +185,7 @@ pub fn source_file_context(kind string, filepath string, pos token.Pos) []string
 [noreturn]
 pub fn verror(kind string, s string) {
 	final_kind := bold(color(kind, kind))
-	eprintln('$final_kind: $s')
+	eprintln('${final_kind}: ${s}')
 	exit(1)
 }
 
@@ -188,4 +198,12 @@ pub fn vlines_escape_path(path string, ccompiler string) string {
 		return '../../../../../..' + cescaped_path(os.real_path(path))
 	}
 	return cescaped_path(os.real_path(path))
+}
+
+pub fn show_compiler_message(kind string, err errors.CompilerMessage) {
+	ferror := formatted_error(kind, err.message, err.file_path, err.pos)
+	eprintln(ferror)
+	if err.details.len > 0 {
+		eprintln(bold('Details: ') + color('details', err.details))
+	}
 }

@@ -48,7 +48,7 @@ fn tag_to_file(l Level) string {
 	}
 }
 
-// level_from_tag returns the log level from the given string if matches.
+// level_from_tag returns the log level from the given string if it matches.
 pub fn level_from_tag(tag string) ?Level {
 	return match tag {
 		'DISABLED' { Level.disabled }
@@ -61,6 +61,16 @@ pub fn level_from_tag(tag string) ?Level {
 	}
 }
 
+// target_from_label returns the log target from the given string if it matches.
+pub fn target_from_label(label string) ?LogTarget {
+	return match label {
+		'console' { LogTarget.console }
+		'file' { LogTarget.file }
+		'both' { LogTarget.both }
+		else { none }
+	}
+}
+
 // Logger is an interface that describes a generic Logger
 pub interface Logger {
 mut:
@@ -69,6 +79,7 @@ mut:
 	warn(s string)
 	info(s string)
 	debug(s string)
+	set_level(level Level)
 }
 
 // Log represents a logging object
@@ -117,7 +128,7 @@ pub fn (mut l Log) set_output_path(output_file_path string) {
 	l.output_target = .file
 	l.output_file_name = os.join_path(os.real_path(output_file_path), l.output_label)
 	ofile := os.open_append(l.output_file_name) or {
-		panic('error while opening log file $l.output_file_name for appending')
+		panic('error while opening log file ${l.output_file_name} for appending')
 	}
 	l.ofile = ofile
 }
@@ -145,14 +156,14 @@ pub fn (mut l Log) close() {
 fn (mut l Log) log_file(s string, level Level) {
 	timestamp := time.now().format_ss()
 	e := tag_to_file(level)
-	l.ofile.writeln('$timestamp [$e] $s') or { panic(err) }
+	l.ofile.writeln('${timestamp} [${e}] ${s}') or { panic(err) }
 }
 
 // log_cli writes log line `s` with `level` to stdout.
 fn (l &Log) log_cli(s string, level Level) {
 	timestamp := time.now().format_ss()
 	e := tag_to_cli(level)
-	println('$timestamp [$e] $s')
+	println('${timestamp} [${e}] ${s}')
 }
 
 // send_output writes log line `s` with `level` to either the log file or the console
@@ -168,12 +179,13 @@ pub fn (mut l Log) send_output(s &string, level Level) {
 
 // fatal logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.fatal` category.
 // Note that this method performs a panic at the end, even if log level is not enabled.
+[noreturn]
 pub fn (mut l Log) fatal(s string) {
 	if int(l.level) >= int(Level.fatal) {
 		l.send_output(s, .fatal)
 		l.ofile.close()
 	}
-	panic('$l.output_label: $s')
+	panic('${l.output_label}: ${s}')
 }
 
 // error logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.error` category.

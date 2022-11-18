@@ -9,12 +9,13 @@ import v.pref
 
 pub struct Walker {
 pub mut:
-	table        &ast.Table
+	table        &ast.Table = unsafe { nil }
 	used_fns     map[string]bool // used_fns['println'] == true
 	used_consts  map[string]bool // used_consts['os.args'] == true
 	used_globals map[string]bool
+	used_structs map[string]bool
 	n_asserts    int
-	pref         &pref.Preferences
+	pref         &pref.Preferences = unsafe { nil }
 mut:
 	files       []&ast.File
 	all_fns     map[string]ast.FnDecl
@@ -24,14 +25,14 @@ mut:
 
 pub fn (mut w Walker) mark_fn_as_used(fkey string) {
 	$if trace_skip_unused_marked ? {
-		eprintln('    fn > |$fkey|')
+		eprintln('    fn > |${fkey}|')
 	}
 	w.used_fns[fkey] = true
 }
 
 pub fn (mut w Walker) mark_const_as_used(ckey string) {
 	$if trace_skip_unused_marked ? {
-		eprintln('    const > |$ckey|')
+		eprintln('    const > |${ckey}|')
 	}
 	if w.used_consts[ckey] {
 		return
@@ -43,7 +44,7 @@ pub fn (mut w Walker) mark_const_as_used(ckey string) {
 
 pub fn (mut w Walker) mark_global_as_used(ckey string) {
 	$if trace_skip_unused_marked ? {
-		eprintln('  global > |$ckey|')
+		eprintln('  global > |${ckey}|')
 	}
 	if w.used_globals[ckey] {
 		return
@@ -57,7 +58,7 @@ pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
 	for fn_name in all_fn_root_names {
 		if fn_name !in w.used_fns {
 			$if trace_skip_unused_roots ? {
-				println('>>>> $fn_name uses: ')
+				println('>>>> ${fn_name} uses: ')
 			}
 			w.fn_decl(mut w.all_fns[fn_name])
 		}
@@ -106,8 +107,11 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 		}
 		ast.AssertStmt {
 			if node.is_used {
-				w.expr(node.expr)
 				w.n_asserts++
+				w.expr(node.expr)
+				if node.extra !is ast.EmptyExpr {
+					w.expr(node.extra)
+				}
 			}
 		}
 		ast.AssignStmt {
@@ -353,6 +357,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 		}
 		ast.None {}
+		ast.Nil {}
 		ast.ParExpr {
 			w.expr(node.expr)
 		}
@@ -398,17 +403,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			sym := w.table.sym(node.typ)
 			if sym.kind == .struct_ {
 				info := sym.info as ast.Struct
-				for ifield in info.fields {
-					if ifield.has_default_expr {
-						w.expr(ifield.default_expr)
-					}
-					if ifield.typ != 0 {
-						fsym := w.table.sym(ifield.typ)
-						if fsym.kind == .map {
-							w.table.used_maps++
-						}
-					}
-				}
+				w.a_struct_info(sym.name, info)
 			}
 			if node.has_update_expr {
 				w.expr(node.update_expr)
@@ -456,6 +451,27 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.expr)
 		}
 		ast.NodeError {}
+	}
+}
+
+pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
+	if sname in w.used_structs {
+		return
+	}
+	w.used_structs[sname] = true
+	for ifield in info.fields {
+		if ifield.has_default_expr {
+			w.expr(ifield.default_expr)
+		}
+		if ifield.typ != 0 {
+			fsym := w.table.sym(ifield.typ)
+			if fsym.kind == .map {
+				w.table.used_maps++
+			}
+			if fsym.kind == .struct_ {
+				w.a_struct_info(fsym.name, fsym.struct_info())
+			}
+		}
 	}
 }
 

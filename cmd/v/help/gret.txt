@@ -2,7 +2,8 @@ Usage:
   v gret [options] PATH [PATH]
 
 Description:
-  Dump and/or compare rendered frames of `gg` based apps
+  Dump and/or compare rendered frames of graphical apps
+  both external and `gg` based apps is supported.
 
 Examples:
   Generate screenshots to `/tmp/test`
@@ -12,8 +13,11 @@ Examples:
   Compare screenshots in `/tmp/src` to existing screenshots in `/tmp/dst`
     v gret --compare-only /tmp/src /tmp/dst
 
-
 Options:
   -h, --help                Show this help text.
   -v, --verbose             Be verbose about the tool's progress.
   -c, --compare-only        Don't generate screenshots - only compare input directories
+  -r, --root-path           Root path of the comparison
+  -t, --toml-config         Path or string with TOML configuration
+
+  --version                 output version information and exit

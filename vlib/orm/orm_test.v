@@ -83,19 +83,19 @@ fn test_orm() {
 		select count from User
 	}
 	assert nr_all_users == 3
-	println('nr_all_users=$nr_all_users')
+	println('nr_all_users=${nr_all_users}')
 	//
 	nr_users1 := sql db {
 		select count from User where id == 1
 	}
 	assert nr_users1 == 1
-	println('nr_users1=$nr_users1')
+	println('nr_users1=${nr_users1}')
 	//
 	nr_peters := sql db {
 		select count from User where id == 2 && name == 'Peter'
 	}
 	assert nr_peters == 1
-	println('nr_peters=$nr_peters')
+	println('nr_peters=${nr_peters}')
 	//
 	nr_peters2 := sql db {
 		select count from User where id == 2 && name == name
@@ -359,6 +359,12 @@ fn test_orm() {
 	// its microseconds set, while the value retrieved from the DB
 	// has them zeroed, because the db field resolution is seconds.
 	assert updated_time_mod.created.format_ss() == t.format_ss()
+
+	para_select := sql db {
+		select from User where (name == 'Sam' && is_customer == true) || id == 1
+	}
+
+	assert para_select[0] == first
 
 	sql db {
 		drop table Module

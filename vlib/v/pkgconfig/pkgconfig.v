@@ -16,6 +16,7 @@ const (
 		'/usr/share/pkgconfig',
 		'/opt/homebrew/lib/pkgconfig', // Brew on macOS
 		'/usr/local/libdata/pkgconfig', // FreeBSD
+		'/usr/lib/i386-linux-gnu/pkgconfig', // Debian 32bit
 	]
 	version       = '0.3.2'
 )
@@ -45,6 +46,7 @@ pub mut:
 	requires         []string
 	requires_private []string
 	conflicts        []string
+	loaded           []string
 }
 
 fn (mut pc PkgConfig) parse_list_no_comma(s string) []string {
@@ -70,13 +72,13 @@ fn (mut pc PkgConfig) parse_list(s string) []string {
 }
 
 fn (mut pc PkgConfig) parse_line(s string) string {
-	mut r := s.trim_space()
+	mut r := s.split('#')[0]
 	for r.contains('\${') {
 		tok0 := r.index('\${') or { break }
 		mut tok1 := r[tok0..].index('}') or { break }
 		tok1 += tok0
 		v := r[tok0 + 2..tok1]
-		r = r.replace('\${$v}', pc.vars[v])
+		r = r.replace('\${${v}}', pc.vars[v])
 	}
 	return r.trim_space()
 }
@@ -148,13 +150,13 @@ fn (mut pc PkgConfig) resolve(pkgname string) ?string {
 			pc.paths << '.'
 		}
 		for path in pc.paths {
-			file := '$path/${pkgname}.pc'
+			file := '${path}/${pkgname}.pc'
 			if os.exists(file) {
 				return file
 			}
 		}
 	}
-	return error('Cannot find "$pkgname" pkgconfig file')
+	return error('Cannot find "${pkgname}" pkgconfig file')
 }
 
 pub fn atleast(v string) bool {
@@ -198,19 +200,26 @@ fn (mut pc PkgConfig) load_requires() ? {
 }
 
 fn (mut pc PkgConfig) load_require(dep string) ? {
+	if dep in pc.loaded {
+		return
+	}
+	pc.loaded << dep
 	mut pcdep := PkgConfig{
 		paths: pc.paths
+		loaded: pc.loaded
 	}
 	depfile := pcdep.resolve(dep) or {
 		if pc.options.debug {
-			eprintln('cannot resolve $dep')
+			eprintln('cannot resolve ${dep}')
 		}
-		return error('could not resolve dependency $dep')
+		return error('could not resolve dependency ${dep}')
 	}
 	if !pcdep.parse(depfile) {
-		return error('required file "$depfile" could not be parsed')
+		return error('required file "${depfile}" could not be parsed')
 	}
-	pcdep.load_requires()?
+	if !pc.options.norecurse {
+		pcdep.load_requires()?
+	}
 	pc.extend(pcdep)?
 }
 
@@ -250,7 +259,7 @@ pub fn load(pkgname string, options Options) ?&PkgConfig {
 	pc.load_paths()
 	file := pc.resolve(pkgname) or { return err }
 	if !pc.parse(file) {
-		return error('file "$file" could not be parsed')
+		return error('file "${file}" could not be parsed')
 	}
 	if !options.norecurse {
 		pc.load_requires()?

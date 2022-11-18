@@ -1,5 +1,5 @@
 fn abc() {
-	go fn () {}()
+	spawn fn () {}()
 }
 
 fn test_if_threads() {

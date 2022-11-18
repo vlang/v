@@ -56,13 +56,13 @@ fn (ver RawVersion) is_missing(typ int) bool {
 fn (raw_ver RawVersion) coerce() ?Version {
 	ver := raw_ver.complete()
 	if !is_valid_number(ver.raw_ints[semver.ver_major]) {
-		return error('Invalid major version: $ver.raw_ints[ver_major]')
+		return error('Invalid major version: ${ver.raw_ints}[ver_major]')
 	}
 	return ver.to_version()
 }
 
 fn (raw_ver RawVersion) complete() RawVersion {
-	mut raw_ints := raw_ver.raw_ints
+	mut raw_ints := raw_ver.raw_ints.clone()
 	for raw_ints.len < 3 {
 		raw_ints << '0'
 	}

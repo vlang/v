@@ -63,8 +63,8 @@ fn waste_mem(n int, mut sem sync.Semaphore) {
 fn test_keep_args_alive_attribute() {
 	mut sem := sync.new_semaphore()
 	$if gcboehm ? {
-		go waste_mem(-1, mut sem)
-		go waste_mem(-1, mut sem)
+		spawn waste_mem(-1, mut sem)
+		spawn waste_mem(-1, mut sem)
 		waste_mem(10000, mut sem)
 	}
 	r := &voidptr(set_vals())

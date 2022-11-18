@@ -18,7 +18,7 @@ The benefits of using V for web:
 
 _Please note that V and Vweb are at a very early stage and are changing rapidly._
 
-The code is available <a href='https://github.com/vlang/v/tree/master/tutorials/code/blog'>here</a>.
+The code is available [here](./code/blog).
 
 ### Installing V
 
@@ -175,7 +175,7 @@ that's done by the `$vweb.html()` line.
 
 Now let's display some articles!
 
-We'll be using V's builtin ORM and a SQLite database.
+We'll be using V's built-in ORM and a SQLite database.
 (V ORM will also support MySQL, Postgre, and SQL Server soon.)
 
 Add a SQLite handle to `App`:
@@ -384,12 +384,11 @@ in V is very simple:
 ```v oksyntax
 // article.v
 import vweb
-import json
 
 ['/articles'; get]
 pub fn (mut app App) articles() vweb.Result {
 	articles := app.find_all_articles()
-	return app.json(json.encode(articles))
+	return app.json(articles)
 }
 ```
 

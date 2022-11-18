@@ -17,7 +17,8 @@ These are:
 	live         - Compile hot reload examples with the ´-live´ flag set and verify formatting.
 	ignore       - Ignore the example, useful for examples that just use the syntax highlighting
 	failcompile  - Known failing compilation. Useful for examples demonstrating compiler errors.
-	oksyntax     - Should parse and be formatted but may not compile. Useful for partial examples.
-	badsyntax    - Known bad syntax, it should not even parse.
+	okfmt        - Should only be formatted, but it can refer to invalid modules, missing functions etc. Useful for partial examples.
+	oksyntax     - Should parse, and be formatted, but may not compile. Useful for partial examples.
+	badsyntax    - Known bad syntax, it should NOT even parse.
 	wip          - Like ignore; a planned feature; easy to search.
 	nofmt        - Disable fmt verification for individual code blocks.

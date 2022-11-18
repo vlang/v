@@ -17,6 +17,10 @@ pub fn ptr_str(ptr voidptr) string {
 	return buf1
 }
 
+// pub fn nil_str(x voidptr) string {
+// return 'nil'
+//}
+
 // str returns string equivalent of x
 pub fn (x isize) str() string {
 	return i64(x).str()
@@ -173,6 +177,9 @@ pub fn (nn i64) str() string {
 		mut d := i64(0)
 		if n == 0 {
 			return '0'
+		} else if n == i64(-9223372036854775807 - 1) {
+			// math.min_i64
+			return '-9223372036854775808'
 		}
 		max := 20
 		mut buf := malloc_noscan(max + 1)
@@ -563,7 +570,7 @@ pub fn (b []u8) byterune() ?rune {
 // repeat returns a new string with `count` number of copies of the byte it was called on.
 pub fn (b u8) repeat(count int) string {
 	if count < 0 {
-		panic('byte.repeat: count is negative: $count')
+		panic('byte.repeat: count is negative: ${count}')
 	} else if count == 0 {
 		return ''
 	} else if count == 1 {

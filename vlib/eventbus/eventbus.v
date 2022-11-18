@@ -4,12 +4,12 @@ pub type EventHandlerFn = fn (receiver voidptr, args voidptr, sender voidptr)
 
 pub struct Publisher {
 mut:
-	registry &Registry
+	registry &Registry = unsafe { nil }
 }
 
 pub struct Subscriber {
 mut:
-	registry &Registry
+	registry &Registry = unsafe { nil }
 }
 
 struct Registry {
@@ -20,15 +20,15 @@ mut:
 struct EventHandler {
 	name     string
 	handler  EventHandlerFn
-	receiver voidptr = voidptr(0)
+	receiver voidptr = unsafe { nil }
 	once     bool
 }
 
 pub struct EventBus {
 pub mut:
-	registry   &Registry
-	publisher  &Publisher
-	subscriber &Subscriber
+	registry   &Registry   = unsafe { nil }
+	publisher  &Publisher  = unsafe { nil }
+	subscriber &Subscriber = unsafe { nil }
 }
 
 pub fn new() &EventBus {
