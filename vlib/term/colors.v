@@ -47,6 +47,14 @@ pub fn underline(msg string) string {
 	return format(msg, '4', '24')
 }
 
+pub fn slow_blink(msg string) string {
+	return format(msg, '5', '25')
+}
+
+pub fn rapid_blink(msg string) string {
+	return format(msg, '6', '26')
+}
+
 pub fn inverse(msg string) string {
 	return format(msg, '7', '27')
 }
