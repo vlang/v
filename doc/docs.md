@@ -1773,7 +1773,7 @@ mut:
 
 fn (mut iter SquareIterator) next() ?int {
 	if iter.idx >= iter.arr.len {
-		return error('')
+		return none
 	}
 	defer {
 		iter.idx++
