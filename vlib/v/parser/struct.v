@@ -599,7 +599,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			from_mod_typ := p.parse_type()
 			from_mod_name := '${mod_name}.${p.prev_tok.lit}'
 			if from_mod_name.is_lower() {
-				p.error_with_pos('The interface name need to have the pascal case', p.prev_tok.pos())
+				p.error_with_pos('the interface name need to have the pascal case', p.prev_tok.pos())
 				break
 			}
 			comments := p.eat_comments()
