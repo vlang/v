@@ -18,7 +18,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		c.cur_orm_ts = old_ts
 	}
 	if sym.info !is ast.Struct {
-		c.error('The table symbol `${sym.name}` has to be a struct', node.table_expr.pos)
+		c.error('the table symbol `${sym.name}` has to be a struct', node.table_expr.pos)
 		return ast.void_type
 	}
 	info := sym.info as ast.Struct
@@ -106,7 +106,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 
 	if node.or_expr.kind == .block {
 		if node.or_expr.stmts.len == 0 {
-			c.error('Or block needs to return a default value', node.or_expr.pos)
+			c.error('or block needs to return a default value', node.or_expr.pos)
 		}
 		if node.or_expr.stmts.len > 0 && node.or_expr.stmts.last() is ast.ExprStmt {
 			c.expected_or_type = node.typ

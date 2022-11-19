@@ -273,7 +273,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								if left_type in ast.unsigned_integer_type_idxs {
 									if mut right is ast.IntegerLiteral {
 										if right.val[0] == `-` {
-											c.error('Cannot assign negative value to unsigned integer type',
+											c.error('cannot assign negative value to unsigned integer type',
 												right.pos)
 										}
 									}
@@ -324,7 +324,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				if left_type in ast.unsigned_integer_type_idxs {
 					if mut right is ast.IntegerLiteral {
 						if right.val[0] == `-` {
-							c.error('Cannot assign negative value to unsigned integer type',
+							c.error('cannot assign negative value to unsigned integer type',
 								right.pos)
 						}
 					}
