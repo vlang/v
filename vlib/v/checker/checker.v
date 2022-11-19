@@ -3544,8 +3544,12 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 				&& (node.right.typ == ast.bool_type_idx || (right_sym.kind == .enum_
 				&& !(right_sym.info as ast.Enum).is_flag
 				&& !(right_sym.info as ast.Enum).uses_exprs)) {
-				c.error('cannot take address of field in struct `${c.table.type_to_str(node.right.expr_type)}`, which is tagged as `[minify]`',
+				c.error('cannot take the address of field in struct `${c.table.type_to_str(node.right.expr_type)}`, which is tagged as `[minify]`',
 					node.pos.extend(node.right.pos))
+			}
+
+			if node.right.typ.has_flag(.optional) {
+				c.error('cannot take the address of an optional field', node.pos.extend(node.right.pos))
 			}
 		}
 	}
@@ -3562,7 +3566,7 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		}
 		if mut node.right is ast.Ident {
 			if node.right.kind == .constant && !c.inside_unsafe && c.pref.experimental {
-				c.warn('cannot take an address of const outside `unsafe`', node.right.pos)
+				c.warn('cannot take the address of const outside `unsafe`', node.right.pos)
 			}
 		}
 		if node.right is ast.SelectorExpr {
