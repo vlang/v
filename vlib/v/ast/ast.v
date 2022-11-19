@@ -562,10 +562,11 @@ pub mut:
 	end_comments  []Comment // comments *after* header declarations. E.g.: `fn C.C_func(x int) int // Comment`
 	next_comments []Comment // comments that are one line after the decl; used for InterfaceDecl
 	//
-	source_file &File  = unsafe { nil }
-	scope       &Scope = unsafe { nil }
-	label_names []string
-	pos         token.Pos // function declaration position
+	source_file    &File  = unsafe { nil }
+	scope          &Scope = unsafe { nil }
+	label_names    []string
+	pos            token.Pos // function declaration position
+	return_ref_ids []int
 }
 
 // break, continue
@@ -707,6 +708,7 @@ pub mut:
 	expr     Expr
 	typ      Type
 	comments []Comment
+	ref_id   int
 }
 
 pub struct GlobalDecl {

@@ -35,10 +35,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		return
 	}
 	node.ninstances++
-	// save all the state that fn_decl or inner  statements/expressions
+	// save all the state that fn_decl or inner statements/expressions
 	// could potentially modify, since functions can be nested, due to
 	// anonymous function support, and ensure that it is restored, when
 	// fn_decl returns:
+	c.table.refs = []
 	prev_fn_scope := c.fn_scope
 	prev_in_for_count := c.in_for_count
 	prev_inside_defer := c.inside_defer
@@ -216,7 +217,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	if node.language == .v {
 		// Make sure all types are valid
-		for mut param in node.params {
+		for i, mut param in node.params {
 			c.ensure_type_exists(param.typ, param.type_pos) or { return }
 			if reserved_type_names_chk.matches(param.name) {
 				c.error('invalid use of reserved type `${param.name}` as a parameter name',
@@ -259,6 +260,18 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 						fn_generic_names := node.generic_names.join(', ')
 						c.error('generic type name `${name}` is not mentioned in fn `${node.name}[${fn_generic_names}]`',
 							param.type_pos)
+					}
+				}
+			}
+			if param.typ.is_ptr() {
+				mut var := node.scope.find(param.name) or {
+					c.error('cannot find variable `${param.name}`', param.pos)
+					return
+				}
+				if mut var is ast.Var {
+					var.ref_id = c.table.new_ref_id(ast.ParamSrc{ idx: i })
+					if c.mod == 'main' {
+						println('new_ref: ${var.name} [${var.ref_id}]: param(${i})')
 					}
 				}
 			}
@@ -573,6 +586,11 @@ fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func ast.
 
 fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
 	fn_name := node.name
+	defer {
+		c.referenced = ast.NoSrc{} // todo: fn result
+	}
+	old_referencing := c.referencing
+	c.referencing = false
 	if fn_name == 'main' {
 		c.error('the `main` function cannot be called in the program', node.pos)
 	}
@@ -1235,7 +1253,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.warn('automatic referencing/dereferencing is deprecated and will be removed soon (got: ${arg_typ.nr_muls()} references, expected: ${param.typ.nr_muls()} references)',
 				call_arg.pos)
 		}
+		if c.referencing {
+			// todo: tell the ref that it was passed to a function
+		}
 	}
+	c.referencing = old_referencing
 	if func.generic_names.len != node.concrete_types.len {
 		// no type arguments given in call, attempt implicit instantiation
 		c.infer_fn_generic_types(func, mut node)

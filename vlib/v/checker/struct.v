@@ -457,6 +457,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				info_fields_sorted.sort(a.i < b.i)
 			}
 			mut inited_fields := []string{}
+			mut refs := map[string]ast.Ref{}
 			for i, mut field in node.fields {
 				mut field_info := ast.StructField{}
 				mut field_name := ''
@@ -494,7 +495,12 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				field_type_sym := c.table.sym(field_info.typ)
 				expected_type = field_info.typ
 				c.expected_type = expected_type
+				c.referenced = ast.NoSrc{}
+				c.referencing = false
 				expr_type = c.expr(field.expr)
+				if c.referencing && c.referenced !is ast.NoSrc {
+					refs[field_name] = c.referenced
+				}
 				if expr_type == ast.void_type {
 					c.error('`${field.expr}` (no value) used as value', field.pos)
 				}
@@ -529,6 +535,11 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				}
 				node.fields[i].typ = expr_type
 				node.fields[i].expected_type = field_info.typ
+			}
+			if c.referencing {
+				c.referenced = ast.StructSrc{
+					refs: refs
+				}
 			}
 			// Check uninitialized refs/sum types
 			// The variable `fields` contains two parts, the first part is the same as info.fields,

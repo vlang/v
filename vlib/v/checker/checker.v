@@ -67,7 +67,8 @@ pub mut:
 	inside_unsafe             bool // true inside `unsafe {}` blocks
 	inside_const              bool // true inside `const ( ... )` blocks
 	inside_anon_fn            bool // true inside `fn() { ... }()`
-	inside_ref_lit            bool // true inside `a := &something`
+	referencing               bool // true inside `a := &something`
+	referenced                ast.Ref
 	inside_defer              bool // true inside `defer {}` blocks
 	inside_fn_arg             bool // `a`, `b` in `a.f(b)`
 	inside_ct_attr            bool // true inside `[if expr]`
@@ -143,7 +144,7 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.inside_unsafe = false
 	c.inside_const = false
 	c.inside_anon_fn = false
-	c.inside_ref_lit = false
+	c.referencing = false
 	c.inside_defer = false
 	c.inside_fn_arg = false
 	c.inside_ct_attr = false
@@ -1292,6 +1293,15 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			}
 		}
 	}
+	if c.referencing && c.referenced !is ast.NoSrc {
+		defer {
+			c.referenced = ast.SelectorSrc{
+				ref: c.referenced
+				field_name: node.field_name
+			}
+		}
+	}
+
 	c.inside_selector_expr = old_selector_expr
 	c.using_new_err_struct = using_new_err_struct_save
 	if typ == ast.void_type_idx {
@@ -3130,6 +3140,21 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		}
 		return ast.void_type
 	}
+	if c.referencing {
+		c.referenced = ast.RefSrc{
+			scope: node.scope
+			name: node.name
+			is_mut: if obj := node.scope.find(node.name) {
+				if obj is ast.Var {
+					obj.is_mut
+				} else {
+					false
+				}
+			} else {
+				false
+			}
+		}
+	}
 	// second use
 	if node.kind in [.constant, .global, .variable] {
 		info := node.info as ast.IdentVar
@@ -3643,10 +3668,11 @@ fn (mut c Checker) get_base_name(node &ast.Expr) string {
 }
 
 fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
-	old_inside_ref_lit := c.inside_ref_lit
-	c.inside_ref_lit = c.inside_ref_lit || node.op == .amp
+	if node.right !is ast.CastExpr {
+		c.referencing = c.referencing || node.op == .amp
+	}
 	right_type := c.expr(node.right)
-	c.inside_ref_lit = old_inside_ref_lit
+	// c.referencing = old_referencing
 	node.right_type = right_type
 	if node.op == .amp {
 		if node.right is ast.Nil {
@@ -3811,6 +3837,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		c.error('unknown type for expression `${node.left}`', node.pos)
 		return typ
 	}
+	reffed := c.referenced
 	mut typ_sym := c.table.final_sym(typ)
 	node.left_type = typ
 	match typ_sym.kind {
@@ -3934,6 +3961,9 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	}
 	c.stmts_ending_with_expression(node.or_expr.stmts)
 	c.check_expr_opt_call(node, typ)
+	c.referenced = ast.ArrayIndexSrc{
+		ref: reffed
+	}
 	return typ
 }
 

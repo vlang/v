@@ -44,6 +44,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	mut got_types := []ast.Type{}
 	mut expr_idxs := []int{}
 	for i, expr in node.exprs {
+		c.referencing = false
 		mut typ := c.expr(expr)
 		if typ == 0 {
 			return
@@ -54,6 +55,12 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				c.error('cannot return `none` in unsafe block', expr.expr.pos)
 			}
 		}
+		if c.referencing {
+			refd := c.referenced
+			c.table.cur_fn.return_ref_ids << c.table.new_ref_id(c.referenced)
+			println('new_ref (return): ${c.table.cur_fn.name} ${c.table.cur_fn.return_ref_ids}: ref(${refd})')
+		}
+
 		if typ == ast.void_type {
 			c.error('`${expr}` used as value', node.pos)
 			return

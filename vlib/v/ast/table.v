@@ -44,12 +44,90 @@ pub mut:
 	module_attrs      map[string][]Attr // module attributes
 	builtin_pub_fns   map[string]bool
 	pointer_size      int
-	reference_id      int
+	refs              []Ref
 	// cache for type_to_str_using_aliases
 	cached_type_to_str map[u64]string
 	anon_struct_names  map[string]int // anon struct name -> struct sym idx
 	// counter for anon struct, avoid name conflicts.
 	anon_struct_counter int
+}
+
+pub type Ref = ArrayIndexSrc | GlobalSrc | NoSrc | ParamSrc | RefSrc | SelectorSrc | StructSrc
+
+pub fn (r Ref) is_mut() bool {
+	return match r {
+		GlobalSrc { true }
+		ParamSrc { true }
+		RefSrc { r.is_mut }
+		StructSrc { true }
+		SelectorSrc, ArrayIndexSrc { r.ref.is_mut() }
+		NoSrc { false }
+	}
+}
+
+pub fn (r Ref) var_name() string {
+	return match r {
+		GlobalSrc { r.name }
+		ParamSrc { r.name }
+		RefSrc { r.name }
+		StructSrc { 'struct' }
+		SelectorSrc { r.ref.var_name() + '.' + r.field_name }
+		ArrayIndexSrc { r.ref.var_name() }
+		NoSrc { '<NoSrc>' }
+	}
+}
+
+pub struct GlobalSrc {
+pub:
+	name string
+}
+
+pub struct ParamSrc {
+pub:
+	idx  int
+	name string
+}
+
+pub fn (p ParamSrc) str() string {
+	return 'param $p.idx'
+}
+
+pub struct RefSrc {
+pub:
+	is_mut bool
+	name   string
+	scope  &Scope
+}
+
+pub fn (r RefSrc) str() string {
+	return 'ref `$r.name` (mut: $r.is_mut): $r.scope'
+}
+
+pub struct StructSrc {
+pub:
+	refs map[string]Ref
+}
+
+pub struct SelectorSrc {
+pub:
+	ref        Ref
+	field_name string
+}
+
+pub struct ArrayIndexSrc {
+pub:
+	ref Ref
+}
+
+pub struct NoSrc {}
+
+pub fn (n NoSrc) str() string {
+	return 'no ref'
+}
+
+pub fn (mut t Table) new_ref_id(ref Ref) int {
+	t.refs << ref
+	return t.refs.len
 }
 
 // used by vls to avoid leaks

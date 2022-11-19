@@ -23,6 +23,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				&& node.left[i] in [ast.Ident, ast.SelectorExpr] && !node.left[i].is_blank_ident() {
 				c.expected_type = c.expr(node.left[i])
 			}
+			c.referenced = ast.NoSrc{}
+			c.referencing = false
 			right_type := c.expr(right)
 			if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr] {
 				c.fail_if_unreadable(right, right_type, 'right-hand side of assignment')
@@ -129,16 +131,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.expected_type = c.unwrap_generic(left_type)
 		}
 		if node.right_types.len < node.left.len { // first type or multi return types added above
-			old_inside_ref_lit := c.inside_ref_lit
-			if mut left is ast.Ident {
-				if mut left.info is ast.IdentVar {
-					c.inside_ref_lit = c.inside_ref_lit || left.info.share == .shared_t
-				}
-			}
 			c.inside_decl_rhs = is_decl
+			c.referenced = ast.NoSrc{}
+			c.referencing = false
 			right_type := c.expr(node.right[i])
 			c.inside_decl_rhs = false
-			c.inside_ref_lit = old_inside_ref_lit
 			if node.right_types.len == i {
 				node.right_types << c.check_expr_opt_call(node.right[i], right_type)
 			}
@@ -159,6 +156,19 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		} else if right is ast.ComptimeSelector {
 			right_type = c.comptime_fields_default_type
+		}
+		if c.referencing {
+			if mut left is ast.Ident {
+				if mut left.obj is ast.Var {
+					refd := c.referenced
+					left.obj.ref_id = c.table.new_ref_id(refd)
+					println('new_ref: ${c.table.cur_fn.name}:${left.obj.name} [${left.obj.ref_id}]: ref(${refd})')
+					if !c.inside_unsafe && left.is_mut() && !refd.is_mut() {
+						c.error('value `${refd.var_name()}` is immutable, cannot have a mutable reference `${left.obj.name}` to it',
+							right.pos())
+					}
+				}
+			}
 		}
 		if is_decl {
 			// check generic struct init and return unwrap generic struct type
@@ -288,6 +298,19 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								if right is ast.ComptimeSelector {
 									left.obj.is_comptime_field = true
 									left.obj.typ = c.comptime_fields_default_type
+								}
+								// this needs to run after the assign stmt left exprs have been run through checker
+								// so that ident.obj is set
+								// Check `x := &y` and `mut x := <-ch`
+								if mut right is ast.PrefixExpr {
+									right_sym := c.table.sym(right.right_type)
+									if right.op == .arrow && left.is_mut && right_sym.kind == .chan {
+										chan_info := right_sym.chan_info()
+										if chan_info.elem_type.is_ptr() && !chan_info.is_mut {
+											c.error('cannot have a mutable reference to object from `${right_sym.name}`',
+												right.pos)
+										}
+									}
 								}
 							}
 							ast.GlobalField {
@@ -620,48 +643,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		if left_sym.kind == .interface_ {
 			c.type_implements(right_type, left_type, right.pos())
-		}
-	}
-	// this needs to run after the assign stmt left exprs have been run through checker
-	// so that ident.obj is set
-	// Check `x := &y` and `mut x := <-ch`
-	if right_first is ast.PrefixExpr {
-		right_node := right_first
-		left_first := node.left[0]
-		if left_first is ast.Ident {
-			assigned_var := left_first
-			mut is_shared := false
-			if left_first.info is ast.IdentVar {
-				is_shared = left_first.info.share == .shared_t
-			}
-			old_inside_ref_lit := c.inside_ref_lit
-			c.inside_ref_lit = c.inside_ref_lit || right_node.op == .amp || is_shared
-			c.expr(right_node.right)
-			c.inside_ref_lit = old_inside_ref_lit
-			if right_node.op == .amp {
-				if right_node.right is ast.Ident {
-					if right_node.right.obj is ast.Var {
-						v := right_node.right.obj
-						right_type0 = v.typ
-					}
-					if !c.inside_unsafe && assigned_var.is_mut() && !right_node.right.is_mut() {
-						c.error('`${right_node.right.name}` is immutable, cannot have a mutable reference to it',
-							right_node.pos)
-					}
-				}
-			}
-			if right_node.op == .arrow {
-				if assigned_var.is_mut {
-					right_sym := c.table.sym(right_type0)
-					if right_sym.kind == .chan {
-						chan_info := right_sym.chan_info()
-						if chan_info.elem_type.is_ptr() && !chan_info.is_mut {
-							c.error('cannot have a mutable reference to object from `${right_sym.name}`',
-								right_node.pos)
-						}
-					}
-				}
-			}
 		}
 	}
 	if node.left_types.len != node.left.len {
