@@ -3568,7 +3568,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		styp := g.typ(node.typ)
 		g.empty_line = true
 		tmp_var := g.new_tmp_var()
-		g.write('${styp} ${tmp_var} = ${node.expr}.${node.field_name};')
+		g.write('${styp} ${tmp_var} = ')
+		g.expr(node.expr)
+		g.write('.${node.field_name}')
 		g.or_block(tmp_var, node.or_block, node.typ)
 		g.write(stmt_str)
 		g.write(' ')

@@ -4,6 +4,10 @@ mut:
 	baz ?int = none
 }
 
+fn get_foo() ?Foo {
+	return Foo{}
+}
+
 fn main() {
 	// `default value` test
 	mut f := Foo{}
@@ -55,4 +59,5 @@ fn main() {
 	// others test
 	println(f)
 	dump(f)
+	println(get_foo()?.bar?)
 }
