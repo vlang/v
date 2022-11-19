@@ -63,7 +63,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			g.inside_match_result = true
 		}
 	}
-	if node.cond in [ast.Ident, ast.SelectorExpr, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral] {
+	if node.cond in [ast.Ident, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral] {
 		cond_var = g.expr_string(node.cond)
 	} else {
 		line := if is_expr {
