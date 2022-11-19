@@ -16,8 +16,7 @@ pub struct Encoder {
 
 pub const default_encoder = Encoder{}
 
-// byte array versions of the most common tokens/chars
-// to avoid reallocations
+// byte array versions of the most common tokens/chars to avoid reallocations
 const null_in_bytes = 'null'.bytes()
 
 const true_in_bytes = 'true'.bytes()
@@ -65,7 +64,10 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 				wr.write(json2.false_in_bytes)!
 			}
 		}
-		int, u64, i64 {
+		i8, i16, int, i64 {
+			wr.write(val.str().bytes())!
+		}
+		u8, u16, u32, u64 {
 			wr.write(val.str().bytes())!
 		}
 		f32, f64 {
@@ -140,7 +142,8 @@ fn (e &Encoder) encode_value_with_level<T>(val T, level int, mut wr io.Writer) !
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is []Any {
 		e.encode_any(val, level, mut wr)!
-	} $else $if T is Null || T is bool || T is f32 || T is f64 || T is i64 || T is int || T is u64 {
+	} $else $if T is Null || T is bool || T is f32 || T is f64 || T is i8 || T is i16 || T is int
+		|| T is i64 || T is u8 || T is u16 || T is u32 || T is u64 {
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is Encodable {
 		wr.write(val.json_str().bytes())!
