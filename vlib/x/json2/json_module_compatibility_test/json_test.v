@@ -9,6 +9,15 @@ enum JobTitle {
 
 struct Employee {
 pub mut:
+	name         string
+	age          int
+	salary       f32
+	title        JobTitle
+	sub_employee SubEmployee
+}
+
+struct SubEmployee {
+pub mut:
 	name   string
 	age    int
 	salary f32
@@ -16,9 +25,12 @@ pub mut:
 }
 
 fn test_simple() {
-	x := Employee{'Peter', 28, 95000.5, .worker}
+	sub_employee := SubEmployee{
+		name: 'João'
+	}
+	x := Employee{'Peter', 28, 95000.5, .worker, sub_employee}
 	s := json.encode<Employee>(x)
-	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
+	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2,"sub_employee":{"name":"João","age":0,"salary":0.0,"title":0}}'
 	// y := json.decode<Employee>(s) or {
 	// 	println(err)
 	// 	assert false
@@ -28,23 +40,35 @@ fn test_simple() {
 	// assert y.age == 28
 	// assert y.salary == 95000.5
 	// assert y.title == .worker
+	// x := Employee{'Peter', 28, 95000.5, .worker}
+	// s := json.encode<Employee>(x)
+	// assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
+	// // y := json.decode<Employee>(s) or {
+	// // 	println(err)
+	// // 	assert false
+	// // 	return
+	// // }
+	// // assert y.name == 'Peter'
+	// // assert y.age == 28
+	// // assert y.salary == 95000.5
+	// // assert y.title == .worker
 }
 
-const currency_id = 'cconst'
+// const currency_id = 'cconst'
 
-struct Price {
-	net         f64
-	currency_id string [json: currencyId] = currency_id
-}
+// struct Price {
+// 	net         f64
+// 	currency_id string [json: currencyId] = currency_id
+// }
 
-struct User2 {
-mut:
-	age      int
-	nums     []int
-	reg_date time.Time
-}
+// struct User2 {
+// mut:
+// 	age      int
+// 	nums     []int
+// 	reg_date time.Time
+// }
 
-// User struct needs to be `pub mut` for now in order to access and manipulate values
+// // User struct needs to be `pub mut` for now in order to access and manipulate values
 struct User {
 pub mut:
 	age           int
@@ -54,6 +78,7 @@ pub mut:
 	typ           int    [json: 'type']
 	pets          string [json: 'pet_animals'; raw]
 }
+
 fn (mut u User) foo() string {
 	return json.encode(u)
 }
@@ -75,11 +100,11 @@ fn test_encode_user() {
 	assert usr.foo() == expected
 }
 
-struct Color {
-pub mut:
-	space string
-	point string [raw]
-}
+// struct Color {
+// pub mut:
+// 	space string
+// 	point string [raw]
+// }
 
 fn test_encode_map() {
 	expected := '{"one":1,"two":2,"three":3,"four":4}'

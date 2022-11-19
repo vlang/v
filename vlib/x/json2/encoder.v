@@ -195,28 +195,16 @@ fn (e &Encoder) encode_struct<U>(val U, level int, mut wr io.Writer) ! {
 				}
 			}
 		} else {
-			match field.typ {
-				129 {
-					//! string
+			match field.unaliased_typ {
+				string_type_idx {
 					e.encode_string(val.$(field.name).str(), mut wr)!
 				}
-				130 {
+				int_type_idx {
 					wr.write(val.$(field.name).str().bytes())!
 				}
-				141 {
+				byte_array_type_idx {
 					//! array
 					e.encode_array(val.$(field.name), level, mut wr)!
-				}
-				143 {
-					e.encode_struct(val.$(field.name), level, mut wr)!
-				}
-				144 {
-					//!struct normal
-					e.encode_struct(val.$(field.name), level, mut wr)!
-				}
-				147 {
-					//!circular
-					e.encode_value_with_level('---------', level, mut wr)!
 				}
 				else {
 					field_value := val.$(field.name)

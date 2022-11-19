@@ -575,7 +575,10 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				// field_sym := g.table.sym(field.typ)
 				// g.writeln('\t${node.val_var}.typ = _SLIT("$field_sym.name");')
 				styp := field.typ
+				unaliased_styp := g.table.unaliased_type(styp)
+
 				g.writeln('\t${node.val_var}.typ = ${styp.idx()};')
+				g.writeln('\t${node.val_var}.unaliased_typ = ${unaliased_styp.idx()};')
 				g.writeln('\t${node.val_var}.is_pub = ${field.is_pub};')
 				g.writeln('\t${node.val_var}.is_mut = ${field.is_mut};')
 				g.writeln('\t${node.val_var}.is_shared = ${field.typ.has_flag(.shared_f)};')
