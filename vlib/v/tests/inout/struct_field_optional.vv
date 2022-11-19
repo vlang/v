@@ -45,6 +45,13 @@ fn main() {
 	} else {
 		println(err)
 	}
+	// `match` test
+	match f.bar? {
+		f.bar? {
+			println(f.bar?)
+		}
+		else {}
+	}
 	// others test
 	println(f)
 	dump(f)

@@ -3,43 +3,6 @@
 // that can be found in the LICENSE file.
 module json2
 
-// `Any` is a sum type that lists the possible types to be decoded and used.
-pub type Any = Null
-	| []Any
-	| []int
-	| bool
-	| f32
-	| f64
-	| i64
-	| int
-	| map[string]Any
-	| string
-	| u64
-
-// `Null` struct is a simple representation of the `null` value in JSON.
-pub struct Null {
-	is_null bool = true
-}
-
-pub enum ValueKind {
-	unknown
-	array
-	object
-	string_
-	number
-}
-
-// str returns the string representation of the specific ValueKind
-pub fn (k ValueKind) str() string {
-	return match k {
-		.unknown { 'unknown' }
-		.array { 'array' }
-		.object { 'object' }
-		.string_ { 'string' }
-		.number { 'number' }
-	}
-}
-
 fn format_message(msg string, line int, column int) string {
 	return '[x.json2] ${msg} (${line}:${column})'
 }
