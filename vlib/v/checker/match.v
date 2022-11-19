@@ -179,9 +179,6 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						c.error('mismatched range types - trying to match `${node.cond}`, which has type `${typ}`, against a range of `rune`',
 							low_expr.pos)
 					}
-				} else {
-					typ := c.table.type_to_str(c.expr(expr.low))
-					c.error('cannot use type `${typ}` in match range', branch.pos)
 				}
 				high_low_cutoff := 1000
 				if high - low > high_low_cutoff {
