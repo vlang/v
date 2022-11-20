@@ -276,7 +276,9 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					return ast.MatchExpr{}
 				} else if p.tok.kind == .ellipsis {
 					p.next()
+					p.inside_match_case = true
 					expr2 := p.expr(0)
+					p.inside_match_case = false
 					exprs << ast.RangeExpr{
 						low: expr
 						high: expr2

@@ -449,7 +449,11 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 								g.write(' && ')
 							}
 							g.write('${cond_var} <= ')
-							g.expr(expr.high)
+							if expr.low is ast.Ident {
+								g.write('_const_${expr.low.mod}__${expr.low.name}')
+							} else {
+								g.expr(expr.high)
+							}
 							g.write(')')
 						} else {
 							g.write('${cond_var} == (')

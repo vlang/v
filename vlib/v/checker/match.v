@@ -179,6 +179,19 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						c.error('mismatched range types - trying to match `${node.cond}`, which has type `${typ}`, against a range of `rune`',
 							low_expr.pos)
 					}
+				} else if low_expr is ast.Ident {
+					if mut obj := c.table.global_scope.find_const('${low_expr.mod}.${low_expr.name}') {
+						if obj.typ == 0 {
+							obj.typ = c.expr(obj.expr)
+						}
+						if obj.expr !in [ast.IntegerLiteral, ast.CharLiteral] {
+							c.error('only numeric and char typed const are allowed for ranges',
+								low_expr.pos)
+						}
+					} else {
+						c.error('only const or literal values are allowed for ranges',
+							low_expr.pos)
+					}
 				}
 				high_low_cutoff := 1000
 				if high - low > high_low_cutoff {
