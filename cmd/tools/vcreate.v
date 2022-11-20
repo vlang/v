@@ -71,6 +71,9 @@ ${name}
 *.dylib
 *.dll
 
+# Ignore binary output folders
+bin/
+
 # Ignore common editor/system specific metadata
 .DS_Store
 .idea/
