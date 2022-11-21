@@ -262,11 +262,19 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 							g.write('(')
 							if !skip_low {
 								g.write('${cond_var} >= ')
-								g.expr(expr.low)
+								if expr.low is ast.Ident {
+									g.write('_const_${expr.low.mod}__${expr.low.name}')
+								} else {
+									g.expr(expr.low)
+								}
 								g.write(' && ')
 							}
 							g.write('${cond_var} <= ')
-							g.expr(expr.high)
+							if expr.high is ast.Ident {
+								g.write('_const_${expr.high.mod}__${expr.high.name}')
+							} else {
+								g.expr(expr.high)
+							}
 							g.write(')')
 						} else {
 							g.write('${cond_var} == (')
@@ -334,11 +342,19 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 					g.write('(')
 					if !skip_low {
 						g.write('${cond_var} >= ')
-						g.expr(expr.low)
+						if expr.low is ast.Ident {
+							g.write('_const_${expr.low.mod}__${expr.low.name}')
+						} else {
+							g.expr(expr.low)
+						}
 						g.write(' && ')
 					}
 					g.write('${cond_var} <= ')
-					g.expr(expr.high)
+					if expr.high is ast.Ident {
+						g.write('_const_${expr.high.mod}__${expr.high.name}')
+					} else {
+						g.expr(expr.high)
+					}
 					g.write(')')
 				} else {
 					g.write('${cond_var} == (')
@@ -449,8 +465,8 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 								g.write(' && ')
 							}
 							g.write('${cond_var} <= ')
-							if expr.low is ast.Ident {
-								g.write('_const_${expr.low.mod}__${expr.low.name}')
+							if expr.high is ast.Ident {
+								g.write('_const_${expr.high.mod}__${expr.high.name}')
 							} else {
 								g.expr(expr.high)
 							}

@@ -163,6 +163,23 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						if low > high {
 							c.error('start value is higher than end value', branch.pos)
 						}
+					} else if high_expr is ast.Ident {
+						if mut obj := c.table.global_scope.find_const('${high_expr.mod}.${high_expr.name}') {
+							if obj.typ == 0 {
+								obj.typ = c.expr(obj.expr)
+							}
+							if mut obj.expr is ast.IntegerLiteral
+								&& (final_cond_sym.is_int() || final_cond_sym.info is ast.Enum) {
+								low = low_expr.val.i64()
+								high = obj.expr.val.i64()
+								if low > high {
+									c.error('start value is higher than end value', branch.pos)
+								}
+							}
+						} else {
+							c.error('only const or literal values are allowed for ranges',
+								high_expr.pos)
+						}
 					} else {
 						c.error('mismatched range types - ${expr.low} is an integer, but ${expr.high} is not',
 							low_expr.pos)
@@ -173,6 +190,23 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						high = high_expr.val[0]
 						if low > high {
 							c.error('start value is higher than end value', branch.pos)
+						}
+					} else if high_expr is ast.Ident {
+						if mut obj := c.table.global_scope.find_const('${high_expr.mod}.${high_expr.name}') {
+							if obj.typ == 0 {
+								obj.typ = c.expr(obj.expr)
+							}
+							if mut obj.expr is ast.CharLiteral
+								&& final_cond_sym.kind in [.u8, .char, .rune] {
+								low = low_expr.val[0]
+								high = obj.expr.val[0]
+								if low > high {
+									c.error('start value is higher than end value', branch.pos)
+								}
+							}
+						} else {
+							c.error('only const or literal values are allowed for ranges',
+								high_expr.pos)
 						}
 					} else {
 						typ := c.table.type_to_str(c.expr(node.cond))
@@ -223,6 +257,101 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 							} else {
 								c.error('only const or literal values are allowed for ranges',
 									low_expr.pos)
+							}
+						} else if mut obj1.expr is ast.IntegerLiteral {
+							if high_expr is ast.IntegerLiteral
+								&& (final_cond_sym.is_int() || final_cond_sym.info is ast.Enum) {
+								low = obj1.expr.val.i64()
+								high = high_expr.val.i64()
+								if low > high {
+									c.error('start value is higher than end value', branch.pos)
+								}
+							} else {
+								c.error('mismatched range types - ${expr.low} is an integer, but ${expr.high} is not',
+									low_expr.pos)
+							}
+						} else if mut obj1.expr is ast.CharLiteral {
+							if high_expr is ast.CharLiteral
+								&& final_cond_sym.kind in [.u8, .char, .rune] {
+								low = obj1.expr.val[0]
+								high = high_expr.val[0]
+								if low > high {
+									c.error('start value is higher than end value', branch.pos)
+								}
+							} else {
+								c.error('mismatched range types - ${expr.low} is an integer, but ${expr.high} is not',
+									low_expr.pos)
+							}
+						}
+					}
+				} else if high_expr is ast.Ident {
+					if mut obj1 := c.table.global_scope.find_const('${high_expr.mod}.${high_expr.name}') {
+						if obj1.typ == 0 {
+							obj1.typ = c.expr(obj1.expr)
+						}
+						if obj1.expr !in [ast.IntegerLiteral, ast.CharLiteral] {
+							c.error('only numeric and char typed const are allowed for ranges',
+								high_expr.pos)
+						}
+						if low_expr is ast.Ident {
+							if mut obj2 := c.table.global_scope.find_const('${low_expr.mod}.${low_expr.name}') {
+								if obj2.typ == 0 {
+									obj2.typ = c.expr(obj2.expr)
+								}
+								if obj2.expr !in [ast.IntegerLiteral, ast.CharLiteral] {
+									c.error('only numeric and char typed const are allowed for ranges',
+										high_expr.pos)
+								}
+
+								if mut obj1.expr is ast.IntegerLiteral {
+									if mut obj2.expr is ast.IntegerLiteral
+										&& (final_cond_sym.is_int()
+										|| final_cond_sym.info is ast.Enum) {
+										high = obj1.expr.val.i64()
+										low = obj2.expr.val.i64()
+										if low > high {
+											c.error('start value is higher than end value',
+												branch.pos)
+										}
+									}
+								} else if mut obj1.expr is ast.CharLiteral {
+									if mut obj2.expr is ast.CharLiteral
+										&& final_cond_sym.kind in [.u8, .char, .rune] {
+										high = obj1.expr.val[0]
+										low = obj2.expr.val[0]
+										if low > high {
+											c.error('start value is higher than end value',
+												branch.pos)
+										}
+									}
+								}
+							} else {
+								c.error('only const or literal values are allowed for ranges',
+									high_expr.pos)
+							}
+						} else if mut obj1.expr is ast.IntegerLiteral {
+							if low_expr is ast.IntegerLiteral
+								&& (final_cond_sym.is_int() || final_cond_sym.info is ast.Enum) {
+								high = obj1.expr.val.i64()
+								low = low_expr.val.i64()
+								if low > high {
+									c.error('start value is higher than end value', branch.pos)
+								}
+							} else {
+								c.error('mismatched range types - ${expr.low} is an integer, but ${expr.high} is not',
+									high_expr.pos)
+							}
+						} else if mut obj1.expr is ast.CharLiteral {
+							if low_expr is ast.CharLiteral
+								&& final_cond_sym.kind in [.u8, .char, .rune] {
+								high = obj1.expr.val[0]
+								low = low_expr.val[0]
+								if low > high {
+									c.error('start value is higher than end value', branch.pos)
+								}
+							} else {
+								c.error('mismatched range types - ${expr.low} is an integer, but ${expr.high} is not',
+									high_expr.pos)
 							}
 						}
 					}
