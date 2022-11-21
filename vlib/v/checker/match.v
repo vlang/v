@@ -279,6 +279,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 									c.error('start value is higher than end value', branch.pos)
 								}
 							} else {
+								typ := c.table.type_to_str(c.expr(node.cond))
 								c.error('mismatched range types - trying to match `${node.cond}`, which has type `${typ}`, against a range of `rune`',
 									low_expr.pos)
 							}
@@ -327,6 +328,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 												branch.pos)
 										}
 									} else {
+										typ := c.table.type_to_str(c.expr(node.cond))
 										c.error('mismatched range types - trying to match `${node.cond}`, which has type `${typ}`, against a range of `rune`',
 											branch.pos)
 									}
