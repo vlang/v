@@ -1,0 +1,7 @@
+vlib/v/checker/tests/non_const_match_range_err.vv:6:2: error: only const or literal values are allowed for ranges
+    4 | 
+    5 | match 5 {
+    6 |     start...end {
+      |     ~~~~~
+    7 |         println(start)
+    8 |     }

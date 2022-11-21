@@ -1,0 +1,14 @@
+vlib/v/checker/tests/invalid_const_expr_match_range_err.vv:5:2: error: only const or literal values are allowed for ranges
+    3 | 
+    4 | match 5 {
+    5 |     start...10 {
+      |     ~~~~~
+    6 |         println(start)
+    7 |     }
+vlib/v/checker/tests/invalid_const_expr_match_range_err.vv:8:7: error: only const or literal values are allowed for ranges
+    6 |         println(start)
+    7 |     }
+    8 |     10...end {
+      |          ~~~
+    9 |         println(end)
+   10 |     }

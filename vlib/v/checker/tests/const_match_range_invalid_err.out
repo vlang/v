@@ -1,0 +1,7 @@
+vlib/v/checker/tests/const_match_range_invalid_err.vv:5:2: error: start value is higher than end value
+    3 | 
+    4 | match 5 {
+    5 |     end...start {
+      |     ~~~~~~~~~~~
+    6 |         println(start)
+    7 |     }

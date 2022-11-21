@@ -1,0 +1,14 @@
+vlib/v/checker/tests/const_expr_match_range_invalid_err.vv:5:2: error: mismatched range types - start is an integer, but `1` is not
+    3 | 
+    4 | match 5 {
+    5 |     start...`1` {
+      |     ~~~~~
+    6 |         println(start)
+    7 |     }
+vlib/v/checker/tests/const_expr_match_range_invalid_err.vv:8:10: error: mismatched range types - end is an integer, but 'str' is not
+    6 |         println(start)
+    7 |     }
+    8 |     'str'...end {
+      |             ~~~
+    9 |         println(end)
+   10 |     }

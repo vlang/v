@@ -279,10 +279,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 									c.error('start value is higher than end value', branch.pos)
 								}
 							} else {
-								c.error('mismatched range types - ${expr.low} is an integer, but ${expr.high} is not',
+								c.error('mismatched range types - trying to match `${node.cond}`, which has type `${typ}`, against a range of `rune`',
 									low_expr.pos)
 							}
 						}
+					} else {
+						c.error('only const or literal values are allowed for ranges',
+							low_expr.pos)
 					}
 				} else if high_expr is ast.Ident {
 					if mut obj1 := c.table.global_scope.find_const('${high_expr.mod}.${high_expr.name}') {
@@ -323,6 +326,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 											c.error('start value is higher than end value',
 												branch.pos)
 										}
+									} else {
+										c.error('mismatched range types - trying to match `${node.cond}`, which has type `${typ}`, against a range of `rune`',
+											branch.pos)
 									}
 								}
 							} else {
@@ -338,7 +344,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 									c.error('start value is higher than end value', branch.pos)
 								}
 							} else {
-								c.error('mismatched range types - ${expr.low} is an integer, but ${expr.high} is not',
+								c.error('mismatched range types - ${expr.high} is an integer, but ${expr.low} is not',
 									high_expr.pos)
 							}
 						} else if mut obj1.expr is ast.CharLiteral {
@@ -350,11 +356,15 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 									c.error('start value is higher than end value', branch.pos)
 								}
 							} else {
-								c.error('mismatched range types - ${expr.low} is an integer, but ${expr.high} is not',
+								typ := c.table.type_to_str(c.expr(expr.low))
+								c.error('mismatched range types - trying to match `${node.cond}`, which has type `${typ}`, against a range of `rune`',
 									high_expr.pos)
 							}
 						}
 					}
+				} else {
+					typ := c.table.type_to_str(c.expr(expr.low))
+					c.error('cannot use type `${typ}` in match range', branch.pos)
 				}
 				high_low_cutoff := 1000
 				if high - low > high_low_cutoff {
