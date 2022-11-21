@@ -1,17 +1,16 @@
 const (
-	start = 1
+	start   = 1
 	start_2 = 4
-	end = 3
-	end_2 = 8
+	end     = 3
+	end_2   = 8
 )
 
 const (
-	start_rune = `a`
+	start_rune   = `a`
 	start_2_rune = `d`
-	end_rune = `c`
-	end_2_rune = `i`
+	end_rune     = `c`
+	end_2_rune   = `i`
 )
-
 
 fn test_match_int_const_ranges() {
 	mut results := []int{}
