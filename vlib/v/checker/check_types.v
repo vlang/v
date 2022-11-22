@@ -643,7 +643,6 @@ fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
 	return c.check_basic(left, right)
 }
 
-<<<<<<< HEAD
 fn (mut c Checker) infer_generic_struct_init_concrete_types(typ ast.Type, node ast.StructInit) []ast.Type {
 	mut concrete_types := []ast.Type{}
 	sym := c.table.sym(typ)
