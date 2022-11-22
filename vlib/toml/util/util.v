@@ -23,7 +23,7 @@ pub fn is_illegal_ascii_control_character(byte_char u8) bool {
 }
 
 // printdbg is a utility function for displaying a key:pair error message
-// when the trace_toml key is set.
+// when `-d trace_toml` is passed to the compiler.
 [if trace_toml ?]
 pub fn printdbg(id string, message string) {
 	eprintln(id + ' ' + message)
