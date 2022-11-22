@@ -31,6 +31,7 @@ pub struct DateTime {
 	datetime string
 }
 
+// str returns the RFC 3339 string representation of the datetime.
 pub fn (dt DateTime) str() string {
 	return dt.datetime
 }
@@ -40,6 +41,7 @@ pub struct Date {
 	date string
 }
 
+// str returns the RFC 3339 date-only string representation.
 pub fn (d Date) str() string {
 	return d.date
 }
@@ -49,6 +51,7 @@ pub struct Time {
 	time string
 }
 
+// str returns the RFC 3339 time-only string representation.
 pub fn (t Time) str() string {
 	return t.time
 }
@@ -207,6 +210,8 @@ pub fn (d Doc) value(key string) Any {
 
 pub const null = Any(Null{})
 
+// value_opt queries a value from the TOML document. Returns an error if the
+// key is not valid or there is no value for the key.
 pub fn (d Doc) value_opt(key string) !Any {
 	key_split := parse_dotted_key(key) or { return error('invalid dotted key') }
 	x := d.value_(d.ast.table, key_split)

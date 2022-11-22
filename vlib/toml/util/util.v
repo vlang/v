@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module util
 
+// is_key_char returns true if the given u8 is a valid key character.
 [inline]
 pub fn is_key_char(c u8) bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) // || c == `_`  || c == `-` <- these are identified when tokenizing
@@ -21,6 +22,8 @@ pub fn is_illegal_ascii_control_character(byte_char u8) bool {
 	return byte_char != 0x09 && is_ascii_control_character(byte_char)
 }
 
+// printdbg is a utility function for displaying a key:pair error message
+// when `-d trace_toml` is passed to the compiler.
 [if trace_toml ?]
 pub fn printdbg(id string, message string) {
 	eprintln(id + ' ' + message)

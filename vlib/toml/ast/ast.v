@@ -16,6 +16,7 @@ pub mut:
 	// errors           []errors.Error    // all the checker errors in the file
 }
 
+// str returns the string representation of the root node.
 pub fn (r Root) str() string {
 	mut s := typeof(r).name + '{\n'
 	s += '  input:  ${r.input}\n'
