@@ -2216,7 +2216,7 @@ fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 }
 
 // TODO node must be mut
-fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
+pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 	c.expr_level++
 	defer {
 		c.expr_level--
