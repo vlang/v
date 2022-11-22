@@ -20,6 +20,7 @@ mut:
 	data voidptr
 }
 
+// visit calls the inspector callback on the specified Value node.
 pub fn (i &Inspector) visit(value &ast.Value) ! {
 	i.inspector_callback(value, i.data) or { return err }
 }

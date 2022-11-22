@@ -80,7 +80,7 @@ can use the `.default_to(...)` function to provide a
 default value.
 
 For cases where a default value might not be appropiate or
-to check if a value exists you can use `doc.value_opt('query')?`
+to check if a value exists you can use `doc.value_opt('query')!`
 instead.
 
 ```v
