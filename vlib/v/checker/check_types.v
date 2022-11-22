@@ -655,6 +655,122 @@ pub fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
 	return c.check_basic(left, right)
 }
 
+fn (mut c Checker) infer_generic_struct_init_concrete_types(typ ast.Type, node ast.StructInit) []ast.Type {
+	mut concrete_types := []ast.Type{}
+	sym := c.table.sym(typ)
+	if sym.info is ast.Struct {
+		generic_names := sym.info.generic_types.map(c.table.sym(it).name)
+		gname: for gt_name in generic_names {
+			for ft in sym.info.fields {
+				field_sym := c.table.sym(ft.typ)
+				if field_sym.name == gt_name {
+					for t in node.fields {
+						if ft.name == t.name && t.typ != 0 {
+							concrete_types << t.typ
+							continue gname
+						}
+					}
+				}
+				if field_sym.kind == .array {
+					for t in node.fields {
+						if ft.name == t.name {
+							init_sym := c.table.sym(t.typ)
+							if init_sym.kind == .array {
+								mut init_elem_info := init_sym.info as ast.Array
+								mut field_elem_info := field_sym.info as ast.Array
+								mut init_elem_sym := c.table.sym(init_elem_info.elem_type)
+								mut field_elem_sym := c.table.sym(field_elem_info.elem_type)
+								for {
+									if init_elem_sym.kind == .array && field_elem_sym.kind == .array {
+										init_elem_info = init_elem_sym.info as ast.Array
+										init_elem_sym = c.table.sym(init_elem_info.elem_type)
+										field_elem_info = field_elem_sym.info as ast.Array
+										field_elem_sym = c.table.sym(field_elem_info.elem_type)
+									} else {
+										if field_elem_sym.name == gt_name {
+											mut elem_typ := init_elem_info.elem_type
+											if field_elem_info.elem_type.nr_muls() > 0
+												&& elem_typ.nr_muls() > 0 {
+												elem_typ = elem_typ.set_nr_muls(0)
+											}
+											concrete_types << elem_typ
+											continue gname
+										}
+										break
+									}
+								}
+							}
+						}
+					}
+				} else if field_sym.kind == .array_fixed {
+					for t in node.fields {
+						if ft.name == t.name {
+							init_sym := c.table.sym(t.typ)
+							if init_sym.kind == .array_fixed {
+								mut init_elem_info := init_sym.info as ast.ArrayFixed
+								mut field_elem_info := field_sym.info as ast.ArrayFixed
+								mut init_elem_sym := c.table.sym(init_elem_info.elem_type)
+								mut field_elem_sym := c.table.sym(field_elem_info.elem_type)
+								for {
+									if init_elem_sym.kind == .array_fixed
+										&& field_elem_sym.kind == .array_fixed {
+										init_elem_info = init_elem_sym.info as ast.ArrayFixed
+										init_elem_sym = c.table.sym(init_elem_info.elem_type)
+										field_elem_info = field_elem_sym.info as ast.ArrayFixed
+										field_elem_sym = c.table.sym(field_elem_info.elem_type)
+									} else {
+										if field_elem_sym.name == gt_name {
+											mut elem_typ := init_elem_info.elem_type
+											if field_elem_info.elem_type.nr_muls() > 0
+												&& elem_typ.nr_muls() > 0 {
+												elem_typ = elem_typ.set_nr_muls(0)
+											}
+											concrete_types << elem_typ
+											continue gname
+										}
+										break
+									}
+								}
+							}
+						}
+					}
+				} else if field_sym.kind == .map {
+					for t in node.fields {
+						if ft.name == t.name {
+							init_sym := c.table.sym(t.typ)
+							if init_sym.kind == .map {
+								init_map_info := init_sym.info as ast.Map
+								field_map_info := field_sym.info as ast.Map
+								if field_map_info.key_type.has_flag(.generic)
+									&& c.table.sym(field_map_info.key_type).name == gt_name {
+									mut key_typ := init_map_info.key_type
+									if field_map_info.key_type.nr_muls() > 0
+										&& key_typ.nr_muls() > 0 {
+										key_typ = key_typ.set_nr_muls(0)
+									}
+									concrete_types << key_typ
+									continue gname
+								}
+								if field_map_info.value_type.has_flag(.generic)
+									&& c.table.sym(field_map_info.value_type).name == gt_name {
+									mut val_typ := init_map_info.value_type
+									if field_map_info.value_type.nr_muls() > 0
+										&& val_typ.nr_muls() > 0 {
+										val_typ = val_typ.set_nr_muls(0)
+									}
+									concrete_types << val_typ
+									continue gname
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return concrete_types
+}
+
 pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 	mut inferred_types := []ast.Type{}
 	for gi, gt_name in func.generic_names {

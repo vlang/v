@@ -1002,7 +1002,10 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			continue
 		}
 
-		arg_typ := c.check_expr_opt_call(call_arg.expr, c.expr(call_arg.expr))
+		mut arg_typ := c.check_expr_opt_call(call_arg.expr, c.expr(call_arg.expr))
+		if call_arg.expr is ast.StructInit {
+			arg_typ = c.expr(call_arg.expr)
+		}
 		node.args[i].typ = arg_typ
 		if c.inside_comptime_for_field {
 			if mut call_arg.expr is ast.Ident {

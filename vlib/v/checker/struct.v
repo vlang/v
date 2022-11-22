@@ -254,26 +254,35 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				c.error('unknown type `${ct_sym.name}`', node.pos)
 			}
 		}
-		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0
-			&& !node.is_short_syntax {
-			if c.table.cur_concrete_types.len == 0 {
-				c.error('generic struct init must specify type parameter, e.g. Foo<int>',
-					node.pos)
-			} else if node.generic_types.len == 0 {
-				c.error('generic struct init must specify type parameter, e.g. Foo<T>',
-					node.pos)
-			} else if node.generic_types.len > 0
-				&& node.generic_types.len != struct_sym.info.generic_types.len {
-				c.error('generic struct init expects ${struct_sym.info.generic_types.len} generic parameter, but got ${node.generic_types.len}',
-					node.pos)
-			} else if node.generic_types.len > 0 && c.table.cur_fn != unsafe { nil } {
-				for gtyp in node.generic_types {
-					gtyp_name := c.table.sym(gtyp).name
-					if gtyp_name !in c.table.cur_fn.generic_names {
-						cur_generic_names := '(' + c.table.cur_fn.generic_names.join(',') + ')'
-						c.error('generic struct init type parameter `${gtyp_name}` must be within the parameters `${cur_generic_names}` of the current generic function',
-							node.pos)
-						break
+		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0 {
+			if node.is_short_syntax {
+				concrete_types := c.infer_generic_struct_init_concrete_types(node.typ,
+					node)
+				if concrete_types.len > 0 {
+					generic_names := struct_sym.info.generic_types.map(c.table.sym(it).name)
+					node.typ = c.table.unwrap_generic_type(node.typ, generic_names, concrete_types)
+					return node.typ
+				}
+			} else {
+				if c.table.cur_concrete_types.len == 0 {
+					c.error('generic struct init must specify type parameter, e.g. Foo<int>',
+						node.pos)
+				} else if node.generic_types.len == 0 {
+					c.error('generic struct init must specify type parameter, e.g. Foo<T>',
+						node.pos)
+				} else if node.generic_types.len > 0
+					&& node.generic_types.len != struct_sym.info.generic_types.len {
+					c.error('generic struct init expects ${struct_sym.info.generic_types.len} generic parameter, but got ${node.generic_types.len}',
+						node.pos)
+				} else if node.generic_types.len > 0 && c.table.cur_fn != unsafe { nil } {
+					for gtyp in node.generic_types {
+						gtyp_name := c.table.sym(gtyp).name
+						if gtyp_name !in c.table.cur_fn.generic_names {
+							cur_generic_names := '(' + c.table.cur_fn.generic_names.join(',') + ')'
+							c.error('generic struct init type parameter `${gtyp_name}` must be within the parameters `${cur_generic_names}` of the current generic function',
+								node.pos)
+							break
+						}
 					}
 				}
 			}
@@ -447,7 +456,8 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 							c.mark_as_referenced(mut &field.expr, true)
 						}
 					}
-				} else if expr_type != ast.void_type && expr_type_sym.kind != .placeholder {
+				} else if expr_type != ast.void_type && expr_type_sym.kind != .placeholder
+					&& !field_info.typ.has_flag(.generic) {
 					c.check_expected(c.unwrap_generic(expr_type), c.unwrap_generic(field_info.typ)) or {
 						c.error('cannot assign to field `${field_info.name}`: ${err.msg()}',
 							field.pos)
