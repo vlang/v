@@ -37,3 +37,27 @@ fn test_match_rune_const_ranges() {
 	}
 	assert results == [`1`, `1`, `1`, `2`, `2`, `3`, `3`, `3`, `3`, `0`, `0`]
 }
+
+fn test_match_expr_int_const_ranges() {
+	for x in 0 .. 10 {
+		result := match x {
+			start...end { 1 }
+			start_2...5 { 2 }
+			6...end_2 { -1 }
+			else { 0 }
+		}
+		assert result in [1, 2, -1, 0]
+	}
+}
+
+fn test_match_expr_rune_const_ranges() {
+	for x in `a` .. `l` {
+		result := match x {
+			start_rune...end_rune { `1` }
+			start_2_rune...`e` { `2` }
+			`f`...end_2_rune { `3` }
+			else { `0` }
+		}
+		assert result in [`1`, `2`, `3`, `0`]
+	}
+}
