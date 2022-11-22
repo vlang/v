@@ -417,7 +417,7 @@ fn (mut c Checker) check_valid_pascal_case(name string, identifier string, pos t
 	}
 }
 
-pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
+fn (mut c Checker) type_decl(node ast.TypeDecl) {
 	match node {
 		ast.AliasTypeDecl { c.alias_type_decl(node) }
 		ast.FnTypeDecl { c.fn_type_decl(node) }
@@ -425,7 +425,7 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 	}
 }
 
-pub fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
+fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 	// TODO Remove when `u8` isn't an alias in builtin anymore
 	if c.file.mod.name != 'builtin' {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
@@ -457,7 +457,7 @@ pub fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 	}
 }
 
-pub fn (mut c Checker) fn_type_decl(node ast.FnTypeDecl) {
+fn (mut c Checker) fn_type_decl(node ast.FnTypeDecl) {
 	c.check_valid_pascal_case(node.name, 'fn type', node.pos)
 	typ_sym := c.table.sym(node.typ)
 	fn_typ_info := typ_sym.info as ast.FnType
@@ -476,7 +476,7 @@ pub fn (mut c Checker) fn_type_decl(node ast.FnTypeDecl) {
 	}
 }
 
-pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
+fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 	c.check_valid_pascal_case(node.name, 'sum type', node.pos)
 	mut names_used := []string{}
 	for variant in node.variants {
@@ -535,7 +535,7 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 	}
 }
 
-pub fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, iface_embeds []ast.InterfaceEmbedding) []ast.InterfaceEmbedding {
+fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, iface_embeds []ast.InterfaceEmbedding) []ast.InterfaceEmbedding {
 	// eprintln('> expand_iface_embeds: idecl.name: $idecl.name | level: $level | iface_embeds.len: $iface_embeds.len')
 	if level > checker.iface_level_cutoff_limit {
 		c.error('too many interface embedding levels: ${level}, for interface `${idecl.name}`',
@@ -919,7 +919,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 }
 
 // return the actual type of the expression, once the optional is handled
-pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Type {
+fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Type {
 	if expr is ast.CallExpr {
 		if expr.return_type.has_flag(.optional) || expr.return_type.has_flag(.result) {
 			return_modifier_kind := if expr.return_type.has_flag(.optional) {
@@ -987,7 +987,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast
 	return ret_type
 }
 
-pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return_type ast.Type) {
+fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return_type ast.Type) {
 	if node.kind == .propagate_option {
 		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.optional)
 			&& !c.table.cur_fn.is_main && !c.table.cur_fn.is_test && !c.inside_const {
@@ -1122,7 +1122,7 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 	}
 }
 
-pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
+fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	prevent_sum_type_unwrapping_once := c.prevent_sum_type_unwrapping_once
 	c.prevent_sum_type_unwrapping_once = false
 
@@ -1380,7 +1380,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	return ast.void_type
 }
 
-pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
+fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	if node.fields.len == 0 {
 		c.warn('const block must have at least 1 declaration', node.pos)
 	}
@@ -1443,7 +1443,7 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	}
 }
 
-pub fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
+fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 	c.check_valid_pascal_case(node.name, 'enum name', node.pos)
 	mut useen := []u64{}
 	mut iseen := []i64{}
@@ -2204,7 +2204,7 @@ fn (mut c Checker) stmts_ending_with_expression(stmts []ast.Stmt) {
 	c.scope_returns = false
 }
 
-pub fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
+fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) && c.table.cur_fn != unsafe { nil } {
 		if t_typ := c.table.resolve_generic_to_concrete(typ, c.table.cur_fn.generic_names,
 			c.table.cur_concrete_types)
@@ -2566,7 +2566,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 // 	return ast.void_type
 // }
 
-pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
+fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	// Given: `Outside( Inside(xyz) )`,
 	//        node.expr_type: `Inside`
 	//        node.typ: `Outside`
@@ -2932,7 +2932,7 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 	return ast.string_type
 }
 
-pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
+fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	// TODO: move this
 	if c.const_deps.len > 0 {
 		mut name := node.name
@@ -3175,7 +3175,7 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	return ast.void_type
 }
 
-pub fn (mut c Checker) concat_expr(mut node ast.ConcatExpr) ast.Type {
+fn (mut c Checker) concat_expr(mut node ast.ConcatExpr) ast.Type {
 	mut mr_types := []ast.Type{}
 	for expr in node.vals {
 		mr_types << c.expr(expr)
@@ -3278,7 +3278,7 @@ fn (mut c Checker) smartcast(expr_ ast.Expr, cur_type ast.Type, to_type_ ast.Typ
 	}
 }
 
-pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
+fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 	node.is_expr = c.expected_type != ast.void_type
 	node.expected_type = c.expected_type
 	for branch in node.branches {
@@ -3336,7 +3336,7 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 	return ast.bool_type
 }
 
-pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
+fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 	expected_type := c.expected_type
 	if c.rlocked_names.len > 0 || c.locked_names.len > 0 {
 		c.error('nested `lock`/`rlock` not allowed', node.pos)
@@ -3379,7 +3379,7 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 	return ret_type
 }
 
-pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) ast.Type {
+fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) ast.Type {
 	c.inside_unsafe = true
 	t := c.expr(node.expr)
 	c.inside_unsafe = false
@@ -3439,7 +3439,7 @@ fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 	return none
 }
 
-pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
+fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	typ := c.unwrap_generic(c.expr(node.expr))
 	typ_sym := c.table.sym(typ)
 	is_non_void_pointer := (typ.is_ptr() || typ.is_pointer()) && typ_sym.kind != .voidptr
@@ -3456,7 +3456,7 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	return typ
 }
 
-pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
+fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 	match mut node {
 		ast.Ident {
 			if mut node.obj is ast.Var {
@@ -3509,7 +3509,7 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) 
 	}
 }
 
-pub fn (mut c Checker) get_base_name(node &ast.Expr) string {
+fn (mut c Checker) get_base_name(node &ast.Expr) string {
 	match node {
 		ast.Ident {
 			return node.name
@@ -3526,7 +3526,7 @@ pub fn (mut c Checker) get_base_name(node &ast.Expr) string {
 	}
 }
 
-pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
+fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	old_inside_ref_lit := c.inside_ref_lit
 	c.inside_ref_lit = c.inside_ref_lit || node.op == .amp
 	right_type := c.expr(node.right)
@@ -3688,7 +3688,7 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 	}
 }
 
-pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
+fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	mut typ := c.expr(node.left)
 	if typ == 0 {
 		c.error('unknown type for expression `${node.left}`', node.pos)
@@ -3807,7 +3807,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 // `.green` or `Color.green`
 // If a short form is used, `expected_type` needs to be an enum
 // with this value.
-pub fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
+fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 	mut typ_idx := if node.enum_name == '' {
 		// Get the type of the enum without enum name by looking at the expected type.
 		// e.g. `set_color(.green)`, V knows that `Green` is the expected type.
@@ -3875,7 +3875,7 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 	return typ
 }
 
-pub fn (mut c Checker) chan_init(mut node ast.ChanInit) ast.Type {
+fn (mut c Checker) chan_init(mut node ast.ChanInit) ast.Type {
 	if node.typ != 0 {
 		info := c.table.sym(node.typ).chan_info()
 		node.elem_type = info.elem_type
@@ -3895,7 +3895,7 @@ pub fn (mut c Checker) chan_init(mut node ast.ChanInit) ast.Type {
 	}
 }
 
-pub fn (mut c Checker) offset_of(node ast.OffsetOf) ast.Type {
+fn (mut c Checker) offset_of(node ast.OffsetOf) ast.Type {
 	sym := c.table.final_sym(node.struct_type)
 	if sym.kind != .struct_ {
 		c.error('first argument of __offsetof must be struct', node.pos)
@@ -3907,7 +3907,7 @@ pub fn (mut c Checker) offset_of(node ast.OffsetOf) ast.Type {
 	return ast.u32_type
 }
 
-pub fn (mut c Checker) check_dup_keys(node &ast.MapInit, i int) {
+fn (mut c Checker) check_dup_keys(node &ast.MapInit, i int) {
 	key_i := node.keys[i]
 	if key_i is ast.StringLiteral {
 		for j in 0 .. i {
@@ -3931,30 +3931,30 @@ pub fn (mut c Checker) check_dup_keys(node &ast.MapInit, i int) {
 }
 
 // call this *before* calling error or warn
-pub fn (mut c Checker) add_error_detail(s string) {
+fn (mut c Checker) add_error_detail(s string) {
 	c.error_details << s
 }
 
-pub fn (mut c Checker) add_error_detail_with_pos(msg string, pos token.Pos) {
+fn (mut c Checker) add_error_detail_with_pos(msg string, pos token.Pos) {
 	c.add_error_detail(util.formatted_error('details:', msg, c.file.path, pos))
 }
 
-pub fn (mut c Checker) add_instruction_for_optional_type() {
+fn (mut c Checker) add_instruction_for_optional_type() {
 	c.add_error_detail_with_pos('prepend ? before the declaration of the return type of `${c.table.cur_fn.name}`',
 		c.table.cur_fn.return_type_pos)
 }
 
-pub fn (mut c Checker) add_instruction_for_result_type() {
+fn (mut c Checker) add_instruction_for_result_type() {
 	c.add_error_detail_with_pos('prepend ! before the declaration of the return type of `${c.table.cur_fn.name}`',
 		c.table.cur_fn.return_type_pos)
 }
 
-pub fn (mut c Checker) warn(s string, pos token.Pos) {
+fn (mut c Checker) warn(s string, pos token.Pos) {
 	allow_warnings := !(c.pref.is_prod || c.pref.warns_are_errors) // allow warnings only in dev builds
 	c.warn_or_error(s, pos, allow_warnings)
 }
 
-pub fn (mut c Checker) error(message string, pos token.Pos) {
+fn (mut c Checker) error(message string, pos token.Pos) {
 	$if checker_exit_on_first_error ? {
 		eprintln('\n\n>> checker error: ${message}, pos: ${pos}')
 		print_backtrace()
@@ -4000,7 +4000,7 @@ fn (c &Checker) check_struct_signature(from ast.Struct, to ast.Struct) bool {
 	return true
 }
 
-pub fn (mut c Checker) note(message string, pos token.Pos) {
+fn (mut c Checker) note(message string, pos token.Pos) {
 	if c.pref.message_limit >= 0 && c.nr_notices >= c.pref.message_limit {
 		c.should_abort = true
 		return
@@ -4168,7 +4168,7 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
 	}
 }
 
-pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) {
+fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) {
 	mut pos := token.Pos{}
 	match expr {
 		ast.Ident {
@@ -4233,7 +4233,7 @@ fn (mut c Checker) goto_label(node ast.GotoLabel) {
 	}
 }
 
-pub fn (mut c Checker) goto_stmt(node ast.GotoStmt) {
+fn (mut c Checker) goto_stmt(node ast.GotoStmt) {
 	if c.inside_defer {
 		c.error('goto is not allowed in defer statements', node.pos)
 	}

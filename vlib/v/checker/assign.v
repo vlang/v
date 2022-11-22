@@ -6,7 +6,7 @@ import v.ast
 import v.pref
 
 // TODO 600 line function
-pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
+fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	c.expected_type = ast.none_type // TODO a hack to make `x := if ... work`
 	defer {
 		c.expected_type = ast.void_type

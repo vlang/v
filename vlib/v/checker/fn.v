@@ -445,7 +445,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 	return node.typ
 }
 
-pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
+fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	// Check whether the inner function definition is before the call
 	if var := node.scope.find_var(node.name) {
 		if var.expr is ast.AnonFn && var.pos.pos > node.pos.pos {
@@ -514,7 +514,7 @@ pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	return typ
 }
 
-pub fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func ast.Fn) {
+fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func ast.Fn) {
 	c.inside_println_arg = true
 	c.expected_type = ast.string_type
 	node.args[0].typ = c.expr(node.args[0].expr)
@@ -546,7 +546,7 @@ pub fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func 
 	*/
 }
 
-pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
+fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
 	fn_name := node.name
 	if fn_name == 'main' {
 		c.error('the `main` function cannot be called in the program', node.pos)
@@ -1287,7 +1287,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	return func.return_type
 }
 
-pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
+fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	left_type := c.expr(node.left)
 	if left_type == ast.void_type {
 		c.error('cannot call a method using an invalid expression', node.pos)
@@ -1991,7 +1991,7 @@ fn (mut c Checker) post_process_generic_fns() {
 	}
 }
 
-pub fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! {
+fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! {
 	nr_args := node.args.len
 	nr_params := if node.is_method && f.params.len > 0 { f.params.len - 1 } else { f.params.len }
 	mut min_required_params := f.params.len
