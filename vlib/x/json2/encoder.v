@@ -196,13 +196,13 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			}
 		} else {
 			match field.unaliased_typ {
-				string_type_idx {
+				typeof(<string>).idx {
 					e.encode_string(val.$(field.name).str(), mut wr)!
 				}
-				int_type_idx {
+				typeof(<int>).idx {
 					wr.write(val.$(field.name).str().bytes())!
 				}
-				byte_array_type_idx {
+				typeof(<[]byte>).idx {
 					//! array
 					e.encode_array(val.$(field.name), level, mut wr)!
 				}
