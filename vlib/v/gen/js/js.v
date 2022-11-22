@@ -3460,7 +3460,7 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 }
 
 fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
-	sym := g.table.sym(it.expr_type)
+	sym := g.table.sym(it.typ)
 	if sym.kind == .sum_type {
 		// TODO: JS sumtypes not implemented yet
 	} else if sym.kind == .array_fixed {

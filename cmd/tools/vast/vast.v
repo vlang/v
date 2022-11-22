@@ -1679,8 +1679,9 @@ fn (t Tree) concat_expr(node ast.ConcatExpr) &Node {
 fn (t Tree) type_of(node ast.TypeOf) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('TypeOf'))
+	obj.add_terse('is_type', t.bool_node(node.is_type))
+	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add_terse('expr', t.expr(node.expr))
-	obj.add_terse('expr_type', t.type_node(node.expr_type))
 	obj.add('pos', t.pos(node.pos))
 	return obj
 }

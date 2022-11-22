@@ -453,7 +453,7 @@ pub fn (x Expr) str() string {
 			if x.is_type {
 				return 'sizeof(${global_table.type_to_str(x.typ)})'
 			}
-			return 'sizeof(${x.expr})'
+			return 'sizeof(${x.expr.str()})'
 		}
 		OffsetOf {
 			return '__offsetof(${global_table.type_to_str(x.struct_type)}, ${x.field})'
@@ -487,6 +487,9 @@ pub fn (x Expr) str() string {
 			return 'TypeNode(${x.typ})'
 		}
 		TypeOf {
+			if x.is_type {
+				return 'typeof(${global_table.type_to_str(x.typ)})'
+			}
 			return 'typeof(${x.expr.str()})'
 		}
 		Likely {
@@ -499,11 +502,10 @@ pub fn (x Expr) str() string {
 			return 'none'
 		}
 		IsRefType {
-			return 'isreftype(' + if x.is_type {
-				global_table.type_to_str(x.typ)
-			} else {
-				x.expr.str()
-			} + ')'
+			if x.is_type {
+				return 'isreftype(${global_table.type_to_str(x.typ)})'
+			}
+			return 'isreftype(${x.expr.str()})'
 		}
 		IfGuardExpr {
 			mut s := ''

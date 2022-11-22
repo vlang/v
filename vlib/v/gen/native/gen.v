@@ -625,7 +625,7 @@ fn (mut g Gen) get_sizeof_ident(ident ast.Ident) int {
 
 fn (mut g Gen) gen_typeof_expr(it ast.TypeOf, newline bool) {
 	nl := if newline { '\n' } else { '' }
-	r := g.typ(it.expr_type).name
+	r := g.typ(it.typ).name
 	g.learel(.rax, g.allocate_string('${r}${nl}', 3, .rel32))
 }
 

@@ -1626,10 +1626,11 @@ pub mut:
 [minify]
 pub struct TypeOf {
 pub:
-	pos token.Pos
+	is_type bool
+	pos     token.Pos
 pub mut:
-	expr      Expr
-	expr_type Type
+	expr Expr // checker uses this to set typ
+	typ  Type
 }
 
 [minify]

@@ -203,6 +203,35 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				pos: pos
 			}
 		}
+		.key_typeof {
+			spos := p.tok.pos()
+			p.next()
+			p.check(.lpar)
+			if p.tok.kind == .lt {
+				p.check(.lt)
+				type_pos := p.tok.pos()
+				typ := p.parse_type()
+				p.check(.gt)
+				p.check(.rpar)
+				node = ast.TypeOf{
+					is_type: true
+					typ: typ
+					pos: type_pos.extend(p.tok.pos())
+				}
+			} else {
+				expr := p.expr(0)
+				p.check(.rpar)
+				if p.tok.kind != .dot && p.tok.line_nr == p.prev_tok.line_nr {
+					p.warn_with_pos('use e.g. `typeof(expr).name` or `sum_type_instance.type_name()` instead',
+						spos)
+				}
+				node = ast.TypeOf{
+					is_type: false
+					expr: expr
+					pos: spos.extend(p.tok.pos())
+				}
+			}
+		}
 		.key_sizeof, .key_isreftype {
 			is_reftype := p.tok.kind == .key_isreftype
 			p.next() // sizeof
@@ -257,21 +286,6 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				}
 			}
 			p.check(.rpar)
-		}
-		.key_typeof {
-			spos := p.tok.pos()
-			p.next()
-			p.check(.lpar)
-			expr := p.expr(0)
-			p.check(.rpar)
-			if p.tok.kind != .dot && p.tok.line_nr == p.prev_tok.line_nr {
-				p.warn_with_pos('use e.g. `typeof(expr).name` or `sum_type_instance.type_name()` instead',
-					spos)
-			}
-			node = ast.TypeOf{
-				expr: expr
-				pos: spos.extend(p.tok.pos())
-			}
 		}
 		.key_dump {
 			spos := p.tok.pos()
