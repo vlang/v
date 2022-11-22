@@ -6,7 +6,7 @@ import v.ast
 import v.pref
 import v.token
 
-pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
+fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	if_kind := if node.is_comptime { '\$if' } else { 'if' }
 	mut node_is_expr := false
 	if node.branches.len > 0 && node.has_else {

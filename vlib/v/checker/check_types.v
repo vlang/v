@@ -6,7 +6,7 @@ module checker
 import v.ast
 
 // TODO: promote(), check_types(), symmetric_check() and check() overlap - should be rearranged
-pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
+fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if got == expected {
 		return true
 	}
@@ -184,7 +184,7 @@ fn (c Checker) check_multiple_ptr_match(got ast.Type, expected ast.Type, param a
 	return true
 }
 
-pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, language ast.Language, arg ast.CallArg) ? {
+fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, language ast.Language, arg ast.CallArg) ? {
 	if got == 0 {
 		return error('unexpected 0 type')
 	}
@@ -298,7 +298,7 @@ fn (c Checker) check_same_module(got ast.Type, expected ast.Type) bool {
 	return false
 }
 
-pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
+fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	unalias_got, unalias_expected := c.table.unalias_num_type(got), c.table.unalias_num_type(expected)
 	if unalias_got.idx() == unalias_expected.idx() {
 		// this is returning true even if one type is a ptr
@@ -371,7 +371,7 @@ pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	return false
 }
 
-pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol, exp_type_sym &ast.TypeSymbol) bool {
+fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol, exp_type_sym &ast.TypeSymbol) bool {
 	if c.pref.translated {
 		// TODO too open
 		return true
@@ -538,14 +538,14 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 	return left_type
 }
 
-pub fn (mut c Checker) promote_keeping_aliases(left_type ast.Type, right_type ast.Type, left_kind ast.Kind, right_kind ast.Kind) ast.Type {
+fn (mut c Checker) promote_keeping_aliases(left_type ast.Type, right_type ast.Type, left_kind ast.Kind, right_kind ast.Kind) ast.Type {
 	if left_type == right_type && left_kind == .alias && right_kind == .alias {
 		return left_type
 	}
 	return c.promote(left_type, right_type)
 }
 
-pub fn (mut c Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
+fn (mut c Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
 	if left_type.is_any_kind_of_pointer() {
 		if right_type.is_int() || c.pref.translated {
 			return left_type
@@ -614,7 +614,7 @@ fn (c &Checker) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
 	}
 }
 
-pub fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ! {
+fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ! {
 	if !c.check_types(got, expected) {
 		return error(c.expected_msg(got, expected))
 	}
@@ -626,7 +626,7 @@ fn (c &Checker) expected_msg(got ast.Type, expected ast.Type) string {
 	return 'expected `${exps}`, not `${gots}`'
 }
 
-pub fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
+fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
 	// allow direct int-literal assignment for pointers for now
 	// maybe in the future optionals should be used for that
 	if right.is_ptr() || right.is_pointer() {
@@ -643,6 +643,7 @@ pub fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
 	return c.check_basic(left, right)
 }
 
+<<<<<<< HEAD
 fn (mut c Checker) infer_generic_struct_init_concrete_types(typ ast.Type, node ast.StructInit) []ast.Type {
 	mut concrete_types := []ast.Type{}
 	sym := c.table.sym(typ)
@@ -759,7 +760,7 @@ fn (mut c Checker) infer_generic_struct_init_concrete_types(typ ast.Type, node a
 	return concrete_types
 }
 
-pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
+fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 	mut inferred_types := []ast.Type{}
 	for gi, gt_name in func.generic_names {
 		// skip known types

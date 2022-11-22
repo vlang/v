@@ -5,7 +5,7 @@ module checker
 import v.ast
 import v.util
 
-pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
+fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 	mut struct_sym, struct_typ_idx := c.table.find_sym_and_type_idx(node.name)
 	mut has_generic_types := false
 	if mut struct_sym.info is ast.Struct {
@@ -231,7 +231,7 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 	}
 }
 
-pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
+fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 	if node.typ == ast.void_type {
 		// short syntax `foo(key:val, key2:val2)`
 		if c.expected_type == ast.void_type {
