@@ -1,5 +1,6 @@
-const end = 10
-const start = 'str'
+const start = `a`
+const end = 2
+
 
 match 5 {
 	start...end {

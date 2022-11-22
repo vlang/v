@@ -1,0 +1,13 @@
+const start = 12
+
+const end = `a`
+
+match 5 {
+	0...end {
+		println(start)
+	}
+	`a`...start {
+		println(end)
+	}
+	else {}
+}

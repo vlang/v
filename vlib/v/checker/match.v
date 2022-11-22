@@ -170,6 +170,10 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 							if obj.typ == 0 {
 								obj.typ = c.expr(obj.expr)
 							}
+							if obj.expr !is ast.IntegerLiteral {
+								c.error('const `${obj.name}` needs to be an integer',
+									high_expr.pos)
+							}
 							// Check num...const_int
 							if mut obj.expr is ast.IntegerLiteral
 								&& (final_cond_sym.is_int() || final_cond_sym.info is ast.Enum) {
@@ -200,6 +204,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						if mut obj := c.table.global_scope.find_const('${high_expr.mod}.${high_expr.name}') {
 							if obj.typ == 0 {
 								obj.typ = c.expr(obj.expr)
+							}
+							if obj.expr !is ast.CharLiteral {
+								c.error('const `${obj.name}` needs to be a `rune`', high_expr.pos)
 							}
 							// Check `rune`...const_rune
 							if mut obj.expr is ast.CharLiteral
@@ -238,6 +245,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 								if obj2.expr !in [ast.IntegerLiteral, ast.CharLiteral] {
 									c.error('only numeric and char typed const are allowed for ranges',
 										high_expr.pos)
+								}
+								if !((obj1.expr is ast.IntegerLiteral
+									&& obj2.expr is ast.IntegerLiteral)
+									|| (obj1.expr is ast.CharLiteral
+									&& obj2.expr is ast.CharLiteral)) {
+									c.error('start type and end type need to be of the same type',
+										branch.pos)
 								}
 								// Check const_int..const2_int
 								if mut obj1.expr is ast.IntegerLiteral {

@@ -1,0 +1,14 @@
+vlib/v/checker/tests/const_match_mismatch_end_range_err.vv:6:6: error: const `end` needs to be an integer
+    4 | 
+    5 | match 5 {
+    6 |     0...end {
+      |         ~~~
+    7 |         println(start)
+    8 |     }
+vlib/v/checker/tests/const_match_mismatch_end_range_err.vv:9:8: error: const `start` needs to be a `rune`
+    7 |         println(start)
+    8 |     }
+    9 |     `a`...start {
+      |           ~~~~~
+   10 |         println(end)
+   11 |     }

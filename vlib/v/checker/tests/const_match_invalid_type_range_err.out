@@ -1,0 +1,7 @@
+vlib/v/checker/tests/const_match_invalid_type_range_err.vv:6:2: error: start type and end type need to be of the same type
+    4 | 
+    5 | match 5 {
+    6 |     start...end {
+      |     ~~~~~~~~~~~
+    7 |         println(start)
+    8 |     }
