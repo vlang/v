@@ -2285,6 +2285,17 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 			got_name := 'fn ${g.table.fn_type_source_signature(got_sym.info.func)}'
 			got_cname = 'anon_fn_${g.table.fn_type_signature(got_sym.info.func)}'
 			type_idx = g.table.type_idxs[got_name].str()
+			exp_info := exp_sym.info as ast.SumType
+			for variant in exp_info.variants {
+				variant_sym := g.table.sym(variant)
+				if variant_sym.info is ast.FnType {
+					if g.table.fn_type_source_signature(variant_sym.info.func) == g.table.fn_type_source_signature(got_sym.info.func) {
+						got_cname = variant_sym.cname
+						type_idx = variant.idx().str()
+						break
+					}
+				}
+			}
 			sb.writeln('static inline ${exp_cname} ${fun.fn_name}(${got_cname} x) {')
 			sb.writeln('\t${got_cname} ptr = x;')
 			is_anon_fn = true
