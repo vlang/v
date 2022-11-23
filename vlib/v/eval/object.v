@@ -86,7 +86,7 @@ pub fn (o Object) string() string {
 		}
 		Ptr {
 			if o.val == unsafe { nil } {
-				return 'nil'
+				return '&nil'
 			}
 			return o.val.str()
 		}
