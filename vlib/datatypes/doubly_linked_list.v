@@ -124,7 +124,7 @@ pub fn (mut list DoublyLinkedList<T>) pop_front() ?T {
 // insert adds an element to the linked list at the given index
 pub fn (mut list DoublyLinkedList<T>) insert(idx int, item T) ? {
 	if idx < 0 || idx > list.len {
-		return error('Index out of bounds')
+		return error('Index ${idx} out of bounds [0..${list.len}]')
 	} else if idx == 0 {
 		// new head
 		list.push_front(item)

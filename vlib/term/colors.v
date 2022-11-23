@@ -47,6 +47,17 @@ pub fn underline(msg string) string {
 	return format(msg, '4', '24')
 }
 
+// slow_blink will surround the `msg` with ANSI escape codes for blinking (less than 150 times per minute).
+pub fn slow_blink(msg string) string {
+	return format(msg, '5', '25')
+}
+
+// rapid_blink will surround the `msg` with ANSI escape codes for blinking (over 150 times per minute).
+// Note that unlike slow_blink, this is not very widely supported.
+pub fn rapid_blink(msg string) string {
+	return format(msg, '6', '26')
+}
+
 pub fn inverse(msg string) string {
 	return format(msg, '7', '27')
 }

@@ -1773,7 +1773,7 @@ mut:
 
 fn (mut iter SquareIterator) next() ?int {
 	if iter.idx >= iter.arr.len {
-		return error('')
+		return none
 	}
 	defer {
 		iter.idx++
@@ -5319,6 +5319,8 @@ fn main() {
 	os.write_file('exported.png', embedded_file.to_string())?
 }
 ```
+
+`$embed_file` returns [EmbedFileData](https://modules.vlang.io/v.embed_file.html#EmbedFileData) which could be used to obtain the file contents as `string` or `[]u8`.
 
 #### `$tmpl` for embedding and parsing V template files
 

@@ -371,20 +371,23 @@ fn test_errors() {
 }
 
 type ID = string
+type GG = int
 
 struct Message {
 	id ID
+	ij GG
 }
 
 fn test_decode_alias_struct() {
 	msg := json.decode(Message, '{"id": "118499178790780929"}')!
 	// hacky way of comparing aliased strings
 	assert msg.id.str() == '118499178790780929'
+	assert msg.ij.str() == '0'
 }
 
 fn test_encode_alias_struct() {
-	expected := '{"id":"118499178790780929"}'
-	msg := Message{'118499178790780929'}
+	expected := '{"id":"118499178790780929","ij":999998888}'
+	msg := Message{'118499178790780929', 999998888}
 	out := json.encode(msg)
 	assert out == expected
 }

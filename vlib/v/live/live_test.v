@@ -79,6 +79,29 @@ fn main() {
 	}
 	atomic_write_source(live_program_source)
 	// os.system('tree $vtmp_folder') exit(1)
+	spawn watchdog()
+}
+
+fn watchdog() {
+	// This thread will automatically exit the live_test.v process, if it gets stuck.
+	// On the Github CI, especially on the sanitized jobs, that are super slow, this allows
+	// the job as a whole to continue, because the V test framework will restart live_test.v
+	// a few times, and then it will stop.
+	// Previusly, it could not do that, because if the process itself takes say a few hours,
+	// when the CI job gets reprioritized, the whole Github job will get cancelled, when it
+	// reaches its own timeout (which is 3 hours).
+	// Note, that usually `v vlib/v/live/live_test.v` does not take too long - it takes
+	// ~4 seconds, even on an i3, with tcc, ~12 seconds with clang, and ~15 seconds with gcc,
+	// so the *5 minutes* period, allows plenty of time for the process to finish normally.
+	sw := time.new_stopwatch()
+	for {
+		elapsed_time_in_seconds := sw.elapsed().seconds()
+		dump(elapsed_time_in_seconds)
+		if elapsed_time_in_seconds > 5 * 60 {
+			exit(3)
+		}
+		time.sleep(1 * time.second)
+	}
 }
 
 [debuglivetest]

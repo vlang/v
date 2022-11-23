@@ -74,10 +74,12 @@ fn test_server_custom_handler() {
 	x := http.fetch(url: 'http://localhost:${cport}/endpoint?abc=xyz', data: 'my data')!
 	assert x.body == 'my data, /endpoint?abc=xyz'
 	assert x.status_code == 200
+	assert x.status_msg == 'OK'
 	assert x.http_version == '1.1'
 	y := http.fetch(url: 'http://localhost:${cport}/another/endpoint', data: 'abcde')!
 	assert y.body == 'abcde, /another/endpoint'
 	assert y.status_code == 200
+	assert x.status_msg == 'OK'
 	assert y.status() == .ok
 	assert y.http_version == '1.1'
 	//

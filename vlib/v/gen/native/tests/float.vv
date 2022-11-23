@@ -13,6 +13,21 @@ fn float_test() {
 	assert b >= a
 	assert a == 0.5
 	assert b != 0.5
+
+	assert -a == -0.5
+	assert -b == -3.2
+}
+
+fn float_assign_test() {
+	mut a := f64(1.0)
+	a += 2.5
+	assert a == 3.5
+	a -= 1.25
+	assert a == 2.25
+	a *= 6.0
+	assert a == 13.5
+	a /= 4.5
+	assert a == 3.0
 }
 
 fn float_cast_test() {
@@ -65,6 +80,7 @@ fn float_fn_test() {
 
 fn main() {
 	float_test()
+	float_assign_test()
 	float_cast_test()
 	float_fn_test()
 }

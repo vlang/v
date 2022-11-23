@@ -121,6 +121,10 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 			return
 		}
+
+		if !g.inside_call && (m.return_type.has_flag(.optional) || m.return_type.has_flag(.result)) {
+			g.write('(*(${g.base_type(m.return_type)}*)')
+		}
 		// TODO: check argument types
 		g.write('${util.no_dots(sym.name)}_${g.comptime_for_method}(')
 
@@ -165,6 +169,9 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 		}
 		g.write(')')
+		if !g.inside_call && (m.return_type.has_flag(.optional) || m.return_type.has_flag(.result)) {
+			g.write('.data)')
+		}
 		return
 	}
 	mut j := 0
@@ -575,7 +582,10 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				// field_sym := g.table.sym(field.typ)
 				// g.writeln('\t${node.val_var}.typ = _SLIT("$field_sym.name");')
 				styp := field.typ
+				unaliased_styp := g.table.unaliased_type(styp)
+
 				g.writeln('\t${node.val_var}.typ = ${styp.idx()};')
+				g.writeln('\t${node.val_var}.unaliased_typ = ${unaliased_styp.idx()};')
 				g.writeln('\t${node.val_var}.is_pub = ${field.is_pub};')
 				g.writeln('\t${node.val_var}.is_mut = ${field.is_mut};')
 				g.writeln('\t${node.val_var}.is_shared = ${field.typ.has_flag(.shared_f)};')

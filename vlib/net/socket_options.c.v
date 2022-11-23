@@ -1,7 +1,7 @@
 module net
 
 pub enum SocketOption {
-	// TODO: SO_ACCEPT_CONN is not here becuase windows doesnt support it
+	// TODO: SO_ACCEPT_CONN is not here because windows doesnt support it
 	// and there is no easy way to define it
 	broadcast = C.SO_BROADCAST
 	debug = C.SO_DEBUG

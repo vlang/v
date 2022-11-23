@@ -58,7 +58,7 @@ pub fn (list LinkedList<T>) index(idx int) ?T {
 		if iterations == idx {
 			return node.data
 		} else {
-			return error('Index out of bounds')
+			return error('Index ${idx} != iterations: ${iterations}')
 		}
 	}
 }
@@ -119,7 +119,7 @@ pub fn (mut list LinkedList<T>) shift() ?T {
 // insert adds an element to the linked list at the given index
 pub fn (mut list LinkedList<T>) insert(idx int, item T) ? {
 	if idx < 0 || idx > list.len {
-		return error('Index out of bounds')
+		return error('Index ${idx} out of bounds [0..${list.len}]')
 	} else if list.len == 0 {
 		list.push(item)
 	} else {

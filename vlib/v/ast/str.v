@@ -440,7 +440,14 @@ pub fn (x Expr) str() string {
 			return 'ast.SelectExpr'
 		}
 		SelectorExpr {
-			return '${x.expr.str()}.${x.field_name}'
+			propagate_suffix := if x.or_block.kind == .propagate_option {
+				'?'
+			} else if x.or_block.kind == .propagate_result {
+				'!'
+			} else {
+				''
+			}
+			return '${x.expr.str()}.${x.field_name}${propagate_suffix}'
 		}
 		SizeOf {
 			if x.is_type {

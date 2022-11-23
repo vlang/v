@@ -25,7 +25,7 @@ const (
 		'long', 'malloc', 'namespace', 'new', 'nil', 'panic', 'register', 'restrict', 'return',
 		'short', 'signed', 'sizeof', 'static', 'string', 'struct', 'switch', 'typedef', 'typename',
 		'union', 'unix', 'unsigned', 'void', 'volatile', 'while', 'template', 'true', 'small',
-		'stdout', 'stdin', 'stderr']
+		'stdout', 'stdin', 'stderr', 'far', 'near', 'huge']
 	c_reserved_chk = token.new_keywords_matcher_from_array_trie(c_reserved)
 	// same order as in token.Kind
 	cmp_str        = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
@@ -110,6 +110,7 @@ mut:
 	results_forward           []string // to forward
 	results                   map[string]string // to avoid duplicates
 	done_optionals            shared []string   // to avoid duplicates
+	done_results              shared []string   // to avoid duplicates
 	chan_pop_optionals        map[string]string // types for `x := <-ch or {...}`
 	chan_push_optionals       map[string]string // types for `ch <- x or {...}`
 	mtxs                      string // array of mutexes if the `lock` has multiple variables
@@ -120,6 +121,7 @@ mut:
 	inside_map_postfix        bool // inside map++/-- postfix expr
 	inside_map_infix          bool // inside map<</+=/-= infix expr
 	inside_map_index          bool
+	inside_opt_or_res         bool
 	inside_opt_data           bool
 	inside_if_optional        bool
 	inside_if_result          bool
@@ -647,6 +649,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		options_forward: global_g.options_forward
 		results_forward: global_g.results_forward
 		done_optionals: global_g.done_optionals
+		done_results: global_g.done_results
 		is_autofree: global_g.pref.autofree
 		referenced_fns: global_g.referenced_fns
 		is_cc_msvc: global_g.is_cc_msvc
@@ -1130,6 +1133,9 @@ fn (mut g Gen) write_optionals() {
 
 fn (mut g Gen) write_results() {
 	mut done := []string{}
+	rlock g.done_results {
+		done = g.done_results.clone()
+	}
 	for base, styp in g.results {
 		if base in done {
 			continue
@@ -1572,6 +1578,22 @@ pub fn (mut g Gen) write_multi_return_types() {
 					}
 				}
 			}
+			if mr_typ.has_flag(.result) {
+				// result in multi_return
+				// Dont use g.typ() here because it will register
+				// result and we dont want that
+				styp, base := g.result_type_name(mr_typ)
+				lock g.done_results {
+					if base !in g.done_results {
+						g.done_results << base
+						last_text := g.type_definitions.after(start_pos).clone()
+						g.type_definitions.go_back_to(start_pos)
+						g.typedefs.writeln('typedef struct ${styp} ${styp};')
+						g.type_definitions.writeln('${g.result_type_text(styp, base)};')
+						g.type_definitions.write_string(last_text)
+					}
+				}
+			}
 			g.type_definitions.writeln('\t${type_name} arg${i};')
 		}
 		g.type_definitions.writeln('};\n')
@@ -1774,6 +1796,42 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 		}
 	}
 	return last_stmt_was_return
+}
+
+// expr_with_tmp_var is used in assign expr to `optinal` or `result` type.
+// applicable to situations where the expr_typ does not have `optinal` and `result`,
+// e.g. field default: "foo ?int = 1", field assign: "foo = 1", field init: "foo: 1"
+fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type, tmp_var string) {
+	if !ret_typ.has_flag(.optional) && !ret_typ.has_flag(.result) {
+		panic('cgen: parameter `ret_typ` of function `expr_with_tmp_var()` must have optional or result')
+	}
+
+	stmt_str := g.go_before_stmt(0).trim_space()
+	styp := g.base_type(ret_typ)
+	g.empty_line = true
+
+	if g.table.sym(expr_typ).kind == .none_ {
+		g.write('${g.typ(ret_typ)} ${tmp_var} = ')
+		g.gen_optional_error(ret_typ, expr)
+		g.writeln(';')
+	} else {
+		g.writeln('${g.typ(ret_typ)} ${tmp_var};')
+		if ret_typ.has_flag(.optional) {
+			g.write('_option_ok(&(${styp}[]) { ')
+		} else {
+			g.write('_result_ok(&(${styp}[]) { ')
+		}
+		g.expr_with_cast(expr, expr_typ, ret_typ)
+		if ret_typ.has_flag(.optional) {
+			g.writeln(' }, (${c.option_name}*)(&${tmp_var}), sizeof(${styp}));')
+		} else {
+			g.writeln(' }, (${c.result_name}*)(&${tmp_var}), sizeof(${styp}));')
+		}
+	}
+
+	g.write(stmt_str)
+	g.write(' ')
+	g.write(tmp_var)
 }
 
 [inline]
@@ -2227,6 +2285,17 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 			got_name := 'fn ${g.table.fn_type_source_signature(got_sym.info.func)}'
 			got_cname = 'anon_fn_${g.table.fn_type_signature(got_sym.info.func)}'
 			type_idx = g.table.type_idxs[got_name].str()
+			exp_info := exp_sym.info as ast.SumType
+			for variant in exp_info.variants {
+				variant_sym := g.table.sym(variant)
+				if variant_sym.info is ast.FnType {
+					if g.table.fn_type_source_signature(variant_sym.info.func) == g.table.fn_type_source_signature(got_sym.info.func) {
+						got_cname = variant_sym.cname
+						type_idx = variant.idx().str()
+						break
+					}
+				}
+			}
 			sb.writeln('static inline ${exp_cname} ${fun.fn_name}(${got_cname} x) {')
 			sb.writeln('\t${got_cname} ptr = x;')
 			is_anon_fn = true
@@ -3504,6 +3573,24 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if node.expr_type == 0 {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
+
+	if node.or_block.kind != .absent && !g.is_assign_lhs && g.table.sym(node.typ).kind != .chan {
+		stmt_str := g.go_before_stmt(0).trim_space()
+		styp := g.typ(node.typ)
+		g.empty_line = true
+		tmp_var := g.new_tmp_var()
+		g.write('${styp} ${tmp_var} = ')
+		g.expr(node.expr)
+		g.write('.${node.field_name}')
+		g.or_block(tmp_var, node.or_block, node.typ)
+		g.write(stmt_str)
+		g.write(' ')
+		unwrapped_typ := node.typ.clear_flag(.optional).clear_flag(.result)
+		unwrapped_styp := g.typ(unwrapped_typ)
+		g.write('(*(${unwrapped_styp}*)${tmp_var}.data)')
+		return
+	}
+
 	sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	// if node expr is a root ident and an optional
 	mut is_opt_or_res := node.expr is ast.Ident
@@ -4122,9 +4209,13 @@ fn (mut g Gen) ident(node ast.Ident) {
 		// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
 		// `println(x)` => `println(*(int*)x.data)`
 		if node.info.is_optional && !(g.is_assign_lhs && g.right_is_opt) {
-			g.write('/*opt*/')
-			styp := g.base_type(node.info.typ)
-			g.write('(*(${styp}*)${name}.data)')
+			if g.inside_opt_or_res {
+				g.write('${name}')
+			} else {
+				g.write('/*opt*/')
+				styp := g.base_type(node.info.typ)
+				g.write('(*(${styp}*)${name}.data)')
+			}
 			return
 		}
 		if !g.is_assign_lhs && node.info.share == .shared_t {

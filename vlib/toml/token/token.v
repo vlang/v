@@ -41,6 +41,7 @@ pub enum Kind {
 	_end_
 }
 
+// pos returns the exact position of a token in the input.
 [inline]
 pub fn (tok &Token) pos() Pos {
 	return Pos{

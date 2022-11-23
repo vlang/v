@@ -1,0 +1,2 @@
+[vlib/v/tests/inout/dump_nil_voidptr.vv:11] a: &nil
+[vlib/v/tests/inout/dump_nil_voidptr.vv:13] a: &nil

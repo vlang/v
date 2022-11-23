@@ -5,7 +5,7 @@ module checker
 import v.ast
 import v.token
 
-pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
+fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	mut elem_type := ast.void_type
 	// `x := []string{}` (the type was set in the parser)
 	// TODO type is not set for fixed arrays
@@ -269,14 +269,14 @@ fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos to
 	}
 }
 
-pub fn (mut c Checker) ensure_sumtype_array_has_default_value(node ast.ArrayInit) {
+fn (mut c Checker) ensure_sumtype_array_has_default_value(node ast.ArrayInit) {
 	sym := c.table.sym(node.elem_type)
 	if sym.kind == .sum_type && !node.has_default {
 		c.error('cannot initialize sum type array without default value', node.pos)
 	}
 }
 
-pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
+fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 	// `map = {}`
 	if node.keys.len == 0 && node.vals.len == 0 && node.typ == 0 {
 		sym := c.table.sym(c.expected_type)

@@ -6,7 +6,7 @@ module checker
 import v.ast
 import v.token
 
-pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
+fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 	c.check_valid_pascal_case(node.name, 'interface name', node.pos)
 	mut decl_sym := c.table.sym(node.typ)
 	is_js := node.language == .js

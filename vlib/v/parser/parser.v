@@ -2935,15 +2935,37 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		}
 	}
 	pos := if p.name_error { left.pos().extend(name_pos) } else { name_pos }
+
+	mut or_kind := ast.OrKind.absent
+	mut or_stmts := []ast.Stmt{}
+	mut or_pos := token.Pos{}
+	if p.tok.kind == .key_orelse {
+		or_kind = .block
+		or_stmts, or_pos = p.or_block(.with_err_var)
+	} else if p.tok.kind == .not {
+		or_kind = .propagate_result
+		or_pos = p.tok.pos()
+		p.next()
+	} else if p.tok.kind == .question {
+		or_kind = .propagate_option
+		or_pos = p.tok.pos()
+		p.next()
+	}
 	sel_expr := ast.SelectorExpr{
 		expr: left
 		field_name: field_name
 		pos: pos
 		is_mut: is_mut
 		mut_pos: mut_pos
+		or_block: ast.OrExpr{
+			kind: or_kind
+			stmts: or_stmts
+			pos: or_pos
+		}
 		scope: p.scope
 		next_token: p.tok.kind
 	}
+
 	if is_filter {
 		p.close_scope()
 	}

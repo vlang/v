@@ -19,6 +19,7 @@ pub const (
 
 type DottedKey = []string
 
+// str returns the dotted key as a string.
 pub fn (dk DottedKey) str() string {
 	return dk.join('.')
 }

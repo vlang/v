@@ -36,7 +36,7 @@ pub fn (resp Response) bytestr() string {
 
 // Parse a raw HTTP response into a Response object
 pub fn parse_response(resp string) !Response {
-	version, status_code, status_msg := parse_status_line(resp.all_before('\n'))!
+	version, status_code, status_msg := parse_status_line(resp.all_before('\r\n'))!
 	// Build resp header map and separate the body
 	start_idx, end_idx := find_headers_range(resp)!
 	header := parse_headers(resp.substr(start_idx, end_idx))!
