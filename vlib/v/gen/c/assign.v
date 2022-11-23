@@ -434,8 +434,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				*/
 			}
 			if !cloned {
-				if (var_type.has_flag(.optional) && !val_type.has_flag(.optional))
-					|| (var_type.has_flag(.result) && !val_type.has_flag(.result)) {
+				if !g.inside_comptime_for_field
+					&& ((var_type.has_flag(.optional) && !val_type.has_flag(.optional))
+					|| (var_type.has_flag(.result) && !val_type.has_flag(.result))) {
 					tmp_var := g.new_tmp_var()
 					g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
 				} else if is_fixed_array_var {

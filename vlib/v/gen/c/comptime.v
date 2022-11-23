@@ -121,6 +121,10 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 			return
 		}
+
+		if !g.inside_call && (m.return_type.has_flag(.optional) || m.return_type.has_flag(.result)) {
+			g.write('(*(${g.base_type(m.return_type)}*)')
+		}
 		// TODO: check argument types
 		g.write('${util.no_dots(sym.name)}_${g.comptime_for_method}(')
 
@@ -165,6 +169,9 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 		}
 		g.write(')')
+		if !g.inside_call && (m.return_type.has_flag(.optional) || m.return_type.has_flag(.result)) {
+			g.write('.data)')
+		}
 		return
 	}
 	mut j := 0
