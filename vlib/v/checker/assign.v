@@ -6,7 +6,7 @@ import v.ast
 import v.pref
 
 // TODO 600 line function
-pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
+fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	c.expected_type = ast.none_type // TODO a hack to make `x := if ... work`
 	defer {
 		c.expected_type = ast.void_type
@@ -17,13 +17,16 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	mut right_len := node.right.len
 	mut right_type0 := ast.void_type
 	for i, mut right in node.right {
-		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr] {
+		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr,
+			ast.SelectorExpr] {
 			if right in [ast.IfExpr, ast.MatchExpr] && node.left.len == node.right.len && !is_decl
 				&& node.left[i] in [ast.Ident, ast.SelectorExpr] && !node.left[i].is_blank_ident() {
 				c.expected_type = c.expr(node.left[i])
 			}
 			right_type := c.expr(right)
-			c.fail_if_unreadable(right, right_type, 'right-hand side of assignment')
+			if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr] {
+				c.fail_if_unreadable(right, right_type, 'right-hand side of assignment')
+			}
 			if i == 0 {
 				right_type0 = right_type
 				node.right_types = [
@@ -60,6 +63,11 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		if mut right is ast.UnsafeExpr {
 			if mut right.expr is ast.None {
 				c.error('cannot use `none` in `unsafe` blocks', right.expr.pos)
+			}
+		}
+		if mut right is ast.AnonFn {
+			if right.decl.generic_names.len > 0 {
+				c.error('cannot assign generic function to a variable', right.decl.pos)
 			}
 		}
 	}
@@ -270,7 +278,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								if left_type in ast.unsigned_integer_type_idxs {
 									if mut right is ast.IntegerLiteral {
 										if right.val[0] == `-` {
-											c.error('Cannot assign negative value to unsigned integer type',
+											c.error('cannot assign negative value to unsigned integer type',
 												right.pos)
 										}
 									}
@@ -316,6 +324,14 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				if mut left.expr is ast.IndexExpr {
 					if left.expr.is_map {
 						left.expr.is_setter = true
+					}
+				}
+				if left_type in ast.unsigned_integer_type_idxs {
+					if mut right is ast.IntegerLiteral {
+						if right.val[0] == `-` {
+							c.error('cannot assign negative value to unsigned integer type',
+								right.pos)
+						}
 					}
 				}
 			}

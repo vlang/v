@@ -1,0 +1,14 @@
+fn get_nil() ?&int {
+	return unsafe { nil }
+}
+
+fn get_voidptr() ?&int {
+	return voidptr(0)
+}
+
+fn main() {
+	mut a := get_nil()?
+	dump(a)
+	a = get_voidptr()?
+	dump(a)
+}

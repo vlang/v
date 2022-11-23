@@ -1,0 +1,28 @@
+struct Foo {
+	foobar int
+	bar    ?int
+	baz    ?int = none
+}
+
+fn (f Foo) bar() int {
+	return 1
+}
+
+fn (f Foo) baz() ?string {
+	return none
+}
+
+fn main() {
+	foo := Foo{}
+
+	$for field in Foo.fields {
+		var := foo.$(field.name)
+		println(var)
+		println(foo.$(field.name))
+	}
+	$for method in Foo.methods {
+		var := foo.$method()
+		println(var)
+		println(foo.$method())
+	}
+}

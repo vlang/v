@@ -289,7 +289,7 @@ fn converter(mut pn PrepNumber) u64 {
 		s0 = q0
 		pn.exponent++
 	}
-	// C.printf("mantissa before normalization: %08x%08x%08x binexp: %d \n", s2,s1,s0,binexp)
+	// C.printf(c"mantissa before normalization: %08x%08x%08x binexp: %d \n", s2,s1,s0,binexp)
 	// normalization, the 28 bit in s2 must the leftest one in the variable
 	if s2 != 0 || s1 != 0 || s0 != 0 {
 		for (s2 & mask28) == 0 {
@@ -333,20 +333,20 @@ fn converter(mut pn PrepNumber) u64 {
 	s0=0x0
 	*/
 
-	// C.printf("mantissa before rounding: %08x%08x%08x binexp: %d \n", s2,s1,s0,binexp)
+	// C.printf(c"mantissa before rounding: %08x%08x%08x binexp: %d \n", s2,s1,s0,binexp)
 	// s1 => 0xFFFFFFxx only F are rapresented
 	nbit := 7
 	check_round_bit := u32(1) << u32(nbit)
 	check_round_mask := u32(0xFFFFFFFF) << u32(nbit)
 	if (s1 & check_round_bit) != 0 {
-		// C.printf("need round!! cehck mask: %08x\n", s1 & ~check_round_mask )
+		// C.printf(c"need round!! check mask: %08x\n", s1 & ~check_round_mask )
 		if (s1 & ~check_round_mask) != 0 {
-			// C.printf("Add 1!\n")
+			// C.printf(c"Add 1!\n")
 			s2, s1, s0 = add96(s2, s1, s0, 0, check_round_bit, 0)
 		} else {
-			// C.printf("All 0!\n")
+			// C.printf(c"All 0!\n")
 			if (s1 & (check_round_bit << u32(1))) != 0 {
-				// C.printf("Add 1 form -1 bit control!\n")
+				// C.printf(c"Add 1 form -1 bit control!\n")
 				s2, s1, s0 = add96(s2, s1, s0, 0, check_round_bit, 0)
 			}
 		}
@@ -354,17 +354,18 @@ fn converter(mut pn PrepNumber) u64 {
 		s0 = u32(0)
 		// recheck normalization
 		if s2 & (mask28 << u32(1)) != 0 {
-			// C.printf("Renormalize!!")
+			// C.printf(c"Renormalize!!\n")
 			q2, q1, q0 = lsr96(s2, s1, s0)
-			binexp--
+			binexp++
+			// dump(binexp)
 			s2 = q2
 			s1 = q1
 			s0 = q0
 		}
 	}
 	// tmp := ( u64(s2 & ~mask28) << 24) | ((u64(s1) + u64(128)) >> 8)
-	// C.printf("mantissa after rounding : %08x%08x%08x binexp: %d \n", s2,s1,s0,binexp)
-	// C.printf("Tmp result: %016x\n",tmp)
+	// C.printf(c"mantissa after rounding : %08x %08x %08x binexp: %d \n", s2,s1,s0,binexp)
+	// C.printf(c"Tmp result: %016x\n",tmp)
 	// end rounding
 	// offset the binary exponent IEEE 754
 	binexp += 1023

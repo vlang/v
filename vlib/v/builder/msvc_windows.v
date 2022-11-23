@@ -253,7 +253,7 @@ fn find_msvc(m64_target bool) !MsvcResult {
 pub fn (mut v Builder) cc_msvc() {
 	r := v.cached_msvc
 	if r.valid == false {
-		verror('Cannot find MSVC on this OS')
+		verror('cannot find MSVC on this OS')
 	}
 	out_name_obj := os.real_path(v.out_name_c + '.obj')
 	out_name_pdb := os.real_path(v.out_name_c + '.pdb')
@@ -368,7 +368,7 @@ pub fn (mut v Builder) cc_msvc() {
 	// Also the double quotes at the start ARE needed.
 	v.show_cc(cmd, out_name_cmd_line, args)
 	if os.user_os() != 'windows' && !v.pref.out_name.ends_with('.c') {
-		verror('Cannot build with msvc on ${os.user_os()}')
+		verror('cannot build with msvc on ${os.user_os()}')
 	}
 	util.timing_start('C msvc')
 	res := os.execute(cmd)
@@ -391,7 +391,7 @@ pub fn (mut v Builder) cc_msvc() {
 fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, moduleflags []cflag.CFlag) {
 	msvc := v.cached_msvc
 	if msvc.valid == false {
-		verror('Cannot find MSVC on this OS')
+		verror('cannot find MSVC on this OS')
 	}
 	// msvc expects .obj not .o
 	path_without_o_postfix := path[..path.len - 2] // remove .o

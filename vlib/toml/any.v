@@ -285,7 +285,9 @@ pub fn (a Any) value(key string) Any {
 	return a.value_(a, key_split)
 }
 
-pub fn (a Any) value_opt(key string) ?Any {
+// value_opt queries a value from the current element's tree. Returns an error
+// if the key is not valid or there is no value for the key.
+pub fn (a Any) value_opt(key string) !Any {
 	key_split := parse_dotted_key(key) or { return error('invalid dotted key') }
 	x := a.value_(a, key_split)
 	if x is Null {

@@ -6,7 +6,7 @@ import v.ast
 import v.pref
 
 // TODO: non deferred
-pub fn (mut c Checker) return_stmt(mut node ast.Return) {
+fn (mut c Checker) return_stmt(mut node ast.Return) {
 	if c.table.cur_fn == unsafe { nil } {
 		return
 	}
@@ -235,7 +235,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	}
 }
 
-pub fn (mut c Checker) find_unreachable_statements_after_noreturn_calls(stmts []ast.Stmt) {
+fn (mut c Checker) find_unreachable_statements_after_noreturn_calls(stmts []ast.Stmt) {
 	mut prev_stmt_was_noreturn_call := false
 	for stmt in stmts {
 		if stmt is ast.ExprStmt {

@@ -4,7 +4,7 @@ import v.ast
 import v.pref
 import v.token
 
-pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
+fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	former_expected_type := c.expected_type
 	defer {
 		c.expected_type = former_expected_type
@@ -715,7 +715,7 @@ fn (mut c Checker) check_div_mod_by_zero(expr ast.Expr, op_kind token.Kind) {
 	}
 }
 
-pub fn (mut c Checker) invalid_operator_error(op token.Kind, left_type ast.Type, right_type ast.Type, pos token.Pos) {
+fn (mut c Checker) invalid_operator_error(op token.Kind, left_type ast.Type, right_type ast.Type, pos token.Pos) {
 	left_name := c.table.type_to_str(left_type)
 	right_name := c.table.type_to_str(right_type)
 	c.error('invalid operator `${op}` to `${left_name}` and `${right_name}`', pos)

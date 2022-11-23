@@ -181,11 +181,6 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				continue
 			}
 			field_name := c_name(field.name)
-			if field.typ.has_flag(.optional) || field.typ.has_flag(.result) {
-				g.write('.${field_name} = {EMPTY_STRUCT_INITIALIZATION},')
-				initialized = true
-				continue
-			}
 			if field.typ in info.embeds {
 				continue
 			}
@@ -271,6 +266,15 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			g.expr_with_cast(field.default_expr, field.default_expr_typ, field.typ)
 			return true
 		}
+
+		if (field.typ.has_flag(.optional) && !field.default_expr_typ.has_flag(.optional))
+			|| (field.typ.has_flag(.result) && !field.default_expr_typ.has_flag(.result)) {
+			tmp_var := g.new_tmp_var()
+			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ,
+				tmp_var)
+			return true
+		}
+
 		g.expr(field.default_expr)
 	} else {
 		g.write(g.type_default(field.typ))
@@ -340,7 +344,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 			// write the optional in and then continue
 			// FIXME: for parallel cgen (two different files using the same optional in struct fields)
 			if field.typ.has_flag(.optional) {
-				// Dont use g.typ() here becuase it will register
+				// Dont use g.typ() here because it will register
 				// optional and we dont want that
 				styp, base := g.optional_type_name(field.typ)
 				lock g.done_optionals {
@@ -350,6 +354,21 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 						g.type_definitions.go_back_to(start_pos)
 						g.typedefs.writeln('typedef struct ${styp} ${styp};')
 						g.type_definitions.writeln('${g.optional_type_text(styp, base)};')
+						g.type_definitions.write_string(last_text)
+					}
+				}
+			}
+			if field.typ.has_flag(.result) {
+				// Dont use g.typ() here because it will register
+				// result and we dont want that
+				styp, base := g.result_type_name(field.typ)
+				lock g.done_results {
+					if base !in g.done_results {
+						g.done_results << base
+						last_text := g.type_definitions.after(start_pos).clone()
+						g.type_definitions.go_back_to(start_pos)
+						g.typedefs.writeln('typedef struct ${styp} ${styp};')
+						g.type_definitions.writeln('${g.result_type_text(styp, base)};')
 						g.type_definitions.write_string(last_text)
 					}
 				}
@@ -441,7 +460,14 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 				&& !(sfield.typ.is_ptr() || sfield.typ.is_pointer()) && !sfield.typ.is_number() {
 				g.write('/* autoref */&')
 			}
-			g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
+
+			if (sfield.expected_type.has_flag(.optional) && !sfield.typ.has_flag(.optional))
+				|| (sfield.expected_type.has_flag(.result) && !sfield.typ.has_flag(.result)) {
+				tmp_var := g.new_tmp_var()
+				g.expr_with_tmp_var(sfield.expr, sfield.typ, sfield.expected_type, tmp_var)
+			} else {
+				g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
+			}
 		}
 		g.inside_cast_in_heap = inside_cast_in_heap // restore value for further struct inits
 	}

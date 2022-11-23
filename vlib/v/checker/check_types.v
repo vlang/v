@@ -6,7 +6,7 @@ module checker
 import v.ast
 
 // TODO: promote(), check_types(), symmetric_check() and check() overlap - should be rearranged
-pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
+fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if got == expected {
 		return true
 	}
@@ -184,7 +184,7 @@ fn (c Checker) check_multiple_ptr_match(got ast.Type, expected ast.Type, param a
 	return true
 }
 
-pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, language ast.Language, arg ast.CallArg) ? {
+fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, language ast.Language, arg ast.CallArg) ? {
 	if got == 0 {
 		return error('unexpected 0 type')
 	}
@@ -219,18 +219,6 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 	idx_expected := expected.idx()
 	if idx_got in [ast.byteptr_type_idx, ast.charptr_type_idx]
 		|| idx_expected in [ast.byteptr_type_idx, ast.charptr_type_idx] {
-		igot := int(got)
-		iexpected := int(expected)
-		// TODO: remove; transitional compatibility for byteptr === &byte
-		if (igot == ast.byteptr_type_idx && iexpected == 65545)
-			|| (iexpected == ast.byteptr_type_idx && igot == 65545) {
-			return
-		}
-		// TODO: remove; transitional compatibility for charptr === &char
-		if (igot == ast.charptr_type_idx && iexpected == 65551)
-			|| (iexpected == ast.charptr_type_idx && igot == 65551) {
-			return
-		}
 		muls_got := got.nr_muls()
 		muls_expected := expected.nr_muls()
 		if idx_got == ast.byteptr_type_idx && idx_expected == ast.u8_type_idx
@@ -310,7 +298,7 @@ fn (c Checker) check_same_module(got ast.Type, expected ast.Type) bool {
 	return false
 }
 
-pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
+fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	unalias_got, unalias_expected := c.table.unalias_num_type(got), c.table.unalias_num_type(expected)
 	if unalias_got.idx() == unalias_expected.idx() {
 		// this is returning true even if one type is a ptr
@@ -383,7 +371,7 @@ pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	return false
 }
 
-pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol, exp_type_sym &ast.TypeSymbol) bool {
+fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol, exp_type_sym &ast.TypeSymbol) bool {
 	if c.pref.translated {
 		// TODO too open
 		return true
@@ -550,14 +538,14 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 	return left_type
 }
 
-pub fn (mut c Checker) promote_keeping_aliases(left_type ast.Type, right_type ast.Type, left_kind ast.Kind, right_kind ast.Kind) ast.Type {
+fn (mut c Checker) promote_keeping_aliases(left_type ast.Type, right_type ast.Type, left_kind ast.Kind, right_kind ast.Kind) ast.Type {
 	if left_type == right_type && left_kind == .alias && right_kind == .alias {
 		return left_type
 	}
 	return c.promote(left_type, right_type)
 }
 
-pub fn (mut c Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
+fn (mut c Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
 	if left_type.is_any_kind_of_pointer() {
 		if right_type.is_int() || c.pref.translated {
 			return left_type
@@ -626,7 +614,7 @@ fn (c &Checker) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
 	}
 }
 
-pub fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ! {
+fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ! {
 	if !c.check_types(got, expected) {
 		return error(c.expected_msg(got, expected))
 	}
@@ -638,7 +626,7 @@ fn (c &Checker) expected_msg(got ast.Type, expected ast.Type) string {
 	return 'expected `${exps}`, not `${gots}`'
 }
 
-pub fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
+fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
 	// allow direct int-literal assignment for pointers for now
 	// maybe in the future optionals should be used for that
 	if right.is_ptr() || right.is_pointer() {
@@ -655,7 +643,123 @@ pub fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
 	return c.check_basic(left, right)
 }
 
-pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
+fn (mut c Checker) infer_generic_struct_init_concrete_types(typ ast.Type, node ast.StructInit) []ast.Type {
+	mut concrete_types := []ast.Type{}
+	sym := c.table.sym(typ)
+	if sym.info is ast.Struct {
+		generic_names := sym.info.generic_types.map(c.table.sym(it).name)
+		gname: for gt_name in generic_names {
+			for ft in sym.info.fields {
+				field_sym := c.table.sym(ft.typ)
+				if field_sym.name == gt_name {
+					for t in node.fields {
+						if ft.name == t.name && t.typ != 0 {
+							concrete_types << t.typ
+							continue gname
+						}
+					}
+				}
+				if field_sym.kind == .array {
+					for t in node.fields {
+						if ft.name == t.name {
+							init_sym := c.table.sym(t.typ)
+							if init_sym.kind == .array {
+								mut init_elem_info := init_sym.info as ast.Array
+								mut field_elem_info := field_sym.info as ast.Array
+								mut init_elem_sym := c.table.sym(init_elem_info.elem_type)
+								mut field_elem_sym := c.table.sym(field_elem_info.elem_type)
+								for {
+									if init_elem_sym.kind == .array && field_elem_sym.kind == .array {
+										init_elem_info = init_elem_sym.info as ast.Array
+										init_elem_sym = c.table.sym(init_elem_info.elem_type)
+										field_elem_info = field_elem_sym.info as ast.Array
+										field_elem_sym = c.table.sym(field_elem_info.elem_type)
+									} else {
+										if field_elem_sym.name == gt_name {
+											mut elem_typ := init_elem_info.elem_type
+											if field_elem_info.elem_type.nr_muls() > 0
+												&& elem_typ.nr_muls() > 0 {
+												elem_typ = elem_typ.set_nr_muls(0)
+											}
+											concrete_types << elem_typ
+											continue gname
+										}
+										break
+									}
+								}
+							}
+						}
+					}
+				} else if field_sym.kind == .array_fixed {
+					for t in node.fields {
+						if ft.name == t.name {
+							init_sym := c.table.sym(t.typ)
+							if init_sym.kind == .array_fixed {
+								mut init_elem_info := init_sym.info as ast.ArrayFixed
+								mut field_elem_info := field_sym.info as ast.ArrayFixed
+								mut init_elem_sym := c.table.sym(init_elem_info.elem_type)
+								mut field_elem_sym := c.table.sym(field_elem_info.elem_type)
+								for {
+									if init_elem_sym.kind == .array_fixed
+										&& field_elem_sym.kind == .array_fixed {
+										init_elem_info = init_elem_sym.info as ast.ArrayFixed
+										init_elem_sym = c.table.sym(init_elem_info.elem_type)
+										field_elem_info = field_elem_sym.info as ast.ArrayFixed
+										field_elem_sym = c.table.sym(field_elem_info.elem_type)
+									} else {
+										if field_elem_sym.name == gt_name {
+											mut elem_typ := init_elem_info.elem_type
+											if field_elem_info.elem_type.nr_muls() > 0
+												&& elem_typ.nr_muls() > 0 {
+												elem_typ = elem_typ.set_nr_muls(0)
+											}
+											concrete_types << elem_typ
+											continue gname
+										}
+										break
+									}
+								}
+							}
+						}
+					}
+				} else if field_sym.kind == .map {
+					for t in node.fields {
+						if ft.name == t.name {
+							init_sym := c.table.sym(t.typ)
+							if init_sym.kind == .map {
+								init_map_info := init_sym.info as ast.Map
+								field_map_info := field_sym.info as ast.Map
+								if field_map_info.key_type.has_flag(.generic)
+									&& c.table.sym(field_map_info.key_type).name == gt_name {
+									mut key_typ := init_map_info.key_type
+									if field_map_info.key_type.nr_muls() > 0
+										&& key_typ.nr_muls() > 0 {
+										key_typ = key_typ.set_nr_muls(0)
+									}
+									concrete_types << key_typ
+									continue gname
+								}
+								if field_map_info.value_type.has_flag(.generic)
+									&& c.table.sym(field_map_info.value_type).name == gt_name {
+									mut val_typ := init_map_info.value_type
+									if field_map_info.value_type.nr_muls() > 0
+										&& val_typ.nr_muls() > 0 {
+										val_typ = val_typ.set_nr_muls(0)
+									}
+									concrete_types << val_typ
+									continue gname
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return concrete_types
+}
+
+fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 	mut inferred_types := []ast.Type{}
 	for gi, gt_name in func.generic_names {
 		// skip known types
