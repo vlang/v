@@ -15,12 +15,12 @@ pub mut:
 	title  JobTitle
 }
 
-struct EmployeeOp {
+struct EmployeeOptional {
 pub mut:
-	name      ?string = none
+	name      string
 	last_name ?string = none
-	age       ?int
-	salary    f32
+	age       ?int    = none
+	salary    ?f32    = none
 	title     JobTitle
 }
 
@@ -53,23 +53,22 @@ fn (mut e Employee) from_json(any json.Any) {
 }
 
 // ! BUGFIX
-// fn test_simplegg() {
-// 	// x := EmployeeOp{'Peter', 28, 95000.5, .worker}
-// 	x := EmployeeOp{
-// 		name: 'vshfvhsd'
-// 	}
-// 	s := json.encode<EmployeeOp>(x)
-// 	assert s == '{"name":"vshfvhsd","age":0,"salary":0.0,"title":0.0}'
-// 	// y := json.decode<EmployeeOp>(s) or {
-// 	// 	println(err)
-// 	// 	assert false
-// 	// 	return
-// 	// }
-// 	// assert y.name == 'Peter'
-// 	// assert y.age == 28
-// 	// assert y.salary == 95000.5
-// 	// assert y.title == .worker
-// }
+fn test_simplegg() {
+	x := EmployeeOptional{
+		name: 'Peter'
+	}
+	s := json.encode<EmployeeOptional>(x)
+	assert s == '{"name":"Peter","title":"manager"}'
+	// y := json.decode<EmployeeOp>(s) or {
+	// 	println(err)
+	// 	assert false
+	// 	return
+	// }
+	// assert y.name == 'Peter'
+	// assert y.age == 28
+	// assert y.salary == 95000.5
+	// assert y.title == .worker
+}
 
 fn test_fast_raw_decode() {
 	s := '{"name":"Peter","age":28,"salary":95000.5,"title":2}'

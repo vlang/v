@@ -168,33 +168,24 @@ fn (e &Encoder) encode_struct<U>(val U, level int, mut wr io.Writer) ! {
 		fields_len++
 	}
 	$for field in U.fields {
-		mut json_name := ''
-		for attr in field.attrs {
-			if attr.contains('json: ') {
-				json_name = attr.replace('json: ', '')
-				break
-			}
-		}
-		e.encode_newline(level, mut wr)!
-		if json_name != '' {
-			e.encode_string(json_name, mut wr)!
-		} else {
-			e.encode_string(field.name, mut wr)!
-		}
-		wr.write(json2.colon_bytes)!
-		if e.newline != 0 {
-			wr.write(json2.space_bytes)!
-		}
-		if typeof(val.$(field.name)).name.contains('?') {
-			if field.typ == 20 {
-				if val.$(field.name).str() == 'Option(error: none)' {
-					// TODO?
-				} else {
-					e.encode_string(val.$(field.name).str().replace("Option('", '').trim_string_right("')"), mut
-						wr)!
+		if val.$(field.name).str() != 'Option(error: none)' {
+			mut json_name := ''
+			for attr in field.attrs {
+				if attr.contains('json: ') {
+					json_name = attr.replace('json: ', '')
+					break
 				}
 			}
-		} else {
+			e.encode_newline(level, mut wr)!
+			if json_name != '' {
+				e.encode_string(json_name, mut wr)!
+			} else {
+				e.encode_string(field.name, mut wr)!
+			}
+			wr.write(json2.colon_bytes)!
+			if e.newline != 0 {
+				wr.write(json2.space_bytes)!
+			}
 			match field.unaliased_typ {
 				string_type_idx {
 					e.encode_string(val.$(field.name).str(), mut wr)!
@@ -203,17 +194,16 @@ fn (e &Encoder) encode_struct<U>(val U, level int, mut wr io.Writer) ! {
 					wr.write(val.$(field.name).str().bytes())!
 				}
 				byte_array_type_idx {
-					//! array
-					e.encode_array(val.$(field.name), level, mut wr)!
+					e.encode_array(val.$(field.name).str(), level, mut wr)!
 				}
 				else {
-					field_value := val.$(field.name)
+					field_value := val.$(field.name).str()
 					e.encode_value_with_level(field_value, level + 1, mut wr)!
 				}
 			}
-		}
-		if i < fields_len - 1 {
-			wr.write(json2.comma_bytes)!
+			if i < fields_len - 1 {
+				wr.write(json2.comma_bytes)!
+			}
 		}
 		i++
 	}
