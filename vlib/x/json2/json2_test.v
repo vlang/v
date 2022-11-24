@@ -52,8 +52,7 @@ fn (mut e Employee) from_json(any json.Any) {
 	e.title = unsafe { JobTitle(mp['title'] or { json.Any(0) }.int()) }
 }
 
-// ! BUGFIX
-fn test_simplegg() {
+fn test_simple_optional() {
 	x := EmployeeOptional{
 		name: 'Peter'
 	}
