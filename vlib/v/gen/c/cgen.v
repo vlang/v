@@ -2281,25 +2281,23 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	mut sb := strings.new_builder(128)
 	mut is_anon_fn := false
 	if got_sym.info is ast.FnType {
-		if got_sym.info.is_anon || g.table.known_fn(got_sym.name) {
-			got_name := 'fn ${g.table.fn_type_source_signature(got_sym.info.func)}'
-			got_cname = 'anon_fn_${g.table.fn_type_signature(got_sym.info.func)}'
-			type_idx = g.table.type_idxs[got_name].str()
-			exp_info := exp_sym.info as ast.SumType
-			for variant in exp_info.variants {
-				variant_sym := g.table.sym(variant)
-				if variant_sym.info is ast.FnType {
-					if g.table.fn_type_source_signature(variant_sym.info.func) == g.table.fn_type_source_signature(got_sym.info.func) {
-						got_cname = variant_sym.cname
-						type_idx = variant.idx().str()
-						break
-					}
+		got_name := 'fn ${g.table.fn_type_source_signature(got_sym.info.func)}'
+		got_cname = 'anon_fn_${g.table.fn_type_signature(got_sym.info.func)}'
+		type_idx = g.table.type_idxs[got_name].str()
+		exp_info := exp_sym.info as ast.SumType
+		for variant in exp_info.variants {
+			variant_sym := g.table.sym(variant)
+			if variant_sym.info is ast.FnType {
+				if g.table.fn_type_source_signature(variant_sym.info.func) == g.table.fn_type_source_signature(got_sym.info.func) {
+					got_cname = variant_sym.cname
+					type_idx = variant.idx().str()
+					break
 				}
 			}
-			sb.writeln('static inline ${exp_cname} ${fun.fn_name}(${got_cname} x) {')
-			sb.writeln('\t${got_cname} ptr = x;')
-			is_anon_fn = true
 		}
+		sb.writeln('static inline ${exp_cname} ${fun.fn_name}(${got_cname} x) {')
+		sb.writeln('\t${got_cname} ptr = x;')
+		is_anon_fn = true
 	}
 	if !is_anon_fn {
 		sb.writeln('static inline ${exp_cname} ${fun.fn_name}(${got_cname}* x) {')
@@ -2436,8 +2434,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	if got_sym.info is ast.FnType {
 		if got_sym.info.is_anon {
 			got_styp = 'anon_fn_${g.table.fn_type_signature(got_sym.info.func)}'
-			got_is_fn = true
 		}
+		got_is_fn = true
 	}
 	if expected_type != ast.void_type {
 		unwrapped_expected_type := g.unwrap_generic(expected_type)
