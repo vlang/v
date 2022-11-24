@@ -271,6 +271,7 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 							if !skip_low {
 								g.write('${cond_var} >= ')
 								if expr.low is ast.Ident {
+									// No check is needed here and only generate for const ident
 									g.write('_const_${expr.low.mod}__${expr.low.name}')
 								} else {
 									g.expr(expr.low)
@@ -279,6 +280,7 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 							}
 							g.write('${cond_var} <= ')
 							if expr.high is ast.Ident {
+								// No check is needed here and only generate for const ident
 								g.write('_const_${expr.high.mod}__${expr.high.name}')
 							} else {
 								g.expr(expr.high)
@@ -359,6 +361,7 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 					if !skip_low {
 						g.write('${cond_var} >= ')
 						if expr.low is ast.Ident {
+							// No check is needed here and only generate for const ident
 							g.write('_const_${expr.low.mod}__${expr.low.name}')
 						} else {
 							g.expr(expr.low)
@@ -367,6 +370,7 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 					}
 					g.write('${cond_var} <= ')
 					if expr.high is ast.Ident {
+						// No check is needed here and only generate for const ident
 						g.write('_const_${expr.high.mod}__${expr.high.name}')
 					} else {
 						g.expr(expr.high)
@@ -469,11 +473,20 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 								if node_cond_type_unsigned && expr.low.val == '0' {
 									skip_low = true
 								}
+							} else if expr.low is ast.Ident {
+								if mut obj := g.table.global_scope.find_const('${expr.low.mod}.${expr.low.name}') {
+									if mut obj.expr is ast.IntegerLiteral {
+										if node_cond_type_unsigned && obj.expr.val == '0' {
+											skip_low = true
+										}
+									}
+								}
 							}
 							g.write('(')
 							if !skip_low {
 								g.write('${cond_var} >= ')
 								if expr.low is ast.Ident {
+									// No check is needed here and only generate for const ident
 									g.write('_const_${expr.low.mod}__${expr.low.name}')
 								} else {
 									g.expr(expr.low)
@@ -482,6 +495,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 							}
 							g.write('${cond_var} <= ')
 							if expr.high is ast.Ident {
+								// No check is needed here and only generate for const ident
 								g.write('_const_${expr.high.mod}__${expr.high.name}')
 							} else {
 								g.expr(expr.high)
