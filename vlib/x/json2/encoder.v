@@ -147,9 +147,9 @@ fn (e &Encoder) encode_value_with_level<T>(val T, level int, mut wr io.Writer) !
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is Encodable {
 		wr.write(val.json_str().bytes())!
-	} $else $if T is []int {
+	} $else $if T is []int || T is []byte {
 		// wr.write(val.str)!
-		e.encode_any(val, level, mut wr)!
+		e.encode_array(val, level, mut wr)!
 	} $else $if T is $Struct {
 		e.encode_struct(val, level, mut wr)!
 	} $else $if T is $Enum {
@@ -190,15 +190,18 @@ fn (e &Encoder) encode_struct<U>(val U, level int, mut wr io.Writer) ! {
 				string_type_idx {
 					e.encode_string(val.$(field.name).str(), mut wr)!
 				}
-				int_type_idx {
+				bool_type_idx, f32_type_idx, f64_type_idx, i8_type_idx, i16_type_idx, int_type_idx,
+				i64_type_idx, u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx {
 					wr.write(val.$(field.name).str().bytes())!
 				}
-				byte_array_type_idx {
-					e.encode_array(val.$(field.name).str(), level, mut wr)!
+				byte_array_type_idx, int_array_type_idx {
+					//! FIXME -  error: cannot convert 'struct _option_string' to 'struct string'
+					e.encode_array(val.$(field.name), level, mut wr)!
 				}
 				else {
-					field_value := val.$(field.name).str()
-					e.encode_value_with_level(field_value, level + 1, mut wr)!
+					// for enums and structs
+					//! FIXME -  error: cannot convert 'struct _option_string' to 'struct string'
+					e.encode_value_with_level(val.$(field.name), level + 1, mut wr)!
 				}
 			}
 			if i < fields_len - 1 {
