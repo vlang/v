@@ -258,6 +258,14 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 								if node_cond_type_unsigned && expr.low.val == '0' {
 									skip_low = true
 								}
+							} else if expr.low is ast.Ident {
+								if mut obj := g.table.global_scope.find_const('${expr.low.mod}.${expr.low.name}') {
+									if mut obj.expr is ast.IntegerLiteral {
+										if node_cond_type_unsigned && obj.expr.val == '0' {
+											skip_low = true
+										}
+									}
+								}
 							}
 							g.write('(')
 							if !skip_low {
@@ -337,6 +345,14 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 					if expr.low is ast.IntegerLiteral {
 						if node_cond_type_unsigned && expr.low.val == '0' {
 							skip_low = true
+						}
+					} else if expr.low is ast.Ident {
+						if mut obj := g.table.global_scope.find_const('${expr.low.mod}.${expr.low.name}') {
+							if mut obj.expr is ast.IntegerLiteral {
+								if node_cond_type_unsigned && obj.expr.val == '0' {
+									skip_low = true
+								}
+							}
 						}
 					}
 					g.write('(')
