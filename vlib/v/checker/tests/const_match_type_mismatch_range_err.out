@@ -5,3 +5,10 @@ vlib/v/checker/tests/const_match_type_mismatch_range_err.vv:5:2: error: only num
       |     ~~~~~
     6 |         println(start)
     7 |     }
+vlib/v/checker/tests/const_match_type_mismatch_range_err.vv:12:2: error: only numeric and char typed const are allowed for ranges
+   10 | 
+   11 | z := match 5 {
+   12 |     start...end {
+      |     ~~~~~
+   13 |         2
+   14 |     }

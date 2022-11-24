@@ -11,3 +11,17 @@ match 5 {
 	
 	else {}
 }
+
+a := match 5 {
+	start...10 {
+		2
+	}
+	10...end {
+		3
+	}
+	
+	else {
+		1
+	}
+}
+println(a)

@@ -5,3 +5,10 @@ vlib/v/checker/tests/const_match_invalid_type_range_err.vv:6:2: error: start typ
       |     ~~~~~~~~~~~
     7 |         println(start)
     8 |     }
+vlib/v/checker/tests/const_match_invalid_type_range_err.vv:13:2: error: start type and end type need to be of the same type
+   11 | 
+   12 | b := match 5 {
+   13 |     start...end {
+      |     ~~~~~~~~~~~
+   14 |         3
+   15 |     }

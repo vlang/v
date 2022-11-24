@@ -7,3 +7,13 @@ match 5 {
 	}
 	else {}
 }
+
+z := match 5 {
+	start...end {
+		2
+	}
+	else {
+		5
+	}
+}
+println(z)

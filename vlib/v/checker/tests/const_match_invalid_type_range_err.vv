@@ -8,3 +8,13 @@ match 5 {
 	}
 	else {}
 }
+
+b := match 5 {
+	start...end {
+		3
+	}
+	else {
+		2
+	}
+}
+println(b)

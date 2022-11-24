@@ -5,3 +5,10 @@ vlib/v/checker/tests/const_match_range_invalid_err.vv:5:2: error: start value is
       |     ~~~~~~~~~~~
     6 |         println(start)
     7 |     }
+vlib/v/checker/tests/const_match_range_invalid_err.vv:12:2: error: start value is higher than end value
+   10 | 
+   11 | a := match 5 {
+   12 |     end...start {
+      |     ~~~~~~~~~~~
+   13 |         4
+   14 |     }

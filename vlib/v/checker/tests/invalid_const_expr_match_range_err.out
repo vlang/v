@@ -12,3 +12,17 @@ vlib/v/checker/tests/invalid_const_expr_match_range_err.vv:8:7: error: only cons
       |          ~~~
     9 |         println(end)
    10 |     }
+vlib/v/checker/tests/invalid_const_expr_match_range_err.vv:16:2: error: only const or literal values are allowed for ranges
+   14 | 
+   15 | a := match 5 {
+   16 |     start...10 {
+      |     ~~~~~
+   17 |         2
+   18 |     }
+vlib/v/checker/tests/invalid_const_expr_match_range_err.vv:19:7: error: only const or literal values are allowed for ranges
+   17 |         2
+   18 |     }
+   19 |     10...end {
+      |          ~~~
+   20 |         3
+   21 |     }

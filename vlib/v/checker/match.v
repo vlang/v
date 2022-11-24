@@ -170,6 +170,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 							if obj.typ == 0 {
 								obj.typ = c.expr(obj.expr)
 							}
+							// Const needs to be an int
 							if obj.expr !is ast.IntegerLiteral {
 								c.error('const `${obj.name}` needs to be an integer',
 									high_expr.pos)
@@ -205,6 +206,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 							if obj.typ == 0 {
 								obj.typ = c.expr(obj.expr)
 							}
+							// Const needs to be a rune
 							if obj.expr !is ast.CharLiteral {
 								c.error('const `${obj.name}` needs to be a `rune`', high_expr.pos)
 							}
@@ -232,6 +234,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						if obj1.typ == 0 {
 							obj1.typ = c.expr(obj1.expr)
 						}
+						// Only allow int and rune constants
 						if obj1.expr !in [ast.IntegerLiteral, ast.CharLiteral] {
 							c.error('only numeric and char typed const are allowed for ranges',
 								low_expr.pos)
@@ -242,10 +245,12 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 								if obj2.typ == 0 {
 									obj2.typ = c.expr(obj2.expr)
 								}
+								// Only allow int and rune constants
 								if obj2.expr !in [ast.IntegerLiteral, ast.CharLiteral] {
 									c.error('only numeric and char typed const are allowed for ranges',
 										high_expr.pos)
 								}
+								// start and end must be of same type
 								if !((obj1.expr is ast.IntegerLiteral
 									&& obj2.expr is ast.IntegerLiteral)
 									|| (obj1.expr is ast.CharLiteral
