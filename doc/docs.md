@@ -1694,7 +1694,7 @@ println(num)
 // 1000
 ```
 
-Variables can also be used in `range` as `match` patterns but they need to be `const`.
+Constants can also be used in the range branch expressions.
 
 Note: `match` as an expression is not usable in `for` loop and `if` statements.
 
