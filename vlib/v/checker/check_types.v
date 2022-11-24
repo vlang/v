@@ -643,7 +643,7 @@ fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
 	return c.check_basic(left, right)
 }
 
-fn (mut c Checker) infer_generic_struct_init_concrete_types(typ ast.Type, node ast.StructInit) []ast.Type {
+fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit) []ast.Type {
 	mut concrete_types := []ast.Type{}
 	sym := c.table.sym(typ)
 	if sym.info is ast.Struct {
@@ -748,6 +748,39 @@ fn (mut c Checker) infer_generic_struct_init_concrete_types(typ ast.Type, node a
 									}
 									concrete_types << val_typ
 									continue gname
+								}
+							}
+						}
+					}
+				} else if field_sym.kind == .function {
+					for t in node.fields {
+						if ft.name == t.name {
+							init_sym := c.table.sym(t.typ)
+							if init_sym.kind == .function {
+								init_type_func := (init_sym.info as ast.FnType).func
+								field_type_func := (field_sym.info as ast.FnType).func
+								if field_type_func.params.len == init_type_func.params.len {
+									for n, fn_param in field_type_func.params {
+										if fn_param.typ.has_flag(.generic)
+											&& c.table.sym(fn_param.typ).name == gt_name {
+											mut arg_typ := init_type_func.params[n].typ
+											if fn_param.typ.nr_muls() > 0 && arg_typ.nr_muls() > 0 {
+												arg_typ = arg_typ.set_nr_muls(0)
+											}
+											concrete_types << arg_typ
+											continue gname
+										}
+									}
+									if field_type_func.return_type.has_flag(.generic)
+										&& c.table.sym(field_type_func.return_type).name == gt_name {
+										mut ret_typ := init_type_func.return_type
+										if field_type_func.return_type.nr_muls() > 0
+											&& ret_typ.nr_muls() > 0 {
+											ret_typ = ret_typ.set_nr_muls(0)
+										}
+										concrete_types << ret_typ
+										continue gname
+									}
 								}
 							}
 						}
