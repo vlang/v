@@ -160,6 +160,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				low_expr := expr.low
 				high_expr := expr.high
 				final_cond_sym := c.table.final_sym(node.cond_type)
+				mut low_value_higher_than_high_value := false
 				if low_expr is ast.IntegerLiteral {
 					// Check 123...456
 					if high_expr is ast.IntegerLiteral
@@ -167,7 +168,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						low = low_expr.val.i64()
 						high = high_expr.val.i64()
 						if low > high {
-							c.error('start value is higher than end value', branch.pos)
+							low_value_higher_than_high_value = true
 						}
 					} else if high_expr is ast.Ident {
 						// Only allow Constants to be used in ranges
@@ -185,16 +186,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 								low = low_expr.val.i64()
 								high = obj_high.expr.val.i64()
 								if low > high {
-									c.error('start value is higher than end value', branch.pos)
+									low_value_higher_than_high_value = true
 								}
 							}
 						} else {
 							c.error('only const or literal values are allowed for ranges',
 								high_expr.pos)
 						}
-					} else {
-						c.error('mismatched range types - ${expr.low} is an integer, but ${expr.high} is not',
-							low_expr.pos)
 					}
 				} else if low_expr is ast.CharLiteral {
 					// Check `rune`...`rune`
@@ -202,7 +200,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						low = low_expr.val[0]
 						high = high_expr.val[0]
 						if low > high {
-							c.error('start value is higher than end value', branch.pos)
+							low_value_higher_than_high_value = true
 						}
 					} else if high_expr is ast.Ident {
 						// Only allow Constants to be used in ranges
@@ -220,17 +218,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 								low = low_expr.val[0]
 								high = obj_high.expr.val[0]
 								if low > high {
-									c.error('start value is higher than end value', branch.pos)
+									low_value_higher_than_high_value = true
 								}
 							}
 						} else {
 							c.error('only const or literal values are allowed for ranges',
 								high_expr.pos)
 						}
-					} else {
-						typ := c.table.type_to_str(node.cond_type)
-						c.error('mismatched range types - trying to match `${node.cond}`, which has type `${typ}`, against a range of `rune`',
-							low_expr.pos)
 					}
 				} else if low_expr is ast.Ident {
 					// Only allow Constants to be used in ranges
@@ -268,8 +262,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 										low = obj_low.expr.val.i64()
 										high = obj_high.expr.val.i64()
 										if low > high {
-											c.error('start value is higher than end value',
-												branch.pos)
+											low_value_higher_than_high_value = true
 										}
 									}
 									// Check const_rune...const2_rune
@@ -279,8 +272,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 										low = obj_low.expr.val[0]
 										high = obj_high.expr.val[0]
 										if low > high {
-											c.error('start value is higher than end value',
-												branch.pos)
+											low_value_higher_than_high_value = true
 										}
 									}
 								}
@@ -295,11 +287,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 								low = obj_low.expr.val.i64()
 								high = high_expr.val.i64()
 								if low > high {
-									c.error('start value is higher than end value', branch.pos)
+									low_value_higher_than_high_value = true
 								}
-							} else {
-								c.error('mismatched range types - ${expr.low} is an integer, but ${expr.high} is not',
-									low_expr.pos)
 							}
 							// Check const_rune...`rune`
 						} else if mut obj_low.expr is ast.CharLiteral {
@@ -308,12 +297,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 								low = obj_low.expr.val[0]
 								high = high_expr.val[0]
 								if low > high {
-									c.error('start value is higher than end value', branch.pos)
+									low_value_higher_than_high_value = true
 								}
-							} else {
-								typ := c.table.type_to_str(node.cond_type)
-								c.error('mismatched range types - trying to match `${node.cond}`, which has type `${typ}`, against a range of `rune`',
-									low_expr.pos)
 							}
 						}
 					} else {
@@ -348,8 +333,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 										high = obj_high.expr.val.i64()
 										low = obj_low.expr.val.i64()
 										if low > high {
-											c.error('start value is higher than end value',
-												branch.pos)
+											low_value_higher_than_high_value = true
 										}
 									}
 									// Check const_rune...const2_rune
@@ -359,13 +343,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 										high = obj_high.expr.val[0]
 										low = obj_low.expr.val[0]
 										if low > high {
-											c.error('start value is higher than end value',
-												branch.pos)
+											low_value_higher_than_high_value = true
 										}
-									} else {
-										typ := c.table.type_to_str(node.cond_type)
-										c.error('mismatched range types - trying to match `${node.cond}`, which has type `${typ}`, against a range of `rune`',
-											branch.pos)
 									}
 								}
 							} else {
@@ -379,11 +358,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 								high = obj_high.expr.val.i64()
 								low = low_expr.val.i64()
 								if low > high {
-									c.error('start value is higher than end value', branch.pos)
+									low_value_higher_than_high_value = true
 								}
-							} else {
-								c.error('mismatched range types - ${expr.high} is an integer, but ${expr.low} is not',
-									high_expr.pos)
 							}
 							// Check `rune`...const_rune
 						} else if mut obj_high.expr is ast.CharLiteral {
@@ -392,18 +368,17 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 								high = obj_high.expr.val[0]
 								low = low_expr.val[0]
 								if low > high {
-									c.error('start value is higher than end value', branch.pos)
+									low_value_higher_than_high_value = true
 								}
-							} else {
-								typ := c.table.type_to_str(c.expr(expr.low))
-								c.error('mismatched range types - trying to match `${node.cond}`, which has type `${typ}`, against a range of `rune`',
-									high_expr.pos)
 							}
 						}
 					}
 				} else {
 					typ := c.table.type_to_str(c.expr(expr.low))
 					c.error('cannot use type `${typ}` in match range', branch.pos)
+				}
+				if low_value_higher_than_high_value {
+					c.error('start value is higher than end value', branch.pos)
 				}
 				high_low_cutoff := 1000
 				if high - low > high_low_cutoff {
