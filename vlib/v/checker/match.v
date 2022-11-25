@@ -174,10 +174,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				_ := c.expr(expr)
 			}
 			if mut expr is ast.RangeExpr {
-				// Allow for `match enum_value { 4..5 { } }`,
-				// even though usually int and enum values,
-				// are considered incompatible outside unsage, and are not allowed
-				// to be compared directly
+				// Allow for `match enum_value { 4..5 { } }`, even though usually int and enum values,
+				// are considered incompatible outside unsafe{}, and are not allowed to be compared directly
 				if cond_sym.kind != .enum_ && !c.check_types(expr.typ, node.cond_type) {
 					mcstype := c.table.type_to_str(node.cond_type)
 					brstype := c.table.type_to_str(expr.typ)
