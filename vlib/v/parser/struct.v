@@ -624,7 +624,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			is_mut = true
 			mut_pos = fields.len
 		}
-		if p.peek_tok.kind == .lt {
+		if p.peek_tok.kind in [.lt, .lsbr] {
 			p.error_with_pos("no need to add generic type names in generic interface's method",
 				p.peek_tok.pos())
 			return ast.InterfaceDecl{}
