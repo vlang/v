@@ -158,9 +158,10 @@ fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
 }
 
 fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSymbol) {
+	c.expected_type = node.expected_type
+	cond_sym := c.table.sym(node.cond_type)
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
-	c.expected_type = node.expected_type
 	mut branch_exprs := map[string]int{}
 	for branch_i, _ in node.branches {
 		mut branch := node.branches[branch_i]
@@ -173,7 +174,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				_ := c.expr(expr)
 			}
 			if mut expr is ast.RangeExpr {
-				if !c.check_types(expr.typ, node.cond_type) {
+				// Allow for `match enum_value { 4..5 { } }`,
+				// even though usually int and enum values,
+				// are considered incompatible outside unsage, and are not allowed
+				// to be compared directly
+				if cond_sym.kind != .enum_ && !c.check_types(expr.typ, node.cond_type) {
 					mcstype := c.table.type_to_str(node.cond_type)
 					brstype := c.table.type_to_str(expr.typ)
 					c.add_error_detail('')
@@ -185,37 +190,45 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				mut low_value_higher_than_high_value := false
 				mut low := i64(0)
 				mut high := i64(0)
+				mut both_low_and_high_are_known := false
 				if low_value := c.get_comptime_number_value(mut expr.low) {
 					low = low_value
 					if high_value := c.get_comptime_number_value(mut expr.high) {
 						high = high_value
+						both_low_and_high_are_known = true
 						if low_value > high_value {
 							low_value_higher_than_high_value = true
 						}
 					} else {
-						c.error('match branch range expressions need the end value to be known at compile time (only const or literals are supported)',
-							expr.high.pos())
+						if expr.high !is ast.EnumVal {
+							c.error('match branch range expressions need the end value to be known at compile time (only enums, const or literals are supported)',
+								expr.high.pos())
+						}
 					}
 				} else {
-					c.error('match branch range expressions need the start value to be known at compile time (only const or literals are supported)',
-						expr.low.pos())
+					if expr.low !is ast.EnumVal {
+						c.error('match branch range expressions need the start value to be known at compile time (only enums, const or literals are supported)',
+							expr.low.pos())
+					}
 				}
 				if low_value_higher_than_high_value {
 					c.error('the start value `${low}` should be lower than the end value `${high}`',
 						branch.pos)
 				}
-				high_low_cutoff := 1000
-				if high - low > high_low_cutoff {
-					c.warn('more than ${high_low_cutoff} possibilities (${low} ... ${high}) in match range',
-						branch.pos)
-				}
-				for i in low .. high + 1 {
-					key = i.str()
-					val := if key in branch_exprs { branch_exprs[key] } else { 0 }
-					if val == 1 {
-						c.error('match case `${key}` is handled more than once', branch.pos)
+				if both_low_and_high_are_known {
+					high_low_cutoff := 1000
+					if high - low > high_low_cutoff {
+						c.warn('more than ${high_low_cutoff} possibilities (${low} ... ${high}) in match range',
+							branch.pos)
 					}
-					branch_exprs[key] = val + 1
+					for i in low .. high + 1 {
+						key = i.str()
+						val := if key in branch_exprs { branch_exprs[key] } else { 0 }
+						if val == 1 {
+							c.error('match case `${key}` is handled more than once', branch.pos)
+						}
+						branch_exprs[key] = val + 1
+					}
 				}
 				continue
 			}
