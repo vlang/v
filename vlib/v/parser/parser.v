@@ -2219,7 +2219,7 @@ fn (p &Parser) is_generic_call() bool {
 			mut i := 3
 			for {
 				cur_tok := p.peek_token(i)
-				if cur_tok.kind == .eof || cur_tok.kind !in [.dot, .comma, .name] {
+				if cur_tok.kind == .eof || cur_tok.kind !in [.dot, .comma, .name, .rsbr] {
 					break
 				}
 				if cur_tok.kind == .rsbr {
