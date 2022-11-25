@@ -12,8 +12,19 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	}
 	got_is_ptr := got.is_ptr()
 	exp_is_ptr := expected.is_ptr()
+	got_is_int := got.is_int()
+	exp_is_int := expected.is_int()
+
+	exp_is_pure_int := expected.is_pure_int()
+	got_is_pure_int := got.is_pure_int()
+	// allow int literals where any kind of real integers are expected:
+	if (exp_is_pure_int && got == ast.int_literal_type)
+		|| (got_is_pure_int && expected == ast.int_literal_type) {
+		return true
+	}
+
 	if c.pref.translated {
-		if expected.is_int() && got.is_int() {
+		if exp_is_int && got_is_int {
 			return true
 		}
 		if expected == ast.byteptr_type {
@@ -22,8 +33,8 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		if expected == ast.voidptr_type || expected == ast.nil_type {
 			return true
 		}
-		if (expected == ast.bool_type && (got.is_any_kind_of_pointer() || got.is_int()))
-			|| ((expected.is_any_kind_of_pointer() || expected.is_int()) && got == ast.bool_type) {
+		if (expected == ast.bool_type && (got.is_any_kind_of_pointer() || got_is_int))
+			|| ((expected.is_any_kind_of_pointer() || exp_is_int) && got == ast.bool_type) {
 			return true
 		}
 
@@ -38,8 +49,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		}
 
 		// allow rune -> any int and vice versa
-		if (expected == ast.rune_type && got.is_int())
-			|| (got == ast.rune_type && expected.is_int()) {
+		if (expected == ast.rune_type && got_is_int) || (got == ast.rune_type && exp_is_int) {
 			return true
 		}
 		got_sym := c.table.sym(got)
@@ -546,6 +556,9 @@ fn (mut c Checker) promote_keeping_aliases(left_type ast.Type, right_type ast.Ty
 }
 
 fn (mut c Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
+	if left_type == right_type {
+		return left_type // strings, self defined operators
+	}
 	if left_type.is_any_kind_of_pointer() {
 		if right_type.is_int() || c.pref.translated {
 			return left_type
@@ -558,9 +571,6 @@ fn (mut c Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
 		} else {
 			return ast.void_type
 		}
-	}
-	if left_type == right_type {
-		return left_type // strings, self defined operators
 	}
 	if right_type.is_number() && left_type.is_number() {
 		return c.promote_num(left_type, right_type)

@@ -2464,6 +2464,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 				c.error('the low and high parts of a range expression, should have matching types',
 					node.pos)
 			}
+			node.typ = c.promote(ltyp, htyp)
 			return ltyp
 		}
 		ast.SelectExpr {

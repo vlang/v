@@ -5,13 +5,16 @@ vlib/v/checker/tests/const_match_mismatch_end_range_err.vv:6:6: error: const `en
       |         ~~~
     7 |         println(start)
     8 |     }
-vlib/v/checker/tests/const_match_mismatch_end_range_err.vv:9:8: error: const `start` needs to be a `rune`
+vlib/v/checker/tests/const_match_mismatch_end_range_err.vv:9:2: error: the range type and the match condition type should match
     7 |         println(start)
     8 |     }
     9 |     `a`...start {
-      |           ~~~~~
+      |     ~~~~~~~~~~~
    10 |         println(end)
    11 |     }
+Details: 
+match condition type: int
+          range type: rune
 vlib/v/checker/tests/const_match_mismatch_end_range_err.vv:16:6: error: const `end` needs to be an integer
    14 | 
    15 | a := match 5 {
@@ -19,10 +22,13 @@ vlib/v/checker/tests/const_match_mismatch_end_range_err.vv:16:6: error: const `e
       |         ~~~
    17 |         1
    18 |     }
-vlib/v/checker/tests/const_match_mismatch_end_range_err.vv:19:8: error: const `start` needs to be a `rune`
+vlib/v/checker/tests/const_match_mismatch_end_range_err.vv:19:2: error: the range type and the match condition type should match
    17 |         1
    18 |     }
    19 |     `a`...start {
-      |           ~~~~~
+      |     ~~~~~~~~~~~
    20 |         `a`
    21 |     }
+Details: 
+match condition type: int
+          range type: rune

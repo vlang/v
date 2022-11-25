@@ -155,6 +155,15 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				_ := c.expr(expr)
 			}
 			if mut expr is ast.RangeExpr {
+				if !c.check_types(expr.typ, node.cond_type) {
+					mcstype := c.table.type_to_str(node.cond_type)
+					brstype := c.table.type_to_str(expr.typ)
+					c.add_error_detail('')
+					c.add_error_detail('match condition type: ${mcstype}')
+					c.add_error_detail('          range type: ${brstype}')
+					c.error('the range type and the match condition type should match',
+						expr.pos)
+				}
 				mut low := i64(0)
 				mut high := i64(0)
 				low_expr := expr.low
