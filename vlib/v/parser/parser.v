@@ -2513,7 +2513,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				}
 			}
 		}
-	} else if (p.peek_tok.kind == .lcbr || (p.peek_tok.kind in [.lt, .lsbr] && lit0_is_capital))
+	} else if (p.peek_tok.kind == .lcbr || (p.peek_tok.kind == .lt && lit0_is_capital))
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
 		&& (!p.inside_for || p.inside_select) && !known_var {
