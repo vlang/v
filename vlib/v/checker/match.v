@@ -139,6 +139,24 @@ fn (mut c Checker) check_match_branch_last_stmt(last_stmt ast.ExprStmt, ret_type
 	}
 }
 
+fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
+	if mut expr is ast.CharLiteral {
+		return expr.val[0]
+	}
+	if mut expr is ast.IntegerLiteral {
+		return expr.val.i64()
+	}
+	if mut expr is ast.Ident {
+		if mut obj := c.table.global_scope.find_const(expr.name) {
+			if obj.typ == 0 {
+				obj.typ = c.expr(obj.expr)
+			}
+			return c.get_comptime_number_value(mut obj.expr)
+		}
+	}
+	return none
+}
+
 fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSymbol) {
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
@@ -164,230 +182,27 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					c.error('the range type and the match condition type should match',
 						expr.pos)
 				}
+				mut low_value_higher_than_high_value := false
 				mut low := i64(0)
 				mut high := i64(0)
-				low_expr := expr.low
-				high_expr := expr.high
-				final_cond_sym := c.table.final_sym(node.cond_type)
-				mut low_value_higher_than_high_value := false
-				if low_expr is ast.IntegerLiteral {
-					// Check 123...456
-					if high_expr is ast.IntegerLiteral
-						&& (final_cond_sym.is_int() || final_cond_sym.info is ast.Enum) {
-						low = low_expr.val.i64()
-						high = high_expr.val.i64()
-						if low > high {
+				if low_value := c.get_comptime_number_value(mut expr.low) {
+					low = low_value
+					if high_value := c.get_comptime_number_value(mut expr.high) {
+						high = high_value
+						if low_value > high_value {
 							low_value_higher_than_high_value = true
-						}
-					} else if high_expr is ast.Ident {
-						// Only allow Constants to be used in ranges
-						if mut obj_high := c.table.global_scope.find_const(high_expr.name) {
-							if obj_high.typ == 0 {
-								obj_high.typ = c.expr(obj_high.expr)
-							}
-							if obj_high.expr !is ast.IntegerLiteral {
-								c.error('const `${obj_high.name}` needs to be an integer',
-									high_expr.pos)
-							}
-							// Check num...const_int
-							if mut obj_high.expr is ast.IntegerLiteral
-								&& (final_cond_sym.is_int() || final_cond_sym.info is ast.Enum) {
-								low = low_expr.val.i64()
-								high = obj_high.expr.val.i64()
-								if low > high {
-									low_value_higher_than_high_value = true
-								}
-							}
-						} else {
-							c.error('only const or literal values are allowed for ranges',
-								high_expr.pos)
-						}
-					}
-				} else if low_expr is ast.CharLiteral {
-					// Check `rune`...`rune`
-					if high_expr is ast.CharLiteral && final_cond_sym.kind in [.u8, .char, .rune] {
-						low = low_expr.val[0]
-						high = high_expr.val[0]
-						if low > high {
-							low_value_higher_than_high_value = true
-						}
-					} else if high_expr is ast.Ident {
-						// Only allow Constants to be used in ranges
-						if mut obj_high := c.table.global_scope.find_const(high_expr.name) {
-							if obj_high.typ == 0 {
-								obj_high.typ = c.expr(obj_high.expr)
-							}
-							if obj_high.expr !is ast.CharLiteral {
-								c.error('const `${obj_high.name}` needs to be a `rune`',
-									high_expr.pos)
-							}
-							// Check `rune`...const_rune
-							if mut obj_high.expr is ast.CharLiteral
-								&& final_cond_sym.kind in [.u8, .char, .rune] {
-								low = low_expr.val[0]
-								high = obj_high.expr.val[0]
-								if low > high {
-									low_value_higher_than_high_value = true
-								}
-							}
-						} else {
-							c.error('only const or literal values are allowed for ranges',
-								high_expr.pos)
-						}
-					}
-				} else if low_expr is ast.Ident {
-					// Only allow Constants to be used in ranges
-					if mut obj_low := c.table.global_scope.find_const(low_expr.name) {
-						if obj_low.typ == 0 {
-							obj_low.typ = c.expr(obj_low.expr)
-						}
-						if obj_low.expr !in [ast.IntegerLiteral, ast.CharLiteral] {
-							c.error('only numeric and char typed const are allowed for ranges',
-								low_expr.pos)
-						}
-						if high_expr is ast.Ident {
-							// Only allow Constants to be used in ranges
-							if mut obj_high := c.table.global_scope.find_const(high_expr.name) {
-								if obj_high.typ == 0 {
-									obj_high.typ = c.expr(obj_high.expr)
-								}
-								if obj_high.expr !in [ast.IntegerLiteral, ast.CharLiteral] {
-									c.error('only numeric and char typed const are allowed for ranges',
-										high_expr.pos)
-								}
-								// start and end must be of same type
-								if !((obj_low.expr is ast.IntegerLiteral
-									&& obj_high.expr is ast.IntegerLiteral)
-									|| (obj_low.expr is ast.CharLiteral
-									&& obj_high.expr is ast.CharLiteral)) {
-									c.error('start type and end type need to be of the same type',
-										branch.pos)
-								}
-								// Check const_int..const2_int
-								if mut obj_low.expr is ast.IntegerLiteral {
-									if mut obj_high.expr is ast.IntegerLiteral
-										&& (final_cond_sym.is_int()
-										|| final_cond_sym.info is ast.Enum) {
-										low = obj_low.expr.val.i64()
-										high = obj_high.expr.val.i64()
-										if low > high {
-											low_value_higher_than_high_value = true
-										}
-									}
-									// Check const_rune...const2_rune
-								} else if mut obj_low.expr is ast.CharLiteral {
-									if mut obj_high.expr is ast.CharLiteral
-										&& final_cond_sym.kind in [.u8, .char, .rune] {
-										low = obj_low.expr.val[0]
-										high = obj_high.expr.val[0]
-										if low > high {
-											low_value_higher_than_high_value = true
-										}
-									}
-								}
-							} else {
-								c.error('only const or literal values are allowed for ranges',
-									low_expr.pos)
-							}
-							// Check const_num...num
-						} else if mut obj_low.expr is ast.IntegerLiteral {
-							if high_expr is ast.IntegerLiteral
-								&& (final_cond_sym.is_int() || final_cond_sym.info is ast.Enum) {
-								low = obj_low.expr.val.i64()
-								high = high_expr.val.i64()
-								if low > high {
-									low_value_higher_than_high_value = true
-								}
-							}
-							// Check const_rune...`rune`
-						} else if mut obj_low.expr is ast.CharLiteral {
-							if high_expr is ast.CharLiteral
-								&& final_cond_sym.kind in [.u8, .char, .rune] {
-								low = obj_low.expr.val[0]
-								high = high_expr.val[0]
-								if low > high {
-									low_value_higher_than_high_value = true
-								}
-							}
 						}
 					} else {
-						c.error('only const or literal values are allowed for ranges',
-							low_expr.pos)
-					}
-				} else if high_expr is ast.Ident {
-					// Only allow Constants to be used in ranges
-					if mut obj_high := c.table.global_scope.find_const(high_expr.name) {
-						if obj_high.typ == 0 {
-							obj_high.typ = c.expr(obj_high.expr)
-						}
-						if obj_high.expr !in [ast.IntegerLiteral, ast.CharLiteral] {
-							c.error('only numeric and char typed const are allowed for ranges',
-								high_expr.pos)
-						}
-						if low_expr is ast.Ident {
-							// Only allow Constants to be used in ranges
-							if mut obj_low := c.table.global_scope.find_const(low_expr.name) {
-								if obj_low.typ == 0 {
-									obj_low.typ = c.expr(obj_low.expr)
-								}
-								if obj_low.expr !in [ast.IntegerLiteral, ast.CharLiteral] {
-									c.error('only numeric and char typed const are allowed for ranges',
-										high_expr.pos)
-								}
-								// Check const_int...const2_int
-								if mut obj_high.expr is ast.IntegerLiteral {
-									if mut obj_low.expr is ast.IntegerLiteral
-										&& (final_cond_sym.is_int()
-										|| final_cond_sym.info is ast.Enum) {
-										high = obj_high.expr.val.i64()
-										low = obj_low.expr.val.i64()
-										if low > high {
-											low_value_higher_than_high_value = true
-										}
-									}
-									// Check const_rune...const2_rune
-								} else if mut obj_high.expr is ast.CharLiteral {
-									if mut obj_low.expr is ast.CharLiteral
-										&& final_cond_sym.kind in [.u8, .char, .rune] {
-										high = obj_high.expr.val[0]
-										low = obj_low.expr.val[0]
-										if low > high {
-											low_value_higher_than_high_value = true
-										}
-									}
-								}
-							} else {
-								c.error('only const or literal values are allowed for ranges',
-									high_expr.pos)
-							}
-							// Check num...const_int
-						} else if mut obj_high.expr is ast.IntegerLiteral {
-							if low_expr is ast.IntegerLiteral
-								&& (final_cond_sym.is_int() || final_cond_sym.info is ast.Enum) {
-								high = obj_high.expr.val.i64()
-								low = low_expr.val.i64()
-								if low > high {
-									low_value_higher_than_high_value = true
-								}
-							}
-							// Check `rune`...const_rune
-						} else if mut obj_high.expr is ast.CharLiteral {
-							if low_expr is ast.CharLiteral
-								&& final_cond_sym.kind in [.u8, .char, .rune] {
-								high = obj_high.expr.val[0]
-								low = low_expr.val[0]
-								if low > high {
-									low_value_higher_than_high_value = true
-								}
-							}
-						}
+						c.error('match branch range expressions need the end value to be known at compile time (only const or literals are supported)',
+							expr.high.pos())
 					}
 				} else {
-					typ := c.table.type_to_str(c.expr(expr.low))
-					c.error('cannot use type `${typ}` in match range', branch.pos)
+					c.error('match branch range expressions need the start value to be known at compile time (only const or literals are supported)',
+						expr.low.pos())
 				}
 				if low_value_higher_than_high_value {
-					c.error('start value is higher than end value', branch.pos)
+					c.error('the start value `${low}` should be lower than the end value `${high}`',
+						branch.pos)
 				}
 				high_low_cutoff := 1000
 				if high - low > high_low_cutoff {
