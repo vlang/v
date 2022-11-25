@@ -2216,11 +2216,17 @@ fn (p &Parser) is_generic_call() bool {
 				else { false }
 			}
 		} else if p.peek_tok.kind == .lsbr {
-			return match kind3 {
-				.rsbr { p.is_typename(tok2) && tok4.kind == .lpar }
-				.comma { p.is_typename(tok2) } // case 5
-				.dot { kind4 == .name && tok4.lit[0].is_capital() && tok5.kind != .dot }
-				else { false }
+			mut i := 3
+			for {
+				cur_tok := p.peek_token(i)
+				if cur_tok.kind == .rsbr {
+					after_tok := p.peek_token(i + 1)
+					if after_tok.kind == .lpar {
+						return true
+					}
+					break
+				}
+				i++
 			}
 		}
 	}
