@@ -8,7 +8,6 @@ match 5 {
 	10...end {
 		println(end)
 	}
-	
 	else {}
 }
 
@@ -19,7 +18,6 @@ a := match 5 {
 	10...end {
 		3
 	}
-	
 	else {
 		1
 	}

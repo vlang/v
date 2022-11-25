@@ -1,6 +1,6 @@
 const start = `a`
-const end = 2
 
+const end = 2
 
 match 5 {
 	start...end {

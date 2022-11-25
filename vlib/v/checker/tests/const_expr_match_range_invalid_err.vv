@@ -1,4 +1,5 @@
 const start = 1
+
 const end = 20
 
 match 5 {
@@ -8,6 +9,5 @@ match 5 {
 	'str'...end {
 		println(end)
 	}
-	
 	else {}
 }

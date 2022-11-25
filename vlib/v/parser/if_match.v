@@ -267,6 +267,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			// Expression match
 			for {
 				p.inside_match_case = true
+				mut range_pos := p.tok.pos()
 				expr := p.expr(0)
 				ecmnts << p.eat_comments()
 				p.inside_match_case = false
@@ -284,7 +285,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 						high: expr2
 						has_low: true
 						has_high: true
-						pos: p.tok.pos()
+						pos: range_pos.extend(p.prev_tok.pos())
 					}
 				} else {
 					exprs << expr

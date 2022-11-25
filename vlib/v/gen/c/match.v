@@ -252,39 +252,14 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 							g.write(' || ')
 						}
 						if expr is ast.RangeExpr {
-							// if type is unsigned and low is 0, check is unneeded
-							mut skip_low := false
-							if expr.low is ast.IntegerLiteral {
-								if node_cond_type_unsigned && expr.low.val == '0' {
-									skip_low = true
-								}
-							} else if expr.low is ast.Ident {
-								if mut obj := g.table.global_scope.find_const('${expr.low.mod}.${expr.low.name}') {
-									if mut obj.expr is ast.IntegerLiteral {
-										if node_cond_type_unsigned && obj.expr.val == '0' {
-											skip_low = true
-										}
-									}
-								}
-							}
 							g.write('(')
-							if !skip_low {
+							if g.should_check_low_bound_in_range_expr(expr, node_cond_type_unsigned) {
 								g.write('${cond_var} >= ')
-								if expr.low is ast.Ident {
-									// No check is needed here and only generate for const ident
-									g.write('_const_${expr.low.mod}__${expr.low.name}')
-								} else {
-									g.expr(expr.low)
-								}
+								g.expr(expr.low)
 								g.write(' && ')
 							}
 							g.write('${cond_var} <= ')
-							if expr.high is ast.Ident {
-								// No check is needed here and only generate for const ident
-								g.write('_const_${expr.high.mod}__${expr.high.name}')
-							} else {
-								g.expr(expr.high)
-							}
+							g.expr(expr.high)
 							g.write(')')
 						} else {
 							g.write('${cond_var} == (')
@@ -342,39 +317,14 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 					g.write(' || ')
 				}
 				if expr is ast.RangeExpr {
-					// if type is unsigned and low is 0, check is unneeded
-					mut skip_low := false
-					if expr.low is ast.IntegerLiteral {
-						if node_cond_type_unsigned && expr.low.val == '0' {
-							skip_low = true
-						}
-					} else if expr.low is ast.Ident {
-						if mut obj := g.table.global_scope.find_const('${expr.low.mod}.${expr.low.name}') {
-							if mut obj.expr is ast.IntegerLiteral {
-								if node_cond_type_unsigned && obj.expr.val == '0' {
-									skip_low = true
-								}
-							}
-						}
-					}
 					g.write('(')
-					if !skip_low {
+					if g.should_check_low_bound_in_range_expr(expr, node_cond_type_unsigned) {
 						g.write('${cond_var} >= ')
-						if expr.low is ast.Ident {
-							// No check is needed here and only generate for const ident
-							g.write('_const_${expr.low.mod}__${expr.low.name}')
-						} else {
-							g.expr(expr.low)
-						}
+						g.expr(expr.low)
 						g.write(' && ')
 					}
 					g.write('${cond_var} <= ')
-					if expr.high is ast.Ident {
-						// No check is needed here and only generate for const ident
-						g.write('_const_${expr.high.mod}__${expr.high.name}')
-					} else {
-						g.expr(expr.high)
-					}
+					g.expr(expr.high)
 					g.write(')')
 				} else {
 					g.write('${cond_var} == (')
@@ -393,6 +343,28 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 	}
 	g.indent--
 	g.writeln('}')
+}
+
+fn (mut g Gen) should_check_low_bound_in_range_expr(expr ast.RangeExpr, node_cond_type_unsigned bool) bool {
+	// if the type is unsigned, and the low bound of the range expression is 0,
+	// checking it at runtime is not needed:
+	mut should_check_low_bound := true
+	if node_cond_type_unsigned {
+		if expr.low is ast.IntegerLiteral {
+			if expr.low.val == '0' {
+				should_check_low_bound = false
+			}
+		} else if expr.low is ast.Ident {
+			if mut obj := g.table.global_scope.find_const(expr.low.name) {
+				if mut obj.expr is ast.IntegerLiteral {
+					if obj.expr.val == '0' {
+						should_check_low_bound = false
+					}
+				}
+			}
+		}
+	}
+	return should_check_low_bound
 }
 
 fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
@@ -467,39 +439,14 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					}
 					else {
 						if expr is ast.RangeExpr {
-							// if type is unsigned and low is 0, check is unneeded
-							mut skip_low := false
-							if expr.low is ast.IntegerLiteral {
-								if node_cond_type_unsigned && expr.low.val == '0' {
-									skip_low = true
-								}
-							} else if expr.low is ast.Ident {
-								if mut obj := g.table.global_scope.find_const('${expr.low.mod}.${expr.low.name}') {
-									if mut obj.expr is ast.IntegerLiteral {
-										if node_cond_type_unsigned && obj.expr.val == '0' {
-											skip_low = true
-										}
-									}
-								}
-							}
 							g.write('(')
-							if !skip_low {
+							if g.should_check_low_bound_in_range_expr(expr, node_cond_type_unsigned) {
 								g.write('${cond_var} >= ')
-								if expr.low is ast.Ident {
-									// No check is needed here and only generate for const ident
-									g.write('_const_${expr.low.mod}__${expr.low.name}')
-								} else {
-									g.expr(expr.low)
-								}
+								g.expr(expr.low)
 								g.write(' && ')
 							}
 							g.write('${cond_var} <= ')
-							if expr.high is ast.Ident {
-								// No check is needed here and only generate for const ident
-								g.write('_const_${expr.high.mod}__${expr.high.name}')
-							} else {
-								g.expr(expr.high)
-							}
+							g.expr(expr.high)
 							g.write(')')
 						} else {
 							g.write('${cond_var} == (')

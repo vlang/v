@@ -2452,8 +2452,19 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			return c.expr(node.expr)
 		}
 		ast.RangeExpr {
-			// never happens
-			return ast.void_type
+			// branch range expression of `match x { a...b {} }`, or: `a#[x..y]`:
+			ltyp := c.expr(node.low)
+			htyp := c.expr(node.high)
+			if !c.check_types(ltyp, htyp) {
+				lstype := c.table.type_to_str(ltyp)
+				hstype := c.table.type_to_str(htyp)
+				c.add_error_detail('')
+				c.add_error_detail(' low part type: ${lstype}')
+				c.add_error_detail('high part type: ${hstype}')
+				c.error('the low and high parts of a range expression, should have matching types',
+					node.pos)
+			}
+			return ltyp
 		}
 		ast.SelectExpr {
 			return c.select_expr(mut node)

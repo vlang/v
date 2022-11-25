@@ -142,16 +142,21 @@ fn (mut c Checker) check_match_branch_last_stmt(last_stmt ast.ExprStmt, ret_type
 fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSymbol) {
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
+	c.expected_type = node.expected_type
 	mut branch_exprs := map[string]int{}
 	for branch_i, _ in node.branches {
 		mut branch := node.branches[branch_i]
 		mut expr_types := []ast.TypeNode{}
-		for k, expr in branch.exprs {
+		for k, mut expr in branch.exprs {
 			mut key := ''
-			if expr is ast.RangeExpr {
+			// TODO: investigate why enums are different here:
+			if expr !is ast.EnumVal {
+				// ensure that the sub expressions of the branch are actually checked, before anything else:
+				_ := c.expr(expr)
+			}
+			if mut expr is ast.RangeExpr {
 				mut low := i64(0)
 				mut high := i64(0)
-				c.expected_type = node.expected_type
 				low_expr := expr.low
 				high_expr := expr.high
 				final_cond_sym := c.table.final_sym(node.cond_type)
@@ -166,7 +171,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						}
 					} else if high_expr is ast.Ident {
 						// Only allow Constants to be used in ranges
-						if mut obj_high := c.table.global_scope.find_const('${high_expr.mod}.${high_expr.name}') {
+						if mut obj_high := c.table.global_scope.find_const(high_expr.name) {
 							if obj_high.typ == 0 {
 								obj_high.typ = c.expr(obj_high.expr)
 							}
@@ -201,7 +206,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						}
 					} else if high_expr is ast.Ident {
 						// Only allow Constants to be used in ranges
-						if mut obj_high := c.table.global_scope.find_const('${high_expr.mod}.${high_expr.name}') {
+						if mut obj_high := c.table.global_scope.find_const(high_expr.name) {
 							if obj_high.typ == 0 {
 								obj_high.typ = c.expr(obj_high.expr)
 							}
@@ -223,13 +228,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 								high_expr.pos)
 						}
 					} else {
-						typ := c.table.type_to_str(c.expr(node.cond))
+						typ := c.table.type_to_str(node.cond_type)
 						c.error('mismatched range types - trying to match `${node.cond}`, which has type `${typ}`, against a range of `rune`',
 							low_expr.pos)
 					}
 				} else if low_expr is ast.Ident {
 					// Only allow Constants to be used in ranges
-					if mut obj_low := c.table.global_scope.find_const('${low_expr.mod}.${low_expr.name}') {
+					if mut obj_low := c.table.global_scope.find_const(low_expr.name) {
 						if obj_low.typ == 0 {
 							obj_low.typ = c.expr(obj_low.expr)
 						}
@@ -239,7 +244,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						}
 						if high_expr is ast.Ident {
 							// Only allow Constants to be used in ranges
-							if mut obj_high := c.table.global_scope.find_const('${high_expr.mod}.${high_expr.name}') {
+							if mut obj_high := c.table.global_scope.find_const(high_expr.name) {
 								if obj_high.typ == 0 {
 									obj_high.typ = c.expr(obj_high.expr)
 								}
@@ -306,7 +311,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 									c.error('start value is higher than end value', branch.pos)
 								}
 							} else {
-								typ := c.table.type_to_str(c.expr(node.cond))
+								typ := c.table.type_to_str(node.cond_type)
 								c.error('mismatched range types - trying to match `${node.cond}`, which has type `${typ}`, against a range of `rune`',
 									low_expr.pos)
 							}
@@ -317,7 +322,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					}
 				} else if high_expr is ast.Ident {
 					// Only allow Constants to be used in ranges
-					if mut obj_high := c.table.global_scope.find_const('${high_expr.mod}.${high_expr.name}') {
+					if mut obj_high := c.table.global_scope.find_const(high_expr.name) {
 						if obj_high.typ == 0 {
 							obj_high.typ = c.expr(obj_high.expr)
 						}
@@ -327,7 +332,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						}
 						if low_expr is ast.Ident {
 							// Only allow Constants to be used in ranges
-							if mut obj_low := c.table.global_scope.find_const('${low_expr.mod}.${low_expr.name}') {
+							if mut obj_low := c.table.global_scope.find_const(low_expr.name) {
 								if obj_low.typ == 0 {
 									obj_low.typ = c.expr(obj_low.expr)
 								}
@@ -358,7 +363,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 												branch.pos)
 										}
 									} else {
-										typ := c.table.type_to_str(c.expr(node.cond))
+										typ := c.table.type_to_str(node.cond_type)
 										c.error('mismatched range types - trying to match `${node.cond}`, which has type `${typ}`, against a range of `rune`',
 											branch.pos)
 									}
@@ -415,7 +420,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				}
 				continue
 			}
-			match expr {
+			match mut expr {
 				ast.TypeNode {
 					key = c.table.type_to_str(expr.typ)
 					expr_types << expr
@@ -424,7 +429,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					key = expr.val
 				}
 				else {
-					key = expr.str()
+					key = (*expr).str()
 				}
 			}
 			val := if key in branch_exprs { branch_exprs[key] } else { 0 }
