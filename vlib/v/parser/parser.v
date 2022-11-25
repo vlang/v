@@ -2163,21 +2163,15 @@ fn (p &Parser) is_typename(t token.Token) bool {
 	return t.kind == .name && (t.lit[0].is_capital() || p.table.known_type(t.lit))
 }
 
-// heuristics to detect `func<T>()` from `var < expr`
-// 1. `f<[]` is generic(e.g. `f<[]int>`) because `var < []` is invalid
-// 2. `f<map[` is generic(e.g. `f<map[string]string>)
-// 3. `f<foo>` is generic because `v1 < foo > v2` is invalid syntax
-// 4. `f<foo<bar` is generic when bar is not generic T (f<foo<T>(), in contrast, is not generic!)
-// 5. `f<Foo,` is generic when Foo is typename.
-//	   otherwise it is not generic because it may be multi-value (e.g. `return f < foo, 0`).
-// 6. `f<mod.Foo>` is same as case 3
-// 7. `f<mod.Foo,` is same as case 5
+// 1. `f[[]` is generic(e.g. `f[[]int]`) because `var < []` is invalid
+// 2. `f[map[` is generic(e.g. `f[map[string]string])
+// 4. `f<foo<bar` is generic when bar is not generic T (f[foo[T](), in contrast, is not generic!)
 // 8. if there is a &, ignore the & and see if it is a type
 // 9. otherwise, it's not generic
 // see also test_generic_detection in vlib/v/tests/generics_test.v
 fn (p &Parser) is_generic_call() bool {
 	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
-	if lit0_is_capital || p.peek_tok.kind != .lt {
+	if lit0_is_capital || p.peek_tok.kind != .lsbr {
 		return false
 	}
 	mut tok2 := p.peek_token(2)
@@ -2207,18 +2201,17 @@ fn (p &Parser) is_generic_call() bool {
 			return true
 		}
 		return match kind3 {
-			.gt { true } // case 3
-			.lt { !(tok4.lit.len == 1 && tok4.lit[0].is_capital()) } // case 4
+			.rsbr { p.is_typename(tok2) }
+			//.lsbr { !(tok4.lit.len == 1 && tok4.lit[0].is_capital()) } // case 4
 			.comma { p.is_typename(tok2) } // case 5
-			// case 6 and 7
-			.dot { kind4 == .name && (kind5 == .gt || (kind5 == .comma && p.is_typename(tok4))) }
+			.dot { kind4 == .name && tok4.lit[0].is_capital() }
 			else { false }
 		}
 	}
 	return false
 }
 
-const valid_tokens_inside_types = [token.Kind.lsbr, .rsbr, .name, .dot, .comma, .key_fn, .lt]
+const valid_tokens_inside_types = [token.Kind.lsbr, .rsbr, .name, .dot, .comma, .key_fn]
 
 fn (mut p Parser) is_generic_cast() bool {
 	if !ast.type_can_start_with_token(p.tok) {
@@ -2231,10 +2224,10 @@ fn (mut p Parser) is_generic_cast() bool {
 		i++
 		tok := p.peek_token(i)
 
-		if tok.kind == .lt {
+		if tok.kind == .lsbr {
 			lt_count++
 			level++
-		} else if tok.kind == .gt {
+		} else if tok.kind == .rsbr {
 			level--
 		}
 		if lt_count > 0 && level == 0 {
@@ -2494,7 +2487,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				}
 			}
 		}
-	} else if (p.peek_tok.kind == .lcbr || (p.peek_tok.kind == .lt && lit0_is_capital))
+	} else if (p.peek_tok.kind == .lcbr || (p.peek_tok.kind == .lsbr && lit0_is_capital))
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
 		&& (!p.inside_for || p.inside_select) && !known_var {
@@ -2866,10 +2859,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	mut concrete_types := []ast.Type{}
 	mut concrete_list_pos := p.tok.pos()
 	if is_generic_call {
-		// `g.foo<int>(10)`
+		// `g.foo[int](10)`
 		concrete_types = p.parse_concrete_types()
 		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.pos())
-		// In case of `foo<T>()`
+		// In case of `foo[T]()`
 		// T is unwrapped and registered in the checker.
 		has_generic := concrete_types.any(it.has_flag(.generic))
 		if !has_generic {
@@ -2975,13 +2968,13 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 	mut types := []ast.Type{}
 	mut param_names := []string{}
-	if p.tok.kind != .lt {
+	if p.tok.kind != .lsbr {
 		return types, param_names
 	}
-	p.check(.lt)
+	p.check(.lsbr)
 	mut first_done := false
 	mut count := 0
-	for p.tok.kind !in [.gt, .eof] {
+	for p.tok.kind !in [.rsbr, .eof] {
 		if first_done {
 			p.check(.comma)
 		}
@@ -3018,25 +3011,25 @@ fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 		first_done = true
 		count++
 	}
-	p.check(.gt)
+	p.check(.rsbr)
 	return types, param_names
 }
 
 fn (mut p Parser) parse_concrete_types() []ast.Type {
 	mut types := []ast.Type{}
-	if p.tok.kind != .lt {
+	if p.tok.kind != .lsbr {
 		return types
 	}
-	p.next() // `<`
+	p.next() // `[`
 	mut first_done := false
-	for p.tok.kind !in [.eof, .gt] {
+	for p.tok.kind !in [.eof, .rsbr] {
 		if first_done {
 			p.check(.comma)
 		}
 		types << p.parse_type()
 		first_done = true
 	}
-	p.check(.gt) // `>`
+	p.check(.rsbr) // `]`
 	return types
 }
 

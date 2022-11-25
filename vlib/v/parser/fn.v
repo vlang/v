@@ -35,8 +35,8 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 
 	mut concrete_types := []ast.Type{}
 	mut concrete_list_pos := p.tok.pos()
-	if p.tok.kind == .lt {
-		// `foo<int>(10)`
+	if p.tok.kind == .lsbr {
+		// `foo[int](10)`
 		p.expr_mod = ''
 		concrete_types = p.parse_concrete_types()
 		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.pos())
@@ -333,7 +333,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			scope: 0
 		}
 	}
-	// <T>
+	// [T]
 	_, mut generic_names := p.parse_generic_types()
 	// generic names can be infer with receiver's generic names
 	if is_method && rec.typ.has_flag(.generic) {
