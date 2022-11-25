@@ -5,7 +5,7 @@ import v.pref
 import v.util
 import v.builder
 import v.gen.js
-
+import v.gen.newjs
 pub fn start() {
 	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
 	prefs, _ := pref.parse_args([], args_and_flags)
@@ -43,5 +43,7 @@ pub fn gen_js(mut b builder.Builder, v_files []string) string {
 	util.timing_start('JS GEN')
 	res := js.gen(b.parsed_files, b.table, b.pref)
 	util.timing_measure('JS GEN')
+
+	newjs.foo()
 	return res
 }
