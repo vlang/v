@@ -2217,10 +2217,9 @@ fn (p &Parser) is_generic_call() bool {
 			}
 		} else if p.peek_tok.kind == .lsbr {
 			return match kind3 {
-				.rsbr { p.is_typename(tok2) }
-				//.lsbr { !(tok4.lit.len == 1 && tok4.lit[0].is_capital()) } // case 4
+				.rsbr { p.is_typename(tok2) && tok4.kind == .lpar }
 				.comma { p.is_typename(tok2) } // case 5
-				.dot { kind4 == .name && tok4.lit[0].is_capital() }
+				.dot { kind4 == .name && tok4.lit[0].is_capital() && tok5.kind != .dot }
 				else { false }
 			}
 		}
