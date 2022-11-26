@@ -1,4 +1,4 @@
-fn f<T>() int {
+fn f[T]() int {
 	$if T is int {
 		return 1
 	}
@@ -10,11 +10,11 @@ fn f<T>() int {
 }
 
 fn test_generic_is() {
-	assert f<int>() == 1
-	assert f<bool>() == -1
+	assert f[int]() == 1
+	assert f[bool]() == -1
 }
 
-fn g<T>(t T) int {
+fn g[T](t T) int {
 	$if T is u8 || T is i8 {
 		return 1
 	}

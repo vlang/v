@@ -228,7 +228,7 @@ fn (t Tree) token_node(tok_kind token.Kind) &Node {
 }
 
 // enum type node
-fn (t Tree) enum_node<T>(value T) &Node {
+fn (t Tree) enum_node[T](value T) &Node {
 	return t.string_node('enum:${int(value)}(${value})')
 }
 

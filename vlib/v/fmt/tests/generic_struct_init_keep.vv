@@ -1,9 +1,9 @@
 module x
 
-struct Ok<T> {
+struct Ok[T] {
 	foo []T
 }
 
 fn test_fmt() {
-	r := Ok<[]Token>{[]}
+	r := Ok[[]Token]{[]}
 }

@@ -1,4 +1,4 @@
-fn generic<T>(val T) T {
+fn generic[T](val T) T {
 	$if T is u64 {
 		println(val << 1)
 		return val << 1

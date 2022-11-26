@@ -2,38 +2,38 @@
 
 struct Empty {}
 
-struct Node<T> {
+struct Node[T] {
 	value T
-	left  Tree<T>
-	right Tree<T>
+	left  Tree[T]
+	right Tree[T]
 }
 
-type Tree<T> = Empty | Node<T>
+type Tree[T] = Empty | Node[T]
 
 // return size(number of nodes) of BST
-fn (tree Tree<T>) size<T>() int {
+fn (tree Tree[T]) size[T]() int {
 	return match tree {
 		Empty { 0 }
-		Node<T> { 1 + tree.left.size() + tree.right.size() }
+		Node[T] { 1 + tree.left.size() + tree.right.size() }
 	}
 }
 
 // insert a value to BST
-fn (tree Tree<T>) insert<T>(x T) Tree<T> {
+fn (tree Tree[T]) insert[T](x T) Tree[T] {
 	return match tree {
 		Empty {
-			Node<T>{x, tree, tree}
+			Node[T]{x, tree, tree}
 		}
-		Node<T> {
+		Node[T] {
 			if x == tree.value {
 				tree
 			} else if x < tree.value {
-				Node<T>{
+				Node[T]{
 					...tree
 					left: tree.left.insert(x)
 				}
 			} else {
-				Node<T>{
+				Node[T]{
 					...tree
 					right: tree.right.insert(x)
 				}
@@ -43,12 +43,12 @@ fn (tree Tree<T>) insert<T>(x T) Tree<T> {
 }
 
 // whether able to find a value in BST
-fn (tree Tree<T>) search<T>(x T) bool {
+fn (tree Tree[T]) search[T](x T) bool {
 	return match tree {
 		Empty {
 			false
 		}
-		Node<T> {
+		Node[T] {
 			if x == tree.value {
 				true
 			} else if x < tree.value {
@@ -61,12 +61,12 @@ fn (tree Tree<T>) search<T>(x T) bool {
 }
 
 // find the minimal value of a BST
-fn (tree Tree<T>) min<T>() T {
+fn (tree Tree[T]) min[T]() T {
 	return match tree {
 		Empty {
 			T(1e9)
 		}
-		Node<T> {
+		Node[T] {
 			if tree.value < tree.left.min() {
 				tree.value
 			} else {
@@ -77,25 +77,25 @@ fn (tree Tree<T>) min<T>() T {
 }
 
 // delete a value in BST (if nonexistant do nothing)
-fn (tree Tree<T>) delete<T>(x T) Tree<T> {
+fn (tree Tree[T]) delete[T](x T) Tree[T] {
 	return match tree {
 		Empty {
 			tree
 		}
-		Node<T> {
+		Node[T] {
 			if tree.left !is Empty && tree.right !is Empty {
 				if x < tree.value {
-					Node<T>{
+					Node[T]{
 						...tree
 						left: tree.left.delete(x)
 					}
 				} else if x > tree.value {
-					Node<T>{
+					Node[T]{
 						...tree
 						right: tree.right.delete(x)
 					}
 				} else {
-					Node<T>{
+					Node[T]{
 						...tree
 						value: tree.right.min()
 						right: tree.right.delete(tree.right.min())
@@ -105,7 +105,7 @@ fn (tree Tree<T>) delete<T>(x T) Tree<T> {
 				if x == tree.value {
 					tree.left
 				} else {
-					Node<T>{
+					Node[T]{
 						...tree
 						left: tree.left.delete(x)
 					}
@@ -114,7 +114,7 @@ fn (tree Tree<T>) delete<T>(x T) Tree<T> {
 				if x == tree.value {
 					tree.right
 				} else {
-					Node<T>{
+					Node[T]{
 						...tree
 						right: tree.right.delete(x)
 					}
@@ -125,7 +125,7 @@ fn (tree Tree<T>) delete<T>(x T) Tree<T> {
 }
 
 fn main() {
-	mut tree := Tree<f64>(Empty{})
+	mut tree := Tree[f64](Empty{})
 	vals := [0.2, 0.0, 0.5, 0.3, 0.6, 0.8, 0.9, 1.0, 0.1, 0.4, 0.7]
 	for i in vals {
 		tree = tree.insert(i)

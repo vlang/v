@@ -29,7 +29,7 @@ fn test_simple() {
 		name: 'João'
 	}
 	x := Employee{'Peter', 28, 95000.5, .worker, sub_employee}
-	s := json.encode<Employee>(x)
+	s := json.encode[Employee](x)
 	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2,"sub_employee":{"name":"João","age":0,"salary":0.0,"title":0}}'
 	// y := json.decode<Employee>(s) or {
 	// 	println(err)
@@ -93,7 +93,7 @@ fn test_encode_user() {
 		pets: 'foo'
 	}
 	expected := '{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"foo"}'
-	out := json.encode<User>(usr)
+	out := json.encode[User](usr)
 	// println(out)
 	assert out == expected
 	// Test json.encode on mutable pointers
@@ -136,7 +136,7 @@ struct Message {
 fn test_encode_alias_struct() {
 	expected := '{"id":"118499178790780929","ij":999998888}'
 	msg := Message{'118499178790780929', 999998888}
-	out := json.encode<Message>(msg)
+	out := json.encode[Message](msg)
 	assert out == expected
 }
 

@@ -16,7 +16,7 @@ pub fn (p Product) save() string {
 	return do_something(p)
 }
 
-fn do_something<T>(p T) string {
+fn do_something[T](p T) string {
 	return 'whatever'
 }
 

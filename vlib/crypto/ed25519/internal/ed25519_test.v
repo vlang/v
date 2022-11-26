@@ -130,7 +130,7 @@ fn works_check_on_sign_input_string(item string) bool {
 }
 
 fn worker_for_string_content(mut p pool.PoolProcessor, idx int, worker_id int) &SignResult {
-	item := p.get_item<string>(idx)
+	item := p.get_item[string](idx)
 	// println('worker_s worker_id: $worker_id | idx: $idx ')
 	res := works_check_on_sign_input_string(item)
 	mut sr := &SignResult{
@@ -155,8 +155,8 @@ fn test_input_from_djb_ed25519_crypto_sign_input_with_syncpool() {
 		callback: worker_for_string_content
 		maxjobs: 4
 	)
-	pool_s.work_on_items<string>(contents)
-	for i, x in pool_s.get_results<SignResult>() {
+	pool_s.work_on_items[string](contents)
+	for i, x in pool_s.get_results[SignResult]() {
 		// println("i: $i = $x.result")
 		assert x.result == true
 	}

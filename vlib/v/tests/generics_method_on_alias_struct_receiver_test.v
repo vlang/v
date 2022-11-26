@@ -6,7 +6,7 @@ pub fn (base Base) hello() string {
 
 type Message = Base
 
-fn hello<T>(hello_impl T) string {
+fn hello[T](hello_impl T) string {
 	return hello_impl.hello()
 }
 

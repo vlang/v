@@ -1,13 +1,13 @@
-struct Outer<T> {
+struct Outer[T] {
 mut:
-	inner Inner<T>
+	inner Inner[T]
 }
 
-struct Inner<T> {
+struct Inner[T] {
 	val T
 }
 
-fn (mut i Inner<T>) next<S>(input S) f64 {
+fn (mut i Inner[T]) next[S](input S) f64 {
 	$if S is f32 {
 		return 32
 	} $else {
@@ -17,16 +17,16 @@ fn (mut i Inner<T>) next<S>(input S) f64 {
 }
 
 fn test_generics_method_on_nested_struct() {
-	mut outer := Outer<f64>{
-		inner: Inner<f64>{
+	mut outer := Outer[f64]{
+		inner: Inner[f64]{
 			val: 1.1
 		}
 	}
-	r1 := outer.inner.next<f32>(99.0)
+	r1 := outer.inner.next[f32](99.0)
 	println(r1)
 	assert r1 == 32.0
 
-	r2 := outer.inner.next<f64, f32>(99.0)
+	r2 := outer.inner.next[f64, f32](99.0)
 	println(r2)
 	assert r2 == 32.0
 

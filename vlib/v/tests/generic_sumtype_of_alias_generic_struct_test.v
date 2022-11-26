@@ -2,19 +2,19 @@ struct Shared {
 	val int
 }
 
-struct AA<T> {
+struct AA[T] {
 	Shared
 }
 
-type AAint = AA<int>
-type AAbool = AA<bool>
+type AAint = AA[int]
+type AAbool = AA[bool]
 
-struct BB<T> {
+struct BB[T] {
 	Shared
 }
 
-type BBint = BB<int>
-type BBbool = BB<bool>
+type BBint = BB[int]
+type BBbool = BB[bool]
 
 type CC = AAbool | AAint | BBbool | BBint
 

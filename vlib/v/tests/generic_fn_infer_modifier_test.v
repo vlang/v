@@ -1,8 +1,8 @@
-fn f_array<T>(a []T) T {
+fn f_array[T](a []T) T {
 	return a[0]
 }
 
-fn g_array<T>(mut a []T) {
+fn g_array[T](mut a []T) {
 	a[0] = a[1]
 }
 

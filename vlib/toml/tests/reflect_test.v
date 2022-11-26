@@ -62,9 +62,9 @@ mut:
 fn test_reflect() {
 	toml_doc := toml.parse_text(toml_text) or { panic(err) }
 
-	mut user := toml_doc.reflect<User>()
-	user.bio = toml_doc.value('bio').reflect<Bio>()
-	user.remap = toml_doc.value('field_remap').reflect<FieldRemap>()
+	mut user := toml_doc.reflect[User]()
+	user.bio = toml_doc.value('bio').reflect[Bio]()
+	user.remap = toml_doc.value('field_remap').reflect[FieldRemap]()
 
 	assert user.name == 'Tom'
 	assert user.age == 45

@@ -2168,16 +2168,24 @@ fn (p &Parser) is_generic_struct_init() bool {
 		return true
 	} else {
 		mut i := 2
+		mut nested_sbr_count := 0
 		for {
 			cur_tok := p.peek_token(i)
-			if cur_tok.kind == .eof || cur_tok.kind !in [.amp, .dot, .comma, .name, .lsbr, .rsbr] {
+			if cur_tok.kind == .eof
+				|| cur_tok.kind !in [.amp, .dot, .comma, .name, .lpar, .rpar, .lsbr, .rsbr, .key_fn] {
 				break
 			}
-			if cur_tok.kind == .rsbr {
-				if p.peek_token(i + 1).kind == .lcbr {
-					return true
+			if cur_tok.kind == .lsbr {
+				nested_sbr_count++
+			} else if cur_tok.kind == .rsbr {
+				if nested_sbr_count > 0 {
+					nested_sbr_count--
+				} else {
+					if p.peek_token(i + 1).kind == .lcbr {
+						return true
+					}
+					break
 				}
-				break
 			}
 			i++
 		}
@@ -2243,17 +2251,25 @@ fn (p &Parser) is_generic_call() bool {
 			}
 		} else if p.peek_tok.kind == .lsbr {
 			mut i := 3
+			mut nested_sbr_count := 0
 			for {
 				cur_tok := p.peek_token(i)
 				if cur_tok.kind == .eof
-					|| cur_tok.kind !in [.amp, .dot, .comma, .name, .lsbr, .rsbr] {
+					|| cur_tok.kind !in [.amp, .dot, .comma, .name, .lpar, .rpar, .lsbr, .rsbr, .key_fn] {
 					break
 				}
+				if cur_tok.kind == .lsbr {
+					nested_sbr_count++
+				}
 				if cur_tok.kind == .rsbr {
-					if p.peek_token(i + 1).kind == .lpar {
-						return true
+					if nested_sbr_count > 0 {
+						nested_sbr_count--
+					} else {
+						if p.peek_token(i + 1).kind == .lpar {
+							return true
+						}
+						break
 					}
-					break
 				}
 				i++
 			}

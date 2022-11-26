@@ -1,4 +1,4 @@
-fn foo<T>() string {
+fn foo[T]() string {
 	x := fn () string {
 		return 'ok'
 	}
@@ -6,6 +6,6 @@ fn foo<T>() string {
 }
 
 fn test_generic_fn_with_anon_fn() {
-	ret := foo<int>()
+	ret := foo[int]()
 	assert ret == 'ok'
 }

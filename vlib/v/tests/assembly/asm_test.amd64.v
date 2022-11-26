@@ -223,7 +223,7 @@ fn test_asm_generic() {
 	assert i == 137
 }
 
-fn generic_asm<T>(var &T) T {
+fn generic_asm[T](var &T) T {
 	mut ret := T(14)
 	unsafe {
 		asm volatile amd64 {

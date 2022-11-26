@@ -1,4 +1,4 @@
-fn array_array_array<T>(len int, value T) [][][]T {
+fn array_array_array[T](len int, value T) [][][]T {
 	return [][][]T{len: len, init: [][]T{len: len, init: []T{len: len, init: value}}}
 }
 
@@ -22,7 +22,7 @@ fn test_array_to_string_conversion() {
 	assert f.str() == '[66, 32, 126, 10, 13, 5, 18, 127, 255]'
 
 	// https://github.com/vlang/v/issues/8036
-	g := array_array_array<int>(2, 2)
+	g := array_array_array[int](2, 2)
 	assert g.str() == '[[[2, 2], [2, 2]], [[2, 2], [2, 2]]]'
 }
 

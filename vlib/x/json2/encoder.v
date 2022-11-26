@@ -39,8 +39,8 @@ const escaped_chars = [(r'\b').bytes(), (r'\f').bytes(), (r'\n').bytes(),
 	(r'\r').bytes(), (r'\t').bytes()]
 
 // encode_value encodes a value to the specific writer.
-pub fn (e &Encoder) encode_value<T>(val T, mut wr io.Writer) ! {
-	e.encode_value_with_level<T>(val, 1, mut wr)!
+pub fn (e &Encoder) encode_value[T](val T, mut wr io.Writer) ! {
+	e.encode_value_with_level[T](val, 1, mut wr)!
 }
 
 fn (e &Encoder) encode_newline(level int, mut wr io.Writer) ! {
@@ -132,7 +132,7 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 	}
 }
 
-fn (e &Encoder) encode_value_with_level<T>(val T, level int, mut wr io.Writer) ! {
+fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) ! {
 	$if T is string {
 		e.encode_string(val, mut wr)!
 	} $else $if T is Any {
@@ -160,7 +160,7 @@ fn (e &Encoder) encode_value_with_level<T>(val T, level int, mut wr io.Writer) !
 	}
 }
 
-fn (e &Encoder) encode_struct<U>(val U, level int, mut wr io.Writer) ! {
+fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 	wr.write([u8(`{`)])!
 	mut i := 0
 	mut fields_len := 0
@@ -221,7 +221,7 @@ fn (e &Encoder) encode_struct<U>(val U, level int, mut wr io.Writer) ! {
 	wr.write([u8(`}`)])!
 }
 
-fn (e &Encoder) encode_array<U>(val U, level int, mut wr io.Writer) ! {
+fn (e &Encoder) encode_array[U](val U, level int, mut wr io.Writer) ! {
 	$if U is $Array {
 		wr.write([u8(`[`)])!
 		for i in 0 .. val.len {

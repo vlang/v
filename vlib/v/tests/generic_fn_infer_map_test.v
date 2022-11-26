@@ -1,4 +1,4 @@
-fn print_map<K, V>(x map[K]V) string {
+fn print_map[K, V](x map[K]V) string {
 	println(x)
 	return '${x}'
 }
