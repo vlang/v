@@ -14,7 +14,7 @@ your actual elements. For example:
 ```v
 import datatypes
 
-mut stack := datatypes.Stack<int>{}
+mut stack := datatypes.Stack[int]{}
 stack.push(1)
 println(stack)
 ```
