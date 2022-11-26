@@ -1676,6 +1676,26 @@ Note that the ranges use `...` (three dots) rather than `..` (two dots). This is
 because the range is *inclusive* of the last element, rather than exclusive
 (as `..` ranges are). Using `..` in a match branch will throw an error.
 
+```v
+const start = 1
+
+const end = 10
+
+c := 2
+num := match c {
+	start...end {
+		1000
+	}
+	else {
+		0
+	}
+}
+println(num)
+// 1000
+```
+
+Constants can also be used in the range branch expressions.
+
 Note: `match` as an expression is not usable in `for` loop and `if` statements.
 
 ### In operator

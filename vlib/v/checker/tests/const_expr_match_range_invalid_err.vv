@@ -1,0 +1,13 @@
+const start = 1
+
+const end = 20
+
+match 5 {
+	start...`1` {
+		println(start)
+	}
+	'str'...end {
+		println(end)
+	}
+	else {}
+}
