@@ -629,7 +629,8 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 						if name.len == 1 && name[0].is_capital() {
 							return p.parse_generic_type(name)
 						}
-						if p.tok.kind == .lt {
+						if p.tok.kind in [.lt, .lsbr]
+							&& p.tok.pos - p.prev_tok.pos == p.prev_tok.len {
 							return p.parse_generic_inst_type(name)
 						}
 						return p.find_type_or_add_placeholder(name, language)
@@ -707,7 +708,7 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		p.struct_init_generic_types = concrete_types
 	}
 	concrete_types_pos := start_pos.extend(p.tok.pos())
-	p.check(.gt)
+	p.next()
 	p.inside_generic_params = false
 	bs_name += '>'
 	// fmt operates on a per-file basis, so is_instance might be not set correctly. Thus it's ignored.

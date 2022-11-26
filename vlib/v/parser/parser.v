@@ -2159,6 +2159,32 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	}
 }
 
+fn (p &Parser) is_generic_struct_init() bool {
+	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
+	if !lit0_is_capital || p.peek_tok.kind !in [.lt, .lsbr] {
+		return false
+	}
+	if p.peek_tok.kind == .lt {
+		return true
+	} else {
+		mut i := 2
+		for {
+			cur_tok := p.peek_token(i)
+			if cur_tok.kind == .eof || cur_tok.kind !in [.amp, .dot, .comma, .name, .lsbr, .rsbr] {
+				break
+			}
+			if cur_tok.kind == .rsbr {
+				if p.peek_token(i + 1).kind == .lcbr {
+					return true
+				}
+				break
+			}
+			i++
+		}
+	}
+	return false
+}
+
 fn (p &Parser) is_typename(t token.Token) bool {
 	return t.kind == .name && (t.lit[0].is_capital() || p.table.known_type(t.lit))
 }
@@ -2177,7 +2203,7 @@ fn (p &Parser) is_typename(t token.Token) bool {
 // see also test_generic_detection in vlib/v/tests/generics_test.v
 fn (p &Parser) is_generic_call() bool {
 	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
-	if lit0_is_capital || p.peek_tok.kind != .lt {
+	if lit0_is_capital || p.peek_tok.kind !in [.lt, .lsbr] {
 		return false
 	}
 	mut tok2 := p.peek_token(2)
@@ -2206,13 +2232,31 @@ fn (p &Parser) is_generic_call() bool {
 			// case 2
 			return true
 		}
-		return match kind3 {
-			.gt { true } // case 3
-			.lt { !(tok4.lit.len == 1 && tok4.lit[0].is_capital()) } // case 4
-			.comma { p.is_typename(tok2) } // case 5
-			// case 6 and 7
-			.dot { kind4 == .name && (kind5 == .gt || (kind5 == .comma && p.is_typename(tok4))) }
-			else { false }
+		if p.peek_tok.kind == .lt {
+			return match kind3 {
+				.gt { true } // case 3
+				.lt { !(tok4.lit.len == 1 && tok4.lit[0].is_capital()) } // case 4
+				.comma { p.is_typename(tok2) } // case 5
+				// case 6 and 7
+				.dot { kind4 == .name && (kind5 == .gt || (kind5 == .comma && p.is_typename(tok4))) }
+				else { false }
+			}
+		} else if p.peek_tok.kind == .lsbr {
+			mut i := 3
+			for {
+				cur_tok := p.peek_token(i)
+				if cur_tok.kind == .eof
+					|| cur_tok.kind !in [.amp, .dot, .comma, .name, .lsbr, .rsbr] {
+					break
+				}
+				if cur_tok.kind == .rsbr {
+					if p.peek_token(i + 1).kind == .lpar {
+						return true
+					}
+					break
+				}
+				i++
+			}
 		}
 	}
 	return false
@@ -2231,10 +2275,10 @@ fn (mut p Parser) is_generic_cast() bool {
 		i++
 		tok := p.peek_token(i)
 
-		if tok.kind == .lt {
+		if tok.kind in [.lt, .lsbr] {
 			lt_count++
 			level++
-		} else if tok.kind == .gt {
+		} else if tok.kind in [.gt, .rsbr] {
 			level--
 		}
 		if lt_count > 0 && level == 0 {
@@ -2414,6 +2458,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	is_optional := p.tok.kind == .question
 	is_generic_call := p.is_generic_call()
 	is_generic_cast := p.is_generic_cast()
+	is_generic_struct_init := p.is_generic_struct_init()
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	same_line := p.tok.line_nr == p.peek_tok.line_nr
 	// `(` must be on same line as name token otherwise it's a ParExpr
@@ -2494,7 +2539,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				}
 			}
 		}
-	} else if (p.peek_tok.kind == .lcbr || (p.peek_tok.kind == .lt && lit0_is_capital))
+	} else if (p.peek_tok.kind == .lcbr || is_generic_struct_init)
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
 		&& (!p.inside_for || p.inside_select) && !known_var {
@@ -2975,13 +3020,14 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 	mut types := []ast.Type{}
 	mut param_names := []string{}
-	if p.tok.kind != .lt {
+	if p.tok.kind !in [.lt, .lsbr] {
 		return types, param_names
 	}
-	p.check(.lt)
+	end_kind := if p.tok.kind == .lt { token.Kind.gt } else { token.Kind.rsbr }
+	p.next()
 	mut first_done := false
 	mut count := 0
-	for p.tok.kind !in [.gt, .eof] {
+	for p.tok.kind !in [end_kind, .eof] {
 		if first_done {
 			p.check(.comma)
 		}
@@ -3018,25 +3064,26 @@ fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 		first_done = true
 		count++
 	}
-	p.check(.gt)
+	p.check(end_kind)
 	return types, param_names
 }
 
 fn (mut p Parser) parse_concrete_types() []ast.Type {
 	mut types := []ast.Type{}
-	if p.tok.kind != .lt {
+	if p.tok.kind !in [.lt, .lsbr] {
 		return types
 	}
+	end_kind := if p.tok.kind == .lt { token.Kind.gt } else { token.Kind.rsbr }
 	p.next() // `<`
 	mut first_done := false
-	for p.tok.kind !in [.eof, .gt] {
+	for p.tok.kind !in [.eof, end_kind] {
 		if first_done {
 			p.check(.comma)
 		}
 		types << p.parse_type()
 		first_done = true
 	}
-	p.check(.gt) // `>`
+	p.check(end_kind) // `>`
 	return types
 }
 
