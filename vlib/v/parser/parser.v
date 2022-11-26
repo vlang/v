@@ -2159,6 +2159,32 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	}
 }
 
+fn (p &Parser) is_generic_struct_init() bool {
+	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
+	if !lit0_is_capital || p.peek_tok.kind !in [.lt, .lsbr] {
+		return false
+	}
+	if p.peek_tok.kind == .lt {
+		return true
+	} else {
+		mut i := 2
+		for {
+			cur_tok := p.peek_token(i)
+			if cur_tok.kind == .eof || cur_tok.kind !in [.amp, .dot, .comma, .name, .lsbr, .rsbr] {
+				break
+			}
+			if cur_tok.kind == .rsbr {
+				if p.peek_token(i + 1).kind == .lcbr {
+					return true
+				}
+				break
+			}
+			i++
+		}
+	}
+	return false
+}
+
 fn (p &Parser) is_typename(t token.Token) bool {
 	return t.kind == .name && (t.lit[0].is_capital() || p.table.known_type(t.lit))
 }
@@ -2224,8 +2250,7 @@ fn (p &Parser) is_generic_call() bool {
 					break
 				}
 				if cur_tok.kind == .rsbr {
-					after_tok := p.peek_token(i + 1)
-					if after_tok.kind == .lpar {
+					if p.peek_token(i + 1).kind == .lpar {
 						return true
 					}
 					break
@@ -2433,6 +2458,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	is_optional := p.tok.kind == .question
 	is_generic_call := p.is_generic_call()
 	is_generic_cast := p.is_generic_cast()
+	is_generic_struct_init := p.is_generic_struct_init()
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	same_line := p.tok.line_nr == p.peek_tok.line_nr
 	// `(` must be on same line as name token otherwise it's a ParExpr
@@ -2513,8 +2539,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				}
 			}
 		}
-	} else if (p.peek_tok.kind == .lcbr || (p.peek_tok.kind in [.lt, .lsbr] && lit0_is_capital
-		&& p.peek_tok.pos - p.tok.pos == p.tok.len))
+	} else if (p.peek_tok.kind == .lcbr || is_generic_struct_init)
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
 		&& (!p.inside_for || p.inside_select) && !known_var {
