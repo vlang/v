@@ -1,4 +1,4 @@
-fn print_field_values<T>(s T) {
+fn print_field_values[T](s T) {
 	mut value_list := []string{}
 	mut value_type_list := []string{}
 	mut var_value_list := []string{}
@@ -55,5 +55,5 @@ fn test_comptime_for_in_field_selector() {
 		email: 'simon@gmail.com'
 		age: 15
 	}
-	print_field_values<Foo>(bar)
+	print_field_values[Foo](bar)
 }

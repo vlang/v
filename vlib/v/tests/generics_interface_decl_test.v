@@ -2,19 +2,19 @@ interface Depends {
 	depends() []Depends
 }
 
-struct Signal<T> {
+struct Signal[T] {
 }
 
-fn (x Signal<T>) depends() []Depends {
+fn (x Signal[T]) depends() []Depends {
 	return []
 }
 
-struct Add<T> {
-	a Signal<T>
-	b Signal<T>
+struct Add[T] {
+	a Signal[T]
+	b Signal[T]
 }
 
-fn (a Add<T>) depends() []Depends {
+fn (a Add[T]) depends() []Depends {
 	return [a.a, a.b]
 }
 

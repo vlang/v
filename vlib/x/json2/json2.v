@@ -18,7 +18,7 @@ pub fn fast_raw_decode(src string) !Any {
 }
 
 // decode is a generic function that decodes a JSON string into the target type.
-pub fn decode<T>(src string) !T {
+pub fn decode[T](src string) !T {
 	res := raw_decode(src)!
 	mut typ := T{}
 	typ.from_json(res)
@@ -26,14 +26,14 @@ pub fn decode<T>(src string) !T {
 }
 
 // encode is a generic function that encodes a type into a JSON string.
-pub fn encode<T>(val T) string {
+pub fn encode[T](val T) string {
 	mut sb := strings.new_builder(64)
 	defer {
 		unsafe { sb.free() }
 	}
 	default_encoder.encode_value(val, mut sb) or {
 		dump(err)
-		default_encoder.encode_value<Null>(null, mut sb) or {}
+		default_encoder.encode_value[Null](null, mut sb) or {}
 	}
 	return sb.str()
 }

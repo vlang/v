@@ -1,7 +1,7 @@
 import datatypes
 
 fn test_push_and_pop() {
-	mut r := datatypes.new_ringbuffer<int>(2)
+	mut r := datatypes.new_ringbuffer[int](2)
 
 	r.push(3) or { panic(err) }
 	r.push(4) or { panic(err) }
@@ -18,7 +18,7 @@ fn test_push_and_pop() {
 }
 
 fn test_clear_and_empty() {
-	mut r := datatypes.new_ringbuffer<int>(4)
+	mut r := datatypes.new_ringbuffer[int](4)
 	r.push(3) or { panic(err) }
 	r.push(4) or { panic(err) }
 
@@ -31,7 +31,7 @@ fn test_clear_and_empty() {
 }
 
 fn test_capacity_and_is_full() {
-	mut r := datatypes.new_ringbuffer<int>(4)
+	mut r := datatypes.new_ringbuffer[int](4)
 
 	assert r.capacity() == 4
 
@@ -44,7 +44,7 @@ fn test_capacity_and_is_full() {
 }
 
 fn test_occupied_and_remaining() {
-	mut r := datatypes.new_ringbuffer<int>(4)
+	mut r := datatypes.new_ringbuffer[int](4)
 
 	r.push(3) or { panic(err) }
 	r.push(4) or { panic(err) }
@@ -53,7 +53,7 @@ fn test_occupied_and_remaining() {
 }
 
 fn test_push_and_pop_many() {
-	mut r := datatypes.new_ringbuffer<int>(4)
+	mut r := datatypes.new_ringbuffer[int](4)
 	a := [1, 2, 3, 4]
 	r.push_many(a) or { panic(err) }
 

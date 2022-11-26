@@ -192,7 +192,7 @@ fn test_if_epxr_with_array_conditions() {
 	}
 }
 
-fn min<T>(a T, b T) T {
+fn min[T](a T, b T) T {
 	return if a < b { a } else { b }
 }
 

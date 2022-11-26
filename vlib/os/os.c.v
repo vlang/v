@@ -598,7 +598,7 @@ pub fn get_raw_stdin() []u8 {
 }
 
 // read_file_array reads an array of `T` values from file `path`.
-pub fn read_file_array<T>(path string) []T {
+pub fn read_file_array[T](path string) []T {
 	a := T{}
 	tsize := int(sizeof(a))
 	// prepare for reading, get current file size

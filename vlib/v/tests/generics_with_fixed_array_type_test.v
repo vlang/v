@@ -1,4 +1,4 @@
-fn show_element<T>(arr T) string {
+fn show_element[T](arr T) string {
 	return '${arr[1]}'
 }
 

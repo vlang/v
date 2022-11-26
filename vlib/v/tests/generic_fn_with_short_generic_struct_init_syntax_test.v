@@ -1,10 +1,10 @@
-pub struct EncodeOptions<T> {
+pub struct EncodeOptions[T] {
 	payload   T
 	key       string
 	algorithm string = 'HS256'
 }
 
-pub fn encode<T>(options EncodeOptions<T>) !string {
+pub fn encode[T](options EncodeOptions[T]) !string {
 	return 'test'
 }
 

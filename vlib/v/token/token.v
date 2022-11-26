@@ -190,7 +190,7 @@ pub const (
 	keywords        = build_keys()
 )
 
-pub const scanner_matcher = new_keywords_matcher_trie<Kind>(keywords)
+pub const scanner_matcher = new_keywords_matcher_trie[Kind](keywords)
 
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return

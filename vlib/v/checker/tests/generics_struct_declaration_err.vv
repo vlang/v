@@ -1,9 +1,9 @@
-struct GenericChannelStruct<T> {
+struct GenericChannelStruct[T] {
 	ch chan T
 }
 
 struct MyGenericChannelStruct {
-	GenericChannelStruct<T>
+	GenericChannelStruct[T]
 	msg string
 }
 
@@ -12,11 +12,11 @@ struct Simple {
 }
 
 fn main() {
-	new_channel_struct<Simple>()
+	new_channel_struct[Simple]()
 }
 
-pub fn new_channel_struct<T>() GenericChannelStruct<T> {
-	d := GenericChannelStruct<T>{
+pub fn new_channel_struct[T]() GenericChannelStruct[T] {
+	d := GenericChannelStruct[T]{
 		ch: chan T{}
 	}
 

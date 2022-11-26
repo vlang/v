@@ -40,10 +40,10 @@ fn do_send_i64(mut ch Channel) {
 }
 
 fn test_select() {
-	mut chi := new_channel<int>(0)
-	mut chl := new_channel<i64>(1)
-	mut chb := new_channel<u8>(10)
-	mut recch := new_channel<i64>(0)
+	mut chi := new_channel[int](0)
+	mut chl := new_channel[i64](1)
+	mut chb := new_channel[u8](10)
+	mut recch := new_channel[i64](0)
 	spawn do_rec_i64(mut recch)
 	spawn do_send_int(mut chi)
 	spawn do_send_u8(mut chb)

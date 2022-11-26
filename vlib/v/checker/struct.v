@@ -32,7 +32,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				for name in embed_generic_names {
 					if name !in node_generic_names {
 						struct_generic_names := node_generic_names.join(', ')
-						c.error('generic type name `${name}` is not mentioned in struct `${node.name}<${struct_generic_names}>`',
+						c.error('generic type name `${name}` is not mentioned in struct `${node.name}[${struct_generic_names}]`',
 							embed.pos)
 					}
 				}
@@ -79,7 +79,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				}
 				if info.generic_types.len > 0 && !field.typ.has_flag(.generic)
 					&& info.concrete_types.len == 0 {
-					c.error('field `${field.name}` type is generic struct, must specify the generic type names, e.g. Foo<T>, Foo<int>',
+					c.error('field `${field.name}` type is generic struct, must specify the generic type names, e.g. Foo[T], Foo[int]',
 						field.type_pos)
 				}
 			}
@@ -162,14 +162,14 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				for name in field_generic_names {
 					if name !in node_generic_names {
 						struct_generic_names := node_generic_names.join(', ')
-						c.error('generic type name `${name}` is not mentioned in struct `${node.name}<${struct_generic_names}>`',
+						c.error('generic type name `${name}` is not mentioned in struct `${node.name}[${struct_generic_names}]`',
 							field.type_pos)
 					}
 				}
 			}
 		}
 		if node.generic_types.len == 0 && has_generic_types {
-			c.error('generic struct declaration must specify the generic type names, e.g. Foo<T>',
+			c.error('generic struct declaration must specify the generic type names, e.g. Foo[T]',
 				node.pos)
 		}
 	}
@@ -264,10 +264,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				}
 			} else {
 				if c.table.cur_concrete_types.len == 0 {
-					c.error('generic struct init must specify type parameter, e.g. Foo<int>',
+					c.error('generic struct init must specify type parameter, e.g. Foo[int]',
 						node.pos)
 				} else if node.generic_types.len == 0 {
-					c.error('generic struct init must specify type parameter, e.g. Foo<T>',
+					c.error('generic struct init must specify type parameter, e.g. Foo[T]',
 						node.pos)
 				} else if node.generic_types.len > 0
 					&& node.generic_types.len != struct_sym.info.generic_types.len {

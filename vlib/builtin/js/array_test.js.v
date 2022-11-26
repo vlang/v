@@ -1482,7 +1482,7 @@ fn test_clone_of_same_elem_size_array() {
 	assert arr2 == [Abc{1, 2, 3}, Abc{2, 3, 4}]
 }
 
-pub fn example<T>(mut arr []T) []T {
+pub fn example[T](mut arr []T) []T {
 	return arr.clone()
 }
 

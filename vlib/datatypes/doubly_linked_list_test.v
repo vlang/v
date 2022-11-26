@@ -1,14 +1,14 @@
 module datatypes
 
 fn test_is_empty() {
-	mut list := DoublyLinkedList<int>{}
+	mut list := DoublyLinkedList[int]{}
 	assert list.is_empty() == true
 	list.push_back(1)
 	assert list.is_empty() == false
 }
 
 fn test_len() ? {
-	mut list := DoublyLinkedList<int>{}
+	mut list := DoublyLinkedList[int]{}
 	assert list.len() == 0
 	list.push_back(1)
 	assert list.len() == 1
@@ -17,29 +17,29 @@ fn test_len() ? {
 }
 
 fn test_first() ? {
-	mut list := DoublyLinkedList<int>{}
+	mut list := DoublyLinkedList[int]{}
 	list.push_back(1)
 	assert list.first()? == 1
 	list.push_back(2)
 	assert list.first()? == 1
-	list = DoublyLinkedList<int>{}
+	list = DoublyLinkedList[int]{}
 	list.first() or { return }
 	assert false
 }
 
 fn test_last() ? {
-	mut list := DoublyLinkedList<int>{}
+	mut list := DoublyLinkedList[int]{}
 	list.push_back(1)
 	assert list.last()? == 1
 	list.push_back(2)
 	assert list.last()? == 2
-	list = DoublyLinkedList<int>{}
+	list = DoublyLinkedList[int]{}
 	list.last() or { return }
 	assert false
 }
 
 fn test_push() ? {
-	mut list := DoublyLinkedList<int>{}
+	mut list := DoublyLinkedList[int]{}
 	list.push_back(1)
 	assert list.last()? == 1
 	list.push_back(2)
@@ -49,7 +49,7 @@ fn test_push() ? {
 }
 
 fn test_pop() ? {
-	mut list := DoublyLinkedList<int>{}
+	mut list := DoublyLinkedList[int]{}
 	list.push_back(1)
 	list.push_back(2)
 	list.push_back(3)
@@ -57,13 +57,13 @@ fn test_pop() ? {
 	list.push_back(4)
 	assert list.pop_back()? == 4
 	assert list.pop_back()? == 2
-	list = DoublyLinkedList<int>{}
+	list = DoublyLinkedList[int]{}
 	list.pop_back() or { return }
 	assert false
 }
 
 fn test_pop_front() ? {
-	mut list := DoublyLinkedList<int>{}
+	mut list := DoublyLinkedList[int]{}
 	list.push_back(1)
 	list.push_back(2)
 	list.push_back(3)
@@ -71,13 +71,13 @@ fn test_pop_front() ? {
 	list.push_back(4)
 	assert list.pop_front()? == 2
 	assert list.pop_front()? == 3
-	list = DoublyLinkedList<int>{}
+	list = DoublyLinkedList[int]{}
 	list.pop_front() or { return }
 	assert false
 }
 
 fn test_insert() ? {
-	mut list := DoublyLinkedList<int>{}
+	mut list := DoublyLinkedList[int]{}
 	list.push_back(1)
 	list.push_back(2)
 	list.push_back(3)
@@ -93,7 +93,7 @@ fn test_insert() ? {
 }
 
 fn test_push_front() ? {
-	mut list := DoublyLinkedList<int>{}
+	mut list := DoublyLinkedList[int]{}
 	list.push_back(1)
 	list.push_back(2)
 	list.push_back(3)
@@ -102,7 +102,7 @@ fn test_push_front() ? {
 }
 
 fn test_delete() ? {
-	mut list := DoublyLinkedList<int>{}
+	mut list := DoublyLinkedList[int]{}
 	list.push_back(0)
 	list.push_back(1)
 	list.push_back(2)
@@ -119,7 +119,7 @@ fn test_delete() ? {
 }
 
 fn test_iter() ? {
-	mut list := DoublyLinkedList<int>{}
+	mut list := DoublyLinkedList[int]{}
 	for i := 0; i < 10; i++ {
 		list.push_back(i * 10)
 	}
@@ -141,7 +141,7 @@ fn test_iter() ? {
 }
 
 fn test_index() ? {
-	mut list := DoublyLinkedList<int>{}
+	mut list := DoublyLinkedList[int]{}
 	for i := 0; i < 10; i++ {
 		list.push_back(i * 10)
 	}
@@ -152,7 +152,7 @@ fn test_index() ? {
 }
 
 fn test_str() ? {
-	mut list := DoublyLinkedList<int>{}
+	mut list := DoublyLinkedList[int]{}
 	list.push_back(1)
 	list.push_back(2)
 	list.push_back(3)
@@ -160,7 +160,7 @@ fn test_str() ? {
 }
 
 fn test_array() ? {
-	mut list := DoublyLinkedList<int>{}
+	mut list := DoublyLinkedList[int]{}
 	list.push_back(1)
 	list.push_back(2)
 	list.push_back(3)
@@ -168,7 +168,7 @@ fn test_array() ? {
 }
 
 fn test_string_array() ? {
-	mut list := DoublyLinkedList<[]string>{}
+	mut list := DoublyLinkedList[[]string]{}
 	list.push_back(['a'])
 	list.push_back(['b'])
 	list.push_back(['c'])
@@ -176,7 +176,7 @@ fn test_string_array() ? {
 }
 
 fn test_iteration_with_for() ? {
-	mut list := DoublyLinkedList<int>{}
+	mut list := DoublyLinkedList[int]{}
 	list.push_back(1)
 	list.push_back(2)
 	list.push_back(3)
@@ -188,7 +188,7 @@ fn test_iteration_with_for() ? {
 }
 
 fn test_iterator() ? {
-	mut list := DoublyLinkedList<int>{}
+	mut list := DoublyLinkedList[int]{}
 	list.push_back(1)
 	list.push_back(2)
 	list.push_back(3)
@@ -201,7 +201,7 @@ fn test_iterator() ? {
 }
 
 fn test_back_iterator() ? {
-	mut list := DoublyLinkedList<int>{}
+	mut list := DoublyLinkedList[int]{}
 	list.push_back(1)
 	list.push_back(2)
 	list.push_back(3)

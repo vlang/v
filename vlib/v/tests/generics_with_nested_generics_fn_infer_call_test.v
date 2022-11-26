@@ -17,10 +17,10 @@ fn test_generics_with_nested_generic_fn_infer_call() {
 	assert ret2 == Insect{}
 }
 
-pub fn node_search<T>(mut t T) T {
+pub fn node_search[T](mut t T) T {
 	return hydrate(mut t)
 }
 
-fn hydrate<T>(mut t T) T {
+fn hydrate[T](mut t T) T {
 	return t
 }

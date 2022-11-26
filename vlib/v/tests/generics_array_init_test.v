@@ -1,22 +1,22 @@
-fn get_arr_v1<N, T>(num N, val T) []T {
+fn get_arr_v1[N, T](num N, val T) []T {
 	return []T{len: num, init: val}
 }
 
-fn get_arr_v2<N, T>(num N, val T) []T {
+fn get_arr_v2[N, T](num N, val T) []T {
 	return []T{len: int(num), init: val}
 }
 
-fn get_arr_v3<N, T>(num N, val T) []T {
+fn get_arr_v3[N, T](num N, val T) []T {
 	tmp := num
 	return []T{len: tmp, init: val}
 }
 
-fn get_arr_v4<N, T>(num N, val T) []T {
+fn get_arr_v4[N, T](num N, val T) []T {
 	tmp := num + 0
 	return []T{len: tmp, init: val}
 }
 
-fn get_arr_v5<N, T>(num N, val T) []T {
+fn get_arr_v5[N, T](num N, val T) []T {
 	tmp := 0 + num
 	return []T{len: tmp, init: val}
 }

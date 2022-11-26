@@ -8,7 +8,7 @@ pub fn imul(x int, y int) int {
 	return x * y
 }
 
-pub struct ThisIsGeneric<T> {
+pub struct ThisIsGeneric[T] {
 	msg T
 }
 

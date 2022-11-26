@@ -342,7 +342,7 @@ pub fn (mut rng PRNG) exponential(lambda f64) f64 {
 // optional and the entire array is shuffled by default. Leave the end as 0 to
 // shuffle all elements until the end.
 [direct_array_access]
-pub fn (mut rng PRNG) shuffle<T>(mut a []T, config config.ShuffleConfigStruct) ! {
+pub fn (mut rng PRNG) shuffle[T](mut a []T, config config.ShuffleConfigStruct) ! {
 	config.validate_for(a)!
 	new_end := if config.end == 0 { a.len } else { config.end }
 
@@ -360,23 +360,23 @@ pub fn (mut rng PRNG) shuffle<T>(mut a []T, config config.ShuffleConfigStruct) !
 
 // shuffle_clone returns a random permutation of the elements in `a`.
 // The permutation is done on a fresh clone of `a`, so `a` remains unchanged.
-pub fn (mut rng PRNG) shuffle_clone<T>(a []T, config config.ShuffleConfigStruct) ![]T {
+pub fn (mut rng PRNG) shuffle_clone[T](a []T, config config.ShuffleConfigStruct) ![]T {
 	mut res := a.clone()
-	rng.shuffle<T>(mut res, config)!
+	rng.shuffle[T](mut res, config)!
 	return res
 }
 
 // choose samples k elements from the array without replacement.
 // This means the indices cannot repeat and it restricts the sample size to be less than or equal to the size of the given array.
 // Note that if the array has repeating elements, then the sample may have repeats as well.
-pub fn (mut rng PRNG) choose<T>(array []T, k int) ![]T {
+pub fn (mut rng PRNG) choose[T](array []T, k int) ![]T {
 	n := array.len
 	if k > n {
 		return error('Cannot choose ${k} elements without replacement from a ${n}-element array.')
 	}
 	mut results := []T{len: k}
 	mut indices := []int{len: n, init: it}
-	rng.shuffle<int>(mut indices)!
+	rng.shuffle[int](mut indices)!
 	for i in 0 .. k {
 		results[i] = array[indices[i]]
 	}
@@ -385,7 +385,7 @@ pub fn (mut rng PRNG) choose<T>(array []T, k int) ![]T {
 
 // element returns a random element from the given array.
 // Note that all the positions in the array have an equal chance of being selected. This means that if the array has repeating elements, then the probability of selecting a particular element is not uniform.
-pub fn (mut rng PRNG) element<T>(array []T) !T {
+pub fn (mut rng PRNG) element[T](array []T) !T {
 	if array.len == 0 {
 		return error('Cannot choose an element from an empty array.')
 	}
@@ -394,7 +394,7 @@ pub fn (mut rng PRNG) element<T>(array []T) !T {
 
 // sample samples k elements from the array with replacement.
 // This means the elements can repeat and the size of the sample may exceed the size of the array.
-pub fn (mut rng PRNG) sample<T>(array []T, k int) []T {
+pub fn (mut rng PRNG) sample[T](array []T, k int) []T {
 	mut results := []T{len: k}
 	for i in 0 .. k {
 		results[i] = array[rng.intn(array.len) or { 0 }]
@@ -599,33 +599,33 @@ pub fn ascii(len int) string {
 // shuffle randomly permutates the elements in `a`. The range for shuffling is
 // optional and the entire array is shuffled by default. Leave the end as 0 to
 // shuffle all elements until the end.
-pub fn shuffle<T>(mut a []T, config config.ShuffleConfigStruct) ! {
-	default_rng.shuffle<T>(mut a, config)!
+pub fn shuffle[T](mut a []T, config config.ShuffleConfigStruct) ! {
+	default_rng.shuffle[T](mut a, config)!
 }
 
 // shuffle_clone returns a random permutation of the elements in `a`.
 // The permutation is done on a fresh clone of `a`, so `a` remains unchanged.
-pub fn shuffle_clone<T>(a []T, config config.ShuffleConfigStruct) ![]T {
-	return default_rng.shuffle_clone<T>(a, config)
+pub fn shuffle_clone[T](a []T, config config.ShuffleConfigStruct) ![]T {
+	return default_rng.shuffle_clone[T](a, config)
 }
 
 // choose samples k elements from the array without replacement.
 // This means the indices cannot repeat and it restricts the sample size to be less than or equal to the size of the given array.
 // Note that if the array has repeating elements, then the sample may have repeats as well.
-pub fn choose<T>(array []T, k int) ![]T {
-	return default_rng.choose<T>(array, k)
+pub fn choose[T](array []T, k int) ![]T {
+	return default_rng.choose[T](array, k)
 }
 
 // element returns a random element from the given array.
 // Note that all the positions in the array have an equal chance of being selected. This means that if the array has repeating elements, then the probability of selecting a particular element is not uniform.
-pub fn element<T>(array []T) !T {
-	return default_rng.element<T>(array)
+pub fn element[T](array []T) !T {
+	return default_rng.element[T](array)
 }
 
 // sample samples k elements from the array with replacement.
 // This means the elements can repeat and the size of the sample may exceed the size of the array.
-pub fn sample<T>(array []T, k int) []T {
-	return default_rng.sample<T>(array, k)
+pub fn sample[T](array []T, k int) []T {
+	return default_rng.sample[T](array, k)
 }
 
 // bernoulli returns true with a probability p. Note that 0 <= p <= 1.

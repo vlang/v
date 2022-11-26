@@ -675,7 +675,7 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 	start_pos := p.tok.pos()
 	p.next()
 	p.inside_generic_params = true
-	bs_name += '<'
+	bs_name += '['
 	bs_cname += '_T_'
 	mut concrete_types := []ast.Type{}
 	mut is_instance := false
@@ -710,7 +710,7 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 	concrete_types_pos := start_pos.extend(p.tok.pos())
 	p.next()
 	p.inside_generic_params = false
-	bs_name += '>'
+	bs_name += ']'
 	// fmt operates on a per-file basis, so is_instance might be not set correctly. Thus it's ignored.
 	if (is_instance || p.pref.is_fmt) && concrete_types.len > 0 {
 		mut gt_idx := p.table.find_type_idx(bs_name)

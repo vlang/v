@@ -8,7 +8,7 @@ pub fn current() &Local {
 	return zzz
 }
 
-pub fn store<T>(var &T, value T) {
+pub fn store[T](var &T, value T) {
 	eprintln('store ${voidptr(var)} <- ${value}')
 	unsafe {
 		*var = value

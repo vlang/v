@@ -109,23 +109,23 @@ fn defer_fn() {
 }
 
 // generic function
-fn g_fn<T>(p T) T {
+fn g_fn[T](p T) T {
 	return p
 }
 
 // generic struct
-struct GenericStruct<T> {
+struct GenericStruct[T] {
 	point Point
 mut:
 	model T
 }
 
 // generic interface
-interface Gettable<T> {
+interface Gettable[T] {
 	get() T
 }
 
 // generic sumtype
 struct None {}
 
-type MyOption<T> = Error | None | T
+type MyOption[T] = Error | None | T

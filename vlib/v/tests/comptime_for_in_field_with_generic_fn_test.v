@@ -13,7 +13,7 @@ struct Child {
 	age  int
 }
 
-fn inspect<T>(t T) string {
+fn inspect[T](t T) string {
 	mut output_str := ''
 	println('${T.name}')
 	$for field in T.fields {

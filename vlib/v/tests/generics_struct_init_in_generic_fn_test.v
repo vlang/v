@@ -17,7 +17,7 @@ fn test_generics_struct_init_in_generic_fn() {
 	assert ret.id == 2
 }
 
-pub fn do<T>(t T) T {
+pub fn do[T](t T) T {
 	max := T{
 		id: 2
 	}
