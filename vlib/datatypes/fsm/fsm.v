@@ -28,11 +28,11 @@ pub fn new() StateMachine {
 	return StateMachine{}
 }
 
-pub fn (mut s StateMachine) set_state(name string) ? {
+pub fn (mut s StateMachine) set_state(name string) ! {
 	if name in s.states {
 		s.current_state = name
 	} else {
-		return none
+		return error('unknown state: ${name}')
 	}
 }
 
@@ -63,7 +63,7 @@ pub fn (mut s StateMachine) add_transition(from string, to string, condition_han
 	s.transitions[from] = [t]
 }
 
-pub fn (mut s StateMachine) run(receiver voidptr) ? {
+pub fn (mut s StateMachine) run(receiver voidptr) ! {
 	from_state := s.current_state
 	mut to_state := s.current_state
 	if transitions := s.transitions[s.current_state] {
@@ -76,7 +76,7 @@ pub fn (mut s StateMachine) run(receiver voidptr) ? {
 		}
 	} else {
 		s.states[s.current_state].run_handler(receiver, from_state, to_state)
-		return none
+		return error('no more transitions')
 	}
 	s.states[s.current_state].run_handler(receiver, from_state, to_state)
 }

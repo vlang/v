@@ -1,7 +1,7 @@
 import os
 import flag
 
-pub fn read_file(file string) ?[]string {
+pub fn read_file(file string) ![]string {
 	if os.is_file(file) {
 		text := os.read_lines(file) or {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
@@ -33,7 +33,7 @@ pub fn get_transitions(line string) ?string {
 pub fn main() {
 	mut fp := flag.new_flag_parser(os.args)
 	file := fp.string('file', `f`, '', 'input V file with transitions to generate graph from.')
-	lines := read_file(file)?
+	lines := read_file(file)!
 	println('digraph fsm {')
 	for line in lines {
 		if line.contains('add_transition') {
