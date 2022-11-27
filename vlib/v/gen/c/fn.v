@@ -1452,8 +1452,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 							}
 						}
 						if obj.smartcasts.len > 0 && is_cast_needed {
-							for _ in obj.smartcasts {
-								g.write('(*')
+							for typ in obj.smartcasts {
+								sym := g.table.sym(typ)
+								g.write('(*(${sym.cname})(')
 							}
 							for i, typ in obj.smartcasts {
 								cast_sym := g.table.sym(g.unwrap_generic(typ))
@@ -1471,7 +1472,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 								} else {
 									g.write('${dot}_${cast_sym.cname}')
 								}
-								g.write(')')
+								g.write('))')
 							}
 							is_fn_var = true
 						} else if obj.is_inherited {

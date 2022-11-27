@@ -5,7 +5,7 @@ fn test_generic_fn_infer_fn_type_using_ref_arg() {
 	assert ret
 }
 
-fn call_generic_fn<T>(cb fn (&T) bool, input T) bool {
+fn call_generic_fn[T](cb fn (&T) bool, input T) bool {
 	dump(cb(&input))
 	ret := cb(&input)
 	return ret

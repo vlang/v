@@ -56,7 +56,7 @@ fn test_all_v_repl_files() {
 		// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019
 		pool_repl.set_max_jobs(1)
 	}
-	pool_repl.work_on_items<string>(session.options.files)
+	pool_repl.work_on_items[string](session.options.files)
 	session.bmark.stop()
 	println(session.bmark.total_message('total time spent running REPL files'))
 }
@@ -76,7 +76,7 @@ fn worker_repl(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		os.rmdir_all(tfolder) or { panic(err) }
 	}
 	os.mkdir(tfolder) or { panic(err) }
-	file := p.get_item<string>(idx)
+	file := p.get_item[string](idx)
 	session.bmark.step()
 	tls_bench.step()
 	fres := runner.run_repl_file(tfolder, session.options.vexec, file) or {

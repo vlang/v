@@ -106,7 +106,7 @@ fn test_encode_decode_sumtype() {
 	assert (game.other[4] as time.Time).unix_time() == (dec.other[4] as time.Time).unix_time()
 }
 
-fn bar<T>(payload string) !Bar { // ?T doesn't work currently
+fn bar[T](payload string) !Bar { // ?T doesn't work currently
 	result := json.decode(T, payload)!
 	return result
 }
@@ -116,7 +116,7 @@ struct Bar {
 }
 
 fn test_generic() {
-	result := bar<Bar>('{"x":"test"}') or { Bar{} }
+	result := bar[Bar]('{"x":"test"}') or { Bar{} }
 	assert result.x == 'test'
 }
 
@@ -332,17 +332,17 @@ fn test_nested_type() {
 	}
 }
 
-struct Foo<T> {
+struct Foo[T] {
 pub:
 	name string
 	data T
 }
 
 fn test_generic_struct() {
-	foo_int := Foo<int>{'bar', 12}
+	foo_int := Foo[int]{'bar', 12}
 	foo_enc := json.encode(foo_int)
 	assert foo_enc == '{"name":"bar","data":12}'
-	foo_dec := json.decode(Foo<int>, foo_enc)!
+	foo_dec := json.decode(Foo[int], foo_enc)!
 	assert foo_dec.name == 'bar'
 	assert foo_dec.data == 12
 }

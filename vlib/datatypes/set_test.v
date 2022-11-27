@@ -1,14 +1,14 @@
 module datatypes
 
 fn test_exists() {
-	mut set := Set<string>{}
+	mut set := Set[string]{}
 	set.add('foo')
 	assert set.exists('foo')
 	assert set.exists('bar') == false
 }
 
 fn test_remove() {
-	mut set := Set<string>{}
+	mut set := Set[string]{}
 	set.remove('foo')
 	set.add('foo')
 	assert set.exists('foo')
@@ -17,28 +17,28 @@ fn test_remove() {
 }
 
 fn test_size() {
-	mut set := Set<string>{}
+	mut set := Set[string]{}
 	set.add('foo')
 	set.add('foo')
 	assert set.size() == 1
 }
 
 fn test_pop() {
-	mut set := Set<string>{}
+	mut set := Set[string]{}
 	set.add('foo')
 	set.pop() or { return }
 	assert set.exists('foo') == false
 }
 
 fn test_clear() {
-	mut set := Set<string>{}
+	mut set := Set[string]{}
 	set.add('foo')
 	set.clear()
 	assert set.size() == 0
 }
 
 fn test_rest() {
-	mut set := Set<string>{}
+	mut set := Set[string]{}
 	set.add('foo')
 	set.add('bar')
 	array := set.rest() or { return }
@@ -46,8 +46,8 @@ fn test_rest() {
 }
 
 fn test_equal() {
-	mut first_set := Set<string>{}
-	mut second_set := Set<string>{}
+	mut first_set := Set[string]{}
+	mut second_set := Set[string]{}
 	first_set.add('foo')
 	assert second_set != first_set
 	second_set.add('foo')
@@ -55,15 +55,15 @@ fn test_equal() {
 }
 
 fn test_is_empty() {
-	mut set := Set<string>{}
+	mut set := Set[string]{}
 	assert set.is_empty()
 	set.add('foo')
 	assert set.is_empty() == false
 }
 
 fn test_union() {
-	mut first_set := Set<string>{}
-	mut second_set := Set<string>{}
+	mut first_set := Set[string]{}
+	mut second_set := Set[string]{}
 	first_set.add_all(['b', 'c', 'd'])
 	second_set.add_all(['a', 'e'])
 	mut third_set := first_set.@union(second_set)
@@ -75,9 +75,9 @@ fn test_union() {
 }
 
 fn test_intersection() {
-	mut first_set := Set<string>{}
+	mut first_set := Set[string]{}
 	first_set.add_all(['foo', 'bar', 'baz'])
-	mut second_set := Set<string>{}
+	mut second_set := Set[string]{}
 	second_set.add_all(['bar', 'baz', 'boo'])
 	mut third_set := first_set.intersection(second_set)
 	assert third_set.exists('foo') == false
@@ -87,8 +87,8 @@ fn test_intersection() {
 }
 
 fn test_difference() {
-	mut first_set := Set<string>{}
-	mut second_set := Set<string>{}
+	mut first_set := Set[string]{}
+	mut second_set := Set[string]{}
 	first_set.add_all(['foo', 'bar', 'baz'])
 	second_set.add_all(['bar', 'baz', 'boo'])
 	mut third_set := first_set - second_set
@@ -109,9 +109,9 @@ fn test_difference() {
 }
 
 fn test_subset() {
-	mut set := Set<string>{}
+	mut set := Set[string]{}
 	set.add_all(['a', 'b', 'c'])
-	mut subset := Set<string>{}
+	mut subset := Set[string]{}
 	subset.add_all(['b', 'c'])
 	assert set.subset(subset)
 }

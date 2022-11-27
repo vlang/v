@@ -1,10 +1,10 @@
 fn main() {}
 
-struct Foo<U> {
-	Bar<T>
+struct Foo[U] {
+	Bar[T]
 	foo U
 	bar P
 }
 
-struct Bar<T> {
+struct Bar[T] {
 }

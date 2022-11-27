@@ -2,7 +2,8 @@
 *Not yet released*
 - `go foo()` has been replaced with `spawn foo()` (launches an OS thread, `go` will be used for
   upcoming coroutines instead).
-- vfmt now supports `// vfmt off` and `// vfmt on` for turning off the formatting locally for *short* snippets of code. Useful for keeping your carefully arranged matrices in tact.
+- vfmt now supports `// vfmt off` and `// vfmt on` for turning off the formatting locally for *short* snippets of code. Useful for keeping your carefully arranged matrices intact.
+- support match branch range expressions with consts: `match x { const1...const2 {} }`
 
 ## V 0.3.2
 *31 Oct 2022*

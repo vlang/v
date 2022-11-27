@@ -12,8 +12,19 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	}
 	got_is_ptr := got.is_ptr()
 	exp_is_ptr := expected.is_ptr()
+	got_is_int := got.is_int()
+	exp_is_int := expected.is_int()
+
+	exp_is_pure_int := expected.is_pure_int()
+	got_is_pure_int := got.is_pure_int()
+	// allow int literals where any kind of real integers are expected:
+	if (exp_is_pure_int && got == ast.int_literal_type)
+		|| (got_is_pure_int && expected == ast.int_literal_type) {
+		return true
+	}
+
 	if c.pref.translated {
-		if expected.is_int() && got.is_int() {
+		if exp_is_int && got_is_int {
 			return true
 		}
 		if expected == ast.byteptr_type {
@@ -22,8 +33,8 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		if expected == ast.voidptr_type || expected == ast.nil_type {
 			return true
 		}
-		if (expected == ast.bool_type && (got.is_any_kind_of_pointer() || got.is_int()))
-			|| ((expected.is_any_kind_of_pointer() || expected.is_int()) && got == ast.bool_type) {
+		if (expected == ast.bool_type && (got.is_any_kind_of_pointer() || got_is_int))
+			|| ((expected.is_any_kind_of_pointer() || exp_is_int) && got == ast.bool_type) {
 			return true
 		}
 
@@ -38,8 +49,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		}
 
 		// allow rune -> any int and vice versa
-		if (expected == ast.rune_type && got.is_int())
-			|| (got == ast.rune_type && expected.is_int()) {
+		if (expected == ast.rune_type && got_is_int) || (got == ast.rune_type && exp_is_int) {
 			return true
 		}
 		got_sym := c.table.sym(got)
@@ -546,6 +556,9 @@ fn (mut c Checker) promote_keeping_aliases(left_type ast.Type, right_type ast.Ty
 }
 
 fn (mut c Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
+	if left_type == right_type {
+		return left_type // strings, self defined operators
+	}
 	if left_type.is_any_kind_of_pointer() {
 		if right_type.is_int() || c.pref.translated {
 			return left_type
@@ -558,9 +571,6 @@ fn (mut c Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
 		} else {
 			return ast.void_type
 		}
-	}
-	if left_type == right_type {
-		return left_type // strings, self defined operators
 	}
 	if right_type.is_number() && left_type.is_number() {
 		return c.promote_num(left_type, right_type)
@@ -643,7 +653,7 @@ fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
 	return c.check_basic(left, right)
 }
 
-fn (mut c Checker) infer_generic_struct_init_concrete_types(typ ast.Type, node ast.StructInit) []ast.Type {
+fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit) []ast.Type {
 	mut concrete_types := []ast.Type{}
 	sym := c.table.sym(typ)
 	if sym.info is ast.Struct {
@@ -748,6 +758,39 @@ fn (mut c Checker) infer_generic_struct_init_concrete_types(typ ast.Type, node a
 									}
 									concrete_types << val_typ
 									continue gname
+								}
+							}
+						}
+					}
+				} else if field_sym.kind == .function {
+					for t in node.fields {
+						if ft.name == t.name {
+							init_sym := c.table.sym(t.typ)
+							if init_sym.kind == .function {
+								init_type_func := (init_sym.info as ast.FnType).func
+								field_type_func := (field_sym.info as ast.FnType).func
+								if field_type_func.params.len == init_type_func.params.len {
+									for n, fn_param in field_type_func.params {
+										if fn_param.typ.has_flag(.generic)
+											&& c.table.sym(fn_param.typ).name == gt_name {
+											mut arg_typ := init_type_func.params[n].typ
+											if fn_param.typ.nr_muls() > 0 && arg_typ.nr_muls() > 0 {
+												arg_typ = arg_typ.set_nr_muls(0)
+											}
+											concrete_types << arg_typ
+											continue gname
+										}
+									}
+									if field_type_func.return_type.has_flag(.generic)
+										&& c.table.sym(field_type_func.return_type).name == gt_name {
+										mut ret_typ := init_type_func.return_type
+										if field_type_func.return_type.nr_muls() > 0
+											&& ret_typ.nr_muls() > 0 {
+											ret_typ = ret_typ.set_nr_muls(0)
+										}
+										concrete_types << ret_typ
+										continue gname
+									}
 								}
 							}
 						}

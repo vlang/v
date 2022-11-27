@@ -13,26 +13,26 @@ fn normal_v2(func fn (int) int) fn (int) int {
 	return f
 }
 
-fn generic_v1<T>(func T) T {
+fn generic_v1[T](func T) T {
 	assert T.name == typeof(neg).name
 	assert typeof(func).name == typeof(neg).name
 	return func
 }
 
-fn generic_v2<T>(func T) T {
+fn generic_v2[T](func T) T {
 	assert T.name == typeof(neg).name
 	f := func
 	assert typeof(f).name == typeof(neg).name
 	return f
 }
 
-fn mixed_v1<T>(func T) fn (int) int {
+fn mixed_v1[T](func T) fn (int) int {
 	assert T.name == typeof(neg).name
 	assert typeof(func).name == typeof(neg).name
 	return func
 }
 
-fn mixed_v2<T>(func T) fn (int) int {
+fn mixed_v2[T](func T) fn (int) int {
 	assert T.name == typeof(neg).name
 	f := func
 	assert typeof(f).name == typeof(neg).name
@@ -70,7 +70,7 @@ fn neg_b(b int) int {
 // assume that "generic" is a heavy function and should be shared
 // by *all* callers in this file
 [noinline]
-fn generic<T>(func T) T {
+fn generic[T](func T) T {
 	return func
 }
 

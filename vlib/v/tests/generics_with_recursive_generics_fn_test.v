@@ -10,14 +10,14 @@ fn test_generics_with_recursive_generics_fn() {
 	for _ in 0 .. gen_len {
 		arr << rand.intn(gen_max) or { 0 }
 	}
-	println('before quick sort whether array is sorted: ${is_sorted<int>(arr)}')
-	assert !is_sorted<int>(arr)
-	quick_sort<int>(mut arr, 0, arr.len - 1)
-	println('after quick sort whether array is sorted: ${is_sorted<int>(arr)}')
-	assert is_sorted<int>(arr)
+	println('before quick sort whether array is sorted: ${is_sorted[int](arr)}')
+	assert !is_sorted[int](arr)
+	quick_sort[int](mut arr, 0, arr.len - 1)
+	println('after quick sort whether array is sorted: ${is_sorted[int](arr)}')
+	assert is_sorted[int](arr)
 }
 
-fn quick_sort<T>(mut arr []T, l int, r int) {
+fn quick_sort[T](mut arr []T, l int, r int) {
 	if l >= r {
 		return
 	}
@@ -29,11 +29,11 @@ fn quick_sort<T>(mut arr []T, l int, r int) {
 		}
 	}
 	arr[l], arr[sep] = arr[sep], arr[l]
-	quick_sort<T>(mut arr, l, sep - 1)
-	quick_sort<T>(mut arr, sep + 1, r)
+	quick_sort[T](mut arr, l, sep - 1)
+	quick_sort[T](mut arr, sep + 1, r)
 }
 
-fn is_sorted<T>(arr []T) bool {
+fn is_sorted[T](arr []T) bool {
 	for i in 0 .. arr.len - 1 {
 		if arr[i] > arr[i + 1] {
 			return false

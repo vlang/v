@@ -1150,7 +1150,7 @@ pub fn (mytable &Table) type_to_code(t Type) string {
 // clean type name from generics form. From Type<int> -> Type
 pub fn (t &Table) clean_generics_type_str(typ Type) string {
 	result := t.type_to_str(typ)
-	return result.all_before('<')
+	return result.all_before('[')
 }
 
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
@@ -1263,14 +1263,14 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			if typ.has_flag(.generic) {
 				match sym.info {
 					Struct, Interface, SumType {
-						res += '<'
+						res += '['
 						for i, gtyp in sym.info.generic_types {
 							res += t.sym(gtyp).name
 							if i != sym.info.generic_types.len - 1 {
 								res += ', '
 							}
 						}
-						res += '>'
+						res += ']'
 					}
 					else {}
 				}
@@ -1284,15 +1284,15 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		}
 		.generic_inst {
 			info := sym.info as GenericInst
-			res = t.shorten_user_defined_typenames(sym.name.all_before('<'), import_aliases)
-			res += '<'
+			res = t.shorten_user_defined_typenames(sym.name.all_before('['), import_aliases)
+			res += '['
 			for i, ctyp in info.concrete_types {
 				res += t.type_to_str_using_aliases(ctyp, import_aliases)
 				if i != info.concrete_types.len - 1 {
 					res += ', '
 				}
 			}
-			res += '>'
+			res += ']'
 		}
 		.void {
 			if typ.has_flag(.optional) {
@@ -1441,8 +1441,8 @@ pub fn (t &TypeSymbol) symbol_name_except_generic() string {
 	mut embed_name := t.name
 	// remove generic part from name
 	// main.Abc<int> => main.Abc
-	if embed_name.contains('<') {
-		embed_name = embed_name.all_before('<')
+	if embed_name.contains('[') {
+		embed_name = embed_name.all_before('[')
 	}
 	return embed_name
 }
@@ -1452,8 +1452,8 @@ pub fn (t &TypeSymbol) embed_name() string {
 	mut embed_name := t.name.split('.').last()
 	// remove generic part from name
 	// Abc<int> => Abc
-	if embed_name.contains('<') {
-		embed_name = embed_name.split('<')[0]
+	if embed_name.contains('[') {
+		embed_name = embed_name.split('[')[0]
 	}
 	return embed_name
 }

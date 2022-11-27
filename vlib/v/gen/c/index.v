@@ -8,7 +8,7 @@ import v.util
 
 fn (mut g Gen) index_expr(node ast.IndexExpr) {
 	if node.index is ast.RangeExpr {
-		g.range_expr(node, node.index)
+		g.index_range_expr(node, node.index)
 	} else {
 		sym := g.table.final_sym(g.unwrap_generic(node.left_type))
 		if sym.kind == .array {
@@ -57,7 +57,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 	}
 }
 
-fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
+fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 	sym := g.table.final_sym(node.left_type)
 	mut tmp_opt := ''
 	mut cur_line := ''

@@ -1,8 +1,8 @@
 pub struct App {
 }
 
-pub fn (mut app App) register<T>(service T) {
-	fn [service] <T>() {
+pub fn (mut app App) register[T](service T) {
+	fn [service] [T]() {
 		println(service)
 	}()
 }

@@ -42,7 +42,7 @@ fn test_flat_map() {
 		4: [5, 6]
 		7: [8, 9]
 	}
-	assert flat_map<int, []int, int>(m1, fn (k int, v []int) []int {
+	assert flat_map[int, []int, int](m1, fn (k int, v []int) []int {
 		mut a := [k]
 		a << v
 		return a
@@ -58,7 +58,7 @@ fn test_to_map() {
 		4: '4'
 		5: '5'
 	}
-	assert to_map<int, string, string, int>(m1, fn (k int, v string) (string, int) {
+	assert to_map[int, string, string, int](m1, fn (k int, v string) (string, int) {
 		return v, k
 	}) == {
 		'0': 0

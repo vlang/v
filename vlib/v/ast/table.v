@@ -898,8 +898,8 @@ pub fn (t &Table) array_cname(elem_type Type) string {
 	suffix := if elem_type.is_ptr() { '_ptr'.repeat(elem_type.nr_muls()) } else { '' }
 	opt := if elem_type.has_flag(.optional) { '_option_' } else { '' }
 	res := if elem_type.has_flag(.result) { '_result_' } else { '' }
-	if elem_type_sym.cname.contains('<') {
-		type_name := elem_type_sym.cname.replace_each(['<', '_T_', ', ', '_', '>', ''])
+	if elem_type_sym.cname.contains('[') {
+		type_name := elem_type_sym.cname.replace_each(['[', '_T_', ', ', '_', ']', ''])
 		return 'Array_${opt}${res}${type_name}${suffix}'
 	} else {
 		return 'Array_${opt}${res}${elem_type_sym.cname}${suffix}'
@@ -928,8 +928,8 @@ pub fn (t &Table) array_fixed_cname(elem_type Type, size int) string {
 	suffix := if elem_type.is_ptr() { '_ptr${elem_type.nr_muls()}' } else { '' }
 	opt := if elem_type.has_flag(.optional) { '_option_' } else { '' }
 	res := if elem_type.has_flag(.result) { '_result_' } else { '' }
-	if elem_type_sym.cname.contains('<') {
-		type_name := elem_type_sym.cname.replace_each(['<', '_T_', ', ', '_', '>', ''])
+	if elem_type_sym.cname.contains('[') {
+		type_name := elem_type_sym.cname.replace_each(['[', '_T_', ', ', '_', ']', ''])
 		return 'Array_fixed_${opt}${res}${type_name}${suffix}_${size}'
 	} else {
 		return 'Array_fixed_${opt}${res}${elem_type_sym.cname}${suffix}_${size}'
@@ -963,11 +963,11 @@ pub fn (t &Table) chan_cname(elem_type Type, is_mut bool) string {
 [inline]
 pub fn (t &Table) promise_name(return_type Type) string {
 	if return_type.idx() == void_type_idx {
-		return 'Promise<JS.Any,JS.Any>'
+		return 'Promise[JS.Any, JS.Any]'
 	}
 
 	return_type_sym := t.sym(return_type)
-	return 'Promise<${return_type_sym.name}, JS.Any>'
+	return 'Promise[${return_type_sym.name}, JS.Any]'
 }
 
 [inline]
@@ -1035,8 +1035,8 @@ pub fn (t &Table) map_cname(key_type Type, value_type Type) string {
 	suffix := if value_type.is_ptr() { '_ptr'.repeat(value_type.nr_muls()) } else { '' }
 	opt := if value_type.has_flag(.optional) { '_option_' } else { '' }
 	res := if value_type.has_flag(.result) { '_result_' } else { '' }
-	if value_type_sym.cname.contains('<') {
-		type_name := value_type_sym.cname.replace_each(['<', '_T_', ', ', '_', '>', ''])
+	if value_type_sym.cname.contains('[') {
+		type_name := value_type_sym.cname.replace_each(['[', '_T_', ', ', '_', ']', ''])
 		return 'Map_${key_type_sym.cname}_${opt}${res}${type_name}${suffix}'
 	} else {
 		return 'Map_${key_type_sym.cname}_${opt}${res}${value_type_sym.cname}${suffix}'
@@ -1707,7 +1707,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 		}
 		Struct, Interface, SumType {
 			if sym.info.is_generic {
-				mut nrt := '${sym.name}<'
+				mut nrt := '${sym.name}['
 				for i in 0 .. sym.info.generic_types.len {
 					if ct := t.resolve_generic_to_concrete(sym.info.generic_types[i],
 						generic_names, concrete_types)
@@ -1719,7 +1719,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 						}
 					}
 				}
-				nrt += '>'
+				nrt += ']'
 				mut idx := t.type_idxs[nrt]
 				if idx == 0 {
 					idx = t.add_placeholder_type(nrt, .v)
@@ -1839,7 +1839,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 			if !ts.info.is_generic {
 				return typ
 			}
-			nrt = '${ts.name}<'
+			nrt = '${ts.name}['
 			c_nrt = '${ts.cname}_T_'
 			for i in 0 .. ts.info.generic_types.len {
 				if ct := t.resolve_generic_to_concrete(ts.info.generic_types[i], generic_names,
@@ -1854,7 +1854,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 					}
 				}
 			}
-			nrt += '>'
+			nrt += ']'
 			idx := t.type_idxs[nrt]
 			if idx != 0 && t.type_symbols[idx].kind != .placeholder {
 				return new_type(idx).derive(typ).clear_flag(.generic)

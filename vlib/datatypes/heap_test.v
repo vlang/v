@@ -1,7 +1,7 @@
 module datatypes
 
 fn test_min_heap() ? {
-	mut heap := MinHeap<int>{}
+	mut heap := MinHeap[int]{}
 	heap.insert(2)
 	heap.insert(0)
 	heap.insert(8)
@@ -28,7 +28,7 @@ fn (lhs Item) < (rhs Item) bool {
 }
 
 fn test_min_heap_custom() ? {
-	mut heap := MinHeap<Item>{}
+	mut heap := MinHeap[Item]{}
 	heap.insert(Item{'buz', 10})
 	heap.insert(Item{'qux', 0})
 	heap.insert(Item{'baz', 50})
@@ -46,7 +46,7 @@ fn test_min_heap_custom() ? {
 }
 
 fn test_heap_len() ? {
-	mut heap := MinHeap<int>{}
+	mut heap := MinHeap[int]{}
 	heap.insert(2)
 	assert heap.len() == 1
 	heap.insert(0)

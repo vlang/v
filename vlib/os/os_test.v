@@ -706,7 +706,7 @@ fn test_write_file_array_structs() {
 		arr[i] = IntPoint{65 + i, 65 + i + 10}
 	}
 	os.write_file_array(fpath, arr) or { panic(err) }
-	rarr := os.read_file_array<IntPoint>(fpath)
+	rarr := os.read_file_array[IntPoint](fpath)
 	assert rarr == arr
 	assert rarr.len == maxn
 	// eprintln( rarr.str().replace('\n', ' ').replace('},', '},\n'))

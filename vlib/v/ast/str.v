@@ -108,7 +108,7 @@ fn stringify_fn_after_name(node &FnDecl, mut f strings.Builder, t &Table, cur_mo
 			}
 		}
 		if add_para_types {
-			f.write_string('<')
+			f.write_string('[')
 			for i, gname in node.generic_names {
 				is_last := i == node.generic_names.len - 1
 				f.write_string(gname)
@@ -116,7 +116,7 @@ fn stringify_fn_after_name(node &FnDecl, mut f strings.Builder, t &Table, cur_mo
 					f.write_string(', ')
 				}
 			}
-			f.write_string('>')
+			f.write_string(']')
 		}
 	}
 	f.write_string('(')

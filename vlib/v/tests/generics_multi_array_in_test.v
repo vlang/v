@@ -1,4 +1,4 @@
-fn include<T>(a T, b []T) bool {
+fn include[T](a T, b []T) bool {
 	return a in b
 }
 

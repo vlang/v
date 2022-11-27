@@ -336,7 +336,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	tls_bench.no_cstep = true
 	tls_bench.njobs = ts.benchmark.njobs
-	mut relative_file := os.real_path(p.get_item<string>(idx))
+	mut relative_file := os.real_path(p.get_item[string](idx))
 	mut cmd_options := [ts.vargs]
 	mut run_js := false
 

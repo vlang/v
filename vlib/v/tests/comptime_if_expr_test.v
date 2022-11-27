@@ -29,7 +29,7 @@ fn test_ct_expressions() {
 	}
 }
 
-fn generic_t_is<O>() O {
+fn generic_t_is[O]() O {
 	$if O is string {
 		return "It's a string!"
 	} $else {
@@ -41,11 +41,11 @@ fn generic_t_is<O>() O {
 struct GenericTIsTest {}
 
 fn test_generic_t_is() {
-	assert generic_t_is<string>() == "It's a string!"
-	assert generic_t_is<GenericTIsTest>() == GenericTIsTest{}
+	assert generic_t_is[string]() == "It's a string!"
+	assert generic_t_is[GenericTIsTest]() == GenericTIsTest{}
 }
 
-fn generic_t_is2<T>() ?T {
+fn generic_t_is2[T]() ?T {
 	$if T is string {
 		return "It's a string!"
 	} $else {
@@ -54,11 +54,11 @@ fn generic_t_is2<T>() ?T {
 }
 
 fn test_generic_t_is2() {
-	res := generic_t_is2<string>() or {
+	res := generic_t_is2[string]() or {
 		assert false
 		''
 	}
-	res2 := generic_t_is2<GenericTIsTest>() or {
+	res2 := generic_t_is2[GenericTIsTest]() or {
 		assert false
 		GenericTIsTest{}
 	}
@@ -66,7 +66,7 @@ fn test_generic_t_is2() {
 	assert res2 == GenericTIsTest{}
 }
 
-fn generic_t_is3<T>(raw_data string) ?T {
+fn generic_t_is3[T](raw_data string) ?T {
 	$if T is string {
 		return ''
 	}
@@ -74,14 +74,14 @@ fn generic_t_is3<T>(raw_data string) ?T {
 }
 
 fn test_generic_t_is3() {
-	res := generic_t_is3<GenericTIsTest>('') or {
+	res := generic_t_is3[GenericTIsTest]('') or {
 		assert false
 		GenericTIsTest{}
 	}
 	assert res == GenericTIsTest{}
 }
 
-fn generic_t_is_with_else<T>(raw_data string) ?T {
+fn generic_t_is_with_else[T](raw_data string) ?T {
 	$if T is string {
 		return raw_data
 	} $else {
@@ -90,19 +90,19 @@ fn generic_t_is_with_else<T>(raw_data string) ?T {
 }
 
 fn test_generic_t_is_with_else() {
-	res := generic_t_is_with_else<GenericTIsTest>('') or {
+	res := generic_t_is_with_else[GenericTIsTest]('') or {
 		assert false
 		GenericTIsTest{}
 	}
 	assert res == GenericTIsTest{}
-	str := generic_t_is_with_else<string>('test') or {
+	str := generic_t_is_with_else[string]('test') or {
 		assert false
 		''
 	}
 	assert str == 'test'
 }
 
-fn generic_t_is_with_else_if<T>() []string {
+fn generic_t_is_with_else_if[T]() []string {
 	mut fields := []string{}
 	$for field in T.fields {
 		$if field.typ is string {
@@ -120,6 +120,6 @@ struct User {
 }
 
 fn test_generic_t_is_with_else_if() {
-	x := generic_t_is_with_else_if<User>()
+	x := generic_t_is_with_else_if[User]()
 	assert x == ['name', 'age']
 }

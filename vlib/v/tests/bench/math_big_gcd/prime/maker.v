@@ -11,7 +11,7 @@ pub interface DataI {
 	from_primeset(PrimeSet) DataI
 }
 
-pub fn (di DataI) cast<T>() DataI {
+pub fn (di DataI) cast[T]() DataI {
 	return T{}.from_primeset(di.to_primeset())
 }
 

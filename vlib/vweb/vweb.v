@@ -231,14 +231,14 @@ pub fn (mut ctx Context) text(s string) Result {
 }
 
 // Response HTTP_OK with json_s as payload with content-type `application/json`
-pub fn (mut ctx Context) json<T>(j T) Result {
+pub fn (mut ctx Context) json[T](j T) Result {
 	json_s := json.encode(j)
 	ctx.send_response_to_client('application/json', json_s)
 	return Result{}
 }
 
 // Response HTTP_OK with a pretty-printed JSON result
-pub fn (mut ctx Context) json_pretty<T>(j T) Result {
+pub fn (mut ctx Context) json_pretty[T](j T) Result {
 	json_s := json.encode_pretty(j)
 	ctx.send_response_to_client('application/json', json_s)
 	return Result{}
@@ -377,8 +377,8 @@ interface DbInterface {
 }
 
 // run - start a new VWeb server, listening to all available addresses, at the specified `port`
-pub fn run<T>(global_app &T, port int) {
-	run_at<T>(global_app, host: '', port: port, family: .ip6) or { panic(err.msg()) }
+pub fn run[T](global_app &T, port int) {
+	run_at[T](global_app, host: '', port: port, family: .ip6) or { panic(err.msg()) }
 }
 
 [params]
@@ -391,7 +391,7 @@ pub struct RunParams {
 // run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
 // Example: vweb.run_at(new_app(), vweb.RunParams{ host: 'localhost' port: 8099 family: .ip }) or { panic(err) }
 [manualfree]
-pub fn run_at<T>(global_app &T, params RunParams) ! {
+pub fn run_at[T](global_app &T, params RunParams) ! {
 	if params.port <= 0 || params.port > 65535 {
 		return error('invalid port number `${params.port}`, it should be between 1 and 65535')
 	}
@@ -433,12 +433,12 @@ pub fn run_at<T>(global_app &T, params RunParams) ! {
 			eprintln('accept() failed with error: ${err.msg()}')
 			continue
 		}
-		spawn handle_conn<T>(mut conn, mut request_app, routes)
+		spawn handle_conn[T](mut conn, mut request_app, routes)
 	}
 }
 
 [manualfree]
-fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route) {
+fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 	conn.set_read_timeout(30 * time.second)
 	conn.set_write_timeout(30 * time.second)
 	defer {
@@ -503,7 +503,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route) {
 	app.before_request()
 
 	// Static handling
-	if serve_if_static<T>(mut app, url) {
+	if serve_if_static[T](mut app, url) {
 		// successfully served a static file
 		return
 	}
@@ -604,7 +604,7 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 // check if request is for a static file and serves it
 // returns true if we served a static file, false otherwise
 [manualfree]
-fn serve_if_static<T>(mut app T, url urllib.URL) bool {
+fn serve_if_static[T](mut app T, url urllib.URL) bool {
 	// TODO: handle url parameters properly - for now, ignore them
 	static_file := app.static_files[url.path]
 	mime_type := app.static_mime_types[url.path]
