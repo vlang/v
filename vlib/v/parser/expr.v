@@ -207,11 +207,11 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			spos := p.tok.pos()
 			p.next()
 			p.check(.lpar)
-			if p.tok.kind == .lt {
-				p.check(.lt)
+			if p.tok.kind == .lsbr {
+				p.check(.lsbr)
 				type_pos := p.tok.pos()
 				typ := p.parse_type()
-				p.check(.gt)
+				p.check(.rsbr)
 				p.check(.rpar)
 				node = ast.TypeOf{
 					is_type: true
