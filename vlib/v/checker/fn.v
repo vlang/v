@@ -1028,7 +1028,12 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if call_arg.is_mut {
 			to_lock, pos := c.fail_if_immutable(call_arg.expr)
 			if !call_arg.expr.is_lvalue() {
-				c.error('cannot pass expression as `mut`', call_arg.expr.pos())
+				if call_arg.expr is ast.StructInit {
+					c.error('cannot pass a struct initialization as `mut`, you may want to use a variable `mut var := ${call_arg.expr}`',
+						call_arg.expr.pos())
+				} else {
+					c.error('cannot pass expression as `mut`', call_arg.expr.pos())
+				}
 			}
 			if !param.is_mut {
 				tok := call_arg.share.str()
