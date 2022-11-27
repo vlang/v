@@ -31,8 +31,9 @@ pub fn new() StateMachine {
 pub fn (mut s StateMachine) set_state(name string) ? {
 	if name in s.states {
 		s.current_state = name
+	} else {
+		return none
 	}
-	return error('unknown state: ${name}')
 }
 
 pub fn (mut s StateMachine) get_state() string {
@@ -75,7 +76,7 @@ pub fn (mut s StateMachine) run(receiver voidptr) ? {
 		}
 	} else {
 		s.states[s.current_state].run_handler(receiver, from_state, to_state)
-		return error('no more transitions')
+		return none
 	}
 	s.states[s.current_state].run_handler(receiver, from_state, to_state)
 }
