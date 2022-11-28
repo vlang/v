@@ -1,9 +1,13 @@
 module builtin
 
-const (
-	cp_utf8 = 65001
-)
+const cp_utf8 = 65001
 
+// to_wide returns a pointer to an UTF-16 version of the string receiver.
+// In V, strings are encoded using UTF-8 internally, but on windows most APIs,
+// that accept strings, need them to be in UTF-16 encoding.
+// The returned pointer of .to_wide(), has a type of &u16, and is suitable
+// for passing to Windows APIs that expect LPWSTR or wchar_t* parameters.
+// See also MultiByteToWideChar ( https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar )
 pub fn (_str string) to_wide() &u16 {
 	$if windows {
 		unsafe {
@@ -28,6 +32,8 @@ pub fn (_str string) to_wide() &u16 {
 	}
 }
 
+// string_from_wide creates a V string, encoded in UTF-8, given a windows
+// style string encoded in UTF-16.
 [unsafe]
 pub fn string_from_wide(_wstr &u16) string {
 	$if windows {
@@ -40,6 +46,10 @@ pub fn string_from_wide(_wstr &u16) string {
 	}
 }
 
+// string_from_wide2 creates a V string, encoded in UTF-8, given a windows
+// style string, encoded in UTF-16. It is more efficient, compared to
+// string_from_wide, but it requires you to know the input string length,
+// and to pass it as the second argument.
 [unsafe]
 pub fn string_from_wide2(_wstr &u16, len int) string {
 	$if windows {
