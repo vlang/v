@@ -16,7 +16,7 @@ pub fn (stack Stack[T]) len() int {
 }
 
 // peek returns the top of the stack
-pub fn (stack Stack[T]) peek() ?T {
+pub fn (stack Stack[T]) peek() !T {
 	return if !stack.is_empty() { stack.elements.last() } else { error('Stack is empty') }
 }
 
@@ -26,7 +26,7 @@ pub fn (mut stack Stack[T]) push(item T) {
 }
 
 // pop removes the element at the top of the stack and returns it
-pub fn (mut stack Stack[T]) pop() ?T {
+pub fn (mut stack Stack[T]) pop() !T {
 	return if !stack.is_empty() { stack.elements.pop() } else { error('Stack is empty') }
 }
 

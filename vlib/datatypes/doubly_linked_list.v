@@ -30,7 +30,7 @@ pub fn (list DoublyLinkedList[T]) len() int {
 }
 
 // first returns the first element of the linked list
-pub fn (list DoublyLinkedList[T]) first() ?T {
+pub fn (list DoublyLinkedList[T]) first() !T {
 	if list.is_empty() {
 		return error('Linked list is empty')
 	}
@@ -38,7 +38,7 @@ pub fn (list DoublyLinkedList[T]) first() ?T {
 }
 
 // last returns the last element of the linked list
-pub fn (list DoublyLinkedList[T]) last() ?T {
+pub fn (list DoublyLinkedList[T]) last() !T {
 	if list.is_empty() {
 		return error('Linked list is empty')
 	}
@@ -80,7 +80,7 @@ pub fn (mut list DoublyLinkedList[T]) push_front(item T) {
 }
 
 // pop_back removes the last element of the linked list
-pub fn (mut list DoublyLinkedList[T]) pop_back() ?T {
+pub fn (mut list DoublyLinkedList[T]) pop_back() !T {
 	if list.is_empty() {
 		return error('Linked list is empty')
 	}
@@ -101,7 +101,7 @@ pub fn (mut list DoublyLinkedList[T]) pop_back() ?T {
 }
 
 // pop_front removes the last element of the linked list
-pub fn (mut list DoublyLinkedList[T]) pop_front() ?T {
+pub fn (mut list DoublyLinkedList[T]) pop_front() !T {
 	if list.is_empty() {
 		return error('Linked list is empty')
 	}
@@ -122,7 +122,7 @@ pub fn (mut list DoublyLinkedList[T]) pop_front() ?T {
 }
 
 // insert adds an element to the linked list at the given index
-pub fn (mut list DoublyLinkedList[T]) insert(idx int, item T) ? {
+pub fn (mut list DoublyLinkedList[T]) insert(idx int, item T) ! {
 	if idx < 0 || idx > list.len {
 		return error('Index ${idx} out of bounds [0..${list.len}]')
 	} else if idx == 0 {
@@ -212,7 +212,7 @@ fn (list &DoublyLinkedList[T]) node(idx int) &DoublyListNode[T] {
 
 // index searches the linked list for item and returns the forward index
 // or none if not found.
-pub fn (list &DoublyLinkedList[T]) index(item T) ?int {
+pub fn (list &DoublyLinkedList[T]) index(item T) !int {
 	mut hn := list.head
 	mut tn := list.tail
 	for h, t := 0, list.len - 1; h <= t; {
@@ -226,7 +226,7 @@ pub fn (list &DoublyLinkedList[T]) index(item T) ?int {
 		t -= 1
 		tn = tn.prev
 	}
-	return none
+	return error('none')
 }
 
 // delete removes index idx from the linked list and is safe to call

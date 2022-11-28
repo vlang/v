@@ -27,12 +27,12 @@ pub fn (list LinkedList[T]) len() int {
 }
 
 // first returns the first element of the linked list
-pub fn (list LinkedList[T]) first() ?T {
+pub fn (list LinkedList[T]) first() !T {
 	return if !list.is_empty() { list.head.data } else { error('Linked list is empty') }
 }
 
 // last returns the last element of the linked list
-pub fn (list LinkedList[T]) last() ?T {
+pub fn (list LinkedList[T]) last() !T {
 	if unsafe { list.head == 0 } {
 		return error('Linked list is empty')
 	} else {
@@ -45,7 +45,7 @@ pub fn (list LinkedList[T]) last() ?T {
 }
 
 // index returns the element at the given index of the linked list
-pub fn (list LinkedList[T]) index(idx int) ?T {
+pub fn (list LinkedList[T]) index(idx int) !T {
 	if unsafe { list.head == 0 } {
 		return error('Linked list is empty')
 	} else {
@@ -82,7 +82,7 @@ pub fn (mut list LinkedList[T]) push(item T) {
 }
 
 // pop removes the last element of the linked list
-pub fn (mut list LinkedList[T]) pop() ?T {
+pub fn (mut list LinkedList[T]) pop() !T {
 	if unsafe { list.head == 0 } {
 		return error('Linked list is empty')
 	}
@@ -105,7 +105,7 @@ pub fn (mut list LinkedList[T]) pop() ?T {
 }
 
 // shift removes the first element of the linked list
-pub fn (mut list LinkedList[T]) shift() ?T {
+pub fn (mut list LinkedList[T]) shift() !T {
 	if unsafe { list.head == 0 } {
 		return error('Linked list is empty')
 	} else {
@@ -117,7 +117,7 @@ pub fn (mut list LinkedList[T]) shift() ?T {
 }
 
 // insert adds an element to the linked list at the given index
-pub fn (mut list LinkedList[T]) insert(idx int, item T) ? {
+pub fn (mut list LinkedList[T]) insert(idx int, item T) ! {
 	if idx < 0 || idx > list.len {
 		return error('Index ${idx} out of bounds [0..${list.len}]')
 	} else if list.len == 0 {
