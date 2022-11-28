@@ -28,7 +28,7 @@ fn test_type_constructors() {
 	v := `c`
 	assert typeof(&v).name == '&rune'
 	assert typeof(&[v]).name == '&[]rune'
-	assert typeof([v]!).name == '[1]rune'
+	assert typeof(([v]!)).name == '[1]rune'
 	assert typeof(&[v]!).name == '&[1]rune'
 	assert typeof(&FooBar{}).name == '&FooBar'
 }
