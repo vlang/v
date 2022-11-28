@@ -12,7 +12,7 @@ import v.checker.constants
 const (
 	bs      = '\\'
 	// when to break a line dependant on penalty
-	max_len = [0, 35, 60, 85, 93, 100]
+	max_len = [0, 35, 60, 85, 93, 100, 120]
 )
 
 [minify]
