@@ -18,7 +18,7 @@ pub fn new_ringbuffer[T](s int) RingBuffer[T] {
 }
 
 // push - adds an element to the ringbuffer
-pub fn (mut rb RingBuffer[T]) push(element T) ? {
+pub fn (mut rb RingBuffer[T]) push(element T) ! {
 	if rb.is_full() {
 		return error('Buffer overflow')
 	} else {
@@ -28,7 +28,7 @@ pub fn (mut rb RingBuffer[T]) push(element T) ? {
 }
 
 // pop - returns the oldest element of the buffer
-pub fn (mut rb RingBuffer[T]) pop() ?T {
+pub fn (mut rb RingBuffer[T]) pop() !T {
 	mut v := rb.content[rb.reader]
 	if rb.is_empty() {
 		return error('Buffer is empty')
@@ -39,14 +39,14 @@ pub fn (mut rb RingBuffer[T]) pop() ?T {
 }
 
 // push_many - pushes an array to the buffer
-pub fn (mut rb RingBuffer[T]) push_many(elements []T) ? {
+pub fn (mut rb RingBuffer[T]) push_many(elements []T) ! {
 	for v in elements {
 		rb.push(v) or { return err }
 	}
 }
 
 // pop_many - returns a given number(n) of elements of the buffer starting with the oldest one
-pub fn (mut rb RingBuffer[T]) pop_many(n u64) ?[]T {
+pub fn (mut rb RingBuffer[T]) pop_many(n u64) ![]T {
 	mut elements := []T{}
 	for _ in 0 .. n {
 		elements << rb.pop() or { return err }

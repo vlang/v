@@ -21,9 +21,9 @@ pub fn (mut heap MinHeap[T]) insert(item T) {
 }
 
 // pop removes the top-most element from the heap.
-pub fn (mut heap MinHeap[T]) pop() ?T {
+pub fn (mut heap MinHeap[T]) pop() !T {
 	if heap.data.len == 0 {
-		return none
+		return error('Heap is empty')
 	} else if heap.data.len == 1 {
 		return heap.data.pop()
 	}
@@ -46,9 +46,9 @@ pub fn (mut heap MinHeap[T]) pop() ?T {
 }
 
 // peek gets the top-most element from the heap without removing it.
-pub fn (heap MinHeap[T]) peek() ?T {
+pub fn (heap MinHeap[T]) peek() !T {
 	if heap.data.len == 0 {
-		return none
+		return error('Heap is empty')
 	}
 	return heap.data[0]
 }
@@ -60,20 +60,20 @@ pub fn (heap MinHeap[T]) len() int {
 
 // left_child is a helper function that returns the index of the left
 // child given a parent idx, or none if there is no left child.
-fn (heap MinHeap[T]) left_child(idx int) ?int {
+fn (heap MinHeap[T]) left_child(idx int) !int {
 	child := 2 * idx + 1
 	if child >= heap.data.len {
-		return none
+		return error('none')
 	}
 	return child
 }
 
 // right_child is a helper function that returns the index of the right
 // child given a parent idx, or none if there is no right child.
-fn (heap MinHeap[T]) right_child(idx int) ?int {
+fn (heap MinHeap[T]) right_child(idx int) !int {
 	child := 2 * idx + 2
 	if child >= heap.data.len {
-		return none
+		return error('none')
 	}
 	return child
 }

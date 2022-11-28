@@ -256,13 +256,13 @@ fn (bst &BSTree[T]) get_node(node &BSTreeNode[T], value T) &BSTreeNode[T] {
 //```v
 // left_value, exist := bst.to_left(10)
 //```
-pub fn (bst &BSTree[T]) to_left(value T) ?T {
+pub fn (bst &BSTree[T]) to_left(value T) !T {
 	if bst.is_empty() {
-		return none
+		return error('BSTree is empty')
 	}
 	node := bst.get_node(bst.root, value)
 	if !node.is_init {
-		return none
+		return error('BSTree is not initialized')
 	}
 	left_node := node.left
 	return left_node.value
@@ -275,13 +275,13 @@ pub fn (bst &BSTree[T]) to_left(value T) ?T {
 //```v
 // left_value, exist := bst.to_right(10)
 //```
-pub fn (bst &BSTree[T]) to_right(value T) ?T {
+pub fn (bst &BSTree[T]) to_right(value T) !T {
 	if bst.is_empty() {
-		return none
+		return error('BSTree is empty')
 	}
 	node := bst.get_node(bst.root, value)
 	if !node.is_init {
-		return none
+		return error('BSTree is not initialized')
 	}
 	right_node := node.right
 	return right_node.value
@@ -289,26 +289,26 @@ pub fn (bst &BSTree[T]) to_right(value T) ?T {
 
 // max return the max element inside the BST.
 // Time complexity O(N) if the BST is not balanced
-pub fn (bst &BSTree[T]) max() ?T {
+pub fn (bst &BSTree[T]) max() !T {
 	if bst.is_empty() {
-		return none
+		return error('BSTree is empty')
 	}
 	max := bst.get_max_from_right(bst.root)
 	if !max.is_init {
-		return none
+		return error('BSTree is not initialized')
 	}
 	return max.value
 }
 
 // min return the minimum element in the BST.
 // Time complexity O(N) if the BST is not balanced.
-pub fn (bst &BSTree[T]) min() ?T {
+pub fn (bst &BSTree[T]) min() !T {
 	if bst.is_empty() {
-		return none
+		return error('BSTree is empty')
 	}
 	min := bst.get_min_from_left(bst.root)
 	if !min.is_init {
-		return none
+		return error('BSTree is not initialized')
 	}
 	return min.value
 }
