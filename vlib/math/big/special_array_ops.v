@@ -1,6 +1,5 @@
 module big
 
-import math
 import math.bits
 import strings
 
@@ -113,7 +112,7 @@ fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage 
 	}
 
 	// thanks to the base cases we can pass zero-length arrays to the mult func
-	half := math.max(operand_a.len, operand_b.len) / 2
+	half := imax(operand_a.len, operand_b.len) / 2
 	a_l := operand_a[0..half]
 	a_h := operand_a[half..]
 	mut b_l := []u32{}
@@ -132,8 +131,8 @@ fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage 
 	mut p_3 := []u32{len: a_l.len + b_l.len + 1}
 	multiply_digit_array(a_l, b_l, mut p_3)
 
-	mut tmp_1 := []u32{len: math.max(a_h.len, a_l.len) + 1}
-	mut tmp_2 := []u32{len: math.max(b_h.len, b_l.len) + 1}
+	mut tmp_1 := []u32{len: imax(a_h.len, a_l.len) + 1}
+	mut tmp_2 := []u32{len: imax(b_h.len, b_l.len) + 1}
 	add_digit_array(a_h, a_l, mut tmp_1)
 	add_digit_array(b_h, b_l, mut tmp_2)
 
@@ -288,8 +287,8 @@ fn rshift_digits_in_place(mut a []u32, amount int) {
 fn add_in_place(mut a []u32, b []u32) {
 	len_a := a.len
 	len_b := b.len
-	max := math.max(len_a, len_b)
-	min := math.min(len_a, len_b)
+	max := imax(len_a, len_b)
+	min := imin(len_a, len_b)
 	mut carry := u64(0)
 	for index in 0 .. min {
 		partial := carry + a[index] + b[index]
@@ -316,8 +315,8 @@ fn add_in_place(mut a []u32, b []u32) {
 fn subtract_in_place(mut a []u32, b []u32) {
 	len_a := a.len
 	len_b := b.len
-	max := math.max(len_a, len_b)
-	min := math.min(len_a, len_b)
+	max := imax(len_a, len_b)
+	min := imin(len_a, len_b)
 	mut carry := u32(0)
 	mut new_carry := u32(0)
 	for index in 0 .. min {

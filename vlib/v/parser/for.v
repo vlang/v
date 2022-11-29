@@ -150,7 +150,10 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		// TODO use RangeExpr
 		mut high_expr := ast.empty_expr
 		mut is_range := false
-		if p.tok.kind == .dotdot {
+		if p.tok.kind == .ellipsis {
+			p.error_with_pos('for loop only supports exclusive (`..`) ranges, not inclusive (`...`)',
+				p.tok.pos())
+		} else if p.tok.kind == .dotdot {
 			is_range = true
 			p.next()
 			high_expr = p.expr(0)

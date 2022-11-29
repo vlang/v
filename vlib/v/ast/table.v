@@ -213,16 +213,11 @@ pub fn set_global_table(t &Table) {
 pub fn (t &Table) fn_type_signature(f &Fn) string {
 	mut sig := ''
 	for i, arg in f.params {
-		// TODO: for now ignore mut/pts in sig for now
 		typ := arg.typ.set_nr_muls(0)
-		arg_type_sym := t.sym(typ)
-		if arg_type_sym.kind == .alias {
-			sig += arg_type_sym.cname
-		} else {
-			sig += arg_type_sym.str().to_lower().replace_each(['.', '__', '&', '', '[', 'arr_',
-				'chan ', 'chan_', 'map[', 'map_of_', ']', '_to_', '<', '_T_', ',', '_', ' ', '',
-				'>', '', '(', '_', ')', '_'])
+		if arg.is_mut {
+			sig += 'mut_'
 		}
+		sig += t.sym(typ).cname.to_lower()
 		if i < f.params.len - 1 {
 			sig += '_'
 		}

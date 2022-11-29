@@ -93,10 +93,6 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	if (exp_is_optional
 		&& got_types_0_idx in [ast.none_type_idx, ast.error_type_idx, option_type_idx])
 		|| (exp_is_result && got_types_0_idx in [ast.error_type_idx, result_type_idx]) {
-		if got_types_0_idx == ast.none_type_idx && expected_type == ast.ovoid_type {
-			c.error('returning `none` in functions, that have a `?` result type is not allowed anymore, either `return error(message)` or just `return` instead',
-				node.pos)
-		}
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {

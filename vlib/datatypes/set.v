@@ -21,7 +21,7 @@ pub fn (mut set Set[T]) remove(element T) {
 }
 
 // pick returns an arbitrary element of set, if set is not empty.
-pub fn (set Set[T]) pick() ?T {
+pub fn (set Set[T]) pick() !T {
 	for k, _ in set.elements {
 		return k
 	}
@@ -29,14 +29,14 @@ pub fn (set Set[T]) pick() ?T {
 }
 
 // rest returns the set consisting of all elements except for the arbitrary element.
-pub fn (mut set Set[T]) rest() ?[]T {
-	element := set.pick()?
+pub fn (mut set Set[T]) rest() ![]T {
+	element := set.pick()!
 	return set.elements.keys().filter(it != element)
 }
 
 // pop returns an arbitrary element and deleting it from set.
-pub fn (mut set Set[T]) pop() ?T {
-	element := set.pick()?
+pub fn (mut set Set[T]) pop() !T {
+	element := set.pick()!
 	set.elements.delete(element)
 	return element
 }
