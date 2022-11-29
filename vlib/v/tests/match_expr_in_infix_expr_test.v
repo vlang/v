@@ -1,4 +1,4 @@
-fn main() {
+fn test_match_expr_in_infix_expr() {
 	mut a := true
 	b := a && match true {
 		true {
