@@ -140,6 +140,10 @@ pub fn load_from_memory(buf &u8, bufsize int) !Image {
 	flag := C.STBI_rgb_alpha
 	res.data = C.stbi_load_from_memory(buf, bufsize, &res.width, &res.height, &res.nr_channels,
 		flag)
+	if res.nr_channels == 3 {
+		// Fix an alpha png bug (see above)
+		res.nr_channels = 4
+	}
 	if isnil(res.data) {
 		return error('stbi_image failed to load from memory')
 	}
