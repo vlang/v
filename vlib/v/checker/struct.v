@@ -598,7 +598,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 	if node.has_update_expr {
 		update_type := c.expr(node.update_expr)
 		node.update_expr_type = update_type
-		if c.table.sym(update_type).kind != .struct_ {
+		if c.table.final_sym(update_type).kind != .struct_ {
 			s := c.table.type_to_str(update_type)
 			c.error('expected struct, found `${s}`', node.update_expr.pos())
 		} else if update_type != node.typ {
