@@ -1,6 +1,6 @@
 name: 🐛 Bug Report
 description: Report a bug
-title: (short issue description)
+title: (bug report summary)
 labels: Bug
 body:
   - type: textarea
