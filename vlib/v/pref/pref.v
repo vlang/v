@@ -47,12 +47,12 @@ pub enum ColorOutput {
 
 pub enum Backend {
 	c // The (default) C backend
+	golang // Go backend
+	interpret // Interpret the ast
 	js_node // The JavaScript NodeJS backend
 	js_browser // The JavaScript browser backend
 	js_freestanding // The JavaScript freestanding backend
 	native // The Native backend
-	interpret // Interpret the ast
-	golang // Go backend
 }
 
 pub fn (b Backend) is_js() bool {
@@ -687,7 +687,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-b', '-backend' {
 				sbackend := cmdline.option(current_args, arg, 'c')
 				res.build_options << '${arg} ${sbackend}'
-				b := backend_from_string(sbackend) or { continue }
+				b := backend_from_string(sbackend) or {
+					eprintln('Unknown V backend: ${sbackend}')
+					eprintln('Valid -backend choices are: c, go, interpret, js, js_node, js_browser, js_freestanding, native')
+					exit(1)
+				}
 				if b.is_js() {
 					res.output_cross_c = true
 				}
@@ -960,15 +964,17 @@ fn is_source_file(path string) bool {
 }
 
 pub fn backend_from_string(s string) !Backend {
+	// TODO: unify the "different js backend" options into a single `-b js`
+	// + a separate option, to choose the wanted JS output.
 	match s {
 		'c' { return .c }
-		'js' { return .js_node }
 		'go' { return .golang }
+		'interpret' { return .interpret }
+		'js' { return .js_node }
 		'js_node' { return .js_node }
 		'js_browser' { return .js_browser }
 		'js_freestanding' { return .js_freestanding }
 		'native' { return .native }
-		'interpret' { return .interpret }
 		else { return error('Unknown backend type ${s}') }
 	}
 }
