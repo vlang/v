@@ -60,7 +60,7 @@ language, very similar to the way it is right now.
 
 *(this is the preferred method)*
 
-### Linux, macOS, Windows, *BSD, Solaris, WSL, Android, etc.
+### Linux, macOS, Windows, *BSD, Solaris, WSL, etc.
 
 Usually installing V is quite simple if you have an environment that already has a
 functional `git` installation.
