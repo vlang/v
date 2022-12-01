@@ -1,10 +1,9 @@
-name: "📕 Documentation Issue"
+name: 📕 Documentation Issue
 description: Report an issue in the Reference documentation or Developer Guide
-title: "(short issue description)"
-labels: [documentation]
-assignees: []
+title: (short issue description)
+labels: "Unit: Documentation"
 body:
-  - type: textarea  
+  - type: textarea
     id: description
     attributes:
       label: Describe the issue
@@ -16,7 +15,6 @@ body:
     id: links
     attributes:
       label: Links
-      description: |
-        Include links to affected documentation page(s).
+      description: Include links to affected documentation page(s).
     validations:
       required: true
