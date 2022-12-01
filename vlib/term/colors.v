@@ -58,6 +58,12 @@ pub fn rapid_blink(msg string) string {
 	return format(msg, '6', '26')
 }
 
+// normal will surround the `msg` with ANSI escape codes for normal text.
+// Unlike reset, after the start and end of the normal text, styles will be preserved.
+pub fn normal(msg string) string {
+	return format(msg, '7', '27')
+}
+
 pub fn inverse(msg string) string {
 	return format(msg, '7', '27')
 }
