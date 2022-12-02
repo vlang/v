@@ -137,15 +137,15 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		}
 		ast.InfixExpr {
 			left := e.expr(expr.left, expr.left_type)
-			right := e.expr(expr.right, expr.right_type)
 			if expecting == ast.bool_type_idx && expr.op in [.logical_or, .and] {
 				left_b := left as bool
-				right_b := right as bool
-				if expr.op == .logical_or {
-					return left_b || right_b
+				if expr.op == .logical_or && left_b {
+					return left_b
 				}
+				right_b := e.expr(expr.right, expr.right_type) as bool
 				return left_b && right_b
 			}
+			right := e.expr(expr.right, expr.right_type)
 			return e.infix_expr(left, right, expr.op, expecting)
 		}
 		ast.IntegerLiteral {
@@ -463,14 +463,13 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		ast.PrefixExpr {
 			match expr.op {
 				.amp {
-					x := e.expr(expr.right, expr.right_type)
+					val := e.expr(expr.right, expr.right_type)
 					return Ptr{
-						val: &x
+						val: &val
 					}
 				}
 				.not {
-					x := e.expr(expr.right, expr.right_type)
-					return !(x as bool)
+					return !(e.expr(expr.right, expr.right_type) as bool)
 				}
 				else {
 					e.error('unhandled prefix expression ${expr.op}')
