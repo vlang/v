@@ -7,7 +7,7 @@ mut:
 	prev &DoublyListNode[T] = unsafe { 0 }
 }
 
-// DoublyLinkedList<T> represents a generic doubly linked list of elements, each of type T.
+// DoublyLinkedList[T] represents a generic doubly linked list of elements, each of type T.
 pub struct DoublyLinkedList[T] {
 mut:
 	head &DoublyListNode[T] = unsafe { 0 }
@@ -298,7 +298,7 @@ pub fn (mut list DoublyLinkedList[T]) back_iterator() DoublyListIterBack[T] {
 	}
 }
 
-// DoublyListIter<T> is an iterator for DoublyLinkedList.
+// DoublyListIter[T] is an iterator for DoublyLinkedList.
 // It starts from *the start* and moves forwards to *the end* of the list.
 // It can be used with V's `for x in iter {` construct.
 // One list can have multiple independent iterators, pointing to different positions/places in the list.
@@ -319,7 +319,7 @@ pub fn (mut iter DoublyListIter[T]) next() ?T {
 	return res
 }
 
-// DoublyListIterBack<T> is an iterator for DoublyLinkedList.
+// DoublyListIterBack[T] is an iterator for DoublyLinkedList.
 // It starts from *the end* and moves backwards to *the start* of the list.
 // It can be used with V's `for x in iter {` construct.
 // One list can have multiple independent iterators, pointing to different positions/places in the list.

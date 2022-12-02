@@ -75,13 +75,6 @@ pub fn (mut f Gen) struct_decl(node ast.StructDecl) {
 		// end_pos := field.pos.pos + field.pos.len
 		volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
 		f.write('\t${volatile_prefix}${field.name} ')
-		// before_len := f.line_len
-		// mut field_align := field_aligns[field_align_i]
-		// if field_align.line_nr < field.pos.line_nr {
-		// field_align_i++
-		// field_align = field_aligns[field_align_i]
-		//}
-		// f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
 		f.write(field_types[i])
 		f.mark_types_import_as_used(field.typ)
 		// attrs_len := inline_attrs_len(field.attrs)

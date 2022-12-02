@@ -17,10 +17,10 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				if elem_info.generic_types.len > 0 && elem_info.concrete_types.len == 0
 					&& !node.elem_type.has_flag(.generic) {
 					if c.table.cur_concrete_types.len == 0 {
-						c.error('generic struct must specify type parameter, e.g. Foo<int>',
+						c.error('generic struct must specify type parameter, e.g. Foo[int]',
 							node.elem_type_pos)
 					} else {
-						c.error('generic struct must specify type parameter, e.g. Foo<T>',
+						c.error('generic struct must specify type parameter, e.g. Foo[T]',
 							node.elem_type_pos)
 					}
 				}
@@ -29,10 +29,10 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				if elem_info.generic_types.len > 0 && elem_info.concrete_types.len == 0
 					&& !node.elem_type.has_flag(.generic) {
 					if c.table.cur_concrete_types.len == 0 {
-						c.error('generic interface must specify type parameter, e.g. Foo<int>',
+						c.error('generic interface must specify type parameter, e.g. Foo[int]',
 							node.elem_type_pos)
 					} else {
-						c.error('generic interface must specify type parameter, e.g. Foo<T>',
+						c.error('generic interface must specify type parameter, e.g. Foo[T]',
 							node.elem_type_pos)
 					}
 				}
@@ -41,10 +41,10 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				if elem_info.generic_types.len > 0 && elem_info.concrete_types.len == 0
 					&& !node.elem_type.has_flag(.generic) {
 					if c.table.cur_concrete_types.len == 0 {
-						c.error('generic sumtype must specify type parameter, e.g. Foo<int>',
+						c.error('generic sumtype must specify type parameter, e.g. Foo[int]',
 							node.elem_type_pos)
 					} else {
-						c.error('generic sumtype must specify type parameter, e.g. Foo<T>',
+						c.error('generic sumtype must specify type parameter, e.g. Foo[T]',
 							node.elem_type_pos)
 					}
 				}
@@ -307,10 +307,10 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				if val_info.generic_types.len > 0 && val_info.concrete_types.len == 0
 					&& !info.value_type.has_flag(.generic) {
 					if c.table.cur_concrete_types.len == 0 {
-						c.error('generic struct `${val_sym.name}` must specify type parameter, e.g. Foo<int>',
+						c.error('generic struct `${val_sym.name}` must specify type parameter, e.g. Foo[int]',
 							node.pos)
 					} else {
-						c.error('generic struct `${val_sym.name}` must specify type parameter, e.g. Foo<T>',
+						c.error('generic struct `${val_sym.name}` must specify type parameter, e.g. Foo[T]',
 							node.pos)
 					}
 				}

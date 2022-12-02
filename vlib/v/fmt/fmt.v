@@ -11,7 +11,7 @@ import v.checker.constants
 
 const (
 	bs      = '\\'
-	// when to break a line dependant on penalty
+	// when to break a line depending on the penalty
 	max_len = [0, 35, 60, 85, 93, 100]
 )
 

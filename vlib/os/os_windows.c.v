@@ -169,7 +169,6 @@ pub fn ls(path string) ![]string {
 	if !is_dir(path) {
 		return error('ls() couldnt open dir "${path}": directory does not exist')
 	}
-	// NOTE: Should eventually have path struct & os dependant path seperator (eg os.PATH_SEPERATOR)
 	// we need to add files to path eg. c:\windows\*.dll or :\windows\*
 	path_files := '${path}\\*'
 	// NOTE:TODO: once we have a way to convert utf16 wide character to utf8

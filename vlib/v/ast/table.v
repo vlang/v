@@ -2005,7 +2005,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 	return typ
 }
 
-// Foo<U>{ bar: U } to Foo<T>{ bar: T }
+// Foo[U]{ bar: U } to Foo[T]{ bar: T }
 pub fn (mut t Table) replace_generic_type(typ Type, generic_types []Type) {
 	mut ts := t.sym(typ)
 	match mut ts.info {

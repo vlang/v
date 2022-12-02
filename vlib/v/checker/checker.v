@@ -497,11 +497,11 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 		} else if mut sym.info is ast.Struct {
 			if sym.info.is_generic {
 				if !variant.typ.has_flag(.generic) {
-					c.error('generic struct `${sym.name}` must specify generic type names, e.g. Foo<T>',
+					c.error('generic struct `${sym.name}` must specify generic type names, e.g. Foo[T]',
 						variant.pos)
 				}
 				if node.generic_types.len == 0 {
-					c.error('generic sumtype `${node.name}` must specify generic type names, e.g. Foo<T>',
+					c.error('generic sumtype `${node.name}` must specify generic type names, e.g. Foo[T]',
 						node.name_pos)
 				} else {
 					for typ in sym.info.generic_types {
