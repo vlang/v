@@ -251,7 +251,7 @@ pub fn (mut f Gen) mark_types_import_as_used(typ ast.Type) {
 			f.mark_types_import_as_used(concrete_typ)
 		}
 	}
-	name := sym.name.split('<')[0] // take `Type` from `Type<T>`
+	name := sym.name.split('[')[0] // take `Type` from `Type[T]`
 	f.mark_import_as_used(name)
 }
 

@@ -202,7 +202,7 @@ fn map_f[T, U](l []T, f fn (T) U) []U {
 }
 
 /*
-fn foldl<T>(l []T, nil T, f fn(T,T)T) T {
+fn foldl[T](l []T, nil T, f fn(T,T)T) T {
 	mut r := nil
 	for e in l {
 		r = f(r, e)
@@ -302,8 +302,8 @@ pub mut:
 }
 
 // TODO: multiple type generic struct  needs fixing in return for fn
-// fn new_repo<T>(db DB) Repo<T,U> {
-// return Repo<T,Permission>{db: db}
+// fn new_repo[T](db DB) Repo[T,U] {
+// return Repo[T,Permission]{db: db}
 // }
 fn test_generic_struct() {
 	mut a := Repo[User, Permission]{
@@ -474,7 +474,6 @@ fn test_generic_init() {
 }
 
 fn return_one[T](rec int, useless T) T {
-	// foo < bar<T>() should work
 	if rec == 0 || 0 < return_one[T](rec - 1, useless) {
 		return T(1)
 	}
