@@ -140,9 +140,12 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			if expecting == ast.bool_type_idx && expr.op in [.logical_or, .and] {
 				left_b := left as bool
 				if expr.op == .logical_or && left_b {
-					return left_b
+					return true
 				}
 				right_b := e.expr(expr.right, expr.right_type) as bool
+				if expr.op == .logical_or && right_b {
+					return true
+				}
 				return left_b && right_b
 			}
 			right := e.expr(expr.right, expr.right_type)
