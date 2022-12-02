@@ -3,12 +3,16 @@
 // that can be found in the LICENSE file.
 module term
 
+pub fn format_esc(code string) {
+	return '\x1b[${code}m'
+}
+
 pub fn format(msg string, open string, close string) string {
-	return '\x1b[${open}m${msg}\x1b[${close}m'
+	return '${format_esc(open)}${msg}${format_esc(close)}'
 }
 
 pub fn format_rgb(r int, g int, b int, msg string, open string, close string) string {
-	return '\x1b[${open};2;${r};${g};${b}m${msg}\x1b[${close}m'
+	return '\x1b[${open};2;${r};${g};${b}m${msg}${format_esc(close)}'
 }
 
 pub fn rgb(r int, g int, b int, msg string) string {
