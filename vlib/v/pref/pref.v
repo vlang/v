@@ -87,10 +87,10 @@ pub enum Arch {
 	_max
 }
 
-const (
-	list_of_flags_with_param = ['o', 'd', 'define', 'b', 'backend', 'cc', 'os', 'cf', 'cflags',
-		'path', 'arch']
-)
+pub const list_of_flags_with_param = ['o', 'd', 'define', 'b', 'backend', 'cc', 'os', 'cf', 'cflags',
+	'path', 'arch']
+
+pub const supported_test_runners = ['normal', 'simple', 'tap', 'dump']
 
 [heap; minify]
 pub struct Preferences {
@@ -1061,4 +1061,8 @@ fn (mut prefs Preferences) diagnose_deprecated_defines(define_parts []string) {
 	if define_parts[0] == 'no_bounds_checking' {
 		eprintln('`-d no_bounds_checking` was deprecated in 2022/10/30. Use `-no-bounds-checking` instead.')
 	}
+}
+
+pub fn supported_test_runners_list() string {
+	return pref.supported_test_runners.map('`${it}`').join(', ')
 }

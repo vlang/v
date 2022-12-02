@@ -1,6 +1,7 @@
 module testing
 
 import os
+import os.cmdline
 import time
 import term
 import benchmark
@@ -51,25 +52,13 @@ pub mut:
 	benchmark     benchmark.Benchmark
 	rm_binaries   bool = true
 	silent_mode   bool
+	show_stats    bool
 	progress_mode bool
 	root_relative bool // used by CI runs, so that the output is stable everywhere
 	nmessages     chan LogMessage // many publishers, single consumer/printer
-	nmessage_idx  int      // currently printed message index
-	nprint_ended  chan int // read to block till printing ends, 1:1
+	nmessage_idx  int // currently printed message index
 	failed_cmds   shared []string
-}
-
-enum MessageKind {
-	ok
-	fail
-	skip
-	info
-	sentinel
-}
-
-struct LogMessage {
-	message string
-	kind    MessageKind
+	reporter      Reporter = Reporter(NormalReporter{})
 }
 
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
@@ -79,20 +68,47 @@ pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
 }
 
 pub fn (mut ts TestSession) show_list_of_failed_tests() {
-	for i, cmd in ts.failed_cmds {
-		eprintln(term.failed('Failed command ${i + 1}:') + '    ${cmd}')
+	rlock ts.failed_cmds {
+		ts.reporter.list_of_failed_commands(ts.failed_cmds)
 	}
 }
 
-pub fn (mut ts TestSession) append_message(kind MessageKind, msg string) {
+struct MessageThreadContext {
+mut:
+	file    string
+	flow_id string
+}
+
+fn (mut ts TestSession) append_message(kind MessageKind, msg string, mtc MessageThreadContext) {
 	ts.nmessages <- LogMessage{
+		file: mtc.file
+		flow_id: mtc.flow_id
 		message: msg
 		kind: kind
+		when: time.now()
 	}
+}
+
+fn (mut ts TestSession) append_message_with_duration(kind MessageKind, msg string, d time.Duration, mtc MessageThreadContext) {
+	ts.nmessages <- LogMessage{
+		file: mtc.file
+		flow_id: mtc.flow_id
+		message: msg
+		kind: kind
+		when: time.now()
+		took: d
+	}
+}
+
+pub fn (mut ts TestSession) session_start(message string) {
+	ts.reporter.session_start(message, mut ts)
+}
+
+pub fn (mut ts TestSession) session_stop(message string) {
+	ts.reporter.session_stop(message, mut ts)
 }
 
 pub fn (mut ts TestSession) print_messages() {
-	empty := term.header(' ', ' ')
 	mut print_msg_time := time.new_stopwatch()
 	for {
 		// get a message from the channel of messages to be printed:
@@ -100,14 +116,15 @@ pub fn (mut ts TestSession) print_messages() {
 		if rmessage.kind == .sentinel {
 			// a sentinel for stopping the printing thread
 			if !ts.silent_mode && ts.progress_mode {
-				eprintln('')
+				ts.reporter.report_stop()
 			}
-			ts.nprint_ended <- 0
 			return
 		}
 		if rmessage.kind != .info {
 			ts.nmessage_idx++
 		}
+		//
+		ts.reporter.report(ts.nmessage_idx, rmessage)
 		msg := rmessage.message.replace_each([
 			'TMP1',
 			'${ts.nmessage_idx:1d}',
@@ -125,25 +142,21 @@ pub fn (mut ts TestSession) print_messages() {
 			// Even if OK tests are suppressed,
 			// show *at least* 1 result every 10 seconds,
 			// otherwise the CI can seem stuck ...
-			eprintln(msg)
+			ts.reporter.progress(ts.nmessage_idx, msg)
 			print_msg_time.restart()
 			continue
 		}
 		if ts.progress_mode {
-			// progress mode, the last line is rewritten many times:
 			if is_ok && !ts.silent_mode {
-				print('\r${empty}\r${msg}')
-				flush_stdout()
+				ts.reporter.update_last_line(ts.nmessage_idx, msg)
 			} else {
-				// the last \n is needed, so SKIP/FAIL messages
-				// will not get overwritten by the OK ones
-				eprint('\r${empty}\r${msg}\n')
+				ts.reporter.update_last_line_and_move_to_next(ts.nmessage_idx, msg)
 			}
 			continue
 		}
 		if !ts.silent_mode || !is_ok {
 			// normal expanded mode, or failures in -silent mode
-			eprintln(msg)
+			ts.reporter.message(ts.nmessage_idx, msg)
 			continue
 		}
 	}
@@ -228,22 +241,48 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/macos_tray/tray.v'
 		}
 	}
-	vargs := _vargs.replace('-progress', '').replace('-progress', '')
+	vargs := _vargs.replace('-progress', '')
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	new_vtmp_dir := setup_new_vtmp_folder()
 	if term.can_show_color_on_stderr() {
 		os.setenv('VCOLORS', 'always', true)
 	}
-	return TestSession{
+	mut ts := TestSession{
 		vexe: vexe
 		vroot: vroot
 		skip_files: skip_files
 		fail_fast: testing.fail_fast
+		show_stats: '-stats' in vargs.split(' ')
 		vargs: vargs
 		vtmp_dir: new_vtmp_dir
 		silent_mode: _vargs.contains('-silent')
 		progress_mode: _vargs.contains('-progress')
+	}
+	ts.handle_test_runner_option()
+	return ts
+}
+
+fn (mut ts TestSession) handle_test_runner_option() {
+	test_runner := cmdline.option(os.args, '-test-runner', 'normal')
+	if test_runner !in pref.supported_test_runners {
+		eprintln('v test: `-test-runner ${test_runner}` is not using one of the supported test runners: ${pref.supported_test_runners_list()}')
+	}
+	test_runner_implementation_file := os.join_path(ts.vroot, 'cmd/tools/modules/testing/output_${test_runner}.v')
+	if !os.exists(test_runner_implementation_file) {
+		eprintln('v test: using `-test-runner ${test_runner}` needs ${test_runner_implementation_file} to exist, and contain a valid testing.Reporter implementation for that runner. See `cmd/tools/modules/testing/output_dump.v` for an example.')
+		exit(1)
+	}
+	match test_runner {
+		'normal' {
+			// default, nothing to do
+		}
+		'dump' {
+			ts.reporter = DumpReporter{}
+		}
+		else {
+			dump('just set ts.reporter to an instance of your own struct here')
+		}
 	}
 }
 
@@ -294,17 +333,20 @@ pub fn (mut ts TestSession) test() {
 	}
 	ts.benchmark.njobs = njobs
 	mut pool_of_test_runners := pool.new_pool_processor(callback: worker_trunner)
-	// for handling messages across threads
+	// ensure that the nmessages queue/channel, has enough capacity for handling many messages across threads, without blocking
 	ts.nmessages = chan LogMessage{cap: 10000}
-	ts.nprint_ended = chan int{cap: 0}
 	ts.nmessage_idx = 0
-	spawn ts.print_messages()
+	printing_thread := spawn ts.print_messages()
 	pool_of_test_runners.set_shared_context(ts)
+	ts.reporter.worker_threads_start(remaining_files, mut ts)
+	// all the testing happens here:
 	pool_of_test_runners.work_on_pointers(unsafe { remaining_files.pointers() })
+	//
 	ts.benchmark.stop()
-	ts.append_message(.sentinel, '') // send the sentinel
-	_ := <-ts.nprint_ended // wait for the stop of the printing thread
-	eprintln(term.h_divider('-'))
+	ts.append_message(.sentinel, '', MessageThreadContext{ flow_id: sync.thread_id().str() }) // send the sentinel
+	printing_thread.wait()
+	ts.reporter.worker_threads_finish(mut ts)
+	ts.reporter.divider()
 	ts.show_list_of_failed_tests()
 	// cleanup generated .tmp.c files after successful tests:
 	if ts.benchmark.nfail == 0 {
@@ -326,7 +368,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 	}
 	tmpd := ts.vtmp_dir
-	show_stats := '-stats' in ts.vargs.split(' ')
 	// tls_bench is used to format the step messages/timings
 	mut tls_bench := &benchmark.Benchmark(p.get_thread_context(idx))
 	if isnil(tls_bench) {
@@ -358,6 +399,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		relative_file = relative_file.replace(ts.vroot + os.path_separator, '')
 	}
 	file := os.real_path(relative_file)
+	mtc := MessageThreadContext{
+		file: file
+		flow_id: thread_id.str()
+	}
 	normalised_relative_file := relative_file.replace('\\', '/')
 	// Ensure that the generated binaries will be stored in the temporary folder.
 	// Remove them after a test passes/fails.
@@ -384,18 +429,20 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		ts.benchmark.skip()
 		tls_bench.skip()
 		if !testing.hide_skips {
-			ts.append_message(.skip, tls_bench.step_message_skip(normalised_relative_file))
+			ts.append_message(.skip, tls_bench.step_message_skip(normalised_relative_file),
+				mtc)
 		}
 		return pool.no_result
 	}
-	if show_stats {
-		ts.append_message(.ok, term.h_divider('-'))
+	if ts.show_stats {
+		ts.reporter.divider()
 		mut status := os.system(cmd)
 		if status != 0 {
 			details := get_test_details(file)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry := 1; retry <= details.retry; retry++ {
-				ts.append_message(.info, '  [stats]        retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...')
+				ts.append_message(.info, '  [stats]        retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...',
+					mtc)
 				os.setenv('VTEST_RETRY', '${retry}', true)
 				status = os.system(cmd)
 				if status == 0 {
@@ -406,7 +453,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				time.sleep(500 * time.millisecond)
 			}
 			if details.flaky && !testing.fail_flaky {
-				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .')
+				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .',
+					mtc)
 				unsafe {
 					goto test_passed_system
 				}
@@ -422,13 +470,17 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 	} else {
 		if testing.show_start {
-			ts.append_message(.info, '                 starting ${relative_file} ...')
+			ts.append_message(.info, '                 starting ${relative_file} ...',
+				mtc)
 		}
+		d_cmd := time.new_stopwatch()
 		mut r := os.execute(cmd)
+		cmd_duration := d_cmd.elapsed()
 		if r.exit_code < 0 {
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.append_message(.fail, tls_bench.step_message_fail(normalised_relative_file))
+			ts.append_message_with_duration(.fail, tls_bench.step_message_fail(normalised_relative_file),
+				cmd_duration, mtc)
 			ts.add_failed_cmd(cmd)
 			return pool.no_result
 		}
@@ -436,7 +488,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			details := get_test_details(file)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry := 1; retry <= details.retry; retry++ {
-				ts.append_message(.info, '                 retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...')
+				ts.append_message(.info, '                 retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...',
+					mtc)
 				os.setenv('VTEST_RETRY', '${retry}', true)
 				r = os.execute(cmd)
 				if r.exit_code == 0 {
@@ -446,7 +499,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				}
 			}
 			if details.flaky && !testing.fail_flaky {
-				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .')
+				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .',
+					mtc)
 				unsafe {
 					goto test_passed_execute
 				}
@@ -454,14 +508,16 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ending_newline := if r.output.ends_with('\n') { '\n' } else { '' }
-			ts.append_message(.fail, tls_bench.step_message_fail('${normalised_relative_file}\n${r.output.trim_space()}${ending_newline}'))
+			ts.append_message_with_duration(.fail, tls_bench.step_message_fail('${normalised_relative_file}\n${r.output.trim_space()}${ending_newline}'),
+				cmd_duration, mtc)
 			ts.add_failed_cmd(cmd)
 		} else {
 			test_passed_execute:
 			ts.benchmark.ok()
 			tls_bench.ok()
 			if !testing.hide_oks {
-				ts.append_message(.ok, tls_bench.step_message_ok(normalised_relative_file))
+				ts.append_message_with_duration(.ok, tls_bench.step_message_ok(normalised_relative_file),
+					cmd_duration, mtc)
 			}
 		}
 	}
@@ -586,15 +642,6 @@ pub fn building_any_v_binaries_failed() bool {
 	return failed
 }
 
-pub fn eheader(msg string) {
-	eprintln(term.header_left(msg, '-'))
-}
-
-pub fn header(msg string) {
-	println(term.header_left(msg, '-'))
-	flush_stdout()
-}
-
 // setup_new_vtmp_folder creates a new nested folder inside VTMP, then resets VTMP to it,
 // so that V programs/tests will write their temporary files to new location.
 // The new nested folder, and its contents, will get removed after all tests/programs succeed.
@@ -633,4 +680,13 @@ pub fn find_started_process(pname string) ?string {
 		}
 	}
 	return error('could not find process matching ${pname}')
+}
+
+pub fn eheader(msg string) {
+	eprintln(term.header_left(msg, '-'))
+}
+
+pub fn header(msg string) {
+	println(term.header_left(msg, '-'))
+	flush_stdout()
 }
