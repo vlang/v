@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module term
 
-pub fn format_esc(code string) {
+pub fn format_esc(code string) string {
 	return '\x1b[${code}m'
 }
 
