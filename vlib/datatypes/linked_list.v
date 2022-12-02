@@ -192,7 +192,7 @@ pub fn (mut list LinkedList[T]) iterator() ListIter[T] {
 	}
 }
 
-// ListIter<T> is an iterator for LinkedList.
+// ListIter[T] is an iterator for LinkedList.
 // It can be used with V's `for x in iter {` construct.
 // One list can have multiple independent iterators, pointing to different positions/places in the list.
 // An iterator instance always traverses the list from start to finish.

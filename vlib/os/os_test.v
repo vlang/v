@@ -678,7 +678,7 @@ fn test_uname() {
 	assert u.machine.len > 0
 }
 
-// tests for write_file_array and read_file_array<T>:
+// tests for write_file_array and read_file_array[T]:
 const maxn = 3
 
 struct IntPoint {

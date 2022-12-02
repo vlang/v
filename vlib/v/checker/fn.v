@@ -76,11 +76,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 		if need_generic_names {
 			if node.is_method {
-				c.add_error_detail('use `fn (r SomeType<T>) foo<T>() {`, not just `fn (r SomeType<T>) foo() {`')
+				c.add_error_detail('use `fn (r SomeType[T]) foo[T]() {`, not just `fn (r SomeType[T]) foo() {`')
 				c.error('generic method declaration must specify generic type names',
 					node.pos)
 			} else {
-				c.add_error_detail('use `fn foo<T>(x T) {`, not just `fn foo(x T) {`')
+				c.add_error_detail('use `fn foo[T](x T) {`, not just `fn foo(x T) {`')
 				c.error('generic function declaration must specify generic type names',
 					node.pos)
 			}
@@ -105,7 +105,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			gs := c.table.sym(node.return_type)
 			if gs.info is ast.Struct {
 				if gs.info.is_generic && !node.return_type.has_flag(.generic) {
-					c.error('return generic struct in fn declaration must specify the generic type names, e.g. Foo<T>',
+					c.error('return generic struct in fn declaration must specify the generic type names, e.g. Foo[T]',
 						node.return_type_pos)
 				}
 			}
@@ -136,7 +136,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			for name in generic_names {
 				if name !in node.generic_names {
 					fn_generic_names := node.generic_names.join(', ')
-					c.error('generic type name `${name}` is not mentioned in fn `${node.name}<${fn_generic_names}>`',
+					c.error('generic type name `${name}` is not mentioned in fn `${node.name}[${fn_generic_names}]`',
 						node.return_type_pos)
 				}
 			}
@@ -224,19 +224,19 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					}
 					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 						&& arg_typ_sym.info.concrete_types.len == 0 {
-						c.error('generic struct in fn declaration must specify the generic type names, e.g. Foo<T>',
+						c.error('generic struct in fn declaration must specify the generic type names, e.g. Foo[T]',
 							param.type_pos)
 					}
 				} else if arg_typ_sym.info is ast.Interface {
 					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 						&& arg_typ_sym.info.concrete_types.len == 0 {
-						c.error('generic interface in fn declaration must specify the generic type names, e.g. Foo<T>',
+						c.error('generic interface in fn declaration must specify the generic type names, e.g. Foo[T]',
 							param.type_pos)
 					}
 				} else if arg_typ_sym.info is ast.SumType {
 					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 						&& arg_typ_sym.info.concrete_types.len == 0 {
-						c.error('generic sumtype in fn declaration must specify the generic type names, e.g. Foo<T>',
+						c.error('generic sumtype in fn declaration must specify the generic type names, e.g. Foo[T]',
 							param.type_pos)
 					}
 				}
@@ -247,7 +247,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				for name in generic_names {
 					if name !in node.generic_names {
 						fn_generic_names := node.generic_names.join(', ')
-						c.error('generic type name `${name}` is not mentioned in fn `${node.name}<${fn_generic_names}>`',
+						c.error('generic type name `${name}` is not mentioned in fn `${node.name}[${fn_generic_names}]`',
 							param.type_pos)
 					}
 				}
@@ -439,7 +439,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 	c.stmts(node.decl.stmts)
 	c.fn_decl(mut node.decl)
 	if has_generic && node.decl.generic_names.len == 0 {
-		c.error('generic closure fn must specify type parameter, e.g. fn [foo] <T>()',
+		c.error('generic closure fn must specify type parameter, e.g. fn [foo] [T]()',
 			node.decl.pos)
 	}
 	return node.typ
@@ -551,7 +551,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	if fn_name == 'main' {
 		c.error('the `main` function cannot be called in the program', node.pos)
 	}
-	mut has_generic := false // foo<T>() instead of foo<int>()
+	mut has_generic := false // foo[T]() instead of foo[int]()
 	mut concrete_types := []ast.Type{}
 	node.concrete_types = node.raw_concrete_types
 	for concrete_type in node.concrete_types {
@@ -593,7 +593,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		typ := c.expr(node.args[0].expr)
 		tsym := c.table.sym(typ)
 
-		if !tsym.name.starts_with('Promise<') {
+		if !tsym.name.starts_with('Promise[') {
 			c.error('JS.await: first argument must be a promise, got `${tsym.name}`',
 				node.pos)
 			return ast.void_type
@@ -918,7 +918,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		c.ensure_type_exists(concrete_type, node.concrete_list_pos) or {}
 	}
 	if func.generic_names.len > 0 && node.args.len == 0 && node.concrete_types.len == 0 {
-		c.error('no argument generic function must add concrete types, e.g. foo<int>()',
+		c.error('no argument generic function must add concrete types, e.g. foo[int]()',
 			node.pos)
 		return func.return_type
 	}
@@ -1382,7 +1382,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 	} else if final_left_sym.info is ast.Array && method_name in ['first', 'last', 'pop'] {
 		return c.array_builtin_method_call(mut node, left_type, final_left_sym)
-	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise<')
+	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise[')
 		&& method_name == 'wait' {
 		info := left_sym.info as ast.Struct
 		if node.args.len > 0 {
@@ -1455,7 +1455,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 	}
 	if has_method {
-		// x is Bar<T>, x.foo() -> x.foo<T>()
+		// x is Bar[T], x.foo() -> x.foo[T]()
 		rec_sym := c.table.final_sym(node.left_type)
 		rec_is_generic := left_type.has_flag(.generic)
 		mut rec_concrete_types := []ast.Type{}

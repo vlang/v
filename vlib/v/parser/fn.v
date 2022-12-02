@@ -333,7 +333,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			scope: 0
 		}
 	}
-	// <T>
+	// [T]
 	_, mut generic_names := p.parse_generic_types()
 	// generic names can be infer with receiver's generic names
 	if is_method && rec.typ.has_flag(.generic) {

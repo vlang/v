@@ -260,11 +260,11 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 		expected_typ_sym := c.table.sym(expected_)
 
 		// Check on Generics types, there are some case where we have the following case
-		// `&Type<int> == &Type<>`. This is a common case we are implementing a function
-		// with generic parameters like `compare(bst Bst<T> node) {}`
+		// `&Type[int] == &Type[]`. This is a common case we are implementing a function
+		// with generic parameters like `compare(bst Bst[T] node) {}`
 		if got_typ_sym.symbol_name_except_generic() == expected_typ_sym.symbol_name_except_generic() {
 			// Check if we are making a comparison between two different types of
-			// the same type like `Type<int> and &Type<>`
+			// the same type like `Type[int] and &Type[]`
 			if (got.is_ptr() != expected.is_ptr())
 				|| !c.check_same_module(got, expected)
 				|| (!got.is_ptr() && !expected.is_ptr()
