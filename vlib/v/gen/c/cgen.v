@@ -2545,7 +2545,7 @@ fn cescape_nonascii(original string) string {
 	for c in original {
 		if c < 32 || c > 126 {
 			// Encode with a 3 digit octal escape code, which has the
-			// advantage to be limited/non dependant on what character
+			// advantage to be limited/non dependent on what character
 			// will follow next, unlike hex escapes:
 			write_octal_escape(mut b, c)
 			continue
@@ -5457,7 +5457,7 @@ fn (mut g Gen) sort_globals_consts() {
 	}
 }
 
-// sort structs by dependant fields
+// sort structs by dependent fields
 fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 	util.timing_start(@METHOD)
 	defer {
@@ -5569,7 +5569,7 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 			// ast.Interface {}
 			else {}
 		}
-		// add type and dependant types to graph
+		// add type and dependent types to graph
 		dep_graph.add(sym.name, field_deps)
 	}
 	// sort graph
@@ -5579,7 +5579,7 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 		// TODO: should it be removed?
 		verror('cgen.sort_structs(): the following structs form a dependency cycle:\n' +
 			dep_graph_sorted.display_cycles() +
-			'\nyou can solve this by making one or both of the dependant struct fields references, eg: field &MyStruct' +
+			'\nyou can solve this by making one or both of the dependent struct fields references, eg: field &MyStruct' +
 			'\nif you feel this is an error, please create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
 	}
 	// sort types

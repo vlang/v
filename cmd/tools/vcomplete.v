@@ -356,8 +356,8 @@ fn auto_complete(args []string) {
 	exit(0)
 }
 
-// append_separator_if_dir is a utility function.that returns the input `path` appended an
-// OS dependant path separator if the `path` is a directory.
+// append_separator_if_dir returns the input `path` with an appended
+// `/` or `\`, depending on the platform, when `path` is a directory.
 fn append_separator_if_dir(path string) string {
 	if os.is_dir(path) && !path.ends_with(os.path_separator) {
 		return path + os.path_separator

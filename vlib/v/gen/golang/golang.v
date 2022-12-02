@@ -9,11 +9,7 @@ import v.util
 import v.pref
 import os
 
-const (
-	bs      = '\\'
-	// when to break a line dependant on penalty
-	max_len = [0, 35, 60, 85, 93, 100]
-)
+const bs = '\\'
 
 pub struct Gen {
 pub mut:

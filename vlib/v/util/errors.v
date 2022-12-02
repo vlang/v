@@ -84,8 +84,9 @@ const verror_paths_absolute = os.getenv('VERROR_PATHS') == 'absolute'
 // path, will be relative to the current working folder. Relative paths are shorter and stabler,
 // because they only depend on the project, and not on the parent folders.
 // If the current working folder of the compiler is NOT a prefix of the given path, then this
-// function will return an absolute path isntead. Absolute paths are longer, and platform/user
-// but they have the advantage of being more easily processible by tools on the same machine.
+// function will return an absolute path instead. Absolute paths are longer, and also platform/user
+// dependent, but they have the advantage of being more easily processible by tools on the same
+// machine.
 //
 // The V user can opt out of that relativisation, by setting the environment variable VERROR_PATHS,
 // to `absolute`. That is useful for starting the V compiler from an IDE or another program, where

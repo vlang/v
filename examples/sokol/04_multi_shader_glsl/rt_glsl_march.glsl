@@ -168,7 +168,7 @@ float sdRoundCone(vec3 p, vec3 a, vec3 b, float r1, float r2)
 	float a2 = l2 - rr*rr;
 	float il2 = 1.0/l2;
 
-	// sampling dependant computations
+	// sampling dependent computations
 	vec3 pa = p - a;
 	float y = dot(pa,ba);
 	float z = y - l2;
