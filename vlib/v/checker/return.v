@@ -184,6 +184,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			if node.exprs[expr_idxs[i]].is_auto_deref_var() {
 				continue
 			}
+			c.add_error_detail('use `return *pointer` instead of `return pointer`, and just `return value` instead of `return &value`')
 			c.error('fn `${c.table.cur_fn.name}` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
