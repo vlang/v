@@ -8,11 +8,11 @@ pub fn format_esc(code string) string {
 }
 
 pub fn format(msg string, open string, close string) string {
-	return '${format_esc(open)}${msg}${format_esc(close)}'
+	return '\x1b[${open}m${msg}\x1b[${close}m'
 }
 
 pub fn format_rgb(r int, g int, b int, msg string, open string, close string) string {
-	return '\x1b[${open};2;${r};${g};${b}m${msg}${format_esc(close)}'
+	return '\x1b[${open};2;${r};${g};${b}m${msg}\x1b[${close}m'
 }
 
 pub fn rgb(r int, g int, b int, msg string) string {
