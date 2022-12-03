@@ -54,7 +54,7 @@ fn (mut g Gen) comptime_is_truthy(cond ast.Expr) bool {
 					return g.comptime_is_truthy(cond.left) && g.comptime_is_truthy(cond.right)
 				}
 				.eq {
-					return g.comptime_is_truthy(cond.left) == g.comptime_is_truthy(cond.right)
+					return g.comptime_is_truthy(cond.left) && g.comptime_is_truthy(cond.right)
 				}
 				.ne {
 					return g.comptime_is_truthy(cond.left) != g.comptime_is_truthy(cond.right)
