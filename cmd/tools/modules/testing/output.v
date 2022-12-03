@@ -3,21 +3,25 @@ module testing
 import time
 
 pub enum MessageKind {
-	ok
-	fail
-	skip
-	info
-	sentinel
+	cmd_begin // sent right before *each* _test.v file execution, the resulting status is not known yet, but the _test.v file itself is
+	cmd_end // sent right after *each* _test.v file execution, the message contains the output of that execution
+	//
+	ok // success of a _test.v file
+	fail // failed _test.v file, one or more assertions failed
+	skip // the _test.v file was skipped for some reason
+	info // a generic information message, detailing the actions of the `v test` program (some tests could be repeated for example, and the details are sent with an .info status)
+	//
+	sentinel // send just once after all executions are done; it signals that the reporting/printing thread should stop the loop and exit
 }
 
 pub struct LogMessage {
 pub:
-	flow_id string        // the messages of each thread, producing LogMessage, will have all the same unique flowid. Messages by other threads will have other flowid. If you use VJOBS=1 to serialise the execution, then all messages will have the same flowid.
+	kind    MessageKind   // see the MessageKind declaration above
 	file    string        // the _test.v file that the message is about
-	message string        // the actual message text; the result of the event, that the message describes; most reporters could ignore this, since it could be reconstructed by the other fields
-	kind    MessageKind   // see the MessageKind declaration
 	when    time.Time     // when was the message sent (messages are sent by the execution threads at the *end* of each event)
+	flow_id string        // the messages of each thread, producing LogMessage, will have all the same unique flowid. Messages by other threads will have other flowid. If you use VJOBS=1 to serialise the execution, then all messages will have the same flowid.
 	took    time.Duration // the duration of the event, that this message describes
+	message string        // the actual message text; the result of the event, that the message describes; most reporters could ignore this, since it could be reconstructed by the other fields
 }
 
 pub interface Reporter {

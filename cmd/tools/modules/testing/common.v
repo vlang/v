@@ -109,10 +109,22 @@ pub fn (mut ts TestSession) session_stop(message string) {
 }
 
 pub fn (mut ts TestSession) print_messages() {
+	mut test_idx := 0
 	mut print_msg_time := time.new_stopwatch()
 	for {
 		// get a message from the channel of messages to be printed:
 		mut rmessage := <-ts.nmessages
+		ts.nmessage_idx++
+
+		// first sent *all events* to the output reporter, so it can then process them however it wants:
+		ts.reporter.report(ts.nmessage_idx, rmessage)
+
+		if rmessage.kind in [.cmd_begin, .cmd_end] {
+			// The following events, are sent before the test framework has determined,
+			// what the full completion status is. They can also be repeated multiple times,
+			// for tests that are flaky and need repeating.
+			continue
+		}
 		if rmessage.kind == .sentinel {
 			// a sentinel for stopping the printing thread
 			if !ts.silent_mode && ts.progress_mode {
@@ -121,19 +133,19 @@ pub fn (mut ts TestSession) print_messages() {
 			return
 		}
 		if rmessage.kind != .info {
-			ts.nmessage_idx++
+			// info events can also be repeated, and should be ignored when determining
+			// the total order of the current test file, in the following replacements:
+			test_idx++
 		}
-		//
-		ts.reporter.report(ts.nmessage_idx, rmessage)
 		msg := rmessage.message.replace_each([
 			'TMP1',
-			'${ts.nmessage_idx:1d}',
+			'${test_idx:1d}',
 			'TMP2',
-			'${ts.nmessage_idx:2d}',
+			'${test_idx:2d}',
 			'TMP3',
-			'${ts.nmessage_idx:3d}',
+			'${test_idx:3d}',
 			'TMP4',
-			'${ts.nmessage_idx:4d}',
+			'${test_idx:4d}',
 		])
 		is_ok := rmessage.kind == .ok
 		//
@@ -343,7 +355,7 @@ pub fn (mut ts TestSession) test() {
 	pool_of_test_runners.work_on_pointers(unsafe { remaining_files.pointers() })
 	//
 	ts.benchmark.stop()
-	ts.append_message(.sentinel, '', MessageThreadContext{ flow_id: sync.thread_id().str() }) // send the sentinel
+	ts.append_message(.sentinel, '', MessageThreadContext{ flow_id: '-1' }) // send the sentinel
 	printing_thread.wait()
 	ts.reporter.worker_threads_finish(mut ts)
 	ts.reporter.divider()
@@ -436,7 +448,13 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	if ts.show_stats {
 		ts.reporter.divider()
+
+		ts.append_message(.cmd_begin, cmd, mtc)
+		d_cmd := time.new_stopwatch()
 		mut status := os.system(cmd)
+		mut cmd_duration := d_cmd.elapsed()
+		ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
+
 		if status != 0 {
 			details := get_test_details(file)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
@@ -444,7 +462,13 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				ts.append_message(.info, '  [stats]        retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...',
 					mtc)
 				os.setenv('VTEST_RETRY', '${retry}', true)
+
+				ts.append_message(.cmd_begin, cmd, mtc)
+				d_cmd_2 := time.new_stopwatch()
 				status = os.system(cmd)
+				cmd_duration = d_cmd_2.elapsed()
+				ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
+
 				if status == 0 {
 					unsafe {
 						goto test_passed_system
@@ -473,9 +497,12 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.append_message(.info, '                 starting ${relative_file} ...',
 				mtc)
 		}
+		ts.append_message(.cmd_begin, cmd, mtc)
 		d_cmd := time.new_stopwatch()
 		mut r := os.execute(cmd)
-		cmd_duration := d_cmd.elapsed()
+		mut cmd_duration := d_cmd.elapsed()
+		ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
+
 		if r.exit_code < 0 {
 			ts.benchmark.fail()
 			tls_bench.fail()
@@ -491,7 +518,13 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				ts.append_message(.info, '                 retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...',
 					mtc)
 				os.setenv('VTEST_RETRY', '${retry}', true)
+
+				ts.append_message(.cmd_begin, cmd, mtc)
+				d_cmd_2 := time.new_stopwatch()
 				r = os.execute(cmd)
+				cmd_duration = d_cmd_2.elapsed()
+				ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
+
 				if r.exit_code == 0 {
 					unsafe {
 						goto test_passed_execute
