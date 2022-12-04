@@ -1949,11 +1949,12 @@ fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 			node.call_expr.left.pos())
 	}
 
-	if c.pref.backend.is_js() {
-		return c.table.find_or_register_promise(ret_type)
+	node.typ = if c.pref.backend.is_js() {
+		c.table.find_or_register_promise(ret_type)
 	} else {
-		return c.table.find_or_register_thread(ret_type)
+		c.table.find_or_register_thread(ret_type)
 	}
+	return node.typ
 }
 
 fn (mut c Checker) set_node_expected_arg_types(mut node ast.CallExpr, func &ast.Fn) {

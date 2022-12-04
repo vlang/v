@@ -1,0 +1,6 @@
+fn main() {
+    mut a := chan int{cap: 5}
+    a <- 5
+    b := <-a
+    println(b)
+}

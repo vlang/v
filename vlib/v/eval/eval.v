@@ -7,6 +7,10 @@ import v.ast
 import v.pref
 import v.util
 
+$if interpreter {
+	$compile_error('cannot run the V interpreter with `-interpret` backend')
+}
+
 pub fn new_eval(table &ast.Table, pref &pref.Preferences) Eval {
 	return Eval{
 		table: table
@@ -68,7 +72,11 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 	if func.params.len != args.len && !func.is_variadic {
 		e.error('mismatched parameter length for ${func.name}: got `${args.len}`, expected `${func.params.len}`')
 	}
-
+	if func.name == 'wait' && func.is_method && _args[0] is Thread {
+		e.returning = true
+		e.return_values = [(_args[0] as Thread).val.wait()]
+		return
+	}
 	match func.name {
 		'print_backtrace' {
 			e.print_backtrace()
@@ -106,14 +114,12 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 			// have to do this because of cgen error
 			args__ := if func.is_method { args[1..] } else { args }
 			for i, arg in args__ {
-				e.local_vars[(func.params[i]).name] = Var{
+				e.local_vars[func.params[i].name] = Var{
 					val: arg
 					scope_idx: e.scope_idx
 				}
 			}
 			if func.is_method {
-				print(e.back_trace)
-				println(func.receiver.typ.set_nr_muls(0))
 				e.local_vars[func.receiver.name] = Var{
 					val: args[0]
 					scope_idx: e.scope_idx
@@ -142,19 +148,21 @@ pub fn (mut e Eval) register_symbols(mut files []&ast.File) {
 		e.register_symbol_stmts(file.stmts, mod, file.path)
 	}
 	for mod, const_files in e.future_register_consts {
+		// TODO: fix consts deps
 		e.cur_mod = mod
-
 		for file, fields in const_files {
 			e.cur_file = file
 			for _, field in fields {
-				e.mods[mod][field.name.all_after_last('.')] = e.expr(field.expr, field.typ)
-				if mod == 'os' && field.name.all_after_last('.') == 'args' {
+				field_name_after_last_dot := field.name.all_after_last('.')
+				if mod == 'os' && field_name_after_last_dot == 'args' {
 					mut res := Array{}
 					res.val << e.pref.out_name.all_after_last('/')
 					for arg in e.pref.run_args {
 						res.val << arg
 					}
-					e.mods[mod][field.name.all_after_last('.')] = Object(res)
+					e.mods[mod][field_name_after_last_dot] = Object(res)
+				} else {
+					e.mods[mod][field_name_after_last_dot] = e.expr(field.expr, field.typ)
 				}
 			}
 		}
@@ -169,14 +177,14 @@ pub fn (mut e Eval) register_symbol_stmts(stmts []ast.Stmt, mod string, file str
 
 pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 	match stmt {
+		ast.EmptyStmt {
+			// ignore
+		}
 		ast.Module {
 			// ignore module declarations for now
 		}
 		ast.FnDecl {
-			// this mess because c error
-			x := ast.Stmt(stmt)
-			y := Symbol(x as ast.FnDecl)
-			e.mods[mod][stmt.name.all_after_last('.')] = y
+			e.mods[mod][stmt.name.all_after_last('.')] = Symbol(ast.Stmt(stmt) as ast.FnDecl)
 		}
 		ast.Import {} // already handled by builder, TODO: get `as` name
 		ast.StructDecl {} // these are already parsed by the checker into e.table
@@ -192,36 +200,16 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 			}
 		}
 		ast.ExprStmt {
-			println('expr')
 			x := stmt.expr
 			match x {
 				ast.IfExpr {
-					if !x.is_comptime {
-						e.error('only comptime ifs are allowed in top level')
-					}
-					for i, branch in x.branches {
-						mut do_if := false
-						println('branch:${branch}')
-						match branch.cond {
-							ast.Ident {
-								match (branch.cond as ast.Ident).name {
-									'windows' {
-										do_if = e.pref.os == .windows
-									}
-									else {
-										e.error('unknown compile time if')
-									}
-								}
-								do_if = do_if || x.branches.len == i + 1
-								if do_if {
-									e.register_symbol_stmts(branch.stmts, mod, file)
-									break
-								}
-							}
-							else {
-								e.error('unsupported expression')
-							}
+					if x.is_comptime {
+						if x.comptime_branch_idx > -1 {
+							e.register_symbol_stmts(x.branches[x.comptime_branch_idx].stmts,
+								mod, file)
 						}
+					} else {
+						e.error('only comptime `if`s are allowed in top level')
 					}
 				}
 				else {
@@ -236,8 +224,10 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 }
 
 fn (e Eval) error(msg string) {
-	eprintln('> V interpeter backtrace:')
-	e.print_backtrace()
+	if e.back_trace.len > 0 {
+		eprintln('> V interpeter backtrace:')
+		e.print_backtrace()
+	}
 	util.verror('interpreter', msg)
 }
 

@@ -1226,7 +1226,7 @@ pub mut:
 	idx_in_fn  int = -1 // index in FnDecl.defer_stmts
 }
 
-// `(3+4)`
+// `(3 + 4)`
 pub struct ParExpr {
 pub:
 	pos token.Pos
@@ -1241,6 +1241,7 @@ pub:
 pub mut:
 	call_expr CallExpr
 	is_expr   bool
+	typ       Type
 }
 
 pub struct GotoLabel {

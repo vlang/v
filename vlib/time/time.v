@@ -16,10 +16,10 @@ pub const (
 	seconds_per_hour   = 60 * seconds_per_minute
 	seconds_per_day    = 24 * seconds_per_hour
 	seconds_per_week   = 7 * seconds_per_day
-	days_per_400_years = days_in_year * 400 + 97
-	days_per_100_years = days_in_year * 100 + 24
-	days_per_4_years   = days_in_year * 4 + 1
 	days_in_year       = 365
+	days_per_4_years   = days_in_year * 4 + 1
+	days_per_100_years = days_in_year * 100 + 24
+	days_per_400_years = days_in_year * 400 + 97
 	days_before        = [
 		0,
 		31,

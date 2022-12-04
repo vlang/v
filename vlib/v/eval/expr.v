@@ -6,88 +6,36 @@ import v.util
 import math
 import strconv
 
-pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
+pub fn (mut e Eval) expr(expr ast.Expr, expecting_ ast.Type) Object {
+	expecting := e.table.unaliased_type(expecting_)
 	match expr {
+		ast.ChanInit {
+			return Chan{
+				val: chan Object{cap: if expr.has_cap {
+					cap_value := e.expr(expr.cap_expr, ast.int_type)
+					if cap_value is i64 {
+						int(cap_value)
+					} else {
+						int((cap_value as Int).val)
+					}
+				} else {
+					0
+				}}
+				typ: expr.typ
+			}
+		}
+		ast.GoExpr {
+			res := spawn e.call_expr(expr.call_expr)
+			if expr.is_expr {
+				return Thread{
+					val: res
+					typ: expr.typ
+				}
+			}
+			return empty
+		}
 		ast.CallExpr {
-			if expr.name == 'int' {
-				e.error('methods not supported')
-			}
-			mut args := expr.args.map(e.expr(it.expr, it.typ))
-			if expr.is_method {
-				args.prepend(e.expr(expr.left, expr.receiver_type))
-			}
-			match expr.language {
-				.c {
-					if expr.is_method {
-						e.error('c does not have methods')
-					}
-					match expr.name.all_after('C.') {
-						'read' {
-							return Int{C.read(args[0].int_val(), args[1] as voidptr, args[2].int_val()), 64}
-						}
-						'write' {
-							return Int{C.write(args[0].int_val(), args[1] as voidptr,
-								args[2].int_val()), 64}
-						}
-						'malloc' {
-							return Ptr{
-								val: unsafe { C.malloc(args[0].int_val()) }
-							}
-						}
-						'calloc' {
-							return Ptr{
-								val: unsafe { C.calloc(args[0].int_val(), args[1].int_val()) }
-							}
-						}
-						'getcwd' {
-							unsafe {
-								return Ptr{
-									val: C.getcwd((args[0] as Ptr).val as voidptr, args[1].int_val())
-								}
-							}
-						}
-						'memcpy' {
-							unsafe {
-								return Ptr{
-									val: C.memcpy(args[0] as voidptr, args[1] as voidptr,
-										args[2].int_val())
-								}
-							}
-						}
-						else {
-							e.error('unknown c function: `${expr.name}`')
-						}
-					}
-				}
-				.v {
-					// TODO: Anon functions
-					name := expr.name.all_after_last('.')
-					mod := expr.mod
-					mut func := e.mods[mod][name] or {
-						e.mods['builtin'][name] or { ast.EmptyStmt{} }
-					}
-
-					if func is ast.FnDecl {
-						e.run_func(func as ast.FnDecl, ...args)
-						mut ret_val := if e.return_values.len == 1 {
-							e.return_values[0]
-						} else {
-							e.return_values
-						}
-						if mut ret_val is None {
-							ret_val = e.or_expr(expr.or_block, expr.return_type)
-						}
-						return ret_val
-					}
-					e.error('unknown function: ${mod}.${name} at line ${expr.pos.line_nr}')
-				}
-				// .js {
-				// 	e.error('js is not supported')
-				// }
-				else {
-					e.error('${expr.language} is not supported as a call expression language')
-				}
-			}
+			return e.call_expr(expr)
 		}
 		ast.StringLiteral {
 			// escape the escapes
@@ -102,54 +50,35 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					res += rune(c).str()
 				}
 			}
-
 			return Object(res)
 		}
 		ast.IfExpr {
 			if expr.is_expr {
 				e.error('`if` expressions not supported')
 			}
-
 			if expr.is_comptime {
 				if expr.comptime_branch_idx > -1 {
 					e.stmts(expr.branches[expr.comptime_branch_idx].stmts)
 				}
 				return empty
-			} else {
-				for i, b in expr.branches {
-					mut result := e.expr(b.cond, ast.bool_type_idx)
+			}
+			for i, b in expr.branches {
+				mut result := e.expr(b.cond, ast.bool_type_idx)
 
-					if expr.has_else && i + 1 == expr.branches.len { // else block
+				if expr.has_else && i + 1 == expr.branches.len { // else block
+					e.stmts(b.stmts)
+					break
+				}
+				if result is bool {
+					if result as bool {
 						e.stmts(b.stmts)
 						break
 					}
-					if result is bool {
-						if result as bool {
-							e.stmts(b.stmts)
-							break
-						}
-					} else {
-						e.error('non-bool expression: ${b.cond}')
-					}
+				} else {
+					e.error('non-bool expression: ${b.cond}')
 				}
-				return empty
 			}
-		}
-		ast.InfixExpr {
-			left := e.expr(expr.left, expr.left_type)
-			if expecting == ast.bool_type_idx && expr.op in [.logical_or, .and] {
-				left_b := left as bool
-				if expr.op == .logical_or && left_b {
-					return true
-				}
-				right_b := e.expr(expr.right, expr.right_type) as bool
-				if expr.op == .logical_or && right_b {
-					return true
-				}
-				return left_b && right_b
-			}
-			right := e.expr(expr.right, expr.right_type)
-			return e.infix_expr(left, right, expr.op, expecting)
+			return empty
 		}
 		ast.IntegerLiteral {
 			// return u64(strconv.parse_uint(expr.val, 0, 64)
@@ -166,7 +95,6 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		ast.Ident {
 			match expr.kind {
 				.variable {
-					// println(e.local_vars[expr.name].val.type_name())
 					return e.local_vars[expr.name].val
 				}
 				.constant {
@@ -183,24 +111,25 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		}
 		ast.CastExpr {
 			x := e.expr(expr.expr, expr.expr_type)
-			if expr.typ in ast.signed_integer_type_idxs {
+			expr_unaliased_typ := e.table.unaliased_type(expr.typ)
+			if expr_unaliased_typ in ast.signed_integer_type_idxs {
 				match x {
 					Uint {
 						return Int{
 							val: i64(x.val)
-							size: i8(e.type_to_size(expr.typ))
+							size: i8(e.type_to_size(expr_unaliased_typ))
 						}
 					}
 					Int {
 						return Int{
 							val: i64(x.val)
-							size: i8(e.type_to_size(expr.typ))
+							size: i8(e.type_to_size(expr_unaliased_typ))
 						}
 					}
 					Float {
 						return Int{
 							val: i64(x.val)
-							size: i8(e.type_to_size(expr.typ))
+							size: i8(e.type_to_size(expr_unaliased_typ))
 						}
 					}
 					i64 {
@@ -233,30 +162,30 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						e.error('unknown cast: ${e.table.sym(expr.expr_type).str()} to ${e.table.sym(expr.typ).str()}')
 					}
 				}
-			} else if expr.typ in ast.unsigned_integer_type_idxs {
+			} else if expr_unaliased_typ in ast.unsigned_integer_type_idxs {
 				match x {
 					Uint {
 						return Uint{
 							val: u64(x.val)
-							size: i8(e.type_to_size(expr.typ))
+							size: i8(e.type_to_size(expr_unaliased_typ))
 						}
 					}
 					Int {
 						return Uint{
 							val: u64(x.val)
-							size: i8(e.type_to_size(expr.typ))
+							size: i8(e.type_to_size(expr_unaliased_typ))
 						}
 					}
 					Float {
 						return Uint{
 							val: u64(x.val)
-							size: i8(e.type_to_size(expr.typ))
+							size: i8(e.type_to_size(expr_unaliased_typ))
 						}
 					}
 					i64 {
 						return Uint{
 							val: u64(x)
-							size: i8(e.type_to_size(expr.typ))
+							size: i8(e.type_to_size(expr_unaliased_typ))
 						}
 					}
 					f64 {
@@ -276,39 +205,39 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						e.error('unknown cast: ${e.table.sym(expr.expr_type).str()} to ${e.table.sym(expr.typ).str()}')
 					}
 				}
-			} else if expr.typ in ast.float_type_idxs {
+			} else if expr_unaliased_typ in ast.float_type_idxs {
 				match x {
 					Uint {
 						return Float{
 							val: f64(x.val)
-							size: i8(e.type_to_size(expr.typ))
+							size: i8(e.type_to_size(expr_unaliased_typ))
 						}
 					}
 					Int {
 						return Float{
 							val: f64(x.val)
-							size: i8(e.type_to_size(expr.typ))
+							size: i8(e.type_to_size(expr_unaliased_typ))
 						}
 					}
 					Float {
 						return Float{
 							val: f64(x.val)
-							size: i8(e.type_to_size(expr.typ))
+							size: i8(e.type_to_size(expr_unaliased_typ))
 						}
 					}
 					f64 {
 						return Float{
 							val: x
-							size: i8(e.type_to_size(expr.typ))
+							size: i8(e.type_to_size(expr_unaliased_typ))
 						}
 					}
 					else {
 						e.error('unknown cast: ${e.table.sym(expr.expr_type).str()} to ${e.table.sym(expr.typ).str()}')
 					}
 				}
-			} else if expr.typ in ast.pointer_type_idxs {
+			} else if expr_unaliased_typ in ast.pointer_type_idxs {
 				y := *(x as Ptr).val
-				if expr.typ == ast.byteptr_type_idx {
+				if expr_unaliased_typ == ast.byteptr_type_idx {
 					match y {
 						char, voidptr {
 							unsafe {
@@ -321,7 +250,8 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							e.error('unknown cast: ${e.table.sym(expr.expr_type).str()} to ${e.table.sym(expr.typ).str()}')
 						}
 					}
-				} else if expr.typ == ast.voidptr_type_idx || expr.typ == ast.nil_type_idx {
+				} else if expr_unaliased_typ == ast.voidptr_type_idx
+					|| expr_unaliased_typ == ast.nil_type_idx {
 					match y {
 						char, Int {
 							unsafe {
@@ -332,7 +262,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							e.error('unknown cast: ${e.table.sym(expr.expr_type).str()} to ${e.table.sym(expr.typ).str()}')
 						}
 					}
-				} else if expr.typ == ast.charptr_type_idx {
+				} else if expr_unaliased_typ == ast.charptr_type_idx {
 					match y {
 						voidptr, Int {
 							unsafe {
@@ -346,7 +276,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						}
 					}
 				}
-			} else if e.table.sym(expr.typ).kind in [.interface_, .sum_type] {
+			} else if e.table.sym(expr_unaliased_typ).kind in [.interface_, .sum_type] {
 				if e.pref.is_verbose {
 					util.show_compiler_message('warning:',
 						pos: expr.pos
@@ -396,12 +326,12 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			if expr.has_len || expr.has_cap || expr.has_default {
 				if expr.has_len && !expr.has_cap && expr.has_default {
 					return Array{
-						val: []Object{len: int((e.expr(expr.len_expr, 7) as Int).val), init: e.expr(expr.default_expr,
+						val: []Object{len: int((e.expr(expr.len_expr, ast.usize_type) as Int).val), init: e.expr(expr.default_expr,
 							expr.elem_type)}
 					}
 				} else if !expr.has_len && expr.has_cap && !expr.has_default {
 					return Array{
-						val: []Object{cap: int((e.expr(expr.cap_expr, 7) as Int).val)}
+						val: []Object{cap: int((e.expr(expr.cap_expr, ast.usize_type) as Int).val)}
 					}
 				} else if !expr.has_len && !expr.has_cap && !expr.has_default {
 					return Array{
@@ -417,7 +347,6 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			mut res := Array{
 				val: []Object{cap: expr.exprs.len}
 			}
-
 			for i, exp in expr.exprs {
 				res.val << e.expr(exp, expr.expr_types[i])
 			}
@@ -464,20 +393,43 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			return e.expr(expr.expr, expecting)
 		}
 		ast.PrefixExpr {
+			value := e.expr(expr.right, expr.right_type)
 			match expr.op {
 				.amp {
-					val := e.expr(expr.right, expr.right_type)
 					return Ptr{
-						val: &val
+						val: &value
 					}
 				}
 				.not {
-					return !(e.expr(expr.right, expr.right_type) as bool)
+					return !(value as bool)
+				}
+				.arrow {
+					return <-(value as Chan).val
 				}
 				else {
 					e.error('unhandled prefix expression ${expr.op}')
 				}
 			}
+		}
+		ast.InfixExpr {
+			left := e.expr(expr.left, expr.left_type)
+			if expecting == ast.bool_type_idx && expr.op in [.logical_or, .and] {
+				left_b := left as bool
+				if expr.op == .logical_or && left_b {
+					return true
+				}
+				right_b := e.expr(expr.right, expr.right_type) as bool
+				if expr.op == .logical_or && right_b {
+					return true
+				}
+				return left_b && right_b
+			}
+			right := e.expr(expr.right, expr.right_type)
+			if expr.op == .arrow {
+				(left as Chan).val <- right
+				return empty
+			}
+			return e.infix_expr(left, right, expr.op, expecting)
 		}
 		ast.PostfixExpr {
 			match expr.op {
@@ -505,12 +457,88 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		ast.AtExpr {
 			return expr.val
 		}
-		ast.AnonFn, ast.ArrayDecompose, ast.AsCast, ast.Assoc, ast.CTempVar, ast.ChanInit,
-		ast.Comment, ast.ComptimeCall, ast.ComptimeSelector, ast.ComptimeType, ast.ConcatExpr,
-		ast.EmptyExpr, ast.EnumVal, ast.GoExpr, ast.IfGuardExpr, ast.IndexExpr, ast.IsRefType,
-		ast.Likely, ast.LockExpr, ast.MapInit, ast.MatchExpr, ast.NodeError, ast.OffsetOf,
-		ast.RangeExpr, ast.SelectExpr, ast.SqlExpr, ast.TypeNode, ast.TypeOf {
+		ast.AnonFn, ast.ArrayDecompose, ast.AsCast, ast.Assoc, ast.CTempVar, ast.Comment,
+		ast.ComptimeCall, ast.ComptimeSelector, ast.ComptimeType, ast.ConcatExpr, ast.EmptyExpr,
+		ast.EnumVal, ast.IfGuardExpr, ast.IndexExpr, ast.IsRefType, ast.Likely, ast.LockExpr,
+		ast.MapInit, ast.MatchExpr, ast.NodeError, ast.OffsetOf, ast.RangeExpr, ast.SelectExpr,
+		ast.SqlExpr, ast.TypeNode, ast.TypeOf {
 			e.error('unhandled expression ${typeof(expr).name}')
+		}
+	}
+	return empty
+}
+
+fn (mut e Eval) call_expr(expr ast.CallExpr) Object {
+	mut args := expr.args.map(e.expr(it.expr, it.typ))
+	if expr.is_method {
+		args.prepend(e.expr(expr.left, expr.receiver_type))
+	}
+	match expr.language {
+		.c {
+			if expr.is_method {
+				e.error('C does not have methods')
+			}
+			match expr.name.all_after('C.') {
+				'read' {
+					return Int{C.read(args[0].int_val(), args[1] as voidptr, args[2].int_val()), 64}
+				}
+				'write' {
+					return Int{C.write(args[0].int_val(), args[1] as voidptr, args[2].int_val()), 64}
+				}
+				'malloc' {
+					return Ptr{
+						val: unsafe { C.malloc(args[0].int_val()) }
+					}
+				}
+				'calloc' {
+					return Ptr{
+						val: unsafe { C.calloc(args[0].int_val(), args[1].int_val()) }
+					}
+				}
+				'getcwd' {
+					unsafe {
+						return Ptr{
+							val: C.getcwd((args[0] as Ptr).val as voidptr, args[1].int_val())
+						}
+					}
+				}
+				'memcpy' {
+					unsafe {
+						return Ptr{
+							val: C.memcpy(args[0] as voidptr, args[1] as voidptr, args[2].int_val())
+						}
+					}
+				}
+				else {
+					e.error('unknown c function: `${expr.name}`')
+				}
+			}
+		}
+		.v {
+			// TODO: Anon functions
+			name := expr.name.all_after_last('.')
+			mod := expr.mod
+			mut func := e.mods[mod][name] or { e.mods['builtin'][name] or { ast.EmptyStmt{} } }
+
+			if func is ast.FnDecl {
+				e.run_func(func as ast.FnDecl, ...args)
+				mut ret_val := if e.return_values.len == 1 {
+					e.return_values[0]
+				} else {
+					e.return_values
+				}
+				if mut ret_val is None {
+					ret_val = e.or_expr(expr.or_block, expr.return_type)
+				}
+				return ret_val
+			}
+			e.error('unknown function: ${mod}.${name} at line ${expr.pos.line_nr}')
+		}
+		// .js {
+		// 	e.error('js is not supported')
+		// }
+		else {
+			e.error('${expr.language} is not supported as a call expression language')
 		}
 	}
 	return empty
@@ -569,22 +597,5 @@ fn (e Eval) type_to_size(typ ast.Type) u64 {
 }
 
 fn (e Eval) get_escape(r rune) rune {
-	res := match r {
-		`\\` {
-			`\\`
-		}
-		`n` {
-			`\n`
-		}
-		`0` {
-			`\0`
-		}
-		else {
-			`e`
-		}
-	}
-	if res == `e` {
-		e.error('unknown escape: `${r}`')
-	}
-	return res
+	return u8(r).str_escaped().runes()[0]
 }
