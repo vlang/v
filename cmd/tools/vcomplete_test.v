@@ -76,10 +76,16 @@ const test_cases = [
 	},
 	CompleteTestCase{
 		// Tests with one sub-folder in test root
-		structure: [os.join_path('examples', 'ex1'), os.join_path('examples', 'ex2'),
-			os.join_path('examples', 'ex2', 'ex2_0.v'), os.join_path('examples', 'ex2',
-				'ex2_1.v'),
-			os.join_path('examples', 'ex3'), os.join_path('examples', 'ex3', 'ex3.v')]
+		// vfmt off
+		structure: [
+			os.join_path('examples', 'ex1'), // Empty dir
+			os.join_path('examples', 'ex2'), // Two files
+			os.join_path('examples', 'ex2', 'ex2_0.v'),
+			os.join_path('examples', 'ex2', 'ex2_1.v'),
+			os.join_path('examples', 'ex3'), // One file
+			os.join_path('examples', 'ex3', 'ex3.v')
+		]
+		// vfmt on
 		completes: {
 			'v run e':                  ['examples/']
 			'v run':                    ['examples/']
@@ -104,11 +110,20 @@ const test_cases = [
 	},
 	CompleteTestCase{
 		// Tests with two sub-folder in test root
-		structure: [os.join_path('sub0', 'ex1'), os.join_path('sub0', 'ex2'),
-			os.join_path('sub0', 'ex2', 'ex2_0.v'), os.join_path('sub0', 'ex2', 'ex2_1.v'),
-			os.join_path('sub0', 'ex3'), os.join_path('sub0', 'ex3', 'ex3.v'),
-			os.join_path('sub1', 'vex1'), os.join_path('sub1', 'vex2'),
-			os.join_path('sub1', 'vex3'), os.join_path('sub1', 'vex3', 'vex3.v')]
+		// vfmt off
+		structure: [
+			os.join_path('sub0', 'ex1'), // Empty dir
+			os.join_path('sub0', 'ex2'), // Two files
+			os.join_path('sub0', 'ex2', 'ex2_0.v'),
+			os.join_path('sub0', 'ex2', 'ex2_1.v'),
+			os.join_path('sub0', 'ex3'), // One file
+			os.join_path('sub0', 'ex3', 'ex3.v'),
+			os.join_path('sub1', 'vex1'),
+			os.join_path('sub1', 'vex2'),
+			os.join_path('sub1', 'vex3'),
+			os.join_path('sub1', 'vex3', 'vex3.v')
+		]
+		// vfmt on
 		completes: {
 			// sub0
 			'v run ./':             ['sub0/', 'sub1/']
