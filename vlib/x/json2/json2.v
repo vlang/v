@@ -19,8 +19,7 @@ pub fn fast_raw_decode(src string) !Any {
 
 // decode is a generic function that decodes a JSON string into the target type.
 pub fn decode[T](src string) !T {
-	mut res := map[string]Any{}
-	res = raw_decode(src)!.as_map()
+	res := raw_decode(src)!.as_map()
 	mut typ := T{}
 	$for field in T.fields {
 		$if field.typ is u8 {
