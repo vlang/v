@@ -19,10 +19,45 @@ pub fn fast_raw_decode(src string) !Any {
 
 // decode is a generic function that decodes a JSON string into the target type.
 pub fn decode[T](src string) !T {
-	res := raw_decode(src)!
-	mut typ := T{}
-	typ.from_json(res)
-	return typ
+	mut res := map[string]Any{}
+	res = raw_decode(src)!.as_map()
+	mut x := T{}
+	$for field in T.fields {
+		$if field.typ is u8 {
+			x.$(field.name) = u8(res[field.name]!.u64())
+		} $else $if field.typ is u16 {
+			x.$(field.name) = u16(res[field.name]!.u64())
+		} $else $if field.typ is u32 {
+			x.$(field.name) = u32(res[field.name]!.u64())
+		} $else $if field.typ is u64 {
+			x.$(field.name) = res[field.name]!.u64()
+		} $else $if field.typ is int {
+			x.$(field.name) = res[field.name]!.int()
+		} $else $if field.typ is i8 {
+			x.$(field.name) = i8(res[field.name]!.i64())
+		} $else $if field.typ is i16 {
+			x.$(field.name) = i16(res[field.name]!.i64())
+		} $else $if field.typ is i32 {
+			// x.$(field.name) = res[field.name]!.i32()
+		} $else $if field.typ is i64 {
+			x.$(field.name) = res[field.name]!.i64()
+		} $else $if field.typ is u64 {
+			x.$(field.name) = res[field.name]!.u64()
+		} $else $if field.typ is f32 {
+			x.$(field.name) = res[field.name]!.f32()
+		} $else $if field.typ is f64 {
+			x.$(field.name) = res[field.name]!.f64()
+		} $else $if field.typ is bool {
+			//! REVIEW
+			x.$(field.name) = res[field.name]!.bool()
+		} $else $if field.typ is string {
+			x.$(field.name) = res[field.name]!.str()
+		} $else {
+			//! TODO
+			dump("this type can't be decoded. Try create a from_json(any json.Any) method")
+		}
+	}
+	return x
 }
 
 // encode is a generic function that encodes a type into a JSON string.
