@@ -6,13 +6,26 @@ module builder
 import os
 import v.pref
 
+pub fn (mut v Builder) quote_compiler_name(name string) string {
+	// some compiler frontends on windows, like emcc, are a .bat file on windows.
+	// Quoting the .bat file name here leads to problems with them, when they internally call python scripts for some reason.
+	// Just emcc without quotes here does work, but:
+	// |"emcc" -v| produces: python.exe: can't open file 'D:\programs\v\emcc.py': [Errno 2] No such file or directory
+	if name.contains('/') || name.contains('\\') {
+		return os.quoted_path(name)
+	}
+	return name
+}
+
 pub fn (mut v Builder) find_win_cc() ! {
 	$if !windows {
 		return
 	}
-	ccompiler_version_res := os.execute('${os.quoted_path(v.pref.ccompiler)} -v')
+	cmd_version := '${v.quote_compiler_name(v.pref.ccompiler)} -v'
+	ccompiler_version_res := os.execute(cmd_version)
 	if ccompiler_version_res.exit_code != 0 {
 		if v.pref.is_verbose {
+			println('failed command: `${cmd_version}`')
 			println('${v.pref.ccompiler} not found, looking for msvc...')
 		}
 		find_msvc(v.pref.m64) or {
