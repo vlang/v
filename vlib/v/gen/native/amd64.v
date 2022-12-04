@@ -2989,7 +2989,7 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	// The first parameter is an address of returned struct if size > 16
 	ts := g.table.sym(node.return_type)
 	return_size := g.get_type_size(node.return_type)
-	if ts.kind == .struct_ {
+	if ts.kind in [.struct_, .multi_return] {
 		if return_size > 16 {
 			params << ast.Param{
 				name: '_return_val_addr'
