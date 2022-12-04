@@ -62,6 +62,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	left_pos := node.left.pos()
 	right_pos := node.right.pos()
 	left_right_pos := left_pos.extend(right_pos)
+	if left_sym.kind == .none_ && right_sym.kind == .none_ {
+		c.invalid_operator_error(node.op, left_type, right_type, left_right_pos)
+	}
 	if left_type.is_any_kind_of_pointer()
 		&& node.op in [.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe] {
 		if !c.pref.translated && ((right_type.is_any_kind_of_pointer() && node.op != .minus)
