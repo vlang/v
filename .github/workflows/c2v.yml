@@ -65,6 +65,7 @@ jobs:
       VFLAGS: -cc tcc
       DISPLAY: :99
       LIBGL_ALWAYS_SOFTWARE: true
+      VTMP: /tmp
     steps:
       - uses: actions/checkout@v2
       - name: Build V
