@@ -198,12 +198,18 @@ fn run_individual_test(case CompleteTestCase) ! {
 				complete_command += ' powershell'
 			}
 		}
-		complete_command += ' ${complete}'
+
+		mut normalized_complete := complete
+		if case.shell == .powershell {
+			normalized_complete = normalized_complete.replace('/', '\\')
+		}
+		complete_command += ' ${normalized_complete}'
 		res := os.execute('${complete_command}')
 		mut lines := res.output.split('\n')
 		for mut line in lines {
 			if case.shell == .powershell {
 				line = line.replace('\r', '')
+				line = line.all_after('.\\')
 			}
 			line = line.trim_string_left(pre_strip).trim_string_right(post_strip)
 		}
@@ -212,7 +218,9 @@ fn run_individual_test(case CompleteTestCase) ! {
 		mut sorted_expected := expected.clone()
 		if case.shell == .powershell {
 			sorted_expected = sorted_expected.map(fn (path string) string {
-				return path.replace('/', '\\')
+				mut normalized_path := path.replace('/', '\\')
+				normalized_path = normalized_path.all_after('.\\')
+				return normalized_path
 			})
 		}
 		sorted_expected.sort()
