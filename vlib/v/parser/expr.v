@@ -206,12 +206,12 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		.key_typeof {
 			spos := p.tok.pos()
 			p.next()
-			p.check(.lpar)
 			if p.tok.kind == .lsbr {
 				p.check(.lsbr)
 				type_pos := p.tok.pos()
 				typ := p.parse_type()
 				p.check(.rsbr)
+				p.check(.lpar)
 				p.check(.rpar)
 				node = ast.TypeOf{
 					is_type: true
@@ -219,6 +219,7 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					pos: type_pos.extend(p.tok.pos())
 				}
 			} else {
+				p.check(.lpar)
 				expr := p.expr(0)
 				p.check(.rpar)
 				if p.tok.kind != .dot && p.tok.line_nr == p.prev_tok.line_nr {

@@ -488,7 +488,7 @@ pub fn (x Expr) str() string {
 		}
 		TypeOf {
 			if x.is_type {
-				return 'typeof(${global_table.type_to_str(x.typ)})'
+				return 'typeof[${global_table.type_to_str(x.typ)}]()'
 			}
 			return 'typeof(${x.expr.str()})'
 		}

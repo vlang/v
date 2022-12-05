@@ -2729,15 +2729,16 @@ pub fn (mut f Fmt) type_expr(node ast.TypeNode) {
 }
 
 pub fn (mut f Fmt) type_of(node ast.TypeOf) {
-	f.write('typeof(')
+	f.write('typeof')
 	if node.is_type {
 		f.write('[')
 		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
-		f.write(']')
+		f.write(']()')
 	} else {
+		f.write('(')
 		f.expr(node.expr)
+		f.write(')')
 	}
-	f.write(')')
 }
 
 pub fn (mut f Fmt) unsafe_expr(node ast.UnsafeExpr) {
