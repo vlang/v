@@ -211,7 +211,7 @@ fn run_individual_test(case CompleteTestCase) ! {
 		lines.sort()
 		mut sorted_expected := expected.clone()
 		if case.shell == .powershell {
-			sorted_expected.map(fn (path string) string {
+			sorted_expected = sorted_expected.map(fn (path string) string {
 				return path.replace('/', '\\')
 			})
 		}
