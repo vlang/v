@@ -3,12 +3,12 @@ struct Foo {
 	name string
 }
 
-fn test<T>() {
+fn test[T]() {
 	mut t := T{}
 	name := 'test'
 	t.$(name) = '3'
 }
 
 fn main() {
-	test<Foo>()
+	test[Foo]()
 }

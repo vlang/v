@@ -1,4 +1,4 @@
-struct Dummy<T> {
+struct Dummy[T] {
 	arbitrary_field T = T{}
 }
 

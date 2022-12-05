@@ -1,4 +1,4 @@
-fn test<T, B> (a T, b T, c B, d B) {
+fn test[T, B] (a T, b T, c B, d B) {
     println("$a $b $c $d")
 }
 

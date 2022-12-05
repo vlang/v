@@ -3,5 +3,5 @@ fn main() {
 		return value
 	}
 
-	println(fun<int>(100))
+	println(fun[int](100))
 } 
