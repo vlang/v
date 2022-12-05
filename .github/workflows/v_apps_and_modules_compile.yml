@@ -116,6 +116,18 @@ jobs:
 
       - name: Build VSL
         run: |
+          echo "Installing dependencies"
+          sudo apt-get install --quiet -y --no-install-recommends \
+            gfortran \
+            libxi-dev \
+            libxcursor-dev \
+            mesa-common-dev \
+            liblapacke-dev \
+            libopenblas-dev \
+            libgc-dev \
+            libgl1-mesa-dev \
+            libopenmpi-dev \
+            opencl-headers
           echo "Install VSL"
           v install vsl
           echo "Execute Tests using Pure V Backend"
