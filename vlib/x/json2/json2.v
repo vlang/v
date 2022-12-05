@@ -41,8 +41,6 @@ pub fn decode[T](src string) !T {
 			// typ.$(field.name) = res[field.name]!.i32()
 		} $else $if field.typ is i64 {
 			typ.$(field.name) = res[field.name]!.i64()
-		} $else $if field.typ is u64 {
-			typ.$(field.name) = res[field.name]!.u64()
 		} $else $if field.typ is f32 {
 			typ.$(field.name) = res[field.name]!.f32()
 		} $else $if field.typ is f64 {
@@ -76,45 +74,105 @@ pub fn encode[T](val T) string {
 // int uses `Any` as an integer.
 pub fn (f Any) int() int {
 	match f {
-		int { return f }
-		i8, i16, i64, u8, u16, u32, u64, f32, f64, bool { return int(f) }
-		else { return 0 }
+		int {
+			return f
+		}
+		i8, i16, i64, u8, u16, u32, u64, f32, f64, bool {
+			return int(f)
+		}
+		string {
+			if f == 'false' || f == 'true' {
+				return int(f.bool())
+			}
+			return f.int()
+		}
+		else {
+			return 0
+		}
 	}
 }
 
 // i64 uses `Any` as a 64-bit integer.
 pub fn (f Any) i64() i64 {
 	match f {
-		i64 { return f }
-		i8, i16, int, u8, u16, u32, u64, f32, f64, bool { return i64(f) }
-		else { return 0 }
+		i64 {
+			return f
+		}
+		i8, i16, int, u8, u16, u32, u64, f32, f64, bool {
+			return i64(f)
+		}
+		string {
+			if f == 'false' || f == 'true' {
+				return i64(f.bool())
+			}
+			return f.i64()
+		}
+		else {
+			return 0
+		}
 	}
 }
 
 // u64 uses `Any` as a 64-bit unsigned integer.
 pub fn (f Any) u64() u64 {
 	match f {
-		u64 { return f }
-		u8, u16, u32, i8, i16, int, i64, f32, f64, bool { return u64(f) }
-		else { return 0 }
+		u64 {
+			return f
+		}
+		u8, u16, u32, i8, i16, int, i64, f32, f64, bool {
+			return u64(f)
+		}
+		string {
+			if f == 'false' || f == 'true' {
+				return u64(f.bool())
+			}
+			return f.u64()
+		}
+		else {
+			return 0
+		}
 	}
 }
 
 // f32 uses `Any` as a 32-bit float.
 pub fn (f Any) f32() f32 {
 	match f {
-		f32 { return f }
-		bool, i8, i16, int, i64, u8, u16, u32, u64, f64 { return f32(f) }
-		else { return 0.0 }
+		f32 {
+			return f
+		}
+		bool, i8, i16, int, i64, u8, u16, u32, u64, f64 {
+			return f32(f)
+		}
+		string {
+			if f == 'false' || f == 'true' {
+				return f32(f.bool())
+			}
+			return f.f32()
+		}
+		else {
+			return 0.0
+		}
 	}
 }
 
 // f64 uses `Any` as a 64-bit float.
 pub fn (f Any) f64() f64 {
 	match f {
-		f64 { return f }
-		i8, i16, int, i64, u8, u16, u32, u64, f32 { return f64(f) }
-		else { return 0.0 }
+		f64 {
+			return f
+		}
+		i8, i16, int, i64, u8, u16, u32, u64, f32 {
+			return f64(f)
+		}
+		string {
+			if f == 'false' || f == 'true' {
+				return f64(f.bool())
+			}
+			return f.f64()
+		}
+		else {
+			return 0.0
+		}
 	}
 }
 

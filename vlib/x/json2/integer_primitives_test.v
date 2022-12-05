@@ -15,10 +15,8 @@ mut:
 fn test_all_primitive_integer_types_are_encodable_and_decodable() {
 	f := IntegerValues{1, 2, 3, 4, -1, -2, -3, -4}
 	s := json2.encode[IntegerValues](f)
-	dump(s)
 	assert s == '{"ux8":1,"ux16":2,"ux32":3,"ux64":4,"sx8":-1,"sx16":-2,"sx32":-3,"sx64":-4}'
 	x := json2.decode[IntegerValues](s)!
-	dump(x)
 	assert x == f
 	println('done')
 }

@@ -94,21 +94,34 @@ fn test_character_unescape() {
 	assert lines['slash'] or { 0 }.str() == '/dev/null'
 }
 
-struct BoolTest {
+struct MultTypeTest[T] {
 mut:
-	active bool
+	val T
 }
 
+// NOTE - This can substitute a lot of others tests
 fn test_bool_decode() {
-	assert json.decode[BoolTest]('{"active": ""}')!.active == false
-	assert json.decode[BoolTest]('{"active": "0"}')!.active == false
-	assert json.decode[BoolTest]('{"active": "1"}')!.active == true
-	assert json.decode[BoolTest]('{"active": "2"}')!.active == true
-	assert json.decode[BoolTest]('{"active": 0}')!.active == false
-	assert json.decode[BoolTest]('{"active": 1}')!.active == true
-	assert json.decode[BoolTest]('{"active": 2}')!.active == true
-	assert json.decode[BoolTest]('{"active": "true"}')!.active == true
-	assert json.decode[BoolTest]('{"active": "false"}')!.active == false
-	assert json.decode[BoolTest]('{"active": true}')!.active == true
-	assert json.decode[BoolTest]('{"active": false}')!.active == false
+	assert json.decode[MultTypeTest[bool]]('{"val": ""}')!.val == false
+	assert json.decode[MultTypeTest[bool]]('{"val": "0"}')!.val == false
+	assert json.decode[MultTypeTest[bool]]('{"val": "1"}')!.val == true
+	assert json.decode[MultTypeTest[bool]]('{"val": "2"}')!.val == true
+	assert json.decode[MultTypeTest[bool]]('{"val": 0}')!.val == false
+	assert json.decode[MultTypeTest[bool]]('{"val": 1}')!.val == true
+	assert json.decode[MultTypeTest[bool]]('{"val": 2}')!.val == true
+	assert json.decode[MultTypeTest[bool]]('{"val": "true"}')!.val == true
+	assert json.decode[MultTypeTest[bool]]('{"val": "false"}')!.val == false
+	assert json.decode[MultTypeTest[bool]]('{"val": true}')!.val == true
+	assert json.decode[MultTypeTest[bool]]('{"val": false}')!.val == false
+
+	assert json.decode[MultTypeTest[int]]('{"val": ""}')!.val == 0
+	assert json.decode[MultTypeTest[int]]('{"val": "0"}')!.val == 0
+	assert json.decode[MultTypeTest[int]]('{"val": "1"}')!.val == 1
+	assert json.decode[MultTypeTest[int]]('{"val": "2"}')!.val == 2
+	assert json.decode[MultTypeTest[int]]('{"val": 0}')!.val == 0
+	assert json.decode[MultTypeTest[int]]('{"val": 1}')!.val == 1
+	assert json.decode[MultTypeTest[int]]('{"val": 2}')!.val == 2
+	assert json.decode[MultTypeTest[int]]('{"val": "true"}')!.val == 1
+	assert json.decode[MultTypeTest[int]]('{"val": "false"}')!.val == 0
+	assert json.decode[MultTypeTest[int]]('{"val": true}')!.val == 1
+	assert json.decode[MultTypeTest[int]]('{"val": false}')!.val == 0
 }
