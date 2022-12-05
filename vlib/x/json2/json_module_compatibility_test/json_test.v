@@ -1,5 +1,5 @@
 import x.json2 as json
-import time
+// import time
 
 enum JobTitle {
 	manager
@@ -9,11 +9,11 @@ enum JobTitle {
 
 struct Employee {
 pub mut:
-	name         string
-	age          int
-	salary       f32
-	title        JobTitle
-	sub_employee SubEmployee
+	name   string
+	age    int
+	salary f32
+	// title        JobTitle //! FIXME - decode
+	// sub_employee SubEmployee //! FIXME - decode
 }
 
 struct SubEmployee {
@@ -21,37 +21,30 @@ pub mut:
 	name   string
 	age    int
 	salary f32
-	title  JobTitle
+	// title  JobTitle //! FIXME - decode
 }
 
 fn test_simple() {
 	sub_employee := SubEmployee{
 		name: 'João'
 	}
-	x := Employee{'Peter', 28, 95000.5, .worker, sub_employee}
+	x := Employee{'Peter', 28, 95000.5}
 	s := json.encode[Employee](x)
-	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2,"sub_employee":{"name":"João","age":0,"salary":0.0,"title":0}}'
-	// y := json.decode<Employee>(s) or {
-	// 	println(err)
-	// 	assert false
-	// 	return
-	// }
-	// assert y.name == 'Peter'
-	// assert y.age == 28
-	// assert y.salary == 95000.5
-	// assert y.title == .worker
-	// x := Employee{'Peter', 28, 95000.5, .worker}
-	// s := json.encode<Employee>(x)
-	// assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
-	// // y := json.decode<Employee>(s) or {
-	// // 	println(err)
-	// // 	assert false
-	// // 	return
-	// // }
-	// // assert y.name == 'Peter'
-	// // assert y.age == 28
-	// // assert y.salary == 95000.5
-	// // assert y.title == .worker
+	assert s == '{"name":"Peter","age":28,"salary":95000.5}'
+
+	y := json.decode[Employee](s) or {
+		println(err)
+		assert false
+		return
+	}
+	assert y.name == 'Peter'
+	assert y.age == 28
+	assert y.salary == 95000.5
+	// assert y.title == .worker //! FIXME
+	// assert y.sub_employee.name == 'Peter'
+	// assert y.sub_employee.age == 0
+	// assert y.sub_employee.salary == 0.0
+	// assert y.sub_employee.title == .worker //! FIXME
 }
 
 // const currency_id = 'cconst'
@@ -100,11 +93,11 @@ fn test_encode_user() {
 	assert usr.foo() == expected
 }
 
-// struct Color {
-// pub mut:
-// 	space string
-// 	point string [raw]
-// }
+struct Color {
+pub mut:
+	space string
+	point string [raw]
+}
 
 fn test_encode_map() {
 	expected := '{"one":1,"two":2,"three":3,"four":4}'
@@ -146,4 +139,42 @@ struct StByteArray {
 
 fn test_byte_array() {
 	assert json.encode(StByteArray{ ba: [byte(1), 2, 3, 4, 5] }) == '{"ba":[1,2,3,4,5]}'
+}
+
+struct Bar {
+	x string
+}
+
+fn bar[T](payload string) !Bar { // ?T doesn't work currently
+	result := json.decode[T](payload)!
+	return result
+}
+
+fn test_generic() {
+	result := bar[Bar]('{"x":"test"}') or { Bar{} }
+	assert result.x == 'test'
+}
+
+fn test_raw_json_field() {
+	color := json.decode[Color]('{"space": "YCbCr", "point": {"Y": 123}}') or {
+		assert false
+		Color{}
+	}
+	assert color.point == '{"Y":123}'
+	assert color.space == 'YCbCr'
+}
+
+struct Foo[T] {
+pub:
+	name string
+	data T
+}
+
+fn test_generic_struct() {
+	foo_int := Foo[int]{'bar', 12}
+	foo_enc := json.encode(foo_int)
+	assert foo_enc == '{"name":"bar","data":12}'
+	foo_dec := json.decode[Foo[int]](foo_enc)!
+	assert foo_dec.name == 'bar'
+	assert foo_dec.data == 12
 }

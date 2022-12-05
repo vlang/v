@@ -7,7 +7,7 @@ enum JobTitle {
 	worker
 }
 
-struct Employee {
+pub struct Employee {
 pub mut:
 	name   string
 	age    int
@@ -17,7 +17,7 @@ pub mut:
 
 const currency_id = 'cconst'
 
-struct Price {
+pub struct Price {
 	net         f64
 	currency_id string [json: currencyId] = currency_id
 }
@@ -55,7 +55,7 @@ struct Item {
 }
 
 enum Animal {
-	dog Will be encoded as `0`
+	dog // Will be encoded as `0`
 	cat
 }
 
@@ -94,16 +94,6 @@ fn test_encode_decode_sumtype() {
 	assert (game.other[4] as time.Time).unix_time() == (dec.other[4] as time.Time).unix_time()
 }
 
-struct Bar {
-	x string
-}
-
-//! BUGFIX - .from_json(res)
-fn test_generic() {
-	result := bar<Bar>('{"x":"test"}') or { Bar{} }
-	assert result.x == 'test'
-}
-
 struct User2 {
 mut:
 	age      int
@@ -111,7 +101,7 @@ mut:
 	reg_date time.Time
 }
 
-User struct needs to be `pub mut` for now in order to access and manipulate values
+// User struct needs to be `pub mut` for now in order to access and manipulate values
 struct User {
 pub mut:
 	age           int
@@ -153,15 +143,6 @@ struct Color {
 pub mut:
 	space string
 	point string [raw]
-}
-
-fn test_raw_json_field() {
-	color := json.decode<Color>('{"space": "YCbCr", "point": {"Y": 123}}') or {
-		assert false
-		Color{}
-	}
-	assert color.point == '{"Y":123}'
-	assert color.space == 'YCbCr'
 }
 
 //! FIX: returning 0
@@ -280,22 +261,6 @@ fn test_nested_type() {
 			assert data2.extra[k][k2] == v2
 		}
 	}
-}
-
-struct Foo[T] {
-pub:
-	name string
-	data T
-}
-
-//! BUGFIX - .from_json(res)
-fn test_generic_struct() {
-	foo_int := Foo[int]{'bar', 12}
-	foo_enc := json.encode(foo_int)
-	assert foo_enc == '{"name":"bar","data":12}'
-	foo_dec := json.decode[Foo[int]](foo_enc)!
-	assert foo_dec.name == 'bar'
-	assert foo_dec.data == 12
 }
 
 //! BUGFIX - .from_json(res)

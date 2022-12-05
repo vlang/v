@@ -59,7 +59,7 @@ pub fn (err UnknownTokenError) msg() string {
 }
 
 struct Parser {
-mut:
+pub mut:
 	scanner      &Scanner = unsafe { nil }
 	p_tok        Token
 	tok          Token
