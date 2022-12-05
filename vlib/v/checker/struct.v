@@ -52,6 +52,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				c.error('struct field does not support storing result', field.optional_pos)
 			}
 			c.ensure_type_exists(field.typ, field.type_pos) or { return }
+			c.ensure_generic_type_specify_type_names(field.typ, field.type_pos) or { return }
 			if field.typ.has_flag(.generic) {
 				has_generic_types = true
 			}
@@ -76,11 +77,6 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				info := sym.info as ast.Struct
 				if info.is_heap && !field.typ.is_ptr() {
 					struct_sym.info.is_heap = true
-				}
-				if info.generic_types.len > 0 && !field.typ.has_flag(.generic)
-					&& info.concrete_types.len == 0 {
-					c.error('field `${field.name}` type is generic struct, must specify the generic type names, e.g. Foo[T], Foo[int]',
-						field.type_pos)
 				}
 			}
 			if sym.kind == .multi_return {

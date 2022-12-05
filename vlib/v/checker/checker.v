@@ -4120,6 +4120,58 @@ fn (mut c Checker) trace(fbase string, message string) {
 	}
 }
 
+fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos token.Pos) ? {
+	if typ == 0 {
+		c.error('unknown type', pos)
+		return
+	}
+	sym := c.table.final_sym(typ)
+	match sym.kind {
+		.function {
+			fn_info := sym.info as ast.FnType
+			c.ensure_generic_type_specify_type_names(fn_info.func.return_type, fn_info.func.return_type_pos)?
+			for param in fn_info.func.params {
+				c.ensure_generic_type_specify_type_names(param.typ, param.type_pos)?
+			}
+		}
+		.array {
+			c.ensure_generic_type_specify_type_names((sym.info as ast.Array).elem_type,
+				pos)?
+		}
+		.array_fixed {
+			c.ensure_generic_type_specify_type_names((sym.info as ast.ArrayFixed).elem_type,
+				pos)?
+		}
+		.map {
+			info := sym.info as ast.Map
+			c.ensure_generic_type_specify_type_names(info.key_type, pos)?
+			c.ensure_generic_type_specify_type_names(info.value_type, pos)?
+		}
+		.sum_type {
+			info := sym.info as ast.SumType
+			if info.generic_types.len > 0 && !typ.has_flag(.generic) && info.concrete_types.len == 0 {
+				c.error('`${sym.name}` type is generic sumtype, must specify the generic type names, e.g. ${sym.name}[T], ${sym.name}[int]',
+					pos)
+			}
+		}
+		.struct_ {
+			info := sym.info as ast.Struct
+			if info.generic_types.len > 0 && !typ.has_flag(.generic) && info.concrete_types.len == 0 {
+				c.error('`${sym.name}` type is generic struct, must specify the generic type names, e.g. ${sym.name}[T], ${sym.name}[int]',
+					pos)
+			}
+		}
+		.interface_ {
+			info := sym.info as ast.Interface
+			if info.generic_types.len > 0 && !typ.has_flag(.generic) && info.concrete_types.len == 0 {
+				c.error('`${sym.name}` type is generic interface, must specify the generic type names, e.g. ${sym.name}[T], ${sym.name}[int]',
+					pos)
+			}
+		}
+		else {}
+	}
+}
+
 fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
 	if typ == 0 {
 		c.error('unknown type', pos)
