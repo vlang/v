@@ -18,7 +18,6 @@ pub const (
 		ast.f32_type_idx,
 		ast.f64_type_idx,
 	]
-	string   = ast.string_type_idx
 	time     = -2
 	serial   = -1
 	type_idx = {
