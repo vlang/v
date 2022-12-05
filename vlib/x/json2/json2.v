@@ -55,7 +55,6 @@ pub fn decode[T](src string) !T {
 		} $else $if field.typ is time.Time {
 			// typ.$(field.name) = res[field.name]!.str()
 		} $else {
-			//! TODO
 			return error("The type of `${field.name}` can't be decoded. Try open a issue in https://github.com/vlang/v/issues/new/choose")
 		}
 	}
