@@ -56,7 +56,7 @@ pub fn decode[T](src string) !T {
 			// typ.$(field.name) = res[field.name]!.str()
 		} $else {
 			//! TODO
-			dump("this type `${field.typ}` can't be decoded. Try create a from_json(any json.Any) method")
+			dump("this type `${field.name}` can't be decoded. Try create a from_json(any json.Any) method")
 		}
 	}
 	return typ
