@@ -48,7 +48,6 @@ pub fn decode[T](src string) !T {
 		} $else $if field.typ is f64 {
 			typ.$(field.name) = res[field.name]!.f64()
 		} $else $if field.typ is bool {
-			//! REVIEW
 			typ.$(field.name) = res[field.name]!.bool()
 		} $else $if field.typ is string {
 			typ.$(field.name) = res[field.name]!.str()
@@ -122,12 +121,28 @@ pub fn (f Any) f64() f64 {
 // bool uses `Any` as a bool.
 pub fn (f Any) bool() bool {
 	match f {
-		bool { return f }
-		string { return f.bool() }
-		i8, i16, int, i64 { return i64(f) != 0 }
-		u8, u16, u32, u64 { return u64(f) != 0 }
-		f32, f64 { return f64(f) != 0.0 }
-		else { return false }
+		bool {
+			return f
+		}
+		string {
+			if f.len > 0 {
+				return f != '0' && f != '0.0' && f != 'false'
+			} else {
+				return false
+			}
+		}
+		i8, i16, int, i64 {
+			return i64(f) != 0
+		}
+		u8, u16, u32, u64 {
+			return u64(f) != 0
+		}
+		f32, f64 {
+			return f64(f) != 0.0
+		}
+		else {
+			return false
+		}
 	}
 }
 

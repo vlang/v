@@ -44,14 +44,6 @@ fn (e Employee) to_json() string {
 	return mp.str()
 }
 
-fn (mut e Employee) from_json(any json.Any) {
-	mp := any.as_map()
-	e.name = mp['name'] or { json.Any('') }.str()
-	e.age = mp['age'] or { json.Any(0) }.int()
-	e.salary = mp['salary'] or { json.Any(0) }.f32()
-	e.title = unsafe { JobTitle(mp['title'] or { json.Any(0) }.int()) }
-}
-
 // ! BUGFIX
 // fn test_simplegg() {
 // 	// x := EmployeeOp{'Peter', 28, 95000.5, .worker}
@@ -102,92 +94,21 @@ fn test_character_unescape() {
 	assert lines['slash'] or { 0 }.str() == '/dev/null'
 }
 
-fn (mut u User2) from_json(an json.Any) {
-	mp := an.as_map()
-	mut js_field_name := ''
-	$for field in User.fields {
-		js_field_name = field.name
-		for attr in field.attrs {
-			if attr.starts_with('json:') {
-				js_field_name = attr.all_after('json:').trim_left(' ')
-				break
-			}
-		}
-		match field.name {
-			'age' { u.age = mp[js_field_name] or { 0 }.int() }
-			'nums' { u.nums = mp[js_field_name] or { 0 }.arr().map(it.int()) }
-			else {}
-		}
-	}
+struct BoolTest {
+mut:
+	active bool
 }
 
-struct User2 {
-pub mut:
-	age      int
-	nums     []int
-	reg_date time.Time
-}
-
-struct User {
-pub mut:
-	age           int
-	nums          []int
-	last_name     string [json: lastName]
-	is_registered bool   [json: IsRegistered]
-	typ           int    [json: 'type']
-	pets          string [json: 'pet_animals'; raw]
-}
-
-fn (mut u User) from_json(an json.Any) {
-	mp := an.as_map()
-	mut js_field_name := ''
-	$for field in User.fields {
-		// FIXME: C error when initializing js_field_name inside comptime for
-		js_field_name = field.name
-		for attr in field.attrs {
-			if attr.starts_with('json:') {
-				js_field_name = attr.all_after('json:').trim_left(' ')
-				break
-			}
-		}
-		match field.name {
-			'age' { u.age = mp[js_field_name] or { 0 }.int() }
-			'nums' { u.nums = mp[js_field_name] or { 0 }.arr().map(it.int()) }
-			'last_name' { u.last_name = mp[js_field_name] or { 0 }.str() }
-			'is_registered' { u.is_registered = mp[js_field_name] or { 0 }.bool() }
-			'typ' { u.typ = mp[js_field_name] or { 0 }.int() }
-			'pets' { u.pets = mp[js_field_name] or { 0 }.str() }
-			else {}
-		}
-	}
-}
-
-fn (u User) to_json() string {
-	// TODO: derive from field
-	mut mp := {
-		'age': json.Any(u.age)
-	}
-	mp['nums'] = u.nums.map(json.Any(it))
-	mp['lastName'] = json.Any(u.last_name)
-	mp['IsRegistered'] = json.Any(u.is_registered)
-	mp['type'] = json.Any(u.typ)
-	mp['pet_animals'] = json.Any(u.pets)
-	return mp.str()
-}
-
-struct Color {
-pub mut:
-	space string
-	point string [raw]
-}
-
-fn (mut c Color) from_json(an json.Any) {
-	mp := an.as_map()
-	$for field in Color.fields {
-		match field.name {
-			'space' { c.space = mp[field.name] or { 0 }.str() }
-			'point' { c.point = mp[field.name] or { 0 }.str() }
-			else {}
-		}
-	}
+fn test_bool_decode() {
+	assert json.decode[BoolTest]('{"active": ""}')!.active == false
+	assert json.decode[BoolTest]('{"active": "0"}')!.active == false
+	assert json.decode[BoolTest]('{"active": "1"}')!.active == true
+	assert json.decode[BoolTest]('{"active": "2"}')!.active == true
+	assert json.decode[BoolTest]('{"active": 0}')!.active == false
+	assert json.decode[BoolTest]('{"active": 1}')!.active == true
+	assert json.decode[BoolTest]('{"active": 2}')!.active == true
+	assert json.decode[BoolTest]('{"active": "true"}')!.active == true
+	assert json.decode[BoolTest]('{"active": "false"}')!.active == false
+	assert json.decode[BoolTest]('{"active": true}')!.active == true
+	assert json.decode[BoolTest]('{"active": false}')!.active == false
 }
