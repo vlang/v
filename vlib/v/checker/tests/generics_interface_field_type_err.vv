@@ -12,18 +12,18 @@ pub mut:
 	z f64
 }
 
-pub interface IComponentStore<T> {
+pub interface IComponentStore[T] {
 mut:
 	add(Entity, T)
 }
 
-pub struct ComponentStore<T> {
+pub struct ComponentStore[T] {
 pub mut:
 	typ string
 	// data etc
 }
 
-pub fn (mut cs ComponentStore<T>) add(e Entity, value T) {
+pub fn (mut cs ComponentStore[T]) add(e Entity, value T) {
 	//	index := cs.set.add(e.id)
 	//	cs.instances[index] = value
 }

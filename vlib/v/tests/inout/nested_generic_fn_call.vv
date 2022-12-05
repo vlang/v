@@ -1,10 +1,10 @@
 module main
 
-fn shuffle_impl<T>(mut a []T) ? {
+fn shuffle_impl[T](mut a []T) ? {
 	println('FN: ${@FN:20} | T: ${typeof(a).name}')
 }
 
-fn shuffle<T>(mut a []T) ? {
+fn shuffle[T](mut a []T) ? {
 	println('FN: ${@FN:20} | T: ${typeof(a).name}')
 	shuffle_impl(mut a)?
 }

@@ -1,4 +1,4 @@
-interface Output<T> {
+interface Output[T] {
   val T
   name string
 }
