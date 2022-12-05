@@ -224,6 +224,6 @@ fn run_individual_test(case CompleteTestCase) ! {
 
 fn test_all_complete_cases() {
 	for case in test_cases {
-		run_individual_test(case) or { panic(err) }
+		run_individual_test(case)!
 	}
 }
