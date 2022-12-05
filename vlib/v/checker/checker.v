@@ -4150,21 +4150,21 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 		.sum_type {
 			info := sym.info as ast.SumType
 			if info.generic_types.len > 0 && !typ.has_flag(.generic) && info.concrete_types.len == 0 {
-				c.error('`${sym.name}` type is generic sumtype, must specify the generic type names, e.g. Foo[T], Foo[int]',
+				c.error('`${sym.name}` type is generic sumtype, must specify the generic type names, e.g. ${sym.name}[T], ${sym.name}[int]',
 					pos)
 			}
 		}
 		.struct_ {
 			info := sym.info as ast.Struct
 			if info.generic_types.len > 0 && !typ.has_flag(.generic) && info.concrete_types.len == 0 {
-				c.error('`${sym.name}` type is generic struct, must specify the generic type names, e.g. Foo[T], Foo[int]',
+				c.error('`${sym.name}` type is generic struct, must specify the generic type names, e.g. ${sym.name}[T], ${sym.name}[int]',
 					pos)
 			}
 		}
 		.interface_ {
 			info := sym.info as ast.Interface
 			if info.generic_types.len > 0 && !typ.has_flag(.generic) && info.concrete_types.len == 0 {
-				c.error('`${sym.name}` type is generic interface, must specify the generic type names, e.g. Foo[T], Foo[int]',
+				c.error('`${sym.name}` type is generic interface, must specify the generic type names, e.g. ${sym.name}[T], ${sym.name}[int]',
 					pos)
 			}
 		}
