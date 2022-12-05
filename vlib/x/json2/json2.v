@@ -4,6 +4,7 @@
 module json2
 
 import strings
+import time
 
 // Decodes a JSON string into an `Any` type. Returns an option.
 pub fn raw_decode(src string) !Any {
@@ -51,9 +52,11 @@ pub fn decode[T](src string) !T {
 			typ.$(field.name) = res[field.name]!.bool()
 		} $else $if field.typ is string {
 			typ.$(field.name) = res[field.name]!.str()
+		} $else $if field.typ is time.Time {
+			// typ.$(field.name) = res[field.name]!.str()
 		} $else {
 			//! TODO
-			dump("this type can't be decoded. Try create a from_json(any json.Any) method")
+			dump("this type `${field.typ}` can't be decoded. Try create a from_json(any json.Any) method")
 		}
 	}
 	return typ
