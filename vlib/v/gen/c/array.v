@@ -948,6 +948,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	if has_infix_left_var_name {
 		g.indent--
 		g.writeln('}')
+		g.set_current_pos_as_last_stmt_pos()
 	}
 	if s_ends_with_ln {
 		g.writeln(s)
@@ -1023,6 +1024,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	if has_infix_left_var_name {
 		g.indent--
 		g.writeln('}')
+		g.set_current_pos_as_last_stmt_pos()
 	}
 	if s_ends_with_ln {
 		g.writeln(s)
