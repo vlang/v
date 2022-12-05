@@ -202,6 +202,9 @@ fn run_individual_test(case CompleteTestCase) ! {
 		res := os.execute('${complete_command}')
 		mut lines := res.output.split('\n')
 		for mut line in lines {
+			if case.shell == .powershell {
+				line = line.replace('\r', '')
+			}
 			line = line.trim_string_left(pre_strip).trim_string_right(post_strip)
 		}
 		lines = lines.filter(it != '')
