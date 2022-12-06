@@ -124,6 +124,12 @@ mut:
 	fields map[string]int
 }
 
+struct MultiReturn {
+mut:
+	offsets []int
+	size int
+}
+
 enum Size {
 	_8
 	_16
@@ -613,6 +619,26 @@ fn (mut g Gen) get_type_align(typ ast.Type) int {
 	}
 	// g.n_error('unknown type align')
 	return 0
+}
+
+fn (mut g Gen) get_multi_return(types []ast.Type) MultiReturn {
+	mut size := 0
+	mut align := 1
+	mut ret := MultiReturn{
+		offsets: []int{cap: types.len}
+	}
+	for t in types {
+		t_size := g.get_type_size(t)
+		t_align := g.get_type_align(t)
+		padding := (t_align - size % t_align) % t_align
+		ret.offsets << size + padding
+		size += t_size + padding
+		if t_align > align {
+			align = t_align
+		}
+	}
+	ret.size = size
+	return ret
 }
 
 fn (g Gen) is_register_type(typ ast.Type) bool {
@@ -1249,7 +1275,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					offset := g.structs[typ.idx()].offsets[i]
 					g.expr(expr)
 					// TODO expr not on rax
-					g.mov_reg_to_var(var, .rax, offset: offset, typ: (ts.info as ast.MultiReturn).types[i])
+					g.mov_reg_to_var(var, .rax, offset: offset, typ: ts.mr_info().types[i])
 				}
 				// store the multi return struct value
 				g.lea_var_to_reg(.rax, var.offset)

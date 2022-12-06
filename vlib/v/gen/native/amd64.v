@@ -1645,7 +1645,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 	return_size := g.get_type_size(node.return_type)
 	mut return_pos := -1
 	mut is_struct_return := false
-	if ts.kind == .struct_ {
+	if ts.kind in [.struct_, .multi_return] {
 		return_pos = g.allocate_struct('', node.return_type)
 		if return_size > 16 {
 			is_struct_return = true
@@ -2267,6 +2267,96 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 }
 
 fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
+	// `a, b := foo()`
+	// `a, b := if cond { 1, 2 } else { 3, 4 }`
+	if node.left.len > 1 && node.right.len == 1 {
+		multi_return := g.get_multi_return(node.right_types)
+		g.expr(node.right[0])
+		g.mov_reg(.rdx, .rax)
+
+		mut current_offset := 0
+		for i, offset in multi_return.offsets {
+			if node.left[i] is ast.Ident {
+				name := (node.left[i] as ast.Ident).name
+				if name == '_' {
+					continue
+				}
+				if node.op == .decl_assign {
+					g.allocate_struct(name, node.left_types[i])
+				}
+			}
+			if offset != current_offset {
+				g.add(.rdx, offset - current_offset)
+				current_offset = offset
+			}
+			g.gen_left_value(node.left[i])
+			left_type := node.left_types[i]
+			right_type := node.right_types[i]
+			if g.is_register_type(right_type) {
+				g.mov_deref(.rcx, .rdx, right_type)
+			} else if node.right_types[i].is_pure_float() {
+				g.mov_deref_sse(.xmm0, .rdx, right_type)
+			}
+			// TODO type promotion here
+			if g.is_register_type(left_type) {
+				match node.op {
+					.assign, .decl_assign {
+						g.mov_store(.rax, .rcx, match g.get_type_size(left_type) {
+							1 { ._8 }
+							2 { ._16 }
+							3 { ._32 }
+							else { ._64 }
+						})
+					}
+					else {
+						g.n_error('Unsupported assign instruction')
+					}
+				}
+			} else if left_type.is_pure_float() {
+				is_f32 := left_type == ast.f32_type_idx
+				if node.op !in [.assign, .decl_assign] {
+					g.mov_ssereg(.xmm1, .xmm0)
+					if is_f32 {
+						g.write32(0x00100ff3)
+						g.println('movss xmm0, [rax]')
+					} else {
+						g.write32(0x00100ff2)
+						g.println('movsd xmm0, [rax]')
+					}
+				}
+				match node.op {
+					.plus_assign {
+						g.add_sse(.xmm0, .xmm1, left_type)
+					}
+					.minus_assign {
+						g.sub_sse(.xmm0, .xmm1, left_type)
+					}
+					.mult_assign {
+						g.mul_sse(.xmm0, .xmm1, left_type)
+					}
+					.div_assign {
+						g.div_sse(.xmm0, .xmm1, left_type)
+					}
+					else {}
+				}
+				if is_f32 {
+					g.write32(0x00110ff3)
+					g.println('movss [rax], xmm0')
+				} else {
+					g.write32(0x00110ff2)
+					g.println('movsd [rax], xmm0')
+				}
+			} else {
+				g.n_error('multi return for struct is not supported yet')
+			}
+		}
+		return
+	}
+	// `a, b = b, a`
+	if node.has_cross_var {
+		g.n_error('crossing variables in the assingment is not supported yet')
+		return
+	}
 	// `a := 1` | `a,b := 1,2`
 	for i, left in node.left {
 		right := node.right[i]
@@ -3175,6 +3265,7 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 	return g.stack_var_pos
 }
 
+// Despite the name, all the types in V can be allocated by this function.
 fn (mut g Gen) allocate_struct(name string, typ ast.Type) int {
 	if g.pref.arch == .arm64 {
 		// TODO
@@ -3647,6 +3738,21 @@ fn (mut g Gen) mov_reg_to_ssereg(a SSERegister, b Register, typ ast.Type) {
 	g.write16(0x6e0f)
 	g.write8(0xc0 + int(a) % 8 * 8 + int(b) % 8)
 	g.println('${inst} ${a}, ${b}')
+}
+
+fn (mut g Gen) mov_deref_sse(a SSERegister, b Register, typ ast.Type) {
+	op, inst, len := if typ == ast.f32_type_idx {
+		0xf3, 'movss', 'DWORD'
+	} else {
+		0xf2, 'movsd', 'QWORD'
+	}
+	g.write8(op)
+	if int(a) >= int(SSERegister.xmm8) || int(b) >= int(Register.r8) {
+		g.write8(0x40 + int(a) / 8 * 4 + int(b) / 8)
+	}
+	g.write16(0x100f)
+	g.write8(int(a) % 8 * 8 + int(b) % 8)
+	g.println('${inst} ${a}, ${len} PTR [${b}]')
 }
 
 fn (mut g Gen) add_sse(a SSERegister, b SSERegister, typ ast.Type) {
