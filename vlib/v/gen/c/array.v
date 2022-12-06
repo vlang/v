@@ -303,7 +303,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.write('&(${elem_styp}[]){')
 		g.write('_SLIT("")')
 		g.write('})')
-	} else if node.has_len && elem_type.unaliased_sym.kind in [.array, .map] {
+	} else if node.has_len && elem_type.unaliased_sym.kind in [.struct_, .array, .map] {
 		g.write('(voidptr)&(${elem_styp}[]){')
 		g.write(g.type_default(node.elem_type))
 		g.write('}[0])')
