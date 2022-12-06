@@ -3555,6 +3555,9 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		if p.tok.kind == .comma {
 			p.error_with_pos('const declaration do not support multiple assign yet', p.tok.pos())
 		}
+		if p.tok.kind == .decl_assign {
+			p.error_with_pos('cannot use `:=` to declare a const, use `=` instead', p.tok.pos())
+		}
 		p.check(.assign)
 		end_comments << p.eat_comments()
 		if p.tok.kind == .key_fn {
