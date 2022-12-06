@@ -687,7 +687,12 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		p.close_scope()
 	}
 	p.scope.detached_from_parent = true
-	inherited_vars := if p.tok.kind == .lsbr { p.closure_vars() } else { []ast.Param{} }
+	inherited_vars := if p.tok.kind == .lsbr && !(p.peek_tok.kind == .name
+		&& p.peek_tok.lit.len == 1 && p.peek_tok.lit[0].is_capital()) {
+		p.closure_vars()
+	} else {
+		[]ast.Param{}
+	}
 	_, generic_names := p.parse_generic_types()
 	args, _, is_variadic := p.fn_args()
 	for arg in args {

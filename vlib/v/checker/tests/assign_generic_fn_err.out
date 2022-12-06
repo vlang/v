@@ -1,6 +1,6 @@
 vlib/v/checker/tests/assign_generic_fn_err.vv:2:9: error: cannot assign generic function to a variable
     1 | fn main() {
-    2 |     fun := fn <T> (value T) T {
+    2 |     fun := fn [T] (value T) T {
       |            ~~~~~~~~~~~~~~~~~~~~
     3 |         return value
     4 |     }
