@@ -413,6 +413,7 @@ pub fn (a Any) reflect[T]() T {
 	mut reflected := T{}
 	$for field in T.fields {
 		mut toml_field_name := field.name
+
 		// Remapping of field names, for example:
 		// TOML: 'assert = "ok"'
 		// V:    User { asrt string [toml: 'assert'] }
