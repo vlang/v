@@ -460,7 +460,7 @@ const (
 
 struct CharClass {
 mut:
-	cc_type   int = regex.cc_null // type of cc token
+	cc_type   int         // type of cc token
 	ch0       rune        // first char of the interval a-b  a in this case
 	ch1       rune        // second char of the interval a-b b in this case
 	validator FnValidator // validator function pointer
