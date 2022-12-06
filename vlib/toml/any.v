@@ -69,19 +69,19 @@ pub fn (a Any) to_toml() string {
 }
 
 // int returns `Any` as an 32-bit integer.
-pub fn (f Any) int() int {
-	match f {
+pub fn (a Any) int() int {
+	match a {
 		int {
-			return f
+			return a
 		}
 		i8, i16, i64, u8, u16, u32, u64, f32, f64, bool {
-			return int(f)
+			return int(a)
 		}
 		string {
-			if f == 'false' || f == 'true' {
-				return int(f.bool())
+			if a == 'false' || a == 'true' {
+				return int(a.bool())
 			}
-			return f.int()
+			return a.int()
 		}
 		// time.Time { ... } // TODO
 		else {
@@ -91,19 +91,19 @@ pub fn (f Any) int() int {
 }
 
 // i64 returns `Any` as a 64-bit integer.
-pub fn (f Any) i64() i64 {
-	match f {
+pub fn (a Any) i64() i64 {
+	match a {
 		i64 {
-			return f
+			return a
 		}
 		i8, i16, int, u8, u16, u32, u64, f32, f64, bool {
-			return i64(f)
+			return i64(a)
 		}
 		string {
-			if f == 'false' || f == 'true' {
-				return i64(f.bool())
+			if a == 'false' || a == 'true' {
+				return i64(a.bool())
 			}
-			return f.i64()
+			return a.i64()
 		}
 		// time.Time { ... } // TODO
 		else {
@@ -113,19 +113,19 @@ pub fn (f Any) i64() i64 {
 }
 
 // u64 returns `Any` as a 64-bit unsigned integer.
-pub fn (f Any) u64() u64 {
-	match f {
+pub fn (a Any) u64() u64 {
+	match a {
 		u64 {
-			return f
+			return a
 		}
 		u8, u16, u32, i8, i16, int, i64, f32, f64, bool {
-			return u64(f)
+			return u64(a)
 		}
 		string {
-			if f == 'false' || f == 'true' {
-				return u64(f.bool())
+			if a == 'false' || a == 'true' {
+				return u64(a.bool())
 			}
-			return f.u64()
+			return a.u64()
 		}
 		// time.Time { ... } // TODO
 		else {
@@ -135,19 +135,19 @@ pub fn (f Any) u64() u64 {
 }
 
 // f32 returns `Any` as a 32-bit float.
-pub fn (f Any) f32() f32 {
-	match f {
+pub fn (a Any) f32() f32 {
+	match a {
 		f32 {
-			return f
+			return a
 		}
 		bool, i8, i16, int, i64, u8, u16, u32, u64, f64 {
-			return f32(f)
+			return f32(a)
 		}
 		string {
-			if f == 'false' || f == 'true' {
-				return f32(f.bool())
+			if a == 'false' || a == 'true' {
+				return f32(a.bool())
 			}
-			return f.f32()
+			return a.f32()
 		}
 		// time.Time { ... } // TODO
 		else {
@@ -157,19 +157,19 @@ pub fn (f Any) f32() f32 {
 }
 
 // f64 returns `Any` as a 64-bit float.
-pub fn (f Any) f64() f64 {
-	match f {
+pub fn (a Any) f64() f64 {
+	match a {
 		f64 {
-			return f
+			return a
 		}
 		i8, i16, int, i64, u8, u16, u32, u64, f32 {
-			return f64(f)
+			return f64(a)
 		}
 		string {
-			if f == 'false' || f == 'true' {
-				return f64(f.bool())
+			if a == 'false' || a == 'true' {
+				return f64(a.bool())
 			}
-			return f.f64()
+			return a.f64()
 		}
 		// time.Time { ... } // TODO
 		else {
@@ -209,26 +209,26 @@ pub fn (a Any) as_map() map[string]Any {
 }
 
 // bool returns `Any` as a boolean.
-pub fn (f Any) bool() bool {
-	match f {
+pub fn (a Any) bool() bool {
+	match a {
 		bool {
-			return f
+			return a
 		}
 		string {
-			if f.len > 0 {
-				return f != '0' && f != '0.0' && f != 'false'
+			if a.len > 0 {
+				return a != '0' && a != '0.0' && a != 'false'
 			} else {
 				return false
 			}
 		}
 		i8, i16, int, i64 {
-			return i64(f) != 0
+			return i64(a) != 0
 		}
 		u8, u16, u32, u64 {
-			return u64(f) != 0
+			return u64(a) != 0
 		}
 		f32, f64 {
-			return f64(f) != 0.0
+			return f64(a) != 0.0
 		}
 		// time.Time { ... } // TODO
 		else {
