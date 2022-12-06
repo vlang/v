@@ -1,18 +1,17 @@
 struct Test {
-    a string
-    b string
+	a string
+	b string
 }
 
-fn test_for()  {
+fn test_for() {
 	$for field in Test.fields {
 		for attr in field.attrs {
-        	break
+			break
 		}
 	}
-
 	$for field in Test.fields {
 		for attr in field.attrs {
-        	continue
+			continue
 		}
 	}
 }
