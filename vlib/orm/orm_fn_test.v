@@ -263,7 +263,7 @@ fn sql_type_from_v(typ int) !string {
 		'INT64'
 	} else if typ in orm.float {
 		'DOUBLE'
-	} else if typ == orm.string {
+	} else if typ == orm.type_string {
 		'TEXT'
 	} else if typ == -1 {
 		'SERIAL'

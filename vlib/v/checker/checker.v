@@ -1393,6 +1393,9 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		c.warn('const block must have at least 1 declaration', node.pos)
 	}
 	for field in node.fields {
+		if checker.reserved_type_names_chk.matches(util.no_cur_mod(field.name, c.mod)) {
+			c.error('invalid use of reserved type `${field.name}` as a const name', field.pos)
+		}
 		// TODO Check const name once the syntax is decided
 		if field.name in c.const_names {
 			name_pos := token.Pos{

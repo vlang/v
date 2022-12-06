@@ -4,8 +4,8 @@ import time
 import v.ast
 
 pub const (
-	num64    = [ast.i64_type_idx, ast.u64_type_idx]
-	nums     = [
+	num64       = [ast.i64_type_idx, ast.u64_type_idx]
+	nums        = [
 		ast.i8_type_idx,
 		ast.i16_type_idx,
 		ast.int_type_idx,
@@ -14,14 +14,14 @@ pub const (
 		ast.u32_type_idx,
 		ast.bool_type_idx,
 	]
-	float    = [
+	float       = [
 		ast.f32_type_idx,
 		ast.f64_type_idx,
 	]
-	string   = ast.string_type_idx
-	time     = -2
-	serial   = -1
-	type_idx = {
+	type_string = ast.string_type_idx
+	time        = -2
+	serial      = -1
+	type_idx    = {
 		'i8':     ast.i8_type_idx
 		'i16':    ast.i16_type_idx
 		'int':    ast.int_type_idx
