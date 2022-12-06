@@ -124,7 +124,6 @@ const test_cases = [
 			os.join_path('sub1', 'vex3', 'vex3.v')
 		]
 		// vfmt on
-
 		completes: {
 			// sub0
 			'v run ./':             ['sub0/', 'sub1/']
