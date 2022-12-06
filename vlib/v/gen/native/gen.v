@@ -1179,7 +1179,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 						g.expr(node.exprs[0])
 					}
 				}
-				typ := node.types[0]
+				typ := if node.types.len > 1 { g.return_type } else { node.types[0] }
 				if typ == ast.float_literal_type_idx && g.return_type == ast.f32_type_idx {
 					if g.pref.arch == .amd64 {
 						g.write32(0xc05a0ff2)
@@ -1192,7 +1192,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					size := g.get_type_size(typ)
 					if g.pref.arch == .amd64 {
 						match ts.kind {
-							.struct_ {
+							.struct_, .multi_return {
 								if size <= 8 {
 									g.mov_deref(.rax, .rax, ast.i64_type_idx)
 									if size != 8 {
@@ -1540,6 +1540,48 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.UnsafeExpr {
 			g.expr(node.expr)
+		}
+		ast.ConcatExpr {
+			typ := node.return_type
+			ts := g.table.sym(typ)
+			size := g.get_type_size(typ)
+			// construct a struct variable contains the return value
+			var := LocalVar{offset: g.allocate_struct('', typ), typ: typ}
+			// zero fill
+			mut left := if size >= 16 {
+				g.mov(.rax, 0)
+				g.mov(.rcx, size / 8)
+				g.lea_var_to_reg(.rdi, var.offset)
+				g.write([u8(0xf3), 0x48, 0xab])
+				g.println('rep stosq')
+				size % 8
+			} else {
+				size
+			}
+			if left >= 8 {
+				g.mov_int_to_var(var, 0, offset: size - left, typ: ast.i64_type_idx)
+				left -= 8
+			}
+			if left >= 4 {
+				g.mov_int_to_var(var, 0, offset: size - left, typ: ast.int_type_idx)
+				left -= 4
+			}
+			if left >= 2 {
+				g.mov_int_to_var(var, 0, offset: size - left, typ: ast.i16_type_idx)
+				left -= 2
+			}
+			if left == 1 {
+				g.mov_int_to_var(var, 0, offset: size - left, typ: ast.i8_type_idx)
+			}
+			// store exprs to the variable
+			for i, expr in node.vals {
+				offset := g.structs[typ.idx()].offsets[i]
+				g.expr(expr)
+				// TODO expr not on rax
+				g.mov_reg_to_var(var, .rax, offset: offset, typ: ts.mr_info().types[i])
+			}
+			// store the multi return struct value
+			g.lea_var_to_reg(.rax, var.offset)
 		}
 		else {
 			g.n_error('expr: unhandled node type: ${node.type_name()}')

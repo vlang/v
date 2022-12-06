@@ -1784,7 +1784,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 	}
 	g.println('call `${n}()`')
 
-	if ts.kind == .struct_ {
+	if ts.kind in [.struct_, .multi_return] {
 		match return_size {
 			1...7 {
 				g.mov_var_to_reg(.rdx, LocalVar{ offset: return_pos, typ: ast.i64_type_idx })
