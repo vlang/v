@@ -4000,7 +4000,7 @@ fn (mut c Checker) error(message string, pos token.Pos) {
 
 fn (c &Checker) check_struct_signature_init_fields(from ast.Struct, to ast.Struct, node ast.StructInit) bool {
 	if node.fields.len == 0 {
-		return true
+		return from.fields.len == to.fields.len
 	}
 
 	mut count_not_in_from := 0
@@ -4011,11 +4011,7 @@ fn (c &Checker) check_struct_signature_init_fields(from ast.Struct, to ast.Struc
 		}
 	}
 
-	if (from.fields.len + count_not_in_from) != to.fields.len {
-		return false
-	}
-
-	return true
+	return (from.fields.len + count_not_in_from) == to.fields.len
 }
 
 // check `to` has all fields of `from`
