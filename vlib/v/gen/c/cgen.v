@@ -3501,10 +3501,10 @@ fn (mut g Gen) type_name(raw_type ast.Type) {
 }
 
 fn (mut g Gen) typeof_expr(node ast.TypeOf) {
-	typ := if node.expr_type == g.field_data_type {
+	typ := if node.typ == g.field_data_type {
 		g.comptime_for_field_value.typ
 	} else {
-		node.expr_type
+		node.typ
 	}
 	sym := g.table.sym(typ)
 	if sym.kind == .sum_type {
@@ -3544,6 +3544,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				return
 			}
 			.unknown {
+				// ast.TypeOf of `typeof(string).idx` etc
 				if node.field_name == 'name' {
 					// typeof(expr).name
 					mut name_type := node.name_type
@@ -3560,7 +3561,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					g.type_name(name_type)
 					return
 				} else if node.field_name == 'idx' {
-					// typeof(expr).idx
+					// `typeof(expr).idx`
 					g.write(int(g.unwrap_generic(node.name_type)).str())
 					return
 				}

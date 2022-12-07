@@ -1151,10 +1151,13 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				name_type = ast.Type(c.table.find_type_idx(name)).set_flag(.generic)
 			}
 		}
-		// Note: in future typeof() should be a type known at compile-time
-		// sum types should not be handled dynamically
 		ast.TypeOf {
-			name_type = c.expr(node.expr.expr)
+			// TODO: fix this weird case, since just `typeof(x)` is `string`, but `|typeof(x).| propertyname` should be the actual type,
+			// so that we can get other metadata properties of the type, depending on `propertyname` (one of `name` or `idx` for now).
+			// A better alternative would be a new `meta(x).propertyname`, that does not have a `meta(x)` case (an error),
+			// or if it does, it should be a normal constant struct value, just filled at comptime.
+			c.expr(node.expr)
+			name_type = node.expr.typ
 		}
 		else {}
 	}
@@ -2556,7 +2559,9 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			return node.typ
 		}
 		ast.TypeOf {
-			node.expr_type = c.expr(node.expr)
+			if !node.is_type {
+				node.typ = c.expr(node.expr)
+			}
 			return ast.string_type
 		}
 		ast.UnsafeExpr {
