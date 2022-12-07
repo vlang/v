@@ -4001,7 +4001,7 @@ fn (mut c Checker) error(message string, pos token.Pos) {
 // check `to` has all fields of `from`
 fn (c &Checker) check_struct_signature(from ast.Struct, to ast.Struct) bool {
 	// Note: `to` can have extra fields
-	if from.fields.len == 0 {
+	if from.fields.len == 0 || from.fields.len != to.fields.len {
 		return false
 	}
 	for field in from.fields {
