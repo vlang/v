@@ -3998,10 +3998,30 @@ fn (mut c Checker) error(message string, pos token.Pos) {
 	c.warn_or_error(msg, pos, false)
 }
 
+fn (c &Checker) check_struct_signature_init_fields(from ast.Struct, to ast.Struct, node ast.StructInit) bool {
+	if node.fields.len == 0 {
+		return true
+	}
+
+	mut count_not_in_from := 0
+	for field in node.fields {
+		filtered := from.fields.filter(it.name == field.name)
+		if filtered.len != 1 {
+			count_not_in_from++
+		}
+	}
+
+	if (from.fields.len + count_not_in_from) != to.fields.len {
+		return false
+	}
+
+	return true
+}
+
 // check `to` has all fields of `from`
 fn (c &Checker) check_struct_signature(from ast.Struct, to ast.Struct) bool {
 	// Note: `to` can have extra fields
-	if from.fields.len == 0 || from.fields.len != to.fields.len {
+	if from.fields.len == 0 {
 		return false
 	}
 	for field in from.fields {

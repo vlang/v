@@ -603,7 +603,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			from_info := from_sym.info as ast.Struct
 			to_info := to_sym.info as ast.Struct
 			// TODO this check is too strict
-			if !c.check_struct_signature(from_info, to_info) {
+			if !c.check_struct_signature(from_info, to_info) || !c.check_struct_signature_init_fields(from_info, to_info, node) {
 				c.error('struct `${from_sym.name}` is not compatible with struct `${to_sym.name}`',
 					node.update_expr.pos())
 			}
