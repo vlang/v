@@ -1,0 +1,7 @@
+vlib/v/checker/tests/check_incompatible_struct.vv:13:6: error: struct `Foo` is not compatible with struct `Bar`
+   11 |     foo := Foo{2}
+   12 |     bar := Bar{
+   13 |         ...foo
+      |            ~~~
+   14 |     }
+   15 |     print(bar)
