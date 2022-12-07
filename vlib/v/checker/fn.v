@@ -105,7 +105,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			gs := c.table.sym(node.return_type)
 			if gs.info is ast.Struct {
 				if gs.info.is_generic && !node.return_type.has_flag(.generic) {
-					c.error('return generic struct in fn declaration must specify the generic type names, e.g. Foo[T]',
+					c.error('return generic struct `${gs.name}` in fn declaration must specify the generic type names, e.g. ${gs.name}[T]',
 						node.return_type_pos)
 				}
 			}
@@ -224,19 +224,19 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					}
 					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 						&& arg_typ_sym.info.concrete_types.len == 0 {
-						c.error('generic struct in fn declaration must specify the generic type names, e.g. Foo[T]',
+						c.error('generic struct `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
 							param.type_pos)
 					}
 				} else if arg_typ_sym.info is ast.Interface {
 					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 						&& arg_typ_sym.info.concrete_types.len == 0 {
-						c.error('generic interface in fn declaration must specify the generic type names, e.g. Foo[T]',
+						c.error('generic interface `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
 							param.type_pos)
 					}
 				} else if arg_typ_sym.info is ast.SumType {
 					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 						&& arg_typ_sym.info.concrete_types.len == 0 {
-						c.error('generic sumtype in fn declaration must specify the generic type names, e.g. Foo[T]',
+						c.error('generic sumtype `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
 							param.type_pos)
 					}
 				}

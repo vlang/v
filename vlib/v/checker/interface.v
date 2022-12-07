@@ -211,7 +211,7 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			}
 		}
 		if node.generic_types.len == 0 && has_generic_types {
-			c.error('generic interface declaration must specify the generic type names, e.g. Foo[T]',
+			c.error('generic interface `${node.name}` declaration must specify the generic type names, e.g. ${node.name}[T]',
 				node.pos)
 		}
 	}

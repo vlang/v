@@ -165,7 +165,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			}
 		}
 		if node.generic_types.len == 0 && has_generic_types {
-			c.error('generic struct declaration must specify the generic type names, e.g. Foo[T]',
+			c.error('generic struct `${node.name}` declaration must specify the generic type names, e.g. ${node.name}[T]',
 				node.pos)
 		}
 	}
