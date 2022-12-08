@@ -8,6 +8,7 @@ import v.ast
 const skip_struct_init = ['struct stat', 'struct addrinfo']
 
 fn (mut g Gen) struct_init(node ast.StructInit) {
+	mut is_gcc := g.pref.ccompiler_type == .gcc
 	mut is_update_tmp_var := false
 	mut tmp_update_var := ''
 	if node.has_update_expr && !node.update_expr.is_lvalue() {
@@ -42,7 +43,8 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 
 		is_anon = info.is_anon
 	}
-	if !is_anon {
+
+	if !is_gcc && !is_anon {
 		g.write('(')
 		defer {
 			g.write(')')
@@ -62,6 +64,12 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			g.writeln('&(${basetyp}){')
 		} else {
 			g.write('&(${basetyp}){')
+		}
+	} else if is_gcc && g.inside_struct_fields {
+		if is_multiline {
+			g.writeln('{')
+		} else {
+			g.write('{')
 		}
 	} else {
 		if is_multiline {
@@ -86,7 +94,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			if field.typ == 0 {
 				g.checker_bug('struct init, field.typ is 0', field.pos)
 			}
+			g.inside_struct_fields = true
 			g.struct_init_field(field, sym.language)
+			g.inside_struct_fields = false
 			if i != node.fields.len - 1 {
 				if is_multiline {
 					g.writeln(',')
@@ -133,7 +143,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 					g.inside_cast_in_heap = 0 // prevent use of pointers in child structs
 
 					g.write('.${embed_name} = ')
+					g.inside_struct_fields = true
 					g.struct_init(default_init)
+					g.inside_struct_fields = false
 
 					g.inside_cast_in_heap = inside_cast_in_heap // restore value for further struct inits
 					if is_multiline {
@@ -167,7 +179,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				if sfield.typ == 0 {
 					continue
 				}
+				g.inside_struct_fields = true
 				g.struct_init_field(sfield, sym.language)
+				g.inside_struct_fields = false
 				if is_multiline {
 					g.writeln(',')
 				} else {

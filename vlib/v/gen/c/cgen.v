@@ -131,6 +131,7 @@ mut:
 	inside_return             bool
 	inside_return_tmpl        bool
 	inside_struct_init        bool
+	inside_struct_fields      bool
 	inside_or_block           bool
 	inside_call               bool
 	inside_for_c_stmt         bool
