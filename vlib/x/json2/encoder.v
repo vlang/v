@@ -147,7 +147,7 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) !
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is Encodable {
 		wr.write(val.json_str().bytes())!
-	} $else $if T is []int || T is []byte {
+	} $else $if T is []int {
 		// wr.write(val.str)!
 		e.encode_array(val, level, mut wr)!
 	} $else $if T is $Struct {
@@ -164,11 +164,16 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 	wr.write([u8(`{`)])!
 	mut i := 0
 	mut fields_len := 0
-	$for _ in U.fields {
-		fields_len++
+	$for field in U.fields {
+		value := val.$(field.name)
+		if value.str() != 'Option(error: none)' {
+			fields_len++
+		}
 	}
 	$for field in U.fields {
-		if val.$(field.name).str() != 'Option(error: none)' {
+		value := val.$(field.name)
+		is_none := value.str() == 'Option(error: none)'
+		if !is_none {
 			mut json_name := ''
 			for attr in field.attrs {
 				if attr.contains('json: ') {
@@ -186,28 +191,97 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			if e.newline != 0 {
 				wr.write(json2.space_bytes)!
 			}
-			match field.unaliased_typ {
-				typeof[string]().idx {
-					e.encode_string(val.$(field.name).str(), mut wr)!
-				}
-				typeof[bool]().idx typeof[f32]().idx typeof[f64]().idx typeof[i8]().idx typeof[i16]().idx typeof[int]().idx typeof[i64]().idx typeof[u8]().idx typeof[u16]().idx typeof[u32]().idx typeof[u64]().idx {
-					wr.write(val.$(field.name).str().bytes())!
-				}
-				typeof[[]byte]().idx {
-					//! array
-					e.encode_array(val.$(field.name), level, mut wr)!
-				}
-				else {
-					// for enums and structs
-					//! FIXME -  error: cannot convert 'struct _option_string' to 'struct string'
-					e.encode_value_with_level(val.$(field.name), level + 1, mut wr)!
+			$if field.typ is string {
+				e.encode_string(value.str(), mut wr)!
+			} $else $if field.typ is bool || field.typ is f32 || field.typ is f64 || field.typ is i8
+				|| field.typ is i16 || field.typ is int || field.typ is i64 || field.typ is u8
+				|| field.typ is u16 || field.typ is u32 || field.typ is u64 {
+				wr.write(value.str().bytes())!
+			} $else $if field.typ is []byte || field.typ is []int {
+				e.encode_array(value, level, mut wr)!
+			} $else {
+			}
+			$if field.typ is ?string {
+				optional_value := val.$(field.name) as ?string
+				e.encode_string(optional_value, mut wr)!
+			} $else $if field.typ is ?bool {
+				optional_value := val.$(field.name) as ?bool
+				wr.write(Any(optional_value).str().bytes())!
+			} $else $if field.typ is ?f32 {
+				optional_value := val.$(field.name) as ?f32
+				wr.write(Any(optional_value).str().bytes())!
+			} $else $if field.typ is ?f64 {
+				optional_value := val.$(field.name) as ?f64
+				wr.write(Any(optional_value).str().bytes())!
+			} $else $if field.typ is ?i8 {
+				optional_value := val.$(field.name) as ?i8
+				wr.write(Any(optional_value).str().bytes())!
+			} $else $if field.typ is ?i16 {
+				optional_value := val.$(field.name) as ?i16
+				wr.write(Any(optional_value).str().bytes())!
+			} $else $if field.typ is ?int {
+				optional_value := val.$(field.name) as ?int
+				wr.write(Any(optional_value).int().str().bytes())!
+			} $else $if field.typ is ?[]byte {
+				optional_value := val.$(field.name) as ?[]byte
+				e.encode_array(optional_value, level, mut wr)!
+			} $else {
+				if field.unaliased_typ != field.typ {
+					match field.unaliased_typ {
+						typeof[string]().idx {
+							e.encode_string(value.str(), mut wr)!
+						}
+						typeof[bool]().idx {
+							wr.write(value.str().bytes())!
+						}
+						typeof[f32]().idx {
+							wr.write(value.str().bytes())!
+						}
+						typeof[f64]().idx {
+							wr.write(value.str().bytes())!
+						}
+						typeof[i8]().idx {
+							wr.write(value.str().bytes())!
+						}
+						typeof[i16]().idx {
+							wr.write(value.str().bytes())!
+						}
+						typeof[int]().idx {
+							wr.write(value.str().bytes())!
+						}
+						typeof[i64]().idx {
+							wr.write(value.str().bytes())!
+						}
+						typeof[u8]().idx {
+							wr.write(value.str().bytes())!
+						}
+						typeof[u16]().idx {
+							wr.write(value.str().bytes())!
+						}
+						typeof[u32]().idx {
+							wr.write(value.str().bytes())!
+						}
+						typeof[u64]().idx {
+							wr.write(value.str().bytes())!
+						}
+						typeof[[]byte]().idx {
+							e.encode_array(value, level, mut wr)!
+						}
+						typeof[[]int]().idx {
+							e.encode_array(value, level, mut wr)!
+						}
+						else {
+							// e.encode_value_with_level(value, level + 1, mut wr)!
+						}
+					}
 				}
 			}
+
 			if i < fields_len - 1 {
 				wr.write(json2.comma_bytes)!
 			}
+			i++
 		}
-		i++
 	}
 	e.encode_newline(level - 1, mut wr)!
 	wr.write([u8(`}`)])!

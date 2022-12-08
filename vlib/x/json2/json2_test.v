@@ -15,40 +15,19 @@ pub mut:
 	title  JobTitle
 }
 
-struct EmployeeOptional {
+struct OptionalStruct {
 pub mut:
 	name      string
 	last_name ?string = none
 	age       ?int    = none
 	salary    ?f32    = none
-	title     JobTitle
-}
-
-fn (e Employee) to_json() string {
-	mut mp := map[string]json.Any{}
-	mp['name'] = json.Any(e.name)
-	mp['age'] = json.Any(e.age)
-	mp['salary'] = json.Any(e.salary)
-	mp['title'] = json.Any(int(e.title))
-	/*
-	$for field in Employee.fields {
-		d := e.$(field.name)
-
-		$if field.typ is JobTitle {
-			mp[field.name] = json.encode<int>(d)
-		} $else {
-			mp[field.name] = d
-		}
-	}
-	*/
-	return mp.str()
 }
 
 fn test_simple_optional() {
-	x := EmployeeOptional{
+	x := OptionalStruct{
 		name: 'Peter'
 	}
-	s := json.encode<EmployeeOptional>(x)
+	s := json.encode[OptionalStruct](x)
 	assert s == '{"name":"Peter","title":"manager"}'
 	// y := json.decode<EmployeeOp>(s) or {
 	// 	println(err)
@@ -116,8 +95,13 @@ mut:
 	val T
 }
 
+struct MultTypeTestOptional[T] {
+mut:
+	val ?T
+}
+
 // NOTE - This can substitute a lot of others tests
-fn test_bool_decode() {
+fn test_mult_decode() {
 	assert json.decode[MultTypeTest[bool]]('{"val": ""}')!.val == false
 	assert json.decode[MultTypeTest[bool]]('{"val": "0"}')!.val == false
 	assert json.decode[MultTypeTest[bool]]('{"val": "1"}')!.val == true
@@ -141,4 +125,24 @@ fn test_bool_decode() {
 	assert json.decode[MultTypeTest[int]]('{"val": "false"}')!.val == 0
 	assert json.decode[MultTypeTest[int]]('{"val": true}')!.val == 1
 	assert json.decode[MultTypeTest[int]]('{"val": false}')!.val == 0
+}
+
+fn test_mult_encode() {
+	assert json.encode(MultTypeTest[bool]{}) == '{"val":false}'
+	assert json.encode(MultTypeTest[bool]{ val: false }) == '{"val":false}'
+	assert json.encode(MultTypeTest[bool]{ val: true }) == '{"val":true}'
+
+	assert json.encode(MultTypeTestOptional[bool]{ val: none }) == '{}'
+	assert json.encode(MultTypeTestOptional[bool]{}) == '{"val":false}'
+	assert json.encode(MultTypeTestOptional[bool]{ val: false }) == '{"val":false}'
+	assert json.encode(MultTypeTestOptional[bool]{ val: true }) == '{"val":true}'
+
+	assert json.encode(MultTypeTest[int]{}) == '{"val":0}'
+	assert json.encode(MultTypeTest[int]{ val: 0 }) == '{"val":0}'
+	assert json.encode(MultTypeTest[int]{ val: 1 }) == '{"val":1}'
+
+	assert json.encode(MultTypeTestOptional[int]{ val: none }) == '{}'
+	assert json.encode(MultTypeTestOptional[int]{}) == '{"val":0}'
+	assert json.encode(MultTypeTestOptional[int]{ val: 0 }) == '{"val":0}'
+	assert json.encode(MultTypeTestOptional[int]{ val: 1 }) == '{"val":1}'
 }
