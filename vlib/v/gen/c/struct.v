@@ -65,7 +65,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		} else {
 			g.write('&(${basetyp}){')
 		}
-	} else if is_gcc && g.inside_struct_fields {
+	} else if is_gcc && g.inside_cinit && g.inside_struct_fields {
 		if is_multiline {
 			g.writeln('{')
 		} else {
