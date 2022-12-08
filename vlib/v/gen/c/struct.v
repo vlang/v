@@ -44,7 +44,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		is_anon = info.is_anon
 	}
 
-	if !is_gcc && !is_anon {
+	if !(is_gcc && g.inside_cinit) && !is_anon {
 		g.write('(')
 		defer {
 			g.write(')')
