@@ -33,7 +33,7 @@ fn test_isreftype() {
 	assert isreftype([3]int) == false
 }
 
-fn check_ref<T>() string {
+fn check_ref[T]() string {
 	if isreftype(T) {
 		return 'ref'
 	} else {
@@ -42,8 +42,8 @@ fn check_ref<T>() string {
 }
 
 fn test_generic_ref() {
-	assert check_ref<f64>() == 'no ref'
-	assert check_ref<S3>() == 'ref'
+	assert check_ref[f64]() == 'no ref'
+	assert check_ref[S3]() == 'ref'
 }
 
 fn test_expression_ref() {

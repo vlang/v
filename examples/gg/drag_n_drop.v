@@ -7,7 +7,7 @@ import sokol.sapp
 
 const (
 	max_files = 12
-	text      = 'Drag&Drop here max $max_files files.'
+	text      = 'Drag&Drop here max ${max_files} files.'
 	text_size = 16
 )
 
@@ -62,7 +62,7 @@ fn frame(mut app App) {
 
 	mut y := 40
 	for c, f in app.dropped_file_list {
-		app.gg.draw_text(12, y, '[$c] $f', txt_conf)
+		app.gg.draw_text(12, y, '[${c}] ${f}', txt_conf)
 		y += text_size
 	}
 

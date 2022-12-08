@@ -49,10 +49,10 @@ fn server() ! {
 	})
 
 	s.on_close(fn (mut ws ws.Client, code int, reason string) ! {
-		println('client ($ws.id) closed connection')
+		println('client (${ws.id}) closed connection')
 	})
 
-	s.listen() or { println('error on server listen: $err') }
+	s.listen() or { println('error on server listen: ${err}') }
 
 	unsafe {
 		s.free()

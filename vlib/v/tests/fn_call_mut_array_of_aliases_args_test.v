@@ -1,13 +1,13 @@
 fn f1(mut b []byte) string {
-	return '$b'
+	return '${b}'
 }
 
 fn f2(b []byte) string {
-	return '$b'
+	return '${b}'
 }
 
 fn f3(mut b []u8) string {
-	return '$b'
+	return '${b}'
 }
 
 fn test_fn_call_mut_array_of_aliases() {

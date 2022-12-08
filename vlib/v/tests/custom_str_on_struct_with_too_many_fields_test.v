@@ -18,7 +18,7 @@ fn (a Abc) str() string {
 
 fn (a Abc) some_method() string {
 	println(a)
-	return '$a'
+	return '${a}'
 }
 
 fn test_custom_str_on_struct_with_too_many_fields() {

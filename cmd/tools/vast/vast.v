@@ -60,7 +60,7 @@ fn (ctx Context) write_file_or_print(file string) {
 	if ctx.is_print {
 		println(json(file))
 	} else {
-		println('$time.now(): AST written to: ' + json_file(file))
+		println('${time.now()}: AST written to: ' + json_file(file))
 	}
 }
 
@@ -74,7 +74,7 @@ fn (ctx Context) watch_for_changes(file string) {
 			ctx.write_file_or_print(file)
 			if ctx.is_compile {
 				file_name := file[0..(file.len - os.file_ext(file).len)]
-				os.system('v -o ${file_name}.c $file')
+				os.system('v -o ${file_name}.c ${file}')
 			}
 		}
 		timestamp = new_timestamp
@@ -96,11 +96,11 @@ fn get_abs_path(path string) string {
 // check file is v file and exists
 fn check_file(file string) {
 	if os.file_ext(file) !in ['.v', '.vv', '.vsh'] {
-		eprintln('the file `$file` must be a v file or vsh file')
+		eprintln('the file `${file}` must be a v file or vsh file')
 		exit(1)
 	}
 	if !os.exists(file) {
-		eprintln('the v file `$file` does not exist')
+		eprintln('the v file `${file}` does not exist')
 		exit(1)
 	}
 }
@@ -224,12 +224,12 @@ fn (t Tree) type_node(typ ast.Type) &Node {
 
 // token type node
 fn (t Tree) token_node(tok_kind token.Kind) &Node {
-	return t.string_node('token:${int(tok_kind)}($tok_kind.str())')
+	return t.string_node('token:${int(tok_kind)}(${tok_kind.str()})')
 }
 
 // enum type node
-fn (t Tree) enum_node<T>(value T) &Node {
-	return t.string_node('enum:${int(value)}($value)')
+fn (t Tree) enum_node[T](value T) &Node {
+	return t.string_node('enum:${int(value)}(${value})')
 }
 
 // for [][]comment
@@ -612,6 +612,7 @@ fn (t Tree) struct_field(node ast.StructField) &Node {
 	obj.add_terse('name', t.string_node(node.name))
 	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add('type_pos', t.pos(node.type_pos))
+	obj.add('optional_pos', t.pos(node.optional_pos))
 	obj.add_terse('has_default_expr', t.bool_node(node.has_default_expr))
 	obj.add_terse('default_expr_typ', t.type_node(node.default_expr_typ))
 	obj.add_terse('default_expr', t.expr(node.default_expr))
@@ -1373,6 +1374,7 @@ fn (t Tree) selector_expr(node ast.SelectorExpr) &Node {
 	obj.add_terse('field_name', t.string_node(node.field_name))
 	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add_terse('name_type', t.type_node(node.name_type))
+	obj.add_terse('or_block', t.or_expr(node.or_block))
 	obj.add_terse('gkind_field', t.enum_node(node.gkind_field))
 	obj.add_terse('from_embed_types', t.array_node_type(node.from_embed_types))
 	obj.add_terse('next_token', t.token_node(node.next_token))
@@ -1677,8 +1679,9 @@ fn (t Tree) concat_expr(node ast.ConcatExpr) &Node {
 fn (t Tree) type_of(node ast.TypeOf) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('TypeOf'))
+	obj.add_terse('is_type', t.bool_node(node.is_type))
+	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add_terse('expr', t.expr(node.expr))
-	obj.add_terse('expr_type', t.type_node(node.expr_type))
 	obj.add('pos', t.pos(node.pos))
 	return obj
 }
@@ -1984,7 +1987,7 @@ fn (t Tree) asm_io(node ast.AsmIO) &Node {
 }
 
 // do not support yet by vlang
-// fn (t Tree) array_node1<T>(nodes []T, method_name string) &Node {
+// fn (t Tree) array_node1[T](nodes []T, method_name string) &Node {
 // 	mut arr := new_array()
 
 // 	// call method dynamically, V do not support yet
@@ -2007,7 +2010,7 @@ fn (t Tree) asm_io(node ast.AsmIO) &Node {
 // }
 
 // do not support yet by vlang
-// fn (t Tree) array_node2<T>(nodes []T) &Node {
+// fn (t Tree) array_node2[T](nodes []T) &Node {
 // 	mut arr := new_array()
 
 // 	for node in nodes {

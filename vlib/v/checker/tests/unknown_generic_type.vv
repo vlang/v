@@ -1,8 +1,8 @@
-fn decode<T>(raw_data string) ?T {
+fn decode[T](raw_data string) ?T {
 	return none
 }
 
 fn main() {
-	x := decode<Foo>('{"name": "test"}')?
+	x := decode[Foo]('{"name": "test"}')?
 	println(x)
 }

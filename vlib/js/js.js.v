@@ -22,9 +22,9 @@ pub interface JS.Response {
 	clone() JS.Response
 }
 
-pub fn fetch(input string, init map[string]JS.Any) promise.Promise<JS.Response, JS.String> {
+pub fn fetch(input string, init map[string]JS.Any) promise.Promise[JS.Response, JS.String] {
 	p_init := JS.Any(unsafe { nil })
-	p := promise.Promise<JS.Response, String>{p_init}
+	p := promise.Promise[JS.Response, String]{p_init}
 
 	#let obj = {}; for (let [key,val] of init.map) { obj[key] = val; }
 	#p.promise = fetch(input.str,obj);

@@ -1,39 +1,38 @@
 module orm
 
 import time
-import v.ast
 
 pub const (
-	num64    = [ast.i64_type_idx, ast.u64_type_idx]
-	nums     = [
-		ast.i8_type_idx,
-		ast.i16_type_idx,
-		ast.int_type_idx,
-		ast.u8_type_idx,
-		ast.u16_type_idx,
-		ast.u32_type_idx,
-		ast.bool_type_idx,
+	num64       = [typeof[i64]().idx, typeof[u64]().idx]
+	nums        = [
+		typeof[i8]().idx,
+		typeof[i16]().idx,
+		typeof[int]().idx,
+		typeof[u8]().idx,
+		typeof[u16]().idx,
+		typeof[u32]().idx,
+		typeof[bool]().idx,
 	]
-	float    = [
-		ast.f32_type_idx,
-		ast.f64_type_idx,
+	float       = [
+		typeof[f32]().idx,
+		typeof[f64]().idx,
 	]
-	string   = ast.string_type_idx
-	time     = -2
-	serial   = -1
-	type_idx = {
-		'i8':     ast.i8_type_idx
-		'i16':    ast.i16_type_idx
-		'int':    ast.int_type_idx
-		'i64':    ast.i64_type_idx
-		'u8':     ast.u8_type_idx
-		'u16':    ast.u16_type_idx
-		'u32':    ast.u32_type_idx
-		'u64':    ast.u64_type_idx
-		'f32':    ast.f32_type_idx
-		'f64':    ast.f64_type_idx
-		'bool':   ast.bool_type_idx
-		'string': ast.string_type_idx
+	type_string = typeof[string]().idx
+	time        = -2
+	serial      = -1
+	type_idx    = {
+		'i8':     typeof[i8]().idx
+		'i16':    typeof[i16]().idx
+		'int':    typeof[int]().idx
+		'i64':    typeof[i64]().idx
+		'u8':     typeof[u8]().idx
+		'u16':    typeof[u16]().idx
+		'u32':    typeof[u32]().idx
+		'u64':    typeof[u64]().idx
+		'f32':    typeof[f32]().idx
+		'f64':    typeof[f64]().idx
+		'bool':   typeof[bool]().idx
+		'string': typeof[string]().idx
 	}
 	string_max_len = 2048
 )
@@ -212,22 +211,22 @@ pub fn orm_stmt_gen(table string, q string, kind StmtKind, num bool, qm string, 
 					}
 					data_data << data.data[i]
 				}
-				select_fields << '$q${data.fields[i]}$q'
+				select_fields << '${q}${data.fields[i]}${q}'
 				values << factory_insert_qm_value(num, qm, c)
 				data_fields << data.fields[i]
 				c++
 			}
 
-			str += 'INSERT INTO $q$table$q ('
+			str += 'INSERT INTO ${q}${table}${q} ('
 			str += select_fields.join(', ')
 			str += ') VALUES ('
 			str += values.join(', ')
 			str += ')'
 		}
 		.update {
-			str += 'UPDATE $q$table$q SET '
+			str += 'UPDATE ${q}${table}${q} SET '
 			for i, field in data.fields {
-				str += '$q$field$q = '
+				str += '${q}${field}${q} = '
 				if data.data.len > i {
 					d := data.data[i]
 					if d is InfixType {
@@ -245,15 +244,15 @@ pub fn orm_stmt_gen(table string, q string, kind StmtKind, num bool, qm string, 
 								'/'
 							}
 						}
-						str += '$d.name $op $qm'
+						str += '${d.name} ${op} ${qm}'
 					} else {
-						str += '$qm'
+						str += '${qm}'
 					}
 				} else {
-					str += '$qm'
+					str += '${qm}'
 				}
 				if num {
-					str += '$c'
+					str += '${c}'
 					c++
 				}
 				if i < data.fields.len - 1 {
@@ -263,7 +262,7 @@ pub fn orm_stmt_gen(table string, q string, kind StmtKind, num bool, qm string, 
 			str += ' WHERE '
 		}
 		.delete {
-			str += 'DELETE FROM $q$table$q WHERE '
+			str += 'DELETE FROM ${q}${table}${q} WHERE '
 		}
 	}
 	if kind == .update || kind == .delete {
@@ -279,9 +278,9 @@ pub fn orm_stmt_gen(table string, q string, kind StmtKind, num bool, qm string, 
 			if pre_par {
 				str += '('
 			}
-			str += '$q$field$q ${where.kinds[i].to_str()} $qm'
+			str += '${q}${field}${q} ${where.kinds[i].to_str()} ${qm}'
 			if num {
-				str += '$c'
+				str += '${c}'
 				c++
 			}
 			if post_par {
@@ -313,14 +312,14 @@ pub fn orm_select_gen(orm SelectConfig, q string, num bool, qm string, start_pos
 		str += 'COUNT(*)'
 	} else {
 		for i, field in orm.fields {
-			str += '$q$field$q'
+			str += '${q}${field}${q}'
 			if i < orm.fields.len - 1 {
 				str += ', '
 			}
 		}
 	}
 
-	str += ' FROM $q$orm.table$q'
+	str += ' FROM ${q}${orm.table}${q}'
 
 	mut c := start_pos
 
@@ -338,9 +337,9 @@ pub fn orm_select_gen(orm SelectConfig, q string, num bool, qm string, start_pos
 			if pre_par {
 				str += '('
 			}
-			str += '$q$field$q ${where.kinds[i].to_str()} $qm'
+			str += '${q}${field}${q} ${where.kinds[i].to_str()} ${qm}'
 			if num {
-				str += '$c'
+				str += '${c}'
 				c++
 			}
 			if post_par {
@@ -360,22 +359,22 @@ pub fn orm_select_gen(orm SelectConfig, q string, num bool, qm string, start_pos
 	// ordering is *slow*, especially if there are no indexes!
 	if orm.has_order {
 		str += ' ORDER BY '
-		str += '$q$orm.order$q '
+		str += '${q}${orm.order}${q} '
 		str += orm.order_type.to_str()
 	}
 
 	if orm.has_limit {
-		str += ' LIMIT $qm'
+		str += ' LIMIT ${qm}'
 		if num {
-			str += '$c'
+			str += '${c}'
 			c++
 		}
 	}
 
 	if orm.has_offset {
-		str += ' OFFSET $qm'
+		str += ' OFFSET ${qm}'
 		if num {
-			str += '$c'
+			str += '${c}'
 			c++
 		}
 	}
@@ -393,10 +392,10 @@ pub fn orm_select_gen(orm SelectConfig, q string, num bool, qm string, start_pos
 // sql_from_v - Function which maps type indices to sql type names
 // alternative - Needed for msdb
 pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, fields []TableField, sql_from_v fn (int) !string, alternative bool) !string {
-	mut str := 'CREATE TABLE IF NOT EXISTS $q$table$q ('
+	mut str := 'CREATE TABLE IF NOT EXISTS ${q}${table}${q} ('
 
 	if alternative {
-		str = 'IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=$q$table$q and xtype=${q}U$q) CREATE TABLE $q$table$q ('
+		str = 'IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=${q}${table}${q} and xtype=${q}U${q}) CREATE TABLE ${q}${table}${q} ('
 	}
 
 	mut fs := []string{}
@@ -444,13 +443,13 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 				}
 				'sql_type' {
 					if attr.kind != .string {
-						return error("sql_type attribute need be string. Try [sql_type: '$attr.arg'] instead of [sql_type: $attr.arg]")
+						return error("sql_type attribute need be string. Try [sql_type: '${attr.arg}'] instead of [sql_type: ${attr.arg}]")
 					}
 					ctyp = attr.arg
 				}
 				'default' {
 					if attr.kind != .string {
-						return error("default attribute need be string. Try [default: '$attr.arg'] instead of [default: $attr.arg]")
+						return error("default attribute need be string. Try [default: '${attr.arg}'] instead of [default: ${attr.arg}]")
 					}
 					if default_val == '' {
 						default_val = attr.arg
@@ -464,22 +463,22 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 		}
 		mut stmt := ''
 		if ctyp == '' {
-			return error('Unknown type ($field.typ) for field $field.name in struct $table')
+			return error('Unknown type (${field.typ}) for field ${field.name} in struct ${table}')
 		}
-		stmt = '$q$field_name$q $ctyp'
+		stmt = '${q}${field_name}${q} ${ctyp}'
 		if defaults && default_val != '' {
-			stmt += ' DEFAULT $default_val'
+			stmt += ' DEFAULT ${default_val}'
 		}
 		if no_null {
 			stmt += ' NOT NULL'
 		}
 		if is_unique {
-			mut f := 'UNIQUE($q$field_name$q'
+			mut f := 'UNIQUE(${q}${field_name}${q}'
 			if ctyp == 'TEXT' && def_unique_len > 0 {
 				if unique_len > 0 {
-					f += '($unique_len)'
+					f += '(${unique_len})'
 				} else {
-					f += '($def_unique_len)'
+					f += '(${def_unique_len})'
 				}
 			}
 			f += ')'
@@ -488,18 +487,18 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 		fs << stmt
 	}
 	if primary == '' {
-		return error('A primary key is required for $table')
+		return error('A primary key is required for ${table}')
 	}
 	if unique.len > 0 {
 		for k, v in unique {
 			mut tmp := []string{}
 			for f in v {
-				tmp << '$q$f$q'
+				tmp << '${q}${f}${q}'
 			}
-			fs << '/* $k */UNIQUE(${tmp.join(', ')})'
+			fs << '/* ${k} */UNIQUE(${tmp.join(', ')})'
 		}
 	}
-	fs << 'PRIMARY KEY($q$primary$q)'
+	fs << 'PRIMARY KEY(${q}${primary}${q})'
 	fs << unique_fields
 	str += fs.join(', ')
 	str += ');'
@@ -597,8 +596,8 @@ pub fn infix_to_primitive(b InfixType) Primitive {
 
 fn factory_insert_qm_value(num bool, qm string, c int) string {
 	if num {
-		return '$qm$c'
+		return '${qm}${c}'
 	} else {
-		return '$qm'
+		return '${qm}'
 	}
 }

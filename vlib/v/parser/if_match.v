@@ -101,7 +101,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				var_names << var.name
 
 				if p.scope.known_var(var.name) {
-					p.error_with_pos('redefinition of `$var.name`', var.pos)
+					p.error_with_pos('redefinition of `${var.name}`', var.pos)
 				}
 				vars << var
 				if p.tok.kind != .comma {
@@ -113,7 +113,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			p.check(.decl_assign)
 			comments << p.eat_comments()
 			expr := p.expr(0)
-			if expr !in [ast.CallExpr, ast.IndexExpr, ast.PrefixExpr] {
+			if expr !in [ast.CallExpr, ast.IndexExpr, ast.PrefixExpr, ast.SelectorExpr] {
 				p.error_with_pos('if guard condition expression is illegal, it should return optional',
 					expr.pos())
 			}
@@ -267,6 +267,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			// Expression match
 			for {
 				p.inside_match_case = true
+				mut range_pos := p.tok.pos()
 				expr := p.expr(0)
 				ecmnts << p.eat_comments()
 				p.inside_match_case = false
@@ -276,13 +277,15 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					return ast.MatchExpr{}
 				} else if p.tok.kind == .ellipsis {
 					p.next()
+					p.inside_match_case = true
 					expr2 := p.expr(0)
+					p.inside_match_case = false
 					exprs << ast.RangeExpr{
 						low: expr
 						high: expr2
 						has_low: true
 						has_high: true
-						pos: p.tok.pos()
+						pos: range_pos.extend(p.prev_tok.pos())
 					}
 				} else {
 					exprs << expr

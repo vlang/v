@@ -56,7 +56,7 @@ fn (mut g JsGen) js_mname(name_ string) string {
 	if !is_js {
 		for i, p in parts {
 			if p in js_reserved {
-				parts[i] = 'v_$p'
+				parts[i] = 'v_${p}'
 			}
 		}
 	}
@@ -119,9 +119,9 @@ fn (mut g JsGen) js_call(node ast.CallExpr) {
 			.propagate_option {
 				panicstr := '`optional not set (\${err + ""})`'
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
-					g.writeln('return builtin__panic($panicstr)')
+					g.writeln('return builtin__panic(${panicstr})')
 				} else {
-					g.writeln('throw new Option({ state: new u8(2), err: error(new string($panicstr)) });')
+					g.writeln('throw new Option({ state: new u8(2), err: error(new string(${panicstr})) });')
 				}
 			}
 			else {}
@@ -179,9 +179,9 @@ fn (mut g JsGen) js_method_call(node ast.CallExpr) {
 			.propagate_option {
 				panicstr := '`optional not set (\${err + ""})`'
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
-					g.writeln('return builtin__panic($panicstr)')
+					g.writeln('return builtin__panic(${panicstr})')
 				} else {
-					g.writeln('throw new option({ state: new u8(2), err: error(new string($panicstr)) });')
+					g.writeln('throw new option({ state: new u8(2), err: error(new string(${panicstr})) });')
 				}
 			}
 			else {}
@@ -330,7 +330,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 		g.expr(it.left)
 		g.write('.promise')
 	} else {
-		mut name := util.no_dots('${receiver_type_name}_$node.name')
+		mut name := util.no_dots('${receiver_type_name}_${node.name}')
 
 		name = g.generic_fn_name(node.concrete_types, name)
 		g.write('${name}(')
@@ -370,7 +370,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 			.propagate_option {
 				panicstr := '`optional not set (\${err.valueOf().msg})`'
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
-					g.writeln('return builtin__panic($panicstr)')
+					g.writeln('return builtin__panic(${panicstr})')
 				} else {
 					g.writeln('js_throw(err)')
 				}
@@ -408,7 +408,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 
 	is_print := name in ['print', 'println', 'eprint', 'eprintln', 'panic']
 	if name in js.builtin_functions {
-		name = 'builtin__$name'
+		name = 'builtin__${name}'
 	}
 	print_method := name
 	ret_sym := g.table.sym(it.return_type)
@@ -429,7 +429,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		mut typ := node.args[0].typ
 
 		expr := node.args[0].expr
-		g.write('$print_method (')
+		g.write('${print_method} (')
 		g.gen_expr_to_string(expr, typ)
 		g.write(')')
 		return
@@ -471,7 +471,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			.propagate_option {
 				panicstr := '`optional not set (\${err.valueOf().msg})`'
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
-					g.writeln('return builtin__panic($panicstr)')
+					g.writeln('return builtin__panic(${panicstr})')
 				} else {
 					g.writeln('js_throw(err)')
 				}
@@ -516,16 +516,16 @@ fn (mut g JsGen) is_used_by_main(node ast.FnDecl) bool {
 		fkey := node.fkey()
 		is_used_by_main = g.table.used_fns[fkey]
 		$if trace_skip_unused_fns ? {
-			println('> is_used_by_main: $is_used_by_main | node.name: $node.name | fkey: $fkey | node.is_method: $node.is_method')
+			println('> is_used_by_main: ${is_used_by_main} | node.name: ${node.name} | fkey: ${fkey} | node.is_method: ${node.is_method}')
 		}
 		if !is_used_by_main {
 			$if trace_skip_unused_fns_in_js_code ? {
-				g.writeln('// trace_skip_unused_fns_in_js_code, $node.name, fkey: $fkey')
+				g.writeln('// trace_skip_unused_fns_in_js_code, ${node.name}, fkey: ${fkey}')
 			}
 		}
 	} else {
 		$if trace_skip_unused_fns_in_js_code ? {
-			g.writeln('// trace_skip_unused_fns_in_js_code, $node.name, fkey: $node.fkey()')
+			g.writeln('// trace_skip_unused_fns_in_js_code, ${node.name}, fkey: ${node.fkey()}')
 		}
 	}
 	return is_used_by_main
@@ -594,7 +594,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 			if g.pref.is_verbose {
 				syms := concrete_types.map(g.table.sym(it))
 				the_type := syms.map(it.name).join(', ')
-				println('gen fn `$node.name` for type `$the_type`')
+				println('gen fn `${node.name}` for type `${the_type}`')
 			}
 			g.cur_concrete_types = concrete_types
 			g.gen_method_decl(node, typ)
@@ -625,20 +625,20 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 
 	name = g.generic_fn_name(g.cur_concrete_types, name)
 	if name in js.builtin_functions {
-		name = 'builtin__$name'
+		name = 'builtin__${name}'
 	}
 	if it.is_pub && !it.is_method {
 		g.push_pub_var(name)
 	}
 	if it.language == .js && it.is_method {
-		g.writeln('${g.typ(it.receiver.typ)}.prototype.$it.name = ')
+		g.writeln('${g.typ(it.receiver.typ)}.prototype.${it.name} = ')
 	}
 
 	mut has_go := fn_has_go(it) || it.has_await
 	for attr in it.attrs {
 		if attr.name == 'async' {
 			if g.pref.output_es5 {
-				verror('Cannot use [async] attribute when outputing ES5 source code')
+				verror('cannot use [async] attribute when outputing ES5 source code')
 			}
 			has_go = true
 			break
@@ -683,12 +683,12 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		is_varg := i == args.len - 1 && it.is_variadic
 		arg_name := g.js_name(arg.name)
 		if is_varg {
-			g.writeln('$arg_name = new array(new array_buffer({arr: $arg_name,len: new int(${arg_name}.length),index_start: new int(0)}));')
+			g.writeln('${arg_name} = new array(new array_buffer({arr: ${arg_name},len: new int(${arg_name}.length),index_start: new int(0)}));')
 		} else {
 			asym := g.table.sym(arg.typ)
 			if asym.kind != .interface_ && asym.language != .js {
 				if arg.typ.is_ptr() || arg.is_mut {
-					g.writeln('$arg_name = new \$ref($arg_name)')
+					g.writeln('${arg_name} = new \$ref(${arg_name})')
 				}
 			}
 		}
@@ -712,19 +712,19 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	for attr in it.attrs {
 		match attr.name {
 			'export' {
-				g.writeln('globalThis.$attr.arg = ${g.js_name(it.name)};')
+				g.writeln('globalThis.${attr.arg} = ${g.js_name(it.name)};')
 			}
 			'wasm_export' {
 				mut x := g.wasm_export[attr.arg] or { []string{} }
 				g.write('function \$wasm${g.js_name(it.name)}(')
 				g.fn_args(args, it.is_variadic)
 				g.writeln(') {')
-				g.write('\treturn $name (')
+				g.write('\treturn ${name} (')
 				for i, arg in args {
 					is_varg := i == args.len - 1 && it.is_variadic
 					arg_name := g.js_name(arg.name)
 					if is_varg {
-						g.write('...$arg_name')
+						g.write('...${arg_name}')
 					} else {
 						g.gen_cast_tmp(arg_name, arg.typ)
 					}
@@ -754,7 +754,7 @@ fn (mut g JsGen) fn_args(args []ast.Param, is_variadic bool) {
 		name := g.js_name(arg.name)
 		is_varg := i == args.len - 1 && is_variadic
 		if is_varg {
-			g.write('...$name')
+			g.write('...${name}')
 		} else {
 			g.write(name)
 		}
@@ -799,7 +799,7 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 
 	name = g.generic_fn_name(g.table.cur_concrete_types, name)
 	if name in js.builtin_functions {
-		name = 'builtin__$name'
+		name = 'builtin__${name}'
 	}
 	if it.is_pub && !it.is_method {
 		g.push_pub_var(name)
@@ -818,19 +818,19 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 		is_varg := i == args.len - 1 && it.is_variadic
 		arg_name := g.js_name(arg.name)
 		if is_varg {
-			g.writeln('$arg_name = new array(new array_buffer({arr: $arg_name,len: new int(${arg_name}.length),index_start: new int(0)}));')
+			g.writeln('${arg_name} = new array(new array_buffer({arr: ${arg_name},len: new int(${arg_name}.length),index_start: new int(0)}));')
 		} else {
 			asym := g.table.sym(arg.typ)
 
 			if arg.typ.is_ptr() || (arg.is_mut && asym.kind != .interface_ && asym.language != .js) {
-				g.writeln('$arg_name = new \$ref($arg_name)')
+				g.writeln('${arg_name} = new \$ref(${arg_name})')
 			}
 		}
 	}
 
 	for inherited in fun.inherited_vars {
 		if !inherited.is_mut {
-			g.writeln('let $inherited.name = ${inherited2copy[inherited.name]};')
+			g.writeln('let ${inherited.name} = ${inherited2copy[inherited.name]};')
 		}
 	}
 	g.stmts(it.stmts)

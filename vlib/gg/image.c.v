@@ -84,9 +84,22 @@ pub fn (mut img Image) init_sokol_image() &Image {
 		label: img.path.str
 		d3d11_texture: 0
 	}
+
+	// NOTE the following code, sometimes, result in hard-to-detect visual errors/bugs:
+	// img_size := usize(img.nr_channels * img.width * img.height)
+	// As an example see https://github.com/vlang/vab/issues/239
+	// The image will come out blank for some reason and no SOKOL_ASSERT
+	// nor any CI check will/can currently catch this.
+	// Since all of gg currently runs with more or less *defaults* from sokol_gfx/sokol_gl
+	// we should currently just use the sum of each of the RGB and A channels (= 4) here instead.
+	// Optimized PNG images that have no alpha channel is often optimized to only have
+	// 3 (or less) channels which stbi will correctly detect and set as `img.nr_channels`
+	// but the current sokol_gl context setup expects 4. It *should* be the same with
+	// all other stbi supported formats.
+	img_size := usize(4 * img.width * img.height)
 	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr: img.data
-		size: usize(img.nr_channels * img.width * img.height)
+		size: img_size
 	}
 	img.simg = gfx.make_image(&img_desc)
 	img.simg_ok = true
@@ -98,7 +111,7 @@ pub fn (mut img Image) init_sokol_image() &Image {
 pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Image) {
 	$if macos {
 		if img_.id >= ctx.image_cache.len {
-			eprintln('gg: draw_image() bad img id $img_.id (img cache len = $ctx.image_cache.len)')
+			eprintln('gg: draw_image() bad img id ${img_.id} (img cache len = ${ctx.image_cache.len})')
 			return
 		}
 		if ctx.native_rendering {
@@ -203,7 +216,7 @@ pub fn (mut ctx Context) create_image_with_size(file string, width int, height i
 // TODO remove this
 fn create_image(file string) Image {
 	if !os.exists(file) {
-		println('gg.create_image(): file not found: $file')
+		println('gg.create_image(): file not found: ${file}')
 		return Image{} // none
 	}
 	stb_img := stbi.load(file) or { return Image{} }
@@ -262,7 +275,7 @@ pub struct StreamingImageConfig {
 pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	id := if !isnil(config.img) { config.img.id } else { config.img_id }
 	if id >= ctx.image_cache.len {
-		eprintln('gg: draw_image() bad img id $id (img cache len = $ctx.image_cache.len)')
+		eprintln('gg: draw_image() bad img id ${id} (img cache len = ${ctx.image_cache.len})')
 		return
 	}
 

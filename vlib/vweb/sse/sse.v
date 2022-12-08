@@ -50,7 +50,7 @@ pub fn (mut sse SSEConnection) start() ! {
 	start_sb.write_string('\r\nCache-Control: no-cache')
 	start_sb.write_string('\r\nContent-Type: text/event-stream')
 	for k, v in sse.headers {
-		start_sb.write_string('\r\n$k: $v')
+		start_sb.write_string('\r\n${k}: ${v}')
 	}
 	start_sb.write_string('\r\n')
 	sse.conn.write(start_sb) or { return error('could not start sse response') }
@@ -61,16 +61,16 @@ pub fn (mut sse SSEConnection) start() ! {
 pub fn (mut sse SSEConnection) send_message(message SSEMessage) ! {
 	mut sb := strings.new_builder(512)
 	if message.id != '' {
-		sb.write_string('id: $message.id\n')
+		sb.write_string('id: ${message.id}\n')
 	}
 	if message.event != '' {
-		sb.write_string('event: $message.event\n')
+		sb.write_string('event: ${message.event}\n')
 	}
 	if message.data != '' {
-		sb.write_string('data: $message.data\n')
+		sb.write_string('data: ${message.data}\n')
 	}
 	if message.retry != 0 {
-		sb.write_string('retry: $message.retry\n')
+		sb.write_string('retry: ${message.retry}\n')
 	}
 	sb.write_string('\n')
 	sse.conn.write(sb)!

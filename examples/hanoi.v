@@ -8,7 +8,7 @@ fn main() {
 }
 
 fn move(n int, a string, b string) {
-	println('Disc $n from $a to ${b}...')
+	println('Disc ${n} from ${a} to ${b}...')
 }
 
 fn hanoi(n int, a string, b string, c string) {

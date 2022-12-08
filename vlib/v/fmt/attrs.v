@@ -17,7 +17,7 @@ pub fn (mut f Fmt) attrs(attrs []ast.Attr) {
 			f.single_line_attrs(sorted_attrs[i..])
 			break
 		}
-		f.writeln('[$attr]')
+		f.writeln('[${attr}]')
 	}
 }
 
@@ -40,7 +40,7 @@ pub fn (mut f Fmt) single_line_attrs(attrs []ast.Attr, options AttrsOptions) {
 		if i > 0 {
 			f.write('; ')
 		}
-		f.write('$attr')
+		f.write('${attr}')
 	}
 	f.write(']')
 	if !options.inline {
@@ -57,7 +57,7 @@ fn inline_attrs_len(attrs []ast.Attr) int {
 		if i > 0 {
 			n += 2 // '; '.len
 		}
-		n += '$attr'.len
+		n += '${attr}'.len
 	}
 	n++ // ']'.len
 	return n

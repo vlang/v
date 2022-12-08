@@ -89,7 +89,7 @@ fn (mut a array) ensure_cap_noscan(required int) {
 [unsafe]
 fn (a array) repeat_to_depth_noscan(count int, depth int) array {
 	if count < 0 {
-		panic('array.repeat: count is negative: $count')
+		panic('array.repeat: count is negative: ${count}')
 	}
 	mut size := u64(count) * u64(a.len) * u64(a.element_size)
 	if size == 0 {
@@ -124,7 +124,7 @@ fn (a array) repeat_to_depth_noscan(count int, depth int) array {
 fn (mut a array) insert_noscan(i int, val voidptr) {
 	$if !no_bounds_checking {
 		if i < 0 || i > a.len {
-			panic('array.insert: index out of range (i == $i, a.len == $a.len)')
+			panic('array.insert: index out of range (i == ${i}, a.len == ${a.len})')
 		}
 	}
 	a.ensure_cap_noscan(a.len + 1)
@@ -140,7 +140,7 @@ fn (mut a array) insert_noscan(i int, val voidptr) {
 fn (mut a array) insert_many_noscan(i int, val voidptr, size int) {
 	$if !no_bounds_checking {
 		if i < 0 || i > a.len {
-			panic('array.insert_many: index out of range (i == $i, a.len == $a.len)')
+			panic('array.insert_many: index out of range (i == ${i}, a.len == ${a.len})')
 		}
 	}
 	a.ensure_cap_noscan(a.len + size)

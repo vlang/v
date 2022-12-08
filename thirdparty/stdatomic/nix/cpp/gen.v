@@ -11,8 +11,8 @@ fn main() {
 		exit(1)
 	}
 	cc_type, cc_version, cc_os := get_cc_info(cc)
-	triple := '$cc_type-$cc_version-$cc_os'
-	println('compiler: $triple')
+	triple := '${cc_type}-${cc_version}-${cc_os}'
+	println('compiler: ${triple}')
 
 	search_paths := get_search_paths(cc)
 	atomic_path := find_file(search_paths, 'atomic') or {
@@ -40,7 +40,7 @@ fn main() {
 		}
 	}
 
-	println('$atomic_path:::$bitsatomicbase_path')
+	println('${atomic_path}:::${bitsatomicbase_path}')
 }
 
 fn get_cc_info(cc string) (string, string, string) {
@@ -57,7 +57,7 @@ fn get_cc_info(cc string) (string, string, string) {
 	lines := os.execute('${os.quoted_path(cc)} -v').output.split('\n')
 
 	// gcc and clang both have the same way way to say what version they have and what the host target triple is
-	cc_version := lines.filter(it.contains('$cc_type version '))[0].all_after('$cc_type version ').all_before('.')
+	cc_version := lines.filter(it.contains('${cc_type} version '))[0].all_after('${cc_type} version ').all_before('.')
 
 	cc_os := lines.filter(it.starts_with('Target: '))[0].all_after('Target: ').split('-')[2]
 
@@ -81,7 +81,7 @@ fn find_file(search_paths []string, file string) ?string {
 			return os.join_path(search_path, file)
 		}
 	}
-	return error('$file not found')
+	return error('${file} not found')
 }
 
 fn patch_atomic(outfile string, infile string) ? {

@@ -23,8 +23,8 @@ pub fn open_uri(uri string) ! {
 	if vopen_uri_cmd == '' {
 		return error('unsupported platform')
 	}
-	result := execute('$vopen_uri_cmd "$uri"')
+	result := execute('${vopen_uri_cmd} "${uri}"')
 	if result.exit_code != 0 {
-		return error('unable to open url: $result.output')
+		return error('unable to open url: ${result.output}')
 	}
 }

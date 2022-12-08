@@ -41,7 +41,7 @@ fn diff_files(file_result string, file_expected string) string {
 
 pub fn run_repl_file(wd string, vexec string, file string) !string {
 	vexec_folder := os.dir(vexec) + os.path_separator
-	fcontent := os.read_file(file) or { return error('Could not read repl file $file') }
+	fcontent := os.read_file(file) or { return error('Could not read repl file ${file}') }
 	content := fcontent.replace('\r', '')
 	input := content.all_before('===output===\n')
 	output := content.all_after('===output===\n').trim_right('\n\r')
@@ -53,7 +53,7 @@ pub fn run_repl_file(wd string, vexec string, file string) !string {
 	r := os.execute(rcmd)
 	if r.exit_code != 0 {
 		os.rm(input_temporary_filename)!
-		return error('Could not execute: $rcmd')
+		return error('Could not execute: ${rcmd}')
 	}
 	result := r.output.replace('\r', '').replace('>>> ', '').replace('>>>', '').replace('... ',
 		'').replace(wd + os.path_separator, '').replace(vexec_folder, '').replace('\\',
@@ -70,13 +70,13 @@ pub fn run_repl_file(wd string, vexec string, file string) !string {
 		os.write_file(file_result, result) or { panic(err) }
 		os.write_file(file_expected, output) or { panic(err) }
 		diff := diff_files(file_expected, file_result)
-		return error('Difference found in REPL file: $file
+		return error('Difference found in REPL file: ${file}
 ====> Expected :
-|$output|
+|${output}|
 ====> Got      :
-|$result|
+|${result}|
 ====> Diff     :
-$diff
+${diff}
 		')
 	} else {
 		return file.replace('./', '')
@@ -86,32 +86,32 @@ $diff
 pub fn run_prod_file(wd string, vexec string, file string) !string {
 	file_expected := '${file}.expected.txt'
 	f_expected_content := os.read_file(file_expected) or {
-		return error('Could not read expected prod file $file_expected')
+		return error('Could not read expected prod file ${file_expected}')
 	}
 	expected_content := f_expected_content.replace('\r', '')
 	cmd := '${os.quoted_path(vexec)} -prod run ${os.quoted_path(file)}'
 	r := os.execute(cmd)
 	if r.exit_code < 0 {
-		return error('Could not execute: $cmd')
+		return error('Could not execute: ${cmd}')
 	}
 	if r.exit_code != 0 {
-		return error('$cmd return exit code: $r.exit_code')
+		return error('${cmd} return exit code: ${r.exit_code}')
 	}
 	result := r.output.replace('\r', '')
 	if result != expected_content {
 		file_result := '${file}.result.txt'
 		os.write_file(file_result, result) or { panic(err) }
 		diff := diff_files(file_result, file_expected)
-		return error('Difference found in test: $file
+		return error('Difference found in test: ${file}
 ====> Got      :
-|$result|
+|${result}|
 ====> Expected :
-|$expected_content|
+|${expected_content}|
 ====> Diff     :
-$diff
+${diff}
 		')
 	} else {
-		return 'Prod file $file is OK'
+		return 'Prod file ${file} is OK'
 	}
 }
 

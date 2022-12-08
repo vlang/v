@@ -48,14 +48,14 @@ fn main() {
 	//}
 
 	// Encode a struct/type to JSON
-	encoded_json := json2.encode<Person>(person2)
+	encoded_json := json2.encode[Person](person2)
 }
 ```
-## Using `decode<T>` and `encode<T>`
+## Using `decode[T]` and `encode[T]`
 > Codegen for this feature is still WIP.
 > You need to manually define the methods before using the module to structs.
 
-In order to use the `decode<T>` and `encode<T>` function, you need to explicitly define
+In order to use the `decode[T]` and `encode[T]` function, you need to explicitly define
 two methods: `from_json` and `to_json`. `from_json` accepts a `json2.Any` argument
 and inside of it you need to map the fields you're going to put into the type.
 As for `to_json` method, you just need to map the values into `json2.Any`
@@ -91,9 +91,9 @@ fn (p Person) to_json() string {
 
 fn main() {
     resp := os.read_file('./person.json')!
-    person := json2.decode<Person>(resp)!
+    person := json2.decode[Person](resp)!
     println(person) // Person{name: 'Bob', age: 28, pets: ['Floof']}
-    person_json := json2.encode<Person>(person)
+    person_json := json2.encode[Person](person)
     println(person_json) // {"name": "Bob", "age": 28, "pets": ["Floof"]}
 }
 ```
@@ -128,7 +128,7 @@ fn (mut p Person) from_json(f json2.Any) {
 
 ### Null Values
 `x.json2` has a separate `null` type for differentiating an undefined value and a null value.
-To verify that the field you're accessing is a `null`, use `<typ> is json2.Null`.
+To verify that the field you're accessing is a `null`, use `[typ] is json2.Null`.
 
 ```v ignore
 fn (mut p Person) from_json(f json2.Any) {

@@ -28,7 +28,7 @@ fn (mut p Process) unix_spawn_process() int {
 	//
 	// Here, we are in the child process.
 	// It still shares file descriptors with the parent process,
-	// but it is otherwise independant and can do stuff *without*
+	// but it is otherwise independent and can do stuff *without*
 	// affecting the parent process.
 	//
 	if p.use_pgroup {

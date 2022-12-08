@@ -570,7 +570,7 @@ pub fn (b []u8) byterune() ?rune {
 // repeat returns a new string with `count` number of copies of the byte it was called on.
 pub fn (b u8) repeat(count int) string {
 	if count < 0 {
-		panic('byte.repeat: count is negative: $count')
+		panic('byte.repeat: count is negative: ${count}')
 	} else if count == 0 {
 		return ''
 	} else if count == 1 {

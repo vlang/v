@@ -32,14 +32,14 @@ const magic_cipher_data = [u8(0x4f), 0x72, 0x70, 0x68, 0x65, 0x61, 0x6e, 0x42, 0
 
 // generate_from_password return a bcrypt string from Hashed struct.
 pub fn generate_from_password(password []u8, cost int) ?string {
-	mut p := new_from_password(password, cost) or { return error('Error: $err') }
+	mut p := new_from_password(password, cost) or { return error('Error: ${err}') }
 	x := p.hash_u8()
 	return x.bytestr()
 }
 
 // compare_hash_and_password compares a bcrypt hashed password with its possible hashed version.
 pub fn compare_hash_and_password(password []u8, hashed_password []u8) ? {
-	mut p := new_from_hash(hashed_password) or { return error('Error: $err') }
+	mut p := new_from_hash(hashed_password) or { return error('Error: ${err}') }
 	p.salt << `=`
 	p.salt << `=`
 	other_hash := bcrypt(password, p.cost, p.salt) or { return error('err') }
@@ -169,7 +169,7 @@ fn (mut h Hashed) decode_version(sbytes []u8) ?int {
 		return error("bcrypt hashes must start with '$'")
 	}
 	if sbytes[1] != bcrypt.major_version[0] {
-		return error('bcrypt algorithm version $bcrypt.major_version')
+		return error('bcrypt algorithm version ${bcrypt.major_version}')
 	}
 	h.major = sbytes[1].ascii_str()
 	mut n := 3

@@ -11,12 +11,12 @@ fn test_fn_with_fixed_array_argument_1() {
 	mut t := Test1{}
 
 	println(t)
-	assert '$t.value' == '[0, 0, 0, 0]'
+	assert '${t.value}' == '[0, 0, 0, 0]'
 
 	t.set([1, 2, 3, 4]!)
 
 	println(t)
-	assert '$t.value' == '[1, 2, 3, 4]'
+	assert '${t.value}' == '[1, 2, 3, 4]'
 }
 
 struct Test2 {
@@ -34,11 +34,11 @@ fn test_fn_with_fixed_array_argument_2() {
 	mut t := Test2{}
 
 	println(t)
-	assert '$t.fixed_value' == '[[0, 0, 0, 0], [0, 0, 0, 0]]'
-	assert '$t.dynamic_value' == '[]'
+	assert '${t.fixed_value}' == '[[0, 0, 0, 0], [0, 0, 0, 0]]'
+	assert '${t.dynamic_value}' == '[]'
 
 	t.set(0, [1, 2, 3, 4]!)
 	println(t)
-	assert '$t.fixed_value' == '[[1, 2, 3, 4], [0, 0, 0, 0]]'
-	assert '$t.dynamic_value' == '[[1, 2, 3, 4]]'
+	assert '${t.fixed_value}' == '[[1, 2, 3, 4], [0, 0, 0, 0]]'
+	assert '${t.dynamic_value}' == '[[1, 2, 3, 4]]'
 }

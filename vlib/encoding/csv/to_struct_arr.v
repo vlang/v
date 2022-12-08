@@ -3,7 +3,7 @@ module csv
 import strconv
 
 // decode csv to struct
-pub fn decode<T>(data string) []T {
+pub fn decode[T](data string) []T {
 	mut result := []T{}
 	if data == '' {
 		return result

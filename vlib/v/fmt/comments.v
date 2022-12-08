@@ -51,7 +51,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 			f.writeln(x)
 			f.write('*/')
 		} else {
-			f.write('/* $x */')
+			f.write('/* ${x} */')
 		}
 	} else if !node.text.contains('\n') {
 		is_separate_line := !options.inline || node.text.starts_with('\x01')

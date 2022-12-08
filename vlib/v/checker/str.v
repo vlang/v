@@ -6,7 +6,7 @@ module checker
 import v.ast
 import v.token
 
-pub fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
+fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	if ftyp.has_flag(.optional) || ftyp.has_flag(.result) {
 		return `s`
 	} else if typ.is_float() {
@@ -40,7 +40,7 @@ pub fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	}
 }
 
-pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
+fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 	inside_println_arg_save := c.inside_println_arg
 	c.inside_println_arg = true
 	for i, expr in node.exprs {
@@ -115,7 +115,7 @@ const unicode_lit_overflow_message = 'unicode character exceeds max allowed valu
 
 // unicode character literals are limited to a maximum value of 0x10ffff
 // https://stackoverflow.com/questions/52203351/why-unicode-is-restricted-to-0x10ffff
-pub fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
+fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 	mut idx := 0
 	for idx < node.val.len {
 		match node.val[idx] {
@@ -165,7 +165,7 @@ pub fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 	return ast.string_type
 }
 
-pub fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
+fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
 	if node.val.len < 17 {
 		// can not be a too large number, no need for more expensive checks
 		return ast.int_literal_type
@@ -173,7 +173,7 @@ pub fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
 	lit := node.val.replace('_', '').all_after('-')
 	is_neg := node.val.starts_with('-')
 	limit := if is_neg { '9223372036854775808' } else { '18446744073709551615' }
-	message := 'integer literal $node.val overflows int'
+	message := 'integer literal ${node.val} overflows int'
 
 	if lit.len > limit.len {
 		c.error(message, node.pos)

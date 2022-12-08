@@ -78,13 +78,13 @@ fn test_atof() {
 
 fn test_atof_errors() {
 	if x := strconv.atof64('') {
-		eprintln('> x: $x')
+		eprintln('> x: ${x}')
 		assert false // strconv.atof64 should have failed
 	} else {
 		assert err.str() == 'expected a number found an empty string'
 	}
 	if x := strconv.atof64('####') {
-		eprintln('> x: $x')
+		eprintln('> x: ${x}')
 		assert false // strconv.atof64 should have failed
 	} else {
 		assert err.str() == 'not a number'

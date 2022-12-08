@@ -123,7 +123,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 			} else if is_quote {
 				parser.lexical_attributes.open_string = string_code
 			} else if chr == `>` { // only execute verification if is a > // here will verify < to know if code tag is finished
-				name_close_tag := '</$parser.lexical_attributes.opened_code_type>'
+				name_close_tag := '</${parser.lexical_attributes.opened_code_type}>'
 				if parser.builder_str().to_lower().ends_with(name_close_tag) {
 					parser.lexical_attributes.open_code = false
 					// need to modify lexeme_builder to add script text as a content in next loop (not gave error in dom)

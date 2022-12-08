@@ -10,13 +10,14 @@ on:
 
 jobs:
   gg-regressions:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 10
     env:
       VFLAGS: -cc tcc
       DISPLAY: :99
       LIBGL_ALWAYS_SOFTWARE: true
+      VTMP: /tmp
     steps:
       - name: Checkout V
         uses: actions/checkout@v2

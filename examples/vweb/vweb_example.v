@@ -19,7 +19,7 @@ mut:
 }
 
 pub fn (app App) before_request() {
-	println('[Vweb] $app.Context.req.method $app.Context.req.url')
+	println('[Vweb] ${app.Context.req.method} ${app.Context.req.url}')
 }
 
 fn main() {
@@ -51,10 +51,10 @@ pub fn (mut app App) show_text() vweb.Result {
 
 pub fn (mut app App) cookie() vweb.Result {
 	app.set_cookie(name: 'cookie', value: 'test')
-	return app.text('Response Headers\n$app.header')
+	return app.text('Response Headers\n${app.header}')
 }
 
 [post]
 pub fn (mut app App) post() vweb.Result {
-	return app.text('Post body: $app.req.data')
+	return app.text('Post body: ${app.req.data}')
 }

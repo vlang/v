@@ -163,7 +163,7 @@ fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
 fn (mut app App) resize_buf_if_needed(in_size int) {
 	// manage the memory buffer
 	if app.mem_buf_size < in_size {
-		println('Managing FILE memory buffer, allocated [$in_size]Bytes')
+		println('Managing FILE memory buffer, allocated [${in_size}]Bytes')
 		// free previous buffer if any exist
 		if app.mem_buf_size > 0 {
 			unsafe {
@@ -187,7 +187,7 @@ fn (mut app App) resize_buf_if_needed(in_size int) {
 [manualfree]
 fn (mut app App) read_bytes(path string) bool {
 	mut fp := os.vfopen(path, 'rb') or {
-		eprintln('ERROR: Can not open the file [$path].')
+		eprintln('ERROR: Can not open the file [${path}].')
 		return false
 	}
 	defer {
@@ -195,12 +195,12 @@ fn (mut app App) read_bytes(path string) bool {
 	}
 	cseek := C.fseek(fp, 0, C.SEEK_END)
 	if cseek != 0 {
-		eprintln('ERROR: Can not seek in the file [$path].')
+		eprintln('ERROR: Can not seek in the file [${path}].')
 		return false
 	}
 	fsize := C.ftell(fp)
 	if fsize < 0 {
-		eprintln('ERROR: File [$path] has size is 0.')
+		eprintln('ERROR: File [${path}] has size is 0.')
 		return false
 	}
 	C.rewind(fp)
@@ -209,7 +209,7 @@ fn (mut app App) read_bytes(path string) bool {
 
 	nr_read_elements := int(C.fread(app.mem_buf, fsize, 1, fp))
 	if nr_read_elements == 0 && fsize > 0 {
-		eprintln('ERROR: Can not read the file [$path] in the memory buffer.')
+		eprintln('ERROR: Can not read the file [${path}] in the memory buffer.')
 		return false
 	}
 	return true
@@ -219,7 +219,7 @@ fn (mut app App) read_bytes(path string) bool {
 pub fn read_bytes_from_file(file_path string) []u8 {
 	mut buffer := []u8{}
 	buffer = os.read_bytes(file_path) or {
-		eprintln('ERROR: Texure file: [$file_path] NOT FOUND.')
+		eprintln('ERROR: Texure file: [${file_path}] NOT FOUND.')
 		exit(0)
 	}
 	return buffer
@@ -531,10 +531,10 @@ fn frame(mut app App) {
 			rotation_angle := 90 * rotation
 			scale_str := '${app.scale:.2}'
 			app.bl.clear()
-			app.bl.write_string('$num/$of_num')
-			app.bl.write_string(' [${app.img_w}x$app.img_h]=>[${x_screen}x$y_screen]')
+			app.bl.write_string('${num}/${of_num}')
+			app.bl.write_string(' [${app.img_w}x${app.img_h}]=>[${x_screen}x${y_screen}]')
 			app.bl.write_string(' ${app.item_list.lst[app.item_list.item_index].name}')
-			app.bl.write_string(' scale: $scale_str rotation: $rotation_angle')
+			app.bl.write_string(' scale: ${scale_str} rotation: ${rotation_angle}')
 			draw_text(mut app, app.bl.str(), 10, 10, 20)
 		} else {
 			if app.item_list.n_item <= 0 {
@@ -723,7 +723,7 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 
 			// full screen
 			if ev.key_code == .f {
-				println('Full screen state: $sapp.is_fullscreen()')
+				println('Full screen state: ${sapp.is_fullscreen()}')
 				sapp.toggle_fullscreen()
 			}
 		}
@@ -740,7 +740,7 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 		for i in 0 .. num {
 			file_list << sapp.get_dropped_file_path(i)
 		}
-		println('Scanning: $file_list')
+		println('Scanning: ${file_list}')
 		app.item_list = &Item_list{}
 		app.item_list.loaded = false
 
@@ -765,14 +765,14 @@ fn main() {
 	// mut font_path := os.resource_abs_path(os.join_path('../assets/fonts/', 'RobotoMono-Regular.ttf'))
 	font_name := 'RobotoMono-Regular.ttf'
 	font_path := os.join_path(os.temp_dir(), font_name)
-	println('Temporary path for the font file: [$font_path]')
+	println('Temporary path for the font file: [${font_path}]')
 
 	// if the font doesn't exist create it from the ebedded one
 	if os.exists(font_path) == false {
-		println('Write font [$font_name] in temp folder.')
+		println('Write font [${font_name}] in temp folder.')
 		embedded_file := $embed_file('../assets/fonts/RobotoMono-Regular.ttf')
 		os.write_file(font_path, embedded_file.to_string()) or {
-			eprintln('ERROR: not able to write font file to [$font_path]')
+			eprintln('ERROR: not able to write font file to [${font_path}]')
 			exit(1)
 		}
 	}
@@ -780,13 +780,13 @@ fn main() {
 	// logo image
 	logo_name := 'logo.png'
 	logo_path := os.join_path(os.temp_dir(), logo_name)
-	println('Temporary path for the logo: [$logo_path]')
+	println('Temporary path for the logo: [${logo_path}]')
 	// if the logo doesn't exist create it from the ebedded one
 	if os.exists(logo_path) == false {
-		println('Write logo [$logo_name] in temp folder.')
+		println('Write logo [${logo_name}] in temp folder.')
 		embedded_file := $embed_file('../assets/logo.png')
 		os.write_file(logo_path, embedded_file.to_string()) or {
-			eprintln('ERROR: not able to write logo file to [$logo_path]')
+			eprintln('ERROR: not able to write logo file to [${logo_path}]')
 			exit(1)
 		}
 	}

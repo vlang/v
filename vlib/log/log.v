@@ -128,7 +128,7 @@ pub fn (mut l Log) set_output_path(output_file_path string) {
 	l.output_target = .file
 	l.output_file_name = os.join_path(os.real_path(output_file_path), l.output_label)
 	ofile := os.open_append(l.output_file_name) or {
-		panic('error while opening log file $l.output_file_name for appending')
+		panic('error while opening log file ${l.output_file_name} for appending')
 	}
 	l.ofile = ofile
 }
@@ -156,14 +156,14 @@ pub fn (mut l Log) close() {
 fn (mut l Log) log_file(s string, level Level) {
 	timestamp := time.now().format_ss()
 	e := tag_to_file(level)
-	l.ofile.writeln('$timestamp [$e] $s') or { panic(err) }
+	l.ofile.writeln('${timestamp} [${e}] ${s}') or { panic(err) }
 }
 
 // log_cli writes log line `s` with `level` to stdout.
 fn (l &Log) log_cli(s string, level Level) {
 	timestamp := time.now().format_ss()
 	e := tag_to_cli(level)
-	println('$timestamp [$e] $s')
+	println('${timestamp} [${e}] ${s}')
 }
 
 // send_output writes log line `s` with `level` to either the log file or the console
@@ -185,7 +185,7 @@ pub fn (mut l Log) fatal(s string) {
 		l.send_output(s, .fatal)
 		l.ofile.close()
 	}
-	panic('$l.output_label: $s')
+	panic('${l.output_label}: ${s}')
 }
 
 // error logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.error` category.

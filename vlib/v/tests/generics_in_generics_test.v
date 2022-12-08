@@ -1,9 +1,9 @@
-fn gen_fn2<T>(e T) string {
-	return '$e.str()'
+fn gen_fn2[T](e T) string {
+	return '${e.str()}'
 }
 
-fn gen_fn<T>(e T) string {
-	return gen_fn2<T>(e)
+fn gen_fn[T](e T) string {
+	return gen_fn2[T](e)
 }
 
 fn test_generics_in_generics() {

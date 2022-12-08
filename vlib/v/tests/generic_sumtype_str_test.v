@@ -2,19 +2,19 @@ module main
 
 struct None {}
 
-pub type Maybe<T> = None | T
+pub type Maybe[T] = None | T
 
-pub fn (m Maybe<T>) str<T>() string {
+pub fn (m Maybe[T]) str[T]() string {
 	return if m is T {
 		x := m as T
-		'Some($x)'
+		'Some(${x})'
 	} else {
 		'Noth'
 	}
 }
 
-pub fn some<T>(v T) Maybe<T> {
-	return Maybe<T>(v)
+pub fn some[T](v T) Maybe[T] {
+	return Maybe[T](v)
 }
 
 fn test_generic_sumtype_str() {
@@ -23,11 +23,11 @@ fn test_generic_sumtype_str() {
 
 	println(a.str())
 	println(a)
-	println('$a')
-	assert '$a' == 'Some(123)'
+	println('${a}')
+	assert '${a}' == 'Some(123)'
 
 	println(b.str())
 	println(b)
-	println('$b')
-	assert '$b' == 'Some(abc)'
+	println('${b}')
+	assert '${b}' == 'Some(abc)'
 }

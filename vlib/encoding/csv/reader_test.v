@@ -290,7 +290,7 @@ mut:
 
 fn test_decode_to_struct() {
 	text := 'id,bonus,amount,yes\r\n1,bomb,1,true\r\n2,rocket,1,false,\r\n3,lightning,2,2\r\n'
-	arr := csv.decode<Test>(text)
+	arr := csv.decode[Test](text)
 	assert arr[0].id == 1
 	assert arr[0].bonus == 'bomb'
 	assert arr[0].amount == 1

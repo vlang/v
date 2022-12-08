@@ -4,10 +4,10 @@ import time
 fn echo_server(mut c net.UdpConn) {
 	mut count := 0
 	for {
-		eprintln('> echo_server loop count: $count')
+		eprintln('> echo_server loop count: ${count}')
 		mut buf := []u8{len: 100}
 		read, addr := c.read(mut buf) or { continue }
-		eprintln('Server got addr $addr, read: $read | buf: $buf')
+		eprintln('Server got addr ${addr}, read: ${read} | buf: ${buf}')
 		c.write_to(addr, buf[..read]) or {
 			println('Server: connection dropped')
 			return
@@ -25,19 +25,19 @@ fn echo_server(mut c net.UdpConn) {
 const server_addr = '127.0.0.1:40003'
 
 fn echo() ! {
-	mut c := net.dial_udp(server_addr) or { panic('could not net.dial_udp: $err') }
+	mut c := net.dial_udp(server_addr) or { panic('could not net.dial_udp: ${err}') }
 	defer {
 		c.close() or {}
 	}
 	data := 'Hello from vlib/net!'
 
-	c.write_string(data) or { panic('could not write_string: $err') }
+	c.write_string(data) or { panic('could not write_string: ${err}') }
 
 	mut buf := []u8{len: 100, init: 0}
-	read, addr := c.read(mut buf) or { panic('could not read: $err') }
+	read, addr := c.read(mut buf) or { panic('could not read: ${err}') }
 
 	assert read == data.len
-	println('Got address $addr')
+	println('Got address ${addr}')
 	// Can't test this here because loopback addresses
 	// are mapped to other addresses
 	// assert addr.str() == '127.0.0.1:30001'
@@ -46,16 +46,16 @@ fn echo() ! {
 		assert buf[i] == data[i]
 	}
 
-	println('Got "$buf.bytestr()"')
+	println('Got "${buf.bytestr()}"')
 
 	c.close()!
 }
 
 fn test_udp() {
-	mut l := net.listen_udp(server_addr) or { panic('could not listen_udp: $err') }
+	mut l := net.listen_udp(server_addr) or { panic('could not listen_udp: ${err}') }
 
 	spawn echo_server(mut l)
-	echo() or { panic('could not echo: $err') }
+	echo() or { panic('could not echo: ${err}') }
 
 	l.close() or {}
 }

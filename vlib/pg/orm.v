@@ -60,7 +60,7 @@ pub fn (db DB) create(table string, fields []orm.TableField) ! {
 }
 
 pub fn (db DB) drop(table string) ! {
-	query := 'DROP TABLE "$table";'
+	query := 'DROP TABLE "${table}";'
 	pg_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
 
@@ -208,7 +208,7 @@ fn pg_type_from_v(typ int) !string {
 		orm.float[1] {
 			'DOUBLE PRECISION'
 		}
-		orm.string {
+		orm.type_string {
 			'TEXT'
 		}
 		orm.serial {
@@ -219,7 +219,7 @@ fn pg_type_from_v(typ int) !string {
 		}
 	}
 	if str == '' {
-		return error('Unknown type $typ')
+		return error('Unknown type ${typ}')
 	}
 	return str
 }
@@ -274,7 +274,7 @@ fn str_to_primitive(str string, typ int) !orm.Primitive {
 		orm.type_idx['f64'] {
 			return orm.Primitive(str.f64())
 		}
-		orm.string {
+		orm.type_string {
 			return orm.Primitive(str)
 		}
 		orm.time {
@@ -288,5 +288,5 @@ fn str_to_primitive(str string, typ int) !orm.Primitive {
 		}
 		else {}
 	}
-	return error('Unknown field type $typ')
+	return error('Unknown field type ${typ}')
 }

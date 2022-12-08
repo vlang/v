@@ -190,7 +190,7 @@ pub const (
 	keywords        = build_keys()
 )
 
-pub const scanner_matcher = new_keywords_matcher_trie<Kind>(keywords)
+pub const scanner_matcher = new_keywords_matcher_trie[Kind](keywords)
 
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return
@@ -328,7 +328,7 @@ fn build_token_str() []string {
 	$if debug_build_token_str ? {
 		for k, v in s {
 			if v == '' {
-				eprintln('>>> ${@MOD}.${@METHOD} missing k: $k | .${kind_to_string(unsafe { Kind(k) })}')
+				eprintln('>>> ${@MOD}.${@METHOD} missing k: ${k} | .${kind_to_string(unsafe { Kind(k) })}')
 			}
 		}
 	}
@@ -367,14 +367,14 @@ pub fn (t Token) str() string {
 		eprintln('missing token kind string')
 	} else if !s[0].is_letter() {
 		// punctuation, operators
-		return 'token `$s`'
+		return 'token `${s}`'
 	}
 	if is_key(t.lit) {
 		s = 'keyword'
 	}
 	if t.lit != '' {
 		// string contents etc
-		s += ' `$t.lit`'
+		s += ' `${t.lit}`'
 	}
 	return s
 }
@@ -382,7 +382,7 @@ pub fn (t Token) str() string {
 pub fn (t Token) debug() string {
 	ks := kind_to_string(t.kind)
 	s := if t.lit == '' { t.kind.str() } else { t.lit }
-	return 'tok: .${ks:-12} | lit: `$s`'
+	return 'tok: .${ks:-12} | lit: `${s}`'
 }
 
 // Representation of highest and lowest precedence

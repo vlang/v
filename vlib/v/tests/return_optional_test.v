@@ -8,7 +8,7 @@ fn func2() ?(int, int) {
 
 fn test_return_optional() {
 	a, b := func2()?
-	println('$a, $b')
+	println('${a}, ${b}')
 	assert a == 0
 	assert b == 1
 }

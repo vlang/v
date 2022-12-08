@@ -13,7 +13,7 @@ fn (g G1) greet() string {
 
 fn do_the_greet(g ParentGreeter) {
 	greet := g.greet()
-	println('Someone says: $greet')
+	println('Someone says: ${greet}')
 	assert greet == 'hello from G1'
 }
 

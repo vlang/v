@@ -6,7 +6,7 @@ import v.ast
 import v.pref
 
 // TODO: non deferred
-pub fn (mut c Checker) return_stmt(mut node ast.Return) {
+fn (mut c Checker) return_stmt(mut node ast.Return) {
 	if c.table.cur_fn == unsafe { nil } {
 		return
 	}
@@ -20,7 +20,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		|| expected_type_sym.kind == .void) {
 		stype := c.table.type_to_str(expected_type)
 		arg := if expected_type_sym.kind == .multi_return { 'arguments' } else { 'argument' }
-		c.error('expected `$stype` $arg', node.pos)
+		c.error('expected `${stype}` ${arg}', node.pos)
 		return
 	}
 	if node.exprs.len == 0 {
@@ -42,8 +42,14 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		if typ == 0 {
 			return
 		}
+		// Handle `return unsafe { none }`
+		if expr is ast.UnsafeExpr {
+			if expr.expr is ast.None {
+				c.error('cannot return `none` in unsafe block', expr.expr.pos)
+			}
+		}
 		if typ == ast.void_type {
-			c.error('`$expr` used as value', node.pos)
+			c.error('`${expr}` used as value', node.pos)
 			return
 		}
 		// Unpack multi return types
@@ -87,10 +93,6 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	if (exp_is_optional
 		&& got_types_0_idx in [ast.none_type_idx, ast.error_type_idx, option_type_idx])
 		|| (exp_is_result && got_types_0_idx in [ast.error_type_idx, result_type_idx]) {
-		if got_types_0_idx == ast.none_type_idx && expected_type == ast.ovoid_type {
-			c.error('returning `none` in functions, that have a `?` result type is not allowed anymore, either `return error(message)` or just `return` instead',
-				node.pos)
-		}
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
@@ -113,7 +115,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		arg := if expected_types.len == 1 { 'argument' } else { 'arguments' }
 		midx := imax(0, imin(expected_types.len, expr_idxs.len - 1))
 		mismatch_pos := node.exprs[expr_idxs[midx]].pos()
-		c.error('expected $expected_types.len $arg, but got $got_types.len', mismatch_pos)
+		c.error('expected ${expected_types.len} ${arg}, but got ${got_types.len}', mismatch_pos)
 		return
 	}
 	for i, exp_type in expected_types {
@@ -172,7 +174,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 				} else {
 					got_typ_sym.name
 				}
-				c.error('cannot use `$got_typ_name` as type `${c.table.type_to_str(exp_type)}` in return argument',
+				c.error('cannot use `${got_typ_name}` as type `${c.table.type_to_str(exp_type)}` in return argument',
 					pos)
 			}
 		}
@@ -182,7 +184,8 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			if node.exprs[expr_idxs[i]].is_auto_deref_var() {
 				continue
 			}
-			c.error('fn `$c.table.cur_fn.name` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+			c.add_error_detail('use `return *pointer` instead of `return pointer`, and just `return value` instead of `return &value`')
+			c.error('fn `${c.table.cur_fn.name}` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
 		if (exp_type.is_ptr() || exp_type.is_pointer())
@@ -192,7 +195,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			if node.exprs[expr_idxs[i]].is_auto_deref_var() {
 				continue
 			}
-			c.error('fn `$c.table.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+			c.error('fn `${c.table.cur_fn.name}` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
 		if exp_type.is_ptr() && got_typ.is_ptr() {
@@ -207,11 +210,11 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 						type_sym := c.table.sym(obj.typ.set_nr_muls(0))
 						if !type_sym.is_heap() && !c.pref.translated && !c.file.is_translated {
 							suggestion := if type_sym.kind == .struct_ {
-								'declaring `$type_sym.name` as `[heap]`'
+								'declaring `${type_sym.name}` as `[heap]`'
 							} else {
-								'wrapping the `$type_sym.name` object in a `struct` declared as `[heap]`'
+								'wrapping the `${type_sym.name}` object in a `struct` declared as `[heap]`'
 							}
-							c.error('`$r_expr.name` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
+							c.error('`${r_expr.name}` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
 								r_expr.pos)
 						}
 					}
@@ -229,7 +232,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	}
 }
 
-pub fn (mut c Checker) find_unreachable_statements_after_noreturn_calls(stmts []ast.Stmt) {
+fn (mut c Checker) find_unreachable_statements_after_noreturn_calls(stmts []ast.Stmt) {
 	mut prev_stmt_was_noreturn_call := false
 	for stmt in stmts {
 		if stmt is ast.ExprStmt {

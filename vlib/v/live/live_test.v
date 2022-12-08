@@ -79,6 +79,29 @@ fn main() {
 	}
 	atomic_write_source(live_program_source)
 	// os.system('tree $vtmp_folder') exit(1)
+	spawn watchdog()
+}
+
+fn watchdog() {
+	// This thread will automatically exit the live_test.v process, if it gets stuck.
+	// On the Github CI, especially on the sanitized jobs, that are super slow, this allows
+	// the job as a whole to continue, because the V test framework will restart live_test.v
+	// a few times, and then it will stop.
+	// Previusly, it could not do that, because if the process itself takes say a few hours,
+	// when the CI job gets reprioritized, the whole Github job will get cancelled, when it
+	// reaches its own timeout (which is 3 hours).
+	// Note, that usually `v vlib/v/live/live_test.v` does not take too long - it takes
+	// ~4 seconds, even on an i3, with tcc, ~12 seconds with clang, and ~15 seconds with gcc,
+	// so the *5 minutes* period, allows plenty of time for the process to finish normally.
+	sw := time.new_stopwatch()
+	for {
+		elapsed_time_in_seconds := sw.elapsed().seconds()
+		dump(elapsed_time_in_seconds)
+		if elapsed_time_in_seconds > 5 * 60 {
+			exit(3)
+		}
+		time.sleep(1 * time.second)
+	}
 }
 
 [debuglivetest]
@@ -88,18 +111,18 @@ fn vprintln(s string) {
 
 fn testsuite_end() {
 	// os.system('tree $vtmp_folder') exit(1)
-	vprintln('source: $source_file')
-	vprintln('output: $output_file')
+	vprintln('source: ${source_file}')
+	vprintln('output: ${output_file}')
 	vprintln('---------------------------------------------------------------------------')
 	output_lines := os.read_lines(output_file) or {
-		panic('could not read $output_file, error: $err')
+		panic('could not read ${output_file}, error: ${err}')
 	}
 	mut histogram := map[string]int{}
 	for line in output_lines {
 		histogram[line] = histogram[line] + 1
 	}
 	for k, v in histogram {
-		eprintln('> found ${v:5d} times: $k')
+		eprintln('> found ${v:5d} times: ${k}')
 	}
 	vprintln('---------------------------------------------------------------------------')
 	assert histogram['START'] > 0
@@ -111,7 +134,7 @@ fn testsuite_end() {
 
 fn change_source(new string) {
 	time.sleep(100 * time.millisecond)
-	vprintln('> change ORIGINAL to: $new')
+	vprintln('> change ORIGINAL to: ${new}')
 	atomic_write_source(live_program_source.replace('ORIGINAL', new))
 	wait_for_file(new)
 }
@@ -119,12 +142,12 @@ fn change_source(new string) {
 fn wait_for_file(new string) {
 	time.sleep(100 * time.millisecond)
 	expected_file := os.join_path(vtmp_folder, new + '.txt')
-	eprintln('waiting for $expected_file ...')
+	eprintln('waiting for ${expected_file} ...')
 	// os.system('tree $vtmp_folder')
 	max_wait_cycles := os.getenv_opt('WAIT_CYCLES') or { '1' }.int()
 	for i := 0; i <= max_wait_cycles; i++ {
 		if i % 25 == 0 {
-			vprintln('   checking ${i:-10d} for $expected_file ...')
+			vprintln('   checking ${i:-10d} for ${expected_file} ...')
 		}
 		if os.exists(expected_file) {
 			assert true
@@ -143,8 +166,8 @@ fn setup_cycles_environment() {
 		//		max_live_cycles *= 5
 		//		max_wait_cycles *= 5
 	}
-	os.setenv('LIVE_CYCLES', '$max_live_cycles', true)
-	os.setenv('WAIT_CYCLES', '$max_wait_cycles', true)
+	os.setenv('LIVE_CYCLES', '${max_live_cycles}', true)
+	os.setenv('WAIT_CYCLES', '${max_wait_cycles}', true)
 }
 
 //
@@ -152,11 +175,11 @@ fn test_live_program_can_be_compiled() {
 	setup_cycles_environment()
 	eprintln('Compiling...')
 	compile_cmd := '${os.quoted_path(vexe)} -cg -keepc -nocolor -live -o ${os.quoted_path(genexe_file)} ${os.quoted_path(main_source_file)}'
-	eprintln('> compile_cmd: $compile_cmd')
+	eprintln('> compile_cmd: ${compile_cmd}')
 	os.system(compile_cmd)
 	//
 	cmd := '${os.quoted_path(genexe_file)} > /dev/null &'
-	eprintln('Running with: $cmd')
+	eprintln('Running with: ${cmd}')
 	res := os.system(cmd)
 	assert res == 0
 	eprintln('... running in the background')

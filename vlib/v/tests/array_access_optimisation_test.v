@@ -10,7 +10,7 @@ fn direct(line string) {
 	}
 	trimmed := line.trim_space()
 	if trimmed.contains('array_get') {
-		assert trimmed == 'this should have been a direct access in $test line $line'
+		assert trimmed == 'this should have been a direct access in ${test} line ${line}'
 	}
 }
 
@@ -20,7 +20,7 @@ fn access(line string) {
 	}
 	trimmed := line.trim_space()
 	if !trimmed.contains('array_get') {
-		assert trimmed == 'this should have been an array access in $test line $line'
+		assert trimmed == 'this should have been an array access in ${test} line ${line}'
 	}
 }
 

@@ -10,7 +10,7 @@ fn test_simple() {
 fn test_example() ! {
 	assert true
 	assert true
-	example() or { return error('failing test with return, err: $err') }
+	example() or { return error('failing test with return, err: ${err}') }
 }
 
 fn test_example_2() {

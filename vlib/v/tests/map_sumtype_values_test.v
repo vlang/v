@@ -9,7 +9,7 @@ fn test_reading_from_a_map_of_sumtype_values() {
 	values['xxx'] = true
 	println(unsafe { values['abcz'] }) // no warning/error, due to the unsafe{}
 	if value := values['abc'] {
-		eprintln('existing key `abc` is present, value: $value')
+		eprintln('existing key `abc` is present, value: ${value}')
 		assert true
 	}
 	if (values['abc'] or { 'zzzz' }) is string {

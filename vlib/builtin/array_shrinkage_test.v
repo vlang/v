@@ -1,5 +1,5 @@
 fn show_array(name string, a []int) {
-	eprintln('${name:10} .flags: ${a.flags:34} | .cap: ${a.cap:2} | .len: ${a.len:2} | .data: $a.data | $a')
+	eprintln('${name:10} .flags: ${a.flags:34} | .cap: ${a.cap:2} | .len: ${a.len:2} | .data: ${a.data} | ${a}')
 }
 
 fn trace_delete_elements(name string, mut a []int) int {
@@ -11,7 +11,7 @@ fn trace_delete_elements(name string, mut a []int) int {
 	show_array(name, a)
 	a << 77
 	res := a.cap
-	eprintln('                                        <<   ${name:10} .cap: $a.cap >>')
+	eprintln('                                        <<   ${name:10} .cap: ${a.cap} >>')
 	show_array(name, a)
 	a << 88
 	show_array(name, a)

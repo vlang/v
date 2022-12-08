@@ -320,7 +320,8 @@ fn main() {
 		}
 	}
 	if os.getenv('VTEST_RUN_FSANITIZE_TOO_SLOW').len == 0
-		&& (sanitize_undefined || sanitize_memory || sanitize_address) {
+		&& ((sanitize_undefined || sanitize_memory || sanitize_address)
+		|| (msan_compiler || asan_compiler)) {
 		tsession.skip_files << skip_fsanitize_too_slow
 	}
 	if werror {
@@ -381,7 +382,7 @@ fn main() {
 	tsession.test()
 	eprintln(tsession.benchmark.total_message(title))
 	if tsession.benchmark.nfail > 0 {
-		eprintln('\nWARNING: failed $tsession.benchmark.nfail times.\n')
+		eprintln('\nWARNING: failed ${tsession.benchmark.nfail} times.\n')
 		exit(1)
 	}
 }

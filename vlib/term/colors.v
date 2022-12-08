@@ -3,12 +3,20 @@
 // that can be found in the LICENSE file.
 module term
 
+// format_esc produces an ANSI escape code, for selecting the graphics rendition of the following
+// text. Each of the attributes that can be passed in `code`, separated by `;`, will be in effect,
+// until the terminal encounters another SGR ANSI escape code. For more details about the different
+// codes, and their meaning, see: https://en.wikipedia.org/wiki/ANSI_escape_code#SGR_(Select_Graphic_Rendition)_parameters
+pub fn format_esc(code string) string {
+	return '\x1b[${code}m'
+}
+
 pub fn format(msg string, open string, close string) string {
-	return '\x1b[${open}m$msg\x1b[${close}m'
+	return '\x1b[${open}m${msg}\x1b[${close}m'
 }
 
 pub fn format_rgb(r int, g int, b int, msg string, open string, close string) string {
-	return '\x1b[$open;2;$r;$g;${b}m$msg\x1b[${close}m'
+	return '\x1b[${open};2;${r};${g};${b}m${msg}\x1b[${close}m'
 }
 
 pub fn rgb(r int, g int, b int, msg string) string {
@@ -45,6 +53,17 @@ pub fn italic(msg string) string {
 
 pub fn underline(msg string) string {
 	return format(msg, '4', '24')
+}
+
+// slow_blink will surround the `msg` with ANSI escape codes for blinking (less than 150 times per minute).
+pub fn slow_blink(msg string) string {
+	return format(msg, '5', '25')
+}
+
+// rapid_blink will surround the `msg` with ANSI escape codes for blinking (over 150 times per minute).
+// Note that unlike slow_blink, this is not very widely supported.
+pub fn rapid_blink(msg string) string {
+	return format(msg, '6', '26')
 }
 
 pub fn inverse(msg string) string {
@@ -194,5 +213,5 @@ pub fn bright_bg_white(msg string) string {
 // highlight_command highlights the command with an on-brand background
 // to make CLI commands immediately recognizable.
 pub fn highlight_command(command string) string {
-	return bright_white(bg_cyan(' $command '))
+	return bright_white(bg_cyan(' ${command} '))
 }

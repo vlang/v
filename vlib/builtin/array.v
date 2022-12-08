@@ -169,7 +169,7 @@ pub fn (a array) repeat(count int) array {
 [direct_array_access; unsafe]
 pub fn (a array) repeat_to_depth(count int, depth int) array {
 	if count < 0 {
-		panic('array.repeat: count is negative: $count')
+		panic('array.repeat: count is negative: ${count}')
 	}
 	mut size := u64(count) * u64(a.len) * u64(a.element_size)
 	if size == 0 {
@@ -221,7 +221,7 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 pub fn (mut a array) insert(i int, val voidptr) {
 	$if !no_bounds_checking {
 		if i < 0 || i > a.len {
-			panic('array.insert: index out of range (i == $i, a.len == $a.len)')
+			panic('array.insert: index out of range (i == ${i}, a.len == ${a.len})')
 		}
 	}
 	if a.len >= a.cap {
@@ -240,7 +240,7 @@ pub fn (mut a array) insert(i int, val voidptr) {
 fn (mut a array) insert_many(i int, val voidptr, size int) {
 	$if !no_bounds_checking {
 		if i < 0 || i > a.len {
-			panic('array.insert_many: index out of range (i == $i, a.len == $a.len)')
+			panic('array.insert_many: index out of range (i == ${i}, a.len == ${a.len})')
 		}
 	}
 	a.ensure_cap(a.len + size)
@@ -300,7 +300,7 @@ pub fn (mut a array) delete_many(i int, size int) {
 	$if !no_bounds_checking {
 		if i < 0 || i + size > a.len {
 			endidx := if size > 1 { '..${i + size}' } else { '' }
-			panic('array.delete: index out of range (i == $i$endidx, a.len == $a.len)')
+			panic('array.delete: index out of range (i == ${i}${endidx}, a.len == ${a.len})')
 		}
 	}
 	if a.flags.all(.noshrink | .noslices) {
@@ -381,7 +381,7 @@ fn (a array) get_unsafe(i int) voidptr {
 fn (a array) get(i int) voidptr {
 	$if !no_bounds_checking {
 		if i < 0 || i >= a.len {
-			panic('array.get: index out of range (i == $i, a.len == $a.len)')
+			panic('array.get: index out of range (i == ${i}, a.len == ${a.len})')
 		}
 	}
 	unsafe {
@@ -482,13 +482,13 @@ fn (a array) slice(start int, _end int) array {
 	mut end := _end
 	$if !no_bounds_checking {
 		if start > end {
-			panic('array.slice: invalid slice index ($start > $end)')
+			panic('array.slice: invalid slice index (${start} > ${end})')
 		}
 		if end > a.len {
-			panic('array.slice: slice bounds out of range ($end >= $a.len)')
+			panic('array.slice: slice bounds out of range (${end} >= ${a.len})')
 		}
 		if start < 0 {
-			panic('array.slice: slice bounds out of range ($start < 0)')
+			panic('array.slice: slice bounds out of range (${start} < 0)')
 		}
 	}
 	// TODO: integrate reference counting
@@ -618,7 +618,7 @@ fn (mut a array) set_unsafe(i int, val voidptr) {
 fn (mut a array) set(i int, val voidptr) {
 	$if !no_bounds_checking {
 		if i < 0 || i >= a.len {
-			panic('array.set: index out of range (i == $i, a.len == $a.len)')
+			panic('array.set: index out of range (i == ${i}, a.len == ${a.len})')
 		}
 	}
 	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(i), val, a.element_size) }

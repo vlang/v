@@ -5,3 +5,4 @@ vlib/v/checker/tests/return_ref_as_no_ref_bug.vv:11:9: error: fn `return_not_ref
       |            ^
    12 |         id: 1
    13 |     }
+Details: use `return *pointer` instead of `return pointer`, and just `return value` instead of `return &value`

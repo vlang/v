@@ -116,6 +116,18 @@ jobs:
 
       - name: Build VSL
         run: |
+          echo "Installing dependencies"
+          sudo apt-get install --quiet -y --no-install-recommends \
+            gfortran \
+            libxi-dev \
+            libxcursor-dev \
+            mesa-common-dev \
+            liblapacke-dev \
+            libopenblas-dev \
+            libgc-dev \
+            libgl1-mesa-dev \
+            libopenmpi-dev \
+            opencl-headers
           echo "Install VSL"
           v install vsl
           echo "Execute Tests using Pure V Backend"
@@ -140,3 +152,9 @@ jobs:
           ~/.vmodules/vtl/bin/test --use-gc boehm
           echo "Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled"
           ~/.vmodules/vtl/bin/test --use-cblas --use-gc boehm
+
+      - name: Build AdventOfCode
+        run: |
+          echo "Clone the AdventOfCode repo"
+          git clone --depth 1 https://github.com/vlang/adventofcode  /tmp/adventofcode
+          cd /tmp/adventofcode && v run verify.v

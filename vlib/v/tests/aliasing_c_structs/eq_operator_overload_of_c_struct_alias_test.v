@@ -13,12 +13,12 @@ type Bigint = C.__mpz_struct1
 type BigintTypedef = C.__mpz_struct_typedef
 
 pub fn (a Bigint) == (b Bigint) bool {
-	println('>>>>         struct a.x: $a.x | == | b.x: $b.x  => ${a.x == b.x:-5} <<<<')
+	println('>>>>         struct a.x: ${a.x} | == | b.x: ${b.x}  => ${a.x == b.x:-5} <<<<')
 	return a.x == b.x
 }
 
 pub fn (a BigintTypedef) == (b BigintTypedef) bool {
-	println('>>>> typedef struct a.x: $a.x | == | b.x: $b.x  => ${a.x == b.x:-5} <<<<')
+	println('>>>> typedef struct a.x: ${a.x} | == | b.x: ${b.x}  => ${a.x == b.x:-5} <<<<')
 	return a.x == b.x
 }
 

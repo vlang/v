@@ -14,12 +14,12 @@ fn test_http_get_from_vlang_utc_now() {
 	}
 	urls := ['http://vlang.io/utc_now', 'https://vlang.io/utc_now']
 	for url in urls {
-		println('Test getting current time from $url by http.get')
+		println('Test getting current time from ${url} by http.get')
 		res := http.get(url) or { panic(err) }
 		assert res.status() == .ok
 		assert res.body.len > 0
 		assert res.body.int() > 1566403696
-		println('Current time is: $res.body.int()')
+		println('Current time is: ${res.body.int()}')
 	}
 }
 
@@ -36,7 +36,7 @@ fn test_public_servers() {
 		// 'https://yahoo.com/robots.txt',
 	]
 	for url in urls {
-		println('Testing http.get on public url: $url ')
+		println('Testing http.get on public url: ${url} ')
 		res := http.get(url) or { panic(err) }
 		assert res.status() == .ok
 		assert res.body.len > 0

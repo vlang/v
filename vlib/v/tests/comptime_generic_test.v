@@ -4,12 +4,12 @@ fn test_comptime_generic() {
 }
 
 [inline]
-pub fn func1<T>(t &T) {
-	func2<T>(t)
+pub fn func1[T](t &T) {
+	func2[T](t)
 }
 
 [inline]
-pub fn func2<T>(t &T) {
+pub fn func2[T](t &T) {
 	$if T is $Array {
 		unsafe {
 			for i in 0 .. t.len {

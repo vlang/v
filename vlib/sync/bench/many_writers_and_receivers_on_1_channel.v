@@ -35,7 +35,7 @@ mut:
 }
 
 fn do_rec(ch chan int, id int, mut ctx Context) {
-	eprintln('start of  do_rec id: $id')
+	eprintln('start of  do_rec id: ${id}')
 	mut timer_sw_x := time.new_stopwatch()
 	mut tmp := int(0)
 	mut i := int(0)
@@ -68,7 +68,7 @@ fn do_rec(ch chan int, id int, mut ctx Context) {
 }
 
 fn do_send(ch chan int, id int, mut ctx Context) {
-	eprintln('start of do_send id: $id')
+	eprintln('start of do_send id: ${id}')
 	mut timer_sw_x := time.new_stopwatch()
 	n_iters := ctx.n_iters
 	base := n_iters * id // sender events can not overlap
@@ -100,12 +100,12 @@ fn main() {
 	n_readers := cmdline.option(args, '-readers', '1').int()
 	n_writers := cmdline.option(args, '-writers', '4').int()
 	chan_cap := cmdline.option(args, '-chan_cap', '100').int()
-	eprintln('> n_iters, $n_iters, n_writers, $n_writers, n_readers, $n_readers, chan_cap, $chan_cap')
+	eprintln('> n_iters, ${n_iters}, n_writers, ${n_writers}, n_readers, ${n_readers}, chan_cap, ${chan_cap}')
 	//
 	ch := chan int{cap: chan_cap}
 	max_number_of_pushes := n_writers * (n_iters + 2)
 	max_number_of_pops := max_number_of_pushes * n_readers
-	eprintln('> max_number_of_pushes, $max_number_of_pushes, max_number_of_pops (per receiver), $max_number_of_pops')
+	eprintln('> max_number_of_pushes, ${max_number_of_pushes}, max_number_of_pops (per receiver), ${max_number_of_pops}')
 	mut ctx := &Context{
 		n_iters: n_iters
 		n_readers: n_readers

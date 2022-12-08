@@ -7,6 +7,6 @@ fn main() {
 	do(mut r)
 }
 
-pub fn do<T>(mut t T) {
+pub fn do[T](mut t T) {
 	dump(t)
 }

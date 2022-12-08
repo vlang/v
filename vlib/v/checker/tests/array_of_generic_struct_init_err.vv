@@ -1,4 +1,4 @@
-struct Item<T>{
+struct Item[T]{
 	val T
 }
 

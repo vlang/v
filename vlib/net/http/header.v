@@ -598,7 +598,7 @@ pub fn (h Header) join(other Header) Header {
 		for v in other.custom_values(k, exact: true) {
 			combined.add_custom(k, v) or {
 				// panic because this should never fail
-				panic('unexpected error: $err')
+				panic('unexpected error: ${err}')
 			}
 		}
 	}
@@ -634,7 +634,7 @@ struct HeaderKeyError {
 }
 
 pub fn (err HeaderKeyError) msg() string {
-	return "Invalid header key: '$err.header'"
+	return "Invalid header key: '${err.header}'"
 }
 
 pub fn (err HeaderKeyError) code() int {

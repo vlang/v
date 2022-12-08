@@ -3,14 +3,8 @@
 // that can be found in the LICENSE file.
 module json2
 
-pub const (
-	null = Null{}
-)
-
-pub interface Serializable {
-	from_json(f Any)
-	to_json() string
-}
+import strings
+import time
 
 // Decodes a JSON string into an `Any` type. Returns an option.
 pub fn raw_decode(src string) !Any {
@@ -25,76 +19,188 @@ pub fn fast_raw_decode(src string) !Any {
 }
 
 // decode is a generic function that decodes a JSON string into the target type.
-pub fn decode<T>(src string) !T {
-	res := raw_decode(src)!
+pub fn decode[T](src string) !T {
+	res := raw_decode(src)!.as_map()
 	mut typ := T{}
-	typ.from_json(res)
+	$for field in T.fields {
+		$if field.typ is u8 {
+			typ.$(field.name) = u8(res[field.name]!.u64())
+		} $else $if field.typ is u16 {
+			typ.$(field.name) = u16(res[field.name]!.u64())
+		} $else $if field.typ is u32 {
+			typ.$(field.name) = u32(res[field.name]!.u64())
+		} $else $if field.typ is u64 {
+			typ.$(field.name) = res[field.name]!.u64()
+		} $else $if field.typ is int {
+			typ.$(field.name) = res[field.name]!.int()
+		} $else $if field.typ is i8 {
+			typ.$(field.name) = i8(res[field.name]!.i64())
+		} $else $if field.typ is i16 {
+			typ.$(field.name) = i16(res[field.name]!.i64())
+		} $else $if field.typ is i32 {
+			// typ.$(field.name) = res[field.name]!.i32()
+		} $else $if field.typ is i64 {
+			typ.$(field.name) = res[field.name]!.i64()
+		} $else $if field.typ is f32 {
+			typ.$(field.name) = res[field.name]!.f32()
+		} $else $if field.typ is f64 {
+			typ.$(field.name) = res[field.name]!.f64()
+		} $else $if field.typ is bool {
+			typ.$(field.name) = res[field.name]!.bool()
+		} $else $if field.typ is string {
+			typ.$(field.name) = res[field.name]!.str()
+		} $else $if field.typ is time.Time {
+			// typ.$(field.name) = res[field.name]!.str()
+		} $else {
+			return error("The type of `${field.name}` can't be decoded. Please open an issue at https://github.com/vlang/v/issues/new/choose")
+		}
+	}
 	return typ
 }
 
 // encode is a generic function that encodes a type into a JSON string.
-pub fn encode<T>(typ T) string {
-	return typ.to_json()
-}
-
-// as_map uses `Any` as a map.
-pub fn (f Any) as_map() map[string]Any {
-	if f is map[string]Any {
-		return f
-	} else if f is []Any {
-		mut mp := map[string]Any{}
-		for i, fi in f {
-			mp['$i'] = fi
-		}
-		return mp
+pub fn encode[T](val T) string {
+	mut sb := strings.new_builder(64)
+	defer {
+		unsafe { sb.free() }
 	}
-	return {
-		'0': f
+	default_encoder.encode_value(val, mut sb) or {
+		dump(err)
+		default_encoder.encode_value[Null](null, mut sb) or {}
 	}
+	return sb.str()
 }
 
 // int uses `Any` as an integer.
 pub fn (f Any) int() int {
 	match f {
-		int { return f }
-		i64, f32, f64, bool { return int(f) }
-		else { return 0 }
+		int {
+			return f
+		}
+		i8, i16, i64, u8, u16, u32, u64, f32, f64, bool {
+			return int(f)
+		}
+		string {
+			if f == 'false' || f == 'true' {
+				return int(f.bool())
+			}
+			return f.int()
+		}
+		else {
+			return 0
+		}
 	}
 }
 
 // i64 uses `Any` as a 64-bit integer.
 pub fn (f Any) i64() i64 {
 	match f {
-		i64 { return f }
-		int, f32, f64, bool { return i64(f) }
-		else { return 0 }
+		i64 {
+			return f
+		}
+		i8, i16, int, u8, u16, u32, u64, f32, f64, bool {
+			return i64(f)
+		}
+		string {
+			if f == 'false' || f == 'true' {
+				return i64(f.bool())
+			}
+			return f.i64()
+		}
+		else {
+			return 0
+		}
 	}
 }
 
 // u64 uses `Any` as a 64-bit unsigned integer.
 pub fn (f Any) u64() u64 {
 	match f {
-		u64 { return f }
-		int, i64, f32, f64, bool { return u64(f) }
-		else { return 0 }
+		u64 {
+			return f
+		}
+		u8, u16, u32, i8, i16, int, i64, f32, f64, bool {
+			return u64(f)
+		}
+		string {
+			if f == 'false' || f == 'true' {
+				return u64(f.bool())
+			}
+			return f.u64()
+		}
+		else {
+			return 0
+		}
 	}
 }
 
 // f32 uses `Any` as a 32-bit float.
 pub fn (f Any) f32() f32 {
 	match f {
-		f32 { return f }
-		int, i64, f64 { return f32(f) }
-		else { return 0.0 }
+		f32 {
+			return f
+		}
+		bool, i8, i16, int, i64, u8, u16, u32, u64, f64 {
+			return f32(f)
+		}
+		string {
+			if f == 'false' || f == 'true' {
+				return f32(f.bool())
+			}
+			return f.f32()
+		}
+		else {
+			return 0.0
+		}
 	}
 }
 
-// f64 uses `Any` as a float.
+// f64 uses `Any` as a 64-bit float.
 pub fn (f Any) f64() f64 {
 	match f {
-		f64 { return f }
-		int, i64, f32 { return f64(f) }
-		else { return 0.0 }
+		f64 {
+			return f
+		}
+		i8, i16, int, i64, u8, u16, u32, u64, f32 {
+			return f64(f)
+		}
+		string {
+			if f == 'false' || f == 'true' {
+				return f64(f.bool())
+			}
+			return f.f64()
+		}
+		else {
+			return 0.0
+		}
+	}
+}
+
+// bool uses `Any` as a bool.
+pub fn (f Any) bool() bool {
+	match f {
+		bool {
+			return f
+		}
+		string {
+			if f.len > 0 {
+				return f != '0' && f != '0.0' && f != 'false'
+			} else {
+				return false
+			}
+		}
+		i8, i16, int, i64 {
+			return i64(f) != 0
+		}
+		u8, u16, u32, u64 {
+			return u64(f) != 0
+		}
+		f32, f64 {
+			return f64(f) != 0.0
+		}
+		else {
+			return false
+		}
 	}
 }
 
@@ -112,11 +218,18 @@ pub fn (f Any) arr() []Any {
 	return [f]
 }
 
-// bool uses `Any` as a bool
-pub fn (f Any) bool() bool {
-	match f {
-		bool { return f }
-		string { return f.bool() }
-		else { return false }
+// as_map uses `Any` as a map.
+pub fn (f Any) as_map() map[string]Any {
+	if f is map[string]Any {
+		return f
+	} else if f is []Any {
+		mut mp := map[string]Any{}
+		for i, fi in f {
+			mp['${i}'] = fi
+		}
+		return mp
+	}
+	return {
+		'0': f
 	}
 }

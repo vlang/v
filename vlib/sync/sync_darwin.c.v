@@ -34,6 +34,9 @@ fn C.pthread_cond_destroy(voidptr) int
 struct C.pthread_mutex_t {}
 
 [typedef]
+struct C.pthread_cond_t {}
+
+[typedef]
 struct C.pthread_rwlock_t {}
 
 [typedef]

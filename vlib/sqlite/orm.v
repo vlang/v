@@ -9,7 +9,7 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 	// 1. Create query and bind necessary data
 	query := orm.orm_select_gen(config, '`', true, '?', 1, where)
 	$if trace_sqlite ? {
-		eprintln('> @select query: "$query"')
+		eprintln('> @select query: "${query}"')
 	}
 	stmt := db.new_init_stmt(query)!
 	defer {
@@ -83,7 +83,7 @@ pub fn (db DB) create(table string, fields []orm.TableField) ! {
 }
 
 pub fn (db DB) drop(table string) ! {
-	query := 'DROP TABLE `$table`;'
+	query := 'DROP TABLE `${table}`;'
 	sqlite_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
 
@@ -92,7 +92,7 @@ pub fn (db DB) drop(table string) ! {
 // Executes query and bind prepared statement data directly
 fn sqlite_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryData) ! {
 	$if trace_sqlite ? {
-		eprintln('> sqlite_stmt_worker query: "$query"')
+		eprintln('> sqlite_stmt_worker query: "${query}"')
 	}
 	stmt := db.new_init_stmt(query)!
 	defer {
@@ -152,13 +152,13 @@ fn (stmt Stmt) sqlite_select_column(idx int, typ int) !orm.Primitive {
 		primitive = stmt.get_i64(idx)
 	} else if typ in orm.float {
 		primitive = stmt.get_f64(idx)
-	} else if typ == orm.string {
+	} else if typ == orm.type_string {
 		primitive = stmt.get_text(idx).clone()
 	} else if typ == orm.time {
 		d := stmt.get_int(idx)
 		primitive = time.unix(d)
 	} else {
-		return error('Unknown type $typ')
+		return error('Unknown type ${typ}')
 	}
 
 	return primitive
@@ -170,9 +170,9 @@ fn sqlite_type_from_v(typ int) !string {
 		'INTEGER'
 	} else if typ in orm.float {
 		'REAL'
-	} else if typ == orm.string {
+	} else if typ == orm.type_string {
 		'TEXT'
 	} else {
-		error('Unknown type $typ')
+		error('Unknown type ${typ}')
 	}
 }

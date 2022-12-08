@@ -6,7 +6,7 @@ import v.util
 import v.token
 import strings
 
-pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
+fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	node.is_expr = c.expected_type != ast.void_type
 	node.expected_type = c.expected_type
 	if mut node.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {
@@ -134,71 +134,103 @@ fn (mut c Checker) check_match_branch_last_stmt(last_stmt ast.ExprStmt, ret_type
 					return
 				}
 			}
-			c.error('return type mismatch, it should be `$ret_sym.name`', last_stmt.pos)
+			c.error('return type mismatch, it should be `${ret_sym.name}`', last_stmt.pos)
 		}
 	}
 }
 
+fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
+	if mut expr is ast.CharLiteral {
+		return expr.val[0]
+	}
+	if mut expr is ast.IntegerLiteral {
+		return expr.val.i64()
+	}
+	if mut expr is ast.Ident {
+		if mut obj := c.table.global_scope.find_const(expr.name) {
+			if obj.typ == 0 {
+				obj.typ = c.expr(obj.expr)
+			}
+			return c.get_comptime_number_value(mut obj.expr)
+		}
+	}
+	return none
+}
+
 fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSymbol) {
+	c.expected_type = node.expected_type
+	cond_sym := c.table.sym(node.cond_type)
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
 	mut branch_exprs := map[string]int{}
 	for branch_i, _ in node.branches {
 		mut branch := node.branches[branch_i]
 		mut expr_types := []ast.TypeNode{}
-		for k, expr in branch.exprs {
+		for k, mut expr in branch.exprs {
 			mut key := ''
-			if expr is ast.RangeExpr {
+			// TODO: investigate why enums are different here:
+			if expr !is ast.EnumVal {
+				// ensure that the sub expressions of the branch are actually checked, before anything else:
+				_ := c.expr(expr)
+			}
+			if mut expr is ast.RangeExpr {
+				// Allow for `match enum_value { 4..5 { } }`, even though usually int and enum values,
+				// are considered incompatible outside unsafe{}, and are not allowed to be compared directly
+				if cond_sym.kind != .enum_ && !c.check_types(expr.typ, node.cond_type) {
+					mcstype := c.table.type_to_str(node.cond_type)
+					brstype := c.table.type_to_str(expr.typ)
+					c.add_error_detail('')
+					c.add_error_detail('match condition type: ${mcstype}')
+					c.add_error_detail('          range type: ${brstype}')
+					c.error('the range type and the match condition type should match',
+						expr.pos)
+				}
+				mut low_value_higher_than_high_value := false
 				mut low := i64(0)
 				mut high := i64(0)
-				c.expected_type = node.expected_type
-				low_expr := expr.low
-				high_expr := expr.high
-				final_cond_sym := c.table.final_sym(node.cond_type)
-				if low_expr is ast.IntegerLiteral {
-					if high_expr is ast.IntegerLiteral
-						&& (final_cond_sym.is_int() || final_cond_sym.info is ast.Enum) {
-						low = low_expr.val.i64()
-						high = high_expr.val.i64()
-						if low > high {
-							c.error('start value is higher than end value', branch.pos)
+				mut both_low_and_high_are_known := false
+				if low_value := c.get_comptime_number_value(mut expr.low) {
+					low = low_value
+					if high_value := c.get_comptime_number_value(mut expr.high) {
+						high = high_value
+						both_low_and_high_are_known = true
+						if low_value > high_value {
+							low_value_higher_than_high_value = true
 						}
 					} else {
-						c.error('mismatched range types - $expr.low is an integer, but $expr.high is not',
-							low_expr.pos)
-					}
-				} else if low_expr is ast.CharLiteral {
-					if high_expr is ast.CharLiteral && final_cond_sym.kind in [.u8, .char, .rune] {
-						low = low_expr.val[0]
-						high = high_expr.val[0]
-						if low > high {
-							c.error('start value is higher than end value', branch.pos)
+						if expr.high !is ast.EnumVal {
+							c.error('match branch range expressions need the end value to be known at compile time (only enums, const or literals are supported)',
+								expr.high.pos())
 						}
-					} else {
-						typ := c.table.type_to_str(c.expr(node.cond))
-						c.error('mismatched range types - trying to match `$node.cond`, which has type `$typ`, against a range of `rune`',
-							low_expr.pos)
 					}
 				} else {
-					typ := c.table.type_to_str(c.expr(expr.low))
-					c.error('cannot use type `$typ` in match range', branch.pos)
+					if expr.low !is ast.EnumVal {
+						c.error('match branch range expressions need the start value to be known at compile time (only enums, const or literals are supported)',
+							expr.low.pos())
+					}
 				}
-				high_low_cutoff := 1000
-				if high - low > high_low_cutoff {
-					c.warn('more than $high_low_cutoff possibilities ($low ... $high) in match range',
+				if low_value_higher_than_high_value {
+					c.error('the start value `${low}` should be lower than the end value `${high}`',
 						branch.pos)
 				}
-				for i in low .. high + 1 {
-					key = i.str()
-					val := if key in branch_exprs { branch_exprs[key] } else { 0 }
-					if val == 1 {
-						c.error('match case `$key` is handled more than once', branch.pos)
+				if both_low_and_high_are_known {
+					high_low_cutoff := 1000
+					if high - low > high_low_cutoff {
+						c.warn('more than ${high_low_cutoff} possibilities (${low} ... ${high}) in match range',
+							branch.pos)
 					}
-					branch_exprs[key] = val + 1
+					for i in low .. high + 1 {
+						key = i.str()
+						val := if key in branch_exprs { branch_exprs[key] } else { 0 }
+						if val == 1 {
+							c.error('match case `${key}` is handled more than once', branch.pos)
+						}
+						branch_exprs[key] = val + 1
+					}
 				}
 				continue
 			}
-			match expr {
+			match mut expr {
 				ast.TypeNode {
 					key = c.table.type_to_str(expr.typ)
 					expr_types << expr
@@ -207,12 +239,12 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					key = expr.val
 				}
 				else {
-					key = expr.str()
+					key = (*expr).str()
 				}
 			}
 			val := if key in branch_exprs { branch_exprs[key] } else { 0 }
 			if val == 1 {
-				c.error('match case `$key` is handled more than once', branch.pos)
+				c.error('match case `${key}` is handled more than once', branch.pos)
 			}
 			c.expected_type = node.cond_type
 			expr_type := c.expr(expr)
@@ -242,17 +274,18 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					sumtype_variant_names := cond_type_sym.info.variants.map(c.table.type_to_str_using_aliases(it,
 						{}))
 					suggestion := util.new_suggestion(expr_str, sumtype_variant_names)
-					c.error(suggestion.say('`$expect_str` has no variant `$expr_str`'),
+					c.error(suggestion.say('`${expect_str}` has no variant `${expr_str}`'),
 						expr.pos())
 				}
 			} else if cond_type_sym.info is ast.Alias && expr_type_sym.info is ast.Struct {
 				expr_str := c.table.type_to_str(expr_type)
 				expect_str := c.table.type_to_str(node.cond_type)
-				c.error('cannot match alias type `$expect_str` with `$expr_str`', expr.pos())
+				c.error('cannot match alias type `${expect_str}` with `${expr_str}`',
+					expr.pos())
 			} else if !c.check_types(expr_type, node.cond_type) {
 				expr_str := c.table.type_to_str(expr_type)
 				expect_str := c.table.type_to_str(node.cond_type)
-				c.error('cannot match `$expect_str` with `$expr_str`', expr.pos())
+				c.error('cannot match `${expect_str}` with `${expr_str}`', expr.pos())
 			}
 			branch_exprs[key] = val + 1
 		}
@@ -270,7 +303,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 							agg_cname.write_string('___')
 						}
 						type_str := c.table.type_to_str(expr.typ)
-						name := if c.is_builtin_mod { type_str } else { '${c.mod}.$type_str' }
+						name := if c.is_builtin_mod { type_str } else { '${c.mod}.${type_str}' }
 						agg_name.write_string(name)
 						agg_cname.write_string(util.no_dots(name))
 					}
@@ -310,7 +343,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 		for v in variants {
 			if v !in branch_exprs {
 				is_exhaustive = false
-				unhandled << '`$v`'
+				unhandled << '`${v}`'
 			}
 		}
 	} else {
@@ -320,7 +353,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					v_str := c.table.type_to_str(v)
 					if v_str !in branch_exprs {
 						is_exhaustive = false
-						unhandled << '`$v_str`'
+						unhandled << '`${v_str}`'
 					}
 				}
 			}
@@ -329,7 +362,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				for v in cond_type_sym.info.vals {
 					if v !in branch_exprs {
 						is_exhaustive = false
-						unhandled << '`.$v`'
+						unhandled << '`.${v}`'
 					}
 				}
 			}
@@ -367,7 +400,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			remaining := unhandled.len - c.match_exhaustive_cutoff_limit
 			err_details += unhandled[0..c.match_exhaustive_cutoff_limit].join(', ')
 			if remaining > 0 {
-				err_details += ', and $remaining others ...'
+				err_details += ', and ${remaining} others ...'
 			}
 		}
 		err_details += ' or `else {}` at the end)'

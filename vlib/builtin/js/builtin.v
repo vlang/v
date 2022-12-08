@@ -8,7 +8,7 @@ fn (a any) toString()
 
 [noreturn]
 pub fn panic(s string) {
-	eprintln('V panic: $s\n$js_stacktrace()')
+	eprintln('V panic: ${s}\n${js_stacktrace()}')
 	exit(1)
 }
 
@@ -39,10 +39,10 @@ pub fn (err IError) str() string {
 			// TODO: remove once deprecation period for `IError` methods has ended
 			old_error_style := unsafe { voidptr(&err.msg) != voidptr(&err.code) } // if fields are not defined (new style) they don't have an offset between them
 			if old_error_style {
-				'$err.type_name(): $err.msg'
+				'${err.type_name()}: ${err.msg}'
 			} else {
 				// <<
-				'$err.type_name(): $err.msg()'
+				'${err.type_name()}: ${err.msg()}'
 			}
 		}
 	}
@@ -101,7 +101,7 @@ pub fn (o Option) str() string {
 	if o.state == 1 {
 		return 'Option{ none }'
 	}
-	return 'Option{ error: "$o.err" }'
+	return 'Option{ error: "${o.err}" }'
 }
 
 pub struct _option {
@@ -117,12 +117,12 @@ pub fn (o _option) str() string {
 	if o.state == 1 {
 		return 'Option{ none }'
 	}
-	return 'Option{ error: "$o.err" }'
+	return 'Option{ error: "${o.err}" }'
 }
 
 // trace_error prints to stderr a string and a backtrace of the error
 fn trace_error(x string) {
-	eprintln('> ${@FN} | $x')
+	eprintln('> ${@FN} | ${x}')
 }
 
 // error returns a default error instance containing the error given in `message`.

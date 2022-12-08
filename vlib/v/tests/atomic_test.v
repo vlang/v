@@ -14,7 +14,7 @@ fn test_atomic() {
 		spawn app.run()
 	}
 	time.sleep(200 * time.millisecond)
-	println('idx=$app.idx')
+	println('idx=${app.idx}')
 	assert app.idx == 10
 }
 

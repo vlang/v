@@ -63,7 +63,7 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 	//
 	mut args := _args.clone()
 	if func.params.len != args.len && !func.is_variadic {
-		e.error('mismatched parameter length for $func.name: got `$args.len`, expected `$func.params.len`')
+		e.error('mismatched parameter length for ${func.name}: got `${args.len}`, expected `${func.params.len}`')
 	}
 
 	if func.name in ['print', 'println', 'eprint', 'eprintln', 'panic'] {
@@ -189,7 +189,7 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 					}
 					for i, branch in x.branches {
 						mut do_if := false
-						println('branch:$branch')
+						println('branch:${branch}')
 						match branch.cond {
 							ast.Ident {
 								match (branch.cond as ast.Ident).name {
@@ -213,12 +213,12 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 					}
 				}
 				else {
-					e.error('unknown declaration expression statement $x.type_name()')
+					e.error('unknown declaration expression statement ${x.type_name()}')
 				}
 			}
 		}
 		else {
-			e.error('unhandled declaration statement $stmt.type_name()')
+			e.error('unhandled declaration statement ${stmt.type_name()}')
 		}
 	}
 }
@@ -231,8 +231,8 @@ fn (e Eval) error(msg string) {
 
 fn (e Eval) panic(s string) {
 	commithash := unsafe { tos5(&char(C.V_CURRENT_COMMIT_HASH)) }
-	eprintln('V panic: $s')
-	eprintln('V hash: $commithash')
+	eprintln('V panic: ${s}')
+	eprintln('V hash: ${commithash}')
 	e.print_backtrace()
 	exit(1)
 }
@@ -247,6 +247,6 @@ fn (e Eval) print_backtrace() {
 		}
 		fn_name := e.trace_function_names[t.fn_idx] or { t.fn_idx.str() }
 		word := if i == e.back_trace.len - 1 { 'at' } else { 'by' }
-		eprintln('$file_path:${t.line + 1}: $word $fn_name')
+		eprintln('${file_path}:${t.line + 1}: ${word} ${fn_name}')
 	}
 }

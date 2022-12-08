@@ -13,5 +13,5 @@ fn test_mut_receiver_of_sumtype() {
 	x.set_baz()
 
 	println(x)
-	assert '$x' == 'Foo(Baz{})'
+	assert '${x}' == 'Foo(Baz{})'
 }

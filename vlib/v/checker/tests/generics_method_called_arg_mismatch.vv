@@ -1,6 +1,6 @@
 fn main() {
 	mut obj := Obj{}
-	obj.set<Bar>(Foo{})
+	obj.set[Bar](Foo{})
 }
 
 struct Foo {}
@@ -11,4 +11,4 @@ struct Bar {
 
 struct Obj {}
 
-fn (mut o Obj) set<T>(val T) {}
+fn (mut o Obj) set[T](val T) {}

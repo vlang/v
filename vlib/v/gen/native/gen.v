@@ -58,7 +58,7 @@ mut:
 	strs                 []String
 	labels               &LabelTable = unsafe { nil }
 	defer_stmts          []ast.DeferStmt
-	builtins             map[string]BuiltinFn
+	builtins             map[Builtin]BuiltinFn
 	structs              []Struct
 	eval                 eval.Eval
 	enum_vals            map[string]Enum
@@ -153,7 +153,7 @@ type IdentVar = GlobalVar | LocalVar | Register
 fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 	mut obj := ident.obj
 	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
-		obj = ident.scope.find(ident.name) or { g.n_error('unknown variable $ident.name') }
+		obj = ident.scope.find(ident.name) or { g.n_error('unknown variable ${ident.name}') }
 	}
 	match obj {
 		ast.Var {
@@ -166,7 +166,7 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 			}
 		}
 		else {
-			g.n_error('unsupported variable type type:$obj name:$ident.name')
+			g.n_error('unsupported variable type type:${obj} name:${ident.name}')
 		}
 	}
 }
@@ -341,7 +341,7 @@ pub fn (mut g Gen) create_executable() {
 
 	os.chmod(g.out_name, 0o775) or { panic(err) } // make it executable
 	if g.pref.is_verbose {
-		eprintln('\n$g.out_name: native binary has been successfully generated')
+		eprintln('\n${g.out_name}: native binary has been successfully generated')
 	}
 }
 
@@ -373,7 +373,7 @@ pub fn (mut g Gen) link(obj_name string) {
 			g.link_elf_file(obj_name)
 		}
 		else {
-			g.n_error('native linking is not implemented for $g.pref.os')
+			g.n_error('native linking is not implemented for ${g.pref.os}')
 		}
 	}
 }
@@ -512,14 +512,14 @@ fn (mut g Gen) try_var_offset(var_name string) int {
 fn (mut g Gen) get_var_offset(var_name string) int {
 	r := g.try_var_offset(var_name)
 	if r == -1 {
-		g.n_error('unknown variable `$var_name`')
+		g.n_error('unknown variable `${var_name}`')
 	}
 	return r
 }
 
 fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
 	ts := g.table.sym(typ)
-	field := ts.find_field(name) or { g.n_error('Could not find field `$name` on init') }
+	field := ts.find_field(name) or { g.n_error('Could not find field `${name}` on init') }
 	return g.structs[typ.idx()].offsets[field.i]
 }
 
@@ -591,7 +591,7 @@ fn (mut g Gen) get_type_size(typ ast.Type) int {
 fn (mut g Gen) get_type_align(typ ast.Type) int {
 	// also calculate align of a struct
 	size := g.get_type_size(typ)
-	if typ in ast.number_type_idxs || typ.is_real_pointer() || typ.is_bool() {
+	if g.is_register_type(typ) || typ.is_pure_float() {
 		return size
 	}
 	ts := g.table.sym(typ)
@@ -600,6 +600,10 @@ fn (mut g Gen) get_type_align(typ ast.Type) int {
 	}
 	// g.n_error('unknown type align')
 	return 0
+}
+
+fn (g Gen) is_register_type(typ ast.Type) bool {
+	return typ.is_pure_int() || typ == ast.char_type_idx || typ.is_real_pointer() || typ.is_bool()
 }
 
 fn (mut g Gen) get_sizeof_ident(ident ast.Ident) int {
@@ -613,7 +617,7 @@ fn (mut g Gen) get_sizeof_ident(ident ast.Ident) int {
 		return g.get_type_size(typ)
 	}
 	size := g.var_alloc_size[ident.name] or {
-		g.n_error('unknown variable `$ident`')
+		g.n_error('unknown variable `${ident}`')
 		return 0
 	}
 	return size
@@ -621,8 +625,8 @@ fn (mut g Gen) get_sizeof_ident(ident ast.Ident) int {
 
 fn (mut g Gen) gen_typeof_expr(it ast.TypeOf, newline bool) {
 	nl := if newline { '\n' } else { '' }
-	r := g.typ(it.expr_type).name
-	g.learel(.rax, g.allocate_string('$r$nl', 3, .rel32))
+	r := g.typ(it.typ).name
+	g.learel(.rax, g.allocate_string('${r}${nl}', 3, .rel32))
 }
 
 fn (mut g Gen) call_fn(node ast.CallExpr) {
@@ -723,27 +727,27 @@ fn (mut g Gen) eval_escape_codes(str_lit ast.StringLiteral) string {
 fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
 	if typ.is_int() {
 		buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
-		g.lea_var_to_reg(g.get_builtin_arg_reg('int_to_string', 1), buffer)
+		g.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), buffer)
 
-		arg0_reg := g.get_builtin_arg_reg('int_to_string', 0)
+		arg0_reg := g.get_builtin_arg_reg(.int_to_string, 0)
 		if arg0_reg != reg {
 			g.mov_reg(arg0_reg, reg)
 		}
 
-		g.call_builtin('int_to_string')
+		g.call_builtin(.int_to_string)
 		g.lea_var_to_reg(.rax, buffer)
 	} else if typ.is_bool() {
-		arg_reg := g.get_builtin_arg_reg('bool_to_string', 0)
+		arg_reg := g.get_builtin_arg_reg(.bool_to_string, 0)
 		if arg_reg != reg {
 			g.mov_reg(arg_reg, reg)
 		}
-		g.call_builtin('bool_to_string')
+		g.call_builtin(.bool_to_string)
 	} else if typ.is_string() {
 		if reg != .rax {
 			g.mov_reg(.rax, reg)
 		}
 	} else {
-		g.n_error('int-to-string conversion not implemented for type $typ')
+		g.n_error('int-to-string conversion not implemented for type ${typ}')
 	}
 }
 
@@ -751,17 +755,17 @@ fn (mut g Gen) gen_var_to_string(reg Register, var Var, config VarConfig) {
 	typ := g.get_type_from_var(var)
 	if typ.is_int() {
 		buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
-		g.mov_var_to_reg(g.get_builtin_arg_reg('int_to_string', 0), var, config)
-		g.lea_var_to_reg(g.get_builtin_arg_reg('int_to_string', 1), buffer)
-		g.call_builtin('int_to_string')
+		g.mov_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 0), var, config)
+		g.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), buffer)
+		g.call_builtin(.int_to_string)
 		g.lea_var_to_reg(reg, buffer)
 	} else if typ.is_bool() {
-		g.mov_var_to_reg(g.get_builtin_arg_reg('bool_to_string', 0), var, config)
-		g.call_builtin('bool_to_string')
+		g.mov_var_to_reg(g.get_builtin_arg_reg(.bool_to_string, 0), var, config)
+		g.call_builtin(.bool_to_string)
 	} else if typ.is_string() {
 		g.mov_var_to_reg(.rax, var, config)
 	} else {
-		g.n_error('int-to-string conversion not implemented for type $typ')
+		g.n_error('int-to-string conversion not implemented for type ${typ}')
 	}
 }
 
@@ -792,9 +796,9 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string)
 		}
 		ast.IntegerLiteral {
 			if newline {
-				g.gen_print('$expr.val\n', fd)
+				g.gen_print('${expr.val}\n', fd)
 			} else {
-				g.gen_print('$expr.val', fd)
+				g.gen_print('${expr.val}', fd)
 			}
 		}
 		ast.BoolLiteral {
@@ -811,9 +815,9 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string)
 		ast.SizeOf {
 			size := g.get_type_size(expr.typ)
 			if newline {
-				g.gen_print('$size\n', fd)
+				g.gen_print('${size}\n', fd)
 			} else {
-				g.gen_print('$size', fd)
+				g.gen_print('${size}', fd)
 			}
 		}
 		ast.OffsetOf {
@@ -822,9 +826,9 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string)
 			if styp.kind == .struct_ {
 				off := g.get_field_offset(expr.struct_type, field_name)
 				if newline {
-					g.gen_print('$off\n', fd)
+					g.gen_print('${off}\n', fd)
 				} else {
-					g.gen_print('$off', fd)
+					g.gen_print('${off}', fd)
 				}
 			} else {
 				g.v_error('_offsetof expects a struct Type as first argument', expr.pos)
@@ -877,7 +881,7 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string)
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	name := if node.is_method {
-		'${g.table.get_type_name(node.receiver.typ)}.$node.name'
+		'${g.table.get_type_name(node.receiver.typ)}.${node.name}'
 	} else {
 		node.name
 	}
@@ -885,13 +889,13 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		return
 	}
 	if g.pref.is_verbose {
-		println(term.green('\n$name:'))
+		println(term.green('\n${name}:'))
 	}
 	if node.is_deprecated {
-		g.warning('fn_decl: $name is deprecated', node.pos)
+		g.warning('fn_decl: ${name} is deprecated', node.pos)
 	}
 	if node.is_builtin {
-		g.warning('fn_decl: $name is builtin', node.pos)
+		g.warning('fn_decl: ${name} is builtin', node.pos)
 	}
 
 	g.stack_var_pos = 0
@@ -938,7 +942,7 @@ fn (mut g Gen) println(comment string) {
 	colored := sb.str()
 	plain := term.strip_ansi(colored)
 	padding := ' '.repeat(mu.max(1, 40 - plain.len))
-	final := '$colored$padding$comment'
+	final := '${colored}${padding}${comment}'
 	println(final)
 }
 
@@ -985,7 +989,7 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 		id: end_label
 		pos: int(jump_addr)
 	}
-	g.println('; jump to label $end_label')
+	g.println('; jump to label ${end_label}')
 	g.labels.branches << BranchLabel{
 		name: node.label
 		start: start_label
@@ -993,14 +997,14 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 	}
 	g.stmts(node.stmts)
 	g.labels.addrs[start_label] = g.pos()
-	g.println('; label $start_label')
+	g.println('; label ${start_label}')
 	if node.has_inc {
 		g.stmts([node.inc])
 	}
 	g.labels.branches.pop()
 	g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
 	g.labels.addrs[end_label] = g.pos()
-	g.println('; jump to label $end_label')
+	g.println('; jump to label ${end_label}')
 
 	// loop back
 }
@@ -1026,7 +1030,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			id: end_label
 			pos: jump_addr
 		}
-		g.println('; jump to label $end_label')
+		g.println('; jump to label ${end_label}')
 		g.labels.branches << BranchLabel{
 			name: node.label
 			start: start_label
@@ -1034,12 +1038,12 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		}
 		g.stmts(node.stmts)
 		g.labels.addrs[start_label] = g.pos()
-		g.println('; label $start_label')
+		g.println('; label ${start_label}')
 		g.inc_var(LocalVar{i, ast.i64_type_idx, node.val_var})
 		g.labels.branches.pop()
 		g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
 		g.labels.addrs[end_label] = g.pos()
-		g.println('; label $end_label')
+		g.println('; label ${end_label}')
 		/*
 		} else if node.kind == .array {
 	} else if node.kind == .array_fixed {
@@ -1082,14 +1086,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 						id: label
 						pos: jump_addr
 					}
-					g.println('; jump to $label: $node.kind')
+					g.println('; jump to ${label}: ${node.kind}')
 					break
 				}
 			}
 		}
 		ast.ConstDecl {}
 		ast.DeferStmt {
-			name := '_defer$g.defer_stmts.len'
+			name := '_defer${g.defer_stmts.len}'
 			defer_var := g.get_var_offset(name)
 			g.mov_int_to_var(LocalVar{defer_var, ast.i64_type_idx, name}, 1)
 			g.defer_stmts << node
@@ -1144,7 +1148,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					}
 				}
 				// store the struct value
-				if !typ.is_real_pointer() && !typ.is_number() && !typ.is_bool() {
+				if !g.is_register_type(typ) && !typ.is_pure_float() {
 					ts := g.table.sym(typ)
 					size := g.get_type_size(typ)
 					if g.pref.arch == .amd64 {
@@ -1204,7 +1208,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				id: label
 				pos: pos
 			}
-			g.println('; jump to label $label')
+			g.println('; jump to label ${label}')
 		}
 		ast.AsmStmt {
 			g.gen_asm_stmt(node)
@@ -1261,7 +1265,7 @@ fn (mut g Gen) gen_syscall(node ast.CallExpr) {
 					}
 				}
 				if !done {
-					g.v_error('Unknown selector in syscall argument type $expr', node.pos)
+					g.v_error('Unknown selector in syscall argument type ${expr}', node.pos)
 				}
 			}
 			ast.StringLiteral {
@@ -1274,7 +1278,8 @@ fn (mut g Gen) gen_syscall(node ast.CallExpr) {
 				g.mov64(ra[i], 1)
 			}
 			else {
-				g.v_error('Unknown syscall $expr.type_name() argument type $expr', node.pos)
+				g.v_error('Unknown syscall ${expr.type_name()} argument type ${expr}',
+					node.pos)
 				return
 			}
 		}
@@ -1321,9 +1326,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 			if g.pref.arch == .arm64 {
 			} else {
 				g.movabs(.rax, val)
-				g.println('; $node.val')
-				g.push(.rax)
-				g.pop_sse(.xmm0)
+				g.println('; ${node.val}')
+				g.mov_reg_to_ssereg(.xmm0, .rax, ast.f64_type_idx)
 			}
 		}
 		ast.Ident {
@@ -1331,7 +1335,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// XXX this is intel specific
 			match var {
 				LocalVar {
-					if var.typ.is_pure_int() || var.typ.is_real_pointer() || var.typ.is_bool() {
+					if g.is_register_type(var.typ) {
 						g.mov_var_to_reg(.rax, node as ast.Ident)
 					} else if var.typ.is_pure_float() {
 						g.mov_var_to_ssereg(.xmm0, node as ast.Ident)
@@ -1416,7 +1420,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.expr(node.expr)
 		}
 		else {
-			g.n_error('expr: unhandled node type: $node.type_name()')
+			g.n_error('expr: unhandled node type: ${node.type_name()}')
 		}
 	}
 }

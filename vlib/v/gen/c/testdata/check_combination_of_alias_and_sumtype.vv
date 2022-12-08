@@ -4,31 +4,31 @@ struct Token {}
 
 struct ParseErr {}
 
-type Opt<T> = None<T> | Some<T>
+type Opt[T] = None[T] | Some[T]
 
-struct None<T> {}
+struct None[T] {}
 
-struct Some<T> {
+struct Some[T] {
 	value T
 }
 
-type Result<T, U> = Err<U> | Ok<T>
+type Result[T, U] = Err[U] | Ok[T]
 
-struct Ok<T> {
+struct Ok[T] {
 	value T
 }
 
-struct Err<U> {
+struct Err[U] {
 	value U
 }
 
 fn main() {
-	r := Opt<ParseRes>(None<ParseRes>{})
+	r := Opt[ParseRes](None[ParseRes]{})
 	match r {
-		Some<ParseRes> {
+		Some[ParseRes] {
 			// make possible cast fo the same type!
-			rx := Result<[]Token, ParseErr>(r.value)
+			rx := Result[[]Token, ParseErr](r.value)
 		}
-		None<ParseRes> {}
+		None[ParseRes] {}
 	}
 }

@@ -50,7 +50,7 @@ fn init(mut state AppState) {
 	if bytes := os.read_bytes(os.resource_abs_path(os.join_path('..', 'assets', 'fonts',
 		'RobotoMono-Regular.ttf')))
 	{
-		println('loaded font: $bytes.len')
+		println('loaded font: ${bytes.len}')
 		state.font_normal = state.font_context.add_font_mem('sans', bytes, false)
 	}
 }

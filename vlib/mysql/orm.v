@@ -76,7 +76,7 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 		f := unsafe { fields[i] }
 		field_types << unsafe { FieldType(f.@type) }
 		match types[i] {
-			orm.string {
+			orm.type_string {
 				mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
 				mysql_bind.buffer_length = FieldType.type_blob.get_len()
 			}
@@ -167,7 +167,7 @@ pub fn (db Connection) create(table string, fields []orm.TableField) ! {
 }
 
 pub fn (db Connection) drop(table string) ! {
-	query := 'DROP TABLE `$table`;'
+	query := 'DROP TABLE `${table}`;'
 	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
 
@@ -276,7 +276,7 @@ fn buffer_to_primitive(data_list []&u8, types []int, field_types []FieldType) ![
 			orm.type_idx['bool'] {
 				primitive = *(unsafe { &bool(data) })
 			}
-			orm.string {
+			orm.type_string {
 				primitive = unsafe { cstring_to_vstring(&char(data)) }
 			}
 			orm.time {
@@ -322,7 +322,7 @@ fn mysql_type_from_v(typ int) !string {
 		orm.type_idx['f64'] {
 			'DOUBLE'
 		}
-		orm.string {
+		orm.type_string {
 			'TEXT'
 		}
 		orm.serial {
@@ -336,7 +336,7 @@ fn mysql_type_from_v(typ int) !string {
 		}
 	}
 	if str == '' {
-		return error('Unknown type $typ')
+		return error('Unknown type ${typ}')
 	}
 	return str
 }
@@ -364,7 +364,7 @@ fn (db Connection) factory_orm_primitive_converted_from_sql(table string, data o
 }
 
 fn (db Connection) get_table_data_type_map(table string) !map[string]string {
-	data_type_querys := "SELECT COLUMN_NAME, DATA_TYPE  FROM INFORMATION_SCHEMA.COLUMNS  WHERE TABLE_NAME = '$table'"
+	data_type_querys := "SELECT COLUMN_NAME, DATA_TYPE  FROM INFORMATION_SCHEMA.COLUMNS  WHERE TABLE_NAME = '${table}'"
 	mut map_val := map[string]string{}
 
 	results := db.query(data_type_querys)!
