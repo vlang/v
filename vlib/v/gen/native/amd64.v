@@ -2266,6 +2266,84 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 	}
 }
 
+[params]
+struct RegisterOption {
+	reg Register = Register.rax
+	ssereg SSERegister = SSERegister.xmm0
+}
+
+fn (mut g Gen) gen_type_promotion(from ast.Type, to ast.Type, option RegisterOption) {
+	if !to.is_pure_float() {
+		return
+	}
+	if g.is_register_type(from) {
+		// integer -> float
+		if g.get_type_size(from) == 8 && !from.is_signed() {
+			label1 := g.labels.new_label()
+			label2 := g.labels.new_label()
+			g.test_reg(option.reg)
+			addr1 := g.cjmp(.js)
+			g.labels.patches << LabelPatch{
+				id: label1
+				pos: addr1
+			}
+			// if castee is in the range of i64
+			prefix, inst := if g.get_type_size(to) == 4 {
+				0xf3, 's'
+			} else {
+				0xf2, 'd'
+			}
+			g.write8(prefix)
+			g.write8(0x48 + int(option.ssereg) / 8 * 4 + int(option.reg) / 8)
+			g.write16(0x2a0f)
+			g.write8(0xc0 + int(option.ssereg) % 8 * 8 + int(option.reg) % 8)
+			g.println('cvtsi2s${inst} ${option.ssereg}, ${option.reg}')
+			addr2 := g.jmp(0)
+			g.labels.patches << LabelPatch{
+				id: label2
+				pos: addr2
+			}
+			g.labels.addrs[label1] = g.pos()
+			// if castee has the leftmost bit
+			g.mov_reg(.rbx, .rax)
+			g.write([u8(0x48), 0xd1, 0xe8])
+			g.println('shr rax')
+			g.write([u8(0x83), 0xe3, 0x01])
+			g.println('and ebx, 0x1')
+			g.bitor_reg(.rax, .rbx)
+			g.write8(prefix)
+			g.write8(0x48 + int(option.ssereg) / 8 * 4 + int(option.reg) / 8)
+			g.write16(0x2a0f)
+			g.write8(0xc0 + int(option.ssereg) % 8 * 8 + int(option.reg) % 8)
+			g.println('cvtsi2s${inst} ${option.ssereg}, ${option.reg}')
+			g.add_sse(option.ssereg, option.ssereg, to)
+			g.labels.addrs[label2] = g.pos()
+		} else {
+			prefix, inst := if g.get_type_size(to) == 4 {
+				0xf3, 's'
+			} else {
+				0xf2, 'd'
+			}
+			g.write8(prefix)
+			g.write8(0x48 + int(option.ssereg) / 8 * 4 + int(option.reg) / 8)
+			g.write16(0x2a0f)
+			g.write8(0xc0 + int(option.ssereg) % 8 * 8 + int(option.reg) % 8)
+			g.println('cvtsi2s${inst} ${option.ssereg}, ${option.reg}')
+		}
+	} else {
+		if from == ast.f32_type_idx && to != ast.f32_type_idx {
+			// f32 -> f64
+			g.write8(0xf3)
+			if int(option.ssereg) >= int(SSERegister.xmm8) {
+				g.write8(0x45)
+			}
+			g.write16(0x5a0f)
+			g.write8(0xc0 + int(option.ssereg) % 8 * 9)
+			g.println('cvtss2sd ${option.ssereg}, ${option.ssereg}')
+		}
+	}
+}
+
 fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 	// `a, b := foo()`
 	// `a, b := if cond { 1, 2 } else { 3, 4 }`
@@ -2343,7 +2421,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			} else if node.right_types[i].is_pure_float() {
 				g.mov_deref_sse(.xmm0, .rdx, right_type)
 			}
-			// TODO type promotion here
+			g.gen_type_promotion(right_type, left_type, reg: .rcx)
 			if g.is_register_type(left_type) {
 				match node.op {
 					.assign, .decl_assign {
@@ -2415,6 +2493,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 		g.push(.rax)
 		g.expr(right)
 		g.pop(.rdx)
+		g.gen_type_promotion(node.right_types[0], typ)
 		if g.is_register_type(typ) {
 			match node.op {
 				.assign {
@@ -2430,7 +2509,6 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				}
 			}
 		} else if typ.is_pure_float() {
-			// TODO when the right type is integer
 			is_f32 := typ == ast.f32_type_idx
 			if node.op !in [.assign, .decl_assign] {
 				g.mov_ssereg(.xmm1, .xmm0)
