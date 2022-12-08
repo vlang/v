@@ -44,7 +44,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		is_anon = info.is_anon
 	}
 
-	if !(is_gcc && g.inside_struct_fields) && !is_anon {
+	if !is_gcc && !is_anon {
 		g.write('(')
 		defer {
 			g.write(')')
@@ -65,7 +65,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		} else {
 			g.write('&(${basetyp}){')
 		}
-	} else if is_gcc && g.inside_struct_fields {
+	} else if is_gcc && g.inside_struct_fields && !g.inside_call {
 		if is_multiline {
 			g.writeln('{')
 		} else {
