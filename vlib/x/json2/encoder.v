@@ -231,43 +231,12 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 						typeof[string]().idx {
 							e.encode_string(value.str(), mut wr)!
 						}
-						typeof[bool]().idx {
+						typeof[bool]().idx, typeof[f32]().idx, typeof[f64]().idx, typeof[i8]().idx,
+						typeof[i16]().idx, typeof[int]().idx, typeof[i64]().idx, typeof[u8]().idx,
+						typeof[u16]().idx, typeof[u32]().idx, typeof[u64]().idx {
 							wr.write(value.str().bytes())!
 						}
-						typeof[f32]().idx {
-							wr.write(value.str().bytes())!
-						}
-						typeof[f64]().idx {
-							wr.write(value.str().bytes())!
-						}
-						typeof[i8]().idx {
-							wr.write(value.str().bytes())!
-						}
-						typeof[i16]().idx {
-							wr.write(value.str().bytes())!
-						}
-						typeof[int]().idx {
-							wr.write(value.str().bytes())!
-						}
-						typeof[i64]().idx {
-							wr.write(value.str().bytes())!
-						}
-						typeof[u8]().idx {
-							wr.write(value.str().bytes())!
-						}
-						typeof[u16]().idx {
-							wr.write(value.str().bytes())!
-						}
-						typeof[u32]().idx {
-							wr.write(value.str().bytes())!
-						}
-						typeof[u64]().idx {
-							wr.write(value.str().bytes())!
-						}
-						typeof[[]byte]().idx {
-							e.encode_array(value, level, mut wr)!
-						}
-						typeof[[]int]().idx {
+						typeof[[]byte]().idx, typeof[[]int]().idx {
 							e.encode_array(value, level, mut wr)!
 						}
 						else {
