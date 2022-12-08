@@ -140,6 +140,7 @@ mut:
 	inside_const_opt_or_res   bool
 	inside_lambda             bool
 	inside_for_in_any_cond    bool
+	inside_cinit              bool
 	loop_depth                int
 	ternary_names             map[string]string
 	ternary_level_names       map[string][]string
@@ -5050,6 +5051,10 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	}
 	// should the global be initialized now, not later in `vinit()`
 	cinit := node.attrs.contains('cinit')
+	g.inside_cinit = cinit
+	defer {
+		g.inside_cinit = false
+	}
 	cextern := node.attrs.contains('c_extern')
 	should_init := (!g.pref.use_cache && g.pref.build_mode != .build_module)
 		|| (g.pref.build_mode == .build_module && g.module_built == node.mod)
