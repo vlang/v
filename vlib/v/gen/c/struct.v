@@ -8,7 +8,6 @@ import v.ast
 const skip_struct_init = ['struct stat', 'struct addrinfo']
 
 fn (mut g Gen) struct_init(node ast.StructInit) {
-	mut is_gcc := g.pref.ccompiler_type == .gcc
 	mut is_update_tmp_var := false
 	mut tmp_update_var := ''
 	if node.has_update_expr && !node.update_expr.is_lvalue() {
@@ -44,7 +43,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		is_anon = info.is_anon
 	}
 
-	if !(is_gcc && g.inside_cinit) && !is_anon {
+	if !g.inside_cinit && !is_anon {
 		g.write('(')
 		defer {
 			g.write(')')
@@ -65,7 +64,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		} else {
 			g.write('&(${basetyp}){')
 		}
-	} else if is_gcc && g.inside_cinit && g.inside_struct_fields {
+	} else if g.inside_cinit && g.inside_struct_fields {
 		if is_multiline {
 			g.writeln('{')
 		} else {
