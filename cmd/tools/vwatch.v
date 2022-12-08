@@ -59,15 +59,7 @@ fn get_scan_timeout_seconds() int {
 // can do, even without using the garbage collection mode.
 //
 
-struct VFileStat {
-	path  string
-	mtime i64
-}
-
-[unsafe]
-fn (mut vfs VFileStat) free() {
-	unsafe { vfs.path.free() }
-}
+type VFileStats = map[string]i64
 
 enum RerunCommand {
 	restart
@@ -80,8 +72,7 @@ mut:
 	is_worker       bool // true in the workers, false in the manager process
 	check_period_ms int = scan_period_ms
 	vexe            string
-	affected_paths  []string
-	vfiles          []VFileStat
+	vfiles          VFileStats // For each filepath : its mtime
 	opts            []string
 	rerun_channel   chan RerunCommand
 	child_process   &os.Process = unsafe { nil }
@@ -92,7 +83,6 @@ mut:
 	keep_running    bool     // when true, re-run the program automatically if it exits on its own. Useful for gg apps.
 	silent          bool     // when true, watch will not print a timestamp line before each re-run
 	add_files       []string // path to additional files that have to be watched for changes
-	ignore_exts     []string // extensions of files that will be ignored, even if they change (useful for sqlite.db files for example)
 	cmd_before_run  string   // a command to run before each re-run
 	cmd_after_run   string   // a command to run after each re-run
 }
@@ -106,9 +96,8 @@ fn (context &Context) str() string {
 	return 'Context{ pid: ${context.pid}, is_worker: ${context.is_worker}, check_period_ms: ${context.check_period_ms}, vexe: ${context.vexe}, opts: ${context.opts}, is_exiting: ${context.is_exiting}, vfiles: ${context.vfiles}'
 }
 
-fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
-	if context.affected_paths.len == 0 {
-		mut apaths := map[string]bool{}
+fn (mut context Context) are_affected_vfiles_modified() bool {
+	if context.vfiles.len == 0 {
 		// The next command will make V parse the program, and print all .v files,
 		// needed for its compilation, without actually compiling it.
 		copts := context.opts.join(' ')
@@ -124,65 +113,36 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 			paths << paths_trimmed.split('\n')
 		}
 		for vf in paths {
-			apaths[os.real_path(os.dir(vf))] = true
+			context.vfiles[os.real_path(vf).trim_space()] = 0
 		}
-		context.affected_paths = apaths.keys()
-		// context.elog('vfiles paths to be scanned: $context.affected_paths')
+		context.elog('vfiles to be checked: ${context.vfiles.keys()}')
 	}
-	// scan all files in the found folders
-	mut newstats := []VFileStat{}
-	for path in context.affected_paths {
-		mut files := os.ls(path) or { []string{} }
-		for pf in files {
-			pf_ext := os.file_ext(pf).to_lower()
-			if pf_ext in ['', '.bak', '.exe', '.dll', '.so', '.def'] {
-				continue
-			}
-			if pf_ext in context.ignore_exts {
-				continue
-			}
-			if pf.starts_with('.#') {
-				continue
-			}
-			if pf.ends_with('~') {
-				continue
-			}
-			f := os.join_path(path, pf)
-			fullpath := os.real_path(f)
-			mtime := os.file_last_mod_unix(fullpath)
-			newstats << VFileStat{fullpath, mtime}
-		}
+
+	// check all files mtime
+
+	mut old_vfiles := VFileStats(map[string]i64{})
+
+	for vfile, mtime in context.vfiles {
+		old_vfiles[vfile] = mtime
+	}
+
+	for vfile, _ in context.vfiles {
+		context.vfiles[vfile] = os.file_last_mod_unix(vfile)
 	}
 	// always add the v compiler itself, so that if it is recompiled with `v self`
 	// the watcher will rerun the compilation too
-	newstats << VFileStat{context.vexe, os.file_last_mod_unix(context.vexe)}
-	return newstats
+	context.vfiles[context.vexe] = os.file_last_mod_unix(context.vexe)
+
+	return old_vfiles != context.vfiles
 }
 
-fn (mut context Context) get_changed_vfiles() int {
-	mut changed := 0
-	newfiles := context.get_stats_for_affected_vfiles()
-	for vfs in newfiles {
-		mut found := false
-		for existing_vfs in context.vfiles {
-			if existing_vfs.path == vfs.path {
-				found = true
-				if existing_vfs.mtime != vfs.mtime {
-					context.elog('> new updates for file: ${vfs}')
-					changed++
-				}
-				break
-			}
-		}
-		if !found {
-			changed++
-			continue
-		}
-	}
-	context.vfiles = newfiles
-	if changed > 0 {
+fn (mut context Context) get_changed_vfiles() bool {
+	changed := context.are_affected_vfiles_modified()
+
+	if changed {
 		context.elog('> get_changed_vfiles: ${changed}')
 	}
+
 	return changed
 }
 
@@ -198,8 +158,7 @@ fn change_detection_loop(ocontext &Context) {
 		if context.is_exiting {
 			return
 		}
-		changes := context.get_changed_vfiles()
-		if changes > 0 {
+		if context.get_changed_vfiles() {
 			context.rerun_channel <- RerunCommand.restart
 		}
 		time.sleep(context.check_period_ms * time.millisecond)
@@ -324,7 +283,6 @@ fn main() {
 	context.clear_terminal = fp.bool('clear', `c`, false, 'Clears the terminal before each re-run.')
 	context.keep_running = fp.bool('keep', `k`, false, 'Keep the program running. Restart it automatically, if it exits by itself. Useful for gg/ui apps.')
 	context.add_files = fp.string('add', `a`, '', 'Add more files to be watched. Useful with `v watch -add=/tmp/feature.v run cmd/v /tmp/feature.v`, if you change *both* the compiler, and the feature.v file.').split(',')
-	context.ignore_exts = fp.string('ignore', `i`, '', 'Ignore files having these extensions. Useful with `v watch -ignore=.db run server.v`, if your server writes to an sqlite.db file in the same folder.').split(',')
 	show_help := fp.bool('help', `h`, false, 'Show this help screen.')
 	context.cmd_before_run = fp.string('before', 0, '', 'A command to execute *before* each re-run.')
 	context.cmd_after_run = fp.string('after', 0, '', 'A command to execute *after* each re-run.')
@@ -343,7 +301,6 @@ fn main() {
 	context.elog('>>> context.is_worker: ${context.is_worker}')
 	context.elog('>>> context.clear_terminal: ${context.clear_terminal}')
 	context.elog('>>> context.add_files: ${context.add_files}')
-	context.elog('>>> context.ignore_exts: ${context.ignore_exts}')
 	if context.is_worker {
 		context.worker_main()
 	} else {
