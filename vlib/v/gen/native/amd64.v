@@ -2269,9 +2269,55 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 	// `a, b := foo()`
 	// `a, b := if cond { 1, 2 } else { 3, 4 }`
-	if node.left.len > 1 && node.right.len == 1 {
+	// `a, b = b, a`
+	if (node.left.len > 1 && node.right.len == 1) || node.has_cross_var {
 		multi_return := g.get_multi_return(node.right_types)
-		g.expr(node.right[0])
+		if node.has_cross_var {
+			// `a, b = b, a`
+			// construct a struct variable contains the return value
+			size := multi_return.size
+			align := multi_return.align
+			padding := (align - g.stack_var_pos % align) % align
+			g.stack_var_pos += size + padding
+			var := LocalVar{offset: g.stack_var_pos}
+			// zero fill
+			mut left := if size >= 16 {
+				g.mov(.rax, 0)
+				g.mov(.rcx, size / 8)
+				g.lea_var_to_reg(.rdi, var.offset)
+				g.write([u8(0xf3), 0x48, 0xab])
+				g.println('rep stosq')
+				size % 8
+			} else {
+				size
+			}
+			if left >= 8 {
+				g.mov_int_to_var(var, 0, offset: size - left, typ: ast.i64_type_idx)
+				left -= 8
+			}
+			if left >= 4 {
+				g.mov_int_to_var(var, 0, offset: size - left, typ: ast.int_type_idx)
+				left -= 4
+			}
+			if left >= 2 {
+				g.mov_int_to_var(var, 0, offset: size - left, typ: ast.i16_type_idx)
+				left -= 2
+			}
+			if left == 1 {
+				g.mov_int_to_var(var, 0, offset: size - left, typ: ast.i8_type_idx)
+			}
+			// store exprs to the variable
+			for i, expr in node.right {
+				offset := multi_return.offsets[i]
+				g.expr(expr)
+				// TODO expr not on rax
+				g.mov_reg_to_var(var, .rax, offset: offset, typ: node.right_types[i])
+			}
+			// store the multi return struct value
+			g.lea_var_to_reg(.rax, var.offset)
+		} else {
+			g.expr(node.right[0])
+		}
 		g.mov_reg(.rdx, .rax)
 
 		mut current_offset := 0
@@ -2350,11 +2396,6 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				g.n_error('multi return for struct is not supported yet')
 			}
 		}
-		return
-	}
-	// `a, b = b, a`
-	if node.has_cross_var {
-		g.n_error('crossing variables in the assingment is not supported yet')
 		return
 	}
 	// `a := 1` | `a,b := 1,2`

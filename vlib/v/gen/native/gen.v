@@ -128,6 +128,7 @@ struct MultiReturn {
 mut:
 	offsets []int
 	size int
+	align int
 }
 
 enum Size {
@@ -638,6 +639,7 @@ fn (mut g Gen) get_multi_return(types []ast.Type) MultiReturn {
 		}
 	}
 	ret.size = size
+	ret.align = align
 	return ret
 }
 
