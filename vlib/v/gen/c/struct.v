@@ -143,9 +143,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 					g.inside_cast_in_heap = 0 // prevent use of pointers in child structs
 
 					g.write('.${embed_name} = ')
-					g.inside_struct_fields = true
 					g.struct_init(default_init)
-					g.inside_struct_fields = false
 
 					g.inside_cast_in_heap = inside_cast_in_heap // restore value for further struct inits
 					if is_multiline {
