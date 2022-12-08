@@ -93,9 +93,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			if field.typ == 0 {
 				g.checker_bug('struct init, field.typ is 0', field.pos)
 			}
-			g.inside_struct_fields = true
 			g.struct_init_field(field, sym.language)
-			g.inside_struct_fields = false
 			if i != node.fields.len - 1 {
 				if is_multiline {
 					g.writeln(',')
@@ -176,9 +174,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				if sfield.typ == 0 {
 					continue
 				}
-				g.inside_struct_fields = true
 				g.struct_init_field(sfield, sym.language)
-				g.inside_struct_fields = false
 				if is_multiline {
 					g.writeln(',')
 				} else {
