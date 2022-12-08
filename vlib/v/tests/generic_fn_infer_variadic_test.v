@@ -1,4 +1,4 @@
-fn generic<T>(items ...T) string {
+fn generic[T](items ...T) string {
 	return '${items}'
 }
 

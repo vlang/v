@@ -282,10 +282,10 @@ fn test_read_raw() {
 	f.write_raw(another_permission)!
 	f.close()
 	f = os.open_file(tfile, 'r')!
-	p := f.read_raw<Point>()!
-	b := f.read_raw<u8>()!
-	c := f.read_raw<Color>()!
-	x := f.read_raw<Permissions>()!
+	p := f.read_raw[Point]()!
+	b := f.read_raw[u8]()!
+	c := f.read_raw[Color]()!
+	x := f.read_raw[Permissions]()!
 	f.close()
 
 	assert p == another_point
@@ -304,13 +304,13 @@ fn test_read_raw_at() {
 	f.close()
 	f = os.open_file(tfile, 'r')!
 	mut at := u64(3)
-	p := f.read_raw_at<Point>(at)!
+	p := f.read_raw_at[Point](at)!
 	at += sizeof(Point)
-	b := f.read_raw_at<u8>(at)!
+	b := f.read_raw_at[u8](at)!
 	at += sizeof(u8)
-	c := f.read_raw_at<Color>(at)!
+	c := f.read_raw_at[Color](at)!
 	at += sizeof(Color)
-	x := f.read_raw_at<Permissions>(at)!
+	x := f.read_raw_at[Permissions](at)!
 	at += sizeof(Permissions)
 	f.close()
 
@@ -322,10 +322,10 @@ fn test_read_raw_at() {
 
 fn test_read_raw_at_negative_pos() {
 	mut f := os.open_file(tfile, 'r')!
-	if _ := f.read_raw_at<Point>(-1) {
+	if _ := f.read_raw_at[Point](-1) {
 		assert false
 	}
-	f.read_raw_at<Point>(-234) or { assert err.msg() == 'Invalid argument' }
+	f.read_raw_at[Point](-234) or { assert err.msg() == 'Invalid argument' }
 	f.close()
 }
 
@@ -342,11 +342,11 @@ fn test_seek() {
 	//
 	f.seek(i64(sizeof(Point)), .start)!
 	assert f.tell()! == sizeof(Point)
-	b := f.read_raw<u8>()!
+	b := f.read_raw[u8]()!
 	assert b == another_byte
 
 	f.seek(i64(sizeof(Color)), .current)!
-	x := f.read_raw<Permissions>()!
+	x := f.read_raw[Permissions]()!
 	assert x == another_permission
 	//
 	f.close()

@@ -35,7 +35,7 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 
 	mut concrete_types := []ast.Type{}
 	mut concrete_list_pos := p.tok.pos()
-	if p.tok.kind == .lt {
+	if p.tok.kind in [.lt, .lsbr] {
 		// `foo<int>(10)`
 		p.expr_mod = ''
 		concrete_types = p.parse_concrete_types()
@@ -333,7 +333,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			scope: 0
 		}
 	}
-	// <T>
+	// [T]
 	_, mut generic_names := p.parse_generic_types()
 	// generic names can be infer with receiver's generic names
 	if is_method && rec.typ.has_flag(.generic) {
@@ -687,7 +687,12 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		p.close_scope()
 	}
 	p.scope.detached_from_parent = true
-	inherited_vars := if p.tok.kind == .lsbr { p.closure_vars() } else { []ast.Param{} }
+	inherited_vars := if p.tok.kind == .lsbr && !(p.peek_tok.kind == .name
+		&& p.peek_tok.lit.len == 1 && p.peek_tok.lit[0].is_capital()) {
+		p.closure_vars()
+	} else {
+		[]ast.Param{}
+	}
 	_, generic_names := p.parse_generic_types()
 	args, _, is_variadic := p.fn_args()
 	for arg in args {

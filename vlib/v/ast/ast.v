@@ -1325,6 +1325,7 @@ pub:
 pub mut:
 	low  Expr
 	high Expr
+	typ  Type // filled in by checker; the type of `0...1` is `int` for example, while `a`...`z` is `rune` etc
 }
 
 [minify]
@@ -1625,10 +1626,11 @@ pub mut:
 [minify]
 pub struct TypeOf {
 pub:
-	pos token.Pos
+	is_type bool
+	pos     token.Pos
 pub mut:
-	expr      Expr
-	expr_type Type
+	expr Expr // checker uses this to set typ
+	typ  Type
 }
 
 [minify]

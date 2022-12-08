@@ -60,6 +60,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			c.error('range type can not be bool', node.cond.pos())
 		} else if typ_idx == ast.string_type_idx || high_type_idx == ast.string_type_idx {
 			c.error('range type can not be string', node.cond.pos())
+		} else if typ_idx == ast.none_type_idx || high_type_idx == ast.none_type_idx {
+			c.error('range type can not be none', node.cond.pos())
 		}
 		if high_type in [ast.int_type, ast.int_literal_type] {
 			node.val_type = typ

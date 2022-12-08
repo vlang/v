@@ -39,8 +39,8 @@ const escaped_chars = [(r'\b').bytes(), (r'\f').bytes(), (r'\n').bytes(),
 	(r'\r').bytes(), (r'\t').bytes()]
 
 // encode_value encodes a value to the specific writer.
-pub fn (e &Encoder) encode_value<T>(val T, mut wr io.Writer) ! {
-	e.encode_value_with_level<T>(val, 1, mut wr)!
+pub fn (e &Encoder) encode_value[T](val T, mut wr io.Writer) ! {
+	e.encode_value_with_level[T](val, 1, mut wr)!
 }
 
 fn (e &Encoder) encode_newline(level int, mut wr io.Writer) ! {
@@ -132,7 +132,7 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 	}
 }
 
-fn (e &Encoder) encode_value_with_level<T>(val T, level int, mut wr io.Writer) ! {
+fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) ! {
 	$if T is string {
 		e.encode_string(val, mut wr)!
 	} $else $if T is Any {
@@ -160,7 +160,7 @@ fn (e &Encoder) encode_value_with_level<T>(val T, level int, mut wr io.Writer) !
 	}
 }
 
-fn (e &Encoder) encode_struct<U>(val U, level int, mut wr io.Writer) ! {
+fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 	wr.write([u8(`{`)])!
 	mut i := 0
 	mut fields_len := 0
@@ -187,15 +187,14 @@ fn (e &Encoder) encode_struct<U>(val U, level int, mut wr io.Writer) ! {
 				wr.write(json2.space_bytes)!
 			}
 			match field.unaliased_typ {
-				string_type_idx {
+				typeof[string]().idx {
 					e.encode_string(val.$(field.name).str(), mut wr)!
 				}
-				bool_type_idx, f32_type_idx, f64_type_idx, i8_type_idx, i16_type_idx, int_type_idx,
-				i64_type_idx, u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx {
+				typeof[bool]().idx typeof[f32]().idx typeof[f64]().idx typeof[i8]().idx typeof[i16]().idx typeof[int]().idx typeof[i64]().idx typeof[u8]().idx typeof[u16]().idx typeof[u32]().idx typeof[u64]().idx {
 					wr.write(val.$(field.name).str().bytes())!
 				}
-				byte_array_type_idx, int_array_type_idx {
-					//! FIXME -  error: cannot convert 'struct _option_string' to 'struct string'
+				typeof[[]byte]().idx {
+					//! array
 					e.encode_array(val.$(field.name), level, mut wr)!
 				}
 				else {
@@ -214,7 +213,7 @@ fn (e &Encoder) encode_struct<U>(val U, level int, mut wr io.Writer) ! {
 	wr.write([u8(`}`)])!
 }
 
-fn (e &Encoder) encode_array<U>(val U, level int, mut wr io.Writer) ! {
+fn (e &Encoder) encode_array[U](val U, level int, mut wr io.Writer) ! {
 	$if U is $Array {
 		wr.write([u8(`[`)])!
 		for i in 0 .. val.len {

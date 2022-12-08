@@ -15,7 +15,7 @@ mut:
 struct Vm {
 mut:
 	display Display
-	stack   datatypes.Stack<u16>
+	stack   datatypes.Stack[u16]
 }
 
 struct Pattern {

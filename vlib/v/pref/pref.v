@@ -47,12 +47,12 @@ pub enum ColorOutput {
 
 pub enum Backend {
 	c // The (default) C backend
+	golang // Go backend
+	interpret // Interpret the ast
 	js_node // The JavaScript NodeJS backend
 	js_browser // The JavaScript browser backend
 	js_freestanding // The JavaScript freestanding backend
 	native // The Native backend
-	interpret // Interpret the ast
-	golang // Go backend
 }
 
 pub fn (b Backend) is_js() bool {
@@ -87,10 +87,10 @@ pub enum Arch {
 	_max
 }
 
-const (
-	list_of_flags_with_param = ['o', 'd', 'define', 'b', 'backend', 'cc', 'os', 'cf', 'cflags',
-		'path', 'arch']
-)
+pub const list_of_flags_with_param = ['o', 'd', 'define', 'b', 'backend', 'cc', 'os', 'cf', 'cflags',
+	'path', 'arch']
+
+pub const supported_test_runners = ['normal', 'simple', 'tap', 'dump']
 
 [heap; minify]
 pub struct Preferences {
@@ -687,7 +687,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-b', '-backend' {
 				sbackend := cmdline.option(current_args, arg, 'c')
 				res.build_options << '${arg} ${sbackend}'
-				b := backend_from_string(sbackend) or { continue }
+				b := backend_from_string(sbackend) or {
+					eprintln('Unknown V backend: ${sbackend}')
+					eprintln('Valid -backend choices are: c, go, interpret, js, js_node, js_browser, js_freestanding, native')
+					exit(1)
+				}
 				if b.is_js() {
 					res.output_cross_c = true
 				}
@@ -960,15 +964,17 @@ fn is_source_file(path string) bool {
 }
 
 pub fn backend_from_string(s string) !Backend {
+	// TODO: unify the "different js backend" options into a single `-b js`
+	// + a separate option, to choose the wanted JS output.
 	match s {
 		'c' { return .c }
-		'js' { return .js_node }
 		'go' { return .golang }
+		'interpret' { return .interpret }
+		'js' { return .js_node }
 		'js_node' { return .js_node }
 		'js_browser' { return .js_browser }
 		'js_freestanding' { return .js_freestanding }
 		'native' { return .native }
-		'interpret' { return .interpret }
 		else { return error('Unknown backend type ${s}') }
 	}
 }
@@ -1055,4 +1061,8 @@ fn (mut prefs Preferences) diagnose_deprecated_defines(define_parts []string) {
 	if define_parts[0] == 'no_bounds_checking' {
 		eprintln('`-d no_bounds_checking` was deprecated in 2022/10/30. Use `-no-bounds-checking` instead.')
 	}
+}
+
+pub fn supported_test_runners_list() string {
+	return pref.supported_test_runners.map('`${it}`').join(', ')
 }

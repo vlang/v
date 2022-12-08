@@ -678,7 +678,7 @@ fn test_uname() {
 	assert u.machine.len > 0
 }
 
-// tests for write_file_array and read_file_array<T>:
+// tests for write_file_array and read_file_array[T]:
 const maxn = 3
 
 struct IntPoint {
@@ -706,7 +706,7 @@ fn test_write_file_array_structs() {
 		arr[i] = IntPoint{65 + i, 65 + i + 10}
 	}
 	os.write_file_array(fpath, arr) or { panic(err) }
-	rarr := os.read_file_array<IntPoint>(fpath)
+	rarr := os.read_file_array[IntPoint](fpath)
 	assert rarr == arr
 	assert rarr.len == maxn
 	// eprintln( rarr.str().replace('\n', ' ').replace('},', '},\n'))

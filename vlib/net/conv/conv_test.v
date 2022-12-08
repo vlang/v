@@ -1,6 +1,6 @@
 import net.conv
 
-fn check<T>(f fn (a T) T, finv fn (b T) T, x T) {
+fn check[T](f fn (a T) T, finv fn (b T) T, x T) {
 	a := f(x)
 	b := finv(a)
 	assert b == x

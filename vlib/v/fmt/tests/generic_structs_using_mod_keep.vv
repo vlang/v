@@ -1,8 +1,8 @@
 import v.fmt.tests.obj
 
-struct GenericStruct<A, B> {
+struct GenericStruct[A, B] {
 }
 
 fn main() {
-	_ := GenericStruct<obj.Test, obj.Test>{}
+	_ := GenericStruct[obj.Test, obj.Test]{}
 }

@@ -4,16 +4,16 @@
 module mathutil
 
 [inline]
-pub fn min<T>(a T, b T) T {
+pub fn min[T](a T, b T) T {
 	return if a < b { a } else { b }
 }
 
 [inline]
-pub fn max<T>(a T, b T) T {
+pub fn max[T](a T, b T) T {
 	return if a > b { a } else { b }
 }
 
 [inline]
-pub fn abs<T>(a T) T {
+pub fn abs[T](a T) T {
 	return if a > 0 { a } else { -a }
 }

@@ -1,7 +1,7 @@
 module maps
 
 // filter filters map entries by the given predicate function
-pub fn filter<K, V>(m map[K]V, f fn (key K, val V) bool) map[K]V {
+pub fn filter[K, V](m map[K]V, f fn (key K, val V) bool) map[K]V {
 	mut mp := map[K]V{}
 
 	for k, v in m {
@@ -14,7 +14,7 @@ pub fn filter<K, V>(m map[K]V, f fn (key K, val V) bool) map[K]V {
 }
 
 // to_array maps map entries into one-dimensional array
-pub fn to_array<K, V, I>(m map[K]V, f fn (key K, val V) I) []I {
+pub fn to_array[K, V, I](m map[K]V, f fn (key K, val V) I) []I {
 	mut a := []I{cap: m.len}
 
 	for k, v in m {
@@ -25,7 +25,7 @@ pub fn to_array<K, V, I>(m map[K]V, f fn (key K, val V) I) []I {
 }
 
 // flat_map maps map entries into arrays and flattens into a one-dimensional array
-pub fn flat_map<K, V, I>(m map[K]V, f fn (key K, val V) []I) []I {
+pub fn flat_map[K, V, I](m map[K]V, f fn (key K, val V) []I) []I {
 	mut a := []I{cap: m.len}
 
 	for k, v in m {
@@ -36,7 +36,7 @@ pub fn flat_map<K, V, I>(m map[K]V, f fn (key K, val V) []I) []I {
 }
 
 // to_map maps map entries into new entries and constructs a new map
-pub fn to_map<K, V, X, Y>(m map[K]V, f fn (key K, val V) (X, Y)) map[X]Y {
+pub fn to_map[K, V, X, Y](m map[K]V, f fn (key K, val V) (X, Y)) map[X]Y {
 	mut mp := map[X]Y{}
 
 	for k, v in m {
@@ -48,7 +48,7 @@ pub fn to_map<K, V, X, Y>(m map[K]V, f fn (key K, val V) (X, Y)) map[X]Y {
 }
 
 // invert returns a new map, created by swapping key to value and vice versa for each entry.
-pub fn invert<K, V>(m map[K]V) map[V]K {
+pub fn invert[K, V](m map[K]V) map[V]K {
 	mut mp := map[V]K{}
 
 	for k, v in m {
@@ -59,7 +59,7 @@ pub fn invert<K, V>(m map[K]V) map[V]K {
 }
 
 // from_array maps array into map with index to element per entry
-pub fn from_array<T>(array []T) map[int]T {
+pub fn from_array[T](array []T) map[int]T {
 	mut mp := map[int]T{}
 
 	for i, e in array {

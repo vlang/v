@@ -1676,6 +1676,26 @@ Note that the ranges use `...` (three dots) rather than `..` (two dots). This is
 because the range is *inclusive* of the last element, rather than exclusive
 (as `..` ranges are). Using `..` in a match branch will throw an error.
 
+```v
+const start = 1
+
+const end = 10
+
+c := 2
+num := match c {
+	start...end {
+		1000
+	}
+	else {
+		0
+	}
+}
+println(num)
+// 1000
+```
+
+Constants can also be used in the range branch expressions.
+
 Note: `match` as an expression is not usable in `for` loop and `if` statements.
 
 ### In operator
@@ -2699,10 +2719,10 @@ In general, V's references are similar to Go pointers and C++ references.
 For example, a generic tree structure definition would look like this:
 
 ```v
-struct Node<T> {
+struct Node[T] {
 	val   T
-	left  &Node<T>
-	right &Node<T>
+	left  &Node[T]
+	right &Node[T]
 }
 ```
 
@@ -3767,7 +3787,7 @@ receiver argument `r` uses a generic type `T`.
 
 Another example:
 ```v
-fn compare<T>(a T, b T) int {
+fn compare[T](a T, b T) int {
 	if a < b {
 		return -1
 	}
@@ -3777,15 +3797,15 @@ fn compare<T>(a T, b T) int {
 	return 0
 }
 
-// compare<int>
+// compare[int]
 println(compare(1, 0)) // Outputs: 1
 println(compare(1, 1)) //          0
 println(compare(1, 2)) //         -1
-// compare<string>
+// compare[string]
 println(compare('1', '0')) // Outputs: 1
 println(compare('1', '1')) //          0
 println(compare('1', '2')) //         -1
-// compare<f64>
+// compare[f64]
 println(compare(1.1, 1.0)) // Outputs: 1
 println(compare(1.1, 1.1)) //          0
 println(compare(1.1, 1.2)) //         -1
@@ -5801,9 +5821,16 @@ v -os linux .
 NB: Cross-compiling a windows binary on a linux machine requires the GNU C compiler for
 MinGW-w64 (targeting Win64) to first be installed.
 
+For Ubuntu/Debian based distributions:
 ```shell
 sudo apt-get install gcc-mingw-w64-x86-64
 ```
+
+For Arch based distributions:
+```shell
+sudo pacman -S mingw-w64-gcc
+```
+
 (Cross compiling for macOS is temporarily not possible.)
 
 If you don't have any C dependencies, that's all you need to do. This works even

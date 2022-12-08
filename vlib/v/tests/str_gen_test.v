@@ -253,11 +253,11 @@ fn test_map_with_struct() {
 
 struct ForGeneric {}
 
-fn generic_fn_interpolation<T>(p T) string {
+fn generic_fn_interpolation[T](p T) string {
 	return '${p}'
 }
 
-fn generic_fn_str<T>(p T) string {
+fn generic_fn_str[T](p T) string {
 	return p.str()
 }
 
@@ -307,25 +307,25 @@ fn test_alias_struct() {
 	assert '${t}' == 'TestAlias(TestStruct{\n    x: 0\n})'
 }
 
-struct GenericStruct<T> {
+struct GenericStruct[T] {
 	x T
 }
 
 fn test_generic_struct() {
-	x := GenericStruct<TestStruct>{}
-	assert '${x}' == 'GenericStruct<TestStruct>{\n    x: TestStruct{\n        x: 0\n    }\n}'
-	assert x.str() == 'GenericStruct<TestStruct>{\n    x: TestStruct{\n        x: 0\n    }\n}'
+	x := GenericStruct[TestStruct]{}
+	assert '${x}' == 'GenericStruct[TestStruct]{\n    x: TestStruct{\n        x: 0\n    }\n}'
+	assert x.str() == 'GenericStruct[TestStruct]{\n    x: TestStruct{\n        x: 0\n    }\n}'
 }
 
-struct MultiGenericStruct<T, X> {
+struct MultiGenericStruct[T, X] {
 	t T
 	x X
 }
 
 fn test_multi_generic_struct() {
-	x := MultiGenericStruct<TestStruct, TestStruct>{}
-	assert '${x}' == 'MultiGenericStruct<TestStruct, TestStruct>{\n    t: TestStruct{\n        x: 0\n    }\n    x: TestStruct{\n        x: 0\n    }\n}'
-	assert x.str() == 'MultiGenericStruct<TestStruct, TestStruct>{\n    t: TestStruct{\n        x: 0\n    }\n    x: TestStruct{\n        x: 0\n    }\n}'
+	x := MultiGenericStruct[TestStruct, TestStruct]{}
+	assert '${x}' == 'MultiGenericStruct[TestStruct, TestStruct]{\n    t: TestStruct{\n        x: 0\n    }\n    x: TestStruct{\n        x: 0\n    }\n}'
+	assert x.str() == 'MultiGenericStruct[TestStruct, TestStruct]{\n    t: TestStruct{\n        x: 0\n    }\n    x: TestStruct{\n        x: 0\n    }\n}'
 }
 
 fn create_option_err() ?string {

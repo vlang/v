@@ -66,9 +66,9 @@ fn main() {
 			exit(1)
 		}
 	}
-	testing.header('Testing...')
+	ts.session_start('Testing...')
 	ts.test()
-	println(ts.benchmark.total_message('all V _test.v files'))
+	ts.session_stop('all V _test.v files')
 	if ts.failed_cmds.len > 0 {
 		exit(1)
 	}

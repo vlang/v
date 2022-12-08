@@ -5,7 +5,7 @@ fn foo() ? {
 	println('foo is called')
 }
 
-fn bar<T>(v T) ?T {
+fn bar[T](v T) ?T {
 	return none
 }
 

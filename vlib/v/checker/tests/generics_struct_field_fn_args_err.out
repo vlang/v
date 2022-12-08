@@ -26,21 +26,21 @@ vlib/v/checker/tests/generics_struct_field_fn_args_err.vv:30:24: error: expected
       |                           ~~
    31 |
    32 |     println(fun1.call(true))
-vlib/v/checker/tests/generics_struct_field_fn_args_err.vv:32:20: error: cannot use `bool` as `int` in argument 1 to `Fun<fn (int) int>.call`
+vlib/v/checker/tests/generics_struct_field_fn_args_err.vv:32:20: error: cannot use `bool` as `int` in argument 1 to `Fun[fn (int) int].call`
    30 |     println(fun1.call(42, 43))
    31 |
    32 |     println(fun1.call(true))
       |                       ~~~~
    33 |     println(fun1.call('text'))
    34 |     println(fun1.call(22.2))
-vlib/v/checker/tests/generics_struct_field_fn_args_err.vv:33:20: error: cannot use `string` as `int` in argument 1 to `Fun<fn (int) int>.call`
+vlib/v/checker/tests/generics_struct_field_fn_args_err.vv:33:20: error: cannot use `string` as `int` in argument 1 to `Fun[fn (int) int].call`
    31 |
    32 |     println(fun1.call(true))
    33 |     println(fun1.call('text'))
       |                       ~~~~~~
    34 |     println(fun1.call(22.2))
    35 | }
-vlib/v/checker/tests/generics_struct_field_fn_args_err.vv:34:20: error: cannot use `float literal` as `int` in argument 1 to `Fun<fn (int) int>.call`
+vlib/v/checker/tests/generics_struct_field_fn_args_err.vv:34:20: error: cannot use `float literal` as `int` in argument 1 to `Fun[fn (int) int].call`
    32 |     println(fun1.call(true))
    33 |     println(fun1.call('text'))
    34 |     println(fun1.call(22.2))

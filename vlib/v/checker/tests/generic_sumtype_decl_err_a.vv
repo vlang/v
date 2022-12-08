@@ -1,4 +1,4 @@
-struct Just<T> {
+struct Just[T] {
   value T
 }
 

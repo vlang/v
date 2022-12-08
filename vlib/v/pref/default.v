@@ -285,6 +285,9 @@ pub fn (p &Preferences) vcross_compiler_name() string {
 		return 'clang'
 	}
 	if p.os == .wasm32_emscripten {
+		if os.user_os() == 'windows' {
+			return 'emcc.bat'
+		}
 		return 'emcc'
 	}
 	if p.backend == .c && !p.out_name.ends_with('.c') {

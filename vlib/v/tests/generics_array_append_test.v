@@ -1,4 +1,4 @@
-fn g<T>(arr []T) {
+fn g[T](arr []T) {
 	mut r := []T{}
 	r << arr
 	assert arr.len > 0

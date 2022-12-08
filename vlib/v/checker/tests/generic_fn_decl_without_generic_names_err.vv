@@ -1,4 +1,4 @@
-struct Generic<T> {
+struct Generic[T] {
 	ch chan T
 }
 
@@ -7,14 +7,14 @@ struct Concrete {
 }
 
 fn main() {
-	g := create_generic_t<Concrete>()
+	g := create_generic_t[Concrete]()
 	g.ch <- Concrete{
 		msg: 'hello'
 	}
 }
 
-fn create_generic_t<T>() Generic<T> {
-	g := Generic<T>{
+fn create_generic_t[T]() Generic[T] {
+	g := Generic[T]{
 		ch: chan T{}
 	}
 
@@ -23,7 +23,7 @@ fn create_generic_t<T>() Generic<T> {
 	return g
 }
 
-fn g_worker(g Generic<T>) {
+fn g_worker(g Generic[T]) {
 	t := <-g.ch
 	handle(t)
 	// println("${t.msg}")
@@ -35,8 +35,8 @@ fn handle(t T) {
 
 struct None {}
 
-type MayBe<T> = None | T
+type MayBe[T] = None | T
 
-fn (m MayBe<T>) is_some() bool {
+fn (m MayBe[T]) is_some() bool {
 	return m is T
 }

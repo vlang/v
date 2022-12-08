@@ -332,7 +332,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 		pp.work_on_items(files)
 		global_g.timers.start('cgen unification')
 		// tg = thread gen
-		for g in pp.get_results_ref<Gen>() {
+		for g in pp.get_results_ref[Gen]() {
 			global_g.embedded_files << g.embedded_files
 			global_g.out.write(g.out) or { panic(err) }
 			global_g.cheaders.write(g.cheaders) or { panic(err) }
@@ -603,7 +603,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 }
 
 fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
-	file := p.get_item<&ast.File>(idx)
+	file := p.get_item[&ast.File](idx)
 	mut global_g := &Gen(p.get_shared_context())
 	mut g := &Gen{
 		file: file
@@ -991,8 +991,8 @@ fn (mut g Gen) generic_fn_name(types []ast.Type, before string) string {
 	if types.len == 0 {
 		return before
 	}
-	// Using _T_ to differentiate between get<string> and get_string
-	// `foo<int>()` => `foo_T_int()`
+	// Using _T_ to differentiate between get[string] and get_string
+	// `foo[int]()` => `foo_T_int()`
 	mut name := before + '_T'
 	for typ in types {
 		name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) + g.typ(typ.set_nr_muls(0))
@@ -1551,7 +1551,7 @@ pub fn (mut g Gen) write_multi_return_types() {
 		if sym.kind != .multi_return {
 			continue
 		}
-		if sym.cname.contains('<') {
+		if sym.cname.contains('[') {
 			continue
 		}
 		info := sym.mr_info()
@@ -2281,25 +2281,23 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	mut sb := strings.new_builder(128)
 	mut is_anon_fn := false
 	if got_sym.info is ast.FnType {
-		if got_sym.info.is_anon || g.table.known_fn(got_sym.name) {
-			got_name := 'fn ${g.table.fn_type_source_signature(got_sym.info.func)}'
-			got_cname = 'anon_fn_${g.table.fn_type_signature(got_sym.info.func)}'
-			type_idx = g.table.type_idxs[got_name].str()
-			exp_info := exp_sym.info as ast.SumType
-			for variant in exp_info.variants {
-				variant_sym := g.table.sym(variant)
-				if variant_sym.info is ast.FnType {
-					if g.table.fn_type_source_signature(variant_sym.info.func) == g.table.fn_type_source_signature(got_sym.info.func) {
-						got_cname = variant_sym.cname
-						type_idx = variant.idx().str()
-						break
-					}
+		got_name := 'fn ${g.table.fn_type_source_signature(got_sym.info.func)}'
+		got_cname = 'anon_fn_${g.table.fn_type_signature(got_sym.info.func)}'
+		type_idx = g.table.type_idxs[got_name].str()
+		exp_info := exp_sym.info as ast.SumType
+		for variant in exp_info.variants {
+			variant_sym := g.table.sym(variant)
+			if variant_sym.info is ast.FnType {
+				if g.table.fn_type_source_signature(variant_sym.info.func) == g.table.fn_type_source_signature(got_sym.info.func) {
+					got_cname = variant_sym.cname
+					type_idx = variant.idx().str()
+					break
 				}
 			}
-			sb.writeln('static inline ${exp_cname} ${fun.fn_name}(${got_cname} x) {')
-			sb.writeln('\t${got_cname} ptr = x;')
-			is_anon_fn = true
 		}
+		sb.writeln('static inline ${exp_cname} ${fun.fn_name}(${got_cname} x) {')
+		sb.writeln('\t${got_cname} ptr = x;')
+		is_anon_fn = true
 	}
 	if !is_anon_fn {
 		sb.writeln('static inline ${exp_cname} ${fun.fn_name}(${got_cname}* x) {')
@@ -2436,8 +2434,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	if got_sym.info is ast.FnType {
 		if got_sym.info.is_anon {
 			got_styp = 'anon_fn_${g.table.fn_type_signature(got_sym.info.func)}'
-			got_is_fn = true
 		}
+		got_is_fn = true
 	}
 	if expected_type != ast.void_type {
 		unwrapped_expected_type := g.unwrap_generic(expected_type)
@@ -2547,7 +2545,7 @@ fn cescape_nonascii(original string) string {
 	for c in original {
 		if c < 32 || c > 126 {
 			// Encode with a 3 digit octal escape code, which has the
-			// advantage to be limited/non dependant on what character
+			// advantage to be limited/non dependent on what character
 			// will follow next, unlike hex escapes:
 			write_octal_escape(mut b, c)
 			continue
@@ -3503,10 +3501,10 @@ fn (mut g Gen) type_name(raw_type ast.Type) {
 }
 
 fn (mut g Gen) typeof_expr(node ast.TypeOf) {
-	typ := if node.expr_type == g.field_data_type {
+	typ := if node.typ == g.field_data_type {
 		g.comptime_for_field_value.typ
 	} else {
-		node.expr_type
+		node.typ
 	}
 	sym := g.table.sym(typ)
 	if sym.kind == .sum_type {
@@ -3546,6 +3544,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				return
 			}
 			.unknown {
+				// ast.TypeOf of `typeof(string).idx` etc
 				if node.field_name == 'name' {
 					// typeof(expr).name
 					mut name_type := node.name_type
@@ -3562,7 +3561,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					g.type_name(name_type)
 					return
 				} else if node.field_name == 'idx' {
-					// typeof(expr).idx
+					// `typeof(expr).idx`
 					g.write(int(g.unwrap_generic(node.name_type)).str())
 					return
 				}
@@ -4388,7 +4387,7 @@ fn (g &Gen) expr_is_multi_return_call(expr ast.Expr) bool {
 }
 
 fn (mut g Gen) gen_result_error(target_type ast.Type, expr ast.Expr) {
-	styp := g.typ(target_type)
+	styp := g.typ(g.unwrap_generic(target_type))
 	g.write('(${styp}){ .is_error=true, .err=')
 	g.expr(expr)
 	g.write(', .data={EMPTY_STRUCT_INITIALIZATION} }')
@@ -4396,7 +4395,7 @@ fn (mut g Gen) gen_result_error(target_type ast.Type, expr ast.Expr) {
 
 // NB: remove this when optional has no errors anymore
 fn (mut g Gen) gen_optional_error(target_type ast.Type, expr ast.Expr) {
-	styp := g.typ(target_type)
+	styp := g.typ(g.unwrap_generic(target_type))
 	g.write('(${styp}){ .state=2, .err=')
 	g.expr(expr)
 	g.write(', .data={EMPTY_STRUCT_INITIALIZATION} }')
@@ -5459,7 +5458,7 @@ fn (mut g Gen) sort_globals_consts() {
 	}
 }
 
-// sort structs by dependant fields
+// sort structs by dependent fields
 fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 	util.timing_start(@METHOD)
 	defer {
@@ -5571,7 +5570,7 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 			// ast.Interface {}
 			else {}
 		}
-		// add type and dependant types to graph
+		// add type and dependent types to graph
 		dep_graph.add(sym.name, field_deps)
 	}
 	// sort graph
@@ -5581,7 +5580,7 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 		// TODO: should it be removed?
 		verror('cgen.sort_structs(): the following structs form a dependency cycle:\n' +
 			dep_graph_sorted.display_cycles() +
-			'\nyou can solve this by making one or both of the dependant struct fields references, eg: field &MyStruct' +
+			'\nyou can solve this by making one or both of the dependent struct fields references, eg: field &MyStruct' +
 			'\nif you feel this is an error, please create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
 	}
 	// sort types

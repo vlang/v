@@ -264,7 +264,7 @@ pub fn (v &Builder) get_user_files() []string {
 		}
 		if !os.is_file(v_test_runner_prelude) || !os.is_readable(v_test_runner_prelude) {
 			eprintln('test runner error: File ${v_test_runner_prelude} should be readable.')
-			verror('supported test runners are: tap, json, simple, normal')
+			verror('the supported test runners are: ${pref.supported_test_runners_list()}')
 		}
 		user_files << v_test_runner_prelude
 	}

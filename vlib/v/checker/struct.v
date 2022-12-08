@@ -32,7 +32,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				for name in embed_generic_names {
 					if name !in node_generic_names {
 						struct_generic_names := node_generic_names.join(', ')
-						c.error('generic type name `${name}` is not mentioned in struct `${node.name}<${struct_generic_names}>`',
+						c.error('generic type name `${name}` is not mentioned in struct `${node.name}[${struct_generic_names}]`',
 							embed.pos)
 					}
 				}
@@ -52,6 +52,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				c.error('struct field does not support storing result', field.optional_pos)
 			}
 			c.ensure_type_exists(field.typ, field.type_pos) or { return }
+			c.ensure_generic_type_specify_type_names(field.typ, field.type_pos) or { return }
 			if field.typ.has_flag(.generic) {
 				has_generic_types = true
 			}
@@ -76,11 +77,6 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				info := sym.info as ast.Struct
 				if info.is_heap && !field.typ.is_ptr() {
 					struct_sym.info.is_heap = true
-				}
-				if info.generic_types.len > 0 && !field.typ.has_flag(.generic)
-					&& info.concrete_types.len == 0 {
-					c.error('field `${field.name}` type is generic struct, must specify the generic type names, e.g. Foo<T>, Foo<int>',
-						field.type_pos)
 				}
 			}
 			if sym.kind == .multi_return {
@@ -162,14 +158,14 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				for name in field_generic_names {
 					if name !in node_generic_names {
 						struct_generic_names := node_generic_names.join(', ')
-						c.error('generic type name `${name}` is not mentioned in struct `${node.name}<${struct_generic_names}>`',
+						c.error('generic type name `${name}` is not mentioned in struct `${node.name}[${struct_generic_names}]`',
 							field.type_pos)
 					}
 				}
 			}
 		}
 		if node.generic_types.len == 0 && has_generic_types {
-			c.error('generic struct declaration must specify the generic type names, e.g. Foo<T>',
+			c.error('generic struct `${node.name}` declaration must specify the generic type names, e.g. ${node.name}[T]',
 				node.pos)
 		}
 	}
@@ -256,8 +252,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 		}
 		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0 {
 			if node.is_short_syntax {
-				concrete_types := c.infer_generic_struct_init_concrete_types(node.typ,
-					node)
+				concrete_types := c.infer_struct_generic_types(node.typ, node)
 				if concrete_types.len > 0 {
 					generic_names := struct_sym.info.generic_types.map(c.table.sym(it).name)
 					node.typ = c.table.unwrap_generic_type(node.typ, generic_names, concrete_types)
@@ -265,10 +260,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				}
 			} else {
 				if c.table.cur_concrete_types.len == 0 {
-					c.error('generic struct init must specify type parameter, e.g. Foo<int>',
+					c.error('generic struct init must specify type parameter, e.g. Foo[int]',
 						node.pos)
 				} else if node.generic_types.len == 0 {
-					c.error('generic struct init must specify type parameter, e.g. Foo<T>',
+					c.error('generic struct init must specify type parameter, e.g. Foo[T]',
 						node.pos)
 				} else if node.generic_types.len > 0
 					&& node.generic_types.len != struct_sym.info.generic_types.len {
@@ -599,7 +594,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 	if node.has_update_expr {
 		update_type := c.expr(node.update_expr)
 		node.update_expr_type = update_type
-		if c.table.sym(update_type).kind != .struct_ {
+		if c.table.final_sym(update_type).kind != .struct_ {
 			s := c.table.type_to_str(update_type)
 			c.error('expected struct, found `${s}`', node.update_expr.pos())
 		} else if update_type != node.typ {
@@ -608,7 +603,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			from_info := from_sym.info as ast.Struct
 			to_info := to_sym.info as ast.Struct
 			// TODO this check is too strict
-			if !c.check_struct_signature(from_info, to_info) {
+			if !c.check_struct_signature(from_info, to_info)
+				|| !c.check_struct_signature_init_fields(from_info, to_info, node) {
 				c.error('struct `${from_sym.name}` is not compatible with struct `${to_sym.name}`',
 					node.update_expr.pos())
 			}

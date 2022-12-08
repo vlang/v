@@ -1,5 +1,4 @@
 import orm
-import v.ast
 
 fn test_orm_stmt_gen_update() {
 	query, _ := orm.orm_stmt_gen('Test', "'", .update, true, '?', 0, orm.QueryData{
@@ -121,7 +120,7 @@ fn test_orm_table_gen() {
 	query := orm.orm_table_gen('test_table', "'", true, 0, [
 		orm.TableField{
 			name: 'id'
-			typ: ast.int_type_idx
+			typ: typeof[int]().idx
 			default_val: '10'
 			attrs: [
 				StructAttribute{
@@ -137,11 +136,11 @@ fn test_orm_table_gen() {
 		},
 		orm.TableField{
 			name: 'test'
-			typ: ast.string_type_idx
+			typ: typeof[string]().idx
 		},
 		orm.TableField{
 			name: 'abc'
-			typ: ast.i64_type_idx
+			typ: typeof[i64]().idx
 			default_val: '6754'
 		},
 	], sql_type_from_v, false) or { panic(err) }
@@ -150,7 +149,7 @@ fn test_orm_table_gen() {
 	alt_query := orm.orm_table_gen('test_table', "'", true, 0, [
 		orm.TableField{
 			name: 'id'
-			typ: ast.int_type_idx
+			typ: typeof[int]().idx
 			default_val: '10'
 			attrs: [
 				StructAttribute{
@@ -166,11 +165,11 @@ fn test_orm_table_gen() {
 		},
 		orm.TableField{
 			name: 'test'
-			typ: ast.string_type_idx
+			typ: typeof[string]().idx
 		},
 		orm.TableField{
 			name: 'abc'
-			typ: ast.i64_type_idx
+			typ: typeof[i64]().idx
 			default_val: '6754'
 		},
 	], sql_type_from_v, true) or { panic(err) }
@@ -179,7 +178,7 @@ fn test_orm_table_gen() {
 	unique_query := orm.orm_table_gen('test_table', "'", true, 0, [
 		orm.TableField{
 			name: 'id'
-			typ: ast.int_type_idx
+			typ: typeof[int]().idx
 			default_val: '10'
 			attrs: [
 				StructAttribute{
@@ -195,7 +194,7 @@ fn test_orm_table_gen() {
 		},
 		orm.TableField{
 			name: 'test'
-			typ: ast.string_type_idx
+			typ: typeof[string]().idx
 			attrs: [
 				StructAttribute{
 					name: 'unique'
@@ -204,7 +203,7 @@ fn test_orm_table_gen() {
 		},
 		orm.TableField{
 			name: 'abc'
-			typ: ast.i64_type_idx
+			typ: typeof[i64]().idx
 			default_val: '6754'
 		},
 	], sql_type_from_v, false) or { panic(err) }
@@ -213,7 +212,7 @@ fn test_orm_table_gen() {
 	mult_unique_query := orm.orm_table_gen('test_table', "'", true, 0, [
 		orm.TableField{
 			name: 'id'
-			typ: ast.int_type_idx
+			typ: typeof[int]().idx
 			default_val: '10'
 			attrs: [
 				StructAttribute{
@@ -229,7 +228,7 @@ fn test_orm_table_gen() {
 		},
 		orm.TableField{
 			name: 'test'
-			typ: ast.string_type_idx
+			typ: typeof[string]().idx
 			attrs: [
 				StructAttribute{
 					name: 'unique'
@@ -241,7 +240,7 @@ fn test_orm_table_gen() {
 		},
 		orm.TableField{
 			name: 'abc'
-			typ: ast.i64_type_idx
+			typ: typeof[i64]().idx
 			default_val: '6754'
 			attrs: [
 				StructAttribute{
@@ -263,7 +262,7 @@ fn sql_type_from_v(typ int) !string {
 		'INT64'
 	} else if typ in orm.float {
 		'DOUBLE'
-	} else if typ == orm.string {
+	} else if typ == orm.type_string {
 		'TEXT'
 	} else if typ == -1 {
 		'SERIAL'

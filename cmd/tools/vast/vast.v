@@ -228,7 +228,7 @@ fn (t Tree) token_node(tok_kind token.Kind) &Node {
 }
 
 // enum type node
-fn (t Tree) enum_node<T>(value T) &Node {
+fn (t Tree) enum_node[T](value T) &Node {
 	return t.string_node('enum:${int(value)}(${value})')
 }
 
@@ -1679,8 +1679,9 @@ fn (t Tree) concat_expr(node ast.ConcatExpr) &Node {
 fn (t Tree) type_of(node ast.TypeOf) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('TypeOf'))
+	obj.add_terse('is_type', t.bool_node(node.is_type))
+	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add_terse('expr', t.expr(node.expr))
-	obj.add_terse('expr_type', t.type_node(node.expr_type))
 	obj.add('pos', t.pos(node.pos))
 	return obj
 }
@@ -1986,7 +1987,7 @@ fn (t Tree) asm_io(node ast.AsmIO) &Node {
 }
 
 // do not support yet by vlang
-// fn (t Tree) array_node1<T>(nodes []T, method_name string) &Node {
+// fn (t Tree) array_node1[T](nodes []T, method_name string) &Node {
 // 	mut arr := new_array()
 
 // 	// call method dynamically, V do not support yet
@@ -2009,7 +2010,7 @@ fn (t Tree) asm_io(node ast.AsmIO) &Node {
 // }
 
 // do not support yet by vlang
-// fn (t Tree) array_node2<T>(nodes []T) &Node {
+// fn (t Tree) array_node2[T](nodes []T) &Node {
 // 	mut arr := new_array()
 
 // 	for node in nodes {

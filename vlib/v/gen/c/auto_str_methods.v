@@ -354,8 +354,8 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 	}
 	if clean_interface_v_type_name.contains('_T_') {
 		clean_interface_v_type_name =
-			clean_interface_v_type_name.replace('Array_', '[]').replace('_T_', '<').replace('_', ', ') +
-			'>'
+			clean_interface_v_type_name.replace('Array_', '[]').replace('_T_', '[').replace('_', ', ') +
+			']'
 	}
 	clean_interface_v_type_name = util.strip_main_name(clean_interface_v_type_name)
 	fn_builder.writeln('static string indent_${str_fn_name}(${styp} x, int indent_count) { /* gen_str_for_interface */')
@@ -421,8 +421,8 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 		}
 		if clean_sum_type_v_type_name.contains('_T_') {
 			clean_sum_type_v_type_name =
-				clean_sum_type_v_type_name.replace('Array_', '[]').replace('_T_', '<').replace('_', ', ') +
-				'>'
+				clean_sum_type_v_type_name.replace('Array_', '[]').replace('_T_', '[').replace('_', ', ') +
+				']'
 		}
 		clean_sum_type_v_type_name = util.strip_main_name(clean_sum_type_v_type_name)
 	}
@@ -709,8 +709,18 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 		val_sym = g.table.sym(val_typ)
 	}
 	val_styp := g.typ(val_typ)
-	elem_str_fn_name := val_styp.replace('*', '') + '_str'
-	if !val_sym.has_method('str') {
+	mut elem_str_fn_name := val_styp.replace('*', '') + '_str'
+	if val_sym.has_method_with_generic_parent('str') {
+		match mut val_sym.info {
+			ast.Struct, ast.Interface, ast.SumType {
+				if val_sym.info.generic_types.len > 0 {
+					elem_str_fn_name = g.generic_fn_name(val_sym.info.concrete_types,
+						elem_str_fn_name)
+				}
+			}
+			else {}
+		}
+	} else {
 		g.get_str_fn(val_typ)
 	}
 
@@ -742,7 +752,7 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 	} else if val_sym.kind == .string {
 		tmp_str := str_intp_sq('*(${val_styp}*)DenseArray_value(&m.key_values, i)')
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
-	} else if should_use_indent_func(val_sym.kind) && !val_sym.has_method('str') {
+	} else if should_use_indent_func(val_sym.kind) && !val_sym.has_method_with_generic_parent('str') {
 		ptr_str := '*'.repeat(val_typ.nr_muls())
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, indent_${elem_str_fn_name}(*${ptr_str}(${val_styp}*)DenseArray_value(&m.key_values, i), indent_count));')
 	} else if val_sym.kind in [.f32, .f64] {
@@ -831,8 +841,8 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		// TODO: this is a bit hacky. styp shouldn't be even parsed with _T_
 		// use something different than g.typ for styp
 		clean_struct_v_type_name =
-			clean_struct_v_type_name.replace('Array_', '[]').replace('_T_', '<').replace('_', ', ') +
-			'>'
+			clean_struct_v_type_name.replace('Array_', '[]').replace('_T_', '[').replace('_', ', ') +
+			']'
 	}
 	clean_struct_v_type_name = util.strip_main_name(clean_struct_v_type_name)
 	// generate ident / indent length = 4 spaces

@@ -605,7 +605,7 @@ pub fn (mut s Scanner) scan() token.Token {
 [direct_array_access; inline]
 pub fn (s &Scanner) peek_token(n int) token.Token {
 	idx := s.tidx + n
-	if idx >= s.all_tokens.len {
+	if idx >= s.all_tokens.len || idx < 0 {
 		return s.new_eof_token()
 	}
 	t := s.all_tokens[idx]

@@ -2,7 +2,6 @@ module main
 
 import orm
 import pg
-import v.ast
 import time
 
 struct TestCustomSqlType {
@@ -51,7 +50,7 @@ fn test_pg_orm() {
 	db.create('Test', [
 		orm.TableField{
 			name: 'id'
-			typ: ast.string_type_idx
+			typ: typeof[string]().idx
 			is_time: false
 			default_val: ''
 			is_arr: false
@@ -72,7 +71,7 @@ fn test_pg_orm() {
 		},
 		orm.TableField{
 			name: 'name'
-			typ: ast.string_type_idx
+			typ: typeof[string]().idx
 			is_time: false
 			default_val: ''
 			is_arr: false
@@ -80,7 +79,7 @@ fn test_pg_orm() {
 		},
 		orm.TableField{
 			name: 'age'
-			typ: ast.i64_type_idx
+			typ: typeof[i64]().idx
 			is_time: false
 			default_val: ''
 			is_arr: false
@@ -104,7 +103,7 @@ fn test_pg_orm() {
 		primary: 'id'
 		has_offset: false
 		fields: ['id', 'name', 'age']
-		types: [ast.int_type_idx, ast.string_type_idx, ast.i64_type_idx]
+		types: [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
 	}, orm.QueryData{}, orm.QueryData{
 		fields: ['name', 'age']
 		data: [orm.Primitive('Louis'), orm.Primitive(101)]

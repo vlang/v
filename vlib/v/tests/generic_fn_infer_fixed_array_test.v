@@ -1,4 +1,4 @@
-fn get_element<T>(arr [3]T) string {
+fn get_element[T](arr [3]T) string {
 	return '${arr[1]}'
 }
 

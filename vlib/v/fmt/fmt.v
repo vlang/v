@@ -11,7 +11,7 @@ import v.checker.constants
 
 const (
 	bs      = '\\'
-	// when to break a line dependant on penalty
+	// when to break a line depending on the penalty
 	max_len = [0, 35, 60, 85, 93, 100]
 )
 
@@ -201,10 +201,10 @@ fn (mut f Fmt) write_language_prefix(lang ast.Language) {
 
 fn (mut f Fmt) write_generic_types(gtypes []ast.Type) {
 	if gtypes.len > 0 {
-		f.write('<')
+		f.write('[')
 		gtypes_string := gtypes.map(f.table.type_to_str(it)).join(', ')
 		f.write(gtypes_string)
-		f.write('>')
+		f.write(']')
 	}
 }
 
@@ -248,14 +248,14 @@ pub fn (mut f Fmt) short_module(name string) string {
 	if name in f.mod2syms {
 		return f.mod2syms[name]
 	}
-	if name.ends_with('>') {
-		generic_levels := name.trim_string_right('>').split('<')
+	if name.ends_with(']') {
+		generic_levels := name.trim_string_right(']').split('[')
 		mut res := '${f.short_module(generic_levels[0])}'
 		for i in 1 .. generic_levels.len {
 			genshorts := generic_levels[i].split(', ').map(f.short_module(it)).join(', ')
-			res += '<${genshorts}'
+			res += '[${genshorts}'
 		}
-		res += '>'
+		res += ']'
 		return res
 	}
 	vals := name.split('.')
@@ -295,7 +295,7 @@ pub fn (mut f Fmt) mark_types_import_as_used(typ ast.Type) {
 			f.mark_types_import_as_used(concrete_typ)
 		}
 	}
-	name := sym.name.split('<')[0] // take `Type` from `Type<T>`
+	name := sym.name.split('[')[0] // take `Type` from `Type[T]`
 	f.mark_import_as_used(name)
 }
 
@@ -1777,7 +1777,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 
 fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 	if node.concrete_types.len > 0 {
-		f.write('<')
+		f.write('[')
 		for i, concrete_type in node.concrete_types {
 			mut name := f.table.type_to_str_using_aliases(concrete_type, f.mod2alias)
 			tsym := f.table.sym(concrete_type)
@@ -1792,7 +1792,7 @@ fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 				f.write(', ')
 			}
 		}
-		f.write('>')
+		f.write(']')
 	}
 }
 
@@ -2729,9 +2729,16 @@ pub fn (mut f Fmt) type_expr(node ast.TypeNode) {
 }
 
 pub fn (mut f Fmt) type_of(node ast.TypeOf) {
-	f.write('typeof(')
-	f.expr(node.expr)
-	f.write(')')
+	f.write('typeof')
+	if node.is_type {
+		f.write('[')
+		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
+		f.write(']()')
+	} else {
+		f.write('(')
+		f.expr(node.expr)
+		f.write(')')
+	}
 }
 
 pub fn (mut f Fmt) unsafe_expr(node ast.UnsafeExpr) {

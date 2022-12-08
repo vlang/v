@@ -69,7 +69,7 @@ fn parallel_cc(mut b builder.Builder, header string, res string, out_str string,
 }
 
 fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr {
-	postfix := p.get_item<string>(idx)
+	postfix := p.get_item[string](idx)
 	sw := time.new_stopwatch()
 	cmd := '${os.quoted_path(cbuilder.cc_compiler)} ${cbuilder.cc_cflags} -c -w -o out_${postfix}.o out_${postfix}.c'
 	res := os.execute(cmd)

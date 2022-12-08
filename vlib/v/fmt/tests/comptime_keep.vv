@@ -66,7 +66,7 @@ fn (mut a App) my_method(p string) Result {
 	return Result{}
 }
 
-fn handle_conn<T>(mut app T) {
+fn handle_conn[T](mut app T) {
 	$for method in T.methods {
 		$if method.return_type is Result {
 			app.$method('abc', 'def')
@@ -76,7 +76,7 @@ fn handle_conn<T>(mut app T) {
 
 fn comptime_call_dollar_method() {
 	mut app := App{}
-	handle_conn<App>(mut app)
+	handle_conn[App](mut app)
 }
 
 fn (mut app App) create() vweb.Result {

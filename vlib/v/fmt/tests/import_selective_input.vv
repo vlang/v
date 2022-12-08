@@ -54,8 +54,8 @@ fn (s Struct) method(v StructMethodArg) StructMethodRet {
 	return StructMethodRet{}
 }
 
-fn (s Struct) method_generic<T>(v StructMethodArgGeneric<T>) StructMethodRetGeneric<T> {
-	return StructMethodRet<T>{}
+fn (s Struct) method_generic[T](v StructMethodArgGeneric[T]) StructMethodRetGeneric[T] {
+	return StructMethodRet[T]{}
 }
 
 interface Interface {
@@ -74,8 +74,8 @@ fn f(v FnArg) FnRet {
 
 fn f2(v Generic<FnArgTypeParam1, FnArgTypeParam2>) Generic<FnRetTypeParam1, FnRetTypeParam2> {}
 
-fn f_generic<T>(v FnArgGeneric<T>) FnRetGeneric<T> {
-	return FnRetGeneric<T>{}
+fn f_generic[T](v FnArgGeneric[T]) FnRetGeneric[T] {
+	return FnRetGeneric[T]{}
 }
 
 struct App {

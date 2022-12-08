@@ -12,7 +12,7 @@ fn (b &Bar) world() string {
 	return @FN
 }
 
-fn execute_methods<T>() string {
+fn execute_methods[T]() string {
 	tmp := T{}
 	$for method in T.methods {
 		if method.attrs.len >= 2 {
@@ -29,11 +29,11 @@ fn execute_methods<T>() string {
 }
 
 fn test_generics_multi_type_comptime_call() {
-	ret1 := execute_methods<Foo>()
+	ret1 := execute_methods[Foo]()
 	println(ret1)
 	assert ret1 == 'hello'
 
-	ret2 := execute_methods<Bar>()
+	ret2 := execute_methods[Bar]()
 	println(ret2)
 	assert ret2 == 'world'
 }

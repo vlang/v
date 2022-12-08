@@ -588,7 +588,7 @@ fn error_size_of_type_0() IError {
 }
 
 // read_struct reads a single struct of type `T`
-pub fn (mut f File) read_struct<T>(mut t T) ! {
+pub fn (mut f File) read_struct[T](mut t T) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
@@ -603,7 +603,7 @@ pub fn (mut f File) read_struct<T>(mut t T) ! {
 }
 
 // read_struct_at reads a single struct of type `T` at position specified in file
-pub fn (mut f File) read_struct_at<T>(mut t T, pos u64) ! {
+pub fn (mut f File) read_struct_at[T](mut t T, pos u64) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
@@ -634,7 +634,7 @@ pub fn (mut f File) read_struct_at<T>(mut t T, pos u64) ! {
 }
 
 // read_raw reads and returns a single instance of type `T`
-pub fn (mut f File) read_raw<T>() !T {
+pub fn (mut f File) read_raw[T]() !T {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
@@ -651,7 +651,7 @@ pub fn (mut f File) read_raw<T>() !T {
 }
 
 // read_raw_at reads and returns a single instance of type `T` starting at file byte offset `pos`
-pub fn (mut f File) read_raw_at<T>(pos u64) !T {
+pub fn (mut f File) read_raw_at[T](pos u64) !T {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
@@ -697,7 +697,7 @@ pub fn (mut f File) read_raw_at<T>(pos u64) !T {
 }
 
 // write_struct writes a single struct of type `T`
-pub fn (mut f File) write_struct<T>(t &T) ! {
+pub fn (mut f File) write_struct[T](t &T) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
@@ -716,7 +716,7 @@ pub fn (mut f File) write_struct<T>(t &T) ! {
 }
 
 // write_struct_at writes a single struct of type `T` at position specified in file
-pub fn (mut f File) write_struct_at<T>(t &T, pos u64) ! {
+pub fn (mut f File) write_struct_at[T](t &T, pos u64) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
@@ -753,7 +753,7 @@ pub fn (mut f File) write_struct_at<T>(t &T, pos u64) ! {
 // TODO `write_raw[_at]` implementations are copy-pasted from `write_struct[_at]`
 
 // write_raw writes a single instance of type `T`
-pub fn (mut f File) write_raw<T>(t &T) ! {
+pub fn (mut f File) write_raw[T](t &T) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
@@ -772,7 +772,7 @@ pub fn (mut f File) write_raw<T>(t &T) ! {
 }
 
 // write_raw_at writes a single instance of type `T` starting at file byte offset `pos`
-pub fn (mut f File) write_raw_at<T>(t &T, pos u64) ! {
+pub fn (mut f File) write_raw_at[T](t &T, pos u64) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}

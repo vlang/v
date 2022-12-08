@@ -497,11 +497,11 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 		} else if mut sym.info is ast.Struct {
 			if sym.info.is_generic {
 				if !variant.typ.has_flag(.generic) {
-					c.error('generic struct `${sym.name}` must specify generic type names, e.g. Foo<T>',
+					c.error('generic struct `${sym.name}` must specify generic type names, e.g. ${sym.name}[T]',
 						variant.pos)
 				}
 				if node.generic_types.len == 0 {
-					c.error('generic sumtype `${node.name}` must specify generic type names, e.g. Foo<T>',
+					c.error('generic sumtype `${node.name}` must specify generic type names, e.g. ${node.name}[T]',
 						node.name_pos)
 				} else {
 					for typ in sym.info.generic_types {
@@ -1049,12 +1049,16 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 				if stmt.typ == ast.void_type {
 					if stmt.expr is ast.IfExpr {
 						for branch in stmt.expr.branches {
-							c.check_or_last_stmt(branch.stmts.last(), ret_type, expr_return_type)
+							if branch.stmts.len > 0 {
+								c.check_or_last_stmt(branch.stmts.last(), ret_type, expr_return_type)
+							}
 						}
 						return
 					} else if stmt.expr is ast.MatchExpr {
 						for branch in stmt.expr.branches {
-							c.check_or_last_stmt(branch.stmts.last(), ret_type, expr_return_type)
+							if branch.stmts.len > 0 {
+								c.check_or_last_stmt(branch.stmts.last(), ret_type, expr_return_type)
+							}
 						}
 						return
 					}
@@ -1090,12 +1094,16 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 		match stmt.expr {
 			ast.IfExpr {
 				for branch in stmt.expr.branches {
-					c.check_or_last_stmt(branch.stmts.last(), ret_type, expr_return_type)
+					if branch.stmts.len > 0 {
+						c.check_or_last_stmt(branch.stmts.last(), ret_type, expr_return_type)
+					}
 				}
 			}
 			ast.MatchExpr {
 				for branch in stmt.expr.branches {
-					c.check_or_last_stmt(branch.stmts.last(), ret_type, expr_return_type)
+					if branch.stmts.len > 0 {
+						c.check_or_last_stmt(branch.stmts.last(), ret_type, expr_return_type)
+					}
 				}
 			}
 			else {
@@ -1143,10 +1151,13 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				name_type = ast.Type(c.table.find_type_idx(name)).set_flag(.generic)
 			}
 		}
-		// Note: in future typeof() should be a type known at compile-time
-		// sum types should not be handled dynamically
 		ast.TypeOf {
-			name_type = c.expr(node.expr.expr)
+			// TODO: fix this weird case, since just `typeof(x)` is `string`, but `|typeof(x).| propertyname` should be the actual type,
+			// so that we can get other metadata properties of the type, depending on `propertyname` (one of `name` or `idx` for now).
+			// A better alternative would be a new `meta(x).propertyname`, that does not have a `meta(x)` case (an error),
+			// or if it does, it should be a normal constant struct value, just filled at comptime.
+			c.expr(node.expr)
+			name_type = node.expr.typ
 		}
 		else {}
 	}
@@ -1385,6 +1396,9 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		c.warn('const block must have at least 1 declaration', node.pos)
 	}
 	for field in node.fields {
+		if checker.reserved_type_names_chk.matches(util.no_cur_mod(field.name, c.mod)) {
+			c.error('invalid use of reserved type `${field.name}` as a const name', field.pos)
+		}
 		// TODO Check const name once the syntax is decided
 		if field.name in c.const_names {
 			name_pos := token.Pos{
@@ -1817,7 +1831,11 @@ fn (mut c Checker) branch_stmt(node ast.BranchStmt) {
 		c.error('`${node.kind.str()}` is not allowed in defer statements', node.pos)
 	}
 	if c.in_for_count == 0 {
-		c.error('${node.kind.str()} statement not within a loop', node.pos)
+		if c.inside_comptime_for_field {
+			c.error('${node.kind.str()} is not allowed within a compile-time loop', node.pos)
+		} else {
+			c.error('${node.kind.str()} statement not within a loop', node.pos)
+		}
 	}
 	if node.label.len > 0 {
 		if node.label != c.loop_label {
@@ -2452,8 +2470,20 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			return c.expr(node.expr)
 		}
 		ast.RangeExpr {
-			// never happens
-			return ast.void_type
+			// branch range expression of `match x { a...b {} }`, or: `a#[x..y]`:
+			ltyp := c.expr(node.low)
+			htyp := c.expr(node.high)
+			if !c.check_types(ltyp, htyp) {
+				lstype := c.table.type_to_str(ltyp)
+				hstype := c.table.type_to_str(htyp)
+				c.add_error_detail('')
+				c.add_error_detail(' low part type: ${lstype}')
+				c.add_error_detail('high part type: ${hstype}')
+				c.error('the low and high parts of a range expression, should have matching types',
+					node.pos)
+			}
+			node.typ = c.promote(ltyp, htyp)
+			return ltyp
 		}
 		ast.SelectExpr {
 			return c.select_expr(mut node)
@@ -2529,7 +2559,9 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			return node.typ
 		}
 		ast.TypeOf {
-			node.expr_type = c.expr(node.expr)
+			if !node.is_type {
+				node.typ = c.expr(node.expr)
+			}
 			return ast.string_type
 		}
 		ast.UnsafeExpr {
@@ -3971,6 +4003,22 @@ fn (mut c Checker) error(message string, pos token.Pos) {
 	c.warn_or_error(msg, pos, false)
 }
 
+fn (c &Checker) check_struct_signature_init_fields(from ast.Struct, to ast.Struct, node ast.StructInit) bool {
+	if node.fields.len == 0 {
+		return from.fields.len == to.fields.len
+	}
+
+	mut count_not_in_from := 0
+	for field in node.fields {
+		filtered := from.fields.filter(it.name == field.name)
+		if filtered.len != 1 {
+			count_not_in_from++
+		}
+	}
+
+	return (from.fields.len + count_not_in_from) == to.fields.len
+}
+
 // check `to` has all fields of `from`
 fn (c &Checker) check_struct_signature(from ast.Struct, to ast.Struct) bool {
 	// Note: `to` can have extra fields
@@ -4105,6 +4153,58 @@ fn (mut c Checker) fetch_field_name(field ast.StructField) string {
 fn (mut c Checker) trace(fbase string, message string) {
 	if c.file.path_base == fbase {
 		println('> c.trace | ${fbase:-10s} | ${message}')
+	}
+}
+
+fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos token.Pos) ? {
+	if typ == 0 {
+		c.error('unknown type', pos)
+		return
+	}
+	sym := c.table.final_sym(typ)
+	match sym.kind {
+		.function {
+			fn_info := sym.info as ast.FnType
+			c.ensure_generic_type_specify_type_names(fn_info.func.return_type, fn_info.func.return_type_pos)?
+			for param in fn_info.func.params {
+				c.ensure_generic_type_specify_type_names(param.typ, param.type_pos)?
+			}
+		}
+		.array {
+			c.ensure_generic_type_specify_type_names((sym.info as ast.Array).elem_type,
+				pos)?
+		}
+		.array_fixed {
+			c.ensure_generic_type_specify_type_names((sym.info as ast.ArrayFixed).elem_type,
+				pos)?
+		}
+		.map {
+			info := sym.info as ast.Map
+			c.ensure_generic_type_specify_type_names(info.key_type, pos)?
+			c.ensure_generic_type_specify_type_names(info.value_type, pos)?
+		}
+		.sum_type {
+			info := sym.info as ast.SumType
+			if info.generic_types.len > 0 && !typ.has_flag(.generic) && info.concrete_types.len == 0 {
+				c.error('`${sym.name}` type is generic sumtype, must specify the generic type names, e.g. ${sym.name}[T], ${sym.name}[int]',
+					pos)
+			}
+		}
+		.struct_ {
+			info := sym.info as ast.Struct
+			if info.generic_types.len > 0 && !typ.has_flag(.generic) && info.concrete_types.len == 0 {
+				c.error('`${sym.name}` type is generic struct, must specify the generic type names, e.g. ${sym.name}[T], ${sym.name}[int]',
+					pos)
+			}
+		}
+		.interface_ {
+			info := sym.info as ast.Interface
+			if info.generic_types.len > 0 && !typ.has_flag(.generic) && info.concrete_types.len == 0 {
+				c.error('`${sym.name}` type is generic interface, must specify the generic type names, e.g. ${sym.name}[T], ${sym.name}[int]',
+					pos)
+			}
+		}
+		else {}
 	}
 }
 

@@ -1,6 +1,5 @@
 import orm
 import sqlite
-import v.ast
 import time
 
 struct TestCustomSqlType {
@@ -35,7 +34,7 @@ fn test_sqlite_orm() {
 	db.create('Test', [
 		orm.TableField{
 			name: 'id'
-			typ: ast.int_type_idx
+			typ: typeof[int]().idx
 			attrs: [
 				StructAttribute{
 					name: 'primary'
@@ -50,12 +49,12 @@ fn test_sqlite_orm() {
 		},
 		orm.TableField{
 			name: 'name'
-			typ: ast.string_type_idx
+			typ: typeof[string]().idx
 			attrs: []
 		},
 		orm.TableField{
 			name: 'age'
-			typ: ast.i64_type_idx
+			typ: typeof[i64]().idx
 		},
 	]) or { panic(err) }
 
@@ -68,11 +67,11 @@ fn test_sqlite_orm() {
 		table: 'Test'
 		has_where: true
 		fields: ['id', 'name', 'age']
-		types: [ast.int_type_idx, ast.string_type_idx, ast.i64_type_idx]
+		types: [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
 	}, orm.QueryData{}, orm.QueryData{
 		fields: ['name', 'age']
 		data: [orm.Primitive('Louis'), i64(100)]
-		types: [ast.string_type_idx, ast.i64_type_idx]
+		types: [typeof[string]().idx, typeof[i64]().idx]
 		is_and: [true, true]
 		kinds: [.eq, .eq]
 	}) or { panic(err) }

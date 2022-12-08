@@ -133,14 +133,3 @@ pub:
 	arg     string
 	kind    AttributeKind
 }
-
-[markused]
-fn v_segmentation_fault_handler(signal int) {
-	eprintln('signal 11: segmentation fault')
-	$if use_libbacktrace ? {
-		eprint_libbacktrace(1)
-	} $else {
-		print_backtrace()
-	}
-	exit(128 + 11)
-}

@@ -3,6 +3,14 @@
 // that can be found in the LICENSE file.
 module term
 
+// format_esc produces an ANSI escape code, for selecting the graphics rendition of the following
+// text. Each of the attributes that can be passed in `code`, separated by `;`, will be in effect,
+// until the terminal encounters another SGR ANSI escape code. For more details about the different
+// codes, and their meaning, see: https://en.wikipedia.org/wiki/ANSI_escape_code#SGR_(Select_Graphic_Rendition)_parameters
+pub fn format_esc(code string) string {
+	return '\x1b[${code}m'
+}
+
 pub fn format(msg string, open string, close string) string {
 	return '\x1b[${open}m${msg}\x1b[${close}m'
 }

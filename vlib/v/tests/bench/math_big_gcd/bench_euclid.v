@@ -228,9 +228,9 @@ fn bench_euclid_vs_binary(test_config PrimeCfg, heap bool, predicate_fn fn (ps P
 	// during later testing.
 	//
 	mut casted_sets := if heap { gcd_primes.map(unsafe {
-			DataI(&PrimeSet(&it)).cast<HeapData>()
+			DataI(&PrimeSet(&it)).cast[HeapData]()
 		}) } else { gcd_primes.map(unsafe {
-			DataI(&PrimeSet(&it)).cast<StackData>()
+			DataI(&PrimeSet(&it)).cast[StackData]()
 		}) }
 
 	// ready use the primes in the benchmark

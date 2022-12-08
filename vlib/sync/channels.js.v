@@ -4,7 +4,7 @@ pub struct Channel {
 	arr array
 }
 
-pub fn new_channel<T>(n u32) &Channel {
+pub fn new_channel[T](n u32) &Channel {
 	return &Channel{arr, new_array()}
 }
 

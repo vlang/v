@@ -6,7 +6,7 @@ fn main() {
 	func(mut b)
 }
 
-fn func<T>(mut t T) {
+fn func[T](mut t T) {
 	$if T is $Array {
 		for i in 0 .. t.len {
 			println(t[i])

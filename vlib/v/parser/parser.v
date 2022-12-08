@@ -21,6 +21,7 @@ mut:
 	file_base         string       // "hello.v"
 	file_name         string       // "/home/user/hello.v"
 	file_name_dir     string       // "/home/user"
+	file_display_path string       // just "hello.v", when your current folder for the compilation is "/home/user/", otherwise the full path "/home/user/hello.v"
 	unique_prefix     string       // a hash of p.file_name, used for making anon fn generation unique
 	file_backend_mode ast.Language // .c for .c.v|.c.vv|.c.vsh files; .js for .js.v files, .amd64/.rv32/other arches for .amd64.v/.rv32.v/etc. files, .v otherwise.
 	comments_mode     scanner.CommentsMode = .skip_comments
@@ -178,10 +179,15 @@ pub fn (mut p Parser) free_scanner() {
 	}
 }
 
+const normalised_working_folder = (os.real_path(os.getwd()) + os.path_separator).replace('\\',
+	'/')
+
 pub fn (mut p Parser) set_path(path string) {
 	p.file_name = path
 	p.file_base = os.base(path)
 	p.file_name_dir = os.dir(path)
+	p.file_display_path = os.real_path(p.file_name).replace_once(parser.normalised_working_folder,
+		'').replace('\\', '/')
 	p.inside_vlib_file = p.file_name_dir.contains('vlib')
 	p.inside_test_file = p.file_base.ends_with('_test.v') || p.file_base.ends_with('_test.vv')
 		|| p.file_base.all_before_last('.v').all_before_last('.').ends_with('_test')
@@ -2159,6 +2165,40 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	}
 }
 
+fn (p &Parser) is_generic_struct_init() bool {
+	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
+	if !lit0_is_capital || p.peek_tok.kind !in [.lt, .lsbr] {
+		return false
+	}
+	if p.peek_tok.kind == .lt {
+		return true
+	} else {
+		mut i := 2
+		mut nested_sbr_count := 0
+		for {
+			cur_tok := p.peek_token(i)
+			if cur_tok.kind == .eof
+				|| cur_tok.kind !in [.amp, .dot, .comma, .name, .lpar, .rpar, .lsbr, .rsbr, .key_fn] {
+				break
+			}
+			if cur_tok.kind == .lsbr {
+				nested_sbr_count++
+			} else if cur_tok.kind == .rsbr {
+				if nested_sbr_count > 0 {
+					nested_sbr_count--
+				} else {
+					if p.peek_token(i + 1).kind == .lcbr {
+						return true
+					}
+					break
+				}
+			}
+			i++
+		}
+	}
+	return false
+}
+
 fn (p &Parser) is_typename(t token.Token) bool {
 	return t.kind == .name && (t.lit[0].is_capital() || p.table.known_type(t.lit))
 }
@@ -2177,7 +2217,7 @@ fn (p &Parser) is_typename(t token.Token) bool {
 // see also test_generic_detection in vlib/v/tests/generics_test.v
 fn (p &Parser) is_generic_call() bool {
 	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
-	if lit0_is_capital || p.peek_tok.kind != .lt {
+	if lit0_is_capital || p.peek_tok.kind !in [.lt, .lsbr] {
 		return false
 	}
 	mut tok2 := p.peek_token(2)
@@ -2206,13 +2246,39 @@ fn (p &Parser) is_generic_call() bool {
 			// case 2
 			return true
 		}
-		return match kind3 {
-			.gt { true } // case 3
-			.lt { !(tok4.lit.len == 1 && tok4.lit[0].is_capital()) } // case 4
-			.comma { p.is_typename(tok2) } // case 5
-			// case 6 and 7
-			.dot { kind4 == .name && (kind5 == .gt || (kind5 == .comma && p.is_typename(tok4))) }
-			else { false }
+		if p.peek_tok.kind == .lt {
+			return match kind3 {
+				.gt { true } // case 3
+				.lt { !(tok4.lit.len == 1 && tok4.lit[0].is_capital()) } // case 4
+				.comma { p.is_typename(tok2) } // case 5
+				// case 6 and 7
+				.dot { kind4 == .name && (kind5 == .gt || (kind5 == .comma && p.is_typename(tok4))) }
+				else { false }
+			}
+		} else if p.peek_tok.kind == .lsbr {
+			mut i := 3
+			mut nested_sbr_count := 0
+			for {
+				cur_tok := p.peek_token(i)
+				if cur_tok.kind == .eof
+					|| cur_tok.kind !in [.amp, .dot, .comma, .name, .lpar, .rpar, .lsbr, .rsbr, .key_fn] {
+					break
+				}
+				if cur_tok.kind == .lsbr {
+					nested_sbr_count++
+				}
+				if cur_tok.kind == .rsbr {
+					if nested_sbr_count > 0 {
+						nested_sbr_count--
+					} else {
+						if p.peek_token(i + 1).kind == .lpar {
+							return true
+						}
+						break
+					}
+				}
+				i++
+			}
 		}
 	}
 	return false
@@ -2231,10 +2297,10 @@ fn (mut p Parser) is_generic_cast() bool {
 		i++
 		tok := p.peek_token(i)
 
-		if tok.kind == .lt {
+		if tok.kind in [.lt, .lsbr] {
 			lt_count++
 			level++
-		} else if tok.kind == .gt {
+		} else if tok.kind in [.gt, .rsbr] {
 			level--
 		}
 		if lt_count > 0 && level == 0 {
@@ -2414,6 +2480,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	is_optional := p.tok.kind == .question
 	is_generic_call := p.is_generic_call()
 	is_generic_cast := p.is_generic_cast()
+	is_generic_struct_init := p.is_generic_struct_init()
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	same_line := p.tok.line_nr == p.peek_tok.line_nr
 	// `(` must be on same line as name token otherwise it's a ParExpr
@@ -2494,7 +2561,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				}
 			}
 		}
-	} else if (p.peek_tok.kind == .lcbr || (p.peek_tok.kind == .lt && lit0_is_capital))
+	} else if (p.peek_tok.kind == .lcbr || is_generic_struct_init)
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
 		&& (!p.inside_for || p.inside_select) && !known_var {
@@ -2975,13 +3042,14 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 	mut types := []ast.Type{}
 	mut param_names := []string{}
-	if p.tok.kind != .lt {
+	if p.tok.kind !in [.lt, .lsbr] {
 		return types, param_names
 	}
-	p.check(.lt)
+	end_kind := if p.tok.kind == .lt { token.Kind.gt } else { token.Kind.rsbr }
+	p.next()
 	mut first_done := false
 	mut count := 0
-	for p.tok.kind !in [.gt, .eof] {
+	for p.tok.kind !in [end_kind, .eof] {
 		if first_done {
 			p.check(.comma)
 		}
@@ -3018,25 +3086,26 @@ fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 		first_done = true
 		count++
 	}
-	p.check(.gt)
+	p.check(end_kind)
 	return types, param_names
 }
 
 fn (mut p Parser) parse_concrete_types() []ast.Type {
 	mut types := []ast.Type{}
-	if p.tok.kind != .lt {
+	if p.tok.kind !in [.lt, .lsbr] {
 		return types
 	}
+	end_kind := if p.tok.kind == .lt { token.Kind.gt } else { token.Kind.rsbr }
 	p.next() // `<`
 	mut first_done := false
-	for p.tok.kind !in [.eof, .gt] {
+	for p.tok.kind !in [.eof, end_kind] {
 		if first_done {
 			p.check(.comma)
 		}
 		types << p.parse_type()
 		first_done = true
 	}
-	p.check(.gt) // `>`
+	p.check(end_kind) // `>`
 	return types
 }
 
@@ -3485,6 +3554,9 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		full_name := p.prepend_mod(name)
 		if p.tok.kind == .comma {
 			p.error_with_pos('const declaration do not support multiple assign yet', p.tok.pos())
+		}
+		if p.tok.kind == .decl_assign {
+			p.error_with_pos('cannot use `:=` to declare a const, use `=` instead', p.tok.pos())
 		}
 		p.check(.assign)
 		end_comments << p.eat_comments()
@@ -4103,4 +4175,24 @@ fn (mut p Parser) trace(fbase string, message string) {
 	if p.file_base == fbase {
 		println('> p.trace | ${fbase:-10s} | ${message}')
 	}
+}
+
+[params]
+struct ParserShowParams {
+	msg   string
+	reach int = 3
+}
+
+fn (mut p Parser) show(params ParserShowParams) {
+	mut context := []string{}
+	for i in -params.reach .. params.reach + 1 {
+		x := p.peek_token(i).str()
+		if i == 0 {
+			context << '    ${x:-30s}  '
+			continue
+		}
+		context << x
+	}
+	location := '${p.file_display_path}:${p.tok.line_nr}:'
+	println('>> ${location:-40s} ${params.msg} ${context.join('  ')}')
 }

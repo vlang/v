@@ -13,7 +13,7 @@ pub struct Null {
 }
 
 // decode decodes a TOML `string` into the target type `T`.
-pub fn decode<T>(toml_txt string) !T {
+pub fn decode[T](toml_txt string) !T {
 	doc := parse_text(toml_txt)!
 	mut typ := T{}
 	typ.from_toml(doc.to_any())
@@ -22,7 +22,7 @@ pub fn decode<T>(toml_txt string) !T {
 
 // encode encodes the type `T` into a TOML string.
 // Currently encode expects the method `.to_toml()` exists on `T`.
-pub fn encode<T>(typ T) string {
+pub fn encode[T](typ T) string {
 	return typ.to_toml()
 }
 
@@ -194,8 +194,8 @@ pub fn (d Doc) to_any() Any {
 
 // reflect returns `T` with `T.<field>`'s value set to the
 // value of any 1st level TOML key by the same name.
-pub fn (d Doc) reflect<T>() T {
-	return d.to_any().reflect<T>()
+pub fn (d Doc) reflect[T]() T {
+	return d.to_any().reflect[T]()
 }
 
 // value queries a value from the TOML document.

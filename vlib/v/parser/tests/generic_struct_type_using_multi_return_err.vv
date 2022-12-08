@@ -1,8 +1,8 @@
-struct Tuple<T> {
+struct Tuple[T] {
 	data T
 }
 
 fn main() {
-	sample := Tuple<(int, int)>{}
+	sample := Tuple[(int, int)]{}
 	println(sample)
 }

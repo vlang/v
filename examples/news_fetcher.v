@@ -11,7 +11,7 @@ struct Story {
 }
 
 fn worker_fetch(mut p pool.PoolProcessor, cursor int, worker_id int) voidptr {
-	id := p.get_item<int>(cursor)
+	id := p.get_item[int](cursor)
 	resp := http.get('https://hacker-news.firebaseio.com/v0/item/${id}.json') or {
 		println('failed to fetch data from /v0/item/${id}.json')
 		return pool.no_result

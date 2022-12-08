@@ -21,7 +21,7 @@ interface Drawer {
 	draw() string
 }
 
-fn to_string_generic<T>(t T) {
+fn to_string_generic[T](t T) {
 	to_string(t)
 }
 

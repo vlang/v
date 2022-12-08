@@ -13,7 +13,7 @@ pub mut:
 	var_three Two_data
 }
 
-fn get_keys_and_values<T>(mut keys []string, mut values []string, mut data T) ([]string, []string, T) {
+fn get_keys_and_values[T](mut keys []string, mut values []string, mut data T) ([]string, []string, T) {
 	$for field in T.fields {
 		$if field.typ is string {
 			keys << field.name
@@ -23,7 +23,7 @@ fn get_keys_and_values<T>(mut keys []string, mut values []string, mut data T) ([
 	return keys, values, data
 }
 
-fn awesome<T>(mut data T) {
+fn awesome[T](mut data T) {
 	mut keys := []string{}
 	mut values := []string{}
 	keys, values, data = get_keys_and_values(mut keys, mut values, mut data)

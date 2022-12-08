@@ -1,6 +1,6 @@
-struct Example<T> {
+struct Example[T] {
 }
 
 fn main() {
-	_ := []Example<T>{}
+	_ := []Example[T]{}
 }

@@ -147,11 +147,11 @@ fn test_typeof_on_fn() {
 	assert typeof(myfn4).name == typeof(myfn4)
 }
 
-fn type_name<T>(v T) string {
+fn type_name[T](v T) string {
 	return typeof(v).name
 }
 
-fn array_item_type<T>(v []T) string {
+fn array_item_type[T](v []T) string {
 	return typeof(v[0]).name
 }
 

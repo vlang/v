@@ -10,19 +10,19 @@ pub fn (s &Score) ave() f64 {
 	return s.ave
 }
 
-fn next<T>(input T) f64 {
+fn next[T](input T) f64 {
 	$if T is Average {
 		dump('${T.name} $input')
-		ret := next2<T>(input)
+		ret := next2[T](input)
 		return ret
 	} $else {
 		dump('${T.name} $input')
-		ret := next2<T>(input)
+		ret := next2[T](input)
 		return ret
 	}
 }
 
-fn next2<T>(input T) f64 {
+fn next2[T](input T) f64 {
 	dump('${T.name} $input')
 	$if T is Average {
 		return input.ave()

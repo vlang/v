@@ -36,7 +36,7 @@ fn (mut e Employee) from_toml(any toml.Any) {
 
 fn test_encode_and_decode() {
 	x := Employee{'Peter', 28, 95000.5, true, .worker}
-	s := toml.encode<Employee>(x)
+	s := toml.encode[Employee](x)
 	eprintln('Employee x: ${s}')
 	assert s == r'name = "Peter"
 age = 28
@@ -44,7 +44,7 @@ salary = 95000.5
 is_human = true
 title = 2'
 
-	y := toml.decode<Employee>(s) or {
+	y := toml.decode[Employee](s) or {
 		println(err)
 		assert false
 		return

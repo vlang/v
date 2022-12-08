@@ -1,4 +1,4 @@
-fn fn_a<T>(data T, depth int, nl bool) {
+fn fn_a[T](data T, depth int, nl bool) {
 	for _ in 0 .. depth {
 		print('\t')
 	}
