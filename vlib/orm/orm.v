@@ -562,6 +562,14 @@ pub fn int_to_primitive(b int) Primitive {
 	return Primitive(b)
 }
 
+pub fn int_literal_to_primitive(b int) Primitive {
+	return Primitive(b)
+}
+
+pub fn float_literal_to_primitive(b f64) Primitive {
+	return Primitive(b)
+}
+
 pub fn i64_to_primitive(b i64) Primitive {
 	return Primitive(b)
 }
