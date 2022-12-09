@@ -109,14 +109,10 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 					wr.write(json2.comma_bytes)!
 				}
 			}
-
 			e.encode_newline(level - 1, mut wr)!
 			wr.write([u8(`]`)])!
 		}
 		Null {
-			wr.write(json2.null_in_bytes)!
-		}
-		else {
 			wr.write(json2.null_in_bytes)!
 		}
 	}
