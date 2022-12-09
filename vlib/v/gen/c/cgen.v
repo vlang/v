@@ -3525,9 +3525,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		varg_elem_type_sym := g.table.sym(g.table.value_type(typ))
 		g.write('_SLIT("...${util.strip_main_name(varg_elem_type_sym.name)}")')
 	} else {
-		x := g.table.type_to_str(typ)
-		y := util.strip_main_name(x)
-		g.write('_SLIT("${y}")')
+		g.type_name(typ)
 	}
 }
 
