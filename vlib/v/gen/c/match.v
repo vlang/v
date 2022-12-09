@@ -86,6 +86,11 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		cur_line = g.go_before_stmt(0).trim_left(' \t')
 		tmp_var = g.new_tmp_var()
 		g.writeln('${g.typ(node.return_type)} ${tmp_var} = ${g.type_default(node.return_type)};')
+		g.empty_line = true
+		if g.infix_left_var_name.len > 0 {
+			g.writeln('if (${g.infix_left_var_name}) {')
+			g.indent++
+		}
 	}
 
 	if is_expr && !need_tmp_var {
@@ -125,6 +130,14 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		}
 	}
 	g.set_current_pos_as_last_stmt_pos()
+	if need_tmp_var {
+		if g.infix_left_var_name.len > 0 {
+			g.writeln('')
+			g.indent--
+			g.writeln('}')
+			g.set_current_pos_as_last_stmt_pos()
+		}
+	}
 	g.write(cur_line)
 	if need_tmp_var {
 		g.write('${tmp_var}')
