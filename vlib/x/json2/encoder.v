@@ -184,7 +184,11 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				|| field.typ is i16 || field.typ is int || field.typ is i64 || field.typ is u8
 				|| field.typ is u16 || field.typ is u32 || field.typ is u64 {
 				wr.write(value.str().bytes())!
-			} $else $if field.typ is []byte || field.typ is []int || field.typ is []bool {
+			} $else $if field.typ is []string || field.typ is []bool || field.typ is []f32
+				|| field.typ is []f64 || field.typ is []i8 || field.typ is []i16
+				|| field.typ is []int || field.typ is []i64 || field.typ is []u8
+				|| field.typ is []byte || field.typ is []u16 || field.typ is []u32
+				|| field.typ is []u64 {
 				e.encode_array(value, level, mut wr)!
 			} $else {
 			}
@@ -251,7 +255,34 @@ fn (e &Encoder) encode_array[U](val U, level int, mut wr io.Writer) ! {
 		wr.write([u8(`[`)])!
 		for i in 0 .. val.len {
 			e.encode_newline(level, mut wr)!
-			e.encode_value_with_level(Any(val[i]), level + 1, mut wr)!
+
+			$if U is []string {
+				e.encode_any(val[i], level + 1, mut wr)!
+			} $else $if U is []bool {
+				e.encode_any(bool(val[i]), level + 1, mut wr)!
+			} $else $if U is []f32 {
+				e.encode_any(f32(val[i]), level + 1, mut wr)!
+			} $else $if U is []f64 {
+				e.encode_any(f64(val[i]), level + 1, mut wr)!
+			} $else $if U is []i8 {
+				e.encode_any(i8(val[i]), level + 1, mut wr)!
+			} $else $if U is []i16 {
+				e.encode_any(i16(val[i]), level + 1, mut wr)!
+			} $else $if U is []int {
+				e.encode_any(int(val[i]), level + 1, mut wr)!
+			} $else $if U is []i64 {
+				e.encode_any(i64(val[i]), level + 1, mut wr)!
+			} $else $if U is []u8 {
+				e.encode_any(u8(val[i]), level + 1, mut wr)!
+			} $else $if U is []byte {
+				e.encode_any(u8(val[i]), level + 1, mut wr)!
+			} $else $if U is []u16 {
+				e.encode_any(u16(val[i]), level + 1, mut wr)!
+			} $else $if U is []u32 {
+				e.encode_any(u32(val[i]), level + 1, mut wr)!
+			} $else $if U is []u64 {
+				e.encode_any(u64(val[i]), level + 1, mut wr)!
+			}
 			if i < val.len - 1 {
 				wr.write(json2.comma_bytes)!
 			}

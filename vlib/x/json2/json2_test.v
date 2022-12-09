@@ -154,6 +154,11 @@ fn test_mult_decode() {
 }
 
 fn test_mult_encode() {
+	assert json.encode(MultTypeTest[[]string]{}) == '{"val":[]}'
+	assert json.encode(MultTypeTest[[]string]{ val: [] }) == '{"val":[]}'
+	assert json.encode(MultTypeTest[[]string]{ val: ['0'] }) == '{"val":["0"]}'
+	assert json.encode(MultTypeTest[[]string]{ val: ['1'] }) == '{"val":["1"]}'
+
 	assert json.encode(MultTypeTest[bool]{}) == '{"val":false}'
 	assert json.encode(MultTypeTest[bool]{ val: false }) == '{"val":false}'
 	assert json.encode(MultTypeTest[bool]{ val: true }) == '{"val":true}'
@@ -184,11 +189,34 @@ fn test_mult_encode() {
 	assert json.encode(MultTypeTestOptional[[]int]{ val: [0] }) == '{"val":[0]}'
 	assert json.encode(MultTypeTestOptional[[]int]{ val: [1] }) == '{"val":[1]}'
 	assert json.encode(MultTypeTestOptional[[]int]{ val: [0, 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
-	/*
+
+	assert json.encode(MultTypeTest[[]byte]{}) == '{"val":[]}'
+	assert json.encode(MultTypeTest[[]byte]{ val: [] }) == '{"val":[]}'
+	assert json.encode(MultTypeTest[[]byte]{ val: [byte(0)] }) == '{"val":[0]}'
+	assert json.encode(MultTypeTest[[]byte]{ val: [byte(1)] }) == '{"val":[1]}'
+	assert json.encode(MultTypeTest[[]byte]{ val: [byte(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
+
+	assert json.encode(MultTypeTest[[]i64]{}) == '{"val":[]}'
+	assert json.encode(MultTypeTest[[]i64]{ val: [] }) == '{"val":[]}'
+	assert json.encode(MultTypeTest[[]i64]{ val: [i64(0)] }) == '{"val":[0]}'
+	assert json.encode(MultTypeTest[[]i64]{ val: [i64(1)] }) == '{"val":[1]}'
+	assert json.encode(MultTypeTest[[]i64]{ val: [i64(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
+
+	assert json.encode(MultTypeTest[[]u64]{}) == '{"val":[]}'
+	assert json.encode(MultTypeTest[[]u64]{ val: [] }) == '{"val":[]}'
+	assert json.encode(MultTypeTest[[]u64]{ val: [u64(0)] }) == '{"val":[0]}'
+	assert json.encode(MultTypeTest[[]u64]{ val: [u64(1)] }) == '{"val":[1]}'
+	assert json.encode(MultTypeTest[[]u64]{ val: [u64(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
+
+	assert json.encode(MultTypeTest[[]f64]{}) == '{"val":[]}'
+	assert json.encode(MultTypeTest[[]f64]{ val: [] }) == '{"val":[]}'
+	assert json.encode(MultTypeTest[[]f64]{ val: [f64(0)] }) == '{"val":[0.0]}'
+	assert json.encode(MultTypeTest[[]f64]{ val: [f64(1)] }) == '{"val":[1.0]}'
+	assert json.encode(MultTypeTest[[]f64]{ val: [f64(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0.0,1.0,0.0,2.0,3.0,2.0,5.0,1.0]}'
+
 	assert json.encode(MultTypeTest[[]bool]{}) == '{"val":[]}'
 	assert json.encode(MultTypeTest[[]bool]{ val: [] }) == '{"val":[]}'
 	assert json.encode(MultTypeTest[[]bool]{ val: [true] }) == '{"val":[true]}'
 	assert json.encode(MultTypeTest[[]bool]{ val: [false] }) == '{"val":[false]}'
 	assert json.encode(MultTypeTest[[]bool]{ val: [false, true, false] }) == '{"val":[false,true,false]}'
-	*/
 }
