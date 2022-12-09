@@ -2469,7 +2469,7 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) {
 					g.mov_store(.rax, .rcx, match g.get_type_size(left_type) {
 						1 { ._8 }
 						2 { ._16 }
-						3 { ._32 }
+						4 { ._32 }
 						else { ._64 }
 					})
 				}
@@ -2549,7 +2549,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 					g.mov_store(.rdx, .rax, match g.get_type_size(typ) {
 						1 { ._8 }
 						2 { ._16 }
-						3 { ._32 }
+						4 { ._32 }
 						else { ._64 }
 					})
 				}
