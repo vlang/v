@@ -113,20 +113,10 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 			e.encode_newline(level - 1, mut wr)!
 			wr.write([u8(`]`)])!
 		}
-		[]int {
-			wr.write([u8(`[`)])!
-			for i in 0 .. val.len {
-				e.encode_newline(level, mut wr)!
-				e.encode_value_with_level(val[i], level + 1, mut wr)!
-				if i < val.len - 1 {
-					wr.write(json2.comma_bytes)!
-				}
-			}
-
-			e.encode_newline(level - 1, mut wr)!
-			wr.write([u8(`]`)])!
-		}
 		Null {
+			wr.write(json2.null_in_bytes)!
+		}
+		else {
 			wr.write(json2.null_in_bytes)!
 		}
 	}
@@ -147,9 +137,6 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) !
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is Encodable {
 		wr.write(val.json_str().bytes())!
-	} $else $if T is []int {
-		// wr.write(val.str)!
-		e.encode_array(val, level, mut wr)!
 	} $else $if T is $Struct {
 		e.encode_struct(val, level, mut wr)!
 	} $else $if T is $Enum {
@@ -197,7 +184,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				|| field.typ is i16 || field.typ is int || field.typ is i64 || field.typ is u8
 				|| field.typ is u16 || field.typ is u32 || field.typ is u64 {
 				wr.write(value.str().bytes())!
-			} $else $if field.typ is []byte || field.typ is []int {
+			} $else $if field.typ is []byte || field.typ is []int || field.typ is []bool {
 				e.encode_array(value, level, mut wr)!
 			} $else {
 			}
@@ -224,6 +211,9 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				wr.write(Any(optional_value).int().str().bytes())!
 			} $else $if field.typ is ?[]byte {
 				optional_value := val.$(field.name) as ?[]byte
+				e.encode_array(optional_value, level, mut wr)!
+			} $else $if field.typ is ?[]int {
+				optional_value := val.$(field.name) as ?[]int
 				e.encode_array(optional_value, level, mut wr)!
 			} $else {
 				if field.unaliased_typ != field.typ {
@@ -261,7 +251,7 @@ fn (e &Encoder) encode_array[U](val U, level int, mut wr io.Writer) ! {
 		wr.write([u8(`[`)])!
 		for i in 0 .. val.len {
 			e.encode_newline(level, mut wr)!
-			e.encode_value_with_level(val[i], level + 1, mut wr)!
+			e.encode_value_with_level(Any(val[i]), level + 1, mut wr)!
 			if i < val.len - 1 {
 				wr.write(json2.comma_bytes)!
 			}
