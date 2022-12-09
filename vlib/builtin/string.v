@@ -849,11 +849,9 @@ pub fn (s string) split_into_lines() []string {
 		return res
 	}
 	mut start := 0
-	mut end := 0
 	for i := 0; i < s.len; i++ {
 		if s[i] == 10 {
-			end = if i > 0 && s[i - 1] == 13 { i - 1 } else { i }
-			res << if start == end { '' } else { s[start..end] }
+			res << if start == i { '' } else { s[start..i].trim_right('\r') }
 			start = i + 1
 		}
 	}
