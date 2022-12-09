@@ -1606,6 +1606,51 @@ fn (mut g Gen) mov_reg(a Register, b Register) {
 	g.println('mov ${a}, ${b}')
 }
 
+fn (mut g Gen) add_store(a Register, b Register, size Size) {
+	if size == ._16 {
+		g.write8(0x66)
+	}
+	if size == ._64 {
+		g.write8(0x48 + int(b) / 8 * 4 + int(a) / 8)
+	}
+	g.write8(if size == ._8 { 0x00 } else { 0x01 })
+	g.write8(int(b) % 8 * 8 + int(a) % 8)
+	g.println('add [${a}], ${b}')
+}
+
+fn (mut g Gen) sub_store(a Register, b Register, size Size) {
+	if size == ._16 {
+		g.write8(0x66)
+	}
+	if size == ._64 {
+		g.write8(0x48 + int(b) / 8 * 4 + int(a) / 8)
+	}
+	g.write8(if size == ._8 { 0x28 } else { 0x29 })
+	g.write8(int(b) % 8 * 8 + int(a) % 8)
+	g.println('sub [${a}], ${b}')
+}
+
+[params]
+struct AvailableRegister {
+	available Register
+}
+
+fn (mut g Gen) mul_store(a Register, b Register, size Size) {
+	if size == ._8 {
+	} else {
+		if size == ._16 {
+			g.write8(0x66)
+		}
+		if size == ._64 {
+			g.write8(0x48 + int(b) / 8 * 4 + int(a) / 8)
+		}
+		g.write16(0xaf0f)
+		g.write8(int(b) % 8 * 8 + int(a) % 8)
+		g.println('imul ${b}, [${a}]')
+		g.mov_store(a, b, size)
+	}
+}
+
 fn (mut g Gen) sar8(r Register, val u8) {
 	g.write8(0x48)
 	g.write8(0xc1)
@@ -2344,6 +2389,8 @@ fn (mut g Gen) gen_type_promotion(from ast.Type, to ast.Type, option RegisterOpt
 	}
 }
 
+
+
 fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 	// `a, b := foo()`
 	// `a, b := if cond { 1, 2 } else { 3, 4 }`
@@ -2487,7 +2534,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			continue
 		}
 		if left is ast.Ident && node.op == .decl_assign {
-			g.allocate_var((left as ast.Ident).name, g.get_type_size(typ), 0)
+			g.allocate_struct((left as ast.Ident).name, typ)
 		}
 		g.gen_left_value(left)
 		g.push(.rax)
@@ -2496,7 +2543,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 		g.gen_type_promotion(node.right_types[0], typ)
 		if g.is_register_type(typ) {
 			match node.op {
-				.assign {
+				.decl_assign, .assign {
 					g.mov_store(.rdx, .rax, match g.get_type_size(typ) {
 						1 { ._8 }
 						2 { ._16 }
@@ -2543,7 +2590,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				g.println('movsd [rdx], xmm0')
 			}
 		} else {
-			if node.op != .assign {
+			if node.op !in [.assign, .decl_assign] {
 				g.n_error('Unsupported assign instruction')
 			}
 			ts := g.table.sym(typ)
