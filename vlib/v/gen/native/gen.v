@@ -127,8 +127,8 @@ mut:
 struct MultiReturn {
 mut:
 	offsets []int
-	size int
-	align int
+	size    int
+	align   int
 }
 
 enum Size {
@@ -1245,7 +1245,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				ts := g.table.sym(typ)
 				size := g.get_type_size(typ)
 				// construct a struct variable contains the return value
-				var := LocalVar{offset: g.allocate_struct('', typ), typ: typ}
+				var := LocalVar{
+					offset: g.allocate_struct('', typ)
+					typ: typ
+				}
 				// zero fill
 				mut left := if size >= 16 {
 					g.mov(.rax, 0)
@@ -1548,7 +1551,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 			ts := g.table.sym(typ)
 			size := g.get_type_size(typ)
 			// construct a struct variable contains the return value
-			var := LocalVar{offset: g.allocate_struct('', typ), typ: typ}
+			var := LocalVar{
+				offset: g.allocate_struct('', typ)
+				typ: typ
+			}
 			// zero fill
 			mut left := if size >= 16 {
 				g.mov(.rax, 0)

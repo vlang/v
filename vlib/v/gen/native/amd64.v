@@ -2313,7 +2313,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 
 [params]
 struct RegisterOption {
-	reg Register = Register.rax
+	reg    Register    = Register.rax
 	ssereg SSERegister = SSERegister.xmm0
 }
 
@@ -2398,7 +2398,9 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) {
 		align := multi_return.align
 		padding := (align - g.stack_var_pos % align) % align
 		g.stack_var_pos += size + padding
-		var := LocalVar{offset: g.stack_var_pos}
+		var := LocalVar{
+			offset: g.stack_var_pos
+		}
 		// zero fill
 		mut left := if size >= 16 {
 			g.mov(.rax, 0)

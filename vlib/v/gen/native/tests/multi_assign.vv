@@ -50,7 +50,7 @@ mut:
 	b int
 }
 
-fn cross_assign_of_struct_test() {
+fn cross_assign_of_struct_test() { // from cross_assign_test.v
 	mut x := Zoo{
 		a: 1
 		b: 2
