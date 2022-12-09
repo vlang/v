@@ -688,7 +688,14 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		if gen_or && !is_gen_or_and_assign_rhs {
 			cur_line = g.go_before_stmt(0)
 		}
-		g.write('${styp} ${tmp_opt} = ')
+		if gen_or && g.infix_left_var_name.len > 0 {
+			g.writeln('${styp} ${tmp_opt};')
+			g.writeln('if (${g.infix_left_var_name}) {')
+			g.indent++
+			g.write('${tmp_opt} = ')
+		} else {
+			g.write('${styp} ${tmp_opt} = ')
+		}
 	}
 	if node.is_method && !node.is_field {
 		if node.name == 'writeln' && g.pref.experimental && node.args.len > 0
@@ -705,6 +712,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.or_block(tmp_opt, node.or_block, node.return_type)
 		unwrapped_typ := node.return_type.clear_flag(.optional).clear_flag(.result)
 		unwrapped_styp := g.typ(unwrapped_typ)
+		if g.infix_left_var_name.len > 0 {
+			g.indent--
+			g.writeln('}')
+			g.set_current_pos_as_last_stmt_pos()
+		}
 		if unwrapped_typ == ast.void_type {
 			g.write('\n ${cur_line}')
 		} else {
