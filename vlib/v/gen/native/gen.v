@@ -1246,7 +1246,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				size := g.get_type_size(typ)
 				// construct a struct variable contains the return value
 				var := LocalVar{
-					offset: g.allocate_struct('', typ)
+					offset: g.allocate_by_type('', typ)
 					typ: typ
 				}
 				// zero fill
@@ -1516,7 +1516,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.allocate_string(str, 3, .rel32)
 		}
 		ast.StructInit {
-			pos := g.allocate_struct('_anonstruct', node.typ)
+			pos := g.allocate_by_type('_anonstruct', node.typ)
 			g.init_struct(LocalVar{ offset: pos, typ: node.typ }, node)
 			g.lea_var_to_reg(.rax, pos)
 		}
@@ -1552,7 +1552,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			size := g.get_type_size(typ)
 			// construct a struct variable contains the return value
 			var := LocalVar{
-				offset: g.allocate_struct('', typ)
+				offset: g.allocate_by_type('', typ)
 				typ: typ
 			}
 			// zero fill

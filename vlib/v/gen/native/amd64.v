@@ -1691,7 +1691,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 	mut return_pos := -1
 	mut is_struct_return := false
 	if ts.kind in [.struct_, .multi_return] {
-		return_pos = g.allocate_struct('', node.return_type)
+		return_pos = g.allocate_by_type('', node.return_type)
 		if return_size > 16 {
 			is_struct_return = true
 			args << ast.CallArg{
@@ -2008,7 +2008,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 						ts := g.table.sym(typ)
 						match ts.info {
 							ast.Struct {
-								g.allocate_struct(name, typ)
+								g.allocate_by_type(name, typ)
 							}
 							else {}
 						}
@@ -2186,7 +2186,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 		ast.StructInit {
 			match node.op {
 				.decl_assign {
-					g.allocate_struct(name, right.typ)
+					g.allocate_by_type(name, right.typ)
 					g.init_struct(ident, right)
 				}
 				else {
@@ -2449,7 +2449,7 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) {
 				continue
 			}
 			if node.op == .decl_assign {
-				g.allocate_struct(name, node.left_types[i])
+				g.allocate_by_type(name, node.left_types[i])
 			}
 		}
 		if offset != current_offset {
@@ -2538,7 +2538,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			continue
 		}
 		if left is ast.Ident && node.op == .decl_assign {
-			g.allocate_struct((left as ast.Ident).name, typ)
+			g.allocate_by_type((left as ast.Ident).name, typ)
 		}
 		g.gen_left_value(left)
 		g.push(.rax)
@@ -3290,7 +3290,7 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	for i in reg_args {
 		name := params[i].name
 		g.stack_var_pos += (8 - args_size[i] % 8) % 8
-		offset := g.allocate_struct(name, params[i].typ)
+		offset := g.allocate_by_type(name, params[i].typ)
 		// copy
 		g.mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
 			native.fn_arg_registers[reg_idx])
@@ -3306,7 +3306,7 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	// define and copy args on sse register
 	for idx, i in ssereg_args {
 		name := params[i].name
-		offset := g.allocate_struct(name, params[i].typ)
+		offset := g.allocate_by_type(name, params[i].typ)
 		// copy
 		g.mov_ssereg_to_var(LocalVar{ offset: offset, typ: params[i].typ }, native.fn_arg_sse_registers[idx])
 	}
@@ -3435,8 +3435,7 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 	return g.stack_var_pos
 }
 
-// Despite the name, all the types in V can be allocated by this function.
-fn (mut g Gen) allocate_struct(name string, typ ast.Type) int {
+fn (mut g Gen) allocate_by_type(name string, typ ast.Type) int {
 	if g.pref.arch == .arm64 {
 		// TODO
 		return 0
