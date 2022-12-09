@@ -2389,138 +2389,140 @@ fn (mut g Gen) gen_type_promotion(from ast.Type, to ast.Type, option RegisterOpt
 	}
 }
 
+fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) {
+	multi_return := g.get_multi_return(node.right_types)
+	if node.has_cross_var {
+		// `a, b = b, a`
+		// construct a struct variable contains the return value
+		size := multi_return.size
+		align := multi_return.align
+		padding := (align - g.stack_var_pos % align) % align
+		g.stack_var_pos += size + padding
+		var := LocalVar{offset: g.stack_var_pos}
+		// zero fill
+		mut left := if size >= 16 {
+			g.mov(.rax, 0)
+			g.mov(.rcx, size / 8)
+			g.lea_var_to_reg(.rdi, var.offset)
+			g.write([u8(0xf3), 0x48, 0xab])
+			g.println('rep stosq')
+			size % 8
+		} else {
+			size
+		}
+		if left >= 8 {
+			g.mov_int_to_var(var, 0, offset: size - left, typ: ast.i64_type_idx)
+			left -= 8
+		}
+		if left >= 4 {
+			g.mov_int_to_var(var, 0, offset: size - left, typ: ast.int_type_idx)
+			left -= 4
+		}
+		if left >= 2 {
+			g.mov_int_to_var(var, 0, offset: size - left, typ: ast.i16_type_idx)
+			left -= 2
+		}
+		if left == 1 {
+			g.mov_int_to_var(var, 0, offset: size - left, typ: ast.i8_type_idx)
+		}
+		// store exprs to the variable
+		for i, expr in node.right {
+			offset := multi_return.offsets[i]
+			g.expr(expr)
+			// TODO expr not on rax
+			g.mov_reg_to_var(var, .rax, offset: offset, typ: node.right_types[i])
+		}
+		// store the multi return struct value
+		g.lea_var_to_reg(.rax, var.offset)
+	} else {
+		g.expr(node.right[0])
+	}
+	g.mov_reg(.rdx, .rax)
 
+	mut current_offset := 0
+	for i, offset in multi_return.offsets {
+		if node.left[i] is ast.Ident {
+			name := (node.left[i] as ast.Ident).name
+			if name == '_' {
+				continue
+			}
+			if node.op == .decl_assign {
+				g.allocate_struct(name, node.left_types[i])
+			}
+		}
+		if offset != current_offset {
+			g.add(.rdx, offset - current_offset)
+			current_offset = offset
+		}
+		g.gen_left_value(node.left[i])
+		left_type := node.left_types[i]
+		right_type := node.right_types[i]
+		if g.is_register_type(right_type) {
+			g.mov_deref(.rcx, .rdx, right_type)
+		} else if node.right_types[i].is_pure_float() {
+			g.mov_deref_sse(.xmm0, .rdx, right_type)
+		}
+		g.gen_type_promotion(right_type, left_type, reg: .rcx)
+		if g.is_register_type(left_type) {
+			match node.op {
+				.assign, .decl_assign {
+					g.mov_store(.rax, .rcx, match g.get_type_size(left_type) {
+						1 { ._8 }
+						2 { ._16 }
+						3 { ._32 }
+						else { ._64 }
+					})
+				}
+				else {
+					g.n_error('Unsupported assign instruction')
+				}
+			}
+		} else if left_type.is_pure_float() {
+			is_f32 := left_type == ast.f32_type_idx
+			if node.op !in [.assign, .decl_assign] {
+				g.mov_ssereg(.xmm1, .xmm0)
+				if is_f32 {
+					g.write32(0x00100ff3)
+					g.println('movss xmm0, [rax]')
+				} else {
+					g.write32(0x00100ff2)
+					g.println('movsd xmm0, [rax]')
+				}
+			}
+			match node.op {
+				.plus_assign {
+					g.add_sse(.xmm0, .xmm1, left_type)
+				}
+				.minus_assign {
+					g.sub_sse(.xmm0, .xmm1, left_type)
+				}
+				.mult_assign {
+					g.mul_sse(.xmm0, .xmm1, left_type)
+				}
+				.div_assign {
+					g.div_sse(.xmm0, .xmm1, left_type)
+				}
+				else {}
+			}
+			if is_f32 {
+				g.write32(0x00110ff3)
+				g.println('movss [rax], xmm0')
+			} else {
+				g.write32(0x00110ff2)
+				g.println('movsd [rax], xmm0')
+			}
+		} else {
+			g.n_error('multi return for struct is not supported yet')
+		}
+	}
+}
 
 fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 	// `a, b := foo()`
 	// `a, b := if cond { 1, 2 } else { 3, 4 }`
 	// `a, b = b, a`
 	if (node.left.len > 1 && node.right.len == 1) || node.has_cross_var {
-		multi_return := g.get_multi_return(node.right_types)
-		if node.has_cross_var {
-			// `a, b = b, a`
-			// construct a struct variable contains the return value
-			size := multi_return.size
-			align := multi_return.align
-			padding := (align - g.stack_var_pos % align) % align
-			g.stack_var_pos += size + padding
-			var := LocalVar{offset: g.stack_var_pos}
-			// zero fill
-			mut left := if size >= 16 {
-				g.mov(.rax, 0)
-				g.mov(.rcx, size / 8)
-				g.lea_var_to_reg(.rdi, var.offset)
-				g.write([u8(0xf3), 0x48, 0xab])
-				g.println('rep stosq')
-				size % 8
-			} else {
-				size
-			}
-			if left >= 8 {
-				g.mov_int_to_var(var, 0, offset: size - left, typ: ast.i64_type_idx)
-				left -= 8
-			}
-			if left >= 4 {
-				g.mov_int_to_var(var, 0, offset: size - left, typ: ast.int_type_idx)
-				left -= 4
-			}
-			if left >= 2 {
-				g.mov_int_to_var(var, 0, offset: size - left, typ: ast.i16_type_idx)
-				left -= 2
-			}
-			if left == 1 {
-				g.mov_int_to_var(var, 0, offset: size - left, typ: ast.i8_type_idx)
-			}
-			// store exprs to the variable
-			for i, expr in node.right {
-				offset := multi_return.offsets[i]
-				g.expr(expr)
-				// TODO expr not on rax
-				g.mov_reg_to_var(var, .rax, offset: offset, typ: node.right_types[i])
-			}
-			// store the multi return struct value
-			g.lea_var_to_reg(.rax, var.offset)
-		} else {
-			g.expr(node.right[0])
-		}
-		g.mov_reg(.rdx, .rax)
-
-		mut current_offset := 0
-		for i, offset in multi_return.offsets {
-			if node.left[i] is ast.Ident {
-				name := (node.left[i] as ast.Ident).name
-				if name == '_' {
-					continue
-				}
-				if node.op == .decl_assign {
-					g.allocate_struct(name, node.left_types[i])
-				}
-			}
-			if offset != current_offset {
-				g.add(.rdx, offset - current_offset)
-				current_offset = offset
-			}
-			g.gen_left_value(node.left[i])
-			left_type := node.left_types[i]
-			right_type := node.right_types[i]
-			if g.is_register_type(right_type) {
-				g.mov_deref(.rcx, .rdx, right_type)
-			} else if node.right_types[i].is_pure_float() {
-				g.mov_deref_sse(.xmm0, .rdx, right_type)
-			}
-			g.gen_type_promotion(right_type, left_type, reg: .rcx)
-			if g.is_register_type(left_type) {
-				match node.op {
-					.assign, .decl_assign {
-						g.mov_store(.rax, .rcx, match g.get_type_size(left_type) {
-							1 { ._8 }
-							2 { ._16 }
-							3 { ._32 }
-							else { ._64 }
-						})
-					}
-					else {
-						g.n_error('Unsupported assign instruction')
-					}
-				}
-			} else if left_type.is_pure_float() {
-				is_f32 := left_type == ast.f32_type_idx
-				if node.op !in [.assign, .decl_assign] {
-					g.mov_ssereg(.xmm1, .xmm0)
-					if is_f32 {
-						g.write32(0x00100ff3)
-						g.println('movss xmm0, [rax]')
-					} else {
-						g.write32(0x00100ff2)
-						g.println('movsd xmm0, [rax]')
-					}
-				}
-				match node.op {
-					.plus_assign {
-						g.add_sse(.xmm0, .xmm1, left_type)
-					}
-					.minus_assign {
-						g.sub_sse(.xmm0, .xmm1, left_type)
-					}
-					.mult_assign {
-						g.mul_sse(.xmm0, .xmm1, left_type)
-					}
-					.div_assign {
-						g.div_sse(.xmm0, .xmm1, left_type)
-					}
-					else {}
-				}
-				if is_f32 {
-					g.write32(0x00110ff3)
-					g.println('movss [rax], xmm0')
-				} else {
-					g.write32(0x00110ff2)
-					g.println('movsd [rax], xmm0')
-				}
-			} else {
-				g.n_error('multi return for struct is not supported yet')
-			}
-		}
+		g.multi_assign_stmt(node)
 		return
 	}
 	// `a := 1` | `a,b := 1,2`
