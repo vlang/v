@@ -2,12 +2,12 @@ import sqlite
 
 [table: 'Users']
 struct User {
-	id int [primary; sql: serial]
+	id   int    [primary; sql: serial]
 	name string
 }
 
 const (
-	const_users_offset = 1
+	const_users_offset  = 1
 	const_users_offset2 = 1
 )
 
