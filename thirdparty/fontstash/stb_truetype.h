@@ -442,7 +442,7 @@ int main(int arg, char **argv)
    #ifndef STBTT_sqrt
    #include <math.h>
    #define STBTT_sqrt(x)      sqrt(x)
-   #define STBTT_pow(x,y)     pow(x,y)
+   #define STBTT_cbrt(x)      cbrt(x)
    #endif
 
    #ifndef STBTT_fmod
@@ -4479,9 +4479,9 @@ static int stbtt__compute_crossings_x(float x, float y, int nverts, stbtt_vertex
 static float stbtt__cuberoot( float x )
 {
    if (x<0)
-      return -(float) STBTT_pow(-x,1.0f/3.0f);
+      return -STBTT_cbrt(-x);
    else
-      return  (float) STBTT_pow( x,1.0f/3.0f);
+      return  STBTT_cbrt(x);
 }
 
 // x^3 + c*x^2 + b*x + a = 0
