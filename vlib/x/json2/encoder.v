@@ -5,6 +5,7 @@ module json2
 
 import io
 import strings
+import time
 
 // Encoder encodes the an `Any` type into JSON representation.
 // It provides parameters in order to change the end result.
@@ -112,6 +113,9 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 			e.encode_newline(level - 1, mut wr)!
 			wr.write([u8(`]`)])!
 		}
+		time.Time {
+			e.encode_string(val.str(), mut wr)!
+		}
 		Null {
 			wr.write(json2.null_in_bytes)!
 		}
@@ -174,7 +178,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			if e.newline != 0 {
 				wr.write(json2.space_bytes)!
 			}
-			$if field.typ is string {
+			$if field.typ is string || field.typ is time.Time {
 				e.encode_string(value.str(), mut wr)!
 			} $else $if field.typ is bool || field.typ is f32 || field.typ is f64 || field.typ is i8
 				|| field.typ is i16 || field.typ is int || field.typ is i64 || field.typ is u8
@@ -215,6 +219,10 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			} $else $if field.typ is ?[]int {
 				optional_value := val.$(field.name) as ?[]int
 				e.encode_array(optional_value, level, mut wr)!
+			} $else $if field.typ is ?time.Time {
+				optional_value := val.$(field.name) as ?time.Time
+				parsed_time := optional_value as time.Time
+				e.encode_string(parsed_time.str(), mut wr)!
 			} $else {
 				if field.unaliased_typ != field.typ {
 					match field.unaliased_typ {
