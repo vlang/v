@@ -423,3 +423,71 @@ fn test_encoding_struct_with_pointers() {
 	}
 	assert json.encode(value) == '{"association":{"price":{}},"price":{}}'
 }
+
+struct Foo2 {
+	ux8  u8
+	ux16 u16
+	ux32 u32
+	ux64 u64
+	sx8  i8
+	sx16 i16
+	sx32 int
+	sx64 i64
+	a bool
+	b string
+
+	ux8  ?u8
+	ux16 ?u16
+	ux32 ?u32
+	ux64 ?u64
+	sx8  ?i8
+	sx16 ?i16
+	sx32 ?int
+	sx64 ?i64
+	a ?bool
+	b ?string
+
+	ux8  &u8
+	ux16 &u16
+	ux32 &u32
+	ux64 &u64
+	sx8  &i8
+	sx16 &i16
+	sx32 &int
+	sx64 &i64
+	a &bool
+	b &string
+
+	arr_ux8  []u8
+	arr_ux16 []u16
+	arr_ux32 []u32
+	arr_ux64 []u64
+	arr_sx8  []i8
+	arr_sx16 []i16
+	arr_sx32 []int
+	arr_sx64 []i64
+	arr_a []bool
+	arr_b []string
+
+	arr_ux8  ?[]u8
+	arr_ux16 ?[]u16
+	arr_ux32 ?[]u32
+	arr_ux64 ?[]u64
+	arr_sx8  ?[]i8
+	arr_sx16 ?[]i16
+	arr_sx32 ?[]int
+	arr_sx64 ?[]i64
+	arr_a ?[]bool
+	arr_b ?[]string
+
+	arr_ux8  &[]u8
+	arr_ux16 &[]u16
+	arr_ux32 &[]u32
+	arr_ux64 &[]u64
+	arr_sx8  &[]i8
+	arr_sx16 &[]i16
+	arr_sx32 &[]int
+	arr_sx64 &[]i64
+	arr_a &[]bool
+	arr_b &[]string
+}
