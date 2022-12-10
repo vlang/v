@@ -140,6 +140,7 @@ mut:
 	inside_const_opt_or_res   bool
 	inside_lambda             bool
 	inside_for_in_any_cond    bool
+	inside_cinit              bool
 	loop_depth                int
 	ternary_names             map[string]string
 	ternary_level_names       map[string][]string
@@ -3501,10 +3502,10 @@ fn (mut g Gen) type_name(raw_type ast.Type) {
 }
 
 fn (mut g Gen) typeof_expr(node ast.TypeOf) {
-	typ := if node.expr_type == g.field_data_type {
+	typ := if node.typ == g.field_data_type {
 		g.comptime_for_field_value.typ
 	} else {
-		node.expr_type
+		node.typ
 	}
 	sym := g.table.sym(typ)
 	if sym.kind == .sum_type {
@@ -3524,9 +3525,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		varg_elem_type_sym := g.table.sym(g.table.value_type(typ))
 		g.write('_SLIT("...${util.strip_main_name(varg_elem_type_sym.name)}")')
 	} else {
-		x := g.table.type_to_str(typ)
-		y := util.strip_main_name(x)
-		g.write('_SLIT("${y}")')
+		g.type_name(typ)
 	}
 }
 
@@ -3544,6 +3543,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				return
 			}
 			.unknown {
+				// ast.TypeOf of `typeof(string).idx` etc
 				if node.field_name == 'name' {
 					// typeof(expr).name
 					mut name_type := node.name_type
@@ -3560,7 +3560,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					g.type_name(name_type)
 					return
 				} else if node.field_name == 'idx' {
-					// typeof(expr).idx
+					// `typeof(expr).idx`
 					g.write(int(g.unwrap_generic(node.name_type)).str())
 					return
 				}
@@ -4386,7 +4386,7 @@ fn (g &Gen) expr_is_multi_return_call(expr ast.Expr) bool {
 }
 
 fn (mut g Gen) gen_result_error(target_type ast.Type, expr ast.Expr) {
-	styp := g.typ(target_type)
+	styp := g.typ(g.unwrap_generic(target_type))
 	g.write('(${styp}){ .is_error=true, .err=')
 	g.expr(expr)
 	g.write(', .data={EMPTY_STRUCT_INITIALIZATION} }')
@@ -4394,7 +4394,7 @@ fn (mut g Gen) gen_result_error(target_type ast.Type, expr ast.Expr) {
 
 // NB: remove this when optional has no errors anymore
 fn (mut g Gen) gen_optional_error(target_type ast.Type, expr ast.Expr) {
-	styp := g.typ(target_type)
+	styp := g.typ(g.unwrap_generic(target_type))
 	g.write('(${styp}){ .state=2, .err=')
 	g.expr(expr)
 	g.write(', .data={EMPTY_STRUCT_INITIALIZATION} }')
@@ -5049,6 +5049,10 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	}
 	// should the global be initialized now, not later in `vinit()`
 	cinit := node.attrs.contains('cinit')
+	g.inside_cinit = cinit
+	defer {
+		g.inside_cinit = false
+	}
 	cextern := node.attrs.contains('c_extern')
 	should_init := (!g.pref.use_cache && g.pref.build_mode != .build_module)
 		|| (g.pref.build_mode == .build_module && g.module_built == node.mod)

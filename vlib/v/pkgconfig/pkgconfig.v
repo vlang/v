@@ -224,9 +224,15 @@ fn (mut pc PkgConfig) load_require(dep string) ? {
 }
 
 fn (mut pc PkgConfig) add_path(path string) {
-	p := if path.ends_with('/') { path[0..path.len - 1] } else { path }
+	if path == '' {
+		return
+	}
+	p := path.trim_right('/')
 	if !os.exists(p) {
 		return
+	}
+	$if trace_pkgconfig_add_path ? {
+		eprintln('> PkgConfig.add_path path: ${p}')
 	}
 	if pc.paths.index(p) == -1 {
 		pc.paths << p
@@ -234,9 +240,19 @@ fn (mut pc PkgConfig) add_path(path string) {
 }
 
 fn (mut pc PkgConfig) load_paths() {
-	if pc.options.use_default_paths {
-		for path in pkgconfig.default_paths {
+	// Allow for full custom user control over the default paths too, through
+	// setting `PKG_CONFIG_PATH_DEFAULTS` to a list of search paths, separated
+	// by `:`.
+	config_path_override := os.getenv('PKG_CONFIG_PATH_DEFAULTS')
+	if config_path_override != '' {
+		for path in config_path_override.split(':') {
 			pc.add_path(path)
+		}
+	} else {
+		if pc.options.use_default_paths {
+			for path in pkgconfig.default_paths {
+				pc.add_path(path)
+			}
 		}
 	}
 	for path in pc.options.path.split(':') {

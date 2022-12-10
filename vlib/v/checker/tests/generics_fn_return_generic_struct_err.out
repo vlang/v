@@ -1,4 +1,4 @@
-vlib/v/checker/tests/generics_fn_return_generic_struct_err.vv:13:32: error: return generic struct in fn declaration must specify the generic type names, e.g. Foo[T]
+vlib/v/checker/tests/generics_fn_return_generic_struct_err.vv:13:32: error: return generic struct `GenericChannelStruct` in fn declaration must specify the generic type names, e.g. GenericChannelStruct[T]
    11 | }
    12 |
    13 | pub fn new_channel_struct[T]() GenericChannelStruct {

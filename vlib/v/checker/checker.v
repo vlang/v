@@ -497,11 +497,11 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 		} else if mut sym.info is ast.Struct {
 			if sym.info.is_generic {
 				if !variant.typ.has_flag(.generic) {
-					c.error('generic struct `${sym.name}` must specify generic type names, e.g. Foo[T]',
+					c.error('generic struct `${sym.name}` must specify generic type names, e.g. ${sym.name}[T]',
 						variant.pos)
 				}
 				if node.generic_types.len == 0 {
-					c.error('generic sumtype `${node.name}` must specify generic type names, e.g. Foo[T]',
+					c.error('generic sumtype `${node.name}` must specify generic type names, e.g. ${node.name}[T]',
 						node.name_pos)
 				} else {
 					for typ in sym.info.generic_types {
@@ -1151,10 +1151,13 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				name_type = ast.Type(c.table.find_type_idx(name)).set_flag(.generic)
 			}
 		}
-		// Note: in future typeof() should be a type known at compile-time
-		// sum types should not be handled dynamically
 		ast.TypeOf {
-			name_type = c.expr(node.expr.expr)
+			// TODO: fix this weird case, since just `typeof(x)` is `string`, but `|typeof(x).| propertyname` should be the actual type,
+			// so that we can get other metadata properties of the type, depending on `propertyname` (one of `name` or `idx` for now).
+			// A better alternative would be a new `meta(x).propertyname`, that does not have a `meta(x)` case (an error),
+			// or if it does, it should be a normal constant struct value, just filled at comptime.
+			c.expr(node.expr)
+			name_type = node.expr.typ
 		}
 		else {}
 	}
@@ -1393,6 +1396,9 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		c.warn('const block must have at least 1 declaration', node.pos)
 	}
 	for field in node.fields {
+		if checker.reserved_type_names_chk.matches(util.no_cur_mod(field.name, c.mod)) {
+			c.error('invalid use of reserved type `${field.name}` as a const name', field.pos)
+		}
 		// TODO Check const name once the syntax is decided
 		if field.name in c.const_names {
 			name_pos := token.Pos{
@@ -1825,7 +1831,11 @@ fn (mut c Checker) branch_stmt(node ast.BranchStmt) {
 		c.error('`${node.kind.str()}` is not allowed in defer statements', node.pos)
 	}
 	if c.in_for_count == 0 {
-		c.error('${node.kind.str()} statement not within a loop', node.pos)
+		if c.inside_comptime_for_field {
+			c.error('${node.kind.str()} is not allowed within a compile-time loop', node.pos)
+		} else {
+			c.error('${node.kind.str()} statement not within a loop', node.pos)
+		}
 	}
 	if node.label.len > 0 {
 		if node.label != c.loop_label {
@@ -2549,7 +2559,9 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			return node.typ
 		}
 		ast.TypeOf {
-			node.expr_type = c.expr(node.expr)
+			if !node.is_type {
+				node.typ = c.expr(node.expr)
+			}
 			return ast.string_type
 		}
 		ast.UnsafeExpr {
@@ -3989,6 +4001,22 @@ fn (mut c Checker) error(message string, pos token.Pos) {
 	}
 	msg := message.replace('`Array_', '`[]')
 	c.warn_or_error(msg, pos, false)
+}
+
+fn (c &Checker) check_struct_signature_init_fields(from ast.Struct, to ast.Struct, node ast.StructInit) bool {
+	if node.fields.len == 0 {
+		return from.fields.len == to.fields.len
+	}
+
+	mut count_not_in_from := 0
+	for field in node.fields {
+		filtered := from.fields.filter(it.name == field.name)
+		if filtered.len != 1 {
+			count_not_in_from++
+		}
+	}
+
+	return (from.fields.len + count_not_in_from) == to.fields.len
 }
 
 // check `to` has all fields of `from`

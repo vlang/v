@@ -42,7 +42,8 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 
 		is_anon = info.is_anon
 	}
-	if !is_anon {
+
+	if !g.inside_cinit && !is_anon {
 		g.write('(')
 		defer {
 			g.write(')')
@@ -62,6 +63,12 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			g.writeln('&(${basetyp}){')
 		} else {
 			g.write('&(${basetyp}){')
+		}
+	} else if g.inside_cinit {
+		if is_multiline {
+			g.writeln('{')
+		} else {
+			g.write('{')
 		}
 	} else {
 		if is_multiline {
