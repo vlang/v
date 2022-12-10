@@ -1,10 +1,30 @@
 import x.json2 as json
+import time
+
+const random_time = time.Time{
+	year: 2022
+	month: 3
+	day: 11
+	hour: 13
+	minute: 54
+	second: 25
+	unix: 0
+}
 
 type StringAlias = string
 type BoolAlias = bool
 type IntAlias = int
 
 type SumTypes = bool | int | string
+
+enum Enumerates {
+	a
+	b
+	c
+	d
+	e = 99
+	f
+}
 
 struct StructType[T] {
 mut:
@@ -33,6 +53,9 @@ fn test_types() {
 	assert json.encode(StructType[int]{}) == '{"val":0}'
 	assert json.encode(StructType[int]{ val: 0 }) == '{"val":0}'
 	assert json.encode(StructType[int]{ val: 1 }) == '{"val":1}'
+
+	assert json.encode(StructType[time.Time]{}) == '{"val":"0000-00-00 00:00:00"}'
+	assert json.encode(StructType[time.Time]{ val: random_time }) == '{"val":"2022-03-11 13:54:25"}'
 }
 
 fn test_optional_types() {
@@ -50,6 +73,9 @@ fn test_optional_types() {
 	assert json.encode(StructTypeOptional[int]{}) == '{"val":0}'
 	assert json.encode(StructTypeOptional[int]{ val: 0 }) == '{"val":0}'
 	assert json.encode(StructTypeOptional[int]{ val: 1 }) == '{"val":1}'
+
+	assert json.encode(StructTypeOptional[time.Time]{}) == '{"val":"0000-00-00 00:00:00"}'
+	assert json.encode(StructTypeOptional[time.Time]{ val: random_time }) == '{"val":"2022-03-11 13:54:25"}'
 }
 
 fn test_array() {
