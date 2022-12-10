@@ -273,7 +273,7 @@ pub fn (f Any) prettify_json_str() string {
 	}
 	mut enc := Encoder{
 		newline: `\n`
-		newline_spaces_count: 4
+		newline_spaces_count: 2
 	}
 	enc.encode_value(f, mut sb) or {}
 	return sb.str()

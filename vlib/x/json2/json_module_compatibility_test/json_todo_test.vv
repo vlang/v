@@ -348,17 +348,6 @@ fn test_decode_missing_maps_field() {
 	assert '${info.maps}' == '{}'
 }
 
-struct Foo2 {
-	name string
-}
-
-//! BUGFIX - .from_json(res)
-fn test_pretty() {
-	foo := Foo2{'Bob'}
-	assert json.encode_pretty(foo) == '{
-	"name":	"Bob"
-}'
-}
 
 struct Foo3 {
 	name string
@@ -369,7 +358,7 @@ struct Foo3 {
 fn test_omit_empty() {
 	foo := Foo3{'Bob', 0}
 	assert json.encode_pretty(foo) == '{
-	"name":	"Bob"
+  "name": "Bob"
 }'
 }
 

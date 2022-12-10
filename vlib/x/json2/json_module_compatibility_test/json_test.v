@@ -178,3 +178,22 @@ fn test_generic_struct() {
 	assert foo_dec.name == 'bar'
 	assert foo_dec.data == 12
 }
+
+struct Foo2 {
+	name  string
+	name1 string
+	name2 string
+	name3 string
+	name4 string
+}
+
+fn test_pretty() {
+	foo := Foo2{'Bob', 'Bob1', 'Bob2', 'Bob3', 'Bob4'}
+	assert json.encode_pretty(foo) == '{
+  "name": "Bob",
+  "name1": "Bob1",
+  "name2": "Bob2",
+  "name3": "Bob3",
+  "name4": "Bob4"
+}'
+}
