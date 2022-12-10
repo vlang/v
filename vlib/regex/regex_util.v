@@ -124,29 +124,31 @@ pub fn (re RE) get_group_list() []Re_group {
 ******************************************************************************/
 // match_string Match the pattern with the in_txt string
 [direct_array_access]
-pub fn (mut re RE) match_string(in_txt string) (int, int) {
-	start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
-	if end > in_txt.len {
-		end = in_txt.len
-	}
-
-	if start >= 0 && end > start {
-		if (re.flag & f_ms) != 0 && start > 0 {
-			return no_match_found, 0
+pub fn (re &RE) match_string(in_txt string) (int, int) {
+	unsafe {
+		start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
+		if end > in_txt.len {
+			end = in_txt.len
 		}
-		if (re.flag & f_me) != 0 && end < in_txt.len {
-			if in_txt[end] in new_line_list {
-				return start, end
+
+		if start >= 0 && end > start {
+			if (re.flag & f_ms) != 0 && start > 0 {
+				return no_match_found, 0
 			}
-			return no_match_found, 0
+			if (re.flag & f_me) != 0 && end < in_txt.len {
+				if in_txt[end] in new_line_list {
+					return start, end
+				}
+				return no_match_found, 0
+			}
+			return start, end
 		}
 		return start, end
 	}
-	return start, end
 }
 
 // matches_string Checks if the pattern matches the in_txt string
-pub fn (mut re RE) matches_string(in_txt string) bool {
+pub fn (re &RE) matches_string(in_txt string) bool {
 	start, _ := re.match_string(in_txt)
 	return start != no_match_found
 }
