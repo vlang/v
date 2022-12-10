@@ -443,10 +443,17 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					// TODO Instead of the translated check, check if it's a pointer already
 					// and don't generate memcpy &
 					typ_str := g.typ(val_type).trim('*')
-					ref_str := if val_type.is_ptr() { '' } else { '&' }
-					g.write('memcpy((${typ_str}*)')
+					final_typ_str := if is_fixed_array_var { '' } else { '(${typ_str}*)' }
+					final_ref_str := if is_fixed_array_var {
+						''
+					} else if val_type.is_ptr() {
+						'(byte*)'
+					} else {
+						'(byte*)&'
+					}
+					g.write('memcpy(${final_typ_str}')
 					g.expr(left)
-					g.write(', (byte*)${ref_str}')
+					g.write(', ${final_ref_str}')
 					g.expr(val)
 					g.write(', sizeof(${typ_str}))')
 				} else if is_decl {
