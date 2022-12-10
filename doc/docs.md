@@ -3774,10 +3774,10 @@ fn (r Repo[T]) find_by_id(id int) ?T {
 }
 
 db := new_db()
-users_repo := new_repo<User>(db) // returns Repo<User>
-posts_repo := new_repo<Post>(db) // returns Repo<Post>
-user := users_repo.find_by_id(1)? // find_by_id<User>
-post := posts_repo.find_by_id(1)? // find_by_id<Post>
+users_repo := new_repo[User](db) // returns Repo[User]
+posts_repo := new_repo[Post](db) // returns Repo[Post]
+user := users_repo.find_by_id(1)? // find_by_id[User]
+post := posts_repo.find_by_id(1)? // find_by_id[Post]
 ```
 
 Currently generic function definitions must declare their type parameters, but in
