@@ -181,7 +181,7 @@ fn test_generic_struct() {
 
 type StringAlias = string
 
-// TODO - encode_pretty array, sum types, alias os struct and others...
+// TODO - encode_pretty array, sum types, alias of struct and others...
 struct Foo2 {
 	ux8  u8
 	ux16 u16
