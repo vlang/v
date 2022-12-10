@@ -178,3 +178,37 @@ fn test_generic_struct() {
 	assert foo_dec.name == 'bar'
 	assert foo_dec.data == 12
 }
+
+type StringAlias = string
+
+// TODO - encode_pretty array, sum types, struct, alias of struct and others...
+struct Foo2 {
+	ux8  u8
+	ux16 u16
+	ux32 u32
+	ux64 u64
+	sx8  i8
+	sx16 i16
+	sx32 int
+	sx64 i64
+	a    bool
+	b    string
+	c    StringAlias
+}
+
+fn test_pretty() {
+	foo := Foo2{1, 2, 3, 4, -1, -2, -3, -4, true, 'abc', 'aliens'}
+	assert json.encode_pretty(foo) == '{
+  "ux8": 1,
+  "ux16": 2,
+  "ux32": 3,
+  "ux64": 4,
+  "sx8": -1,
+  "sx16": -2,
+  "sx32": -3,
+  "sx64": -4,
+  "a": true,
+  "b": "abc",
+  "c": "aliens"
+}'
+}
