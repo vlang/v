@@ -1,7 +1,7 @@
 import x.json2 as json
 import time
 
-const random_time = time.Time{
+const fixed_time = time.Time{
 	year: 2022
 	month: 3
 	day: 11
