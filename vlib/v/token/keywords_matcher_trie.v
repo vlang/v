@@ -32,7 +32,7 @@ pub fn (km &KeywordsMatcherTrie) find(word string) int {
 		return -1
 	}
 	node := km.nodes[wlen]
-	if node == unsafe { nil } {
+	if isnil(node) {
 		return -1
 	}
 	return node.find(word)
@@ -54,7 +54,7 @@ pub fn (mut km KeywordsMatcherTrie) add_word(word string, value int) {
 	if km.min_len > wlen {
 		km.min_len = wlen
 	}
-	if km.nodes[wlen] == unsafe { nil } {
+	if isnil(km.nodes[wlen]) {
 		km.nodes[wlen] = new_trie_node()
 	}
 	km.nodes[wlen].add_word(word, value, 0)
@@ -99,14 +99,14 @@ pub fn new_trie_node() &TrieNode {
 pub fn (node &TrieNode) show(level int) {
 	mut non_nil_children := []int{}
 	for idx, x in node.children {
-		if x != unsafe { nil } {
+		if !isnil(x) {
 			non_nil_children << idx
 		}
 	}
 	children := non_nil_children.map(u8(it).ascii_str())
 	eprintln('> level: ${level:2} | value: ${node.value:12} | non_nil_children: ${non_nil_children.len:2} | ${children}')
 	for x in node.children {
-		if x != unsafe { nil } {
+		if !isnil(x) {
 			x.show(level + 1)
 		}
 	}
@@ -121,7 +121,7 @@ pub fn (mut node TrieNode) add_word(word string, value int, word_idx int) {
 	})
 	// eprintln('>> node: ${ptr_str(node)} | first: $first | word_idx: $word_idx')
 	mut child_node := node.children[first]
-	if child_node == unsafe { nil } {
+	if isnil(child_node) {
 		child_node = new_trie_node()
 		node.children[first] = child_node
 	}
