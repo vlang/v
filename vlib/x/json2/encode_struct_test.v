@@ -54,11 +54,8 @@ fn test_types() {
 	assert json.encode(StructType[int]{ val: 0 }) == '{"val":0}'
 	assert json.encode(StructType[int]{ val: 1 }) == '{"val":1}'
 
-	assert json.encode(StructType[time.Time]{}) == '{"val":"1970-01-01T03:00:00.000Z"}'
-	assert json.encode(StructType[time.Time]{ val: fixed_time }) == '{"val":"2022-03-11T19:54:25.000Z"}'
-	s := json.encode(StructType[time.Time]{ val: fixed_time })
-	assert s.starts_with('{"val":"2022-03-1')
-	assert s.ends_with(':54:25.000Z"}')
+	assert json.encode(StructType[time.Time]{}) == '{"val":"0000-00-00T00:00:00.000Z"}'
+	assert json.encode(StructType[time.Time]{ val: fixed_time }) == '{"val":"2022-03-11T13:54:25.000Z"}'
 }
 
 fn test_optional_types() {
@@ -77,10 +74,8 @@ fn test_optional_types() {
 	assert json.encode(StructTypeOptional[int]{ val: 0 }) == '{"val":0}'
 	assert json.encode(StructTypeOptional[int]{ val: 1 }) == '{"val":1}'
 
-	assert json.encode(StructTypeOptional[time.Time]{}) == '{"val":"1970-01-01T03:00:00.000Z"}'
-	s := json.encode(StructTypeOptional[time.Time]{ val: fixed_time })
-	assert s.starts_with('{"val":"2022-03-1')
-	assert s.ends_with(':54:25.000Z"}')
+	assert json.encode(StructTypeOptional[time.Time]{}) == '{"val":"0000-00-00T00:00:00.000Z"}'
+	assert json.encode(StructTypeOptional[time.Time]{ val: fixed_time }) == '{"val":"2022-03-11T13:54:25.000Z"}'
 }
 
 fn test_array() {
