@@ -50,7 +50,7 @@ pub fn decode[T](src string) !T {
 		} $else $if field.typ is string {
 			typ.$(field.name) = res[field.name]!.str()
 		} $else $if field.typ is time.Time {
-			// typ.$(field.name) = res[field.name]!.str()
+			typ.$(field.name) = res[field.name]!.to_time()!
 		} $else {
 			return error("The type of `${field.name}` can't be decoded. Please open an issue at https://github.com/vlang/v/issues/new/choose")
 		}
@@ -249,5 +249,32 @@ pub fn (f Any) as_map() map[string]Any {
 	}
 	return {
 		'0': f
+	}
+}
+
+// to_time uses `Any` as a time.Time.
+pub fn (f Any) to_time() !time.Time {
+	match f {
+		time.Time {
+			return f
+		}
+		string {
+			// TODO - use regex
+			// TODO - parse_iso8601
+			// TODO - parse_rfc2822
+			f_runes := f.runes()
+
+			is_rfc3339 := f_runes[4].str() == '-' && f_runes[7].str() == '-'
+				&& f_runes[10].str() == 'T' && f_runes[13].str() == ':' && f_runes[16].str() == ':'
+			// is_rfc3339 := f.runes()[4] == "-" && f_runes[7] == "-" && f_runes[10] == "T" && f_runes[13] == ":" && f_runes[16] == ":"
+			if is_rfc3339 {
+				return time.parse_rfc3339(f)!
+			} else {
+				return time.parse(f)!
+			}
+		}
+		else {
+			return time.Time{}
+		}
 	}
 }

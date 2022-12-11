@@ -8,7 +8,7 @@ const fixed_time = time.Time{
 	hour: 13
 	minute: 54
 	second: 25
-	unix: 0
+	unix: 1647006865
 }
 
 type StringAlias = string
@@ -77,4 +77,6 @@ fn test_types() {
 	assert json.decode[StructType[int]]('{"val": "false"}')!.val == 0
 	assert json.decode[StructType[int]]('{"val": true}')!.val == 1
 	assert json.decode[StructType[int]]('{"val": false}')!.val == 0
+
+	assert json.decode[StructType[time.Time]]('{"val": "2022-03-11T13:54:25.000Z"}')!.val == fixed_time
 }
