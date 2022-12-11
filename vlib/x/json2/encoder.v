@@ -113,9 +113,7 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 			e.encode_newline(level - 1, mut wr)!
 			wr.write([u8(`]`)])!
 		}
-		time.Time {
-			e.encode_string(val.str(), mut wr)!
-		}
+		time.Time {}
 		Null {
 			wr.write(json2.null_in_bytes)!
 		}
@@ -178,8 +176,11 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			if e.newline != 0 {
 				wr.write(json2.space_bytes)!
 			}
-			$if field.typ is string || field.typ is time.Time {
+			$if field.typ is string {
 				e.encode_string(value.str(), mut wr)!
+			} $else $if field.typ is time.Time {
+				parsed_time := val.$(field.name) as time.Time
+				e.encode_string(parsed_time.format_rfc3339(), mut wr)!
 			} $else $if field.typ is bool || field.typ is f32 || field.typ is f64 || field.typ is i8
 				|| field.typ is i16 || field.typ is int || field.typ is i64 || field.typ is u8
 				|| field.typ is u16 || field.typ is u32 || field.typ is u64 {
@@ -222,12 +223,16 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			} $else $if field.typ is ?time.Time {
 				optional_value := val.$(field.name) as ?time.Time
 				parsed_time := optional_value as time.Time
-				e.encode_string(parsed_time.str(), mut wr)!
+				e.encode_string(parsed_time.format_rfc3339(), mut wr)!
 			} $else {
 				if field.unaliased_typ != field.typ {
 					match field.unaliased_typ {
 						typeof[string]().idx {
 							e.encode_string(value.str(), mut wr)!
+						}
+						typeof[time.Time]().idx {
+							parsed_time := val.$(field.name)
+							// e.encode_string(parsed_time.format_rfc3339(), mut wr)!
 						}
 						typeof[bool]().idx, typeof[f32]().idx, typeof[f64]().idx, typeof[i8]().idx,
 						typeof[i16]().idx, typeof[int]().idx, typeof[i64]().idx, typeof[u8]().idx,
