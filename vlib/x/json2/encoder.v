@@ -230,10 +230,6 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 						typeof[string]().idx {
 							e.encode_string(value.str(), mut wr)!
 						}
-						typeof[time.Time]().idx {
-							parsed_time := val.$(field.name)
-							// e.encode_string(parsed_time.format_rfc3339(), mut wr)!
-						}
 						typeof[bool]().idx, typeof[f32]().idx, typeof[f64]().idx, typeof[i8]().idx,
 						typeof[i16]().idx, typeof[int]().idx, typeof[i64]().idx, typeof[u8]().idx,
 						typeof[u16]().idx, typeof[u32]().idx, typeof[u64]().idx {
