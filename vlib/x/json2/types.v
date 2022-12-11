@@ -1,5 +1,7 @@
 module json2
 
+import time
+
 // `Any` is a sum type that lists the possible types to be decoded and used.
 pub type Any = Null
 	| []Any
@@ -12,6 +14,7 @@ pub type Any = Null
 	| int
 	| map[string]Any
 	| string
+	| time.Time
 	| u16
 	| u32
 	| u64

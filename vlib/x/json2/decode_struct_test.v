@@ -1,10 +1,30 @@
 import x.json2 as json
+import time
+
+const fixed_time = time.Time{
+	year: 2022
+	month: 3
+	day: 11
+	hour: 13
+	minute: 54
+	second: 25
+	unix: 0
+}
 
 type StringAlias = string
 type BoolAlias = bool
 type IntAlias = int
 
 type SumTypes = bool | int | string
+
+enum Enumerates {
+	a
+	b
+	c
+	d
+	e = 99
+	f
+}
 
 struct StructType[T] {
 mut:
