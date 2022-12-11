@@ -24,7 +24,8 @@ pub fn (t Time) format_ss_milli() string {
 // RFC3339 is an Internet profile, based on the ISO 8601 standard for for representation of dates and times using the Gregorian calendar.
 // It is intended to improve consistency and interoperability, when representing and using date and time in Internet protocols.
 pub fn (t Time) format_rfc3339() string {
-	return '${t.year:04d}-${t.month:02d}-${t.day:02d}T${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.microsecond / 1000):03d}Z'
+	u := t.add(-offset() * second)
+	return '${u.year:04d}-${u.month:02d}-${u.day:02d}T${u.hour:02d}:${u.minute:02d}:${u.second:02d}.${(u.microsecond / 1000):03d}Z'
 }
 
 // format_ss_micro returns a date string in "YYYY-MM-DD HH:mm:ss.123456" format (24h).
