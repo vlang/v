@@ -12,19 +12,19 @@ import time
 
 struct Person {
 mut:
-    name string
-    age  ?int = 20
-    birthday time.Time
-    deathday ?time.Time = none
+	name     string
+	age      ?int = 20
+	birthday time.Time
+	deathday ?time.Time = none
 }
 
 fn main() {
-    mut person := Person {
-        name "Bob"
-        birthday time.now()
-    }
-    person_json := json2.encode[Person](person) 
-    // person_json == {"name": "Bob", "age": 28, "birthday": "2022-03-11T13:54:25.000Z"}
+	mut person := Person{
+		name: 'Bob'
+		birthday: time.now()
+	}
+	person_json := json2.encode[Person](person)
+	// person_json == {"name": "Bob", "age": 20, "birthday": "2022-03-11T13:54:25.000Z"}
 }
 ```
 
@@ -32,26 +32,27 @@ fn main() {
 
 ```v
 import x.json2
+import time
 
 struct Person {
 mut:
-    name string
-    age  ?int = 20
-    birthday time.Time
-    deathday ?time.Time = none
+	name     string
+	age      ?int = 20
+	birthday time.Time
+	deathday ?time.Time = none
 }
 
 fn main() {
-    resp := '{"name": "Bob", "age": 20, "birthday": ${time.now()}}'
-    person := json2.decode[Person](resp)!
-    /*
-      struct Person {
+	resp := '{"name": "Bob", "age": 20, "birthday": ${time.now()}}'
+	person := json2.decode[Person](resp)!
+	/*
+	struct Person {
       mut:
           name "Bob"
-          age  int = 20
+          age  20
           birthday "2022-03-11 13:54:25"
       }
-    */
+	*/
 }
 ```
 decode[T] is smart and can auto convert the type of struct fields this means that all
