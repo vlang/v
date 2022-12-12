@@ -1925,6 +1925,16 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			return info.func.return_type
 		}
 	}
+	if left_sym.kind in [.struct_, .aggregate, .interface_, .sum_type] {
+		if c.smartcast_mut_pos != token.Pos{} {
+			c.note('smartcasting requires either an immutable value, or an explicit mut keyword before the value',
+				c.smartcast_mut_pos)
+		}
+		if c.smartcast_cond_pos != token.Pos{} {
+			c.note('smartcast can only be used on the ident or selector, e.g. match foo, match foo.bar',
+				c.smartcast_cond_pos)
+		}
+	}
 	if left_type != ast.void_type {
 		suggestion := util.new_suggestion(method_name, left_sym.methods.map(it.name))
 		c.error(suggestion.say(unknown_method_msg), node.pos)
