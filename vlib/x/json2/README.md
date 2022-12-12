@@ -4,75 +4,93 @@
 `x.json2` is an experimental JSON parser written from scratch on V.
 
 ## Usage
+#### encode[T]
+
+```v
+import x.json2
+import time
+
+struct Person {
+mut:
+    name string
+    age  ?int = 20
+    birthday time.Time
+    deathday ?time.Time = none
+}
+
+fn main() {
+    mut person := Person {
+        name "Bob"
+        birthday time.now()
+    }
+    person_json := json2.encode[Person](person) 
+    // person_json == {"name": "Bob", "age": 28, "birthday": "2022-03-11T13:54:25.000Z"}
+}
+```
+
+#### decode[T]
+
+```v
+import x.json2
+
+struct Person {
+mut:
+    name string
+    age  ?int = 20
+    birthday time.Time
+    deathday ?time.Time = none
+}
+
+fn main() {
+    resp := '{"name": "Bob", "age": 20, "birthday": ${time.now()}}'
+    person := json2.decode[Person](resp)!
+    /*
+      struct Person {
+      mut:
+          name "Bob"
+          age  int = 20
+          birthday "2022-03-11 13:54:25"
+      }
+    */
+}
+```
+decode[T] is smart and can auto convert the type of struct fields this means that all
+bellow will have the same result
+
+```v ignore
+json2.decode[Person]('{"name": "Bob", "age": 20, "birthday": "2022-03-11T13:54:25.000Z"}')!
+json2.decode[Person]('{"name": "Bob", "age": 20, "birthday": "2022-03-11 13:54:25.000"}')!
+json2.decode[Person]('{"name": "Bob", "age": "20", "birthday": 1647006865}')!
+json2.decode[Person]('{"name": "Bob", "age": "20", "birthday": "1647006865"}}')!
+```
+
+#### raw decode
+
+```v
+import x.json2
+
+fn main() {
+	resp := '{"name": "Bob", "age": 20, "birthday": "2022-03-11T13:54:25.000Z"}'
+
+	// This return a Any type
+	raw_person := json2.raw_decode(resp)!
+}
+```
+#### Casting `Any` type / Navigating
 ```v oksyntax
 import x.json2
 import net.http
 
 fn main() {
-	// Decoding
-	resp := http.get('https://example.com')!
+	resp := '{"name": "Bob", "age": 20, "birthday": "2022-03-11T13:54:25.000Z"}'
 
-	// raw decode
-	raw_person := json2.raw_decode(resp.body)!
+	raw_person := json2.raw_decode(resp)!
 
-	// Casting `Any` type / Navigating
 	person := raw_person.as_map()
 	name := person['name'].str() // Bob
-	age := person['age'].int() // 19
-	pi := person['pi'].f64() // 3.14....
-
-	// Constructing an `Any` type
-	mut me := map[string]json2.Any{}
-	me['name'] = 'Bob'
-	me['age'] = 18
-
-	mut arr := []json2.Any{}
-	arr << 'rock'
-	arr << 'papers'
-	arr << json2.null
-	arr << 12
-
-	me['interests'] = arr
-
-	mut pets := map[string]json2.Any{}
-	pets['Sam'] = 'Maltese Shitzu'
-	me['pets'] = pets
-
-	// Stringify to JSON
-	println(me.str())
-	//{
-	//   "name":"Bob",
-	//   "age":18,
-	//   "interests":["rock","papers","scissors",null,12],
-	//   "pets":{"Sam":"Maltese"}
-	//}
-
-	// Encode a struct/type to JSON
-	encoded_json := json2.encode[Person](person2)
+	age := person['age'].int() // 20
 }
 ```
-## Using `decode[T]` and `encode[T]`
-> Codegen for this feature is still WIP.
-> You need to manually define the methods before using the module to structs.
-
-
-```v
-struct Person {
-mut:
-    name string
-    age  int = 20
-    pets []string
-}
-
-fn main() {
-    resp := '{"name": "Bob", "age": 28, "pets": ["Floof"]}'
-    person := json2.decode[Person](resp)!
-    println(person) // Person{name: 'Bob', age: 28, pets: ['Floof']}
-    person_json := json2.encode[Person](person)
-    println(person_json) // {"name": "Bob", "age": 28, "pets": ["Floof"]}
-}
-```
-
 ### Null Values
 `x.json2` has a separate `null` type for differentiating an undefined value and a null value.
 To verify that the field you're accessing is a `null`, use `[typ] is json2.Null`.
@@ -86,11 +104,6 @@ fn (mut p Person) from_json(f json2.Any) {
     }
 }
 ```
-
-### Undefined Values
-Getting undefined values has the same behavior as regular V types.
-If you're casting a base field into `map[string]json2.Any` and fetch an undefined entry/value,
-it simply returns empty. As for the `[]json2.Any`, it returns an index error.
 
 ## Casting a value to an incompatible type
 `x.json2` provides methods for turning `Any` types into usable types.
