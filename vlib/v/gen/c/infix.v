@@ -886,6 +886,25 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 			g.inside_ternary = prev_inside_ternary
 			return
 		}
+	} else if node.right is ast.PrefixExpr && g.inside_ternary == 0 {
+		mut right := node.right
+		if right.op == .not && right.right is ast.CallExpr {
+			prev_inside_ternary := g.inside_ternary
+			g.inside_ternary = 0
+			tmp := g.new_tmp_var()
+			cur_line := g.go_before_stmt(0).trim_space()
+			g.empty_line = true
+			g.write('bool ${tmp} = (')
+			g.expr(node.left)
+			g.writeln(');')
+			g.set_current_pos_as_last_stmt_pos()
+			g.write('${cur_line} ${tmp} ${node.op.str()} ')
+			g.infix_left_var_name = '!${tmp}'
+			g.expr(node.right)
+			g.infix_left_var_name = ''
+			g.inside_ternary = prev_inside_ternary
+			return
+		}
 	}
 	g.gen_plain_infix_expr(node)
 }
