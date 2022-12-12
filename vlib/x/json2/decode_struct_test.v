@@ -79,8 +79,5 @@ fn test_types() {
 	assert json.decode[StructType[int]]('{"val": false}')!.val == 0
 
 	assert json.decode[StructType[time.Time]]('{"val": "2022-03-11T13:54:25.000Z"}')!.val == fixed_time
-	assert json.decode[StructType[time.Time]]('{"val": "0000-00-00T00:00:00.000Z"}')!.val == time.Time{}
-
 	assert json.decode[StructType[time.Time]]('{"val": "2022-03-11 13:54:25.000"}')!.val == fixed_time
-	assert json.decode[StructType[time.Time]]('{"val": "0000-00-00 00:00:00.000"}')!.val == time.Time{}
 }

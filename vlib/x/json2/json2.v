@@ -259,19 +259,10 @@ pub fn (f Any) to_time() !time.Time {
 			return f
 		}
 		string {
-			// REVIEW
-			if f == '0000-00-00 00:00:00.000' || f == '0000-00-00T00:00:00.000Z' {
-				return time.Time{}
-			}
 			// TODO - use regex
 			// TODO - parse_iso8601
 			// TODO - parse_rfc2822
-			f_runes := f.runes()
-
-			// REVIEW
-			is_rfc3339 := f_runes[4].str() == '-' && f_runes[7].str() == '-'
-				&& f_runes[10].str() == 'T' && f_runes[13].str() == ':' && f_runes[16].str() == ':'
-			// is_rfc3339 := f.runes()[4] == "-" && f_runes[7] == "-" && f_runes[10] == "T" && f_runes[13] == ":" && f_runes[16] == ":"
+			is_rfc3339 := f.len == 24 && f[23] == `Z` && f[10] == `T`
 			if is_rfc3339 {
 				return time.parse_rfc3339(f)!
 			} else {
@@ -279,7 +270,7 @@ pub fn (f Any) to_time() !time.Time {
 			}
 		}
 		else {
-			return time.Time{}
+			return error('not a time value: ${f}')
 		}
 	}
 }
