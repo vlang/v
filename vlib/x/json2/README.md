@@ -55,13 +55,8 @@ fn main() {
 > Codegen for this feature is still WIP.
 > You need to manually define the methods before using the module to structs.
 
-In order to use the `decode[T]` and `encode[T]` function, you need to explicitly define
-two methods: `from_json` and `to_json`. `from_json` accepts a `json2.Any` argument
-and inside of it you need to map the fields you're going to put into the type.
-As for `to_json` method, you just need to map the values into `json2.Any`
-and turn it into a string.
 
-```v ignore
+```v
 struct Person {
 mut:
     name string
@@ -69,60 +64,12 @@ mut:
     pets []string
 }
 
-fn (mut p Person) from_json(f json2.Any) {
-    obj := f.as_map()
-    for k, v in obj {
-        match k {
-            'name' { p.name = v.str() }
-            'age' { p.age = v.int() }
-            'pets' { p.pets = v.arr().map(it.str()) }
-            else {}
-        }
-    }
-}
-
-fn (p Person) to_json() string {
-    mut obj := map[string]json2.Any
-    obj['name'] = p.name
-    obj['age'] = p.age
-    obj['pets'] = p.pets
-    return obj.str()
-}
-
 fn main() {
-    resp := os.read_file('./person.json')!
+    resp := '{"name": "Bob", "age": 28, "pets": ["Floof"]}'
     person := json2.decode[Person](resp)!
     println(person) // Person{name: 'Bob', age: 28, pets: ['Floof']}
     person_json := json2.encode[Person](person)
     println(person_json) // {"name": "Bob", "age": 28, "pets": ["Floof"]}
-}
-```
-
-## Using struct tags
-`x.json2` can access and use the struct field tags similar to the
-`json` module by using the comp-time `$for` for structs.
-
-```v ignore
-fn (mut p Person) from_json(f json2.Any) {
-    mp := an.as_map()
-	mut js_field_name := ''
-    $for field in Person.fields {
-        js_field_name = field.name
-
-        for attr in field.attrs {
-			if attr.starts_with('json:') {
-				js_field_name = attr.all_after('json:').trim_left(' ')
-				break
-			}
-		}
-
-        match field.name {
-            'name' { p.name = mp[js_field_name].str() }
-			'age' { u.age = mp[js_field_name].int() }
-			'pets' { u.pets = mp[js_field_name].arr().map(it.str()) }
-			else {}
-		}
-    }
 }
 ```
 
@@ -137,27 +84,6 @@ fn (mut p Person) from_json(f json2.Any) {
         // use a default value
         p.age = 10
     }
-}
-```
-
-### Custom field names
-Aside from using struct tags, you can also just simply cast the base field into a map (`as_map()`)
-and access the field you wish to put into the struct/type.
-
-```v ignore
-fn (mut p Person) from_json(f json2.Any) {
-    obj := f.as_map()
-    p.name = obj['nickname'].str()
-}
-```
-
-```v oksyntax
-import x.json2
-
-fn (p Person) to_json() string {
-	mut obj := map[string]json2.Any{}
-	obj['nickname'] = p.name
-	return obj.str()
 }
 ```
 
