@@ -78,9 +78,8 @@ fn main() {
 }
 ```
 #### Casting `Any` type / Navigating
-```v oksyntax
+```v
 import x.json2
-import net.http
 
 fn main() {
 	resp := '{"name": "Bob", "age": 20, "birthday": "2022-03-11T13:54:25.000Z"}'
@@ -90,6 +89,37 @@ fn main() {
 	person := raw_person.as_map()
 	name := person['name'].str() // Bob
 	age := person['age'].int() // 20
+}
+```
+#### Constructing an `Any` type
+```v
+import x.json2
+
+fn main() {
+	mut me := map[string]json2.Any{}
+	me['name'] = 'Bob'
+	me['age'] = 18
+
+	mut arr := []json2.Any{}
+	arr << 'rock'
+	arr << 'papers'
+	arr << json2.null
+	arr << 12
+
+	me['interests'] = arr
+
+	mut pets := map[string]json2.Any{}
+	pets['Sam'] = 'Maltese Shitzu'
+	me['pets'] = pets
+
+	// Stringify to JSON
+	println(me.str())
+	//{
+	//   "name":"Bob",
+	//   "age":18,
+	//   "interests":["rock","papers","scissors",null,12],
+	//   "pets":{"Sam":"Maltese"}
+	//}
 }
 ```
 ### Null Values
