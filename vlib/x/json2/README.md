@@ -69,26 +69,31 @@ json2.decode[Person]('{"name": "Bob", "age": "20", "birthday": "1647006865"}}')!
 
 ```v
 import x.json2
+import net.http
 
 fn main() {
-	resp := '{"name": "Bob", "age": 20, "birthday": "2022-03-11T13:54:25.000Z"}'
+	resp := http.get('https://reqres.in/api/products/1')!
 
 	// This return a Any type
-	raw_person := json2.raw_decode(resp)!
+	raw_product := json2.raw_decode(resp.body)!
 }
 ```
 #### Casting `Any` type / Navigating
 ```v
 import x.json2
+import net.http
 
 fn main() {
-	resp := '{"name": "Bob", "age": 20, "birthday": "2022-03-11T13:54:25.000Z"}'
+	resp := http.get('https://reqres.in/api/products/1')!
 
-	raw_person := json2.raw_decode(resp)!
+	raw_product := json2.raw_decode(resp.body)!
 
-	person := raw_person.as_map()
-	name := person['name'].str() // Bob
-	age := person['age'].int() // 20
+	product := raw_product.as_map()
+	data := product['data'] as map[string]json2.Any
+
+	id := data['id'].int() // 1
+	name := data['name'].str() // cerulean
+	year := data['year'].int() // 2000
 }
 ```
 #### Constructing an `Any` type
