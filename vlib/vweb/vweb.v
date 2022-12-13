@@ -726,5 +726,5 @@ fn send_string(mut conn net.TcpConn, s string) ! {
 // It used by `vlib/v/gen/c/str_intp.v:130` for string interpolation inside vweb templates
 // TODO: move it to template render
 fn filter(s string) string {
-	return html.escape(input: s)
+	return html.escape(s)
 }
