@@ -55,3 +55,40 @@ fn test_array_cap_shrinkage_after_deletion() {
 	assert a.len == 12
 	assert a.cap == 20
 }
+
+fn fixed_array_on_the_heap(len int, size int) []u8 {
+	data := vcalloc(size)
+	println(ptr_str(data))
+	return unsafe {
+		array{
+			element_size: 1
+			len: len
+			cap: size
+			data: data
+			flags: .noshrink | .nogrow | .nofree
+		}
+	}
+}
+
+fn test_array_fixed_growth() {
+	mut x := fixed_array_on_the_heap(0, 10)
+	println(ptr_str(x.data))
+	x << 5
+	x << 10
+	x << 15
+	x << 20
+	dump(x)
+	dump(x.flags)
+	assert x[2] == 15
+	assert x.flags == .noshrink | .nogrow | .nofree
+}
+
+fn test_array_fixed() {
+	mut x := fixed_array_on_the_heap(10, 10)
+	println(ptr_str(x.data))
+	x[2] = 5
+	dump(x)
+	dump(x.flags)
+	assert x[2] == 5
+	assert x.flags == .noshrink | .nogrow | .nofree
+}
