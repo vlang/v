@@ -128,7 +128,7 @@ fn main() {
 }
 ```
 ### Null Values
-`x.json2` has a separate `null` type for differentiating an undefined value and a null value.
+`x.json2` has a separate `Null` type for differentiating an undefined value and a null value.
 To verify that the field you're accessing is a `Null`, use `[typ] is json2.Null`.
 
 ```v ignore
