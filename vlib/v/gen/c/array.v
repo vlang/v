@@ -222,9 +222,15 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 			g.write('sizeof(${elem_styp}), ')
 		}
 		if is_default_array {
+			info := elem_type.unaliased_sym.info as ast.Array
+			depth := if g.table.sym(info.elem_type).kind == .array {
+				1
+			} else {
+				0
+			}
 			g.write('(${elem_styp}[]){')
 			g.write(g.type_default(node.elem_type))
-			g.write('}[0])')
+			g.write('}[0], ${depth})')
 		} else if node.has_len && node.elem_type == ast.string_type {
 			g.write('&(${elem_styp}[]){')
 			g.write('_SLIT("")')
@@ -291,7 +297,17 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 	} else {
 		g.write('sizeof(${elem_styp}), ')
 	}
-	if is_default_array || is_default_map {
+	if is_default_array {
+		info := elem_type.unaliased_sym.info as ast.Array
+		depth := if g.table.sym(info.elem_type).kind == .array {
+			1
+		} else {
+			0
+		}
+		g.write('(${elem_styp}[]){')
+		g.expr(node.default_expr)
+		g.write('}[0], ${depth})')
+	} else if is_default_map {
 		g.write('(${elem_styp}[]){')
 		g.expr(node.default_expr)
 		g.write('}[0])')

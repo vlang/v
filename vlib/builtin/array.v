@@ -63,7 +63,7 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 	return arr
 }
 
-fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array) array {
+fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array, depth int) array {
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
@@ -74,7 +74,7 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array) a
 	mut eptr := &u8(arr.data)
 	unsafe {
 		for _ in 0 .. arr.len {
-			val_clone := val.clone_to_depth(1)
+			val_clone := val.clone_to_depth(depth)
 			vmemcpy(eptr, &val_clone, arr.element_size)
 			eptr += arr.element_size
 		}
