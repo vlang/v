@@ -74,7 +74,7 @@ import net.http
 fn main() {
 	resp := http.get('https://reqres.in/api/products/1')!
 
-	// This return a Any type
+	// This returns an Any type
 	raw_product := json2.raw_decode(resp.body)!
 }
 ```
