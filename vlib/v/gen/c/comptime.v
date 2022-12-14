@@ -8,6 +8,15 @@ import v.ast
 import v.util
 import v.pref
 
+fn (mut g Gen) get_comptime_selector_var_type(node ast.ComptimeSelector) (ast.StructField, string) {
+	field_name := g.comptime_for_field_value.name
+	left_sym := g.table.sym(g.unwrap_generic(node.left_type))
+	field := g.table.find_field_with_embeds(left_sym, field_name) or {
+		g.error('`${node.left}` has no field named `${field_name}`', node.left.pos())
+	}
+	return field, field_name
+}
+
 fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	g.expr(node.left)
 	if node.left_type.is_ptr() {
@@ -20,11 +29,7 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 		if node.field_expr.expr is ast.Ident {
 			if node.field_expr.expr.name == g.comptime_for_field_var
 				&& node.field_expr.field_name == 'name' {
-				field_name := g.comptime_for_field_value.name
-				left_sym := g.table.sym(g.unwrap_generic(node.left_type))
-				_ := g.table.find_field_with_embeds(left_sym, field_name) or {
-					g.error('`${node.left}` has no field named `${field_name}`', node.left.pos())
-				}
+				_, field_name := g.get_comptime_selector_var_type(node)
 				g.write(c_name(field_name))
 				return
 			}

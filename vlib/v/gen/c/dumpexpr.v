@@ -13,17 +13,35 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		return
 	}
 	mut name := node.cname
+	mut expr_type := node.expr_type
+
+	// var.${field.name}
+	if node.expr is ast.ComptimeSelector {
+		selector := node.expr as ast.ComptimeSelector
+		if selector.field_expr is ast.SelectorExpr {
+			selector_expr := selector.field_expr as ast.SelectorExpr
+			if selector_expr.expr is ast.Ident {
+				ident_expr := selector_expr.expr
+				if ident_expr.name == g.comptime_for_field_var && selector_expr.field_name == 'name' {
+					field, _ := g.get_comptime_selector_var_type(selector)
+					name = g.typ(g.unwrap_generic(field.typ.clear_flag(.shared_f).clear_flag(.optional).clear_flag(.result)))
+					expr_type = field.typ
+				}
+			}
+		}
+	}
+
 	if g.table.sym(node.expr_type).language == .c {
 		name = name[3..]
 	}
 	dump_fn_name := '_v_dump_expr_${name}' +
-		(if node.expr_type.is_ptr() { '_ptr'.repeat(node.expr_type.nr_muls()) } else { '' })
+		(if expr_type.is_ptr() { '_ptr'.repeat(expr_type.nr_muls()) } else { '' })
 	g.write(' ${dump_fn_name}(${ctoslit(fpath)}, ${line}, ${sexpr}, ')
-	if node.expr_type.has_flag(.shared_f) {
+	if expr_type.has_flag(.shared_f) {
 		g.write('&')
 		g.expr(node.expr)
 		g.write('->val')
-	} else if node.expr_type.has_flag(.optional) || node.expr_type.has_flag(.result) {
+	} else if expr_type.has_flag(.optional) || expr_type.has_flag(.result) {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
 		g.write('(*(${name}*)')
