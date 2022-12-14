@@ -61,7 +61,7 @@ pub enum ConnStatusType {
 	needed = C.CONNECTION_NEEDED // Internal state: connect() needed
 	check_writable = C.CONNECTION_CHECK_WRITABLE // Check if we could make a writable connection.
 	consume = C.CONNECTION_CONSUME // Wait for any pending message and consume them.
-	gss_startup = C.CONNECTION_GSS_STARTUP // Negotiating GSSAPI.
+	// gss_startup = C.CONNECTION_GSS_STARTUP // Negotiating GSSAPI; available since PG 12
 }
 
 [typedef]
