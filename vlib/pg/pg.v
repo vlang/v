@@ -13,8 +13,14 @@ import io
 // PostgreSQL Source Code
 // https://doxygen.postgresql.org/libpq-fe_8h.html
 #include <libpq-fe.h>
+
+// for PG_VERSION_NUM, which is defined everywhere at least since PG 9.5
+#include <pg_config.h>
+
 // for orm
 #include <arpa/inet.h>
+
+#include "@VMODROOT/vlib/pg/compatibility.h"
 
 pub struct DB {
 mut:
@@ -58,10 +64,10 @@ pub enum ConnStatusType {
 	auth_ok = C.CONNECTION_AUTH_OK // Received authentication; waiting for backend startup.
 	setenv = C.CONNECTION_SETENV // Negotiating environment.
 	ssl_startup = C.CONNECTION_SSL_STARTUP // Negotiating SSL.
-	needed = C.CONNECTION_NEEDED // Internal state: connect() needed
-	check_writable = C.CONNECTION_CHECK_WRITABLE // Check if we could make a writable connection.
-	consume = C.CONNECTION_CONSUME // Wait for any pending message and consume them.
-	// gss_startup = C.CONNECTION_GSS_STARTUP // Negotiating GSSAPI; available since PG 12
+	needed = C.CONNECTION_NEEDED // Internal state: connect() needed . Available in PG 8
+	check_writable = C.CONNECTION_CHECK_WRITABLE // Check if we could make a writable connection. Available since PG 10
+	consume = C.CONNECTION_CONSUME // Wait for any pending message and consume them. Available since PG 10
+	gss_startup = C.CONNECTION_GSS_STARTUP // Negotiating GSSAPI; available since PG 12
 }
 
 [typedef]
