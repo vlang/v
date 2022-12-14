@@ -8,7 +8,7 @@ struct Foo {
 	}
 }
 
-fn sei_oq_la[T](val T) {
+fn run[T](val T) {
 	$for field in T.fields {
 		dump(val.$(field.name))
 	}
@@ -17,5 +17,5 @@ fn sei_oq_la[T](val T) {
 
 fn test_main() {
 	foo := Foo{'c', 'd', 1, 0, struct {100}}
-	sei_oq_la(foo)
+	run(foo)
 }

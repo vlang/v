@@ -15,6 +15,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	mut name := node.cname
 	mut expr_type := node.expr_type
 
+	// var.${field.name}
 	if node.expr is ast.ComptimeSelector {
 		selector := node.expr as ast.ComptimeSelector
 		if selector.field_expr is ast.SelectorExpr {
@@ -34,7 +35,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		name = name[3..]
 	}
 	dump_fn_name := '_v_dump_expr_${name}' +
-		(if node.expr_type.is_ptr() { '_ptr'.repeat(node.expr_type.nr_muls()) } else { '' })
+		(if expr_type.is_ptr() { '_ptr'.repeat(expr_type.nr_muls()) } else { '' })
 	g.write(' ${dump_fn_name}(${ctoslit(fpath)}, ${line}, ${sexpr}, ')
 	if expr_type.has_flag(.shared_f) {
 		g.write('&')
