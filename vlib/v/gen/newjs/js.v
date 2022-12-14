@@ -7,6 +7,7 @@ import v.pref
 import v.util
 import v.util.version
 import v.depgraph
+import analysis
 
 
 [heap]

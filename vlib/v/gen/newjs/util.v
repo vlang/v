@@ -107,12 +107,28 @@ fn (mut fc FuncContext) new_variable_with_level(name_ string, mod_level bool) st
 	return var_name
 }
 
-fn (mut fc FuncContext) new_ident(name string, t ast.Type) {
-
-}
+/*
+fn (mut fc FuncContext) new_ident(name string, t ast.Type) &ast.Ident {
+	id := &ast.Ident {
+		language: .js
+		tok_kind: .name
+		comptime: false
+		mod: fc.mod_ctx.mod.name
+		name: name 
+		kind: .variable 
+		info: IdentVar {
+			typ: t
+			is_mut: true 
+			is_static: false 
+			is_volatile: false 
+			is_optional: false 
+			share: .mut_t
+		}
+	}
+}*/
 
 fn is_mod_level(fc &FuncContext, sym &ast.Ident) bool {
-	return unsafe { sym.scope is nil || (sym.scope == fc.mod_ctx.gen.table.global_scope || sym.scope.parent == fc.mod_ctx.gen.table.global_scope) }
+	return unsafe { sym.scope == nil || (sym.scope == fc.mod_ctx.gen.table.global_scope || sym.scope.parent == fc.mod_ctx.gen.table.global_scope) }
 }
 
 fn (mut fc FuncContext) ident_name(o &ast.Ident) string {
@@ -125,7 +141,7 @@ fn (mut fc FuncContext) ident_name(o &ast.Ident) string {
 	}
 
 	name := fc.mod_ctx.object_names[o] or {
-		name := fc.new_variable_with_level(o.name, is_mod_level(o))
+		name := fc.new_variable_with_level(o.name, is_mod_level(fc, o))
 		fc.mod_ctx.object_names[o] = name 
 		name 
 	}
