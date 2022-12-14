@@ -33,7 +33,7 @@ if /I not ["%TCC_BRANCH%"] == [""] set tcc_branch=%TCC_BRANCH%
 
 if /I not ["%VC_GIT%"] == [""] set vc_url=%VC_GIT%
 
-pushd %~dp0
+pushd "%~dp0"
 
 :verifyopt
 REM Read stdin EOF
@@ -229,7 +229,7 @@ call :move_updated_to_v
 goto :success
 
 :download_tcc
-pushd %tcc_dir% && (
+pushd "%tcc_dir%" && (
     echo Updating TCC
     echo  ^> Syncing TCC from !tcc_url!
     git pull --quiet
