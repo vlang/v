@@ -24,6 +24,8 @@ pub mut:
 pub enum ArrayFlags {
 	noslices // when <<, `.noslices` will free the old data block immediately (you have to be sure, that there are *no slices* to that specific array). TODO: integrate with reference counting/compiler support for the static cases.
 	noshrink // when `.noslices` and `.noshrink` are *both set*, .delete(x) will NOT allocate new memory and free the old. It will just move the elements in place, and adjust .len.
+	nogrow // the array will never be allowed to grow past `.cap`. set `.nogrow` and `.noshrink` for a truly fixed heap array
+	nofree // `.data` will never be freed
 }
 
 // Internal function, used by V (`nums := []int`)
@@ -63,7 +65,7 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 	return arr
 }
 
-fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array) array {
+fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array, depth int) array {
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
@@ -74,7 +76,7 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array) a
 	mut eptr := &u8(arr.data)
 	unsafe {
 		for _ in 0 .. arr.len {
-			val_clone := val.clone_to_depth(1)
+			val_clone := val.clone_to_depth(depth)
 			vmemcpy(eptr, &val_clone, arr.element_size)
 			eptr += arr.element_size
 		}
@@ -132,6 +134,9 @@ fn new_array_from_c_array_no_alloc(len int, cap int, elm_size int, c_array voidp
 fn (mut a array) ensure_cap(required int) {
 	if required <= a.cap {
 		return
+	}
+	if a.flags.has(.nogrow) {
+		panic('array.ensure_cap: array with the flag `.nogrow` cannot grow in size, array required new size: ${required}')
 	}
 	mut cap := if a.cap > 0 { a.cap } else { 2 }
 	for required > cap {
@@ -698,6 +703,9 @@ pub fn (a &array) free() {
 	// if a.is_slice {
 	// return
 	// }
+	if a.flags.has(.nofree) {
+		return
+	}
 	mblock_ptr := &u8(u64(a.data) - u64(a.offset))
 	unsafe { free(mblock_ptr) }
 }
