@@ -286,10 +286,6 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			c.error('a non generic struct `${node.typ_str}` used like a generic struct',
 				node.name_pos)
 		}
-		if node.generic_types.len > 0 && struct_sym.info.generic_types.len == node.generic_types.len
-			&& struct_sym.info.generic_types != node.generic_types {
-			c.table.replace_generic_type(node.typ, node.generic_types)
-		}
 	} else if struct_sym.info is ast.Alias {
 		parent_sym := c.table.sym(struct_sym.info.parent_type)
 		// e.g. ´x := MyMapAlias{}´, should be a cast to alias type ´x := MyMapAlias(map[...]...)´

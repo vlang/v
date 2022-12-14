@@ -131,7 +131,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('fixed array cannot be returned by function', node.return_type_pos)
 		}
 		// Ensure each generic type of the parameter was declared in the function's definition
-		if node.return_type.has_flag(.generic) {
+		// TODO: fix inconsistent return_type type case
+		if node.return_type.has_flag(.generic) && (return_sym.kind == .any
+			|| (return_sym.kind == .array
+			&& c.table.sym((return_sym.info as ast.Array).elem_type).kind == .any)) {
 			generic_names := c.table.generic_type_names(node.return_type)
 			for name in generic_names {
 				if name !in node.generic_names {

@@ -1703,9 +1703,13 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 		Struct, Interface, SumType {
 			if sym.info.is_generic {
 				mut nrt := '${sym.name}['
+				mut t_generic_names := generic_names.clone()
+				if generic_names.len == sym.info.generic_types.len {
+					t_generic_names = sym.info.generic_types.map(t.sym(it).name)
+				}
 				for i in 0 .. sym.info.generic_types.len {
 					if ct := t.resolve_generic_to_concrete(sym.info.generic_types[i],
-						generic_names, concrete_types)
+						t_generic_names, concrete_types)
 					{
 						gts := t.sym(ct)
 						nrt += gts.name
@@ -1834,10 +1838,14 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 			if !ts.info.is_generic {
 				return typ
 			}
+			mut t_generic_names := generic_names.clone()
+			if generic_names.len == ts.info.generic_types.len {
+				t_generic_names = ts.info.generic_types.map(t.sym(it).name)
+			}
 			nrt = '${ts.name}['
 			c_nrt = '${ts.cname}_T_'
 			for i in 0 .. ts.info.generic_types.len {
-				if ct := t.resolve_generic_to_concrete(ts.info.generic_types[i], generic_names,
+				if ct := t.resolve_generic_to_concrete(ts.info.generic_types[i], t_generic_names,
 					concrete_types)
 				{
 					gts := t.sym(ct)
@@ -1860,10 +1868,10 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 					if fields[i].typ.has_flag(.generic) {
 						sym := t.sym(fields[i].typ)
 						if sym.kind == .struct_ && fields[i].typ.idx() != typ.idx() {
-							fields[i].typ = t.unwrap_generic_type(fields[i].typ, generic_names,
+							fields[i].typ = t.unwrap_generic_type(fields[i].typ, t_generic_names,
 								concrete_types)
 						} else {
-							if t_typ := t.resolve_generic_to_concrete(fields[i].typ, generic_names,
+							if t_typ := t.resolve_generic_to_concrete(fields[i].typ, t_generic_names,
 								concrete_types)
 							{
 								fields[i].typ = t_typ
@@ -1874,7 +1882,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 				// update concrete types
 				for i in 0 .. ts.info.generic_types.len {
 					if t_typ := t.resolve_generic_to_concrete(ts.info.generic_types[i],
-						generic_names, concrete_types)
+						t_generic_names, concrete_types)
 					{
 						final_concrete_types << t_typ
 					}
@@ -2003,48 +2011,6 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 		else {}
 	}
 	return typ
-}
-
-// Foo[U]{ bar: U } to Foo[T]{ bar: T }
-pub fn (mut t Table) replace_generic_type(typ Type, generic_types []Type) {
-	mut ts := t.sym(typ)
-	match mut ts.info {
-		Array {
-			mut elem_type := ts.info.elem_type
-			mut elem_sym := t.sym(elem_type)
-			mut dims := 1
-			for mut elem_sym.info is Array {
-				elem_type = elem_sym.info.elem_type
-				elem_sym = t.sym(elem_type)
-				dims++
-			}
-			t.replace_generic_type(elem_type, generic_types)
-		}
-		ArrayFixed {
-			t.replace_generic_type(ts.info.elem_type, generic_types)
-		}
-		Chan {
-			t.replace_generic_type(ts.info.elem_type, generic_types)
-		}
-		Map {
-			t.replace_generic_type(ts.info.key_type, generic_types)
-			t.replace_generic_type(ts.info.value_type, generic_types)
-		}
-		Struct, Interface, SumType {
-			generic_names := ts.info.generic_types.map(t.sym(it).name)
-			for i in 0 .. ts.info.fields.len {
-				if ts.info.fields[i].typ.has_flag(.generic) {
-					if t_typ := t.resolve_generic_to_concrete(ts.info.fields[i].typ, generic_names,
-						generic_types)
-					{
-						ts.info.fields[i].typ = t_typ
-					}
-				}
-			}
-			ts.info.generic_types = generic_types
-		}
-		else {}
-	}
 }
 
 // generic struct instantiations to concrete types
