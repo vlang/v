@@ -75,7 +75,7 @@ goto :!target!
 :check
 echo.
 echo Check everything
-v.exe test-all
+"%V_EXE%" test-all
 exit /b 0
 
 :cleanall
@@ -252,14 +252,14 @@ echo ERROR: please follow the instructions in https://github.com/vlang/v/wiki/In
 exit /b 1
 
 :success
-"./v.exe" run cmd/tools/detect_tcc.v
+"%V_EXE%" run cmd/tools/detect_tcc.v
 echo  ^> V built successfully!
-echo  ^> To add V to your PATH, run `./v.exe symlink`.
+echo  ^> To add V to your PATH, run `%V_EXE% symlink`.
 
 :version
 echo.
 echo | set /p="V version: "
-"./v.exe" version
+"%V_EXE%" version
 goto :eof
 
 :usage
@@ -353,7 +353,7 @@ endlocal
 exit /b 0
 
 :move_updated_to_v
-@REM del "%V_EXE%" &:: breaks if `make.bat` is run from `v up` b/c of held file handle on `v.exe`
+@REM del "%V_EXE%" &:: breaks if `make.bat` is run from `v up` b/c of held file handle on `%V_EXE%`
 if exist "%V_EXE%" move "%V_EXE%" "%V_OLD%" >nul
 REM sleep for at most 100ms
 ping 192.0.2.1 -n 1 -w 100 >nul
