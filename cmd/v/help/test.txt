@@ -35,9 +35,10 @@ You can use several alternative test result formats, using `-test-runner name`,
 or by setting VTEST_RUNNER (the command line option has higher priority).
 
 The names of the available test runners are:
-    `simple` Fastest, does not import additional modules, does no processing.
-    `tap`    Format the output as required by the Test Anything Protocol (TAP).
-    `normal` Supports color output, nicest/most human readable, the default.
+    `simple`   Fastest, does not import additional modules, does no processing.
+    `tap`      Format the output as required by the Test Anything Protocol (TAP).
+    `normal`   Supports color output, nicest/most human readable, the default.
+    `teamcity` Format the output as required by the Teamcity and JetBrains IDEs.
 
 You can also implement your own custom test runner, by providing the path to
 your .v file, that implements it to this option. For example, see:
