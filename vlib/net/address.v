@@ -100,13 +100,13 @@ const aoffset = __offsetof(Addr, addr)
 fn (a Addr) len() u32 {
 	match a.family() {
 		.ip {
-			return sizeof(Ip) + net.aoffset
+			return sizeof[Ip]() + net.aoffset
 		}
 		.ip6 {
-			return sizeof(Ip6) + net.aoffset
+			return sizeof[Ip6]() + net.aoffset
 		}
 		.unix {
-			return sizeof(Unix) + net.aoffset
+			return sizeof[Unix]() + net.aoffset
 		}
 		else {
 			panic('Unknown address family')

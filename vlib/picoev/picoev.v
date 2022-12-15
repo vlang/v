@@ -79,7 +79,7 @@ mut:
 [inline]
 fn setup_sock(fd int) ? {
 	flag := 1
-	if C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_NODELAY, &flag, sizeof(int)) < 0 {
+	if C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_NODELAY, &flag, sizeof[int]()) < 0 {
 		return error('setup_sock.setup_sock failed')
 	}
 	if C.fcntl(fd, C.F_SETFL, C.O_NONBLOCK) != 0 {
@@ -199,14 +199,14 @@ pub fn new(config Config) &Picoev {
 
 	// Setting flags for socket
 	flag := 1
-	assert C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEADDR, &flag, sizeof(int)) == 0
+	assert C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEADDR, &flag, sizeof[int]()) == 0
 	$if linux {
-		assert C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEPORT, &flag, sizeof(int)) == 0
-		assert C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_QUICKACK, &flag, sizeof(int)) == 0
+		assert C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEPORT, &flag, sizeof[int]()) == 0
+		assert C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_QUICKACK, &flag, sizeof[int]()) == 0
 		timeout := 10
-		assert C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_DEFER_ACCEPT, &timeout, sizeof(int)) == 0
+		assert C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_DEFER_ACCEPT, &timeout, sizeof[int]()) == 0
 		queue_len := 4096
-		assert C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_FASTOPEN, &queue_len, sizeof(int)) == 0
+		assert C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_FASTOPEN, &queue_len, sizeof[int]()) == 0
 	}
 
 	// Setting addr
@@ -215,7 +215,7 @@ pub fn new(config Config) &Picoev {
 		sin_port: C.htons(config.port)
 		sin_addr: C.htonl(C.INADDR_ANY)
 	}
-	size := sizeof(C.sockaddr_in)
+	size := sizeof[C.sockaddr_in]()
 	bind_res := C.bind(fd, voidptr(unsafe { &net.Addr(&addr) }), size)
 	assert bind_res == 0
 	listen_res := C.listen(fd, C.SOMAXCONN)

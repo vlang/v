@@ -2462,7 +2462,7 @@ clr2 := Rgba32{
 	}
 }
 
-sz := sizeof(Rgba32)
+sz := sizeof[Rgba32]()
 unsafe {
 	println('Size: ${sz}B,clr1.b: ${clr1.b},clr2.b: ${clr2.b}')
 }
@@ -5586,7 +5586,7 @@ struct Foo {
 	b int
 }
 
-assert sizeof(Foo) == 8
+assert sizeof[Foo]() == 8
 assert __offsetof(Foo, a) == 0
 assert __offsetof(Foo, b) == 4
 ```

@@ -301,7 +301,7 @@ pub fn raw_execute(cmd string) Result {
 	mut child_stdout_read := &u32(0)
 	mut child_stdout_write := &u32(0)
 	mut sa := SecurityAttributes{}
-	sa.n_length = sizeof(C.SECURITY_ATTRIBUTES)
+	sa.n_length = sizeof[C.SECURITY_ATTRIBUTES]()
 	sa.b_inherit_handle = true
 	create_pipe_ok := C.CreatePipe(voidptr(&child_stdout_read), voidptr(&child_stdout_write),
 		voidptr(&sa), 0)
@@ -329,7 +329,7 @@ pub fn raw_execute(cmd string) Result {
 		lp_reserved: 0
 		lp_desktop: 0
 		lp_title: 0
-		cb: sizeof(C.PROCESS_INFORMATION)
+		cb: sizeof[C.PROCESS_INFORMATION]()
 		h_std_input: child_stdin
 		h_std_output: child_stdout_write
 		h_std_error: child_stdout_write

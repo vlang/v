@@ -70,7 +70,7 @@ fn test_empty_struct() {
 	println(d) // != voidptr(0)
 	println('empty:')
 	println(d2) // empty struct print
-	println(sizeof(Empty)) // == 0
+	println(sizeof[Empty]()) // == 0
 }
 
 fn test_struct_levels() {

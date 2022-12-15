@@ -250,9 +250,9 @@ fn map_free_nop(_ voidptr) {
 }
 
 fn new_map(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn) map {
-	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
+	metasize := int(sizeof[u32]() * (init_capicity + extra_metas_inc))
 	// for now assume anything bigger than a pointer is a string
-	has_string_keys := key_bytes > sizeof(voidptr)
+	has_string_keys := key_bytes > sizeof[voidptr]()
 	return map{
 		key_bytes: key_bytes
 		value_bytes: value_bytes
@@ -289,7 +289,7 @@ fn new_map_init(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_
 pub fn (mut m map) move() map {
 	r := *m
 	unsafe {
-		vmemset(m, 0, int(sizeof(map)))
+		vmemset(m, 0, int(sizeof[map]()))
 	}
 	return r
 }
@@ -351,14 +351,14 @@ fn (mut m map) meta_greater(_index u32, _metas u32, kvi u32) {
 [inline]
 fn (mut m map) ensure_extra_metas(probe_count u32) {
 	if (probe_count << 1) == m.extra_metas {
-		size_of_u32 := sizeof(u32)
+		size_of_u32 := sizeof[u32]()
 		old_mem_size := (m.even_index + 2 + m.extra_metas)
 		m.extra_metas += extra_metas_inc
 		mem_size := (m.even_index + 2 + m.extra_metas)
 		unsafe {
 			x := realloc_data(&u8(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
 			m.metas = &u32(x)
-			vmemset(m.metas + mem_size - extra_metas_inc, 0, int(sizeof(u32) * extra_metas_inc))
+			vmemset(m.metas + mem_size - extra_metas_inc, 0, int(sizeof[u32]() * extra_metas_inc))
 		}
 		// Should almost never happen
 		if probe_count == 252 {
@@ -423,7 +423,7 @@ fn (mut m map) expand() {
 // Rehashes are performed when the load_factor is going to surpass
 // the max_load_factor in an operation.
 fn (mut m map) rehash() {
-	meta_bytes := sizeof(u32) * (m.even_index + 2 + m.extra_metas)
+	meta_bytes := sizeof[u32]() * (m.even_index + 2 + m.extra_metas)
 	unsafe {
 		// TODO: use realloc_data here too
 		x := v_realloc(&u8(m.metas), int(meta_bytes))
@@ -445,7 +445,7 @@ fn (mut m map) rehash() {
 // key completely, it uses the bits cached in `metas`.
 fn (mut m map) cached_rehash(old_cap u32) {
 	old_metas := m.metas
-	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
+	metasize := int(sizeof[u32]() * (m.even_index + 2 + m.extra_metas))
 	m.metas = unsafe { &u32(vcalloc(metasize)) }
 	old_extra_metas := m.extra_metas
 	for i := u32(0); i <= old_cap + old_extra_metas; i += 2 {
@@ -687,7 +687,7 @@ fn (d &DenseArray) clone() DenseArray {
 // clone returns a clone of the `map`.
 [unsafe]
 pub fn (m &map) clone() map {
-	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
+	metasize := int(sizeof[u32]() * (m.even_index + 2 + m.extra_metas))
 	res := map{
 		key_bytes: m.key_bytes
 		value_bytes: m.value_bytes

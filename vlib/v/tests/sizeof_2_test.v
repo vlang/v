@@ -1,5 +1,5 @@
 fn getsize[P]() u32 {
-	return sizeof(P)
+	return sizeof[P]()
 }
 
 fn test_sizeof_2() {

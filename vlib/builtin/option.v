@@ -129,7 +129,7 @@ fn _option_ok(data voidptr, mut option _option, size int) {
 	unsafe {
 		*option = _option{}
 		// use err to get the end of OptionBase and then memcpy into it
-		vmemcpy(&u8(&option.err) + sizeof(IError), data, size)
+		vmemcpy(&u8(&option.err) + sizeof[IError](), data, size)
 	}
 }
 
@@ -145,7 +145,7 @@ fn _result_ok(data voidptr, mut res _result, size int) {
 	unsafe {
 		*res = _result{}
 		// use err to get the end of ResultBase and then memcpy into it
-		vmemcpy(&u8(&res.err) + sizeof(IError), data, size)
+		vmemcpy(&u8(&res.err) + sizeof[IError](), data, size)
 	}
 }
 

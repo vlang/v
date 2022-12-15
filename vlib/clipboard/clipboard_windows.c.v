@@ -90,7 +90,7 @@ fn new_clipboard() &Clipboard {
 	}
 	class_name := 'clipboard'
 	wndclass := WndClassEx{
-		cb_size: sizeof(WndClassEx)
+		cb_size: sizeof[WndClassEx]()
 		lpfn_wnd_proc: voidptr(&C.DefWindowProc)
 		lpsz_class_name: class_name.to_wide()
 		lpsz_menu_name: 0
@@ -140,7 +140,7 @@ pub fn (mut cb Clipboard) free() {
 fn to_wide(text string) C.HGLOBAL {
 	len_required := C.MultiByteToWideChar(C.CP_UTF8, C.MB_ERR_INVALID_CHARS, text.str,
 		text.len + 1, C.NULL, 0)
-	buf := C.GlobalAlloc(C.GMEM_MOVEABLE, i64(sizeof(u16)) * len_required)
+	buf := C.GlobalAlloc(C.GMEM_MOVEABLE, i64(sizeof[u16]()) * len_required)
 	if buf != C.HGLOBAL(C.NULL) {
 		mut locked := &u16(C.GlobalLock(buf))
 		C.MultiByteToWideChar(C.CP_UTF8, C.MB_ERR_INVALID_CHARS, text.str, text.len + 1,

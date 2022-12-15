@@ -18,7 +18,7 @@ const (
 	degree         = 6
 	mid_index      = degree - 1
 	max_len        = 2 * degree - 1
-	children_bytes = sizeof(voidptr) * (max_len + 1)
+	children_bytes = sizeof[voidptr]() * (max_len + 1)
 )
 
 pub struct SortedMap {

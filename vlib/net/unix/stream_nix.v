@@ -61,7 +61,7 @@ fn (mut s StreamSocket) connect(a string) ! {
 		return error('Socket path too long! Max length: ${max_sun_path - 1} chars.')
 	}
 	mut addr := C.sockaddr_un{}
-	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_un)) }
+	unsafe { C.memset(&addr, 0, sizeof[C.sockaddr_un]()) }
 	addr.sun_family = u8(C.AF_UNIX)
 	unsafe { C.strncpy(&addr.sun_path[0], &char(a.str), max_sun_path) }
 	size := C.SUN_LEN(&addr)
@@ -93,7 +93,7 @@ pub fn listen_stream(sock string) !&StreamListener {
 	mut s := new_stream_socket()!
 	s.path = sock
 	mut addr := C.sockaddr_un{}
-	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_un)) }
+	unsafe { C.memset(&addr, 0, sizeof[C.sockaddr_un]()) }
 	addr.sun_family = u8(C.AF_UNIX)
 	unsafe { C.strncpy(&addr.sun_path[0], &char(sock.str), max_sun_path) }
 	size := C.SUN_LEN(&addr)

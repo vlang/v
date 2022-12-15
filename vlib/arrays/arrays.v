@@ -485,7 +485,7 @@ pub fn rotate_left[T](mut array []T, mid int) {
 	k := array.len - mid
 	p := &T(array.data)
 	unsafe {
-		ptr_rotate[T](mid, &T(usize(voidptr(p)) + usize(sizeof(T)) * usize(mid)), k)
+		ptr_rotate[T](mid, &T(usize(voidptr(p)) + usize(sizeof[T]()) * usize(mid)), k)
 	}
 }
 
@@ -503,7 +503,7 @@ pub fn rotate_right[T](mut array []T, k int) {
 	mid := array.len - k
 	p := &T(array.data)
 	unsafe {
-		ptr_rotate[T](mid, &T(usize(voidptr(p)) + usize(sizeof(T)) * usize(mid)), k)
+		ptr_rotate[T](mid, &T(usize(voidptr(p)) + usize(sizeof[T]()) * usize(mid)), k)
 	}
 }
 
@@ -518,8 +518,8 @@ fn ptr_rotate[T](left_ int, mid &T, right_ int) {
 			break
 		}
 		unsafe {
-			swap_nonoverlapping[T](&T(usize(voidptr(mid)) - left * usize(sizeof(T))),
-				&T(usize(voidptr(mid)) + usize(right - delta) * usize(sizeof(T))), int(delta))
+			swap_nonoverlapping[T](&T(usize(voidptr(mid)) - left * usize(sizeof[T]())),
+				&T(usize(voidptr(mid)) + usize(right - delta) * usize(sizeof[T]())), int(delta))
 		}
 		if left <= right {
 			right -= delta
@@ -529,7 +529,7 @@ fn ptr_rotate[T](left_ int, mid &T, right_ int) {
 	}
 
 	unsafe {
-		sz := usize(sizeof(T))
+		sz := usize(sizeof[T]())
 		rawarray := C.malloc(raw_array_malloc_size[T]())
 		dim := &T(usize(voidptr(mid)) - left * sz + right * sz)
 		if left <= right {
@@ -562,28 +562,28 @@ mut:
 }
 
 const (
-	extra_size = 32 * sizeof(usize)
+	extra_size = 32 * sizeof[usize]()
 )
 
 fn raw_array_cap[T]() usize {
-	if sizeof(T) > arrays.extra_size {
+	if sizeof[T]() > arrays.extra_size {
 		return 1
 	} else {
-		return arrays.extra_size / sizeof(T)
+		return arrays.extra_size / sizeof[T]()
 	}
 }
 
 fn raw_array_malloc_size[T]() usize {
-	if sizeof(T) > arrays.extra_size {
-		return usize(sizeof(T)) * 2
+	if sizeof[T]() > arrays.extra_size {
+		return usize(sizeof[T]()) * 2
 	} else {
-		return 32 * usize(sizeof(usize))
+		return 32 * usize(sizeof[usize]())
 	}
 }
 
 [unsafe]
 fn memswap(x voidptr, y voidptr, len usize) {
-	block_size := sizeof(Block)
+	block_size := sizeof[Block]()
 
 	mut i := usize(0)
 	for i + block_size <= len {
@@ -618,7 +618,7 @@ fn swap_nonoverlapping[T](x_ &T, y_ &T, count int) {
 	x := voidptr(x_)
 	y := voidptr(y_)
 
-	len := usize(sizeof(T)) * usize(count)
+	len := usize(sizeof[T]()) * usize(count)
 	unsafe {
 		memswap(x, y, len)
 	}
@@ -633,7 +633,7 @@ pub fn copy[T](mut dst []T, src []T) int {
 		return 0
 	}
 	if can_copy_bits[T]() {
-		blen := min * int(sizeof(T))
+		blen := min * int(sizeof[T]())
 		unsafe { vmemmove(&T(dst.data), src.data, blen) }
 	} else {
 		for i in 0 .. min {
@@ -659,6 +659,6 @@ fn can_copy_bits[T]() bool {
 [unsafe]
 pub fn carray_to_varray[T](c_array voidptr, c_array_len int) []T {
 	mut v_array := []T{len: c_array_len}
-	unsafe { vmemcpy(v_array.data, c_array, c_array_len * int(sizeof(T))) }
+	unsafe { vmemcpy(v_array.data, c_array, c_array_len * int(sizeof[T]())) }
 	return v_array
 }

@@ -67,7 +67,7 @@ __global (
 	sem       sync.Semaphore
 	shmap     shared map[string]f64
 	mtx       sync.RwMutex
-	f1        = f64(545 / (sizeof(f64) + f32(8))) // directly initialized
+	f1        = f64(545 / (sizeof[f64]() + f32(8))) // directly initialized
 	f2        f64
 	test      = 0 // int
 	testf     = 1.25 // f64

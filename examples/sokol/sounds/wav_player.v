@@ -48,7 +48,7 @@ fn audio_player_callback(buffer &f32, num_frames int, num_channels int, mut p Pl
 		p.finished = true
 		return
 	}
-	unsafe { vmemcpy(buffer, &p.samples[p.pos], nsamples * int(sizeof(f32))) }
+	unsafe { vmemcpy(buffer, &p.samples[p.pos], nsamples * int(sizeof[f32]())) }
 	p.pos += nsamples
 }
 
@@ -133,7 +133,7 @@ fn read_wav_file_samples(fpath string) ![]f32 {
 	if rh.file_size + 8 != bytes.len {
 		return error('WAV should have valid lenght')
 	}
-	offset += sizeof(RIFFHeader)
+	offset += sizeof[RIFFHeader]()
 	mut rf := &RIFFFormat(0)
 	for {
 		if offset >= bytes.len {

@@ -33,8 +33,8 @@ struct AppState {
 mut:
 	gg      &gg.Context = unsafe { nil }
 	iidx    int
-	pixels  &u32     = unsafe { vcalloc(pwidth * pheight * sizeof(u32)) }
-	npixels &u32     = unsafe { vcalloc(pwidth * pheight * sizeof(u32)) } // all drawing happens here, results are swapped at the end
+	pixels  &u32     = unsafe { vcalloc(pwidth * pheight * sizeof[u32]()) }
+	npixels &u32     = unsafe { vcalloc(pwidth * pheight * sizeof[u32]()) } // all drawing happens here, results are swapped at the end
 	view    ViewRect = ViewRect{-3.0773593290970673, 1.4952456603855397, -2.019938598189011, 2.3106642054225945}
 	scale   int      = 1
 	ntasks  int      = runtime.nr_jobs()

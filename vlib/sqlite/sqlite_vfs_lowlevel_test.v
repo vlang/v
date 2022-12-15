@@ -45,7 +45,7 @@ fn test_verify_vfs_is_actually_used() {
 	}
 	mut vfs_descr := &sqlite.Sqlite3_vfs{
 		iVersion: 2
-		szOsFile: int(sizeof(ExampleVfsOpenedFile))
+		szOsFile: int(sizeof[ExampleVfsOpenedFile]())
 		mxPathname: max_file_name_len
 		zName: vfs_name.str
 		pAppData: vfs_state

@@ -103,7 +103,7 @@ pub fn (mut c UdpConn) read(mut buf []u8) !(int, Addr) {
 			Ip6: Ip6{}
 		}
 	}
-	len := sizeof(Addr)
+	len := sizeof[Addr]()
 	mut res := wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf.data), buf.len,
 		0, voidptr(&addr), &len))!
 	if res > 0 {
@@ -268,13 +268,13 @@ pub fn (mut s UdpSocket) set_option_bool(opt SocketOption, value bool) ! {
 	// 	return err_option_wrong_type
 	// }
 	x := int(value)
-	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof(int)))!
+	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof[int]()))!
 }
 
 pub fn (mut s UdpSocket) set_dualstack(on bool) ! {
 	x := int(!on)
 	socket_error(C.setsockopt(s.handle, C.IPPROTO_IPV6, int(SocketOption.ipv6_only), &x,
-		sizeof(int)))!
+		sizeof[int]()))!
 }
 
 fn (mut s UdpSocket) close() ! {

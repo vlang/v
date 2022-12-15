@@ -168,7 +168,7 @@ fn test_return_array() {
 }
 
 fn opt[T](v T) ?T {
-	if sizeof(T) > 1 {
+	if sizeof[T]() > 1 {
 		return v
 	}
 	return none
@@ -357,7 +357,7 @@ struct Abc {
 }
 
 fn p[T](args ...T) {
-	size := sizeof(T)
+	size := sizeof[T]()
 	print('p called with size: ${size:3} | ')
 	for _, x in args {
 		print(x)

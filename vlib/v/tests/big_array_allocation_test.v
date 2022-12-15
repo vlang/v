@@ -2,9 +2,9 @@ import os
 
 [direct_array_access]
 fn test_big_int_array() {
-	dump(sizeof(isize))
+	dump(sizeof[isize]())
 	mut maxn := 500_000_000 // try allocating ~2GB worth of integers on 32bit platforms
-	if sizeof(isize) > 4 {
+	if sizeof[isize]() > 4 {
 		maxn = 1_000_000_000 // 1 billion integers, when each is 4 bytes => require ~4GB
 	}
 	// NB: this test requires RAM that many people do not have, so only run it in full, when VTEST_BIGMEM is 1

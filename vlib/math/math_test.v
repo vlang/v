@@ -676,8 +676,8 @@ fn test_ldexp() {
 	vfldexp_sc_ := [Fi{0, 0}, Fi{0, -1075}, Fi{0, 1024}, Fi{copysign(0, -1), 0},
 		Fi{copysign(0, -1), -1075}, Fi{copysign(0, -1), 1024},
 		Fi{inf(1), 0}, Fi{inf(1), -1024}, Fi{inf(-1), 0}, Fi{inf(-1), -1024},
-		Fi{nan(), -1024}, Fi{10, 1 << (u64(sizeof(int) - 1) * 8)},
-		Fi{10, -(1 << (u64(sizeof(int) - 1) * 8))}]
+		Fi{nan(), -1024}, Fi{10, 1 << (u64(sizeof[int]() - 1) * 8)},
+		Fi{10, -(1 << (u64(sizeof[int]() - 1) * 8))}]
 	ldexp_sc_ := [f64(0), 0, 0, copysign(0, -1), copysign(0, -1),
 		copysign(0, -1), inf(1), inf(1), inf(-1), inf(-1), nan(),
 		inf(1), 0]

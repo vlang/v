@@ -183,7 +183,7 @@ fn test_read_eof_last_read_full_buffer_fill() {
 
 fn test_write_struct() {
 	os.rm(tfile) or {} // FIXME This is a workaround for macos, because the file isn't truncated when open with 'w'
-	size_of_point := int(sizeof(Point))
+	size_of_point := int(sizeof[Point]())
 	mut f := os.open_file(tfile, 'w')!
 	f.write_struct(another_point)!
 	f.close()
@@ -238,7 +238,7 @@ fn test_read_struct_at() {
 
 fn test_write_raw() {
 	os.rm(tfile) or {} // FIXME This is a workaround for macos, because the file isn't truncated when open with 'w'
-	size_of_point := int(sizeof(Point))
+	size_of_point := int(sizeof[Point]())
 	mut f := os.open_file(tfile, 'w')!
 	f.write_raw(another_point)!
 	f.close()
@@ -305,13 +305,13 @@ fn test_read_raw_at() {
 	f = os.open_file(tfile, 'r')!
 	mut at := u64(3)
 	p := f.read_raw_at[Point](at)!
-	at += sizeof(Point)
+	at += sizeof[Point]()
 	b := f.read_raw_at[u8](at)!
-	at += sizeof(u8)
+	at += sizeof[u8]()
 	c := f.read_raw_at[Color](at)!
-	at += sizeof(Color)
+	at += sizeof[Color]()
 	x := f.read_raw_at[Permissions](at)!
-	at += sizeof(Permissions)
+	at += sizeof[Permissions]()
 	f.close()
 
 	assert p == another_point
@@ -340,12 +340,12 @@ fn test_seek() {
 	// println('> ${sizeof(Point)} ${sizeof(byte)} ${sizeof(Color)} ${sizeof(Permissions)}')
 	f = os.open_file(tfile, 'r')!
 	//
-	f.seek(i64(sizeof(Point)), .start)!
-	assert f.tell()! == sizeof(Point)
+	f.seek(i64(sizeof[Point]()), .start)!
+	assert f.tell()! == sizeof[Point]()
 	b := f.read_raw[u8]()!
 	assert b == another_byte
 
-	f.seek(i64(sizeof(Color)), .current)!
+	f.seek(i64(sizeof[Color]()), .current)!
 	x := f.read_raw[Permissions]()!
 	assert x == another_permission
 	//

@@ -88,7 +88,7 @@ struct Image {
 }
 
 fn new_image(w int, h int) Image {
-	vecsize := int(sizeof(Vec))
+	vecsize := int(sizeof[Vec]())
 	return Image{
 		width: w
 		height: h
