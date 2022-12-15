@@ -3064,6 +3064,10 @@ fn (mut g Gen) map_fn_ptrs(key_typ ast.TypeSymbol) (string, string, string, stri
 	mut clone_fn := ''
 	mut free_fn := '&map_free_nop'
 	match key_typ.kind {
+		.alias {
+			alias_key_type := (key_typ.info as ast.Alias).parent_type
+			return g.map_fn_ptrs(g.table.sym(alias_key_type))
+		}
 		.u8, .i8, .char {
 			hash_fn = '&map_hash_int_1'
 			key_eq_fn = '&map_eq_int_1'
