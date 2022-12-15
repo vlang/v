@@ -597,10 +597,10 @@ pub fn (a &array) clone_to_depth(depth int) array {
 		cap: a.cap
 	}
 	// Recursively clone-generated elements if array element is array type
-	if depth > 0 && a.element_size == sizeof[array]() && a.len >= 0 && a.cap >= a.len {
+	if depth > 0 && a.element_size == sizeof(array) && a.len >= 0 && a.cap >= a.len {
 		for i in 0 .. a.len {
 			ar := array{}
-			unsafe { vmemcpy(&ar, a.get_unsafe(i), int(sizeof[array]())) }
+			unsafe { vmemcpy(&ar, a.get_unsafe(i), int(sizeof(array))) }
 			ar_clone := unsafe { ar.clone_to_depth(depth - 1) }
 			unsafe { arr.set_unsafe(i, &ar_clone) }
 		}

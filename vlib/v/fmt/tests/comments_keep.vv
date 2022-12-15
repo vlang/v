@@ -20,7 +20,7 @@ fn main() {
 	u := User{
 		name: 'Peter'
 	}
-	n := sizeof[User]()
+	n := sizeof(User)
 	// else
 	// else {
 	// }

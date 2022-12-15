@@ -53,10 +53,10 @@ fn test_ptr_arithmetic_over_struct() {
 	unsafe {
 		assert pa.x == 10
 		pa++
-		assert u64(pa) - u64(&a[0]) == sizeof[Abc]()
+		assert u64(pa) - u64(&a[0]) == sizeof(Abc)
 		assert pa.x == 100
 		pa++
-		assert u64(pa) - u64(&a[0]) == 2 * sizeof[Abc]()
+		assert u64(pa) - u64(&a[0]) == 2 * sizeof(Abc)
 		assert pa.x == 1000
 		pa--
 		assert pa.x == 100

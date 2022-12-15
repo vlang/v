@@ -9,7 +9,7 @@ pub mut:
 }
 
 fn new_a2d(maxx int, maxy int) &A2D {
-	size := int(sizeof[int]()) * (maxx * maxy)
+	size := int(sizeof(int)) * (maxx * maxy)
 	return &A2D{
 		maxx: maxx
 		maxy: maxy

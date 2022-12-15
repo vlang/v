@@ -12,5 +12,5 @@ fn test_assert_offsetof() {
 }
 
 fn test_assert_sizeof() {
-	assert sizeof[Abc]() == sizeof[Xyz]()
+	assert sizeof(Abc) == sizeof(Xyz)
 }

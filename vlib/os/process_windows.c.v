@@ -71,11 +71,11 @@ fn (mut p Process) win_spawn_process() int {
 		lp_reserved: 0
 		lp_desktop: 0
 		lp_title: 0
-		cb: sizeof[C.PROCESS_INFORMATION]()
+		cb: sizeof(C.PROCESS_INFORMATION)
 	}
 	if p.use_stdio_ctl {
 		mut sa := SecurityAttributes{}
-		sa.n_length = sizeof[C.SECURITY_ATTRIBUTES]()
+		sa.n_length = sizeof(C.SECURITY_ATTRIBUTES)
 		sa.b_inherit_handle = true
 		create_pipe_ok1 := C.CreatePipe(voidptr(&wdata.child_stdout_read), voidptr(&wdata.child_stdout_write),
 			voidptr(&sa), 0)

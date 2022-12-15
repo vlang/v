@@ -59,8 +59,8 @@ pub:
 }
 
 pub fn new_channel[T](n u32) &Channel {
-	st := sizeof[T]()
-	if isreftype[T]() {
+	st := sizeof(T)
+	if isreftype(T) {
 		return new_channel_st(n, st)
 	} else {
 		return new_channel_st_noscan(n, st)
@@ -323,7 +323,7 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 				mut status_adr := ch.statusbuf
 				unsafe {
 					wr_ptr += (wr_idx * ch.objsize)
-					status_adr += wr_idx * sizeof[u16]()
+					status_adr += wr_idx * sizeof(u16)
 				}
 				mut expected_status := u16(BufferElemStat.unused)
 				for !C.atomic_compare_exchange_weak_u16(status_adr, &expected_status,
@@ -444,7 +444,7 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 				mut status_adr := ch.statusbuf
 				unsafe {
 					rd_ptr += rd_idx * ch.objsize
-					status_adr += rd_idx * sizeof[u16]()
+					status_adr += rd_idx * sizeof(u16)
 				}
 				mut expected_status := u16(BufferElemStat.written)
 				for !C.atomic_compare_exchange_weak_u16(status_adr, &expected_status,

@@ -208,7 +208,7 @@ pub fn utime(path string, actime int, modtime int) ! {
 
 pub fn uname() Uname {
 	mut u := Uname{}
-	utsize := sizeof[C.utsname]()
+	utsize := sizeof(C.utsname)
 	unsafe {
 		x := malloc_noscan(int(utsize))
 		d := &C.utsname(x)

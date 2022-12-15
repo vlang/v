@@ -36,7 +36,7 @@ pub const (
 )
 
 fn usize_leading_zeros(x usize) usize {
-	if sizeof[usize]() == 8 {
+	if sizeof(usize) == 8 {
 		return usize(bits.leading_zeros_64(u64(x)))
 	} else {
 		return usize(bits.leading_zeros_32(u32(x)))
@@ -55,12 +55,12 @@ fn default_trim_threshold() usize {
 
 [inline]
 fn malloc_alignment() usize {
-	return sizeof[usize]() * 2
+	return sizeof(usize) * 2
 }
 
 [inline]
 fn chunk_overhead() usize {
-	return sizeof[usize]()
+	return sizeof(usize)
 }
 
 [inline]
@@ -70,7 +70,7 @@ fn min_large_size() usize {
 
 [inline]
 fn mmap_chunk_overhead() usize {
-	return 2 * sizeof[usize]()
+	return 2 * sizeof(usize)
 }
 
 [inline]
@@ -85,12 +85,12 @@ fn max_small_request() usize {
 
 [inline]
 fn min_chunk_size() usize {
-	return align_up(sizeof[Chunk](), malloc_alignment())
+	return align_up(sizeof(Chunk), malloc_alignment())
 }
 
 [inline]
 fn chunk_mem_offset() usize {
-	return 2 * sizeof[usize]()
+	return 2 * sizeof(usize)
 }
 
 [inline]
@@ -100,8 +100,7 @@ fn min_request() usize {
 
 [inline]
 fn top_foot_size() usize {
-	return align_offset_usize(chunk_mem_offset()) + pad_request(sizeof[Segment]()) +
-		min_chunk_size()
+	return align_offset_usize(chunk_mem_offset()) + pad_request(sizeof(Segment)) + min_chunk_size()
 }
 
 [inline]
@@ -111,7 +110,7 @@ fn max_request() usize {
 
 [inline]
 fn mmap_foot_pad() usize {
-	return 4 * sizeof[usize]()
+	return 4 * sizeof(usize)
 }
 
 fn min_sys_alloc_space() usize {
@@ -175,7 +174,7 @@ fn leftshift_for_tree_index(x u32) u32 {
 	if y == dlmalloc.n_tree_bins - 1 {
 		return 0
 	} else {
-		return u32(sizeof[usize]() * 8 - 1 - ((y >> 1) + dlmalloc.tree_bin_shift - 2))
+		return u32(sizeof(usize) * 8 - 1 - ((y >> 1) + dlmalloc.tree_bin_shift - 2))
 	}
 }
 
@@ -297,7 +296,7 @@ const (
 )
 
 fn fencepost_head() usize {
-	return dlmalloc.inuse | sizeof[usize]()
+	return dlmalloc.inuse | sizeof(usize)
 }
 
 fn (c &Chunk) size() usize {
@@ -463,7 +462,7 @@ fn (dl &Dlmalloc) compute_tree_index(size usize) u32 {
 	} else if x > 0xffff {
 		return dlmalloc.n_tree_bins - 1
 	} else {
-		k := sizeof[usize]() * 8 - 1 - usize_leading_zeros(x)
+		k := sizeof(usize) * 8 - 1 - usize_leading_zeros(x)
 		return u32((k << 1) + (size >> (k + dlmalloc.tree_bin_shift - 1) & 1))
 	}
 }
@@ -860,7 +859,7 @@ fn (mut dl Dlmalloc) insert_large_chunk(chunk_ &TreeChunk, size usize) {
 			mut k := size << leftshift_for_tree_index(idx)
 			for {
 				if t.chunk().size() != size {
-					c_ := &t.child[(k >> sizeof[usize]() * 8 - 1) & 1]
+					c_ := &t.child[(k >> sizeof(usize) * 8 - 1) & 1]
 					mut c := &&TreeChunk(c_)
 					k <<= 1
 					if !isnil(c) {
@@ -969,7 +968,7 @@ fn (mut dl Dlmalloc) malloc_real(size usize) voidptr {
 					dl.unlink_first_small_chunk(b, p, i)
 					smallsize := small_index2size(i)
 					rsize := smallsize - nb
-					if sizeof[usize]() != 4 && rsize < min_chunk_size() {
+					if sizeof(usize) != 4 && rsize < min_chunk_size() {
 						p.set_inuse_and_pinuse(smallsize)
 					} else {
 						p.set_size_and_pinuse_of_inuse_chunk(nb)
@@ -1202,7 +1201,7 @@ fn (mut dl Dlmalloc) tmalloc_large(size usize) voidptr {
 				}
 
 				rt := t.child[1]
-				t = t.child[(sizebits >> (sizeof[usize]() * 8 - 1)) & 1]
+				t = t.child[(sizebits >> (sizeof(usize) * 8 - 1)) & 1]
 				if !isnil(rt) && voidptr(rt) != voidptr(t) {
 					rst = rt
 				}
@@ -1262,7 +1261,7 @@ fn (mut dl Dlmalloc) prepend_alloc(newbase voidptr, oldbase voidptr, size usize)
 		// C.VALGRIND_MAKE_MEM_UNDEFINED(p.plus_offset(sizeof(usize)),size)
 		p.set_size_and_pinuse_of_inuse_chunk(size)
 
-		if qsize >= sizeof[TreeChunk]() {
+		if qsize >= sizeof(TreeChunk) {
 			// C.VALGRIND_MAKE_MEM_UNDEFINED(q, sizeof(TreeChunk))
 		} else {
 			// C.VALGRIND_MAKE_MEM_UNDEFINED(q,sizeof(Chunk))
@@ -1302,8 +1301,8 @@ fn (mut dl Dlmalloc) add_segment(tbase voidptr, tsize usize, flags u32) {
 		old_top := dl.top
 		mut oldsp := dl.segment_holding(old_top)
 		old_end := oldsp.top()
-		ssize := pad_request(sizeof[Segment]())
-		mut offset := ssize + sizeof[usize]() * 4 + malloc_alignment() - 1
+		ssize := pad_request(sizeof(Segment))
+		mut offset := ssize + sizeof(usize) * 4 + malloc_alignment() - 1
 		rawsp := voidptr(usize(old_end) - offset)
 		offset = align_offset_usize((&Chunk(rawsp)).to_mem())
 		asp := voidptr(usize(rawsp) + offset)
@@ -1325,7 +1324,7 @@ fn (mut dl Dlmalloc) add_segment(tbase voidptr, tsize usize, flags u32) {
 		dl.seg.next = ss
 
 		for {
-			nextp := p.plus_offset(sizeof[usize]())
+			nextp := p.plus_offset(sizeof(usize))
 			p.head = fencepost_head()
 			nfences += 1
 			if nextp.head < old_end {
@@ -1534,13 +1533,13 @@ fn (mut dl Dlmalloc) mmap_resize(oldp_ &Chunk, nb usize, can_move bool) &Chunk {
 		return unsafe { nil }
 	}
 	// Keep the old chunk if it's big enough but not too big
-	if oldsize >= nb + sizeof[usize]() && (oldsize - nb) <= (default_granularity() << 1) {
+	if oldsize >= nb + sizeof(usize) && (oldsize - nb) <= (default_granularity() << 1) {
 		return oldp
 	}
 
 	offset := oldp.prev_foot
 	oldmmsize := oldsize + offset + mmap_foot_pad()
-	newmmsize := dl.mmap_align(nb + 6 * sizeof[usize]() + malloc_alignment() - 1)
+	newmmsize := dl.mmap_align(nb + 6 * sizeof(usize) + malloc_alignment() - 1)
 
 	ptr := dl.system_allocator.remap(dl.system_allocator.data, voidptr(usize(oldp) - offset),
 		oldmmsize, newmmsize, can_move)
@@ -1552,7 +1551,7 @@ fn (mut dl Dlmalloc) mmap_resize(oldp_ &Chunk, nb usize, can_move bool) &Chunk {
 	psize := newmmsize - offset - mmap_foot_pad()
 	newp.head = psize
 	newp.plus_offset(psize).head = fencepost_head()
-	newp.plus_offset(psize + sizeof[usize]()).head = 0
+	newp.plus_offset(psize + sizeof(usize)).head = 0
 	if ptr < dl.least_addr {
 		dl.least_addr = ptr
 	}

@@ -638,7 +638,7 @@ pub fn (mut f File) read_raw[T]() !T {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	tsize := int(sizeof[T]())
+	tsize := int(sizeof(T))
 	if tsize == 0 {
 		return error_size_of_type_0()
 	}
@@ -655,7 +655,7 @@ pub fn (mut f File) read_raw_at[T](pos u64) !T {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	tsize := int(sizeof[T]())
+	tsize := int(sizeof(T))
 	if tsize == 0 {
 		return error_size_of_type_0()
 	}
@@ -701,7 +701,7 @@ pub fn (mut f File) write_struct[T](t &T) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	tsize := int(sizeof[T]())
+	tsize := int(sizeof(T))
 	if tsize == 0 {
 		return error_size_of_type_0()
 	}
@@ -720,7 +720,7 @@ pub fn (mut f File) write_struct_at[T](t &T, pos u64) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	tsize := int(sizeof[T]())
+	tsize := int(sizeof(T))
 	if tsize == 0 {
 		return error_size_of_type_0()
 	}
@@ -757,7 +757,7 @@ pub fn (mut f File) write_raw[T](t &T) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	tsize := int(sizeof[T]())
+	tsize := int(sizeof(T))
 	if tsize == 0 {
 		return error_size_of_type_0()
 	}
@@ -776,7 +776,7 @@ pub fn (mut f File) write_raw_at[T](t &T, pos u64) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	tsize := int(sizeof[T]())
+	tsize := int(sizeof(T))
 	if tsize == 0 {
 		return error_size_of_type_0()
 	}

@@ -242,7 +242,7 @@ pub fn (c &TcpConn) peer_addr() !Addr {
 			Ip6: Ip6{}
 		}
 	}
-	mut size := sizeof[Addr]()
+	mut size := sizeof(Addr)
 	socket_error_message(C.getpeername(c.sock.handle, voidptr(&addr), &size), 'peer_addr failed')!
 	return addr
 }
@@ -418,17 +418,17 @@ pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {
 	// 	return err_option_wrong_type
 	// }
 	x := int(value)
-	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof[int]()))!
+	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof(int)))!
 }
 
 pub fn (mut s TcpSocket) set_dualstack(on bool) ! {
 	x := int(!on)
 	socket_error(C.setsockopt(s.handle, C.IPPROTO_IPV6, int(SocketOption.ipv6_only), &x,
-		sizeof[int]()))!
+		sizeof(int)))!
 }
 
 pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ! {
-	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &value, sizeof[int]()))!
+	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &value, sizeof(int)))!
 }
 
 // bind a local rddress for TcpSocket

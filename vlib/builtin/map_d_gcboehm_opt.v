@@ -32,9 +32,9 @@ fn new_dense_array_noscan(key_bytes int, key_noscan bool, value_bytes int, value
 }
 
 fn new_map_noscan_key(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn) map {
-	metasize := int(sizeof[u32]() * (init_capicity + extra_metas_inc))
+	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
 	// for now assume anything bigger than a pointer is a string
-	has_string_keys := key_bytes > sizeof[voidptr]()
+	has_string_keys := key_bytes > sizeof(voidptr)
 	return map{
 		key_bytes: key_bytes
 		value_bytes: value_bytes
@@ -54,9 +54,9 @@ fn new_map_noscan_key(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_
 }
 
 fn new_map_noscan_value(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn) map {
-	metasize := int(sizeof[u32]() * (init_capicity + extra_metas_inc))
+	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
 	// for now assume anything bigger than a pointer is a string
-	has_string_keys := key_bytes > sizeof[voidptr]()
+	has_string_keys := key_bytes > sizeof(voidptr)
 	return map{
 		key_bytes: key_bytes
 		value_bytes: value_bytes
@@ -76,9 +76,9 @@ fn new_map_noscan_value(key_bytes int, value_bytes int, hash_fn MapHashFn, key_e
 }
 
 fn new_map_noscan_key_value(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn) map {
-	metasize := int(sizeof[u32]() * (init_capicity + extra_metas_inc))
+	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
 	// for now assume anything bigger than a pointer is a string
-	has_string_keys := key_bytes > sizeof[voidptr]()
+	has_string_keys := key_bytes > sizeof(voidptr)
 	return map{
 		key_bytes: key_bytes
 		value_bytes: value_bytes

@@ -99,7 +99,7 @@ fn init(user_data voidptr) {
 	}
 	unsafe { vmemset(&vertex_buffer_desc, 0, int(sizeof(vertex_buffer_desc))) }
 
-	vertex_buffer_desc.size = usize(vertices.len * int(sizeof[Vertex_t]()))
+	vertex_buffer_desc.size = usize(vertices.len * int(sizeof(Vertex_t)))
 	vertex_buffer_desc.data = gfx.Range{
 		ptr: vertices.data
 		size: vertex_buffer_desc.size

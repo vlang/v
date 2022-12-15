@@ -93,73 +93,73 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 		bool {
 			types << u32(Oid.t_bool)
 			vals << &char(&data)
-			lens << int(sizeof[bool]())
+			lens << int(sizeof(bool))
 			formats << 1
 		}
 		u8 {
 			types << u32(Oid.t_char)
 			vals << &char(&data)
-			lens << int(sizeof[u8]())
+			lens << int(sizeof(u8))
 			formats << 1
 		}
 		u16 {
 			types << u32(Oid.t_int2)
 			num := conv.htn16(data)
 			vals << &char(&num)
-			lens << int(sizeof[u16]())
+			lens << int(sizeof(u16))
 			formats << 1
 		}
 		u32 {
 			types << u32(Oid.t_int4)
 			num := conv.htn32(data)
 			vals << &char(&num)
-			lens << int(sizeof[u32]())
+			lens << int(sizeof(u32))
 			formats << 1
 		}
 		u64 {
 			types << u32(Oid.t_int8)
 			num := conv.htn64(data)
 			vals << &char(&num)
-			lens << int(sizeof[u64]())
+			lens << int(sizeof(u64))
 			formats << 1
 		}
 		i8 {
 			types << u32(Oid.t_char)
 			vals << &char(&data)
-			lens << int(sizeof[i8]())
+			lens << int(sizeof(i8))
 			formats << 1
 		}
 		i16 {
 			types << u32(Oid.t_int2)
 			num := conv.htn16(u16(data))
 			vals << &char(&num)
-			lens << int(sizeof[i16]())
+			lens << int(sizeof(i16))
 			formats << 1
 		}
 		int {
 			types << u32(Oid.t_int4)
 			num := conv.htn32(u32(data))
 			vals << &char(&num)
-			lens << int(sizeof[int]())
+			lens << int(sizeof(int))
 			formats << 1
 		}
 		i64 {
 			types << u32(Oid.t_int8)
 			num := conv.htn64(u64(data))
 			vals << &char(&num)
-			lens << int(sizeof[i64]())
+			lens << int(sizeof(i64))
 			formats << 1
 		}
 		f32 {
 			types << u32(Oid.t_float4)
 			vals << &char(&data)
-			lens << int(sizeof[f32]())
+			lens << int(sizeof(f32))
 			formats << 1
 		}
 		f64 {
 			types << u32(Oid.t_float8)
 			vals << &char(&data)
-			lens << int(sizeof[f64]())
+			lens << int(sizeof(f64))
 			formats << 1
 		}
 		string {

@@ -48,7 +48,7 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 				dataptr << unsafe { malloc(8) }
 			}
 			.type_time, .type_date, .type_datetime, .type_time2, .type_datetime2 {
-				dataptr << unsafe { malloc(sizeof[C.MYSQL_TIME]()) }
+				dataptr << unsafe { malloc(sizeof(C.MYSQL_TIME)) }
 			}
 			.type_string, .type_blob {
 				dataptr << unsafe { malloc(512) }

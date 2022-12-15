@@ -39,7 +39,7 @@ fn realloc(old_area &C.void, new_size usize) &C.void {
 		unsafe { free(old_area) }
 		return 0
 	}
-	old_size := unsafe { *(&u64(old_area - sizeof[u64]())) }
+	old_size := unsafe { *(&u64(old_area - sizeof(u64))) }
 	if u64(new_size) <= old_size {
 		return unsafe { old_area }
 	} else {

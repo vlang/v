@@ -195,7 +195,7 @@ fn test_larger_closure_parameters() {
 	}
 	cmd := Command{}
 	res := f(cmd)
-	println('> res: ${res} | sizeof Command: ${sizeof[Command]()}')
+	println('> res: ${res} | sizeof Command: ${sizeof(Command)}')
 	assert res == u64(app)
 }
 
