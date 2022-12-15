@@ -11,8 +11,8 @@ fn vtest_init() {
 
 struct TeamcityTestRunner {
 mut:
-	fname string
-	start_time       time.Time
+	fname      string
+	start_time time.Time
 
 	file_test_info   VTestFileMetaInfo
 	fn_test_info     VTestFnMetaInfo
@@ -37,11 +37,9 @@ fn normalise_fname(name string) string {
 }
 
 fn (mut runner TeamcityTestRunner) start(ntests int) {
-
 }
 
 fn (mut runner TeamcityTestRunner) finish() {
-
 }
 
 fn (mut runner TeamcityTestRunner) exit_code() int {
@@ -69,14 +67,14 @@ fn (mut runner TeamcityTestRunner) fn_pass() {
 	runner.fn_passes++
 	duration := runner.test_duration()
 	eprintln("##teamcity[testFinished name='${runner.fname}' duration='${duration}']")
-	println("\n")
+	println('\n')
 }
 
 fn (mut runner TeamcityTestRunner) fn_fail() {
 	runner.fn_fails++
 	duration := runner.test_duration()
 	eprintln("##teamcity[testFailed name='${runner.fname}' duration='${duration}' message='assertion failed']")
-	println("\n")
+	println('\n')
 }
 
 fn (mut runner TeamcityTestRunner) fn_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
