@@ -2520,16 +2520,16 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			if !node.is_type {
 				node.typ = c.expr(node.expr)
 			}
-			c.deprecate_old_isreftype_and_sizeof_of_a_guessed_type(node.guessed_type,
-				node.typ, node.pos, 'sizeof')
+			// c.deprecate_old_isreftype_and_sizeof_of_a_guessed_type(node.guessed_type,
+			//	node.typ, node.pos, 'sizeof')
 			return ast.u32_type
 		}
 		ast.IsRefType {
 			if !node.is_type {
 				node.typ = c.expr(node.expr)
 			}
-			c.deprecate_old_isreftype_and_sizeof_of_a_guessed_type(node.guessed_type,
-				node.typ, node.pos, 'isreftype')
+			// c.deprecate_old_isreftype_and_sizeof_of_a_guessed_type(node.guessed_type,
+			//	node.typ, node.pos, 'isreftype')
 			return ast.bool_type
 		}
 		ast.OffsetOf {

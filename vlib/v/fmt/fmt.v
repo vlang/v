@@ -2573,7 +2573,7 @@ pub fn (mut f Fmt) selector_expr(node ast.SelectorExpr) {
 
 pub fn (mut f Fmt) size_of(node ast.SizeOf) {
 	f.write('sizeof')
-	if node.is_type {
+	if node.is_type && !node.guessed_type {
 		f.write('[')
 		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 		f.write(']()')
@@ -2586,7 +2586,7 @@ pub fn (mut f Fmt) size_of(node ast.SizeOf) {
 
 pub fn (mut f Fmt) is_ref_type(node ast.IsRefType) {
 	f.write('isreftype')
-	if node.is_type {
+	if node.is_type && !node.guessed_type {
 		f.write('[')
 		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 		f.write(']()')
