@@ -135,7 +135,7 @@ fn test_alexcrichton_toml_rs() {
 				if !hide_oks {
 					println('OK   [${i + 1}/${valid_test_files.len}] "${valid_test_file}"...')
 				}
-				toml_doc := toml.parse_file(valid_test_file)?
+				toml_doc := toml.parse_file(valid_test_file)!
 
 				v_toml_json_path := os.join_path(compare_work_dir_root,
 					os.file_name(valid_test_file).all_before_last('.') + '.v.json')
