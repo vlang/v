@@ -82,7 +82,7 @@ fn test_burnt_sushi_tomltest() {
 		if !hide_oks {
 			println('OK   [${i + 1}/${valid_test_files.len}] "${valid_test_file}"...')
 		}
-		toml_doc := toml.parse_file(valid_test_file)?
+		toml_doc := toml.parse_file(valid_test_file)!
 		valid++
 	}
 	println('${valid}/${valid_test_files.len} TOML files were parsed correctly')
