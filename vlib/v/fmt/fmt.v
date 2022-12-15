@@ -2572,23 +2572,43 @@ pub fn (mut f Fmt) selector_expr(node ast.SelectorExpr) {
 }
 
 pub fn (mut f Fmt) size_of(node ast.SizeOf) {
-	f.write('sizeof(')
+	f.write('sizeof')
 	if node.is_type {
+		// keep the old form for now
+		f.write('(')
 		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
-	} else {
-		f.expr(node.expr)
+		f.write(')')
+		return
 	}
-	f.write(')')
+	if node.is_type {
+		f.write('[')
+		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
+		f.write(']()')
+	} else {
+		f.write('(')
+		f.expr(node.expr)
+		f.write(')')
+	}
 }
 
 pub fn (mut f Fmt) is_ref_type(node ast.IsRefType) {
-	f.write('isreftype(')
+	f.write('isreftype')
 	if node.is_type {
+		// keep the old form for now
+		f.write('(')
 		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
-	} else {
-		f.expr(node.expr)
+		f.write(')')
+		return
 	}
-	f.write(')')
+	if node.is_type {
+		f.write('[')
+		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
+		f.write(']()')
+	} else {
+		f.write('(')
+		f.expr(node.expr)
+		f.write(')')
+	}
 }
 
 pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {

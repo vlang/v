@@ -236,57 +236,85 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		.key_sizeof, .key_isreftype {
 			is_reftype := p.tok.kind == .key_isreftype
 			p.next() // sizeof
-			p.check(.lpar)
-			pos := p.tok.pos()
-			mut is_known_var := p.mark_var_as_used(p.tok.lit)
-				|| p.table.global_scope.known_const(p.mod + '.' + p.tok.lit)
-			//|| p.table.known_fn(p.mod + '.' + p.tok.lit)
-			// assume `mod.` prefix leads to a type
-			mut is_type := p.known_import(p.tok.lit) || p.tok.kind.is_start_of_type()
-				|| (p.tok.lit.len > 0 && p.tok.lit[0].is_capital())
 
-			if p.tok.lit in ['c', 'r'] && p.peek_tok.kind == .string {
-				is_known_var = false
-				is_type = false
-			}
-			if is_known_var || !is_type {
-				expr := p.expr(0)
+			if p.tok.kind == .lsbr {
+				// parse sizeof[T]() and isreftype[T]() without guessing:
+				p.check(.lsbr)
+				mut type_pos := p.tok.pos()
+				typ := p.parse_type()
+				type_pos = type_pos.extend(p.tok.pos())
+				p.check(.rsbr)
+				p.check(.lpar)
+				p.check(.rpar)
 				if is_reftype {
 					node = ast.IsRefType{
-						is_type: false
-						expr: expr
-						pos: pos
+						is_type: true
+						typ: typ
+						pos: type_pos
 					}
 				} else {
 					node = ast.SizeOf{
-						is_type: false
-						expr: expr
-						pos: pos
+						is_type: true
+						typ: typ
+						pos: type_pos
 					}
 				}
 			} else {
-				if p.tok.kind == .name {
-					p.register_used_import(p.tok.lit)
+				p.check(.lpar)
+				pos := p.tok.pos()
+				mut is_known_var := p.mark_var_as_used(p.tok.lit)
+					|| p.table.global_scope.known_const(p.mod + '.' + p.tok.lit)
+				//|| p.table.known_fn(p.mod + '.' + p.tok.lit)
+				// assume `mod.` prefix leads to a type
+				mut is_type := p.known_import(p.tok.lit)
+					|| p.tok.kind.is_start_of_type()
+					|| (p.tok.lit.len > 0 && p.tok.lit[0].is_capital())
+
+				if p.tok.lit in ['c', 'r'] && p.peek_tok.kind == .string {
+					is_known_var = false
+					is_type = false
 				}
-				save_expr_mod := p.expr_mod
-				p.expr_mod = ''
-				arg_type := p.parse_type()
-				p.expr_mod = save_expr_mod
-				if is_reftype {
-					node = ast.IsRefType{
-						is_type: true
-						typ: arg_type
-						pos: pos
+				if is_known_var || !is_type {
+					expr := p.expr(0)
+					if is_reftype {
+						node = ast.IsRefType{
+							is_type: false
+							expr: expr
+							pos: pos
+						}
+					} else {
+						node = ast.SizeOf{
+							is_type: false
+							expr: expr
+							pos: pos
+						}
 					}
 				} else {
-					node = ast.SizeOf{
-						is_type: true
-						typ: arg_type
-						pos: pos
+					if p.tok.kind == .name {
+						p.register_used_import(p.tok.lit)
+					}
+					save_expr_mod := p.expr_mod
+					p.expr_mod = ''
+					arg_type := p.parse_type()
+					p.expr_mod = save_expr_mod
+					if is_reftype {
+						node = ast.IsRefType{
+							guessed_type: true
+							is_type: true
+							typ: arg_type
+							pos: pos
+						}
+					} else {
+						node = ast.SizeOf{
+							guessed_type: true
+							is_type: true
+							typ: arg_type
+							pos: pos
+						}
 					}
 				}
+				p.check(.rpar)
 			}
-			p.check(.rpar)
 		}
 		.key_dump {
 			spos := p.tok.pos()

@@ -1591,19 +1591,21 @@ pub mut:
 
 pub struct SizeOf {
 pub:
-	is_type bool
-	pos     token.Pos
+	guessed_type bool // a legacy `sizeof( GuessedType )` => a deprecation notice, suggesting `v fmt -w .` => `sizeof[ Type ]()`
+	is_type      bool
+	pos          token.Pos
 pub mut:
-	expr Expr // checker uses this to set typ
+	expr Expr // checker uses this to set typ, when !is_type
 	typ  Type
 }
 
 pub struct IsRefType {
 pub:
-	is_type bool
-	pos     token.Pos
+	guessed_type bool // a legacy `isreftype( GuessedType )` => a deprecation notice, suggesting `v fmt -w .` => `isreftype[ Type ]()`
+	is_type      bool
+	pos          token.Pos
 pub mut:
-	expr Expr // checker uses this to set typ
+	expr Expr // checker uses this to set typ, when !is_type
 	typ  Type
 }
 
@@ -1629,7 +1631,7 @@ pub:
 	is_type bool
 	pos     token.Pos
 pub mut:
-	expr Expr // checker uses this to set typ
+	expr Expr // checker uses this to set typ, when !is_type
 	typ  Type
 }
 
