@@ -697,7 +697,7 @@ fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int, bool) {
 	mut i := in_i
 
 	mut q_min := 0 // default min in a {} quantifier is 1
-	mut q_max := 0 // deafult max in a {} quantifier is max_quantifier
+	mut q_max := 0 // default max in a {} quantifier is max_quantifier
 
 	mut ch := u8(0)
 
