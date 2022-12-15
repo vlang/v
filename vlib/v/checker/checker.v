@@ -2520,12 +2520,16 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			if !node.is_type {
 				node.typ = c.expr(node.expr)
 			}
+			c.deprecate_old_isreftype_and_sizeof_of_a_guessed_type(node.guessed_type,
+				node.typ, node.pos, 'sizeof')
 			return ast.u32_type
 		}
 		ast.IsRefType {
 			if !node.is_type {
 				node.typ = c.expr(node.expr)
 			}
+			c.deprecate_old_isreftype_and_sizeof_of_a_guessed_type(node.guessed_type,
+				node.typ, node.pos, 'isreftype')
 			return ast.bool_type
 		}
 		ast.OffsetOf {
@@ -4394,4 +4398,12 @@ fn semicolonize(main string, details string) string {
 		return main
 	}
 	return '${main}; ${details}'
+}
+
+fn (mut c Checker) deprecate_old_isreftype_and_sizeof_of_a_guessed_type(is_guessed_type bool, typ ast.Type, pos token.Pos, label string) {
+	if is_guessed_type {
+		styp := c.table.type_to_str(typ)
+		c.note('`${label}(${styp})` is deprecated. Use `v fmt -w .` to convert it to `${label}[${styp}]()` instead.',
+			pos)
+	}
 }
