@@ -292,6 +292,9 @@ fn (mut ts TestSession) handle_test_runner_option() {
 		'dump' {
 			ts.reporter = DumpReporter{}
 		}
+		'teamcity' {
+			ts.reporter = TeamcityReporter{}
+		}
 		else {
 			dump('just set ts.reporter to an instance of your own struct here')
 		}
