@@ -650,7 +650,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				}
 				i++
 			}
-			'-error-limit', '-message-limit' {
+			'-error-limit' {
+				eprintln('Note: the -error-limit option is deprecated, and will be removed in 2023/01/15. Use `-message-limit N` instead.')
+				res.message_limit = cmdline.option(current_args, arg, '5').int()
+				i++
+			}
+			'-message-limit' {
 				res.message_limit = cmdline.option(current_args, arg, '5').int()
 				i++
 			}
