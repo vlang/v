@@ -2476,7 +2476,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 
 				fname := g.get_sumtype_casting_fn(unwrapped_got_type, unwrapped_expected_type)
 
-				if expr is ast.ArrayInit {
+				if expr is ast.ArrayInit && got_sym.kind == .array_fixed {
 					stmt_str := g.go_before_stmt(0).trim_space()
 					g.empty_line = true
 					tmp_var := g.new_tmp_var()

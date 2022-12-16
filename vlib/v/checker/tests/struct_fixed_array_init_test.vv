@@ -1,0 +1,18 @@
+module main
+type Data = int | [3]int
+
+struct Sample {
+	data Data
+}
+
+fn test_main() {
+	
+
+	test := Sample{
+		data: [5, 10, 15]!
+		//data: 5 /* works fine */
+	}
+
+	println(test)
+	println(test.data)
+}
