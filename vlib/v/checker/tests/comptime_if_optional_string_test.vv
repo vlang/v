@@ -1,11 +1,11 @@
 module main
 
-struct Foo{
-	a string 
+struct Foo {
+	a string
 	b ?string
 }
 
-fn test_main(){
+fn test_main() {
 	$for field in Foo.fields {
 		print(field.typ)
 		$if field.typ is ?string {
