@@ -434,7 +434,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 					}
 
 					if cond.op == .key_is {
-						g.write('${exp_type.idx()} == ${got_type.idx()}')
+						g.write('${exp_type.idx()} == ${got_type.idx()} && ${exp_type.has_flag(.optional)} == ${got_type.has_flag(.optional)}')
 						return exp_type == got_type
 					} else {
 						g.write('${exp_type.idx()} != ${got_type.idx()}')
