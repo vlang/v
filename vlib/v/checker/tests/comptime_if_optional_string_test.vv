@@ -7,11 +7,11 @@ struct Foo{
 
 fn test_main(){
 	$for field in Foo.fields {
-		dump(field.name)
+		print(field.typ)
 		$if field.typ is ?string {
-			dump(1)
+			print(1)
 		} $else $if field.typ is string {
-			dump(2)
+			print(2)
 		}
 	}
 }
