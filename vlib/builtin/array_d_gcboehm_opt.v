@@ -66,6 +66,9 @@ fn (mut a array) ensure_cap_noscan(required int) {
 	if required <= a.cap {
 		return
 	}
+	if a.flags.has(.nogrow) {
+		panic('array.ensure_cap_noscan: array with the flag `.nogrow` cannot grow in size, array required new size: ${required}')
+	}
 	mut cap := if a.cap > 0 { a.cap } else { 2 }
 	for required > cap {
 		cap *= 2
