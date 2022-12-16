@@ -13,5 +13,5 @@ fn test_main() {
 	}
 
 	println(test)
-	println(test.data)
+	assert test.data.str() == 'Data([5, 10, 15])'
 }
