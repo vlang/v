@@ -1,0 +1,17 @@
+module main
+
+struct Foo{
+	a string 
+	b ?string
+}
+
+fn test_main(){
+	$for field in Foo.fields {
+		dump(field.name)
+		$if field.typ is ?string {
+			dump(1)
+		} $else $if field.typ is string {
+			dump(2)
+		}
+	}
+}
