@@ -124,15 +124,16 @@ administrator`. In the new administrative shell, cd to the path where you have c
 then type:
 
 ```bat
-.\v.exe symlink
+v symlink
 ```
+(or `./v symlink` in PowerShell)
 
 That will make V available everywhere, by adding it to your PATH. Please restart your
 shell/editor after that, so that it can pick up the new PATH variable.
 
-NB: there is no need to run `v symlink` more than once - v will available, even after `v up`,
-restarts, and so on.  You only need to run it again if you decide to move the V repo folder
-somewhere else.
+NB: there is no need to run `v symlink` more than once - v will still be available, even after
+`v up`, restarts, and so on.  You only need to run it again if you decide to move the V repo
+folder somewhere else.
 
 ### Docker
 <details><summary>Expand Docker instructions</summary>
