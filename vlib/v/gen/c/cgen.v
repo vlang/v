@@ -2473,9 +2473,23 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					unwrapped_got_type = unwrapped_got_sym.info.types[g.aggregate_type_idx]
 					unwrapped_got_sym = g.table.sym(unwrapped_got_type)
 				}
+
 				fname := g.get_sumtype_casting_fn(unwrapped_got_type, unwrapped_expected_type)
-				g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, unwrapped_exp_sym.cname,
-					got_is_ptr, got_is_fn, got_styp)
+
+				if expr is ast.ArrayInit {
+					stmt_str := g.go_before_stmt(0).trim_space()
+					g.empty_line = true
+					tmp_var := g.new_tmp_var()
+					g.write('${got_styp} ${tmp_var} = ')
+					g.expr(expr)
+					g.write(';')
+					g.write(stmt_str)
+					g.write('${fname}(&${tmp_var})')
+					return
+				} else {
+					g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, unwrapped_exp_sym.cname,
+						got_is_ptr, got_is_fn, got_styp)
+				}
 			}
 			return
 		}
