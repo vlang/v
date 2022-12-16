@@ -1,16 +1,15 @@
 module main
-type Data = int | [3]int
+
+type Data = [3]int | int
 
 struct Sample {
 	data Data
 }
 
 fn test_main() {
-	
-
 	test := Sample{
 		data: [5, 10, 15]!
-		//data: 5 /* works fine */
+		// data: 5 /* works fine */
 	}
 
 	println(test)
