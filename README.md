@@ -1,26 +1,23 @@
-<div align="center">
+<div style="display:grid;place-items:center;">
 <p>
-    <a href="https://vlang.io/" target="_blank"><img width="80" src="https://raw.githubusercontent.com/vlang/v-logo/master/dist/v-logo.svg?sanitize=true"></a>
+    <a href="https://vlang.io/" target="_blank"><img width="80" src="https://raw.githubusercontent.com/vlang/v-logo/master/dist/v-logo.svg?sanitize=true" alt="V logo"></a>
 </p>
 <h1>The V Programming Language</h1>
 
 [vlang.io](https://vlang.io) | [Docs](https://github.com/vlang/v/blob/master/doc/docs.md) | [Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) | [Speed](https://fast.vlang.io/) | [Contributing & compiler design](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
-
 </div>
-<div align="center">
-
+<div style="display:grid;place-items:center;">
 <!--
 [![Build Status][WorkflowBadge]][WorkflowUrl]
 -->
+
 [![Sponsor][SponsorBadge]][SponsorUrl]
 [![Patreon][PatreonBadge]][PatreonUrl]
 [![Discord][DiscordBadge]][DiscordUrl]
 [![Twitter][TwitterUrl]][TwitterBadge]
-
 </div>
 
 ## Key Features of V
-
 - Simplicity: the language can be learned in a weekend
 - Fast compilation: ≈110k loc/s with a Clang backend,
     ≈500k loc/s with native and tcc backends *(Intel i5-7500, SSD, no optimization)* ([demo video](https://www.youtube.com/watch?v=pvP6wmcl_Sc))
@@ -40,7 +37,6 @@
 - Great for writing low-level software ([Vinix OS](https://github.com/vlang/vinix))
 
 ## Stability guarantee and future changes
-
 Despite being at an early development stage, the V language is relatively stable and has
 backwards compatibility guarantee, meaning that the code you write today is guaranteed
 to work a month, a year, or five years from now.
@@ -58,10 +54,9 @@ language, very similar to the way it is right now.
 
 ## Installing V from source
 
-*(this is the preferred method)*
+--> **_(this is the preferred method)_**
 
 ### Linux, macOS, Windows, *BSD, Solaris, WSL, etc.
-
 Usually installing V is quite simple if you have an environment that already has a
 functional `git` installation.
 
@@ -70,16 +65,15 @@ To get started, simply try to execute the following in your terminal/shell:
 git clone https://github.com/vlang/v
 cd v
 make
-# HINT: Using Windows?: run make.bat in the cmd.exe shell
+# HINT: Using Windows? run make.bat in a cmd shell, or ./make.bat in PowerShell
 ```
 
 That should be it and you should find your V executable at `[path to V repo]/v`.
 `[path to V repo]` can be anywhere.
 
-(As in the hint above, on Windows `make` means running `make.bat`, so make sure you use
-the `cmd.exe` terminal.)
+(As in the hint above, on Windows `make` means running `make.bat`.)
 
-Now you can try `./v run examples/hello_world.v` (`v.exe` on Windows).
+Now you can try `./v run examples/hello_world.v` (or `v run examples/hello_world.v` in cmd shell).
 
 * *Trouble? Please see the note above and link to
 [Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues) for help.*
@@ -90,7 +84,7 @@ V is constantly being updated. To update V, simply run:
 v up
 ```
 
-* *(* ***NOTE:*** *If you run into any trouble or you have a different operating
+* *(* ***NOTE:*** *If you run into any trouble, or you have a different operating
 system or Linux distribution that doesn't install or work immediately, please see
 [Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues)
 and search for your OS and problem. If you can't find your problem, please add it to an
@@ -98,9 +92,14 @@ existing discussion if one exists for your OS, or create a new one if a main dis
 doesn't yet exist for your OS.)*
 
 ### C compiler
+The [Tiny C Compiler (tcc)](https://repo.or.cz/w/tinycc.git) is downloaded for you by `make` if
+there is a compatible version for your system, and installed under the V `thirdparty` directory.
 
-It's recommended to use Clang, GCC, or Visual Studio.
-If you are doing development, you most likely already have one of those installed.
+This compiler is very fast, but does almost no optimizations.  It is best for development builds.
+
+For production builds (using the `-prod` option to V), it's recommended to use clang, gcc, or
+Microsoft Visual C++. If you are doing development, you most likely already have one of those
+installed.
 
 Otherwise, follow these instructions:
 
@@ -108,12 +107,7 @@ Otherwise, follow these instructions:
 
 - [Installing a C compiler on Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
 
-However, if none is found when running `make` on Linux or Windows,
-TCC is downloaded as the default C backend.
-It's very lightweight (several MB) so this shouldn't take too long.
-
 ### Symlinking
-
 NB: it is *highly recommended*, that you put V on your PATH. That saves
 you the effort to type in the full path to your v executable every time.
 V provides a convenience `v symlink` command to do that more easily.
@@ -125,26 +119,24 @@ executable. To do that, run:
 sudo ./v symlink
 ```
 
-On Windows, start a new shell with administrative privileges, for
-example by <kbd>Windows Key</kbd>, then type `cmd.exe`, right-click on its menu
-entry, and choose `Run as administrator`. In the new administrative
-shell, cd to the path, where you have compiled v.exe, then type:
+On Windows, start a new shell with administrative privileges, for example by pressing the
+<kbd>Windows Key</kbd>, then type `cmd.exe`, right-click on its menu entry, and choose `Run as
+administrator`. In the new administrative shell, cd to the path where you have compiled V, then
+type:
 
 ```bat
-.\v.exe symlink
+v symlink
 ```
+(or `./v symlink` in PowerShell)
 
-That will make V available everywhere, by adding it to your PATH.
-Please restart your shell/editor after that, so that it can pick
-the new PATH variable.
+That will make V available everywhere, by adding it to your PATH. Please restart your
+shell/editor after that, so that it can pick up the new PATH variable.
 
-NB: there is no need to run `v symlink` more than once - v will
-continue to be available, even after `v up`, restarts, and so on.
-You only need to run it again, if you decide to move the V repo
+NB: there is no need to run `v symlink` more than once - v will still be available, even after
+`v up`, restarts, and so on.  You only need to run it again if you decide to move the V repo
 folder somewhere else.
 
 ### Docker
-
 <details><summary>Expand Docker instructions</summary>
 
 ```bash
@@ -153,20 +145,16 @@ cd v
 docker build -t vlang .
 docker run --rm -it vlang:latest
 ```
-
 ### Docker with Alpine/musl
-
 ```bash
 git clone https://github.com/vlang/v
 cd v
 docker build -t vlang --file=Dockerfile.alpine .
 docker run --rm -it vlang:latest
 ```
-
 </details>
 
 ### Termux/Android
-
 On Termux, V needs some packages preinstalled - a working C compiler, also `libexecinfo`,
 `libgc` and `libgc-static`. After installing them, you can use the same script, like on
 Linux/macos:
@@ -178,14 +166,9 @@ make
 ```
 
 ## Testing and running the examples
-
 Make sure V can compile itself:
-
 ```bash
-v self
-```
-
-```bash
+$ v self
 $ v
 V 0.3.x
 Use Ctrl-C or `exit` to exit
@@ -194,7 +177,6 @@ Use Ctrl-C or `exit` to exit
 hello world
 >>>
 ```
-
 ```bash
 cd examples
 v hello_world.v && ./hello_world    # or simply
@@ -204,8 +186,7 @@ v run word_counter/word_counter.v word_counter/cinderella.txt
 v run news_fetcher.v
 v run tetris/tetris.v
 ```
-
-<img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
+<img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300 alt='tetris screenshot'>
 
 NB: In order to build Tetris or 2048 (or anything else using `sokol` or  `gg` graphics modules)
 on some Linux systems, you need to install `libxi-dev` and `libxcursor-dev` .
@@ -250,9 +231,8 @@ sudo dnf install libatomic-static
 ```
 
 ## V UI
-
 <a href="https://github.com/vlang/ui">
-<img src='https://raw.githubusercontent.com/vlang/ui/master/examples/screenshot.png' width=712>
+<img src='https://raw.githubusercontent.com/vlang/ui/master/examples/screenshot.png' width=712 alt='V UI example screenshot'>
 </a>
 
 https://github.com/vlang/ui
@@ -279,42 +259,34 @@ Hello from V.js
 -->
 
 ## Android graphical apps
-
 With V's `vab` tool, building V UI and graphical apps for Android can become as easy as:
-
 ```
 ./vab /path/to/v/examples/2048
 ```
-
 [https://github.com/vlang/vab](https://github.com/vlang/vab).
-
-<img src="https://user-images.githubusercontent.com/768942/107622846-c13f3900-6c58-11eb-8a66-55db12979b73.png">
+<img src="https://user-images.githubusercontent.com/768942/107622846-c13f3900-6c58-11eb-8a66-55db12979b73.png" alt="vab examples screenshot">
 
 ## Developing web applications
-
 Check out the [Building a simple web blog](https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/README.md)
 tutorial and Gitly, a light and fast alternative to GitHub/GitLab:
 
 https://github.com/vlang/gitly
 
-<img src="https://user-images.githubusercontent.com/687996/85933714-b195fe80-b8da-11ea-9ddd-09cadc2103e4.png">
+<img src="https://user-images.githubusercontent.com/687996/85933714-b195fe80-b8da-11ea-9ddd-09cadc2103e4.png" alt="gitly screenshot">
 
 ## Vinix, an OS/kernel written in V
-
 V is great for writing low-level software like drivers and kernels.
 Vinix is an OS/kernel that already runs bash, GCC, V, and nano.
 
 https://github.com/vlang/vinix
 
-<img src="https://github.com/vlang/vinix/blob/main/screenshot0.png?raw=true">
-<img src="https://github.com/vlang/vinix/blob/main/screenshot1.png?raw=true">
+<img src="https://github.com/vlang/vinix/blob/main/screenshot0.png?raw=true" alt="vinix screenshot 1">
+<img src="https://github.com/vlang/vinix/blob/main/screenshot1.png?raw=true" alt="vinix screenshot 2">
 
 ## Acknowledgement
-
 V thanks Fabrice Bellard for his original work on the [TCC - Tiny C Compiler](https://bellard.org/tcc/). Note the TCC website is old; the current TCC repository can be found [here](https://repo.or.cz/w/tinycc.git).  V utilizes pre-built TCC binaries located at [https://github.com/vlang/tccbin/](https://github.com/vlang/tccbin/).
 
 ## Troubleshooting
-
 Please see the [Troubleshooting](https://github.com/vlang/v/wiki/Troubleshooting) section on our [wiki page](https://github.com/vlang/v/wiki)
 
 [WorkflowBadge]: https://github.com/vlang/v/workflows/CI/badge.svg
