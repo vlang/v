@@ -151,6 +151,9 @@ pub fn (mut c TcpConn) read_deadline() !time.Time {
 
 // write_ptr blocks and attempts to write all data
 pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
+	$if trace_tcp_sock_handle ? {
+		eprintln('>>> TcpConn.write_ptr | c: ${ptr_str(c)} | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} | len: ${len}')
+	}
 	$if trace_tcp ? {
 		eprintln(
 			'>>> TcpConn.write_ptr | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} len: ${len} |\n' +

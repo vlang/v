@@ -717,10 +717,16 @@ pub fn not_found() Result {
 }
 
 fn send_string(mut conn net.TcpConn, s string) ! {
+	$if trace_send_string_conn ? {
+		eprintln('> send_string: conn: ${ptr_str(conn)}')
+	}
 	$if trace_response ? {
 		eprintln('> send_string:\n${s}\n')
 	}
-	conn.write(s.bytes())!
+	if voidptr(conn) == unsafe { nil } {
+		return error('connection was closed before send_string')
+	}
+	conn.write_string(s)!
 }
 
 // Do not delete.
