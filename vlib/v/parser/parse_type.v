@@ -647,7 +647,37 @@ pub fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Lan
 	// struct / enum / placeholder
 	mut idx := p.table.find_type_idx(name)
 	if idx > 0 {
-		return ast.new_type(idx)
+		mut typ := ast.new_type(idx)
+		sym := p.table.sym(typ)
+		match sym.info {
+			ast.Struct, ast.Interface, ast.SumType {
+				if p.struct_init_generic_types.len > 0 && sym.info.generic_types.len > 0
+					&& p.struct_init_generic_types != sym.info.generic_types {
+					generic_names := p.struct_init_generic_types.map(p.table.sym(it).name)
+					mut sym_name := sym.name + '['
+					for i, gt in generic_names {
+						sym_name += gt
+						if i != generic_names.len - 1 {
+							sym_name += ','
+						}
+					}
+					sym_name += ']'
+					existing_idx := p.table.type_idxs[sym_name]
+					if existing_idx > 0 {
+						idx = existing_idx
+					} else {
+						idx = p.table.register_sym(ast.TypeSymbol{
+							...sym
+							name: sym_name
+							generic_types: p.struct_init_generic_types.clone()
+						})
+					}
+					typ = ast.new_type(idx)
+				}
+			}
+			else {}
+		}
+		return typ
 	}
 	// not found - add placeholder
 	idx = p.table.add_placeholder_type(name, language)

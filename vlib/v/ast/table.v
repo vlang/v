@@ -1704,18 +1704,30 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 			if sym.info.is_generic {
 				mut nrt := '${sym.name}['
 				mut t_generic_names := generic_names.clone()
-				if generic_names.len == sym.info.generic_types.len {
+				mut t_concrete_types := concrete_types.clone()
+				if sym.generic_types.len > 0 && sym.generic_types.len == sym.info.generic_types.len
+					&& sym.generic_types != sym.info.generic_types {
 					t_generic_names = sym.info.generic_types.map(t.sym(it).name)
+					t_concrete_types = []
+					for t_typ in sym.generic_types {
+						tname := t.sym(t_typ).name
+						index := generic_names.index(tname)
+						if index >= 0 && index < concrete_types.len {
+							t_concrete_types << concrete_types[index]
+						}
+					}
 				}
 				for i in 0 .. sym.info.generic_types.len {
 					if ct := t.resolve_generic_to_concrete(sym.info.generic_types[i],
-						t_generic_names, concrete_types)
+						t_generic_names, t_concrete_types)
 					{
 						gts := t.sym(ct)
 						nrt += gts.name
 						if i != sym.info.generic_types.len - 1 {
 							nrt += ', '
 						}
+					} else {
+						return none
 					}
 				}
 				nrt += ']'
@@ -1839,14 +1851,24 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 				return typ
 			}
 			mut t_generic_names := generic_names.clone()
-			if generic_names.len == ts.info.generic_types.len {
+			mut t_concrete_types := concrete_types.clone()
+			if ts.generic_types.len > 0 && ts.generic_types.len == ts.info.generic_types.len
+				&& ts.generic_types != ts.info.generic_types {
 				t_generic_names = ts.info.generic_types.map(t.sym(it).name)
+				t_concrete_types = []
+				for t_typ in ts.generic_types {
+					tname := t.sym(t_typ).name
+					index := generic_names.index(tname)
+					if index >= 0 && index < concrete_types.len {
+						t_concrete_types << concrete_types[index]
+					}
+				}
 			}
 			nrt = '${ts.name}['
 			c_nrt = '${ts.cname}_T_'
 			for i in 0 .. ts.info.generic_types.len {
 				if ct := t.resolve_generic_to_concrete(ts.info.generic_types[i], t_generic_names,
-					concrete_types)
+					t_concrete_types)
 				{
 					gts := t.sym(ct)
 					nrt += gts.name
@@ -1855,6 +1877,8 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 						nrt += ', '
 						c_nrt += '_'
 					}
+				} else {
+					return typ
 				}
 			}
 			nrt += ']'
@@ -1869,10 +1893,10 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 						sym := t.sym(fields[i].typ)
 						if sym.kind == .struct_ && fields[i].typ.idx() != typ.idx() {
 							fields[i].typ = t.unwrap_generic_type(fields[i].typ, t_generic_names,
-								concrete_types)
+								t_concrete_types)
 						} else {
 							if t_typ := t.resolve_generic_to_concrete(fields[i].typ, t_generic_names,
-								concrete_types)
+								t_concrete_types)
 							{
 								fields[i].typ = t_typ
 							}
@@ -1882,7 +1906,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 				// update concrete types
 				for i in 0 .. ts.info.generic_types.len {
 					if t_typ := t.resolve_generic_to_concrete(ts.info.generic_types[i],
-						t_generic_names, concrete_types)
+						t_generic_names, t_concrete_types)
 					{
 						final_concrete_types << t_typ
 					}
@@ -1903,7 +1927,9 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 								}
 							}
 						}
-						t.register_fn_concrete_types(method.fkey(), final_concrete_types)
+						if final_concrete_types.len == method.generic_names.len {
+							t.register_fn_concrete_types(method.fkey(), final_concrete_types)
+						}
 					}
 				}
 			}

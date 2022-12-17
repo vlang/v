@@ -89,17 +89,18 @@ pub struct TypeSymbol {
 pub:
 	parent_idx int
 pub mut:
-	info     TypeInfo
-	kind     Kind
-	name     string // the internal & source name of the type, i.e. `[5]int`.
-	cname    string // the name with no dots for use in the generated C code
-	methods  []Fn
-	mod      string
-	is_pub   bool
-	language Language
-	idx      int
-	size     int = -1
-	align    int = -1
+	info          TypeInfo
+	kind          Kind
+	name          string // the internal & source name of the type, i.e. `[5]int`.
+	cname         string // the name with no dots for use in the generated C code
+	methods       []Fn
+	generic_types []Type
+	mod           string
+	is_pub        bool
+	language      Language
+	idx           int
+	size          int = -1
+	align         int = -1
 }
 
 // max of 8
