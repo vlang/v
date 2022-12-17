@@ -415,6 +415,7 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	}
 	host := if params.host == '' { 'localhost' } else { params.host }
 	println('[Vweb] Running app on http://${host}:${params.port}/')
+	flush_stdout()
 	for {
 		// Create a new app object for each connection, copy global data like db connections
 		mut request_app := &T{}
@@ -607,8 +608,8 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 [manualfree]
 fn serve_if_static[T](mut app T, url urllib.URL) bool {
 	// TODO: handle url parameters properly - for now, ignore them
-	static_file := app.static_files[url.path]
-	mime_type := app.static_mime_types[url.path]
+	static_file := app.static_files[url.path] or { return false }
+	mime_type := app.static_mime_types[url.path] or { return false }
 	if static_file == '' || mime_type == '' {
 		return false
 	}
@@ -706,7 +707,7 @@ pub fn (ctx &Context) ip() string {
 
 // Set s to the form error
 pub fn (mut ctx Context) error(s string) {
-	println('vweb error: ${s}')
+	eprintln('vweb error: ${s}')
 	ctx.form_error = s
 }
 
