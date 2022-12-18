@@ -109,6 +109,10 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 	}
 	styp := typ.styp
 	str_fn_name := styp_to_str_fn_name(styp)
+	if str_fn_name in g.str_fn_names {
+		return
+	}
+	g.str_fn_names << str_fn_name
 	if typ.typ.has_flag(.optional) {
 		g.gen_str_for_option(typ.typ, styp, str_fn_name)
 		return

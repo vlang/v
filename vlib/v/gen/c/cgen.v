@@ -155,8 +155,9 @@ mut:
 	defer_ifdef               string
 	defer_profile_code        string
 	defer_vars                []string
-	str_types                 []StrType       // types that need automatic str() generation
-	generated_str_fns         []StrType       // types that already have a str() function
+	str_types                 []StrType // types that need automatic str() generation
+	generated_str_fns         []StrType // types that already have a str() function
+	str_fn_names              []string  // remove duplicate function names
 	threaded_fns              shared []string // for generating unique wrapper types and fns for `go xxx()`
 	waiter_fns                shared []string // functions that wait for `go xxx()` to finish
 	needed_equality_fns       []ast.Type
@@ -5363,6 +5364,7 @@ fn (mut g Gen) write_sorted_types() {
 }
 
 fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
+	mut struct_names := []string{cap: 16}
 	for sym in symbols {
 		if sym.name.starts_with('C.') {
 			continue
@@ -5377,7 +5379,10 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 		mut name := sym.cname
 		match sym.info {
 			ast.Struct {
-				g.struct_decl(sym.info, name, false)
+				if name !in struct_names {
+					g.struct_decl(sym.info, name, false)
+					struct_names << name
+				}
 			}
 			ast.Alias {
 				// ast.Alias { TODO
@@ -5401,9 +5406,10 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				}
 			}
 			ast.SumType {
-				if sym.info.is_generic {
+				if sym.info.is_generic || name in struct_names {
 					continue
 				}
+				struct_names << name
 				g.typedefs.writeln('typedef struct ${name} ${name};')
 				g.type_definitions.writeln('')
 				g.type_definitions.writeln('// Union sum type ${name} = ')
