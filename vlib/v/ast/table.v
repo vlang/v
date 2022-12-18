@@ -1799,7 +1799,12 @@ pub fn (mut t Table) generic_type_names(generic_type Type) []string {
 		}
 		Struct, Interface, SumType {
 			if sym.info.is_generic {
-				names << sym.info.generic_types.map(t.sym(it).name)
+				if sym.generic_types.len > 0 {
+					// Foo[U] (declaration: Foo[T])
+					names << sym.generic_types.map(t.sym(it).name)
+				} else {
+					names << sym.info.generic_types.map(t.sym(it).name)
+				}
 			}
 		}
 		else {}
