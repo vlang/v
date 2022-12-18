@@ -3577,18 +3577,18 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 
 	if node.or_block.kind != .absent && !g.is_assign_lhs && g.table.sym(node.typ).kind != .chan {
-		mut is_opt_or_res := node.typ.has_flag(.optional) || node.typ.has_flag(.result)
+		is_ptr := g.table.sym(g.unwrap_generic(node.expr_type)).kind in [.interface_, .sum_type]
 		stmt_str := g.go_before_stmt(0).trim_space()
 		styp := g.typ(node.typ)
 		g.empty_line = true
 		tmp_var := g.new_tmp_var()
 		g.write('${styp} ${tmp_var} = ')
-		if is_opt_or_res {
+		if is_ptr {
 			g.write('*(')
 		}
 		g.expr(node.expr)
 		g.write('.${node.field_name}')
-		if is_opt_or_res {
+		if is_ptr {
 			g.write(')')
 		}
 		g.or_block(tmp_var, node.or_block, node.typ)
