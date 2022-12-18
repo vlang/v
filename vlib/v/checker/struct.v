@@ -78,6 +78,12 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				if info.is_heap && !field.typ.is_ptr() {
 					struct_sym.info.is_heap = true
 				}
+				for ct in info.concrete_types {
+					ct_sym := c.table.sym(ct)
+					if ct_sym.kind == .placeholder {
+						c.error('unknown type `${ct_sym.name}`', field.type_pos)
+					}
+				}
 			}
 			if sym.kind == .multi_return {
 				c.error('cannot use multi return as field type', field.type_pos)
