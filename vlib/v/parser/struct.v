@@ -252,15 +252,16 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 						typ = p.table.find_type_idx(anon_struct_decl.name)
 					}
 				} else {
+					start_type_pos := p.tok.pos()
 					typ = p.parse_type()
+					type_pos = start_type_pos.extend(p.prev_tok.pos())
 				}
 				p.inside_struct_field_decl = false
 				if typ.idx() == 0 {
 					// error is set in parse_type
 					return ast.StructDecl{}
 				}
-				type_pos = p.prev_tok.pos()
-				field_pos = field_start_pos.extend(type_pos)
+				field_pos = field_start_pos.extend(p.prev_tok.pos())
 				if typ.has_flag(.optional) || typ.has_flag(.result) {
 					optional_pos = p.peek_token(-2).pos()
 				}
