@@ -277,6 +277,9 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 						node.pos)
 				} else if node.generic_types.len > 0 && c.table.cur_fn != unsafe { nil } {
 					for gtyp in node.generic_types {
+						if !gtyp.has_flag(.generic) {
+							continue
+						}
 						gtyp_name := c.table.sym(gtyp).name
 						if gtyp_name !in c.table.cur_fn.generic_names {
 							cur_generic_names := '(' + c.table.cur_fn.generic_names.join(',') + ')'
