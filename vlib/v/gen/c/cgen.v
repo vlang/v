@@ -3073,12 +3073,61 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	g.autofree_scope_stmts << af.str()
 }
 
+fn (mut g Gen) map_check_presence(struct_name string, c_fn_name string, v_method_name string) {
+	if c_fn_name == '' {
+		verror('struct `${struct_name}`, used as map key, should implement a `${v_method_name}` method with a reference receiver')
+	}
+}
+
 fn (mut g Gen) map_fn_ptrs(key_typ ast.TypeSymbol) (string, string, string, string) {
 	mut hash_fn := ''
 	mut key_eq_fn := ''
 	mut clone_fn := ''
 	mut free_fn := '&map_free_nop'
 	match key_typ.kind {
+		.struct_ {
+			for method in key_typ.methods {
+				if method.receiver_type.nr_muls() == 0 {
+					continue
+				}
+				match method.name {
+					'map_hash' {
+						if method.return_type != ast.u64_type || method.params.len != 1 {
+							eprintln('the map_hash method of struct ${key_typ.name} should return `u64`, and should have no parameters')
+							continue
+						}
+						hash_fn = '&${key_typ.cname}_map_hash'
+					}
+					'map_eq' {
+						if method.return_type != ast.bool_type || method.params.len != 2 {
+							eprintln('the map_eq method of struct ${key_typ.name} should return `bool`, and should have exactly 1 parameter of type `&{${key_typ.name}}`')
+							continue
+						}
+						key_eq_fn = '&${key_typ.cname}_map_eq'
+					}
+					'map_clone' {
+						if method.return_type != ast.void_type || method.params.len != 2 {
+							eprintln('the map_clone method of struct ${key_typ.name} should have exactly 1 parameter of type `&{${key_typ.name}}` and its receiver should be `mut x ${key_typ.name}`, and should not return anything')
+							continue
+						}
+						clone_fn = '&${key_typ.cname}_map_clone'
+					}
+					'map_free' {
+						if method.return_type != ast.void_type || method.params.len != 1 {
+							eprintln('the map_free method of struct ${key_typ.name} should have no parameters, and should not return anything')
+							continue
+						}
+						free_fn = '&${key_typ.cname}_map_free'
+					}
+					else {}
+				}
+			}
+			g.map_check_presence(key_typ.name, hash_fn, 'map_hash')
+			g.map_check_presence(key_typ.name, key_eq_fn, 'map_eq')
+			g.map_check_presence(key_typ.name, clone_fn, 'map_clone')
+			g.map_check_presence(key_typ.name, free_fn, 'map_free')
+			return hash_fn, key_eq_fn, clone_fn, free_fn
+		}
 		.alias {
 			alias_key_type := (key_typ.info as ast.Alias).parent_type
 			return g.map_fn_ptrs(g.table.sym(alias_key_type))

@@ -149,13 +149,13 @@ fn (mut d DenseArray) expand() int {
 	return push_index
 }
 
-type MapHashFn = fn (voidptr) u64
+type MapHashFn = fn (new_key voidptr) u64
 
-type MapEqFn = fn (voidptr, voidptr) bool
+type MapEqFn = fn (new_key voidptr, existing_map_key voidptr) bool
 
-type MapCloneFn = fn (voidptr, voidptr)
+type MapCloneFn = fn (existing_map_key voidptr, new_key voidptr)
 
-type MapFreeFn = fn (voidptr)
+type MapFreeFn = fn (existing_map_key voidptr)
 
 // map is the internal representation of a V `map` type.
 pub struct map {
