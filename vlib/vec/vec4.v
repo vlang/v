@@ -4,6 +4,7 @@ module vec
 
 import math
 
+// Vec4[T] is a generic struct representing a vector in 4D space.
 pub struct Vec4[T] {
 pub mut:
 	x T
@@ -12,6 +13,7 @@ pub mut:
 	w T
 }
 
+// vec4[T] returns a `Vec4` of type `T`, with `x`,`y`,`z` and `w` fields set.
 pub fn vec4[T](x T, y T, z T, w T) Vec4[T] {
 	return Vec4[T]{
 		x: x
@@ -21,6 +23,7 @@ pub fn vec4[T](x T, y T, z T, w T) Vec4[T] {
 	}
 }
 
+// zero sets the `x`,`y`,`z` and `w` fields to 0.
 pub fn (mut v Vec4[T]) zero() {
 	v.x = 0
 	v.y = 0
@@ -28,6 +31,7 @@ pub fn (mut v Vec4[T]) zero() {
 	v.w = 0
 }
 
+// one sets the `x`,`y`,`z` and `w` fields to 1.
 pub fn (mut v Vec4[T]) one() {
 	v.x = 1
 	v.y = 1
@@ -35,10 +39,12 @@ pub fn (mut v Vec4[T]) one() {
 	v.w = 1
 }
 
+// copy returns a copy of this vector.
 pub fn (v Vec4[T]) copy() Vec4[T] {
 	return Vec4[T]{v.x, v.y, v.z, v.w}
 }
 
+// from sets the `x`,`y`,`z` and `w` fields from `u`.
 pub fn (mut v Vec4[T]) from(u Vec4[T]) {
 	v.x = u.x
 	v.y = u.y
@@ -46,21 +52,25 @@ pub fn (mut v Vec4[T]) from(u Vec4[T]) {
 	v.w = u.w
 }
 
+// from_vec2 sets the `x` and `y` fields from `u`.
 pub fn (mut v Vec4[T]) from_vec2(u Vec2[T]) {
 	v.x = u.x
 	v.y = u.y
 }
 
+// as_vec2 returns a Vec2 with `x` and `y` fields set from `v`.
 pub fn (v Vec4[T]) as_vec2[U]() Vec2[U] {
 	return Vec2[U]{v.x, v.y}
 }
 
+// from_vec3 sets the `x`,`y` and `z` fields from `u`.
 pub fn (mut v Vec4[T]) from_vec3[U](u Vec3[U]) {
 	v.x = T(u.x)
 	v.y = T(u.y)
 	v.z = T(u.z)
 }
 
+// as_vec3 returns a Vec3 with `x`,`y` and `z` fields set from `v`.
 pub fn (v Vec4[T]) as_vec3[U]() Vec3[U] {
 	return Vec3[U]{v.x, v.y, v.z}
 }
@@ -68,27 +78,36 @@ pub fn (v Vec4[T]) as_vec3[U]() Vec3[U] {
 //
 // Addition
 //
-// + operator overload. Adds two vectors
+
+// + returns the resulting vector of the addition of `v` and `u`.
+[inline]
 pub fn (v Vec4[T]) + (u Vec4[T]) Vec4[T] {
 	return Vec4[T]{v.x + u.x, v.y + u.y, v.z + u.z, v.w + u.w}
 }
 
+// add returns the resulting vector of the addition of `v` + `u`.
 pub fn (v Vec4[T]) add(u Vec4[T]) Vec4[T] {
 	return v + u
 }
 
+// add_vec2 returns the resulting vector of the addition of the
+// `x` and `y` fields of `u`, `z` is left untouched.
 pub fn (v Vec4[T]) add_vec2[U](u Vec2[U]) Vec4[T] {
 	return Vec4[T]{v.x + u.x, v.y + u.y, 0, 0}
 }
 
+// add_vec3 returns the resulting vector of the addition of the
+// `x`,`y` and `z` fields of `u`, `w` is left untouched.
 pub fn (v Vec4[T]) add_vec3[U](u Vec3[U]) Vec4[T] {
 	return Vec4[T]{v.x + u.x, v.y + u.y, v.z + u.z, 0}
 }
 
+// add_scalar returns the resulting vector of the addition of the `scalar` value.
 pub fn (v Vec4[T]) add_scalar[U](scalar U) Vec4[T] {
 	return Vec4[T]{v.x + T(scalar), v.y + T(scalar), v.z + T(scalar), v.w + T(scalar)}
 }
 
+// plus adds vector `u` to the vector.
 pub fn (mut v Vec4[T]) plus(u Vec4[T]) {
 	v.x += u.x
 	v.y += u.y
@@ -96,6 +115,7 @@ pub fn (mut v Vec4[T]) plus(u Vec4[T]) {
 	v.w += u.w
 }
 
+// plus_scalar adds the scalar `scalar` to the vector.
 pub fn (mut v Vec4[T]) plus_scalar[U](scalar U) {
 	v.x += T(scalar)
 	v.y += T(scalar)
@@ -106,18 +126,24 @@ pub fn (mut v Vec4[T]) plus_scalar[U](scalar U) {
 //
 // Subtraction
 //
+
+// - returns the resulting vector of the subtraction of `v` and `u`.
+[inline]
 pub fn (v Vec4[T]) - (u Vec4[T]) Vec4[T] {
 	return Vec4[T]{v.x - u.x, v.y - u.y, v.z - u.z, v.w - u.w}
 }
 
+// sub returns the resulting vector of the subtraction of `v` - `u`.
 pub fn (v Vec4[T]) sub(u Vec4[T]) Vec4[T] {
 	return v - u
 }
 
+// sub_scalar returns the resulting vector of the subtraction of the `scalar` value.
 pub fn (v Vec4[T]) sub_scalar[U](scalar U) Vec4[T] {
 	return Vec4[T]{v.x - T(scalar), v.y - T(scalar), v.z - T(scalar), v.w - T(scalar)}
 }
 
+// subtract subtracts vector `u` from the vector.
 pub fn (mut v Vec4[T]) subtract(u Vec4[T]) {
 	v.x -= u.x
 	v.y -= u.y
@@ -125,6 +151,7 @@ pub fn (mut v Vec4[T]) subtract(u Vec4[T]) {
 	v.w -= u.w
 }
 
+// subtract_scalar subtracts the scalar `scalar` from the vector.
 pub fn (mut v Vec4[T]) subtract_scalar[U](scalar U) {
 	v.x -= T(scalar)
 	v.y -= T(scalar)
@@ -135,18 +162,24 @@ pub fn (mut v Vec4[T]) subtract_scalar[U](scalar U) {
 //
 // Multiplication
 //
+
+// * returns the resulting vector of the multiplication of `v` and `u`.
+[inline]
 pub fn (v Vec4[T]) * (u Vec4[T]) Vec4[T] {
 	return Vec4[T]{v.x * u.x, v.y * u.y, v.z * u.z, v.w * u.w}
 }
 
+// mul returns the resulting vector of the multiplication of `v` * `u`.
 pub fn (v Vec4[T]) mul(u Vec4[T]) Vec4[T] {
 	return v * u
 }
 
+// mul_scalar returns the resulting vector of the multiplication of the `scalar` value.
 pub fn (v Vec4[T]) mul_scalar[U](scalar U) Vec4[T] {
 	return Vec4[T]{v.x * T(scalar), v.y * T(scalar), v.z * T(scalar), v.w * T(scalar)}
 }
 
+// multiply multiplies the vector with `u`.
 pub fn (mut v Vec4[T]) multiply(u Vec4[T]) {
 	v.x *= u.x
 	v.y *= u.y
@@ -154,6 +187,7 @@ pub fn (mut v Vec4[T]) multiply(u Vec4[T]) {
 	v.w *= u.w
 }
 
+// multiply_scalar multiplies the vector with `scalar`.
 pub fn (mut v Vec4[T]) multiply_scalar[U](scalar U) {
 	v.x *= T(scalar)
 	v.y *= T(scalar)
@@ -164,18 +198,24 @@ pub fn (mut v Vec4[T]) multiply_scalar[U](scalar U) {
 //
 // Division
 //
+
+// / returns the resulting vector of the division of `v` and `u`.
+[inline]
 pub fn (v Vec4[T]) / (u Vec4[T]) Vec4[T] {
 	return Vec4[T]{v.x / u.x, v.y / u.y, v.z / u.z, v.w / u.w}
 }
 
+// div returns the resulting vector of the division of `v` / `u`.
 pub fn (v Vec4[T]) div(u Vec4[T]) Vec4[T] {
 	return v / u
 }
 
+// div_scalar returns the resulting vector of the division by the `scalar` value.
 pub fn (v Vec4[T]) div_scalar[U](scalar U) Vec4[T] {
 	return Vec4[T]{v.x / T(scalar), v.y / T(scalar), v.z / T(scalar), v.w / T(scalar)}
 }
 
+// divide divides the vector by `u`.
 pub fn (mut v Vec4[T]) divide(u Vec4[T]) {
 	v.x /= u.x
 	v.y /= u.y
@@ -183,6 +223,7 @@ pub fn (mut v Vec4[T]) divide(u Vec4[T]) {
 	v.w /= u.w
 }
 
+// divide_scalar divides the vector by `scalar`.
 pub fn (mut v Vec4[T]) divide_scalar[U](scalar U) {
 	v.x /= T(scalar)
 	v.y /= T(scalar)
@@ -202,11 +243,12 @@ pub fn (v Vec4[T]) magnitude() T {
 	return T(math.sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z) + (v.w * v.w)))
 }
 
+// dot returns the dot product of `v` and `u`.
 pub fn (v Vec4[T]) dot(u Vec4[T]) T {
 	return T((v.x * u.x) + (v.y * u.y) + (v.z * u.z) + (v.w * u.w))
 }
 
-// cross_xyz returns the cross product of v and u's xyz components
+// cross_xyz returns the cross product of `v` and `u`'s `x`,`y` and `z` fields.
 pub fn (v Vec4[T]) cross_xyz(u Vec4[T]) Vec4[T] {
 	return Vec4[T]{
 		x: (v.y * u.z) - (v.z * u.y)
@@ -228,28 +270,29 @@ pub fn (v Vec4[T]) unit() Vec4[T] {
 	}
 }
 
-// perpendicular returns the perpendicular vector to this vector.
+// perpendicular returns the `u` projected perpendicular vector to this vector.
 pub fn (v Vec4[T]) perpendicular(u Vec4[T]) Vec4[T] {
 	return v - v.project(u)
 }
 
-// project returns the projected vector
+// project returns the projected vector.
 pub fn (v Vec4[T]) project(u Vec4[T]) Vec4[T] {
 	percent := v.dot(u) / u.dot(v)
 	return u.mul_scalar(percent)
 }
 
-// eq returns a bool indicating if the two vectors are equal
+// eq returns a bool indicating if the two vectors are equal.
+[inline]
 pub fn (v Vec4[T]) eq(u Vec4[T]) bool {
 	return v.x == u.x && v.y == u.y && v.z == u.z && v.w == u.w
 }
 
-// eq_epsilon returns a bool indicating if the two vectors are equal within the module vec_epsilon const
+// eq_epsilon returns a bool indicating if the two vectors are equal within the module `vec_epsilon` const.
 pub fn (v Vec4[T]) eq_epsilon(u Vec4[T]) bool {
 	return v.eq_approx[T, f32](u, vec_epsilon)
 }
 
-// eq_approx will return a bool indicating if vectors are approximately equal within `tolerance`
+// eq_approx returns whether these vectors are approximately equal within `tolerance`.
 pub fn (v Vec4[T]) eq_approx[T, U](u Vec4[T], tolerance U) bool {
 	diff_x := math.abs(v.x - u.x)
 	diff_y := math.abs(v.y - u.y)
@@ -270,7 +313,7 @@ pub fn (v Vec4[T]) eq_approx[T, U](u Vec4[T], tolerance U) bool {
 	return false
 }
 
-// is_approx_zero will return a bool indicating if this vector is zero within tolerance
+// is_approx_zero returns whether this vector is equal to zero within `tolerance`.
 pub fn (v Vec4[T]) is_approx_zero(tolerance f64) bool {
 	if math.abs(v.x) <= tolerance && math.abs(v.y) <= tolerance && math.abs(v.z) <= tolerance
 		&& math.abs(v.w) <= tolerance {
@@ -279,36 +322,23 @@ pub fn (v Vec4[T]) is_approx_zero(tolerance f64) bool {
 	return false
 }
 
-// eq_scalar returns a bool indicating if the x and y both equals the scalar
+// eq_scalar returns a bool indicating if the `x`,`y`,`z` and `w` fields all equals `scalar`.
 pub fn (v Vec4[T]) eq_scalar[U](scalar U) bool {
 	return v.x == scalar && v.y == T(scalar) && v.z == T(scalar) && v.w == T(scalar)
 }
 
-// distance returns the distance between the two vectors
+// distance returns the distance to the vector `u`.
 pub fn (v Vec4[T]) distance(u Vec4[T]) f64 {
 	return math.sqrt((v.x - u.x) * (v.x - u.x) + (v.y - u.y) * (v.y - u.y) +
 		(v.z - u.z) * (v.z - u.z) + (v.w - u.w) * (v.w - u.w))
 }
 
-// manhattan_distance returns the Manhattan distance between the two vectors
+// manhattan_distance returns the Manhattan distance to the vector `u`.
 pub fn (v Vec4[T]) manhattan_distance(u Vec4[T]) f64 {
 	return math.abs(v.x - u.x) + math.abs(v.y - u.y) + math.abs(v.z - u.z) + math.abs(v.w - u.w)
 }
 
-/*
-TODO
-// angle_between returns the angle in radians between the two vectors
-pub fn (v Vec4[T]) angle_between(u Vec4[T]) f64 {
-	return math.atan2( (v.y-u.y), (v.x-u.x) )
-}
-
-// angle returns the angle in radians of the vector
-pub fn (v Vec4[T]) angle() f64 {
-	return math.atan2(v.y, v.x)
-}
-*/
-
-// abs will set x and y values to their absolute values
+// abs sets `x`, `y`, `z` and `w` field values to their absolute values.
 pub fn (mut v Vec4[T]) abs() {
 	if v.x < 0 {
 		v.x = math.abs(v.x)
@@ -331,7 +361,7 @@ pub fn (mut v Vec4[T]) abs() {
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-// clean returns a vector with all components of this vector set to zero (0) if they fall within `tolerance`.
+// clean returns a vector with all fields of this vector set to zero (0) if they fall within `tolerance`.
 pub fn (v Vec4[T]) clean[U](tolerance U) Vec4[T] {
 	mut r := v.copy()
 	if math.abs(v.x) < tolerance {
@@ -349,7 +379,7 @@ pub fn (v Vec4[T]) clean[U](tolerance U) Vec4[T] {
 	return r
 }
 
-// clean_tolerance sets all components to zero (0) if they fall within `tolerance`.
+// clean_tolerance sets all fields to zero (0) if they fall within `tolerance`.
 pub fn (mut v Vec4[T]) clean_tolerance[U](tolerance U) {
 	if math.abs(v.x) < tolerance {
 		v.x = 0
@@ -365,7 +395,7 @@ pub fn (mut v Vec4[T]) clean_tolerance[U](tolerance U) {
 	}
 }
 
-// inv returns the reciprocal of the vector
+// inv returns the inverse, or reciprocal, of the vector.
 pub fn (v Vec4[T]) inv() Vec4[T] {
 	return Vec4[T]{
 		x: if v.x != 0 { T(1) / v.x } else { 0 }
@@ -375,7 +405,7 @@ pub fn (v Vec4[T]) inv() Vec4[T] {
 	}
 }
 
-// normalize normalizes the vector
+// normalize normalizes the vector.
 pub fn (v Vec4[T]) normalize() Vec4[T] {
 	m := v.magnitude()
 	if m == 0 {
@@ -389,7 +419,7 @@ pub fn (v Vec4[T]) normalize() Vec4[T] {
 	}
 }
 
-// sum returns a sum of all the components.
+// sum returns a sum of all the fields.
 pub fn (v Vec4[T]) sum() T {
 	return v.x + v.y + v.z + v.w
 }
