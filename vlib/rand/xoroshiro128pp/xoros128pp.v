@@ -11,6 +11,7 @@ pub const seed_len = 4 // u32, that is
 fn rotl(x u64, k int) u64 {
 	return (x << k) | (x >> (64 - k))
 }
+
 // XOROS128PPRNG ported from https://prng.di.unimi.it/xoroshiro128plusplus.c
 pub struct XOROS128PPRNG {
 	buffer.PRNGBuffer
@@ -91,7 +92,6 @@ pub fn (mut rng XOROS128PPRNG) u64() u64 {
 	rng.state0 = rotl(oldstate0, 49) ^ oldstate1 ^ (oldstate1 << 21)
 	rng.state1 = rotl(oldstate1, 28)
 	return res
-	
 }
 
 // block_size returns the number of bits that the RNG can produce in a single iteration.
