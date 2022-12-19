@@ -3304,11 +3304,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			}
 		}
 		ast.IsRefType {
-			typ := if node.typ == g.field_data_type {
-				g.comptime_for_field_value.typ
-			} else {
-				node.typ
-			}
+			typ := g.get_type(node.typ)
 			node_typ := g.unwrap_generic(typ)
 			sym := g.table.sym(node_typ)
 			if sym.language == .v && sym.kind in [.placeholder, .any] {
@@ -3505,7 +3501,7 @@ fn (mut g Gen) char_literal(node ast.CharLiteral) {
 
 // T.name, typeof(expr).name
 fn (mut g Gen) type_name(raw_type ast.Type) {
-	typ := if raw_type == g.field_data_type { g.comptime_for_field_value.typ } else { raw_type }
+	typ := g.get_type(raw_type)
 	sym := g.table.sym(typ)
 	mut s := ''
 	if sym.kind == .function {
@@ -3521,11 +3517,7 @@ fn (mut g Gen) type_name(raw_type ast.Type) {
 }
 
 fn (mut g Gen) typeof_expr(node ast.TypeOf) {
-	typ := if node.typ == g.field_data_type {
-		g.comptime_for_field_value.typ
-	} else {
-		node.typ
-	}
+	typ := g.get_type(node.typ)
 	sym := g.table.sym(typ)
 	if sym.kind == .sum_type {
 		// When encountering a .sum_type, typeof() should be done at runtime,
@@ -5942,8 +5934,12 @@ fn (g Gen) get_all_test_function_names() []string {
 	return all_tfuncs
 }
 
+fn (mut g Gen) get_type[T](typ T) ast.Type {
+	return if typ == g.field_data_type { g.comptime_for_field_value.typ } else { typ }
+}
+
 fn (mut g Gen) size_of(node ast.SizeOf) {
-	typ := if node.typ == g.field_data_type { g.comptime_for_field_value.typ } else { node.typ }
+	typ := g.get_type(node.typ)
 	node_typ := g.unwrap_generic(typ)
 	sym := g.table.sym(node_typ)
 	if sym.language == .v && sym.kind in [.placeholder, .any] {
