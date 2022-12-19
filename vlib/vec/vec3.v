@@ -325,8 +325,6 @@ pub fn (v Vec3[T]) angle_between(u Vec3[T]) T {
 			f64(v.x * v.x) + (v.y * v.y) + (v.z * v.z)) * math.sqrt(f64(u.x * u.x) + (u.y * u.y) +
 			(u.z * u.z))))
 	}
-	panic('TODO ${@FN} not implemented for type')
-	return T(0)
 }
 
 // abs sets `x`, `y` and `z` field values to their absolute values.
