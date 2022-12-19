@@ -5934,7 +5934,7 @@ fn (g Gen) get_all_test_function_names() []string {
 	return all_tfuncs
 }
 
-fn (mut g Gen) get_type[T](typ T) ast.Type {
+fn (mut g Gen) get_type(typ ast.Type) ast.Type {
 	return if typ == g.field_data_type { g.comptime_for_field_value.typ } else { typ }
 }
 
