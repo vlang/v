@@ -4291,8 +4291,13 @@ fn test_hello() {
 	assert hello() == 'Hello world'
 }
 ```
-To run the test above, use `v hello_test.v`. This will check that the function `hello` is
+To run the test file above, use `v hello_test.v`. This will check that the function `hello` is
 producing the correct output. V executes all test functions in the file.
+
+Note: all `_test.v` files (both external and internal ones), are compiled as *separate programs*.
+In other words, you may have as many `_test.v` files, and tests in them as you like, they will
+not affect the compilation of your other code in `.v` files normally at all, but only when you
+do explicitly `v file_test.v` or `v test .`.
 
 * All test functions have to be inside a test file whose name ends in `_test.v`.
 * Test function names must begin with `test_` to mark them for execution.
