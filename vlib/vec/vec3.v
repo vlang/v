@@ -318,8 +318,8 @@ pub fn (v Vec3[T]) manhattan_distance(u Vec3[T]) f64 {
 // angle_between returns the angle in radians to the vector `u`.
 pub fn (v Vec3[T]) angle_between(u Vec3[T]) T {
 	$if T is f64 {
-		return math.acos(((v.x * u.x) + (v.y * u.y) + (v.z * u.z)) / math.sqrt((v.x * v.x) + (v.y * v.y) +
-			(v.z * v.z)) * math.sqrt((u.x * u.x) + (u.y * u.y) + (u.z * u.z)))
+		return math.acos(((v.x * u.x) + (v.y * u.y) + (v.z * u.z)) / math.sqrt((v.x * v.x) +
+			(v.y * v.y) + (v.z * v.z)) * math.sqrt((u.x * u.x) + (u.y * u.y) + (u.z * u.z)))
 	} $else {
 		return T(math.acos(f64((v.x * u.x) + (v.y * u.y) + (v.z * u.z)) / math.sqrt(
 			f64(v.x * v.x) + (v.y * v.y) + (v.z * v.z)) * math.sqrt(f64(u.x * u.x) + (u.y * u.y) +
