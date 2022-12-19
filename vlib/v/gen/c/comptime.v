@@ -458,7 +458,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 				return true
 			} else {
 				if cond.kind == .constant {
-					g.write('_const_${cond.mod}_${util.no_dots(cond.name)}')
+					g.write('_const_${util.no_dots(cond.name)}')
 				} else {
 					ifdef = 'true' // handled in checker
 					g.write('defined(${ifdef})')
