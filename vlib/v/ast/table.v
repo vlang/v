@@ -1805,7 +1805,7 @@ pub fn (mut t Table) generic_type_names(generic_type Type) []string {
 			if sym.info.is_generic {
 				if sym.generic_types.len > 0 {
 					// Foo[U] (declaration: Foo[T])
-					names << sym.generic_types.map(t.sym(it).name)
+					names << sym.generic_types.filter(it.has_flag(.generic)).map(t.sym(it).name)
 				} else {
 					names << sym.info.generic_types.map(t.sym(it).name)
 				}
