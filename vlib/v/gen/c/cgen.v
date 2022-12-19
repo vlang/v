@@ -5364,7 +5364,7 @@ fn (mut g Gen) write_sorted_types() {
 }
 
 fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
-	mut struct_names := []string{cap: 16}
+	mut struct_names := map[string]bool{}
 	for sym in symbols {
 		if sym.name.starts_with('C.') {
 			continue
@@ -5379,9 +5379,9 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 		mut name := sym.cname
 		match sym.info {
 			ast.Struct {
-				if name !in struct_names {
+				if !struct_names[name] {
 					g.struct_decl(sym.info, name, false)
-					struct_names << name
+					struct_names[name] = true
 				}
 			}
 			ast.Alias {
@@ -5406,10 +5406,10 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				}
 			}
 			ast.SumType {
-				if sym.info.is_generic || name in struct_names {
+				if sym.info.is_generic || struct_names[name] {
 					continue
 				}
-				struct_names << name
+				struct_names[name] = true
 				g.typedefs.writeln('typedef struct ${name} ${name};')
 				g.type_definitions.writeln('')
 				g.type_definitions.writeln('// Union sum type ${name} = ')
