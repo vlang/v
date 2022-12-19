@@ -1710,10 +1710,14 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 					t_generic_names = sym.info.generic_types.map(t.sym(it).name)
 					t_concrete_types = []
 					for t_typ in sym.generic_types {
-						tname := t.sym(t_typ).name
-						index := generic_names.index(tname)
-						if index >= 0 && index < concrete_types.len {
-							t_concrete_types << concrete_types[index]
+						if !t_typ.has_flag(.generic) {
+							t_concrete_types << t_typ
+						} else {
+							tname := t.sym(t_typ).name
+							index := generic_names.index(tname)
+							if index >= 0 && index < concrete_types.len {
+								t_concrete_types << concrete_types[index]
+							}
 						}
 					}
 				}
@@ -1801,7 +1805,7 @@ pub fn (mut t Table) generic_type_names(generic_type Type) []string {
 			if sym.info.is_generic {
 				if sym.generic_types.len > 0 {
 					// Foo[U] (declaration: Foo[T])
-					names << sym.generic_types.map(t.sym(it).name)
+					names << sym.generic_types.filter(it.has_flag(.generic)).map(t.sym(it).name)
 				} else {
 					names << sym.info.generic_types.map(t.sym(it).name)
 				}
@@ -1862,10 +1866,14 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 				t_generic_names = ts.info.generic_types.map(t.sym(it).name)
 				t_concrete_types = []
 				for t_typ in ts.generic_types {
-					tname := t.sym(t_typ).name
-					index := generic_names.index(tname)
-					if index >= 0 && index < concrete_types.len {
-						t_concrete_types << concrete_types[index]
+					if !t_typ.has_flag(.generic) {
+						t_concrete_types << t_typ
+					} else {
+						tname := t.sym(t_typ).name
+						index := generic_names.index(tname)
+						if index >= 0 && index < concrete_types.len {
+							t_concrete_types << concrete_types[index]
+						}
 					}
 				}
 			}
