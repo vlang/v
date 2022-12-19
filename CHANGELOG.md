@@ -1,6 +1,6 @@
 ## V 0.3.3
 *Not yet released*
-- add `vec` module for generic vector math.
+- add `math.vec` module for generic vector math.
 - `go foo()` has been replaced with `spawn foo()` (launches an OS thread, `go` will be used for
   upcoming coroutines instead).
 - vfmt now supports `// vfmt off` and `// vfmt on` for turning off the formatting locally for *short* snippets of code. Useful for keeping your carefully arranged matrices intact.

@@ -1,4 +1,4 @@
-import vec
+import math.vec
 
 fn test_vec2_int() {
 	mut v1 := vec.vec2(0, 0)
