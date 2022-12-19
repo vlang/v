@@ -452,8 +452,18 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 			}
 		}
 		ast.Ident {
-			ifdef := g.comptime_if_to_ifdef(cond.name, false) or { 'true' } // handled in checker
-			g.write('defined(${ifdef})')
+			mut ifdef := g.comptime_if_to_ifdef(cond.name, false) or { '' }
+			if ifdef != '' {
+				g.write('defined(${ifdef})')
+				return true
+			} else {
+				if cond.kind == .constant {
+					g.write('_const_${cond.mod}_${util.no_dots(cond.name)}')
+				} else {
+					ifdef = 'true' // handled in checker
+					g.write('defined(${ifdef})')
+				}
+			}
 			return true
 		}
 		ast.ComptimeCall {
