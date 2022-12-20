@@ -306,31 +306,33 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 				return
 			}
 			minfo := mod_name_info(vmod.name)
-			println('Relocating module from "${name}" to "${vmod.name}" ( "${minfo.final_module_path}" ) ...')
-			if os.exists(minfo.final_module_path) {
-				eprintln('Warning module "${minfo.final_module_path}" already exsits!')
-				eprintln('Removing module "${minfo.final_module_path}" ...')
-				os.rmdir_all(minfo.final_module_path) or {
-					errors++
-					println('Errors while removing "${minfo.final_module_path}" :')
-					println(err)
-					continue
+			if final_module_path != minfo.final_module_path {
+				println('Relocating module from "${name}" to "${vmod.name}" ( "${minfo.final_module_path}" ) ...')
+				if os.exists(minfo.final_module_path) {
+					eprintln('Warning module "${minfo.final_module_path}" already exsits!')
+					eprintln('Removing module "${minfo.final_module_path}" ...')
+					os.rmdir_all(minfo.final_module_path) or {
+						errors++
+						println('Errors while removing "${minfo.final_module_path}" :')
+						println(err)
+						continue
+					}
 				}
-			}
-			os.mv(final_module_path, minfo.final_module_path) or {
-				errors++
-				eprintln('Errors while relocating module "${name}" :')
-				eprintln(err)
-				os.rmdir_all(final_module_path) or {
+				os.mv(final_module_path, minfo.final_module_path) or {
 					errors++
-					eprintln('Errors while removing "${final_module_path}" :')
+					eprintln('Errors while relocating module "${name}" :')
 					eprintln(err)
+					os.rmdir_all(final_module_path) or {
+						errors++
+						eprintln('Errors while removing "${final_module_path}" :')
+						eprintln(err)
+						continue
+					}
 					continue
 				}
-				continue
+				println('Module "${name}" relocated to "${vmod.name}" successfully.')
+				final_module_path = minfo.final_module_path
 			}
-			println('Module "${name}" relocated to "${vmod.name}" successfully.')
-			final_module_path = minfo.final_module_path
 			name = vmod.name
 		}
 		resolve_dependencies(name, final_module_path, module_names)
