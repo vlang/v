@@ -9,9 +9,10 @@ pub fn js_throw(s any) {
 	for {}
 }
 
-#let globalPrint;
+#let globalPrint, globalWrite;
 $if js_freestanding {
 	#globalPrint = globalThis.print
+	#globalWrite = (typeof globalThis.write === 'function')? write: globalThis.print
 }
 
 pub fn flush_stdout() {
@@ -33,6 +34,8 @@ pub fn println(s string) {
 pub fn print(s string) {
 	$if js_node {
 		#$process.stdout.write(s.str)
+	} $else $if js_freestanding {
+		#globalWrite(s.str)
 	} $else {
 		panic('Cannot `print` in a browser, use `println` instead')
 	}
