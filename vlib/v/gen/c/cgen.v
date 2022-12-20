@@ -2483,9 +2483,10 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					tmp_var := g.new_tmp_var()
 					g.write('${got_styp} ${tmp_var} = ')
 					g.expr(expr)
-					g.write(';')
+					g.writeln(';')
 					g.write(stmt_str)
-					g.write('${fname}(&${tmp_var})')
+					g.write(' ')
+					g.writeln('${fname}(&${tmp_var})')
 					return
 				} else {
 					g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, unwrapped_exp_sym.cname,
