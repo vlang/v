@@ -87,11 +87,12 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	right := g.unwrap(node.right_type)
 	mut has_defined_eq_operator := false
 	mut eq_operator_expects_ptr := false
-	if m := left.sym.find_method('==') {
+	if m := g.table.find_method(left.sym, '==') {
 		has_defined_eq_operator = true
 		eq_operator_expects_ptr = m.receiver_type.is_ptr()
 	}
-	has_alias_eq_op_overload := left.sym.info is ast.Alias && has_defined_eq_operator
+	// TODO: investigate why the following is needed for vlib/v/tests/string_alias_test.v and vlib/v/tests/anon_fn_with_alias_args_test.v
+	has_alias_eq_op_overload := left.sym.info is ast.Alias && left.sym.has_method('==')
 	if g.pref.translated && !g.is_builtin_mod {
 		g.gen_plain_infix_expr(node)
 		return
@@ -308,7 +309,7 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 
 	mut has_operator_overloading := false
 	mut operator_expects_ptr := false
-	if m := left.sym.find_method('<') {
+	if m := g.table.find_method(left.sym, '<') {
 		has_operator_overloading = true
 		operator_expects_ptr = m.receiver_type.is_ptr()
 	}
