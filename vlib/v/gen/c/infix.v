@@ -85,8 +85,13 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
-	has_defined_eq_operator := g.table.has_method(left.sym, '==')
-	has_alias_eq_op_overload := left.sym.info is ast.Alias && left.sym.has_method('==')
+	mut has_defined_eq_operator := false
+	mut eq_operator_expects_ptr := false
+	if m := left.sym.find_method('==') {
+		has_defined_eq_operator = true
+		eq_operator_expects_ptr = m.receiver_type.is_ptr()
+	}
+	has_alias_eq_op_overload := left.sym.info is ast.Alias && has_defined_eq_operator
 	if g.pref.translated && !g.is_builtin_mod {
 		g.gen_plain_infix_expr(node)
 		return
@@ -113,9 +118,15 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		}
 		g.write('__eq(')
 		g.write('*'.repeat(left.typ.nr_muls()))
+		if eq_operator_expects_ptr {
+			g.write('&')
+		}
 		g.expr(node.left)
 		g.write(', ')
 		g.write('*'.repeat(right.typ.nr_muls()))
+		if eq_operator_expects_ptr {
+			g.write('&')
+		}
 		g.expr(node.right)
 		g.write(')')
 	} else if left.typ.idx() == right.typ.idx()
@@ -294,7 +305,14 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
-	has_operator_overloading := g.table.has_method(left.sym, '<')
+
+	mut has_operator_overloading := false
+	mut operator_expects_ptr := false
+	if m := left.sym.find_method('<') {
+		has_operator_overloading = true
+		operator_expects_ptr = m.receiver_type.is_ptr()
+	}
+
 	if g.pref.translated && !g.is_builtin_mod {
 		g.gen_plain_infix_expr(node)
 		return
@@ -310,17 +328,29 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 		if node.op in [.lt, .ge] {
 			g.write('(')
 			g.write('*'.repeat(left.typ.nr_muls()))
+			if operator_expects_ptr {
+				g.write('&')
+			}
 			g.expr(node.left)
 			g.write(', ')
 			g.write('*'.repeat(right.typ.nr_muls()))
+			if operator_expects_ptr {
+				g.write('&')
+			}
 			g.expr(node.right)
 			g.write(')')
 		} else {
 			g.write('(')
 			g.write('*'.repeat(right.typ.nr_muls()))
+			if operator_expects_ptr {
+				g.write('&')
+			}
 			g.expr(node.right)
 			g.write(', ')
 			g.write('*'.repeat(left.typ.nr_muls()))
+			if operator_expects_ptr {
+				g.write('&')
+			}
 			g.expr(node.left)
 			g.write(')')
 		}
@@ -333,17 +363,29 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 		if node.op in [.lt, .ge] {
 			g.write('(')
 			g.write('*'.repeat(left.typ.nr_muls()))
+			if operator_expects_ptr {
+				g.write('&')
+			}
 			g.expr(node.left)
 			g.write(', ')
 			g.write('*'.repeat(right.typ.nr_muls()))
+			if operator_expects_ptr {
+				g.write('&')
+			}
 			g.expr(node.right)
 			g.write(')')
 		} else {
 			g.write('(')
 			g.write('*'.repeat(right.typ.nr_muls()))
+			if operator_expects_ptr {
+				g.write('&')
+			}
 			g.expr(node.right)
 			g.write(', ')
 			g.write('*'.repeat(left.typ.nr_muls()))
+			if operator_expects_ptr {
+				g.write('&')
+			}
 			g.expr(node.left)
 			g.write(')')
 		}
