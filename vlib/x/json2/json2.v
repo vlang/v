@@ -262,6 +262,10 @@ pub fn (f Any) to_time() !time.Time {
 			return time.unix(f)
 		}
 		string {
+			if f.len == 10 && f[4] == `-` && f[7] == `-` {
+				// just a date in the format `2001-01-01`
+				return time.parse_iso8601(f)!
+			}
 			is_rfc3339 := f.len == 24 && f[23] == `Z` && f[10] == `T`
 			if is_rfc3339 {
 				return time.parse_rfc3339(f)!

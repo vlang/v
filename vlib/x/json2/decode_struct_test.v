@@ -79,6 +79,12 @@ fn test_types() {
 	assert json.decode[StructType[int]]('{"val": false}')!.val == 0
 
 	assert json.decode[StructType[time.Time]]('{"val": "2022-03-11T13:54:25.000Z"}')!.val == fixed_time
+	assert json.decode[StructType[time.Time]]('{"val": "2001-01-05"}')!.val.year == 2001
+	assert json.decode[StructType[time.Time]]('{"val": "2001-01-05"}')!.val.month == 1
+	assert json.decode[StructType[time.Time]]('{"val": "2001-01-05"}')!.val.day == 5
+	assert json.decode[StructType[time.Time]]('{"val": "2001-01-05"}')!.val.hour == 0
+	assert json.decode[StructType[time.Time]]('{"val": "2001-01-05"}')!.val.minute == 0
+	assert json.decode[StructType[time.Time]]('{"val": "2001-01-05"}')!.val.second == 0
 	assert json.decode[StructType[time.Time]]('{"val": "2022-03-11 13:54:25.000"}')!.val == fixed_time
 	assert json.decode[StructType[time.Time]]('{"val": 1647006865}')!.val == fixed_time
 	assert json.decode[StructType[time.Time]]('{"val": "1647006865"}')!.val == fixed_time
