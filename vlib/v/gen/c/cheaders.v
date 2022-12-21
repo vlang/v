@@ -314,7 +314,9 @@ const c_common_macros = '
 #endif
 #ifdef _MSC_VER
 	#undef __V_GCC__
+	#undef EMPTY_STRUCT_DECLARATION
 	#undef EMPTY_STRUCT_INITIALIZATION
+	#define EMPTY_STRUCT_DECLARATION u8 _dummy_pad
 	#define EMPTY_STRUCT_INITIALIZATION 0
 #endif
 
@@ -332,7 +334,9 @@ const c_common_macros = '
 #ifdef __TINYC__
 	#define _Atomic volatile
 	#undef EMPTY_STRUCT_DECLARATION
-	#define EMPTY_STRUCT_DECLARATION 
+	#undef EMPTY_STRUCT_INITIALIZATION
+	#define EMPTY_STRUCT_DECLARATION
+	#define EMPTY_STRUCT_INITIALIZATION
 	#undef EMPTY_ARRAY_OF_ELEMS
 	#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
 	#undef __NOINLINE
