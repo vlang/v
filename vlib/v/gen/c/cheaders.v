@@ -312,11 +312,12 @@ const c_common_macros = '
 #ifdef __clang__
 	#undef __V_GCC__
 #endif
+
 #ifdef _MSC_VER
 	#undef __V_GCC__
 	#undef EMPTY_STRUCT_DECLARATION
 	#undef EMPTY_STRUCT_INITIALIZATION
-	#define EMPTY_STRUCT_DECLARATION int _dummy_pad
+	#define EMPTY_STRUCT_DECLARATION char _dummy_pad
 	#define EMPTY_STRUCT_INITIALIZATION 0
 #endif
 
@@ -598,10 +599,7 @@ voidptr memdup(voidptr src, int sz);
 		#define _Atomic volatile
 
 		// MSVC cannot parse some things properly
-		#undef EMPTY_STRUCT_DECLARATION
 		#undef OPTION_CAST
-
-		#define EMPTY_STRUCT_DECLARATION 
 		#define OPTION_CAST(x)
 		#undef __NOINLINE
 		#undef __IRQHANDLER
