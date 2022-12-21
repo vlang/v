@@ -336,8 +336,8 @@ const c_common_macros = '
 	#define _Atomic volatile
 	#undef EMPTY_STRUCT_DECLARATION
 	#undef EMPTY_STRUCT_INITIALIZATION
-	#define EMPTY_STRUCT_DECLARATION
-	#define EMPTY_STRUCT_INITIALIZATION
+	#define EMPTY_STRUCT_DECLARATION char _dummy_pad
+	#define EMPTY_STRUCT_INITIALIZATION 0
 	#undef EMPTY_ARRAY_OF_ELEMS
 	#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
 	#undef __NOINLINE
