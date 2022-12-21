@@ -80,18 +80,18 @@ vlib/v/checker/tests/optional_fn_err.vv:56:8: error: bar() returns an option, so
    55 |     // init
    56 |     _ := [bar(0)]
       |           ~~~~~~
-   57 |     _ := []int{init: bar(0)}
+   57 |     _ := []int{len: 1, init: bar(0)}
    58 |     _ := [bar(0)]!
-vlib/v/checker/tests/optional_fn_err.vv:57:19: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+vlib/v/checker/tests/optional_fn_err.vv:57:27: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
    55 |     // init
    56 |     _ := [bar(0)]
-   57 |     _ := []int{init: bar(0)}
-      |                      ~~~~~~
+   57 |     _ := []int{len: 1, init: bar(0)}
+      |                              ~~~~~~
    58 |     _ := [bar(0)]!
    59 |     _ := [1]int{init: bar(0)}
 vlib/v/checker/tests/optional_fn_err.vv:58:8: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
    56 |     _ := [bar(0)]
-   57 |     _ := []int{init: bar(0)}
+   57 |     _ := []int{len: 1, init: bar(0)}
    58 |     _ := [bar(0)]!
       |           ~~~~~~
    59 |     _ := [1]int{init: bar(0)}
