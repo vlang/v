@@ -14,7 +14,7 @@ pub:
 	element_size int // size in bytes of one element in the array.
 pub mut:
 	data   voidptr
-	offset int // in bytes (should be `usize`)
+	offset int // in bytes (should be `usize`), to avoid copying data while making slices, unless it starts changing
 	len    int // length of the array in elements.
 	cap    int // capacity of the array in elements.
 	flags  ArrayFlags

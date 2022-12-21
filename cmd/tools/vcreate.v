@@ -52,6 +52,26 @@ fn vmod_content(c Create) string {
 "
 }
 
+fn new_project_content() string {
+	if os.args.len == 3 {
+		return main_content()
+	} else if os.args.len == 4 {
+		kind := os.args.last()
+		return match kind {
+			'web' {
+				simple_web_app()
+			}
+			'gg' {
+				main_content() // TODO
+			}
+			else {
+				''
+			}
+		}
+	}
+	return ''
+}
+
 fn main_content() string {
 	return "module main
 
@@ -116,7 +136,7 @@ fn (c &Create) write_main(new bool) {
 		return
 	}
 	main_path := if new { '${c.name}/${c.name}.v' } else { '${c.name}.v' }
-	os.write_file(main_path, main_content()) or { panic(err) }
+	os.write_file(main_path, new_project_content()) or { panic(err) }
 }
 
 fn (c &Create) write_gitattributes(new bool) {
@@ -151,6 +171,13 @@ fn (c &Create) create_git_repo(dir string) {
 }
 
 fn create(args []string) {
+	if os.args.len == 4 {
+		template := os.args.last()
+		if template !in ['web', 'gg'] {
+			eprintln('uknown template "${template}", possible templates: web, gg')
+			exit(1)
+		}
+	}
 	mut c := Create{}
 	c.name = check_name(if args.len > 0 { args[0] } else { os.input('Input your project name: ') })
 	if c.name == '' {
@@ -214,4 +241,62 @@ fn main() {
 		}
 	}
 	println('Complete!')
+}
+
+fn simple_web_app() string {
+	return "import vweb
+import sqlite // can change to 'mysql', 'pg'
+
+const (
+	port = 8082
+)
+
+struct App {
+	vweb.Context
+mut:
+	db shared sqlite.DB
+}
+
+pub fn (app App) before_request() {
+	println('[web] before_request: \${app.req.method} \${app.req.url}')
+}
+
+fn main() {
+	vweb.run(&App{
+		db: sqlite.connect('vweb.sql')!
+}, port)
+}
+
+['/users/:name']
+pub fn (mut app App) user(name string) vweb.Result {
+	user := sql app.db {
+		select from User where name == name
+	}
+	return \$vweb.html()
+}
+
+['/api/users/:name']
+pub fn (mut app App) user(name string) vweb.Result {
+	user := sql app.db {
+		select from User where name == name
+	}
+	return app.json({
+		user: id
+	})
+}
+
+pub fn (mut app App) index() vweb.Result {
+	return \$vweb.html()
+}
+
+[post]
+['/register']
+pub fn (mut app App) register_user(name string, password string) vweb.Result {
+	user := User{name:name, password, password}
+	sql app.db {
+		insert user into User
+	}
+	return app.redirect('/')
+}
+"
 }
