@@ -176,6 +176,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			if e.newline != 0 {
 				wr.write(json2.space_bytes)!
 			}
+
 			$if field.typ is string {
 				e.encode_string(value.str(), mut wr)!
 			} $else $if field.typ is time.Time {
@@ -193,6 +194,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				e.encode_array(value, level, mut wr)!
 			} $else {
 			}
+			
 			$if field.typ is ?string {
 				optional_value := val.$(field.name) as ?string
 				e.encode_string(optional_value, mut wr)!

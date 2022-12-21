@@ -139,6 +139,61 @@ indent_size = 4
 '
 }
 
+fn user_template_content() string {
+	return '<html>
+  <header>
+    <title>\${page_title}</title>
+    @css "src/templates/page/home.css"
+  </header>
+  <body>
+    <h1 class="title">Hello, Vs.</h1>
+    @for var in list_of_object
+    <div>
+      <a href="\${v_url}">\${var.title}</a>
+      <span>\${var.description}</span>
+    </div>
+    @end
+    <div>@include "component.html"</div>
+  </body>
+</html>
+'
+}
+
+fn user_css_content() string {
+	return 'h1.title {
+  font-family: Arial, Helvetica, sans-serif;
+  color: #3b7bbf;
+}
+'
+}
+
+fn index_template_content() string {
+	return '@include 'header.html'
+
+Test <b>app</b>
+<br>
+<h1>@hello</h1>
+<hr>
+
+If demo: <br>
+@if show
+	show = true
+@end
+
+<br><br>
+
+For loop demo: <br>
+
+@for number in numbers
+	@number <br>
+@end
+
+
+<hr>
+End.
+'
+}
+
 fn (c &Create) write_vmod(new bool) {
 	vmod_path := if new { '${c.name}/v.mod' } else { 'v.mod' }
 	os.write_file(vmod_path, vmod_content(c)) or { panic(err) }
@@ -166,6 +221,16 @@ fn (c &Create) write_editorconfig(new bool) {
 		return
 	}
 	os.write_file(editorconfig_path, editorconfig_content()) or { panic(err) }
+}
+
+fn (c &Create) write_html_templates(new bool) {
+	user_template_path := if new { '${c.name}/templates/user.html' } else { 'templates/user.html' }
+	index_template_path := if new { '${c.name}/index.html' } else { 'index.html' }
+	if !new && os.exists(user_template_path) {
+		return
+	}
+	os.write_file(user_template_path, user_template_content()) or { panic(err) }
+	os.write_file(index_template_path, index_template_content()) or { panic(err) }
 }
 
 fn (c &Create) create_git_repo(dir string) {
@@ -270,6 +335,11 @@ mut:
 	db shared sqlite.DB
 }
 
+struct User {
+	name string
+	password string
+}
+
 pub fn (app App) before_request() {
 	println('[web] before_request: \${app.req.method} \${app.req.url}')
 }
@@ -299,13 +369,17 @@ pub fn (mut app App) user(name string) vweb.Result {
 }
 
 pub fn (mut app App) index() vweb.Result {
+	show := true
+	hello := 'Hello world from vweb'
+	numbers := [1, 2, 3]
+
 	return \$vweb.html()
 }
 
 [post]
 ['/register']
 pub fn (mut app App) register_user(name string, password string) vweb.Result {
-	user := User{name:name, password, password}
+	user := User{name:name, password}
 	sql app.db {
 		insert user into User
 	}
