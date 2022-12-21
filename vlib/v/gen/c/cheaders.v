@@ -316,7 +316,7 @@ const c_common_macros = '
 	#undef __V_GCC__
 	#undef EMPTY_STRUCT_DECLARATION
 	#undef EMPTY_STRUCT_INITIALIZATION
-	#define EMPTY_STRUCT_DECLARATION u8 _dummy_pad
+	#define EMPTY_STRUCT_DECLARATION int _dummy_pad
 	#define EMPTY_STRUCT_INITIALIZATION 0
 #endif
 
