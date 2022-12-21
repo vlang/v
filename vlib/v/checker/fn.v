@@ -278,8 +278,12 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			if node.params.len != 2 {
 				c.error('operator methods should have exactly 1 argument', node.pos)
 			} else {
-				receiver_sym := c.table.sym(node.receiver.typ)
-				param_sym := c.table.sym(node.params[1].typ)
+				receiver_type := node.receiver.typ
+				receiver_sym := c.table.sym(receiver_type)
+
+				param_type := node.params[1].typ
+				param_sym := c.table.sym(param_type)
+
 				if param_sym.kind == .string && receiver_sym.kind == .string {
 					// bypass check for strings
 					// TODO there must be a better way to handle that
@@ -301,6 +305,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 						c.error('operator comparison methods should return `bool`', node.pos)
 					} else if parent_sym.is_primitive() {
 						c.error('cannot define operator methods on type alias for `${parent_sym.name}`',
+							node.pos)
+					} else if receiver_type != param_type {
+						srtype := c.table.type_to_str(receiver_type)
+						sptype := c.table.type_to_str(param_type)
+						c.error('the receiver type `${srtype}` should be the same type as the operand `${sptype}`',
 							node.pos)
 					}
 				}
