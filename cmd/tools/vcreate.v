@@ -2,11 +2,20 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module main
 
-// This module follows a similar convention to Rust: `init` makes the
+import os
+
+// Note: this program follows a similar convention to Rust: `init` makes the
 // structure of the program in the _current_ directory, while `new`
 // makes the program structure in a _sub_ directory. Besides that, the
 // functionality is essentially the same.
-import os
+
+// Note: here are the currently supported invokations so far:
+// 1) `v init` -> create a new project in the current folder
+// 2) `v new abc` -> create a new project in the new folder `abc`, by default a "hello world" project.
+// 3) `v new abcd web` -> create a new project in the new folder `abcd`, using the vweb template.
+// 4) `v new abcde gg` -> create a new project in the new folder `abcde`, using the gg template.
+
+// Note: run `v cmd/tools/vcreate_test.v` after changes to this program, to avoid regressions.
 
 struct Create {
 mut:
@@ -53,9 +62,13 @@ fn vmod_content(c Create) string {
 }
 
 fn new_project_content() string {
+	if os.args.len == 2 && os.args[1] == 'init' {
+		return main_content()
+	}
 	if os.args.len == 3 {
 		return main_content()
-	} else if os.args.len == 4 {
+	}
+	if os.args.len == 4 {
 		kind := os.args.last()
 		return match kind {
 			'web' {
