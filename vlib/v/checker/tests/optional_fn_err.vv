@@ -54,7 +54,7 @@ fn main() {
 	arr << bar(0)
 	// init
 	_ := [bar(0)]
-	_ := []int{init: bar(0)}
+	_ := []int{len: 1, init: bar(0)}
 	_ := [bar(0)]!
 	_ := [1]int{init: bar(0)}
 	// index
