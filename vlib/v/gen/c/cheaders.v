@@ -253,8 +253,8 @@ static void* __closure_create(void* fn, void* data) {
 
 const c_common_macros = '
 #define EMPTY_VARG_INITIALIZATION 0
+#define EMPTY_STRUCT_DECLARATION
 #define EMPTY_STRUCT_INITIALIZATION
-#define EMPTY_STRUCT_DECLARATION 
 // Due to a tcc bug, the length of an array needs to be specified, but GCC crashes if it is...
 #define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
 #define TCCSKIP(x) x
@@ -317,7 +317,7 @@ const c_common_macros = '
 	#undef __V_GCC__
 	#undef EMPTY_STRUCT_DECLARATION
 	#undef EMPTY_STRUCT_INITIALIZATION
-	#define EMPTY_STRUCT_DECLARATION char _dummy_pad
+	#define EMPTY_STRUCT_DECLARATION unsigned char _dummy_pad
 	#define EMPTY_STRUCT_INITIALIZATION 0
 #endif
 
@@ -336,7 +336,7 @@ const c_common_macros = '
 	#define _Atomic volatile
 	#undef EMPTY_STRUCT_DECLARATION
 	#undef EMPTY_STRUCT_INITIALIZATION
-	#define EMPTY_STRUCT_DECLARATION char _dummy_pad
+	#define EMPTY_STRUCT_DECLARATION unsigned char _dummy_pad
 	#define EMPTY_STRUCT_INITIALIZATION 0
 	#undef EMPTY_ARRAY_OF_ELEMS
 	#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
