@@ -176,7 +176,8 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 		p.check(.rcbr)
 		if has_default && !has_len {
-			p.error_with_pos('cannot use `init` attribute as `len` attribute is not provided', attr_pos)
+			p.error_with_pos('cannot use `init` attribute as `len` attribute is not provided',
+				attr_pos)
 		}
 	}
 	pos := first_pos.extend_with_last_line(last_pos, p.prev_tok.line_nr)
