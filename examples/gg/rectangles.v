@@ -49,5 +49,5 @@ fn (app &App) draw() {
 	// app.gg.draw_text_def(300,300, 'привет')
 	app.gg.draw_rect_filled(10, 10, 100, 30, gx.blue)
 	app.gg.draw_rect_empty(110, 150, 80, 40, gx.black)
-	app.gg.draw_image_by_id(230, 30, 50, 50, app.image)
+	app.gg.draw_image_by_id(230, 30, 200, 200, app.image)
 }
