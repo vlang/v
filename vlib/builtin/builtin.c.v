@@ -403,7 +403,10 @@ pub fn malloc_noscan(n isize) &u8 {
 fn __at_least_one(how_many u64) u64 {
 	// handle the case for allocating memory for empty structs, which have sizeof(EmptyStruct) == 0
 	// in this case, just allocate a single byte, avoiding the panic for malloc(0)
-	return how_many + u64(how_many == 0)
+	if how_many == 0 {
+		return 1
+	}
+	return how_many
 }
 
 // malloc_uncollectable dynamically allocates a `n` bytes block of memory
