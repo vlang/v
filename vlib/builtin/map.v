@@ -299,6 +299,7 @@ pub fn (mut m map) move() map {
 // Example: a.clear() // `a.len` and `a.key_values.len` is now 0
 pub fn (mut m map) clear() {
 	m.len = 0
+	m.even_index = 0
 	m.key_values.len = 0
 }
 
