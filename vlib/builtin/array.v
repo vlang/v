@@ -56,9 +56,18 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 	if val != 0 {
 		mut eptr := &u8(arr.data)
 		unsafe {
-			for _ in 0 .. arr.len {
-				vmemcpy(eptr, val, arr.element_size)
-				eptr += arr.element_size
+			if eptr != nil {
+				if arr.element_size == 1 {
+					byte_value := *(&u8(val))
+					for i in 0 .. arr.len {
+						eptr[i] = byte_value
+					}
+				} else {
+					for _ in 0 .. arr.len {
+						vmemcpy(eptr, val, arr.element_size)
+						eptr += arr.element_size
+					}
+				}
 			}
 		}
 	}
@@ -75,10 +84,12 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array, d
 	}
 	mut eptr := &u8(arr.data)
 	unsafe {
-		for _ in 0 .. arr.len {
-			val_clone := val.clone_to_depth(depth)
-			vmemcpy(eptr, &val_clone, arr.element_size)
-			eptr += arr.element_size
+		if eptr != nil {
+			for _ in 0 .. arr.len {
+				val_clone := val.clone_to_depth(depth)
+				vmemcpy(eptr, &val_clone, arr.element_size)
+				eptr += arr.element_size
+			}
 		}
 	}
 	return arr
@@ -94,10 +105,12 @@ fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map) array
 	}
 	mut eptr := &u8(arr.data)
 	unsafe {
-		for _ in 0 .. arr.len {
-			val_clone := val.clone()
-			vmemcpy(eptr, &val_clone, arr.element_size)
-			eptr += arr.element_size
+		if eptr != nil {
+			for _ in 0 .. arr.len {
+				val_clone := val.clone()
+				vmemcpy(eptr, &val_clone, arr.element_size)
+				eptr += arr.element_size
+			}
 		}
 	}
 	return arr
@@ -191,14 +204,16 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 		arr_step_size := u64(a.len) * u64(arr.element_size)
 		mut eptr := &u8(arr.data)
 		unsafe {
-			for _ in 0 .. count {
-				if depth > 0 {
-					ary_clone := a.clone_to_depth(depth)
-					vmemcpy(eptr, &u8(ary_clone.data), a_total_size)
-				} else {
-					vmemcpy(eptr, &u8(a.data), a_total_size)
+			if eptr != nil {
+				for _ in 0 .. count {
+					if depth > 0 {
+						ary_clone := a.clone_to_depth(depth)
+						vmemcpy(eptr, &u8(ary_clone.data), a_total_size)
+					} else {
+						vmemcpy(eptr, &u8(a.data), a_total_size)
+					}
+					eptr += arr_step_size
 				}
-				eptr += arr_step_size
 			}
 		}
 	}
@@ -661,7 +676,7 @@ pub fn (mut a3 array) push_many(val voidptr, size int) {
 
 // reverse_in_place reverses existing array data, modifying original array.
 pub fn (mut a array) reverse_in_place() {
-	if a.len < 2 {
+	if a.len < 2 || a.element_size == 0 {
 		return
 	}
 	unsafe {
