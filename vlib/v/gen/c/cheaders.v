@@ -318,6 +318,17 @@ const c_common_macros = '
 	#define EMPTY_STRUCT_INITIALIZATION 0
 #endif
 
+#ifndef _WIN32
+	#if defined __has_include
+		#if __has_include (<execinfo.h>)
+			#include <execinfo.h>
+		#else
+			// On linux: int backtrace(void **__array, int __size);
+			// On BSD: size_t backtrace(void **, size_t);
+		#endif		
+	#endif
+#endif
+		      
 #ifdef __TINYC__
 	#define _Atomic volatile
 	#undef EMPTY_STRUCT_DECLARATION
@@ -333,7 +344,6 @@ const c_common_macros = '
 	#define TCCSKIP(x)
 	// #include <byteswap.h>
 	#ifndef _WIN32
-		#include <execinfo.h>
 		int tcc_backtrace(const char *fmt, ...);
 	#endif
 #endif
@@ -500,14 +510,6 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
 #include <string.h>
-
-#ifndef _WIN32
-	#if defined __has_include
-		#if __has_include (<execinfo.h>)
-			#include <execinfo.h>
-		#endif
-	#endif
-#endif
 
 #include <stdarg.h> // for va_list
 
