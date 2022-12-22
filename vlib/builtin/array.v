@@ -33,7 +33,7 @@ fn __new_array(mylen int, cap int, elm_size int) array {
 	cap_ := if cap < mylen { mylen } else { cap }
 	arr := array{
 		element_size: elm_size
-		data: vcalloc(__at_least_one(u64(cap_) * u64(elm_size)))
+		data: vcalloc(u64(cap_) * u64(elm_size))
 		len: mylen
 		cap: cap_
 	}
@@ -51,9 +51,9 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 	//    -> sizeof(EmptyStruct) == 0 -> elm_size == 0
 	//    -> total_size == 0 -> malloc(0) -> panic;
 	//    to avoid it, just allocate a single byte
-	total_size := __at_least_one(u64(cap_) * u64(elm_size))
+	total_size := u64(cap_) * u64(elm_size)
 	if cap_ > 0 && mylen == 0 {
-		arr.data = unsafe { malloc(total_size) }
+		arr.data = unsafe { malloc(__at_least_one(total_size)) }
 	} else {
 		arr.data = vcalloc(total_size)
 	}
@@ -112,7 +112,7 @@ fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array
 	cap_ := if cap < len { len } else { cap }
 	arr := array{
 		element_size: elm_size
-		data: vcalloc(__at_least_one(u64(cap_) * u64(elm_size)))
+		data: vcalloc(u64(cap_) * u64(elm_size))
 		len: len
 		cap: cap_
 	}
@@ -325,7 +325,7 @@ pub fn (mut a array) delete_many(i int, size int) {
 	old_data := a.data
 	new_size := a.len - size
 	new_cap := if new_size == 0 { 1 } else { new_size }
-	a.data = vcalloc(__at_least_one(u64(new_cap) * u64(a.element_size)))
+	a.data = vcalloc(u64(new_cap) * u64(a.element_size))
 	unsafe { vmemcpy(a.data, old_data, u64(i) * u64(a.element_size)) }
 	unsafe {
 		vmemcpy(&u8(a.data) + u64(i) * u64(a.element_size), &u8(old_data) + u64(i +
@@ -592,7 +592,7 @@ pub fn (a &array) clone() array {
 pub fn (a &array) clone_to_depth(depth int) array {
 	mut arr := array{
 		element_size: a.element_size
-		data: vcalloc(__at_least_one(u64(a.cap) * u64(a.element_size)))
+		data: vcalloc(u64(a.cap) * u64(a.element_size))
 		len: a.len
 		cap: a.cap
 	}
