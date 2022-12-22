@@ -215,30 +215,28 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('optional or result type argument is not supported currently',
 					param.type_pos)
 			}
-			if !param.typ.is_ptr() { // value parameter, i.e. on stack - check for `[heap]`
-				arg_typ_sym := c.table.sym(param.typ)
-				if arg_typ_sym.info is ast.Struct {
-					if arg_typ_sym.info.is_heap { // set auto_heap to promote value parameter
-						mut v := node.scope.find_var(param.name) or { continue }
-						v.is_auto_heap = true
-					}
-					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
-						&& arg_typ_sym.info.concrete_types.len == 0 {
-						c.error('generic struct `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
-							param.type_pos)
-					}
-				} else if arg_typ_sym.info is ast.Interface {
-					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
-						&& arg_typ_sym.info.concrete_types.len == 0 {
-						c.error('generic interface `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
-							param.type_pos)
-					}
-				} else if arg_typ_sym.info is ast.SumType {
-					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
-						&& arg_typ_sym.info.concrete_types.len == 0 {
-						c.error('generic sumtype `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
-							param.type_pos)
-					}
+			arg_typ_sym := c.table.sym(param.typ)
+			if arg_typ_sym.info is ast.Struct {
+				if !param.typ.is_ptr() && arg_typ_sym.info.is_heap { // set auto_heap to promote value parameter
+					mut v := node.scope.find_var(param.name) or { continue }
+					v.is_auto_heap = true
+				}
+				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
+					&& arg_typ_sym.info.concrete_types.len == 0 {
+					c.error('generic struct `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
+						param.type_pos)
+				}
+			} else if arg_typ_sym.info is ast.Interface {
+				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
+					&& arg_typ_sym.info.concrete_types.len == 0 {
+					c.error('generic interface `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
+						param.type_pos)
+				}
+			} else if arg_typ_sym.info is ast.SumType {
+				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
+					&& arg_typ_sym.info.concrete_types.len == 0 {
+					c.error('generic sumtype `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
+						param.type_pos)
 				}
 			}
 			// Ensure each generic type of the parameter was declared in the function's definition
