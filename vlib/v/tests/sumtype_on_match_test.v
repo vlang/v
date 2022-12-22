@@ -4,9 +4,9 @@ struct ButtonEvent {}
 
 struct WheelEvent {}
 
-type Event = MotionEvent | ButtonEvent | WheelEvent
+type Event = ButtonEvent | MotionEvent | WheelEvent
 
-type GameEvent = MotionEvent | ButtonEvent
+type GameEvent = ButtonEvent | MotionEvent
 
 fn test_main() {
 	be := ButtonEvent{}
