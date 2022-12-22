@@ -322,7 +322,10 @@ const c_common_macros = '
 	#if defined __has_include
 		#if __has_include (<execinfo.h>)
 			#include <execinfo.h>
-		#endif
+		#else
+			// On linux: int backtrace(void **__array, int __size);
+			// On BSD: size_t backtrace(void **, size_t);
+		#endif		
 	#endif
 #endif
 		      
