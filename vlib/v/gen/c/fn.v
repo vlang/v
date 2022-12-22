@@ -1719,8 +1719,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					exp_sym := g.table.sym(expected_types[i])
 					orig_sym := g.table.sym(arg.expr.obj.orig_type)
 					if orig_sym.kind != .interface_ && (exp_sym.kind != .sum_type
-						|| (exp_sym.kind == .sum_type
-						&& expected_types[i] != arg.expr.obj.orig_type)) {
+						&& expected_types[i] != arg.expr.obj.orig_type) {
 						expected_types[i] = g.unwrap_generic(arg.expr.obj.smartcasts.last())
 						cast_sym := g.table.sym(expected_types[i])
 						if cast_sym.info is ast.Aggregate {
