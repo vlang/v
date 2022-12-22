@@ -23,6 +23,8 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 					if g.need_tmp_var_in_expr(stmt.expr) {
 						return true
 					}
+				} else if branch.stmts[0] is ast.Return {
+					return true
 				}
 			}
 		}

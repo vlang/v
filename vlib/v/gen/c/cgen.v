@@ -1737,7 +1737,9 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 				g.set_current_pos_as_last_stmt_pos()
 				g.skip_stmt_pos = true
 				mut is_noreturn := false
-				if stmt is ast.ExprStmt {
+				if stmt is ast.Return {
+					is_noreturn = true
+				} else if stmt is ast.ExprStmt {
 					is_noreturn = is_noreturn_callexpr(stmt.expr)
 				}
 				if !is_noreturn {
