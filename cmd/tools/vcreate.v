@@ -168,7 +168,7 @@ fn user_css_content() string {
 }
 
 fn index_template_content() string {
-	return '@include 'header.html'
+	return '@include "header.html"
 
 Test <b>app</b>
 <br>
@@ -200,10 +200,10 @@ fn (c &Create) write_vmod(new bool) {
 }
 
 fn (c &Create) write_main(new bool) {
-	if !new && (os.exists('${c.name}.v') || os.exists('src/${c.name}.v')) {
+	if !new && (os.exists('${c.name}.v') || os.exists('${c.name}/src/main.v')) {
 		return
 	}
-	main_path := if new { '${c.name}/${c.name}.v' } else { '${c.name}.v' }
+	main_path := if new { '${c.name}/src/main.v' } else { '${c.name}.v' }
 	os.write_file(main_path, new_project_content()) or { panic(err) }
 }
 
@@ -223,14 +223,21 @@ fn (c &Create) write_editorconfig(new bool) {
 	os.write_file(editorconfig_path, editorconfig_content()) or { panic(err) }
 }
 
-fn (c &Create) write_html_templates(new bool) {
-	user_template_path := if new { '${c.name}/templates/user.html' } else { 'templates/user.html' }
-	index_template_path := if new { '${c.name}/index.html' } else { 'index.html' }
+fn (c &Create) write_html_and_css_templates(new bool) {
+	user_template_path := if new {
+		'${c.name}/src/templates/user.html'
+	} else {
+		'templates/user.html'
+	}
+	// TODO
+	// css_template_path := if new { '${c.name}/src/templates/user.html' } else { 'templates/user.html' }
+	index_template_path := if new { '${c.name}/src/index.html' } else { 'index.html' }
 	if !new && os.exists(user_template_path) {
 		return
 	}
 	os.write_file(user_template_path, user_template_content()) or { panic(err) }
 	os.write_file(index_template_path, index_template_content()) or { panic(err) }
+	// os.write_file(css_template_path, user_css_content()) or { panic(err) }
 }
 
 fn (c &Create) create_git_repo(dir string) {
@@ -283,8 +290,11 @@ fn create(args []string) {
 	}
 	println('Initialising ...')
 	os.mkdir(c.name) or { panic(err) }
+	os.mkdir('${c.name}/src') or { panic(err) }
+	os.mkdir('${c.name}/src/templates') or { panic(err) }
 	c.write_vmod(true)
 	c.write_main(true)
+	c.write_html_and_css_templates(true)
 	c.write_gitattributes(true)
 	c.write_editorconfig(true)
 	c.create_git_repo(c.name)
