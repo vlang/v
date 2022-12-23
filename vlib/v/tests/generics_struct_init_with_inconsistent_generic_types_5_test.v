@@ -80,4 +80,15 @@ fn test_generics_struct_init_with_inconsistent_generic_types() {
 	assert ry2[1].b.a.b == 'four'
 	assert ry2[1].b.b.a == 'four'
 	assert ry2[1].b.b.b == 4
+
+	zx1 := []Tuple2[int, Tuple2[string, int]]{}
+	println(typeof(zx1).name)
+	println(typeof(rx1).name)
+	zx2 := []Tuple2[int, Tuple2[Tuple2[string, int], Tuple2[int, string]]]{}
+	println(typeof(zx2).name)
+	println(typeof(rx2).name)
+	assert typeof(zx1).name == '[]Tuple2[int, Tuple2[string, int]]'
+	assert typeof(zx2).name == '[]Tuple2[int, Tuple2[Tuple2[string, int], Tuple2[int, string]]]'
+	assert typeof(zx1).name == typeof(rx1).name
+	assert typeof(zx2).name == typeof(rx2).name
 }

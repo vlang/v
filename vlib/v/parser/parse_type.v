@@ -654,14 +654,14 @@ pub fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Lan
 				if p.struct_init_generic_types.len > 0 && sym.info.generic_types.len > 0
 					&& p.struct_init_generic_types != sym.info.generic_types {
 					generic_names := p.struct_init_generic_types.map(p.table.sym(it).name)
-					mut sym_name := sym.name + '['
+					mut sym_name := sym.name + '<'
 					for i, gt in generic_names {
 						sym_name += gt
 						if i != generic_names.len - 1 {
 							sym_name += ','
 						}
 					}
-					sym_name += ']'
+					sym_name += '>'
 					existing_idx := p.table.type_idxs[sym_name]
 					if existing_idx > 0 {
 						idx = existing_idx
