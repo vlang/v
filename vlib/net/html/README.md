@@ -1,4 +1,4 @@
-net/http is an HTML written in pure V.
+net/html is an **HTML Parser** written in pure V.
 
 ## Usage
 ```v oksyntax
