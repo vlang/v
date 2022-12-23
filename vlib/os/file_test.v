@@ -267,10 +267,10 @@ fn test_write_raw_at() {
 
 fn test_write_raw_at_negative_pos() {
 	mut f := os.open_file(tfile, 'w')!
-	if _ := f.write_raw_at(another_point, 999_999_999_999_999) {
+	if _ := f.write_raw_at(another_point, u64(-1)) {
 		assert false
 	}
-	f.write_raw_at(another_point, 999_999_999_999_999) or { assert err.msg() == 'Invalid argument' }
+	f.write_raw_at(another_point, u64(-1)) or { assert err.msg() == 'Invalid argument' }
 	f.close()
 }
 
