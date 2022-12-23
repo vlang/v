@@ -267,10 +267,10 @@ fn test_write_raw_at() {
 
 fn test_write_raw_at_negative_pos() {
 	mut f := os.open_file(tfile, 'w')!
-	if _ := f.write_raw_at(another_point, -1) {
+	if _ := f.write_raw_at(another_point, 999_999_999_999_999) {
 		assert false
 	}
-	f.write_raw_at(another_point, -234) or { assert err.msg() == 'Invalid argument' }
+	f.write_raw_at(another_point, 999_999_999_999_999) or { assert err.msg() == 'Invalid argument' }
 	f.close()
 }
 
@@ -322,10 +322,10 @@ fn test_read_raw_at() {
 
 fn test_read_raw_at_negative_pos() {
 	mut f := os.open_file(tfile, 'r')!
-	if _ := f.read_raw_at[Point](-1) {
+	if _ := f.read_raw_at[Point](u64(-1)) {
 		assert false
 	}
-	f.read_raw_at[Point](-234) or { assert err.msg() == 'Invalid argument' }
+	f.read_raw_at[Point](u64(-1)) or { assert err.msg() == 'Invalid argument' }
 	f.close()
 }
 
