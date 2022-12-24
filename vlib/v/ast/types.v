@@ -1395,9 +1395,9 @@ fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases 
 		}
 		// types defined by the user
 		// mod.submod.submod2.Type => submod2.Type
-		if res.count('[') < 2 {
-			mut parts := res.split('.')
-			if parts.len > 1 {
+		mut parts := res.split('.')
+		if parts.len > 1 {
+			if parts[..parts.len - 1].all(!it.contains('[')) {
 				ind := parts.len - 2
 				if t.is_fmt {
 					// Rejoin the module parts for correct usage of aliases
@@ -1408,9 +1408,9 @@ fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases 
 				}
 
 				res = parts[ind..].join('.')
-			} else {
-				res = parts[0]
 			}
+		} else {
+			res = parts[0]
 		}
 	}
 	return res
