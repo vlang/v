@@ -158,4 +158,7 @@ jobs:
         run: |
           echo "Clone the AdventOfCode repo"
           git clone --depth 1 https://github.com/vlang/adventofcode  /tmp/adventofcode
+          echo "Install dependencies"
+          v install pcre
+          echo "Execute Tests"
           cd /tmp/adventofcode && v run verify.v
