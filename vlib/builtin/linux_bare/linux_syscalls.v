@@ -251,7 +251,7 @@ fn sys_close(fd i64) Errno {
 }
 
 // 9 sys_mmap
-fn sys_mmap(addr &byte, len u64, prot MemProt, flags MapFlags, fildes u64, off u64) (&byte, Errno) {
+fn sys_mmap(addr &byte, len u64, prot MemProt, flags MapFlags, fildes i64, off u64) (&byte, Errno) {
 	rc := sys_call6(9, u64(addr), len, u64(prot), u64(flags), fildes, off)
 	a, e := split_int_errno(rc)
 	return &u8(a), e
@@ -409,7 +409,7 @@ fn sys_call5(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 u64) u64 {
 	return res
 }
 
-fn sys_call6(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 u64, arg6 u64) u64 {
+fn sys_call6(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 i64, arg6 u64) u64 {
 	mut res := u64(0)
 	asm amd64 {
 		mov r10, arg4
