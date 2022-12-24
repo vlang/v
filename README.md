@@ -189,9 +189,11 @@ v run tetris/tetris.v
 ```
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300 alt='tetris screenshot'>
 
-NB: In order to build Tetris or 2048 (or anything else using `sokol` or `gg` graphics modules).
-On some Linux systems (Debian/Ubuntu based), you need to install `libxi-dev` and `libxcursor-dev`.
-On Fedora/RH/CentOS, that would be:
+NB: In order to build Tetris or 2048 (or anything else using `sokol` or `gg` graphics modules),
+you will need additional development libraries for your system.
+For some Linux distros (Debian/Ubuntu based), you need to run this:
+`sudo apt install libxi-dev libxcursor-dev`.
+For Fedora/RH/CentOS, you need to run this:
 `sudo dnf install libXcursor-devel libXi-devel libX11-devel libglvnd-devel` .
 
 ## V net.http, net.websocket, `v install`
