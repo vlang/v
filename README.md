@@ -189,8 +189,10 @@ v run tetris/tetris.v
 ```
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300 alt='tetris screenshot'>
 
-NB: In order to build Tetris or 2048 (or anything else using `sokol` or  `gg` graphics modules)
-on some Linux systems, you need to install `libxi-dev` and `libxcursor-dev` .
+NB: In order to build Tetris or 2048 (or anything else using `sokol` or `gg` graphics modules).
+On some Linux systems (Debian/Ubuntu based), you need to install `libxi-dev` and `libxcursor-dev`.
+On Fedora/RH/CentOS, that would be:
+`sudo dnf install libXcursor-devel libXi-devel libX11-devel libglvnd-devel` .
 
 ## V net.http, net.websocket, `v install`
 The net.http module, the net.websocket module, and the `v install` command may all use SSL.
