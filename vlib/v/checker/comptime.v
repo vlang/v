@@ -189,6 +189,7 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 				tsym := c.table.sym(unwrapped_expr_type)
 				c.table.dumps[int(unwrapped_expr_type.clear_flag(.optional).clear_flag(.result))] = tsym.cname
 			}
+			c.comptime_for_field_var = ''
 			c.inside_comptime_for_field = false
 		}
 	} else {
