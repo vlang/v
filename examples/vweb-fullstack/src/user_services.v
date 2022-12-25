@@ -2,7 +2,6 @@ module main
 
 import crypto.bcrypt
 import databases
-import json
 
 fn (mut app App) service_add_user(username string, password string) !User {
 	mut db := databases.create_db_connection()!

@@ -1,7 +1,6 @@
 module main
 
 import vweb
-import time
 
 ['/controller/auth'; post]
 pub fn (mut app App) controller_auth(username string, password string) vweb.Result {

@@ -1,10 +1,7 @@
 module main
 
-// import api
 import vweb
 import databases
-// import x.json2 as json
-import json
 import os
 
 const (
@@ -37,10 +34,7 @@ fn main() {
 }
 
 pub fn (mut app App) index() vweb.Result {
-	show := true
 	title := 'vweb app'
-	hello := 'Hello world from vweb'
-	numbers := [1, 2, 3]
 
 	return $vweb.html()
 }

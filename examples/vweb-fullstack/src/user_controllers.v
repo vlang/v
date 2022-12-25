@@ -1,7 +1,6 @@
 module main
 
 import vweb
-import json
 
 ['/controller/users'; get]
 pub fn (mut app App) controller_get_all_user() vweb.Result {

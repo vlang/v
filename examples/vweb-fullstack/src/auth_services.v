@@ -7,7 +7,6 @@ import encoding.base64
 import json
 import databases
 import time
-import os
 
 struct JwtHeader {
 	alg string
