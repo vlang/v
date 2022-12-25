@@ -1,5 +1,5 @@
 Module {
-	name: 'vweb_orm_jwt'
+	name: 'vweb_fullstack'
 	description: ''
 	version: ''
 	license: ''
