@@ -180,6 +180,7 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 			sym_info := sym.info as ast.Struct
 			c.inside_comptime_for_field = true
 			for field in sym_info.fields {
+				c.comptime_for_field_var = node.val_var
 				c.comptime_fields_type[node.val_var] = node.typ
 				c.comptime_fields_default_type = field.typ
 				c.stmts(node.stmts)
