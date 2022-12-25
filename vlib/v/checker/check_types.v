@@ -883,8 +883,7 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 
 								if func.return_type.has_flag(.generic)
 									&& gt_name == c.table.type_to_str(func.return_type) {
-									c.error('cannot use value known only on compile-time as return',
-										node.pos)
+									node.comptime_ret_val = true
 								}
 							}
 						}
