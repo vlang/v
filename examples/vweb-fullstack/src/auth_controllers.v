@@ -15,8 +15,8 @@ pub fn (mut app App) controller_auth(username string, password string) vweb.Resu
 	// duration := time.Duration(2 * time.minute) // add 2 minutes
 	// expire_date := time.now().add(duration)
 
-    app.set_cookie(name: key, value: value)
-    // app.set_cookie_with_expire_date(key, value, expire_date)
+	app.set_cookie(name: key, value: value)
+	// app.set_cookie_with_expire_date(key, value, expire_date)
 
 	return app.redirect('/users')
 }

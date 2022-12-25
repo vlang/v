@@ -33,7 +33,6 @@ fn (mut app App) service_add_user(username string, password string) !User {
 	return result
 }
 
-
 fn (mut app App) service_get_all_user() ?[]User {
 	mut db := databases.create_db_connection() or {
 		println(err)

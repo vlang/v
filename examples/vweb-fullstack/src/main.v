@@ -44,4 +44,3 @@ pub fn (mut app App) index() vweb.Result {
 
 	return $vweb.html()
 }
-
