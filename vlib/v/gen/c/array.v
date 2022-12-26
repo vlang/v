@@ -368,9 +368,9 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 				var := g.new_tmp_var()
 				line := g.go_before_stmt(0).trim_space()
 				g.empty_line = true
-				g.write(g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
-					var))
-				g.write(' = ')
+				fn_ptr_name := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
+					var)
+				g.write('${fn_ptr_name} = ')
 				g.gen_anon_fn(mut expr)
 				g.writeln(';')
 				g.write(line)
@@ -576,9 +576,9 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 				var := g.new_tmp_var()
 				line := g.go_before_stmt(0).trim_space()
 				g.empty_line = true
-				g.write(g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
-					var))
-				g.write(' = ')
+				fn_ptr_name := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
+					var)
+				g.write('${fn_ptr_name} = ')
 				g.gen_anon_fn(mut expr)
 				g.writeln(';')
 				g.write(line)
@@ -948,9 +948,9 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 				var := g.new_tmp_var()
 				line := g.go_before_stmt(0).trim_space()
 				g.empty_line = true
-				g.write(g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
-					var))
-				g.write(' = ')
+				fn_ptr_name := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
+					var)
+				g.write('${fn_ptr_name} = ')
 				g.gen_anon_fn(mut expr)
 				g.writeln(';')
 				g.write(line)
@@ -1037,9 +1037,9 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 				var := g.new_tmp_var()
 				line := g.go_before_stmt(0).trim_space()
 				g.empty_line = true
-				g.write(g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
-					var))
-				g.write(' = ')
+				fn_ptr_name := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
+					var)
+				g.write('${fn_ptr_name} = ')
 				g.gen_anon_fn(mut expr)
 				g.writeln(';')
 				g.write(line)
