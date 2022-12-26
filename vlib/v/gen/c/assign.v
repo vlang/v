@@ -136,7 +136,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				is_auto_heap = left.obj.is_auto_heap
 			}
 		}
-		styp := g.typ(var_type)
+		mut styp := g.typ(var_type)
 		mut is_fixed_array_init := false
 		mut has_val := false
 		match val {
@@ -146,7 +146,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			ast.CallExpr {
 				is_call = true
-				return_type = val.return_type
+				if val.comptime_ret_val {
+					return_type = g.comptime_for_field_type
+					styp = g.typ(return_type)
+				} else {
+					return_type = val.return_type
+				}
 			}
 			// TODO: no buffer fiddling
 			ast.AnonFn {

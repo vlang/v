@@ -95,6 +95,7 @@ mut:
 	vweb_gen_types                   []ast.Type // vweb route checks
 	timers                           &util.Timers = util.get_timers()
 	for_in_any_val_type              ast.Type
+	comptime_for_field_var           string
 	comptime_fields_default_type     ast.Type
 	comptime_fields_type             map[string]ast.Type
 	fn_scope                         &ast.Scope = unsafe { nil }
