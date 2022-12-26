@@ -331,6 +331,19 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 	}
 }
 
+fn (mut g Gen) write_closure_fn(mut expr ast.AnonFn) {
+	var := g.new_tmp_var()
+	line := g.go_before_stmt(0).trim_space()
+	g.empty_line = true
+	fn_ptr_name := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
+		var)
+	g.write('${fn_ptr_name} = ')
+	g.gen_anon_fn(mut expr)
+	g.writeln(';')
+	g.write(line)
+	g.write('${var}(it)')
+}
+
 // `nums.map(it % 2 == 0)`
 fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.inside_lambda = true
@@ -365,16 +378,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		ast.AnonFn {
 			g.write('${ret_elem_type} ti = ')
 			if expr.inherited_vars.len > 0 {
-				var := g.new_tmp_var()
-				line := g.go_before_stmt(0).trim_space()
-				g.empty_line = true
-				fn_ptr_name := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
-					var)
-				g.write('${fn_ptr_name} = ')
-				g.gen_anon_fn(mut expr)
-				g.writeln(';')
-				g.write(line)
-				g.write('${var}(it)')
+				g.write_closure_fn(mut expr)
 			} else {
 				g.gen_anon_fn_decl(mut expr)
 				g.write('${expr.decl.name}(it)')
@@ -573,16 +577,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 		ast.AnonFn {
 			g.write('if (')
 			if expr.inherited_vars.len > 0 {
-				var := g.new_tmp_var()
-				line := g.go_before_stmt(0).trim_space()
-				g.empty_line = true
-				fn_ptr_name := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
-					var)
-				g.write('${fn_ptr_name} = ')
-				g.gen_anon_fn(mut expr)
-				g.writeln(';')
-				g.write(line)
-				g.write('${var}(it)')
+				g.write_closure_fn(mut expr)
 			} else {
 				g.gen_anon_fn_decl(mut expr)
 				g.write('${expr.decl.name}(it)')
@@ -945,16 +940,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 		ast.AnonFn {
 			g.write('if (')
 			if expr.inherited_vars.len > 0 {
-				var := g.new_tmp_var()
-				line := g.go_before_stmt(0).trim_space()
-				g.empty_line = true
-				fn_ptr_name := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
-					var)
-				g.write('${fn_ptr_name} = ')
-				g.gen_anon_fn(mut expr)
-				g.writeln(';')
-				g.write(line)
-				g.write('${var}(it)')
+				g.write_closure_fn(mut expr)
 			} else {
 				g.gen_anon_fn_decl(mut expr)
 				g.write('${expr.decl.name}(it)')
@@ -1034,16 +1020,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 		ast.AnonFn {
 			g.write('if (!(')
 			if expr.inherited_vars.len > 0 {
-				var := g.new_tmp_var()
-				line := g.go_before_stmt(0).trim_space()
-				g.empty_line = true
-				fn_ptr_name := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
-					var)
-				g.write('${fn_ptr_name} = ')
-				g.gen_anon_fn(mut expr)
-				g.writeln(';')
-				g.write(line)
-				g.write('${var}(it)')
+				g.write_closure_fn(mut expr)
 			} else {
 				g.gen_anon_fn_decl(mut expr)
 				g.write('${expr.decl.name}(it)')
