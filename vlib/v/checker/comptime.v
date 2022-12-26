@@ -186,7 +186,7 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 
 				unwrapped_expr_type := c.unwrap_generic(field.typ)
 				tsym := c.table.sym(unwrapped_expr_type)
-				c.table.dumps[int(unwrapped_expr_type.clear_flag(.optional).clear_flag(.result))] = tsym.cname
+				c.table.dumps[int(unwrapped_expr_type.clear_flag(.optional).clear_flag(.result).clear_flag(.atomic_f))] = tsym.cname
 			}
 			c.inside_comptime_for_field = false
 		}

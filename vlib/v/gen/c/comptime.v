@@ -584,7 +584,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 						'\t${node.val_var}.attrs = new_array_from_c_array(${attrs.len}, ${attrs.len}, sizeof(string), _MOV((string[${attrs.len}]){' +
 						attrs.join(', ') + '}));\n')
 				}
-				// field_sym := g.table.sym(field.typ)
+				field_sym := g.table.sym(field.typ)
 				// g.writeln('\t${node.val_var}.typ = _SLIT("$field_sym.name");')
 				styp := field.typ
 				unaliased_styp := g.table.unaliased_type(styp)
@@ -593,7 +593,17 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('\t${node.val_var}.unaliased_typ = ${unaliased_styp.idx()};')
 				g.writeln('\t${node.val_var}.is_pub = ${field.is_pub};')
 				g.writeln('\t${node.val_var}.is_mut = ${field.is_mut};')
+				//
 				g.writeln('\t${node.val_var}.is_shared = ${field.typ.has_flag(.shared_f)};')
+				g.writeln('\t${node.val_var}.is_atomic = ${field.typ.has_flag(.atomic_f)};')
+				g.writeln('\t${node.val_var}.is_optional = ${field.typ.has_flag(.optional)};')
+				//
+				g.writeln('\t${node.val_var}.is_array = ${field_sym.kind in [.array, .array_fixed]};')
+				g.writeln('\t${node.val_var}.is_map = ${field_sym.kind == .map};')
+				g.writeln('\t${node.val_var}.is_chan = ${field_sym.kind == .chan};')
+				g.writeln('\t${node.val_var}.is_struct = ${field_sym.kind == .struct_};')
+				g.writeln('\t${node.val_var}.indirections = ${field.typ.nr_muls()};')
+				//
 				g.comptime_var_type_map['${node.val_var}.typ'] = styp
 				g.stmts(node.stmts)
 				i++
