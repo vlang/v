@@ -9,9 +9,8 @@ fn get_type[T](t T) T {
 	return t
 }
 
-
 fn test_main() {
-    my := MyStruct{'cool', false}
+	my := MyStruct{'cool', false}
 	$for field2 in MyStruct.fields {
 		$if field2.typ is string {
 			var := get_type(my.$(field2.name))

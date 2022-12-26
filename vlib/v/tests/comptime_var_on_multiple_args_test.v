@@ -9,7 +9,7 @@ fn ok2[T](o T, s string) string {
 }
 
 fn ok[T](o T, s string) string {
-	return "${o}${s}"
+	return '${o}${s}'
 }
 
 struct Test {
@@ -22,11 +22,9 @@ fn test_main() {
 	$for f in Test.fields {
 		assert ok3(s.$(f.name)).str() == 'foo'
 	}
-
 	$for f in Test.fields {
 		assert ok(s.$(f.name), 'bar') == 'foobar'
 	}
-
 	$for f in Test.fields {
 		assert ok2(s.$(f.name), 'ok') == 'ok'
 	}
