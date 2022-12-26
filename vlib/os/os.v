@@ -209,10 +209,11 @@ pub fn is_dir_empty(path string) bool {
 // assert os.file_ext('.ignore_me') == ''
 // assert os.file_ext('.') == ''
 // ```
-pub fn file_ext(path string) string {
-	if path.len < 3 {
+pub fn file_ext(opath string) string {
+	if opath.len < 3 {
 		return empty_str
 	}
+	path := file_name(opath)
 	pos := path.last_index(dot_str) or { return empty_str }
 	if pos + 1 >= path.len || pos == 0 {
 		return empty_str
