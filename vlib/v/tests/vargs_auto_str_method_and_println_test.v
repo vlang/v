@@ -1,5 +1,3 @@
-module main
-
 fn test_autoprint_string_vargs() {
 	add_s('a')
 	assert true

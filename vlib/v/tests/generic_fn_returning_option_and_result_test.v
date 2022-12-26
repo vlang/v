@@ -1,5 +1,3 @@
-module main
-
 fn get_value[T]() ?T {
 	return none
 }

@@ -1,5 +1,3 @@
-module main
-
 pub struct Vec[T] {
 mut:
 	data &T

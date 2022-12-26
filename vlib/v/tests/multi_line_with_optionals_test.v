@@ -1,5 +1,3 @@
-module main
-
 fn has_optional() ?int {
 	return 51
 }

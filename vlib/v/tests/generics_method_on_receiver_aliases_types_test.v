@@ -1,5 +1,3 @@
-module main
-
 struct Container[T] {
 	value T
 }

@@ -1,5 +1,3 @@
-module main
-
 interface Greeting {
 	tt ?string
 }

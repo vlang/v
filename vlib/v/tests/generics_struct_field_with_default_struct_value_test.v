@@ -1,5 +1,3 @@
-module main
-
 struct None {}
 
 type OptError = None | string

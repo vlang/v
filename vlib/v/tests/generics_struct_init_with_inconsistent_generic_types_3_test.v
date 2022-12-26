@@ -1,5 +1,3 @@
-module main
-
 pub struct Maybe[T] {
 	present bool
 	val     T

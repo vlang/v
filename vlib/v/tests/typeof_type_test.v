@@ -1,5 +1,3 @@
-module main
-
 fn test_typeof_fn() {
 	assert typeof[fn (s string, x u32) (int, f32)]().name == 'fn (string, u32) (int, f32)'
 }

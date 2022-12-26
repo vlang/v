@@ -1,5 +1,3 @@
-module main
-
 fn foo[T](val T) ?T {
 	return val
 }
