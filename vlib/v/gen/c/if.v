@@ -321,7 +321,10 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				line := g.go_before_stmt(0).trim_space()
 				g.empty_line = true
 				g.write('bool ${cond_var_name} = ')
+				prev_is_autofree := g.is_autofree
+				g.is_autofree = false
 				g.expr(branch.cond)
+				g.is_autofree = prev_is_autofree
 				g.writeln(';')
 				branch_cond_var_names << cond_var_name
 				g.set_current_pos_as_last_stmt_pos()
@@ -337,7 +340,10 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.set_current_pos_as_last_stmt_pos()
 				g.indent++
 				g.write('${cond_var_name} = ')
+				prev_is_autofree := g.is_autofree
+				g.is_autofree = false
 				g.expr(branch.cond)
+				g.is_autofree = prev_is_autofree
 				g.writeln(';')
 				g.indent--
 				g.writeln('}')
