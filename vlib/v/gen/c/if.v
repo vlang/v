@@ -320,7 +320,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				line := g.go_before_stmt(0)
 				g.empty_line = true
 				g.writeln('bool ${cond_var_name};')
-				g.writeln('if (!(${branch_cond_var_names.join(' || ')})) {')
+				branch_cond := branch_cond_var_names.join(' || ')
+				g.writeln('if (!(${branch_cond})) {')
 				g.set_current_pos_as_last_stmt_pos()
 				g.indent++
 				g.write('${cond_var_name} = ')
