@@ -86,8 +86,8 @@ jobs:
           git clone https://github.com/vlang/gitly /tmp/gitly
           echo "Build Gitly"
           v /tmp/gitly
-          echo "Build Gitly with -autofree"
-          v -autofree /tmp/gitly
+          ## echo "Build Gitly with -autofree"
+          ## v -autofree /tmp/gitly
           echo "Compile gitly.css from gitly.scss"
           sassc /tmp/gitly/src/static/css/gitly.scss > /tmp/gitly/src/static/css/gitly.css
           echo "Run first_run.v"
