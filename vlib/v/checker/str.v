@@ -186,21 +186,18 @@ fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
 	is_neg := node.val.starts_with('-')
 	if lit.len > 2 && lit[0] == `0` && lit[1] in [`B`, `X`, `O`] {
 		if lohi := checker.iencoding_map[lit[1]] {
-			c.check_num_literal(if is_neg { lohi.lower } else { lohi.higher }, lit[2..]) or {
-				c.num_lit_overflow_error(node)
-			}
+			c.check_num_literal(lohi, is_neg, lit[2..]) or { c.num_lit_overflow_error(node) }
 		}
 	} else {
 		lohi := checker.iencoding_map[`_`]
-		c.check_num_literal(if is_neg { lohi.lower } else { lohi.higher }, lit) or {
-			c.num_lit_overflow_error(node)
-		}
+		c.check_num_literal(lohi, is_neg, lit) or { c.num_lit_overflow_error(node) }
 	}
 	return ast.int_literal_type
 }
 
 [direct_array_access]
-fn (mut c Checker) check_num_literal(limit string, lit string) ! {
+fn (mut c Checker) check_num_literal(lohi LoHiLimit, is_neg bool, lit string) ! {
+	limit := if is_neg { lohi.lower } else { lohi.higher }
 	if lit.len < limit.len {
 		return
 	}
