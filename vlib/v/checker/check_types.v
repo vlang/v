@@ -871,8 +871,7 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					func_.name = ''
 					idx := c.table.find_or_register_fn_type(func_, true, false)
 					typ = ast.new_type(idx).derive(arg.typ)
-				} else if c.inside_comptime_for_field && sym.info is ast.Struct
-					&& arg.expr is ast.ComptimeSelector {
+				} else if c.inside_comptime_for_field && arg.expr is ast.ComptimeSelector {
 					compselector := arg.expr as ast.ComptimeSelector
 					if compselector.field_expr is ast.SelectorExpr {
 						selectorexpr := compselector.field_expr as ast.SelectorExpr
