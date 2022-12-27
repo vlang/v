@@ -25,6 +25,6 @@ pub fn (mut app App) controller_create_user(username string, password string) vw
 		app.set_status(400, '')
 		return app.text('error: ${err}')
 	}
-
+	app.set_status(201, '')
 	return app.json(response)
 }

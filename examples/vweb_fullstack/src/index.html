@@ -17,17 +17,29 @@
 <body>
     <div>@include 'templates/header_component.html'</div>
     <div  class="card-panel center-align" style="max-width: 240px; padding: 10px; margin: 10px; border-radius: 5px;">
-        <form method='post' action=''>
+        <form id="index_form" method='post' action=''>
             <div style="display:flex; flex-direction: column;">
                 <input type='text' name='username' placeholder='Username' required autofocus>
                 <input type='password' name='password' placeholder='Password' required>
             </div>
             <div style="margin-top: 10px;">
                 <input class="waves-effect waves-light btn-small" type='submit' formaction="/controller/auth" value='Login'>
-                <input class="waves-effect waves-light btn-small" type='submit' formaction="/controller/user/create" value='Register'>
-                <!-- <input class="waves-effect waves-light btn-small" type='submit' formaction="javascript:void(0);" value='Register'> -->
+                <input class="waves-effect waves-light btn-small" type='submit' onclick="addUser()" formaction="javascript:void(0);" value='Register'>
             </div>
         </form>
+        <script type="text/javascript">
+            async function addUser() {
+                const form = document.querySelector('#index_form');
+                const formData = new FormData(form);
+                const response = await fetch('/controller/user/create', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (response.status==201) {
+                    alert("User created successfully")
+                }
+            }
+        </script>
     </div>
 </body>
 </html>
