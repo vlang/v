@@ -141,6 +141,17 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 	return false
 }
 
+fn (mut g Gen) needs_conds_order(node ast.IfExpr) bool {
+	if node.branches.len > 1 {
+		for branch in node.branches {
+			if g.need_tmp_var_in_expr(branch.cond) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 fn (mut g Gen) if_expr(node ast.IfExpr) {
 	if node.is_comptime {
 		g.comptime_if(node)
@@ -153,6 +164,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	// (as it used to be done).
 	// Always use this in -autofree, since ?: can have tmp expressions that have to be freed.
 	needs_tmp_var := g.need_tmp_var_in_if(node)
+	needs_conds_order := g.needs_conds_order(node)
 	tmp := if needs_tmp_var { g.new_tmp_var() } else { '' }
 	mut cur_line := ''
 	mut raw_state := false
@@ -304,7 +316,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				}
 			}
 		} else {
-			if i == 0 && node.branches.len > 1 && !needs_tmp_var {
+			if i == 0 && node.branches.len > 1 && !needs_tmp_var && needs_conds_order {
 				cond_var_name := g.new_tmp_var()
 				line := g.go_before_stmt(0).trim_space()
 				g.empty_line = true
@@ -315,7 +327,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.set_current_pos_as_last_stmt_pos()
 				g.writeln(line)
 				g.writeln('if (${cond_var_name}) {')
-			} else if i > 0 && branch_cond_var_names.len > 0 && !needs_tmp_var {
+			} else if i > 0 && branch_cond_var_names.len > 0 && !needs_tmp_var && needs_conds_order {
 				cond_var_name := g.new_tmp_var()
 				line := g.go_before_stmt(0)
 				g.empty_line = true
