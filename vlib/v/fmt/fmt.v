@@ -2326,15 +2326,17 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 	for key in node.keys {
 		skey := f.node_str(key).trim_space()
 		skeys << skey
-		if skey.len > max_field_len {
-			max_field_len = skey.len
+		skey_len := skey.len_utf8()
+		if skey_len > max_field_len {
+			max_field_len = skey_len
 		}
 	}
 	for i, _ in node.keys {
 		skey := skeys[i]
 		f.write(skey)
 		f.write(': ')
-		f.write(strings.repeat(` `, max_field_len - skey.len))
+		skey_len := skey.len_utf8()
+		f.write(strings.repeat(` `, max_field_len - skey_len))
 		f.expr(node.vals[i])
 		f.comments(node.comments[i], prev_line: node.vals[i].pos().last_line, has_nl: false)
 		f.writeln('')
