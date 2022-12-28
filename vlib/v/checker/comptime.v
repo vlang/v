@@ -565,6 +565,9 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 					} else if cond.left is ast.SelectorExpr
 						&& c.check_comptime_is_field_selector_bool(cond.left as ast.SelectorExpr) {
 						// field.is_public (from T.fields)
+					} else if cond.right is ast.SelectorExpr
+						&& c.check_comptime_is_field_selector_bool(cond.right as ast.SelectorExpr) {
+						// field.is_public (from T.fields)
 					} else if cond.left is ast.Ident {
 						// $if version == 2
 						left_type := c.expr(cond.left)
