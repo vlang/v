@@ -959,6 +959,26 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.expr(node.args[0].expr)
 		g.write(')')
 		return
+	} else if left_sym.kind == .array && node.name == 'drop' {
+		g.write('array_drop(')
+		if left_type.has_flag(.shared_f) {
+			if left_type.is_ptr() {
+				g.write('&')
+			}
+			g.expr(node.left)
+			g.write('->val')
+		} else {
+			if left_type.is_ptr() {
+				g.expr(node.left)
+			} else {
+				g.write('&')
+				g.expr(node.left)
+			}
+		}
+		g.write(', ')
+		g.expr(node.args[0].expr)
+		g.write(')')
+		return
 	}
 
 	if left_sym.kind in [.sum_type, .interface_] {
