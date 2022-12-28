@@ -562,6 +562,9 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 				.eq, .ne {
 					if cond.left is ast.SelectorExpr && cond.right is ast.IntegerLiteral {
 						// $if method.args.len == 1
+					} else if cond.left is ast.SelectorExpr
+						&& c.check_comptime_is_field_selector_bool(cond.left as ast.SelectorExpr) {
+						// field.is_public (from T.fields)
 					} else if cond.left is ast.Ident {
 						// $if version == 2
 						left_type := c.expr(cond.left)
@@ -716,9 +719,37 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 			}
 			return .eval
 		}
+		ast.SelectorExpr {
+			if c.check_comptime_is_field_selector(cond) {
+				if c.check_comptime_is_field_selector_bool(cond) {
+					return .eval
+				}
+				c.error('unknown field `${cond.field_name}` from ${c.comptime_for_field_var}',
+					cond.pos)
+			}
+			return .unknown
+		}
 		else {
 			c.error('invalid `\$if` condition', pos)
 		}
 	}
 	return .unknown
+}
+
+[inline]
+fn (mut c Checker) check_comptime_is_field_selector(node ast.SelectorExpr) bool {
+	if c.inside_comptime_for_field && node.expr is ast.Ident {
+		return (node.expr as ast.Ident).name == c.comptime_for_field_var
+	}
+	return false
+}
+
+[inline]
+fn (mut c Checker) check_comptime_is_field_selector_bool(node ast.SelectorExpr) bool {
+	if c.check_comptime_is_field_selector(node) {
+		bool_fields := ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_optional', 'is_array',
+			'is_map', 'is_chan', 'is_struct']
+		return node.field_name in bool_fields
+	}
+	return false
 }
