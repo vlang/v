@@ -17,6 +17,25 @@ fn (mut g Gen) get_comptime_selector_var_type(node ast.ComptimeSelector) (ast.St
 	return field, field_name
 }
 
+fn (mut g Gen) get_comptime_selector_bool_field(field_name string) bool {
+	field := g.comptime_for_field_value
+	field_typ := g.comptime_for_field_type
+	field_sym := g.table.sym(g.unwrap_generic(g.comptime_for_field_type))
+
+	match field_name {
+		'is_pub' { return field.is_pub }
+		'is_mut' { return field.is_mut }
+		'is_shared' { return field_typ.has_flag(.shared_f) }
+		'is_atomic' { return field_typ.has_flag(.atomic_f) }
+		'is_optional' { return field.typ.has_flag(.optional) }
+		'is_array' { return field_sym.kind in [.array, .array_fixed] }
+		'is_map' { return field_sym.kind == .map }
+		'is_chan' { return field_sym.kind == .chan }
+		'is_struct' { return field_sym.kind == .struct_ }
+		else { return false }
+	}
+}
+
 fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	g.expr(node.left)
 	if node.left_type.is_ptr() {
@@ -443,8 +462,15 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 				}
 				.eq, .ne {
 					// TODO Implement `$if method.args.len == 1`
-					g.write('1')
-					return true
+					if cond.left is ast.SelectorExpr || cond.right is ast.SelectorExpr {
+						l := g.comptime_if_cond(cond.left, pkg_exist)
+						g.write(' ${cond.op} ')
+						r := g.comptime_if_cond(cond.right, pkg_exist)
+						return if cond.op == .eq { l == r } else { l != r }
+					} else {
+						g.write('1')
+						return true
+					}
 				}
 				else {
 					return true
@@ -459,6 +485,17 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 		ast.ComptimeCall {
 			g.write('${pkg_exist}')
 			return true
+		}
+		ast.SelectorExpr {
+			if g.inside_comptime_for_field && cond.expr is ast.Ident
+				&& (cond.expr as ast.Ident).name == g.comptime_for_field_var && cond.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_optional', 'is_array', 'is_map', 'is_chan', 'is_struct'] {
+				ret_bool := g.get_comptime_selector_bool_field(cond.field_name)
+				g.write(ret_bool.str())
+				return true
+			} else {
+				g.write('1')
+				return true
+			}
 		}
 		else {
 			// should be unreachable, but just in case
