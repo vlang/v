@@ -6,6 +6,6 @@ fn shift[T](mut a []T) T {
 
 fn test_generic_array_drop() {
 	mut a := ['x', 'y']
-    assert shift(mut a) == 'x' // 'x'
+	assert shift(mut a) == 'x' // 'x'
 	assert a == ['y'] // ['y']
 }
