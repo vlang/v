@@ -1,0 +1,3 @@
+$tmpl('hello.txt')
+===output===
+hello
