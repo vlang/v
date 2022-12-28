@@ -185,15 +185,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				|| field.typ is i16 || field.typ is int || field.typ is i64 || field.typ is u8
 				|| field.typ is u16 || field.typ is u32 || field.typ is u64 {
 				wr.write(value.str().bytes())!
-			} $else $if field.typ is []string || field.typ is []bool || field.typ is []f32
-				|| field.typ is []f64 || field.typ is []i8 || field.typ is []i16
-				|| field.typ is []int || field.typ is []i64 || field.typ is []u8
-				|| field.typ is []byte || field.typ is []u16 || field.typ is []u32
-				|| field.typ is []u64 {
-				e.encode_array(value, level, mut wr)!
-			} $else {
-			}
-			$if field.typ is ?string {
+			} $else $if field.typ is ?string {
 				optional_value := val.$(field.name) as ?string
 				e.encode_string(optional_value, mut wr)!
 			} $else $if field.typ is ?bool {
@@ -225,6 +217,9 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				parsed_time := optional_value as time.Time
 				e.encode_string(parsed_time.format_rfc3339(), mut wr)!
 			} $else {
+				if field.is_array {
+					e.encode_array(value, level, mut wr)!
+				}
 				if field.unaliased_typ != field.typ {
 					match field.unaliased_typ {
 						typeof[string]().idx {
