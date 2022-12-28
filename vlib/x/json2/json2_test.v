@@ -66,19 +66,34 @@ fn test_struct_to_map() {
 	assert array_of_map.str() == '[{"val":true},{"val":false}]'
 }
 
-// // waiting for  https://github.com/vlang/v/pull/16796
-// fn test_struct_to_map2() {
-// 	array_of_struct := [StructType[[]bool]{
-// 		val: [false, true]
-// 	}, StructType[[]bool]{
-// 		val: [true, false]
-// 	}]
+fn test_struct_to_map3() {
+	array_of_struct := [StructType[string]{
+		val: 'true'
+	}, StructType[string]{
+		val: 'false'
+	}]
 
-// 	mut array_of_map := []json.Any{}
+	mut array_of_map := []json.Any{}
 
-// 	for variable in array_of_struct {
-// 		array_of_map << json.map_from(variable)
-// 	}
+	for variable in array_of_struct {
+		array_of_map << json.map_from(variable)
+	}
 
-// 	assert array_of_map.str() == '[{"val":[false,true]},{"val":[true,false]}]'
-// }
+	assert array_of_map.str() == '[{"val":"true"},{"val":"false"}]'
+}
+
+fn test_struct_to_map2() {
+	array_of_struct := [StructType[[]bool]{
+		val: [false, true]
+	}, StructType[[]bool]{
+		val: [true, false]
+	}]
+
+	mut array_of_map := []json.Any{}
+
+	for variable in array_of_struct {
+		array_of_map << json.map_from(variable)
+	}
+
+	assert array_of_map.str() == '[{"val":[false,true]},{"val":[true,false]}]'
+}
