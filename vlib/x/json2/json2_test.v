@@ -44,3 +44,39 @@ fn test_character_unescape() {
 	assert lines['quotes'] or { 0 }.str() == '"quotes"'
 	assert lines['slash'] or { 0 }.str() == '/dev/null'
 }
+
+struct StructType[T] {
+mut:
+	val T
+}
+
+fn test_struct_to_map() {
+	array_of_struct := [StructType[bool]{
+		val: true
+	}, StructType[bool]{
+		val: false
+	}]
+
+	mut array_of_map := []json.Any{}
+
+	for variable in array_of_struct {
+		array_of_map << json.map_from(variable)
+	}
+}
+
+// // waiting for  https://github.com/vlang/v/pull/16796
+// fn test_struct_to_map2() {
+// 	array_of_struct := [StructType[[]bool]{
+// 		val: [false, true]
+// 	}, StructType[[]bool]{
+// 		val: [true, false]
+// 	}]
+
+// 	mut array_of_map := []json.Any{}
+
+// 	for variable in array_of_struct {
+// 		array_of_map << json.map_from(variable)
+// 	}
+
+// 	assert array_of_map.str() == '[{"val":[false,true]},{"val":[true,false]}]'
+// }

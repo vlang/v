@@ -290,3 +290,15 @@ pub fn (f Any) to_time() !time.Time {
 		}
 	}
 }
+
+fn map_from[T](t T) map[string]Any {
+	mut m := map[string]Any{}
+	$if T is $Struct {
+		$for field in T.fields {
+			key := field.name
+			value := t.$(field.name)
+			m[key] = value
+		}
+	}
+	return m
+}
