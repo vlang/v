@@ -62,6 +62,8 @@ fn test_struct_to_map() {
 	for variable in array_of_struct {
 		array_of_map << json.map_from(variable)
 	}
+
+	assert array_of_map.str() == '[{"val":true},{"val":false}]'
 }
 
 // // waiting for  https://github.com/vlang/v/pull/16796
