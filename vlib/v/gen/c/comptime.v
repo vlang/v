@@ -487,12 +487,8 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 			return true
 		}
 		ast.SelectorExpr {
-			// check for field.is_public (from T.fields)
-			bool_fields := ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_optional', 'is_array',
-				'is_map', 'is_chan', 'is_struct']
-
 			if g.inside_comptime_for_field && cond.expr is ast.Ident
-				&& (cond.expr as ast.Ident).name == g.comptime_for_field_var && cond.field_name in bool_fields {
+				&& (cond.expr as ast.Ident).name == g.comptime_for_field_var && cond.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_optional', 'is_array', 'is_map', 'is_chan', 'is_struct'] {
 				ret_bool := g.get_comptime_selector_bool_field(cond.field_name)
 				g.write(ret_bool.str())
 				return true
