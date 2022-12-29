@@ -320,19 +320,22 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 		global_g.write_tests_definitions()
 	}
 
-	global_g.timers.start('cgen init')
+	util.timing_start('cgen init')
 	for mod in global_g.table.modules {
 		global_g.cleanups[mod] = strings.new_builder(100)
 	}
 	global_g.init()
-	global_g.timers.show('cgen init')
+	util.timing_measure('cgen init')
 	global_g.tests_inited = false
 	global_g.file = files.last()
 	if !pref.no_parallel {
+		util.timing_start('cgen parallel processing')
 		mut pp := pool.new_pool_processor(callback: cgen_process_one_file_cb)
 		pp.set_shared_context(global_g) // TODO: make global_g shared
 		pp.work_on_items(files)
-		global_g.timers.start('cgen unification')
+		util.timing_measure('cgen parallel processing')
+
+		util.timing_start('cgen unification')
 		// tg = thread gen
 		for g in pp.get_results_ref[Gen]() {
 			global_g.embedded_files << g.embedded_files
@@ -417,12 +420,15 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 			}
 		}
 	} else {
+		util.timing_start('cgen serial processing')
 		for file in files {
 			global_g.file = file
 			global_g.gen_file()
 			global_g.cleanups[file.mod.name].drain_builder(mut global_g.cleanup, 100)
 		}
-		global_g.timers.start('cgen unification')
+		util.timing_measure('cgen serial processing')
+
+		util.timing_start('cgen unification')
 	}
 
 	global_g.gen_jsons()
@@ -443,10 +449,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 	global_g.write_results()
 	global_g.write_optionals()
 	global_g.sort_globals_consts()
-	global_g.timers.show('cgen unification')
+	util.timing_measure('cgen unification')
 
 	mut g := global_g
-	g.timers.start('cgen common')
+	util.timing_start('cgen common')
 	// to make sure type idx's are the same in cached mods
 	if g.pref.build_mode == .build_module {
 		for idx, sym in g.table.type_symbols {
@@ -589,7 +595,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 	out_str := g.out.str()
 	b.write_string(out_str) // g.out.str())
 	b.writeln('\n// THE END.')
-	g.timers.show('cgen common')
+	util.timing_measure('cgen common')
 	res := b.str()
 	$if trace_all_generic_fn_keys ? {
 		gkeys := g.table.fn_generic_types.keys()
@@ -6056,6 +6062,10 @@ fn (g Gen) has_been_referenced(fn_name string) bool {
 
 // Generates interface table and interface indexes
 fn (mut g Gen) interface_table() string {
+	util.timing_start(@METHOD)
+	defer {
+		util.timing_measure(@METHOD)
+	}
 	mut sb := strings.new_builder(100)
 	mut conversion_functions := strings.new_builder(100)
 	for isym in g.table.type_symbols {
