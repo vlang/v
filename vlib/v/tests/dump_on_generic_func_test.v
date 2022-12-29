@@ -1,25 +1,24 @@
-interface Refresher {
-	refresh()
+struct Aa {
+	sub AliasType
 }
 
-struct Dummy {}
+type AliasType = Bb
 
-fn (d Dummy) refresh() {}
-
-struct Source {
-mut:
-	refresher Refresher = Dummy{}
+struct Bb {
+	a int
 }
 
-struct App {
-mut:
-	src Source
+fn encode_struct[U](val U) {
+	dump(val)
+	println(val)
+	$for field in U.fields {
+		encode_struct(val.$(field.name))
+	}
 }
 
-fn test_struct_init_with_interface_field() {
-	mut app := &App{}
-	app.src = Source{}
+fn test_main() {
+	aa := Aa{}
 
-	println(app)
-	assert '${app}'.contains('refresher: Refresher(Dummy{})')
+	encode_struct(aa)
+	assert true
 }
