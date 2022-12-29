@@ -19,8 +19,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		// generic func with recursion rewrite node.expr_type
 		if node.expr is ast.Ident {
 			// var
-			if (node.expr as ast.Ident).info is ast.IdentVar
-				&& (node.expr as ast.Ident).language == .v {
+			if (node.expr as ast.Ident).info is ast.IdentVar && (node.expr as ast.Ident).language == .v {
 				name = g.typ(g.unwrap_generic((node.expr as ast.Ident).info.typ))
 			}
 		}
