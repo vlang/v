@@ -1386,8 +1386,13 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				if g.comptime_for_field_type != 0 && g.inside_comptime_for_field
 					&& has_comptime_field {
 					mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
+					arg_sym := g.table.sym(g.comptime_for_field_type)
 					for k in comptime_args {
-						concrete_types[k] = g.comptime_for_field_type
+						if arg_sym.kind == .array {
+							concrete_types[k] = (arg_sym.info as ast.Array).elem_type
+						} else {
+							concrete_types[k] = g.comptime_for_field_type
+						}
 					}
 					name = g.generic_fn_name(concrete_types, name)
 				} else {
