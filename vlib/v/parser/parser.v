@@ -811,6 +811,7 @@ fn (mut p Parser) other_stmts(cur_stmt ast.Stmt) ast.Stmt {
 		}
 
 		p.open_scope()
+		p.cur_fn_name = 'main.main'
 		mut stmts := []ast.Stmt{}
 		if cur_stmt != ast.empty_stmt {
 			stmts << cur_stmt
