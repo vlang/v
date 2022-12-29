@@ -171,7 +171,7 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 
 fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 	typ := c.unwrap_generic(node.typ)
-	sym := c.table.sym(typ)
+	sym := c.table.final_sym(typ)
 	if sym.kind == .placeholder || typ.has_flag(.generic) {
 		c.error('unknown type `${sym.name}`', node.typ_pos)
 	}
