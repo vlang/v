@@ -1,3 +1,4 @@
-$tmpl('./hello.txt')
+path := os.join_path(os.dir(@VEXE), 'vlib', 'v', 'tests', 'tmpl', 'hello.txt')
+$tmpl(path)
 ===output===
 hello
