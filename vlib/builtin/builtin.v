@@ -126,6 +126,7 @@ pub:
 	is_map    bool // `f map[string]int` , TODO
 	is_chan   bool // `f chan int` , TODO
 	is_struct bool // `f Abc` where Abc is a struct , TODO
+	is_alias  bool // `f MyInt` where `type MyInt = int`, TODO
 	//
 	indirections u8 // 0 for `f int`, 1 for `f &int`, 2 for `f &&int` , TODO
 }

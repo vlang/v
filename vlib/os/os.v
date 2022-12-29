@@ -55,7 +55,8 @@ fn executable_fallback() string {
 		}
 	}
 	if !is_abs_path(exepath) {
-		rexepath := exepath.replace_each(['/', path_separator, '\\', path_separator])
+		other_seperator := if path_separator == '/' { '\\' } else { '/' }
+		rexepath := exepath.replace(other_seperator, path_separator)
 		if rexepath.contains(path_separator) {
 			exepath = join_path_single(os.wd_at_startup, exepath)
 		} else {
@@ -230,7 +231,8 @@ pub fn dir(opath string) string {
 	if opath == '' {
 		return '.'
 	}
-	path := opath.replace_each(['/', path_separator, '\\', path_separator])
+	other_seperator := if path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_seperator, path_separator)
 	pos := path.last_index(path_separator) or { return '.' }
 	if pos == 0 && path_separator == '/' {
 		return '/'
@@ -246,7 +248,8 @@ pub fn base(opath string) string {
 	if opath == '' {
 		return '.'
 	}
-	path := opath.replace_each(['/', path_separator, '\\', path_separator])
+	other_seperator := if path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_seperator, path_separator)
 	if path == path_separator {
 		return path_separator
 	}
@@ -262,7 +265,8 @@ pub fn base(opath string) string {
 // file_name will return all characters found after the last occurence of `path_separator`.
 // file extension is included.
 pub fn file_name(opath string) string {
-	path := opath.replace_each(['/', path_separator, '\\', path_separator])
+	other_seperator := if path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_seperator, path_separator)
 	return path.all_after_last(path_separator)
 }
 
@@ -655,7 +659,8 @@ pub struct MkdirParams {
 
 // mkdir_all will create a valid full path of all directories given in `path`.
 pub fn mkdir_all(opath string, params MkdirParams) ! {
-	path := opath.replace('/', path_separator)
+	other_seperator := if path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_seperator, path_separator)
 	mut p := if path.starts_with(path_separator) { path_separator } else { '' }
 	path_parts := path.trim_left(path_separator).split(path_separator)
 	for subdir in path_parts {

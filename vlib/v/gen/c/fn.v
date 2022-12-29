@@ -959,6 +959,26 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.expr(node.args[0].expr)
 		g.write(')')
 		return
+	} else if left_sym.kind == .array && node.name == 'drop' {
+		g.write('array_drop(')
+		if left_type.has_flag(.shared_f) {
+			if left_type.is_ptr() {
+				g.write('&')
+			}
+			g.expr(node.left)
+			g.write('->val')
+		} else {
+			if left_type.is_ptr() {
+				g.expr(node.left)
+			} else {
+				g.write('&')
+				g.expr(node.left)
+			}
+		}
+		g.write(', ')
+		g.expr(node.args[0].expr)
+		g.write(')')
+		return
 	}
 
 	if left_sym.kind in [.sum_type, .interface_] {
@@ -1366,8 +1386,13 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				if g.comptime_for_field_type != 0 && g.inside_comptime_for_field
 					&& has_comptime_field {
 					mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
+					arg_sym := g.table.sym(g.comptime_for_field_type)
 					for k in comptime_args {
-						concrete_types[k] = g.comptime_for_field_type
+						if arg_sym.kind == .array {
+							concrete_types[k] = (arg_sym.info as ast.Array).elem_type
+						} else {
+							concrete_types[k] = g.comptime_for_field_type
+						}
 					}
 					name = g.generic_fn_name(concrete_types, name)
 				} else {

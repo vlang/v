@@ -1183,7 +1183,13 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			}
 		}
 	}
-
+	// evaluates comptime field.<name> (from T.fields)
+	if c.check_comptime_is_field_selector(node) {
+		if c.check_comptime_is_field_selector_bool(node) {
+			node.expr_type = ast.bool_type
+			return node.expr_type
+		}
+	}
 	old_selector_expr := c.inside_selector_expr
 	c.inside_selector_expr = true
 	mut typ := c.expr(node.expr)
