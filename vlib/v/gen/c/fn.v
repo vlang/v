@@ -652,7 +652,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.expr(node.left)
 			g.writeln(';')
 			g.write(tmp_var)
-		} else {
+		} else if node.or_block.kind == .absent {
 			g.expr(node.left)
 		}
 	} else if node.left is ast.IndexExpr && node.name == '' {
@@ -695,6 +695,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.write('${tmp_opt} = ')
 		} else {
 			g.write('${styp} ${tmp_opt} = ')
+			if node.left is ast.AnonFn {
+				g.expr(node.left)
+			}
 		}
 	}
 	if node.is_method && !node.is_field {
