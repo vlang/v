@@ -9,7 +9,7 @@ const vroot = @VMODROOT
 const efolders = [
 	'examples/viewer',
 	'examples/vweb_orm_jwt',
-	'examples/vweb_fullstack'
+	'examples/vweb_fullstack',
 ]
 
 fn main() {
