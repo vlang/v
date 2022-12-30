@@ -125,14 +125,16 @@ fn bcrypt(password []u8, cost int, salt []u8) ?[]u8 {
 // expensive_blowfish_setup generate a Blowfish cipher, given key, cost and salt.
 fn expensive_blowfish_setup(key []u8, cost u32, salt []u8) ?&blowfish.Blowfish {
 	csalt := base64.decode(salt.bytestr())
+	mut ckey := key.clone()
+	ckey.push(0)
 
-	mut bf := blowfish.new_salted_cipher(key, csalt) or { return err }
+	mut bf := blowfish.new_salted_cipher(ckey, csalt) or { return err }
 
 	mut i := u64(0)
 	mut rounds := u64(0)
 	rounds = 1 << cost
 	for i = 0; i < rounds; i++ {
-		blowfish.expand_key(key, mut bf)
+		blowfish.expand_key(ckey, mut bf)
 		blowfish.expand_key(csalt, mut bf)
 	}
 
