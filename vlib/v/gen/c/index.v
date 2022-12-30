@@ -120,8 +120,20 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		if node.left_type.is_ptr() {
 			g.write('*')
 		}
-		g.expr(node.left)
-		g.write(')')
+		if node.left is ast.ArrayInit {
+			var := g.new_tmp_var()
+			line := g.go_before_stmt(0).trim_space()
+			styp := g.typ(node.left_type)
+			g.empty_line = true
+			g.write('${styp} ${var} = ')
+			g.expr(node.left)
+			g.writeln(';')
+			g.write(line)
+			g.write(' ${var})')
+		} else {
+			g.expr(node.left)
+			g.write(')')
+		}
 	} else {
 		g.expr(node.left)
 	}
