@@ -534,11 +534,6 @@ fn (mut g Gen) pop_existing_comptime_values() {
 //
 
 fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
-	g.push_existing_comptime_values()
-	defer {
-		g.pop_existing_comptime_values()
-	}
-	//
 	sym := g.table.final_sym(g.unwrap_generic(node.typ))
 	g.writeln('/* \$for ${node.val_var} in ${sym.name}(${node.kind.str()}) */ {')
 	g.indent++
@@ -554,6 +549,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 		}
 		typ_vweb_result := g.table.find_type_idx('vweb.Result')
 		for method in methods {
+			g.push_existing_comptime_values()
 			// filter vweb route methods (non-generic method)
 			if method.receiver_type != 0 && method.return_type == typ_vweb_result {
 				rec_sym := g.table.sym(method.receiver_type)
@@ -561,6 +557,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					if _ := g.table.find_field_with_embeds(rec_sym, 'Context') {
 						if method.generic_names.len > 0
 							|| (method.params.len > 1 && method.attrs.len == 0) {
+							g.pop_existing_comptime_values()
 							continue
 						}
 					}
@@ -621,6 +618,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.stmts(node.stmts)
 			i++
 			g.writeln('}')
+			g.pop_existing_comptime_values()
 		}
 	} else if node.kind == .fields {
 		// TODO add fields
@@ -629,8 +627,9 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			if sym_info.fields.len > 0 {
 				g.writeln('\tFieldData ${node.val_var} = {0};')
 			}
-			g.inside_comptime_for_field = true
 			for field in sym_info.fields {
+				g.push_existing_comptime_values()
+				g.inside_comptime_for_field = true
 				g.comptime_for_field_var = node.val_var
 				g.comptime_for_field_value = field
 				g.comptime_for_field_type = field.typ
@@ -670,6 +669,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.stmts(node.stmts)
 				i++
 				g.writeln('}')
+				g.pop_existing_comptime_values()
 			}
 		}
 	} else if node.kind == .attributes {
