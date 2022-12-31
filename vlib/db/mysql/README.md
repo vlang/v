@@ -5,7 +5,7 @@ then copy the `include` and `lib` folders to `<V install directory>\thirdparty\m
 
 Note: if you encounter weird errors (your program just exits right away, without
 printing any messages, even though you have `println('hi')` statements in your 
-`fn main()`), when trying to run a program that does `import mysql` on windows, you 
+`fn main()`), when trying to run a program that does `import db.mysql` on windows, you 
 may need to copy the .dll file: `thirdparty/mysql/lib/libmysql.dll` , into the folder
 of the executable too (it should be right next to the .exe file). 
 This is a temporary workaround, until we have a more permanent solution, or at least
@@ -14,7 +14,7 @@ more user friendly errors for that situation.
 ## Basic Usage
 
 ```v oksyntax
-import mysql
+import db.mysql
 
 // Create connection
 mut connection := mysql.Connection{

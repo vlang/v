@@ -88,8 +88,8 @@ const (
 		'cmd/tools/vdoc/tests/vdoc_file_test.v', /* fails on Windows; order of output is not as expected */
 		'vlib/context/onecontext/onecontext_test.v',
 		'vlib/context/deadline_test.v' /* sometimes blocks */,
-		'vlib/mysql/mysql_orm_test.v' /* mysql not installed */,
-		'vlib/pg/pg_orm_test.v' /* pg not installed */,
+		'vlib/db/mysql/mysql_orm_test.v' /* mysql not installed */,
+		'vlib/db/pg/pg_orm_test.v' /* pg not installed */,
 	]
 	skip_fsanitize_too_slow       = [
 		// These tests are too slow to be run in the CI on each PR/commit
@@ -120,9 +120,9 @@ const (
 		'vlib/net/tcp_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/orm/orm_sql_or_blocks_test.v',
-		'vlib/sqlite/sqlite_test.v',
-		'vlib/sqlite/sqlite_orm_test.v',
-		'vlib/sqlite/sqlite_vfs_lowlevel_test.v',
+		'vlib/db/sqlite/sqlite_test.v',
+		'vlib/db/sqlite/sqlite_orm_test.v',
+		'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_joined_tables_select_test.v',
@@ -170,9 +170,9 @@ const (
 		'vlib/net/http/http_test.v',
 		'vlib/net/http/status_test.v',
 		'vlib/net/websocket/ws_test.v',
-		'vlib/sqlite/sqlite_test.v',
-		'vlib/sqlite/sqlite_orm_test.v',
-		'vlib/sqlite/sqlite_vfs_lowlevel_test.v',
+		'vlib/db/sqlite/sqlite_test.v',
+		'vlib/db/sqlite/sqlite_orm_test.v',
+		'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/orm/orm_sql_or_blocks_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',

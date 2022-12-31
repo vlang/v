@@ -34,7 +34,7 @@ $if $pkgconfig('libpq') {
 // for orm
 #include <arpa/inet.h>
 
-#include "@VMODROOT/vlib/pg/compatibility.h"
+#include "@VMODROOT/vlib/db/pg/compatibility.h"
 
 pub struct DB {
 mut:

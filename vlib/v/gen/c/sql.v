@@ -27,13 +27,13 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	typ := g.parse_db_type(node.db_expr)
 	match typ {
 		.sqlite3 {
-			fn_prefix = 'sqlite__DB'
+			fn_prefix = 'db__sqlite__DB'
 		}
 		.mysql {
-			fn_prefix = 'mysql__Connection'
+			fn_prefix = 'db__mysql__Connection'
 		}
 		.psql {
-			fn_prefix = 'pg__DB'
+			fn_prefix = 'db__pg__DB'
 		}
 		else {
 			verror('This database type `${typ}` is not implemented yet in orm') // TODO add better error
@@ -543,13 +543,13 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	typ := g.parse_db_type(node.db_expr)
 	match typ {
 		.sqlite3 {
-			fn_prefix = 'sqlite__DB'
+			fn_prefix = 'db__sqlite__DB'
 		}
 		.mysql {
-			fn_prefix = 'mysql__Connection'
+			fn_prefix = 'db__mysql__Connection'
 		}
 		.psql {
-			fn_prefix = 'pg__DB'
+			fn_prefix = 'db__pg__DB'
 		}
 		else {
 			verror('This database type `${typ}` is not implemented yet in orm') // TODO add better error
@@ -850,16 +850,16 @@ fn (mut g Gen) parse_db_type(expr ast.Expr) SqlType {
 
 fn (mut g Gen) parse_db_from_type_string(name string) SqlType {
 	match name {
-		'sqlite.DB' {
+		'db.sqlite.DB' {
 			return .sqlite3
 		}
-		'mysql.Connection' {
+		'db.mysql.Connection' {
 			return .mysql
 		}
-		'pg.DB' {
+		'db.pg.DB' {
 			return .psql
 		}
-		'mssql.Connection' {
+		'db.mssql.Connection' {
 			return .mssql
 		}
 		else {

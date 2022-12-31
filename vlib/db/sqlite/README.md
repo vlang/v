@@ -31,7 +31,7 @@ performance increase can be obtained by controlling the synchronization and jour
 
 For instance:
 ```v
-import sqlite
+import db.sqlite
 
 db := sqlite.connect('foo.db') or { panic(err) }
 db.synchronization_mode(sqlite.SyncMode.off)
