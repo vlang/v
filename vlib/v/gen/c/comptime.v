@@ -506,7 +506,39 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 	}
 }
 
+//
+
+struct CurrentComptimeValues {
+	inside_comptime_for_field bool
+	comptime_for_method       string
+	comptime_for_field_var    string
+	comptime_for_field_value  ast.StructField
+	comptime_for_field_type   ast.Type
+	comptime_var_type_map     map[string]ast.Type
+}
+
+fn (mut g Gen) push_existing_comptime_values() {
+	g.comptime_values_stack << CurrentComptimeValues{g.inside_comptime_for_field, g.comptime_for_method, g.comptime_for_field_var, g.comptime_for_field_value, g.comptime_for_field_type, g.comptime_var_type_map.clone()}
+}
+
+fn (mut g Gen) pop_existing_comptime_values() {
+	old := g.comptime_values_stack.pop()
+	g.inside_comptime_for_field = old.inside_comptime_for_field
+	g.comptime_for_method = old.comptime_for_method
+	g.comptime_for_field_var = old.comptime_for_field_var
+	g.comptime_for_field_value = old.comptime_for_field_value
+	g.comptime_for_field_type = old.comptime_for_field_type
+	g.comptime_var_type_map = old.comptime_var_type_map.clone()
+}
+
+//
+
 fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
+	g.push_existing_comptime_values()
+	defer {
+		g.pop_existing_comptime_values()
+	}
+	//
 	sym := g.table.final_sym(g.unwrap_generic(node.typ))
 	g.writeln('/* \$for ${node.val_var} in ${sym.name}(${node.kind.str()}) */ {')
 	g.indent++
@@ -589,16 +621,6 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.stmts(node.stmts)
 			i++
 			g.writeln('}')
-			//
-			mut delete_keys := []string{}
-			for key, _ in g.comptime_var_type_map {
-				if key.starts_with(node.val_var) {
-					delete_keys << key
-				}
-			}
-			for key in delete_keys {
-				g.comptime_var_type_map.delete(key)
-			}
 		}
 	} else if node.kind == .fields {
 		// TODO add fields
@@ -648,10 +670,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.stmts(node.stmts)
 				i++
 				g.writeln('}')
-				g.comptime_for_field_type = 0
 			}
-			g.inside_comptime_for_field = false
-			g.comptime_var_type_map.delete(node.val_var)
 		}
 	} else if node.kind == .attributes {
 		if sym.info is ast.Struct {
