@@ -725,7 +725,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 		ast.SelectorExpr {
 			if c.check_comptime_is_field_selector(cond) {
 				if c.check_comptime_is_field_selector_bool(cond) {
-					return .eval
+					return .unknown
 				}
 				c.error('unknown field `${cond.field_name}` from ${c.comptime_for_field_var}',
 					cond.pos)

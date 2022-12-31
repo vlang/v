@@ -357,7 +357,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 	match cond {
 		ast.BoolLiteral {
 			g.expr(cond)
-			return true
+			return cond.val
 		}
 		ast.ParExpr {
 			g.write('(')
@@ -367,7 +367,13 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 		}
 		ast.PrefixExpr {
 			g.write(cond.op.str())
-			return g.comptime_if_cond(cond.right, pkg_exist)
+			is_cond_true := g.comptime_if_cond(cond.right, pkg_exist)
+			if cond.op == .not {
+				if cond.right in [ast.BoolLiteral, ast.SelectorExpr] {
+					return !is_cond_true
+				}
+			}
+			return is_cond_true
 		}
 		ast.PostfixExpr {
 			ifdef := g.comptime_if_to_ifdef((cond.expr as ast.Ident).name, true) or {
