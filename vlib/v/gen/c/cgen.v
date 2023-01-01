@@ -197,6 +197,7 @@ mut:
 	comptime_for_field_value         ast.StructField // value of the field variable
 	comptime_for_field_type          ast.Type        // type of the field variable inferred from `$if field.typ is T {}`
 	comptime_var_type_map            map[string]ast.Type
+	comptime_values_stack            []CurrentComptimeValues // stores the values from the above on each $for loop, to make nesting them easier
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type
 	// used in match multi branch
 	// TypeOne, TypeTwo {}
@@ -3549,6 +3550,22 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 	}
 }
 
+fn (mut g Gen) comptime_typeof(node ast.TypeOf, default_type ast.Type) ast.Type {
+	if node.expr is ast.ComptimeSelector {
+		if node.expr.field_expr is ast.SelectorExpr {
+			if node.expr.field_expr.expr is ast.Ident {
+				key_str := '${node.expr.field_expr.expr.name}.typ'
+				return g.comptime_var_type_map[key_str] or { default_type }
+			}
+		}
+	} else if g.inside_comptime_for_field && node.expr is ast.Ident
+		&& (node.expr as ast.Ident).obj is ast.Var && ((node.expr as ast.Ident).obj as ast.Var).is_comptime_field == true {
+		// typeof(var) from T.fields
+		return g.comptime_for_field_type
+	}
+	return default_type
+}
+
 fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 	g.prevent_sum_type_unwrapping_once = false
@@ -3568,20 +3585,17 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					// typeof(expr).name
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
-						if node.expr.expr is ast.ComptimeSelector {
-							if node.expr.expr.field_expr is ast.SelectorExpr {
-								if node.expr.expr.field_expr.expr is ast.Ident {
-									key_str := '${node.expr.expr.field_expr.expr.name}.typ'
-									name_type = g.comptime_var_type_map[key_str] or { name_type }
-								}
-							}
-						}
+						name_type = g.comptime_typeof(node.expr, name_type)
 					}
 					g.type_name(name_type)
 					return
 				} else if node.field_name == 'idx' {
+					mut name_type := node.name_type
+					if node.expr is ast.TypeOf {
+						name_type = g.comptime_typeof(node.expr, name_type)
+					}
 					// `typeof(expr).idx`
-					g.write(int(g.unwrap_generic(node.name_type)).str())
+					g.write(int(g.unwrap_generic(name_type)).str())
 					return
 				}
 				g.error('unknown generic field', node.pos)

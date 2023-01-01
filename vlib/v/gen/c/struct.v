@@ -314,6 +314,10 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 		}
 
 		g.expr(field.default_expr)
+	} else if field.typ.has_flag(.optional) {
+		tmp_var := g.new_tmp_var()
+		g.expr_with_tmp_var(ast.None{}, ast.none_type, field.typ, tmp_var)
+		return true
 	} else {
 		g.write(g.type_default(field.typ))
 	}
