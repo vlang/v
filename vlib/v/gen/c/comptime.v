@@ -301,7 +301,8 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			} else {
 				g.write('#elif ')
 			}
-			comptime_if_stmts_skip, comptime_may_skip_else = g.comptime_if_cond(branch.cond, branch.pkg_exist)
+			comptime_if_stmts_skip, comptime_may_skip_else = g.comptime_if_cond(branch.cond,
+				branch.pkg_exist)
 			if !comptime_if_stmts_skip && comptime_may_skip_else {
 				comptime_may_skip_else = false // if the cond is false, not skip else branch
 			}
@@ -359,7 +360,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	}
 }
 
-// returns the value of the bool comptime expression
+// returns the value of the bool comptime expression and if next branches may be discarded
 // returning `false` means the statements inside the $if can be skipped
 fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 	match cond {
@@ -369,13 +370,13 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 		}
 		ast.ParExpr {
 			g.write('(')
-			is_cond_true,_ := g.comptime_if_cond(cond.expr, pkg_exist)
+			is_cond_true, _ := g.comptime_if_cond(cond.expr, pkg_exist)
 			g.write(')')
 			return is_cond_true, false
 		}
 		ast.PrefixExpr {
 			g.write(cond.op.str())
-			is_cond_true,_ := g.comptime_if_cond(cond.right, pkg_exist)
+			is_cond_true, _ := g.comptime_if_cond(cond.right, pkg_exist)
 			if cond.op == .not {
 				if cond.right in [ast.BoolLiteral, ast.SelectorExpr] {
 					return !is_cond_true, true
@@ -394,9 +395,9 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 		ast.InfixExpr {
 			match cond.op {
 				.and, .logical_or {
-					l,_ := g.comptime_if_cond(cond.left, pkg_exist)
+					l, _ := g.comptime_if_cond(cond.left, pkg_exist)
 					g.write(' ${cond.op} ')
-					r,_ := g.comptime_if_cond(cond.right, pkg_exist)
+					r, _ := g.comptime_if_cond(cond.right, pkg_exist)
 					return if cond.op == .and { l && r } else { l || r }, false
 				}
 				.key_is, .not_is {
@@ -478,9 +479,9 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 				.eq, .ne {
 					// TODO Implement `$if method.args.len == 1`
 					if cond.left is ast.SelectorExpr || cond.right is ast.SelectorExpr {
-						l,_ := g.comptime_if_cond(cond.left, pkg_exist)
+						l, _ := g.comptime_if_cond(cond.left, pkg_exist)
 						g.write(' ${cond.op} ')
-						r,_ := g.comptime_if_cond(cond.right, pkg_exist)
+						r, _ := g.comptime_if_cond(cond.right, pkg_exist)
 						return if cond.op == .eq { l == r } else { l != r }, true
 					} else {
 						g.write('1')
