@@ -139,7 +139,7 @@ fn (mut ws Client) check_handshake_response(handshake_response string, seckey st
 		if lines[i].len <= 0 || lines[i] == '\r\n' {
 			continue
 		}
-		keys := lines[i].split(':').trim_space()
+		keys := lines[i].split(':').map(it.trim_space())
 		match keys[0].to_lower() {
 			'upgrade' {
 				ws.flags << .has_upgrade
