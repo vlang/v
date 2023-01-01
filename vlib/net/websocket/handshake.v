@@ -64,7 +64,7 @@ fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) 
 		if lines[i].len <= 0 || lines[i] == '\r\n' {
 			continue
 		}
-		keys := lines[i].split(':').trim_space()
+		keys := lines[i].split(':').map(it.trim_space())
 		match keys[0].to_lower() {
 			'upgrade' {
 				flags << .has_upgrade
