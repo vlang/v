@@ -1975,6 +1975,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 				cname: util.no_dots(c_nrt)
 				mod: ts.mod
 				info: info
+				is_pub: ts.is_pub
 			)
 			for typ_ in needs_unwrap_types {
 				t.unwrap_generic_type(typ_, generic_names, concrete_types)
@@ -2010,6 +2011,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 				cname: util.no_dots(c_nrt)
 				mod: ts.mod
 				info: info
+				is_pub: ts.is_pub
 			)
 			for typ_ in needs_unwrap_types {
 				t.unwrap_generic_type(typ_, generic_names, concrete_types)
@@ -2053,6 +2055,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 				cname: util.no_dots(c_nrt)
 				mod: ts.mod
 				info: info
+				is_pub: ts.is_pub
 			)
 			mut ts_copy := t.sym(new_idx)
 			for method in all_methods {
