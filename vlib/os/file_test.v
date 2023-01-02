@@ -405,6 +405,7 @@ fn test_eof() {
 	assert !f.eof()
 	f.read_bytes(100)
 	assert f.eof()
+	f.close()
 }
 
 fn test_open_file_wb_ab() {
