@@ -459,6 +459,7 @@ pub mut:
 	typ                  Type   // the type of this struct
 	update_expr          Expr   // `a` in `...a`
 	update_expr_type     Type
+	update_expr_pos      token.Pos
 	update_expr_comments []Comment
 	is_update_embed      bool
 	has_update_expr      bool // has `...a`

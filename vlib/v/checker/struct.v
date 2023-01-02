@@ -334,8 +334,9 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 		}
 	}
 	// allow init structs from generic if they're private except the type is from builtin module
-	if !type_sym.is_pub && type_sym.kind != .placeholder && type_sym.language != .c
-		&& (type_sym.mod != c.mod && !(node.typ.has_flag(.generic) && type_sym.mod != 'builtin')) {
+	if !node.has_update_expr && !type_sym.is_pub && type_sym.kind != .placeholder
+		&& type_sym.language != .c && (type_sym.mod != c.mod && !(node.typ.has_flag(.generic)
+		&& type_sym.mod != 'builtin')) {
 		c.error('type `${type_sym.name}` is private', node.pos)
 	}
 	if type_sym.kind == .struct_ {
@@ -591,6 +592,9 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 	if node.has_update_expr {
 		update_type := c.expr(node.update_expr)
 		node.update_expr_type = update_type
+		if node.update_expr is ast.ComptimeSelector {
+			c.error('cannot use struct update syntax in compile time expressions', node.update_expr_pos)
+		}
 		if c.table.final_sym(update_type).kind != .struct_ {
 			s := c.table.type_to_str(update_type)
 			c.error('expected struct, found `${s}`', node.update_expr.pos())
