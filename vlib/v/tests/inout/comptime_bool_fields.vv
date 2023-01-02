@@ -1,3 +1,5 @@
+type MyInt = int
+
 struct Bb {
 mut:
 	a int
@@ -8,7 +10,8 @@ pub:
 	d map[string]int
 	e atomic int
 pub mut:
-	f []f64
+	f   []f64
+	zzz MyInt = 123
 }
 
 fn foo[U](val U) {
@@ -32,6 +35,9 @@ fn foo[U](val U) {
 		}
 		$if field.is_map {
 			println(field.name + ' is map?: ${field.is_map}')
+		}
+		$if field.is_alias {
+			println(field.name + ' is alias?: ${field.is_alias}')
 		}
 		$if field.is_shared {
 			println(field.name + ' is shared?: ${field.is_shared}')

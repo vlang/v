@@ -1,3 +1,5 @@
+type MyInt = int
+
 struct Abc {
 	x    int
 	y    int
@@ -9,6 +11,7 @@ struct Complex {
 	i        int
 	ch_i     chan int
 	atomic_i atomic int
+	my_alias MyInt = 144
 	//
 	pointer1_i &int   = unsafe { nil }
 	pointer2_i &&int  = unsafe { nil }
@@ -19,9 +22,10 @@ struct Complex {
 	my_struct        Abc
 	my_struct_shared shared Abc
 	//
-	o_s    ?string
-	o_i    ?int
-	o_ch_i ?chan int = chan int{cap: 10}
+	o_s        ?string
+	o_i        ?int
+	o_ch_i     ?chan int = chan int{cap: 10}
+	o_my_alias ?MyInt    = 123
 	// o_atomic_i ?atomic int // TODO: cgen error, but should be probably a checker one, since optional atomics do not make sense
 	o_pointer1_i ?&int   = unsafe { nil }
 	o_pointer2_i ?&&int  = unsafe { nil }
@@ -99,6 +103,16 @@ fn test_is_struct() {
 			assert f.is_struct, 'Complex.${f.name} should have f.is_struct set'
 		} else {
 			assert !f.is_struct, 'Complex.${f.name} should NOT have f.is_struct set'
+		}
+	}
+}
+
+fn test_is_alias() {
+	$for f in Complex.fields {
+		if f.name.contains('_alias') {
+			assert f.is_alias, 'Complex.${f.name} should have f.is_alias set'
+		} else {
+			assert !f.is_alias, 'Complex.${f.name} should NOT have f.is_alias set'
 		}
 	}
 }

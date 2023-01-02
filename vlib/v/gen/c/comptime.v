@@ -32,6 +32,7 @@ fn (mut g Gen) get_comptime_selector_bool_field(field_name string) bool {
 		'is_map' { return field_sym.kind == .map }
 		'is_chan' { return field_sym.kind == .chan }
 		'is_struct' { return field_sym.kind == .struct_ }
+		'is_alias' { return field_sym.kind == .alias }
 		else { return false }
 	}
 }
@@ -488,10 +489,10 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 		}
 		ast.SelectorExpr {
 			if g.inside_comptime_for_field && cond.expr is ast.Ident
-				&& (cond.expr as ast.Ident).name == g.comptime_for_field_var && cond.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_optional', 'is_array', 'is_map', 'is_chan', 'is_struct'] {
+				&& (cond.expr as ast.Ident).name == g.comptime_for_field_var && cond.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_optional', 'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias'] {
 				ret_bool := g.get_comptime_selector_bool_field(cond.field_name)
 				g.write(ret_bool.str())
-				return true
+				return ret_bool
 			} else {
 				g.write('1')
 				return true
@@ -505,8 +506,35 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 	}
 }
 
+//
+
+struct CurrentComptimeValues {
+	inside_comptime_for_field bool
+	comptime_for_method       string
+	comptime_for_field_var    string
+	comptime_for_field_value  ast.StructField
+	comptime_for_field_type   ast.Type
+	comptime_var_type_map     map[string]ast.Type
+}
+
+fn (mut g Gen) push_existing_comptime_values() {
+	g.comptime_values_stack << CurrentComptimeValues{g.inside_comptime_for_field, g.comptime_for_method, g.comptime_for_field_var, g.comptime_for_field_value, g.comptime_for_field_type, g.comptime_var_type_map.clone()}
+}
+
+fn (mut g Gen) pop_existing_comptime_values() {
+	old := g.comptime_values_stack.pop()
+	g.inside_comptime_for_field = old.inside_comptime_for_field
+	g.comptime_for_method = old.comptime_for_method
+	g.comptime_for_field_var = old.comptime_for_field_var
+	g.comptime_for_field_value = old.comptime_for_field_value
+	g.comptime_for_field_type = old.comptime_for_field_type
+	g.comptime_var_type_map = old.comptime_var_type_map.clone()
+}
+
+//
+
 fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
-	sym := g.table.sym(g.unwrap_generic(node.typ))
+	sym := g.table.final_sym(g.unwrap_generic(node.typ))
 	g.writeln('/* \$for ${node.val_var} in ${sym.name}(${node.kind.str()}) */ {')
 	g.indent++
 	// vweb_result_type := ast.new_type(g.table.find_type_idx('vweb.Result'))
@@ -521,6 +549,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 		}
 		typ_vweb_result := g.table.find_type_idx('vweb.Result')
 		for method in methods {
+			g.push_existing_comptime_values()
 			// filter vweb route methods (non-generic method)
 			if method.receiver_type != 0 && method.return_type == typ_vweb_result {
 				rec_sym := g.table.sym(method.receiver_type)
@@ -528,6 +557,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					if _ := g.table.find_field_with_embeds(rec_sym, 'Context') {
 						if method.generic_names.len > 0
 							|| (method.params.len > 1 && method.attrs.len == 0) {
+							g.pop_existing_comptime_values()
 							continue
 						}
 					}
@@ -588,16 +618,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.stmts(node.stmts)
 			i++
 			g.writeln('}')
-			//
-			mut delete_keys := []string{}
-			for key, _ in g.comptime_var_type_map {
-				if key.starts_with(node.val_var) {
-					delete_keys << key
-				}
-			}
-			for key in delete_keys {
-				g.comptime_var_type_map.delete(key)
-			}
+			g.pop_existing_comptime_values()
 		}
 	} else if node.kind == .fields {
 		// TODO add fields
@@ -606,8 +627,9 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			if sym_info.fields.len > 0 {
 				g.writeln('\tFieldData ${node.val_var} = {0};')
 			}
-			g.inside_comptime_for_field = true
 			for field in sym_info.fields {
+				g.push_existing_comptime_values()
+				g.inside_comptime_for_field = true
 				g.comptime_for_field_var = node.val_var
 				g.comptime_for_field_value = field
 				g.comptime_for_field_type = field.typ
@@ -639,16 +661,16 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('\t${node.val_var}.is_map = ${field_sym.kind == .map};')
 				g.writeln('\t${node.val_var}.is_chan = ${field_sym.kind == .chan};')
 				g.writeln('\t${node.val_var}.is_struct = ${field_sym.kind == .struct_};')
+				g.writeln('\t${node.val_var}.is_alias = ${field_sym.kind == .alias};')
+				//
 				g.writeln('\t${node.val_var}.indirections = ${field.typ.nr_muls()};')
 				//
 				g.comptime_var_type_map['${node.val_var}.typ'] = styp
 				g.stmts(node.stmts)
 				i++
 				g.writeln('}')
-				g.comptime_for_field_type = 0
+				g.pop_existing_comptime_values()
 			}
-			g.inside_comptime_for_field = false
-			g.comptime_var_type_map.delete(node.val_var)
 		}
 	} else if node.kind == .attributes {
 		if sym.info is ast.Struct {

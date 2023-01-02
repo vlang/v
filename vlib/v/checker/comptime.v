@@ -171,7 +171,7 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 
 fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 	typ := c.unwrap_generic(node.typ)
-	sym := c.table.sym(typ)
+	sym := c.table.final_sym(typ)
 	if sym.kind == .placeholder || typ.has_flag(.generic) {
 		c.error('unknown type `${sym.name}`', node.typ_pos)
 	}
@@ -750,9 +750,8 @@ fn (mut c Checker) check_comptime_is_field_selector(node ast.SelectorExpr) bool 
 [inline]
 fn (mut c Checker) check_comptime_is_field_selector_bool(node ast.SelectorExpr) bool {
 	if c.check_comptime_is_field_selector(node) {
-		bool_fields := ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_optional', 'is_array',
-			'is_map', 'is_chan', 'is_struct']
-		return node.field_name in bool_fields
+		return node.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_optional',
+			'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias']
 	}
 	return false
 }

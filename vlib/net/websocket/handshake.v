@@ -1,4 +1,3 @@
-[manualfree]
 module websocket
 
 import encoding.base64
@@ -29,21 +28,16 @@ fn (mut ws Client) handshake() ! {
 	}
 	sb.write_string('\r\n\r\n')
 	handshake := sb.str()
-	defer {
-		unsafe { handshake.free() }
-	}
 	handshake_bytes := handshake.bytes()
 	ws.debug_log('sending handshake: ${handshake}')
 	ws.socket_write(handshake_bytes)!
 	ws.read_handshake(seckey)!
-	unsafe { handshake_bytes.free() }
 }
 
 // handle_server_handshake manages websocket server handshake process
 fn (mut s Server) handle_server_handshake(mut c Client) !(string, &ServerClient) {
 	msg := c.read_handshake_str()!
 	handshake_response, client := s.parse_client_handshake(msg, mut c)!
-	unsafe { msg.free() }
 	return handshake_response, client
 }
 
@@ -70,26 +64,25 @@ fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) 
 		if lines[i].len <= 0 || lines[i] == '\r\n' {
 			continue
 		}
-		keys := lines[i].split(':')
-		match keys[0] {
-			'Upgrade', 'upgrade' {
+		keys := lines[i].split(':').map(it.trim_space())
+		match keys[0].to_lower() {
+			'upgrade' {
 				flags << .has_upgrade
 			}
-			'Connection', 'connection' {
+			'connection' {
 				flags << .has_connection
 			}
-			'Sec-WebSocket-Key', 'sec-websocket-key' {
-				key = keys[1].trim_space()
+			'sec-websocket-key' {
+				key = keys[1]
 				s.logger.debug('server-> got key: ${key}')
 				seckey = create_key_challenge_response(key)!
-				s.logger.debug('server-> challenge: ${seckey}, response: ${keys[1]}')
+				s.logger.debug('server-> challenge: ${seckey}, response: ${key}')
 				flags << .has_accept
 			}
 			else {
 				// we ignore other headers like protocol for now
 			}
 		}
-		unsafe { keys.free() }
 	}
 	if flags.len < 3 {
 		return error_with_code('invalid client handshake, ${client_handshake}', 4)
@@ -100,13 +93,6 @@ fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) 
 		client_key: key
 		client: unsafe { c }
 		server: unsafe { s }
-	}
-	unsafe {
-		lines.free()
-		flags.free()
-		get_tokens.free()
-		seckey.free()
-		key.free()
 	}
 	return server_handshake, server_client
 }
@@ -137,7 +123,6 @@ fn (mut ws Client) read_handshake_str() !string {
 fn (mut ws Client) read_handshake(seckey string) ! {
 	mut msg := ws.read_handshake_str()!
 	ws.check_handshake_response(msg, seckey)!
-	unsafe { msg.free() }
 }
 
 // check_handshake_response checks the response from handshake and returns
@@ -154,15 +139,15 @@ fn (mut ws Client) check_handshake_response(handshake_response string, seckey st
 		if lines[i].len <= 0 || lines[i] == '\r\n' {
 			continue
 		}
-		keys := lines[i].split(':')
-		match keys[0] {
-			'Upgrade', 'upgrade' {
+		keys := lines[i].split(':').map(it.trim_space())
+		match keys[0].to_lower() {
+			'upgrade' {
 				ws.flags << .has_upgrade
 			}
-			'Connection', 'connection' {
+			'connection' {
 				ws.flags << .has_connection
 			}
-			'Sec-WebSocket-Accept', 'sec-websocket-accept' {
+			'sec-websocket-accept' {
 				ws.debug_log('seckey: ${seckey}')
 				challenge := create_key_challenge_response(seckey)!
 				ws.debug_log('challenge: ${challenge}, response: ${keys[1]}')
@@ -171,13 +156,10 @@ fn (mut ws Client) check_handshake_response(handshake_response string, seckey st
 						7)
 				}
 				ws.flags << .has_accept
-				unsafe { challenge.free() }
 			}
 			else {}
 		}
-		unsafe { keys.free() }
 	}
-	unsafe { lines.free() }
 	if ws.flags.len < 3 {
 		ws.close(1002, 'invalid websocket HTTP headers')!
 		return error_with_code('invalid websocket HTTP headers', 8)

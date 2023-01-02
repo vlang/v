@@ -16,3 +16,7 @@ field: f
 f is pub?: true
 f is mut?: true
 f is array?: true
+field: zzz
+zzz is pub?: true
+zzz is mut?: true
+zzz is alias?: true

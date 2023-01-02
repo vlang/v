@@ -387,11 +387,35 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					pos := p.tok.pos()
 					args := p.call_args()
 					p.check(.rpar)
+					mut or_kind := ast.OrKind.absent
+					mut or_stmts := []ast.Stmt{} // TODO remove unnecessary allocations by just using .absent
+					mut or_pos := p.tok.pos()
+					if p.tok.kind == .key_orelse {
+						// `foo() or {}``
+						or_kind = .block
+						or_stmts, or_pos = p.or_block(.with_err_var)
+					}
+					if p.tok.kind in [.question, .not] {
+						is_not := p.tok.kind == .not
+						// `foo()?`
+						p.next()
+						if p.inside_defer {
+							p.error_with_pos('error propagation not allowed inside `defer` blocks',
+								p.prev_tok.pos())
+						}
+						or_kind = if is_not { .propagate_result } else { .propagate_option }
+					}
+
 					node = ast.CallExpr{
 						name: 'anon'
 						left: node
 						args: args
 						pos: pos
+						or_block: ast.OrExpr{
+							stmts: or_stmts
+							kind: or_kind
+							pos: or_pos
+						}
 						scope: p.scope
 					}
 				}
