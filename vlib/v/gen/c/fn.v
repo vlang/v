@@ -1135,11 +1135,15 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if g.comptime_for_field_type != 0 && g.inside_comptime_for_field && has_comptime_field {
 		mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 		arg_sym := g.table.sym(g.comptime_for_field_type)
-		for k in comptime_args {
-			if arg_sym.kind == .array {
-				concrete_types[k] = (arg_sym.info as ast.Array).elem_type
-			} else {
-				concrete_types[k] = g.comptime_for_field_type
+		if m := g.table.find_method(g.table.sym(node.left_type), node.name) {
+			for k in comptime_args {
+				if m.generic_names.len > 0 && arg_sym.kind == .array
+					&& m.params[k + 1].typ.has_flag(.generic)
+					&& g.table.sym(m.params[k + 1].typ).info is ast.Array {
+					concrete_types[k] = (arg_sym.info as ast.Array).elem_type
+				} else {
+					concrete_types[k] = g.comptime_for_field_type
+				}
 			}
 		}
 		name = g.generic_fn_name(concrete_types, name)
@@ -1403,7 +1407,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 					arg_sym := g.table.sym(g.comptime_for_field_type)
 					for k in comptime_args {
-						if arg_sym.kind == .array {
+						if arg_sym.kind == .array && func.params[k].typ.has_flag(.generic)
+							&& g.table.sym(func.params[k].typ).info is ast.Array {
 							concrete_types[k] = (arg_sym.info as ast.Array).elem_type
 						} else {
 							concrete_types[k] = g.comptime_for_field_type
