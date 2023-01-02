@@ -180,6 +180,7 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 			sym_info := sym.info as ast.Struct
 			c.inside_comptime_for_field = true
 			for field in sym_info.fields {
+				c.comptime_for_field_value = field
 				c.comptime_for_field_var = node.val_var
 				c.comptime_fields_type[node.val_var] = node.typ
 				c.comptime_fields_default_type = field.typ
@@ -725,7 +726,8 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 		ast.SelectorExpr {
 			if c.check_comptime_is_field_selector(cond) {
 				if c.check_comptime_is_field_selector_bool(cond) {
-					return .eval
+					ret_bool := c.get_comptime_selector_bool_field(cond.field_name)
+					return if ret_bool { .eval } else { .skip }
 				}
 				c.error('unknown field `${cond.field_name}` from ${c.comptime_for_field_var}',
 					cond.pos)
@@ -754,4 +756,24 @@ fn (mut c Checker) check_comptime_is_field_selector_bool(node ast.SelectorExpr) 
 			'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias']
 	}
 	return false
+}
+
+fn (mut c Checker) get_comptime_selector_bool_field(field_name string) bool {
+	field := c.comptime_for_field_value
+	field_typ := c.comptime_fields_default_type
+	field_sym := c.table.sym(c.unwrap_generic(c.comptime_fields_default_type))
+
+	match field_name {
+		'is_pub' { return field.is_pub }
+		'is_mut' { return field.is_mut }
+		'is_shared' { return field_typ.has_flag(.shared_f) }
+		'is_atomic' { return field_typ.has_flag(.atomic_f) }
+		'is_optional' { return field.typ.has_flag(.optional) }
+		'is_array' { return field_sym.kind in [.array, .array_fixed] }
+		'is_map' { return field_sym.kind == .map }
+		'is_chan' { return field_sym.kind == .chan }
+		'is_struct' { return field_sym.kind == .struct_ }
+		'is_alias' { return field_sym.kind == .alias }
+		else { return false }
+	}
 }
