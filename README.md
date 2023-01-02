@@ -195,6 +195,8 @@ For some Linux distros (Debian/Ubuntu based), you need to run this:
 `sudo apt install libxi-dev libxcursor-dev`.
 For Fedora/RH/CentOS, you need to run this:
 `sudo dnf install libXcursor-devel libXi-devel libX11-devel libglvnd-devel` .
+For NixOS, you need to run this:
+`nix-shell -p xorg.libX11.dev xorg.libXcursor.dev xorg.libXi.dev libGL.dev`
 
 ## V net.http, net.websocket, `v install`
 The net.http module, the net.websocket module, and the `v install` command may all use SSL.
