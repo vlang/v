@@ -195,7 +195,7 @@ For some Linux distros (Debian/Ubuntu based), you need to run this:
 `sudo apt install libxi-dev libxcursor-dev`.
 For Fedora/RH/CentOS, you need to run this:
 `sudo dnf install libXcursor-devel libXi-devel libX11-devel libglvnd-devel` .
-For NixOS, add these packages in your `environment.systemPackages`:
+For NixOS, add these packages to your `environment.systemPackages`:
 `xorg.libX11.dev xorg.libXcursor.dev xorg.libXi.dev libGL.dev`
 
 ## V net.http, net.websocket, `v install`
