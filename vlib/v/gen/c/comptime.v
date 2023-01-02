@@ -370,9 +370,9 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 		}
 		ast.ParExpr {
 			g.write('(')
-			is_cond_true, _ := g.comptime_if_cond(cond.expr, pkg_exist)
+			is_cond_true, may_discard := g.comptime_if_cond(cond.expr, pkg_exist)
 			g.write(')')
-			return is_cond_true, false
+			return is_cond_true, may_discard
 		}
 		ast.PrefixExpr {
 			g.write(cond.op.str())
@@ -395,10 +395,10 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 		ast.InfixExpr {
 			match cond.op {
 				.and, .logical_or {
-					l, _ := g.comptime_if_cond(cond.left, pkg_exist)
+					l, d1 := g.comptime_if_cond(cond.left, pkg_exist)
 					g.write(' ${cond.op} ')
-					r, _ := g.comptime_if_cond(cond.right, pkg_exist)
-					return if cond.op == .and { l && r } else { l || r }, false
+					r, d2 := g.comptime_if_cond(cond.right, pkg_exist)
+					return if cond.op == .and { l && r } else { l || r }, d1 && d1 == d2
 				}
 				.key_is, .not_is {
 					left := cond.left
@@ -479,10 +479,10 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 				.eq, .ne {
 					// TODO Implement `$if method.args.len == 1`
 					if cond.left is ast.SelectorExpr || cond.right is ast.SelectorExpr {
-						l, _ := g.comptime_if_cond(cond.left, pkg_exist)
+						l, d1 := g.comptime_if_cond(cond.left, pkg_exist)
 						g.write(' ${cond.op} ')
-						r, _ := g.comptime_if_cond(cond.right, pkg_exist)
-						return if cond.op == .eq { l == r } else { l != r }, true
+						r, d2 := g.comptime_if_cond(cond.right, pkg_exist)
+						return if cond.op == .eq { l == r } else { l != r }, d1 && d1 == d2
 					} else {
 						g.write('1')
 						return true, true
