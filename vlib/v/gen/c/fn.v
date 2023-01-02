@@ -1139,7 +1139,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			for k in comptime_args {
 				if m.generic_names.len > 0 && arg_sym.kind == .array
 					&& m.params[k + 1].typ.has_flag(.generic)
-					&& g.table.sym(m.params[k + 1].typ).info is ast.Array {
+					&& g.table.final_sym(m.params[k + 1].typ).kind == .array {
 					concrete_types[k] = (arg_sym.info as ast.Array).elem_type
 				} else {
 					concrete_types[k] = g.comptime_for_field_type
@@ -1408,7 +1408,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					arg_sym := g.table.sym(g.comptime_for_field_type)
 					for k in comptime_args {
 						if arg_sym.kind == .array && func.params[k].typ.has_flag(.generic)
-							&& g.table.sym(func.params[k].typ).info is ast.Array {
+							&& g.table.sym(func.params[k].typ).kind == .array {
 							concrete_types[k] = (arg_sym.info as ast.Array).elem_type
 						} else {
 							concrete_types[k] = g.comptime_for_field_type
