@@ -2272,6 +2272,11 @@ fn (p &Parser) is_generic_call() bool {
 					if nested_sbr_count > 0 {
 						nested_sbr_count--
 					} else {
+						prev_tok := p.peek_token(i - 1)
+						// `funcs[i]()` is not generic call
+						if !(p.is_typename(prev_tok) || prev_tok.kind == .rsbr) {
+							return false
+						}
 						if p.peek_token(i + 1).kind == .lpar {
 							return true
 						}
