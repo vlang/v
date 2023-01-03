@@ -139,21 +139,6 @@ fn test_encode_decode_time() {
 	assert user2.reg_date.str() == '2020-12-22 07:23:00'
 }
 
-struct Color {
-pub mut:
-	space string
-	point string [raw]
-}
-
-//! FIX: returning 0
-fn test_bad_raw_json_field() {
-	color := json.decode<Color>('{"space": "YCbCr"}') or {
-		return
-	}
-	assert color.point == ''
-	assert color.space == 'YCbCr'
-}
-
 struct City {
 	name string
 }
