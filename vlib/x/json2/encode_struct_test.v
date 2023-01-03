@@ -75,6 +75,7 @@ fn test_optional_types() {
 	assert json.encode(StructTypeOptional[int]{ val: 1 }) == '{"val":1}'
 
 	assert json.encode(StructTypeOptional[time.Time]{}) == '{}'
+	assert json.encode(StructTypeOptional[time.Time]{ val: time.Time{} }) == '{"val":"0000-00-00T00:00:00.000Z"}'
 	assert json.encode(StructTypeOptional[time.Time]{ val: fixed_time }) == '{"val":"2022-03-11T13:54:25.000Z"}'
 }
 
@@ -120,12 +121,12 @@ fn test_array() {
 	assert json.encode(StructType[[]bool]{ val: [false] }) == '{"val":[false]}'
 	assert json.encode(StructType[[]bool]{ val: [false, true, false] }) == '{"val":[false,true,false]}'
 
-	gg := [StructType[bool]{
+	array_of_struct := [StructType[bool]{
 		val: true
 	}, StructType[bool]{
 		val: false
 	}]
-	assert json.encode(StructType[[]StructType[bool]]{ val: gg }) == '{"val":[{val:true},{val:false}]}'
+	assert json.encode(StructType[[]StructType[bool]]{ val: array_of_struct }) == '{"val":[{val:true},{val:false}]}'
 }
 
 fn test_optional_array() {

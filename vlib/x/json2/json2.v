@@ -290,3 +290,7 @@ pub fn (f Any) to_time() !time.Time {
 		}
 	}
 }
+
+fn workaround_optional_to_not_optional[T](val T) T {
+	return val
+}
