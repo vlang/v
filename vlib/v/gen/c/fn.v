@@ -769,6 +769,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	mut unwrapped_rec_type := node.receiver_type
 	mut has_comptime_field := false
 	mut for_in_any_var_type := ast.void_type
+	mut comptime_args := []int{}
 	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 { // in generic fn
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
 	} else { // in non-generic fn
@@ -795,10 +796,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 					node_.args[i].typ = call_arg.expr.obj.typ
 					if call_arg.expr.obj.is_comptime_field {
 						has_comptime_field = true
+						comptime_args << i
 					}
 				}
 			} else if mut call_arg.expr is ast.ComptimeSelector {
 				has_comptime_field = true
+				comptime_args << i
 			}
 		}
 	}
@@ -1130,7 +1133,20 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 
 	if g.comptime_for_field_type != 0 && g.inside_comptime_for_field && has_comptime_field {
-		name = g.generic_fn_name([g.comptime_for_field_type], name)
+		mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
+		arg_sym := g.table.sym(g.comptime_for_field_type)
+		if m := g.table.find_method(g.table.sym(node.left_type), node.name) {
+			for k in comptime_args {
+				if m.generic_names.len > 0 && arg_sym.kind == .array
+					&& m.params[k + 1].typ.has_flag(.generic)
+					&& g.table.final_sym(m.params[k + 1].typ).kind == .array {
+					concrete_types[k] = (arg_sym.info as ast.Array).elem_type
+				} else {
+					concrete_types[k] = g.comptime_for_field_type
+				}
+			}
+		}
+		name = g.generic_fn_name(concrete_types, name)
 	} else if g.inside_for_in_any_cond && for_in_any_var_type != ast.void_type {
 		name = g.generic_fn_name([for_in_any_var_type], name)
 	} else {
@@ -1391,7 +1407,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 					arg_sym := g.table.sym(g.comptime_for_field_type)
 					for k in comptime_args {
-						if arg_sym.kind == .array {
+						if arg_sym.kind == .array && func.params[k].typ.has_flag(.generic)
+							&& g.table.sym(func.params[k].typ).kind == .array {
 							concrete_types[k] = (arg_sym.info as ast.Array).elem_type
 						} else {
 							concrete_types[k] = g.comptime_for_field_type

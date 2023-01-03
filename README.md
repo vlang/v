@@ -1,4 +1,4 @@
-<div style="display:grid;place-items:center;">
+<div align="center" style="display:grid;place-items:center;">
 <p>
     <a href="https://vlang.io/" target="_blank"><img width="80" src="https://raw.githubusercontent.com/vlang/v-logo/master/dist/v-logo.svg?sanitize=true" alt="V logo"></a>
 </p>
@@ -6,7 +6,7 @@
 
 [vlang.io](https://vlang.io) | [Docs](https://github.com/vlang/v/blob/master/doc/docs.md) | [Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) | [Speed](https://fast.vlang.io/) | [Contributing & compiler design](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
 </div>
-<div style="display:grid;place-items:center;">
+<div align="center" style="display:grid;place-items:center;">
 <!--
 [![Build Status][WorkflowBadge]][WorkflowUrl]
 -->
