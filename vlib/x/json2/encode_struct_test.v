@@ -56,6 +56,12 @@ fn test_types() {
 
 	assert json.encode(StructType[time.Time]{}) == '{"val":"0000-00-00T00:00:00.000Z"}'
 	assert json.encode(StructType[time.Time]{ val: fixed_time }) == '{"val":"2022-03-11T13:54:25.000Z"}'
+
+	assert json.encode(StructType[StructType[int]]{
+		val: StructType[int]{
+			val: 1
+		}
+	}) == '{"val":{"val":1}}'
 }
 
 fn test_optional_types() {

@@ -254,6 +254,8 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				wr.write(value.str().bytes())!
 			} $else $if field.is_array {
 				e.encode_array(value, level + 1, mut wr)!
+			} $else $if field.is_struct {
+				e.encode_struct(value, level + 1, mut wr)!
 			} $else $if field.is_alias {
 				match field.unaliased_typ {
 					typeof[string]().idx {
