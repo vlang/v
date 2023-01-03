@@ -213,9 +213,9 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			} $else $if field.is_array {
 				$if field.is_optional {
 					workaround_optional := workaround_optional_to_not_optional(value)
-					e.encode_array(workaround_optional, level, mut wr)!
+					e.encode_array(workaround_optional, level + 1, mut wr)!
 				} $else {
-					e.encode_array(value, level, mut wr)!
+					e.encode_array(value, level + 1, mut wr)!
 				}
 			} $else {
 				if field.unaliased_typ != field.typ {
