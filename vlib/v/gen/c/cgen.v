@@ -4243,6 +4243,22 @@ fn (mut g Gen) ident(node ast.Ident) {
 	}
 	mut is_auto_heap := false
 	if node.info is ast.IdentVar {
+		if node.obj is ast.Var {
+			if !g.is_assign_lhs && node.obj.is_comptime_field {
+				if g.comptime_for_field_type.has_flag(.optional) {
+					if g.inside_opt_or_res {
+						g.write('${name}')
+					} else {
+						g.write('/*opt*/')
+						styp := g.base_type(g.comptime_for_field_type)
+						g.write('(*(${styp}*)${name}.data)')
+					}
+				} else {
+					g.write('${name}')
+				}
+				return
+			}
+		}
 		// x ?int
 		// `x = 10` => `x.data = 10` (g.right_is_opt == false)
 		// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
@@ -4262,20 +4278,6 @@ fn (mut g Gen) ident(node ast.Ident) {
 			return
 		}
 		if node.obj is ast.Var {
-			if !g.is_assign_lhs && node.obj.is_comptime_field {
-				if g.comptime_for_field_type.has_flag(.optional) {
-					if g.inside_opt_or_res {
-						g.write('${name}')
-					} else {
-						g.write('/*opt*/')
-						styp := g.base_type(node.info.typ)
-						g.write('(*(${styp}*)${name}.data)')
-					}
-				} else {
-					g.write('${name}')
-				}
-				return
-			}
 			is_auto_heap = node.obj.is_auto_heap
 				&& (!g.is_assign_lhs || g.assign_op != .decl_assign)
 			if is_auto_heap {

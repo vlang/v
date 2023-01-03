@@ -51,7 +51,7 @@ fn encode_struct[T](val T) map[string][]string {
 	return out
 }
 
-fn main_test() {
+fn test_main() {
 	// cgen error: cannot convert 'struct _option_int' to 'int'
 	out := encode_struct(FixedStruct1{})
 	assert out['a'] == ['0', '0']
