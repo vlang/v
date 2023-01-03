@@ -126,7 +126,7 @@ fn test_array() {
 	}, StructType[bool]{
 		val: false
 	}]
-	assert json.encode(StructType[[]StructType[bool]]{ val: array_of_struct }) == '{"val":[{val:true},{val:false}]}'
+	assert json.encode(StructType[[]StructType[bool]]{ val: array_of_struct }) == '{"val":[{"val":true},{"val":false}]}'
 }
 
 fn test_optional_array() {
