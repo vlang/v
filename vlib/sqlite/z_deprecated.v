@@ -3,3 +3,5 @@
 module sqlite
 
 import db.sqlite
+
+const use_sqlite_ok = sqlite.sqlite_ok
