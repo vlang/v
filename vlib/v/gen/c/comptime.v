@@ -278,6 +278,8 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	line := if node.is_expr {
 		stmt_str := g.go_before_stmt(0)
 		g.write(util.tabs(g.indent))
+		styp := g.typ(node.typ)
+		g.writeln('${styp} ${tmp_var};')
 		stmt_str.trim_space()
 	} else {
 		''
@@ -320,21 +322,27 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			len := branch.stmts.len
 			if len > 0 {
 				last := branch.stmts.last() as ast.ExprStmt
-				styp := g.typ(node.typ)
 				if len > 1 {
 					g.indent++
-					g.writeln('${styp} ${tmp_var};')
 					g.writeln('{')
 					g.stmts(branch.stmts[..len - 1])
+					g.set_current_pos_as_last_stmt_pos()
+					prev_skip_stmt_pos := g.skip_stmt_pos
+					g.skip_stmt_pos = true
 					g.write('\t${tmp_var} = ')
 					g.stmt(last)
+					g.skip_stmt_pos = prev_skip_stmt_pos
 					g.writeln(';')
 					g.writeln('}')
 					g.indent--
 				} else {
 					g.indent++
-					g.write('${styp} ${tmp_var} = ')
+					g.set_current_pos_as_last_stmt_pos()
+					prev_skip_stmt_pos := g.skip_stmt_pos
+					g.skip_stmt_pos = true
+					g.write('${tmp_var} = ')
 					g.stmt(last)
+					g.skip_stmt_pos = prev_skip_stmt_pos
 					g.writeln(';')
 					g.indent--
 				}
