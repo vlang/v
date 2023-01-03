@@ -862,6 +862,19 @@ fn (mut g Gen) parse_db_from_type_string(name string) SqlType {
 		'db.mssql.Connection' {
 			return .mssql
 		}
+		// TODO: remove these deprecated names, after 2023-07-01
+		'sqlite.DB' {
+			return .sqlite3
+		}
+		'mysql.Connection' {
+			return .mysql
+		}
+		'pg.DB' {
+			return .psql
+		}
+		'mssql.Connection' {
+			return .mssql
+		}
 		else {
 			return .unknown
 		}

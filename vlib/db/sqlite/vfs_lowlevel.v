@@ -49,7 +49,7 @@ type Fn_sqlite3_syscall_ptr = fn ()
 pub type Sqlite3_vfs = C.sqlite3_vfs
 
 [heap]
-struct C.sqlite3_vfs {
+pub struct C.sqlite3_vfs {
 pub mut:
 	// version 1 and later fields
 	iVersion   int // Structure version number (currently 3)
