@@ -1578,9 +1578,17 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			mut got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 			node.args[i].typ = got_arg_typ
 			if c.inside_comptime_for_field && method.params[param_idx].typ.has_flag(.generic) {
-				c.table.register_fn_concrete_types(method.fkey(), [
-					c.comptime_fields_default_type,
-				])
+				arg_sym := c.table.sym(c.comptime_fields_default_type)
+				if arg_sym.kind == .array
+					&& c.table.sym(method.params[param_idx].typ).kind == .array {
+					c.table.register_fn_concrete_types(method.fkey(), [
+						(arg_sym.info as ast.Array).elem_type,
+					])
+				} else {
+					c.table.register_fn_concrete_types(method.fkey(), [
+						c.comptime_fields_default_type,
+					])
+				}
 			} else if c.inside_for_in_any_cond && method.params[param_idx].typ.has_flag(.generic) {
 				c.table.register_fn_concrete_types(method.fkey(), [
 					c.for_in_any_val_type,
