@@ -288,7 +288,7 @@ fn (e &Encoder) encode_array[U](val []U, level int, mut wr io.Writer) ! {
 		} $else $if U is $Enum {
 			e.encode_any(i64(val[i]), level + 1, mut wr)!
 		} $else {
-			return error('type ${typeof(val).name} can not be array encoded')
+			return error('type ${typeof(val).name} cannot be array encoded')
 		}
 		if i < val.len - 1 {
 			wr.write(json2.comma_bytes)!
