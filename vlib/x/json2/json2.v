@@ -296,8 +296,54 @@ fn map_from[T](t T) map[string]Any {
 	$if T is $Struct {
 		$for field in T.fields {
 			key := field.name
+			println(key) // val for all
 			value := t.$(field.name)
-			m[key] = value
+			println(typeof(value).name)
+
+			$if field.is_array {
+				mut arr := []Any{}
+				for variable in value {
+					arr << Any(variable)
+				}
+				m[field.name] = arr
+				arr.clear()
+			} $else $if field.is_struct {
+				// TODO
+			} $else $if field.is_map {
+				// TODO
+			} $else $if field.is_alias {
+				// TODO
+			} $else $if field.is_optional {
+				// TODO
+			} $else {
+				// TODO improve memory usage when convert
+				match field.typ {
+					typeof[string]().idx {
+						m[field.name] = value.str()
+					}
+					typeof[bool]().idx {
+						m[field.name] = Any(value).bool()
+					}
+					typeof[i8]().idx, typeof[i16]().idx, typeof[int]().idx {
+						m[field.name] = Any(value).int()
+					}
+					typeof[i64]().idx {
+						m[field.name] = Any(value).i64()
+					}
+					typeof[f32]().idx {
+						m[field.name] = Any(value).f32()
+					}
+					typeof[f64]().idx {
+						m[field.name] = Any(value).f64()
+					}
+					typeof[u8]().idx, typeof[u16]().idx, typeof[u32]().idx, typeof[u64]().idx {
+						m[field.name] = Any(value).u64()
+					}
+					else {
+						// return error("The type of `${field.name}` can't be decoded. Please open an issue at https://github.com/vlang/v/issues/new/choose")
+					}
+				}
+			}
 		}
 	}
 	return m
