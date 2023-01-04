@@ -136,6 +136,23 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				is_auto_heap = left.obj.is_auto_heap
 			}
 		}
+		if mut left is ast.ComptimeSelector && node.op == .assign {
+			if mut left.field_expr is ast.SelectorExpr {
+				if mut left.field_expr.expr is ast.Ident {
+					key_str := '${left.field_expr.expr.name}.typ'
+					var_type = g.comptime_var_type_map[key_str] or { var_type }
+
+					if var_type.has_flag(.optional) || val_type.has_flag(.optional) {
+						tmp_var := g.new_tmp_var()
+						g.expr(left)
+						g.write(' ${op} ')
+						g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
+						g.writeln(';')
+						continue
+					}
+				}
+			}
+		}
 		mut styp := g.typ(var_type)
 		mut is_fixed_array_init := false
 		mut has_val := false
