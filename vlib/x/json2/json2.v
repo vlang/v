@@ -308,7 +308,7 @@ fn map_from[T](t T) map[string]Any {
 				m[field.name] = arr
 				arr.clear()
 			} $else $if field.is_struct {
-				// TODO
+				m[field.name] = map_from(value)
 			} $else $if field.is_map {
 				// TODO
 			} $else $if field.is_alias {

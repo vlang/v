@@ -116,3 +116,8 @@ fn test_struct_with_number_to_map() {
 	assert json.map_from(StructType[u32]{3}).str() == '{"val":3}'
 	assert json.map_from(StructType[u64]{3}).str() == '{"val":3}'
 }
+
+fn test_struct_with_struct_to_map() {
+	assert json.map_from(StructType[StructType[string]]{StructType[string]{'3'}}).str() == '{"val":{"val":"3"}}'
+	assert json.map_from(StructType[StructType[int]]{StructType[int]{3}}).str() == '{"val":{"val":3}}'
+}
