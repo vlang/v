@@ -15,6 +15,16 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	mut name := node.cname
 	mut expr_type := node.expr_type
 
+	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 {
+		// generic func with recursion rewrite node.expr_type
+		if node.expr is ast.Ident {
+			// var
+			if (node.expr as ast.Ident).info is ast.IdentVar && (node.expr as ast.Ident).language == .v {
+				name = g.typ(g.unwrap_generic((node.expr as ast.Ident).info.typ)).replace('*',
+					'')
+			}
+		}
+	}
 	// var.${field.name}
 	if node.expr is ast.ComptimeSelector {
 		selector := node.expr as ast.ComptimeSelector

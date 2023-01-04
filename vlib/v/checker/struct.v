@@ -256,37 +256,29 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				c.error('unknown type `${ct_sym.name}`', node.pos)
 			}
 		}
-		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0 {
-			if node.is_short_syntax {
-				concrete_types := c.infer_struct_generic_types(node.typ, node)
-				if concrete_types.len > 0 {
-					generic_names := struct_sym.info.generic_types.map(c.table.sym(it).name)
-					node.typ = c.table.unwrap_generic_type(node.typ, generic_names, concrete_types)
-					return node.typ
-				}
-			} else {
-				if c.table.cur_concrete_types.len == 0 {
-					c.error('generic struct init must specify type parameter, e.g. Foo[int]',
-						node.pos)
-				} else if node.generic_types.len == 0 {
-					c.error('generic struct init must specify type parameter, e.g. Foo[T]',
-						node.pos)
-				} else if node.generic_types.len > 0
-					&& node.generic_types.len != struct_sym.info.generic_types.len {
-					c.error('generic struct init expects ${struct_sym.info.generic_types.len} generic parameter, but got ${node.generic_types.len}',
-						node.pos)
-				} else if node.generic_types.len > 0 && c.table.cur_fn != unsafe { nil } {
-					for gtyp in node.generic_types {
-						if !gtyp.has_flag(.generic) {
-							continue
-						}
-						gtyp_name := c.table.sym(gtyp).name
-						if gtyp_name !in c.table.cur_fn.generic_names {
-							cur_generic_names := '(' + c.table.cur_fn.generic_names.join(',') + ')'
-							c.error('generic struct init type parameter `${gtyp_name}` must be within the parameters `${cur_generic_names}` of the current generic function',
-								node.pos)
-							break
-						}
+		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0
+			&& !node.is_short_syntax {
+			if c.table.cur_concrete_types.len == 0 {
+				c.error('generic struct init must specify type parameter, e.g. Foo[int]',
+					node.pos)
+			} else if node.generic_types.len == 0 {
+				c.error('generic struct init must specify type parameter, e.g. Foo[T]',
+					node.pos)
+			} else if node.generic_types.len > 0
+				&& node.generic_types.len != struct_sym.info.generic_types.len {
+				c.error('generic struct init expects ${struct_sym.info.generic_types.len} generic parameter, but got ${node.generic_types.len}',
+					node.pos)
+			} else if node.generic_types.len > 0 && c.table.cur_fn != unsafe { nil } {
+				for gtyp in node.generic_types {
+					if !gtyp.has_flag(.generic) {
+						continue
+					}
+					gtyp_name := c.table.sym(gtyp).name
+					if gtyp_name !in c.table.cur_fn.generic_names {
+						cur_generic_names := '(' + c.table.cur_fn.generic_names.join(',') + ')'
+						c.error('generic struct init type parameter `${gtyp_name}` must be within the parameters `${cur_generic_names}` of the current generic function',
+							node.pos)
+						break
 					}
 				}
 			}
@@ -342,8 +334,9 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 		}
 	}
 	// allow init structs from generic if they're private except the type is from builtin module
-	if !type_sym.is_pub && type_sym.kind != .placeholder && type_sym.language != .c
-		&& (type_sym.mod != c.mod && !(node.typ.has_flag(.generic) && type_sym.mod != 'builtin')) {
+	if !node.has_update_expr && !type_sym.is_pub && type_sym.kind != .placeholder
+		&& type_sym.language != .c && (type_sym.mod != c.mod && !(node.typ.has_flag(.generic)
+		&& type_sym.mod != 'builtin')) {
 		c.error('type `${type_sym.name}` is private', node.pos)
 	}
 	if type_sym.kind == .struct_ {
@@ -599,6 +592,9 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 	if node.has_update_expr {
 		update_type := c.expr(node.update_expr)
 		node.update_expr_type = update_type
+		if node.update_expr is ast.ComptimeSelector {
+			c.error('cannot use struct update syntax in compile time expressions', node.update_expr_pos)
+		}
 		if c.table.final_sym(update_type).kind != .struct_ {
 			s := c.table.type_to_str(update_type)
 			c.error('expected struct, found `${s}`', node.update_expr.pos())
@@ -612,6 +608,17 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				|| !c.check_struct_signature_init_fields(from_info, to_info, node) {
 				c.error('struct `${from_sym.name}` is not compatible with struct `${to_sym.name}`',
 					node.update_expr.pos())
+			}
+		}
+	}
+	if struct_sym.info is ast.Struct {
+		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0 {
+			if node.is_short_syntax {
+				concrete_types := c.infer_struct_generic_types(node.typ, node)
+				if concrete_types.len > 0 {
+					generic_names := struct_sym.info.generic_types.map(c.table.sym(it).name)
+					node.typ = c.table.unwrap_generic_type(node.typ, generic_names, concrete_types)
+				}
 			}
 		}
 	}

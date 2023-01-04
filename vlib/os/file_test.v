@@ -405,6 +405,7 @@ fn test_eof() {
 	assert !f.eof()
 	f.read_bytes(100)
 	assert f.eof()
+	f.close()
 }
 
 fn test_open_file_wb_ab() {
@@ -418,4 +419,22 @@ fn test_open_file_wb_ab() {
 	afile.write_string('hello')!
 	afile.close()
 	assert os.read_file('text.txt')? == 'hellohello'
+}
+
+fn test_open_append() {
+	os.rm(tfile) or {}
+	mut f1 := os.open_append(tfile)!
+	f1.write_string('abc\n')!
+	f1.close()
+	assert os.read_lines(tfile)! == ['abc']
+	//
+	mut f2 := os.open_append(tfile)!
+	f2.write_string('abc\n')!
+	f2.close()
+	assert os.read_lines(tfile)! == ['abc', 'abc']
+	//
+	mut f3 := os.open_append(tfile)!
+	f3.write_string('def\n')!
+	f3.close()
+	assert os.read_lines(tfile)! == ['abc', 'abc', 'def']
 }

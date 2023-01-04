@@ -11,7 +11,7 @@ const (
 pub fn print_and_exit(topic string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
-	topicdir := os.join_path(vroot, 'cmd', 'v', 'help')
+	topicdir := os.join_path(vroot, 'vlib', 'v', 'help')
 
 	for b in topic {
 		if (b >= `a` && b <= `z`) || b == `-` || (b >= `0` && b <= `9`) {

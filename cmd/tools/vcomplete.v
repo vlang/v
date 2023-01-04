@@ -378,7 +378,7 @@ fn nearest_path_or_root(path string) string {
 	return fixed_path
 }
 
-// auto_complete_request retuns a list of completions resolved from a full argument list.
+// auto_complete_request returns a list of completions resolved from a full argument list.
 fn auto_complete_request(args []string) []string {
 	// Using space will ensure a uniform input in cases where the shell
 	// returns the completion input as a string (['v','run'] vs. ['v run']).
