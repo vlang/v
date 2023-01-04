@@ -211,7 +211,7 @@ pub fn (flags []Flag) get_strings(name string) ![]string {
 
 // parse parses flag values from arguments and return
 // an array of arguments with all consumed elements removed.
-fn (mut flag Flag) parse(args []string, posix_mode bool) ![]string {
+pub fn (mut flag Flag) parse(args []string, posix_mode bool) ![]string {
 	if flag.matches(args, posix_mode) {
 		if flag.flag == .bool {
 			new_args := flag.parse_bool(args)!
