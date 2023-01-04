@@ -57,7 +57,7 @@ pub fn bold(msg string) string {
 	return term.bold(msg)
 }
 
-fn color(kind string, msg string) string {
+pub fn color(kind string, msg string) string {
 	if !util.emanager.support_color {
 		return msg
 	}
