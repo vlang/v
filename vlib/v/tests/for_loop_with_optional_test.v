@@ -7,8 +7,11 @@ struct Test {
 
 fn run_loop[U](val []U) []string {
 	mut out := []string{}
-	for element in val {
-		out << '${val}: ${element}'
+	$for field in U.fields {
+		variable := val.$(field.name)
+		for element in variable {
+			out << '${element}'
+		}
 	}
 	return out
 }

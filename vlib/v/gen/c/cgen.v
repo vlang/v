@@ -4214,6 +4214,14 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	}
 }
 
+fn (mut g Gen) var_or_comptime_type(node ast.Ident) ast.Type {
+	if g.inside_comptime_for_field && node.info is ast.IdentVar
+		&& (node.obj as ast.Var).is_comptime_field {
+		return g.comptime_for_field_type
+	}
+	return node.info.typ
+}
+
 fn (mut g Gen) ident(node ast.Ident) {
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 	g.prevent_sum_type_unwrapping_once = false
@@ -4252,7 +4260,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 				g.write('${name}')
 			} else {
 				g.write('/*opt*/')
-				styp := g.base_type(node.info.typ)
+				typ := g.var_or_comptime_type(node)
+				styp := g.base_type(typ)
 				g.write('(*(${styp}*)${name}.data)')
 			}
 			return
