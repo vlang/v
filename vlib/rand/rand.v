@@ -4,6 +4,7 @@
 [has_globals]
 module rand
 
+import math
 import math.bits
 import rand.config
 import rand.constants
@@ -191,16 +192,89 @@ pub fn (mut rng PRNG) i64_in_range(min i64, max i64) !i64 {
 	return min + rng.i64n(max - min)!
 }
 
-// f32 returns a pseudorandom `f32` value in range `[0, 1)`.
+// f32 returns a pseudorandom `f32` value in range `[0, 1)`
+// using rng.u32() multiplied by an f64 constant.
 [inline]
 pub fn (mut rng PRNG) f32() f32 {
-	return f32(rng.u32()) / constants.max_u32_as_f32
+	float_eps := 1.19209289550781E-07
+	return f32((rng.u32() >> 9) * float_eps)
 }
 
-// f64 returns a pseudorandom `f64` value in range `[0, 1)`.
+// f32cp returns a pseudorandom `f32` value in range `[0, 1)`
+// with full precision (mantissa random between 0 and 1
+// and the exponent varies as well.)
+[inline]
+pub fn (mut rng PRNG) f32cp() f32 {
+	mut x := rng.u32()
+	mut exp := u32(126)
+	mut mask := u32(1) << 31
+	bits23 := (u32(1) << 23) - 1
+
+	// check if prng returns 0; rare but keep looking for precision
+	if x == 0 {
+		x = rng.u32()
+		exp -= 31
+	}
+	// count leading one bits and scale exponent accordingly
+	for {
+		if x & mask != 0 {
+			mask >>= 1
+			exp -= 1
+		} else {
+			break
+		}
+	}
+	// if we used any high-order mantissa bits; replace x
+	if exp < (126 - 8) {
+		x = rng.u32()
+	}
+
+	// Assumes little-endian IEEE floating point.
+	x = (exp << 23) | (x >> 8) & bits23
+	return math.f32_from_bits(x)
+}
+
+// f64 returns a pseudorandom `f64` value in range `[0, 1)`
+// using rng.u64() multiplied by a constant.
 [inline]
 pub fn (mut rng PRNG) f64() f64 {
-	return f64(rng.u64()) / constants.max_u64_as_f64
+	doubl_eps := 2.2204460492503131E-16
+	return f64((rng.u64() >> 12) * doubl_eps)
+}
+
+// f64cp returns a pseudorandom `f64` value in range `[0, 1)`
+// with full precision (mantissa random between 0 and 1
+// and the exponent varies as well.)
+[inline]
+pub fn (mut rng PRNG) f64cp() f64 {
+	mut x := rng.u64()
+	mut exp := u64(1022)
+	mut mask := u64(1) << 63
+	mut bitcount := u32(0)
+	bits51 := (u64(1) << 52) - 1
+
+	// check if prng returns 0; unlikely.
+	unsafe {
+		if x == 0 {
+			x = rng.u64()
+			exp -= 31
+		}
+	}
+	// count leading one bits and scale exponent accordingly
+	for {
+		if x & mask != 0 {
+			mask >>= 1
+			bitcount += 1
+		} else {
+			break
+		}
+	}
+	exp -= bitcount
+	if bitcount > 11 {
+		x = rng.u64()
+	}
+	x = (exp << 52) | (x & bits51)
+	return math.f64_from_bits(x)
 }
 
 // f32n returns a pseudorandom `f32` value in range `[0, max]`.
@@ -520,9 +594,21 @@ pub fn f32() f32 {
 	return default_rng.f32()
 }
 
+// f32cp returns a uniformly distributed 32-bit floating point in range `[0, 1)`
+//  with full precision mantissa.
+pub fn f32cp() f32 {
+	return default_rng.f32cp()
+}
+
 // f64 returns a uniformly distributed 64-bit floating point in range `[0, 1)`.
 pub fn f64() f64 {
 	return default_rng.f64()
+}
+
+// f64 returns a uniformly distributed 64-bit floating point in range `[0, 1)`
+//  with full precision mantissa.
+pub fn f64cp() f64 {
+	return default_rng.f64cp()
 }
 
 // f32n returns a uniformly distributed 32-bit floating point in range `[0, max)`.
