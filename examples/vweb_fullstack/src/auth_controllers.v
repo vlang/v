@@ -17,5 +17,5 @@ pub fn (mut app App) controller_auth(username string, password string) vweb.Resu
 	app.set_cookie(name: key, value: value)
 	// app.set_cookie_with_expire_date(key, value, expire_date)
 
-	return app.redirect('/users')
+	return app.json(response)
 }

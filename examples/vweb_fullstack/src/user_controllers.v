@@ -21,10 +21,18 @@ pub fn (mut app App) controller_get_all_user() vweb.Result {
 
 ['/controller/user/create'; post]
 pub fn (mut app App) controller_create_user(username string, password string) vweb.Result {
-	response := app.service_add_user(username, password) or {
+	if username == '' {
+		app.set_status(400, '')
+		return app.text('username cannot be empty')
+	}
+	if password == '' {
+		app.set_status(400, '')
+		return app.text('password cannot be empty')
+	}
+	app.service_add_user(username, password) or {
 		app.set_status(400, '')
 		return app.text('error: ${err}')
 	}
 	app.set_status(201, '')
-	return app.json(response)
+	return app.text('User created successfully')
 }

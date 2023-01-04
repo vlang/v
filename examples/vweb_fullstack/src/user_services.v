@@ -3,7 +3,7 @@ module main
 import crypto.bcrypt
 import databases
 
-fn (mut app App) service_add_user(username string, password string) !User {
+fn (mut app App) service_add_user(username string, password string) ! {
 	mut db := databases.create_db_connection()!
 
 	defer {
@@ -21,15 +21,13 @@ fn (mut app App) service_add_user(username string, password string) !User {
 		active: true
 	}
 
+	mut insert_error := ''
 	sql db {
 		insert user_model into User
+	} or { insert_error = err.msg }
+	if insert_error != '' {
+		return error(insert_error)
 	}
-
-	result := sql db {
-		select from User where username == username limit 1
-	}
-
-	return result
 }
 
 fn (mut app App) service_get_all_user() ?[]User {
