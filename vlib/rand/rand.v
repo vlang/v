@@ -196,22 +196,21 @@ pub fn (mut rng PRNG) i64_in_range(min i64, max i64) !i64 {
 // using rng.u32() multiplied by an f64 constant.
 [inline]
 pub fn (mut rng PRNG) f32() f32 {
-	float_eps := 1.19209289550781E-07
-	return f32((rng.u32() >> 9) * float_eps)
+	return f32((rng.u32() >> 9) * constants.reciprocal_2_23rd)
 }
 
 // f32cp returns a pseudorandom `f32` value in range `[0, 1)`
 // with full precision (mantissa random between 0 and 1
 // and the exponent varies as well.)
+// See https://allendowney.com/research/rand/ for background on the method.
 [inline]
 pub fn (mut rng PRNG) f32cp() f32 {
 	mut x := rng.u32()
 	mut exp := u32(126)
 	mut mask := u32(1) << 31
-	bits23 := (u32(1) << 23) - 1
 
 	// check if prng returns 0; rare but keep looking for precision
-	if x == 0 {
+	if _unlikely_(x == 0) {
 		x = rng.u32()
 		exp -= 31
 	}
@@ -230,7 +229,7 @@ pub fn (mut rng PRNG) f32cp() f32 {
 	}
 
 	// Assumes little-endian IEEE floating point.
-	x = (exp << 23) | (x >> 8) & bits23
+	x = (exp << 23) | (x >> 8) & constants.ieee754_mantissa_f32_mask
 	return math.f32_from_bits(x)
 }
 
@@ -238,27 +237,24 @@ pub fn (mut rng PRNG) f32cp() f32 {
 // using rng.u64() multiplied by a constant.
 [inline]
 pub fn (mut rng PRNG) f64() f64 {
-	doubl_eps := 2.2204460492503131E-16
-	return f64((rng.u64() >> 12) * doubl_eps)
+	return f64((rng.u64() >> 12) * constants.reciprocal_2_52nd)
 }
 
 // f64cp returns a pseudorandom `f64` value in range `[0, 1)`
 // with full precision (mantissa random between 0 and 1
 // and the exponent varies as well.)
+// See https://allendowney.com/research/rand/ for background on the method.
 [inline]
 pub fn (mut rng PRNG) f64cp() f64 {
 	mut x := rng.u64()
 	mut exp := u64(1022)
 	mut mask := u64(1) << 63
 	mut bitcount := u32(0)
-	bits51 := (u64(1) << 52) - 1
 
 	// check if prng returns 0; unlikely.
-	unsafe {
-		if x == 0 {
-			x = rng.u64()
-			exp -= 31
-		}
+	if _unlikely_(x == 0) {
+		x = rng.u64()
+		exp -= 31
 	}
 	// count leading one bits and scale exponent accordingly
 	for {
@@ -273,7 +269,7 @@ pub fn (mut rng PRNG) f64cp() f64 {
 	if bitcount > 11 {
 		x = rng.u64()
 	}
-	x = (exp << 52) | (x & bits51)
+	x = (exp << 52) | (x & constants.ieee754_mantissa_f64_mask)
 	return math.f64_from_bits(x)
 }
 

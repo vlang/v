@@ -7,8 +7,8 @@ mut:
 }
 
 const (
-	// The sample size to be used
-	count = 90100100
+	// The sample size to be used; keep cpu time less than 5 seconds
+	count = 9100100
 	// Two sets of seeds
 	seeds = [[u32(2742798260), 2159764996], [u32(2135051596), 958016781]]
 )
@@ -36,11 +36,11 @@ fn test_f32() {
 	}
 	println(' f32  ')
 	println(histo)
-	assert histo[0].ct == 13
-	assert histo[1].ct == 165
-	assert histo[2].ct == 18087
-	assert histo[3].ct == 1802475
-	assert histo[4].ct == 180200200
+	assert histo[0].ct == 1
+	assert histo[1].ct == 16
+	assert histo[2].ct == 1802
+	assert histo[3].ct == 181963
+	assert histo[4].ct == 18200200
 	for mut p in histo {
 		p.ct = 0
 	}
@@ -57,11 +57,11 @@ fn test_f32() {
 	}
 	println(' f32cp')
 	println(histo)
-	assert histo[0].ct == 1
-	assert histo[1].ct == 176
-	assert histo[2].ct == 18077
-	assert histo[3].ct == 1408393
-	assert histo[4].ct == 180200200
+	assert histo[0].ct == 0
+	assert histo[1].ct == 16
+	assert histo[2].ct == 1863
+	assert histo[3].ct == 142044
+	assert histo[4].ct == 18200200
 }
 
 fn test_f64() {
@@ -88,10 +88,10 @@ fn test_f64() {
 	println(' f64  ')
 	println(histo)
 	assert histo[0].ct == 0
-	assert histo[1].ct == 159
-	assert histo[2].ct == 17893
-	assert histo[3].ct == 1803670
-	assert histo[4].ct == 180200200
+	assert histo[1].ct == 23
+	assert histo[2].ct == 1756
+	assert histo[3].ct == 182209
+	assert histo[4].ct == 18200200
 	for mut p in histo {
 		p.ct = 0
 	}
@@ -109,8 +109,8 @@ fn test_f64() {
 	println(' f64cp')
 	println(histo)
 	assert histo[0].ct == 0
-	assert histo[1].ct == 174
-	assert histo[2].ct == 18077
-	assert histo[3].ct == 1803432
-	assert histo[4].ct == 180200200
+	assert histo[1].ct == 17
+	assert histo[2].ct == 1878
+	assert histo[3].ct == 181754
+	assert histo[4].ct == 18200200
 }
