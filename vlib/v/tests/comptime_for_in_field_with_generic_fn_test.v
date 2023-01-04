@@ -1,5 +1,3 @@
-module main
-
 // exploring `decode` options with nested structs
 
 struct Parent {

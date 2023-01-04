@@ -49,15 +49,17 @@ pub fn run_repl_file(wd string, vexec string, file string) !string {
 	input_temporary_filename := os.real_path(os.join_path(wd, 'input_temporary_filename.txt'))
 	os.write_file(input_temporary_filename, input) or { panic(err) }
 	os.write_file(os.real_path(os.join_path(wd, 'original.txt')), fcontent) or { panic(err) }
+	os.cp_all('vlib/v/tests/repl/tmpl', os.real_path(os.join_path(wd, 'tmpl')), true) or {
+		panic(err)
+	}
 	rcmd := '${os.quoted_path(vexec)} repl -replfolder ${os.quoted_path(wd)} -replprefix "${fname}." < ${os.quoted_path(input_temporary_filename)}'
 	r := os.execute(rcmd)
 	if r.exit_code != 0 {
 		os.rm(input_temporary_filename)!
 		return error('Could not execute: ${rcmd}')
 	}
-	result := r.output.replace('\r', '').replace('>>> ', '').replace('>>>', '').replace('... ',
-		'').replace(wd + os.path_separator, '').replace(vexec_folder, '').replace('\\',
-		'/').trim_right('\n\r')
+	result := r.output.replace_each(['\r', '', '>>> ', '', '>>>', '', '... ', '',
+		wd + os.path_separator, '', vexec_folder, '', '\\', '/']).trim_right('\n\r')
 	$if windows {
 		dump(rcmd)
 		dump(r.output)

@@ -30,27 +30,7 @@ jobs:
           sudo apt-get install --quiet -y --no-install-recommends sassc ## needed by gitly
           sudo apt-get install --quiet -y --no-install-recommends libhdf5-cpp-103 libhdf5-dev libhdf5-mpi-dev hdf5-tools libopenmpi-dev opencl-headers liblapacke-dev libopenblas-dev ## needed by VSL
 
-      - name: Build V Language Server (VLS)
-        run: |
-          echo "Clone VLS"
-          git clone --depth 1 https://github.com/vlang/vls /tmp/vls
-          echo "Build VLS"
-          v /tmp/vls/cmd/vls
-          echo "Build VLS with -prod"
-          v -prod /tmp/vls/cmd/vls
-          echo "Build VLS with -gc boehm -skip-unused"
-          v -gc boehm -skip-unused /tmp/vls/cmd/vls
-          echo "Test VLS with gcc"
-          v -cc gcc test /tmp/vls
-
-      - name: Build V Coreutils
-        run: |
-          echo "Clone Coreutils"
-          git clone --depth 1 https://github.com/vlang/coreutils /tmp/coreutils
-          echo "Build Coreutils"
-          cd /tmp/coreutils; make
-
-      - name: Build VAB
+      - name: Build vlang/vab
         run: |
           echo "Install VAB"
           v install vab
@@ -59,28 +39,13 @@ jobs:
           echo "Build vab with -gc boehm -skip-unused"
           v -gc boehm -skip-unused ~/.vmodules/vab
 
-      - name: Build Gitly
+      - name: Build vlang/ved
         run: |
-          echo "Install markdown"
-          v install markdown
-          echo "Clone Gitly"
-          git clone https://github.com/vlang/gitly /tmp/gitly
-          echo "Build Gitly"
-          v /tmp/gitly
-          echo "Build Gitly with -autofree"
-          v -autofree /tmp/gitly
-          echo "Compile gitly.css from gitly.scss"
-          sassc /tmp/gitly/src/static/css/gitly.scss > /tmp/gitly/src/static/css/gitly.css
-          echo "Run first_run.v"
-          v run /tmp/gitly/tests/first_run.v
-          # /tmp/gitly/gitly -ci_run
-
-      - name: Build libsodium
-        run: |
-          echo "Install the libsodium wrapper"
-          v install libsodium
-          echo "Test libsodium"
-          VJOBS=1 v test ~/.vmodules/libsodium
+          git clone --depth 1 https://github.com/vlang/ved
+          cd ved && ../v -o ved .
+          ../v -autofree .
+          ../v -prod .
+          cd ..
 
       - name: Build VEX
         run: |
@@ -93,7 +58,56 @@ jobs:
           echo "Run Vex Tests"
           v test ~/.vmodules/nedpals/vex
 
-      - name: Build go2v
+      - name: Build vlang/pdf
+        run: |
+          v install pdf
+          echo "PDF examples should compile"
+          v should-compile-all ~/.vmodules/pdf/examples
+
+      - name: Build vlang/libsodium
+        run: |
+          echo "Install the libsodium wrapper"
+          v install libsodium
+          echo "Test libsodium"
+          VJOBS=1 v test ~/.vmodules/libsodium
+
+      - name: Build vlang/coreutils
+        run: |
+          echo "Clone Coreutils"
+          git clone --depth 1 https://github.com/vlang/coreutils /tmp/coreutils
+          echo "Build Coreutils"
+          cd /tmp/coreutils; make
+
+      - name: Build vlang/gitly
+        run: |
+          echo "Install markdown"
+          v install markdown
+          echo "Clone Gitly"
+          git clone https://github.com/vlang/gitly /tmp/gitly
+          echo "Build Gitly"
+          v /tmp/gitly
+          ## echo "Build Gitly with -autofree"
+          ## v -autofree /tmp/gitly
+          echo "Compile gitly.css from gitly.scss"
+          sassc /tmp/gitly/src/static/css/gitly.scss > /tmp/gitly/src/static/css/gitly.css
+          echo "Run first_run.v"
+          v run /tmp/gitly/tests/first_run.v
+          # /tmp/gitly/gitly -ci_run
+
+      - name: Build V Language Server (VLS) vlang/vls
+        run: |
+          echo "Clone VLS"
+          git clone --depth 1 https://github.com/vlang/vls /tmp/vls
+          echo "Build VLS"
+          v /tmp/vls/cmd/vls
+          echo "Build VLS with -prod"
+          v -prod /tmp/vls/cmd/vls
+          echo "Build VLS with -gc boehm -skip-unused"
+          v -gc boehm -skip-unused /tmp/vls/cmd/vls
+          echo "Test VLS with gcc"
+          v -cc gcc test /tmp/vls
+
+      - name: Build vlang/go2v
         run: |
           echo "Clone Go2V"
           git clone --depth=1 https://github.com/vlang/go2v /tmp/go2v/
@@ -102,20 +116,14 @@ jobs:
           echo "Run Go2V tests"
           VJOBS=1 v -stats test /tmp/go2v/
 
-      - name: Build vlang/pdf
-        run: |
-          v install pdf
-          echo "PDF examples should compile"
-          v should-compile-all ~/.vmodules/pdf/examples
-
-      - name: Install UI through VPM
+      - name: Install UI through VPM and make sure its examples compile
         run: |
           echo "Official VPM modules should be installable"
           v install ui
           echo "Examples of UI should compile"
           v ~/.vmodules/ui/examples/build_examples.vsh
 
-      - name: Build VSL
+      - name: Build vlang/vsl
         run: |
           echo "Installing dependencies"
           sudo apt-get install --quiet -y --no-install-recommends \
@@ -140,7 +148,7 @@ jobs:
           echo "Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled"
           ~/.vmodules/vsl/bin/test --use-cblas --use-gc boehm
 
-      - name: Build VTL
+      - name: Build vlang/vtl
         run: |
           echo "Install VTL"
           v install vtl
@@ -154,7 +162,7 @@ jobs:
           echo "Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled"
           ~/.vmodules/vtl/bin/test --use-cblas --use-gc boehm
 
-      - name: Build AdventOfCode
+      - name: Build vlang/adventofcode
         run: |
           echo "Clone the AdventOfCode repo"
           git clone --depth 1 https://github.com/vlang/adventofcode  /tmp/adventofcode

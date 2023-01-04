@@ -1,5 +1,3 @@
-module main
-
 type Sum = Struct | int
 
 struct Struct {

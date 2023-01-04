@@ -1,5 +1,3 @@
-module main
-
 struct ABC {
 mut:
 	s string

@@ -1,5 +1,3 @@
-module main
-
 pub struct SomeThing {
 pub:
 	m map[string]string

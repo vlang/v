@@ -1,5 +1,3 @@
-module main
-
 struct Anything {
 mut:
 	name  string

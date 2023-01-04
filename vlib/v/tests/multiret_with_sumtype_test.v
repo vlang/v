@@ -1,5 +1,3 @@
-module main
-
 type Abc = int | rune | string | u32
 
 fn cyz() (Abc, string) {

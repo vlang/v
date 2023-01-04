@@ -459,6 +459,7 @@ pub mut:
 	typ                  Type   // the type of this struct
 	update_expr          Expr   // `a` in `...a`
 	update_expr_type     Type
+	update_expr_pos      token.Pos
 	update_expr_comments []Comment
 	is_update_embed      bool
 	has_update_expr      bool // has `...a`
@@ -590,6 +591,7 @@ pub mut:
 	is_ctor_new        bool // if JS ctor calls requires `new` before call, marked as `[use_new]` in V
 	args               []CallArg
 	expected_arg_types []Type
+	comptime_ret_val   bool
 	language           Language
 	or_block           OrExpr
 	left               Expr // `user` in `user.register()`

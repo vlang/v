@@ -1,5 +1,3 @@
-module main
-
 fn test_go_call_fn_using_map_value() {
 	sum := fn (x int, y int) int {
 		return x + y

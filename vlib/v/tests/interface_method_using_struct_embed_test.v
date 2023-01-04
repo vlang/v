@@ -1,5 +1,3 @@
-module main
-
 pub interface IObject {
 mut:
 	do_stuff()

@@ -1,5 +1,3 @@
-module main
-
 type VkPresentModeKHR = u32
 
 fn create_c_array[T](len u32) &T {

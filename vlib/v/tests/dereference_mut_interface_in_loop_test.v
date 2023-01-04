@@ -1,5 +1,3 @@
-module main
-
 import rand
 import rand.wyrand
 import rand.splitmix64

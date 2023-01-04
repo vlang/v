@@ -1,5 +1,3 @@
-module main
-
 fn test_cast_to_alias() {
 	r1 := u8(u8(1))
 	println(r1)

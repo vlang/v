@@ -1,0 +1,6 @@
+vlib/v/checker/tests/fixed_array_decompose_err.vv:11:9: error: direct decomposition of fixed array is not allowed, convert the fixed array to normal array via arr[..]
+    9 | fn main() {
+   10 |     arr := [1, 2, 3, 4]!
+   11 |     sum(...arr)
+      |            ~~~
+   12 | }

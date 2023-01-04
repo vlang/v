@@ -1,5 +1,3 @@
-module main
-
 import rand
 
 interface Sample {

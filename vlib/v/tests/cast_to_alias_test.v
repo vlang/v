@@ -1,5 +1,3 @@
-module main
-
 type CEnum = int
 
 enum Enum {

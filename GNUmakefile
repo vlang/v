@@ -54,6 +54,11 @@ TCCOS := netbsd
 LDFLAGS += -lexecinfo
 endif
 
+ifeq ($(_SYS),OpenBSD)
+TCCOS := openbsd
+LDFLAGS += -lexecinfo
+endif
+
 ifdef ANDROID_ROOT
 ANDROID := 1
 undefine LINUX

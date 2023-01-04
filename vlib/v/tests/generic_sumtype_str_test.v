@@ -1,5 +1,3 @@
-module main
-
 struct None {}
 
 pub type Maybe[T] = None | T

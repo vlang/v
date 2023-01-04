@@ -263,8 +263,8 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 			return
 		}
 	} else {
-		got_typ_sym := c.table.sym(got)
-		expected_typ_sym := c.table.sym(expected_)
+		got_typ_sym := c.table.sym(c.unwrap_generic(got))
+		expected_typ_sym := c.table.sym(c.unwrap_generic(expected_))
 
 		// Check on Generics types, there are some case where we have the following case
 		// `&Type[int] == &Type[]`. This is a common case we are implementing a function
@@ -871,7 +871,25 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					func_.name = ''
 					idx := c.table.find_or_register_fn_type(func_, true, false)
 					typ = ast.new_type(idx).derive(arg.typ)
+				} else if c.inside_comptime_for_field && sym.kind in [.struct_, .any]
+					&& arg.expr is ast.ComptimeSelector {
+					compselector := arg.expr as ast.ComptimeSelector
+					if compselector.field_expr is ast.SelectorExpr {
+						selectorexpr := compselector.field_expr as ast.SelectorExpr
+						if selectorexpr.expr is ast.Ident {
+							ident := selectorexpr.expr as ast.Ident
+							if ident.name == c.comptime_for_field_var {
+								typ = c.comptime_fields_default_type
+
+								if func.return_type.has_flag(.generic)
+									&& gt_name == c.table.type_to_str(func.return_type) {
+									node.comptime_ret_val = true
+								}
+							}
+						}
+					}
 				}
+
 				if arg.expr.is_auto_deref_var() {
 					typ = typ.deref()
 				}

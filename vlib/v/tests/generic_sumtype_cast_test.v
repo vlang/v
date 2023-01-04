@@ -1,5 +1,3 @@
-module main
-
 struct Empty {}
 
 struct Node[T] {

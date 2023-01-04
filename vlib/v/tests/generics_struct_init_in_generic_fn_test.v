@@ -1,5 +1,3 @@
-module main
-
 pub struct Person {
 pub mut:
 	id int

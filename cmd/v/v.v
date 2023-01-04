@@ -3,9 +3,9 @@
 // that can be found in the LICENSE file.
 module main
 
-import help
 import os
 import term
+import v.help
 import v.pref
 import v.util
 import v.util.version

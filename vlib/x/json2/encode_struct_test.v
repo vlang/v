@@ -60,21 +60,21 @@ fn test_types() {
 
 fn test_optional_types() {
 	assert json.encode(StructTypeOptional[string]{ val: none }) == '{}'
-	assert json.encode(StructTypeOptional[string]{}) == '{"val":""}'
+	assert json.encode(StructTypeOptional[string]{}) == '{}'
 	assert json.encode(StructTypeOptional[string]{ val: '' }) == '{"val":""}'
 	assert json.encode(StructTypeOptional[string]{ val: 'a' }) == '{"val":"a"}'
 
 	assert json.encode(StructTypeOptional[bool]{ val: none }) == '{}'
-	assert json.encode(StructTypeOptional[bool]{}) == '{"val":false}'
+	assert json.encode(StructTypeOptional[bool]{}) == '{}'
 	assert json.encode(StructTypeOptional[bool]{ val: false }) == '{"val":false}'
 	assert json.encode(StructTypeOptional[bool]{ val: true }) == '{"val":true}'
 
 	assert json.encode(StructTypeOptional[int]{ val: none }) == '{}'
-	assert json.encode(StructTypeOptional[int]{}) == '{"val":0}'
+	assert json.encode(StructTypeOptional[int]{}) == '{}'
 	assert json.encode(StructTypeOptional[int]{ val: 0 }) == '{"val":0}'
 	assert json.encode(StructTypeOptional[int]{ val: 1 }) == '{"val":1}'
 
-	assert json.encode(StructTypeOptional[time.Time]{}) == '{"val":"0000-00-00T00:00:00.000Z"}'
+	assert json.encode(StructTypeOptional[time.Time]{}) == '{}'
 	assert json.encode(StructTypeOptional[time.Time]{ val: fixed_time }) == '{"val":"2022-03-11T13:54:25.000Z"}'
 }
 
@@ -123,7 +123,7 @@ fn test_array() {
 
 fn test_optional_array() {
 	assert json.encode(StructTypeOptional[[]int]{ val: none }) == '{}'
-	assert json.encode(StructTypeOptional[[]int]{}) == '{"val":[]}'
+	assert json.encode(StructTypeOptional[[]int]{}) == '{}'
 	assert json.encode(StructTypeOptional[[]int]{ val: [] }) == '{"val":[]}'
 	assert json.encode(StructTypeOptional[[]int]{ val: [0] }) == '{"val":[0]}'
 	assert json.encode(StructTypeOptional[[]int]{ val: [1] }) == '{"val":[1]}'

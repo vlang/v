@@ -1,5 +1,3 @@
-module main
-
 fn test_shared_array_last() {
 	shared a := []int{}
 	lock {
