@@ -386,10 +386,6 @@ pub fn (t Token) debug() string {
 }
 
 // Representation of highest and lowest precedence
-/*
-pub const lowest_prec = 0
-pub const highest_prec = 8
-*/
 pub enum Precedence {
 	lowest
 	cond // OR or AND
@@ -400,14 +396,15 @@ pub enum Precedence {
 	sum // + - | ^
 	product // * / << >> >>> &
 	// mod // %
-	prefix // -X or !X
+	prefix // -X or !X; TODO: seems unused
 	postfix // ++ or --
 	call // func(X) or foo.method(X)
 	index // array[index], map[key]
+	highest
 }
 
 pub fn build_precedences() []Precedence {
-	mut p := []Precedence{len: int(Kind._end_)}
+	mut p := []Precedence{len: int(Kind._end_), init: Precedence.lowest}
 	p[Kind.lsbr] = .index
 	p[Kind.nilsbr] = .index
 	p[Kind.dot] = .call
@@ -462,10 +459,16 @@ pub fn build_precedences() []Precedence {
 
 const precedences = build_precedences()
 
-// precedence returns a tokens precedence if defined, otherwise lowest_prec
-[inline]
+// precedence returns a tokens precedence if defined, otherwise 0
+[direct_array_access; inline]
 pub fn (tok Token) precedence() int {
 	return int(token.precedences[tok.kind])
+}
+
+// precedence returns the precedence of the given token `kind` if defined, otherwise 0
+[direct_array_access; inline]
+pub fn (kind Kind) precedence() int {
+	return int(token.precedences[kind])
 }
 
 // is_scalar returns true if the token is a scalar

@@ -453,7 +453,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 		return node
 	}
 	// Infix
-	for precedence < p.tok.precedence() {
+	for precedence < p.tok.kind.precedence() {
 		if p.tok.kind == .dot {
 			// no spaces or line break before dot in map_init
 			if p.inside_map_init && p.tok.pos - p.prev_tok.pos > p.prev_tok.len {
@@ -567,7 +567,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		p.or_is_handled = true
 		p.register_auto_import('sync')
 	}
-	precedence := p.tok.precedence()
+	precedence := p.tok.kind.precedence()
 	mut pos := p.tok.pos()
 	p.next()
 	if p.inside_if_cond {
