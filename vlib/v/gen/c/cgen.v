@@ -1061,7 +1061,11 @@ fn (mut g Gen) optional_type_name(t ast.Type) (string, string) {
 }
 
 fn (mut g Gen) result_type_name(t ast.Type) (string, string) {
-	base := g.base_type(t)
+	mut base := g.base_type(t)
+	if t.has_flag(.optional) {
+		g.register_optional(t)
+		base = '_option_' + base
+	}
 	mut styp := ''
 	sym := g.table.sym(t)
 	if sym.language == .c && sym.kind == .struct_ {
