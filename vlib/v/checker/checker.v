@@ -2628,9 +2628,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	mut to_sym := c.table.sym(to_type) // type to be used as cast
 	mut final_to_sym := c.table.final_sym(to_type)
 
-	if to_type.has_flag(.optional) {
-		c.error('casting to optional type is forbidden', node.pos)
-	} else if to_type.has_flag(.result) {
+	if to_type.has_flag(.result) {
 		c.error('casting to result type is forbidden', node.pos)
 	}
 
