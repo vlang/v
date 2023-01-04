@@ -1,0 +1,7 @@
+vlib/v/checker/tests/assign_expr_undefined_err_l.vv:29:6: error: undefined variable: `poo`
+   27 |     poo := Stru{
+   28 |         a: 123
+   29 |         i: poo.result()
+      |            ~~~
+   30 |     }
+   31 |      println('$poo')

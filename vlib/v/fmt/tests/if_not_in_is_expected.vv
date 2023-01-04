@@ -1,0 +1,17 @@
+struct Foo1 {}
+
+struct Foo2 {}
+
+type Foo = Foo1 | Foo2
+
+fn main() {
+	a := [1, 2, 3]
+	if 4 !in a {
+		println('4 not in a')
+	}
+
+	foo := Foo(Foo1{})
+	if foo !is Foo2 {
+		println('foo is not Foo2')
+	}
+}

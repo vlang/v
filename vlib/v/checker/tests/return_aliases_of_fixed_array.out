@@ -1,0 +1,14 @@
+vlib/v/checker/tests/return_aliases_of_fixed_array.vv:8:18: error: fixed array cannot be returned by function
+    6 | }
+    7 |
+    8 | fn (v Mat) foo() Mat {
+      |                  ~~~
+    9 |     return v
+   10 | }
+vlib/v/checker/tests/return_aliases_of_fixed_array.vv:12:10: error: fixed array cannot be returned by function
+   10 | }
+   11 |
+   12 | fn bar() Mat {
+      |          ~~~
+   13 |     return Mat([[1, 2]!, [3, 4]!]!)
+   14 | }

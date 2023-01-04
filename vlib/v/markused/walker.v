@@ -1,52 +1,104 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module markused
 
 // Walk the entire program starting at fn main and marks used (called) functions.
 // Unused functions can be safely skipped by the backends to save CPU time and space.
 import v.ast
+import v.pref
 
 pub struct Walker {
 pub mut:
-	table       &ast.Table
-	used_fns    map[string]bool // used_fns['println'] == true
-	used_consts map[string]bool // used_consts['os.args'] == true
-	n_maps      int
-	n_asserts   int
+	table        &ast.Table = unsafe { nil }
+	used_fns     map[string]bool // used_fns['println'] == true
+	used_consts  map[string]bool // used_consts['os.args'] == true
+	used_globals map[string]bool
+	used_structs map[string]bool
+	n_asserts    int
+	pref         &pref.Preferences = unsafe { nil }
 mut:
-	files      []ast.File
-	all_fns    map[string]ast.FnDecl
-	all_consts map[string]ast.ConstField
+	files       []&ast.File
+	all_fns     map[string]ast.FnDecl
+	all_consts  map[string]ast.ConstField
+	all_globals map[string]ast.GlobalField
 }
 
 pub fn (mut w Walker) mark_fn_as_used(fkey string) {
 	$if trace_skip_unused_marked ? {
-		eprintln('    fn > |$fkey|')
+		eprintln('    fn > |${fkey}|')
 	}
 	w.used_fns[fkey] = true
 }
 
 pub fn (mut w Walker) mark_const_as_used(ckey string) {
 	$if trace_skip_unused_marked ? {
-		eprintln('    const > |$ckey|')
+		eprintln('    const > |${ckey}|')
+	}
+	if w.used_consts[ckey] {
+		return
 	}
 	w.used_consts[ckey] = true
 	cfield := w.all_consts[ckey] or { return }
 	w.expr(cfield.expr)
 }
 
+pub fn (mut w Walker) mark_global_as_used(ckey string) {
+	$if trace_skip_unused_marked ? {
+		eprintln('  global > |${ckey}|')
+	}
+	if w.used_globals[ckey] {
+		return
+	}
+	w.used_globals[ckey] = true
+	gfield := w.all_globals[ckey] or { return }
+	w.expr(gfield.expr)
+}
+
 pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
 	for fn_name in all_fn_root_names {
 		if fn_name !in w.used_fns {
 			$if trace_skip_unused_roots ? {
-				println('>>>> $fn_name uses: ')
+				println('>>>> ${fn_name} uses: ')
 			}
 			w.fn_decl(mut w.all_fns[fn_name])
 		}
 	}
 }
 
-pub fn (mut w Walker) stmt(node ast.Stmt) {
+pub fn (mut w Walker) mark_exported_fns() {
+	for _, mut func in w.all_fns {
+		if func.is_exported {
+			w.fn_decl(mut func)
+		}
+	}
+}
+
+pub fn (mut w Walker) mark_markused_fns() {
+	for _, mut func in w.all_fns {
+		if func.is_markused {
+			w.fn_decl(mut func)
+		}
+	}
+}
+
+pub fn (mut w Walker) mark_markused_consts() {
+	for ckey, mut constfield in w.all_consts {
+		if constfield.is_markused {
+			w.mark_const_as_used(ckey)
+		}
+	}
+}
+
+pub fn (mut w Walker) mark_markused_globals() {
+	for gkey, mut globalfield in w.all_globals {
+		if globalfield.is_markused {
+			w.mark_global_as_used(gkey)
+		}
+	}
+}
+
+pub fn (mut w Walker) stmt(node_ ast.Stmt) {
+	mut node := unsafe { node_ }
 	match mut node {
 		ast.EmptyStmt {}
 		ast.AsmStmt {
@@ -54,8 +106,13 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 			w.asm_io(node.input)
 		}
 		ast.AssertStmt {
-			w.expr(node.expr)
-			w.n_asserts++
+			if node.is_used {
+				w.n_asserts++
+				w.expr(node.expr)
+				if node.extra !is ast.EmptyExpr {
+					w.expr(node.extra)
+				}
+			}
 		}
 		ast.AssignStmt {
 			w.exprs(node.left)
@@ -64,7 +121,7 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 		ast.Block {
 			w.stmts(node.stmts)
 		}
-		ast.CompFor {
+		ast.ComptimeFor {
 			w.stmts(node.stmts)
 		}
 		ast.ConstDecl {
@@ -85,21 +142,33 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 			w.expr(node.cond)
 			w.expr(node.high)
 			w.stmts(node.stmts)
+			if node.kind == .map {
+				w.table.used_maps++
+			}
+			if node.kind == .struct_ {
+				if node.cond_type == 0 {
+					return
+				}
+				// the .next() method of the struct will be used for iteration:
+				cond_type_sym := w.table.sym(node.cond_type)
+				if next_fn := cond_type_sym.find_method('next') {
+					w.fn_decl(mut &ast.FnDecl(next_fn.source_fn))
+				}
+			}
 		}
 		ast.ForStmt {
 			w.expr(node.cond)
 			w.stmts(node.stmts)
-		}
-		ast.GoStmt {
-			w.expr(node.call_expr)
 		}
 		ast.Return {
 			w.exprs(node.exprs)
 		}
 		ast.SqlStmt {
 			w.expr(node.db_expr)
-			w.expr(node.where_expr)
-			w.exprs(node.update_exprs)
+			for line in node.lines {
+				w.expr(line.where_expr)
+				w.exprs(line.update_exprs)
+			}
 		}
 		ast.StructDecl {
 			w.struct_fields(node.fields)
@@ -151,12 +220,14 @@ fn (mut w Walker) exprs(exprs []ast.Expr) {
 	}
 }
 
-fn (mut w Walker) expr(node ast.Expr) {
+fn (mut w Walker) expr(node_ ast.Expr) {
+	mut node := unsafe { node_ }
 	match mut node {
 		ast.EmptyExpr {
 			// TODO make sure this doesn't happen
 			// panic('Walker: EmptyExpr')
 		}
+		ast.ComptimeType {}
 		ast.AnonFn {
 			w.fn_decl(mut node.decl)
 		}
@@ -197,19 +268,51 @@ fn (mut w Walker) expr(node ast.Expr) {
 		}
 		ast.DumpExpr {
 			w.expr(node.expr)
+			w.fn_by_name('eprint')
+			w.fn_by_name('eprintln')
 		}
 		ast.GoExpr {
-			w.expr(node.go_stmt.call_expr)
+			w.expr(node.call_expr)
+			if w.pref.os == .windows {
+				w.fn_by_name('panic_lasterr')
+				w.fn_by_name('winapi_lasterr_str')
+			} else {
+				w.fn_by_name('c_error_number_str')
+				w.fn_by_name('panic_error_number')
+			}
 		}
 		ast.IndexExpr {
 			w.expr(node.left)
 			w.expr(node.index)
 			w.or_block(node.or_expr)
+			if node.left_type == 0 {
+				return
+			}
+			sym := w.table.final_sym(node.left_type)
+			if sym.kind == .map {
+				w.table.used_maps++
+			}
 		}
 		ast.InfixExpr {
 			w.expr(node.left)
 			w.expr(node.right)
 			w.or_block(node.or_block)
+			if node.left_type == 0 {
+				return
+			}
+			sym := w.table.sym(node.left_type)
+			if sym.kind == .struct_ {
+				if opmethod := sym.find_method(node.op.str()) {
+					w.fn_decl(mut &ast.FnDecl(opmethod.source_fn))
+				}
+			}
+			if node.right_type == 0 {
+				return
+			}
+			right_sym := w.table.sym(node.right_type)
+			if node.op in [.not_in, .key_in] && right_sym.kind == .map {
+				w.table.used_maps++
+			}
 		}
 		ast.IfGuardExpr {
 			w.expr(node.expr)
@@ -229,8 +332,11 @@ fn (mut w Walker) expr(node ast.Expr) {
 				.function {
 					w.fn_by_name(node.name)
 				}
+				.global {
+					w.mark_global_as_used(node.name)
+				}
 				else {
-					// `.unresolved`, `.blank_ident`, `.variable`, `.global`, `.function`
+					// `.unresolved`, `.blank_ident`, `.variable`, `.function`
 					// println('>>> else, ast.Ident kind: $node.kind')
 				}
 			}
@@ -241,7 +347,7 @@ fn (mut w Walker) expr(node ast.Expr) {
 		ast.MapInit {
 			w.exprs(node.keys)
 			w.exprs(node.vals)
-			w.n_maps++
+			w.table.used_maps++
 		}
 		ast.MatchExpr {
 			w.expr(node.cond)
@@ -251,6 +357,7 @@ fn (mut w Walker) expr(node ast.Expr) {
 			}
 		}
 		ast.None {}
+		ast.Nil {}
 		ast.ParExpr {
 			w.expr(node.expr)
 		}
@@ -268,7 +375,7 @@ fn (mut w Walker) expr(node ast.Expr) {
 				w.expr(node.high)
 			}
 		}
-		ast.SizeOf {
+		ast.SizeOf, ast.IsRefType {
 			w.expr(node.expr)
 		}
 		ast.StringInterLiteral {
@@ -276,6 +383,11 @@ fn (mut w Walker) expr(node ast.Expr) {
 		}
 		ast.SelectorExpr {
 			w.expr(node.expr)
+			if node.expr_type != 0 {
+				if method := w.table.find_method(w.table.sym(node.expr_type), node.field_name) {
+					w.fn_by_name(method.fkey())
+				}
+			}
 		}
 		ast.SqlExpr {
 			w.expr(node.db_expr)
@@ -285,14 +397,13 @@ fn (mut w Walker) expr(node ast.Expr) {
 			w.expr(node.where_expr)
 		}
 		ast.StructInit {
-			sym := w.table.get_type_symbol(node.typ)
+			if node.typ == 0 {
+				return
+			}
+			sym := w.table.sym(node.typ)
 			if sym.kind == .struct_ {
 				info := sym.info as ast.Struct
-				for ifield in info.fields {
-					if ifield.has_default_expr {
-						w.expr(ifield.default_expr)
-					}
-				}
+				w.a_struct_info(sym.name, info)
 			}
 			if node.has_update_expr {
 				w.expr(node.update_expr)
@@ -343,11 +454,32 @@ fn (mut w Walker) expr(node ast.Expr) {
 	}
 }
 
+pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
+	if sname in w.used_structs {
+		return
+	}
+	w.used_structs[sname] = true
+	for ifield in info.fields {
+		if ifield.has_default_expr {
+			w.expr(ifield.default_expr)
+		}
+		if ifield.typ != 0 {
+			fsym := w.table.sym(ifield.typ)
+			if fsym.kind == .map {
+				w.table.used_maps++
+			}
+			if fsym.kind == .struct_ {
+				w.a_struct_info(fsym.name, fsym.struct_info())
+			}
+		}
+	}
+}
+
 pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .c {
 		return
 	}
-	fkey := if node.is_method { '${int(node.receiver.typ)}.$node.name' } else { node.name }
+	fkey := node.fkey()
 	if w.used_fns[fkey] {
 		// This function is already known to be called, meaning it has been processed already.
 		// Save CPU time and do nothing.
@@ -363,12 +495,15 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		w.expr(arg.expr)
 	}
 	if node.language == .c {
+		if node.name in ['C.wyhash', 'C.wyhash64'] {
+			w.table.used_maps++
+		}
 		return
 	}
 	w.expr(node.left)
 	w.or_block(node.or_block)
 	//
-	fn_name := if node.is_method { node.receiver_type.str() + '.' + node.name } else { node.name }
+	fn_name := node.fkey()
 	if w.used_fns[fn_name] {
 		return
 	}

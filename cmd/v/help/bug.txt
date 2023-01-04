@@ -1,0 +1,8 @@
+Usage:
+  v bug [options] FILE
+
+  Open a prefilled bug report on GitHub.
+
+Options:
+  -v           Enable verbosity while gathering various information
+  -y           Force the submission of the issue, even if an error occured

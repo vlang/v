@@ -80,23 +80,23 @@ vlib/v/checker/tests/optional_fn_err.vv:56:8: error: bar() returns an option, so
    55 |     // init
    56 |     _ := [bar(0)]
       |           ~~~~~~
-   57 |     _ := []int{init: bar(0)}
+   57 |     _ := []int{len: 1, init: bar(0)}
    58 |     _ := [bar(0)]!
-vlib/v/checker/tests/optional_fn_err.vv:57:19: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+vlib/v/checker/tests/optional_fn_err.vv:57:27: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
    55 |     // init
    56 |     _ := [bar(0)]
-   57 |     _ := []int{init: bar(0)}
-      |                      ~~~~~~
+   57 |     _ := []int{len: 1, init: bar(0)}
+      |                              ~~~~~~
    58 |     _ := [bar(0)]!
    59 |     _ := [1]int{init: bar(0)}
 vlib/v/checker/tests/optional_fn_err.vv:58:8: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
    56 |     _ := [bar(0)]
-   57 |     _ := []int{init: bar(0)}
+   57 |     _ := []int{len: 1, init: bar(0)}
    58 |     _ := [bar(0)]!
       |           ~~~~~~
    59 |     _ := [1]int{init: bar(0)}
    60 |     // index
-vlib/v/checker/tests/optional_fn_err.vv:61:13: error: cannot use optional as index (array type `[]int`)
+vlib/v/checker/tests/optional_fn_err.vv:61:13: error: cannot use optional or result as index (array type `[]int`)
    59 |     _ := [1]int{init: bar(0)}
    60 |     // index
    61 |     println(arr[bar(0)])
@@ -151,10 +151,18 @@ vlib/v/checker/tests/optional_fn_err.vv:69:18: error: bar() returns an option, s
    69 |     println(arr.any(bar(true)))
       |                     ~~~~~~~~~
    70 |     println(arr.all(bar(true)))
-   71 | }
+   71 |
 vlib/v/checker/tests/optional_fn_err.vv:70:18: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
    68 |     println(arr.filter(bar(true)))
    69 |     println(arr.any(bar(true)))
    70 |     println(arr.all(bar(true)))
       |                     ~~~~~~~~~
-   71 | }
+   71 | 
+   72 |     match bar(0) {
+vlib/v/checker/tests/optional_fn_err.vv:72:8: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+   70 |     println(arr.all(bar(true)))
+   71 | 
+   72 |     match bar(0) {
+      |           ~~~~~~
+   73 |         0 { }
+   74 |         else { }

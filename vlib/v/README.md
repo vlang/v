@@ -1,3 +1,12 @@
+## Description
+
+`v` is a namespace for all of the V compiler modules.
+
+The V compiler modules can be used by V programs that want to
+process V source code in different ways, in fact, that is how
+various V tools are implemented: `v fmt`, `v doc`, `v ast`, `vls`,
+as well as the V compiler itself.
+
 # Compiler pipeline
 A simple high level explanation
 how the compiler pipeline (`parser` -> `checker` -> `generator`) works.
@@ -87,7 +96,7 @@ If the module which is imported isn't parsed already,
 you have to collect it relatively from the main file.
 For this the `ast.File` contains a list of imports.
 Those imports needs to be found on disk.
-`.` is just replaced with seperators in the relative location of the main file.
+`.` is just replaced with separators in the relative location of the main file.
 Then all files from that directory are collected and parsed again like the previous steps explained.
 
 ## Checking AST

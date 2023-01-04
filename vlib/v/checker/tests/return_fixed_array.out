@@ -1,0 +1,12 @@
+vlib/v/checker/tests/return_fixed_array.vv:1:25: error: fixed array cannot be returned by function
+    1 | fn return_fixed_array() [3]int {
+      |                         ~~~~~~
+    2 |     return [1, 2, 3]!
+    3 | }
+vlib/v/checker/tests/return_fixed_array.vv:5:41: error: fixed array cannot be used in multi-return
+    3 | }
+    4 | 
+    5 | fn return_fixed_array_in_multi_return() ([3]int, [3]int) {
+      |                                         ~~~~~~~~~~~~~~~~
+    6 |     return [1, 2, 3]!, [4, 5, 6]!
+    7 | }

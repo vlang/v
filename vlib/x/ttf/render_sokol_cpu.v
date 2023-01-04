@@ -10,17 +10,18 @@ module ttf
 *
 * Note:
 *
-* TODO: 
+* TODO:
 **********************************************************************/
 import math
 import gg
 import sokol.sgl
+import sokol.gfx
 
 pub struct TTF_render_Sokol {
 pub mut:
-	bmp &BitMap // Base bitmap render
+	bmp &BitMap = unsafe { nil } // Base bitmap render
 	// rendering fields
-	sg_img       C.sg_image // sokol image
+	sg_img       gfx.Image // sokol image
 	scale_reduct f32 = 2.0 // scale of the cpu texture for filtering
 	device_dpi   int = 72 // device DPI
 }
@@ -30,7 +31,7 @@ pub mut:
 * Render functions
 *
 ******************************************************************************/
-fn (mut tf_skl TTF_render_Sokol) format_texture() {
+pub fn (mut tf_skl TTF_render_Sokol) format_texture() {
 	tf_skl.bmp.format_texture()
 }
 
@@ -55,8 +56,8 @@ pub fn (mut tf_skl TTF_render_Sokol) create_text(in_txt string, in_font_size f32
 		if sz > 0 {
 			unsafe { free(tf_skl.bmp.buf) }
 		}
-		dprintln('create_text Alloc: $sz bytes')
-		tf_skl.bmp.buf = unsafe { malloc(sz) }
+		dprintln('create_text Alloc: ${sz} bytes')
+		tf_skl.bmp.buf = unsafe { malloc_noscan(sz) }
 		tf_skl.bmp.buf_size = sz
 	}
 
@@ -93,8 +94,8 @@ pub fn (mut tf_skl TTF_render_Sokol) create_text_block(in_txt string, in_w int, 
 		if sz > 0 {
 			unsafe { free(tf_skl.bmp.buf) }
 		}
-		dprintln('Alloc: $sz bytes')
-		tf_skl.bmp.buf = unsafe { malloc(sz) }
+		dprintln('Alloc: ${sz} bytes')
+		tf_skl.bmp.buf = unsafe { malloc_noscan(sz) }
 		tf_skl.bmp.buf_size = sz
 	}
 
@@ -118,7 +119,7 @@ pub fn (mut tf_skl TTF_render_Sokol) create_texture() {
 	w := tf_skl.bmp.width
 	h := tf_skl.bmp.height
 	sz := tf_skl.bmp.width * tf_skl.bmp.height * tf_skl.bmp.bp
-	mut img_desc := C.sg_image_desc{
+	mut img_desc := gfx.ImageDesc{
 		width: w
 		height: h
 		num_mipmaps: 0
@@ -127,33 +128,33 @@ pub fn (mut tf_skl TTF_render_Sokol) create_texture() {
 		// usage: .dynamic
 		wrap_u: .clamp_to_edge
 		wrap_v: .clamp_to_edge
-		label: &byte(0)
+		label: &char(0)
 		d3d11_texture: 0
 	}
 	// comment for dynamic
-	img_desc.content.subimage[0][0] = C.sg_subimage_content{
+	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr: tf_skl.bmp.buf
-		size: sz
+		size: usize(sz)
 	}
 
-	simg := C.sg_make_image(&img_desc)
+	simg := gfx.make_image(&img_desc)
 	// free(tf_skl.bmp.buf)  // DONT FREE IF Dynamic
 	tf_skl.sg_img = simg
 }
 
 pub fn (tf_skl TTF_render_Sokol) destroy_texture() {
-	C.sg_destroy_image(tf_skl.sg_img)
+	gfx.destroy_image(tf_skl.sg_img)
 }
 
 // Use only if usage: .dynamic
 pub fn (mut tf_skl TTF_render_Sokol) update_text_texture() {
 	sz := tf_skl.bmp.width * tf_skl.bmp.height * tf_skl.bmp.bp
-	mut tmp_sbc := C.sg_image_content{}
-	tmp_sbc.subimage[0][0] = C.sg_subimage_content{
+	mut tmp_sbc := gfx.ImageData{}
+	tmp_sbc.subimage[0][0] = gfx.Range{
 		ptr: tf_skl.bmp.buf
-		size: sz
+		size: usize(sz)
 	}
-	C.sg_update_image(tf_skl.sg_img, &tmp_sbc)
+	gfx.update_image(tf_skl.sg_img, &tmp_sbc)
 }
 
 pub fn (tf_skl TTF_render_Sokol) draw_text_bmp(ctx &gg.Context, x f32, y f32) {
@@ -188,14 +189,14 @@ pub fn (tf_skl TTF_render_Sokol) draw_text_bmp(ctx &gg.Context, x f32, y f32) {
 		0,
 		1,
 		0,
-		x,
-		y,
+		x * ctx.scale,
+		y * ctx.scale,
 		0,
 		1,
 	]
 	sgl.mult_matrix(m)
 	//
-	sgl.load_pipeline(ctx.timage_pip)
+	sgl.load_pipeline(ctx.pipeline.alpha)
 	sgl.enable_texture()
 	sgl.texture(tf_skl.sg_img)
 	sgl.begin_quads()

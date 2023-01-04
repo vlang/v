@@ -26,10 +26,10 @@ const (
 
 // from_bytes converts a byte array into a bitfield.
 // [0x0F, 0x01] => 0000 1111 0000 0001
-pub fn from_bytes(input []byte) BitField {
+pub fn from_bytes(input []u8) BitField {
 	mut output := new(input.len * 8)
 	for i, b in input {
-		mut ob := byte(0)
+		mut ob := u8(0)
 		if b & 0b10000000 > 0 {
 			ob |= 0b00000001
 		}
@@ -61,7 +61,7 @@ pub fn from_bytes(input []byte) BitField {
 
 // from_bytes_lowest_bits_first converts a byte array into a bitfield
 // [0x0F, 0x01] => 1111 0000 1000 0000
-pub fn from_bytes_lowest_bits_first(input []byte) BitField {
+pub fn from_bytes_lowest_bits_first(input []u8) BitField {
 	mut output := new(input.len * 8)
 	for i, b in input {
 		output.field[i / 4] |= u32(b) << ((i % 4) * 8)
@@ -135,6 +135,75 @@ pub fn (mut instance BitField) clear_bit(bitnr int) {
 		return
 	}
 	instance.field[bitslot(bitnr)] &= ~bitmask(bitnr)
+}
+
+// extract returns the value converted from a slice of bit numbers
+// from 'start' by the length of 'len'.
+// 0101 (1, 2) => 0b10
+pub fn (instance BitField) extract(start int, len int) u64 {
+	// panic?
+	if start < 0 {
+		return 0
+	}
+	mut output := u64(0)
+	for i in 0 .. len {
+		output |= u64(instance.get_bit(start + len - i - 1)) << i
+	}
+	return output
+}
+
+// insert sets bit numbers from 'start' to 'len' length with
+// the value converted from the number 'value'.
+// 0000 (1, 2, 0b10) => 0100
+pub fn (mut instance BitField) insert[T](start int, len int, _value T) {
+	// panic?
+	if start < 0 {
+		return
+	}
+	mut value := _value
+	for i in 0 .. len {
+		pos := start + len - i - 1
+		if value & 1 == 1 {
+			instance.set_bit(pos)
+		} else {
+			instance.clear_bit(pos)
+		}
+		value >>= 1
+	}
+}
+
+// extract returns the value converted from a slice of bit numbers
+// from 'start' by the length of 'len'.
+// 0101 (1, 2) => 0b01
+pub fn (instance BitField) extract_lowest_bits_first(start int, len int) u64 {
+	// panic?
+	if start < 0 {
+		return 0
+	}
+	mut output := u64(0)
+	for i in 0 .. len {
+		output |= u64(instance.get_bit(start + i)) << i
+	}
+	return output
+}
+
+// insert sets bit numbers from 'start' to 'len' length with
+// the value converted from the number 'value'.
+// 0000 (1, 2, 0b10) => 0010
+pub fn (mut instance BitField) insert_lowest_bits_first[T](start int, len int, _value T) {
+	// panic?
+	if start < 0 {
+		return
+	}
+	mut value := _value
+	for pos in start .. start + len {
+		if value & 1 == 1 {
+			instance.set_bit(pos)
+		} else {
+			instance.clear_bit(pos)
+		}
+		value >>= 1
+	}
 }
 
 // set_all sets all bits in the array to 1.
@@ -269,14 +338,13 @@ pub fn (instance BitField) clone() BitField {
 	return output
 }
 
-// cmp compares two bit arrays bit by bit and returns 'true' if they are
-// identical by length and contents and 'false' otherwise.
-pub fn (instance BitField) cmp(input BitField) bool {
-	if instance.size != input.size {
+// == compares 2 bitfields, and returns true when they are equal
+pub fn (a BitField) == (b BitField) bool {
+	if a.size != b.size {
 		return false
 	}
-	for i in 0 .. zbitnslots(instance.size) {
-		if instance.field[i] != input.field[i] {
+	for i in 0 .. zbitnslots(a.size) {
+		if a.field[i] != b.field[i] {
 			return false
 		}
 	}
@@ -322,7 +390,7 @@ pub fn (haystack BitField) pos(needle BitField) int {
 	}
 	for i := 0; i <= diff; i++ {
 		needle_candidate := haystack.slice(i, needle_size + i)
-		if needle_candidate.cmp(needle) {
+		if needle_candidate == needle {
 			// needle matches a sub-array of haystack; return starting position of the sub-array
 			return i
 		}

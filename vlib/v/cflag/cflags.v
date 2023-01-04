@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module cflag
@@ -17,23 +17,55 @@ pub mut:
 }
 
 pub fn (c &CFlag) str() string {
-	return 'CFlag{ name: "$c.name" value: "$c.value" mod: "$c.mod" os: "$c.os" cached: "$c.cached" }'
+	return 'CFlag{ name: "${c.name}" value: "${c.value}" mod: "${c.mod}" os: "${c.os}" cached: "${c.cached}" }'
+}
+
+const fexisting_literal = r'$first_existing'
+
+// expand the flag value
+pub fn (cf &CFlag) eval() string {
+	mut value := ''
+	cflag_eval_outer_loop: for i := 0; i < cf.value.len; i++ {
+		x := cf.value[i]
+		if x == `$` {
+			remainder := cf.value[i..]
+			if remainder.starts_with(cflag.fexisting_literal) {
+				sparams := remainder[cflag.fexisting_literal.len + 1..].all_before(')')
+				i += sparams.len + cflag.fexisting_literal.len + 1
+				svalues := sparams.replace(',', '\n').split_into_lines().map(it.trim(' \'"'))
+				// mut found_spath := ''
+				for spath in svalues {
+					if os.exists(spath) {
+						// found_spath = spath
+						value += spath
+						continue cflag_eval_outer_loop
+					}
+				}
+				panic('>> error: none of the paths ${svalues} exist')
+				continue
+			}
+		}
+		value += x.ascii_str()
+	}
+	return value
 }
 
 // format flag
 pub fn (cf &CFlag) format() string {
-	mut value := cf.value
+	mut value := ''
 	if cf.cached != '' {
 		value = cf.cached
+	} else {
+		value = cf.eval()
 	}
 	if cf.name in ['-l', '-Wa', '-Wl', '-Wp'] && value.len > 0 {
-		return '$cf.name$value'.trim_space()
+		return '${cf.name}${value}'.trim_space()
 	}
 	// convert to absolute path
 	if cf.name == '-I' || cf.name == '-L' || value.ends_with('.o') {
 		value = '"' + os.real_path(value) + '"'
 	}
-	return '$cf.name $value'.trim_space()
+	return '${cf.name} ${value}'.trim_space()
 }
 
 // TODO: implement msvc specific c_options_before_target and c_options_after_target ...
@@ -87,6 +119,10 @@ pub fn (cflags []CFlag) defines_others_libs() ([]string, []string, []string) {
 	for copt in copts_without_obj_files {
 		if copt.starts_with('-l') {
 			libs << copt
+			continue
+		}
+		if copt.ends_with('.a') {
+			libs << '"${copt}"'
 			continue
 		}
 		if copt.starts_with('-D') {

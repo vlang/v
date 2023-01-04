@@ -1,6 +1,7 @@
 import os
 import time
-import v.util
+import term
+import v.util.version
 import runtime
 
 struct App {
@@ -16,7 +17,7 @@ fn (mut a App) println(s string) {
 fn (mut a App) collect_info() {
 	mut os_kind := os.user_os()
 	mut arch_details := []string{}
-	arch_details << '$runtime.nr_cpus() cpus'
+	arch_details << '${runtime.nr_cpus()} cpus'
 	if runtime.is_32bit() {
 		arch_details << '32bit'
 	}
@@ -88,12 +89,12 @@ fn (mut a App) collect_info() {
 		)
 		p := a.parse(wmic_info, '=')
 		caption, build_number, os_arch := p['caption'], p['buildnumber'], p['osarchitecture']
-		os_details = '$caption v$build_number $os_arch'
+		os_details = '${caption} v${build_number} ${os_arch}'
 	} else {
 		ouname := os.uname()
-		os_details = '$ouname.release, $ouname.version'
+		os_details = '${ouname.release}, ${ouname.version}'
 	}
-	a.line('OS', '$os_kind, $os_details')
+	a.line('OS', '${os_kind}, ${os_details}')
 	a.line('Processor', arch_details.join(', '))
 	a.line('CC version', a.cmd(command: 'cc --version'))
 	a.println('')
@@ -101,7 +102,7 @@ fn (mut a App) collect_info() {
 	vmodules := os.vmodules_dir()
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	a.line('getwd', getwd)
 	a.line('vmodules', vmodules)
 	a.line('vroot', vroot)
@@ -109,14 +110,14 @@ fn (mut a App) collect_info() {
 	a.line('vexe mtime', time.unix(os.file_last_mod_unix(vexe)).str())
 	a.line('is vroot writable', is_writable_dir(vroot).str())
 	a.line('is vmodules writable', is_writable_dir(vmodules).str())
-	a.line('V full version', util.full_v_version(true))
+	a.line('V full version', version.full_v_version(true))
 	vtmp := os.getenv('VTMP')
 	if vtmp != '' {
-		a.line('env VTMP', '"$vtmp"')
+		a.line('env VTMP', '"${vtmp}"')
 	}
 	vflags := os.getenv('VFLAGS')
 	if vflags != '' {
-		a.line('env VFLAGS', '"$vflags"')
+		a.line('env VFLAGS', '"${vflags}"')
 	}
 	a.println('')
 	a.line('Git version', a.cmd(command: 'git --version'))
@@ -145,11 +146,11 @@ fn (mut a App) cmd(c CmdConfig) string {
 			return output[c.line]
 		}
 	}
-	return 'Error: $x.output'
+	return 'Error: ${x.output}'
 }
 
 fn (mut a App) line(label string, value string) {
-	a.println('$label: ${util.bold(value)}')
+	a.println('${label}: ${term.colorize(term.bold, value)}')
 }
 
 fn (app &App) parse(config string, sep string) map[string]string {
@@ -203,7 +204,7 @@ fn (mut a App) get_linux_os_name() string {
 			}
 			'uname' {
 				ouname := os.uname()
-				os_details = '$ouname.release, $ouname.version'
+				os_details = '${ouname.release}, ${ouname.version}'
 				break
 			}
 			else {}
@@ -230,7 +231,7 @@ fn (mut a App) git_info() string {
 	os.execute('git -C . fetch V_REPO')
 	commit_count := a.cmd(command: 'git rev-list @{0}...V_REPO/master --right-only --count').int()
 	if commit_count > 0 {
-		out += ' ($commit_count commit(s) behind V master)'
+		out += ' (${commit_count} commit(s) behind V master)'
 	}
 	return out
 }
@@ -240,9 +241,13 @@ fn (mut a App) report_tcc_version(tccfolder string) {
 		a.line(tccfolder, 'N/A')
 		return
 	}
-	tcc_branch_name := a.cmd(command: 'git -C $tccfolder rev-parse --abbrev-ref HEAD')
-	tcc_commit := a.cmd(command: 'git -C $tccfolder describe --abbrev=8 --dirty --always --tags')
-	a.line('$tccfolder status', '$tcc_branch_name $tcc_commit')
+	tcc_branch_name := a.cmd(
+		command: 'git -C ${os.quoted_path(tccfolder)} rev-parse --abbrev-ref HEAD'
+	)
+	tcc_commit := a.cmd(
+		command: 'git -C ${os.quoted_path(tccfolder)} describe --abbrev=8 --dirty --always --tags'
+	)
+	a.line('${tccfolder} status', '${tcc_branch_name} ${tcc_commit}')
 }
 
 fn (mut a App) report_info() {
@@ -252,8 +257,8 @@ fn (mut a App) report_info() {
 }
 
 fn is_writable_dir(path string) bool {
-	res := os.is_writable_folder(path) or { false }
-	return res
+	os.ensure_folder_is_writable(path) or { return false }
+	return true
 }
 
 fn main() {

@@ -1,0 +1,18 @@
+module main
+
+const codepath_file = @FILE
+
+fn  main() {
+	togenerate := ["user","circle"]
+	for name in togenerate{
+		object :=  name
+		object_u := name.capitalize()
+		objects :=  name+"s"
+		objects_u := name.capitalize()+"s"
+		mut txt := $tmpl('data_obj.v.templ')
+	    txt = txt.replace("/////////// THIS IS THE TEMPLATE, THIS CAN BE MODIFIED","")
+		println(txt)
+	}
+	println('OK')
+}
+

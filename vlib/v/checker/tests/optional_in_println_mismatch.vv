@@ -1,0 +1,7 @@
+fn funcy() ?int {
+	return none
+}
+
+fn main() {
+	println(funcy() or { '' })
+}

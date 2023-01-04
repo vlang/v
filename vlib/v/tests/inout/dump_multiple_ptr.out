@@ -1,0 +1,4 @@
+[vlib/v/tests/inout/dump_multiple_ptr.vv:3] i: 42
+[vlib/v/tests/inout/dump_multiple_ptr.vv:5] ir: &42
+[vlib/v/tests/inout/dump_multiple_ptr.vv:7] irr: &&42
+[vlib/v/tests/inout/dump_multiple_ptr.vv:9] irrr: &&&42

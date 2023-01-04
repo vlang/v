@@ -1,7 +1,7 @@
 /**********************************************************************
 * path tracing demo
 *
-* Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
+* Copyright (c) 2019-2022 Dario Deledda. All rights reserved.
 * Use of this source code is governed by an MIT license
 * that can be found in the LICENSE file.
 *
@@ -28,6 +28,7 @@ import os
 import math
 import rand
 import time
+import term
 
 const (
 	inf = 1e+10
@@ -83,7 +84,7 @@ fn (v Vec) norm() Vec {
 struct Image {
 	width  int
 	height int
-	data   &Vec
+	data   &Vec = unsafe { nil }
 }
 
 fn new_image(w int, h int) Image {
@@ -91,7 +92,7 @@ fn new_image(w int, h int) Image {
 	return Image{
 		width: w
 		height: h
-		data: &Vec(vcalloc(vecsize * w * h))
+		data: unsafe { &Vec(vcalloc(vecsize * w * h)) }
 	}
 }
 
@@ -100,13 +101,13 @@ fn (image Image) save_as_ppm(file_name string) {
 	npixels := image.width * image.height
 	mut f_out := os.create(file_name) or { panic(err) }
 	f_out.writeln('P3') or { panic(err) }
-	f_out.writeln('$image.width $image.height') or { panic(err) }
+	f_out.writeln('${image.width} ${image.height}') or { panic(err) }
 	f_out.writeln('255') or { panic(err) }
 	for i in 0 .. npixels {
 		c_r := to_int(unsafe { image.data[i] }.x)
 		c_g := to_int(unsafe { image.data[i] }.y)
 		c_b := to_int(unsafe { image.data[i] }.z)
-		f_out.write_string('$c_r $c_g $c_b ') or { panic(err) }
+		f_out.write_string('${c_r} ${c_g} ${c_b} ') or { panic(err) }
 	}
 	f_out.close()
 }
@@ -165,135 +166,159 @@ fn (sp Sphere) intersect(r Ray) f64 {
 const (
 	cen     = Vec{50, 40.8, -860} // used by scene 1
 	spheres = [
-		[/* scene 0 cornnel box */ Sphere{
-			rad: 1e+5
-			p: Vec{1e+5 + 1, 40.8, 81.6}
-			e: Vec{}
-			c: Vec{.75, .25, .25}
-			refl: .diff
-		}, /* Left */ Sphere{
-			rad: 1e+5
-			p: Vec{-1e+5 + 99, 40.8, 81.6}
-			e: Vec{}
-			c: Vec{.25, .25, .75}
-			refl: .diff
-		}, /* Rght */ Sphere{
-			rad: 1e+5
-			p: Vec{50, 40.8, 1e+5}
-			e: Vec{}
-			c: Vec{.75, .75, .75}
-			refl: .diff
-		}, /* Back */ Sphere{
-			rad: 1e+5
-			p: Vec{50, 40.8, -1e+5 + 170}
-			e: Vec{}
-			c: Vec{}
-			refl: .diff
-		}, /* Frnt */ Sphere{
-			rad: 1e+5
-			p: Vec{50, 1e+5, 81.6}
-			e: Vec{}
-			c: Vec{.75, .75, .75}
-			refl: .diff
-		}, /* Botm */ Sphere{
-			rad: 1e+5
-			p: Vec{50, -1e+5 + 81.6, 81.6}
-			e: Vec{}
-			c: Vec{.75, .75, .75}
-			refl: .diff
-		}, /* Top */ Sphere{
-			rad: 16.5
-			p: Vec{27, 16.5, 47}
-			e: Vec{}
-			c: Vec{1, 1, 1}.mult_s(.999)
-			refl: .spec
-		}, /* Mirr */ Sphere{
-			rad: 16.5
-			p: Vec{73, 16.5, 78}
-			e: Vec{}
-			c: Vec{1, 1, 1}.mult_s(.999)
-			refl: .refr
-		}, /* Glas */ Sphere{
-			rad: 600
-			p: Vec{50, 681.6 - .27, 81.6}
-			e: Vec{12, 12, 12}
-			c: Vec{}
-			refl: .diff
-		} /* Lite */],
-		[/* scene 1 sunset */ Sphere{
-			rad: 1600
-			p: Vec{1.0, 0.0, 2.0}.mult_s(3000)
-			e: Vec{1.0, .9, .8}.mult_s(1.2e+1 * 1.56 * 2)
-			c: Vec{}
-			refl: .diff
-		}, /* sun */ Sphere{
-			rad: 1560
-			p: Vec{1, 0, 2}.mult_s(3500)
-			e: Vec{1.0, .5, .05}.mult_s(4.8e+1 * 1.56 * 2)
-			c: Vec{}
-			refl: .diff
-		}, /* horizon sun2 */ Sphere{
-			rad: 10000
-			p: cen + Vec{0, 0, -200}
-			e: Vec{0.00063842, 0.02001478, 0.28923243}.mult_s(6e-2 * 8)
-			c: Vec{.7, .7, 1}.mult_s(.25)
-			refl: .diff
-		}, /* sky */ Sphere{
-			rad: 100000
-			p: Vec{50, -100000, 0}
-			e: Vec{}
-			c: Vec{.3, .3, .3}
-			refl: .diff
-		}, /* grnd */ Sphere{
-			rad: 110000
-			p: Vec{50, -110048.5, 0}
-			e: Vec{.9, .5, .05}.mult_s(4)
-			c: Vec{}
-			refl: .diff
-		}, /* horizon brightener */ Sphere{
-			rad: 4e+4
-			p: Vec{50, -4e+4 - 30, -3000}
-			e: Vec{}
-			c: Vec{.2, .2, .2}
-			refl: .diff
-		}, /* mountains */ Sphere{
-			rad: 26.5
-			p: Vec{22, 26.5, 42}
-			e: Vec{}
-			c: Vec{1, 1, 1}.mult_s(.596)
-			refl: .spec
-		}, /* white Mirr */ Sphere{
-			rad: 13
-			p: Vec{75, 13, 82}
-			e: Vec{}
-			c: Vec{.96, .96, .96}.mult_s(.96)
-			refl: .refr
-		}, /* Glas */ Sphere{
-			rad: 22
-			p: Vec{87, 22, 24}
-			e: Vec{}
-			c: Vec{.6, .6, .6}.mult_s(.696)
-			refl: .refr
-		} /* Glas2 */],
-		[/* scene 3 Psychedelic */ Sphere{
-			rad: 150
-			p: Vec{50 + 75, 28, 62}
-			e: Vec{1, 1, 1}.mult_s(0e-3)
-			c: Vec{1, .9, .8}.mult_s(.93)
-			refl: .refr
-		}, Sphere{
-			rad: 28
-			p: Vec{50 + 5, -28, 62}
-			e: Vec{1, 1, 1}.mult_s(1e+1)
-			c: Vec{1, 1, 1}.mult_s(0)
-			refl: .diff
-		}, Sphere{
-			rad: 300
-			p: Vec{50, 28, 62}
-			e: Vec{1, 1, 1}.mult_s(0e-3)
-			c: Vec{1, 1, 1}.mult_s(.93)
-			refl: .spec
-		}],
+		[// scene 0 cornnel box
+			Sphere{
+				rad: 1e+5
+				p: Vec{1e+5 + 1, 40.8, 81.6}
+				e: Vec{}
+				c: Vec{.75, .25, .25}
+				refl: .diff
+			}, /* Left */
+			Sphere{
+				rad: 1e+5
+				p: Vec{-1e+5 + 99, 40.8, 81.6}
+				e: Vec{}
+				c: Vec{.25, .25, .75}
+				refl: .diff
+			}, /* Rght */
+			Sphere{
+				rad: 1e+5
+				p: Vec{50, 40.8, 1e+5}
+				e: Vec{}
+				c: Vec{.75, .75, .75}
+				refl: .diff
+			}, /* Back */
+			Sphere{
+				rad: 1e+5
+				p: Vec{50, 40.8, -1e+5 + 170}
+				e: Vec{}
+				c: Vec{}
+				refl: .diff
+			}, /* Frnt */
+			Sphere{
+				rad: 1e+5
+				p: Vec{50, 1e+5, 81.6}
+				e: Vec{}
+				c: Vec{.75, .75, .75}
+				refl: .diff
+			}, /* Botm */
+			Sphere{
+				rad: 1e+5
+				p: Vec{50, -1e+5 + 81.6, 81.6}
+				e: Vec{}
+				c: Vec{.75, .75, .75}
+				refl: .diff
+			}, /* Top */
+			Sphere{
+				rad: 16.5
+				p: Vec{27, 16.5, 47}
+				e: Vec{}
+				c: Vec{1, 1, 1}.mult_s(.999)
+				refl: .spec
+			}, /* Mirr */
+			Sphere{
+				rad: 16.5
+				p: Vec{73, 16.5, 78}
+				e: Vec{}
+				c: Vec{1, 1, 1}.mult_s(.999)
+				refl: .refr
+			}, /* Glas */
+			Sphere{
+				rad: 600
+				p: Vec{50, 681.6 - .27, 81.6}
+				e: Vec{12, 12, 12}
+				c: Vec{}
+				refl: .diff
+			} /* Lite */,
+		],
+		[// scene 1 sunset
+			Sphere{
+				rad: 1600
+				p: Vec{1.0, 0.0, 2.0}.mult_s(3000)
+				e: Vec{1.0, .9, .8}.mult_s(1.2e+1 * 1.56 * 2)
+				c: Vec{}
+				refl: .diff
+			}, /* sun */
+			Sphere{
+				rad: 1560
+				p: Vec{1, 0, 2}.mult_s(3500)
+				e: Vec{1.0, .5, .05}.mult_s(4.8e+1 * 1.56 * 2)
+				c: Vec{}
+				refl: .diff
+			}, /* horizon sun2 */
+			Sphere{
+				rad: 10000
+				p: cen + Vec{0, 0, -200}
+				e: Vec{0.00063842, 0.02001478, 0.28923243}.mult_s(6e-2 * 8)
+				c: Vec{.7, .7, 1}.mult_s(.25)
+				refl: .diff
+			}, /* sky */
+			Sphere{
+				rad: 100000
+				p: Vec{50, -100000, 0}
+				e: Vec{}
+				c: Vec{.3, .3, .3}
+				refl: .diff
+			}, /* grnd */
+			Sphere{
+				rad: 110000
+				p: Vec{50, -110048.5, 0}
+				e: Vec{.9, .5, .05}.mult_s(4)
+				c: Vec{}
+				refl: .diff
+			}, /* horizon brightener */
+			Sphere{
+				rad: 4e+4
+				p: Vec{50, -4e+4 - 30, -3000}
+				e: Vec{}
+				c: Vec{.2, .2, .2}
+				refl: .diff
+			}, /* mountains */
+			Sphere{
+				rad: 26.5
+				p: Vec{22, 26.5, 42}
+				e: Vec{}
+				c: Vec{1, 1, 1}.mult_s(.596)
+				refl: .spec
+			}, /* white Mirr */
+			Sphere{
+				rad: 13
+				p: Vec{75, 13, 82}
+				e: Vec{}
+				c: Vec{.96, .96, .96}.mult_s(.96)
+				refl: .refr
+			}, /* Glas */
+			Sphere{
+				rad: 22
+				p: Vec{87, 22, 24}
+				e: Vec{}
+				c: Vec{.6, .6, .6}.mult_s(.696)
+				refl: .refr
+			} /* Glas2 */,
+		],
+		[// scene 3 Psychedelic
+			Sphere{
+				rad: 150
+				p: Vec{50 + 75, 28, 62}
+				e: Vec{1, 1, 1}.mult_s(0e-3)
+				c: Vec{1, .9, .8}.mult_s(.93)
+				refl: .refr
+			},
+			Sphere{
+				rad: 28
+				p: Vec{50 + 5, -28, 62}
+				e: Vec{1, 1, 1}.mult_s(1e+1)
+				c: Vec{1, 1, 1}.mult_s(0)
+				refl: .diff
+			},
+			Sphere{
+				rad: 300
+				p: Vec{50, 28, 62}
+				e: Vec{1, 1, 1}.mult_s(0e-3)
+				c: Vec{1, 1, 1}.mult_s(.93)
+				refl: .spec
+			},
+		],
 	] // end of scene array
 )
 
@@ -326,7 +351,7 @@ fn intersect(r Ray, spheres &Sphere, nspheres int) (bool, f64, int) {
 			id = i
 		}
 	}
-	return (t < inf), t, id
+	return t < inf, t, id
 }
 
 // some casual random function, try to avoid the 0
@@ -365,7 +390,8 @@ const (
 //****************** main function for the radiance calculation *************
 fn radiance(r Ray, depthi int, scene_id int) Vec {
 	if depthi > 1024 {
-		eprintln('depthi: $depthi')
+		eprintln('depthi: ${depthi}')
+		eprintln('')
 		return Vec{}
 	}
 	mut depth := depthi // actual depth in the reflection tree
@@ -506,7 +532,10 @@ fn ray_trace(w int, h int, samps int, file_name string, scene_id int) Image {
 
 	// OpenMP injection point! #pragma omp parallel for schedule(dynamic, 1) shared(c)
 	for y := 0; y < h; y++ {
-		eprint('\rRendering (${samps * 4} spp) ${(100.0 * f64(y)) / (f64(h) - 1.0):5.2f}%')
+		if y & 7 == 0 || y + 1 == h {
+			term.cursor_up(1)
+			eprintln('Rendering (${samps * 4} spp) ${(100.0 * f64(y)) / (f64(h) - 1.0):5.2f}%')
+		}
 		for x in 0 .. w {
 			i := (h - y - 1) * w + x
 			mut ivec := unsafe { &image.data[i] }
@@ -566,13 +595,15 @@ fn main() {
 
 	t1 := time.ticks()
 
+	eprintln('Path tracing samples: ${samples}, file_name: ${file_name}, scene_id: ${scene_id}, width: ${width}, height: ${height}')
+	eprintln('')
 	image := ray_trace(width, height, samples, file_name, scene_id)
 	t2 := time.ticks()
 
-	eprintln('\nRendering finished. Took: ${(t2 - t1):5}ms')
+	eprintln('Rendering finished. Took: ${(t2 - t1):5}ms')
 
 	image.save_as_ppm(file_name)
 	t3 := time.ticks()
 
-	eprintln('Image saved as [$file_name]. Took: ${(t3 - t2):5}ms')
+	eprintln('Image saved as [${file_name}]. Took: ${(t3 - t2):5}ms')
 }

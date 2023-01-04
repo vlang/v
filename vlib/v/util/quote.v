@@ -2,96 +2,129 @@ module util
 
 import strings
 
-const (
-	invalid_escapes = ['(', '{', '$', '`', '.']
-)
+const invalid_escapes = r'({$`.'.bytes()
 
+const backslash = 92
+
+const backslash_r = 13
+
+const backslash_n = 10
+
+const double_quote = 34
+
+const double_escape = '\\\\'
+
+[direct_array_access]
 pub fn smart_quote(str string, raw bool) string {
 	len := str.len
 	if len == 0 {
-		return str
+		return ''
 	}
-	mut result := strings.new_builder(0)
+	if len < 256 {
+		mut is_pure := true
+		for i := 0; i < len; i++ {
+			ch := u8(str[i])
+			if (ch >= 37 && ch <= 90) || (ch >= 95 && ch <= 126)
+				|| (ch in [` `, `!`, `#`, `[`, `]`]) {
+				// safe punctuation + digits + big latin letters,
+				// small latin letters + more safe punctuation,
+				// important punctuation exceptions, that are not
+				// placed conveniently in a consequitive span in
+				// the ASCII table.
+				continue
+			}
+			is_pure = false
+			break
+		}
+		if is_pure {
+			return str
+		}
+	}
+	// ensure there is enough space for the potential expansion of several \\ or \n
+	mut result := strings.new_builder(len + 10)
 	mut pos := -1
-	mut last := ''
-	// TODO: This should be a single char?
-	mut next := ''
+	mut last := u8(0)
+	mut current := u8(0)
+	mut next := u8(0)
 	mut skip_next := false
 	for {
-		pos = pos + 1
+		pos++
 		if skip_next {
 			skip_next = false
-			pos = pos + 1
+			pos++
 		}
 		if pos >= len {
 			break
 		}
+		last = current
+		current = str[pos]
 		if pos + 1 < len {
-			unsafe {
-				next = str.str[pos + 1].ascii_str()
-			}
+			next = str[pos + 1]
+		} else {
+			next = 0
 		}
-		mut current := str
-		mut toadd := str
-		if len > 1 {
-			unsafe {
-				current = str.str[pos].ascii_str()
-			}
-			toadd = current
+		if current == util.double_quote {
+			current = 0
+			result.write_u8(util.backslash)
+			result.write_u8(util.double_quote)
+			continue
 		}
-		// double quote
-		if current == '"' {
-			toadd = '\\"'
-			current = ''
-		}
-		if current == '\\' {
+		if current == util.backslash {
 			if raw {
-				toadd = '\\\\'
-			} else {
+				result.write_string(util.double_escape)
+				continue
+			}
+			if next == util.backslash {
 				// escaped backslash - keep as is
-				if next == '\\' {
-					toadd = '\\\\'
+				current = 0
+				skip_next = true
+				result.write_string(util.double_escape)
+				continue
+			}
+			if next != 0 {
+				if raw {
 					skip_next = true
-				} else if next != '' {
-					if raw {
-						toadd = '\\\\' + next
-						skip_next = true
-					}
-					// keep all valid escape sequences
-					else if next !in util.invalid_escapes {
-						toadd = '\\' + next
-						skip_next = true
-					} else {
-						toadd = next
-						skip_next = true
-					}
+					result.write_string(util.double_escape)
+					continue
+				}
+				if next in util.invalid_escapes {
+					current = 0
+					skip_next = true
+					result.write_u8(next)
+					continue
+				}
+				// keep all valid escape sequences
+				skip_next = true
+				result.write_u8(current)
+				result.write_u8(next)
+				current = 0
+				continue
+			}
+		}
+		if current == util.backslash_n {
+			// keep newlines in string
+			current = 0
+			result.write_u8(util.backslash)
+			result.write_u8(`n`)
+			continue
+		}
+		if current == util.backslash_r && next == util.backslash_n {
+			result.write_u8(current)
+			result.write_u8(next)
+			current = 0
+			skip_next = true
+			continue
+		}
+		if !raw {
+			if current == `$` {
+				if last == util.backslash {
+					result.write_u8(last)
+					result.write_u8(current)
+					continue
 				}
 			}
 		}
-		// keep newlines in string
-		if current == '\n' {
-			toadd = '\\n'
-			current = ''
-		} else if current == '\r' && next == '\n' {
-			toadd = '\r\n'
-			current = ''
-			skip_next = true
-		}
-		// Dolar sign
-		if !raw && current == '$' {
-			if last == '\\' {
-				toadd = r'\$'
-			}
-		}
-		// Windows style new line \r\n
-		if !raw && current == '\r' {
-			if next == '\n' {
-				skip_next = true
-				toadd = '\\n'
-			}
-		}
-		result.write_string(toadd)
-		last = current
+		result.write_u8(current)
 	}
 	return result.str()
 }

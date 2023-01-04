@@ -10,6 +10,12 @@ pub struct PubStructAttrTest {
 	bar int
 }
 
+struct StructFieldAttrTest {
+	foo string [attr: bar; attr0; attr1: 'foo']
+	bar int    [attr0: 123; attr1: true; attr2: false]
+	baz bool   [prefix.attr0] = false
+}
+
 [testing]
 enum EnumAttrTest {
 	one

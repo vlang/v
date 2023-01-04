@@ -1,0 +1,15 @@
+fn main() {
+	ch := chan f64{cap: 5}
+	a := 2
+	_ := ch.try_push(a)
+	_ := ch.try_push(2.5)
+	b := 2.5
+	_ := ch.try_pop(b)
+	// this should work:
+	_ := ch.try_push(b)
+	mut c := 7
+	_ := ch.try_pop(mut c)
+	mut x := 12.5
+	// this should work:
+	_ := ch.try_pop(mut x)
+}

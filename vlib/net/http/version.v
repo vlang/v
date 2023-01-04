@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -26,5 +26,15 @@ pub fn version_from_str(v string) Version {
 		'http/2.0' { Version.v2_0 }
 		'http/1.0' { Version.v1_0 }
 		else { Version.unknown }
+	}
+}
+
+// protos returns the version major and minor numbers
+pub fn (v Version) protos() (int, int) {
+	match v {
+		.v1_1 { return 1, 1 }
+		.v2_0 { return 2, 0 }
+		.v1_0 { return 1, 0 }
+		.unknown { return 0, 0 }
 	}
 }

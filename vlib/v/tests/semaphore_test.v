@@ -14,8 +14,8 @@ fn send_signals(mut sem sync.Semaphore, mut sem_end sync.Semaphore) {
 fn test_semaphores() {
 	mut sem := sync.new_semaphore()
 	mut sem_end := sync.new_semaphore()
-	go send_signals(mut sem, mut sem_end)
-	go send_signals(mut sem, mut sem_end)
+	spawn send_signals(mut sem, mut sem_end)
+	spawn send_signals(mut sem, mut sem_end)
 	for _ in 0 .. 2 * signals_per_thread {
 		sem.wait()
 	}

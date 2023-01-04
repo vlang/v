@@ -6,8 +6,8 @@ import rand
 
 struct App {
 mut:
-	gg      &gg.Context       = 0
-	ui      &objects.UIParams = 0
+	gg      &gg.Context       = unsafe { nil }
+	ui      &objects.UIParams = unsafe { nil }
 	rockets []objects.Rocket
 	frames  [][]objects.Rocket
 	// i thought about using a fixed fifo queue for the frames but the array
@@ -25,14 +25,14 @@ fn on_frame(mut app App) {
 	for mut frame in app.frames {
 		for mut rocket in frame {
 			if !rocket.exploded {
-				rocket.color.a = byte(f32_max(rocket.color.a - 8, 0))
+				rocket.color.a = u8(f32_max(rocket.color.a - 8, 0))
 				rocket.draw(mut app.gg)
 			}
 		}
 	}
 
 	// chance of firing new rocket
-	if rand.intn(30) == 0 {
+	if rand.intn(30) or { 0 } == 0 {
 		app.rockets << objects.new_rocket()
 	}
 	// simulating rockets
@@ -61,14 +61,18 @@ fn on_frame(mut app App) {
 
 fn on_event(e &gg.Event, mut app App) {
 	match e.typ {
-		.resized, .resumed { app.resize() }
-		.iconified { app.draw_flag = false }
-		.restored { 
+		.resized, .resumed {
+			app.resize()
+		}
+		.iconified {
+			app.draw_flag = false
+		}
+		.restored {
 			app.draw_flag = true
 			app.resize()
-		} 
+		}
 		else {
-			//println("Type ${e.typ}")
+			// println("Type ${e.typ}")
 		}
 	}
 }
@@ -80,18 +84,17 @@ fn (mut app App) resize() {
 		return
 	}
 	mut s := gg.dpi_scale()
-	
+
 	if s == 0.0 {
 		s = 1.0
-	}	
+	}
 	app.ui.dpi_scale = s
 	app.ui.width = size.width
 	app.ui.height = size.height
 }
 
-[console] // is needed for easier diagnostics on windows
 fn main() {
-	mut font_path := os.resource_abs_path(os.join_path('../assets/fonts/', 'RobotoMono-Regular.ttf'))
+	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
 	$if android {
 		font_path = 'fonts/RobotoMono-Regular.ttf'
 	}
@@ -104,7 +107,6 @@ fn main() {
 		height: app.ui.height
 		window_title: 'Fireworks!'
 		bg_color: gx.black
-		use_ortho: true
 		user_data: app
 		frame_fn: on_frame
 		event_fn: on_event

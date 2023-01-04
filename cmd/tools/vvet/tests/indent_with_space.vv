@@ -4,10 +4,21 @@ fn main() {
 
 fn block_comments() {
 	/* tab to indent the comment
-    spaces before
-    also spaces before
-    same here */
-    /* spaces for comment indentation (ouch)
-    and inside too
-    */
+  spaces before
+  also spaces before
+  same here */
+  /* spaces for comment indentation (ouch)
+  and inside too
+  */
+}
+
+fn space_inside_strings() {
+	// Plain strings
+  str := "Bad space usage for variable indentation.
+  Here it's fine.
+  Here too."
+  str2 := 'linebreak and space\n  inside'
+	// String interpolation
+  si1 := 'Error here $foo
+  and not here'
 }

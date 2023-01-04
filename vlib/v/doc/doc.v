@@ -39,8 +39,12 @@ pub enum Platform {
 	dragonfly
 	js // for interoperability in prefs.OS
 	android
+	termux // like android, but note that termux is running on devices natively, not cross compiling from other platforms
 	solaris
+	serenity
+	vinix
 	haiku
+	raw
 	cross // TODO: add functionality for v doc -os cross whenever possible
 }
 
@@ -58,11 +62,14 @@ pub fn platform_from_string(platform_str string) ?Platform {
 		'dragonfly' { return .dragonfly }
 		'js' { return .js }
 		'solaris' { return .solaris }
+		'serenity' { return .serenity }
+		'vinix' { return .vinix }
 		'android' { return .android }
+		'termux' { return .termux }
 		'haiku' { return .haiku }
-		'linux_or_macos', 'nix' { return .linux }
+		'nix' { return .linux }
 		'' { return .auto }
-		else { return error('vdoc: invalid platform `$platform_str`') }
+		else { return error('vdoc: invalid platform `${platform_str}`') }
 	}
 }
 
@@ -87,14 +94,14 @@ pub fn (sk SymbolKind) str() string {
 	}
 }
 
+[minify]
 pub struct Doc {
 pub mut:
 	prefs     &pref.Preferences = new_vdoc_preferences()
 	base_path string
-	table     &ast.Table      = &ast.Table{}
+	table     &ast.Table      = ast.new_table()
 	checker   checker.Checker = checker.Checker{
 		table: 0
-		cur_fn: 0
 		pref: 0
 	}
 	fmt                 fmt.Fmt
@@ -117,15 +124,16 @@ pub mut:
 	platform            Platform
 }
 
+[minify]
 pub struct DocNode {
 pub mut:
 	name        string
 	content     string
 	comments    []DocComment
-	pos         token.Position
+	pos         token.Pos
 	file_path   string
 	kind        SymbolKind
-	deprecated  bool
+	tags        []string
 	parent_name string
 	return_type string
 	children    []DocNode
@@ -186,7 +194,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 		platform: platform_from_filename(filename)
 	}
 	if (!node.is_pub && d.pub_only) || stmt is ast.GlobalDecl {
-		return error('symbol $node.name not public')
+		return error('symbol ${node.name} not public')
 	}
 	if node.name.starts_with(d.orig_mod_name + '.') {
 		node.name = node.name.all_after(d.orig_mod_name + '.')
@@ -255,7 +263,16 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 			node.kind = .typedef
 		}
 		ast.FnDecl {
-			node.deprecated = stmt.is_deprecated
+			if stmt.is_deprecated {
+				for sa in stmt.attrs {
+					if sa.name.starts_with('deprecated') {
+						node.tags << sa.str()
+					}
+				}
+			}
+			if stmt.is_unsafe {
+				node.tags << 'unsafe'
+			}
 			node.kind = .function
 			node.return_type = d.type_to_str(stmt.return_type)
 			if stmt.receiver.typ !in [0, 1] {
@@ -270,7 +287,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 						kind: .variable
 						parent_name: node.name
 						pos: param.pos
-						attrs: map{
+						attrs: {
 							'mut': param.is_mut.str()
 						}
 						return_type: d.type_to_str(param.typ)
@@ -306,7 +323,7 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 		}
 	}
 	mut preceeding_comments := []DocComment{}
-	mut imports_section := true
+	// mut imports_section := true
 	for sidx, stmt in stmts {
 		if stmt is ast.ExprStmt {
 			// Collect comments
@@ -338,7 +355,7 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 				d.head.comments << preceeding_comments
 			}
 			preceeding_comments = []
-			imports_section = false
+			// imports_section = false
 		}
 		if stmt is ast.Import {
 			continue
@@ -420,17 +437,14 @@ pub fn (mut d Doc) generate() ? {
 	// parse files
 	mut comments_mode := scanner.CommentsMode.skip_comments
 	if d.with_comments {
-		comments_mode = .toplevel_comments
-	}
-	global_scope := &ast.Scope{
-		parent: 0
+		comments_mode = .parse_comments
 	}
 	mut file_asts := []ast.File{}
 	for i, file_path in v_files {
 		if i == 0 {
 			d.parent_mod_name = get_parent_mod(d.base_path) or { '' }
 		}
-		file_asts << parser.parse_file(file_path, d.table, comments_mode, d.prefs, global_scope)
+		file_asts << parser.parse_file(file_path, d.table, comments_mode, d.prefs)
 	}
 	return d.file_asts(file_asts)
 }
@@ -452,7 +466,7 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 			// }
 			d.head = DocNode{
 				name: module_name
-				content: 'module $module_name'
+				content: 'module ${module_name}'
 				kind: .none_
 			}
 		} else if file_ast.mod.name != d.orig_mod_name {
@@ -483,7 +497,7 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 	if d.filter_symbol_names.len != 0 && d.contents.len != 0 {
 		for filter_name in d.filter_symbol_names {
 			if filter_name !in d.contents {
-				return error('vdoc: `$filter_name` symbol in module `$d.orig_mod_name` not found')
+				return error('vdoc: `${filter_name}` symbol in module `${d.orig_mod_name}` not found')
 			}
 		}
 	}
@@ -494,14 +508,18 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 // instance of `Doc` if it is successful. Otherwise, it will  throw an error.
 pub fn generate(input_path string, pub_only bool, with_comments bool, platform Platform, filter_symbol_names ...string) ?Doc {
 	if platform == .js {
-		return error('vdoc: Platform `$platform` is not supported.')
+		return error('vdoc: Platform `${platform}` is not supported.')
 	}
 	mut doc := new(input_path)
 	doc.pub_only = pub_only
 	doc.with_comments = with_comments
 	doc.filter_symbol_names = filter_symbol_names.filter(it.len != 0)
-	doc.prefs.os = if platform == .auto { pref.get_host_os() } else { pref.OS(int(platform)) }
-	doc.generate() ?
+	doc.prefs.os = if platform == .auto {
+		pref.get_host_os()
+	} else {
+		unsafe { pref.OS(int(platform)) }
+	}
+	doc.generate()?
 	return doc
 }
 
@@ -514,6 +532,6 @@ pub fn generate_with_pos(input_path string, filename string, pos int) ?Doc {
 	doc.with_pos = true
 	doc.filename = filename
 	doc.pos = pos
-	doc.generate() ?
+	doc.generate()?
 	return doc
 }

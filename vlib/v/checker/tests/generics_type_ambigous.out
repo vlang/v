@@ -1,6 +1,0 @@
-vlib/v/checker/tests/generics_type_ambigous.vv:7:19: error: inferred generic type `B` is ambigous got `int`, expected `string`
-    5 | 
-    6 | fn main() {
-    7 |   test(2, 2, "2", 2)
-      |                   ^
-    8 | }

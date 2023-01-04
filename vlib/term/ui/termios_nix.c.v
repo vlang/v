@@ -10,27 +10,18 @@ import time
 #include <sys/ioctl.h>
 #include <signal.h>
 
-fn C.tcgetattr(fd int, termios_p &C.termios) int
-
-fn C.tcsetattr(fd int, optional_actions int, termios_p &C.termios) int
-
-fn C.ioctl(fd int, request u64, arg voidptr) int
-
-struct C.termios {
-mut:
-	c_iflag u32
-	c_lflag u32
-	c_cc    [32]byte
-}
-
-struct C.winsize {
+pub struct C.winsize {
 	ws_row u16
 	ws_col u16
 }
 
-const (
-	termios_at_startup = get_termios()
-)
+fn C.tcgetattr(fd int, termios_p &C.termios) int
+
+fn C.tcsetattr(fd int, optional_actions int, const_termios_p &C.termios) int
+
+fn C.ioctl(fd int, request u64, arg voidptr) int
+
+const termios_at_startup = get_termios()
 
 [inline]
 fn get_termios() C.termios {
@@ -46,21 +37,26 @@ fn get_terminal_size() (u16, u16) {
 	return winsz.ws_row, winsz.ws_col
 }
 
+fn restore_terminal_state_signal(_ os.Signal) {
+	restore_terminal_state()
+}
+
 fn restore_terminal_state() {
 	termios_reset()
-	mut c := ctx_ptr
-	if c != 0 {
+	mut c := unsafe { ctx_ptr }
+	if unsafe { c != 0 } {
 		c.paused = true
 		load_title()
 	}
 	os.flush()
 }
 
-fn (mut ctx Context) termios_setup() ? {
+fn (mut ctx Context) termios_setup() ! {
 	// store the current title, so restore_terminal_state can get it back
 	save_title()
 
-	if !ctx.cfg.skip_init_checks && !(is_atty(C.STDIN_FILENO) != 0 && is_atty(C.STDOUT_FILENO) != 0) {
+	if !ctx.cfg.skip_init_checks && !(os.is_atty(C.STDIN_FILENO) != 0
+		&& os.is_atty(C.STDOUT_FILENO) != 0) {
 		return error('not running under a TTY')
 	}
 
@@ -69,11 +65,11 @@ fn (mut ctx Context) termios_setup() ? {
 	if ctx.cfg.capture_events {
 		// Set raw input mode by unsetting ICANON and ECHO,
 		// as well as disable e.g. ctrl+c and ctrl.z
-		termios.c_iflag &= ~u32(C.IGNBRK | C.BRKINT | C.PARMRK | C.IXON)
-		termios.c_lflag &= ~u32(C.ICANON | C.ISIG | C.ECHO | C.IEXTEN | C.TOSTOP)
+		termios.c_iflag &= ~(C.IGNBRK | C.BRKINT | C.PARMRK | C.IXON)
+		termios.c_lflag &= ~(C.ICANON | C.ISIG | C.ECHO | C.IEXTEN | C.TOSTOP)
 	} else {
 		// Set raw input mode by unsetting ICANON and ECHO
-		termios.c_lflag &= ~u32(C.ICANON | C.ECHO)
+		termios.c_lflag &= ~(C.ICANON | C.ECHO)
 	}
 
 	if ctx.cfg.hide_cursor {
@@ -82,7 +78,8 @@ fn (mut ctx Context) termios_setup() ? {
 	}
 
 	if ctx.cfg.window_title != '' {
-		print('\x1b]0;$ctx.cfg.window_title\x07')
+		print('\x1b]0;${ctx.cfg.window_title}\x07')
+		flush_stdout()
 	}
 
 	if !ctx.cfg.skip_init_checks {
@@ -93,7 +90,8 @@ fn (mut ctx Context) termios_setup() ? {
 		C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
 		// feature-test the SU spec
 		sx, sy := get_cursor_position()
-		print('$bsu$esu')
+		print('${bsu}${esu}')
+		flush_stdout()
 		ex, ey := get_cursor_position()
 		if sx == ex && sy == ey {
 			// the terminal either ignored or handled the sequence properly, enable SU
@@ -112,20 +110,23 @@ fn (mut ctx Context) termios_setup() ? {
 	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
 	// enable mouse input
 	print('\x1b[?1003h\x1b[?1006h')
+	flush_stdout()
 	if ctx.cfg.use_alternate_buffer {
 		// switch to the alternate buffer
 		print('\x1b[?1049h')
+		flush_stdout()
 		// clear the terminal and set the cursor to the origin
 		print('\x1b[2J\x1b[3J\x1b[1;1H')
+		flush_stdout()
 	}
 	ctx.window_height, ctx.window_width = get_terminal_size()
 
 	// Reset console on exit
 	C.atexit(restore_terminal_state)
-	os.signal(C.SIGTSTP, restore_terminal_state)
-	os.signal(C.SIGCONT, fn () {
-		mut c := ctx_ptr
-		if c != 0 {
+	os.signal_opt(.tstp, restore_terminal_state_signal) or {}
+	os.signal_opt(.cont, fn (_ os.Signal) {
+		mut c := unsafe { ctx_ptr }
+		if unsafe { c != 0 } {
 			c.termios_setup() or { panic(err) }
 			c.window_height, c.window_width = get_terminal_size()
 			mut event := &Event{
@@ -136,20 +137,20 @@ fn (mut ctx Context) termios_setup() ? {
 			c.paused = false
 			c.event(event)
 		}
-	})
+	}) or {}
 	for code in ctx.cfg.reset {
-		os.signal(code, fn () {
-			mut c := ctx_ptr
-			if c != 0 {
+		os.signal_opt(code, fn (_ os.Signal) {
+			mut c := unsafe { ctx_ptr }
+			if unsafe { c != 0 } {
 				c.cleanup()
 			}
 			exit(0)
-		})
+		}) or {}
 	}
 
-	os.signal(C.SIGWINCH, fn () {
-		mut c := ctx_ptr
-		if c != 0 {
+	os.signal_opt(.winch, fn (_ os.Signal) {
+		mut c := unsafe { ctx_ptr }
+		if unsafe { c != 0 } {
 			c.window_height, c.window_width = get_terminal_size()
 
 			mut event := &Event{
@@ -159,16 +160,17 @@ fn (mut ctx Context) termios_setup() ? {
 			}
 			c.event(event)
 		}
-	})
+	}) or {}
 
 	os.flush()
 }
 
 fn get_cursor_position() (int, int) {
 	print('\033[6n')
+	flush_stdout()
 	mut s := ''
 	unsafe {
-		buf := malloc(25)
+		buf := malloc_noscan(25)
 		len := C.read(C.STDIN_FILENO, buf, 24)
 		buf[len] = 0
 		s = tos(buf, len)
@@ -187,11 +189,13 @@ fn supports_truecolor() bool {
 	}
 	// set the bg color to some arbirtrary value (#010203), assumed not to be the default
 	print('\x1b[48:2:1:2:3m')
+	flush_stdout()
 	// andquery the current color
 	print('\x1bP\$qm\x1b\\')
+	flush_stdout()
 	mut s := ''
 	unsafe {
-		buf := malloc(25)
+		buf := malloc_noscan(25)
 		len := C.read(C.STDIN_FILENO, buf, 24)
 		buf[len] = 0
 		s = tos(buf, len)
@@ -203,8 +207,9 @@ fn termios_reset() {
 	// C.TCSANOW ??
 	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &ui.termios_at_startup)
 	print('\x1b[?1003l\x1b[?1006l\x1b[?25h')
+	flush_stdout()
 	c := ctx_ptr
-	if c != 0 && c.cfg.use_alternate_buffer {
+	if unsafe { c != 0 } && c.cfg.use_alternate_buffer {
 		print('\x1b[?1049l')
 	}
 	os.flush()
@@ -228,9 +233,9 @@ fn (mut ctx Context) termios_loop() {
 		}
 		if !ctx.paused {
 			sw.restart()
-			if ctx.cfg.event_fn != voidptr(0) {
+			if ctx.cfg.event_fn != unsafe { nil } {
 				unsafe {
-					len := C.read(C.STDIN_FILENO, byteptr(ctx.read_buf.data) + ctx.read_buf.len,
+					len := C.read(C.STDIN_FILENO, &u8(ctx.read_buf.data) + ctx.read_buf.len,
 						ctx.read_buf.cap - ctx.read_buf.len)
 					ctx.resize_arr(ctx.read_buf.len + len)
 				}
@@ -262,10 +267,16 @@ fn (mut ctx Context) parse_events() {
 			event = e
 			ctx.shift(len)
 		} else {
-			event = single_char(ctx.read_buf.bytestr())
-			ctx.shift(1)
+			if ctx.read_all_bytes {
+				e, len := multi_char(ctx.read_buf.bytestr())
+				event = e
+				ctx.shift(len)
+			} else {
+				event = single_char(ctx.read_buf.bytestr())
+				ctx.shift(1)
+			}
 		}
-		if event != 0 {
+		if unsafe { event != 0 } {
 			ctx.event(event)
 			nr_iters = 0
 		}
@@ -278,7 +289,48 @@ fn single_char(buf string) &Event {
 	mut event := &Event{
 		typ: .key_down
 		ascii: ch
-		code: KeyCode(ch)
+		code: unsafe { KeyCode(ch) }
+		utf8: ch.ascii_str()
+	}
+
+	match ch {
+		// special handling for `ctrl + letter`
+		// TODO: Fix assoc in V and remove this workaround :/
+		// 1  ... 26 { event = Event{ ...event, code: KeyCode(96 | ch), modifiers: .ctrl  } }
+		// 65 ... 90 { event = Event{ ...event, code: KeyCode(32 | ch), modifiers: .shift } }
+		// The bit `or`s here are really just `+`'s, just written in this way for a tiny performance improvement
+		// don't treat tab, enter as ctrl+i, ctrl+j
+		1...8, 11...26 {
+			event = &Event{
+				typ: event.typ
+				ascii: event.ascii
+				utf8: event.utf8
+				code: unsafe { KeyCode(96 | ch) }
+				modifiers: .ctrl
+			}
+		}
+		65...90 {
+			event = &Event{
+				typ: event.typ
+				ascii: event.ascii
+				utf8: event.utf8
+				code: unsafe { KeyCode(32 | ch) }
+				modifiers: .shift
+			}
+		}
+		else {}
+	}
+
+	return event
+}
+
+fn multi_char(buf string) (&Event, int) {
+	ch := buf[0]
+
+	mut event := &Event{
+		typ: .key_down
+		ascii: ch
+		code: unsafe { KeyCode(ch) }
 		utf8: buf
 	}
 
@@ -294,7 +346,7 @@ fn single_char(buf string) &Event {
 				typ: event.typ
 				ascii: event.ascii
 				utf8: event.utf8
-				code: KeyCode(96 | ch)
+				code: unsafe { KeyCode(96 | ch) }
 				modifiers: .ctrl
 			}
 		}
@@ -303,14 +355,14 @@ fn single_char(buf string) &Event {
 				typ: event.typ
 				ascii: event.ascii
 				utf8: event.utf8
-				code: KeyCode(32 | ch)
+				code: unsafe { KeyCode(32 | ch) }
 				modifiers: .shift
 			}
 		}
 		else {}
 	}
 
-	return event
+	return event, buf.len
 }
 
 // Gets an entire, independent escape sequence from the buffer
@@ -395,7 +447,7 @@ fn escape_sequence(buf_ string) (&Event, int) {
 		match typ {
 			0...31 {
 				last := buf[buf.len - 1]
-				button := if lo < 3 { MouseButton(lo + 1) } else { MouseButton.unknown }
+				button := if lo < 3 { unsafe { MouseButton(lo + 1) } } else { MouseButton.unknown }
 				event := if last == `m` || lo == 3 {
 					EventType.mouse_up
 				} else {
@@ -413,7 +465,7 @@ fn escape_sequence(buf_ string) (&Event, int) {
 			}
 			32...63 {
 				button, event := if lo < 3 {
-					MouseButton(lo + 1), EventType.mouse_drag
+					unsafe { MouseButton(lo + 1), EventType.mouse_drag }
 				} else {
 					MouseButton.unknown, EventType.mouse_move
 				}

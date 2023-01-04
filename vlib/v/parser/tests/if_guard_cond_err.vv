@@ -1,0 +1,28 @@
+import os
+import flag
+
+const version = "v0.1.0"
+
+// getting command line options and arguments
+// returns the arguments
+fn get_args() ?[]string {
+	mut fp := flag.new_flag_parser(os.args)
+	fp.application('ticker')
+	fp.version(version)
+	fp.description('A CLI yahoo ticker app')
+	fp.skip_executable()
+	fp.usage_example('GOOG AAPL')
+	_ := fp.bool('version', `v`, false, 'version information.')
+	if args := fp.finalize() && args.len > 0 {
+		return args
+	} else {
+		eprintln(err.msg())
+		println(fp.usage())
+		return none
+	}
+}
+
+fn main() {
+	tickers := get_args() or { return }
+	println(tickers)
+}

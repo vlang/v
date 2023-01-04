@@ -1,0 +1,20 @@
+struct Data {
+mut:
+	n    int
+	b    bool
+	f1   fn (voidptr)
+	f2   fn (...voidptr)
+	data &Data
+}
+
+fn main() {
+	mut data := Data{
+		n: true
+		b: 0
+		f1: fn (v ...voidptr) {}
+		f2: fn (v voidptr) {}
+		data: true
+	}
+
+	data.n = true
+}

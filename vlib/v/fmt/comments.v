@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module fmt
@@ -16,6 +16,7 @@ pub enum CommentsLevel {
 // - level:  either .keep (don't indent), or .indent (increment indentation)
 // - iembed: a /* ... */ block comment used inside expressions; // comments the whole line
 // - prev_line: the line number of the previous token to save linebreaks
+[minify; params]
 pub struct CommentsOptions {
 	has_nl    bool = true
 	inline    bool
@@ -25,6 +26,16 @@ pub struct CommentsOptions {
 }
 
 pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
+	if node.text.starts_with('\x01 vfmt on') {
+		f.vfmt_on(node.pos.line_nr)
+	}
+	defer {
+		// ensure that the `vfmt off` comment itself was sent to the output,
+		// by defering the check for that state transition:
+		if node.text.starts_with('\x01 vfmt off') {
+			f.vfmt_off(node.pos.line_nr)
+		}
+	}
 	// Shebang in .vsh files
 	if node.text.starts_with('#!') {
 		f.writeln(node.text)
@@ -40,11 +51,11 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 			f.writeln(x)
 			f.write('*/')
 		} else {
-			f.write('/* $x */')
+			f.write('/* ${x} */')
 		}
 	} else if !node.text.contains('\n') {
 		is_separate_line := !options.inline || node.text.starts_with('\x01')
-		mut s := node.text.trim_left('\x01')
+		mut s := node.text.trim_left('\x01').trim_right(' ')
 		mut out_s := '//'
 		if s != '' {
 			if is_char_alphanumeric(s[0]) {
@@ -53,7 +64,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 			out_s += s
 		}
 		if !is_separate_line && f.indent > 0 {
-			f.remove_new_line({}) // delete the generated \n
+			f.remove_new_line() // delete the generated \n
 			f.write(' ')
 		}
 		f.write(out_s)
@@ -67,13 +78,13 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 			f.writeln('')
 		}
 		for line in lines {
-			f.writeln(line)
+			f.writeln(line.trim_right(' '))
 			f.empty_line = false
 		}
 		if end_break {
 			f.empty_line = true
 		} else {
-			f.remove_new_line({})
+			f.remove_new_line()
 		}
 		f.write('*/')
 	}
@@ -85,11 +96,12 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 pub fn (mut f Fmt) comments(comments []ast.Comment, options CommentsOptions) {
 	mut prev_line := options.prev_line
 	for i, c in comments {
-		if options.prev_line > -1 && ((c.pos.line_nr > prev_line && f.out.last_n(1) != '\n')
-			|| (c.pos.line_nr > prev_line + 1 && f.out.last_n(2) != '\n\n')) {
+		if options.prev_line > -1
+			&& ((c.pos.line_nr > prev_line && f.out.len > 1 && f.out.last_n(1) != '\n')
+			|| (c.pos.line_nr > prev_line + 1 && f.out.len > 2 && f.out.last_n(2) != '\n\n')) {
 			f.writeln('')
 		}
-		if !f.out.last_n(1)[0].is_space() {
+		if f.out.len > 1 && !f.out.last_n(1)[0].is_space() {
 			f.write(' ')
 		}
 		f.comment(c, options)
@@ -136,6 +148,6 @@ pub fn (mut f Fmt) import_comments(comments []ast.Comment, options CommentsOptio
 	}
 }
 
-fn is_char_alphanumeric(c byte) bool {
+fn is_char_alphanumeric(c u8) bool {
 	return c.is_letter() || c.is_digit()
 }

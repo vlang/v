@@ -1,0 +1,10 @@
+math.sinf(50.0)
+println(1+math.sinf(50.0))
+fn test() { println('foo') } fn test2(a int) { println(a) }
+test()
+test2(123)
+===output===
+-0.2623749
+0.7376251
+foo
+123

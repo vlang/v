@@ -1,6 +1,6 @@
 struct LeakStruct {
 mut:
-	some_bytes []byte
+	some_bytes []u8
 }
 
 fn (mut l LeakStruct) free() {
@@ -11,7 +11,7 @@ fn (mut l LeakStruct) free() {
 
 fn main() {
 	z := &LeakStruct{
-		some_bytes: []byte{len: 1000}
+		some_bytes: []u8{len: 1000}
 	}
 	println(z.some_bytes.len)
 }

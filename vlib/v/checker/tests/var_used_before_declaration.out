@@ -1,6 +1,6 @@
-vlib/v/checker/tests/var_used_before_declaration.vv:2:13: error: undefined variable `x` (used before declaration) 
+vlib/v/checker/tests/var_used_before_declaration.vv:2:13: error: undefined variable `x` (used before declaration)
     1 | fn main() {
     2 |     println(x)
       |             ^
     3 |     x := 'hello v'
-    4 | }
+    4 |    _ = x

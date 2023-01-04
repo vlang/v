@@ -21,9 +21,11 @@ pub fn (mut cb Clipboard) clear_all() {
 	cb.clear()
 }
 
-// destroy destroys the clipboard and free it's resources.
+// destroy destroys the clipboard and frees its resources.
 pub fn (mut cb Clipboard) destroy() {
-	cb.free()
+	unsafe {
+		cb.free()
+	}
 }
 
 // check_ownership returns `true` if the `Clipboard` has the content ownership.

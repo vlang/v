@@ -1,0 +1,7 @@
+type FnA = fn()
+type FnB = fn(int)
+
+fn main(){
+	f := fn(){}
+	println(FnB(f))  // not FnA()
+}

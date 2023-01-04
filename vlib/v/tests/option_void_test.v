@@ -5,7 +5,7 @@ fn foo() ? {
 fn test_optional_void() {
 	foo() or {
 		println(err)
-		assert err.msg == 'something'
+		assert err.msg() == 'something'
 		return
 	}
 }
@@ -17,7 +17,7 @@ fn bar() ? {
 fn test_optional_void_only_question() {
 	bar() or {
 		println(err)
-		assert err.msg == 'bar error'
+		assert err.msg() == 'bar error'
 		return
 	}
 }
@@ -38,12 +38,12 @@ fn option_void(a int) ? {
 fn test_optional_void_with_return() {
 	option_void(0) or {
 		println(err)
-		assert err.msg == 'zero error'
+		assert err.msg() == 'zero error'
 		return
 	}
 	option_void(-1) or {
 		println(err)
-		assert err.msg == 'zero error'
+		assert err.msg() == 'zero error'
 		return
 	}
 	assert true

@@ -1,0 +1,13 @@
+module main
+
+type Any = string | u8
+
+fn test(args ...Any) {
+	println('args $args')
+}
+
+fn main() {
+	mut args := []string{cap: 3}
+	args << ['test', 'test1', 'test2']
+	test(...args)
+}

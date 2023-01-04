@@ -76,7 +76,7 @@ fn main() {
 
 // the event handler
 fn on_error(receiver voidptr, e &Error, work &Work) {
-	println('error occured on ${work.hours}. Error: $e.message')
+	println('error occured on ${work.hours}. Error: ${e.message}')
 }
 ```
 
@@ -85,18 +85,22 @@ fn on_error(receiver voidptr, e &Error, work &Work) {
 ```v oksyntax
 module main
 
+import eventbus
+
+const eb = eventbus.new()
+
 struct Work {
 	hours int
 }
 
-struct Error {
+struct AnError {
 	message string
 }
 
 fn do_work() {
 	work := Work{20}
 	// get a mutable Params instance & put some data into it
-	error := &Error{'Error: no internet connection.'}
+	error := &AnError{'Error: no internet connection.'}
 	// publish the event
 	eb.publish('error', work, error)
 }

@@ -3,4 +3,5 @@ vlib/v/checker/tests/sum_type_assign_non_variant_err.vv:11:6: error: cannot assi
    10 |     mut w := Stmt(AnotherThing{})
    11 |     w = IfExpr{}
       |         ~~~~~~~~
-   12 | }
+   12 |     _ = w
+   13 | }

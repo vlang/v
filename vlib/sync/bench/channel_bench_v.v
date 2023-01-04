@@ -7,7 +7,6 @@
 // main thread where the total sum is compare to the expected value.
 import time
 import os
-import sync
 
 fn do_rec(ch chan int, resch chan i64, n int) {
 	mut sum := i64(0)
@@ -33,22 +32,24 @@ fn main() {
 	nrec := os.args[2].int()
 	buflen := os.args[3].int()
 	nobj := os.args[4].int()
-	stopwatch := time.new_stopwatch({})
+	stopwatch := time.new_stopwatch()
 	ch := chan int{cap: buflen}
 	resch := chan i64{}
 	mut no := nobj
 	for i in 0 .. nrec {
 		n := no / (nrec - i)
-		go do_rec(ch, resch, n)
+		spawn do_rec(ch, resch, n)
 		no -= n
 	}
-	assert no == 0
+	$if debug {
+		assert no == 0
+	}
 	no = nobj
 	for i in 0 .. nsend {
 		n := no / (nsend - i)
 		end := no
 		no -= n
-		go do_send(ch, no, end)
+		spawn do_send(ch, no, end)
 	}
 	assert no == 0
 	mut sum := i64(0)
@@ -57,9 +58,9 @@ fn main() {
 	}
 	elapsed := stopwatch.elapsed()
 	rate := f64(nobj) / elapsed * time.microsecond
-	println('$nobj objects in ${f64(elapsed) / time.second} s (${rate:.2f} objs/µs)')
+	println('${nobj} objects in ${f64(elapsed) / time.second} s (${rate:.2f} objs/µs)')
 	// use sum formula by Gauß to calculate the expected result
 	expected_sum := i64(nobj) * (nobj - 1) / 2
-	println('got: $sum, expected: $expected_sum')
+	println('got: ${sum}, expected: ${expected_sum}')
 	assert sum == expected_sum
 }

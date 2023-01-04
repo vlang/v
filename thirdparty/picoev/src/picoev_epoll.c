@@ -28,7 +28,13 @@
  */
 
 #include <errno.h>
+
+// tcc needs the pragmas, because it does not support yet
+// the __EPOLL_PACKED macro, defined to be __attribute__ ((__packed__))
+#pragma pack(push, 1)
 #include <sys/epoll.h>
+#pragma pack(pop)
+
 #include <unistd.h>
 #include "picoev.h"
 

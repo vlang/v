@@ -27,7 +27,7 @@ fn test_sumtype_assign() {
 		text: 'baz'
 	}
 	mut results := []string{}
-	for a in arr {
+	for mut a in arr {
 		match mut a {
 			Bar, Baz {
 				a.text = 'I am ' + a.text
@@ -36,7 +36,7 @@ fn test_sumtype_assign() {
 			}
 			Foo {
 				a.num = 11
-				results << 'Num is $a.num'
+				results << 'Num is ${a.num}'
 			}
 		}
 	}

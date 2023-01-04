@@ -7,14 +7,14 @@ const (
 fn test_sorting_simple() {
 	mut a := unsorted.clone()
 	a.sort()
-	eprintln(' a: $a')
+	println(' a: ${a}')
 	assert a == sorted_asc
 }
 
 fn test_sorting_with_condition_expression() {
 	mut a := unsorted.clone()
 	a.sort(a > b)
-	eprintln(' a: $a')
+	println(' a: ${a}')
 	assert a == sorted_desc
 }
 
@@ -44,7 +44,7 @@ fn mysort(mut a []int) {
 fn test_sorting_by_passing_a_mut_array_to_a_function() {
 	mut a := unsorted.clone()
 	mysort(mut a)
-	eprintln(' a: $a')
+	println(' a: ${a}')
 	assert a == sorted_asc
 }
 
@@ -52,16 +52,33 @@ fn test_sorting_by_passing_a_mut_array_to_a_function() {
 fn test_sorting_by_passing_an_anonymous_sorting_function() {
 	mut a := unsorted
 	a.sort(fn(a &int, b &int) int {	return *b - *a })
-	eprintln(' a: $a')
+	println(' a: $a')
 	assert a == sort_desc
 }
 */
 fn test_sorting_u64s() {
 	mut a := [u64(3), 2, 1, 9, 0, 8]
 	a.sort()
-	eprintln(' a: $a')
+	println(' a: ${a}')
 	assert a == [u64(0), 1, 2, 3, 8, 9]
 	a.sort(a > b)
-	eprintln(' a: $a')
+	println(' a: ${a}')
 	assert a == [u64(9), 8, 3, 2, 1, 0]
+}
+
+struct User {
+	age  int
+	name string
+}
+
+fn g(mut users []User) {
+	users.sort(a.name > b.name)
+}
+
+fn f(mut users []User) {
+	users.sort(a.name < b.name)
+}
+
+fn z(mut users []User) {
+	users.sort(a.name < b.name)
 }

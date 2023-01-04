@@ -32,7 +32,7 @@ fn f1(ch1 chan int, ch2 chan St, ch3 chan int, ch4 chan int, ch5 chan int, mut s
 		ch5 <- getint() {
 			a = 9
 		}
-		> 300 * time.millisecond {
+		300 * time.millisecond {
 			a = 3
 		}
 	}
@@ -79,20 +79,20 @@ fn test_select_blocks() {
 	}
 	assert r == true
 	assert t == true
-	go f2(ch2, ch3, mut sem)
+	spawn f2(ch2, ch3, mut sem)
 	n := <-ch3
 	assert n == 23
 	ch2 <- St{
 		a: 13
 	}
 	sem.wait()
-	stopwatch := time.new_stopwatch({})
-	go f1(ch1, ch2, ch3, ch4, ch5, mut sem)
+	stopwatch := time.new_stopwatch()
+	spawn f1(ch1, ch2, ch3, ch4, ch5, mut sem)
 	sem.wait()
 	elapsed_ms := f64(stopwatch.elapsed()) / time.millisecond
 	// https://docs.microsoft.com/en-us/windows-hardware/drivers/kernel/high-resolution-timers
-	// > For example, for Windows running on an x86 processor, the default interval between 
-	// > system clock ticks is typically about 15 milliseconds, and the minimum interval 
+	// > For example, for Windows running on an x86 processor, the default interval between
+	// > system clock ticks is typically about 15 milliseconds, and the minimum interval
 	// > between system clock ticks is about 1 millisecond.
 	assert elapsed_ms >= 280.0 // 300 - (15ms + 5ms just in case)
 

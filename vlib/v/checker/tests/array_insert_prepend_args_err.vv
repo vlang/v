@@ -1,0 +1,13 @@
+struct Node {
+mut:
+	child []Node
+}
+
+fn main() {
+	tree := Node{}
+	tree.child.insert(Node{})
+	tree.child.insert(2.1, Node{})
+	tree.child.insert('abc', Node{})
+	tree.child.insert(Node{}, 2)
+	tree.child.prepend()
+}

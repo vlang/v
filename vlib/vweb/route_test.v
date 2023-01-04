@@ -12,16 +12,16 @@ fn (rp RoutePair) test() ?[]string {
 }
 
 fn (rp RoutePair) test_match() {
-	rp.test() or { panic('should match: $rp') }
+	rp.test() or { panic('should match: ${rp}') }
 }
 
 fn (rp RoutePair) test_no_match() {
 	rp.test() or { return }
-	panic('should not match: $rp')
+	panic('should not match: ${rp}')
 }
 
 fn (rp RoutePair) test_param(expected []string) {
-	res := rp.test() or { panic('should match: $rp') }
+	res := rp.test() or { panic('should match: ${rp}') }
 	assert res == expected
 }
 
@@ -54,6 +54,10 @@ fn test_route_no_match() {
 		RoutePair{
 			url: '/a/b/c/d'
 			route: '/a/b/c'
+		},
+		RoutePair{
+			url: '/a/b/c'
+			route: '/'
 		},
 	]
 	for test in tests {
@@ -263,4 +267,16 @@ fn test_route_params_array() {
 		url: '/one/two/three/d/e'
 		route: '/:a/:b/:c...'
 	}.test_param(['one', 'two', 'three/d/e'])
+}
+
+fn test_route_index_path() {
+	RoutePair{
+		url: '/'
+		route: '/:path...'
+	}.test_param(['/'])
+
+	RoutePair{
+		url: '/foo/bar'
+		route: '/:path...'
+	}.test_param(['/foo/bar'])
 }

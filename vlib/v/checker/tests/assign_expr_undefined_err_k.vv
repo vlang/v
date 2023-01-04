@@ -1,0 +1,4 @@
+fn main() {
+	mut a := {'one': a}
+	println(a)
+}

@@ -1,11 +1,11 @@
-vlib/v/checker/tests/unsafe_c_calls_should_be_checked.vv:3:16: error: function `C.malloc` must be called from an `unsafe` block
-    1 |
+vlib/v/checker/tests/unsafe_c_calls_should_be_checked.vv:3:16: warning: function `C.malloc` must be called from an `unsafe` block
+    1 | 
     2 | fn test_c() {
     3 |     mut p := C.malloc(4)
       |                ~~~~~~~~~
     4 |     s := 'hope'
     5 |     C.memcpy(p, s.str, 4)
-vlib/v/checker/tests/unsafe_c_calls_should_be_checked.vv:5:7: error: function `C.memcpy` must be called from an `unsafe` block
+vlib/v/checker/tests/unsafe_c_calls_should_be_checked.vv:5:7: warning: function `C.memcpy` must be called from an `unsafe` block
     3 |     mut p := C.malloc(4)
     4 |     s := 'hope'
     5 |     C.memcpy(p, s.str, 4)

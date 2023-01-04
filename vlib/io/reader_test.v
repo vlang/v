@@ -2,16 +2,16 @@ module io
 
 struct Buf {
 pub:
-	bytes []byte
+	bytes []u8
 mut:
 	i int
 }
 
-fn (mut b Buf) read(mut buf []byte) ?int {
+fn (mut b Buf) read(mut buf []u8) !int {
 	if !(b.i < b.bytes.len) {
-		return none
+		return Eof{}
 	}
-	n := copy(buf, b.bytes[b.i..])
+	n := copy(mut buf, b.bytes[b.i..])
 	b.i += n
 	return n
 }
@@ -44,11 +44,11 @@ mut:
 	place int
 }
 
-fn (mut s StringReader) read(mut buf []byte) ?int {
+fn (mut s StringReader) read(mut buf []u8) !int {
 	if s.place >= s.text.len {
-		return none
+		return Eof{}
 	}
-	read := copy(buf, s.text[s.place..].bytes())
+	read := copy(mut buf, s.text[s.place..].bytes())
 	s.place += read
 	return read
 }
@@ -62,7 +62,7 @@ fn test_stringreader() {
 	mut s := StringReader{
 		text: text
 	}
-	mut r := new_buffered_reader(reader: make_reader(s))
+	mut r := new_buffered_reader(reader: s)
 	for i := 0; true; i++ {
 		if _ := r.read_line() {
 		} else {
@@ -87,7 +87,7 @@ fn test_stringreader2() {
 	mut s := StringReader{
 		text: text
 	}
-	mut r := new_buffered_reader(reader: make_reader(s))
+	mut r := new_buffered_reader(reader: s)
 	for i := 0; true; i++ {
 		if _ := r.read_line() {
 		} else {
@@ -98,7 +98,7 @@ fn test_stringreader2() {
 	if _ := r.read_line() {
 		assert false
 	}
-	leftover := read_all(reader: make_reader(r)) or {
+	leftover := read_all(reader: r) or {
 		assert false
 		panic('bad')
 	}
@@ -112,7 +112,7 @@ fn test_leftover() {
 	mut s := StringReader{
 		text: text
 	}
-	mut r := new_buffered_reader(reader: make_reader(s))
+	mut r := new_buffered_reader(reader: s)
 	_ := r.read_line() or {
 		assert false
 		panic('bad')

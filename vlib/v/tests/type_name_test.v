@@ -1,4 +1,4 @@
-fn simple<T>(p T) string {
+fn simple[T](p T) string {
 	tname := T.name
 	assert tname == typeof(p).name
 	return tname

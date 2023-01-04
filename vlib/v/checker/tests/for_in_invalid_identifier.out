@@ -1,0 +1,13 @@
+vlib/v/checker/tests/for_in_invalid_identifier.vv:2:26: error: undefined ident: `s`
+    1 | fn main() {
+    2 |     for index, mut value in s.statements {
+      |                             ^
+    3 |         println('Hello $index $value')
+    4 |     }
+vlib/v/checker/tests/for_in_invalid_identifier.vv:3:26: error: no known default format for type `void`
+    1 | fn main() {
+    2 |     for index, mut value in s.statements {
+    3 |         println('Hello $index $value')
+      |                                ~~~~~
+    4 |     }
+    5 | }

@@ -1,7 +1,7 @@
 type Test = map[string]string
 
 fn test_index() {
-	t := Test(map{
+	t := Test({
 		'c': 'abc'
 	})
 	assert t['c'] == 'abc'

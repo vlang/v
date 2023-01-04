@@ -10,11 +10,11 @@ uniform vs_params {
  
 in vec4 a_Position;     // Per-vertex position information we will pass in.
 in vec3 a_Normal;       // Per-vertex normal information we will pass in.
-in vec4 a_Color;        // Per-vertex color information we will pass in.
+//in vec4 a_Color;        // Per-vertex color information we will pass in.
 in vec2 a_Texcoord0;
 
 out vec3 v_Position;   // This will be passed into the fragment shader.
-out vec4 v_Color;      // This will be passed into the fragment shader.
+//out vec4 v_Color;      // This will be passed into the fragment shader.
 out vec3 v_Normal;     // This will be passed into the fragment shader.
 out vec3 v_Normal1;
 out vec2 uv;           // This will be passed into the fragment shader.
@@ -25,7 +25,7 @@ void main()
 	// Transform the vertex into eye space.
 	v_Position = vec3(u_MVMatrix * a_Position);
 	// Pass through the color.
-	v_Color = a_Color;
+	//v_Color = a_Color;
 	// calc eye space normal
 	v_Normal = vec3(u_NMatrix * vec4(a_Normal, 1.0));
 	// texture coord
@@ -51,7 +51,7 @@ uniform fs_params {
 	
 };
 in vec3 v_Position;       // Interpolated position for this fragment.
-in vec4 v_Color;          // This is the color from the vertex shader interpolated across the triangle per fragment.
+//in vec4 v_Color;          // This is the color from the vertex shader interpolated across the triangle per fragment.
 in vec3 v_Normal;         // Interpolated normal for this fragment.
 in vec3 v_Normal1;
 in vec2 uv;

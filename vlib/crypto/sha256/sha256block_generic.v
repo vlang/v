@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // SHA256 block step.
@@ -78,7 +78,7 @@ const (
 	]
 )
 
-fn block_generic(mut dig Digest, p_ []byte) {
+fn block_generic(mut dig Digest, p_ []u8) {
 	unsafe {
 		mut p := p_
 		mut w := []u32{len: (64)}
@@ -95,7 +95,7 @@ fn block_generic(mut dig Digest, p_ []byte) {
 			// rounds below if needed for speed.
 			for i in 0 .. 16 {
 				j := i * 4
-				w[i] = u32(p[j] << 24) | u32(p[j + 1] << 16) | u32(p[j + 2] << 8) | u32(p[j + 3])
+				w[i] = u32(p[j]) << 24 | u32(p[j + 1]) << 16 | u32(p[j + 2]) << 8 | u32(p[j + 3])
 			}
 			for i := 16; i < 64; i++ {
 				v1 := w[i - 2]
@@ -115,9 +115,9 @@ fn block_generic(mut dig Digest, p_ []byte) {
 			for i in 0 .. 64 {
 				t1 := h +
 					((bits.rotate_left_32(e, -6)) ^ (bits.rotate_left_32(e, -11)) ^ (bits.rotate_left_32(e, -25))) +
-					((e & f) ^ (~e & g)) + u32(_k[i]) + w[i]
-				t2 := ((bits.rotate_left_32(a, -2)) ^
-					(bits.rotate_left_32(a, -13)) ^ (bits.rotate_left_32(a, -22))) +
+					((e & f) ^ (~e & g)) + u32(sha256._k[i]) + w[i]
+				t2 :=
+					((bits.rotate_left_32(a, -2)) ^ (bits.rotate_left_32(a, -13)) ^ (bits.rotate_left_32(a, -22))) +
 					((a & b) ^ (a & c) ^ (b & c))
 				h = g
 				g = f

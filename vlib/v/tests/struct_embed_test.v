@@ -37,14 +37,15 @@ fn test_default_value_without_init() {
 	assert b.y == 5
 }
 
-/*
-TODO
 fn test_initialize() {
-	b := Bar{x: 1, y: 2}
+	b := Bar{
+		x: 1
+		y: 2
+	}
 	assert b.x == 1
 	assert b.y == 2
 }
-*/
+
 struct Bar3 {
 	Foo
 	y string = 'test'
@@ -59,13 +60,13 @@ struct TestEmbedFromModule {
 	flag.Flag
 }
 
-struct BarGeneric<T> {
+struct BarGeneric[T] {
 pub:
 	foo T
 }
 
 struct BarGenericContainer {
-	BarGeneric<int>
+	BarGeneric[int]
 }
 
 fn test_generic_embed() {
@@ -137,7 +138,7 @@ struct App {
 	Context
 }
 
-fn embed_field_access_generic<T>(mut app T) {
+fn embed_field_access_generic[T](mut app T) {
 	app.Context = Context{
 		static_files: app.static_files
 	}
@@ -148,11 +149,76 @@ fn test_embed_field_access_generic() {
 	embed_field_access_generic(mut app)
 }
 
-fn embed_method_generic<T>(app T) bool {
+fn embed_method_generic[T](app T) bool {
 	return app.test()
 }
 
 fn test_embed_method_generic() {
 	mut app := App{}
 	assert embed_method_generic(app)
+}
+
+type Piece = King | Queen
+
+struct Pos {
+	x u8
+	y u8
+}
+
+enum TeamEnum {
+	black
+	white
+}
+
+struct PieceCommonFields {
+	pos  Pos
+	team TeamEnum
+}
+
+fn (p PieceCommonFields) get_pos() Pos {
+	return p.pos
+}
+
+struct King {
+	PieceCommonFields
+}
+
+struct Queen {
+	PieceCommonFields
+}
+
+fn (piece Piece) pos() Pos {
+	mut pos := Pos{}
+	match piece {
+		King, Queen { pos = piece.pos }
+	}
+	return pos
+}
+
+fn (piece Piece) get_pos() Pos {
+	mut pos := Pos{}
+	match piece {
+		King, Queen { pos = piece.get_pos() }
+	}
+	return pos
+}
+
+fn test_match_aggregate_field() {
+	piece := Piece(King{
+		pos: Pos{1, 8}
+		team: .black
+	})
+	pos := piece.pos()
+	assert pos.x == 1
+	assert pos.y == 8
+}
+
+fn test_match_aggregate_method() {
+	piece := Piece(King{
+		pos: Pos{1, 8}
+		team: .black
+	})
+	pos := piece.get_pos()
+	assert pos.x == 1
+	assert pos.y == 8
 }

@@ -16,16 +16,30 @@ fn test_bf_set_clear_toggle_get() {
 	assert instance.get_bit(47) == 1
 }
 
+fn test_bf_insert_extract() {
+	mut instance := bitfield.new(11)
+	instance.set_all()
+	instance.insert(2, 9, 3)
+	assert instance.extract(2, 1) == 0
+	assert instance.extract(2, 8) == 1
+	assert instance.extract(10, 1) == 1
+	instance.set_all()
+	instance.insert_lowest_bits_first(2, 9, 3)
+	assert instance.extract_lowest_bits_first(2, 1) == 1
+	assert instance.extract_lowest_bits_first(2, 8) == 3
+	assert instance.extract_lowest_bits_first(10, 1) == 0
+}
+
 fn test_bf_and_not_or_xor() {
 	len := 80
 	mut input1 := bitfield.new(len)
 	mut input2 := bitfield.new(len)
 	mut i := 0
 	for i < len {
-		if rand.intn(2) == 1 {
+		if rand.intn(2) or { 0 } == 1 {
 			input1.set_bit(i)
 		}
-		if rand.intn(2) == 1 {
+		if rand.intn(2) or { 0 } == 1 {
 			input2.set_bit(i)
 		}
 		i++
@@ -48,20 +62,20 @@ fn test_clone_cmp() {
 	len := 80
 	mut input := bitfield.new(len)
 	for i in 0 .. len {
-		if rand.intn(2) == 1 {
+		if rand.intn(2) or { 0 } == 1 {
 			input.set_bit(i)
 		}
 	}
 	output := input.clone()
 	assert output.get_size() == len
-	assert input.cmp(output) == true
+	assert input == output
 }
 
 fn test_slice_join() {
 	len := 80
 	mut input := bitfield.new(len)
 	for i in 0 .. len {
-		if rand.intn(2) == 1 {
+		if rand.intn(2) or { 0 } == 1 {
 			input.set_bit(i)
 		}
 	}
@@ -72,7 +86,7 @@ fn test_slice_join() {
 		chunk2 := input.slice(point, input.get_size())
 		// concatenate them back into one and compare to the original
 		output := bitfield.join(chunk1, chunk2)
-		if !input.cmp(output) {
+		if input != output {
 			result = 0
 		}
 	}
@@ -84,7 +98,7 @@ fn test_pop_count() {
 	mut count0 := 0
 	mut input := bitfield.new(len)
 	for i in 0 .. len {
-		if rand.intn(2) == 1 {
+		if rand.intn(2) or { 0 } == 1 {
 			input.set_bit(i)
 			count0++
 		}
@@ -99,7 +113,7 @@ fn test_hamming() {
 	mut input1 := bitfield.new(len)
 	mut input2 := bitfield.new(len)
 	for i in 0 .. len {
-		match rand.intn(4) {
+		match rand.intn(4) or { 0 } {
 			0, 1 {
 				input1.set_bit(i)
 				count++
@@ -119,7 +133,7 @@ fn test_hamming() {
 }
 
 fn test_bf_from_bytes() {
-	input := [byte(0x01), 0xF0, 0x0F, 0xF0, 0xFF]
+	input := [u8(0x01), 0xF0, 0x0F, 0xF0, 0xFF]
 	output := bitfield.from_bytes(input).str()
 	assert output == '00000001' + '11110000' + '00001111' + '11110000' + '11111111'
 	newoutput := bitfield.from_str(output).str()
@@ -127,7 +141,7 @@ fn test_bf_from_bytes() {
 }
 
 fn test_bf_from_bytes_lowest_bits_first() {
-	input := [byte(0x01), 0xF0]
+	input := [u8(0x01), 0xF0]
 	output := bitfield.from_bytes_lowest_bits_first(input).str()
 	assert output == '10000000' + '00001111'
 	newoutput := bitfield.from_str(output).str()
@@ -138,7 +152,7 @@ fn test_bf_from_str() {
 	len := 80
 	mut input := ''
 	for _ in 0 .. len {
-		if rand.intn(2) == 1 {
+		if rand.intn(2) or { 0 } == 1 {
 			input = input + '1'
 		} else {
 			input = input + '0'
@@ -158,7 +172,7 @@ fn test_bf_bf2str() {
 	len := 80
 	mut input := bitfield.new(len)
 	for i in 0 .. len {
-		if rand.intn(2) == 1 {
+		if rand.intn(2) or { 0 } == 1 {
 			input.set_bit(i)
 		}
 	}
@@ -197,7 +211,7 @@ fn test_bf_clear_all() {
 	len := 80
 	mut input := bitfield.new(len)
 	for i in 0 .. len {
-		if rand.intn(2) == 1 {
+		if rand.intn(2) or { 0 } == 1 {
 			input.set_bit(i)
 		}
 	}
@@ -215,7 +229,7 @@ fn test_bf_reverse() {
 	len := 80
 	mut input := bitfield.new(len)
 	for i in 0 .. len {
-		if rand.intn(2) == 1 {
+		if rand.intn(2) or { 0 } == 1 {
 			input.set_bit(i)
 		}
 	}
@@ -232,9 +246,9 @@ fn test_bf_reverse() {
 
 fn test_bf_resize() {
 	len := 80
-	mut input := bitfield.new(rand.intn(len) + 1)
+	mut input := bitfield.new(rand.intn(len) or { 0 } + 1)
 	for _ in 0 .. 100 {
-		input.resize(rand.intn(len) + 1)
+		input.resize(rand.intn(len) or { 0 } + 1)
 		input.set_bit(input.get_size() - 1)
 	}
 	assert input.get_bit(input.get_size() - 1) == 1
@@ -258,12 +272,12 @@ fn test_bf_pos() {
 			mut needle := bitfield.new(i)
 			// fill the needle with random values
 			for k in 0 .. i {
-				if rand.intn(2) == 1 {
+				if rand.intn(2) or { 0 } == 1 {
 					needle.set_bit(k)
 				}
 			}
 			// make sure the needle contains at least one set bit, selected randomly
-			r := rand.intn(i)
+			r := rand.intn(i) or { 0 }
 			needle.set_bit(r)
 			// create the haystack, make sure it contains the needle
 			mut haystack := needle.clone()
@@ -309,7 +323,7 @@ fn test_bf_printing() {
 	len := 80
 	mut input := bitfield.new(len)
 	for i in 0 .. len {
-		if rand.intn(2) == 0 {
+		if rand.intn(2) or { 0 } == 0 {
 			input.set_bit(i)
 		}
 	}

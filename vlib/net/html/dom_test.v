@@ -6,8 +6,8 @@ fn generate_temp_html() string {
 	mut temp_html := strings.new_builder(200)
 	temp_html.write_string('<!doctype html><html><head><title>Giant String</title></head><body>')
 	for counter := 0; counter < 4; counter++ {
-		temp_html.write_string("<div id='name_$counter' ")
-		temp_html.write_string("class='several-$counter'>Look at $counter</div>")
+		temp_html.write_string("<div id='name_${counter}' ")
+		temp_html.write_string("class='several-${counter}'>Look at ${counter}</div>")
 	}
 	temp_html.write_string('</body></html>')
 	return temp_html.str()
@@ -32,7 +32,7 @@ fn test_access_parent() {
 	mut dom := parse(generate_temp_html())
 	div_tags := dom.get_tag('div')
 	parent := div_tags[0].parent
-	assert parent != 0
+	assert unsafe { parent != 0 }
 	for div_tag in div_tags {
 		assert div_tag.parent == parent
 	}

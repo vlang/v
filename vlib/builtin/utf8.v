@@ -1,9 +1,9 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
 
-pub fn utf8_char_len(b byte) int {
+pub fn utf8_char_len(b u8) int {
 	return ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3) + 1
 }
 
@@ -11,110 +11,117 @@ pub fn utf8_char_len(b byte) int {
 // utf32 == Codepoint
 pub fn utf32_to_str(code u32) string {
 	unsafe {
-		mut buffer := malloc(5)
-		return utf32_to_str_no_malloc(code, buffer)
+		mut buffer := malloc_noscan(5)
+		res := utf32_to_str_no_malloc(code, buffer)
+		if res.len == 0 {
+			// the buffer was not used at all
+			free(buffer)
+		}
+		return res
 	}
 }
 
-[unsafe]
-pub fn utf32_to_str_no_malloc(code u32, buf voidptr) string {
-	icode := int(code) // Prevents doing casts everywhere
-	mut res := ''
+[manualfree; unsafe]
+pub fn utf32_to_str_no_malloc(code u32, buf &u8) string {
 	unsafe {
-		mut buffer := byteptr(buf)
+		len := utf32_decode_to_buffer(code, buf)
+		if len == 0 {
+			return ''
+		}
+		buf[len] = 0
+		return tos(buf, len)
+	}
+}
+
+[manualfree; unsafe]
+pub fn utf32_decode_to_buffer(code u32, buf &u8) int {
+	unsafe {
+		icode := int(code) // Prevents doing casts everywhere
+		mut buffer := &u8(buf)
 		if icode <= 127 {
 			// 0x7F
-			buffer[0] = byte(icode)
-			buffer[1] = 0
-			res = tos(buffer, 1)
+			buffer[0] = u8(icode)
+			return 1
 		} else if icode <= 2047 {
 			// 0x7FF
-			buffer[0] = 192 | byte(icode >> 6) // 0xC0 - 110xxxxx
-			buffer[1] = 128 | byte(icode & 63) // 0x80 - 0x3F - 10xxxxxx
-			buffer[2] = 0
-			res = tos(buffer, 2)
+			buffer[0] = 192 | u8(icode >> 6) // 0xC0 - 110xxxxx
+			buffer[1] = 128 | u8(icode & 63) // 0x80 - 0x3F - 10xxxxxx
+			return 2
 		} else if icode <= 65535 {
 			// 0xFFFF
-			buffer[0] = 224 | byte(icode >> 12) // 0xE0 - 1110xxxx
-			buffer[1] = 128 | (byte(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
-			buffer[2] = 128 | byte(icode & 63) // 0x80 - 0x3F - 10xxxxxx
-			buffer[3] = 0
-			res = tos(buffer, 3)
+			buffer[0] = 224 | u8(icode >> 12) // 0xE0 - 1110xxxx
+			buffer[1] = 128 | (u8(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
+			buffer[2] = 128 | u8(icode & 63) // 0x80 - 0x3F - 10xxxxxx
+			return 3
 		}
 		// 0x10FFFF
 		else if icode <= 1114111 {
-			buffer[0] = 240 | byte(icode >> 18) // 0xF0 - 11110xxx
-			buffer[1] = 128 | (byte(icode >> 12) & 63) // 0x80 - 0x3F - 10xxxxxx
-			buffer[2] = 128 | (byte(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
-			buffer[3] = 128 | byte(icode & 63) // 0x80 - 0x3F - 10xxxxxx
-			buffer[4] = 0
-			res = tos(buffer, 4)
+			buffer[0] = 240 | u8(icode >> 18) // 0xF0 - 11110xxx
+			buffer[1] = 128 | (u8(icode >> 12) & 63) // 0x80 - 0x3F - 10xxxxxx
+			buffer[2] = 128 | (u8(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
+			buffer[3] = 128 | u8(icode & 63) // 0x80 - 0x3F - 10xxxxxx
+			return 4
 		}
 	}
-	res.is_lit = 1 // let autofree know this string doesn't have to be freed
-	return res
+	return 0
+}
+
+// utf8_str_len returns the number of runes contained in the string.
+[deprecated: 'use `string.len_utf8()` instead']
+[deprecated_after: '2022-05-28']
+pub fn utf8_str_len(s string) int {
+	mut l := 0
+	mut i := 0
+	for i < s.len {
+		l++
+		i += ((0xe5000000 >> ((unsafe { s.str[i] } >> 3) & 0x1e)) & 3) + 1
+	}
+	return l
 }
 
 // Convert utf8 to utf32
+// the original implementation did not check for
+// valid utf8 in the string, and could result in
+// values greater than the utf32 spec
+// it has been replaced by `utf8_to_utf32` which
+// has an optional return type.
+//
+// this function is left for backward compatibility
+// it is used in vlib/builtin/string.v,
+// and also in vlib/v/gen/c/cgen.v
 pub fn (_rune string) utf32_code() int {
-	if _rune.len == 0 {
+	return int(_rune.bytes().utf8_to_utf32() or {
+		// error('more than one utf-8 rune found in this string')
+		rune(0)
+	})
+}
+
+// convert array of utf8 bytes to single utf32 value
+// will error if more than 4 bytes are submitted
+pub fn (_bytes []u8) utf8_to_utf32() ?rune {
+	if _bytes.len == 0 {
 		return 0
 	}
-	// save ASC symbol as is
-	if _rune.len == 1 {
-		return int(_rune[0])
+	// return ASCII unchanged
+	if _bytes.len == 1 {
+		return rune(_bytes[0])
 	}
-	mut b := byte(int(_rune[0]))
-	// TODO should be
-	// res := int( rune[0] << rune.len)
-	b = b << _rune.len
-	mut res := int(b)
-	mut shift := 6 - _rune.len
-	for i := 1; i < _rune.len; i++ {
-		c := int(_rune[i])
-		res = res << shift
+	if _bytes.len > 4 {
+		return error('attempted to decode too many bytes, utf-8 is limited to four bytes maximum')
+	}
+
+	mut b := u8(int(_bytes[0]))
+
+	b = b << _bytes.len
+	mut res := rune(b)
+	mut shift := 6 - _bytes.len
+	for i := 1; i < _bytes.len; i++ {
+		c := rune(_bytes[i])
+		res = rune(res) << shift
 		res |= c & 63 // 0x3f
 		shift = 6
 	}
 	return res
-}
-
-// Calculate length to read from the first byte
-fn utf8_len(c byte) int {
-	mut b := 0
-	mut x := c
-	if (x & 240) != 0 {
-		// 0xF0
-		x >>= 4
-	} else {
-		b += 4
-	}
-	if (x & 12) != 0 {
-		// 0x0C
-		x >>= 2
-	} else {
-		b += 2
-	}
-	if (x & 2) == 0 {
-		// 0x02
-		b++
-	}
-	return b
-}
-
-// Calculate string length for in number of codepoints
-fn utf8_str_len(s string) int {
-	mut l := 0
-	for i := 0; i < s.len; i++ {
-		l++
-		c := unsafe { s.str[i] }
-		if (c & (1 << 7)) != 0 {
-			for t := byte(1 << 6); (c & t) != 0; t >>= 1 {
-				i++
-			}
-		}
-	}
-	return l
 }
 
 // Calculate string length for formatting, i.e. number of "characters"
@@ -124,17 +131,16 @@ pub fn utf8_str_visible_length(s string) int {
 	mut l := 0
 	mut ul := 1
 	for i := 0; i < s.len; i += ul {
-		ul = 1
 		c := unsafe { s.str[i] }
-		if (c & (1 << 7)) != 0 {
-			for t := byte(1 << 6); (c & t) != 0; t >>= 1 {
-				ul++
-			}
-		}
+		ul = ((0xe5000000 >> ((unsafe { s.str[i] } >> 3) & 0x1e)) & 3) + 1
 		if i + ul > s.len { // incomplete UTF-8 sequence
 			return l
 		}
 		l++
+		// avoid the match if not needed
+		if ul == 1 {
+			continue
+		}
 		// recognize combining characters and wide characters
 		match ul {
 			2 {
@@ -182,7 +188,7 @@ pub fn utf8_str_visible_length(s string) int {
 				if (r >= 0x0f9f8880 && r <= 0xf09f8a8f)
 					|| (r >= 0xf09f8c80 && r <= 0xf09f9c90)
 					|| (r >= 0xf09fa490 && r <= 0xf09fa7af)
-					|| (r >= 0xff0a08080 && r <= 0xf180807f) {
+					|| (r >= 0xf0a08080 && r <= 0xf180807f) {
 					l++
 				}
 			}

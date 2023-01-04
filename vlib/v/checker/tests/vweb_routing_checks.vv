@@ -27,13 +27,12 @@ pub fn (mut app App) cow() vweb.Result {
 	return app.html('works')
 }
 
-pub fn (app App) init_once() {
-	//
-}
+/*
 
-pub fn (app App) init() {
+pub fn (app App) before_request() {
 	//
 }
+*/
 
 pub fn (mut app App) index() {
 	app.html('hello')
@@ -41,6 +40,5 @@ pub fn (mut app App) index() {
 
 fn main() {
 	port := 8181
-	mut app := App{}
-	vweb.run_app<App>(mut app, port)
+	vweb.run<App>(&App{}, port)
 }

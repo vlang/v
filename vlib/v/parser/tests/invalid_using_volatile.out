@@ -1,0 +1,6 @@
+vlib/v/parser/tests/invalid_using_volatile.vv:2:5: error: the `volatile` keyword is invalid here
+    1 | fn main() {
+    2 |     if volatile true {
+      |        ~~~~~~~~
+    3 |         println(true)
+    4 |     }

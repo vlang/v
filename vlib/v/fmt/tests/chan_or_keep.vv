@@ -5,7 +5,7 @@ fn f(ch chan int) {
 	for _ in 0 .. n {
 		s += <-ch or {
 			println('Something went wrong:')
-			println('got $err')
+			println('got ${err}')
 		}
 	}
 	assert s == n * (n + 1) / 2
@@ -13,7 +13,7 @@ fn f(ch chan int) {
 }
 
 fn do_send(ch chan int, val int) ?int {
-	ch <- val ?
+	ch <- val?
 	return val + 1
 }
 
@@ -24,7 +24,7 @@ fn do_send_2(ch chan int, val int) ?int {
 
 fn main() {
 	ch := chan int{}
-	go f(ch)
+	spawn f(ch)
 	mut s := 1
 	for {
 		s = do_send(ch, s) or { break }

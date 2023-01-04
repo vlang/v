@@ -1,0 +1,7 @@
+vlib/v/checker/tests/match_return_sumtype_mismatch_err.vv:15:11: error: return type mismatch, it should be `Myt`
+   13 |     return match b {
+   14 |         true { St('TRUE') }
+   15 |         false { `F` }
+      |                 ~~~
+   16 |     }
+   17 | }

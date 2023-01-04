@@ -1,0 +1,5 @@
+// vtest vflags: -d customflag
+[if customflag ?]
+fn test_abcdef() {
+	println('this should be in the c code')
+}

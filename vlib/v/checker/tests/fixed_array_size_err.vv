@@ -2,7 +2,7 @@ const size = -1
 
 fn main() {
 	a := [size]int{}
-	b := [0]byte{}
+	b := [0]u8{}
 	println(a)
 	println(b)
 }

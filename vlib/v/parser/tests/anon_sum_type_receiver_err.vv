@@ -1,0 +1,3 @@
+fn (x int | string) baz() {
+	println('baz')
+}

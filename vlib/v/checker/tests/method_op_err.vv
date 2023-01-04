@@ -33,7 +33,8 @@ fn main() {
     println(User{3, 2} < User{2, 4})
     println(User{3, 4} < Foo{3, 4})
     mut u := User{3, 4}
+   _ = u
     u += 12
     u %= User{1, 3}
-    u += User{2, 3} 
+    u += User{2, 3}
 }

@@ -1,0 +1,5 @@
+vlib/v/parser/tests/unexpected_token.vv:2:10: error: unexpected token `?`
+    1 | fn main() {
+    2 |     println(?)
+      |             ^
+    3 | }

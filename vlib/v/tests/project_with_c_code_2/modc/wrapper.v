@@ -1,13 +1,13 @@
 module modc
 
-#flag -I @VROOT
-#flag @VROOT/impl.o
+#flag -I @VMODROOT
+#flag @VMODROOT/impl.o
 #include "header.h"
 
 struct C.Atype {
 }
 
-// NB: [trusted] below, means that the C function, can be safely called outside unsafe{} blocks.
+// Note: [trusted] below, means that the C function, can be safely called outside unsafe{} blocks.
 //
 // By default, all C. functions are NOT trusted, and all V functions are by default trusted.
 //

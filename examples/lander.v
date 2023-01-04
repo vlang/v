@@ -24,8 +24,9 @@ struct Lander {
 fn (l Lander) deorbit() {
 	println('leaving orbit')
 }
+
 fn (l Lander) open_parachutes(n int) {
-	println('opening $n parachutes')
+	println('opening ${n} parachutes')
 }
 
 fn wait() {

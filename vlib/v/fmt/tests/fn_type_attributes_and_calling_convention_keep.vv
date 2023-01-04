@@ -1,0 +1,10 @@
+[callconv: 'stdcall']
+fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
+
+[callconv: 'stdcall']
+type FastFn = fn (int) bool
+
+[callconv: 'fastcall']
+fn zzz(x int, y int) int {
+	return x + y * 2
+}

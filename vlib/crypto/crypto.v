@@ -21,4 +21,3 @@ pub enum Hash {
 	blake2b_384
 	blake2b_512
 }
-

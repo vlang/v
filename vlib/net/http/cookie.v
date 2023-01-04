@@ -10,20 +10,21 @@ pub struct Cookie {
 pub mut:
 	name        string
 	value       string
-	path        string // optional
-	domain      string // optional
+	path        string    // optional
+	domain      string    // optional
 	expires     time.Time // optional
-	raw_expires string // for reading cookies only. optional.
+	raw_expires string    // for reading cookies only. optional.
 	// max_age=0 means no 'Max-Age' attribute specified.
 	// max_age<0 means delete cookie now, equivalently 'Max-Age: 0'
 	// max_age>0 means Max-Age attribute present and given in seconds
-	max_age     int
-	secure      bool
-	http_only   bool
-	same_site   SameSite
-	raw         string
-	unparsed    []string // Raw text of unparsed attribute-value pairs
+	max_age   int
+	secure    bool
+	http_only bool
+	same_site SameSite
+	raw       string
+	unparsed  []string // Raw text of unparsed attribute-value pairs
 }
+
 // SameSite allows a server to define a cookie attribute making it impossible for
 // the browser to send this cookie along with cross-site requests. The main
 // goal is to mitigate the risk of cross-origin information leakage, and provide
@@ -47,98 +48,8 @@ pub fn read_set_cookies(h map[string][]string) []&Cookie {
 	}
 	mut cookies := []&Cookie{}
 	for _, line in cookies_s {
-		mut parts := line.trim_space().split(';')
-		if parts.len == 1 && parts[0] == '' {
-			continue
-		}
-		parts[0] = parts[0].trim_space()
-		keyval := parts[0].split('=')
-		if keyval.len != 2 {
-			continue
-		}
-		name := keyval[0]
-		raw_value := keyval[1]
-		if !is_cookie_name_valid(name) {
-			continue
-		}
-		value := parse_cookie_value(raw_value, true) or {
-			continue
-		}
-		mut c  := &Cookie{
-			name: name,
-			value: value,
-			raw: line
-		}
-		for i, _ in parts {
-			parts[i] = parts[i].trim_space()
-			if parts[i].len == 0 {
-				continue
-			}
-			mut attr := parts[i]
-			mut raw_val := ''
-			if attr.contains('=') {
-				pieces := attr.split('=')
-				attr = pieces[0]
-				raw_val = pieces[1]
-			}
-			lower_attr := attr.to_lower()
-			val := parse_cookie_value(raw_val, false) or {
-				c.unparsed << parts[i]
-				continue
-			}
-			match lower_attr {
-				'samesite' {
-					lower_val := val.to_lower()
-					match lower_val {
-						'lax' { c.same_site = .same_site_lax_mode }
-						'strict' { c.same_site = .same_site_strict_mode }
-						'none' { c.same_site = .same_site_none_mode }
-						else { c.same_site = .same_site_default_mode }
-					}
-				}
-				'secure' {
-					c.secure = true
-					continue
-				}
-				'httponly' {
-					c.http_only = true
-					continue
-				}
-				'domain' {
-					c.domain = val
-					continue
-				}
-				'max-age' {
-					mut secs := val.int()
-					if secs != 0 && val[0] != `0` {
-						break
-					}
-					if secs <= 0 {
-						secs = -1
-					}
-					c.max_age = secs
-					continue
-				}
-				// TODO: Fix this once time works better
-				// 'expires' {
-				// 	c.raw_expires = val
-				// 	mut exptime := time.parse_iso(val)
-				// 	if exptime.year == 0 {
-				// 		exptime = time.parse_iso('Mon, 02-Jan-2006 15:04:05 MST')
-				// 	}
-				// 	c.expires = exptime
-				// 	continue
-				// }
-				'path' {
-					c.path = val
-					continue
-				}
-				else {
-					c.unparsed << parts[i]
-				}
-			}
-		}
-		cookies << c
+		c := parse_cookie(line) or { continue }
+		cookies << &c
 	}
 	return cookies
 }
@@ -157,10 +68,11 @@ pub fn read_cookies(h map[string][]string, filter string) []&Cookie {
 		mut line := line_.trim_space()
 		mut part := ''
 		for line.len > 0 {
-			if line.index_any(';') > 0 {
-				line_parts := line.split(';')
+			mut semicolon_position := line.index_any(';') // Store the position of the next semicolon
+			if semicolon_position > 0 { // So, there is a semicolon, let's parse until that position
+				line_parts := line[..semicolon_position].split(';') // split the line only until that semicolon
+				line = line[(semicolon_position + 1)..] // and then skip everything before the semicolon
 				part = line_parts[0]
-				line = line_parts[1]
 			} else {
 				part = line
 				line = ''
@@ -182,10 +94,11 @@ pub fn read_cookies(h map[string][]string, filter string) []&Cookie {
 			if filter != '' && filter != name {
 				continue
 			}
-			val = parse_cookie_value(val, true) or {
-				continue
+			val = parse_cookie_value(val, true) or { continue }
+			cookies << &Cookie{
+				name: name
+				value: val
 			}
-			cookies << &Cookie{name: name, value: val}
 		}
 	}
 	return cookies
@@ -203,7 +116,8 @@ pub fn (c &Cookie) str() string {
 	// extra_cookie_length derived from typical length of cookie attributes
 	// see RFC 6265 Sec 4.1.
 	extra_cookie_length := 110
-	mut b := strings.new_builder(c.name.len + c.value.len + c.domain.len + c.path.len + extra_cookie_length)
+	mut b := strings.new_builder(c.name.len + c.value.len + c.domain.len + c.path.len +
+		extra_cookie_length)
 	b.write_string(c.name)
 	b.write_string('=')
 	b.write_string(sanitize_cookie_value(c.value))
@@ -264,9 +178,9 @@ pub fn (c &Cookie) str() string {
 	return b.str()
 }
 
-fn sanitize(valid fn(byte) bool, v string) string {
+fn sanitize(valid fn (u8) bool, v string) string {
 	mut ok := true
-	for i in 0..v.len {
+	for i in 0 .. v.len {
 		if valid(v[i]) {
 			continue
 		}
@@ -300,7 +214,7 @@ pub fn sanitize_cookie_value(v string) string {
 	}
 	// Check for the existence of a space or comma
 	if val.starts_with(' ') || val.ends_with(' ') || val.starts_with(',') || val.ends_with(',') {
-		return '"$v"'
+		return '"${v}"'
 	}
 	return v
 }
@@ -309,11 +223,11 @@ fn sanitize_cookie_path(v string) string {
 	return sanitize(valid_cookie_path_byte, v)
 }
 
-fn valid_cookie_value_byte(b byte) bool {
+fn valid_cookie_value_byte(b u8) bool {
 	return 0x20 <= b && b < 0x7f && b != `"` && b != `;` && b != `\\`
 }
 
-fn valid_cookie_path_byte(b byte) bool {
+fn valid_cookie_path_byte(b u8) bool {
 	return 0x20 <= b && b < 0x7f && b != `!`
 }
 
@@ -370,7 +284,7 @@ pub fn is_cookie_domain_name(_s string) bool {
 			}
 			part_len = 0
 		} else {
-			 return false
+			return false
 		}
 		last = c
 	}
@@ -380,13 +294,13 @@ pub fn is_cookie_domain_name(_s string) bool {
 	return ok
 }
 
-fn parse_cookie_value(_raw string, allow_double_quote bool) ?string {
+fn parse_cookie_value(_raw string, allow_double_quote bool) !string {
 	mut raw := _raw
 	// Strip the quotes, if present
 	if allow_double_quote && raw.len > 1 && raw[0] == `"` && raw[raw.len - 1] == `"` {
 		raw = raw.substr(1, raw.len - 1)
 	}
-	for i in 0..raw.len {
+	for i in 0 .. raw.len {
 		if !valid_cookie_value_byte(raw[i]) {
 			return error('http.cookie: invalid cookie value')
 		}
@@ -404,4 +318,97 @@ fn is_cookie_name_valid(name string) bool {
 		}
 	}
 	return true
+}
+
+fn parse_cookie(line string) !Cookie {
+	mut parts := line.trim_space().split(';')
+	if parts.len == 1 && parts[0] == '' {
+		return error('malformed cookie')
+	}
+	parts[0] = parts[0].trim_space()
+	keyval := parts[0].split('=')
+	if keyval.len != 2 {
+		return error('malformed cookie')
+	}
+	name := keyval[0]
+	raw_value := keyval[1]
+	if !is_cookie_name_valid(name) {
+		return error('malformed cookie')
+	}
+	value := parse_cookie_value(raw_value, true) or { return error('malformed cookie') }
+	mut c := Cookie{
+		name: name
+		value: value
+		raw: line
+	}
+	for i, _ in parts {
+		parts[i] = parts[i].trim_space()
+		if parts[i].len == 0 {
+			continue
+		}
+		mut attr := parts[i]
+		mut raw_val := ''
+		if attr.contains('=') {
+			pieces := attr.split('=')
+			attr = pieces[0]
+			raw_val = pieces[1]
+		}
+		lower_attr := attr.to_lower()
+		val := parse_cookie_value(raw_val, false) or {
+			c.unparsed << parts[i]
+			continue
+		}
+		match lower_attr {
+			'samesite' {
+				lower_val := val.to_lower()
+				match lower_val {
+					'lax' { c.same_site = .same_site_lax_mode }
+					'strict' { c.same_site = .same_site_strict_mode }
+					'none' { c.same_site = .same_site_none_mode }
+					else { c.same_site = .same_site_default_mode }
+				}
+			}
+			'secure' {
+				c.secure = true
+				continue
+			}
+			'httponly' {
+				c.http_only = true
+				continue
+			}
+			'domain' {
+				c.domain = val
+				continue
+			}
+			'max-age' {
+				mut secs := val.int()
+				if secs != 0 && val[0] != `0` {
+					break
+				}
+				if secs <= 0 {
+					secs = -1
+				}
+				c.max_age = secs
+				continue
+			}
+			// TODO: Fix this once time works better
+			// 'expires' {
+			// 	c.raw_expires = val
+			// 	mut exptime := time.parse_iso(val)
+			// 	if exptime.year == 0 {
+			// 		exptime = time.parse_iso('Mon, 02-Jan-2006 15:04:05 MST')
+			// 	}
+			// 	c.expires = exptime
+			// 	continue
+			// }
+			'path' {
+				c.path = val
+				continue
+			}
+			else {
+				c.unparsed << parts[i]
+			}
+		}
+	}
+	return c
 }

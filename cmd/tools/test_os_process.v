@@ -35,15 +35,15 @@ fn (mut ctx Context) println(s string) {
 		ctx.omode = if ctx.omode == .stderr { Target.stdout } else { Target.stderr }
 	}
 	if ctx.target in [.both, .stdout] || ctx.omode == .stdout {
-		println('stdout, $s')
+		println('stdout, ${s}')
 	}
 	if ctx.target in [.both, .stderr] || ctx.omode == .stderr {
-		eprintln('stderr, $s')
+		eprintln('stderr, ${s}')
 	}
 }
 
 fn do_timeout(c &Context) {
-	mut ctx := c
+	mut ctx := unsafe { c }
 	time.sleep(ctx.timeout_ms * time.millisecond)
 	exit(ctx.exitcode)
 }
@@ -54,7 +54,7 @@ fn main() {
 	if '-h' in args || '--help' in args {
 		println("Usage:
 	test_os_process [-v] [-h] [-target stderr/stdout/both/alternate] [-exitcode 0] [-timeout_ms 200] [-period_ms 50]
-		Prints lines periodically (-period_ms), to stdout/stderr (-target). 
+		Prints lines periodically (-period_ms), to stdout/stderr (-target).
 		After a while (-timeout_ms), exit with (-exitcode).
 		This program is useful for platform independent testing
 		of child process/standart input/output control.
@@ -71,11 +71,11 @@ fn main() {
 		ctx.omode = .stdout
 	}
 	if ctx.is_verbose {
-		eprintln('> args: $args | context: $ctx')
+		eprintln('> args: ${args} | context: ${ctx}')
 	}
-	go do_timeout(&ctx)
+	spawn do_timeout(&ctx)
 	for i := 1; true; i++ {
-		ctx.println('$i')
+		ctx.println('${i}')
 		time.sleep(ctx.period_ms * time.millisecond)
 	}
 	time.sleep(100 * time.second)

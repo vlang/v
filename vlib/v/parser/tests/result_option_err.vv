@@ -1,0 +1,3 @@
+fn abc() ?!string {
+	return ''
+}

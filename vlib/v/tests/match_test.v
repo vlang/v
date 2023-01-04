@@ -19,7 +19,7 @@ fn test_match_integers() {
 			println('three')
 			b = 3
 		}
-		4 {
+		int(4) {
 			println('four')
 		}
 		else {
@@ -51,7 +51,7 @@ fn test_match_integers() {
 		}
 		else {
 			a = 3
-			println('a is $a')
+			println('a is ${a}')
 		}
 	}
 	assert a == 3
@@ -104,7 +104,7 @@ fn test_match_enums() {
 			b = .blue
 		}
 		else {
-			println('b is $b.str()')
+			println('b is ${b.str()}')
 			b = .red
 		}
 	}
@@ -114,7 +114,7 @@ fn test_match_enums() {
 			b = .green
 		}
 		else {
-			println('b is $b.str()')
+			println('b is ${b.str()}')
 			b = .blue
 		}
 	}
@@ -139,7 +139,7 @@ fn test_method_call() {
 		1 { false }
 		2 { true }
 		3 { false }
-		else { false }
+		else { true }
 	}
 }
 
@@ -193,7 +193,9 @@ fn (a Alfa) letter() rune {
 struct Bravo {
 	// A field so that Alfa and Bravo structures aren't the same
 	dummy_field int
-	char        rune = `b`
+pub mut:
+	// Note: the `char` field is not `pub` or `mut` in all sumtype variants, but using it in aggregates should still work
+	char rune = `b`
 }
 
 fn (b Bravo) letter() rune {
@@ -284,4 +286,18 @@ fn test_match_expression_add() {
 		false { 2 }
 	} + 3
 	assert a == 4
+}
+
+type LeType = int | string
+
+fn test_noreturn() {
+	t := LeType(3)
+	_ := match t {
+		int {
+			'test'
+		}
+		string {
+			exit(0)
+		}
+	}
 }

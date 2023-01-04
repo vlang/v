@@ -1,3 +1,6 @@
+import os
+import log
+
 fn dump_of_int() {
 	x := dump(1) + 1
 	assert x == 2
@@ -15,11 +18,18 @@ mut:
 	z int
 }
 
+struct Aa{
+	log &log.Logger
+}
+
 fn dump_of_struct() {
 	p := Point{1, 2, 3}
 	mut p_mut := Point{1, 2, 3}
 	p_ptr := &Point{1, 2, 3}
+	l := &log.Log{}
+	a := Aa{log:l}
 
+	dump(a)
 	mut x1 := dump(p)
 	mut x2 := dump(p_mut)
 	mut x3 := dump(p_ptr)
@@ -31,8 +41,18 @@ fn dump_of_struct() {
 	assert x3 == Point{101, 2, 3}
 }
 
+fn dump_of_callexpr() {
+	vfile := @FILE
+	dump(os.file_name(vfile))
+	mut f := os.open_file(@FILE, 'r') or { return }
+	mut buf := []u8{len: 10}
+	dump(f.read(mut buf) or { -999 })
+	f.close()
+}
+
 fn main() {
 	dump_of_int()
 	dump_of_string()
 	dump_of_struct()
+	dump_of_callexpr()
 }

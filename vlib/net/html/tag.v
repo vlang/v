@@ -16,7 +16,7 @@ pub mut:
 	children           []&Tag
 	attributes         map[string]string // attributes will be like map[name]value
 	last_attribute     string
-	parent             &Tag = 0
+	parent             &Tag = unsafe { nil }
 	position_in_parent int
 	closed             bool
 	close_type         CloseTagType = .in_name
@@ -47,11 +47,11 @@ pub fn (tag Tag) text() string {
 
 pub fn (tag &Tag) str() string {
 	mut html_str := strings.new_builder(200)
-	html_str.write_string('<$tag.name')
+	html_str.write_string('<${tag.name}')
 	for key, value in tag.attributes {
-		html_str.write_string(' $key')
+		html_str.write_string(' ${key}')
 		if value.len > 0 {
-			html_str.write_string('="$value"')
+			html_str.write_string('="${value}"')
 		}
 	}
 	html_str.write_string(if tag.closed && tag.close_type == .in_name { '/>' } else { '>' })
@@ -62,7 +62,43 @@ pub fn (tag &Tag) str() string {
 		}
 	}
 	if !tag.closed || tag.close_type == .new_tag {
-		html_str.write_string('</$tag.name>')
+		html_str.write_string('</${tag.name}>')
 	}
 	return html_str.str()
+}
+
+// get_tags retrieves all the child tags recursively in the tag that has the given tag name.
+pub fn (tag &Tag) get_tags(name string) []&Tag {
+	mut res := []&Tag{}
+	for child in tag.children {
+		if child.name == name {
+			res << child
+		}
+		res << child.get_tags(name)
+	}
+	return res
+}
+
+// get_tags_by_attribute retrieves all the child tags recursively in the tag that has the given attribute name.
+pub fn (tag &Tag) get_tags_by_attribute(name string) []&Tag {
+	mut res := []&Tag{}
+	for child in tag.children {
+		if child.attributes[name] != '' {
+			res << child
+		}
+		res << child.get_tags_by_attribute(name)
+	}
+	return res
+}
+
+// get_tags_by_attribute_value retrieves all the child tags recursively in the tag that has the given attribute name and value.
+pub fn (tag &Tag) get_tags_by_attribute_value(name string, value string) []&Tag {
+	mut res := []&Tag{}
+	for child in tag.children {
+		if child.attributes[name] == value {
+			res << child
+		}
+		res << child.get_tags_by_attribute_value(name, value)
+	}
+	return res
 }

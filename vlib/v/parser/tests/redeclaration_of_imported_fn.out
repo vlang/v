@@ -1,0 +1,7 @@
+vlib/v/parser/tests/redeclaration_of_imported_fn.vv:3:4: error: cannot redefine imported function `input`
+    1 | import os { input }
+    2 | 
+    3 | fn input() {}
+      |    ~~~~~
+    4 | 
+    5 | input()

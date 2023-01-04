@@ -12,7 +12,7 @@ const (
 
 struct Context {
 mut:
-	gg &gg.Context
+	gg &gg.Context = unsafe { nil }
 }
 
 fn main() {
@@ -23,14 +23,12 @@ fn main() {
 		width: size
 		height: size
 		font_size: 20
-		use_ortho: true
 		user_data: context
 		window_title: 'Graph builder'
 		create_window: true
 		frame_fn: frame
 		resizable: true
 		bg_color: gx.white
-		font_path: gg.system_font_path()
 	)
 	context.gg.run()
 }
@@ -73,15 +71,15 @@ fn (ctx &Context) draw() {
 		// y = x * x + stime * stime
 		// y = stime
 		// y = stime * h
-		y = stime * 1.0 * math.sin((x) + stime + atime / 32) * ((h / 256) + x)
+		y = stime * 1.0 * math.sin(x + stime + atime / 32) * ((h / 256) + x)
 		// y = (stime * x) * x + stime
 		// y = (x + 3) * (x + 3) / stime + stime*2.5
 		// y = math.sqrt(30.0 - x * x) * stime
 		// y -= (stime-0.5) + stime
-		// ctx.gg.draw_rect(f32((w/2) + x * scale), f32((h/2) - y * scale), 2, 2, blue)
-		ctx.gg.draw_rect(f32((w / 2) + x * scale), f32((h / 2) - y * scale), 2, (f32(y) * scale),
-			blue)
-		ctx.gg.draw_rect(f32((w / 2) + x * scale), f32((h / 2) + y * scale), 2, (f32(y) * scale) +
-			32, red)
+		// ctx.gg.draw_rect_filled(f32((w/2) + x * scale), f32((h/2) - y * scale), 2, 2, blue)
+		ctx.gg.draw_rect_filled(f32((w / 2) + x * scale), f32((h / 2) - y * scale), 2,
+			(f32(y) * scale), blue)
+		ctx.gg.draw_rect_filled(f32((w / 2) + x * scale), f32((h / 2) + y * scale), 2,
+			(f32(y) * scale) + 32, red)
 	}
 }

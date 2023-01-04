@@ -1,0 +1,69 @@
+struct Quad {
+mut:
+	x f64
+	y f64
+	z f64
+	w f64
+}
+
+fn (q Quad) get(i int) f64 {
+	return match i {
+		0 { q.x }
+		1 { q.y }
+		2 { q.z }
+		else { q.w }
+	}
+}
+
+fn (mut q Quad) set(i int, v f64) {
+	match i {
+		0 { q.x = v }
+		1 { q.y = v }
+		2 { q.z = v }
+		else { q.w = v }
+	}
+}
+
+// ritorna una nuova Quadrica somma del ricevente e di un'altra
+fn (q &Quad) add(other &Quad) &Quad {
+	return &(Quad{q.x + other.x, q.y + other.y, q.z + other.z, q.w + other.w})
+}
+
+// ritorna una nuova Quadrica differenza tra il ricevente e un'altra
+fn (q &Quad) sub(other &Quad) &Quad {
+	return &(Quad{q.x - other.x, q.y - other.y, q.z - other.z, q.w - other.w})
+}
+
+// ritorna una nuova Quadrica ottenuta negando il ricevente
+fn (q &Quad) neg() &Quad {
+	return &(Quad{-q.x, -q.y, -q.z, -q.w})
+}
+
+// ritorna una nuova Quadrica ottenuta moltiplicando il ricevente per una costante
+fn (q &Quad) mult(factor f64) &Quad {
+	return &(Quad{q.x * factor, q.y * factor, q.z * factor, q.w * factor})
+}
+
+// ritorna una nuova Quadrica ottenuta dividendo il ricevente per una costante
+fn (q &Quad) div(factor f64) &Quad {
+	return &(Quad{q.x / factor, q.y / factor, q.z / factor, q.w / factor})
+}
+
+fn main() {
+	mut n := Quad{1, 2, 3, 4}
+
+	println(n)
+	println(n.get(0))
+	println(n.get(1))
+	println(n.get(2))
+	println(n.get(3))
+	n.set(0, 5)
+	n.set(1, 6)
+	n.set(2, 7)
+	n.set(3, 8)
+	println(n)
+	println(n.get(0))
+	println(n.get(1))
+	println(n.get(2))
+	println(n.get(3))
+}

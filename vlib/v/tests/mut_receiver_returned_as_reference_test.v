@@ -7,10 +7,10 @@ mut:
 
 fn (mut p Player) set_name(name string) &Player {
 	p.name = name
-	return p // because of automatic (de)reference of return values
+	return unsafe { p } // because of automatic (de)reference of return values
 }
 
-// NB: `p` is declared as a `mut` parameter, 
+// Note: `p` is declared as a `mut` parameter,
 // which now only affects its mutability.
 fn (mut p Player) set_position(x int, y int) &Player {
 	p.x = x
@@ -18,7 +18,7 @@ fn (mut p Player) set_position(x int, y int) &Player {
 	// TODO: from the point of view of the V programmer,
 	// `p` has still type &Player.
 	// assert typeof(p).name == 'Player'
-	return &p
+	return unsafe { &p }
 }
 
 fn test_mut_receiver() {

@@ -1,18 +1,18 @@
-vlib/v/checker/tests/use_deprecated_function_warning.vv:12:2: error: function `xyz` has been deprecated
+vlib/v/checker/tests/use_deprecated_function_warning.vv:12:2: warning: function `xyz` has been deprecated
    10 | 
    11 | fn main() {
    12 |     xyz()
       |     ~~~~~
    13 |     abc()
    14 | }
-vlib/v/checker/tests/use_deprecated_function_warning.vv:13:2: error: function `abc` has been deprecated; use foo2 instead
+vlib/v/checker/tests/use_deprecated_function_warning.vv:13:2: warning: function `abc` has been deprecated; use foo2 instead
    11 | fn main() {
    12 |     xyz()
    13 |     abc()
       |     ~~~~~
    14 | }
    15 |
-vlib/v/checker/tests/use_deprecated_function_warning.vv:23:4: error: method `S1.m` has been deprecated; use bar instead
+vlib/v/checker/tests/use_deprecated_function_warning.vv:23:4: warning: method `S1.m` has been deprecated; use bar instead
    21 | fn method() {
    22 |     s := S1{}
    23 |     s.m()

@@ -22,6 +22,7 @@ pub mut:
 * Utility
 *
 *********************************************************************/
+// str returns a `string` representation of `Vec4`.
 pub fn (x Vec4) str() string {
 	return '|${x.e[0]:-6.3},${x.e[1]:-6.3},${x.e[2]:-6.3},${x.e[3]:-6.3}|'
 }

@@ -1,0 +1,10 @@
+struct Struct[T] {
+	value int
+}
+
+interface Interface[T] {
+	method() T
+}
+
+s := Struct{7}
+i := Interface(s)

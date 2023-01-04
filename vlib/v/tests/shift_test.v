@@ -7,7 +7,7 @@ fn test_shift_operators() {
 	b := 1024
 	i := 10
 	assert b == a << i8(i)
-	assert b == a << byte(i)
+	assert b == a << u8(i)
 	assert b == a << i16(i)
 	assert b == a << u16(i)
 	assert b == a << int(i)
@@ -15,7 +15,7 @@ fn test_shift_operators() {
 	assert b == a << i64(i)
 	assert b == a << u64(i)
 	assert a == b >> i8(i)
-	assert a == b >> byte(i)
+	assert a == b >> u8(i)
 	assert a == b >> i16(i)
 	assert a == b >> u16(i)
 	assert a == b >> int(i)
@@ -48,9 +48,9 @@ fn test_shift_operators() {
 	assert e2 == b
 	e2 >>= i64(i)
 	assert e2 == a
-	e <<= byte(i)
+	e <<= u8(i)
 	assert e == b
-	e >>= byte(i)
+	e >>= u8(i)
 	assert e == a
 	e <<= u16(i)
 	assert e == b
@@ -58,13 +58,13 @@ fn test_shift_operators() {
 	assert e == a
 	mut e3 := u64(1)
 	e3 <<= u32(i)
-	assert e3 == b
+	assert e3 == u64(b)
 	e3 >>= u32(i)
 	assert e == a
 	e3 <<= u64(i)
-	assert e3 == b
+	assert e3 == u64(b)
 	e3 >>= u64(i)
-	assert e3 == a
+	assert e3 == u64(a)
 	// Test shifts with custom int types
 	x := MyInt(2)
 	assert x << 2 == 8

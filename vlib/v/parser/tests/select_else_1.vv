@@ -9,7 +9,7 @@ fn f3_bad(ch1 chan int) {
 		else {
 			println("shouldn't get here")
 		}
-		> 30 * time.millisecond {
+		30 * time.millisecond {
 			println('bad')
 		}
 	}

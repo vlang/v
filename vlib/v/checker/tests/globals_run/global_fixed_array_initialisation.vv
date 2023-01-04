@@ -1,0 +1,9 @@
+module main
+
+__global (
+	heap = [10]u8{}
+)
+
+fn main() {
+	println(heap)
+}

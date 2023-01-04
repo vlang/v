@@ -1,0 +1,7 @@
+vlib/v/checker/tests/map_func_return_multiple_values_err.vv:6:17: error: returning multiple values is not supported in .map() calls
+    4 | 
+    5 | fn main() {
+    6 |     a := [1, 2, 3].map(fun)
+      |                    ~~~~~~~~
+    7 |     println(a)
+    8 | }

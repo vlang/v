@@ -9,7 +9,7 @@ import os
 // V from source.
 pub fn disabling_file(vroot string) string {
 	tools_folder := os.join_path(vroot, 'cmd', 'tools')
-	res := os.join_path(tools_folder, '.disable_autorecompilation')
+	res := os.join_path_single(tools_folder, '.disable_autorecompilation')
 	return res
 }
 
@@ -19,7 +19,7 @@ pub fn must_be_enabled(vroot string, error_message string) {
 	file := disabling_file(vroot)
 	is_recompilation_disabled := os.exists(file)
 	if is_recompilation_disabled {
-		eprintln('Recompilation is disabled, since there is a "$file" file present.')
+		eprintln('Recompilation is disabled, since there is a "${file}" file present.')
 		eprintln(error_message)
 		exit(1)
 	}

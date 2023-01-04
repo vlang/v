@@ -1,0 +1,5 @@
+type WordSet = map[string]bool
+
+fn main() {
+	_ := WordSet{}
+}

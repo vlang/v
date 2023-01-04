@@ -1,4 +1,4 @@
-// duplicate interface methods in decleration
+// duplicate interface methods in declaration
 interface Abc {
 	fun()
 	fun()

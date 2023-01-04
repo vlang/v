@@ -18,6 +18,9 @@ Options:
   -l      List files whose formatting differs from vfmt.
 
   -w      Write result to (source) file(s) instead of to stdout.
+  
+  -backup In combination with `-w`, copy the original `file.v` to a `file.v.bak` backup,
+          before overwriting the original source file.
 
   -debug  Print the kinds of encountered AST statements/expressions on stderr.
 

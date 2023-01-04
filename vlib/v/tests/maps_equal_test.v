@@ -1,8 +1,8 @@
 fn test_string_int() {
-	mut m := map{
+	mut m := {
 		'hi': 4
 	}
-	m2 := map{
+	m2 := {
 		'hi': 5
 	}
 	assert m != m2

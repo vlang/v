@@ -19,7 +19,7 @@ vlib/v/checker/tests/unknown_comptime_expr.vv:13:6: error: undefined ident: `huh
       |         ~~~
    14 |     $if s is int {}
    15 |     $if s.i is 5 {}
-vlib/v/checker/tests/unknown_comptime_expr.vv:14:6: error: invalid `$if` condition: expected a type or selector expression
+vlib/v/checker/tests/unknown_comptime_expr.vv:14:6: error: invalid `$if` condition: expected a type or a selector expression or an interface check
    12 |     s := S1{}
    13 |     $if huh.typ is T {}
    14 |     $if s is int {}

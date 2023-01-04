@@ -1,0 +1,6 @@
+vlib/v/parser/tests/struct_field_unknown_module_c.vv:4:7: error: unknown module `term.ui`; did you mean `ui`?
+    2 |
+    3 | struct Inter {
+    4 |     code term.ui.KeyCode
+      |          ~~~~~~~
+    5 | }

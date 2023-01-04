@@ -1,0 +1,74 @@
+name: vab CI
+
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+jobs:
+  vab-compiles-v-examples:
+    runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 121
+    env:
+      VAB_FLAGS: --api 30 --build-tools 29.0.0 -v 3
+    steps:
+    - uses: actions/setup-java@v2
+      with:
+        distribution: 'adopt'
+        java-version: 8
+
+    - uses: actions/checkout@v2
+    - name: Build V
+      run: make && sudo ./v symlink
+
+    - name: Install vab
+      run: |
+        v install vab
+        v -g ~/.vmodules/vab
+        sudo ln -s ~/.vmodules/vab/vab /usr/local/bin/vab
+
+    - name: Run tests
+      run: v test ~/.vmodules/vab
+
+    - name: Run vab --help
+      run: vab --help
+
+    - name: Run vab doctor
+      run: vab doctor
+
+    - name: Build graphical V examples as APK
+      run: |
+        declare -a v_examples=('flappylearning' '2048' 'fireworks' 'tetris' 'sokol/particles' 'sokol/drawing.v' 'sokol/freetype_raven.v' 'gg/polygons.v' 'gg/raven_text_rendering.v' 'gg/rectangles.v' 'gg/stars.v' 'gg/worker_thread.v')
+        mkdir apks
+        for example in "${v_examples[@]}"; do
+          safe_name=$(echo "$example" | sed 's%/%-%' | sed 's%\.%-%' )
+          vab examples/$example -o apks/$safe_name.apk
+        done
+
+  v-compiles-os-android:
+    runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build V
+      run: make && sudo ./v symlink
+
+    - name: Install vab
+      run: |
+        v install vab
+        v -g ~/.vmodules/vab
+        sudo ln -s ~/.vmodules/vab/vab /usr/local/bin/vab
+
+    - name: Run vab --help
+      run: vab --help
+
+    - name: Run vab doctor
+      run: vab doctor
+
+    - name: Check `v -os android` *without* -apk flag
+      run: .github/workflows/android_cross_compile.vsh

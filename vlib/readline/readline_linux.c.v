@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -13,9 +13,32 @@ import os
 #include <termios.h>
 #include <sys/ioctl.h>
 
-fn C.tcgetattr(fd int, termios_p &Termios) int
+const cclen = 10
 
-fn C.tcsetattr(fd int, optional_actions int, termios_p &Termios) int
+// Termios stores the terminal options on Linux.
+pub struct C.termios {
+mut:
+	c_iflag int
+	c_oflag int
+	c_cflag int
+	c_lflag int
+	c_line  u8
+	c_cc    [cclen]int
+}
+
+struct Termios {
+mut:
+	c_iflag u32
+	c_oflag u32
+	c_cflag u32
+	c_lflag u32
+	c_line  u8
+	c_cc    [cclen]int
+}
+
+fn C.tcgetattr(fd int, termios_p &C.termios) int
+
+fn C.tcsetattr(fd int, optional_actions int, const_termios_p &C.termios) int
 
 fn C.raise(sig int)
 
@@ -47,18 +70,22 @@ enum Action {
 // Please note that `enable_raw_mode` catches the `SIGUSER` (CTRL + C) signal.
 // For a method that does please see `enable_raw_mode_nosig`.
 pub fn (mut r Readline) enable_raw_mode() {
-	if C.tcgetattr(0, &r.orig_termios) == -1 {
+	if unsafe { C.tcgetattr(0, &C.termios(&r.orig_termios)) } != 0 {
 		r.is_tty = false
 		r.is_raw = false
 		return
 	}
-	mut raw := r.orig_termios
+	mut raw := C.termios{}
+	unsafe { vmemcpy(&raw, &r.orig_termios, int(sizeof(raw))) }
+	// println('> r.orig_termios: $r.orig_termios')
+	// println('>            raw: $raw')
 	raw.c_iflag &= ~(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
-	raw.c_cflag |= (C.CS8)
+	raw.c_cflag |= C.CS8
 	raw.c_lflag &= ~(C.ECHO | C.ICANON | C.IEXTEN | C.ISIG)
-	raw.c_cc[C.VMIN] = 1
-	raw.c_cc[C.VTIME] = 0
-	C.tcsetattr(0, C.TCSADRAIN, &raw)
+	raw.c_cc[C.VMIN] = u8(1)
+	raw.c_cc[C.VTIME] = u8(0)
+	unsafe { C.tcsetattr(0, C.TCSADRAIN, &raw) }
+	// println('>   after    raw: $raw')
 	r.is_raw = true
 	r.is_tty = true
 }
@@ -68,18 +95,19 @@ pub fn (mut r Readline) enable_raw_mode() {
 // Please note that `enable_raw_mode_nosig` does not catch the `SIGUSER` (CTRL + C) signal
 // as opposed to `enable_raw_mode`.
 pub fn (mut r Readline) enable_raw_mode_nosig() {
-	if C.tcgetattr(0, &r.orig_termios) == -1 {
+	if unsafe { C.tcgetattr(0, &C.termios(&r.orig_termios)) } != 0 {
 		r.is_tty = false
 		r.is_raw = false
 		return
 	}
-	mut raw := r.orig_termios
+	mut raw := C.termios{}
+	unsafe { vmemcpy(&raw, &r.orig_termios, int(sizeof(raw))) }
 	raw.c_iflag &= ~(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
-	raw.c_cflag |= (C.CS8)
+	raw.c_cflag |= C.CS8
 	raw.c_lflag &= ~(C.ECHO | C.ICANON | C.IEXTEN)
-	raw.c_cc[C.VMIN] = 1
-	raw.c_cc[C.VTIME] = 0
-	C.tcsetattr(0, C.TCSADRAIN, &raw)
+	raw.c_cc[C.VMIN] = u8(1)
+	raw.c_cc[C.VTIME] = u8(0)
+	unsafe { C.tcsetattr(0, C.TCSADRAIN, &raw) }
 	r.is_raw = true
 	r.is_tty = true
 }
@@ -88,91 +116,94 @@ pub fn (mut r Readline) enable_raw_mode_nosig() {
 // For a description of raw mode please see the `enable_raw_mode` method.
 pub fn (mut r Readline) disable_raw_mode() {
 	if r.is_raw {
-		C.tcsetattr(0, C.TCSADRAIN, &r.orig_termios)
+		unsafe { C.tcsetattr(0, C.TCSADRAIN, &C.termios(&r.orig_termios)) }
 		r.is_raw = false
 	}
 }
 
 // read_char reads a single character.
-pub fn (r Readline) read_char() int {
-	return utf8_getchar()
+pub fn (r Readline) read_char() !int {
+	return int(term.utf8_getchar() or { return err })
 }
 
 // read_line_utf8 blocks execution in a loop and awaits user input
 // characters from a terminal until `EOF` or `Enter` key is encountered
 // in the input stream.
-// read_line_utf8 returns the complete input line as an UTF-8 encoded `ustring` or
+// read_line_utf8 returns the complete input line as an UTF-8 encoded `[]rune` or
 // an error if the line is empty.
 // The `prompt` `string` is output as a prefix text for the input capturing.
 // read_line_utf8 is the main method of the `readline` module and `Readline` struct.
-pub fn (mut r Readline) read_line_utf8(prompt string) ?ustring {
-	r.current = ''.ustring()
+pub fn (mut r Readline) read_line_utf8(prompt string) ![]rune {
+	r.current = []rune{}
 	r.cursor = 0
 	r.prompt = prompt
 	r.search_index = 0
 	r.prompt_offset = get_prompt_offset(prompt)
 	if r.previous_lines.len <= 1 {
-		r.previous_lines << ''.ustring()
-		r.previous_lines << ''.ustring()
+		r.previous_lines << []rune{}
+		r.previous_lines << []rune{}
 	} else {
-		r.previous_lines[0] = ''.ustring()
+		r.previous_lines[0] = []rune{}
 	}
 	if !r.is_raw {
 		r.enable_raw_mode()
 	}
 	print(r.prompt)
 	for {
-		C.fflush(C.stdout)
-		c := r.read_char()
+		unsafe { C.fflush(C.stdout) }
+		c := r.read_char() or { return err }
 		a := r.analyse(c)
 		if r.execute(a, c) {
 			break
 		}
 	}
-	r.previous_lines[0] = ''.ustring()
+	r.previous_lines[0] = []rune{}
 	r.search_index = 0
 	r.disable_raw_mode()
-	if r.current.s == '' {
+	if r.current.len == 0 {
 		return error('empty line')
 	}
 	return r.current
 }
 
 // read_line does the same as `read_line_utf8` but returns user input as a `string`.
-// (As opposed to `ustring` returned by `read_line_utf8`).
-pub fn (mut r Readline) read_line(prompt string) ?string {
-	s := r.read_line_utf8(prompt) ?
-	return s.s
+// (As opposed to `[]rune` returned by `read_line_utf8`).
+pub fn (mut r Readline) read_line(prompt string) !string {
+	s := r.read_line_utf8(prompt)!
+	return s.string()
 }
 
 // read_line_utf8 blocks execution in a loop and awaits user input
 // characters from a terminal until `EOF` or `Enter` key is encountered
 // in the input stream.
-// read_line_utf8 returns the complete input line as an UTF-8 encoded `ustring` or
+// read_line_utf8 returns the complete input line as an UTF-8 encoded `[]rune` or
 // an error if the line is empty.
 // The `prompt` `string` is output as a prefix text for the input capturing.
 // read_line_utf8 is the main method of the `readline` module and `Readline` struct.
 // NOTE that this version of `read_line_utf8` is a standalone function without
 // persistent functionalities (e.g. history).
-pub fn read_line_utf8(prompt string) ?ustring {
+pub fn read_line_utf8(prompt string) ![]rune {
 	mut r := Readline{}
-	s := r.read_line_utf8(prompt) ?
+	s := r.read_line_utf8(prompt)!
 	return s
 }
 
 // read_line does the same as `read_line_utf8` but returns user input as a `string`.
-// (As opposed to `ustring` as returned by `read_line_utf8`).
+// (As opposed to `[]rune` as returned by `read_line_utf8`).
 // NOTE that this version of `read_line` is a standalone function without
 // persistent functionalities (e.g. history).
-pub fn read_line(prompt string) ?string {
+pub fn read_line(prompt string) !string {
 	mut r := Readline{}
-	s := r.read_line(prompt) ?
+	s := r.read_line(prompt)!
 	return s
 }
 
 // analyse returns an `Action` based on the type of input byte given in `c`.
 fn (r Readline) analyse(c int) Action {
-	match byte(c) {
+	if c > 255 {
+		return Action.insert_character
+	}
+	match u8(c) {
 		`\0`, 0x3, 0x4, 255 {
 			return .eof
 		} // NUL, End of Text, End of Transmission
@@ -208,17 +239,19 @@ fn (r Readline) analyse(c int) Action {
 
 // analyse_control returns an `Action` based on the type of input read by `read_char`.
 fn (r Readline) analyse_control() Action {
-	c := r.read_char()
-	match byte(c) {
+	c := r.read_char() or { panic('Control sequence incomplete') }
+	match u8(c) {
 		`[` {
-			sequence := r.read_char()
-			match byte(sequence) {
+			sequence := r.read_char() or { panic('Control sequence incomplete') }
+			match u8(sequence) {
 				`C` { return .move_cursor_right }
 				`D` { return .move_cursor_left }
 				`B` { return .history_next }
 				`A` { return .history_previous }
+				`H` { return .move_cursor_begining }
+				`F` { return .move_cursor_end }
 				`1` { return r.analyse_extended_control() }
-				`2`, `3` { return r.analyse_extended_control_no_eat(byte(sequence)) }
+				`2`, `3` { return r.analyse_extended_control_no_eat(u8(sequence)) }
 				else {}
 			}
 		}
@@ -228,7 +261,7 @@ fn (r Readline) analyse_control() Action {
 	//TODO
 match c {
 	case `[`:
-	sequence := r.read_char()
+	sequence := r.read_char()?
 	match sequence {
 	case `C`: return .move_cursor_right
 	case `D`: return .move_cursor_left
@@ -251,12 +284,12 @@ match c {
 // analyse_extended_control returns an `Action` based on the type of input read by `read_char`.
 // analyse_extended_control specialises in cursor control.
 fn (r Readline) analyse_extended_control() Action {
-	r.read_char() // Removes ;
-	c := r.read_char()
-	match byte(c) {
+	r.read_char() or { panic('Control sequence incomplete') } // Removes ;
+	c := r.read_char() or { panic('Control sequence incomplete') }
+	match u8(c) {
 		`5` {
-			direction := r.read_char()
-			match byte(direction) {
+			direction := r.read_char() or { panic('Control sequence incomplete') }
+			match u8(direction) {
 				`C` { return .move_cursor_word_right }
 				`D` { return .move_cursor_word_left }
 				else {}
@@ -269,9 +302,9 @@ fn (r Readline) analyse_extended_control() Action {
 
 // analyse_extended_control_no_eat returns an `Action` based on the type of input byte given in `c`.
 // analyse_extended_control_no_eat specialises in detection of delete and insert keys.
-fn (r Readline) analyse_extended_control_no_eat(last_c byte) Action {
-	c := r.read_char()
-	match byte(c) {
+fn (r Readline) analyse_extended_control_no_eat(last_c u8) Action {
+	c := r.read_char() or { panic('Control sequence incomplete') }
+	match u8(c) {
 		`~` {
 			match last_c {
 				`3` { return .delete_right } // Suppr key
@@ -311,7 +344,7 @@ fn (mut r Readline) execute(a Action, c int) bool {
 // get_screen_columns returns the number of columns (`width`) in the terminal.
 fn get_screen_columns() int {
 	ws := Winsize{}
-	cols := if C.ioctl(1, C.TIOCGWINSZ, &ws) == -1 { 80 } else { int(ws.ws_col) }
+	cols := if unsafe { C.ioctl(1, C.TIOCGWINSZ, &ws) } == -1 { 80 } else { int(ws.ws_col) }
 	return cols
 }
 
@@ -373,14 +406,14 @@ fn (mut r Readline) refresh_line() {
 	mut end_of_input := [0, 0]
 	end_of_input = calculate_screen_position(r.prompt.len, 0, get_screen_columns(), r.current.len,
 		end_of_input)
-	end_of_input[1] += r.current.count('\n'.ustring())
+	end_of_input[1] += r.current.filter(it == `\n`).len
 	mut cursor_pos := [0, 0]
 	cursor_pos = calculate_screen_position(r.prompt.len, 0, get_screen_columns(), r.cursor,
 		cursor_pos)
 	shift_cursor(0, -r.cursor_row_offset)
 	term.erase_toend()
 	print(r.prompt)
-	print(r.current)
+	print(r.current.string())
 	if end_of_input[0] == 0 && end_of_input[1] > 0 {
 		print('\n')
 	}
@@ -401,10 +434,9 @@ fn (mut r Readline) eof() bool {
 // insert_character inserts the character `c` at current cursor position.
 fn (mut r Readline) insert_character(c int) {
 	if !r.overwrite || r.cursor == r.current.len {
-		r.current = r.current.left(r.cursor).ustring().add(utf32_to_str(u32(c)).ustring()).add(r.current.right(r.cursor).ustring())
+		r.current.insert(r.cursor, c)
 	} else {
-		r.current = r.current.left(r.cursor).ustring().add(utf32_to_str(u32(c)).ustring()).add(r.current.right(
-			r.cursor + 1).ustring())
+		r.current[r.cursor] = rune(c)
 	}
 	r.cursor++
 	// Refresh the line to add the new character
@@ -419,24 +451,23 @@ fn (mut r Readline) delete_character() {
 		return
 	}
 	r.cursor--
-	r.current = r.current.left(r.cursor).ustring().add(r.current.right(r.cursor + 1).ustring())
+	r.current.delete(r.cursor)
 	r.refresh_line()
 }
 
 // suppr_character removes (suppresses) the character in front of the cursor.
 fn (mut r Readline) suppr_character() {
-	if r.cursor > r.current.len {
+	if r.cursor >= r.current.len {
 		return
 	}
-	r.current = r.current.left(r.cursor).ustring().add(r.current.right(r.cursor + 1).ustring())
+	r.current.delete(r.cursor)
 	r.refresh_line()
 }
 
 // commit_line adds a line break and then stops the main loop.
 fn (mut r Readline) commit_line() bool {
 	r.previous_lines.insert(1, r.current)
-	a := '\n'.ustring()
-	r.current = r.current.add(a)
+	r.current << `\n`
 	r.cursor = r.current.len
 	if r.is_tty {
 		r.refresh_line()
@@ -482,9 +513,9 @@ fn (r Readline) is_break_character(c string) bool {
 // move_cursor_word_left moves the cursor relative one word length worth to the left.
 fn (mut r Readline) move_cursor_word_left() {
 	if r.cursor > 0 {
-		for ; r.cursor > 0 && r.is_break_character(r.current.at(r.cursor - 1)); r.cursor-- {
+		for ; r.cursor > 0 && r.is_break_character(r.current[r.cursor - 1].str()); r.cursor-- {
 		}
-		for ; r.cursor > 0 && !r.is_break_character(r.current.at(r.cursor - 1)); r.cursor-- {
+		for ; r.cursor > 0 && !r.is_break_character(r.current[r.cursor - 1].str()); r.cursor-- {
 		}
 		r.refresh_line()
 	}
@@ -493,9 +524,9 @@ fn (mut r Readline) move_cursor_word_left() {
 // move_cursor_word_right moves the cursor relative one word length worth to the right.
 fn (mut r Readline) move_cursor_word_right() {
 	if r.cursor < r.current.len {
-		for ; r.cursor < r.current.len && r.is_break_character(r.current.at(r.cursor)); r.cursor++ {
+		for ; r.cursor < r.current.len && r.is_break_character(r.current[r.cursor].str()); r.cursor++ {
 		}
-		for ; r.cursor < r.current.len && !r.is_break_character(r.current.at(r.cursor)); r.cursor++ {
+		for ; r.cursor < r.current.len && !r.is_break_character(r.current[r.cursor].str()); r.cursor++ {
 		}
 		r.refresh_line()
 	}
@@ -522,9 +553,14 @@ fn (mut r Readline) history_previous() {
 		r.previous_lines[0] = r.current
 	}
 	r.search_index++
-	r.current = r.previous_lines[r.search_index]
-	r.cursor = r.current.len
-	r.refresh_line()
+	prev_line := r.previous_lines[r.search_index]
+	if r.skip_empty && prev_line == [] {
+		r.history_previous()
+	} else {
+		r.current = prev_line
+		r.cursor = r.current.len
+		r.refresh_line()
+	}
 }
 
 // history_next sets current line to the content of the next line in the history buffer.
@@ -544,10 +580,12 @@ fn (mut r Readline) suspend() {
 	r.disable_raw_mode()
 	if !is_standalone {
 		// We have to SIGSTOP the parent v process
-		ppid := C.getppid()
-		C.kill(ppid, C.SIGSTOP)
+		unsafe {
+			ppid := C.getppid()
+			C.kill(ppid, C.SIGSTOP)
+		}
 	}
-	C.raise(C.SIGSTOP)
+	unsafe { C.raise(C.SIGSTOP) }
 	r.enable_raw_mode()
 	r.refresh_line()
 	if r.is_tty {

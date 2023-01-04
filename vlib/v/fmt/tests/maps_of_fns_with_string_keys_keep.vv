@@ -5,7 +5,7 @@ fn sqr(n int) int {
 fn main() {
 	fns := [sqr]
 	println(fns[0](10))
-	fns_map := map{
+	fns_map := {
 		'sqr': sqr
 	}
 	println(fns_map['sqr'])

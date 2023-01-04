@@ -16,7 +16,7 @@ pub mut:
 }
 
 pub fn (rocket Rocket) draw(mut ctx gg.Context) {
-	ctx.draw_circle(rocket.pos.x, get_params().height - rocket.pos.y, get_params().rocket_radius,
+	ctx.draw_circle_filled(rocket.pos.x, get_params().height - rocket.pos.y, get_params().rocket_radius,
 		rocket.color)
 }
 
@@ -39,7 +39,7 @@ pub fn (mut rocket Rocket) tick(mut ctx gg.Context) {
 		rocket.pos += rocket.vel
 		rocket.draw(mut ctx)
 
-		rocket.accel = {}
+		rocket.accel = Vector{}
 	}
 
 	for mut particle in rocket.particles {
@@ -50,12 +50,12 @@ pub fn (mut rocket Rocket) tick(mut ctx gg.Context) {
 pub fn new_rocket() Rocket {
 	return Rocket{
 		color: random_color()
-		pos: {
-			x: rand.f32_in_range(50, get_params().width - 50)
+		pos: Vector{
+			x: rand.f32_in_range(50, get_params().width - 50) or { 50 }
 		}
-		vel: {
-			x: rand.f32_in_range(-1.5, 1.5)
-			y: rand.f32_in_range(5, 7)
+		vel: Vector{
+			x: rand.f32_in_range(-1.5, 1.5) or { -1.5 }
+			y: rand.f32_in_range(5, 7) or { 5 }
 		}
 	}
 }

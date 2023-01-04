@@ -1,9 +1,9 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module os
 
-enum FileType {
+pub enum FileType {
 	regular
 	directory
 	character_device
@@ -20,6 +20,22 @@ pub:
 	execute bool
 }
 
+// bitmask returns a 3 bit sequence in the order RWE where
+// the bit is set to 1 if the value is true or 0 otherwise.
+pub fn (p FilePermission) bitmask() u32 {
+	mut mask := u32(0)
+	if p.read {
+		mask |= 4
+	}
+	if p.write {
+		mask |= 2
+	}
+	if p.execute {
+		mask |= 1
+	}
+	return mask
+}
+
 struct FileMode {
 pub:
 	typ    FileType
@@ -28,11 +44,17 @@ pub:
 	others FilePermission
 }
 
+// bitmask returns a 9 bit sequence in the order owner + group + others.
+// This is a valid bitmask to use with `os.chmod`.
+pub fn (m FileMode) bitmask() u32 {
+	return m.owner.bitmask() << 6 | m.group.bitmask() << 3 | m.others.bitmask()
+}
+
 // inode returns the mode of the file/inode containing inode type and permission information
 // it supports windows for regular files but it doesn't matter if you use owner, group or others when checking permissions on windows
 pub fn inode(path string) FileMode {
 	mut attr := C.stat{}
-	unsafe { C.stat(charptr(path.str), &attr) }
+	unsafe { C.stat(&char(path.str), &attr) }
 	mut typ := FileType.regular
 	if attr.st_mode & u32(C.S_IFMT) == u32(C.S_IFDIR) {
 		typ = .directory

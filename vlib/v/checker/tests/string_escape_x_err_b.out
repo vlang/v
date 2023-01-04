@@ -1,4 +1,4 @@
-vlib/v/checker/tests/string_escape_x_err_b.vv:2:15: error: `\x` used with no following hex digits
+vlib/v/checker/tests/string_escape_x_err_b.vv:2:15: error: `\x` used without two following hex digits
     1 | fn main() {
     2 |     println('\xhh')
       |               ^

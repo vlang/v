@@ -1,0 +1,7 @@
+type Mat = [2][2]int
+
+fn main() {
+	a := Mat([[1, 2]!, [3, 4]!]!)
+	println(a)
+	println(Mat([[1, 2]!, [3, 4]!]!))
+}

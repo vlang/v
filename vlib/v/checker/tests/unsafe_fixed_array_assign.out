@@ -1,0 +1,7 @@
+vlib/v/checker/tests/unsafe_fixed_array_assign.vv:8:7: error: assignment from one fixed array to another with a pointer element type is prohibited outside of `unsafe`
+    6 | mut box := Box { num: 10 }
+    7 | a := [&box]!
+    8 | mut b := a
+      |       ~~
+    9 | b[0].num = 0
+   10 | println(a)

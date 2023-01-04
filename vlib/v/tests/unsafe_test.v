@@ -54,7 +54,8 @@ fn test_funcs() {
 
 fn test_if_expr_unsafe() {
 	i := 4
-	p := if true { unsafe { &i } } else { unsafe { &i } }
+	ii := 123
+	p := if true { unsafe { &i } } else { unsafe { &ii } }
 	assert *p == 4
 }
 
@@ -71,4 +72,33 @@ fn unsafe_if_stmt() int {
 fn test_unsafe_if_stmt() {
 	x := unsafe_if_stmt()
 	assert x == 4
+}
+
+const fixedbytes = [100]u8{}
+
+fn test_unsafe_pointers() {
+	fsize := fixedbytes.len
+	src := &fixedbytes[0]
+	//
+	b := []u8{}
+	eprintln('b.data before: ${b.data}')
+	eprintln('b.len before: ${b.len}')
+	eprintln('b.cap before: ${b.cap}')
+	assert b.len == 0
+	unsafe {
+		// here b will be setup to work with the mmaped region
+		mut pdata := &b.data
+		mut plen := &b.len
+		mut pcap := &b.cap
+		// note that pdata, plen, pcap are used here:
+		*pdata = src
+		*plen = int(fsize)
+		*pcap = int(fsize)
+	}
+	assert b.len == 100
+	assert b.cap == 100
+	assert b.data == src
+	eprintln('b.data after: ${b.data}')
+	eprintln('b.len after: ${b.len}')
+	eprintln('b.cap after: ${b.cap}')
 }

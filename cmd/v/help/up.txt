@@ -1,0 +1,7 @@
+Usage: v up
+
+Update the V compiler to the latest version from https://github.com/vlang/v.
+
+Options:
+  -v           - Print more details about the update.
+  -prod        - Compile the updated V with the -prod flag.

@@ -1,0 +1,14 @@
+vlib/v/parser/tests/postfix_err_b.vv:7:14: warning: `++` operator can only be used as a statement
+    5 |     for _ in 0..3 {
+    6 |         unsafe {
+    7 |             *(arrayptr++) = 0
+      |                       ~~
+    8 |         }
+    9 |     }
+vlib/v/parser/tests/postfix_err_b.vv:3:18: warning: cannot cast a fixed array (use e.g. `&arr[0]` instead)
+    1 | fn main(){
+    2 |     mut array := [3]int{}
+    3 |     mut arrayptr := &int(array)
+      |                     ~~~~~~~~~~~
+    4 |
+    5 |     for _ in 0..3 {

@@ -51,7 +51,9 @@ mut:
 	is_verbose       bool
 	include_readme   bool
 	include_examples bool = true
+	include_comments bool // for plaintext
 	inline_assets    bool
+	theme_dir        string = default_theme
 	no_timestamp     bool
 	output_path      string
 	output_type      OutputType = .unset
@@ -80,9 +82,9 @@ fn (vd VDoc) gen_json(d doc.Doc) string {
 	} else {
 		d.head.merge_comments_without_examples()
 	}
-	jw.write_string('{"module_name":"$d.head.name","description":"${escape(comments)}","contents":')
+	jw.write_string('{"module_name":"${d.head.name}","description":"${escape(comments)}","contents":')
 	jw.write_string(json.encode(d.contents.keys().map(d.contents[it])))
-	jw.write_string(',"generator":"vdoc","time_generated":"$d.time_generated.str()"}')
+	jw.write_string(',"generator":"vdoc","time_generated":"${d.time_generated.str()}"}')
 	return jw.str()
 }
 
@@ -93,18 +95,24 @@ fn (vd VDoc) gen_plaintext(d doc.Doc) string {
 		content_arr := d.head.content.split(' ')
 		pw.writeln('${term.bright_blue(content_arr[0])} ${term.green(content_arr[1])}\n')
 	} else {
-		pw.writeln('$d.head.content\n')
+		pw.writeln('${d.head.content}\n')
 	}
-	comments := if cfg.include_examples {
-		d.head.merge_comments()
-	} else {
-		d.head.merge_comments_without_examples()
-	}
-	if comments.trim_space().len > 0 && !cfg.pub_only {
-		pw.writeln(comments.split_into_lines().map('    ' + it).join('\n'))
+	if cfg.include_comments {
+		comments := if cfg.include_examples {
+			d.head.merge_comments()
+		} else {
+			d.head.merge_comments_without_examples()
+		}
+		if comments.trim_space().len > 0 {
+			pw.writeln(indent(comments))
+		}
 	}
 	vd.write_plaintext_content(d.contents.arr(), mut pw)
 	return pw.str()
+}
+
+fn indent(s string) string {
+	return '    ' + s.replace('\n', '\n    ')
 }
 
 fn (vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Builder) {
@@ -116,16 +124,28 @@ fn (vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Buil
 			} else {
 				pw.writeln(cn.content)
 			}
-			if cn.comments.len > 0 && !cfg.pub_only {
-				comments := if cfg.include_examples {
-					cn.merge_comments()
-				} else {
-					cn.merge_comments_without_examples()
+			if cn.comments.len > 0 && cfg.include_comments {
+				comments := cn.merge_comments_without_examples()
+				pw.writeln(indent(comments.trim_space()))
+				if cfg.include_examples {
+					examples := cn.examples()
+					for ex in examples {
+						pw.write_string('    Example: ')
+						mut fex := ex
+						if ex.index_u8(`\n`) >= 0 {
+							// multi-line example
+							pw.write_u8(`\n`)
+							fex = indent(ex)
+						}
+						if cfg.is_color {
+							fex = color_highlight(fex, vd.docs[0].table)
+						}
+						pw.writeln(fex)
+					}
 				}
-				pw.writeln(comments.trim_space().split_into_lines().map('    ' + it).join('\n'))
 			}
 			if cfg.show_loc {
-				pw.writeln('Location: $cn.file_path:${cn.pos.line_nr + 1}\n')
+				pw.writeln('Location: ${cn.file_path}:${cn.pos.line_nr + 1}\n')
 			}
 		}
 		vd.write_plaintext_content(cn.children, mut pw)
@@ -153,6 +173,9 @@ fn (vd VDoc) get_file_name(mod string, out Output) string {
 	} else if !cfg.is_multi && !os.is_dir(out.path) {
 		name = os.file_name(out.path)
 	}
+	if name == '' {
+		name = 'index'
+	}
 	name = name + match out.typ {
 		.html { '.html' }
 		.markdown { '.md' }
@@ -170,7 +193,7 @@ fn (vd VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 		}
 		file_name, content := vd.render_doc(pdoc.d, pdoc.out)
 		output_path := os.join_path(pdoc.out.path, file_name)
-		println('Generating $pdoc.out.typ in "$output_path"')
+		println('Generating ${pdoc.out.typ} in "${output_path}"')
 		os.write_file(output_path, content) or { panic(err) }
 	}
 	wg.done()
@@ -178,7 +201,7 @@ fn (vd VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 
 fn (vd VDoc) render_parallel(out Output) {
 	vjobs := runtime.nr_jobs()
-	mut work := sync.new_channel<ParallelDoc>(vd.docs.len)
+	mut work := sync.new_channel[ParallelDoc](u32(vd.docs.len))
 	mut wg := sync.new_waitgroup()
 	for i in 0 .. vd.docs.len {
 		p_doc := ParallelDoc{vd.docs[i], out}
@@ -187,7 +210,7 @@ fn (vd VDoc) render_parallel(out Output) {
 	work.close()
 	wg.add(vjobs)
 	for _ in 0 .. vjobs {
-		go vd.work_processor(mut work, mut wg)
+		spawn vd.work_processor(mut work, mut wg)
 	}
 	wg.wait()
 }
@@ -214,15 +237,15 @@ fn (vd VDoc) get_readme(path string) string {
 		return ''
 	}
 	readme_path := os.join_path(path, '${fname}.md')
-	vd.vprintln('Reading README file from $readme_path')
+	vd.vprintln('Reading README file from ${readme_path}')
 	readme_contents := os.read_file(readme_path) or { '' }
 	return readme_contents
 }
 
 fn (vd VDoc) emit_generate_err(err IError) {
 	cfg := vd.cfg
-	mut err_msg := err.msg
-	if err.code == 1 {
+	mut err_msg := err.msg()
+	if err.code() == 1 {
 		mod_list := get_modules_list(cfg.input_path, []string{})
 		println('Available modules:\n==================')
 		for mod in mod_list {
@@ -264,7 +287,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 	}
 	manifest_path := os.join_path(dir_path, 'v.mod')
 	if os.exists(manifest_path) {
-		vd.vprintln('Reading v.mod info from $manifest_path')
+		vd.vprintln('Reading v.mod info from ${manifest_path}')
 		if manifest := vmod.from_file(manifest_path) {
 			vd.manifest = manifest
 		}
@@ -286,13 +309,11 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			}
 		}
 	}
-	dirs := if cfg.is_multi {
-		get_modules_list(cfg.input_path, []string{})
-	} else {
-		[cfg.input_path]
-	}
+	dirs := if cfg.is_multi { get_modules_list(cfg.input_path, []string{}) } else { [
+			cfg.input_path,
+		] }
 	for dirpath in dirs {
-		vd.vprintln('Generating $out.typ docs for "$dirpath"')
+		vd.vprintln('Generating ${out.typ} docs for "${dirpath}"')
 		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {
 			vd.emit_generate_err(err)
 			exit(1)
@@ -324,6 +345,10 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		docs << vd.docs.filter(it.head.name != 'builtin')
 		vd.docs = docs
 	}
+	if dirs.len == 0 && cfg.is_multi {
+		eprintln('vdoc: -m requires at least 1 module folder')
+		exit(1)
+	}
 	vd.vprintln('Rendering docs...')
 	if out.path.len == 0 || out.path == 'stdout' {
 		if out.typ == .html {
@@ -331,18 +356,21 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		}
 		outputs := vd.render(out)
 		if outputs.len == 0 {
-			eprintln('vdoc: No documentation found for ${dirs[0]}')
+			if dirs.len == 0 {
+				eprintln('vdoc: No documentation found')
+			} else {
+				eprintln('vdoc: No documentation found for ${dirs[0]}')
+			}
 			exit(1)
 		} else {
 			first := outputs.keys()[0]
 			println(outputs[first])
 		}
 	} else {
-		if !os.is_dir(out.path) {
-			out.path = os.real_path('.')
-		}
 		if !os.exists(out.path) {
-			os.mkdir(out.path) or { panic(err) }
+			os.mkdir_all(out.path) or { panic(err) }
+		} else if !os.is_dir(out.path) {
+			out.path = os.real_path('.')
 		}
 		if cfg.is_multi {
 			out.path = os.join_path(out.path, '_docs')
@@ -350,7 +378,10 @@ fn (mut vd VDoc) generate_docs_from_file() {
 				os.mkdir(out.path) or { panic(err) }
 			} else {
 				for fname in css_js_assets {
-					os.rm(os.join_path(out.path, fname)) or { panic(err) }
+					existing_asset_path := os.join_path(out.path, fname)
+					if os.exists(existing_asset_path) {
+						os.rm(existing_asset_path) or { panic(err) }
+					}
 				}
 			}
 		}
@@ -364,6 +395,9 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			vd.render_search_index(out)
 			// move favicons to target directory
 			println('Copying favicons...')
+
+			favicons_path := os.join_path(cfg.theme_dir, 'favicons')
+
 			favicons := os.ls(favicons_path) or { panic(err) }
 			for favicon in favicons {
 				favicon_path := os.join_path(favicons_path, favicon)
@@ -376,7 +410,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 
 fn (vd VDoc) vprintln(str string) {
 	if vd.cfg.is_verbose {
-		println('vdoc: $str')
+		println('vdoc: ${str}')
 	}
 }
 
@@ -394,7 +428,7 @@ fn parse_arguments(args []string) Config {
 				format := cmdline.option(current_args, '-f', '')
 				if format !in allowed_formats {
 					allowed_str := allowed_formats.join(', ')
-					eprintln('vdoc: "$format" is not a valid format. Only $allowed_str are allowed.')
+					eprintln('vdoc: "${format}" is not a valid format. Only ${allowed_str} are allowed.')
 					exit(1)
 				}
 				cfg.output_type = set_output_type_from_str(format)
@@ -409,8 +443,14 @@ fn parse_arguments(args []string) Config {
 			'-inline-assets' {
 				cfg.inline_assets = true
 			}
+			'-theme-dir' {
+				cfg.theme_dir = cmdline.option(current_args, '-theme-dir', default_theme)
+			}
 			'-l' {
 				cfg.show_loc = true
+			}
+			'-comments' {
+				cfg.include_comments = true
 			}
 			'-m' {
 				cfg.is_multi = true
@@ -427,7 +467,7 @@ fn parse_arguments(args []string) Config {
 					exit(1)
 				}
 				selected_platform := doc.platform_from_string(platform_str) or {
-					eprintln(err.msg)
+					eprintln(err.msg())
 					exit(1)
 				}
 				cfg.platform = selected_platform
@@ -477,7 +517,7 @@ fn parse_arguments(args []string) Config {
 	} else if !is_path {
 		// TODO vd.vprintln('Input "$cfg.input_path" is not a valid path. Looking for modules named "$cfg.input_path"...')
 		mod_path := doc.lookup_module(cfg.input_path) or {
-			eprintln('vdoc: $err')
+			eprintln('vdoc: ${err}')
 			exit(1)
 		}
 		cfg.input_path = mod_path
@@ -488,7 +528,7 @@ fn parse_arguments(args []string) Config {
 fn main() {
 	if os.args.len < 2 || '-h' in os.args || '-help' in os.args || '--help' in os.args
 		|| os.args[1..] == ['doc', 'help'] {
-		os.system('$vexe help doc')
+		os.system('${os.quoted_path(vexe)} help doc')
 		exit(0)
 	}
 	args := os.args[2..].clone()
@@ -504,6 +544,6 @@ fn main() {
 			repo_url: ''
 		}
 	}
-	vd.vprintln('Setting output type to "$cfg.output_type"')
+	vd.vprintln('Setting output type to "${cfg.output_type}"')
 	vd.generate_docs_from_file()
 }

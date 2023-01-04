@@ -1,0 +1,18 @@
+freebsd_instance:
+  image_family: freebsd-13-0
+
+freebsd_task:
+  name: Code CI / freebsd
+  install_script: pkg install -y git
+  script: |
+    echo 'Building V'
+    git clone https://github.com/vlang/v
+    cd v
+    make
+    ##.github/workflows/freebsd_build_tcc.sh
+    ##tcc -v -v
+    echo 'Build cmd/tools/fast'
+    cd cmd/tools/fast && ../../../v fast.v && ./fast -clang
+    echo 'Run test-self'
+    cd /tmp/cirrus-ci-build/v
+    VTEST_JUST_ESSENTIAL=1 ./v test-self

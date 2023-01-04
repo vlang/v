@@ -9,13 +9,13 @@ const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
 fn test_the_v_compiler_can_be_invoked() {
 	vexec := runner.full_path_to_v(5)
-	println('vexecutable: $vexec')
+	println('vexecutable: ${vexec}')
 	assert vexec != ''
-	vcmd := '"$vexec" -version'
-	r := os.execute_or_panic(vcmd)
+	vcmd := '${os.quoted_path(vexec)} -version'
+	r := os.execute_or_exit(vcmd)
 	assert r.exit_code == 0
 	// println('"$vcmd" exit_code: $r.exit_code | output: $r.output')
-	vcmd_error := '"$vexec" nonexisting.v'
+	vcmd_error := '${os.quoted_path(vexec)} nonexisting.v'
 	r_error := os.execute(vcmd_error)
 	if r_error.exit_code < 0 {
 		panic(r_error.output)
@@ -33,6 +33,14 @@ mut:
 }
 
 fn test_all_v_repl_files() {
+	if os.user_os() == 'windows' {
+		if os.getenv('VTEST_ENABLE_REPL') == '' {
+			println('This test is disabled on windows temporarily')
+			println('set VTEST_ENABLE_REPL=1')
+			println('if you do want to run it anyway.')
+			exit(0)
+		}
+	}
 	mut session := &Session{
 		options: runner.new_options()
 		bmark: benchmark.new_benchmark()
@@ -48,7 +56,7 @@ fn test_all_v_repl_files() {
 		// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019
 		pool_repl.set_max_jobs(1)
 	}
-	pool_repl.work_on_items<string>(session.options.files)
+	pool_repl.work_on_items[string](session.options.files)
 	session.bmark.stop()
 	println(session.bmark.total_message('total time spent running REPL files'))
 }
@@ -63,19 +71,19 @@ fn worker_repl(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		p.set_thread_context(idx, tls_bench)
 	}
 	tls_bench.cstep = idx
-	tfolder := os.join_path(cdir, 'vrepl_tests_$idx')
+	tfolder := os.join_path(cdir, 'vrepl_tests_${idx}')
 	if os.is_dir(tfolder) {
 		os.rmdir_all(tfolder) or { panic(err) }
 	}
 	os.mkdir(tfolder) or { panic(err) }
-	file := p.get_item<string>(idx)
+	file := p.get_item[string](idx)
 	session.bmark.step()
 	tls_bench.step()
 	fres := runner.run_repl_file(tfolder, session.options.vexec, file) or {
 		session.bmark.fail()
 		tls_bench.fail()
 		os.rmdir_all(tfolder) or { panic(err) }
-		eprintln(tls_bench.step_message_fail(err.msg))
+		eprintln(tls_bench.step_message_fail(err.msg()))
 		assert false
 		return pool.no_result
 	}

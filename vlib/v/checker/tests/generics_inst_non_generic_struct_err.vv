@@ -1,0 +1,6 @@
+struct Test {
+}
+
+fn main() {
+	println(Test<string>{})
+}

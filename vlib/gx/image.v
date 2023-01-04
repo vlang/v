@@ -2,7 +2,7 @@ module gx
 
 pub struct Image {
 mut:
-	obj    voidptr
+	obj voidptr
 pub:
 	id     int
 	width  int
@@ -10,5 +10,5 @@ pub:
 }
 
 pub fn (i Image) is_empty() bool {
-	return isnil(i.obj)
+	return i.obj == unsafe { nil }
 }

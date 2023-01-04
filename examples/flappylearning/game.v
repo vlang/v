@@ -66,7 +66,7 @@ fn (p Pipe) is_out() bool {
 
 struct App {
 mut:
-	gg               &gg.Context
+	gg               &gg.Context = unsafe { nil }
 	background       gg.Image
 	bird             gg.Image
 	pipetop          gg.Image
@@ -177,7 +177,7 @@ fn main() {
 	mut app := &App{
 		gg: 0
 	}
-	mut font_path := os.resource_abs_path(os.join_path('../assets/fonts/', 'RobotoMono-Regular.ttf'))
+	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
 	$if android {
 		font_path = 'fonts/RobotoMono-Regular.ttf'
 	}
@@ -185,7 +185,6 @@ fn main() {
 		bg_color: gx.white
 		width: win_width
 		height: win_height
-		use_ortho: true // This is needed for 2D drawing
 		create_window: true
 		window_title: 'flappylearning-v'
 		frame_fn: frame
@@ -199,7 +198,7 @@ fn main() {
 		network: [2, 2, 1]
 	}
 	app.start()
-	go app.run()
+	spawn app.run()
 	app.gg.run()
 }
 
@@ -255,10 +254,10 @@ fn (app &App) display() {
 				app.bird)
 		}
 	}
-	app.gg.draw_text_def(10, 25, 'Score: $app.score')
-	app.gg.draw_text_def(10, 50, 'Max Score: $app.max_score')
-	app.gg.draw_text_def(10, 75, 'Generation: $app.generation')
-	app.gg.draw_text_def(10, 100, 'Alive: $app.alives / $app.nv.population')
+	app.gg.draw_text_def(10, 25, 'Score: ${app.score}')
+	app.gg.draw_text_def(10, 50, 'Max Score: ${app.max_score}')
+	app.gg.draw_text_def(10, 75, 'Generation: ${app.generation}')
+	app.gg.draw_text_def(10, 100, 'Alive: ${app.alives} / ${app.nv.population}')
 }
 
 fn (app &App) draw() {
@@ -275,7 +274,7 @@ fn (mut app App) key_down(key gg.KeyCode) {
 	// global keys
 	match key {
 		.escape {
-			exit(0)
+			app.gg.quit()
 		}
 		._0 {
 			app.timer_period_ms = 0

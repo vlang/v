@@ -1,0 +1,5 @@
+$if vinix {
+	println('vinix')
+} $else {
+	println('others')
+}

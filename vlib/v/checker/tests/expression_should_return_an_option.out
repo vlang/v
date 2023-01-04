@@ -1,4 +1,4 @@
-vlib/v/checker/tests/expression_should_return_an_option.vv:28:10: error: expression should return an option
+vlib/v/checker/tests/expression_should_return_an_option.vv:28:10: error: expression should either return an option or a result
    26 |     }
    27 |     // should be an checker error:
    28 |     if x := return_string() {

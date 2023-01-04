@@ -1,0 +1,28 @@
+vlib/v/checker/tests/invalid_const_expr_match_range_err.vv:5:2: error: match branch range expressions need the start value to be known at compile time (only enums, const or literals are supported)
+    3 | 
+    4 | match 5 {
+    5 |     start...10 {
+      |     ~~~~~
+    6 |         println(start)
+    7 |     }
+vlib/v/checker/tests/invalid_const_expr_match_range_err.vv:8:7: error: match branch range expressions need the end value to be known at compile time (only enums, const or literals are supported)
+    6 |         println(start)
+    7 |     }
+    8 |     10...end {
+      |          ~~~
+    9 |         println(end)
+   10 |     }
+vlib/v/checker/tests/invalid_const_expr_match_range_err.vv:15:2: error: match branch range expressions need the start value to be known at compile time (only enums, const or literals are supported)
+   13 | 
+   14 | a := match 5 {
+   15 |     start...10 {
+      |     ~~~~~
+   16 |         2
+   17 |     }
+vlib/v/checker/tests/invalid_const_expr_match_range_err.vv:18:7: error: match branch range expressions need the end value to be known at compile time (only enums, const or literals are supported)
+   16 |         2
+   17 |     }
+   18 |     10...end {
+      |          ~~~
+   19 |         3
+   20 |     }

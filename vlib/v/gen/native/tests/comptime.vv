@@ -1,0 +1,38 @@
+fn main() {
+	comptime_if()
+}
+
+fn comptime_if() {
+	$if linux || windows || macos {
+		println('linux or windows or macos')
+	}
+
+	os := $if linux || windows || macos {
+		'linux or windows or macos'
+	} $else {
+		'other'
+	}
+	println(os)
+
+	$if linux && windows {
+		assert false
+	}
+
+	$if custom_define ? {
+		println('custom defines work')
+	} $else {
+		assert false
+	}
+
+	println($if true { 'printing directly' } $else { '' })
+
+	$if test {
+		println('test')
+	} $else $if debug {
+		println('debug')
+	} $else $if prod {
+		println('production')
+	} $else {
+		println('other')
+	}
+}

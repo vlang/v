@@ -1,0 +1,16 @@
+[heap]
+struct Foo {
+mut:
+	value int
+}
+
+fn y(x &Foo) {
+	mut m := x
+	m.value = 42
+}
+
+fn main() {
+	x := Foo{123}
+	y(x)
+	println(x)
+}

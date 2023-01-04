@@ -1,0 +1,4 @@
+_ := match true {
+	true { 0 }
+	false {}
+}

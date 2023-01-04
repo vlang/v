@@ -34,13 +34,13 @@ fn branches_are_struct_inits() {
 
 fn branches_are_call_exprs_with_or_blocks() {
 	match 'a' {
-		'b' { foo() or { panic(err.msg) } }
+		'b' { foo() or { panic(err) } }
 	}
 	match 'a' {
 		'b' {
 			foo() or {
 				// do stuff
-				panic(err.msg)
+				panic(err)
 			}
 		}
 	}
@@ -48,7 +48,7 @@ fn branches_are_call_exprs_with_or_blocks() {
 		'b' {
 			foo() or {
 				another_stmt()
-				panic(err.msg)
+				panic(err)
 			}
 		}
 	}

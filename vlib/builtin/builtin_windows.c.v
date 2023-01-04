@@ -1,6 +1,7 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+[has_globals]
 module builtin
 
 // dbghelp.h is already included in cheaders.v
@@ -15,14 +16,14 @@ pub mut:
 	f_size           u32
 	f_mod_base       u64 // Base Address of module comtaining this symbol
 	f_flags          u32
-	f_value          u64  // Value of symbol, ValuePresent should be 1
-	f_address        u64  // Address of symbol including base address of module
-	f_register       u32  // register holding value or pointer to value
-	f_scope          u32  // scope of the symbol
-	f_tag            u32  // pdb classification
-	f_name_len       u32  // Actual length of name
-	f_max_name_len   u32  // must be manually set
-	f_name           byte // must be calloc(f_max_name_len)
+	f_value          u64 // Value of symbol, ValuePresent should be 1
+	f_address        u64 // Address of symbol including base address of module
+	f_register       u32 // register holding value or pointer to value
+	f_scope          u32 // scope of the symbol
+	f_tag            u32 // pdb classification
+	f_name_len       u32 // Actual length of name
+	f_max_name_len   u32 // must be manually set
+	f_name           u8  // must be calloc(f_max_name_len)
 }
 
 pub struct SymbolInfoContainer {
@@ -36,7 +37,7 @@ pub mut:
 	f_size_of_struct u32
 	f_key            voidptr
 	f_line_number    u32
-	f_file_name      byteptr
+	f_file_name      &u8 = unsafe { nil }
 	f_address        u64
 }
 
@@ -46,7 +47,7 @@ fn C.SymSetOptions(symoptions u32) u32
 // returns handle
 fn C.GetCurrentProcess() voidptr
 
-fn C.SymInitialize(h_process voidptr, p_user_search_path byteptr, b_invade_process int) int
+fn C.SymInitialize(h_process voidptr, p_user_search_path &u8, b_invade_process int) int
 
 fn C.CaptureStackBackTrace(frames_to_skip u32, frames_to_capture u32, p_backtrace voidptr, p_backtrace_hash voidptr) u16
 
@@ -62,11 +63,11 @@ const (
 	symopt_load_lines            = 0x00000010
 	symopt_include_32bit_modules = 0x00002000
 	symopt_allow_zero_address    = 0x01000000
-	symopt_debug                 = 0x80000000
+	symopt_debug                 = u32(0x80000000)
 )
 
 // g_original_codepage - used to restore the original windows console code page when exiting
-__global ( g_original_codepage = u32(0))
+__global g_original_codepage = u32(0)
 
 // utf8 to stdout needs C.SetConsoleOutputCP(C.CP_UTF8)
 fn C.GetConsoleOutputCP() u32
@@ -77,11 +78,18 @@ fn restore_codepage() {
 	C.SetConsoleOutputCP(g_original_codepage)
 }
 
+fn is_terminal(fd int) int {
+	mut mode := u32(0)
+	osfh := voidptr(C._get_osfhandle(fd))
+	C.GetConsoleMode(osfh, voidptr(&mode))
+	return int(mode)
+}
+
 fn builtin_init() {
 	g_original_codepage = C.GetConsoleOutputCP()
 	C.SetConsoleOutputCP(C.CP_UTF8)
 	C.atexit(restore_codepage)
-	if is_atty(1) > 0 {
+	if is_terminal(1) > 0 {
 		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | C.ENABLE_WRAP_AT_EOL_OUTPUT | 0x0004) // enable_virtual_terminal_processing
 		C.SetConsoleMode(C.GetStdHandle(C.STD_ERROR_HANDLE), C.ENABLE_PROCESSED_OUTPUT | C.ENABLE_WRAP_AT_EOL_OUTPUT | 0x0004) // enable_virtual_terminal_processing
 		unsafe {
@@ -89,7 +97,9 @@ fn builtin_init() {
 			C.setbuf(C.stderr, 0)
 		}
 	}
-	add_unhandled_exception_handler()
+	$if !no_backtrace ? {
+		add_unhandled_exception_handler()
+	}
 }
 
 fn print_backtrace_skipping_top_frames(skipframes int) bool {
@@ -114,8 +124,10 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 		mut si := &sic.syminfo
 		si.f_size_of_struct = sizeof(SymbolInfo) // Note: C.SYMBOL_INFO is 88
 		si.f_max_name_len = sizeof(SymbolInfoContainer) - sizeof(SymbolInfo) - 1
-		fname := charptr(&si.f_name)
-		mut sline64 := Line64{}
+		fname := &char(&si.f_name)
+		mut sline64 := Line64{
+			f_file_name: &u8(0)
+		}
 		sline64.f_size_of_struct = sizeof(Line64)
 
 		handle := C.GetCurrentProcess()
@@ -144,23 +156,23 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 				if C.SymGetLineFromAddr64(handle, frame_addr, &offset, &sline64) == 1 {
 					file_name := unsafe { tos3(sline64.f_file_name) }
 					lnumber := sline64.f_line_number
-					lineinfo = '$file_name:$lnumber'
+					lineinfo = '${file_name}:${lnumber}'
 				} else {
-					addr:
+					// addr:
 					lineinfo = '?? : address = 0x${(&frame_addr):x}'
 				}
 				sfunc := unsafe { tos3(fname) }
-				eprintln('${nframe:-2d}: ${sfunc:-25s}  $lineinfo')
+				eprintln('${nframe:-2d}: ${sfunc:-25s}  ${lineinfo}')
 			} else {
 				// https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes
 				cerr := int(C.GetLastError())
 				if cerr == 87 {
-					eprintln('SymFromAddr failure: $cerr = The parameter is incorrect)')
+					eprintln('SymFromAddr failure: ${cerr} = The parameter is incorrect)')
 				} else if cerr == 487 {
 					// probably caused because the .pdb isn't in the executable folder
-					eprintln('SymFromAddr failure: $cerr = Attempt to access invalid address (Verify that you have the .pdb file in the right folder.)')
+					eprintln('SymFromAddr failure: ${cerr} = Attempt to access invalid address (Verify that you have the .pdb file in the right folder.)')
 				} else {
-					eprintln('SymFromAddr failure: $cerr (see https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes)')
+					eprintln('SymFromAddr failure: ${cerr} (see https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes)')
 				}
 			}
 		}
@@ -176,7 +188,7 @@ fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
 	return false
 }
 
-fn C.tcc_backtrace(fmt charptr, other ...charptr) int
+fn C.tcc_backtrace(fmt &char) int
 
 fn print_backtrace_skipping_top_frames_tcc(skipframes int) bool {
 	$if tinyc {
@@ -184,7 +196,7 @@ fn print_backtrace_skipping_top_frames_tcc(skipframes int) bool {
 			eprintln('backtraces are disabled')
 			return false
 		} $else {
-			C.tcc_backtrace('Backtrace')
+			C.tcc_backtrace(c'Backtrace')
 			return true
 		}
 	} $else {
@@ -202,7 +214,7 @@ pub:
 	// status_ constants
 	code        u32
 	flags       u32
-	record      &ExceptionRecord
+	record      &ExceptionRecord = unsafe { nil }
 	address     voidptr
 	param_count u32
 	// params []voidptr
@@ -214,8 +226,8 @@ struct ContextRecord {
 
 struct ExceptionPointers {
 pub:
-	exception_record &ExceptionRecord
-	context_record   &ContextRecord
+	exception_record &ExceptionRecord = unsafe { nil }
+	context_record   &ContextRecord   = unsafe { nil }
 }
 
 type VectoredExceptionHandler = fn (&ExceptionPointers) int
@@ -226,12 +238,12 @@ fn add_vectored_exception_handler(handler VectoredExceptionHandler) {
 	C.AddVectoredExceptionHandler(1, C.PVECTORED_EXCEPTION_HANDLER(handler))
 }
 
-[windows_stdcall]
+[callconv: stdcall]
 fn unhandled_exception_handler(e &ExceptionPointers) int {
 	match e.exception_record.code {
 		// These are 'used' by the backtrace printer
 		// so we dont want to catch them...
-		0x4001000A, 0x40010006 {
+		0x4001000A, 0x40010006, 0xE06D7363 {
 			return 0
 		}
 		else {
@@ -255,11 +267,37 @@ fn break_if_debugger_attached() {
 	$if tinyc {
 		unsafe {
 			mut ptr := &voidptr(0)
-			*ptr = voidptr(0)
+			*ptr = nil
+			_ = ptr
 		}
 	} $else {
 		if C.IsDebuggerPresent() {
 			C.__debugbreak()
 		}
 	}
+}
+
+// return an error message generated from WinAPI's `LastError`
+pub fn winapi_lasterr_str() string {
+	err_msg_id := C.GetLastError()
+	if err_msg_id == 8 {
+		// handle this case special since `FormatMessage()` might not work anymore
+		return 'insufficient memory'
+	}
+	mut msgbuf := &u16(0)
+	res := C.FormatMessage(C.FORMAT_MESSAGE_ALLOCATE_BUFFER | C.FORMAT_MESSAGE_FROM_SYSTEM | C.FORMAT_MESSAGE_IGNORE_INSERTS,
+		C.NULL, err_msg_id, C.MAKELANGID(C.LANG_NEUTRAL, C.SUBLANG_DEFAULT), &msgbuf,
+		0, C.NULL)
+	err_msg := if res == 0 {
+		'Win-API error ${err_msg_id}'
+	} else {
+		unsafe { string_from_wide(msgbuf) }
+	}
+	return err_msg
+}
+
+// panic with an error message generated from WinAPI's `LastError`
+[noreturn]
+pub fn panic_lasterr(base string) {
+	panic(base + winapi_lasterr_str())
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -6,16 +6,6 @@
 // based on the work of https://github.com/AmokHuginnsson/replxx
 //
 module readline
-
-// Termios stores the terminal options on Linux.
-struct Termios {
-mut:
-	c_iflag int
-	c_oflag int
-	c_cflag int
-	c_lflag int
-	c_cc    [12]int // NCCS == 12. Can't use the defined value here
-}
 
 // Winsize stores the screen information on Linux.
 struct Winsize {
@@ -31,13 +21,14 @@ pub struct Readline {
 mut:
 	is_raw            bool
 	orig_termios      Termios // Linux
-	current           ustring // Line being edited
-	cursor            int // Cursor position
+	current           []rune  // Line being edited
+	cursor            int     // Cursor position
 	overwrite         bool
 	cursor_row_offset int
 	prompt            string
 	prompt_offset     int
-	previous_lines    []ustring
+	previous_lines    [][]rune
+	skip_empty        bool // skip the empty lines when calling .history_previous()
 	search_index      int
 	is_tty            bool
 }

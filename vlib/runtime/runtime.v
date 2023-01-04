@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -11,11 +11,14 @@ import os
 // then `nr_jobs` will return that number instead.
 // This is useful for runtime tweaking of e.g. threaded or concurrent code.
 pub fn nr_jobs() int {
-	mut cpus := nr_cpus()
+	mut cpus := nr_cpus() - 1
 	// allow for overrides, for example using `VJOBS=32 ./v test .`
 	vjobs := os.getenv('VJOBS').int()
 	if vjobs > 0 {
 		cpus = vjobs
+	}
+	if cpus == 0 {
+		return 1
 	}
 	return cpus
 }

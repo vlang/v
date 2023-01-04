@@ -8,7 +8,7 @@ fn main() {
 		go d(0)
 		go d(1)
 	]
-	r := tg.wait() ?
+	r := tg.wait()?
 	println(r)
 	s := tg[0].wait() or { panic('problem') }
 	println(s)
@@ -17,7 +17,7 @@ fn main() {
 		go e(1)
 	]
 	tg2.wait() or { panic('problem') }
-	tg2[0].wait() ?
+	tg2[0].wait()?
 	tg3 := [
 		go f(0)
 		go f(1)

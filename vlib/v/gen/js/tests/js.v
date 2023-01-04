@@ -30,7 +30,18 @@ fn class(extends string, instanceof int) {
 fn main() {
 	println('Hello from V.js!')
 	println(JS.Math.atan2(1, 0))
-	println(JS.eval("console.log('Hello!')"))
+	non := JS.eval("console.log('Hello!')".str)
+	if isnil(non) {
+		println('non=nil')
+	}
+	ren := int(JS.eval('3'.str))
+	if ren != 0 {
+		println('ren=${ren}')
+	}
+	res := string(JS.eval('"3"'.str))
+	if res != '' {
+		println('res=${res}')
+	}
 	mut a := 1
 	a *= 2
 	a += 3
@@ -43,7 +54,7 @@ fn main() {
 	println(c)
 	println('int(1.5) == "${int(1.5)}"')
 	d := int(10) + f32(127)
-	println('typeof (int + f32) == "${typeof(d)}"')
+	println('typeof (int + f32) == "${typeof(d).name}"')
 	_ = 'done'
 	{
 		_ = 'block'
@@ -52,9 +63,9 @@ fn main() {
 	_ = hl.Ccc.a
 	debugger := 'JS keywords'
 	// TODO: Implement interpolation
-	await := '$super: $debugger'
+	await := '${super}: ${debugger}'
 	mut finally := 'implemented'
-	println('$await $finally')
+	println('${await} ${finally}')
 	dun := i_am_a_const * 20 + 2
 	dunn := hl.hello // External constant
 	_ = hl1.nested()
@@ -71,7 +82,7 @@ fn main() {
 	arr := [1, 2, 3, 4, 5]
 	for i in arr {
 	}
-	ma := map{
+	ma := {
 		'str': 'done'
 		'ddo': 'baba'
 	}
@@ -79,9 +90,9 @@ fn main() {
 	for m, n in ma {
 		iss := m
 	}
-	go async(0, 'hello')
+	spawn async(0, 'hello')
 	fn_in_var := fn (number int) {
-		println('number: $number')
+		println('number: ${number}')
 	}
 	hl.debugger()
 	anon_consumer(hl.excited(), fn (message string) {

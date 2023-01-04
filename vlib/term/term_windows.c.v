@@ -3,14 +3,14 @@ module term
 import os
 
 [typedef]
-struct C.COORD {
+pub struct C.COORD {
 mut:
 	X i16
 	Y i16
 }
 
 [typedef]
-struct C.SMALL_RECT {
+pub struct C.SMALL_RECT {
 mut:
 	Left   u16
 	Top    u16
@@ -21,7 +21,7 @@ mut:
 // win: CONSOLE_SCREEN_BUFFER_INFO
 // https://docs.microsoft.com/en-us/windows/console/console-screen-buffer-info-str
 [typedef]
-struct C.CONSOLE_SCREEN_BUFFER_INFO {
+pub struct C.CONSOLE_SCREEN_BUFFER_INFO {
 mut:
 	dwSize              C.COORD
 	dwCursorPosition    C.COORD
@@ -30,16 +30,16 @@ mut:
 	dwMaximumWindowSize C.COORD
 }
 
-union C.uChar {
+pub union C.uChar {
 mut:
 	UnicodeChar rune
-	AsciiChar   byte
+	AsciiChar   u8
 }
 
 [typedef]
-struct C.CHAR_INFO {
+pub struct C.CHAR_INFO {
 mut:
-	Char C.uChar
+	Char       C.uChar
 	Attributes u16
 }
 
@@ -57,7 +57,7 @@ fn C.ScrollConsoleScreenBuffer(output C.HANDLE, scroll_rect &C.SMALL_RECT, clip_
 
 // get_terminal_size returns a number of colums and rows of terminal window.
 pub fn get_terminal_size() (int, int) {
-	if is_atty(1) > 0 && os.getenv('TERM') != 'dumb' {
+	if os.is_atty(1) > 0 && os.getenv('TERM') != 'dumb' {
 		info := C.CONSOLE_SCREEN_BUFFER_INFO{}
 		if C.GetConsoleScreenBufferInfo(C.GetStdHandle(C.STD_OUTPUT_HANDLE), &info) {
 			columns := int(info.srWindow.Right - info.srWindow.Left + 1)
@@ -69,13 +69,15 @@ pub fn get_terminal_size() (int, int) {
 }
 
 // get_cursor_position returns a Coord containing the current cursor position
-pub fn get_cursor_position() Coord {
+pub fn get_cursor_position() !Coord {
 	mut res := Coord{}
-	if is_atty(1) > 0 && os.getenv('TERM') != 'dumb' {
+	if os.is_atty(1) > 0 && os.getenv('TERM') != 'dumb' {
 		info := C.CONSOLE_SCREEN_BUFFER_INFO{}
 		if C.GetConsoleScreenBufferInfo(C.GetStdHandle(C.STD_OUTPUT_HANDLE), &info) {
 			res.x = info.dwCursorPosition.X
 			res.y = info.dwCursorPosition.Y
+		} else {
+			return os.last_error()
 		}
 	}
 	return res

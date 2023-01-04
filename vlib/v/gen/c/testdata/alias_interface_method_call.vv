@@ -1,0 +1,9 @@
+import io { Reader }
+
+type Decoder = Reader
+
+fn (mut d Decoder) decode(len int) ?[]u8 {
+	mut buf := []u8{len: len}
+	d.read(mut buf)?
+	return buf
+}

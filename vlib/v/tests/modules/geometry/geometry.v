@@ -10,6 +10,17 @@ pub enum Shape {
 	triangle
 }
 
+pub type ShapeMap = map[Shape]string
+
+// used by vlib/v/tests/map_enum_keys_test.v
+pub enum Form3D {
+	sphere
+	cylinder
+	cone
+	cube
+	invalid
+}
+
 pub struct Point {
 pub mut:
 	x int
@@ -29,9 +40,11 @@ pub fn (a Point) + (b Point) Point {
 }
 
 pub fn (a Point) str() string {
-	return '$a.x $a.y'
+	return '${a.x} ${a.y}'
 }
 
 pub fn point_str(a Point) string {
 	return a.str()
 }
+
+pub type PointCond = fn (p Point) bool

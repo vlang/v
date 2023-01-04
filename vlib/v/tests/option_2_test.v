@@ -12,7 +12,7 @@ fn test_lhs_option() {
 }
 
 fn ret_no_opt(n int) int {
-	return f(n) or { panic(err.msg) }
+	return f(n) or { panic(err) }
 }
 
 fn test_opt_return_no_opt() {
@@ -41,9 +41,9 @@ fn test_channel_push() {
 
 fn test_thread_wait() {
 	thrs := [
-		go f(3),
-		go f(-7),
-		go f(12),
+		spawn f(3),
+		spawn f(-7),
+		spawn f(12),
 	]
 	mut res := []int{cap: 3}
 	for t in thrs {
@@ -55,4 +55,12 @@ fn test_thread_wait() {
 fn test_nested_opt() {
 	a := f(f(f(-3) or { -7 }) or { 4 }) or { 17 }
 	assert a == 4
+}
+
+fn foo() ?string {
+	return 'hi'
+}
+
+fn test_opt_subexp_field() {
+	assert foo()?.len == 2
 }

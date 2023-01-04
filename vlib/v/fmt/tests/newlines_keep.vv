@@ -22,3 +22,11 @@ fn y_with_attr() {
 [typedef]
 struct FooWithAttr {
 }
+
+fn between_assembly_blocks() {
+	asm amd64 {
+	}
+
+	asm i386 {
+	}
+}

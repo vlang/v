@@ -1,8 +1,6 @@
 module net
 
-// needed for unix domain sockets support
-// is not included in CI rn
-// #include <afunix.h>
+const is_windows = true
 
 // WsaError is all of the socket errors that WSA provides from WSAGetLastError
 pub enum WsaError {
@@ -738,11 +736,12 @@ pub enum WsaError {
 
 // wsa_error casts an int to its WsaError value
 pub fn wsa_error(code int) WsaError {
-	return WsaError(code)
+	return unsafe { WsaError(code) }
 }
 
 const (
 	error_ewouldblock = WsaError.wsaewouldblock
+	error_einprogress = WsaError.wsaeinprogress
 )
 
 // Link to Winsock library
@@ -766,15 +765,17 @@ struct C.WSAData {
 mut:
 	wVersion       u16
 	wHighVersion   u16
-	szDescription  [257]byte
-	szSystemStatus [129]byte
+	szDescription  [257]u8
+	szSystemStatus [129]u8
 	iMaxSockets    u16
 	iMaxUdpDg      u16
-	lpVendorInfo   byteptr
+	lpVendorInfo   &u8
 }
 
 fn init() {
-	mut wsadata := C.WSAData{}
+	mut wsadata := C.WSAData{
+		lpVendorInfo: 0
+	}
 	res := C.WSAStartup(net.wsa_v22, &wsadata)
 	if res != 0 {
 		panic('socket: WSAStartup failed')

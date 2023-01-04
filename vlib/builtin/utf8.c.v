@@ -1,26 +1,39 @@
 module builtin
 
-const (
-	cp_utf8 = 65001
-)
+const cp_utf8 = 65001
 
+// to_wide returns a pointer to an UTF-16 version of the string receiver.
+// In V, strings are encoded using UTF-8 internally, but on windows most APIs,
+// that accept strings, need them to be in UTF-16 encoding.
+// The returned pointer of .to_wide(), has a type of &u16, and is suitable
+// for passing to Windows APIs that expect LPWSTR or wchar_t* parameters.
+// See also MultiByteToWideChar ( https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar )
 pub fn (_str string) to_wide() &u16 {
 	$if windows {
 		unsafe {
-			num_chars := (C.MultiByteToWideChar(cp_utf8, 0, charptr(_str.str), _str.len,
+			num_chars := (C.MultiByteToWideChar(cp_utf8, 0, &char(_str.str), _str.len,
 				0, 0))
-			mut wstr := &u16(malloc((num_chars + 1) * 2)) // sizeof(wchar_t)
+			mut wstr := &u16(malloc_noscan((num_chars + 1) * 2)) // sizeof(wchar_t)
 			if wstr != 0 {
-				C.MultiByteToWideChar(cp_utf8, 0, charptr(_str.str), _str.len, wstr, num_chars)
-				C.memset(&byte(wstr) + num_chars * 2, 0, 2)
+				C.MultiByteToWideChar(cp_utf8, 0, &char(_str.str), _str.len, wstr, num_chars)
+				C.memset(&u8(wstr) + num_chars * 2, 0, 2)
 			}
 			return wstr
 		}
 	} $else {
-		return 0
+		srunes := _str.runes()
+		unsafe {
+			mut result := &u16(vcalloc_noscan((srunes.len + 1) * 2))
+			for i, r in srunes {
+				result[i] = u16(r)
+			}
+			return result
+		}
 	}
 }
 
+// string_from_wide creates a V string, encoded in UTF-8, given a windows
+// style string encoded in UTF-16.
 [unsafe]
 pub fn string_from_wide(_wstr &u16) string {
 	$if windows {
@@ -33,14 +46,18 @@ pub fn string_from_wide(_wstr &u16) string {
 	}
 }
 
+// string_from_wide2 creates a V string, encoded in UTF-8, given a windows
+// style string, encoded in UTF-16. It is more efficient, compared to
+// string_from_wide, but it requires you to know the input string length,
+// and to pass it as the second argument.
 [unsafe]
 pub fn string_from_wide2(_wstr &u16, len int) string {
 	$if windows {
 		unsafe {
 			num_chars := C.WideCharToMultiByte(cp_utf8, 0, _wstr, len, 0, 0, 0, 0)
-			mut str_to := malloc(num_chars + 1)
+			mut str_to := malloc_noscan(num_chars + 1)
 			if str_to != 0 {
-				C.WideCharToMultiByte(cp_utf8, 0, _wstr, len, charptr(str_to), num_chars,
+				C.WideCharToMultiByte(cp_utf8, 0, _wstr, len, &char(str_to), num_chars,
 					0, 0)
 				C.memset(str_to + num_chars, 0, 1)
 			}
@@ -48,32 +65,5 @@ pub fn string_from_wide2(_wstr &u16, len int) string {
 		}
 	} $else {
 		return ''
-	}
-}
-
-// Reads an utf8 character from standard input
-pub fn utf8_getchar() int {
-	c := C.getchar()
-	len := utf8_len(byte(~c))
-	if c < 0 {
-		return 0
-	} else if len == 0 {
-		return c
-	} else if len == 1 {
-		return -1
-	} else {
-		mut uc := c & ((1 << (7 - len)) - 1)
-		for i := 0; i + 1 < len; i++ {
-			c2 := C.getchar()
-			if c2 != -1 && (c2 >> 6) == 2 {
-				uc <<= 6
-				uc |= (c2 & 63)
-			} else if c2 == -1 {
-				return 0
-			} else {
-				return -1
-			}
-		}
-		return uc
 	}
 }

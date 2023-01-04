@@ -1,0 +1,10 @@
+struct Foo {}
+
+fn (f Foo) bar(baz fn ()) {}
+
+fn baz() {}
+
+fn main() {
+	foo := Foo{}
+	foo.bar(baz())
+}

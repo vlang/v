@@ -3,5 +3,6 @@ import os
 
 fn main() {
 	mut cmd := Command {}
+	cmd.disable_man = true
 	cmd.parse(os.args)
 }

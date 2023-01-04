@@ -1,0 +1,14 @@
+import v.scanner
+import v.parser
+import time { vpc_now }
+import io { ReaderWriterImpl }
+
+fn main() {
+	println(scanner.single_quote)
+	println(parser.State.html)
+	vpc_now()
+	_ = {
+		'h': 2
+	}.exists('h')
+	_ = ReaderWriterImpl{}
+}

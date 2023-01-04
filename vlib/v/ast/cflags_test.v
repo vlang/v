@@ -20,6 +20,10 @@ fn test_parse_valid_cflags() {
 		make_flag('windows', '-l', 'gdi32'),
 		make_flag(no_os, '-l', 'mysqlclient'),
 		make_flag(no_os, no_name, '-test'),
+		make_flag('linux', '-I', '/usr/include/SDL2'),
+		make_flag('linux', '-D', '_REENTRANT'),
+		make_flag('linux', '-L', '/usr/lib/x86_64-linux-gnu'),
+		make_flag('linux', '-l', 'SDL2'),
 	]
 	parse_valid_flag(mut t, '-lmysqlclient')
 	parse_valid_flag(mut t, '-test')
@@ -29,6 +33,7 @@ fn test_parse_valid_cflags() {
 	parse_valid_flag(mut t, 'mingw -mwindows')
 	parse_valid_flag(mut t, 'solaris -L/opt/local/lib')
 	parse_valid_flag(mut t, 'windows -lgdi32')
+	parse_valid_flag(mut t, 'linux -I/usr/include/SDL2 -D_REENTRANT -L/usr/lib/x86_64-linux-gnu -lSDL2')
 	assert t.cflags.len == expected_flags.len
 	for f in expected_flags {
 		assert t.has_cflag(f)

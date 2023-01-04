@@ -10,7 +10,7 @@ fn incr(shared foo map[string]int, key string, mut sem sync.Semaphore) {
 }
 
 fn test_shared_array() {
-	shared foo := map{
+	shared foo := {
 		'p': 10
 		'q': 0
 	}
@@ -18,10 +18,10 @@ fn test_shared_array() {
 		foo['q'] = 20
 	}
 	mut sem := sync.new_semaphore()
-	go incr(shared foo, 'p', mut sem)
-	go incr(shared foo, 'q', mut sem)
-	go incr(shared foo, 'p', mut sem)
-	go incr(shared foo, 'q', mut sem)
+	spawn incr(shared foo, 'p', mut sem)
+	spawn incr(shared foo, 'q', mut sem)
+	spawn incr(shared foo, 'p', mut sem)
+	spawn incr(shared foo, 'q', mut sem)
 	for _ in 0 .. 50000 {
 		lock foo {
 			foo['p'] -= 2
@@ -40,12 +40,12 @@ fn test_shared_array() {
 }
 
 fn test_shared_init_syntax() {
-	shared foo := &map{
+	shared foo := &{
 		'p':      17
 		'q':      -3
 		'qwertz': 10
 	}
-	shared bar := map{
+	shared bar := {
 		'wer':  13.75
 		'cvbn': -7.25
 		'asd':  -0.0625
@@ -75,10 +75,97 @@ fn test_shared_init_syntax() {
 }
 
 fn new_map() map[string]f64 {
-	m := map{
+	m := {
 		'qwe': 34.25
 		'yxc': 9.125
 		'tzu': -7.5
 	}
 	return m
+}
+
+fn test_shared_array_iteration() {
+	shared a := [12.75, -0.125, 18.5 - (1.0 + .5)]
+	mut n0 := 0
+	mut n1 := 0
+	mut n2 := 0
+	rlock a {
+		for i, val in a {
+			match i {
+				1 {
+					assert val == -0.125
+					n1++
+					// check for order, too:
+					assert n0 == 1
+				}
+				0 {
+					assert val == 12.75
+					n0++
+				}
+				2 {
+					assert val == 17.0
+					n2++
+					assert n1 == 1
+				}
+				else {
+					// this should not happen
+					assert false
+				}
+			}
+		}
+	}
+	// make sure we have iterated over each of the 3 keys exactly once
+	assert n0 == 1
+	assert n1 == 1
+	assert n2 == 1
+}
+
+fn test_shared_map_iteration() {
+	shared m := {
+		'qwe': 12.75
+		'rtz': -0.125
+		'k':   17
+	}
+	mut n0 := 0
+	mut n1 := 0
+	mut n2 := 0
+	rlock m {
+		for k, val in m {
+			match k {
+				'rtz' {
+					assert val == -0.125
+					n0++
+				}
+				'qwe' {
+					assert val == 12.75
+					n1++
+				}
+				'k' {
+					assert val == 17.0
+					n2++
+				}
+				else {
+					// this should not happen
+					assert false
+				}
+			}
+		}
+	}
+	// make sure we have iterated over each of the 3 keys exactly once
+	assert n0 == 1
+	assert n1 == 1
+	assert n2 == 1
+}
+
+fn test_shared_map_in() {
+	shared m := {
+		'qwe': 12.75
+		'rtz': -0.125
+		'k':   17
+	}
+	rlock m {
+		assert 'qwe' in m
+		assert 'rtz' in m
+		assert 'k' in m
+		assert 'zxc' !in m
+	}
 }

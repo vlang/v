@@ -7,7 +7,7 @@ fn raise() ?string {
 }
 
 fn xx_prop() string {
-	s := ret(raise() ?)
+	s := ret(raise()?)
 	return s
 }
 
@@ -25,7 +25,7 @@ fn retf(f f64) f64 {
 }
 
 fn (mut s St) aa_propagate() {
-	f := retf(s.raise() ?)
+	f := retf(s.raise()?)
 	s.z = 7.5
 	println(f)
 }

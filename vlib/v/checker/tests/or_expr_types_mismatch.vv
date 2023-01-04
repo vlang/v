@@ -1,0 +1,17 @@
+fn get_map() ?string {
+	m := {1: 'a', 2: 'b'}
+	return m[1] or { none }
+}
+
+fn get_array() ?int {
+	a := [1, 2, 3]
+	return a[4] or { none }
+}
+
+fn main() {
+	map_result := get_map() or { return }
+	println(map_result)
+
+	array_result := get_array() or { return }
+	println(array_result)
+}

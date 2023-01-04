@@ -93,6 +93,14 @@ fn test_format_ss_milli() {
 	assert '1980-07-11 21:23:42.123' == time_to_test.format_ss_milli()
 }
 
+fn test_format_rfc3339() {
+	// assert '1980-07-11T19:23:42.123Z'
+	res := time_to_test.format_rfc3339()
+	assert res.ends_with('23:42.123Z')
+	assert res.starts_with('1980-07-1')
+	assert res.contains('T')
+}
+
 fn test_format_ss_micro() {
 	assert '11.07.1980 21:23:42.123456' == time_to_test.get_fmt_str(.dot, .hhmmss24_micro,
 		.ddmmyyyy)
@@ -101,8 +109,7 @@ fn test_format_ss_micro() {
 
 fn test_smonth() {
 	month_names := ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov',
-		'Dec',
-	]
+		'Dec']
 	for i, name in month_names {
 		month_num := i + 1
 		t := time.Time{
@@ -160,18 +167,18 @@ fn test_add() {
 	t2 := time_to_test.add(duration)
 	assert t2.second == t1.second + d_seconds
 	assert t2.microsecond == t1.microsecond + d_microseconds
-	assert t2.unix == t1.unix + u64(d_seconds)
+	assert t2.unix == t1.unix + d_seconds
 	t3 := time_to_test.add(-duration)
 	assert t3.second == t1.second - d_seconds
 	assert t3.microsecond == t1.microsecond - d_microseconds
-	assert t3.unix == t1.unix - u64(d_seconds)
+	assert t3.unix == t1.unix - d_seconds
 }
 
 fn test_add_days() {
 	num_of_days := 3
 	t := time_to_test.add_days(num_of_days)
 	assert t.day == time_to_test.day + num_of_days
-	assert t.unix == time_to_test.unix + 86400 * u64(num_of_days)
+	assert t.unix == time_to_test.unix + 86400 * num_of_days
 }
 
 fn test_str() {
@@ -211,16 +218,21 @@ fn test_unix_time() {
 	t1 := time.utc()
 	time.sleep(50 * time.millisecond)
 	t2 := time.utc()
+	eprintln('t1: ${t1}')
+	eprintln('t2: ${t2}')
 	ut1 := t1.unix_time()
 	ut2 := t2.unix_time()
+	eprintln('ut1: ${ut1}')
+	eprintln('ut2: ${ut2}')
 	assert ut2 - ut1 < 2
 	//
 	utm1 := t1.unix_time_milli()
 	utm2 := t2.unix_time_milli()
-	assert (utm1 - u64(ut1) * 1000) < 1000
-	assert (utm2 - u64(ut2) * 1000) < 1000
+	eprintln('utm1: ${utm1}')
+	eprintln('utm2: ${utm2}')
+	assert (utm1 - ut1 * 1000) < 1000
+	assert (utm2 - ut2 * 1000) < 1000
 	//
-	// println('utm1: $utm1 | utm2: $utm2')
 	assert utm2 - utm1 > 2
 	assert utm2 - utm1 < 999
 }
@@ -244,4 +256,33 @@ fn test_offset() {
 	}
 
 	assert diff_seconds == time.offset()
+}
+
+fn test_since() {
+	t1 := time.now()
+	time.sleep(20 * time.millisecond)
+	d1 := time.since(t1)
+	assert d1 >= 20_000_000
+	time.sleep(20 * time.millisecond)
+	d2 := time.since(t1)
+	assert d2 >= 40_000_000
+}
+
+// issue relate https://github.com/vlang/v/issues/13828
+// problem: the local method add 2h on the time in a Linux machine
+// the other machine are not tested in a local env
+fn test_recursive_local_call() {
+	now_tm := time.now()
+	assert now_tm.str() == now_tm.local().str()
+	assert now_tm.local().str() == now_tm.local().local().str()
+}
+
+fn test_strftime() {
+	assert '1980 July 11' == time_to_test.strftime('%Y %B %d')
+}
+
+fn test_add_seconds_to_time() {
+	now_tm := time.now()
+	future_tm := now_tm.add_seconds(60)
+	assert now_tm.unix < future_tm.unix
 }

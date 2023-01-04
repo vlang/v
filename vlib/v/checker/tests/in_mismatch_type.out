@@ -12,21 +12,21 @@ vlib/v/checker/tests/in_mismatch_type.vv:13:5: error: left operand to `in` does 
       |        ~~~~~~
    14 |         println('yeah')
    15 |     }
-vlib/v/checker/tests/in_mismatch_type.vv:16:5: error: use `str.contains(substr)` instead of `substr in str`
+vlib/v/checker/tests/in_mismatch_type.vv:16:7: error: `in` can only be used with arrays and maps
    14 |         println('yeah')
    15 |     }
    16 |     if 3 in s {
-      |        ~~~~~~
+      |          ~~
    17 |         println('dope')
    18 |     }
-vlib/v/checker/tests/in_mismatch_type.vv:19:5: error: use `str.contains(substr)` instead of `substr in str`
+vlib/v/checker/tests/in_mismatch_type.vv:19:9: error: `in` can only be used with arrays and maps
    17 |         println('dope')
    18 |     }
    19 |     if `a` in s {
-      |        ~~~~~~~~
+      |            ~~
    20 |         println("oh no :'(")
    21 |     }
-vlib/v/checker/tests/in_mismatch_type.vv:22:7: error: `in` can only be used with an array/map/string
+vlib/v/checker/tests/in_mismatch_type.vv:22:7: error: `in` can only be used with arrays and maps
    20 |         println("oh no :'(")
    21 |     }
    22 |     if 1 in 12 {
@@ -70,7 +70,7 @@ vlib/v/checker/tests/in_mismatch_type.vv:37:5: error: left operand to `!in` does
    39 |     }
 vlib/v/checker/tests/in_mismatch_type.vv:41:5: error: left operand to `!in` does not match the map key type: expected `string`, not `int literal`
    39 |     }
-   40 |
+   40 | 
    41 |     if 5 !in m {
       |        ~~~~~~~
    42 |         println('yay')

@@ -1,0 +1,19 @@
+vlib/v/checker/tests/invalid_variable_err.vv:2:5: warning: unused variable: `b`
+    1 | fn main() {
+    2 |     a, b := c
+      |        ^
+    3 |     if a {
+    4 |     }
+vlib/v/checker/tests/invalid_variable_err.vv:2:7: error: assignment mismatch: 2 variable(s) 1 value(s)
+    1 | fn main() {
+    2 |     a, b := c
+      |          ~~
+    3 |     if a {
+    4 |     }
+vlib/v/checker/tests/invalid_variable_err.vv:3:5: error: invalid variable `a`
+    1 | fn main() {
+    2 |     a, b := c
+    3 |     if a {
+      |        ^
+    4 |     }
+    5 | }

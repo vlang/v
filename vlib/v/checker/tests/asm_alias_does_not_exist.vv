@@ -1,3 +1,0 @@
-asm amd64 {
-	mov ebx, a
-}

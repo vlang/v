@@ -1,0 +1,35 @@
+vlib/v/checker/tests/array_contains_args_err.vv:3:26: error: cannot use `[]int` as `int` in argument 1 to `.contains()`
+    1 | fn main() {
+    2 |     arr := [0]
+    3 |     mut ret := [0].contains([0])
+      |                             ~~~
+    4 |     ret = [0].contains()
+    5 |     ret = [0, 1, 2].contains(0, 1, 2)
+vlib/v/checker/tests/array_contains_args_err.vv:4:12: error: `.contains()` expected 1 argument, but got 0
+    2 |     arr := [0]
+    3 |     mut ret := [0].contains([0])
+    4 |     ret = [0].contains()
+      |               ~~~~~~~~~~
+    5 |     ret = [0, 1, 2].contains(0, 1, 2)
+    6 |     ret = [0].contains('a')
+vlib/v/checker/tests/array_contains_args_err.vv:5:18: error: `.contains()` expected 1 argument, but got 3
+    3 |     mut ret := [0].contains([0])
+    4 |     ret = [0].contains()
+    5 |     ret = [0, 1, 2].contains(0, 1, 2)
+      |                     ~~~~~~~~~~~~~~~~~
+    6 |     ret = [0].contains('a')
+    7 |     ret = [0].contains(arr)
+vlib/v/checker/tests/array_contains_args_err.vv:6:21: error: cannot use `string` as `int` in argument 1 to `.contains()`
+    4 |     ret = [0].contains()
+    5 |     ret = [0, 1, 2].contains(0, 1, 2)
+    6 |     ret = [0].contains('a')
+      |                        ~~~
+    7 |     ret = [0].contains(arr)
+    8 |     println(ret)
+vlib/v/checker/tests/array_contains_args_err.vv:7:21: error: cannot use `[]int` as `int` in argument 1 to `.contains()`
+    5 |     ret = [0, 1, 2].contains(0, 1, 2)
+    6 |     ret = [0].contains('a')
+    7 |     ret = [0].contains(arr)
+      |                        ~~~
+    8 |     println(ret)
+    9 | }

@@ -1,0 +1,35 @@
+fn get_int() int {
+	return 42
+}
+
+fn dub_int(i int) int {
+	return i * 2
+}
+
+struct Fun<F> {
+mut:
+	call F
+}
+
+type FunZero = fn () int
+
+fn main() {
+	fun0 := Fun<FunZero>{
+		call: get_int
+	}
+	println(fun0.call())
+	println(fun0.call(1234))
+	println(fun0.call(1234, 5678))
+
+	fun1 := Fun<fn (int) int>{
+		call: dub_int
+	}
+
+	println(fun1.call(42))
+	println(fun1.call())
+	println(fun1.call(42, 43))
+
+	println(fun1.call(true))
+	println(fun1.call('text'))
+	println(fun1.call(22.2))
+}

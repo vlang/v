@@ -1,5 +1,0 @@
-vlib/v/checker/tests/string_char_null_err.vv:2:31: error: cannot use `\0` (NULL character) in the string literal
-    1 | fn main() {
-    2 |     println('Null character: \0')
-      |                               ^
-    3 | }

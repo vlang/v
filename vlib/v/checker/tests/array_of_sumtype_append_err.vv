@@ -1,0 +1,11 @@
+type Bar = BarA | BarB
+
+struct BarA {}
+
+struct BarB {}
+
+fn main() {
+	mut bar := []Bar{}
+	bar << ['hey']
+	bar << 'hey'
+}

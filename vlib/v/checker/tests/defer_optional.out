@@ -1,0 +1,7 @@
+vlib/v/checker/tests/defer_optional.vv:5:3: error: opt() returns an option, so it should have an `or {}` block at the end
+    3 | fn thing() ?string {
+    4 |     defer {
+    5 |         opt()
+      |         ~~~~~
+    6 |     }
+    7 |     return 'ok'

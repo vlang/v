@@ -1,0 +1,28 @@
+fn test_unicode_characters() {
+	unicode := '😀😆😎💻🌎'
+	println(unicode)
+}
+
+fn test_escape_codes() {
+	star1 := '\xe2\x98\x85'
+	println(star1)
+	star2 := '\u2605'
+	println(star2)
+
+	aaa := '\x61\141a'
+	println(aaa)
+
+	tab_newln := '##\t#\n###\t#'
+	println(tab_newln)
+}
+
+fn test_raw_string() {
+	raw := r'hello\tworld\n'
+	println(raw)
+}
+
+fn main() {
+	test_unicode_characters()
+	test_escape_codes()
+	test_raw_string()
+}

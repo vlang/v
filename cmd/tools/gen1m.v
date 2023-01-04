@@ -2,8 +2,8 @@ fn main() {
 	for i in 0 .. 100000 {
 		println('
 fn foo${i}() {
-	x := $i
-	mut a := 1
+	x := ${i}
+	mut a := 1 + x
 	a += 2
 	print(a)
 	a = 0

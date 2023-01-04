@@ -1,13 +1,12 @@
 module dl
 
-pub const (
-	rtld_now  = 0
-	rtld_lazy = 0
-)
+pub const rtld_now = 0
+
+pub const rtld_lazy = 0
 
 fn C.LoadLibrary(libfilename &u16) voidptr
 
-fn C.GetProcAddress(handle voidptr, procname byteptr) voidptr
+fn C.GetProcAddress(handle voidptr, procname &u8) voidptr
 
 fn C.FreeLibrary(handle voidptr) bool
 
@@ -28,12 +27,12 @@ pub fn sym(handle voidptr, symbol string) voidptr {
 }
 
 // dlerror provides a text error diagnostic message for functions in `dl`
-// it returns a human-readable string, describing the most recent error 
+// it returns a human-readable string, describing the most recent error
 // that occurred from a call to one of the `dl` functions, since the last
 // call to dlerror()
 pub fn dlerror() string {
 	// https://docs.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-getlasterror
 	// Unlike dlerror(), GetLastError returns just an error code, that is function specific.
 	cerr := int(C.GetLastError())
-	return 'error code $cerr'
+	return 'error code ${cerr}'
 }

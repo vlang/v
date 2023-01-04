@@ -1,0 +1,40 @@
+import strconv
+
+const limit = 201
+
+fn main() {
+	// sieve
+	mut c := [limit]bool{}
+	c[1] = true
+
+	mut p := 2
+	for {
+		p2 := p * p
+		if p2 >= limit {
+			break
+		}
+
+		for i := p2; i < limit; i += p {
+			c[i] = true
+		}
+
+		for {
+			p++
+			if !c[p] {
+				break
+			}
+		}
+	}
+
+	// sieve complete.  now print a representation.
+	for n in 1 .. limit {
+		if c[n] {
+			print('  .')
+		} else {
+			strconv.v_printf('%3d', n)
+		}
+		if n % 20 == 0 {
+			println('iter: $n')
+		}
+	}
+}

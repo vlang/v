@@ -2,5 +2,4 @@ vlib/v/checker/tests/unwrapped_optional_infix.vv:5:9: error: unwrapped optional 
     3 | }
     4 | 
     5 | println(test() == "")
-      |         ~~~~~~~~~~~~
-
+      |         ~~~~~~

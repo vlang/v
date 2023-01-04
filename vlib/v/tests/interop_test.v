@@ -9,7 +9,9 @@ fn C.c(a string, b ...string) string
 fn C.d(a ...int)
 
 fn JS.e(a string, b ...string) int
-fn JS.f(a &Foo) // TODO: Should this be allowed?
+fn JS.f(a &Foo)
+
+// TODO: Should this be allowed?
 
 fn C.g(string, ...int)
 fn C.h(&int)

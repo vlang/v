@@ -1,0 +1,76 @@
+fn left_shifts() {
+	mut a := 12
+	mut arr := []int{}
+	a << 1
+	if true {
+		a << 2
+	}
+	c := if true { a << 111 } else { a << 333 }
+	println(c)
+	a << 1
+	println(a)
+	5 << 9
+	for i in 0 .. 10 {
+		z := i << 5
+		i << 5
+		println(z)
+	}
+	//
+	arr << 1
+	if true {
+		arr << 2
+	}
+	d := if true {
+		arr << 111
+		777
+	} else {
+		arr << 333
+		999
+	}
+	println(d)
+	//
+	x := if true {
+		a << 1
+		999
+	} else {
+		println('---')
+		a << 9999
+		println('---')
+		555
+	}
+	println(x)
+}
+
+fn right_shifts() {
+	mut rr := 12
+	rr >> 1
+	if true {
+		rr >> 2
+	}
+	c := if true { rr >> 111 } else { rr >> 333 }
+	println(c)
+	rr >> 1
+	println(rr)
+	5 >> 9
+	for i in 0 .. 10 {
+		z := i >> 5
+		i >> 5
+		println(z)
+	}
+	//
+	x := if true {
+		rr >> 1
+		999
+	} else {
+		println('---')
+		rr >> 9999
+		println('---')
+		555
+	}
+	println(x)
+}
+
+fn main() {
+	left_shifts()
+	right_shifts()
+}

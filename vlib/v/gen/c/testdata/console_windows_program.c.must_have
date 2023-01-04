@@ -1,0 +1,1 @@
+int wmain(int ___argc, wchar_t* ___argv[], wchar_t* ___envp[]){

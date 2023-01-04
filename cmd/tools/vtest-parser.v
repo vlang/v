@@ -12,7 +12,7 @@ const (
 	support_color = term.can_show_color_on_stderr() && term.can_show_color_on_stdout()
 	ecode_timeout = 101
 	ecode_memout  = 102
-	ecode_details = map{
+	ecode_details = {
 		-1:  'worker executable not found'
 		101: 'too slow'
 		102: 'too memory hungry'
@@ -35,7 +35,7 @@ mut:
 	// parser context in the worker processes:
 	table      ast.Table
 	scope      ast.Scope
-	pref       &pref.Preferences
+	pref       &pref.Preferences = unsafe { nil }
 	period_ms  int  // print periodic progress
 	stop_print bool // stop printing the periodic progress
 }
@@ -44,7 +44,7 @@ fn main() {
 	mut context := process_cli_args()
 	if context.is_worker {
 		pid := os.getpid()
-		context.log('> worker ${pid:5} starts parsing at cut_index: ${context.cut_index:5} | $context.path')
+		context.log('> worker ${pid:5} starts parsing at cut_index: ${context.cut_index:5} | ${context.path}')
 		// A worker's process job is to try to parse a single given file in context.path.
 		// It can crash/panic freely.
 		context.table = ast.new_table()
@@ -54,16 +54,15 @@ fn main() {
 		context.pref = &pref.Preferences{
 			output_mode: .silent
 		}
-		mut source := os.read_file(context.path) ?
+		mut source := os.read_file(context.path)!
 		source = source[..context.cut_index]
 
-		go fn (ms int) {
+		spawn fn (ms int) {
 			time.sleep(ms * time.millisecond)
 			exit(ecode_timeout)
 		}(context.timeout_ms)
-		_ := parser.parse_text(source, context.path, context.table, .skip_comments, context.pref,
-			context.scope)
-		context.log('> worker ${pid:5} finished parsing $context.path')
+		_ := parser.parse_text(source, context.path, context.table, .skip_comments, context.pref)
+		context.log('> worker ${pid:5} finished parsing ${context.path}')
 		exit(0)
 	} else {
 		// The process supervisor should NOT crash/panic, unlike the workers.
@@ -74,9 +73,9 @@ fn main() {
 		context.expand_all_paths()
 		mut fails := 0
 		mut panics := 0
-		sw := time.new_stopwatch({})
+		sw := time.new_stopwatch()
 		for path in context.all_paths {
-			filesw := time.new_stopwatch({})
+			filesw := time.new_stopwatch()
 			context.start_printing()
 			new_fails, new_panics := context.process_whole_file_in_worker(path)
 			fails += new_fails
@@ -104,7 +103,7 @@ fn process_cli_args() &Context {
 	fp.description('Test the V parser, by parsing each .v file in each PATH,\n' +
 		'as if it was typed character by character by the user.\n' +
 		'A PATH can be either a folder, or a specific .v file.\n' +
-		'NB: you *have to quote* the PATH, if it contains spaces/punctuation.')
+		'Note: you *have to quote* the PATH, if it contains spaces/punctuation.')
 	fp.arguments_description('PATH1 PATH2 ...')
 	fp.skip_executable()
 	context.is_help = fp.bool('help', `h`, false, 'Show help/usage screen.')
@@ -122,7 +121,7 @@ fn process_cli_args() &Context {
 		exit(0)
 	}
 	context.all_paths = fp.finalize() or {
-		context.error(err.msg)
+		context.error(err.msg())
 		exit(1)
 	}
 	if !context.is_worker && context.all_paths.len == 0 {
@@ -162,17 +161,17 @@ fn (mut context Context) log(msg string) {
 	if context.is_verbose {
 		label := yellow('info')
 		ts := time.now().format_ss_micro()
-		eprintln('$label: $ts | $msg')
+		eprintln('${label}: ${ts} | ${msg}')
 	}
 }
 
 fn (mut context Context) error(msg string) {
 	label := red('error')
-	eprintln('$label: $msg')
+	eprintln('${label}: ${msg}')
 }
 
 fn (mut context Context) expand_all_paths() {
-	context.log('> context.all_paths before: $context.all_paths')
+	context.log('> context.all_paths before: ${context.all_paths}')
 	mut files := []string{}
 	for path in context.all_paths {
 		if os.is_dir(path) {
@@ -181,24 +180,24 @@ fn (mut context Context) expand_all_paths() {
 			continue
 		}
 		if !path.ends_with('.v') && !path.ends_with('.vv') && !path.ends_with('.vsh') {
-			context.error('`v test-parser` can only be used on .v/.vv/.vsh files.\nOffending file: "$path".')
+			context.error('`v test-parser` can only be used on .v/.vv/.vsh files.\nOffending file: "${path}".')
 			continue
 		}
 		if !os.exists(path) {
-			context.error('"$path" does not exist.')
+			context.error('"${path}" does not exist.')
 			continue
 		}
 		files << path
 	}
 	context.all_paths = files
-	context.log('> context.all_paths after: $context.all_paths')
+	context.log('> context.all_paths after: ${context.all_paths}')
 }
 
 fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 	context.path = path // needed for the progress bar
-	context.log('> context.process_whole_file_in_worker path: $path')
+	context.log('> context.process_whole_file_in_worker path: ${path}')
 	if !(os.is_file(path) && os.is_readable(path)) {
-		context.error('$path is not readable')
+		context.error('${path} is not readable')
 		return 1, 0
 	}
 	source := os.read_file(path) or { '' }
@@ -213,10 +212,10 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 	for i in 0 .. len {
 		verbosity := if context.is_verbose { '-v' } else { '' }
 		context.cut_index = i // needed for the progress bar
-		cmd := '"$context.myself" $verbosity --worker --timeout_ms ${context.timeout_ms:5} --cut_index ${i:5} --path "$path" '
+		cmd := '${os.quoted_path(context.myself)} ${verbosity} --worker --timeout_ms ${context.timeout_ms:5} --cut_index ${i:5} --path ${os.quoted_path(path)} '
 		context.log(cmd)
 		mut res := os.execute(cmd)
-		context.log('worker exit_code: $res.exit_code | worker output:\n$res.output')
+		context.log('worker exit_code: ${res.exit_code} | worker output:\n${res.output}')
 		if res.exit_code != 0 {
 			fails++
 			mut is_panic := false
@@ -233,10 +232,10 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 			} else {
 				red('parser failure: crash, ${ecode_details[res.exit_code]}')
 			}
-			path_to_line := bold('$path:$line:$col:')
+			path_to_line := bold('${path}:${line}:${col}:')
 			err_line := last_line.trim_left('\t')
-			println('$path_to_line $err')
-			println('\t$line | $err_line')
+			println('${path_to_line} ${err}')
+			println('\t${line} | ${err_line}')
 			println('')
 			eprintln(res.output)
 		}
@@ -249,7 +248,7 @@ fn (mut context Context) start_printing() {
 	if !context.is_linear && !context.is_silent {
 		println('\n')
 	}
-	go context.print_periodic_status()
+	spawn context.print_periodic_status()
 }
 
 fn (mut context Context) stop_printing() {
@@ -270,7 +269,7 @@ fn (mut context Context) print_status() {
 		return
 	}
 	term.cursor_up(1)
-	eprint('\r  $msg\n')
+	eprint('\r  ${msg}\n')
 }
 
 fn (mut context Context) print_periodic_status() {

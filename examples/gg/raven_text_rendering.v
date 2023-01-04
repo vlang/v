@@ -12,7 +12,7 @@ const (
 )
 
 const (
-	text  = '
+	text = '
 Once upon a midnight dreary, while I pondered, weak and weary,
 Over many a quaint and curious volume of forgotten lore—
     While I nodded, nearly napping, suddenly there came a tapping,
@@ -60,7 +60,7 @@ Let my heart be still a moment and this mystery explore;—
 
 struct App {
 mut:
-	gg &gg.Context
+	gg &gg.Context = unsafe { nil }
 }
 
 fn main() {
@@ -74,13 +74,13 @@ fn main() {
 	app.gg = gg.new_context(
 		width: win_width
 		height: win_height
-		use_ortho: true // This is needed for 2D drawing
 		create_window: true
-		window_title: 'Empty window'
+		window_title: 'Raven text'
 		user_data: app
 		bg_color: bg_color
 		frame_fn: frame
 		font_path: font_path // window_user_ptr: ctx
+		// native_rendering: true
 	)
 	app.gg.run()
 }

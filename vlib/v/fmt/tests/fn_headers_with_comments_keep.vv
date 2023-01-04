@@ -1,0 +1,5 @@
+fn C.Mix_LoadMUS1(file byteptr) voidptr // Mix_Music
+
+fn C.Mix_LoadMUS2(file byteptr) voidptr // Mix_Music 2
+
+// Comment

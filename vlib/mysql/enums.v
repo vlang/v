@@ -69,3 +69,10 @@ pub fn (f FieldType) str() string {
 		.type_geometry { 'geometry' }
 	}
 }
+
+pub fn (f FieldType) get_len() u32 {
+	return match f {
+		.type_blob { 262140 }
+		else { 0 }
+	}
+}

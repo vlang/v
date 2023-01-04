@@ -1,0 +1,3 @@
+vlib/v/parser/tests/fn_body_start_pos.vv:1:14: error: functions with type only args can not have bodies
+    1 | fn func(int) {}
+      |              ^

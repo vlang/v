@@ -1,0 +1,7 @@
+vlib/v/checker/tests/fn_return_type_mismatch.vv:6:9: error: cannot use `i64` as type `int` in return argument
+    4 |
+    5 | fn func2() (int, int) {
+    6 |     return func1()
+      |            ~~~~~~~
+    7 | }
+    8 |

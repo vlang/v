@@ -1,3 +1,4 @@
 mut v := 43
 mut p := &v
 p = 4
+_ = p

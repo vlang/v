@@ -5,7 +5,7 @@ import strings
 
 struct LexicalAttributes {
 mut:
-	current_tag      &Tag
+	current_tag      &Tag = unsafe { nil }
 	open_tag         bool
 	open_code        bool
 	open_string      int
@@ -13,11 +13,11 @@ mut:
 	is_attribute     bool
 	opened_code_type string
 	line_count       int
-	lexeme_builder   strings.Builder = strings.Builder{}
-	code_tags        map[string]bool = map{
-	'script': true
-	'style':  true
-}
+	lexeme_builder   strings.Builder = strings.new_builder(100)
+	code_tags        map[string]bool = {
+		'script': true
+		'style':  true
+	}
 }
 
 // Parser is responsible for reading the HTML strings and converting them into a `DocumentObjectModel`.
@@ -49,12 +49,10 @@ fn (parser Parser) builder_str() string {
 	return parser.lexical_attributes.lexeme_builder.after(0)
 }
 
-[if debug]
+[if debug_html ?]
 fn (mut parser Parser) print_debug(data string) {
-	$if debug {
-		if data.len > 0 {
-			parser.debug_file.writeln(data) or { panic(err) }
-		}
+	if data.len > 0 {
+		parser.debug_file.writeln(data) or { panic(err) }
 	}
 }
 
@@ -111,21 +109,21 @@ pub fn (mut parser Parser) split_parse(data string) {
 	parser.init()
 	for chr in data {
 		// returns true if byte is a " or '
-		is_quote := chr == `"` || chr == `\'`
+		is_quote := chr == `"` || chr == `'`
 		string_code := match chr {
 			`"` { 1 } // "
-			`\'` { 2 } // '
+			`'` { 2 } // '
 			else { 0 }
 		}
 		if parser.lexical_attributes.open_code { // here will verify all needed to know if open_code finishes and string in code
-			parser.lexical_attributes.lexeme_builder.write_b(chr)
+			parser.lexical_attributes.lexeme_builder.write_u8(chr)
 			if parser.lexical_attributes.open_string > 0
 				&& parser.lexical_attributes.open_string == string_code {
 				parser.lexical_attributes.open_string = 0
 			} else if is_quote {
 				parser.lexical_attributes.open_string = string_code
 			} else if chr == `>` { // only execute verification if is a > // here will verify < to know if code tag is finished
-				name_close_tag := '</$parser.lexical_attributes.opened_code_type>'
+				name_close_tag := '</${parser.lexical_attributes.opened_code_type}>'
 				if parser.builder_str().to_lower().ends_with(name_close_tag) {
 					parser.lexical_attributes.open_code = false
 					// need to modify lexeme_builder to add script text as a content in next loop (not gave error in dom)
@@ -141,12 +139,12 @@ pub fn (mut parser Parser) split_parse(data string) {
 				parser.lexical_attributes.open_comment = false
 				parser.lexical_attributes.open_tag = false
 			} else {
-				parser.lexical_attributes.lexeme_builder.write_b(chr)
+				parser.lexical_attributes.lexeme_builder.write_u8(chr)
 			}
 		} else if parser.lexical_attributes.open_string > 0 {
 			if parser.lexical_attributes.open_string == string_code {
 				parser.lexical_attributes.open_string = 0
-				parser.lexical_attributes.lexeme_builder.write_b(chr)
+				parser.lexical_attributes.lexeme_builder.write_u8(chr)
 				temp_lexeme := parser.builder_str()
 				if parser.lexical_attributes.current_tag.last_attribute != '' {
 					lattr := parser.lexical_attributes.current_tag.last_attribute
@@ -155,16 +153,17 @@ pub fn (mut parser Parser) split_parse(data string) {
 					parser.lexical_attributes.current_tag.attributes[lattr] = nval
 					parser.lexical_attributes.current_tag.last_attribute = ''
 				} else {
-					parser.lexical_attributes.current_tag.attributes[temp_lexeme.to_lower()] = '' // parser.print_debug(temp_lexeme)
+					parser.lexical_attributes.current_tag.attributes[temp_lexeme.to_lower()] = ''
+					// parser.print_debug(temp_lexeme)
 				}
 				parser.lexical_attributes.lexeme_builder.go_back_to(0)
 			} else {
-				parser.lexical_attributes.lexeme_builder.write_b(chr)
+				parser.lexical_attributes.lexeme_builder.write_u8(chr)
 			}
 		} else if parser.lexical_attributes.open_tag {
 			if parser.lexical_attributes.lexeme_builder.len == 0 && is_quote {
 				parser.lexical_attributes.open_string = string_code
-				parser.lexical_attributes.lexeme_builder.write_b(chr)
+				parser.lexical_attributes.lexeme_builder.write_u8(chr)
 			} else if chr == `>` { // close tag >
 				complete_lexeme := parser.builder_str().to_lower()
 				parser.lexical_attributes.current_tag.closed = (complete_lexeme.len > 0
@@ -189,8 +188,8 @@ pub fn (mut parser Parser) split_parse(data string) {
 					parser.lexical_attributes.opened_code_type = parser.lexical_attributes.current_tag.name
 				}
 				// parser.print_debug(parser.lexical_attributes.current_tag.name)
-			} else if chr !in [byte(9), ` `, `=`, `\n`] { // Tab, space, = and \n
-				parser.lexical_attributes.lexeme_builder.write_b(chr)
+			} else if chr !in [u8(9), ` `, `=`, `\n`] { // Tab, space, = and \n
+				parser.lexical_attributes.lexeme_builder.write_u8(chr)
 			} else if chr != 10 {
 				complete_lexeme := parser.builder_str().to_lower()
 				if parser.lexical_attributes.current_tag.name == '' {
@@ -226,7 +225,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 			parser.generate_tag()
 			parser.lexical_attributes.open_tag = true
 		} else {
-			parser.lexical_attributes.lexeme_builder.write_b(chr)
+			parser.lexical_attributes.lexeme_builder.write_u8(chr)
 		}
 	}
 }

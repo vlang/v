@@ -1,6 +1,8 @@
-module main
+import geometry { Line, Point, PointCond, Shape, point_str }
 
-import geometry { Line, Point, Shape, module_name, point_str }
+fn point_is(p Point, cond PointCond) bool {
+	return cond(p)
+}
 
 fn test_imported_symbols_types() {
 	// struct init
@@ -17,6 +19,11 @@ fn test_imported_symbols_types() {
 		ps: [p0, p1]
 	}
 	assert l0.ps[0].y == 20
+
+	cond := fn (p Point) bool {
+		return p.x == 10
+	}
+	assert point_is(p0, cond)
 }
 
 fn test_imported_symbols_functions() {
@@ -28,10 +35,6 @@ fn test_imported_symbols_functions() {
 	assert p0.str() == '20 40'
 	// function
 	assert point_str(p0) == '20 40'
-}
-
-fn test_imported_symbols_constants() {
-	assert module_name == 'geometry'
 }
 
 fn vertex_count(s Shape) int {

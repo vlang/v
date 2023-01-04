@@ -37,7 +37,7 @@ pub fn east_asian_width_property_at(s string, index int) EastAsianWidthProperty 
 	mut left, mut right := 0, east_asian.east_asian_width_data.len - 1
 	for left <= right {
 		middle := left + ((right - left) / 2)
-		entry := east_asian_width_data[middle]
+		entry := east_asian.east_asian_width_data[middle]
 		if codepoint < entry.point {
 			right = middle - 1
 			continue

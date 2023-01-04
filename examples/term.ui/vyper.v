@@ -53,14 +53,14 @@ fn (v Vec) facing() Orientation {
 
 // generate a random vector with x in [min_x, max_x] and y in [min_y, max_y]
 fn (mut v Vec) randomize(min_x int, min_y int, max_x int, max_y int) {
-	v.x = rand.int_in_range(min_x, max_x)
-	v.y = rand.int_in_range(min_y, max_y)
+	v.x = rand.int_in_range(min_x, max_x) or { min_x }
+	v.y = rand.int_in_range(min_y, max_y) or { min_y }
 }
 
 // part of snake's body representation
 struct BodyPart {
 mut:
-	pos Vec = {
+	pos Vec = Vec{
 		x: block_size
 		y: block_size
 	}
@@ -71,7 +71,7 @@ mut:
 // snake representation
 struct Snake {
 mut:
-	app       &App
+	app       &App = unsafe { nil }
 	direction Orientation
 	body      []BodyPart
 	velocity  Vec = Vec{
@@ -192,8 +192,8 @@ fn (mut s Snake) randomize() {
 	for pos.x % 2 != 0 || (pos.x < buffer && pos.x > s.app.width - buffer) {
 		pos.randomize(buffer, buffer, s.app.width - buffer, s.app.height - buffer)
 	}
-	s.velocity.y = rand.int_in_range(-1 * block_size, block_size)
-	s.velocity.x = speeds[rand.intn(speeds.len)]
+	s.velocity.y = rand.int_in_range(-1 * block_size, block_size) or { 0 }
+	s.velocity.x = speeds[rand.intn(speeds.len) or { 0 }]
 	s.direction = s.velocity.facing()
 	s.body[0].pos = pos
 }
@@ -241,13 +241,13 @@ fn (s Snake) draw() {
 // rat representation
 struct Rat {
 mut:
-	pos Vec = {
+	pos Vec = Vec{
 		x: block_size
 		y: block_size
 	}
 	captured bool
 	color    termui.Color = grey
-	app      &App
+	app      &App = unsafe { nil }
 }
 
 // randomize spawn the rat in a new spot within the playable field
@@ -256,9 +256,10 @@ fn (mut r Rat) randomize() {
 		r.app.height - block_size - buffer)
 }
 
+[heap]
 struct App {
 mut:
-	termui &termui.Context = 0
+	termui &termui.Context = unsafe { nil }
 	snake  Snake
 	rat    Rat
 	width  int
@@ -396,7 +397,7 @@ fn (a App) check_capture() bool {
 	snake_pos := a.snake.get_head().pos
 	rat_pos := a.rat.pos
 	return snake_pos.x <= rat_pos.x + block_size && snake_pos.x + block_size >= rat_pos.x
-		&& snake_pos.y <= rat_pos.y + block_size&& snake_pos.y + block_size >= rat_pos.y
+		&& snake_pos.y <= rat_pos.y + block_size && snake_pos.y + block_size >= rat_pos.y
 }
 
 fn (mut a App) draw_snake() {
@@ -435,7 +436,7 @@ fn (mut a App) draw_debug() {
 	snake := a.snake
 	a.termui.draw_text(block_size, 1 * block_size, 'Display_width: ${a.width:04d} Display_height: ${a.height:04d}')
 	a.termui.draw_text(block_size, 2 * block_size, 'Vx: ${snake.velocity.x:+02d} Vy: ${snake.velocity.y:+02d}')
-	a.termui.draw_text(block_size, 3 * block_size, 'F: $snake.direction')
+	a.termui.draw_text(block_size, 3 * block_size, 'F: ${snake.direction}')
 	snake_head := snake.get_head()
 	rat := a.rat
 	a.termui.draw_text(block_size, 4 * block_size, 'Sx: ${snake_head.pos.x:+03d} Sy: ${snake_head.pos.y:+03d}')
@@ -470,5 +471,5 @@ fn main() {
 		hide_cursor: true
 		frame_rate: 10
 	)
-	app.termui.run() ?
+	app.termui.run()?
 }

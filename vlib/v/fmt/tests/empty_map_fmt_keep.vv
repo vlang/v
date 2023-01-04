@@ -1,0 +1,11 @@
+struct Foo {
+	bar map[int]int
+}
+
+fn main() {
+	foo := Foo{
+		bar: {
+			// comment
+		}
+	}
+}

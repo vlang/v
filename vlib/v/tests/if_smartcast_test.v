@@ -102,7 +102,7 @@ fn test_mutable_with_struct() {
 		assert c.abc.val == 'xyz'
 	}
 	if mut c.abc is Abc {
-		// NB: in this second smart cast, `another` is
+		// Note: in this second smart cast, `another` is
 		// the same wrapped value, that was changed in
 		// the first smart cast:
 		assert c.abc.val == 'xyz'
@@ -154,19 +154,19 @@ fn test_mutability() {
 	mut cell := Cell{}
 	cell = cell_str
 	if mut cell is CellStr {
-		println('$cell.str')
+		println('${cell.str}')
 	}
 	cell = cell_itg
 	if mut cell is CellInt {
-		println('$cell.itg')
+		println('${cell.itg}')
 	}
 	cell = cell_flt
 	if mut cell is CellFloat {
-		println('$cell.flt')
+		println('${cell.flt}')
 	}
 	cell = cell_u32
 	if mut cell is CellU32 {
-		println('$cell.u')
+		println('${cell.u}')
 	}
 }
 

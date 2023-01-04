@@ -32,6 +32,20 @@ fn test_enum() {
 	assert color == .green
 }
 
+enum PowerDuration {
+	invulntics = 30 * 35
+	invistics = 60 * 35
+	infratics = 120 * 35
+}
+
+fn test_custom_values() {
+	mut p := PowerDuration.invulntics
+	assert int(p) == 30 * 35
+	p = .invistics
+	assert int(p) == 60 * 35
+	assert int(PowerDuration.infratics) == 120 * 35
+}
+
 fn test_in() {
 	color := Color.red
 	num := 3 // used to be an expr bug before `in`
@@ -68,10 +82,10 @@ enum Foo {
 
 fn test_nums() {
 	foo := Foo.a
-	assert foo == Foo(1)
-	assert Foo.c == Foo(3)
+	assert foo == unsafe { Foo(1) }
+	assert Foo.c == unsafe { Foo(3) }
 	d := Foo.d
-	assert d == Foo(-10)
+	assert d == unsafe { Foo(-10) }
 }
 
 /*
@@ -130,6 +144,17 @@ enum FileType {
 fn test_enum_instance() {
 	mut filetype := FileType{}
 	eprintln(filetype)
-	s := 'x $filetype z'
+	s := 'x ${filetype} z'
 	assert s == 'x unknown z'
+}
+
+enum Bar {
+	baz
+}
+
+fn (_ Bar) baz() {}
+
+fn test_enum_variant_and_method_name_clash() {
+	x := Bar.baz
+	println(x)
 }

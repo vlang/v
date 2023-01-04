@@ -1,0 +1,6 @@
+vlib/v/checker/tests/enum_error_module.vv:4:12: error: unknown enum `time.NonExistingEnum` (type_idx=0)
+    2 | 
+    3 | fn main() {
+    4 |     _ := time.NonExistingEnum.black
+      |               ~~~~~~~~~~~~~~~~~~~~~
+    5 | }

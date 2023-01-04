@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module http
 
-// The status codes listed here are based on the comprehensive list, 
+// The status codes listed here are based on the comprehensive list,
 // available at:
 // https://www.iana.org/assignments/http-status-codes/http-status-codes.xhtml
 pub enum Status {
@@ -228,7 +228,9 @@ pub fn (code Status) str() string {
 // int converts an assigned and known Status to its integral equivalent.
 // if a Status is unknown or unassigned, this method will return zero
 pub fn (code Status) int() int {
-	if code in [.unknown, .unassigned] { return 0 }
+	if code in [.unknown, .unassigned] {
+		return 0
+	}
 	return int(code)
 }
 
@@ -238,14 +240,14 @@ pub fn (code Status) is_valid() bool {
 	return number >= 100 && number < 600
 }
 
-// is_error will return true if the status code represents either a client or 
+// is_error will return true if the status code represents either a client or
 // a server error; otherwise will return false
 pub fn (code Status) is_error() bool {
 	number := code.int()
 	return number >= 400 && number < 600
 }
 
-// is_success will return true if the status code represents either an 
+// is_success will return true if the status code represents either an
 // informational, success, or redirection response; otherwise will return false
 pub fn (code Status) is_success() bool {
 	number := code.int()

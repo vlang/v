@@ -1,0 +1,5 @@
+vlib/v/parser/tests/struct_field_unknown_module_a.vv:2:7: error: unknown module `ui`
+    1 | struct Inter {
+    2 |     code ui.KeyCode
+      |          ~~
+    3 | }

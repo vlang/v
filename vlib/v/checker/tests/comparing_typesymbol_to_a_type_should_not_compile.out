@@ -5,3 +5,4 @@ vlib/v/checker/tests/comparing_typesymbol_to_a_type_should_not_compile.vv:12:7: 
       |          ~~~~~~~~~~~~~~~~~~~~~~~
    13 |     println(typeof(isym).name)
    14 |     println(typeof(ast.string_type).name)
+Details: left type: `&ast.TypeSymbol` vs right type: `ast.Type`

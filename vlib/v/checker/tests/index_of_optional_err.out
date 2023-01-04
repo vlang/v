@@ -1,0 +1,7 @@
+vlib/v/checker/tests/index_of_optional_err.vv:6:7: error: type `?[]int` is optional, it does not support indexing
+    4 |
+    5 | fn main() {
+    6 |     a := abc()[0] or { 5 }
+      |          ~~~~~
+    7 |     dump(a)
+    8 | }

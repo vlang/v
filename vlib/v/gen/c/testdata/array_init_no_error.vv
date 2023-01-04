@@ -1,0 +1,11 @@
+// From issue #14679
+fn iterate_linear(value1 u32, value2 u32, length u32) []u32 {
+	step := u32((value2 - value1) / (length - 1))
+	return []u32{len: int(length), init: value1 + step * u32(it + 1)}
+}
+
+pub fn iterate_rect_single(val1 u32, val2 u32, val3 u32, val4 u32, width u32, height u32) [][]u32 {
+	left := iterate_linear(val1, val3, height)
+	right := iterate_linear(val2, val4, height)
+	return [][]u32{len: int(width), init: iterate_linear(left[it], right[it], width)}
+}

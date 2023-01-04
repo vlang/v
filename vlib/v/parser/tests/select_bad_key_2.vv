@@ -1,5 +1,5 @@
 fn f3_bad(ch1 chan int) {
-	a := 5
+	a := 3.75
 	select {
 		b := <-ch1 {
 			println(b)

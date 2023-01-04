@@ -3,4 +3,5 @@ vlib/v/checker/tests/immutable_var.vv:3:2: error: `a` is immutable, declare it w
     2 |     a := 1
     3 |     a = 2
       |     ^
-    4 | }
+    4 |     _ = a
+    5 | }

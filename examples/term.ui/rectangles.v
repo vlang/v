@@ -12,7 +12,7 @@ mut:
 
 struct App {
 mut:
-	tui      &tui.Context = 0
+	tui      &tui.Context = unsafe { nil }
 	rects    []Rect
 	cur_rect Rect
 	is_drag  bool
@@ -20,10 +20,10 @@ mut:
 }
 
 fn random_color() tui.Color {
-	return {
-		r: byte(rand.intn(256))
-		g: byte(rand.intn(256))
-		b: byte(rand.intn(256))
+	return tui.Color{
+		r: rand.u8()
+		g: rand.u8()
+		b: rand.u8()
 	}
 }
 
@@ -32,7 +32,7 @@ fn event(e &tui.Event, x voidptr) {
 	match e.typ {
 		.mouse_down {
 			app.is_drag = true
-			app.cur_rect = {
+			app.cur_rect = Rect{
 				c: random_color()
 				x: e.x
 				y: e.y
@@ -93,5 +93,5 @@ fn main() {
 		hide_cursor: true
 		frame_rate: 60
 	)
-	app.tui.run() ?
+	app.tui.run()?
 }

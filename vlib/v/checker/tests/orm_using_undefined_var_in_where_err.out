@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_using_undefined_var_in_where_err.vv:24:35: error: undefined variable: `email`
+   22 |
+   23 |     _ := sql db {
+   24 |         select from User where email == email
+      |                                         ~~~~~
+   25 |     }
+   26 | }

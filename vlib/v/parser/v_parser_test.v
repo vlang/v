@@ -43,7 +43,7 @@ fn test_eval() {
 	for input in inputs {
 		stmts << parse_stmt(input, table, scope)
 	}
-	file := ast.File{
+	file := &ast.File{
 		stmts: stmts
 		scope: scope
 	}
@@ -74,15 +74,12 @@ x := 10
 5+7
 8+4
 '
-	table := &ast.Table{}
+	table := ast.new_table()
 	vpref := &pref.Preferences{}
-	gscope := &ast.Scope{
-		parent: 0
-	}
-	prog := parse_file(s, table, .skip_comments, vpref, gscope)
+	prog := parse_file(s, table, .skip_comments, vpref)
 	mut checker := checker.new_checker(table, vpref)
 	checker.check(prog)
-	res := c.gen([prog], table, vpref)
+	res, _, _, _ := c.gen([prog], table, vpref)
 	println(res)
 }
 
@@ -103,14 +100,15 @@ fn test_one() {
 	for line in input {
 		e << parse_stmt(line, table, scope)
 	}
-	program := ast.File{
+	program := &ast.File{
 		stmts: e
 		scope: scope
 		global_scope: scope
 	}
 	mut checker := checker.new_checker(table, vpref)
 	checker.check(program)
-	res := c.gen([program], table, vpref).replace('\n', '').trim_space().after('#endif')
+	mut res, _, _, _ := c.gen([program], table, vpref)
+	res = res.replace('\n', '').trim_space().after('#endif')
 	println(res)
 	ok := expected == res
 	println(res)
@@ -136,22 +134,23 @@ fn test_parse_expr() {
 	mut e := []ast.Stmt{}
 	table := ast.new_table()
 	vpref := &pref.Preferences{}
-	mut checker := checker.new_checker(table, vpref)
+	mut chk := checker.new_checker(table, vpref)
 	scope := &ast.Scope{
 		start_pos: 0
 		parent: 0
 	}
 	for s in input {
-		println('\n\nst="$s"')
+		println('\n\nst="${s}"')
 		e << parse_stmt(s, table, scope)
 	}
-	program := ast.File{
+	program := &ast.File{
 		stmts: e
 		scope: scope
 		global_scope: scope
 	}
-	checker.check(program)
-	res := c.gen([program], table, vpref).after('#endif')
+	chk.check(program)
+	mut res, _, _, _ := c.gen([program], table, vpref)
+	res = res.after('#endif')
 	println('========')
 	println(res)
 	println('========')
@@ -162,10 +161,10 @@ fn test_parse_expr() {
 			continue
 		}
 		if line != expecting[i] {
-			println('V:"$line" expecting:"${expecting[i]}"')
+			println('V:"${line}" expecting:"${expecting[i]}"')
 		}
 		assert line == expecting[i]
-		println(term.green('$i OK'))
+		println(term.green('${i} OK'))
 		println(line)
 		println('')
 		i++
@@ -218,3 +217,53 @@ for s in text_expr {
 	println('===================')
 }
 */
+
+fn test_fn_is_html_open_tag() {
+	mut s := '<style>'
+	mut b := is_html_open_tag('style', s)
+	assert b == true
+
+	s = '<style    media="print"    custom-attr    >'
+	b = is_html_open_tag('style', s)
+	assert b == true
+
+	s = '<style/>'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = 'styl'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = 'style'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = '<style'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = '<<style>'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = '<style>>'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = '<stylex>'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = '<html>'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = '<sript>'
+	b = is_html_open_tag('style', s)
+	assert b == false
+}
+
+// For issue #15516
+fn test_anon_struct() {
+}

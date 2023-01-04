@@ -1,7 +1,7 @@
 module main
 
 // This prelude is loaded in every v program compiled with -live,
-// but only for the main execuast.
+// but only for the main executable.
 import v.live.executable
 
 const (

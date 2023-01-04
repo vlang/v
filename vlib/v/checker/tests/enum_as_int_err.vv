@@ -9,4 +9,5 @@ fn main() {
 	color = 1
 	foo = Color.red
 	println(color == 0)
+	_ = foo
 }

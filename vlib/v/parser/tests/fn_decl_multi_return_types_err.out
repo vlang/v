@@ -1,0 +1,7 @@
+vlib/v/parser/tests/fn_decl_multi_return_types_err.vv:4:10: error: multiple return types in function declaration must use parentheses, e.g. (int, string)
+    2 | }
+    3 |
+    4 | fn foo() int, int {
+      |          ~~~~~~~~
+    5 |     return 0, 0
+    6 | }

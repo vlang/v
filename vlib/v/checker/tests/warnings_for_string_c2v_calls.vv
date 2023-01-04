@@ -6,7 +6,6 @@ fn main() {
 		p[2] = `z`
 	}
 	x := string(p)
-	y := string(p, 10)
-	eprintln('x: $x | y: $y')
-	eprintln('x.len: $x.len | y.len: $y.len')
+	eprintln('x: $x')
+	eprintln('x.len: $x.len')
 }

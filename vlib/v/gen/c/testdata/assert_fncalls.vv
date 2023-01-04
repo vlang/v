@@ -1,0 +1,18 @@
+struct Abc {
+	x int
+}
+
+fn fn_returning_array() []int {
+	return [1]
+}
+
+fn fn_returning_struct() Abc {
+	return Abc{123}
+}
+
+fn main() {
+	assert fn_returning_array().len == 1
+	assert fn_returning_struct().x == 123
+	println(fn_returning_array())
+	println(fn_returning_struct())
+}

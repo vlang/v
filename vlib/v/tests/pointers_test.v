@@ -7,6 +7,8 @@ fn test_pointer_arithmetic() {
 		assert 2 == *parr
 		parr++
 		assert 3 == *parr
+		parr_add_one := *(parr + 1)
+		assert parr_add_one == 4
 		assert *(parr + 1) == 4
 	}
 }

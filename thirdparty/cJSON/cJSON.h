@@ -172,6 +172,7 @@ CJSON_PUBLIC(cJSON *) cJSON_GetObjectItemCaseSensitive(const cJSON * const objec
 CJSON_PUBLIC(cJSON_bool) cJSON_HasObjectItem(const cJSON *object, const char *string);
 /* For analysing failed parses. This returns a pointer to the parse error. You'll probably need to look a few chars back to make sense of it. Defined when cJSON_Parse() returns 0. 0 when cJSON_Parse() succeeds. */
 CJSON_PUBLIC(const char *) cJSON_GetErrorPtr(void);
+CJSON_PUBLIC(size_t) cJSON_GetErrorPos(void);
 
 /* Check if the item is a string and return its valuestring */
 CJSON_PUBLIC(char *) cJSON_GetStringValue(cJSON *item);

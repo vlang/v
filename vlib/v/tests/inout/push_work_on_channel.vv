@@ -1,0 +1,29 @@
+import time
+
+fn work(input chan u32, started chan bool) {
+	println('> work started')
+	started <- true
+	for {
+		x := <-input or { break }
+		println('> work x: $x')
+		time.sleep(50 * time.millisecond)
+	}
+	println('> work ended')
+}
+
+fn main() {
+	println('> main start')
+	ch := chan u32{cap: 100}
+	work_started := chan bool{}
+	for x in 0 .. 10 {
+		ch <- x
+	}
+	task := go work(ch, work_started)
+	_ := <-work_started
+
+	ch.close()
+	// println('> main ch.close called') // the position of this is not deterministic
+
+	task.wait()
+	println('> main task was finished')
+}

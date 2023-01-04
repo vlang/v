@@ -1,15 +1,18 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module pcg32
 
 import rand.seed
-import rand.constants
+import rand.buffer
+
+pub const seed_len = 4
 
 // PCG32RNG ported from http://www.pcg-random.org/download.html,
 // https://github.com/imneme/pcg-c-basic/blob/master/pcg_basic.c, and
 // https://github.com/imneme/pcg-c-basic/blob/master/pcg_basic.h
 pub struct PCG32RNG {
+	buffer.PRNGBuffer
 mut:
 	state u64 = u64(0x853c49e6748fea9b) ^ seed.time_seed_64()
 	inc   u64 = u64(0xda3e39cb94b95bdb) ^ seed.time_seed_64()
@@ -30,6 +33,39 @@ pub fn (mut rng PCG32RNG) seed(seed_data []u32) {
 	rng.u32()
 	rng.state += init_state
 	rng.u32()
+	rng.bytes_left = 0
+	rng.buffer = 0
+}
+
+// byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
+[inline]
+pub fn (mut rng PCG32RNG) u8() u8 {
+	if rng.bytes_left >= 1 {
+		rng.bytes_left -= 1
+		value := u8(rng.buffer)
+		rng.buffer >>= 8
+		return value
+	}
+	rng.buffer = rng.u32()
+	rng.bytes_left = 3
+	value := u8(rng.buffer)
+	rng.buffer >>= 8
+	return value
+}
+
+// u16 returns a pseudorandom 16-bit unsigned integer (`u16`).
+[inline]
+pub fn (mut rng PCG32RNG) u16() u16 {
+	if rng.bytes_left >= 2 {
+		rng.bytes_left -= 2
+		value := u16(rng.buffer)
+		rng.buffer >>= 16
+		return value
+	}
+	ans := rng.u32()
+	rng.buffer = ans >> 16
+	rng.bytes_left = 2
+	return u16(ans)
 }
 
 // u32 returns a pseudorandom unsigned `u32`.
@@ -39,7 +75,7 @@ pub fn (mut rng PCG32RNG) u32() u32 {
 	rng.state = oldstate * (6364136223846793005) + rng.inc
 	xorshifted := u32(((oldstate >> u64(18)) ^ oldstate) >> u64(27))
 	rot := u32(oldstate >> u64(59))
-	return ((xorshifted >> rot) | (xorshifted << ((-rot) & u32(31))))
+	return (xorshifted >> rot) | (xorshifted << ((-rot) & u32(31)))
 }
 
 // u64 returns a pseudorandom 64-bit unsigned `u64`.
@@ -48,179 +84,14 @@ pub fn (mut rng PCG32RNG) u64() u64 {
 	return u64(rng.u32()) | (u64(rng.u32()) << 32)
 }
 
-// u32n returns a pseudorandom 32-bit unsigned `u32` in range `[0, max)`.
+// block_size returns the number of bits that the RNG can produce in a single iteration.
 [inline]
-pub fn (mut rng PCG32RNG) u32n(max u32) u32 {
-	if max == 0 {
-		eprintln('max must be positive')
-		exit(1)
-	}
-	// To avoid bias, we need to make the range of the RNG a multiple of
-	// max, which we do by dropping output less than a threshold.
-	threshold := (-max % max)
-	// Uniformity guarantees that loop below will terminate. In practice, it
-	// should usually terminate quickly; on average (assuming all max's are
-	// equally likely), 82.25% of the time, we can expect it to require just
-	// one iteration. In practice, max's are typically small and only a
-	// tiny amount of the range is eliminated.
-	for {
-		r := rng.u32()
-		if r >= threshold {
-			return (r % max)
-		}
-	}
-	return u32(0)
+pub fn (mut rng PCG32RNG) block_size() int {
+	return 32
 }
 
-// u64n returns a pseudorandom 64-bit unsigned `u64` in range `[0, max)`.
-[inline]
-pub fn (mut rng PCG32RNG) u64n(max u64) u64 {
-	if max == 0 {
-		eprintln('max must be positive')
-		exit(1)
-	}
-	threshold := (-max % max)
-	for {
-		r := rng.u64()
-		if r >= threshold {
-			return (r % max)
-		}
-	}
-	return u64(0)
-}
-
-// u32_in_range returns a pseudorandom 32-bit unsigned `u32` in range `[min, max)`.
-[inline]
-pub fn (mut rng PCG32RNG) u32_in_range(min u64, max u64) u64 {
-	if max <= min {
-		eprintln('max must be greater than min')
-		exit(1)
-	}
-	return min + rng.u32n(u32(max - min))
-}
-
-// u64_in_range returns a pseudorandom 64-bit unsigned `u64` in range `[min, max)`.
-[inline]
-pub fn (mut rng PCG32RNG) u64_in_range(min u64, max u64) u64 {
-	if max <= min {
-		eprintln('max must be greater than min')
-		exit(1)
-	}
-	return min + rng.u64n(max - min)
-}
-
-// int returns a 32-bit signed (possibly negative) `int`.
-[inline]
-pub fn (mut rng PCG32RNG) int() int {
-	return int(rng.u32())
-}
-
-// i64 returns a 64-bit signed (possibly negative) `i64`.
-[inline]
-pub fn (mut rng PCG32RNG) i64() i64 {
-	return i64(rng.u64())
-}
-
-// int31 returns a 31-bit positive pseudorandom `int`.
-[inline]
-pub fn (mut rng PCG32RNG) int31() int {
-	return int(rng.u32() >> 1)
-}
-
-// int63 returns a 63-bit positive pseudorandom `i64`.
-[inline]
-pub fn (mut rng PCG32RNG) int63() i64 {
-	return i64(rng.u64() >> 1)
-}
-
-// intn returns a 32-bit positive `int` in range `[0, max)`.
-[inline]
-pub fn (mut rng PCG32RNG) intn(max int) int {
-	if max <= 0 {
-		eprintln('max has to be positive.')
-		exit(1)
-	}
-	return int(rng.u32n(u32(max)))
-}
-
-// i64n returns a 64-bit positive `i64` in range `[0, max)`.
-[inline]
-pub fn (mut rng PCG32RNG) i64n(max i64) i64 {
-	if max <= 0 {
-		eprintln('max has to be positive.')
-		exit(1)
-	}
-	return i64(rng.u64n(u64(max)))
-}
-
-// int_in_range returns a 32-bit positive `int` in range `[0, max)`.
-[inline]
-pub fn (mut rng PCG32RNG) int_in_range(min int, max int) int {
-	if max <= min {
-		eprintln('max must be greater than min.')
-		exit(1)
-	}
-	return min + rng.intn(max - min)
-}
-
-// i64_in_range returns a 64-bit positive `i64` in range `[0, max)`.
-[inline]
-pub fn (mut rng PCG32RNG) i64_in_range(min i64, max i64) i64 {
-	if max <= min {
-		eprintln('max must be greater than min.')
-		exit(1)
-	}
-	return min + rng.i64n(max - min)
-}
-
-// f32 returns a pseudorandom `f32` value in range `[0, 1)`.
-[inline]
-pub fn (mut rng PCG32RNG) f32() f32 {
-	return f32(rng.u32()) / constants.max_u32_as_f32
-}
-
-// f64 returns a pseudorandom `f64` value in range `[0, 1)`.
-[inline]
-pub fn (mut rng PCG32RNG) f64() f64 {
-	return f64(rng.u64()) / constants.max_u64_as_f64
-}
-
-// f32n returns a pseudorandom `f32` value in range `[0, max)`.
-[inline]
-pub fn (mut rng PCG32RNG) f32n(max f32) f32 {
-	if max <= 0 {
-		eprintln('max has to be positive.')
-		exit(1)
-	}
-	return rng.f32() * max
-}
-
-// f64n returns a pseudorandom `f64` value in range `[0, max)`.
-[inline]
-pub fn (mut rng PCG32RNG) f64n(max f64) f64 {
-	if max <= 0 {
-		eprintln('max has to be positive.')
-		exit(1)
-	}
-	return rng.f64() * max
-}
-
-// f32_in_range returns a pseudorandom `f32` in range `[min, max)`.
-[inline]
-pub fn (mut rng PCG32RNG) f32_in_range(min f32, max f32) f32 {
-	if max <= min {
-		eprintln('max must be greater than min')
-		exit(1)
-	}
-	return min + rng.f32n(max - min)
-}
-
-// i64_in_range returns a pseudorandom `i64` in range `[min, max)`.
-[inline]
-pub fn (mut rng PCG32RNG) f64_in_range(min f64, max f64) f64 {
-	if max <= min {
-		eprintln('max must be greater than min')
-		exit(1)
-	}
-	return min + rng.f64n(max - min)
+// free should be called when the generator is no longer needed
+[unsafe]
+pub fn (mut rng PCG32RNG) free() {
+	unsafe { free(rng) }
 }

@@ -1,0 +1,38 @@
+// because of an issue with checker, all C.* functions have to be declared first
+fn C.isalpha(c int) int
+fn C.isdigit(c int) int
+
+fn main() {
+	charutil()
+}
+
+fn charutil() {
+	$if linux {
+		// ascii for `V`
+		v_is_alpha := C.isalpha(86)
+		if v_is_alpha != 0 {
+			println('ok 1')
+		} else {
+			assert false
+		}
+
+		null_is_alpha := C.isalpha(0)
+		if null_is_alpha == 0 {
+			println('ok 2')
+		} else {
+			assert false
+		}
+
+		// ascii for `3`
+		three_is_digit := C.isdigit(51)
+		if three_is_digit != 0 {
+			println('ok 3')
+		} else {
+			assert false
+		}
+	} $else {
+		println('ok 1')
+		println('ok 2')
+		println('ok 3')
+	}
+}

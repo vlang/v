@@ -1,0 +1,38 @@
+fn defer_test() {
+	println('normal1')
+	defer {
+		println('defer1')
+	}
+	defer {
+		println('defer2')
+	}
+	println('normal2')
+}
+
+fn defer_condition_test(i int) {
+	if i > 3 {
+		defer {
+			println('defer1')
+		}
+	} else {
+		defer {
+			println('defer2')
+		}
+	}
+}
+
+fn defer_return_test() int {
+	mut i := 1
+	defer {
+		i = 3
+	}
+	return i
+}
+
+fn main() {
+	defer_test()
+	defer_condition_test(1)
+	defer_condition_test(6)
+	a := defer_return_test()
+	println(a)
+}

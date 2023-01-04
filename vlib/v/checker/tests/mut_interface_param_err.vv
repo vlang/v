@@ -1,0 +1,20 @@
+interface Widget{
+mut:
+	init()
+}
+
+struct Button{}
+fn (mut b Button) init(){}
+
+struct Window{
+mut:
+	widgets []Widget
+}
+
+fn (mut w Window) add(mut widget Widget){}
+
+fn main(){
+	mut win := Window{}
+	mut btn := Button{}
+	win.add(btn)  // should be an error here
+}

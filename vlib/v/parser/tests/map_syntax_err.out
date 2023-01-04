@@ -1,0 +1,6 @@
+vlib/v/parser/tests/map_syntax_err.vv:2:7: error: deprecated map syntax, use syntax like `{'age': 20}`
+    1 | fn main() {
+    2 |     m := map{"aaa": 1}
+      |          ~~~
+    3 |     println(m)
+    4 | }

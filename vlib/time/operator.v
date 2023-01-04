@@ -15,7 +15,7 @@ pub fn (t1 Time) < (t2 Time) bool {
 // Time subtract using operator overloading.
 [inline]
 pub fn (lhs Time) - (rhs Time) Duration {
-	lhs_micro := lhs.unix * 1000 * 1000 + u64(lhs.microsecond)
-	rhs_micro := rhs.unix * 1000 * 1000 + u64(rhs.microsecond)
-	return (i64(lhs_micro) - i64(rhs_micro)) * microsecond
+	lhs_micro := lhs.unix * 1_000_000 + lhs.microsecond
+	rhs_micro := rhs.unix * 1_000_000 + rhs.microsecond
+	return (lhs_micro - rhs_micro) * microsecond
 }

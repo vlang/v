@@ -1,7 +1,7 @@
 Usage:
-  v remove [MODULE...]
-    Removes all listed MODULEs.
-	If no MODULE is provided, removes ALL installed modules.
+  v remove [PACKAGE...]
+    Removes all listed PACKAGEs.
+	If no PACKAGE is provided, removes ALL installed packages.
 
 Options:
   -help        - Show usage info.

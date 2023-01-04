@@ -1,45 +1,41 @@
 // Binary Search Tree example by @SleepyRoy
 
-// TODO: make Node.value generic once it's robust enough
-// TODO: `return match` instead of returns everywhere inside match 
-
 struct Empty {}
 
-struct Node {
-	value f64
-	left  Tree
-	right Tree
+struct Node[T] {
+	value T
+	left  Tree[T]
+	right Tree[T]
 }
 
-type Tree = Empty | Node
+type Tree[T] = Empty | Node[T]
 
 // return size(number of nodes) of BST
-fn size(tree Tree) int {
+fn (tree Tree[T]) size[T]() int {
 	return match tree {
-		// TODO: remove int() once match gets smarter
-		Empty { int(0) }
-		Node { 1 + size(tree.left) + size(tree.right) }
+		Empty { 0 }
+		Node[T] { 1 + tree.left.size() + tree.right.size() }
 	}
 }
 
 // insert a value to BST
-fn insert(tree Tree, x f64) Tree {
-	match tree {
+fn (tree Tree[T]) insert[T](x T) Tree[T] {
+	return match tree {
 		Empty {
-			return Node{x, tree, tree}
+			Node[T]{x, tree, tree}
 		}
-		Node {
-			return if x == tree.value {
+		Node[T] {
+			if x == tree.value {
 				tree
 			} else if x < tree.value {
-				Node{
+				Node[T]{
 					...tree
-					left: insert(tree.left, x)
+					left: tree.left.insert(x)
 				}
 			} else {
-				Node{
+				Node[T]{
 					...tree
-					right: insert(tree.right, x)
+					right: tree.right.insert(x)
 				}
 			}
 		}
@@ -47,72 +43,80 @@ fn insert(tree Tree, x f64) Tree {
 }
 
 // whether able to find a value in BST
-fn search(tree Tree, x f64) bool {
-	match tree {
+fn (tree Tree[T]) search[T](x T) bool {
+	return match tree {
 		Empty {
-			return false
+			false
 		}
-		Node {
-			return if x == tree.value {
+		Node[T] {
+			if x == tree.value {
 				true
 			} else if x < tree.value {
-				search(tree.left, x)
+				tree.left.search(x)
 			} else {
-				search(tree.right, x)
+				tree.right.search(x)
 			}
 		}
 	}
 }
 
 // find the minimal value of a BST
-fn min(tree Tree) f64 {
-	match tree {
-		Empty { return 1e100 }
-		Node { return if tree.value < min(tree.left) { tree.value } else { min(tree.left) } }
+fn (tree Tree[T]) min[T]() T {
+	return match tree {
+		Empty {
+			T(1e9)
+		}
+		Node[T] {
+			if tree.value < tree.left.min() {
+				tree.value
+			} else {
+				tree.left.min()
+			}
+		}
 	}
 }
 
 // delete a value in BST (if nonexistant do nothing)
-fn delete(tree Tree, x f64) Tree {
-	match tree {
+fn (tree Tree[T]) delete[T](x T) Tree[T] {
+	return match tree {
 		Empty {
-			return tree
+			tree
 		}
-		Node {
-			if tree.left is Node && tree.right is Node {
-				return if x < tree.value {
-					Node{
+		Node[T] {
+			if tree.left !is Empty && tree.right !is Empty {
+				if x < tree.value {
+					Node[T]{
 						...tree
-						left: delete(tree.left, x)
+						left: tree.left.delete(x)
 					}
 				} else if x > tree.value {
-					Node{
+					Node[T]{
 						...tree
-						right: delete(tree.right, x)
+						right: tree.right.delete(x)
 					}
 				} else {
-					Node{
+					Node[T]{
 						...tree
-						value: min(tree.right)
-						right: delete(tree.right, min(tree.right))
+						value: tree.right.min()
+						right: tree.right.delete(tree.right.min())
 					}
 				}
-			} else if tree.left is Node {
-				return if x == tree.value {
+			} else if tree.left !is Empty {
+				if x == tree.value {
 					tree.left
 				} else {
-					Node{
+					Node[T]{
 						...tree
-						left: delete(tree.left, x)
+						left: tree.left.delete(x)
 					}
 				}
 			} else {
 				if x == tree.value {
-					return tree.right
+					tree.right
 				} else {
-					return Node{
+					Node[T]{
 						...tree
-						right: delete(tree.right, x)
+						right: tree.right.delete(x)
 					}
 				}
 			}
@@ -121,21 +125,21 @@ fn delete(tree Tree, x f64) Tree {
 }
 
 fn main() {
-	mut tree := Tree(Empty{})
-	input := [0.3, 0.2, 0.5, 0.0, 0.6, 0.8, 0.9, 1.0, 0.1, 0.4, 0.7]
-	for i in input {
-		tree = insert(tree, i)
+	mut tree := Tree[f64](Empty{})
+	vals := [0.2, 0.0, 0.5, 0.3, 0.6, 0.8, 0.9, 1.0, 0.1, 0.4, 0.7]
+	for i in vals {
+		tree = tree.insert(i)
 	}
-	println('[1] after insertion tree size is ${size(tree)}') // 11
-	del := [-0.3, 0.0, 0.3, 0.6, 1.0, 1.5]
-	for i in del {
-		tree = delete(tree, i)
+	println('[1] after insertion tree size is ${tree.size()}') // 11
+	del_vals := [-0.3, 0.0, 0.3, 0.6, 1.0, 1.5]
+	for i in del_vals {
+		tree = tree.delete(i)
 	}
-	print('[2] after deletion tree size is ${size(tree)}, ') // 7
+	print('[2] after deletion tree size is ${tree.size()}, ') // 7
 	print('and these elements were deleted: ') // 0.0 0.3 0.6 1.0
-	for i in input {
-		if !search(tree, i) {
-			print('$i ')
+	for i in vals {
+		if !tree.search(i) {
+			print('${i} ')
 		}
 	}
 	println('')

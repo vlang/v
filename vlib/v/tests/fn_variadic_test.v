@@ -22,7 +22,7 @@ fn test_fn_variadic() {
 /*
 // QTODO
 // generic
-fn variadic_test_generic<T>(a int, b ...T) T {
+fn variadic_test_generic[T](a int, b ...T) T {
 	b1 := b[0]
 	b2 := b[1]
 	return '$a $b1 $b2'
@@ -41,7 +41,7 @@ fn variadic_fn_a(a ...string) string {
 	a0 := a[0]
 	a1 := a[1]
 	a2 := a[2]
-	return '$a0$a1$a2'
+	return '${a0}${a1}${a2}'
 }
 
 fn test_fn_variadic_forward() {
@@ -96,4 +96,21 @@ fn test_fn_variadic_method() {
 fn test_fn_variadic_method_no_args() {
 	a := VaTestStruct{}
 	a.variadic_method_no_args('marko')
+}
+
+// test vargs with pointer type
+fn take_variadic_string_ptr(strings ...&string) {
+	take_array_string_ptr(strings)
+}
+
+fn take_array_string_ptr(strings []&string) {
+	assert strings.len == 2
+	assert *strings[0] == 'a'
+	assert *strings[1] == 'b'
+}
+
+fn test_varg_pointer() {
+	a := 'a'
+	b := 'b'
+	take_variadic_string_ptr(&a, &b)
 }

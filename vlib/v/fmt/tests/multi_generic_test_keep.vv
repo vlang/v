@@ -1,2 +1,2 @@
-fn test<A, B, D, E>() {
+fn test[A, B, D, E]() {
 }

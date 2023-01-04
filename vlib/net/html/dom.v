@@ -9,7 +9,7 @@ import os
 // https://www.w3.org/TR/WD-DOM/introduction.html
 pub struct DocumentObjectModel {
 mut:
-	root           &Tag
+	root           &Tag = unsafe { nil }
 	constructed    bool
 	btree          BTree
 	all_tags       []&Tag
@@ -21,12 +21,10 @@ mut:
 	debug_file     os.File
 }
 
-[if debug]
+[if debug_html ?]
 fn (mut dom DocumentObjectModel) print_debug(data string) {
-	$if debug {
-		if data.len > 0 {
-			dom.debug_file.writeln(data) or { panic(err) }
-		}
+	if data.len > 0 {
+		dom.debug_file.writeln(data) or { eprintln(err) }
 	}
 }
 
@@ -75,7 +73,7 @@ fn (mut dom DocumentObjectModel) add_tag_attribute(tag &Tag) {
 
 fn (mut dom DocumentObjectModel) add_tag_by_type(tag &Tag) {
 	tag_name := tag.name
-	if !(tag_name in dom.tag_type) {
+	if tag_name !in dom.tag_type {
 		dom.tag_type[tag_name] = [tag]
 	} else {
 		mut temp_array := dom.tag_type[tag_name]
@@ -143,8 +141,8 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 				dom.print_debug("Added ${tag.name} as child of '" + tag_list[temp_int].name +
 					"' which now has ${dom.btree.get_children().len} childrens")
 				*/
-				dom.print_debug("Added $tag.name as child of '" + temp_tag.name +
-					"' which now has $temp_tag.children.len childrens")
+				dom.print_debug("Added ${tag.name} as child of '" + temp_tag.name +
+					"' which now has ${temp_tag.children.len} childrens")
 			} else { // dom.new_root(tag)
 				stack.push(root_index)
 			}

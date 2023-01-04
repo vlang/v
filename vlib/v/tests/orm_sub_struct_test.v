@@ -1,19 +1,20 @@
 import sqlite
 
 struct Upper {
-	id  int
+	id  int       [primary; sql: serial]
 	sub SubStruct
 }
 
 struct SubStruct {
-	id   int
+	id   int    [primary; sql: serial]
 	name string
 }
 
 fn test_orm_sub_structs() {
 	db := sqlite.connect(':memory:') or { panic(err) }
-	db.exec('create table Upper (id integer primary key, sub int default 0)')
-	db.exec('create table SubStruct (id integer primary key, name string default "")')
+	sql db {
+		create table Upper
+	}
 
 	upper_1 := Upper{
 		sub: SubStruct{

@@ -1,0 +1,32 @@
+struct Foo {
+	b int
+}
+
+struct Bar {
+	a int
+	b int
+}
+
+fn main() {
+	foo := Foo{2}
+	bar2 := Bar{
+		...foo
+		a: 1
+	}
+	bar3 := Bar{
+		...foo
+		b: 1
+	}
+	bar4 := Bar{
+		...foo
+		b: 1
+		a: 2
+	}
+	bar := Bar{
+		...foo
+	}
+	print(bar)
+	print(bar2)
+	print(bar3)
+	print(bar4)
+}

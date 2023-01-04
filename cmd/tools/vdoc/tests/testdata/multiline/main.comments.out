@@ -1,0 +1,9 @@
+module main
+
+fn a1()
+    normal comment
+fn a2()
+    this should be merged into the same line
+fn a3()
+    This should be its own parapgraph, because it ends with a dot.  
+    This should be another paragraph.

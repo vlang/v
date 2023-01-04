@@ -5,4 +5,5 @@ fn main() {
 	a += x('a','b')
 	mut b := 'abcdef'
 	_ = b
+	_ = a
 }

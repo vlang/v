@@ -192,10 +192,74 @@ fn test_if_epxr_with_array_conditions() {
 	}
 }
 
-fn min<T>(a T, b T) T {
+fn min[T](a T, b T) T {
 	return if a < b { a } else { b }
 }
 
 fn test_if_expr_with_fn_generic() {
 	assert min(42, 13) == 13
+}
+
+fn test_if_expr_with_complex_array_methods() {
+	mut ret := []string{}
+	entries := ['a', 'b', 'c']
+
+	if false {
+		ret = entries.map(it.capitalize())
+	} else if entries.any(it == 'a') {
+		ret = entries.map(it)
+	}
+
+	println(ret)
+	assert ret == ['a', 'b', 'c']
+}
+
+fn return_optional() ?int {
+	return 1
+}
+
+fn test_if_expr_with_optional() {
+	m := map[string]int{}
+	v := if a := m['a'] {
+		println('${a}')
+		return_optional()?
+	} else {
+		2
+	}
+	assert v == 2
+}
+
+fn test_if_expr_with_or_block() {
+	arr := ['a']
+	a := if arr.len == 0 || arr[0] == '-' { 123 } else { return_optional() or { -1 } }
+	assert a == 1
+}
+
+type Num = f32 | f64 | i64 | int
+
+[noreturn]
+fn assert_false_noreturn() {
+	assert false
+	exit(1)
+}
+
+fn test_noreturn() {
+	n := Num(int(0))
+	_ := if n is int {
+		n
+	} else if n is f32 {
+		int(n)
+	} else {
+		exit(1)
+	}
+
+	_ := if 1 == 0 {
+		0
+	} else if 1 == 1 {
+		1
+	} else if 1 == 2 {
+		panic('err')
+	} else {
+		assert_false_noreturn()
+	}
 }

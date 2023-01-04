@@ -65,6 +65,34 @@ fn test_deleting() {
 	assert a.len == 2
 }
 
+fn test_slice_delete() {
+	mut a := [1.5, 2.5, 3.25, 4.5, 5.75]
+	b := a[2..4]
+	a.delete(0)
+	assert a == [2.5, 3.25, 4.5, 5.75]
+	assert b == [3.25, 4.5]
+	a = [3.75, 4.25, -1.5, 2.25, 6.0]
+	c := a[..3]
+	a.delete(2)
+	assert a == [3.75, 4.25, 2.25, 6.0]
+	assert c == [3.75, 4.25, -1.5]
+}
+
+fn test_delete_many() {
+	mut a := [1, 2, 3, 4, 5, 6, 7, 8, 9]
+	b := a[2..6]
+	a.delete_many(4, 3)
+	assert a == [1, 2, 3, 4, 8, 9]
+	assert b == [3, 4, 5, 6]
+	c := a[..a.len]
+	a.delete_many(2, 0) // this should just clone
+	a[1] = 17
+	assert a == [1, 17, 3, 4, 8, 9]
+	assert c == [1, 2, 3, 4, 8, 9]
+	a.delete_many(0, a.len)
+	assert a == []int{}
+}
+
 fn test_short() {
 	a := [1, 2, 3]
 	assert a.len == 3
@@ -181,56 +209,92 @@ fn test_compare_ints() {
     assert compare_ints(a, a) == 0
 }
 */
-fn test_repeat() {
-	{
-		a := [0].repeat(5)
-		assert a.len == 5
-		assert a[0] == 0 && a[1] == 0 && a[2] == 0 && a[3] == 0 && a[4] == 0
+
+fn test_repeat_int() {
+	a := [1234].repeat(5)
+	dump(a)
+	assert a.len == 5
+	for x in a {
+		assert x == 1234
 	}
-	{
-		a := [1.1].repeat(10)
-		assert a[0] == 1.1
-		assert a[5] == 1.1
-		assert a[9] == 1.1
-	}
-	{
-		a := [i64(-123)].repeat(10)
-		assert a[0] == -123
-		assert a[5] == -123
-		assert a[9] == -123
-	}
-	{
-		a := [u64(123)].repeat(10)
-		assert a[0] == 123
-		assert a[5] == 123
-		assert a[9] == 123
-	}
-	{
-		a := [1.1].repeat(10)
-		assert a[0] == 1.1
-		assert a[5] == 1.1
-		assert a[9] == 1.1
-	}
-	{
-		a := [1, 2].repeat(2)
-		assert a[0] == 1
-		assert a[1] == 2
-		assert a[2] == 1
-		assert a[3] == 2
-	}
-	{
-		a := ['1', 'abc'].repeat(2)
-		assert a[0] == '1'
-		assert a[1] == 'abc'
-		assert a[2] == '1'
-		assert a[3] == 'abc'
-	}
-	{
-		mut a := ['1', 'abc'].repeat(0)
-		assert a.len == 0
-		a << 'abc'
-		assert a[0] == 'abc'
-	}
+}
+
+fn test_repeat_f64() {
+	a := [1.1].repeat(10)
+	dump(a)
+	assert a.len == 10
+	assert a[0] == 1.1
+	assert a[5] == 1.1
+	assert a[9] == 1.1
+}
+
+fn test_repeat_f32() {
+	a := [f32(1.1)].repeat(10)
+	dump(a)
+	assert a.len == 10
+	assert a[0] == f32(1.1)
+	assert a[5] == f32(1.1)
+	assert a[9] == f32(1.1)
+}
+
+fn test_repeat_i64() {
+	a := [i64(-123)].repeat(10)
+	dump(a)
+	assert a.len == 10
+	assert a[0] == -123
+	assert a[5] == -123
+	assert a[9] == -123
+}
+
+fn test_repeat_u64() {
+	a := [u64(123)].repeat(10)
+	assert a[0] == 123
+	assert a[5] == 123
+	assert a[9] == 123
+}
+
+fn test_repeat_several_ints() {
+	a := [1, 2].repeat(2)
+	dump(a)
+	assert a.len == 4
+	assert a[0] == 1
+	assert a[1] == 2
+	assert a[2] == 1
+	assert a[3] == 2
+}
+
+fn test_repeat_several_strings_2() {
+	a := ['1', 'abc'].repeat(2)
+	dump(a)
+	assert a.len == 4
+	assert a[0] == '1'
+	assert a[1] == 'abc'
+	assert a[2] == '1'
+	assert a[3] == 'abc'
+}
+
+fn test_repeat_several_strings_0() {
+	mut a := ['1', 'abc'].repeat(0)
+	dump(a)
+	assert a.len == 0
+	a << 'abc'
+	assert a[0] == 'abc'
+}
+
+fn test_deep_repeat() {
+	mut a3 := [[[1, 1], [2, 2], [3, 3]], [[4, 4], [5, 5], [6, 6]]]
+	r := a3.repeat(3)
+	dump(r)
+	a3[1][1][0] = 17
+	assert r == [
+		[[1, 1], [2, 2], [3, 3]],
+		[[4, 4], [5, 5], [6, 6]],
+		[[1, 1], [2, 2], [3, 3]],
+		[[4, 4], [5, 5], [6, 6]],
+		[[1, 1], [2, 2], [3, 3]],
+		[[4, 4], [5, 5], [6, 6]],
+	]
+	assert a3 == [[[1, 1], [2, 2], [3, 3]], [[4, 4], [17, 5], [6, 6]]]
 }
 
 fn test_right() {
@@ -315,16 +379,13 @@ fn modify(mut numbers []int) {
 }
 
 fn test_mut_slice() {
-	/*
-	QTODO
 	mut n := [1, 2, 3]
-	//modify(mut n)
+	// modify(mut n)
 	modify(mut n[..2])
 	assert n[0] == 777
 	modify(mut n[2..])
 	assert n[2] == 777
 	println(n)
-	*/
 }
 
 fn double_up(mut a []int) {
@@ -367,7 +428,7 @@ fn test_copy() {
 	assert b[2] == 3
 }
 */
-fn test_mutli_array_clone() {
+fn test_multi_array_clone() {
 	// 2d array_int
 	mut a2_1 := [[1, 2, 3], [4, 5, 6]]
 	mut a2_2 := a2_1.clone()
@@ -388,11 +449,9 @@ fn test_mutli_array_clone() {
 	a3_1[0][0][1] = 0
 	a3_2[0][1][0] = 0
 	assert a3_1 == [[[1, 0], [2, 2], [3, 3]], [[4, 4], [5, 5],
-		[6, 6],
-	]]
+		[6, 6]]]
 	assert a3_2 == [[[1, 1], [0, 2], [3, 3]], [[4, 4], [5, 5],
-		[6, 6],
-	]]
+		[6, 6]]]
 	// 3d array_string
 	mut b3_1 := [[['1', '1'], ['2', '2'], ['3', '3']], [['4', '4'],
 		['5', '5'], ['6', '6']]]
@@ -439,11 +498,11 @@ fn (ta []Test2) str() string {
 }
 
 fn (t Test2) str() string {
-	return '{$t.one $t.two}'
+	return '{${t.one} ${t.two}}'
 }
 
 fn (t Test) str() string {
-	return '{$t.a $t.b}'
+	return '{${t.a} ${t.b}}'
 }
 
 fn test_struct_print() {
@@ -511,8 +570,8 @@ fn test_in() {
 	assert 1 in a
 	assert 2 in a
 	assert 3 in a
-	assert !(4 in a)
-	assert !(0 in a)
+	assert 4 !in a
+	assert 0 !in a
 	assert 0 !in a
 	assert 4 !in a
 	b := [1, 4, 0]
@@ -529,7 +588,6 @@ fn sub(prev int, curr int) int {
 	return prev - curr
 }
 
-/*
 fn test_reduce() {
 	a := [1, 2, 3, 4, 5]
 	b := a.reduce(sum, 0)
@@ -544,7 +602,7 @@ fn test_reduce() {
 	assert f == -6
 	assert g == -7
 }
-*/
+
 fn filter_test_helper_1(a int) bool {
 	return a > 3
 }
@@ -613,7 +671,7 @@ fn test_map() {
 	// type switch
 	assert nums.map(it * 10) == [10, 20, 30, 40, 50, 60]
 	assert nums.map(it * it) == [1, 4, 9, 16, 25, 36]
-	assert nums.map('$it') == ['1', '2', '3', '4', '5', '6']
+	assert nums.map('${it}') == ['1', '2', '3', '4', '5', '6']
 	assert nums.map(it % 2 == 0) == [false, true, false, true, false, true]
 	assert strs.map(it.to_upper()) == ['V', 'IS', 'AWESOME']
 	assert strs.map(it == 'awesome') == [false, false, true]
@@ -627,13 +685,13 @@ fn test_map() {
 	assert []int{len: 0}.map(it * 2) == []
 	// nested maps (where it is of same type)
 	assert nums.map(strs.map(int(7)) == [7, 7, 7]) == [true, true, true, true, true, true]
-	assert nums.map('$it' + strs.map('a')[0]) == ['1a', '2a', '3a', '4a', '5a', '6a']
+	assert nums.map('${it}' + strs.map('a')[0]) == ['1a', '2a', '3a', '4a', '5a', '6a']
 	assert nums.map(it + strs.map(int(7))[0]) == [8, 9, 10, 11, 12, 13]
 	assert nums.map(it + strs.map(it.len)[0]) == [2, 3, 4, 5, 6, 7]
 	assert strs.map(it.len + strs.map(it.len)[0]) == [2, 3, 8]
 	// nested (different it types)
-	assert strs.map(it[nums.map(it - it)[0]]) == [byte(`v`), `i`, `a`]
-	assert nums[0..3].map('$it' + strs.map(it)[it - 1]) == ['1v', '2is', '3awesome']
+	assert strs.map(it[nums.map(it - it)[0]]) == [u8(`v`), `i`, `a`]
+	assert nums[0..3].map('${it}' + strs.map(it)[it - 1]) == ['1v', '2is', '3awesome']
 	assert nums.map(map_test_helper_1) == [1, 4, 9, 16, 25, 36]
 	assert [1, 5, 10].map(map_test_helper_1) == [1, 25, 100]
 	assert nums == [1, 2, 3, 4, 5, 6]
@@ -647,7 +705,7 @@ fn test_anon_fn_map() {
 	assert [1, 2, 3].map(add_num) == [2, 3, 4]
 }
 
-fn test_mutli_anon_fn_map() {
+fn test_multi_anon_fn_map() {
 	a := [1, 2, 3].map(fn (i int) int {
 		return i + 1
 	})
@@ -706,13 +764,13 @@ fn test_eq() {
 		age: 22
 		name: 'bob'
 	}]
-	assert [map{
+	assert [{
 		'bob': 22
-	}, map{
+	}, {
 		'tom': 33
-	}] == [map{
+	}] == [{
 		'bob': 22
-	}, map{
+	}, {
 		'tom': 33
 	}]
 	assert [[1, 2, 3], [4]] == [[1, 2, 3], [4]]
@@ -769,25 +827,17 @@ fn test_fixed_array_literal_eq() {
 fn test_sort() {
 	mut a := ['hi', '1', '5', '3']
 	a.sort()
-	assert a[0] == '1'
-	assert a[1] == '3'
-	assert a[2] == '5'
-	assert a[3] == 'hi'
+	assert a == ['1', '3', '5', 'hi']
 
 	mut nums := [67, -3, 108, 42, 7]
 	nums.sort()
-	assert nums[0] == -3
-	assert nums[1] == 7
-	assert nums[2] == 42
-	assert nums[3] == 67
-	assert nums[4] == 108
+	assert nums == [-3, 7, 42, 67, 108]
 
 	nums.sort(a < b)
-	assert nums[0] == -3
-	assert nums[1] == 7
-	assert nums[2] == 42
-	assert nums[3] == 67
-	assert nums[4] == 108
+	assert nums == [-3, 7, 42, 67, 108]
+
+	nums.sort(b < a)
+	assert nums == [108, 67, 42, 7, -3]
 
 	mut users := [User{22, 'Peter'}, User{20, 'Bob'}, User{25, 'Alice'}]
 	users.sort(a.age < b.age)
@@ -803,23 +853,44 @@ fn test_sort() {
 	assert users[1].age == 22
 	assert users[2].age == 20
 
-	users.sort(a.name < b.name) // Test sorting by string fields
-	// assert users.map(it.name).join(' ') == 'Alice Bob Peter'
+	users.sort(b.age > a.age)
+	assert users[0].age == 20
+	assert users[1].age == 22
+	assert users[2].age == 25
+
+	users.sort(a.name < b.name)
+	assert users[0].name == 'Alice'
+	assert users[1].name == 'Bob'
+	assert users[2].name == 'Peter'
+}
+
+fn test_sort_with_compare() {
+	mut a := ['hi', '1', '5', '3']
+	a.sort_with_compare(fn (a &string, b &string) int {
+		if a < b {
+			return -1
+		}
+		if a > b {
+			return 1
+		}
+		return 0
+	})
+	assert a == ['1', '3', '5', 'hi']
 }
 
 fn test_rune_sort() {
 	mut bs := [`f`, `e`, `d`, `b`, `c`, `a`]
 	bs.sort()
 	println(bs)
-	assert '$bs' == '[`a`, `b`, `c`, `d`, `e`, `f`]'
+	assert bs == [`a`, `b`, `c`, `d`, `e`, `f`]
 
 	bs.sort(a > b)
 	println(bs)
-	assert '$bs' == '[`f`, `e`, `d`, `c`, `b`, `a`]'
+	assert bs == [`f`, `e`, `d`, `c`, `b`, `a`]
 
 	bs.sort(a < b)
 	println(bs)
-	assert '$bs' == '[`a`, `b`, `c`, `d`, `e`, `f`]'
+	assert bs == [`a`, `b`, `c`, `d`, `e`, `f`]
 }
 
 fn test_sort_by_different_order_of_a_b() {
@@ -836,15 +907,25 @@ fn test_sort_by_different_order_of_a_b() {
 
 fn test_f32_sort() {
 	mut f := [f32(50.0), 15, 1, 79, 38, 0, 27]
-	f.sort_with_compare(compare_f32)
-	assert f[0] == 0.0
-	assert f[1] == 1.0
-	assert f[6] == 79.0
+	f.sort()
+	assert f == [f32(0.0), 1, 15, 27, 38, 50, 79]
+
+	f.sort(a < b)
+	assert f == [f32(0.0), 1, 15, 27, 38, 50, 79]
+
+	f.sort(b > a)
+	assert f == [f32(0.0), 1, 15, 27, 38, 50, 79]
+
+	f.sort(b < a)
+	assert f == [f32(79.0), 50, 38, 27, 15, 1, 0]
+
+	f.sort(a > b)
+	assert f == [f32(79.0), 50, 38, 27, 15, 1, 0]
 }
 
 fn test_f64_sort() {
 	mut f := [50.0, 15, 1, 79, 38, 0, 27]
-	f.sort_with_compare(compare_f64)
+	f.sort()
 	assert f[0] == 0.0
 	assert f[1] == 1.0
 	assert f[6] == 79.0
@@ -852,10 +933,39 @@ fn test_f64_sort() {
 
 fn test_i64_sort() {
 	mut f := [i64(50), 15, 1, 79, 38, 0, 27]
-	f.sort_with_compare(compare_i64)
+	f.sort()
 	assert f[0] == 0
 	assert f[1] == 1
 	assert f[6] == 79
+}
+
+fn test_sort_index_expr() {
+	mut f := [[i64(50), 48], [i64(15)], [i64(1)], [i64(79)], [i64(38)],
+		[i64(0)], [i64(27)]]
+	// TODO This currently gives "indexing pointer" error without unsafe
+	unsafe {
+		f.sort(a[0] < b[0])
+	}
+	assert f == [[i64(0)], [i64(1)], [i64(15)], [i64(27)], [i64(38)],
+		[i64(50), 48], [i64(79)]]
+}
+
+fn test_a_b_paras_sort() {
+	mut arr_i := [1, 3, 2]
+	arr_i.sort(a < b)
+	println(arr_i)
+	assert arr_i == [1, 2, 3]
+	arr_i.sort(b < a)
+	println(arr_i)
+	assert arr_i == [3, 2, 1]
+
+	mut arr_f := [1.1, 3.3, 2.2]
+	arr_f.sort(a < b)
+	println(arr_f)
+	assert arr_f == [1.1, 2.2, 3.3]
+	arr_f.sort(b < a)
+	println(arr_f)
+	assert arr_f == [3.3, 2.2, 1.1]
 }
 
 /*
@@ -957,12 +1067,46 @@ fn test_trim() {
 	assert arr.last() == 2
 }
 
+[manualfree]
+fn test_drop() {
+	mut a := [1, 2]
+	a << 3 // pushing assures reallocation; a.cap now should be bigger:
+	assert a.cap > 3
+	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+
+	a.drop(-1000)
+	assert a == [1, 2, 3] // a.drop( negative ) should NOT modify the array
+	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+
+	a.drop(2)
+	assert a == [3]
+	assert a.cap > a.len
+	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+
+	a.drop(10)
+	assert a == []
+	assert a.cap > a.len
+	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+
+	a << 123
+	a << 456
+	a << 789
+	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+	assert a == [123, 456, 789]
+
+	a.drop(10)
+	assert a == []
+	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+
+	unsafe { a.free() } // test offset OK
+}
+
 fn test_hex() {
 	// array hex
-	st := [byte(`V`), `L`, `A`, `N`, `G`]
+	st := [u8(`V`), `L`, `A`, `N`, `G`]
 	assert st.hex() == '564c414e47'
 	assert st.hex().len == 10
-	st1 := [byte(0x41)].repeat(100)
+	st1 := [u8(0x41)].repeat(100)
 	assert st1.hex() == '41'.repeat(100)
 }
 
@@ -987,13 +1131,13 @@ fn test_array_with_cap() {
 	assert a5.cap == 10
 }
 
-fn test_mutli_array_index() {
+fn test_multi_array_index() {
 	mut a := [][]int{len: 2, init: []int{len: 3, init: 0}}
 	a[0][0] = 1
-	assert '$a' == '[[1, 0, 0], [0, 0, 0]]'
+	assert '${a}' == '[[1, 0, 0], [0, 0, 0]]'
 	mut b := [[0].repeat(3)].repeat(2)
 	b[0][0] = 1
-	assert '$b' == '[[1, 0, 0], [0, 0, 0]]'
+	assert '${b}' == '[[1, 0, 0], [0, 0, 0]]'
 }
 
 fn test_plus_assign_string() {
@@ -1081,8 +1225,6 @@ fn test_array_int_pop() {
 	assert z == 4
 	x1 := a.pop()
 	x2 := a.pop()
-	dump(x1)
-	dump(x2)
 	final := a.pop()
 	assert final == 1
 }
@@ -1260,23 +1402,26 @@ fn test_struct_array_of_multi_type_in() {
 	ivan := Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: map{
+		kv: {
 			'aaa': '111'
 		}
 	}
-	people := [Person{
-		name: 'ivan'
-		nums: [1, 2, 3]
-		kv: map{
-			'aaa': '111'
-		}
-	}, Person{
-		name: 'bob'
-		nums: [2]
-		kv: map{
-			'bbb': '222'
-		}
-	}]
+	people := [
+		Person{
+			name: 'ivan'
+			nums: [1, 2, 3]
+			kv: {
+				'aaa': '111'
+			}
+		},
+		Person{
+			name: 'bob'
+			nums: [2]
+			kv: {
+				'bbb': '222'
+			}
+		},
+	]
 	println(ivan in people)
 	assert ivan in people
 }
@@ -1285,23 +1430,26 @@ fn test_struct_array_of_multi_type_index() {
 	ivan := Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: map{
+		kv: {
 			'aaa': '111'
 		}
 	}
-	people := [Person{
-		name: 'ivan'
-		nums: [1, 2, 3]
-		kv: map{
-			'aaa': '111'
-		}
-	}, Person{
-		name: 'bob'
-		nums: [2]
-		kv: map{
-			'bbb': '222'
-		}
-	}]
+	people := [
+		Person{
+			name: 'ivan'
+			nums: [1, 2, 3]
+			kv: {
+				'aaa': '111'
+			}
+		},
+		Person{
+			name: 'bob'
+			nums: [2]
+			kv: {
+				'bbb': '222'
+			}
+		},
+	]
 	println(people.index(ivan))
 	assert people.index(ivan) == 0
 }
@@ -1322,7 +1470,7 @@ fn test_array_struct_contains() {
 	coords << coord_1
 	exists := coord_1 in coords
 	not_exists := coord_1 !in coords
-	println('`exists`: $exists and `not exists`: $not_exists')
+	println('`exists`: ${exists} and `not exists`: ${not_exists}')
 	assert exists == true
 	assert not_exists == false
 }
@@ -1357,7 +1505,7 @@ fn test_array_of_array_append() {
 	println(x) // OK
 	x[2] << 123 // RTE
 	println(x)
-	assert '$x' == '[[], [], [123], []]'
+	assert '${x}' == '[[], [], [123], []]'
 }
 
 fn test_array_of_map_insert() {
@@ -1365,12 +1513,12 @@ fn test_array_of_map_insert() {
 	println(x) // OK
 	x[2]['123'] = 123 // RTE
 	println(x)
-	assert '$x' == "[{}, {}, {'123': 123}, {}]"
+	assert '${x}' == "[{}, {}, {'123': 123}, {}]"
 }
 
 fn test_multi_fixed_array_init() {
 	a := [3][3]int{}
-	assert '$a' == '[[0, 0, 0], [0, 0, 0], [0, 0, 0]]'
+	assert '${a}' == '[[0, 0, 0], [0, 0, 0], [0, 0, 0]]'
 }
 
 struct Numbers {
@@ -1422,11 +1570,40 @@ fn test_clone_of_same_elem_size_array() {
 	assert arr2 == [Abc{1, 2, 3}, Abc{2, 3, 4}]
 }
 
-pub fn example<T>(mut arr []T) []T {
+pub fn example[T](mut arr []T) []T {
 	return arr.clone()
 }
 
 fn test_generic_mutable_arrays() {
 	mut arr := [1, 2, 3]
 	assert example(mut arr) == [1, 2, 3]
+}
+
+struct Ok {}
+
+fn test_inline_array_element_access() {
+	println([Ok{}][0])
+	a1 := [Ok{}][0]
+	assert a1 == Ok{}
+
+	println([1][0])
+	a2 := [1][0]
+	assert a2 == 1
+}
+
+//
+
+fn f(x int, y int) []int {
+	return [x, y]
+}
+
+fn test_2d_array_init_with_it() {
+	a := [][]int{len: 6, init: f(it, 2 * it)}
+	assert a == [[0, 0], [1, 2], [2, 4], [3, 6], [4, 8], [5, 10]]
+}
+
+fn test_using_array_name_variable() {
+	array := []int{len: 4, init: it}
+	println(array)
+	assert array == [0, 1, 2, 3]
 }

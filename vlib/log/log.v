@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module log
@@ -9,22 +9,25 @@ import term
 
 // Level defines possible log levels used by `Log`
 pub enum Level {
-	fatal = 1
+	disabled = 0
+	fatal
 	error
 	warn
 	info
 	debug
 }
 
+// LogTarget defines possible log targets
 pub enum LogTarget {
 	console
 	file
 	both
 }
 
-// tag returns the tag for log level `l` as a string.
+// tag_to_cli returns the tag for log level `l` as a colored string.
 fn tag_to_cli(l Level) string {
 	return match l {
+		.disabled { '' }
 		.fatal { term.red('FATAL') }
 		.error { term.red('ERROR') }
 		.warn { term.yellow('WARN ') }
@@ -33,9 +36,10 @@ fn tag_to_cli(l Level) string {
 	}
 }
 
-// tag returns the tag for log level `l` as a string.
+// tag_to_file returns the tag for log level `l` as a string.
 fn tag_to_file(l Level) string {
 	return match l {
+		.disabled { '     ' }
 		.fatal { 'FATAL' }
 		.error { 'ERROR' }
 		.warn { 'WARN ' }
@@ -44,12 +48,38 @@ fn tag_to_file(l Level) string {
 	}
 }
 
-interface Logger {
+// level_from_tag returns the log level from the given string if it matches.
+pub fn level_from_tag(tag string) ?Level {
+	return match tag {
+		'DISABLED' { Level.disabled }
+		'FATAL' { Level.fatal }
+		'ERROR' { Level.error }
+		'WARN' { Level.warn }
+		'INFO' { Level.info }
+		'DEBUG' { Level.debug }
+		else { none }
+	}
+}
+
+// target_from_label returns the log target from the given string if it matches.
+pub fn target_from_label(label string) ?LogTarget {
+	return match label {
+		'console' { LogTarget.console }
+		'file' { LogTarget.file }
+		'both' { LogTarget.both }
+		else { none }
+	}
+}
+
+// Logger is an interface that describes a generic Logger
+pub interface Logger {
+mut:
 	fatal(s string)
 	error(s string)
 	warn(s string)
 	info(s string)
 	debug(s string)
+	set_level(level Level)
 }
 
 // Log represents a logging object
@@ -58,9 +88,14 @@ mut:
 	level         Level
 	output_label  string
 	ofile         os.File
-	output_target LogTarget // if true output to file else use stdout/stderr.
+	output_target LogTarget // output to console (stdout/stderr) or file or both.
 pub mut:
 	output_file_name string // log output to this file
+}
+
+// get_level gets the internal logging level.
+pub fn (mut l Log) get_level() Level {
+	return l.level
 }
 
 // set_level sets the internal logging to `level`.
@@ -93,7 +128,7 @@ pub fn (mut l Log) set_output_path(output_file_path string) {
 	l.output_target = .file
 	l.output_file_name = os.join_path(os.real_path(output_file_path), l.output_label)
 	ofile := os.open_append(l.output_file_name) or {
-		panic('error while opening log file $l.output_file_name for appending')
+		panic('error while opening log file ${l.output_file_name} for appending')
 	}
 	l.ofile = ofile
 }
@@ -121,14 +156,14 @@ pub fn (mut l Log) close() {
 fn (mut l Log) log_file(s string, level Level) {
 	timestamp := time.now().format_ss()
 	e := tag_to_file(level)
-	l.ofile.writeln('$timestamp [$e] $s') or { panic(err) }
+	l.ofile.writeln('${timestamp} [${e}] ${s}') or { panic(err) }
 }
 
 // log_cli writes log line `s` with `level` to stdout.
 fn (l &Log) log_cli(s string, level Level) {
-	f := tag_to_cli(level)
-	t := time.now()
-	println('[$f $t.format_ss()] $s')
+	timestamp := time.now().format_ss()
+	e := tag_to_cli(level)
+	println('${timestamp} [${e}] ${s}')
 }
 
 // send_output writes log line `s` with `level` to either the log file or the console
@@ -143,13 +178,14 @@ pub fn (mut l Log) send_output(s &string, level Level) {
 }
 
 // fatal logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.fatal` category.
+// Note that this method performs a panic at the end, even if log level is not enabled.
+[noreturn]
 pub fn (mut l Log) fatal(s string) {
-	if int(l.level) < int(Level.fatal) {
-		return
+	if int(l.level) >= int(Level.fatal) {
+		l.send_output(s, .fatal)
+		l.ofile.close()
 	}
-	l.send_output(s, .fatal)
-	l.ofile.close()
-	panic('$l.output_label: $s')
+	panic('${l.output_label}: ${s}')
 }
 
 // error logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.error` category.

@@ -1,6 +1,6 @@
-vlib/v/checker/tests/selector_expr_assign.vv:7:6: error: struct fields can only be declared during the initialization
+vlib/v/checker/tests/selector_expr_assign.vv:7:8: error: use assignment `=` instead of declaration `:=` when modifying struct fields
     5 | fn main() {
     6 |     abc := Abc{}
     7 |     abc.a := 2
-      |         ^
+      |           ~~
     8 | }

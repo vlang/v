@@ -1,0 +1,11 @@
+struct AStruct {
+	field1 int
+}
+
+fn create() ?AStruct {
+	return AStruct{123}
+}
+
+fn main() {
+	dump(create())
+}

@@ -40,4 +40,3 @@ vlib/v/checker/tests/method_op_alias_err.vv:16:6: error: cannot use operator met
       |      ~~
    17 |     println(f)
    18 | }
-

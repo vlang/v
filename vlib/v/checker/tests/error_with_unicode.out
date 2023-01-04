@@ -1,5 +1,5 @@
 vlib/v/checker/tests/error_with_unicode.vv:5:17: error: cannot use `int literal` as `string` in argument 2 to `f1`
-    3 |
+    3 | 
     4 | fn main() {
     5 |     f1('🐀🐈', 0)
       |                ^
@@ -46,10 +46,11 @@ vlib/v/checker/tests/error_with_unicode.vv:12:6: error: cannot assign to `n`: ex
    12 |     n = '한글'
       |         ~~~~~~
    13 |     n = 'Кириллица'
-   14 | }
+   14 |     _ = n
 vlib/v/checker/tests/error_with_unicode.vv:13:6: error: cannot assign to `n`: expected `int`, not `string`
    11 |     n = '繁體字'
    12 |     n = '한글'
    13 |     n = 'Кириллица'
       |         ~~~~~~~~~~~
-   14 | }
+   14 |     _ = n
+   15 | }

@@ -1,0 +1,5 @@
+vlib/v/checker/tests/mut_receiver_lit.vv:10:1: error: cannot pass expression as `mut`
+    8 | }
+    9 | 
+   10 | Box{}.set(0)
+      | ~~~~~

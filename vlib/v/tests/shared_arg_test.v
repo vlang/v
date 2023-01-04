@@ -39,7 +39,7 @@ fn test_shared_as_value() {
 		a: 5
 	}
 	shared a := [3, 4, 6, 13, -23]
-	shared m := map{
+	shared m := {
 		'qw':   12.75
 		'yxcv': -3.125
 		'poiu': 88.0625
@@ -70,7 +70,7 @@ fn test_shared_as_mut() {
 		a: 5
 	}
 	shared a := [3, 4, 6, 13, -23]
-	shared m := map{
+	shared m := {
 		'qw':   12.75
 		'yxcv': -3.125
 		'poiu': 88.0625

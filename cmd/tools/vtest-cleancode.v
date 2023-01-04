@@ -3,91 +3,52 @@ module main
 import os
 import testing
 import v.util
+import arrays
 
-const (
-	vet_known_failing_exceptions    = []string{}
-	vet_folders                     = [
-		'vlib/sqlite',
-		'vlib/v',
-		'vlib/x/ttf/',
-		'cmd/v',
-		'cmd/tools',
-		'examples/2048',
-		'examples/tetris',
-		'examples/term.ui',
-	]
-	verify_known_failing_exceptions = [
-		'vlib/builtin/int_test.v' /* special number formatting that should be tested */,
-		'vlib/gg/m4/graphic.v' /* has hand crafted meaningful formatting of matrices */,
-		'vlib/gg/m4/m4_test.v' /* has hand crafted meaningful formatting of matrices */,
-		'vlib/gg/m4/matrix.v' /* has hand crafted meaningful formatting of matrices */,
-		'vlib/v/tests/array_append_short_struct_test.v', /* extra empty line */
-		'vlib/v/tests/fixed_array_const_size_test.v', /* fixed arr type is changed */
-		'vlib/v/tests/fn_high_test.v', /* param name removed */
-		'vlib/v/tests/fn_test.v', /* bad comment formatting */
-		'vlib/v/tests/generics_return_generics_struct_test.v', /* generic fn param removed */
-		'vlib/v/tests/interop_test.v', /* bad comment formatting */
-		'vlib/v/tests/generics_test.v', /* some silent error */
-		'vlib/v/gen/js/tests/js.v', /* local `hello` fn, gets replaced with module `hello` aliased as `hl` */
-	]
-	vfmt_verify_list                = [
-		'cmd/',
-		'vlib/arrays/',
-		'vlib/benchmark/',
-		'vlib/bitfield/',
-		'vlib/builtin/',
-		'vlib/cli/',
-		'vlib/dl/',
-		'vlib/flag/',
-		'vlib/gg/',
-		'vlib/math/bits/bits.v',
-		'vlib/orm/',
-		'vlib/runtime/',
-		'vlib/term/colors.v',
-		'vlib/term/term.v',
-		'vlib/v/ast/',
-		'vlib/v/builder/',
-		'vlib/v/cflag/',
-		'vlib/v/checker/',
-		'vlib/v/depgraph/',
-		'vlib/v/doc/',
-		'vlib/v/embed_file/',
-		'vlib/v/errors/',
-		'vlib/v/eval/',
-		'vlib/v/fmt/',
-		'vlib/v/gen/c/',
-		'vlib/v/gen/js/',
-		'vlib/v/gen/x64/',
-		'vlib/v/live/',
-		'vlib/v/markused/',
-		'vlib/v/parser/',
-		'vlib/v/pkgconfig/',
-		'vlib/v/pref/',
-		'vlib/v/preludes',
-		'vlib/v/scanner/',
-		'vlib/v/tests/',
-		'vlib/v/token/',
-		'vlib/v/util/',
-		'vlib/v/vcache/',
-		'vlib/v/vet/',
-		'vlib/v/vmod/',
-		'vlib/cli/',
-		'vlib/flag/',
-		'vlib/math/big/',
-		'vlib/os/',
-		'vlib/semver/',
-		'vlib/strings/',
-		'vlib/time/',
-		'vlib/vweb/',
-		'vlib/x/websocket/',
-	]
-)
+const vet_known_failing = [
+	'do_not_delete_this',
+]
 
-const (
-	vexe   = os.getenv('VEXE')
-	vroot  = os.dir(vexe)
-	is_fix = '-fix' in os.args
-)
+const vet_known_failing_windows = [
+	'do_not_delete_this',
+	'vlib/v/gen/js/tests/testdata/byte_is_space.v',
+	'vlib/v/gen/js/tests/testdata/compare_ints.v',
+	'vlib/v/gen/js/tests/testdata/hw.v',
+	'vlib/v/gen/js/tests/testdata/string_methods.v',
+	'vlib/v/tests/inout/vscript_using_generics_in_os.vsh',
+	'vlib/v/tests/project_with_modules_having_submodules/bin/main.vsh',
+	'vlib/v/tests/valgrind/simple_interpolation_script_mode.v',
+	'vlib/v/tests/valgrind/simple_interpolation_script_mode_more_scopes.v',
+]
+
+const vet_folders = [
+	'vlib/sqlite',
+	'vlib/v',
+	'vlib/x/json2',
+	'vlib/x/ttf',
+	'cmd/v',
+	'cmd/tools',
+	'examples/2048',
+	'examples/tetris',
+	'examples/term.ui',
+]
+
+const verify_known_failing_exceptions = []string{}
+
+const vfmt_verify_list = [
+	'cmd/',
+	'examples/',
+	'tutorials/',
+	'vlib/',
+]
+
+const vfmt_known_failing_exceptions = arrays.merge(verify_known_failing_exceptions, []string{})
+
+const vexe = os.getenv('VEXE')
+
+const vroot = os.dir(vexe)
+
+const is_fix = '-fix' in os.args
 
 fn main() {
 	args_string := os.args[1..].join(' ')
@@ -96,10 +57,10 @@ fn main() {
 }
 
 fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string, flist []string, slist []string) testing.TestSession {
-	os.chdir(vroot)
-	title_message := 'running $tool_cmd over most .v files'
+	os.chdir(vroot) or {}
+	title_message := 'running ${tool_cmd} over most .v files'
 	testing.eheader(title_message)
-	mut test_session := testing.new_test_session('$vargs $tool_args')
+	mut test_session := testing.new_test_session('${vargs} ${tool_args}', false)
 	test_session.files << flist
 	test_session.skip_files << slist
 	util.prepare_tool_when_needed(tool_source)
@@ -112,19 +73,30 @@ fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string,
 }
 
 fn v_test_vetting(vargs string) {
-	vet_session := tsession(vargs, 'vvet', 'v vet', 'vet', vet_folders, vet_known_failing_exceptions)
-	fmt_cmd, fmt_args := if is_fix { 'v fmt -w', 'fmt -w' } else { 'v fmt -verify', 'fmt -verify' }
-	expanded_vfmt_list := util.find_all_v_files(vfmt_verify_list) or { return }
-	verify_session := tsession(vargs, 'vfmt.v', fmt_cmd, fmt_args, expanded_vfmt_list,
-		verify_known_failing_exceptions)
+	expanded_vet_list := util.find_all_v_files(vet_folders) or { return }
+	mut vet_known_exceptions := vet_known_failing.clone()
+	if os.user_os() == 'windows' {
+		vet_known_exceptions << vet_known_failing_windows
+	}
+	vet_session := tsession(vargs, 'vvet', '${os.quoted_path(vexe)} vet', 'vet', expanded_vet_list,
+		vet_known_exceptions)
+	//
+	fmt_cmd, fmt_args := if is_fix {
+		'${os.quoted_path(vexe)} fmt -w', 'fmt -w'
+	} else {
+		'${os.quoted_path(vexe)} fmt -verify', 'fmt -verify'
+	}
+	vfmt_list := util.find_all_v_files(vfmt_verify_list) or { return }
+	exceptions := util.find_all_v_files(vfmt_known_failing_exceptions) or { return }
+	verify_session := tsession(vargs, 'vfmt.v', fmt_cmd, fmt_args, vfmt_list, exceptions)
 	//
 	if vet_session.benchmark.nfail > 0 || verify_session.benchmark.nfail > 0 {
 		eprintln('\n')
 		if vet_session.benchmark.nfail > 0 {
-			eprintln('WARNING: `v vet` failed $vet_session.benchmark.nfail times.')
+			eprintln('WARNING: `v vet` failed ${vet_session.benchmark.nfail} times.')
 		}
 		if verify_session.benchmark.nfail > 0 {
-			eprintln('WARNING: `v fmt -verify` failed $verify_session.benchmark.nfail times.')
+			eprintln('WARNING: `v fmt -verify` failed ${verify_session.benchmark.nfail} times.')
 		}
 		exit(1)
 	}

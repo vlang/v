@@ -68,7 +68,6 @@ int darwin_text_width(string s) {
 	return (int)(ceil(size.width));
 }
 
-
 void darwin_draw_rect(float x, float y, float width, float height, gx__Color c) {
 	NSColor* color = nscolor(c);
 	NSRect rect = NSMakeRect(x, y, width, height);
@@ -80,7 +79,8 @@ void darwin_draw_rect(float x, float y, float width, float height, gx__Color c) 
 void darwin_window_refresh() {
 	//[g_view setNeedsDisplay:YES];
 	  // update UI on the main thread TODO separate fn
-        dispatch_async(dispatch_get_main_queue(), ^{
+
+		dispatch_async(dispatch_get_main_queue(), ^{
 			[g_view setNeedsDisplay:YES];
         });
 

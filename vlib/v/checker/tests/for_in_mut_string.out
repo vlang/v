@@ -1,0 +1,14 @@
+vlib/v/checker/tests/for_in_mut_string.vv:19:6: error: string type is immutable, it cannot be changed
+   17 |
+   18 | fn wrap_text(mut gv Grid) {
+   19 |     for mut ch in gv.header {
+      |         ~~~
+   20 |         println(ch)
+   21 |     }
+vlib/v/checker/tests/for_in_mut_string.vv:20:3: error: `println` can not print void expressions
+   18 | fn wrap_text(mut gv Grid) {
+   19 |     for mut ch in gv.header {
+   20 |         println(ch)
+      |         ~~~~~~~~~~~
+   21 |     }
+   22 | }

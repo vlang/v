@@ -63,3 +63,34 @@ fn test_ref_field() {
 	}
 	assert y.a.n == 29
 }
+
+// Yxc should become [heap] implicitly because `Abc` is
+
+struct Yxc {
+mut:
+	a []Abc
+}
+
+fn mod_heap_array(mut x Yxc) {
+	x.a << Abc{
+		n: 9
+	}
+	x.a[1] = Abc{
+		n: 13
+	}
+}
+
+fn test_heap_array() {
+	mut z := &Yxc{
+		a: [
+			Abc{
+				n: 4
+			},
+			Abc{
+				n: 7
+			},
+		]
+	}
+	mod_heap_array(mut z)
+	assert z.a[1].n == 13
+}

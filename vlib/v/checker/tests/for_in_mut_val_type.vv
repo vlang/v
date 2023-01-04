@@ -21,3 +21,13 @@ fn main() {
 		j *= 2
 	}
 }
+
+struct Test {
+	a []int = [1, 2]
+}
+
+fn foo(t Test) {
+	for mut e in t.a {
+		e = 0
+	}
+}

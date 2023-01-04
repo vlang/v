@@ -1,0 +1,6 @@
+interface Foo {
+	Fizz()
+}
+
+fn main() {
+}

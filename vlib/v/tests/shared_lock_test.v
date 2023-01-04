@@ -28,7 +28,7 @@ fn test_shared_lock() {
 	shared z := St{
 		a: 1
 	}
-	go f(shared x, shared y, shared z)
+	spawn f(shared x, shared y, shared z)
 	for _ in 0 .. 100 {
 		lock x, y {
 			tmp := x.a
@@ -49,4 +49,29 @@ fn test_shared_lock() {
 	rlock x, y {
 		assert x.a == 7 && y.a == 5
 	}
+}
+
+struct App {
+	id string = 'test'
+mut:
+	app_data shared AppData
+}
+
+fn (mut a App) init_server_direct() {
+	lock a.app_data {
+		// a.app_data = AppData{}
+	}
+}
+
+struct AppData {
+	id string = 'foo'
+}
+
+fn test_shared_field_init() {
+	mut app1 := App{}
+	app1.init_server_direct()
+	id := rlock app1.app_data {
+		app1.app_data.id
+	}
+	// assert id == 'foo'
 }

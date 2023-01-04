@@ -12,9 +12,13 @@ fn test_rand_uuid_v4() {
 	assert uuid1.len == 36
 	assert uuid2.len == 36
 	assert uuid3.len == 36
-	assert uuid1[14] == `4`
-	assert uuid2[14] == `4`
-	assert uuid3[14] == `4`
+	for i in 0 .. 1000 {
+		x := rand.uuid_v4()
+		// check the version field is always 4:
+		assert x[14] == `4`
+		// and the clock_seq_hi_and_reserved field is valid too:
+		assert x[19] in [`8`, `9`, `a`, `b`]
+	}
 }
 
 // ulids:
@@ -37,7 +41,7 @@ fn test_ulids_max_start_character_is_ok() {
 }
 
 fn test_ulids_generated_in_the_same_millisecond_have_the_same_prefix() {
-	t := time.utc().unix_time_milli()
+	t := u64(time.utc().unix_time_milli())
 	mut ulid1 := ''
 	mut ulid2 := ''
 	mut ulid3 := ''

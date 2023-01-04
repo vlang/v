@@ -1,5 +1,11 @@
-# ignore all build binaries
-*
+# ignore sub-level build binaries and v binary
+*/**/*
+v
+v.exe
+v2
+v2.exe
+vdbg
+vdbg.exe
 !*/
 !*.*
 *.exe
@@ -14,6 +20,7 @@
 *.dll
 *.lib
 *.bak
+*.dylib
 a.out
 .noprefix.vrepl_temp
 
@@ -22,6 +29,12 @@ a.out
 /v.c
 /v.*.c
 /v.c.out
+/v_old
+/v_old.exe
+/vold
+/vold.exe
+/vnew
+/vnew.exe
 .vrepl_temp.v
 fns.txt
 .noprefix.vrepl_temp.v
@@ -41,12 +54,14 @@ fns.txt
 !Dockerfile.cross
 !LICENSE
 !Makefile
+!GNUmakefile
 
 # ignore editor files
 .idea
 .project
 .classpath
 .c9
+.vs
 *.launch
 .settings/
 *.sublime-workspace
@@ -63,6 +78,7 @@ cachegrind.out.*
 .gdb_history
 *.dSYM
 *.def
+vgcore.*
 
 # ignore system files
 .DS_Store
@@ -82,3 +98,25 @@ _docs
 cmd/tools/.disable_autorecompilation
 
 test.bin
+
+# ignore codespace env
+.venv/
+.direnv/
+shell.nix
+default.nix
+flake.nix
+.envrc
+
+thirdparty/stdatomic/nix/cpp/*.h
+
+# ignore VLS log
+vls.log
+
+# ignore v2go tmperror files
+*.tmperr
+
+*/**/tmp.*
+
+# ignore Intellij files
+.idea/
+/*.iml

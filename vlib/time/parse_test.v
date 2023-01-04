@@ -3,6 +3,7 @@ import time
 fn test_parse() {
 	s := '2018-01-27 12:48:34'
 	t := time.parse(s) or {
+		eprintln('> failing format: ${s} | err: ${err}')
 		assert false
 		return
 	}
@@ -12,17 +13,21 @@ fn test_parse() {
 }
 
 fn test_parse_invalid() {
-	s := 'Invalid time string'
-	time.parse(s) or {
-		assert true
-		return
+	if x := time.parse('Invalid time string') {
+		assert false
 	}
-	assert false
+	assert true
+
+	if x := time.parse('2020-02-02 02.20.02') {
+		assert false
+	}
+	assert true
 }
 
 fn test_parse_rfc2822() {
 	s1 := 'Thu, 12 Dec 2019 06:07:45 GMT'
 	t1 := time.parse_rfc2822(s1) or {
+		eprintln('> failing format: ${s1} | err: ${err}')
 		assert false
 		return
 	}
@@ -31,6 +36,7 @@ fn test_parse_rfc2822() {
 	assert t1.unix == 1576130865
 	s2 := 'Thu 12 Dec 2019 06:07:45 +0800'
 	t2 := time.parse_rfc2822(s2) or {
+		eprintln('> failing format: ${s2} | err: ${err}')
 		assert false
 		return
 	}
@@ -67,6 +73,7 @@ fn test_parse_iso8601() {
 	]
 	for i, format in formats {
 		t := time.parse_iso8601(format) or {
+			eprintln('>>> failing format: ${format} | err: ${err}')
 			assert false
 			continue
 		}
@@ -90,6 +97,7 @@ fn test_parse_iso8601() {
 fn test_parse_iso8601_local() {
 	format := '2020-06-05T15:38:06.015959'
 	t := time.parse_iso8601(format) or {
+		eprintln('> failing format: ${format} | err: ${err}')
 		assert false
 		return
 	}
@@ -112,6 +120,8 @@ fn test_parse_iso8601_invalid() {
 		'2020-06-05Z',
 		'2020-06-05+00:00',
 		'15:38:06',
+		'2020-06-32T15:38:06.015959',
+		'2020-13-13T15:38:06.015959',
 	]
 	for format in formats {
 		time.parse_iso8601(format) or {
@@ -125,6 +135,7 @@ fn test_parse_iso8601_invalid() {
 fn test_parse_iso8601_date_only() {
 	format := '2020-06-05'
 	t := time.parse_iso8601(format) or {
+		eprintln('> failing format: ${format} | err: ${err}')
 		assert false
 		return
 	}
@@ -135,4 +146,58 @@ fn test_parse_iso8601_date_only() {
 	assert t.minute == 0
 	assert t.second == 0
 	assert t.microsecond == 0
+}
+
+fn check_invalid_date(s string) {
+	if date := time.parse(s) {
+		eprintln('invalid date: "${s}" => "${date}"')
+		assert false
+	}
+	assert true
+}
+
+fn test_invalid_dates_should_error_during_parse() {
+	check_invalid_date('-99999-12-20 00:00:00')
+	check_invalid_date('99999-12-20 00:00:00')
+	//
+	check_invalid_date('2008-00-20 00:00:00')
+	check_invalid_date('2008-25-20 00:00:00')
+	//
+	check_invalid_date('2008-12-00 00:00:00')
+	check_invalid_date('2008-12-32 00:00:00')
+	//
+	check_invalid_date('2008-12-01 30:00:00')
+	check_invalid_date('2008-12-01 00:60:00')
+	check_invalid_date('2008-12-01 00:01:60')
+}
+
+fn test_parse_rfc3339() {
+	pairs := [
+		['2015-01-06T15:47:32.080254511Z', '2015-01-06 15:47:32.080254'],
+		['2015-01-06T15:47:32.072697474Z', '2015-01-06 15:47:32.072697'],
+	]
+	for pair in pairs {
+		input, expected := pair[0], pair[1]
+		res := time.parse_rfc3339(input) or {
+			eprintln('>>> failing input: ${input} | err: ${err}')
+			assert false
+			return
+		}
+		output := res.format_ss_micro()
+		assert expected == output
+	}
+}
+
+fn test_ad_second_to_parse_result_in_2001() {
+	now_tm := time.parse('2001-01-01 04:00:00')!
+	future_tm := now_tm.add_seconds(60)
+	assert future_tm.str() == '2001-01-01 04:01:00'
+	assert now_tm.unix < future_tm.unix
+}
+
+fn test_ad_second_to_parse_result_pre_2001() {
+	now_tm := time.parse('2000-01-01 04:00:00')!
+	future_tm := now_tm.add_seconds(60)
+	assert future_tm.str() == '2000-01-01 04:01:00'
+	assert now_tm.unix < future_tm.unix
 }

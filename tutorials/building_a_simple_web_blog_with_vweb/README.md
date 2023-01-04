@@ -1,24 +1,24 @@
-## Building a 150 KB web blog in V with 0 dependencies
+## Building a 150 KB web blog in V & SQLite
 
 Hello,
 
 In this guide, we'll build a simple web blog in V.
 
 The benefits of using V for web:
+
 - A safe, fast, language with the development agility of Python or Ruby and
-the performance of C.
+  the performance of C.
 - Zero dependencies: everything you need for web development comes with the language
-in a 1 MB package.
+  in a 1 MB package.
 - Very small resulting binaries: the blog we'll create in this tutorial is about 150 KB.
-- Easy deployments: a single binary file that even  includes the precompiled templates.
+- Easy deployments: a single binary file that even includes the precompiled templates.
 - Runs on the cheapest hardware with minimum footprint: for most apps a $3 instance
-is enough.
+  is enough.
 - Fast development without any boilerplate.
 
-*Please note that V and Vweb are at a very early stage and are changing rapidly.*
+_Please note that V and Vweb are at a very early stage and are changing rapidly._
 
-The code is available <a href='https://github.com/vlang/v/tree/master/tutorials/code/blog'>here</a>.
-
+The code is available [here](./code/blog).
 
 ### Installing V
 
@@ -32,16 +32,14 @@ sudo ./v symlink
 Now V should be globally available on your system.
 
 > On macOS use `v_macos.zip`, on Windows - `v_windows.zip`.
-If you use a BSD system, Solaris, Android, or simply want to install V
-from source, follow the simple instructions here:
-https://github.com/vlang/v#installing-v-from-source
-
+> If you use a BSD system, Solaris, Android, or simply want to install V
+> from source, follow the simple instructions here:
+> https://github.com/vlang/v#installing-v-from-source
 
 ### Install SQLite development dependency
 
 If you don't have it already installed, look at the
 [`sqlite` README](../../vlib/sqlite/README.md) for instructions.
-
 
 ### Creating a new Vweb project
 
@@ -49,13 +47,12 @@ V projects can be created anywhere and don't need to have a certain structure:
 
 ```bash
 mkdir blog
-cd blog
-touch blog.v
+v init
 ```
 
 First, let's create a simple hello world website:
 
-```v
+```v oksyntax
 // blog.v
 module main
 
@@ -66,17 +63,13 @@ struct App {
 }
 
 fn main() {
-	vweb.run<App>(8081)
+	app := App{}
+	vweb.run(app, 8081)
 }
 
+['/index']
 pub fn (mut app App) index() vweb.Result {
 	return app.text('Hello world from vweb!')
-}
-
-pub fn (app &App) init() {
-}
-
-pub fn (app &App) init_once() {
 }
 ```
 
@@ -99,12 +92,12 @@ with an MVC web framework, you can think of it as a controller. (Vweb is
 not an MVC framework however.) It embeds the vweb Context object, that's why we get access
 to methods like `.text()`.
 
-
 As you can see, there are no routing rules. The `index()` action handles the `/` request by default.
 Vweb often uses convention over configuration and adding a new action requires
 no routing rules either:
 
 ```v oksyntax
+// blog.v
 import vweb
 import time
 
@@ -113,16 +106,12 @@ fn (mut app App) time() vweb.Result {
 }
 ```
 
-
 <img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/time.png?raw=true">
 
->You have to rebuild and restart the website every time you change the code.
-In the future, Vweb will detect changes and recompile the website in the background
-while it's running.
+> TIP: run the following command to live-reload the server: `v watch run blog.v`
 
 The `.text(string)` method returns a plain text document with the provided
 text, which isn't frequently used in websites.
-
 
 ### HTML View
 
@@ -130,20 +119,21 @@ Let's return an HTML view instead. Create `index.html` in the same directory:
 
 ```html
 <html>
-<head>
-	<title>V Blog</title>
-</head>
-<body>
-	<b>@message</b>
-	<br>
-	<img src='https://vlang.io/img/v-logo.png' width=100>
-</body>
+  <head>
+    <title>V Blog</title>
+  </head>
+  <body>
+    <b>@message</b>
+    <br />
+    <img src="https://vlang.io/img/v-logo.png" width="100" />
+  </body>
 </html>
 ```
 
 and update our `index()` action so that it returns the HTML view we just created:
 
 ```v ignore
+// blog.v
 pub fn (mut app App) index() vweb.Result {
 	message := 'Hello, world from Vweb!'
 	return $vweb.html()
@@ -174,84 +164,75 @@ that's done by the `$vweb.html()` line.
 (`$` always means compile time actions in V.) offering the following benefits:
 
 - Great performance, since the templates don't need to be compiled
-on every request, like in almost every major web framework.
+  on every request, like in almost every major web framework.
 
-- Easier deployment, since all your HTML templates are  compiled
-into a single binary file together with the web application itself.
+- Easier deployment, since all your HTML templates are compiled
+  into a single binary file together with the web application itself.
 
 - All errors in the templates are guaranteed to be caught during compilation.
-
 
 ### Fetching data with V ORM
 
 Now let's display some articles!
 
-We'll be using V's builtin ORM and a SQLite database.
+We'll be using V's built-in ORM and a SQLite database.
 (V ORM will also support MySQL, Postgre, and SQL Server soon.)
-
-Create a SQLite file with the schema:
-```sql
-drop table if exists Article;
-
-create table Article (
-	id integer primary key,
-	title text default "",
-	text text default ""
-);
-
-insert into Article (title, text) values (
-	"Hello, world!",
-	"V is great."
-);
-
-insert into Article (title, text) values (
-	"Second post.",
-	"Hm... what should I write about?"
-);
-```
-
-Run the file with `sqlite3 blog.db < blog.sqlite`.
-
 
 Add a SQLite handle to `App`:
 
 ```v oksyntax
+// blog.v
 import sqlite
 import vweb
 
 struct App {
 	vweb.Context
-mut:
+pub mut:
 	db sqlite.DB
 }
 ```
 
-
-
-Modify the `init_once()` method we created earlier to connect to a database:
+In `fn main()` we'll connect to a database.
+Code in the `main()` function is run only once during app's startup, so we are going
+to have one DB connection for all requests. This improves the performance of the web application,
+since a DB connection doesn't have to be set up for each request.
 
 ```v oksyntax
-pub fn (mut app App) init_once() {
-	db := sqlite.connect(':memory:') or { panic(err) }
-	db.exec('create table `Article` (id integer primary key, title text default "", text text default "")')
-	db.exec('insert into Article (title, text) values ("Hello, world!", "V is great.")')
-	db.exec('insert into Article (title, text) values ("Second post.", "Hm... what should I write about?")')
-	app.db = db
+// blog.v
+fn main() {
+	mut app := App{
+		db: sqlite.connect(':memory:') or { panic(err) }
+	}
+	sql app.db {
+		create table Article
+	}
+
+	first_article := Article{
+		title: 'Hello, world!'
+		text: 'V is great.'
+	}
+
+	second_article := Article{
+		title: 'Second post.'
+		text: 'Hm... what should I write about?'
+	}
+
+	sql app.db {
+		insert first_article into Article
+		insert second_article into Article
+	}
+	vweb.run(app, 8080)
 }
 ```
 
-Code in the `init_once()` function is run only once during app's startup, so we are going
-to have one DB connection for all requests.
-
 Create a new file `article.v`:
-
 
 ```v oksyntax
 // article.v
 module main
 
 struct Article {
-	id    int
+	id    int    [primary; sql: serial]
 	title string
 	text  string
 }
@@ -263,26 +244,30 @@ pub fn (app &App) find_all_articles() []Article {
 }
 ```
 
+Notice that the `Article` structure conforms to the same structure and naming as
+the database table in the creation SQL statement. Also we need to add ORM decorators
+to our primary key to let it know that it is the primary key and it should auto-increment
+
 Let's fetch the articles in the `index()` action:
 
 ```v ignore
+// blog.v
 pub fn (app &App) index() vweb.Result {
 	articles := app.find_all_articles()
 	return $vweb.html()
 }
 ```
 
-
 Finally, let's update our view:
 
 ```html
 <body>
-	@for article in articles
-		<div>
-			<b>@article.title</b> <br>
-			@article.text
-		</div>
-	@end
+  @for article in articles
+  <div>
+    <b>@article.title</b> <br />
+    @article.text
+  </div>
+  @end
 </body>
 ```
 
@@ -298,6 +283,8 @@ The built-in V ORM uses a syntax very similar to SQL. The queries are built with
 For example, if we only wanted to find articles with ids between 100 and 200, we'd do:
 
 ```v oksyntax
+// article.v
+
 return sql app.db {
 	select from Article where id >= 100 && id <= 200
 }
@@ -306,6 +293,7 @@ return sql app.db {
 Retrieving a single article is very simple:
 
 ```v oksyntax
+// article.v
 pub fn (app &App) retrieve_article() ?Article {
 	return sql app.db {
 		select from Article limit 1
@@ -316,13 +304,13 @@ pub fn (app &App) retrieve_article() ?Article {
 V ORM uses V's optionals for single values, which is very useful, since
 bad queries will always be handled by the developer:
 
-```v oksyntax
+```v ignore
+// article.v
 article := app.retrieve_article(10) or {
 	app.text('Article not found')
 	return
 }
 ```
-
 
 ### Adding new articles
 
@@ -330,25 +318,25 @@ Create `new.html`:
 
 ```html
 <html>
-<head>
-	<title>V Blog</title>
-</head>
-<body>
-	<form action='/new_article' method='post'>
-		<input type='text' placeholder='Title' name='title'> <br>
-		<textarea placeholder='Text' name='text'></textarea>
-		<input type='submit'>
-	</form>
-</body>
+  <head>
+    <title>V Blog</title>
+  </head>
+  <body>
+    <form action="/new_article" method="post">
+      <input type="text" placeholder="Title" name="title" /> <br />
+      <textarea placeholder="Text" name="text"></textarea>
+      <input type="submit" />
+    </form>
+  </body>
 </html>
 ```
 
-```v oksyntax
+```v ignore
+// article.v
 import vweb
 
-pub fn (mut app App) new_article() vweb.Result {
-	title := app.form['title']
-	text := app.form['text']
+[post]
+pub fn (mut app App) new_article(title string, text string) vweb.Result {
 	if title == '' || text == '' {
 		return app.text('Empty text/title')
 	}
@@ -364,16 +352,28 @@ pub fn (mut app App) new_article() vweb.Result {
 }
 ```
 
-> Untyped `form['key']` is temporary. Very soon Vweb will accept query and form
-parameters via function arguments: `new_article(title, text string) {`.
+The decorator on our function tells vweb that it is an HTTP POST type operation.
+
+This time Vweb parses the HTTP form and assigns correct values with correct types to
+function arguments, which saves a lot of typing (e.g. `title := app.form['title']` is
+not necessary).
 
 We need to update `index.html` to add a link to the "new article" page:
 
 ```html
-<a href='/new'>New article</a>
+<a href="/new">New article</a>
 ```
 
+Next we need to add the HTML endpoint to our code like we did with `index.html`:
 
+```v ignore
+['/new']
+pub fn (mut app App) new() vweb.Result {
+	return $vweb.html()
+}
+```
+
+Re-running this code will now allow us to add new posts to our blog endpoint
 
 ### JSON endpoints
 
@@ -382,18 +382,31 @@ to render everything on the client or need an API, creating JSON endpoints
 in V is very simple:
 
 ```v oksyntax
+// article.v
 import vweb
-import json
 
+['/articles'; get]
 pub fn (mut app App) articles() vweb.Result {
 	articles := app.find_all_articles()
-	return app.json(json.encode(articles))
+	return app.json(articles)
 }
 ```
 
 <img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/articles_json.png?raw=true">
 
+### Persistent data
 
+If one wants to persist data they need to use a file instead of memory SQLite Database.
+Replace the db setup code with this instead:
+
+```
+db: sqlite.connect('blog.db') or { panic(err) }
+```
+
+As we can see it attempts to open a file in the current directory named `blog.db`.
+If the database file doesn't exist it will create it. The second command will
+create the table `Article` if none exists already. Now every time the
+app is run you will see the articles created from the previous executions
 
 To be continued...
 

@@ -3,7 +3,7 @@ struct Foo {
 	name string
 }
 
-fn test<T>() {
+fn test[T]() {
 	mut t := T{}
 	$for f in T.fields {
 		$if f.typ is string {
@@ -16,5 +16,5 @@ fn test<T>() {
 }
 
 fn main() {
-	test<Foo>()
+	test[Foo]()
 }

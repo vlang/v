@@ -14,9 +14,7 @@ mut:
 // this function gets an array of channels for `St` references
 fn do_rec_calc_send(chs []chan mut St) {
 	for {
-		mut s := <-chs[0] or {
-			break
-		}
+		mut s := <-chs[0] or { break }
 		s.n++
 		chs[1] <- s
 	}
@@ -24,7 +22,7 @@ fn do_rec_calc_send(chs []chan mut St) {
 
 fn test_channel_array_mut() {
 	mut chs := [chan mut St{cap: 1}, chan mut St{}]
-	go do_rec_calc_send(chs)
+	spawn do_rec_calc_send(chs)
 	mut t := &St{
 		n: 100
 	}

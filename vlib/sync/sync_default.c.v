@@ -1,11 +1,16 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module sync
 
 import time
 
-#flag -lpthread
+// There's no additional linking (-lpthread) needed for Android.
+// See https://stackoverflow.com/a/31277163/1904615
+$if !android {
+	#flag -lpthread
+}
+
 #include <semaphore.h>
 
 [trusted]
@@ -27,6 +32,18 @@ fn C.sem_trywait(voidptr) int
 fn C.sem_timedwait(voidptr, voidptr) int
 fn C.sem_destroy(voidptr) int
 
+[typedef]
+struct C.pthread_mutex_t {}
+
+[typedef]
+struct C.pthread_rwlock_t {}
+
+[typedef]
+struct C.pthread_rwlockattr_t {}
+
+[typedef]
+struct C.sem_t {}
+
 // [init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 [heap]
 pub struct Mutex {
@@ -43,7 +60,7 @@ struct RwMutexAttr {
 }
 
 [heap]
-struct Semaphore {
+pub struct Semaphore {
 	sem C.sem_t
 }
 
@@ -120,18 +137,75 @@ pub fn (mut sem Semaphore) post() {
 }
 
 pub fn (mut sem Semaphore) wait() {
-	C.sem_wait(&sem.sem)
+	for {
+		if C.sem_wait(&sem.sem) == 0 {
+			return
+		}
+		e := C.errno
+		match e {
+			C.EINTR {
+				continue // interrupted by signal
+			}
+			else {
+				panic(unsafe { tos_clone(&u8(C.strerror(C.errno))) })
+			}
+		}
+	}
 }
 
+// `try_wait()` should return as fast as possible so error handling is only
+// done when debugging
 pub fn (mut sem Semaphore) try_wait() bool {
-	return C.sem_trywait(&sem.sem) == 0
+	$if !debug {
+		return C.sem_trywait(&sem.sem) == 0
+	} $else {
+		if C.sem_trywait(&sem.sem) != 0 {
+			e := C.errno
+			match e {
+				C.EAGAIN {
+					return false
+				}
+				else {
+					panic(unsafe { tos_clone(&u8(C.strerror(C.errno))) })
+				}
+			}
+		}
+		return true
+	}
 }
 
 pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
+	$if macos {
+		time.sleep(timeout)
+		return true
+	}
 	t_spec := timeout.timespec()
-	return C.sem_timedwait(&sem.sem, &t_spec) == 0
+	for {
+		$if !macos {
+			if C.sem_timedwait(&sem.sem, &t_spec) == 0 {
+				return true
+			}
+		}
+		e := C.errno
+		match e {
+			C.EINTR {
+				continue // interrupted by signal
+			}
+			C.ETIMEDOUT {
+				break
+			}
+			else {
+				panic(unsafe { tos_clone(&u8(C.strerror(e))) })
+			}
+		}
+	}
+	return false
 }
 
-pub fn (sem Semaphore) destroy() bool {
-	return C.sem_destroy(&sem.sem) == 0
+pub fn (sem Semaphore) destroy() {
+	res := C.sem_destroy(&sem.sem)
+	if res == 0 {
+		return
+	}
+	panic(unsafe { tos_clone(&u8(C.strerror(res))) })
 }

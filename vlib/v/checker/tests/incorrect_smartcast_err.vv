@@ -1,0 +1,13 @@
+interface IExample{
+}
+
+struct Example{
+	field string
+}
+
+fn main(){
+	mut example := IExample(Example{field:"test"})
+	if example is Example{
+		println(example.field)
+	}
+}

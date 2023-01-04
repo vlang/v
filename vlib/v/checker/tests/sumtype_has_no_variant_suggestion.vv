@@ -1,0 +1,17 @@
+import v.checker.tests.amod as x
+
+struct Struct1 {}
+
+struct AnotherStruct {}
+
+struct ThirdStruct {}
+
+type Abc = AnotherStruct | Struct1 | ThirdStruct | x.Bcg | x.Xyz
+
+fn main() {
+	a := Abc(Struct1{})
+	match a {
+		x.NonExisting { println('----') }
+		else {}
+	}
+}

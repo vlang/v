@@ -2,7 +2,7 @@ module main
 
 enum Color {
     green = 'green'
-    yellow = 1+1
+    yellow
     blue
 }
 

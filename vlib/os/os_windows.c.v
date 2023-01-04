@@ -2,7 +2,19 @@ module os
 
 import strings
 
+#flag windows -l advapi32
 #include <process.h>
+#include <sys/utime.h>
+
+// See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
+fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
+
+// See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createhardlinkw
+fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) int
+
+fn C._getpid() int
+
+const executable_suffixes = ['.exe', '.bat', '.cmd', '']
 
 pub const (
 	path_separator = '\\'
@@ -12,6 +24,7 @@ pub const (
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
 // A handle to an object.
 pub type HANDLE = voidptr
+pub type HMODULE = voidptr
 
 // win: FILETIME
 // https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
@@ -50,9 +63,9 @@ mut:
 struct StartupInfo {
 mut:
 	cb                 u32
-	lp_reserved        &u16
-	lp_desktop         &u16
-	lp_title           &u16
+	lp_reserved        &u16 = unsafe { nil }
+	lp_desktop         &u16 = unsafe { nil }
+	lp_title           &u16 = unsafe { nil }
 	dw_x               u32
 	dw_y               u32
 	dw_x_size          u32
@@ -63,7 +76,7 @@ mut:
 	dw_flags           u32
 	w_show_window      u16
 	cb_reserved2       u16
-	lp_reserved2       byteptr
+	lp_reserved2       &u8 = unsafe { nil }
 	h_std_input        voidptr
 	h_std_output       voidptr
 	h_std_error        voidptr
@@ -76,15 +89,75 @@ mut:
 	b_inherit_handle       bool
 }
 
-fn init_os_args_wide(argc int, argv &byteptr) []string {
-	mut args_ := []string{}
+struct C._utimbuf {
+	actime  int
+	modtime int
+}
+
+fn C._utime(&char, voidptr) int
+
+fn init_os_args_wide(argc int, argv &&u8) []string {
+	mut args_ := []string{len: argc}
 	for i in 0 .. argc {
-		args_ << unsafe { string_from_wide(&u16(argv[i])) }
+		args_[i] = unsafe { string_from_wide(&u16(argv[i])) }
 	}
 	return args_
 }
 
-pub fn ls(path string) ?[]string {
+fn native_glob_pattern(pattern string, mut matches []string) ! {
+	$if debug {
+		// FindFirstFile() and FindNextFile() both have a globbing function.
+		// Unfortunately this is not as pronounced as under Unix, but should provide some functionality
+		eprintln('os.glob() does not have all the features on Windows as it has on Unix operating systems')
+	}
+	mut find_file_data := Win32finddata{}
+	wpattern := pattern.replace('/', '\\').to_wide()
+	h_find_files := C.FindFirstFile(wpattern, voidptr(&find_file_data))
+
+	defer {
+		C.FindClose(h_find_files)
+	}
+
+	if h_find_files == C.INVALID_HANDLE_VALUE {
+		return error('os.glob(): Could not get a file handle: ' +
+			get_error_msg(int(C.GetLastError())))
+	}
+
+	// save first finding
+	fname := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
+	if fname !in ['.', '..'] {
+		mut fp := fname.replace('\\', '/')
+		if find_file_data.dw_file_attributes & u32(C.FILE_ATTRIBUTE_DIRECTORY) > 0 {
+			fp += '/'
+		}
+		matches << fp
+	}
+
+	// check and save next findings
+	for i := 0; C.FindNextFile(h_find_files, voidptr(&find_file_data)) > 0; i++ {
+		filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
+		if filename in ['.', '..'] {
+			continue
+		}
+		mut fpath := filename.replace('\\', '/')
+		if find_file_data.dw_file_attributes & u32(C.FILE_ATTRIBUTE_DIRECTORY) > 0 {
+			fpath += '/'
+		}
+		matches << fpath
+	}
+}
+
+pub fn utime(path string, actime int, modtime int) ! {
+	mut u := C._utimbuf{actime, modtime}
+	if C._utime(&char(path.str), voidptr(&u)) != 0 {
+		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+	}
+}
+
+pub fn ls(path string) ![]string {
+	if path.len == 0 {
+		return error('ls() expects a folder, not an empty string')
+	}
 	mut find_file_data := Win32finddata{}
 	mut dir_files := []string{}
 	// We can also check if the handle is valid. but using is_dir instead
@@ -94,11 +167,10 @@ pub fn ls(path string) ?[]string {
 	// }
 	// C.FindClose(h_find_dir)
 	if !is_dir(path) {
-		return error('ls() couldnt open dir "$path": directory does not exist')
+		return error('ls() couldnt open dir "${path}": directory does not exist')
 	}
-	// NOTE: Should eventually have path struct & os dependant path seperator (eg os.PATH_SEPERATOR)
 	// we need to add files to path eg. c:\windows\*.dll or :\windows\*
-	path_files := '$path\\*'
+	path_files := '${path}\\*'
 	// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
 	// we should use FindFirstFileW and FindNextFileW
 	h_find_files := C.FindFirstFile(path_files.to_wide(), voidptr(&find_file_data))
@@ -116,30 +188,16 @@ pub fn ls(path string) ?[]string {
 	return dir_files
 }
 
-/*
-pub fn is_dir(path string) bool {
-	_path := path.replace('/', '\\')
-	attr := C.GetFileAttributesW(_path.to_wide())
-	if int(attr) == int(C.INVALID_FILE_ATTRIBUTES) {
-		return false
-	}
-	if (int(attr) & C.FILE_ATTRIBUTE_DIRECTORY) != 0 {
-		return true
-	}
-	return false
-}
-*/
 // mkdir creates a new directory with the specified path.
-pub fn mkdir(path string) ?bool {
+pub fn mkdir(path string, params MkdirParams) ! {
 	if path == '.' {
-		return true
+		return
 	}
 	apath := real_path(path)
 	if !C.CreateDirectory(apath.to_wide(), 0) {
-		return error('mkdir failed for "$apath", because CreateDirectory returned ' +
+		return error('mkdir failed for "${apath}", because CreateDirectory returned: ' +
 			get_error_msg(int(C.GetLastError())))
 	}
-	return true
 }
 
 // Ref - https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/get-osfhandle?view=vs-2019
@@ -153,10 +211,10 @@ pub fn get_file_handle(path string) HANDLE {
 // Ref - https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulefilenamea
 // get_module_filename retrieves the fully qualified path for the file that contains the specified module.
 // The module must have been loaded by the current process.
-pub fn get_module_filename(handle HANDLE) ?string {
+pub fn get_module_filename(handle HANDLE) !string {
 	unsafe {
 		mut sz := 4096 // Optimized length
-		mut buf := &u16(malloc(4096))
+		mut buf := &u16(malloc_noscan(4096))
 		for {
 			status := int(C.GetModuleFileNameW(handle, voidptr(&buf), sz))
 			match status {
@@ -187,7 +245,7 @@ const (
 const (
 	sublang_neutral = 0x00
 	sublang_default = 0x01
-	lang_neutral    = (sublang_neutral)
+	lang_neutral    = sublang_neutral
 )
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes--12000-15999-
@@ -198,7 +256,7 @@ const (
 // ptr_win_get_error_msg return string (voidptr)
 // representation of error, only for windows.
 fn ptr_win_get_error_msg(code u32) voidptr {
-	mut buf := voidptr(0)
+	mut buf := unsafe { nil }
 	// Check for code overflow
 	if code > u32(os.max_error_code) {
 		return buf
@@ -222,6 +280,8 @@ pub fn get_error_msg(code int) string {
 }
 
 // execute starts the specified command, waits for it to complete, and returns its output.
+// In opposition to `raw_execute` this function will safeguard against content that is known to cause
+// a lot of problems when executing shell commands on Windows.
 pub fn execute(cmd string) Result {
 	if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
 		return Result{
@@ -229,6 +289,14 @@ pub fn execute(cmd string) Result {
 			output: ';, &&, || and \\n are not allowed in shell commands'
 		}
 	}
+	return unsafe { raw_execute(cmd) }
+}
+
+// raw_execute starts the specified command, waits for it to complete, and returns its output.
+// It's marked as `unsafe` to help emphasize the problems that may arise by allowing, for example,
+// user provided escape sequences.
+[unsafe]
+pub fn raw_execute(cmd string) Result {
 	mut child_stdin := &u32(0)
 	mut child_stdout_read := &u32(0)
 	mut child_stdout_write := &u32(0)
@@ -242,7 +310,7 @@ pub fn execute(cmd string) Result {
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output: 'exec failed (CreatePipe): $error_msg'
+			output: 'exec failed (CreatePipe): ${error_msg}'
 		}
 	}
 	set_handle_info_ok := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT,
@@ -252,11 +320,12 @@ pub fn execute(cmd string) Result {
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output: 'exec failed (SetHandleInformation): $error_msg'
+			output: 'exec failed (SetHandleInformation): ${error_msg}'
 		}
 	}
 	proc_info := ProcessInformation{}
 	start_info := StartupInfo{
+		lp_reserved2: 0
 		lp_reserved: 0
 		lp_desktop: 0
 		lp_title: 0
@@ -275,12 +344,12 @@ pub fn execute(cmd string) Result {
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output: 'exec failed (CreateProcess) with code $error_num: $error_msg cmd: $cmd'
+			output: 'exec failed (CreateProcess) with code ${error_num}: ${error_msg} cmd: ${cmd}'
 		}
 	}
 	C.CloseHandle(child_stdin)
 	C.CloseHandle(child_stdout_write)
-	buf := [4096]byte{}
+	buf := [4096]u8{}
 	mut bytes_read := u32(0)
 	mut read_data := strings.new_builder(1024)
 	for {
@@ -294,7 +363,7 @@ pub fn execute(cmd string) Result {
 			break
 		}
 	}
-	soutput := read_data.str().trim_space()
+	soutput := read_data.str()
 	unsafe { read_data.free() }
 	exit_code := u32(0)
 	C.WaitForSingleObject(proc_info.h_process, C.INFINITE)
@@ -307,23 +376,39 @@ pub fn execute(cmd string) Result {
 	}
 }
 
-// See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
-fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
+pub fn symlink(origin string, target string) ! {
+	// this is a temporary fix for TCC32 due to runtime error
+	// TODO: find the cause why TCC32 for Windows does not work without the compiletime option
+	$if x64 || x32 {
+		mut flags := 0
+		if is_dir(origin) {
+			flags ^= 1
+		}
 
-pub fn symlink(symlink_path string, target_path string) ?bool {
-	mut flags := 0
-	if is_dir(symlink_path) {
-		flags |= 1
+		flags ^= 2 // SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+		res := C.CreateSymbolicLinkW(target.to_wide(), origin.to_wide(), flags)
+
+		// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
+		if res != 1 {
+			return error(get_error_msg(int(C.GetLastError())))
+		}
+		if !exists(target) {
+			return error('C.CreateSymbolicLinkW reported success, but symlink still does not exist')
+		}
+		return
 	}
-	flags |= 2 // SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
-	res := C.CreateSymbolicLinkW(symlink_path.to_wide(), target_path.to_wide(), flags)
-	if res == 0 {
+	return error('could not symlink')
+}
+
+pub fn link(origin string, target string) ! {
+	res := C.CreateHardLinkW(target.to_wide(), origin.to_wide(), C.NULL)
+	// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
+	if res != 1 {
 		return error(get_error_msg(int(C.GetLastError())))
 	}
-	if !exists(symlink_path) {
-		return error('C.CreateSymbolicLinkW reported success, but symlink still does not exist')
+	if !exists(target) {
+		return error('C.CreateHardLinkW reported success, but link still does not exist')
 	}
-	return true
 }
 
 pub fn (mut f File) close() {
@@ -340,7 +425,7 @@ pub:
 	// status_ constants
 	code        u32
 	flags       u32
-	record      &ExceptionRecord
+	record      &ExceptionRecord = unsafe { nil }
 	address     voidptr
 	param_count u32
 	// params []voidptr
@@ -352,8 +437,8 @@ pub struct ContextRecord {
 
 pub struct ExceptionPointers {
 pub:
-	exception_record &ExceptionRecord
-	context_record   &ContextRecord
+	exception_record &ExceptionRecord = unsafe { nil }
+	context_record   &ContextRecord   = unsafe { nil }
 }
 
 pub type VectoredExceptionHandler = fn (&ExceptionPointers) u32
@@ -374,41 +459,99 @@ pub fn debugger_present() bool {
 }
 
 pub fn uname() Uname {
-	// TODO: implement `os.uname()` for windows
-	unknown := 'unknown'
+	sys_and_ver := execute('cmd /c ver').output.split('[')
+	nodename := hostname()
+	machine := getenv('PROCESSOR_ARCHITECTURE')
 	return Uname{
-		sysname: unknown
-		nodename: unknown
-		release: unknown
-		version: unknown
-		machine: unknown
+		sysname: sys_and_ver[0].trim_space()
+		nodename: nodename
+		release: sys_and_ver[1].replace(']', '')
+		version: sys_and_ver[0] + '[' + sys_and_ver[1]
+		machine: machine
 	}
 }
 
-// `is_writable_folder` - `folder` exists and is writable to the process
-pub fn is_writable_folder(folder string) ?bool {
+pub fn hostname() string {
+	hostname := [255]u16{}
+	size := u32(255)
+	res := C.GetComputerNameW(&hostname[0], &size)
+	if !res {
+		return get_error_msg(int(C.GetLastError()))
+	}
+	return unsafe { string_from_wide(&hostname[0]) }
+}
+
+pub fn loginname() string {
+	loginname := [255]u16{}
+	size := u32(255)
+	res := C.GetUserNameW(&loginname[0], &size)
+	if !res {
+		return get_error_msg(int(C.GetLastError()))
+	}
+	return unsafe { string_from_wide(&loginname[0]) }
+}
+
+// ensure_folder_is_writable checks that `folder` exists, and is writable to the process
+// by creating an empty file in it, then deleting it.
+pub fn ensure_folder_is_writable(folder string) ! {
 	if !exists(folder) {
-		return error('`$folder` does not exist')
+		return error_with_code('`${folder}` does not exist', 1)
 	}
 	if !is_dir(folder) {
-		return error('`folder` is not a folder')
+		return error_with_code('`folder` is not a folder', 2)
 	}
-	tmp_perm_check := join_path(folder, 'tmp_perm_check_pid_' + getpid().str())
-	mut f := open_file(tmp_perm_check, 'w+', 0o700) or {
-		return error('cannot write to folder $folder: $err')
+	tmp_folder_name := 'tmp_perm_check_pid_' + getpid().str()
+	tmp_perm_check := join_path_single(folder, tmp_folder_name)
+	write_file(tmp_perm_check, 'test') or {
+		return error_with_code('cannot write to folder "${folder}": ${err}', 3)
 	}
-	f.close()
-	rm(tmp_perm_check) ?
-	return true
+	rm(tmp_perm_check)!
 }
-
-fn C._getpid() int
 
 [inline]
 pub fn getpid() int {
 	return C._getpid()
 }
 
+[inline]
+pub fn getppid() int {
+	return 0
+}
+
+[inline]
+pub fn getuid() int {
+	return 0
+}
+
+[inline]
+pub fn geteuid() int {
+	return 0
+}
+
+[inline]
+pub fn getgid() int {
+	return 0
+}
+
+[inline]
+pub fn getegid() int {
+	return 0
+}
+
 pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 	// windows has no concept of a permission mask, so do nothing
+}
+
+//
+
+pub fn (mut c Command) start() ! {
+	panic('not implemented')
+}
+
+pub fn (mut c Command) read_line() string {
+	panic('not implemented')
+}
+
+pub fn (mut c Command) close() ! {
+	panic('not implemented')
 }

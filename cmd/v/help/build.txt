@@ -34,20 +34,21 @@ If you have not set it, a suitable platform specific folder (like /tmp) will be 
 NB: the build flags are shared with the run command too:
 
    -b <backend>, -backend <backend>
-      Specify the backend to use while building the executable.
+      Specifies the backend that will be used for building the executable.
       Current list of supported backends:
-      * `c` (default)       - V outputs C source code which is passed to a C compiler to be compiled.
+      * `c` (default)       - V outputs C source code, which is then passed to a C compiler.
+      * `go`                - V outputs Go source code, which is then passed to a Go compiler.
+      * `interpret`         - V will interpret the V program directly, instead of compiling it first. Same as `v interpret file.v`.
       * `js`                - V outputs JS source code which can be passed to NodeJS to be ran.
-      * `x64`               - V outputs Linux 64-bit executable directly (highly experimental!).
+      * `js_browser`        - V outputs JS source code ready for the browser.
+      * `js_node`           - V outputs JS source code to run with nodejs.
+      * `js_freestanding`   - V outputs JS source code with no hard runtime dependency.
+      * `native`            - V outputs a native executable directly (see -arch x64|arm64 and -os linux|macos) (EXPERIMENTAL).
 
    -d <flag>[=<value>], -define <flag>[=<value>]
       Define the provided flag.
       If value is not provided, it is assumed to be set to `true`.
       `value` should be `1` or `0` to indicate `true` and `false` respectively otherwise.
-
-   -e <experiment>, -experiments <experiment>
-      Enable the specified experiment.
-      Currently, the only experiment available is: `prealloc`
 
    -g
       Compile the executable in debug mode, allowing code to be debugged more easily.
@@ -75,19 +76,67 @@ NB: the build flags are shared with the run command too:
       Compile the executable in production mode, where most optimizations are enabled.
       Note that most V warnings turn to errors, if you pass -prod, so you will have
       to fix them first.
+	  
+   -no-bounds-checking
+      Programs compiled with this option, will do no runtime checking of array access operations.
+      Note that the performance impact of the bounds checking is usually below 3%, so in most
+      cases, it is preferable to not turn it off, than disable it, and have a program that may
+      do out of bounds accesses.
 
    -prof, -profile <file.txt>
-      Compile the executable with all functions profiled.
+      Compile the executable with all functions profiled.	  
       The profile results will be stored in `file.txt`.
       The format is 4 fields, separated by a space, for each v function:
          a) how many times it was called
          b) how much *nanoseconds in total* it took
          c) an average for each function (i.e. (b) / (a) )
          d) the function name
+         
+      NB: you can also combine this command with `run` command. 
+           For example - `v -prof prof.txt run main.v`
+         
+      NB: the profiler is *NOT* currently thread safe, so look at the profile results of
+           multithreaded programs very sceptically !
+
       NB: if you want to output the profile info to stdout, use `-profile -`.
+
+      NB: you can use `import v.profile`, and then calls to `profile.on(false)`
+           and `profile.on(true)` to temporarily turn it off and on again.
+
+      NB: if you do NOT want the profile to contain information from before your
+           program's `fn main()` starts, pass `-d no_profile_startup` too.
+           (V constants, and module init() functions are evaluated before `main()` is called)
+
+      NB: You can also select specific functions for profiling. For example:
+           v -profile-fns println,i64_str -profile - run examples/hanoi.v
+           In this case, the profile counters will be updated only for them, *and* for the functions that they call.
+           The profile result (after the program finishes), will look similar to this:
+             127          0.721ms           5680ns println
+             127          0.693ms           5456ns _writeln_to_fd 
+             127          0.565ms           4449ns _write_buf_to_fd 
+             127          0.045ms            353ns _v_malloc 
+             127          0.017ms            131ns malloc_noscan 
+             127          0.017ms            133ns _v_free 
+             127          0.014ms            113ns vmemmove
+             127          0.110ms            866ns i64_str 
+             127          0.016ms            127ns tos 
+
+   -message-limit <limit>
+      The maximum amount of warnings / errors / notices, that will be accumulated (defaults to 100).
+      The checker will abort prematurely once this limit has been reached.
+      Setting this to 0 or a negative value, will disable the limit.
+
+   -no-parallel
+      Do not run the compiler in parallel (currently only the cgen stage has parallelization).
 
    -profile-no-inline
       Skip [inline] functions when profiling.
+
+   -skip-unused
+      Skip generating C/JS code for functions, that are provably not used by your project.
+      This speeds up compilation, and reduces the generated output size.
+      It is still experimental, due to historical reasons, but please do try it,
+      and report issues, if compilation breaks with that option for your program.
 
    -stats
       Enable more detailed statistics reporting, while compiling test files.
@@ -120,6 +169,9 @@ NB: the build flags are shared with the run command too:
       By default, the V compiler tries to show its errors/warnings in ANSI color. The heuristic
       that it uses to detect whether or not to use ANSI colors may not work in all cases.
       These options allow you to override the default detection.
+
+   -check
+      Scans, parses, and checks the files without compiling the program.
 
    -check-syntax
       Only scan and parse the files, but then stop. Useful for very quick syntax checks.
@@ -154,6 +206,8 @@ NB: the build flags are shared with the run command too:
       and will become an error, after vlib modules are cleaned up.
 
 For C-specific build flags, use `v help build-c`.
+For JS-specific build flags, use `v help build-js`.
+For Native-specific build flags, use `v help build-native`.
 
 See also:
    `v help run` for documentation regarding `v run`.

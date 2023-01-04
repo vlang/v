@@ -1,9 +1,7 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module os
-
-#include "@VROOT/vlib/os/os_darwin.m"
 
 pub const (
 	sys_write         = 4
@@ -14,5 +12,3 @@ pub const (
 	sys_open_nocancel = 398
 	sys_stat64        = 338
 )
-
-fn C.darwin_log(s string)

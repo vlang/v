@@ -1,0 +1,12 @@
+type Byte = u8
+
+fn (b Byte) str() string {
+	return 'hello'
+}
+
+fn main() {
+	b := Byte(`a`)
+	println(b)
+	println(b.str())
+	println('$b')
+}

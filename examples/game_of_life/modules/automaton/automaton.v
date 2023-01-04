@@ -13,7 +13,7 @@ fn new_a2d(maxx int, maxy int) &A2D {
 	return &A2D{
 		maxx: maxx
 		maxy: maxy
-		data: &int(vcalloc(size))
+		data: unsafe { &int(vcalloc(size)) }
 	}
 }
 
@@ -31,6 +31,7 @@ pub fn (a &A2D) get(x int, y int) int {
 	unsafe {
 		mut e := &int(0)
 		e = a.data + y * a.maxx + x
+		_ = e
 		return *e
 	}
 }
@@ -47,8 +48,8 @@ pub fn (a &A2D) clear() {
 // ///////////////////////////////////////////////////////////
 pub struct Automaton {
 pub mut:
-	field     &A2D
-	new_field &A2D
+	field     &A2D = unsafe { nil }
+	new_field &A2D = unsafe { nil }
 }
 
 fn new_automaton(ftext string) Automaton {
@@ -79,15 +80,11 @@ pub fn (mut aa Automaton) update() {
 	for y := 1; y < aa.field.maxy; y++ {
 		for x := 1; x < aa.field.maxx; x++ {
 			moore_sum := (0 + aa.field.get(x - 1, y - 1) + aa.field.get(x, y - 1) + aa.field.get(x +
-				1, y - 1) + aa.field.get(x - 1, y) + 0 + aa.field.get(x + 1, y) + aa.field.get(x - 1, y + 1) +
-				aa.field.get(x, y + 1) + aa.field.get(x + 1, y + 1))
+				1, y - 1) + aa.field.get(x - 1, y) + 0 + aa.field.get(x + 1, y) +
+				aa.field.get(x - 1, y + 1) + aa.field.get(x, y + 1) + aa.field.get(x + 1, y + 1))
 			cell := aa.field.get(x, y)
 			v := if cell == 1 { moore_sum in [2, 3] } else { moore_sum == 3 }
-			aa.new_field.set(x, y, if v {
-				1
-			} else {
-				0
-			})
+			aa.new_field.set(x, y, if v { 1 } else { 0 })
 		}
 	}
 	tmp := aa.field

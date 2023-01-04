@@ -20,7 +20,7 @@ fn test_assign_mut() {
 	mut c := Foo(f32(1))
 	a = 12.3
 	b = -123456
-	c = 33.
+	c = 33.0
 	assert a is f64
 	assert b is int
 	assert c is f64
@@ -75,7 +75,7 @@ fn gen_foo(n int) Foo {
 		return -17.3e23
 	}
 	if n == 2 {
-		return 32.
+		return 32.0
 	}
 	if n == 3 {
 		return i16(13)

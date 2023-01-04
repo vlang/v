@@ -16,13 +16,14 @@ const (
 	orange     = ui.Color{255, 140, 0}
 )
 
+[heap]
 struct App {
 mut:
-	tui    &ui.Context = 0
+	tui    &ui.Context = unsafe { nil }
 	mode   Mode        = Mode.menu
 	width  int
 	height int
-	game   &Game = 0
+	game   &Game = unsafe { nil }
 	dt     f32
 	ticks  i64
 }
@@ -190,7 +191,7 @@ fn (mut a App) draw_game() {
 
 struct Player {
 mut:
-	game        &Game
+	game        &Game = unsafe { nil }
 	pos         Vec
 	racket_size int = 4
 	score       int
@@ -210,7 +211,7 @@ fn (mut p Player) update() {
 		return
 	}
 	// dt := p.game.app.dt
-	ball := &p.game.ball
+	ball := unsafe { &p.game.ball }
 	// Evil AI that eventually will take over the world
 	p.pos.y = ball.pos.y - int(f32(p.racket_size) * 0.5)
 }
@@ -238,15 +239,16 @@ fn (mut b Ball) update(dt f32) {
 	b.pos.y += b.vel.y * b.acc.y * dt
 }
 
+[heap]
 struct Game {
 mut:
-	app     &App = 0
+	app     &App = unsafe { nil }
 	players []Player
 	ball    Ball
 }
 
 fn (mut g Game) move_player(id int, x int, y int) {
-	mut p := &g.players[id]
+	mut p := unsafe { &g.players[id] }
 	if p.ai { // disable AI when moved
 		p.ai = false
 	}
@@ -288,7 +290,7 @@ fn (mut g Game) new_round() {
 
 fn (mut g Game) update() {
 	dt := g.app.dt
-	mut b := &g.ball
+	mut b := unsafe { &g.ball }
 	for mut p in g.players {
 		p.update()
 		// Keep rackets within the game area
@@ -468,7 +470,9 @@ fn frame(x voidptr) {
 
 fn cleanup(x voidptr) {
 	mut app := &App(x)
-	app.free()
+	unsafe {
+		app.free()
+	}
 }
 
 fn fail(error string) {
@@ -493,5 +497,5 @@ fn main() {
 		hide_cursor: true
 		frame_rate: 60
 	)
-	app.tui.run() ?
+	app.tui.run()?
 }

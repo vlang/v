@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module csv
@@ -6,51 +6,70 @@ module csv
 // Once interfaces are further along the idea would be to have something similar to
 // go's io.reader & bufio.reader rather than reading the whole file into string, this
 // would then satisfy that interface. I designed it this way to be easily adapted.
-struct ErrCommentIsDelimiter {
-	msg  string = 'encoding.csv: comment cannot be the same as delimiter'
-	code int
+struct CommentIsDelimiterError {
+	Error
 }
 
-struct ErrInvalidDelimiter {
-	msg  string = 'encoding.csv: invalid delimiter'
-	code int
+fn (err CommentIsDelimiterError) msg() string {
+	return 'encoding.csv: comment cannot be the same as delimiter'
 }
 
-struct ErrEndOfFile {
-	msg  string = 'encoding.csv: end of file'
-	code int
+struct InvalidDelimiterError {
+	Error
 }
 
-struct ErrInvalidLineEnding {
-	msg  string = 'encoding.csv: could not find any valid line endings'
-	code int
+fn (err InvalidDelimiterError) msg() string {
+	return 'encoding.csv: invalid delimiter'
+}
+
+struct EndOfFileError {
+	Error
+}
+
+fn (err EndOfFileError) msg() string {
+	return 'encoding.csv: end of file'
+}
+
+struct InvalidLineEndingError {
+	Error
+}
+
+fn (err InvalidLineEndingError) msg() string {
+	return 'encoding.csv: could not find any valid line endings'
 }
 
 struct Reader {
 	// not used yet
 	// has_header        bool
 	// headings          []string
-	data string
-pub mut:
-	delimiter         byte
-	comment           byte
+	data      string
+	delimiter u8
+	comment   u8
+mut:
 	is_mac_pre_osx_le bool
 	row_pos           int
 }
 
-// new_reader initializes a Reader with string data to parse
-pub fn new_reader(data string) &Reader {
+[params]
+pub struct ReaderConfig {
+	delimiter u8 = `,`
+	comment   u8 = `#`
+}
+
+// new_reader initializes a Reader with string data to parse and,
+// optionally, a custom delimiter.
+pub fn new_reader(data string, config ReaderConfig) &Reader {
 	return &Reader{
-		delimiter: `,`
-		comment: `#`
 		data: data
+		delimiter: config.delimiter
+		comment: config.comment
 	}
 }
 
 // read reads a row from the CSV data.
 // If successful, the result holds an array of each column's data.
-pub fn (mut r Reader) read() ?[]string {
-	l := r.read_record() ?
+pub fn (mut r Reader) read() ![]string {
+	l := r.read_record()!
 	return l
 }
 
@@ -69,10 +88,10 @@ pub fn (mut r Reader) read() ?[]string {
 // 	}
 // 	return records
 // }
-fn (mut r Reader) read_line() ?string {
+fn (mut r Reader) read_line() !string {
 	// last record
 	if r.row_pos == r.data.len {
-		return IError(&ErrEndOfFile{})
+		return &EndOfFileError{}
 	}
 	le := if r.is_mac_pre_osx_le { '\r' } else { '\n' }
 	mut i := r.data.index_after(le, r.row_pos)
@@ -84,7 +103,7 @@ fn (mut r Reader) read_line() ?string {
 				r.is_mac_pre_osx_le = true
 			} else {
 				// no valid line endings found
-				return IError(&ErrInvalidLineEnding{})
+				return &InvalidLineEndingError{}
 			}
 		} else {
 			// No line ending on file
@@ -100,12 +119,12 @@ fn (mut r Reader) read_line() ?string {
 	return line
 }
 
-fn (mut r Reader) read_record() ?[]string {
+fn (mut r Reader) read_record() ![]string {
 	if r.delimiter == r.comment {
-		return IError(&ErrCommentIsDelimiter{})
+		return &CommentIsDelimiterError{}
 	}
 	if !valid_delim(r.delimiter) {
-		return IError(&ErrInvalidDelimiter{})
+		return &InvalidDelimiterError{}
 	}
 	mut need_read := true
 	mut keep_raw := false
@@ -114,7 +133,7 @@ fn (mut r Reader) read_record() ?[]string {
 	mut i := -1
 	for {
 		if need_read {
-			l := r.read_line() ?
+			l := r.read_line()!
 			if l.len <= 0 {
 				if keep_raw {
 					line += '\n'
@@ -134,7 +153,7 @@ fn (mut r Reader) read_record() ?[]string {
 			need_read = false
 			keep_raw = false
 		}
-		if line[0] != `"` { // not quoted
+		if line.len == 0 || line[0] != `"` { // not quoted
 			j := line.index(r.delimiter.ascii_str()) or {
 				// last
 				fields << line[..line.len]
@@ -145,7 +164,24 @@ fn (mut r Reader) read_record() ?[]string {
 			line = line[i + 1..]
 			continue
 		} else { // quoted
-			j := line[1..].index('"') or {
+			mut need_more := true
+			mut has_double_quotes := false
+			mut j := 0
+			mut n := 1
+			for n < line.len {
+				if line[n] == `"` {
+					if n == line.len - 1 || line[n + 1] != `"` {
+						need_more = false
+						j = n - 1
+						break
+					} else {
+						has_double_quotes = true
+						n++
+					}
+				}
+				n++
+			}
+			if need_more {
 				need_read = true
 				keep_raw = true
 				continue
@@ -153,26 +189,27 @@ fn (mut r Reader) read_record() ?[]string {
 			line = line[1..]
 			if j + 1 == line.len {
 				// last record
-				fields << line[..j]
+				fields << if has_double_quotes { line[..j].replace('""', '"') } else { line[..j] }
 				break
 			}
 			next := line[j + 1]
 			if next == r.delimiter {
-				fields << line[..j]
+				fields << if has_double_quotes { line[..j].replace('""', '"') } else { line[..j] }
 				if j + 2 == line.len {
-					break
+					line = ''
+				} else {
+					line = line[j + 2..]
 				}
-				line = line[j + 2..]
 				continue
 			}
 		}
 		if i <= -1 && fields.len == 0 {
-			return IError(&ErrInvalidDelimiter{})
+			return &InvalidDelimiterError{}
 		}
 	}
 	return fields
 }
 
-fn valid_delim(b byte) bool {
+fn valid_delim(b u8) bool {
 	return b != 0 && b != `"` && b != `\r` && b != `\n`
 }

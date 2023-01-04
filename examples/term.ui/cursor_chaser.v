@@ -18,7 +18,7 @@ struct Point {
 
 struct App {
 mut:
-	tui       &tui.Context = 0
+	tui       &tui.Context = unsafe { nil }
 	points    []Point
 	color     tui.Color = colors[0]
 	color_idx int
@@ -96,5 +96,5 @@ fn main() {
 		event_fn: event
 		hide_cursor: true
 	)
-	app.tui.run() ?
+	app.tui.run()?
 }

@@ -1,12 +1,14 @@
 module gg
 
-#include "@VROOT/vlib/gg/gg_darwin.m"
+#include "@VEXEROOT/vlib/gg/gg_darwin.m"
 
 fn C.gg_get_screen_size() Size
 
 fn C.darwin_draw_string(x int, y int, s string, cfg voidptr)
 
 fn C.darwin_text_width(s string) int
+
+fn C.darwin_text_width_runes(r []rune) int
 
 fn C.darwin_window_refresh()
 

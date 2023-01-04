@@ -14,7 +14,7 @@ pub fn filter_vtest_only(paths []string, config FilterVTestConfig) []string {
 	for relative_path in paths {
 		mut file := relative_path
 		if config.basepath.len > 0 {
-			file = os.join_path(config.basepath, file)
+			file = os.join_path_single(config.basepath, file)
 		}
 		if config.fix_slashes {
 			file = file.replace('\\', '/')

@@ -1,41 +1,66 @@
 import os
 import v.pref
-import v.util
 
 $if windows {
 	$if tinyc {
-		#flag -lAdvapi32
-		#flag -lUser32
+		#flag -ladvapi32
+		#flag -luser32
 	}
 }
+
 fn main() {
 	C.atexit(cleanup_vtmp_folder)
+
+	if os.args.len > 3 {
+		print('usage: v symlink [OPTIONS]')
+		exit(1)
+	}
+
+	ci_mode := '-githubci' in os.args
+
 	vexe := os.real_path(pref.vexe_path())
-	$if windows {
-		setup_symlink_windows(vexe)
-	} $else {
-		setup_symlink_unix(vexe)
+	if ci_mode {
+		setup_symlink_github()
+	} else {
+		$if windows {
+			setup_symlink_windows(vexe)
+		} $else {
+			setup_symlink_unix(vexe)
+		}
 	}
 }
 
 fn cleanup_vtmp_folder() {
-	os.rmdir_all(util.get_vtmp_folder()) or {}
+	os.rmdir_all(os.vtmp_dir()) or {}
+}
+
+fn setup_symlink_github() {
+	// We append V's install location (which should
+	// be the current directory) to the PATH environment variable.
+
+	// Resources:
+	// 1. https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#environment-files
+	// 2. https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-an-environment-variable
+	mut content := os.read_file(os.getenv('GITHUB_PATH')) or {
+		panic('Failed to read GITHUB_PATH.')
+	}
+	content += '\n${os.getwd()}\n'
+	os.write_file(os.getenv('GITHUB_PATH'), content) or { panic('Failed to write to GITHUB_PATH.') }
 }
 
 fn setup_symlink_unix(vexe string) {
 	mut link_path := '/data/data/com.termux/files/usr/bin/v'
-	if os.system("uname -o | grep -q '[A/a]ndroid'") == 1 {
+	if !os.is_dir('/data/data/com.termux/files') {
 		link_dir := '/usr/local/bin'
 		if !os.exists(link_dir) {
 			os.mkdir_all(link_dir) or { panic(err) }
 		}
 		link_path = link_dir + '/v'
 	}
-	ret := os.execute_or_panic('ln -sf $vexe $link_path')
-	if ret.exit_code == 0 {
-		println('Symlink "$link_path" has been created')
-	} else {
-		eprintln('Failed to create symlink "$link_path". Try again with sudo.')
+	os.rm(link_path) or {}
+	os.symlink(vexe, link_path) or {
+		eprintln('Failed to create symlink "${link_path}". Try again with sudo.')
+		exit(1)
 	}
 }
 
@@ -65,22 +90,22 @@ fn setup_symlink_windows(vexe string) {
 		os.symlink(vsymlink, vexe) or {
 			// typically only fails if you're on a network drive (VirtualBox)
 			// do batch file creation instead
-			eprintln('Could not create a native symlink: $err')
+			eprintln('Could not create a native symlink: ${err}')
 			eprintln('Creating a batch file instead...')
 			vsymlink = os.join_path(vsymlinkdir, 'v.bat')
 			if os.exists(vsymlink) {
 				os.rm(vsymlink) or { panic(err) }
 			}
-			os.write_file(vsymlink, '@echo off\n$vexe %*') or { panic(err) }
-			eprintln('$vsymlink file written.')
+			os.write_file(vsymlink, '@echo off\n"${vexe}" %*') or { panic(err) }
+			eprintln('${vsymlink} file written.')
 		}
 		if !os.exists(vsymlink) {
-			warn_and_exit('Could not create $vsymlink')
+			warn_and_exit('Could not create ${vsymlink}')
 		}
-		println('Symlink $vsymlink to $vexe created.')
+		println('Symlink ${vsymlink} to ${vexe} created.')
 		println('Checking system %PATH%...')
 		reg_sys_env_handle := get_reg_sys_env_handle() or {
-			warn_and_exit(err.msg)
+			warn_and_exit(err.msg())
 			return
 		}
 		// TODO: Fix defers inside ifs
@@ -89,7 +114,7 @@ fn setup_symlink_windows(vexe string) {
 		// }
 		// if the above succeeded, and we cannot get the value, it may simply be empty
 		sys_env_path := get_reg_value(reg_sys_env_handle, 'Path') or { '' }
-		current_sys_paths := sys_env_path.split(os.path_delimiter).map(it.trim('/$os.path_separator'))
+		current_sys_paths := sys_env_path.split(os.path_delimiter).map(it.trim('/${os.path_separator}'))
 		mut new_paths := [vsymlinkdir]
 		for p in current_sys_paths {
 			if p == '' {
@@ -107,7 +132,7 @@ fn setup_symlink_windows(vexe string) {
 			println('Adding symlink directory to system %PATH%...')
 			set_reg_value(reg_sys_env_handle, 'Path', new_sys_env_path) or {
 				C.RegCloseKey(reg_sys_env_handle)
-				warn_and_exit(err.msg)
+				warn_and_exit(err.msg())
 			}
 			println('Done.')
 		}
@@ -134,9 +159,9 @@ fn get_reg_sys_env_handle() ?voidptr {
 	$if windows { // wrap for cross-compile compat
 		// open the registry key
 		reg_key_path := 'Environment'
-		reg_env_key := voidptr(0) // or HKEY (HANDLE)
+		reg_env_key := unsafe { nil } // or HKEY (HANDLE)
 		if C.RegOpenKeyEx(os.hkey_current_user, reg_key_path.to_wide(), 0, 1 | 2, &reg_env_key) != 0 {
-			return error('Could not open "$reg_key_path" in the registry')
+			return error('Could not open "${reg_key_path}" in the registry')
 		}
 		return reg_env_key
 	}
@@ -147,10 +172,10 @@ fn get_reg_sys_env_handle() ?voidptr {
 fn get_reg_value(reg_env_key voidptr, key string) ?string {
 	$if windows {
 		// query the value (shortcut the sizing step)
-		reg_value_size := 4095 // this is the max length (not for the registry, but for the system %PATH%)
-		mut reg_value := unsafe { &u16(malloc(reg_value_size)) }
+		reg_value_size := u32(4095) // this is the max length (not for the registry, but for the system %PATH%)
+		mut reg_value := unsafe { &u16(malloc(int(reg_value_size))) }
 		if C.RegQueryValueExW(reg_env_key, key.to_wide(), 0, 0, reg_value, &reg_value_size) != 0 {
-			return error('Unable to get registry value for "$key".')
+			return error('Unable to get registry value for "${key}".')
 		}
 		return unsafe { string_from_wide(reg_value) }
 	}
@@ -162,7 +187,7 @@ fn set_reg_value(reg_key voidptr, key string, value string) ?bool {
 	$if windows {
 		if C.RegSetValueExW(reg_key, key.to_wide(), 0, C.REG_EXPAND_SZ, value.to_wide(),
 			value.len * 2) != 0 {
-			return error('Unable to set registry value for "$key". %PATH% may be too long.')
+			return error('Unable to set registry value for "${key}". %PATH% may be too long.')
 		}
 		return true
 	}
@@ -173,7 +198,7 @@ fn set_reg_value(reg_key voidptr, key string, value string) ?bool {
 // letting them know that the system environment has changed and should be reloaded
 fn send_setting_change_msg(message_data string) ?bool {
 	$if windows {
-		if C.SendMessageTimeoutW(os.hwnd_broadcast, os.wm_settingchange, 0, message_data.to_wide(),
+		if C.SendMessageTimeoutW(os.hwnd_broadcast, os.wm_settingchange, 0, unsafe { &u32(message_data.to_wide()) },
 			os.smto_abortifhung, 5000, 0) == 0 {
 			return error('Could not broadcast WM_SETTINGCHANGE')
 		}

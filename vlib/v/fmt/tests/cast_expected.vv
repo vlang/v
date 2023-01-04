@@ -1,5 +1,5 @@
-import v.ast
-import v.table
+import v.ast { InfixExpr }
+import v.table { Type }
 
 fn test_as() {
 	_ := sum_expr() as InfixExpr
@@ -10,4 +10,5 @@ fn test_cast() {
 	_ := f32(0)
 	_ := Type(0)
 	_ := ast.Expr(sum_expr())
+	_ := unsafe { nil }
 }

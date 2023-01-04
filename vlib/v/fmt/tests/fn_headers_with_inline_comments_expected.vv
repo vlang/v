@@ -1,0 +1,7 @@
+fn main() { // main
+	return
+}
+
+fn print_hi() { // hi
+	println('hi')
+}

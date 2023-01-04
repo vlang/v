@@ -3,7 +3,7 @@ import v.ast
 fn main() {
 	t := ast.new_table()
 	ityp := ast.int_type
-	isym := t.get_type_symbol(ityp)
+	isym := t.sym(ityp)
 	println(ityp.debug())
 	println(isym)
 	println(isym.debug())

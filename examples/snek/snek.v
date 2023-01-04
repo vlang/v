@@ -1,3 +1,4 @@
+import os
 import gg
 import gx
 // import sokol.sapp
@@ -12,6 +13,8 @@ const (
 	tile_size    = canvas_size / game_size
 	tick_rate_ms = 100
 )
+
+const high_score_file_path = os.join_path(os.cache_dir(), 'v', 'examples', 'snek')
 
 // types
 struct Pos {
@@ -34,12 +37,25 @@ enum Direction {
 	right
 }
 
+type HighScore = int
+
+fn (mut h HighScore) save() {
+	os.mkdir_all(os.dir(high_score_file_path)) or { return }
+	os.write_file(high_score_file_path, (*h).str()) or { return }
+}
+
+fn (mut h HighScore) load() {
+	h = (os.read_file(high_score_file_path) or { '' }).int()
+}
+
 struct App {
 mut:
-	gg         &gg.Context
+	gg         &gg.Context = unsafe { nil }
 	score      int
+	best       HighScore
 	snake      []Pos
 	dir        Direction
+	last_dir   Direction
 	food       Pos
 	start_time i64
 	last_tick  i64
@@ -55,6 +71,7 @@ fn (mut app App) reset_game() {
 		Pos{0, 8},
 	]
 	app.dir = .right
+	app.last_dir = app.dir
 	app.food = Pos{10, 8}
 	app.start_time = time.ticks()
 	app.last_tick = time.ticks()
@@ -62,8 +79,8 @@ fn (mut app App) reset_game() {
 
 fn (mut app App) move_food() {
 	for {
-		x := rand.int_in_range(0, game_size)
-		y := rand.int_in_range(0, game_size)
+		x := rand.intn(game_size) or { 0 }
+		y := rand.intn(game_size) or { 0 }
 		app.food = Pos{x, y}
 
 		if app.food !in app.snake {
@@ -76,22 +93,22 @@ fn (mut app App) move_food() {
 fn on_keydown(key gg.KeyCode, mod gg.Modifier, mut app App) {
 	match key {
 		.w, .up {
-			if app.dir != .down {
+			if app.last_dir != .down {
 				app.dir = .up
 			}
 		}
 		.s, .down {
-			if app.dir != .up {
+			if app.last_dir != .up {
 				app.dir = .down
 			}
 		}
 		.a, .left {
-			if app.dir != .right {
+			if app.last_dir != .right {
 				app.dir = .left
 			}
 		}
 		.d, .right {
-			if app.dir != .left {
+			if app.last_dir != .left {
 				app.dir = .right
 			}
 		}
@@ -129,26 +146,38 @@ fn on_frame(mut app App) {
 		if app.snake[0] == app.food {
 			app.move_food()
 			app.score++
+			if app.score > app.best {
+				app.best = app.score
+				app.best.save()
+			}
 			app.snake << app.snake.last() + app.snake.last() - app.snake[app.snake.len - 2]
 		}
+
+		app.last_dir = app.dir
 	}
 	// drawing snake
 	for pos in app.snake {
-		app.gg.draw_rect(tile_size * pos.x, tile_size * pos.y + top_height, tile_size,
+		app.gg.draw_rect_filled(tile_size * pos.x, tile_size * pos.y + top_height, tile_size,
 			tile_size, gx.blue)
 	}
 
 	// drawing food
-	app.gg.draw_rect(tile_size * app.food.x, tile_size * app.food.y + top_height, tile_size,
-		tile_size, gx.red)
+	app.gg.draw_rect_filled(tile_size * app.food.x, tile_size * app.food.y + top_height,
+		tile_size, tile_size, gx.red)
 
 	// drawing top
-	app.gg.draw_rect(0, 0, canvas_size, top_height, gx.black)
-	app.gg.draw_text(canvas_size / 2, top_height / 2, app.score.str(), gx.TextCfg{
+	app.gg.draw_rect_filled(0, 0, canvas_size, top_height, gx.black)
+	app.gg.draw_text(150, top_height / 2, 'Score: ${app.score}', gx.TextCfg{
 		color: gx.white
 		align: .center
 		vertical_align: .middle
-		size: 75
+		size: 65
+	})
+	app.gg.draw_text(canvas_size - 150, top_height / 2, 'Best: ${app.best}', gx.TextCfg{
+		color: gx.white
+		align: .center
+		vertical_align: .middle
+		size: 65
 	})
 
 	// checking if snake bit itself
@@ -172,6 +201,7 @@ fn main() {
 		gg: 0
 	}
 	app.reset_game()
+	app.best.load()
 
 	mut font_copy := font
 	font_bytes := unsafe {
@@ -185,7 +215,6 @@ fn main() {
 		user_data: &app
 		width: canvas_size
 		height: top_height + canvas_size
-		use_ortho: true
 		create_window: true
 		resizable: false
 		window_title: 'snek'

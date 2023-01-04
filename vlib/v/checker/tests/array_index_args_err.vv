@@ -1,0 +1,9 @@
+fn main() {
+	arr := [0]
+	mut ret := [0].index([0])
+	ret = [0].index()
+	ret = [0, 1, 2].index(0, 1, 2)
+	ret = [0].index('a')
+	ret = [0].index(arr)
+	println(ret)
+}

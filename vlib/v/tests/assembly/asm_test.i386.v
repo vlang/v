@@ -1,5 +1,4 @@
 import v.tests.assembly.util
-// rename this file to asm_test.amd64.v (and make more for other architectures) once pure v code is enforced
 
 fn test_inline_asm() {
 	a, mut b := 10, 0
@@ -25,7 +24,7 @@ fn test_inline_asm() {
 		mov f, d
 		add f, e
 		add f, 5
-		; +r (f) // output 
+		; +r (f) // output
 		; r (d)
 		  r (e) // input
 	}
@@ -95,4 +94,95 @@ fn test_inline_asm() {
 		  r (n.data) as in_data
 	}
 	assert n == [7, 11, 2, 6]
+
+	mut manu := Manu{}
+	asm amd64 {
+		mov eax, 0
+		cpuid
+		; =b (manu.ebx) as ebx0
+		  =d (manu.edx) as edx0
+		  =c (manu.ecx) as ecx0
+	}
+	manu.str()
+}
+
+[packed]
+struct Manu {
+mut:
+	ebx  u32
+	edx  u32
+	ecx  u32
+	zero u8 // for string
+}
+
+fn (m Manu) str() string {
+	return unsafe {
+		string{
+			str: &u8(&m)
+			len: 24
+			is_lit: 1
+		}
+	}
+}
+
+fn test_flag_output() {
+	a, b := 4, 9
+	mut out := false
+	asm amd64 {
+		cmp a, b
+		; =@ccl (out)
+		; r (a)
+		  r (b)
+	}
+	assert out
+	asm amd64 {
+		cmp b, a
+		; =@ccl (out)
+		; r (a)
+		  r (b)
+	}
+	assert !out
+
+	zero := 0
+	asm amd64 {
+		cmp zero, zero
+		; =@ccz (out)
+		; r (zero)
+	}
+	assert out
+
+	mut maybe_four := 4
+	mut four := 4
+	asm amd64 {
+		subl four, maybe_four
+		testl four, maybe_four
+		movl maybe_four, 9
+		; +m (maybe_four)
+		  +r (four)
+		  =@ccz (out)
+	}
+	assert out
+	assert maybe_four == 9
+}
+
+fn test_asm_generic() {
+	u := u64(49)
+	b := unsafe { bool(123) }
+	assert generic_asm(u) == 14
+	assert u == 63
+	assert u64(generic_asm(b)) == 14
+	assert u64(b) == 137
+}
+
+fn generic_asm[T](var &T) T {
+	mut ret := T(14)
+	unsafe {
+		asm volatile amd64 {
+			add var, ret
+			; +m (var[0]) as var
+			  +r (ret)
+			; ; memory
+		}
+	}
+	return ret
 }

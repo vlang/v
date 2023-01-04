@@ -1,0 +1,5 @@
+vlib/v/parser/tests/result_option_err.vv:2:2: error: invalid expression: unexpected keyword `return`
+    1 | fn abc() ?!string {
+    2 |     return ''
+      |     ~~~~~~
+    3 | }

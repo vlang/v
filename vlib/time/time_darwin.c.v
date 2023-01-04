@@ -42,18 +42,22 @@ fn init_time_base() C.mach_timebase_info_data_t {
 fn sys_mono_now_darwin() u64 {
 	tm := C.mach_absolute_time()
 	if time.time_base.denom == 0 {
-		C.mach_timebase_info(&time.time_base)
+		unsafe {
+			C.mach_timebase_info(&time.time_base)
+		}
 	}
 	return (tm - time.start_time) * time.time_base.numer / time.time_base.denom
 }
 
-// NB: vpc_now_darwin is used by `v -profile` .
+// Note: vpc_now_darwin is used by `v -profile` .
 // It should NOT call *any other v function*, just C functions and casts.
 [inline]
 fn vpc_now_darwin() u64 {
 	tm := C.mach_absolute_time()
 	if time.time_base.denom == 0 {
-		C.mach_timebase_info(&time.time_base)
+		unsafe {
+			C.mach_timebase_info(&time.time_base)
+		}
 	}
 	return (tm - time.start_time) * time.time_base.numer / time.time_base.denom
 }
@@ -67,7 +71,8 @@ fn darwin_now() Time {
 	tv := C.timeval{}
 	C.gettimeofday(&tv, 0)
 	loc_tm := C.tm{}
-	C.localtime_r(&tv.tv_sec, &loc_tm)
+	asec := voidptr(&tv.tv_sec)
+	C.localtime_r(asec, &loc_tm)
 	return convert_ctime(loc_tm, int(tv.tv_usec))
 }
 
@@ -79,5 +84,15 @@ fn darwin_utc() Time {
 	// get the high precision time as UTC clock
 	tv := C.timeval{}
 	C.gettimeofday(&tv, 0)
-	return unix2(int(tv.tv_sec), int(tv.tv_usec))
+	return unix2(i64(tv.tv_sec), int(tv.tv_usec))
+}
+
+// dummy to compile with all compilers
+pub fn solaris_now() Time {
+	return Time{}
+}
+
+// dummy to compile with all compilers
+pub fn solaris_utc() Time {
+	return Time{}
 }

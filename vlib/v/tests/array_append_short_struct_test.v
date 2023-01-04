@@ -4,7 +4,7 @@ struct Page {
 
 fn test_array_append_short_struct() {
 	mut pages := []Page{}
-	pages << {
+	pages << Page{
 		contents: 3
 	}
 	println(pages)

@@ -1,0 +1,18 @@
+# Executables files
+test
+test.exe
+
+# Temporary files
+fns.txt
+
+!/bin/test
+
+/docs/build
+*.ppm
+main
+parallel
+parallel_with_iw
+sequential
+animation
+full
+*.log

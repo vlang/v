@@ -107,7 +107,7 @@ fn test_converting_down() {
 }
 
 fn test_assignment_and_push() {
-	mut expr1 := Expr{}
+	mut expr1 := Expr(IfExpr{})
 	mut arr1 := []Expr{}
 	expr := IntegerLiteral{
 		val: '111'
@@ -456,7 +456,7 @@ fn sumtype_match_with_string_interpolation(code int) string {
 				f64 { return "shouldn't happen" }
 				bool { return "shouldn't happen" }
 				IntAndStr { return "shouldn't happen" }
-				int { return "it's an int: $bar" }
+				int { return "it's an int: ${bar}" }
 				string { return "shouldn't happen" }
 				Color { return "shouldn't happen" }
 			}
@@ -464,7 +464,7 @@ fn sumtype_match_with_string_interpolation(code int) string {
 		2 {
 			bar := CommonType('hello')
 			match bar {
-				string { return "it's a string: $bar" }
+				string { return "it's a string: ${bar}" }
 				int { return "shouldn't happen" }
 				Color { return "shouldn't happen" }
 				f64 { return "shouldn't happen" }
@@ -492,9 +492,9 @@ fn sumtype_match_with_string_interpolation(code int) string {
 				}
 				Color {
 					match bar {
-						.red { return 'red_$bar' }
-						.green { return 'green_$bar' }
-						.blue { return 'blue_$bar' }
+						.red { return 'red_${bar}' }
+						.green { return 'green_${bar}' }
+						.blue { return 'blue_${bar}' }
 					}
 				}
 			}
@@ -505,7 +505,7 @@ fn sumtype_match_with_string_interpolation(code int) string {
 				string { return "shouldn't happen" }
 				int { return "shouldn't happen" }
 				Color { return "shouldn't happen" }
-				f64 { return "it's a f64: $bar" }
+				f64 { return "it's a f64: ${bar}" }
 				bool { return "shouldn't happen" }
 				IntAndStr { return "shouldn't happen" }
 			}
@@ -518,7 +518,7 @@ fn sumtype_match_with_string_interpolation(code int) string {
 				int { return "shouldn't happen" }
 				Color { return "shouldn't happen" }
 				f64 { return "shouldn't happen" }
-				bool { return "it's a bool: $bar" }
+				bool { return "it's a bool: ${bar}" }
 				IntAndStr { return "shouldn't happen" }
 			}
 		}
@@ -541,7 +541,7 @@ fn sumtype_match_with_string_interpolation(code int) string {
 				Color { return "shouldn't happen" }
 				f64 { return "shouldn't happen" }
 				bool { return "shouldn't happen" }
-				IntAndStr { return "it's an IntAndStr: ${bar.foo}_${bar.bar}_${bar.baz.foo}_$bar.baz.bar" }
+				IntAndStr { return "it's an IntAndStr: ${bar.foo}_${bar.bar}_${bar.baz.foo}_${bar.baz.bar}" }
 			}
 		}
 		else {
@@ -553,7 +553,7 @@ fn sumtype_match_with_string_interpolation(code int) string {
 fn handle(e Expr) string {
 	is_literal := e is IntegerLiteral
 	assert is_literal
-	assert !(e !is IntegerLiteral)
+	assert e is IntegerLiteral
 	if e is IntegerLiteral {
 		assert typeof(e.val).name == 'string'
 	}
@@ -572,7 +572,7 @@ fn handle(e Expr) string {
 
 // Binary Search Tree test by @SleepyRoy
 // TODO: make Node.value generic once it's robust enough
-// TODO: `return match` instead of returns everywhere inside match 
+// TODO: `return match` instead of returns everywhere inside match
 
 struct Empty {}
 
@@ -711,4 +711,49 @@ fn test_binary_search_tree() {
 	}
 	deleted.sort()
 	assert deleted == [0.0, 0.3, 0.6, 1.0]
+}
+
+struct Common {
+	a int
+	b int
+}
+
+struct Common2 {
+	Common
+}
+
+struct Aa {
+	Common
+	x int
+}
+
+struct Bb {
+	Common
+	x int
+}
+
+struct Cc {
+	a int
+}
+
+struct Dd {
+	Common2
+}
+
+type MySum = Aa | Bb | Cc | Dd
+
+fn test_sumtype_access_embed_fields() {
+	a := MySum(Aa{
+		a: 1
+	})
+	assert a.a == 1
+}
+
+fn test_sumtype_access_nested_embed_fields() {
+	a := MySum(Dd{
+		Common2: Common2{
+			a: 2
+		}
+	})
+	assert a.a == 2
 }

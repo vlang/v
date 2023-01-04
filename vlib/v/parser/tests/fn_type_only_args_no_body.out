@@ -1,6 +1,5 @@
-vlib/v/parser/tests/fn_type_only_args_no_body.vv:2:1: error: functions with type only args can not have bodies 
+vlib/v/parser/tests/fn_type_only_args_no_body.vv:1:14: error: functions with type only args can not have bodies
     1 | fn test(int) {
+      |              ^
     2 | }
-      | ^
-    3 | 
-    4 | fn main() {
+    3 |

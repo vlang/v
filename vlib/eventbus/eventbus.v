@@ -4,12 +4,12 @@ pub type EventHandlerFn = fn (receiver voidptr, args voidptr, sender voidptr)
 
 pub struct Publisher {
 mut:
-	registry &Registry
+	registry &Registry = unsafe { nil }
 }
 
 pub struct Subscriber {
 mut:
-	registry &Registry
+	registry &Registry = unsafe { nil }
 }
 
 struct Registry {
@@ -20,15 +20,15 @@ mut:
 struct EventHandler {
 	name     string
 	handler  EventHandlerFn
-	receiver voidptr = voidptr(0)
+	receiver voidptr = unsafe { nil }
 	once     bool
 }
 
 pub struct EventBus {
 pub mut:
-	registry   &Registry
-	publisher  &Publisher
-	subscriber &Subscriber
+	registry   &Registry   = unsafe { nil }
+	publisher  &Publisher  = unsafe { nil }
+	subscriber &Subscriber = unsafe { nil }
 }
 
 pub fn new() &EventBus {
@@ -83,7 +83,7 @@ pub fn (mut s Subscriber) subscribe_method(name string, handler EventHandlerFn, 
 	}
 }
 
-// unsubscribe_method unsubscribe a receiver for only one method 
+// unsubscribe_method unsubscribe a receiver for only one method
 pub fn (mut s Subscriber) unsubscribe_method(name string, receiver voidptr) {
 	s.registry.events = s.registry.events.filter(!(it.name == name && it.receiver == receiver))
 }
@@ -104,8 +104,6 @@ pub fn (mut s Subscriber) subscribe_once(name string, handler EventHandlerFn) {
 pub fn (s &Subscriber) is_subscribed(name string) bool {
 	return s.registry.check_subscriber(name)
 }
-
-
 
 // is_subscribed_method checks whether a receiver was already subscribed for any events
 pub fn (s &Subscriber) is_subscribed_method(name string, receiver voidptr) bool {

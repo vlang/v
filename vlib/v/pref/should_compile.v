@@ -15,13 +15,25 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 			|| file.all_before_last('.v').all_before_last('.').ends_with('_test') {
 			continue
 		}
-		if prefs.backend == .c && !prefs.should_compile_c(file) {
+		if prefs.backend in [.c, .interpret] && !prefs.should_compile_c(file) {
 			continue
 		}
-		if prefs.backend == .js && !prefs.should_compile_js(file) {
+		if prefs.backend.is_js() && !prefs.should_compile_js(file) {
 			continue
 		}
-		if prefs.backend != .js && !prefs.should_compile_asm(file) {
+		if prefs.backend == .native && !prefs.should_compile_native(file) {
+			continue
+		}
+		if !prefs.backend.is_js() && !prefs.should_compile_asm(file) {
+			continue
+		}
+		if file.starts_with('.#') {
+			continue
+		}
+		if !prefs.prealloc && !prefs.output_cross_c && file.ends_with('prealloc.c.v') {
+			continue
+		}
+		if prefs.nofloat && file.ends_with('float.c.v') {
 			continue
 		}
 		if file.contains('_d_') {
@@ -30,9 +42,14 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 			}
 			mut allowed := false
 			for cdefine in prefs.compile_defines {
-				file_postfix := '_d_${cdefine}.v'
-				if file.ends_with(file_postfix) {
-					allowed = true
+				file_postfixes := ['_d_${cdefine}.v', '_d_${cdefine}.c.v']
+				for file_postfix in file_postfixes {
+					if file.ends_with(file_postfix) {
+						allowed = true
+						break
+					}
+				}
+				if allowed {
 					break
 				}
 			}
@@ -43,9 +60,14 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		if file.contains('_notd_') {
 			mut allowed := true
 			for cdefine in prefs.compile_defines {
-				file_postfix := '_notd_${cdefine}.v'
-				if file.ends_with(file_postfix) {
-					allowed = false
+				file_postfixes := ['_notd_${cdefine}.v', '_notd_${cdefine}.c.v']
+				for file_postfix in file_postfixes {
+					if file.ends_with(file_postfix) {
+						allowed = false
+						break
+					}
+				}
+				if !allowed {
 					break
 				}
 			}
@@ -73,14 +95,15 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		no_postfix_key := fname_without_platform_postfix(file)
 		if no_postfix_key in fnames_no_postfixes {
 			if prefs.is_verbose {
-				println('>>> should_compile_filtered_files: skipping _default.c.v file $file ; the specialized versions are: ${fnames_no_postfixes[no_postfix_key]}')
+				println('>>> should_compile_filtered_files: skipping _default.c.v file ${file} ; the specialized versions are: ${fnames_no_postfixes[no_postfix_key]}')
 			}
 			continue
 		}
 		res << file
 	}
 	if prefs.is_verbose {
-		println('>>> should_compile_filtered_files: res: $res')
+		// println('>>> prefs: $prefs')
+		println('>>> should_compile_filtered_files: res: ${res}')
 	}
 	return res
 }
@@ -101,7 +124,13 @@ fn fname_without_platform_postfix(file string) string {
 		'_',
 		'android.c.v',
 		'_',
+		'termux.c.v',
+		'_',
+		'android_outside_termux.c.v',
+		'_',
 		'freebsd.c.v',
+		'_',
+		'openbsd.c.v',
 		'_',
 		'netbsd.c.v',
 		'_',
@@ -109,10 +138,16 @@ fn fname_without_platform_postfix(file string) string {
 		'_',
 		'solaris.c.v',
 		'_',
-		'x64.v',
+		'native.v',
 		'_',
 	])
 	return res
+}
+
+pub fn (prefs &Preferences) should_compile_native(file string) bool {
+	// allow custom filtering for native backends,
+	// but if there are no other rules, default to the c backend rules
+	return prefs.should_compile_c(file)
 }
 
 pub fn (prefs &Preferences) should_compile_c(file string) bool {
@@ -120,43 +155,83 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 		// Probably something like `a.js.v`.
 		return false
 	}
+	if prefs.is_bare && file.ends_with('.freestanding.v') {
+		return true
+	}
 	if prefs.os == .all {
 		return true
 	}
-	if (file.ends_with('_windows.c.v') || file.ends_with('_windows.v')) && prefs.os != .windows {
+	if prefs.backend != .native && file.ends_with('_native.v') {
 		return false
 	}
-	if (file.ends_with('_linux.c.v') || file.ends_with('_linux.v')) && prefs.os != .linux {
+	if prefs.building_v && prefs.output_cross_c && file.ends_with('_windows.v') {
+		// TODO temp hack to make msvc_windows.v work with -os cross
+		return true
+	}
+	if prefs.os == .windows && (file.ends_with('_nix.c.v') || file.ends_with('_nix.v')) {
 		return false
 	}
-	if (file.ends_with('_darwin.c.v') || file.ends_with('_darwin.v')) && prefs.os != .macos {
+	if prefs.os != .windows && (file.ends_with('_windows.c.v') || file.ends_with('_windows.v')) {
 		return false
 	}
-	if (file.ends_with('_macos.c.v') || file.ends_with('_macos.v')) && prefs.os != .macos {
+	//
+	if prefs.os != .linux && (file.ends_with('_linux.c.v') || file.ends_with('_linux.v')) {
 		return false
 	}
-	if file.ends_with('_nix.c.v') && prefs.os == .windows {
+	//
+	if prefs.os != .macos && (file.ends_with('_darwin.c.v') || file.ends_with('_darwin.v')) {
 		return false
 	}
-	if file.ends_with('_android.c.v') && prefs.os != .android {
+	if prefs.os != .macos && (file.ends_with('_macos.c.v') || file.ends_with('_macos.v')) {
 		return false
 	}
-	if file.ends_with('_freebsd.c.v') && prefs.os != .freebsd {
+	//
+	if prefs.os != .ios && (file.ends_with('_ios.c.v') || file.ends_with('_ios.v')) {
 		return false
 	}
-	if file.ends_with('_openbsd.c.v') && prefs.os != .openbsd {
+	if prefs.os != .freebsd && file.ends_with('_freebsd.c.v') {
 		return false
 	}
-	if file.ends_with('_netbsd.c.v') && prefs.os != .netbsd {
+	if prefs.os != .openbsd && file.ends_with('_openbsd.c.v') {
 		return false
 	}
-	if file.ends_with('_dragonfly.c.v') && prefs.os != .dragonfly {
+	if prefs.os != .netbsd && file.ends_with('_netbsd.c.v') {
 		return false
 	}
-	if file.ends_with('_solaris.c.v') && prefs.os != .solaris {
+	if prefs.os != .dragonfly && file.ends_with('_dragonfly.c.v') {
 		return false
 	}
-	if file.ends_with('_x64.v') && prefs.backend != .x64 {
+	if prefs.os != .solaris && file.ends_with('_solaris.c.v') {
+		return false
+	}
+	if prefs.os != .serenity && file.ends_with('_serenity.c.v') {
+		return false
+	}
+	if prefs.os != .vinix && file.ends_with('_vinix.c.v') {
+		return false
+	}
+	if prefs.os in [.android, .termux] {
+		// Note: Termux is running natively on Android devices, but the compilers there (clang) usually do not have access
+		// to the Android SDK. The code here ensures that you can have `_termux.c.v` and `_android_outside_termux.c.v` postfixes,
+		// to target both the cross compilation case (where the SDK headers are used and available), and the Termux case,
+		// where the Android SDK is not used.
+		if file.ends_with('_android.c.v') {
+			// common case, should compile for both cross android and termux
+			// eprintln('prefs.os: $prefs.os | file: $file | common')
+			return true
+		}
+		if file.ends_with('_android_outside_termux.c.v') {
+			// compile code that targets Android, but NOT Termux (i.e. the SDK is available)
+			// eprintln('prefs.os: $prefs.os | file: $file | android_outside_termux')
+			return prefs.os == .android
+		}
+		if file.ends_with('_termux.c.v') {
+			// compile Termux specific code
+			// eprintln('prefs.os: $prefs.os | file: $file | termux specific')
+			return prefs.os == .termux
+		}
+	} else if file.ends_with('_android.c.v') || file.ends_with('_termux.c.v')
+		|| file.ends_with('_android_outside_termux.c.v') {
 		return false
 	}
 	return true

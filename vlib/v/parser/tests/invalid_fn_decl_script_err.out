@@ -1,7 +1,12 @@
-vlib/v/parser/tests/invalid_fn_decl_script_err.vv:3:4: error: function declarations in script mode should be before all script statements
+vlib/v/parser/tests/invalid_fn_decl_script_err.vv:1:1: notice: script mode started here
     1 | mynum := 10
-    2 |
-    3 | fn main() {
-      |    ~~~~
+      | ~~~~~
+    2 | 
+    3 | fn my_function() {
+vlib/v/parser/tests/invalid_fn_decl_script_err.vv:3:4: error: all definitions must occur before code in script mode
+    1 | mynum := 10
+    2 | 
+    3 | fn my_function() {
+      |    ~~~~~~~~~~~
     4 |     println(mynum)
     5 | }

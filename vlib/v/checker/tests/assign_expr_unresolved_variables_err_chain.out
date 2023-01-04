@@ -1,13 +1,13 @@
-vlib/v/checker/tests/assign_expr_unresolved_variables_err_chain.vv:2:7: error: undefined variable `b` (used before declaration) 
+vlib/v/checker/tests/assign_expr_unresolved_variables_err_chain.vv:2:7: error: undefined variable `b` (used before declaration)
     1 | fn main() {
     2 |     a := b
       |          ^
     3 |     b := c
     4 |     c := a
-vlib/v/checker/tests/assign_expr_unresolved_variables_err_chain.vv:3:7: error: undefined variable `c` (used before declaration) 
+vlib/v/checker/tests/assign_expr_unresolved_variables_err_chain.vv:3:7: error: undefined variable `c` (used before declaration)
     1 | fn main() {
     2 |     a := b
     3 |     b := c
       |          ^
     4 |     c := a
-    5 | }
+    5 |     _ = a

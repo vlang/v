@@ -1,0 +1,3 @@
+struct Inter {
+	code term.unknownmod.KeyCode
+}

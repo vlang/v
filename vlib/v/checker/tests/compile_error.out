@@ -1,0 +1,14 @@
+vlib/v/checker/tests/compile_error.vv:8:5: warning: On non Vinix this warning should be shown
+    6 | 
+    7 | $if !vinix {
+    8 |     $compile_warn('On non Vinix this warning should be shown')
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    9 | }
+   10 |
+vlib/v/checker/tests/compile_error.vv:4:5: error: Only Serenity is supported
+    2 | 
+    3 | $if !serenity {
+    4 |     $compile_error('Only Serenity is supported')
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    5 | }
+    6 |

@@ -1,0 +1,6 @@
+struct Foo {
+	bar int
+}
+
+mut arr := []Foo{}
+arr.sort()

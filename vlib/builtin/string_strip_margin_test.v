@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -28,8 +28,7 @@ fn test_strip_margins_white_space_after_delim() {
 
 fn test_strip_margins_alternate_delim() {
 	alternate_delimiter := ['This has a different delim,', 'but that is ok',
-		'because everything works',
-	].join('\n')
+		'because everything works'].join('\n')
 	alternate_delimiter_stripped := 'This has a different delim,
 	                                #but that is ok
                                     #because everything works'.strip_margin_custom(`#`)
@@ -48,8 +47,7 @@ fn test_strip_margins_multiple_delims_after_first() {
 fn test_strip_margins_uneven_delims() {
 	uneven_delims := ["It doesn't matter if the delims are uneven,",
 		'The text will still be delimited correctly.', 'Maybe not everything needs 3 lines?',
-		'Let us go for 4 then',
-	].join('\n')
+		'Let us go for 4 then'].join('\n')
 	uneven_delims_stripped := "It doesn't matter if the delims are uneven,
            |The text will still be delimited correctly.
                       |Maybe not everything needs 3 lines?
@@ -59,8 +57,7 @@ fn test_strip_margins_uneven_delims() {
 
 fn test_strip_margins_multiple_blank_lines() {
 	multi_blank_lines := ['Multiple blank lines will be removed.',
-		'	I actually consider this a feature.',
-	].join('\n')
+		'	I actually consider this a feature.'].join('\n')
 	multi_blank_lines_stripped := 'Multiple blank lines will be removed.
 
 

@@ -1,0 +1,19 @@
+struct Test {}
+
+[noreturn]
+fn (mut t Test) zz_exit() {
+	println('${@METHOD} called, as it should')
+	flush_stdout()
+	exit(0)
+}
+
+fn optional() ?int {
+	return error('oh no')
+}
+
+fn main() {
+	mut test := Test{}
+	a := optional() or { test.zz_exit() }
+	println(a)
+	exit(1)
+}

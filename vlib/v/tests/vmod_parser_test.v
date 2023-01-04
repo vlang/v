@@ -2,7 +2,7 @@ import v.vmod
 import os
 
 fn test_from_file() {
-	os.chdir(os.dir(os.getenv('VEXE')))
+	os.chdir(os.dir(os.getenv('VEXE'))) or {}
 	data := vmod.from_file('./v.mod') or { panic(err) }
 	assert data.name == 'V'
 	assert data.description == 'The V programming language.'
@@ -38,7 +38,7 @@ fn test_decode() {
 	assert data.dependencies[0] == 'hello'
 	assert data.unknown['test'][0] == 'foo'
 	vmod.decode('') or {
-		assert err.msg == 'vmod: no content.'
+		assert err.msg() == 'vmod: no content.'
 		exit(0)
 	}
 }

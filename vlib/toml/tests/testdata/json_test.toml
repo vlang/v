@@ -1,0 +1,25 @@
+
+v = true
+
+animal = { type.name = "pug" }
+
+inline = { "a" = 4, "b.c" = 6, b.c = 7 }
+
+[db]
+t = true
+
+[ij]
+  [ij.a]
+  i = 1
+  j = 2
+
+  [ij.b]
+  i = "3"
+  j = "4"
+
+[fruit]
+apple.color = "red"
+apple.taste.sweet = true
+
+[fruit.apple.texture]
+smooth = true

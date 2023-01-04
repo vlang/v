@@ -1,0 +1,5 @@
+fn ok(a int) (int, string) {
+	return 11, 'hello'
+}
+
+fn main() {}

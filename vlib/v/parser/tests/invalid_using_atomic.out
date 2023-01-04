@@ -1,0 +1,6 @@
+vlib/v/parser/tests/invalid_using_atomic.vv:2:5: error: the `atomic` keyword is invalid here
+    1 | fn main() {
+    2 |     if atomic true {
+      |        ~~~~~~
+    3 |         println(true)
+    4 |     }

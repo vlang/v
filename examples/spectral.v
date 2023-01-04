@@ -15,7 +15,7 @@ import os
 import strconv
 
 fn evala(i int, j int) int {
-	return ((i + j) * (i + j + 1) / 2 + i + 1)
+	return (i + j) * (i + j + 1) / 2 + i + 1
 }
 
 fn times(mut v []f64, u []f64) {

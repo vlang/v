@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generic_type_name_in_non_generic_function.vv:3:10: error: undefined ident: `A`
+    1 | fn main() {
+    2 |     c := u8(`D`)
+    3 |     if c >= A && c <= Z {
+      |             ^
+    4 |         println('yes')
+    5 |     } else {

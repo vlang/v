@@ -1,0 +1,25 @@
+fn main() {
+	if u32(1) < -1 {
+		println('unexpected')
+	}
+
+	if -1 > u32(1) {
+		println('unexpected')
+	}
+	// unsigned == literal
+	_ = u8(-1) == -1 // false!
+	_ = -1 == u16(-1) // false!
+	
+	// smaller unsigned == signed, OK
+	_ = u16(-1) == int(-1)
+	_ = int(-1) != u8(-1)
+	
+	// smaller signed == unsigned, NG
+	_ = i8(0) == u16(0)
+	_ = i16(0) != u32(0)
+	_ = int(0) == u64(0)
+	_ = i32(0) == u64(0) // FIXME
+	// swap order
+	_ = u16(0) == i8(0)
+	_ = u64(0) == i16(0)
+}

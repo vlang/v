@@ -2,21 +2,27 @@
 // To test a panic, remove everything after the long `===` line
 // You can also remove the line with 'line:' e.g. for a builtin fn
 import os
+import rand
 import term
-import v.util
+import v.util.diff
 import v.util.vtest
 
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
+
+const skip_files = [
+	'do_not_remove_this',
+	'tmpl_parse_html.vv', // skipped, due to a V template compilation problem after b42c824
+]
 
 fn test_all() {
 	mut total_errors := 0
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	os.chdir(vroot)
-	diff_cmd := util.find_working_diff_command() or { '' }
+	os.chdir(vroot) or {}
+	diff_cmd := diff.find_working_diff_command() or { '' }
 	dir := 'vlib/v/tests/inout'
 	files := os.ls(dir) or { panic(err) }
-	tests := files.filter(it.ends_with('.vv'))
+	tests := files.filter(it.ends_with('.vv') || it.ends_with('.vsh'))
 	if tests.len == 0 {
 		println('no compiler tests found')
 		assert false
@@ -24,33 +30,41 @@ fn test_all() {
 	paths := vtest.filter_vtest_only(tests, basepath: dir)
 	for path in paths {
 		print(path + ' ')
+		fname := os.file_name(path)
+		if fname in skip_files {
+			println(term.bright_yellow('SKIP'))
+			continue
+		}
 		program := path
-		compilation := os.execute('$vexe -o test -cflags "-w" -cg $program')
+		tname := rand.ulid()
+		compilation := os.execute('${os.quoted_path(vexe)} -o ${tname} -cflags "-w" -cg ${os.quoted_path(program)}')
 		if compilation.exit_code < 0 {
 			panic(compilation.output)
 		}
 		if compilation.exit_code != 0 {
-			panic('compilation failed: $compilation.output')
+			panic('compilation failed: ${compilation.output}')
 		}
-		res := os.execute('./test')
+		res := os.execute('./${tname}')
 		if res.exit_code < 0 {
 			println('nope')
 			panic(res.output)
 		}
 		$if windows {
-			os.rm('./test.exe') or {}
+			os.rm('./${tname}.exe') or {}
 			$if msvc {
-				os.rm('./test.ilk') or {}
-				os.rm('./test.pdb') or {}
+				os.rm('./${tname}.ilk') or {}
+				os.rm('./${tname}.pdb') or {}
 			}
 		} $else {
-			os.rm('./test') or {}
+			os.rm('./${tname}') or {}
 		}
 		// println('============')
 		// println(res.output)
 		// println('============')
 		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
-		mut expected := os.read_file(program.replace('.vv', '') + '.out') or { panic(err) }
+		mut expected := os.read_file(program.replace('.vv', '').replace('.vsh', '') + '.out') or {
+			panic(err)
+		}
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
 		if expected.contains('================ V panic ================') {
 			// panic include backtraces and absolute file paths, so can't do char by char comparison
@@ -77,7 +91,7 @@ fn test_all() {
 			println(found)
 			if diff_cmd != '' {
 				println(term.header('difference:', '-'))
-				println(util.color_compare_strings(diff_cmd, expected, found))
+				println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
 			} else {
 				println(term.h_divider('-'))
 			}

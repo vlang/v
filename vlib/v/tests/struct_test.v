@@ -60,7 +60,6 @@ struct ReservedKeywords {
 	typedef  int
 	unsigned int
 	void     int
-	volatile int
 	while    int
 }
 
@@ -120,18 +119,16 @@ fn test_at() {
 
 fn test_reserved_keywords() {
 	// Make sure we can initialize them correctly using full syntax.
-	rk_holder := ReservedKeywords{0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3}
+	rk_holder := ReservedKeywords{0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3}
 	// Test a few as it'll take too long to test all. If it's initialized
 	// correctly, other fields are also probably valid.
 	assert rk_holder.unix == 5
 	assert rk_holder.while == 3
 	rk_holder2 := ReservedKeywords{
 		inline: 9
-		volatile: 11
 	}
 	// Make sure partial initialization works too.
 	assert rk_holder2.inline == 9
-	assert rk_holder2.volatile == 11
 	assert rk_holder2.while == 0 // Zero value as not specified.
 }
 
@@ -170,7 +167,7 @@ fn test_assoc_with_vars() {
 	}
 	assert merged.a == 42
 	assert merged.b == 7
-	merged = {
+	merged = Def{
 		...def2
 		b: 9
 	}
@@ -247,6 +244,7 @@ fn test_fixed_field() {
 	//}
 }
 */
+[params]
 struct Config {
 mut:
 	n   int
@@ -264,7 +262,7 @@ fn bar_config(c Config, def int) {
 fn mut_bar_config(mut c Config, def int) &Config {
 	c.n = c.def
 	assert c.n == def
-	return c
+	return unsafe { c }
 }
 
 fn foo_user(u User) {}
@@ -274,14 +272,17 @@ fn test_struct_literal_args() {
 		n: 10
 		def: 20
 	)
-	foo_config(10, {})
+	foo_config(10)
 	foo_config(10, n: 40)
 	foo_config(40, n: 30, def: 40)
 
-	bar_config({}, 10)
-	bar_config({ def: 4 }, 4)
+	bar_config(Config{}, 10)
+	bar_config(Config{ def: 4 }, 4)
 
-	c := mut_bar_config(mut { def: 10 }, 10)
+	mut c_ := Config{
+		def: 10
+	}
+	c := mut_bar_config(mut c_, 10)
 	assert c.n == 10
 	assert c.def == 10
 
@@ -304,7 +305,7 @@ struct Country {
 fn test_levels() {
 	_ := Country{
 		name: 'UK'
-		capital: {
+		capital: City{
 			name: 'London'
 			population: 10
 		}
@@ -373,7 +374,7 @@ fn test_fields_anon_fn_with_optional_void_return_type() {
 		}
 	}
 
-	foo.f() or { assert err.msg == 'oops' }
+	foo.f() or { assert err.msg() == 'oops' }
 
 	foo.g() or { assert false }
 }
@@ -395,7 +396,7 @@ fn test_fields_array_of_fn() {
 		show: [a, b]
 	}
 	println(commands.show)
-	assert '$commands.show' == '[fn () string, fn () string]'
+	assert '${commands.show}' == '[fn () string, fn () string]'
 }
 
 fn test_struct_update() {
@@ -410,4 +411,47 @@ fn test_struct_update() {
 	}
 	assert c2.capital.name == 'city'
 	assert c2.name == 'test'
+}
+
+// Test anon structs
+struct Book {
+	x      Foo
+	author struct {
+		name string
+		age  int
+	}
+
+	title string
+}
+
+fn test_anon() {
+	empty_book := Book{}
+	assert empty_book.author.age == 0
+	assert empty_book.author.name == ''
+	println(empty_book.author.age)
+
+	book := Book{
+		author: struct {'Peter Brown', 23}
+	}
+	assert book.author.name == 'Peter Brown'
+	assert book.author.age == 23
+	println(book.author.name)
+
+	book2 := Book{
+		author: struct {
+			name: 'Samantha Black'
+			age: 24
+		}
+	}
+	assert book2.author.name == 'Samantha Black'
+	assert book2.author.age == 24
+	println(book2.author.name)
+}
+
+fn test_anon_auto_stringify() {
+	b := Book{}
+	s := b.str()
+	assert s.contains('author: ')
+	assert s.contains('name: ')
+	assert s.contains('age: 0')
 }

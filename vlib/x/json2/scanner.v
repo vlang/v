@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module json2
@@ -7,7 +7,7 @@ import strconv
 
 struct Scanner {
 mut:
-	text []byte
+	text []u8
 	pos  int
 	line int
 	col  int
@@ -30,11 +30,16 @@ enum TokenKind {
 	rcbr = 125
 }
 
-struct Token {
-	lit  []byte
+pub struct Token {
+	lit  []u8
 	kind TokenKind
 	line int
 	col  int
+}
+
+// full_col returns the full column information which includes the length
+pub fn (t Token) full_col() int {
+	return t.col + t.lit.len
 }
 
 const (
@@ -50,7 +55,7 @@ const (
 	// list of valid unicode escapes aside from \u{4-hex digits}
 	valid_unicode_escapes     = [`b`, `f`, `n`, `r`, `t`, `\\`, `"`, `/`]
 	// used for transforming escapes into valid unicode (eg. n => \n)
-	unicode_transform_escapes = map{
+	unicode_transform_escapes = {
 		98:  `\b`
 		102: `\f`
 		110: `\n`
@@ -60,7 +65,7 @@ const (
 		34:  `"`
 		47:  `/`
 	}
-	exp_signs                 = [byte(`-`), `+`]
+	exp_signs = [u8(`-`), `+`]
 )
 
 // move_pos proceeds to the next position.
@@ -103,7 +108,7 @@ fn (s Scanner) error(description string) Token {
 }
 
 // tokenize returns a token based on the given lit and kind.
-fn (s Scanner) tokenize(lit []byte, kind TokenKind) Token {
+fn (s Scanner) tokenize(lit []u8, kind TokenKind) Token {
 	return Token{
 		lit: lit
 		kind: kind
@@ -116,7 +121,7 @@ fn (s Scanner) tokenize(lit []byte, kind TokenKind) Token {
 [manualfree]
 fn (mut s Scanner) text_scan() Token {
 	mut has_closed := false
-	mut chrs := []byte{}
+	mut chrs := []u8{}
 	for {
 		s.pos++
 		s.col++
@@ -130,7 +135,7 @@ fn (mut s Scanner) text_scan() Token {
 		} else if (s.pos - 1 >= 0 && s.text[s.pos - 1] != `\\`)
 			&& ch in json2.important_escapable_chars {
 			return s.error('character must be escaped with a backslash')
-		} else if (s.pos == s.text.len - 1 && ch == `\\`) || ch == byte(0) {
+		} else if (s.pos == s.text.len - 1 && ch == `\\`) || ch == u8(0) {
 			return s.error('invalid backslash escape')
 		} else if s.pos + 1 < s.text.len && ch == `\\` {
 			peek := s.text[s.pos + 1]
@@ -143,7 +148,7 @@ fn (mut s Scanner) text_scan() Token {
 				if s.pos + 5 < s.text.len {
 					s.pos++
 					s.col++
-					mut codepoint := []byte{}
+					mut codepoint := []u8{}
 					codepoint_start := s.pos
 					for s.pos < s.text.len && s.pos < codepoint_start + 4 {
 						s.pos++
@@ -151,14 +156,15 @@ fn (mut s Scanner) text_scan() Token {
 						if s.text[s.pos] == `"` {
 							break
 						} else if !s.text[s.pos].is_hex_digit() {
-							return s.error('`${s.text[s.pos].ascii_str()}` is not a hex digit')
+							x := s.text[s.pos].ascii_str()
+							return s.error('`${x}` is not a hex digit')
 						}
 						codepoint << s.text[s.pos]
 					}
 					if codepoint.len != 4 {
 						return s.error('unicode escape must have 4 hex digits')
 					}
-					val := u32(strconv.parse_uint(codepoint.bytestr(), 16, 32))
+					val := u32(strconv.parse_uint(codepoint.bytestr(), 16, 32) or { 0 })
 					converted := utf32_to_str(val)
 					converted_bytes := converted.bytes()
 					chrs << converted_bytes
@@ -173,7 +179,7 @@ fn (mut s Scanner) text_scan() Token {
 				}
 			} else if peek == `U` {
 				return s.error('unicode endpoints must be in lowercase `u`')
-			} else if peek == byte(229) {
+			} else if peek == u8(229) {
 				return s.error('unicode endpoint not allowed')
 			} else {
 				return s.error('invalid backslash escape')
@@ -195,7 +201,7 @@ fn (mut s Scanner) num_scan() Token {
 	// -[digit][?[dot][digit]][?[E/e][?-/+][digit]]
 	mut is_fl := false
 	mut dot_index := -1
-	mut digits := []byte{}
+	mut digits := []u8{}
 	if s.text[s.pos] == `-` {
 		digits << `-`
 		if !s.text[s.pos + 1].is_digit() {
@@ -241,9 +247,11 @@ fn (mut s Scanner) num_scan() Token {
 // invalid_token returns an error token with the invalid token message.
 fn (s Scanner) invalid_token() Token {
 	if s.text[s.pos] >= 32 && s.text[s.pos] <= 126 {
-		return s.error('invalid token `${s.text[s.pos].ascii_str()}`')
+		x := s.text[s.pos].ascii_str()
+		return s.error('invalid token `${x}`')
 	} else {
-		return s.error('invalid token ${s.text[s.pos].str_escaped()}')
+		x := s.text[s.pos].str_escaped()
+		return s.error('invalid token `${x}`')
 	}
 }
 
@@ -254,7 +262,7 @@ fn (mut s Scanner) scan() Token {
 		s.move()
 	}
 	if s.pos >= s.text.len {
-		return s.tokenize([]byte{}, .eof)
+		return s.tokenize([]u8{}, .eof)
 	} else if s.pos + 3 < s.text.len && (s.text[s.pos] == `t` || s.text[s.pos] == `n`) {
 		ident := s.text[s.pos..s.pos + 4].bytestr()
 		if ident == 'true' || ident == 'null' {
@@ -290,7 +298,7 @@ fn (mut s Scanner) scan() Token {
 		return s.invalid_token()
 	} else if s.text[s.pos] in json2.char_list {
 		chr := s.text[s.pos]
-		tok := s.tokenize([]byte{}, TokenKind(int(chr)))
+		tok := s.tokenize([]u8{}, unsafe { TokenKind(int(chr)) })
 		s.move()
 		return tok
 	} else if s.text[s.pos] == `"` {

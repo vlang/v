@@ -1,3 +1,9 @@
+vlib/v/checker/tests/ambiguous_field_method_err.vv:23:2: warning: unused variable: `n`
+   21 |     b := Bar{}
+   22 |     b.test()
+   23 |     n := b.name
+      |     ^
+   24 | }
 vlib/v/checker/tests/ambiguous_field_method_err.vv:22:4: error: ambiguous method `test`
    20 | fn main() {
    21 |     b := Bar{}

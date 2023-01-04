@@ -13,13 +13,13 @@ pub mut:
 }
 
 pub fn (particle Particle) draw(mut ctx gg.Context) {
-	ctx.draw_circle(particle.pos.x, get_params().height - particle.pos.y, get_params().particle_radius,
+	ctx.draw_circle_filled(particle.pos.x, get_params().height - particle.pos.y, get_params().particle_radius,
 		particle.color)
 }
 
 pub fn (mut particle Particle) tick(mut rocket Rocket, mut ctx gg.Context) {
 	particle.lifespan -= get_params().age_rate
-	particle.color.a = byte(particle.lifespan)
+	particle.color.a = u8(particle.lifespan)
 
 	if particle.lifespan <= 0 {
 		rocket.dead = true
@@ -32,5 +32,5 @@ pub fn (mut particle Particle) tick(mut rocket Rocket, mut ctx gg.Context) {
 	particle.pos += particle.vel
 	particle.draw(mut ctx)
 
-	particle.accel = {}
+	particle.accel = Vector{}
 }

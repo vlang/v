@@ -1,3 +1,5 @@
+// vtest flaky: true
+// vtest retry: 3
 import sync
 import time
 
@@ -11,12 +13,12 @@ fn run_forever(shared foo []int, mut sem sync.Semaphore) {
 fn test_semaphore() {
 	shared abc := &[0]
 	mut sem := sync.new_semaphore()
-	go run_forever(shared abc, mut sem)
+	spawn run_forever(shared abc, mut sem)
 	for _ in 0 .. 1000 {
 		unsafe { abc[0]-- }
 	}
 	// wait for the 2 coroutines to finish using the semaphore
-	stopwatch := time.new_stopwatch({})
+	stopwatch := time.new_stopwatch()
 	mut elapsed := stopwatch.elapsed()
 	if !sem.timed_wait(200 * time.millisecond) {
 		// we should come here due to timeout

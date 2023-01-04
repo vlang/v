@@ -3,7 +3,7 @@ module clipboard
 import time
 
 #include <windows.h>
-#flag -lUser32
+#flag -luser32
 
 struct WndClassEx {
 	cb_size         u32
@@ -15,9 +15,9 @@ struct WndClassEx {
 	h_icon          C.HICON
 	h_cursor        C.HCURSOR
 	hbr_background  C.HBRUSH
-	lpsz_menu_name  &u16 // LPCWSTR
-	lpsz_class_name &u16
-	h_icon_sm       &u16
+	lpsz_menu_name  &u16 = unsafe { nil } // LPCWSTR
+	lpsz_class_name &u16 = unsafe { nil }
+	h_icon_sm       &u16 = unsafe { nil }
 }
 
 fn C.RegisterClassEx(class &WndClassEx) int
@@ -51,7 +51,11 @@ fn C.OpenClipboard(hwnd C.HWND) int
 
 fn C.DestroyWindow(hwnd C.HWND)
 
-struct Clipboard {
+// Clipboard represents a system clipboard.
+//
+// System "copy" and "paste" actions utilize the clipboard for temporary storage.
+[heap]
+pub struct Clipboard {
 	max_retries int
 	retry_delay int
 mut:
@@ -104,14 +108,18 @@ fn new_clipboard() &Clipboard {
 	return cb
 }
 
+// check_availability returns true if the clipboard is ready to be used.
 pub fn (cb &Clipboard) check_availability() bool {
 	return cb.hwnd != C.HWND(C.NULL)
 }
 
+// has_ownership returns true if the contents of
+// the clipboard were created by this clipboard instance.
 pub fn (cb &Clipboard) has_ownership() bool {
 	return C.GetClipboardOwner() == cb.hwnd
 }
 
+// clear empties the clipboard contents.
 pub fn (mut cb Clipboard) clear() {
 	if !cb.get_clipboard_lock() {
 		return
@@ -121,6 +129,8 @@ pub fn (mut cb Clipboard) clear() {
 	cb.foo = 0
 }
 
+// free releases all memory associated with the clipboard
+// instance.
 pub fn (mut cb Clipboard) free() {
 	C.DestroyWindow(cb.hwnd)
 	cb.foo = 0
@@ -143,6 +153,8 @@ fn to_wide(text string) C.HGLOBAL {
 	return buf
 }
 
+// set_text transfers `text` to the system clipboard.
+// This is often associated with a *copy* action (`Ctrl` + `C`).
 pub fn (mut cb Clipboard) set_text(text string) bool {
 	cb.foo = 0
 	buf := to_wide(text)
@@ -164,6 +176,9 @@ pub fn (mut cb Clipboard) set_text(text string) bool {
 	return true
 }
 
+// get_text retrieves the contents of the system clipboard
+// as a `string`.
+// This is often associated with a *paste* action (`Ctrl` + `V`).
 pub fn (mut cb Clipboard) get_text() string {
 	cb.foo = 0
 	if !cb.get_clipboard_lock() {
