@@ -5,12 +5,15 @@ struct Test {
 	d ?[][]string
 }
 
-fn run_loop[U](val []U) []string {
+fn run_loop[U](val U, field_name string) []string {
 	mut out := []string{}
 	$for field in U.fields {
 		variable := val.$(field.name)
-		for element in variable {
-			out << '${element}'
+		if field_name == field.name {
+			for element in variable {
+				println(element)
+				out << element.str()
+			}
 		}
 	}
 	return out
@@ -24,8 +27,9 @@ fn test_main() {
 		d: [['foo'], ['bar']]
 	}
 
-	assert run_loop(test.a?).str() == "['[1, 2, 3]: 1', '[1, 2, 3]: 2', '[1, 2, 3]: 3']"
-	assert run_loop(test.b?).str() == "['['foo', 'bar']: foo', '['foo', 'bar']: bar']"
-	assert run_loop(test.c?).str() == "['[1.2, 2.3]: 1.2', '[1.2, 2.3]: 2.3']"
-	assert run_loop(test.d?).str() == "['[['foo'], ['bar']]: ['foo']', '[['foo'], ['bar']]: ['bar']']"
+	// println(run_loop(test, 'a'))
+	assert run_loop(test, 'a').str() == "['1', '2', '3']"
+	assert run_loop(test, 'b').str() == "['foo', 'bar']"
+	assert run_loop(test, 'c').str() == "['1.2', '2.3']"
+	assert run_loop(test, 'd').str() == "['['foo']', '['bar']']"
 }

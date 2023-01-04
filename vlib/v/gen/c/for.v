@@ -132,8 +132,15 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	mut node := unsafe { node_ }
 	if node.kind == .any {
 		g.inside_for_in_any_cond = true
-		unwrapped_typ := g.unwrap_generic(node.cond_type)
-		unwrapped_sym := g.table.sym(unwrapped_typ)
+
+		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
+		mut unwrapped_sym := g.table.sym(unwrapped_typ)
+
+		if g.is_comptime_var(node.cond) {
+			unwrapped_typ = g.unwrap_generic(g.comptime_for_field_type)
+			unwrapped_sym = g.table.sym(unwrapped_typ)
+		}
+
 		node.kind = unwrapped_sym.kind
 		node.cond_type = unwrapped_typ
 		if node.key_var.len > 0 {
@@ -163,10 +170,20 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	} else if node.kind == .array {
 		// `for num in nums {`
 		// g.writeln('// FOR IN array')
-		styp := g.typ(node.val_type)
-		val_sym := g.table.sym(node.val_type)
+		mut styp := g.typ(node.val_type)
+		mut val_sym := g.table.sym(node.val_type)
+
+		if g.is_comptime_var(node.cond) {
+			unwrapped_typ := g.unwrap_generic(g.comptime_for_field_type)
+			val_sym = g.table.sym(unwrapped_typ)
+			node.val_type = g.table.value_type(unwrapped_typ)
+			styp = g.typ(node.val_type)
+			node.scope.update_var_type(node.val_var, node.val_type)
+			node.cond_type = node.val_type
+		}
 		mut cond_var := ''
-		if node.cond is ast.Ident || node.cond is ast.SelectorExpr {
+		if (node.cond is ast.Ident && !node.cond_type.has_flag(.optional))
+			|| node.cond is ast.SelectorExpr {
 			cond_var = g.expr_string(node.cond)
 		} else {
 			cond_var = g.new_tmp_var()
@@ -180,7 +197,13 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		share_accessor := if node.cond_type.share() == .shared_t { 'val.' } else { '' }
 		op_field := field_accessor + share_accessor
 		g.empty_line = true
-		g.writeln('for (int ${i} = 0; ${i} < ${cond_var}${op_field}len; ++${i}) {')
+		opt_expr := '(*(${g.typ(node.cond_type.clear_flag(.optional))}*)${cond_var}${op_field}data)'
+		cond_expr := if node.cond_type.has_flag(.optional) {
+			'/*opt*/ ${opt_expr}${op_field}len'
+		} else {
+			'${cond_var}${op_field}len'
+		}
+		g.writeln('for (int ${i} = 0; ${i} < ${cond_expr}; ++${i}) {')
 		if node.val_var != '_' {
 			if val_sym.kind == .function {
 				g.write('\t')
@@ -196,7 +219,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				// instead of
 				// `int* val = ((int**)arr.data)[i];`
 				// right := if node.val_is_mut { styp } else { styp + '*' }
-				right := if node.val_is_mut || node.val_is_ref {
+				right := if node.cond_type.has_flag(.optional) {
+					'/*opt*/ ((${styp}*)${opt_expr}${op_field}data)[${i}]'
+				} else if node.val_is_mut || node.val_is_ref {
 					'((${styp})${cond_var}${op_field}data) + ${i}'
 				} else {
 					'((${styp}*)${cond_var}${op_field}data)[${i}]'

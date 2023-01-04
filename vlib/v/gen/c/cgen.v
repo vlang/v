@@ -4214,12 +4214,21 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	}
 }
 
+[inline]
+fn (mut g Gen) is_optional_var(node ast.Expr) bool {
+	return node is ast.Ident
+		&& (node as ast.Ident).info is ast.IdentVar && ((node as ast.Ident).info as ast.IdentVar).is_optional
+}
+
+[inline]
+fn (mut g Gen) is_comptime_var(node ast.Expr) bool {
+	return g.inside_comptime_for_field && node is ast.Ident
+		&& (node as ast.Ident).info is ast.IdentVar && ((node as ast.Ident).obj as ast.Var).is_comptime_field
+}
+
+[inline]
 fn (mut g Gen) var_or_comptime_type(node ast.Ident) ast.Type {
-	if g.inside_comptime_for_field && node.info is ast.IdentVar
-		&& (node.obj as ast.Var).is_comptime_field {
-		return g.comptime_for_field_type
-	}
-	return node.info.typ
+	return if g.is_comptime_var(node) { g.comptime_for_field_type } else { node.info.typ }
 }
 
 fn (mut g Gen) ident(node ast.Ident) {
