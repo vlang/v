@@ -50,7 +50,7 @@ mut:
 	val T
 }
 
-fn test_struc_with_bool_to_map() {
+fn test_struct_with_bool_to_map() {
 	array_of_struct := [StructType[bool]{
 		val: true
 	}, StructType[bool]{
