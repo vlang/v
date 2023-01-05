@@ -142,7 +142,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					key_str := '${left.field_expr.expr.name}.typ'
 					var_type = g.comptime_var_type_map[key_str] or { var_type }
 
-					if var_type.has_flag(.optional) || val_type.has_flag(.optional) {
+					if var_type.has_flag(.optional) {
 						tmp_var := g.new_tmp_var()
 						g.expr(left)
 						g.write(' ${op} ')
