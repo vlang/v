@@ -757,6 +757,74 @@ fn (mut g Gen) conversion_function_call(prefix string, postfix string, node ast.
 	g.write(')${dot}_typ )${postfix}')
 }
 
+fn (mut g Gen) do_handle_array_method_call(node ast.CallExpr, left_type ast.Type) bool {
+	match node.name {
+		'filter' {
+			g.gen_array_filter(node)
+			return true
+		}
+		'sort' {
+			g.gen_array_sort(node)
+			return true
+		}
+		'insert' {
+			g.gen_array_insert(node)
+			return true
+		}
+		'map' {
+			g.gen_array_map(node)
+			return true
+		}
+		'prepend' {
+			g.gen_array_prepend(node)
+			return true
+		}
+		'contains' {
+			g.gen_array_contains(left_type, node.left, node.args[0].expr)
+			return true
+		}
+		'index' {
+			g.gen_array_index(node)
+			return true
+		}
+		'wait' {
+			g.gen_array_wait(node)
+			return true
+		}
+		'any' {
+			g.gen_array_any(node)
+			return true
+		}
+		'all' {
+			g.gen_array_all(node)
+			return true
+		}
+		'delete', 'drop' {
+			g.write('array_${node.name}(')
+			if left_type.has_flag(.shared_f) {
+				if left_type.is_ptr() {
+					g.write('&')
+				}
+				g.expr(node.left)
+				g.write('->val')
+			} else {
+				if left_type.is_ptr() {
+					g.expr(node.left)
+				} else {
+					g.write('&')
+					g.expr(node.left)
+				}
+			}
+			g.write(', ')
+			g.expr(node.args[0].expr)
+			g.write(')')
+			return true
+		}
+		else {}
+	}
+	return false
+}
+
 fn (mut g Gen) method_call(node ast.CallExpr) {
 	// TODO: there are still due to unchecked exprs (opt/some fn arg)
 	if node.left_type == 0 {
@@ -878,48 +946,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	left_sym := g.table.sym(left_type)
 	final_left_sym := g.table.final_sym(left_type)
 	if left_sym.kind == .array {
-		match node.name {
-			'filter' {
-				g.gen_array_filter(node)
-				return
-			}
-			'sort' {
-				g.gen_array_sort(node)
-				return
-			}
-			'insert' {
-				g.gen_array_insert(node)
-				return
-			}
-			'map' {
-				g.gen_array_map(node)
-				return
-			}
-			'prepend' {
-				g.gen_array_prepend(node)
-				return
-			}
-			'contains' {
-				g.gen_array_contains(left_type, node.left, node.args[0].expr)
-				return
-			}
-			'index' {
-				g.gen_array_index(node)
-				return
-			}
-			'wait' {
-				g.gen_array_wait(node)
-				return
-			}
-			'any' {
-				g.gen_array_any(node)
-				return
-			}
-			'all' {
-				g.gen_array_all(node)
-				return
-			}
-			else {}
+		if g.do_handle_array_method_call(node, left_type) {
+			return
 		}
 	}
 
@@ -945,72 +973,26 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.expr(node.args[0].expr)
 		g.write('})')
 		return
-	} else if left_sym.kind == .array && node.name == 'delete' {
-		g.write('array_delete(')
-		if left_type.has_flag(.shared_f) {
-			if left_type.is_ptr() {
-				g.write('&')
-			}
-			g.expr(node.left)
-			g.write('->val')
-		} else {
-			if left_type.is_ptr() {
-				g.expr(node.left)
-			} else {
-				g.write('&')
-				g.expr(node.left)
-			}
-		}
-		g.write(', ')
-		g.expr(node.args[0].expr)
-		g.write(')')
-		return
-	} else if left_sym.kind == .array && node.name == 'drop' {
-		g.write('array_drop(')
-		if left_type.has_flag(.shared_f) {
-			if left_type.is_ptr() {
-				g.write('&')
-			}
-			g.expr(node.left)
-			g.write('->val')
-		} else {
-			if left_type.is_ptr() {
-				g.expr(node.left)
-			} else {
-				g.write('&')
-				g.expr(node.left)
-			}
-		}
-		g.write(', ')
-		g.expr(node.args[0].expr)
-		g.write(')')
-		return
 	}
 
 	if left_sym.kind in [.sum_type, .interface_] {
-		if node.name == 'type_name' {
-			if left_sym.kind == .sum_type {
-				g.conversion_function_call('charptr_vstring_literal( /* ${left_sym.name} */ v_typeof_sumtype_${typ_sym.cname}',
-					')', node)
-				return
+		prefix_name := if left_sym.kind == .sum_type { 'sumtype' } else { 'interface' }
+		match node.name {
+			'type_name' {
+				if left_sym.kind in [.sum_type, .interface_] {
+					g.conversion_function_call('charptr_vstring_literal( /* ${left_sym.name} */ v_typeof_${prefix_name}_${typ_sym.cname}',
+						')', node)
+					return
+				}
 			}
-			if left_sym.kind == .interface_ {
-				g.conversion_function_call('charptr_vstring_literal( /* ${left_sym.name} */ v_typeof_interface_${typ_sym.cname}',
-					')', node)
-				return
+			'type_idx' {
+				if left_sym.kind in [.sum_type, .interface_] {
+					g.conversion_function_call('/* ${left_sym.name} */ v_typeof_${prefix_name}_idx_${typ_sym.cname}',
+						'', node)
+					return
+				}
 			}
-		}
-		if node.name == 'type_idx' {
-			if left_sym.kind == .sum_type {
-				g.conversion_function_call('/* ${left_sym.name} */ v_typeof_sumtype_idx_${typ_sym.cname}',
-					'', node)
-				return
-			}
-			if left_sym.kind == .interface_ {
-				g.conversion_function_call('/* ${left_sym.name} */ v_typeof_interface_idx_${typ_sym.cname}',
-					'', node)
-				return
-			}
+			else {}
 		}
 	}
 
