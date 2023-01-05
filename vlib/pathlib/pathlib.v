@@ -1,7 +1,6 @@
 module pathlib
 
 import os
-import regex
 
 [noinit]
 struct Path {
@@ -13,6 +12,9 @@ pub:
 	suffix string
 	sep    string
 }
+
+
+// CONSTRUCTORS
 
 fn path_from_parts(parts []string) Path {
 	sep := os.path_separator
@@ -32,14 +34,15 @@ fn path_from_parts(parts []string) Path {
 	}
 }
 
-pub fn path(path string) Path {
-	mut clean_path := path
+pub fn path(path_string string) Path {
+	if path_string.len == 0 {
+		return path('.')
+	}
+
+	clean_path := path_string.trim_string_right(os.path_separator)
 
 	// TODO: reduce repeating separators (/) to one
 
-	if path.ends_with(os.path_separator) {
-		clean_path = path.trim_string_right(os.path_separator)
-	}
 	splitted := clean_path.split(os.path_separator)
 	return path_from_parts(splitted)
 }
@@ -52,11 +55,6 @@ pub fn cwd() Path {
 // Constructs a path instance representing the home folder of the current user.
 pub fn home() Path {
 	return path(os.home_dir())
-}
-
-// Converts the path to a string representation.
-pub fn (p Path) str() string {
-	return p.parts.join(p.sep)
 }
 
 pub fn (p1 Path) / (p2 Path) Path {
@@ -72,9 +70,21 @@ pub fn (p Path) absolute() Path {
 	return path(absolute_path)
 }
 
+pub fn (p Path) as_posix() string {
+	// posix uses `/' as separator
+	return p.parts.join('/')
+}
+
 pub fn (p Path) as_uri() string {
+	// TODO: call as_posix first
 	absolute_path_str := p.absolute().str()
-	return 'file://${absolute_path_str}'
+	if !absolute_path_str.starts_with('/') {
+		windows_add_slash := '/'
+	} else {
+		windows_add_slash := ''
+	}
+
+	return 'file://${windows_add_slash}${absolute_path_str}'
 }
 
 pub fn (p Path) chmod(mode int) ! {
@@ -91,33 +101,25 @@ pub fn (p Path) expanduser() Path {
 }
 
 pub fn (p Path) glob(patterns ...string) ![]Path {
-	glob_result := os.glob(patterns)!
+	glob_result := os.glob(...patterns)!
 	// TODO
-	paths := []Path{}
+	mut paths := []Path{}
 	for result in glob_result {
 		paths << path(result)
 	}
 	return paths
 }
 
-pub fn (p Path) group() string {
-	// TODO
-}
-
-pub fn (p Path) link(target string) ! {
-	os.link(p.str(), target)!
-}
-
 pub fn (p Path) is_absolute() bool {
-	return p.root != ''
+	return os.is_abs_path(p.str())
 }
 
 pub fn (p Path) is_block_device() bool {
-	// TODO
+	return os.inode(p.str()).typ == 'block_device'
 }
 
 pub fn (p Path) is_char_device() bool {
-	// TODO
+	return os.inode(p.str()).typ == 'character_device'
 }
 
 pub fn (p Path) is_dir() bool {
@@ -125,42 +127,45 @@ pub fn (p Path) is_dir() bool {
 }
 
 pub fn (p Path) is_fifo() bool {
-	// TODO
+	return os.inode(p.str()).typ == 'fifo'
 }
 
 pub fn (p Path) is_file() bool {
 	return os.is_file(p.str())
 }
 
-pub fn (p Path) is_mount() bool {
-	// TODO
-}
+// pub fn (p Path) is_mount() bool {
+// 	// TODO
+// }
+
+// pub fn (p Path) is_relative_to(other Path) bool {
+// 	// TODO
+// }
 
 pub fn (p Path) is_socket() bool {
-	// TODO
+	return os.inode(p.str()).typ == 'socket'
 }
 
 pub fn (p Path) is_link() bool {
 	return os.is_link(p.str())
 }
 
+pub fn (p Path) is_regular() bool {
+	return os.inode(p.str()).typ == 'regular'
+}
+
 pub fn (p Path) iterdir() ![]Path {
-	// TODO
 	files := os.ls(p.str())!
 	// convert string filenames to paths
 	return files.map(path(it))
 }
 
-//     Like chmod(), except if the path points to a symlink, the symlink's
-//     permissions are changed, rather than its target's.
-pub fn (p Path) lchmod(mode int) {
-	// 	// TODO
+pub fn (p Path) join(other Path) Path {
+	return path(os.join_path_single(p.str(), other.str()))
 }
 
-//     Like stat(), except if the path points to a symlink, the symlink's
-//     status information is returned, rather than its target's.
-pub fn (p Path) lstat() {
-	// TODO
+pub fn (p Path) link(target Path) ! {
+	os.link(p.str(), target.str())!
 }
 
 pub fn (p Path) mkdir(params os.MkdirParams) !Path {
@@ -171,10 +176,6 @@ pub fn (p Path) mkdir(params os.MkdirParams) !Path {
 
 pub fn (p Path) open(mode string, options ...int) !os.File {
 	return os.open_file(p.str(), mode, ...options)!
-}
-
-pub fn (p Path) owner() string {
-	// TODO
 }
 
 pub fn (p Path) parent() Path {
@@ -207,29 +208,8 @@ pub fn (p Path) parents() []Path {
 	return parents.reverse()
 }
 
-pub fn (p Path) read_bytes()
-
-// TODO
-//     Open the file in bytes mode, read it, and close the file.
-
-// pub fn (p Path) read_text(encoding=None, errors=None)
-// 	// TODO
-// //     Open the file in text mode, read it, and close the file.
-
-pub fn (p Path) readlink() Path {
-	// TODO
-}
-
-// Returns the new Path instance pointing to the target path.
-pub fn (p Path) rename(target string) !Path {
-	os.mv(p.str(), target)!
-	return path(target)
-}
-
-
-//     Returns the new Path instance pointing to the target path.
-pub fn (p Path) replace(target string) Path {
-	// TODO
+pub fn (p Path) quoted() string {
+	return os.quoted_path(p.str())
 }
 
 // Make the path absolute, resolving all symlinks, `..`, etc. on the way and also
@@ -238,27 +218,18 @@ pub fn (p Path) resolve() Path {
 	return path(os.real_path(p.str()))
 }
 
-//     Recursively yield all existing files (of any kind, including
-//     directories) matching the given relative pattern, anywhere in
-//     this subtree.
-pub fn (p Path) rglob(pattern string) []Path {
-	// TODO
-}
-
 pub fn (p Path) rmdir() ! {
 	os.rmdir(p.str())!
 }
 
-//     Return whether other_path is the same or not as this file
-//     (as returned by os.path.samefile()).
-pub fn (p Path) samefile(other_path Path) bool {
-	// TODO
+// Converts the path to a string representation.
+pub fn (p Path) str() string {
+	return p.parts.join(p.sep)
 }
 
-//     Return the result of the stat() system call on this path, like
-//     os.stat() does.
-// pub fn (p Path) stat(*, follow_symlinks=True)
-// TODO
+pub fn (p Path) symlink(target Path) ! {
+	os.symlink(p.str(), target.str())
+}
 
 //     Create this file with the given access mode, if it doesn't exist.
 pub fn (p Path) touch() !Path {
@@ -286,7 +257,7 @@ pub fn (p Path) with_name(name string) !Path {
 		error("name can't contain path separator")
 	}
 
-	mut parts := p.parts
+	mut parts := p.parts.clone()
 	parts[parts.len - 1] = name
 
 	return path_from_parts(parts)
@@ -311,10 +282,10 @@ pub fn (p Path) with_stem(stem string) !Path {
 
 	// remove current suffix if it has one, otherwise use full name
 	// in zipfile.gz.zip, only .zip is the suffix and thus removed
-	curent_ext := current_name.all_after_last('.')
+	current_ext := current_name.all_after_last('.')
 	filename_with_stem := stem + '.' + current_ext
 
-	mut parts := p.parts
+	mut parts := p.parts.clone()
 	parts[parts.len - 1] = filename_with_stem
 
 	return path_from_parts(parts)
@@ -346,16 +317,8 @@ pub fn (p Path) with_suffix(suffix string) !Path {
 	current_stem := current_name.all_before_last('.')
 	filename_with_suffix := current_stem + suffix
 
-	mut parts := p.parts
+	mut parts := p.parts.clone()
 	parts[parts.len - 1] = filename_with_suffix
 
 	return path_from_parts(parts)
 }
-
-// pub fn (p Path) write_bytes(data)
-// TODO
-//     Open the file in bytes mode, write to it, and close the file.
-
-// pub fn (p Path) write_text(data, encoding=None, errors=None, newline=None)
-// TODO
-//     Open the file in text mode, write to it, and close the file.
