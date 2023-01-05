@@ -1086,7 +1086,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		name = 'sync__Channel_${node.name}'
 	} else if final_left_sym.kind == .map && node.name in ['keys', 'values'] {
 		name = 'map_${node.name}'
- git push --set-upstream origin refactor_cgen_fn	}
+	}
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__')
 		&& node.name != 'str' {
 		sym := g.table.sym(node.receiver_type)
