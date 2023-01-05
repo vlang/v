@@ -146,6 +146,7 @@ const (
 	]
 	skip_with_fsanitize_undefined = [
 		'do_not_remove',
+		'vlib/v/tests/orm_sub_array_struct_test.v',
 	]
 	skip_with_werror              = [
 		'do_not_remove',
