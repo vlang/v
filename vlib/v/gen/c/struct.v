@@ -167,8 +167,8 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 					continue
 				}
 			}
-			if field.name in inited_fields {
-				mut sfield := node.fields[inited_fields[field.name]]
+			if already_initalised_node_field_index := inited_fields[field.name] {
+				mut sfield := node.fields[already_initalised_node_field_index]
 				if sfield.typ == 0 {
 					continue
 				}
