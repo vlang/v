@@ -1502,7 +1502,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		node.is_noreturn = method.is_noreturn
 		node.is_ctor_new = method.is_ctor_new
 		node.return_type = method.return_type
-		if !method.is_pub && !c.pref.is_test && method.mod != c.mod {
+		if !method.is_pub && method.mod != c.mod {
 			// If a private method is called outside of the module
 			// its receiver type is defined in, show an error.
 			// println('warn $method_name lef.mod=$left_type_sym.mod c.mod=$c.mod')

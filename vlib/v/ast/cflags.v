@@ -6,7 +6,7 @@ module ast
 import v.cflag
 
 // check if cflag is in table
-fn (t &Table) has_cflag(flag cflag.CFlag) bool {
+pub fn (t &Table) has_cflag(flag cflag.CFlag) bool {
 	for cf in t.cflags {
 		if cf.os == flag.os && cf.name == flag.name && cf.value == flag.value {
 			return true
