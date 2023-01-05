@@ -176,9 +176,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			g.writeln(';')
 		}
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		field_accessor := if node.cond_type.is_ptr() { '->' } else { '.' }
-		share_accessor := if node.cond_type.share() == .shared_t { 'val.' } else { '' }
-		op_field := field_accessor + share_accessor
+		op_field := g.arrow_or_ptr(node.cond_type)		
 		g.empty_line = true
 		g.writeln('for (int ${i} = 0; ${i} < ${cond_var}${op_field}len; ++${i}) {')
 		if node.val_var != '_' {
@@ -271,10 +269,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			g.expr(node.cond)
 			g.writeln(';')
 		}
-		mut arw_or_pt := if node.cond_type.is_ptr() { '->' } else { '.' }
-		if node.cond_type.has_flag(.shared_f) {
-			arw_or_pt = '->val.'
-		}
+		arw_or_pt := g.arrow_or_ptr(node.cond_type)
 		idx := g.new_tmp_var()
 		map_len := g.new_tmp_var()
 		g.empty_line = true
