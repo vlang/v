@@ -2,17 +2,17 @@ module main
 
 import vweb
 
-['/users'; get]
-pub fn (mut app App) users() !vweb.Result {
+['/products'; get]
+pub fn (mut app App) products() !vweb.Result {
 	token := app.get_cookie('token') or {
 		app.set_status(400, '')
 		return app.text('${err}')
 	}
-	users := get_users(token) or {
+
+	user := get_user(token) or {
 		app.set_status(400, '')
 		return app.text('Failed to fetch data from the server. Error: ${err}')
 	}
-	println(users)
 
 	return $vweb.html()
 }

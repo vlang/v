@@ -24,6 +24,9 @@
          </div>
       </form>
       <script type="text/javascript">
+        // function eraseCookie(name) {
+        //     document.cookie = name + '=; Max-Age=0'
+        // }
          async function addUser() {
          const form = document.querySelector('#index_form');
          const formData = new FormData(form);
@@ -45,8 +48,8 @@
              });
          }
          async function login() {
-         const form = document.querySelector('#index_form');
-         const formData = new FormData(form);
+            const form = document.querySelector('#index_form');
+            const formData = new FormData(form);
              await fetch('/controller/auth', {
                  method: 'POST',
                  body: formData
@@ -58,7 +61,8 @@
                  return response.json()
              })
              .then((data) => {
-                 window.location.href = '/users'
+                document.cookie = 'token='+data+';';
+                window.location.href = '/products'
              })
              .catch((error) => {
                  alert(error);
