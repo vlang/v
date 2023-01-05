@@ -4,7 +4,6 @@
 [has_globals]
 module rand
 
-import math
 import math.bits
 import rand.config
 import rand.constants
@@ -230,7 +229,7 @@ pub fn (mut rng PRNG) f32cp() f32 {
 
 	// Assumes little-endian IEEE floating point.
 	x = (exp << 23) | (x >> 8) & constants.ieee754_mantissa_f32_mask
-	return math.f32_from_bits(x)
+	return bits.f32_from_bits(x)
 }
 
 // f64 returns a pseudorandom `f64` value in range `[0, 1)`
@@ -270,7 +269,7 @@ pub fn (mut rng PRNG) f64cp() f64 {
 		x = rng.u64()
 	}
 	x = (exp << 52) | (x & constants.ieee754_mantissa_f64_mask)
-	return math.f64_from_bits(x)
+	return bits.f64_from_bits(x)
 }
 
 // f32n returns a pseudorandom `f32` value in range `[0, max]`.
