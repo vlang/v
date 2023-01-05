@@ -132,18 +132,15 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	mut node := unsafe { node_ }
 	if node.kind == .any {
 		g.inside_for_in_any_cond = true
-
 		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
 		mut unwrapped_sym := g.table.sym(unwrapped_typ)
-
-		if g.is_comptime_var(node.cond) {
-			unwrapped_typ = g.unwrap_generic(g.comptime_for_field_type)
-			unwrapped_sym = g.table.sym(unwrapped_typ)
-		}
-
 		node.kind = unwrapped_sym.kind
 		node.cond_type = unwrapped_typ
 		if node.key_var.len > 0 {
+			if g.is_comptime_var(node.cond) {
+				unwrapped_typ = g.unwrap_generic(g.comptime_for_field_type)
+				unwrapped_sym = g.table.sym(unwrapped_typ)
+			}
 			key_type := match unwrapped_sym.kind {
 				.map { unwrapped_sym.map_info().key_type }
 				else { ast.int_type }
