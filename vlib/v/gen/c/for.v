@@ -176,7 +176,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			g.writeln(';')
 		}
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		op_field := g.arrow_or_ptr(node.cond_type)		
+		op_field := g.arrow_or_ptr(node.cond_type)
 		g.empty_line = true
 		g.writeln('for (int ${i} = 0; ${i} < ${cond_var}${op_field}len; ++${i}) {')
 		if node.val_var != '_' {

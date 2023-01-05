@@ -786,7 +786,8 @@ fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_s
 			g.expr(node.args[0].expr)
 			g.write('})')
 			return true
-		} else {}
+		}
+		else {}
 	}
 	return false
 }
