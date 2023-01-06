@@ -154,7 +154,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			if sym.kind == .string {
 				value_type = ast.u8_type
 			}
-			if value_type == ast.void_type || typ.has_flag(.optional) || typ.has_flag(.result) {
+			if value_type == ast.void_type || typ.has_flag(.result) {
 				if typ != ast.void_type {
 					c.error('for in: cannot index `${c.table.type_to_str(typ)}`', node.cond.pos())
 				}

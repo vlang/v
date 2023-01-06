@@ -4218,6 +4218,11 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	}
 }
 
+pub fn (mut g Gen) is_comptime_var(node ast.Expr) bool {
+	return g.inside_comptime_for_field && node is ast.Ident
+		&& (node as ast.Ident).info is ast.IdentVar && ((node as ast.Ident).obj as ast.Var).is_comptime_field
+}
+
 fn (mut g Gen) ident(node ast.Ident) {
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 	g.prevent_sum_type_unwrapping_once = false
