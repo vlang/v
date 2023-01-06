@@ -104,8 +104,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					&& c.type_implements(default_expr_type, field.typ, field.pos)
 				c.check_expected(default_expr_type, field.typ) or {
 					if sym.kind == .interface_ && interface_implemented {
-						if !default_expr_type.is_ptr() && !default_expr_type.is_pointer()
-							&& !c.inside_unsafe {
+						if !c.inside_unsafe && !default_expr_type.is_real_pointer() {
 							if c.table.sym(default_expr_type).kind != .interface_ {
 								c.mark_as_referenced(mut &node.fields[i].default_expr,
 									true)
@@ -114,6 +113,11 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					} else {
 						c.error('incompatible initializer for field `${field.name}`: ${err.msg()}',
 							field.default_expr.pos())
+					}
+				}
+				if field.default_expr.is_nil() {
+					if !field.typ.is_real_pointer() && c.table.sym(field.typ).kind != .function {
+						c.error('cannot assign `nil` to a non-pointer field', field.type_pos)
 					}
 				}
 				// Check for unnecessary inits like ` = 0` and ` = ''`
@@ -132,12 +136,6 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 							c.error('cannot assign negative value to unsigned integer type',
 								field.default_expr.pos)
 						}
-					}
-				}
-				if field.default_expr is ast.UnsafeExpr {
-					if field.default_expr.expr is ast.Nil && !field.typ.is_ptr()
-						&& c.table.sym(field.typ).kind != .function && !field.typ.is_pointer() {
-						c.error('cannot assign `nil` to a non-pointer field', field.type_pos)
 					}
 				}
 				if field.default_expr is ast.IntegerLiteral {
@@ -444,8 +442,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				expr_type_sym := c.table.sym(expr_type)
 				if field_type_sym.kind == .interface_ {
 					if c.type_implements(expr_type, field_info.typ, field.pos) {
-						if !expr_type.is_ptr() && !expr_type.is_pointer()
-							&& expr_type_sym.kind != .interface_ && !c.inside_unsafe {
+						if !c.inside_unsafe && expr_type_sym.kind != .interface_
+							&& !expr_type.is_real_pointer() {
 							c.mark_as_referenced(mut &field.expr, true)
 						}
 					}
@@ -462,7 +460,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 							field.pos)
 					}
 				} else {
-					if field_info.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer()
+					if field_info.typ.is_ptr() && !expr_type.is_real_pointer()
 						&& field.expr.str() != '0' {
 						c.error('reference field must be initialized with reference',
 							field.pos)
@@ -516,6 +514,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				sym := c.table.sym(field.typ)
 				if field.name.len > 0 && field.name[0].is_capital() && sym.info is ast.Struct
 					&& sym.language == .v {
+					// struct embeds
 					continue
 				}
 				if field.has_default_expr {
@@ -524,6 +523,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 							idx := c.table.find_type_idx(field.default_expr.typ_str)
 							if idx != 0 {
 								info.fields[i].default_expr_typ = ast.new_type(idx)
+							}
+						} else if field.default_expr.is_nil() {
+							if field.typ.is_real_pointer() {
+								info.fields[i].default_expr_typ = field.typ
 							}
 						} else {
 							if const_field := c.table.global_scope.find_const('${field.default_expr}') {

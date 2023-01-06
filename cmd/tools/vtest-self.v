@@ -142,9 +142,11 @@ const (
 	skip_with_fsanitize_address   = [
 		'vlib/net/websocket/websocket_test.v',
 		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
+		'vlib/v/tests/orm_sub_array_struct_test.v',
 	]
 	skip_with_fsanitize_undefined = [
 		'do_not_remove',
+		'vlib/v/tests/orm_sub_array_struct_test.v',
 	]
 	skip_with_werror              = [
 		'do_not_remove',

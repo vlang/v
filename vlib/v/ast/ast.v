@@ -2267,6 +2267,18 @@ pub fn (expr Expr) is_literal() bool {
 	}
 }
 
+pub fn (e Expr) is_nil() bool {
+	if e is Nil {
+		return true
+	}
+	if e is UnsafeExpr {
+		if e.expr is Nil {
+			return true
+		}
+	}
+	return false
+}
+
 pub fn type_can_start_with_token(tok &token.Token) bool {
 	match tok.kind {
 		.name {

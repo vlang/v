@@ -15,7 +15,7 @@ pub mut:
 	title    JobTitle
 }
 
-fn (e Employee) to_toml() string {
+pub fn (e Employee) to_toml() string {
 	mut mp := map[string]toml.Any{}
 	mp['name'] = toml.Any(e.name)
 	mp['age'] = toml.Any(e.age)
@@ -25,7 +25,7 @@ fn (e Employee) to_toml() string {
 	return mp.to_toml()
 }
 
-fn (mut e Employee) from_toml(any toml.Any) {
+pub fn (mut e Employee) from_toml(any toml.Any) {
 	mp := any.as_map()
 	e.name = mp['name'] or { toml.Any('') }.string()
 	e.age = mp['age'] or { toml.Any(0) }.int()

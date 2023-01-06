@@ -113,7 +113,8 @@ fn new_parser(srce string, convert_type bool) Parser {
 	}
 }
 
-fn (mut p Parser) decode() !Any {
+// decode decodes provided JSON
+pub fn (mut p Parser) decode() !Any {
 	p.next()
 	p.next_with_err()!
 	fi := p.decode_value()!

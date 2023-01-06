@@ -321,7 +321,7 @@ pub mut:
 
 // Reset RE object
 [direct_array_access; inline]
-fn (mut re RE) reset() {
+pub fn (mut re RE) reset() {
 	re.cc_index = 0
 
 	mut i := 0
