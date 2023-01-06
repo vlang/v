@@ -1,7 +1,17 @@
+// pathlib is an object-orientated filesystem paths module. Most I/O operations
+// are wrapped around functions from the `os` module. For example,
+// `os.link('path/to/file.v', 'target.v')` becomes
+// `path('path/to/file.v').link('target.v')`. It is heavily inspiried on
+// Python's pathlib module (https://docs.python.org/3/library/pathlib.html).
 module pathlib
 
+import net.urllib
 import os
 
+// Path represents a filesystem path. It does not have to be an existing path
+// on the current system. Path provides many methods for performing different
+// operations on the path or perform I/O actions on the file / directory
+// path points to.
 [noinit]
 struct Path {
 	parts []string
@@ -13,9 +23,15 @@ pub:
 	sep    string
 }
 
-
 // CONSTRUCTORS
 
+// path_from_parts constructs a new path instance, but from a list of folders
+// pointing to the file.
+//
+// Example:
+// ```v
+// assert path_from_parts(['a', 'b', 'c']) == path('a/b/c')
+// ```
 fn path_from_parts(parts []string) Path {
 	sep := os.path_separator
 	// parts[0] == '' means the path string started with a '/'
@@ -34,12 +50,26 @@ fn path_from_parts(parts []string) Path {
 	}
 }
 
+// path constructs a new path instance given a string representation of a path.
+// Example:
+// ```v
+// assert path('.').absolute().str() == os.getwd()
+// ```
 pub fn path(path_string string) Path {
 	if path_string.len == 0 {
 		return path('.')
 	}
 
-	clean_path := path_string.trim_string_right(os.path_separator)
+	if path_string == os.path_separator {
+		return path_from_parts([''])
+	}
+
+	mut clean_path := path_string
+
+	// only trim right sep if it's not just `/'
+	if path_string.len != 1 {
+		clean_path = clean_path.trim_string_right(os.path_separator)
+	}
 
 	// TODO: reduce repeating separators (/) to one
 
@@ -47,16 +77,24 @@ pub fn path(path_string string) Path {
 	return path_from_parts(splitted)
 }
 
-// Constructs a path instance representing the current working directory.
+// cwd constructs a path instance representing the current working directory.
+// See also: `os.getwd`.
 pub fn cwd() Path {
 	return path(os.getwd())
 }
 
-// Constructs a path instance representing the home folder of the current user.
+// home constructs a path instance representing the home folder of the current user.
+// See also: `os.home_dir`.
 pub fn home() Path {
 	return path(os.home_dir())
 }
 
+// / joins paths.
+//
+// Example:
+// ```v
+// assert path('a/b') / path('c') == path('a/b/c')
+// ```
 pub fn (p1 Path) / (p2 Path) Path {
 	if p2.root == os.path_separator {
 		return p2
@@ -65,71 +103,129 @@ pub fn (p1 Path) / (p2 Path) Path {
 	}
 }
 
+// absolute returns the absolute path representation.
+// See also: `os.abs_path`.
+//
+// Example:
+// ```v
+// assert path('.').absolute() == path('/user/home/v/vlib/pathlib')
+// ```
 pub fn (p Path) absolute() Path {
 	absolute_path := os.abs_path(p.str())
 	return path(absolute_path)
 }
 
+// as_posix converts a Windows path to use posix separators (`/`).
+//
+// Example:
+// ```v
+// assert path('c:\\v\\vlib\\pathlib.v).as_posix() == 'c:/v/vlib/pathlib.v'
+// ```
 pub fn (p Path) as_posix() string {
 	// posix uses `/' as separator
 	return p.parts.join('/')
 }
 
+// as_uri converts the path to a `file://` uri, possibly escaping the path where needed.
+//
+// Example:
+// ```v
+// assert path('/a/b/c d').as_uri() == 'file:///a/b/c%20d'
+// ```
 pub fn (p Path) as_uri() string {
-	// TODO: call as_posix first
-	absolute_path_str := p.absolute().str()
-	if !absolute_path_str.starts_with('/') {
-		windows_add_slash := '/'
-	} else {
-		windows_add_slash := ''
+	absolute_path := p.absolute()
+
+	escaped_parts := absolute_path.parts.map(urllib.path_escape(it))
+	escaped_path := path_from_parts(escaped_parts)
+
+	posix_path := escaped_path.as_posix()
+
+	mut windows_add_sep := ''
+	if !posix_path.starts_with('/') {
+		windows_add_sep = '/'
 	}
 
-	return 'file://${windows_add_slash}${absolute_path_str}'
+	return 'file://${windows_add_sep}${posix_path}'
 }
 
+// chmod modifies the permissions if the path is a file.
+// See also: `os.chmod`.
 pub fn (p Path) chmod(mode int) ! {
 	os.chmod(p.str(), mode)!
 }
 
+// exists returns if the path is an existing file.
+// See also: `os.exists`.
 pub fn (p Path) exists() bool {
 	return os.exists(p.str())
 }
 
+// expanduser expands `~` to the absolute path of the users homefolder.
+// See also: `os.expand_tilde_to_home`.
+//
+// Example:
+// ```v
+// assert path('~/test') == '/user/home/test'
+// ```
 pub fn (p Path) expanduser() Path {
 	// TODO: Python supports ~user, v does not
 	return path(os.expand_tilde_to_home(p.str()))
 }
 
-pub fn (p Path) glob(patterns ...string) ![]Path {
-	glob_result := os.glob(...patterns)!
-	// TODO
-	mut paths := []Path{}
-	for result in glob_result {
-		paths << path(result)
-	}
-	return paths
-}
+// // glob returns a list of paths that
+// // See also: `os.glob`.
+// pub fn (p Path) glob(patterns ...string) ![]Path {
+// 	glob_result := os.glob(...patterns)!
+// 	// TODO
+// 	mut paths := []Path{}
+// 	for result in glob_result {
+// 		paths << path(result)
+// 	}
+// 	return paths
+// }
 
+// pub fn (p Path) inode() os.FileMode {
+// 	return os.inode(p.str())
+// }
+
+// is_absolute returns if the path is an absolute path.
+// See also: `os.is_abs_path`.
 pub fn (p Path) is_absolute() bool {
 	return os.is_abs_path(p.str())
 }
 
+// is_block_device returns if the file the path is pointing to is a block device.
 pub fn (p Path) is_block_device() bool {
-	return os.inode(p.str()).typ == 'block_device'
+	return match os.inode(p.str()).typ {
+		.block_device { true }
+		else { false }
+	}
 }
 
+// is_block_device returns if the file the path is pointing to is a character device.
 pub fn (p Path) is_char_device() bool {
-	return os.inode(p.str()).typ == 'character_device'
+	return match os.inode(p.str()).typ {
+		.character_device { true }
+		else { false }
+	}
 }
 
+// is_dir returns if the path is a directory.
+// See also: `os.is_dir`.
 pub fn (p Path) is_dir() bool {
 	return os.is_dir(p.str())
 }
 
+// is_fifo returns if the file the path is pointing to is a fifo file.
 pub fn (p Path) is_fifo() bool {
-	return os.inode(p.str()).typ == 'fifo'
+	return match os.inode(p.str()).typ {
+		.fifo { true }
+		else { false }
+	}
 }
 
+// is_file returns if the path is a file.
+// See also: `os.is_file`.
 pub fn (p Path) is_file() bool {
 	return os.is_file(p.str())
 }
@@ -138,46 +234,80 @@ pub fn (p Path) is_file() bool {
 // 	// TODO
 // }
 
-// pub fn (p Path) is_relative_to(other Path) bool {
-// 	// TODO
-// }
+// is_relative_to returns if the other path is relative to the current path.
+pub fn (p Path) is_relative_to(other Path) bool {
+	window := other.parts
 
-pub fn (p Path) is_socket() bool {
-	return os.inode(p.str()).typ == 'socket'
+	if window.len > p.parts.len {
+		return false
+	}
+
+	return p.parts[..window.len] == window
 }
 
+// is_socket returns if the file the path is pointing to is a socket.
+pub fn (p Path) is_socket() bool {
+	return match os.inode(p.str()).typ {
+		.socket { true }
+		else { false }
+	}
+}
+
+// is_socket returns if the file the path is pointing to is a link.
+// See also: `os.is_link`.
 pub fn (p Path) is_link() bool {
 	return os.is_link(p.str())
 }
 
+// is_regular returns if the file the path is pointing to is a regular file.
 pub fn (p Path) is_regular() bool {
-	return os.inode(p.str()).typ == 'regular'
+	return match os.inode(p.str()).typ {
+		.regular { true }
+		else { false }
+	}
 }
 
+// iterdir returns a list of all files in the current directory, including
+// hidden files but excluding `.` and `..`.
+// See also: `os.ls`.
 pub fn (p Path) iterdir() ![]Path {
 	files := os.ls(p.str())!
 	// convert string filenames to paths
 	return files.map(path(it))
 }
 
+// join two paths together.
+// See also: `os.join_path_single`.
 pub fn (p Path) join(other Path) Path {
 	return path(os.join_path_single(p.str(), other.str()))
 }
 
+// link current path to the target path.
+// See also: `os.link`.
 pub fn (p Path) link(target Path) ! {
 	os.link(p.str(), target.str())!
 }
 
+// mkdir creates the directory `path` points to.
+// See also: `os.mkdir`.
 pub fn (p Path) mkdir(params os.MkdirParams) !Path {
 	// TODO: include mkdir_all?
 	os.mkdir(p.str(), params)!
 	return p
 }
 
+// open the `path` if it's a file.
+// See also: `os.open_file`.
 pub fn (p Path) open(mode string, options ...int) !os.File {
 	return os.open_file(p.str(), mode, ...options)!
 }
 
+// parent returns the parent of the `path`.
+//
+// Example:
+// ```v
+// assert path('/a/b/c').parent() == path('/a/b')
+// ```
 pub fn (p Path) parent() Path {
 	// parent of root ('/') and current ('.') are itself
 	if p.name == '' || p.name == '.' {
@@ -193,6 +323,12 @@ pub fn (p Path) parent() Path {
 	return path_from_parts(parts)
 }
 
+// parents returns a list of the parents.
+//
+// Example:
+// ```v
+// assert path('/a/b/c').parents() == [path('/a/b'), path('/a'), path('/')]
+// ```
 pub fn (p Path) parents() []Path {
 	if p.parts.len == 1 {
 		return []
@@ -208,43 +344,59 @@ pub fn (p Path) parents() []Path {
 	return parents.reverse()
 }
 
+// quoted returns a quoted version of path.
+// See also: `os.quoted_path`.
 pub fn (p Path) quoted() string {
 	return os.quoted_path(p.str())
 }
 
 // Make the path absolute, resolving all symlinks, `..`, etc. on the way and also
 // normalizing it.
+// See also: `os.resolve`.
 pub fn (p Path) resolve() Path {
 	return path(os.real_path(p.str()))
 }
 
+// rmdir removes the directory if path is a directory.
+// See also: `os.rmdir`.
 pub fn (p Path) rmdir() ! {
 	os.rmdir(p.str())!
 }
 
-// Converts the path to a string representation.
+// str converts the path to a string representation.
 pub fn (p Path) str() string {
+	if p.parts.len == 1 && p.parts[0] == '' {
+		return '/'
+	}
 	return p.parts.join(p.sep)
 }
 
+// symlink `path` to the target.
+// See also: `os.symlink`.
 pub fn (p Path) symlink(target Path) ! {
-	os.symlink(p.str(), target.str())
+	os.symlink(p.str(), target.str())!
 }
 
-//     Create this file with the given access mode, if it doesn't exist.
+// touch creates a file at `path`.
+// See also: `os.create`.
 pub fn (p Path) touch() !Path {
 	os.create(p.str())!
 	return p
 }
 
+// unlike (remove) the file `path` points to.
+// See also: `os.rm`.
 pub fn (p Path) unlink() ! {
 	os.rm(p.str())!
 }
 
-// Replaces the last element of the path with given `name`. The paths `/`, `.`
-// and `..` have no name and thus can't be used with this function.
+// with_name replaces the last element of the path with given `name`. The paths
+// `/`, `.` and `..` have no name and thus can't be used with this function.
 //
-// Example: `path('pathlib/pathlib.v').with_name('helper.py') == path('pathlib/helper.py')`
+// Example:
+// ```v
+// assert path('pathlib/pathlib.v').with_name('helper.py') == path('pathlib/helper.py')
+// ```
 pub fn (p Path) with_name(name string) !Path {
 	current_name := p.name
 
@@ -263,11 +415,14 @@ pub fn (p Path) with_name(name string) !Path {
 	return path_from_parts(parts)
 }
 
-// Replaces the filename of the last element of path (the name without file
+// with_stem replaces the filename of the last element of path (the name without file
 // extension) with given `stem`. The paths `/`, `.` and `..` have no
 // name and thus can't be used with this function.
 //
-// Example: `path('pathlib/pathlib.v').with_stem('helper') == path('pathlib/helper.v')`
+// Example:
+// ```v
+// assert path('pathlib/pathlib.v').with_stem('helper') == path('pathlib/helper.v')
+// ```
 pub fn (p Path) with_stem(stem string) !Path {
 	current_name := p.name
 
@@ -291,11 +446,14 @@ pub fn (p Path) with_stem(stem string) !Path {
 	return path_from_parts(parts)
 }
 
-// Replaces the (last) suffix (file extension) of the last element of the path.
+// with_suffix replaces the (last) suffix (file extension) of the last element of the path.
 // Must start with a `.` and can contain multiple (e.g. `.tar.gz`). The paths
 // `/`, `.` and `..` have no name and thus can't be used with this function.
 //
-// Example: `path('pathlib/pathlib.v').with_suffix('.py') == path('pathlib/pathlib.py')`
+// Example:
+// ```v
+// assert path('pathlib/pathlib.v').with_suffix('.py') == path('pathlib/pathlib.py')
+// ```
 pub fn (p Path) with_suffix(suffix string) !Path {
 	current_name := p.name
 
