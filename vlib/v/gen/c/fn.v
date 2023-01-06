@@ -921,7 +921,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	left_type := g.unwrap_generic(node.left_type)
 	mut unwrapped_rec_type := node.receiver_type
-	mut has_comptime_field := false
 	mut for_in_any_var_type := ast.void_type
 	mut comptime_args := []int{}
 	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 { // in generic fn
@@ -1116,7 +1115,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 
-	if g.comptime_for_field_type != 0 && g.inside_comptime_for_field && has_comptime_field {
+	if g.comptime_for_field_type != 0 && g.inside_comptime_for_field && comptime_args.len > 0 {
 		mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 		arg_sym := g.table.sym(g.comptime_for_field_type)
 		if m := g.table.find_method(g.table.sym(node.left_type), node.name) {
@@ -1256,7 +1255,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// will be `0` for `foo()`
 	mut is_interface_call := false
 	mut is_selector_call := false
-	mut has_comptime_field := false
 	mut comptime_args := []int{}
 	if node.left_type != 0 {
 		left_sym := g.table.sym(node.left_type)
@@ -1374,7 +1372,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		if func := g.table.find_fn(node.name) {
 			if func.generic_names.len > 0 {
 				if g.comptime_for_field_type != 0 && g.inside_comptime_for_field
-					&& has_comptime_field {
+					&& comptime_args.len > 0 {
 					mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 					arg_sym := g.table.sym(g.comptime_for_field_type)
 					for k in comptime_args {
