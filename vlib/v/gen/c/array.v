@@ -60,11 +60,11 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 			}
 		}
 		g.write('}))')
-		if g.is_shared {
-			g.write('}, sizeof(${shared_styp}))')
-		} else if is_amp {
-			g.write(')')
-		}
+	}
+	if g.is_shared {
+		g.write('}, sizeof(${shared_styp}))')
+	} else if is_amp {
+		g.write(')')
 	}
 }
 
