@@ -1,5 +1,3 @@
-module main
-
 fn test_interface_embedding_call() {
 	g1 := G1{}
 	do_the_greet(g1)

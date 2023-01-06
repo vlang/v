@@ -197,6 +197,7 @@ mut:
 	comptime_for_field_value         ast.StructField // value of the field variable
 	comptime_for_field_type          ast.Type        // type of the field variable inferred from `$if field.typ is T {}`
 	comptime_var_type_map            map[string]ast.Type
+	comptime_values_stack            []CurrentComptimeValues // stores the values from the above on each $for loop, to make nesting them easier
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type
 	// used in match multi branch
 	// TypeOne, TypeTwo {}
@@ -320,19 +321,22 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 		global_g.write_tests_definitions()
 	}
 
-	global_g.timers.start('cgen init')
+	util.timing_start('cgen init')
 	for mod in global_g.table.modules {
 		global_g.cleanups[mod] = strings.new_builder(100)
 	}
 	global_g.init()
-	global_g.timers.show('cgen init')
+	util.timing_measure('cgen init')
 	global_g.tests_inited = false
 	global_g.file = files.last()
 	if !pref.no_parallel {
+		util.timing_start('cgen parallel processing')
 		mut pp := pool.new_pool_processor(callback: cgen_process_one_file_cb)
 		pp.set_shared_context(global_g) // TODO: make global_g shared
 		pp.work_on_items(files)
-		global_g.timers.start('cgen unification')
+		util.timing_measure('cgen parallel processing')
+
+		util.timing_start('cgen unification')
 		// tg = thread gen
 		for g in pp.get_results_ref[Gen]() {
 			global_g.embedded_files << g.embedded_files
@@ -417,12 +421,15 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 			}
 		}
 	} else {
+		util.timing_start('cgen serial processing')
 		for file in files {
 			global_g.file = file
 			global_g.gen_file()
 			global_g.cleanups[file.mod.name].drain_builder(mut global_g.cleanup, 100)
 		}
-		global_g.timers.start('cgen unification')
+		util.timing_measure('cgen serial processing')
+
+		util.timing_start('cgen unification')
 	}
 
 	global_g.gen_jsons()
@@ -443,10 +450,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 	global_g.write_results()
 	global_g.write_optionals()
 	global_g.sort_globals_consts()
-	global_g.timers.show('cgen unification')
+	util.timing_measure('cgen unification')
 
 	mut g := global_g
-	g.timers.start('cgen common')
+	util.timing_start('cgen common')
 	// to make sure type idx's are the same in cached mods
 	if g.pref.build_mode == .build_module {
 		for idx, sym in g.table.type_symbols {
@@ -589,7 +596,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 	out_str := g.out.str()
 	b.write_string(out_str) // g.out.str())
 	b.writeln('\n// THE END.')
-	g.timers.show('cgen common')
+	util.timing_measure('cgen common')
 	res := b.str()
 	$if trace_all_generic_fn_keys ? {
 		gkeys := g.table.fn_generic_types.keys()
@@ -606,7 +613,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 
 fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 	file := p.get_item[&ast.File](idx)
-	mut global_g := &Gen(p.get_shared_context())
+	mut global_g := unsafe { &Gen(p.get_shared_context()) }
 	mut g := &Gen{
 		file: file
 		out: strings.new_builder(512000)
@@ -1054,7 +1061,11 @@ fn (mut g Gen) optional_type_name(t ast.Type) (string, string) {
 }
 
 fn (mut g Gen) result_type_name(t ast.Type) (string, string) {
-	base := g.base_type(t)
+	mut base := g.base_type(t)
+	if t.has_flag(.optional) {
+		g.register_optional(t)
+		base = '_option_' + base
+	}
 	mut styp := ''
 	sym := g.table.sym(t)
 	if sym.language == .c && sym.kind == .struct_ {
@@ -1737,7 +1748,9 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 				g.set_current_pos_as_last_stmt_pos()
 				g.skip_stmt_pos = true
 				mut is_noreturn := false
-				if stmt is ast.ExprStmt {
+				if stmt is ast.Return {
+					is_noreturn = true
+				} else if stmt is ast.ExprStmt {
 					is_noreturn = is_noreturn_callexpr(stmt.expr)
 				}
 				if !is_noreturn {
@@ -3541,6 +3554,22 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 	}
 }
 
+fn (mut g Gen) comptime_typeof(node ast.TypeOf, default_type ast.Type) ast.Type {
+	if node.expr is ast.ComptimeSelector {
+		if node.expr.field_expr is ast.SelectorExpr {
+			if node.expr.field_expr.expr is ast.Ident {
+				key_str := '${node.expr.field_expr.expr.name}.typ'
+				return g.comptime_var_type_map[key_str] or { default_type }
+			}
+		}
+	} else if g.inside_comptime_for_field && node.expr is ast.Ident
+		&& (node.expr as ast.Ident).obj is ast.Var && ((node.expr as ast.Ident).obj as ast.Var).is_comptime_field == true {
+		// typeof(var) from T.fields
+		return g.comptime_for_field_type
+	}
+	return default_type
+}
+
 fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 	g.prevent_sum_type_unwrapping_once = false
@@ -3560,20 +3589,17 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					// typeof(expr).name
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
-						if node.expr.expr is ast.ComptimeSelector {
-							if node.expr.expr.field_expr is ast.SelectorExpr {
-								if node.expr.expr.field_expr.expr is ast.Ident {
-									key_str := '${node.expr.expr.field_expr.expr.name}.typ'
-									name_type = g.comptime_var_type_map[key_str] or { name_type }
-								}
-							}
-						}
+						name_type = g.comptime_typeof(node.expr, name_type)
 					}
 					g.type_name(name_type)
 					return
 				} else if node.field_name == 'idx' {
+					mut name_type := node.name_type
+					if node.expr is ast.TypeOf {
+						name_type = g.comptime_typeof(node.expr, name_type)
+					}
 					// `typeof(expr).idx`
-					g.write(int(g.unwrap_generic(node.name_type)).str())
+					g.write(int(g.unwrap_generic(name_type)).str())
 					return
 				}
 				g.error('unknown generic field', node.pos)
@@ -4192,6 +4218,11 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	}
 }
 
+pub fn (mut g Gen) is_comptime_var(node ast.Expr) bool {
+	return g.inside_comptime_for_field && node is ast.Ident
+		&& (node as ast.Ident).info is ast.IdentVar && ((node as ast.Ident).obj as ast.Var).is_comptime_field
+}
+
 fn (mut g Gen) ident(node ast.Ident) {
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 	g.prevent_sum_type_unwrapping_once = false
@@ -4221,6 +4252,22 @@ fn (mut g Gen) ident(node ast.Ident) {
 	}
 	mut is_auto_heap := false
 	if node.info is ast.IdentVar {
+		if node.obj is ast.Var {
+			if !g.is_assign_lhs && node.obj.is_comptime_field {
+				if g.comptime_for_field_type.has_flag(.optional) {
+					if g.inside_opt_or_res {
+						g.write('${name}')
+					} else {
+						g.write('/*opt*/')
+						styp := g.base_type(g.comptime_for_field_type)
+						g.write('(*(${styp}*)${name}.data)')
+					}
+				} else {
+					g.write('${name}')
+				}
+				return
+			}
+		}
 		// x ?int
 		// `x = 10` => `x.data = 10` (g.right_is_opt == false)
 		// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
@@ -6054,6 +6101,10 @@ fn (g Gen) has_been_referenced(fn_name string) bool {
 
 // Generates interface table and interface indexes
 fn (mut g Gen) interface_table() string {
+	util.timing_start(@METHOD)
+	defer {
+		util.timing_measure(@METHOD)
+	}
 	mut sb := strings.new_builder(100)
 	mut conversion_functions := strings.new_builder(100)
 	for isym in g.table.type_symbols {

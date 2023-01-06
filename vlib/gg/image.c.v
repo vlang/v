@@ -285,7 +285,6 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 				y := config.img_rect.y
 				C.darwin_draw_image(x, ctx.height - (y + config.img_rect.height), config.img_rect.width,
 					config.img_rect.height, img)
-				println('ok')
 				return
 			}
 		}

@@ -376,7 +376,7 @@ pub fn (mut ts TestSession) test() {
 }
 
 fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
-	mut ts := &TestSession(p.get_shared_context())
+	mut ts := unsafe { &TestSession(p.get_shared_context()) }
 	if ts.fail_fast {
 		if ts.failed_cmds.len > 0 {
 			return pool.no_result
@@ -384,7 +384,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	tmpd := ts.vtmp_dir
 	// tls_bench is used to format the step messages/timings
-	mut tls_bench := &benchmark.Benchmark(p.get_thread_context(idx))
+	mut tls_bench := unsafe { &benchmark.Benchmark(p.get_thread_context(idx)) }
 	if isnil(tls_bench) {
 		tls_bench = benchmark.new_benchmark_pointer()
 		tls_bench.set_total_expected_steps(ts.benchmark.nexpected_steps)

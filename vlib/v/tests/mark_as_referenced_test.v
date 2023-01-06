@@ -1,5 +1,3 @@
-module main
-
 fn test_mark_as_referenced() {
 	if true {
 		a := Type{}

@@ -811,6 +811,7 @@ fn (mut p Parser) other_stmts(cur_stmt ast.Stmt) ast.Stmt {
 		}
 
 		p.open_scope()
+		p.cur_fn_name = 'main.main'
 		mut stmts := []ast.Stmt{}
 		if cur_stmt != ast.empty_stmt {
 			stmts << cur_stmt
@@ -2271,6 +2272,11 @@ fn (p &Parser) is_generic_call() bool {
 					if nested_sbr_count > 0 {
 						nested_sbr_count--
 					} else {
+						prev_tok := p.peek_token(i - 1)
+						// `funcs[i]()` is not generic call
+						if !(p.is_typename(prev_tok) || prev_tok.kind == .rsbr) {
+							return false
+						}
 						if p.peek_token(i + 1).kind == .lpar {
 							return true
 						}

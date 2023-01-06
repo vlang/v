@@ -1,5 +1,3 @@
-module main
-
 pub struct Reptile {}
 
 pub struct Insect {}

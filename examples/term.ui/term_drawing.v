@@ -128,8 +128,7 @@ fn main() {
 	app.ui.run()?
 }
 
-fn frame(x voidptr) {
-	mut app := &App(x)
+fn frame(mut app App) {
 	mut redraw := app.should_redraw
 	if app.msg != '' && app.ui.frame_count >= app.msg_hide_tick {
 		app.msg = ''
@@ -141,8 +140,7 @@ fn frame(x voidptr) {
 	}
 }
 
-fn event(event &ui.Event, x voidptr) {
-	mut app := &App(x)
+fn event(event &ui.Event, mut app App) {
 	match event.typ {
 		.mouse_down {
 			app.is_dragging = true

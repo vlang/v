@@ -99,6 +99,21 @@ pub mut:
 	point string [raw]
 }
 
+fn test_raw_json_field() {
+	color := json.decode[Color]('{"space": "YCbCr", "point": {"Y": 123}}') or {
+		assert false
+		Color{}
+	}
+	assert color.point == '{"Y":123}'
+	assert color.space == 'YCbCr'
+}
+
+fn test_bad_raw_json_field() {
+	color := json.decode[Color]('{"space": "YCbCr"}') or { return }
+	assert color.point == ''
+	assert color.space == 'YCbCr'
+}
+
 fn test_encode_map() {
 	expected := '{"one":1,"two":2,"three":3,"four":4}'
 	numbers := {
@@ -113,9 +128,8 @@ fn test_encode_map() {
 	// 		'three': 3
 	// 		'four':  4
 	// 	}
-	// 	out := json.encode(numbers)
-	out := numbers.str()
-	assert out == expected
+	assert json.encode(numbers) == expected
+	assert numbers.str() == expected
 }
 
 type ID = string
@@ -153,15 +167,6 @@ fn bar[T](payload string) !Bar { // ?T doesn't work currently
 fn test_generic() {
 	result := bar[Bar]('{"x":"test"}') or { Bar{} }
 	assert result.x == 'test'
-}
-
-fn test_raw_json_field() {
-	color := json.decode[Color]('{"space": "YCbCr", "point": {"Y": 123}}') or {
-		assert false
-		Color{}
-	}
-	assert color.point == '{"Y":123}'
-	assert color.space == 'YCbCr'
 }
 
 struct Foo[T] {

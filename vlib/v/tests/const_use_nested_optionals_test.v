@@ -1,5 +1,3 @@
-module main
-
 import os
 
 const iterations = (os.getenv_opt('ITERATIONS') or { '5' }).int()

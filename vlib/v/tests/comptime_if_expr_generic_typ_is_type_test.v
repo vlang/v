@@ -1,5 +1,3 @@
-module main
-
 fn write[T](out T) string {
 	$if T.typ is bool {
 		println('FOO')

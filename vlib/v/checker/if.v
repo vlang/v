@@ -72,7 +72,13 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		if node.is_comptime { // Skip checking if needed
 			// smartcast field type on comptime if
 			mut comptime_field_name := ''
-			if mut branch.cond is ast.InfixExpr {
+			if branch.cond is ast.SelectorExpr && skip_state != .unknown {
+				is_comptime_type_is_expr = true
+			} else if mut branch.cond is ast.PrefixExpr {
+				if branch.cond.right is ast.SelectorExpr && skip_state != .unknown {
+					is_comptime_type_is_expr = true
+				}
+			} else if mut branch.cond is ast.InfixExpr {
 				if branch.cond.op == .key_is {
 					left := branch.cond.left
 					right := branch.cond.right

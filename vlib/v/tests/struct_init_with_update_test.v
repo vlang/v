@@ -1,5 +1,3 @@
-module main
-
 struct Author {
 	username string
 	name     string

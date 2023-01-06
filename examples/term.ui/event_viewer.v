@@ -5,8 +5,7 @@ mut:
 	tui &tui.Context = unsafe { nil }
 }
 
-fn event(e &tui.Event, x voidptr) {
-	mut app := &App(x)
+fn event(e &tui.Event, mut app App) {
 	app.tui.clear()
 	app.tui.set_cursor_position(0, 0)
 	app.tui.write('V term.input event viewer (press `esc` to exit)\n\n')

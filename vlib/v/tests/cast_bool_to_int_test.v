@@ -1,5 +1,3 @@
-module main
-
 fn test_cast_bool_to_int() {
 	i := true
 	x := int(i)

@@ -311,6 +311,11 @@ __global total_m = i64(0)
 // unlike the `calloc` family of functions - malloc will not zero the memory block.
 [unsafe]
 pub fn malloc(n isize) &u8 {
+	$if trace_malloc ? {
+		total_m += n
+		C.fprintf(C.stderr, c'_v_malloc %6d total %10d\n', n, total_m)
+		// print_backtrace()
+	}
 	if n <= 0 {
 		panic('malloc(${n} <= 0)')
 	}
@@ -321,11 +326,6 @@ pub fn malloc(n isize) &u8 {
 		if total_m > 50 * 1024 * 1024 {
 			panic('allocating more than 50 MB is not allowed in the V playground')
 		}
-	}
-	$if trace_malloc ? {
-		total_m += n
-		C.fprintf(C.stderr, c'_v_malloc %6d total %10d\n', n, total_m)
-		// print_backtrace()
 	}
 	mut res := &u8(0)
 	$if prealloc {
@@ -354,6 +354,11 @@ pub fn malloc(n isize) &u8 {
 
 [unsafe]
 pub fn malloc_noscan(n isize) &u8 {
+	$if trace_malloc ? {
+		total_m += n
+		C.fprintf(C.stderr, c'malloc_noscan %6d total %10d\n', n, total_m)
+		// print_backtrace()
+	}
 	if n <= 0 {
 		panic('malloc_noscan(${n} <= 0)')
 	}
@@ -364,11 +369,6 @@ pub fn malloc_noscan(n isize) &u8 {
 		if total_m > 50 * 1024 * 1024 {
 			panic('allocating more than 50 MB is not allowed in the V playground')
 		}
-	}
-	$if trace_malloc ? {
-		total_m += n
-		C.fprintf(C.stderr, c'malloc_noscan %6d total %10d\n', n, total_m)
-		// print_backtrace()
 	}
 	mut res := &u8(0)
 	$if prealloc {
@@ -399,10 +399,25 @@ pub fn malloc_noscan(n isize) &u8 {
 	return res
 }
 
+[inline]
+fn __at_least_one(how_many u64) u64 {
+	// handle the case for allocating memory for empty structs, which have sizeof(EmptyStruct) == 0
+	// in this case, just allocate a single byte, avoiding the panic for malloc(0)
+	if how_many == 0 {
+		return 1
+	}
+	return how_many
+}
+
 // malloc_uncollectable dynamically allocates a `n` bytes block of memory
 // on the heap, which will NOT be garbage-collected (but its contents will).
 [unsafe]
 pub fn malloc_uncollectable(n isize) &u8 {
+	$if trace_malloc ? {
+		total_m += n
+		C.fprintf(C.stderr, c'malloc_uncollectable %6d total %10d\n', n, total_m)
+		// print_backtrace()
+	}
 	if n <= 0 {
 		panic('malloc_uncollectable(${n} <= 0)')
 	}
@@ -413,11 +428,6 @@ pub fn malloc_uncollectable(n isize) &u8 {
 		if total_m > 50 * 1024 * 1024 {
 			panic('allocating more than 50 MB is not allowed in the V playground')
 		}
-	}
-	$if trace_malloc ? {
-		total_m += n
-		C.fprintf(C.stderr, c'malloc_uncollectable %6d total %10d\n', n, total_m)
-		// print_backtrace()
 	}
 	mut res := &u8(0)
 	$if prealloc {
@@ -519,14 +529,14 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 // vcalloc returns a `byteptr` pointing to the memory address of the allocated space.
 // Unlike `v_calloc` vcalloc checks for negative values given in `n`.
 pub fn vcalloc(n isize) &u8 {
+	$if trace_vcalloc ? {
+		total_m += n
+		C.fprintf(C.stderr, c'vcalloc %6d total %10d\n', n, total_m)
+	}
 	if n < 0 {
 		panic('calloc(${n} < 0)')
 	} else if n == 0 {
 		return &u8(0)
-	}
-	$if trace_vcalloc ? {
-		total_m += n
-		C.fprintf(C.stderr, c'vcalloc %6d total %10d\n', n, total_m)
 	}
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
@@ -589,6 +599,9 @@ pub fn free(ptr voidptr) {
 // returns a pointer to the newly allocated space.
 [unsafe]
 pub fn memdup(src voidptr, sz int) voidptr {
+	$if trace_memdup ? {
+		C.fprintf(C.stderr, c'memdup size: %10d\n', sz)
+	}
 	if sz == 0 {
 		return vcalloc(1)
 	}
@@ -600,6 +613,9 @@ pub fn memdup(src voidptr, sz int) voidptr {
 
 [unsafe]
 pub fn memdup_noscan(src voidptr, sz int) voidptr {
+	$if trace_memdup ? {
+		C.fprintf(C.stderr, c'memdup_noscan size: %10d\n', sz)
+	}
 	if sz == 0 {
 		return vcalloc_noscan(1)
 	}
@@ -615,6 +631,9 @@ pub fn memdup_noscan(src voidptr, sz int) voidptr {
 // space and returns a pointer to the newly allocated space.
 [unsafe]
 pub fn memdup_uncollectable(src voidptr, sz int) voidptr {
+	$if trace_memdup ? {
+		C.fprintf(C.stderr, c'memdup_uncollectable size: %10d\n', sz)
+	}
 	if sz == 0 {
 		return vcalloc(1)
 	}

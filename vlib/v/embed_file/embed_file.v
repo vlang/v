@@ -104,14 +104,14 @@ pub struct EmbedFileIndexEntry {
 
 // find_index_entry_by_path is used internally by the V compiler:
 pub fn find_index_entry_by_path(start voidptr, path string, algo string) &EmbedFileIndexEntry {
-	mut x := &EmbedFileIndexEntry(start)
-	for x.id >= 0 && x.data != 0 && (x.algo != algo || x.path != path) {
-		unsafe {
+	unsafe {
+		mut x := &EmbedFileIndexEntry(start)
+		for x.id >= 0 && x.data != 0 && (x.algo != algo || x.path != path) {
 			x++
 		}
+		$if trace_embed_file ? {
+			eprintln('>> v.embed_file find_index_entry_by_path ${ptr_str(start)}, id: ${x.id}, path: "${path}", algo: "${algo}" => ${ptr_str(x)}')
+		}
+		return x
 	}
-	$if trace_embed_file ? {
-		eprintln('>> v.embed_file find_index_entry_by_path ${ptr_str(start)}, id: ${x.id}, path: "${path}", algo: "${algo}" => ${ptr_str(x)}')
-	}
-	return x
 }

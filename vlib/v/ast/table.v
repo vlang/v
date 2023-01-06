@@ -116,7 +116,7 @@ pub mut:
 	receiver_type  Type // != 0, when .is_method == true
 	name           string
 	params         []Param
-	source_fn      voidptr // set in the checker, while processing fn declarations
+	source_fn      voidptr // set in the checker, while processing fn declarations // TODO get rid of voidptr
 	usages         int
 	generic_names  []string
 	dep_names      []string // globals or consts dependent names
@@ -1975,6 +1975,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 				cname: util.no_dots(c_nrt)
 				mod: ts.mod
 				info: info
+				is_pub: ts.is_pub
 			)
 			for typ_ in needs_unwrap_types {
 				t.unwrap_generic_type(typ_, generic_names, concrete_types)
@@ -2010,6 +2011,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 				cname: util.no_dots(c_nrt)
 				mod: ts.mod
 				info: info
+				is_pub: ts.is_pub
 			)
 			for typ_ in needs_unwrap_types {
 				t.unwrap_generic_type(typ_, generic_names, concrete_types)
@@ -2053,6 +2055,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 				cname: util.no_dots(c_nrt)
 				mod: ts.mod
 				info: info
+				is_pub: ts.is_pub
 			)
 			mut ts_copy := t.sym(new_idx)
 			for method in all_methods {

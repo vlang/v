@@ -1,5 +1,3 @@
-module main
-
 interface Getter {
 	get() string
 }

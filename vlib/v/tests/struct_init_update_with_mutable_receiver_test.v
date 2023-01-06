@@ -1,5 +1,3 @@
-module main
-
 struct Person {
 	name string
 	age  int

@@ -1154,6 +1154,37 @@ pub fn (t &Table) clean_generics_type_str(typ Type) string {
 	return result.all_before('[')
 }
 
+fn strip_extra_struct_types(name string) string {
+	mut start := 0
+	mut is_start := false
+	mut nested_count := 0
+	mut strips := []string{}
+
+	for i, ch in name {
+		if ch == `<` {
+			if is_start {
+				nested_count++
+			} else {
+				is_start = true
+				start = i
+			}
+		} else if ch == `>` {
+			if nested_count > 0 {
+				nested_count--
+			} else {
+				strips << name.substr(start, i + 1)
+				strips << ''
+				is_start = false
+			}
+		}
+	}
+	if strips.len > 0 {
+		return name.replace_each(strips)
+	} else {
+		return name
+	}
+}
+
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
 pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]string) string {
 	cache_key := (u64(import_aliases.len) << 32) | u64(typ)
@@ -1280,6 +1311,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 					import_aliases))
 				res = '${variant_names.join('|')}'
 			} else {
+				res = strip_extra_struct_types(res)
 				res = t.shorten_user_defined_typenames(res, import_aliases)
 			}
 		}
@@ -1365,16 +1397,18 @@ fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases 
 		// mod.submod.submod2.Type => submod2.Type
 		mut parts := res.split('.')
 		if parts.len > 1 {
-			ind := parts.len - 2
-			if t.is_fmt {
-				// Rejoin the module parts for correct usage of aliases
-				parts[ind] = parts[..ind + 1].join('.')
-			}
-			if parts[ind] in import_aliases {
-				parts[ind] = import_aliases[parts[ind]]
-			}
+			if parts[..parts.len - 1].all(!it.contains('[')) {
+				ind := parts.len - 2
+				if t.is_fmt {
+					// Rejoin the module parts for correct usage of aliases
+					parts[ind] = parts[..ind + 1].join('.')
+				}
+				if parts[ind] in import_aliases {
+					parts[ind] = import_aliases[parts[ind]]
+				}
 
-			res = parts[ind..].join('.')
+				res = parts[ind..].join('.')
+			}
 		} else {
 			res = parts[0]
 		}

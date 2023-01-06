@@ -1,5 +1,3 @@
-module main
-
 fn test_anon_fn_with_nested_anon_fn_args() {
 	mut xa := fn (x fn (int) string, y int) string {
 		return x(y)

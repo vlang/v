@@ -215,30 +215,28 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('optional or result type argument is not supported currently',
 					param.type_pos)
 			}
-			if !param.typ.is_ptr() { // value parameter, i.e. on stack - check for `[heap]`
-				arg_typ_sym := c.table.sym(param.typ)
-				if arg_typ_sym.info is ast.Struct {
-					if arg_typ_sym.info.is_heap { // set auto_heap to promote value parameter
-						mut v := node.scope.find_var(param.name) or { continue }
-						v.is_auto_heap = true
-					}
-					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
-						&& arg_typ_sym.info.concrete_types.len == 0 {
-						c.error('generic struct `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
-							param.type_pos)
-					}
-				} else if arg_typ_sym.info is ast.Interface {
-					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
-						&& arg_typ_sym.info.concrete_types.len == 0 {
-						c.error('generic interface `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
-							param.type_pos)
-					}
-				} else if arg_typ_sym.info is ast.SumType {
-					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
-						&& arg_typ_sym.info.concrete_types.len == 0 {
-						c.error('generic sumtype `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
-							param.type_pos)
-					}
+			arg_typ_sym := c.table.sym(param.typ)
+			if arg_typ_sym.info is ast.Struct {
+				if !param.typ.is_ptr() && arg_typ_sym.info.is_heap { // set auto_heap to promote value parameter
+					mut v := node.scope.find_var(param.name) or { continue }
+					v.is_auto_heap = true
+				}
+				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
+					&& arg_typ_sym.info.concrete_types.len == 0 {
+					c.error('generic struct `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
+						param.type_pos)
+				}
+			} else if arg_typ_sym.info is ast.Interface {
+				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
+					&& arg_typ_sym.info.concrete_types.len == 0 {
+					c.error('generic interface `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
+						param.type_pos)
+				}
+			} else if arg_typ_sym.info is ast.SumType {
+				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
+					&& arg_typ_sym.info.concrete_types.len == 0 {
+					c.error('generic sumtype `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
+						param.type_pos)
 				}
 			}
 			// Ensure each generic type of the parameter was declared in the function's definition
@@ -1504,7 +1502,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		node.is_noreturn = method.is_noreturn
 		node.is_ctor_new = method.is_ctor_new
 		node.return_type = method.return_type
-		if !method.is_pub && !c.pref.is_test && method.mod != c.mod {
+		if !method.is_pub && method.mod != c.mod {
 			// If a private method is called outside of the module
 			// its receiver type is defined in, show an error.
 			// println('warn $method_name lef.mod=$left_type_sym.mod c.mod=$c.mod')
@@ -1580,9 +1578,17 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			mut got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 			node.args[i].typ = got_arg_typ
 			if c.inside_comptime_for_field && method.params[param_idx].typ.has_flag(.generic) {
-				c.table.register_fn_concrete_types(method.fkey(), [
-					c.comptime_fields_default_type,
-				])
+				arg_sym := c.table.sym(c.comptime_fields_default_type)
+				if arg_sym.kind == .array
+					&& c.table.sym(method.params[param_idx].typ).kind == .array {
+					c.table.register_fn_concrete_types(method.fkey(), [
+						(arg_sym.info as ast.Array).elem_type,
+					])
+				} else {
+					c.table.register_fn_concrete_types(method.fkey(), [
+						c.comptime_fields_default_type,
+					])
+				}
 			} else if c.inside_for_in_any_cond && method.params[param_idx].typ.has_flag(.generic) {
 				c.table.register_fn_concrete_types(method.fkey(), [
 					c.for_in_any_val_type,

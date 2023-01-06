@@ -286,8 +286,7 @@ fn (mut a App) new_game() {
 }
 
 // initialize the app and record the width and height of the window
-fn init(x voidptr) {
-	mut app := &App(x)
+fn init(mut app App) {
 	w, h := app.termui.window_width, app.termui.window_height
 	app.width = w
 	app.height = h
@@ -295,8 +294,7 @@ fn init(x voidptr) {
 }
 
 // event handles different events for the app as they occur
-fn event(e &termui.Event, x voidptr) {
-	mut app := &App(x)
+fn event(e &termui.Event, mut app App) {
 	match e.typ {
 		.mouse_down {}
 		.mouse_drag {}
@@ -324,8 +322,7 @@ fn event(e &termui.Event, x voidptr) {
 }
 
 // frame perform actions on every tick
-fn frame(x voidptr) {
-	mut app := &App(x)
+fn frame(mut app App) {
 	app.update()
 	app.draw()
 }

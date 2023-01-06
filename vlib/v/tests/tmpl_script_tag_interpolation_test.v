@@ -1,5 +1,3 @@
-module main
-
 struct PlotData {
 	dates            []string
 	numerical_result []int

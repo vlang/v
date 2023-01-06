@@ -993,3 +993,45 @@ fn test_alias_of_map_delete() {
 	assert m.len == 1
 	assert m[22] == 222
 }
+
+struct State {
+mut:
+	state map[string]rune
+}
+
+struct Foo {
+	bar int
+	baz int
+}
+
+fn (mut st State) add(s string, r rune) {
+	st.state[s] = r
+}
+
+fn (mut st State) add2(foos []Foo) {
+	for f in foos {
+		st.state['${f.bar},${f.baz}'] = `z`
+	}
+}
+
+fn (mut st State) reset() {
+	st.state.clear()
+}
+
+fn test_map_clear() {
+	mut s := State{}
+
+	item1 := [Foo{
+		bar: 1
+		baz: 2
+	}, Foo{
+		bar: 3
+		baz: 4
+	}]
+	s.add2(item1)
+	assert s.state.len == 2
+
+	s.reset()
+	s.add2(item1)
+	assert s.state.len == 2
+}

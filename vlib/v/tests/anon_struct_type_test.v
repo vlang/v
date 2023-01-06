@@ -1,5 +1,3 @@
-module main
-
 fn func(arg struct { foo string }) {
 	assert arg.foo == 'foo'
 }

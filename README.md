@@ -1,4 +1,4 @@
-<div style="display:grid;place-items:center;">
+<div align="center" style="display:grid;place-items:center;">
 <p>
     <a href="https://vlang.io/" target="_blank"><img width="80" src="https://raw.githubusercontent.com/vlang/v-logo/master/dist/v-logo.svg?sanitize=true" alt="V logo"></a>
 </p>
@@ -6,7 +6,7 @@
 
 [vlang.io](https://vlang.io) | [Docs](https://github.com/vlang/v/blob/master/doc/docs.md) | [Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) | [Speed](https://fast.vlang.io/) | [Contributing & compiler design](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
 </div>
-<div style="display:grid;place-items:center;">
+<div align="center" style="display:grid;place-items:center;">
 <!--
 [![Build Status][WorkflowBadge]][WorkflowUrl]
 -->
@@ -189,8 +189,14 @@ v run tetris/tetris.v
 ```
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300 alt='tetris screenshot'>
 
-NB: In order to build Tetris or 2048 (or anything else using `sokol` or  `gg` graphics modules)
-on some Linux systems, you need to install `libxi-dev` and `libxcursor-dev` .
+NB: In order to build Tetris or 2048 (or anything else using `sokol` or `gg` graphics modules),
+you will need additional development libraries for your system.
+For some Linux distros (Debian/Ubuntu based), you need to run this:
+`sudo apt install libxi-dev libxcursor-dev`.
+For Fedora/RH/CentOS, you need to run this:
+`sudo dnf install libXcursor-devel libXi-devel libX11-devel libglvnd-devel` .
+For NixOS, add these packages to your `environment.systemPackages`:
+`xorg.libX11.dev xorg.libXcursor.dev xorg.libXi.dev libGL.dev`
 
 ## V net.http, net.websocket, `v install`
 The net.http module, the net.websocket module, and the `v install` command may all use SSL.

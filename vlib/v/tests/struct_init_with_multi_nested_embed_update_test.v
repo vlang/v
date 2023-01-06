@@ -1,5 +1,3 @@
-module main
-
 struct Animal {
 	Duck
 	id int

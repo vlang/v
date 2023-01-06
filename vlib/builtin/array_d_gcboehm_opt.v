@@ -24,9 +24,19 @@ fn __new_array_with_default_noscan(mylen int, cap int, elm_size int, val voidptr
 		len: mylen
 		cap: cap_
 	}
-	if val != 0 {
-		for i in 0 .. arr.len {
-			unsafe { arr.set_unsafe(i, val) }
+	if val != 0 && arr.data != unsafe { nil } {
+		if elm_size == 1 {
+			byte_value := *(&u8(val))
+			dptr := &u8(arr.data)
+			for i in 0 .. arr.len {
+				unsafe {
+					dptr[i] = byte_value
+				}
+			}
+		} else {
+			for i in 0 .. arr.len {
+				unsafe { arr.set_unsafe(i, val) }
+			}
 		}
 	}
 	return arr
