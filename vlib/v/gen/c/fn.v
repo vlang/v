@@ -894,6 +894,23 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 	return false
 }
 
+fn (mut g Gen) change_comptime_args(mut node_ ast.CallExpr) []int {
+	mut comptime_args := []int{}
+	for i, mut call_arg in node_.args {
+		if mut call_arg.expr is ast.Ident {
+			if mut call_arg.expr.obj is ast.Var {
+				node_.args[i].typ = call_arg.expr.obj.typ
+				if call_arg.expr.obj.is_comptime_field {
+					comptime_args << i
+				}
+			}
+		} else if mut call_arg.expr is ast.ComptimeSelector {
+			comptime_args << i
+		}
+	}
+	return comptime_args
+}
+
 fn (mut g Gen) method_call(node ast.CallExpr) {
 	// TODO: there are still due to unchecked exprs (opt/some fn arg)
 	if node.left_type == 0 {
@@ -927,20 +944,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	if g.inside_comptime_for_field {
 		mut node_ := unsafe { node }
-		for i, mut call_arg in node_.args {
-			if mut call_arg.expr is ast.Ident {
-				if mut call_arg.expr.obj is ast.Var {
-					node_.args[i].typ = call_arg.expr.obj.typ
-					if call_arg.expr.obj.is_comptime_field {
-						has_comptime_field = true
-						comptime_args << i
-					}
-				}
-			} else if mut call_arg.expr is ast.ComptimeSelector {
-				has_comptime_field = true
-				comptime_args << i
-			}
-		}
+		comptime_args = g.change_comptime_args(mut node_)
 	}
 	if g.inside_for_in_any_cond {
 		for call_arg in node.args {
@@ -1280,20 +1284,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	}
 	if g.inside_comptime_for_field {
 		mut node_ := unsafe { node }
-		for i, mut call_arg in node_.args {
-			if mut call_arg.expr is ast.Ident {
-				if mut call_arg.expr.obj is ast.Var {
-					node_.args[i].typ = call_arg.expr.obj.typ
-					if call_arg.expr.obj.is_comptime_field {
-						has_comptime_field = true
-						comptime_args << i
-					}
-				}
-			} else if mut call_arg.expr is ast.ComptimeSelector {
-				has_comptime_field = true
-				comptime_args << i
-			}
-		}
+		comptime_args = g.change_comptime_args(mut node_)
 	}
 	mut name := node.name
 	is_print := name in ['print', 'println', 'eprint', 'eprintln', 'panic']
