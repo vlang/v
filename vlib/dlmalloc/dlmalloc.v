@@ -385,7 +385,7 @@ fn chunk_from_mem(mem_ voidptr) &Chunk {
 }
 
 fn (tree &TreeChunk) leftmost_child() &TreeChunk {
-	left := &TreeChunk(tree.child[0])
+	left := unsafe { &TreeChunk(tree.child[0]) }
 	if isnil(left) {
 		return tree.child[1]
 	} else {
@@ -1547,7 +1547,7 @@ fn (mut dl Dlmalloc) mmap_resize(oldp_ &Chunk, nb usize, can_move bool) &Chunk {
 		return unsafe { nil }
 	}
 
-	mut newp := &Chunk(voidptr(usize(ptr) + offset))
+	mut newp := unsafe { &Chunk(voidptr(usize(ptr) + offset)) }
 	psize := newmmsize - offset - mmap_foot_pad()
 	newp.head = psize
 	newp.plus_offset(psize).head = fencepost_head()
