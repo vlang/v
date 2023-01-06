@@ -1328,10 +1328,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	} else {
 		'unknown method or field: `${left_sym.name}.${method_name}`'
 	}
-	if left_type.has_flag(.optional) {
-		c.error('optional type cannot be called directly', node.left.pos())
-		return ast.void_type
-	} else if left_type.has_flag(.result) {
+	if left_type.has_flag(.result) {
 		c.error('result type cannot be called directly', node.left.pos())
 		return ast.void_type
 	}
