@@ -151,7 +151,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 }
 
 fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
-	dot_or_ptr := if node.cond_type.is_ptr() { '->' } else { '.' }
+	dot_or_ptr := g.dot_or_ptr(node.cond_type)
 	use_ternary := is_expr && tmp_var.len == 0
 	cond_sym := g.table.sym(node.cond_type)
 	for j, branch in node.branches {

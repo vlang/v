@@ -988,7 +988,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		} else {
 			g.expr(node.left)
 		}
-		dot := g.arrow_or_ptr(left_type)
+		dot := g.dot_or_ptr(left_type)
 		mname := c_name(node.name)
 		g.write('${dot}_typ]._method_${mname}(')
 		if node.left.is_auto_deref_var() && left_type.nr_muls() > 1 {

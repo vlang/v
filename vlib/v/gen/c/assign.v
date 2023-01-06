@@ -733,7 +733,7 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 				styp := g.typ(left.typ)
 				g.write('${styp} _var_${left.pos.pos} = ')
 				g.expr(left.expr)
-				sel := g.arrow_or_ptr(left.expr_type)
+				sel := g.dot_or_ptr(left.expr_type)
 				g.writeln('${sel}${left.field_name};')
 			}
 			else {}
