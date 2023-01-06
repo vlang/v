@@ -6,6 +6,10 @@ import v.ast
 import v.util
 
 fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
+	util.timing_start(@METHOD)
+	defer {
+		util.timing_measure_cumulative(@METHOD)
+	}
 	mut struct_sym, struct_typ_idx := c.table.find_sym_and_type_idx(node.name)
 	mut has_generic_types := false
 	if mut struct_sym.info is ast.Struct {
@@ -47,6 +51,25 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				c.error('`typedef` attribute can only be used with C structs', node.pos)
 			}
 		}
+
+		// Update .default_expr_typ for all fields in the struct:
+		util.timing_start('Checker.struct setting default_expr_typ')
+		old_expected_type := c.expected_type
+		for mut field in node.fields {
+			if field.has_default_expr {
+				c.expected_type = field.typ
+				field.default_expr_typ = c.expr(field.default_expr)
+				for mut symfield in struct_sym.info.fields {
+					if symfield.name == field.name {
+						symfield.default_expr_typ = field.default_expr_typ
+						break
+					}
+				}
+			}
+		}
+		c.expected_type = old_expected_type
+		util.timing_measure_cumulative('Checker.struct setting default_expr_typ')
+
 		for i, field in node.fields {
 			if field.typ.has_flag(.result) {
 				c.error('struct field does not support storing result', field.optional_pos)
@@ -232,6 +255,10 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 }
 
 fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
+	util.timing_start(@METHOD)
+	defer {
+		util.timing_measure_cumulative(@METHOD)
+	}
 	if node.typ == ast.void_type {
 		// short syntax `foo(key:val, key2:val2)`
 		if c.expected_type == ast.void_type {
