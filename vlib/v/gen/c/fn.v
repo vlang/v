@@ -853,13 +853,11 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 		rec_type = rec_type.clear_flag(.shared_f).set_nr_muls(0)
 	}
 	if node.left is ast.ComptimeSelector {
-		if node.left.field_expr is ast.SelectorExpr {
-			if node.left.field_expr.expr is ast.Ident {
-				key_str := '${node.left.field_expr.expr.name}.typ'
-				rec_type = g.comptime_var_type_map[key_str] or { rec_type }
-				g.gen_expr_to_string(node.left, rec_type)
-				return true
-			}
+		key_str := g.get_comptime_selector_key_type(node.left)
+		if key_str != '' {
+			rec_type = g.comptime_var_type_map[key_str] or { rec_type }
+			g.gen_expr_to_string(node.left, rec_type)
+			return true
 		}
 	} else if node.left is ast.ComptimeCall {
 		if node.left.method_name == 'method' {
@@ -1428,11 +1426,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			} else {
 				g.write('${c_name(print_method)}(')
 				if expr is ast.ComptimeSelector {
-					if expr.field_expr is ast.SelectorExpr {
-						if expr.field_expr.expr is ast.Ident {
-							key_str := '${expr.field_expr.expr.name}.typ'
-							typ = g.comptime_var_type_map[key_str] or { typ }
-						}
+					key_str := g.get_comptime_selector_key_type(expr)
+					if key_str != '' {
+						typ = g.comptime_var_type_map[key_str] or { typ }
 					}
 				} else if expr is ast.ComptimeCall {
 					if expr.method_name == 'method' {

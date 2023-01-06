@@ -3556,11 +3556,9 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 
 fn (mut g Gen) comptime_typeof(node ast.TypeOf, default_type ast.Type) ast.Type {
 	if node.expr is ast.ComptimeSelector {
-		if node.expr.field_expr is ast.SelectorExpr {
-			if node.expr.field_expr.expr is ast.Ident {
-				key_str := '${node.expr.field_expr.expr.name}.typ'
-				return g.comptime_var_type_map[key_str] or { default_type }
-			}
+		key_str := g.get_comptime_selector_key_type(node.expr)
+		if key_str != '' {
+			return g.comptime_var_type_map[key_str] or { default_type }
 		}
 	} else if g.inside_comptime_for_field && node.expr is ast.Ident
 		&& (node.expr as ast.Ident).obj is ast.Var && ((node.expr as ast.Ident).obj as ast.Var).is_comptime_field == true {
