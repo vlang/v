@@ -473,9 +473,8 @@ fn (c Cursor) xy() (int, int) {
 }
 
 // App callbacks
-fn init(x voidptr) {
-	mut a := &App(x)
-	a.init_file()
+fn init(mut app App) {
+	app.init_file()
 }
 
 fn (mut a App) init_file() {
@@ -523,8 +522,7 @@ fn (mut a App) magnet_cursor_x() {
 	}
 }
 
-fn frame(x voidptr) {
-	mut a := &App(x)
+fn frame(mut a App) {
 	mut ed := a.ed
 	a.tui.clear()
 	scroll_limit := a.view_height()
@@ -551,8 +549,7 @@ fn frame(x voidptr) {
 	a.tui.flush()
 }
 
-fn event(e &tui.Event, x voidptr) {
-	mut a := &App(x)
+fn event(e &tui.Event, mut a App) {
 	mut buffer := a.ed
 	if e.typ == .key_down {
 		match e.code {

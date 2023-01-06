@@ -613,7 +613,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 
 fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 	file := p.get_item[&ast.File](idx)
-	mut global_g := &Gen(p.get_shared_context())
+	mut global_g := unsafe { &Gen(p.get_shared_context()) }
 	mut g := &Gen{
 		file: file
 		out: strings.new_builder(512000)

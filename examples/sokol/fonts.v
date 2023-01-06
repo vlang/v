@@ -55,8 +55,7 @@ fn init(mut state AppState) {
 	}
 }
 
-fn frame(user_data voidptr) {
-	mut state := &AppState(user_data)
+fn frame(mut state AppState) {
 	state.render_font()
 	gfx.begin_default_pass(&state.pass_action, sapp.width(), sapp.height())
 	sgl.draw()

@@ -91,8 +91,7 @@ fn main() {
 	sapp.run(&desc)
 }
 
-fn init(user_data voidptr) {
-	mut state := &AppState(user_data)
+fn init(mut state AppState) {
 	desc := sapp.create_desc()
 	gfx.setup(&desc)
 	s := &sgl.Desc{}
@@ -107,8 +106,7 @@ fn init(user_data voidptr) {
 	}
 }
 
-fn frame(user_data voidptr) {
-	mut state := &AppState(user_data)
+fn frame(mut state AppState) {
 	state.render_font()
 	gfx.begin_default_pass(&state.pass_action, sapp.width(), sapp.height())
 	sgl.draw()

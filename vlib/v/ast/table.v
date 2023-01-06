@@ -116,7 +116,7 @@ pub mut:
 	receiver_type  Type // != 0, when .is_method == true
 	name           string
 	params         []Param
-	source_fn      voidptr // set in the checker, while processing fn declarations
+	source_fn      voidptr // set in the checker, while processing fn declarations // TODO get rid of voidptr
 	usages         int
 	generic_names  []string
 	dep_names      []string // globals or consts dependent names

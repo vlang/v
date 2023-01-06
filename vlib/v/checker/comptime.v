@@ -421,7 +421,7 @@ fn (mut c Checker) verify_all_vweb_routes() {
 			if m.return_type == typ_vweb_result {
 				is_ok, nroute_attributes, nargs := c.verify_vweb_params_for_method(m)
 				if !is_ok {
-					f := &ast.FnDecl(m.source_fn)
+					f := unsafe { &ast.FnDecl(m.source_fn) }
 					if f == unsafe { nil } {
 						continue
 					}
