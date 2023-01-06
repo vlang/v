@@ -1,7 +1,7 @@
 // pathlib is an object-orientated filesystem paths module. Most I/O operations
 // are wrapped around functions from the `os` module. For example,
 // `os.link('path/to/file.v', 'target.v')` becomes
-// `path('path/to/file.v').link('target.v')`. It is heavily inspiried on
+// `path('path/to/file.v').link(path('target.v'))`. It is heavily inspired on
 // Python's pathlib module (https://docs.python.org/3/library/pathlib.html).
 module pathlib
 
@@ -14,13 +14,13 @@ import os
 // path points to.
 [noinit]
 struct Path {
-	parts []string
+	parts []string [required] // parts are the names of the folders, between the separators
 pub:
-	name   string
-	root   string
-	stem   string
-	suffix string
-	sep    string
+	name   string [required] // name is the last part of the path
+	root   string [required] // root is the first bit of the path, if absolute
+	stem   string [required] // stem (name without suffix) of the filename
+	suffix string [required] // suffix ('file extension') of the filename
+	sep    string [required] // sep is the system separator used in e.g. Path.str()
 }
 
 // CONSTRUCTORS
@@ -402,11 +402,11 @@ pub fn (p Path) with_name(name string) !Path {
 
 	no_filename := ['', '.', '..']
 	if current_name in no_filename {
-		error('path does not have a file name')
+		return PathError{p, 20, 'path does not have a file name', 'with_name'}
 	}
 
 	if name.contains(p.sep) {
-		error("name can't contain path separator")
+		return PathError{p, 23, "name can't contain path separator", 'with_name'}
 	}
 
 	mut parts := p.parts.clone()
@@ -428,11 +428,11 @@ pub fn (p Path) with_stem(stem string) !Path {
 
 	no_filename := ['', '.', '..']
 	if current_name in no_filename {
-		error('path does not have a file name')
+		return PathError{p, 20, 'path does not have a file name', 'with_stem'}
 	}
 
 	if stem.contains(p.sep) {
-		error("stem can't contain path separator")
+		return PathError{p, 23, "stem can't contain path separator", 'with_stem'}
 	}
 
 	// remove current suffix if it has one, otherwise use full name
@@ -459,15 +459,15 @@ pub fn (p Path) with_suffix(suffix string) !Path {
 
 	no_filename := ['', '.', '..']
 	if current_name in no_filename {
-		error('path does not have a file name')
+		return PathError{p, 20, 'path does not have a file name', 'with_suffix'}
 	}
 
 	if !suffix.starts_with('.') {
-		error("suffix has to start with a `.'")
+		return PathError{p, 21, "suffix has to start with a `.'", 'with_suffix'}
 	}
 
 	if suffix.contains(p.sep) {
-		error("suffix can't contain path separator")
+		return PathError{p, 22, "suffix can't contain path separator", 'with_suffix'}
 	}
 
 	// remove current suffix if it has one, otherwise use full name
@@ -479,4 +479,23 @@ pub fn (p Path) with_suffix(suffix string) !Path {
 	parts[parts.len - 1] = filename_with_suffix
 
 	return path_from_parts(parts)
+}
+
+pub struct PathError {
+	path Path
+	code int
+	msg string
+	func string
+}
+
+fn (err PathError) msg() string {
+	mut func := ''
+	if err.func != '' {
+		func = '.${err.func}'
+	}
+	return "pathlib.path('${err.path.str()}')${func}: ${err.msg}"
+}
+
+fn (err PathError) code() int {
+	return err.code
 }
