@@ -150,8 +150,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 	mut i := 0
 	mut fields_len := 0
 	$for field in U.fields {
-		value := val.$(field.name)
-		if value.str() != 'Option(error: none)' {
+		if val.$(field.name).str() != 'Option(error: none)' {
 			fields_len++
 		}
 	}
@@ -167,6 +166,10 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 
 		$if field.is_optional {
 			is_none := value.str() == 'Option(error: none)'
+			buf_len := val.$(field.name).str().len - 'Option()'.len
+			mut buf := []u8{cap: buf_len} //  the amount of memory space which has been reserved for elements, but not initialized or counted as elements.
+
+			buf = val.$(field.name).str()#[7..-1].bytes() // get the bytes from string inside `Option()`
 
 			if !is_none {
 				e.encode_newline(level, mut wr)!
@@ -182,26 +185,13 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				}
 
 				$if field.typ is ?string {
-					optional_value := val.$(field.name) as ?string
-					e.encode_string(optional_value, mut wr)!
-				} $else $if field.typ is ?bool {
-					optional_value := val.$(field.name) as ?bool
-					wr.write(Any(optional_value).str().bytes())!
-				} $else $if field.typ is ?f32 {
-					optional_value := val.$(field.name) as ?f32
-					wr.write(Any(optional_value).str().bytes())!
-				} $else $if field.typ is ?f64 {
-					optional_value := val.$(field.name) as ?f64
-					wr.write(Any(optional_value).str().bytes())!
-				} $else $if field.typ is ?i8 {
-					optional_value := val.$(field.name) as ?i8
-					wr.write(Any(optional_value).str().bytes())!
-				} $else $if field.typ is ?i16 {
-					optional_value := val.$(field.name) as ?i16
-					wr.write(Any(optional_value).str().bytes())!
-				} $else $if field.typ is ?int {
-					optional_value := val.$(field.name) as ?int
-					wr.write(Any(optional_value).int().str().bytes())!
+					// get string inside `Option('')`
+					e.encode_string(val.$(field.name).str()#[8..-2], mut wr)!
+				} $else $if field.typ is ?bool || field.typ is ?f32 || field.typ is ?f64
+					|| field.typ is ?i8 || field.typ is ?i16 || field.typ is ?int
+					|| field.typ is ?i64 || field.typ is ?u8 || field.typ is ?u16
+					|| field.typ is ?u32 || field.typ is ?u64 {
+					wr.write(buf)!
 				} $else $if field.typ is ?time.Time {
 					optional_value := val.$(field.name) as ?time.Time
 					parsed_time := optional_value as time.Time
@@ -229,6 +219,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				} $else {
 					return error('type ${typeof(val).name} cannot be array encoded')
 				}
+				buf = [] // clear memory usage
 			}
 		} $else {
 			e.encode_newline(level, mut wr)!
