@@ -198,6 +198,13 @@ bin/
 .idea/
 .vscode/
 *.iml
+
+# ENV
+.env
+
+# vweb and database
+*.db
+*.js
 '
 }
 
@@ -221,34 +228,7 @@ trim_trailing_whitespace = true
 
 [*.v]
 indent_style = tab
-indent_size = 4
-'
-}
-
-fn index_template_content() string {
-	return '@include "header.html"
-
-Test <b>app</b>
-<br>
-<h1>@hello</h1>
-<hr>
-
-If demo: <br>
-@if show
-	show = true
-@end
-
-<br><br>
-
-For loop demo: <br>
-
-@for number in numbers
-	@number <br>
-@end
-
-
-<hr>
-End.
+indent_size = 2
 '
 }
 
@@ -296,6 +276,8 @@ fn (mut c Create) create_files_and_directories() {
 		os.write_file(file.path, file.content) or { panic(err) }
 	}
 }
+
+// ####################################### PROJECTS CONTENT AND PATH #######################################
 
 fn (mut c Create) set_hello_world_project_files() {
 	c.files << ProjectFiles{
