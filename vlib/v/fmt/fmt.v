@@ -48,6 +48,7 @@ pub mut:
 	in_lambda_depth    int
 	inside_const       bool
 	inside_unsafe      bool
+	inside_comptime_if bool
 	is_mbranch_expr    bool // match a { x...y { } }
 	fn_scope           &ast.Scope = unsafe { nil }
 	wsinfix_depth      int
@@ -1998,6 +1999,7 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 
 pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	dollar := if node.is_comptime { '$' } else { '' }
+	f.inside_comptime_if = node.is_comptime
 	mut is_ternary := node.branches.len == 2 && node.has_else
 		&& branch_is_single_line(node.branches[0]) && branch_is_single_line(node.branches[1])
 		&& (node.is_expr || f.is_assign || f.is_struct_init || f.single_line_fields)
@@ -2057,6 +2059,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	}
 	f.write('}')
 	f.single_line_if = false
+	f.inside_comptime_if = false
 	if node.post_comments.len > 0 {
 		f.writeln('')
 		f.comments(node.post_comments,
@@ -2118,7 +2121,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit
 		&& (node.right as ast.ArrayInit).exprs.len == 1
 	is_and := node.op == .amp && f.node_str(node.right).starts_with('&')
-	if is_one_val_array_init {
+	if is_one_val_array_init && !f.inside_comptime_if {
 		// `var in [val]` => `var == val`
 		op := if node.op == .key_in { ' == ' } else { ' != ' }
 		f.write(op)
@@ -2127,7 +2130,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	} else {
 		f.write(' ${node.op.str()} ')
 	}
-	if is_one_val_array_init {
+	if is_one_val_array_init && !f.inside_comptime_if {
 		// `var in [val]` => `var == val`
 		f.expr((node.right as ast.ArrayInit).exprs[0])
 	} else if is_and {
