@@ -25,6 +25,9 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 	len := node.exprs.len
 	if array_type.unaliased_sym.kind == .array_fixed {
 		g.fixed_array_init(node, array_type, var_name)
+		if is_amp {
+			g.write(')')
+		}
 	} else if len == 0 {
 		// `[]int{len: 6, cap:10, init:22}`
 		g.array_init_with_fields(node, elem_type, is_amp, shared_styp, var_name)
