@@ -604,6 +604,13 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 							cond.pos)
 					}
 				}
+				.key_in {
+					if cond.left is ast.TypeNode && cond.right is ast.ArrayInit {
+						return .unknown
+					} else {
+						c.error('invalid `\$if` condition', cond.pos)
+					}
+				}
 				else {
 					c.error('invalid `\$if` condition', cond.pos)
 				}

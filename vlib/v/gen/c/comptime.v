@@ -496,6 +496,22 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 						return true, true
 					}
 				}
+				.key_in {
+					if cond.left is ast.TypeNode && cond.right is ast.ArrayInit {
+						checked_type := g.unwrap_generic((cond.left as ast.TypeNode).typ)
+						for expr in cond.right.exprs {
+							if g.table.is_comptime_type(checked_type, expr as ast.ComptimeType) {
+								g.write('1')
+								return true, true
+							}
+						}
+						g.write('0')
+						return false, true
+					} else {
+						g.write('1')
+						return true, true
+					}
+				}
 				else {
 					return true, false
 				}
