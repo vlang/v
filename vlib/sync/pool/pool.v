@@ -114,6 +114,7 @@ fn process_in_thread(mut pool PoolProcessor, task_id int) {
 	}
 	pool.waitgroup.done()
 }
+
 // get_item - called by the worker callback.
 // Retrieves a type safe instance of the currently processed item
 pub fn (pool &PoolProcessor) get_item[T](idx int) T {
@@ -130,7 +131,7 @@ pub fn (pool &PoolProcessor) get_result[T](idx int) T {
 pub fn (pool &PoolProcessor) get_results[T]() []T {
 	mut res := []T{cap: pool.results.len}
 	for i in 0 .. pool.results.len {
-		res << unsafe {*(&T(pool.results[i]))}
+		res << unsafe { *(&T(pool.results[i])) }
 	}
 	return res
 }
