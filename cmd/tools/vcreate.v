@@ -13,7 +13,7 @@ import os
 // 1) `v init` -> create a new project in the current folder
 // 2) `v new abc` -> create a new project in the new folder `abc`, by default a "hello world" project.
 // 3) `v new abcd web` -> create a new project in the new folder `abcd`, using the vweb template.
-// 4) `v new abcde gg` -> create a new project in the new folder `abcde`, using the gg template.
+// 4) `v new abcde hello_world` -> create a new project in the new folder `abcde`, using the hello_world template.
 
 // Note: run `v cmd/tools/vcreate_test.v` after changes to this program, to avoid regressions.
 
@@ -23,6 +23,116 @@ mut:
 	description string
 	version     string
 	license     string
+	files       []ProjectFiles
+}
+
+struct ProjectFiles {
+	path    string
+	content string
+}
+
+fn main() {
+	cmd := os.args[1]
+	match cmd {
+		'new' {
+			// list of models allowed
+			project_models := ['web', 'hello_world']
+			if os.args.len == 4 {
+				// validation
+				if os.args.last() !in project_models {
+					mut error_str := 'It is not possible create a "${os.args[os.args.len - 2]}" project.\n'
+					error_str += 'See the list of allowed projects:\n'
+					for model in project_models {
+						error_str += 'v new ${os.args[os.args.len - 2]} ${model}\n'
+					}
+					eprintln(error_str)
+					exit(1)
+				}
+			}
+			new_project(os.args[2..])
+		}
+		'init' {
+			init_project()
+		}
+		else {
+			cerror('unknown command: ${cmd}')
+			exit(1)
+		}
+	}
+	println('Complete!')
+}
+
+fn new_project(args []string) {
+	mut c := Create{}
+
+	c.name = check_name(if args.len > 0 { args[0] } else { os.input('Input your project name: ') })
+
+	if c.name == '' {
+		cerror('project name cannot be empty')
+		exit(1)
+	}
+
+	if c.name.contains('-') {
+		cerror('"${c.name}" should not contain hyphens')
+		exit(1)
+	}
+
+	if os.is_dir(c.name) {
+		cerror('${c.name} folder already exists')
+		exit(3)
+	}
+
+	c.description = if args.len > 1 { args[1] } else { os.input('Input your project description: ') }
+
+	default_version := '0.0.0'
+	c.version = os.input('Input your project version: (${default_version}) ')
+	if c.version == '' {
+		c.version = default_version
+	}
+
+	default_license := os.getenv_opt('VLICENSE') or { 'MIT' }
+	c.license = os.input('Input your project license: (${default_license}) ')
+	if c.license == '' {
+		c.license = default_license
+	}
+
+	println('Initialising ...')
+	match os.args.last() {
+		'web' {
+			c.set_web_project_files()
+		}
+		'hello_world' {
+			c.set_hello_world_project_files()
+		}
+		else {
+			eprintln('${os.args.last()} model not exist')
+			exit(1)
+		}
+	}
+
+	// gen project based in the `Create.files` info
+	c.create_files_and_directories()
+
+	c.write_vmod(true)
+	c.write_gitattributes(true)
+	c.write_editorconfig(true)
+	c.create_git_repo(c.name)
+}
+
+fn init_project() {
+	mut c := Create{}
+	c.name = check_name(os.file_name(os.getwd()))
+	if !os.exists('v.mod') {
+		c.description = ''
+		c.write_vmod(false)
+		println('Change the description of your project in `v.mod`')
+	}
+
+	c.set_hello_world_project_files()
+	c.create_files_and_directories()
+	c.write_gitattributes(false)
+	c.write_editorconfig(false)
+	c.create_git_repo('.')
 }
 
 fn cerror(e string) {
@@ -61,31 +171,7 @@ fn vmod_content(c Create) string {
 "
 }
 
-fn new_project_content() string {
-	if os.args.len == 2 && os.args[1] == 'init' {
-		return main_content()
-	}
-	if os.args.len == 3 {
-		return main_content()
-	}
-	if os.args.len == 4 {
-		kind := os.args.last()
-		return match kind {
-			'web' {
-				simple_web_app()
-			}
-			'gg' {
-				main_content() // TODO
-			}
-			else {
-				''
-			}
-		}
-	}
-	return ''
-}
-
-fn main_content() string {
+fn hello_world_content() string {
 	return "module main
 
 fn main() {
@@ -139,34 +225,6 @@ indent_size = 4
 '
 }
 
-fn user_template_content() string {
-	return '<html>
-  <header>
-    <title>\${page_title}</title>
-    @css "src/templates/page/home.css"
-  </header>
-  <body>
-    <h1 class="title">Hello, Vs.</h1>
-    @for var in list_of_object
-    <div>
-      <a href="\${v_url}">\${var.title}</a>
-      <span>\${var.description}</span>
-    </div>
-    @end
-    <div>@include "component.html"</div>
-  </body>
-</html>
-'
-}
-
-fn user_css_content() string {
-	return 'h1.title {
-  font-family: Arial, Helvetica, sans-serif;
-  color: #3b7bbf;
-}
-'
-}
-
 fn index_template_content() string {
 	return '@include "header.html"
 
@@ -199,14 +257,6 @@ fn (c &Create) write_vmod(new bool) {
 	os.write_file(vmod_path, vmod_content(c)) or { panic(err) }
 }
 
-fn (c &Create) write_main(new bool) {
-	if !new && (os.exists('${c.name}.v') || os.exists('${c.name}/src/main.v')) {
-		return
-	}
-	main_path := if new { '${c.name}/src/main.v' } else { '${c.name}.v' }
-	os.write_file(main_path, new_project_content()) or { panic(err) }
-}
-
 fn (c &Create) write_gitattributes(new bool) {
 	gitattributes_path := if new { '${c.name}/.gitattributes' } else { '.gitattributes' }
 	if !new && os.exists(gitattributes_path) {
@@ -221,23 +271,6 @@ fn (c &Create) write_editorconfig(new bool) {
 		return
 	}
 	os.write_file(editorconfig_path, editorconfig_content()) or { panic(err) }
-}
-
-fn (c &Create) write_html_and_css_templates(new bool) {
-	user_template_path := if new {
-		'${c.name}/src/templates/user.html'
-	} else {
-		'templates/user.html'
-	}
-	// TODO
-	// css_template_path := if new { '${c.name}/src/templates/user.html' } else { 'templates/user.html' }
-	index_template_path := if new { '${c.name}/src/index.html' } else { 'index.html' }
-	if !new && os.exists(user_template_path) {
-		return
-	}
-	os.write_file(user_template_path, user_template_content()) or { panic(err) }
-	os.write_file(index_template_path, index_template_content()) or { panic(err) }
-	// os.write_file(css_template_path, user_css_content()) or { panic(err) }
 }
 
 fn (c &Create) create_git_repo(dir string) {
@@ -255,145 +288,93 @@ fn (c &Create) create_git_repo(dir string) {
 	}
 }
 
-fn create(args []string) {
-	if os.args.len == 4 {
-		template := os.args.last()
-		if template !in ['web', 'gg'] {
-			eprintln('uknown template "${template}", possible templates: web, gg')
-			exit(1)
-		}
+fn (mut c Create) create_files_and_directories() {
+	for file in c.files {
+		dir := file.path.split(os.path_separator)#[..-1].join('/')
+		// create all directories, if not exist
+		os.mkdir_all(dir) or { panic(err) }
+		os.write_file(file.path, file.content) or { panic(err) }
 	}
-	mut c := Create{}
-	c.name = check_name(if args.len > 0 { args[0] } else { os.input('Input your project name: ') })
-	if c.name == '' {
-		cerror('project name cannot be empty')
-		exit(1)
-	}
-	if c.name.contains('-') {
-		cerror('"${c.name}" should not contain hyphens')
-		exit(1)
-	}
-	if os.is_dir(c.name) {
-		cerror('${c.name} folder already exists')
-		exit(3)
-	}
-	c.description = if args.len > 1 { args[1] } else { os.input('Input your project description: ') }
-	default_version := '0.0.0'
-	c.version = os.input('Input your project version: (${default_version}) ')
-	if c.version == '' {
-		c.version = default_version
-	}
-	default_license := os.getenv_opt('VLICENSE') or { 'MIT' }
-	c.license = os.input('Input your project license: (${default_license}) ')
-	if c.license == '' {
-		c.license = default_license
-	}
-	println('Initialising ...')
-	os.mkdir(c.name) or { panic(err) }
-	os.mkdir('${c.name}/src') or { panic(err) }
-	os.mkdir('${c.name}/src/templates') or { panic(err) }
-	c.write_vmod(true)
-	c.write_main(true)
-	c.write_html_and_css_templates(true)
-	c.write_gitattributes(true)
-	c.write_editorconfig(true)
-	c.create_git_repo(c.name)
 }
 
-fn init_project() {
-	mut c := Create{}
-	c.name = check_name(os.file_name(os.getwd()))
-	if !os.exists('v.mod') {
-		c.description = ''
-		c.write_vmod(false)
-		println('Change the description of your project in `v.mod`')
+fn (mut c Create) set_hello_world_project_files() {
+	c.files << ProjectFiles{
+		path: '${c.name}/src/main.v'
+		content: hello_world_content()
 	}
-	c.write_main(false)
-	c.write_gitattributes(false)
-	c.write_editorconfig(false)
-	c.create_git_repo('.')
 }
 
-fn main() {
-	cmd := os.args[1]
-	match cmd {
-		'new' {
-			create(os.args[2..])
-		}
-		'init' {
-			init_project()
-		}
-		else {
-			cerror('unknown command: ${cmd}')
-			exit(1)
-		}
+fn (mut c Create) set_web_project_files() {
+	c.files << ProjectFiles{
+		path: '${c.name}/src/databases/config_databases_sqlite.v'
+		content: 'b'
 	}
-	println('Complete!')
-}
-
-fn simple_web_app() string {
-	return "import vweb
-import sqlite // can change to 'mysql', 'pg'
-
-const (
-	port = 8082
-)
-
-struct App {
-	vweb.Context
-mut:
-	db shared sqlite.DB
-}
-
-struct User {
-	name string
-	password string
-}
-
-pub fn (app App) before_request() {
-	println('[web] before_request: \${app.req.method} \${app.req.url}')
-}
-
-fn main() {
-	vweb.run(&App{
-		db: sqlite.connect('vweb.sql')!
-}, port)
-}
-
-['/users/:name']
-pub fn (mut app App) user(name string) vweb.Result {
-	user := sql app.db {
-		select from User where name == name
+	c.files << ProjectFiles{
+		path: '${c.name}/src/templates/header_component.html'
+		content: 'b'
 	}
-	return \$vweb.html()
-}
-
-['/api/users/:name']
-pub fn (mut app App) user(name string) vweb.Result {
-	user := sql app.db {
-		select from User where name == name
+	c.files << ProjectFiles{
+		path: '${c.name}/src/templates/products.css'
+		content: 'b'
 	}
-	return app.json({
-		user: id
-	})
-}
-
-pub fn (mut app App) index() vweb.Result {
-	show := true
-	hello := 'Hello world from vweb'
-	numbers := [1, 2, 3]
-
-	return \$vweb.html()
-}
-
-[post]
-['/register']
-pub fn (mut app App) register_user(name string, password string) vweb.Result {
-	user := User{name:name, password}
-	sql app.db {
-		insert user into User
+	c.files << ProjectFiles{
+		path: '${c.name}/src/templates/products.html'
+		content: 'b'
 	}
-	return app.redirect('/')
-}
-"
+	c.files << ProjectFiles{
+		path: '${c.name}/src/auth_controllers.v'
+		content: 'b'
+	}
+	c.files << ProjectFiles{
+		path: '${c.name}/src/auth_dto.v'
+		content: 'b'
+	}
+	c.files << ProjectFiles{
+		path: '${c.name}/src/auth_services.v'
+		content: 'b'
+	}
+	c.files << ProjectFiles{
+		path: '${c.name}/src/index.html'
+		content: 'b'
+	}
+	c.files << ProjectFiles{
+		path: '${c.name}/src/main.v'
+		content: 'b'
+	}
+	c.files << ProjectFiles{
+		path: '${c.name}/src/product_controller.v'
+		content: 'b'
+	}
+	c.files << ProjectFiles{
+		path: '${c.name}/src/product_entities.v'
+		content: 'b'
+	}
+	c.files << ProjectFiles{
+		path: '${c.name}/src/product_service.v'
+		content: 'b'
+	}
+	c.files << ProjectFiles{
+		path: '${c.name}/src/product_view_api.v'
+		content: 'b'
+	}
+	c.files << ProjectFiles{
+		path: '${c.name}/src/product_view.v'
+		content: 'b'
+	}
+	c.files << ProjectFiles{
+		path: '${c.name}/src/user_controllers.v'
+		content: 'b'
+	}
+	c.files << ProjectFiles{
+		path: '${c.name}/src/user_entities.v'
+		content: 'b'
+	}
+	c.files << ProjectFiles{
+		path: '${c.name}/src/user_services.v'
+		content: 'b'
+	}
+	c.files << ProjectFiles{
+		path: '${c.name}/src/user_view_api.v'
+		content: 'b'
+	}
 }
