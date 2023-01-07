@@ -497,8 +497,20 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 					}
 				}
 				.key_in, .not_in {
-					if cond.left is ast.TypeNode && cond.right is ast.ArrayInit {
-						checked_type := g.unwrap_generic((cond.left as ast.TypeNode).typ)
+					if (cond.left is ast.TypeNode || cond.left is ast.SelectorExpr)
+						&& cond.right is ast.ArrayInit {
+						mut checked_type := ast.Type(0)
+						if cond.left is ast.SelectorExpr {
+							if cond.left.gkind_field == .typ {
+								checked_type = g.unwrap_generic(cond.left.name_type)
+							} else {
+								name := '${cond.left.expr}.${cond.left.field_name}'
+								checked_type = g.comptime_var_type_map[name]
+							}
+						} else {
+							checked_type = g.unwrap_generic((cond.left as ast.TypeNode).typ)
+						}
+
 						for expr in cond.right.exprs {
 							if expr is ast.ComptimeType {
 								if g.table.is_comptime_type(checked_type, expr as ast.ComptimeType) {
