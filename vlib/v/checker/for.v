@@ -62,6 +62,10 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			c.error('range type can not be string', node.cond.pos())
 		} else if typ_idx == ast.none_type_idx || high_type_idx == ast.none_type_idx {
 			c.error('range type can not be none', node.cond.pos())
+		} else if c.table.final_sym(typ).kind == .multi_return
+			&& c.table.final_sym(high_type).kind == .multi_return {
+			c.error('multi-returns cannot be used in ranges. A range is from a single value to a single higher value.',
+				node.cond.pos())
 		}
 		if high_type in [ast.int_type, ast.int_literal_type] {
 			node.val_type = typ
