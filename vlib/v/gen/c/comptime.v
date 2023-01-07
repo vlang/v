@@ -496,17 +496,39 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 						return true, true
 					}
 				}
-				.key_in {
+				.key_in, .not_in {
 					if cond.left is ast.TypeNode && cond.right is ast.ArrayInit {
 						checked_type := g.unwrap_generic((cond.left as ast.TypeNode).typ)
 						for expr in cond.right.exprs {
-							if g.table.is_comptime_type(checked_type, expr as ast.ComptimeType) {
-								g.write('1')
-								return true, true
+							if expr is ast.ComptimeType {
+								if g.table.is_comptime_type(checked_type, expr as ast.ComptimeType) {
+									if cond.op == .key_in {
+										g.write('1')
+									} else {
+										g.write('0')
+									}
+									return cond.op == .key_in, true
+								}
+							} else if expr is ast.TypeNode {
+								got_type := g.unwrap_generic(expr.typ)
+								is_true := checked_type.idx() == got_type.idx()
+									&& checked_type.has_flag(.optional) == got_type.has_flag(.optional)
+								if is_true {
+									if cond.op == .key_in {
+										g.write('1')
+									} else {
+										g.write('0')
+									}
+									return cond.op == .key_in, true
+								}
 							}
 						}
-						g.write('0')
-						return false, true
+						if cond.op == .not_in {
+							g.write('1')
+						} else {
+							g.write('0')
+						}
+						return cond.op == .not_in, true
 					} else {
 						g.write('1')
 						return true, true
