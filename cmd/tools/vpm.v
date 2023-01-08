@@ -305,7 +305,13 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 				eprintln(err)
 				return
 			}
-			minfo := mod_name_info(vmod.name)
+			full_mod_name := if vmod.name.contains('.') {
+				vmod.name
+			} else {
+				repo_name + '.' + vmod.name
+			}
+			minfo := mod_name_info(full_mod_name)
+			println('Relocating module from "${name}" to "{${minfo.mname_as_path}}" ( "${minfo.final_module_path}" ) ...')
 			if final_module_path != minfo.final_module_path {
 				println('Relocating module from "${name}" to "${vmod.name}" ( "${minfo.final_module_path}" ) ...')
 				if os.exists(minfo.final_module_path) {
@@ -330,10 +336,10 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 					}
 					continue
 				}
-				println('Module "${name}" relocated to "${vmod.name}" successfully.')
+				println('Module "${name}" relocated to "${minfo.mname_as_path}" successfully.')
 				final_module_path = minfo.final_module_path
 			}
-			name = vmod.name
+			name = full_mod_name
 		}
 		resolve_dependencies(name, final_module_path, module_names)
 	}
