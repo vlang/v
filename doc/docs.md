@@ -35,11 +35,11 @@ If V is already installed on a machine, it can be upgraded to its latest version
 by using the V's built-in self-updater.
 To do so, run the command `v up`.
 
-## Getting start
-In your terminal, you can:
-1) `v init` -> create a new project in the current folder
-2) `v new abc` -> create a new project in the new folder `abc`, by default a "hello world" project.
-3) `v new abcd web` -> create a new project in the new folder `abcd`, using the vweb template.
+## Getting started
+You can let V automatically set up the bare-bones structure of a project for you by using *one* of the following commands in a terminal:
+* `v init` → creates a new project in the current folder
+* `v new abc` → creates a new project in the new folder `abc`, by default a "hello world" project.
+* `v new abcd web` → creates a new project in the new folder `abcd`, using the vweb template.
 
 ## Table of Contents
 
