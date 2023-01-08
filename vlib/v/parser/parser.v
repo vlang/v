@@ -2630,9 +2630,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			|| (p.peek_tok.kind == .dot && p.peek_token(2).lit.len > 0
 			&& p.peek_token(2).lit[0].is_capital())
 			|| p.table.find_type_idx(p.mod + '.' + p.tok.lit) > 0
-			|| (p.inside_comptime_if && (!known_var && language == .v && ((p.tok.kind == .question
-			&& p.table.known_type(p.peek_token(1).lit))
-			|| (p.table.known_type(p.tok.lit) && p.peek_tok.kind != .pipe))))) {
+			|| p.inside_comptime_if) {
 			type_pos := p.tok.pos()
 			typ := p.parse_type()
 			return ast.TypeNode{
