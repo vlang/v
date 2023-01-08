@@ -97,17 +97,21 @@ fn new_project(args []string) {
 	}
 
 	println('Initialising ...')
-	match os.args.last() {
-		'web' {
-			c.set_web_project_files()
+	if args.len > 0 {
+		match os.args.last() {
+			'web' {
+				c.set_web_project_files()
+			}
+			'hello_world' {
+				c.set_hello_world_project_files()
+			}
+			else {
+				eprintln('${os.args.last()} model not exist')
+				exit(1)
+			}
 		}
-		'hello_world' {
-			c.set_hello_world_project_files()
-		}
-		else {
-			eprintln('${os.args.last()} model not exist')
-			exit(1)
-		}
+	} else {
+		c.set_hello_world_project_files()
 	}
 
 	// gen project based in the `Create.files` info
@@ -273,7 +277,8 @@ fn (c &Create) create_git_repo(dir string) {
 
 fn (mut c Create) create_files_and_directories() {
 	for file in c.files {
-		dir := file.path.split(os.path_separator)#[..-1].join('/')
+		// get dir and convert path separator
+		dir := file.path.split('/')#[..-1].join(os.path_separator)
 		// create all directories, if not exist
 		os.mkdir_all(dir) or { panic(err) }
 		os.write_file(file.path, file.content) or { panic(err) }
