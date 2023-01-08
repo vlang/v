@@ -128,7 +128,10 @@ fn init_project() {
 		println('Change the description of your project in `v.mod`')
 	}
 
-	c.set_hello_world_project_files()
+	c.files << ProjectFiles{
+		path: 'src/main.v'
+		content: hello_world_content()
+	}
 	c.create_files_and_directories()
 	c.write_gitattributes(false)
 	c.write_editorconfig(false)
@@ -228,7 +231,7 @@ trim_trailing_whitespace = true
 
 [*.v]
 indent_style = tab
-indent_size = 2
+indent_size = 4
 '
 }
 
