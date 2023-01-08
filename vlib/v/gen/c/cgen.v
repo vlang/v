@@ -4485,14 +4485,21 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 
 	// got to do a correct check for multireturn
 	sym := g.table.sym(g.fn_decl.return_type)
+	mut fn_ret_type := g.fn_decl.return_type
+	if sym.kind == .alias {
+		unaliased_type := g.table.unaliased_type(fn_ret_type)
+		if unaliased_type.has_flag(.optional) || unaliased_type.has_flag(.result) {
+			fn_ret_type = unaliased_type
+		}
+	}
 	fn_return_is_multi := sym.kind == .multi_return
-	fn_return_is_optional := g.fn_decl.return_type.has_flag(.optional)
-	fn_return_is_result := g.fn_decl.return_type.has_flag(.result)
+	fn_return_is_optional := fn_ret_type.has_flag(.optional)
+	fn_return_is_result := fn_ret_type.has_flag(.result)
 	mut has_semicolon := false
 	if node.exprs.len == 0 {
 		g.write_defer_stmts_when_needed()
 		if fn_return_is_optional || fn_return_is_result {
-			styp := g.typ(g.fn_decl.return_type)
+			styp := g.typ(fn_ret_type)
 			g.writeln('return (${styp}){0};')
 		} else {
 			if g.is_autofree {
@@ -4504,7 +4511,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		return
 	}
 	tmpvar := g.new_tmp_var()
-	ret_typ := g.typ(g.unwrap_generic(g.fn_decl.return_type))
+	ret_typ := g.typ(g.unwrap_generic(fn_ret_type))
 	mut use_tmp_var := g.defer_stmts.len > 0 || g.defer_profile_code.len > 0
 		|| g.cur_lock.lockeds.len > 0
 	// handle promoting none/error/function returning _option'
@@ -4516,7 +4523,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if g.fn_decl != unsafe { nil } && g.fn_decl.is_test {
 				test_error_var := g.new_tmp_var()
 				g.write('${ret_typ} ${test_error_var} = ')
-				g.gen_optional_error(g.fn_decl.return_type, node.exprs[0])
+				g.gen_optional_error(fn_ret_type, node.exprs[0])
 				g.writeln(';')
 				g.write_defer_stmts_when_needed()
 				g.gen_failing_return_error_for_test_fn(node, test_error_var)
@@ -4527,7 +4534,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			} else {
 				g.write('return ')
 			}
-			g.gen_optional_error(g.fn_decl.return_type, node.exprs[0])
+			g.gen_optional_error(fn_ret_type, node.exprs[0])
 			g.writeln(';')
 			if use_tmp_var {
 				g.write_defer_stmts_when_needed()
@@ -4544,7 +4551,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if g.fn_decl != unsafe { nil } && g.fn_decl.is_test {
 				test_error_var := g.new_tmp_var()
 				g.write('${ret_typ} ${test_error_var} = ')
-				g.gen_result_error(g.fn_decl.return_type, node.exprs[0])
+				g.gen_result_error(fn_ret_type, node.exprs[0])
 				g.writeln(';')
 				g.write_defer_stmts_when_needed()
 				g.gen_failing_return_error_for_test_fn(node, test_error_var)
@@ -4555,7 +4562,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			} else {
 				g.write('return ')
 			}
-			g.gen_result_error(g.fn_decl.return_type, node.exprs[0])
+			g.gen_result_error(fn_ret_type, node.exprs[0])
 			g.writeln(';')
 			if use_tmp_var {
 				g.write_defer_stmts_when_needed()
@@ -4686,16 +4693,16 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 		}
 		if fn_return_is_optional && !expr_type_is_opt && return_sym.name != c.option_name {
-			styp := g.base_type(g.fn_decl.return_type)
+			styp := g.base_type(fn_ret_type)
 			g.writeln('${ret_typ} ${tmpvar};')
 			g.write('_option_ok(&(${styp}[]) { ')
-			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
+			if !fn_ret_type.is_ptr() && node.types[0].is_ptr() {
 				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
 					g.write('*')
 				}
 			}
 			for i, expr in node.exprs {
-				g.expr_with_cast(expr, node.types[i], g.fn_decl.return_type.clear_flag(.optional).clear_flag(.result))
+				g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_flag(.optional).clear_flag(.result))
 				if i < node.exprs.len - 1 {
 					g.write(', ')
 				}
@@ -4715,16 +4722,16 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 		}
 		if fn_return_is_result && !expr_type_is_result && return_sym.name != c.result_name {
-			styp := g.base_type(g.fn_decl.return_type)
+			styp := g.base_type(fn_ret_type)
 			g.writeln('${ret_typ} ${tmpvar};')
 			g.write('_result_ok(&(${styp}[]) { ')
-			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
+			if !fn_ret_type.is_ptr() && node.types[0].is_ptr() {
 				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
 					g.write('*')
 				}
 			}
 			for i, expr in node.exprs {
-				g.expr_with_cast(expr, node.types[i], g.fn_decl.return_type.clear_flag(.result))
+				g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_flag(.result))
 				if i < node.exprs.len - 1 {
 					g.write(', ')
 				}

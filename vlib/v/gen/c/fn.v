@@ -684,6 +684,12 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	tmp_opt := if gen_or || gen_keep_alive { g.new_tmp_var() } else { '' }
 	if gen_or || gen_keep_alive {
 		mut ret_typ := node.return_type
+		if g.table.sym(ret_typ).kind == .alias {
+			unaliased_type := g.table.unaliased_type(ret_typ)
+			if unaliased_type.has_flag(.optional) || unaliased_type.has_flag(.result) {
+				ret_typ = unaliased_type
+			}
+		}
 		styp := g.typ(ret_typ)
 		if gen_or && !is_gen_or_and_assign_rhs {
 			cur_line = g.go_before_stmt(0)
@@ -713,7 +719,13 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	if gen_or {
 		g.or_block(tmp_opt, node.or_block, node.return_type)
-		unwrapped_typ := node.return_type.clear_flag(.optional).clear_flag(.result)
+		mut unwrapped_typ := node.return_type.clear_flag(.optional).clear_flag(.result)
+		if g.table.sym(unwrapped_typ).kind == .alias {
+			unaliased_type := g.table.unaliased_type(unwrapped_typ)
+			if unaliased_type.has_flag(.optional) || unaliased_type.has_flag(.result) {
+				unwrapped_typ = unaliased_type.clear_flag(.optional).clear_flag(.result)
+			}
+		}
 		unwrapped_styp := g.typ(unwrapped_typ)
 		if g.infix_left_var_name.len > 0 {
 			g.indent--

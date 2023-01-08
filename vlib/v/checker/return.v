@@ -12,6 +12,12 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	}
 	c.expected_type = c.table.cur_fn.return_type
 	mut expected_type := c.unwrap_generic(c.expected_type)
+	if expected_type != 0 && c.table.sym(expected_type).kind == .alias {
+		unaliased_type := c.table.unaliased_type(expected_type)
+		if unaliased_type.has_flag(.optional) || unaliased_type.has_flag(.result) {
+			expected_type = unaliased_type
+		}
+	}
 	expected_type_sym := c.table.sym(expected_type)
 	if node.exprs.len > 0 && c.table.cur_fn.return_type == ast.void_type {
 		c.error('unexpected argument, current function does not return anything', node.exprs[0].pos())

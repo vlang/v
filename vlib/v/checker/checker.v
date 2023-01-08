@@ -923,13 +923,20 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 // return the actual type of the expression, once the optional is handled
 fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Type {
 	if expr is ast.CallExpr {
-		if expr.return_type.has_flag(.optional) || expr.return_type.has_flag(.result) {
-			return_modifier_kind := if expr.return_type.has_flag(.optional) {
+		mut expr_ret_type := expr.return_type
+		if expr_ret_type != 0 && c.table.sym(expr_ret_type).kind == .alias {
+			unaliased_ret_type := c.table.unaliased_type(expr_ret_type)
+			if unaliased_ret_type.has_flag(.optional) || unaliased_ret_type.has_flag(.result) {
+				expr_ret_type = unaliased_ret_type
+			}
+		}
+		if expr_ret_type.has_flag(.optional) || expr_ret_type.has_flag(.result) {
+			return_modifier_kind := if expr_ret_type.has_flag(.optional) {
 				'an option'
 			} else {
 				'a result'
 			}
-			return_modifier := if expr.return_type.has_flag(.optional) { '?' } else { '!' }
+			return_modifier := if expr_ret_type.has_flag(.optional) { '?' } else { '!' }
 			if expr.or_block.kind == .absent {
 				if c.inside_defer {
 					c.error('${expr.name}() returns ${return_modifier_kind}, so it should have an `or {}` block at the end',
@@ -939,7 +946,7 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 						expr.pos)
 				}
 			} else {
-				c.check_or_expr(expr.or_block, ret_type, expr.return_type)
+				c.check_or_expr(expr.or_block, ret_type, expr_ret_type)
 			}
 			return ret_type.clear_flag(.optional).clear_flag(.result)
 		} else if expr.or_block.kind == .block {
@@ -2329,6 +2336,12 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		}
 		ast.CallExpr {
 			mut ret_type := c.call_expr(mut node)
+			if ret_type != 0 && c.table.sym(ret_type).kind == .alias {
+				unaliased_type := c.table.unaliased_type(ret_type)
+				if unaliased_type.has_flag(.optional) || unaliased_type.has_flag(.result) {
+					ret_type = unaliased_type
+				}
+			}
 			if !ret_type.has_flag(.optional) && !ret_type.has_flag(.result) {
 				if node.or_block.kind == .block {
 					c.error('unexpected `or` block, the function `${node.name}` does neither return an optional nor a result',
