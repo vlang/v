@@ -130,7 +130,7 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) !
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is []Any {
 		e.encode_any(val, level, mut wr)!
-	} $else $if T in [Null, bool, f32, f64, i8, i16, int, i64, u8, u16, u32, u64] {
+	} $else $if T in [Null, bool, $Float, $Int, u8, u16, u32, u64] {
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is Encodable {
 		wr.write(val.json_str().bytes())!
@@ -247,7 +247,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			} $else $if field.typ is time.Time {
 				parsed_time := val.$(field.name) as time.Time
 				e.encode_string(parsed_time.format_rfc3339(), mut wr)!
-			} $else $if field.typ in [bool, f32, f64, i8, i16, int, i64, u8, u16, u32, u64] {
+			} $else $if field.typ in [bool, $Float, $Int, u8, u16, u32, u64] {
 				wr.write(value.str().bytes())!
 			} $else $if field.is_array {
 				e.encode_array(value, level + 1, mut wr)!
