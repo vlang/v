@@ -25,6 +25,9 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 	len := node.exprs.len
 	if array_type.unaliased_sym.kind == .array_fixed {
 		g.fixed_array_init(node, array_type, var_name)
+		if is_amp {
+			g.write(')')
+		}
 	} else if len == 0 {
 		// `[]int{len: 6, cap:10, init:22}`
 		g.array_init_with_fields(node, elem_type, is_amp, shared_styp, var_name)
@@ -529,14 +532,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
-	mut deref_field := if node.left_type.is_ptr() || node.left_type.is_pointer() {
-		'->'
-	} else {
-		'.'
-	}
-	if node.left_type.has_flag(.shared_f) {
-		deref_field += 'val.'
-	}
+	mut deref_field := g.dot_or_ptr(node.left_type)
 	// eprintln('> qsort: pointer $node.left_type | deref_field: `$deref_field`')
 	g.empty_line = true
 	g.write('qsort(')

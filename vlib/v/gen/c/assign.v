@@ -121,12 +121,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			if mut left.obj is ast.Var {
 				if val is ast.ComptimeSelector {
-					if val.field_expr is ast.SelectorExpr {
-						if val.field_expr.expr is ast.Ident {
-							key_str := '${val.field_expr.expr.name}.typ'
-							var_type = g.comptime_var_type_map[key_str] or { var_type }
-							left.obj.typ = var_type
-						}
+					key_str := g.get_comptime_selector_key_type(val)
+					if key_str != '' {
+						var_type = g.comptime_var_type_map[key_str] or { var_type }
+						left.obj.typ = var_type
 					}
 				} else if val is ast.ComptimeCall {
 					key_str := '${val.method_name}.return_type'
@@ -733,14 +731,7 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 				styp := g.typ(left.typ)
 				g.write('${styp} _var_${left.pos.pos} = ')
 				g.expr(left.expr)
-				mut sel := '.'
-				if left.expr_type.is_ptr() {
-					if left.expr_type.has_flag(.shared_f) {
-						sel = '->val.'
-					} else {
-						sel = '->'
-					}
-				}
+				sel := g.dot_or_ptr(left.expr_type)
 				g.writeln('${sel}${left.field_name};')
 			}
 			else {}

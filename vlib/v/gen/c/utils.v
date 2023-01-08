@@ -106,3 +106,14 @@ fn escape_quotes(val string) string {
 	])
 	return unescaped_val.replace_each(['\x01', '${bs}${bs}', "'", "${bs}'", '"', '${bs}"'])
 }
+
+[inline]
+fn (mut g Gen) dot_or_ptr(val_type ast.Type) string {
+	return if val_type.has_flag(.shared_f) {
+		'->val.'
+	} else if val_type.is_ptr() {
+		'->'
+	} else {
+		'.'
+	}
+}
