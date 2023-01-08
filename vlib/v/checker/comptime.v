@@ -604,6 +604,19 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 							cond.pos)
 					}
 				}
+				.key_in, .not_in {
+					if cond.left in [ast.SelectorExpr, ast.TypeNode] && cond.right is ast.ArrayInit {
+						for expr in cond.right.exprs {
+							if expr !is ast.ComptimeType && expr !is ast.TypeNode {
+								c.error('invalid `\$if` condition, only types are allowed',
+									expr.pos())
+							}
+						}
+						return .unknown
+					} else {
+						c.error('invalid `\$if` condition', cond.pos)
+					}
+				}
 				else {
 					c.error('invalid `\$if` condition', cond.pos)
 				}
