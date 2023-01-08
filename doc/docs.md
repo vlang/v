@@ -36,7 +36,7 @@ by using the V's built-in self-updater.
 To do so, run the command `v up`.
 
 ## Getting started
-You can let V automatically set up the bare-bones structure of a project for you by using *one* of the following commands in a terminal:
+You can let V automatically set up the bare-bones structure of a project for you by using any of the following commands in a terminal:
 * `v init` → creates a new project in the current folder
 * `v new abc` → creates a new project in the new folder `abc`, by default a "hello world" project.
 * `v new abcd web` → creates a new project in the new folder `abcd`, using the vweb template.
