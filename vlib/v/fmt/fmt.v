@@ -731,6 +731,7 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 				.float { f.write('\$Float') }
 				.sum_type { f.write('\$Sumtype') }
 				.enum_ { f.write('\$Enum') }
+				.alias { f.write('\$Alias') }
 			}
 		}
 	}

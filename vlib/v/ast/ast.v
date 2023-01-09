@@ -126,6 +126,7 @@ pub enum ComptimeTypeKind {
 	array
 	sum_type
 	enum_
+	alias
 }
 
 pub struct ComptimeType {
@@ -144,6 +145,7 @@ pub fn (cty ComptimeType) str() string {
 		.array { '\$Array' }
 		.sum_type { '\$Sumtype' }
 		.enum_ { '\$Enum' }
+		.alias { '\$Alias' }
 	}
 }
 

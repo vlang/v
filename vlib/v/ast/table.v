@@ -2262,6 +2262,9 @@ pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
 		.enum_ {
 			return x_kind == .enum_
 		}
+		.alias {
+			return x_kind == .alias
+		}
 	}
 }
 
