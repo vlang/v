@@ -274,7 +274,11 @@ pub fn (p Path) is_regular() bool {
 // See also: `os.ls`.
 pub fn (p Path) iterdir() ![]Path {
 	files := os.ls(p.str()) or {
-		return PathError{p, 600, '${p} is not an existing directory', 'iterdir'}
+		return IError(PathError{
+			path: p
+			msg: '${p} is not an existing directory'
+			func: 'iterdir'
+		})
 	}
 	// convert string filenames to paths
 	return files.map(path(it))
@@ -304,7 +308,11 @@ pub fn (p Path) mkdir(params os.MkdirParams) !Path {
 // See also: `os.open_file`.
 pub fn (p Path) open(mode string, options ...int) !os.File {
 	return os.open_file(p.str(), mode, ...options) or {
-		PathError{p, 200, 'cannot open "${p}"', 'open'}
+		IError(PathError{
+			path: p
+			msg: 'cannot open "${p}"'
+			func: 'open'
+		})
 	}
 }
 
@@ -356,8 +364,19 @@ pub fn (p Path) quoted() string {
 	return os.quoted_path(p.str())
 }
 
+// read_text reads text from `path` and returns it as a string.
+pub fn (p Path) read_text() !string {
+	return os.read_file(p.str()) or {
+		IError(PathError{
+			path: p
+			msg: 'cannot read from ${p}'
+			func: 'read_text'
+		})
+	}
+}
+
 // relative_to returns the path relative to a given parent directory. Errors if
-// `parent` is not actually a parent directory
+// `parent` is not actually a parent directory.
 //
 // Example:
 // ```v
@@ -367,7 +386,11 @@ pub fn (p Path) quoted() string {
 // ```
 pub fn (p Path) relative_to(parent Path) !Path {
 	if !p.is_relative_to(parent) || p.parts == parent.parts {
-		return PathError{p, 401, '"${p}" not a subpath of "${parent}"', 'relative_to'}
+		IError(PathError{
+			path: p
+			msg: '"${p}" not a subpath of "${parent}"'
+			func: 'relative_to'
+		})
 	}
 
 	return path_from_parts(p.parts[parent.parts.len..])
@@ -425,11 +448,19 @@ pub fn (p Path) with_name(name string) !Path {
 
 	no_filename := ['', '.', '..']
 	if current_name in no_filename {
-		return PathError{p, 20, 'path does not have a file name', 'with_name'}
+		return IError(PathError{
+			path: p
+			msg: 'path does not have a file name'
+			func: 'with_name'
+		})
 	}
 
 	if name.contains(p.sep) {
-		return PathError{p, 23, "name can't contain path separator", 'with_name'}
+		return IError(PathError{
+			path: p
+			msg: "name can't contain path separator"
+			func: 'with_name'
+		})
 	}
 
 	mut parts := p.parts.clone()
@@ -451,11 +482,19 @@ pub fn (p Path) with_stem(stem string) !Path {
 
 	no_filename := ['', '.', '..']
 	if current_name in no_filename {
-		return PathError{p, 20, 'path does not have a file name', 'with_stem'}
+		return IError(PathError{
+			path: p
+			msg: 'path does not have a file name'
+			func: 'with_stem'
+		})
 	}
 
 	if stem.contains(p.sep) {
-		return PathError{p, 23, "stem can't contain path separator", 'with_stem'}
+		return IError(PathError{
+			path: p
+			msg: "stem can't contain path separator"
+			func: 'with_stem'
+		})
 	}
 
 	// remove current suffix if it has one, otherwise use full name
@@ -482,15 +521,27 @@ pub fn (p Path) with_suffix(suffix string) !Path {
 
 	no_filename := ['', '.', '..']
 	if current_name in no_filename {
-		return PathError{p, 20, 'path does not have a file name', 'with_suffix'}
+		return IError(PathError{
+			path: p
+			msg: 'path does not have a file name'
+			func: 'with_suffix'
+		})
 	}
 
 	if !suffix.starts_with('.') {
-		return PathError{p, 21, "suffix has to start with a `.'", 'with_suffix'}
+		return IError(PathError{
+			path: p,
+			msg: 'suffix has to start with a `.`'
+			func: 'with_suffix'
+		})
 	}
 
 	if suffix.contains(p.sep) {
-		return PathError{p, 22, "suffix can't contain path separator", 'with_suffix'}
+		return IError(PathError{
+			path: p
+			msg: 'suffix cannot contain path separator'
+			func: 'with_suffix'
+		})
 	}
 
 	// remove current suffix if it has one, otherwise use full name
@@ -508,13 +559,17 @@ pub fn (p Path) with_suffix(suffix string) !Path {
 // See also: `os.write_file`.
 pub fn (p Path) write_text(text string) ! {
 	os.write_file(p.str(), text) or {
-		return PathError{p, 500, 'cannot write to "${p}"', 'write_text'}
+		return IError(PathError{
+			path: p
+			msg: 'cannot write to "${p}"'
+			func: 'write_text'
+		})
 	}
 }
 
 pub struct PathError {
+	Error
 	path Path
-	code int
 	msg  string
 	func string
 }
@@ -525,8 +580,4 @@ fn (err PathError) msg() string {
 		func = '.${err.func}'
 	}
 	return "pathlib.path('${err.path}')${func}: ${err.msg}"
-}
-
-fn (err PathError) code() int {
-	return err.code
 }
