@@ -139,11 +139,13 @@ fn test_encode_decode_time() {
 	assert user2.reg_date.str() == '2020-12-22 07:23:00'
 }
 
-struct City {
+pub struct City {
+mut:
 	name string
 }
 
-struct Country {
+pub struct Country {
+mut:
 	cities []City
 	name   string
 }
@@ -170,6 +172,7 @@ fn test_parse_map() {
 }
 
 struct Data {
+mut:
 	countries []Country
 	users     map[string]User
 	extra     map[string]map[string]int
