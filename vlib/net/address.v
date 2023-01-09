@@ -238,7 +238,7 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
 	return addresses
 }
 
-fn (a Addr) str() string {
+pub fn (a Addr) str() string {
 	match unsafe { AddrFamily(a.f) } {
 		.ip {
 			unsafe {
