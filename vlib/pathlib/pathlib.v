@@ -14,8 +14,8 @@ import os
 // path points to.
 [noinit]
 struct Path {
-	parts []string [required] // parts are the names of the folders, between the separators.
-pub:
+	parts []string [required]
+pub: // parts are the names of the folders, between the separators.
 	name   string [required] // name is the last part of the path.
 	root   string [required] // root is the first bit of the path, if absolute.
 	stem   string [required] // stem (name without suffix) of the filename.
@@ -235,6 +235,8 @@ pub fn (p Path) is_file() bool {
 // }
 
 // is_relative_to returns if the other path is relative to the current path.
+// A path being relative to the other path means it's a child (or subpath) of
+// the other path.
 pub fn (p Path) is_relative_to(other Path) bool {
 	window := other.parts
 
@@ -271,7 +273,9 @@ pub fn (p Path) is_regular() bool {
 // hidden files but excluding `.` and `..`.
 // See also: `os.ls`.
 pub fn (p Path) iterdir() ![]Path {
-	files := os.ls(p.str())!
+	files := os.ls(p.str()) or {
+		return PathError{p, 600, 'path is not an existing directory', 'iterdir'}
+	}
 	// convert string filenames to paths
 	return files.map(path(it))
 }
@@ -299,7 +303,9 @@ pub fn (p Path) mkdir(params os.MkdirParams) !Path {
 // open the `path` if it's a file.
 // See also: `os.open_file`.
 pub fn (p Path) open(mode string, options ...int) !os.File {
-	return os.open_file(p.str(), mode, ...options)!
+	return os.open_file(p.str(), mode, ...options) or {
+		PathError{p, 200, 'cannot open file at path', 'open'}
+	}
 }
 
 // parent returns the parent of the `path`.
@@ -481,10 +487,18 @@ pub fn (p Path) with_suffix(suffix string) !Path {
 	return path_from_parts(parts)
 }
 
+// write_text writes text to file at `path`.
+// See also: `os.write_file`.
+pub fn (p Path) write_text(text string) ! {
+	os.write_file(p.str(), text) or {
+		return PathError{p, 500, 'path is not an existing file', 'write_text'}
+	}
+}
+
 pub struct PathError {
 	path Path
 	code int
-	msg string
+	msg  string
 	func string
 }
 
