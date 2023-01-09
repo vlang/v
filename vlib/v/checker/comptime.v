@@ -766,7 +766,7 @@ fn (mut c Checker) check_comptime_is_field_selector(node ast.SelectorExpr) bool 
 fn (mut c Checker) check_comptime_is_field_selector_bool(node ast.SelectorExpr) bool {
 	if c.check_comptime_is_field_selector(node) {
 		return node.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_option',
-			'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias']
+			'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias', 'is_enum']
 	}
 	return false
 }
@@ -787,6 +787,7 @@ fn (mut c Checker) get_comptime_selector_bool_field(field_name string) bool {
 		'is_chan' { return field_sym.kind == .chan }
 		'is_struct' { return field_sym.kind == .struct_ }
 		'is_alias' { return field_sym.kind == .alias }
+		'is_enum' { return field_sym.kind == .enum_ }
 		else { return false }
 	}
 }

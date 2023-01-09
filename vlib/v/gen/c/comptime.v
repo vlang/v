@@ -42,6 +42,7 @@ fn (mut g Gen) get_comptime_selector_bool_field(field_name string) bool {
 		'is_chan' { return field_sym.kind == .chan }
 		'is_struct' { return field_sym.kind == .struct_ }
 		'is_alias' { return field_sym.kind == .alias }
+		'is_enum' { return field_sym.kind == .enum_ }
 		else { return false }
 	}
 }
@@ -571,7 +572,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 		}
 		ast.SelectorExpr {
 			if g.inside_comptime_for_field && cond.expr is ast.Ident
-				&& (cond.expr as ast.Ident).name == g.comptime_for_field_var && cond.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_option', 'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias'] {
+				&& (cond.expr as ast.Ident).name == g.comptime_for_field_var && cond.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_option', 'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias', 'is_enum'] {
 				ret_bool := g.get_comptime_selector_bool_field(cond.field_name)
 				g.write(ret_bool.str())
 				return ret_bool, true
@@ -744,6 +745,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('\t${node.val_var}.is_chan = ${field_sym.kind == .chan};')
 				g.writeln('\t${node.val_var}.is_struct = ${field_sym.kind == .struct_};')
 				g.writeln('\t${node.val_var}.is_alias = ${field_sym.kind == .alias};')
+				g.writeln('\t${node.val_var}.is_enum = ${field_sym.kind == .enum_};')
 				//
 				g.writeln('\t${node.val_var}.indirections = ${field.typ.nr_muls()};')
 				//

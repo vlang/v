@@ -125,6 +125,7 @@ pub:
 	is_array  bool // `f []string` , TODO
 	is_map    bool // `f map[string]int` , TODO
 	is_chan   bool // `f chan int` , TODO
+	is_enum   bool // `f Enum` where Enum is an enum
 	is_struct bool // `f Abc` where Abc is a struct , TODO
 	is_alias  bool // `f MyInt` where `type MyInt = int`, TODO
 	//
