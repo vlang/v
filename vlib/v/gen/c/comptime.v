@@ -496,6 +496,20 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 				}
 				.eq, .ne {
 					// TODO Implement `$if method.args.len == 1`
+					if cond.left is ast.SelectorExpr && g.comptime_for_method.len > 0
+						&& cond.right is ast.StringLiteral {
+						selector := cond.left as ast.SelectorExpr
+						if selector.expr is ast.Ident
+							&& (selector.expr as ast.Ident).name == g.comptime_for_method_var && selector.field_name == 'name' {
+							is_equal := g.comptime_for_method == cond.right.val
+							if is_equal {
+								g.write('1')
+							} else {
+								g.write('0')
+							}
+							return is_equal, true
+						}
+					}
 					if cond.left is ast.SelectorExpr || cond.right is ast.SelectorExpr {
 						l, d1 := g.comptime_if_cond(cond.left, pkg_exist)
 						g.write(' ${cond.op} ')
@@ -647,6 +661,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				}
 			}
 			g.comptime_for_method = method.name
+			g.comptime_for_method_var = node.val_var
 			g.writeln('/* method ${i} */ {')
 			g.writeln('\t${node.val_var}.name = _SLIT("${method.name}");')
 			if method.attrs.len == 0 {

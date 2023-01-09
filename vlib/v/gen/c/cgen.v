@@ -193,6 +193,7 @@ mut:
 	// nr_vars_to_free       int
 	// doing_autofree_tmp    bool
 	comptime_for_method              string // $for method in T.methods {}
+	comptime_for_method_var          string // $for method in T.methods {}; the variable name
 	comptime_for_field_var           string // $for field in T.fields {}; the variable name
 	comptime_for_field_value         ast.StructField // value of the field variable
 	comptime_for_field_type          ast.Type        // type of the field variable inferred from `$if field.typ is T {}`
