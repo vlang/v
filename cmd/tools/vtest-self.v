@@ -103,9 +103,9 @@ const (
 		'vlib/v/parser/v_parser_test.v',
 		'vlib/v/scanner/scanner_test.v',
 		'vlib/v/slow_tests/inout/compiler_test.v',
-		'vlib/v/tests/prod_test.v',
-		'vlib/v/tests/profile/profile_test.v',
-		'vlib/v/tests/repl/repl_test.v',
+		'vlib/v/slow_tests/prod_test.v',
+		'vlib/v/slow_tests/profile/profile_test.v',
+		'vlib/v/slow_tests/repl/repl_test.v',
 		'vlib/v/slow_tests/valgrind/valgrind_test.v',
 	]
 	skip_with_fsanitize_memory    = [
@@ -159,7 +159,7 @@ const (
 		'do_not_remove',
 	]
 	skip_on_musl                  = [
-		'vlib/v/tests/profile/profile_test.v',
+		'vlib/v/slow_tests/profile/profile_test.v',
 		'vlib/gg/draw_fns_api_test.v',
 		'vlib/v/tests/skip_unused/gg_code.vv',
 	]
