@@ -151,23 +151,23 @@ fn opt(s string) ?int {
 	return 1
 }
 
-fn optional_str() {
+fn option_str() {
 	q := 'select'
 	s := 'query: select'
-	// optional fn args must be freed
+	// option fn args must be freed
 	pos2 := opt('query:${q}') or {
 		// pos := s.index('query: $q') or {
 		println('exiting')
 		return
 	}
 	println(pos2 + 1)
-	// optional method args must be freed
+	// option method args must be freed
 	pos := s.index('query: ${q}') or {
 		println('exiting')
 		return
 	}
 	println(pos + 1)
-	// test assigning an optional to an existing var
+	// test assigning an option to an existing var
 	mut p := 0
 	for {
 		p = opt('query:${q}') or { break }
@@ -183,7 +183,7 @@ fn return_error_with_freed_expr() ?string {
 	return 'ok'
 }
 
-fn optional_return() {
+fn option_return() {
 	return_error_with_freed_expr() or { return }
 }
 
@@ -374,7 +374,7 @@ fn parse_header1(s string) ?string {
 	return words[0]
 }
 
-fn advanced_optionals() {
+fn advanced_options() {
 	s := parse_header0('foo:bar') or { return }
 	s2 := parse_header1('foo:bar') or { return }
 }
@@ -389,8 +389,8 @@ fn main() {
 	str_tmp_expr_advanced_var_decl()
 	str_inter()
 	match_expr()
-	optional_str()
-	// optional_return()
+	option_str()
+	// option_return()
 	str_replace()
 	str_replace2()
 	if_cond()
@@ -405,7 +405,7 @@ fn main() {
 	s2 := return_sb_str()
 	// free_map()
 	// loop_map()
-	advanced_optionals()
+	advanced_options()
 	free_array_except_returned_element()
 	println('end')
 }

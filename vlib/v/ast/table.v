@@ -224,7 +224,7 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 	}
 	if f.return_type != 0 && f.return_type != void_type {
 		sym := t.sym(f.return_type)
-		opt := if f.return_type.has_flag(.optional) { 'option_' } else { '' }
+		opt := if f.return_type.has_flag(.option) { 'option_' } else { '' }
 		res := if f.return_type.has_flag(.result) { 'result_' } else { '' }
 
 		sig += '__${opt}${res}${sym.cname}'
@@ -256,7 +256,7 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 		sig += ' !'
 	} else if f.return_type != void_type {
 		return_type_sym := t.sym(f.return_type)
-		if f.return_type.has_flag(.optional) {
+		if f.return_type.has_flag(.option) {
 			sig += ' ?${return_type_sym.name}'
 		} else if f.return_type.has_flag(.result) {
 			sig += ' !${return_type_sym.name}'
@@ -882,7 +882,7 @@ pub fn (t &Table) known_type_idx(typ Type) bool {
 pub fn (t &Table) array_name(elem_type Type) string {
 	elem_type_sym := t.sym(elem_type)
 	ptr := if elem_type.is_ptr() { '&'.repeat(elem_type.nr_muls()) } else { '' }
-	opt := if elem_type.has_flag(.optional) { '?' } else { '' }
+	opt := if elem_type.has_flag(.option) { '?' } else { '' }
 	res := if elem_type.has_flag(.result) { '!' } else { '' }
 	return '[]${opt}${res}${ptr}${elem_type_sym.name}'
 }
@@ -891,7 +891,7 @@ pub fn (t &Table) array_name(elem_type Type) string {
 pub fn (t &Table) array_cname(elem_type Type) string {
 	elem_type_sym := t.sym(elem_type)
 	suffix := if elem_type.is_ptr() { '_ptr'.repeat(elem_type.nr_muls()) } else { '' }
-	opt := if elem_type.has_flag(.optional) { '_option_' } else { '' }
+	opt := if elem_type.has_flag(.option) { '_option_' } else { '' }
 	res := if elem_type.has_flag(.result) { '_result_' } else { '' }
 	if elem_type_sym.cname.contains('[') {
 		type_name := elem_type_sym.cname.replace_each(['[', '_T_', ', ', '_', ']', ''])
@@ -907,7 +907,7 @@ pub fn (t &Table) array_cname(elem_type Type) string {
 pub fn (t &Table) array_fixed_name(elem_type Type, size int, size_expr Expr) string {
 	elem_type_sym := t.sym(elem_type)
 	ptr := if elem_type.is_ptr() { '&'.repeat(elem_type.nr_muls()) } else { '' }
-	opt := if elem_type.has_flag(.optional) { '?' } else { '' }
+	opt := if elem_type.has_flag(.option) { '?' } else { '' }
 	res := if elem_type.has_flag(.result) { '!' } else { '' }
 	size_str := if size_expr is EmptyExpr || size != 987654321 {
 		size.str()
@@ -921,7 +921,7 @@ pub fn (t &Table) array_fixed_name(elem_type Type, size int, size_expr Expr) str
 pub fn (t &Table) array_fixed_cname(elem_type Type, size int) string {
 	elem_type_sym := t.sym(elem_type)
 	suffix := if elem_type.is_ptr() { '_ptr${elem_type.nr_muls()}' } else { '' }
-	opt := if elem_type.has_flag(.optional) { '_option_' } else { '' }
+	opt := if elem_type.has_flag(.option) { '_option_' } else { '' }
 	res := if elem_type.has_flag(.result) { '_result_' } else { '' }
 	if elem_type_sym.cname.contains('[') {
 		type_name := elem_type_sym.cname.replace_each(['[', '_T_', ', ', '_', ']', ''])
@@ -978,7 +978,7 @@ pub fn (t &Table) promise_cname(return_type Type) string {
 [inline]
 pub fn (t &Table) thread_name(return_type Type) string {
 	if return_type.idx() == void_type_idx {
-		if return_type.has_flag(.optional) {
+		if return_type.has_flag(.option) {
 			return 'thread ?'
 		} else if return_type.has_flag(.result) {
 			return 'thread !'
@@ -988,7 +988,7 @@ pub fn (t &Table) thread_name(return_type Type) string {
 	}
 	return_type_sym := t.sym(return_type)
 	ptr := if return_type.is_ptr() { '&' } else { '' }
-	opt := if return_type.has_flag(.optional) { '?' } else { '' }
+	opt := if return_type.has_flag(.option) { '?' } else { '' }
 	res := if return_type.has_flag(.result) { '!' } else { '' }
 	return 'thread ${opt}${res}${ptr}${return_type_sym.name}'
 }
@@ -996,7 +996,7 @@ pub fn (t &Table) thread_name(return_type Type) string {
 [inline]
 pub fn (t &Table) thread_cname(return_type Type) string {
 	if return_type == void_type {
-		if return_type.has_flag(.optional) {
+		if return_type.has_flag(.option) {
 			return '__v_thread_Option_void'
 		} else if return_type.has_flag(.result) {
 			return '__v_thread_Result_void'
@@ -1006,7 +1006,7 @@ pub fn (t &Table) thread_cname(return_type Type) string {
 	}
 	return_type_sym := t.sym(return_type)
 	suffix := if return_type.is_ptr() { '_ptr' } else { '' }
-	opt := if return_type.has_flag(.optional) { '_option_' } else { '' }
+	opt := if return_type.has_flag(.option) { '_option_' } else { '' }
 	res := if return_type.has_flag(.result) { '_result_' } else { '' }
 	return '__v_thread_${opt}${res}${return_type_sym.cname}${suffix}'
 }
@@ -1018,7 +1018,7 @@ pub fn (t &Table) map_name(key_type Type, value_type Type) string {
 	key_type_sym := t.sym(key_type)
 	value_type_sym := t.sym(value_type)
 	ptr := if value_type.is_ptr() { '&'.repeat(value_type.nr_muls()) } else { '' }
-	opt := if value_type.has_flag(.optional) { '?' } else { '' }
+	opt := if value_type.has_flag(.option) { '?' } else { '' }
 	res := if value_type.has_flag(.result) { '!' } else { '' }
 	return 'map[${key_type_sym.name}]${opt}${res}${ptr}${value_type_sym.name}'
 }
@@ -1028,7 +1028,7 @@ pub fn (t &Table) map_cname(key_type Type, value_type Type) string {
 	key_type_sym := t.sym(key_type)
 	value_type_sym := t.sym(value_type)
 	suffix := if value_type.is_ptr() { '_ptr'.repeat(value_type.nr_muls()) } else { '' }
-	opt := if value_type.has_flag(.optional) { '_option_' } else { '' }
+	opt := if value_type.has_flag(.option) { '_option_' } else { '' }
 	res := if value_type.has_flag(.result) { '_result_' } else { '' }
 	if value_type_sym.cname.contains('[') {
 		type_name := value_type_sym.cname.replace_each(['[', '_T_', ', ', '_', ']', ''])
