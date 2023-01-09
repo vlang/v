@@ -13,7 +13,7 @@ import os
 // operations on the path or perform I/O actions on the file / directory
 // path points to.
 [noinit]
-struct Path {
+pub struct Path {
 	parts []string [required]
 pub: // parts are the names of the folders, between the separators.
 	name   string [required] // name is the last part of the path.
@@ -99,7 +99,7 @@ pub fn (p1 Path) / (p2 Path) Path {
 	if p2.root == os.path_separator {
 		return p2
 	} else {
-		return path('${p1.str()}${os.path_separator}${p2.str()}')
+		return path('${p1}${os.path_separator}${p2}')
 	}
 }
 
@@ -274,7 +274,7 @@ pub fn (p Path) is_regular() bool {
 // See also: `os.ls`.
 pub fn (p Path) iterdir() ![]Path {
 	files := os.ls(p.str()) or {
-		return PathError{p, 600, 'path is not an existing directory', 'iterdir'}
+		return PathError{p, 600, '${p} is not an existing directory', 'iterdir'}
 	}
 	// convert string filenames to paths
 	return files.map(path(it))
@@ -304,7 +304,7 @@ pub fn (p Path) mkdir(params os.MkdirParams) !Path {
 // See also: `os.open_file`.
 pub fn (p Path) open(mode string, options ...int) !os.File {
 	return os.open_file(p.str(), mode, ...options) or {
-		PathError{p, 200, 'cannot open file at path', 'open'}
+		PathError{p, 200, 'cannot open "${p}"', 'open'}
 	}
 }
 
@@ -367,7 +367,7 @@ pub fn (p Path) quoted() string {
 // ```
 pub fn (p Path) relative_to(parent Path) !Path {
 	if !p.is_relative_to(parent) || p.parts == parent.parts {
-		return PathError{p, 401, "path('${p.str()}') not a subpath of path('${parent.str()}')", 'relative_to'}
+		return PathError{p, 401, '"${p}" not a subpath of "${parent}"', 'relative_to'}
 	}
 
 	return path_from_parts(p.parts[parent.parts.len..])
@@ -508,7 +508,7 @@ pub fn (p Path) with_suffix(suffix string) !Path {
 // See also: `os.write_file`.
 pub fn (p Path) write_text(text string) ! {
 	os.write_file(p.str(), text) or {
-		return PathError{p, 500, 'path is not an existing file', 'write_text'}
+		return PathError{p, 500, 'cannot write to "${p}"', 'write_text'}
 	}
 }
 
@@ -524,7 +524,7 @@ fn (err PathError) msg() string {
 	if err.func != '' {
 		func = '.${err.func}'
 	}
-	return "pathlib.path('${err.path.str()}')${func}: ${err.msg}"
+	return "pathlib.path('${err.path}')${func}: ${err.msg}"
 }
 
 fn (err PathError) code() int {
