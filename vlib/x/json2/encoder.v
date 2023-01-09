@@ -271,6 +271,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 						// e.encode_array(value, level, mut wr)!
 					}
 					else {
+						e.encode_struct(value, level + 1, mut wr)!
 						// e.encode_value_with_level(value, level + 1, mut wr)!
 					}
 				}
