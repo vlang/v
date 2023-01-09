@@ -1,0 +1,6 @@
+vlib/v/checker/tests/assert_option_err.vv:4:9: error: assert can be used only with `bool` expressions, but found `void` instead
+    2 |
+    3 | fn main() {
+    4 |     assert os.truncate('testfile.txt', 6666) or { panic(err) }
+      |            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    5 | }

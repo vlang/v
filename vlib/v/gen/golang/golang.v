@@ -1264,7 +1264,7 @@ pub fn (mut f Gen) fn_type_decl(node ast.FnTypeDecl) {
 		ret_str := f.no_cur_mod(f.table.type_to_str_using_aliases(fn_info.return_type,
 			f.mod2alias))
 		f.write(' ${ret_str}')
-	} else if fn_info.return_type.has_flag(.optional) {
+	} else if fn_info.return_type.has_flag(.option) {
 		f.write(' ?')
 	} else if fn_info.return_type.has_flag(.result) {
 		f.write(' !')

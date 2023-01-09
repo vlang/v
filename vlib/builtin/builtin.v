@@ -118,9 +118,9 @@ pub:
 	is_pub bool     // f is in a `pub:` section
 	is_mut bool     // f is in a `mut:` section
 	//
-	is_shared   bool // `f shared Abc`
-	is_atomic   bool // `f atomic int` , TODO
-	is_optional bool // `f ?string` , TODO
+	is_shared bool // `f shared Abc`
+	is_atomic bool // `f atomic int` , TODO
+	is_option bool // `f ?string` , TODO
 	//
 	is_array  bool // `f []string` , TODO
 	is_map    bool // `f map[string]int` , TODO

@@ -7,7 +7,7 @@ import v.ast
 
 fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 	if node.is_expr && g.inside_ternary == 0 {
-		if g.is_autofree || node.typ.has_flag(.optional) || node.typ.has_flag(.result) {
+		if g.is_autofree || node.typ.has_flag(.option) || node.typ.has_flag(.result) {
 			return true
 		}
 		for branch in node.branches {
@@ -81,7 +81,7 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 		ast.ConcatExpr {
 			for val in expr.vals {
 				if val is ast.CallExpr {
-					if val.return_type.has_flag(.optional) || val.return_type.has_flag(.result) {
+					if val.return_type.has_flag(.option) || val.return_type.has_flag(.result) {
 						return true
 					}
 				}
@@ -169,12 +169,12 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	mut cur_line := ''
 	mut raw_state := false
 	if needs_tmp_var {
-		if node.typ.has_flag(.optional) {
-			raw_state = g.inside_if_optional
+		if node.typ.has_flag(.option) {
+			raw_state = g.inside_if_option
 			defer {
-				g.inside_if_optional = raw_state
+				g.inside_if_option = raw_state
 			}
-			g.inside_if_optional = true
+			g.inside_if_option = true
 		} else if node.typ.has_flag(.result) {
 			raw_state = g.inside_if_result
 			defer {
@@ -257,7 +257,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				var_name = g.new_tmp_var()
 				guard_vars[i] = var_name // for `else`
 				g.tmp_count--
-				if branch.cond.expr_type.has_flag(.optional) {
+				if branch.cond.expr_type.has_flag(.option) {
 					g.writeln('if (${var_name}.state == 0) {')
 				} else if branch.cond.expr_type.has_flag(.result) {
 					g.writeln('if (!${var_name}.is_error) {')
@@ -265,7 +265,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			} else {
 				g.write('if (${var_name} = ')
 				g.expr(branch.cond.expr)
-				if branch.cond.expr_type.has_flag(.optional) {
+				if branch.cond.expr_type.has_flag(.option) {
 					g.writeln(', ${var_name}.state == 0) {')
 				} else if branch.cond.expr_type.has_flag(.result) {
 					g.writeln(', !${var_name}.is_error) {')

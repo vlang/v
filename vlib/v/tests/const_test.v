@@ -18,7 +18,7 @@ fn test_const() {
 	assert d == (e / 2) + 7
 }
 
-// const optional test
+// const option test
 struct Foo {
 	name string = 'foo'
 }

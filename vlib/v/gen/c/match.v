@@ -8,7 +8,7 @@ import v.ast
 fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 	if node.is_expr && node.return_type != ast.void_type && node.return_type != 0 {
 		if g.table.sym(node.return_type).kind in [.sum_type, .multi_return]
-			|| node.return_type.has_flag(.optional) || node.return_type.has_flag(.result) {
+			|| node.return_type.has_flag(.option) || node.return_type.has_flag(.result) {
 			return true
 		}
 		if g.table.final_sym(node.cond_type).kind == .enum_ && node.branches.len > 5 {
@@ -51,12 +51,12 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.inside_ternary++
 	}
 	if is_expr {
-		if node.return_type.has_flag(.optional) {
-			old := g.inside_match_optional
+		if node.return_type.has_flag(.option) {
+			old := g.inside_match_option
 			defer {
-				g.inside_match_optional = old
+				g.inside_match_option = old
 			}
-			g.inside_match_optional = true
+			g.inside_match_option = true
 		} else if node.return_type.has_flag(.result) {
 			old := g.inside_match_result
 			defer {

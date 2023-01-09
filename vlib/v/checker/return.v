@@ -12,6 +12,12 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	}
 	c.expected_type = c.table.cur_fn.return_type
 	mut expected_type := c.unwrap_generic(c.expected_type)
+	if expected_type != 0 && c.table.sym(expected_type).kind == .alias {
+		unaliased_type := c.table.unaliased_type(expected_type)
+		if unaliased_type.has_flag(.option) || unaliased_type.has_flag(.result) {
+			expected_type = unaliased_type
+		}
+	}
 	expected_type_sym := c.table.sym(expected_type)
 	if node.exprs.len > 0 && c.table.cur_fn.return_type == ast.void_type {
 		c.error('unexpected argument, current function does not return anything', node.exprs[0].pos())
@@ -26,7 +32,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	if node.exprs.len == 0 {
 		return
 	}
-	exp_is_optional := expected_type.has_flag(.optional)
+	exp_is_option := expected_type.has_flag(.option)
 	exp_is_result := expected_type.has_flag(.result)
 	mut expected_types := [expected_type]
 	if expected_type_sym.info is ast.MultiReturn {
@@ -86,18 +92,18 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			}
 		}
 	}
-	// allow `none` & `error` return types for function that returns optional
+	// allow `none` & `error` return types for function that returns option
 	option_type_idx := c.table.type_idxs['_option']
 	result_type_idx := c.table.type_idxs['_result']
 	got_types_0_idx := got_types[0].idx()
-	if (exp_is_optional
+	if (exp_is_option
 		&& got_types_0_idx in [ast.none_type_idx, ast.error_type_idx, option_type_idx])
 		|| (exp_is_result && got_types_0_idx in [ast.error_type_idx, result_type_idx]) {
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
 		// `fn foo() !(int, string) { return Err{} }`
-		if (exp_is_optional || exp_is_result) && node.exprs.len == 1 {
+		if (exp_is_option || exp_is_result) && node.exprs.len == 1 {
 			got_typ := c.expr(node.exprs[0])
 			got_typ_sym := c.table.sym(got_typ)
 			if got_typ_sym.kind == .struct_ && c.type_implements(got_typ, ast.error_type, node.pos) {
@@ -120,7 +126,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	}
 	for i, exp_type in expected_types {
 		got_typ := c.unwrap_generic(got_types[i])
-		if got_typ.has_flag(.optional) && (!exp_type.has_flag(.optional)
+		if got_typ.has_flag(.option) && (!exp_type.has_flag(.option)
 			|| c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
 			pos := node.exprs[expr_idxs[i]].pos()
 			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
@@ -222,7 +228,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			}
 		}
 	}
-	if exp_is_optional && node.exprs.len > 0 {
+	if exp_is_option && node.exprs.len > 0 {
 		expr0 := node.exprs[0]
 		if expr0 is ast.CallExpr {
 			if expr0.or_block.kind == .propagate_option && node.exprs.len == 1 {

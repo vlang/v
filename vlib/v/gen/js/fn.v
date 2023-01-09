@@ -66,9 +66,9 @@ fn (mut g JsGen) js_mname(name_ string) string {
 fn (mut g JsGen) js_call(node ast.CallExpr) {
 	g.call_stack << node
 	it := node
-	call_return_is_optional := it.return_type.has_flag(.optional)
+	call_return_is_option := it.return_type.has_flag(.option)
 	is_await := node.name == 'JS.await'
-	if call_return_is_optional {
+	if call_return_is_option {
 		if is_await {
 			g.writeln('await (async function () {')
 		} else {
@@ -96,7 +96,7 @@ fn (mut g JsGen) js_call(node ast.CallExpr) {
 		// end call
 		g.write(')')
 	}
-	if call_return_is_optional {
+	if call_return_is_option {
 		g.write(';\n')
 		prev_inside_or := g.inside_or
 		g.inside_or = true
@@ -117,7 +117,7 @@ fn (mut g JsGen) js_call(node ast.CallExpr) {
 				g.stmt(it.or_block.stmts.last())
 			}
 			.propagate_option {
-				panicstr := '`optional not set (\${err + ""})`'
+				panicstr := '`option not set (\${err + ""})`'
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
 					g.writeln('return builtin__panic(${panicstr})')
 				} else {
@@ -137,8 +137,8 @@ fn (mut g JsGen) js_call(node ast.CallExpr) {
 fn (mut g JsGen) js_method_call(node ast.CallExpr) {
 	g.call_stack << node
 	it := node
-	call_return_is_optional := it.return_type.has_flag(.optional)
-	if call_return_is_optional {
+	call_return_is_option := it.return_type.has_flag(.option)
+	if call_return_is_option {
 		g.writeln('(function () {')
 		g.writeln('try {')
 		g.writeln('let tmp = ')
@@ -156,7 +156,7 @@ fn (mut g JsGen) js_method_call(node ast.CallExpr) {
 	}
 	// end method call
 	g.write(')')
-	if call_return_is_optional {
+	if call_return_is_option {
 		prev_inside_or := g.inside_or
 		g.inside_or = true
 		defer {
@@ -177,7 +177,7 @@ fn (mut g JsGen) js_method_call(node ast.CallExpr) {
 				g.stmt(it.or_block.stmts.last())
 			}
 			.propagate_option {
-				panicstr := '`optional not set (\${err + ""})`'
+				panicstr := '`option not set (\${err + ""})`'
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
 					g.writeln('return builtin__panic(${panicstr})')
 				} else {
@@ -202,8 +202,8 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 		return
 	}
 	is_async := node.name == 'wait' && g.table.sym(node.receiver_type).name.starts_with('Promise<')
-	call_return_is_optional := it.return_type.has_flag(.optional)
-	if call_return_is_optional {
+	call_return_is_option := it.return_type.has_flag(.option)
+	if call_return_is_option {
 		if is_async {
 			g.writeln('(async function (){')
 		} else {
@@ -346,7 +346,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 		g.write(')')
 	}
 
-	if call_return_is_optional {
+	if call_return_is_option {
 		// end unwrap
 		g.writeln(')')
 		g.dec_indent()
@@ -368,7 +368,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 				g.stmt(it.or_block.stmts.last())
 			}
 			.propagate_option {
-				panicstr := '`optional not set (\${err.valueOf().msg})`'
+				panicstr := '`option not set (\${err.valueOf().msg})`'
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
 					g.writeln('return builtin__panic(${panicstr})')
 				} else {
@@ -417,8 +417,8 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		g.write(ret_sym.name)
 		g.write('(')
 	}
-	call_return_is_optional := it.return_type.has_flag(.optional)
-	if call_return_is_optional {
+	call_return_is_option := it.return_type.has_flag(.option)
+	if call_return_is_option {
 		g.writeln('(function(){')
 		g.inc_indent()
 		g.writeln('try {')
@@ -446,7 +446,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	}
 	// end method call
 	g.write(')')
-	if call_return_is_optional {
+	if call_return_is_option {
 		// end unwrap
 		prev_inside_or := g.inside_or
 		g.inside_or = true
@@ -469,7 +469,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 				g.stmt(it.or_block.stmts.last())
 			}
 			.propagate_option {
-				panicstr := '`optional not set (\${err.valueOf().msg})`'
+				panicstr := '`option not set (\${err.valueOf().msg})`'
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
 					g.writeln('return builtin__panic(${panicstr})')
 				} else {

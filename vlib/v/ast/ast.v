@@ -296,7 +296,7 @@ pub struct StructField {
 pub:
 	pos              token.Pos
 	type_pos         token.Pos
-	optional_pos     token.Pos
+	option_pos       token.Pos
 	comments         []Comment
 	i                int
 	has_default_expr bool
@@ -791,7 +791,7 @@ pub mut:
 	is_mut      bool
 	is_static   bool
 	is_volatile bool
-	is_optional bool
+	is_option   bool
 	share       ShareType
 }
 

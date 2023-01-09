@@ -107,7 +107,7 @@ pub fn error_with_code(message string, code int) IError {
 	}
 }
 
-// Option is the base of V's internal optional return system.
+// Option is the base of V's internal option return system.
 struct Option {
 	state u8
 	err   IError = none__
@@ -116,7 +116,7 @@ struct Option {
 	// derived Option_xxx types
 }
 
-// option is the base of V's internal optional return system.
+// option is the base of V's internal option return system.
 struct _option {
 	state u8
 	err   IError = none__

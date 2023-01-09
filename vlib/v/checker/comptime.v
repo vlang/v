@@ -188,7 +188,7 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 
 				unwrapped_expr_type := c.unwrap_generic(field.typ)
 				tsym := c.table.sym(unwrapped_expr_type)
-				c.table.dumps[int(unwrapped_expr_type.clear_flag(.optional).clear_flag(.result).clear_flag(.atomic_f))] = tsym.cname
+				c.table.dumps[int(unwrapped_expr_type.clear_flag(.option).clear_flag(.result).clear_flag(.atomic_f))] = tsym.cname
 			}
 			c.comptime_for_field_var = ''
 			c.inside_comptime_for_field = false
@@ -445,7 +445,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 	if node.ct_expr is ast.Ident {
 		if node.ct_opt {
 			if node.ct_expr.name in constants.valid_comptime_not_user_defined {
-				c.error('optional `[if expression ?]` tags, can be used only for user defined identifiers',
+				c.error('option `[if expression ?]` tags, can be used only for user defined identifiers',
 					node.pos)
 				node.ct_skip = true
 			} else {
@@ -765,7 +765,7 @@ fn (mut c Checker) check_comptime_is_field_selector(node ast.SelectorExpr) bool 
 [inline]
 fn (mut c Checker) check_comptime_is_field_selector_bool(node ast.SelectorExpr) bool {
 	if c.check_comptime_is_field_selector(node) {
-		return node.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_optional',
+		return node.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_option',
 			'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias']
 	}
 	return false
@@ -781,7 +781,7 @@ fn (mut c Checker) get_comptime_selector_bool_field(field_name string) bool {
 		'is_mut' { return field.is_mut }
 		'is_shared' { return field_typ.has_flag(.shared_f) }
 		'is_atomic' { return field_typ.has_flag(.atomic_f) }
-		'is_optional' { return field.typ.has_flag(.optional) }
+		'is_option' { return field.typ.has_flag(.option) }
 		'is_array' { return field_sym.kind in [.array, .array_fixed] }
 		'is_map' { return field_sym.kind == .map }
 		'is_chan' { return field_sym.kind == .chan }
