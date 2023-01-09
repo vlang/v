@@ -1,7 +1,7 @@
 // pathlib is an object-orientated filesystem paths module. Most I/O operations
 // are wrapped around functions from the `os` module. For example,
 // `os.link('path/to/file.v', 'target.v')` becomes
-// `path('path/to/file.v').link(path('target.v'))`. It is heavily inspired on
+// `path('path/to/file.v').link(path('target.v'))`. It is heavily inspired by
 // Python's pathlib module (https://docs.python.org/3/library/pathlib.html).
 module pathlib
 
@@ -14,13 +14,13 @@ import os
 // path points to.
 [noinit]
 struct Path {
-	parts []string [required] // parts are the names of the folders, between the separators
+	parts []string [required] // parts are the names of the folders, between the separators.
 pub:
-	name   string [required] // name is the last part of the path
-	root   string [required] // root is the first bit of the path, if absolute
-	stem   string [required] // stem (name without suffix) of the filename
-	suffix string [required] // suffix ('file extension') of the filename
-	sep    string [required] // sep is the system separator used in e.g. Path.str()
+	name   string [required] // name is the last part of the path.
+	root   string [required] // root is the first bit of the path, if absolute.
+	stem   string [required] // stem (name without suffix) of the filename.
+	suffix string [required] // suffix ('file extension') of the filename, including the `.`.
+	sep    string [required] // sep is the system separator used in e.g. `Path.str()`.
 }
 
 // CONSTRUCTORS
