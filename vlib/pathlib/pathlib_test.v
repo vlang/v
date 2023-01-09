@@ -46,3 +46,11 @@ fn test_is_relative_to() {
 	assert !path('/a/b/c').is_relative_to(path('/a/b/d'))
 	assert !path('/a').is_relative_to(path('/a/b/d'))
 }
+
+fn test_relative_to() {
+	assert path('/a/b/c').is_relative_to(path('/a/b'))
+	assert path('/').is_relative_to(path('/'))
+	assert path('/a/b/c').is_relative_to(path('/'))
+	assert !path('/a/b/c').is_relative_to(path('/a/b/d'))
+	assert !path('/a').is_relative_to(path('/a/b/d'))
+}
