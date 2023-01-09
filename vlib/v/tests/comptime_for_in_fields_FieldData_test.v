@@ -6,6 +6,12 @@ struct Abc {
 	name string
 }
 
+enum JobTitle {
+	manager
+	executive
+	worker
+}
+
 struct Complex {
 	s        string
 	i        int
@@ -35,6 +41,7 @@ struct Complex {
 	o_map_i            ?map[int]int
 	o_my_struct        ?Abc
 	o_my_struct_shared ?shared Abc
+	jobtitle_enum      JobTitle
 }
 
 fn test_is_shared() {
@@ -113,6 +120,16 @@ fn test_is_alias() {
 			assert f.is_alias, 'Complex.${f.name} should have f.is_alias set'
 		} else {
 			assert !f.is_alias, 'Complex.${f.name} should NOT have f.is_alias set'
+		}
+	}
+}
+
+fn test_is_enum() {
+	$for f in Complex.fields {
+		if f.name.contains('_enum') {
+			assert f.is_enum, 'Complex.${f.name} should have f.is_enum set'
+		} else {
+			assert !f.is_enum, 'Complex.${f.name} should NOT have f.is_enum set'
 		}
 	}
 }
