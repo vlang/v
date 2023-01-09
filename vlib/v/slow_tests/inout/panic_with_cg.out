@@ -2,4 +2,4 @@
    module: main
  function: buggy_function()
   message: panicing...
-     file: vlib/v/slow_tests/inout/panic_with_cg.vv:3
+     file: vlib/v/slow_tests/inout/panic_with_cg.vv:2
