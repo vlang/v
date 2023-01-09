@@ -5,11 +5,11 @@ vlib/v/checker/tests/option_fn_err.vv:12:16: error: bar() returns an option, so 
       |                   ~~~~~~
    13 | )
    14 |
-vlib/v/checker/tests/option_fn_err.vv:18:14: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+vlib/v/checker/tests/option_fn_err.vv:18:15: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
    16 |     f fn (int)
    17 | mut:
-   18 |     value int = bar(0)
-      |                 ~~~~~~
+   18 |     value int  = bar(0)
+      |                  ~~~~~~
    19 |     opt   ?int = bar(0)
    20 | }
 vlib/v/checker/tests/option_fn_err.vv:32:2: error: foo() returns an option, so it should have either an `or {}` block, or `?` at the end
@@ -49,13 +49,13 @@ vlib/v/checker/tests/option_fn_err.vv:40:9: error: bar() returns an option, so i
    42 |     // struct
 vlib/v/checker/tests/option_fn_err.vv:45:10: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
    43 |     mut v := Data{
-   44 |         f: fn (_ int) {},
-   45 |         value: bar(0),
+   44 |         f: fn (_ int) {}
+   45 |         value: bar(0)
       |                ~~~~~~
-   46 |         opt: bar(0),
+   46 |         opt: bar(0)
    47 |     }
 vlib/v/checker/tests/option_fn_err.vv:48:8: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
-   46 |         opt: bar(0),
+   46 |         opt: bar(0)
    47 |     }
    48 |     v.add(bar(0)) // call method
       |           ~~~~~~
@@ -164,5 +164,5 @@ vlib/v/checker/tests/option_fn_err.vv:71:8: error: bar() returns an option, so i
    70 |
    71 |     match bar(0) {
       |           ~~~~~~
-   72 |         0 { }
-   73 |         else { }
+   72 |         0 {}
+   73 |         else {}
