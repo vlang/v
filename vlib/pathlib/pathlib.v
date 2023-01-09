@@ -356,6 +356,23 @@ pub fn (p Path) quoted() string {
 	return os.quoted_path(p.str())
 }
 
+// relative_to returns the path relative to a given parent directory. Errors if
+// `parent` is not actually a parent directory
+//
+// Example:
+// ```v
+// assert path('/a/b/c').relative_to(path('/')) == path('a/b/c')
+// assert path('/a/b/c').relative_to(path('/a')) == path('b/c')
+// assert path('/a/b/c').relative_to(path('/a/b')) == path('c')
+// ```
+pub fn (p Path) relative_to(parent Path) !Path {
+	if !p.is_relative_to(parent) || p.parts == parent.parts {
+		return PathError{p, 401, "path('${p.str()}') not a subpath of path('${parent.str()}')", 'relative_to'}
+	}
+
+	return path_from_parts(p.parts[parent.parts.len..])
+}
+
 // Make the path absolute, resolving all symlinks, `..`, etc. on the way and also
 // normalizing it.
 // See also: `os.resolve`.
