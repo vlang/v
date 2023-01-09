@@ -608,6 +608,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 struct CurrentComptimeValues {
 	inside_comptime_for_field bool
 	comptime_for_method       string
+	comptime_for_method_var   string
 	comptime_for_field_var    string
 	comptime_for_field_value  ast.StructField
 	comptime_for_field_type   ast.Type
@@ -615,13 +616,14 @@ struct CurrentComptimeValues {
 }
 
 fn (mut g Gen) push_existing_comptime_values() {
-	g.comptime_values_stack << CurrentComptimeValues{g.inside_comptime_for_field, g.comptime_for_method, g.comptime_for_field_var, g.comptime_for_field_value, g.comptime_for_field_type, g.comptime_var_type_map.clone()}
+	g.comptime_values_stack << CurrentComptimeValues{g.inside_comptime_for_field, g.comptime_for_method, g.comptime_for_method_var, g.comptime_for_field_var, g.comptime_for_field_value, g.comptime_for_field_type, g.comptime_var_type_map.clone()}
 }
 
 fn (mut g Gen) pop_existing_comptime_values() {
 	old := g.comptime_values_stack.pop()
 	g.inside_comptime_for_field = old.inside_comptime_for_field
 	g.comptime_for_method = old.comptime_for_method
+	g.comptime_for_method_var = old.comptime_for_method_var
 	g.comptime_for_field_var = old.comptime_for_field_var
 	g.comptime_for_field_value = old.comptime_for_field_value
 	g.comptime_for_field_type = old.comptime_for_field_type
