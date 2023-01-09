@@ -170,7 +170,7 @@ ${enc_fn_dec} {
 
 fn (mut g Gen) gen_option_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec strings.Builder) {
 	enc.writeln('\tif (val.state == 2) {')
-	enc.writeln('\t\treturn cJSON_CreateNull();')
+	enc.writeln('\t\treturn NULL;')
 	enc.writeln('\t}')
 	type_str := g.typ(typ.clear_flag(.option))
 	encode_name := js_enc_name(type_str)
