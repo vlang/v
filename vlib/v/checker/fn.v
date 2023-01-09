@@ -117,7 +117,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				if multi_type == ast.error_type {
 					c.error('type `IError` cannot be used in multi-return, return an option instead',
 						node.return_type_pos)
-				} else if multi_type.has_flag(.optional) {
+				} else if multi_type.has_flag(.option) {
 					c.error('option cannot be used in multi-return, return an option instead',
 						node.return_type_pos)
 				} else if multi_type.has_flag(.result) {
@@ -211,9 +211,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('invalid use of reserved type `${param.name}` as a parameter name',
 					param.pos)
 			}
-			if param.typ.has_flag(.optional) || param.typ.has_flag(.result) {
-				c.error('optional or result type argument is not supported currently',
-					param.type_pos)
+			if param.typ.has_flag(.option) || param.typ.has_flag(.result) {
+				c.error('option or result type argument is not supported currently', param.type_pos)
 			}
 			arg_typ_sym := c.table.sym(param.typ)
 			if arg_typ_sym.info is ast.Struct {
@@ -333,7 +332,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 
 		if node.return_type != ast.void_type_idx
-			&& node.return_type.clear_flag(.optional) != ast.void_type_idx
+			&& node.return_type.clear_flag(.option) != ast.void_type_idx
 			&& node.return_type.clear_flag(.result) != ast.void_type_idx {
 			c.error('test functions should either return nothing at all, or be marked to return `?` or `!`',
 				node.pos)
@@ -343,7 +342,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.table.cur_fn = unsafe { node }
 	// c.table.cur_fn = node
 	// Add return if `fn(...) ? {...}` have no return at end
-	if node.return_type != ast.void_type && node.return_type.has_flag(.optional)
+	if node.return_type != ast.void_type && node.return_type.has_flag(.option)
 		&& (node.stmts.len == 0 || node.stmts.last() !is ast.Return) {
 		sym := c.table.sym(node.return_type)
 		if sym.kind == .void {
@@ -476,7 +475,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	c.inside_fn_arg = old_inside_fn_arg
 	// autofree: mark args that have to be freed (after saving them in tmp exprs)
 	free_tmp_arg_vars := c.pref.autofree && !c.is_builtin_mod && node.args.len > 0
-		&& !node.args[0].typ.has_flag(.optional) && !node.args[0].typ.has_flag(.result)
+		&& !node.args[0].typ.has_flag(.option) && !node.args[0].typ.has_flag(.result)
 	if free_tmp_arg_vars && !c.inside_const {
 		for i, arg in node.args {
 			if arg.typ != ast.string_type {
@@ -497,7 +496,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 			node.free_receiver = true
 		}
 	}
-	c.expected_or_type = node.return_type.clear_flag(.optional).clear_flag(.result)
+	c.expected_or_type = node.return_type.clear_flag(.option).clear_flag(.result)
 	c.stmts_ending_with_expression(node.or_block.stmts)
 	c.expected_or_type = ast.void_type
 
@@ -505,15 +504,14 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		&& !c.table.cur_fn.is_test {
 		// TODO: use just `if node.or_block.kind == .propagate_result && !c.table.cur_fn.return_type.has_flag(.result) {` after the deprecation for ?!Type
 		if node.or_block.kind == .propagate_result && !c.table.cur_fn.return_type.has_flag(.result)
-			&& !c.table.cur_fn.return_type.has_flag(.optional) {
+			&& !c.table.cur_fn.return_type.has_flag(.option) {
 			c.add_instruction_for_result_type()
 			c.error('to propagate the result call, `${c.table.cur_fn.name}` must return a result',
 				node.or_block.pos)
 		}
-		if node.or_block.kind == .propagate_option
-			&& !c.table.cur_fn.return_type.has_flag(.optional) {
-			c.add_instruction_for_optional_type()
-			c.error('to propagate the optional call, `${c.table.cur_fn.name}` must return an optional',
+		if node.or_block.kind == .propagate_option && !c.table.cur_fn.return_type.has_flag(.option) {
+			c.add_instruction_for_option_type()
+			c.error('to propagate the option call, `${c.table.cur_fn.name}` must return an option',
 				node.or_block.pos)
 		}
 	}
@@ -611,7 +609,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		match tsym.info {
 			ast.Struct {
 				mut ret_type := tsym.info.concrete_types[0]
-				ret_type = ret_type.set_flag(.optional)
+				ret_type = ret_type.set_flag(.option)
 				node.return_type = ret_type
 				return ret_type
 			}
@@ -1328,8 +1326,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	} else {
 		'unknown method or field: `${left_sym.name}.${method_name}`'
 	}
-	if left_type.has_flag(.optional) {
-		c.error('optional type cannot be called directly', node.left.pos())
+	if left_type.has_flag(.option) {
+		c.error('option type cannot be called directly', node.left.pos())
 		return ast.void_type
 	} else if left_type.has_flag(.result) {
 		c.error('result type cannot be called directly', node.left.pos())
@@ -1401,7 +1399,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			c.table.cur_fn.has_await = true
 		}
 		node.return_type = info.concrete_types[0]
-		node.return_type.set_flag(.optional)
+		node.return_type.set_flag(.option)
 		return node.return_type
 	} else if left_sym.kind == .thread && method_name == 'wait' {
 		info := left_sym.info as ast.Thread
@@ -1960,7 +1958,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 	ret_type := c.call_expr(mut node.call_expr)
 	if node.call_expr.or_block.kind != .absent {
-		c.error('optional handling cannot be done in `go` call. Do it when calling `.wait()`',
+		c.error('option handling cannot be done in `go` call. Do it when calling `.wait()`',
 			node.call_expr.or_block.pos)
 	}
 	// Make sure there are no mutable arguments
@@ -2072,8 +2070,8 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 	arg_expr := node.args[0].expr
 	match arg_expr {
 		ast.AnonFn {
-			if arg_expr.decl.return_type.has_flag(.optional) {
-				c.error('optional needs to be unwrapped before using it in map/filter',
+			if arg_expr.decl.return_type.has_flag(.option) {
+				c.error('option needs to be unwrapped before using it in map/filter',
 					node.args[0].pos)
 			}
 			if arg_expr.decl.params.len > 1 {
@@ -2094,8 +2092,8 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 					c.error('${arg_expr.name} does not exist', arg_expr.pos)
 					return
 				}
-				if func.return_type.has_flag(.optional) {
-					c.error('optional needs to be unwrapped before using it in map/filter',
+				if func.return_type.has_flag(.option) {
+					c.error('option needs to be unwrapped before using it in map/filter',
 						node.pos)
 				}
 				if func.params.len > 1 {
@@ -2114,8 +2112,8 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 					expr := arg_expr.obj.expr
 					if expr is ast.AnonFn {
 						// copied from above
-						if expr.decl.return_type.has_flag(.optional) {
-							c.error('optional needs to be unwrapped before using it in map/filter',
+						if expr.decl.return_type.has_flag(.option) {
+							c.error('option needs to be unwrapped before using it in map/filter',
 								arg_expr.pos)
 						}
 						if expr.decl.params.len > 1 {
@@ -2145,9 +2143,9 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 				c.error('type mismatch, `${arg_expr.name}` does not return anything',
 					arg_expr.pos)
 			} else if !is_map && arg_expr.return_type != ast.bool_type {
-				if arg_expr.or_block.kind != .absent && (arg_expr.return_type.has_flag(.optional)
+				if arg_expr.or_block.kind != .absent && (arg_expr.return_type.has_flag(.option)
 					|| arg_expr.return_type.has_flag(.result))
-					&& arg_expr.return_type.clear_flag(.optional).clear_flag(.result) == ast.bool_type {
+					&& arg_expr.return_type.clear_flag(.option).clear_flag(.result) == ast.bool_type {
 					return
 				}
 				c.error('type mismatch, `${arg_expr.name}` must return a bool', arg_expr.pos)
@@ -2283,8 +2281,8 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				c.error('`.wait()` does not have any arguments', node.args[0].pos)
 			}
 			thread_ret_type := elem_sym.thread_info().return_type
-			if thread_ret_type.has_flag(.optional) {
-				c.error('`.wait()` cannot be called for an array when thread functions return optionals. Iterate over the arrays elements instead and handle each returned optional with `or`.',
+			if thread_ret_type.has_flag(.option) {
+				c.error('`.wait()` cannot be called for an array when thread functions return options. Iterate over the arrays elements instead and handle each returned option with `or`.',
 					node.pos)
 			} else if thread_ret_type.has_flag(.result) {
 				c.error('`.wait()` cannot be called for an array when thread functions return results. Iterate over the arrays elements instead and handle each returned result with `or`.',

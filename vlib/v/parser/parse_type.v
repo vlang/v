@@ -171,7 +171,7 @@ pub fn (mut p Parser) parse_thread_type() ast.Type {
 		p.next()
 		if is_opt {
 			mut ret_type := ast.void_type
-			ret_type = ret_type.set_flag(.optional)
+			ret_type = ret_type.set_flag(.option)
 			idx := p.table.find_or_register_thread(ret_type)
 			return ast.new_type(idx)
 		} else {
@@ -372,28 +372,28 @@ pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 }
 
 pub fn (mut p Parser) parse_type() ast.Type {
-	// optional or result
-	mut is_optional := false
+	// option or result
+	mut is_option := false
 	mut is_result := false
 	line_nr := p.tok.line_nr
-	optional_pos := p.tok.pos()
+	option_pos := p.tok.pos()
 	if p.tok.kind == .question {
 		p.next()
-		is_optional = true
+		is_option = true
 	} else if p.tok.kind == .not {
 		p.next()
 		is_result = true
 	}
 
-	if is_optional || is_result {
+	if is_option || is_result {
 		// maybe the '[' is the start of the field attribute
 		is_required_field := p.inside_struct_field_decl && p.tok.kind == .lsbr
 			&& p.peek_tok.kind == .name && p.peek_tok.lit == 'required'
 
 		if p.tok.line_nr > line_nr || p.tok.kind in [.comma, .rpar] || is_required_field {
 			mut typ := ast.void_type
-			if is_optional {
-				typ = typ.set_flag(.optional)
+			if is_option {
+				typ = typ.set_flag(.option)
 			} else if is_result {
 				typ = typ.set_flag(.result)
 			}
@@ -454,12 +454,12 @@ pub fn (mut p Parser) parse_type() ast.Type {
 			return 0
 		}
 		sym := p.table.sym(typ)
-		if is_optional && sym.info is ast.SumType && (sym.info as ast.SumType).is_anon {
-			p.error_with_pos('an inline sum type cannot be optional', optional_pos.extend(p.prev_tok.pos()))
+		if is_option && sym.info is ast.SumType && (sym.info as ast.SumType).is_anon {
+			p.error_with_pos('an inline sum type cannot be an option', option_pos.extend(p.prev_tok.pos()))
 		}
 	}
-	if is_optional {
-		typ = typ.set_flag(.optional)
+	if is_option {
+		typ = typ.set_flag(.option)
 	}
 	if is_result {
 		typ = typ.set_flag(.result)

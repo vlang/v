@@ -105,7 +105,7 @@ pub mut:
 
 // max of 8
 pub enum TypeFlag {
-	optional
+	option
 	result
 	variadic
 	generic
@@ -280,8 +280,8 @@ pub fn (t Type) debug() []string {
 	res << 'idx: 0x${t.idx().hex():-8}'
 	res << 'type: 0x${t.hex():-8}'
 	res << 'nr_muls: ${t.nr_muls()}'
-	if t.has_flag(.optional) {
-		res << 'optional'
+	if t.has_flag(.option) {
+		res << 'option'
 	}
 	if t.has_flag(.result) {
 		res << 'result'
@@ -486,7 +486,7 @@ pub const (
 
 pub const (
 	void_type          = new_type(void_type_idx)
-	ovoid_type         = new_type(void_type_idx).set_flag(.optional) // the return type of `fn ()?`
+	ovoid_type         = new_type(void_type_idx).set_flag(.option) // the return type of `fn ()?`
 	rvoid_type         = new_type(void_type_idx).set_flag(.result) // the return type of `fn () !`
 	voidptr_type       = new_type(voidptr_type_idx)
 	byteptr_type       = new_type(byteptr_type_idx)
@@ -569,7 +569,7 @@ pub mut:
 
 // returns TypeSymbol kind only if there are no type modifiers
 pub fn (t &Table) type_kind(typ Type) Kind {
-	if typ.nr_muls() > 0 || typ.has_flag(.optional) || typ.has_flag(.result) {
+	if typ.nr_muls() > 0 || typ.has_flag(.option) || typ.has_flag(.result) {
 		return Kind.placeholder
 	}
 	return t.sym(typ).kind
@@ -866,7 +866,7 @@ pub fn (t &TypeSymbol) is_builtin() bool {
 
 // type_size returns the size and alignment (in bytes) of `typ`, similarly to  C's `sizeof()` and `alignof()`.
 pub fn (t &Table) type_size(typ Type) (int, int) {
-	if typ.has_flag(.optional) || typ.has_flag(.result) {
+	if typ.has_flag(.option) || typ.has_flag(.result) {
 		return t.type_size(ast.error_type_idx)
 	}
 	if typ.nr_muls() > 0 {
@@ -1328,7 +1328,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			res += ']'
 		}
 		.void {
-			if typ.has_flag(.optional) {
+			if typ.has_flag(.option) {
 				res = '?'
 				return res
 			}
@@ -1369,7 +1369,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	if nr_muls > 0 && !typ.has_flag(.variadic) {
 		res = strings.repeat(`&`, nr_muls) + res
 	}
-	if typ.has_flag(.optional) {
+	if typ.has_flag(.option) {
 		res = '?${res}'
 	}
 	if typ.has_flag(.result) {

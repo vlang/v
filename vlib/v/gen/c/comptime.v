@@ -36,7 +36,7 @@ fn (mut g Gen) get_comptime_selector_bool_field(field_name string) bool {
 		'is_mut' { return field.is_mut }
 		'is_shared' { return field_typ.has_flag(.shared_f) }
 		'is_atomic' { return field_typ.has_flag(.atomic_f) }
-		'is_optional' { return field.typ.has_flag(.optional) }
+		'is_option' { return field.typ.has_flag(.option) }
 		'is_array' { return field_sym.kind in [.array, .array_fixed] }
 		'is_map' { return field_sym.kind == .map }
 		'is_chan' { return field_sym.kind == .chan }
@@ -156,7 +156,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			return
 		}
 
-		if !g.inside_call && (m.return_type.has_flag(.optional) || m.return_type.has_flag(.result)) {
+		if !g.inside_call && (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
 			g.write('(*(${g.base_type(m.return_type)}*)')
 		}
 		// TODO: check argument types
@@ -203,7 +203,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 		}
 		g.write(')')
-		if !g.inside_call && (m.return_type.has_flag(.optional) || m.return_type.has_flag(.result)) {
+		if !g.inside_call && (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
 			g.write('.data)')
 		}
 		return
@@ -486,7 +486,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 					}
 
 					if cond.op == .key_is {
-						g.write('${exp_type.idx()} == ${got_type.idx()} && ${exp_type.has_flag(.optional)} == ${got_type.has_flag(.optional)}')
+						g.write('${exp_type.idx()} == ${got_type.idx()} && ${exp_type.has_flag(.option)} == ${got_type.has_flag(.option)}')
 						return exp_type == got_type, true
 					} else {
 						g.write('${exp_type.idx()} != ${got_type.idx()}')
@@ -533,7 +533,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 							} else if expr is ast.TypeNode {
 								got_type := g.unwrap_generic(expr.typ)
 								is_true := checked_type.idx() == got_type.idx()
-									&& checked_type.has_flag(.optional) == got_type.has_flag(.optional)
+									&& checked_type.has_flag(.option) == got_type.has_flag(.option)
 								if is_true {
 									if cond.op == .key_in {
 										g.write('1')
@@ -571,7 +571,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 		}
 		ast.SelectorExpr {
 			if g.inside_comptime_for_field && cond.expr is ast.Ident
-				&& (cond.expr as ast.Ident).name == g.comptime_for_field_var && cond.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_optional', 'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias'] {
+				&& (cond.expr as ast.Ident).name == g.comptime_for_field_var && cond.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_option', 'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias'] {
 				ret_bool := g.get_comptime_selector_bool_field(cond.field_name)
 				g.write(ret_bool.str())
 				return ret_bool, true
@@ -737,7 +737,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				//
 				g.writeln('\t${node.val_var}.is_shared = ${field.typ.has_flag(.shared_f)};')
 				g.writeln('\t${node.val_var}.is_atomic = ${field.typ.has_flag(.atomic_f)};')
-				g.writeln('\t${node.val_var}.is_optional = ${field.typ.has_flag(.optional)};')
+				g.writeln('\t${node.val_var}.is_option = ${field.typ.has_flag(.option)};')
 				//
 				g.writeln('\t${node.val_var}.is_array = ${field_sym.kind in [.array, .array_fixed]};')
 				g.writeln('\t${node.val_var}.is_map = ${field_sym.kind == .map};')
@@ -774,7 +774,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 	g.writeln('}// \$for')
 }
 
-fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_optional bool) ?string {
+fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) ?string {
 	match name {
 		// platforms/os-es:
 		'windows' {
@@ -923,7 +923,7 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_optional bool) ?str
 			return 'TARGET_ORDER_IS_BIG'
 		}
 		else {
-			if is_comptime_optional
+			if is_comptime_option
 				|| (g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
 				return 'CUSTOM_DEFINE_${name}'
 			}

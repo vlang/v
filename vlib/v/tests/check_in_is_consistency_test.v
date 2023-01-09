@@ -7,7 +7,7 @@ struct Test {
 
 fn check[T](val T) string {
 	$if T in [?int, ?int] {
-		return 'optional int'
+		return 'option int'
 	}
 	$if T in [int, int] {
 		return 'int'
@@ -19,7 +19,7 @@ fn check2[T](val T) string {
 	mut str := string{}
 	$for field in T.fields {
 		$if field.typ in [?int, ?int] {
-			str += 'optional int'
+			str += 'option int'
 		}
 		$if field.typ in [int, int] {
 			str += 'int'
@@ -30,7 +30,7 @@ fn check2[T](val T) string {
 
 fn check_is[T](val T) string {
 	$if T is ?int {
-		return 'optional int'
+		return 'option int'
 	}
 	$if T is int {
 		return 'int'
@@ -42,7 +42,7 @@ fn check_is2[T](val T) string {
 	mut str := string{}
 	$for field in T.fields {
 		$if field.typ is ?int {
-			str += 'optional int'
+			str += 'option int'
 		}
 		$if field.typ is int {
 			str += 'int'
@@ -65,7 +65,7 @@ fn test_in_2() {
 		a: 1
 		b: 2
 	}
-	assert check2(var) == 'intoptional int'
+	assert check2(var) == 'intoption int'
 }
 
 fn test_is() {
@@ -82,5 +82,5 @@ fn test_is_2() {
 		a: 1
 		b: 2
 	}
-	assert check_is2(var) == 'intoptional int'
+	assert check_is2(var) == 'intoption int'
 }

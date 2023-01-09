@@ -165,7 +165,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			}
 		}
 
-		$if field.is_optional {
+		$if field.is_option {
 			is_none := value.str() == 'Option(error: none)'
 
 			if !is_none {
@@ -182,29 +182,29 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				}
 
 				$if field.typ is ?string {
-					optional_value := val.$(field.name) as ?string
-					e.encode_string(optional_value, mut wr)!
+					option_value := val.$(field.name) as ?string
+					e.encode_string(option_value, mut wr)!
 				} $else $if field.typ is ?bool {
-					optional_value := val.$(field.name) as ?bool
-					wr.write(Any(optional_value).str().bytes())!
+					option_value := val.$(field.name) as ?bool
+					wr.write(Any(option_value).str().bytes())!
 				} $else $if field.typ is ?f32 {
-					optional_value := val.$(field.name) as ?f32
-					wr.write(Any(optional_value).str().bytes())!
+					option_value := val.$(field.name) as ?f32
+					wr.write(Any(option_value).str().bytes())!
 				} $else $if field.typ is ?f64 {
-					optional_value := val.$(field.name) as ?f64
-					wr.write(Any(optional_value).str().bytes())!
+					option_value := val.$(field.name) as ?f64
+					wr.write(Any(option_value).str().bytes())!
 				} $else $if field.typ is ?i8 {
-					optional_value := val.$(field.name) as ?i8
-					wr.write(Any(optional_value).str().bytes())!
+					option_value := val.$(field.name) as ?i8
+					wr.write(Any(option_value).str().bytes())!
 				} $else $if field.typ is ?i16 {
-					optional_value := val.$(field.name) as ?i16
-					wr.write(Any(optional_value).str().bytes())!
+					option_value := val.$(field.name) as ?i16
+					wr.write(Any(option_value).str().bytes())!
 				} $else $if field.typ is ?int {
-					optional_value := val.$(field.name) as ?int
-					wr.write(Any(optional_value).int().str().bytes())!
+					option_value := val.$(field.name) as ?int
+					wr.write(Any(option_value).int().str().bytes())!
 				} $else $if field.typ is ?time.Time {
-					optional_value := val.$(field.name) as ?time.Time
-					parsed_time := optional_value as time.Time
+					option_value := val.$(field.name) as ?time.Time
+					parsed_time := option_value as time.Time
 					e.encode_string(parsed_time.format_rfc3339(), mut wr)!
 				} $else $if field.is_array {
 					e.encode_array(value, level + 1, mut wr)!

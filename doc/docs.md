@@ -125,7 +125,7 @@ In your terminal, you can:
     * [Interfaces](#interfaces)
     * [Sum types](#sum-types)
     * [Option/Result types & error handling](#optionresult-types-and-error-handling)
-        * [Handling optionals/results](#handling-optionalsresults)
+        * [Handling options/results](#handling-optionsresults)
     * [Custom error types](#custom-error-types)
     * [Generics](#generics)
 * [Concurrency](#concurrency)
@@ -1344,7 +1344,7 @@ if v := m['abc'] {
 }
 ```
 
-The same optional check applies to arrays:
+The same option check applies to arrays:
 
 ```v
 arr := [1, 2, 3]
@@ -3595,7 +3595,7 @@ fn (r Repo) find_user_by_id(id int) !User {
 	return error('User ${id} not found')
 }
 
-// A version of the function using an optional
+// A version of the function using an option
 fn (r Repo) find_user_by_id2(id int) ?User {
 	for user in r.users {
 		if user.id == id {
@@ -3622,7 +3622,7 @@ fn main() {
 
 V used to combine `Option` and `Result` into one type, now they are separate.
 
-The amount of work required to "upgrade" a function to an optional/result function is minimal;
+The amount of work required to "upgrade" a function to an option/result function is minimal;
 you have to add a `?` or `!` to the return type and return an error when something goes wrong.
 
 This is the primary mechanism for error handling in V. They are still values, like in Go,
@@ -3639,9 +3639,9 @@ user := repo.find_user_by_id(7) or {
 }
 ```
 
-#### Handling optionals/results
+#### Handling options/results
 
-There are four ways of handling an optional/result. The first method is to
+There are four ways of handling an option/result. The first method is to
 propagate the error:
 
 ```v
@@ -3655,8 +3655,8 @@ fn f(url string) !string {
 
 `http.get` returns `!http.Response`. Because `!` follows the call, the
 error will be propagated to the caller of `f`. When using `?` after a
-function call producing an optional, the enclosing function must return
-an optional as well. If error propagation is used in the `main()`
+function call producing an option, the enclosing function must return
+an option as well. If error propagation is used in the `main()`
 function it will `panic` instead, since the error cannot be propagated
 any further.
 
@@ -3679,7 +3679,7 @@ entire program, or use a control flow statement (`return`, `break`, `continue`, 
 to break from the current block.
 Note that `break` and `continue` can only be used inside a `for` loop.
 
-V does not have a way to forcibly "unwrap" an optional (as other languages do,
+V does not have a way to forcibly "unwrap" an option (as other languages do,
 for instance Rust's `unwrap()` or Swift's `!`). To do this, use `or { panic(err) }` instead.
 
 ---
@@ -3708,7 +3708,7 @@ The fourth method is to use `if` unwrapping:
 import net.http
 
 if resp := http.get('https://google.com') {
-	println(resp.body) // resp is a http.Response, not an optional
+	println(resp.body) // resp is a http.Response, not an option
 } else {
 	println(err)
 }
@@ -3988,7 +3988,7 @@ A channel can be closed to indicate that no further objects can be pushed. Any a
 to do so will then result in a runtime panic (with the exception of `select` and
 `try_push()` - see below). Attempts to pop will return immediately if the
 associated channel has been closed and the buffer is empty. This situation can be
-handled using an `or {}` block (see [Handling optionals/results](#handling-optionalsresults)).
+handled using an `or {}` block (see [Handling options/results](#handling-optionsresults)).
 
 ```v wip
 ch := chan int{}

@@ -42,8 +42,8 @@ fn foo[U](val U) {
 		$if field.is_shared {
 			println(field.name + ' is shared?: ${field.is_shared}')
 		}
-		$if field.is_optional {
-			println(field.name + ' is optional?: ${field.is_optional}')
+		$if field.is_option {
+			println(field.name + ' is option?: ${field.is_option}')
 		}
 		$if field.is_atomic {
 			println(field.name + ' is atomic?: ${field.is_atomic}')
