@@ -65,8 +65,9 @@ fn test_types() {
 
 	assert json.encode(StructType[Enumerates]{}) == '{"val":0}'
 	assert json.encode(StructType[Enumerates]{ val: Enumerates.a }) == '{"val":0}'
+	assert json.encode(StructType[Enumerates]{ val: Enumerates.d }) == '{"val":3}'
 	assert json.encode(StructType[Enumerates]{ val: Enumerates.e }) == '{"val":99}'
-	assert json.encode(StructType[Enumerates]{ val: Enumerates.f }) == '{"val":5}'
+	assert json.encode(StructType[Enumerates]{ val: Enumerates.f }) == '{"val":100}'
 }
 
 fn test_option_types() {

@@ -260,7 +260,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			} $else $if field.is_struct {
 				e.encode_struct(value, level + 1, mut wr)!
 			} $else $if field.is_enum {
-				wr.write(val.$(field.name).str().bytes())!
+				wr.write(int(val.$(field.name)).str().bytes())!
 			} $else $if field.is_alias {
 				match field.unaliased_typ {
 					typeof[string]().idx {
