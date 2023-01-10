@@ -87,6 +87,6 @@ fn test_can_access_sqlite_result_consts() {
 }
 
 fn test_alias_db() {
-	create_host(sqlite.connect('./data.sqlite3')!)
+	create_host(sqlite.connect(':memory:')!)
 	assert true
 }
