@@ -593,12 +593,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							node.pos)
 					}
 				} else {
-					field_sym := c.table.sym(c.unwrap_generic(c.comptime_fields_default_type))
-
 					// allow `t.$(field.name) = 0` where `t.$(field.name)` is a enum
-					if c.inside_comptime_for_field && left is ast.ComptimeSelector
-						&& field_sym.kind == .enum_ {
-						if !right_type.is_int() {
+					if c.inside_comptime_for_field && left is ast.ComptimeSelector {
+						field_sym := c.table.sym(c.unwrap_generic(c.comptime_fields_default_type))
+
+						if field_sym.kind == .enum_ && !right_type.is_int() {
 							c.error('enums can only be assigned `int` values', right.pos())
 						}
 					} else {
