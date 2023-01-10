@@ -40,9 +40,9 @@ pub const (
 // Time contains various time units for a point in time.
 pub struct Time {
 pub:
-	year        int
-	month       int
-	day         int
+	year        int = 1970
+	month       int = 1
+	day         int = 1
 	hour        int
 	minute      int
 	second      int
