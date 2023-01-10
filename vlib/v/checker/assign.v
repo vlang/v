@@ -599,7 +599,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					if c.inside_comptime_for_field && left is ast.ComptimeSelector
 						&& field_sym.kind == .enum_ {
 						if !right_type.is_int() {
-							c.error('cannot assign a not `int` to enum `${left}`: ${err.msg()}',
+							c.error('enums can only be assigned `int` values',
 								right.pos())
 						}
 					} else {
