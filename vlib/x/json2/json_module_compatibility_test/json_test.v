@@ -12,7 +12,7 @@ pub mut:
 	name         string
 	age          int
 	salary       f32
-	title        JobTitle    //! FIXME - decode
+	title        JobTitle
 	sub_employee SubEmployee //! FIXME - decode
 }
 
@@ -21,7 +21,7 @@ pub mut:
 	name   string
 	age    int
 	salary f32
-	title  JobTitle //! FIXME - decode
+	title  JobTitle
 }
 
 fn test_simple() {
@@ -40,7 +40,7 @@ fn test_simple() {
 	assert y.name == 'Peter'
 	assert y.age == 28
 	assert y.salary == 95000.5
-	assert y.title == .worker //! FIXME
+	assert y.title == .worker
 	// assert y.sub_employee.name == 'João'
 	assert y.sub_employee.age == 0
 	assert y.sub_employee.salary == 0.0
