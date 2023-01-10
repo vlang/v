@@ -1,20 +1,19 @@
 module sfons
 
 import fontstash
-
-type FnAllocatorAlloc = fn (size usize, user_data voidptr) voidptr
-
-type FnAllocatorFree = fn (ptr voidptr, user_data voidptr)
+import sokol.memory
 
 [typedef]
-struct C.sfons_allocator_t {
-	alloc     FnAllocatorAlloc
-	free      FnAllocatorFree
+pub struct C.sfons_allocator_t {
+pub:
+	alloc     memory.FnAllocatorAlloc
+	free      memory.FnAllocatorFree
 	user_data voidptr
 }
 
 [typedef]
-struct C.sfons_desc_t {
+pub struct C.sfons_desc_t {
+pub:
 	width     int // initial width of font atlas texture (default: 512, must be power of 2)
 	height    int // initial height of font atlas texture (default: 512, must be power of 2)
 	allocator C.sfons_allocator_t // optional memory allocation overrides

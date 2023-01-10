@@ -2,6 +2,7 @@ module sfons
 
 import fontstash
 import sokol.f
+import sokol.memory
 
 // keep v from warning about unused imports
 const used_import = f.used_import + fontstash.used_import + 1
@@ -12,9 +13,9 @@ pub fn create(width int, height int, flags int) &fontstash.Context {
 	assert is_power_of_two(width)
 	assert is_power_of_two(height)
 	allocator := C.sfons_allocator_t{
-		alloc: f.salloc
-		free: f.sfree
-		user_data: unsafe { nil }
+		alloc: memory.salloc
+		free: memory.sfree
+		user_data: voidptr(0x100005f0)
 	}
 	desc := C.sfons_desc_t{
 		width: width
