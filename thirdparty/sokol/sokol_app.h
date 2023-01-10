@@ -2,6 +2,13 @@
 #define SOKOL_APP_IMPL
 #endif
 #ifndef SOKOL_APP_INCLUDED
+
+/*
+    V language IMPORTANT NOTE: all the V patches in this code, are marked with:
+    // __v_ start
+    // __v_ end
+*/
+
 /*
     sokol_app.h -- cross-platform application wrapper
 
@@ -1521,6 +1528,9 @@ typedef struct sapp_desc {
     bool html5_premultiplied_alpha;     // HTML5 only: whether the rendered pixels use premultiplied alpha convention
     bool html5_ask_leave_site;          // initial state of the internal html5_ask_leave_site flag (see sapp_html5_ask_leave_site())
     bool ios_keyboard_resizes_canvas;   // if true, showing the iOS keyboard shrinks the canvas
+    // __v_ start
+    bool __v_native_render;             // V patch to allow for native rendering
+    // __v_ end
 } sapp_desc;
 
 /* HTML5 specific: request and response structs for
@@ -2190,6 +2200,24 @@ _SOKOL_PRIVATE double _sapp_timing_get_avg(_sapp_timing_t* t) {
 
 /*== MACOS DECLARATIONS ======================================================*/
 #if defined(_SAPP_MACOS)
+
+// __v_ start
+@interface SokolWindow : NSWindow {
+}
+@end
+@interface MyView2 : NSView
+@end
+
+MyView2* g_view;
+
+// A custom NSWindow interface to handle events in borderless windows.
+@implementation SokolWindow
+- (BOOL)canBecomeKeyWindow { return YES; } // needed for NSWindowStyleMaskBorderless
+- (BOOL)canBecomeMainWindow { return YES; }
+@end
+// __v_ end
+
+
 @interface _sapp_macos_app_delegate : NSObject<NSApplicationDelegate>
 @end
 @interface _sapp_macos_window : NSWindow
@@ -2208,7 +2236,10 @@ _SOKOL_PRIVATE double _sapp_timing_get_avg(_sapp_timing_t* t) {
 typedef struct {
     uint32_t flags_changed_store;
     uint8_t mouse_buttons;
-    NSWindow* window;
+    // __v_ start
+    //NSWindow* window; // __v_ removed
+    _sapp_macos_window* window; // __v_ added
+    // __v_ end
     NSTrackingArea* tracking_area;
     _sapp_macos_app_delegate* app_dlg;
     _sapp_macos_window_delegate* win_dlg;
@@ -2737,6 +2768,9 @@ typedef struct {
     char window_title[_SAPP_MAX_TITLE_LENGTH];      /* UTF-8 */
     wchar_t window_title_wide[_SAPP_MAX_TITLE_LENGTH];   /* UTF-32 or UCS-2 */
     sapp_keycode keycodes[SAPP_MAX_KEYCODES];
+    // __v_ start
+    bool __v_native_render;             /* V patch to allow for native rendering */
+    // __v_ end
 } _sapp_t;
 static _sapp_t _sapp;
 
@@ -2810,6 +2844,11 @@ _SOKOL_PRIVATE void _sapp_call_init(void) {
 }
 
 _SOKOL_PRIVATE void _sapp_call_frame(void) {
+    // __v_ start
+    if (_sapp.__v_native_render) {
+        return;
+    }
+    // __v_ end
     if (_sapp.init_called && !_sapp.cleanup_called) {
         if (_sapp.desc.frame_cb) {
             _sapp.desc.frame_cb();
@@ -2819,6 +2858,21 @@ _SOKOL_PRIVATE void _sapp_call_frame(void) {
         }
     }
 }
+
+// __v_ start
+_SOKOL_PRIVATE void _sapp_call_frame_native(void) {
+    //puts("_sapp_call_frame_native()");
+    //printf("init called=%d cleanup_called=%d\n", _sapp.init_called,_sapp.cleanup_called);
+    if (_sapp.init_called && !_sapp.cleanup_called) {
+        if (_sapp.desc.frame_cb) {
+            _sapp.desc.frame_cb();
+        }
+        else if (_sapp.desc.frame_userdata_cb) {
+            _sapp.desc.frame_userdata_cb(_sapp.desc.user_data);
+        }
+   }
+}
+// __v_ end
 
 _SOKOL_PRIVATE void _sapp_call_cleanup(void) {
     if (!_sapp.cleanup_called) {
@@ -2950,6 +3004,9 @@ _SOKOL_PRIVATE void _sapp_init_state(const sapp_desc* desc) {
     _sapp.fullscreen = _sapp.desc.fullscreen;
     _sapp.mouse.shown = true;
     _sapp_timing_init(&_sapp.timing);
+    // __v_ start
+    _sapp.__v_native_render = _sapp.desc.__v_native_render;
+    // __v_end
 }
 
 _SOKOL_PRIVATE void _sapp_discard_state(void) {
@@ -3618,6 +3675,10 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
     }
 }
 
+// __v_ start
+#include "sokol_app2.h" // __v_
+// __v_ end
+
 @implementation _sapp_macos_app_delegate
 - (void)applicationDidFinishLaunching:(NSNotification*)aNotification {
     _SOKOL_UNUSED(aNotification);
@@ -3633,6 +3694,9 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
         }
     }
     const NSUInteger style =
+        // __v_ start
+        _sapp.desc.fullscreen ? NSWindowStyleMaskBorderless : // __v_
+        // __v_ end
         NSWindowStyleMaskTitled |
         NSWindowStyleMaskClosable |
         NSWindowStyleMaskMiniaturizable |
@@ -3724,15 +3788,66 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
     #endif
     [_sapp.macos.window center];
     _sapp.valid = true;
+
+
+    // __v_ start
+    if (!_sapp.__v_native_render) { // __v_
+
     if (_sapp.fullscreen) {
         /* ^^^ on GL, this already toggles a rendered frame, so set the valid flag before */
         [_sapp.macos.window toggleFullScreen:self];
     }
+
+    else {
+        [_sapp.macos.window center];
+	}
+	} // __v_
+    // __v_ end
+
+
     NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
     [NSApp activateIgnoringOtherApps:YES];
+
+
+
+    // __v start
+    ///////////////////////////////////////////////////////
+    // Create a child view for native rendering
+    if (_sapp.__v_native_render) {
+
+        CGRect wRect = _sapp.macos.window.frame;
+        NSView *contentView  =_sapp.macos.window.contentView;
+        CGRect cRect = contentView.frame;
+
+        CGRect rect = CGRectMake(wRect.origin.x, wRect.origin.y, cRect.size.width, cRect.size.height);
+        NSWindow *overlayWindow = [[NSWindow alloc]initWithContentRect:rect
+                                                             styleMask:NSBorderlessWindowMask
+                                                               backing:NSBackingStoreBuffered
+                                                                 defer:NO];
+        //overlayWindow.backgroundColor = [NSColor whiteColor];
+
+        //overlayWindow.backgroundColor = [[NSColor whiteColor] colorWithAlphaComponent:0];
+        [overlayWindow setOpaque:YES];
+        [_sapp.macos.window setIgnoresMouseEvents:NO];
+        g_view = [[MyView2 alloc] init];
+        overlayWindow.contentView = g_view;
+
+        [   contentView addSubview:g_view];
+        //[    _sapp.macos.window addChildWindow:overlayWindow ordered:NSWindowAbove];
+        [_sapp.macos.window center];
+    }
+    //////////////////////////////////
+    // __v_ end
+
+
+
     [_sapp.macos.window makeKeyAndOrderFront:nil];
     _sapp_macos_update_dimensions();
-    [NSEvent setMouseCoalescingEnabled:NO];
+
+    // __v_ start
+    //    [NSEvent setMouseCoalescingEnabled:NO];
+    // __v_ end
+
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender {
@@ -3814,6 +3929,12 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
 @end
 
 @implementation _sapp_macos_window
+
+// __v_ start
+- (BOOL)canBecomeKeyWindow { return YES; } // needed for NSWindowStyleMaskBorderless
+- (BOOL)canBecomeMainWindow { return YES; }
+// __v_ end
+
 - (instancetype)initWithContentRect:(NSRect)contentRect
                           styleMask:(NSWindowStyleMask)style
                             backing:(NSBackingStoreType)backingStoreType
