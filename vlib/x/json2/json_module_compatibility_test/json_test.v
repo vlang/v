@@ -217,3 +217,22 @@ fn test_pretty() {
   "c": "aliens"
 }'
 }
+
+struct Aa {
+	sub AliasType
+}
+
+struct Bb {
+	a int
+}
+
+type AliasType = Bb
+
+fn test_encode_alias_field() {
+	s := json.encode(Aa{
+		sub: Bb{
+			a: 1
+		}
+	})
+	assert s == '{"sub":{"a":1}}'
+}

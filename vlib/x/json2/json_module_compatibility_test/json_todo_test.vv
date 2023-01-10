@@ -374,26 +374,6 @@ fn test_encode_sumtype_defined_ahead() {
 	assert ret == '{"value":0,"_type":"GPScale"}'
 }
 
-struct Aa {
-	sub AliasType
-}
-
-struct Bb {
-	a int
-}
-
-type AliasType = Bb
-
-//! FIX: returning null
-fn test_encode_alias_field() {
-	s := json.encode(Aa{
-		sub: Bb{
-			a: 1
-		}
-	})
-	assert s == '{"sub":{"a":1}}'
-}
-
 struct APrice {}
 
 struct Association {

@@ -80,7 +80,7 @@ const (
 		'vlib/v/gen/native/macho_test.v',
 		'vlib/v/gen/native/tests/native_test.v',
 		'vlib/v/pkgconfig/pkgconfig_test.v',
-		'vlib/v/tests/inout/compiler_test.v',
+		'vlib/v/slow_tests/inout/compiler_test.v',
 		'vlib/x/json2/json2_test.v',
 	]
 	skip_test_files               = [
@@ -102,11 +102,11 @@ const (
 		'vlib/v/live/live_test.v',
 		'vlib/v/parser/v_parser_test.v',
 		'vlib/v/scanner/scanner_test.v',
-		'vlib/v/tests/inout/compiler_test.v',
-		'vlib/v/tests/prod_test.v',
-		'vlib/v/tests/profile/profile_test.v',
-		'vlib/v/tests/repl/repl_test.v',
-		'vlib/v/tests/valgrind/valgrind_test.v',
+		'vlib/v/slow_tests/inout/compiler_test.v',
+		'vlib/v/slow_tests/prod_test.v',
+		'vlib/v/slow_tests/profile/profile_test.v',
+		'vlib/v/slow_tests/repl/repl_test.v',
+		'vlib/v/slow_tests/valgrind/valgrind_test.v',
 	]
 	skip_with_fsanitize_memory    = [
 		'vlib/net/tcp_simple_client_server_test.v',
@@ -159,7 +159,7 @@ const (
 		'do_not_remove',
 	]
 	skip_on_musl                  = [
-		'vlib/v/tests/profile/profile_test.v',
+		'vlib/v/slow_tests/profile/profile_test.v',
 		'vlib/gg/draw_fns_api_test.v',
 		'vlib/v/tests/skip_unused/gg_code.vv',
 	]
