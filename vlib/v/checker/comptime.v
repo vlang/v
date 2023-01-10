@@ -561,7 +561,9 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 					}
 				}
 				.eq, .ne {
-					if cond.left is ast.SelectorExpr && cond.right is ast.IntegerLiteral {
+					if cond.left is ast.SelectorExpr
+						&& cond.right in [ast.IntegerLiteral, ast.StringLiteral] {
+						return .unknown
 						// $if method.args.len == 1
 					} else if cond.left is ast.SelectorExpr
 						&& c.check_comptime_is_field_selector_bool(cond.left as ast.SelectorExpr) {
