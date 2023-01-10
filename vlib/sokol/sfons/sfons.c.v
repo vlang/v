@@ -6,9 +6,22 @@ import sokol.f
 // keep v from warning about unused imports
 const used_import = f.used_import + fontstash.used_import + 1
 
+// create a new Context/font atlas, for rendering glyphs, given its dimensions `width` and `height`
 [inline]
 pub fn create(width int, height int, flags int) &fontstash.Context {
-	return C.sfons_create(width, height, flags)
+	assert is_power_of_two(width)
+	assert is_power_of_two(height)
+	allocator := C.sfons_allocator_t{
+		alloc: f.salloc
+		free: f.sfree
+		user_data: unsafe { nil }
+	}
+	desc := C.sfons_desc_t{
+		width: width
+		height: height
+		allocator: allocator
+	}
+	return C.sfons_create(&desc)
 }
 
 [inline]
@@ -24,4 +37,8 @@ pub fn rgba(r u8, g u8, b u8, a u8) u32 {
 [inline]
 pub fn flush(ctx &fontstash.Context) {
 	C.sfons_flush(ctx)
+}
+
+fn is_power_of_two(x int) bool {
+	return x in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768]
 }
