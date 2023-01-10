@@ -593,7 +593,13 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							node.pos)
 					}
 				} else {
-					c.error('cannot assign to `${left}`: ${err.msg()}', right.pos())
+					field_sym := c.table.sym(c.unwrap_generic(c.comptime_fields_default_type))
+
+					// allow `t.$(field.name) = 0` where `t.$(field.name)` is a enum
+					if !(c.inside_comptime_for_field && left is ast.ComptimeSelector
+						&& right_type.is_int_literal() && field_sym.kind == .enum_) {
+						c.error('cannot assign to `${left}`: ${err.msg()}', right.pos())
+					}
 				}
 			}
 		}
