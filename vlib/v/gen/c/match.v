@@ -87,7 +87,20 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.empty_line = true
 		cur_line = g.go_before_stmt(0).trim_left(' \t')
 		tmp_var = g.new_tmp_var()
-		g.writeln('${g.typ(node.return_type)} ${tmp_var} = ${g.type_default(node.return_type)};')
+		mut func_decl := ''
+		if g.table.final_sym(node.return_type).kind == .function {
+			func_sym := g.table.final_sym(node.return_type)
+			if func_sym.info is ast.FnType {
+				def := g.fn_var_signature(func_sym.info.func.return_type, func_sym.info.func.params.map(it.typ),
+					tmp_var)
+				func_decl = '${def} = &${g.typ(node.return_type)};'
+			}
+		}
+		if func_decl.len > 0 {
+			g.writeln(func_decl) // func, anon func declaration
+		} else {
+			g.writeln('${g.typ(node.return_type)} ${tmp_var} = ${g.type_default(node.return_type)};')
+		}
 		g.empty_line = true
 		if g.infix_left_var_name.len > 0 {
 			g.writeln('if (${g.infix_left_var_name}) {')

@@ -14,6 +14,7 @@ const fixed_time = time.Time{
 type StringAlias = string
 type BoolAlias = bool
 type IntAlias = int
+type StructAlias = StructType[int]
 
 type SumTypes = bool | int | string
 
@@ -203,4 +204,8 @@ fn test_alias() {
 	assert json.encode(StructType[IntAlias]{}) == '{"val":0}'
 	assert json.encode(StructType[IntAlias]{ val: 0 }) == '{"val":0}'
 	assert json.encode(StructType[IntAlias]{ val: 1 }) == '{"val":1}'
+
+	assert json.encode(StructType[StructAlias]{}) == '{"val":{"val":0}}'
+	assert json.encode(StructType[StructAlias]{ val: StructType[int]{0} }) == '{"val":{"val":0}}'
+	assert json.encode(StructType[StructAlias]{ val: StructType[int]{1} }) == '{"val":{"val":1}}'
 }

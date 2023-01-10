@@ -97,7 +97,8 @@ fn new_project(args []string) {
 	}
 
 	println('Initialising ...')
-	if args.len > 0 {
+	// `v new abcde hello_world`
+	if args.len == 2 {
 		match os.args.last() {
 			'web' {
 				c.set_web_project_files()
@@ -111,6 +112,7 @@ fn new_project(args []string) {
 			}
 		}
 	} else {
+		// `v new abc`
 		c.set_hello_world_project_files()
 	}
 
