@@ -736,6 +736,12 @@ pub fn (t &Table) get_type_name(typ Type) string {
 }
 
 [inline]
+pub fn (t &Table) get_final_type_name(typ Type) string {
+	sym := t.final_sym(typ)
+	return sym.name
+}
+
+[inline]
 pub fn (t &Table) unalias_num_type(typ Type) Type {
 	sym := t.sym(typ)
 	if sym.kind == .alias {
