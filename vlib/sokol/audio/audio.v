@@ -90,7 +90,7 @@ pub struct C.saudio_desc {
 	num_packets        int
 	stream_cb          FNStreamingCB
 	stream_userdata_cb FnStreamingCBWithUserData
-mut:
+pub mut:
 	user_data voidptr
 	allocator C.saudio_allocator
 	logger    C.saudio_logger
