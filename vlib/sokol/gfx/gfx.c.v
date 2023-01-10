@@ -1,15 +1,27 @@
 module gfx
 
 import sokol.c
+import sokol.memory
 
-pub const (
-	version     = 1
-	used_import = c.used_import
-)
+pub const version = 1
+
+pub const used_import = c.used_import
 
 // setup and misc functions
 [inline]
 pub fn setup(desc &Desc) {
+	if desc.allocator.alloc == unsafe { nil } && desc.allocator.free == unsafe { nil } {
+		unsafe {
+			desc.allocator.alloc = memory.salloc
+			desc.allocator.free = memory.sfree
+			desc.allocator.user_data = voidptr(0x1006fec5)
+		}
+	}
+	if desc.logger.log_cb == unsafe { nil } {
+		unsafe {
+			desc.logger.log_cb = memory.slog
+		}
+	}
 	C.sg_setup(desc)
 }
 
