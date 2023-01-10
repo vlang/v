@@ -7,8 +7,7 @@ pub const version = 1
 
 pub const used_import = c.used_import
 
-// setup and misc functions
-[inline]
+// setup initialises the SOKOL's gfx library, based on the information passed in `desc`
 pub fn setup(desc &Desc) {
 	if desc.allocator.alloc == unsafe { nil } && desc.allocator.free == unsafe { nil } {
 		unsafe {
@@ -25,7 +24,7 @@ pub fn setup(desc &Desc) {
 	C.sg_setup(desc)
 }
 
-[inline]
+// shutdown tells the SOKOL's gfx library to shutdown, and release the resources it is using
 pub fn shutdown() {
 	C.sg_shutdown()
 }
