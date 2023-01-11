@@ -207,6 +207,9 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 					e.encode_string(parsed_time.format_rfc3339(), mut wr)!
 				} $else $if field.is_array {
 					e.encode_array(value, level + 1, mut wr)!
+				} $else $if field.is_enum {
+					option_value := val.$(field.name) as ?int
+					wr.write(Any(option_value).int().str().bytes())!
 				} $else $if field.is_alias {
 					match field.unaliased_typ {
 						typeof[string]().idx {
@@ -253,6 +256,8 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				e.encode_array(value, level + 1, mut wr)!
 			} $else $if field.is_struct {
 				e.encode_struct(value, level + 1, mut wr)!
+			} $else $if field.is_enum {
+				wr.write(int(val.$(field.name)).str().bytes())!
 			} $else $if field.is_alias {
 				match field.unaliased_typ {
 					typeof[string]().idx {

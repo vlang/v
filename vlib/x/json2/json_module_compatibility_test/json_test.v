@@ -9,28 +9,28 @@ enum JobTitle {
 
 struct Employee {
 pub mut:
-	name   string
-	age    int
-	salary f32
-	// title        JobTitle //! FIXME - decode
-	// sub_employee SubEmployee //! FIXME - decode
+	name         string
+	age          int
+	salary       f32
+	title        JobTitle
+	sub_employee SubEmployee //! FIXME - decode
 }
 
-struct SubEmployee {
+pub struct SubEmployee {
 pub mut:
 	name   string
 	age    int
 	salary f32
-	// title  JobTitle //! FIXME - decode
+	title  JobTitle
 }
 
 fn test_simple() {
 	sub_employee := SubEmployee{
 		name: 'João'
 	}
-	x := Employee{'Peter', 28, 95000.5}
+	x := Employee{'Peter', 28, 95000.5, .worker, sub_employee}
 	s := json.encode[Employee](x)
-	assert s == '{"name":"Peter","age":28,"salary":95000.5}'
+	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2,"sub_employee":{"name":"João","age":0,"salary":0.0,"title":0}}'
 
 	y := json.decode[Employee](s) or {
 		println(err)
@@ -40,10 +40,10 @@ fn test_simple() {
 	assert y.name == 'Peter'
 	assert y.age == 28
 	assert y.salary == 95000.5
-	// assert y.title == .worker //! FIXME
-	// assert y.sub_employee.name == 'Peter'
-	// assert y.sub_employee.age == 0
-	// assert y.sub_employee.salary == 0.0
+	assert y.title == .worker
+	// assert y.sub_employee.name == 'João'
+	assert y.sub_employee.age == 0
+	assert y.sub_employee.salary == 0.0
 	// assert y.sub_employee.title == .worker //! FIXME
 }
 
