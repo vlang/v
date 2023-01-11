@@ -29,10 +29,12 @@ pub fn sfree(ptr voidptr, user_data voidptr) {
 	unsafe { free(ptr) }
 }
 
+fn C.SOKOL_LOG(const_message &char)
+
 pub fn slog(const_message &char, user_data voidptr) {
 	$if trace_sokol_memory ? {
 		C.fprintf(C.stderr, c'sokol.memory.slog | user_data: %p, message: %s\n', user_data,
 			const_message)
 	}
-	C.puts(const_message)
+	C.SOKOL_LOG(const_message)
 }
