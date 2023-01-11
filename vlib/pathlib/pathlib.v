@@ -66,7 +66,7 @@ pub fn path(path_string string) Path {
 
 	mut clean_path := path_string
 
-	// only trim right sep if it's not just `/'
+	// only trim right sep if it's not just '/'
 	if path_string.len != 1 {
 		clean_path = clean_path.trim_string_right(os.path_separator)
 	}
@@ -119,10 +119,10 @@ pub fn (p Path) absolute() Path {
 //
 // Example:
 // ```v
-// assert path('c:\\v\\vlib\\pathlib.v).as_posix() == 'c:/v/vlib/pathlib.v'
+// assert path('c:\\v\\vlib\\pathlib.v').as_posix() == 'c:/v/vlib/pathlib.v'
 // ```
 pub fn (p Path) as_posix() string {
-	// posix uses `/' as separator
+	// posix uses '/' as separator
 	return p.parts.join('/')
 }
 
@@ -184,9 +184,16 @@ pub fn (p Path) expanduser() Path {
 // 	return paths
 // }
 
-// pub fn (p Path) inode() os.FileMode {
-// 	return os.inode(p.str())
+// // group_id returns the group ID (GID) of the file.
+// // Note: if you want the name of the group, use the GID and /etc/groups.
+// pub fn (p Path) group_id() int {
 // }
+
+// inode returns inode type and permission information.
+// See also: `os.inode`, `os.FileMode`.
+pub fn (p Path) inode() os.FileMode {
+	return os.inode(p.str())
+}
 
 // is_absolute returns if the path is an absolute path.
 // See also: `os.is_abs_path`.
@@ -194,7 +201,7 @@ pub fn (p Path) is_absolute() bool {
 	return os.is_abs_path(p.str())
 }
 
-// is_block_device returns if the file the path is pointing to is a block device.
+// is_block_device returns if path is a block device file.
 pub fn (p Path) is_block_device() bool {
 	return match os.inode(p.str()).typ {
 		.block_device { true }
@@ -202,7 +209,7 @@ pub fn (p Path) is_block_device() bool {
 	}
 }
 
-// is_block_device returns if the file the path is pointing to is a character device.
+// is_char_device returns if the path is a character device file.
 pub fn (p Path) is_char_device() bool {
 	return match os.inode(p.str()).typ {
 		.character_device { true }
@@ -216,7 +223,7 @@ pub fn (p Path) is_dir() bool {
 	return os.is_dir(p.str())
 }
 
-// is_fifo returns if the file the path is pointing to is a fifo file.
+// is_fifo returns if the path is a FIFO file.
 pub fn (p Path) is_fifo() bool {
 	return match os.inode(p.str()).typ {
 		.fifo { true }
@@ -247,7 +254,7 @@ pub fn (p Path) is_relative_to(other Path) bool {
 	return p.parts[..window.len] == window
 }
 
-// is_socket returns if the file the path is pointing to is a socket.
+// is_socket returns if the path is a socket file.
 pub fn (p Path) is_socket() bool {
 	return match os.inode(p.str()).typ {
 		.socket { true }
@@ -255,13 +262,13 @@ pub fn (p Path) is_socket() bool {
 	}
 }
 
-// is_socket returns if the file the path is pointing to is a link.
+// is_link returns if the path is a link file.
 // See also: `os.is_link`.
 pub fn (p Path) is_link() bool {
 	return os.is_link(p.str())
 }
 
-// is_regular returns if the file the path is pointing to is a regular file.
+// is_regular returns if the path is a regular file.
 pub fn (p Path) is_regular() bool {
 	return match os.inode(p.str()).typ {
 		.regular { true }
@@ -296,7 +303,7 @@ pub fn (p Path) link(target Path) ! {
 	os.link(p.str(), target.str())!
 }
 
-// mkdir creates the directory `path` points to.
+// mkdir creates the directory path points to.
 // See also: `os.mkdir`.
 pub fn (p Path) mkdir(params os.MkdirParams) !Path {
 	// TODO: include mkdir_all?
@@ -304,7 +311,7 @@ pub fn (p Path) mkdir(params os.MkdirParams) !Path {
 	return p
 }
 
-// open the `path` if it's a file.
+// open the path if it's a file.
 // See also: `os.open_file`.
 pub fn (p Path) open(mode string, options ...int) !os.File {
 	return os.open_file(p.str(), mode, ...options) or {
@@ -316,7 +323,7 @@ pub fn (p Path) open(mode string, options ...int) !os.File {
 	}
 }
 
-// parent returns the parent of the `path`.
+// parent returns the parent of the path.
 //
 // Example:
 // ```v
@@ -364,7 +371,7 @@ pub fn (p Path) quoted() string {
 	return os.quoted_path(p.str())
 }
 
-// read_text reads text from `path` and returns it as a string.
+// read_text reads text from path and returns it as a string.
 pub fn (p Path) read_text() !string {
 	return os.read_file(p.str()) or {
 		IError(PathError{
@@ -396,8 +403,8 @@ pub fn (p Path) relative_to(parent Path) !Path {
 	return path_from_parts(p.parts[parent.parts.len..])
 }
 
-// Make the path absolute, resolving all symlinks, `..`, etc. on the way and also
-// normalizing it.
+// resolve all symlinks, make the path absolute, and resolve `..`, etc. on the
+// way and also normalizing it.
 // See also: `os.resolve`.
 pub fn (p Path) resolve() Path {
 	return path(os.real_path(p.str()))
@@ -417,20 +424,20 @@ pub fn (p Path) str() string {
 	return p.parts.join(p.sep)
 }
 
-// symlink `path` to the target.
+// symlink path to the target.
 // See also: `os.symlink`.
 pub fn (p Path) symlink(target Path) ! {
 	os.symlink(p.str(), target.str())!
 }
 
-// touch creates a file at `path`.
+// touch creates a file at path.
 // See also: `os.create`.
 pub fn (p Path) touch() !Path {
 	os.create(p.str())!
 	return p
 }
 
-// unlike (remove) the file `path` points to.
+// unlink (remove) the file path points to.
 // See also: `os.rm`.
 pub fn (p Path) unlink() ! {
 	os.rm(p.str())!
@@ -530,7 +537,7 @@ pub fn (p Path) with_suffix(suffix string) !Path {
 
 	if !suffix.starts_with('.') {
 		return IError(PathError{
-			path: p,
+			path: p
 			msg: 'suffix has to start with a `.`'
 			func: 'with_suffix'
 		})
@@ -555,7 +562,7 @@ pub fn (p Path) with_suffix(suffix string) !Path {
 	return path_from_parts(parts)
 }
 
-// write_text writes text to file at `path`.
+// write_text writes text to file at path.
 // See also: `os.write_file`.
 pub fn (p Path) write_text(text string) ! {
 	os.write_file(p.str(), text) or {
