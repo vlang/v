@@ -51,6 +51,13 @@ pub fn decode[T](src string) !T {
 			typ.$(field.name) = res[field.name]!.str()
 		} $else $if field.typ is time.Time {
 			typ.$(field.name) = res[field.name]!.to_time()!
+		} $else $if field.is_array {
+			// typ.$(field.name) = res[field.name]!.arr()
+		} $else $if field.is_struct {
+		} $else $if field.is_enum {
+			typ.$(field.name) = res[field.name]!.int()
+		} $else $if field.is_alias {
+		} $else $if field.is_map {
 		} $else {
 			return error("The type of `${field.name}` can't be decoded. Please open an issue at https://github.com/vlang/v/issues/new/choose")
 		}

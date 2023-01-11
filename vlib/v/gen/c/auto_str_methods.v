@@ -239,6 +239,8 @@ fn (mut g Gen) gen_str_for_result(typ ast.Type, styp string, str_fn_name string)
 
 fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string) {
 	parent_str_fn_name := g.get_str_fn(info.parent_type)
+	_, str_method_expects_ptr, _ := g.table.sym(info.parent_type).str_method_info()
+
 	$if trace_autostr ? {
 		eprintln('> gen_str_for_alias: ${parent_str_fn_name} | ${styp} | ${str_fn_name}')
 	}
@@ -248,7 +250,11 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	g.definitions.writeln('static string indent_${str_fn_name}(${styp} it, int indent_count); // auto')
 	g.auto_str_funcs.writeln('static string indent_${str_fn_name}(${styp} it, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstring indents = string_repeat(_SLIT("    "), indent_count);')
-	g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(it);')
+	if str_method_expects_ptr {
+		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(&it);')
+	} else {
+		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(it);')
+	}
 	g.auto_str_funcs.writeln('\tstring res = str_intp(3, _MOV((StrIntpData[]){
 		{_SLIT0, ${c.si_s_code}, {.d_s = indents }},
 		{_SLIT("${clean_type_v_type_name}("), ${c.si_s_code}, {.d_s = tmp_ds }},
