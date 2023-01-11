@@ -378,6 +378,30 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	}
 }
 
+fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
+	match cond {
+		ast.Ident {
+			return g.unwrap_generic(cond.obj.typ)
+		}
+		ast.TypeNode {
+			return g.unwrap_generic(cond.typ)
+		}
+		ast.SelectorExpr {
+			if cond.gkind_field == .typ {
+				return g.unwrap_generic(cond.name_type)
+			} else if cond.typ != 0 {
+				return cond.typ
+			} else {
+				name := '${cond.expr}.${cond.field_name}'
+				return g.comptime_var_type_map[name]
+			}
+		}
+		else {
+			return ast.void_type
+		}
+	}
+}
+
 // returns the value of the bool comptime expression and if next branches may be discarded
 // returning `false` means the statements inside the $if can be skipped
 fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
@@ -420,24 +444,39 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 				}
 				.key_is, .not_is {
 					left := cond.left
-					mut name := ''
-					if left is ast.TypeNode && cond.right is ast.ComptimeType {
-						checked_type := g.unwrap_generic(left.typ)
-						is_true := g.table.is_comptime_type(checked_type, cond.right)
-						if cond.op == .key_is {
-							if is_true {
-								g.write('1')
+					if left in [ast.TypeNode, ast.Ident, ast.SelectorExpr]
+						&& cond.right in [ast.ComptimeType, ast.TypeNode] {
+						exp_type := g.get_expr_type(left)
+						if cond.right is ast.ComptimeType {
+							is_true := g.table.is_comptime_type(exp_type, cond.right)
+							if cond.op == .key_is {
+								if is_true {
+									g.write('1')
+								} else {
+									g.write('0')
+								}
+								return is_true, true
 							} else {
-								g.write('0')
+								if is_true {
+									g.write('0')
+								} else {
+									g.write('1')
+								}
+								return !is_true, true
 							}
-							return is_true, true
 						} else {
-							if is_true {
-								g.write('0')
+							got_type := (cond.right as ast.TypeNode).typ
+							if cond.op == .key_is {
+								if exp_type == 0 {
+									println('>> ${g.table.type_to_str(got_type)}')
+								}
+
+								g.write('${exp_type.idx()} == ${got_type.idx()} && ${exp_type.has_flag(.option)} == ${got_type.has_flag(.option)}')
+								return exp_type == got_type, true
 							} else {
-								g.write('1')
+								g.write('${exp_type.idx()} != ${got_type.idx()}')
+								return exp_type != got_type, true
 							}
-							return !is_true, true
 						}
 					}
 					mut exp_type := ast.Type(0)
@@ -473,13 +512,6 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 							}
 							// matches_interface = '/*iface:$got_type $exp_type*/ true'
 							//}
-						}
-					} else if left is ast.SelectorExpr {
-						if left.gkind_field == .typ {
-							exp_type = g.unwrap_generic(left.name_type)
-						} else {
-							name = '${left.expr}.${left.field_name}'
-							exp_type = g.comptime_var_type_map[name]
 						}
 					} else if left is ast.TypeNode {
 						// this is only allowed for generics currently, otherwise blocked by checker
