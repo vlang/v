@@ -27,12 +27,9 @@
     ...optionally provide the following macros to override defaults:
 
     SOKOL_ASSERT(c)     - your own assert macro (default: assert(c))
-    SOKOL_MALLOC(s)     - your own malloc function (default: malloc(s))
-    SOKOL_FREE(p)       - your own free function (default: free(p))
     SOKOL_GL_API_DECL   - public function declaration prefix (default: extern)
     SOKOL_API_DECL      - same as SOKOL_GL_API_DECL
     SOKOL_API_IMPL      - public function implementation prefix (default: -)
-    SOKOL_LOG(msg)      - your own logging function (default: puts(msg))
     SOKOL_UNREACHABLE() - a guard macro for unreachable code (default: assert(false))
 
     If sokol_gl.h is compiled as a DLL, define the following before
@@ -382,6 +379,32 @@
         ...if sokol-gl is in an error-state, sgl_draw() will skip any rendering,
         and reset the error code to SGL_NO_ERROR.
 
+    RENDER LAYERS
+    =============
+    Render layers allow to split sokol-gl rendering into separate draw-command
+    groups which can then be rendered separately in a sokol-gfx draw pass. This
+    allows to mix/interleave sokol-gl rendering with other render operations.
+
+    Layered rendering is controlled through two functions:
+
+        sgl_layer(int layer_id)
+        sgl_draw_layer(int layer_id)
+
+    (and the context-variant sgl_draw_layer(): sgl_context_draw_layer()
+
+    The sgl_layer() function sets the 'current layer', any sokol-gl calls
+    which internally record draw commands will also store the current layer
+    in the draw command, and later in a sokol-gfx render pass, a call
+    to sgl_draw_layer() will only render the draw commands that have
+    a matching layer.
+
+    The default layer is '0', this is active after sokol-gl setup, and
+    is also restored at the start of a new frame (but *not* by calling
+    sgl_defaults()).
+
+    NOTE that calling sgl_draw() is equivalent with sgl_draw_layer(0)
+    (in general you should either use either use sgl_draw() or
+    sgl_draw_layer() in an application, but not both).
 
     WORKING WITH CONTEXTS:
     ======================
@@ -466,7 +489,7 @@
     The only functions which call into sokol_gfx.h are:
         - sgl_setup()
         - sgl_shutdown()
-        - sgl_draw()
+        - sgl_draw() (and variants)
 
     sgl_setup() must be called after initializing sokol-gfx.
     sgl_shutdown() must be called before shutting down sokol-gfx.
@@ -511,10 +534,13 @@
               all pipeline objects) are destroyed
             - the 3 memory buffers are freed
 
-        sgl_draw():
+        sgl_draw() (and variants)
             - copy all recorded vertex data into the dynamic sokol-gfx buffer
               via a call to sg_update_buffer()
             - for each recorded command:
+                - if the layer number stored in the command doesn't match
+                  the layer that's to be rendered, skip to the next
+                  command
                 - if it's a viewport command, call sg_apply_viewport()
                 - if it's a scissor-rect command, call sg_apply_scissor_rect()
                 - if it's a draw command:
@@ -536,16 +562,66 @@
     A draw command will be merged with the previous command if "no relevant
     state has changed" since the last sgl_end(), meaning:
 
-    - no calls to sgl_apply_viewport() and sgl_apply_scissor_rect()
+    - no calls to sgl_viewport() and sgl_scissor_rect()
     - the primitive type hasn't changed
     - the primitive type isn't a 'strip type' (no line or triangle strip)
     - the pipeline state object hasn't changed
+    - the current layer hasn't changed
     - none of the matrices has changed
     - none of the texture state has changed
 
     Merging a draw command simply means that the number of vertices
     to render in the previous draw command will be incremented by the
     number of vertices in the new draw command.
+
+    MEMORY ALLOCATION OVERRIDE
+    ==========================
+    You can override the memory allocation functions at initialization time
+    like this:
+
+        void* my_alloc(size_t size, void* user_data) {
+            return malloc(size);
+        }
+
+        void my_free(void* ptr, void* user_data) {
+            free(ptr);
+        }
+
+        ...
+            sgl_setup(&(sgl_desc_t){
+                // ...
+                .allocator = {
+                    .alloc = my_alloc,
+                    .free = my_free,
+                    .user_data = ...;
+                }
+            });
+        ...
+
+    If no overrides are provided, malloc and free will be used.
+
+
+    LOG FUNCTION OVERRIDE
+    =====================
+    You can override the log function at initialization time like this:
+
+        void my_log(const char* message, void* user_data) {
+            printf("sgl says: \s\n", message);
+        }
+
+        ...
+            sgl_setup(&(sgl_desc_t){
+                // ...
+                .logger = {
+                    .log_cb = my_log,
+                    .user_data = ...,
+                }
+            });
+        ...
+
+    If no overrides are provided, puts will be used on most platforms.
+    On Android, __android_log_write will be used instead.
+
 
     LICENSE
     =======
@@ -575,6 +651,7 @@
 #define SOKOL_GL_INCLUDED (1)
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h> // size_t, offsetof
 
 #if !defined(SOKOL_GFX_INCLUDED)
 #error "Please include sokol_gfx.h before sokol_gl.h"
@@ -634,6 +711,31 @@ typedef struct sgl_context_desc_t {
     int sample_count;
 } sgl_context_desc_t;
 
+/*
+    sgl_allocator_t
+
+    Used in sgl_desc_t to provide custom memory-alloc and -free functions
+    to sokol_gl.h. If memory management should be overridden, both the
+    alloc and free function must be provided (e.g. it's not valid to
+    override one function but not the other).
+*/
+typedef struct sgl_allocator_t {
+    void* (*alloc)(size_t size, void* user_data);
+    void (*free)(void* ptr, void* user_data);
+    void* user_data;
+} sgl_allocator_t;
+
+/*
+    sgl_logger_t
+
+    Used in sgl_desc_t to provide custom log callbacks to sokol_gl.h.
+    Default behavior is SOKOL_LOG(message).
+*/
+typedef struct sgl_logger_t {
+    void (*log_cb)(const char* message, void* user_data);
+    void* user_data;
+} sgl_logger_t;
+
 typedef struct sgl_desc_t {
     int max_vertices;               // default: 64k
     int max_commands;               // default: 16k
@@ -643,6 +745,8 @@ typedef struct sgl_desc_t {
     sg_pixel_format depth_format;
     int sample_count;
     sg_face_winding face_winding;   // default: SG_FACEWINDING_CCW
+    sgl_allocator_t allocator;      // optional memory allocation overrides (default: malloc/free)
+    sgl_logger_t logger;            // optional memory allocation overrides (default: SOKOL_LOG(message))
 } sgl_desc_t;
 
 /* the default context handle */
@@ -663,6 +767,12 @@ SOKOL_GL_API_DECL void sgl_set_context(sgl_context ctx);
 SOKOL_GL_API_DECL sgl_context sgl_get_context(void);
 SOKOL_GL_API_DECL sgl_context sgl_default_context(void);
 
+/* draw recorded commands (call inside a sokol-gfx render pass) */
+SOKOL_GL_API_DECL void sgl_draw();
+SOKOL_GL_API_DECL void sgl_context_draw(sgl_context ctx);
+SOKOL_GL_API_DECL void sgl_draw_layer(int layer_id);
+SOKOL_GL_API_DECL void sgl_context_draw_layer(sgl_context ctx, int layer_id);
+
 /* create and destroy pipeline objects */
 SOKOL_GL_API_DECL sgl_pipeline sgl_make_pipeline(const sg_pipeline_desc* desc);
 SOKOL_GL_API_DECL sgl_pipeline sgl_context_make_pipeline(sgl_context ctx, const sg_pipeline_desc* desc);
@@ -677,6 +787,7 @@ SOKOL_GL_API_DECL void sgl_scissor_rectf(float x, float y, float w, float h, boo
 SOKOL_GL_API_DECL void sgl_enable_texture(void);
 SOKOL_GL_API_DECL void sgl_disable_texture(void);
 SOKOL_GL_API_DECL void sgl_texture(sg_image img);
+SOKOL_GL_API_DECL void sgl_layer(int layer_id);
 
 /* pipeline stack functions */
 SOKOL_GL_API_DECL void sgl_load_default_pipeline(void);
@@ -745,10 +856,6 @@ SOKOL_GL_API_DECL void sgl_v3f_t2f_c4b(float x, float y, float z, float u, float
 SOKOL_GL_API_DECL void sgl_v3f_t2f_c1i(float x, float y, float z, float u, float v, uint32_t rgba);
 SOKOL_GL_API_DECL void sgl_end(void);
 
-/* render recorded commands */
-SOKOL_GL_API_DECL void sgl_draw();
-SOKOL_GL_API_DECL void sgl_context_draw(sgl_context ctx);
-
 #ifdef __cplusplus
 } /* extern "C" */
 
@@ -764,9 +871,13 @@ inline sgl_pipeline sgl_context_make_pipeline(sgl_context ctx, const sg_pipeline
 #ifdef SOKOL_GL_IMPL
 #define SOKOL_GL_IMPL_INCLUDED (1)
 
-#include <stddef.h> /* offsetof */
-#include <string.h> /* memset */
-#include <math.h> /* M_PI, sqrtf, sinf, cosf */
+#if defined(SOKOL_MALLOC) || defined(SOKOL_CALLOC) || defined(SOKOL_FREE)
+#error "SOKOL_MALLOC/CALLOC/FREE macros are no longer supported, please use sgl_desc_t.allocator to override memory allocation functions"
+#endif
+
+#include <stdlib.h> // malloc/free
+#include <string.h> // memset
+#include <math.h>   // M_PI, sqrtf, sinf, cosf
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846264338327
@@ -777,28 +888,27 @@ inline sgl_pipeline sgl_context_make_pipeline(sgl_context ctx, const sg_pipeline
 #endif
 #ifndef SOKOL_DEBUG
     #ifndef NDEBUG
-        #define SOKOL_DEBUG (1)
+        #define SOKOL_DEBUG
     #endif
 #endif
 #ifndef SOKOL_ASSERT
     #include <assert.h>
     #define SOKOL_ASSERT(c) assert(c)
 #endif
-#ifndef SOKOL_MALLOC
-    #include <stdlib.h>
-    #define SOKOL_MALLOC(s) malloc(s)
-    #define SOKOL_FREE(p) free(p)
-#endif
-#ifndef SOKOL_LOG
-    #ifdef SOKOL_DEBUG
-        #include <stdio.h>
-        #define SOKOL_LOG(s) { SOKOL_ASSERT(s); puts(s); }
-    #else
-        #define SOKOL_LOG(s)
+
+#if !defined(SOKOL_DEBUG)
+    #define SGL_LOG(s)
+#else
+    #define SGL_LOG(s) _sgl_log(s)
+    #ifndef SOKOL_LOG
+        #if defined(__ANDROID__)
+            #include <android/log.h>
+            #define SOKOL_LOG(s) __android_log_write(ANDROID_LOG_INFO, "SOKOL_GL", s)
+        #else
+            #include <stdio.h>
+            #define SOKOL_LOG(s) puts(s)
+        #endif
     #endif
-#endif
-#ifndef SOKOL_UNREACHABLE
-    #define SOKOL_UNREACHABLE SOKOL_ASSERT(false)
 #endif
 
 #define _sgl_def(val, def) (((val) == 0) ? (def) : (val))
@@ -2192,6 +2302,7 @@ typedef union {
 
 typedef struct {
     _sgl_command_type_t cmd;
+    int layer_id;
     _sgl_args_t args;
 } _sgl_command_t;
 
@@ -2208,22 +2319,30 @@ typedef struct {
 typedef struct {
     _sgl_slot_t slot;
     sgl_context_desc_t desc;
-
-    int num_vertices;
-    int num_uniforms;
-    int num_commands;
-    int cur_vertex;
-    int cur_uniform;
-    int cur_command;
-    _sgl_vertex_t* vertices;
-    _sgl_uniform_t* uniforms;
-    _sgl_command_t* commands;
+    uint32_t frame_id;
+    uint32_t update_frame_id;
+    struct {
+        int cap;
+        int next;
+        _sgl_vertex_t* ptr;
+    } vertices;
+    struct {
+        int cap;
+        int next;
+        _sgl_uniform_t* ptr;
+    } uniforms;
+    struct {
+        int cap;
+        int next;
+        _sgl_command_t* ptr;
+    } commands;
 
     /* state tracking */
     int base_vertex;
     int vtx_count;          /* number of times vtx function has been called, used for non-triangle primitives */
     sgl_error_t error;
     bool in_begin;
+    int layer_id;
     float u, v;
     uint32_t rgba;
     float point_size;
@@ -2266,6 +2385,49 @@ typedef struct {
 static _sgl_t _sgl;
 
 /*== PRIVATE FUNCTIONS =======================================================*/
+static void _sgl_clear(void* ptr, size_t size) {
+    SOKOL_ASSERT(ptr && (size > 0));
+    memset(ptr, 0, size);
+}
+
+static void* _sgl_malloc(size_t size) {
+    SOKOL_ASSERT(size > 0);
+    void* ptr;
+    if (_sgl.desc.allocator.alloc) {
+        ptr = _sgl.desc.allocator.alloc(size, _sgl.desc.allocator.user_data);
+    }
+    else {
+        ptr = malloc(size);
+    }
+    SOKOL_ASSERT(ptr);
+    return ptr;
+}
+
+static void* _sgl_malloc_clear(size_t size) {
+    void* ptr = _sgl_malloc(size);
+    _sgl_clear(ptr, size);
+    return ptr;
+}
+
+static void _sgl_free(void* ptr) {
+    if (_sgl.desc.allocator.free) {
+        _sgl.desc.allocator.free(ptr, _sgl.desc.allocator.user_data);
+    }
+    else {
+        free(ptr);
+    }
+}
+
+#if defined(SOKOL_DEBUG)
+static void _sgl_log(const char* msg) {
+    SOKOL_ASSERT(msg);
+    if (_sgl.desc.logger.log_cb) {
+        _sgl.desc.logger.log_cb(msg, _sgl.desc.logger.user_data);
+    } else {
+        SOKOL_LOG(msg);
+    }
+}
+#endif
 
 static void _sgl_init_pool(_sgl_pool_t* pool, int num) {
     SOKOL_ASSERT(pool && (num >= 1));
@@ -2274,12 +2436,9 @@ static void _sgl_init_pool(_sgl_pool_t* pool, int num) {
     pool->queue_top = 0;
     /* generation counters indexable by pool slot index, slot 0 is reserved */
     size_t gen_ctrs_size = sizeof(uint32_t) * (size_t)pool->size;
-    pool->gen_ctrs = (uint32_t*) SOKOL_MALLOC(gen_ctrs_size);
-    SOKOL_ASSERT(pool->gen_ctrs);
-    memset(pool->gen_ctrs, 0, gen_ctrs_size);
+    pool->gen_ctrs = (uint32_t*) _sgl_malloc_clear(gen_ctrs_size);
     /* it's not a bug to only reserve 'num' here */
-    pool->free_queue = (int*) SOKOL_MALLOC(sizeof(int) * (size_t)num);
-    SOKOL_ASSERT(pool->free_queue);
+    pool->free_queue = (int*) _sgl_malloc_clear(sizeof(int) * (size_t)num);
     /* never allocate the zero-th pool item since the invalid id is 0 */
     for (int i = pool->size-1; i >= 1; i--) {
         pool->free_queue[pool->queue_top++] = i;
@@ -2289,10 +2448,10 @@ static void _sgl_init_pool(_sgl_pool_t* pool, int num) {
 static void _sgl_discard_pool(_sgl_pool_t* pool) {
     SOKOL_ASSERT(pool);
     SOKOL_ASSERT(pool->free_queue);
-    SOKOL_FREE(pool->free_queue);
+    _sgl_free(pool->free_queue);
     pool->free_queue = 0;
     SOKOL_ASSERT(pool->gen_ctrs);
-    SOKOL_FREE(pool->gen_ctrs);
+    _sgl_free(pool->gen_ctrs);
     pool->gen_ctrs = 0;
     pool->size = 0;
     pool->queue_top = 0;
@@ -2329,10 +2488,10 @@ static void _sgl_pool_free_index(_sgl_pool_t* pool, int slot_index) {
 
 static void _sgl_reset_context(_sgl_context_t* ctx) {
     SOKOL_ASSERT(ctx);
-    SOKOL_ASSERT(0 == ctx->vertices);
-    SOKOL_ASSERT(0 == ctx->uniforms);
-    SOKOL_ASSERT(0 == ctx->commands);
-    memset(ctx, 0, sizeof(_sgl_context_t));
+    SOKOL_ASSERT(0 == ctx->vertices.ptr);
+    SOKOL_ASSERT(0 == ctx->uniforms.ptr);
+    SOKOL_ASSERT(0 == ctx->commands.ptr);
+    _sgl_clear(ctx, sizeof(_sgl_context_t));
 }
 
 static void _sgl_setup_context_pool(int pool_size) {
@@ -2340,20 +2499,18 @@ static void _sgl_setup_context_pool(int pool_size) {
     SOKOL_ASSERT((pool_size > 0) && (pool_size < _SGL_MAX_POOL_SIZE));
     _sgl_init_pool(&_sgl.context_pool.pool, pool_size);
     size_t pool_byte_size = sizeof(_sgl_context_t) * (size_t)_sgl.context_pool.pool.size;
-    _sgl.context_pool.contexts = (_sgl_context_t*) SOKOL_MALLOC(pool_byte_size);
-    SOKOL_ASSERT(_sgl.context_pool.contexts);
-    memset(_sgl.context_pool.contexts, 0, pool_byte_size);
+    _sgl.context_pool.contexts = (_sgl_context_t*) _sgl_malloc_clear(pool_byte_size);
 }
 
 static void _sgl_discard_context_pool(void) {
     SOKOL_ASSERT(0 != _sgl.context_pool.contexts);
-    SOKOL_FREE(_sgl.context_pool.contexts); _sgl.context_pool.contexts = 0;
+    _sgl_free(_sgl.context_pool.contexts); _sgl.context_pool.contexts = 0;
     _sgl_discard_pool(&_sgl.context_pool.pool);
 }
 
 static void _sgl_reset_pipeline(_sgl_pipeline_t* pip) {
     SOKOL_ASSERT(pip);
-    memset(pip, 0, sizeof(_sgl_pipeline_t));
+    _sgl_clear(pip, sizeof(_sgl_pipeline_t));
 }
 
 static void _sgl_setup_pipeline_pool(int pool_size) {
@@ -2361,14 +2518,12 @@ static void _sgl_setup_pipeline_pool(int pool_size) {
     SOKOL_ASSERT((pool_size > 0) && (pool_size < _SGL_MAX_POOL_SIZE));
     _sgl_init_pool(&_sgl.pip_pool.pool, pool_size);
     size_t pool_byte_size = sizeof(_sgl_pipeline_t) * (size_t)_sgl.pip_pool.pool.size;
-    _sgl.pip_pool.pips = (_sgl_pipeline_t*) SOKOL_MALLOC(pool_byte_size);
-    SOKOL_ASSERT(_sgl.pip_pool.pips);
-    memset(_sgl.pip_pool.pips, 0, pool_byte_size);
+    _sgl.pip_pool.pips = (_sgl_pipeline_t*) _sgl_malloc_clear(pool_byte_size);
 }
 
 static void _sgl_discard_pipeline_pool(void) {
     SOKOL_ASSERT(0 != _sgl.pip_pool.pips);
-    SOKOL_FREE(_sgl.pip_pool.pips); _sgl.pip_pool.pips = 0;
+    _sgl_free(_sgl.pip_pool.pips); _sgl.pip_pool.pips = 0;
     _sgl_discard_pool(&_sgl.pip_pool.pool);
 }
 
@@ -2510,7 +2665,7 @@ static void _sgl_init_pipeline(sgl_pipeline pip_id, const sg_pipeline_desc* in_d
         else {
             pip->pip[i] = sg_make_pipeline(&desc);
             if (pip->pip[i].id == SG_INVALID_ID) {
-                SOKOL_LOG("sokol_gl.h: failed to create pipeline object");
+                SGL_LOG("sokol_gl.h: failed to create pipeline object");
                 pip->slot.state = SG_RESOURCESTATE_FAILED;
             }
         }
@@ -2524,7 +2679,7 @@ static sgl_pipeline _sgl_make_pipeline(const sg_pipeline_desc* desc, const sgl_c
         _sgl_init_pipeline(pip_id, desc, ctx_desc);
     }
     else {
-        SOKOL_LOG("sokol_gl.h: pipeline pool exhausted!");
+        SGL_LOG("sokol_gl.h: pipeline pool exhausted!");
     }
     return pip_id;
 }
@@ -2602,39 +2757,45 @@ static sgl_context_desc_t _sgl_context_desc_defaults(const sgl_context_desc_t* d
 }
 
 static void _sgl_identity(_sgl_matrix_t*);
+static sg_commit_listener _sgl_make_commit_listener(_sgl_context_t* ctx);
 static void _sgl_init_context(sgl_context ctx_id, const sgl_context_desc_t* in_desc) {
     SOKOL_ASSERT((ctx_id.id != SG_INVALID_ID) && in_desc);
     _sgl_context_t* ctx = _sgl_lookup_context(ctx_id.id);
     SOKOL_ASSERT(ctx);
     ctx->desc = _sgl_context_desc_defaults(in_desc);
+    // NOTE: frame_id must be non-zero, so that updates trigger in first frame
+    ctx->frame_id = 1;
     ctx->cur_img = _sgl.def_img;
 
     // allocate buffers and pools
-    ctx->num_vertices = ctx->desc.max_vertices;
-    ctx->num_commands = ctx->num_uniforms = ctx->desc.max_commands;
-    ctx->vertices = (_sgl_vertex_t*) SOKOL_MALLOC((size_t)ctx->num_vertices * sizeof(_sgl_vertex_t));
-    SOKOL_ASSERT(ctx->vertices);
-    ctx->uniforms = (_sgl_uniform_t*) SOKOL_MALLOC((size_t)ctx->num_uniforms * sizeof(_sgl_uniform_t));
-    SOKOL_ASSERT(ctx->uniforms);
-    ctx->commands = (_sgl_command_t*) SOKOL_MALLOC((size_t)ctx->num_commands * sizeof(_sgl_command_t));
-    SOKOL_ASSERT(ctx->commands);
+    ctx->vertices.cap = ctx->desc.max_vertices;
+    ctx->commands.cap = ctx->uniforms.cap = ctx->desc.max_commands;
+    ctx->vertices.ptr = (_sgl_vertex_t*) _sgl_malloc((size_t)ctx->vertices.cap * sizeof(_sgl_vertex_t));
+    ctx->uniforms.ptr = (_sgl_uniform_t*) _sgl_malloc((size_t)ctx->uniforms.cap * sizeof(_sgl_uniform_t));
+    ctx->commands.ptr = (_sgl_command_t*) _sgl_malloc((size_t)ctx->commands.cap * sizeof(_sgl_command_t));
 
     // create sokol-gfx resource objects
     sg_push_debug_group("sokol-gl");
 
     sg_buffer_desc vbuf_desc;
-    memset(&vbuf_desc, 0, sizeof(vbuf_desc));
-    vbuf_desc.size = (size_t)ctx->num_vertices * sizeof(_sgl_vertex_t);
+    _sgl_clear(&vbuf_desc, sizeof(vbuf_desc));
+    vbuf_desc.size = (size_t)ctx->vertices.cap * sizeof(_sgl_vertex_t);
     vbuf_desc.type = SG_BUFFERTYPE_VERTEXBUFFER;
     vbuf_desc.usage = SG_USAGE_STREAM;
     vbuf_desc.label = "sgl-vertex-buffer";
     ctx->vbuf = sg_make_buffer(&vbuf_desc);
     SOKOL_ASSERT(SG_INVALID_ID != ctx->vbuf.id);
+    ctx->bind.vertex_buffers[0] = ctx->vbuf;
 
     sg_pipeline_desc def_pip_desc;
-    memset(&def_pip_desc, 0, sizeof(def_pip_desc));
+    _sgl_clear(&def_pip_desc, sizeof(def_pip_desc));
     def_pip_desc.depth.write_enabled = true;
     ctx->def_pip = _sgl_make_pipeline(&def_pip_desc, &ctx->desc);
+    if (!sg_add_commit_listener(_sgl_make_commit_listener(ctx))) {
+        // FIXME: this should actually result in an invalid context,
+        // fix this when proper error logging/reporting is added
+        SGL_LOG("sokol_gl.h: failed to add sokol-gfx commit listener!");
+    }
     sg_pop_debug_group();
 
     // default state
@@ -2654,7 +2815,7 @@ static sgl_context _sgl_make_context(const sgl_context_desc_t* desc) {
         _sgl_init_context(ctx_id, desc);
     }
     else {
-        SOKOL_LOG("sokol_gl.h: context pool exhausted!");
+        SGL_LOG("sokol_gl.h: context pool exhausted!");
     }
     return ctx_id;
 }
@@ -2662,21 +2823,21 @@ static sgl_context _sgl_make_context(const sgl_context_desc_t* desc) {
 static void _sgl_destroy_context(sgl_context ctx_id) {
     _sgl_context_t* ctx = _sgl_lookup_context(ctx_id.id);
     if (ctx) {
-        SOKOL_ASSERT(ctx->vertices);
-        SOKOL_ASSERT(ctx->uniforms);
-        SOKOL_ASSERT(ctx->commands);
+        SOKOL_ASSERT(ctx->vertices.ptr);
+        SOKOL_ASSERT(ctx->uniforms.ptr);
+        SOKOL_ASSERT(ctx->commands.ptr);
 
-        SOKOL_FREE(ctx->vertices);
-        SOKOL_FREE(ctx->uniforms);
-        SOKOL_FREE(ctx->commands);
-
-        ctx->vertices = 0;
-        ctx->uniforms = 0;
-        ctx->commands = 0;
+        _sgl_free(ctx->vertices.ptr);
+        _sgl_free(ctx->uniforms.ptr);
+        _sgl_free(ctx->commands.ptr);
+        ctx->vertices.ptr = 0;
+        ctx->uniforms.ptr = 0;
+        ctx->commands.ptr = 0;
 
         sg_push_debug_group("sokol-gl");
         sg_destroy_buffer(ctx->vbuf);
         _sgl_destroy_pipeline(ctx->def_pip);
+        sg_remove_commit_listener(_sgl_make_commit_listener(ctx));
         sg_pop_debug_group();
 
         _sgl_reset_context(ctx);
@@ -2684,25 +2845,40 @@ static void _sgl_destroy_context(sgl_context ctx_id) {
     }
 }
 
-static inline void _sgl_begin(_sgl_context_t* ctx, _sgl_primitive_type_t mode) {
+static void _sgl_begin(_sgl_context_t* ctx, _sgl_primitive_type_t mode) {
     ctx->in_begin = true;
-    ctx->base_vertex = ctx->cur_vertex;
+    ctx->base_vertex = ctx->vertices.next;
     ctx->vtx_count = 0;
     ctx->cur_prim_type = mode;
 }
 
 static void _sgl_rewind(_sgl_context_t* ctx) {
+    ctx->frame_id++;
+    ctx->vertices.next = 0;
+    ctx->uniforms.next = 0;
+    ctx->commands.next = 0;
     ctx->base_vertex = 0;
-    ctx->cur_vertex = 0;
-    ctx->cur_uniform = 0;
-    ctx->cur_command = 0;
     ctx->error = SGL_NO_ERROR;
+    ctx->layer_id = 0;
     ctx->matrix_dirty = true;
 }
 
-static inline _sgl_vertex_t* _sgl_next_vertex(_sgl_context_t* ctx) {
-    if (ctx->cur_vertex < ctx->num_vertices) {
-        return &ctx->vertices[ctx->cur_vertex++];
+// called from inside sokol-gfx sg_commit()
+static void _sgl_commit_listener(void* userdata) {
+    _sgl_context_t* ctx = _sgl_lookup_context((uint32_t)(uintptr_t)userdata);
+    if (ctx) {
+        _sgl_rewind(ctx);
+    }
+}
+
+static sg_commit_listener _sgl_make_commit_listener(_sgl_context_t* ctx) {
+    sg_commit_listener listener = { _sgl_commit_listener, (void*)(uintptr_t)(ctx->slot.id) };
+    return listener;
+}
+
+static _sgl_vertex_t* _sgl_next_vertex(_sgl_context_t* ctx) {
+    if (ctx->vertices.next < ctx->vertices.cap) {
+        return &ctx->vertices.ptr[ctx->vertices.next++];
     }
     else {
         ctx->error = SGL_ERROR_VERTICES_FULL;
@@ -2710,9 +2886,9 @@ static inline _sgl_vertex_t* _sgl_next_vertex(_sgl_context_t* ctx) {
     }
 }
 
-static inline _sgl_uniform_t* _sgl_next_uniform(_sgl_context_t* ctx) {
-    if (ctx->cur_uniform < ctx->num_uniforms) {
-        return &ctx->uniforms[ctx->cur_uniform++];
+static _sgl_uniform_t* _sgl_next_uniform(_sgl_context_t* ctx) {
+    if (ctx->uniforms.next < ctx->uniforms.cap) {
+        return &ctx->uniforms.ptr[ctx->uniforms.next++];
     }
     else {
         ctx->error = SGL_ERROR_UNIFORMS_FULL;
@@ -2720,18 +2896,18 @@ static inline _sgl_uniform_t* _sgl_next_uniform(_sgl_context_t* ctx) {
     }
 }
 
-static inline _sgl_command_t* _sgl_prev_command(_sgl_context_t* ctx) {
-    if (ctx->cur_command > 0) {
-        return &ctx->commands[ctx->cur_command - 1];
+static _sgl_command_t* _sgl_cur_command(_sgl_context_t* ctx) {
+    if (ctx->commands.next > 0) {
+        return &ctx->commands.ptr[ctx->commands.next - 1];
     }
     else {
         return 0;
     }
 }
 
-static inline _sgl_command_t* _sgl_next_command(_sgl_context_t* ctx) {
-    if (ctx->cur_command < ctx->num_commands) {
-        return &ctx->commands[ctx->cur_command++];
+static _sgl_command_t* _sgl_next_command(_sgl_context_t* ctx) {
+    if (ctx->commands.next < ctx->commands.cap) {
+        return &ctx->commands.ptr[ctx->commands.next++];
     }
     else {
         ctx->error = SGL_ERROR_COMMANDS_FULL;
@@ -2739,17 +2915,17 @@ static inline _sgl_command_t* _sgl_next_command(_sgl_context_t* ctx) {
     }
 }
 
-static inline uint32_t _sgl_pack_rgbab(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+static uint32_t _sgl_pack_rgbab(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
     return (uint32_t)(((uint32_t)a<<24)|((uint32_t)b<<16)|((uint32_t)g<<8)|r);
 }
 
-static inline float _sgl_clamp(float v, float lo, float hi) {
+static float _sgl_clamp(float v, float lo, float hi) {
     if (v < lo) return lo;
     else if (v > hi) return hi;
     else return v;
 }
 
-static inline uint32_t _sgl_pack_rgbaf(float r, float g, float b, float a) {
+static uint32_t _sgl_pack_rgbaf(float r, float g, float b, float a) {
     uint8_t r_u8 = (uint8_t) (_sgl_clamp(r, 0.0f, 1.0f) * 255.0f);
     uint8_t g_u8 = (uint8_t) (_sgl_clamp(g, 0.0f, 1.0f) * 255.0f);
     uint8_t b_u8 = (uint8_t) (_sgl_clamp(b, 0.0f, 1.0f) * 255.0f);
@@ -2757,7 +2933,7 @@ static inline uint32_t _sgl_pack_rgbaf(float r, float g, float b, float a) {
     return _sgl_pack_rgbab(r_u8, g_u8, b_u8, a_u8);
 }
 
-static inline void _sgl_vtx(_sgl_context_t* ctx, float x, float y, float z, float u, float v, uint32_t rgba) {
+static void _sgl_vtx(_sgl_context_t* ctx, float x, float y, float z, float u, float v, uint32_t rgba) {
     SOKOL_ASSERT(ctx->in_begin);
     _sgl_vertex_t* vtx;
     /* handle non-native primitive types */
@@ -2971,27 +3147,28 @@ static void _sgl_lookat(_sgl_matrix_t* dst,
 }
 
 /* current top-of-stack projection matrix */
-static inline _sgl_matrix_t* _sgl_matrix_projection(_sgl_context_t* ctx) {
+static _sgl_matrix_t* _sgl_matrix_projection(_sgl_context_t* ctx) {
     return &ctx->matrix_stack[SGL_MATRIXMODE_PROJECTION][ctx->matrix_tos[SGL_MATRIXMODE_PROJECTION]];
 }
 
 /* get top-of-stack modelview matrix */
-static inline _sgl_matrix_t* _sgl_matrix_modelview(_sgl_context_t* ctx) {
+static _sgl_matrix_t* _sgl_matrix_modelview(_sgl_context_t* ctx) {
     return &ctx->matrix_stack[SGL_MATRIXMODE_MODELVIEW][ctx->matrix_tos[SGL_MATRIXMODE_MODELVIEW]];
 }
 
 /* get top-of-stack texture matrix */
-static inline _sgl_matrix_t* _sgl_matrix_texture(_sgl_context_t* ctx) {
+static _sgl_matrix_t* _sgl_matrix_texture(_sgl_context_t* ctx) {
     return &ctx->matrix_stack[SGL_MATRIXMODE_TEXTURE][ctx->matrix_tos[SGL_MATRIXMODE_TEXTURE]];
 }
 
 /* get pointer to current top-of-stack of current matrix mode */
-static inline _sgl_matrix_t* _sgl_matrix(_sgl_context_t* ctx) {
+static _sgl_matrix_t* _sgl_matrix(_sgl_context_t* ctx) {
     return &ctx->matrix_stack[ctx->cur_matrix_mode][ctx->matrix_tos[ctx->cur_matrix_mode]];
 }
 
 // return sg_context_desc_t with patched defaults
 static sgl_desc_t _sgl_desc_defaults(const sgl_desc_t* desc) {
+    SOKOL_ASSERT((desc->allocator.alloc && desc->allocator.free) || (!desc->allocator.alloc && !desc->allocator.free));
     sgl_desc_t res = *desc;
     res.max_vertices = _sgl_def(desc->max_vertices, _SGL_DEFAULT_MAX_VERTICES);
     res.max_commands = _sgl_def(desc->max_commands, _SGL_DEFAULT_MAX_COMMANDS);
@@ -3010,7 +3187,7 @@ static void _sgl_setup_common(void) {
         pixels[i] = 0xFFFFFFFF;
     }
     sg_image_desc img_desc;
-    memset(&img_desc, 0, sizeof(img_desc));
+    _sgl_clear(&img_desc, sizeof(img_desc));
     img_desc.type = SG_IMAGETYPE_2D;
     img_desc.width = 8;
     img_desc.height = 8;
@@ -3025,7 +3202,7 @@ static void _sgl_setup_common(void) {
 
     // one shader for all contexts
     sg_shader_desc shd_desc;
-    memset(&shd_desc, 0, sizeof(shd_desc));
+    _sgl_clear(&shd_desc, sizeof(shd_desc));
     shd_desc.attrs[0].name = "position";
     shd_desc.attrs[1].name = "texcoord0";
     shd_desc.attrs[2].name = "color0";
@@ -3097,18 +3274,26 @@ static bool _sgl_is_default_context(sgl_context ctx_id) {
     return ctx_id.id == SGL_DEFAULT_CONTEXT.id;
 }
 
-static void _sgl_draw(_sgl_context_t* ctx) {
+static void _sgl_draw(_sgl_context_t* ctx, int layer_id) {
     SOKOL_ASSERT(ctx);
-    if ((ctx->error == SGL_NO_ERROR) && (ctx->cur_vertex > 0) && (ctx->cur_command > 0)) {
+    if ((ctx->error == SGL_NO_ERROR) && (ctx->vertices.next > 0) && (ctx->commands.next > 0)) {
+        sg_push_debug_group("sokol-gl");
+
         uint32_t cur_pip_id = SG_INVALID_ID;
         uint32_t cur_img_id = SG_INVALID_ID;
         int cur_uniform_index = -1;
-        sg_push_debug_group("sokol-gl");
-        const sg_range range = { ctx->vertices, (size_t)ctx->cur_vertex * sizeof(_sgl_vertex_t) };
-        sg_update_buffer(ctx->vbuf, &range);
-        ctx->bind.vertex_buffers[0] = ctx->vbuf;
-        for (int i = 0; i < ctx->cur_command; i++) {
-            const _sgl_command_t* cmd = &ctx->commands[i];
+
+        if (ctx->update_frame_id != ctx->frame_id) {
+            ctx->update_frame_id = ctx->frame_id;
+            const sg_range range = { ctx->vertices.ptr, (size_t)ctx->vertices.next * sizeof(_sgl_vertex_t) };
+            sg_update_buffer(ctx->vbuf, &range);
+        }
+
+        for (int i = 0; i < ctx->commands.next; i++) {
+            const _sgl_command_t* cmd = &ctx->commands.ptr[i];
+            if (cmd->layer_id != layer_id) {
+                continue;
+            }
             switch (cmd->cmd) {
                 case SGL_COMMAND_VIEWPORT:
                     {
@@ -3138,7 +3323,7 @@ static void _sgl_draw(_sgl_context_t* ctx) {
                             cur_img_id = args->img.id;
                         }
                         if (cur_uniform_index != args->uniform_index) {
-                            const sg_range ub_range = { &ctx->uniforms[args->uniform_index], sizeof(_sgl_uniform_t) };
+                            const sg_range ub_range = { &ctx->uniforms.ptr[args->uniform_index], sizeof(_sgl_uniform_t) };
                             sg_apply_uniforms(SG_SHADERSTAGE_VS, 0, &ub_range);
                             cur_uniform_index = args->uniform_index;
                         }
@@ -3152,12 +3337,11 @@ static void _sgl_draw(_sgl_context_t* ctx) {
         }
         sg_pop_debug_group();
     }
-    _sgl_rewind(ctx);
 }
 
 static sgl_context_desc_t _sgl_as_context_desc(const sgl_desc_t* desc) {
     sgl_context_desc_t ctx_desc;
-    memset(&ctx_desc, 0, sizeof(ctx_desc));
+    _sgl_clear(&ctx_desc, sizeof(ctx_desc));
     ctx_desc.max_vertices = desc->max_vertices;
     ctx_desc.max_commands = desc->max_commands;
     ctx_desc.color_format = desc->color_format;
@@ -3169,7 +3353,7 @@ static sgl_context_desc_t _sgl_as_context_desc(const sgl_desc_t* desc) {
 /*== PUBLIC FUNCTIONS ========================================================*/
 SOKOL_API_IMPL void sgl_setup(const sgl_desc_t* desc) {
     SOKOL_ASSERT(desc);
-    memset(&_sgl, 0, sizeof(_sgl));
+    _sgl_clear(&_sgl, sizeof(_sgl));
     _sgl.init_cookie = _SGL_INIT_COOKIE;
     _sgl.desc = _sgl_desc_defaults(desc);
     _sgl_setup_pipeline_pool(_sgl.desc.pipeline_pool_size);
@@ -3234,7 +3418,7 @@ SOKOL_API_IMPL sgl_context sgl_make_context(const sgl_context_desc_t* desc) {
 SOKOL_API_IMPL void sgl_destroy_context(sgl_context ctx_id) {
     SOKOL_ASSERT(_SGL_INIT_COOKIE == _sgl.init_cookie);
     if (_sgl_is_default_context(ctx_id)) {
-        SOKOL_LOG("sokol_gl.h: cannot destroy default context");
+        SGL_LOG("sokol_gl.h: cannot destroy default context");
         return;
     }
     _sgl_destroy_context(ctx_id);
@@ -3360,6 +3544,16 @@ SOKOL_API_IMPL void sgl_defaults(void) {
     ctx->matrix_dirty = true;
 }
 
+SOKOL_API_IMPL void sgl_layer(int layer_id) {
+    SOKOL_ASSERT(_SGL_INIT_COOKIE == _sgl.init_cookie);
+    _sgl_context_t* ctx = _sgl.cur_ctx;
+    if (!ctx) {
+        return;
+    }
+    SOKOL_ASSERT(!ctx->in_begin);
+    ctx->layer_id = layer_id;
+}
+
 SOKOL_API_IMPL void sgl_viewport(int x, int y, int w, int h, bool origin_top_left) {
     SOKOL_ASSERT(_SGL_INIT_COOKIE == _sgl.init_cookie);
     _sgl_context_t* ctx = _sgl.cur_ctx;
@@ -3370,6 +3564,7 @@ SOKOL_API_IMPL void sgl_viewport(int x, int y, int w, int h, bool origin_top_lef
     _sgl_command_t* cmd = _sgl_next_command(ctx);
     if (cmd) {
         cmd->cmd = SGL_COMMAND_VIEWPORT;
+        cmd->layer_id = ctx->layer_id;
         cmd->args.viewport.x = x;
         cmd->args.viewport.y = y;
         cmd->args.viewport.w = w;
@@ -3392,6 +3587,7 @@ SOKOL_API_IMPL void sgl_scissor_rect(int x, int y, int w, int h, bool origin_top
     _sgl_command_t* cmd = _sgl_next_command(ctx);
     if (cmd) {
         cmd->cmd = SGL_COMMAND_SCISSOR_RECT;
+        cmd->layer_id = ctx->layer_id;
         cmd->args.scissor_rect.x = x;
         cmd->args.scissor_rect.y = y;
         cmd->args.scissor_rect.w = w;
@@ -3506,7 +3702,7 @@ SOKOL_API_IMPL void sgl_end(void) {
         return;
     }
     SOKOL_ASSERT(ctx->in_begin);
-    SOKOL_ASSERT(ctx->cur_vertex >= ctx->base_vertex);
+    SOKOL_ASSERT(ctx->vertices.next >= ctx->base_vertex);
     ctx->in_begin = false;
     bool matrix_dirty = ctx->matrix_dirty;
     if (matrix_dirty) {
@@ -3517,37 +3713,39 @@ SOKOL_API_IMPL void sgl_end(void) {
             uni->tm = *_sgl_matrix_texture(ctx);
         }
     }
-    /* check if command can be merged with previous command */
+    /* check if command can be merged with current command */
     sg_pipeline pip = _sgl_get_pipeline(ctx->pip_stack[ctx->pip_tos], ctx->cur_prim_type);
     sg_image img = ctx->texturing_enabled ? ctx->cur_img : _sgl.def_img;
-    _sgl_command_t* prev_cmd = _sgl_prev_command(ctx);
+    _sgl_command_t* cur_cmd = _sgl_cur_command(ctx);
     bool merge_cmd = false;
-    if (prev_cmd) {
-        if ((prev_cmd->cmd == SGL_COMMAND_DRAW) &&
+    if (cur_cmd) {
+        if ((cur_cmd->cmd == SGL_COMMAND_DRAW) &&
+            (cur_cmd->layer_id == ctx->layer_id) &&
             (ctx->cur_prim_type != SGL_PRIMITIVETYPE_LINE_STRIP) &&
             (ctx->cur_prim_type != SGL_PRIMITIVETYPE_TRIANGLE_STRIP) &&
             !matrix_dirty &&
-            (prev_cmd->args.draw.img.id == img.id) &&
-            (prev_cmd->args.draw.pip.id == pip.id))
+            (cur_cmd->args.draw.img.id == img.id) &&
+            (cur_cmd->args.draw.pip.id == pip.id))
         {
             merge_cmd = true;
         }
     }
     if (merge_cmd) {
         /* draw command can be merged with the previous command */
-        prev_cmd->args.draw.num_vertices += ctx->cur_vertex - ctx->base_vertex;
+        cur_cmd->args.draw.num_vertices += ctx->vertices.next - ctx->base_vertex;
     }
     else {
         /* append a new draw command */
         _sgl_command_t* cmd = _sgl_next_command(ctx);
         if (cmd) {
-            SOKOL_ASSERT(ctx->cur_uniform > 0);
+            SOKOL_ASSERT(ctx->uniforms.next > 0);
             cmd->cmd = SGL_COMMAND_DRAW;
+            cmd->layer_id = ctx->layer_id;
             cmd->args.draw.img = img;
             cmd->args.draw.pip = _sgl_get_pipeline(ctx->pip_stack[ctx->pip_tos], ctx->cur_prim_type);
             cmd->args.draw.base_vertex = ctx->base_vertex;
-            cmd->args.draw.num_vertices = ctx->cur_vertex - ctx->base_vertex;
-            cmd->args.draw.uniform_index = ctx->cur_uniform - 1;
+            cmd->args.draw.num_vertices = ctx->vertices.next - ctx->base_vertex;
+            cmd->args.draw.uniform_index = ctx->uniforms.next - 1;
         }
     }
 }
@@ -3956,7 +4154,15 @@ SOKOL_API_IMPL void sgl_draw(void) {
     SOKOL_ASSERT(_SGL_INIT_COOKIE == _sgl.init_cookie);
     _sgl_context_t* ctx = _sgl.cur_ctx;
     if (ctx) {
-        _sgl_draw(ctx);
+        _sgl_draw(ctx, 0);
+    }
+}
+
+SOKOL_API_IMPL void sgl_draw_layer(int layer_id) {
+    SOKOL_ASSERT(_SGL_INIT_COOKIE == _sgl.init_cookie);
+    _sgl_context_t* ctx = _sgl.cur_ctx;
+    if (ctx) {
+        _sgl_draw(ctx, layer_id);
     }
 }
 
@@ -3964,7 +4170,15 @@ SOKOL_API_IMPL void sgl_context_draw(sgl_context ctx_id) {
     SOKOL_ASSERT(_SGL_INIT_COOKIE == _sgl.init_cookie);
     _sgl_context_t* ctx = _sgl_lookup_context(ctx_id.id);
     if (ctx) {
-        _sgl_draw(ctx);
+        _sgl_draw(ctx, 0);
+    }
+}
+
+SOKOL_API_IMPL void sgl_context_draw_layer(sgl_context ctx_id, int layer_id) {
+    SOKOL_ASSERT(_SGL_INIT_COOKIE == _sgl.init_cookie);
+    _sgl_context_t* ctx = _sgl_lookup_context(ctx_id.id);
+    if (ctx) {
+        _sgl_draw(ctx, layer_id);
     }
 }
 
