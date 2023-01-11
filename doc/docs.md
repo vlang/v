@@ -6221,7 +6221,7 @@ fn main() {
 To generate a wrapper on top of a C library use this command:
 
 ```bash
-v wrapper c_code/libsodium/src/libsodium
+v translate wrapper c_code/libsodium/src/libsodium
 ```
 
 This will generate a directory `libsodium` with a V module.
