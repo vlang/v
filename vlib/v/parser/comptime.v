@@ -203,6 +203,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 					is_vweb: true
 					method_name: method_name
 					args_var: literal_string_param
+					args: [arg]
 					pos: start_pos.extend(p.prev_tok.pos())
 				}
 			}
@@ -244,6 +245,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		vweb_tmpl: file
 		method_name: method_name
 		args_var: literal_string_param
+		args: [arg]
 		pos: start_pos.extend(p.prev_tok.pos())
 	}
 }
