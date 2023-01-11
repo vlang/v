@@ -630,7 +630,7 @@ fn test_join_path_single() {
 	} $else {
 		assert os.join_path_single('v', 'vlib') == 'v/vlib'
 		assert os.join_path_single('v', 'vlib/') == 'v/vlib'
-		assert os.join_path_single('v/', 'vlib') == 'v//vlib'
+		assert os.join_path_single('v/', 'vlib') == 'v/vlib'
 		assert os.join_path_single('v/', 'vlib/') == 'v/vlib'
 
 		assert os.join_path_single('v', '/vlib') == '/vlib'

@@ -555,7 +555,7 @@ pub fn join_path_single(base string, elem string) string {
 	}
 
 	// appending an absolute path to a base just returns the absolute path
-	if selem == os.abs_path(selem) {
+	if selem == abs_path(selem) {
 		return selem
 	}
 
@@ -571,7 +571,7 @@ pub fn join_path_single(base string, elem string) string {
 	}
 	sb.write_string(sbase)
 	sb.write_string(path_separator)
-	sb.write_string(elem)
+	sb.write_string(selem)
 	return sb.str()
 }
 
