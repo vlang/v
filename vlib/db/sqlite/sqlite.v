@@ -52,10 +52,10 @@ pub enum JournalMode {
 	memory
 }
 
-pub struct C.sqlite3 {
+struct C.sqlite3 {
 }
 
-pub struct C.sqlite3_stmt {
+struct C.sqlite3_stmt {
 }
 
 [heap]
