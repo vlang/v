@@ -1,8 +1,6 @@
 module c
 
-pub const (
-	used_import = 1
-)
+pub const used_import = 1
 
 #flag -I @VEXEROOT/thirdparty/sokol
 #flag -I @VEXEROOT/thirdparty/sokol/util
@@ -57,13 +55,6 @@ $if emscripten ? {
 // TODO end
 
 #flag linux -ldl
-
-$if gcboehm ? {
-	#define SOKOL_MALLOC GC_MALLOC
-	#define SOKOL_CALLOC(n,m) GC_MALLOC((n)*(m))
-	#define SOKOL_REALLOC GC_REALLOC
-	#define SOKOL_FREE GC_FREE
-}
 
 // To allow for thirdparty initializing window / acceleration contexts
 // but still be able to use sokol.gfx e.g. SDL+sokol_gfx

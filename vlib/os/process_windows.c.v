@@ -117,7 +117,7 @@ fn (mut p Process) win_stop_process() {
 	if voidptr(the_fn) == 0 {
 		return
 	}
-	wdata := &WProcess(p.wdata)
+	wdata := unsafe { &WProcess(p.wdata) }
 	the_fn(wdata.proc_info.h_process)
 }
 
@@ -126,17 +126,17 @@ fn (mut p Process) win_resume_process() {
 	if voidptr(the_fn) == 0 {
 		return
 	}
-	wdata := &WProcess(p.wdata)
+	wdata := unsafe { &WProcess(p.wdata) }
 	the_fn(wdata.proc_info.h_process)
 }
 
 fn (mut p Process) win_kill_process() {
-	wdata := &WProcess(p.wdata)
+	wdata := unsafe { &WProcess(p.wdata) }
 	C.TerminateProcess(wdata.proc_info.h_process, 3)
 }
 
 fn (mut p Process) win_kill_pgroup() {
-	wdata := &WProcess(p.wdata)
+	wdata := unsafe { &WProcess(p.wdata) }
 	C.GenerateConsoleCtrlEvent(C.CTRL_BREAK_EVENT, wdata.proc_info.dw_process_id)
 	C.Sleep(20)
 	C.TerminateProcess(wdata.proc_info.h_process, 3)
@@ -144,7 +144,7 @@ fn (mut p Process) win_kill_pgroup() {
 
 fn (mut p Process) win_wait() {
 	exit_code := u32(1)
-	mut wdata := &WProcess(p.wdata)
+	mut wdata := unsafe { &WProcess(p.wdata) }
 	if p.wdata != 0 {
 		C.WaitForSingleObject(wdata.proc_info.h_process, C.INFINITE)
 		C.GetExitCodeProcess(wdata.proc_info.h_process, voidptr(&exit_code))
@@ -160,7 +160,7 @@ fn (mut p Process) win_wait() {
 
 fn (mut p Process) win_is_alive() bool {
 	exit_code := u32(0)
-	wdata := &WProcess(p.wdata)
+	wdata := unsafe { &WProcess(p.wdata) }
 	C.GetExitCodeProcess(wdata.proc_info.h_process, voidptr(&exit_code))
 	if exit_code == C.STILL_ACTIVE {
 		return true
@@ -175,7 +175,7 @@ fn (mut p Process) win_write_string(idx int, s string) {
 }
 
 fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {
-	mut wdata := &WProcess(p.wdata)
+	mut wdata := unsafe { &WProcess(p.wdata) }
 	if unsafe { wdata == 0 } {
 		return '', 0
 	}
@@ -207,7 +207,7 @@ fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {
 }
 
 fn (mut p Process) win_slurp(idx int) string {
-	mut wdata := &WProcess(p.wdata)
+	mut wdata := unsafe { &WProcess(p.wdata) }
 	if unsafe { wdata == 0 } {
 		return ''
 	}

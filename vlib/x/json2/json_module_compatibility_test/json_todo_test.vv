@@ -25,7 +25,7 @@ pub struct Price {
 //! BUGFIX
 fn test_field_with_default_expr() {
 	data := '[{"net":1},{"net":2,"currencyId":"cjson"}]'
-	prices := json.decode<[]Price>(data)!
+	prices := json.decode[[]Price](data)!
 	assert prices == [Price{
 		net: 1
 		currency_id: 'cconst'
@@ -38,7 +38,7 @@ fn test_field_with_default_expr() {
 //! BUGFIX - .from_json(res)
 fn test_decode_top_level_array() {
 	s := '[{"name":"Peter", "age": 29}, {"name":"Bob", "age":31}]'
-	x := json.decode<[]Employee>(s) or { panic(err) }
+	x := json.decode[[]Employee](s) or { panic(err) }
 	assert x.len == 2
 	assert x[0].name == 'Peter'
 	assert x[0].age == 29
@@ -86,7 +86,7 @@ fn test_encode_decode_sumtype() {
 
 	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},1,"Stool",{"_type":"Time","value":${t.unix_time()}}]}'
 
-	dec := json.decode<SomeGame>(enc)!
+	dec := json.decode[SomeGame](enc)!
 
 	assert game.title == dec.title
 	assert game.player == dec.player
@@ -114,8 +114,8 @@ pub mut:
 
 fn test_parse_user() {
 	s := '{"age": 10, "nums": [1,2,3], "type": 1, "lastName": "Johnson", "IsRegistered": true, "pet_animals": {"name": "Bob", "animal": "Dog"}}'
-	u2 := json.decode<User2>(s)!
-	u := json.decode<User>(s)!
+	u2 := json.decode[User2](s)!
+	u := json.decode[User](s)!
 	assert u.age == 10
 	assert u.last_name == 'Johnson'
 	assert u.is_registered == true
@@ -135,7 +135,7 @@ fn test_encode_decode_time() {
 	}
 	s := json.encode(user)
 	assert s.contains('"reg_date":1608621780')
-	user2 := json.decode<User2>(s)!
+	user2 := json.decode[User2](s)!
 	assert user2.reg_date.str() == '2020-12-22 07:23:00'
 }
 
@@ -150,7 +150,7 @@ struct Country {
 
 //! BUGFIX - .from_json(res)
 fn test_struct_in_struct() {
-	country := json.decode<Country>('{ "name": "UK", "cities": [{"name":"London"}, {"name":"Manchester"}]}')!
+	country := json.decode[Country]('{ "name": "UK", "cities": [{"name":"London"}, {"name":"Manchester"}]}')!
 	assert country.name == 'UK'
 	assert country.cities.len == 2
 	assert country.cities[0].name == 'London'
@@ -165,7 +165,7 @@ fn test_parse_map() {
 		'three': 3
 		'four':  4
 	}
-	out := json.decode<map[string]int>('{"one":1,"two":2,"three":3,"four":4}')!
+	out := json.decode[map[string]int]('{"one":1,"two":2,"three":3,"four":4}')!
 	assert out == expected
 }
 
@@ -224,7 +224,7 @@ fn test_nested_type() {
 	}
 	out := json.encode(data)
 	assert out == data_expected
-	data2 := json.decode<Data>(data_expected)!
+	data2 := json.decode[Data](data_expected)!
 	assert data2.countries.len == data.countries.len
 	for i in 0 .. 1 {
 		assert data2.countries[i].name == data.countries[i].name
@@ -333,7 +333,6 @@ fn test_decode_missing_maps_field() {
 	assert '${info.maps}' == '{}'
 }
 
-
 struct Foo3 {
 	name string
 	age  int    [omitempty]
@@ -369,26 +368,6 @@ fn create_game_packet(data &GamePacketData) string {
 fn test_encode_sumtype_defined_ahead() {
 	ret := create_game_packet(&GamePacketData(GPScale{}))
 	assert ret == '{"value":0,"_type":"GPScale"}'
-}
-
-struct Aa {
-	sub AliasType
-}
-
-struct Bb {
-	a int
-}
-
-type AliasType = Bb
-
-//! FIX: returning null
-fn test_encode_alias_field() {
-	s := json.encode(Aa{
-		sub: Bb{
-			a: 1
-		}
-	})
-	assert s == '{"sub":{"a":1}}'
 }
 
 struct APrice {}

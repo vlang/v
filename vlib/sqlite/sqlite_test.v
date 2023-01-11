@@ -1,5 +1,34 @@
 import sqlite
 
+type Connection = sqlite.DB
+
+struct User {
+pub:
+	id   int    [primary; sql: serial]
+	name string
+}
+
+type Content = []u8 | string
+
+struct Host {
+pub:
+	db Connection
+}
+
+fn (back Host) get_users() []User {
+	return []
+}
+
+fn create_host(db Connection) Host {
+	sql db {
+		create table User
+	}
+
+	return Host{
+		db: db
+	}
+}
+
 fn test_sqlite() {
 	$if !linux {
 		return
@@ -55,4 +84,9 @@ fn test_can_access_sqlite_result_consts() {
 	// assert sqlite.misuse == 21
 	assert sqlite.sqlite_row == 100
 	assert sqlite.sqlite_done == 101
+}
+
+fn test_alias_db() {
+	create_host(sqlite.connect(':memory:')!)
+	assert true
 }

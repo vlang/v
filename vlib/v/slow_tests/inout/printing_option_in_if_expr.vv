@@ -1,0 +1,11 @@
+fn option() ?int {
+	return 1
+}
+
+fn main() {
+	println(if true {
+		i32(option() or { 2 })
+	} else {
+		i32(8)
+	})
+}

@@ -17,7 +17,7 @@ fn test_typeof_string() {
 	assert typeof[string]().name == 'string'
 }
 
-fn test_typeof_optional_type() {
+fn test_typeof_option_type() {
 	assert typeof[?string]().name == '?string'
 }
 

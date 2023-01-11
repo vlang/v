@@ -116,12 +116,12 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		// }
 		array_info := type_sym.array_info()
 		node.elem_type = array_info.elem_type
-		// clear optional flag incase of: `fn opt_arr() ?[]int { return [] }`
+		// clear option flag incase of: `fn opt_arr() ?[]int { return [] }`
 		return if c.expected_type.has_flag(.shared_f) {
 			c.expected_type.clear_flag(.shared_f).deref()
 		} else {
 			c.expected_type
-		}.clear_flag(.optional).clear_flag(.result)
+		}.clear_flag(.option).clear_flag(.result)
 	}
 	// [1,2,3]
 	if node.exprs.len > 0 && node.elem_type == ast.void_type {
@@ -282,7 +282,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		sym := c.table.sym(c.expected_type)
 		if sym.kind == .map {
 			info := sym.map_info()
-			node.typ = c.expected_type.clear_flag(.optional).clear_flag(.result)
+			node.typ = c.expected_type.clear_flag(.option).clear_flag(.result)
 			node.key_type = info.key_type
 			node.value_type = info.value_type
 			return node.typ

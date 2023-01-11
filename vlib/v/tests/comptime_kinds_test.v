@@ -82,3 +82,62 @@ fn test_kind_struct() {
 	assert_not_struct[[]int]()
 	assert_not_struct[map[int]int]()
 }
+
+//
+
+type AliasOfAbc = Abc
+type AliasOfint = int
+type AliasOfstring = string
+
+fn assert_alias[T]() {
+	$if T is $Alias {
+		assert true
+	} $else {
+		assert false
+	}
+}
+
+fn assert_not_alias[T]() {
+	$if T is $Alias {
+		assert false
+	} $else {
+		assert true
+	}
+}
+
+fn test_kind_alias() {
+	assert_alias[AliasOfAbc]()
+	assert_alias[AliasOfint]()
+	assert_alias[AliasOfstring]()
+	//
+	assert_not_alias[int]()
+	assert_not_alias[f32]()
+	assert_not_alias[[]int]()
+	assert_not_alias[map[int]int]()
+	assert_not_alias[Abc]()
+}
+
+//
+fn assert_function[T](f T) {
+	$if T is $Function {
+		assert true
+	} $else {
+		assert false
+	}
+}
+
+fn assert_not_function[T](f T) {
+	$if T is $Function {
+		assert false
+	} $else {
+		assert true
+	}
+}
+
+fn test_kind_function() {
+	assert_function(test_kind_function)
+	assert_not_function(123)
+	assert_function('abc'.contains)
+	i := 5
+	assert_function(i.str) // TODO: 5.str currently leads to a cgen error
+}

@@ -17,7 +17,7 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 			for right in node.inc.right {
 				if right is ast.CallExpr {
 					if right.or_block.stmts.len > 0 {
-						c.error('optionals are not allowed in `for statement increment` (yet)',
+						c.error('options are not allowed in `for statement increment` (yet)',
 							right.pos)
 					}
 				}
@@ -62,6 +62,10 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			c.error('range type can not be string', node.cond.pos())
 		} else if typ_idx == ast.none_type_idx || high_type_idx == ast.none_type_idx {
 			c.error('range type can not be none', node.cond.pos())
+		} else if c.table.final_sym(typ).kind == .multi_return
+			&& c.table.final_sym(high_type).kind == .multi_return {
+			c.error('multi-returns cannot be used in ranges. A range is from a single value to a single higher value.',
+				node.cond.pos())
 		}
 		if high_type in [ast.int_type, ast.int_literal_type] {
 			node.val_type = typ
@@ -94,8 +98,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				c.error('a struct must have a `next()` method to be an iterator', node.cond.pos())
 				return
 			}
-			if !next_fn.return_type.has_flag(.optional) {
-				c.error('iterator method `next()` must return an optional', node.cond.pos())
+			if !next_fn.return_type.has_flag(.option) {
+				c.error('iterator method `next()` must return an option', node.cond.pos())
 			}
 			return_sym := c.table.sym(next_fn.return_type)
 			if return_sym.kind == .multi_return {
@@ -105,7 +109,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			if next_fn.params.len != 1 {
 				c.error('iterator method `next()` must have 0 parameters', node.cond.pos())
 			}
-			mut val_type := next_fn.return_type.clear_flag(.optional).clear_flag(.result)
+			mut val_type := next_fn.return_type.clear_flag(.option).clear_flag(.result)
 			if node.val_is_mut {
 				val_type = val_type.ref()
 			}
@@ -154,7 +158,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			if sym.kind == .string {
 				value_type = ast.u8_type
 			}
-			if value_type == ast.void_type || typ.has_flag(.optional) || typ.has_flag(.result) {
+			if value_type == ast.void_type || typ.has_flag(.result) {
 				if typ != ast.void_type {
 					c.error('for in: cannot index `${c.table.type_to_str(typ)}`', node.cond.pos())
 				}
@@ -180,7 +184,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 						root_ident := node.cond.root_ident() or { node.cond.expr as ast.Ident }
 						if root_ident.kind != .unresolved {
 							if !(root_ident.obj as ast.Var).is_mut {
-								c.error('field `${node.cond.field_name}` is immutable, it cannot be changed',
+								sym2 := c.table.sym(root_ident.obj.typ)
+								c.error('field `${sym2.name}.${node.cond.field_name}` is immutable, it cannot be changed',
 									node.cond.pos)
 							}
 						}

@@ -614,7 +614,7 @@ fn (t Tree) struct_field(node ast.StructField) &Node {
 	obj.add_terse('anon_struct_decl', t.struct_decl(node.anon_struct_decl))
 	obj.add_terse('unaliased_typ', t.type_node(node.unaliased_typ))
 	obj.add('type_pos', t.pos(node.type_pos))
-	obj.add('optional_pos', t.pos(node.optional_pos))
+	obj.add('option_pos', t.pos(node.option_pos))
 	obj.add_terse('has_default_expr', t.bool_node(node.has_default_expr))
 	obj.add_terse('default_expr_typ', t.type_node(node.default_expr_typ))
 	obj.add_terse('default_expr', t.expr(node.default_expr))
@@ -1474,7 +1474,7 @@ fn (t Tree) ident_var(node ast.IdentVar) &Node {
 	obj.add_terse('is_mut', t.bool_node(node.is_mut))
 	obj.add_terse('is_static', t.bool_node(node.is_static))
 	obj.add_terse('is_volatile', t.bool_node(node.is_volatile))
-	obj.add_terse('is_optional', t.bool_node(node.is_optional))
+	obj.add_terse('is_option', t.bool_node(node.is_option))
 	obj.add_terse('share', t.enum_node(node.share))
 	return obj
 }

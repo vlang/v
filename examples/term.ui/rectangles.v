@@ -27,8 +27,7 @@ fn random_color() tui.Color {
 	}
 }
 
-fn event(e &tui.Event, x voidptr) {
-	mut app := &App(x)
+fn event(e &tui.Event, mut app App) {
 	match e.typ {
 		.mouse_down {
 			app.is_drag = true
@@ -60,8 +59,7 @@ fn event(e &tui.Event, x voidptr) {
 	app.redraw = true
 }
 
-fn frame(x voidptr) {
-	mut app := &App(x)
+fn frame(mut app App) {
 	if !app.redraw {
 		return
 	}

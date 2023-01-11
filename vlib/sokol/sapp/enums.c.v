@@ -183,6 +183,10 @@ pub enum KeyCode {
 	menu = 348
 }
 
+// TouchToolType is an Android specific 'tool type' enum for touch events.
+// This lets the application check what type of input device was used for touch events.
+// NOTE: the values must remain in sync with the corresponding Android SDK type, so don't change those.
+// See https://developer.android.com/reference/android/view/MotionEvent#TOOL_TYPE_UNKNOWN
 pub enum TouchToolType {
 	unknown
 	finger

@@ -188,7 +188,7 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 
 				unwrapped_expr_type := c.unwrap_generic(field.typ)
 				tsym := c.table.sym(unwrapped_expr_type)
-				c.table.dumps[int(unwrapped_expr_type.clear_flag(.optional).clear_flag(.result).clear_flag(.atomic_f))] = tsym.cname
+				c.table.dumps[int(unwrapped_expr_type.clear_flag(.option).clear_flag(.result).clear_flag(.atomic_f))] = tsym.cname
 			}
 			c.comptime_for_field_var = ''
 			c.inside_comptime_for_field = false
@@ -421,7 +421,7 @@ fn (mut c Checker) verify_all_vweb_routes() {
 			if m.return_type == typ_vweb_result {
 				is_ok, nroute_attributes, nargs := c.verify_vweb_params_for_method(m)
 				if !is_ok {
-					f := &ast.FnDecl(m.source_fn)
+					f := unsafe { &ast.FnDecl(m.source_fn) }
 					if f == unsafe { nil } {
 						continue
 					}
@@ -445,7 +445,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 	if node.ct_expr is ast.Ident {
 		if node.ct_opt {
 			if node.ct_expr.name in constants.valid_comptime_not_user_defined {
-				c.error('optional `[if expression ?]` tags, can be used only for user defined identifiers',
+				c.error('option `[if expression ?]` tags, can be used only for user defined identifiers',
 					node.pos)
 				node.ct_skip = true
 			} else {
@@ -561,7 +561,9 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 					}
 				}
 				.eq, .ne {
-					if cond.left is ast.SelectorExpr && cond.right is ast.IntegerLiteral {
+					if cond.left is ast.SelectorExpr
+						&& cond.right in [ast.IntegerLiteral, ast.StringLiteral] {
+						return .unknown
 						// $if method.args.len == 1
 					} else if cond.left is ast.SelectorExpr
 						&& c.check_comptime_is_field_selector_bool(cond.left as ast.SelectorExpr) {
@@ -602,6 +604,19 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 					} else {
 						c.error('invalid `\$if` condition: ${cond.left.type_name()}1',
 							cond.pos)
+					}
+				}
+				.key_in, .not_in {
+					if cond.left in [ast.SelectorExpr, ast.TypeNode] && cond.right is ast.ArrayInit {
+						for expr in cond.right.exprs {
+							if expr !is ast.ComptimeType && expr !is ast.TypeNode {
+								c.error('invalid `\$if` condition, only types are allowed',
+									expr.pos())
+							}
+						}
+						return .unknown
+					} else {
+						c.error('invalid `\$if` condition', cond.pos)
 					}
 				}
 				else {
@@ -752,8 +767,8 @@ fn (mut c Checker) check_comptime_is_field_selector(node ast.SelectorExpr) bool 
 [inline]
 fn (mut c Checker) check_comptime_is_field_selector_bool(node ast.SelectorExpr) bool {
 	if c.check_comptime_is_field_selector(node) {
-		return node.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_optional',
-			'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias']
+		return node.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_option',
+			'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias', 'is_enum']
 	}
 	return false
 }
@@ -768,12 +783,13 @@ fn (mut c Checker) get_comptime_selector_bool_field(field_name string) bool {
 		'is_mut' { return field.is_mut }
 		'is_shared' { return field_typ.has_flag(.shared_f) }
 		'is_atomic' { return field_typ.has_flag(.atomic_f) }
-		'is_optional' { return field.typ.has_flag(.optional) }
+		'is_option' { return field.typ.has_flag(.option) }
 		'is_array' { return field_sym.kind in [.array, .array_fixed] }
 		'is_map' { return field_sym.kind == .map }
 		'is_chan' { return field_sym.kind == .chan }
 		'is_struct' { return field_sym.kind == .struct_ }
 		'is_alias' { return field_sym.kind == .alias }
+		'is_enum' { return field_sym.kind == .enum_ }
 		else { return false }
 	}
 }

@@ -64,8 +64,8 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 			unwrapped = ast.u64_type
 		}
 	}
-	if typ.has_flag(.optional) {
-		unwrapped.set_flag(.optional)
+	if typ.has_flag(.option) {
+		unwrapped.set_flag(.option)
 	}
 	if typ.has_flag(.result) {
 		unwrapped.set_flag(.result)
@@ -103,7 +103,7 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 	}
 	g.generated_str_fns << typ
 	sym := g.table.sym(typ.typ)
-	if sym.has_method_with_generic_parent('str') && !(typ.typ.has_flag(.optional)
+	if sym.has_method_with_generic_parent('str') && !(typ.typ.has_flag(.option)
 		|| typ.typ.has_flag(.result)) {
 		return
 	}
@@ -113,7 +113,7 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 		return
 	}
 	g.str_fn_names << str_fn_name
-	if typ.typ.has_flag(.optional) {
+	if typ.typ.has_flag(.option) {
 		g.gen_str_for_option(typ.typ, styp, str_fn_name)
 		return
 	}
@@ -175,7 +175,7 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	$if trace_autostr ? {
 		eprintln('> gen_str_for_option: ${typ.debug()} | ${styp} | ${str_fn_name}')
 	}
-	parent_type := typ.clear_flag(.optional)
+	parent_type := typ.clear_flag(.option)
 	sym := g.table.sym(parent_type)
 	sym_has_str_method, _, _ := sym.str_method_info()
 	parent_str_fn_name := g.get_str_fn(parent_type)
@@ -239,6 +239,8 @@ fn (mut g Gen) gen_str_for_result(typ ast.Type, styp string, str_fn_name string)
 
 fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string) {
 	parent_str_fn_name := g.get_str_fn(info.parent_type)
+	_, str_method_expects_ptr, _ := g.table.sym(info.parent_type).str_method_info()
+
 	$if trace_autostr ? {
 		eprintln('> gen_str_for_alias: ${parent_str_fn_name} | ${styp} | ${str_fn_name}')
 	}
@@ -248,7 +250,11 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	g.definitions.writeln('static string indent_${str_fn_name}(${styp} it, int indent_count); // auto')
 	g.auto_str_funcs.writeln('static string indent_${str_fn_name}(${styp} it, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstring indents = string_repeat(_SLIT("    "), indent_count);')
-	g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(it);')
+	if str_method_expects_ptr {
+		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(&it);')
+	} else {
+		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(it);')
+	}
 	g.auto_str_funcs.writeln('\tstring res = str_intp(3, _MOV((StrIntpData[]){
 		{_SLIT0, ${c.si_s_code}, {.d_s = indents }},
 		{_SLIT("${clean_type_v_type_name}("), ${c.si_s_code}, {.d_s = tmp_ds }},
@@ -473,7 +479,7 @@ fn (mut g Gen) fn_decl_str(info ast.FnType) string {
 		fn_str += ' !'
 	} else if info.func.return_type != ast.void_type {
 		x := util.strip_main_name(g.table.get_type_name(g.unwrap_generic(info.func.return_type)))
-		if info.func.return_type.has_flag(.optional) {
+		if info.func.return_type.has_flag(.option) {
 			fn_str += ' ?${x}'
 		} else {
 			fn_str += ' ${x}'
@@ -987,7 +993,7 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, _field_type ast.Type, fn_name strin
 		return '${fn_name}(${deref}it.${c_name(field_name)}${sufix})', true
 	} else {
 		mut method_str := ''
-		if !field_type.is_ptr() && (field_type.has_flag(.optional) || field_type.has_flag(.result)) {
+		if !field_type.is_ptr() && (field_type.has_flag(.option) || field_type.has_flag(.result)) {
 			method_str = '(*(${sym.name}*)it.${c_name(field_name)}.data)'
 		} else {
 			method_str = 'it.${c_name(field_name)}'

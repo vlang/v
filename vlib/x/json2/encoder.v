@@ -130,8 +130,7 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) !
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is []Any {
 		e.encode_any(val, level, mut wr)!
-	} $else $if T is Null || T is bool || T is f32 || T is f64 || T is i8 || T is i16 || T is int
-		|| T is i64 || T is u8 || T is u16 || T is u32 || T is u64 {
+	} $else $if T in [Null, bool, $Float, $Int] {
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is Encodable {
 		wr.write(val.json_str().bytes())!
@@ -165,7 +164,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			}
 		}
 
-		$if field.is_optional {
+		$if field.is_option {
 			is_none := value.str() == 'Option(error: none)'
 
 			if !is_none {
@@ -182,32 +181,35 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				}
 
 				$if field.typ is ?string {
-					optional_value := val.$(field.name) as ?string
-					e.encode_string(optional_value, mut wr)!
+					option_value := val.$(field.name) as ?string
+					e.encode_string(option_value, mut wr)!
 				} $else $if field.typ is ?bool {
-					optional_value := val.$(field.name) as ?bool
-					wr.write(Any(optional_value).str().bytes())!
+					option_value := val.$(field.name) as ?bool
+					wr.write(Any(option_value).str().bytes())!
 				} $else $if field.typ is ?f32 {
-					optional_value := val.$(field.name) as ?f32
-					wr.write(Any(optional_value).str().bytes())!
+					option_value := val.$(field.name) as ?f32
+					wr.write(Any(option_value).str().bytes())!
 				} $else $if field.typ is ?f64 {
-					optional_value := val.$(field.name) as ?f64
-					wr.write(Any(optional_value).str().bytes())!
+					option_value := val.$(field.name) as ?f64
+					wr.write(Any(option_value).str().bytes())!
 				} $else $if field.typ is ?i8 {
-					optional_value := val.$(field.name) as ?i8
-					wr.write(Any(optional_value).str().bytes())!
+					option_value := val.$(field.name) as ?i8
+					wr.write(Any(option_value).str().bytes())!
 				} $else $if field.typ is ?i16 {
-					optional_value := val.$(field.name) as ?i16
-					wr.write(Any(optional_value).str().bytes())!
+					option_value := val.$(field.name) as ?i16
+					wr.write(Any(option_value).str().bytes())!
 				} $else $if field.typ is ?int {
-					optional_value := val.$(field.name) as ?int
-					wr.write(Any(optional_value).int().str().bytes())!
+					option_value := val.$(field.name) as ?int
+					wr.write(Any(option_value).int().str().bytes())!
 				} $else $if field.typ is ?time.Time {
-					optional_value := val.$(field.name) as ?time.Time
-					parsed_time := optional_value as time.Time
+					option_value := val.$(field.name) as ?time.Time
+					parsed_time := option_value as time.Time
 					e.encode_string(parsed_time.format_rfc3339(), mut wr)!
 				} $else $if field.is_array {
 					e.encode_array(value, level + 1, mut wr)!
+				} $else $if field.is_enum {
+					option_value := val.$(field.name) as ?int
+					wr.write(Any(option_value).int().str().bytes())!
 				} $else $if field.is_alias {
 					match field.unaliased_typ {
 						typeof[string]().idx {
@@ -248,14 +250,14 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			} $else $if field.typ is time.Time {
 				parsed_time := val.$(field.name) as time.Time
 				e.encode_string(parsed_time.format_rfc3339(), mut wr)!
-			} $else $if field.typ is bool || field.typ is f32 || field.typ is f64 || field.typ is i8
-				|| field.typ is i16 || field.typ is int || field.typ is i64 || field.typ is u8
-				|| field.typ is u16 || field.typ is u32 || field.typ is u64 {
+			} $else $if field.typ in [bool, $Float, $Int] {
 				wr.write(value.str().bytes())!
 			} $else $if field.is_array {
 				e.encode_array(value, level + 1, mut wr)!
 			} $else $if field.is_struct {
 				e.encode_struct(value, level + 1, mut wr)!
+			} $else $if field.is_enum {
+				wr.write(int(val.$(field.name)).str().bytes())!
 			} $else $if field.is_alias {
 				match field.unaliased_typ {
 					typeof[string]().idx {
@@ -271,6 +273,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 						// e.encode_array(value, level, mut wr)!
 					}
 					else {
+						e.encode_struct(value, level + 1, mut wr)!
 						// e.encode_value_with_level(value, level + 1, mut wr)!
 					}
 				}

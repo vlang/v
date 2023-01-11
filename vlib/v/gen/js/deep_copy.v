@@ -18,8 +18,8 @@ fn (mut g JsGen) get_copy_fn(typ ast.Type) string {
 			unwrapped = ast.u64_type
 		}
 	}
-	if typ.has_flag(.optional) {
-		unwrapped.set_flag(.optional)
+	if typ.has_flag(.option) {
+		unwrapped.set_flag(.option)
 	}
 	styp := g.typ(unwrapped)
 	mut sym := g.table.sym(unwrapped)
@@ -189,12 +189,12 @@ fn (mut g JsGen) final_gen_copy(typ StrType) {
 	}
 	g.generated_copy_fns << typ
 	sym := g.table.sym(typ.typ)
-	if sym.has_method('\$copy') && !typ.typ.has_flag(.optional) {
+	if sym.has_method('\$copy') && !typ.typ.has_flag(.option) {
 		return
 	}
 	styp := typ.styp
 	copy_fn_name := styp_to_copy_fn_name(styp)
-	if typ.typ.has_flag(.optional) {
+	if typ.typ.has_flag(.option) {
 		g.gen_copy_for_option(typ.typ, styp, copy_fn_name)
 		return
 	}

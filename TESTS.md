@@ -51,7 +51,7 @@ This folder contains _test.v files, testing the different features of the V
 compiler. Each of them will be compiled, and all the features in them have
 to work (verified by assertions).
 
-## `v vlib/v/tests/inout/compiler_test.v`
+## `v vlib/v/slow_tests/inout/compiler_test.v`
 
 This is a *test runner*, that checks whether the output of running a V program,
 matches an expected .out file. You can also check for code that does panic
@@ -59,7 +59,7 @@ using this test runner - just paste the start of the `panic()` output in the
 corresponding .out file.
 
 NB: these tests, expect to find a pair of `.vv` and `.out` files, in the folder:
-vlib/v/tests/inout
+vlib/v/slow_tests/inout
 
 The test runner will run each `.vv` file, and will check that its output, matches
 the contents of the `.out` file with the same base name. This is particularly useful
@@ -77,7 +77,7 @@ Each `.c.must_have` file, consists of multiple lines. Each of these
 lines, *should* be present *at least once* in the output, when the .vv
 file is compiled with `-o -` .
 
-## `v vlib/v/tests/run_project_folders_test.v`
+## `v vlib/v/slow_tests/run_project_folders_test.v`
 This *test runner*, checks whether whole project folders, can be compiled, and run.
 
 NB: Each project in these folders, should finish with an exit code of 0,

@@ -1,0 +1,5 @@
+vlib/v/checker/tests/void_option_err.vv:1:16: error: use `?` instead of `?void`
+    1 | fn ret_void() ?void {
+      |                ~~~~
+    2 |     return error('error')
+    3 | }
