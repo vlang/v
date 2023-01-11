@@ -506,7 +506,16 @@ pub fn is_file(path string) bool {
 	return exists(path) && !is_dir(path)
 }
 
-// join_path returns a path as string from input string parameter(s).
+// join_path returns a path as string from input string parameter(s). The last
+// directory that is an absolute directory is used as the base. Trailing path
+// separators are trimmed before concatenation.
+//
+// Example:
+// ```v
+// assert os.join_path('/etc', 'passwd') == '/etc/passwd'
+// assert os.join_path('v', 'vlib', '/os', 'os.v') == '/os/os.v'
+// assert os.join_path('v/', 'vlib', 'os/', 'tests/') == 'v/vlib/os/tests'
+// ```
 [manualfree]
 pub fn join_path(base string, dirs ...string) string {
 	// TODO: fix freeing of `dirs` when the passed arguments are variadic,
@@ -522,7 +531,16 @@ pub fn join_path(base string, dirs ...string) string {
 	sb.write_string(sbase)
 	for d in dirs {
 		sb.write_string(path_separator)
-		sb.write_string(d)
+
+		trimmed_d := d.trim_right('\\/')
+		defer {
+			unsafe { trimmed_d.free() }
+		}
+		if trimmed_d == abs_path(trimmed_d) {
+			sb.clear()
+		}
+
+		sb.write_string(trimmed_d)
 	}
 	return sb.str()
 }
