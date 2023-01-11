@@ -128,6 +128,8 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) !
 	} $else $if T is map[string]Any {
 		// weird quirk but val is destructured immediately to Any
 		e.encode_any(val, level, mut wr)!
+	} $else $if T is $Map {
+		// e.encode_any(val, level, mut wr)!
 	} $else $if T is []Any {
 		e.encode_any(val, level, mut wr)!
 	} $else $if T in [Null, bool, $Float, $Int] {
@@ -256,6 +258,29 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				e.encode_array(value, level + 1, mut wr)!
 			} $else $if field.is_struct {
 				e.encode_struct(value, level + 1, mut wr)!
+			} $else $if field.is_map {
+				// e.encode_struct(value, level + 1, mut wr)!
+				// e.encode_value_with_level(value, level + 1, mut wr)!
+				wr.write([u8(`{`)])!
+				mut idx := 0
+				for k, v in value {
+					// dump(k)
+					// dump(v)
+					e.encode_newline(level, mut wr)!
+					e.encode_string(k.str(), mut wr)!
+					wr.write(json2.colon_bytes)!
+					if e.newline != 0 {
+						wr.write(json2.space_bytes)!
+					}
+					// FIXME - invalid memory access
+					// e.encode_value_with_level(v, level, mut wr)!
+					if idx < value.len - 1 {
+						wr.write(json2.comma_bytes)!
+					}
+					idx++
+				}
+				e.encode_newline(level, mut wr)!
+				wr.write([u8(`}`)])!
 			} $else $if field.is_enum {
 				wr.write(int(val.$(field.name)).str().bytes())!
 			} $else $if field.is_alias {
