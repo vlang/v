@@ -6,6 +6,21 @@ import v.ast
 import v.pref
 import v.token
 
+fn (mut c Checker) get_expr_type(node ast.Expr) ast.Type {
+	match node {
+		ast.TypeNode, ast.TypeOf {
+			return node.typ
+		}
+		ast.Ident {
+			if node.obj is ast.Var {
+				return node.obj.typ
+			}
+		}
+		else {}
+	}
+	return ast.void_type
+}
+
 fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	if_kind := if node.is_comptime { '\$if' } else { 'if' }
 	mut node_is_expr := false
@@ -86,9 +101,16 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						c.error('invalid `\$if` condition: expected a type', branch.cond.right.pos())
 						return 0
 					}
-					if right is ast.ComptimeType && left is ast.TypeNode {
+					is_comptime_check := right is ast.ComptimeType || left is ast.ComptimeType
+
+					if is_comptime_check {
 						is_comptime_type_is_expr = true
-						checked_type := c.unwrap_generic(left.typ)
+						mut checked_type := ast.void_type
+						if left !is ast.ComptimeType {
+							checked_type = c.unwrap_generic(c.get_expr_type(left))
+						} else {
+							checked_type = c.unwrap_generic(c.get_expr_type(right))
+						}
 						skip_state = if c.table.is_comptime_type(checked_type, right as ast.ComptimeType) {
 							.eval
 						} else {
