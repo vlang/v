@@ -528,9 +528,19 @@ pub fn join_path(base string, dirs ...string) string {
 }
 
 // join_path_single appends the `elem` after `base`, using a platform specific
-// path_separator.
+// path_separator. If `elem` is an absolute path, `base` is ignored.
 [manualfree]
 pub fn join_path_single(base string, elem string) string {
+	selem := elem.trim_right('\\/')
+	defer {
+		unsafe { selem.free() }
+	}
+
+	// appending an absolute path to a base just returns the absolute path
+	if selem == os.abs_path(selem) {
+		return selem
+	}
+
 	// TODO: deprecate this and make it `return os.join_path(base, elem)`,
 	// when freeing variadic args vs ...arr is solved in the compiler
 	mut sb := strings.new_builder(base.len + elem.len + 1)

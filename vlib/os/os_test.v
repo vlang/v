@@ -613,6 +613,26 @@ fn test_join() {
 	}
 }
 
+fn test_join_path_single() {
+	$if windows {
+		assert os.join_path_single('v', 'vlib') == 'v\\vlib'
+		assert os.join_path_single('v', 'vlib\\') == 'v\\vlib'
+		assert os.join_path_single('v\\', 'vlib') == 'v\\vlib'
+		assert os.join_path_single('v\\', 'vlib\\') == 'v\\vlib'
+
+		assert os.join_path_single('v', '\\vlib') == '\\vlib'
+		assert os.join_path_single('\\v', '\\vlib') == '\\vlib'
+	} $else {
+		assert os.join_path_single('v', 'vlib') == 'v/vlib'
+		assert os.join_path_single('v', 'vlib/') == 'v/vlib'
+		assert os.join_path_single('v/', 'vlib') == 'v//vlib'
+		assert os.join_path_single('v/', 'vlib/') == 'v/vlib'
+
+		assert os.join_path_single('v', '/vlib') == '/vlib'
+		assert os.join_path_single('/v', '/vlib') == '/vlib'
+	}
+}
+
 fn test_rmdir_all() {
 	mut dirs := ['some/dir', 'some/.hidden/directory']
 	$if windows {
