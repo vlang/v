@@ -484,6 +484,8 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 					} else if left is ast.TypeNode {
 						// this is only allowed for generics currently, otherwise blocked by checker
 						exp_type = g.unwrap_generic(left.typ)
+					} else if left is ast.TypeOf {
+						exp_type = g.unwrap_generic(left.typ)
 					}
 
 					if cond.op == .key_is {

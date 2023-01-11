@@ -139,9 +139,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							} else {
 								.skip
 							}
-						} else if left is ast.TypeNode {
+						} else if left in [ast.TypeOf, ast.TypeNode] {
 							is_comptime_type_is_expr = true
-							left_type := c.unwrap_generic(left.typ)
+							left_type := c.unwrap_generic(c.get_expr_type(left))
 							skip_state = if left_type == got_type { .eval } else { .skip }
 						}
 					}
