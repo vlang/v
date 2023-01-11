@@ -835,11 +835,11 @@ fn (mut g Gen) parse_db_type(expr ast.Expr) SqlType {
 	match expr {
 		ast.Ident {
 			if expr.info is ast.IdentVar {
-				return g.parse_db_from_type_string(g.table.get_type_name(expr.info.typ))
+				return g.parse_db_from_type_string(g.table.get_final_type_name(expr.info.typ))
 			}
 		}
 		ast.SelectorExpr {
-			return g.parse_db_from_type_string(g.table.get_type_name(expr.typ))
+			return g.parse_db_from_type_string(g.table.get_final_type_name(expr.typ))
 		}
 		else {
 			return .unknown
