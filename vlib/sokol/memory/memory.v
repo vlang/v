@@ -36,7 +36,11 @@ pub fn slog(const_message &char, user_data voidptr) {
 		C.fprintf(C.stderr, c'sokol.memory.slog | user_data: %p, message: %s\n', user_data,
 			const_message)
 	}
-	$if !prod {
-		C.SOKOL_LOG(const_message)
+	$if msvc {
+		C.fprintf(C.stderr, c'%s\n', const_message)
+	} $else {
+		$if !prod {
+			C.SOKOL_LOG(const_message)
+		}
 	}
 }
