@@ -270,7 +270,7 @@ fn has_top_return(stmts []ast.Stmt) bool {
 			}
 			ast.ExprStmt {
 				if stmt.expr is ast.CallExpr {
-					// ignore panic() calls on non checked stmts
+					// do not ignore panic() calls on non checked stmts
 					if stmt.expr.is_noreturn
 						|| (stmt.expr.is_method == false && stmt.expr.name == 'panic') {
 						return true
