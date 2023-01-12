@@ -460,13 +460,13 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				expected_type = field_info.typ
 				c.expected_type = expected_type
 				expr_type = c.expr(field.expr)
-				expr_type_sym := c.table.sym(expr_type)
 				if expr_type == ast.void_type {
 					c.error('`${field.expr}` (no value) used as value', field.pos)
 				}
 				if !field_info.typ.has_flag(.option) && !field.typ.has_flag(.result) {
 					expr_type = c.check_expr_opt_call(field.expr, expr_type)
 				}
+				expr_type_sym := c.table.sym(expr_type)
 				if field_type_sym.kind == .voidptr && expr_type_sym.kind == .struct_
 					&& !expr_type.is_ptr() {
 					c.error('allocate on the heap for use in other functions', field.pos)
