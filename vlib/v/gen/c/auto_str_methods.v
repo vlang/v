@@ -829,7 +829,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, typ_str string, 
 		g.auto_fn_definitions << fn_builder.str()
 	}
 	fn_builder.writeln('static string indent_${str_fn_name}(${styp} it, int indent_count) {')
-	clean_struct_v_type_name := util.strip_main_name(typ_str)
+	clean_struct_v_type_name := if info.is_anon { 'struct ' } else { util.strip_main_name(typ_str) }
 	// generate ident / indent length = 4 spaces
 	if info.fields.len == 0 {
 		fn_builder.writeln('\treturn _SLIT("${clean_struct_v_type_name}{}");')
