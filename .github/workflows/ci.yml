@@ -174,6 +174,7 @@ jobs:
         run: |
           ##brew install libpq openssl freetype ### these are *already installed* on Catalina ...
           brew uninstall --ignore-dependencies libpq ## libpq is a dependency of PHP
+          brew install libpq-dev
           brew install postgresql openssl
           export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
           echo "PKG_CONFIG_PATH is '$PKG_CONFIG_PATH'"
@@ -240,6 +241,8 @@ jobs:
           ln -s $(pwd) ~/.vmodules/ui
           ../v examples/rectangles.v
           ## ../v run examples/build_examples.vsh
+      - name: Build vpm
+        run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
       - name: V self compilation with -usecache
         run: |
           unset VFLAGS
