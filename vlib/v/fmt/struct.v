@@ -132,18 +132,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		}
 		f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
 		// Handle anon structs recursively
-		mut field_is_anon := false
-		sym := f.table.sym(field.typ)
-		if sym.kind == .struct_ {
-			info := sym.info as ast.Struct
-			field_is_anon = info.is_anon
-		}
-		if field_is_anon {
-			f.indent++
-			f.struct_decl(field.anon_struct_decl, true)
-			f.indent--
-		} else {
-			// If it's not an anon struct, just write the type of the field
+		if !f.write_anon_struct_field_decl(field.typ, field.anon_struct_decl) {
 			f.write(field_types[i])
 		}
 		f.mark_types_import_as_used(field.typ)
@@ -199,6 +188,45 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 	} else {
 		f.writeln('}\n')
 	}
+}
+
+fn (mut f Fmt) write_anon_struct_field_decl(field_typ ast.Type, field_anon_decl ast.StructDecl) bool {
+	sym := f.table.sym(field_typ)
+	match sym.kind {
+		.struct_ {
+			info := sym.info as ast.Struct
+			if info.is_anon {
+				f.indent++
+				f.struct_decl(field_anon_decl, true)
+				f.indent--
+				return true
+			}
+		}
+		.array {
+			info := sym.info as ast.Array
+			elem_sym := f.table.sym(info.elem_type)
+			if elem_sym.info is ast.Struct {
+				if elem_sym.info.is_anon {
+					f.write('[]'.repeat(info.nr_dims))
+					f.write_anon_struct_field_decl(info.elem_type, field_anon_decl)
+					return true
+				}
+			}
+		}
+		.array_fixed {
+			info := sym.info as ast.ArrayFixed
+			elem_sym := f.table.sym(info.elem_type)
+			if elem_sym.info is ast.Struct {
+				if elem_sym.info.is_anon {
+					f.write('[${info.size}]')
+					f.write_anon_struct_field_decl(info.elem_type, field_anon_decl)
+					return true
+				}
+			}
+		}
+		else {}
+	}
+	return false
 }
 
 pub fn (mut f Fmt) struct_init(node ast.StructInit) {
