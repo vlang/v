@@ -1775,7 +1775,8 @@ fn (mut p Parser) attributes() {
 		return
 	}
 	if p.inside_struct_attr_decl && p.tok.kind == .lsbr {
-		p.error_with_pos('multiple attributes should be in the same [], with ; separators', p.prev_tok.pos().extend(p.tok.pos()))
+		p.error_with_pos('multiple attributes should be in the same [], with ; separators',
+			p.prev_tok.pos().extend(p.tok.pos()))
 		return
 	}
 }
