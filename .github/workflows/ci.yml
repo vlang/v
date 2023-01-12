@@ -164,7 +164,7 @@ jobs:
     timeout-minutes: 121
     env:
       VFLAGS: -cc clang
-      PKG_CONFIG_PATH: /usr/local/opt/openssl@3/lib/pkgconfig
+      PKG_CONFIG_PATH: /usr/local/opt/openssl@3/lib/pkgconfig:/opt/homebrew/opt/openssl@3/lib/pkgconfig:/opt/homebrew/lib/pkgconfig
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
@@ -172,9 +172,7 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-          ##brew install libpq openssl freetype ### these are *already installed* on Catalina ...
-          brew uninstall --ignore-dependencies libpq ## libpq is a dependency of PHP
-          brew install postgresql openssl
+          brew install libpq postgresql openssl
           export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
           echo "PKG_CONFIG_PATH is '$PKG_CONFIG_PATH'"
       - name: Build V
@@ -240,6 +238,8 @@ jobs:
           ln -s $(pwd) ~/.vmodules/ui
           ../v examples/rectangles.v
           ## ../v run examples/build_examples.vsh
+      - name: Build vpm
+        run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
       - name: V self compilation with -usecache
         run: |
           unset VFLAGS
