@@ -1,5 +1,6 @@
 module mssql
 
+// Config TODO
 pub struct Config {
 pub:
 	driver string
@@ -11,6 +12,7 @@ pub:
 	dbname string
 }
 
+// get_conn_str TODO
 pub fn (cfg Config) get_conn_str() string {
 	mut str := 'Driver=${cfg.driver};Server=${cfg.server};UID=${cfg.uid};PWD=${cfg.pwd}'
 	if cfg.dbname != '' {

@@ -77,6 +77,7 @@ mut:
 	conn &C.sqlite3 = unsafe { nil }
 }
 
+// str returns a text representation of the DB
 pub fn (db &DB) str() string {
 	return 'sqlite.DB{ conn: ' + ptr_str(db.conn) + ' }'
 }
@@ -179,7 +180,7 @@ pub fn (db &DB) get_affected_rows_count() int {
 	return C.sqlite3_changes(db.conn)
 }
 
-// Returns a single cell with value int.
+// q_int returns a single integer value, from the first column of the result of executing `query`
 pub fn (db &DB) q_int(query string) int {
 	stmt := &C.sqlite3_stmt(0)
 	defer {
@@ -192,7 +193,7 @@ pub fn (db &DB) q_int(query string) int {
 	return res
 }
 
-// Returns a single cell with value string.
+// q_string returns a single string value, from the first column of the result of executing `query`
 pub fn (db &DB) q_string(query string) string {
 	stmt := &C.sqlite3_stmt(0)
 	defer {
@@ -205,7 +206,7 @@ pub fn (db &DB) q_string(query string) string {
 	return if val != &u8(0) { unsafe { tos_clone(val) } } else { '' }
 }
 
-// Execute the query on db, return an array of all the results, alongside any result code.
+// exec executes the query on the given `db`, and returns an array of all the results, alongside any result code.
 // Result codes: https://www.sqlite.org/rescode.html
 [manualfree]
 pub fn (db &DB) exec(query string) ([]Row, int) {
@@ -238,8 +239,8 @@ pub fn (db &DB) exec(query string) ([]Row, int) {
 	return rows, res
 }
 
-// Execute a query, handle error code
-// Return the first row from the resulting table
+// exec_one executes a query on the given `db`.
+// It returns either the first row from the result, if the query was successful, or an error.
 [manualfree]
 pub fn (db &DB) exec_one(query string) !Row {
 	rows, code := db.exec(query)
@@ -261,6 +262,7 @@ pub fn (db &DB) exec_one(query string) !Row {
 	return res
 }
 
+// error_message returns a proper V error, given an integer error code received from SQLite, and a query string
 [manualfree]
 pub fn (db &DB) error_message(code int, query string) IError {
 	errmsg := unsafe { cstring_to_vstring(&char(C.sqlite3_errmsg(db.conn))) }
@@ -272,9 +274,9 @@ pub fn (db &DB) error_message(code int, query string) IError {
 	}
 }
 
-// Execute a query returning only the result code.
-// In case you don't expect any row results, but still want a result code.
-// e.g. INSERT INTO ... VALUES (...)
+// exec_none executes a query, and returns the integer SQLite result code.
+// Use it, in case you don't expect any row results, but still want a result code.
+// e.g. for queries like these: `INSERT INTO ... VALUES (...)`
 pub fn (db &DB) exec_none(query string) int {
 	stmt := &C.sqlite3_stmt(0)
 	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
@@ -283,20 +285,16 @@ pub fn (db &DB) exec_none(query string) int {
 	return code
 }
 
-/*
-TODO
-pub fn (db &DB) exec_param(query string, param string) []Row {
-}
-*/
+// TODO pub fn (db &DB) exec_param(query string, param string) []Row {
 
-// Issue a "create table if not exists" command to the db.
-// Creates table named 'table_name', with columns generated from 'columns' array.
-// Default columns type will be TEXT.
+// create_table issues a "create table if not exists" command to the db.
+// It creates the table named 'table_name', with columns generated from 'columns' array.
+// The default columns type will be TEXT.
 pub fn (db &DB) create_table(table_name string, columns []string) {
 	db.exec('create table if not exists ${table_name} (' + columns.join(',\n') + ')')
 }
 
-// Set a busy timeout in milliseconds.
+// busy_timeout sets a busy timeout in milliseconds.
 // Sleeps for a specified amount of time when a table is locked. The handler
 // will sleep multiple times until at least "ms" milliseconds of sleeping have accumulated.
 // (see https://www.sqlite.org/c3ref/busy_timeout.html)
@@ -304,11 +302,11 @@ pub fn (db &DB) busy_timeout(ms int) int {
 	return C.sqlite3_busy_timeout(db.conn, ms)
 }
 
-// Sets disk synchronization mode,
-// which controls how aggressively SQLite will write data to physical storage.
-// off: No syncs at all. (fastest)
-// normal: Sync after each sequence of critical disk operations.
-// full: Sync after each critical disk operation (slowest).
+// synchronization_mode sets disk synchronization mode, which controls how
+// aggressively SQLite will write data to physical storage.
+// .off: No syncs at all. (fastest)
+// .normal: Sync after each sequence of critical disk operations.
+// .full: Sync after each critical disk operation (slowest).
 pub fn (db &DB) synchronization_mode(sync_mode SyncMode) {
 	if sync_mode == .off {
 		db.exec('pragma synchronous = OFF;')
@@ -319,12 +317,12 @@ pub fn (db &DB) synchronization_mode(sync_mode SyncMode) {
 	}
 }
 
-// Controls how the journal file is stored and processed.
-// off: No journal record is kept. (fastest)
-// memory: Journal record is held in memory, rather than on disk.
-// delete: At the conclusion of a transaction, journal file is deleted.
-// truncate: Journal file is truncated to a length of zero bytes.
-// persist: Journal file is left in place, but the header is overwritten to indicate journal is no longer valid.
+// journal_mode controls how the journal file is stored and processed.
+// .off: No journal record is kept. (fastest)
+// .memory: Journal record is held in memory, rather than on disk.
+// .delete: At the conclusion of a transaction, journal file is deleted.
+// .truncate: Journal file is truncated to a length of zero bytes.
+// .persist: Journal file is left in place, but the header is overwritten to indicate journal is no longer valid.
 pub fn (db &DB) journal_mode(journal_mode JournalMode) {
 	if journal_mode == .off {
 		db.exec('pragma journal_mode = OFF;')

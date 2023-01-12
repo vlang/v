@@ -7,6 +7,7 @@ type Prims = f32 | f64 | i16 | i64 | i8 | int | string | u16 | u32 | u64 | u8
 
 // sql expr
 
+// @select is used internally by V's ORM for processing `SELECT ` queries
 pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
 	query := orm.orm_select_gen(config, '`', false, '?', 0, where)
 	mut ret := [][]orm.Primitive{}
@@ -120,6 +121,7 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 
 // sql stmt
 
+// insert is used internally by V's ORM for processing `INSERT ` queries
 pub fn (db Connection) insert(table string, data orm.QueryData) ! {
 	mut converted_primitive_array := db.factory_orm_primitive_converted_from_sql(table,
 		data)!
@@ -137,17 +139,20 @@ pub fn (db Connection) insert(table string, data orm.QueryData) ! {
 	mysql_stmt_worker(db, query, converted_data, orm.QueryData{})!
 }
 
+// update is used internally by V's ORM for processing `UPDATE ` queries
 pub fn (db Connection) update(table string, data orm.QueryData, where orm.QueryData) ! {
 	query, _ := orm.orm_stmt_gen(table, '`', .update, false, '?', 1, data, where)
 	mysql_stmt_worker(db, query, data, where)!
 }
 
+// delete is used internally by V's ORM for processing `DELETE ` queries
 pub fn (db Connection) delete(table string, where orm.QueryData) ! {
 	query, _ := orm.orm_stmt_gen(table, '`', .delete, false, '?', 1, orm.QueryData{},
 		where)
 	mysql_stmt_worker(db, query, orm.QueryData{}, where)!
 }
 
+// last_id is used internally by V's ORM for post-processing `INSERT ` queries
 pub fn (db Connection) last_id() orm.Primitive {
 	query := 'SELECT last_insert_id();'
 	id := db.query(query) or {
@@ -158,7 +163,9 @@ pub fn (db Connection) last_id() orm.Primitive {
 	return orm.Primitive(id.rows()[0].vals[0].int())
 }
 
-// table
+// DDL (table creation/destroying etc)
+
+// create is used internally by V's ORM for processing table creation queries (DDL)
 pub fn (db Connection) create(table string, fields []orm.TableField) ! {
 	query := orm.orm_table_gen(table, '`', true, 0, fields, mysql_type_from_v, false) or {
 		return err
@@ -166,6 +173,7 @@ pub fn (db Connection) create(table string, fields []orm.TableField) ! {
 	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
 
+// drop is used internally by V's ORM for processing table destroying queries (DDL)
 pub fn (db Connection) drop(table string) ! {
 	query := 'DROP TABLE `${table}`;'
 	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!

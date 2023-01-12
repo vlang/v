@@ -227,9 +227,7 @@ pub fn (db DB) q_strings(query string) ![]Row {
 	return db.exec(query)
 }
 
-// exec submit a command to the database server and wait
-// for the result, returning an error on failure and a
-// row set on success
+// exec submits a command to the database server and wait for the result, returning an error on failure and a row set on success
 pub fn (db DB) exec(query string) ![]Row {
 	res := C.PQexec(db.conn, &char(query.str))
 	return db.handle_error_or_result(res, 'exec')
@@ -242,6 +240,7 @@ fn rows_first_or_empty(rows []Row) !Row {
 	return rows[0]
 }
 
+// exec_one executes a query and returns its first row as a result, or an error on failure
 pub fn (db DB) exec_one(query string) !Row {
 	res := C.PQexec(db.conn, &char(query.str))
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
@@ -266,12 +265,14 @@ pub fn (db DB) exec_param_many(query string, params []string) ![]Row {
 	}
 }
 
-pub fn (db DB) exec_param2(query string, param string, param2 string) ![]Row {
-	return db.exec_param_many(query, [param, param2])
-}
-
+// exec_param2 executes a query with 1 parameter, and returns either an error on failure, or the full result set on success
 pub fn (db DB) exec_param(query string, param string) ![]Row {
 	return db.exec_param_many(query, [param])
+}
+
+// exec_param2 executes a query with 2 parameters, and returns either an error on failure, or the full result set on success
+pub fn (db DB) exec_param2(query string, param string, param2 string) ![]Row {
+	return db.exec_param_many(query, [param, param2])
 }
 
 fn (db DB) handle_error_or_result(res voidptr, elabel string) ![]Row {
@@ -283,7 +284,7 @@ fn (db DB) handle_error_or_result(res voidptr, elabel string) ![]Row {
 	return res_to_rows(res)
 }
 
-// copy_expert execute COPY commands
+// copy_expert executes COPY command
 // https://www.postgresql.org/docs/9.5/libpq-copy.html
 pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) !int {
 	mut res := C.PQexec(db.conn, &char(query.str))

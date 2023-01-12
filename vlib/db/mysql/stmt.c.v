@@ -62,7 +62,7 @@ fn C.mysql_stmt_fetch(&C.MYSQL_STMT) int
 fn C.mysql_stmt_next_result(&C.MYSQL_STMT) int
 fn C.mysql_stmt_store_result(&C.MYSQL_STMT) int
 
-struct Stmt {
+pub struct Stmt {
 	stmt  &C.MYSQL_STMT = &C.MYSQL_STMT(0)
 	query string
 mut:
@@ -70,6 +70,12 @@ mut:
 	res   []C.MYSQL_BIND
 }
 
+// str returns a text representation of the given mysql statement `s`
+pub fn (s &Stmt) str() string {
+	return 'mysql.Stmt{ stmt: ${voidptr(s.stmt):x}, query: `${s.query}`, binds.len: ${s.binds.len}, res.len: ${s.res.len} }'
+}
+
+// init_stmt creates a new statement, given the `query`
 pub fn (db Connection) init_stmt(query string) Stmt {
 	return Stmt{
 		stmt: C.mysql_stmt_init(db.conn)
@@ -78,6 +84,7 @@ pub fn (db Connection) init_stmt(query string) Stmt {
 	}
 }
 
+// prepare a statement for execution
 pub fn (stmt Stmt) prepare() ! {
 	res := C.mysql_stmt_prepare(stmt.stmt, stmt.query.str, stmt.query.len)
 	if res != 0 && stmt.get_error_msg() != '' {
@@ -85,6 +92,7 @@ pub fn (stmt Stmt) prepare() ! {
 	}
 }
 
+// bind_params binds all the parameters in `stmt`
 pub fn (stmt Stmt) bind_params() ! {
 	res := C.mysql_stmt_bind_param(stmt.stmt, unsafe { &C.MYSQL_BIND(stmt.binds.data) })
 	if res && stmt.get_error_msg() != '' {
@@ -92,6 +100,7 @@ pub fn (stmt Stmt) bind_params() ! {
 	}
 }
 
+// execute executes the given `stmt` and waits for the result
 pub fn (stmt Stmt) execute() !int {
 	res := C.mysql_stmt_execute(stmt.stmt)
 	if res != 0 && stmt.get_error_msg() != '' {
@@ -100,6 +109,7 @@ pub fn (stmt Stmt) execute() !int {
 	return res
 }
 
+// next retrieves the next available result from the execution of `stmt`
 pub fn (stmt Stmt) next() !int {
 	res := C.mysql_stmt_next_result(stmt.stmt)
 	if res > 0 && stmt.get_error_msg() != '' {
@@ -108,14 +118,22 @@ pub fn (stmt Stmt) next() !int {
 	return res
 }
 
+// gen_metadata executes mysql_stmt_result_metadata over the given `stmt`
+// It requires that the statement has produced a result set, since the metadata will be for that result set.
+// See https://dev.mysql.com/doc/c-api/5.7/en/mysql-stmt-result-metadata.html
 pub fn (stmt Stmt) gen_metadata() &C.MYSQL_RES {
 	return C.mysql_stmt_result_metadata(stmt.stmt)
 }
 
+// fetch_fields retrieves the fields from the metadata result of the execution of `stmt`.
+// See https://dev.mysql.com/doc/c-api/5.7/en/mysql-fetch-fields.html
+// See also Result.n_fields for the size of the returned C array.
 pub fn (stmt Stmt) fetch_fields(res &C.MYSQL_RES) &C.MYSQL_FIELD {
 	return C.mysql_fetch_fields(res)
 }
 
+// fetch_stmt fetches the next row in the result set. It returns the status of the execution of mysql_stmt_fetch .
+// See https://dev.mysql.com/doc/c-api/5.7/en/mysql-stmt-fetch.html
 pub fn (stmt Stmt) fetch_stmt() !int {
 	res := C.mysql_stmt_fetch(stmt.stmt)
 	if res !in [0, 100] && stmt.get_error_msg() != '' {
@@ -124,6 +142,9 @@ pub fn (stmt Stmt) fetch_stmt() !int {
 	return res
 }
 
+// close disposes the prepared `stmt`. The statement becomes invalid, and should not be used anymore after this call.
+// If the current statement has pending or unread results, this method cancels them too.
+// See https://dev.mysql.com/doc/c-api/5.7/en/mysql-stmt-close.html
 pub fn (stmt Stmt) close() ! {
 	if !C.mysql_stmt_close(stmt.stmt) && stmt.get_error_msg() != '' {
 		return stmt.error(1)
@@ -137,6 +158,7 @@ fn (stmt Stmt) get_error_msg() string {
 	return unsafe { cstring_to_vstring(&char(C.mysql_stmt_error(stmt.stmt))) }
 }
 
+// error returns a proper V error with a human readable description, given the error code returned by MySQL
 pub fn (stmt Stmt) error(code int) IError {
 	msg := stmt.get_error_msg()
 	return &SQLError{
@@ -149,58 +171,73 @@ fn (stmt Stmt) get_field_count() u16 {
 	return C.mysql_stmt_field_count(stmt.stmt)
 }
 
+// bind_bool binds a single boolean value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_bool(b &bool) {
 	stmt.bind(mysql.mysql_type_tiny, b, 0)
 }
 
+// bind_byte binds a single byte value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_byte(b &byte) {
 	stmt.bind(mysql.mysql_type_tiny, b, 0)
 }
 
+// bind_u8 binds a single u8 value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_u8(b &u8) {
 	stmt.bind(mysql.mysql_type_tiny, b, 0)
 }
 
+// bind_i8 binds a single i8 value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_i8(b &i8) {
 	stmt.bind(mysql.mysql_type_tiny, b, 0)
 }
 
+// bind_i16 binds a single i16 value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_i16(b &i16) {
 	stmt.bind(mysql.mysql_type_short, b, 0)
 }
 
+// bind_u16 binds a single u16 value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_u16(b &u16) {
 	stmt.bind(mysql.mysql_type_short, b, 0)
 }
 
+// bind_int binds a single int value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_int(b &int) {
 	stmt.bind(mysql.mysql_type_long, b, 0)
 }
 
+// bind_u32 binds a single u32 value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_u32(b &u32) {
 	stmt.bind(mysql.mysql_type_long, b, 0)
 }
 
+// bind_i64 binds a single i64 value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_i64(b &i64) {
 	stmt.bind(mysql.mysql_type_longlong, b, 0)
 }
 
+// bind_u64 binds a single u64 value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_u64(b &u64) {
 	stmt.bind(mysql.mysql_type_longlong, b, 0)
 }
 
+// bind_f32 binds a single f32 value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_f32(b &f32) {
 	stmt.bind(mysql.mysql_type_float, b, 0)
 }
 
+// bind_f64 binds a single f64 value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_f64(b &f64) {
 	stmt.bind(mysql.mysql_type_double, b, 0)
 }
 
+// bind_text binds a single string value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_text(b string) {
 	stmt.bind(mysql.mysql_type_string, b.str, u32(b.len))
 }
 
+// bind binds a single value pointed by `buffer`, to the statement `stmt`. The buffer length must be passed as well in `buf_len`.
+// Note: it is more convenient to use one of the other bind_XYZ methods.
 pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 	stmt.binds << C.MYSQL_BIND{
 		buffer_type: typ
@@ -210,6 +247,7 @@ pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 	}
 }
 
+// bind_res will store one result in the statement `stmt`
 pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lens []u32, num_fields int) {
 	for i in 0 .. num_fields {
 		len := unsafe { FieldType(fields[i].@type).get_len() }
@@ -222,6 +260,8 @@ pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lens []u32
 	}
 }
 
+// bind_result_buffer binds one result value, by calling mysql_stmt_bind_result .
+// See https://dev.mysql.com/doc/c-api/8.0/en/mysql-stmt-bind-result.html
 pub fn (mut stmt Stmt) bind_result_buffer() ! {
 	res := C.mysql_stmt_bind_result(stmt.stmt, unsafe { &C.MYSQL_BIND(stmt.res.data) })
 	if res && stmt.get_error_msg() != '' {
@@ -229,6 +269,14 @@ pub fn (mut stmt Stmt) bind_result_buffer() ! {
 	}
 }
 
+// store_result will *buffer the complete result set* from the execution of `stmt` *on the client side*.
+// Note: result sets are produced by calling mysql_stmt_execute() to executed prepared statements for SQL
+// statements such as SELECT, SHOW, DESCRIBE, and EXPLAIN.
+// By default, result sets for successfully executed prepared statements are *not buffered on the client*,
+// and mysql_stmt_fetch() fetches them one at a time from the server.
+// Note 2: call store_result, *after* binding data buffers with bind_result_buffer,
+// and *before* calling fetch_stmt to fetch rows.
+// See https://dev.mysql.com/doc/c-api/8.0/en/mysql-stmt-store-result.html
 pub fn (mut stmt Stmt) store_result() ! {
 	res := C.mysql_stmt_store_result(stmt.stmt)
 	if res != 0 && stmt.get_error_msg() != '' {

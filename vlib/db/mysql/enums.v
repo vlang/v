@@ -1,5 +1,6 @@
 module mysql
 
+// FieldType is a list of all supported MYSQL field types
 pub enum FieldType {
 	type_decimal
 	type_tiny
@@ -34,6 +35,7 @@ pub enum FieldType {
 	type_geometry
 }
 
+// str returns a text representation of the field type `f`
 pub fn (f FieldType) str() string {
 	return match f {
 		.type_decimal { 'decimal' }
@@ -70,6 +72,7 @@ pub fn (f FieldType) str() string {
 	}
 }
 
+// get_len returns the length in bytes, for the given field type `f`
 pub fn (f FieldType) get_len() u32 {
 	return match f {
 		.type_blob { 262140 }
