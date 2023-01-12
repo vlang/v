@@ -52,19 +52,19 @@ pub enum JournalMode {
 	memory
 }
 
-pub struct C.sqlite3 {
+struct C.sqlite3 {
 }
 
-pub struct C.sqlite3_stmt {
+struct C.sqlite3_stmt {
 }
 
 [heap]
-pub struct Stmt {
+struct Stmt {
 	stmt &C.sqlite3_stmt = unsafe { nil }
 	db   &DB = unsafe { nil }
 }
 
-pub struct SQLError {
+struct SQLError {
 	MessageError
 }
 
