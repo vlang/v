@@ -133,7 +133,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			if var.expr is ast.StringLiteral {
 				literal_string_param = var.expr.val
 			}
-		} else if var := p.scope.find_const(p.mod + '.' + p.tok.lit) {
+		} else if var := p.table.global_scope.find_const(p.mod + '.' + p.tok.lit) {
 			if var.expr is ast.StringLiteral {
 				literal_string_param = var.expr.val
 			}
