@@ -762,6 +762,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('\t${node.val_var}.indirections = ${field.typ.nr_muls()};')
 				//
 				g.comptime_var_type_map['${node.val_var}.typ'] = styp
+				g.comptime_var_type_map['${node.val_var}.unaliased_typ'] = unaliased_styp
 				g.stmts(node.stmts)
 				i++
 				g.writeln('}')
