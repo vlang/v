@@ -89,6 +89,7 @@ mut:
 	defer_vars                []ast.Ident
 	should_abort              bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
 	codegen_text              string
+	anon_struct_decl          ast.StructDecl
 	struct_init_generic_types []ast.Type
 	if_cond_comments          []ast.Comment
 	script_mode               bool
