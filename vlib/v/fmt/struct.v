@@ -203,24 +203,26 @@ fn (mut f Fmt) write_anon_struct_field_decl(field_typ ast.Type, field_anon_decl 
 			}
 		}
 		.array {
-			info := sym.info as ast.Array
-			elem_sym := f.table.sym(info.elem_type)
-			if elem_sym.info is ast.Struct {
-				if elem_sym.info.is_anon {
-					f.write('[]'.repeat(info.nr_dims))
-					f.write_anon_struct_field_decl(info.elem_type, field_anon_decl)
-					return true
+			if sym.info is ast.Array {
+				elem_sym := f.table.sym(sym.info.elem_type)
+				if elem_sym.info is ast.Struct {
+					if elem_sym.info.is_anon {
+						f.write('[]'.repeat(sym.info.nr_dims))
+						f.write_anon_struct_field_decl(sym.info.elem_type, field_anon_decl)
+						return true
+					}
 				}
 			}
 		}
 		.array_fixed {
-			info := sym.info as ast.ArrayFixed
-			elem_sym := f.table.sym(info.elem_type)
-			if elem_sym.info is ast.Struct {
-				if elem_sym.info.is_anon {
-					f.write('[${info.size}]')
-					f.write_anon_struct_field_decl(info.elem_type, field_anon_decl)
-					return true
+			if sym.info is ast.ArrayFixed {
+				elem_sym := f.table.sym(sym.info.elem_type)
+				if elem_sym.info is ast.Struct {
+					if elem_sym.info.is_anon {
+						f.write('[${sym.info.size}]')
+						f.write_anon_struct_field_decl(sym.info.elem_type, field_anon_decl)
+						return true
+					}
 				}
 			}
 		}
