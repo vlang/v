@@ -268,6 +268,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			// Comments after type (same line)
 			comments << p.eat_comments()
 			if p.tok.kind == .lsbr {
+				p.inside_struct_attr_decl = true
 				// attrs are stored in `p.attrs`
 				p.attributes()
 				for fa in p.attrs {
@@ -275,6 +276,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 						is_field_deprecated = true
 					}
 				}
+				p.inside_struct_attr_decl = false
 			}
 			mut default_expr := ast.empty_expr
 			mut has_default_expr := false
