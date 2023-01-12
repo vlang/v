@@ -95,12 +95,8 @@ pub fn home() Path {
 // ```v
 // assert path('a/b') / path('c') == path('a/b/c')
 // ```
-pub fn (p1 Path) / (p2 Path) Path {
-	if p2.root == os.path_separator {
-		return p2
-	} else {
-		return path('${p1}${os.path_separator}${p2}')
-	}
+pub fn (p1 Path) / (p2 Path) !Path {
+	return p1.join(p2)!
 }
 
 // absolute returns the absolute path representation.
@@ -291,10 +287,19 @@ pub fn (p Path) iterdir() ![]Path {
 	return files.map(path(it))
 }
 
-// join two paths together.
-// See also: `os.join_path_single`.
-pub fn (p Path) join(other Path) Path {
-	return path(os.join_path_single(p.str(), other.str()))
+// join two paths together. raises an error if the other path is absolute.
+pub fn (p Path) join(other Path) !Path {
+	if other.is_absolute() {
+		return IError(PathError{
+			path: p
+			msg: 'other path ${other} is absolute'
+			func: 'join'
+		})
+	}
+
+	mut joined_path := p.parts.clone()
+	joined_path << other.parts.clone()
+	return path_from_parts(joined_path)
 }
 
 // link current path to the target path.
