@@ -457,10 +457,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				mut expected_type := ast.Type(0)
 				inited_fields << field_name
 				field_type_sym := c.table.sym(field_info.typ)
-				expr_type_sym := c.table.sym(expr_type)
 				expected_type = field_info.typ
 				c.expected_type = expected_type
 				expr_type = c.expr(field.expr)
+				expr_type_sym := c.table.sym(expr_type)
 				if expr_type == ast.void_type {
 					c.error('`${field.expr}` (no value) used as value', field.pos)
 				}
