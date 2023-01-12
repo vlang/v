@@ -128,9 +128,7 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
 		}
 	}
 	if node.or_expr.kind == .block {
-		for s in node.or_expr.stmts {
-			c.stmt(s)
-		}
+		c.stmts_ending_with_expression(node.or_expr.stmts)
 	}
 	return typ
 }
