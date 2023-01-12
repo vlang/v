@@ -10,38 +10,15 @@ enum SqlExprSide {
 	right
 }
 
-enum SqlType {
-	sqlite3
-	mysql
-	psql
-	mssql
-	unknown
-}
-
 fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	conn := g.new_tmp_var()
 	g.writeln('')
 	g.writeln('// orm')
 	g.write('orm__Connection ${conn} = (orm__Connection){._')
-	mut fn_prefix := ''
-	typ := g.parse_db_type(node.db_expr)
-	match typ {
-		.sqlite3 {
-			fn_prefix = 'db__sqlite__DB'
-		}
-		.mysql {
-			fn_prefix = 'db__mysql__Connection'
-		}
-		.psql {
-			fn_prefix = 'db__pg__DB'
-		}
-		else {
-			verror('This database type `${typ}` is not implemented yet in orm') // TODO add better error
-		}
-	}
-	g.write('${fn_prefix} = &')
+	db_expr_ctype_name := g.typ(node.db_expr_type)
+	g.write('${db_expr_ctype_name} = &')
 	g.expr(node.db_expr)
-	g.writeln(', ._typ = _orm__Connection_${fn_prefix}_index};')
+	g.writeln(', ._typ = _orm__Connection_${db_expr_ctype_name}_index};')
 	for line in node.lines {
 		g.sql_stmt_line(line, conn, node.or_expr)
 	}
@@ -539,26 +516,13 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	g.writeln('')
 	g.writeln('// orm')
 	g.write('orm__Connection ${conn} = (orm__Connection){._')
-	mut fn_prefix := ''
-	typ := g.parse_db_type(node.db_expr)
-	match typ {
-		.sqlite3 {
-			fn_prefix = 'db__sqlite__DB'
-		}
-		.mysql {
-			fn_prefix = 'db__mysql__Connection'
-		}
-		.psql {
-			fn_prefix = 'db__pg__DB'
-		}
-		else {
-			verror('This database type `${typ}` is not implemented yet in orm') // TODO add better error
-		}
+	db_expr_type := g.get_db_type(node.db_expr) or {
+		verror('sql orm error - unknown db type for ${node.db_expr}')
 	}
-
-	g.write('${fn_prefix} = &')
+	db_expr_ctype_name := g.typ(db_expr_type)
+	g.write('${db_expr_ctype_name} = &')
 	g.expr(node.db_expr)
-	g.writeln(', ._typ = _orm__Connection_${fn_prefix}_index};')
+	g.writeln(', ._typ = _orm__Connection_${db_expr_ctype_name}_index};')
 	g.sql_select(node, conn, left, node.or_expr)
 }
 
@@ -831,54 +795,21 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 	}
 }
 
-fn (mut g Gen) parse_db_type(expr ast.Expr) SqlType {
+fn (mut g Gen) get_db_type(expr ast.Expr) ?ast.Type {
 	match expr {
 		ast.Ident {
 			if expr.info is ast.IdentVar {
-				return g.parse_db_from_type_string(g.table.get_final_type_name(expr.info.typ))
+				return g.table.unaliased_type(expr.info.typ)
 			}
 		}
 		ast.SelectorExpr {
-			return g.parse_db_from_type_string(g.table.get_final_type_name(expr.typ))
+			return g.table.unaliased_type(expr.typ)
 		}
 		else {
-			return .unknown
+			return none
 		}
 	}
-	return .unknown
-}
-
-fn (mut g Gen) parse_db_from_type_string(name string) SqlType {
-	match name {
-		'db.sqlite.DB' {
-			return .sqlite3
-		}
-		'db.mysql.Connection' {
-			return .mysql
-		}
-		'db.pg.DB' {
-			return .psql
-		}
-		'db.mssql.Connection' {
-			return .mssql
-		}
-		// TODO: remove these deprecated names, after 2023-07-01
-		'sqlite.DB' {
-			return .sqlite3
-		}
-		'mysql.Connection' {
-			return .mysql
-		}
-		'pg.DB' {
-			return .psql
-		}
-		'mssql.Connection' {
-			return .mssql
-		}
-		else {
-			return .unknown
-		}
-	}
+	return none
 }
 
 fn (mut g Gen) get_table_name(table_expr ast.TypeNode) string {
