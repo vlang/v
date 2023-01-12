@@ -7,6 +7,10 @@ import io
 #flag darwin -I/opt/local/include/postgresql11
 #flag darwin -I/opt/homebrew/include
 #flag darwin -L/opt/homebrew/lib
+
+#flag darwin -I/opt/homebrew/opt/libpq/include
+#flag darwin -L/opt/homebrew/opt/libpq/lib
+
 #flag windows -I @VEXEROOT/thirdparty/pg/include
 #flag windows -L @VEXEROOT/thirdparty/pg/win64
 
@@ -24,7 +28,7 @@ import io
 
 pub struct DB {
 mut:
-	conn &C.PGconn = unsafe { nil }
+	conn voidptr = unsafe { nil }
 }
 
 pub struct Row {
