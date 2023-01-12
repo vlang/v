@@ -61,7 +61,7 @@ vlib/v/checker/tests/go_wait_or.vv:39:9: error: wait() returns an option, so it 
       |            ~~~~~~
    40 |     go g(3) or { panic('problem') }
    41 | }
-vlib/v/checker/tests/go_wait_or.vv:40:10: error: option handling cannot be done in `go` call. Do it when calling `.wait()`
+vlib/v/checker/tests/go_wait_or.vv:40:10: error: option handling cannot be done in `spawn` call. Do it when calling `.wait()`
    38 |     tg4.wait()
    39 |     tg4[0].wait()
    40 |     go g(3) or { panic('problem') }
