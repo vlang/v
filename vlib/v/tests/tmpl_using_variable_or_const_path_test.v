@@ -11,11 +11,11 @@ fn (s SomeThing) someval(what string) string {
 
 fn (s SomeThing) template_variable() string {
 	path := 'tmpl/template.in'
-	return $tmpl('tmpl/template.in')
+	return $tmpl(path)
 }
 
 fn (s SomeThing) template_const() string {
-	return $tmpl('tmpl/template.in')
+	return $tmpl(template_path)
 }
 
 fn test_tmpl_with_variable_path() {

@@ -1880,7 +1880,7 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 		if node.method_name == 'html' {
 			f.write('\$vweb.html()')
 		} else {
-			f.write("\$tmpl('${node.args_var}')")
+			f.write('\$tmpl(${node.args[0].expr})')
 		}
 	} else {
 		if node.is_embed {
