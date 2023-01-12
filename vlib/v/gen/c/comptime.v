@@ -387,14 +387,15 @@ fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 			return g.unwrap_generic(cond.typ)
 		}
 		ast.SelectorExpr {
-			if g.inside_comptime_for_field && cond.expr is ast.Ident
-				&& (cond.expr as ast.Ident).name == g.comptime_for_field_var && cond.field_name == 'typ' {
-				return g.comptime_for_field_type
-			} else if cond.typ != 0 {
-				return g.unwrap_generic(cond.typ)
+			if cond.gkind_field == .typ {
+				return g.unwrap_generic(cond.name_type)
 			} else {
 				name := '${cond.expr}.${cond.field_name}'
-				return g.comptime_var_type_map[name]
+				if name in g.comptime_var_type_map {
+					return g.comptime_var_type_map[name]
+				} else {
+					return g.unwrap_generic(cond.typ)
+				}
 			}
 		}
 		else {
