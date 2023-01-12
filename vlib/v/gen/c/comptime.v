@@ -467,7 +467,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 								return !is_true, true
 							}
 						} else {
-							got_type := (cond.right as ast.TypeNode).typ
+							got_type := g.unwrap_generic((cond.right as ast.TypeNode).typ)
 							got_sym := g.table.sym(got_type)
 
 							if got_sym.kind == .interface_ && got_sym.info is ast.Interface {
