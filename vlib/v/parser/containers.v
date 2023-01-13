@@ -29,7 +29,12 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		line_nr := p.tok.line_nr
 		p.next()
 		// []string
-		if p.tok.kind in [.name, .amp, .lsbr, .question, .key_shared] && p.tok.line_nr == line_nr {
+		if p.tok.kind in [.name, .amp, .lsbr, .question, .key_shared, .lpar]
+			&& p.tok.line_nr == line_nr {
+			has_lpar := p.tok.kind == .lpar // [](type)
+			if has_lpar {
+				p.next()
+			}
 			elem_type_pos = p.tok.pos()
 			elem_type = p.parse_type()
 			// this is set here because it's a known type, others could be the
@@ -41,6 +46,9 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 				array_type = ast.new_type(idx)
 			}
 			has_type = true
+			if has_lpar {
+				p.check(.rpar)
+			}
 		}
 		last_pos = p.tok.pos()
 	} else {
