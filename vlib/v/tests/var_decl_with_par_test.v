@@ -2,13 +2,15 @@ struct Struc {}
 
 type StrucOpt = ?Struc
 
+// vfmt off
 struct StrucContainer {
-	a []?Struc
+	a [](?Struc)
 	b []?Struc
 	c ?[]Struc
-	d []?Struc = []?Struc{}
+	d [](?Struc) = [](?Struc){}
 	e []?Struc = []?Struc{}
 }
+// vfmt on
 
 fn test_par_decl_types() {
 	a := []?Struc{}
