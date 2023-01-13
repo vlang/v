@@ -1014,7 +1014,7 @@ fn (mut p Parser) go_expr() ast.GoExpr {
 	call_expr := if expr is ast.CallExpr {
 		expr
 	} else {
-		p.error_with_pos('expression in `go` must be a function call', expr.pos())
+		p.error_with_pos('expression in `spawn` must be a function call', expr.pos())
 		ast.CallExpr{
 			scope: p.scope
 		}
