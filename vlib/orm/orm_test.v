@@ -1,9 +1,9 @@
 // import os
 // import term
-// import mysql
-// import pg
+// import db.mysql
+// import db.pg
 import time
-import sqlite
+import db.sqlite
 
 struct Module {
 	id           int       [primary; sql: serial]

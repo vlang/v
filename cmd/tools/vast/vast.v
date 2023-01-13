@@ -1752,6 +1752,7 @@ fn (t Tree) sql_expr(node ast.SqlExpr) &Node {
 fn (t Tree) sql_stmt(node ast.SqlStmt) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('SqlStmt'))
+	obj.add_terse('db_expr_type', t.type_node(node.db_expr_type))
 	obj.add_terse('db_expr', t.expr(node.db_expr))
 	obj.add_terse('or_expr', t.or_expr(node.or_expr))
 	obj.add('pos', t.pos(node.pos))

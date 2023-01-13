@@ -1,4 +1,4 @@
-import sqlite
+import db.sqlite
 import mymodule { ModDbStruct }
 
 struct Customer {

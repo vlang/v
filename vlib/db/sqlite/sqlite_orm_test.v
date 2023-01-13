@@ -1,5 +1,5 @@
 import orm
-import sqlite
+import db.sqlite
 import time
 
 struct TestCustomSqlType {

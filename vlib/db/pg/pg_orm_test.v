@@ -1,7 +1,7 @@
 module main
 
 import orm
-import pg
+import db.pg
 import time
 
 struct TestCustomSqlType {
