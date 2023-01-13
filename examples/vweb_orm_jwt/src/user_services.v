@@ -26,6 +26,9 @@ fn (mut app App) service_add_user(username string, password string) ?User {
 
 	sql db {
 		insert user_model into User
+	} or {
+		eprintln(err)
+		return err
 	}
 
 	result := sql db {
