@@ -60,6 +60,7 @@ mut:
 	inside_generic_params     bool // indicates if parsing between `<` and `>` of a method/function
 	inside_receiver_param     bool // indicates if parsing the receiver parameter inside the first `(` and `)` of a method
 	inside_struct_field_decl  bool
+	inside_struct_attr_decl   bool
 	inside_map_init           bool
 	or_is_handled             bool       // ignore `or` in this expression
 	builtin_mod               bool       // are we in the `builtin` module?
@@ -1771,6 +1772,11 @@ fn (mut p Parser) attributes() {
 	}
 	if p.attrs.len == 0 {
 		p.error_with_pos('attributes cannot be empty', p.prev_tok.pos().extend(p.tok.pos()))
+		return
+	}
+	if p.inside_struct_attr_decl && p.tok.kind == .lsbr {
+		p.error_with_pos('multiple attributes should be in the same [], with ; separators',
+			p.prev_tok.pos().extend(p.tok.pos()))
 		return
 	}
 }
