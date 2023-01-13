@@ -164,7 +164,7 @@ jobs:
     timeout-minutes: 121
     env:
       VFLAGS: -cc clang
-      PKG_CONFIG_PATH: /usr/local/opt/openssl@3/lib/pkgconfig:/opt/homebrew/opt/openssl@3/lib/pkgconfig:/opt/homebrew/lib/pkgconfig
+      PKG_CONFIG_PATH: /usr/local/opt/pkgconfig:/usr/local/opt/libpq/lib/pkgconfig:/usr/local/opt/openssl@3/lib/pkgconfig:/opt/homebrew/lib/pkgconfig:/opt/homebrew/opt/libpq/lib/pkgconfig:/opt/homebrew/opt/openssl@3/lib/pkgconfig
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
@@ -172,9 +172,10 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-          brew install libpq postgresql openssl
-          export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
           echo "PKG_CONFIG_PATH is '$PKG_CONFIG_PATH'"
+          brew install libpq openssl
+          export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
+          echo "LIBRARY_PATH is '$LIBRARY_PATH'"
       - name: Build V
         run: make -j4 && ./v -cg -cstrict -o v cmd/v
       - name: Run sanitizers
@@ -185,6 +186,8 @@ jobs:
         run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
       - name: Test symlink
         run: ./v symlink
+      - name: Build vpm
+        run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
       #    - name: Set up pg database
       #      run: |
       #        pg_ctl -D /usr/local/var/postgres -l /usr/local/var/postgres/server.log start
@@ -238,8 +241,6 @@ jobs:
           ln -s $(pwd) ~/.vmodules/ui
           ../v examples/rectangles.v
           ## ../v run examples/build_examples.vsh
-      - name: Build vpm
-        run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
       - name: V self compilation with -usecache
         run: |
           unset VFLAGS

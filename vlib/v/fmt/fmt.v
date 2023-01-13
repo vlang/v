@@ -285,16 +285,23 @@ pub fn (mut f Fmt) short_module(name string) string {
 
 pub fn (mut f Fmt) mark_types_import_as_used(typ ast.Type) {
 	sym := f.table.sym(typ)
-	if sym.info is ast.Map {
-		map_info := sym.map_info()
-		f.mark_types_import_as_used(map_info.key_type)
-		f.mark_types_import_as_used(map_info.value_type)
-		return
-	}
-	if sym.info is ast.GenericInst {
-		for concrete_typ in sym.info.concrete_types {
-			f.mark_types_import_as_used(concrete_typ)
+	match sym.info {
+		ast.Map {
+			map_info := sym.map_info()
+			f.mark_types_import_as_used(map_info.key_type)
+			f.mark_types_import_as_used(map_info.value_type)
+			return
 		}
+		ast.Array, ast.ArrayFixed {
+			f.mark_types_import_as_used(sym.info.elem_type)
+			return
+		}
+		ast.GenericInst {
+			for concrete_typ in sym.info.concrete_types {
+				f.mark_types_import_as_used(concrete_typ)
+			}
+		}
+		else {}
 	}
 	name := sym.name.split('[')[0] // take `Type` from `Type[T]`
 	f.mark_import_as_used(name)
