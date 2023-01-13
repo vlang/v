@@ -47,6 +47,6 @@ gem install pg -- --with-pg-config=/opt/local/lib/postgresql[version number]/bin
 ##Getting Started with [PostgreSQL](https://www.postgresqltutorial.com/postgresql-getting-started)
 
 Read this section to learn how to install and connect to PostgreSQL
-*[Windows](https://www.postgresqltutorial.com/install-postgresql)*;
-*[Linux](https://www.postgresqltutorial.com/postgresql-getting-started/install-postgresql-linux)*;
-*[macOS](https://www.postgresqltutorial.com/postgresql-getting-started/install-postgresql-macos)*.
+[*Windows*](https://www.postgresqltutorial.com/install-postgresql);
+[*Linux*](https://www.postgresqltutorial.com/postgresql-getting-started/install-postgresql-linux);
+[*macOS*](https://www.postgresqltutorial.com/postgresql-getting-started/install-postgresql-macos).
