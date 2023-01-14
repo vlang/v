@@ -259,23 +259,25 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			} $else $if field.is_enum {
 				wr.write(int(val.$(field.name)).str().bytes())!
 			} $else $if field.is_alias {
-				match field.unaliased_typ {
-					typeof[string]().idx {
-						e.encode_string(value.str(), mut wr)!
-					}
-					typeof[bool]().idx, typeof[f32]().idx, typeof[f64]().idx, typeof[i8]().idx,
-					typeof[i16]().idx, typeof[int]().idx, typeof[i64]().idx, typeof[u8]().idx,
-					typeof[u16]().idx, typeof[u32]().idx, typeof[u64]().idx {
-						wr.write(value.str().bytes())!
-					}
-					typeof[[]byte]().idx, typeof[[]int]().idx {
-						// FIXME - error: could not infer generic type `U` in call to `encode_array`
-						// e.encode_array(value, level, mut wr)!
-					}
-					else {
-						e.encode_struct(value, level + 1, mut wr)!
-						// e.encode_value_with_level(value, level + 1, mut wr)!
-					}
+				$if field.unaliased_typ is string {
+					e.encode_string(value.str(), mut wr)!
+				} $else $if field.unaliased_typ is time.Time {
+					parsed_time := val.$(field.name) as time.Time
+					e.encode_string(parsed_time.format_rfc3339(), mut wr)!
+				} $else $if field.unaliased_typ in [bool, $Float, $Int] {
+					wr.write(value.str().bytes())!
+				}
+				// FIXME
+				// $else $if field.unaliased_typ is $Array {
+				// 	// e.encode_array(value, level + 1, mut wr)!
+				// } $else $if field.unaliased_typ is $Struct {
+				// 	// e.encode_struct(value, level + 1, mut wr)!
+				// } $else $if  field.unaliased_typ is $Enum {
+				// 	// wr.write(int(val.$(field.name)).str().bytes())!
+				// }
+				$else {
+					e.encode_struct(value, level + 1, mut wr)!
+					// return error('the alias ${typeof(val).name} cannot be encoded')
 				}
 			} $else {
 				return error('type ${typeof(val).name} cannot be array encoded')
