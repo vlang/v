@@ -660,7 +660,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 
 	if node.is_count {
 		g.writeln('*(${g.typ(node.typ)}*) ${tmp_left}.data = *((*(orm__Primitive*) array_get((*(Array_orm__Primitive*)array_get(${res}, 0)), 0))._int);')
-		if node.or_expr.kind == .block {
+		if node.or_expr.kind == .block || node.or_expr.kind == .absent {
 			g.indent--
 			g.writeln('}')
 		}
