@@ -829,7 +829,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, typ_str string, 
 		g.auto_fn_definitions << fn_builder.str()
 	}
 	fn_builder.writeln('static string indent_${str_fn_name}(${styp} it, int indent_count) {')
-	clean_struct_v_type_name := util.strip_main_name(typ_str)
+	clean_struct_v_type_name := if info.is_anon { 'struct ' } else { util.strip_main_name(typ_str) }
 	// generate ident / indent length = 4 spaces
 	if info.fields.len == 0 {
 		fn_builder.writeln('\treturn _SLIT("${clean_struct_v_type_name}{}");')
@@ -860,6 +860,8 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, typ_str string, 
 	}
 	fn_body.writeln('\tstring res = str_intp( ${(info.fields.len - field_skips.len) * 4 + 3}, _MOV((StrIntpData[]){')
 	fn_body.writeln('\t\t{_SLIT("${clean_struct_v_type_name}{\\n"), 0, {.d_c=0}},')
+
+	allow_circular := info.attrs.any(it.name == 'autostr' && it.arg == 'allowrecurse')
 	mut is_first := true
 	for i, field in info.fields {
 		// Skip `str:skip` fields
@@ -937,7 +939,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, typ_str string, 
 			}
 		}
 		// handle circular ref type of struct to the struct itself
-		if styp == field_styp {
+		if styp == field_styp && !allow_circular {
 			fn_body.write_string('${funcprefix}_SLIT("<circular>")')
 		} else {
 			// manage C charptr

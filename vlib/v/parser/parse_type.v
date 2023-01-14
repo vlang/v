@@ -434,9 +434,9 @@ pub fn (mut p Parser) parse_type() ast.Type {
 	}
 	// Anon structs
 	if p.tok.kind == .key_struct {
-		struct_decl := p.struct_decl(true)
+		p.anon_struct_decl = p.struct_decl(true)
 		// Find the registered anon struct type, it was registered above in `p.struct_decl()`
-		return p.table.find_type_idx(struct_decl.name)
+		return p.table.find_type_idx(p.anon_struct_decl.name)
 	}
 
 	language := p.parse_language()

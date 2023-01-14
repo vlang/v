@@ -551,7 +551,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 						} else {
 							.skip
 						}
-					} else if cond.left in [ast.SelectorExpr, ast.TypeNode] {
+					} else if cond.left in [ast.Ident, ast.SelectorExpr, ast.TypeNode] {
 						// `$if method.@type is string`
 						c.expr(cond.left)
 						return .unknown

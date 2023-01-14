@@ -467,6 +467,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					expr_type = c.check_expr_opt_call(field.expr, expr_type)
 				}
 				expr_type_sym := c.table.sym(expr_type)
+				if field_type_sym.kind == .voidptr && expr_type_sym.kind == .struct_
+					&& !expr_type.is_ptr() {
+					c.error('allocate on the heap for use in other functions', field.pos)
+				}
 				if field_type_sym.kind == .interface_ {
 					if c.type_implements(expr_type, field_info.typ, field.pos) {
 						if !c.inside_unsafe && expr_type_sym.kind != .interface_

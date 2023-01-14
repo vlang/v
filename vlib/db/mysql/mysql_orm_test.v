@@ -1,5 +1,5 @@
 import orm
-import mysql
+import db.mysql
 import time
 
 struct TestCustomSqlType {

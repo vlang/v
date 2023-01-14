@@ -1,4 +1,4 @@
-import sqlite
+import db.sqlite
 
 fn main() {
 	db := sqlite.connect(':memory:')!

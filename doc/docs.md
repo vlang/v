@@ -4715,7 +4715,7 @@ V's ORM provides a number of benefits:
     then manually construct objects from the parsed results.)
 
 ```v
-import sqlite
+import db.sqlite
 
 // sets a custom table name. Default is struct name (case-sensitive)
 [table: 'customers']
