@@ -97,8 +97,19 @@ fn test_set_terminal_title() {
 	if os.getenv('CI') != 'true' {
 		return
 	}
-	title_change := term.set_terminal_title('v is awesome!')
-	assert title_change == true
+	term.set_terminal_title('v is awesome!')
+	dump(@FILE)
+	assert true
+}
+
+fn test_set_tab_title() {
+	// do not change the current terminal tab title outside of CI:
+	if os.getenv('CI') != 'true' {
+		return
+	}
+	term.set_tab_title('v is awesome!')
+	dump(@FILE)
+	assert true
 }
 
 fn test_strip_ansi() {

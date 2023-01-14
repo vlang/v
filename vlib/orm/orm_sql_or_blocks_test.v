@@ -1,5 +1,5 @@
 import os
-import sqlite
+import db.sqlite
 
 struct User {
 	id   i64    [primary; sql: serial]

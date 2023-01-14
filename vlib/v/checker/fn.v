@@ -1326,7 +1326,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	} else {
 		'unknown method or field: `${left_sym.name}.${method_name}`'
 	}
-	if left_type.has_flag(.option) {
+	if left_type.has_flag(.option) && method_name != 'str' {
 		c.error('option type cannot be called directly', node.left.pos())
 		return ast.void_type
 	} else if left_type.has_flag(.result) {
@@ -1958,19 +1958,19 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 	ret_type := c.call_expr(mut node.call_expr)
 	if node.call_expr.or_block.kind != .absent {
-		c.error('option handling cannot be done in `go` call. Do it when calling `.wait()`',
+		c.error('option handling cannot be done in `spawn` call. Do it when calling `.wait()`',
 			node.call_expr.or_block.pos)
 	}
 	// Make sure there are no mutable arguments
 	for arg in node.call_expr.args {
 		if arg.is_mut && !arg.typ.is_ptr() {
-			c.error('function in `go` statement cannot contain mutable non-reference arguments',
+			c.error('function in `spawn` statement cannot contain mutable non-reference arguments',
 				arg.expr.pos())
 		}
 	}
 	if node.call_expr.is_method && node.call_expr.receiver_type.is_ptr()
 		&& !node.call_expr.left_type.is_ptr() {
-		c.error('method in `go` statement cannot have non-reference mutable receiver',
+		c.error('method in `spawn` statement cannot have non-reference mutable receiver',
 			node.call_expr.left.pos())
 	}
 

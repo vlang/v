@@ -1,4 +1,4 @@
-import mysql
+import db.mysql
 
 fn main() {
 	mut conn := mysql.Connection{

@@ -712,6 +712,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 
 	fn_builder.writeln('\tlet res = /*struct name*/new string("${clean_struct_v_type_name}{\\n")')
 
+	allow_circular := info.attrs.any(it.name == 'autostr' && it.arg == 'allowrecurse')
 	for i, field in info.fields {
 		mut ptr_amp := if field.typ.is_ptr() { '&' } else { '' }
 		mut prefix := ''
@@ -758,7 +759,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 			}
 		}
 		// handle circular ref type of struct to the struct itself
-		if styp == field_styp {
+		if styp == field_styp && !allow_circular {
 			fn_builder.write_string('res.str += new string("<circular>")')
 		} else {
 			// manage C charptr

@@ -2,7 +2,7 @@ module main
 
 import vweb
 import time
-import sqlite
+import db.sqlite
 import json
 
 struct App {

@@ -15,10 +15,27 @@ const voptions = ' -skip-unused -show-timings -stats '
 
 const fast_dir = os.dir(@FILE)
 
+const fast_log_path = os.join_path(fast_dir, 'fast.log')
+
 const vdir = os.dir(os.dir(os.dir(fast_dir)))
 
 fn elog(msg string) {
-	eprintln('${time.now().format_ss_micro()} ${msg}')
+	line := '${time.now().format_ss_micro()} ${msg}\n'
+	if mut f := os.open_append(fast_log_path) {
+		f.write_string(line) or {}
+		f.close()
+	}
+	eprint(line)
+}
+
+fn lsystem(cmd string) int {
+	elog('lsystem: ${cmd}')
+	return os.system(cmd)
+}
+
+fn lexec(cmd string) string {
+	elog('  lexec: ${cmd}')
+	return os.execute_or_exit(cmd).output.trim_right('\r\n')
 }
 
 fn main() {
@@ -48,7 +65,7 @@ fn main() {
 
 	if !os.args.contains('-noupdate') {
 		elog('Fetching updates...')
-		ret := os.system('${vdir}/v up')
+		ret := lsystem('${vdir}/v up')
 		if ret != 0 {
 			elog('failed to update V, exit_code: ${ret}')
 			return
@@ -56,7 +73,7 @@ fn main() {
 	}
 
 	// fetch the last commit's hash
-	commit := exec('git rev-parse HEAD')[..8]
+	commit := lexec('git rev-parse HEAD')[..8]
 	if os.exists('website/index.html') {
 		uploaded_index := os.read_file('website/index.html')!
 		if uploaded_index.contains('>${commit}<') {
@@ -69,8 +86,8 @@ fn main() {
 	}
 
 	os.chdir(vdir)!
-	message := exec('git log --pretty=format:"%s" -n1 ${commit}')
-	commit_date := exec('git log -n1 --pretty="format:%at" ${commit}')
+	message := lexec('git log --pretty=format:"%s" -n1 ${commit}')
+	commit_date := lexec('git log -n1 --pretty="format:%at" ${commit}')
 	date := time.unix(commit_date.i64())
 
 	elog('Benchmarking commit ${commit} , with commit message: "${message}", commit_date: ${commit_date}, date: ${date}')
@@ -84,17 +101,17 @@ fn main() {
 	} else {
 		elog('  Building vprod...')
 		if os.args.contains('-noprod') {
-			exec('./v -o vprod cmd/v') // for faster debugging
+			lexec('./v -o vprod cmd/v') // for faster debugging
 		} else {
-			exec('./v -o vprod -prod -prealloc cmd/v')
+			lexec('./v -o vprod -prod -prealloc cmd/v')
 		}
 	}
 
 	if !os.args.contains('-do-not-rebuild-caches') {
 		elog('clearing caches...')
 		// cache vlib modules
-		exec('${vdir}/v wipe-cache')
-		exec('${vdir}/v -o vwarm_caches -cc ${ccompiler_path} cmd/v')
+		lexec('${vdir}/v wipe-cache')
+		lexec('${vdir}/v -o vwarm_caches -cc ${ccompiler_path} cmd/v')
 	}
 
 	// measure
@@ -144,34 +161,27 @@ fn main() {
 	if os.args.contains('-upload') {
 		elog('uploading...')
 		os.chdir('website')!
-		os.execute_or_exit('git checkout gh-pages')
+		lexec('git checkout gh-pages')
 		os.mv('../index.html', 'index.html')!
-		os.system('git commit -am "update benchmark"')
-		os.system('git push origin gh-pages')
+		lsystem('git commit -am "update benchmark"')
+		lsystem('git push origin gh-pages')
 		elog('uploading done')
 	}
-}
-
-fn exec(s string) string {
-	e := os.execute_or_exit(s)
-	return e.output.trim_right('\r\n')
 }
 
 // measure returns milliseconds
 fn measure(cmd string, description string) int {
 	elog('  Measuring ${description}, warmups: ${warmup_samples}, samples: ${max_samples}, discard: ${discard_highest_samples}, with cmd: `${cmd}`')
 	for _ in 0 .. warmup_samples {
-		exec(cmd)
+		os.execute_or_exit(cmd)
 	}
 	mut runs := []int{}
 	for r in 0 .. max_samples {
-		print('  Sample ${r + 1:2}/${max_samples:2} ... ')
 		sw := time.new_stopwatch()
-		exec(cmd)
+		os.execute_or_exit(cmd)
 		sample := int(sw.elapsed().milliseconds())
 		runs << sample
-		println('${sample} ms')
-		flush_stdout()
+		elog('  Sample ${r + 1:2}/${max_samples:2} ... ${sample} ms')
 	}
 	runs.sort()
 	elog('   runs before discarding: ${runs}, avg: ${f64(arrays.sum(runs) or { 0 }) / runs.len:5.2f}')
@@ -189,21 +199,22 @@ fn measure_steps_minimal(vdir string) !(int, int, int, int, int) {
 	elog('measure_steps_minimal ${vdir}, samples: ${max_samples}')
 	mut scans, mut parses, mut checks, mut cgens, mut vliness := []int{}, []int{}, []int{}, []int{}, []int{}
 	for i in 0 .. max_samples {
-		scan, parse, check, cgen, vlines := measure_steps_one_sample(vdir)
+		scan, parse, check, cgen, vlines, cmd := measure_steps_one_sample(vdir)
 		scans << scan
 		parses << parse
 		checks << check
 		cgens << cgen
 		vliness << vlines
-		elog('    [${i:2}/${max_samples:2}] scan: ${scan} ms, min parse: ${parse} ms, min check: ${check} ms, min cgen: ${cgen} ms, min vlines: ${vlines} ms')
+		elog('    [${i:2}/${max_samples:2}] scan: ${scan} ms, min parse: ${parse} ms, min check: ${check} ms, min cgen: ${cgen} ms, min vlines: ${vlines} ms, cmd: ${cmd}')
 	}
 	scan, parse, check, cgen, vlines := arrays.min(scans)!, arrays.min(parses)!, arrays.min(checks)!, arrays.min(cgens)!, arrays.min(vliness)!
 	elog('measure_steps_minimal => min scan: ${scan} ms, min parse: ${parse} ms, min check: ${check} ms, min cgen: ${cgen} ms, min vlines: ${vlines} ms')
 	return scan, parse, check, cgen, vlines
 }
 
-fn measure_steps_one_sample(vdir string) (int, int, int, int, int) {
-	resp := os.execute_or_exit('${vdir}/vprod ${voptions} -o v.c cmd/v')
+fn measure_steps_one_sample(vdir string) (int, int, int, int, int, string) {
+	cmd := '${vdir}/vprod ${voptions} -o v.c cmd/v'
+	resp := os.execute_or_exit(cmd)
 
 	mut scan, mut parse, mut check, mut cgen, mut vlines := 0, 0, 0, 0, 0
 	lines := resp.output.split_into_lines()
@@ -238,5 +249,5 @@ fn measure_steps_one_sample(vdir string) (int, int, int, int, int) {
 			}
 		}
 	}
-	return scan, parse, check, cgen, vlines
+	return scan, parse, check, cgen, vlines, cmd
 }
