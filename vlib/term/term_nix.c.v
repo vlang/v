@@ -85,7 +85,7 @@ pub fn set_terminal_title(title string) bool {
 	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
 		return true
 	}
-	print('\033]0')
+	print('\033]30;')
 	print(title)
 	print('\007')
 	flush_stdout()
