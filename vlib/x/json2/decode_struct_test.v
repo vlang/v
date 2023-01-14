@@ -98,9 +98,15 @@ fn test_types() {
 
 fn test_array() {
 	assert json.decode[StructType[[]string]]('{}')! == StructType[[]string]{}
-	assert json.decode[StructType[[]string]]('{"val":[]}')! == StructType[[]string]{ val: [] }
-	assert json.decode[StructType[[]string]]('{"val":["0"]}')! == StructType[[]string]{ val: ['0'] }
-	assert json.decode[StructType[[]string]]('{"val":["1"]}')! == StructType[[]string]{ val: ['1'] }
+	assert json.decode[StructType[[]string]]('{"val":[]}')! == StructType[[]string]{
+		val: []
+	}
+	assert json.decode[StructType[[]string]]('{"val":["0"]}')! == StructType[[]string]{
+		val: ['0']
+	}
+	assert json.decode[StructType[[]string]]('{"val":["1"]}')! == StructType[[]string]{
+		val: ['1']
+	}
 
 	// assert json.encode(StructType[[]int]{}) == '{"val":[]}'
 	// assert json.encode(StructType[[]int]{ val: [] }) == '{"val":[]}'
