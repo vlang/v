@@ -131,8 +131,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			} else if skip_state == .skip {
 				c.skip_flags = true
 				skip_state = .unknown // Reset the value of `skip_state` for the next branch
-			} else if !is_comptime_type_is_expr && skip_state == .eval {
+			} else if skip_state == .eval {
 				found_branch = true // If a branch wasn't skipped, the rest must be
+				c.skip_flags = skip_state == .skip
 			}
 			if c.fn_level == 0 && c.pref.output_cross_c {
 				// do not skip any of the branches for top level `$if OS {`
