@@ -94,6 +94,17 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						} else {
 							.skip
 						}
+					} else if right is ast.ComptimeType && left is ast.Ident
+						&& (left as ast.Ident).info is ast.IdentVar {
+						is_comptime_type_is_expr = true
+						if var := left.scope.find_var(left.name) {
+							checked_type := c.unwrap_generic(var.typ)
+							skip_state = if c.table.is_comptime_type(checked_type, right as ast.ComptimeType) {
+								.eval
+							} else {
+								.skip
+							}
+						}
 					} else {
 						got_type := c.unwrap_generic((right as ast.TypeNode).typ)
 						sym := c.table.sym(got_type)
