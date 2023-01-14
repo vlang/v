@@ -168,7 +168,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			buf_len := val.$(field.name).str().len - 'Option()'.len
 			mut buf := []u8{cap: buf_len} //  the amount of memory space which has been reserved for elements, but not initialized or counted as elements.
 
-			buf = val.$(field.name) ?.str().bytes() // get the bytes from string
+			buf = val.$(field.name) ?.str()#[7..-1].bytes() // get the bytes from string
 
 			if !is_none {
 				e.encode_newline(level, mut wr)!
@@ -184,7 +184,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				}
 
 				$if field.typ is ?string {
-					e.encode_string(val.$(field.name) ?.str(), mut wr)!
+					e.encode_string(val.$(field.name) ?.str()#[8..-2], mut wr)!
 				} $else $if field.typ is ?bool || field.typ is ?f32 || field.typ is ?f64
 					|| field.typ is ?i8 || field.typ is ?i16 || field.typ is ?int
 					|| field.typ is ?i64 || field.typ is ?u8 || field.typ is ?u16
