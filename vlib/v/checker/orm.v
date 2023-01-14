@@ -119,7 +119,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 }
 
 fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
-	c.expr(node.db_expr)
+	node.db_expr_type = c.table.unaliased_type(c.expr(node.db_expr))
 	mut typ := ast.void_type
 	for mut line in node.lines {
 		a := c.sql_stmt_line(mut line)
@@ -128,9 +128,7 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
 		}
 	}
 	if node.or_expr.kind == .block {
-		for s in node.or_expr.stmts {
-			c.stmt(s)
-		}
+		c.stmts_ending_with_expression(node.or_expr.stmts)
 	}
 	return typ
 }

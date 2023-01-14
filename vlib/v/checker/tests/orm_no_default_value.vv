@@ -1,4 +1,4 @@
-import sqlite
+import db.sqlite
 
 struct Person {
 	id int [primary; sql: serial]

@@ -1732,11 +1732,12 @@ pub enum SqlStmtKind {
 
 pub struct SqlStmt {
 pub:
-	pos     token.Pos
 	db_expr Expr // `db` in `sql db {`
 	or_expr OrExpr
+	pos     token.Pos
 pub mut:
-	lines []SqlStmtLine
+	lines        []SqlStmtLine
+	db_expr_type Type // the type of the `db` in `sql db {`
 }
 
 pub struct SqlStmtLine {

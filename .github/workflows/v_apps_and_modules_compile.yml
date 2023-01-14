@@ -82,6 +82,8 @@ jobs:
         run: |
           echo "Install markdown"
           v install markdown
+          echo "Install pcre"
+          v install pcre
           echo "Clone Gitly"
           git clone https://github.com/vlang/gitly /tmp/gitly
           echo "Build Gitly"
