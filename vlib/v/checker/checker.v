@@ -3503,6 +3503,11 @@ fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 	return none
 }
 
+pub fn (mut c Checker) is_comptime_var(node ast.Expr) bool {
+	return c.inside_comptime_for_field && node is ast.Ident
+		&& (node as ast.Ident).info is ast.IdentVar && ((node as ast.Ident).obj as ast.Var).is_comptime_field
+}
+
 fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	typ := c.unwrap_generic(c.expr(node.expr))
 	typ_sym := c.table.sym(typ)
@@ -3511,6 +3516,14 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 		c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
 	}
 	if !(typ_sym.is_number() || ((c.inside_unsafe || c.pref.translated) && is_non_void_pointer)) {
+		if c.inside_comptime_for_field {
+			if c.is_comptime_var(node.expr) {
+				return c.comptime_fields_default_type
+			} else if node.expr is ast.ComptimeSelector {
+				return c.comptime_fields_default_type
+			}
+		}
+
 		typ_str := c.table.type_to_str(typ)
 		c.error('invalid operation: ${node.op.str()} (non-numeric type `${typ_str}`)',
 			node.pos)

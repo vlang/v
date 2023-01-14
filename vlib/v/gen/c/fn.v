@@ -864,40 +864,41 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 	if rec_type.has_flag(.shared_f) {
 		rec_type = rec_type.clear_flag(.shared_f).set_nr_muls(0)
 	}
-	if node.left is ast.ComptimeSelector {
-		key_str := g.get_comptime_selector_key_type(node.left)
+	left_node := if node.left is ast.PostfixExpr { node.left.expr } else { node.left }
+	if left_node is ast.ComptimeSelector {
+		key_str := g.get_comptime_selector_key_type(left_node)
 		if key_str != '' {
 			rec_type = g.comptime_var_type_map[key_str] or { rec_type }
-			g.gen_expr_to_string(node.left, rec_type)
+			g.gen_expr_to_string(left_node, rec_type)
 			return true
 		}
-	} else if node.left is ast.ComptimeCall {
-		if node.left.method_name == 'method' {
-			sym := g.table.sym(g.unwrap_generic(node.left.left_type))
+	} else if left_node is ast.ComptimeCall {
+		if left_node.method_name == 'method' {
+			sym := g.table.sym(g.unwrap_generic(left_node.left_type))
 			if m := sym.find_method(g.comptime_for_method) {
 				rec_type = m.return_type
-				g.gen_expr_to_string(node.left, rec_type)
+				g.gen_expr_to_string(left_node, rec_type)
 				return true
 			}
 		}
-	} else if node.left is ast.Ident {
-		if node.left.obj is ast.Var {
+	} else if left_node is ast.Ident {
+		if left_node.obj is ast.Var {
 			if g.comptime_var_type_map.len > 0 {
-				rec_type = node.left.obj.typ
-				g.gen_expr_to_string(node.left, rec_type)
+				rec_type = left_node.obj.typ
+				g.gen_expr_to_string(left_node, rec_type)
 				return true
-			} else if node.left.obj.smartcasts.len > 0 {
-				rec_type = g.unwrap_generic(node.left.obj.smartcasts.last())
+			} else if left_node.obj.smartcasts.len > 0 {
+				rec_type = g.unwrap_generic(left_node.obj.smartcasts.last())
 				cast_sym := g.table.sym(rec_type)
 				if cast_sym.info is ast.Aggregate {
 					rec_type = cast_sym.info.types[g.aggregate_type_idx]
 				}
-				g.gen_expr_to_string(node.left, rec_type)
+				g.gen_expr_to_string(left_node, rec_type)
 				return true
 			}
 		}
-	} else if node.left is ast.None {
-		g.gen_expr_to_string(node.left, ast.none_type)
+	} else if left_node is ast.None {
+		g.gen_expr_to_string(left_node, ast.none_type)
 		return true
 	}
 	g.get_str_fn(rec_type)
