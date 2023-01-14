@@ -174,7 +174,7 @@ fn opt[T](v T) ?T {
 	return none
 }
 
-fn test_optional() {
+fn test_option() {
 	s := opt('hi') or { '' }
 	assert s == 'hi'
 	i := opt(5) or { 0 }

@@ -2,13 +2,27 @@ module pg
 
 import io
 
-#flag -lpq
-#flag linux -I/usr/include/postgresql
-#flag darwin -I/opt/local/include/postgresql11
-#flag darwin -I/opt/homebrew/include
-#flag darwin -L/opt/homebrew/lib
-#flag windows -I @VEXEROOT/thirdparty/pg/include
-#flag windows -L @VEXEROOT/thirdparty/pg/win64
+$if $pkgconfig('libpq') {
+	#pkgconfig --cflags --libs libpq
+} $else {
+	#flag -lpq
+	#flag linux -I/usr/include/postgresql
+
+	#flag darwin -I/opt/local/include/postgresql11
+	#flag darwin -L/opt/local/lib/postgresql11
+
+	#flag darwin -I/usr/local/opt/libpq/include
+	#flag darwin -L/usr/local/opt/libpq/lib
+
+	#flag darwin -I/opt/homebrew/include
+	#flag darwin -L/opt/homebrew/lib
+
+	#flag darwin -I/opt/homebrew/opt/libpq/include
+	#flag darwin -L/opt/homebrew/opt/libpq/lib
+
+	#flag windows -I @VEXEROOT/thirdparty/pg/include
+	#flag windows -L @VEXEROOT/thirdparty/pg/win64
+}
 
 // PostgreSQL Source Code
 // https://doxygen.postgresql.org/libpq-fe_8h.html
@@ -24,7 +38,7 @@ import io
 
 pub struct DB {
 mut:
-	conn &C.PGconn = unsafe { nil }
+	conn voidptr = unsafe { nil }
 }
 
 pub struct Row {

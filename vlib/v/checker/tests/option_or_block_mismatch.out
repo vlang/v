@@ -1,0 +1,13 @@
+vlib/v/checker/tests/option_or_block_mismatch.vv:10:18: error: wrong return type `Bar` in the `or {}` block, expected `&Bar`
+    8 |
+    9 | fn main() {
+   10 |     x := foo() or { Bar{} }
+      |                     ~~~~~
+   11 |     println(x)
+   12 |
+vlib/v/checker/tests/option_or_block_mismatch.vv:13:13: error: the default expression type in the `or` block should be `&Bar`, instead you gave a value of type `Bar`
+   11 |     println(x)
+   12 |
+   13 |     foo() or { Bar{} }
+      |                ~~~~~
+   14 | }

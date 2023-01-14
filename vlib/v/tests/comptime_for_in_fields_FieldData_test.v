@@ -6,6 +6,12 @@ struct Abc {
 	name string
 }
 
+enum JobTitle {
+	manager
+	executive
+	worker
+}
+
 struct Complex {
 	s        string
 	i        int
@@ -26,7 +32,7 @@ struct Complex {
 	o_i        ?int
 	o_ch_i     ?chan int = chan int{cap: 10}
 	o_my_alias ?MyInt    = 123
-	// o_atomic_i ?atomic int // TODO: cgen error, but should be probably a checker one, since optional atomics do not make sense
+	// o_atomic_i ?atomic int // TODO: cgen error, but should be probably a checker one, since option atomics do not make sense
 	o_pointer1_i ?&int   = unsafe { nil }
 	o_pointer2_i ?&&int  = unsafe { nil }
 	o_pointer3_i ?&&&int = unsafe { nil }
@@ -35,6 +41,7 @@ struct Complex {
 	o_map_i            ?map[int]int
 	o_my_struct        ?Abc
 	o_my_struct_shared ?shared Abc
+	jobtitle_enum      JobTitle
 }
 
 fn test_is_shared() {
@@ -57,12 +64,12 @@ fn test_is_atomic() {
 	}
 }
 
-fn test_is_optional() {
+fn test_is_option() {
 	$for f in Complex.fields {
 		if f.name.starts_with('o_') {
-			assert f.is_optional, 'Complex.${f.name} should have f.is_optional set'
+			assert f.is_option, 'Complex.${f.name} should have f.is_option set'
 		} else {
-			assert !f.is_optional, 'Complex.${f.name} should NOT have f.is_optional set'
+			assert !f.is_option, 'Complex.${f.name} should NOT have f.is_option set'
 		}
 	}
 }
@@ -113,6 +120,16 @@ fn test_is_alias() {
 			assert f.is_alias, 'Complex.${f.name} should have f.is_alias set'
 		} else {
 			assert !f.is_alias, 'Complex.${f.name} should NOT have f.is_alias set'
+		}
+	}
+}
+
+fn test_is_enum() {
+	$for f in Complex.fields {
+		if f.name.contains('_enum') {
+			assert f.is_enum, 'Complex.${f.name} should have f.is_enum set'
+		} else {
+			assert !f.is_enum, 'Complex.${f.name} should NOT have f.is_enum set'
 		}
 	}
 }

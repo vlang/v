@@ -1,19 +1,29 @@
 module sgl
 
 import sokol.gfx
+import sokol.memory
 
-pub const (
-	version = gfx.version + 1
-	context = Context{0x00010001} // C.SGL_DEFAULT_CONTEXT = { 0x00010001 }
-)
+pub const version = gfx.version + 1
+
+pub const context = Context{0x00010001} // C.SGL_DEFAULT_CONTEXT = { 0x00010001 }
 
 // setup/shutdown/misc
-[inline]
 pub fn setup(desc &Desc) {
+	if desc.allocator.alloc == unsafe { nil } && desc.allocator.free == unsafe { nil } {
+		unsafe {
+			desc.allocator.alloc = memory.salloc
+			desc.allocator.free = memory.sfree
+			desc.allocator.user_data = voidptr(0x10000561)
+		}
+	}
+	if desc.logger.log_cb == unsafe { nil } {
+		unsafe {
+			desc.logger.log_cb = memory.slog
+		}
+	}
 	C.sgl_setup(desc)
 }
 
-[inline]
 pub fn shutdown() {
 	C.sgl_shutdown()
 }

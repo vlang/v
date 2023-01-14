@@ -107,7 +107,7 @@
 - `Option` and `Result` are now separate types: `?Foo` and `!Foo` respectively. Old code will continue working for 1 year and will result in a warning/hint.
 - Hundreds of new checks in the type checker.
 - All V's backends have been split up into separate processes.  As the result, building V got 26% faster.
-- Maps and arrays can now return optionals: `m[bad_key] or { ... }`, `if x := arr[key] { ... }`.
+- Maps and arrays can now return options: `m[bad_key] or { ... }`, `if x := arr[key] { ... }`.
 - `ustring` has been replaced with `[]rune` (works just like in Go).
 - Maps can now have non-string keys.
 - A new compiler pass for transforming the AST (doesn't slow the compiler too much, adds about 25ms to `v self`). It eliminates unreachable branches and performs other simple optimizations and transformations.
@@ -447,14 +447,14 @@ used in some industries.
 - `fn init()` for module initialization.
 - `a in [1, 2, 3]` optimization: no array gets allocated.
 - Raw strings: `s := r'hello\nworld'`.
-- `if a := func() { }` syntax for handling optionals.
+- `if a := func() { }` syntax for handling options.
 - f32/f64 comparison now uses machine epsilon by default.
 
 
 ## V 0.1.21
 *30 Sep 2019*
 
-- `none` keyword for optionals.
+- `none` keyword for options.
 - Solaris support.
 - All table lookup functions now use `none`.
 - varargs: `fn foo(bar int, params ...string) {`.
@@ -535,7 +535,7 @@ this backend.
 - `libcurl` dependency was removed from the `http` module.
 - All function arguments are now immutable by default (previously they could be
   modifed inside the function).
-- `http` functions now return optionals.
+- `http` functions now return options.
 - `sync.WaitGroup`.
 - `vweb` static files serving.
 - `crypto.rand` module.
@@ -629,8 +629,8 @@ this backend.
 ## V 0.1.12
 *4 Jul 2019*
 - V can finally compile itself on Windows (https://github.com/vlang/v#mingw-w64).
-- `os` module now uses optionals in all functions that return `File`.
-- Lots of bugs with optionals were fixed.
+- `os` module now uses options in all functions that return `File`.
+- Lots of bugs with options were fixed.
 - `println` was optimized. It no longer results in allocations.
     Now it also works correctly with all integer types.
 - Lots of `vfmt` fixes, it will be enabled tomorrow.

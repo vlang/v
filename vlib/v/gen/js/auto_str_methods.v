@@ -22,8 +22,8 @@ fn (mut g JsGen) get_str_fn(typ ast.Type) string {
 		}
 	}
 
-	if typ.has_flag(.optional) {
-		unwrapped.set_flag(.optional)
+	if typ.has_flag(.option) {
+		unwrapped.set_flag(.option)
 	}
 	styp := g.typ(unwrapped)
 	mut sym := g.table.sym(unwrapped)
@@ -47,7 +47,7 @@ fn (mut g JsGen) final_gen_str(typ StrType) {
 	}
 	g.generated_str_fns << typ
 	sym := g.table.sym(typ.typ)
-	if sym.has_method('str') && !typ.typ.has_flag(.optional) {
+	if sym.has_method('str') && !typ.typ.has_flag(.option) {
 		return
 	}
 	styp := typ.styp
@@ -55,7 +55,7 @@ fn (mut g JsGen) final_gen_str(typ StrType) {
 		return
 	}
 	str_fn_name := styp_to_str_fn_name(styp)
-	if typ.typ.has_flag(.optional) {
+	if typ.typ.has_flag(.option) {
 		g.gen_str_for_option(typ.typ, styp, str_fn_name)
 		return
 	}
@@ -217,7 +217,7 @@ fn (mut g JsGen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name st
 }
 
 fn (mut g JsGen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string) {
-	parent_type := typ.clear_flag(.optional)
+	parent_type := typ.clear_flag(.option)
 	sym := g.table.sym(parent_type)
 	sym_has_str_method, _, _ := sym.str_method_info()
 	parent_str_fn_name := g.get_str_fn(parent_type)
@@ -417,7 +417,7 @@ fn (mut g JsGen) fn_decl_str(info ast.FnType) string {
 		fn_str += ' !'
 	} else if info.func.return_type != ast.void_type {
 		x := util.strip_main_name(g.table.get_type_name(g.unwrap_generic(info.func.return_type)))
-		if info.func.return_type.has_flag(.optional) {
+		if info.func.return_type.has_flag(.option) {
 			fn_str += ' ?${x}'
 		} else {
 			fn_str += ' ${x}'
@@ -712,6 +712,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 
 	fn_builder.writeln('\tlet res = /*struct name*/new string("${clean_struct_v_type_name}{\\n")')
 
+	allow_circular := info.attrs.any(it.name == 'autostr' && it.arg == 'allowrecurse')
 	for i, field in info.fields {
 		mut ptr_amp := if field.typ.is_ptr() { '&' } else { '' }
 		mut prefix := ''
@@ -758,7 +759,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 			}
 		}
 		// handle circular ref type of struct to the struct itself
-		if styp == field_styp {
+		if styp == field_styp && !allow_circular {
 			fn_builder.write_string('res.str += new string("<circular>")')
 		} else {
 			// manage C charptr

@@ -12,7 +12,7 @@ const (
 	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
 		'compile_warn']
 	comptime_types           = ['Map', 'Array', 'Int', 'Float', 'Struct', 'Interface', 'Enum',
-		'Sumtype']
+		'Sumtype', 'Alias', 'Function']
 )
 
 pub fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
@@ -39,6 +39,12 @@ pub fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 		}
 		'Float' {
 			cty = .float
+		}
+		'Alias' {
+			cty = .alias
+		}
+		'Function' {
+			cty = .function
 		}
 		'Array' {
 			cty = .array
@@ -121,7 +127,18 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			pos: start_pos.extend(p.prev_tok.pos())
 		}
 	}
-	literal_string_param := if is_html { '' } else { p.tok.lit }
+	mut literal_string_param := if is_html { '' } else { p.tok.lit }
+	if p.tok.kind == .name {
+		if var := p.scope.find_var(p.tok.lit) {
+			if var.expr is ast.StringLiteral {
+				literal_string_param = var.expr.val
+			}
+		} else if var := p.table.global_scope.find_const(p.mod + '.' + p.tok.lit) {
+			if var.expr is ast.StringLiteral {
+				literal_string_param = var.expr.val
+			}
+		}
+	}
 	path_of_literal_string_param := literal_string_param.replace('/', os.path_separator)
 	mut arg := ast.CallArg{}
 	if !is_html {
@@ -186,6 +203,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 					is_vweb: true
 					method_name: method_name
 					args_var: literal_string_param
+					args: [arg]
 					pos: start_pos.extend(p.prev_tok.pos())
 				}
 			}
@@ -227,6 +245,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		vweb_tmpl: file
 		method_name: method_name
 		args_var: literal_string_param
+		args: [arg]
 		pos: start_pos.extend(p.prev_tok.pos())
 	}
 }

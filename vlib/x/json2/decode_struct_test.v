@@ -31,7 +31,7 @@ mut:
 	val T
 }
 
-struct StructTypeOptional[T] {
+struct StructTypeOption[T] {
 mut:
 	val ?T
 }

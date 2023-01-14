@@ -17,7 +17,7 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 			for right in node.inc.right {
 				if right is ast.CallExpr {
 					if right.or_block.stmts.len > 0 {
-						c.error('optionals are not allowed in `for statement increment` (yet)',
+						c.error('options are not allowed in `for statement increment` (yet)',
 							right.pos)
 					}
 				}
@@ -98,8 +98,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				c.error('a struct must have a `next()` method to be an iterator', node.cond.pos())
 				return
 			}
-			if !next_fn.return_type.has_flag(.optional) {
-				c.error('iterator method `next()` must return an optional', node.cond.pos())
+			if !next_fn.return_type.has_flag(.option) {
+				c.error('iterator method `next()` must return an option', node.cond.pos())
 			}
 			return_sym := c.table.sym(next_fn.return_type)
 			if return_sym.kind == .multi_return {
@@ -109,7 +109,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			if next_fn.params.len != 1 {
 				c.error('iterator method `next()` must have 0 parameters', node.cond.pos())
 			}
-			mut val_type := next_fn.return_type.clear_flag(.optional).clear_flag(.result)
+			mut val_type := next_fn.return_type.clear_flag(.option).clear_flag(.result)
 			if node.val_is_mut {
 				val_type = val_type.ref()
 			}

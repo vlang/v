@@ -87,7 +87,7 @@ fn main() {
 
 // vet_file vets the file read from `path`.
 fn (mut vt Vet) vet_file(path string) {
-	if path.contains('/tests/') && !vt.opt.is_force {
+	if !vt.opt.is_force && (path.contains('/tests/') || path.contains('/slow_tests/')) {
 		// skip all /tests/ files, since usually their content is not
 		// important enough to be documented/vetted, and they may even
 		// contain intentionally invalid code.

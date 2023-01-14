@@ -16,7 +16,7 @@ fn test_array_with_it() {
 	assert a4 == [5, 4, 3, 2, 1]
 }
 
-fn test_array_init_with_optional() {
+fn test_array_init_with_option() {
 	input := [3.1, 1.1]
 	arr := []f64{len: 3, init: input[it] or { 0.0 }}
 	println(arr)

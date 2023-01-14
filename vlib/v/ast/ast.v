@@ -126,6 +126,8 @@ pub enum ComptimeTypeKind {
 	array
 	sum_type
 	enum_
+	alias
+	function
 }
 
 pub struct ComptimeType {
@@ -144,6 +146,8 @@ pub fn (cty ComptimeType) str() string {
 		.array { '\$Array' }
 		.sum_type { '\$Sumtype' }
 		.enum_ { '\$Enum' }
+		.alias { '\$Alias' }
+		.function { '\$Function' }
 	}
 }
 
@@ -296,7 +300,7 @@ pub struct StructField {
 pub:
 	pos              token.Pos
 	type_pos         token.Pos
-	optional_pos     token.Pos
+	option_pos       token.Pos
 	comments         []Comment
 	i                int
 	has_default_expr bool
@@ -791,7 +795,7 @@ pub mut:
 	is_mut      bool
 	is_static   bool
 	is_volatile bool
-	is_optional bool
+	is_option   bool
 	share       ShareType
 }
 
@@ -1728,11 +1732,12 @@ pub enum SqlStmtKind {
 
 pub struct SqlStmt {
 pub:
-	pos     token.Pos
 	db_expr Expr // `db` in `sql db {`
 	or_expr OrExpr
+	pos     token.Pos
 pub mut:
-	lines []SqlStmtLine
+	lines        []SqlStmtLine
+	db_expr_type Type // the type of the `db` in `sql db {`
 }
 
 pub struct SqlStmtLine {

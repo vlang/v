@@ -182,7 +182,7 @@ Add a SQLite handle to `App`:
 
 ```v oksyntax
 // blog.v
-import sqlite
+import db.sqlite
 import vweb
 
 struct App {

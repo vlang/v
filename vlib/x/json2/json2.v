@@ -25,60 +25,44 @@ pub fn decode_array[U](val []U) !T {
 // decode is a generic function that decodes a JSON string into the target type.
 pub fn decode[T](src string) !T {
 	mut typ := T{}
-	$if T is $Struct {
-		res := raw_decode(src)!.as_map()
-		$for field in T.fields {
-			// convert Any to type
-			$if !field.is_optional {
-				$if field.typ is u8 {
-					typ.$(field.name) = u8(res[field.name]!.u64())
-				} $else $if field.typ is u16 {
-					typ.$(field.name) = u16(res[field.name]!.u64())
-				} $else $if field.typ is u32 {
-					typ.$(field.name) = u32(res[field.name]!.u64())
-				} $else $if field.typ is u64 {
-					typ.$(field.name) = res[field.name]!.u64()
-				} $else $if field.typ is int {
-					typ.$(field.name) = res[field.name]!.int()
-				} $else $if field.typ is i8 {
-					typ.$(field.name) = i8(res[field.name]!.i64())
-				} $else $if field.typ is i16 {
-					typ.$(field.name) = i16(res[field.name]!.i64())
-				} $else $if field.typ is i32 {
-					// typ.$(field.name) = res[field.name]!.i32()
-				} $else $if field.typ is i64 {
-					typ.$(field.name) = res[field.name]!.i64()
-				} $else $if field.typ is f32 {
-					typ.$(field.name) = res[field.name]!.f32()
-				} $else $if field.typ is f64 {
-					typ.$(field.name) = res[field.name]!.f64()
-				} $else $if field.typ is bool {
-					typ.$(field.name) = res[field.name]!.bool()
-				} $else $if field.typ is string {
-					typ.$(field.name) = res[field.name]!.str()
-				} $else $if field.typ is time.Time {
-					typ.$(field.name) = res[field.name]!.to_time()!
-				} $else $if field.is_struct {
-					
-				} $else $if field.is_array {
-					mut ju := []Any{}// res[field.name] or {[]Any{}}
-					ju = res[field.name] or {[]Any{}}.arr()
-					// println(ju)
-					// println(ju.len)
-					for variable in ju {
-						typ.$(field.name) << "banana"
-						println(variable)
-					}
-				} $else $if field.is_map {
-					
-				} $else $if field.is_alias {
-					
-				} $else {
-					return error("The type `${T.name}` can't be decoded. Please open an issue at https://github.com/vlang/v/issues/new/choose")
-				}
-			} $else {
-				return error("Optional field decode is not supported, yet.")
-			}
+	$for field in T.fields {
+		$if field.typ is u8 {
+			typ.$(field.name) = u8(res[field.name]!.u64())
+		} $else $if field.typ is u16 {
+			typ.$(field.name) = u16(res[field.name]!.u64())
+		} $else $if field.typ is u32 {
+			typ.$(field.name) = u32(res[field.name]!.u64())
+		} $else $if field.typ is u64 {
+			typ.$(field.name) = res[field.name]!.u64()
+		} $else $if field.typ is int {
+			typ.$(field.name) = res[field.name]!.int()
+		} $else $if field.typ is i8 {
+			typ.$(field.name) = i8(res[field.name]!.i64())
+		} $else $if field.typ is i16 {
+			typ.$(field.name) = i16(res[field.name]!.i64())
+		} $else $if field.typ is i32 {
+			// typ.$(field.name) = res[field.name]!.i32()
+		} $else $if field.typ is i64 {
+			typ.$(field.name) = res[field.name]!.i64()
+		} $else $if field.typ is f32 {
+			typ.$(field.name) = res[field.name]!.f32()
+		} $else $if field.typ is f64 {
+			typ.$(field.name) = res[field.name]!.f64()
+		} $else $if field.typ is bool {
+			typ.$(field.name) = res[field.name]!.bool()
+		} $else $if field.typ is string {
+			typ.$(field.name) = res[field.name]!.str()
+		} $else $if field.typ is time.Time {
+			typ.$(field.name) = res[field.name]!.to_time()!
+		} $else $if field.is_array {
+			// typ.$(field.name) = res[field.name]!.arr()
+		} $else $if field.is_struct {
+		} $else $if field.is_enum {
+			typ.$(field.name) = res[field.name]!.int()
+		} $else $if field.is_alias {
+		} $else $if field.is_map {
+		} $else {
+			return error("The type of `${field.name}` can't be decoded. Please open an issue at https://github.com/vlang/v/issues/new/choose")
 		}
 	} $else {
 		return error("The type `${T.name}` can't be decoded.")

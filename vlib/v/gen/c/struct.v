@@ -305,7 +305,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			return true
 		}
 
-		if (field.typ.has_flag(.optional) && !field.default_expr_typ.has_flag(.optional))
+		if (field.typ.has_flag(.option) && !field.default_expr_typ.has_flag(.option))
 			|| (field.typ.has_flag(.result) && !field.default_expr_typ.has_flag(.result)) {
 			tmp_var := g.new_tmp_var()
 			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ,
@@ -314,7 +314,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 		}
 
 		g.expr(field.default_expr)
-	} else if field.typ.has_flag(.optional) {
+	} else if field.typ.has_flag(.option) {
 		tmp_var := g.new_tmp_var()
 		g.expr_with_tmp_var(ast.None{}, ast.none_type, field.typ, tmp_var)
 		return true
@@ -380,22 +380,22 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	if s.fields.len > 0 || s.embeds.len > 0 {
 		for field in s.fields {
 			// Some of these structs may want to contain
-			// optionals that may not be defined at this point
+			// options that may not be defined at this point
 			// if this is the case then we are going to
 			// buffer manip out in front of the struct
-			// write the optional in and then continue
-			// FIXME: for parallel cgen (two different files using the same optional in struct fields)
-			if field.typ.has_flag(.optional) {
+			// write the option in and then continue
+			// FIXME: for parallel cgen (two different files using the same option in struct fields)
+			if field.typ.has_flag(.option) {
 				// Dont use g.typ() here because it will register
-				// optional and we dont want that
-				styp, base := g.optional_type_name(field.typ)
-				lock g.done_optionals {
-					if base !in g.done_optionals {
-						g.done_optionals << base
+				// option and we dont want that
+				styp, base := g.option_type_name(field.typ)
+				lock g.done_options {
+					if base !in g.done_options {
+						g.done_options << base
 						last_text := g.type_definitions.after(start_pos).clone()
 						g.type_definitions.go_back_to(start_pos)
 						g.typedefs.writeln('typedef struct ${styp} ${styp};')
-						g.type_definitions.writeln('${g.optional_type_text(styp, base)};')
+						g.type_definitions.writeln('${g.option_type_text(styp, base)};')
 						g.type_definitions.write_string(last_text)
 					}
 				}
@@ -503,7 +503,7 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 				g.write('/* autoref */&')
 			}
 
-			if (sfield.expected_type.has_flag(.optional) && !sfield.typ.has_flag(.optional))
+			if (sfield.expected_type.has_flag(.option) && !sfield.typ.has_flag(.option))
 				|| (sfield.expected_type.has_flag(.result) && !sfield.typ.has_flag(.result)) {
 				tmp_var := g.new_tmp_var()
 				g.expr_with_tmp_var(sfield.expr, sfield.typ, sfield.expected_type, tmp_var)
