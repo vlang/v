@@ -18,9 +18,6 @@ pub fn fast_raw_decode(src string) !Any {
 	return p.decode()
 }
 
-pub fn decode_array[U](val []U) !T {
-}
-
 // decode is a generic function that decodes a JSON string into the target type.
 pub fn decode[T](src string) !T {
 	mut typ := T{}
@@ -82,6 +79,7 @@ pub fn decode[T](src string) !T {
 	return typ
 }
 
+// new_empty_element_from usefull for `$if new_empty_element_from(typ.$(field.name)) is $Struct`
 fn new_empty_element_from[T](t []T) T {
 	return T{}
 }
