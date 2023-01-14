@@ -320,7 +320,7 @@ fn map_from[T](t T) map[string]Any {
 				// TODO
 			} $else $if field.is_alias {
 				// TODO
-			} $else $if field.is_optional {
+			} $else $if field.is_option {
 				// TODO
 			} $else {
 				// TODO improve memory usage when convert
