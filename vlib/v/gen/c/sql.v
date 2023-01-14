@@ -649,6 +649,11 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 		g.or_block(tmp_left, node.or_expr, node.typ.set_flag(.result))
 		g.writeln('else {')
 		g.indent++
+	} else if node.or_expr.kind == .absent {
+		g.writeln('if (_o${res}.is_error) {')
+		g.writeln('\t_v_panic(IError_str(_o${res}.err));')
+		g.writeln('} else {')
+		g.indent++
 	}
 
 	g.writeln('Array_Array_orm__Primitive ${res} = (*(Array_Array_orm__Primitive*)_o${res}.data);')
@@ -784,7 +789,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 			g.write('_array')
 		}
 		g.writeln(';')
-		if node.or_expr.kind == .block {
+		if node.or_expr.kind == .block || node.or_expr.kind == .absent {
 			g.indent--
 			g.writeln('}')
 		}
