@@ -83,10 +83,16 @@ pub fn get_cursor_position() !Coord {
 	return res
 }
 
-// set_terminal_title change the terminal title
+// set_terminal_title changes the terminal title
 pub fn set_terminal_title(title string) bool {
-	title_change := C.SetConsoleTitle(title.to_wide())
-	return title_change
+	wide_title := title.to_wide()
+	return C.SetConsoleTitle(wide_title)
+}
+
+// set_tab_title changes the terminal *tab title*, for terminal emulators that do support several tabs
+pub fn set_tab_title(title string) bool {
+	// TODO: investigate, whether there is an API for changing just the tab title on windows yet.
+	return set_terminal_title(title)
 }
 
 // clear clears current terminal screen.
