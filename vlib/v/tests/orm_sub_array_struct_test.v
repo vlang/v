@@ -1,4 +1,4 @@
-import sqlite
+import db.sqlite
 
 struct Parent {
 	id       int     [primary; sql: serial]

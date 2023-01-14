@@ -36,7 +36,7 @@ pub fn (p FilePermission) bitmask() u32 {
 	return mask
 }
 
-struct FileMode {
+pub struct FileMode {
 pub:
 	typ    FileType
 	owner  FilePermission

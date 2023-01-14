@@ -1,4 +1,4 @@
-fn test_optional_void() {
+fn test_option_void() {
 	foo(22)?
 	assert true
 }

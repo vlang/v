@@ -60,6 +60,7 @@ mut:
 	inside_generic_params     bool // indicates if parsing between `<` and `>` of a method/function
 	inside_receiver_param     bool // indicates if parsing the receiver parameter inside the first `(` and `)` of a method
 	inside_struct_field_decl  bool
+	inside_struct_attr_decl   bool
 	inside_map_init           bool
 	or_is_handled             bool       // ignore `or` in this expression
 	builtin_mod               bool       // are we in the `builtin` module?
@@ -89,6 +90,7 @@ mut:
 	defer_vars                []ast.Ident
 	should_abort              bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
 	codegen_text              string
+	anon_struct_decl          ast.StructDecl
 	struct_init_generic_types []ast.Type
 	if_cond_comments          []ast.Comment
 	script_mode               bool
@@ -1772,6 +1774,11 @@ fn (mut p Parser) attributes() {
 		p.error_with_pos('attributes cannot be empty', p.prev_tok.pos().extend(p.tok.pos()))
 		return
 	}
+	if p.inside_struct_attr_decl && p.tok.kind == .lsbr {
+		p.error_with_pos('multiple attributes should be in the same [], with ; separators',
+			p.prev_tok.pos().extend(p.tok.pos()))
+		return
+	}
 }
 
 fn (mut p Parser) parse_attr() ast.Attr {
@@ -2483,7 +2490,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	} else {
 		false
 	}
-	is_optional := p.tok.kind == .question
+	is_option := p.tok.kind == .question
 	is_generic_call := p.is_generic_call()
 	is_generic_cast := p.is_generic_cast()
 	is_generic_struct_init := p.is_generic_struct_init()
@@ -2500,9 +2507,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			}
 		}
 	} else if p.peek_tok.kind == .lpar || is_generic_call || is_generic_cast
-		|| (is_optional && p.peek_token(2).kind == .lpar) {
+		|| (is_option && p.peek_token(2).kind == .lpar) {
 		// foo(), foo<int>() or type() cast
-		mut name := if is_optional { p.peek_tok.lit } else { p.tok.lit }
+		mut name := if is_option { p.peek_tok.lit } else { p.tok.lit }
 		if mod.len > 0 {
 			name = '${mod}.${name}'
 		}
@@ -2548,7 +2555,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			return node
 		} else {
 			// fn call
-			if is_optional {
+			if is_option {
 				p.unexpected_with_pos(p.prev_tok.pos(),
 					got: '${p.prev_tok}'
 				)
@@ -2629,7 +2636,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		if p.inside_in_array && ((lit0_is_capital && !known_var && language == .v)
 			|| (p.peek_tok.kind == .dot && p.peek_token(2).lit.len > 0
 			&& p.peek_token(2).lit[0].is_capital())
-			|| p.table.find_type_idx(p.mod + '.' + p.tok.lit) > 0) {
+			|| p.table.find_type_idx(p.mod + '.' + p.tok.lit) > 0
+			|| p.inside_comptime_if) {
 			type_pos := p.tok.pos()
 			typ := p.parse_type()
 			return ast.TypeNode{

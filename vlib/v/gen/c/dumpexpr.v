@@ -34,7 +34,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 				ident_expr := selector_expr.expr
 				if ident_expr.name == g.comptime_for_field_var && selector_expr.field_name == 'name' {
 					field, _ := g.get_comptime_selector_var_type(selector)
-					name = g.typ(g.unwrap_generic(field.typ.clear_flag(.shared_f).clear_flag(.optional).clear_flag(.result)))
+					name = g.typ(g.unwrap_generic(field.typ.clear_flag(.shared_f).clear_flag(.option).clear_flag(.result)))
 					expr_type = field.typ
 				}
 			}
@@ -51,7 +51,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		g.write('&')
 		g.expr(node.expr)
 		g.write('->val')
-	} else if expr_type.has_flag(.optional) || expr_type.has_flag(.result) {
+	} else if expr_type.has_flag(.option) || expr_type.has_flag(.result) {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
 		g.write('(*(${name}*)')
@@ -78,7 +78,7 @@ fn (mut g Gen) dump_expr_definitions() {
 		typ := ast.Type(dump_type)
 		is_ptr := typ.is_ptr()
 		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, dump_type)
-		to_string_fn_name := g.get_str_fn(typ.clear_flag(.shared_f).clear_flag(.optional).clear_flag(.result))
+		to_string_fn_name := g.get_str_fn(typ.clear_flag(.shared_f).clear_flag(.option).clear_flag(.result))
 		ptr_asterisk := if is_ptr { '*'.repeat(typ.nr_muls()) } else { '' }
 		mut str_dumparg_type := ''
 		if dump_sym.kind == .none_ {

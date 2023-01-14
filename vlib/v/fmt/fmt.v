@@ -48,6 +48,7 @@ pub mut:
 	in_lambda_depth    int
 	inside_const       bool
 	inside_unsafe      bool
+	inside_comptime_if bool
 	is_mbranch_expr    bool // match a { x...y { } }
 	fn_scope           &ast.Scope = unsafe { nil }
 	wsinfix_depth      int
@@ -284,16 +285,23 @@ pub fn (mut f Fmt) short_module(name string) string {
 
 pub fn (mut f Fmt) mark_types_import_as_used(typ ast.Type) {
 	sym := f.table.sym(typ)
-	if sym.info is ast.Map {
-		map_info := sym.map_info()
-		f.mark_types_import_as_used(map_info.key_type)
-		f.mark_types_import_as_used(map_info.value_type)
-		return
-	}
-	if sym.info is ast.GenericInst {
-		for concrete_typ in sym.info.concrete_types {
-			f.mark_types_import_as_used(concrete_typ)
+	match sym.info {
+		ast.Map {
+			map_info := sym.map_info()
+			f.mark_types_import_as_used(map_info.key_type)
+			f.mark_types_import_as_used(map_info.value_type)
+			return
 		}
+		ast.Array, ast.ArrayFixed {
+			f.mark_types_import_as_used(sym.info.elem_type)
+			return
+		}
+		ast.GenericInst {
+			for concrete_typ in sym.info.concrete_types {
+				f.mark_types_import_as_used(concrete_typ)
+			}
+		}
+		else {}
 	}
 	name := sym.name.split('[')[0] // take `Type` from `Type[T]`
 	f.mark_import_as_used(name)
@@ -730,6 +738,8 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 				.float { f.write('\$Float') }
 				.sum_type { f.write('\$Sumtype') }
 				.enum_ { f.write('\$Enum') }
+				.alias { f.write('\$Alias') }
+				.function { f.write('\$Function') }
 			}
 		}
 	}
@@ -1418,7 +1428,7 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 		ret_str := f.no_cur_mod(f.table.type_to_str_using_aliases(fn_info.return_type,
 			f.mod2alias))
 		f.write(' ${ret_str}')
-	} else if fn_info.return_type.has_flag(.optional) {
+	} else if fn_info.return_type.has_flag(.option) {
 		f.write(' ?')
 	} else if fn_info.return_type.has_flag(.result) {
 		f.write(' !')
@@ -1877,7 +1887,7 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 		if node.method_name == 'html' {
 			f.write('\$vweb.html()')
 		} else {
-			f.write("\$tmpl('${node.args_var}')")
+			f.write('\$tmpl(${node.args[0].expr})')
 		}
 	} else {
 		if node.is_embed {
@@ -1998,6 +2008,7 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 
 pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	dollar := if node.is_comptime { '$' } else { '' }
+	f.inside_comptime_if = node.is_comptime
 	mut is_ternary := node.branches.len == 2 && node.has_else
 		&& branch_is_single_line(node.branches[0]) && branch_is_single_line(node.branches[1])
 		&& (node.is_expr || f.is_assign || f.is_struct_init || f.single_line_fields)
@@ -2057,6 +2068,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	}
 	f.write('}')
 	f.single_line_if = false
+	f.inside_comptime_if = false
 	if node.post_comments.len > 0 {
 		f.writeln('')
 		f.comments(node.post_comments,
@@ -2118,7 +2130,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit
 		&& (node.right as ast.ArrayInit).exprs.len == 1
 	is_and := node.op == .amp && f.node_str(node.right).starts_with('&')
-	if is_one_val_array_init {
+	if is_one_val_array_init && !f.inside_comptime_if {
 		// `var in [val]` => `var == val`
 		op := if node.op == .key_in { ' == ' } else { ' != ' }
 		f.write(op)
@@ -2127,7 +2139,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	} else {
 		f.write(' ${node.op.str()} ')
 	}
-	if is_one_val_array_init {
+	if is_one_val_array_init && !f.inside_comptime_if {
 		// `var in [val]` => `var == val`
 		f.expr((node.right as ast.ArrayInit).exprs[0])
 	} else if is_and {

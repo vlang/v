@@ -131,7 +131,7 @@ pub fn (pool &PoolProcessor) get_result[T](idx int) T {
 pub fn (pool &PoolProcessor) get_results[T]() []T {
 	mut res := []T{cap: pool.results.len}
 	for i in 0 .. pool.results.len {
-		res << *(&T(pool.results[i]))
+		res << unsafe { *(&T(pool.results[i])) }
 	}
 	return res
 }

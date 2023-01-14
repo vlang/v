@@ -1,4 +1,4 @@
-import sqlite
+import db.sqlite
 
 struct VieterDb {
 	conn sqlite.DB

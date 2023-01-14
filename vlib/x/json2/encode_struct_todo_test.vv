@@ -11,7 +11,7 @@ mut:
 	val T
 }
 
-struct StructTypeOptional[T] {
+struct StructTypeOption[T] {
 mut:
 	val ?T
 }
@@ -21,16 +21,16 @@ mut:
 	val &T
 }
 
-fn test_optional_alias() {
-	assert json.encode(StructTypeOptional[BoolAlias]{ val: none }) == '{}'
-	assert json.encode(StructTypeOptional[BoolAlias]{}) == '{"val":false}'
-	assert json.encode(StructTypeOptional[BoolAlias]{ val: false }) == '{"val":false}'
-	assert json.encode(StructTypeOptional[BoolAlias]{ val: true }) == '{"val":true}'
+fn test_option_alias() {
+	assert json.encode(StructTypeOption[BoolAlias]{ val: none }) == '{}'
+	assert json.encode(StructTypeOption[BoolAlias]{}) == '{"val":false}'
+	assert json.encode(StructTypeOption[BoolAlias]{ val: false }) == '{"val":false}'
+	assert json.encode(StructTypeOption[BoolAlias]{ val: true }) == '{"val":true}'
 
-	assert json.encode(StructTypeOptional[IntAlias]{ val: none }) == '{}'
-	assert json.encode(StructTypeOptional[IntAlias]{}) == '{"val":0}'
-	assert json.encode(StructTypeOptional[IntAlias]{ val: 0 }) == '{"val":0}'
-	assert json.encode(StructTypeOptional[IntAlias]{ val: 1 }) == '{"val":1}'
+	assert json.encode(StructTypeOption[IntAlias]{ val: none }) == '{}'
+	assert json.encode(StructTypeOption[IntAlias]{}) == '{"val":0}'
+	assert json.encode(StructTypeOption[IntAlias]{ val: 0 }) == '{"val":0}'
+	assert json.encode(StructTypeOption[IntAlias]{ val: 1 }) == '{"val":1}'
 }
 
 fn test_sumtypes() {
@@ -46,17 +46,17 @@ fn test_sumtypes() {
 	assert json.encode(StructType[SumTypes]{ val: 1 }) == '{"val":1}'
 }
 
-fn test_optional_sumtypes() {
-	assert json.encode(StructTypeOptional[SumTypes]{}) == '{}' // REVIEW
+fn test_option_sumtypes() {
+	assert json.encode(StructTypeOption[SumTypes]{}) == '{}' // REVIEW
 
-	assert json.encode(StructTypeOptional[SumTypes]{ val: '' }) == '{"val":""}'
-	assert json.encode(StructTypeOptional[SumTypes]{ val: 'a' }) == '{"val":"a"}'
+	assert json.encode(StructTypeOption[SumTypes]{ val: '' }) == '{"val":""}'
+	assert json.encode(StructTypeOption[SumTypes]{ val: 'a' }) == '{"val":"a"}'
 
-	assert json.encode(StructTypeOptional[SumTypes]{ val: false }) == '{"val":false}'
-	assert json.encode(StructTypeOptional[SumTypes]{ val: true }) == '{"val":true}'
+	assert json.encode(StructTypeOption[SumTypes]{ val: false }) == '{"val":false}'
+	assert json.encode(StructTypeOption[SumTypes]{ val: true }) == '{"val":true}'
 
-	assert json.encode(StructTypeOptional[SumTypes]{ val: 0 }) == '{"val":0}'
-	assert json.encode(StructTypeOptional[SumTypes]{ val: 1 }) == '{"val":1}'
+	assert json.encode(StructTypeOption[SumTypes]{ val: 0 }) == '{"val":0}'
+	assert json.encode(StructTypeOption[SumTypes]{ val: 1 }) == '{"val":1}'
 }
 
 fn test_pointer() {
@@ -90,10 +90,10 @@ fn test_caos() {
 	assert json.encode(StructType[StructType[StringAlias]]{ val: typed_string_struct }) == 'TODO'
 	assert json.encode(StructType[StructType[SumTypes]]{ val: typed_string_struct }) == 'TODO'
 
-	assert json.encode(StructType[StructTypeOptional]{typed_string_struct}) == 'TODO'
-	assert json.encode(StructType[StructTypeOptional[string]]{ val: StructType{'a'} }) == 'TODO'
-	assert json.encode(StructType[StructTypeOptional[StringAlias]]{typed_string_struct}) == 'TODO'
-	assert json.encode(StructType[StructTypeOptional[SumTypes]]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructType[StructTypeOption]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructType[StructTypeOption[string]]{ val: StructType{'a'} }) == 'TODO'
+	assert json.encode(StructType[StructTypeOption[StringAlias]]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructType[StructTypeOption[SumTypes]]{typed_string_struct}) == 'TODO'
 
 	assert json.encode(StructType[StructTypePointer]{typed_string_struct}) == 'TODO'
 	assert json.encode(StructType[StructTypePointer[string]]{typed_string_struct}) == 'TODO'
@@ -101,20 +101,20 @@ fn test_caos() {
 	assert json.encode(StructType[StructTypePointer[SumTypes]]{typed_string_struct}) == 'TODO'
 
 	// StructTypeOptional
-	assert json.encode(StructTypeOptional[StructType]{}) == 'TODO'
-	assert json.encode(StructTypeOptional[StructType[string]]{ val: '' }) == 'TODO'
-	assert json.encode(StructTypeOptional[StructType[StringAlias]]{ val: '' }) == 'TODO'
-	assert json.encode(StructTypeOptional[StructType[SumTypes]]{ val: '' }) == 'TODO'
+	assert json.encode(StructTypeOption[StructType]{}) == 'TODO'
+	assert json.encode(StructTypeOption[StructType[string]]{ val: '' }) == 'TODO'
+	assert json.encode(StructTypeOption[StructType[StringAlias]]{ val: '' }) == 'TODO'
+	assert json.encode(StructTypeOption[StructType[SumTypes]]{ val: '' }) == 'TODO'
 
-	assert json.encode(StructTypeOptional[StructTypeOptional]{typed_string_struct}) == 'TODO'
-	assert json.encode(StructTypeOptional[StructTypeOptional[string]]{ val: StructType{'a'} }) == 'TODO'
-	assert json.encode(StructTypeOptional[StructTypeOptional[StringAlias]]{typed_string_struct}) == 'TODO'
-	assert json.encode(StructTypeOptional[StructTypeOptional[SumTypes]]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypeOption[StructTypeOption]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypeOption[StructTypeOption[string]]{ val: StructType{'a'} }) == 'TODO'
+	assert json.encode(StructTypeOption[StructTypeOption[StringAlias]]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypeOption[StructTypeOption[SumTypes]]{typed_string_struct}) == 'TODO'
 
-	assert json.encode(StructTypeOptional[StructTypePointer]{typed_string_struct}) == 'TODO'
-	assert json.encode(StructTypeOptional[StructTypePointer[string]]{typed_string_struct}) == 'TODO'
-	assert json.encode(StructTypeOptional[StructTypePointer[StringAlias]]{typed_string_struct}) == 'TODO'
-	assert json.encode(StructTypeOptional[StructTypePointer[SumTypes]]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypeOption[StructTypePointer]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypeOption[StructTypePointer[string]]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypeOption[StructTypePointer[StringAlias]]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypeOption[StructTypePointer[SumTypes]]{typed_string_struct}) == 'TODO'
 
 	// StructTypePointer
 	assert json.encode(StructTypePointer[StructType]{}) == 'TODO'
@@ -122,10 +122,10 @@ fn test_caos() {
 	assert json.encode(StructTypePointer[StructType[StringAlias]]{ val: '' }) == 'TODO'
 	assert json.encode(StructTypePointer[StructType[SumTypes]]{ val: '' }) == 'TODO'
 
-	assert json.encode(StructTypePointer[StructTypeOptional]{typed_string_struct}) == 'TODO'
-	assert json.encode(StructTypePointer[StructTypeOptional[string]]{ val: StructType{'a'} }) == 'TODO'
-	assert json.encode(StructTypePointer[StructTypeOptional[StringAlias]]{typed_string_struct}) == 'TODO'
-	assert json.encode(StructTypePointer[StructTypeOptional[SumTypes]]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypePointer[StructTypeOption]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypePointer[StructTypeOption[string]]{ val: StructType{'a'} }) == 'TODO'
+	assert json.encode(StructTypePointer[StructTypeOption[StringAlias]]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypePointer[StructTypeOption[SumTypes]]{typed_string_struct}) == 'TODO'
 
 	assert json.encode(StructTypePointer[StructTypePointer]{typed_string_struct}) == 'TODO'
 	assert json.encode(StructTypePointer[StructTypePointer[string]]{typed_string_struct}) == 'TODO'
@@ -144,10 +144,10 @@ fn test_caos_array() {
 	assert json.encode(StructType[[]StructType[StringAlias]]{ val: typed_string_struct }) == 'TODO'
 	assert json.encode(StructType[[]StructType[SumTypes]]{ val: typed_string_struct }) == 'TODO'
 
-	assert json.encode(StructType[[]StructTypeOptional]{typed_string_struct}) == 'TODO'
-	assert json.encode(StructType[[]StructTypeOptional[string]]{ val: StructType{'a'} }) == 'TODO'
-	assert json.encode(StructType[[]StructTypeOptional[StringAlias]]{typed_string_struct}) == 'TODO'
-	assert json.encode(StructType[[]StructTypeOptional[SumTypes]]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructType[[]StructTypeOption]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructType[[]StructTypeOption[string]]{ val: StructType{'a'} }) == 'TODO'
+	assert json.encode(StructType[[]StructTypeOption[StringAlias]]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructType[[]StructTypeOption[SumTypes]]{typed_string_struct}) == 'TODO'
 
 	assert json.encode(StructType[[]StructTypePointer]{typed_string_struct}) == 'TODO'
 	assert json.encode(StructType[[]StructTypePointer[string]]{typed_string_struct}) == 'TODO'
@@ -155,20 +155,20 @@ fn test_caos_array() {
 	assert json.encode(StructType[[]StructTypePointer[SumTypes]]{typed_string_struct}) == 'TODO'
 
 	// StructTypeOptional
-	assert json.encode(StructTypeOptional[[]StructType]{}) == 'TODO'
-	assert json.encode(StructTypeOptional[[]StructType[string]]{ val: '' }) == 'TODO'
-	assert json.encode(StructTypeOptional[[]StructType[StringAlias]]{ val: '' }) == 'TODO'
-	assert json.encode(StructTypeOptional[[]StructType[SumTypes]]{ val: '' }) == 'TODO'
+	assert json.encode(StructTypeOption[[]StructType]{}) == 'TODO'
+	assert json.encode(StructTypeOption[[]StructType[string]]{ val: '' }) == 'TODO'
+	assert json.encode(StructTypeOption[[]StructType[StringAlias]]{ val: '' }) == 'TODO'
+	assert json.encode(StructTypeOption[[]StructType[SumTypes]]{ val: '' }) == 'TODO'
 
-	assert json.encode(StructTypeOptional[[]StructTypeOptional]{typed_string_struct}) == 'TODO'
-	assert json.encode(StructTypeOptional[[]StructTypeOptional[string]]{ val: StructType{'a'} }) == 'TODO'
-	assert json.encode(StructTypeOptional[[]StructTypeOptional[StringAlias]]{typed_string_struct}) == 'TODO'
-	assert json.encode(StructTypeOptional[[]StructTypeOptional[SumTypes]]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypeOption[[]StructTypeOption]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypeOption[[]StructTypeOption[string]]{ val: StructType{'a'} }) == 'TODO'
+	assert json.encode(StructTypeOption[[]StructTypeOption[StringAlias]]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypeOption[[]StructTypeOption[SumTypes]]{typed_string_struct}) == 'TODO'
 
-	assert json.encode(StructTypeOptional[[]StructTypePointer]{typed_string_struct}) == 'TODO'
-	assert json.encode(StructTypeOptional[[]StructTypePointer[string]]{typed_string_struct}) == 'TODO'
-	assert json.encode(StructTypeOptional[[]StructTypePointer[StringAlias]]{typed_string_struct}) == 'TODO'
-	assert json.encode(StructTypeOptional[[]StructTypePointer[SumTypes]]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypeOption[[]StructTypePointer]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypeOption[[]StructTypePointer[string]]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypeOption[[]StructTypePointer[StringAlias]]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypeOption[[]StructTypePointer[SumTypes]]{typed_string_struct}) == 'TODO'
 
 	// StructTypePointer
 	assert json.encode(StructTypePointer[[]StructType]{}) == 'TODO'
@@ -176,10 +176,10 @@ fn test_caos_array() {
 	assert json.encode(StructTypePointer[[]StructType[StringAlias]]{ val: '' }) == 'TODO'
 	assert json.encode(StructTypePointer[[]StructType[SumTypes]]{ val: '' }) == 'TODO'
 
-	assert json.encode(StructTypePointer[[]StructTypeOptional]{typed_string_struct}) == 'TODO'
-	assert json.encode(StructTypePointer[[]StructTypeOptional[string]]{ val: StructType{'a'} }) == 'TODO'
-	assert json.encode(StructTypePointer[[]StructTypeOptional[StringAlias]]{typed_string_struct}) == 'TODO'
-	assert json.encode(StructTypePointer[[]StructTypeOptional[SumTypes]]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypePointer[[]StructTypeOption]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypePointer[[]StructTypeOption[string]]{ val: StructType{'a'} }) == 'TODO'
+	assert json.encode(StructTypePointer[[]StructTypeOption[StringAlias]]{typed_string_struct}) == 'TODO'
+	assert json.encode(StructTypePointer[[]StructTypeOption[SumTypes]]{typed_string_struct}) == 'TODO'
 
 	assert json.encode(StructTypePointer[[]StructTypePointer]{typed_string_struct}) == 'TODO'
 	assert json.encode(StructTypePointer[[]StructTypePointer[string]]{typed_string_struct}) == 'TODO'

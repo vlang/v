@@ -118,13 +118,14 @@ pub:
 	is_pub bool     // f is in a `pub:` section
 	is_mut bool     // f is in a `mut:` section
 	//
-	is_shared   bool // `f shared Abc`
-	is_atomic   bool // `f atomic int` , TODO
-	is_optional bool // `f ?string` , TODO
+	is_shared bool // `f shared Abc`
+	is_atomic bool // `f atomic int` , TODO
+	is_option bool // `f ?string` , TODO
 	//
 	is_array  bool // `f []string` , TODO
 	is_map    bool // `f map[string]int` , TODO
 	is_chan   bool // `f chan int` , TODO
+	is_enum   bool // `f Enum` where Enum is an enum
 	is_struct bool // `f Abc` where Abc is a struct , TODO
 	is_alias  bool // `f MyInt` where `type MyInt = int`, TODO
 	//

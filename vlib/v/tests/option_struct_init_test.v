@@ -14,7 +14,7 @@ fn add(mut h Holder) ?int {
 	return h.i
 }
 
-fn test_struct_init_with_multiple_optionals() {
+fn test_struct_init_with_multiple_options() {
 	mut h := Holder{}
 	foo := Foo{add(mut h) or { 0 }, add(mut h) or { 0 }, add(mut h) or { 0 }}
 

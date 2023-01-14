@@ -65,6 +65,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	if left_sym.kind == .none_ && right_sym.kind == .none_ {
 		c.invalid_operator_error(node.op, left_type, right_type, left_right_pos)
 	}
+	if left_sym.kind == .multi_return && right_sym.kind == .multi_return {
+		c.error('invalid number of operand for `${node.op}`. Only one allowed on each side.',
+			left_right_pos)
+	}
 	if left_type.is_any_kind_of_pointer()
 		&& node.op in [.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe] {
 		if !c.pref.translated && ((right_type.is_any_kind_of_pointer() && node.op != .minus)
@@ -326,7 +330,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					left_name := c.table.type_to_str(unwrapped_left_type)
 					right_name := c.table.type_to_str(unwrapped_right_type)
 					c.error('mismatched types `${left_name}` and `${right_name}`', left_right_pos)
-				} else if promoted_type.has_flag(.optional) || promoted_type.has_flag(.result) {
+				} else if promoted_type.has_flag(.option) || promoted_type.has_flag(.result) {
 					s := c.table.type_to_str(promoted_type)
 					c.error('`${node.op}` cannot be used with `${s}`', node.pos)
 				} else if promoted_type.is_float() {
@@ -425,9 +429,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						}
 					}
 				}
-			} else if left_type.has_flag(.optional) || right_type.has_flag(.optional) {
-				opt_comp_pos := if left_type.has_flag(.optional) { left_pos } else { right_pos }
-				c.error('unwrapped optional cannot be compared in an infix expression',
+			} else if left_type.has_flag(.option) || right_type.has_flag(.option) {
+				opt_comp_pos := if left_type.has_flag(.option) { left_pos } else { right_pos }
+				c.error('unwrapped option cannot be compared in an infix expression',
 					opt_comp_pos)
 			}
 		}
@@ -648,11 +652,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		c.error('cannot use operator `${node.op}` with `${right_sym.name}`', node.pos)
 	}
 	// TODO move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
-	left_is_optional := left_type.has_flag(.optional)
-	right_is_optional := right_type.has_flag(.optional)
-	if left_is_optional || right_is_optional {
-		opt_infix_pos := if left_is_optional { left_pos } else { right_pos }
-		c.error('unwrapped optional cannot be used in an infix expression', opt_infix_pos)
+	left_is_option := left_type.has_flag(.option)
+	right_is_option := right_type.has_flag(.option)
+	if left_is_option || right_is_option {
+		opt_infix_pos := if left_is_option { left_pos } else { right_pos }
+		c.error('unwrapped option cannot be used in an infix expression', opt_infix_pos)
 	}
 
 	left_is_result := left_type.has_flag(.result)

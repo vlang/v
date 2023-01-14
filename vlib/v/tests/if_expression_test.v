@@ -214,15 +214,15 @@ fn test_if_expr_with_complex_array_methods() {
 	assert ret == ['a', 'b', 'c']
 }
 
-fn return_optional() ?int {
+fn return_option() ?int {
 	return 1
 }
 
-fn test_if_expr_with_optional() {
+fn test_if_expr_with_option() {
 	m := map[string]int{}
 	v := if a := m['a'] {
 		println('${a}')
-		return_optional()?
+		return_option()?
 	} else {
 		2
 	}
@@ -231,7 +231,7 @@ fn test_if_expr_with_optional() {
 
 fn test_if_expr_with_or_block() {
 	arr := ['a']
-	a := if arr.len == 0 || arr[0] == '-' { 123 } else { return_optional() or { -1 } }
+	a := if arr.len == 0 || arr[0] == '-' { 123 } else { return_option() or { -1 } }
 	assert a == 1
 }
 

@@ -1,5 +1,5 @@
 import time
-import sqlite
+import db.sqlite
 
 struct User {
 	id         int       [primary; sql: serial]

@@ -201,8 +201,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			mut typ := ast.Type(0)
 			mut type_pos := token.Pos{}
 			mut field_pos := token.Pos{}
-			mut optional_pos := token.Pos{}
-			mut anon_struct_decl := ast.StructDecl{}
+			mut option_pos := token.Pos{}
 			if is_embed {
 				// struct embedding
 				type_pos = p.tok.pos()
@@ -247,9 +246,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				if p.tok.kind == .key_struct {
 					// Anon structs
 					if p.tok.kind == .key_struct {
-						anon_struct_decl = p.struct_decl(true)
+						p.anon_struct_decl = p.struct_decl(true)
 						// Find the registered anon struct type, it was registered above in `p.struct_decl()`
-						typ = p.table.find_type_idx(anon_struct_decl.name)
+						typ = p.table.find_type_idx(p.anon_struct_decl.name)
 					}
 				} else {
 					start_type_pos := p.tok.pos()
@@ -262,13 +261,14 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					return ast.StructDecl{}
 				}
 				field_pos = field_start_pos.extend(p.prev_tok.pos())
-				if typ.has_flag(.optional) || typ.has_flag(.result) {
-					optional_pos = p.peek_token(-2).pos()
+				if typ.has_flag(.option) || typ.has_flag(.result) {
+					option_pos = p.peek_token(-2).pos()
 				}
 			}
 			// Comments after type (same line)
 			comments << p.eat_comments()
 			if p.tok.kind == .lsbr {
+				p.inside_struct_attr_decl = true
 				// attrs are stored in `p.attrs`
 				p.attributes()
 				for fa in p.attrs {
@@ -276,6 +276,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 						is_field_deprecated = true
 					}
 				}
+				p.inside_struct_attr_decl = false
 			}
 			mut default_expr := ast.empty_expr
 			mut has_default_expr := false
@@ -297,7 +298,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					typ: typ
 					pos: field_pos
 					type_pos: type_pos
-					optional_pos: optional_pos
+					option_pos: option_pos
 					comments: comments
 					i: i
 					default_expr: default_expr
@@ -308,8 +309,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					is_global: is_field_global
 					is_volatile: is_field_volatile
 					is_deprecated: is_field_deprecated
-					anon_struct_decl: anon_struct_decl
+					anon_struct_decl: p.anon_struct_decl
 				}
+				p.anon_struct_decl = ast.StructDecl{}
 			}
 			// save embeds as table fields too, it will be used in generation phase
 			fields << ast.StructField{
@@ -317,7 +319,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				typ: typ
 				pos: field_pos
 				type_pos: type_pos
-				optional_pos: optional_pos
+				option_pos: option_pos
 				comments: comments
 				i: i
 				default_expr: default_expr

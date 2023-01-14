@@ -30,17 +30,17 @@ fn one_shot_echo_server(mut l net.TcpListener, ch_started chan int) ? {
 	new_conn.close() or {}
 }
 
-fn echo(address string) ? {
-	mut c := net.dial_tcp(address)?
+fn echo(address string) ! {
+	mut c := net.dial_tcp(address)!
 	defer {
 		c.close() or {}
 	}
 
-	println('local: ' + c.addr()?.str())
-	println(' peer: ' + c.peer_addr()?.str())
+	println('local: ' + c.addr()!.str())
+	println(' peer: ' + c.peer_addr()!.str())
 
 	data := 'Hello from vlib/net!'
-	c.write_string(data)?
+	c.write_string(data)!
 	mut buf := []u8{len: 4096}
 	read := c.read(mut buf) or { panic(err) }
 	assert read == data.len
@@ -105,6 +105,6 @@ fn test_bind() {
 	$if !network ? {
 		return
 	}
-	mut conn := net.dial_tcp_with_bind('vlang.io:80', '127.0.0.1:0')?
-	conn.close()?
+	mut conn := net.dial_tcp_with_bind('vlang.io:80', '127.0.0.1:0')!
+	conn.close()!
 }
