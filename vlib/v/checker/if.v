@@ -86,24 +86,29 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						c.error('invalid `\$if` condition: expected a type', branch.cond.right.pos())
 						return 0
 					}
-					if right is ast.ComptimeType && left is ast.TypeNode {
-						is_comptime_type_is_expr = true
-						checked_type := c.unwrap_generic(left.typ)
-						skip_state = if c.table.is_comptime_type(checked_type, right as ast.ComptimeType) {
-							.eval
-						} else {
-							.skip
-						}
-					} else if right is ast.ComptimeType && left is ast.Ident
-						&& (left as ast.Ident).info is ast.IdentVar {
-						is_comptime_type_is_expr = true
-						if var := left.scope.find_var(left.name) {
-							checked_type := c.unwrap_generic(var.typ)
+					if right is ast.ComptimeType {
+						mut checked_type := ast.void_type
+						if left is ast.TypeNode {
+							is_comptime_type_is_expr = true
+							checked_type = c.unwrap_generic(left.typ)
 							skip_state = if c.table.is_comptime_type(checked_type, right as ast.ComptimeType) {
 								.eval
 							} else {
 								.skip
 							}
+						} else if left is ast.Ident && (left as ast.Ident).info is ast.IdentVar {
+							is_comptime_type_is_expr = true
+							if var := left.scope.find_var(left.name) {
+								checked_type = c.unwrap_generic(var.typ)
+							}
+							skip_state = if c.table.is_comptime_type(checked_type, right as ast.ComptimeType) {
+								.eval
+							} else {
+								.skip
+							}
+						} else if left is ast.SelectorExpr {
+							comptime_field_name = left.expr.str()
+							is_comptime_type_is_expr = true
 						}
 					} else {
 						got_type := c.unwrap_generic((right as ast.TypeNode).typ)
