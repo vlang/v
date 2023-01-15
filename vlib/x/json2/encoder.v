@@ -241,12 +241,14 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			} $else $if field.typ in [bool, $Float, $Int] {
 				wr.write(val.$(field.name).str().bytes())!
 			} $else $if field.is_array {
+				// TODO - replace for `field.typ is $Array`
 				e.encode_array(value, level + 1, mut wr)!
 			} $else $if field.typ is $Array {
 				// e.encode_array(value, level + 1, mut wr)! // FIXME - error: could not infer generic type `U` in call to `encode_array`
 			} $else $if field.typ is $Struct {
 				e.encode_struct(value, level + 1, mut wr)!
 			} $else $if field.is_enum {
+				// TODO - replace for `field.typ is $Enum`
 				wr.write(int(val.$(field.name)).str().bytes())!
 			} $else $if field.typ is $Enum {
 				// wr.write(int(val.$(field.name)).str().bytes())! // FIXME - error: cannot cast string to `int`, use `val.$field.name.int()` instead.
