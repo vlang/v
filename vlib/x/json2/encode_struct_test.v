@@ -16,6 +16,7 @@ type BoolAlias = bool
 type IntAlias = int
 type TimeAlias = time.Time
 type StructAlias = StructType[int]
+type EnumAlias = Enumerates
 
 type SumTypes = bool | int | string
 
@@ -99,10 +100,6 @@ fn test_option_types() {
 	}) == '{"val":{"val":1}}'
 
 	assert json.encode(StructTypeOption[Enumerates]{}) == '{}'
-	// assert json.encode(StructTypeOption[Enumerates]{ val: Enumerates.a }) == '{"val":0}'
-	// assert json.encode(StructTypeOption[Enumerates]{ val: Enumerates.d }) == '{"val":3}'
-	// assert json.encode(StructTypeOption[Enumerates]{ val: Enumerates.e }) == '{"val":99}'
-	// assert json.encode(StructTypeOption[Enumerates]{ val: Enumerates.f }) == '{"val":100}'
 }
 
 fn test_array() {
