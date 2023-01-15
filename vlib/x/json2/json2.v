@@ -23,7 +23,7 @@ pub fn decode[T](src string) !T {
 	res := raw_decode(src)!.as_map()
 	mut typ := T{}
 	$for field in T.fields {
-		mut json_name := ''
+		mut json_name := field.name
 		for attr in field.attrs {
 			if attr.contains('json: ') {
 				json_name = attr.replace('json: ', '')
