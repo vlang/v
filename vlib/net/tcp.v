@@ -108,7 +108,8 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 	}
 	if res > 0 {
 		$if trace_tcp_data_read ? {
-			eprintln('<<< TcpConn.read_ptr  | 1 data.len: ${res:6} | data: ' +
+			eprintln(
+				'<<< TcpConn.read_ptr  | 1 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
 				unsafe { buf_ptr.vstring_with_len(res) })
 		}
 		return res
@@ -122,7 +123,8 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		}
 		$if trace_tcp_data_read ? {
 			if res > 0 {
-				eprintln('<<< TcpConn.read_ptr  | 2 data.len: ${res:6} | data: ' +
+				eprintln(
+					'<<< TcpConn.read_ptr  | 2 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
 					unsafe { buf_ptr.vstring_with_len(res) })
 			}
 		}
@@ -160,7 +162,8 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 			unsafe { b.vstring_with_len(len) })
 	}
 	$if trace_tcp_data_write ? {
-		eprintln('>>> TcpConn.write_ptr | data.len: ${len:6} | data: ' +
+		eprintln(
+			'>>> TcpConn.write_ptr | data.len: ${len:6} | hex: ${unsafe { b.vbytes(len) }.hex()} | data: ' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	unsafe {
@@ -171,7 +174,7 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 			remaining := len - total_sent
 			mut sent := C.send(c.sock.handle, ptr, remaining, msg_nosignal)
 			$if trace_tcp_data_write ? {
-				eprintln('>>> TcpConn.write_ptr | data chunk, total_sent: ${total_sent:6}, chunk_size: ${chunk_size:6}, sent: ${sent:6}, ptr: ${ptr_str(ptr)}')
+				eprintln('>>> TcpConn.write_ptr | data chunk, total_sent: ${total_sent:6}, remaining: ${remaining:6}, ptr: ${voidptr(ptr):x} => sent: ${sent:6}')
 			}
 			if sent < 0 {
 				code := error_code()
