@@ -2007,7 +2007,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			save_inner_loop := g.inner_loop
 			g.inner_loop = unsafe { &node }
 			if node.label != '' {
-				g.labeled_loops[node.label] = unsafe { &node }
+				unsafe {
+					g.labeled_loops[node.label] = &node
+				}
 			}
 			g.write_v_source_line_info(node.pos)
 			g.for_c_stmt(node)
@@ -2021,7 +2023,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			save_inner_loop := g.inner_loop
 			g.inner_loop = unsafe { &node }
 			if node.label != '' {
-				g.labeled_loops[node.label] = unsafe { &node }
+				unsafe {
+					g.labeled_loops[node.label] = &node
+				}
 			}
 			g.write_v_source_line_info(node.pos)
 			g.for_in_stmt(node)
@@ -2035,7 +2039,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			save_inner_loop := g.inner_loop
 			g.inner_loop = unsafe { &node }
 			if node.label != '' {
-				g.labeled_loops[node.label] = unsafe { &node }
+				unsafe {
+					g.labeled_loops[node.label] = &node
+				}
 			}
 			g.write_v_source_line_info(node.pos)
 			g.for_stmt(node)
