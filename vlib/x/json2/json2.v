@@ -23,39 +23,51 @@ pub fn decode[T](src string) !T {
 	res := raw_decode(src)!.as_map()
 	mut typ := T{}
 	$for field in T.fields {
+		mut json_name := field.name
+		for attr in field.attrs {
+			if attr.contains('json: ') {
+				json_name = attr.replace('json: ', '')
+				break
+			}
+		}
+
 		$if field.typ is u8 {
-			typ.$(field.name) = u8(res[field.name]!.u64())
+			typ.$(field.name) = res[json_name]!.u64()
 		} $else $if field.typ is u16 {
-			typ.$(field.name) = u16(res[field.name]!.u64())
+			typ.$(field.name) = res[json_name]!.u64()
 		} $else $if field.typ is u32 {
-			typ.$(field.name) = u32(res[field.name]!.u64())
+			typ.$(field.name) = res[json_name]!.u64()
 		} $else $if field.typ is u64 {
-			typ.$(field.name) = res[field.name]!.u64()
+			typ.$(field.name) = res[json_name]!.u64()
 		} $else $if field.typ is int {
-			typ.$(field.name) = res[field.name]!.int()
+			typ.$(field.name) = res[json_name]!.int()
 		} $else $if field.typ is i8 {
-			typ.$(field.name) = i8(res[field.name]!.i64())
+			typ.$(field.name) = res[json_name]!.int()
 		} $else $if field.typ is i16 {
-			typ.$(field.name) = i16(res[field.name]!.i64())
+			typ.$(field.name) = res[json_name]!.int()
 		} $else $if field.typ is i32 {
 			// typ.$(field.name) = res[field.name]!.i32()
 		} $else $if field.typ is i64 {
-			typ.$(field.name) = res[field.name]!.i64()
+			typ.$(field.name) = res[json_name]!.i64()
 		} $else $if field.typ is f32 {
-			typ.$(field.name) = res[field.name]!.f32()
+			typ.$(field.name) = res[json_name]!.f32()
 		} $else $if field.typ is f64 {
-			typ.$(field.name) = res[field.name]!.f64()
+			typ.$(field.name) = res[json_name]!.f64()
 		} $else $if field.typ is bool {
-			typ.$(field.name) = res[field.name]!.bool()
+			typ.$(field.name) = res[json_name]!.bool()
 		} $else $if field.typ is string {
-			typ.$(field.name) = res[field.name]!.str()
+			typ.$(field.name) = res[json_name]!.str()
 		} $else $if field.typ is time.Time {
 			typ.$(field.name) = res[field.name]!.to_time()!
 		} $else $if field.is_array {
 			// typ.$(field.name) = res[field.name]!.arr()
 		} $else $if field.is_struct {
 		} $else $if field.is_enum {
-			typ.$(field.name) = res[field.name]!.int()
+			typ.$(field.name) = if key := res[field.name] {
+				key.int()
+			} else {
+				res[json_name]!.int()
+			}
 		} $else $if field.is_alias {
 		} $else $if field.is_map {
 		} $else {
