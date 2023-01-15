@@ -35,9 +35,8 @@ fn init(user_data voidptr) {
 	sgl.setup(&sgl_desc)
 }
 
-fn frame(user_data voidptr) {
+fn frame(state &AppState) {
 	// println('frame')
-	state := &AppState(user_data)
 	draw()
 	gfx.begin_default_pass(&state.pass_action, sapp.width(), sapp.height())
 	sgl.draw()

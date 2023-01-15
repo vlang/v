@@ -1,13 +1,13 @@
-interface List<T> {
+interface List[T] {
 mut:
 	add(e T) bool
 }
 
-struct LinkedList<T> {
+struct LinkedList[T] {
 	// ...
 }
 
-fn (mut list LinkedList<T>) add(e T) {
+fn (mut list LinkedList[T]) add(e T) {
 	// ...
 }
 

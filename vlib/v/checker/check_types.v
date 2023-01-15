@@ -130,7 +130,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		}
 	}
 	// allow direct int-literal assignment for pointers for now
-	// maybe in the future optionals should be used for that
+	// maybe in the future options should be used for that
 	if expected.is_real_pointer() {
 		if got == ast.int_literal_type {
 			return true
@@ -146,15 +146,15 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if expected == ast.charptr_type && got == ast.char_type.ref() {
 		return true
 	}
-	if expected.has_flag(.optional) || expected.has_flag(.result) {
+	if expected.has_flag(.option) || expected.has_flag(.result) {
 		sym := c.table.sym(got)
 		if ((sym.idx == ast.error_type_idx || got in [ast.none_type, ast.error_type])
-			&& expected.has_flag(.optional))
+			&& expected.has_flag(.option))
 			|| ((sym.idx == ast.error_type_idx || got == ast.error_type)
 			&& expected.has_flag(.result)) {
 			// IError
 			return true
-		} else if !c.check_basic(got, expected.clear_flag(.optional).clear_flag(.result)) {
+		} else if !c.check_basic(got, expected.clear_flag(.option).clear_flag(.result)) {
 			return false
 		}
 	}
@@ -225,6 +225,13 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 			return
 		}
 	}
+	// check int signed/unsigned mismatch
+	if got == ast.int_literal_type_idx && expected in ast.unsigned_integer_type_idxs
+		&& arg.expr is ast.IntegerLiteral && (arg.expr as ast.IntegerLiteral).val.i64() < 0 {
+		expected_typ_str := c.table.type_to_str(expected.clear_flag(.variadic))
+		return error('cannot use literal signed integer as `${expected_typ_str}`')
+	}
+
 	idx_got := got.idx()
 	idx_expected := expected.idx()
 	if idx_got in [ast.byteptr_type_idx, ast.charptr_type_idx]
@@ -256,8 +263,8 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 			return
 		}
 	} else {
-		got_typ_sym := c.table.sym(got)
-		expected_typ_sym := c.table.sym(expected_)
+		got_typ_sym := c.table.sym(c.unwrap_generic(got))
+		expected_typ_sym := c.table.sym(c.unwrap_generic(expected_))
 
 		// Check on Generics types, there are some case where we have the following case
 		// `&Type[int] == &Type[]`. This is a common case we are implementing a function
@@ -395,7 +402,7 @@ fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol,
 	if got_fn.params.len != exp_fn.params.len {
 		return false
 	}
-	if got_fn.return_type.has_flag(.optional) != exp_fn.return_type.has_flag(.optional) {
+	if got_fn.return_type.has_flag(.option) != exp_fn.return_type.has_flag(.option) {
 		return false
 	}
 	if got_fn.return_type.has_flag(.result) != exp_fn.return_type.has_flag(.result) {
@@ -574,7 +581,7 @@ fn (mut c Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
 	}
 	if right_type.is_number() && left_type.is_number() {
 		return c.promote_num(left_type, right_type)
-	} else if left_type.has_flag(.optional) != right_type.has_flag(.optional) {
+	} else if left_type.has_flag(.option) != right_type.has_flag(.option) {
 		// incompatible
 		return ast.void_type
 	} else {
@@ -638,7 +645,7 @@ fn (c &Checker) expected_msg(got ast.Type, expected ast.Type) string {
 
 fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
 	// allow direct int-literal assignment for pointers for now
-	// maybe in the future optionals should be used for that
+	// maybe in the future options should be used for that
 	if right.is_ptr() || right.is_pointer() {
 		if left == ast.int_literal_type {
 			return true
@@ -864,7 +871,25 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					func_.name = ''
 					idx := c.table.find_or_register_fn_type(func_, true, false)
 					typ = ast.new_type(idx).derive(arg.typ)
+				} else if c.inside_comptime_for_field && sym.kind in [.struct_, .any]
+					&& arg.expr is ast.ComptimeSelector {
+					compselector := arg.expr as ast.ComptimeSelector
+					if compselector.field_expr is ast.SelectorExpr {
+						selectorexpr := compselector.field_expr as ast.SelectorExpr
+						if selectorexpr.expr is ast.Ident {
+							ident := selectorexpr.expr as ast.Ident
+							if ident.name == c.comptime_for_field_var {
+								typ = c.comptime_fields_default_type
+
+								if func.return_type.has_flag(.generic)
+									&& gt_name == c.table.type_to_str(func.return_type) {
+									node.comptime_ret_val = true
+								}
+							}
+						}
+					}
 				}
+
 				if arg.expr.is_auto_deref_var() {
 					typ = typ.deref()
 				}

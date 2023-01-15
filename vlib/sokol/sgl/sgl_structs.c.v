@@ -25,7 +25,7 @@ pub type Context = C.sgl_context
 pub type ContextDesc = C.sgl_context_desc_t
 
 [typedef]
-struct C.sgl_context_desc_t {
+pub struct C.sgl_context_desc_t {
 	max_vertices int // default: 64k
 	max_commands int // default: 16k
 	color_format gfx.PixelFormat // C.sg_pixel_format
@@ -36,7 +36,8 @@ struct C.sgl_context_desc_t {
 pub type Desc = C.sgl_desc_t
 
 [typedef]
-struct C.sgl_desc_t {
+pub struct C.sgl_desc_t {
+pub:
 	max_vertices       int // size for vertex buffer
 	max_commands       int // size of uniform- and command-buffers
 	context_pool_size  int // max number of contexts (including default context), default: 4
@@ -45,4 +46,7 @@ struct C.sgl_desc_t {
 	depth_format       gfx.PixelFormat // C.sg_pixel_format
 	sample_count       int
 	face_winding       gfx.FaceWinding // C.sg_face_winding // default front face winding is CCW
+pub mut:
+	allocator C.sgl_allocator_t // optional memory allocation overrides (default: malloc/free)
+	logger    C.sgl_logger_t    // optional memory allocation overrides (default: SOKOL_LOG(message))
 }

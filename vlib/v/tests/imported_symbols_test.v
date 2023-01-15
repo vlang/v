@@ -1,5 +1,3 @@
-module main
-
 import geometry { Line, Point, PointCond, Shape, point_str }
 
 fn point_is(p Point, cond PointCond) bool {

@@ -89,22 +89,23 @@ pub struct TypeSymbol {
 pub:
 	parent_idx int
 pub mut:
-	info     TypeInfo
-	kind     Kind
-	name     string // the internal & source name of the type, i.e. `[5]int`.
-	cname    string // the name with no dots for use in the generated C code
-	methods  []Fn
-	mod      string
-	is_pub   bool
-	language Language
-	idx      int
-	size     int = -1
-	align    int = -1
+	info          TypeInfo
+	kind          Kind
+	name          string // the internal & source name of the type, i.e. `[5]int`.
+	cname         string // the name with no dots for use in the generated C code
+	methods       []Fn
+	generic_types []Type
+	mod           string
+	is_pub        bool
+	language      Language
+	idx           int
+	size          int = -1
+	align         int = -1
 }
 
 // max of 8
 pub enum TypeFlag {
-	optional
+	option
 	result
 	variadic
 	generic
@@ -279,8 +280,8 @@ pub fn (t Type) debug() []string {
 	res << 'idx: 0x${t.idx().hex():-8}'
 	res << 'type: 0x${t.hex():-8}'
 	res << 'nr_muls: ${t.nr_muls()}'
-	if t.has_flag(.optional) {
-		res << 'optional'
+	if t.has_flag(.option) {
+		res << 'option'
 	}
 	if t.has_flag(.result) {
 		res << 'result'
@@ -485,7 +486,7 @@ pub const (
 
 pub const (
 	void_type          = new_type(void_type_idx)
-	ovoid_type         = new_type(void_type_idx).set_flag(.optional) // the return type of `fn ()?`
+	ovoid_type         = new_type(void_type_idx).set_flag(.option) // the return type of `fn ()?`
 	rvoid_type         = new_type(void_type_idx).set_flag(.result) // the return type of `fn () !`
 	voidptr_type       = new_type(voidptr_type_idx)
 	byteptr_type       = new_type(byteptr_type_idx)
@@ -568,7 +569,7 @@ pub mut:
 
 // returns TypeSymbol kind only if there are no type modifiers
 pub fn (t &Table) type_kind(typ Type) Kind {
-	if typ.nr_muls() > 0 || typ.has_flag(.optional) || typ.has_flag(.result) {
+	if typ.nr_muls() > 0 || typ.has_flag(.option) || typ.has_flag(.result) {
 		return Kind.placeholder
 	}
 	return t.sym(typ).kind
@@ -865,7 +866,7 @@ pub fn (t &TypeSymbol) is_builtin() bool {
 
 // type_size returns the size and alignment (in bytes) of `typ`, similarly to  C's `sizeof()` and `alignof()`.
 pub fn (t &Table) type_size(typ Type) (int, int) {
-	if typ.has_flag(.optional) || typ.has_flag(.result) {
+	if typ.has_flag(.option) || typ.has_flag(.result) {
 		return t.type_size(ast.error_type_idx)
 	}
 	if typ.nr_muls() > 0 {
@@ -1044,7 +1045,7 @@ pub mut:
 pub struct GenericInst {
 pub mut:
 	parent_idx     int    // idx of the base generic struct
-	concrete_types []Type // concrete types, e.g. <int, string>
+	concrete_types []Type // concrete types, e.g. [int, string]
 }
 
 [minify]
@@ -1147,10 +1148,41 @@ pub fn (mytable &Table) type_to_code(t Type) string {
 	}
 }
 
-// clean type name from generics form. From Type<int> -> Type
+// clean type name from generics form. From Type[int] -> Type
 pub fn (t &Table) clean_generics_type_str(typ Type) string {
 	result := t.type_to_str(typ)
 	return result.all_before('[')
+}
+
+fn strip_extra_struct_types(name string) string {
+	mut start := 0
+	mut is_start := false
+	mut nested_count := 0
+	mut strips := []string{}
+
+	for i, ch in name {
+		if ch == `<` {
+			if is_start {
+				nested_count++
+			} else {
+				is_start = true
+				start = i
+			}
+		} else if ch == `>` {
+			if nested_count > 0 {
+				nested_count--
+			} else {
+				strips << name.substr(start, i + 1)
+				strips << ''
+				is_start = false
+			}
+		}
+	}
+	if strips.len > 0 {
+		return name.replace_each(strips)
+	} else {
+		return name
+	}
 }
 
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
@@ -1279,6 +1311,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 					import_aliases))
 				res = '${variant_names.join('|')}'
 			} else {
+				res = strip_extra_struct_types(res)
 				res = t.shorten_user_defined_typenames(res, import_aliases)
 			}
 		}
@@ -1295,7 +1328,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			res += ']'
 		}
 		.void {
-			if typ.has_flag(.optional) {
+			if typ.has_flag(.option) {
 				res = '?'
 				return res
 			}
@@ -1336,7 +1369,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	if nr_muls > 0 && !typ.has_flag(.variadic) {
 		res = strings.repeat(`&`, nr_muls) + res
 	}
-	if typ.has_flag(.optional) {
+	if typ.has_flag(.option) {
 		res = '?${res}'
 	}
 	if typ.has_flag(.result) {
@@ -1364,16 +1397,18 @@ fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases 
 		// mod.submod.submod2.Type => submod2.Type
 		mut parts := res.split('.')
 		if parts.len > 1 {
-			ind := parts.len - 2
-			if t.is_fmt {
-				// Rejoin the module parts for correct usage of aliases
-				parts[ind] = parts[..ind + 1].join('.')
-			}
-			if parts[ind] in import_aliases {
-				parts[ind] = import_aliases[parts[ind]]
-			}
+			if parts[..parts.len - 1].all(!it.contains('[')) {
+				ind := parts.len - 2
+				if t.is_fmt {
+					// Rejoin the module parts for correct usage of aliases
+					parts[ind] = parts[..ind + 1].join('.')
+				}
+				if parts[ind] in import_aliases {
+					parts[ind] = import_aliases[parts[ind]]
+				}
 
-			res = parts[ind..].join('.')
+				res = parts[ind..].join('.')
+			}
 		} else {
 			res = parts[0]
 		}
@@ -1435,12 +1470,12 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 }
 
 // symbol_name_except_generic return the name of the complete qualified name of the type,
-// but without the generic parts. For example, `main.Abc<int>` -> `main.Abc`
+// but without the generic parts. For example, `main.Abc[int]` -> `main.Abc`
 pub fn (t &TypeSymbol) symbol_name_except_generic() string {
-	// main.Abc<int>
+	// main.Abc[int]
 	mut embed_name := t.name
 	// remove generic part from name
-	// main.Abc<int> => main.Abc
+	// main.Abc[int] => main.Abc
 	if embed_name.contains('[') {
 		embed_name = embed_name.all_before('[')
 	}
@@ -1448,10 +1483,10 @@ pub fn (t &TypeSymbol) symbol_name_except_generic() string {
 }
 
 pub fn (t &TypeSymbol) embed_name() string {
-	// main.Abc<int> => Abc<int>
+	// main.Abc[int] => Abc[int]
 	mut embed_name := t.name.split('.').last()
 	// remove generic part from name
-	// Abc<int> => Abc
+	// Abc[int] => Abc
 	if embed_name.contains('[') {
 		embed_name = embed_name.split('[')[0]
 	}

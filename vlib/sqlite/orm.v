@@ -152,7 +152,7 @@ fn (stmt Stmt) sqlite_select_column(idx int, typ int) !orm.Primitive {
 		primitive = stmt.get_i64(idx)
 	} else if typ in orm.float {
 		primitive = stmt.get_f64(idx)
-	} else if typ == orm.string {
+	} else if typ == orm.type_string {
 		primitive = stmt.get_text(idx).clone()
 	} else if typ == orm.time {
 		d := stmt.get_int(idx)
@@ -170,7 +170,7 @@ fn sqlite_type_from_v(typ int) !string {
 		'INTEGER'
 	} else if typ in orm.float {
 		'REAL'
-	} else if typ == orm.string {
+	} else if typ == orm.type_string {
 		'TEXT'
 	} else {
 		error('Unknown type ${typ}')

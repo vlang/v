@@ -76,7 +76,7 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 		f := unsafe { fields[i] }
 		field_types << unsafe { FieldType(f.@type) }
 		match types[i] {
-			orm.string {
+			orm.type_string {
 				mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
 				mysql_bind.buffer_length = FieldType.type_blob.get_len()
 			}
@@ -276,7 +276,7 @@ fn buffer_to_primitive(data_list []&u8, types []int, field_types []FieldType) ![
 			orm.type_idx['bool'] {
 				primitive = *(unsafe { &bool(data) })
 			}
-			orm.string {
+			orm.type_string {
 				primitive = unsafe { cstring_to_vstring(&char(data)) }
 			}
 			orm.time {
@@ -322,7 +322,7 @@ fn mysql_type_from_v(typ int) !string {
 		orm.type_idx['f64'] {
 			'DOUBLE'
 		}
-		orm.string {
+		orm.type_string {
 			'TEXT'
 		}
 		orm.serial {

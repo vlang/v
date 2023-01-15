@@ -11,5 +11,5 @@ fn main() {
 	mut x := St{
 		a: 0
 	}
-	go change(mut x)
+	spawn change(mut x)
 }

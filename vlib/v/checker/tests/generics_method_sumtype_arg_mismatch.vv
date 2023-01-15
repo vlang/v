@@ -2,9 +2,9 @@ module main
 
 struct None {}
 
-pub type Maybe<T> = None | T
+pub type Maybe[T] = None | T
 
-pub fn (m Maybe<T>) str<T>() string {
+pub fn (m Maybe[T]) str[T]() string {
 	return if m is T {
 		x := m as T
 		'Some($x)'
@@ -13,29 +13,29 @@ pub fn (m Maybe<T>) str<T>() string {
 	}
 }
 
-pub fn some<T>(v T) Maybe<T> {
-	return Maybe<T>(v)
+pub fn some[T](v T) Maybe[T] {
+	return Maybe[T](v)
 }
 
-pub fn noth<T>() Maybe<T> {
-	return Maybe<T>(None{})
+pub fn noth[T]() Maybe[T] {
+	return Maybe[T](None{})
 }
 
-pub fn (m Maybe<T>) is_some<T>() bool {
+pub fn (m Maybe[T]) is_some[T]() bool {
 	return match m {
 		None { false }
 		T { true }
 	}
 }
 
-pub fn (m Maybe<T>) is_noth<T>() bool {
+pub fn (m Maybe[T]) is_noth[T]() bool {
 	return match m {
 		None { true }
 		T { false }
 	}
 }
 
-pub fn (m Maybe<T>) @or<T>(m2 Maybe<T>) Maybe<T> {
+pub fn (m Maybe[T]) @or[T](m2 Maybe[T]) Maybe[T] {
 	return match m {
 		None {
 			match m2 {

@@ -321,7 +321,7 @@ pub mut:
 
 // Reset RE object
 [direct_array_access; inline]
-fn (mut re RE) reset() {
+pub fn (mut re RE) reset() {
 	re.cc_index = 0
 
 	mut i := 0
@@ -460,7 +460,7 @@ const (
 
 struct CharClass {
 mut:
-	cc_type   int = regex.cc_null // type of cc token
+	cc_type   int         // type of cc token
 	ch0       rune        // first char of the interval a-b  a in this case
 	ch1       rune        // second char of the interval a-b b in this case
 	validator FnValidator // validator function pointer
@@ -697,7 +697,7 @@ fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int, bool) {
 	mut i := in_i
 
 	mut q_min := 0 // default min in a {} quantifier is 1
-	mut q_max := 0 // deafult max in a {} quantifier is max_quantifier
+	mut q_max := 0 // default max in a {} quantifier is max_quantifier
 
 	mut ch := u8(0)
 

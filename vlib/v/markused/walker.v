@@ -152,7 +152,9 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 				// the .next() method of the struct will be used for iteration:
 				cond_type_sym := w.table.sym(node.cond_type)
 				if next_fn := cond_type_sym.find_method('next') {
-					w.fn_decl(mut &ast.FnDecl(next_fn.source_fn))
+					unsafe {
+						w.fn_decl(mut &ast.FnDecl(next_fn.source_fn))
+					}
 				}
 			}
 		}
@@ -303,7 +305,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			sym := w.table.sym(node.left_type)
 			if sym.kind == .struct_ {
 				if opmethod := sym.find_method(node.op.str()) {
-					w.fn_decl(mut &ast.FnDecl(opmethod.source_fn))
+					unsafe {
+						w.fn_decl(mut &ast.FnDecl(opmethod.source_fn))
+					}
 				}
 			}
 			if node.right_type == 0 {

@@ -19,7 +19,7 @@ mut:
 }
 
 pub fn (app App) before_request() {
-	println('[Vweb] ${app.Context.req.method} ${app.Context.req.url}')
+	println('[vweb] before_request: ${app.req.method} ${app.req.url}')
 }
 
 fn main() {

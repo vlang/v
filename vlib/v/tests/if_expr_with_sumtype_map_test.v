@@ -1,5 +1,3 @@
-module main
-
 type ConfigValue = bool | int | string
 type ConfigMap = map[string]ConfigValue
 

@@ -1,52 +1,56 @@
 fn C.func(arg int) int
 
-fn fn_variadic(arg int, args... string) {
+fn fn_variadic(arg int, args ...string) {
 	println('Do nothing')
 }
 
 fn fn_with_assign_stmts() {
-	_,_ := fn_with_multi_return()
+	_, _ := fn_with_multi_return()
 }
 
-fn fn_with_multi_return() (int,string) {
-	return 0,'test'
+fn fn_with_multi_return() (int, string) {
+	return 0, 'test'
 }
 
-fn   voidfn(){
- println('this is a function that does not return anything')
-   }
+fn voidfn() {
+	println('this is a function that does not return anything')
+}
 
 fn fn_with_1_arg(arg int) int {
-return 0
+	return 0
 }
 
 fn fn_with_2a_args(arg1 int, arg2 int) int {
-return 0
+	return 0
 }
 
 fn fn_with_2_args_to_be_shorten(arg1 int, arg2 int) int {
-return 0
+	return 0
 }
 
 fn fn_with_2b_args(arg1 string, arg2 int) int {
-return 0
+	return 0
 }
 
 fn fn_with_3_args(arg1 string, arg2 int, arg3 User) int {
-return 0
+	return 0
 }
 
-fn    (this User) fn_with_receiver() {
-println('')
+fn (this User) fn_with_receiver() {
+	println('')
 }
 
-fn fn_with_optional() ?int {
-	if true { return error('true') }
+fn fn_with_option() ?int {
+	if true {
+		return error('true')
+	}
 	return 30
 }
 
-fn (f Foo) fn_with_optional() ?int {
-	if true { return error('true') }
+fn (f Foo) fn_with_option() ?int {
+	if true {
+		return error('true')
+	}
 	return 40
 }
 
@@ -58,6 +62,7 @@ fn fn_with_ref_return() &Foo {
 	return &Foo{}
 }
 
-[inline] fn fn_with_flag() {
-println('flag')
+[inline]
+fn fn_with_flag() {
+	println('flag')
 }

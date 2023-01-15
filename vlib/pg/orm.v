@@ -77,8 +77,8 @@ fn pg_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryData) 
 	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats,
 		where)
 
-	res := C.PQexecParams(db.conn, query.str, param_vals.len, param_types.data, param_vals.data,
-		param_lens.data, param_formats.data, 0)
+	res := C.PQexecParams(db.conn, &char(query.str), param_vals.len, param_types.data,
+		param_vals.data, param_lens.data, param_formats.data, 0) // here, the last 0 means require text results, 1 - binary results
 	return db.handle_error_or_result(res, 'orm_stmt_worker')
 }
 
@@ -89,77 +89,76 @@ fn pg_stmt_binder(mut types []u32, mut vals []&char, mut lens []int, mut formats
 }
 
 fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats []int, data orm.Primitive) {
-	d := data
 	match data {
 		bool {
 			types << u32(Oid.t_bool)
-			vals << &char(&(d as bool))
+			vals << &char(&data)
 			lens << int(sizeof(bool))
 			formats << 1
 		}
 		u8 {
 			types << u32(Oid.t_char)
-			vals << &char(&(d as u8))
+			vals << &char(&data)
 			lens << int(sizeof(u8))
 			formats << 1
 		}
 		u16 {
 			types << u32(Oid.t_int2)
-			num := conv.htn16(&data)
+			num := conv.htn16(data)
 			vals << &char(&num)
 			lens << int(sizeof(u16))
 			formats << 1
 		}
 		u32 {
 			types << u32(Oid.t_int4)
-			num := conv.htn32(&data)
+			num := conv.htn32(data)
 			vals << &char(&num)
 			lens << int(sizeof(u32))
 			formats << 1
 		}
 		u64 {
 			types << u32(Oid.t_int8)
-			num := conv.htn64(&data)
+			num := conv.htn64(data)
 			vals << &char(&num)
 			lens << int(sizeof(u64))
 			formats << 1
 		}
 		i8 {
 			types << u32(Oid.t_char)
-			vals << &char(&(d as i8))
+			vals << &char(&data)
 			lens << int(sizeof(i8))
 			formats << 1
 		}
 		i16 {
 			types << u32(Oid.t_int2)
-			num := conv.htn16(unsafe { &u16(&data) })
+			num := conv.htn16(u16(data))
 			vals << &char(&num)
 			lens << int(sizeof(i16))
 			formats << 1
 		}
 		int {
 			types << u32(Oid.t_int4)
-			num := conv.htn32(unsafe { &u32(&data) })
+			num := conv.htn32(u32(data))
 			vals << &char(&num)
 			lens << int(sizeof(int))
 			formats << 1
 		}
 		i64 {
 			types << u32(Oid.t_int8)
-			num := conv.htn64(unsafe { &u64(&data) })
+			num := conv.htn64(u64(data))
 			vals << &char(&num)
 			lens << int(sizeof(i64))
 			formats << 1
 		}
 		f32 {
 			types << u32(Oid.t_float4)
-			vals << &char(unsafe { &f32(&(d as f32)) })
+			vals << &char(&data)
 			lens << int(sizeof(f32))
 			formats << 1
 		}
 		f64 {
 			types << u32(Oid.t_float8)
-			vals << &char(unsafe { &f64(&(d as f64)) })
+			vals << &char(&data)
 			lens << int(sizeof(f64))
 			formats << 1
 		}
@@ -167,15 +166,15 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 			// If paramTypes is NULL, or any particular element in the array is zero,
 			// the server infers a data type for the parameter symbol in the same way
 			// it would do for an untyped literal string.
-			types << &u8(0)
-			vals << data.str
+			types << u32(0)
+			vals << &char(data.str)
 			lens << data.len
 			formats << 0
 		}
 		time.Time {
-			datetime := ((d as time.Time).format_ss() as string)
-			types << &u8(0)
-			vals << datetime.str
+			datetime := data.format_ss()
+			types << u32(0)
+			vals << &char(datetime.str)
 			lens << datetime.len
 			formats << 0
 		}
@@ -208,7 +207,7 @@ fn pg_type_from_v(typ int) !string {
 		orm.float[1] {
 			'DOUBLE PRECISION'
 		}
-		orm.string {
+		orm.type_string {
 			'TEXT'
 		}
 		orm.serial {
@@ -274,7 +273,7 @@ fn str_to_primitive(str string, typ int) !orm.Primitive {
 		orm.type_idx['f64'] {
 			return orm.Primitive(str.f64())
 		}
-		orm.string {
+		orm.type_string {
 			return orm.Primitive(str)
 		}
 		orm.time {

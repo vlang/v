@@ -35,6 +35,13 @@ If V is already installed on a machine, it can be upgraded to its latest version
 by using the V's built-in self-updater.
 To do so, run the command `v up`.
 
+## Getting started
+You can let V automatically set up the bare-bones structure of a project for you
+by using any of the following commands in a terminal:
+* `v init` → adds necessary files to the current folder to make it a V project
+* `v new abc` → creates a new project in the new folder `abc`, by default a "hello world" project.
+* `v new abcd web` → creates a new project in the new folder `abcd`, using the vweb template.
+
 ## Table of Contents
 
 <table>
@@ -119,7 +126,7 @@ To do so, run the command `v up`.
     * [Interfaces](#interfaces)
     * [Sum types](#sum-types)
     * [Option/Result types & error handling](#optionresult-types-and-error-handling)
-        * [Handling optionals/results](#handling-optionalsresults)
+        * [Handling options/results](#handling-optionsresults)
     * [Custom error types](#custom-error-types)
     * [Generics](#generics)
 * [Concurrency](#concurrency)
@@ -1338,7 +1345,7 @@ if v := m['abc'] {
 }
 ```
 
-The same optional check applies to arrays:
+The same option check applies to arrays:
 
 ```v
 arr := [1, 2, 3]
@@ -3589,7 +3596,7 @@ fn (r Repo) find_user_by_id(id int) !User {
 	return error('User ${id} not found')
 }
 
-// A version of the function using an optional
+// A version of the function using an option
 fn (r Repo) find_user_by_id2(id int) ?User {
 	for user in r.users {
 		if user.id == id {
@@ -3616,7 +3623,7 @@ fn main() {
 
 V used to combine `Option` and `Result` into one type, now they are separate.
 
-The amount of work required to "upgrade" a function to an optional/result function is minimal;
+The amount of work required to "upgrade" a function to an option/result function is minimal;
 you have to add a `?` or `!` to the return type and return an error when something goes wrong.
 
 This is the primary mechanism for error handling in V. They are still values, like in Go,
@@ -3633,9 +3640,9 @@ user := repo.find_user_by_id(7) or {
 }
 ```
 
-#### Handling optionals/results
+#### Handling options/results
 
-There are four ways of handling an optional/result. The first method is to
+There are four ways of handling an option/result. The first method is to
 propagate the error:
 
 ```v
@@ -3649,8 +3656,8 @@ fn f(url string) !string {
 
 `http.get` returns `!http.Response`. Because `!` follows the call, the
 error will be propagated to the caller of `f`. When using `?` after a
-function call producing an optional, the enclosing function must return
-an optional as well. If error propagation is used in the `main()`
+function call producing an option, the enclosing function must return
+an option as well. If error propagation is used in the `main()`
 function it will `panic` instead, since the error cannot be propagated
 any further.
 
@@ -3673,7 +3680,7 @@ entire program, or use a control flow statement (`return`, `break`, `continue`, 
 to break from the current block.
 Note that `break` and `continue` can only be used inside a `for` loop.
 
-V does not have a way to forcibly "unwrap" an optional (as other languages do,
+V does not have a way to forcibly "unwrap" an option (as other languages do,
 for instance Rust's `unwrap()` or Swift's `!`). To do this, use `or { panic(err) }` instead.
 
 ---
@@ -3702,7 +3709,7 @@ The fourth method is to use `if` unwrapping:
 import net.http
 
 if resp := http.get('https://google.com') {
-	println(resp.body) // resp is a http.Response, not an optional
+	println(resp.body) // resp is a http.Response, not an option
 } else {
 	println(err)
 }
@@ -3747,7 +3754,7 @@ fn main() {
 
 ```v wip
 
-struct Repo<T> {
+struct Repo[T] {
     db DB
 }
 
@@ -3763,26 +3770,26 @@ struct Post {
 	body string
 }
 
-fn new_repo<T>(db DB) Repo<T> {
-    return Repo<T>{db: db}
+fn new_repo[T](db DB) Repo[T] {
+    return Repo[T]{db: db}
 }
 
 // This is a generic function. V will generate it for every type it's used with.
-fn (r Repo<T>) find_by_id(id int) ?T {
+fn (r Repo[T]) find_by_id(id int) ?T {
     table_name := T.name // in this example getting the name of the type gives us the table name
-    return r.db.query_one<T>('select * from ${table_name} where id = ?', id)
+    return r.db.query_one[T]('select * from ${table_name} where id = ?', id)
 }
 
 db := new_db()
-users_repo := new_repo<User>(db) // returns Repo<User>
-posts_repo := new_repo<Post>(db) // returns Repo<Post>
-user := users_repo.find_by_id(1)? // find_by_id<User>
-post := posts_repo.find_by_id(1)? // find_by_id<Post>
+users_repo := new_repo[User](db) // returns Repo[User]
+posts_repo := new_repo[Post](db) // returns Repo[Post]
+user := users_repo.find_by_id(1)? // find_by_id[User]
+post := posts_repo.find_by_id(1)? // find_by_id[Post]
 ```
 
 Currently generic function definitions must declare their type parameters, but in
 future V will infer generic type parameters from single-letter type names in
-runtime parameter types. This is why `find_by_id` can omit `<T>`, because the
+runtime parameter types. This is why `find_by_id` can omit `[T]`, because the
 receiver argument `r` uses a generic type `T`.
 
 Another example:
@@ -3982,7 +3989,7 @@ A channel can be closed to indicate that no further objects can be pushed. Any a
 to do so will then result in a runtime panic (with the exception of `select` and
 `try_push()` - see below). Attempts to pop will return immediately if the
 associated channel has been closed and the buffer is empty. This situation can be
-handled using an `or {}` block (see [Handling optionals/results](#handling-optionalsresults)).
+handled using an `or {}` block (see [Handling options/results](#handling-optionsresults)).
 
 ```v wip
 ch := chan int{}
@@ -4291,8 +4298,13 @@ fn test_hello() {
 	assert hello() == 'Hello world'
 }
 ```
-To run the test above, use `v hello_test.v`. This will check that the function `hello` is
+To run the test file above, use `v hello_test.v`. This will check that the function `hello` is
 producing the correct output. V executes all test functions in the file.
+
+Note: all `_test.v` files (both external and internal ones), are compiled as *separate programs*.
+In other words, you may have as many `_test.v` files, and tests in them as you like, they will
+not affect the compilation of your other code in `.v` files normally at all, but only when you
+do explicitly `v file_test.v` or `v test .`.
 
 * All test functions have to be inside a test file whose name ends in `_test.v`.
 * Test function names must begin with `test_` to mark them for execution.
@@ -4703,7 +4715,7 @@ V's ORM provides a number of benefits:
     then manually construct objects from the parsed results.)
 
 ```v
-import sqlite
+import db.sqlite
 
 // sets a custom table name. Default is struct name (case-sensitive)
 [table: 'customers']
@@ -6209,7 +6221,7 @@ fn main() {
 To generate a wrapper on top of a C library use this command:
 
 ```bash
-v wrapper c_code/libsodium/src/libsodium
+v translate wrapper c_code/libsodium/src/libsodium
 ```
 
 This will generate a directory `libsodium` with a V module.

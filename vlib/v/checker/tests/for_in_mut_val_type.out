@@ -40,7 +40,7 @@ vlib/v/checker/tests/for_in_mut_val_type.vv:20:18: error: map literal is immutab
       |                     ~~~~~~~~~~~~~~~~~~
    21 |         j *= 2
    22 |     }
-vlib/v/checker/tests/for_in_mut_val_type.vv:30:17: error: field `a` is immutable, it cannot be changed
+vlib/v/checker/tests/for_in_mut_val_type.vv:30:17: error: field `Test.a` is immutable, it cannot be changed
    28 |
    29 | fn foo(t Test) {
    30 |     for mut e in t.a {

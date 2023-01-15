@@ -8,6 +8,45 @@ import v.ast
 import v.util
 import v.pref
 
+fn (mut g Gen) get_comptime_selector_key_type(val ast.ComptimeSelector) string {
+	if val.field_expr is ast.SelectorExpr {
+		if val.field_expr.expr is ast.Ident {
+			return '${val.field_expr.expr.name}.typ'
+		}
+	}
+	return ''
+}
+
+fn (mut g Gen) get_comptime_selector_var_type(node ast.ComptimeSelector) (ast.StructField, string) {
+	field_name := g.comptime_for_field_value.name
+	left_sym := g.table.sym(g.unwrap_generic(node.left_type))
+	field := g.table.find_field_with_embeds(left_sym, field_name) or {
+		g.error('`${node.left}` has no field named `${field_name}`', node.left.pos())
+	}
+	return field, field_name
+}
+
+fn (mut g Gen) get_comptime_selector_bool_field(field_name string) bool {
+	field := g.comptime_for_field_value
+	field_typ := g.comptime_for_field_type
+	field_sym := g.table.sym(g.unwrap_generic(g.comptime_for_field_type))
+
+	match field_name {
+		'is_pub' { return field.is_pub }
+		'is_mut' { return field.is_mut }
+		'is_shared' { return field_typ.has_flag(.shared_f) }
+		'is_atomic' { return field_typ.has_flag(.atomic_f) }
+		'is_option' { return field.typ.has_flag(.option) }
+		'is_array' { return field_sym.kind in [.array, .array_fixed] }
+		'is_map' { return field_sym.kind == .map }
+		'is_chan' { return field_sym.kind == .chan }
+		'is_struct' { return field_sym.kind == .struct_ }
+		'is_alias' { return field_sym.kind == .alias }
+		'is_enum' { return field_sym.kind == .enum_ }
+		else { return false }
+	}
+}
+
 fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	g.expr(node.left)
 	if node.left_type.is_ptr() {
@@ -20,11 +59,7 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 		if node.field_expr.expr is ast.Ident {
 			if node.field_expr.expr.name == g.comptime_for_field_var
 				&& node.field_expr.field_name == 'name' {
-				field_name := g.comptime_for_field_value.name
-				left_sym := g.table.sym(g.unwrap_generic(node.left_type))
-				_ := g.table.find_field_with_embeds(left_sym, field_name) or {
-					g.error('`${node.left}` has no field named `${field_name}`', node.left.pos())
-				}
+				_, field_name := g.get_comptime_selector_var_type(node)
 				g.write(c_name(field_name))
 				return
 			}
@@ -122,7 +157,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			return
 		}
 
-		if !g.inside_call && (m.return_type.has_flag(.optional) || m.return_type.has_flag(.result)) {
+		if !g.inside_call && (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
 			g.write('(*(${g.base_type(m.return_type)}*)')
 		}
 		// TODO: check argument types
@@ -169,7 +204,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 		}
 		g.write(')')
-		if !g.inside_call && (m.return_type.has_flag(.optional) || m.return_type.has_flag(.result)) {
+		if !g.inside_call && (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
 			g.write('.data)')
 		}
 		return
@@ -253,6 +288,8 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	line := if node.is_expr {
 		stmt_str := g.go_before_stmt(0)
 		g.write(util.tabs(g.indent))
+		styp := g.typ(node.typ)
+		g.writeln('${styp} ${tmp_var};')
 		stmt_str.trim_space()
 	} else {
 		''
@@ -260,19 +297,28 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	mut comptime_if_stmts_skip := false // don't write any statements if the condition is false
 	// (so that for example windows calls don't get generated inside `$if macos` which
 	// will lead to compilation errors)
+	mut comptime_may_skip_else := false
 
 	for i, branch in node.branches {
 		start_pos := g.out.len
+		if comptime_may_skip_else {
+			continue // if we already have a known true, ignore other branches
+		}
 		if i == node.branches.len - 1 && node.has_else {
 			g.writeln('#else')
-			comptime_if_stmts_skip = false
+			comptime_if_stmts_skip = comptime_may_skip_else
 		} else {
 			if i == 0 {
 				g.write('#if ')
 			} else {
 				g.write('#elif ')
 			}
-			comptime_if_stmts_skip = !g.comptime_if_cond(branch.cond, branch.pkg_exist)
+			comptime_if_stmts_skip, comptime_may_skip_else = g.comptime_if_cond(branch.cond,
+				branch.pkg_exist)
+			if !comptime_if_stmts_skip && comptime_may_skip_else {
+				comptime_may_skip_else = false // if the cond is false, not skip else branch
+			}
+			comptime_if_stmts_skip = !comptime_if_stmts_skip
 			g.writeln('')
 		}
 		expr_str := g.out.last_n(g.out.len - start_pos).trim_space()
@@ -286,21 +332,27 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			len := branch.stmts.len
 			if len > 0 {
 				last := branch.stmts.last() as ast.ExprStmt
-				styp := g.typ(node.typ)
 				if len > 1 {
 					g.indent++
-					g.writeln('${styp} ${tmp_var};')
 					g.writeln('{')
 					g.stmts(branch.stmts[..len - 1])
+					g.set_current_pos_as_last_stmt_pos()
+					prev_skip_stmt_pos := g.skip_stmt_pos
+					g.skip_stmt_pos = true
 					g.write('\t${tmp_var} = ')
 					g.stmt(last)
+					g.skip_stmt_pos = prev_skip_stmt_pos
 					g.writeln(';')
 					g.writeln('}')
 					g.indent--
 				} else {
 					g.indent++
-					g.write('${styp} ${tmp_var} = ')
+					g.set_current_pos_as_last_stmt_pos()
+					prev_skip_stmt_pos := g.skip_stmt_pos
+					g.skip_stmt_pos = true
+					g.write('${tmp_var} = ')
 					g.stmt(last)
+					g.skip_stmt_pos = prev_skip_stmt_pos
 					g.writeln(';')
 					g.indent--
 				}
@@ -326,145 +378,257 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	}
 }
 
-// returns the value of the bool comptime expression
+fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
+	match cond {
+		ast.Ident {
+			return g.unwrap_generic(cond.obj.typ)
+		}
+		ast.TypeNode {
+			return g.unwrap_generic(cond.typ)
+		}
+		ast.SelectorExpr {
+			if cond.gkind_field == .typ {
+				return g.unwrap_generic(cond.name_type)
+			} else {
+				name := '${cond.expr}.${cond.field_name}'
+				if name in g.comptime_var_type_map {
+					return g.comptime_var_type_map[name]
+				} else {
+					return g.unwrap_generic(cond.typ)
+				}
+			}
+		}
+		else {
+			return ast.void_type
+		}
+	}
+}
+
+// returns the value of the bool comptime expression and if next branches may be discarded
 // returning `false` means the statements inside the $if can be skipped
-fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
+fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 	match cond {
 		ast.BoolLiteral {
 			g.expr(cond)
-			return true
+			return cond.val, true
 		}
 		ast.ParExpr {
 			g.write('(')
-			is_cond_true := g.comptime_if_cond(cond.expr, pkg_exist)
+			is_cond_true, may_discard := g.comptime_if_cond(cond.expr, pkg_exist)
 			g.write(')')
-			return is_cond_true
+			return is_cond_true, may_discard
 		}
 		ast.PrefixExpr {
 			g.write(cond.op.str())
-			return g.comptime_if_cond(cond.right, pkg_exist)
+			is_cond_true, _ := g.comptime_if_cond(cond.right, pkg_exist)
+			if cond.op == .not {
+				if cond.right in [ast.BoolLiteral, ast.SelectorExpr] {
+					return !is_cond_true, true
+				}
+			}
+			return is_cond_true, false
 		}
 		ast.PostfixExpr {
 			ifdef := g.comptime_if_to_ifdef((cond.expr as ast.Ident).name, true) or {
 				verror(err.msg())
-				return false
+				return false, true
 			}
 			g.write('defined(${ifdef})')
-			return true
+			return true, false
 		}
 		ast.InfixExpr {
 			match cond.op {
 				.and, .logical_or {
-					l := g.comptime_if_cond(cond.left, pkg_exist)
+					l, d1 := g.comptime_if_cond(cond.left, pkg_exist)
 					g.write(' ${cond.op} ')
-					r := g.comptime_if_cond(cond.right, pkg_exist)
-					return if cond.op == .and { l && r } else { l || r }
+					r, d2 := g.comptime_if_cond(cond.right, pkg_exist)
+					return if cond.op == .and { l && r } else { l || r }, d1 && d1 == d2
 				}
 				.key_is, .not_is {
 					left := cond.left
-					mut name := ''
-					if left is ast.TypeNode && cond.right is ast.ComptimeType {
-						checked_type := g.unwrap_generic(left.typ)
-						is_true := g.table.is_comptime_type(checked_type, cond.right)
-						if cond.op == .key_is {
-							if is_true {
-								g.write('1')
-							} else {
-								g.write('0')
-							}
-							return is_true
-						} else {
-							if is_true {
-								g.write('0')
-							} else {
-								g.write('1')
-							}
-							return !is_true
-						}
-					}
-					mut exp_type := ast.Type(0)
-					got_type := (cond.right as ast.TypeNode).typ
-					// Handle `$if x is Interface {`
-					// mut matches_interface := 'false'
-					if left is ast.TypeNode && cond.right is ast.TypeNode
-						&& g.table.sym(got_type).kind == .interface_ {
-						// `$if Foo is Interface {`
-						interface_sym := g.table.sym(got_type)
-						if interface_sym.info is ast.Interface {
-							// q := g.table.sym(interface_sym.info.types[0])
-							checked_type := g.unwrap_generic(left.typ)
-							// TODO PERF this check is run twice (also in the checker)
-							// store the result in a field
-							is_true := g.table.does_type_implement_interface(checked_type,
-								got_type)
-							// true // exp_type in interface_sym.info.types
+					if left in [ast.TypeNode, ast.Ident, ast.SelectorExpr]
+						&& cond.right in [ast.ComptimeType, ast.TypeNode] {
+						exp_type := g.get_expr_type(left)
+						if cond.right is ast.ComptimeType {
+							is_true := g.table.is_comptime_type(exp_type, cond.right)
 							if cond.op == .key_is {
 								if is_true {
 									g.write('1')
 								} else {
 									g.write('0')
 								}
-								return is_true
-							} else if cond.op == .not_is {
+								return is_true, true
+							} else {
 								if is_true {
 									g.write('0')
 								} else {
 									g.write('1')
 								}
-								return !is_true
+								return !is_true, true
 							}
-							// matches_interface = '/*iface:$got_type $exp_type*/ true'
-							//}
-						}
-					} else if left is ast.SelectorExpr {
-						if left.gkind_field == .typ {
-							exp_type = g.unwrap_generic(left.name_type)
 						} else {
-							name = '${left.expr}.${left.field_name}'
-							exp_type = g.comptime_var_type_map[name]
-						}
-					} else if left is ast.TypeNode {
-						// this is only allowed for generics currently, otherwise blocked by checker
-						exp_type = g.unwrap_generic(left.typ)
-					}
+							got_type := g.unwrap_generic((cond.right as ast.TypeNode).typ)
+							got_sym := g.table.sym(got_type)
 
-					if cond.op == .key_is {
-						g.write('${exp_type.idx()} == ${got_type.idx()}')
-						return exp_type == got_type
-					} else {
-						g.write('${exp_type.idx()} != ${got_type.idx()}')
-						return exp_type != got_type
+							if got_sym.kind == .interface_ && got_sym.info is ast.Interface {
+								is_true := g.table.does_type_implement_interface(exp_type,
+									got_type)
+								if cond.op == .key_is {
+									if is_true {
+										g.write('1')
+									} else {
+										g.write('0')
+									}
+									return is_true, true
+								} else if cond.op == .not_is {
+									if is_true {
+										g.write('0')
+									} else {
+										g.write('1')
+									}
+									return !is_true, true
+								}
+							}
+							if cond.op == .key_is {
+								g.write('${exp_type.idx()} == ${got_type.idx()} && ${exp_type.has_flag(.option)} == ${got_type.has_flag(.option)}')
+								return exp_type == got_type, true
+							} else {
+								g.write('${exp_type.idx()} != ${got_type.idx()}')
+								return exp_type != got_type, true
+							}
+						}
 					}
 				}
 				.eq, .ne {
 					// TODO Implement `$if method.args.len == 1`
-					g.write('1')
-					return true
+					if cond.left is ast.SelectorExpr && g.comptime_for_method.len > 0
+						&& cond.right is ast.StringLiteral {
+						selector := cond.left as ast.SelectorExpr
+						if selector.expr is ast.Ident
+							&& (selector.expr as ast.Ident).name == g.comptime_for_method_var && selector.field_name == 'name' {
+							is_equal := g.comptime_for_method == cond.right.val
+							if is_equal {
+								g.write('1')
+							} else {
+								g.write('0')
+							}
+							return is_equal, true
+						}
+					}
+					if cond.left is ast.SelectorExpr || cond.right is ast.SelectorExpr {
+						l, d1 := g.comptime_if_cond(cond.left, pkg_exist)
+						g.write(' ${cond.op} ')
+						r, d2 := g.comptime_if_cond(cond.right, pkg_exist)
+						return if cond.op == .eq { l == r } else { l != r }, d1 && d1 == d2
+					} else {
+						g.write('1')
+						return true, true
+					}
+				}
+				.key_in, .not_in {
+					if (cond.left is ast.TypeNode || cond.left is ast.SelectorExpr)
+						&& cond.right is ast.ArrayInit {
+						checked_type := g.get_expr_type(cond.left)
+
+						for expr in cond.right.exprs {
+							if expr is ast.ComptimeType {
+								if g.table.is_comptime_type(checked_type, expr as ast.ComptimeType) {
+									if cond.op == .key_in {
+										g.write('1')
+									} else {
+										g.write('0')
+									}
+									return cond.op == .key_in, true
+								}
+							} else if expr is ast.TypeNode {
+								got_type := g.unwrap_generic(expr.typ)
+								is_true := checked_type.idx() == got_type.idx()
+									&& checked_type.has_flag(.option) == got_type.has_flag(.option)
+								if is_true {
+									if cond.op == .key_in {
+										g.write('1')
+									} else {
+										g.write('0')
+									}
+									return cond.op == .key_in, true
+								}
+							}
+						}
+						if cond.op == .not_in {
+							g.write('1')
+						} else {
+							g.write('0')
+						}
+						return cond.op == .not_in, true
+					} else {
+						g.write('1')
+						return true, true
+					}
 				}
 				else {
-					return true
+					return true, false
 				}
 			}
 		}
 		ast.Ident {
 			ifdef := g.comptime_if_to_ifdef(cond.name, false) or { 'true' } // handled in checker
 			g.write('defined(${ifdef})')
-			return true
+			return true, false
 		}
 		ast.ComptimeCall {
 			g.write('${pkg_exist}')
-			return true
+			return true, false
+		}
+		ast.SelectorExpr {
+			if g.inside_comptime_for_field && cond.expr is ast.Ident
+				&& (cond.expr as ast.Ident).name == g.comptime_for_field_var && cond.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_option', 'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias', 'is_enum'] {
+				ret_bool := g.get_comptime_selector_bool_field(cond.field_name)
+				g.write(ret_bool.str())
+				return ret_bool, true
+			} else {
+				g.write('1')
+				return true, true
+			}
 		}
 		else {
 			// should be unreachable, but just in case
 			g.write('1')
-			return true
+			return true, true
 		}
 	}
 }
 
+//
+
+struct CurrentComptimeValues {
+	inside_comptime_for_field bool
+	comptime_for_method       string
+	comptime_for_method_var   string
+	comptime_for_field_var    string
+	comptime_for_field_value  ast.StructField
+	comptime_for_field_type   ast.Type
+	comptime_var_type_map     map[string]ast.Type
+}
+
+fn (mut g Gen) push_existing_comptime_values() {
+	g.comptime_values_stack << CurrentComptimeValues{g.inside_comptime_for_field, g.comptime_for_method, g.comptime_for_method_var, g.comptime_for_field_var, g.comptime_for_field_value, g.comptime_for_field_type, g.comptime_var_type_map.clone()}
+}
+
+fn (mut g Gen) pop_existing_comptime_values() {
+	old := g.comptime_values_stack.pop()
+	g.inside_comptime_for_field = old.inside_comptime_for_field
+	g.comptime_for_method = old.comptime_for_method
+	g.comptime_for_method_var = old.comptime_for_method_var
+	g.comptime_for_field_var = old.comptime_for_field_var
+	g.comptime_for_field_value = old.comptime_for_field_value
+	g.comptime_for_field_type = old.comptime_for_field_type
+	g.comptime_var_type_map = old.comptime_var_type_map.clone()
+}
+
+//
+
 fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
-	sym := g.table.sym(g.unwrap_generic(node.typ))
+	sym := g.table.final_sym(g.unwrap_generic(node.typ))
 	g.writeln('/* \$for ${node.val_var} in ${sym.name}(${node.kind.str()}) */ {')
 	g.indent++
 	// vweb_result_type := ast.new_type(g.table.find_type_idx('vweb.Result'))
@@ -479,6 +643,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 		}
 		typ_vweb_result := g.table.find_type_idx('vweb.Result')
 		for method in methods {
+			g.push_existing_comptime_values()
 			// filter vweb route methods (non-generic method)
 			if method.receiver_type != 0 && method.return_type == typ_vweb_result {
 				rec_sym := g.table.sym(method.receiver_type)
@@ -486,12 +651,14 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					if _ := g.table.find_field_with_embeds(rec_sym, 'Context') {
 						if method.generic_names.len > 0
 							|| (method.params.len > 1 && method.attrs.len == 0) {
+							g.pop_existing_comptime_values()
 							continue
 						}
 					}
 				}
 			}
 			g.comptime_for_method = method.name
+			g.comptime_for_method_var = node.val_var
 			g.writeln('/* method ${i} */ {')
 			g.writeln('\t${node.val_var}.name = _SLIT("${method.name}");')
 			if method.attrs.len == 0 {
@@ -546,16 +713,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.stmts(node.stmts)
 			i++
 			g.writeln('}')
-			//
-			mut delete_keys := []string{}
-			for key, _ in g.comptime_var_type_map {
-				if key.starts_with(node.val_var) {
-					delete_keys << key
-				}
-			}
-			for key in delete_keys {
-				g.comptime_var_type_map.delete(key)
-			}
+			g.pop_existing_comptime_values()
 		}
 	} else if node.kind == .fields {
 		// TODO add fields
@@ -564,8 +722,9 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			if sym_info.fields.len > 0 {
 				g.writeln('\tFieldData ${node.val_var} = {0};')
 			}
-			g.inside_comptime_for_field = true
 			for field in sym_info.fields {
+				g.push_existing_comptime_values()
+				g.inside_comptime_for_field = true
 				g.comptime_for_field_var = node.val_var
 				g.comptime_for_field_value = field
 				g.comptime_for_field_type = field.typ
@@ -579,7 +738,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 						'\t${node.val_var}.attrs = new_array_from_c_array(${attrs.len}, ${attrs.len}, sizeof(string), _MOV((string[${attrs.len}]){' +
 						attrs.join(', ') + '}));\n')
 				}
-				// field_sym := g.table.sym(field.typ)
+				field_sym := g.table.sym(field.typ)
 				// g.writeln('\t${node.val_var}.typ = _SLIT("$field_sym.name");')
 				styp := field.typ
 				unaliased_styp := g.table.unaliased_type(styp)
@@ -588,15 +747,27 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('\t${node.val_var}.unaliased_typ = ${unaliased_styp.idx()};')
 				g.writeln('\t${node.val_var}.is_pub = ${field.is_pub};')
 				g.writeln('\t${node.val_var}.is_mut = ${field.is_mut};')
+				//
 				g.writeln('\t${node.val_var}.is_shared = ${field.typ.has_flag(.shared_f)};')
+				g.writeln('\t${node.val_var}.is_atomic = ${field.typ.has_flag(.atomic_f)};')
+				g.writeln('\t${node.val_var}.is_option = ${field.typ.has_flag(.option)};')
+				//
+				g.writeln('\t${node.val_var}.is_array = ${field_sym.kind in [.array, .array_fixed]};')
+				g.writeln('\t${node.val_var}.is_map = ${field_sym.kind == .map};')
+				g.writeln('\t${node.val_var}.is_chan = ${field_sym.kind == .chan};')
+				g.writeln('\t${node.val_var}.is_struct = ${field_sym.kind == .struct_};')
+				g.writeln('\t${node.val_var}.is_alias = ${field_sym.kind == .alias};')
+				g.writeln('\t${node.val_var}.is_enum = ${field_sym.kind == .enum_};')
+				//
+				g.writeln('\t${node.val_var}.indirections = ${field.typ.nr_muls()};')
+				//
 				g.comptime_var_type_map['${node.val_var}.typ'] = styp
+				g.comptime_var_type_map['${node.val_var}.unaliased_typ'] = unaliased_styp
 				g.stmts(node.stmts)
 				i++
 				g.writeln('}')
-				g.comptime_for_field_type = 0
+				g.pop_existing_comptime_values()
 			}
-			g.inside_comptime_for_field = false
-			g.comptime_var_type_map.delete(node.val_var)
 		}
 	} else if node.kind == .attributes {
 		if sym.info is ast.Struct {
@@ -618,7 +789,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 	g.writeln('}// \$for')
 }
 
-fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_optional bool) ?string {
+fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) ?string {
 	match name {
 		// platforms/os-es:
 		'windows' {
@@ -767,7 +938,7 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_optional bool) ?str
 			return 'TARGET_ORDER_IS_BIG'
 		}
 		else {
-			if is_comptime_optional
+			if is_comptime_option
 				|| (g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
 				return 'CUSTOM_DEFINE_${name}'
 			}

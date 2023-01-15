@@ -17,10 +17,10 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				if elem_info.generic_types.len > 0 && elem_info.concrete_types.len == 0
 					&& !node.elem_type.has_flag(.generic) {
 					if c.table.cur_concrete_types.len == 0 {
-						c.error('generic struct must specify type parameter, e.g. Foo[int]',
+						c.error('generic struct `${elem_sym.name}` must specify type parameter, e.g. ${elem_sym.name}[int]',
 							node.elem_type_pos)
 					} else {
-						c.error('generic struct must specify type parameter, e.g. Foo[T]',
+						c.error('generic struct `${elem_sym.name}` must specify type parameter, e.g. ${elem_sym.name}[T]',
 							node.elem_type_pos)
 					}
 				}
@@ -29,10 +29,10 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				if elem_info.generic_types.len > 0 && elem_info.concrete_types.len == 0
 					&& !node.elem_type.has_flag(.generic) {
 					if c.table.cur_concrete_types.len == 0 {
-						c.error('generic interface must specify type parameter, e.g. Foo[int]',
+						c.error('generic interface `${elem_sym.name}` must specify type parameter, e.g. ${elem_sym.name}[int]',
 							node.elem_type_pos)
 					} else {
-						c.error('generic interface must specify type parameter, e.g. Foo[T]',
+						c.error('generic interface `${elem_sym.name}` must specify type parameter, e.g. ${elem_sym.name}[T]',
 							node.elem_type_pos)
 					}
 				}
@@ -41,10 +41,10 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				if elem_info.generic_types.len > 0 && elem_info.concrete_types.len == 0
 					&& !node.elem_type.has_flag(.generic) {
 					if c.table.cur_concrete_types.len == 0 {
-						c.error('generic sumtype must specify type parameter, e.g. Foo[int]',
+						c.error('generic sumtype `${elem_sym.name}` must specify type parameter, e.g. ${elem_sym.name}[int]',
 							node.elem_type_pos)
 					} else {
-						c.error('generic sumtype must specify type parameter, e.g. Foo[T]',
+						c.error('generic sumtype `${elem_sym.name}` must specify type parameter, e.g. ${elem_sym.name}[T]',
 							node.elem_type_pos)
 					}
 				}
@@ -116,12 +116,12 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		// }
 		array_info := type_sym.array_info()
 		node.elem_type = array_info.elem_type
-		// clear optional flag incase of: `fn opt_arr() ?[]int { return [] }`
+		// clear option flag incase of: `fn opt_arr() ?[]int { return [] }`
 		return if c.expected_type.has_flag(.shared_f) {
 			c.expected_type.clear_flag(.shared_f).deref()
 		} else {
 			c.expected_type
-		}.clear_flag(.optional).clear_flag(.result)
+		}.clear_flag(.option).clear_flag(.result)
 	}
 	// [1,2,3]
 	if node.exprs.len > 0 && node.elem_type == ast.void_type {
@@ -282,7 +282,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		sym := c.table.sym(c.expected_type)
 		if sym.kind == .map {
 			info := sym.map_info()
-			node.typ = c.expected_type.clear_flag(.optional).clear_flag(.result)
+			node.typ = c.expected_type.clear_flag(.option).clear_flag(.result)
 			node.key_type = info.key_type
 			node.value_type = info.value_type
 			return node.typ
@@ -307,10 +307,10 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				if val_info.generic_types.len > 0 && val_info.concrete_types.len == 0
 					&& !info.value_type.has_flag(.generic) {
 					if c.table.cur_concrete_types.len == 0 {
-						c.error('generic struct `${val_sym.name}` must specify type parameter, e.g. Foo[int]',
+						c.error('generic struct `${val_sym.name}` must specify type parameter, e.g. ${val_sym.name}[int]',
 							node.pos)
 					} else {
-						c.error('generic struct `${val_sym.name}` must specify type parameter, e.g. Foo[T]',
+						c.error('generic struct `${val_sym.name}` must specify type parameter, e.g. ${val_sym.name}[T]',
 							node.pos)
 					}
 				}

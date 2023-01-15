@@ -230,7 +230,7 @@ fn test_array_init_with_sumtype() {
 	}
 }
 
-fn test_array_init_inferred_from_optional() {
+fn test_array_init_inferred_from_option() {
 	a := read() or { [] }
 	x := 1
 	b := read() or {

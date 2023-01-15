@@ -3,11 +3,11 @@ struct Toy{
 }
 
 fn get_toy1(toy Toy) Toy{
-	return Toy<T>{toy.toy_name}
+	return Toy[T]{toy.toy_name}
 }
 
 fn get_toy2(toy Toy) Toy{
-	return Toy<T,U>{toy.toy_name}
+	return Toy[T,U]{toy.toy_name}
 }
 
 fn main() {

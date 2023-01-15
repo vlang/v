@@ -1,5 +1,3 @@
-module main
-
 [heap]
 pub struct Grid {
 pub mut:

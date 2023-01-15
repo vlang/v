@@ -1,5 +1,3 @@
-module main
-
 type ALchar = char
 
 fn test_alias_char_type_reference() {

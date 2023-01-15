@@ -1,5 +1,3 @@
-module main
-
 fn test_generics_method_with_sumtype_args() {
 	mut me := CatDad{}
 	ret := me.adopt[CatType, Cat](CatType.black, BlackCat{})

@@ -432,6 +432,18 @@ pub fn (b &Builder) show_total_warns_and_errors_stats() {
 			println('checker summary: ${estring} V errors, ${wstring} V warnings, ${nstring} V notices')
 		}
 	}
+	if b.checker.nr_errors > 0 && b.pref.path.ends_with('.v') && os.is_file(b.pref.path) {
+		for err in b.checker.errors {
+			if err.message.starts_with('unknown ') {
+				// Sometimes users try to `v main.v`, when they have several .v files in their project.
+				// Then, they encounter puzzling errors about missing or unknown types. In this case,
+				// the intended command may have been `v .` instead, so just suggest that:
+				old_cmd := util.bold('v ${b.pref.path}')
+				new_cmd := util.bold('v ${os.dir(b.pref.path)}')
+				eprintln(util.color('notice', 'If the code of your project is in multiple files, try with `${new_cmd}` instead of `${old_cmd}`'))
+			}
+		}
+	}
 }
 
 pub fn (mut b Builder) print_warnings_and_errors() {

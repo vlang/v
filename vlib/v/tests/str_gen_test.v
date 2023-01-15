@@ -458,7 +458,7 @@ fn test_c_struct_typedef() {
 		}
 		assert c.str() == r'CTypeDefStruct{
     mutex: &sync.Mutex{
-        mutex: pthread_mutex_t{}
+        mutex: C.pthread_mutex_t{}
     }
 }'
 	}

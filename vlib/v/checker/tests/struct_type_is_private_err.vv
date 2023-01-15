@@ -1,5 +1,5 @@
-import sqlite
+import db.sqlite
 
-fn main(){
+fn main() {
 	_ := &C.sqlite3{}
 }

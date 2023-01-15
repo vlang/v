@@ -5,8 +5,8 @@
 - [ ] Parallel checker
 - [ ] Parallel C compilation
 - [ ] `recover()` from panics
-- [ ] vfmt: add missing imports (like goimports)
-- [ ] Recursive structs via optionals: `struct Node { next ?Node }`
+- [x] vfmt: add missing imports (like goimports)
+- [ ] Recursive structs via options: `struct Node { next ?Node }`
 - [ ] Optional function struct fields
 - [ ] Handle function pointers safely, remove `if function == 0 {`
 - [x] Bundle OpenSSL like GC

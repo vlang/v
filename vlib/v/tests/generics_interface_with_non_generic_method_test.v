@@ -1,5 +1,3 @@
-module main
-
 interface TypeFactory[T] {
 	get_type(type_name string) T
 }

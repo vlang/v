@@ -63,7 +63,7 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
 		elem_styp := g.typ(elem_type)
-		g.register_chan_push_optional_fn(elem_styp, styp)
+		g.register_chan_push_option_fn(elem_styp, styp)
 		g.write('${option_name}_void ${tmp_opt} = __Option_${styp}_pushval(')
 	} else {
 		g.write('__${styp}_pushval(')
@@ -85,7 +85,13 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
-	has_defined_eq_operator := g.table.has_method(left.sym, '==')
+	mut has_defined_eq_operator := false
+	mut eq_operator_expects_ptr := false
+	if m := g.table.find_method(left.sym, '==') {
+		has_defined_eq_operator = true
+		eq_operator_expects_ptr = m.receiver_type.is_ptr()
+	}
+	// TODO: investigate why the following is needed for vlib/v/tests/string_alias_test.v and vlib/v/tests/anon_fn_with_alias_args_test.v
 	has_alias_eq_op_overload := left.sym.info is ast.Alias && left.sym.has_method('==')
 	if g.pref.translated && !g.is_builtin_mod {
 		g.gen_plain_infix_expr(node)
@@ -113,9 +119,15 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		}
 		g.write('__eq(')
 		g.write('*'.repeat(left.typ.nr_muls()))
+		if eq_operator_expects_ptr {
+			g.write('&')
+		}
 		g.expr(node.left)
 		g.write(', ')
 		g.write('*'.repeat(right.typ.nr_muls()))
+		if eq_operator_expects_ptr {
+			g.write('&')
+		}
 		g.expr(node.right)
 		g.write(')')
 	} else if left.typ.idx() == right.typ.idx()
@@ -294,7 +306,14 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
-	has_operator_overloading := g.table.has_method(left.sym, '<')
+
+	mut has_operator_overloading := false
+	mut operator_expects_ptr := false
+	if m := g.table.find_method(left.sym, '<') {
+		has_operator_overloading = true
+		operator_expects_ptr = m.receiver_type.is_ptr()
+	}
+
 	if g.pref.translated && !g.is_builtin_mod {
 		g.gen_plain_infix_expr(node)
 		return
@@ -310,17 +329,29 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 		if node.op in [.lt, .ge] {
 			g.write('(')
 			g.write('*'.repeat(left.typ.nr_muls()))
+			if operator_expects_ptr {
+				g.write('&')
+			}
 			g.expr(node.left)
 			g.write(', ')
 			g.write('*'.repeat(right.typ.nr_muls()))
+			if operator_expects_ptr {
+				g.write('&')
+			}
 			g.expr(node.right)
 			g.write(')')
 		} else {
 			g.write('(')
 			g.write('*'.repeat(right.typ.nr_muls()))
+			if operator_expects_ptr {
+				g.write('&')
+			}
 			g.expr(node.right)
 			g.write(', ')
 			g.write('*'.repeat(left.typ.nr_muls()))
+			if operator_expects_ptr {
+				g.write('&')
+			}
 			g.expr(node.left)
 			g.write(')')
 		}
@@ -333,17 +364,29 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 		if node.op in [.lt, .ge] {
 			g.write('(')
 			g.write('*'.repeat(left.typ.nr_muls()))
+			if operator_expects_ptr {
+				g.write('&')
+			}
 			g.expr(node.left)
 			g.write(', ')
 			g.write('*'.repeat(right.typ.nr_muls()))
+			if operator_expects_ptr {
+				g.write('&')
+			}
 			g.expr(node.right)
 			g.write(')')
 		} else {
 			g.write('(')
 			g.write('*'.repeat(right.typ.nr_muls()))
+			if operator_expects_ptr {
+				g.write('&')
+			}
 			g.expr(node.right)
 			g.write(', ')
 			g.write('*'.repeat(left.typ.nr_muls()))
+			if operator_expects_ptr {
+				g.write('&')
+			}
 			g.expr(node.left)
 			g.write(')')
 		}
@@ -868,6 +911,46 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.infix_left_var_name = ''
 		return
+	} else if node.right is ast.CallExpr {
+		if node.right.or_block.kind != .absent {
+			prev_inside_ternary := g.inside_ternary
+			g.inside_ternary = 0
+			tmp := g.new_tmp_var()
+			cur_line := g.go_before_stmt(0).trim_space()
+			g.empty_line = true
+			g.write('bool ${tmp} = (')
+			g.expr(node.left)
+			g.writeln(');')
+			g.set_current_pos_as_last_stmt_pos()
+			g.write('${cur_line} ${tmp} ${node.op.str()} ')
+			g.infix_left_var_name = if node.op == .and { tmp } else { '!${tmp}' }
+			g.expr(node.right)
+			g.infix_left_var_name = ''
+			g.inside_ternary = prev_inside_ternary
+			return
+		}
+	} else if node.right is ast.PrefixExpr && g.inside_ternary == 0 {
+		prefix := node.right
+		if prefix.op == .not && prefix.right is ast.CallExpr {
+			call_expr := prefix.right as ast.CallExpr
+			if call_expr.or_block.kind != .absent {
+				prev_inside_ternary := g.inside_ternary
+				g.inside_ternary = 0
+				tmp := g.new_tmp_var()
+				cur_line := g.go_before_stmt(0).trim_space()
+				g.empty_line = true
+				g.write('bool ${tmp} = (')
+				g.expr(node.left)
+				g.writeln(');')
+				g.set_current_pos_as_last_stmt_pos()
+				g.write('${cur_line} ${tmp} ${node.op.str()} ')
+				g.infix_left_var_name = '!${tmp}'
+				g.expr(node.right)
+				g.infix_left_var_name = ''
+				g.inside_ternary = prev_inside_ternary
+				return
+			}
+		}
 	}
 	g.gen_plain_infix_expr(node)
 }

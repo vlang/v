@@ -58,8 +58,8 @@ fn test_int() {
 	assert sample_data['f32'] or { 0 }.int() == 2
 	assert sample_data['f64'] or { 0 }.int() == 1
 	assert json.Any(true).int() == 1
+	assert json.Any('123').int() == 123
 	// invalid conversions
-	assert json.Any('123').int() == 0
 	assert sample_data['null'] or { 0 }.int() == 0
 	assert sample_data['arr'] or { 0 }.int() == 0
 	assert sample_data['obj'] or { 0 }.int() == 0
@@ -72,8 +72,8 @@ fn test_i64() {
 	assert sample_data['f32'] or { 0 }.i64() == 2
 	assert sample_data['f64'] or { 0 }.i64() == 1
 	assert json.Any(true).i64() == 1
+	assert json.Any('123').i64() == 123
 	// invalid conversions
-	assert json.Any('123').i64() == 0
 	assert sample_data['null'] or { 0 }.i64() == 0
 	assert sample_data['arr'] or { 0 }.i64() == 0
 	assert sample_data['obj'] or { 0 }.i64() == 0
@@ -107,11 +107,11 @@ fn test_bool() {
 	// valid conversions
 	assert sample_data['bool'] or { 0 }.bool() == false
 	assert json.Any('true').bool() == true
-	// invalid conversions
 	assert sample_data['int'] or { 0 }.bool() == true
 	assert sample_data['i64'] or { 0 }.bool() == true
 	assert sample_data['f32'] or { 0 }.bool() == true
 	assert sample_data['f64'] or { 0 }.bool() == true
+	// invalid conversions
 	assert sample_data['null'] or { 0 }.bool() == false
 	assert sample_data['arr'] or { 0 }.bool() == false
 	assert sample_data['obj'] or { 0 }.bool() == false

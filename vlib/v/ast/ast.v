@@ -126,6 +126,8 @@ pub enum ComptimeTypeKind {
 	array
 	sum_type
 	enum_
+	alias
+	function
 }
 
 pub struct ComptimeType {
@@ -144,6 +146,8 @@ pub fn (cty ComptimeType) str() string {
 		.array { '\$Array' }
 		.sum_type { '\$Sumtype' }
 		.enum_ { '\$Enum' }
+		.alias { '\$Alias' }
+		.function { '\$Function' }
 	}
 }
 
@@ -296,7 +300,7 @@ pub struct StructField {
 pub:
 	pos              token.Pos
 	type_pos         token.Pos
-	optional_pos     token.Pos
+	option_pos       token.Pos
 	comments         []Comment
 	i                int
 	has_default_expr bool
@@ -459,6 +463,7 @@ pub mut:
 	typ                  Type   // the type of this struct
 	update_expr          Expr   // `a` in `...a`
 	update_expr_type     Type
+	update_expr_pos      token.Pos
 	update_expr_comments []Comment
 	is_update_embed      bool
 	has_update_expr      bool // has `...a`
@@ -590,6 +595,7 @@ pub mut:
 	is_ctor_new        bool // if JS ctor calls requires `new` before call, marked as `[use_new]` in V
 	args               []CallArg
 	expected_arg_types []Type
+	comptime_ret_val   bool
 	language           Language
 	or_block           OrExpr
 	left               Expr // `user` in `user.register()`
@@ -789,7 +795,7 @@ pub mut:
 	is_mut      bool
 	is_static   bool
 	is_volatile bool
-	is_optional bool
+	is_option   bool
 	share       ShareType
 }
 
@@ -1595,19 +1601,21 @@ pub mut:
 
 pub struct SizeOf {
 pub:
-	is_type bool
-	pos     token.Pos
+	guessed_type bool // a legacy `sizeof( GuessedType )` => a deprecation notice, suggesting `v fmt -w .` => `sizeof[ Type ]()`
+	is_type      bool
+	pos          token.Pos
 pub mut:
-	expr Expr // checker uses this to set typ
+	expr Expr // checker uses this to set typ, when !is_type
 	typ  Type
 }
 
 pub struct IsRefType {
 pub:
-	is_type bool
-	pos     token.Pos
+	guessed_type bool // a legacy `isreftype( GuessedType )` => a deprecation notice, suggesting `v fmt -w .` => `isreftype[ Type ]()`
+	is_type      bool
+	pos          token.Pos
 pub mut:
-	expr Expr // checker uses this to set typ
+	expr Expr // checker uses this to set typ, when !is_type
 	typ  Type
 }
 
@@ -1630,10 +1638,11 @@ pub mut:
 [minify]
 pub struct TypeOf {
 pub:
-	pos token.Pos
+	is_type bool
+	pos     token.Pos
 pub mut:
-	expr      Expr
-	expr_type Type
+	expr Expr // checker uses this to set typ, when !is_type
+	typ  Type
 }
 
 [minify]
@@ -1727,11 +1736,12 @@ pub enum SqlStmtKind {
 
 pub struct SqlStmt {
 pub:
-	pos     token.Pos
 	db_expr Expr // `db` in `sql db {`
 	or_expr OrExpr
+	pos     token.Pos
 pub mut:
-	lines []SqlStmtLine
+	lines        []SqlStmtLine
+	db_expr_type Type // the type of the `db` in `sql db {`
 }
 
 pub struct SqlStmtLine {
@@ -2264,6 +2274,18 @@ pub fn (expr Expr) is_literal() bool {
 			return false
 		}
 	}
+}
+
+pub fn (e Expr) is_nil() bool {
+	if e is Nil {
+		return true
+	}
+	if e is UnsafeExpr {
+		if e.expr is Nil {
+			return true
+		}
+	}
+	return false
 }
 
 pub fn type_can_start_with_token(tok &token.Token) bool {

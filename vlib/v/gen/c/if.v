@@ -7,7 +7,7 @@ import v.ast
 
 fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 	if node.is_expr && g.inside_ternary == 0 {
-		if g.is_autofree || node.typ.has_flag(.optional) || node.typ.has_flag(.result) {
+		if g.is_autofree || node.typ.has_flag(.option) || node.typ.has_flag(.result) {
 			return true
 		}
 		for branch in node.branches {
@@ -23,6 +23,8 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 					if g.need_tmp_var_in_expr(stmt.expr) {
 						return true
 					}
+				} else if branch.stmts[0] is ast.Return {
+					return true
 				}
 			}
 		}
@@ -79,7 +81,7 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 		ast.ConcatExpr {
 			for val in expr.vals {
 				if val is ast.CallExpr {
-					if val.return_type.has_flag(.optional) || val.return_type.has_flag(.result) {
+					if val.return_type.has_flag(.option) || val.return_type.has_flag(.result) {
 						return true
 					}
 				}
@@ -139,6 +141,17 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 	return false
 }
 
+fn (mut g Gen) needs_conds_order(node ast.IfExpr) bool {
+	if node.branches.len > 1 {
+		for branch in node.branches {
+			if g.need_tmp_var_in_expr(branch.cond) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 fn (mut g Gen) if_expr(node ast.IfExpr) {
 	if node.is_comptime {
 		g.comptime_if(node)
@@ -151,16 +164,17 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	// (as it used to be done).
 	// Always use this in -autofree, since ?: can have tmp expressions that have to be freed.
 	needs_tmp_var := g.need_tmp_var_in_if(node)
+	needs_conds_order := g.needs_conds_order(node)
 	tmp := if needs_tmp_var { g.new_tmp_var() } else { '' }
 	mut cur_line := ''
 	mut raw_state := false
 	if needs_tmp_var {
-		if node.typ.has_flag(.optional) {
-			raw_state = g.inside_if_optional
+		if node.typ.has_flag(.option) {
+			raw_state = g.inside_if_option
 			defer {
-				g.inside_if_optional = raw_state
+				g.inside_if_option = raw_state
 			}
-			g.inside_if_optional = true
+			g.inside_if_option = true
 		} else if node.typ.has_flag(.result) {
 			raw_state = g.inside_if_result
 			defer {
@@ -222,6 +236,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			}
 		}
 	}
+	mut branch_cond_var_names := []string{}
 	for i, branch in node.branches {
 		if i > 0 {
 			g.write('} else ')
@@ -242,7 +257,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				var_name = g.new_tmp_var()
 				guard_vars[i] = var_name // for `else`
 				g.tmp_count--
-				if branch.cond.expr_type.has_flag(.optional) {
+				if branch.cond.expr_type.has_flag(.option) {
 					g.writeln('if (${var_name}.state == 0) {')
 				} else if branch.cond.expr_type.has_flag(.result) {
 					g.writeln('if (!${var_name}.is_error) {')
@@ -250,7 +265,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			} else {
 				g.write('if (${var_name} = ')
 				g.expr(branch.cond.expr)
-				if branch.cond.expr_type.has_flag(.optional) {
+				if branch.cond.expr_type.has_flag(.option) {
 					g.writeln(', ${var_name}.state == 0) {')
 				} else if branch.cond.expr_type.has_flag(.result) {
 					g.writeln(', !${var_name}.is_error) {')
@@ -301,23 +316,57 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				}
 			}
 		} else {
-			mut no_needs_par := false
-			if branch.cond is ast.InfixExpr {
-				if branch.cond.op == .key_in && branch.cond.left !is ast.InfixExpr
-					&& branch.cond.right is ast.ArrayInit {
-					no_needs_par = true
+			if i == 0 && node.branches.len > 1 && !needs_tmp_var && needs_conds_order {
+				cond_var_name := g.new_tmp_var()
+				line := g.go_before_stmt(0).trim_space()
+				g.empty_line = true
+				g.write('bool ${cond_var_name} = ')
+				g.expr(branch.cond)
+				g.writeln(';')
+				branch_cond_var_names << cond_var_name
+				g.set_current_pos_as_last_stmt_pos()
+				g.writeln(line)
+				g.writeln('if (${cond_var_name}) {')
+			} else if i > 0 && branch_cond_var_names.len > 0 && !needs_tmp_var && needs_conds_order {
+				cond_var_name := g.new_tmp_var()
+				line := g.go_before_stmt(0)
+				g.empty_line = true
+				g.writeln('bool ${cond_var_name};')
+				branch_cond := branch_cond_var_names.join(' || ')
+				g.writeln('if (!(${branch_cond})) {')
+				g.set_current_pos_as_last_stmt_pos()
+				g.indent++
+				g.write('${cond_var_name} = ')
+				prev_is_autofree := g.is_autofree
+				g.is_autofree = false
+				g.expr(branch.cond)
+				g.is_autofree = prev_is_autofree
+				g.writeln(';')
+				g.indent--
+				g.writeln('}')
+				branch_cond_var_names << cond_var_name
+				g.set_current_pos_as_last_stmt_pos()
+				g.write(line)
+				g.writeln('if (${cond_var_name}) {')
+			} else {
+				mut no_needs_par := false
+				if branch.cond is ast.InfixExpr {
+					if branch.cond.op == .key_in && branch.cond.left !is ast.InfixExpr
+						&& branch.cond.right is ast.ArrayInit {
+						no_needs_par = true
+					}
 				}
-			}
-			if no_needs_par {
-				g.write('if ')
-			} else {
-				g.write('if (')
-			}
-			g.expr(branch.cond)
-			if no_needs_par {
-				g.writeln(' {')
-			} else {
-				g.writeln(') {')
+				if no_needs_par {
+					g.write('if ')
+				} else {
+					g.write('if (')
+				}
+				g.expr(branch.cond)
+				if no_needs_par {
+					g.writeln(' {')
+				} else {
+					g.writeln(') {')
+				}
 			}
 		}
 		if needs_tmp_var {
@@ -337,12 +386,13 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	}
 	if node.branches.len > 0 {
 		g.writeln('}')
+		g.set_current_pos_as_last_stmt_pos()
 	}
-	g.set_current_pos_as_last_stmt_pos()
 	if needs_tmp_var {
 		if g.infix_left_var_name.len > 0 {
 			g.indent--
 			g.writeln('}')
+			g.set_current_pos_as_last_stmt_pos()
 		}
 		g.empty_line = false
 		g.write('${cur_line} ${tmp}')

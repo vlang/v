@@ -458,18 +458,15 @@ fn (mut g Game) free() {
 }
 
 // TODO Remove these wrapper functions when we can assign methods as callbacks
-fn init(x voidptr) {
-	mut app := &App(x)
+fn init(mut app App) {
 	app.init()
 }
 
-fn frame(x voidptr) {
-	mut app := &App(x)
+fn frame(mut app App) {
 	app.frame()
 }
 
-fn cleanup(x voidptr) {
-	mut app := &App(x)
+fn cleanup(mut app App) {
 	unsafe {
 		app.free()
 	}
@@ -479,8 +476,7 @@ fn fail(error string) {
 	eprintln(error)
 }
 
-fn event(e &ui.Event, x voidptr) {
-	mut app := &App(x)
+fn event(e &ui.Event, mut app App) {
 	app.event(e)
 }
 

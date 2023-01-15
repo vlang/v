@@ -80,7 +80,7 @@ const (
 		'vlib/v/gen/native/macho_test.v',
 		'vlib/v/gen/native/tests/native_test.v',
 		'vlib/v/pkgconfig/pkgconfig_test.v',
-		'vlib/v/tests/inout/compiler_test.v',
+		'vlib/v/slow_tests/inout/compiler_test.v',
 		'vlib/x/json2/json2_test.v',
 	]
 	skip_test_files               = [
@@ -88,8 +88,8 @@ const (
 		'cmd/tools/vdoc/tests/vdoc_file_test.v', /* fails on Windows; order of output is not as expected */
 		'vlib/context/onecontext/onecontext_test.v',
 		'vlib/context/deadline_test.v' /* sometimes blocks */,
-		'vlib/mysql/mysql_orm_test.v' /* mysql not installed */,
-		'vlib/pg/pg_orm_test.v' /* pg not installed */,
+		'vlib/db/mysql/mysql_orm_test.v' /* mysql not installed */,
+		'vlib/db/pg/pg_orm_test.v' /* pg not installed */,
 	]
 	skip_fsanitize_too_slow       = [
 		// These tests are too slow to be run in the CI on each PR/commit
@@ -102,11 +102,11 @@ const (
 		'vlib/v/live/live_test.v',
 		'vlib/v/parser/v_parser_test.v',
 		'vlib/v/scanner/scanner_test.v',
-		'vlib/v/tests/inout/compiler_test.v',
-		'vlib/v/tests/prod_test.v',
-		'vlib/v/tests/profile/profile_test.v',
-		'vlib/v/tests/repl/repl_test.v',
-		'vlib/v/tests/valgrind/valgrind_test.v',
+		'vlib/v/slow_tests/inout/compiler_test.v',
+		'vlib/v/slow_tests/prod_test.v',
+		'vlib/v/slow_tests/profile/profile_test.v',
+		'vlib/v/slow_tests/repl/repl_test.v',
+		'vlib/v/slow_tests/valgrind/valgrind_test.v',
 	]
 	skip_with_fsanitize_memory    = [
 		'vlib/net/tcp_simple_client_server_test.v',
@@ -120,13 +120,14 @@ const (
 		'vlib/net/tcp_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/orm/orm_sql_or_blocks_test.v',
-		'vlib/sqlite/sqlite_test.v',
-		'vlib/sqlite/sqlite_orm_test.v',
-		'vlib/sqlite/sqlite_vfs_lowlevel_test.v',
+		'vlib/db/sqlite/sqlite_test.v',
+		'vlib/db/sqlite/sqlite_orm_test.v',
+		'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_joined_tables_select_test.v',
 		'vlib/v/tests/sql_statement_inside_fn_call_test.v',
+		'vlib/v/tests/orm_stmt_wrong_return_checking_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/csrf/csrf_test.v',
 		'vlib/vweb/request_test.v',
@@ -137,13 +138,16 @@ const (
 		'vlib/crypto/rand/crypto_rand_read_test.v',
 		'vlib/net/smtp/smtp_test.v',
 		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
+		'vlib/v/tests/fn_literal_type_test.v',
 	]
 	skip_with_fsanitize_address   = [
 		'vlib/net/websocket/websocket_test.v',
 		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
+		'vlib/v/tests/orm_sub_array_struct_test.v',
 	]
 	skip_with_fsanitize_undefined = [
 		'do_not_remove',
+		'vlib/v/tests/orm_sub_array_struct_test.v',
 	]
 	skip_with_werror              = [
 		'do_not_remove',
@@ -156,7 +160,7 @@ const (
 		'do_not_remove',
 	]
 	skip_on_musl                  = [
-		'vlib/v/tests/profile/profile_test.v',
+		'vlib/v/slow_tests/profile/profile_test.v',
 		'vlib/gg/draw_fns_api_test.v',
 		'vlib/v/tests/skip_unused/gg_code.vv',
 	]
@@ -166,14 +170,15 @@ const (
 		'vlib/net/http/http_test.v',
 		'vlib/net/http/status_test.v',
 		'vlib/net/websocket/ws_test.v',
-		'vlib/sqlite/sqlite_test.v',
-		'vlib/sqlite/sqlite_orm_test.v',
-		'vlib/sqlite/sqlite_vfs_lowlevel_test.v',
+		'vlib/db/sqlite/sqlite_test.v',
+		'vlib/db/sqlite/sqlite_orm_test.v',
+		'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/orm/orm_sql_or_blocks_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_joined_tables_select_test.v',
+		'vlib/v/tests/orm_stmt_wrong_return_checking_test.v',
 		'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/vweb/tests/vweb_test.v',
@@ -189,6 +194,7 @@ const (
 		'vlib/builtin/js/array_test.js.v',
 		'vlib/net/smtp/smtp_test.v',
 		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
+		'vlib/v/tests/fn_literal_type_test.v',
 	]
 	skip_on_linux                 = [
 		'do_not_remove',
@@ -224,6 +230,7 @@ const (
 		'vlib/sync/many_times_test.v',
 		'vlib/sync/once_test.v',
 		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
+		'vlib/v/tests/fn_literal_type_test.v',
 	]
 	skip_on_non_windows           = [
 		'do_not_remove',

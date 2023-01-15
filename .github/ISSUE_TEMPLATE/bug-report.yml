@@ -73,7 +73,7 @@ body:
     validations:
       required: true
 
-  - type: input
+  - type: textarea
     id: environment
     attributes:
       label: Environment details (OS name and version, etc.)

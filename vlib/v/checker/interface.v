@@ -211,7 +211,7 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			}
 		}
 		if node.generic_types.len == 0 && has_generic_types {
-			c.error('generic interface declaration must specify the generic type names, e.g. Foo[T]',
+			c.error('generic interface `${node.name}` declaration must specify the generic type names, e.g. ${node.name}[T]',
 				node.pos)
 		}
 	}
@@ -268,8 +268,8 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 							}
 						} else if c.table.get_type_name(imethod.return_type) == gt_name {
 							mut ret_typ := method.return_type
-							if imethod.return_type.has_flag(.optional) {
-								ret_typ = ret_typ.clear_flag(.optional)
+							if imethod.return_type.has_flag(.option) {
+								ret_typ = ret_typ.clear_flag(.option)
 							} else if imethod.return_type.has_flag(.result) {
 								ret_typ = ret_typ.clear_flag(.result)
 							}

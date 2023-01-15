@@ -1,4 +1,4 @@
-import sqlite
+import db.sqlite
 
 struct Movie {
 	id   int    [primary]

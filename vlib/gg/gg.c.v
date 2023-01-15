@@ -307,6 +307,7 @@ fn gg_frame_fn(mut ctx Context) {
 	ctx.record_frame()
 
 	if ctx.ui_mode && !ctx.needs_refresh {
+		// println('ui mode, exiting')
 		// Draw 3 more frames after the "stop refresh" command
 		ctx.ticks++
 		if ctx.ticks > 3 {

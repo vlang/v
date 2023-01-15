@@ -10,6 +10,7 @@ import net.http
 import net.urllib
 import time
 import json
+import encoding.html
 
 // A type which don't get filtered inside templates
 pub type RawHtml = string
@@ -414,6 +415,7 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	}
 	host := if params.host == '' { 'localhost' } else { params.host }
 	println('[Vweb] Running app on http://${host}:${params.port}/')
+	flush_stdout()
 	for {
 		// Create a new app object for each connection, copy global data like db connections
 		mut request_app := &T{}
@@ -606,8 +608,8 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 [manualfree]
 fn serve_if_static[T](mut app T, url urllib.URL) bool {
 	// TODO: handle url parameters properly - for now, ignore them
-	static_file := app.static_files[url.path]
-	mime_type := app.static_mime_types[url.path]
+	static_file := app.static_files[url.path] or { return false }
+	mime_type := app.static_mime_types[url.path] or { return false }
 	if static_file == '' || mime_type == '' {
 		return false
 	}
@@ -705,7 +707,7 @@ pub fn (ctx &Context) ip() string {
 
 // Set s to the form error
 pub fn (mut ctx Context) error(s string) {
-	println('vweb error: ${s}')
+	eprintln('vweb error: ${s}')
 	ctx.form_error = s
 }
 
@@ -715,22 +717,21 @@ pub fn not_found() Result {
 }
 
 fn send_string(mut conn net.TcpConn, s string) ! {
+	$if trace_send_string_conn ? {
+		eprintln('> send_string: conn: ${ptr_str(conn)}')
+	}
 	$if trace_response ? {
 		eprintln('> send_string:\n${s}\n')
 	}
-	conn.write(s.bytes())!
+	if voidptr(conn) == unsafe { nil } {
+		return error('connection was closed before send_string')
+	}
+	conn.write_string(s)!
 }
 
 // Do not delete.
 // It used by `vlib/v/gen/c/str_intp.v:130` for string interpolation inside vweb templates
 // TODO: move it to template render
 fn filter(s string) string {
-	return s.replace_each([
-		'<',
-		'&lt;',
-		'"',
-		'&quot;',
-		'&',
-		'&amp;',
-	])
+	return html.escape(s)
 }

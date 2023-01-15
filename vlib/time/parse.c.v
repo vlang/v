@@ -70,6 +70,9 @@ pub fn parse(s string) !Time {
 	}
 	shms := s[pos..]
 	hms := shms.split(':')
+	if hms.len != 3 {
+		return error_invalid_time(9)
+	}
 	hour_ := hms[0][1..]
 	minute_ := hms[1]
 	second_ := hms[2]

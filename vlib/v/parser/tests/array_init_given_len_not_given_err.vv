@@ -1,0 +1,15 @@
+import rand
+
+const (
+	lenn = 100
+)
+
+fn main() {
+	mut list_elem := [][]f64{init: [0.0, 0.0]}
+	mut elem := 0.0
+	for i in 0 .. lenn {
+		elem = rand.int_in_range(-100000000, 100000001)!
+		list_elem[i] << [elem, elem]
+	}
+	println(list_elem)
+}

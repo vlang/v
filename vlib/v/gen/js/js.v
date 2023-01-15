@@ -59,7 +59,7 @@ mut:
 	inside_loop            bool
 	inside_map_set         bool // map.set(key, value)
 	inside_builtin         bool
-	inside_if_optional     bool
+	inside_if_option       bool
 	generated_builtin      bool
 	inside_def_typ_decl    bool
 	is_test                bool
@@ -940,7 +940,7 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 			g.gen_if_expr(node)
 		}
 		ast.IfGuardExpr {
-			// TODO no optionals yet
+			// TODO no options yet
 		}
 		ast.IndexExpr {
 			g.gen_index_expr(node)
@@ -1588,7 +1588,7 @@ fn (mut g JsGen) gen_enum_decl(it ast.EnumDecl) {
 
 fn (mut g JsGen) gen_expr_stmt(it ast.ExprStmt) {
 	g.expr(it.expr)
-	if !it.is_expr && it.expr !is ast.IfExpr && !g.inside_ternary && !g.inside_if_optional {
+	if !it.is_expr && it.expr !is ast.IfExpr && !g.inside_ternary && !g.inside_if_option {
 		g.writeln(';')
 	}
 }
@@ -1844,7 +1844,7 @@ fn (mut g JsGen) gen_interface_decl(it ast.InterfaceDecl) {
 	g.writeln('function ${g.js_name(it.name)} (arg) { return new \$ref(arg); }')
 }
 
-fn (mut g JsGen) gen_optional_error(expr ast.Expr) {
+fn (mut g JsGen) gen_option_error(expr ast.Expr) {
 	g.write('new Option({ state:  new u8(2),err: ')
 	g.expr(expr)
 	g.write('})')
@@ -1853,9 +1853,9 @@ fn (mut g JsGen) gen_optional_error(expr ast.Expr) {
 fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 	node := it
 	// sym := g.table.sym(g.fn_decl.return_type)
-	fn_return_is_optional := g.fn_decl.return_type.has_flag(.optional)
+	fn_return_is_option := g.fn_decl.return_type.has_flag(.option)
 	if node.exprs.len == 0 {
-		if fn_return_is_optional {
+		if fn_return_is_option {
 			if g.inside_or {
 				g.writeln('throw new ReturnException({state: new int(0)});')
 			} else {
@@ -1871,11 +1871,11 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 		return
 	}
 
-	if fn_return_is_optional {
-		optional_none := node.exprs[0] is ast.None
+	if fn_return_is_option {
+		option_none := node.exprs[0] is ast.None
 		ftyp := g.typ(node.types[0])
 		mut is_regular_option := ftyp == js.option_name
-		if optional_none || is_regular_option || node.types[0] == ast.error_type_idx {
+		if option_none || is_regular_option || node.types[0] == ast.error_type_idx {
 			if !isnil(g.fn_decl) && g.fn_decl.is_test {
 				test_error_var := g.new_tmp_var()
 				g.writeln('let ${test_error_var} = "TODO";')
@@ -1887,7 +1887,7 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 			} else {
 				g.write('throw new ReturnException(')
 			}
-			g.gen_optional_error(it.exprs[0])
+			g.gen_option_error(it.exprs[0])
 			if g.inside_or {
 				g.writeln(')')
 			}
@@ -1895,7 +1895,7 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 			return
 		}
 	}
-	if fn_return_is_optional {
+	if fn_return_is_option {
 		tmp := g.new_tmp_var()
 		g.write('const ${tmp} = new ')
 
@@ -2201,7 +2201,7 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 		name = g.new_tmp_var()
 	}
 	// TODO `is`
-	// TODO handle optionals
+	// TODO handle options
 	g.write(name)
 
 	// TODO: Generate .val for basic types
@@ -2476,7 +2476,7 @@ fn (mut g JsGen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 	prev := g.inside_ternary
 	for i, stmt in stmts {
 		if i == stmts.len - 1 && tmp_var != '' {
-			if g.inside_if_optional {
+			if g.inside_if_option {
 				if stmt is ast.ExprStmt {
 					if stmt.typ == ast.error_type_idx || stmt.expr is ast.None {
 						g.writeln('${tmp_var}.state = 2;')
@@ -2496,7 +2496,7 @@ fn (mut g JsGen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 			}
 		} else {
 			g.stmt(stmt)
-			if g.inside_if_optional && stmt is ast.ExprStmt {
+			if g.inside_if_option && stmt is ast.ExprStmt {
 				g.writeln(';')
 			}
 		}
@@ -2728,7 +2728,7 @@ fn (mut g JsGen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var Ma
 
 fn (mut g JsGen) need_tmp_var_in_if(node ast.IfExpr) bool {
 	if node.is_expr && g.inside_ternary {
-		if node.typ.has_flag(.optional) {
+		if node.typ.has_flag(.option) {
 			return true
 		}
 
@@ -2770,8 +2770,8 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 	tmp := if needs_tmp_var { g.new_tmp_var() } else { '' }
 
 	if needs_tmp_var {
-		if node.typ.has_flag(.optional) {
-			g.inside_if_optional = true
+		if node.typ.has_flag(.option) {
+			g.inside_if_option = true
 		}
 
 		g.writeln('let ${tmp}; /* if prepend */')
@@ -2882,8 +2882,8 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 	if needs_tmp_var {
 		g.write('${tmp}')
 	}
-	if node.typ.has_flag(.optional) {
-		g.inside_if_optional = false
+	if node.typ.has_flag(.option) {
+		g.inside_if_option = false
 	}
 }
 
@@ -3460,7 +3460,7 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 }
 
 fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
-	sym := g.table.sym(it.expr_type)
+	sym := g.table.sym(it.typ)
 	if sym.kind == .sum_type {
 		// TODO: JS sumtypes not implemented yet
 	} else if sym.kind == .array_fixed {

@@ -7,7 +7,7 @@ vlib/v/checker/tests/cast_voidptr_to_struct_err.vv:6:9: error: cannot cast `void
     8 |
 vlib/v/checker/tests/cast_voidptr_to_struct_err.vv:10:9: error: cannot cast `voidptr` to struct
     8 |
-    9 | fn unwrap_generic<T>(ptr voidptr) T {
+    9 | fn unwrap_generic[T](ptr voidptr) T {
    10 |     return T(ptr)
       |            ~~~~~~
    11 | }

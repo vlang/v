@@ -7,7 +7,7 @@ import v.ast
 import v.token
 
 fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
-	if ftyp.has_flag(.optional) || ftyp.has_flag(.result) {
+	if ftyp.has_flag(.option) || ftyp.has_flag(.result) {
 		return `s`
 	} else if typ.is_float() {
 		return `g`
@@ -32,7 +32,7 @@ fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 		}
 		if ftyp in [ast.string_type, ast.bool_type]
 			|| sym.kind in [.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type, .interface_, .none_]
-			|| ftyp.has_flag(.optional) || ftyp.has_flag(.result) || sym.has_method('str') {
+			|| ftyp.has_flag(.option) || ftyp.has_flag(.result) || sym.has_method('str') {
 			return `s`
 		} else {
 			return `_`
@@ -165,27 +165,56 @@ fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 	return ast.string_type
 }
 
+struct LoHiLimit {
+	lower  string
+	higher string
+}
+
+const iencoding_map = {
+	`B`: LoHiLimit{'1000000000000000000000000000000000000000000000000000000000000000', '1111111111111111111111111111111111111111111111111111111111111111'}
+	`O`: LoHiLimit{'1000000000000000000000', '1777777777777777777777'}
+	`_`: LoHiLimit{'9223372036854775808', '18446744073709551615'}
+	`X`: LoHiLimit{'8000000000000000', 'FFFFFFFFFFFFFFFF'}
+}
+
 fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
 	if node.val.len < 17 {
 		// can not be a too large number, no need for more expensive checks
 		return ast.int_literal_type
 	}
-	lit := node.val.replace('_', '').all_after('-')
+	lit := node.val.replace('_', '').all_after('-').to_upper()
 	is_neg := node.val.starts_with('-')
-	limit := if is_neg { '9223372036854775808' } else { '18446744073709551615' }
-	message := 'integer literal ${node.val} overflows int'
+	if lit.len > 2 && lit[0] == `0` && lit[1] in [`B`, `X`, `O`] {
+		if lohi := checker.iencoding_map[lit[1]] {
+			c.check_num_literal(lohi, is_neg, lit[2..]) or { c.num_lit_overflow_error(node) }
+		}
+	} else {
+		lohi := checker.iencoding_map[`_`]
+		c.check_num_literal(lohi, is_neg, lit) or { c.num_lit_overflow_error(node) }
+	}
+	return ast.int_literal_type
+}
 
+[direct_array_access]
+fn (mut c Checker) check_num_literal(lohi LoHiLimit, is_neg bool, lit string) ! {
+	limit := if is_neg { lohi.lower } else { lohi.higher }
+	if lit.len < limit.len {
+		return
+	}
 	if lit.len > limit.len {
-		c.error(message, node.pos)
-	} else if lit.len == limit.len {
+		return error('length overflow')
+	}
+	if lit.len == limit.len {
 		for i, digit in lit {
 			if digit > limit[i] {
-				c.error(message, node.pos)
+				return error('value overflow at i: ${i}')
 			} else if digit < limit[i] {
 				break
 			}
 		}
 	}
+}
 
-	return ast.int_literal_type
+fn (mut c Checker) num_lit_overflow_error(node &ast.IntegerLiteral) {
+	c.error('integer literal ${node.val} overflows int', node.pos)
 }

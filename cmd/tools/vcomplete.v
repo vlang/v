@@ -378,7 +378,7 @@ fn nearest_path_or_root(path string) string {
 	return fixed_path
 }
 
-// auto_complete_request retuns a list of completions resolved from a full argument list.
+// auto_complete_request returns a list of completions resolved from a full argument list.
 fn auto_complete_request(args []string) []string {
 	// Using space will ensure a uniform input in cases where the shell
 	// returns the completion input as a string (['v','run'] vs. ['v run']).
@@ -518,6 +518,17 @@ fn auto_complete_request(args []string) []string {
 					}
 				}
 			} else {
+				// Handle special case, where there is only one file in the directory
+				// being completed - if it can be resolved we return that since
+				// handling it in the generalized logic below will result in
+				// more complexity.
+				if entries.len == 1 && os.is_file(os.join_path(ls_path, entries[0])) {
+					mut keep_input_path_format := ls_path
+					if !part.starts_with('./') && ls_path.starts_with('./') {
+						keep_input_path_format = keep_input_path_format.all_after('./')
+					}
+					return [os.join_path(keep_input_path_format, entries[0])]
+				}
 				for entry in entries {
 					if collect_all || entry.starts_with(last) {
 						list << append_separator_if_dir(entry)

@@ -121,12 +121,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			if mut left.obj is ast.Var {
 				if val is ast.ComptimeSelector {
-					if val.field_expr is ast.SelectorExpr {
-						if val.field_expr.expr is ast.Ident {
-							key_str := '${val.field_expr.expr.name}.typ'
-							var_type = g.comptime_var_type_map[key_str] or { var_type }
-							left.obj.typ = var_type
-						}
+					key_str := g.get_comptime_selector_key_type(val)
+					if key_str != '' {
+						var_type = g.comptime_var_type_map[key_str] or { var_type }
+						left.obj.typ = var_type
 					}
 				} else if val is ast.ComptimeCall {
 					key_str := '${val.method_name}.return_type'
@@ -136,7 +134,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				is_auto_heap = left.obj.is_auto_heap
 			}
 		}
-		styp := g.typ(var_type)
+		mut styp := g.typ(var_type)
 		mut is_fixed_array_init := false
 		mut has_val := false
 		match val {
@@ -146,7 +144,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			ast.CallExpr {
 				is_call = true
-				return_type = val.return_type
+				if val.comptime_ret_val {
+					return_type = g.comptime_for_field_type
+					styp = g.typ(return_type)
+				} else {
+					return_type = val.return_type
+				}
 			}
 			// TODO: no buffer fiddling
 			ast.AnonFn {
@@ -192,7 +195,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			&& !g.pref.translated
 		g.is_assign_lhs = true
 		g.assign_op = node.op
-		if val_type.has_flag(.optional) || val_type.has_flag(.result) {
+		if val_type.has_flag(.option) || val_type.has_flag(.result) {
 			g.right_is_opt = true
 		}
 		if blank_assign {
@@ -415,14 +418,14 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					cloned = true
 				}
 			}
-			unwrap_optional := !var_type.has_flag(.optional) && val_type.has_flag(.optional)
-			if unwrap_optional {
-				// Unwrap the optional now that the testing code has been prepended.
+			unwrap_option := !var_type.has_flag(.option) && val_type.has_flag(.option)
+			if unwrap_option {
+				// Unwrap the option now that the testing code has been prepended.
 				// `pos := s.index(...
 				// `int pos = *(int)_t10.data;`
 				// if g.is_autofree {
 				/*
-				if is_optional {
+				if is_option {
 					g.write('*($styp*)')
 					g.write(tmp_opt + '.data/*FFz*/')
 					g.right_is_opt = false
@@ -435,7 +438,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			if !cloned {
 				if !g.inside_comptime_for_field
-					&& ((var_type.has_flag(.optional) && !val_type.has_flag(.optional))
+					&& ((var_type.has_flag(.option) && !val_type.has_flag(.option))
 					|| (var_type.has_flag(.result) && !val_type.has_flag(.result))) {
 					tmp_var := g.new_tmp_var()
 					g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
@@ -443,10 +446,17 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					// TODO Instead of the translated check, check if it's a pointer already
 					// and don't generate memcpy &
 					typ_str := g.typ(val_type).trim('*')
-					ref_str := if val_type.is_ptr() { '' } else { '&' }
-					g.write('memcpy((${typ_str}*)')
+					final_typ_str := if is_fixed_array_var { '' } else { '(${typ_str}*)' }
+					final_ref_str := if is_fixed_array_var {
+						''
+					} else if val_type.is_ptr() {
+						'(byte*)'
+					} else {
+						'(byte*)&'
+					}
+					g.write('memcpy(${final_typ_str}')
 					g.expr(left)
-					g.write(', (byte*)${ref_str}')
+					g.write(', ${final_ref_str}')
 					g.expr(val)
 					g.write(', sizeof(${typ_str}))')
 				} else if is_decl {
@@ -511,9 +521,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Type) {
 	// multi return
 	// TODO Handle in if_expr
-	is_opt := return_type.has_flag(.optional) || return_type.has_flag(.result)
 	mr_var_name := 'mr_${node.pos.pos}'
-	mr_styp := g.typ(return_type.clear_flag(.optional).clear_flag(.result))
+	mr_styp := g.typ(return_type.clear_flag(.option).clear_flag(.result))
 	g.write('${mr_styp} ${mr_var_name} = ')
 	g.expr(node.right[0])
 	g.writeln(';')
@@ -541,34 +550,16 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 		g.expr(lx)
 		noscan := if is_auto_heap { g.check_noscan(return_type) } else { '' }
 		if g.is_arraymap_set {
-			if is_opt {
-				mr_base_styp := g.base_type(return_type)
-				if is_auto_heap {
-					g.writeln('HEAP${noscan}(${mr_base_styp}, ${mr_var_name}.arg${i}) });')
-				} else {
-					g.writeln('${mr_var_name}.arg${i} });')
-				}
+			if is_auto_heap {
+				g.writeln('HEAP${noscan}(${styp}, ${mr_var_name}.arg${i}) });')
 			} else {
-				if is_auto_heap {
-					g.writeln('HEAP${noscan}(${styp}, ${mr_var_name}.arg${i}) });')
-				} else {
-					g.writeln('${mr_var_name}.arg${i} });')
-				}
+				g.writeln('${mr_var_name}.arg${i} });')
 			}
 		} else {
-			if is_opt {
-				mr_base_styp := g.base_type(return_type)
-				if is_auto_heap {
-					g.writeln(' = HEAP${noscan}(${mr_base_styp}, ${mr_var_name}.arg${i});')
-				} else {
-					g.writeln(' = ${mr_var_name}.arg${i};')
-				}
+			if is_auto_heap {
+				g.writeln(' = HEAP${noscan}(${styp}, ${mr_var_name}.arg${i});')
 			} else {
-				if is_auto_heap {
-					g.writeln(' = HEAP${noscan}(${styp}, ${mr_var_name}.arg${i});')
-				} else {
-					g.writeln(' = ${mr_var_name}.arg${i};')
-				}
+				g.writeln(' = ${mr_var_name}.arg${i};')
 			}
 		}
 	}
@@ -586,7 +577,7 @@ fn (mut g Gen) gen_assign_vars_autofree(node &ast.AssignStmt) {
 	// }
 	//
 	//
-	// Handle optionals. We need to declare a temp variable for them, that's why they are handled
+	// Handle options. We need to declare a temp variable for them, that's why they are handled
 	// here, not in call_expr().
 	// `pos := s.index('x') or { return }`
 	// ==========>
@@ -598,19 +589,19 @@ fn (mut g Gen) gen_assign_vars_autofree(node &ast.AssignStmt) {
 	// int pos = *(int*)_t190.data;
 	// mut tmp_opt := ''
 	/*
-	is_optional := false && g.is_autofree && (node.op in [.decl_assign, .assign])
+	is_option := false && g.is_autofree && (node.op in [.decl_assign, .assign])
 		&& node.left_types.len == 1 && node.right[0] is ast.CallExpr
-	if is_optional {
-		// g.write('/* optional assignment */')
+	if is_option {
+		// g.write('/* option assignment */')
 		call_expr := node.right[0] as ast.CallExpr
 		if call_expr.or_block.kind != .absent {
-			styp := g.typ(call_expr.return_type.set_flag(.optional))
+			styp := g.typ(call_expr.return_type.set_flag(.option))
 			tmp_opt = g.new_tmp_var()
 			g.write('/*AF opt*/$styp $tmp_opt = ')
 			g.expr(node.right[0])
 			g.or_block(tmp_opt, call_expr.or_block, call_expr.return_type)
 			g.writeln('/*=============ret*/')
-			// if af && is_optional {
+			// if af && is_option {
 			// g.autofree_call_postgen()
 			// }
 			// return
@@ -721,14 +712,7 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 				styp := g.typ(left.typ)
 				g.write('${styp} _var_${left.pos.pos} = ')
 				g.expr(left.expr)
-				mut sel := '.'
-				if left.expr_type.is_ptr() {
-					if left.expr_type.has_flag(.shared_f) {
-						sel = '->val.'
-					} else {
-						sel = '->'
-					}
-				}
+				sel := g.dot_or_ptr(left.expr_type)
 				g.writeln('${sel}${left.field_name};')
 			}
 			else {}

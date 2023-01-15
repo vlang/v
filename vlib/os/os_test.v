@@ -599,6 +599,10 @@ fn test_file_ext() {
 	assert os.file_ext('file...') == ''
 	assert os.file_ext('.file.') == ''
 	assert os.file_ext('..file..') == ''
+	assert os.file_ext('./.git') == ''
+	assert os.file_ext('./.git/') == ''
+	assert os.file_ext('\\.git') == ''
+	assert os.file_ext('\\.git\\') == ''
 }
 
 fn test_join() {

@@ -1,11 +1,19 @@
 import os
 
-const test_path = os.join_path(os.vtmp_dir(), 'v', 'vcreate_test')
+// Note: the following uses `test_vcreate` and NOT `vcreate_test` deliberately,
+// to both avoid confusions with the name of the current test itself, and to
+// avoid clashes with the postfix `_test.v`, that V uses for its own test files.
+const test_path = os.join_path(os.vtmp_dir(), 'v', 'test_vcreate')
 
 fn init_and_check() ! {
+	os.chdir(test_path)!
 	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
 
-	assert os.read_file('vcreate_test.v')! == [
+	x := os.execute_or_exit('${os.quoted_path(@VEXE)} run .')
+	assert x.exit_code == 0
+	assert x.output.trim_space() == 'Hello World!'
+
+	assert os.read_file('src/main.v')! == [
 		'module main\n',
 		'fn main() {',
 		"	println('Hello World!')",
@@ -15,7 +23,7 @@ fn init_and_check() ! {
 
 	assert os.read_file('v.mod')! == [
 		'Module {',
-		"	name: 'vcreate_test'",
+		"	name: 'test_vcreate'",
 		"	description: ''",
 		"	version: ''",
 		"	license: ''",
@@ -27,7 +35,7 @@ fn init_and_check() ! {
 	assert os.read_file('.gitignore')! == [
 		'# Binaries for programs and plugins',
 		'main',
-		'vcreate_test',
+		'test_vcreate',
 		'*.exe',
 		'*.exe~',
 		'*.so',
@@ -42,6 +50,13 @@ fn init_and_check() ! {
 		'.idea/',
 		'.vscode/',
 		'*.iml',
+		'',
+		'# ENV',
+		'.env',
+		'',
+		'# vweb and database',
+		'*.db',
+		'*.js',
 		'',
 	].join_lines()
 

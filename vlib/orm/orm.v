@@ -1,39 +1,38 @@
 module orm
 
 import time
-import v.ast
 
 pub const (
-	num64    = [ast.i64_type_idx, ast.u64_type_idx]
-	nums     = [
-		ast.i8_type_idx,
-		ast.i16_type_idx,
-		ast.int_type_idx,
-		ast.u8_type_idx,
-		ast.u16_type_idx,
-		ast.u32_type_idx,
-		ast.bool_type_idx,
+	num64       = [typeof[i64]().idx, typeof[u64]().idx]
+	nums        = [
+		typeof[i8]().idx,
+		typeof[i16]().idx,
+		typeof[int]().idx,
+		typeof[u8]().idx,
+		typeof[u16]().idx,
+		typeof[u32]().idx,
+		typeof[bool]().idx,
 	]
-	float    = [
-		ast.f32_type_idx,
-		ast.f64_type_idx,
+	float       = [
+		typeof[f32]().idx,
+		typeof[f64]().idx,
 	]
-	string   = ast.string_type_idx
-	time     = -2
-	serial   = -1
-	type_idx = {
-		'i8':     ast.i8_type_idx
-		'i16':    ast.i16_type_idx
-		'int':    ast.int_type_idx
-		'i64':    ast.i64_type_idx
-		'u8':     ast.u8_type_idx
-		'u16':    ast.u16_type_idx
-		'u32':    ast.u32_type_idx
-		'u64':    ast.u64_type_idx
-		'f32':    ast.f32_type_idx
-		'f64':    ast.f64_type_idx
-		'bool':   ast.bool_type_idx
-		'string': ast.string_type_idx
+	type_string = typeof[string]().idx
+	time        = -2
+	serial      = -1
+	type_idx    = {
+		'i8':     typeof[i8]().idx
+		'i16':    typeof[i16]().idx
+		'int':    typeof[int]().idx
+		'i64':    typeof[i64]().idx
+		'u8':     typeof[u8]().idx
+		'u16':    typeof[u16]().idx
+		'u32':    typeof[u32]().idx
+		'u64':    typeof[u64]().idx
+		'f32':    typeof[f32]().idx
+		'f64':    typeof[f64]().idx
+		'bool':   typeof[bool]().idx
+		'string': typeof[string]().idx
 	}
 	string_max_len = 2048
 )
@@ -560,6 +559,16 @@ pub fn i16_to_primitive(b i16) Primitive {
 }
 
 pub fn int_to_primitive(b int) Primitive {
+	return Primitive(b)
+}
+
+// int_literal_to_primitive handles int literal value
+pub fn int_literal_to_primitive(b int) Primitive {
+	return Primitive(b)
+}
+
+// float_literal_to_primitive handles float literal value
+pub fn float_literal_to_primitive(b f64) Primitive {
 	return Primitive(b)
 }
 

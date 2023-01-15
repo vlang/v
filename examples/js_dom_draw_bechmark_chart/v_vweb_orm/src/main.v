@@ -2,7 +2,7 @@ module main
 
 import vweb
 import time
-import sqlite
+import db.sqlite
 
 struct App {
 	vweb.Context

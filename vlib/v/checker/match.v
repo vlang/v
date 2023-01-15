@@ -61,7 +61,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				expr_type := c.expr(stmt.expr)
 				stmt.typ = expr_type
 				if first_iteration {
-					if node.is_expr && (node.expected_type.has_flag(.optional)
+					if node.is_expr && (node.expected_type.has_flag(.option)
 						|| node.expected_type.has_flag(.result)
 						|| c.table.type_kind(node.expected_type) in [.sum_type, .multi_return]) {
 						c.check_match_branch_last_stmt(stmt, node.expected_type, expr_type)
@@ -72,7 +72,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				} else if node.is_expr && ret_type.idx() != expr_type.idx() {
 					c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
 				}
-			} else {
+			} else if stmt !is ast.Return {
 				if node.is_expr && ret_type != ast.void_type {
 					c.error('`match` expression requires an expression as the last statement of every branch',
 						stmt.pos)

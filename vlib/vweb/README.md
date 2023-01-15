@@ -6,6 +6,9 @@ The [gitly](https://gitly.org/) site is based on vweb.
 
 **_Some features may not be complete, and have some bugs._**
 
+## Getting start
+Just run **`v new <name> web`** in your terminal
+
 ## Features
 
 - **Very fast** performance of C on the web.

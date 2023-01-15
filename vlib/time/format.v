@@ -20,6 +20,14 @@ pub fn (t Time) format_ss_milli() string {
 	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.microsecond / 1000):03d}'
 }
 
+// format_rfc3339 returns a date string in "YYYY-MM-DDTHH:mm:ss.123Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+// RFC3339 is an Internet profile, based on the ISO 8601 standard for for representation of dates and times using the Gregorian calendar.
+// It is intended to improve consistency and interoperability, when representing and using date and time in Internet protocols.
+pub fn (t Time) format_rfc3339() string {
+	u := t.local_to_utc()
+	return '${u.year:04d}-${u.month:02d}-${u.day:02d}T${u.hour:02d}:${u.minute:02d}:${u.second:02d}.${(u.microsecond / 1000):03d}Z'
+}
+
 // format_ss_micro returns a date string in "YYYY-MM-DD HH:mm:ss.123456" format (24h).
 pub fn (t Time) format_ss_micro() string {
 	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${t.microsecond:06d}'

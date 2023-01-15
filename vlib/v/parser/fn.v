@@ -687,7 +687,12 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		p.close_scope()
 	}
 	p.scope.detached_from_parent = true
-	inherited_vars := if p.tok.kind == .lsbr { p.closure_vars() } else { []ast.Param{} }
+	inherited_vars := if p.tok.kind == .lsbr && !(p.peek_tok.kind == .name
+		&& p.peek_tok.lit.len == 1 && p.peek_tok.lit[0].is_capital()) {
+		p.closure_vars()
+	} else {
+		[]ast.Param{}
+	}
 	_, generic_names := p.parse_generic_types()
 	args, _, is_variadic := p.fn_args()
 	for arg in args {
@@ -799,9 +804,9 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
 		|| (p.peek_tok.kind == .comma && (p.table.known_type(argname) || is_generic_type))
 		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar || p.fn_language == .c
-		|| (p.tok.kind == .key_mut && (p.peek_token(2).kind == .comma
-		|| p.peek_token(2).kind == .rpar || (p.peek_tok.kind == .name
-		&& p.peek_token(2).kind == .dot)))
+		|| (p.tok.kind == .key_mut && (p.peek_tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
+		|| p.peek_token(2).kind == .comma || p.peek_token(2).kind == .rpar
+		|| (p.peek_tok.kind == .name && p.peek_token(2).kind == .dot)))
 	// TODO copy paste, merge 2 branches
 	if types_only {
 		mut arg_no := 1
@@ -1009,7 +1014,7 @@ fn (mut p Parser) go_expr() ast.GoExpr {
 	call_expr := if expr is ast.CallExpr {
 		expr
 	} else {
-		p.error_with_pos('expression in `go` must be a function call', expr.pos())
+		p.error_with_pos('expression in `spawn` must be a function call', expr.pos())
 		ast.CallExpr{
 			scope: p.scope
 		}

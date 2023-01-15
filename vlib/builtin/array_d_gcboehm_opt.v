@@ -24,9 +24,19 @@ fn __new_array_with_default_noscan(mylen int, cap int, elm_size int, val voidptr
 		len: mylen
 		cap: cap_
 	}
-	if val != 0 {
-		for i in 0 .. arr.len {
-			unsafe { arr.set_unsafe(i, val) }
+	if val != 0 && arr.data != unsafe { nil } {
+		if elm_size == 1 {
+			byte_value := *(&u8(val))
+			dptr := &u8(arr.data)
+			for i in 0 .. arr.len {
+				unsafe {
+					dptr[i] = byte_value
+				}
+			}
+		} else {
+			for i in 0 .. arr.len {
+				unsafe { arr.set_unsafe(i, val) }
+			}
 		}
 	}
 	return arr
@@ -65,6 +75,9 @@ fn new_array_from_c_array_noscan(len int, cap int, elm_size int, c_array voidptr
 fn (mut a array) ensure_cap_noscan(required int) {
 	if required <= a.cap {
 		return
+	}
+	if a.flags.has(.nogrow) {
+		panic('array.ensure_cap_noscan: array with the flag `.nogrow` cannot grow in size, array required new size: ${required}')
 	}
 	mut cap := if a.cap > 0 { a.cap } else { 2 }
 	for required > cap {

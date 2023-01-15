@@ -1,7 +1,7 @@
 vlib/v/checker/tests/generic_fn_decl_without_generic_names_err.vv:26:1: error: generic function declaration must specify generic type names
    24 | }
    25 |
-   26 | fn g_worker(g Generic<T>) {
+   26 | fn g_worker(g Generic[T]) {
       | ~~~~~~~~~~~~~~~~~~~~~~~~~
    27 |     t := <-g.ch
    28 |     handle(t)
@@ -15,9 +15,9 @@ vlib/v/checker/tests/generic_fn_decl_without_generic_names_err.vv:32:1: error: g
    34 | }
 Details: use `fn foo[T](x T) {`, not just `fn foo(x T) {`
 vlib/v/checker/tests/generic_fn_decl_without_generic_names_err.vv:40:1: error: generic method declaration must specify generic type names
-   38 | type MayBe<T> = None | T
+   38 | type MayBe[T] = None | T
    39 |
-   40 | fn (m MayBe<T>) is_some() bool {
+   40 | fn (m MayBe[T]) is_some() bool {
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    41 |     return m is T
    42 | }

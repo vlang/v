@@ -87,10 +87,10 @@ pub enum Arch {
 	_max
 }
 
-const (
-	list_of_flags_with_param = ['o', 'd', 'define', 'b', 'backend', 'cc', 'os', 'cf', 'cflags',
-		'path', 'arch']
-)
+pub const list_of_flags_with_param = ['o', 'd', 'define', 'b', 'backend', 'cc', 'os', 'cf', 'cflags',
+	'path', 'arch']
+
+pub const supported_test_runners = ['normal', 'simple', 'tap', 'dump', 'teamcity']
 
 [heap; minify]
 pub struct Preferences {
@@ -650,7 +650,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				}
 				i++
 			}
-			'-error-limit', '-message-limit' {
+			'-error-limit' {
+				eprintln('Note: the -error-limit option is deprecated, and will be removed in 2023/01/15. Use `-message-limit N` instead.')
+				res.message_limit = cmdline.option(current_args, arg, '5').int()
+				i++
+			}
+			'-message-limit' {
 				res.message_limit = cmdline.option(current_args, arg, '5').int()
 				i++
 			}
@@ -1061,4 +1066,8 @@ fn (mut prefs Preferences) diagnose_deprecated_defines(define_parts []string) {
 	if define_parts[0] == 'no_bounds_checking' {
 		eprintln('`-d no_bounds_checking` was deprecated in 2022/10/30. Use `-no-bounds-checking` instead.')
 	}
+}
+
+pub fn supported_test_runners_list() string {
+	return pref.supported_test_runners.map('`${it}`').join(', ')
 }

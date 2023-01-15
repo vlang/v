@@ -2,31 +2,48 @@ module pg
 
 import io
 
-#flag -lpq
-#flag linux -I/usr/include/postgresql
-#flag darwin -I/opt/local/include/postgresql11
-#flag darwin -I/opt/homebrew/include
-#flag darwin -L/opt/homebrew/lib
-#flag windows -I @VEXEROOT/thirdparty/pg/include
-#flag windows -L @VEXEROOT/thirdparty/pg/win64
+$if $pkgconfig('libpq') {
+	#pkgconfig --cflags --libs libpq
+} $else {
+	#flag -lpq
+	#flag linux -I/usr/include/postgresql
+
+	#flag darwin -I/opt/local/include/postgresql11
+	#flag darwin -L/opt/local/lib/postgresql11
+
+	#flag darwin -I/usr/local/opt/libpq/include
+	#flag darwin -L/usr/local/opt/libpq/lib
+
+	#flag darwin -I/opt/homebrew/include
+	#flag darwin -L/opt/homebrew/lib
+
+	#flag darwin -I/opt/homebrew/opt/libpq/include
+	#flag darwin -L/opt/homebrew/opt/libpq/lib
+
+	#flag windows -I @VEXEROOT/thirdparty/pg/include
+	#flag windows -L @VEXEROOT/thirdparty/pg/win64
+}
 
 // PostgreSQL Source Code
 // https://doxygen.postgresql.org/libpq-fe_8h.html
 #include <libpq-fe.h>
+
+// for PG_VERSION_NUM, which is defined everywhere at least since PG 9.5
+#include <pg_config.h>
+
 // for orm
 #include <arpa/inet.h>
 
+#include "@VMODROOT/vlib/pg/compatibility.h"
+
 pub struct DB {
 mut:
-	conn &C.PGconn = unsafe { nil }
+	conn voidptr = unsafe { nil }
 }
 
 pub struct Row {
 pub mut:
 	vals []string
-}
-
-struct C.PGResult {
 }
 
 pub struct Config {
@@ -38,52 +55,101 @@ pub:
 	dbname   string
 }
 
-fn C.PQconnectdb(a &u8) &C.PGconn
+//
 
-fn C.PQerrorMessage(voidptr) &u8
+struct C.pg_result {}
 
-fn C.PQgetvalue(&C.PGResult, int, int) &u8
+struct C.pg_conn {}
 
-fn C.PQstatus(voidptr) int
+[typedef]
+pub struct C.PGresult {}
 
-fn C.PQresultStatus(voidptr) int
+[typedef]
+pub struct C.PGconn {}
 
-fn C.PQntuples(&C.PGResult) int
+pub enum ConnStatusType {
+	ok = C.CONNECTION_OK
+	bad = C.CONNECTION_BAD
+	// Non-blocking mode only below here
+	// The existence of these should never be relied upon - they should only be used for user feedback or similar purposes.
+	started = C.CONNECTION_STARTED // Waiting for connection to be made.
+	made = C.CONNECTION_MADE // Connection OK; waiting to send.
+	awaiting_response = C.CONNECTION_AWAITING_RESPONSE // Waiting for a response from the postmaster.
+	auth_ok = C.CONNECTION_AUTH_OK // Received authentication; waiting for backend startup.
+	setenv = C.CONNECTION_SETENV // Negotiating environment.
+	ssl_startup = C.CONNECTION_SSL_STARTUP // Negotiating SSL.
+	needed = C.CONNECTION_NEEDED // Internal state: connect() needed . Available in PG 8
+	check_writable = C.CONNECTION_CHECK_WRITABLE // Check if we could make a writable connection. Available since PG 10
+	consume = C.CONNECTION_CONSUME // Wait for any pending message and consume them. Available since PG 10
+	gss_startup = C.CONNECTION_GSS_STARTUP // Negotiating GSSAPI; available since PG 12
+}
 
-fn C.PQnfields(&C.PGResult) int
+[typedef]
+pub enum ExecStatusType {
+	empty_query = C.PGRES_EMPTY_QUERY // empty query string was executed
+	command_ok = C.PGRES_COMMAND_OK // a query command that doesn't return anything was executed properly by the backend
+	tuples_ok = C.PGRES_TUPLES_OK // a query command that returns tuples was executed properly by the backend, PGresult contains the result tuples
+	copy_out = C.PGRES_COPY_OUT // Copy Out data transfer in progress
+	copy_in = C.PGRES_COPY_IN // Copy In data transfer in progress
+	bad_response = C.PGRES_BAD_RESPONSE // an unexpected response was recv'd from the backend
+	nonfatal_error = C.PGRES_NONFATAL_ERROR // notice or warning message
+	fatal_error = C.PGRES_FATAL_ERROR // query failed
+	copy_both = C.PGRES_COPY_BOTH // Copy In/Out data transfer in progress
+	single_tuple = C.PGRES_SINGLE_TUPLE // single tuple from larger resultset
+}
 
-fn C.PQexec(voidptr, &u8) &C.PGResult
+//
+
+fn C.PQconnectdb(const_conninfo &char) &C.PGconn
+
+fn C.PQstatus(const_conn &C.PGconn) int
+
+fn C.PQerrorMessage(const_conn &C.PGconn) &char
+
+fn C.PQexec(res &C.PGconn, const_query &char) &C.PGresult
+
+//
+
+fn C.PQgetvalue(const_res &C.PGresult, int, int) &char
+
+fn C.PQresultStatus(const_res &C.PGresult) int
+
+fn C.PQntuples(const_res &C.PGresult) int
+
+fn C.PQnfields(const_res &C.PGresult) int
 
 // Params:
 // const Oid *paramTypes
 // const char *const *paramValues
 // const int *paramLengths
 // const int *paramFormats
-fn C.PQexecParams(conn voidptr, command &u8, nParams int, paramTypes int, paramValues &u8, paramLengths int, paramFormats int, resultFormat int) &C.PGResult
+fn C.PQexecParams(conn &C.PGconn, const_command &char, nParams int, const_paramTypes &int, const_paramValues &char, const_paramLengths &int, const_paramFormats &int, resultFormat int) &C.PGresult
 
-fn C.PQputCopyData(conn voidptr, buffer &u8, nbytes int) int
+fn C.PQputCopyData(conn &C.PGconn, const_buffer &char, nbytes int) int
 
-fn C.PQputCopyEnd(voidptr, &u8) int
+fn C.PQputCopyEnd(conn &C.PGconn, const_errmsg &char) int
 
-fn C.PQgetCopyData(conn voidptr, buffer &&u8, async int) int
+fn C.PQgetCopyData(conn &C.PGconn, buffer &&char, async int) int
 
-fn C.PQclear(&C.PGResult) voidptr
+// cleanup
 
-fn C.PQfreemem(voidptr)
+fn C.PQclear(res &C.PGresult)
 
-fn C.PQfinish(voidptr)
+fn C.PQfreemem(ptr voidptr)
+
+fn C.PQfinish(conn &C.PGconn)
 
 // connect makes a new connection to the database server using
 // the parameters from the `Config` structure, returning
 // a connection error when something goes wrong
 pub fn connect(config Config) !DB {
 	conninfo := 'host=${config.host} port=${config.port} user=${config.user} dbname=${config.dbname} password=${config.password}'
-	conn := C.PQconnectdb(conninfo.str)
+	conn := C.PQconnectdb(&char(conninfo.str))
 	if conn == 0 {
 		return error('libpq memory allocation error')
 	}
-	status := C.PQstatus(conn)
-	if status != C.CONNECTION_OK {
+	status := unsafe { ConnStatusType(C.PQstatus(conn)) }
+	if status != .ok {
 		// We force the construction of a new string as the
 		// error message will be freed by the next `PQfinish`
 		// call
@@ -165,7 +231,7 @@ pub fn (db DB) q_strings(query string) ![]Row {
 // for the result, returning an error on failure and a
 // row set on success
 pub fn (db DB) exec(query string) ![]Row {
-	res := C.PQexec(db.conn, query.str)
+	res := C.PQexec(db.conn, &char(query.str))
 	return db.handle_error_or_result(res, 'exec')
 }
 
@@ -177,7 +243,7 @@ fn rows_first_or_empty(rows []Row) !Row {
 }
 
 pub fn (db DB) exec_one(query string) !Row {
-	res := C.PQexec(db.conn, query.str)
+	res := C.PQexec(db.conn, &char(query.str))
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
 		return error('pg exec error: "${e}"')
@@ -191,11 +257,11 @@ pub fn (db DB) exec_param_many(query string, params []string) ![]Row {
 	unsafe {
 		mut param_vals := []&char{len: params.len}
 		for i in 0 .. params.len {
-			param_vals[i] = params[i].str
+			param_vals[i] = &char(params[i].str)
 		}
 
-		res := C.PQexecParams(db.conn, query.str, params.len, 0, param_vals.data, 0, 0,
-			0)
+		res := C.PQexecParams(db.conn, &char(query.str), params.len, 0, param_vals.data,
+			0, 0, 0)
 		return db.handle_error_or_result(res, 'exec_param_many')
 	}
 }
@@ -220,9 +286,8 @@ fn (db DB) handle_error_or_result(res voidptr, elabel string) ![]Row {
 // copy_expert execute COPY commands
 // https://www.postgresql.org/docs/9.5/libpq-copy.html
 pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) !int {
-	res := C.PQexec(db.conn, query.str)
-	status := C.PQresultStatus(res)
-
+	mut res := C.PQexec(db.conn, &char(query.str))
+	status := unsafe { ExecStatusType(C.PQresultStatus(res)) }
 	defer {
 		C.PQclear(res)
 	}
@@ -232,12 +297,12 @@ pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) !int {
 		return error('pg copy error:\n${e}')
 	}
 
-	if status == C.PGRES_COPY_IN {
+	if status == .copy_in {
 		mut buf := []u8{len: 4 * 1024}
 		for {
 			n := file.read(mut buf) or {
 				msg := 'pg copy error: Failed to read from input'
-				C.PQputCopyEnd(db.conn, msg.str)
+				C.PQputCopyEnd(db.conn, &char(msg.str))
 				return err
 			}
 			if n <= 0 {
@@ -250,14 +315,14 @@ pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) !int {
 			}
 		}
 
-		code := C.PQputCopyEnd(db.conn, 0)
+		code := C.PQputCopyEnd(db.conn, &char(0))
 
 		if code != 1 {
 			return error('pg copy error: Failed to finish copy command, code: ${code}')
 		}
-	} else if status == C.PGRES_COPY_OUT {
+	} else if status == .copy_out {
 		for {
-			address := &u8(0)
+			address := &char(0)
 			n_bytes := C.PQgetCopyData(db.conn, &address, 0)
 			if n_bytes > 0 {
 				mut local_buf := []u8{len: n_bytes}

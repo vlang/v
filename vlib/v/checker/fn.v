@@ -105,7 +105,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			gs := c.table.sym(node.return_type)
 			if gs.info is ast.Struct {
 				if gs.info.is_generic && !node.return_type.has_flag(.generic) {
-					c.error('return generic struct in fn declaration must specify the generic type names, e.g. Foo[T]',
+					c.error('return generic struct `${gs.name}` in fn declaration must specify the generic type names, e.g. ${gs.name}[T]',
 						node.return_type_pos)
 				}
 			}
@@ -117,7 +117,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				if multi_type == ast.error_type {
 					c.error('type `IError` cannot be used in multi-return, return an option instead',
 						node.return_type_pos)
-				} else if multi_type.has_flag(.optional) {
+				} else if multi_type.has_flag(.option) {
 					c.error('option cannot be used in multi-return, return an option instead',
 						node.return_type_pos)
 				} else if multi_type.has_flag(.result) {
@@ -211,34 +211,31 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('invalid use of reserved type `${param.name}` as a parameter name',
 					param.pos)
 			}
-			if param.typ.has_flag(.optional) || param.typ.has_flag(.result) {
-				c.error('optional or result type argument is not supported currently',
-					param.type_pos)
+			if param.typ.has_flag(.option) || param.typ.has_flag(.result) {
+				c.error('option or result type argument is not supported currently', param.type_pos)
 			}
-			if !param.typ.is_ptr() { // value parameter, i.e. on stack - check for `[heap]`
-				arg_typ_sym := c.table.sym(param.typ)
-				if arg_typ_sym.info is ast.Struct {
-					if arg_typ_sym.info.is_heap { // set auto_heap to promote value parameter
-						mut v := node.scope.find_var(param.name) or { continue }
-						v.is_auto_heap = true
-					}
-					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
-						&& arg_typ_sym.info.concrete_types.len == 0 {
-						c.error('generic struct in fn declaration must specify the generic type names, e.g. Foo[T]',
-							param.type_pos)
-					}
-				} else if arg_typ_sym.info is ast.Interface {
-					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
-						&& arg_typ_sym.info.concrete_types.len == 0 {
-						c.error('generic interface in fn declaration must specify the generic type names, e.g. Foo[T]',
-							param.type_pos)
-					}
-				} else if arg_typ_sym.info is ast.SumType {
-					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
-						&& arg_typ_sym.info.concrete_types.len == 0 {
-						c.error('generic sumtype in fn declaration must specify the generic type names, e.g. Foo[T]',
-							param.type_pos)
-					}
+			arg_typ_sym := c.table.sym(param.typ)
+			if arg_typ_sym.info is ast.Struct {
+				if !param.typ.is_ptr() && arg_typ_sym.info.is_heap { // set auto_heap to promote value parameter
+					mut v := node.scope.find_var(param.name) or { continue }
+					v.is_auto_heap = true
+				}
+				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
+					&& arg_typ_sym.info.concrete_types.len == 0 {
+					c.error('generic struct `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
+						param.type_pos)
+				}
+			} else if arg_typ_sym.info is ast.Interface {
+				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
+					&& arg_typ_sym.info.concrete_types.len == 0 {
+					c.error('generic interface `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
+						param.type_pos)
+				}
+			} else if arg_typ_sym.info is ast.SumType {
+				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
+					&& arg_typ_sym.info.concrete_types.len == 0 {
+					c.error('generic sumtype `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
+						param.type_pos)
 				}
 			}
 			// Ensure each generic type of the parameter was declared in the function's definition
@@ -278,8 +275,12 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			if node.params.len != 2 {
 				c.error('operator methods should have exactly 1 argument', node.pos)
 			} else {
-				receiver_sym := c.table.sym(node.receiver.typ)
-				param_sym := c.table.sym(node.params[1].typ)
+				receiver_type := node.receiver.typ
+				receiver_sym := c.table.sym(receiver_type)
+
+				param_type := node.params[1].typ
+				param_sym := c.table.sym(param_type)
+
 				if param_sym.kind == .string && receiver_sym.kind == .string {
 					// bypass check for strings
 					// TODO there must be a better way to handle that
@@ -301,6 +302,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 						c.error('operator comparison methods should return `bool`', node.pos)
 					} else if parent_sym.is_primitive() {
 						c.error('cannot define operator methods on type alias for `${parent_sym.name}`',
+							node.pos)
+					} else if receiver_type != param_type {
+						srtype := c.table.type_to_str(receiver_type)
+						sptype := c.table.type_to_str(param_type)
+						c.error('the receiver type `${srtype}` should be the same type as the operand `${sptype}`',
 							node.pos)
 					}
 				}
@@ -326,7 +332,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 
 		if node.return_type != ast.void_type_idx
-			&& node.return_type.clear_flag(.optional) != ast.void_type_idx
+			&& node.return_type.clear_flag(.option) != ast.void_type_idx
 			&& node.return_type.clear_flag(.result) != ast.void_type_idx {
 			c.error('test functions should either return nothing at all, or be marked to return `?` or `!`',
 				node.pos)
@@ -336,7 +342,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.table.cur_fn = unsafe { node }
 	// c.table.cur_fn = node
 	// Add return if `fn(...) ? {...}` have no return at end
-	if node.return_type != ast.void_type && node.return_type.has_flag(.optional)
+	if node.return_type != ast.void_type && node.return_type.has_flag(.option)
 		&& (node.stmts.len == 0 || node.stmts.last() !is ast.Return) {
 		sym := c.table.sym(node.return_type)
 		if sym.kind == .void {
@@ -469,7 +475,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	c.inside_fn_arg = old_inside_fn_arg
 	// autofree: mark args that have to be freed (after saving them in tmp exprs)
 	free_tmp_arg_vars := c.pref.autofree && !c.is_builtin_mod && node.args.len > 0
-		&& !node.args[0].typ.has_flag(.optional) && !node.args[0].typ.has_flag(.result)
+		&& !node.args[0].typ.has_flag(.option) && !node.args[0].typ.has_flag(.result)
 	if free_tmp_arg_vars && !c.inside_const {
 		for i, arg in node.args {
 			if arg.typ != ast.string_type {
@@ -490,7 +496,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 			node.free_receiver = true
 		}
 	}
-	c.expected_or_type = node.return_type.clear_flag(.optional).clear_flag(.result)
+	c.expected_or_type = node.return_type.clear_flag(.option).clear_flag(.result)
 	c.stmts_ending_with_expression(node.or_block.stmts)
 	c.expected_or_type = ast.void_type
 
@@ -498,15 +504,14 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		&& !c.table.cur_fn.is_test {
 		// TODO: use just `if node.or_block.kind == .propagate_result && !c.table.cur_fn.return_type.has_flag(.result) {` after the deprecation for ?!Type
 		if node.or_block.kind == .propagate_result && !c.table.cur_fn.return_type.has_flag(.result)
-			&& !c.table.cur_fn.return_type.has_flag(.optional) {
+			&& !c.table.cur_fn.return_type.has_flag(.option) {
 			c.add_instruction_for_result_type()
 			c.error('to propagate the result call, `${c.table.cur_fn.name}` must return a result',
 				node.or_block.pos)
 		}
-		if node.or_block.kind == .propagate_option
-			&& !c.table.cur_fn.return_type.has_flag(.optional) {
-			c.add_instruction_for_optional_type()
-			c.error('to propagate the optional call, `${c.table.cur_fn.name}` must return an optional',
+		if node.or_block.kind == .propagate_option && !c.table.cur_fn.return_type.has_flag(.option) {
+			c.add_instruction_for_option_type()
+			c.error('to propagate the option call, `${c.table.cur_fn.name}` must return an option',
 				node.or_block.pos)
 		}
 	}
@@ -604,7 +609,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		match tsym.info {
 			ast.Struct {
 				mut ret_type := tsym.info.concrete_types[0]
-				ret_type = ret_type.set_flag(.optional)
+				ret_type = ret_type.set_flag(.option)
 				node.return_type = ret_type
 				return ret_type
 			}
@@ -1285,7 +1290,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		} else if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
 			concrete_types)
 		{
-			node.return_type = typ
+			if typ.has_flag(.generic) {
+				node.return_type = typ
+			}
 			return typ
 		}
 	}
@@ -1319,8 +1326,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	} else {
 		'unknown method or field: `${left_sym.name}.${method_name}`'
 	}
-	if left_type.has_flag(.optional) {
-		c.error('optional type cannot be called directly', node.left.pos())
+	if left_type.has_flag(.option) && method_name != 'str' {
+		c.error('option type cannot be called directly', node.left.pos())
 		return ast.void_type
 	} else if left_type.has_flag(.result) {
 		c.error('result type cannot be called directly', node.left.pos())
@@ -1392,7 +1399,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			c.table.cur_fn.has_await = true
 		}
 		node.return_type = info.concrete_types[0]
-		node.return_type.set_flag(.optional)
+		node.return_type.set_flag(.option)
 		return node.return_type
 	} else if left_sym.kind == .thread && method_name == 'wait' {
 		info := left_sym.info as ast.Thread
@@ -1493,7 +1500,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		node.is_noreturn = method.is_noreturn
 		node.is_ctor_new = method.is_ctor_new
 		node.return_type = method.return_type
-		if !method.is_pub && !c.pref.is_test && method.mod != c.mod {
+		if !method.is_pub && method.mod != c.mod {
 			// If a private method is called outside of the module
 			// its receiver type is defined in, show an error.
 			// println('warn $method_name lef.mod=$left_type_sym.mod c.mod=$c.mod')
@@ -1569,9 +1576,17 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			mut got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 			node.args[i].typ = got_arg_typ
 			if c.inside_comptime_for_field && method.params[param_idx].typ.has_flag(.generic) {
-				c.table.register_fn_concrete_types(method.fkey(), [
-					c.comptime_fields_default_type,
-				])
+				arg_sym := c.table.sym(c.comptime_fields_default_type)
+				if arg_sym.kind == .array
+					&& c.table.sym(method.params[param_idx].typ).kind == .array {
+					c.table.register_fn_concrete_types(method.fkey(), [
+						(arg_sym.info as ast.Array).elem_type,
+					])
+				} else {
+					c.table.register_fn_concrete_types(method.fkey(), [
+						c.comptime_fields_default_type,
+					])
+				}
 			} else if c.inside_for_in_any_cond && method.params[param_idx].typ.has_flag(.generic) {
 				c.table.register_fn_concrete_types(method.fkey(), [
 					c.for_in_any_val_type,
@@ -1923,6 +1938,16 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			return info.func.return_type
 		}
 	}
+	if left_sym.kind in [.struct_, .aggregate, .interface_, .sum_type] {
+		if c.smartcast_mut_pos != token.Pos{} {
+			c.note('smartcasting requires either an immutable value, or an explicit mut keyword before the value',
+				c.smartcast_mut_pos)
+		}
+		if c.smartcast_cond_pos != token.Pos{} {
+			c.note('smartcast can only be used on the ident or selector, e.g. match foo, match foo.bar',
+				c.smartcast_cond_pos)
+		}
+	}
 	if left_type != ast.void_type {
 		suggestion := util.new_suggestion(method_name, left_sym.methods.map(it.name))
 		c.error(suggestion.say(unknown_method_msg), node.pos)
@@ -1933,19 +1958,19 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 	ret_type := c.call_expr(mut node.call_expr)
 	if node.call_expr.or_block.kind != .absent {
-		c.error('optional handling cannot be done in `go` call. Do it when calling `.wait()`',
+		c.error('option handling cannot be done in `spawn` call. Do it when calling `.wait()`',
 			node.call_expr.or_block.pos)
 	}
 	// Make sure there are no mutable arguments
 	for arg in node.call_expr.args {
 		if arg.is_mut && !arg.typ.is_ptr() {
-			c.error('function in `go` statement cannot contain mutable non-reference arguments',
+			c.error('function in `spawn` statement cannot contain mutable non-reference arguments',
 				arg.expr.pos())
 		}
 	}
 	if node.call_expr.is_method && node.call_expr.receiver_type.is_ptr()
 		&& !node.call_expr.left_type.is_ptr() {
-		c.error('method in `go` statement cannot have non-reference mutable receiver',
+		c.error('method in `spawn` statement cannot have non-reference mutable receiver',
 			node.call_expr.left.pos())
 	}
 
@@ -2046,8 +2071,8 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 	arg_expr := node.args[0].expr
 	match arg_expr {
 		ast.AnonFn {
-			if arg_expr.decl.return_type.has_flag(.optional) {
-				c.error('optional needs to be unwrapped before using it in map/filter',
+			if arg_expr.decl.return_type.has_flag(.option) {
+				c.error('option needs to be unwrapped before using it in map/filter',
 					node.args[0].pos)
 			}
 			if arg_expr.decl.params.len > 1 {
@@ -2068,8 +2093,8 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 					c.error('${arg_expr.name} does not exist', arg_expr.pos)
 					return
 				}
-				if func.return_type.has_flag(.optional) {
-					c.error('optional needs to be unwrapped before using it in map/filter',
+				if func.return_type.has_flag(.option) {
+					c.error('option needs to be unwrapped before using it in map/filter',
 						node.pos)
 				}
 				if func.params.len > 1 {
@@ -2088,8 +2113,8 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 					expr := arg_expr.obj.expr
 					if expr is ast.AnonFn {
 						// copied from above
-						if expr.decl.return_type.has_flag(.optional) {
-							c.error('optional needs to be unwrapped before using it in map/filter',
+						if expr.decl.return_type.has_flag(.option) {
+							c.error('option needs to be unwrapped before using it in map/filter',
 								arg_expr.pos)
 						}
 						if expr.decl.params.len > 1 {
@@ -2119,9 +2144,9 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 				c.error('type mismatch, `${arg_expr.name}` does not return anything',
 					arg_expr.pos)
 			} else if !is_map && arg_expr.return_type != ast.bool_type {
-				if arg_expr.or_block.kind != .absent && (arg_expr.return_type.has_flag(.optional)
+				if arg_expr.or_block.kind != .absent && (arg_expr.return_type.has_flag(.option)
 					|| arg_expr.return_type.has_flag(.result))
-					&& arg_expr.return_type.clear_flag(.optional).clear_flag(.result) == ast.bool_type {
+					&& arg_expr.return_type.clear_flag(.option).clear_flag(.result) == ast.bool_type {
 					return
 				}
 				c.error('type mismatch, `${arg_expr.name}` must return a bool', arg_expr.pos)
@@ -2257,8 +2282,8 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				c.error('`.wait()` does not have any arguments', node.args[0].pos)
 			}
 			thread_ret_type := elem_sym.thread_info().return_type
-			if thread_ret_type.has_flag(.optional) {
-				c.error('`.wait()` cannot be called for an array when thread functions return optionals. Iterate over the arrays elements instead and handle each returned optional with `or`.',
+			if thread_ret_type.has_flag(.option) {
+				c.error('`.wait()` cannot be called for an array when thread functions return options. Iterate over the arrays elements instead and handle each returned option with `or`.',
 					node.pos)
 			} else if thread_ret_type.has_flag(.result) {
 				c.error('`.wait()` cannot be called for an array when thread functions return results. Iterate over the arrays elements instead and handle each returned result with `or`.',

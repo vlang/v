@@ -5,6 +5,14 @@ mut:
 	name string
 }
 
+enum TestEnum {
+	one = 1
+}
+
+struct TestStruct {
+	test TestEnum
+}
+
 fn comptime_field_selector_read[T]() []string {
 	mut t := T{}
 	t.name = '2'
@@ -40,6 +48,15 @@ fn test_comptime_field_selector_write() {
 	assert res.immutable == 1
 	assert res.test == '1'
 	assert res.name == '1'
+}
+
+fn test_comptime_field_selector_write_enum() {
+	mut t := TestStruct{}
+
+	$for field in TestStruct.fields {
+		t.$(field.name) = 1
+	}
+	assert t.test == .one
 }
 
 struct Foo2 {

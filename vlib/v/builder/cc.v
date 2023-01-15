@@ -185,7 +185,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.guessed_compiler = v.pref.ccompiler
 	if ccoptions.guessed_compiler == 'cc' && v.pref.is_prod {
 		// deliberately guessing only for -prod builds for performance reasons
-		ccversion := os.execute('${os.quoted_path('cc')} --version')
+		ccversion := os.execute('cc --version')
 		if ccversion.exit_code == 0 {
 			if ccversion.output.contains('This is free software;')
 				&& ccversion.output.contains('Free Software Foundation, Inc.') {
@@ -412,7 +412,9 @@ fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 		// normally msvc should use /volatile:iso
 		// but it could have an impact on vinix if it is created with msvc.
 		if !ccoptions.is_cc_msvc {
-			all << '-Wl,-stack=16777216'
+			if v.pref.os != .wasm32_emscripten {
+				all << '-Wl,-stack=16777216'
+			}
 			if !v.pref.is_cstrict {
 				all << '-Werror=implicit-function-declaration'
 			}
@@ -569,14 +571,14 @@ pub fn (mut v Builder) cc() {
 		all_args := v.all_args(v.ccoptions)
 		v.dump_c_options(all_args)
 		str_args := all_args.join(' ')
-		mut cmd := '${os.quoted_path(ccompiler)} ${str_args}'
+		mut cmd := '${v.quote_compiler_name(ccompiler)} ${str_args}'
 		mut response_file := ''
 		mut response_file_content := str_args
 		if !v.pref.no_rsp {
 			response_file = '${v.out_name_c}.rsp'
 			response_file_content = str_args.replace('\\', '\\\\')
 			rspexpr := '@${response_file}'
-			cmd = '${os.quoted_path(ccompiler)} ${os.quoted_path(rspexpr)}'
+			cmd = '${v.quote_compiler_name(ccompiler)} ${os.quoted_path(rspexpr)}'
 			os.write_file(response_file, response_file_content) or {
 				verror('Unable to write to C response file "${response_file}"')
 			}
@@ -735,7 +737,7 @@ fn (mut b Builder) cc_linux_cross() {
 		cc_name = 'clang.exe'
 		out_name = out_name.trim_string_right('.exe')
 	}
-	cc_cmd := '${os.quoted_path(cc_name)} ' + cc_args.join(' ')
+	cc_cmd := '${b.quote_compiler_name(cc_name)} ' + cc_args.join(' ')
 	if b.pref.show_cc {
 		println(cc_cmd)
 	}
@@ -757,7 +759,7 @@ fn (mut b Builder) cc_linux_cross() {
 	$if windows {
 		ldlld = 'ld.lld.exe'
 	}
-	linker_cmd := '${os.quoted_path(ldlld)} ' + linker_args.join(' ')
+	linker_cmd := '${b.quote_compiler_name(ldlld)} ' + linker_args.join(' ')
 	// s = s.replace('SYSROOT', sysroot) // TODO $ inter bug
 	// s = s.replace('-o hi', '-o ' + c.pref.out_name)
 	if b.pref.show_cc {
@@ -931,7 +933,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	all_options << '-c ${os.quoted_path(cfile)}'
 	cc_options := v.thirdparty_object_args(v.ccoptions, all_options).join(' ')
 
-	cmd := '${os.quoted_path(v.pref.ccompiler)} ${cc_options}'
+	cmd := '${v.quote_compiler_name(v.pref.ccompiler)} ${cc_options}'
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_files cmd: ${cmd}')
 	}
@@ -978,4 +980,18 @@ fn error_context_lines(text string, keyword string, before int, after int) []str
 	idx_s := if eline_idx - before >= 0 { eline_idx - before } else { 0 }
 	idx_e := if idx_s + after < lines.len { idx_s + after } else { lines.len }
 	return lines[idx_s..idx_e]
+}
+
+pub fn (mut v Builder) quote_compiler_name(name string) string {
+	$if windows {
+		// some compiler frontends on windows, like emcc, are a .bat file on windows.
+		// Quoting the .bat file name here leads to problems with them, when they internally call python scripts for some reason.
+		// Just emcc without quotes here does work, but:
+		// |"emcc" -v| produces: python.exe: can't open file 'D:\programs\v\emcc.py': [Errno 2] No such file or directory
+		if name.contains('/') || name.contains('\\') {
+			return os.quoted_path(name)
+		}
+		return name
+	}
+	return os.quoted_path(name)
 }

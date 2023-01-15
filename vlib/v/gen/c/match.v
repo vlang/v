@@ -8,7 +8,7 @@ import v.ast
 fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 	if node.is_expr && node.return_type != ast.void_type && node.return_type != 0 {
 		if g.table.sym(node.return_type).kind in [.sum_type, .multi_return]
-			|| node.return_type.has_flag(.optional) || node.return_type.has_flag(.result) {
+			|| node.return_type.has_flag(.option) || node.return_type.has_flag(.result) {
 			return true
 		}
 		if g.table.final_sym(node.cond_type).kind == .enum_ && node.branches.len > 5 {
@@ -27,6 +27,8 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 					if g.need_tmp_var_in_expr(stmt.expr) {
 						return true
 					}
+				} else if branch.stmts[0] is ast.Return {
+					return true
 				}
 			}
 		}
@@ -49,12 +51,12 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.inside_ternary++
 	}
 	if is_expr {
-		if node.return_type.has_flag(.optional) {
-			old := g.inside_match_optional
+		if node.return_type.has_flag(.option) {
+			old := g.inside_match_option
 			defer {
-				g.inside_match_optional = old
+				g.inside_match_option = old
 			}
-			g.inside_match_optional = true
+			g.inside_match_option = true
 		} else if node.return_type.has_flag(.result) {
 			old := g.inside_match_result
 			defer {
@@ -85,7 +87,25 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.empty_line = true
 		cur_line = g.go_before_stmt(0).trim_left(' \t')
 		tmp_var = g.new_tmp_var()
-		g.writeln('${g.typ(node.return_type)} ${tmp_var} = ${g.type_default(node.return_type)};')
+		mut func_decl := ''
+		if g.table.final_sym(node.return_type).kind == .function {
+			func_sym := g.table.final_sym(node.return_type)
+			if func_sym.info is ast.FnType {
+				def := g.fn_var_signature(func_sym.info.func.return_type, func_sym.info.func.params.map(it.typ),
+					tmp_var)
+				func_decl = '${def} = &${g.typ(node.return_type)};'
+			}
+		}
+		if func_decl.len > 0 {
+			g.writeln(func_decl) // func, anon func declaration
+		} else {
+			g.writeln('${g.typ(node.return_type)} ${tmp_var} = ${g.type_default(node.return_type)};')
+		}
+		g.empty_line = true
+		if g.infix_left_var_name.len > 0 {
+			g.writeln('if (${g.infix_left_var_name}) {')
+			g.indent++
+		}
 	}
 
 	if is_expr && !need_tmp_var {
@@ -125,6 +145,14 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		}
 	}
 	g.set_current_pos_as_last_stmt_pos()
+	if need_tmp_var {
+		if g.infix_left_var_name.len > 0 {
+			g.writeln('')
+			g.indent--
+			g.writeln('}')
+			g.set_current_pos_as_last_stmt_pos()
+		}
+	}
 	g.write(cur_line)
 	if need_tmp_var {
 		g.write('${tmp_var}')
@@ -136,7 +164,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 }
 
 fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
-	dot_or_ptr := if node.cond_type.is_ptr() { '->' } else { '.' }
+	dot_or_ptr := g.dot_or_ptr(node.cond_type)
 	use_ternary := is_expr && tmp_var.len == 0
 	cond_sym := g.table.sym(node.cond_type)
 	for j, branch in node.branches {

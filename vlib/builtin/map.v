@@ -100,8 +100,8 @@ fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 		len: 0
 		deletes: 0
 		all_deleted: 0
-		keys: unsafe { malloc(cap * key_bytes) }
-		values: unsafe { malloc(cap * value_bytes) }
+		keys: unsafe { malloc(__at_least_one(u64(cap) * u64(key_bytes))) }
+		values: unsafe { malloc(__at_least_one(u64(cap) * u64(value_bytes))) }
 	}
 }
 
@@ -299,6 +299,7 @@ pub fn (mut m map) move() map {
 // Example: a.clear() // `a.len` and `a.key_values.len` is now 0
 pub fn (mut m map) clear() {
 	m.len = 0
+	m.even_index = 0
 	m.key_values.len = 0
 }
 
