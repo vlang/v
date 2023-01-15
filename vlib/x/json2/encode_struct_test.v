@@ -232,3 +232,23 @@ fn test_alias() {
 	// assert json.encode(StructType[EnumAlias]{ val: Enumerates.e }) == '{"val":99}'
 	// assert json.encode(StructType[EnumAlias]{ val: Enumerates.f }) == '{"val":100}'
 }
+
+fn test_sumtypes() {
+	assert json.encode(StructType[SumTypes]{}) == '{"val":""}'
+	assert json.encode(StructType[SumTypes]{ val: '' }) == '{"val":""}'
+	assert json.encode(StructType[SumTypes]{ val: 'a' }) == '{"val":"a"}'
+
+	assert json.encode(StructType[SumTypes]{}) == '{"val":false}'
+	assert json.encode(StructType[SumTypes]{ val: false }) == '{"val":false}'
+	assert json.encode(StructType[SumTypes]{ val: true }) == '{"val":true}'
+
+	assert json.encode(StructType[SumTypes]{}) == '{"val":0}'
+	assert json.encode(StructType[SumTypes]{ val: 0 }) == '{"val":0}'
+	assert json.encode(StructType[SumTypes]{ val: 1 }) == '{"val":1}'
+
+	assert json.encode(StructType[StructType[SumTypes]]{
+		val: StructType[SumTypes]{
+			val: 1
+		}
+	}) == '{"val":{"val":1}}'
+}

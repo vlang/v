@@ -252,6 +252,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				wr.write(int(val.$(field.name)).str().bytes())!
 			} $else $if field.typ is $Enum {
 				// wr.write(int(val.$(field.name)).str().bytes())! // FIXME - error: cannot cast string to `int`, use `val.$field.name.int()` instead.
+			} $else $if field.typ is $Sumtype {
 			} $else $if field.typ is $Alias {
 				$if field.unaliased_typ is string {
 					e.encode_string(val.$(field.name).str(), mut wr)!
@@ -272,6 +273,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 					// dump(val.$(field.name).int()) // FIXME - error: cannot convert 'enum <anonymous>' to 'struct string'
 
 					// wr.write(val.$(field.name).int().str().bytes())! // FIXME - error: unknown method or field: `BoolAlias.int`
+				} $else $if field.unaliased_typ is $Sumtype {
 				} $else {
 					return error('the alias ${typeof(val).name} cannot be encoded')
 				}
