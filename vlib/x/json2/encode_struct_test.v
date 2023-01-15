@@ -91,6 +91,18 @@ fn test_option_types() {
 	assert json.encode(StructTypeOption[time.Time]{}) == '{}'
 	assert json.encode(StructTypeOption[time.Time]{ val: time.Time{} }) == '{"val":"0000-00-00T00:00:00.000Z"}'
 	assert json.encode(StructTypeOption[time.Time]{ val: fixed_time }) == '{"val":"2022-03-11T13:54:25.000Z"}'
+
+	assert json.encode(StructTypeOption[StructType[int]]{
+		val: StructType[int]{
+			val: 1
+		}
+	}) == '{"val":{"val":1}}'
+
+	assert json.encode(StructTypeOption[Enumerates]{}) == '{}'
+	// assert json.encode(StructTypeOption[Enumerates]{ val: Enumerates.a }) == '{"val":0}'
+	// assert json.encode(StructTypeOption[Enumerates]{ val: Enumerates.d }) == '{"val":3}'
+	// assert json.encode(StructTypeOption[Enumerates]{ val: Enumerates.e }) == '{"val":99}'
+	// assert json.encode(StructTypeOption[Enumerates]{ val: Enumerates.f }) == '{"val":100}'
 }
 
 fn test_array() {

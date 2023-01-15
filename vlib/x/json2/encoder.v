@@ -149,8 +149,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 	mut i := 0
 	mut fields_len := 0
 	$for field in U.fields {
-		value := val.$(field.name)
-		if value.str() != 'Option(error: none)' {
+		if val.$(field.name).str() != 'Option(error: none)' {
 			fields_len++
 		}
 	}
@@ -181,35 +180,24 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				}
 
 				$if field.typ is ?string {
-					option_value := val.$(field.name) as ?string
-					e.encode_string(option_value, mut wr)!
-				} $else $if field.typ is ?bool {
-					option_value := val.$(field.name) as ?bool
-					wr.write(Any(option_value).str().bytes())!
-				} $else $if field.typ is ?f32 {
-					option_value := val.$(field.name) as ?f32
-					wr.write(Any(option_value).str().bytes())!
-				} $else $if field.typ is ?f64 {
-					option_value := val.$(field.name) as ?f64
-					wr.write(Any(option_value).str().bytes())!
-				} $else $if field.typ is ?i8 {
-					option_value := val.$(field.name) as ?i8
-					wr.write(Any(option_value).str().bytes())!
-				} $else $if field.typ is ?i16 {
-					option_value := val.$(field.name) as ?i16
-					wr.write(Any(option_value).str().bytes())!
-				} $else $if field.typ is ?int {
-					option_value := val.$(field.name) as ?int
-					wr.write(Any(option_value).int().str().bytes())!
+					e.encode_string(val.$(field.name) ?.str()#[8..-2], mut wr)!
+				} $else $if field.typ is ?bool || field.typ is ?f32 || field.typ is ?f64
+					|| field.typ is ?i8 || field.typ is ?i16 || field.typ is ?int
+					|| field.typ is ?i64 || field.typ is ?u8 || field.typ is ?u16
+					|| field.typ is ?u32 || field.typ is ?u64 {
+					wr.write(val.$(field.name) ?.str()#[7..-1].bytes())!
 				} $else $if field.typ is ?time.Time {
 					option_value := val.$(field.name) as ?time.Time
 					parsed_time := option_value as time.Time
 					e.encode_string(parsed_time.format_rfc3339(), mut wr)!
 				} $else $if field.is_array {
 					e.encode_array(value, level + 1, mut wr)!
+				} $else $if field.is_struct {
+					e.encode_struct(value, level + 1, mut wr)!
 				} $else $if field.is_enum {
-					option_value := val.$(field.name) as ?int
-					wr.write(Any(option_value).int().str().bytes())!
+					// FIXME - checker and cast error
+					// wr.write(int(val.$(field.name)?).str().bytes())!
+					return error('type ${typeof(val).name} cannot be encoded yet')
 				} $else $if field.is_alias {
 					match field.unaliased_typ {
 						typeof[string]().idx {
