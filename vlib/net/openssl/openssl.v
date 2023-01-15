@@ -3,6 +3,9 @@ module openssl
 // ssl_error returns non error ssl code or error if unrecoverable and we should panic
 fn ssl_error(ret int, ssl voidptr) !SSLError {
 	res := C.SSL_get_error(ssl, ret)
+	$if trace_ssl ? {
+		eprintln('${@METHOD} ret: ${ret} | ssl: ${ssl:x} | res: ${res}')
+	}
 	match unsafe { SSLError(res) } {
 		.ssl_error_syscall {
 			return error_with_code('unrecoverable syscall (${res})', res)

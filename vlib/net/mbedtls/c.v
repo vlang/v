@@ -1,5 +1,7 @@
 module mbedtls
 
+pub const is_used = 1
+
 #flag -I @VEXEROOT/thirdparty/mbedtls/library
 #flag -I @VEXEROOT/thirdparty/mbedtls/include
 // #flag -D _FILE_OFFSET_BITS=64
@@ -195,7 +197,3 @@ fn C.mbedtls_high_level_strerr(int) &char
 // 		C.OPENSSL_init_ssl(C.OPENSSL_INIT_LOAD_SSL_STRINGS, 0)
 // 	}
 // }
-
-pub const (
-	is_used = 1
-)
