@@ -992,6 +992,8 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 		if expr.or_expr.kind != .absent {
 			c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result))
 		}
+	} else if expr is ast.CastExpr {
+		c.check_expr_opt_call(expr.expr, ret_type)
 	}
 	return ret_type
 }
