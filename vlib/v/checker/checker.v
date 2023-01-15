@@ -992,6 +992,8 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 		if expr.or_expr.kind != .absent {
 			c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result))
 		}
+	} else if expr is ast.CastExpr {
+		c.check_expr_opt_call(expr.expr, ret_type)
 	}
 	return ret_type
 }
@@ -3812,6 +3814,15 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			'(note, that variables may be mutable but string values are always immutable, like in Go and Java)',
 			node.pos)
 	}
+
+	if !c.inside_unsafe && !c.is_builtin_mod && typ_sym.kind == .map && node.or_expr.stmts.len == 0 {
+		elem_type := c.table.value_type(typ)
+		if elem_type.is_real_pointer() {
+			c.note('accessing a pointer map value requires an `or{}` block outside `unsafe`',
+				node.pos)
+		}
+	}
+
 	if (typ.is_ptr() && !typ.has_flag(.shared_f) && !node.left.is_auto_deref_var())
 		|| typ.is_pointer() {
 		mut is_ok := false

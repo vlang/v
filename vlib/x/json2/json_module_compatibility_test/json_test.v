@@ -1,5 +1,5 @@
 import x.json2 as json
-// import time
+import time
 
 enum JobTitle {
 	manager
@@ -54,12 +54,12 @@ fn test_simple() {
 // 	currency_id string [json: currencyId] = currency_id
 // }
 
-// struct User2 {
-// mut:
-// 	age      int
-// 	nums     []int
-// 	reg_date time.Time
-// }
+struct User2 {
+mut:
+	age      int
+	nums     []int
+	reg_date time.Time
+}
 
 // User struct needs to be `pub mut` for now in order to access and manipulate values
 pub struct User {
@@ -70,6 +70,34 @@ pub mut:
 	is_registered bool   [json: IsRegistered]
 	typ           int    [json: 'type']
 	pets          string [json: 'pet_animals'; raw]
+}
+
+fn test_parse_user() {
+	s := '{"age": 10, "nums": [1,2,3], "type": 1, "lastName": "Johnson", "IsRegistered": true, "pet_animals": {"name": "Bob", "animal": "Dog"}}'
+
+	u := json.decode[User](s)!
+
+	assert u.age == 10
+	assert u.last_name == 'Johnson'
+	assert u.is_registered == true
+	// assert u.nums.len == 3
+	// assert u.nums[0] == 1
+	// assert u.nums[1] == 2
+	// assert u.nums[2] == 3
+	assert u.typ == 1
+	assert u.pets == '{"name":"Bob","animal":"Dog"}'
+}
+
+fn test_encode_decode_time() {
+	user := User2{
+		age: 25
+		reg_date: time.new_time(year: 2020, month: 12, day: 22, hour: 7, minute: 23)
+	}
+	s := json.encode(user)
+
+	assert s.contains('"reg_date":"2020-12-22T07:23:00.000Z"')
+	user2 := json.decode[User2](s)!
+	assert user2.reg_date.str() == '2020-12-22 07:23:00'
 }
 
 fn (mut u User) foo() string {
