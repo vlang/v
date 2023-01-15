@@ -9,6 +9,9 @@ const ctr_drbg = C.mbedtls_ctr_drbg_context{}
 const entropy = C.mbedtls_entropy_context{}
 
 fn init() {
+	$if trace_ssl ? {
+		eprintln(@METHOD)
+	}
 	C.mbedtls_ctr_drbg_init(&mbedtls.ctr_drbg)
 	C.mbedtls_entropy_init(&mbedtls.entropy)
 
@@ -53,6 +56,9 @@ pub struct SSLConnectConfig {
 
 // new_ssl_conn returns a new SSLConn with the given config.
 pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
+	$if trace_ssl ? {
+		eprintln(@METHOD)
+	}
 	mut conn := &SSLConn{
 		config: config
 	}
@@ -69,6 +75,9 @@ enum Select {
 
 // shutdown terminates the ssl connection and does cleanup
 pub fn (mut s SSLConn) shutdown() ! {
+	$if trace_ssl ? {
+		eprintln(@METHOD)
+	}
 	if !s.opened {
 		return error('ssl connection not open')
 	}
@@ -92,6 +101,9 @@ pub fn (mut s SSLConn) shutdown() ! {
 
 // connect to server using mbedtls
 fn (mut s SSLConn) init() ! {
+	$if trace_ssl ? {
+		eprintln(@METHOD)
+	}
 	C.mbedtls_net_init(&s.server_fd)
 	C.mbedtls_ssl_init(&s.ssl)
 	C.mbedtls_ssl_config_init(&s.conf)
@@ -158,6 +170,9 @@ fn (mut s SSLConn) init() ! {
 
 // connect sets up an ssl connection on an existing TCP connection
 pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
+	$if trace_ssl ? {
+		eprintln('${@METHOD} hostname: ${hostname}')
+	}
 	if s.opened {
 		return error('ssl connection already open')
 	}
@@ -184,6 +199,9 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 
 // dial opens an ssl connection on hostname:port
 pub fn (mut s SSLConn) dial(hostname string, port int) ! {
+	$if trace_ssl ? {
+		eprintln('${@METHOD} hostname: ${hostname} | port: ${port}')
+	}
 	s.owns_socket = true
 	if s.opened {
 		return error('ssl connection already open')
@@ -218,23 +236,39 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 // socket_read_into_ptr reads `len` bytes into `buf`
 pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 	mut res := 0
+	$if trace_ssl ? {
+		defer {
+			if len > 0 {
+				eprintln('${@METHOD} res: ${res}: buf_ptr: ${voidptr(buf_ptr):x}, len: ${len}, hex: ${unsafe { buf_ptr.vbytes(len).hex() }} data: `${unsafe { buf_ptr.vstring_with_len(len) }}`')
+			}
+		}
+	}
 	for {
 		res = C.mbedtls_ssl_read(&s.ssl, buf_ptr, len)
 		if res > 0 {
 			return res
 		} else if res == 0 {
+			$if trace_ssl ? {
+				eprintln('${@METHOD} ---> res: io.Eof')
+			}
 			return io.Eof{}
 		} else {
 			match res {
 				C.MBEDTLS_ERR_SSL_WANT_READ {
 					ready := @select(s.handle, .read, s.duration)!
 					if !ready {
+						$if trace_ssl ? {
+							eprintln('${@METHOD} ---> res: net.err_timed_out, C.MBEDTLS_ERR_SSL_WANT_READ')
+						}
 						return net.err_timed_out
 					}
 				}
 				C.MBEDTLS_ERR_SSL_WANT_WRITE {
 					ready := @select(s.handle, .write, s.duration)!
 					if !ready {
+						$if trace_ssl ? {
+							eprintln('${@METHOD} ---> res: net.err_timed_out, C.MBEDTLS_ERR_SSL_WANT_WRITE')
+						}
 						return net.err_timed_out
 					}
 				}
@@ -242,6 +276,9 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 					break
 				}
 				else {
+					$if trace_ssl ? {
+						eprintln('${@METHOD} ---> res: could not read using SSL')
+					}
 					return error_with_code('Could not read using SSL', res)
 				}
 			}
@@ -252,15 +289,22 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 
 // read reads data from the ssl connection into `buffer`
 pub fn (mut s SSLConn) read(mut buffer []u8) !int {
-	res := s.socket_read_into_ptr(&u8(buffer.data), buffer.len) or { return err }
-	return res
+	$if trace_ssl ? {
+		eprintln('${@METHOD} buffer.len: ${buffer.len}')
+	}
+	return s.socket_read_into_ptr(&u8(buffer.data), buffer.len)
 }
 
 // write_ptr writes `len` bytes from `bytes` to the ssl connection
 pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
+	mut total_sent := 0
+	$if trace_ssl ? {
+		defer {
+			eprintln('${@METHOD} total_sent: ${total_sent}, bytes: ${voidptr(bytes):x}, len: ${len}, hex: ${unsafe { bytes.vbytes(len).hex() }}, data:-=-=-=-\n${unsafe { bytes.vstring_with_len(len) }}\n-=-=-=-')
+		}
+	}
 	unsafe {
 		mut ptr_base := bytes
-		mut total_sent := 0
 		for total_sent < len {
 			ptr := ptr_base + total_sent
 			remaining := len - total_sent
@@ -286,14 +330,17 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 						continue
 					}
 					else {
+						$if trace_ssl ? {
+							eprintln('${@METHOD} ---> res: could not write SSL, sent: ${sent}')
+						}
 						return error_with_code('Could not write using SSL', sent)
 					}
 				}
 			}
 			total_sent += sent
 		}
-		return total_sent
 	}
+	return total_sent
 }
 
 // write writes data from `bytes` to the ssl connection
@@ -303,6 +350,9 @@ pub fn (mut s SSLConn) write(bytes []u8) !int {
 
 // write_string writes a string to the ssl connection
 pub fn (mut s SSLConn) write_string(str string) !int {
+	$if trace_ssl ? {
+		eprintln('${@METHOD} str: ${str}')
+	}
 	return s.write_ptr(str.str, str.len)
 }
 
@@ -314,6 +364,9 @@ This is basically a copy of Emily socket implementation of select.
 
 // Select waits for an io operation (specified by parameter `test`) to be available
 fn @select(handle int, test Select, timeout time.Duration) !bool {
+	$if trace_ssl ? {
+		eprintln('${@METHOD} handle: ${handle}, timeout: ${timeout}')
+	}
 	set := C.fd_set{}
 
 	C.FD_ZERO(&set)
@@ -346,5 +399,9 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 		}
 	}
 
-	return C.FD_ISSET(handle, &set)
+	res := C.FD_ISSET(handle, &set)
+	$if trace_ssl ? {
+		eprintln('${@METHOD} ---> res: ${res}')
+	}
+	return res
 }
