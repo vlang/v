@@ -21,7 +21,8 @@ fn test_all() {
 	os.chdir(vroot) or {}
 	diff_cmd := diff.find_working_diff_command() or { '' }
 	dir := 'vlib/v/slow_tests/inout'
-	files := os.ls(dir) or { panic(err) }
+	mut files := os.ls(dir) or { panic(err) }
+	files.sort()
 	tests := files.filter(it.ends_with('.vv') || it.ends_with('.vsh'))
 	if tests.len == 0 {
 		println('no compiler tests found')
