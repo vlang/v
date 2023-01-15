@@ -412,15 +412,17 @@ fn (g &JsGen) get_all_test_function_names() []string {
 }
 
 pub fn (mut g JsGen) enter_namespace(name string) {
-	if unsafe { g.namespaces[name] == 0 } {
-		// create a new namespace
-		ns := &Namespace{
-			name: name
+	unsafe {
+		if g.namespaces[name] == 0 {
+			// create a new namespace
+			ns := &Namespace{
+				name: name
+			}
+			g.namespaces[name] = ns
+			g.ns = ns
+		} else {
+			g.ns = g.namespaces[name]
 		}
-		g.namespaces[name] = ns
-		g.ns = ns
-	} else {
-		g.ns = g.namespaces[name]
 	}
 	g.inside_builtin = name == 'builtin'
 }
