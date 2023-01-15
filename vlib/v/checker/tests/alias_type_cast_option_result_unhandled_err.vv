@@ -1,0 +1,17 @@
+struct Abc {
+	a string
+}
+
+type Alias = Abc
+
+fn ret_abc_result() !Abc {
+	return Abc{'a'}
+}
+
+fn ret_abc_option() ?Abc {
+	return Abc{'a'}
+}
+
+a := Alias(ret_abc_result())
+b := Alias(ret_abc_option())
+println('${a}${b}')
