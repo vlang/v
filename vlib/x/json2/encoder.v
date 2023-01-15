@@ -253,6 +253,29 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			} $else $if field.typ is $Enum {
 				// wr.write(int(val.$(field.name)).str().bytes())! // FIXME - error: cannot cast string to `int`, use `val.$field.name.int()` instead.
 			} $else $if field.typ is $Sumtype {
+				// // FIXME - error: cannot match `bool` with `string`
+				// match value {
+				// 	string {
+				// 		println(val.$(field.name))
+				// 	}
+				// 	bool {
+				// 	}
+				// 	i8, i16, int, i64 {
+				// 	}
+				// 	u8, u16, u32, u64 {
+				// 	}
+				// 	f32, f64 {
+				// 	}
+				// 	map[string]Any {
+				// 	}
+				// 	[]Any {
+				// 	}
+				// 	time.Time {}
+				// 	Null {
+				// 	} else {
+				// 		dump("elsa")
+				// 	}
+				// }
 			} $else $if field.typ is $Alias {
 				$if field.unaliased_typ is string {
 					e.encode_string(val.$(field.name).str(), mut wr)!

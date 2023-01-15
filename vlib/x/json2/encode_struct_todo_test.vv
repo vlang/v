@@ -1,10 +1,33 @@
 import x.json2 as json
+import time
+
+const fixed_time = time.Time{
+	year: 2022
+	month: 3
+	day: 11
+	hour: 13
+	minute: 54
+	second: 25
+	unix: 1647006865
+}
 
 type StringAlias = string
 type BoolAlias = bool
 type IntAlias = int
+type TimeAlias = time.Time
+type StructAlias = StructType[int]
+type EnumAlias = Enumerates
 
 type SumTypes = bool | int | string
+
+enum Enumerates {
+	a
+	b
+	c
+	d
+	e = 99
+	f
+}
 
 struct StructType[T] {
 mut:
@@ -21,6 +44,13 @@ mut:
 	val &T
 }
 
+fn test_option_types() {
+	assert json.encode(StructTypeOption[Enumerates]{ val: Enumerates.a }) == '{"val":0}'
+	assert json.encode(StructTypeOption[Enumerates]{ val: Enumerates.d }) == '{"val":3}'
+	assert json.encode(StructTypeOption[Enumerates]{ val: Enumerates.e }) == '{"val":99}'
+	assert json.encode(StructTypeOption[Enumerates]{ val: Enumerates.f }) == '{"val":100}'
+}
+
 fn test_option_alias() {
 	assert json.encode(StructTypeOption[BoolAlias]{ val: none }) == '{}'
 	assert json.encode(StructTypeOption[BoolAlias]{}) == '{"val":false}'
@@ -31,11 +61,24 @@ fn test_option_alias() {
 	assert json.encode(StructTypeOption[IntAlias]{}) == '{"val":0}'
 	assert json.encode(StructTypeOption[IntAlias]{ val: 0 }) == '{"val":0}'
 	assert json.encode(StructTypeOption[IntAlias]{ val: 1 }) == '{"val":1}'
+
+	assert json.encode(StructTypeOption[EnumAlias]{}) == '{"val":0}'
+	assert json.encode(StructTypeOption[EnumAlias]{ val: Enumerates.a }) == '{"val":0}'
+	assert json.encode(StructTypeOption[EnumAlias]{ val: Enumerates.d }) == '{"val":3}'
+	assert json.encode(StructTypeOption[EnumAlias]{ val: Enumerates.e }) == '{"val":99}'
+	assert json.encode(StructTypeOption[EnumAlias]{ val: Enumerates.f }) == '{"val":100}'
+}
+
+fn test_alias() {
+	assert json.encode(StructType[EnumAlias]{}) == '{"val":0}'
+	assert json.encode(StructType[EnumAlias]{ val: Enumerates.a }) == '{"val":0}'
+	assert json.encode(StructType[EnumAlias]{ val: Enumerates.d }) == '{"val":3}'
+	assert json.encode(StructType[EnumAlias]{ val: Enumerates.e }) == '{"val":99}'
+	assert json.encode(StructType[EnumAlias]{ val: Enumerates.f }) == '{"val":100}'
 }
 
 fn test_sumtypes() {
-	assert json.encode(StructType[SumTypes]{}) == '{}' // REVIEW
-
+	assert json.encode(StructType[SumTypes]{}) == '{}'
 	assert json.encode(StructType[SumTypes]{ val: '' }) == '{"val":""}'
 	assert json.encode(StructType[SumTypes]{ val: 'a' }) == '{"val":"a"}'
 
@@ -44,6 +87,12 @@ fn test_sumtypes() {
 
 	assert json.encode(StructType[SumTypes]{ val: 0 }) == '{"val":0}'
 	assert json.encode(StructType[SumTypes]{ val: 1 }) == '{"val":1}'
+
+	assert json.encode(StructType[StructType[SumTypes]]{
+		val: StructType[SumTypes]{
+			val: 1
+		}
+	}) == '{"val":{"val":1}}'
 }
 
 fn test_option_sumtypes() {
