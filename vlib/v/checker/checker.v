@@ -111,7 +111,8 @@ mut:
 	inside_println_arg               bool
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
-	comptime_call_pos                int  // needed for correctly checking use before decl for templates
+	inside_left_assign               bool
+	comptime_call_pos                int // needed for correctly checking use before decl for templates
 	goto_labels                      map[string]ast.GotoLabel // to check for unused goto labels
 }
 
@@ -3815,7 +3816,8 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			node.pos)
 	}
 
-	if !c.inside_unsafe && !c.is_builtin_mod && typ_sym.kind == .map && node.or_expr.stmts.len == 0 {
+	if !c.inside_unsafe && !c.is_builtin_mod && !c.inside_if_guard && !c.inside_left_assign
+		&& typ_sym.kind == .map && node.or_expr.stmts.len == 0 {
 		elem_type := c.table.value_type(typ)
 		if elem_type.is_real_pointer() {
 			c.note('accessing a pointer map value requires an `or{}` block outside `unsafe`',
