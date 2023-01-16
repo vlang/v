@@ -205,7 +205,7 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 
 	c.stmt_level = 0
 	for mut stmt in ast_file.stmts {
-		if stmt !is ast.ConstDecl && stmt !is ast.GlobalDecl && stmt !is ast.ExprStmt {
+		if stmt !in [ast.ConstDecl, ast.GlobalDecl, ast.ExprStmt] {
 			c.expr_level = 0
 			c.stmt(stmt)
 		}
@@ -3360,9 +3360,7 @@ fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 					}
 				} else {
 					if branch.stmt.expr is ast.InfixExpr {
-						if branch.stmt.expr.left !is ast.Ident
-							&& branch.stmt.expr.left !is ast.SelectorExpr
-							&& branch.stmt.expr.left !is ast.IndexExpr {
+						if branch.stmt.expr.left !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
 							c.error('channel in `select` key must be predefined', branch.stmt.expr.left.pos())
 						}
 					} else {
@@ -3374,8 +3372,7 @@ fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 				expr := branch.stmt.right[0]
 				match expr {
 					ast.PrefixExpr {
-						if expr.right !is ast.Ident && expr.right !is ast.SelectorExpr
-							&& expr.right !is ast.IndexExpr {
+						if expr.right !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
 							c.error('channel in `select` key must be predefined', expr.right.pos())
 						}
 						if expr.or_block.kind != .absent {

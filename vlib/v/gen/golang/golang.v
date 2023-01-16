@@ -326,7 +326,7 @@ fn (f Gen) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 		stmt := node
 		prev_stmt := prev_node
 		// Force a newline after a block of HashStmts
-		if prev_stmt is ast.HashStmt && stmt !is ast.HashStmt && stmt !is ast.ExprStmt {
+		if prev_stmt is ast.HashStmt && stmt !in [ast.HashStmt, ast.ExprStmt] {
 			return true
 		}
 		// Force a newline after function declarations
