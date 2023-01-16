@@ -48,9 +48,25 @@ mut:
 	is224 bool // mark if this digest is SHA-224
 }
 
-fn (mut d Digest) reset() {
+// free the resources taken by the Digest `d`
+[unsafe]
+pub fn (mut d Digest) free() {
+	$if prealloc {
+		return
+	}
+	unsafe {
+		d.x.free()
+		d.h.free()
+	}
+}
+
+fn (mut d Digest) init() {
 	d.h = []u32{len: (8)}
 	d.x = []u8{len: sha256.chunk}
+}
+
+// reset the state of the Digest `d`
+pub fn (mut d Digest) reset() {
 	if !d.is224 {
 		d.h[0] = u32(sha256.init0)
 		d.h[1] = u32(sha256.init1)
@@ -77,6 +93,7 @@ fn (mut d Digest) reset() {
 // new returns a new Digest (implementing hash.Hash) computing the SHA256 checksum.
 pub fn new() &Digest {
 	mut d := &Digest{}
+	d.init()
 	d.reset()
 	return d
 }
@@ -85,6 +102,7 @@ pub fn new() &Digest {
 pub fn new224() &Digest {
 	mut d := &Digest{}
 	d.is224 = true
+	d.init()
 	d.reset()
 	return d
 }
