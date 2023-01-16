@@ -1,0 +1,10 @@
+================ V panic ================
+   module: main
+ function: main()
+  message: db.sqlite.SQLError: no such table: User (1) (INSERT INTO `User` (`id`, `name`) VALUES (?1, ?2);); code: 1
+     file: vlib/v/slow_tests/inout/orm_panic_for_insert_into_not_created_table.vv:16
+   v hash: 26c682c
+=========================================
+0   orm_panic_for_insert_into_not_creat 0x0000000107c694c3 main__main + 947
+1   orm_panic_for_insert_into_not_creat 0x0000000107c6a577 main + 71
+2   orm_panic_for_insert_into_not_creat 0x0000000107c2ab14 start + 52
