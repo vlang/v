@@ -48,6 +48,7 @@ mut:
 	is224 bool // mark if this digest is SHA-224
 }
 
+// free the resources taken by the Digest `d`
 [unsafe]
 pub fn (mut d Digest) free() {
 	$if prealloc {
@@ -64,6 +65,7 @@ fn (mut d Digest) init() {
 	d.x = []u8{len: sha256.chunk}
 }
 
+// reset the state of the Digest `d`
 pub fn (mut d Digest) reset() {
 	if !d.is224 {
 		d.h[0] = u32(sha256.init0)
