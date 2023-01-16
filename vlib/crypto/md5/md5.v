@@ -33,9 +33,23 @@ mut:
 	len u64
 }
 
-fn (mut d Digest) reset() {
+// free the resources taken by the Digest `d`
+[unsafe]
+pub fn (mut d Digest) free() {
+	$if prealloc {
+		return
+	}
+	unsafe { d.x.free() }
+}
+
+fn (mut d Digest) init() {
 	d.s = []u32{len: (4)}
 	d.x = []u8{len: md5.block_size}
+	d.reset()
+}
+
+// reset the state of the Digest `d`
+pub fn (mut d Digest) reset() {
 	d.s[0] = u32(md5.init0)
 	d.s[1] = u32(md5.init1)
 	d.s[2] = u32(md5.init2)
@@ -47,7 +61,7 @@ fn (mut d Digest) reset() {
 // new returns a new Digest (implementing hash.Hash) computing the MD5 checksum.
 pub fn new() &Digest {
 	mut d := &Digest{}
-	d.reset()
+	d.init()
 	return d
 }
 

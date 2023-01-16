@@ -20,6 +20,19 @@ mut:
 	decrypt bool
 }
 
+// free the resources taken by the Cfb `x`
+[unsafe]
+pub fn (mut x Cfb) free() {
+	$if prealloc {
+		return
+	}
+	unsafe {
+		// x.b.free() TODO add?
+		x.out.free()
+		x.next.free()
+	}
+}
+
 // new_cfb_encrypter returns a `Cfb` which encrypts with cipher feedback mode,
 // using the given Block. The iv must be the same length as the Block's block
 // size

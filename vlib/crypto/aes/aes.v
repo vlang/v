@@ -24,6 +24,18 @@ mut:
 	dec []u32
 }
 
+// free the resources taken by the AesCipher `c`
+[unsafe]
+pub fn (mut c AesCipher) free() {
+	$if prealloc {
+		return
+	}
+	unsafe {
+		c.enc.free()
+		c.dec.free()
+	}
+}
+
 // new_cipher creates and returns a new [[AesCipher](#AesCipher)].
 // The key argument should be the AES key,
 // either 16, 24, or 32 bytes to select
