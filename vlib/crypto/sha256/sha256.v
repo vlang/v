@@ -63,6 +63,7 @@ pub fn (mut d Digest) free() {
 fn (mut d Digest) init() {
 	d.h = []u32{len: (8)}
 	d.x = []u8{len: sha256.chunk}
+	d.reset()
 }
 
 // reset the state of the Digest `d`
@@ -94,7 +95,6 @@ pub fn (mut d Digest) reset() {
 pub fn new() &Digest {
 	mut d := &Digest{}
 	d.init()
-	d.reset()
 	return d
 }
 
@@ -103,7 +103,6 @@ pub fn new224() &Digest {
 	mut d := &Digest{}
 	d.is224 = true
 	d.init()
-	d.reset()
 	return d
 }
 

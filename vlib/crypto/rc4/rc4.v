@@ -20,6 +20,15 @@ mut:
 	j u8
 }
 
+// free the resources taken by the Cipher `c`
+[unsafe]
+pub fn (mut c Cipher) free() {
+	$if prealloc {
+		return
+	}
+	unsafe { c.s.free() }
+}
+
 // new_cipher creates and returns a new Cipher. The key argument should be the
 // RC4 key, at least 1 byte and at most 256 bytes.
 pub fn new_cipher(key []u8) !Cipher {

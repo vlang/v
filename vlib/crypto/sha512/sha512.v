@@ -70,9 +70,26 @@ mut:
 	function crypto.Hash
 }
 
-fn (mut d Digest) reset() {
+// free the resources taken by the Digest `d`
+[unsafe]
+pub fn (mut d Digest) free() {
+	$if prealloc {
+		return
+	}
+	unsafe {
+		d.x.free()
+		d.h.free()
+	}
+}
+
+fn (mut d Digest) init() {
 	d.h = []u64{len: (8)}
 	d.x = []u8{len: sha512.chunk}
+	d.reset()
+}
+
+// reset the state of the Digest `d`
+pub fn (mut d Digest) reset() {
 	match d.function {
 		.sha384 {
 			d.h[0] = sha512.init0_384
@@ -124,7 +141,7 @@ fn new_digest(hash crypto.Hash) &Digest {
 	mut d := &Digest{
 		function: hash
 	}
-	d.reset()
+	d.init()
 	return d
 }
 
