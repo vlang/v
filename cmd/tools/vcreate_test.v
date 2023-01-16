@@ -13,7 +13,7 @@ fn init_and_check() ! {
 	assert x.exit_code == 0
 	assert x.output.trim_space() == 'Hello World!'
 
-	assert os.read_file('test_vcreate.v')! == [
+	assert os.read_file('src/main.v')! == [
 		'module main\n',
 		'fn main() {',
 		"	println('Hello World!')",
@@ -50,6 +50,13 @@ fn init_and_check() ! {
 		'.idea/',
 		'.vscode/',
 		'*.iml',
+		'',
+		'# ENV',
+		'.env',
+		'',
+		'# vweb and database',
+		'*.db',
+		'*.js',
 		'',
 	].join_lines()
 

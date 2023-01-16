@@ -168,7 +168,7 @@ fn (mut g JsGen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 	}
 }
 
-fn (mut g JsGen) comptime_if_to_ifdef(name string, is_comptime_optional bool) !string {
+fn (mut g JsGen) comptime_if_to_ifdef(name string, is_comptime_option bool) !string {
 	match name {
 		// platforms/os-es:
 		'windows' {
@@ -306,7 +306,7 @@ fn (mut g JsGen) comptime_if_to_ifdef(name string, is_comptime_optional bool) !s
 			return '(\$os.endianess == "BE")'
 		}
 		else {
-			if is_comptime_optional
+			if is_comptime_option
 				|| (g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
 				return 'checkDefine("CUSTOM_DEFINE_${name}")'
 			}

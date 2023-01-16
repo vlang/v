@@ -130,7 +130,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		}
 	}
 	// allow direct int-literal assignment for pointers for now
-	// maybe in the future optionals should be used for that
+	// maybe in the future options should be used for that
 	if expected.is_real_pointer() {
 		if got == ast.int_literal_type {
 			return true
@@ -146,15 +146,15 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if expected == ast.charptr_type && got == ast.char_type.ref() {
 		return true
 	}
-	if expected.has_flag(.optional) || expected.has_flag(.result) {
+	if expected.has_flag(.option) || expected.has_flag(.result) {
 		sym := c.table.sym(got)
 		if ((sym.idx == ast.error_type_idx || got in [ast.none_type, ast.error_type])
-			&& expected.has_flag(.optional))
+			&& expected.has_flag(.option))
 			|| ((sym.idx == ast.error_type_idx || got == ast.error_type)
 			&& expected.has_flag(.result)) {
 			// IError
 			return true
-		} else if !c.check_basic(got, expected.clear_flag(.optional).clear_flag(.result)) {
+		} else if !c.check_basic(got, expected.clear_flag(.option).clear_flag(.result)) {
 			return false
 		}
 	}
@@ -402,7 +402,7 @@ fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol,
 	if got_fn.params.len != exp_fn.params.len {
 		return false
 	}
-	if got_fn.return_type.has_flag(.optional) != exp_fn.return_type.has_flag(.optional) {
+	if got_fn.return_type.has_flag(.option) != exp_fn.return_type.has_flag(.option) {
 		return false
 	}
 	if got_fn.return_type.has_flag(.result) != exp_fn.return_type.has_flag(.result) {
@@ -581,7 +581,7 @@ fn (mut c Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
 	}
 	if right_type.is_number() && left_type.is_number() {
 		return c.promote_num(left_type, right_type)
-	} else if left_type.has_flag(.optional) != right_type.has_flag(.optional) {
+	} else if left_type.has_flag(.option) != right_type.has_flag(.option) {
 		// incompatible
 		return ast.void_type
 	} else {
@@ -645,7 +645,7 @@ fn (c &Checker) expected_msg(got ast.Type, expected ast.Type) string {
 
 fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
 	// allow direct int-literal assignment for pointers for now
-	// maybe in the future optionals should be used for that
+	// maybe in the future options should be used for that
 	if right.is_ptr() || right.is_pointer() {
 		if left == ast.int_literal_type {
 			return true

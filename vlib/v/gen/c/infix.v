@@ -63,7 +63,7 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
 		elem_styp := g.typ(elem_type)
-		g.register_chan_push_optional_fn(elem_styp, styp)
+		g.register_chan_push_option_fn(elem_styp, styp)
 		g.write('${option_name}_void ${tmp_opt} = __Option_${styp}_pushval(')
 	} else {
 		g.write('__${styp}_pushval(')

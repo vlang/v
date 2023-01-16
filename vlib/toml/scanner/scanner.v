@@ -662,7 +662,7 @@ fn (mut s Scanner) validate_and_skip_headers() ! {
 
 	// NICE-TO-HAVE-TODO Check other types of (UTF-?) headers and yield an error. TOML is UTF-8 only.
 
-	// Skip optional UTF-8 heaser, if any.
+	// Skip optional UTF-8 header, if any.
 	if s.at() == 0xEF && s.peek(1) == 0xBB && s.peek(2) == 0xBF {
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping UTF-8 byte order mark (BOM)')
 		s.header_len = 3

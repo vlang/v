@@ -1,4 +1,4 @@
-import sqlite
+import db.sqlite
 
 [table: 'Users']
 struct User {

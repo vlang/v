@@ -40,14 +40,14 @@ fn (this User) fn_with_receiver() {
 	println('')
 }
 
-fn fn_with_optional() ?int {
+fn fn_with_option() ?int {
 	if true {
 		return error('true')
 	}
 	return 30
 }
 
-fn (f Foo) fn_with_optional() ?int {
+fn (f Foo) fn_with_option() ?int {
 	if true {
 		return error('true')
 	}

@@ -673,7 +673,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 	mut cur_line := if is_gen_or_and_assign_rhs || gen_keep_alive { // && !g.is_autofree {
 		// `x := foo() or { ...}`
-		// cut everything that has been generated to prepend optional variable creation
+		// cut everything that has been generated to prepend option variable creation
 		line := g.go_before_stmt(0)
 		g.out.write_string(util.tabs(g.indent))
 		line
@@ -684,6 +684,12 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	tmp_opt := if gen_or || gen_keep_alive { g.new_tmp_var() } else { '' }
 	if gen_or || gen_keep_alive {
 		mut ret_typ := node.return_type
+		if g.table.sym(ret_typ).kind == .alias {
+			unaliased_type := g.table.unaliased_type(ret_typ)
+			if unaliased_type.has_flag(.option) || unaliased_type.has_flag(.result) {
+				ret_typ = unaliased_type
+			}
+		}
 		styp := g.typ(ret_typ)
 		if gen_or && !is_gen_or_and_assign_rhs {
 			cur_line = g.go_before_stmt(0)
@@ -713,7 +719,13 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	if gen_or {
 		g.or_block(tmp_opt, node.or_block, node.return_type)
-		unwrapped_typ := node.return_type.clear_flag(.optional).clear_flag(.result)
+		mut unwrapped_typ := node.return_type.clear_flag(.option).clear_flag(.result)
+		if g.table.sym(unwrapped_typ).kind == .alias {
+			unaliased_type := g.table.unaliased_type(unwrapped_typ)
+			if unaliased_type.has_flag(.option) || unaliased_type.has_flag(.result) {
+				unwrapped_typ = unaliased_type.clear_flag(.option).clear_flag(.result)
+			}
+		}
 		unwrapped_styp := g.typ(unwrapped_typ)
 		if g.infix_left_var_name.len > 0 {
 			g.indent--
@@ -852,40 +864,41 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 	if rec_type.has_flag(.shared_f) {
 		rec_type = rec_type.clear_flag(.shared_f).set_nr_muls(0)
 	}
-	if node.left is ast.ComptimeSelector {
-		key_str := g.get_comptime_selector_key_type(node.left)
+	left_node := if node.left is ast.PostfixExpr { node.left.expr } else { node.left }
+	if left_node is ast.ComptimeSelector {
+		key_str := g.get_comptime_selector_key_type(left_node)
 		if key_str != '' {
 			rec_type = g.comptime_var_type_map[key_str] or { rec_type }
-			g.gen_expr_to_string(node.left, rec_type)
+			g.gen_expr_to_string(left_node, rec_type)
 			return true
 		}
-	} else if node.left is ast.ComptimeCall {
-		if node.left.method_name == 'method' {
-			sym := g.table.sym(g.unwrap_generic(node.left.left_type))
+	} else if left_node is ast.ComptimeCall {
+		if left_node.method_name == 'method' {
+			sym := g.table.sym(g.unwrap_generic(left_node.left_type))
 			if m := sym.find_method(g.comptime_for_method) {
 				rec_type = m.return_type
-				g.gen_expr_to_string(node.left, rec_type)
+				g.gen_expr_to_string(left_node, rec_type)
 				return true
 			}
 		}
-	} else if node.left is ast.Ident {
-		if node.left.obj is ast.Var {
+	} else if left_node is ast.Ident {
+		if left_node.obj is ast.Var {
 			if g.comptime_var_type_map.len > 0 {
-				rec_type = node.left.obj.typ
-				g.gen_expr_to_string(node.left, rec_type)
+				rec_type = left_node.obj.typ
+				g.gen_expr_to_string(left_node, rec_type)
 				return true
-			} else if node.left.obj.smartcasts.len > 0 {
-				rec_type = g.unwrap_generic(node.left.obj.smartcasts.last())
+			} else if left_node.obj.smartcasts.len > 0 {
+				rec_type = g.unwrap_generic(left_node.obj.smartcasts.last())
 				cast_sym := g.table.sym(rec_type)
 				if cast_sym.info is ast.Aggregate {
 					rec_type = cast_sym.info.types[g.aggregate_type_idx]
 				}
-				g.gen_expr_to_string(node.left, rec_type)
+				g.gen_expr_to_string(left_node, rec_type)
 				return true
 			}
 		}
-	} else if node.left is ast.None {
-		g.gen_expr_to_string(node.left, ast.none_type)
+	} else if left_node is ast.None {
+		g.gen_expr_to_string(left_node, ast.none_type)
 		return true
 	}
 	g.get_str_fn(rec_type)
@@ -1417,7 +1430,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.writeln('));')
 				return
 			}
-			if g.is_autofree && !typ.has_flag(.optional) && !typ.has_flag(.result) {
+			if g.is_autofree && !typ.has_flag(.option) && !typ.has_flag(.result) {
 				// Create a temporary variable so that the value can be freed
 				tmp := g.new_tmp_var()
 				g.write('string ${tmp} = ')
@@ -1557,7 +1570,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	// Create a temporary var before fn call for each argument in order to free it (only if it's a complex expression,
 	// like `foo(get_string())` or `foo(a + b)`
 	mut free_tmp_arg_vars := g.is_autofree && !g.is_builtin_mod && node.args.len > 0
-		&& !node.args[0].typ.has_flag(.optional)
+		&& !node.args[0].typ.has_flag(.option)
 		&& !node.args[0].typ.has_flag(.result) // TODO copy pasta checker.v
 	if !free_tmp_arg_vars {
 		return
@@ -1654,9 +1667,9 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 				// // TODO why 0?
 				// continue
 				// }
-				is_optional := obj.typ.has_flag(.optional)
-				if is_optional {
-					// TODO: free optionals
+				is_option := obj.typ.has_flag(.option)
+				if is_option {
+					// TODO: free options
 					continue
 				}
 				is_result := obj.typ.has_flag(.result)
@@ -1931,7 +1944,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	if g.pref.os == .windows && node.call_expr.return_type != ast.void_type {
 		g.writeln('${arg_tmp_var}->ret_ptr = malloc(sizeof(${s_ret_typ}));')
 	}
-	is_opt := node.call_expr.return_type.has_flag(.optional)
+	is_opt := node.call_expr.return_type.has_flag(.option)
 	is_res := node.call_expr.return_type.has_flag(.result)
 	mut gohandle_name := ''
 	if node.call_expr.return_type == ast.void_type {

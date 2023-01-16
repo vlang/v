@@ -804,9 +804,9 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
 		|| (p.peek_tok.kind == .comma && (p.table.known_type(argname) || is_generic_type))
 		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar || p.fn_language == .c
-		|| (p.tok.kind == .key_mut && (p.peek_token(2).kind == .comma
-		|| p.peek_token(2).kind == .rpar || (p.peek_tok.kind == .name
-		&& p.peek_token(2).kind == .dot)))
+		|| (p.tok.kind == .key_mut && (p.peek_tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
+		|| p.peek_token(2).kind == .comma || p.peek_token(2).kind == .rpar
+		|| (p.peek_tok.kind == .name && p.peek_token(2).kind == .dot)))
 	// TODO copy paste, merge 2 branches
 	if types_only {
 		mut arg_no := 1
@@ -1014,7 +1014,7 @@ fn (mut p Parser) go_expr() ast.GoExpr {
 	call_expr := if expr is ast.CallExpr {
 		expr
 	} else {
-		p.error_with_pos('expression in `go` must be a function call', expr.pos())
+		p.error_with_pos('expression in `spawn` must be a function call', expr.pos())
 		ast.CallExpr{
 			scope: p.scope
 		}

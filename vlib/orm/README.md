@@ -112,7 +112,7 @@ result := sql db {
 
 ### Example
 ```v ignore
-import pg
+import db.pg
 
 struct Member {
 	id         string [default: 'gen_random_uuid()'; primary; sql_type: 'uuid']

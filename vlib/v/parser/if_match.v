@@ -114,7 +114,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			comments << p.eat_comments()
 			expr := p.expr(0)
 			if expr !in [ast.CallExpr, ast.IndexExpr, ast.PrefixExpr, ast.SelectorExpr] {
-				p.error_with_pos('if guard condition expression is illegal, it should return optional',
+				p.error_with_pos('if guard condition expression is illegal, it should return an option',
 					expr.pos())
 			}
 			p.check_undefined_variables(var_names, expr) or {

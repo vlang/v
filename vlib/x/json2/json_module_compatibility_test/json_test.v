@@ -1,5 +1,5 @@
 import x.json2 as json
-// import time
+import time
 
 enum JobTitle {
 	manager
@@ -9,28 +9,28 @@ enum JobTitle {
 
 struct Employee {
 pub mut:
-	name   string
-	age    int
-	salary f32
-	// title        JobTitle //! FIXME - decode
-	// sub_employee SubEmployee //! FIXME - decode
+	name         string
+	age          int
+	salary       f32
+	title        JobTitle
+	sub_employee SubEmployee //! FIXME - decode
 }
 
-struct SubEmployee {
+pub struct SubEmployee {
 pub mut:
 	name   string
 	age    int
 	salary f32
-	// title  JobTitle //! FIXME - decode
+	title  JobTitle
 }
 
 fn test_simple() {
 	sub_employee := SubEmployee{
 		name: 'João'
 	}
-	x := Employee{'Peter', 28, 95000.5}
+	x := Employee{'Peter', 28, 95000.5, .worker, sub_employee}
 	s := json.encode[Employee](x)
-	assert s == '{"name":"Peter","age":28,"salary":95000.5}'
+	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2,"sub_employee":{"name":"João","age":0,"salary":0.0,"title":0}}'
 
 	y := json.decode[Employee](s) or {
 		println(err)
@@ -40,10 +40,10 @@ fn test_simple() {
 	assert y.name == 'Peter'
 	assert y.age == 28
 	assert y.salary == 95000.5
-	// assert y.title == .worker //! FIXME
-	// assert y.sub_employee.name == 'Peter'
-	// assert y.sub_employee.age == 0
-	// assert y.sub_employee.salary == 0.0
+	assert y.title == .worker
+	// assert y.sub_employee.name == 'João'
+	assert y.sub_employee.age == 0
+	assert y.sub_employee.salary == 0.0
 	// assert y.sub_employee.title == .worker //! FIXME
 }
 
@@ -54,12 +54,12 @@ fn test_simple() {
 // 	currency_id string [json: currencyId] = currency_id
 // }
 
-// struct User2 {
-// mut:
-// 	age      int
-// 	nums     []int
-// 	reg_date time.Time
-// }
+struct User2 {
+mut:
+	age      int
+	nums     []int
+	reg_date time.Time
+}
 
 // // User struct needs to be `pub mut` for now in order to access and manipulate values
 struct User {
@@ -70,6 +70,34 @@ pub mut:
 	is_registered bool   [json: IsRegistered]
 	typ           int    [json: 'type']
 	pets          string [json: 'pet_animals'; raw]
+}
+
+fn test_parse_user() {
+	s := '{"age": 10, "nums": [1,2,3], "type": 1, "lastName": "Johnson", "IsRegistered": true, "pet_animals": {"name": "Bob", "animal": "Dog"}}'
+
+	u := json.decode[User](s)!
+
+	assert u.age == 10
+	assert u.last_name == 'Johnson'
+	assert u.is_registered == true
+	// assert u.nums.len == 3
+	// assert u.nums[0] == 1
+	// assert u.nums[1] == 2
+	// assert u.nums[2] == 3
+	assert u.typ == 1
+	assert u.pets == '{"name":"Bob","animal":"Dog"}'
+}
+
+fn test_encode_decode_time() {
+	user := User2{
+		age: 25
+		reg_date: time.new_time(year: 2020, month: 12, day: 22, hour: 7, minute: 23)
+	}
+	s := json.encode(user)
+
+	assert s.contains('"reg_date":"2020-12-22T07:23:00.000Z"')
+	user2 := json.decode[User2](s)!
+	assert user2.reg_date.str() == '2020-12-22 07:23:00'
 }
 
 fn (mut u User) foo() string {
@@ -216,4 +244,23 @@ fn test_pretty() {
   "b": "abc",
   "c": "aliens"
 }'
+}
+
+struct Aa {
+	sub AliasType
+}
+
+struct Bb {
+	a int
+}
+
+type AliasType = Bb
+
+fn test_encode_alias_field() {
+	s := json.encode(Aa{
+		sub: Bb{
+			a: 1
+		}
+	})
+	assert s == '{"sub":{"a":1}}'
 }

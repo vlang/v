@@ -9,7 +9,7 @@ fn create_and_call_anon_function() ? {
 		println('test')
 		// Note: the anon function does NOT return explicitly,
 		// so V should generate an implicit "OK" value and
-		// return it. Previously, it created an implicit optional
+		// return it. Previously, it created an implicit option
 		// filled with 0s => .ok was false, and that was treated
 		// as a failure, triggering or blocks.
 	}
