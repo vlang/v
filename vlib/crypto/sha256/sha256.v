@@ -50,6 +50,9 @@ mut:
 
 [unsafe]
 pub fn (mut d Digest) free() {
+	$if prealloc {
+		return
+	}
 	unsafe {
 		d.x.free()
 		d.h.free()
