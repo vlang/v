@@ -4,6 +4,7 @@ enum SmallEnum as i8 {
 	c
 	d = 5
 	e
+	f = 0x7f
 }
 
 enum BigEnum as u64 {
@@ -22,6 +23,14 @@ enum BigIEnum as i64 {
 	e
 }
 
+enum SmallUEnum as u8 {
+	a = 1
+	b = 4
+	c
+	d = 8
+	e = 0xFF
+}
+
 fn test_small_enum() {
 	dump(sizeof(SmallEnum))
 	$if tinyc {
@@ -35,11 +44,13 @@ fn test_small_enum() {
 	dump(i8(SmallEnum.c))
 	dump(i8(SmallEnum.d))
 	dump(i8(SmallEnum.e))
+	dump(i8(SmallEnum.f))
 	assert i8(SmallEnum.a) == -1
 	assert i8(SmallEnum.b) == -4
 	assert i8(SmallEnum.c) == -3
 	assert i8(SmallEnum.d) == 5
 	assert i8(SmallEnum.e) == 6
+	assert i8(SmallEnum.f) == 127
 }
 
 fn test_big_enum() {
@@ -80,4 +91,24 @@ fn test_big_ienum() {
 	assert i64(BigIEnum.c) == -899999999999
 	assert i64(BigIEnum.d) == 900000000000
 	assert i64(BigIEnum.e) == 900000000001
+}
+
+fn test_small_uenum() {
+	dump(sizeof(SmallUEnum))
+	$if tinyc {
+		// TODO: TCC currently ignores `__attribute__((packed))` for enums, and uses an int instead, even with -fshort-enums :-|
+		assert sizeof(SmallUEnum) == 4
+	} $else {
+		assert sizeof(SmallUEnum) == 1
+	}
+	dump(u8(SmallUEnum.a))
+	dump(u8(SmallUEnum.b))
+	dump(u8(SmallUEnum.c))
+	dump(u8(SmallUEnum.d))
+	dump(u8(SmallUEnum.e))
+	assert u8(SmallUEnum.a) == 1
+	assert u8(SmallUEnum.b) == 4
+	assert u8(SmallUEnum.c) == 5
+	assert u8(SmallUEnum.d) == 8
+	assert u8(SmallUEnum.e) == 255
 }
