@@ -16,6 +16,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	node.left_types = []
 	mut right_len := node.right.len
 	mut right_type0 := ast.void_type
+	mut none_values := []int{}
 	for i, mut right in node.right {
 		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr,
 			ast.SelectorExpr] {
@@ -57,7 +58,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		}
 		if mut right is ast.None {
-			c.error('cannot assign a `none` value to a variable', right.pos)
+			none_values << i
 		}
 		// Handle `left_name := unsafe { none }`
 		if mut right is ast.UnsafeExpr {
@@ -105,6 +106,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		is_blank_ident := left.is_blank_ident()
 		mut left_type := ast.void_type
+		mut var_option := false
 		if !is_decl && !is_blank_ident {
 			if left in [ast.Ident, ast.SelectorExpr] {
 				c.prevent_sum_type_unwrapping_once = true
@@ -114,6 +116,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			left_type = c.expr(left)
 			c.is_index_assign = false
+			c.expected_type = c.unwrap_generic(left_type)
+		}
+		if c.inside_comptime_for_field && mut left is ast.ComptimeSelector {
+			left_type = c.comptime_fields_default_type
 			c.expected_type = c.unwrap_generic(left_type)
 		}
 		if node.right_types.len < node.left.len { // first type or multi return types added above
@@ -186,6 +192,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			// Make sure the variable is mutable
 			c.fail_if_immutable(left)
 			// left_type = c.expr(left)
+			// if right is ast.None && !left_type.has_flag(.option) {
+			// 	println(left_type)
+			// 	c.error('cannot assign a `none` value to a non-option variable', right.pos())
+			// }
 		}
 		if right_type.is_ptr() && left_type.is_ptr() {
 			if mut right is ast.Ident {
@@ -263,6 +273,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 					if ident_var_info.share == .atomic_t {
 						left_type = left_type.set_flag(.atomic_f)
+					}
+					if ident_var_info.is_option {
+						var_option = true
 					}
 					node.left_types[i] = left_type
 					ident_var_info.typ = left_type
@@ -605,7 +618,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							c.error('enums can only be assigned `int` values', right.pos())
 						}
 					} else {
-						c.error('cannot assign to `${left}`: ${err.msg()}', right.pos())
+						if !var_option || (var_option && right_type_unwrapped != ast.none_type) {
+							c.error('cannot assign to `${left}`: ${err.msg()}', right.pos())
+						}						
 					}
 				}
 			}

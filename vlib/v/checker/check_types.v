@@ -23,6 +23,10 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		return true
 	}
 
+	if got == ast.none_type && expected.has_flag(.option) {
+		return true
+	}
+
 	if c.pref.translated {
 		if exp_is_int && got_is_int {
 			return true

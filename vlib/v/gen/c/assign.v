@@ -478,6 +478,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.array_init(val, c_name(ident.name))
 						} else if val_type.has_flag(.shared_f) {
 							g.expr_with_cast(val, val_type, var_type)
+						} else if var_type.has_flag(.option) && val_type.has_flag(.option) {
+							g.inside_opt_or_res = true
+							tmp_var := g.new_tmp_var()
+							g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
 						} else {
 							g.expr(val)
 						}
@@ -486,7 +490,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						}
 					}
 				} else {
-					if node.has_cross_var {
+					if val_type == ast.none_type || (var_type.has_flag(.option) && !val_type.has_flag(.option)) {
+						g.inside_opt_or_res = true
+						tmp_var := g.new_tmp_var()
+						g.expr_with_tmp_var(val, val_type, var_type, tmp_var)						
+					} else if node.has_cross_var {
 						g.gen_cross_tmp_variable(node.left, val)
 					} else {
 						if op_overloaded {

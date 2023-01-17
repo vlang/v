@@ -2646,7 +2646,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	mut final_to_sym := c.table.final_sym(to_type)
 
 	if to_type.has_flag(.option) {
-		c.error('casting to option type is forbidden', node.pos)
+		from_type.set_flag(.option)
+		node.expr_type.set_flag(.option)
 	} else if to_type.has_flag(.result) {
 		c.error('casting to result type is forbidden', node.pos)
 	}
@@ -3120,7 +3121,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					node.obj = obj
 					// unwrap option (`println(x)`)
 					if is_option {
-						return typ.clear_flag(.option).clear_flag(.result)
+						return typ//.clear_flag(.option).clear_flag(.result)
 					}
 					return typ
 				}
