@@ -16,7 +16,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	node.left_types = []
 	mut right_len := node.right.len
 	mut right_type0 := ast.void_type
-	mut none_values := []int{}
 	for i, mut right in node.right {
 		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr,
 			ast.SelectorExpr] {
@@ -56,9 +55,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			if right.is_mut {
 				c.error('unexpected `mut` on right-hand side of assignment', right.mut_pos)
 			}
-		}
-		if mut right is ast.None {
-			none_values << i
 		}
 		// Handle `left_name := unsafe { none }`
 		if mut right is ast.UnsafeExpr {
@@ -620,7 +616,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					} else {
 						if !var_option || (var_option && right_type_unwrapped != ast.none_type) {
 							c.error('cannot assign to `${left}`: ${err.msg()}', right.pos())
-						}						
+						}
 					}
 				}
 			}
