@@ -1544,9 +1544,8 @@ fn (mut g JsGen) gen_const_decl(it ast.ConstDecl) {
 			g.push_pub_var(field.name)
 		}
 
-		if field.expr is ast.StringInterLiteral || field.expr is ast.StringLiteral
-			|| field.expr is ast.IntegerLiteral || field.expr is ast.FloatLiteral
-			|| field.expr is ast.BoolLiteral {
+		if field.expr in [ast.StringInterLiteral, ast.StringLiteral, ast.IntegerLiteral, ast.FloatLiteral,
+			ast.BoolLiteral] {
 			g.write('const ${g.js_name(field.name)} = ')
 			g.expr(field.expr)
 		} else {

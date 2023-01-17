@@ -343,7 +343,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		g.indent--
 	} else if node.kind == .string {
-		cond := if node.cond is ast.StringLiteral || node.cond is ast.StringInterLiteral {
+		cond := if node.cond in [ast.StringLiteral, ast.StringInterLiteral] {
 			ast.Expr(g.new_ctemp_var_then_gen(node.cond, ast.string_type))
 		} else {
 			node.cond
