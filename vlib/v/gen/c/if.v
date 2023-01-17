@@ -227,7 +227,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				guard_idx = i
 				guard_vars = []string{len: node.branches.len}
 			}
-			if cond.expr !is ast.IndexExpr && cond.expr !is ast.PrefixExpr {
+			if cond.expr !in [ast.IndexExpr, ast.PrefixExpr] {
 				var_name := g.new_tmp_var()
 				guard_vars[i] = var_name
 				g.writeln('${g.typ(cond.expr_type)} ${var_name};')

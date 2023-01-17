@@ -609,7 +609,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 				.key_in, .not_in {
 					if cond.left in [ast.SelectorExpr, ast.TypeNode] && cond.right is ast.ArrayInit {
 						for expr in cond.right.exprs {
-							if expr !is ast.ComptimeType && expr !is ast.TypeNode {
+							if expr !in [ast.ComptimeType, ast.TypeNode] {
 								c.error('invalid `\$if` condition, only types are allowed',
 									expr.pos())
 							}
@@ -708,8 +708,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 				}
 				// `$if some_var {}`, or `[if user_defined_tag] fn abc(){}`
 				typ := c.unwrap_generic(c.expr(cond))
-				if cond.obj !is ast.Var && cond.obj !is ast.ConstField
-					&& cond.obj !is ast.GlobalField {
+				if cond.obj !in [ast.Var, ast.ConstField, ast.GlobalField] {
 					if !c.inside_ct_attr {
 						c.error('unknown var: `${cname}`', pos)
 					}
