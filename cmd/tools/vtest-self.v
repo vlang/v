@@ -124,6 +124,7 @@ const (
 		'vlib/orm/orm_test.v',
 		'vlib/orm/orm_sql_or_blocks_test.v',
 		'vlib/orm/orm_create_and_drop_test.v',
+		'vlib/orm/orm_insert_test.v',
 		'vlib/db/sqlite/sqlite_test.v',
 		'vlib/db/sqlite/sqlite_orm_test.v',
 		'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
@@ -149,6 +150,7 @@ const (
 		'do_not_remove',
 		'vlib/net/websocket/websocket_test.v',
 		'vlib/orm/orm_create_and_drop_test.v',
+		'vlib/orm/orm_insert_test.v',
 		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
@@ -156,6 +158,7 @@ const (
 	skip_with_fsanitize_undefined = [
 		'do_not_remove',
 		'vlib/orm/orm_create_and_drop_test.v',
+		'vlib/orm/orm_insert_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 	]
@@ -187,6 +190,8 @@ const (
 		'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/orm/orm_sql_or_blocks_test.v',
+		'vlib/orm/orm_create_and_drop_test.v',
+		'vlib/orm/orm_insert_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_joined_tables_select_test.v',
