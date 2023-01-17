@@ -15,6 +15,9 @@ fn test_orm_sub_structs() {
 	sql db {
 		create table Upper
 	}
+	sql db {
+		create table SubStruct
+	}
 
 	upper_1 := Upper{
 		sub: SubStruct{
