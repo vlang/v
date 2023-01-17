@@ -435,30 +435,86 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 	}
 	c.ensure_type_exists(node.parent_type, node.type_pos) or { return }
-	mut typ_sym := c.table.sym(node.parent_type)
-	if typ_sym.kind in [.placeholder, .int_literal, .float_literal] {
-		c.error('unknown type `${typ_sym.name}`', node.type_pos)
-	} else if typ_sym.kind == .alias {
-		orig_sym := c.table.sym((typ_sym.info as ast.Alias).parent_type)
-		c.error('type `${typ_sym.str()}` is an alias, use the original alias type `${orig_sym.name}` instead',
-			node.type_pos)
-	} else if typ_sym.kind == .chan {
-		c.error('aliases of `chan` types are not allowed.', node.type_pos)
-	} else if typ_sym.kind == .function {
-		orig_sym := c.table.type_to_str(node.parent_type)
-		c.error('type `${typ_sym.str()}` is an alias, use the original alias type `${orig_sym}` instead',
-			node.type_pos)
-	} else if typ_sym.kind == .struct_ {
-		if mut typ_sym.info is ast.Struct {
-			// check if the generic param types have been defined
-			for ct in typ_sym.info.concrete_types {
-				ct_sym := c.table.sym(ct)
-				if ct_sym.kind == .placeholder {
-					c.error('unknown type `${ct_sym.name}`', node.type_pos)
+	mut parent_typ_sym := c.table.sym(node.parent_type)
+	match parent_typ_sym.kind {
+		.placeholder, .int_literal, .float_literal {
+			c.error('unknown aliased type `${parent_typ_sym.name}`', node.type_pos)
+		}
+		.alias {
+			orig_sym := c.table.sym((parent_typ_sym.info as ast.Alias).parent_type)
+			c.error('type `${parent_typ_sym.str()}` is an alias, use the original alias type `${orig_sym.name}` instead',
+				node.type_pos)
+		}
+		.chan {
+			c.error('aliases of `chan` types are not allowed', node.type_pos)
+		}
+		.thread {
+			c.error('aliases of `thread` types are not allowed', node.type_pos)
+		}
+		.multi_return {
+			c.error('aliases of function multi return types are not allowed', node.type_pos)
+		}
+		.void {
+			c.error('aliases of the void type are not allowed', node.type_pos)
+		}
+		.function {
+			orig_sym := c.table.type_to_str(node.parent_type)
+			c.error('type `${parent_typ_sym.str()}` is an alias, use the original alias type `${orig_sym}` instead',
+				node.type_pos)
+		}
+		.struct_ {
+			if mut parent_typ_sym.info is ast.Struct {
+				// check if the generic param types have been defined
+				for ct in parent_typ_sym.info.concrete_types {
+					ct_sym := c.table.sym(ct)
+					if ct_sym.kind == .placeholder {
+						c.error('unknown type `${ct_sym.name}`', node.type_pos)
+					}
 				}
 			}
 		}
+		.array {
+			c.check_alias_vs_element_type_of_parent(node, (parent_typ_sym.info as ast.Array).elem_type,
+				'array')
+		}
+		.array_fixed {
+			c.check_alias_vs_element_type_of_parent(node, (parent_typ_sym.info as ast.ArrayFixed).elem_type,
+				'fixed array')
+		}
+		.map {
+			info := parent_typ_sym.info as ast.Map
+			c.check_alias_vs_element_type_of_parent(node, info.key_type, 'map key')
+			c.check_alias_vs_element_type_of_parent(node, info.value_type, 'map value')
+		}
+		.sum_type {
+			// TODO: decide whether the following should be allowed. Note that it currently works,
+			// while `type Sum = int | Sum` is explicitly disallowed:
+			// type Sum = int | Alias
+			// type Alias = Sum
+		}
+		// The rest of the parent symbol kinds are also allowed, since they are either primitive types,
+		// that in turn do not allow recursion, or are abstract enough so that they can not be checked at comptime:
+		else {}
+		/*
+		.voidptr, .byteptr, .charptr {}
+		.char, .rune, .bool {}
+		.string, .enum_, .none_, .any {}
+		.i8, .i16, .int, .i64, .isize {}
+		.u8, .u16, .u32, .u64, .usize {}
+		.f32, .f64 {}
+		.interface_ {}
+		.generic_inst {}
+		.aggregate {}
+		*/
 	}
+}
+
+fn (mut c Checker) check_alias_vs_element_type_of_parent(node ast.AliasTypeDecl, element_type_of_parent ast.Type, label string) {
+	if node.typ.idx() != element_type_of_parent.idx() {
+		return
+	}
+	c.error('recursive declarations of aliases are not allowed - the alias `${node.name}` is used in the ${label}',
+		node.type_pos)
 }
 
 fn (mut c Checker) fn_type_decl(node ast.FnTypeDecl) {
@@ -4230,6 +4286,12 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 	}
 
 	sym := c.table.final_sym(typ)
+	if c.ensure_generic_type_level > 38 {
+		dump(typ)
+		dump(sym.kind)
+		dump(pos)
+		dump(c.ensure_generic_type_level)
+	}
 	match sym.kind {
 		.function {
 			fn_info := sym.info as ast.FnType
