@@ -5,14 +5,13 @@ struct User {
 	name string
 }
 
-fn main() {
+fn test_or_block_error_handling_of_an_invalid_query() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 
 	users := sql db {
 		select from User
-	} or {
-		[]User{}
-	}
+	} or { []User{} }
 
 	println(users)
+	assert true
 }
