@@ -109,9 +109,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			if left in [ast.Ident, ast.SelectorExpr] {
 				c.prevent_sum_type_unwrapping_once = true
 			}
-			c.inside_left_assign = true
+			if left is ast.IndexExpr {
+				c.is_index_assign = true
+			}
 			left_type = c.expr(left)
-			c.inside_left_assign = false
+			c.is_index_assign = false
 			c.expected_type = c.unwrap_generic(left_type)
 		}
 		if node.right_types.len < node.left.len { // first type or multi return types added above
