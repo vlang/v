@@ -362,7 +362,6 @@ fn map_from[T](t T) map[string]Any {
 	mut m := map[string]Any{}
 	$if T is $Struct {
 		$for field in T.fields {
-			key := field.name
 			value := t.$(field.name)
 
 			$if field.is_array {
@@ -382,37 +381,32 @@ fn map_from[T](t T) map[string]Any {
 				// TODO
 			} $else {
 				// TODO improve memory usage when convert
-				match field.typ {
-					typeof[string]().idx {
-						m[field.name] = value.str()
-					}
-					typeof[bool]().idx {
-						m[field.name] = t.$(field.name).str().bool()
-					}
-					typeof[i8]().idx {
-						m[field.name] = t.$(field.name).str().i8()
-					}
-					typeof[i16]().idx {
-						m[field.name] = t.$(field.name).str().i16()
-					}
-					typeof[int]().idx {
-						m[field.name] = t.$(field.name).str().int()
-					}
-					typeof[i64]().idx {
-						m[field.name] = t.$(field.name).str().i64()
-					}
-					typeof[f32]().idx {
-						m[field.name] = t.$(field.name).str().f32()
-					}
-					typeof[f64]().idx {
-						m[field.name] = t.$(field.name).str().f64()
-					}
-					typeof[u8]().idx, typeof[u16]().idx, typeof[u32]().idx, typeof[u64]().idx {
-						m[field.name] = t.$(field.name).str().u64()
-					}
-					else {
-						// return error("The type of `${field.name}` can't be decoded. Please open an issue at https://github.com/vlang/v/issues/new/choose")
-					}
+				$if field.typ is string {
+					m[field.name] = value.str()
+				} $else $if field.typ is bool {
+					m[field.name] = t.$(field.name).str().bool()
+				} $else $if field.typ is i8 {
+					m[field.name] = t.$(field.name).str().i8()
+				} $else $if field.typ is i16 {
+					m[field.name] = t.$(field.name).str().i16()
+				} $else $if field.typ is int {
+					m[field.name] = t.$(field.name).str().int()
+				} $else $if field.typ is i64 {
+					m[field.name] = t.$(field.name).str().i64()
+				} $else $if field.typ is f32 {
+					m[field.name] = t.$(field.name).str().f32()
+				} $else $if field.typ is f64 {
+					m[field.name] = t.$(field.name).str().f64()
+				} $else $if field.typ is u8 {
+					m[field.name] = t.$(field.name).str().u8()
+				} $else $if field.typ is u16 {
+					m[field.name] = t.$(field.name).str().u16()
+				} $else $if field.typ is u32 {
+					m[field.name] = t.$(field.name).str().u32()
+				} $else $if field.typ is u64 {
+					m[field.name] = t.$(field.name).str().u64()
+				} $else {
+					// return error("The type of `${field.name}` can't be decoded. Please open an issue at https://github.com/vlang/v/issues/new/choose")
 				}
 			}
 		}
