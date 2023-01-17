@@ -108,13 +108,61 @@ pub fn encode_pretty[T](typed_data T) string {
 	return raw_decoded.prettify_json_str()
 }
 
+// i8 - TODO
+pub fn (f Any) i8() i8 {
+	match f {
+		i8 {
+			return f
+		}
+		i16, int, i64, u8, u16, u32, u64, f32, f64, bool {
+			return i8(f)
+		}
+		string {
+			if f == 'false' || f == 'true' {
+				return i8(f.bool())
+			}
+			return f.i8()
+		}
+		else {
+			return 0
+		}
+	}
+}
+
+// i16 - TODO
+pub fn (f Any) i16() i16 {
+	match f {
+		i16 {
+			return f
+		}
+		i8, int, i64, u8, u16, u32, u64, f32, f64, bool {
+			return i16(f)
+		}
+		string {
+			if f == 'false' || f == 'true' {
+				return i16(f.bool())
+			}
+			return f.i16()
+		}
+		else {
+			return 0
+		}
+	}
+}
+
 // int uses `Any` as an integer.
 pub fn (f Any) int() int {
 	match f {
 		int {
 			return f
 		}
-		i8, i16, i64, u8, u16, u32, u64, f32, f64, bool {
+		i8 {
+			return int(0)
+		}
+		i16 {
+			return int(0)
+		}
+		i64, u8, u16, u32, u64, f32, f64, bool {
 			return int(f)
 		}
 		string {
@@ -315,9 +363,7 @@ fn map_from[T](t T) map[string]Any {
 	$if T is $Struct {
 		$for field in T.fields {
 			key := field.name
-			println(key) // val for all
 			value := t.$(field.name)
-			println(typeof(value).name)
 
 			$if field.is_array {
 				mut arr := []Any{}
@@ -341,22 +387,28 @@ fn map_from[T](t T) map[string]Any {
 						m[field.name] = value.str()
 					}
 					typeof[bool]().idx {
-						m[field.name] = Any(value).bool()
+						m[field.name] = t.$(field.name).str().bool()
 					}
-					typeof[i8]().idx, typeof[i16]().idx, typeof[int]().idx {
-						m[field.name] = Any(value).int()
+					typeof[i8]().idx {
+						m[field.name] = t.$(field.name).str().i8()
+					}
+					typeof[i16]().idx {
+						m[field.name] = t.$(field.name).str().i16()
+					}
+					typeof[int]().idx {
+						m[field.name] = t.$(field.name).str().int()
 					}
 					typeof[i64]().idx {
-						m[field.name] = Any(value).i64()
+						m[field.name] = t.$(field.name).str().i64()
 					}
 					typeof[f32]().idx {
-						m[field.name] = Any(value).f32()
+						m[field.name] = t.$(field.name).str().f32()
 					}
 					typeof[f64]().idx {
-						m[field.name] = Any(value).f64()
+						m[field.name] = t.$(field.name).str().f64()
 					}
 					typeof[u8]().idx, typeof[u16]().idx, typeof[u32]().idx, typeof[u64]().idx {
-						m[field.name] = Any(value).u64()
+						m[field.name] = t.$(field.name).str().u64()
 					}
 					else {
 						// return error("The type of `${field.name}` can't be decoded. Please open an issue at https://github.com/vlang/v/issues/new/choose")
