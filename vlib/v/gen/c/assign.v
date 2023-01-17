@@ -99,6 +99,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		val := node.right[i]
 		mut is_call := false
 		mut blank_assign := false
+		mut var_option := false
 		mut ident := ast.Ident{
 			scope: 0
 		}
@@ -138,6 +139,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		mut is_fixed_array_init := false
 		mut has_val := false
 		match val {
+			ast.Ident {
+				if val.info is ast.IdentVar {
+					if val.info.is_option {
+						var_option = true
+					}
+				}
+			}
 			ast.ArrayInit {
 				is_fixed_array_init = val.is_fixed
 				has_val = val.has_val
@@ -478,8 +486,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.array_init(val, c_name(ident.name))
 						} else if val_type.has_flag(.shared_f) {
 							g.expr_with_cast(val, val_type, var_type)
-						} else if var_type.has_flag(.option) && val_type.has_flag(.option) {
-							g.inside_opt_or_res = true
+						} else if var_type.has_flag(.option) && (val is ast.CastExpr || !val_type.has_flag(.option)) {
 							tmp_var := g.new_tmp_var()
 							g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
 						} else {
@@ -490,10 +497,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						}
 					}
 				} else {
-					if val_type == ast.none_type || (var_type.has_flag(.option) && !val_type.has_flag(.option)) {
+					if val_type == ast.none_type || (var_type.has_flag(.option) && !(var_option || val_type.has_flag(.option))) {
 						g.inside_opt_or_res = true
 						tmp_var := g.new_tmp_var()
-						g.expr_with_tmp_var(val, val_type, var_type, tmp_var)						
+						g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
 					} else if node.has_cross_var {
 						g.gen_cross_tmp_variable(node.left, val)
 					} else {

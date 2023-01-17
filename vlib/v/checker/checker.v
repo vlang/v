@@ -950,7 +950,7 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 			} else {
 				c.check_or_expr(expr.or_block, ret_type, expr_ret_type)
 			}
-			return ret_type.clear_flag(.option).clear_flag(.result)
+			return ret_type.clear_flag(.result)
 		} else if expr.or_block.kind == .block {
 			c.error('unexpected `or` block, the function `${expr.name}` does not return an option or a result',
 				expr.or_block.pos)
@@ -980,7 +980,7 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 			} else {
 				c.check_or_expr(expr.or_block, ret_type, expr.typ)
 			}
-			return ret_type.clear_flag(.option).clear_flag(.result)
+			return ret_type.clear_flag(.result)
 		} else if expr.or_block.kind == .block {
 			c.error('unexpected `or` block, the field `${expr.field_name}` is neither an option, nor a result',
 				expr.or_block.pos)
@@ -2645,10 +2645,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	mut to_sym := c.table.sym(to_type) // type to be used as cast
 	mut final_to_sym := c.table.final_sym(to_type)
 
-	if to_type.has_flag(.option) {
-		from_type.set_flag(.option)
-		node.expr_type.set_flag(.option)
-	} else if to_type.has_flag(.result) {
+	if to_type.has_flag(.result) {
 		c.error('casting to result type is forbidden', node.pos)
 	}
 
