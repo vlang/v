@@ -849,6 +849,7 @@ fn (mut g Gen) write_error_handling_for_orm_result(expr_pos &token.Pos, result_v
 	g.writeln('if (${result_var_name}.is_error) {')
 
 	if g.pref.is_debug {
+		g.write_v_source_line_info(expr_pos)
 		paline, pafile, pamod, pafn := g.panic_debug_info(expr_pos)
 		g.write('\tpanic_debug(${paline}, tos3("${pafile}"), tos3("${pamod}"), tos3("${pafn}"), IError_str(${result_var_name}.err) );')
 	} else {
