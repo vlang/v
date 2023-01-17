@@ -3508,7 +3508,7 @@ fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 
 pub fn (mut c Checker) is_comptime_var(node ast.Expr) bool {
 	return c.inside_comptime_for_field && node is ast.Ident
-		&& (node as ast.Ident).info is ast.IdentVar && ((node as ast.Ident).obj as ast.Var).is_comptime_field
+		&& (node as ast.Ident).info is ast.IdentVar && (node as ast.Ident).kind == .variable && ((node as ast.Ident).obj as ast.Var).is_comptime_field
 }
 
 fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
