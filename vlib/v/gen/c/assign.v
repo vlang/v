@@ -490,7 +490,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						}
 					}
 				} else {
-					if val_type == ast.none_type || (var_type.has_flag(.option) && !val_type.has_flag(.option)) {
+					if val_type == ast.none_type
+						|| (var_type.has_flag(.option) && !val_type.has_flag(.option)) {
 						g.inside_opt_or_res = true
 						tmp_var := g.new_tmp_var()
 						g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
