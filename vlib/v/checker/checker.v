@@ -87,6 +87,7 @@ mut:
 	// increases for `x := optfn() or { statement_list3 }`;
 	files                            []ast.File
 	expr_level                       int // to avoid infinite recursion segfaults due to compiler bugs
+	ensure_generic_type_level        int // to avoid infinite recursion segfaults in ensure_generic_type_specify_type_names
 	cur_orm_ts                       ast.TypeSymbol
 	cur_anon_fn                      &ast.AnonFn = unsafe { nil }
 	error_details                    []string
@@ -4215,8 +4216,19 @@ fn (mut c Checker) trace(fbase string, message string) {
 fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos token.Pos) ? {
 	if typ == 0 {
 		c.error('unknown type', pos)
-		return
+		return none
 	}
+
+	c.ensure_generic_type_level++
+	defer {
+		c.ensure_generic_type_level--
+	}
+	if c.ensure_generic_type_level > checker.expr_level_cutoff_limit {
+		c.error('checker: too many levels of Checker.ensure_generic_type_specify_type_names calls: ${c.ensure_generic_type_level} ',
+			pos)
+		return none
+	}
+
 	sym := c.table.final_sym(typ)
 	match sym.kind {
 		.function {
