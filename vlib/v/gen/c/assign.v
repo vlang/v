@@ -99,6 +99,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		val := node.right[i]
 		mut is_call := false
 		mut blank_assign := false
+		mut is_comptime_var := false
 		mut ident := ast.Ident{
 			scope: 0
 		}
@@ -120,16 +121,24 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 			}
 			if mut left.obj is ast.Var {
-				if val is ast.ComptimeSelector {
+				if val is ast.Ident
+					&& (val as ast.Ident).info is ast.IdentVar && (val as ast.Ident).kind == .variable && (val as ast.Ident).obj is ast.Var && ((val as ast.Ident).obj as ast.Var).is_comptime_field {
+					var_type = g.unwrap_generic(g.comptime_for_field_type)
+					val_type = var_type
+					left.obj.typ = var_type
+					is_comptime_var = true
+				} else if val is ast.ComptimeSelector {
 					key_str := g.get_comptime_selector_key_type(val)
 					if key_str != '' {
 						var_type = g.comptime_var_type_map[key_str] or { var_type }
 						left.obj.typ = var_type
+						is_comptime_var = true
 					}
 				} else if val is ast.ComptimeCall {
 					key_str := '${val.method_name}.return_type'
 					var_type = g.comptime_var_type_map[key_str] or { var_type }
 					left.obj.typ = var_type
+					is_comptime_var = true
 				}
 				is_auto_heap = left.obj.is_auto_heap
 			}
@@ -478,8 +487,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.array_init(val, c_name(ident.name))
 						} else if val_type.has_flag(.shared_f) {
 							g.expr_with_cast(val, val_type, var_type)
-						} else if var_type.has_flag(.option)
-							&& (val is ast.CastExpr || !val_type.has_flag(.option)) {
+						} else if (is_comptime_var && g.right_is_opt)
+							|| (!is_comptime_var && var_type.has_flag(.option)
+							&& (val is ast.CastExpr || !val_type.has_flag(.option))) {
 							tmp_var := g.new_tmp_var()
 							g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
 						} else {
