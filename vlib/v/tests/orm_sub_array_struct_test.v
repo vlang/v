@@ -18,6 +18,9 @@ fn test_orm_array() {
 	sql db {
 		create table Parent
 	}
+	sql db {
+		create table Child
+	}
 
 	par := Parent{
 		name: 'test'
@@ -53,6 +56,9 @@ fn test_orm_relationship() {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	sql db {
 		create table Parent
+	}
+	sql db {
+		create table Child
 	}
 
 	mut child := Child{
@@ -111,5 +117,5 @@ fn test_orm_relationship() {
 		select from Child
 	}
 
-	assert children.len == 0
+	assert children.len == 2
 }

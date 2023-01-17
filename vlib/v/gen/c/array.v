@@ -45,8 +45,8 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 			g.write('\t\t')
 		}
 		for i, expr in node.exprs {
-			if node.expr_types[i] == ast.string_type && expr !is ast.StringLiteral
-				&& expr !is ast.StringInterLiteral {
+			if node.expr_types[i] == ast.string_type
+				&& expr !in [ast.StringLiteral, ast.StringInterLiteral] {
 				g.write('string_clone(')
 				g.expr(expr)
 				g.write(')')

@@ -87,6 +87,7 @@ mut:
 	// increases for `x := optfn() or { statement_list3 }`;
 	files                            []ast.File
 	expr_level                       int // to avoid infinite recursion segfaults due to compiler bugs
+	ensure_generic_type_level        int // to avoid infinite recursion segfaults in ensure_generic_type_specify_type_names
 	cur_orm_ts                       ast.TypeSymbol
 	cur_anon_fn                      &ast.AnonFn = unsafe { nil }
 	error_details                    []string
@@ -111,7 +112,8 @@ mut:
 	inside_println_arg               bool
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
-	comptime_call_pos                int  // needed for correctly checking use before decl for templates
+	is_index_assign                  bool
+	comptime_call_pos                int // needed for correctly checking use before decl for templates
 	goto_labels                      map[string]ast.GotoLabel // to check for unused goto labels
 }
 
@@ -204,7 +206,7 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 
 	c.stmt_level = 0
 	for mut stmt in ast_file.stmts {
-		if stmt !is ast.ConstDecl && stmt !is ast.GlobalDecl && stmt !is ast.ExprStmt {
+		if stmt !in [ast.ConstDecl, ast.GlobalDecl, ast.ExprStmt] {
 			c.expr_level = 0
 			c.stmt(stmt)
 		}
@@ -3359,9 +3361,7 @@ fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 					}
 				} else {
 					if branch.stmt.expr is ast.InfixExpr {
-						if branch.stmt.expr.left !is ast.Ident
-							&& branch.stmt.expr.left !is ast.SelectorExpr
-							&& branch.stmt.expr.left !is ast.IndexExpr {
+						if branch.stmt.expr.left !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
 							c.error('channel in `select` key must be predefined', branch.stmt.expr.left.pos())
 						}
 					} else {
@@ -3373,8 +3373,7 @@ fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 				expr := branch.stmt.right[0]
 				match expr {
 					ast.PrefixExpr {
-						if expr.right !is ast.Ident && expr.right !is ast.SelectorExpr
-							&& expr.right !is ast.IndexExpr {
+						if expr.right !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
 							c.error('channel in `select` key must be predefined', expr.right.pos())
 						}
 						if expr.or_block.kind != .absent {
@@ -3507,7 +3506,7 @@ fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 
 pub fn (mut c Checker) is_comptime_var(node ast.Expr) bool {
 	return c.inside_comptime_for_field && node is ast.Ident
-		&& (node as ast.Ident).info is ast.IdentVar && ((node as ast.Ident).obj as ast.Var).is_comptime_field
+		&& (node as ast.Ident).info is ast.IdentVar && (node as ast.Ident).kind == .variable && ((node as ast.Ident).obj as ast.Var).is_comptime_field
 }
 
 fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
@@ -3815,7 +3814,8 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			node.pos)
 	}
 
-	if !c.inside_unsafe && !c.is_builtin_mod && typ_sym.kind == .map && node.or_expr.stmts.len == 0 {
+	if !c.inside_unsafe && !c.is_builtin_mod && !c.inside_if_guard && !c.is_index_assign
+		&& typ_sym.kind == .map && node.or_expr.stmts.len == 0 {
 		elem_type := c.table.value_type(typ)
 		if elem_type.is_real_pointer() {
 			c.note('accessing a pointer map value requires an `or{}` block outside `unsafe`',
@@ -4216,8 +4216,19 @@ fn (mut c Checker) trace(fbase string, message string) {
 fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos token.Pos) ? {
 	if typ == 0 {
 		c.error('unknown type', pos)
-		return
+		return none
 	}
+
+	c.ensure_generic_type_level++
+	defer {
+		c.ensure_generic_type_level--
+	}
+	if c.ensure_generic_type_level > checker.expr_level_cutoff_limit {
+		c.error('checker: too many levels of Checker.ensure_generic_type_specify_type_names calls: ${c.ensure_generic_type_level} ',
+			pos)
+		return none
+	}
+
 	sym := c.table.final_sym(typ)
 	match sym.kind {
 		.function {

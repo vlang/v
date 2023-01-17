@@ -2857,7 +2857,7 @@ fn (mut g Gen) get_ternary_name(name string) string {
 }
 
 fn (mut g Gen) gen_clone_assignment(val ast.Expr, typ ast.Type, add_eq bool) bool {
-	if val !is ast.Ident && val !is ast.SelectorExpr {
+	if val !in [ast.Ident, ast.SelectorExpr] {
 		return false
 	}
 	right_sym := g.table.sym(typ)
@@ -5910,7 +5910,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
 					if field.has_default_expr
-						|| field_sym.kind in [.array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .char, .voidptr, .byteptr, .charptr, .struct_] {
+						|| field_sym.kind in [.array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .char, .voidptr, .byteptr, .charptr, .struct_, .chan] {
 						field_name := c_name(field.name)
 						if field.has_default_expr {
 							mut expr_str := ''

@@ -19,21 +19,18 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		// generic func with recursion rewrite node.expr_type
 		if node.expr is ast.Ident {
 			// var
-			if (node.expr as ast.Ident).info is ast.IdentVar && (node.expr as ast.Ident).language == .v {
-				name = g.typ(g.unwrap_generic((node.expr as ast.Ident).info.typ)).replace('*',
-					'')
+			if node.expr.info is ast.IdentVar && node.expr.language == .v {
+				name = g.typ(g.unwrap_generic(node.expr.info.typ)).replace('*', '')
 			}
 		}
 	}
 	// var.${field.name}
 	if node.expr is ast.ComptimeSelector {
-		selector := node.expr as ast.ComptimeSelector
-		if selector.field_expr is ast.SelectorExpr {
-			selector_expr := selector.field_expr as ast.SelectorExpr
-			if selector_expr.expr is ast.Ident {
-				ident_expr := selector_expr.expr
-				if ident_expr.name == g.comptime_for_field_var && selector_expr.field_name == 'name' {
-					field, _ := g.get_comptime_selector_var_type(selector)
+		if node.expr.field_expr is ast.SelectorExpr {
+			if node.expr.field_expr.expr is ast.Ident {
+				if node.expr.field_expr.expr.name == g.comptime_for_field_var
+					&& node.expr.field_expr.field_name == 'name' {
+					field, _ := g.get_comptime_selector_var_type(node.expr)
 					name = g.typ(g.unwrap_generic(field.typ.clear_flag(.shared_f).clear_flag(.option).clear_flag(.result)))
 					expr_type = field.typ
 				}

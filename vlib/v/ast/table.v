@@ -2284,6 +2284,9 @@ pub fn (t &Table) dependent_names_in_expr(expr Expr) []string {
 			for elem_expr in expr.exprs {
 				names << t.dependent_names_in_expr(elem_expr)
 			}
+			names << t.dependent_names_in_expr(expr.len_expr)
+			names << t.dependent_names_in_expr(expr.cap_expr)
+			names << t.dependent_names_in_expr(expr.default_expr)
 		}
 		CallExpr {
 			for arg in expr.args {

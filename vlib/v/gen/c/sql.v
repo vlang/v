@@ -3,6 +3,7 @@
 module c
 
 import v.ast
+import v.token
 import v.util
 
 enum SqlExprSide {
@@ -29,7 +30,6 @@ fn (mut g Gen) sql_stmt_line(nd ast.SqlStmtLine, expr string, or_expr ast.OrExpr
 	table_name := g.get_table_name(node.table_expr)
 	g.sql_table_name = g.table.sym(node.table_expr.typ).name
 	res := g.new_tmp_var()
-	mut subs := false
 
 	if node.kind != .create {
 		mut fields := []ast.StructField{}
@@ -54,15 +54,13 @@ fn (mut g Gen) sql_stmt_line(nd ast.SqlStmtLine, expr string, or_expr ast.OrExpr
 	if node.kind == .create {
 		g.write('${result_name}_void ${res} = orm__Connection_name_table[${expr}._typ]._method_')
 		g.sql_create_table(node, expr, table_name)
-		subs = true
 	} else if node.kind == .drop {
 		g.write('${result_name}_void ${res} = orm__Connection_name_table[${expr}._typ]._method_')
 		g.writeln('drop(${expr}._object, _SLIT("${table_name}"));')
-		subs = true
 	} else if node.kind == .insert {
 		arr := g.new_tmp_var()
 		g.writeln('Array_orm__Primitive ${arr} = __new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0);')
-		g.sql_insert(node, expr, table_name, arr, res, '', false, '', or_expr)
+		g.sql_insert(node, expr, table_name, arr, res, '', '', or_expr)
 	} else if node.kind == .update {
 		g.write('${result_name}_void ${res} = orm__Connection_name_table[${expr}._typ]._method_')
 		g.sql_update(node, expr, table_name)
@@ -70,13 +68,11 @@ fn (mut g Gen) sql_stmt_line(nd ast.SqlStmtLine, expr string, or_expr ast.OrExpr
 		g.write('${result_name}_void ${res} = orm__Connection_name_table[${expr}._typ]._method_')
 		g.sql_delete(node, expr, table_name)
 	}
+
 	if or_expr.kind == .block {
 		g.or_block(res, or_expr, ast.int_type.set_flag(.result))
-	}
-	if subs {
-		for _, sub in node.sub_structs {
-			g.sql_stmt_line(sub, expr, or_expr)
-		}
+	} else if or_expr.kind == .absent {
+		g.write_error_handling_for_orm_result(node.pos, res)
 	}
 }
 
@@ -121,7 +117,7 @@ fn (mut g Gen) sql_create_table(node ast.SqlStmtLine, expr string, table_name st
 	g.writeln('));')
 }
 
-fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, last_ids_arr string, res string, pid string, is_array bool, fkey string, or_expr ast.OrExpr) {
+fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, last_ids_arr string, res string, pid string, fkey string, or_expr ast.OrExpr) {
 	mut subs := []ast.SqlStmtLine{}
 	mut arrs := []ast.SqlStmtLine{}
 	mut fkeys := []string{}
@@ -240,16 +236,13 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 			arr.fields = fff.clone()
 			unsafe { fff.free() }
 			g.sql_insert(arr, expr, g.get_table_name(arr.table_expr), last_ids, res_,
-				id_name, true, fkeys[i], or_expr)
+				id_name, fkeys[i], or_expr)
 			g.writeln('}')
 		}
 	}
 }
 
 fn (mut g Gen) sql_update(node ast.SqlStmtLine, expr string, table_name string) {
-	// println(table_name)
-	// println(expr)
-	// println(node)
 	g.write('update(${expr}._object, _SLIT("${table_name}"), (orm__QueryData){')
 	g.write('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 	g.write('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
@@ -649,6 +642,8 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 		g.or_block(tmp_left, node.or_expr, node.typ.set_flag(.result))
 		g.writeln('else {')
 		g.indent++
+	} else if node.or_expr.kind == .absent {
+		g.write_error_handling_for_orm_result(node.pos, '_o${res}')
 	}
 
 	g.writeln('Array_Array_orm__Primitive ${res} = (*(Array_Array_orm__Primitive*)_o${res}.data);')
@@ -848,4 +843,18 @@ fn (mut g Gen) get_field_name(field ast.StructField) string {
 		name = '${name}_id'
 	}
 	return name
+}
+
+fn (mut g Gen) write_error_handling_for_orm_result(expr_pos &token.Pos, result_var_name string) {
+	g.writeln('if (${result_var_name}.is_error) {')
+
+	if g.pref.is_debug {
+		g.write_v_source_line_info(expr_pos)
+		paline, pafile, pamod, pafn := g.panic_debug_info(expr_pos)
+		g.write('\tpanic_debug(${paline}, tos3("${pafile}"), tos3("${pamod}"), tos3("${pafn}"), IError_str(${result_var_name}.err) );')
+	} else {
+		g.writeln('\t_v_panic(IError_str(${result_var_name}.err));')
+	}
+
+	g.writeln('}')
 }
