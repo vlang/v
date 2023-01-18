@@ -784,8 +784,9 @@ fn (t Tree) alias_type_decl(node ast.AliasTypeDecl) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('AliasTypeDecl'))
 	obj.add_terse('name', t.string_node(node.name))
-	obj.add_terse('is_pub', t.bool_node(node.is_pub))
+	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add_terse('parent_type', t.type_node(node.parent_type))
+	obj.add_terse('is_pub', t.bool_node(node.is_pub))
 	obj.add('comments', t.array_node_comment(node.comments))
 	obj.add('pos', t.pos(node.pos))
 	return obj

@@ -1183,6 +1183,7 @@ pub struct AliasTypeDecl {
 pub:
 	name        string
 	is_pub      bool
+	typ         Type
 	parent_type Type
 	pos         token.Pos
 	type_pos    token.Pos

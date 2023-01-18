@@ -993,6 +993,9 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	g.write(' ${node.op.str()} ')
 	if node.right is ast.None {
 		g.write('2')
+	} else if node.right_type.is_ptr() && node.right.is_auto_deref_var() {
+		g.write('*')
+		g.expr(node.right)
 	} else {
 		g.expr_with_cast(node.right, node.right_type, node.left_type)
 	}

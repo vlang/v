@@ -4000,6 +4000,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	return ast.AliasTypeDecl{
 		name: name
 		is_pub: is_pub
+		typ: idx
 		parent_type: parent_type
 		type_pos: type_pos.extend(type_end_pos)
 		pos: decl_pos
