@@ -1,6 +1,7 @@
 module html
 
 import strings
+import datatypes
 
 enum CloseTagType {
 	in_name
@@ -16,6 +17,7 @@ pub mut:
 	children           []&Tag
 	attributes         map[string]string // attributes will be like map[name]value
 	last_attribute     string
+	class_set          datatypes.Set[string]
 	parent             &Tag = unsafe { nil }
 	position_in_parent int
 	closed             bool
@@ -99,6 +101,25 @@ pub fn (tag &Tag) get_tags_by_attribute_value(name string, value string) []&Tag 
 			res << child
 		}
 		res << child.get_tags_by_attribute_value(name, value)
+	}
+	return res
+}
+
+// get_tags_by_class_name retrieves all the child tags recursively in the tag that has the given class name(s).
+pub fn (tag &Tag) get_tags_by_class_name(names ...string) []&Tag {
+	mut res := []&Tag{}
+	for child in tag.children {
+		mut matched := true
+		for name in names {
+			matched = child.class_set.exists(name)
+			if !matched {
+				break
+			}
+		}
+		if matched {
+			res << child
+		}
+		res << child.get_tags_by_class_name(...names)
 	}
 	return res
 }
