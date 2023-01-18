@@ -13,9 +13,10 @@ fn (mut g Gen) expr_with_opt_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ a
 	if expr_typ == ast.none_type {
 		g.inside_opt_or_res = true
 	}
-	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option) && expr is ast.Ident {
+	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)
+		&& expr in [ast.Ident, ast.ComptimeSelector] {
 		g.expr(expr)
-		return '${expr.name}'
+		return expr.str()
 	} else {
 		g.inside_opt_or_res = true
 		tmp_var := g.new_tmp_var()
@@ -148,6 +149,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					if key_str != '' {
 						var_type = g.comptime_var_type_map[key_str] or { var_type }
 						left.obj.typ = var_type
+						val_type = var_type
 					}
 				} else if val is ast.ComptimeCall {
 					key_str := '${val.method_name}.return_type'
@@ -234,8 +236,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			} else if g.inside_for_c_stmt {
 				g.expr(val)
 			} else if var_type.has_flag(.option) {
-				tmp_var := g.new_tmp_var()
-				g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
+				g.expr_with_opt_tmp_var(val, val_type, var_type)
 			} else {
 				if left_sym.kind == .function {
 					g.write('{void* _ = ')
