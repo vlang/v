@@ -185,3 +185,8 @@ pub fn (dom DocumentObjectModel) get_root() &Tag {
 pub fn (dom DocumentObjectModel) get_tags() []&Tag {
 	return dom.all_tags
 }
+
+// get_tags_by_class_name retrieves all the tags recursively in the document that has the given class name(s).
+pub fn (dom DocumentObjectModel) get_tags_by_class_name(names ...string) []&Tag {
+	return dom.root.get_tags_by_class_name(...names)
+}
