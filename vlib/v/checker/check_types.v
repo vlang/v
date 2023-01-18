@@ -865,7 +865,7 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 
 			if param.typ.has_flag(.generic) && param_type_sym.name == gt_name {
 				typ = ast.mktyp(arg.typ)
-				sym := c.table.sym(arg.typ)
+				sym := c.table.final_sym(arg.typ)
 				if sym.info is ast.FnType {
 					mut func_ := sym.info.func
 					func_.name = ''
@@ -898,7 +898,7 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					typ = typ.set_nr_muls(0)
 				}
 			} else if param.typ.has_flag(.generic) {
-				arg_sym := c.table.sym(arg.typ)
+				arg_sym := c.table.final_sym(arg.typ)
 				if param.typ.has_flag(.variadic) {
 					typ = ast.mktyp(arg.typ)
 				} else if arg_sym.kind == .array && param_type_sym.kind == .array {

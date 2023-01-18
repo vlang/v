@@ -1,0 +1,12 @@
+MyStruct[int]{
+    a: 0
+}
+MyStructAlias(MyStruct[int]{
+    a: 0
+})
+MyStruct[int]{
+    a: 0
+}
+MyStructAlias(MyStruct[int]{
+    a: 0
+})
