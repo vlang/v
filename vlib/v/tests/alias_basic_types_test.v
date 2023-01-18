@@ -4,6 +4,8 @@ type MyInt = int
 
 type MyString = string
 
+type Foo = string
+
 // bytes
 fn test_byte_aliasing() {
 	dump(u8(123))
@@ -84,4 +86,29 @@ fn test_modifying_a_struct_using_an_alias_to_int() {
 	assert my_struct.a == 8
 	assert my_struct.b == 30
 	assert my_struct.c == 'abcdef'
+}
+
+fn (f Foo) + (f1 Foo) Foo {
+	return '${f} _+_ ${f1}'
+}
+
+fn (f Foo) - (f1 Foo) Foo {
+	return '${f} _-_ ${f1}'
+}
+
+fn (f Foo) * (f1 Foo) Foo {
+	return '${f} _*_ ${f1}'
+}
+
+fn (f Foo) / (f1 Foo) Foo {
+	return '${f} _/_ ${f1}'
+}
+
+fn test_op_overrides_for_string_aliases() {
+	a := Foo('abc')
+	b := Foo('def')
+	assert a + b == 'abc _+_ def'
+	assert a - b == 'abc _-_ def'
+	assert a * b == 'abc _*_ def'
+	assert a / b == 'abc _/_ def'
 }

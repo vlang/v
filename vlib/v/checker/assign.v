@@ -576,10 +576,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			} else {
 				if !parent_sym.is_primitive() {
 					if left_name == right_name {
-						c.error('undefined operation ${left_name} ${extracted_op} ${right_name}',
+						c.error('undefined operation `${left_name}` ${extracted_op} `${right_name}`',
 							node.pos)
 					} else {
-						c.error('mismatched types ${left_name} and ${right_name}', node.pos)
+						c.error('mismatched types `${left_name}` and `${right_name}`',
+							node.pos)
 					}
 				}
 			}
