@@ -67,16 +67,21 @@ struct MyStruct {
 mut:
 	a MyInt
 	b MyByte
+	c MyString
 }
 
 fn test_modifying_a_struct_using_an_alias_to_int() {
 	mut my_struct := MyStruct{}
 	my_struct.a += 5
 	my_struct.b += 10
-	println(my_struct)
-	assert my_struct.a == 5
+	my_struct.c += 'abc'
+	//
 	my_struct.a += 3
 	my_struct.b += 20
+	my_struct.c += 'def'
+	println(my_struct)
+	//
 	assert my_struct.a == 8
 	assert my_struct.b == 30
+	assert my_struct.c == 'abcdef'
 }
