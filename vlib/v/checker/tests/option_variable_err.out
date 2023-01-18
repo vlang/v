@@ -1,5 +1,0 @@
-vlib/v/checker/tests/option_variable_err.vv:2:7: error: casting to option type is forbidden
-    1 | fn main() {
-    2 |     _ := ?bool(false)
-      |          ~~~~~~~~~~~~
-    3 | }
