@@ -7,6 +7,21 @@ import v.ast
 import v.util
 import v.token
 
+// expr_with_opt_tmp_var is used in assign expr to `optinal` or `result` type.
+// e.g. x = y (both optional), mut x = ?int(123), y = none
+fn (mut g Gen) expr_with_opt_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type) {
+	if expr_typ == ast.none_type {
+		g.inside_opt_or_res = true
+	}
+	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option) && expr is ast.Ident {
+		g.expr(expr)
+	} else {
+		g.inside_opt_or_res = true
+		tmp_var := g.new_tmp_var()
+		g.expr_with_tmp_var(expr, expr_typ, ret_typ, tmp_var)
+	}
+}
+
 fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	mut node := unsafe { node_ }
 	if node.is_static {
@@ -491,27 +506,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.array_init(val, c_name(ident.name))
 						} else if val_type.has_flag(.shared_f) {
 							g.expr_with_cast(val, val_type, var_type)
-						} else if val_type == ast.none_type {
-							g.inside_opt_or_res = true
-							tmp_var := g.new_tmp_var()
-							g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
-						} else if var_type.has_flag(.option) && val_type.has_flag(.option) {
-							if val is ast.Ident {
-								g.expr(val)
-							} else {
-								g.inside_opt_or_res = true
-								tmp_var := g.new_tmp_var()
-								g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
-							}
-						} else if (is_comptime_var && g.right_is_opt && var_type.has_flag(.option))
-							|| (!is_comptime_var && var_type.has_flag(.option)
-							&& (val is ast.CastExpr || !val_type.has_flag(.option))) {
-							g.inside_opt_or_res = true
-							tmp_var := g.new_tmp_var()
-							g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
-						} else if !is_comptime_var && var_type.has_flag(.option) {
-							tmp_var := g.new_tmp_var()
-							g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
+						} else if var_type.has_flag(.option) {
+							g.expr_with_opt_tmp_var(val, val_type, var_type)
 						} else {
 							g.expr(val)
 						}
@@ -520,15 +516,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						}
 					}
 				} else {
-					if val_type == ast.none_type
-						|| (var_type.has_flag(.option) && !val_type.has_flag(.option)) {
-						g.inside_opt_or_res = true
-						tmp_var := g.new_tmp_var()
-						g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
-					} else if var_type.has_flag(.option) && val_type.has_flag(.option) {
-						g.inside_opt_or_res = true
-						tmp_var := g.new_tmp_var()
-						g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
+					if var_type.has_flag(.option) {
+						g.expr_with_opt_tmp_var(val, val_type, var_type)
 					} else if node.has_cross_var {
 						g.gen_cross_tmp_variable(node.left, val)
 					} else {
