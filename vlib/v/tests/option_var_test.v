@@ -1,7 +1,7 @@
 struct StructType {
 mut:
 	a string
-	b ?string
+	b ?int
 	//	c ?int
 	//	d ?f64
 	//	e ?[]string
@@ -27,7 +27,7 @@ fn test_comptime() {
 	d := Decoder{}
 	result := d.decode(StructType{
 		a: 'foo'
-		b: 'foo'
+		b: 3
 	})
 	println(result)
 }
@@ -65,4 +65,20 @@ fn test_assert_initialized() {
 	assert x == y
 	assert x == 1
 	assert y == 1
+}
+
+fn test_comptime_checks() {
+	val := StructType{
+		a: 'foo'
+		b: 3
+	}
+	$for field in StructType.fields {
+		value := val.$(field.name)
+		$if field.is_option {
+			var := val.$(field.name)
+			var2 := var
+			assert var == var2
+			assert value == var
+		}
+	}
 }

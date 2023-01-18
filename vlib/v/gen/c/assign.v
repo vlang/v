@@ -15,6 +15,9 @@ fn (mut g Gen) expr_with_opt_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ a
 	}
 	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)
 		&& expr in [ast.Ident, ast.ComptimeSelector] {
+		if expr is ast.Ident {
+			g.inside_opt_or_res = true
+		}
 		g.expr(expr)
 		return expr.str()
 	} else {
