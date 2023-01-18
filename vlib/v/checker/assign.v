@@ -553,7 +553,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			right_name := c.table.type_to_str(right_type_unwrapped)
 			parent_sym := c.table.final_sym(left_type_unwrapped)
 			if left_sym.kind == .alias && right_sym.kind != .alias {
-				c.error('mismatched types `${left_name}` and `${right_name}`', node.pos)
+				if !parent_sym.is_primitive() {
+					c.error('mismatched types `${left_name}` and `${right_name}`', node.pos)
+				}
 			}
 			extracted_op := match node.op {
 				.plus_assign { '+' }
@@ -570,17 +572,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				if method.return_type != left_type_unwrapped {
 					c.error('operator `${extracted_op}` must return `${left_name}` to be used as an assignment operator',
 						node.pos)
-				}
-			} else {
-				if parent_sym.is_primitive() {
-					c.error('cannot use operator methods on type alias for `${parent_sym.name}`',
-						node.pos)
-				}
-				if left_name == right_name {
-					c.error('undefined operation `${left_name}` ${extracted_op} `${right_name}`',
-						node.pos)
-				} else {
-					c.error('mismatched types `${left_name}` and `${right_name}`', node.pos)
 				}
 			}
 		}

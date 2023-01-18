@@ -4,16 +4,12 @@ type MyInt = int
 
 type MyString = string
 
-fn ok() {
-	assert true
-}
-
 // bytes
 fn test_byte_aliasing() {
 	dump(u8(123))
 	dump(MyByte(u8(123)))
 	dump(u8(MyByte(u8(123))))
-	ok()
+	assert true
 }
 
 fn test_pbyte_aliasing() {
@@ -22,7 +18,7 @@ fn test_pbyte_aliasing() {
 		dump(voidptr(&MyByte(&u8(123))))
 		dump(voidptr(&u8(&MyByte(&u8(123)))))
 	}
-	ok()
+	assert true
 }
 
 // ints
@@ -30,7 +26,7 @@ fn test_int_aliasing() {
 	dump(int(123))
 	dump(int(MyInt(123)))
 	dump(MyInt(int(MyInt(123))))
-	ok()
+	assert true
 }
 
 fn test_pint_aliasing() {
@@ -39,7 +35,7 @@ fn test_pint_aliasing() {
 		dump(voidptr(&MyInt(&int(123456))))
 		dump(voidptr(&int(&MyInt(&int(123456)))))
 	}
-	ok()
+	assert true
 }
 
 // strings
@@ -52,7 +48,7 @@ fn test_string_aliasing() {
 		dump(string(MyString('abc')))
 		dump(MyString(string(MyString('abc'))))
 	}
-	ok()
+	assert true
 }
 
 fn test_pstring_aliasing() {
@@ -62,5 +58,25 @@ fn test_pstring_aliasing() {
 		dump(voidptr(&string(&MyString(&s))))
 		dump(voidptr(&MyString(&string(&MyString(&s)))))
 	}
-	ok()
+	assert true
+}
+
+//
+
+struct MyStruct {
+mut:
+	a MyInt
+	b MyByte
+}
+
+fn test_modifying_a_struct_using_an_alias_to_int() {
+	mut my_struct := MyStruct{}
+	my_struct.a += 5
+	my_struct.b += 10
+	println(my_struct)
+	assert my_struct.a == 5
+	my_struct.a += 3
+	my_struct.b += 20
+	assert my_struct.a == 8
+	assert my_struct.b == 30
 }
