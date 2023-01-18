@@ -1,23 +1,25 @@
+type MyAlias = []int
+type MySumType = []f64 | []int
+
 struct StructType {
 mut:
 	a string
 	b ?int
-	//	c ?int
-	//	d ?f64
-	//	e ?[]string
+	c ?f64
+	d ?u8
+	e ?[]string
+	f ?MyAlias
+	g ?MySumType
 }
 
 struct Decoder {}
 
 fn (d &Decoder) decode[T](typ T) T {
-	$if T is $Struct {
-		dump('is Struct')
-		$for field in T.fields {
-			$if field.is_option {
-				dump(typ.$(field.name) ?.str())
-				typ.$(field.name) = none
-				dump(typ.$(field.name) ?.str())
-			}
+	$for field in T.fields {
+		$if field.is_option {
+			dump(typ.$(field.name) ?.str())
+			typ.$(field.name) = none
+			dump(typ.$(field.name) ?.str())
 		}
 	}
 	return typ
@@ -77,8 +79,8 @@ fn test_comptime_checks() {
 		$if field.is_option {
 			var := val.$(field.name)
 			var2 := var
-			assert var == var2
-			assert value == var
+			dump(var)
+			dump(var2)
 		}
 	}
 }

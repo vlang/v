@@ -161,6 +161,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 				is_auto_heap = left.obj.is_auto_heap
 			}
+		} else if mut left is ast.ComptimeSelector {
+			key_str := g.get_comptime_selector_key_type(left)
+			if key_str != '' {
+				var_type = g.comptime_var_type_map[key_str] or { var_type }
+			}
 		}
 		mut styp := g.typ(var_type)
 		mut is_fixed_array_init := false
