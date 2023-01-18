@@ -573,6 +573,15 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.error('operator `${extracted_op}` must return `${left_name}` to be used as an assignment operator',
 						node.pos)
 				}
+			} else {
+				if !parent_sym.is_primitive() {
+					if left_name == right_name {
+						c.error('undefined operation ${left_name} ${extracted_op} ${right_name}',
+							node.pos)
+					} else {
+						c.error('mismatched types ${left_name} and ${right_name}', node.pos)
+					}
+				}
 			}
 		}
 		if !is_blank_ident && !left.is_auto_deref_var() && !right.is_auto_deref_var()
