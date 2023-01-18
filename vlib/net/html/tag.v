@@ -111,7 +111,10 @@ pub fn (tag &Tag) get_tags_by_class_name(names ...string) []&Tag {
 	for child in tag.children {
 		mut matched := true
 		for name in names {
-			matched = matched && child.class_set.exists(name)
+			matched = child.class_set.exists(name)
+			if !matched {
+				break
+			}
 		}
 		if matched {
 			res << child
