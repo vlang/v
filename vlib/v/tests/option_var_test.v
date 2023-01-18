@@ -84,3 +84,21 @@ fn test_comptime_checks() {
 		}
 	}
 }
+
+fn test_none_initialization() {
+	mut var := ?int(none)
+	mut var2 := ?int(none)
+	mut var3 := ?int(none)
+
+	assert var == none
+	assert var2 == none
+	assert var3 == none
+
+	var = 1
+	var2 = 2
+	var3 = 3
+
+	assert var == 1
+	assert var2 == 2
+	assert var3 == 3
+}

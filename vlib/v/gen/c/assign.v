@@ -20,6 +20,9 @@ fn (mut g Gen) expr_with_opt_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ a
 		}
 		g.expr(expr)
 		return expr.str()
+	} else if expr is ast.CastExpr && (expr as ast.CastExpr).expr is ast.None {
+		g.expr(expr)
+		return expr.str()
 	} else {
 		g.inside_opt_or_res = true
 		tmp_var := g.new_tmp_var()
