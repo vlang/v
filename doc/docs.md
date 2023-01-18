@@ -5324,7 +5324,7 @@ Full list of builtin options:
 import os
 fn main() {
 	embedded_file := $embed_file('v.png')
-	os.write_file('exported.png', embedded_file.to_string())?
+	os.write_file('exported.png', embedded_file.to_string())!
 }
 ```
 
@@ -5348,7 +5348,7 @@ Currently only one compression type is supported: `zlib`
 import os
 fn main() {
 	embedded_file := $embed_file('v.png', .zlib) // compressed using zlib
-	os.write_file('exported.png', embedded_file.to_string())?
+	os.write_file('exported.png', embedded_file.to_string())!
 }
 ```
 
