@@ -56,6 +56,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.error('unexpected `mut` on right-hand side of assignment', right.mut_pos)
 			}
 		}
+		if is_decl && mut right is ast.None {
+			c.error('cannot assign a `none` value to a variable', right.pos)
+		}
 		// Handle `left_name := unsafe { none }`
 		if mut right is ast.UnsafeExpr {
 			if mut right.expr is ast.None {
