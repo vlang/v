@@ -35,6 +35,15 @@ fn test_encode() {
 	}
 }
 
+fn test_encode_config() {
+	for i in 0 .. pem.test_data.len {
+		encoded := pem.expected_results[i].encode_config(EncodeConfig{31, '\r\n'}) or { '' }
+		decoded, rest := decode(encoded) or { Block{}, '' }
+		assert rest == ''
+		assert decoded == pem.expected_results[i]
+	}
+}
+
 // https://datatracker.ietf.org/doc/html/rfc7468#section-4
 const test_data_rfc1421 = [
 	'-----BEGIN PRIVACY-ENHANCED MESSAGE-----
