@@ -118,9 +118,6 @@ pub fn (f Any) i8() i8 {
 			return i8(f)
 		}
 		string {
-			if f == 'false' || f == 'true' {
-				return i8(f.bool())
-			}
 			return f.i8()
 		}
 		else {
@@ -139,9 +136,6 @@ pub fn (f Any) i16() i16 {
 			return i16(f)
 		}
 		string {
-			if f == 'false' || f == 'true' {
-				return i16(f.bool())
-			}
 			return f.i16()
 		}
 		else {
@@ -156,19 +150,10 @@ pub fn (f Any) int() int {
 		int {
 			return f
 		}
-		i8 {
-			return int(0)
-		}
-		i16 {
-			return int(0)
-		}
-		i64, u8, u16, u32, u64, f32, f64, bool {
+		i8, i16, i64, u8, u16, u32, u64, f32, f64, bool {
 			return int(f)
 		}
 		string {
-			if f == 'false' || f == 'true' {
-				return int(f.bool())
-			}
 			return f.int()
 		}
 		else {
@@ -187,9 +172,6 @@ pub fn (f Any) i64() i64 {
 			return i64(f)
 		}
 		string {
-			if f == 'false' || f == 'true' {
-				return i64(f.bool())
-			}
 			return f.i64()
 		}
 		else {
@@ -208,9 +190,6 @@ pub fn (f Any) u64() u64 {
 			return u64(f)
 		}
 		string {
-			if f == 'false' || f == 'true' {
-				return u64(f.bool())
-			}
 			return f.u64()
 		}
 		else {
@@ -229,9 +208,6 @@ pub fn (f Any) f32() f32 {
 			return f32(f)
 		}
 		string {
-			if f == 'false' || f == 'true' {
-				return f32(f.bool())
-			}
 			return f.f32()
 		}
 		else {
@@ -250,9 +226,6 @@ pub fn (f Any) f64() f64 {
 			return f64(f)
 		}
 		string {
-			if f == 'false' || f == 'true' {
-				return f64(f.bool())
-			}
 			return f.f64()
 		}
 		else {
@@ -268,8 +241,14 @@ pub fn (f Any) bool() bool {
 			return f
 		}
 		string {
+			if f == 'false' {
+				return false
+			}
+			if f == 'true' {
+				return true
+			}
 			if f.len > 0 {
-				return f != '0' && f != '0.0' && f != 'false'
+				return f != '0' && f != '0.0'
 			} else {
 				return false
 			}
