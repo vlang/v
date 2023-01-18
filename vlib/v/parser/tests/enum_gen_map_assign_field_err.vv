@@ -1,0 +1,5 @@
+[gen_map]
+enum Foo {
+	bar
+	baz = 1
+}

@@ -1,0 +1,6 @@
+vlib/v/parser/tests/enum_gen_map_as_err.vv:2:10: error: you cannot define a custom enum type when an enum has the `gen_map` attribute
+    1 | [gen_map]
+    2 | enum Foo as u8 {
+      |          ~~
+    3 |     bar
+    4 |     baz

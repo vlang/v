@@ -1,0 +1,5 @@
+[gen_map]
+enum Foo as u8 {
+	bar
+	baz
+}

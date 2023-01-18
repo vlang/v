@@ -1,0 +1,6 @@
+vlib/v/parser/tests/enum_gen_map_assign_field_err.vv:4:2: error: you can not assign custom values to enum fields when an enum has the `gen_map` attribute
+    2 | enum Foo {
+    3 |     bar
+    4 |     baz = 1
+      |     ~~~
+    5 | }
