@@ -3774,7 +3774,13 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	name := p.prepend_mod(enum_name)
 	mut enum_type := ast.int_type
+	is_gen_map := p.attrs.contains('gen_map')
 	if p.tok.kind == .key_as {
+		if is_gen_map {
+			p.error_with_pos('you cannot define a custom enum type when an enum has the `gen_map` attribute',
+				p.tok.pos())
+			return ast.EnumDecl{}
+		}
 		p.next()
 		enum_type = p.parse_type()
 	}
@@ -3809,6 +3815,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	p.top_level_statement_end()
 	p.check(.rcbr)
+	pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
 	is_flag := p.attrs.contains('flag')
 	is_multi_allowed := p.attrs.contains('_allow_multiple_values')
 	if is_flag {
@@ -3823,7 +3830,6 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 				return ast.EnumDecl{}
 			}
 		}
-		pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
 		p.codegen('
 //
 [inline] ${pubfn} (    e &${enum_name}) is_empty() bool           { return  ${senum_type}(*e) == 0 }
@@ -3834,6 +3840,23 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 [inline] ${pubfn} (mut e  ${enum_name}) toggle(flag ${enum_name})   { unsafe{ *e = ${enum_name}(${senum_type}(*e) ^  (${senum_type}(flag))) } }
 //
 ')
+	}
+	if is_gen_map {
+		mut fn_gen := '[inline] ${pubfn} (e ${enum_name}) as_map() map[string]${senum_type} {\nreturn {\n'
+
+		for i, f in fields {
+			if f.has_expr {
+				p.error_with_pos('you can not assign custom values to enum fields when an enum has the `gen_map` attribute',
+					f.pos)
+				return ast.EnumDecl{}
+			} else {
+				fn_gen += '\'${f.name}\': ${i}\n'
+			}
+		}
+
+		fn_gen += '}\n}'
+
+		p.codegen(fn_gen)
 	}
 	idx := p.table.register_sym(ast.TypeSymbol{
 		kind: .enum_
