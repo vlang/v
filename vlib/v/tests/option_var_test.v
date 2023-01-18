@@ -1,5 +1,11 @@
+import time
+
 type MyAlias = []int
 type MySumType = []f64 | []int
+
+struct StructType2 {
+	a ?time.Time = none
+}
 
 struct StructType {
 mut:
@@ -101,4 +107,9 @@ fn test_none_initialization() {
 	assert var == 1
 	assert var2 == 2
 	assert var3 == 3
+}
+
+fn test_as_cast() {
+	var := StructType2{}
+	b := var.a as ?time.Time
 }
