@@ -26,7 +26,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		return ast.bool_type
 	}
 	node.right_type = right_type
-	if left_type.is_number() && !left_type.is_ptr()
+	if !left_type.has_flag(.option) && left_type.is_number() && !left_type.is_ptr()
 		&& right_type in [ast.int_literal_type, ast.float_literal_type] {
 		node.right_type = left_type
 		if left_type in [ast.f32_type_idx, ast.f64_type_idx] && right_type == ast.float_literal_type {
@@ -429,7 +429,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						}
 					}
 				}
-			} else if left_type.has_flag(.option) || right_type.has_flag(.option) {
+			} else if node.left !is ast.Ident
+				&& (left_type.has_flag(.option) || right_type.has_flag(.option)) {
 				opt_comp_pos := if left_type.has_flag(.option) { left_pos } else { right_pos }
 				c.error('unwrapped option cannot be compared in an infix expression',
 					opt_comp_pos)
@@ -654,7 +655,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	// TODO move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
 	left_is_option := left_type.has_flag(.option)
 	right_is_option := right_type.has_flag(.option)
-	if left_is_option || right_is_option {
+	if node.left !is ast.Ident && (left_is_option || right_is_option) {
 		opt_infix_pos := if left_is_option { left_pos } else { right_pos }
 		c.error('unwrapped option cannot be used in an infix expression', opt_infix_pos)
 	}
@@ -678,6 +679,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			if left_type.nr_muls() > 0 && right_type.is_int() {
 				// pointer arithmetic is fine, it is checked in other places
 				return return_type
+			}
+			if node.right is ast.None && left_is_option {
+				return ast.bool_type
 			}
 			c.error('infix expr: cannot use `${right_sym.name}` (right expression) as `${left_sym.name}`',
 				left_right_pos)

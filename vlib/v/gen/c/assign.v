@@ -9,17 +9,20 @@ import v.token
 
 // expr_with_opt_tmp_var is used in assign expr to `optinal` or `result` type.
 // e.g. x = y (both optional), mut x = ?int(123), y = none
-fn (mut g Gen) expr_with_opt_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type) {
+fn (mut g Gen) expr_with_opt_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type) string {
 	if expr_typ == ast.none_type {
 		g.inside_opt_or_res = true
 	}
 	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option) && expr is ast.Ident {
 		g.expr(expr)
+		return '${expr.name}'
 	} else {
 		g.inside_opt_or_res = true
 		tmp_var := g.new_tmp_var()
 		g.expr_with_tmp_var(expr, expr_typ, ret_typ, tmp_var)
+		return tmp_var
 	}
+	return ''
 }
 
 fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
@@ -114,7 +117,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		val := node.right[i]
 		mut is_call := false
 		mut blank_assign := false
-		mut is_comptime_var := false
 		mut ident := ast.Ident{
 			scope: 0
 		}
@@ -141,19 +143,16 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					var_type = g.unwrap_generic(g.comptime_for_field_type)
 					val_type = var_type
 					left.obj.typ = var_type
-					is_comptime_var = true
 				} else if val is ast.ComptimeSelector {
 					key_str := g.get_comptime_selector_key_type(val)
 					if key_str != '' {
 						var_type = g.comptime_var_type_map[key_str] or { var_type }
 						left.obj.typ = var_type
-						is_comptime_var = true
 					}
 				} else if val is ast.ComptimeCall {
 					key_str := '${val.method_name}.return_type'
 					var_type = g.comptime_var_type_map[key_str] or { var_type }
 					left.obj.typ = var_type
-					is_comptime_var = true
 				}
 				is_auto_heap = left.obj.is_auto_heap
 			}
