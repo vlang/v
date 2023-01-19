@@ -15,7 +15,7 @@ pub fn decode(data string) ?(Block, string) {
 	block_end_index := rest.index(pem_end)?
 	b64_data := rest[..block_end_index].replace_each(['\r', '', '\n', '', '\t', '', ' ', ''])
 
-    block_data_len := block_end_index / 4 * 3
+	block_data_len := block_end_index / 4 * 3
 	block.data = []u8{len: block_data_len, cap: block_data_len + 3, init: 0}
 	decoded_len := base64.decode_in_buffer(&b64_data, &block.data[0])
 	block.data = block.data[..decoded_len]
