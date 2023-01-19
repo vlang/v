@@ -167,6 +167,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			if key_str != '' {
 				var_type = g.comptime_var_type_map[key_str] or { var_type }
 			}
+			if val is ast.ComptimeSelector {
+				key_str_right := g.get_comptime_selector_key_type(val)
+				if key_str_right != '' {
+					val_type = g.comptime_var_type_map[key_str_right] or { var_type }
+				}
+			}
 		}
 		mut styp := g.typ(var_type)
 		mut is_fixed_array_init := false
