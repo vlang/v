@@ -144,11 +144,6 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) !
 	}
 }
 
-fn aa[U](val U) {
-	dump('value from aa function')
-	dump(val)
-}
-
 fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 	wr.write([u8(`{`)])!
 	mut i := 0
