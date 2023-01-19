@@ -212,6 +212,7 @@ pub fn file_size(path string) u64 {
 }
 
 // mv moves files or folders from `src` to `dst`.
+// if you are not sure that the source and target are on the same mount/partition use mv_by_cp
 pub fn mv(src string, dst string) ! {
 	mut rdst := dst
 	if is_dir(rdst) {
