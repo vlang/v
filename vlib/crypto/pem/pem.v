@@ -62,6 +62,19 @@ pub mut:
 	data []u8
 }
 
+// free the resources taken by the Block `block`
+[unsafe]
+pub fn (mut block Block) free() {
+	$if prealloc {
+		return
+	}
+	unsafe {
+		block.block_type.free()
+		block.headers.free()
+		block.data.free()
+	}
+}
+
 // returns a new `Block` with the specified block_type
 [inline]
 pub fn new(block_type string) Block {
