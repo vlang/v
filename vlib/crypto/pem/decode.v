@@ -15,7 +15,8 @@ pub fn decode(data string) ?(Block, string) {
 	block_end_index := rest.index(pem_end)?
 	b64_data := rest[..block_end_index].replace_each(['\r', '', '\n', '', '\t', '', ' ', ''])
 
-	block.data = []u8{len: block_end_index / 4 * 3, cap: block_end_index / 4 * 3 + 3, init: 0}
+    block_data_len := block_end_index / 4 * 3
+	block.data = []u8{len: block_data_len, cap: block_data_len + 3, init: 0}
 	decoded_len := base64.decode_in_buffer(&b64_data, &block.data[0])
 	block.data = block.data[..decoded_len]
 
@@ -27,7 +28,7 @@ fn parse_headers(block string) ?(map[string][]string, string) {
 
 	// check that something was split or if it's empty
 	if headers_str.len == block.all_before(pem_end).len || headers_str.len == 0 {
-		return map[string][]string{}, block
+		return {}, block
 	}
 
 	// seperate lines instead of iterating over them,

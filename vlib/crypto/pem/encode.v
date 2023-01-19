@@ -3,21 +3,18 @@ module pem
 import encoding.base64
 import arrays
 
-// `encode` encodes `block` into a valid
-// PEM block, with a line length of 64 bytes and line ending of '\r\n'
-pub fn (block Block) encode() !string {
-	return block.encode_config(EncodeConfig{})
-}
-
 // `encode_config` encodes the given block into a
 // string using the EncodeConfig. It returns an error if `block_type` is undefined
 // or if a value in `headers` contains an invalid character ':'
-pub fn (block Block) encode_config(config EncodeConfig) !string {
+//
+// default EncodeConfig values wrap lines at 64 bytes and use '\n' for newlines
+[params]
+pub fn (block Block) encode(config EncodeConfig) !string {
 	if block.block_type == '' {
-		return error('crypto/pem: `encode` called with undefined `block_type`')
+		return error('crypto.pem: `encode` called with undefined `block_type`')
 	}
 	if block.headers.keys().any(it.contains(':')) || block.headers.values().any(it.contains(':')) {
-		return error('crypto/pem: invalid header character `:`')
+		return error('crypto.pem: invalid header character `:`')
 	}
 
 	// to avoid repeated struct access

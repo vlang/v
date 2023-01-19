@@ -69,34 +69,10 @@ pub fn new(block_type string) Block {
 	}
 }
 
-// returns a map of headers
-//
-// same as `block.headers`
-[inline]
-pub fn (block Block) headers() map[string][]string {
-	return block.headers
-}
-
-// returns the selected key from headers
-//
-// same as `block.headers[key]`
-[inline]
-pub fn (block Block) header_by_str(key string) []string {
-	return block.headers[key]
-}
-
 // returns the selected key using the Header enum
 //
 // same as `block.headers[key.str()]`
 [inline]
 pub fn (block Block) header_by_key(key Header) []string {
 	return block.headers[key.str()]
-}
-
-// returns the block data
-//
-// same as `block.data`
-[inline]
-pub fn (block Block) data() []u8 {
-	return block.data
 }
