@@ -256,8 +256,8 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			} $else $if field.typ is $Enum {
 				// wr.write(int(val.$(field.name)).str().bytes())! // FIXME - error: cannot cast string to `int`, use `val.$field.name.int()` instead.
 			} $else $if field.typ is $Sumtype {
-				dump(val.$(field.name).str())
-				dump(is_none)
+				// dump(val.$(field.name).str())
+				// dump(is_none)
 				sum_type_value := value.str()#[typeof(val.$(field.name)).name.len + 1..-1]
 
 				is_string := sum_type_value[0] == "'"[0]
@@ -288,7 +288,8 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 						if sum_type_value.contains('{') {
 							if !sum_type_value.all_before('{').contains_any(' "\'') {
 								is_struct = true
-								e.encode_struct(value, level + 1, mut wr)!
+								// TODO
+								// e.encode_struct_from_sumtype(value, level + 1, mut wr)!
 							}
 						}
 					}
@@ -300,7 +301,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 						}
 					}
 					else {
-						dump('else')
+						// dump('else')
 					}
 				}
 				// dump(sum_type_value)
