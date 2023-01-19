@@ -144,6 +144,11 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) !
 	}
 }
 
+fn aa[U](val U) {
+	dump('value from aa function')
+	dump(val)
+}
+
 fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 	wr.write([u8(`{`)])!
 	mut i := 0
@@ -221,16 +226,19 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				}
 			}
 		} $else {
-			e.encode_newline(level, mut wr)!
-			if json_name != '' {
-				e.encode_string(json_name, mut wr)!
-			} else {
-				e.encode_string(field.name, mut wr)!
-			}
-			wr.write(json2.colon_bytes)!
+			is_none := val.$(field.name).str() == 'unknown sum type value'
+			if !is_none {
+				e.encode_newline(level, mut wr)!
+				if json_name != '' {
+					e.encode_string(json_name, mut wr)!
+				} else {
+					e.encode_string(field.name, mut wr)!
+				}
+				wr.write(json2.colon_bytes)!
 
-			if e.newline != 0 {
-				wr.write(json2.space_bytes)!
+				if e.newline != 0 {
+					wr.write(json2.space_bytes)!
+				}
 			}
 
 			$if field.typ is string {
@@ -253,29 +261,59 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			} $else $if field.typ is $Enum {
 				// wr.write(int(val.$(field.name)).str().bytes())! // FIXME - error: cannot cast string to `int`, use `val.$field.name.int()` instead.
 			} $else $if field.typ is $Sumtype {
-				// // FIXME - error: cannot match `bool` with `string`
-				// match value {
-				// 	string {
-				// 		println(val.$(field.name))
-				// 	}
-				// 	bool {
-				// 	}
-				// 	i8, i16, int, i64 {
-				// 	}
-				// 	u8, u16, u32, u64 {
-				// 	}
-				// 	f32, f64 {
-				// 	}
-				// 	map[string]Any {
-				// 	}
-				// 	[]Any {
-				// 	}
-				// 	time.Time {}
-				// 	Null {
-				// 	} else {
-				// 		dump("elsa")
-				// 	}
-				// }
+				dump(val.$(field.name).str())
+				dump(is_none)
+				sum_type_value := value.str()#[typeof(val.$(field.name)).name.len + 1..-1]
+
+				is_string := sum_type_value[0] == "'"[0]
+
+				mut is_struct := false
+				mut is_sumtype := false
+				mut is_enum := false
+				mut is_array := false
+
+				match sum_type_value[0] {
+					`0`...`9` {
+						wr.write(sum_type_value.bytes())!
+					}
+					`A`...`Z` {
+						// SumTypes(0)
+						if sum_type_value.contains('(') {
+							if !sum_type_value.all_before('(').contains_any(' "\'[') {
+								is_sumtype = true
+							}
+						}
+						// StructType{
+						// StructType[int]{
+						if sum_type_value.contains('{') {
+							if !sum_type_value.all_before('{').contains_any(' "\'') {
+								is_struct = true
+								e.encode_struct(value, level + 1, mut wr)!
+							}
+						}
+					}
+					`a`...`z` {
+						if sum_type_value in ['true', 'false'] {
+							wr.write(sum_type_value.bytes())!
+						} else {
+							is_enum = true
+						}
+					}
+					else {
+						dump('else')
+					}
+				}
+				// dump(sum_type_value)
+
+				// dump(is_none)
+				// dump(is_string)
+				// dump(is_struct)
+				// dump(is_sumtype)
+				// dump(is_enum)
+				// dump(is_array)
+				if is_string {
+					e.encode_string(sum_type_value#[1..-1], mut wr)!
+				}
 			} $else $if field.typ is $Alias {
 				$if field.unaliased_typ is string {
 					e.encode_string(val.$(field.name).str(), mut wr)!
