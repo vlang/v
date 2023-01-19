@@ -304,7 +304,7 @@ fn (mut c Create) set_web_project_files() {
 import db.sqlite // can change to 'db.mysql', 'db.pg'
 
 pub fn create_db_connection() !sqlite.DB {
-	mut db := sqlite.connect('vweb.sql')!
+	mut db := sqlite.connect('app.db')!
 	return db
 }
 "
@@ -500,7 +500,7 @@ fn (mut app App) service_auth(username string, password string) !string {
 	}
 
 	defer {
-		db.close() or { panic('fail to close database') }
+		db.close() or { panic(err) }
 	}
 
 	user := sql db {
