@@ -8,7 +8,6 @@ import arrays
 // or if a value in `headers` contains an invalid character ':'
 //
 // default EncodeConfig values wrap lines at 64 bytes and use '\n' for newlines
-[params]
 pub fn (block Block) encode(config EncodeConfig) !string {
 	if block.block_type == '' {
 		return error('crypto.pem: `encode` called with undefined `block_type`')

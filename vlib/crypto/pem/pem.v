@@ -9,6 +9,7 @@ const (
 	colon     = ':'
 )
 
+[params]
 pub struct EncodeConfig {
 pub mut:
 	// inner text wrap around

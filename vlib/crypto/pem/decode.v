@@ -28,7 +28,7 @@ fn parse_headers(block string) ?(map[string][]string, string) {
 
 	// check that something was split or if it's empty
 	if headers_str.len == block.all_before(pem_end).len || headers_str.len == 0 {
-		return {}, block
+		return map[string][]string{}, block
 	}
 
 	// seperate lines instead of iterating over them,
