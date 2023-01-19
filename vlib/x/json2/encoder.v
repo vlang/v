@@ -274,7 +274,12 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 
 				match sum_type_value[0] {
 					`0`...`9` {
-						wr.write(sum_type_value.bytes())!
+						if sum_type_value.contains_any(' /:-') {
+							date_time_str := time.parse(sum_type_value)!
+							wr.write(date_time_str.format_rfc3339().bytes())!
+						} else {
+							wr.write(sum_type_value.bytes())!
+						}
 					}
 					`A`...`Z` {
 						// SumTypes(0)

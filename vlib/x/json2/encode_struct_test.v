@@ -18,7 +18,7 @@ type TimeAlias = time.Time
 type StructAlias = StructType[int]
 type EnumAlias = Enumerates
 
-type SumTypes = StructType[string] | bool | int | string
+type SumTypes = StructType[string] | bool | int | string | time.Time
 
 enum Enumerates {
 	a
@@ -233,6 +233,8 @@ fn test_sumtypes() {
 
 	assert json.encode(StructType[SumTypes]{ val: 0 }) == '{"val":0}'
 	assert json.encode(StructType[SumTypes]{ val: 1 }) == '{"val":1}'
+
+	assert json.encode(StructType[SumTypes]{ val: fixed_time }) == '{"val":2022-03-11T13:54:25.000Z}'
 
 	assert json.encode(StructType[StructType[SumTypes]]{
 		val: StructType[SumTypes]{
