@@ -301,7 +301,7 @@ fn (mut c Create) set_web_project_files() {
 		path: '${c.name}/src/databases/config_databases_sqlite.v'
 		content: "module databases
 
-import sqlite // can change to 'mysql', 'pg'
+import db.sqlite // can change to 'db.mysql', 'db.pg'
 
 pub fn create_db_connection() !sqlite.DB {
 	mut db := sqlite.connect('vweb.sql')!
