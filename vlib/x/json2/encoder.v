@@ -262,10 +262,10 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 
 				is_string := sum_type_value[0] == "'"[0]
 
-				mut is_struct := false
-				mut is_sumtype := false
-				mut is_enum := false
-				mut is_array := false
+				// mut is_struct := false
+				// mut is_sumtype := false
+				// mut is_enum := false
+				// mut is_array := false
 
 				match sum_type_value[0] {
 					`0`...`9` {
@@ -280,14 +280,14 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 						// SumTypes(0)
 						if sum_type_value.contains('(') {
 							if !sum_type_value.all_before('(').contains_any(' "\'[') {
-								is_sumtype = true
+								// is_sumtype = true
 							}
 						}
 						// StructType{
 						// StructType[int]{
 						if sum_type_value.contains('{') {
 							if !sum_type_value.all_before('{').contains_any(' "\'') {
-								is_struct = true
+								// is_struct = true
 								// TODO
 								// e.encode_struct_from_sumtype(value, level + 1, mut wr)!
 							}
@@ -297,7 +297,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 						if sum_type_value in ['true', 'false'] {
 							wr.write(sum_type_value.bytes())!
 						} else {
-							is_enum = true
+							// is_enum = true
 						}
 					}
 					else {
