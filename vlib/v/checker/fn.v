@@ -301,8 +301,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					} else if node.name in ['<', '=='] && node.return_type != ast.bool_type {
 						c.error('operator comparison methods should return `bool`', node.pos)
 					} else if parent_sym.is_primitive() {
-						c.error('cannot define operator methods on type alias for `${parent_sym.name}`',
-							node.pos)
+						// aliases of primitive types are explicitly allowed
 					} else if receiver_type != param_type {
 						srtype := c.table.type_to_str(receiver_type)
 						sptype := c.table.type_to_str(param_type)
