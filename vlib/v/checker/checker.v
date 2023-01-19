@@ -4,6 +4,7 @@ module checker
 
 import os
 import time
+import strconv
 import v.ast
 import v.vmod
 import v.token
@@ -1603,17 +1604,45 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 					mut uval := u64(0)
 					mut ival := i64(0)
 					if signed {
-						val := field.expr.val.i64()
-						ival = val
-						if val < enum_imin || val > enum_imax {
+						// val := field.expr.val.i64()
+						// Check if the number provided doesn't have high digit excluding the limit
+						// TODO: strconv.common_parse_int does not return a result even if number is of higit digit
+						if val := strconv.common_parse_int(field.expr.val, 0, 64, false,
+							true)
+						{
+							// println('${field.name}:${val}')
+							ival = val
+							if val < enum_imin || val > enum_imax {
+								c.error('enum value `${field.expr.val}` overflows the enum type `${senum_type}`, values of which have to be in [${enum_imin}, ${enum_imax}]',
+									field.expr.pos)
+								overflows = true
+							}
+							// Handle and assign `ival` even if error is thrown
+							// Needed for latter error checking
+						} else {
+							ival = field.expr.val.i64()
 							c.error('enum value `${field.expr.val}` overflows the enum type `${senum_type}`, values of which have to be in [${enum_imin}, ${enum_imax}]',
 								field.expr.pos)
 							overflows = true
 						}
 					} else {
-						val := field.expr.val.u64()
-						uval = val
-						if val > enum_umax {
+						// val := field.expr.val.u64()
+						// Check if the number provided doesn't have high digit excluding the limit
+						if val := strconv.common_parse_uint(field.expr.val, 0, 64, false,
+							true)
+						{
+							uval = val
+							if val > enum_umax {
+								// println('here')
+								c.error('enum value `${field.expr.val}` overflows the enum type `${senum_type}`, values of which have to be in [${enum_umin}, ${enum_umax}]',
+									field.expr.pos)
+								overflows = true
+							}
+						} else {
+							// println('here x2')
+							// Handle and assign `uval` even if error is thrown
+							// Needed for latter error checking
+							uval = field.expr.val.u64()
 							c.error('enum value `${field.expr.val}` overflows the enum type `${senum_type}`, values of which have to be in [${enum_umin}, ${enum_umax}]',
 								field.expr.pos)
 							overflows = true
@@ -1684,6 +1713,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 			} else {
 				if useen.len > 0 {
 					ulast := useen.last()
+					println(useen)
 					if ulast == enum_umax {
 						c.error('enum value overflows type `${senum_type}`, which has a maximum value of ${enum_umax}',
 							field.pos)

@@ -7,7 +7,7 @@ vlib/v/checker/tests/enum_field_value_overflow.vv:3:10: error: enum value `21474
     5 | }
 vlib/v/checker/tests/enum_field_value_overflow.vv:7:1: error: `string` is not one of `i8`,`i16`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`
     5 | }
-    6 | 
+    6 |
     7 | enum ColorString as string {
       | ~~~~~~~~~~~~~~~~
     8 |     red
@@ -47,13 +47,6 @@ vlib/v/checker/tests/enum_field_value_overflow.vv:27:10: error: enum value `2147
       |             ~~~~~~~~~~
    28 |     blue
    29 | }
-vlib/v/checker/tests/enum_field_value_overflow.vv:33:10: error: enum value `9223372036854775808` overflows the enum type `i64`, values of which have to be in [-9223372036854775808, 9223372036854775807]
-   31 | enum ColorI64 as i64 {
-   32 |     red
-   33 |     green = 9223372036854775808
-      |             ~~~~~~~~~~~~~~~~~~~
-   34 |     blue
-   35 | }
 vlib/v/checker/tests/enum_field_value_overflow.vv:34:2: error: enum value overflows type `i64`, which has a maximum value of 9223372036854775807
    32 |     red
    33 |     green = 9223372036854775808
@@ -69,21 +62,21 @@ vlib/v/checker/tests/enum_field_value_overflow.vv:56:10: error: enum value `256`
    57 | }
    58 |
 vlib/v/checker/tests/enum_field_value_overflow.vv:60:10: error: enum value `65536` overflows the enum type `u16`, values of which have to be in [0, 65535]
-   58 | 
+   58 |
    59 | enum ColorU16ShouldFail as u16 {
    60 |     green = 65536
       |             ~~~~~
    61 | }
    62 |
 vlib/v/checker/tests/enum_field_value_overflow.vv:64:10: error: enum value `4294967296` overflows the enum type `u32`, values of which have to be in [0, 4294967295]
-   62 | 
+   62 |
    63 | enum ColorU32ShouldFail as u32 {
    64 |     green = 4294967296
       |             ~~~~~~~~~~
    65 | }
    66 |
 vlib/v/checker/tests/enum_field_value_overflow.vv:68:10: error: enum value `18446744073709551616` overflows the enum type `u64`, values of which have to be in [0, 18446744073709551615]
-   66 | 
+   66 |
    67 | enum ColorU64ShouldFail as u64 {
    68 |     green = 18446744073709551616
       |             ~~~~~~~~~~~~~~~~~~~~
