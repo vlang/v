@@ -964,36 +964,21 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	if node.left_type.is_ptr() && node.left.is_auto_deref_var() {
 		g.write('*')
 	}
-	if node.left_type.has_flag(.option) {
-		if node.right is ast.None {
-			stmt_str := g.go_before_stmt(0).trim_space()
-			g.empty_line = true
-			left_var := g.expr_with_opt_tmp_var(node.left, node.left_type, node.left_type)
-			g.writeln(';')
-			g.write(stmt_str)
-			g.write(' ')
-			g.write('${left_var}.state')
-		} else {
-			stmt_str := g.go_before_stmt(0).trim_space()
-			g.empty_line = true
-			left_var := g.expr_with_opt_tmp_var(node.left, node.left_type, node.left_type)
-			g.writeln(';')
-			right_var := g.expr_with_opt_tmp_var(node.right, node.right_type, node.left_type)
-			g.writeln(';')
-			g.write(stmt_str)
-			g.write(' ')
-			g.write('${left_var}.state == 0 && ')
-			g.write('${node.left_type.idx()} == ${node.right_type.idx()} && ')
-			g.write('memcmp(${left_var}.data, ${right_var}.data')
-			g.write(', sizeof(${g.typ(node.right_type)})) == 0')
-			return
-		}
+	is_none_check := node.left_type.has_flag(.option) && node.right is ast.None
+	if is_none_check {
+		stmt_str := g.go_before_stmt(0).trim_space()
+		g.empty_line = true
+		left_var := g.expr_with_opt_tmp_var(node.left, node.left_type, node.left_type)
+		g.writeln(';')
+		g.write(stmt_str)
+		g.write(' ')
+		g.write('${left_var}.state')
 	} else {
 		g.expr(node.left)
 	}
 	g.write(' ${node.op.str()} ')
-	if node.right is ast.None {
-		g.write('2')
+	if is_none_check {
+		g.write('2') // none state
 	} else if node.right_type.is_ptr() && node.right.is_auto_deref_var() {
 		g.write('*')
 		g.expr(node.right)
