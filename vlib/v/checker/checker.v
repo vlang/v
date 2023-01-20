@@ -3174,6 +3174,9 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					node.obj = obj
 					// unwrap option (`println(x)`)
 					if is_option {
+						if node.or_expr.kind == .propagate_option {
+							return typ.clear_flag(.option).clear_flag(.result)
+						}
 						return typ.clear_flag(.result)
 					}
 					return typ

@@ -4260,7 +4260,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		if node.obj is ast.Var {
 			if !g.is_assign_lhs && node.obj.is_comptime_field {
 				if g.comptime_for_field_type.has_flag(.option) {
-					if g.inside_opt_or_res {
+					if g.inside_opt_or_res && node.or_expr.kind != .propagate_option {
 						g.write('${name}')
 					} else {
 						g.write('/*opt*/')
@@ -4278,7 +4278,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
 		// `println(x)` => `println(*(int*)x.data)`
 		if node.info.is_option && !(g.is_assign_lhs && g.right_is_opt) {
-			if g.inside_opt_or_res {
+			if g.inside_opt_or_res && node.or_expr.kind != .propagate_option {
 				g.write('${name}')
 			} else {
 				g.write('/*opt*/')

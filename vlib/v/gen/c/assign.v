@@ -159,6 +159,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					key_str := '${val.method_name}.return_type'
 					var_type = g.comptime_var_type_map[key_str] or { var_type }
 					left.obj.typ = var_type
+				} else if is_decl && val is ast.Ident && (val as ast.Ident).info is ast.IdentVar {
+					val_info := (val as ast.Ident).info
+					if val_info.is_option && val.or_expr.kind == .propagate_option {
+						var_type = val_type.clear_flag(.option)
+						left.obj.typ = var_type
+					}
 				}
 				is_auto_heap = left.obj.is_auto_heap
 			}

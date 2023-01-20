@@ -103,9 +103,11 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 	} else if sym_has_str_method
 		|| sym.kind in [.array, .array_fixed, .map, .struct_, .multi_return, .sum_type, .interface_] {
-		is_ptr := typ.is_ptr()
+		unwrap_option := expr is ast.Ident && (expr as ast.Ident).or_expr.kind == .propagate_option
+		exp_typ := if unwrap_option { typ.clear_flag(.option) } else { typ }
+		is_ptr := exp_typ.is_ptr()
 		is_var_mut := expr.is_auto_deref_var()
-		str_fn_name := g.get_str_fn(typ)
+		str_fn_name := g.get_str_fn(exp_typ)
 		if is_ptr && !is_var_mut {
 			ref_str := '&'.repeat(typ.nr_muls())
 			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("${ref_str}"), ${si_s_code} ,{.d_s = isnil(')
@@ -126,7 +128,12 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				}
 			}
 		}
-		g.expr_with_cast(expr, typ, typ)
+		if unwrap_option {
+			g.expr(expr)
+		} else {
+			g.expr_with_cast(expr, typ, typ)
+		}
+
 		if is_shared {
 			g.write('->val')
 		}

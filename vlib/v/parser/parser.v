@@ -2152,6 +2152,16 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	if p.expr_mod.len > 0 {
 		name = '${p.expr_mod}.${name}'
 	}
+
+	is_option := !p.inside_comptime_if && !p.inside_ct_if_expr && p.tok.kind == .question
+	or_kind := if is_option { ast.OrKind.propagate_option } else { ast.OrKind.absent }
+	or_stmts := []ast.Stmt{}
+	or_pos := token.Pos{}
+
+	if is_option {
+		// parsers ident like var?, except on '$if ident ?', '[if define ?]''
+		p.check(.question)
+	}
 	return ast.Ident{
 		tok_kind: p.tok.kind
 		kind: .unresolved
@@ -2166,9 +2176,15 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 			is_mut: is_mut
 			is_static: is_static
 			is_volatile: is_volatile
+			is_option: is_option
 			share: ast.sharetype_from_flags(is_shared, is_atomic)
 		}
 		scope: p.scope
+		or_expr: ast.OrExpr{
+			kind: or_kind
+			stmts: or_stmts
+			pos: or_pos
+		}
 	}
 }
 

@@ -111,3 +111,15 @@ fn test_as_cast() {
 	var := StructType2{}
 	b := var.a as ?time.Time
 }
+
+fn test_unwrap() {
+	var := ?int(1)
+	println(var)
+	println(var)
+	assert var == 1
+
+	var2 := var + 1
+	println(var2)
+	assert var2 == 2
+	assert var2 + 1 == 3
+}
