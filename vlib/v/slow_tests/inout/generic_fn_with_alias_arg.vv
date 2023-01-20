@@ -14,10 +14,10 @@ type MyStructAlias = MyStruct[int]
 
 fn main() {
 	a := MyStruct[int]{}
-	mprint(a)              // works
-	mprint_with_alias(a)   // works
+	mprint(a)
+	mprint_with_alias(a)
 
 	b := MyStructAlias{}
-	mprint(b)              // does not work, requires mprint[int](b)
-	mprint_with_alias(b)   // works
+	mprint(b)
+	mprint_with_alias(b)
 }
