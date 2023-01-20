@@ -1713,7 +1713,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 			} else {
 				if useen.len > 0 {
 					ulast := useen.last()
-					println(useen)
+					//println(useen)
 					if ulast == enum_umax {
 						c.error('enum value overflows type `${senum_type}`, which has a maximum value of ${enum_umax}',
 							field.pos)
