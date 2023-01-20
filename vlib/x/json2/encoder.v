@@ -350,6 +350,13 @@ fn (e &Encoder) encode_array[U](val []U, level int, mut wr io.Writer) ! {
 			// e.encode_array(val[i], level + 1, mut wr)!
 		} $else $if U is $Struct {
 			e.encode_struct(val[i], level + 1, mut wr)!
+		} $else $if U is $Sumtype {
+			$if U is Any {
+				e.encode_any(val[i], level + 1, mut wr)!
+			} $else {
+				// TODO
+			}
+			
 		} $else $if U is $Enum {
 			e.encode_any(i64(val[i]), level + 1, mut wr)!
 		} $else {

@@ -84,11 +84,7 @@ pub fn encode[T](val T) string {
 		unsafe { sb.free() }
 	}
 	$if T is $Array {
-		mut array_of_any := []Any{}
-		for value in val {
-			array_of_any << value
-		}
-		default_encoder.encode_value(array_of_any, mut sb) or {
+		default_encoder.encode_array(val, 1, mut sb) or {
 			dump(err)
 			default_encoder.encode_value[Null](null, mut sb) or {}
 		}
