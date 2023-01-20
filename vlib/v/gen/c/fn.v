@@ -883,7 +883,11 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 		}
 	} else if left_node is ast.Ident {
 		if left_node.obj is ast.Var {
-			if g.comptime_var_type_map.len > 0 {
+			if left_node.obj.is_comptime_field {
+				rec_type = g.comptime_for_field_type
+				g.gen_expr_to_string(left_node, rec_type)
+				return true
+			} else if g.comptime_var_type_map.len > 0 {
 				rec_type = left_node.obj.typ
 				g.gen_expr_to_string(left_node, rec_type)
 				return true
