@@ -147,6 +147,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				}
 			}
+			if right.or_expr.kind in [.propagate_option, .block] {
+				right_type = right_type.clear_flag(.option)
+			}
 		} else if right is ast.ComptimeSelector {
 			right_type = c.comptime_fields_default_type
 		}

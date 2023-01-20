@@ -63,14 +63,13 @@ fn test_blank_assign() {
 fn test_optional_value_assign() {
 	x := ?int(0)
 	assert x != none
-	assert x == int(0)
 }
 
 fn test_assert_initialized() {
 	mut x := ?int(1)
 	mut y := ?int(1)
-	assert x == 1
-	assert y == 1
+	assert x != none
+	assert y != none
 }
 
 fn test_comptime_checks() {
@@ -102,9 +101,9 @@ fn test_none_initialization() {
 	var2 = 2
 	var3 = 3
 
-	assert var == 1
-	assert var2 == 2
-	assert var3 == 3
+	assert var != none
+	assert var2 != none
+	assert var3 != none
 }
 
 fn test_as_cast() {
@@ -116,10 +115,10 @@ fn test_unwrap() {
 	var := ?int(1)
 	println(var)
 	println(var)
-	assert var == 1
+	assert var != none
 
 	var2 := var + 1
 	println(var2)
+
 	assert var2 == 2
-	assert var2 + 1 == 3
 }

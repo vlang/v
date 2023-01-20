@@ -968,7 +968,8 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	if is_none_check {
 		stmt_str := g.go_before_stmt(0).trim_space()
 		g.empty_line = true
-		left_var := g.expr_with_opt_tmp_var(node.left, node.left_type, node.left_type)
+		left_var := g.expr_with_opt_tmp_var(node.left, node.left_type, node.left_type,
+			'')
 		g.writeln(';')
 		g.write(stmt_str)
 		g.write(' ')

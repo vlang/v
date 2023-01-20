@@ -7,9 +7,28 @@ import v.ast
 import v.util
 import v.token
 
+fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr ast.Expr, ret_typ ast.Type) {
+	gen_or := expr is ast.Ident && (expr as ast.Ident).or_expr.kind == .block
+	if gen_or {
+		g.expr_with_cast(expr, expr_typ, ret_typ)
+		g.writeln(';')
+		g.writeln('if (${expr}.state != 0) {')
+		// g.write('\t${var_expr} = ')
+		old_inside_opt_data := g.inside_opt_data
+		g.inside_opt_data = true
+		g.gen_or_block_stmts(var_expr.str(), '', (expr as ast.Ident).or_expr.stmts, ret_typ,
+			false)
+		// g.expr_with_cast(((expr as ast.Ident).or_expr.stmts[0] as ast.ExprStmt).expr, expr_typ, ret_typ)
+		g.inside_opt_data = old_inside_opt_data
+		g.writeln('}')
+	} else {
+		g.expr_with_opt_tmp_var(expr, expr_typ, ret_typ, '')
+	}
+}
+
 // expr_with_opt_tmp_var is used in assign expr to `optinal` or `result` type.
 // e.g. x = y (both optional), mut x = ?int(123), y = none
-fn (mut g Gen) expr_with_opt_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type) string {
+fn (mut g Gen) expr_with_opt_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type, tmp_var string) string {
 	if expr_typ == ast.none_type {
 		g.inside_opt_or_res = true
 	}
@@ -23,9 +42,9 @@ fn (mut g Gen) expr_with_opt_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ a
 		return expr.str()
 	} else {
 		g.inside_opt_or_res = true
-		tmp_var := g.new_tmp_var()
-		g.expr_with_tmp_var(expr, expr_typ, ret_typ, tmp_var)
-		return tmp_var
+		tmp_out_var := if tmp_var != '' { tmp_var } else { g.new_tmp_var() }
+		g.expr_with_tmp_var(expr, expr_typ, ret_typ, tmp_out_var)
+		return tmp_out_var
 	}
 	return ''
 }
@@ -121,6 +140,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		mut val_type := node.right_types[i]
 		val := node.right[i]
 		mut is_call := false
+		mut gen_or := false
 		mut blank_assign := false
 		mut ident := ast.Ident{
 			scope: 0
@@ -161,9 +181,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					left.obj.typ = var_type
 				} else if is_decl && val is ast.Ident && (val as ast.Ident).info is ast.IdentVar {
 					val_info := (val as ast.Ident).info
-					if val_info.is_option && val.or_expr.kind == .propagate_option {
+					if val_info.is_option && val.or_expr.kind in [.propagate_option, .block] {
 						var_type = val_type.clear_flag(.option)
 						left.obj.typ = var_type
+						gen_or = val.or_expr.kind == .block
 					}
 				}
 				is_auto_heap = left.obj.is_auto_heap
@@ -257,7 +278,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			} else if g.inside_for_c_stmt {
 				g.expr(val)
 			} else if var_type.has_flag(.option) {
-				g.expr_with_opt_tmp_var(val, val_type, var_type)
+				g.expr_with_opt_tmp_var(val, val_type, var_type, '')
 			} else {
 				if left_sym.kind == .function {
 					g.write('{void* _ = ')
@@ -527,8 +548,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.array_init(val, c_name(ident.name))
 						} else if val_type.has_flag(.shared_f) {
 							g.expr_with_cast(val, val_type, var_type)
-						} else if var_type.has_flag(.option) {
-							g.expr_with_opt_tmp_var(val, val_type, var_type)
+						} else if var_type.has_flag(.option) || gen_or {
+							g.expr_with_opt_or_block(val, val_type, left, var_type)
 						} else {
 							g.expr(val)
 						}
@@ -537,8 +558,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						}
 					}
 				} else {
-					if var_type.has_flag(.option) {
-						g.expr_with_opt_tmp_var(val, val_type, var_type)
+					if var_type.has_flag(.option) || gen_or {
+						g.expr_with_opt_or_block(val, val_type, left, var_type)
 					} else if node.has_cross_var {
 						g.gen_cross_tmp_variable(node.left, val)
 					} else {

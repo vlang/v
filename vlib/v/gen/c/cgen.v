@@ -5681,6 +5681,46 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 	}
 }
 
+fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast.Stmt, return_type ast.Type, is_option bool) {
+	g.indent++
+	for i, stmt in stmts {
+		if i == stmts.len - 1 {
+			expr_stmt := stmt as ast.ExprStmt
+			g.set_current_pos_as_last_stmt_pos()
+			if g.inside_return && (expr_stmt.typ.idx() == ast.error_type_idx
+				|| expr_stmt.typ in [ast.none_type, ast.error_type]) {
+				// `return foo() or { error('failed') }`
+				if g.cur_fn != unsafe { nil } {
+					if g.cur_fn.return_type.has_flag(.result) {
+						g.write('return ')
+						g.gen_result_error(g.cur_fn.return_type, expr_stmt.expr)
+						g.writeln(';')
+					} else if g.cur_fn.return_type.has_flag(.option) {
+						g.write('return ')
+						g.gen_option_error(g.cur_fn.return_type, expr_stmt.expr)
+						g.writeln(';')
+					}
+				}
+			} else {
+				if is_option {
+					g.write('*(${cast_typ}*) ${cvar_name}.data = ')
+				} else {
+					g.write('${cvar_name} = ')
+				}
+				old_inside_opt_data := g.inside_opt_data
+				g.inside_opt_data = true
+				g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flag(.option).clear_flag(.result))
+				g.inside_opt_data = old_inside_opt_data
+				g.writeln(';')
+				g.stmt_path_pos.delete_last()
+			}
+		} else {
+			g.stmt(stmt)
+		}
+	}
+	g.indent--
+}
+
 // fn (mut g Gen) start_tmp() {
 // }
 // If user is accessing the return value eg. in assigment, pass the variable name.
@@ -5722,39 +5762,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 		stmts := or_block.stmts
 		if stmts.len > 0 && stmts.last() is ast.ExprStmt
 			&& (stmts.last() as ast.ExprStmt).typ != ast.void_type {
-			g.indent++
-			for i, stmt in stmts {
-				if i == stmts.len - 1 {
-					expr_stmt := stmt as ast.ExprStmt
-					g.set_current_pos_as_last_stmt_pos()
-					if g.inside_return && (expr_stmt.typ.idx() == ast.error_type_idx
-						|| expr_stmt.typ in [ast.none_type, ast.error_type]) {
-						// `return foo() or { error('failed') }`
-						if g.cur_fn != unsafe { nil } {
-							if g.cur_fn.return_type.has_flag(.result) {
-								g.write('return ')
-								g.gen_result_error(g.cur_fn.return_type, expr_stmt.expr)
-								g.writeln(';')
-							} else if g.cur_fn.return_type.has_flag(.option) {
-								g.write('return ')
-								g.gen_option_error(g.cur_fn.return_type, expr_stmt.expr)
-								g.writeln(';')
-							}
-						}
-					} else {
-						g.write('*(${mr_styp}*) ${cvar_name}.data = ')
-						old_inside_opt_data := g.inside_opt_data
-						g.inside_opt_data = true
-						g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flag(.option).clear_flag(.result))
-						g.inside_opt_data = old_inside_opt_data
-						g.writeln(';')
-						g.stmt_path_pos.delete_last()
-					}
-				} else {
-					g.stmt(stmt)
-				}
-			}
-			g.indent--
+			g.gen_or_block_stmts(cvar_name, mr_styp, stmts, return_type, true)
 		} else {
 			g.stmts(stmts)
 			if stmts.len > 0 && stmts.last() is ast.ExprStmt {
