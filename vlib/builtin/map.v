@@ -428,7 +428,7 @@ fn (mut m map) rehash() {
 	m.reserve(meta_bytes)
 }
 
-// reserve memory if is know number of keys
+// reservre memory if is know number of keys
 pub fn (mut m map) reserve(meta_bytes u32) {
 	unsafe {
 		// TODO: use realloc_data here too
