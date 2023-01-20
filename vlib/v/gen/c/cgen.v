@@ -37,7 +37,6 @@ const (
 
 fn string_array_to_map(a []string) map[string]bool {
 	mut res := map[string]bool{}
-	res.reserve(u32(a.len*2))
 	for x in a {
 		res[x] = true
 	}
