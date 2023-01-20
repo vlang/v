@@ -29,72 +29,88 @@ pub fn move(n int, direction string) {
 	flush_stdout()
 }
 
+// cursor_up moves the cursor up `n` lines.
 pub fn cursor_up(n int) {
 	move(n, 'A')
 }
 
+// cursor_down moves the cursor down `n` lines.
 pub fn cursor_down(n int) {
 	move(n, 'B')
 }
 
+// cursor_forward moves the cursor forward `n` character positions.
 pub fn cursor_forward(n int) {
 	move(n, 'C')
 }
 
+// cursor_back moves the cursor back `n` characters.
 pub fn cursor_back(n int) {
 	move(n, 'D')
 }
 
-// type: 0 -> current cursor position to end of the screen
-// type: 1 -> current cursor position to beginning of the screen
-// type: 2 -> clears entire screen
-// type: 3 -> clears entire screen and also delete scrollback buffer
-
+// erase_display erases display characters based on the given parameter, `t`.
+// `t` can be of the following values in string:
+// `0`: current cursor position to end of the terminal window.
+// `1`: current cursor position to beginning of the terminal
+// window.
+// `2`: clears the entire terminal window.
+// `3`: clears the entire terminal window and also deletes the scrollback buffer.
 pub fn erase_display(t string) {
 	print('\x1b[' + t + 'J')
 	flush_stdout()
 }
 
+// erase_to_end erases from the cursor to the end of the terminal window.
 pub fn erase_toend() {
 	erase_display('0')
 }
 
+// erase_tobeg erases from the cursor to the beginning of the terminal window.
 pub fn erase_tobeg() {
 	erase_display('1')
 }
 
-// clears entire screen and returns cursor to top left-corner
+// erase_clear clears the entire terminal window and returns the cursor to the
+// top left corner.
 pub fn erase_clear() {
 	print('\033[H\033[J')
 	flush_stdout()
 }
 
+// erase_del_clear erases saved lines.
 pub fn erase_del_clear() {
 	erase_display('3')
 }
 
-// type: 0 -> current cursor position to end of the line
-// type: 1 -> current cursor position to beginning of the line
-// type: 2 -> clears entire line
-// Note: Cursor position does not change
+// erase_line erases the current line based on the given parameter, `t`.
+// `t` can be of the following values in string:
+// `0`: current cursor position to the end of the line.
+// `1`: current cursor position to the beginning of the line.
+// `2`: clears the entire line.
+// Note: Cursor position does not change.
 pub fn erase_line(t string) {
 	print('\x1b[' + t + 'K')
 	flush_stdout()
 }
 
+// erase_line_toend erases from the cursor position to the end of the line.
 pub fn erase_line_toend() {
 	erase_line('0')
 }
 
+// erase_line_tobeg erases from the start of the line to the cursor
+// position.
 pub fn erase_line_tobeg() {
 	erase_line('1')
 }
 
+// erase_line_clear erases the entire line.
 pub fn erase_line_clear() {
 	erase_line('2')
 }
 
-// Will make cursor appear if not visible
+// show_cursor makes the cursor appear if it was not visible.
 pub fn show_cursor() {
 	print('\x1b[?25h')
 	flush_stdout()
