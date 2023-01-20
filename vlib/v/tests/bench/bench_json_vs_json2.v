@@ -113,7 +113,14 @@ fn benchmark_measure_decode_by_type() ! {
 			return error('json2.decode ${d}')
 		}
 	}
-	b.measure('json2.decode [string]')
+	b.measure('json2.decode StructType[string]')
+	for _ in 0 .. max_iterations {
+		d := json.decode(StructType[string], vs)!
+		if d.val != '' {
+			return error('json.decode ${d}')
+		}
+	}
+	b.measure(' json.decode StructType[string]')
 
 	vb := '{"val": true}'
 	for _ in 0 .. max_iterations {
@@ -122,7 +129,14 @@ fn benchmark_measure_decode_by_type() ! {
 			return error('json2.decode ${d}')
 		}
 	}
-	b.measure('json2.decode [bool]')
+	b.measure('json2.decode StructType[bool]')
+	for _ in 0 .. max_iterations {
+		d := json.decode(StructType[bool], vb) or { panic('') }
+		if !d.val {
+			return error('json.decode ${d}')
+		}
+	}
+	b.measure(' json.decode StructType[bool]')
 
 	v0 := '{"val": 0}'
 	for _ in 0 .. max_iterations {
@@ -131,7 +145,14 @@ fn benchmark_measure_decode_by_type() ! {
 			return error('json2.decode ${d}')
 		}
 	}
-	b.measure('json2.decode [int]')
+	b.measure('json2.decode StructType[int]')
+	for _ in 0 .. max_iterations {
+		d := json.decode(StructType[int], v0)!
+		if d.val != 0 {
+			return error('json.decode ${d}')
+		}
+	}
+	b.measure(' json.decode StructType[int]')
 
 	vt := '{"val": "2015-01-06 15:47:32"}'
 	for _ in 0 .. max_iterations {
@@ -140,7 +161,14 @@ fn benchmark_measure_decode_by_type() ! {
 			return error('json2.decode ${d}')
 		}
 	}
-	b.measure('json2.decode [time.Time]')
+	b.measure('json2.decode StructType[time.Time]')
+	for _ in 0 .. max_iterations {
+		d := json.decode(StructType[time.Time], vt)!
+		if d.val.year != 1970 { // note json.decode here is buggy
+			return error('json2.decode ${d}')
+		}
+	}
+	b.measure(' json.decode StructType[time.Time]')
 }
 
 fn measure_json_encode_old_vs_new[T](val T) ! {
