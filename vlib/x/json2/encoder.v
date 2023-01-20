@@ -236,9 +236,9 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			$if field.typ is string {
 				e.encode_string(val.$(field.name).str(), mut wr)!
 			} $else $if field.typ is time.Time {
-				wr.write([u8(`\\"`)])!
+				wr.write(json2.quote_bytes)!
 				wr.write(val.$(field.name).format_rfc3339().bytes())!
-				wr.write([u8(`\\"`)])!
+				wr.write(json2.quote_bytes)!
 			} $else $if field.typ in [bool, $Float, $Int] {
 				wr.write(val.$(field.name).str().bytes())!
 			} $else $if field.is_array {
