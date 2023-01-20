@@ -59,9 +59,9 @@ struct Person {
 
 fn benchmark_measure_json_vs_json2() ! {
 	max_iterations := os.getenv_opt('MAX_ITERATIONS') or { '1000' }.int()
+
 	s := '{"name":"Bilbo Baggins","age":99,"created_at":1670840340}'
 	mut b := benchmark.start()
-
 	for _ in 0 .. max_iterations {
 		p := json2.decode[Person](s)!
 		if p.age != 99 {
@@ -69,7 +69,6 @@ fn benchmark_measure_json_vs_json2() ! {
 		}
 	}
 	b.measure('json2.decode')
-
 	for _ in 0 .. max_iterations {
 		p := json.decode(Person, s)!
 		if p.age != 99 {
@@ -78,157 +77,31 @@ fn benchmark_measure_json_vs_json2() ! {
 	}
 	b.measure('json.decode')
 
-	// encoding measurements:
-	p := json.decode(Person, s)!
-
-	for _ in 0 .. max_iterations {
-		es := json2.encode(p)
-		if es[0] != `{` {
-			return error('json2.encode ${es}')
-		}
-	}
-	b.measure('json2.encode')
-
-	for _ in 0 .. max_iterations {
-		es := json.encode(p)
-		if es[0] != `{` {
-			return error('json.encode ${es}')
-		}
-	}
-	b.measure('json.encode')
+	measure_json_encode_old_vs_new(json.decode(Person, s)!, max_iterations)!
 }
 
 fn benchmark_measure_encode_by_type() ! {
 	println(@FN)
 	max_iterations := os.getenv_opt('MAX_ITERATIONS') or { '1000' }.int()
-
-	mut b := benchmark.start()
-
-	vs := StructType[string]{}
-	for _ in 0 .. max_iterations {
-		e := json2.encode(vs)
-		if e[0] != `{` {
-			return error('e: ${e}')
-		}
-	}
-	b.measure('json2.encode [string]')
-
-	vt := StructType[time.Time]{}
-	for _ in 0 .. max_iterations {
-		e := json2.encode(vt)
-		if e[0] != `{` {
-			return error('json2.encode ${e}')
-		}
-	}
-	b.measure('json2.encode [time.Time]')
-
-	vi := StructType[int]{}
-	for _ in 0 .. max_iterations {
-		e := json2.encode(vi)
-		if e[0] != `{` {
-			return error('json2.encode ${e}')
-		}
-	}
-	b.measure('json2.encode [int]')
-
-	vf := StructType[f64]{}
-	for _ in 0 .. max_iterations {
-		e := json2.encode(vf)
-		if e[0] != `{` {
-			return error('json2.encode ${e}')
-		}
-	}
-	b.measure('json2.encode [f64]')
-
-	vb := StructType[bool]{}
-	for _ in 0 .. max_iterations {
-		e := json2.encode(vb)
-		if e[0] != `{` {
-			return error('json2.encode ${e}')
-		}
-	}
-	b.measure('json2.encode [bool]')
-
-	vai := StructType[[]int]{}
-	for _ in 0 .. max_iterations {
-		e := json2.encode(vai)
-		if e[0] != `{` {
-			return error('json2.encode ${e}')
-		}
-	}
-	b.measure('json2.encode [[]int]')
-
-	vssi := StructType[StructType[int]]{
-		val: StructType[int]{}
-	}
-	for _ in 0 .. max_iterations {
-		e := json2.encode(vssi)
-		if e[0] != `{` {
-			return error('json2.encode ${e}')
-		}
-	}
-	b.measure('json2.encode [StructType[int]]')
-
-	ve := StructType[Enum]{}
-	for _ in 0 .. max_iterations {
-		e := json2.encode(ve)
-		if e[0] != `{` {
-			return error('json2.encode ${e}')
-		}
-	}
-	b.measure('json2.encode [Enum]')
+	measure_json_encode_old_vs_new(StructType[string]{}, max_iterations)!
+	measure_json_encode_old_vs_new(StructType[time.Time]{}, max_iterations)!
+	measure_json_encode_old_vs_new(StructType[int]{}, max_iterations)!
+	measure_json_encode_old_vs_new(StructType[f64]{}, max_iterations)!
+	measure_json_encode_old_vs_new(StructType[bool]{}, max_iterations)!
+	measure_json_encode_old_vs_new(StructType[[]int]{}, max_iterations)!
+	measure_json_encode_old_vs_new(StructType[StructType[int]]{ val: StructType[int]{} },
+		max_iterations)!
+	measure_json_encode_old_vs_new(StructType[Enum]{}, max_iterations)!
 }
 
 fn benchmark_measure_encode_by_alias_type() ! {
 	println(@FN)
 	max_iterations := os.getenv_opt('MAX_ITERATIONS') or { '1000' }.int()
-
-	mut b := benchmark.start()
-
-	vsstringa := StructType[StringAlias]{}
-	for _ in 0 .. max_iterations {
-		e := json2.encode(vsstringa)
-		if e[0] != `{` {
-			return error('json2.encode ${e}')
-		}
-	}
-	b.measure('json2.encode [StringAlias]')
-
-	vsta := StructType[TimeAlias]{}
-	for _ in 0 .. max_iterations {
-		e := json2.encode(vsta)
-		if e[0] != `{` {
-			return error('json2.encode ${e}')
-		}
-	}
-	b.measure('json2.encode [TimeAlias]')
-
-	vsia := StructType[IntAlias]{}
-	for _ in 0 .. max_iterations {
-		e := json2.encode(vsia)
-		if e[0] != `{` {
-			return error('json2.encode ${e}')
-		}
-	}
-	b.measure('json2.encode [IntAlias]')
-
-	vsba := StructType[BoolAlias]{}
-	for _ in 0 .. max_iterations {
-		e := json2.encode(vsba)
-		if e[0] != `{` {
-			return error('json2.encode ${e}')
-		}
-	}
-	b.measure('json2.encode [BoolAlias]')
-
-	vssa := StructType[StructAlias]{}
-	for _ in 0 .. max_iterations {
-		e := json.encode(vssa)
-		if e[0] != `{` {
-			return error('json.encode ${e}')
-		}
-	}
-	b.measure('json2.encode [StructAlias]')
+	measure_json_encode_old_vs_new(StructType[StringAlias]{}, max_iterations)!
+	measure_json_encode_old_vs_new(StructType[TimeAlias]{}, max_iterations)!
+	measure_json_encode_old_vs_new(StructType[IntAlias]{}, max_iterations)!
+	measure_json_encode_old_vs_new(StructType[BoolAlias]{}, max_iterations)!
+	measure_json_encode_old_vs_new(StructType[StructAlias]{}, max_iterations)!
 }
 
 fn benchmark_measure_decode_by_type() ! {
@@ -272,4 +145,23 @@ fn benchmark_measure_decode_by_type() ! {
 		}
 	}
 	b.measure('json2.decode [time.Time]')
+}
+
+fn measure_json_encode_old_vs_new[T](val T, max_iterations int) ! {
+	typename := typeof[T]().name
+	mut b := benchmark.start()
+	for _ in 0 .. max_iterations {
+		e := json2.encode(val)
+		if e[0] != `{` {
+			return error('json2.encode ${e}')
+		}
+	}
+	b.measure('json2.encode ${typename}')
+	for _ in 0 .. max_iterations {
+		e := json.encode(val)
+		if e[0] != `{` {
+			return error('json.encode ${e}')
+		}
+	}
+	b.measure(' json.encode ${typename}')
 }
