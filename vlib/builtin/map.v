@@ -425,11 +425,11 @@ fn (mut m map) expand() {
 // the max_load_factor in an operation.
 fn (mut m map) rehash() {
 	meta_bytes := sizeof(u32) * (m.even_index + 2 + m.extra_metas)
-	m.reerve(meta_bytes)
+	m.reserve(meta_bytes)
 }
 
 // reservre memory if is know number of keys
-pub fn (mut m map) reserve(meta_bytes int) {
+pub fn (mut m map) reserve(meta_bytes u32) {
 	unsafe {
 		// TODO: use realloc_data here too
 		x := v_realloc(&u8(m.metas), int(meta_bytes))
