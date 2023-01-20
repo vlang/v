@@ -983,8 +983,9 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 			g.write(stmt_str)
 			g.write(' ')
 			g.write('${left_var}.state == 0 && ')
-			g.write('memcmp(&${left_var}.data, &${right_var}')
-			g.write(', sizeof(${g.typ(node.right_type)}))')
+			g.write('${node.left_type.idx()} == ${node.right_type.idx()} && ')
+			g.write('memcmp(${left_var}.data, ${right_var}.data')
+			g.write(', sizeof(${g.typ(node.right_type)})) == 0')
 			return
 		}
 	} else {
