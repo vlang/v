@@ -236,8 +236,9 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			$if field.typ is string {
 				e.encode_string(val.$(field.name).str(), mut wr)!
 			} $else $if field.typ is time.Time {
-				parsed_time := val.$(field.name) as time.Time
-				e.encode_string(parsed_time.format_rfc3339(), mut wr)!
+				wr.write(json2.quote_bytes)!
+				wr.write(val.$(field.name).format_rfc3339().bytes())!
+				wr.write(json2.quote_bytes)!
 			} $else $if field.typ in [bool, $Float, $Int] {
 				wr.write(val.$(field.name).str().bytes())!
 			} $else $if field.is_array {
@@ -432,6 +433,7 @@ fn (mut iter CharLengthIterator) next() ?int {
 	return len
 }
 
+// TODO - Need refactor. Is so slow. The longer the string, the lower the performance.
 // encode_string returns the JSON spec-compliant version of the string.
 [manualfree]
 fn (e &Encoder) encode_string(s string, mut wr io.Writer) ! {
