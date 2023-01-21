@@ -12,10 +12,9 @@ mut:
 	a string
 	b ?int
 	c ?f64
-	d ?u8
-	e ?[]string
-	f ?MyAlias
-	g ?MySumType
+	d ?[]string
+	e ?MyAlias
+	f ?MySumType
 }
 
 struct Decoder {}
