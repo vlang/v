@@ -2154,7 +2154,8 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 		name = '${p.expr_mod}.${name}'
 	}
 
-	is_unwrapp_option := !p.inside_comptime_if && !p.inside_ct_if_expr && p.tok.kind == .question
+	is_unwrapp_option := !in_select && !p.inside_comptime_if && !p.inside_ct_if_expr
+		&& p.tok.kind == .question
 	mut or_kind := if is_unwrapp_option { ast.OrKind.propagate_option } else { ast.OrKind.absent }
 	mut or_stmts := []ast.Stmt{}
 	mut or_pos := token.Pos{}
@@ -2162,7 +2163,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	if is_unwrapp_option {
 		// parsers ident like var?, except on '$if ident ?', '[if define ?]''
 		p.check(.question)
-	} else if !in_select && p.tok.kind == .key_orelse {
+	} else if p.tok.kind == .key_orelse {
 		or_kind = ast.OrKind.block
 		or_stmts, or_pos = p.or_block(.no_err_var)
 	}
