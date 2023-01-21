@@ -1110,9 +1110,10 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 				last_stmt_typ := c.expr(stmt.expr)
 
 				if stmt.expr is ast.Ident {
-					if ret_type.has_flag(.option) && stmt.expr.or_expr.kind == .absent {
+					if ret_type.has_flag(.option) && last_stmt_typ.has_flag(.option) {
 						expected_type_name := c.table.type_to_str(expr_return_type)
-						c.error('`or` block must provide a default value of type `${expected_type_name}` not an option var',
+						got_type_name := c.table.type_to_str(last_stmt_typ)
+						c.error('`or` block must provide a default value of type `${expected_type_name}`, not an `${got_type_name}`',
 							stmt.expr.pos)
 						return
 					}
@@ -3103,6 +3104,15 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	if node.kind in [.constant, .global, .variable] {
 		info := node.info as ast.IdentVar
 		// Got a var with type T, return current generic type
+		if node.or_expr.kind != .absent {
+			unwrapped_typ := info.typ.clear_flag(.option).clear_flag(.result)
+			if node.or_expr.kind == .block {
+				c.expected_or_type = unwrapped_typ
+				c.stmts_ending_with_expression(node.or_expr.stmts)
+				c.check_or_expr(node.or_expr, info.typ, c.expected_or_type)
+			}
+			return unwrapped_typ
+		}
 		return info.typ
 	} else if node.kind == .function {
 		info := node.info as ast.IdentFn
@@ -3173,6 +3183,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						}
 					}
 					is_option := typ.has_flag(.option) || typ.has_flag(.result)
+						|| node.or_expr.kind != .absent
 					node.kind = .variable
 					node.info = ast.IdentVar{
 						typ: typ
@@ -3192,7 +3203,6 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 							c.expected_or_type = unwrapped_typ
 							c.stmts_ending_with_expression(node.or_expr.stmts)
 							c.check_or_expr(node.or_expr, typ, c.expected_or_type)
-							c.expected_or_type = ast.void_type
 						}
 						return unwrapped_typ
 					}
