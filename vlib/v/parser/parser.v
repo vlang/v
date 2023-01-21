@@ -2160,7 +2160,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	mut or_stmts := []ast.Stmt{}
 	mut or_pos := token.Pos{}
 
-	if allowed_cases && p.tok.kind == .question { // var?
+	if allowed_cases && p.tok.kind == .question && p.peek_tok.kind != .lpar { // var?, not var?(
 		or_kind = ast.OrKind.propagate_option
 		p.check(.question)
 	} else if allowed_cases && p.tok.kind == .key_orelse {
