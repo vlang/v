@@ -3105,6 +3105,9 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		info := node.info as ast.IdentVar
 		// Got a var with type T, return current generic type
 		if node.or_expr.kind != .absent {
+			if !info.typ.has_flag(.option) && node.or_expr.kind == .propagate_option {
+				c.error('cannot use `?` on non-option variable', node.pos)
+			}
 			unwrapped_typ := info.typ.clear_flag(.option).clear_flag(.result)
 			if node.or_expr.kind == .block {
 				c.expected_or_type = unwrapped_typ
@@ -3197,6 +3200,9 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					if is_option {
 						if node.or_expr.kind == .absent {
 							return typ.clear_flag(.result)
+						}
+						if !typ.has_flag(.option) && node.or_expr.kind == .propagate_option {
+							c.error('cannot use `?` on non-option variable', node.pos)
 						}
 						unwrapped_typ := typ.clear_flag(.option).clear_flag(.result)
 						if node.or_expr.kind == .block {

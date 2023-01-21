@@ -156,10 +156,14 @@ fn test_assert_option() {
 
 	var2 := var1 or { var1? }
 
-	// assert var1 == var2
-	assert var2 == var1
+	assert var1 == none
 	assert var2 == 0
+
 	println(var2)
 
-	assert var1 == varz
+	var3 := varz or { 0.0 }
+	assert var3 == 0
+
+	var4 := varz
+	assert var4 == none
 }
