@@ -2129,6 +2129,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 			scope: p.scope
 		}
 	}
+	in_select := p.prev_tok.kind == .arrow
 	pos := p.tok.pos()
 	mut name := p.check_name()
 	if name == '_' {
@@ -2161,7 +2162,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	if is_unwrapp_option {
 		// parsers ident like var?, except on '$if ident ?', '[if define ?]''
 		p.check(.question)
-	} else if p.tok.kind == .key_orelse {
+	} else if !in_select && p.tok.kind == .key_orelse {
 		or_kind = ast.OrKind.block
 		or_stmts, or_pos = p.or_block(.no_err_var)
 	}

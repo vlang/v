@@ -117,7 +117,7 @@ fn test_unwrap() {
 	println(var)
 	assert var != none
 
-	var2 := var + 1
+	var2 := var? + 1
 	println(var2)
 
 	assert var2 == 2
