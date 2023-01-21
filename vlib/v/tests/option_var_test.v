@@ -125,10 +125,13 @@ fn test_unwrap() {
 
 fn test_or_block() {
 	var1 := ?int(none)
-	var2 := var1
-	var3 := var1
+	var2 := var1 or { 0 }
+	var3 := var1 or { 1 }
 	assert var2 + var3 == 1
-	var4 := var1
+	var4 := var1 or {
+		t := 1 + var3
+		t
+	}
 
 	assert var4 == 2
 }
