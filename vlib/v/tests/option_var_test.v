@@ -135,3 +135,16 @@ fn test_or_block() {
 
 	assert var4 == 2
 }
+
+fn test_default_values() {
+	var_none := ?f64(none)
+	var_none2 := ?string(none)
+
+	var2 := var_none or { var_none? + 1 }
+	println(var2)
+	assert var2 == 1.0
+
+	var3 := var_none2 or { var_none2? + 'foo' }
+	println(var3)
+	assert var3 == 'foo'
+}
