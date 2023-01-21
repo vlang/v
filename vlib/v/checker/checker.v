@@ -1108,6 +1108,16 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 				c.expected_type = ret_type
 				c.expected_or_type = ret_type.clear_flag(.option).clear_flag(.result)
 				last_stmt_typ := c.expr(stmt.expr)
+
+				if stmt.expr is ast.Ident {
+					if ret_type.has_flag(.option) && stmt.expr.or_expr.kind == .absent {
+						expected_type_name := c.table.type_to_str(expr_return_type)
+						c.error('`or` block must provide a default value of type `${expected_type_name}` not an option var',
+							stmt.expr.pos)
+						return
+					}
+				}
+
 				c.expected_or_type = ast.void_type
 				type_fits := c.check_types(last_stmt_typ, ret_type)
 					&& last_stmt_typ.nr_muls() == ret_type.nr_muls()
@@ -3174,14 +3184,17 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					node.obj = obj
 					// unwrap option (`println(x)`)
 					if is_option {
-						if node.or_expr.kind == .block {
-							c.expected_or_type = typ.clear_flag(.option).clear_flag(.result)
-							c.stmts_ending_with_expression(node.or_expr.stmts)
+						if node.or_expr.kind == .absent {
 							return typ.clear_flag(.result)
-						} else if node.or_expr.kind == .propagate_option {
-							return typ.clear_flag(.option).clear_flag(.result)
 						}
-						return typ.clear_flag(.result)
+						unwrapped_typ := typ.clear_flag(.option).clear_flag(.result)
+						if node.or_expr.kind == .block {
+							c.expected_or_type = unwrapped_typ
+							c.stmts_ending_with_expression(node.or_expr.stmts)
+							c.check_or_expr(node.or_expr, typ, c.expected_or_type)
+							c.expected_or_type = ast.void_type
+						}
+						return unwrapped_typ
 					}
 					return typ
 				}
