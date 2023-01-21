@@ -1113,7 +1113,7 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 					if ret_type.has_flag(.option) && last_stmt_typ.has_flag(.option) {
 						expected_type_name := c.table.type_to_str(expr_return_type)
 						got_type_name := c.table.type_to_str(last_stmt_typ)
-						c.error('`or` block must provide a default value of type `${expected_type_name}`, not an `${got_type_name}`',
+						c.error('`or` block must provide a value of type `${expected_type_name}`, not `${got_type_name}`',
 							stmt.expr.pos)
 						return
 					}
