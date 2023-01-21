@@ -198,6 +198,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 					// FIXME - checker and cast error
 					// wr.write(int(val.$(field.name)?).str().bytes())!
 					return error('type ${typeof(val).name} cannot be encoded yet')
+				} $else $if field.indirections > 0 {
 				} $else $if field.is_alias {
 					match field.unaliased_typ {
 						typeof[string]().idx {
@@ -250,6 +251,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			} $else $if field.is_enum {
 				// TODO - replace for `field.typ is $Enum`
 				wr.write(int(val.$(field.name)).str().bytes())!
+			} $else $if field.indirections > 0 {
 			} $else $if field.typ is $Enum {
 				// wr.write(int(val.$(field.name)).str().bytes())! // FIXME - error: cannot cast string to `int`, use `val.$field.name.int()` instead.
 			} $else $if field.typ is $Sumtype {
