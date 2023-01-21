@@ -10,12 +10,13 @@ import v.token
 fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr ast.Expr, ret_typ ast.Type) {
 	gen_or := expr is ast.Ident && (expr as ast.Ident).or_expr.kind == .block
 	if gen_or {
+		old_inside_opt_data := g.inside_opt_data
+		g.inside_opt_data = true
 		g.expr_with_cast(expr, expr_typ, ret_typ)
 		g.writeln(';')
 		g.writeln('if (${expr}.state != 0) {')
 		// g.write('\t${var_expr} = ')
-		old_inside_opt_data := g.inside_opt_data
-		g.inside_opt_data = true
+
 		g.gen_or_block_stmts(var_expr.str(), '', (expr as ast.Ident).or_expr.stmts, ret_typ,
 			false)
 		// g.expr_with_cast(((expr as ast.Ident).or_expr.stmts[0] as ast.ExprStmt).expr, expr_typ, ret_typ)

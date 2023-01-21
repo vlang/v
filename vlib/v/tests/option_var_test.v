@@ -122,3 +122,13 @@ fn test_unwrap() {
 
 	assert var2 == 2
 }
+
+fn test_or_block() {
+	var1 := ?int(none)
+	var2 := var1
+	var3 := var1
+	assert var2 + var3 == 1
+	var4 := var1
+
+	assert var4 == 2
+}
