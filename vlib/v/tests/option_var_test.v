@@ -148,3 +148,18 @@ fn test_default_values() {
 	println(var3)
 	assert var3 == 'foo'
 }
+
+fn test_assert_option() {
+	var1 := ?int(none)
+	varz := ?f64(none)
+	assert var1 == none
+
+	var2 := var1 or { var1? }
+
+	// assert var1 == var2
+	assert var2 == var1
+	assert var2 == 0
+	println(var2)
+
+	assert var1 == varz
+}
