@@ -86,7 +86,14 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		if !field.typ.has_flag(.shared_f) {
 			g.is_shared = false
 		}
-		inited_fields[field.name] = i
+		mut field_name := field.name
+		if node.no_keys && sym.kind == .struct_ {
+			info := sym.info as ast.Struct
+			if info.fields.len == node.fields.len {
+				field_name = info.fields[i].name
+			}
+		}
+		inited_fields[field_name] = i
 		if sym.kind != .struct_ {
 			if field.typ == 0 {
 				g.checker_bug('struct init, field.typ is 0', field.pos)
@@ -203,6 +210,12 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 						t_generic_names, t_concrete_types)
 					{
 						sfield.expected_type = tt
+					}
+				}
+				if node.no_keys && sym.kind == .struct_ {
+					sym_info := sym.info as ast.Struct
+					if sym_info.fields.len == node.fields.len {
+						sfield.name = sym_info.fields[already_initalised_node_field_index].name
 					}
 				}
 				g.struct_init_field(sfield, sym.language)
