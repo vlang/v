@@ -147,8 +147,8 @@ mut:
 	arraymap_set_pos          int   // map or array set value position
 	stmt_path_pos             []int // positions of each statement start, for inserting C statements before the current statement
 	skip_stmt_pos             bool  // for handling if expressions + autofree (since both prepend C statements)
-	left_is_opt               bool
-	right_is_opt              bool
+	left_is_opt               bool  // left hand side on assignment is an option
+	right_is_opt              bool  // right hand side on assignment is an option
 	indent                    int
 	empty_line                bool
 	assign_op                 token.Kind // *=, =, etc (for array_set)
