@@ -6581,16 +6581,3 @@ fn (mut g Gen) check_noscan(elem_typ ast.Type) string {
 	}
 	return ''
 }
-
-// gen_reflection_data generates code to initilized V reflection metadata
-fn (mut g Gen) gen_reflection_data() {
-	// modules declaration
-	for mod_name in g.table.modules {
-		g.reflection_mods.write_string('\tv__reflection__add_module(_SLIT("${mod_name}"));')
-	}
-	// modules declaration
-	g.writeln(g.reflection_mods.str())
-
-	// funcs declaration
-	g.writeln(g.reflection_funcs.str())
-}

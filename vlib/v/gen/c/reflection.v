@@ -17,3 +17,16 @@ fn (mut g Gen) gen_reflection_function(node ast.FnDecl) {
 		g.reflection_funcs.write_string('\tv__reflection__add_func_with_args(_SLIT("${g.cur_mod.name}"), _SLIT("${node.name}"), false, ${param_str});')
 	}
 }
+
+// gen_reflection_data generates code to initilized V reflection metadata
+fn (mut g Gen) gen_reflection_data() {
+	// modules declaration
+	for mod_name in g.table.modules {
+		g.reflection_mods.write_string('\tv__reflection__add_module(_SLIT("${mod_name}"));')
+	}
+	// modules declaration
+	g.writeln(g.reflection_mods.str())
+
+	// funcs declaration
+	g.writeln(g.reflection_funcs.str())
+}
