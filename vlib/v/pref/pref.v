@@ -181,6 +181,7 @@ pub mut:
 	out_name_c       string // full os.real_path to the generated .tmp.c file; set by builder.
 	out_name         string
 	path             string // Path to file/folder to compile
+	paths            []string 	// Allow multiple paths to be specified
 	//
 	run_only []string // VTEST_ONLY_FN and -run-only accept comma separated glob patterns.
 	// Only test_ functions that match these patterns will be run. -run-only is valid only for _test.v files.
@@ -756,8 +757,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						}
 					} else if is_source_file(command) && is_source_file(arg)
 						&& command !in known_external_commands {
-						eprintln('Too many targets. Specify just one target: <target.v|target_directory>.')
-						exit(1)
+						// WC: to be split by '|' when calling get_user_files()
+						command += '|${arg}'
+						// eprintln('Too many targets. Specify just one target: <target.v|target_directory>.')
+						// exit(1)
 					}
 					continue
 				}

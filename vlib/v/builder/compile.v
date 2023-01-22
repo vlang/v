@@ -305,7 +305,26 @@ pub fn (v &Builder) get_user_files() []string {
 		user_files << single_test_v_file
 		dir = os.dir(single_test_v_file)
 	}
-	does_exist := os.exists(dir)
+
+	// WC: allow multiple src to be specified
+	// does_exist = os.exists(dir)
+	mut does_exist := true
+	mut real_paths := []string{}
+	if dir.contains_any ('|') {
+		real_paths = dir.split ('|')
+		for path in real_paths {
+			does_exist = os.exists(path)
+			if !does_exist {
+				break
+			}
+		}
+	}
+	else {
+		real_paths = [dir]
+		does_exist = os.exists(dir)
+	}
+
+
 	if !does_exist {
 		verror("${dir} doesn't exist")
 	}
@@ -315,7 +334,8 @@ pub fn (v &Builder) get_user_files() []string {
 		|| v.pref.raw_vsh_tmp_prefix != '' || dir.ends_with('.vv')) {
 		single_v_file := if resolved_link.ends_with('.vsh') { resolved_link } else { dir }
 		// Just compile one file and get parent dir
-		user_files << single_v_file
+		// user_files << single_v_file
+		user_files << real_paths
 		if v.pref.is_verbose {
 			v.log('> just compile one file: "${single_v_file}"')
 		}
