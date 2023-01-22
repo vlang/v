@@ -391,7 +391,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			if sym.kind == .struct_ {
 				info := sym.info as ast.Struct
 				if node.no_keys && node.fields.len != info.fields.len {
-					c.error('initializing struct `${sym.name}` needs `${info.fields.len}` field${if info.fields.len != 1 { 's' } else { '' }}, but got `${node.fields.len}`',
+					fname := if info.fields.len != 1 { 'fields' } else { 'field' }
+					c.error('initializing struct `${sym.name}` needs `${info.fields.len}` ${fname}, but got `${node.fields.len}`',
 						node.pos)
 				}
 			}
