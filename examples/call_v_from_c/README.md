@@ -16,7 +16,9 @@ Step 3: Run the compiled c file using `LD_LIBRARY_PATH=. ./test_print` or
 
 #### On Mac OSX:
 
-On Mac OSX, libgc can be obtained from homebrew by `brew install libgc`. During compiling and/or linking, `-I/usr/local/include -L/usr/local/lib` (for x86_64) or `-I/opt/homebrew/include -L/opt/homebrew/lib` (for arm64) can be added depending the arch.
+On Mac OSX, libgc can be obtained from homebrew by `brew install libgc`.
+During compiling and/or linking, `-I/usr/local/include -L/usr/local/lib` (for x86_64),
+or `-I/opt/homebrew/include -L/opt/homebrew/lib` (for arm64) can be added depending the arch.
 
 Step 1: Compile the v code to a shared library using `v -cc gcc -shared v_test_print.v` or
 `v -cc gcc -shared v_test_math.v`.
