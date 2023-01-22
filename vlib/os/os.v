@@ -126,6 +126,11 @@ pub fn mv_by_cp(source string, target string) ! {
 	rm(source)!
 }
 
+// mv moves files or folders from `src` to `dst`.
+pub fn mv(source string, target string) ! {
+	rename(source, target) or { mv_by_cp(source, target)! }
+}
+
 // read_lines reads the file in `path` into an array of lines.
 [manualfree]
 pub fn read_lines(path string) ![]string {

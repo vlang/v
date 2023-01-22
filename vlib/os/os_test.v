@@ -930,3 +930,63 @@ fn test_reading_from_empty_file() {
 	assert content_bytes.len == 0
 	os.rm(empty_file)!
 }
+
+fn move_across_partitions_using_function(f fn (src string, dst string) !) ! {
+	bindfs := os.find_abs_path_of_executable('bindfs') or {
+		eprintln('skipping test_mv_by_cp, because bindfs was not present')
+		return
+	}
+	// eprintln('>> $bindfs')
+	pfolder := os.join_path(tfolder, 'parent')
+	cfolder := os.join_path(pfolder, 'child')
+	mfolder := os.join_path(pfolder, 'mountpoint')
+	cdeepfolder := os.join_path(cfolder, 'deep', 'folder')
+	os.mkdir_all(mfolder)!
+	os.mkdir_all(cfolder)!
+	os.mkdir_all(cdeepfolder)!
+	//
+	original_path := os.join_path(pfolder, 'original.txt')
+	target_path := os.join_path(cdeepfolder, 'target.txt')
+	os.write_file(original_path, 'text')!
+	os.write_file(os.join_path(cdeepfolder, 'x.txt'), 'some text')!
+	// os.system('tree $pfolder')
+	/*
+	/tmp/v_1000/v/tests/os_test/parent
+	├── child
+	│   └── deep
+	│       └── folder
+	│           └── x.txt
+	├── mountpoint
+	└── original.txt
+	*/
+	os.system('${bindfs} --no-allow-other ${cfolder} ${mfolder}')
+	defer {
+		os.system('sync; umount ${mfolder}')
+	}
+	// os.system('tree $pfolder')
+	/*
+	/tmp/v_1000/v/tests/os_test/parent
+	├── child
+	│   └── deep
+	│       └── folder
+	│           └── x.txt
+	├── mountpoint
+	│   └── deep
+	│       └── folder
+	│           └── x.txt
+	└── original.txt
+	*/
+
+	f(original_path, target_path)!
+
+	assert os.exists(target_path)
+	assert !os.exists(original_path)
+}
+
+fn test_mv_by_cp_across_partitions() {
+	move_across_partitions_using_function(os.mv_by_cp)!
+}
+
+fn test_mv_across_partitions() {
+	move_across_partitions_using_function(os.mv)!
+}
