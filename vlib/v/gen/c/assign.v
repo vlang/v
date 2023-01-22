@@ -263,9 +263,14 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			&& !g.pref.translated
 		g.is_assign_lhs = true
 		g.assign_op = node.op
-		if val_type.has_flag(.option) || val_type.has_flag(.result) {
-			g.right_is_opt = true
+
+		g.left_is_opt = var_type.has_flag(.option) || var_type.has_flag(.result)
+		g.right_is_opt = val_type.has_flag(.option) || val_type.has_flag(.result)
+		defer {
+			g.left_is_opt = false
+			g.right_is_opt = false
 		}
+
 		if blank_assign {
 			if val is ast.IndexExpr {
 				g.assign_op = .decl_assign
@@ -487,24 +492,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if g.gen_clone_assignment(val, unwrapped_val_type, false) {
 					cloned = true
 				}
-			}
-			unwrap_option := !var_type.has_flag(.option) && val_type.has_flag(.option)
-			if unwrap_option {
-				// Unwrap the option now that the testing code has been prepended.
-				// `pos := s.index(...
-				// `int pos = *(int)_t10.data;`
-				// if g.is_autofree {
-				/*
-				if is_option {
-					g.write('*($styp*)')
-					g.write(tmp_opt + '.data/*FFz*/')
-					g.right_is_opt = false
-					if g.inside_ternary == 0 && !node.is_simple {
-						g.writeln(';')
-					}
-					return
-				}
-				*/
 			}
 			if !cloned {
 				if !g.inside_comptime_for_field

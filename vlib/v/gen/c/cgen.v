@@ -147,6 +147,7 @@ mut:
 	arraymap_set_pos          int   // map or array set value position
 	stmt_path_pos             []int // positions of each statement start, for inserting C statements before the current statement
 	skip_stmt_pos             bool  // for handling if expressions + autofree (since both prepend C statements)
+	left_is_opt               bool
 	right_is_opt              bool
 	indent                    int
 	empty_line                bool
@@ -4260,7 +4261,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		if node.obj is ast.Var {
 			if !g.is_assign_lhs && node.obj.is_comptime_field {
 				if g.comptime_for_field_type.has_flag(.option) {
-					if g.inside_opt_or_res && node.or_expr.kind != .propagate_option {
+					if (g.inside_opt_or_res && node.or_expr.kind == .absent) || g.left_is_opt {
 						g.write('${name}')
 					} else {
 						g.write('/*opt*/')
@@ -4278,7 +4279,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
 		// `println(x)` => `println(*(int*)x.data)`
 		if node.info.is_option && !(g.is_assign_lhs && g.right_is_opt) {
-			if g.inside_opt_or_res && node.or_expr.kind == .absent {
+			if (g.inside_opt_or_res && node.or_expr.kind == .absent) || g.left_is_opt {
 				g.write('${name}')
 			} else {
 				g.write('/*opt*/')

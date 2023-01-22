@@ -166,3 +166,12 @@ fn test_assert_option() {
 	var4 := varz
 	assert var4 == none
 }
+
+fn test_opt_assing() {
+	mut var1 := ?int(none)
+	assert var1 == none
+	var1 = 1
+	assert var1 != none
+	var2 := var1
+	assert var2? == var1?
+}
