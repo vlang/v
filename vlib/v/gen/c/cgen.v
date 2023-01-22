@@ -236,6 +236,11 @@ mut:
 	// out_idx      int
 	out_fn_start_pos []int  // for generating multiple .c files, stores locations of all fn positions in `out` string builder
 	static_modifier  string // for parallel_cc
+
+	has_reflection bool
+	// reflection metadata initialization
+	reflection_funcs strings.Builder
+	reflection_mods  strings.Builder
 }
 
 // global or const variable definition string
@@ -306,7 +311,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 		use_segfault_handler: !('no_segfault_handler' in pref.compile_defines
 			|| pref.os in [.wasm32, .wasm32_emscripten])
 		static_modifier: if pref.parallel_cc { 'static' } else { '' }
+		reflection_funcs: strings.new_builder(100)
+		reflection_mods: strings.new_builder(100)
 	}
+
 	/*
 	global_g.out_parallel = []strings.Builder{len: nr_cpus}
 	for i in 0 .. nr_cpus {
@@ -358,6 +366,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 			global_g.embedded_data.write(g.embedded_data) or { panic(err) }
 			global_g.shared_types.write(g.shared_types) or { panic(err) }
 			global_g.shared_functions.write(g.channel_definitions) or { panic(err) }
+			global_g.reflection_funcs.write(g.reflection_funcs) or { panic(err) }
 
 			global_g.force_main_console = global_g.force_main_console || g.force_main_console
 
@@ -455,6 +464,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 
 	mut g := global_g
 	util.timing_start('cgen common')
+	g.has_reflection = 'g_reflection' in global_g.global_const_defs
+
 	// to make sure type idx's are the same in cached mods
 	if g.pref.build_mode == .build_module {
 		for idx, sym in g.table.type_symbols {
@@ -5277,6 +5288,7 @@ fn (mut g Gen) write_init_function() {
 
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
 	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
+
 	if g.pref.trace_calls {
 		g.writeln('\tv__trace_calls__on_call(_SLIT("_vinit"));')
 	}
@@ -5302,7 +5314,18 @@ fn (mut g Gen) write_init_function() {
 	if g.nr_closures > 0 {
 		g.writeln('\t_closure_mtx_init();')
 	}
+
+	// reflection bootstrap
+	if var := g.global_const_defs['g_reflection'] {
+		g.writeln(var.init)
+		g.gen_reflection_data()
+	}
+
 	for mod_name in g.table.modules {
+		if mod_name == 'v.reflection' {
+			// ignore v.reflection already initialized above
+			continue
+		}
 		mut is_empty := true
 		// write globals and consts init later
 		for var_name in g.sorted_global_const_names {
@@ -5328,6 +5351,7 @@ fn (mut g Gen) write_init_function() {
 			}
 		}
 	}
+
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vinit' in g.pref.printfn_list {
 		println(g.out.after(fn_vinit_start_pos))
@@ -6556,4 +6580,17 @@ fn (mut g Gen) check_noscan(elem_typ ast.Type) string {
 		}
 	}
 	return ''
+}
+
+// gen_reflection_data generates code to initilized V reflection metadata
+fn (mut g Gen) gen_reflection_data() {
+	// modules declaration
+	for mod_name in g.table.modules {
+		g.reflection_mods.write_string('\tv__reflection__add_module(_SLIT("${mod_name}"));')
+	}
+	// modules declaration
+	g.writeln(g.reflection_mods.str())
+
+	// funcs declaration
+	g.writeln(g.reflection_funcs.str())
 }
