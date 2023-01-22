@@ -387,6 +387,14 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				field.typ = c.expr(field.expr)
 				field.expected_type = field.typ
 			}
+			sym := c.table.sym(c.unwrap_generic(node.typ))
+			if sym.kind == .struct_ {
+				info := sym.info as ast.Struct
+				if node.no_keys && node.fields.len != info.fields.len {
+					c.error('struct `${sym.name}` no_keys init expected `${info.fields.len}` fields, but got `${node.fields.len}`',
+						node.pos)
+				}
+			}
 		}
 		// string & array are also structs but .kind of string/array
 		.struct_, .string, .array, .alias {
