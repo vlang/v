@@ -536,14 +536,22 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 				}
 			}
 
-			if p.tok.kind in [.inc, .dec] && p.prev_tok.line_nr != p.tok.line_nr
-				&& p.peek_tok.kind != .name {
+			inc_dec_tok := p.tok.kind in [.inc, .dec]
+			same_line_with_prev := p.tok.line_nr == p.prev_tok.line_nr
+			same_line_with_next := p.tok.line_nr == p.peek_tok.line_nr
+			next_tok_name := p.peek_tok.kind == .name
+
+			// 1. name
+			// 2. ++
+			//    ^^ current token
+			if inc_dec_tok && !same_line_with_prev && !next_tok_name {
 				p.error_with_pos('${p.tok} must be on the same line as the previous token',
 					p.tok.pos())
 			}
 
-			if p.tok.kind in [.inc, .dec] && p.peek_tok.line_nr == p.tok.line_nr
-				&& p.peek_tok.kind == .name {
+			// 1. ++name
+			//    ^^ current token
+			if inc_dec_tok && same_line_with_next && next_tok_name {
 				op := if p.tok.kind == .inc { '++' } else { '--' }
 				op_pos := p.tok.pos()
 
