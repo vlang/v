@@ -1,0 +1,8 @@
+vlib/v/checker/tests/inc_fun_call.vv:5:1: error: cannot increment `foo()` because it is non lvalue expression
+    3 | }
+    4 |
+    5 | foo()++
+      | ~~~~~
+Details: try assign expression to a variable and use increment for it:
+	mut variable := foo()
+	variable++
