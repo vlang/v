@@ -422,6 +422,14 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				return node
 			}
 		}
+		.inc, .dec {
+			same_line_with_next := p.tok.line_nr == p.peek_tok.line_nr
+			next_tok_name := p.peek_tok.kind == .name
+
+			if next_tok_name && same_line_with_next {
+				p.prefix_inc_dec_error()
+			}
+		}
 		else {
 			if p.tok.kind == .key_struct && p.peek_tok.kind == .lcbr {
 				// Anonymous struct
@@ -552,15 +560,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			// 1. ++name
 			//    ^^ current token
 			if inc_dec_tok && same_line_with_next && next_tok_name {
-				op := if p.tok.kind == .inc { '++' } else { '--' }
-				op_pos := p.tok.pos()
-
-				p.next()
-				expr := p.expr(0) // expression `mp["name"]` after `--` in `--mp["name"]`
-				full_expr_pos := op_pos.extend(expr.pos()) // position of full `--mp["name"]`
-
-				p.error_with_pos('prefix `${op}${expr}` is unsupported, use suffix form `${expr}${op}`',
-					full_expr_pos)
+				p.prefix_inc_dec_error()
 			}
 
 			if mut node is ast.IndexExpr {
@@ -731,4 +731,18 @@ fn (mut p Parser) recast_as_pointer(mut cast_expr ast.CastExpr, pos token.Pos) {
 	cast_expr.typ = cast_expr.typ.ref()
 	cast_expr.typname = p.table.sym(cast_expr.typ).name
 	cast_expr.pos = pos.extend(cast_expr.pos)
+}
+
+// prefix_inc_dec_error reports an error for a prefix increment or decrement.
+// prefix increments and decrements are not allowed in V.
+fn (mut p Parser) prefix_inc_dec_error() {
+	op := if p.tok.kind == .inc { '++' } else { '--' }
+	op_pos := p.tok.pos()
+
+	p.next()
+	expr := p.expr(0) // expression `mp["name"]` after `--` in `--mp["name"]`
+	full_expr_pos := op_pos.extend(expr.pos()) // position of full `--mp["name"]`
+
+	p.error_with_pos('prefix `${op}${expr}` is unsupported, use suffix form `${expr}${op}`',
+		full_expr_pos)
 }
