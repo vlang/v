@@ -12,8 +12,17 @@ pub mut:
 	funcs        []Function
 	types        []Type
 	type_symbols []TypeSymbol
-	// interfaces 	[]Interface
-	enums []Enum
+	enums        []Enum
+	interfaces   []Interface
+}
+
+pub struct Interface {
+pub:
+	name      string     // interface name
+	full_name string     // full name
+	typ       int        // type idx
+	is_pub    bool       // is pub?
+	methods   []Function // methods
 }
 
 pub struct Enum {
@@ -100,9 +109,8 @@ pub fn get_aliases() []Type {
 }
 
 // get_interfaces returns the registered aliases
-pub fn get_interfaces() []Type {
-	interface_idxs := g_reflection.type_symbols.filter(it.kind == .interface_).map(it.idx)
-	return g_reflection.types.filter(it.idx in interface_idxs)
+pub fn get_interfaces() []Interface {
+	return g_reflection.interfaces
 }
 
 // get_sum_types returns the registered sum types
@@ -158,4 +166,8 @@ fn add_type_symbol(typesymbol TypeSymbol) {
 
 fn add_enum(enum_ Enum) {
 	g_reflection.enums << enum_
+}
+
+fn add_interface(interface_ Interface) {
+	g_reflection.interfaces << interface_
 }

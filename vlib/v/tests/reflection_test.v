@@ -74,3 +74,7 @@ fn test_get_sum_types() {
 fn test_get_interfaces() {
 	assert reflection.get_interfaces().filter(it.name == 'IError')[0].full_name == 'IError'
 }
+
+fn test_interfaces() {
+	assert reflection.get_interfaces().filter(it.name == 'IError')[0].methods.len == 2
+}

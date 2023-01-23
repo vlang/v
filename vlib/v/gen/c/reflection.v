@@ -23,11 +23,26 @@ fn (g Gen) gen_functionarg_array(type_name string, node ast.FnDecl) string {
 	return out
 }
 
-// gen_reflection_function generates C code for reflection function metadata
-fn (mut g Gen) gen_reflection_function(node ast.FnDecl) {
-	if !g.has_reflection {
-		return
+// gen_functionarg_array generates the code for functionarg argument
+[inline]
+fn (g Gen) gen_function_array(nodes []ast.FnDecl) string {
+	type_name := 'v__reflection__Function'
+
+	if nodes.len == 0 {
+		return g.gen_empty_array(type_name)
 	}
+
+	mut out := 'new_array_from_c_array(${nodes.len}, ${nodes.len}, sizeof(${type_name}), '
+	out += '_MOV((${type_name}[${nodes.len}]){'
+	for method in nodes {
+		out += g.gen_reflection_fndecl(method)
+		out += ','
+	}
+	out += '}))'
+	return out
+}
+
+fn (g Gen) gen_reflection_fndecl(node ast.FnDecl) string {
 	mut arg_str := '((v__reflection__Function){'
 	v_name := node.name.all_after_last('.')
 	arg_str += '.mod_name = _SLIT("${node.mod}"),'
@@ -44,7 +59,16 @@ fn (mut g Gen) gen_reflection_function(node ast.FnDecl) {
 	arg_str += '.return_typ=${node.return_type.idx()},'
 	arg_str += '.receiver_typ=${node.receiver.typ.idx()}'
 	arg_str += '})'
-	g.reflection_funcs.write_string('\tv__reflection__add_func(${arg_str});\n')
+	return arg_str
+}
+
+// gen_reflection_function generates C code for reflection function metadata
+fn (mut g Gen) gen_reflection_function(node ast.FnDecl) {
+	if !g.has_reflection {
+		return
+	}
+	func_struct := g.gen_reflection_fndecl(node)
+	g.reflection_funcs.write_string('\tv__reflection__add_func(${func_struct});\n')
 }
 
 // gen_reflection_data generates code to initilized V reflection metadata
@@ -64,6 +88,13 @@ fn (mut g Gen) gen_reflection_data() {
 	for full_name, idx in g.table.type_idxs {
 		name := full_name.all_after_last('.')
 		g.reflection_others.write_string('\tv__reflection__add_type((v__reflection__Type){.name=_SLIT("${name}"),.full_name=_SLIT("${full_name}"),.idx=${idx}});\n')
+	}
+
+	// interface declaration
+	for _, idecl in g.table.interfaces {
+		name := idecl.name.all_after_last('.')
+		methods := g.gen_function_array(idecl.methods)
+		g.reflection_others.write_string('\tv__reflection__add_interface((v__reflection__Interface){.name=_SLIT("${name}"),.full_name=_SLIT("${idecl.name}"),.typ=${idecl.typ.idx()},.is_pub=${idecl.is_pub},.methods=${methods}});\n')
 	}
 
 	// type symbols declaration
