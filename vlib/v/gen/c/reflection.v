@@ -51,35 +51,29 @@ fn (mut g Gen) gen_reflection_function(node ast.FnDecl) {
 fn (mut g Gen) gen_reflection_data() {
 	// modules declaration
 	for mod_name in g.table.modules {
-		g.reflection_mods.write_string('\tv__reflection__add_module(_SLIT("${mod_name}"));\n')
+		g.reflection_others.write_string('\tv__reflection__add_module(_SLIT("${mod_name}"));\n')
 	}
 
 	// enum declaration
 	for full_name, enum_ in g.table.enum_decls {
 		name := full_name.all_after_last('.')
-		g.reflection_types.write_string('\tv__reflection__add_enum((v__reflection__Enum){.name=_SLIT("${name}"),.full_name=_SLIT("${full_name}"),.is_pub=${enum_.is_pub},.is_flag=${enum_.is_flag},.typ=${enum_.typ.idx()},.line_start=${enum_.pos.line_nr},.line_end=${enum_.pos.last_line}});\n')
+		g.reflection_others.write_string('\tv__reflection__add_enum((v__reflection__Enum){.name=_SLIT("${name}"),.full_name=_SLIT("${full_name}"),.is_pub=${enum_.is_pub},.is_flag=${enum_.is_flag},.typ=${enum_.typ.idx()},.line_start=${enum_.pos.line_nr},.line_end=${enum_.pos.last_line}});\n')
 	}
 
 	// types declaration
 	for full_name, idx in g.table.type_idxs {
 		name := full_name.all_after_last('.')
-		g.reflection_types.write_string('\tv__reflection__add_type((v__reflection__Type){.name=_SLIT("${name}"),.full_name=_SLIT("${full_name}"),.idx=${idx}});\n')
+		g.reflection_others.write_string('\tv__reflection__add_type((v__reflection__Type){.name=_SLIT("${name}"),.full_name=_SLIT("${full_name}"),.idx=${idx}});\n')
 	}
 
 	// type symbols declaration
 	for idx, tsym in g.table.type_symbols {
-		g.reflection_type_symbols.write_string('\tv__reflection__add_type_symbol((v__reflection__TypeSymbol){.name=_SLIT("${tsym.name}"),.idx=${idx},.parent_idx=${tsym.parent_idx},.language=_SLIT("${tsym.language}")});\n')
+		g.reflection_others.write_string('\tv__reflection__add_type_symbol((v__reflection__TypeSymbol){.name=_SLIT("${tsym.name}"),.idx=${idx},.parent_idx=${tsym.parent_idx},.language=_SLIT("${tsym.language}")});\n')
 	}
 
-	// modules declaration
-	g.writeln(g.reflection_mods.str())
-
-	// funcs declaration
+	// funcs meta info filling
 	g.writeln(g.reflection_funcs.str())
 
-	// types declaration
-	g.writeln(g.reflection_types.str())
-
-	// types symbol declaration
-	g.writeln(g.reflection_type_symbols.str())
+	// other meta info filling
+	g.writeln(g.reflection_others.str())
 }
