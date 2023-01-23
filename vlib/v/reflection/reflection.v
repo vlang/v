@@ -23,11 +23,19 @@ pub:
 
 pub struct Function {
 pub:
-	mod_name  string // module name
-	name      string // function/method name
-	full_name string // fully name
-	is_method bool   // is a method?
-	args      []FunctionArg // function/method args
+	mod_name     string        // module name
+	name         string        // function/method name
+	full_name    string        // fully name
+	is_method    bool          // is a method?
+	args         []FunctionArg // function/method args
+	file         string
+	line_start   int
+	line_end     int
+	is_test      bool
+	is_variadic  bool
+	is_noreturn  bool
+	return_typ   int
+	receiver_typ int
 }
 
 // API module
@@ -48,10 +56,6 @@ fn add_module(mod_name string) {
 	g_reflection.modules << Module{mod_name}
 }
 
-fn add_func(mod_name string, func_name string, is_method bool) {
-	g_reflection.funcs << Function{mod_name, func_name.all_after_last('.'), func_name, is_method, []}
-}
-
-fn add_func_with_args(mod_name string, func_name string, is_method bool, args []FunctionArg) {
-	g_reflection.funcs << Function{mod_name, func_name.all_after_last('.'), func_name, is_method, args}
+fn add_func(func Function) {
+	g_reflection.funcs << func
 }
