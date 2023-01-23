@@ -2937,7 +2937,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 				if obj.is_or {
 					// Skip vars inited with the `or {}`, since they are generated
 					// after the or block in C.
-					g.trace_autofree('// skipping `or{}` var "${obj.name}"')
+					g.trace_autofree('// skipping `or {}` var "${obj.name}"')
 					continue
 				}
 				if obj.is_tmp {
