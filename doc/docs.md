@@ -6430,6 +6430,7 @@ rlock
 select
 shared
 sizeof
+spawn
 static
 struct
 true
