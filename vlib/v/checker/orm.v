@@ -24,7 +24,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		c.cur_orm_ts = old_ts
 	}
 	if sym.info !is ast.Struct {
-		c.error('the table symbol `${sym.name}` has to be a struct', node.table_expr.pos)
+		c.orm_error('the table symbol `${sym.name}` has to be a struct', node.table_expr.pos)
 		return ast.void_type
 	}
 	info := sym.info as ast.Struct
@@ -107,13 +107,12 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			sym.find_field(order_ident_name) or {
 				field_names := fields.map(it.name)
 
-				c.error(util.new_suggestion(order_ident_name, field_names).say('`${sym.name}` structure has no field with name `${order_ident_name}`'),
+				c.orm_error(util.new_suggestion(order_ident_name, field_names).say('`${sym.name}` structure has no field with name `${order_ident_name}`'),
 					node.order_expr.pos)
 				return ast.void_type
 			}
 		} else {
-			c.error('${checker.v_orm_prefix}: expected `${sym.name}` structure\'s field',
-				node.order_expr.pos())
+			c.orm_error("expected `${sym.name}` structure's field", node.order_expr.pos())
 			return ast.void_type
 		}
 
@@ -133,7 +132,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 
 	if node.or_expr.kind == .block {
 		if node.or_expr.stmts.len == 0 {
-			c.error('or block needs to return a default value', node.or_expr.pos)
+			c.orm_error('or block needs to return a default value', node.or_expr.pos)
 		}
 		if node.or_expr.stmts.len > 0 && node.or_expr.stmts.last() is ast.ExprStmt {
 			c.expected_or_type = node.typ
@@ -173,7 +172,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		c.cur_orm_ts = old_ts
 	}
 	if table_sym.info !is ast.Struct {
-		c.error('unknown type `${table_sym.name}`', node.pos)
+		c.orm_error('unknown type `${table_sym.name}`', node.pos)
 		return ast.void_type
 	}
 	info := table_sym.info as ast.Struct
@@ -216,7 +215,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	for i, column in node.updated_columns {
 		x := node.fields.filter(it.name == column)
 		if x.len == 0 {
-			c.error('type `${table_sym.name}` has no field named `${column}`', node.pos)
+			c.orm_error('type `${table_sym.name}` has no field named `${column}`', node.pos)
 			continue
 		}
 		field := x[0]
@@ -241,19 +240,19 @@ fn (mut c Checker) check_orm_struct_field_attributes(field ast.StructField) {
 	for attr in field.attrs {
 		if attr.name == checker.fkey_attr_name {
 			if field_type.kind != .array && field_type.kind != .struct_ {
-				c.error('The `${checker.fkey_attr_name}` attribute must be used only with arrays and structures',
+				c.orm_error('the `${checker.fkey_attr_name}` attribute must be used only with arrays and structures',
 					attr.pos)
 				return
 			}
 
 			if !attr.has_arg {
-				c.error('The `${checker.fkey_attr_name}` attribute must have an argument',
+				c.orm_error('the `${checker.fkey_attr_name}` attribute must have an argument',
 					attr.pos)
 				return
 			}
 
 			if attr.kind != .string {
-				c.error('`${checker.fkey_attr_name}` attribute must be string. Try [${checker.fkey_attr_name}: \'${attr.arg}\'] instead of [${checker.fkey_attr_name}: ${attr.arg}]',
+				c.orm_error('`${checker.fkey_attr_name}` attribute must be string. Try [${checker.fkey_attr_name}: \'${attr.arg}\'] instead of [${checker.fkey_attr_name}: ${attr.arg}]',
 					attr.pos)
 				return
 			}
@@ -275,7 +274,7 @@ fn (mut c Checker) check_orm_struct_field_attributes(field ast.StructField) {
 	}
 
 	if field_type.kind == .array && !has_fkey_attr {
-		c.error('A field that holds an array must be defined with the `${checker.fkey_attr_name}` attribute',
+		c.orm_error('a field that holds an array must be defined with the `${checker.fkey_attr_name}` attribute',
 			field.pos)
 	}
 }
@@ -288,23 +287,19 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, t
 		&& c.table.sym(c.table.sym(it.typ).array_info().elem_type).kind == .struct_))
 		&& !it.attrs.contains('skip'))
 	if fields.len == 0 {
-		c.error('${checker.v_orm_prefix}: select: empty fields in `${table_name}`', pos)
+		c.orm_error('select: empty fields in `${table_name}`', pos)
 		return []ast.StructField{}
 	}
 	if fields[0].name != 'id' {
-		c.error('${checker.v_orm_prefix}: `id int` must be the first field in `${table_name}`',
-			pos)
+		c.orm_error('`id int` must be the first field in `${table_name}`', pos)
 	}
 	return fields
 }
 
 fn (mut c Checker) check_sql_value_expr_is_natural_number(mut expr ast.Expr, sql_keyword string) {
-	limit_lt_zero_message := '${checker.v_orm_prefix}: `${sql_keyword}` must be greater than or equal to zero'
-	call_expr_message := '${checker.v_orm_prefix}: call expressions are not supported yet'
-
 	// cgen doesn't support call expressions in ORM
 	if expr is ast.CallExpr {
-		c.error(call_expr_message, expr.pos())
+		c.orm_error('call expressions are not supported yet', expr.pos())
 		return
 	}
 
@@ -314,18 +309,20 @@ fn (mut c Checker) check_sql_value_expr_is_natural_number(mut expr ast.Expr, sql
 	}
 
 	if comptime_number < 0 {
-		c.error(limit_lt_zero_message, expr.pos())
+		c.orm_error('`${sql_keyword}` must be greater than or equal to zero', expr.pos())
 	}
 }
 
 fn (mut c Checker) check_sql_expr_type_is_uint(expr &ast.Expr, sql_keyword string) {
-	limit_type_error_message := '${checker.v_orm_prefix}: the type of `${sql_keyword}` must be an unsigned integer type'
-
 	if expr is ast.Ident {
 		if expr.obj.typ.is_unsigned() {
 			return
 		}
 	}
 
-	c.error(limit_type_error_message, expr.pos())
+	c.orm_error('the type of `${sql_keyword}` must be an unsigned integer type', expr.pos())
+}
+
+fn (mut c Checker) orm_error(message string, pos token.Pos) {
+	c.error('${checker.v_orm_prefix}: ${message}', pos)
 }
