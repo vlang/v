@@ -54,6 +54,12 @@ fn (mut g Gen) gen_reflection_data() {
 		g.reflection_mods.write_string('\tv__reflection__add_module(_SLIT("${mod_name}"));\n')
 	}
 
+	// enum declaration
+	for full_name, enum_ in g.table.enum_decls {
+		name := full_name.all_after_last('.')
+		g.reflection_types.write_string('\tv__reflection__add_enum((v__reflection__Enum){.name=_SLIT("${name}"),.full_name=_SLIT("${full_name}"),.is_pub=${enum_.is_pub},.is_flag=${enum_.is_flag},.typ=${enum_.typ.idx()},.line_start=${enum_.pos.line_nr},.line_end=${enum_.pos.last_line}});\n')
+	}
+
 	// types declaration
 	for full_name, idx in g.table.type_idxs {
 		name := full_name.all_after_last('.')

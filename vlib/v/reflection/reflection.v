@@ -10,6 +10,19 @@ pub mut:
 	funcs        []Function
 	types        []Type
 	type_symbols []TypeSymbol
+	// interfaces 	[]Interface
+	enums []Enum
+}
+
+pub struct Enum {
+pub:
+	name       string
+	full_name  string
+	is_pub     bool
+	is_flag    bool
+	typ        int
+	line_start int
+	line_end   int
 }
 
 pub struct TypeSymbol {
@@ -72,6 +85,10 @@ pub fn get_types() []Type {
 	return g_reflection.types
 }
 
+pub fn get_enums() []Enum {
+	return g_reflection.enums
+}
+
 // get_type_symbol returns the registered type symbols
 pub fn get_type_symbols() []TypeSymbol {
 	return g_reflection.type_symbols
@@ -115,4 +132,8 @@ fn add_type(type_ Type) {
 
 fn add_type_symbol(typesymbol TypeSymbol) {
 	g_reflection.type_symbols << typesymbol
+}
+
+fn add_enum(enum_ Enum) {
+	g_reflection.enums << enum_
 }

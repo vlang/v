@@ -1,5 +1,10 @@
 import v.reflection
 
+enum TestEnum {
+	foo
+	bar
+}
+
 struct User {
 	name string
 }
@@ -48,4 +53,8 @@ fn test_method() {
 	println(reflection.get_type(method.receiver_typ)?.name)
 	assert reflection.get_type(method.receiver_typ)?.name == 'User'
 	assert reflection.get_type(method.receiver_typ)?.full_name == 'main.User'
+}
+
+fn test_enum() {
+	assert reflection.get_enums().filter(it.name == 'TestEnum')[0].name == 'TestEnum'
 }
