@@ -123,6 +123,20 @@ pub fn cp(src string, dst string) ! {
 	}
 }
 
+pub fn rename(src string, dst string) ! {
+	$if js_node {
+		err := ''
+		#try {
+		#$fs.renameSync(src.str,dst.str);
+		#return;
+		#} catch (e) {
+		#err.str = 'failed to rename ' + src.str + ' to ' + dst.str + ': ' + e.toString();
+		#}
+
+		return error(err)
+	}
+}
+
 pub fn read_file(s string) !string {
 	mut err := ''
 	err = err

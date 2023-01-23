@@ -6394,7 +6394,7 @@ use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
 
 ## Appendix I: Keywords
 
-V has 42 reserved keywords (3 are literals):
+V has 44 reserved keywords (3 are literals):
 
 ```v ignore
 as
@@ -6430,6 +6430,7 @@ rlock
 select
 shared
 sizeof
+spawn
 static
 struct
 true
@@ -6438,6 +6439,7 @@ typeof
 union
 unsafe
 volatile
+__global
 __offsetof
 ```
 See also [V Types](#v-types).

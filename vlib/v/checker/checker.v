@@ -3874,7 +3874,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		&& typ_sym.kind == .map && node.or_expr.stmts.len == 0 {
 		elem_type := c.table.value_type(typ)
 		if elem_type.is_real_pointer() {
-			c.note('accessing a pointer map value requires an `or{}` block outside `unsafe`',
+			c.note('accessing a pointer map value requires an `or {}` block outside `unsafe`',
 				node.pos)
 		}
 	}
