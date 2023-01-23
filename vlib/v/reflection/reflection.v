@@ -8,6 +8,13 @@ pub struct Reflection {
 pub mut:
 	modules []Module
 	funcs   []Function
+	types   []Type
+}
+
+pub struct Type {
+pub:
+	name string // type name
+	idx  int    // type idx
 }
 
 pub struct Module {
@@ -18,7 +25,7 @@ pub:
 pub struct FunctionArg {
 pub:
 	name string // argument name
-	typ  int    // argument type
+	typ  int    // argument type idx
 }
 
 pub struct Function {
@@ -28,14 +35,14 @@ pub:
 	full_name    string        // fully name
 	is_method    bool          // is a method?
 	args         []FunctionArg // function/method args
-	file         string
-	line_start   int
-	line_end     int
-	is_test      bool
-	is_variadic  bool
-	is_noreturn  bool
-	return_typ   int
-	receiver_typ int
+	file         string        // source file name
+	line_start   int  // declaration start line
+	line_end     int  // declaration end line
+	is_test      bool // is test?
+	is_variadic  bool // is variadic?
+	is_noreturn  bool // is [noreturn] ?
+	return_typ   int  // return type idx
+	receiver_typ int  // receiver type idx (is_method true)
 }
 
 // API module
@@ -50,6 +57,15 @@ pub fn get_funcs() []Function {
 	return g_reflection.funcs
 }
 
+pub fn get_types() []Type {
+	return g_reflection.types
+}
+
+pub fn type_name(idx int) string {
+	t := g_reflection.types.filter(it.idx == idx)
+	return if t.len != 0 { t[0].name } else { '' }
+}
+
 // V metadata info - called from backend to fill metadata info
 
 fn add_module(mod_name string) {
@@ -58,4 +74,8 @@ fn add_module(mod_name string) {
 
 fn add_func(func Function) {
 	g_reflection.funcs << func
+}
+
+fn add_type(type_ Type) {
+	g_reflection.types << type_
 }
