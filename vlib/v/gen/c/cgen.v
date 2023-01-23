@@ -239,9 +239,10 @@ mut:
 
 	has_reflection bool
 	// reflection metadata initialization
-	reflection_funcs strings.Builder
-	reflection_mods  strings.Builder
-	reflection_types strings.Builder
+	reflection_funcs        strings.Builder
+	reflection_mods         strings.Builder
+	reflection_types        strings.Builder
+	reflection_type_symbols strings.Builder
 }
 
 // global or const variable definition string
@@ -316,6 +317,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 		reflection_funcs: strings.new_builder(100)
 		reflection_mods: strings.new_builder(100)
 		reflection_types: strings.new_builder(100)
+		reflection_type_symbols: strings.new_builder(100)
 	}
 
 	/*
@@ -681,6 +683,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		reflection_funcs: strings.new_builder(100)
 		reflection_mods: strings.new_builder(100)
 		reflection_types: strings.new_builder(100)
+		reflection_type_symbols: strings.new_builder(100)
 	}
 	g.gen_file()
 	return g

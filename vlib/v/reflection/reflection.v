@@ -6,9 +6,16 @@ __global g_reflection = Reflection{}
 [heap]
 pub struct Reflection {
 pub mut:
-	modules []Module
-	funcs   []Function
-	types   []Type
+	modules      []Module
+	funcs        []Function
+	types        []Type
+	type_symbols []TypeSymbol
+}
+
+pub struct TypeSymbol {
+pub:
+	name string // symbol name
+	idx  int    // symbol idx
 }
 
 pub struct Type {
@@ -66,6 +73,21 @@ pub fn type_name(idx int) string {
 	return if t.len != 0 { t[0].name } else { '' }
 }
 
+pub fn type_symbol_name(idx int) string {
+	t := g_reflection.type_symbols.filter(it.idx == idx)
+	return if t.len != 0 { t[0].name } else { '' }
+}
+
+pub fn get_type(idx int) ?Type {
+	t := g_reflection.types.filter(it.idx == idx)
+	return if t.len != 0 { t[0] } else { none }
+}
+
+pub fn get_type_symbol(idx int) ?TypeSymbol {
+	t := g_reflection.type_symbols.filter(it.idx == idx)
+	return if t.len != 0 { t[0] } else { none }
+}
+
 // V metadata info - called from backend to fill metadata info
 
 fn add_module(mod_name string) {
@@ -78,4 +100,8 @@ fn add_func(func Function) {
 
 fn add_type(type_ Type) {
 	g_reflection.types << type_
+}
+
+fn add_type_symbol(typesymbol TypeSymbol) {
+	g_reflection.type_symbols << typesymbol
 }

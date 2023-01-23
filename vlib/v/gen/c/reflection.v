@@ -59,6 +59,11 @@ fn (mut g Gen) gen_reflection_data() {
 		g.reflection_types.write_string('\tv__reflection__add_type((v__reflection__Type){.name=_SLIT("${name}"),.idx=${idx}});\n')
 	}
 
+	// type symbols declaration
+	for idx, name in g.table.type_symbols {
+		g.reflection_type_symbols.write_string('\tv__reflection__add_type_symbol((v__reflection__TypeSymbol){.name=_SLIT("${name}"),.idx=${idx}});\n')
+	}
+
 	// modules declaration
 	g.writeln(g.reflection_mods.str())
 
@@ -67,4 +72,7 @@ fn (mut g Gen) gen_reflection_data() {
 
 	// types declaration
 	g.writeln(g.reflection_types.str())
+
+	// types symbol declaration
+	g.writeln(g.reflection_type_symbols.str())
 }
