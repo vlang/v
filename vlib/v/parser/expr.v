@@ -557,9 +557,15 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 					p.tok.pos())
 			}
 
+			// a++ a--
+			//  ^^ current token
+			// a[i]++ a--
+			//     ^^ current token
+			// check if op attached to previous name
+			prev_name_or_rsbr := p.prev_tok.kind in [.name, .rsbr]
 			// 1. ++name
 			//    ^^ current token
-			if inc_dec_tok && same_line_with_next && next_tok_name {
+			if inc_dec_tok && same_line_with_next && next_tok_name && !prev_name_or_rsbr {
 				p.prefix_inc_dec_error()
 			}
 

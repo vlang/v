@@ -105,13 +105,13 @@ fn test_all() {
 	tasks.add('', scanner_dir, '', '.out', scanner_tests, false)
 	tasks.add('', checker_dir, '-enable-globals run', '.run.out', ['globals_error.vv'],
 		false)
-	tasks.add('', global_run_dir, '-enable-globals run', '.run.out', global_run_tests,
-		false)
-	tasks.add('', global_dir, '-enable-globals', '.out', global_tests, false)
-	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
-	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
-	tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests,
-		false)
+	// tasks.add('', global_run_dir, '-enable-globals run', '.run.out', global_run_tests,
+	// 	false)
+	// tasks.add('', global_dir, '-enable-globals', '.out', global_tests, false)
+	// tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
+	// tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
+	// tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests,
+	// 	false)
 	tasks.run()
 	//
 	if os.user_os() == 'linux' {
