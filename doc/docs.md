@@ -6439,6 +6439,7 @@ typeof
 union
 unsafe
 volatile
+__global
 __offsetof
 ```
 See also [V Types](#v-types).
