@@ -565,7 +565,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			prev_name_or_rsbr := p.prev_tok.kind in [.name, .rsbr]
 			// 1. ++name
 			//    ^^ current token
-			if inc_dec_tok && same_line_with_next && next_tok_name && !prev_name_or_rsbr {
+			if inc_dec_tok && same_line_with_next && next_tok_name && (!prev_name_or_rsbr || !same_line_with_prev) {
 				p.prefix_inc_dec_error()
 			}
 
