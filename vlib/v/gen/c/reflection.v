@@ -1,6 +1,7 @@
 module c
 
 import v.ast
+import v.util
 
 // gen_empty_array generates code for empty array
 [inline]
@@ -50,7 +51,7 @@ fn (g Gen) gen_reflection_fndecl(node ast.FnDecl) string {
 	arg_str += '.full_name = _SLIT("${node.name}"),'
 	arg_str += '.is_method = ${node.is_method},'
 	arg_str += '.args = ${g.gen_functionarg_array('v__reflection__FunctionArg', node)},'
-	arg_str += '.file=v__util__cescaped_path(_SLIT("${node.file}")),'
+	arg_str += '.file=_SLIT("${util.cescaped_path(node.file)}"),'
 	arg_str += '.line_start=${node.pos.line_nr},'
 	arg_str += '.line_end=${node.pos.last_line},'
 	arg_str += '.is_test=${node.is_test},'
