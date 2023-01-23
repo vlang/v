@@ -20,8 +20,9 @@ pub:
 
 pub struct Type {
 pub:
-	name string // type name
-	idx  int    // type idx
+	name      string // type name
+	full_name string // full name
+	idx       int    // type idx
 }
 
 pub struct Module {

@@ -55,8 +55,9 @@ fn (mut g Gen) gen_reflection_data() {
 	}
 
 	// types declaration
-	for name, idx in g.table.type_idxs {
-		g.reflection_types.write_string('\tv__reflection__add_type((v__reflection__Type){.name=_SLIT("${name}"),.idx=${idx}});\n')
+	for full_name, idx in g.table.type_idxs {
+		name := full_name.all_after_last('.')
+		g.reflection_types.write_string('\tv__reflection__add_type((v__reflection__Type){.name=_SLIT("${name}"),.full_name=_SLIT("${full_name}"),.idx=${idx}});\n')
 	}
 
 	// type symbols declaration
