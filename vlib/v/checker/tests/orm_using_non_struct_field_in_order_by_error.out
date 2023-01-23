@@ -1,1 +1,8 @@
-v expects that `./vlib/v/checker/tests/orm_using_non_struct_field_` exists, but it does not
+vlib/v/checker/tests/orm_using_non_struct_field_in_order_by_error.vv:14:29: error: V ORM: `User` structure has no field with name `database`.
+2 possibilities: `id`, `username`.
+   12 |
+   13 |     users := sql db {
+   14 |         select from User order by database
+      |                                   ~~~~~~~~
+   15 |     }
+   16 |
