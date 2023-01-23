@@ -8,12 +8,12 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	is_non_void_pointer := (typ.is_ptr() || typ.is_pointer()) && typ_sym.kind != .voidptr
 
 	if node.op in [.inc, .dec] && !node.expr.is_lvalue() {
-		kind, op_str := if node.op == .inc { 'increment', '++' } else { 'decrement', '--' }
+		op_kind, op_str := if node.op == .inc { 'increment', '++' } else { 'decrement', '--' }
 
-		c.add_error_detail('try assign expression to a variable and use ${kind} for it:
+		c.add_error_detail('try assign expression to a variable and use ${op_kind} for it:
 	mut variable := ${node.expr}
 	variable${op_str}')
-		c.error('cannot ${kind} ${node.expr} because it is non lvalue expression', node.expr.pos())
+		c.error('cannot ${op_kind} ${node.expr} because it is non lvalue expression', node.expr.pos())
 	}
 
 	if !c.inside_unsafe && is_non_void_pointer && !node.expr.is_auto_deref_var() {
