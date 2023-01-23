@@ -99,6 +99,12 @@ pub fn get_aliases() []Type {
 	return g_reflection.types.filter(it.idx in alias_idxs)
 }
 
+// get_interfaces returns the registered aliases
+pub fn get_interfaces() []Type {
+	interface_idxs := g_reflection.type_symbols.filter(it.kind == .interface_).map(it.idx)
+	return g_reflection.types.filter(it.idx in interface_idxs)
+}
+
 // get_sum_types returns the registered sum types
 pub fn get_sum_types() []Type {
 	sumtype_idxs := g_reflection.type_symbols.filter(it.kind == .sum_type).map(it.idx)

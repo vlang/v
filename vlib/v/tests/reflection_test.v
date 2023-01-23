@@ -63,10 +63,14 @@ fn test_enum() {
 	assert reflection.get_enums().filter(it.name == 'TestEnum')[0].name == 'TestEnum'
 }
 
-fn test_aliases() {
+fn test_get_aliases() {
 	assert reflection.get_aliases().filter(it.name == 'MyInt')[0].name == 'MyInt'
 }
 
-fn test_sumtype() {
+fn test_get_sum_types() {
 	assert reflection.get_sum_types().filter(it.name == 'MySumType')[0].name == 'MySumType'
+}
+
+fn test_get_interfaces() {
+	assert reflection.get_interfaces().filter(it.name == 'IError')[0].full_name == 'IError'
 }
