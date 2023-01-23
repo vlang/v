@@ -1,6 +1,8 @@
 [has_globals]
 module reflection
 
+import v.ast
+
 __global g_reflection = Reflection{}
 
 [heap]
@@ -18,19 +20,20 @@ pub struct Enum {
 pub:
 	name       string // enum name
 	full_name  string // full name
-	is_pub     bool  // is pub?
-	is_flag    bool // is flag?
-	typ        int // type idx
-	line_start int // decl start line
-	line_end   int // decl end line
+	is_pub     bool   // is pub?
+	is_flag    bool   // is flag?
+	typ        int    // type idx
+	line_start int    // decl start line
+	line_end   int    // decl end line
 }
 
 pub struct TypeSymbol {
 pub:
-	name       string // symbol name
-	idx        int    // symbol idx
-	parent_idx int    // symbol parent idx
-	language   string // language
+	name       string   // symbol name
+	idx        int      // symbol idx
+	parent_idx int      // symbol parent idx
+	language   string   // language
+	kind       ast.Kind // kind
 }
 
 pub struct Type {
@@ -85,8 +88,21 @@ pub fn get_types() []Type {
 	return g_reflection.types
 }
 
+// get_enums returns the registered enums
 pub fn get_enums() []Enum {
 	return g_reflection.enums
+}
+
+// get_aliases returns the registered aliases
+pub fn get_aliases() []Type {
+	alias_idxs := g_reflection.type_symbols.filter(it.kind == .alias).map(it.idx)
+	return g_reflection.types.filter(it.idx in alias_idxs)
+}
+
+// get_sum_types returns the registered sum types
+pub fn get_sum_types() []Type {
+	sumtype_idxs := g_reflection.type_symbols.filter(it.kind == .sum_type).map(it.idx)
+	return g_reflection.types.filter(it.idx in sumtype_idxs)
 }
 
 // get_type_symbol returns the registered type symbols

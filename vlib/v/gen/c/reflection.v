@@ -68,7 +68,12 @@ fn (mut g Gen) gen_reflection_data() {
 
 	// type symbols declaration
 	for idx, tsym in g.table.type_symbols {
-		g.reflection_others.write_string('\tv__reflection__add_type_symbol((v__reflection__TypeSymbol){.name=_SLIT("${tsym.name}"),.idx=${idx},.parent_idx=${tsym.parent_idx},.language=_SLIT("${tsym.language}")});\n')
+		kind_name := if tsym.kind in [.none_, .struct_, .enum_, .interface_] {
+			tsym.kind.str() + '_'
+		} else {
+			tsym.kind.str()
+		}
+		g.reflection_others.write_string('\tv__reflection__add_type_symbol((v__reflection__TypeSymbol){.name=_SLIT("${tsym.name}"),.idx=${idx},.parent_idx=${tsym.parent_idx},.language=_SLIT("${tsym.language}"),.kind=v__ast__Kind__${kind_name}});\n')
 	}
 
 	// funcs meta info filling

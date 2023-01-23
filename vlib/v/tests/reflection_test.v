@@ -1,5 +1,9 @@
 import v.reflection
 
+type MyInt = int
+
+type MySumType = f64 | int
+
 enum TestEnum {
 	foo
 	bar
@@ -57,4 +61,12 @@ fn test_method() {
 
 fn test_enum() {
 	assert reflection.get_enums().filter(it.name == 'TestEnum')[0].name == 'TestEnum'
+}
+
+fn test_aliases() {
+	assert reflection.get_aliases().filter(it.name == 'MyInt')[0].name == 'MyInt'
+}
+
+fn test_sumtype() {
+	assert reflection.get_sum_types().filter(it.name == 'MySumType')[0].name == 'MySumType'
 }
