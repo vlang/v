@@ -12,7 +12,7 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 
 		c.add_error_detail('try assign expression to a variable and use ${kind} for it:
 	mut variable := ${node.expr}
-	variable${op_str}}')
+	variable${op_str}')
 		c.error('cannot ${kind} ${node.expr} because it is non lvalue expression', node.expr.pos())
 	}
 
