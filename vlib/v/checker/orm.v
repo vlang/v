@@ -4,9 +4,11 @@ module checker
 
 import v.ast
 import v.token
+import v.util
 
 const (
 	fkey_attr_name = 'fkey'
+	v_orm_prefix   = 'V ORM'
 )
 
 fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
@@ -97,14 +99,35 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	if node.has_where {
 		c.expr(node.where_expr)
 	}
-	if node.has_offset {
-		c.expr(node.offset_expr)
+
+	if node.has_order {
+		if mut node.order_expr is ast.Ident {
+			order_ident_name := node.order_expr.name
+
+			sym.find_field(order_ident_name) or {
+				field_names := fields.map(it.name)
+
+				c.error(util.new_suggestion(order_ident_name, field_names).say('`${sym.name}` structure has no field with name `${order_ident_name}`'),
+					node.order_expr.pos)
+				return ast.void_type
+			}
+		} else {
+			c.error('${checker.v_orm_prefix}: expected `${sym.name}` structure\'s field',
+				node.order_expr.pos())
+			return ast.void_type
+		}
+
+		c.expr(node.order_expr)
 	}
+
 	if node.has_limit {
 		c.expr(node.limit_expr)
+		c.check_sql_value_expr_is_natural_number(mut node.limit_expr, 'limit')
 	}
-	if node.has_order {
-		c.expr(node.order_expr)
+
+	if node.has_offset {
+		c.expr(node.offset_expr)
+		c.check_sql_value_expr_is_natural_number(mut node.offset_expr, 'offset')
 	}
 	c.expr(node.db_expr)
 
@@ -265,11 +288,44 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, t
 		&& c.table.sym(c.table.sym(it.typ).array_info().elem_type).kind == .struct_))
 		&& !it.attrs.contains('skip'))
 	if fields.len == 0 {
-		c.error('V orm: select: empty fields in `${table_name}`', pos)
+		c.error('${checker.v_orm_prefix}: select: empty fields in `${table_name}`', pos)
 		return []ast.StructField{}
 	}
 	if fields[0].name != 'id' {
-		c.error('V orm: `id int` must be the first field in `${table_name}`', pos)
+		c.error('${checker.v_orm_prefix}: `id int` must be the first field in `${table_name}`',
+			pos)
 	}
 	return fields
+}
+
+fn (mut c Checker) check_sql_value_expr_is_natural_number(mut expr ast.Expr, sql_keyword string) {
+	limit_lt_zero_message := '${checker.v_orm_prefix}: `${sql_keyword}` must be greater than or equal to zero'
+	call_expr_message := '${checker.v_orm_prefix}: call expressions are not supported yet'
+
+	// cgen doesn't support call expressions in ORM
+	if expr is ast.CallExpr {
+		c.error(call_expr_message, expr.pos())
+		return
+	}
+
+	comptime_number := c.get_comptime_number_value(mut expr) or {
+		c.check_sql_expr_type_is_uint(expr, sql_keyword)
+		return
+	}
+
+	if comptime_number < 0 {
+		c.error(limit_lt_zero_message, expr.pos())
+	}
+}
+
+fn (mut c Checker) check_sql_expr_type_is_uint(expr &ast.Expr, sql_keyword string) {
+	limit_type_error_message := '${checker.v_orm_prefix}: the type of `${sql_keyword}` must be an unsigned integer type'
+
+	if expr is ast.Ident {
+		if expr.obj.typ.is_unsigned() {
+			return
+		}
+	}
+
+	c.error(limit_type_error_message, expr.pos())
 }
