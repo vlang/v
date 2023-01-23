@@ -311,6 +311,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 		use_segfault_handler: !('no_segfault_handler' in pref.compile_defines
 			|| pref.os in [.wasm32, .wasm32_emscripten])
 		static_modifier: if pref.parallel_cc { 'static' } else { '' }
+		has_reflection: 'v.reflection' in table.modules
 		reflection_funcs: strings.new_builder(100)
 		reflection_mods: strings.new_builder(100)
 	}
@@ -464,7 +465,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 
 	mut g := global_g
 	util.timing_start('cgen common')
-	g.has_reflection = 'g_reflection' in global_g.global_const_defs
 
 	// to make sure type idx's are the same in cached mods
 	if g.pref.build_mode == .build_module {
@@ -675,6 +675,9 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		referenced_fns: global_g.referenced_fns
 		is_cc_msvc: global_g.is_cc_msvc
 		use_segfault_handler: global_g.use_segfault_handler
+		has_reflection: 'v.reflection' in global_g.table.modules
+		reflection_funcs: strings.new_builder(100)
+		reflection_mods: strings.new_builder(100)
 	}
 	g.gen_file()
 	return g
@@ -726,7 +729,6 @@ pub fn (mut g Gen) gen_file() {
 		g.is_vlines_enabled = true
 		g.inside_ternary = 0
 	}
-
 	g.stmts(g.file.stmts)
 	// Transfer embedded files
 	for path in g.file.embedded_files {
@@ -5315,14 +5317,17 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('\t_closure_mtx_init();')
 	}
 
-	// reflection bootstrap
-	if var := g.global_const_defs['g_reflection'] {
-		g.writeln(var.init)
-		g.gen_reflection_data()
+	// reflection bootstraping
+	if g.has_reflection {
+		var := g.global_const_defs['g_reflection']
+		{
+			g.writeln(var.init)
+			g.gen_reflection_data()
+		}
 	}
 
 	for mod_name in g.table.modules {
-		if mod_name == 'v.reflection' {
+		if g.has_reflection && mod_name == 'v.reflection' {
 			// ignore v.reflection already initialized above
 			continue
 		}

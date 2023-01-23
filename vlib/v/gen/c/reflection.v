@@ -4,6 +4,10 @@ import v.ast
 
 // gen_reflection_function generates C code for reflection function metadata
 fn (mut g Gen) gen_reflection_function(node ast.FnDecl) {
+	if !g.has_reflection {
+		return
+	}
+
 	if node.params.len == 0 {
 		g.reflection_funcs.write_string('\tv__reflection__add_func(_SLIT("${g.cur_mod.name}"), _SLIT("${node.name}"), false);')
 	} else {
