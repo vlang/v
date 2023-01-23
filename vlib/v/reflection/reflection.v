@@ -64,23 +64,31 @@ pub fn get_funcs() []Function {
 	return g_reflection.funcs
 }
 
+// get_types returns the registered types
 pub fn get_types() []Type {
 	return g_reflection.types
 }
 
-pub fn type_name(idx int) string {
-	t := g_reflection.types.filter(it.idx == idx)
-	return if t.len != 0 { t[0].name } else { '' }
+// get_type_symbol returns the registered type symbols
+pub fn get_type_symbols() []TypeSymbol {
+	return g_reflection.type_symbols
 }
 
-pub fn type_symbol_name(idx int) string {
-	t := g_reflection.type_symbols.filter(it.idx == idx)
+// Type API
+pub fn type_name(idx int) string {
+	t := g_reflection.types.filter(it.idx == idx)
 	return if t.len != 0 { t[0].name } else { '' }
 }
 
 pub fn get_type(idx int) ?Type {
 	t := g_reflection.types.filter(it.idx == idx)
 	return if t.len != 0 { t[0] } else { none }
+}
+
+// Type Symbol API
+pub fn type_symbol_name(idx int) string {
+	t := g_reflection.type_symbols.filter(it.idx == idx)
+	return if t.len != 0 { t[0].name } else { '' }
 }
 
 pub fn get_type_symbol(idx int) ?TypeSymbol {

@@ -24,4 +24,5 @@ fn test_type_name() {
 	assert reflection.type_name(ret_typ) == 'void'
 	assert reflection.get_type(ret_typ)?.name == 'void'
 	assert reflection.get_type_symbol(ret_typ)?.name == '&void'
+	assert reflection.type_name(reflection.get_funcs().filter(it.name == 'test3')[0].args[0].typ) == 'v.reflection.Function'
 }
