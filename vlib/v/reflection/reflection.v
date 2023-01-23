@@ -18,11 +18,10 @@ pub mut:
 
 pub struct Interface {
 pub:
-	name      string     // interface name
-	full_name string     // full name
-	typ       int        // type idx
-	is_pub    bool       // is pub?
-	methods   []Function // methods
+	name    string     // interface name
+	typ     int        // type idx
+	is_pub  bool       // is pub?
+	methods []Function // methods
 }
 
 pub struct EnumField {
@@ -33,7 +32,6 @@ pub:
 pub struct Enum {
 pub:
 	name       string      // enum name
-	full_name  string      // full name
 	is_pub     bool        // is pub?
 	is_flag    bool        // is flag?
 	typ        int         // type idx
@@ -53,9 +51,9 @@ pub:
 
 pub struct Type {
 pub:
-	name      string // type name
-	full_name string // full name
-	idx       int    // type idx
+	name string     // type name
+	idx  int        // type idx
+	sym  TypeSymbol // type symbol
 }
 
 pub struct Module {
@@ -73,17 +71,14 @@ pub struct Function {
 pub:
 	mod_name     string        // module name
 	name         string        // function/method name
-	full_name    string        // fully name
-	is_method    bool          // is a method?
 	args         []FunctionArg // function/method args
 	file         string        // source file name
 	line_start   int  // decl start line
 	line_end     int  // decl end line
-	is_test      bool // is test?
 	is_variadic  bool // is variadic?
 	is_noreturn  bool // is [noreturn] ?
 	return_typ   int  // return type idx
-	receiver_typ int  // receiver type idx (is_method true)
+	receiver_typ int  // receiver type idx (is a method)
 }
 
 // API module
@@ -154,26 +149,32 @@ pub fn get_type_symbol(idx int) ?TypeSymbol {
 
 // V metadata info - called from backend to fill metadata info
 
+[markused]
 fn add_module(mod_name string) {
 	g_reflection.modules << Module{mod_name}
 }
 
+[markused]
 fn add_func(func Function) {
 	g_reflection.funcs << func
 }
 
+[markused]
 fn add_type(type_ Type) {
 	g_reflection.types << type_
 }
 
+[markused]
 fn add_type_symbol(typesymbol TypeSymbol) {
 	g_reflection.type_symbols << typesymbol
 }
 
+[markused]
 fn add_enum(enum_ Enum) {
 	g_reflection.enums << enum_
 }
 
+[markused]
 fn add_interface(interface_ Interface) {
 	g_reflection.interfaces << interface_
 }

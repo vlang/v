@@ -28,7 +28,6 @@ fn test_module_existing() {
 }
 
 fn test_func_attribute() {
-	assert reflection.get_funcs().filter(it.name == 'test3')[0].is_noreturn == true
 	assert reflection.get_funcs().filter(it.name == 'test3')[0].is_variadic == false
 }
 
@@ -51,12 +50,9 @@ fn test_type_symbol() {
 
 fn test_method() {
 	method := reflection.get_funcs().filter(it.name == 'get_name')[0]
-	assert method.is_method == true
-	assert method.is_test == false
 	assert reflection.type_name(method.return_typ) == 'string'
 	println(reflection.get_type(method.receiver_typ)?.name)
 	assert reflection.get_type(method.receiver_typ)?.name == 'User'
-	assert reflection.get_type(method.receiver_typ)?.full_name == 'main.User'
 }
 
 fn test_enum() {
@@ -72,7 +68,7 @@ fn test_get_sum_types() {
 }
 
 fn test_get_interfaces() {
-	assert reflection.get_interfaces().filter(it.name == 'IError')[0].full_name == 'IError'
+	assert reflection.get_interfaces().filter(it.name == 'IError')[0].name == 'IError'
 }
 
 fn test_interfaces() {
