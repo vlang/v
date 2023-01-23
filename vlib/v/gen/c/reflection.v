@@ -61,8 +61,8 @@ fn (mut g Gen) gen_reflection_data() {
 	}
 
 	// type symbols declaration
-	for idx, name in g.table.type_symbols {
-		g.reflection_type_symbols.write_string('\tv__reflection__add_type_symbol((v__reflection__TypeSymbol){.name=_SLIT("${name}"),.idx=${idx}});\n')
+	for idx, tsym in g.table.type_symbols {
+		g.reflection_type_symbols.write_string('\tv__reflection__add_type_symbol((v__reflection__TypeSymbol){.name=_SLIT("${tsym.name}"),.idx=${idx},.parent_idx=${tsym.parent_idx},.language=_SLIT("${tsym.language}")});\n')
 	}
 
 	// modules declaration

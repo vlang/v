@@ -14,8 +14,10 @@ pub mut:
 
 pub struct TypeSymbol {
 pub:
-	name string // symbol name
-	idx  int    // symbol idx
+	name       string // symbol name
+	idx        int    // symbol idx
+	parent_idx int    // symbol parent idx
+	language   string // language
 }
 
 pub struct Type {
