@@ -2,4 +2,4 @@ fn foo() int {
 	return 100
 }
 
-foo()++
+foo()--
