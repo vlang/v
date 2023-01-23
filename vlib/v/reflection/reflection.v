@@ -25,15 +25,21 @@ pub:
 	methods   []Function // methods
 }
 
+pub struct EnumField {
+pub:
+	name string // field name
+}
+
 pub struct Enum {
 pub:
-	name       string // enum name
-	full_name  string // full name
-	is_pub     bool   // is pub?
-	is_flag    bool   // is flag?
-	typ        int    // type idx
-	line_start int    // decl start line
-	line_end   int    // decl end line
+	name       string      // enum name
+	full_name  string      // full name
+	is_pub     bool        // is pub?
+	is_flag    bool        // is flag?
+	typ        int         // type idx
+	line_start int         // decl start line
+	line_end   int         // decl end line
+	fields     []EnumField // enum fields
 }
 
 pub struct TypeSymbol {

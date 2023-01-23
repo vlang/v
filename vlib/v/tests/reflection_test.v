@@ -78,3 +78,10 @@ fn test_get_interfaces() {
 fn test_interfaces() {
 	assert reflection.get_interfaces().filter(it.name == 'IError')[0].methods.len == 2
 }
+
+fn test_enum_fields() {
+	assert reflection.get_enums().filter(it.name == 'TestEnum')[0].fields.map(it.name) == [
+		'foo',
+		'bar',
+	]
+}

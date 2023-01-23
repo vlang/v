@@ -43,6 +43,21 @@ fn (g Gen) gen_function_array(nodes []ast.FnDecl) string {
 	return out
 }
 
+[inline]
+fn (g Gen) gen_reflection_enum_fields(fields []ast.EnumField) string {
+	if fields.len == 0 {
+		return g.gen_empty_array('v__reflection__EnumField')
+	}
+	mut out := 'new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(v__reflection__EnumField), '
+	out += '_MOV((v__reflection__EnumField[${fields.len}]){'
+	for field in fields {
+		out += '((v__reflection__EnumField){.name=_SLIT("${field.name}")}),'
+	}
+	out += '}))'
+	return out
+}
+
+[inline]
 fn (g Gen) gen_reflection_fndecl(node ast.FnDecl) string {
 	mut arg_str := '((v__reflection__Function){'
 	v_name := node.name.all_after_last('.')
@@ -82,7 +97,8 @@ fn (mut g Gen) gen_reflection_data() {
 	// enum declaration
 	for full_name, enum_ in g.table.enum_decls {
 		name := full_name.all_after_last('.')
-		g.reflection_others.write_string('\tv__reflection__add_enum((v__reflection__Enum){.name=_SLIT("${name}"),.full_name=_SLIT("${full_name}"),.is_pub=${enum_.is_pub},.is_flag=${enum_.is_flag},.typ=${enum_.typ.idx()},.line_start=${enum_.pos.line_nr},.line_end=${enum_.pos.last_line}});\n')
+		fields := g.gen_reflection_enum_fields(enum_.fields)
+		g.reflection_others.write_string('\tv__reflection__add_enum((v__reflection__Enum){.name=_SLIT("${name}"),.full_name=_SLIT("${full_name}"),.is_pub=${enum_.is_pub},.is_flag=${enum_.is_flag},.typ=${enum_.typ.idx()},.line_start=${enum_.pos.line_nr},.line_end=${enum_.pos.last_line},.fields=${fields}});\n')
 	}
 
 	// types declaration
