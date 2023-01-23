@@ -16,13 +16,13 @@ pub mut:
 
 pub struct Enum {
 pub:
-	name       string
-	full_name  string
-	is_pub     bool
-	is_flag    bool
-	typ        int
-	line_start int
-	line_end   int
+	name       string // enum name
+	full_name  string // full name
+	is_pub     bool  // is pub?
+	is_flag    bool // is flag?
+	typ        int // type idx
+	line_start int // decl start line
+	line_end   int // decl end line
 }
 
 pub struct TypeSymbol {
@@ -59,8 +59,8 @@ pub:
 	is_method    bool          // is a method?
 	args         []FunctionArg // function/method args
 	file         string        // source file name
-	line_start   int  // declaration start line
-	line_end     int  // declaration end line
+	line_start   int  // decl start line
+	line_end     int  // decl end line
 	is_test      bool // is test?
 	is_variadic  bool // is variadic?
 	is_noreturn  bool // is [noreturn] ?

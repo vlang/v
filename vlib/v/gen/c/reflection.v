@@ -74,6 +74,6 @@ fn (mut g Gen) gen_reflection_data() {
 	// funcs meta info filling
 	g.writeln(g.reflection_funcs.str())
 
-	// other meta info filling
+	// others meta info filling
 	g.writeln(g.reflection_others.str())
 }
