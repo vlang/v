@@ -839,7 +839,7 @@ nums[1] = 5
 println(nums) // `[1, 5, 3]`
 ```
 
-<a id='array-operations' />
+<a id='array-operations'></a>
 
 An element can be appended to the end of an array using the push operator `<<`.
 It can also append an entire array.
@@ -2133,7 +2133,7 @@ This example will not compile, since the field `n` isn't explicitly initialized:
 _ = Foo{}
 ```
 
-<a id='short-struct-initialization-syntax' />
+<a id='short-struct-initialization-syntax'></a>
 
 ### Short struct literal syntax
 
@@ -2871,7 +2871,7 @@ println(User{ name: 'Bob', age: 20 }) // "User{name:'Bob', age:20}"
 
 See also [Array methods](#array-methods).
 
-<a id='custom-print-of-types' />
+<a id='custom-print-of-types'></a>
 
 ### Printing custom types
 
