@@ -121,11 +121,13 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 
 	if node.has_limit {
 		c.expr(node.limit_expr)
+		c.check_sql_expr_is_not_call_expr(mut node.limit_expr)
 		c.check_sql_value_expr_is_natural_number(mut node.limit_expr, 'limit')
 	}
 
 	if node.has_offset {
 		c.expr(node.offset_expr)
+		c.check_sql_expr_is_not_call_expr(mut node.offset_expr)
 		c.check_sql_value_expr_is_natural_number(mut node.offset_expr, 'offset')
 	}
 	c.expr(node.db_expr)
@@ -296,13 +298,14 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, t
 	return fields
 }
 
-fn (mut c Checker) check_sql_value_expr_is_natural_number(mut expr ast.Expr, sql_keyword string) {
+fn (mut c Checker) check_sql_expr_is_not_call_expr(mut expr ast.Expr) {
 	// cgen doesn't support call expressions in ORM
 	if expr is ast.CallExpr {
 		c.orm_error('call expressions are not supported yet', expr.pos())
-		return
 	}
+}
 
+fn (mut c Checker) check_sql_value_expr_is_natural_number(mut expr ast.Expr, sql_keyword string) {
 	comptime_number := c.get_comptime_number_value(mut expr) or {
 		c.check_sql_expr_type_is_uint(expr, sql_keyword)
 		return
