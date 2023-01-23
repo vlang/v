@@ -535,10 +535,20 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 						p.tok.pos())
 				}
 			}
-			if p.tok.kind in [.inc, .dec] && p.prev_tok.line_nr != p.tok.line_nr {
-				p.error_with_pos('${p.tok} must be on the same line as the previous token',
-					p.tok.pos())
+
+			if p.tok.kind in [.inc, .dec] && p.peek_tok.line_nr == p.tok.line_nr
+				&& p.peek_tok.kind == .name {
+				op := if p.tok.kind == .inc { '++' } else { '--' }
+				op_pos := p.tok.pos()
+
+				p.next()
+				expr := p.expr(0) // expression `mp["name"]` after `--` in `--mp["name"]`
+				full_expr_pos := op_pos.extend(expr.pos()) // position of full `--mp["name"]`
+
+				p.error_with_pos('prefix `${op}${expr}` is unsupported, use suffix form `${expr}${op}`',
+					full_expr_pos)
 			}
+
 			if mut node is ast.IndexExpr {
 				node.recursive_mapset_is_setter(true)
 			}
