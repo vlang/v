@@ -252,7 +252,7 @@ fn (mut c Checker) check_orm_struct_field_attributes(field ast.StructField) {
 			}
 
 			if attr.kind != .string {
-				c.orm_error('`${checker.fkey_attr_name}` attribute must be string. Try [${checker.fkey_attr_name}: \'${attr.arg}\'] instead of [${checker.fkey_attr_name}: ${attr.arg}]',
+				c.orm_error("`${checker.fkey_attr_name}` attribute must be string. Try [${checker.fkey_attr_name}: '${attr.arg}'] instead of [${checker.fkey_attr_name}: ${attr.arg}]",
 					attr.pos)
 				return
 			}
