@@ -3565,31 +3565,6 @@ pub fn (mut c Checker) is_comptime_var(node ast.Expr) bool {
 		&& (node as ast.Ident).info is ast.IdentVar && (node as ast.Ident).kind == .variable && ((node as ast.Ident).obj as ast.Var).is_comptime_field
 }
 
-fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
-	typ := c.unwrap_generic(c.expr(node.expr))
-	typ_sym := c.table.sym(typ)
-	is_non_void_pointer := (typ.is_ptr() || typ.is_pointer()) && typ_sym.kind != .voidptr
-	if !c.inside_unsafe && is_non_void_pointer && !node.expr.is_auto_deref_var() {
-		c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
-	}
-	if !(typ_sym.is_number() || ((c.inside_unsafe || c.pref.translated) && is_non_void_pointer)) {
-		if c.inside_comptime_for_field {
-			if c.is_comptime_var(node.expr) {
-				return c.comptime_fields_default_type
-			} else if node.expr is ast.ComptimeSelector {
-				return c.comptime_fields_default_type
-			}
-		}
-
-		typ_str := c.table.type_to_str(typ)
-		c.error('invalid operation: ${node.op.str()} (non-numeric type `${typ_str}`)',
-			node.pos)
-	} else {
-		node.auto_locked, _ = c.fail_if_immutable(node.expr)
-	}
-	return typ
-}
-
 fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 	match mut node {
 		ast.Ident {
@@ -3874,7 +3849,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		&& typ_sym.kind == .map && node.or_expr.stmts.len == 0 {
 		elem_type := c.table.value_type(typ)
 		if elem_type.is_real_pointer() {
-			c.note('accessing a pointer map value requires an `or{}` block outside `unsafe`',
+			c.note('accessing a pointer map value requires an `or {}` block outside `unsafe`',
 				node.pos)
 		}
 	}

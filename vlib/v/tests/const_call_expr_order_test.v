@@ -10,7 +10,9 @@ const (
 fn test_const_call_expr_order() {
 	dump(cache_dir)
 	dump(shdc)
-	assert true
+	assert shdc.contains(cache_dir)
+	assert shdc.contains(tool_name)
+	assert shdc.ends_with(shdc_exe_name)
 }
 
 fn shdc_exe() string {

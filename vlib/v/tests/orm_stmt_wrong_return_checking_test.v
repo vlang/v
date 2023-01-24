@@ -1,4 +1,4 @@
-import sqlite
+import db.sqlite
 
 struct Target {
 pub mut:
@@ -7,7 +7,7 @@ pub mut:
 }
 
 fn add_target(repo Target) !int {
-	mut dbs := sqlite.connect('test.db')!
+	mut dbs := sqlite.connect(':memory:')!
 	defer {
 		dbs.close() or { panic(err) }
 	}
