@@ -1056,3 +1056,26 @@ fn test_string_is_ascii() {
 fn test_string_with_zero_byte_escape() {
 	assert '\x00'.bytes() == [u8(0)]
 }
+
+fn test_is_blank() {
+	assert ''.is_blank()
+	assert ' '.is_blank()
+	assert ' \t'.is_blank()
+	assert ' \t
+
+'.is_blank()
+	assert ' \t\r'.is_blank()
+	assert ' \t\r
+
+'.is_blank()
+}
+
+fn test_indent_width() {
+	assert 'abc'.indent_width() == 0
+	assert ' abc'.indent_width() == 1
+	assert '  abc'.indent_width() == 2
+	assert '\tabc'.indent_width() == 1
+	assert '\t abc'.indent_width() == 2
+	assert '\t\tabc'.indent_width() == 2
+	assert '\t\t abc'.indent_width() == 3
+}
