@@ -841,22 +841,34 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 
 // split_into_lines splits the string by newline characters.
 // newlines are stripped.
-// Both `\n` and `\r\n` newline endings are supported.
+// `\r` (MacOS), `\n` (POSIX), and `\r\n` (WinOS) line endings are all supported (including mixed line endings).
+// NOTE: algorithm is "greedy", consuming '\r\n' as a single line ending with higher priority than '\r' and '\n' as multiple endings
 [direct_array_access]
 pub fn (s string) split_into_lines() []string {
 	mut res := []string{}
 	if s.len == 0 {
 		return res
 	}
-	mut start := 0
+	cr := `\r`
+	lf := `\n`
+	mut line_start := 0
 	for i := 0; i < s.len; i++ {
-		if s[i] == 10 {
-			res << if start == i { '' } else { s[start..i].trim_right('\r') }
-			start = i + 1
+		if line_start <= i {
+			if s[i] == lf {
+				res << if line_start == i { '' } else { s[line_start..i] }
+				line_start = i + 1
+			} else if s[i] == cr {
+				res << if line_start == i { '' } else { s[line_start..i] }
+				if ((i + 1) < s.len) && (s[i + 1] == lf) {
+					line_start = i + 2
+				} else {
+					line_start = i + 1
+				}
+			}
 		}
 	}
-	if start < s.len {
-		res << s[start..]
+	if line_start < s.len {
+		res << s[line_start..]
 	}
 	return res
 }

@@ -791,10 +791,18 @@ fn filter(b u8) bool {
 	return b != `a`
 }
 
-/*
 fn test_split_into_lines() {
-	line_content := 'Line'
-	text_crlf := '$line_content\r\n$line_content\r\n$line_content'
+	line_content := 'line content'
+
+	text_cr := '${line_content}\r${line_content}\r${line_content}'
+	lines_cr := text_cr.split_into_lines()
+
+	assert lines_cr.len == 3
+	for line in lines_cr {
+		assert line == line_content
+	}
+
+	text_crlf := '${line_content}\r\n${line_content}\r\n${line_content}'
 	lines_crlf := text_crlf.split_into_lines()
 
 	assert lines_crlf.len == 3
@@ -802,15 +810,31 @@ fn test_split_into_lines() {
 		assert line == line_content
 	}
 
-	text_lf := '$line_content\n$line_content\n$line_content'
+	text_lf := '${line_content}\n${line_content}\n${line_content}'
 	lines_lf := text_lf.split_into_lines()
 
 	assert lines_lf.len == 3
 	for line in lines_lf {
 		assert line == line_content
 	}
+
+	text_mixed := '${line_content}\n${line_content}\r${line_content}'
+	lines_mixed := text_mixed.split_into_lines()
+
+	assert lines_mixed.len == 3
+	for line in lines_mixed {
+		assert line == line_content
+	}
+
+	text_mixed_trailers := '${line_content}\n${line_content}\r${line_content}\r\r\r\n\n\n\r\r'
+	lines_mixed_trailers := text_mixed_trailers.split_into_lines()
+
+	assert lines_mixed_trailers.len == 9
+	for line in lines_mixed_trailers {
+		assert (line == line_content) || (line == '')
+	}
 }
-*/
+
 fn test_string_literal_with_backslash() {
 	a := 'HelloWorld'
 	assert a == 'HelloWorld'
