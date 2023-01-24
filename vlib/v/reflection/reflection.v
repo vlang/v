@@ -82,6 +82,11 @@ pub:
 
 // API module
 
+// type_of returns the type info of the passed value
+pub fn type_of[T](val T) Type {
+	return g_reflection.types.filter(it.idx == typeof[T]().idx)[0]
+}
+
 // get_modules returns the module name built with V source
 pub fn get_modules() []Module {
 	return g_reflection.modules
