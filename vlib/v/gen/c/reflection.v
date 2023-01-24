@@ -3,15 +3,14 @@ module c
 import v.ast
 import v.util
 
-[inline]
 // gen_empty_array generates code for empty array
+[inline]
 fn (g Gen) gen_empty_array(type_name string) string {
 	return '__new_array_with_default(0, 0, sizeof(${type_name}), 0)'
 }
 
-
-[inline]
 // gen_functionarg_array generates the code for functionarg argument
+[inline]
 fn (g Gen) gen_functionarg_array(type_name string, node ast.FnDecl) string {
 	if node.params.len == 0 {
 		return g.gen_empty_array(type_name)
@@ -44,8 +43,8 @@ fn (g Gen) gen_function_array(nodes []ast.FnDecl) string {
 	return out
 }
 
-[inline]
 // gen_reflection_enum_fields generates C code for enum fields
+[inline]
 fn (g Gen) gen_reflection_enum_fields(fields []ast.EnumField) string {
 	if fields.len == 0 {
 		return g.gen_empty_array('v__reflection__EnumField')
@@ -59,8 +58,8 @@ fn (g Gen) gen_reflection_enum_fields(fields []ast.EnumField) string {
 	return out
 }
 
-[inline]
 // gen_reflection_fndecl generates C code for function declaration
+[inline]
 fn (g Gen) gen_reflection_fndecl(node ast.FnDecl) string {
 	mut arg_str := '((v__reflection__Function){'
 	v_name := node.name.all_after_last('.')
@@ -77,8 +76,8 @@ fn (g Gen) gen_reflection_fndecl(node ast.FnDecl) string {
 	return arg_str
 }
 
-[inline]
 // gen_reflection_sym generates C code for TypeSymbol struct
+[inline]
 fn (g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
 	kind_name := if tsym.kind in [.none_, .struct_, .enum_, .interface_] {
 		tsym.kind.str() + '_'
@@ -88,8 +87,8 @@ fn (g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
 	return '(v__reflection__TypeSymbol){.name=_SLIT("${tsym.name}"),.idx=${tsym.idx},.parent_idx=${tsym.parent_idx},.language=_SLIT("${tsym.language}"),.kind=v__ast__Kind__${kind_name}}'
 }
 
-[inline]
 // gen_reflection_function generates C code for reflection function metadata
+[inline]
 fn (mut g Gen) gen_reflection_function(node ast.FnDecl) {
 	if !g.has_reflection {
 		return
