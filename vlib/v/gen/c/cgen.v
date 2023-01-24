@@ -239,8 +239,9 @@ mut:
 
 	has_reflection bool
 	// reflection metadata initialization
-	reflection_funcs  strings.Builder
-	reflection_others strings.Builder
+	reflection_funcs   strings.Builder
+	reflection_others  strings.Builder
+	reflection_strings map[int]string
 }
 
 // global or const variable definition string
@@ -403,6 +404,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 			global_g.sql_buf.write(g.sql_buf) or { panic(err) }
 
 			global_g.cleanups[g.file.mod.name].write(g.cleanup) or { panic(err) } // strings.Builder.write never fails; it is like that in the source
+
+			for k, v in g.reflection_strings {
+				global_g.reflection_strings[k] = v
+			}
 
 			for str_type in g.str_types {
 				global_g.str_types << str_type

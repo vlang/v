@@ -3,6 +3,21 @@ module c
 import v.ast
 import v.util
 
+// reflection_string maps hash to string
+fn (mut g Gen) reflection_string(str string) int {
+	str_hash := str.hash()
+	g.reflection_strings[str_hash] = str
+	return str_hash
+}
+
+// gen_reflection_strings generates the reflectino string registration
+[inline]
+fn (mut g Gen) gen_reflection_strings() {
+	for _, str in g.reflection_strings {
+		g.reflection_others.write_string('\tv__reflection__add_string(_SLIT("${str}"));\n')
+	}
+}
+
 // gen_empty_array generates code for empty array
 [inline]
 fn (g Gen) gen_empty_array(type_name string) string {
@@ -26,7 +41,7 @@ fn (g Gen) gen_functionarg_array(type_name string, node ast.FnDecl) string {
 
 // gen_functionarg_array generates the code for functionarg argument
 [inline]
-fn (g Gen) gen_function_array(nodes []ast.FnDecl) string {
+fn (mut g Gen) gen_function_array(nodes []ast.FnDecl) string {
 	type_name := 'v__reflection__Function'
 
 	if nodes.len == 0 {
@@ -60,13 +75,13 @@ fn (g Gen) gen_reflection_enum_fields(fields []ast.EnumField) string {
 
 // gen_reflection_fndecl generates C code for function declaration
 [inline]
-fn (g Gen) gen_reflection_fndecl(node ast.FnDecl) string {
+fn (mut g Gen) gen_reflection_fndecl(node ast.FnDecl) string {
 	mut arg_str := '((v__reflection__Function){'
 	v_name := node.name.all_after_last('.')
 	arg_str += '.mod_name=_SLIT("${node.mod}"),'
 	arg_str += '.name=_SLIT("${v_name}"),'
 	arg_str += '.args=${g.gen_functionarg_array('v__reflection__FunctionArg', node)},'
-	arg_str += '.file=_SLIT("${util.cescaped_path(node.file)}"),'
+	arg_str += '.file_hash=${g.reflection_string(util.cescaped_path(node.file))},'
 	arg_str += '.line_start=${node.pos.line_nr},'
 	arg_str += '.line_end=${node.pos.last_line},'
 	arg_str += '.is_variadic=${node.is_variadic},'
@@ -131,6 +146,8 @@ fn (mut g Gen) gen_reflection_data() {
 		sym := g.gen_reflection_sym(tsym)
 		g.reflection_others.write_string('\tv__reflection__add_type_symbol(${sym});\n')
 	}
+
+	g.gen_reflection_strings()
 
 	// funcs meta info filling
 	g.writeln(g.reflection_funcs.str())

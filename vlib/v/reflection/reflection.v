@@ -14,6 +14,7 @@ pub mut:
 	type_symbols []TypeSymbol
 	enums        []Enum
 	interfaces   []Interface
+	strings      map[int]string
 }
 
 pub struct Interface {
@@ -72,7 +73,7 @@ pub:
 	mod_name     string        // module name
 	name         string        // function/method name
 	args         []FunctionArg // function/method args
-	file         string        // source file name
+	file_hash    int  // source file name
 	line_start   int  // decl start line
 	line_end     int  // decl end line
 	is_variadic  bool // is variadic?
@@ -81,6 +82,14 @@ pub:
 }
 
 // API module
+
+pub fn get_strings() map[int]string {
+	return g_reflection.strings
+}
+
+pub fn get_string(idx int) string {
+	return g_reflection.strings[idx]
+}
 
 // type_of returns the type info of the passed value
 pub fn type_of[T](val T) Type {
@@ -181,4 +190,9 @@ fn add_enum(enum_ Enum) {
 [markused]
 fn add_interface(interface_ Interface) {
 	g_reflection.interfaces << interface_
+}
+
+[markused]
+fn add_string(str string) {
+	g_reflection.strings[str.hash()] = str
 }
