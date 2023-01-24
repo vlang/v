@@ -2061,14 +2061,18 @@ pub fn (s string) trim_indent() string {
 		lines = lines[..lines.len - 1]
 	}
 
-	return lines
-		.map(fn [min_common_indent] (it string) string {
-			if it.is_blank() {
-				return it
-			}
-			return it[min_common_indent..]
-		})
-		.join('\n')
+	mut trimmed_lines := []string{cap: lines.len}
+
+	for line in lines {
+		if line.is_blank() {
+			trimmed_lines << line
+			continue
+		}
+
+		trimmed_lines << line[min_common_indent..]
+	}
+
+	return trimmed_lines.join('\n')
 }
 
 // indent_width returns the number of spaces or tabs at the beginning of the string.
