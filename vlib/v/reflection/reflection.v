@@ -83,12 +83,8 @@ pub:
 
 // API module
 
-pub fn get_strings() map[int]string {
-	return g_reflection.strings
-}
-
-pub fn get_string(idx int) string {
-	return g_reflection.strings[idx]
+pub fn get_string_by_hash(hash int) string {
+	return g_reflection.strings[hash]
 }
 
 // type_of returns the type info of the passed value
