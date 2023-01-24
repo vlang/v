@@ -3,22 +3,23 @@ module c
 import v.ast
 import v.util
 
-// gen_empty_array generates code for empty array
 [inline]
+// gen_empty_array generates code for empty array
 fn (g Gen) gen_empty_array(type_name string) string {
 	return '__new_array_with_default(0, 0, sizeof(${type_name}), 0)'
 }
 
-// gen_functionarg_array generates the code for functionarg argument
+
 [inline]
+// gen_functionarg_array generates the code for functionarg argument
 fn (g Gen) gen_functionarg_array(type_name string, node ast.FnDecl) string {
 	if node.params.len == 0 {
 		return g.gen_empty_array(type_name)
 	}
-	mut out := 'new_array_from_c_array(${node.params.len}, ${node.params.len}, sizeof(${type_name}), '
+	mut out := 'new_array_from_c_array(${node.params.len},${node.params.len},sizeof(${type_name}),'
 	out += '_MOV((${type_name}[${node.params.len}]){'
 	for param in node.params {
-		out += '((${type_name}){.name = _SLIT("${param.name}"),.typ = ${param.typ.idx()},}),'
+		out += '((${type_name}){.name=_SLIT("${param.name}"),.typ=${param.typ.idx()},}),'
 	}
 	out += '}))'
 	return out
@@ -33,7 +34,7 @@ fn (g Gen) gen_function_array(nodes []ast.FnDecl) string {
 		return g.gen_empty_array(type_name)
 	}
 
-	mut out := 'new_array_from_c_array(${nodes.len}, ${nodes.len}, sizeof(${type_name}), '
+	mut out := 'new_array_from_c_array(${nodes.len},${nodes.len},sizeof(${type_name}),'
 	out += '_MOV((${type_name}[${nodes.len}]){'
 	for method in nodes {
 		out += g.gen_reflection_fndecl(method)
@@ -44,11 +45,12 @@ fn (g Gen) gen_function_array(nodes []ast.FnDecl) string {
 }
 
 [inline]
+// gen_reflection_enum_fields generates C code for enum fields
 fn (g Gen) gen_reflection_enum_fields(fields []ast.EnumField) string {
 	if fields.len == 0 {
 		return g.gen_empty_array('v__reflection__EnumField')
 	}
-	mut out := 'new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(v__reflection__EnumField), '
+	mut out := 'new_array_from_c_array(${fields.len},${fields.len},sizeof(v__reflection__EnumField),'
 	out += '_MOV((v__reflection__EnumField[${fields.len}]){'
 	for field in fields {
 		out += '((v__reflection__EnumField){.name=_SLIT("${field.name}")}),'
@@ -58,12 +60,13 @@ fn (g Gen) gen_reflection_enum_fields(fields []ast.EnumField) string {
 }
 
 [inline]
+// gen_reflection_fndecl generates C code for function declaration
 fn (g Gen) gen_reflection_fndecl(node ast.FnDecl) string {
 	mut arg_str := '((v__reflection__Function){'
 	v_name := node.name.all_after_last('.')
-	arg_str += '.mod_name = _SLIT("${node.mod}"),'
-	arg_str += '.name = _SLIT("${v_name}"),'
-	arg_str += '.args = ${g.gen_functionarg_array('v__reflection__FunctionArg', node)},'
+	arg_str += '.mod_name=_SLIT("${node.mod}"),'
+	arg_str += '.name=_SLIT("${v_name}"),'
+	arg_str += '.args=${g.gen_functionarg_array('v__reflection__FunctionArg', node)},'
 	arg_str += '.file=_SLIT("${util.cescaped_path(node.file)}"),'
 	arg_str += '.line_start=${node.pos.line_nr},'
 	arg_str += '.line_end=${node.pos.last_line},'
@@ -74,6 +77,8 @@ fn (g Gen) gen_reflection_fndecl(node ast.FnDecl) string {
 	return arg_str
 }
 
+[inline]
+// gen_reflection_sym generates C code for TypeSymbol struct
 fn (g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
 	kind_name := if tsym.kind in [.none_, .struct_, .enum_, .interface_] {
 		tsym.kind.str() + '_'
@@ -83,6 +88,7 @@ fn (g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
 	return '(v__reflection__TypeSymbol){.name=_SLIT("${tsym.name}"),.idx=${tsym.idx},.parent_idx=${tsym.parent_idx},.language=_SLIT("${tsym.language}"),.kind=v__ast__Kind__${kind_name}}'
 }
 
+[inline]
 // gen_reflection_function generates C code for reflection function metadata
 fn (mut g Gen) gen_reflection_function(node ast.FnDecl) {
 	if !g.has_reflection {

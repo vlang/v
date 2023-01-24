@@ -76,7 +76,6 @@ pub:
 	line_start   int  // decl start line
 	line_end     int  // decl end line
 	is_variadic  bool // is variadic?
-	is_noreturn  bool // is [noreturn] ?
 	return_typ   int  // return type idx
 	receiver_typ int  // receiver type idx (is a method)
 }
@@ -147,7 +146,7 @@ pub fn get_type_symbol(idx int) ?TypeSymbol {
 	return if t.len != 0 { t[0] } else { none }
 }
 
-// V metadata info - called from backend to fill metadata info
+// V reflection metainfo API (called from backend to fill metadata info)
 
 [markused]
 fn add_module(mod_name string) {
