@@ -2386,7 +2386,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	// p.warn('resetting')
 	p.expr_mod = ''
 	// `map[string]int` initialization
-	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
+	if (p.tok.lit == 'map' && p.peek_tok.kind == .lsbr)
+		|| (p.tok.kind == .question && p.peek_tok.lit == 'map') {
 		mut pos := p.tok.pos()
 		map_type := p.parse_map_type()
 		if p.tok.kind == .lcbr {

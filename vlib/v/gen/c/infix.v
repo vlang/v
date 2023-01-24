@@ -97,7 +97,10 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.gen_plain_infix_expr(node)
 		return
 	}
-	if (left.typ.is_ptr() && right.typ.is_int()) || (right.typ.is_ptr() && left.typ.is_int()) {
+	is_none_check := node.left_type.has_flag(.option) && node.right is ast.None
+	if is_none_check {
+		g.gen_is_none_check(node)
+	} else if (left.typ.is_ptr() && right.typ.is_int()) || (right.typ.is_ptr() && left.typ.is_int()) {
 		g.gen_plain_infix_expr(node)
 	} else if (left.typ.idx() == ast.string_type_idx || (!has_defined_eq_operator
 		&& left.unaliased.idx() == ast.string_type_idx)) && node.right is ast.StringLiteral
@@ -955,6 +958,26 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 	g.gen_plain_infix_expr(node)
 }
 
+fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
+	stmt_str := g.go_before_stmt(0).trim_space()
+	g.empty_line = true
+	left_var := g.expr_with_opt_tmp_var(node.left, node.left_type, node.left_type, '')
+	g.writeln(';')
+	g.write(stmt_str)
+	g.write(' ')
+	g.write('${left_var}.state')
+	g.write(' ${node.op.str()} ')
+
+	if g.table.sym(node.left_type).kind == .map {
+		g.write('0 && memcmp(&')
+		// g.inside_opt_or_res = false
+		g.expr(node.left)
+		g.write('.err, &_const_none__, sizeof(None__)) ${node.op.str()} 0')
+	} else {
+		g.write('2') // none state
+	}
+}
+
 // gen_plain_infix_expr generates basic code for infix expressions,
 // without any overloading of any kind
 // i.e. v`a + 1` => c`a + 1`
@@ -964,23 +987,9 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	if node.left_type.is_ptr() && node.left.is_auto_deref_var() {
 		g.write('*')
 	}
-	is_none_check := node.left_type.has_flag(.option) && node.right is ast.None
-	if is_none_check {
-		stmt_str := g.go_before_stmt(0).trim_space()
-		g.empty_line = true
-		left_var := g.expr_with_opt_tmp_var(node.left, node.left_type, node.left_type,
-			'')
-		g.writeln(';')
-		g.write(stmt_str)
-		g.write(' ')
-		g.write('${left_var}.state')
-	} else {
-		g.expr(node.left)
-	}
+	g.expr(node.left)
 	g.write(' ${node.op.str()} ')
-	if is_none_check {
-		g.write('2') // none state
-	} else if node.right_type.is_ptr() && node.right.is_auto_deref_var() {
+	if node.right_type.is_ptr() && node.right.is_auto_deref_var() {
 		g.write('*')
 		g.expr(node.right)
 	} else {
