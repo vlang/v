@@ -10,6 +10,8 @@ const known_folder_patterns_that_are_not_module_ones = [
 	'vlib/sync/bench',
 	'/tests',
 	'/testdata',
+	'/benchmarks',
+	'/benchmarkdata',
 	'/preludes_js',
 	'vlib/builtin/js', // TODO: fix compiler panic
 	'vlib/fontstash', // used by `gg`
@@ -38,6 +40,7 @@ fn main() {
 		files := os.walk_ext(path, '.v')
 		mut v_files := map[string]int{}
 		mut v_test_files := map[string]int{}
+		mut v_benchmark_files := map[string]int{}
 		for f in files {
 			folder := os.to_slash(os.dir(f))
 			if known_skip_patterns.any(f.contains(it)) {
@@ -49,12 +52,16 @@ fn main() {
 			if f.ends_with('_test.v') {
 				v_test_files[folder]++
 			}
+			if f.ends_with('_benchmark.v') {
+				v_benchmark_files[folder]++
+			}
 		}
 		eprintln('> Found ${v_files.len:5} potential V module folders (containing .v files).')
 		for folder, n_v_files in v_files {
 			n_test_v_files := v_test_files[folder]
-			if n_v_files > 1 && n_test_v_files == 0 {
-				println('> ${n_test_v_files:5} _test.v files, with ${n_v_files:5} .v files, in folder: ${folder}')
+			n_benchmark_v_files := v_benchmark_files[folder]
+			if n_v_files > 1 && n_test_v_files == 0 && n_benchmark_v_files == 0 {
+				println('> ${n_test_v_files:5} _test.v files, ${n_benchmark_v_files:5} _benchmark.v files, with ${n_v_files:5},  .v files, in folder: ${folder}')
 				compilation := os.execute('${os.quoted_path(vexe)} -shared -W -Wfatal-errors -check ${os.quoted_path(folder)}')
 				if compilation.exit_code != 0 {
 					eprintln('> ${folder} has parser/checker errors!')
