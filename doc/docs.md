@@ -144,7 +144,6 @@ by using any of the following commands in a terminal:
     * [Running tests](#running-tests)
 * [Benchmark](#benchmark)
     * [Examples](#examples)
-    * [Running benchmarks](#running-benchmarks)
 * [Memory management](#memory-management)
     * [Control](#control)
     * [Stack and Heap](#stack-and-heap)
@@ -4424,8 +4423,7 @@ SPENT 1500.063 ms in code_1
 SPENT  500.061 ms in code_2
 ```
 
-### Running benchmark
-#### (unimplemented yet)
+### Running benchmark (unimplemented yet)
 
 To run test functions in an individual test file, use `v foo_benchmark.v`.
 
