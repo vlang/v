@@ -142,6 +142,9 @@ by using any of the following commands in a terminal:
     * [Asserts that do not abort your program](#asserts-that-do-not-abort-your-program)
     * [Test files](#test-files)
     * [Running tests](#running-tests)
+* [Benchmark](#benchmark)
+    * [Examples](#examples)
+    * [Running benchmarks](#running-benchmarks)
 * [Memory management](#memory-management)
     * [Control](#control)
     * [Stack and Heap](#stack-and-heap)
@@ -4370,7 +4373,9 @@ fn test_subtest() {
 
 provides tools for measuring and reporting on the performance of code.
 
-## Example 1:
+### examples
+
+#### example 1
 
 ```v
 import benchmark
@@ -4397,7 +4402,7 @@ intended to be used in combination. Their goal is to make
 benchmarking of small snippets of code as _short_, easy to
 write, and easy to read and analyze as possible.
 
-## Example 2:
+#### example 2
 
 ```v
 import time
@@ -4433,7 +4438,6 @@ such folders, while scanning for tests to run. This is useful, if you want to
 put .v files with invalid V source code, or other benchmarks, including known
 failing ones, that should be run in a specific way/options by a parent _benchmark.v
 file.
-
 
 ## Memory management
 
