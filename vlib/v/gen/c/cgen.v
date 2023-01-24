@@ -241,7 +241,7 @@ mut:
 	// reflection metadata initialization
 	reflection_funcs   strings.Builder
 	reflection_others  strings.Builder
-	reflection_strings map[int]string
+	reflection_strings &map[string]int
 }
 
 // global or const variable definition string
@@ -270,6 +270,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 	$if time_cgening ? {
 		timers_should_print = true
 	}
+	mut reflection_strings := map[string]int{}
 	mut global_g := Gen{
 		file: 0
 		out: strings.new_builder(512000)
@@ -315,6 +316,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 		has_reflection: 'v.reflection' in table.modules
 		reflection_funcs: strings.new_builder(100)
 		reflection_others: strings.new_builder(100)
+		reflection_strings: &reflection_strings
 	}
 
 	/*
@@ -404,10 +406,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 			global_g.sql_buf.write(g.sql_buf) or { panic(err) }
 
 			global_g.cleanups[g.file.mod.name].write(g.cleanup) or { panic(err) } // strings.Builder.write never fails; it is like that in the source
-
-			for k, v in g.reflection_strings {
-				global_g.reflection_strings[k] = v
-			}
 
 			for str_type in g.str_types {
 				global_g.str_types << str_type
@@ -683,6 +681,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		has_reflection: 'v.reflection' in global_g.table.modules
 		reflection_funcs: strings.new_builder(100)
 		reflection_others: strings.new_builder(100)
+		reflection_strings: global_g.reflection_strings
 	}
 	g.gen_file()
 	return g

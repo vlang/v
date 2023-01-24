@@ -3,18 +3,21 @@ module c
 import v.ast
 import v.util
 
-// reflection_string maps hash to string
+// reflection_string maps string to its idx
 fn (mut g Gen) reflection_string(str string) int {
-	str_hash := str.hash()
-	g.reflection_strings[str_hash] = str
-	return str_hash
+	return unsafe {
+		g.reflection_strings[str] or {
+			g.reflection_strings[str] = g.reflection_strings.len
+			g.reflection_strings.len - 1
+		}
+	}
 }
 
 // gen_reflection_strings generates the reflectino string registration
 [inline]
 fn (mut g Gen) gen_reflection_strings() {
-	for _, str in g.reflection_strings {
-		g.reflection_others.write_string('\tv__reflection__add_string(_SLIT("${str}"));\n')
+	for str, idx in g.reflection_strings {
+		g.reflection_others.write_string('\tv__reflection__add_string(_SLIT("${str}"), ${idx});\n')
 	}
 }
 
@@ -81,7 +84,7 @@ fn (mut g Gen) gen_reflection_fndecl(node ast.FnDecl) string {
 	arg_str += '.mod_name=_SLIT("${node.mod}"),'
 	arg_str += '.name=_SLIT("${v_name}"),'
 	arg_str += '.args=${g.gen_functionarg_array('v__reflection__FunctionArg', node)},'
-	arg_str += '.file_hash=${g.reflection_string(util.cescaped_path(node.file))},'
+	arg_str += '.file_idx=${g.reflection_string(util.cescaped_path(node.file))},'
 	arg_str += '.line_start=${node.pos.line_nr},'
 	arg_str += '.line_end=${node.pos.last_line},'
 	arg_str += '.is_variadic=${node.is_variadic},'

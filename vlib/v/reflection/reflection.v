@@ -73,7 +73,7 @@ pub:
 	mod_name     string        // module name
 	name         string        // function/method name
 	args         []FunctionArg // function/method args
-	file_hash    int  // source file name
+	file_idx     int  // source file name
 	line_start   int  // decl start line
 	line_end     int  // decl end line
 	is_variadic  bool // is variadic?
@@ -83,8 +83,8 @@ pub:
 
 // API module
 
-pub fn get_string_by_hash(hash int) string {
-	return g_reflection.strings[hash]
+pub fn get_string_by_idx(idx int) string {
+	return g_reflection.strings[idx]
 }
 
 // type_of returns the type info of the passed value
@@ -189,6 +189,6 @@ fn add_interface(interface_ Interface) {
 }
 
 [markused]
-fn add_string(str string) {
-	g_reflection.strings[str.hash()] = str
+fn add_string(str string, idx int) {
+	g_reflection.strings[idx] = str
 }

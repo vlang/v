@@ -82,7 +82,7 @@ fn test_enum_fields() {
 	]
 }
 
-fn test_get_string_by_hash() {
-	file_hash := reflection.get_funcs().filter(it.name == 'all_after_last')[0].file_hash
-	assert reflection.get_string_by_hash(file_hash).ends_with('builtin/string.v')
+fn test_get_string_by_idx() {
+	file_idx := reflection.get_funcs().filter(it.name == 'all_after_last')[0].file_idx
+	assert reflection.get_string_by_idx(file_idx).ends_with('string.v')
 }
