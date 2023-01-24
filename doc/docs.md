@@ -4424,7 +4424,8 @@ SPENT 1500.063 ms in code_1
 SPENT  500.061 ms in code_2
 ```
 
-### Running benchmark (unimplemented yet)
+### Running benchmark
+#### (unimplemented yet)
 
 To run test functions in an individual test file, use `v foo_benchmark.v`.
 
