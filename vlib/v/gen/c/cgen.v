@@ -5319,8 +5319,7 @@ fn (mut g Gen) write_init_function() {
 
 	// reflection bootstraping
 	if g.has_reflection {
-		var := g.global_const_defs['g_reflection']
-		{
+		if var := g.global_const_defs['g_reflection'] {
 			g.writeln(var.init)
 			g.gen_reflection_data()
 		}
