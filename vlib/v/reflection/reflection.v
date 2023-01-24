@@ -5,7 +5,7 @@ import v.ast
 
 __global g_reflection = Reflection{}
 
-[heap]
+[heap; minify]
 pub struct Reflection {
 pub mut:
 	modules      []Module
