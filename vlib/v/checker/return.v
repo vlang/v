@@ -58,6 +58,9 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			c.error('`${expr}` used as value', node.pos)
 			return
 		}
+		if expr is ast.Ident && (expr as ast.Ident).or_expr.kind == .propagate_option {
+			c.warn('should not unwrap option var on return, it could be none', node.pos)
+		}
 		// Unpack multi return types
 		sym := c.table.sym(typ)
 		if sym.kind == .multi_return {
