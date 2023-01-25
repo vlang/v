@@ -211,8 +211,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('invalid use of reserved type `${param.name}` as a parameter name',
 					param.pos)
 			}
-			if param.typ.has_flag(.option) || param.typ.has_flag(.result) {
-				c.error('option or result type argument is not supported currently', param.type_pos)
+			if param.typ.has_flag(.result) {
+				c.error('result type argument is not supported currently', param.type_pos)
 			}
 			arg_typ_sym := c.table.sym(param.typ)
 			if arg_typ_sym.info is ast.Struct {

@@ -968,11 +968,13 @@ fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 	g.write('${left_var}.state')
 	g.write(' ${node.op.str()} ')
 
-	if g.table.sym(node.left_type).kind == .map {
-		g.write('0 && memcmp(&')
-		// g.inside_opt_or_res = false
+	if g.table.final_sym(node.left_type).kind == .map {
+		g.write('0 && ')
+		current_flag := g.inside_opt_or_res
+		g.inside_opt_or_res = false
 		g.expr(node.left)
-		g.write('.err, &_const_none__, sizeof(None__)) ${node.op.str()} 0')
+		g.inside_opt_or_res = current_flag
+		g.write('.len ${node.op.str()} 0')
 	} else {
 		g.write('2') // none state
 	}
