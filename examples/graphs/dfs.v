@@ -27,7 +27,7 @@ fn main() {
 	path_01 := depth_first_search_path(graph_01, 'A', 'F')
 	println('\n Graph_01: a first path from node A to node F is: ${path_01.reverse()}')
 	path_02 := depth_first_search_path(graph_02, 'A', 'H')
-	println('\n Graph_02: a first path from node A to node F is: ${path_02.reverse()}')
+	println('\n Graph_02: a first path from node A to node H is: ${path_02.reverse()}')
 }
 
 // Depth-First Search (BFS) allows you to find a path between two nodes in the graph.
