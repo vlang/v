@@ -12,6 +12,7 @@ pub:
 	b u8
 }
 
+// hex returns `c`'s RGB color in hex format.
 pub fn (c Color) hex() string {
 	return '#${c.r.hex()}${c.g.hex()}${c.b.hex()}'
 }
@@ -107,6 +108,7 @@ pub fn (mut ctx Context) reset() {
 	ctx.write('\x1b[0m')
 }
 
+// clear erases the entire terminal window and any saved lines.
 [inline]
 pub fn (mut ctx Context) clear() {
 	ctx.write('\x1b[2J\x1b[3J')

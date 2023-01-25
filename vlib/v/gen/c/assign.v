@@ -341,7 +341,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			mut op_overloaded := false
 			mut op_expected_left := ast.Type(0)
 			mut op_expected_right := ast.Type(0)
-			if var_type == ast.string_type_idx && node.op == .plus_assign {
+			if node.op == .plus_assign && unaliased_right_sym.kind == .string {
 				if left is ast.IndexExpr {
 					// a[0] += str => `array_set(&a, 0, &(string[]) {string__plus(...))})`
 					g.expr(left)

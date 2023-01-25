@@ -1,3 +1,5 @@
+![image](https://user-images.githubusercontent.com/63821277/186010833-2ea36f3a-4738-4025-9b23-ac62afe74b81.png)
+
 # To run app
 ## From root
 - run typescript project

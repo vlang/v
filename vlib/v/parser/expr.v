@@ -422,6 +422,14 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				return node
 			}
 		}
+		.inc, .dec {
+			same_line_with_next := p.tok.line_nr == p.peek_tok.line_nr
+			next_tok_name := p.peek_tok.kind == .name
+
+			if next_tok_name && same_line_with_next {
+				p.prefix_inc_dec_error()
+			}
+		}
 		else {
 			if p.tok.kind == .key_struct && p.peek_tok.kind == .lcbr {
 				// Anonymous struct
@@ -535,10 +543,33 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 						p.tok.pos())
 				}
 			}
-			if p.tok.kind in [.inc, .dec] && p.prev_tok.line_nr != p.tok.line_nr {
+
+			inc_dec_tok := p.tok.kind in [.inc, .dec]
+			same_line_with_prev := p.tok.line_nr == p.prev_tok.line_nr
+			same_line_with_next := p.tok.line_nr == p.peek_tok.line_nr
+			next_tok_name := p.peek_tok.kind == .name
+
+			// 1. name
+			// 2. ++
+			//    ^^ current token
+			if inc_dec_tok && !same_line_with_prev && !next_tok_name {
 				p.error_with_pos('${p.tok} must be on the same line as the previous token',
 					p.tok.pos())
 			}
+
+			// a++ a--
+			//  ^^ current token
+			// a[i]++ a--
+			//     ^^ current token
+			// check if op attached to previous name
+			prev_name_or_rsbr := p.prev_tok.kind in [.name, .rsbr]
+			// 1. ++name
+			//    ^^ current token
+			if inc_dec_tok && same_line_with_next && next_tok_name
+				&& (!prev_name_or_rsbr || !same_line_with_prev) {
+				p.prefix_inc_dec_error()
+			}
+
 			if mut node is ast.IndexExpr {
 				node.recursive_mapset_is_setter(true)
 			}
@@ -707,4 +738,18 @@ fn (mut p Parser) recast_as_pointer(mut cast_expr ast.CastExpr, pos token.Pos) {
 	cast_expr.typ = cast_expr.typ.ref()
 	cast_expr.typname = p.table.sym(cast_expr.typ).name
 	cast_expr.pos = pos.extend(cast_expr.pos)
+}
+
+// prefix_inc_dec_error reports an error for a prefix increment or decrement.
+// prefix increments and decrements are not allowed in V.
+fn (mut p Parser) prefix_inc_dec_error() {
+	op := if p.tok.kind == .inc { '++' } else { '--' }
+	op_pos := p.tok.pos()
+
+	p.next()
+	expr := p.expr(0) // expression `mp["name"]` after `--` in `--mp["name"]`
+	full_expr_pos := op_pos.extend(expr.pos()) // position of full `--mp["name"]`
+
+	p.error_with_pos('prefix `${op}${expr}` is unsupported, use suffix form `${expr}${op}`',
+		full_expr_pos)
 }

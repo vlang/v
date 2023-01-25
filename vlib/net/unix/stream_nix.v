@@ -49,7 +49,8 @@ fn new_stream_socket() !StreamSocket {
 }
 
 fn (mut s StreamSocket) close() ! {
-	return shutdown(s.handle)
+	shutdown(s.handle)
+	return close(s.handle)
 }
 
 fn (mut s StreamSocket) @select(test Select, timeout time.Duration) !bool {

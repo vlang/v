@@ -1,6 +1,6 @@
 module main
 
-import builtin.linux_bare.old..checks.forkedtest
+import builtin.linux_bare.old.checks.forkedtest
 
 fn check_string_eq() {
 	assert 'monkey' != 'rat'

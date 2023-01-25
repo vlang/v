@@ -16,13 +16,36 @@ pub const no_timeout = time.Duration(0)
 // only ever return with data)
 pub const infinite_timeout = time.infinite
 
-// Shutdown shutsdown a socket and closes it
-fn shutdown(handle int) ! {
+// ShutdownDirection is used by `net.shutdown`, for specifying the direction for which the
+// communication will be cut.
+pub enum ShutdownDirection {
+	read
+	write
+	read_and_write
+}
+
+[params]
+pub struct ShutdownConfig {
+	how ShutdownDirection = .read_and_write
+}
+
+// shutdown shutsdown a socket, given its file descriptor `handle`.
+// By default it shuts it down in both directions, both for reading
+// and for writing. You can change that using `net.shutdown(handle, how: .read)`
+// or `net.shutdown(handle, how: .write)`
+pub fn shutdown(handle int, config ShutdownConfig) int {
 	$if windows {
-		C.shutdown(handle, C.SD_BOTH)
+		return C.shutdown(handle, int(config.how))
+	} $else {
+		return C.shutdown(handle, int(config.how))
+	}
+}
+
+// close a socket, given its file descriptor `handle`.
+pub fn close(handle int) ! {
+	$if windows {
 		socket_error(C.closesocket(handle))!
 	} $else {
-		C.shutdown(handle, C.SHUT_RDWR)
 		socket_error(C.close(handle))!
 	}
 }
