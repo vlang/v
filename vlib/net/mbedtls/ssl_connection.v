@@ -89,13 +89,8 @@ pub fn (mut s SSLConn) shutdown() ! {
 	C.mbedtls_ssl_free(&s.ssl)
 	C.mbedtls_ssl_config_free(&s.conf)
 	if s.owns_socket {
-		$if windows {
-			C.shutdown(s.handle, C.SD_BOTH)
-			net.socket_error(C.closesocket(s.handle))!
-		} $else {
-			C.shutdown(s.handle, C.SHUT_RDWR)
-			net.socket_error(C.close(s.handle))!
-		}
+		net.shutdown(s.handle)
+		net.close(s.handle)!
 	}
 }
 
