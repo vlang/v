@@ -4655,6 +4655,8 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 			if g.table.sym(mr_info.types[i]).kind in [.sum_type, .interface_] {
 				g.expr_with_cast(expr, node.types[i], mr_info.types[i])
+			} else if mr_info.types[i].has_flag(.option) && !node.types[i].has_flag(.option) {
+				g.expr_with_opt_tmp_var(expr, node.types[i], mr_info.types[i], '')
 			} else {
 				g.expr(expr)
 			}

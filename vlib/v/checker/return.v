@@ -58,9 +58,6 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			c.error('`${expr}` used as value', node.pos)
 			return
 		}
-		if expr is ast.Ident && (expr as ast.Ident).or_expr.kind == .propagate_option {
-			c.warn('should not unwrap option var on return, it could be none', node.pos)
-		}
 		// Unpack multi return types
 		sym := c.table.sym(typ)
 		if sym.kind == .multi_return {
@@ -128,9 +125,17 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		return
 	}
 	for i, exp_type in expected_types {
+		exprv := node.exprs[expr_idxs[i]]
+		if exprv is ast.Ident && (exprv as ast.Ident).or_expr.kind == .propagate_option {
+			if exp_type.has_flag(.option) {
+				c.warn('unwrapping option is redundant as the function returns option',
+					node.pos)
+			} else {
+				c.error('should not unwrap option var on return, it could be none', node.pos)
+			}
+		}
 		got_typ := c.unwrap_generic(got_types[i])
-		if got_typ.has_flag(.option) && (!exp_type.has_flag(.option)
-			|| c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
+		if got_typ.has_flag(.option) && got_typ.clear_flag(.option) != exp_type.clear_flag(.option) {
 			pos := node.exprs[expr_idxs[i]].pos()
 			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
 				pos)

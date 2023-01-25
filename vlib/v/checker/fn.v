@@ -117,9 +117,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				if multi_type == ast.error_type {
 					c.error('type `IError` cannot be used in multi-return, return an option instead',
 						node.return_type_pos)
-				} else if multi_type.has_flag(.option) {
-					c.error('option cannot be used in multi-return, return an option instead',
-						node.return_type_pos)
 				} else if multi_type.has_flag(.result) {
 					c.error('result cannot be used in multi-return, return a result instead',
 						node.return_type_pos)
