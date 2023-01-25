@@ -3796,8 +3796,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	name := p.prepend_mod(enum_name)
 	mut enum_type := ast.int_type
+	mut typ_pos := token.Pos{}
 	if p.tok.kind == .key_as {
 		p.next()
+		typ_pos = p.tok.pos()
 		enum_type = p.parse_type()
 	}
 	p.check(.lcbr)
@@ -3878,6 +3880,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	enum_decl := ast.EnumDecl{
 		name: name
 		typ: enum_type
+		typ_pos: typ_pos
 		is_pub: is_pub
 		is_flag: is_flag
 		is_multi_allowed: is_multi_allowed
