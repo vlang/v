@@ -75,9 +75,8 @@ fn print_pattern(pat [][]string) {
 // Creating aa map to initialize with of visited nodes .... all with false in the init
 // so these nodes are NOT VISITED YET
 fn visited_init(adj map[string][]string) map[string]bool {
-	mut array_of_keys := adj.keys()
 	mut temp := map[string]bool{}
-	for i in array_of_keys {
+	for i, _ in adj {
 		temp[i] = false
 	}
 	return temp
