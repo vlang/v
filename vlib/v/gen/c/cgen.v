@@ -5378,6 +5378,17 @@ fn (mut g Gen) write_init_function() {
 			g.writeln(g.cleanups[mod_name].str())
 		}
 		g.writeln('\tarray_free(&as_cast_type_indexes);')
+	}	
+	for mod_name in g.table.modules {
+		cleanup_fn_name := '${mod_name}.cleanup'
+		if cleanupfn := g.table.find_fn(cleanup_fn_name) {
+			if cleanupfn.return_type == ast.void_type && cleanupfn.params.len == 0 {
+				g.writeln('\t// Cleaning up for module ${mod_name}')
+				mod_c_name := util.no_dots(mod_name)
+				cleanup_fn_c_name := '${mod_c_name}__cleanup'
+				g.writeln('\t${cleanup_fn_c_name}();')
+			}
+		}
 	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
