@@ -119,7 +119,7 @@ pub fn start() Benchmark {
 	return b
 }
 
-// measure prints the current time spent doing `label`, since the benchmark was started.
+// measure prints the current time spent doing `label`, since the benchmark was started, or since its last call
 pub fn (mut b Benchmark) measure(label string) i64 {
 	b.ok()
 	res := b.step_timer.elapsed().microseconds()
