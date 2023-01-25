@@ -1,7 +1,0 @@
-fn option_arg(x ?int) {
-	println('int type: ${x}')
-}
-
-fn main() {
-	option_arg(1)
-}
