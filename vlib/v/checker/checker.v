@@ -1579,7 +1579,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 		}
 		else {
 			c.error('`${senum_type}` is not one of `i8`,`i16`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`',
-				node.pos)
+				node.typ_pos)
 		}
 	}
 	if enum_imin > 0 {
