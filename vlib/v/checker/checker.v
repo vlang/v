@@ -3892,7 +3892,15 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		&& typ !in [ast.byteptr_type, ast.charptr_type] && !typ.has_flag(.variadic) {
 		c.error('type `${typ_sym.name}` does not support indexing', node.pos)
 	}
-	if typ.has_flag(.result) {
+	if typ.has_flag(.option) {
+		if node.left is ast.Ident && (node.left as ast.Ident).or_expr.kind == .absent {
+			c.error('type `?${typ_sym.name}` is an option, it must be unwrapped `var?[]`',
+				node.left.pos())
+		} else if node.left is ast.CallExpr {
+			c.error('type `?${typ_sym.name}` is an option, it must be unwrapped `func()` or use or-block `or {}`',
+				node.left.pos())
+		}
+	} else if typ.has_flag(.result) {
 		c.error('type `!${typ_sym.name}` is a result, it does not support indexing', node.left.pos())
 	}
 	if typ_sym.kind == .string && !typ.is_ptr() && node.is_setter {
