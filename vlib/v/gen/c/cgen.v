@@ -4505,6 +4505,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	fn_return_is_multi := sym.kind == .multi_return
 	fn_return_is_option := fn_ret_type.has_flag(.option)
 	fn_return_is_result := fn_ret_type.has_flag(.result)
+
 	mut has_semicolon := false
 	if node.exprs.len == 0 {
 		g.write_defer_stmts_when_needed()
@@ -4797,7 +4798,12 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.expr(expr0)
 			}
 		} else {
-			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+			if g.fn_decl.return_type.has_flag(.option) {
+				g.expr_with_opt_tmp_var(node.exprs[0], node.types[0], g.fn_decl.return_type,
+					'')
+			} else {
+				g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+			}
 		}
 		if use_tmp_var {
 			g.writeln(';')
