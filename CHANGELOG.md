@@ -1,6 +1,6 @@
 ## V 0.3.3
 *Not yet released*
-- Accessing a pointer map value requires an `or{}` block outside `unsafe`.
+- Accessing a pointer map value requires an `or {}` block outside `unsafe`.
 - `math.vec` module for generic vector math.
 - `go foo()` has been replaced with `spawn foo()` (launches an OS thread, `go` will be used for
   upcoming coroutines instead).

@@ -61,6 +61,7 @@ struct Person {
 
 fn benchmark_measure_json_vs_json2_on_complex_struct() ! {
 	println(@FN)
+	dump('👈')
 	s := '{"name":"Bilbo Baggins","age":99,"created_at":1670840340}'
 	mut b := benchmark.start()
 	for _ in 0 .. max_iterations {
@@ -83,6 +84,7 @@ fn benchmark_measure_json_vs_json2_on_complex_struct() ! {
 
 fn benchmark_measure_encode_by_type() ! {
 	println(@FN)
+	dump('👈')
 	measure_json_encode_old_vs_new(StructType[string]{})!
 	measure_json_encode_old_vs_new(StructType[time.Time]{})!
 	measure_json_encode_old_vs_new(StructType[int]{})!
@@ -95,6 +97,7 @@ fn benchmark_measure_encode_by_type() ! {
 
 fn benchmark_measure_encode_by_alias_type() ! {
 	println(@FN)
+	dump('👈')
 	measure_json_encode_old_vs_new(StructType[StringAlias]{})!
 	measure_json_encode_old_vs_new(StructType[TimeAlias]{})!
 	measure_json_encode_old_vs_new(StructType[IntAlias]{})!
@@ -104,6 +107,7 @@ fn benchmark_measure_encode_by_alias_type() ! {
 
 fn benchmark_measure_decode_by_type() ! {
 	println(@FN)
+	dump('👈')
 	mut b := benchmark.start()
 
 	vs := '{"val": ""}'
