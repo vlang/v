@@ -21,7 +21,7 @@ fn testsuite_end() {
 }
 
 fn test_saving_simple_v_program() {
-	os.write_file(vprogram_file, 'print("hello")')?
+	os.write_file(vprogram_file, 'print("hello")')!
 	assert true
 }
 

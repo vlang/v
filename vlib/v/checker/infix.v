@@ -69,7 +69,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		c.error('invalid number of operand for `${node.op}`. Only one allowed on each side.',
 			left_right_pos)
 	}
-	if left_type.is_any_kind_of_pointer()
+	if left_type.is_any_kind_of_pointer() && !node.left.is_auto_deref_var()
 		&& node.op in [.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe] {
 		if !c.pref.translated && ((right_type.is_any_kind_of_pointer() && node.op != .minus)
 			|| (!right_type.is_any_kind_of_pointer() && node.op !in [.plus, .minus])) {

@@ -454,7 +454,8 @@ pub fn (mut s TcpSocket) bind(addr string) ! {
 }
 
 fn (mut s TcpSocket) close() ! {
-	return shutdown(s.handle)
+	shutdown(s.handle)
+	return close(s.handle)
 }
 
 fn (mut s TcpSocket) @select(test Select, timeout time.Duration) !bool {

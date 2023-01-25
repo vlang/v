@@ -1,0 +1,9 @@
+[Info{
+    val: 'No data'
+}, Info{
+    val: 'Data tag 1'
+}, Info{
+    val: 'Data tag 2'
+}, Info{
+    val: 'No data'
+}]

@@ -151,6 +151,13 @@ pub fn (mut parser Parser) split_parse(data string) {
 					nval := temp_lexeme.substr(1, temp_lexeme.len - 1)
 					// parser.print_debug(lattr + " = " + temp_lexeme)
 					parser.lexical_attributes.current_tag.attributes[lattr] = nval
+					if lattr == 'class' {
+						for class_name in nval.split_any('\t\r\n \x0D') {
+							if class_name != '' {
+								parser.lexical_attributes.current_tag.class_set.add(class_name)
+							}
+						}
+					}
 					parser.lexical_attributes.current_tag.last_attribute = ''
 				} else {
 					parser.lexical_attributes.current_tag.attributes[temp_lexeme.to_lower()] = ''

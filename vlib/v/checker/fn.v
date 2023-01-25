@@ -301,8 +301,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					} else if node.name in ['<', '=='] && node.return_type != ast.bool_type {
 						c.error('operator comparison methods should return `bool`', node.pos)
 					} else if parent_sym.is_primitive() {
-						c.error('cannot define operator methods on type alias for `${parent_sym.name}`',
-							node.pos)
+						// aliases of primitive types are explicitly allowed
 					} else if receiver_type != param_type {
 						srtype := c.table.type_to_str(receiver_type)
 						sptype := c.table.type_to_str(param_type)
@@ -1020,6 +1019,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		arg_typ_sym := c.table.sym(arg_typ)
+		if arg_typ_sym.kind == .none_ {
+			c.error('cannot use `none` as function argument', call_arg.pos)
+		}
 		param_typ_sym := c.table.sym(param.typ)
 		if func.is_variadic && arg_typ.has_flag(.variadic) && node.args.len - 1 > i {
 			c.error('when forwarding a variadic variable, it must be the final argument',
@@ -1749,6 +1751,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				}
 				continue
 			}
+			if final_arg_sym.kind == .none_ {
+				c.error('cannot use `none` as method argument', arg.pos)
+			}
 			if param.typ.is_ptr() && !arg.typ.is_real_pointer() && arg.expr.is_literal()
 				&& !c.pref.translated {
 				c.error('literal argument cannot be passed as reference parameter `${c.table.type_to_str(param.typ)}`',
@@ -2255,12 +2260,8 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				} else if left_name == right_name {
 					c.error('`.sort()` cannot use same argument', node.pos)
 				}
-				if (node.args[0].expr.left !is ast.Ident
-					&& node.args[0].expr.left !is ast.SelectorExpr
-					&& node.args[0].expr.left !is ast.IndexExpr)
-					|| (node.args[0].expr.right !is ast.Ident
-					&& node.args[0].expr.right !is ast.SelectorExpr
-					&& node.args[0].expr.right !is ast.IndexExpr) {
+				if node.args[0].expr.left !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr]
+					|| node.args[0].expr.right !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
 					c.error('`.sort()` can only use ident, index or selector as argument, \ne.g. `arr.sort(a < b)`, `arr.sort(a.id < b.id)`, `arr.sort(a[0] < b[0])`',
 						node.pos)
 				}

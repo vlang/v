@@ -21,6 +21,19 @@ mut:
 	out_used int
 }
 
+// free the resources taken by the Ctr `c`
+[unsafe]
+pub fn (mut x Ctr) free() {
+	$if prealloc {
+		return
+	}
+	unsafe {
+		// x.b.free() TODO add?
+		x.out.free()
+		x.next.free()
+	}
+}
+
 // new_ctr returns a Ctr which encrypts/decrypts using the given Block in
 // counter mode. The length of iv must be the same as the Block's block size.
 pub fn new_ctr(b Block, iv []u8) Ctr {
