@@ -792,7 +792,7 @@ pub fn (s string) split_into_lines() []string {
 	if s.len == 0 {
 		return res
 	}
-	#res.arr.arr = s.str.split("\n")
+	#res.arr.arr = s.str.split(/\r?\n|\r/)
 	#if (res.arr.arr[res.arr.arr.length-1] == "") res.arr.arr.pop();
 	#res.arr.len = new int(res.arr.arr.length);
 	#res.arr.cap = new int(res.arr.arr.length);

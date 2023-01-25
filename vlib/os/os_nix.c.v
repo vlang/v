@@ -206,6 +206,22 @@ pub fn utime(path string, actime int, modtime int) ! {
 	}
 }
 
+// uname returns information about the platform on which the program is running
+// For example:
+// os.Uname{
+//    sysname: 'Linux'
+//    nodename: 'nemesis'
+//    release: '5.15.0-57-generic'
+//    version: '#63~20.04.1-Ubuntu SMP Wed Nov 30 13:40:16 UTC 2022'
+//    machine: 'x86_64'
+// }
+// where the fields have the following meaning:
+//    sysname is the name of this implementation of the operating system
+//    nodename is the name of this node within an implementation-dependent communications network
+//    release is the current release level of this implementation
+//    version is the current version level of this release
+//    machine is the name of the hardware type, on which the system is running
+// See also https://pubs.opengroup.org/onlinepubs/7908799/xsh/sysutsname.h.html
 pub fn uname() Uname {
 	mut u := Uname{}
 	utsize := sizeof(C.utsname)

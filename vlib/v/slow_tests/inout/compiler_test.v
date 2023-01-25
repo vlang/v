@@ -9,6 +9,8 @@ import v.util.vtest
 
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
+const v_ci_ubuntu_musl = os.getenv('V_CI_UBUNTU_MUSL').len > 0
+
 const skip_files = [
 	'do_not_remove_this',
 	'tmpl_parse_html.vv', // skipped, due to a V template compilation problem after b42c824
@@ -35,6 +37,13 @@ fn test_all() {
 		if fname in skip_files {
 			println(term.bright_yellow('SKIP'))
 			continue
+		}
+		if v_ci_ubuntu_musl {
+			if fname.contains('orm_') {
+				// the ORM programs use db.sqlite, which is not easy to install in a way usable by ubuntu-musl, so just skip them:
+				println(term.bright_yellow('SKIP on ubuntu musl'))
+				continue
+			}
 		}
 		program := path
 		tname := rand.ulid()

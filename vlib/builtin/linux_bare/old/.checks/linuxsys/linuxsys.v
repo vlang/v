@@ -1,6 +1,6 @@
 module main
 
-import builtin.linux_bare.old..checks.forkedtest
+import builtin.linux_bare.old.checks.forkedtest
 
 const (
 	sample_text_file1 = ''

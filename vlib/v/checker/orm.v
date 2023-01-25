@@ -5,6 +5,10 @@ module checker
 import v.ast
 import v.token
 
+const (
+	fkey_attr_name = 'fkey'
+)
+
 fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	c.inside_sql = true
 	defer {
@@ -156,6 +160,8 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		|| (c.table.sym(it.typ).kind == .array
 		&& c.table.sym(c.table.sym(it.typ).array_info().elem_type).kind == .struct_))
 		&& c.table.get_type_name(it.typ) != 'time.Time') {
+		c.check_orm_struct_field_attributes(f)
+
 		typ := if c.table.sym(f.typ).kind == .struct_ {
 			f.typ
 		} else if c.table.sym(f.typ).kind == .array {
@@ -163,6 +169,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		} else {
 			ast.Type(0)
 		}
+
 		mut object_var_name := '${node.object_var_name}.${f.name}'
 		if typ != f.typ {
 			object_var_name = node.object_var_name
@@ -202,6 +209,52 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	}
 
 	return ast.void_type
+}
+
+fn (mut c Checker) check_orm_struct_field_attributes(field ast.StructField) {
+	field_type := c.table.sym(field.typ)
+	mut has_fkey_attr := false
+
+	for attr in field.attrs {
+		if attr.name == checker.fkey_attr_name {
+			if field_type.kind != .array && field_type.kind != .struct_ {
+				c.error('The `${checker.fkey_attr_name}` attribute must be used only with arrays and structures',
+					attr.pos)
+				return
+			}
+
+			if !attr.has_arg {
+				c.error('The `${checker.fkey_attr_name}` attribute must have an argument',
+					attr.pos)
+				return
+			}
+
+			if attr.kind != .string {
+				c.error('`${checker.fkey_attr_name}` attribute must be string. Try [${checker.fkey_attr_name}: \'${attr.arg}\'] instead of [${checker.fkey_attr_name}: ${attr.arg}]',
+					attr.pos)
+				return
+			}
+
+			field_struct_type := if field_type.info is ast.Array {
+				c.table.sym(field_type.info.elem_type)
+			} else {
+				field_type
+			}
+
+			field_struct_type.find_field(attr.arg) or {
+				c.error('`${field_struct_type.name}` struct has no field with name `${attr.arg}`',
+					attr.pos)
+				return
+			}
+
+			has_fkey_attr = true
+		}
+	}
+
+	if field_type.kind == .array && !has_fkey_attr {
+		c.error('A field that holds an array must be defined with the `${checker.fkey_attr_name}` attribute',
+			field.pos)
+	}
 }
 
 fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, table_name string) []ast.StructField {

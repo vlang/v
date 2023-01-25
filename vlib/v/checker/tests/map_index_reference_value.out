@@ -1,0 +1,14 @@
+vlib/v/checker/tests/map_index_reference_value.vv:7:3: notice: accessing a pointer map value requires an `or {}` block outside `unsafe`
+    5 | fn main() {
+    6 |     mut m := map[string]&Foo{}
+    7 |     m['bar'].bar = 'bar'
+      |      ~~~~~~~
+    8 |     // m['bar'] << 'baz' // etc
+    9 | }
+vlib/v/checker/tests/map_index_reference_value.vv:7:11: error: field `bar` of struct `&Foo` is immutable
+    5 | fn main() {
+    6 |     mut m := map[string]&Foo{}
+    7 |     m['bar'].bar = 'bar'
+      |              ~~~
+    8 |     // m['bar'] << 'baz' // etc
+    9 | }

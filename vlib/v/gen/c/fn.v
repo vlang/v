@@ -2262,7 +2262,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				}
 				return
 			} else if arg_sym.kind == .sum_type && exp_sym.kind == .sum_type
-				&& (arg.expr is ast.Ident || arg.expr is ast.SelectorExpr) {
+				&& arg.expr in [ast.Ident, ast.SelectorExpr] {
 				g.write('&/*sum*/')
 				g.expr(arg.expr)
 				return

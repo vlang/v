@@ -109,7 +109,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			if left in [ast.Ident, ast.SelectorExpr] {
 				c.prevent_sum_type_unwrapping_once = true
 			}
+			if left is ast.IndexExpr {
+				c.is_index_assign = true
+			}
 			left_type = c.expr(left)
+			c.is_index_assign = false
 			c.expected_type = c.unwrap_generic(left_type)
 		}
 		if node.right_types.len < node.left.len { // first type or multi return types added above
@@ -549,7 +553,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			right_name := c.table.type_to_str(right_type_unwrapped)
 			parent_sym := c.table.final_sym(left_type_unwrapped)
 			if left_sym.kind == .alias && right_sym.kind != .alias {
-				c.error('mismatched types `${left_name}` and `${right_name}`', node.pos)
+				if !parent_sym.is_primitive() {
+					c.error('mismatched types `${left_name}` and `${right_name}`', node.pos)
+				}
 			}
 			extracted_op := match node.op {
 				.plus_assign { '+' }
@@ -568,15 +574,14 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						node.pos)
 				}
 			} else {
-				if parent_sym.is_primitive() {
-					c.error('cannot use operator methods on type alias for `${parent_sym.name}`',
-						node.pos)
-				}
-				if left_name == right_name {
-					c.error('undefined operation `${left_name}` ${extracted_op} `${right_name}`',
-						node.pos)
-				} else {
-					c.error('mismatched types `${left_name}` and `${right_name}`', node.pos)
+				if !parent_sym.is_primitive() {
+					if left_name == right_name {
+						c.error('undefined operation `${left_name}` ${extracted_op} `${right_name}`',
+							node.pos)
+					} else {
+						c.error('mismatched types `${left_name}` and `${right_name}`',
+							node.pos)
+					}
 				}
 			}
 		}

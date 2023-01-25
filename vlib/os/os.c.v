@@ -211,8 +211,9 @@ pub fn file_size(path string) u64 {
 	return 0
 }
 
-// mv moves files or folders from `src` to `dst`.
-pub fn mv(src string, dst string) ! {
+// rename renames the file or folder from `src` to `dst`.
+// Use mv to move or rename a file in a platform independent manner.
+pub fn rename(src string, dst string) ! {
 	mut rdst := dst
 	if is_dir(rdst) {
 		rdst = join_path_single(rdst.trim_right(path_separator), file_name(src.trim_right(path_separator)))

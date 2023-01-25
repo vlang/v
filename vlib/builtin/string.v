@@ -841,22 +841,34 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 
 // split_into_lines splits the string by newline characters.
 // newlines are stripped.
-// Both `\n` and `\r\n` newline endings are supported.
+// `\r` (MacOS), `\n` (POSIX), and `\r\n` (WinOS) line endings are all supported (including mixed line endings).
+// NOTE: algorithm is "greedy", consuming '\r\n' as a single line ending with higher priority than '\r' and '\n' as multiple endings
 [direct_array_access]
 pub fn (s string) split_into_lines() []string {
 	mut res := []string{}
 	if s.len == 0 {
 		return res
 	}
-	mut start := 0
+	cr := `\r`
+	lf := `\n`
+	mut line_start := 0
 	for i := 0; i < s.len; i++ {
-		if s[i] == 10 {
-			res << if start == i { '' } else { s[start..i].trim_right('\r') }
-			start = i + 1
+		if line_start <= i {
+			if s[i] == lf {
+				res << if line_start == i { '' } else { s[line_start..i] }
+				line_start = i + 1
+			} else if s[i] == cr {
+				res << if line_start == i { '' } else { s[line_start..i] }
+				if ((i + 1) < s.len) && (s[i + 1] == lf) {
+					line_start = i + 2
+				} else {
+					line_start = i + 1
+				}
+			}
 		}
 	}
-	if start < s.len {
-		res << s[start..]
+	if line_start < s.len {
+		res << s[line_start..]
 	}
 	return res
 }
@@ -1939,6 +1951,8 @@ pub fn (s string) fields() []string {
 // Note: the delimiter has to be a byte at this time. That means surrounding
 // the value in ``.
 //
+// See also: string.trim_indent()
+//
 // Example:
 // ```v
 // st := 'Hello there,
@@ -1997,6 +2011,99 @@ pub fn (s string) strip_margin_custom(del u8) string {
 		ret[count] = 0
 		return ret.vstring_with_len(count)
 	}
+}
+
+// trim_indent detects a common minimal indent of all the input lines,
+// removes it from every line and also removes the first and the last
+// lines if they are blank (notice difference blank vs empty).
+//
+// Note that blank lines do not affect the detected indent level.
+//
+// In case if there are non-blank lines with no leading whitespace characters
+// (no indent at all) then the common indent is 0, and therefore this function
+// doesn't change the indentation.
+//
+// Example:
+// ```v
+// st := '
+//      Hello there,
+//      this is a string,
+//      all the leading indents are removed
+//      and also the first and the last lines if they are blank
+// '.trim_indent()
+//
+// assert st == 'Hello there,
+// this is a string,
+// all the leading indents are removed
+// and also the first and the last lines if they are blank'
+// ```
+pub fn (s string) trim_indent() string {
+	mut lines := s.split_into_lines()
+
+	lines_indents := lines
+		.filter(!it.is_blank())
+		.map(it.indent_width())
+
+	mut min_common_indent := int(2147483647) // max int
+	for line_indent in lines_indents {
+		if line_indent < min_common_indent {
+			min_common_indent = line_indent
+		}
+	}
+
+	// trim first line if it's blank
+	if lines.len > 0 && lines.first().is_blank() {
+		lines = lines[1..]
+	}
+
+	// trim last line if it's blank
+	if lines.len > 0 && lines.last().is_blank() {
+		lines = lines[..lines.len - 1]
+	}
+
+	mut trimmed_lines := []string{cap: lines.len}
+
+	for line in lines {
+		if line.is_blank() {
+			trimmed_lines << line
+			continue
+		}
+
+		trimmed_lines << line[min_common_indent..]
+	}
+
+	return trimmed_lines.join('\n')
+}
+
+// indent_width returns the number of spaces or tabs at the beginning of the string.
+// Example: assert '  v'.indent_width() == 2
+// Example: assert '\t\tv'.indent_width() == 2
+pub fn (s string) indent_width() int {
+	for i, c in s {
+		if !c.is_space() {
+			return i
+		}
+	}
+
+	return 0
+}
+
+// is_blank returns true if the string is empty or contains only white-space.
+// Example: assert ' '.is_blank()
+// Example: assert '\t'.is_blank()
+// Example: assert 'v'.is_blank() == false
+pub fn (s string) is_blank() bool {
+	if s.len == 0 {
+		return true
+	}
+
+	for c in s {
+		if !c.is_space() {
+			return false
+		}
+	}
+
+	return true
 }
 
 // match_glob matches the string, with a Unix shell-style wildcard pattern.
