@@ -271,5 +271,4 @@ fn test_sumtypes() {
 			val: 1
 		}
 	}) == '{"val":{"val":1}}'
-
 }
