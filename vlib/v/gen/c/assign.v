@@ -34,7 +34,7 @@ fn (mut g Gen) expr_with_opt_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ a
 		g.inside_opt_or_res = true
 	}
 	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)
-		&& (expr in [ast.Ident, ast.ComptimeSelector, ast.AsCast]
+		&& (expr in [ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr]
 		|| (expr is ast.CastExpr && (expr as ast.CastExpr).expr is ast.None)) {
 		if expr is ast.Ident {
 			g.inside_opt_or_res = true
