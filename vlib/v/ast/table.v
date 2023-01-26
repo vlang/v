@@ -93,24 +93,25 @@ pub fn (t &Table) panic(message string) {
 [minify]
 pub struct Fn {
 pub:
-	is_variadic     bool
-	language        Language
-	is_pub          bool
-	is_ctor_new     bool // `[use_new] fn JS.Array.prototype.constructor()`
-	is_deprecated   bool // `[deprecated] fn abc(){}`
-	is_noreturn     bool // `[noreturn] fn abc(){}`
-	is_unsafe       bool // `[unsafe] fn abc(){}`
-	is_placeholder  bool
-	is_main         bool // `fn main(){}`
-	is_test         bool // `fn test_abc(){}`
-	is_keep_alive   bool // passed memory must not be freed (by GC) before function returns
-	is_method       bool // true for `fn (x T) name()`, and for interface declarations (which are also for methods)
-	no_body         bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
-	mod             string
-	file            string
-	file_mode       Language
-	pos             token.Pos
-	return_type_pos token.Pos
+	is_variadic       bool
+	language          Language
+	is_pub            bool
+	is_ctor_new       bool // `[use_new] fn JS.Array.prototype.constructor()`
+	is_deprecated     bool // `[deprecated] fn abc(){}`
+	is_noreturn       bool // `[noreturn] fn abc(){}`
+	is_unsafe         bool // `[unsafe] fn abc(){}`
+	is_placeholder    bool
+	is_main           bool // `fn main(){}`
+	is_test           bool // `fn test_abc(){}`
+	is_keep_alive     bool // passed memory must not be freed (by GC) before function returns
+	is_method         bool // true for `fn (x T) name()`, and for interface declarations (which are also for methods)
+	no_body           bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
+	is_def_translated bool // true, when the file it resides in is `[translated]`
+	mod               string
+	file              string
+	file_mode         Language
+	pos               token.Pos
+	return_type_pos   token.Pos
 pub mut:
 	return_type    Type
 	receiver_type  Type // != 0, when .is_method == true

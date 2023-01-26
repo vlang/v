@@ -495,6 +495,7 @@ run them via `v file.v` instead',
 			is_test: is_test
 			is_keep_alive: is_keep_alive
 			is_method: false
+			is_def_translated: p.is_translated
 			//
 			attrs: p.attrs
 			is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx
@@ -550,6 +551,7 @@ run them via `v file.v` instead',
 		is_keep_alive: is_keep_alive
 		is_unsafe: is_unsafe
 		is_markused: is_markused
+		is_def_translated: p.is_translated
 		//
 		attrs: p.attrs
 		is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx

@@ -4340,15 +4340,16 @@ fn (mut g Gen) ident(node ast.Ident) {
 			}
 		}
 	} else if node.info is ast.IdentFn {
-		if g.pref.translated || g.file.is_translated {
-			// `p_mobjthinker` => `P_MobjThinker`
-			if func := g.table.find_fn(node.name) {
-				// TODO PERF fn lookup for each fn call in translated mode
+		// TODO PERF fn lookup for each fn call in translated mode
+		if func := g.table.find_fn(node.name) {
+			if g.pref.translated || g.file.is_translated || func.is_def_translated {
+				// `p_mobjthinker` => `P_MobjThinker`
 				if cattr := func.attrs.find_first('c') {
 					name = cattr.arg
 				}
 			}
 		}
+
 		if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {
 			key := node.name
 			g.write('/* obf identfn: ${key} */')
