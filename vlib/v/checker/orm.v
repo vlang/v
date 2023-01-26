@@ -285,7 +285,7 @@ fn (mut c Checker) check_expr_has_no_fn_calls_with_non_orm_return_type(expr &ast
 		is_acceptable_type := (type_symbol.is_primitive() || is_time) && is_not_pointer
 
 		if !is_acceptable_type {
-			c.error('V ORM: function calls must return only primitive types and time.Time',
+			c.error('V ORM: function calls must return only primitive types and time.Time, but `${expr.name}` returns `${type_symbol.name}`',
 				expr.pos)
 		}
 	} else if expr is ast.ParExpr {
