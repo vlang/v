@@ -1,0 +1,7 @@
+module main
+
+import translated { external_symbol }
+
+fn main() {
+	a := external_symbol(c"hello")
+}
