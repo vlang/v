@@ -23,18 +23,18 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 		g.inside_opt_data = old_inside_opt_data
 		g.writeln('}')
 	} else {
-		g.expr_with_opt_tmp_var(expr, expr_typ, ret_typ, '')
+		g.expr_with_opt(expr, expr_typ, ret_typ)
 	}
 }
 
-// expr_with_opt_tmp_var is used in assign expr to `optinal` or `result` type.
-// e.g. x = y (both optional), mut x = ?int(123), y = none
-fn (mut g Gen) expr_with_opt_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type, tmp_var string) string {
+// expr_with_opt is used in assign expr to `optinal`.
+// e.g. x = y (option lhs and rhs), mut x = ?int(123), y = none
+fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type) string {
 	if expr_typ == ast.none_type {
 		g.inside_opt_or_res = true
 	}
 	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)
-		&& (expr in [ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr]
+		&& (expr in [ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr]
 		|| (expr is ast.CastExpr && (expr as ast.CastExpr).expr is ast.None)) {
 		if expr is ast.Ident {
 			g.inside_opt_or_res = true
@@ -43,7 +43,7 @@ fn (mut g Gen) expr_with_opt_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ a
 		return expr.str()
 	} else {
 		g.inside_opt_or_res = true
-		tmp_out_var := if tmp_var != '' { tmp_var } else { g.new_tmp_var() }
+		tmp_out_var := g.new_tmp_var()
 		g.expr_with_tmp_var(expr, expr_typ, ret_typ, tmp_out_var)
 		return tmp_out_var
 	}
@@ -284,7 +284,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			} else if g.inside_for_c_stmt {
 				g.expr(val)
 			} else if var_type.has_flag(.option) {
-				g.expr_with_opt_tmp_var(val, val_type, var_type, '')
+				g.expr_with_opt(val, val_type, var_type)
 			} else {
 				if left_sym.kind == .function {
 					g.write('{void* _ = ')
