@@ -53,6 +53,7 @@ pub enum Backend {
 	js_browser // The JavaScript browser backend
 	js_freestanding // The JavaScript freestanding backend
 	native // The Native backend
+	wasm // The WebAssembly backend
 }
 
 pub fn (b Backend) is_js() bool {
@@ -980,6 +981,7 @@ pub fn backend_from_string(s string) !Backend {
 		'js_browser' { return .js_browser }
 		'js_freestanding' { return .js_freestanding }
 		'native' { return .native }
+		'wasm' { return .wasm }
 		else { return error('Unknown backend type ${s}') }
 	}
 }

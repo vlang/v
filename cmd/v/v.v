@@ -190,5 +190,9 @@ fn rebuild(prefs &pref.Preferences) {
 			println('using Go WIP backend...')
 			util.launch_tool(prefs.is_verbose, 'builders/golang_builder', os.args[1..])
 		}
+		.wasm {
+			println('using WebAssembly WIP backend...')
+			util.launch_tool(prefs.is_verbose, 'builders/wasm_builder', os.args[1..])
+		}
 	}
 }
