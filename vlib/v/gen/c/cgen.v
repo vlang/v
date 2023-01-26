@@ -5363,10 +5363,10 @@ fn (mut g Gen) write_init_function() {
 		cleanup_fn_name := '${mod_name}.cleanup'
 		if cleanupfn := g.table.find_fn(cleanup_fn_name) {
 			if cleanupfn.return_type == ast.void_type && cleanupfn.params.len == 0 {
-				cleaning_up_array << ('\t// Cleaning up for module ${mod_name}')
 				mod_c_name := util.no_dots(mod_name)
 				cleanup_fn_c_name := '${mod_c_name}__cleanup'
-				cleaning_up_array << ('\t${cleanup_fn_c_name}();')
+				cleaning_up_array << '\t${cleanup_fn_c_name}();'
+				cleaning_up_array << '\t// Cleaning up for module ${mod_name}'
 			}
 		}
 	}
@@ -5390,9 +5390,8 @@ fn (mut g Gen) write_init_function() {
 		}
 		g.writeln('\tarray_free(&as_cast_type_indexes);')
 	}
-	for i := cleaning_up_array.len - 1; i >= 1; i -= 2 {
-		g.writeln(cleaning_up_array[i - 1])
-		g.writeln(cleaning_up_array[i])
+	for x in cleaning_up_array.reverse() {
+		g.writeln(x)
 	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
