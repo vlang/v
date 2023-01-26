@@ -532,12 +532,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						if val.is_auto_deref_var() {
 							g.write('*')
 						}
-						if val is ast.ArrayInit {
+						if var_type.has_flag(.option) || gen_or {
+							g.expr_with_opt_or_block(val, val_type, left, var_type)
+						} else if val is ast.ArrayInit {
 							g.array_init(val, c_name(ident.name))
 						} else if val_type.has_flag(.shared_f) {
 							g.expr_with_cast(val, val_type, var_type)
-						} else if var_type.has_flag(.option) || gen_or {
-							g.expr_with_opt_or_block(val, val_type, left, var_type)
 						} else {
 							g.expr(val)
 						}

@@ -8,6 +8,10 @@ import v.token
 
 fn (mut p Parser) array_init() ast.ArrayInit {
 	first_pos := p.tok.pos()
+	is_option := p.tok.kind == .question
+	if is_option {
+		p.next()
+	}
 	mut last_pos := p.tok.pos()
 	p.check(.lsbr)
 	// p.warn('array_init() exp=$p.expected_type')
@@ -39,6 +43,9 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 				array_type = ast.new_type(idx).set_flag(.generic)
 			} else {
 				array_type = ast.new_type(idx)
+			}
+			if is_option {
+				array_type = array_type.set_flag(.option)
 			}
 			has_type = true
 		}

@@ -2100,6 +2100,10 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 
 pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	// p.warn('name ')
+	is_option := p.tok.kind == .question
+	if is_option {
+		p.next()
+	}
 	is_shared := p.tok.kind == .key_shared
 	is_atomic := p.tok.kind == .key_atomic
 	if is_shared {
@@ -2143,6 +2147,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 				is_mut: false
 				is_static: false
 				is_volatile: false
+				is_option: is_option
 			}
 			scope: p.scope
 		}
@@ -2683,8 +2688,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			}
 			p.expr_mod = ''
 			return node
+		} else if p.tok.kind == .question && p.peek_tok.kind == .lsbr {
+			return p.array_init()
 		}
-
 		ident := p.parse_ident(language)
 		node = ident
 		if p.inside_defer {
