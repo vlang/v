@@ -100,11 +100,9 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	}
 	if node.has_offset {
 		c.expr(node.offset_expr)
-		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&node.offset_expr)
 	}
 	if node.has_limit {
 		c.expr(node.limit_expr)
-		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&node.limit_expr)
 	}
 	if node.has_order {
 		c.expr(node.order_expr)
