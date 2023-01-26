@@ -106,7 +106,7 @@ pub:
 	is_keep_alive     bool // passed memory must not be freed (by GC) before function returns
 	is_method         bool // true for `fn (x T) name()`, and for interface declarations (which are also for methods)
 	no_body           bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
-	is_def_translated bool // true, when the file it resides in is `[translated]`
+	is_file_translated bool // true, when the file it resides in is `[translated]`
 	mod               string
 	file              string
 	file_mode         Language

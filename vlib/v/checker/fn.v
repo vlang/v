@@ -887,7 +887,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		return ast.void_type
 	}
 
-	node.is_def_translated = func.is_def_translated
+	node.is_file_translated = func.is_file_translated
 	node.is_noreturn = func.is_noreturn
 	node.is_ctor_new = func.is_ctor_new
 	if !found_in_args {
@@ -910,7 +910,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	}
 	node.is_keep_alive = func.is_keep_alive
 	if func.language == .v && func.no_body && !c.pref.translated && !c.file.is_translated
-		&& !func.is_unsafe && !func.is_def_translated && func.mod != 'builtin' {
+		&& !func.is_unsafe && !func.is_file_translated && func.mod != 'builtin' {
 		c.error('cannot call a function that does not have a body', node.pos)
 	}
 	if node.concrete_types.len > 0 && func.generic_names.len > 0

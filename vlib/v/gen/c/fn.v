@@ -445,7 +445,7 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) !string {
 		name = g.generic_fn_name(g.cur_concrete_types, name)
 	}
 
-	if g.pref.translated || g.file.is_translated || node.is_def_translated {
+	if g.pref.translated || g.file.is_translated || node.is_file_translated {
 		if cattr := node.attrs.find_first('c') {
 			// This fixes unknown symbols errors when building separate .c => .v files into .o files
 			// example:
@@ -1361,7 +1361,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	} else {
 		name = c_name(name)
 	}
-	if g.pref.translated || g.file.is_translated || node.is_def_translated {
+	if g.pref.translated || g.file.is_translated || node.is_file_translated {
 		// For `[c: 'P_TryMove'] fn p_trymove( ... `
 		// every time `p_trymove` is called, `P_TryMove` must be generated instead.
 		if f := g.table.find_fn(node.name) {

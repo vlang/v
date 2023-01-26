@@ -529,7 +529,7 @@ pub:
 	is_keep_alive     bool        // passed memory must not be freed (by GC) before function returns
 	is_unsafe         bool        // true, when [unsafe] is used on a fn
 	is_markused       bool        // true, when an explict `[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
-	is_def_translated bool        // true, when the file it resides in is `[translated]`
+	is_file_translated bool        // true, when the file it resides in is `[translated]`
 	receiver          StructField // TODO this is not a struct field
 	receiver_pos      token.Pos   // `(u User)` in `fn (u User) name()` position
 	is_method         bool
@@ -594,7 +594,7 @@ pub mut:
 	is_keep_alive      bool // GC must not free arguments before fn returns
 	is_noreturn        bool // whether the function/method is marked as [noreturn]
 	is_ctor_new        bool // if JS ctor calls requires `new` before call, marked as `[use_new]` in V
-	is_def_translated  bool // true, when the file it resides in is `[translated]`
+	is_file_translated  bool // true, when the file it resides in is `[translated]`
 	args               []CallArg
 	expected_arg_types []Type
 	comptime_ret_val   bool
