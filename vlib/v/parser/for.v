@@ -121,10 +121,12 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 					val_var_pos)
 			}
 			if p.scope.known_var(key_var_name) {
-				return p.error('redefinition of key iteration variable `${key_var_name}`')
+				return p.error_with_pos('redefinition of key iteration variable `${key_var_name}`',
+					key_var_pos)
 			}
 			if p.scope.known_var(val_var_name) {
-				return p.error('redefinition of value iteration variable `${val_var_name}`')
+				return p.error_with_pos('redefinition of value iteration variable `${val_var_name}`',
+					val_var_pos)
 			}
 			p.scope.register(ast.Var{
 				name: key_var_name
