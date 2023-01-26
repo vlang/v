@@ -5378,7 +5378,7 @@ fn (mut g Gen) write_init_function() {
 			g.writeln(g.cleanups[mod_name].str())
 		}
 		g.writeln('\tarray_free(&as_cast_type_indexes);')
-	}	
+	}
 	for mod_name in g.table.modules {
 		cleanup_fn_name := '${mod_name}.cleanup'
 		if cleanupfn := g.table.find_fn(cleanup_fn_name) {
