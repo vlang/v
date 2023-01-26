@@ -17,8 +17,7 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 			assign := node.inc
 
 			if assign.op == .decl_assign {
-				c.error('for loop post statement cannot be a variable declaration',
-					assign.pos)
+				c.error('for loop post statement cannot be a variable declaration', assign.pos)
 			}
 
 			for right in assign.right {
