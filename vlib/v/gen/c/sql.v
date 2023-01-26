@@ -299,6 +299,9 @@ fn (mut g Gen) sql_expr_to_orm_primitive(expr ast.Expr) {
 		ast.SelectorExpr {
 			g.sql_write_orm_primitive(expr.typ, expr)
 		}
+		ast.CallExpr {
+			g.sql_write_orm_primitive(expr.return_type, expr)
+		}
 		else {
 			eprintln(expr)
 			verror('Unknown expr')
@@ -320,6 +323,7 @@ fn (mut g Gen) sql_write_orm_primitive(t ast.Type, expr ast.Expr) {
 	if typ == 'orm__InfixType' {
 		typ = 'infix'
 	}
+
 	g.write('orm__${typ}_to_primitive(')
 	if expr is ast.InfixExpr {
 		g.write('(orm__InfixType){')
@@ -345,6 +349,8 @@ fn (mut g Gen) sql_write_orm_primitive(t ast.Type, expr ast.Expr) {
 		g.write('.right = ')
 		g.sql_expr_to_orm_primitive(expr.right)
 		g.write('}')
+	} else if expr is ast.CallExpr {
+		g.call_expr(expr)
 	} else {
 		g.expr(expr)
 	}
@@ -420,6 +426,9 @@ fn (mut g Gen) sql_where_data(expr ast.Expr, mut fields []string, mut parenthese
 			data << expr
 		}
 		ast.BoolLiteral {
+			data << expr
+		}
+		ast.CallExpr {
 			data << expr
 		}
 		else {}

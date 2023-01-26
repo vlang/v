@@ -96,12 +96,15 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	node.sub_structs = sub_structs.move()
 	if node.has_where {
 		c.expr(node.where_expr)
+		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&node.where_expr)
 	}
 	if node.has_offset {
 		c.expr(node.offset_expr)
+		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&node.offset_expr)
 	}
 	if node.has_limit {
 		c.expr(node.limit_expr)
+		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&node.limit_expr)
 	}
 	if node.has_order {
 		c.expr(node.order_expr)
@@ -272,4 +275,25 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, t
 		c.error('V orm: `id int` must be the first field in `${table_name}`', pos)
 	}
 	return fields
+}
+
+// check_expr_has_no_fn_calls_with_non_orm_return_type checks that an expression has no function calls
+// that return complex types which can't be transformed into SQL.
+fn (mut c Checker) check_expr_has_no_fn_calls_with_non_orm_return_type(expr &ast.Expr) {
+	if expr is ast.CallExpr {
+		type_symbol := c.table.sym(expr.return_type)
+		is_time := type_symbol.cname == 'time__Time'
+		is_not_pointer := !type_symbol.is_pointer()
+		is_acceptable_type := (type_symbol.is_primitive() || is_time) && is_not_pointer
+
+		if !is_acceptable_type {
+			c.error('V ORM: function calls must return only primitive types and time.Time',
+				expr.pos)
+		}
+	} else if expr is ast.ParExpr {
+		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&expr.expr)
+	} else if expr is ast.InfixExpr {
+		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&expr.left)
+		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&expr.right)
+	}
 }
