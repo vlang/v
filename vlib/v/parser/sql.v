@@ -335,17 +335,19 @@ fn (mut p Parser) check_sql_where_expr_has_no_undefined_variables(expr &ast.Expr
 			])
 		}
 
-		left := p.check_sql_where_expr_has_no_undefined_variables(&expr.left, [])
+		left_check_result := p.check_sql_where_expr_has_no_undefined_variables(&expr.left,
+			[])
 
-		if left is ast.NodeError {
-			return left
+		if left_check_result is ast.NodeError {
+			return left_check_result
 		}
 
 		variable_names := if expr.left is ast.Ident { [expr.left.str()] } else { []string{} }
-		right := p.check_sql_where_expr_has_no_undefined_variables(&expr.right, variable_names)
+		right_check_result := p.check_sql_where_expr_has_no_undefined_variables(&expr.right,
+			variable_names)
 
-		if right is ast.NodeError {
-			return right
+		if right_check_result is ast.NodeError {
+			return right_check_result
 		}
 	} else if expr is ast.ParExpr {
 		return p.check_sql_where_expr_has_no_undefined_variables(&expr.expr, [])
