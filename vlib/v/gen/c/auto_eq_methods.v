@@ -133,34 +133,53 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 			}
 			field_type := g.unwrap(field.typ)
 			field_name := c_name(field.name)
+
+			mut left_arg := if left_type.has_flag(.option) {
+				'((${g.base_type(left_type)}*)a.data)->${field_name}'
+			} else {
+				'a.${field_name}'
+			}
+
+			mut right_arg := if left_type.has_flag(.option) {
+				'((${g.base_type(left_type)}*)b.data)->${field_name}'
+			} else {
+				'b.${field_name}'
+			}
+
+			if field.typ.has_flag(.option)
+				&& field_type.sym.kind !in [.struct_, .array, .sum_type, .array_fixed, .string, .alias, .function, .interface_] {
+				left_arg = '*(${g.base_type(field.typ)}*)(((${g.typ(field.typ)})${left_arg}).data)'
+				right_arg = '*(${g.base_type(field.typ)}*)(((${g.typ(field.typ)})${right_arg}).data)'
+			}
+
 			if field_type.sym.kind == .string {
-				fn_builder.write_string('string__eq(a.${field_name}, b.${field_name})')
+				fn_builder.write_string('string__eq(${left_arg}, ${right_arg})')
 			} else if field_type.sym.kind == .sum_type && !field.typ.is_ptr() {
 				eq_fn := g.gen_sumtype_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_sumtype_eq(a.${field_name}, b.${field_name})')
+				fn_builder.write_string('${eq_fn}_sumtype_eq(${left_arg}, ${right_arg})')
 			} else if field_type.sym.kind == .struct_ && !field.typ.is_ptr() {
 				eq_fn := g.gen_struct_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_struct_eq(a.${field_name}, b.${field_name})')
+				fn_builder.write_string('${eq_fn}_struct_eq(${left_arg}, ${right_arg})')
 			} else if field_type.sym.kind == .array && !field.typ.is_ptr() {
 				eq_fn := g.gen_array_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_arr_eq(a.${field_name}, b.${field_name})')
+				fn_builder.write_string('${eq_fn}_arr_eq(${left_arg}, ${right_arg})')
 			} else if field_type.sym.kind == .array_fixed && !field.typ.is_ptr() {
 				eq_fn := g.gen_fixed_array_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_arr_eq(a.${field_name}, b.${field_name})')
+				fn_builder.write_string('${eq_fn}_arr_eq(${left_arg}, ${right_arg})')
 			} else if field_type.sym.kind == .map && !field.typ.is_ptr() {
 				eq_fn := g.gen_map_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_map_eq(a.${field_name}, b.${field_name})')
+				fn_builder.write_string('${eq_fn}_map_eq(${left_arg}, ${right_arg})')
 			} else if field_type.sym.kind == .alias && !field.typ.is_ptr() {
 				eq_fn := g.gen_alias_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_alias_eq(a.${field_name}, b.${field_name})')
+				fn_builder.write_string('${eq_fn}_alias_eq(${left_arg}, ${right_arg})')
 			} else if field_type.sym.kind == .function {
-				fn_builder.write_string('*((voidptr*)(a.${field_name})) == *((voidptr*)(b.${field_name}))')
+				fn_builder.write_string('*((voidptr*)(${left_arg})) == *((voidptr*)(${right_arg}))')
 			} else if field_type.sym.kind == .interface_ {
 				ptr := if field.typ.is_ptr() { '*'.repeat(field.typ.nr_muls()) } else { '' }
 				eq_fn := g.gen_interface_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_interface_eq(${ptr}a.${field_name}, ${ptr}b.${field_name})')
+				fn_builder.write_string('${eq_fn}_interface_eq(${ptr}${left_arg}, ${ptr}${right_arg})')
 			} else {
-				fn_builder.write_string('a.${field_name} == b.${field_name}')
+				fn_builder.write_string('${left_arg} == ${right_arg}')
 			}
 		}
 	} else {
@@ -183,6 +202,7 @@ fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('static bool ${ptr_styp}_alias_eq(${ptr_styp} a, ${ptr_styp} b) {')
+
 	sym := g.table.sym(info.parent_type)
 	if sym.kind == .string {
 		fn_builder.writeln('\treturn string__eq(a, b);')
@@ -206,6 +226,8 @@ fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 		fn_builder.writeln('\treturn ${eq_fn}_map_eq(a, b);')
 	} else if sym.kind == .function {
 		fn_builder.writeln('\treturn *((voidptr*)(a)) == *((voidptr*)(b));')
+	} else if info.parent_type.has_flag(.option) || left.typ.has_flag(.option) {
+		fn_builder.writeln('\treturn !memcmp(&a.data, &b.data, sizeof(${g.base_type(info.parent_type)}));')
 	} else {
 		fn_builder.writeln('\treturn a == b;')
 	}
