@@ -2100,7 +2100,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 
 pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	// p.warn('name ')
-	is_option := p.tok.kind == .question
+	is_option := p.tok.kind == .question && p.peek_tok.kind == .lsbr
 	if is_option {
 		p.next()
 	}

@@ -969,7 +969,7 @@ fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 	g.write(' ${node.op.str()} ')
 
 	if g.table.final_sym(node.left_type).kind in [.map, .array] {
-		g.write('0 && ')
+		g.write('0 || ')
 		current_flag := g.inside_opt_or_res
 		g.inside_opt_or_res = false
 		g.expr(node.left)
