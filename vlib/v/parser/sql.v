@@ -305,10 +305,10 @@ fn (mut p Parser) check_sql_keyword(name string) ?bool {
 // but it is not true and depends on a database scheme.
 // For example, it will be hard to use V ORM in an existing database scheme which wrote before using V.
 fn (p &Parser) has_sql_where_expr_with_comparison_with_id(expr &ast.Expr) bool {
-	// This method will be removed in the future when we refuse it
+	// This method will be removed in the future when we refuse it.
 	// A more difficult expression with `id` means a user tries to find more than one row or he is wrong.
 	// And there is no point to get one structure instead of an array.
-	// `id == x` means that a single object is returned
+	// `id == x` means that a single object is returned.
 	if expr is ast.InfixExpr {
 		if expr.left is ast.Ident && expr.op == .eq {
 			return expr.left.name == 'id'
