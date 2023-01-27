@@ -320,7 +320,7 @@ fn (p &Parser) has_sql_where_expr_with_comparison_with_id(expr &ast.Expr) bool {
 	return false
 }
 
-// check_sql_where_expr_has_no_undefined_variables recursively tries to find undefined variables in the right part of index expressions.
+// check_sql_where_expr_has_no_undefined_variables recursively tries to find undefined variables in the right part of infix expressions.
 fn (mut p Parser) check_sql_where_expr_has_no_undefined_variables(expr &ast.Expr, unacceptable_variable_names []string) ast.Expr {
 	if expr is ast.Ident {
 		if !p.scope.known_var(expr.name) {
