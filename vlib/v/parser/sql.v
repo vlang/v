@@ -35,7 +35,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		where_check_result := p.check_sql_where_expr_has_no_undefined_variables(&where_expr,
 			[])
 		if where_check_result is ast.NodeError {
-			return check_result
+			return where_check_result
 		}
 
 		if !is_count {
