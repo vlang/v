@@ -2514,7 +2514,15 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	}
 	is_option := p.tok.kind == .question
 	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 {
-		if is_option { p.peek_tok.lit[0].is_capital() } else { p.tok.lit[0].is_capital() }
+		if is_option {
+			if p.peek_tok.kind != .eof && p.peek_tok.lit.len > 0 {
+				p.peek_tok.lit[0].is_capital()
+			} else {
+				false
+			}
+		} else {
+			p.tok.lit[0].is_capital()
+		}
 	} else {
 		false
 	}
