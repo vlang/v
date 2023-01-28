@@ -1,4 +1,4 @@
-These are utility commands that you can also launch through v,
+./v These are utility commands that you can also launch through v,
 but which are used less frequently by users:
 
    ast                Generate a json representation of the AST for a given .v file.

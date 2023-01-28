@@ -13,6 +13,113 @@ import v.builder
 import v.builder.cbuilder
 
 const (
+	// categories = {
+	// 	'build': [
+	// 		'build',
+	// 		'build-c',
+	// 		'build-js',
+	// 		'build-native'
+	// 	],
+	// 	'common': [
+	// 		'doc',
+	// 		'fmt',
+	// 		'missdoc',
+	// 		'repl',
+	// 		'run',
+	// 		'test',
+	// 		'vet',
+	// 		'watch',
+	// 		'where'
+	// 	],
+	// 	'install': [
+	// 		'self',
+	// 		'symlink',
+	// 		'up',
+	// 		'version'
+	// 	],
+	// 	'other': [
+	// 		'ast',
+	// 		'bin2v',
+	// 		'bug',
+	// 		'bump',
+	// 		'check-md',
+	// 		'complete',
+	// 		'doctor',
+	// 		'gret',
+	// 		'ls',
+	// 		'other',
+	// 		'shader',
+	// 		'tracev'
+	// 	],
+	// 	'scaffolding': [
+	// 		'init',
+	// 		'new'
+	// 	],
+	// 	'vpm': [
+	// 		'install',
+	// 		'list',
+	// 		'outdated',
+	// 		'remove',
+	// 		'search',
+	// 		'show',
+	// 		'update',
+	// 		'upgrade',
+	// 		'vpm'
+	// 	]
+	// }
+	// build = [
+	// 	'build',
+	// 	'build-c',
+	// 	'build-js',
+	// 	'build-native'
+	// ]
+	//
+	// common = [
+	// 	'doc',
+	// 	'fmt',
+	// 	'missdoc',
+	// 	'repl',
+	// 	'run',
+	// 	'test',
+	// 	'vet',
+	// 	'watch',
+	// 	'where'
+	// ]
+	// install = [
+	// 	'self',
+	// 	'symlink',
+	// 	'up',
+	// 	'version'
+	// ]
+	// other = [
+	// 	'ast',
+	// 	'bin2v',
+	// 	'bug',
+	// 	'bump',
+	// 	'check-md',
+	// 	'complete',
+	// 	'doctor',
+	// 	'gret',
+	// 	'ls',
+	// 	'other',
+	// 	'shader',
+	// 	'tracev'
+	// ]
+	// scaffolding = [
+	// 	'init',
+	// 	'new'
+	// ]
+	// vpm = [
+	// 	'install',
+	// 	'list',
+	// 	'outdated',
+	// 	'remove',
+	// 	'search',
+	// 	'show',
+	// 	'update',
+	// 	'upgrade',
+	// 	'vpm'
+	// ]
 	external_tools                      = [
 		'ast',
 		'bin2v',
@@ -155,6 +262,7 @@ fn main() {
 }
 
 fn invoke_help_and_exit(remaining []string) {
+	// println(remaining)
 	match remaining.len {
 		0, 1 { help.print_and_exit('default') }
 		2 { help.print_and_exit(remaining[1]) }

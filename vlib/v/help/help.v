@@ -5,6 +5,59 @@ import os
 import v.pref
 
 const (
+	categories = {
+		'build': [
+			'build-c',
+			'build-js',
+			'build-native'
+		],
+		'common': [
+			'doc',
+			'fmt',
+			'missdoc',
+			'repl',
+			'run',
+			'test',
+			'vet',
+			'watch',
+			'where'
+		],
+		'install': [
+			'self',
+			'symlink',
+			'up',
+			'version'
+		],
+		'other': [
+			'ast',
+			'bin2v',
+			'bug',
+			'bump',
+			'check-md',
+			'complete',
+			'doctor',
+			'gret',
+			'ls',
+			'other',
+			'shader',
+			'tracev'
+		],
+		'scaffolding': [
+			'init',
+			'new'
+		],
+		'vpm': [
+			'install',
+			'list',
+			'outdated',
+			'remove',
+			'search',
+			'show',
+			'update',
+			'upgrade',
+			'vpm'
+		]
+	}
 	unknown_topic = '`v help`: unknown help topic provided. Use `v help` for usage information.'
 )
 
@@ -20,14 +73,35 @@ pub fn print_and_exit(topic string) {
 		eprintln(help.unknown_topic)
 		exit(1)
 	}
+	mut search_category := false
+	mut path_to := ''
+
+	for category, item in categories {
+		// println("$topic - $category, $item")
+		if topic in item {
+			path_to = '$category/$topic'
+			break
+		} else if topic == category {
+			path_to = category
+			search_category = true
+			break
+		}
+	}
+
+	topic_dir := if search_category {
+		os.join_path(topicdir, '$path_to/default.txt')
+	} else {
+		os.join_path(topicdir, '${path_to}.txt')
+	}
+
 	// `init` has the same help topic as `new`
 	name := if topic == 'init' { 'new' } else { topic }
 	if topic == 'topics' {
 		println(known_topics(topicdir))
 		exit(0)
 	}
-	target_topic := os.join_path(topicdir, '${name}.txt')
-	content := os.read_file(target_topic) or {
+
+	content := os.read_file(topic_dir) or {
 		eprintln(help.unknown_topic)
 		eprintln(known_topics(topicdir))
 		exit(1)
