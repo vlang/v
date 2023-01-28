@@ -1090,7 +1090,6 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 		}
 		return
 	}
-
 	if node.stmts.len == 0 {
 		if ret_type != ast.void_type {
 			// x := f() or {}
@@ -1178,7 +1177,7 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 				}
 			}
 			else {
-				if stmt.typ == ast.void_type {
+				if stmt.typ == ast.void_type || expr_return_type == ast.void_type {
 					return
 				}
 				if is_noreturn_callexpr(stmt.expr) {
