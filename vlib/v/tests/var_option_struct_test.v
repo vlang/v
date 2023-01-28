@@ -12,7 +12,7 @@ fn (mut f Foo) test2() ?string {
 }
 
 fn test_main() {
-	mut m := Foo{}
+	mut m := ?Foo{}
 	v := m?.test([1, 2, 3]) or { '4' }
 	m?.name = 'foo'
 	assert m?.name == 'foo'
