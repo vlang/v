@@ -2364,6 +2364,7 @@ fn (mut p Parser) is_generic_cast() bool {
 pub fn (mut p Parser) name_expr() ast.Expr {
 	prev_tok_kind := p.prev_tok.kind
 	mut node := ast.empty_expr
+
 	if p.expecting_type {
 		if p.tok.kind == .dollar {
 			node = p.parse_comptime_type()
@@ -2511,12 +2512,13 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		p.check(.dot)
 		p.expr_mod = mod
 	}
+	is_option := p.tok.kind == .question
 	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 {
-		p.tok.lit[0].is_capital()
+		if is_option { p.peek_tok.lit[0].is_capital() } else { p.tok.lit[0].is_capital() }
 	} else {
 		false
 	}
-	is_option := p.tok.kind == .question
+
 	is_generic_call := p.is_generic_call()
 	is_generic_cast := p.is_generic_cast()
 	is_generic_struct_init := p.is_generic_struct_init()
@@ -2600,7 +2602,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				}
 			}
 		}
-	} else if (p.peek_tok.kind == .lcbr || is_generic_struct_init)
+	} else if (((!is_option && p.peek_tok.kind == .lcbr)
+		|| (is_option && p.peek_token(2).kind == .lcbr)) || is_generic_struct_init)
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
 		&& (!p.inside_for || p.inside_select) && !known_var {

@@ -15,11 +15,8 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 		g.expr_with_cast(expr, expr_typ, ret_typ)
 		g.writeln(';')
 		g.writeln('if (${expr}.state != 0) {')
-		// g.write('\t${var_expr} = ')
-
 		g.gen_or_block_stmts(var_expr.str(), '', (expr as ast.Ident).or_expr.stmts, ret_typ,
 			false)
-		// g.expr_with_cast(((expr as ast.Ident).or_expr.stmts[0] as ast.ExprStmt).expr, expr_typ, ret_typ)
 		g.inside_opt_data = old_inside_opt_data
 		g.writeln('}')
 	} else {
