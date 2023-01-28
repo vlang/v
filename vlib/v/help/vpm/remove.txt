@@ -4,6 +4,5 @@ Usage:
 	If no PACKAGE is provided, removes ALL installed packages.
 
 Options:
-  -help        - Show usage info.
   -v           - Print more details about the performed operation.
   -server-url  - When doing network operations, use this vpm server. Can be given multiple times.

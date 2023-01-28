@@ -9,6 +9,5 @@ Options:
   --git         - Install from git repository url
   --hg          - Install from mercurial repository url
   --once        - Only install the package if it was not previously installed
-  -help         - Show usage info.
   -v            - Print more details about the performed operation.
   -server-url   - When doing network operations, use this vpm server. Can be given multiple times.
