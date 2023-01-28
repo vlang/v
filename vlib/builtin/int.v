@@ -12,6 +12,7 @@ type byte = u8
 type i32 = int
 
 // ptr_str returns the address of `ptr` as a `string`.
+[markused]
 pub fn ptr_str(ptr voidptr) string {
 	buf1 := u64(ptr).hex()
 	return buf1

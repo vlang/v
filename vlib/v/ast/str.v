@@ -81,9 +81,6 @@ pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string)
 		}
 		f.write_string(node.receiver.name + ' ')
 		styp = util.no_cur_mod(styp, cur_mod)
-		if node.params[0].is_auto_rec {
-			styp = styp.trim('&')
-		}
 		f.write_string(styp + ') ')
 	}
 	name := if !node.is_method && node.language == .v {

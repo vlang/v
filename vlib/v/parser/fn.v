@@ -384,7 +384,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				name: param.name
 				typ: param.typ
 				is_mut: param.is_mut
-				is_auto_deref: param.is_mut || param.is_auto_rec
+				is_auto_deref: param.is_mut
 				is_stack_obj: is_stack_obj
 				pos: param.pos
 				is_used: true
@@ -667,29 +667,11 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	if is_atomic {
 		rec.typ = rec.typ.set_flag(.atomic_f)
 	}
-	// optimize method `automatic use fn (a &big_foo) instead of fn (a big_foo)`
-	type_sym := p.table.sym(rec.typ)
-	mut is_auto_rec := false
-	if type_sym.kind == .struct_ {
-		info := type_sym.info as ast.Struct
-		if !rec.is_mut && !rec.typ.is_ptr() && info.fields.len > 8 {
-			rec.typ = rec.typ.ref()
-			is_auto_rec = true
-		}
-	}
-
 	if rec.language != .v {
 		p.check_for_impure_v(rec.language, rec.type_pos)
 	}
 
 	p.check(.rpar)
-
-	if is_auto_rec && p.tok.kind != .name {
-		// Disable the auto-reference conversion for methodlike operators like ==, <=, > etc,
-		// since their parameters and receivers, *must* always be of the same type.
-		is_auto_rec = false
-		rec.typ = rec.typ.deref()
-	}
 
 	params << ast.Param{
 		pos: rec_start_pos
@@ -697,7 +679,6 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 		is_mut: rec.is_mut
 		is_atomic: is_atomic
 		is_shared: is_shared
-		is_auto_rec: is_auto_rec
 		typ: rec.typ
 		type_pos: rec.type_pos
 	}

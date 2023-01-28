@@ -414,7 +414,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 // corner cases.
 // FIXME: if the optimization is done after the checker, we can safely remove this util function
 fn (c Checker) check_same_type_ignoring_pointers(type_a ast.Type, type_b ast.Type) bool {
-	// FIXME: if possible pass the ast.Node and check the property `is_auto_rec`
+	// FIXME: if possible pass the ast.Node
 	if type_a != type_b {
 		// before failing we must be sure that the parser didn't optimize the function
 		clean_type_a := type_a.set_nr_muls(0)
