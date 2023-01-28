@@ -6,12 +6,12 @@ import v.pref
 
 const (
 	categories = {
-		'build': [
+		'build':       [
 			'build-c',
 			'build-js',
-			'build-native'
-		],
-		'common': [
+			'build-native',
+		]
+		'common':      [
 			'doc',
 			'fmt',
 			'missdoc',
@@ -20,15 +20,15 @@ const (
 			'test',
 			'vet',
 			'watch',
-			'where'
-		],
-		'install': [
+			'where',
+		]
+		'install':     [
 			'self',
 			'symlink',
 			'up',
-			'version'
-		],
-		'other': [
+			'version',
+		]
+		'other':       [
 			'ast',
 			'bin2v',
 			'bug',
@@ -40,13 +40,13 @@ const (
 			'ls',
 			'other',
 			'shader',
-			'tracev'
-		],
+			'tracev',
+		]
 		'scaffolding': [
 			'init',
-			'new'
-		],
-		'vpm': [
+			'new',
+		]
+		'vpm':         [
 			'install',
 			'list',
 			'outdated',
@@ -55,7 +55,7 @@ const (
 			'show',
 			'update',
 			'upgrade',
-			'vpm'
+			'vpm',
 		]
 	}
 	unknown_topic = '`v help`: unknown help topic provided. Use `v help` for usage information.'
@@ -76,10 +76,10 @@ pub fn print_and_exit(topic string) {
 	mut search_category := false
 	mut path_to := ''
 
-	for category, item in categories {
+	for category, item in help.categories {
 		// println("$topic - $category, $item")
 		if topic in item {
-			path_to = '$category/$topic'
+			path_to = '${category}/${topic}'
 			break
 		} else if topic == category {
 			path_to = category
@@ -89,7 +89,7 @@ pub fn print_and_exit(topic string) {
 	}
 
 	topic_dir := if search_category {
-		os.join_path(topicdir, '$path_to/default.txt')
+		os.join_path(topicdir, '${path_to}/default.txt')
 	} else {
 		os.join_path(topicdir, '${path_to}.txt')
 	}
