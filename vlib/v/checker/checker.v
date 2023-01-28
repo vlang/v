@@ -1150,6 +1150,9 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 						&& c.table.sym(last_stmt_typ).kind == .voidptr {
 						return
 					}
+					if last_stmt_typ == ast.none_type_idx {
+						return
+					}
 					type_name := c.table.type_to_str(last_stmt_typ)
 					expected_type_name := c.table.type_to_str(ret_type.clear_flag(.option).clear_flag(.result))
 					c.error('wrong return type `${type_name}` in the `or {}` block, expected `${expected_type_name}`',

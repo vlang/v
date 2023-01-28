@@ -724,7 +724,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		if g.table.sym(unwrapped_typ).kind == .alias {
 			unaliased_type := g.table.unaliased_type(unwrapped_typ)
 			if unaliased_type.has_flag(.option) || unaliased_type.has_flag(.result) {
-				unwrapped_typ = unaliased_type.clear_flag(.option).clear_flag(.result)
+				unwrapped_typ = unaliased_type.clear_flag(.result)
 			}
 		}
 		unwrapped_styp := g.typ(unwrapped_typ)

@@ -4385,7 +4385,11 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	node_typ := g.unwrap_generic(node.typ)
 	sym := g.table.sym(node_typ)
 	if sym.kind in [.sum_type, .interface_] {
-		g.expr_with_cast(node.expr, node.expr_type, node_typ)
+		if node.typ.has_flag(.option) && node.expr is ast.None {
+			g.gen_option_error(node.typ, node.expr)
+		} else {
+			g.expr_with_cast(node.expr, node.expr_type, node_typ)
+		}
 	} else if sym.kind == .struct_ && !node.typ.is_ptr() && !(sym.info as ast.Struct).is_typedef {
 		// deprecated, replaced by Struct{...exr}
 		styp := g.typ(node.typ)
