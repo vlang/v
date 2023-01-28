@@ -2,7 +2,7 @@ v watch [--clear] [--ignore .db] [--add /path/to/a/file.v] [other V options] [ru
 
 Description:
 `v watch` collects all .v files needed for a compilation, then when
-any of the .v source files changes, it re-runs the compilation.
+any of the .v source files change, it re-runs the compilation.
 
 Options:
   -s, --silent              Be more silent; do not print the watch timestamp before each re-run.
