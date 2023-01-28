@@ -82,14 +82,14 @@ pub fn print_and_exit(topic string) {
 			path_to = '${category}/${topic}'
 			break
 		} else if topic == category {
-			path_to = category
+			path_to = '$category/${category}.txt'
 			search_category = true
 			break
 		}
 	}
 
 	topic_dir := if search_category {
-		os.join_path(topicdir, '${path_to}/default.txt')
+		os.join_path(topicdir, '$path_to')
 	} else {
 		os.join_path(topicdir, '${path_to}.txt')
 	}
