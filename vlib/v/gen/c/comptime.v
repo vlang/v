@@ -285,6 +285,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 		}
 	}
 	tmp_var := g.new_tmp_var()
+	is_opt_or_result := node.typ.has_flag(.option) || node.typ.has_flag(.result)
 	line := if node.is_expr {
 		stmt_str := g.go_before_stmt(0)
 		g.write(util.tabs(g.indent))
@@ -339,8 +340,16 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 					g.set_current_pos_as_last_stmt_pos()
 					prev_skip_stmt_pos := g.skip_stmt_pos
 					g.skip_stmt_pos = true
-					g.write('\t${tmp_var} = ')
-					g.stmt(last)
+					if is_opt_or_result {
+						tmp_var2 := g.new_tmp_var()
+						g.write('{ ${g.base_type(node.typ)} ${tmp_var2} = ')
+						g.stmt(last)
+						g.writeln('_result_ok(&(${g.base_type(node.typ)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.typ)}));')
+						g.writeln('}')
+					} else {
+						g.write('\t${tmp_var} = ')
+						g.stmt(last)
+					}
 					g.skip_stmt_pos = prev_skip_stmt_pos
 					g.writeln(';')
 					g.writeln('}')
@@ -350,8 +359,16 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 					g.set_current_pos_as_last_stmt_pos()
 					prev_skip_stmt_pos := g.skip_stmt_pos
 					g.skip_stmt_pos = true
-					g.write('${tmp_var} = ')
-					g.stmt(last)
+					if is_opt_or_result {
+						tmp_var2 := g.new_tmp_var()
+						g.write('{ ${g.base_type(node.typ)} ${tmp_var2} = ')
+						g.stmt(last)
+						g.writeln('_result_ok(&(${g.base_type(node.typ)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.typ)}));')
+						g.writeln('}')
+					} else {
+						g.write('${tmp_var} = ')
+						g.stmt(last)
+					}
 					g.skip_stmt_pos = prev_skip_stmt_pos
 					g.writeln(';')
 					g.indent--
