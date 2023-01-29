@@ -40,4 +40,4 @@ Other less frequently used commands supported by V include:
   test-self               Test if V is working properly by running all tests, including the compiler ones.
                           NB: this can 1-2 minutes to run.
 
-  wipe-cache          Remove the V cache folder. Useful for cleaning the cache, and guaranteeing a clean build.
+  wipe-cache              Remove the V cache folder. Useful for cleaning the cache, and guaranteeing a clean build.
