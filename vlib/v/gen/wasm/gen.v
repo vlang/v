@@ -114,6 +114,10 @@ fn (mut g Gen) get_local_from_ident(ident ast.Ident) (int, wasm.Type) {
 	}
 }
 
+fn (mut g Gen) new_local(name string, typ ast.Type) {
+	g.local_stack << FuncIdent{name:name, typ: g.get_wasm_type(typ)}
+}
+
 const (
 	type_none = wasm.typenone()
 	type_i32 = wasm.typeint32()
@@ -254,7 +258,12 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	params_type := wasm.typecreate(paraml.data, paraml.len)
 
 	wasm_expr := g.expr_stmts(node.stmts, node.return_type)
-	wasm.addfunction(g.mod, name.str, params_type, return_type, unsafe { nil }, 0, wasm_expr)
+	
+	mut temporaries := []wasm.Type{cap: g.local_stack.len - paraml.len}
+	for idx := paraml.len ; idx < g.local_stack.len ; idx++ {
+		temporaries << g.local_stack[idx].typ
+	}
+	wasm.addfunction(g.mod, name.str, params_type, return_type, temporaries.data, temporaries.len, wasm_expr)
 
 	g.local_stack.clear()
 }
@@ -358,6 +367,13 @@ fn (mut g Gen) literal(val string, expected ast.Type) wasm.Expression {
 	g.w_error("literal: bad type `${expected}`")
 }
 
+fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) wasm.Expression {
+	op := g.infix_from_typ(node.left_type, node.op)
+
+	infix := wasm.binary(g.mod, op, g.expr(node.left, node.left_type), g.expr_with_cast(node.right, node.right_type, node.left_type))
+	return g.cast(infix, g.get_wasm_type(node.left_type), g.is_signed(node.left_type), g.get_wasm_type(expected))
+}
+
 fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wasm.Expression {
 	return match node {
 		ast.ParExpr {
@@ -368,12 +384,10 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wasm.Expression {
 			wasm.constant(g.mod, val)
 		}  
 		ast.InfixExpr {
-			op := g.infix_from_typ(node.left_type, node.op)
-
-			infix := wasm.binary(g.mod, op, g.expr(node.left, node.left_type), g.expr_with_cast(node.right, node.right_type, node.left_type))
-			g.cast(infix, g.get_wasm_type(node.left_type), g.is_signed(node.left_type), g.get_wasm_type(expected))
+			g.infix_expr(node, expected)
 		}
 		ast.Ident {
+			// TODO: only supports local identifiers, no path.expressions or global names
 			idx, typ := g.get_local_from_ident(node)
 			wasm.localget(g.mod, idx, typ)
 		}
@@ -389,16 +403,19 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wasm.Expression {
 			// wasm.bif(g.mod, g.expr())
 		}
 		ast.CastExpr {
-			expr := g.expr(node.expr, node.typ)
+			expr := g.expr(node.expr, node.expr_type)
 			
-			if node.expr_type == ast.bool_type {
+			if node.typ == ast.bool_type {
 				// WebAssembly booleans use the `i32` type
 				//   = 0 | is false
 				//   > 0 | is true
+				// 
+				// It's a checker error to cast to bool anyway...
 				
-				g.cast(expr, g.get_wasm_type(node.expr_type), g.is_signed(node.expr_type), type_i32)
+				bexpr := g.cast(expr, g.get_wasm_type(node.expr_type), g.is_signed(node.expr_type), type_i32)
+				wasm.bselect(g.mod, bexpr, wasm.constant(g.mod, wasm.literalint32(1)), wasm.constant(g.mod, wasm.literalint32(0)), type_i32)
 			} else {
-				g.expr(node.expr, node.typ)
+				g.cast(expr, g.get_wasm_type(node.expr_type), g.is_signed(node.expr_type), g.get_wasm_type(node.typ))
 			}
 		}
 		else {
@@ -419,6 +436,40 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wasm.Expression {
 		}
 		ast.ExprStmt {
 			g.expr_with_cast(node.expr, node.typ, expected)
+		}
+		ast.AssignStmt {
+			if (node.left.len > 1 && node.right.len == 1) || node.has_cross_var {
+				// Gen[Native].assign_stmt()
+				g.w_error('complex assign statements are not implemented')
+			}
+
+			mut exprs := []wasm.Expression{cap: node.left.len}
+			for i, left in node.left {
+				right := node.right[i]
+				typ := node.left_types[i]
+
+				if left is ast.Ident && node.op == .decl_assign {
+					g.new_local(left.name, typ)
+				}
+
+				// TODO: only supports local identifiers, no path.expressions or global names
+				idx, var_typ := g.get_local_from_ident(left as ast.Ident)
+				expr := if node.op !in [.decl_assign, .assign] {
+					op := g.infix_from_typ(typ, token.assign_op_to_infix_op(node.op))
+					infix := wasm.binary(g.mod, op, wasm.localget(g.mod, idx, var_typ), g.expr(right, typ))
+
+					infix
+				} else {
+					g.expr(right, typ)
+				}
+				exprs << wasm.localset(g.mod, idx, expr)
+			}
+
+			if exprs.len == 1 {
+				exprs[0]
+			} else {
+				wasm.block(g.mod, c'multiassign', exprs.data, exprs.len, wasm.typeauto())
+			}
 		}
 		else {
 			eprintln('wasm.expr_stmt(): unhandled node: ' + node.type_name())
@@ -477,7 +528,8 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 		g.toplevel_stmts(file.stmts)
 	}
 	if wasm.modulevalidate(g.mod) {
-		wasm.moduleprintstackir(g.mod, true)
+		// wasm.moduleprintstackir(g.mod, false)
+		wasm.moduleprint(g.mod)
 	} else {
 		wasm.moduleprint(g.mod)
 	}
