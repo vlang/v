@@ -368,11 +368,10 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wasm.Expression {
 			wasm.constant(g.mod, val)
 		}  
 		ast.InfixExpr {
-			assert expected == node.promoted_type
 			op := g.infix_from_typ(node.left_type, node.op)
 
 			infix := wasm.binary(g.mod, op, g.expr(node.left, node.left_type), g.expr_with_cast(node.right, node.right_type, node.left_type))
-			g.cast(infix, g.get_wasm_type(node.left_type), g.is_signed(node.left_type), g.get_wasm_type(node.promoted_type))
+			g.cast(infix, g.get_wasm_type(node.left_type), g.is_signed(node.left_type), g.get_wasm_type(expected))
 		}
 		ast.Ident {
 			idx, typ := g.get_local_from_ident(node)
@@ -380,6 +379,14 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wasm.Expression {
 		}
 		ast.IntegerLiteral, ast.FloatLiteral {
 			g.literal(node.val, expected)
+		}
+		ast.IfExpr {
+			if node.branches.len == 2 && node.has_else {
+				wasm.bselect(g.mod, g.expr(node.branches[0].cond, ast.bool_type_idx), g.expr_stmts(node.branches[0].stmts, node.typ), g.expr_stmts(node.branches[1].stmts, node.typ), g.get_wasm_type(node.typ))
+			} else {
+				g.w_error('complex if expressions are not implemented')
+			}
+			// wasm.bif(g.mod, g.expr())
 		}
 		ast.CastExpr {
 			expr := g.expr(node.expr, node.typ)
@@ -401,14 +408,17 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wasm.Expression {
 	}
 }
 
-fn (mut g Gen) expr_stmt(node ast.Stmt, fn_type ast.Type) wasm.Expression {
+fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wasm.Expression {
 	return match node {
 		ast.Return {
 			if node.exprs.len == 1 {
-				g.expr_with_cast(node.exprs[0], node.types[0], fn_type)
+				g.expr_with_cast(node.exprs[0], node.types[0], expected)
 			} else {
 				g.w_error('multi returns are not implemented')
 			}
+		}
+		ast.ExprStmt {
+			g.expr_with_cast(node.expr, node.typ, expected)
 		}
 		else {
 			eprintln('wasm.expr_stmt(): unhandled node: ' + node.type_name())
@@ -417,16 +427,16 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, fn_type ast.Type) wasm.Expression {
 	}
 }
 
-pub fn (mut g Gen) expr_stmts(stmts []ast.Stmt, fn_type ast.Type) wasm.Expression {
+pub fn (mut g Gen) expr_stmts(stmts []ast.Stmt, expected ast.Type) wasm.Expression {
 	if stmts.len == 0 {
 		return wasm.nop(g.mod)
 	}
 	if stmts.len == 1 {
-		return g.expr_stmt(stmts[0], fn_type)
+		return g.expr_stmt(stmts[0], expected)
 	}
 	mut exprl := []wasm.Expression{cap: stmts.len}
 	for stmt in stmts {
-		exprl << g.expr_stmt(stmt, fn_type)
+		exprl << g.expr_stmt(stmt, expected)
 	}
 	return wasm.block(g.mod, c'blk', exprl.data, exprl.len, wasm.typeauto())
 }
