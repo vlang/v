@@ -6,12 +6,12 @@ import v.pref
 
 const (
 	categories = {
-		'build':       [
+		'build':        [
 			'build-c',
 			'build-js',
 			'build-native',
 		]
-		'common':      [
+		'common':       [
 			'doc',
 			'fmt',
 			'missdoc',
@@ -22,13 +22,13 @@ const (
 			'watch',
 			'where',
 		]
-		'installation':     [
+		'installation': [
 			'self',
 			'symlink',
 			'up',
 			'version',
 		]
-		'other':       [
+		'other':        [
 			'ast',
 			'bin2v',
 			'bug',
@@ -42,11 +42,11 @@ const (
 			'shader',
 			'tracev',
 		]
-		'scaffolding': [
+		'scaffolding':  [
 			'init',
 			'new',
 		]
-		'vpm':         [
+		'vpm':          [
 			'install',
 			'list',
 			'outdated',
@@ -83,7 +83,7 @@ pub fn print_and_exit(topic string) {
 				path_to = '${category}/${topic}'
 				break
 			} else if topic == category {
-				path_to = '$category/${category}.txt'
+				path_to = '${category}/${category}.txt'
 				search_category = true
 				break
 			}
@@ -91,7 +91,7 @@ pub fn print_and_exit(topic string) {
 	}
 
 	topic_dir := if search_category {
-		os.join_path(topicdir, '$path_to')
+		os.join_path(topicdir, '${path_to}')
 	} else {
 		os.join_path(topicdir, '${path_to}.txt')
 	}
@@ -110,7 +110,7 @@ pub fn print_and_exit(topic string) {
 	exit(0)
 }
 
-fn known_topics( topicdir string) string {
+fn known_topics(topicdir string) string {
 	mut res := []string{}
 	res << 'Known help topics: '
 

@@ -19,7 +19,7 @@ pub fn show_topic(topic string) {
 	})
 	for category, item in categories {
 		if topic in item {
-			target_topic = os.join_path(vroot, 'vlib', 'v', 'help', '$category/${topic}.txt')
+			target_topic = os.join_path(vroot, 'vlib', 'v', 'help', '${category}/${topic}.txt')
 			break
 		}
 	}

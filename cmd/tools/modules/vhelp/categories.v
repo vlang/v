@@ -2,12 +2,12 @@ module vhelp
 
 const (
 	categories = {
-		'build':       [
+		'build':        [
 			'build-c',
 			'build-js',
 			'build-native',
 		]
-		'common':      [
+		'common':       [
 			'doc',
 			'fmt',
 			'missdoc',
@@ -18,13 +18,13 @@ const (
 			'watch',
 			'where',
 		]
-		'installation':     [
+		'installation': [
 			'self',
 			'symlink',
 			'up',
 			'version',
 		]
-		'other':       [
+		'other':        [
 			'ast',
 			'bin2v',
 			'bug',
@@ -38,11 +38,11 @@ const (
 			'shader',
 			'tracev',
 		]
-		'scaffolding': [
+		'scaffolding':  [
 			'init',
 			'new',
 		]
-		'vpm':         [
+		'vpm':          [
 			'install',
 			'list',
 			'outdated',
