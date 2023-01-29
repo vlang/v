@@ -180,7 +180,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 		mut structs := 0
 		for f in fields {
 			if f.name == fkey {
-				g.write('${pid},')
+				g.write('${pid}, ')
 				continue
 			}
 			mut sym := g.table.sym(f.typ)
