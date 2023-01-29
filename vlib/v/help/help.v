@@ -61,6 +61,7 @@ const (
 	unknown_topic = '`v help`: unknown help topic provided. Use `v help` for usage information.'
 )
 
+/// Printing the topic menu and exiting
 pub fn print_and_exit(topic string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
@@ -76,9 +77,9 @@ pub fn print_and_exit(topic string) {
 	mut search_category := false
 	mut path_to := topic
 
+	// Making sure the topic chosen isn't `default`
 	if path_to != 'default' {
 		for category, item in help.categories {
-			// println("$topic - $category, $item")
 			if topic in item {
 				path_to = '${category}/${topic}'
 				break
@@ -110,6 +111,7 @@ pub fn print_and_exit(topic string) {
 	exit(0)
 }
 
+/// Getting topics known to V
 fn known_topics(topicdir string) string {
 	mut res := []string{}
 	res << 'Known help topics: '
@@ -117,6 +119,7 @@ fn known_topics(topicdir string) string {
 	mut topics := []string{}
 	mut ptopics := &topics
 
+	// Walking the vlib/v/help directory for the help topics
 	os.walk(topicdir, fn [mut ptopics] (topic string) {
 		if os.file_ext(topic) == '.txt' {
 			ptopics << os.file_name(topic).replace('.txt', '').replace('default,', '')
@@ -126,5 +129,5 @@ fn known_topics(topicdir string) string {
 	topics.sort()
 	res << topics.join(', ')
 	res << '.'
-	return res.join('')
+	return res.join('').replace('default, ', '')
 }

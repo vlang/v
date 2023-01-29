@@ -1,6 +1,8 @@
-Usage: v [C build flags] ['run'] <target.v|target_directory> [run options]
-
 This command compiles the given target, along with their dependencies, into an executable.
+
+Usage:
+  v [C build flags] ['run'] <target.v|target_directory> [run options]
+
 
 This help topic explores the C-backend specific build flags. For more general build help,
 see also `v help build`.

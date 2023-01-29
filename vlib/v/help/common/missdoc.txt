@@ -1,8 +1,8 @@
-v missdoc 0.1.0
------------------------------------------------
+Prints all V functions in .v files under PATH/, that do not yet have
+documentation comments.
+
 Usage: v missdoc [options] PATH [PATH]...
 
-Description: Prints all V functions in .v files under PATH/, that do not yet have documentation comments.
 
 Options:
   -h, --help                Show this help text.
@@ -15,10 +15,11 @@ Options:
 
   -r, --relative-paths      Use relative paths in output.
   --verify                  exit(1) if documentation is missing, 0 otherwise.
-  --diff                    exit(1) and show difference between two PATH inputs, return 0 otherwise.
+  --diff                    exit(1) and show difference between two PATH inputs,
+                            return 0 otherwise.
   --version                 output version information and exit
 
------------------------------------------------
+
 
 PATH can be both files and directories.
 

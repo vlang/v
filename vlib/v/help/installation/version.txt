@@ -1,3 +1,4 @@
-Usage: v version
-
 Print the version of V installed.
+
+Usage:
+  v version

@@ -1,7 +1,10 @@
+Removes all listed PACKAGEs.
+
 Usage:
   v remove [PACKAGE...]
-    Removes all listed PACKAGEs.
-	If no PACKAGE is provided, removes ALL installed packages.
+
+If no PACKAGE is provided, removes ALL installed packages.
+
 
 Options:
   -v           - Print more details about the performed operation.

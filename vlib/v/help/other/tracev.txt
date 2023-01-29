@@ -1,3 +1,4 @@
-Usage: v tracev 
-
 Produce a tracing version of the V compiler.
+
+Usage:
+  v tracev

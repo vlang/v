@@ -1,7 +1,8 @@
+Searches https://vpm.vlang.io/ for matching KEYWORDs and displays the details
+
 Usage:
   v search KEYWORD[...]
-    Searches https://vpm.vlang.io/ for matching KEYWORDs and displays the
-    details
+
 
 Options:
   -v            - Print more details about the performed operation.

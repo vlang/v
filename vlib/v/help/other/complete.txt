@@ -1,8 +1,8 @@
+Tool for bridging autocompletion between various shells and v
+
 Usage:
   v complete [options] [SUBCMD] QUERY...
 
-Description:
-  Tool for bridging auto completion between various shells and v
 
 Supported shells:
   bash, fish, zsh, powershell
@@ -22,7 +22,11 @@ Options:
 
 SUBCMD:
   setup     : setup [SHELL] - returns the code for completion setup for SHELL
-  bash      : [QUERY]       - returns Bash compatible completion code with completions computed from QUERY
-  fish      : [QUERY]       - returns Fish compatible completion code with completions computed from QUERY
-  zsh       : [QUERY]       - returns ZSH  compatible completion code with completions computed from QUERY
-  powershell: [QUERY]       - returns PowerShell compatible completion code with completions computed from QUERY
+  bash      : [QUERY]       - returns Bash compatible completion code with
+                              completions computed from QUERY
+  fish      : [QUERY]       - returns Fish compatible completion code with
+                              completions computed from QUERY
+  zsh       : [QUERY]       - returns ZSH  compatible completion code with
+                              completions computed from QUERY
+  powershell: [QUERY]       - returns PowerShell compatible completion code with
+                              completions computed from QUERY

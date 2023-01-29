@@ -1,3 +1,4 @@
-Usage: v show
-
 Display information about a module on vpm.
+
+Usage:
+  v show

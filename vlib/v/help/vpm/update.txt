@@ -1,8 +1,10 @@
+Updates each PACKAGE.
+
 Usage:
   v update [PACKAGE]...
-	Updates each PACKAGE.
 
-	With no PACKAGE, ALL installed packages are updated to their latest versions.
+With no PACKAGE, ALL installed packages are updated to their latest versions.
+
 
 Options:
   -v           - Print more details about the update.

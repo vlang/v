@@ -1,20 +1,22 @@
+Runs test functions in the given FILEs and DIRECTORYs.
+
 Usage:
   v [-stats] test FILE|DIRECTORY[...] [-run-only GPATTERN1[,...]]
-    Runs test functions in the given FILEs and DIRECTORYs.
 
-    If '-stats' is given, more statistics about the tests are printed along
-    with a report of passes/failures
 
-    If you give `-run-only GPATTERN`, then *only* test functions, that do
-    match by name the given glob pattern `GPATTERN` will run. You can separate
-    multiple glob patterns with `,`.
-    If a _test.v file lacks matching functions for all of the glob patterns, it
-    will be ignored completely, so you can do in effect:
-        `v test . -run-only test_your_fn_name`
-    ... and V will run only that test function, no matter how many _test.v
-    files you have, and how many other test_ functions exist in them.
-    NB: glob patterns support `*` which matches anything, and `?`, that
-    matches any single character. They are *NOT* regular expressions however.
+If '-stats' is given, more statistics about the tests are printed along
+with a report of passes/failures
+
+If you give `-run-only GPATTERN`, then *only* test functions, that do
+match by name the given glob pattern `GPATTERN` will run. You can separate
+multiple glob patterns with `,`.
+If a _test.v file lacks matching functions for all of the glob patterns, it
+will be ignored completely, so you can do in effect:
+  `v test . -run-only test_your_fn_name`
+... and V will run only that test function, no matter how many _test.v
+files you have, and how many other test_ functions exist in them.
+NB: glob patterns support `*` which matches anything, and `?`, that
+matches any single character. They are *NOT* regular expressions however.
 
 NB 1: very frequently, when you work on a module you can cd into its folder,
 and then you can perform:
@@ -58,6 +60,7 @@ should see something like this:
 ```
  OK    [1/2]   164.671 ms vlib/math/stats/stats_test.v
  OK    [2/2]   184.842 ms vlib/math/complex/complex_test.v
-------------------------------------------------------------------------------------------
- Summary for all V _test.v files: 2 passed, 2 total. Runtime: 185 ms, on 2 parallel jobs.
+--------------------------------------------------------------------------------
+ Summary for all V _test.v files: 2 passed, 2 total. Runtime: 185 ms, on 2
+ parallel jobs.
 ```
