@@ -3,7 +3,7 @@
 ## Requirements
 
 - 2 space initial indentation (titles exempt)
-- Description indentation of half the length of the longest word (odd, round down)
+- Description indentation of two spaces from the longest word
 - All descriptions should be indented to the same column within a block, with a 
 hard limit at column 80.  
   - Multi-line descriptions should indent to match the description part of the previous line

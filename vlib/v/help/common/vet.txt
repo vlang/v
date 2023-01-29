@@ -5,15 +5,15 @@ Usage:
   v vet [options] path/to/dir [path/to/other_dir]
 
 Options:
-  -W                   Exit with code 1, even if vet only reported warnings.
-                       Useful for checks in CI.
+  -W                  Exit with code 1, even if vet only reported warnings.
+                      Useful for checks in CI.
 
-  -w, -hide-warnings   Do not print warnings to stderr.
+  -w, -hide-warnings  Do not print warnings to stderr.
 
-  -v, -verbose         Enable verbose logging.
+  -v, -verbose        Enable verbose logging.
 
-  -p                   Report private functions with missing documentation too
-                       (by default, only the `pub fn` functions will be reported).
+  -p                  Report private functions with missing documentation too
+                      (by default, only the `pub fn` functions will be reported).
 
-  -force               (NB: vet development only!)
-                       Do not skip the vet regression tests.
+  -force              (NB: vet development only!)
+                      Do not skip the vet regression tests.

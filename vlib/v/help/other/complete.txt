@@ -20,12 +20,12 @@ Options:
   -h, --help                Show this help text.
 
 SUBCMD:
-  setup     : setup [SHELL] - returns the code for completion setup for SHELL
-  bash      : [QUERY]       - returns Bash compatible completion code with
-                              completions computed from QUERY
-  fish      : [QUERY]       - returns Fish compatible completion code with
-                              completions computed from QUERY
-  zsh       : [QUERY]       - returns ZSH  compatible completion code with
-                              completions computed from QUERY
-  powershell: [QUERY]       - returns PowerShell compatible completion code with
-                              completions computed from QUERY
+  setup     : setup [SHELL]  Returns the code for completion setup for SHELL
+  bash      : [QUERY]        Returns Bash compatible completion code with
+                             completions computed from QUERY
+  fish      : [QUERY]        Returns Fish compatible completion code with
+                             completions computed from QUERY
+  zsh       : [QUERY]        Returns ZSH  compatible completion code with
+                             completions computed from QUERY
+  powershell: [QUERY]        Returns PowerShell compatible completion code with
+                             completions computed from QUERY

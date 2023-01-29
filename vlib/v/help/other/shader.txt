@@ -11,13 +11,13 @@ Examples:
   v shader examples/sokol/02_cubes_glsl/cube_glsl.glsl
 
 Options:
-  -h, --help                          Show this help text.
-  -v, --verbose                       Be verbose about the tools progress.
-  -u, --force-update                  Force update of the sokol-shdc tool.
-  -l, --slang <multiple strings>      Shader dialects to generate code for.
-                                      Default is all.
-                                      Available: 'glsl330', 'glsl100',
-                                      'glsl300es', 'hlsl4', 'hlsl5',
-                                      'metal_macos', 'metal_ios', 'metal_sim',
-                                      'wgpu'
+  -h, --help                      Show this help text.
+  -v, --verbose                   Be verbose about the tools progress.
+  -u, --force-update              Force update of the sokol-shdc tool.
+  -l, --slang <multiple strings>  Shader dialects to generate code for.
+                                  Default is all.
+                                  Available: 'glsl330', 'glsl100',
+                                  'glsl300es', 'hlsl4', 'hlsl5',
+                                  'metal_macos', 'metal_ios', 'metal_sim',
+                                  'wgpu'
 								 

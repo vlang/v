@@ -22,13 +22,13 @@ For more general build help, see also `v help build`.
    -sourcemap
       Create a source map for debugging
 
-   -sourcemap-inline                Embed the source map directly into the
-                                    JavaScript source file
-                                    (currently default,
-                                    external source map files not implemented)
+   -sourcemap-inline       Embed the source map directly into the
+                           JavaScript source file
+                           (currently default,
+                           external source map files not implemented)
 
-   -sourcemap-src-include           Include the orginal V source files into the
-                                    generated source map
+   -sourcemap-src-include  Include the orginal V source files into the
+                           generated source map
    (default false, all files in the source map are currently referenced by
    their absolute system file path)
 

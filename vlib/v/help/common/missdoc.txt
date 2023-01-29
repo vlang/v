@@ -4,19 +4,19 @@ documentation comments.
 Usage: v missdoc [options] PATH [PATH]...
 
 Options:
-  -h, --help                Show this help text.
-  -t, --tags                Also print function tags if any is found.
-  -d, --deprecated          Include deprecated functions in output.
-  -p, --private             Include private functions in output.
-  --js                      Include JavaScript functions in output.
-  -n, --no-line-numbers     Exclude line numbers in output.
+  -h, --help             Show this help text.
+  -t, --tags             Also print function tags if any is found.
+  -d, --deprecated       Include deprecated functions in output.
+  -p, --private          Include private functions in output.
+  --js                   Include JavaScript functions in output.
+  -n, --no-line-numbers  Exclude line numbers in output.
   -e, --exclude <multiple strings>
 
-  -r, --relative-paths      Use relative paths in output.
-  --verify                  exit(1) if documentation is missing, 0 otherwise.
-  --diff                    exit(1) and show difference between two PATH inputs,
-                            return 0 otherwise.
-  --version                 output version information and exit
+  -r, --relative-paths   Use relative paths in output.
+  --verify               exit(1) if documentation is missing, 0 otherwise.
+  --diff                 exit(1) and show difference between two PATH inputs,
+                         return 0 otherwise.
+  --version              output version information and exit
 
 
 

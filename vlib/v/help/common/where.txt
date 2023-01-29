@@ -22,19 +22,19 @@ symbol_name can be:
   regexp
 
 Options:
-  -mod  [mod_name]      Restrict to search recursively only within of the given 
-                        module, if not provided search in entire v scope
-                        (use -mod main to search inside all your project).
-  -dir  [dir_path]      Restrict to search non recursively within the given 
-                        folder/s, if not provided, search in entire v scope.
-  -vis  [visibility]    Can be: all, pub, pri (all by default if not provided).
-                        Restrict to search symbols with the given visibility.
-  -mut  [mutability]    Can be: any, yes, not (any by default if not provided).
-                        Restrict to search symbols with the given mutability.
+  -mod  [mod_name]    Restrict to search recursively only within of the given
+                      module, if not provided search in entire v scope
+                      (use -mod main to search inside all your project).
+  -dir  [dir_path]    Restrict to search non recursively within the given
+                      folder/s, if not provided, search in entire v scope.
+  -vis  [visibility]  Can be: all, pub, pri (all by default if not provided).
+                      Restrict to search symbols with the given visibility.
+  -mut  [mutability]  Can be: any, yes, not (any by default if not provided).
+                      Restrict to search symbols with the given mutability.
 flags:
-  -h                    include Header
-  -f                    Format output (each match uses 3 lines)
-  -v                    for both above (more Verbose)
+  -h                  include Header
+  -f                  Format output (each match uses 3 lines)
+  -v                  for both above (more Verbose)
 
 Note: 
   This tool is inspired by the vdoc tool and its design. However, this is 
