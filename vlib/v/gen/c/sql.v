@@ -156,7 +156,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 
 	for sub in subs {
 		g.sql_stmt_line(sub, expr, or_expr)
-		g.writeln('array_push(&${last_ids_arr}, _MOV((int[]){orm__Connection_name_table[${expr}._typ]._method_last_id(${expr}._object)}));')
+		g.writeln('array_push(&${last_ids_arr}, _MOV((orm__Primitive[]){orm__int_to_primitive(orm__Connection_name_table[${expr}._typ]._method_last_id(${expr}._object))}));')
 	}
 
 	g.write('${result_name}_void ${res} = orm__Connection_name_table[${expr}._typ]._method_')
@@ -180,7 +180,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 		mut structs := 0
 		for f in fields {
 			if f.name == fkey {
-				g.write('orm__int_to_primitive(${pid}),')
+				g.write('${pid},')
 				continue
 			}
 			mut sym := g.table.sym(f.typ)
@@ -207,7 +207,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 
 	if arrs.len > 0 {
 		mut id_name := g.new_tmp_var()
-		g.writeln('int ${id_name} = orm__Connection_name_table[${expr}._typ]._method_last_id(${expr}._object);')
+		g.writeln('orm__Primitive ${id_name} = orm__int_to_primitive(orm__Connection_name_table[${expr}._typ]._method_last_id(${expr}._object));')
 		for i, mut arr in arrs {
 			idx := g.new_tmp_var()
 			g.writeln('for (int ${idx} = 0; ${idx} < ${arr.object_var_name}.${field_names[i]}.len; ${idx}++) {')
