@@ -203,6 +203,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 				typ: typ
 				pos: typ_pos
 			}
+			scope: p.scope
 		}
 	} else if n == 'drop' {
 		kind = .drop
@@ -220,6 +221,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 				typ: typ
 				pos: typ_pos
 			}
+			scope: p.scope
 		}
 	}
 	mut inserted_var_name := ''
@@ -289,6 +291,8 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		update_exprs: update_exprs
 		kind: kind
 		where_expr: where_expr
+		is_top_level: true
+		scope: p.scope
 	}
 }
 

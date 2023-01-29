@@ -156,9 +156,9 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		c.cur_orm_ts = old_ts
 	}
 
-	if node.kind == .insert {
+	if node.kind == .insert && node.is_top_level {
 		inserting_object_name := node.object_var_name
-		inserting_object_var := c.fn_scope.find_var(inserting_object_name) or {
+		inserting_object_var := node.scope.find(inserting_object_name) or {
 			c.error('undefined ident: `${inserting_object_name}`', node.pos)
 			return ast.void_type
 		}
