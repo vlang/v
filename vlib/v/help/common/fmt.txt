@@ -5,7 +5,6 @@ Usage:
   v fmt [options] path/to/dir [path/to/other_dir]
   cat source.v | v fmt
 
-
 Formats the given V source files or recursively formats all files in the
 directory, then prints their formatted source to stdout.
 

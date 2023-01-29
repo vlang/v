@@ -3,7 +3,6 @@ Tool for bridging autocompletion between various shells and v
 Usage:
   v complete [options] [SUBCMD] QUERY...
 
-
 Supported shells:
   bash, fish, zsh, powershell
 

@@ -13,150 +13,150 @@ import v.builder
 import v.builder.cbuilder
 
 const (
-	// categories = {
-	// 	'build': [
-	// 		'build',
-	// 		'build-c',
-	// 		'build-js',
-	// 		'build-native'
-	// 	],
-	// 	'common': [
-	// 		'doc',
-	// 		'fmt',
-	// 		'missdoc',
-	// 		'repl',
-	// 		'run',
-	// 		'test',
-	// 		'vet',
-	// 		'watch',
-	// 		'where'
-	// 	],
-	// 	'install': [
-	// 		'self',
-	// 		'symlink',
-	// 		'up',
-	// 		'version'
-	// 	],
-	// 	'other': [
-	// 		'ast',
-	// 		'bin2v',
-	// 		'bug',
-	// 		'bump',
-	// 		'check-md',
-	// 		'complete',
-	// 		'doctor',
-	// 		'gret',
-	// 		'ls',
-	// 		'other',
-	// 		'shader',
-	// 		'tracev'
-	// 	],
-	// 	'scaffolding': [
-	// 		'init',
-	// 		'new'
-	// 	],
-	// 	'vpm': [
-	// 		'install',
-	// 		'list',
-	// 		'outdated',
-	// 		'remove',
-	// 		'search',
-	// 		'show',
-	// 		'update',
-	// 		'upgrade',
-	// 		'vpm'
-	// 	]
-	// }
-	// build = [
-	// 	'build',
-	// 	'build-c',
-	// 	'build-js',
-	// 	'build-native'
-	// ]
-	//
-	// common = [
-	// 	'doc',
-	// 	'fmt',
-	// 	'missdoc',
-	// 	'repl',
-	// 	'run',
-	// 	'test',
-	// 	'vet',
-	// 	'watch',
-	// 	'where'
-	// ]
-	// install = [
-	// 	'self',
-	// 	'symlink',
-	// 	'up',
-	// 	'version'
-	// ]
-	// other = [
-	// 	'ast',
-	// 	'bin2v',
-	// 	'bug',
-	// 	'bump',
-	// 	'check-md',
-	// 	'complete',
-	// 	'doctor',
-	// 	'gret',
-	// 	'ls',
-	// 	'other',
-	// 	'shader',
-	// 	'tracev'
-	// ]
-	// scaffolding = [
-	// 	'init',
-	// 	'new'
-	// ]
-	// vpm = [
-	// 	'install',
-	// 	'list',
-	// 	'outdated',
-	// 	'remove',
-	// 	'search',
-	// 	'show',
-	// 	'update',
-	// 	'upgrade',
-	// 	'vpm'
-	// ]
-	external_tools                      = [
+	external_tools = {
+		'build': [
+			'build',
+			'build-c',
+			'build-js',
+			'build-native'
+		],
+		'common': [
+			'doc',
+			'fmt',
+			'missdoc',
+			'repl',
+			'run',
+			'test',
+			'vet',
+			'watch',
+			'where'
+		],
+		'install': [
+			'self',
+			'symlink',
+			'up',
+			'version'
+		],
+		'other': [
+			'ast',
+			'bin2v',
+			'bug',
+			'bump',
+			'check-md',
+			'complete',
+			'doctor',
+			'gret',
+			'ls',
+			'other',
+			'shader',
+			'tracev'
+		],
+		'scaffolding': [
+			'init',
+			'new'
+		],
+		'vpm': [
+			'install',
+			'list',
+			'outdated',
+			'remove',
+			'search',
+			'show',
+			'update',
+			'upgrade',
+			'vpm'
+		]
+	}
+	build = [
+		'build',
+		'build-c',
+		'build-js',
+		'build-native'
+	]
+
+	common = [
+		'doc',
+		'fmt',
+		'missdoc',
+		'repl',
+		'run',
+		'test',
+		'vet',
+		'watch',
+		'where'
+	]
+	install = [
+		'self',
+		'symlink',
+		'up',
+		'version'
+	]
+	other = [
 		'ast',
 		'bin2v',
 		'bug',
-		'build-examples',
-		'build-tools',
-		'build-vbinaries',
 		'bump',
 		'check-md',
 		'complete',
-		'compress',
-		'doc',
 		'doctor',
-		'fmt',
 		'gret',
 		'ls',
-		'missdoc',
-		'repl',
-		'self',
-		'setup-freetype',
+		'other',
 		'shader',
-		'should-compile-all',
-		'symlink',
-		'scan',
-		'test',
-		'test-all', // runs most of the tests and other checking tools, that will be run by the CI
-		'test-cleancode',
-		'test-fmt',
-		'test-parser',
-		'test-self',
-		'tracev',
-		'up',
-		'vet',
-		'wipe-cache',
-		'watch',
-		'where',
+		'tracev'
 	]
+	scaffolding = [
+		'init',
+		'new'
+	]
+	vpm = [
+		'install',
+		'list',
+		'outdated',
+		'remove',
+		'search',
+		'show',
+		'update',
+		'upgrade',
+		'vpm'
+	]
+	// external_tools                      = [
+	// 	'ast',
+	// 	'bin2v',
+	// 	'bug',
+	// 	'build-examples',
+	// 	'build-tools',
+	// 	'build-vbinaries',
+	// 	'bump',
+	// 	'check-md',
+	// 	'complete',
+	// 	'compress',
+	// 	'doc',
+	// 	'doctor',
+	// 	'fmt',
+	// 	'gret',
+	// 	'ls',
+	// 	'missdoc',
+	// 	'repl',
+	// 	'self',
+	// 	'setup-freetype',
+	// 	'shader',
+	// 	'should-compile-all',
+	// 	'symlink',
+	// 	'scan',
+	// 	'test',
+	// 	'test-all', // runs most of the tests and other checking tools, that will be run by the CI
+	// 	'test-cleancode',
+	// 	'test-fmt',
+	// 	'test-parser',
+	// 	'test-self',
+	// 	'tracev',
+	// 	'up',
+	// 	'vet',
+	// 	'wipe-cache',
+	// 	'watch',
+	// 	'where',
+	// ]
 	list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
 )
 
@@ -174,20 +174,27 @@ fn main() {
 	timers.show('v start')
 	timers.start('parse_CLI_args')
 	args := os.args[1..]
+
+	// Get known tools
+	mut known := []string{}
+	for _, tool in external_tools {
+		known << tool
+	}
+
 	if args.len == 0 || args[0] in ['-', 'repl'] {
 		if args.len == 0 {
 			// Running `./v` without args launches repl
 			if os.is_atty(0) == 0 {
 				mut args_and_flags := util.join_env_vflags_and_os_args()[1..].clone()
 				args_and_flags << ['run', '-']
-				pref.parse_args_and_show_errors(external_tools, args_and_flags, true)
+				pref.parse_args_and_show_errors(known, args_and_flags, true)
 			}
 		}
 		util.launch_tool(false, 'vrepl', os.args[1..])
 		return
 	}
 	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
-	prefs, command := pref.parse_args_and_show_errors(external_tools, args_and_flags,
+	prefs, command := pref.parse_args_and_show_errors(known, args_and_flags,
 		true)
 	if prefs.use_cache && os.user_os() == 'windows' {
 		eprintln('-usecache is currently disabled on windows')
@@ -253,7 +260,7 @@ fn main() {
 		'install', 'list', 'outdated', 'remove', 'search', 'show', 'update', 'upgrade', 'vlib-docs',
 		'interpret', 'translate']
 	mut all_commands := []string{}
-	all_commands << external_tools
+	all_commands << known
 	all_commands << other_commands
 	all_commands.sort()
 	eprintln(util.new_suggestion(command, all_commands).say('v: unknown command `${command}`'))

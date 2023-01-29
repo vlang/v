@@ -3,7 +3,6 @@ Runs test functions in the given FILEs and DIRECTORYs.
 Usage:
   v [-stats] test FILE|DIRECTORY[...] [-run-only GPATTERN1[,...]]
 
-
 If '-stats' is given, more statistics about the tests are printed along
 with a report of passes/failures
 

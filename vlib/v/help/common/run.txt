@@ -3,7 +3,6 @@ Equivalent to running `v build` and running the compiled executable.
 Usage:
   v [build flags] run <file.v|directory|-> [arguments...]
 
-
 This command is equivalent to running `v build` and running the compiled
 executable.
 The executable is passed the arguments as provided in [arguments...].

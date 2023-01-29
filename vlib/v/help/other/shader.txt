@@ -3,7 +3,6 @@ Compile shaders in sokol's annotated GLSL format
 Usage:
   v shader [options] [DIRECTORY / FILE]
 
-
 Compile shaders in sokol's annotated GLSL format to C headers for use with
 sokol based apps. Sokol based apps include all apps using V's gg module.
 

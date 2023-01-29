@@ -7,7 +7,6 @@ Usage:
 	                                     directories.
 	Note: You can also combine files and directories.
 
-
 Options:
   -silent               Do not show a progress bar.
   -w, -hide-warnings    Do not print warnings, only errors.

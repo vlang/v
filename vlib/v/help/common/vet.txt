@@ -4,7 +4,6 @@ Usage:
   v vet [options] path_to_source.v [path_to_other_source.v]
   v vet [options] path/to/dir [path/to/other_dir]
 
-
 Options:
   -W
      Exit with code 1, even if vet only reported warnings. Useful for checks in CI.

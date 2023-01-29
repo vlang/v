@@ -2,7 +2,6 @@ Bump the semantic version of the v.mod and/or specified files.
 
 Usage: v bump [options] [file1 file2 ...]
 
-
 The first instance of a version number is replaced with the new version.
 Additionally, the line affected must contain the word "version" in any
 form of capitalization. For instance, the following lines will be

@@ -6,7 +6,6 @@ Usage: v ast demo.v       generate demo.json file.
                           changes.
        v ast -p demo.v    print the json output to stdout.
 
-
 Dump a JSON representation of the V AST for a given .v or .vsh file.
 By default, `v ast` will save the JSON to a .json file, named after the .v file.
 Pass -p to see it instead.

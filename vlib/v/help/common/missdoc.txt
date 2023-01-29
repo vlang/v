@@ -3,7 +3,6 @@ documentation comments.
 
 Usage: v missdoc [options] PATH [PATH]...
 
-
 Options:
   -h, --help                Show this help text.
   -t, --tags                Also print function tags if any is found.

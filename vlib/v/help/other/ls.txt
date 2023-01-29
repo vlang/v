@@ -3,7 +3,6 @@ Installs, updates, and executes the V language server program
 Usage:
   v ls [options] [ARGS]
 
-
 Options:
   --json                Print the output as JSON.
   --silent              Disables output printing.

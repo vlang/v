@@ -3,7 +3,6 @@ Sets up a new V project
 Usage:
   v new [NAME] [DESCRIPTION]
 
-
 Sets up a new V project with a 'v.mod' file, and a 'main.v' "Hello World"
 file, and performs 'git init' (if git is installed on the system).
 

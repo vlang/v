@@ -3,7 +3,6 @@
 Usage:
   v watch [--clear] [--ignore .db] [--add /path/to/a/file.v] [other V options] [run] program.v
 
-
 `v watch` collects all .v files needed for a compilation, then when
 any of the .v source files change, it re-runs the compilation.
 
