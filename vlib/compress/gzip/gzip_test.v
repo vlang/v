@@ -35,7 +35,7 @@ fn test_gzip_invalid_compression() {
 fn test_gzip_with_ftext() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[4] |= 0b0000_0001 // FTEXT
+	compressed[3] |= ftext
 	decompressed := decompress(compressed)!
 	assert decompressed == uncompressed.bytes()
 }
@@ -43,7 +43,7 @@ fn test_gzip_with_ftext() {
 fn test_gzip_with_fname() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[4] |= 0b0000_1000
+	compressed[3] |= fname
 	compressed.insert(10, `h`)
 	compressed.insert(11, `i`)
 	compressed.insert(12, 0x00)
@@ -54,7 +54,7 @@ fn test_gzip_with_fname() {
 fn test_gzip_with_fcomment() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[4] |= 0b0001_0000
+	compressed[3] |= fcomment
 	compressed.insert(10, `h`)
 	compressed.insert(11, `i`)
 	compressed.insert(12, 0x00)
@@ -65,7 +65,7 @@ fn test_gzip_with_fcomment() {
 fn test_gzip_with_fname_fcomment() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[4] |= 0b0001_1000
+	compressed[3] |= (fname | fcomment)
 	compressed.insert(10, `h`)
 	compressed.insert(11, `i`)
 	compressed.insert(12, 0x00)
@@ -79,7 +79,7 @@ fn test_gzip_with_fname_fcomment() {
 fn test_gzip_with_fextra() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[4] |= 0b0000_0100
+	compressed[3] |= fextra
 	compressed.insert(10, 2)
 	compressed.insert(11, `h`)
 	compressed.insert(12, `i`)
@@ -90,7 +90,7 @@ fn test_gzip_with_fextra() {
 fn test_gzip_with_hcrc() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[4] |= 0b0000_0010
+	compressed[3] |= fhcrc
 	checksum := crc32.sum(compressed[..10])
 	compressed.insert(10, u8(checksum >> 24))
 	compressed.insert(11, u8(checksum >> 16))
@@ -103,7 +103,7 @@ fn test_gzip_with_hcrc() {
 fn test_gzip_with_invalid_hcrc() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[4] |= 0b0000_0010
+	compressed[3] |= fhcrc
 	checksum := crc32.sum(compressed[..10])
 	compressed.insert(10, u8(checksum >> 24))
 	compressed.insert(11, u8(checksum >> 16))
@@ -129,6 +129,6 @@ fn test_gzip_with_invalid_length() {
 fn test_gzip_with_invalid_flags() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[4] |= 0b1000_0000
+	compressed[3] |= 0b1000_0000
 	assert_decompress_error(compressed, 'reserved flags are set, unsupported field detected')!
 }
