@@ -46,10 +46,10 @@ pub fn (db DB) delete(table string, where orm.QueryData) ! {
 	pg_stmt_worker(db, query, orm.QueryData{}, where)!
 }
 
-pub fn (db DB) last_id() orm.Primitive {
+pub fn (db DB) last_id() int {
 	query := 'SELECT LASTVAL();'
-	id := db.q_int(query) or { 0 }
-	return orm.Primitive(id)
+
+	return db.q_int(query) or { 0 }
 }
 
 // table
