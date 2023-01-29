@@ -11,8 +11,8 @@ hard limit at column 80.
 
 ## Example
 
-Adding a help file was made to be easy. All you have to do is add it to the hashmap in `help.v`,
-create the text file in the appropriate category, and V should recognize it.
+Adding a help file was made to be easy. All you have to do is create the text file in the 
+appropriate category, and V should recognize it.
 
 ```text
 Short description of what it does
