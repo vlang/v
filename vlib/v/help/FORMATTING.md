@@ -1,0 +1,29 @@
+# Formatting a Help File
+
+## Requirements
+
+- 2 space initial indentation (titles exempt)
+- Description indentation of half the length of the longest word (odd, round down)
+- All descriptions should be indented to the same column within a block, with a hard limit at column 80.  
+  - Multi-line descriptions should indent to match the description part of the previous line
+
+
+## Example
+
+```text
+Short description of what it does
+
+Usage:
+  v COMMAND (args and such here)
+
+Longer description of what your command aims to do (optional)
+
+Examples: (optional)
+  v COMMAND -arg1 -arg2
+  
+Options:
+  -h, --help      Help menu
+  -s, --short     Description of short
+  -l, --long      Description of long
+```
+
