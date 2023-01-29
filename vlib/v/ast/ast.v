@@ -870,7 +870,7 @@ pub mut:
 	right         Expr
 	left_type     Type
 	right_type    Type
-	promoted_type Type = void_type 
+	promoted_type Type = void_type
 	auto_locked   string
 	or_block      OrExpr
 	//
