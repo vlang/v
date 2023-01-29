@@ -1,6 +1,7 @@
 [has_globals]
-module dl
+module loader
 
+import dl
 import os
 
 pub const (
@@ -29,7 +30,7 @@ __global (
 
 fn register_dl_loader(dl_loader &DynamicLibLoader) ! {
 	if dl_loader.key in registered_dl_loaders {
-		return dl.dl_register_issue_err
+		return loader.dl_register_issue_err
 	}
 	registered_dl_loaders[dl_loader.key] = dl_loader
 }
@@ -44,7 +45,7 @@ pub fn registered_dl_loader_keys() []string {
 pub struct DynamicLibLoader {
 pub:
 	key   string
-	flags int = rtld_lazy
+	flags int = dl.rtld_lazy
 	paths []string
 mut:
 	handle  voidptr
@@ -55,7 +56,7 @@ mut:
 [params]
 pub struct DynamicLibLoaderConfig {
 	// flags is the flags for dlopen.
-	flags int = rtld_lazy
+	flags int = dl.rtld_lazy
 	// key is the key to register the DynamicLibLoader.
 	key string
 	// env_path is the environment variable name that contains the path to the dynamic library.
@@ -75,7 +76,7 @@ fn new_dynamic_lib_loader(conf DynamicLibLoaderConfig) !&DynamicLibLoader {
 	}
 
 	if paths.len == 0 {
-		return dl.dl_no_path_issue_err
+		return loader.dl_no_path_issue_err
 	}
 
 	mut dl_loader := &DynamicLibLoader{
@@ -104,25 +105,25 @@ pub fn (mut dl_loader DynamicLibLoader) open() !voidptr {
 	}
 
 	for path in dl_loader.paths {
-		if handle := open_opt(path, dl_loader.flags) {
+		if handle := dl.open_opt(path, dl_loader.flags) {
 			dl_loader.handle = handle
 			return handle
 		}
 	}
 
-	return dl.dl_open_issue_err
+	return loader.dl_open_issue_err
 }
 
 // close closes the dynamic library.
 pub fn (mut dl_loader DynamicLibLoader) close() ! {
 	if !isnil(dl_loader.handle) {
-		if close(dl_loader.handle) {
+		if dl.close(dl_loader.handle) {
 			dl_loader.handle = unsafe { nil }
 			return
 		}
 	}
 
-	return dl.dl_close_issue_err
+	return loader.dl_close_issue_err
 }
 
 // get_sym gets a symbol from the dynamic library.
@@ -132,13 +133,13 @@ pub fn (mut dl_loader DynamicLibLoader) get_sym(name string) !voidptr {
 	}
 
 	handle := dl_loader.open()!
-	if sym := sym_opt(handle, name) {
+	if sym := dl.sym_opt(handle, name) {
 		dl_loader.sym_map[name] = sym
 		return sym
 	}
 
 	dl_loader.close()!
-	return dl.dl_sym_issue_err
+	return loader.dl_sym_issue_err
 }
 
 // unregister unregisters the DynamicLibLoader.
