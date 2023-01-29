@@ -33,7 +33,7 @@ fn test_all_help() {
 	})
 
 	for topic in topics {
-		res := os.execute('${os.quoted_path(vexe)} help $topic')
+		res := os.execute('${os.quoted_path(vexe)} help ${topic}')
 		assert res.exit_code == 0
 		assert res.output != ''
 	}
