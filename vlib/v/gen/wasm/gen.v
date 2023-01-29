@@ -167,6 +167,13 @@ const (
 	}
 )
 
+fn (mut g Gen) is_signed(typ ast.Type) bool {
+	if typ.is_pure_float() {
+		return true
+	}
+	return typ.is_signed()
+}
+
 fn (mut g Gen) cast(expr wasm.Expression, from wasm.Type, is_signed bool, to wasm.Type) wasm.Expression {
 	if from == to {
 		return expr
@@ -254,7 +261,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) wasm.Expression {
 	got_type := ast.mktyp(got_type_raw)
-	return g.cast(g.expr(expr), g.get_wasm_type(got_type), got_type.is_signed(), g.get_wasm_type(expected_type))
+	return g.cast(g.expr(expr, got_type), g.get_wasm_type(got_type), g.is_signed(got_type), g.get_wasm_type(expected_type))
 }
 
 fn (mut g Gen) infix_from_typ(typ ast.Type, op token.Kind) wasm.Op {
@@ -340,28 +347,53 @@ fn (mut g Gen) infix_from_typ(typ ast.Type, op token.Kind) wasm.Op {
 	g.w_error("bad infix: op `${op}`")
 }
 
-fn (mut g Gen) expr(node ast.Expr) wasm.Expression {
+fn (mut g Gen) literal(val string, expected ast.Type) wasm.Expression {
+	match g.get_wasm_type(expected) {
+		type_i32 { return wasm.constant(g.mod, wasm.literalint32(val.int()))   }
+		type_i64 { return wasm.constant(g.mod, wasm.literalint64(val.i64()))   }
+		type_f32 { return wasm.constant(g.mod, wasm.literalfloat32(val.f32())) }
+		type_f64 { return wasm.constant(g.mod, wasm.literalfloat64(val.f64())) }
+		else {}
+	}
+	g.w_error("literal: bad type `${expected}`")
+}
+
+fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wasm.Expression {
 	return match node {
 		ast.ParExpr {
-			g.expr(node.expr)
+			g.expr(node.expr, expected)
 		}
 		ast.BoolLiteral {
 			val := if node.val { wasm.literalint32(1) } else { wasm.literalint32(0) }
 			wasm.constant(g.mod, val)
 		}  
 		ast.InfixExpr {
+			assert expected == node.promoted_type
 			op := g.infix_from_typ(node.left_type, node.op)
 
-			infix := wasm.binary(g.mod, op, g.expr(node.left), g.expr_with_cast(node.right, node.right_type, node.left_type))
-			g.cast(infix, g.get_wasm_type(node.left_type), node.left_type.is_signed(), g.get_wasm_type(node.promoted_type))
+			infix := wasm.binary(g.mod, op, g.expr(node.left, node.left_type), g.expr_with_cast(node.right, node.right_type, node.left_type))
+			g.cast(infix, g.get_wasm_type(node.left_type), g.is_signed(node.left_type), g.get_wasm_type(node.promoted_type))
 		}
 		ast.Ident {
 			idx, typ := g.get_local_from_ident(node)
 			wasm.localget(g.mod, idx, typ)
 		}
-		/* ast.FloatLiteral {
-			// follow native impl
-		} */
+		ast.IntegerLiteral, ast.FloatLiteral {
+			g.literal(node.val, expected)
+		}
+		ast.CastExpr {
+			expr := g.expr(node.expr, node.typ)
+			
+			if node.expr_type == ast.bool_type {
+				// WebAssembly booleans use the `i32` type
+				//   = 0 | is false
+				//   > 0 | is true
+				
+				g.cast(expr, g.get_wasm_type(node.expr_type), g.is_signed(node.expr_type), type_i32)
+			} else {
+				g.expr(node.expr, node.typ)
+			}
+		}
 		else {
 			eprintln('wasm.expr(): unhandled node: ' + node.type_name())
 			wasm.nop(g.mod)
