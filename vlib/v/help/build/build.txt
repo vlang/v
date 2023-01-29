@@ -1,6 +1,7 @@
-Usage: v [build flags] ['run'] <target.v|target_directory> [run options]
+The build system for V
 
-This command compiles the given target, along with their dependencies, into an executable.
+Usage:
+  v [build flags] ['run'] <target.v|target_directory> [run options]
 
 Note that these build flags also work with `run` too, but you need to
 pass them *before* `run` . The argument directly after `run` is assumed

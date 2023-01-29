@@ -1,10 +1,11 @@
 Dump a JSON representation of the V AST for a given .v or .vsh file.
 
-Usage: v ast demo.v       generate demo.json file.
-       v ast -w demo.v    generate demo.json file, and watch for changes.
-       v ast -c demo.v    generate demo.json *and* a demo.c file, and watch for
-                          changes.
-       v ast -p demo.v    print the json output to stdout.
+Usage:
+  v ast demo.v       generate demo.json file.
+  v ast -w demo.v    generate demo.json file, and watch for changes.
+  v ast -c demo.v    generate demo.json *and* a demo.c file, and watch for
+                     changes.
+  v ast -p demo.v    print the json output to stdout.
 
 Dump a JSON representation of the V AST for a given .v or .vsh file.
 By default, `v ast` will save the JSON to a .json file, named after the .v file.

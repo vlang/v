@@ -2,9 +2,8 @@ check-md is a tool to check the passed markdown files for correct ```v ```
 code blocks and other style violations like too long lines/links etc...
 
 Usage:
-	a) `v check-md [flags] <...files>` - Check the given .md files.
-	b) `v check-md [flags] <...dirs>`  - Check *all* files in the given
-	                                     directories.
+	v check-md [flags] <...files> - Check the given .md files.
+	v check-md [flags] <...dirs>  - Check *all* files in the given directories.
 	Note: You can also combine files and directories.
 
 Options:
