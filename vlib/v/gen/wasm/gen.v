@@ -18,7 +18,13 @@ mut:
 	errors   []errors.Error
 	table    &ast.Table = unsafe { nil }
 	//
-	wasmtypes map[ast.Type]wasm.Type
+	// wasmtypes map[ast.Type]wasm.Type
+	local_stack []FuncIdent
+}
+
+struct FuncIdent {
+	name string
+	typ  wasm.Type
 }
 
 pub fn (mut g Gen) v_error(s string, pos token.Pos) {
@@ -55,25 +61,136 @@ pub fn (mut g Gen) w_error(s string) {
 
 fn (mut g Gen) get_wasm_type(typ ast.Type) wasm.Type {
 	if typ == ast.void_type_idx {
-		return wasm.typenone()
+		return type_none
 	}
 	if typ.is_real_pointer() {
-		return wasm.typeint32()
+		return type_i32
 	}
 	if typ in ast.number_type_idxs {
 		return match typ {
-			ast.isize_type_idx, ast.usize_type_idx, ast.i8_type_idx, ast.u8_type_idx, ast.char_type_idx, ast.rune_type_idx, ast.i16_type_idx, ast.u16_type_idx, ast.int_type_idx, ast.u32_type_idx { wasm.typeint32() }
-			ast.i64_type_idx, ast.u64_type_idx, ast.int_literal_type_idx { wasm.typeint64() }
-			ast.f32_type_idx { wasm.typefloat32() }
-			ast.f64_type_idx, ast.float_literal_type_idx { wasm.typefloat64() }
-			else { wasm.typeint64() }
+			ast.isize_type_idx, ast.usize_type_idx, ast.i8_type_idx, ast.u8_type_idx, ast.char_type_idx, ast.rune_type_idx, ast.i16_type_idx, ast.u16_type_idx, ast.int_type_idx, ast.u32_type_idx { type_i32 }
+			ast.i64_type_idx, ast.u64_type_idx, ast.int_literal_type_idx { type_i64 }
+			ast.f32_type_idx { type_f32 }
+			ast.f64_type_idx, ast.float_literal_type_idx { type_f64 }
+			else { type_i32 }
 		}
 	}
 	if typ == ast.bool_type_idx {
-		return wasm.typeint32()
+		return type_i32
 	}
-	panic('unreachable type ${typ}')
-	// g.w_error('non concrete types or multi returns are not implemented')
+	g.w_error("get_wasm_type: unreachable type '${typ}'")
+}
+
+fn (mut g Gen) get_local(name string) int {
+	if g.local_stack.len == 0 {
+		g.w_error("get_local: g.local_stack.len == 0")
+	}
+	mut c := g.local_stack.len
+	for {
+		c--
+		if g.local_stack[c].name == name {
+			return c
+		}
+		if c == 0 {
+			break
+		}
+	}
+	g.w_error("get_local: cannot get '${name}'")
+}
+
+fn (mut g Gen) get_local_from_ident(ident ast.Ident) (int, wasm.Type) {
+	mut obj := ident.obj
+	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
+		obj = ident.scope.find(ident.name) or { g.w_error('unknown variable ${ident.name}') }
+	}
+	match mut obj {
+		ast.Var {
+			idx := g.get_local(obj.name)
+			return idx, g.local_stack[idx].typ
+		}
+		else {
+			g.w_error('unsupported variable type type:${obj} name:${ident.name}')
+		}
+	}
+}
+
+const (
+	type_none = wasm.typenone()
+	type_i32 = wasm.typeint32()
+	type_i64 = wasm.typeint64()
+	type_f32 = wasm.typefloat32()
+	type_f64 = wasm.typefloat64()
+)
+
+const (
+	cast_signed = {
+		type_i32: {
+			type_i64: wasm.extendsint32()
+			type_f32: wasm.convertsint32tofloat32()
+			type_f64: wasm.convertsint32tofloat64()
+		}
+		type_i64: {
+			type_i32: wasm.wrapint64()
+			type_f32: wasm.convertsint64tofloat32()
+			type_f64: wasm.convertsint64tofloat64()
+		}
+		type_f32: {
+			type_i32: wasm.truncsatsfloat32toint32()
+			type_i64: wasm.truncsatsfloat32toint64()
+			type_f64: wasm.promotefloat32()
+		}
+		type_f64: {
+			type_i32: wasm.truncsatsfloat64toint32()
+			type_i64: wasm.truncsatsfloat64toint64()
+			type_f32: wasm.demotefloat64()
+		}
+	}
+	cast_unsigned = {
+		type_i32: {
+			type_i64: wasm.extenduint32()
+			type_f32: wasm.convertuint32tofloat32()
+			type_f64: wasm.convertuint32tofloat64()
+		}
+		type_i64: {
+			type_i32: wasm.wrapint64()
+			type_f32: wasm.convertuint64tofloat32()
+			type_f64: wasm.convertuint64tofloat64()
+		}
+		type_f32: {
+			type_i32: wasm.truncsatufloat32toint32()
+			type_i64: wasm.truncsatufloat32toint64()
+		}
+		type_f64: {
+			type_i32: wasm.truncsatufloat64toint32()
+			type_i64: wasm.truncsatufloat64toint64()
+		}
+	}
+)
+
+fn (mut g Gen) cast(expr wasm.Expression, from wasm.Type, is_signed bool, to wasm.Type) wasm.Expression {
+	if from == to {
+		return expr
+	}
+	
+	// In the official spec, integers are represented in twos complement.
+	// WebAssembly does not keep signedness information in it's types
+	// and uses instructions with variants for signed or unsigned values.
+	// 
+	// You only need to know if the original type is signed or not to
+	// perform casting.
+
+	// A large match statement performs better than hardcoded map values.
+	// However, it is not as readable. Spy says they stay.
+	
+	val := if is_signed {
+		cast_signed[from][to]
+	} else {
+		cast_unsigned[from][to]
+	}
+	if isnil(val) {
+		g.w_error("bad cast: from ${from} (is signed: ${is_signed}) to ${to}")
+	}
+	return wasm.unary(g.mod, val, expr)
 }
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
@@ -82,6 +199,10 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	} else {
 		node.name
 	}
+
+	util.timing_start("${@METHOD}: ${name}")
+	defer { util.timing_measure("${@METHOD}: ${name}") }
+
 	if node.no_body {
 		return
 	}
@@ -104,7 +225,6 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	// 
 	// Multi returns are implemented with a binaryen tuple type, not a struct reference.
 
-	println(node.name)
 	ts := g.table.sym(node.return_type)
 	
 	return_type := if ts.kind == .struct_ {
@@ -120,13 +240,104 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		unsafe { paraml.free() }
 	}
 	for p in node.params {
-		paraml << g.get_wasm_type(p.typ)
+		typ := g.get_wasm_type(p.typ)
+		g.local_stack << FuncIdent {name: p.name typ: typ}
+		paraml << typ
 	}
 	params_type := wasm.typecreate(paraml.data, paraml.len)
 
-	wasm_expr := g.expr_stmts(node.stmts)
-
+	wasm_expr := g.expr_stmts(node.stmts, node.return_type)
 	wasm.addfunction(g.mod, name.str, params_type, return_type, unsafe { nil }, 0, wasm_expr)
+
+	g.local_stack.clear()
+}
+
+fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) wasm.Expression {
+	got_type := ast.mktyp(got_type_raw)
+	return g.cast(g.expr(expr), g.get_wasm_type(got_type), got_type.is_signed(), g.get_wasm_type(expected_type))
+}
+
+fn (mut g Gen) infix_from_typ(typ ast.Type, op token.Kind) wasm.Op {
+	wasm_typ := g.get_wasm_type(typ)
+
+	match wasm_typ {
+		type_i32 {
+			match op {
+				.plus {
+					return wasm.addint32()
+				}
+				.minus {
+					return wasm.subint32()
+				}
+				.mul {
+					return wasm.mulint32()
+				}
+				.mod {
+					if typ.is_signed() {
+						return wasm.remsint32()
+					} else {
+						return wasm.remuint32()
+					}
+				}
+				.div {
+					if typ.is_signed() {
+						return wasm.divsint32()
+					} else {
+						return wasm.divuint32()
+					}
+				}
+				else {}
+			}
+		}
+		type_i64 {
+			match op {
+				.plus {
+					return wasm.addint64()
+				}
+				.minus {
+					return wasm.subint64()
+				}
+				.mul {
+					return wasm.mulint64()
+				}
+				.mod {
+					if typ.is_signed() {
+						return wasm.remsint64()
+					} else {
+						return wasm.remuint64()
+					}
+				}
+				.div {
+					if typ.is_signed() {
+						return wasm.divsint64()
+					} else {
+						return wasm.divuint64()
+					}
+				}
+				else {}
+			}
+		}
+		type_f32 {
+			match op {
+				.plus  { return wasm.addfloat32() }
+				.minus { return wasm.subfloat32() }
+				.mul   { return wasm.mulfloat32() }
+				.div   { return wasm.divfloat32() }
+				else {}
+			}
+		}
+		type_f64 {
+			match op {
+				.plus  { return wasm.addfloat64() }
+				.minus { return wasm.subfloat64() }
+				.mul   { return wasm.mulfloat64() }
+				.div   { return wasm.divfloat64() }
+				else {}
+			}
+		}
+		else {}
+	}
+	g.w_error("bad infix: op `${op}`")
 }
 
 fn (mut g Gen) expr(node ast.Expr) wasm.Expression {
@@ -135,35 +346,18 @@ fn (mut g Gen) expr(node ast.Expr) wasm.Expression {
 			g.expr(node.expr)
 		}
 		ast.BoolLiteral {
-			wasm.constant(g.mod, if node.val { wasm.literalint32(1) } else { wasm.literalint32(0) })
-		}
+			val := if node.val { wasm.literalint32(1) } else { wasm.literalint32(0) }
+			wasm.constant(g.mod, val)
+		}  
 		ast.InfixExpr {
-			if node.left_type != node.right_type {
-				panic("eeeeeeeeeeeeeeeeeee")
-			}
-			if !node.left_type.is_signed() || g.get_wasm_type(node.left_type) != wasm.typeint32() {
-				panic("unimplemented")
-			}
+			op := g.infix_from_typ(node.left_type, node.op)
 
-			// TODO: handle type casting if necessary
-			// TODO: implement more ops
-			// TODO: handle signed and unsigned integer types
-
-			op := match node.op {
-				.plus  { wasm.addint32()  }
-				.minus { wasm.subint32()  }
-				.mod   { wasm.remsint32() }
-				.mul   { wasm.mulint32()  }
-				.div   { wasm.divsint32() }
-				else { panic("unimplemented infix ${node.op}") }
-			}
-
-			wasm.binary(g.mod, op, g.expr(node.left), g.expr(node.right))
+			infix := wasm.binary(g.mod, op, g.expr(node.left), g.expr_with_cast(node.right, node.right_type, node.left_type))
+			g.cast(infix, g.get_wasm_type(node.left_type), node.left_type.is_signed(), g.get_wasm_type(node.promoted_type))
 		}
 		ast.Ident {
-			// TODO: handle ast.Ident
-			println(node)
-			wasm.nop(g.mod)
+			idx, typ := g.get_local_from_ident(node)
+			wasm.localget(g.mod, idx, typ)
 		}
 		/* ast.FloatLiteral {
 			// follow native impl
@@ -175,11 +369,11 @@ fn (mut g Gen) expr(node ast.Expr) wasm.Expression {
 	}
 }
 
-fn (mut g Gen) expr_stmt(node ast.Stmt) wasm.Expression {
+fn (mut g Gen) expr_stmt(node ast.Stmt, fn_type ast.Type) wasm.Expression {
 	return match node {
 		ast.Return {
 			if node.exprs.len == 1 {
-				g.expr(node.exprs[0])
+				g.expr_with_cast(node.exprs[0], node.types[0], fn_type)
 			} else {
 				g.w_error('multi returns are not implemented')
 			}
@@ -191,16 +385,16 @@ fn (mut g Gen) expr_stmt(node ast.Stmt) wasm.Expression {
 	}
 }
 
-pub fn (mut g Gen) expr_stmts(stmts []ast.Stmt) wasm.Expression {
+pub fn (mut g Gen) expr_stmts(stmts []ast.Stmt, fn_type ast.Type) wasm.Expression {
 	if stmts.len == 0 {
 		return wasm.nop(g.mod)
 	}
 	if stmts.len == 1 {
-		return g.expr_stmt(stmts[0])
+		return g.expr_stmt(stmts[0], fn_type)
 	}
 	mut exprl := []wasm.Expression{cap: stmts.len}
 	for stmt in stmts {
-		exprl << g.expr_stmt(stmt)
+		exprl << g.expr_stmt(stmt, fn_type)
 	}
 	return wasm.block(g.mod, c'blk', exprl.data, exprl.len, wasm.typeauto())
 }
@@ -210,13 +404,6 @@ fn (mut g Gen) toplevel_stmt(node ast.Stmt) {
 		ast.FnDecl {
 			g.fn_decl(node)
 		}
-		/* ast.Return {
-			if node.exprs.len == 1 {
-				// wasm.g.expr(node.exprs[0])
-			} else {
-				g.w_error('multi returns are not implemented')
-			}
-		} */
 		ast.Module {}
 		ast.Import {}
 		else {
@@ -247,8 +434,12 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 		}
 		g.toplevel_stmts(file.stmts)
 	}
-	wasm.moduleprint(g.mod)
-	println(wasm.modulevalidate(g.mod))
+	if wasm.modulevalidate(g.mod) {
+		wasm.moduleprintstackir(g.mod, true)
+	} else {
+		wasm.moduleprint(g.mod)
+	}
+	wasm.moduledispose(g.mod)
 
 	return 0, 0
 }
