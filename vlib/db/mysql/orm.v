@@ -153,14 +153,11 @@ pub fn (db Connection) delete(table string, where orm.QueryData) ! {
 }
 
 // last_id is used internally by V's ORM for post-processing `INSERT ` queries
-pub fn (db Connection) last_id() orm.Primitive {
+pub fn (db Connection) last_id() int {
 	query := 'SELECT last_insert_id();'
-	id := db.query(query) or {
-		Result{
-			result: 0
-		}
-	}
-	return orm.Primitive(id.rows()[0].vals[0].int())
+	id := db.query(query) or { return 0 }
+
+	return id.rows()[0].vals[0].int()
 }
 
 // DDL (table creation/destroying etc)

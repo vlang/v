@@ -148,13 +148,10 @@ pub fn (db Connection) delete(table string, where orm.QueryData) ! {
 	mysql_stmt_worker(db, query, orm.QueryData{}, where)!
 }
 
-pub fn (db Connection) last_id() orm.Primitive {
+pub fn (db Connection) last_id() int {
 	query := 'SELECT last_insert_id();'
-	id := db.query(query) or {
-		Result{
-			result: 0
-		}
-	}
+	id := db.query(query) or { return 0 }
+
 	return orm.Primitive(id.rows()[0].vals[0].int())
 }
 
