@@ -24,25 +24,26 @@ pub const (
 )
 
 __global (
-	registerd_dl_loaders map[string]&DynamicLibLoader
+	registered_dl_loaders map[string]&DynamicLibLoader
 )
 
-fn register_dl_loader(key string, dl_loader &DynamicLibLoader) ! {
-	if key in registerd_dl_loaders {
+fn register_dl_loader(dl_loader &DynamicLibLoader) ! {
+	if dl_loader.key in registered_dl_loaders {
 		return dl.dl_register_issue_err
 	}
-	registerd_dl_loaders[key] = dl_loader
+	registered_dl_loaders[dl_loader.key] = dl_loader
 }
 
 // registered_dl_loader_keys returns the keys of registered DynamicLibLoader.
 pub fn registered_dl_loader_keys() []string {
-	return registerd_dl_loaders.keys()
+	return registered_dl_loaders.keys()
 }
 
 // DynamicLibLoader is a wrapper around dlopen, dlsym and dlclose.
 [heap]
 pub struct DynamicLibLoader {
 pub:
+	key   string
 	flags int = rtld_lazy
 	paths []string
 mut:
@@ -78,18 +79,19 @@ fn new_dynamic_lib_loader(conf DynamicLibLoaderConfig) !&DynamicLibLoader {
 	}
 
 	mut dl_loader := &DynamicLibLoader{
+		key: conf.key
 		flags: conf.flags
 		paths: paths
 	}
 
-	register_dl_loader(conf.key, dl_loader)!
+	register_dl_loader(dl_loader)!
 	return dl_loader
 }
 
 // get_or_create_dynamic_lib_loader returns a DynamicLibLoader.
 // If the DynamicLibLoader is not registered, it creates a new DynamicLibLoader.
 pub fn get_or_create_dynamic_lib_loader(conf DynamicLibLoaderConfig) !&DynamicLibLoader {
-	if dl_loader := registerd_dl_loaders[conf.key] {
+	if dl_loader := registered_dl_loaders[conf.key] {
 		return dl_loader
 	}
 	return new_dynamic_lib_loader(conf)
@@ -137,4 +139,10 @@ pub fn (mut dl_loader DynamicLibLoader) get_sym(name string) !voidptr {
 
 	dl_loader.close()!
 	return dl.dl_sym_issue_err
+}
+
+// unregister unregisters the DynamicLibLoader.
+pub fn (mut dl_loader DynamicLibLoader) unregister() {
+	dl_loader.close() or {}
+	registered_dl_loaders.delete(dl_loader.key)
 }
