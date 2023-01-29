@@ -6088,24 +6088,42 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	mut expr_type_sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	if mut expr_type_sym.info is ast.SumType {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
+		sidx := g.type_sidx(unwrapped_node_typ)
+		is_option_result := node.expr is ast.CallExpr
+			&& ((node.expr as ast.CallExpr).return_type.has_flag(.option)
+			|| (node.expr as ast.CallExpr).return_type.has_flag(.result))
 		if sym.info is ast.FnType {
 			g.write('/* as */ (${styp})__as_cast(')
 		} else {
 			g.write('/* as */ *(${styp}*)__as_cast(')
 		}
+		if is_option_result {
+			ret_typ := (node.expr as ast.CallExpr).return_type
+			g.write('(*((${g.base_type(ret_typ)}*)')
+		}
 		g.write('(')
 		g.expr(node.expr)
 		g.write(')')
-		g.write(dot)
+		if is_option_result {
+			g.write('.data)).')
+		} else {
+			g.write(dot)
+		}
 		g.write('_${sym.cname},')
+		if is_option_result {
+			ret_typ := (node.expr as ast.CallExpr).return_type
+			g.write('(*((${g.base_type(ret_typ)}*)')
+		}
 		g.write('(')
 		g.expr(node.expr)
 		g.write(')')
-		g.write(dot)
+		if is_option_result {
+			g.write('.data)).')
+		} else {
+			g.write(dot)
+		}
 		// g.write('typ, /*expected:*/$node.typ)')
-		sidx := g.type_sidx(unwrapped_node_typ)
 		g.write('_typ, ${sidx}) /*expected idx: ${sidx}, name: ${sym.name} */ ')
-
 		// fill as cast name table
 		for variant in expr_type_sym.info.variants {
 			idx := u32(variant).str()
