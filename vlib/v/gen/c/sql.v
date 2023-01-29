@@ -286,6 +286,9 @@ fn (mut g Gen) sql_expr_to_orm_primitive(expr ast.Expr) {
 		ast.StringLiteral {
 			g.sql_write_orm_primitive(ast.string_type, expr)
 		}
+		ast.StringInterLiteral {
+			g.sql_write_orm_primitive(ast.string_type, expr)
+		}
 		ast.IntegerLiteral {
 			g.sql_write_orm_primitive(ast.int_type, expr)
 		}
@@ -417,6 +420,9 @@ fn (mut g Gen) sql_where_data(expr ast.Expr, mut fields []string, mut parenthese
 			}
 		}
 		ast.StringLiteral {
+			data << expr
+		}
+		ast.StringInterLiteral {
 			data << expr
 		}
 		ast.IntegerLiteral {
