@@ -4,4 +4,4 @@ Usage:
   v upgrade
 
 Options:
-  -v           - Print more details about the upgrade.
+  -v   Print more details about the upgrade.

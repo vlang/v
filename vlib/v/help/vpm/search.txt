@@ -4,6 +4,6 @@ Usage:
   v search KEYWORD[...]
 
 Options:
-  -v            - Print more details about the performed operation.
-  -server-url   - When doing network operations, use this vpm server. Can be
+  -v              Print more details about the performed operation.
+  -server-url     When doing network operations, use this vpm server. Can be
                   given multiple times.

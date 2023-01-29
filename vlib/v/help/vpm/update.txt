@@ -6,5 +6,6 @@ Usage:
 With no PACKAGE, ALL installed packages are updated to their latest versions.
 
 Options:
-  -v           - Print more details about the update.
-  -server-url  - When doing network operations, use this vpm server. Can be given multiple times.
+  -v             Print more details about the update.
+  -server-url    When doing network operations, use this vpm server.
+                 Can be given multiple times.
