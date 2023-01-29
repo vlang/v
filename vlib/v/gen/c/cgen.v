@@ -5330,6 +5330,8 @@ fn (mut g Gen) write_init_function() {
 		}
 	}
 
+	mut cleaning_up_array := []string{cap: g.table.modules.len}
+
 	for mod_name in g.table.modules {
 		if g.has_reflection && mod_name == 'v.reflection' {
 			// ignore v.reflection already initialized above
@@ -5359,6 +5361,15 @@ fn (mut g Gen) write_init_function() {
 				g.writeln('\t${init_fn_c_name}();')
 			}
 		}
+		cleanup_fn_name := '${mod_name}.cleanup'
+		if cleanupfn := g.table.find_fn(cleanup_fn_name) {
+			if cleanupfn.return_type == ast.void_type && cleanupfn.params.len == 0 {
+				mod_c_name := util.no_dots(mod_name)
+				cleanup_fn_c_name := '${mod_c_name}__cleanup'
+				cleaning_up_array << '\t${cleanup_fn_c_name}();'
+				cleaning_up_array << '\t// Cleaning up for module ${mod_name}'
+			}
+		}
 	}
 
 	g.writeln('}')
@@ -5379,6 +5390,9 @@ fn (mut g Gen) write_init_function() {
 			g.writeln(g.cleanups[mod_name].str())
 		}
 		g.writeln('\tarray_free(&as_cast_type_indexes);')
+	}
+	for x in cleaning_up_array.reverse() {
+		g.writeln(x)
 	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {

@@ -1350,6 +1350,7 @@ fn (t Tree) infix_expr(node ast.InfixExpr) &Node {
 	obj.add_terse('left_type', t.type_node(node.left_type))
 	obj.add_terse('right', t.expr(node.right))
 	obj.add_terse('right_type', t.type_node(node.right_type))
+	obj.add_terse('promoted_type', t.type_node(node.promoted_type))
 	obj.add('auto_locked', t.string_node(node.auto_locked))
 	obj.add_terse('or_block', t.or_expr(node.or_block))
 	obj.add_terse('is_stmt', t.bool_node(node.is_stmt))

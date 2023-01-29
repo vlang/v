@@ -866,12 +866,13 @@ pub:
 	pos     token.Pos
 	is_stmt bool
 pub mut:
-	left        Expr
-	right       Expr
-	left_type   Type
-	right_type  Type
-	auto_locked string
-	or_block    OrExpr
+	left          Expr
+	right         Expr
+	left_type     Type
+	right_type    Type
+	promoted_type Type = void_type
+	auto_locked   string
+	or_block      OrExpr
 	//
 	ct_left_value_evaled  bool
 	ct_left_value         ComptTimeConstValue = empty_comptime_const_expr()
