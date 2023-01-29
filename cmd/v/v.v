@@ -68,12 +68,6 @@ fn main() {
 	timers.start('parse_CLI_args')
 	args := os.args[1..]
 
-	// Get known tools
-	// mut known := []string{}
-	// for _, tool in external_tools {
-	// 	known << tool
-	// }
-
 	if args.len == 0 || args[0] in ['-', 'repl'] {
 		if args.len == 0 {
 			// Running `./v` without args launches repl
@@ -162,7 +156,6 @@ fn main() {
 }
 
 fn invoke_help_and_exit(remaining []string) {
-	// println(remaining)
 	match remaining.len {
 		0, 1 { help.print_and_exit('default') }
 		2 { help.print_and_exit(remaining[1]) }

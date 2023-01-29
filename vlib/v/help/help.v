@@ -116,15 +116,7 @@ fn known_topics(topicdir string) string {
 	mut res := []string{}
 	res << 'Known help topics: '
 
-	mut topics := []string{}
-	mut ptopics := &topics
-
-	// Walking the vlib/v/help directory for the help topics
-	os.walk(topicdir, fn [mut ptopics] (topic string) {
-		if os.file_ext(topic) == '.txt' {
-			ptopics << os.file_name(topic).replace('.txt', '').replace('default,', '')
-		}
-	})
+	mut topics := os.walk_ext(topicdir, '.txt').map(os.file_name(it).replace('.txt', ''))
 
 	topics.sort()
 	res << topics.join(', ')
