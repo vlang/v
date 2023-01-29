@@ -16,11 +16,11 @@ Examples:
    v watch run hello.v       Re-runs the same `hello.v` file, when a source code change is detected.
 
 V supports the following commands:
-* New project scaffolding:
+* Project Scaffolding Utilities:
    new               Setup the file structure for a V project (in a sub folder).
    init              Setup the file structure for an already existing V project.
 
-* Ordinary development:
+* Commonly Used Utilities:
    run               Compile and run a V program. Delete the executable after the run.
    crun              Compile and run a V program without deleting the executable.
                      If you run the same program a second time, without changing the source files,
@@ -34,13 +34,13 @@ V supports the following commands:
    watch             Re-compile/re-run a source file, each time it is changed.
    where             Find and print the location of current project declarations. 
 
-* Installation/self updating:
+* Installation Management Utilities:
    symlink           Create a symbolic link for V.
    up                Run the V self-updater.
    self [-prod]      Run the V self-compiler, use -prod to optimize compilation.
    version           Print the version text and exits.
 
-* Module/package management:
+* Package Management Utilities:
    install           Install a module from VPM.
    remove            Remove a module that was installed from VPM.
    search            Search for a module from VPM.

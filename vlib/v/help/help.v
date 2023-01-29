@@ -22,7 +22,7 @@ const (
 			'watch',
 			'where',
 		]
-		'install':     [
+		'installation':     [
 			'self',
 			'symlink',
 			'up',
@@ -74,17 +74,19 @@ pub fn print_and_exit(topic string) {
 		exit(1)
 	}
 	mut search_category := false
-	mut path_to := ''
+	mut path_to := topic
 
-	for category, item in help.categories {
-		// println("$topic - $category, $item")
-		if topic in item {
-			path_to = '${category}/${topic}'
-			break
-		} else if topic == category {
-			path_to = '$category/${category}.txt'
-			search_category = true
-			break
+	if path_to != 'default' {
+		for category, item in help.categories {
+			// println("$topic - $category, $item")
+			if topic in item {
+				path_to = '${category}/${topic}'
+				break
+			} else if topic == category {
+				path_to = '$category/${category}.txt'
+				search_category = true
+				break
+			}
 		}
 	}
 
@@ -94,8 +96,6 @@ pub fn print_and_exit(topic string) {
 		os.join_path(topicdir, '${path_to}.txt')
 	}
 
-	// `init` has the same help topic as `new`
-	name := if topic == 'init' { 'new' } else { topic }
 	if topic == 'topics' {
 		println(known_topics(topicdir))
 		exit(0)
@@ -110,11 +110,19 @@ pub fn print_and_exit(topic string) {
 	exit(0)
 }
 
-fn known_topics(topicdir string) string {
+fn known_topics( topicdir string) string {
 	mut res := []string{}
 	res << 'Known help topics: '
-	topic_files := os.glob(os.join_path(topicdir, '*.txt')) or { [] }
-	mut topics := topic_files.map(os.file_name(it).replace('.txt', ''))
+
+	mut topics := []string{}
+	mut ptopics := &topics
+
+	os.walk(topicdir, fn [mut ptopics] (topic string) {
+		if os.file_ext(topic) == '.txt' {
+			ptopics << os.file_name(topic).replace('.txt', '').replace('default,', '')
+		}
+	})
+
 	topics.sort()
 	res << topics.join(', ')
 	res << '.'

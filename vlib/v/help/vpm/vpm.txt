@@ -1,4 +1,4 @@
-VPM Management Utilities:
+Package Management Utilities:
 
    install      Installs each PACKAGE.
 

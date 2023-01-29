@@ -8,11 +8,3 @@ Usage:
 	the user will be prompted for a name.
 
 	If DESCRIPTION is given, the 'v.mod' file is updated with said description.
-
-  v init
-	Sets up a V project within the current directory.
-
-	If no '.v' file exists, then will create a 'main.v' file.
-	If no 'v.mod' file exists, one will be created.
-	If the current directory is not already controlled with 'git', will perform
-	'git init' (if git is installed on the system).
