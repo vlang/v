@@ -5,59 +5,6 @@ import os
 import v.pref
 
 const (
-	categories = {
-		'build':        [
-			'build-c',
-			'build-js',
-			'build-native',
-		]
-		'common':       [
-			'doc',
-			'fmt',
-			'missdoc',
-			'repl',
-			'run',
-			'test',
-			'vet',
-			'watch',
-			'where',
-		]
-		'installation': [
-			'self',
-			'symlink',
-			'up',
-			'version',
-		]
-		'other':        [
-			'ast',
-			'bin2v',
-			'bug',
-			'bump',
-			'check-md',
-			'complete',
-			'doctor',
-			'gret',
-			'ls',
-			'other',
-			'shader',
-			'tracev',
-		]
-		'scaffolding':  [
-			'init',
-			'new',
-		]
-		'vpm':          [
-			'install',
-			'list',
-			'outdated',
-			'remove',
-			'search',
-			'show',
-			'update',
-			'upgrade',
-			'vpm',
-		]
-	}
 	unknown_topic = '`v help`: unknown help topic provided. Use `v help` for usage information.'
 )
 
@@ -74,25 +21,27 @@ pub fn print_and_exit(topic string) {
 		eprintln(help.unknown_topic)
 		exit(1)
 	}
-	mut search_category := false
+
 	mut path_to := topic
 
-	// Making sure the topic chosen isn't `default`
-	if path_to != 'default' {
-		for category, item in help.categories {
-			if topic in item {
-				path_to = '${category}/${topic}'
-				break
-			} else if topic == category {
-				path_to = '${category}/${category}.txt'
-				search_category = true
-				break
-			}
+	mut topics := os.walk_ext(topicdir, '.txt') //.map(os.file_name(it).replace('.txt', ''))
+
+	mut items := [][]string{}
+	for mut item in topics {
+		mut item_rev := item.split('/').reverse()
+		item_rev.trim(2)
+		items << item_rev.reverse()
+	}
+
+	for cmds in items {
+		if '${topic}.txt' in cmds {
+			path_to = '${cmds[0]}/${cmds[1].replace('.txt', '')}'
+			break
 		}
 	}
 
-	topic_dir := if search_category {
-		os.join_path(topicdir, '${path_to}')
+	topic_dir := if topic == 'default' {
+		os.join_path(topicdir, 'default.txt')
 	} else {
 		os.join_path(topicdir, '${path_to}.txt')
 	}
