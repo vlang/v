@@ -525,7 +525,6 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				return ast.void_type
 			}
 
-			typ := c.check_shift(mut node, left_type, right_type)
 			node = ast.InfixExpr{
 				left: ast.CastExpr{
 					expr: node.left
@@ -538,14 +537,15 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				op: .right_shift
 				right: node.right
 				right_type: right_type
-				promoted_type: typ
 				is_stmt: false
 				pos: node.pos
 				auto_locked: node.auto_locked
 				or_block: node.or_block
 			}
 
-			return typ
+			node.promoted_type = c.check_shift(mut node, left_type, right_type)
+
+			return node.promoted_type
 		}
 		.key_is, .not_is {
 			right_expr := node.right
