@@ -34,6 +34,7 @@ fn register_dl_loader(key string, dl_loader &DynamicLibLoader) ! {
 	registerd_dl_loaders[key] = dl_loader
 }
 
+// registered_dl_loader_keys returns the keys of registered DynamicLibLoader.
 pub fn registered_dl_loader_keys() []string {
 	return registerd_dl_loaders.keys()
 }
