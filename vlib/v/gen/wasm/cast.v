@@ -4,28 +4,6 @@ import v.ast
 import binaryen as wa
 
 const (
-	cast_signed = {
-		type_i32: {
-			type_i64: wa.extendsint32()
-			type_f32: wa.convertsint32tofloat32()
-			type_f64: wa.convertsint32tofloat64()
-		}
-		type_i64: {
-			type_i32: wa.wrapint64()
-			type_f32: wa.convertsint64tofloat32()
-			type_f64: wa.convertsint64tofloat64()
-		}
-		type_f32: {
-			type_i32: wa.truncsatsfloat32toint32()
-			type_i64: wa.truncsatsfloat32toint64()
-			type_f64: wa.promotefloat32()
-		}
-		type_f64: {
-			type_i32: wa.truncsatsfloat64toint32()
-			type_i64: wa.truncsatsfloat64toint64()
-			type_f32: wa.demotefloat64()
-		}
-	}
 	cast_unsigned = {
 		type_i32: {
 			type_i64: wa.extenduint32()
@@ -55,6 +33,67 @@ fn (mut g Gen) is_signed(typ ast.Type) bool {
 	return typ.is_signed()
 }
 
+fn (mut g Gen) unary_cast(from wa.Type, is_signed bool, to wa.Type) wa.Op {
+	if is_signed {
+		match from {
+			type_i32 {
+				match to {
+					type_i64 { return wa.extendsint32() }
+					type_f32 { return wa.convertsint32tofloat32() }
+					type_f64 { return wa.convertsint32tofloat64() }
+					else {}
+				}
+			}
+			type_i64 {
+				match to {
+					type_i32 { return wa.wrapint64() }
+					type_f32 { return wa.convertsint64tofloat32() }
+					type_f64 { return wa.convertsint64tofloat64() }
+					else {}
+				}
+			}
+			type_f32 {
+				match to {
+					type_i32 { return wa.truncsatsfloat32toint32() }
+					type_i64 { return wa.truncsatsfloat32toint64() }
+					type_f64 { return wa.promotefloat32() }
+					else {}
+				}
+			}
+			type_f64 {
+				match to {
+					type_i32 { return wa.truncsatsfloat64toint32() }
+					type_i64 { return wa.truncsatsfloat64toint64() }
+					type_f32 { return wa.demotefloat64() }
+					else {}
+				}
+			}
+			else {}
+		}
+	} else {
+		match from {
+			type_i32 {
+				match to {
+					type_i64 { return wa.extenduint32() }
+					type_f32 { return wa.convertuint32tofloat32() }
+					type_f64 { return wa.convertuint32tofloat64() }
+					else {}
+				}
+			}
+			type_i64 {
+				match to {
+					type_i32 { return wa.wrapint64() }
+					type_f32 { return wa.convertuint64tofloat32() }
+					type_f64 { return wa.convertuint64tofloat64() }
+					else {}
+				}
+			}
+			else {}
+		}
+	}
+	g.w_error('bad cast: from ${from} (is signed: ${is_signed}) to ${to}')
+}
+
 fn (mut g Gen) cast(expr wa.Expression, from wa.Type, is_signed bool, to wa.Type) wa.Expression {
 	if from == to {
 		return expr
@@ -67,24 +106,5 @@ fn (mut g Gen) cast(expr wa.Expression, from wa.Type, is_signed bool, to wa.Type
 	// You only need to know if the original type is signed or not to
 	// perform casting.
 
-	// A large match statement performs better than hardcoded map values.
-	// However, it is not as readable. Spy says they stay.
-
-	val := if is_signed {
-		wasm.cast_signed[from][to] or { -1 }
-	} else {
-		wasm.cast_unsigned[from][to] or { -1 }
-	}
-	if val == -1 {
-		println(
-"
-type_none: ${type_none}
-type_auto: ${type_auto}
-type_i32: ${type_i32}
-type_i64: ${type_i64}
-type_f32: ${type_f32}
-type_f64: ${type_f64}")
-		g.w_error('bad cast: from ${from} (is signed: ${is_signed}) to ${to}')
-	}
-	return wa.unary(g.mod, val, expr)
+	return wa.unary(g.mod, g.unary_cast(from, is_signed, to), expr)
 }

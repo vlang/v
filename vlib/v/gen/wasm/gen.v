@@ -182,8 +182,15 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	g.local_stack.clear()
 }
+	// println("${g.table.sym(expected)} ${node.val}")
 
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) wa.Expression {
+	if expr is ast.IntegerLiteral {
+		return g.literal(expr.val, expected_type)
+	} else if expr is ast.FloatLiteral {
+		return g.literal(expr.val, expected_type)
+	}
+
 	got_type := ast.mktyp(got_type_raw)
 	return g.cast(g.expr(expr, got_type), g.get_wasm_type(got_type), g.is_signed(got_type),
 		g.get_wasm_type(expected_type))
@@ -205,7 +212,13 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) wa.Expression {
 
 	infix := wa.binary(g.mod, op, g.expr(node.left, node.left_type), g.expr_with_cast(node.right,
 		node.right_type, node.left_type))
-	return g.cast(infix, g.get_wasm_type(node.left_type), g.is_signed(node.left_type),
+
+	res_typ := if infix_kind_return_bool(node.op) {
+		ast.bool_type
+	} else {
+		node.left_type
+	}
+	return g.cast(infix, g.get_wasm_type(res_typ), g.is_signed(res_typ),
 		g.get_wasm_type(expected))
 }
 
@@ -236,7 +249,7 @@ fn (mut g Gen) if_branches(ifexpr ast.IfExpr) wa.Expression {
 			end
 		}
 
-		if idx + 1 >= nodes.len {
+		if ifexpr.has_else && idx + 1 >= nodes.len {
 			wa.relooperaddbranch(curr, node, unsafe { nil }, unsafe { nil })
 			wa.relooperaddbranch(node, end, unsafe { nil }, unsafe { nil })
 			break
@@ -301,10 +314,10 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			}
 		}
 		ast.EmptyExpr {
-			g.w_error('wa.expr(): called with ast.EmptyExpr')
+			g.w_error('wasm.expr(): called with ast.EmptyExpr')
 		}
 		else {
-			eprintln('wa.expr(): unhandled node: ' + node.type_name())
+			eprintln('wasm.expr(): unhandled node: ' + node.type_name())
 			wa.nop(g.mod)
 		}
 	}
@@ -314,7 +327,8 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 	return match node {
 		ast.Return {
 			if node.exprs.len == 1 {
-				wa.ret(g.mod, g.expr(node.exprs[0], g.curr_ret))
+				expr := g.expr_with_cast(node.exprs[0], node.types[0], g.curr_ret)
+				wa.ret(g.mod, expr)
 			} else {
 				g.w_error('multi returns are not implemented')
 			}
@@ -362,7 +376,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 			}
 		}
 		else {
-			eprintln('wa.expr_stmt(): unhandled node: ' + node.type_name())
+			eprintln('wasm.expr_stmt(): unhandled node: ' + node.type_name())
 			wa.nop(g.mod)
 		}
 	}
@@ -390,7 +404,7 @@ fn (mut g Gen) toplevel_stmt(node ast.Stmt) {
 		ast.Module {}
 		ast.Import {}
 		else {
-			eprintln('wa.toplevel_stmt(): unhandled node: ' + node.type_name())
+			eprintln('wasm.toplevel_stmt(): unhandled node: ' + node.type_name())
 		}
 	}
 }
@@ -420,7 +434,6 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 	if wa.modulevalidate(g.mod) {
 		wa.moduleoptimize(g.mod)
 		wa.moduleprintstackir(g.mod, true)
-		// wa.moduleprint(g.mod)
 	} else {
 		wa.moduleprint(g.mod)
 	}
