@@ -248,7 +248,7 @@ fn test_orm() {
 	}
 	assert oldest.age == 34
 
-	offs := u8(1)
+	offs := 1
 	second_oldest := sql db {
 		select from User order by age desc limit 1 offset offs
 	}

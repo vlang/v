@@ -127,14 +127,14 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 
 	if node.has_limit {
 		c.expr(node.limit_expr)
-		c.check_sql_expr_is_not_call_expr(mut node.limit_expr)
-		c.check_sql_value_expr_is_natural_number(mut node.limit_expr, 'limit')
+		c.check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type(mut node.limit_expr,
+			'limit')
 	}
 
 	if node.has_offset {
 		c.expr(node.offset_expr)
-		c.check_sql_expr_is_not_call_expr(mut node.offset_expr)
-		c.check_sql_value_expr_is_natural_number(mut node.offset_expr, 'offset')
+		c.check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type(mut node.offset_expr,
+			'offset')
 	}
 	c.expr(node.db_expr)
 
@@ -183,7 +183,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	if node.kind == .insert && node.is_top_level {
 		inserting_object_name := node.object_var_name
 		inserting_object_var := node.scope.find(inserting_object_name) or {
-			c.orm_error('undefined ident: `${inserting_object_name}`', node.pos)
+			c.error('undefined ident: `${inserting_object_name}`', node.pos)
 			return ast.void_type
 		}
 
@@ -191,15 +191,16 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			table_name := table_sym.name
 			inserting_type_name := c.table.sym(inserting_object_var.typ).name
 
-			c.orm_error('cannot use `${inserting_type_name}` as `${table_name}`', node.pos)
+			c.error('cannot use `${inserting_type_name}` as `${table_name}`', node.pos)
 			return ast.void_type
 		}
 	}
 
 	if table_sym.info !is ast.Struct {
-		c.orm_error('unknown type `${table_sym.name}`', node.pos)
+		c.error('unknown type `${table_sym.name}`', node.pos)
 		return ast.void_type
 	}
+
 	info := table_sym.info as ast.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
 	mut sub_structs := map[int]ast.SqlStmtLine{}
@@ -321,16 +322,11 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, t
 	return fields
 }
 
-fn (mut c Checker) check_sql_expr_is_not_call_expr(mut expr ast.Expr) {
-	// cgen doesn't support call expressions in ORM
-	if expr is ast.CallExpr {
-		c.orm_error('call expressions are not supported yet', expr.pos())
-	}
-}
-
-fn (mut c Checker) check_sql_value_expr_is_natural_number(mut expr ast.Expr, sql_keyword string) {
+// check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type checks that an expression is compile-time
+// and contains an integer greater than or equal to zero or it is a runtime expression with an integer type.
+fn (mut c Checker) check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type(mut expr ast.Expr, sql_keyword string) {
 	comptime_number := c.get_comptime_number_value(mut expr) or {
-		c.check_sql_expr_type_is_uint(expr, sql_keyword)
+		c.check_sql_expr_type_is_int(expr, sql_keyword)
 		return
 	}
 
@@ -339,14 +335,31 @@ fn (mut c Checker) check_sql_value_expr_is_natural_number(mut expr ast.Expr, sql
 	}
 }
 
-fn (mut c Checker) check_sql_expr_type_is_uint(expr &ast.Expr, sql_keyword string) {
+fn (mut c Checker) check_sql_expr_type_is_int(expr &ast.Expr, sql_keyword string) {
 	if expr is ast.Ident {
-		if expr.obj.typ.is_unsigned() {
+		if expr.obj.typ.is_int() {
 			return
 		}
+	} else if expr is ast.CallExpr {
+		if expr.return_type == 0 {
+			return
+		}
+
+		type_symbol := c.table.sym(expr.return_type)
+		is_error_type := expr.return_type.has_flag(.result) || expr.return_type.has_flag(.option)
+		is_acceptable_type := type_symbol.is_int() && !is_error_type
+
+		if !is_acceptable_type {
+			error_type_symbol := c.fn_return_type_flag_to_string(expr.return_type)
+			c.orm_error('function calls in `${sql_keyword}` must return only an integer type, but `${expr.name}` returns `${error_type_symbol}${type_symbol.name}`',
+				expr.pos)
+		}
+	} else if expr is ast.ParExpr {
+		c.check_sql_expr_type_is_int(&expr.expr, sql_keyword)
+		return
 	}
 
-	c.orm_error('the type of `${sql_keyword}` must be an unsigned integer type', expr.pos())
+	c.orm_error('the type of `${sql_keyword}` must be an integer type', expr.pos())
 }
 
 fn (mut c Checker) orm_error(message string, pos token.Pos) {
@@ -368,22 +381,14 @@ fn (mut c Checker) check_expr_has_no_fn_calls_with_non_orm_return_type(expr &ast
 		}
 
 		type_symbol := c.table.sym(expr.return_type)
-		is_result_type := expr.return_type.has_flag(.result)
-		is_option_type := expr.return_type.has_flag(.option)
 		is_time := type_symbol.cname == 'time__Time'
 		is_not_pointer := !type_symbol.is_pointer()
-		is_error_type := is_result_type || is_option_type
+		is_error_type := expr.return_type.has_flag(.result) || expr.return_type.has_flag(.option)
 		is_acceptable_type := (type_symbol.is_primitive() || is_time) && is_not_pointer
 			&& !is_error_type
 
 		if !is_acceptable_type {
-			error_type_symbol := if is_result_type {
-				'!'
-			} else if is_option_type {
-				'?'
-			} else {
-				''
-			}
+			error_type_symbol := c.fn_return_type_flag_to_string(expr.return_type)
 			c.orm_error('function calls must return only primitive types and time.Time, but `${expr.name}` returns `${error_type_symbol}${type_symbol.name}`',
 				expr.pos)
 		}
@@ -392,5 +397,18 @@ fn (mut c Checker) check_expr_has_no_fn_calls_with_non_orm_return_type(expr &ast
 	} else if expr is ast.InfixExpr {
 		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&expr.left)
 		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&expr.right)
+	}
+}
+
+fn (_ &Checker) fn_return_type_flag_to_string(typ ast.Type) string {
+	is_result_type := typ.has_flag(.result)
+	is_option_type := typ.has_flag(.option)
+
+	return if is_result_type {
+		'!'
+	} else if is_option_type {
+		'?'
+	} else {
+		''
 	}
 }
