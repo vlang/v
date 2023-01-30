@@ -1,11 +1,33 @@
 ## V 0.3.3
-*Not yet released*
+*30 Jan 2023*
+**wip**
 - Accessing a pointer map value requires an `or {}` block outside `unsafe`.
 - `math.vec` module for generic vector math.
 - `go foo()` has been replaced with `spawn foo()` (launches an OS thread, `go` will be used for
   upcoming coroutines instead).
-- vfmt now supports `// vfmt off` and `// vfmt on` for turning off the formatting locally for *short* snippets of code. Useful for keeping your carefully arranged matrices intact.
+- vfmt now supports `// vfmt off` and `// vfmt on` for turning off the formatting locally for short snippets of code.
+  Useful for keeping your carefully arranged matrices intact.
+- fast.vlang.io fixes & improvements, new server.
+- String interpolation changed to just '${name}'.
+- New official IntelliJ plugin: https://intellij-v.github.io.
+- Lots of fixes in the type checker.
 - Match branch range expressions with consts: `match x { const1...const2 {} }`
+- Builtin stb_image.h used by gg has been updated to the latest v2.28.
+- Lots of new documentation, a nicer table of contents.
+- All of vlib has been updated to use separate Option/Result types.
+- To avoid confusion, all references in the code and documentation to `Optional` have been replaced with `Option`.
+- `gg.Context` pipeile has more effects, including the `additive` effect.
+- Hot code reloading via `[live]` is now supported in imported modules, not just the main module.
+- VFS support in the builtin `sqlite` module; `sqlite.get_affected_rows_count()`.
+- `make.bat` & `v up` improvements on Windows.
+- Syntax sugar for map inits without needing explicit casts for interfaces: `all.children := { "abc": rect, "def": ui.rectangle()}`.
+- `$embed_file()` fixes, including variable args support.
+- `none` fixes: no longer allowed to be used as a separate type, `dump()` support, not allowed inside `unsafe`.
+- Much cleaner eof checks in `os`: refactor `err == IError(os.Eof{})` to `err is os.Eof`.
+- Const functions: `const y = term.yellow`, then `println(y('abc'))`.
+- Lots of work on `x.json2`, the pure V json encoder, soon to become official.
+
+
 
 ## V 0.3.2
 *31 Oct 2022*

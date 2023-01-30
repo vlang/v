@@ -18,7 +18,7 @@ const (
 		'/usr/local/libdata/pkgconfig', // FreeBSD
 		'/usr/lib/i386-linux-gnu/pkgconfig', // Debian 32bit
 	]
-	version       = '0.3.2'
+	version       = '0.3.3'
 )
 
 pub struct Options {
