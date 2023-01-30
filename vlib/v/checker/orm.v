@@ -30,6 +30,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	info := sym.info as ast.Struct
 	mut fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, sym.name)
 	mut sub_structs := map[int]ast.SqlExpr{}
+
 	for f in fields.filter((c.table.type_symbols[int(it.typ)].kind == .struct_
 		|| (c.table.sym(it.typ).kind == .array
 		&& c.table.sym(c.table.sym(it.typ).array_info().elem_type).kind == .struct_))
@@ -54,6 +55,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		tmp_inside_sql := c.inside_sql
 		c.sql_expr(mut n)
 		c.inside_sql = tmp_inside_sql
+
 		n.where_expr = ast.InfixExpr{
 			op: .eq
 			pos: n.pos
@@ -87,6 +89,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 
 		sub_structs[int(typ)] = n
 	}
+
 	if node.is_count {
 		fields = [
 			ast.StructField{
@@ -94,10 +97,13 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			},
 		]
 	}
+
 	node.fields = fields
 	node.sub_structs = sub_structs.move()
+
 	if node.has_where {
 		c.expr(node.where_expr)
+		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&node.where_expr)
 	}
 
 	if node.has_order {
@@ -173,6 +179,23 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	defer {
 		c.cur_orm_ts = old_ts
 	}
+
+	if node.kind == .insert && node.is_top_level {
+		inserting_object_name := node.object_var_name
+		inserting_object_var := node.scope.find(inserting_object_name) or {
+			c.orm_error('undefined ident: `${inserting_object_name}`', node.pos)
+			return ast.void_type
+		}
+
+		if inserting_object_var.typ != node.table_expr.typ {
+			table_name := table_sym.name
+			inserting_type_name := c.table.sym(inserting_object_var.typ).name
+
+			c.orm_error('cannot use `${inserting_type_name}` as `${table_name}`', node.pos)
+			return ast.void_type
+		}
+	}
+
 	if table_sym.info !is ast.Struct {
 		c.orm_error('unknown type `${table_sym.name}`', node.pos)
 		return ast.void_type
@@ -266,7 +289,7 @@ fn (mut c Checker) check_orm_struct_field_attributes(field ast.StructField) {
 			}
 
 			field_struct_type.find_field(attr.arg) or {
-				c.error('`${field_struct_type.name}` struct has no field with name `${attr.arg}`',
+				c.orm_error('`${field_struct_type.name}` struct has no field with name `${attr.arg}`',
 					attr.pos)
 				return
 			}
@@ -328,4 +351,46 @@ fn (mut c Checker) check_sql_expr_type_is_uint(expr &ast.Expr, sql_keyword strin
 
 fn (mut c Checker) orm_error(message string, pos token.Pos) {
 	c.error('${checker.v_orm_prefix}: ${message}', pos)
+}
+
+// check_expr_has_no_fn_calls_with_non_orm_return_type checks that an expression has no function calls
+// that return complex types which can't be transformed into SQL.
+fn (mut c Checker) check_expr_has_no_fn_calls_with_non_orm_return_type(expr &ast.Expr) {
+	if expr is ast.CallExpr {
+		// `expr.return_type` may be empty. For example, a user call function incorrectly without passing all required arguments.
+		// This error will be handled in another place. Otherwise, `c.table.sym` below does panic.
+		//
+		// fn test(flag bool) {}
+		// test()
+		//      ~~~~~~ expected 1 arguments, but got 0
+		if expr.return_type == 0 {
+			return
+		}
+
+		type_symbol := c.table.sym(expr.return_type)
+		is_result_type := expr.return_type.has_flag(.result)
+		is_option_type := expr.return_type.has_flag(.option)
+		is_time := type_symbol.cname == 'time__Time'
+		is_not_pointer := !type_symbol.is_pointer()
+		is_error_type := is_result_type || is_option_type
+		is_acceptable_type := (type_symbol.is_primitive() || is_time) && is_not_pointer
+			&& !is_error_type
+
+		if !is_acceptable_type {
+			error_type_symbol := if is_result_type {
+				'!'
+			} else if is_option_type {
+				'?'
+			} else {
+				''
+			}
+			c.orm_error('function calls must return only primitive types and time.Time, but `${expr.name}` returns `${error_type_symbol}${type_symbol.name}`',
+				expr.pos)
+		}
+	} else if expr is ast.ParExpr {
+		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&expr.expr)
+	} else if expr is ast.InfixExpr {
+		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&expr.left)
+		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&expr.right)
+	}
 }

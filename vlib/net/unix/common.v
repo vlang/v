@@ -3,23 +3,23 @@ module unix
 import time
 import net
 
-const (
-	error_ewouldblock = C.EWOULDBLOCK
-)
+const error_ewouldblock = C.EWOULDBLOCK
 
 fn C.SUN_LEN(ptr &C.sockaddr_un) int
 
 fn C.strncpy(&char, &char, int)
 
-// Shutdown shutsdown a socket and closes it
-fn shutdown(handle int) ! {
-	$if windows {
-		C.shutdown(handle, C.SD_BOTH)
-		net.socket_error(C.closesocket(handle))!
-	} $else {
-		C.shutdown(handle, C.SHUT_RDWR)
-		net.socket_error(C.close(handle))!
-	}
+// shutdown shutsdown a socket, given its file descriptor `handle`.
+// By default it shuts it down in both directions, both for reading
+// and for writing. You can change that using `net.shutdown(handle, how: .read)`
+// or `net.shutdown(handle, how: .write)`
+pub fn shutdown(handle int, config net.ShutdownConfig) int {
+	return net.shutdown(handle, config)
+}
+
+// close a socket, given its file descriptor `handle`.
+pub fn close(handle int) ! {
+	net.close(handle)!
 }
 
 // Select waits for an io operation (specified by parameter `test`) to be available

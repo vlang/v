@@ -236,6 +236,12 @@ mut:
 	// out_idx      int
 	out_fn_start_pos []int  // for generating multiple .c files, stores locations of all fn positions in `out` string builder
 	static_modifier  string // for parallel_cc
+
+	has_reflection bool
+	// reflection metadata initialization
+	reflection_funcs   strings.Builder
+	reflection_others  strings.Builder
+	reflection_strings &map[string]int
 }
 
 // global or const variable definition string
@@ -264,6 +270,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 	$if time_cgening ? {
 		timers_should_print = true
 	}
+	mut reflection_strings := map[string]int{}
 	mut global_g := Gen{
 		file: 0
 		out: strings.new_builder(512000)
@@ -306,7 +313,12 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 		use_segfault_handler: !('no_segfault_handler' in pref.compile_defines
 			|| pref.os in [.wasm32, .wasm32_emscripten])
 		static_modifier: if pref.parallel_cc { 'static' } else { '' }
+		has_reflection: 'v.reflection' in table.modules
+		reflection_funcs: strings.new_builder(100)
+		reflection_others: strings.new_builder(100)
+		reflection_strings: &reflection_strings
 	}
+
 	/*
 	global_g.out_parallel = []strings.Builder{len: nr_cpus}
 	for i in 0 .. nr_cpus {
@@ -358,6 +370,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 			global_g.embedded_data.write(g.embedded_data) or { panic(err) }
 			global_g.shared_types.write(g.shared_types) or { panic(err) }
 			global_g.shared_functions.write(g.channel_definitions) or { panic(err) }
+			global_g.reflection_funcs.write(g.reflection_funcs) or { panic(err) }
 
 			global_g.force_main_console = global_g.force_main_console || g.force_main_console
 
@@ -455,6 +468,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 
 	mut g := global_g
 	util.timing_start('cgen common')
+
 	// to make sure type idx's are the same in cached mods
 	if g.pref.build_mode == .build_module {
 		for idx, sym in g.table.type_symbols {
@@ -664,6 +678,10 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		referenced_fns: global_g.referenced_fns
 		is_cc_msvc: global_g.is_cc_msvc
 		use_segfault_handler: global_g.use_segfault_handler
+		has_reflection: 'v.reflection' in global_g.table.modules
+		reflection_funcs: strings.new_builder(100)
+		reflection_others: strings.new_builder(100)
+		reflection_strings: global_g.reflection_strings
 	}
 	g.gen_file()
 	return g
@@ -715,7 +733,6 @@ pub fn (mut g Gen) gen_file() {
 		g.is_vlines_enabled = true
 		g.inside_ternary = 0
 	}
-
 	g.stmts(g.file.stmts)
 	// Transfer embedded files
 	for path in g.file.embedded_files {
@@ -4340,15 +4357,16 @@ fn (mut g Gen) ident(node ast.Ident) {
 			}
 		}
 	} else if node.info is ast.IdentFn {
-		if g.pref.translated || g.file.is_translated {
-			// `p_mobjthinker` => `P_MobjThinker`
-			if func := g.table.find_fn(node.name) {
-				// TODO PERF fn lookup for each fn call in translated mode
+		// TODO PERF fn lookup for each fn call in translated mode
+		if func := g.table.find_fn(node.name) {
+			if g.pref.translated || g.file.is_translated || func.is_file_translated {
+				// `p_mobjthinker` => `P_MobjThinker`
 				if cattr := func.attrs.find_first('c') {
 					name = cattr.arg
 				}
 			}
 		}
+
 		if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {
 			key := node.name
 			g.write('/* obf identfn: ${key} */')
@@ -5277,6 +5295,7 @@ fn (mut g Gen) write_init_function() {
 
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
 	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
+
 	if g.pref.trace_calls {
 		g.writeln('\tv__trace_calls__on_call(_SLIT("_vinit"));')
 	}
@@ -5302,7 +5321,22 @@ fn (mut g Gen) write_init_function() {
 	if g.nr_closures > 0 {
 		g.writeln('\t_closure_mtx_init();')
 	}
+
+	// reflection bootstraping
+	if g.has_reflection {
+		if var := g.global_const_defs['g_reflection'] {
+			g.writeln(var.init)
+			g.gen_reflection_data()
+		}
+	}
+
+	mut cleaning_up_array := []string{cap: g.table.modules.len}
+
 	for mod_name in g.table.modules {
+		if g.has_reflection && mod_name == 'v.reflection' {
+			// ignore v.reflection already initialized above
+			continue
+		}
 		mut is_empty := true
 		// write globals and consts init later
 		for var_name in g.sorted_global_const_names {
@@ -5327,7 +5361,17 @@ fn (mut g Gen) write_init_function() {
 				g.writeln('\t${init_fn_c_name}();')
 			}
 		}
+		cleanup_fn_name := '${mod_name}.cleanup'
+		if cleanupfn := g.table.find_fn(cleanup_fn_name) {
+			if cleanupfn.return_type == ast.void_type && cleanupfn.params.len == 0 {
+				mod_c_name := util.no_dots(mod_name)
+				cleanup_fn_c_name := '${mod_c_name}__cleanup'
+				cleaning_up_array << '\t${cleanup_fn_c_name}();'
+				cleaning_up_array << '\t// Cleaning up for module ${mod_name}'
+			}
+		}
 	}
+
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vinit' in g.pref.printfn_list {
 		println(g.out.after(fn_vinit_start_pos))
@@ -5346,6 +5390,9 @@ fn (mut g Gen) write_init_function() {
 			g.writeln(g.cleanups[mod_name].str())
 		}
 		g.writeln('\tarray_free(&as_cast_type_indexes);')
+	}
+	for x in cleaning_up_array.reverse() {
+		g.writeln(x)
 	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {

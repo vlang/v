@@ -288,6 +288,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		}
 		fn_header := '${visibility_kw}${type_name} ${fn_attrs}${name}('
 		g.definitions.write_string(fn_header)
+		g.gen_reflection_function(node)
 		g.write(fn_header)
 	}
 	arg_start_pos := g.out.len
@@ -445,7 +446,7 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) !string {
 		name = g.generic_fn_name(g.cur_concrete_types, name)
 	}
 
-	if g.pref.translated || g.file.is_translated {
+	if g.pref.translated || g.file.is_translated || node.is_file_translated {
 		if cattr := node.attrs.find_first('c') {
 			// This fixes unknown symbols errors when building separate .c => .v files into .o files
 			// example:
@@ -1361,7 +1362,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	} else {
 		name = c_name(name)
 	}
-	if g.pref.translated || g.file.is_translated {
+	if g.pref.translated || g.file.is_translated || node.is_file_translated {
 		// For `[c: 'P_TryMove'] fn p_trymove( ... `
 		// every time `p_trymove` is called, `P_TryMove` must be generated instead.
 		if f := g.table.find_fn(node.name) {
