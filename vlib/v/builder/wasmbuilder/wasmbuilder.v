@@ -20,6 +20,7 @@ pub fn compile_wasm(mut b builder.Builder) {
 }
 
 pub fn build_wasm(mut b builder.Builder, v_files []string, out_file string) {
+	b.pref.out_name_c = b.pref.out_name
 	if !b.pref.out_name.ends_with('.wasm') {
 		b.pref.out_name += '.wasm'
 	}
@@ -33,6 +34,6 @@ pub fn build_wasm(mut b builder.Builder, v_files []string, out_file string) {
 	}
 	b.front_and_middle_stages(nvf) or { return }
 	util.timing_start('WebAssembly GEN')
-	b.stats_lines, b.stats_bytes = wasm.gen(b.parsed_files, b.table, out_file, b.pref)
+	wasm.gen(b.parsed_files, b.table, out_file, b.pref)
 	util.timing_measure('WebAssembly GEN')
 }

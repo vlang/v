@@ -6,6 +6,7 @@ import v.util
 import v.token
 import v.errors
 import binaryen as wa
+import os
 
 [heap; minify]
 pub struct Gen {
@@ -177,7 +178,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	wa.addfunction(g.mod, name.str, params_type, return_type, temporaries.data, temporaries.len,
 		wasm_expr)
-	if node.is_pub {
+	if node.is_pub && node.mod == 'main' {
 		wa.addfunctionexport(g.mod, name.str, name.str)
 	}
 
@@ -464,7 +465,8 @@ pub fn (mut g Gen) toplevel_stmts(stmts []ast.Stmt) {
 	}
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Preferences) (int, int) {
+pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Preferences) {
+	// println(pref.should_output_to_stdout())
 	mut g := &Gen{
 		table: table
 		out_name: out_name
@@ -481,15 +483,20 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 		g.toplevel_stmts(file.stmts)
 	}
 	if wa.modulevalidate(g.mod) {
-		wa.moduleoptimize(g.mod)
-		wa.moduleprintstackir(g.mod, true)
-		a := wa.moduleallocateandwrite(g.mod, unsafe { nil })
-		str := unsafe { (&char(a.binary)).vstring_with_len(int(a.binaryBytes)) }
-		eprint(str)
+		if pref.is_prod {
+			wa.moduleoptimize(g.mod)
+		}
+		if pref.out_name_c.ends_with('/-') || pref.out_name_c.ends_with(r'\-') {
+			wa.moduleprintstackir(g.mod, true)
+		} else {
+			bytes := wa.moduleallocateandwrite(g.mod, unsafe { nil })
+			str := unsafe { (&char(bytes.binary)).vstring_with_len(int(bytes.binaryBytes)) }
+			os.write_file(pref.out_name, str)  or { panic(err) }
+		}
 	} else {
 		wa.moduleprint(g.mod)
+		wa.moduledispose(g.mod)
+		g.w_error("validation failed, this should not happen. report an issue with the above messages")
 	}
 	wa.moduledispose(g.mod)
-
-	return 0, 0
 }
