@@ -120,6 +120,7 @@ fn (mut g Gen) new_local(name string, typ ast.Type) {
 
 const (
 	type_none = wasm.typenone()
+	type_auto = wasm.typeauto()
 	type_i32 = wasm.typeint32()
 	type_i64 = wasm.typeint64()
 	type_f32 = wasm.typefloat32()
@@ -264,6 +265,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		temporaries << g.local_stack[idx].typ
 	}
 	wasm.addfunction(g.mod, name.str, params_type, return_type, temporaries.data, temporaries.len, wasm_expr)
+	if node.is_pub {
+		wasm.addfunctionexport(g.mod, name.str, name.str)
+	}
 
 	g.local_stack.clear()
 }
@@ -374,6 +378,58 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) wasm.Expression
 	return g.cast(infix, g.get_wasm_type(node.left_type), g.is_signed(node.left_type), g.get_wasm_type(expected))
 }
 
+fn (mut g Gen) mkblock(nodes []wasm.Expression) wasm.Expression {
+	return wasm.block(g.mod, c'blk', nodes.data, nodes.len, type_auto)
+}
+
+fn (mut g Gen) lint(v int) wasm.Expression {
+	return wasm.constant(g.mod, wasm.literalint32(v))
+}
+
+fn (mut g Gen) call(v int) wasm.Expression {
+	ops := [g.lint(v)]
+	return wasm.call(g.mod, c"check", ops.data, ops.len, wasm.typenone())
+}
+
+
+fn (mut g Gen) if_branches(ifexpr ast.IfExpr) wasm.Expression {
+	assert !ifexpr.is_expr, '`is_expr` not implemented'
+
+	mut rl := wasm.reloopercreate(g.mod)
+
+	mut nodes := []wasm.RelooperBlock{cap: ifexpr.branches.len}
+	for branch in ifexpr.branches {
+		nodes << wasm.relooperaddblock(rl, g.expr_stmts(branch.stmts, ifexpr.typ))
+	}
+
+	start := wasm.relooperaddblock(rl, wasm.nop(g.mod))
+	end := wasm.relooperaddblock(rl, wasm.nop(g.mod))
+	
+	mut curr := start
+	for idx, node in nodes {
+		cond := ifexpr.branches[idx].cond
+
+		interp := if idx + 1 < nodes.len {
+			wasm.relooperaddblock(rl, wasm.nop(g.mod))
+		} else {
+			end
+		}
+
+		if idx + 1 >= nodes.len {
+			wasm.relooperaddbranch(curr, node, unsafe { nil }, unsafe { nil })
+			wasm.relooperaddbranch(node, end, unsafe { nil }, unsafe { nil })
+			break
+		} else {
+			wasm.relooperaddbranch(curr, node, g.expr(cond, ast.bool_type), unsafe { nil })
+		}
+		wasm.relooperaddbranch(curr, interp, unsafe { nil }, unsafe { nil })
+		wasm.relooperaddbranch(node, end, unsafe { nil }, unsafe { nil })
+		curr = interp
+	}
+
+	return wasm.relooperrenderanddispose(rl, start, 0)
+}
+
 fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wasm.Expression {
 	return match node {
 		ast.ParExpr {
@@ -395,12 +451,14 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wasm.Expression {
 			g.literal(node.val, expected)
 		}
 		ast.IfExpr {
-			if node.branches.len == 2 && node.has_else {
+			if node.branches.len == 2 && node.is_expr {
 				wasm.bselect(g.mod, g.expr(node.branches[0].cond, ast.bool_type_idx), g.expr_stmts(node.branches[0].stmts, node.typ), g.expr_stmts(node.branches[1].stmts, node.typ), g.get_wasm_type(node.typ))
 			} else {
-				g.w_error('complex if expressions are not implemented')
+				assert !node.is_expr
+				g.if_branches(node)
 			}
 			// wasm.bif(g.mod, g.expr())
+			
 		}
 		ast.CastExpr {
 			expr := g.expr(node.expr, node.expr_type)
@@ -417,6 +475,9 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wasm.Expression {
 			} else {
 				g.cast(expr, g.get_wasm_type(node.expr_type), g.is_signed(node.expr_type), g.get_wasm_type(node.typ))
 			}
+		}
+		ast.EmptyExpr {
+			g.w_error('wasm.expr(): called with ast.EmptyExpr')
 		}
 		else {
 			eprintln('wasm.expr(): unhandled node: ' + node.type_name())
@@ -435,7 +496,11 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wasm.Expression {
 			}
 		}
 		ast.ExprStmt {
-			g.expr_with_cast(node.expr, node.typ, expected)
+			if node.typ == ast.void_type {
+				g.expr(node.expr, ast.void_type)
+			} else {
+				g.expr_with_cast(node.expr, node.typ, expected)
+			}
 		}
 		ast.AssignStmt {
 			if (node.left.len > 1 && node.right.len == 1) || node.has_cross_var {
@@ -468,7 +533,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wasm.Expression {
 			if exprs.len == 1 {
 				exprs[0]
 			} else {
-				wasm.block(g.mod, c'multiassign', exprs.data, exprs.len, wasm.typeauto())
+				g.mkblock(exprs)
 			}
 		}
 		else {
@@ -489,7 +554,7 @@ pub fn (mut g Gen) expr_stmts(stmts []ast.Stmt, expected ast.Type) wasm.Expressi
 	for stmt in stmts {
 		exprl << g.expr_stmt(stmt, expected)
 	}
-	return wasm.block(g.mod, c'blk', exprl.data, exprl.len, wasm.typeauto())
+	return g.mkblock(exprl)
 }
 
 fn (mut g Gen) toplevel_stmt(node ast.Stmt) {
@@ -528,8 +593,9 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 		g.toplevel_stmts(file.stmts)
 	}
 	if wasm.modulevalidate(g.mod) {
-		// wasm.moduleprintstackir(g.mod, false)
-		wasm.moduleprint(g.mod)
+		wasm.moduleoptimize(g.mod)
+		wasm.moduleprintstackir(g.mod, true)
+		// wasm.moduleprint(g.mod)
 	} else {
 		wasm.moduleprint(g.mod)
 	}
