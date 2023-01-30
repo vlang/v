@@ -1751,6 +1751,10 @@ pub:
 	pos          token.Pos
 	where_expr   Expr
 	update_exprs []Expr // for `update`
+	// is_top_level indicates that a statement is parsed from code
+	// and is not inserted by ORM for inserting in related tables.
+	is_top_level bool
+	scope        &Scope = unsafe { nil }
 pub mut:
 	object_var_name string   // `user`
 	updated_columns []string // for `update set x=y`
