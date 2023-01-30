@@ -828,15 +828,14 @@ fn (mut c Checker) has_reused_generic_param(func ast.Fn, node ast.CallExpr) bool
 	return false
 }
 
-fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
+fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr, has_reused_gargs bool) {
 	mut inferred_types := []ast.Type{}
-	has_reused_args := func.generic_names.len > 0 && c.has_reused_generic_param(func, node)
-	if has_reused_args {
+	if has_reused_gargs {
 		node.concrete_types = []
 	}
 	for gi, gt_name in func.generic_names {
 		// skip known types
-		if gi < node.concrete_types.len && !has_reused_args {
+		if gi < node.concrete_types.len {
 			inferred_types << node.concrete_types[gi]
 			continue
 		}

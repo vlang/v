@@ -1221,7 +1221,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	}
 	if func.generic_names.len != node.concrete_types.len {
 		// no type arguments given in call, attempt implicit instantiation
-		c.infer_fn_generic_types(func, mut node)
+		c.infer_fn_generic_types(func, mut node, false)
 		concrete_types = node.concrete_types.map(c.unwrap_generic(it))
 	}
 	if func.generic_names.len > 0 {
@@ -1812,10 +1812,12 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			node.receiver_type = method.params[0].typ
 		}
 
-		if method.generic_names.len != node.concrete_types.len
-			|| c.has_reused_generic_param(method, node) {
+		if method.generic_names.len != node.concrete_types.len {
 			// no type arguments given in call, attempt implicit instantiation
-			c.infer_fn_generic_types(method, mut node)
+			c.infer_fn_generic_types(method, mut node, false)
+			concrete_types = node.concrete_types.map(c.unwrap_generic(it))
+		} else if c.has_reused_generic_param(method, node) {
+			c.infer_fn_generic_types(method, mut node, true)
 			concrete_types = node.concrete_types.map(c.unwrap_generic(it))
 		}
 		if concrete_types.len > 0 && !concrete_types[0].has_flag(.generic) {
