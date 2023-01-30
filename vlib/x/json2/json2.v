@@ -96,6 +96,7 @@ pub fn encode[T](val T) string {
 	return sb.str()
 }
 
+// encode_array is a generic function that encodes a array into a JSON string.
 pub fn encode_array[T](val []T) string {
 	mut sb := strings.new_builder(64)
 
