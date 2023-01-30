@@ -16,6 +16,7 @@ const (
 		@mod + '/modules/library/library.so',
 	]
 )
+
 fn main() {
 	mut opencl_loader := loader.get_or_create_dynamic_lib_loader(
 		key: 'LibExample'

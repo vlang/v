@@ -49,14 +49,13 @@ fn test_can_compile_and_use_library_with_skip_unused_home_dir() {
 fn test_can_compile_and_use_library_with_skip_unused_location1_dir() {
 	os.chdir(cfolder) or {}
 	os.rm(library_file_name) or {}
-	os.mkdir("location1") or {}
+	os.mkdir('location1') or {}
 	v_compile('-skip-unused -d no_backtrace -o location1/library -shared modules/library/library.v')
 	assert os.is_file(library_file_name)
 	result := v_compile('run use.v')
 	assert result.output.contains('res: 4')
 	os.rm(library_file_name) or {}
 }
-
 
 fn v_compile(vopts string) os.Result {
 	cmd := '${os.quoted_path(vexe)} -showcc ${vopts}'
