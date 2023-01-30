@@ -809,11 +809,34 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 	return concrete_types
 }
 
+fn (mut c Checker) has_reused_generic_param(func ast.Fn, node ast.CallExpr) bool {
+	if c.table.cur_fn == unsafe { nil } || c.table.cur_fn.params.len == 0
+		|| c.table.cur_fn.generic_names.len == 0 || func.generic_names.len == 0
+		|| node.args.len == 0 {
+		return false
+	}
+	for callarg in node.args {
+		arg := callarg.expr
+		if arg is ast.Ident {
+			for cur_param in c.table.cur_fn.params {
+				if cur_param.typ.has_flag(.generic) && cur_param.name == (arg as ast.Ident).name {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 	mut inferred_types := []ast.Type{}
+	has_reused_args := func.generic_names.len > 0 && c.has_reused_generic_param(func, node)
+	if has_reused_args {
+		node.concrete_types = []
+	}
 	for gi, gt_name in func.generic_names {
 		// skip known types
-		if gi < node.concrete_types.len {
+		if gi < node.concrete_types.len && !has_reused_args {
 			inferred_types << node.concrete_types[gi]
 			continue
 		}
@@ -1001,6 +1024,24 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 						typ = concrete_types[idx]
 					}
 				} else if !node.is_method && c.table.cur_fn.generic_names.len > 0
+					&& c.table.cur_fn.params.len > 0 && arg.expr is ast.Ident {
+					var_name := (arg.expr as ast.Ident).name
+					for cur_param in c.table.cur_fn.params {
+						if !cur_param.typ.has_flag(.generic) || cur_param.name != var_name {
+							continue
+						}
+						typ = c.unwrap_generic(cur_param.typ)
+						parg_sym := c.table.sym(typ)
+						if parg_sym.kind == .array {
+							mut arg_elem_info := parg_sym.info as ast.Array
+							typ = arg_elem_info.elem_type
+							if arg_elem_info.elem_type.nr_muls() > 0 && typ.nr_muls() > 0 {
+								typ = typ.set_nr_muls(0)
+							}
+						}
+						break
+					}
+				} else if node.is_method && c.table.cur_fn.generic_names.len > 0
 					&& c.table.cur_fn.params.len > 0 && arg.expr is ast.Ident {
 					var_name := (arg.expr as ast.Ident).name
 					for cur_param in c.table.cur_fn.params {

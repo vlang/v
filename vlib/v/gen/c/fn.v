@@ -1146,15 +1146,15 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		name = g.generic_fn_name([for_in_any_var_type], name)
 	} else {
 		mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
-		// if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0
-		// 	&& node.concrete_list_pos.len == 1 && node.args.len > 0 {
-		// 	if m := g.table.find_method(g.table.sym(node.left_type), node.name) {
-		// 		if m.generic_names.len > 0 {
-		// 			// repassing generic argument to another function
-		// 			g.resolve_generic_call_args(m, node, mut concrete_types)
-		// 		}
-		// 	}
-		// }
+		if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0
+			&& node.concrete_list_pos.len == 1 && node.args.len > 0 {
+			if m := g.table.find_method(g.table.sym(node.left_type), node.name) {
+				if m.generic_names.len > 0 {
+					// repassing generic argument to another function
+					g.resolve_generic_call_args(m, node, mut concrete_types)
+				}
+			}
+		}
 		name = g.generic_fn_name(concrete_types, name)
 	}
 

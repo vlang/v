@@ -1811,7 +1811,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		} else {
 			node.receiver_type = method.params[0].typ
 		}
-		if method.generic_names.len != node.concrete_types.len {
+
+		if method.generic_names.len != node.concrete_types.len
+			|| c.has_reused_generic_param(method, node) {
 			// no type arguments given in call, attempt implicit instantiation
 			c.infer_fn_generic_types(method, mut node)
 			concrete_types = node.concrete_types.map(c.unwrap_generic(it))
