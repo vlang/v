@@ -1278,11 +1278,20 @@ fn (mut g Gen) resolve_generic_call_args(func ast.Fn, node ast.CallExpr, mut con
 			break
 		}
 		if i == 0 && func.is_method {
-			// skip receiver
+			if param.typ.has_flag(.generic) {
+				// skip receiver
+				concrete_i++
+			}
 			continue
 		}
-		if !param.typ.has_flag(.generic) || node.args[node_i].expr !is ast.Ident {
+		if !param.typ.has_flag(.generic) {
 			node_i++
+			continue
+		}
+
+		if node.args[node_i].expr !is ast.Ident {
+			node_i++
+			concrete_i++
 			continue
 		}
 		ident := node.args[node_i].expr as ast.Ident
@@ -1306,8 +1315,10 @@ fn (mut g Gen) resolve_generic_call_args(func ast.Fn, node ast.CallExpr, mut con
 				}
 			}
 			concrete_types[concrete_i] = typ
-			concrete_i++
 			break
+		}
+		if param.typ.has_flag(.generic) {
+			concrete_i++
 		}
 	}
 }
