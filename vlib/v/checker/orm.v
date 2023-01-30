@@ -354,6 +354,8 @@ fn (mut c Checker) check_sql_expr_type_is_int(expr &ast.Expr, sql_keyword string
 			c.orm_error('function calls in `${sql_keyword}` must return only an integer type, but `${expr.name}` returns `${error_type_symbol}${type_symbol.name}`',
 				expr.pos)
 		}
+
+		return
 	} else if expr is ast.ParExpr {
 		c.check_sql_expr_type_is_int(&expr.expr, sql_keyword)
 		return
