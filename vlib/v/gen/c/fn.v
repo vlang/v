@@ -1275,12 +1275,18 @@ fn (mut g Gen) resolve_generic_call_args(func ast.Fn, node ast.CallExpr, mut con
 		if i >= node.args.len || concrete_i == concrete_types.len {
 			break
 		}
-		if !param.typ.has_flag(.generic) || node.args[i].expr !is ast.Ident {
+		if (i == 0 && func.is_method) || !param.typ.has_flag(.generic)
+			|| node.args[i].expr !is ast.Ident {
 			continue
 		}
-		var_name := (node.args[i].expr as ast.Ident).name
-		for cur_param in g.cur_fn.params {
-			if !cur_param.typ.has_flag(.generic) || var_name != cur_param.name {
+		ident := node.args[i].expr as ast.Ident
+		var_name := ident.name
+		if ident.is_mut() {
+			continue
+		}
+		for k, cur_param in g.cur_fn.params {
+			if (k == 0 && g.cur_fn.is_method && !cur_param.typ.has_flag(.generic))
+				|| var_name != cur_param.name {
 				continue
 			}
 			mut typ := g.unwrap_generic(cur_param.typ)

@@ -1000,8 +1000,8 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 						idx := generic_names.index(gt_name)
 						typ = concrete_types[idx]
 					}
-				} else if c.table.cur_fn.generic_names.len > 0 && c.table.cur_fn.params.len > 0
-					&& arg.expr is ast.Ident {
+				} else if (!node.is_method || i > 0) && c.table.cur_fn.generic_names.len > 0
+					&& c.table.cur_fn.params.len > 0 && arg.expr is ast.Ident {
 					var_name := (arg.expr as ast.Ident).name
 
 					for cur_param in c.table.cur_fn.params {
