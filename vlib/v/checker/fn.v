@@ -1761,6 +1761,11 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					arg.pos)
 			}
 			c.check_expected_call_arg(got_arg_typ, exp_arg_typ, node.language, arg) or {
+				if c.table.cur_fn.generic_names.len > 0 && param.typ.has_flag(.generic)
+					&& node.concrete_list_pos.len == 1 {
+					// ignores method call repassing generic parameters
+					continue
+				}
 				// str method, allow type with str method if fn arg is string
 				// Passing an int or a string array produces a c error here
 				// Deleting this condition results in propper V error messages

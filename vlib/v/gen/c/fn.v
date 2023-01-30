@@ -1145,7 +1145,15 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	} else if g.inside_for_in_any_cond && for_in_any_var_type != ast.void_type {
 		name = g.generic_fn_name([for_in_any_var_type], name)
 	} else {
-		concrete_types := node.concrete_types.map(g.unwrap_generic(it))
+		mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
+		if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 {
+			if m := g.table.find_method(g.table.sym(node.left_type), node.name) {
+				if m.generic_names.len > 0 {
+					// repassing generic argument to another function
+					g.resolve_generic_call_args(m, node, mut concrete_types)
+				}
+			}
+		}
 		name = g.generic_fn_name(concrete_types, name)
 	}
 
@@ -1258,6 +1266,35 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write(', ${array_depth}')
 	}
 	g.write(')')
+}
+
+fn (mut g Gen) resolve_generic_call_args(func ast.Fn, node ast.CallExpr, mut concrete_types []ast.Type) {
+	mut concrete_i := 0
+	for i, param in func.params {
+		if i >= node.args.len || concrete_i == concrete_types.len {
+			break
+		}
+		if !param.typ.has_flag(.generic) || node.args[i].expr !is ast.Ident {
+			continue
+		}
+		var_name := (node.args[i].expr as ast.Ident).name
+		for cur_param in g.cur_fn.params {
+			if !cur_param.typ.has_flag(.generic) || var_name != cur_param.name {
+				continue
+			}
+			mut typ := g.unwrap_generic(cur_param.typ)
+			parg_sym := g.table.sym(typ)
+			if parg_sym.kind == .array {
+				mut arg_elem_info := parg_sym.info as ast.Array
+				typ = arg_elem_info.elem_type
+				if arg_elem_info.elem_type.nr_muls() > 0 && typ.nr_muls() > 0 {
+					typ = typ.set_nr_muls(0)
+				}
+			}
+			concrete_types[concrete_i] = typ
+			concrete_i++
+		}
+	}
 }
 
 fn (mut g Gen) fn_call(node ast.CallExpr) {
@@ -1397,7 +1434,12 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					}
 					name = g.generic_fn_name(concrete_types, name)
 				} else {
-					concrete_types := node.concrete_types.map(g.unwrap_generic(it))
+					mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
+					if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0
+						&& func.generic_names.len > 0 {
+						// repassing generic argument to another function
+						g.resolve_generic_call_args(func, node, mut concrete_types)
+					}
 					name = g.generic_fn_name(concrete_types, name)
 				}
 			}
