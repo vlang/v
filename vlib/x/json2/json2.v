@@ -79,21 +79,35 @@ pub fn decode[T](src string) !T {
 
 // encode is a generic function that encodes a type into a JSON string.
 pub fn encode[T](val T) string {
+	$if T is $Array {
+		$compile_error('Cannot use `json.encode` to encode array. Try `json.encode_array` instead')
+	}
 	mut sb := strings.new_builder(64)
+
 	defer {
 		unsafe { sb.free() }
 	}
-	$if T is $Array {
-		default_encoder.encode_array(val, 1, mut sb) or {
-			dump(err)
-			default_encoder.encode_value[Null](null, mut sb) or {}
-		}
-	} $else {
-		default_encoder.encode_value(val, mut sb) or {
-			dump(err)
-			default_encoder.encode_value[Null](null, mut sb) or {}
-		}
+
+	default_encoder.encode_value(val, mut sb) or {
+		dump(err)
+		default_encoder.encode_value[Null](null, mut sb) or {}
 	}
+
+	return sb.str()
+}
+
+pub fn encode_array[T](val []T) string {
+	mut sb := strings.new_builder(64)
+
+	defer {
+		unsafe { sb.free() }
+	}
+
+	default_encoder.encode_array(val, 1, mut sb) or {
+		dump(err)
+		default_encoder.encode_value[Null](null, mut sb) or {}
+	}
+
 	return sb.str()
 }
 

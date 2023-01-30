@@ -396,7 +396,6 @@ fn (e &Encoder) encode_array[U](val []U, level int, mut wr io.Writer) ! {
 			} $else {
 				// TODO
 			}
-			
 		} $else $if U is $Enum {
 			e.encode_any(i64(val[i]), level + 1, mut wr)!
 		} $else {
