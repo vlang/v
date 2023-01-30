@@ -226,7 +226,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) wa.Expression {
 
 fn (mut g Gen) mkblock(nodes []wa.Expression) wa.Expression {
 	g.lbl++
-	return wa.block(g.mod, "BLK${g.lbl}".str, nodes.data, nodes.len, wasm.type_auto)
+	return wa.block(g.mod, 'BLK${g.lbl}'.str, nodes.data, nodes.len, wasm.type_auto)
 }
 
 fn (mut g Gen) if_branch(ifexpr ast.IfExpr, idx int) wa.Expression {
@@ -239,7 +239,8 @@ fn (mut g Gen) if_branch(ifexpr ast.IfExpr, idx int) wa.Expression {
 	} else {
 		g.if_branch(ifexpr, idx + 1)
 	}
-	return wa.bif(g.mod, g.expr(curr.cond, ast.bool_type), g.expr_stmts(curr.stmts, ifexpr.typ), next)
+	return wa.bif(g.mod, g.expr(curr.cond, ast.bool_type), g.expr_stmts(curr.stmts, ifexpr.typ),
+		next)
 }
 
 fn (mut g Gen) if_stmt(ifexpr ast.IfExpr) wa.Expression {
@@ -248,7 +249,8 @@ fn (mut g Gen) if_stmt(ifexpr ast.IfExpr) wa.Expression {
 	return g.if_branch(ifexpr, 0)
 }
 
-/* fn (mut g Gen) if_stmt(ifexpr ast.IfExpr) wa.Expression {
+/*
+fn (mut g Gen) if_stmt(ifexpr ast.IfExpr) wa.Expression {
 	assert !ifexpr.is_expr, '`is_expr` not implemented'
 
 	mut rl := wa.reloopercreate(g.mod)
@@ -285,7 +287,7 @@ fn (mut g Gen) if_stmt(ifexpr ast.IfExpr) wa.Expression {
 
 	stmt := wa.relooperrenderanddispose(rl, start, 0)
 	return stmt
-} */
+}*/
 
 fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 	return match node {
@@ -381,7 +383,8 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 			body := g.expr_stmts(node.stmts, ast.void_type)
 			lbody := [
 				// If !condition, leave.
-				wa.br(g.mod, blk_name.str, wa.unary(g.mod, wa.eqzint32(), g.expr(node.cond, ast.bool_type)), unsafe { nil }),
+				wa.br(g.mod, blk_name.str, wa.unary(g.mod, wa.eqzint32(), g.expr(node.cond,
+					ast.bool_type)), unsafe { nil }),
 				// Body.
 				body,
 				// Unconditional loop back to top.
@@ -487,16 +490,16 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 			wa.moduleoptimize(g.mod)
 		}
 		if pref.out_name_c.ends_with('/-') || pref.out_name_c.ends_with(r'\-') {
-			wa.moduleprintstackir(g.mod, true)
+			wa.moduleprintstackir(g.mod, pref.is_prod)
 		} else {
 			bytes := wa.moduleallocateandwrite(g.mod, unsafe { nil })
 			str := unsafe { (&char(bytes.binary)).vstring_with_len(int(bytes.binaryBytes)) }
-			os.write_file(pref.out_name, str)  or { panic(err) }
+			os.write_file(pref.out_name, str) or { panic(err) }
 		}
 	} else {
 		wa.moduleprint(g.mod)
 		wa.moduledispose(g.mod)
-		g.w_error("validation failed, this should not happen. report an issue with the above messages")
+		g.w_error('validation failed, this should not happen. report an issue with the above messages')
 	}
 	wa.moduledispose(g.mod)
 }

@@ -1,0 +1,14 @@
+fn mul(a i64, unsigned u32) f64 {
+	mut one := a
+
+	one *= 2 / unsigned
+
+	return one
+}
+
+fn typ(a int) i64 {
+	mut one := a
+	sec := one + i64(a)
+
+	return sec
+}

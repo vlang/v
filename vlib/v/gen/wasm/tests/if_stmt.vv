@@ -1,0 +1,23 @@
+fn func(a int, cond bool) i64 {
+	mut src := 0
+
+	if cond {
+		src = a
+	} else if cond {
+		src = 22
+	} else if cond {
+		src = 25
+	}
+
+	if cond {
+		src = a
+	} else if cond {
+		src = 22
+	} else if cond {
+		src = 25
+	} else {
+		src = src + src
+	}
+
+	return src
+}

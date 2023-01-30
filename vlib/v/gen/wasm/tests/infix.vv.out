@@ -1,0 +1,38 @@
+(module
+ (type $i64_i32_=>_f64 (func (param i64 i32) (result f64)))
+ (type $i32_=>_i64 (func (param i32) (result i64)))
+ (type $none_=>_none (func))
+ (func $main.mul (param $0 i64) (param $1 i32) (result f64)
+  (local $2 i64)
+  local.get $0
+  local.set $2
+  local.get $2
+  i32.const 2
+  local.get $1
+  i32.div_u
+  i64.extend_i32_u
+  i64.mul
+  local.set $2
+  local.get $2
+  f64.convert_i64_s
+  return
+ )
+ (func $main.typ (param $0 i32) (result i64)
+  (local $1 i32)
+  (local $2 i64)
+  local.get $0
+  local.set $1
+  local.get $1
+  local.get $0
+  i64.extend_i32_s
+  i32.wrap_i64
+  i32.add
+  i64.extend_i32_s
+  local.set $2
+  local.get $2
+  return
+ )
+ (func $main.main
+  nop
+ )
+)

@@ -1,0 +1,22 @@
+(module
+ (type $i32_=>_i64 (func (param i32) (result i64)))
+ (type $none_=>_none (func))
+ (func $main.multi (param $0 i32) (result i64)
+  (local $1 i32)
+  (local $2 i32)
+  block $BLK1
+   local.get $0
+   local.set $1
+   i32.const 10
+   local.set $2
+  end
+  local.get $1
+  local.get $2
+  i32.add
+  i64.extend_i32_s
+  return
+ )
+ (func $main.main
+  nop
+ )
+)

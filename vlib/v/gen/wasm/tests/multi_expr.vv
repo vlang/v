@@ -1,0 +1,4 @@
+fn multi(a i16) i64 {
+	one, two := a, 10
+	return one + two
+}
