@@ -19,8 +19,9 @@ mut:
 	table    &ast.Table = unsafe { nil }
 	//
 	// wasmtypes map[ast.Type]wa.Type
-	curr_ret ast.Type
+	curr_ret    ast.Type
 	local_stack []FuncIdent
+	lbl         int
 }
 
 struct FuncIdent {
@@ -182,7 +183,8 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	g.local_stack.clear()
 }
-	// println("${g.table.sym(expected)} ${node.val}")
+
+// println("${g.table.sym(expected)} ${node.val}")
 
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) wa.Expression {
 	if expr is ast.IntegerLiteral {
@@ -218,15 +220,34 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) wa.Expression {
 	} else {
 		node.left_type
 	}
-	return g.cast(infix, g.get_wasm_type(res_typ), g.is_signed(res_typ),
-		g.get_wasm_type(expected))
+	return g.cast(infix, g.get_wasm_type(res_typ), g.is_signed(res_typ), g.get_wasm_type(expected))
 }
 
 fn (mut g Gen) mkblock(nodes []wa.Expression) wa.Expression {
-	return wa.block(g.mod, c'blk', nodes.data, nodes.len, wasm.type_auto)
+	g.lbl++
+	return wa.block(g.mod, "BLK${g.lbl}".str, nodes.data, nodes.len, wasm.type_auto)
 }
 
-fn (mut g Gen) if_branches(ifexpr ast.IfExpr) wa.Expression {
+fn (mut g Gen) if_branch(ifexpr ast.IfExpr, idx int) wa.Expression {
+	curr := ifexpr.branches[idx]
+
+	next := if ifexpr.has_else && idx + 2 >= ifexpr.branches.len {
+		g.expr_stmts(ifexpr.branches[idx + 1].stmts, ifexpr.typ)
+	} else if idx + 1 >= ifexpr.branches.len {
+		unsafe { nil }
+	} else {
+		g.if_branch(ifexpr, idx + 1)
+	}
+	return wa.bif(g.mod, g.expr(curr.cond, ast.bool_type), g.expr_stmts(curr.stmts, ifexpr.typ), next)
+}
+
+fn (mut g Gen) if_stmt(ifexpr ast.IfExpr) wa.Expression {
+	assert !ifexpr.is_expr, '`is_expr` not implemented'
+
+	return g.if_branch(ifexpr, 0)
+}
+
+/* fn (mut g Gen) if_stmt(ifexpr ast.IfExpr) wa.Expression {
 	assert !ifexpr.is_expr, '`is_expr` not implemented'
 
 	mut rl := wa.reloopercreate(g.mod)
@@ -261,8 +282,9 @@ fn (mut g Gen) if_branches(ifexpr ast.IfExpr) wa.Expression {
 		curr = interp
 	}
 
-	return wa.relooperrenderanddispose(rl, start, 0)
-}
+	stmt := wa.relooperrenderanddispose(rl, start, 0)
+	return stmt
+} */
 
 fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 	return match node {
@@ -290,7 +312,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 					node.typ), g.expr_stmts(node.branches[1].stmts, node.typ), g.get_wasm_type(node.typ))
 			} else {
 				assert !node.is_expr
-				g.if_branches(node)
+				g.if_stmt(node)
 			}
 			// wa.bif(g.mod, g.expr())
 		}
@@ -339,6 +361,33 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 			} else {
 				g.expr_with_cast(node.expr, node.typ, expected)
 			}
+		}
+		ast.ForStmt {
+			if node.label != '' {
+				g.w_error('wasm.expr(): `label: for` is unimplemented')
+			}
+
+			// TODO: Later implement this with the relooper,
+			//       right now I do not want to deal with that
+			//       convoluted shoddily documented garbage.
+
+			g.lbl++
+			blk_name := 'B${g.lbl}'
+			lpp_name := 'L${g.lbl}'
+
+			// wa.bif(g.mod, g.expr(node.cond, ast.bool_type))
+
+			body := g.expr_stmts(node.stmts, ast.void_type)
+			lbody := [
+				// If !condition, leave.
+				wa.br(g.mod, blk_name.str, wa.unary(g.mod, wa.eqzint32(), g.expr(node.cond, ast.bool_type)), unsafe { nil }),
+				// Body.
+				body,
+				// Unconditional loop back to top.
+				wa.br(g.mod, lpp_name.str, unsafe { nil }, unsafe { nil }),
+			]
+			loop := wa.loop(g.mod, lpp_name.str, g.mkblock(lbody))
+			wa.block(g.mod, blk_name.str, &loop, 1, wasm.type_none)
 		}
 		ast.AssignStmt {
 			if (node.left.len > 1 && node.right.len == 1) || node.has_cross_var {
@@ -434,6 +483,9 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 	if wa.modulevalidate(g.mod) {
 		wa.moduleoptimize(g.mod)
 		wa.moduleprintstackir(g.mod, true)
+		a := wa.moduleallocateandwrite(g.mod, unsafe { nil })
+		str := unsafe { (&char(a.binary)).vstring_with_len(int(a.binaryBytes)) }
+		eprint(str)
 	} else {
 		wa.moduleprint(g.mod)
 	}
