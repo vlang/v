@@ -1,0 +1,21 @@
+fn main() {
+	// check to see if mutable integers work as expected
+	mut num := 255
+	println('mutable num is ${num}')
+
+	mut arr := [255]
+	// check to see if mutable arrays with immutable iteration work as expected
+	for elem in arr {
+		println('imutable element is ${elem}')
+	}
+
+	// check to see if mutable arrays with mutable iteration work as expected
+	for mut elem in arr {
+		println('mutable element is ${elem}')
+	}
+
+	// check to see if mutable arrays with mutable iteration work as expected (explicit format)
+	for mut elem in arr {
+		println('mutable element is ${elem:d}')
+	}
+}
