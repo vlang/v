@@ -828,6 +828,25 @@ fn (mut c Checker) has_reused_generic_param(func ast.Fn, node ast.CallExpr) bool
 	return false
 }
 
+fn (g Checker) get_generic_array_element_type(array ast.Array) ast.Type {
+	mut cparam_elem_info := array as ast.Array
+	mut cparam_elem_sym := g.table.sym(cparam_elem_info.elem_type)
+	mut typ := ast.void_type
+	for {
+		if cparam_elem_sym.kind == .array {
+			cparam_elem_info = cparam_elem_sym.info as ast.Array
+			cparam_elem_sym = g.table.sym(cparam_elem_info.elem_type)
+		} else {
+			typ = cparam_elem_info.elem_type
+			if cparam_elem_info.elem_type.nr_muls() > 0 && typ.nr_muls() > 0 {
+				typ = typ.set_nr_muls(0)
+			}
+			break
+		}
+	}
+	return typ
+}
+
 fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr, has_reused_gargs bool) {
 	mut inferred_types := []ast.Type{}
 	if has_reused_gargs {
@@ -1022,22 +1041,20 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr, ha
 						idx := generic_names.index(gt_name)
 						typ = concrete_types[idx]
 					}
-				} else if c.table.cur_fn.generic_names.len > 0 && c.table.cur_fn.params.len > 0
-					&& func.generic_names.len > 0 && arg.expr is ast.Ident {
+				} else if arg_sym.kind == .any && c.table.cur_fn.generic_names.len > 0
+					&& c.table.cur_fn.params.len > 0 && func.generic_names.len > 0
+					&& arg.expr is ast.Ident {
 					var_name := (arg.expr as ast.Ident).name
 					for cur_param in c.table.cur_fn.params {
 						if !cur_param.typ.has_flag(.generic) || cur_param.name != var_name {
 							continue
 						}
-						typ = c.unwrap_generic(cur_param.typ)
-						parg_sym := c.table.sym(typ)
-						if parg_sym.kind == .array {
-							mut arg_elem_info := parg_sym.info as ast.Array
-							typ = arg_elem_info.elem_type
-							if arg_elem_info.elem_type.nr_muls() > 0 && typ.nr_muls() > 0 {
-								typ = typ.set_nr_muls(0)
-							}
+						typ = cur_param.typ
+						mut cparam_type_sym := c.table.sym(c.unwrap_generic(typ))
+						if cparam_type_sym.kind == .array {
+							typ = c.get_generic_array_element_type(cparam_type_sym.info as ast.Array)
 						}
+						typ = c.unwrap_generic(typ)
 						break
 					}
 				}

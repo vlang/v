@@ -1269,6 +1269,25 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	g.write(')')
 }
 
+fn (g Gen) get_generic_array_element_type(array ast.Array) ast.Type {
+	mut cparam_elem_info := array as ast.Array
+	mut cparam_elem_sym := g.table.sym(cparam_elem_info.elem_type)
+	mut typ := ast.void_type
+	for {
+		if cparam_elem_sym.kind == .array {
+			cparam_elem_info = cparam_elem_sym.info as ast.Array
+			cparam_elem_sym = g.table.sym(cparam_elem_info.elem_type)
+		} else {
+			typ = cparam_elem_info.elem_type
+			if cparam_elem_info.elem_type.nr_muls() > 0 && typ.nr_muls() > 0 {
+				typ = typ.set_nr_muls(0)
+			}
+			break
+		}
+	}
+	return typ
+}
+
 fn (mut g Gen) resolve_generic_call_args(func ast.Fn, node ast.CallExpr, mut concrete_types []ast.Type) {
 	mut concrete_i := 0
 	mut node_i := 0
@@ -1305,16 +1324,12 @@ fn (mut g Gen) resolve_generic_call_args(func ast.Fn, node ast.CallExpr, mut con
 				|| var_name != cur_param.name {
 				continue
 			}
-			mut typ := g.unwrap_generic(cur_param.typ)
-			parg_sym := g.table.sym(typ)
-			if parg_sym.kind == .array {
-				mut arg_elem_info := parg_sym.info as ast.Array
-				typ = arg_elem_info.elem_type
-				if arg_elem_info.elem_type.nr_muls() > 0 && typ.nr_muls() > 0 {
-					typ = typ.set_nr_muls(0)
-				}
+			mut typ := cur_param.typ
+			mut cparam_type_sym := g.table.sym(g.unwrap_generic(typ))
+			if cparam_type_sym.kind == .array {
+				typ = g.get_generic_array_element_type(cparam_type_sym.info as ast.Array)
 			}
-			concrete_types[concrete_i] = typ
+			concrete_types[concrete_i] = g.unwrap_generic(typ)
 			break
 		}
 		if param.typ.has_flag(.generic) {
