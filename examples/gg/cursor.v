@@ -5,12 +5,13 @@ import gx
 import sokol.sapp
 
 fn main() {
-	gg.new_context(
+	mut ctx := gg.new_context(
 		bg_color: gx.white
 		window_title: 'Cursor'
 		frame_fn: frame
 		init_fn: init
-	).run()
+	)
+	ctx.run()
 }
 
 fn init(mut ctx gg.Context) {
