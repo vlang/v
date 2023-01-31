@@ -46,6 +46,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		mut n := ast.SqlExpr{
 			pos: node.pos
 			has_where: true
+			where_expr: ast.None{}
 			typ: typ
 			db_expr: node.db_expr
 			table_expr: ast.TypeNode{
@@ -53,6 +54,11 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 				typ: typ
 			}
 		}
+
+		tmp_inside_sql := c.inside_sql
+		c.sql_expr(mut n)
+		c.inside_sql = tmp_inside_sql
+
 		n.where_expr = ast.InfixExpr{
 			op: .eq
 			pos: n.pos
@@ -83,10 +89,6 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			auto_locked: ''
 			or_block: ast.OrExpr{}
 		}
-
-		tmp_inside_sql := c.inside_sql
-		c.sql_expr(mut n)
-		c.inside_sql = tmp_inside_sql
 
 		sub_structs[int(typ)] = n
 	}
@@ -407,6 +409,12 @@ fn (mut c Checker) check_expr_has_no_fn_calls_with_non_orm_return_type(expr &ast
 // which don't affect the result. For example, `where 3` is pointless.
 // Also, it checks that the left side of the infix expression is always the structure field.
 fn (mut c Checker) check_where_expr_has_no_pointless_exprs(table_type_symbol &ast.TypeSymbol, field_names []string, expr &ast.Expr) {
+	// Skip type checking for generated subqueries
+	// that are not linked to scope and vars but only created for cgen.
+	if expr is ast.None {
+		return
+	}
+
 	if expr is ast.InfixExpr {
 		has_no_field_error := "left side of the `${expr.op}` expression must be one of the `${table_type_symbol.name}`'s fields"
 
