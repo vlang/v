@@ -67,6 +67,7 @@ fn main() {
 	timers.show('v start')
 	timers.start('parse_CLI_args')
 	args := os.args[1..]
+
 	if args.len == 0 || args[0] in ['-', 'repl'] {
 		if args.len == 0 {
 			// Running `./v` without args launches repl
