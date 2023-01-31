@@ -62,13 +62,13 @@ pub fn print_and_exit(topic string) {
 	exit(0)
 }
 
-/// Getting topics known to V
+// known_topics Getting topics known to V
 fn known_topics(topicdir string) string {
 	mut res := []string{}
 	res << 'Known help topics: '
 
 	mut topics := os.walk_ext(topicdir, '.txt').map(os.file_name(it).replace('.txt', ''))
-
+	println(topics)
 	topics.sort()
 	res << topics.join(', ')
 	res << '.'

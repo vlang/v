@@ -22,18 +22,24 @@ fn test_help_as_long_option() {
 
 fn test_all_help() {
 	vroot := os.dir(vexe)
-	mut topics := []string{}
-	mut ptopics := &topics
 	topicdir := os.join_path(vroot, 'vlib', 'v', 'help')
+	mut topics := os.walk_ext(topicdir, '.txt')
 
-	os.walk(topicdir, fn [mut ptopics] (topic string) {
-		if os.file_ext(topic) == '.txt' {
-			ptopics << os.file_name(topic).replace('.txt', '').replace('default,', '')
-		}
-	})
+	mut items := []string{}
 
-	for topic in topics {
+	for mut item in topics {
+		mut item_rev := item.replace('.txt', '').split('/').reverse()
+		item_rev.trim(2)
+		items << item_rev.reverse()
+	}
+
+	for topic in items {
 		res := os.execute('${os.quoted_path(vexe)} help ${topic}')
+
+		if topic == 'help' {
+			continue
+		}
+
 		assert res.exit_code == 0
 		assert res.output != ''
 	}
