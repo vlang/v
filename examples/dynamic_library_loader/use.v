@@ -20,7 +20,7 @@ const (
 
 fn main() {
 	mut dl_loader := loader.get_or_create_dynamic_lib_loader(
-		key: 'LibExample'
+		key: cfolder + '/library'
 		paths: default_paths
 	)!
 	defer {
