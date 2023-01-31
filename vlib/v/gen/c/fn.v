@@ -1149,7 +1149,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0
 			&& node.concrete_list_pos.len == 1 && node.args.len > 0 {
 			if m := g.table.find_method(g.table.sym(node.left_type), node.name) {
-				if m.generic_names.len > 0 {
+				if m.generic_names.len > 0 && g.has_reused_generic_param(m, node) {
 					// repassing generic argument to another function
 					g.resolve_generic_call_args(m, node, mut concrete_types)
 				}
@@ -1273,19 +1273,33 @@ fn (g Gen) get_generic_array_element_type(array ast.Array) ast.Type {
 	mut cparam_elem_info := array as ast.Array
 	mut cparam_elem_sym := g.table.sym(cparam_elem_info.elem_type)
 	mut typ := ast.void_type
-	for {
-		if cparam_elem_sym.kind == .array {
-			cparam_elem_info = cparam_elem_sym.info as ast.Array
-			cparam_elem_sym = g.table.sym(cparam_elem_info.elem_type)
-		} else {
-			typ = cparam_elem_info.elem_type
-			if cparam_elem_info.elem_type.nr_muls() > 0 && typ.nr_muls() > 0 {
-				typ = typ.set_nr_muls(0)
-			}
-			break
-		}
+	if cparam_elem_sym.kind == .array {
+		cparam_elem_info = cparam_elem_sym.info as ast.Array
+		cparam_elem_sym = g.table.sym(cparam_elem_info.elem_type)
+	}
+	typ = cparam_elem_info.elem_type
+	if cparam_elem_info.elem_type.nr_muls() > 0 && typ.nr_muls() > 0 {
+		typ = typ.set_nr_muls(0)
 	}
 	return typ
+}
+
+fn (mut g Gen) has_reused_generic_param(func ast.Fn, node ast.CallExpr) bool {
+	if g.cur_fn == unsafe { nil } || g.cur_fn.params.len == 0 || g.cur_fn.generic_names.len == 0
+		|| func.generic_names.len == 0 || node.args.len == 0 {
+		return false
+	}
+	for callarg in node.args {
+		arg := callarg.expr
+		if arg is ast.Ident {
+			for cur_param in g.cur_fn.params {
+				if cur_param.typ.has_flag(.generic) && cur_param.name == (arg as ast.Ident).name {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) resolve_generic_call_args(func ast.Fn, node ast.CallExpr, mut concrete_types []ast.Type) {
@@ -1317,6 +1331,7 @@ fn (mut g Gen) resolve_generic_call_args(func ast.Fn, node ast.CallExpr, mut con
 		node_i++
 		var_name := ident.name
 		if ident.is_mut() {
+			concrete_i++
 			continue
 		}
 		for k, cur_param in g.cur_fn.params {
@@ -1478,7 +1493,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 					if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0
 						&& func.generic_names.len > 0 && node.concrete_list_pos.len == 1
-						&& node.args.len > 0 {
+						&& node.args.len > 0 && g.has_reused_generic_param(func, node) {
 						// repassing generic argument to another function
 						g.resolve_generic_call_args(func, node, mut concrete_types)
 					}
