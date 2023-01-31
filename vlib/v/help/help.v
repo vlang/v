@@ -68,7 +68,6 @@ fn known_topics(topicdir string) string {
 	res << 'Known help topics: '
 
 	mut topics := os.walk_ext(topicdir, '.txt').map(os.file_name(it).replace('.txt', ''))
-	println(topics)
 	topics.sort()
 	res << topics.join(', ')
 	res << '.'
