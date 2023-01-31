@@ -458,39 +458,42 @@ pub fn new_context(cfg Config) &Context {
 		ft: 0
 		ui_mode: cfg.ui_mode
 		native_rendering: cfg.native_rendering
-	}
-	if cfg.user_data == unsafe { nil } {
-		ctx.user_data = ctx
+		window: sapp.Desc{
+			init_userdata_cb: gg_init_sokol_window
+			frame_userdata_cb: gg_frame_fn
+			event_userdata_cb: gg_event_fn
+			fail_userdata_cb: gg_fail_fn
+			cleanup_userdata_cb: gg_cleanup_fn
+			window_title: &char(cfg.window_title.str)
+			html5_canvas_name: &char(cfg.window_title.str)
+			width: cfg.width
+			height: cfg.height
+			sample_count: cfg.sample_count
+			high_dpi: true
+			fullscreen: cfg.fullscreen
+			__v_native_render: cfg.native_rendering
+			// drag&drop
+			enable_dragndrop: cfg.enable_dragndrop
+			max_dropped_files: cfg.max_dropped_files
+			max_dropped_file_path_length: cfg.max_dropped_file_path_length
+			swap_interval: cfg.swap_interval
+		}
 	}
 	ctx.set_bg_color(cfg.bg_color)
 	// C.printf('new_context() %p\n', cfg.user_data)
-	window := sapp.Desc{
-		user_data: ctx
-		init_userdata_cb: gg_init_sokol_window
-		frame_userdata_cb: gg_frame_fn
-		event_userdata_cb: gg_event_fn
-		fail_userdata_cb: gg_fail_fn
-		cleanup_userdata_cb: gg_cleanup_fn
-		window_title: &char(cfg.window_title.str)
-		html5_canvas_name: &char(cfg.window_title.str)
-		width: cfg.width
-		height: cfg.height
-		sample_count: cfg.sample_count
-		high_dpi: true
-		fullscreen: cfg.fullscreen
-		__v_native_render: cfg.native_rendering
-		// drag&drop
-		enable_dragndrop: cfg.enable_dragndrop
-		max_dropped_files: cfg.max_dropped_files
-		max_dropped_file_path_length: cfg.max_dropped_file_path_length
-		swap_interval: cfg.swap_interval
-	}
-	ctx.window = window
 	return ctx
 }
 
 // run starts the main loop of the context.
-pub fn (ctx &Context) run() {
+pub fn (mut ctx Context) run() {
+	// ensure context set correctly
+	ctx.window = sapp.Desc{
+		...ctx.window
+		user_data: ctx
+	}
+	if ctx.user_data == unsafe { nil } {
+		ctx.user_data = ctx
+	}
 	sapp.run(&ctx.window)
 }
 
