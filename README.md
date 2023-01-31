@@ -137,6 +137,20 @@ NB: there is no need to run `v symlink` more than once - v will still be availab
 `v up`, restarts, and so on.  You only need to run it again if you decide to move the V repo
 folder somewhere else.
 
+
+### Void Linux
+<details><summary>Expand Void Linux instructions</summary>
+
+```bash
+# xbps-install -Su base-devel
+# xbps-install libatomic-devel
+$ git clone https://github.com/vlang/v
+$ cd v
+$ make
+```
+</details>
+
+
 ### Docker
 <details><summary>Expand Docker instructions</summary>
 
