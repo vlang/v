@@ -4,6 +4,7 @@ module main
 // To do so, run `v -d no_backtrace -o library -shared modules/library/library.v`
 // before running this program.
 import os
+import dl
 import dl.loader
 
 type FNAdder = fn (int, int) int
