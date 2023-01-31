@@ -417,14 +417,15 @@ fn (mut c Checker) check_where_expr_has_no_pointless_exprs(table_type_symbol &as
 				c.orm_error(util.new_suggestion(left_ident_name, field_names).say(has_no_field_error),
 					expr.left.pos)
 			}
-		} else if expr.left is ast.InfixExpr || expr.left is ast.ParExpr {
+		} else if expr.left is ast.InfixExpr || expr.left is ast.ParExpr
+			|| expr.left is ast.PrefixExpr {
 			c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names,
 				&expr.left)
 		} else {
 			c.orm_error(has_no_field_error, expr.left.pos())
 		}
 
-		if expr.right is ast.InfixExpr || expr.right is ast.ParExpr {
+		if expr.right is ast.InfixExpr || expr.right is ast.ParExpr || expr.right is ast.PrefixExpr {
 			c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names,
 				&expr.right)
 		}
