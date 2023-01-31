@@ -3872,7 +3872,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	}
 	if typ.has_flag(.option) {
 		if node.left is ast.Ident && (node.left as ast.Ident).or_expr.kind == .absent {
-			c.error('type `?${typ_sym.name}` is an option, it must be unwrapped `var?[]`',
+			c.error('type `?${typ_sym.name}` is an Option, it must be unwrapped first; use `var?[]` to do it',
 				node.left.pos())
 		} else if node.left is ast.CallExpr {
 			c.error('type `?${typ_sym.name}` is an option, it must be unwrapped `func()` or use or-block `or {}`',
