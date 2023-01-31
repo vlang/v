@@ -28,6 +28,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	info := sym.info as ast.Struct
 	mut fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, sym.name)
 	mut sub_structs := map[int]ast.SqlExpr{}
+
 	for f in fields.filter((c.table.type_symbols[int(it.typ)].kind == .struct_
 		|| (c.table.sym(it.typ).kind == .array
 		&& c.table.sym(c.table.sym(it.typ).array_info().elem_type).kind == .struct_))
@@ -52,6 +53,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		tmp_inside_sql := c.inside_sql
 		c.sql_expr(mut n)
 		c.inside_sql = tmp_inside_sql
+
 		n.where_expr = ast.InfixExpr{
 			op: .eq
 			pos: n.pos
@@ -85,6 +87,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 
 		sub_structs[int(typ)] = n
 	}
+
 	if node.is_count {
 		fields = [
 			ast.StructField{
@@ -92,8 +95,10 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			},
 		]
 	}
+
 	node.fields = fields
 	node.sub_structs = sub_structs.move()
+
 	if node.has_where {
 		c.expr(node.where_expr)
 		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&node.where_expr)
@@ -150,6 +155,23 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	defer {
 		c.cur_orm_ts = old_ts
 	}
+
+	if node.kind == .insert && node.is_top_level {
+		inserting_object_name := node.object_var_name
+		inserting_object_var := node.scope.find(inserting_object_name) or {
+			c.error('undefined ident: `${inserting_object_name}`', node.pos)
+			return ast.void_type
+		}
+
+		if inserting_object_var.typ != node.table_expr.typ {
+			table_name := table_sym.name
+			inserting_type_name := c.table.sym(inserting_object_var.typ).name
+
+			c.error('cannot use `${inserting_type_name}` as `${table_name}`', node.pos)
+			return ast.void_type
+		}
+	}
+
 	if table_sym.info !is ast.Struct {
 		c.error('unknown type `${table_sym.name}`', node.pos)
 		return ast.void_type

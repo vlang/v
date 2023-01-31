@@ -96,7 +96,8 @@ fn md_file_paths(dir string) []string {
 	mut files_to_check := []string{}
 	md_files := os.walk_ext(dir, '.md')
 	for file in md_files {
-		if file.contains_any_substr(['/thirdparty/', 'CHANGELOG']) {
+		nfile := file.replace('\\', '/')
+		if nfile.contains_any_substr(['/thirdparty/', 'CHANGELOG']) {
 			continue
 		}
 		files_to_check << file
