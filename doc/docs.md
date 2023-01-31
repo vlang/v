@@ -3569,7 +3569,7 @@ fn pass_time(w World) {
 
 ### Option/Result types and error handling
 
-Optional types are for types which may represent `none`. Result types may
+Option types are for types which may represent `none`. Result types may
 represent an error returned from a function.
 
 `Option` types are declared by prepending `?` to the type name: `?Type`.
