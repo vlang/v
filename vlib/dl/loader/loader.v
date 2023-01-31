@@ -4,18 +4,20 @@ module loader
 import dl
 import os
 
+const (
+	dl_no_path_issue_msg  = 'no paths to dynamic library'
+	dl_open_issue_msg     = 'could not open dynamic library'
+	dl_sym_issue_msg      = 'could not get optional symbol from dynamic library'
+	dl_close_issue_msg    = 'could not close dynamic library'
+	dl_register_issue_msg = 'could not register dynamic library loader'
+)
+
 pub const (
 	dl_no_path_issue_code  = 1
 	dl_open_issue_code     = 1
 	dl_sym_issue_code      = 2
 	dl_close_issue_code    = 3
 	dl_register_issue_code = 4
-
-	dl_no_path_issue_msg   = 'no paths to dynamic library'
-	dl_open_issue_msg      = 'could not open dynamic library'
-	dl_sym_issue_msg       = 'could not get optional symbol from dynamic library'
-	dl_close_issue_msg     = 'could not close dynamic library'
-	dl_register_issue_msg  = 'could not register dynamic library loader'
 
 	dl_no_path_issue_err   = error_with_code(dl_no_path_issue_msg, dl_no_path_issue_code)
 	dl_open_issue_err      = error_with_code(dl_open_issue_msg, dl_open_issue_code)
@@ -67,13 +69,15 @@ pub struct DynamicLibLoaderConfig {
 
 // new_dynamic_lib_loader returns a new DynamicLibLoader.
 fn new_dynamic_lib_loader(conf DynamicLibLoaderConfig) !&DynamicLibLoader {
-	mut paths := conf.paths.clone()
+	mut paths := []string{}
 
 	if conf.env_path.len > 0 {
 		if env_path := os.getenv_opt(conf.env_path) {
 			paths << env_path.split(os.path_separator)
 		}
 	}
+
+	paths << conf.paths
 
 	if paths.len == 0 {
 		return loader.dl_no_path_issue_err
