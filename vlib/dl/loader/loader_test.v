@@ -27,57 +27,57 @@ fn get_or_create_loader(name string, paths []string) !&loader.DynamicLibLoader {
 
 fn run_test_invalid_lib_linux() ! {
 	// ensure a not-existing dl won't be loaded
-	mut loader := get_or_create_loader(@MOD + '.' + @FN + '.' + 'lib', [
+	mut dl_loader := get_or_create_loader(@MOD + '.' + @FN + '.' + 'lib', [
 		'not-existing-dynamic-link-library',
 	])!
 	defer {
-		loader.unregister()
+		dl_loader.unregister()
 	}
-	h := loader.open() or { unsafe { nil } }
+	h := dl_loader.open() or { unsafe { nil } }
 	assert isnil(h)
 }
 
 fn run_test_invalid_lib_windows() ! {
 	// ensure a not-existing dl won't be loaded
-	mut loader := get_or_create_loader(@MOD + '.' + @FN + '.' + 'lib', [
+	mut dl_loader := get_or_create_loader(@MOD + '.' + @FN + '.' + 'lib', [
 		'not-existing-dynamic-link-library',
 	])!
 	defer {
-		loader.unregister()
+		dl_loader.unregister()
 	}
-	h := loader.open() or { unsafe { nil } }
+	h := dl_loader.open() or { unsafe { nil } }
 	assert isnil(h)
 }
 
 fn run_test_valid_lib_windows() ! {
-	mut loader := get_or_create_loader(@MOD + '.' + @FN + '.' + 'lib', [
+	mut dl_loader := get_or_create_loader(@MOD + '.' + @FN + '.' + 'lib', [
 		'not-existing-dynamic-link-library',
 		'shell32',
 	])!
 	defer {
-		loader.unregister()
+		dl_loader.unregister()
 	}
-	h := loader.open() or { unsafe { nil } }
+	h := dl_loader.open() or { unsafe { nil } }
 	assert !isnil(h)
 }
 
 fn run_test_invalid_sym_windows() ! {
-	mut loader := get_or_create_loader(@MOD + '.' + @FN + '.' + 'lib', ['shell32'])!
+	mut dl_loader := get_or_create_loader(@MOD + '.' + @FN + '.' + 'lib', ['shell32'])!
 	defer {
-		loader.unregister()
+		dl_loader.unregister()
 	}
-	proc := loader.get_sym('CommandLineToArgvW2') or { unsafe { nil } }
+	proc := dl_loader.get_sym('CommandLineToArgvW2') or { unsafe { nil } }
 	assert isnil(proc)
 }
 
 fn run_test_valid_sym_windows() ! {
-	mut loader := get_or_create_loader(@MOD + '.' + @FN + '.' + 'lib', [
+	mut dl_loader := get_or_create_loader(@MOD + '.' + @FN + '.' + 'lib', [
 		'not-existing-dynamic-link-library',
 		'shell32',
 	])!
 	defer {
-		loader.unregister()
+		dl_loader.unregister()
 	}
-	proc := loader.get_sym('CommandLineToArgvW') or { unsafe { nil } }
+	proc := dl_loader.get_sym('CommandLineToArgvW') or { unsafe { nil } }
 	assert !isnil(proc)
 }
