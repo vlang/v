@@ -8,7 +8,7 @@ const (
 	unknown_topic = '`v help`: unknown help topic provided. Use `v help` for usage information.'
 )
 
-/// Printing the topic menu and exiting
+// print_and_exit Prints the help topic and exits
 pub fn print_and_exit(topic string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
@@ -26,10 +26,18 @@ pub fn print_and_exit(topic string) {
 	mut topics := os.walk_ext(topicdir, '.txt')
 	mut items := [][]string{}
 
+	mut item_rev := []string{}
+	mut delim := ''
+
 	// Getting the directory, splitting at `/`, trimming to only indexes 0 and 1,
 	// and reversing that into the items array
 	for mut item in topics {
-		mut item_rev := item.split('/').reverse()
+		$if windows {
+			delim = '\\'
+		} $else {
+			delim = '/'
+		}
+		item_rev = item.split(delim).reverse()
 		item_rev.trim(2)
 		items << item_rev.reverse()
 	}
