@@ -866,12 +866,13 @@ pub:
 	pos     token.Pos
 	is_stmt bool
 pub mut:
-	left        Expr
-	right       Expr
-	left_type   Type
-	right_type  Type
-	auto_locked string
-	or_block    OrExpr
+	left          Expr
+	right         Expr
+	left_type     Type
+	right_type    Type
+	promoted_type Type = void_type
+	auto_locked   string
+	or_block      OrExpr
 	//
 	ct_left_value_evaled  bool
 	ct_left_value         ComptTimeConstValue = empty_comptime_const_expr()
@@ -1750,6 +1751,10 @@ pub:
 	pos          token.Pos
 	where_expr   Expr
 	update_exprs []Expr // for `update`
+	// is_top_level indicates that a statement is parsed from code
+	// and is not inserted by ORM for inserting in related tables.
+	is_top_level bool
+	scope        &Scope = unsafe { nil }
 pub mut:
 	object_var_name string   // `user`
 	updated_columns []string // for `update set x=y`
