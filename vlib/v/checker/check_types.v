@@ -847,11 +847,8 @@ fn (g Checker) get_generic_array_element_type(array ast.Array) ast.Type {
 	return typ
 }
 
-fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr, has_reused_gargs bool) {
+fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 	mut inferred_types := []ast.Type{}
-	if has_reused_gargs {
-		node.concrete_types = []
-	}
 	for gi, gt_name in func.generic_names {
 		// skip known types
 		if gi < node.concrete_types.len {

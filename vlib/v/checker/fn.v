@@ -1221,7 +1221,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	}
 	if func.generic_names.len != node.concrete_types.len {
 		// no type arguments given in call, attempt implicit instantiation
-		c.infer_fn_generic_types(func, mut node, false)
+		c.infer_fn_generic_types(func, mut node)
 		concrete_types = node.concrete_types.map(c.unwrap_generic(it))
 	}
 	if func.generic_names.len > 0 {
@@ -1814,10 +1814,13 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 
 		if method.generic_names.len != node.concrete_types.len {
 			// no type arguments given in call, attempt implicit instantiation
-			c.infer_fn_generic_types(method, mut node, false)
+			c.infer_fn_generic_types(method, mut node)
 			concrete_types = node.concrete_types.map(c.unwrap_generic(it))
-		} else if c.has_reused_generic_param(method, node) {
-			c.infer_fn_generic_types(method, mut node, true)
+		} else if method.generic_names.len > 0 && node.concrete_list_pos.len == 1
+			&& c.has_reused_generic_param(method, node) {
+			// callexpr without concrete_list inside generic func can reuse current func argument type resolution
+			node.concrete_types = []
+			c.infer_fn_generic_types(method, mut node)
 			concrete_types = node.concrete_types.map(c.unwrap_generic(it))
 		}
 		if concrete_types.len > 0 && !concrete_types[0].has_flag(.generic) {
