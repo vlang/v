@@ -73,7 +73,7 @@ fn new_dynamic_lib_loader(conf DynamicLibLoaderConfig) !&DynamicLibLoader {
 
 	if conf.env_path.len > 0 {
 		if env_path := os.getenv_opt(conf.env_path) {
-			paths << env_path.split(os.path_separator)
+			paths << env_path.split(os.path_delimiter)
 		}
 	}
 
