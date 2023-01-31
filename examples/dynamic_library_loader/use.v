@@ -11,10 +11,10 @@ type FNAdder = fn (int, int) int
 const (
 	cfolder       = os.dir(@FILE)
 	default_paths = [
-		os.join_path(cfolder, 'library.so'),
-		os.join_path(cfolder, 'location1/library.so'),
-		os.join_path(cfolder, 'location2/library.so'),
-		os.join_path(cfolder, 'modules/library/library.so'),
+		os.join_path(cfolder, 'library${dl.dl_ext}'),
+		os.join_path(cfolder, 'location1/library${dl.dl_ext}'),
+		os.join_path(cfolder, 'location2/library${dl.dl_ext}'),
+		os.join_path(cfolder, 'modules/library/library${dl.dl_ext}'),
 	]
 )
 
