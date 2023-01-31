@@ -30,6 +30,9 @@ fn run_test_invalid_lib_linux() ! {
 	mut loader := get_or_create_loader(@MOD + '.' + @FN + '.' + 'lib', [
 		'not-existing-dynamic-link-library',
 	])!
+	defer {
+		loader.unregister()
+	}
 	h := loader.open() or { unsafe { nil } }
 	assert isnil(h)
 }
@@ -39,6 +42,9 @@ fn run_test_invalid_lib_windows() ! {
 	mut loader := get_or_create_loader(@MOD + '.' + @FN + '.' + 'lib', [
 		'not-existing-dynamic-link-library',
 	])!
+	defer {
+		loader.unregister()
+	}
 	h := loader.open() or { unsafe { nil } }
 	assert isnil(h)
 }
@@ -48,12 +54,18 @@ fn run_test_valid_lib_windows() ! {
 		'not-existing-dynamic-link-library',
 		'shell32',
 	])!
+	defer {
+		loader.unregister()
+	}
 	h := loader.open() or { unsafe { nil } }
 	assert !isnil(h)
 }
 
 fn run_test_invalid_sym_windows() ! {
 	mut loader := get_or_create_loader(@MOD + '.' + @FN + '.' + 'lib', ['shell32'])!
+	defer {
+		loader.unregister()
+	}
 	proc := loader.get_sym('CommandLineToArgvW2') or { unsafe { nil } }
 	assert isnil(proc)
 }
@@ -63,6 +75,9 @@ fn run_test_valid_sym_windows() ! {
 		'not-existing-dynamic-link-library',
 		'shell32',
 	])!
+	defer {
+		loader.unregister()
+	}
 	proc := loader.get_sym('CommandLineToArgvW') or { unsafe { nil } }
 	assert !isnil(proc)
 }
