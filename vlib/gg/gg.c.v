@@ -486,7 +486,7 @@ pub fn new_context(cfg Config) &Context {
 
 // run starts the main loop of the context.
 pub fn (mut ctx Context) run() {
-	// ensure context set correctly
+	// set context late, in case it changed (e.g., due to embedding)
 	ctx.window = sapp.Desc{
 		...ctx.window
 		user_data: ctx
