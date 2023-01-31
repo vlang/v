@@ -36,4 +36,5 @@ fn main() {
 
 	cb.copy(url)
 	println(url)
+	println('Copied URL to clipboard.')
 }

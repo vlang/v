@@ -1,8 +1,6 @@
 module help
 
-// TODO: move this file outside internal, and merge it with cmd/tools/modules/vhelp/vhelp.v .
 import os
-import v.pref
 
 const (
 	unknown_topic = '`v help`: unknown help topic provided. Use `v help` for usage information.'
@@ -10,7 +8,7 @@ const (
 
 // print_and_exit Prints the help topic and exits
 pub fn print_and_exit(topic string) {
-	vexe := pref.vexe_path()
+	vexe := @VEXE
 	vroot := os.dir(vexe)
 	topicdir := os.join_path(vroot, 'vlib', 'v', 'help')
 
