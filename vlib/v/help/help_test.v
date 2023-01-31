@@ -26,9 +26,15 @@ fn test_all_help() {
 	mut topics := os.walk_ext(topicdir, '.txt')
 
 	mut items := []string{}
+	mut delim := ''
 
 	for mut item in topics {
-		mut item_rev := item.replace('.txt', '').split('/').reverse()
+		$if windows {
+			delim = '\\'
+		} $else {
+			delim = '/'
+		}
+		mut item_rev := item.replace('.txt', '').split(delim).reverse()
 		item_rev.trim(2)
 		items << item_rev.reverse()
 	}
