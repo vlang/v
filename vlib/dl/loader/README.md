@@ -9,26 +9,28 @@ a custom environment variable that contains a list of paths.
 
 ## Usage:
 
-```v ignore
+```v
 import dl.loader
 
 // Load a library from a list of paths
-default_paths := [
-    'not-existing-dynamic-link-library',
-    // 'C:\\Windows\\System32\\shell32.dll',
-    'shell32'
+const default_paths = [
+	'not-existing-dynamic-link-library'
+	// 'C:\\Windows\\System32\\shell32.dll',
+	'shell32',
 ]
 
-mut dl_loader := loader.get_or_create_dynamic_lib_loader(
-        key: 'LibExample',
-        env_path: 'LIB_PATH',
-        paths: default_paths,
-)!
+fn main() {
+	mut dl_loader := loader.get_or_create_dynamic_lib_loader(
+		key: 'LibExample'
+		env_path: 'LIB_PATH'
+		paths: default_paths
+	)!
 
-defer {
-        dl_loader.unregister()
+	defer {
+		dl_loader.unregister()
+	}
+
+	sym := dl_loader.get_sym('CommandLineToArgvW')!
+	assert !isnil(sym)
 }
-
-sym := dl_loader.get_sym('CommandLineToArgvW')!
-assert !isnil(sym)
 ```
