@@ -19,6 +19,8 @@ Other less frequently used commands supported by V include:
 
   setup-freetype   Setup thirdparty freetype on Windows.
 
+  share            Send your code to the V Playground
+
   translate        Translate C code to V.
 
   tracev           Produce a tracing version of the v compiler.

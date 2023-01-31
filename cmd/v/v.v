@@ -34,6 +34,7 @@ const (
 		'self',
 		'setup-freetype',
 		'shader',
+		'share',
 		'should-compile-all',
 		'symlink',
 		'scan',
