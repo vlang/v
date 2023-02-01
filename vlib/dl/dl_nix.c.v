@@ -13,7 +13,6 @@ pub const (
 	rtld_local    = C.RTLD_LOCAL
 	rtld_nodelete = C.RTLD_NODELETE
 	rtld_noload   = C.RTLD_NOLOAD
-	rtld_deepbind = C.RTLD_DEEPBIND
 )
 
 fn C.dlopen(filename &char, flags int) voidptr

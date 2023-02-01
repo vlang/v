@@ -7,7 +7,6 @@ pub const (
 	rtld_local    = 0
 	rtld_nodelete = 0
 	rtld_noload   = 0
-	rtld_deepbind = 0
 )
 
 fn C.LoadLibrary(libfilename &u16) voidptr
