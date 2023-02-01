@@ -455,7 +455,7 @@ import gg
 
 fn draw(ctx &gg.Context) {
 	gg := ctx.parent.get_ui().gg
-	gg.draw_rect(10, 10, 100, 50)
+	gg.draw_filled_rect(10, 10, 100, 50)
 }
 ```
 
