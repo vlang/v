@@ -5564,7 +5564,7 @@ cause a panic.
 ```v
 struct Node {
 	a &Node
-	b &Node = 0 // Auto-initialized to nil, use with caution!
+	b &Node = unsafe { nil } // Auto-initialized to nil, use with caution!
 }
 
 // Reference fields must be initialized unless an initial value is declared.
