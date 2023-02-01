@@ -46,9 +46,18 @@ pub:
 	parent_idx int
 }
 
+pub struct StructField {
+pub:
+	name  string
+	typ   int
+	attrs []string
+}
+
 pub struct Struct {
 pub:
 	parent_idx int
+	attrs      []string
+	fields     []StructField
 }
 
 pub struct SumType {

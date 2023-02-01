@@ -106,13 +106,45 @@ fn (g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
 	return '(v__reflection__TypeSymbol){.name=_SLIT("${tsym.name}"),.idx=${tsym.idx},.parent_idx=${tsym.parent_idx},.language=_SLIT("${tsym.language}"),.kind=v__ast__Kind__${kind_name},.info=${info}}'
 }
 
-fn (g Gen) gen_type_array(types []ast.Type) string {
-	mut out := 'new_array_from_c_array(${types.len},${types.len},sizeof(int),'
-	out += '_MOV((int[${types.len}]){'
-	for typ in types {
-		out += '${typ.idx()},'
+// gen_attrs_array generates C code for []Attr
+[inline]
+fn (g Gen) gen_attrs_array(attrs []ast.Attr) string {
+	if attrs.len == 0 {
+		return g.gen_empty_array('string')
+	}
+	mut out := 'new_array_from_c_array(${attrs.len},${attrs.len},sizeof(string),'
+	out += '_MOV((string[${attrs.len}]){'
+	for attr in attrs {
+		if attr.has_arg {
+			out += '_SLIT("${attr.name}=${attr.arg}"),'
+		} else {
+			out += '_SLIT("${attr.name}"),'
+		}
 	}
 	out += '}))'
+	return out
+}
+
+// gen_fields_array generates C code for []StructField
+[inline]
+fn (g Gen) gen_fields_array(fields []ast.StructField) string {
+	if fields.len == 0 {
+		return g.gen_empty_array('v__reflection__StructField')
+	}
+	mut out := 'new_array_from_c_array(${fields.len},${fields.len},sizeof(v__reflection__StructField),'
+	out += '_MOV((v__reflection__StructField[${fields.len}]){'
+	for field in fields {
+		out += '((v__reflection__StructField){.name=_SLIT("${field.name}"),.attrs=${g.gen_attrs_array(field.attrs)}}),'
+	}
+	out += '}))'
+	return out
+}
+
+// gen_type_array generates C code for []Type
+[inline]
+fn (g Gen) gen_type_array(types []ast.Type) string {
+	mut out := 'new_array_from_c_array(${types.len},${types.len},sizeof(int),'
+	out += '_MOV((int[${types.len}]){${types.map(it.idx().str()).join(',')}}))'
 	return out
 }
 
@@ -121,12 +153,15 @@ fn (g Gen) gen_type_array(types []ast.Type) string {
 fn (g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 	match tsym.kind {
 		.sum_type {
-			info := (tsym.info as ast.SumType)
+			info := tsym.info as ast.SumType
 			s := 'ADDR(v__reflection__SumType, (((v__reflection__SumType){.parent_idx = ${info.parent_type.idx()},.variants=${g.gen_type_array(info.variants)}})))'
 			return '(v__reflection__TypeInfo){._v__reflection__SumType = memdup(${s},sizeof(v__reflection__SumType)),._typ=${g.table.find_type_idx('v.reflection.SumType')}}'
 		}
 		.struct_ {
-			s := 'ADDR(v__reflection__Struct, (((v__reflection__Struct){.parent_idx = ${(tsym.info as ast.Struct).parent_type.idx()},})))'
+			info := tsym.info as ast.Struct
+			attrs := g.gen_attrs_array(info.attrs)
+			fields := g.gen_fields_array(info.fields)
+			s := 'ADDR(v__reflection__Struct, (((v__reflection__Struct){.parent_idx = ${(tsym.info as ast.Struct).parent_type.idx()},.attrs=${attrs},.fields=${fields}})))'
 			return '(v__reflection__TypeInfo){._v__reflection__Struct = memdup(${s},sizeof(v__reflection__Struct)),._typ=${g.table.find_type_idx('v.reflection.Struct')}}'
 		}
 		else {
