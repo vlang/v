@@ -42,9 +42,11 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		} else {
 			ast.Type(0)
 		}
+
 		mut n := ast.SqlExpr{
 			pos: node.pos
 			has_where: true
+			where_expr: ast.None{}
 			typ: typ
 			db_expr: node.db_expr
 			table_expr: ast.TypeNode{
@@ -52,6 +54,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 				typ: typ
 			}
 		}
+
 		tmp_inside_sql := c.inside_sql
 		c.sql_expr(mut n)
 		c.inside_sql = tmp_inside_sql
@@ -100,19 +103,19 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 
 	node.fields = fields
 	node.sub_structs = sub_structs.move()
+	field_names := fields.map(it.name)
 
 	if node.has_where {
 		c.expr(node.where_expr)
 		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&node.where_expr)
+		c.check_where_expr_has_no_pointless_exprs(sym, field_names, &node.where_expr)
 	}
 
 	if node.has_order {
 		if mut node.order_expr is ast.Ident {
 			order_ident_name := node.order_expr.name
 
-			sym.find_field(order_ident_name) or {
-				field_names := fields.map(it.name)
-
+			if !sym.has_field(order_ident_name) {
 				c.orm_error(util.new_suggestion(order_ident_name, field_names).say('`${sym.name}` structure has no field with name `${order_ident_name}`'),
 					node.order_expr.pos)
 				return ast.void_type
@@ -399,6 +402,48 @@ fn (mut c Checker) check_expr_has_no_fn_calls_with_non_orm_return_type(expr &ast
 	} else if expr is ast.InfixExpr {
 		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&expr.left)
 		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&expr.right)
+	}
+}
+
+// check_where_expr_has_no_pointless_exprs checks that an expression has no pointless expressions
+// which don't affect the result. For example, `where 3` is pointless.
+// Also, it checks that the left side of the infix expression is always the structure field.
+fn (mut c Checker) check_where_expr_has_no_pointless_exprs(table_type_symbol &ast.TypeSymbol, field_names []string, expr &ast.Expr) {
+	// Skip type checking for generated subqueries
+	// that are not linked to scope and vars but only created for cgen.
+	if expr is ast.None {
+		return
+	}
+
+	if expr is ast.InfixExpr {
+		has_no_field_error := "left side of the `${expr.op}` expression must be one of the `${table_type_symbol.name}`'s fields"
+
+		if expr.left is ast.Ident {
+			left_ident_name := expr.left.name
+
+			if !table_type_symbol.has_field(left_ident_name) {
+				c.orm_error(util.new_suggestion(left_ident_name, field_names).say(has_no_field_error),
+					expr.left.pos)
+			}
+		} else if expr.left is ast.InfixExpr || expr.left is ast.ParExpr
+			|| expr.left is ast.PrefixExpr {
+			c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names,
+				&expr.left)
+		} else {
+			c.orm_error(has_no_field_error, expr.left.pos())
+		}
+
+		if expr.right is ast.InfixExpr || expr.right is ast.ParExpr || expr.right is ast.PrefixExpr {
+			c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names,
+				&expr.right)
+		}
+	} else if expr is ast.ParExpr {
+		c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names, &expr.expr)
+	} else if expr is ast.PrefixExpr {
+		c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names, &expr.right)
+	} else {
+		c.orm_error('`where` expression must have at least one comparison for filtering rows',
+			expr.pos())
 	}
 }
 
