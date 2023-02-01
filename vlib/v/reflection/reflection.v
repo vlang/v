@@ -25,48 +25,40 @@ pub:
 	methods []Function // methods
 }
 
-pub struct EnumField {
-pub:
-	name string // field name
-}
-
-pub struct Enum {
-pub:
-	name       string      // enum name
-	is_pub     bool        // is pub?
-	is_flag    bool        // is flag?
-	typ        int         // type idx
-	line_start int         // decl start line
-	line_end   int         // decl end line
-	fields     []EnumField // enum fields
-}
-
 pub struct None {
 pub:
 	parent_idx int
 }
 
+pub struct Enum {
+pub:
+	vals    []string
+	is_flag bool
+}
+
 pub struct StructField {
 pub:
-	name  string
-	typ   int
-	attrs []string
+	name   string   // field name
+	typ    int      // type idx
+	attrs  []string // field attrs
+	is_pub bool     // is pub?
+	is_mut bool     // is mut?
 }
 
 pub struct Struct {
 pub:
-	parent_idx int
-	attrs      []string
-	fields     []StructField
+	parent_idx int           // parent type
+	attrs      []string      // struct attrs
+	fields     []StructField // fields
 }
 
 pub struct SumType {
 pub:
-	parent_idx int
-	variants   []int
+	parent_idx int   // parent type
+	variants   []int // variant type idxs
 }
 
-pub type TypeInfo = None | Struct | SumType
+pub type TypeInfo = Enum | None | Struct | SumType
 
 pub struct TypeSymbol {
 pub:
@@ -136,8 +128,9 @@ pub fn get_types() []Type {
 }
 
 // get_enums returns the registered enums
-pub fn get_enums() []Enum {
-	return g_reflection.enums
+pub fn get_enums() []Type {
+	enum_idxs := g_reflection.type_symbols.filter(it.kind == .enum_).map(it.idx)
+	return g_reflection.types.filter(it.idx in enum_idxs)
 }
 
 // get_aliases returns the registered aliases
@@ -204,11 +197,6 @@ fn add_type(type_ Type) {
 [markused]
 fn add_type_symbol(typesymbol TypeSymbol) {
 	g_reflection.type_symbols << typesymbol
-}
-
-[markused]
-fn add_enum(enum_ Enum) {
-	g_reflection.enums << enum_
 }
 
 [markused]

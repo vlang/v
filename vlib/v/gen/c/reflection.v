@@ -61,21 +61,6 @@ fn (mut g Gen) gen_function_array(nodes []ast.FnDecl) string {
 	return out
 }
 
-// gen_reflection_enum_fields generates C code for enum fields
-[inline]
-fn (g Gen) gen_reflection_enum_fields(fields []ast.EnumField) string {
-	if fields.len == 0 {
-		return g.gen_empty_array('v__reflection__EnumField')
-	}
-	mut out := 'new_array_from_c_array(${fields.len},${fields.len},sizeof(v__reflection__EnumField),'
-	out += '_MOV((v__reflection__EnumField[${fields.len}]){'
-	for field in fields {
-		out += '((v__reflection__EnumField){.name=_SLIT("${field.name}")}),'
-	}
-	out += '}))'
-	return out
-}
-
 // gen_reflection_fndecl generates C code for function declaration
 [inline]
 fn (mut g Gen) gen_reflection_fndecl(node ast.FnDecl) string {
@@ -134,7 +119,7 @@ fn (g Gen) gen_fields_array(fields []ast.StructField) string {
 	mut out := 'new_array_from_c_array(${fields.len},${fields.len},sizeof(v__reflection__StructField),'
 	out += '_MOV((v__reflection__StructField[${fields.len}]){'
 	for field in fields {
-		out += '((v__reflection__StructField){.name=_SLIT("${field.name}"),.attrs=${g.gen_attrs_array(field.attrs)}}),'
+		out += '((v__reflection__StructField){.name=_SLIT("${field.name}"),.typ=${field.typ.idx()},.attrs=${g.gen_attrs_array(field.attrs)},.is_pub=${field.is_pub},.is_mut=${field.is_mut}}),'
 	}
 	out += '}))'
 	return out
@@ -145,6 +130,18 @@ fn (g Gen) gen_fields_array(fields []ast.StructField) string {
 fn (g Gen) gen_type_array(types []ast.Type) string {
 	mut out := 'new_array_from_c_array(${types.len},${types.len},sizeof(int),'
 	out += '_MOV((int[${types.len}]){${types.map(it.idx().str()).join(',')}}))'
+	return out
+}
+
+// gen_string_array generates C code for []string
+[inline]
+fn (g Gen) gen_string_array(strs []string) string {
+	if strs.len == 0 {
+		return g.gen_empty_array('string')
+	}
+	mut out := 'new_array_from_c_array(${strs.len},${strs.len},sizeof(string),'
+	items := strs.map('_SLIT("${it}")').join(',')
+	out += '_MOV((string[${strs.len}]){${items}}))'
 	return out
 }
 
@@ -163,6 +160,12 @@ fn (g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 			fields := g.gen_fields_array(info.fields)
 			s := 'ADDR(v__reflection__Struct, (((v__reflection__Struct){.parent_idx = ${(tsym.info as ast.Struct).parent_type.idx()},.attrs=${attrs},.fields=${fields}})))'
 			return '(v__reflection__TypeInfo){._v__reflection__Struct = memdup(${s},sizeof(v__reflection__Struct)),._typ=${g.table.find_type_idx('v.reflection.Struct')}}'
+		}
+		.enum_ {
+			info := tsym.info as ast.Enum
+			vals := g.gen_string_array(info.vals)
+			s := 'ADDR(v__reflection__Enum, (((v__reflection__Enum){.vals=${vals},.is_flag=${info.is_flag}})))'
+			return '(v__reflection__TypeInfo){._v__reflection__Enum = memdup(${s},sizeof(v__reflection__Enum)),._typ=${g.table.find_type_idx('v.reflection.Enum')}}'
 		}
 		else {
 			s := 'ADDR(v__reflection__Struct, (((v__reflection__Struct){.parent_idx = ${tsym.parent_idx},})))'
@@ -186,13 +189,6 @@ fn (mut g Gen) gen_reflection_data() {
 	// modules declaration
 	for mod_name in g.table.modules {
 		g.reflection_others.write_string('\tv__reflection__add_module(_SLIT("${mod_name}"));\n')
-	}
-
-	// enum declaration
-	for full_name, enum_ in g.table.enum_decls {
-		name := full_name.all_after_last('.')
-		fields := g.gen_reflection_enum_fields(enum_.fields)
-		g.reflection_others.write_string('\tv__reflection__add_enum((v__reflection__Enum){.name=_SLIT("${name}"),.is_pub=${enum_.is_pub},.is_flag=${enum_.is_flag},.typ=${enum_.typ.idx()},.line_start=${enum_.pos.line_nr},.line_end=${enum_.pos.last_line},.fields=${fields}});\n')
 	}
 
 	// types declaration

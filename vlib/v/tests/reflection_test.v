@@ -76,7 +76,7 @@ fn test_interfaces() {
 }
 
 fn test_enum_fields() {
-	assert reflection.get_enums().filter(it.name == 'TestEnum')[0].fields.map(it.name) == [
+	assert (reflection.get_enums().filter(it.name == 'TestEnum')[0].sym.info as reflection.Enum).vals == [
 		'foo',
 		'bar',
 	]
