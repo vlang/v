@@ -13,7 +13,7 @@ import v.fmt
 import v.util
 import v.util.diff
 import v.parser
-import vhelp
+import v.help
 
 struct FormatOptions {
 	is_l       bool
@@ -88,7 +88,7 @@ fn main() {
 		exit(0)
 	}
 	if files.len == 0 || '-help' in args || '--help' in args {
-		vhelp.show_topic('fmt')
+		help.print_and_exit('fmt')
 		exit(0)
 	}
 	mut cli_args_no_files := []string{}

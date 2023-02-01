@@ -9,7 +9,7 @@ import os.cmdline
 import net.http
 import net.urllib
 import json
-import vhelp
+import v.help
 import v.vmod
 
 const (
@@ -139,7 +139,7 @@ fn main() {
 fn vpm_search(keywords []string) {
 	search_keys := keywords.map(it.replace('_', '-'))
 	if settings.is_help {
-		vhelp.show_topic('search')
+		help.print_and_exit('search')
 		exit(0)
 	}
 	if search_keys.len == 0 {
@@ -355,7 +355,7 @@ fn vpm_once_filter(module_names []string) []string {
 
 fn vpm_install(module_names []string, source Source) {
 	if settings.is_help {
-		vhelp.show_topic('install')
+		help.print_and_exit('install')
 		exit(0)
 	}
 	if module_names.len == 0 {
@@ -378,7 +378,7 @@ fn vpm_install(module_names []string, source Source) {
 fn vpm_update(m []string) {
 	mut module_names := m.clone()
 	if settings.is_help {
-		vhelp.show_topic('update')
+		help.print_and_exit('update')
 		exit(0)
 	}
 	if module_names.len == 0 {
@@ -479,7 +479,7 @@ fn vpm_list() {
 
 fn vpm_remove(module_names []string) {
 	if settings.is_help {
-		vhelp.show_topic('remove')
+		help.print_and_exit('remove')
 		exit(0)
 	}
 	if module_names.len == 0 {
@@ -534,7 +534,7 @@ fn ensure_vmodules_dir_exist() {
 }
 
 fn vpm_help() {
-	vhelp.show_topic('vpm')
+	help.print_and_exit('vpm')
 }
 
 fn vcs_used_in_dir(dir string) ?[]string {

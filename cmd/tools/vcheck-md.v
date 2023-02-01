@@ -7,7 +7,7 @@ import os
 import os.cmdline
 import rand
 import term
-import vhelp
+import v.help
 import regex
 
 const (
@@ -43,7 +43,7 @@ fn (v1 CheckResult) + (v2 CheckResult) CheckResult {
 
 fn main() {
 	if non_option_args.len == 0 || '-help' in os.args {
-		vhelp.show_topic('check-md')
+		help.print_and_exit('check-md')
 		exit(0)
 	}
 	if '-all' in os.args {
