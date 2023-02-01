@@ -338,8 +338,23 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 					g.get_wasm_type(node.typ))
 			}
 		}
-		ast.EmptyExpr {
-			g.w_error('wasm.expr(): called with ast.EmptyExpr')
+		ast.CallExpr {
+			if node.language != .v {
+				g.w_error('functions with bodies outside of V are not implemented')
+			}
+			
+			mut arguments := []wa.Expression{cap: node.args.len}
+
+			for idx, arg in node.args {
+				arguments << g.expr(arg.expr, node.expected_arg_types[idx])
+			}
+			
+			call := wa.call(g.mod, node.name.str, arguments.data, arguments.len, g.get_wasm_type(node.return_type))
+			if node.is_noreturn {
+				g.mkblock([call, wa.unreachable(g.mod)])
+			} else {
+				call
+			}
 		}
 		else {
 			eprintln('wasm.expr(): unhandled node: ' + node.type_name())
@@ -370,28 +385,28 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 				g.w_error('wasm.expr(): `label: for` is unimplemented')
 			}
 
-			// TODO: Later implement this with the relooper,
-			//       right now I do not want to deal with that
-			//       convoluted shoddily documented garbage.
-
 			g.lbl++
-			blk_name := 'B${g.lbl}'
 			lpp_name := 'L${g.lbl}'
+			if !node.is_inf {
+				blk_name := 'B${g.lbl}'
+				// wa.bif(g.mod, g.expr(node.cond, ast.bool_type))
 
-			// wa.bif(g.mod, g.expr(node.cond, ast.bool_type))
-
-			body := g.expr_stmts(node.stmts, ast.void_type)
-			lbody := [
-				// If !condition, leave.
-				wa.br(g.mod, blk_name.str, wa.unary(g.mod, wa.eqzint32(), g.expr(node.cond,
-					ast.bool_type)), unsafe { nil }),
-				// Body.
-				body,
-				// Unconditional loop back to top.
-				wa.br(g.mod, lpp_name.str, unsafe { nil }, unsafe { nil }),
-			]
-			loop := wa.loop(g.mod, lpp_name.str, g.mkblock(lbody))
-			wa.block(g.mod, blk_name.str, &loop, 1, wasm.type_none)
+				body := g.expr_stmts(node.stmts, ast.void_type)
+				lbody := [
+					// If !condition, leave.
+					wa.br(g.mod, blk_name.str, wa.unary(g.mod, wa.eqzint32(), g.expr(node.cond,
+						ast.bool_type)), unsafe { nil }),
+					// Body.
+					body,
+					// Unconditional loop back to top.
+					wa.br(g.mod, lpp_name.str, unsafe { nil }, unsafe { nil }),
+				]
+				loop := wa.loop(g.mod, lpp_name.str, g.mkblock(lbody))
+				
+				wa.block(g.mod, blk_name.str, &loop, 1, wasm.type_none)
+			} else {
+				wa.loop(g.mod, lpp_name.str, wa.br(g.mod, lpp_name.str, unsafe { nil }, unsafe { nil }))
+			}
 		}
 		ast.AssignStmt {
 			if (node.left.len > 1 && node.right.len == 1) || node.has_cross_var {
