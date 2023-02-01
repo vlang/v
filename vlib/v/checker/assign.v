@@ -86,6 +86,17 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		return
 	}
 
+	if right_first is ast.ParExpr {
+		if right_first.expr is ast.CallExpr {
+			if node.left_types.len > 0 && node.left_types[0] == ast.void_type {
+				// If it's a void type, it's an unknown variable, already had an error earlier.
+				return
+			}
+			c.error('assignment mismatch: ${node.left.len} variable(s) but `${right_first.expr.name}()` does not return a value',
+				node.pos)
+		}
+	}
+
 	for i, mut left in node.left {
 		if mut left is ast.CallExpr {
 			// ban `foo() = 10`
