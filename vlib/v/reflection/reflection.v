@@ -41,6 +41,24 @@ pub:
 	fields     []EnumField // enum fields
 }
 
+pub struct None {
+pub:
+	parent_idx int
+}
+
+pub struct Struct {
+pub:
+	parent_idx int
+}
+
+pub struct SumType {
+pub:
+	parent_idx int
+	variants   []int
+}
+
+pub type TypeInfo = None | Struct | SumType
+
 pub struct TypeSymbol {
 pub:
 	name       string   // symbol name
@@ -48,6 +66,7 @@ pub:
 	parent_idx int      // symbol parent idx
 	language   string   // language
 	kind       ast.Kind // kind
+	info       TypeInfo // info
 }
 
 pub struct Type {

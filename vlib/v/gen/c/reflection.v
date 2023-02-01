@@ -102,7 +102,38 @@ fn (g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
 	} else {
 		tsym.kind.str()
 	}
-	return '(v__reflection__TypeSymbol){.name=_SLIT("${tsym.name}"),.idx=${tsym.idx},.parent_idx=${tsym.parent_idx},.language=_SLIT("${tsym.language}"),.kind=v__ast__Kind__${kind_name}}'
+	info := g.gen_reflection_sym_info(tsym)
+	return '(v__reflection__TypeSymbol){.name=_SLIT("${tsym.name}"),.idx=${tsym.idx},.parent_idx=${tsym.parent_idx},.language=_SLIT("${tsym.language}"),.kind=v__ast__Kind__${kind_name},.info=${info}}'
+}
+
+fn (g Gen) gen_type_array(types []ast.Type) string {
+	mut out := 'new_array_from_c_array(${types.len},${types.len},sizeof(int),'
+	out += '_MOV((int[${types.len}]){'
+	for typ in types {
+		out += '${typ.idx()},'
+	}
+	out += '}))'
+	return out
+}
+
+// gen_reflection_sym_info generates C code for TypeSymbol's info sum type
+[inline]
+fn (g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
+	match tsym.kind {
+		.sum_type {
+			info := (tsym.info as ast.SumType)
+			s := 'ADDR(v__reflection__SumType, (((v__reflection__SumType){.parent_idx = ${info.parent_type.idx()},.variants=${g.gen_type_array(info.variants)}})))'
+			return '(v__reflection__TypeInfo){._v__reflection__SumType = memdup(${s},sizeof(v__reflection__SumType)),._typ=${g.table.find_type_idx('v.reflection.SumType')}}'
+		}
+		.struct_ {
+			s := 'ADDR(v__reflection__Struct, (((v__reflection__Struct){.parent_idx = ${(tsym.info as ast.Struct).parent_type.idx()},})))'
+			return '(v__reflection__TypeInfo){._v__reflection__Struct = memdup(${s},sizeof(v__reflection__Struct)),._typ=${g.table.find_type_idx('v.reflection.Struct')}}'
+		}
+		else {
+			s := 'ADDR(v__reflection__Struct, (((v__reflection__Struct){.parent_idx = ${tsym.parent_idx},})))'
+			return '(v__reflection__TypeInfo){._v__reflection__Struct = memdup(${s},sizeof(v__reflection__Struct)),._typ=${g.table.find_type_idx('v.reflection.None')}}'
+		}
+	}
 }
 
 // gen_reflection_function generates C code for reflection function metadata
