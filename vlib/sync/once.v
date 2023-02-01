@@ -41,6 +41,7 @@ fn (mut o Once) do_slow(f fn ()) {
 //        o.add(5)
 // })
 // ```
+//
 // ... you can use:
 // ```v
 //    once.do_with_param(fn (mut o One) {

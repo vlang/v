@@ -307,7 +307,7 @@ fn (mut g Gen) sql_expr_to_orm_primitive(expr ast.Expr) {
 		}
 		else {
 			eprintln(expr)
-			verror('Unknown expr')
+			verror('V ORM: ${expr.type_name()} is not supported')
 		}
 	}
 }

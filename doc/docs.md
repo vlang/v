@@ -3569,7 +3569,7 @@ fn pass_time(w World) {
 
 ### Option/Result types and error handling
 
-Optional types are for types which may represent `none`. Result types may
+Option types are for types which may represent `none`. Result types may
 represent an error returned from a function.
 
 `Option` types are declared by prepending `?` to the type name: `?Type`.
@@ -5564,7 +5564,7 @@ cause a panic.
 ```v
 struct Node {
 	a &Node
-	b &Node = 0 // Auto-initialized to nil, use with caution!
+	b &Node = unsafe { nil } // Auto-initialized to nil, use with caution!
 }
 
 // Reference fields must be initialized unless an initial value is declared.
