@@ -2,6 +2,7 @@
 module reflection
 
 import v.ast
+import arrays
 
 __global g_reflection = Reflection{}
 
@@ -17,11 +18,17 @@ pub mut:
 	strings      map[int]string
 }
 
+// pub struct Interface {
+// pub:
+// 	name    string     // interface name
+// 	typ     int        // type idx
+// 	is_pub  bool       // is pub?
+// 	methods []Function // methods
+// }
+
 pub struct Interface {
 pub:
-	name    string     // interface name
-	typ     int        // type idx
-	is_pub  bool       // is pub?
+	name    string
 	methods []Function // methods
 }
 
@@ -58,16 +65,17 @@ pub:
 	variants   []int // variant type idxs
 }
 
-pub type TypeInfo = Enum | None | Struct | SumType
+pub type TypeInfo = Enum | Function | Interface | None | Struct | SumType
 
 pub struct TypeSymbol {
 pub:
-	name       string   // symbol name
-	idx        int      // symbol idx
-	parent_idx int      // symbol parent idx
-	language   string   // language
-	kind       ast.Kind // kind
-	info       TypeInfo // info
+	name       string     // symbol name
+	idx        int        // symbol idx
+	parent_idx int        // symbol parent idx
+	language   string     // language
+	kind       ast.Kind   // kind
+	info       TypeInfo   // info
+	methods    []Function // methods
 }
 
 pub struct Type {
@@ -119,7 +127,14 @@ pub fn get_modules() []Module {
 
 // get_functions returns the functions built with V source
 pub fn get_funcs() []Function {
-	return g_reflection.funcs
+	mut out := g_reflection.funcs.clone()
+	out << arrays.flatten[Function](get_types().map(it.sym.methods))
+	return out
+}
+
+pub fn get_structs() []Type {
+	struct_idxs := g_reflection.type_symbols.filter(it.kind == .struct_).map(it.idx)
+	return g_reflection.types.filter(it.idx in struct_idxs)
 }
 
 // get_types returns the registered types
@@ -141,7 +156,8 @@ pub fn get_aliases() []Type {
 
 // get_interfaces returns the registered aliases
 pub fn get_interfaces() []Interface {
-	return g_reflection.interfaces
+	iface_idxs := g_reflection.type_symbols.filter(it.kind == .interface_).map(it.idx)
+	return g_reflection.types.filter(it.idx in iface_idxs).map(it.sym.info as Interface)
 }
 
 // get_sum_types returns the registered sum types
@@ -197,11 +213,6 @@ fn add_type(type_ Type) {
 [markused]
 fn add_type_symbol(typesymbol TypeSymbol) {
 	g_reflection.type_symbols << typesymbol
-}
-
-[markused]
-fn add_interface(interface_ Interface) {
-	g_reflection.interfaces << interface_
 }
 
 [markused]

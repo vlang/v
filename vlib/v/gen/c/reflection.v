@@ -4,7 +4,7 @@ import v.ast
 import v.util
 
 // reflection_string maps string to its idx
-fn (mut g Gen) reflection_string(str string) int {
+fn (g Gen) reflection_string(str string) int {
 	return unsafe {
 		g.reflection_strings[str] or {
 			g.reflection_strings[str] = g.reflection_strings.len
@@ -17,7 +17,7 @@ fn (mut g Gen) reflection_string(str string) int {
 [inline]
 fn (mut g Gen) gen_reflection_strings() {
 	for str, idx in g.reflection_strings {
-		g.reflection_others.write_string('\tv__reflection__add_string(_SLIT("${str}"), ${idx});\n')
+		g.writeln('\tv__reflection__add_string(_SLIT("${str}"), ${idx});\n')
 	}
 }
 
@@ -29,7 +29,7 @@ fn (g Gen) gen_empty_array(type_name string) string {
 
 // gen_functionarg_array generates the code for functionarg argument
 [inline]
-fn (g Gen) gen_functionarg_array(type_name string, node ast.FnDecl) string {
+fn (g Gen) gen_functionarg_array(type_name string, node ast.Fn) string {
 	if node.params.len == 0 {
 		return g.gen_empty_array(type_name)
 	}
@@ -44,7 +44,7 @@ fn (g Gen) gen_functionarg_array(type_name string, node ast.FnDecl) string {
 
 // gen_functionarg_array generates the code for functionarg argument
 [inline]
-fn (mut g Gen) gen_function_array(nodes []ast.FnDecl) string {
+fn (g Gen) gen_function_array(nodes []ast.Fn) string {
 	type_name := 'v__reflection__Function'
 
 	if nodes.len == 0 {
@@ -54,16 +54,15 @@ fn (mut g Gen) gen_function_array(nodes []ast.FnDecl) string {
 	mut out := 'new_array_from_c_array(${nodes.len},${nodes.len},sizeof(${type_name}),'
 	out += '_MOV((${type_name}[${nodes.len}]){'
 	for method in nodes {
-		out += g.gen_reflection_fndecl(method)
+		out += g.gen_reflection_fn(method)
 		out += ','
 	}
 	out += '}))'
 	return out
 }
 
-// gen_reflection_fndecl generates C code for function declaration
 [inline]
-fn (mut g Gen) gen_reflection_fndecl(node ast.FnDecl) string {
+fn (g Gen) gen_reflection_fn(node ast.Fn) string {
 	mut arg_str := '((v__reflection__Function){'
 	v_name := node.name.all_after_last('.')
 	arg_str += '.mod_name=_SLIT("${node.mod}"),'
@@ -74,7 +73,7 @@ fn (mut g Gen) gen_reflection_fndecl(node ast.FnDecl) string {
 	arg_str += '.line_end=${node.pos.last_line},'
 	arg_str += '.is_variadic=${node.is_variadic},'
 	arg_str += '.return_typ=${node.return_type.idx()},'
-	arg_str += '.receiver_typ=${node.receiver.typ.idx()}'
+	arg_str += '.receiver_typ=${node.receiver_type.idx()}'
 	arg_str += '})'
 	return arg_str
 }
@@ -88,7 +87,8 @@ fn (g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
 		tsym.kind.str()
 	}
 	info := g.gen_reflection_sym_info(tsym)
-	return '(v__reflection__TypeSymbol){.name=_SLIT("${tsym.name}"),.idx=${tsym.idx},.parent_idx=${tsym.parent_idx},.language=_SLIT("${tsym.language}"),.kind=v__ast__Kind__${kind_name},.info=${info}}'
+	methods := g.gen_function_array(tsym.methods)
+	return '(v__reflection__TypeSymbol){.name=_SLIT("${tsym.name}"),.idx=${tsym.idx},.parent_idx=${tsym.parent_idx},.language=_SLIT("${tsym.language}"),.kind=v__ast__Kind__${kind_name},.info=${info},.methods=${methods}}'
 }
 
 // gen_attrs_array generates C code for []Attr
@@ -128,6 +128,9 @@ fn (g Gen) gen_fields_array(fields []ast.StructField) string {
 // gen_type_array generates C code for []Type
 [inline]
 fn (g Gen) gen_type_array(types []ast.Type) string {
+	if types.len == 0 {
+		return g.gen_empty_array('int')
+	}
 	mut out := 'new_array_from_c_array(${types.len},${types.len},sizeof(int),'
 	out += '_MOV((int[${types.len}]){${types.map(it.idx().str()).join(',')}}))'
 	return out
@@ -167,6 +170,18 @@ fn (g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 			s := 'ADDR(v__reflection__Enum, (((v__reflection__Enum){.vals=${vals},.is_flag=${info.is_flag}})))'
 			return '(v__reflection__TypeInfo){._v__reflection__Enum = memdup(${s},sizeof(v__reflection__Enum)),._typ=${g.table.find_type_idx('v.reflection.Enum')}}'
 		}
+		.function {
+			info := tsym.info as ast.FnType
+			s := 'ADDR(v__reflection__Function, ${g.gen_reflection_fn(info.func)})'
+			return '(v__reflection__TypeInfo){._v__reflection__Function = memdup(${s},sizeof(v__reflection__Function)),._typ=${g.table.find_type_idx('v.reflection.Function')}}'
+		}
+		.interface_ {
+			name := tsym.name.all_after_last('.')
+			info := tsym.info as ast.Interface
+			methods := g.gen_function_array(info.methods)
+			s := 'ADDR(v__reflection__Interface, (((v__reflection__Interface){.name=_SLIT("${name}"),.methods=${methods}})))'
+			return '(v__reflection__TypeInfo){._v__reflection__Interface = memdup(${s},sizeof(v__reflection__Interface)),._typ=${g.table.find_type_idx('v.reflection.Interface')}}'
+		}
 		else {
 			s := 'ADDR(v__reflection__Struct, (((v__reflection__Struct){.parent_idx = ${tsym.parent_idx},})))'
 			return '(v__reflection__TypeInfo){._v__reflection__Struct = memdup(${s},sizeof(v__reflection__Struct)),._typ=${g.table.find_type_idx('v.reflection.None')}}'
@@ -180,15 +195,15 @@ fn (mut g Gen) gen_reflection_function(node ast.FnDecl) {
 	if !g.has_reflection {
 		return
 	}
-	func_struct := g.gen_reflection_fndecl(node)
-	g.reflection_funcs.write_string('\tv__reflection__add_func(${func_struct});\n')
+	// func_struct := g.gen_reflection_fndecl(node)
+	// g.reflection_funcs.write_string('\tv__reflection__add_func(${func_struct});\n')
 }
 
 // gen_reflection_data generates code to initilized V reflection metadata
 fn (mut g Gen) gen_reflection_data() {
 	// modules declaration
 	for mod_name in g.table.modules {
-		g.reflection_others.write_string('\tv__reflection__add_module(_SLIT("${mod_name}"));\n')
+		g.writeln('\tv__reflection__add_module(_SLIT("${mod_name}"));\n')
 	}
 
 	// types declaration
@@ -196,27 +211,27 @@ fn (mut g Gen) gen_reflection_data() {
 		tsym := g.table.sym_by_idx(idx)
 		name := full_name.all_after_last('.')
 		sym := g.gen_reflection_sym(tsym)
-		g.reflection_others.write_string('\tv__reflection__add_type((v__reflection__Type){.name=_SLIT("${name}"),.idx=${idx},.sym=${sym}});\n')
+		g.writeln('\tv__reflection__add_type((v__reflection__Type){.name=_SLIT("${name}"),.idx=${idx},.sym=${sym}});\n')
 	}
 
 	// interface declaration
-	for _, idecl in g.table.interfaces {
-		name := idecl.name.all_after_last('.')
-		methods := g.gen_function_array(idecl.methods)
-		g.reflection_others.write_string('\tv__reflection__add_interface((v__reflection__Interface){.name=_SLIT("${name}"),.typ=${idecl.typ.idx()},.is_pub=${idecl.is_pub},.methods=${methods}});\n')
+	// for _, idecl in g.table.interfaces {
+	// 	name := idecl.name.all_after_last('.')
+	// 	methods := g.gen_function_array(idecl.methods)
+	// 	g.reflection_others.write_string('\tv__reflection__add_interface((v__reflection__Interface){.name=_SLIT("${name}"),.typ=${idecl.typ.idx()},.is_pub=${idecl.is_pub},.methods=${methods}});\n')
+	// }
+
+	// func
+	for _, fn_ in g.table.fns {
+		func := g.gen_reflection_fn(fn_)
+		g.writeln('\tv__reflection__add_func(${func});\n')
 	}
 
 	// type symbols declaration
 	for _, tsym in g.table.type_symbols {
 		sym := g.gen_reflection_sym(tsym)
-		g.reflection_others.write_string('\tv__reflection__add_type_symbol(${sym});\n')
+		g.writeln('\tv__reflection__add_type_symbol(${sym});\n')
 	}
 
 	g.gen_reflection_strings()
-
-	// funcs meta info filling
-	g.writeln(g.reflection_funcs.str())
-
-	// others meta info filling
-	g.writeln(g.reflection_others.str())
 }
