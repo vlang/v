@@ -180,6 +180,14 @@ cd v
 make
 ```
 
+### OpenBSD
+On OpenBSD, we needs to install `gc` before compile V
+```
+wget https://github.com/ivmai/bdwgc/releases/download/v8.2.2/gc-8.2.2.tar.gz \
+tar xzf gc-8.2.2.tar.gz && cd gc-8.2.2 && ./configure --enable-static && gmake && doas gmake install \
+cd && git clone https://github.com/vlang/v && cd v && CC=cc gmake
+```
+
 ## Testing and running the examples
 Make sure V can compile itself:
 ```bash
