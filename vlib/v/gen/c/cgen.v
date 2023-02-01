@@ -6090,7 +6090,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
 		if node.expr is ast.CallExpr {
 			tmp_var := g.new_tmp_var()
-			expr_styp := g.typ(node.expr_type)
+			expr_styp := g.cc_type(node.expr_type, true)
 			g.write('({ ${expr_styp} ${tmp_var} = ')
 			g.expr(node.expr)
 			g.write('; ')
