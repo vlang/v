@@ -293,16 +293,16 @@ fn main() {
 }
 
 fn test_join() {
-	mut strings := ['a', 'b', 'c']
-	mut s := strings.join(' ')
+	mut strs := ['a', 'b', 'c']
+	mut s := strs.join(' ')
 	assert s == 'a b c'
-	strings = [
+	strs = [
 		'one
 two ',
 		'three!
 four!',
 	]
-	s = strings.join(' ')
+	s = strs.join(' ')
 	assert s.contains('one') && s.contains('two ') && s.contains('four')
 	empty := []string{len: 0}
 	assert empty.join('A') == ''
