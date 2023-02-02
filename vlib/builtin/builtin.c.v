@@ -11,6 +11,21 @@ fn vhalt() {
 	for {}
 }
 
+[markused]
+fn v_segmentation_fault_handler(signal_number int) {
+	$if freestanding {
+		eprintln('signal 11: segmentation fault')
+	} $else {
+		C.fprintf(C.stderr, c'signal %d: segmentation fault\n', signal_number)
+	}
+	$if use_libbacktrace ? {
+		eprint_libbacktrace(1)
+	} $else {
+		print_backtrace()
+	}
+	exit(128 + signal_number)
+}
+
 // exit terminates execution immediately and returns exit `code` to the shell.
 [noreturn]
 pub fn exit(code int) {
