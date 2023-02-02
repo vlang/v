@@ -158,6 +158,19 @@ pub fn panic_error_number(basestr string, errnum int) {
 	panic(basestr + c_error_number_str(errnum))
 }
 
+// panic_mem is called by V, when a memory access error occurs.
+// See `builtin.sigaction_handler()`
+fn panic_mem() {
+	panic('invalid memory address or nil pointer dereference')
+}
+
+// panic_mem_addr is called by V, when a memory access error occurs.
+// It prints the address that was accessed.
+// See `builtin.sigaction_handler()`
+fn panic_mem_addr(addr voidptr) {
+	panic('invalid memory address or nil pointer dereference on address ${addr}')
+}
+
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
 pub fn eprintln(s string) {
 	if s.str == 0 {

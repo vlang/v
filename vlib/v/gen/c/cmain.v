@@ -25,6 +25,7 @@ pub fn (mut g Gen) gen_c_main() {
 		g.gen_c_android_sokol_main()
 	} else {
 		g.gen_c_main_header()
+		g.gen_sigaction()
 		g.writeln('\tmain__main();')
 		g.gen_c_main_footer()
 		if g.pref.printfn_list.len > 0 && 'main' in g.pref.printfn_list {
@@ -100,6 +101,19 @@ fn (mut g Gen) gen_c_main_function_header() {
 	if g.nr_closures > 0 {
 		g.writeln('__closure_init();')
 	}
+}
+
+fn (mut g Gen) gen_sigaction() {
+	g.writeln('
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+	struct sigaction sa = {.sa_sigaction=sigaction_handler, .sa_flags=SA_SIGINFO};
+	struct sigaction oldsa;
+
+	sigaction(SIGSEGV, &sa, &oldsa);
+	sigaction(SIGBUS, &sa, &oldsa);
+	sigaction(SIGFPE, &sa, &oldsa);
+#endif
+'.trim_indent())
 }
 
 fn (mut g Gen) gen_c_main_header() {
