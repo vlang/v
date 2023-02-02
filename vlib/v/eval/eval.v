@@ -49,7 +49,7 @@ pub struct EvalTrace {
 
 pub fn (mut e Eval) eval(mut files []&ast.File) {
 	e.register_symbols(mut files)
-	e.run_func(e.mods['main']['main'] or { ast.EmptyStmt{} } as ast.FnDecl)
+	e.run_func(e.mods['main']['main'] or { ast.FnDecl{} } as ast.FnDecl)
 }
 
 // first arg is reciever (if method)
