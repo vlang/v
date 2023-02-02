@@ -25,7 +25,9 @@ pub fn (mut g Gen) gen_c_main() {
 		g.gen_c_android_sokol_main()
 	} else {
 		g.gen_c_main_header()
-		g.gen_sigaction()
+		if g.use_signal_handler {
+			g.gen_signal_handler()
+		}
 		g.writeln('\tmain__main();')
 		g.gen_c_main_footer()
 		if g.pref.printfn_list.len > 0 && 'main' in g.pref.printfn_list {
@@ -103,7 +105,7 @@ fn (mut g Gen) gen_c_main_function_header() {
 	}
 }
 
-fn (mut g Gen) gen_sigaction() {
+fn (mut g Gen) gen_signal_handler() {
 	g.writeln('
 #if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
 	struct sigaction sa = {.sa_sigaction=sigaction_handler, .sa_flags=SA_SIGINFO};

@@ -229,7 +229,7 @@ mut:
 	autofree_methods       map[int]bool
 	generated_free_methods map[int]bool
 	autofree_scope_stmts   []string
-	use_segfault_handler   bool = true
+	use_signal_handler     bool = true
 	test_function_names    []string
 	/////////
 	// out_parallel []strings.Builder
@@ -310,7 +310,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 		inner_loop: &ast.empty_stmt
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
 		is_cc_msvc: pref.ccompiler == 'msvc'
-		use_segfault_handler: !('no_segfault_handler' in pref.compile_defines
+		use_signal_handler: !('no_segfault_handler' in pref.compile_defines
 			|| pref.os in [.wasm32, .wasm32_emscripten])
 		static_modifier: if pref.parallel_cc { 'static' } else { '' }
 		has_reflection: 'v.reflection' in table.modules
@@ -513,7 +513,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 
 	mut b := strings.new_builder(640000)
 	b.write_string(g.hashes())
-	if g.use_segfault_handler {
+	if g.use_signal_handler {
 		b.writeln('\n#define V_USE_SIGNAL_H')
 	}
 	b.writeln('\n// V comptime_definitions:')
@@ -677,7 +677,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		is_autofree: global_g.pref.autofree
 		referenced_fns: global_g.referenced_fns
 		is_cc_msvc: global_g.is_cc_msvc
-		use_segfault_handler: global_g.use_segfault_handler
+		use_signal_handler: global_g.use_signal_handler
 		has_reflection: 'v.reflection' in global_g.table.modules
 		reflection_funcs: strings.new_builder(100)
 		reflection_others: strings.new_builder(100)
@@ -876,8 +876,8 @@ pub fn (mut g Gen) init() {
 	// we know that this is being called before the multi-threading starts
 	// and this is being called in the main thread, so we can mutate the table
 	mut muttable := unsafe { &ast.Table(g.table) }
-	if g.use_segfault_handler {
-		muttable.used_fns['v_segmentation_fault_handler'] = true
+	if g.use_signal_handler {
+		muttable.used_fns['sigaction_handler'] = true
 	}
 	muttable.used_fns['eprintln'] = true
 	muttable.used_fns['print_backtrace'] = true
@@ -5302,10 +5302,6 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('\tv__trace_calls__on_call(_SLIT("_vinit"));')
 	}
 
-	if g.use_segfault_handler {
-		// 11 is SIGSEGV. It is hardcoded here, to avoid FreeBSD compilation errors for trivial examples.
-		g.writeln('#if __STDC_HOSTED__ == 1\n\tsignal(11, v_segmentation_fault_handler);\n#endif')
-	}
 	if g.pref.is_bare {
 		g.writeln('init_global_allocator();')
 	}
