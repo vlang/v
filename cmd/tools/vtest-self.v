@@ -230,6 +230,7 @@ const (
 		'do_not_remove',
 		'vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v', // error C2099: initializer is not a constant
 		'vlib/v/tests/const_and_global_with_same_name_test.v', // error C2099: initializer is not a constant
+		'vlib/v/tests/sumtype_as_cast_test.v', // error: Compound statement expression cannot support
 	]
 	skip_on_windows               = [
 		'do_not_remove',
