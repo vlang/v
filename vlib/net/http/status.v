@@ -76,6 +76,8 @@ pub enum Status {
 	network_authentication_required = 511
 }
 
+// status_from_int returns the corresponding enum field of Status
+// given the `code` in integer value.
 pub fn status_from_int(code int) Status {
 	return match code {
 		100 { Status.cont }
@@ -154,6 +156,7 @@ pub fn status_from_int(code int) Status {
 	}
 }
 
+// str returns the string representation of Status `code`.
 pub fn (code Status) str() string {
 	return match code {
 		.cont { 'Continue' }

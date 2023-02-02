@@ -147,7 +147,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				if field.typ.is_ptr() {
 					if field.default_expr is ast.IntegerLiteral {
 						if !c.inside_unsafe && !c.is_builtin_mod && field.default_expr.val == '0' {
-							c.warn('default value of `0` for references can only be used inside `unsafe`',
+							c.error('default value of `0` for references can only be used inside `unsafe`',
 								field.default_expr.pos)
 						}
 					}
@@ -386,6 +386,15 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			for mut field in node.fields {
 				field.typ = c.expr(field.expr)
 				field.expected_type = field.typ
+			}
+			sym := c.table.sym(c.unwrap_generic(node.typ))
+			if sym.kind == .struct_ {
+				info := sym.info as ast.Struct
+				if node.no_keys && node.fields.len != info.fields.len {
+					fname := if info.fields.len != 1 { 'fields' } else { 'field' }
+					c.error('initializing struct `${sym.name}` needs `${info.fields.len}` ${fname}, but got `${node.fields.len}`',
+						node.pos)
+				}
 			}
 		}
 		// string & array are also structs but .kind of string/array

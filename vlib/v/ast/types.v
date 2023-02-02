@@ -855,8 +855,13 @@ pub fn (t &TypeSymbol) is_number() bool {
 }
 
 [inline]
+pub fn (t &TypeSymbol) is_bool() bool {
+	return t.kind == .bool
+}
+
+[inline]
 pub fn (t &TypeSymbol) is_primitive() bool {
-	return t.is_number() || t.is_pointer() || t.is_string()
+	return t.is_number() || t.is_pointer() || t.is_string() || t.is_bool()
 }
 
 [inline]
@@ -1611,6 +1616,12 @@ pub fn (t &TypeSymbol) find_field(name string) ?StructField {
 		SumType { return t.info.find_field(name) }
 		else { return none }
 	}
+}
+
+pub fn (t &TypeSymbol) has_field(name string) bool {
+	t.find_field(name) or { return false }
+
+	return true
 }
 
 fn (a &Aggregate) find_field(name string) ?StructField {

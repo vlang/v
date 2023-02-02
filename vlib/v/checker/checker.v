@@ -87,6 +87,7 @@ mut:
 	// increases for `x := optfn() or { statement_list3 }`;
 	files                            []ast.File
 	expr_level                       int // to avoid infinite recursion segfaults due to compiler bugs
+	ensure_generic_type_level        int // to avoid infinite recursion segfaults in ensure_generic_type_specify_type_names
 	cur_orm_ts                       ast.TypeSymbol
 	cur_anon_fn                      &ast.AnonFn = unsafe { nil }
 	error_details                    []string
@@ -111,7 +112,8 @@ mut:
 	inside_println_arg               bool
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
-	comptime_call_pos                int  // needed for correctly checking use before decl for templates
+	is_index_assign                  bool
+	comptime_call_pos                int // needed for correctly checking use before decl for templates
 	goto_labels                      map[string]ast.GotoLabel // to check for unused goto labels
 }
 
@@ -204,7 +206,7 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 
 	c.stmt_level = 0
 	for mut stmt in ast_file.stmts {
-		if stmt !is ast.ConstDecl && stmt !is ast.GlobalDecl && stmt !is ast.ExprStmt {
+		if stmt !in [ast.ConstDecl, ast.GlobalDecl, ast.ExprStmt] {
 			c.expr_level = 0
 			c.stmt(stmt)
 		}
@@ -433,30 +435,86 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 	}
 	c.ensure_type_exists(node.parent_type, node.type_pos) or { return }
-	mut typ_sym := c.table.sym(node.parent_type)
-	if typ_sym.kind in [.placeholder, .int_literal, .float_literal] {
-		c.error('unknown type `${typ_sym.name}`', node.type_pos)
-	} else if typ_sym.kind == .alias {
-		orig_sym := c.table.sym((typ_sym.info as ast.Alias).parent_type)
-		c.error('type `${typ_sym.str()}` is an alias, use the original alias type `${orig_sym.name}` instead',
-			node.type_pos)
-	} else if typ_sym.kind == .chan {
-		c.error('aliases of `chan` types are not allowed.', node.type_pos)
-	} else if typ_sym.kind == .function {
-		orig_sym := c.table.type_to_str(node.parent_type)
-		c.error('type `${typ_sym.str()}` is an alias, use the original alias type `${orig_sym}` instead',
-			node.type_pos)
-	} else if typ_sym.kind == .struct_ {
-		if mut typ_sym.info is ast.Struct {
-			// check if the generic param types have been defined
-			for ct in typ_sym.info.concrete_types {
-				ct_sym := c.table.sym(ct)
-				if ct_sym.kind == .placeholder {
-					c.error('unknown type `${ct_sym.name}`', node.type_pos)
+	mut parent_typ_sym := c.table.sym(node.parent_type)
+	match parent_typ_sym.kind {
+		.placeholder, .int_literal, .float_literal {
+			c.error('unknown aliased type `${parent_typ_sym.name}`', node.type_pos)
+		}
+		.alias {
+			orig_sym := c.table.sym((parent_typ_sym.info as ast.Alias).parent_type)
+			c.error('type `${parent_typ_sym.str()}` is an alias, use the original alias type `${orig_sym.name}` instead',
+				node.type_pos)
+		}
+		.chan {
+			c.error('aliases of `chan` types are not allowed', node.type_pos)
+		}
+		.thread {
+			c.error('aliases of `thread` types are not allowed', node.type_pos)
+		}
+		.multi_return {
+			c.error('aliases of function multi return types are not allowed', node.type_pos)
+		}
+		.void {
+			c.error('aliases of the void type are not allowed', node.type_pos)
+		}
+		.function {
+			orig_sym := c.table.type_to_str(node.parent_type)
+			c.error('type `${parent_typ_sym.str()}` is an alias, use the original alias type `${orig_sym}` instead',
+				node.type_pos)
+		}
+		.struct_ {
+			if mut parent_typ_sym.info is ast.Struct {
+				// check if the generic param types have been defined
+				for ct in parent_typ_sym.info.concrete_types {
+					ct_sym := c.table.sym(ct)
+					if ct_sym.kind == .placeholder {
+						c.error('unknown type `${ct_sym.name}`', node.type_pos)
+					}
 				}
 			}
 		}
+		.array {
+			c.check_alias_vs_element_type_of_parent(node, (parent_typ_sym.info as ast.Array).elem_type,
+				'array')
+		}
+		.array_fixed {
+			c.check_alias_vs_element_type_of_parent(node, (parent_typ_sym.info as ast.ArrayFixed).elem_type,
+				'fixed array')
+		}
+		.map {
+			info := parent_typ_sym.info as ast.Map
+			c.check_alias_vs_element_type_of_parent(node, info.key_type, 'map key')
+			c.check_alias_vs_element_type_of_parent(node, info.value_type, 'map value')
+		}
+		.sum_type {
+			// TODO: decide whether the following should be allowed. Note that it currently works,
+			// while `type Sum = int | Sum` is explicitly disallowed:
+			// type Sum = int | Alias
+			// type Alias = Sum
+		}
+		// The rest of the parent symbol kinds are also allowed, since they are either primitive types,
+		// that in turn do not allow recursion, or are abstract enough so that they can not be checked at comptime:
+		else {}
+		/*
+		.voidptr, .byteptr, .charptr {}
+		.char, .rune, .bool {}
+		.string, .enum_, .none_, .any {}
+		.i8, .i16, .int, .i64, .isize {}
+		.u8, .u16, .u32, .u64, .usize {}
+		.f32, .f64 {}
+		.interface_ {}
+		.generic_inst {}
+		.aggregate {}
+		*/
 	}
+}
+
+fn (mut c Checker) check_alias_vs_element_type_of_parent(node ast.AliasTypeDecl, element_type_of_parent ast.Type, label string) {
+	if node.typ.idx() != element_type_of_parent.idx() {
+		return
+	}
+	c.error('recursive declarations of aliases are not allowed - the alias `${node.name}` is used in the ${label}',
+		node.type_pos)
 }
 
 fn (mut c Checker) fn_type_decl(node ast.FnTypeDecl) {
@@ -992,6 +1050,10 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 		if expr.or_expr.kind != .absent {
 			c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result))
 		}
+	} else if expr is ast.CastExpr {
+		c.check_expr_opt_call(expr.expr, ret_type)
+	} else if expr is ast.AsCast {
+		c.check_expr_opt_call(expr.expr, ret_type)
 	}
 	return ret_type
 }
@@ -1028,7 +1090,6 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 		}
 		return
 	}
-
 	if node.stmts.len == 0 {
 		if ret_type != ast.void_type {
 			// x := f() or {}
@@ -1116,7 +1177,7 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 				}
 			}
 			else {
-				if stmt.typ == ast.void_type {
+				if stmt.typ == ast.void_type || expr_return_type == ast.void_type {
 					return
 				}
 				if is_noreturn_callexpr(stmt.expr) {
@@ -1519,7 +1580,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 		}
 		else {
 			c.error('`${senum_type}` is not one of `i8`,`i16`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`',
-				node.pos)
+				node.typ_pos)
 		}
 	}
 	if enum_imin > 0 {
@@ -3357,9 +3418,7 @@ fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 					}
 				} else {
 					if branch.stmt.expr is ast.InfixExpr {
-						if branch.stmt.expr.left !is ast.Ident
-							&& branch.stmt.expr.left !is ast.SelectorExpr
-							&& branch.stmt.expr.left !is ast.IndexExpr {
+						if branch.stmt.expr.left !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
 							c.error('channel in `select` key must be predefined', branch.stmt.expr.left.pos())
 						}
 					} else {
@@ -3371,8 +3430,7 @@ fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 				expr := branch.stmt.right[0]
 				match expr {
 					ast.PrefixExpr {
-						if expr.right !is ast.Ident && expr.right !is ast.SelectorExpr
-							&& expr.right !is ast.IndexExpr {
+						if expr.right !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
 							c.error('channel in `select` key must be predefined', expr.right.pos())
 						}
 						if expr.or_block.kind != .absent {
@@ -3505,32 +3563,7 @@ fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 
 pub fn (mut c Checker) is_comptime_var(node ast.Expr) bool {
 	return c.inside_comptime_for_field && node is ast.Ident
-		&& (node as ast.Ident).info is ast.IdentVar && ((node as ast.Ident).obj as ast.Var).is_comptime_field
-}
-
-fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
-	typ := c.unwrap_generic(c.expr(node.expr))
-	typ_sym := c.table.sym(typ)
-	is_non_void_pointer := (typ.is_ptr() || typ.is_pointer()) && typ_sym.kind != .voidptr
-	if !c.inside_unsafe && is_non_void_pointer && !node.expr.is_auto_deref_var() {
-		c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
-	}
-	if !(typ_sym.is_number() || ((c.inside_unsafe || c.pref.translated) && is_non_void_pointer)) {
-		if c.inside_comptime_for_field {
-			if c.is_comptime_var(node.expr) {
-				return c.comptime_fields_default_type
-			} else if node.expr is ast.ComptimeSelector {
-				return c.comptime_fields_default_type
-			}
-		}
-
-		typ_str := c.table.type_to_str(typ)
-		c.error('invalid operation: ${node.op.str()} (non-numeric type `${typ_str}`)',
-			node.pos)
-	} else {
-		node.auto_locked, _ = c.fail_if_immutable(node.expr)
-	}
-	return typ
+		&& (node as ast.Ident).info is ast.IdentVar && (node as ast.Ident).kind == .variable && ((node as ast.Ident).obj as ast.Var).is_comptime_field
 }
 
 fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
@@ -3813,10 +3846,11 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			node.pos)
 	}
 
-	if !c.inside_unsafe && !c.is_builtin_mod && typ_sym.kind == .map && node.or_expr.stmts.len == 0 {
+	if !c.inside_unsafe && !c.is_builtin_mod && !c.inside_if_guard && !c.is_index_assign
+		&& typ_sym.kind == .map && node.or_expr.stmts.len == 0 {
 		elem_type := c.table.value_type(typ)
 		if elem_type.is_real_pointer() {
-			c.note('accessing a pointer map value requires an `or{}` block outside `unsafe`',
+			c.note('accessing a pointer map value requires an `or {}` block outside `unsafe`',
 				node.pos)
 		}
 	}
@@ -4214,9 +4248,26 @@ fn (mut c Checker) trace(fbase string, message string) {
 fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos token.Pos) ? {
 	if typ == 0 {
 		c.error('unknown type', pos)
-		return
+		return none
 	}
+
+	c.ensure_generic_type_level++
+	defer {
+		c.ensure_generic_type_level--
+	}
+	if c.ensure_generic_type_level > checker.expr_level_cutoff_limit {
+		c.error('checker: too many levels of Checker.ensure_generic_type_specify_type_names calls: ${c.ensure_generic_type_level} ',
+			pos)
+		return none
+	}
+
 	sym := c.table.final_sym(typ)
+	if c.ensure_generic_type_level > 38 {
+		dump(typ)
+		dump(sym.kind)
+		dump(pos)
+		dump(c.ensure_generic_type_level)
+	}
 	match sym.kind {
 		.function {
 			fn_info := sym.info as ast.FnType

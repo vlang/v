@@ -175,7 +175,7 @@ pub interface Connection {
 	delete(table string, where QueryData) !
 	create(table string, fields []TableField) !
 	drop(table string) !
-	last_id() Primitive
+	last_id() int
 }
 
 // Generates an sql stmt, from universal parameter

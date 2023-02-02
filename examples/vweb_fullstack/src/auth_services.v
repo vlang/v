@@ -31,7 +31,7 @@ fn (mut app App) service_auth(username string, password string) !string {
 	}
 
 	defer {
-		db.close() or { panic('fail to close database') }
+		db.close() or { panic(err) }
 	}
 
 	user := sql db {

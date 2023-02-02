@@ -412,15 +412,17 @@ fn (g &JsGen) get_all_test_function_names() []string {
 }
 
 pub fn (mut g JsGen) enter_namespace(name string) {
-	if unsafe { g.namespaces[name] == 0 } {
-		// create a new namespace
-		ns := &Namespace{
-			name: name
+	unsafe {
+		if g.namespaces[name] == 0 {
+			// create a new namespace
+			ns := &Namespace{
+				name: name
+			}
+			g.namespaces[name] = ns
+			g.ns = ns
+		} else {
+			g.ns = g.namespaces[name]
 		}
-		g.namespaces[name] = ns
-		g.ns = ns
-	} else {
-		g.ns = g.namespaces[name]
 	}
 	g.inside_builtin = name == 'builtin'
 }
@@ -1542,9 +1544,8 @@ fn (mut g JsGen) gen_const_decl(it ast.ConstDecl) {
 			g.push_pub_var(field.name)
 		}
 
-		if field.expr is ast.StringInterLiteral || field.expr is ast.StringLiteral
-			|| field.expr is ast.IntegerLiteral || field.expr is ast.FloatLiteral
-			|| field.expr is ast.BoolLiteral {
+		if field.expr in [ast.StringInterLiteral, ast.StringLiteral, ast.IntegerLiteral, ast.FloatLiteral,
+			ast.BoolLiteral] {
 			g.write('const ${g.js_name(field.name)} = ')
 			g.expr(field.expr)
 		} else {
@@ -2808,7 +2809,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 				guard_idx = i
 				guard_vars = []string{len: node.branches.len}
 			}
-			if cond.expr !is ast.IndexExpr && cond.expr !is ast.PrefixExpr {
+			if cond.expr !in [ast.IndexExpr, ast.PrefixExpr] {
 				var_name := g.new_tmp_var()
 				guard_vars[i] = var_name
 				g.writeln('let ${var_name};')

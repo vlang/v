@@ -38,7 +38,7 @@ fn start_server() ! {
 		slog('s.on_message_ref')
 		// for _, cli in m.clients {
 		for i, _ in m.clients {
-			mut c := m.clients[i]
+			mut c := m.clients[i] or { continue }
 			if c.client.state == .open && c.client.id != ws.id {
 				c.client.write(msg.payload, websocket.OPCode.text_frame) or { panic(err) }
 			}

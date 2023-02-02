@@ -1,7 +1,6 @@
 module checker
 
 import v.ast
-import v.pref
 import v.util
 import v.token
 import strings
@@ -147,7 +146,10 @@ fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
 		return expr.val.i64()
 	}
 	if mut expr is ast.Ident {
-		if mut obj := c.table.global_scope.find_const(expr.name) {
+		has_expr_mod_in_name := expr.name.contains('.')
+		expr_name := if has_expr_mod_in_name { expr.name } else { '${expr.mod}.${expr.name}' }
+
+		if mut obj := c.table.global_scope.find_const(expr_name) {
 			if obj.typ == 0 {
 				obj.typ = c.expr(obj.expr)
 			}

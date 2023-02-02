@@ -14,7 +14,13 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 	c.expr(node.cond)
 	if node.has_inc {
 		if node.inc is ast.AssignStmt {
-			for right in node.inc.right {
+			assign := node.inc
+
+			if assign.op == .decl_assign {
+				c.error('for loop post statement cannot be a variable declaration', assign.pos)
+			}
+
+			for right in assign.right {
 				if right is ast.CallExpr {
 					if right.or_block.stmts.len > 0 {
 						c.error('options are not allowed in `for statement increment` (yet)',
@@ -31,11 +37,19 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 	c.in_for_count--
 }
 
+fn (mut c Checker) get_compselector_type_from_selector_name(node ast.ComptimeSelector) (bool, ast.Type) {
+	if c.inside_comptime_for_field && node.field_expr is ast.SelectorExpr
+		&& (node.field_expr as ast.SelectorExpr).expr.str() in c.comptime_fields_type
+		&& (node.field_expr as ast.SelectorExpr).field_name == 'name' {
+		return true, c.unwrap_generic(c.comptime_fields_default_type)
+	}
+	return false, ast.void_type
+}
+
 fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	c.in_for_count++
 	prev_loop_label := c.loop_label
-	typ := c.expr(node.cond)
-	typ_idx := typ.idx()
+	mut typ := c.expr(node.cond)
 	if node.key_var.len > 0 && node.key_var != '_' {
 		c.check_valid_snake_case(node.key_var, 'variable name', node.pos)
 		if reserved_type_names_chk.matches(node.key_var) {
@@ -49,6 +63,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		}
 	}
 	if node.is_range {
+		typ_idx := typ.idx()
 		high_type := c.expr(node.high)
 		high_type_idx := high_type.idx()
 		if typ_idx in ast.integer_type_idxs && high_type_idx !in ast.integer_type_idxs
@@ -75,11 +90,18 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		node.high_type = high_type
 		node.scope.update_var_type(node.val_var, node.val_type)
 	} else {
-		sym := c.table.final_sym(typ)
+		mut sym := c.table.final_sym(typ)
 		if sym.kind != .string {
 			match mut node.cond {
 				ast.PrefixExpr {
 					node.val_is_ref = node.cond.op == .amp
+				}
+				ast.ComptimeSelector {
+					found, selector_type := c.get_compselector_type_from_selector_name(node.cond)
+					if found {
+						sym = c.table.final_sym(selector_type)
+						typ = selector_type
+					}
 				}
 				ast.Ident {
 					match mut node.cond.info {

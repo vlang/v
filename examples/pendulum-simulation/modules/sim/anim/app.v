@@ -13,7 +13,7 @@ struct Pixel {
 	color gx.Color
 }
 
-struct App {
+pub struct App {
 pub:
 	args         simargs.ParallelArgs
 	request_chan chan &sim.SimRequest

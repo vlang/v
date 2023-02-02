@@ -221,51 +221,124 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				}
 			}
 		} $else {
-			e.encode_newline(level, mut wr)!
-			if json_name != '' {
-				e.encode_string(json_name, mut wr)!
-			} else {
-				e.encode_string(field.name, mut wr)!
-			}
-			wr.write(json2.colon_bytes)!
+			is_none := val.$(field.name).str() == 'unknown sum type value'
+			if !is_none {
+				e.encode_newline(level, mut wr)!
+				if json_name != '' {
+					e.encode_string(json_name, mut wr)!
+				} else {
+					e.encode_string(field.name, mut wr)!
+				}
+				wr.write(json2.colon_bytes)!
 
-			if e.newline != 0 {
-				wr.write(json2.space_bytes)!
+				if e.newline != 0 {
+					wr.write(json2.space_bytes)!
+				}
 			}
 
 			$if field.typ is string {
-				e.encode_string(value.str(), mut wr)!
+				e.encode_string(val.$(field.name).str(), mut wr)!
 			} $else $if field.typ is time.Time {
-				parsed_time := val.$(field.name) as time.Time
-				e.encode_string(parsed_time.format_rfc3339(), mut wr)!
+				wr.write(json2.quote_bytes)!
+				wr.write(val.$(field.name).format_rfc3339().bytes())!
+				wr.write(json2.quote_bytes)!
 			} $else $if field.typ in [bool, $Float, $Int] {
-				wr.write(value.str().bytes())!
+				wr.write(val.$(field.name).str().bytes())!
 			} $else $if field.is_array {
+				// TODO - replace for `field.typ is $Array`
 				e.encode_array(value, level + 1, mut wr)!
-			} $else $if field.is_struct {
+			} $else $if field.typ is $Array {
+				// e.encode_array(value, level + 1, mut wr)! // FIXME - error: could not infer generic type `U` in call to `encode_array`
+			} $else $if field.typ is $Struct {
 				e.encode_struct(value, level + 1, mut wr)!
 			} $else $if field.is_enum {
+				// TODO - replace for `field.typ is $Enum`
 				wr.write(int(val.$(field.name)).str().bytes())!
-			} $else $if field.is_alias {
+			} $else $if field.typ is $Enum {
+				// wr.write(int(val.$(field.name)).str().bytes())! // FIXME - error: cannot cast string to `int`, use `val.$field.name.int()` instead.
+			} $else $if field.typ is $Sumtype {
+				// dump(val.$(field.name).str())
+				// dump(is_none)
+				sum_type_value := value.str()#[typeof(val.$(field.name)).name.len + 1..-1]
+
+				is_string := sum_type_value[0] == "'"[0]
+
+				// mut is_struct := false
+				// mut is_sumtype := false
+				// mut is_enum := false
+				// mut is_array := false
+
+				match sum_type_value[0] {
+					`0`...`9` {
+						if sum_type_value.contains_any(' /:-') {
+							date_time_str := time.parse(sum_type_value)!
+							wr.write(date_time_str.format_rfc3339().bytes())!
+						} else {
+							wr.write(sum_type_value.bytes())!
+						}
+					}
+					`A`...`Z` {
+						// SumTypes(0)
+						if sum_type_value.contains('(') {
+							if !sum_type_value.all_before('(').contains_any(' "\'[') {
+								// is_sumtype = true
+							}
+						}
+						// StructType{
+						// StructType[int]{
+						if sum_type_value.contains('{') {
+							if !sum_type_value.all_before('{').contains_any(' "\'') {
+								// is_struct = true
+								// TODO
+								// e.encode_struct_from_sumtype(value, level + 1, mut wr)!
+							}
+						}
+					}
+					`a`...`z` {
+						if sum_type_value in ['true', 'false'] {
+							wr.write(sum_type_value.bytes())!
+						} else {
+							// is_enum = true
+						}
+					}
+					else {
+						// dump('else')
+					}
+				}
+				// dump(sum_type_value)
+
+				// dump(is_none)
+				// dump(is_string)
+				// dump(is_struct)
+				// dump(is_sumtype)
+				// dump(is_enum)
+				// dump(is_array)
+				if is_string {
+					e.encode_string(sum_type_value#[1..-1], mut wr)!
+				}
+			} $else $if field.typ is $Alias {
 				$if field.unaliased_typ is string {
-					e.encode_string(value.str(), mut wr)!
+					e.encode_string(val.$(field.name).str(), mut wr)!
 				} $else $if field.unaliased_typ is time.Time {
 					parsed_time := val.$(field.name) as time.Time
 					e.encode_string(parsed_time.format_rfc3339(), mut wr)!
 				} $else $if field.unaliased_typ in [bool, $Float, $Int] {
-					wr.write(value.str().bytes())!
-				}
-				// FIXME
-				// $else $if field.unaliased_typ is $Array {
-				// 	// e.encode_array(value, level + 1, mut wr)!
-				// } $else $if field.unaliased_typ is $Struct {
-				// 	// e.encode_struct(value, level + 1, mut wr)!
-				// } $else $if  field.unaliased_typ is $Enum {
-				// 	// wr.write(int(val.$(field.name)).str().bytes())!
-				// }
-				$else {
+					wr.write(val.$(field.name).str().bytes())!
+				} $else $if field.unaliased_typ is $Array {
+					// e.encode_array(val.$(field.name), level + 1, mut wr)! // FIXME - error: could not infer generic type `U` in call to `encode_array`
+				} $else $if field.unaliased_typ is $Struct {
+					// e.encode_struct(val.$(field.name), level + 1, mut wr)! // FIXME - error: cannot use `BoolAlias` as `StringAlias` in argument 1 to `x.json2.Encoder.encode_struct`
 					e.encode_struct(value, level + 1, mut wr)!
-					// return error('the alias ${typeof(val).name} cannot be encoded')
+				} $else $if field.unaliased_typ is $Enum {
+					// enum_value := val.$(field.name)
+					// dump(int(val.$(field.name))) // FIXME
+					// dump(val.$(field.name).int()) // FIXME - error: unknown method or field: `BoolAlias.int`
+					// dump(val.$(field.name).int()) // FIXME - error: cannot convert 'enum <anonymous>' to 'struct string'
+
+					// wr.write(val.$(field.name).int().str().bytes())! // FIXME - error: unknown method or field: `BoolAlias.int`
+				} $else $if field.unaliased_typ is $Sumtype {
+				} $else {
+					return error('the alias ${typeof(val).name} cannot be encoded')
 				}
 			} $else {
 				return error('type ${typeof(val).name} cannot be array encoded')
@@ -317,6 +390,12 @@ fn (e &Encoder) encode_array[U](val []U, level int, mut wr io.Writer) ! {
 			// e.encode_array(val[i], level + 1, mut wr)!
 		} $else $if U is $Struct {
 			e.encode_struct(val[i], level + 1, mut wr)!
+		} $else $if U is $Sumtype {
+			$if U is Any {
+				e.encode_any(val[i], level + 1, mut wr)!
+			} $else {
+				// TODO
+			}
 		} $else $if U is $Enum {
 			e.encode_any(i64(val[i]), level + 1, mut wr)!
 		} $else {
@@ -399,6 +478,7 @@ fn (mut iter CharLengthIterator) next() ?int {
 	return len
 }
 
+// TODO - Need refactor. Is so slow. The longer the string, the lower the performance.
 // encode_string returns the JSON spec-compliant version of the string.
 [manualfree]
 fn (e &Encoder) encode_string(s string, mut wr io.Writer) ! {

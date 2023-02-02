@@ -278,7 +278,8 @@ pub fn (mut s UdpSocket) set_dualstack(on bool) ! {
 }
 
 fn (mut s UdpSocket) close() ! {
-	return shutdown(s.handle)
+	shutdown(s.handle)
+	return close(s.handle)
 }
 
 fn (mut s UdpSocket) @select(test Select, timeout time.Duration) !bool {

@@ -35,9 +35,26 @@ mut:
 	len u64
 }
 
-fn (mut d Digest) reset() {
+// free the resources taken by the Digest `d`
+[unsafe]
+pub fn (mut d Digest) free() {
+	$if prealloc {
+		return
+	}
+	unsafe {
+		d.x.free()
+		d.h.free()
+	}
+}
+
+fn (mut d Digest) init() {
 	d.x = []u8{len: sha1.chunk}
 	d.h = []u32{len: (5)}
+	d.reset()
+}
+
+// reset the state of the Digest `d`
+pub fn (mut d Digest) reset() {
 	d.h[0] = u32(sha1.init0)
 	d.h[1] = u32(sha1.init1)
 	d.h[2] = u32(sha1.init2)
@@ -50,7 +67,7 @@ fn (mut d Digest) reset() {
 // new returns a new Digest (implementing hash.Hash) computing the SHA1 checksum.
 pub fn new() &Digest {
 	mut d := &Digest{}
-	d.reset()
+	d.init()
 	return d
 }
 

@@ -4,6 +4,7 @@
 module cflag
 
 import os
+import strings
 
 // parsed cflag
 pub struct CFlag {
@@ -24,7 +25,7 @@ const fexisting_literal = r'$first_existing'
 
 // expand the flag value
 pub fn (cf &CFlag) eval() string {
-	mut value := ''
+	mut value_builder := strings.new_builder(10 * cf.value.len)
 	cflag_eval_outer_loop: for i := 0; i < cf.value.len; i++ {
 		x := cf.value[i]
 		if x == `$` {
@@ -37,7 +38,7 @@ pub fn (cf &CFlag) eval() string {
 				for spath in svalues {
 					if os.exists(spath) {
 						// found_spath = spath
-						value += spath
+						value_builder.write_string(spath)
 						continue cflag_eval_outer_loop
 					}
 				}
@@ -45,9 +46,9 @@ pub fn (cf &CFlag) eval() string {
 				continue
 			}
 		}
-		value += x.ascii_str()
+		value_builder.write_string(x.ascii_str())
 	}
-	return value
+	return value_builder.str()
 }
 
 // format flag
@@ -79,7 +80,7 @@ pub fn (cflags []CFlag) c_options_after_target_msvc() []string {
 
 pub fn (cflags []CFlag) c_options_before_target() []string {
 	defines, others, _ := cflags.defines_others_libs()
-	mut args := []string{}
+	mut args := []string{cap: defines.len + others.len}
 	args << defines
 	args << others
 	return args

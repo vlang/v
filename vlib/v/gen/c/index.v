@@ -314,7 +314,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 				g.write('))')
 			}
 		}
-		if needs_clone {
+		if !gen_or && needs_clone {
 			g.write(')')
 		}
 		if gen_or {

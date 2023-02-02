@@ -2069,9 +2069,8 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	} else if !p.pref.translated && !p.is_translated && !p.pref.is_fmt && !p.pref.is_vet
 		&& tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select] {
 		for node in left {
-			if (is_top_level || p.tok.kind != .rcbr) && node !is ast.CallExpr
-				&& node !is ast.PostfixExpr && node !is ast.ComptimeCall
-				&& node !is ast.SelectorExpr && node !is ast.DumpExpr {
+			if (is_top_level || p.tok.kind != .rcbr)
+				&& node !in [ast.CallExpr, ast.PostfixExpr, ast.ComptimeCall, ast.SelectorExpr, ast.DumpExpr] {
 				is_complex_infix_expr := node is ast.InfixExpr
 					&& (node as ast.InfixExpr).op in [.left_shift, .right_shift, .unsigned_right_shift, .arrow]
 				if !is_complex_infix_expr {
@@ -2517,7 +2516,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// type cast. TODO: finish
 		// if name in ast.builtin_type_names_to_idx {
 		if (!known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs)
-			&& name !in ['C.stat', 'C.sigaction']) || is_mod_cast || is_generic_cast
+			&& name !in ['C.statvfs', 'C.stat', 'C.sigaction']) || is_mod_cast
+			|| is_generic_cast
 			|| (language == .v && name.len > 0 && name[0].is_capital()) {
 			// MainLetter(x) is *always* a cast, as long as it is not `C.`
 			// TODO handle C.stat()
@@ -3775,8 +3775,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	name := p.prepend_mod(enum_name)
 	mut enum_type := ast.int_type
+	mut typ_pos := token.Pos{}
 	if p.tok.kind == .key_as {
 		p.next()
+		typ_pos = p.tok.pos()
 		enum_type = p.parse_type()
 	}
 	p.check(.lcbr)
@@ -3857,6 +3859,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	enum_decl := ast.EnumDecl{
 		name: name
 		typ: enum_type
+		typ_pos: typ_pos
 		is_pub: is_pub
 		is_flag: is_flag
 		is_multi_allowed: is_multi_allowed
@@ -4001,6 +4004,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	return ast.AliasTypeDecl{
 		name: name
 		is_pub: is_pub
+		typ: idx
 		parent_type: parent_type
 		type_pos: type_pos.extend(type_end_pos)
 		pos: decl_pos

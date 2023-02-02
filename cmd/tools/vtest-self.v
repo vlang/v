@@ -84,6 +84,7 @@ const (
 		'vlib/x/json2/json2_test.v',
 	]
 	skip_test_files               = [
+		'do_not_remove',
 		'cmd/tools/vdoc/html_tag_escape_test.v', /* can't locate local module: markdown */
 		'cmd/tools/vdoc/tests/vdoc_file_test.v', /* fails on Windows; order of output is not as expected */
 		'vlib/context/onecontext/onecontext_test.v',
@@ -91,9 +92,10 @@ const (
 		'vlib/db/mysql/mysql_orm_test.v' /* mysql not installed */,
 		'vlib/db/pg/pg_orm_test.v' /* pg not installed */,
 	]
+	// These tests are too slow to be run in the CI on each PR/commit
+	// in the sanitized modes:
 	skip_fsanitize_too_slow       = [
-		// These tests are too slow to be run in the CI on each PR/commit
-		// in the sanitized modes:
+		'do_not_remove',
 		'vlib/v/compiler_errors_test.v',
 		'vlib/v/doc/doc_test.v',
 		'vlib/v/fmt/fmt_test.v',
@@ -109,6 +111,7 @@ const (
 		'vlib/v/slow_tests/valgrind/valgrind_test.v',
 	]
 	skip_with_fsanitize_memory    = [
+		'do_not_remove',
 		'vlib/net/tcp_simple_client_server_test.v',
 		'vlib/net/http/cookie_test.v',
 		'vlib/net/http/http_test.v',
@@ -120,6 +123,11 @@ const (
 		'vlib/net/tcp_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/orm/orm_sql_or_blocks_test.v',
+		'vlib/orm/orm_create_and_drop_test.v',
+		'vlib/orm/orm_insert_test.v',
+		'vlib/orm/orm_fn_calls_test.v',
+		'vlib/orm/orm_last_id_test.v',
+		'vlib/orm/orm_string_interpolation_in_where_test.v',
 		'vlib/db/sqlite/sqlite_test.v',
 		'vlib/db/sqlite/sqlite_orm_test.v',
 		'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
@@ -128,6 +136,7 @@ const (
 		'vlib/v/tests/orm_joined_tables_select_test.v',
 		'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 		'vlib/v/tests/orm_stmt_wrong_return_checking_test.v',
+		'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/csrf/csrf_test.v',
 		'vlib/vweb/request_test.v',
@@ -141,13 +150,20 @@ const (
 		'vlib/v/tests/fn_literal_type_test.v',
 	]
 	skip_with_fsanitize_address   = [
+		'do_not_remove',
 		'vlib/net/websocket/websocket_test.v',
+		'vlib/orm/orm_create_and_drop_test.v',
+		'vlib/orm/orm_insert_test.v',
 		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
+		'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 	]
 	skip_with_fsanitize_undefined = [
 		'do_not_remove',
+		'vlib/orm/orm_create_and_drop_test.v',
+		'vlib/orm/orm_insert_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
+		'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 	]
 	skip_with_werror              = [
 		'do_not_remove',
@@ -160,11 +176,13 @@ const (
 		'do_not_remove',
 	]
 	skip_on_musl                  = [
+		'do_not_remove',
 		'vlib/v/slow_tests/profile/profile_test.v',
 		'vlib/gg/draw_fns_api_test.v',
 		'vlib/v/tests/skip_unused/gg_code.vv',
 	]
 	skip_on_ubuntu_musl           = [
+		'do_not_remove',
 		//'vlib/v/gen/js/jsgen_test.v',
 		'vlib/net/http/cookie_test.v',
 		'vlib/net/http/http_test.v',
@@ -175,10 +193,16 @@ const (
 		'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/orm/orm_sql_or_blocks_test.v',
+		'vlib/orm/orm_create_and_drop_test.v',
+		'vlib/orm/orm_insert_test.v',
+		'vlib/orm/orm_fn_calls_test.v',
+		'vlib/orm/orm_last_id_test.v',
+		'vlib/orm/orm_string_interpolation_in_where_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_joined_tables_select_test.v',
 		'vlib/v/tests/orm_stmt_wrong_return_checking_test.v',
+		'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 		'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/vweb/tests/vweb_test.v',
@@ -206,8 +230,10 @@ const (
 		'do_not_remove',
 		'vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v', // error C2099: initializer is not a constant
 		'vlib/v/tests/const_and_global_with_same_name_test.v', // error C2099: initializer is not a constant
+		'vlib/v/tests/sumtype_as_cast_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
 	]
 	skip_on_windows               = [
+		'do_not_remove',
 		'vlib/context/cancel_test.v',
 		'vlib/context/deadline_test.v',
 		'vlib/context/empty_test.v',
@@ -215,6 +241,7 @@ const (
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_joined_tables_select_test.v',
+		'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/net/unix/unix_test.v',
 		'vlib/net/unix/use_net_and_net_unix_together_test.v',
@@ -248,6 +275,7 @@ const (
 		'do_not_remove',
 	]
 	skip_on_non_amd64_or_arm64    = [
+		'do_not_remove',
 		// closures aren't implemented yet:
 		'vlib/v/tests/closure_test.v',
 		'vlib/context/cancel_test.v',
