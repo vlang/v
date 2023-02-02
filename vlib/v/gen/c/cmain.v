@@ -111,7 +111,6 @@ fn (mut g Gen) gen_sigaction() {
 
 	sigaction(SIGSEGV, &sa, &oldsa);
 	sigaction(SIGBUS, &sa, &oldsa);
-	sigaction(SIGFPE, &sa, &oldsa);
 #endif
 '.trim_indent())
 }
