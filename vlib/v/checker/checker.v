@@ -4509,3 +4509,15 @@ fn (mut c Checker) deprecate_old_isreftype_and_sizeof_of_a_guessed_type(is_guess
 			pos)
 	}
 }
+
+fn (c &Checker) check_import_sym_conflict(ident string) bool {
+	for import in c.file.imports {
+		// Check if alias exists or not
+		if import.alias.is_blank() {
+			return import.alias == ident
+		} else if import.mod == ident {
+			return true
+		}
+	}
+	return false
+}
