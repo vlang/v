@@ -2580,7 +2580,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			return
 		}
 	}
-	if exp_sym.kind == .function {
+	if exp_sym.kind == .function && !expected_type.has_flag(.option)
+		&& !expected_type.has_flag(.result) {
 		g.write('(voidptr)')
 	}
 	// no cast
