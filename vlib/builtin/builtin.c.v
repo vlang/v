@@ -160,12 +160,14 @@ pub fn panic_error_number(basestr string, errnum int) {
 
 // fatal_mem is called by V, when a memory access error occurs (SIGSEGV or SIGBUS).
 // See `signals_handler()`
+[noreturn]
 fn fatal_mem() {
 	fatal('invalid memory address or nil pointer dereference')
 }
 
 // fatal show fatal error message, print a backtrace on most platforms
 // and exits the process with exit code of 1.
+[noreturn]
 pub fn fatal(msg string) {
 	eprint('Fatal: ')
 	eprint(msg)
