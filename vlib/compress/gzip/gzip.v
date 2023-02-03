@@ -70,7 +70,7 @@ pub mut:
 }
 
 // validate validates the header and returns its details if valid
-pub fn validate(data []u8, params DecomprParams) !GzipHeader {
+pub fn validate(data []u8, params DecompressParams) !GzipHeader {
 	if data.len < gzip.min_header_length {
 		return error('data is too short, not gzip compressed?')
 	} else if data[0] != 0x1f || data[1] != 0x8b {
@@ -135,7 +135,7 @@ pub fn validate(data []u8, params DecomprParams) !GzipHeader {
 
 // decompresses an array of bytes using zlib and returns the decompressed bytes in a new array
 // Example: decompressed := gzip.decompress(b)?
-pub fn decompress(data []u8, params DecomprParams) ![]u8 {
+pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 	gzip_header := validate(data, params)!
 	header_length := gzip_header.length
 
