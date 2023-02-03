@@ -522,7 +522,7 @@ pub const (
 	voidptr_types      = new_voidptr_types()
 	cptr_types         = merge_types(voidptr_types, byteptr_types, charptr_types)
 	nil_type           = new_type(nil_type_idx)
-	stack_type = new_type(stack_type_idx)
+	stack_type         = new_type(stack_type_idx)
 )
 
 fn new_charptr_types() []Type {
