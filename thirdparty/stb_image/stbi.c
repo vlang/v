@@ -10,9 +10,10 @@ extern void   stbi__callback_free(void *ptr);
 #define STBI_MALLOC(sz)           stbi__callback_malloc(sz)
 #define STBI_REALLOC(p,newsz)     stbi__callback_realloc(p,newsz)
 #define STBI_FREE(p)              stbi__callback_free(p)
-#define STBIW_MALLOC(sz)          stbi__callback_malloc(sz)
-#define STBIW_REALLOC(p,newsz)    stbi__callback_realloc(p,newsz)
-#define STBIW_FREE(p)             stbi__callback_free(p)
+// TODO: Using garbage collection in `stb_image_write.h` currently causes memory corruption sometimes
+//#define STBIW_MALLOC(sz)          stbi__callback_malloc(sz)
+//#define STBIW_REALLOC(p,newsz)    stbi__callback_realloc(p,newsz)
+//#define STBIW_FREE(p)             stbi__callback_free(p)
 
 #include "stb_image.h"
 #include "stb_image_write.h"
