@@ -254,6 +254,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('duplicate of an import symbol `${param.name}`', param.pos)
 			}
 		}
+		// Check if function name is already registered as imported module symbol
+		if c.file.imports.any(it.mod == node.short_name) {
+			c.error('duplicate of an import symbol `${node.short_name}`', node.pos)
+		}
 	}
 	if node.language == .v && node.name.after_char(`.`) == 'init' && !node.is_method
 		&& node.params.len == 0 {
@@ -376,10 +380,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		} else if !node.attrs.contains('_naked') {
 			c.error('missing return at end of function `${node.name}`', node.pos)
 		}
-	}
-	// Check if function name is already registered as imported module symbol
-	if c.file.imports.any(it.mod == node.short_name) {
-		c.error('duplicate of an import symbol `${node.short_name}`', node.pos)
 	}
 	node.source_file = c.file
 
