@@ -7,8 +7,8 @@ fn main() {
 }
 
 fn my_print() {
-	println('ahok${f.to_string()}')
-	// set to next thread stack
+	// set stack size to 1024 bites
+	// TODO const Kb, Mb and b?
 	.$stack_size(1024)
 	// ...
 	// posible works
