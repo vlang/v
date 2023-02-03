@@ -84,9 +84,9 @@ pub fn parse_file(path string) !Doc {
 		scanner: scanner.new_scanner(scanner_config)!
 	}
 	mut p := parser.new_parser(parser_config)
-	ast := p.parse()!
+	ast_ := p.parse()!
 	return Doc{
-		ast: ast
+		ast: ast_
 	}
 }
 
@@ -102,9 +102,9 @@ pub fn parse_text(text string) !Doc {
 		scanner: scanner.new_scanner(scanner_config)!
 	}
 	mut p := parser.new_parser(parser_config)
-	ast := p.parse()!
+	ast_ := p.parse()!
 	return Doc{
-		ast: ast
+		ast: ast_
 	}
 }
 
@@ -122,9 +122,9 @@ pub fn parse(toml string) !Doc {
 		scanner: scanner.new_scanner(scanner_config)!
 	}
 	mut p := parser.new_parser(parser_config)
-	ast := p.parse()!
+	ast_ := p.parse()!
 	return Doc{
-		ast: ast
+		ast: ast_
 	}
 }
 
