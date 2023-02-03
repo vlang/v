@@ -1,0 +1,28 @@
+import arrays
+import maps
+
+// FnDecl
+fn x(arrays []int) {
+
+}
+
+struct Foo {
+}
+
+// FnDecl with receiver
+fn (arrays Foo) x() {
+
+}
+
+fn (arrays Foo) y(maps []int) {
+
+}
+
+fn (foo Foo) z(arrays []int) {
+	
+}
+
+// AnonFn
+fn y() {
+	_ := fn (arrays []int) {}
+}

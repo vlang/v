@@ -1,0 +1,45 @@
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:1:8: warning: module 'arrays' is imported but never used
+    1 | import arrays
+      |        ~~~~~~
+    2 | import maps
+    3 |
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:2:8: warning: module 'maps' is imported but never used
+    1 | import arrays
+    2 | import maps
+      |        ~~~~
+    3 |
+    4 | // FnDecl
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:5:5: error: duplicate of an import symbol `arrays`
+    3 |
+    4 | // FnDecl
+    5 | fn x(arrays []int) {
+      |     ~~~~~~
+    6 |
+    7 | }
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:13:4: error: duplicate of an import symbol `arrays`
+   11 |
+   12 | // FnDecl with receiver
+   13 | fn (arrays Foo) x() {
+      |    ~~~~~~
+   14 |
+   15 | }
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:17:5: error: duplicate of an import symbol `arrays`
+   15 | }
+   16 |
+   17 | fn (arrays Foo) y(maps []int) {
+      |     ~~~~~~
+   18 |
+   19 | }
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:21:16: error: duplicate of an import symbol `arrays`
+   19 | }
+   20 |
+   21 | fn (foo Foo) z(arrays []int) {
+      |                ~~~~~~
+   22 |
+   23 | }
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:23:11: error: duplicate of an import symbol `arrays`
+   21 | // AnonFn
+   22 | fn y() {
+   23 |     _ := fn (arrays []int) {}
+      |              ~~~~~~
+   24 | }
