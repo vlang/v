@@ -1620,6 +1620,12 @@ pub fn (t &TypeSymbol) find_field(name string) ?StructField {
 	}
 }
 
+pub fn (t &TypeSymbol) has_field(name string) bool {
+	t.find_field(name) or { return false }
+
+	return true
+}
+
 fn (a &Aggregate) find_field(name string) ?StructField {
 	for mut field in unsafe { a.fields } {
 		if field.name == name {
