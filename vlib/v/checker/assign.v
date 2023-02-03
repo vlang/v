@@ -306,7 +306,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						}
 						// Check if variable name is already registered as imported module symbol
 						if c.file.imports.any(it.mod == left.name) {
-							c.error('duplicate of a import symbol `${left.name}`', left.pos)
+							c.error('duplicate of an import symbol `${left.name}`', left.pos)
 						}
 					}
 				}
