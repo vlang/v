@@ -412,13 +412,13 @@ pub fn (mut rng PRNG) exponential(lambda f64) f64 {
 // shuffle all elements until the end.
 [direct_array_access]
 pub fn (mut rng PRNG) shuffle[T](mut a []T, config_ config.ShuffleConfigStruct) ! {
-	config.validate_for(a)!
-	new_end := if config.end == 0 { a.len } else { config_.end }
+	config_.validate_for(a)!
+	new_end := if config_.end == 0 { a.len } else { config_.end }
 
 	// We implement the Fisher-Yates shuffle:
 	// https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle#The_modern_algorithm
 
-	for i in config.start .. new_end - 2 {
+	for i in config_.start .. new_end - 2 {
 		x := rng.int_in_range(i, new_end) or { i }
 		// swap
 		a_i := a[i]
