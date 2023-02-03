@@ -18,18 +18,30 @@ pub mut:
 	strings      map[int]string
 }
 
-// pub struct Interface {
-// pub:
-// 	name    string     // interface name
-// 	typ     int        // type idx
-// 	is_pub  bool       // is pub?
-// 	methods []Function // methods
-// }
+pub struct ArrayFixed {
+pub:
+	size      int // array size
+	elem_type int // elem type idx
+}
+
+pub struct Array {
+pub:
+	nr_dims   int // nr of dimensions
+	elem_type int // elem type idx
+}
+
+pub struct Alias {
+pub:
+	parent_idx int // parent type idx
+	language   ast.Language // language
+}
 
 pub struct Interface {
 pub:
-	name    string
-	methods []Function // methods
+	name       string        // interface name
+	methods    []Function    // methods
+	fields     []StructField // fields
+	is_generic bool // is generic?
 }
 
 pub struct None {
@@ -39,8 +51,8 @@ pub:
 
 pub struct Enum {
 pub:
-	vals    []string
-	is_flag bool
+	vals    []string // enum values
+	is_flag bool     // is flag?
 }
 
 pub struct StructField {
@@ -65,17 +77,25 @@ pub:
 	variants   []int // variant type idxs
 }
 
-pub type TypeInfo = Enum | Function | Interface | None | Struct | SumType
+pub type TypeInfo = Alias
+	| Array
+	| ArrayFixed
+	| Enum
+	| Function
+	| Interface
+	| None
+	| Struct
+	| SumType
 
 pub struct TypeSymbol {
 pub:
-	name       string     // symbol name
-	idx        int        // symbol idx
-	parent_idx int        // symbol parent idx
-	language   string     // language
-	kind       ast.Kind   // kind
-	info       TypeInfo   // info
-	methods    []Function // methods
+	name       string       // symbol name
+	idx        int          // symbol idx
+	parent_idx int          // symbol parent idx
+	language   ast.Language // language
+	kind       ast.Kind     // kind
+	info       TypeInfo     // info
+	methods    []Function   // methods
 }
 
 pub struct Type {

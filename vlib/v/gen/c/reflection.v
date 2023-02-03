@@ -88,7 +88,7 @@ fn (g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
 	}
 	info := g.gen_reflection_sym_info(tsym)
 	methods := g.gen_function_array(tsym.methods)
-	return '(v__reflection__TypeSymbol){.name=_SLIT("${tsym.name}"),.idx=${tsym.idx},.parent_idx=${tsym.parent_idx},.language=_SLIT("${tsym.language}"),.kind=v__ast__Kind__${kind_name},.info=${info},.methods=${methods}}'
+	return '(v__reflection__TypeSymbol){.name=_SLIT("${tsym.name}"),.idx=${tsym.idx},.parent_idx=${tsym.parent_idx},.language=v__ast__Language__${tsym.language},.kind=v__ast__Kind__${kind_name},.info=${info},.methods=${methods}}'
 }
 
 // gen_attrs_array generates C code for []Attr
@@ -152,9 +152,19 @@ fn (g Gen) gen_string_array(strs []string) string {
 [inline]
 fn (g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 	match tsym.kind {
+		.array {
+			info := tsym.info as ast.Array
+			s := 'ADDR(v__reflection__Array, (((v__reflection__Array){.nr_dims=${info.nr_dims},.elem_type=${info.elem_type.idx()}})))'
+			return '(v__reflection__TypeInfo){._v__reflection__Array = memdup(${s},sizeof(v__reflection__Array)),._typ=${g.table.find_type_idx('v.reflection.Array')}}'
+		}
+		.array_fixed {
+			info := tsym.info as ast.ArrayFixed
+			s := 'ADDR(v__reflection__ArrayFixed, (((v__reflection__ArrayFixed){.size=${info.size},.elem_type=${info.elem_type.idx()}})))'
+			return '(v__reflection__TypeInfo){._v__reflection__ArrayFixed = memdup(${s},sizeof(v__reflection__ArrayFixed)),._typ=${g.table.find_type_idx('v.reflection.ArrayFixed')}}'
+		}
 		.sum_type {
 			info := tsym.info as ast.SumType
-			s := 'ADDR(v__reflection__SumType, (((v__reflection__SumType){.parent_idx = ${info.parent_type.idx()},.variants=${g.gen_type_array(info.variants)}})))'
+			s := 'ADDR(v__reflection__SumType, (((v__reflection__SumType){.parent_idx=${info.parent_type.idx()},.variants=${g.gen_type_array(info.variants)}})))'
 			return '(v__reflection__TypeInfo){._v__reflection__SumType = memdup(${s},sizeof(v__reflection__SumType)),._typ=${g.table.find_type_idx('v.reflection.SumType')}}'
 		}
 		.struct_ {
@@ -179,8 +189,14 @@ fn (g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 			name := tsym.name.all_after_last('.')
 			info := tsym.info as ast.Interface
 			methods := g.gen_function_array(info.methods)
-			s := 'ADDR(v__reflection__Interface, (((v__reflection__Interface){.name=_SLIT("${name}"),.methods=${methods}})))'
+			fields := g.gen_fields_array(info.fields)
+			s := 'ADDR(v__reflection__Interface, (((v__reflection__Interface){.name=_SLIT("${name}"),.methods=${methods},.fields=${fields},.is_generic=${info.is_generic}})))'
 			return '(v__reflection__TypeInfo){._v__reflection__Interface = memdup(${s},sizeof(v__reflection__Interface)),._typ=${g.table.find_type_idx('v.reflection.Interface')}}'
+		}
+		.alias {
+			info := tsym.info as ast.Alias
+			s := 'ADDR(v__reflection__Alias, (((v__reflection__Alias){.parent_idx=${info.parent_type.idx()},.language=v__ast__Language__${info.language.str()}})))'
+			return '(v__reflection__TypeInfo){._v__reflection__Alias = memdup(${s},sizeof(v__reflection__Alias)),._typ=${g.table.find_type_idx('v.reflection.Alias')}}'
 		}
 		else {
 			s := 'ADDR(v__reflection__Struct, (((v__reflection__Struct){.parent_idx = ${tsym.parent_idx},})))'
@@ -214,15 +230,11 @@ fn (mut g Gen) gen_reflection_data() {
 		g.writeln('\tv__reflection__add_type((v__reflection__Type){.name=_SLIT("${name}"),.idx=${idx},.sym=${sym}});\n')
 	}
 
-	// interface declaration
-	// for _, idecl in g.table.interfaces {
-	// 	name := idecl.name.all_after_last('.')
-	// 	methods := g.gen_function_array(idecl.methods)
-	// 	g.reflection_others.write_string('\tv__reflection__add_interface((v__reflection__Interface){.name=_SLIT("${name}"),.typ=${idecl.typ.idx()},.is_pub=${idecl.is_pub},.methods=${methods}});\n')
-	// }
-
-	// func
+	// func declaration (methods come from struct methods)
 	for _, fn_ in g.table.fns {
+		if fn_.no_body || fn_.is_method || fn_.language != .v {
+			continue
+		}
 		func := g.gen_reflection_fn(fn_)
 		g.writeln('\tv__reflection__add_func(${func});\n')
 	}
