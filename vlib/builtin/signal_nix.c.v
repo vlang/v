@@ -59,7 +59,7 @@ struct C.siginfo_t {
 	__pad     [7]u64   // reserved for future Use
 }
 
-// sigaction_handler is the default signal handler for signals.
+// signals_handler is the default signal handler for signals.
 // It panics on SIGSEGV and SIGBUS.
 //
 // It is needed to process signals and give understandable error
@@ -67,7 +67,7 @@ struct C.siginfo_t {
 //
 // See `Gen.gen_signal_handler()`
 [markused]
-fn sigaction_handler(sig int, info &C.siginfo_t, context voidptr) {
+fn signals_handler(sig int, info &C.siginfo_t, context voidptr) {
 	match info.si_signo {
 		sigsegv, sigbus {
 			panic_mem()

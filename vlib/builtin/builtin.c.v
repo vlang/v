@@ -159,14 +159,14 @@ pub fn panic_error_number(basestr string, errnum int) {
 }
 
 // panic_mem is called by V, when a memory access error occurs.
-// See `builtin.sigaction_handler()`
+// See `builtin.signals_handler()`
 fn panic_mem() {
 	panic('invalid memory address or nil pointer dereference')
 }
 
 // panic_mem_addr is called by V, when a memory access error occurs.
 // It prints the address that was accessed.
-// See `builtin.sigaction_handler()`
+// See `builtin.signals_handler()`
 fn panic_mem_addr(addr voidptr) {
 	panic('invalid memory address or nil pointer dereference on address ${addr}')
 }

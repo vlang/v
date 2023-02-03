@@ -194,7 +194,7 @@ fn (mut g Gen) comptime_ident(name string, is_comptime_option bool) bool {
 		'freestanding' {
 			g.pref.arch == .js_freestanding
 		}
-		'no_segfault_handler' {
+		'use_signal_handler' {
 			false // TODO
 		}
 		'no_backtrace' {

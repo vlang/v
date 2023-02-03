@@ -26,7 +26,7 @@ pub fn (mut g Gen) gen_c_main() {
 	} else {
 		g.gen_c_main_header()
 		if g.use_signal_handler {
-			g.gen_signal_handler()
+			g.gen_signal_handler_init()
 		}
 		g.writeln('\tmain__main();')
 		g.gen_c_main_footer()
@@ -105,10 +105,10 @@ fn (mut g Gen) gen_c_main_function_header() {
 	}
 }
 
-fn (mut g Gen) gen_signal_handler() {
+fn (mut g Gen) gen_signal_handler_init() {
 	g.writeln('
 #if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
-	struct sigaction sa = {.sa_sigaction=sigaction_handler, .sa_flags=SA_SIGINFO};
+	struct sigaction sa = {.sa_sigaction=signals_handler, .sa_flags=SA_SIGINFO};
 	struct sigaction oldsa;
 
 	sigaction(SIGSEGV, &sa, &oldsa);
