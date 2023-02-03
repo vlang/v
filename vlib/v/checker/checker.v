@@ -117,16 +117,16 @@ mut:
 	goto_labels                      map[string]ast.GotoLabel // to check for unused goto labels
 }
 
-pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
+pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 	mut timers_should_print := false
 	$if time_checking ? {
 		timers_should_print = true
 	}
 	return &Checker{
 		table: table
-		pref: pref
+		pref: pref_
 		timers: util.new_timers(should_print: timers_should_print, label: 'checker')
-		match_exhaustive_cutoff_limit: pref.checker_match_exhaustive_cutoff_limit
+		match_exhaustive_cutoff_limit: pref_.checker_match_exhaustive_cutoff_limit
 	}
 }
 
