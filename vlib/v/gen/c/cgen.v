@@ -310,7 +310,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 		inner_loop: &ast.empty_stmt
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
 		is_cc_msvc: pref.ccompiler == 'msvc'
-		use_signal_handler: !('use_signal_handler' in pref.compile_defines
+		use_signal_handler: !('no_signal_handler' in pref.compile_defines
 			|| pref.os in [.wasm32, .wasm32_emscripten])
 		static_modifier: if pref.parallel_cc { 'static' } else { '' }
 		has_reflection: 'v.reflection' in table.modules

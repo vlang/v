@@ -171,7 +171,7 @@ fn fatal_mem() {
 // Note: unlike `panic()`, this function will not be able to recover
 // in the future.
 [noreturn]
-pub fn fatal(msg string) {
+fn fatal(msg string) {
 	eprint('Fatal: ')
 	eprint(msg)
 	eprintln('')
