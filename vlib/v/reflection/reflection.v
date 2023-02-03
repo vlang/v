@@ -79,8 +79,8 @@ pub:
 
 pub struct Map {
 pub:
-	key_type int // key type idx
-	value_type int  // value type idx
+	key_type   int // key type idx
+	value_type int // value type idx
 }
 
 pub type TypeInfo = Alias
@@ -89,10 +89,10 @@ pub type TypeInfo = Alias
 	| Enum
 	| Function
 	| Interface
+	| Map
 	| None
 	| Struct
 	| SumType
-	| Map
 
 pub struct TypeSymbol {
 pub:
