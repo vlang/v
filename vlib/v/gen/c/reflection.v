@@ -192,6 +192,11 @@ fn (g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 			s := 'ADDR(${c.cprefix}Alias,(((${c.cprefix}Alias){.parent_idx=${info.parent_type.idx()},.language=v__ast__Language__${info.language.str()}})))'
 			return '(${c.cprefix}TypeInfo){._${c.cprefix}Alias=memdup(${s},sizeof(${c.cprefix}Alias)),._typ=${g.table.find_type_idx('v.reflection.Alias')}}'
 		}
+		.multi_return {
+			info := tsym.info as ast.MultiReturn
+			s := 'ADDR(${c.cprefix}MultiReturn,(((${c.cprefix}MultiReturn){.idxs=${g.gen_type_array(info.types)}})))'
+			return '(${c.cprefix}TypeInfo){._${c.cprefix}MultiReturn=memdup(${s},sizeof(${c.cprefix}MultiReturn)),._typ=${g.table.find_type_idx('v.reflection.MultiReturn')}}'
+		}
 		else {
 			s := 'ADDR(${c.cprefix}None,(((${c.cprefix}None){.parent_idx=${tsym.parent_idx},})))'
 			return '(${c.cprefix}TypeInfo){._${c.cprefix}None=memdup(${s},sizeof(${c.cprefix}None)),._typ=${g.table.find_type_idx('v.reflection.None')}}'

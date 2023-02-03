@@ -83,6 +83,11 @@ pub:
 	value_type int // value type idx
 }
 
+pub struct MultiReturn {
+pub:
+	idxs []int // type idxs
+}
+
 pub type TypeInfo = Alias
 	| Array
 	| ArrayFixed
@@ -90,6 +95,7 @@ pub type TypeInfo = Alias
 	| Function
 	| Interface
 	| Map
+	| MultiReturn
 	| None
 	| Struct
 	| SumType
