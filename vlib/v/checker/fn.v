@@ -377,6 +377,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('missing return at end of function `${node.name}`', node.pos)
 		}
 	}
+	// Check if function name is already registered as imported module symbol
+	if c.file.imports.any(it.mod == node.short_name) {
+		c.error('duplicate of an import symbol `${node.short_name}`', node.pos)
+	}
 	node.source_file = c.file
 
 	if node.name in c.table.fns && node.name != 'main.main' {
