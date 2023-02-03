@@ -158,17 +158,20 @@ pub fn panic_error_number(basestr string, errnum int) {
 	panic(basestr + c_error_number_str(errnum))
 }
 
-// panic_mem is called by V, when a memory access error occurs.
-// See `builtin.signals_handler()`
-fn panic_mem() {
-	panic('invalid memory address or nil pointer dereference')
+// fatal_mem is called by V, when a memory access error occurs (SIGSEGV or SIGBUS).
+// See `signals_handler()`
+fn fatal_mem() {
+	fatal('invalid memory address or nil pointer dereference')
 }
 
-// panic_mem_addr is called by V, when a memory access error occurs.
-// It prints the address that was accessed.
-// See `builtin.signals_handler()`
-fn panic_mem_addr(addr voidptr) {
-	panic('invalid memory address or nil pointer dereference on address ${addr}')
+// fatal show fatal error message, print a backtrace on most platforms
+// and exits the process with exit code of 1.
+pub fn fatal(msg string) {
+	eprint('Fatal: ')
+	eprint(msg)
+	eprintln('')
+	print_backtrace()
+	exit(1)
 }
 
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.

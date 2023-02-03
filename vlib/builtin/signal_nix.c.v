@@ -70,7 +70,7 @@ struct C.siginfo_t {
 fn signals_handler(sig int, info &C.siginfo_t, context voidptr) {
 	match info.si_signo {
 		sigsegv, sigbus {
-			panic_mem()
+			fatal_mem()
 		}
 		else {}
 	}
