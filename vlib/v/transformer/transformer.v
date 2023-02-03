@@ -13,7 +13,7 @@ mut:
 	is_assert bool
 }
 
-pub fn new_transformer(pref &pref.Preferences) &Transformer {
+pub fn new_transformer(pref_ &pref.Preferences) &Transformer {
 	return &Transformer{
 		pref: pref
 		index: &IndexState{
@@ -23,8 +23,8 @@ pub fn new_transformer(pref &pref.Preferences) &Transformer {
 	}
 }
 
-pub fn new_transformer_with_table(table &ast.Table, pref &pref.Preferences) &Transformer {
-	mut transformer := new_transformer(pref)
+pub fn new_transformer_with_table(table &ast.Table, pref_ &pref.Preferences) &Transformer {
+	mut transformer := new_transformer(pref_)
 	transformer.table = table
 	return transformer
 }
