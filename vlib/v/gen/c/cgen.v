@@ -766,7 +766,11 @@ pub fn (mut g Gen) init() {
 #undef __has_include
 #endif'
 			g.preincludes.writeln(tcc_undef_has_include)
-			g.preincludes.writeln('#include <signal.h>')
+			g.preincludes.writeln('
+#ifdef V_USE_SIGNAL_H
+	#include <signal.h> // sigaction and signal constants
+#endif
+')
 			g.cheaders.writeln(tcc_undef_has_include)
 			g.includes.writeln(tcc_undef_has_include)
 			if g.pref.os == .freebsd {
