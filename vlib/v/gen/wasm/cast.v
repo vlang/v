@@ -3,29 +3,6 @@ module wasm
 import v.ast
 import binaryen as wa
 
-const (
-	cast_unsigned = {
-		type_i32: {
-			type_i64: wa.extenduint32()
-			type_f32: wa.convertuint32tofloat32()
-			type_f64: wa.convertuint32tofloat64()
-		}
-		type_i64: {
-			type_i32: wa.wrapint64()
-			type_f32: wa.convertuint64tofloat32()
-			type_f64: wa.convertuint64tofloat64()
-		}
-		type_f32: {
-			type_i32: wa.truncsatufloat32toint32()
-			type_i64: wa.truncsatufloat32toint64()
-		}
-		type_f64: {
-			type_i32: wa.truncsatufloat64toint32()
-			type_i64: wa.truncsatufloat64toint64()
-		}
-	}
-)
-
 fn (mut g Gen) is_signed(typ ast.Type) bool {
 	if typ.is_pure_float() {
 		return true
@@ -54,16 +31,16 @@ fn (mut g Gen) unary_cast(from wa.Type, is_signed bool, to wa.Type) wa.Op {
 			}
 			type_f32 {
 				match to {
-					type_i32 { return wa.truncsatsfloat32toint32() }
-					type_i64 { return wa.truncsatsfloat32toint64() }
+					type_i32 { return wa.truncsfloat32toint32() }
+					type_i64 { return wa.truncsfloat32toint64() }
 					type_f64 { return wa.promotefloat32() }
 					else {}
 				}
 			}
 			type_f64 {
 				match to {
-					type_i32 { return wa.truncsatsfloat64toint32() }
-					type_i64 { return wa.truncsatsfloat64toint64() }
+					type_i32 { return wa.truncsfloat64toint32() }
+					type_i64 { return wa.truncsfloat64toint64() }
 					type_f32 { return wa.demotefloat64() }
 					else {}
 				}

@@ -26,8 +26,9 @@ mut:
 }
 
 struct FuncIdent {
-	name string
-	typ  wa.Type
+	name    string
+	typ     wa.Type
+	ast_typ ast.Type
 }
 
 pub fn (mut g Gen) v_error(s string, pos token.Pos) {
@@ -99,6 +100,7 @@ fn (mut g Gen) new_local(name string, typ ast.Type) {
 	g.local_stack << FuncIdent{
 		name: name
 		typ: g.get_wasm_type(typ)
+		ast_typ: typ
 	}
 }
 
@@ -164,6 +166,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.local_stack << FuncIdent{
 			name: p.name
 			typ: typ
+			ast_typ: p.typ
 		}
 		paraml << typ
 	}
@@ -210,6 +213,22 @@ fn (mut g Gen) literal(val string, expected ast.Type) wa.Expression {
 	g.w_error('literal: bad type `${expected}`')
 }
 
+
+fn (mut g Gen) postfix_expr(node ast.PostfixExpr) wa.Expression {
+	if node.expr !is ast.Ident {
+		g.w_error("postfix_expr: not ast.Ident")
+	}
+
+	kind := if node.op == .inc { token.Kind.plus } else { token.Kind.minus }
+	
+	idx, typ := g.get_local_from_ident(node.expr as ast.Ident)
+	atyp := g.local_stack[idx].ast_typ
+
+	op := g.infix_from_typ(atyp, kind)
+
+	return wa.localset(g.mod, idx, wa.binary(g.mod, op, wa.localget(g.mod, idx, typ), g.literal("1", atyp)))
+}
+
 fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) wa.Expression {
 	op := g.infix_from_typ(node.left_type, node.op)
 
@@ -222,6 +241,47 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) wa.Expression {
 		node.left_type
 	}
 	return g.cast(infix, g.get_wasm_type(res_typ), g.is_signed(res_typ), g.get_wasm_type(expected))
+}
+
+fn (mut g Gen) prefix_expr(node ast.PrefixExpr) wa.Expression {
+	expr := g.expr(node.right, node.right_type)
+
+	return match node.op {
+		.minus {
+			if node.right_type.is_pure_float() {
+				if node.right_type == ast.f32_type_idx {
+					wa.unary(g.mod, wa.negfloat32(), expr)
+				} else {
+					wa.unary(g.mod, wa.negfloat64(), expr)
+				}
+			} else {
+				// -val == 0 - val
+
+				if g.get_wasm_type(node.right_type) == type_i32 {
+					wa.binary(g.mod, wa.subint32(), wa.constant(g.mod, wa.literalint32(0)), expr)
+				} else {
+					wa.binary(g.mod, wa.subint64(), wa.constant(g.mod, wa.literalint64(0)), expr)
+				}
+			}
+		}
+		.not {
+			assert node.right_type == ast.bool_type
+			wa.unary(g.mod, wa.eqzint32(), expr)
+		}
+		.bit_not {
+			// ~val == val ^ -1
+			
+			if g.get_wasm_type(node.right_type) == type_i32 {
+				wa.binary(g.mod, wa.xorint32(), expr, wa.constant(g.mod, wa.literalint32(-1)))
+			} else {
+				wa.binary(g.mod, wa.xorint64(), expr, wa.constant(g.mod, wa.literalint64(-1)))
+			}
+		}
+		else {
+			// impl deref (.mul), and impl address of (.amp)
+			g.w_error('`${node.op}val` prefix expression not implemented')
+		}
+	}
 }
 
 fn (mut g Gen) mkblock(nodes []wa.Expression) wa.Expression {
@@ -249,45 +309,12 @@ fn (mut g Gen) if_stmt(ifexpr ast.IfExpr) wa.Expression {
 	return g.if_branch(ifexpr, 0)
 }
 
-/*
-fn (mut g Gen) if_stmt(ifexpr ast.IfExpr) wa.Expression {
-	assert !ifexpr.is_expr, '`is_expr` not implemented'
-
-	mut rl := wa.reloopercreate(g.mod)
-
-	mut nodes := []wa.RelooperBlock{cap: ifexpr.branches.len}
-	for branch in ifexpr.branches {
-		nodes << wa.relooperaddblock(rl, g.expr_stmts(branch.stmts, ifexpr.typ))
-	}
-
-	start := wa.relooperaddblock(rl, wa.nop(g.mod))
-	end := wa.relooperaddblock(rl, wa.nop(g.mod))
-
-	mut curr := start
-	for idx, node in nodes {
-		cond := ifexpr.branches[idx].cond
-
-		interp := if idx + 1 < nodes.len {
-			wa.relooperaddblock(rl, wa.nop(g.mod))
-		} else {
-			end
-		}
-
-		if ifexpr.has_else && idx + 1 >= nodes.len {
-			wa.relooperaddbranch(curr, node, unsafe { nil }, unsafe { nil })
-			wa.relooperaddbranch(node, end, unsafe { nil }, unsafe { nil })
-			break
-		} else {
-			wa.relooperaddbranch(curr, node, g.expr(cond, ast.bool_type), unsafe { nil })
-		}
-		wa.relooperaddbranch(curr, interp, unsafe { nil }, unsafe { nil })
-		wa.relooperaddbranch(node, end, unsafe { nil }, unsafe { nil })
-		curr = interp
-	}
-
-	stmt := wa.relooperrenderanddispose(rl, start, 0)
-	return stmt
-}*/
+fn (mut g Gen) get_ident(node ast.Ident, expected ast.Type) (wa.Expression, int) {
+	idx, typ := g.get_local_from_ident(node)
+	expr := wa.localget(g.mod, idx, typ)
+			
+	return g.cast(expr, typ, g.is_signed(g.local_stack[idx].ast_typ), g.get_wasm_type(expected)), idx
+}
 
 fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 	return match node {
@@ -301,20 +328,26 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 		ast.InfixExpr {
 			g.infix_expr(node, expected)
 		}
+		ast.PrefixExpr {
+			g.prefix_expr(node)
+		}
+		ast.PostfixExpr {
+			g.postfix_expr(node)
+		}
 		ast.Ident {
 			// TODO: only supports local identifiers, no path.expressions or global names
-			idx, typ := g.get_local_from_ident(node)
-			wa.localget(g.mod, idx, typ)
+			v, _ := g.get_ident(node, expected)
+			v
 		}
 		ast.IntegerLiteral, ast.FloatLiteral {
 			g.literal(node.val, expected)
 		}
 		ast.IfExpr {
 			if node.branches.len == 2 && node.is_expr {
-				wa.bselect(g.mod, g.expr(node.branches[0].cond, ast.bool_type_idx), g.expr_stmts(node.branches[0].stmts,
-					node.typ), g.expr_stmts(node.branches[1].stmts, node.typ), g.get_wasm_type(node.typ))
+				left := g.expr_stmts(node.branches[0].stmts, expected)
+				right := g.expr_stmts(node.branches[1].stmts, expected)
+				wa.bselect(g.mod, g.expr(node.branches[0].cond, ast.bool_type_idx), left, right, g.get_wasm_type(expected))
 			} else {
-				assert !node.is_expr
 				g.if_stmt(node)
 			}
 			// wa.bif(g.mod, g.expr())
@@ -367,18 +400,21 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 	return match node {
 		ast.Return {
 			if node.exprs.len == 1 {
-				expr := g.expr_with_cast(node.exprs[0], node.types[0], g.curr_ret)
+				expr := g.expr(node.exprs[0], g.curr_ret) // g.expr_with_cast(node.exprs[0], node.types[0], g.curr_ret)
 				wa.ret(g.mod, expr)
+			} else if node.exprs.len == 0 {
+				wa.ret(g.mod, unsafe { nil })
 			} else {
 				g.w_error('multi returns are not implemented')
 			}
 		}
 		ast.ExprStmt {
-			if node.typ == ast.void_type {
+			/* if node.typ == ast.void_type {
 				g.expr(node.expr, ast.void_type)
 			} else {
 				g.expr_with_cast(node.expr, node.typ, expected)
-			}
+			} */
+			g.expr(node.expr, expected)
 		}
 		ast.ForStmt {
 			if node.label != '' {
@@ -458,8 +494,13 @@ pub fn (mut g Gen) expr_stmts(stmts []ast.Stmt, expected ast.Type) wa.Expression
 		return g.expr_stmt(stmts[0], expected)
 	}
 	mut exprl := []wa.Expression{cap: stmts.len}
-	for stmt in stmts {
-		exprl << g.expr_stmt(stmt, expected)
+	for idx, stmt in stmts {
+		rtyp := if idx + 1 == stmts.len {
+			expected
+		} else {
+			ast.void_type
+		}
+		exprl << g.expr_stmt(stmt, rtyp)
 	}
 	return g.mkblock(exprl)
 }
@@ -484,7 +525,6 @@ pub fn (mut g Gen) toplevel_stmts(stmts []ast.Stmt) {
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Preferences) {
-	// println(pref.should_output_to_stdout())
 	mut g := &Gen{
 		table: table
 		out_name: out_name

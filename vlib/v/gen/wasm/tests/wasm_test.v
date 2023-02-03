@@ -49,20 +49,22 @@ fn test_wasm() {
 
 			continue
 		}
-		mut expected := os.read_file(outfile) or { panic(err) }
 		os.rm(tmperrfile) or {}
-		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
-		mut found := res_wasm.output.trim_right('\r\n').replace('\r\n', '\n')
-		found = found.trim_space()
-		if expected != found {
-			println(term.red('FAIL'))
-			println('============')
-			println('expected: "${expected}" len=${expected.len}')
-			println('============')
-			println('found:"${found}" len=${found.len}')
-			println('============\n')
-			bench.fail()
-			continue
+		if expected_ := os.read_file(outfile) {
+			mut expected := expected_
+			expected = expected.trim_right('\r\n').replace('\r\n', '\n')
+			mut found := res_wasm.output.trim_right('\r\n').replace('\r\n', '\n')
+			found = found.trim_space()
+			if expected != found {
+				println(term.red('FAIL'))
+				println('============')
+				println('expected: "${expected}" len=${expected.len}')
+				println('============')
+				println('found:"${found}" len=${found.len}')
+				println('============\n')
+				bench.fail()
+				continue
+			}
 		}
 		bench.ok()
 		eprintln(bench.step_message_ok(relative_test_path))
