@@ -8,7 +8,7 @@ fn main() {
 
 fn my_print() {
 	// set stack size to 1024
-	// bites ?
+	// bytes ?
 	// TODO const Kb, Mb and b?
 	.$stack_size(1024)
 	// ...
