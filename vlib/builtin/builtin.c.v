@@ -167,6 +167,9 @@ fn fatal_mem() {
 
 // fatal show fatal error message, print a backtrace on most platforms
 // and exits the process with exit code of 1.
+//
+// Note: unlike `panic()`, this function will not be able to recover
+// in the future.
 [noreturn]
 pub fn fatal(msg string) {
 	eprint('Fatal: ')
