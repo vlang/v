@@ -77,6 +77,12 @@ pub:
 	variants   []int // variant type idxs
 }
 
+pub struct Map {
+pub:
+	key_type int // key type idx
+	value_type int  // value type idx
+}
+
 pub type TypeInfo = Alias
 	| Array
 	| ArrayFixed
@@ -86,6 +92,7 @@ pub type TypeInfo = Alias
 	| None
 	| Struct
 	| SumType
+	| Map
 
 pub struct TypeSymbol {
 pub:
