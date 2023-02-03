@@ -2580,7 +2580,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			return
 		}
 	}
-	if exp_sym.kind == .function {
+	if exp_sym.kind == .function && !expected_type.has_flag(.option)
+		&& !expected_type.has_flag(.result) {
 		g.write('(voidptr)')
 	}
 	// no cast
@@ -6088,23 +6089,43 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	mut expr_type_sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	if mut expr_type_sym.info is ast.SumType {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
-		if sym.info is ast.FnType {
-			g.write('/* as */ (${styp})__as_cast(')
+		if node.expr is ast.CallExpr && !g.is_cc_msvc {
+			tmp_var := g.new_tmp_var()
+			expr_styp := g.typ(node.expr_type)
+			g.write('({ ${expr_styp} ${tmp_var} = ')
+			g.expr(node.expr)
+			g.write('; ')
+			if sym.info is ast.FnType {
+				g.write('/* as */ (${styp})__as_cast(')
+			} else {
+				g.write('/* as */ *(${styp}*)__as_cast(')
+			}
+			g.write(tmp_var)
+			g.write(dot)
+			g.write('_${sym.cname},')
+			g.write(tmp_var)
+			g.write(dot)
+			sidx := g.type_sidx(unwrapped_node_typ)
+			g.write('_typ, ${sidx}); }) /*expected idx: ${sidx}, name: ${sym.name} */ ')
 		} else {
-			g.write('/* as */ *(${styp}*)__as_cast(')
+			if sym.info is ast.FnType {
+				g.write('/* as */ (${styp})__as_cast(')
+			} else {
+				g.write('/* as */ *(${styp}*)__as_cast(')
+			}
+			g.write('(')
+			g.expr(node.expr)
+			g.write(')')
+			g.write(dot)
+			g.write('_${sym.cname},')
+			g.write('(')
+			g.expr(node.expr)
+			g.write(')')
+			g.write(dot)
+			// g.write('typ, /*expected:*/$node.typ)')
+			sidx := g.type_sidx(unwrapped_node_typ)
+			g.write('_typ, ${sidx}) /*expected idx: ${sidx}, name: ${sym.name} */ ')
 		}
-		g.write('(')
-		g.expr(node.expr)
-		g.write(')')
-		g.write(dot)
-		g.write('_${sym.cname},')
-		g.write('(')
-		g.expr(node.expr)
-		g.write(')')
-		g.write(dot)
-		// g.write('typ, /*expected:*/$node.typ)')
-		sidx := g.type_sidx(unwrapped_node_typ)
-		g.write('_typ, ${sidx}) /*expected idx: ${sidx}, name: ${sym.name} */ ')
 
 		// fill as cast name table
 		for variant in expr_type_sym.info.variants {
