@@ -65,7 +65,7 @@ struct C.siginfo_t {
 // It is needed to process signals and give understandable error
 // messages along with the stacktrace.
 //
-// See `Gen.gen_signal_handler()`
+// See `Gen.gen_signal_handler_init()`
 [markused]
 fn signals_handler(sig int, info &C.siginfo_t, context voidptr) {
 	match info.si_signo {
