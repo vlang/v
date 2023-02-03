@@ -61,11 +61,11 @@ pub struct FmtOptions {
 	source_text string
 }
 
-pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug bool, options FmtOptions) string {
+pub fn fmt(file ast.File, table &ast.Table, pref_ &pref.Preferences, is_debug bool, options FmtOptions) string {
 	mut f := Fmt{
 		file: file
 		table: table
-		pref: pref
+		pref: pref_
 		is_debug: is_debug
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
