@@ -680,14 +680,14 @@ pub fn ascii(len int) string {
 // shuffle randomly permutates the elements in `a`. The range for shuffling is
 // optional and the entire array is shuffled by default. Leave the end as 0 to
 // shuffle all elements until the end.
-pub fn shuffle[T](mut a []T, config config.ShuffleConfigStruct) ! {
-	default_rng.shuffle[T](mut a, config)!
+pub fn shuffle[T](mut a []T, config_ config.ShuffleConfigStruct) ! {
+	default_rng.shuffle[T](mut a, config_)!
 }
 
 // shuffle_clone returns a random permutation of the elements in `a`.
 // The permutation is done on a fresh clone of `a`, so `a` remains unchanged.
-pub fn shuffle_clone[T](a []T, config config.ShuffleConfigStruct) ![]T {
-	return default_rng.shuffle_clone[T](a, config)
+pub fn shuffle_clone[T](a []T, config_ config.ShuffleConfigStruct) ![]T {
+	return default_rng.shuffle_clone[T](a, config_)
 }
 
 // choose samples k elements from the array without replacement.
@@ -716,13 +716,13 @@ pub fn bernoulli(p f64) !bool {
 
 // normal returns a normally distributed pseudorandom f64 in range `[0, 1)`.
 // NOTE: Use normal_pair() instead if you're generating a lot of normal variates.
-pub fn normal(conf config.NormalConfigStruct) !f64 {
-	return default_rng.normal(conf)
+pub fn normal(config_ config.NormalConfigStruct) !f64 {
+	return default_rng.normal(config_)
 }
 
 // normal_pair returns a pair of normally distributed pseudorandom f64 in range `[0, 1)`.
-pub fn normal_pair(conf config.NormalConfigStruct) !(f64, f64) {
-	return default_rng.normal_pair(conf)
+pub fn normal_pair(config_ config.NormalConfigStruct) !(f64, f64) {
+	return default_rng.normal_pair(config_)
 }
 
 // binomial returns the number of successful trials out of n when the
