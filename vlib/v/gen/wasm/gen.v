@@ -318,8 +318,26 @@ fn (mut g Gen) get_ident(node ast.Ident, expected ast.Type) (wa.Expression, int)
 
 fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 	return match node {
-		ast.ParExpr {
+		ast.ParExpr, ast.UnsafeExpr {
 			g.expr(node.expr, expected)
+		}
+		ast.ArrayInit {
+			g.w_error('wasm backend does not support arrays yet')
+		}
+		ast.GoExpr {
+			g.w_error('wasm backend does not support threads')
+		}
+		ast.StructInit {
+			g.w_error('wasm backend does not support structs yet')
+		}
+		ast.MatchExpr {
+			g.w_error('wasm backend does not support match expressions yet')
+		}
+		ast.SelectorExpr {
+			g.w_error('wasm backend does not support selection expressions yet')
+		}
+		ast.EnumVal {
+			g.w_error('wasm backend does not support enums yet, however it would be dead simple to implement them')
 		}
 		ast.BoolLiteral {
 			val := if node.val { wa.literalint32(1) } else { wa.literalint32(0) }
@@ -390,8 +408,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			}
 		}
 		else {
-			eprintln('wasm.expr(): unhandled node: ' + node.type_name())
-			wa.nop(g.mod)
+			g.w_error('wasm.expr(): unhandled node: ' + node.type_name())
 		}
 	}
 }
@@ -480,8 +497,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 			}
 		}
 		else {
-			eprintln('wasm.expr_stmt(): unhandled node: ' + node.type_name())
-			wa.nop(g.mod)
+			g.w_error('wasm.expr_stmt(): unhandled node: ' + node.type_name())
 		}
 	}
 }
@@ -512,8 +528,10 @@ fn (mut g Gen) toplevel_stmt(node ast.Stmt) {
 		}
 		ast.Module {}
 		ast.Import {}
+		ast.StructDecl {}
+		ast.EnumDecl {}
 		else {
-			eprintln('wasm.toplevel_stmt(): unhandled node: ' + node.type_name())
+			g.w_error('wasm.toplevel_stmt(): unhandled node: ' + node.type_name())
 		}
 	}
 }

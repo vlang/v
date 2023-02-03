@@ -36,7 +36,7 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wa.Type {
 	if typ == ast.bool_type_idx {
 		return type_i32
 	}
-	g.w_error("get_wasm_type: unreachable type '${typ}'")
+	g.w_error("get_wasm_type: unreachable type '${*g.table.sym(typ)}'")
 }
 
 fn infix_kind_return_bool(op token.Kind) bool {
