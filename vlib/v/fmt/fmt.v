@@ -740,6 +740,7 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 				.enum_ { f.write('\$Enum') }
 				.alias { f.write('\$Alias') }
 				.function { f.write('\$Function') }
+				.stack { f.write('\$Stack') }
 			}
 		}
 	}
