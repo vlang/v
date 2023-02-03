@@ -249,6 +249,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					}
 				}
 			}
+			// Check if variable name is already registered as imported module symbol
+			if c.file.imports.any(it.mod == param.name) {
+				c.error('duplicate of an import symbol `${left.name}`', left.pos)
+			}
 		}
 	}
 	if node.language == .v && node.name.after_char(`.`) == 'init' && !node.is_method
