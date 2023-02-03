@@ -117,7 +117,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		}
 		return
 	}
-	if node.method_name == 'stack_size'  {
+	if node.method_name == 'stack_size' {
 		g.stack_size = node.args_var
 		return
 	}

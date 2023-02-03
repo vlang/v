@@ -242,7 +242,6 @@ mut:
 	reflection_funcs   strings.Builder
 	reflection_others  strings.Builder
 	reflection_strings &map[string]int
-
 	// sugestion to  stack size
 	stack_size string
 }
