@@ -1984,8 +1984,9 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		if g.pref.os != .vinix {
 			g.writeln('pthread_attr_t thread_${tmp}_attributes;')
 			g.writeln('pthread_attr_init(&thread_${tmp}_attributes);')
-			g.writeln('pthread_attr_setstacksize(&thread_${tmp}_attributes, ${g.pref.thread_stack_size});')
+			g.writeln('pthread_attr_setstacksize(&thread_${tmp}_attributes, ${g.stack_size});')
 			sthread_attributes = '&thread_${tmp}_attributes'
+			g.stack_size = '${g.pref.thread_stack_size}'
 		}
 		g.writeln('int ${tmp}_thr_res = pthread_create(&thread_${tmp}, ${sthread_attributes}, (void*)${wrapper_fn_name}, ${arg_tmp_var});')
 		g.writeln('if (${tmp}_thr_res) panic_error_number(tos3("`go ${name}()`: "), ${tmp}_thr_res);')
