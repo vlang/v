@@ -6,10 +6,17 @@ fn x(arrays []int) {
 
 }
 
-struct Foo {
+fn maps() {
+
+}
+
+fn maps(arrays []int) {
+
 }
 
 // FnDecl with receiver
+struct Foo {}
+
 fn (arrays Foo) x() {
 
 }
@@ -19,6 +26,14 @@ fn (arrays Foo) y(maps []int) {
 }
 
 fn (foo Foo) z(arrays []int) {
+	
+}
+
+fn (arrays Foo) maps() {
+
+}
+
+fn (foo Foo) arrays() {
 	
 }
 
