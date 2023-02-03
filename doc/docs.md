@@ -448,17 +448,6 @@ fn main() {
 Unlike most languages, variable shadowing is not allowed. Declaring a variable with a name
 that is already used in a parent scope will cause a compilation error.
 
-You can shadow imported modules though, as it is very useful in some situations:
-```v ignore
-import ui
-import gg
-
-fn draw(ctx &gg.Context) {
-	gg := ctx.parent.get_ui().gg
-	gg.draw_rect(10, 10, 100, 50)
-}
-```
-
 ## V Types
 
 ### Primitive types
