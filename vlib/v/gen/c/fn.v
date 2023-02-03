@@ -1984,6 +1984,9 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		if g.pref.os != .vinix {
 			g.writeln('pthread_attr_t thread_${tmp}_attributes;')
 			g.writeln('pthread_attr_init(&thread_${tmp}_attributes);')
+			if g.stack_size.len <= 2 {
+				g.stack_size = '${g.pref.thread_stack_size}'
+			}
 			g.writeln('pthread_attr_setstacksize(&thread_${tmp}_attributes, ${g.stack_size});')
 			sthread_attributes = '&thread_${tmp}_attributes'
 			g.stack_size = '${g.pref.thread_stack_size}'
