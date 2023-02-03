@@ -96,7 +96,7 @@ fn (g Gen) gen_attrs_array(attrs []ast.Attr) string {
 	}
 	mut out := 'new_array_from_c_array(${attrs.len},${attrs.len},sizeof(string),'
 	out += '_MOV((string[${attrs.len}]){'
-	attrs.map(if it.has_arg { '_SLIT("${it.name}=${it.arg}")' } else { '_SLIT("${it.name}")' }).join(',')
+	out += attrs.map(if it.has_arg { '_SLIT("${it.name}=${it.arg}")' } else { '_SLIT("${it.name}")' }).join(',')
 	out += '}))'
 	return out
 }
@@ -120,9 +120,7 @@ fn (g Gen) gen_type_array(types []ast.Type) string {
 	if types.len == 0 {
 		return g.gen_empty_array('int')
 	}
-	mut out := 'new_array_from_c_array(${types.len},${types.len},sizeof(int),'
-	out += '_MOV((int[${types.len}]){${types.map(it.idx().str()).join(',')}}))'
-	return out
+	return 'new_array_from_c_array(${types.len},${types.len},sizeof(int),_MOV((int[${types.len}]){${types.map(it.idx().str()).join(',')}}))'
 }
 
 // gen_string_array generates C code for []string
@@ -131,10 +129,8 @@ fn (g Gen) gen_string_array(strs []string) string {
 	if strs.len == 0 {
 		return g.gen_empty_array('string')
 	}
-	mut out := 'new_array_from_c_array(${strs.len},${strs.len},sizeof(string),'
 	items := strs.map('_SLIT("${it}")').join(',')
-	out += '_MOV((string[${strs.len}]){${items}}))'
-	return out
+	return 'new_array_from_c_array(${strs.len},${strs.len},sizeof(string),_MOV((string[${strs.len}]){${items}}))'
 }
 
 // gen_reflection_sym_info generates C code for TypeSymbol's info sum type
