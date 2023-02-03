@@ -7,10 +7,10 @@ import v.ast
 import v.pref
 import v.util
 
-pub fn new_eval(table &ast.Table, pref &pref.Preferences) Eval {
+pub fn new_eval(table &ast.Table, pref_ &pref.Preferences) Eval {
 	return Eval{
 		table: table
-		pref: pref
+		pref: pref_
 	}
 }
 
