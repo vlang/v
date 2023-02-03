@@ -411,9 +411,9 @@ pub fn (mut rng PRNG) exponential(lambda f64) f64 {
 // optional and the entire array is shuffled by default. Leave the end as 0 to
 // shuffle all elements until the end.
 [direct_array_access]
-pub fn (mut rng PRNG) shuffle[T](mut a []T, config config.ShuffleConfigStruct) ! {
+pub fn (mut rng PRNG) shuffle[T](mut a []T, config_ config.ShuffleConfigStruct) ! {
 	config.validate_for(a)!
-	new_end := if config.end == 0 { a.len } else { config.end }
+	new_end := if config.end == 0 { a.len } else { config_.end }
 
 	// We implement the Fisher-Yates shuffle:
 	// https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle#The_modern_algorithm
@@ -429,9 +429,9 @@ pub fn (mut rng PRNG) shuffle[T](mut a []T, config config.ShuffleConfigStruct) !
 
 // shuffle_clone returns a random permutation of the elements in `a`.
 // The permutation is done on a fresh clone of `a`, so `a` remains unchanged.
-pub fn (mut rng PRNG) shuffle_clone[T](a []T, config config.ShuffleConfigStruct) ![]T {
+pub fn (mut rng PRNG) shuffle_clone[T](a []T, config_ config.ShuffleConfigStruct) ![]T {
 	mut res := a.clone()
-	rng.shuffle[T](mut res, config)!
+	rng.shuffle[T](mut res, config_)!
 	return res
 }
 
