@@ -128,6 +128,7 @@ pub enum ComptimeTypeKind {
 	enum_
 	alias
 	function
+	stack
 }
 
 pub struct ComptimeType {
@@ -148,6 +149,7 @@ pub fn (cty ComptimeType) str() string {
 		.enum_ { '\$Enum' }
 		.alias { '\$Alias' }
 		.function { '\$Function' }
+		.stack { '\$Stack' }
 	}
 }
 
