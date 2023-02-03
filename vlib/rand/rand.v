@@ -475,10 +475,10 @@ __global default_rng &PRNG
 
 // new_default returns a new instance of the default RNG. If the seed is not provided, the current time will be used to seed the instance.
 [manualfree]
-pub fn new_default(config config.PRNGConfigStruct) &PRNG {
+pub fn new_default(config_ config.PRNGConfigStruct) &PRNG {
 	mut rng := &wyrand.WyRandRNG{}
-	rng.seed(config.seed_)
-	unsafe { config.seed_.free() }
+	rng.seed(config_.seed_)
+	unsafe { config_.seed_.free() }
 	return &PRNG(rng)
 }
 
