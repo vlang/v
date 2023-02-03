@@ -15,7 +15,7 @@ mut:
 
 pub fn new_transformer(pref_ &pref.Preferences) &Transformer {
 	return &Transformer{
-		pref: pref
+		pref: pref_
 		index: &IndexState{
 			saved_key_vals: [][]KeyVal{cap: 1000}
 			saved_disabled: []bool{cap: 1000}
