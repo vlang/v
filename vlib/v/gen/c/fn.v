@@ -1984,7 +1984,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		if g.pref.os != .vinix {
 			g.writeln('pthread_attr_t thread_${tmp}_attributes;')
 			g.writeln('pthread_attr_init(&thread_${tmp}_attributes);')
-			g.writeln('pthread_attr_setstacksize(&thread_${tmp}_attributes, ${g.pref.thread_stack_size});')
+			g.writeln('pthread_attr_setstacksize(&thread_${tmp}_attributes, ${g.get_cur_thread_stack_size(expr.name)});')
 			sthread_attributes = '&thread_${tmp}_attributes'
 		}
 		g.writeln('int ${tmp}_thr_res = pthread_create(&thread_${tmp}, ${sthread_attributes}, (void*)${wrapper_fn_name}, ${arg_tmp_var});')
@@ -2203,6 +2203,21 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		g.write(line)
 		g.write(handle)
 	}
+}
+
+
+fn (mut g Gen) get_cur_thread_stack_size(name string) string {
+	ast_fn := g.table.fns[name] or { return "${g.pref.thread_stack_size}" }
+	attrs := ast_fn.attrs
+	if isnil(attrs) {
+		return "${g.pref.thread_stack_size}"
+	}
+	for attr in attrs {
+		if attr.name == "spawn_stack" {
+			return attr.arg
+		}
+	}
+	return "${g.pref.thread_stack_size}"
 }
 
 // similar to `autofree_call_pregen()` but only to to handle [keep_args_alive] for C functions
