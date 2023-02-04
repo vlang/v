@@ -150,7 +150,7 @@ fn (g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 		}
 		.map {
 			info := tsym.info as ast.Map
-			s := 'ADDR(${c.cprefix}Map,(((${c.cprefix}Map){.key_type=${int(info.key_type)},.value_type=${int(info.value_type.idx)}})))'
+			s := 'ADDR(${c.cprefix}Map,(((${c.cprefix}Map){.key_type=${int(info.key_type)},.value_type=${int(info.value_type)}})))'
 			return '(${c.cprefix}TypeInfo){._${c.cprefix}Map=memdup(${s},sizeof(${c.cprefix}Map)),._typ=${g.table.find_type_idx('v.reflection.Map')}}'
 		}
 		.sum_type {

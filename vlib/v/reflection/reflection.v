@@ -79,8 +79,8 @@ pub:
 
 pub struct Map {
 pub:
-	key_type   int // key type
-	value_type int // value type
+	key_type   ast.Type // key type
+	value_type ast.Type // value type
 }
 
 pub struct MultiReturn {
