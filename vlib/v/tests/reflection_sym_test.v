@@ -44,6 +44,9 @@ fn test_array_sym() {
 	assert typ.sym.language == .v
 	assert typ.sym.methods.len > 0
 	assert typ.sym.methods.filter(it.name == 'reduce').len > 0
+	assert typ.sym.name == '[]int'
+	assert (typ.sym.info as reflection.Array).nr_dims == 1
+	assert (typ.sym.info as reflection.Array).elem_type == typeof[int]().idx
 }
 
 fn test_sumtype_sym() {
