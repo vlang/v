@@ -125,8 +125,9 @@ pub:
 
 pub struct FunctionArg {
 pub:
-	name string   // argument name
-	typ  ast.Type // argument type idx
+	name   string   // argument name
+	typ    ast.Type // argument type idx
+	is_mut bool     // is mut?
 }
 
 pub struct Function {

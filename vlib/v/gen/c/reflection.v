@@ -37,7 +37,7 @@ fn (g Gen) gen_functionarg_array(type_name string, node ast.Fn) string {
 	}
 	mut out := 'new_array_from_c_array(${node.params.len},${node.params.len},sizeof(${type_name}),'
 	out += '_MOV((${type_name}[${node.params.len}]){'
-	out += node.params.map('((${type_name}){.name=_SLIT("${it.name}"),.typ=${int(it.typ)},})').join(',')
+	out += node.params.map('((${type_name}){.name=_SLIT("${it.name}"),.typ=${int(it.typ)},.is_mut=${it.is_mut}})').join(',')
 	out += '}))'
 	return out
 }
