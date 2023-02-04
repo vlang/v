@@ -10,7 +10,7 @@ import v.token
 
 const (
 	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
-		'compile_warn', 'stack_size']
+		'compile_warn']
 	comptime_types           = ['Map', 'Array', 'Int', 'Float', 'Struct', 'Interface', 'Enum',
 		'Sumtype', 'Alias', 'Function']
 )
@@ -94,7 +94,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 	start_pos := p.tok.pos()
 	p.check(.dollar)
-	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$vweb.html()`, `\$compile_error()`, `\$compile_warn()` and \$stack_size() comptime functions are supported right now'
+	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$vweb.html()`, `\$compile_error()` and `\$compile_warn()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		name := p.check_name() // skip `vweb.html()` TODO
 		if name != 'vweb' {
@@ -116,20 +116,6 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	if method_name in ['env', 'pkgconfig', 'compile_error', 'compile_warn'] {
 		s := p.tok.lit
 		p.check(.string)
-		p.check(.rpar)
-		return ast.ComptimeCall{
-			scope: 0
-			method_name: method_name
-			args_var: s
-			is_env: method_name == 'env'
-			is_pkgconfig: method_name == 'pkgconfig'
-			env_pos: start_pos
-			pos: start_pos.extend(p.prev_tok.pos())
-		}
-	}
-	if method_name == 'stack_size' {
-		s := p.tok.lit
-		p.check(.number)
 		p.check(.rpar)
 		return ast.ComptimeCall{
 			scope: 0

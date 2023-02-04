@@ -800,7 +800,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 						typ = obj.smartcasts.last()
 					} else {
 						if obj.typ == 0 {
-							typ = c.expr(obj.expr)
+							if obj.expr is ast.IfGuardExpr {
+								typ = c.expr(obj.expr.expr)
+							} else {
+								typ = c.expr(obj.expr)
+							}
 						} else {
 							typ = obj.typ
 						}

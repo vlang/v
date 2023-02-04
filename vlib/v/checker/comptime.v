@@ -11,9 +11,6 @@ import v.pkgconfig
 import v.checker.constants
 
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
-	if node.method_name == 'stack_size' {
-		return ast.stack_type
-	}
 	if node.left !is ast.EmptyExpr {
 		node.left_type = c.expr(node.left)
 	}

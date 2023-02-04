@@ -1519,9 +1519,6 @@ pub fn (mut f Gen) chan_init(mut node ast.ChanInit) {
 }
 
 pub fn (mut f Gen) comptime_call(node ast.ComptimeCall) {
-	if node.method_name == 'stack_size' {
-		return
-	}
 	if node.is_vweb {
 		if node.method_name == 'html' {
 			f.write('\$vweb.html()')

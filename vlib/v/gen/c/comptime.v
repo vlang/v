@@ -117,10 +117,6 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		}
 		return
 	}
-	if node.method_name == 'stack_size' {
-		g.stack_size = node.args_var
-		return
-	}
 	sym := g.table.sym(g.unwrap_generic(node.left_type))
 	g.trace_autofree('// \$method call. sym="${sym.name}"')
 	if node.method_name == 'method' {

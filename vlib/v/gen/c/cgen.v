@@ -242,8 +242,6 @@ mut:
 	reflection_funcs   strings.Builder
 	reflection_others  strings.Builder
 	reflection_strings &map[string]int
-	// sugestion to  stack size
-	stack_size string
 }
 
 // global or const variable definition string
@@ -319,7 +317,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 		reflection_funcs: strings.new_builder(100)
 		reflection_others: strings.new_builder(100)
 		reflection_strings: &reflection_strings
-		stack_size: '${pref.thread_stack_size}'
 	}
 
 	/*
@@ -6129,6 +6126,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			sidx := g.type_sidx(unwrapped_node_typ)
 			g.write('_typ, ${sidx}) /*expected idx: ${sidx}, name: ${sym.name} */ ')
 		}
+
 		// fill as cast name table
 		for variant in expr_type_sym.info.variants {
 			idx := u32(variant).str()

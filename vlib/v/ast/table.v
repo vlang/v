@@ -2275,9 +2275,6 @@ pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
 		.function {
 			return x_kind == .function
 		}
-		.stack {
-			return true
-		}
 	}
 }
 

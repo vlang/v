@@ -863,10 +863,6 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 	mut node := unsafe { node_ }
 	match mut node {
 		ast.ComptimeType {
-			// this should be inside future function
-			if node.method_name == 'stack_size' {
-				return
-			}
 			verror('not yet implemented')
 		}
 		ast.EmptyExpr {}

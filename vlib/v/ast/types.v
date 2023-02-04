@@ -457,7 +457,6 @@ pub const (
 	thread_type_idx        = 28
 	error_type_idx         = 29
 	nil_type_idx           = 30
-	stack_type_idx         = 31
 )
 
 // Note: builtin_type_names must be in the same order as the idx consts above
@@ -522,7 +521,6 @@ pub const (
 	voidptr_types      = new_voidptr_types()
 	cptr_types         = merge_types(voidptr_types, byteptr_types, charptr_types)
 	nil_type           = new_type(nil_type_idx)
-	stack_type         = new_type(stack_type_idx)
 )
 
 fn new_charptr_types() []Type {
