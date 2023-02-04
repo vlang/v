@@ -53,8 +53,8 @@ fn test_sumtype_sym() {
 	var := MySum(1)
 	typ := reflection.type_of(var)
 	assert typ.sym.kind == .sum_type
-	assert (typ.sym.info as reflection.SumType).variants[0].is_int()
-	assert (typ.sym.info as reflection.SumType).variants[1].is_float()
+	assert (typ.sym.info as reflection.SumType).variants[0].is_float()
+	assert (typ.sym.info as reflection.SumType).variants[1].is_int()
 }
 
 fn test_alias_sym() {
