@@ -58,6 +58,7 @@ fn (g Gen) gen_function_array(nodes []ast.Fn) string {
 	return out
 }
 
+// gen_reflection_fn generates C code for Function struct
 [inline]
 fn (g Gen) gen_reflection_fn(node ast.Fn) string {
 	mut arg_str := '((${c.cprefix}Function){'
