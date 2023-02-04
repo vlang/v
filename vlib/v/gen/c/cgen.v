@@ -2581,7 +2581,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			return
 		}
 	}
-	if exp_sym.kind == .function {
+	if exp_sym.kind == .function && !expected_type.has_flag(.option)
+		&& !expected_type.has_flag(.result) {
 		g.write('(voidptr)')
 	}
 	// no cast
@@ -4358,15 +4359,16 @@ fn (mut g Gen) ident(node ast.Ident) {
 			}
 		}
 	} else if node.info is ast.IdentFn {
-		if g.pref.translated || g.file.is_translated {
-			// `p_mobjthinker` => `P_MobjThinker`
-			if func := g.table.find_fn(node.name) {
-				// TODO PERF fn lookup for each fn call in translated mode
+		// TODO PERF fn lookup for each fn call in translated mode
+		if func := g.table.find_fn(node.name) {
+			if g.pref.translated || g.file.is_translated || func.is_file_translated {
+				// `p_mobjthinker` => `P_MobjThinker`
 				if cattr := func.attrs.find_first('c') {
 					name = cattr.arg
 				}
 			}
 		}
+
 		if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {
 			key := node.name
 			g.write('/* obf identfn: ${key} */')
@@ -5343,6 +5345,8 @@ fn (mut g Gen) write_init_function() {
 		}
 	}
 
+	mut cleaning_up_array := []string{cap: g.table.modules.len}
+
 	for mod_name in g.table.modules {
 		if g.has_reflection && mod_name == 'v.reflection' {
 			// ignore v.reflection already initialized above
@@ -5372,6 +5376,15 @@ fn (mut g Gen) write_init_function() {
 				g.writeln('\t${init_fn_c_name}();')
 			}
 		}
+		cleanup_fn_name := '${mod_name}.cleanup'
+		if cleanupfn := g.table.find_fn(cleanup_fn_name) {
+			if cleanupfn.return_type == ast.void_type && cleanupfn.params.len == 0 {
+				mod_c_name := util.no_dots(mod_name)
+				cleanup_fn_c_name := '${mod_c_name}__cleanup'
+				cleaning_up_array << '\t${cleanup_fn_c_name}();'
+				cleaning_up_array << '\t// Cleaning up for module ${mod_name}'
+			}
+		}
 	}
 
 	g.writeln('}')
@@ -5392,6 +5405,9 @@ fn (mut g Gen) write_init_function() {
 			g.writeln(g.cleanups[mod_name].str())
 		}
 		g.writeln('\tarray_free(&as_cast_type_indexes);')
+	}
+	for x in cleaning_up_array.reverse() {
+		g.writeln(x)
 	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
@@ -6101,23 +6117,43 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	mut expr_type_sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	if mut expr_type_sym.info is ast.SumType {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
-		if sym.info is ast.FnType {
-			g.write('/* as */ (${styp})__as_cast(')
+		if node.expr is ast.CallExpr && !g.is_cc_msvc {
+			tmp_var := g.new_tmp_var()
+			expr_styp := g.typ(node.expr_type)
+			g.write('({ ${expr_styp} ${tmp_var} = ')
+			g.expr(node.expr)
+			g.write('; ')
+			if sym.info is ast.FnType {
+				g.write('/* as */ (${styp})__as_cast(')
+			} else {
+				g.write('/* as */ *(${styp}*)__as_cast(')
+			}
+			g.write(tmp_var)
+			g.write(dot)
+			g.write('_${sym.cname},')
+			g.write(tmp_var)
+			g.write(dot)
+			sidx := g.type_sidx(unwrapped_node_typ)
+			g.write('_typ, ${sidx}); }) /*expected idx: ${sidx}, name: ${sym.name} */ ')
 		} else {
-			g.write('/* as */ *(${styp}*)__as_cast(')
+			if sym.info is ast.FnType {
+				g.write('/* as */ (${styp})__as_cast(')
+			} else {
+				g.write('/* as */ *(${styp}*)__as_cast(')
+			}
+			g.write('(')
+			g.expr(node.expr)
+			g.write(')')
+			g.write(dot)
+			g.write('_${sym.cname},')
+			g.write('(')
+			g.expr(node.expr)
+			g.write(')')
+			g.write(dot)
+			// g.write('typ, /*expected:*/$node.typ)')
+			sidx := g.type_sidx(unwrapped_node_typ)
+			g.write('_typ, ${sidx}) /*expected idx: ${sidx}, name: ${sym.name} */ ')
 		}
-		g.write('(')
-		g.expr(node.expr)
-		g.write(')')
-		g.write(dot)
-		g.write('_${sym.cname},')
-		g.write('(')
-		g.expr(node.expr)
-		g.write(')')
-		g.write(dot)
-		// g.write('typ, /*expected:*/$node.typ)')
-		sidx := g.type_sidx(unwrapped_node_typ)
-		g.write('_typ, ${sidx}) /*expected idx: ${sidx}, name: ${sym.name} */ ')
 
 		// fill as cast name table
 		for variant in expr_type_sym.info.variants {

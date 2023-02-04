@@ -448,17 +448,6 @@ fn main() {
 Unlike most languages, variable shadowing is not allowed. Declaring a variable with a name
 that is already used in a parent scope will cause a compilation error.
 
-You can shadow imported modules though, as it is very useful in some situations:
-```v ignore
-import ui
-import gg
-
-fn draw(ctx &gg.Context) {
-	gg := ctx.parent.get_ui().gg
-	gg.draw_rect(10, 10, 100, 50)
-}
-```
-
 ## V Types
 
 ### Primitive types
@@ -1424,8 +1413,8 @@ import os { input, user_os }
 
 name := input('Enter your name: ')
 println('Name: ${name}')
-os := user_os()
-println('Your OS is ${os}.')
+current_os := user_os()
+println('Your OS is ${current_os}.')
 ```
 
 ### Module import aliasing
@@ -3569,7 +3558,7 @@ fn pass_time(w World) {
 
 ### Option/Result types and error handling
 
-Optional types are for types which may represent `none`. Result types may
+Option types are for types which may represent `none`. Result types may
 represent an error returned from a function.
 
 `Option` types are declared by prepending `?` to the type name: `?Type`.
@@ -5564,7 +5553,7 @@ cause a panic.
 ```v
 struct Node {
 	a &Node
-	b &Node = 0 // Auto-initialized to nil, use with caution!
+	b &Node = unsafe { nil } // Auto-initialized to nil, use with caution!
 }
 
 // Reference fields must be initialized unless an initial value is declared.

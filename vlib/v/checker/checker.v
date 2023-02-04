@@ -1052,6 +1052,8 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 		}
 	} else if expr is ast.CastExpr {
 		c.check_expr_opt_call(expr.expr, ret_type)
+	} else if expr is ast.AsCast {
+		c.check_expr_opt_call(expr.expr, ret_type)
 	}
 	return ret_type
 }
@@ -1088,7 +1090,6 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 		}
 		return
 	}
-
 	if node.stmts.len == 0 {
 		if ret_type != ast.void_type {
 			// x := f() or {}
@@ -1190,7 +1191,7 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 				}
 			}
 			else {
-				if stmt.typ == ast.void_type {
+				if stmt.typ == ast.void_type || expr_return_type == ast.void_type {
 					return
 				}
 				if is_noreturn_callexpr(stmt.expr) {

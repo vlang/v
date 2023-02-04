@@ -98,8 +98,11 @@ fn prepare_bin2v_file(mut fmt_bench benchmark.Benchmark) {
 }
 
 fn write_bin2v_keep_content() ! {
+	// Note: do not put large files here; the goal of this particular test is
+	// just to guarantee that the output of `v bin2v` is invariant to vfmt, not
+	// to stress out bin2v or vfmt...
 	img0 := os.join_path('vlib', 'v', 'embed_file', 'tests', 'v.png')
-	img1 := os.join_path('tutorials', 'building_a_simple_web_blog_with_vweb', 'img', 'time.png')
+	img1 := os.join_path('examples', 'assets', 'logo.png')
 	os.rm(b2v_keep_path)!
 	res := os.execute('${os.quoted_path(vexe)} bin2v -w ${os.quoted_path(b2v_keep_path)} ${os.quoted_path(img0)} ${os.quoted_path(img1)}')
 	if res.exit_code != 0 {

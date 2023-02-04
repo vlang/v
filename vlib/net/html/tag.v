@@ -40,7 +40,7 @@ pub fn (tag Tag) text() string {
 		return '\n'
 	}
 	mut text_str := strings.new_builder(200)
-	text_str.write_string(tag.content.replace('\n', ''))
+	text_str.write_string(tag.content)
 	for child in tag.children {
 		text_str.write_string(child.text())
 	}
