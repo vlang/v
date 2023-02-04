@@ -58,7 +58,7 @@ pub:
 pub struct StructField {
 pub:
 	name   string   // field name
-	typ    int      // type idx
+	typ    ast.Type // type
 	attrs  []string // field attrs
 	is_pub bool     // is pub?
 	is_mut bool     // is mut?
@@ -73,19 +73,19 @@ pub:
 
 pub struct SumType {
 pub:
-	parent_idx int   // parent type
-	variants   []int // variant type idxs
+	parent_idx int        // parent type
+	variants   []ast.Type // variant type
 }
 
 pub struct Map {
 pub:
-	key_type   int // key type idx
-	value_type int // value type idx
+	key_type   int // key type
+	value_type int // value type
 }
 
 pub struct MultiReturn {
 pub:
-	idxs []int // type idxs
+	types []ast.Type // types
 }
 
 pub type TypeInfo = Alias
@@ -125,8 +125,8 @@ pub:
 
 pub struct FunctionArg {
 pub:
-	name string // argument name
-	typ  int    // argument type idx
+	name string   // argument name
+	typ  ast.Type // argument type idx
 }
 
 pub struct Function {
@@ -134,12 +134,13 @@ pub:
 	mod_name     string        // module name
 	name         string        // function/method name
 	args         []FunctionArg // function/method args
-	file_idx     int  // source file name
-	line_start   int  // decl start line
-	line_end     int  // decl end line
-	is_variadic  bool // is variadic?
-	return_typ   int  // return type idx
-	receiver_typ int  // receiver type idx (is a method)
+	file_idx     int      // source file name
+	line_start   int      // decl start line
+	line_end     int      // decl end line
+	is_variadic  bool     // is variadic?
+	return_typ   ast.Type // return type idx
+	receiver_typ ast.Type // receiver type idx (is a method)
+	is_pub       bool     // is pub?
 }
 
 // API module
