@@ -26,7 +26,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 	}
 	mut remove_tail_zeros := false
 	fspec := node.fmts[i]
-	mut fmt_type := StrIntpType{}
+	mut fmt_type := StrIntpType.si_no_str
 	g.write('/*${fspec} ${sym}*/')
 	// upper cases
 	if (fspec - `A`) <= (`Z` - `A`) {
