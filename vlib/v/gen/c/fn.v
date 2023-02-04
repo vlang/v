@@ -1984,7 +1984,8 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		if g.pref.os != .vinix {
 			g.writeln('pthread_attr_t thread_${tmp}_attributes;')
 			g.writeln('pthread_attr_init(&thread_${tmp}_attributes);')
-			g.writeln('pthread_attr_setstacksize(&thread_${tmp}_attributes, ${g.get_cur_thread_stack_size(expr.name)});')
+			size := g.get_cur_thread_stack_size(expr.name)
+			g.writeln('pthread_attr_setstacksize(&thread_${tmp}_attributes, ${size});')
 			sthread_attributes = '&thread_${tmp}_attributes'
 		}
 		g.writeln('int ${tmp}_thr_res = pthread_create(&thread_${tmp}, ${sthread_attributes}, (void*)${wrapper_fn_name}, ${arg_tmp_var});')
@@ -2205,6 +2206,8 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	}
 }
 
+// get current thread size, if fn hasn't defined return default
+[inline]
 fn (mut g Gen) get_cur_thread_stack_size(name string) string {
 	ast_fn := g.table.fns[name] or { return '${g.pref.thread_stack_size}' }
 	attrs := ast_fn.attrs
