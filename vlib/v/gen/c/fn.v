@@ -1985,7 +1985,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 			g.writeln('pthread_attr_t thread_${tmp}_attributes;')
 			g.writeln('pthread_attr_init(&thread_${tmp}_attributes);')
 			size := g.get_cur_thread_stack_size(expr.name)
-			g.writeln('pthread_attr_setstacksize(&thread_${tmp}_attributes, ${size});')
+			g.writeln('pthread_attr_setstacksize(&thread_${tmp}_attributes, ${size}); // fn: ${expr.name}')
 			sthread_attributes = '&thread_${tmp}_attributes'
 		}
 		g.writeln('int ${tmp}_thr_res = pthread_create(&thread_${tmp}, ${sthread_attributes}, (void*)${wrapper_fn_name}, ${arg_tmp_var});')
