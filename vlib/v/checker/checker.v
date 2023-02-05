@@ -1005,7 +1005,7 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 				}
 			} else {
 				if expr.or_block.kind != .absent {
-					c.check_or_expr(expr.or_block, ret_type, expr_ret_type)
+					c.check_or_expr(expr.or_block, ret_type, expr_ret_type, expr)
 				}
 			}
 			return ret_type.clear_flag(.result)
@@ -1037,7 +1037,7 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 				}
 			} else {
 				if expr.or_block.kind != .absent {
-					c.check_or_expr(expr.or_block, ret_type, expr.typ)
+					c.check_or_expr(expr.or_block, ret_type, expr.typ, expr)
 				}
 			}
 			return ret_type.clear_flag(.result)
@@ -1052,7 +1052,7 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 		}
 	} else if expr is ast.IndexExpr {
 		if expr.or_expr.kind != .absent {
-			c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result))
+			c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result), expr)
 		}
 	} else if expr is ast.CastExpr {
 		c.check_expr_opt_call(expr.expr, ret_type)
@@ -1062,7 +1062,7 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 	return ret_type
 }
 
-fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return_type ast.Type) {
+fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return_type ast.Type, expr ast.Expr) {
 	if node.kind == .propagate_option {
 		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.option)
 			&& !c.table.cur_fn.is_main && !c.table.cur_fn.is_test && !c.inside_const {
@@ -1070,7 +1070,7 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 			c.error('to propagate the call, `${c.table.cur_fn.name}` must return an option type',
 				node.pos)
 		}
-		if !expr_return_type.has_flag(.option) {
+		if expr !is ast.Ident && !expr_return_type.has_flag(.option) {
 			if expr_return_type.has_flag(.result) {
 				c.warn('propagating a result like an option is deprecated, use `foo()!` instead of `foo()?`',
 					node.pos)
@@ -3117,11 +3117,9 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 				c.error('cannot use `?` on non-option variable', node.pos)
 			}
 			unwrapped_typ := info.typ.clear_flag(.option).clear_flag(.result)
-			if node.or_expr.kind == .block {
-				c.expected_or_type = unwrapped_typ
-				c.stmts_ending_with_expression(node.or_expr.stmts)
-				c.check_or_expr(node.or_expr, info.typ, c.expected_or_type)
-			}
+			c.expected_or_type = unwrapped_typ
+			c.stmts_ending_with_expression(node.or_expr.stmts)
+			c.check_or_expr(node.or_expr, info.typ, c.expected_or_type, node)
 			return unwrapped_typ
 		}
 		return info.typ
@@ -3213,11 +3211,9 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 							c.error('cannot use `?` on non-option variable', node.pos)
 						}
 						unwrapped_typ := typ.clear_flag(.option).clear_flag(.result)
-						if node.or_expr.kind == .block {
-							c.expected_or_type = unwrapped_typ
-							c.stmts_ending_with_expression(node.or_expr.stmts)
-							c.check_or_expr(node.or_expr, typ, c.expected_or_type)
-						}
+						c.expected_or_type = unwrapped_typ
+						c.stmts_ending_with_expression(node.or_expr.stmts)
+						c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
 						return unwrapped_typ
 					}
 					return typ

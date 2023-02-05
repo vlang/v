@@ -8,17 +8,23 @@ import v.util
 import v.token
 
 fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr ast.Expr, ret_typ ast.Type) {
-	gen_or := expr is ast.Ident && (expr as ast.Ident).or_expr.kind == .block
+	gen_or := expr is ast.Ident && (expr as ast.Ident).or_expr.kind != .absent
 	if gen_or {
 		old_inside_opt_data := g.inside_opt_data
 		g.inside_opt_data = true
 		g.expr_with_cast(expr, expr_typ, ret_typ)
 		g.writeln(';')
 		g.writeln('if (${expr}.state != 0) {')
-		g.gen_or_block_stmts(var_expr.str(), '', (expr as ast.Ident).or_expr.stmts, ret_typ,
-			false)
-		g.inside_opt_data = old_inside_opt_data
+		if expr is ast.Ident && (expr as ast.Ident).or_expr.kind == .propagate_option {
+			g.write('return ')
+			g.gen_option_error(g.cur_fn.return_type, expr)
+			g.writeln(';')
+		} else {
+			g.gen_or_block_stmts(var_expr.str(), '', (expr as ast.Ident).or_expr.stmts,
+				ret_typ, false)
+		}
 		g.writeln('}')
+		g.inside_opt_data = old_inside_opt_data
 	} else {
 		g.expr_with_opt(expr, expr_typ, ret_typ)
 	}
@@ -179,10 +185,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					left.obj.typ = var_type
 				} else if is_decl && val is ast.Ident && (val as ast.Ident).info is ast.IdentVar {
 					val_info := (val as ast.Ident).info
-					if val_info.is_option && val.or_expr.kind in [.propagate_option, .block] {
+					gen_or = val.or_expr.kind != .absent
+					if val_info.is_option && gen_or {
 						var_type = val_type.clear_flag(.option)
 						left.obj.typ = var_type
-						gen_or = val.or_expr.kind == .block
 					}
 				}
 				is_auto_heap = left.obj.is_auto_heap
