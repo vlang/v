@@ -165,6 +165,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							c.error('left operand to `${node.op}` does not match the array element type: ${err.msg()}',
 								left_right_pos)
 						}
+					} else {
+						if mut node.right is ast.ArrayInit {
+							for i, typ in node.right.expr_types {
+								c.ensure_type_exists(typ, node.right.exprs[i].pos()) or {}
+							}
+						}
 					}
 				}
 				.map {
