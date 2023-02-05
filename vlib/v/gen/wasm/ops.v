@@ -4,6 +4,8 @@ import v.ast
 import v.token
 import binaryen as wa
 
+// "Register size" types such as int, i64 and bool boil down to their WASM counterparts.
+// Structures and unions are pointers, i32.
 fn (mut g Gen) get_wasm_type(typ_ ast.Type) wa.Type {
 	typ := ast.mktyp(typ_)
 	if typ == ast.void_type_idx {
@@ -36,6 +38,19 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wa.Type {
 	if typ == ast.bool_type_idx {
 		return type_i32
 	}
+	ts := g.table.sym(typ)
+	match ts.info {
+		/* ast.Struct {
+			return type_i32
+		} */
+		ast.MultiReturn {
+			mut paraml := ts.info.types.map(g.get_wasm_type(it))
+			// TODO: cache??
+			return wa.typecreate(paraml.data, paraml.len)
+		}
+		else {}
+	}
+	
 	g.w_error("get_wasm_type: unreachable type '${*g.table.sym(typ)}'")
 }
 

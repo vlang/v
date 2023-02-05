@@ -21,3 +21,13 @@ fn func(a int, cond bool) i64 {
 
 	return src
 }
+
+fn test(cond bool) int {
+	return if cond {
+		2
+	} else if !cond {
+		5
+	} else {
+		6
+	}
+}

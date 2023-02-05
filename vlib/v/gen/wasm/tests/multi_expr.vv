@@ -2,3 +2,7 @@ fn multi(a i16) i64 {
 	one, two := a, 10
 	return one + two
 }
+
+/* pub fn multireturn(a int) (int, f64, i64) {
+	return 2, a + 2, 10 - a
+} */

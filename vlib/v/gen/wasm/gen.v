@@ -20,7 +20,7 @@ mut:
 	table    &ast.Table = unsafe { nil }
 	//
 	// wasmtypes map[ast.Type]wa.Type
-	curr_ret    ast.Type
+	curr_ret    []ast.Type
 	local_stack []FuncIdent
 	lbl         int
 }
@@ -60,6 +60,9 @@ pub fn (mut g Gen) warning(s string, pos token.Pos) {
 
 [noreturn]
 pub fn (mut g Gen) w_error(s string) {
+	if g.pref.is_verbose {
+		print_backtrace()
+	}
 	util.verror('wasm error', s)
 }
 
@@ -151,8 +154,6 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	return_type := if ts.kind == .struct_ {
 		g.w_error('structs are not implemented')
-	} else if ts.kind == .multi_return {
-		g.w_error('multi returns are not implemented')
 	} else {
 		g.get_wasm_type(node.return_type)
 	}
@@ -172,17 +173,26 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	params_type := wa.typecreate(paraml.data, paraml.len)
 
-	g.curr_ret = node.return_type
-	wasm_expr := g.expr_stmts(node.stmts, node.return_type)
+	g.curr_ret = if ts.kind == .multi_return {
+		(ts.info as ast.MultiReturn).types
+	} else {
+		[node.return_type]
+	}
+	wasm_expr := g.expr_stmts(node.stmts, ast.void_type)
 
 	mut temporaries := []wa.Type{cap: g.local_stack.len - paraml.len}
 	for idx := paraml.len; idx < g.local_stack.len; idx++ {
 		temporaries << g.local_stack[idx].typ
 	}
-	wa.addfunction(g.mod, name.str, params_type, return_type, temporaries.data, temporaries.len,
+	/* func := */ wa.addfunction(g.mod, name.str, params_type, return_type, temporaries.data, temporaries.len,
 		wasm_expr)
-	if node.is_pub && node.mod == 'main' {
+	if (node.is_pub && node.mod == 'main') || node.name == 'main.main' {
 		wa.addfunctionexport(g.mod, name.str, name.str)
+		
+		// `_start` would be the entrypoint, which calls into 
+		// `_vinit`, which would then call into `main.main`
+		// 
+		// wa.setstart(g.mod, func)
 	}
 
 	g.local_stack.clear()
@@ -213,20 +223,20 @@ fn (mut g Gen) literal(val string, expected ast.Type) wa.Expression {
 	g.w_error('literal: bad type `${expected}`')
 }
 
-
 fn (mut g Gen) postfix_expr(node ast.PostfixExpr) wa.Expression {
 	if node.expr !is ast.Ident {
-		g.w_error("postfix_expr: not ast.Ident")
+		g.w_error('postfix_expr: not ast.Ident')
 	}
 
 	kind := if node.op == .inc { token.Kind.plus } else { token.Kind.minus }
-	
+
 	idx, typ := g.get_local_from_ident(node.expr as ast.Ident)
 	atyp := g.local_stack[idx].ast_typ
 
 	op := g.infix_from_typ(atyp, kind)
 
-	return wa.localset(g.mod, idx, wa.binary(g.mod, op, wa.localget(g.mod, idx, typ), g.literal("1", atyp)))
+	return wa.localset(g.mod, idx, wa.binary(g.mod, op, wa.localget(g.mod, idx, typ),
+		g.literal('1', atyp)))
 }
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) wa.Expression {
@@ -257,10 +267,12 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr) wa.Expression {
 			} else {
 				// -val == 0 - val
 
-				if g.get_wasm_type(node.right_type) == type_i32 {
-					wa.binary(g.mod, wa.subint32(), wa.constant(g.mod, wa.literalint32(0)), expr)
+				if g.get_wasm_type(node.right_type) == wasm.type_i32 {
+					wa.binary(g.mod, wa.subint32(), wa.constant(g.mod, wa.literalint32(0)),
+						expr)
 				} else {
-					wa.binary(g.mod, wa.subint64(), wa.constant(g.mod, wa.literalint64(0)), expr)
+					wa.binary(g.mod, wa.subint64(), wa.constant(g.mod, wa.literalint64(0)),
+						expr)
 				}
 			}
 		}
@@ -270,8 +282,8 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr) wa.Expression {
 		}
 		.bit_not {
 			// ~val == val ^ -1
-			
-			if g.get_wasm_type(node.right_type) == type_i32 {
+
+			if g.get_wasm_type(node.right_type) == wasm.type_i32 {
 				wa.binary(g.mod, wa.xorint32(), expr, wa.constant(g.mod, wa.literalint32(-1)))
 			} else {
 				wa.binary(g.mod, wa.xorint64(), expr, wa.constant(g.mod, wa.literalint64(-1)))
@@ -303,16 +315,14 @@ fn (mut g Gen) if_branch(ifexpr ast.IfExpr, idx int) wa.Expression {
 		next)
 }
 
-fn (mut g Gen) if_stmt(ifexpr ast.IfExpr) wa.Expression {
-	assert !ifexpr.is_expr, '`is_expr` not implemented'
-
+fn (mut g Gen) if_expr(ifexpr ast.IfExpr) wa.Expression {
 	return g.if_branch(ifexpr, 0)
 }
 
 fn (mut g Gen) get_ident(node ast.Ident, expected ast.Type) (wa.Expression, int) {
 	idx, typ := g.get_local_from_ident(node)
 	expr := wa.localget(g.mod, idx, typ)
-			
+
 	return g.cast(expr, typ, g.is_signed(g.local_stack[idx].ast_typ), g.get_wasm_type(expected)), idx
 }
 
@@ -364,11 +374,11 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			if node.branches.len == 2 && node.is_expr {
 				left := g.expr_stmts(node.branches[0].stmts, expected)
 				right := g.expr_stmts(node.branches[1].stmts, expected)
-				wa.bselect(g.mod, g.expr(node.branches[0].cond, ast.bool_type_idx), left, right, g.get_wasm_type(expected))
+				wa.bselect(g.mod, g.expr(node.branches[0].cond, ast.bool_type_idx), left,
+					right, g.get_wasm_type(expected))
 			} else {
-				g.if_stmt(node)
+				g.if_expr(node)
 			}
-			// wa.bif(g.mod, g.expr())
 		}
 		ast.CastExpr {
 			expr := g.expr(node.expr, node.expr_type)
@@ -393,13 +403,12 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			if node.language != .v {
 				g.w_error('functions with bodies outside of V are not implemented')
 			}
-			
-			mut arguments := []wa.Expression{cap: node.args.len}
 
+			mut arguments := []wa.Expression{cap: node.args.len}
 			for idx, arg in node.args {
 				arguments << g.expr(arg.expr, node.expected_arg_types[idx])
 			}
-			
+
 			call := wa.call(g.mod, node.name.str, arguments.data, arguments.len, g.get_wasm_type(node.return_type))
 			if node.is_noreturn {
 				g.mkblock([call, wa.unreachable(g.mod)])
@@ -413,24 +422,61 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 	}
 }
 
+fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
+	/* if node.has_cross_var { */
+		g.w_error('complex assign statements are not implemented')
+	/* } */
+
+	//
+	// Expected to be a `a, b := multi_return()`
+	//
+
+	// Stacky code within a concrete AST with `binaryen.pop()`
+	/* mut exprs := []wa.Expression{cap: node.left.len + 1}
+	exprs << g.mkblock([g.expr(node.right[0], 0)])
+
+	for i := node.left.len; i > 0; {
+		i--
+
+		left := node.left[i]
+		typ := node.left_types[i]
+		rtyp := node.right_types[i]
+
+		if left is ast.Ident && node.op == .decl_assign {
+			g.new_local(left.name, typ)
+		}
+
+		wartyp := g.get_wasm_type(rtyp)
+		mut popexpr := wa.pop(g.mod, wartyp)
+		popexpr = g.cast(popexpr, wartyp, g.is_signed(rtyp), g.get_wasm_type(typ))
+
+		// TODO: only supports local identifiers, no path.expressions or global names
+		idx, _ := g.get_local_from_ident(left as ast.Ident)
+		exprs << wa.localset(g.mod, idx, popexpr)
+	}
+
+	return g.mkblock(exprs) */
+	// g.w_error('complex assign statements are not implemented')
+}
+
 fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 	return match node {
 		ast.Return {
 			if node.exprs.len == 1 {
-				expr := g.expr(node.exprs[0], g.curr_ret) // g.expr_with_cast(node.exprs[0], node.types[0], g.curr_ret)
+				expr := g.expr(node.exprs[0], g.curr_ret[0])
 				wa.ret(g.mod, expr)
 			} else if node.exprs.len == 0 {
 				wa.ret(g.mod, unsafe { nil })
 			} else {
-				g.w_error('multi returns are not implemented')
+				g.w_error("multi returns are WIP/not implemented")
+				/* mut exprs := []wa.Expression{cap: node.exprs.len}
+				for idx in 0 .. node.exprs.len {
+					exprs << g.expr(node.exprs[idx], g.curr_ret[idx])
+				}
+				wa.ret(g.mod, wa.tuplemake(g.mod, exprs.data, exprs.len)) */
 			}
 		}
 		ast.ExprStmt {
-			/* if node.typ == ast.void_type {
-				g.expr(node.expr, ast.void_type)
-			} else {
-				g.expr_with_cast(node.expr, node.typ, expected)
-			} */
 			g.expr(node.expr, expected)
 		}
 		ast.ForStmt {
@@ -455,45 +501,51 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 					wa.br(g.mod, lpp_name.str, unsafe { nil }, unsafe { nil }),
 				]
 				loop := wa.loop(g.mod, lpp_name.str, g.mkblock(lbody))
-				
+
 				wa.block(g.mod, blk_name.str, &loop, 1, wasm.type_none)
 			} else {
-				wa.loop(g.mod, lpp_name.str, wa.br(g.mod, lpp_name.str, unsafe { nil }, unsafe { nil }))
+				wa.loop(g.mod, lpp_name.str, wa.br(g.mod, lpp_name.str, unsafe { nil },
+					unsafe { nil }))
 			}
 		}
 		ast.AssignStmt {
 			if (node.left.len > 1 && node.right.len == 1) || node.has_cross_var {
-				// Gen[Native].assign_stmt()
-				g.w_error('complex assign statements are not implemented')
-			}
+				// `a, b := foo()`
+				// `a, b := if cond { 1, 2 } else { 3, 4 }`
+				// `a, b = b, a`
 
-			mut exprs := []wa.Expression{cap: node.left.len}
-			for i, left in node.left {
-				right := node.right[i]
-				typ := node.left_types[i]
-
-				if left is ast.Ident && node.op == .decl_assign {
-					g.new_local(left.name, typ)
-				}
-
-				// TODO: only supports local identifiers, no path.expressions or global names
-				idx, var_typ := g.get_local_from_ident(left as ast.Ident)
-				expr := if node.op !in [.decl_assign, .assign] {
-					op := g.infix_from_typ(typ, token.assign_op_to_infix_op(node.op))
-					infix := wa.binary(g.mod, op, wa.localget(g.mod, idx, var_typ), g.expr(right,
-						typ))
-
-					infix
-				} else {
-					g.expr(right, typ)
-				}
-				exprs << wa.localset(g.mod, idx, expr)
-			}
-
-			if exprs.len == 1 {
-				exprs[0]
+				g.multi_assign_stmt(node)
 			} else {
-				g.mkblock(exprs)
+				// `a := 1` | `a,b := 1,2`
+
+				mut exprs := []wa.Expression{cap: node.left.len}
+				for i, left in node.left {
+					right := node.right[i]
+					typ := node.left_types[i]
+
+					if left is ast.Ident && node.op == .decl_assign {
+						g.new_local(left.name, typ)
+					}
+
+					// TODO: only supports local identifiers, no path.expressions or global names
+					idx, var_typ := g.get_local_from_ident(left as ast.Ident)
+					expr := if node.op !in [.decl_assign, .assign] {
+						op := g.infix_from_typ(typ, token.assign_op_to_infix_op(node.op))
+						infix := wa.binary(g.mod, op, wa.localget(g.mod, idx, var_typ),
+							g.expr(right, typ))
+
+						infix
+					} else {
+						g.expr(right, typ)
+					}
+					exprs << wa.localset(g.mod, idx, expr)
+				}
+
+				if exprs.len == 1 {
+					exprs[0]
+				} else {
+					g.mkblock(exprs)
+				}
 			}
 		}
 		else {
