@@ -995,7 +995,7 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 				'a result'
 			}
 			return_modifier := if expr_ret_type.has_flag(.option) { '?' } else { '!' }
-			if expr.or_block.kind == .absent {
+			if expr_ret_type.has_flag(.result) && expr.or_block.kind == .absent {
 				if c.inside_defer {
 					c.error('${expr.name}() returns ${return_modifier_kind}, so it should have an `or {}` block at the end',
 						expr.pos)
@@ -1004,7 +1004,9 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 						expr.pos)
 				}
 			} else {
-				c.check_or_expr(expr.or_block, ret_type, expr_ret_type)
+				if expr.or_block.kind != .absent {
+					c.check_or_expr(expr.or_block, ret_type, expr_ret_type)
+				}
 			}
 			return ret_type.clear_flag(.result)
 		} else if expr.or_block.kind == .block {
@@ -1025,7 +1027,7 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 				'a result'
 			}
 			with_modifier := if expr.typ.has_flag(.option) { '?' } else { '!' }
-			if expr.or_block.kind == .absent {
+			if expr.typ.has_flag(.result) && expr.or_block.kind == .absent {
 				if c.inside_defer {
 					c.error('field `${expr.field_name}` is ${with_modifier_kind}, so it should have an `or {}` block at the end',
 						expr.pos)
@@ -1034,7 +1036,9 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 						expr.pos)
 				}
 			} else {
-				c.check_or_expr(expr.or_block, ret_type, expr.typ)
+				if expr.or_block.kind != .absent {
+					c.check_or_expr(expr.or_block, ret_type, expr.typ)
+				}
 			}
 			return ret_type.clear_flag(.result)
 		} else if expr.or_block.kind == .block {
