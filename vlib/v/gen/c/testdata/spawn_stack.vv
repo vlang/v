@@ -12,8 +12,8 @@ fn my_print1() {
 	println('hello word')
 }
 
-// 4KB  stack size
-[spawn_stack: 4096]
+// 64KB  stack size
+[spawn_stack: 65536]
 fn my_print2() {
 	println('ahoj svet')
 }
