@@ -44,6 +44,7 @@ fn test_cast_option() {
 	dump(x)
 	assert x != none
 	x = none
+	assert x == none
 	dump(x)
 }
 
@@ -53,6 +54,8 @@ fn test_assign_from_option() {
 	println(y)
 	assert x != none
 	assert y != none
+	assert x? == 123
+	assert y? == 123
 }
 
 fn test_blank_assign() {
@@ -62,6 +65,7 @@ fn test_blank_assign() {
 fn test_optional_value_assign() {
 	x := ?int(0)
 	assert x != none
+	assert x? == 0
 }
 
 fn test_assert_initialized() {
@@ -100,6 +104,10 @@ fn test_none_initialization() {
 	var2 = 2
 	var3 = 3
 
+	assert var? == 1
+	assert var2? == 2
+	assert var3? == 3
+
 	assert var != none
 	assert var2 != none
 	assert var3 != none
@@ -113,8 +121,8 @@ fn test_as_cast() {
 fn test_unwrap() {
 	var := ?int(1)
 	println(var)
-	println(var)
 	assert var != none
+	assert var? == 1
 
 	var2 := var? + 1
 	println(var2)
