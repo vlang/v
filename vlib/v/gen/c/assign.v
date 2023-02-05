@@ -162,36 +162,38 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			// TODO: no buffer fiddling
 			ast.AnonFn {
-				if blank_assign {
-					g.write('{')
-				}
-				// if it's a decl assign (`:=`) or a blank assignment `_ =`/`_ :=` then generate `void (*ident) (args) =`
-				if (is_decl || blank_assign) && left is ast.Ident {
-					sig := g.fn_var_signature(val.decl.return_type, val.decl.params.map(it.typ),
-						ident.name)
-					g.write(sig + ' = ')
-				} else {
-					g.is_assign_lhs = true
-					g.assign_op = node.op
-					g.expr(left)
-					g.is_assign_lhs = false
-					g.is_arraymap_set = false
-					if mut left is ast.IndexExpr {
-						sym := g.table.sym(left.left_type)
-						if sym.kind in [.map, .array] {
-							g.expr(val)
-							g.writeln('});')
-							continue
-						}
+				if !(var_type.has_flag(.option) || var_type.has_flag(.result)) {
+					if blank_assign {
+						g.write('{')
 					}
-					g.write(' = ')
+					// if it's a decl assign (`:=`) or a blank assignment `_ =`/`_ :=` then generate `void (*ident) (args) =`
+					if (is_decl || blank_assign) && left is ast.Ident {
+						sig := g.fn_var_signature(val.decl.return_type, val.decl.params.map(it.typ),
+							ident.name)
+						g.write(sig + ' = ')
+					} else {
+						g.is_assign_lhs = true
+						g.assign_op = node.op
+						g.expr(left)
+						g.is_assign_lhs = false
+						g.is_arraymap_set = false
+						if mut left is ast.IndexExpr {
+							sym := g.table.sym(left.left_type)
+							if sym.kind in [.map, .array] {
+								g.expr(val)
+								g.writeln('});')
+								continue
+							}
+						}
+						g.write(' = ')
+					}
+					g.expr(val)
+					g.writeln(';')
+					if blank_assign {
+						g.write('}')
+					}
+					continue
 				}
-				g.expr(val)
-				g.writeln(';')
-				if blank_assign {
-					g.write('}')
-				}
-				continue
 			}
 			else {}
 		}
