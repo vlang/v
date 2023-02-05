@@ -18,6 +18,7 @@ mut:
 	warnings []errors.Warning
 	errors   []errors.Error
 	table    &ast.Table = unsafe { nil }
+	structs map[ast.Type]wa.HeapType
 	//
 	// wasmtypes map[ast.Type]wa.Type
 	curr_ret    []ast.Type
@@ -107,15 +108,6 @@ fn (mut g Gen) new_local(name string, typ ast.Type) {
 	}
 }
 
-const (
-	type_none = wa.typenone()
-	type_auto = wa.typeauto()
-	type_i32  = wa.typeint32()
-	type_i64  = wa.typeint64()
-	type_f32  = wa.typefloat32()
-	type_f64  = wa.typefloat64()
-)
-
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	name := if node.is_method {
 		'${g.table.get_type_name(node.receiver.typ)}.${node.name}'
@@ -152,11 +144,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	ts := g.table.sym(node.return_type)
 
-	return_type := if ts.kind == .struct_ {
-		g.w_error('structs are not implemented')
-	} else {
-		g.get_wasm_type(node.return_type)
-	}
+	return_type := g.get_wasm_type(node.return_type)
 
 	mut paraml := []wa.Type{cap: node.params.len + 1}
 	defer {
@@ -338,7 +326,19 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			g.w_error('wasm backend does not support threads')
 		}
 		ast.StructInit {
-			g.w_error('wasm backend does not support structs yet')
+			ts := g.table.sym(node.typ)
+			info := ts.info as ast.Struct
+			
+			mut exprs := []wa.Expression{len: info.fields.len}
+
+			for f in node.fields {
+				field := ts.find_field(f.name) or {
+					g.w_error('could not find field `${f.name}` on init')
+				}
+				exprs[field.i] = g.expr(f.expr, field.typ)
+			}
+			
+			wa.structnew(g.mod, exprs.data, exprs.len, g.structs[node.typ])
 		}
 		ast.MatchExpr {
 			g.w_error('wasm backend does not support match expressions yet')
@@ -602,7 +602,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 		files: files
 		mod: wa.modulecreate()
 	}
-	wa.modulesetfeatures(g.mod, wa.featuremultivalue())
+	wa.modulesetfeatures(g.mod, wa.featureall())
 
 	for file in g.files {
 		if file.errors.len > 0 {

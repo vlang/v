@@ -4,6 +4,51 @@ import v.ast
 import v.token
 import binaryen as wa
 
+const (
+	type_none = wa.typenone()
+	type_auto = wa.typeauto()
+	type_i32  = wa.typeint32()
+	type_i64  = wa.typeint64()
+	type_f32  = wa.typefloat32()
+	type_f64  = wa.typefloat64()
+	type_structref = wa.typestructref()
+)
+
+fn (mut g Gen) new_struct_entry(typ ast.Type) {
+	ts := g.table.sym(typ)
+	info := ts.info as ast.Struct
+
+	tb := wa.typebuildercreate(1)
+	mut f_t := []wa.Type{cap: info.fields.len}       // Types of each field
+	mut f_m := []bool{cap: info.fields.len}          // Mutability of each field
+	mut f_p := []wa.PackedType{cap: info.fields.len} // Packed types, for 8/16 bit types
+
+	if info.is_union {
+		g.w_error("unions are not implemented yet")
+	}
+	if info.is_generic {
+		g.w_error("generic structs are not implemented yet")
+	}
+
+	for field in info.fields {
+		f_t << g.get_wasm_type(field.typ)
+		f_m << field.is_mut
+		f_p << if field.typ in [ast.i8_type, ast.u8_type] {
+			wa.packedtypeint8()
+		} else if field.typ in [ast.i16_type, ast.u16_type] {
+			wa.packedtypeint16()
+		} else {
+			wa.packedtypenotpacked()
+		}
+	}
+	wa.typebuildersetstructtype(tb, 0, f_t.data, f_p.data, f_m.data, f_t.len)
+	
+	mut heap_type := wa.HeapType(unsafe { nil })
+	assert wa.typebuilderbuildanddispose(tb, &heap_type, unsafe { nil }, unsafe { nil })
+
+	g.structs[typ] = heap_type
+}
+
 // "Register size" types such as int, i64 and bool boil down to their WASM counterparts.
 // Structures and unions are pointers, i32.
 fn (mut g Gen) get_wasm_type(typ_ ast.Type) wa.Type {
@@ -40,13 +85,17 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wa.Type {
 	}
 	ts := g.table.sym(typ)
 	match ts.info {
-		/* ast.Struct {
-			return type_i32
-		} */
+		ast.Struct {
+			if typ !in g.structs {
+				g.new_struct_entry(typ)
+			}
+			return type_structref
+		}
 		ast.MultiReturn {
-			mut paraml := ts.info.types.map(g.get_wasm_type(it))
 			// TODO: cache??
-			return wa.typecreate(paraml.data, paraml.len)
+			// mut paraml := ts.info.types.map(g.get_wasm_type(it))
+			// return wa.typecreate(paraml.data, paraml.len)
+			g.w_error("multi returns are WIP/not implemented")
 		}
 		else {}
 	}
