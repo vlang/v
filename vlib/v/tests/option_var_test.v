@@ -3,6 +3,9 @@ import time
 type MyAlias = []int
 type MySumType = []f64 | []int
 
+struct Test {
+}
+
 struct StructType2 {
 	a ?time.Time = none
 }
@@ -182,4 +185,26 @@ fn test_opt_assing() {
 	assert var1 != none
 	var2 := var1
 	assert var2? == var1?
+}
+
+fn test_opt_none() {
+	mut t1 := ?int(none)
+	t2 := ?int(none)
+
+	t1 = t2
+	assert t1 == none
+	assert t2 == none
+
+	mut t3 := ?Test{}
+	t4 := t3
+	assert t4 == none
+	assert t3 == none
+
+	mut t5 := ?map[string]string{}
+	t7 := {
+		'foo': 'bar'
+	}
+	t6 := if t5 != none { t5?.clone() } else { t7 }
+	assert t5 == none
+	assert t6.len == 1
 }
