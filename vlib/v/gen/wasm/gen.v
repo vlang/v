@@ -100,6 +100,15 @@ fn (mut g Gen) get_local_from_ident(ident ast.Ident) (int, wa.Type) {
 	}
 }
 
+fn (mut g Gen) new_local_temporary(typ ast.Type) int {
+	ret := g.local_stack.len
+	g.local_stack << FuncIdent{
+		typ: g.get_wasm_type(typ)
+		ast_typ: typ
+	}
+	return ret
+}
+
 fn (mut g Gen) new_local(name string, typ ast.Type) {
 	g.local_stack << FuncIdent{
 		name: name
@@ -177,8 +186,8 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if (node.is_pub && node.mod == 'main') || node.name == 'main.main' {
 		wa.addfunctionexport(g.mod, name.str, name.str)
 		
-		// `_start` would be the entrypoint, which calls into 
-		// `_vinit`, which would then call into `main.main`
+		// `_vinit` should be used to initialise the WASM module,
+		// then `main.main` can be called safely.
 		// 
 		// wa.setstart(g.mod, func)
 	}
@@ -423,31 +432,40 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 }
 
 fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
-	/* if node.has_cross_var { */
+	if node.has_cross_var {
 		g.w_error('complex assign statements are not implemented')
-	/* } */
+	}
 
 	//
 	// Expected to be a `a, b := multi_return()`
 	//
 
-	// Stacky code within a concrete AST with `binaryen.pop()`
-	/* mut exprs := []wa.Expression{cap: node.left.len + 1}
-	exprs << g.mkblock([g.expr(node.right[0], 0)])
+	mut exprs := []wa.Expression{cap: node.left.len + 1}
 
-	for i := node.left.len; i > 0; {
-		i--
+	ret := (node.right[0] as ast.CallExpr).return_type
+	wret := g.get_wasm_type(ret)
+	temporary := g.new_local_temporary(ret)
 
+	// set multi return function to temporary, then use `tuple.extract`
+	exprs << wa.localset(g.mod, temporary, g.expr(node.right[0], 0))	
+	
+	for i := 0 ; i < node.left.len ; i++ {
 		left := node.left[i]
 		typ := node.left_types[i]
 		rtyp := node.right_types[i]
 
-		if left is ast.Ident && node.op == .decl_assign {
-			g.new_local(left.name, typ)
+		if left is ast.Ident {
+			// `_ = expr`
+			if left.kind == .blank_ident {
+				continue
+			}
+			if node.op == .decl_assign {
+				g.new_local(left.name, typ)
+			}
 		}
 
 		wartyp := g.get_wasm_type(rtyp)
-		mut popexpr := wa.pop(g.mod, wartyp)
+		mut popexpr := wa.tupleextract(g.mod, wa.localget(g.mod, temporary, wret), i)
 		popexpr = g.cast(popexpr, wartyp, g.is_signed(rtyp), g.get_wasm_type(typ))
 
 		// TODO: only supports local identifiers, no path.expressions or global names
@@ -455,8 +473,7 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
 		exprs << wa.localset(g.mod, idx, popexpr)
 	}
 
-	return g.mkblock(exprs) */
-	// g.w_error('complex assign statements are not implemented')
+	return g.mkblock(exprs)
 }
 
 fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
@@ -468,12 +485,12 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 			} else if node.exprs.len == 0 {
 				wa.ret(g.mod, unsafe { nil })
 			} else {
-				g.w_error("multi returns are WIP/not implemented")
-				/* mut exprs := []wa.Expression{cap: node.exprs.len}
+				// g.w_error("multi returns are WIP/not implemented")
+				mut exprs := []wa.Expression{cap: node.exprs.len}
 				for idx in 0 .. node.exprs.len {
 					exprs << g.expr(node.exprs[idx], g.curr_ret[idx])
 				}
-				wa.ret(g.mod, wa.tuplemake(g.mod, exprs.data, exprs.len)) */
+				wa.ret(g.mod, wa.tuplemake(g.mod, exprs.data, exprs.len))
 			}
 		}
 		ast.ExprStmt {
@@ -523,8 +540,14 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 					right := node.right[i]
 					typ := node.left_types[i]
 
-					if left is ast.Ident && node.op == .decl_assign {
-						g.new_local(left.name, typ)
+					if left is ast.Ident {
+						// `_ = expr`
+						if left.kind == .blank_ident {
+							continue
+						}
+						if node.op == .decl_assign {
+							g.new_local(left.name, typ)
+						}
 					}
 
 					// TODO: only supports local identifiers, no path.expressions or global names
@@ -543,8 +566,10 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 
 				if exprs.len == 1 {
 					exprs[0]
-				} else {
+				} else if exprs.len != 0 {
 					g.mkblock(exprs)
+				} else {
+					wa.nop(g.mod)
 				}
 			}
 		}

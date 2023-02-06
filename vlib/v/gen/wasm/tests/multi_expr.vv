@@ -3,6 +3,16 @@ fn multi(a i16) i64 {
 	return one + two
 }
 
-/* pub fn multireturn(a int) (int, f64, i64) {
+pub fn multireturn(a int) (int, f64, i64) {
 	return 2, a + 2, 10 - a
-} */
+}
+
+pub fn test() (int, int) {
+	return 25, 15
+}
+
+pub fn accept() int {
+	mut a, _ := test()
+	a += 20
+	return a
+}
