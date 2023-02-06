@@ -19,4 +19,9 @@ fn wrap_text(mut gv Grid) {
 	for mut ch in gv.header {
 		println(ch)
 	}
+
+	for mut letter in 'abc' {
+		bit := letter - 1
+		println(bit)
+	}
 }
