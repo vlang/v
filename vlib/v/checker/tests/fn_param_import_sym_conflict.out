@@ -2,72 +2,79 @@ vlib/v/checker/tests/fn_param_import_sym_conflict.vv:1:8: warning: module 'array
     1 | import arrays
       |        ~~~~~~
     2 | import maps
-    3 |
+    3 | import strings as strs
 vlib/v/checker/tests/fn_param_import_sym_conflict.vv:2:8: warning: module 'maps' is imported but never used
     1 | import arrays
     2 | import maps
       |        ~~~~
-    3 |
-    4 | // FnDecl
-vlib/v/checker/tests/fn_param_import_sym_conflict.vv:5:6: error: duplicate of an import symbol `arrays`
-    3 |
-    4 | // FnDecl
-    5 | fn x(arrays []int) {
+    3 | import strings as strs
+    4 |
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:3:8: warning: module 'strs (strings)' is imported but never used
+    1 | import arrays
+    2 | import maps
+    3 | import strings as strs
+      |        ~~~~~~~
+    4 |
+    5 | // FnDecl
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:6:6: error: duplicate of an import symbol `arrays`
+    4 |
+    5 | // FnDecl
+    6 | fn x(arrays []int) {
       |      ~~~~~~
-    6 |
-    7 | }
-vlib/v/checker/tests/fn_param_import_sym_conflict.vv:9:1: error: duplicate of an import symbol `maps`
-    7 | }
-    8 |
-    9 | fn maps() {
+    7 |
+    8 | }
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:10:1: error: duplicate of an import symbol `maps`
+    8 | }
+    9 |
+   10 | fn maps() {
       | ~~~~~~~~~
-   10 |
-   11 | }
-vlib/v/checker/tests/fn_param_import_sym_conflict.vv:13:9: error: duplicate of an import symbol `arrays`
-   11 | }
-   12 |
-   13 | fn maps(arrays []int) {
+   11 |
+   12 | }
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:14:9: error: duplicate of an import symbol `arrays`
+   12 | }
+   13 |
+   14 | fn maps(arrays []int) {
       |         ~~~~~~
-   14 |
-   15 | }
-vlib/v/checker/tests/fn_param_import_sym_conflict.vv:20:5: error: duplicate of an import symbol `arrays`
-   18 | struct Foo {}
-   19 |
-   20 | fn (arrays Foo) x() {
-      |     ~~~~~~
+   15 |
+   16 | }
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:22:1: error: duplicate of an import symbol `strs`
+   20 | }
    21 |
-   22 | }
-vlib/v/checker/tests/fn_param_import_sym_conflict.vv:24:5: error: duplicate of an import symbol `arrays`
-   22 | }
+   22 | fn strs() {
+      | ~~~~~~~~~
    23 |
-   24 | fn (arrays Foo) y(maps []int) {
+   24 | }
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:29:5: error: duplicate of an import symbol `arrays`
+   27 | struct Foo {}
+   28 |
+   29 | fn (arrays Foo) x() {
       |     ~~~~~~
-   25 |
-   26 | }
-vlib/v/checker/tests/fn_param_import_sym_conflict.vv:28:16: error: duplicate of an import symbol `arrays`
-   26 | }
-   27 |
-   28 | fn (foo Foo) z(arrays []int) {
+   30 |
+   31 | }
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:33:5: error: duplicate of an import symbol `arrays`
+   31 | }
+   32 |
+   33 | fn (arrays Foo) y(maps []int) {
+      |     ~~~~~~
+   34 |
+   35 | }
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:37:16: error: duplicate of an import symbol `arrays`
+   35 | }
+   36 |
+   37 | fn (foo Foo) z(arrays []int) {
       |                ~~~~~~
-   29 |    
-   30 | }
-vlib/v/checker/tests/fn_param_import_sym_conflict.vv:32:5: error: duplicate of an import symbol `arrays`
-   30 | }
-   31 |
-   32 | fn (arrays Foo) maps() {
+   38 |    
+   39 | }
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:41:5: error: duplicate of an import symbol `arrays`
+   39 | }
+   40 |
+   41 | fn (arrays Foo) maps() {
       |     ~~~~~~
-   33 |
-   34 | }
-vlib/v/checker/tests/fn_param_import_sym_conflict.vv:36:1: error: duplicate of an import symbol `arrays`
-   34 | }
-   35 |
-   36 | fn (foo Foo) arrays() {
-      | ~~~~~~~~~~~~~~~~~~~~~
-   37 |    
-   38 | }
-vlib/v/checker/tests/fn_param_import_sym_conflict.vv:42:11: error: duplicate of an import symbol `arrays`
-   40 | // AnonFn
-   41 | fn y() {
-   42 |     _ := fn (arrays []int) {}
-      |              ~~~~~~
+   42 |
    43 | }
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:59:11: error: duplicate of an import symbol `arrays`
+   57 | // AnonFn
+   58 | fn y() {
+   59 |     _ := fn (arrays []int) {}
+      |              ~~~~~~
+   60 | }
