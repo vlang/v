@@ -1831,8 +1831,8 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 	return last_stmt_was_return
 }
 
-// expr_with_tmp_var is used in assign expr to `optinal` or `result` type.
-// applicable to situations where the expr_typ does not have `optinal` and `result`,
+// expr_with_tmp_var is used in assign expr to `option` or `result` type.
+// applicable to situations where the expr_typ does not have `option` and `result`,
 // e.g. field default: "foo ?int = 1", field assign: "foo = 1", field init: "foo: 1"
 fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type, tmp_var string) {
 	if !ret_typ.has_flag(.option) && !ret_typ.has_flag(.result) {
