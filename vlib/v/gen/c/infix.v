@@ -966,17 +966,9 @@ fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 	g.write(stmt_str)
 	g.write(' ')
 
-	if g.table.final_sym(node.left_type).kind in [.map, .array] {
-		current_flag := g.inside_opt_or_res
-		g.inside_opt_or_res = false
-		g.expr(node.left)
-		g.inside_opt_or_res = current_flag
-		g.write('.len ${node.op.str()} 0')
-	} else {
-		g.write('${left_var}.state')
-		g.write(' ${node.op.str()} ')
-		g.write('2') // none state
-	}
+	g.write('${left_var}.state')
+	g.write(' ${node.op.str()} ')
+	g.write('2') // none state
 }
 
 // gen_plain_infix_expr generates basic code for infix expressions,

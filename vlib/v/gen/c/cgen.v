@@ -1851,7 +1851,11 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 	} else {
 		g.writeln('${g.typ(ret_typ)} ${tmp_var};')
 		if ret_typ.has_flag(.option) {
-			g.write('_option_ok(&(${styp}[]) { ')
+			if expr_typ.has_flag(.option) && expr in [ast.StructInit, ast.ArrayInit, ast.MapInit] {
+				g.write('_option_none(&(${styp}[]) { ')
+			} else {
+				g.write('_option_ok(&(${styp}[]) { ')
+			}
 		} else {
 			g.write('_result_ok(&(${styp}[]) { ')
 		}

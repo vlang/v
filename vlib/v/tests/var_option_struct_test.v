@@ -29,6 +29,11 @@ fn fn_b(s ?Test) ? {
 
 fn test_main() {
 	mut m := ?Foo{}
+	assert m == none
+	m = Foo{
+		name: 'foo'
+	}
+	assert m != none
 	v := m?.test([1, 2, 3]) or { '4' }
 	m?.name = 'foo'
 	assert m?.name == 'foo'

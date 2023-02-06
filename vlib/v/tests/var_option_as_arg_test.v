@@ -13,6 +13,8 @@ fn test_opt_call_arg() {
 
 	mut var2 := ?map[string]int{}
 	assert var2 == none
-	var2?['a'] = 1
+	var2 = {
+		'a': 1
+	}
 	assert is_map_none(var2) == false
 }
