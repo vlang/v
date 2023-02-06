@@ -1303,7 +1303,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	}
 	node.expr_type = typ
 	if !(node.expr is ast.Ident && (node.expr as ast.Ident).kind == .constant) {
-		if node.expr_type.has_flag(.result) {
+		if node.expr_type.has_flag(.option) {
+			c.error('cannot access fields of an Option, handle the error with `or {...}` or propagate it with `?`',
+				node.pos)
+		} else if node.expr_type.has_flag(.result) {
 			c.error('cannot access fields of a result, handle the error with `or {...}` or propagate it with `!`',
 				node.pos)
 		}
