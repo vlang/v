@@ -35,7 +35,7 @@ fn process_files(files []string) ! {
 			continue
 		}
 		// do not measure the scanning, but only the parsing:
-		mut p := new_parser(f, .skip_comments, table, pref)
+		mut p := new_parser(f, .skip_comments, table, pref_)
 		///
 		sw.restart()
 		_ := p.parse()
