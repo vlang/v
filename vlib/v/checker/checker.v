@@ -990,7 +990,7 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 		}
 		if expr_ret_type.has_flag(.option) || expr_ret_type.has_flag(.result) {
 			return_modifier_kind := if expr_ret_type.has_flag(.option) {
-				'an option'
+				'an Option'
 			} else {
 				'a result'
 			}
@@ -1010,10 +1010,10 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 			}
 			return ret_type.clear_flag(.result)
 		} else if expr.or_block.kind == .block {
-			c.error('unexpected `or` block, the function `${expr.name}` does not return an option or a result',
+			c.error('unexpected `or` block, the function `${expr.name}` does not return an Option or a result',
 				expr.or_block.pos)
 		} else if expr.or_block.kind == .propagate_option {
-			c.error('unexpected `?`, the function `${expr.name}` does not return an option',
+			c.error('unexpected `?`, the function `${expr.name}` does not return an Option',
 				expr.or_block.pos)
 		} else if expr.or_block.kind == .propagate_result {
 			c.error('unexpected `!`, the function `${expr.name}` does not return a result',
@@ -1022,7 +1022,7 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 	} else if expr is ast.SelectorExpr && c.table.sym(ret_type).kind != .chan {
 		if expr.typ.has_flag(.option) || expr.typ.has_flag(.result) {
 			with_modifier_kind := if expr.typ.has_flag(.option) {
-				'an option'
+				'an Option'
 			} else {
 				'a result'
 			}
@@ -1042,10 +1042,10 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 			}
 			return ret_type.clear_flag(.result)
 		} else if expr.or_block.kind == .block {
-			c.error('unexpected `or` block, the field `${expr.field_name}` is neither an option, nor a result',
+			c.error('unexpected `or` block, the field `${expr.field_name}` is neither an Option, nor a result',
 				expr.or_block.pos)
 		} else if expr.or_block.kind == .propagate_option {
-			c.error('unexpected `?`, the field `${expr.field_name}` is not an option',
+			c.error('unexpected `?`, the field `${expr.field_name}` is not an Option',
 				expr.or_block.pos)
 		} else if expr.or_block.kind == .propagate_result {
 			c.error('unexpected `!`, result fields are not supported', expr.or_block.pos)
@@ -1067,15 +1067,15 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.option)
 			&& !c.table.cur_fn.is_main && !c.table.cur_fn.is_test && !c.inside_const {
 			c.add_instruction_for_option_type()
-			c.error('to propagate the call, `${c.table.cur_fn.name}` must return an option type',
+			c.error('to propagate the call, `${c.table.cur_fn.name}` must return an Option type',
 				node.pos)
 		}
 		if expr !is ast.Ident && !expr_return_type.has_flag(.option) {
 			if expr_return_type.has_flag(.result) {
-				c.warn('propagating a result like an option is deprecated, use `foo()!` instead of `foo()?`',
+				c.warn('propagating a result like an Option is deprecated, use `foo()!` instead of `foo()?`',
 					node.pos)
 			} else {
-				c.error('to propagate an option, the call must also return an option type',
+				c.error('to propagate an Option, the call must also return an Option type',
 					node.pos)
 			}
 		}
@@ -1299,7 +1299,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	node.expr_type = typ
 	if !(node.expr is ast.Ident && (node.expr as ast.Ident).kind == .constant) {
 		if node.expr_type.has_flag(.option) {
-			c.error('cannot access fields of an option, handle the error with `or {...}` or propagate it with `?`',
+			c.error('cannot access fields of an Option, handle the error with `or {...}` or propagate it with `?`',
 				node.pos)
 		} else if node.expr_type.has_flag(.result) {
 			c.error('cannot access fields of a result, handle the error with `or {...}` or propagate it with `!`',
@@ -2423,13 +2423,13 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			}
 			if !ret_type.has_flag(.option) && !ret_type.has_flag(.result) {
 				if node.or_block.kind == .block {
-					c.error('unexpected `or` block, the function `${node.name}` does not return an option or a result',
+					c.error('unexpected `or` block, the function `${node.name}` does not return an Option or a result',
 						node.or_block.pos)
 				} else if node.or_block.kind == .propagate_option {
-					c.error('unexpected `?`, the function `${node.name}` does not return an option or a result',
+					c.error('unexpected `?`, the function `${node.name}` does not return an Option or a result',
 						node.or_block.pos)
 				} else if node.or_block.kind == .propagate_result {
-					c.error('unexpected `!`, the function `${node.name}` does not return an option or a result',
+					c.error('unexpected `!`, the function `${node.name}` does not return an Option or a result',
 						node.or_block.pos)
 				}
 			}
@@ -2522,7 +2522,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 					else {}
 				}
 				if no_opt_or_res {
-					c.error('expression should either return an option or a result', node.expr.pos())
+					c.error('expression should either return an Option or a result', node.expr.pos())
 				}
 			}
 			return ast.bool_type
@@ -2600,13 +2600,13 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 
 			if !ret_type.has_flag(.option) && !ret_type.has_flag(.result) {
 				if node.or_block.kind == .block {
-					c.error('unexpected `or` block, the field `${node.field_name}` is neither an option, nor a result',
+					c.error('unexpected `or` block, the field `${node.field_name}` is neither an Option, nor a result',
 						node.or_block.pos)
 				} else if node.or_block.kind == .propagate_option {
-					c.error('unexpected `?`, the field `${node.field_name}` is neither an option, nor a result',
+					c.error('unexpected `?`, the field `${node.field_name}` is neither an Option, nor a result',
 						node.or_block.pos)
 				} else if node.or_block.kind == .propagate_result {
-					c.error('unexpected `!`, the field `${node.field_name}` is neither an option, nor a result',
+					c.error('unexpected `!`, the field `${node.field_name}` is neither an Option, nor a result',
 						node.or_block.pos)
 				}
 			}
@@ -2831,7 +2831,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		|| from_type.has_flag(.variadic) {
 		// variadic case can happen when arrays are converted into variadic
 		msg := if from_type.has_flag(.option) {
-			'an option'
+			'an Option'
 		} else if from_type.has_flag(.result) {
 			'a result'
 		} else {
@@ -3696,7 +3696,7 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			}
 
 			if node.right.typ.has_flag(.option) {
-				c.error('cannot take the address of an option field', node.pos.extend(node.right.pos))
+				c.error('cannot take the address of an Option field', node.pos.extend(node.right.pos))
 			}
 		}
 	}
@@ -3873,10 +3873,10 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	}
 	if typ.has_flag(.option) {
 		if node.left is ast.Ident && (node.left as ast.Ident).or_expr.kind == .absent {
-			c.error('type `?${typ_sym.name}` is an option, it must be unwrapped first; use `var?[]` to do it',
+			c.error('type `?${typ_sym.name}` is an Option, it must be unwrapped first; use `var?[]` to do it',
 				node.left.pos())
 		} else if node.left is ast.CallExpr {
-			c.error('type `?${typ_sym.name}` is an option, it must be unwrapped with `func()?`, or use `func() or {default}`',
+			c.error('type `?${typ_sym.name}` is an Option, it must be unwrapped with `func()?`, or use `func() or {default}`',
 				node.left.pos())
 		}
 	} else if typ.has_flag(.result) {
