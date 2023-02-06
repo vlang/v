@@ -4290,7 +4290,10 @@ fn (mut g Gen) ident(node ast.Ident) {
 					g.write('${name}')
 				}
 				if node.or_expr.kind != .absent {
+					stmt_str := g.go_before_stmt(0).trim_space()
+					g.empty_line = true
 					g.or_block(name, node.or_expr, g.comptime_for_field_type)
+					g.writeln(stmt_str)
 				}
 				return
 			}
