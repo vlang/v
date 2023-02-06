@@ -1067,8 +1067,13 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.option)
 			&& !c.table.cur_fn.is_main && !c.table.cur_fn.is_test && !c.inside_const {
 			c.add_instruction_for_option_type()
-			c.error('to propagate the call, `${c.table.cur_fn.name}` must return an Option type',
-				node.pos)
+			if expr is ast.Ident {
+				c.error('to propagate the Option, `${c.table.cur_fn.name}` must return an Option type',
+					expr.pos)
+			} else {
+				c.error('to propagate the call, `${c.table.cur_fn.name}` must return an Option type',
+					node.pos)
+			}
 		}
 		if expr !is ast.Ident && !expr_return_type.has_flag(.option) {
 			if expr_return_type.has_flag(.result) {
