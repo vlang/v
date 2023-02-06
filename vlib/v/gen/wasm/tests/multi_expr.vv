@@ -16,3 +16,15 @@ pub fn accept() int {
 	a += 20
 	return a
 }
+
+pub fn side_effect() int {
+	return 22
+}
+
+pub fn test_side_effect() int {
+	mut a := 15
+
+	_, a = side_effect(), 10
+
+	return a
+}

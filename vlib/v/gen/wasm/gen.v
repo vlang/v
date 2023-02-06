@@ -437,7 +437,7 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
 	}
 
 	//
-	// Expected to be a `a, b := multi_return()`
+	// Expected to be a `a, b := multi_return()`.
 	//
 
 	mut exprs := []wa.Expression{cap: node.left.len + 1}
@@ -446,9 +446,9 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
 	wret := g.get_wasm_type(ret)
 	temporary := g.new_local_temporary(ret)
 
-	// set multi return function to temporary, then use `tuple.extract`
+	// Set multi return function to temporary, then use `tuple.extract`.
 	exprs << wa.localset(g.mod, temporary, g.expr(node.right[0], 0))	
-	
+
 	for i := 0 ; i < node.left.len ; i++ {
 		left := node.left[i]
 		typ := node.left_types[i]
@@ -540,9 +540,12 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 					right := node.right[i]
 					typ := node.left_types[i]
 
+					// `_ = expr` must be evaluated even if the value is being dropped!
+					// The optimiser would remove expressions without side effects.
+
 					if left is ast.Ident {
-						// `_ = expr`
 						if left.kind == .blank_ident {
+							exprs << wa.drop(g.mod, g.expr(right, typ))
 							continue
 						}
 						if node.op == .decl_assign {
