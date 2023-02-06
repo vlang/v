@@ -2,7 +2,7 @@ fn abc() ?[]int {
 	return [1, 2, 3]
 }
 
-fn arr_opt(arr ?[]string) {
+fn arr_opt(arr ?[]string) ? {
 	assert arr != none
 	assert arr?.len == 4
 
