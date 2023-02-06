@@ -4289,6 +4289,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 				} else {
 					g.write('${name}')
 				}
+				if node.or_expr.kind != .absent {
+					g.or_block(name, node.or_expr, g.comptime_for_field_type)
+				}
 				return
 			}
 		}
@@ -4303,6 +4306,12 @@ fn (mut g Gen) ident(node ast.Ident) {
 				g.write('/*opt*/')
 				styp := g.base_type(node.info.typ)
 				g.write('(*(${styp}*)${name}.data)')
+			}
+			if node.or_expr.kind != .absent {
+				stmt_str := g.go_before_stmt(0).trim_space()
+				g.empty_line = true
+				g.or_block(name, node.or_expr, node.info.typ)
+				g.writeln(stmt_str)
 			}
 			return
 		}

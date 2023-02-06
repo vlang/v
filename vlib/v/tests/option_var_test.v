@@ -147,11 +147,11 @@ fn test_default_values() {
 	var_none := ?f64(none)
 	var_none2 := ?string(none)
 
-	var2 := var_none or { var_none? + 1 }
+	var2 := var_none or { 1.0 }
 	println(var2)
 	assert var2 == 1.0
 
-	var3 := var_none2 or { var_none2? + 'foo' }
+	var3 := var_none2 or { 'foo' }
 	println(var3)
 	assert var3 == 'foo'
 }
@@ -161,10 +161,10 @@ fn test_assert_option() {
 	varz := ?f64(none)
 	assert var1 == none
 
-	var2 := var1 or { var1? }
+	var2 := var1 or { 1 }
 
 	assert var1 == none
-	assert var2 == 0
+	assert var2 == 1
 
 	println(var2)
 
