@@ -71,6 +71,11 @@ fn (mut g Gen) unary_cast(from wa.Type, is_signed bool, to wa.Type) wa.Op {
 	g.w_error('bad cast: from ${from} (is signed: ${is_signed}) to ${to}')
 }
 
+fn (mut g Gen) cast_t(expr wa.Expression, from ast.Type, to ast.Type) wa.Expression {
+	return g.cast(expr, g.get_wasm_type(from), g.is_signed(from), g.get_wasm_type(to))
+}
+
+
 fn (mut g Gen) cast(expr wa.Expression, from wa.Type, is_signed bool, to wa.Type) wa.Expression {
 	if from == to {
 		return expr

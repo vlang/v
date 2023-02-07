@@ -95,7 +95,6 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wa.Type {
 			// TODO: cache??
 			mut paraml := ts.info.types.map(g.get_wasm_type(it))
 			return wa.typecreate(paraml.data, paraml.len)
-			// g.w_error("multi returns are WIP/not implemented")
 		}
 		else {}
 	}

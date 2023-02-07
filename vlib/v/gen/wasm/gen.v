@@ -14,16 +14,16 @@ pub struct Gen {
 	pref     &pref.Preferences = unsafe { nil } // Preferences shared from V struct
 	files    []&ast.File
 mut:
-	mod      wa.Module
 	warnings []errors.Warning
 	errors   []errors.Error
 	table    &ast.Table = unsafe { nil }
-	structs map[ast.Type]wa.HeapType
 	//
-	// wasmtypes map[ast.Type]wa.Type
-	curr_ret    []ast.Type
-	local_stack []FuncIdent
-	lbl         int
+	rbp_idx           int            // Stack pointer temporary's index for function, if needed (-1 for none)
+	mod               wa.Module      // Current Binaryen WebAssembly module
+	local_stack       map[string]int // Variable address with respect to the local stack pointer -> [rbp-i]
+	curr_ret          []ast.Type     // Current return value, multi returns will be split into an array
+	local_temporaries []FuncIdent    // Local WebAssembly temporaries, referenced with an index
+	lbl               int
 }
 
 struct FuncIdent {
@@ -68,13 +68,13 @@ pub fn (mut g Gen) w_error(s string) {
 }
 
 fn (mut g Gen) get_local(name string) int {
-	if g.local_stack.len == 0 {
-		g.w_error('get_local: g.local_stack.len == 0')
+	if g.local_temporaries.len == 0 {
+		g.w_error('get_local: g.local_temporaries.len == 0')
 	}
-	mut c := g.local_stack.len
+	mut c := g.local_temporaries.len
 	for {
 		c--
-		if g.local_stack[c].name == name {
+		if g.local_temporaries[c].name == name {
 			return c
 		}
 		if c == 0 {
@@ -92,7 +92,7 @@ fn (mut g Gen) get_local_from_ident(ident ast.Ident) (int, wa.Type) {
 	match mut obj {
 		ast.Var {
 			idx := g.get_local(obj.name)
-			return idx, g.local_stack[idx].typ
+			return idx, g.local_temporaries[idx].typ
 		}
 		else {
 			g.w_error('unsupported variable type type:${obj} name:${ident.name}')
@@ -101,8 +101,8 @@ fn (mut g Gen) get_local_from_ident(ident ast.Ident) (int, wa.Type) {
 }
 
 fn (mut g Gen) new_local_temporary(typ ast.Type) int {
-	ret := g.local_stack.len
-	g.local_stack << FuncIdent{
+	ret := g.local_temporaries.len
+	g.local_temporaries << FuncIdent{
 		typ: g.get_wasm_type(typ)
 		ast_typ: typ
 	}
@@ -110,7 +110,7 @@ fn (mut g Gen) new_local_temporary(typ ast.Type) int {
 }
 
 fn (mut g Gen) new_local(name string, typ ast.Type) {
-	g.local_stack << FuncIdent{
+	g.local_temporaries << FuncIdent{
 		name: name
 		typ: g.get_wasm_type(typ)
 		ast_typ: typ
@@ -156,12 +156,11 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	return_type := g.get_wasm_type(node.return_type)
 
 	mut paraml := []wa.Type{cap: node.params.len + 1}
-	defer {
-		unsafe { paraml.free() }
-	}
+	g.rbp_idx = -1
+
 	for p in node.params {
 		typ := g.get_wasm_type(p.typ)
-		g.local_stack << FuncIdent{
+		g.local_temporaries << FuncIdent{
 			name: p.name
 			typ: typ
 			ast_typ: p.typ
@@ -177,22 +176,23 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	wasm_expr := g.expr_stmts(node.stmts, ast.void_type)
 
-	mut temporaries := []wa.Type{cap: g.local_stack.len - paraml.len}
-	for idx := paraml.len; idx < g.local_stack.len; idx++ {
-		temporaries << g.local_stack[idx].typ
+	mut temporaries := []wa.Type{cap: g.local_temporaries.len - paraml.len}
+	for idx := paraml.len; idx < g.local_temporaries.len; idx++ {
+		temporaries << g.local_temporaries[idx].typ
 	}
-	/* func := */ wa.addfunction(g.mod, name.str, params_type, return_type, temporaries.data, temporaries.len,
+	// func :=
+	wa.addfunction(g.mod, name.str, params_type, return_type, temporaries.data, temporaries.len,
 		wasm_expr)
 	if (node.is_pub && node.mod == 'main') || node.name == 'main.main' {
 		wa.addfunctionexport(g.mod, name.str, name.str)
-		
+
 		// `_vinit` should be used to initialise the WASM module,
 		// then `main.main` can be called safely.
-		// 
+		//
 		// wa.setstart(g.mod, func)
 	}
 
-	g.local_stack.clear()
+	g.local_temporaries.clear()
 }
 
 // println("${g.table.sym(expected)} ${node.val}")
@@ -205,16 +205,15 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 
 	got_type := ast.mktyp(got_type_raw)
-	return g.cast(g.expr(expr, got_type), g.get_wasm_type(got_type), g.is_signed(got_type),
-		g.get_wasm_type(expected_type))
+	return g.cast_t(g.expr(expr, got_type), got_type, expected_type)
 }
 
 fn (mut g Gen) literal(val string, expected ast.Type) wa.Expression {
 	match g.get_wasm_type(expected) {
-		wasm.type_i32 { return wa.constant(g.mod, wa.literalint32(val.int())) }
-		wasm.type_i64 { return wa.constant(g.mod, wa.literalint64(val.i64())) }
-		wasm.type_f32 { return wa.constant(g.mod, wa.literalfloat32(val.f32())) }
-		wasm.type_f64 { return wa.constant(g.mod, wa.literalfloat64(val.f64())) }
+		type_i32 { return wa.constant(g.mod, wa.literalint32(val.int())) }
+		type_i64 { return wa.constant(g.mod, wa.literalint64(val.i64())) }
+		type_f32 { return wa.constant(g.mod, wa.literalfloat32(val.f32())) }
+		type_f64 { return wa.constant(g.mod, wa.literalfloat64(val.f64())) }
 		else {}
 	}
 	g.w_error('literal: bad type `${expected}`')
@@ -228,7 +227,7 @@ fn (mut g Gen) postfix_expr(node ast.PostfixExpr) wa.Expression {
 	kind := if node.op == .inc { token.Kind.plus } else { token.Kind.minus }
 
 	idx, typ := g.get_local_from_ident(node.expr as ast.Ident)
-	atyp := g.local_stack[idx].ast_typ
+	atyp := g.local_temporaries[idx].ast_typ
 
 	op := g.infix_from_typ(atyp, kind)
 
@@ -247,7 +246,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) wa.Expression {
 	} else {
 		node.left_type
 	}
-	return g.cast(infix, g.get_wasm_type(res_typ), g.is_signed(res_typ), g.get_wasm_type(expected))
+	return g.cast_t(infix, res_typ, expected)
 }
 
 fn (mut g Gen) prefix_expr(node ast.PrefixExpr) wa.Expression {
@@ -264,7 +263,7 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr) wa.Expression {
 			} else {
 				// -val == 0 - val
 
-				if g.get_wasm_type(node.right_type) == wasm.type_i32 {
+				if g.get_wasm_type(node.right_type) == type_i32 {
 					wa.binary(g.mod, wa.subint32(), wa.constant(g.mod, wa.literalint32(0)),
 						expr)
 				} else {
@@ -280,7 +279,7 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr) wa.Expression {
 		.bit_not {
 			// ~val == val ^ -1
 
-			if g.get_wasm_type(node.right_type) == wasm.type_i32 {
+			if g.get_wasm_type(node.right_type) == type_i32 {
 				wa.binary(g.mod, wa.xorint32(), expr, wa.constant(g.mod, wa.literalint32(-1)))
 			} else {
 				wa.binary(g.mod, wa.xorint64(), expr, wa.constant(g.mod, wa.literalint64(-1)))
@@ -295,7 +294,7 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr) wa.Expression {
 
 fn (mut g Gen) mkblock(nodes []wa.Expression) wa.Expression {
 	g.lbl++
-	return wa.block(g.mod, 'BLK${g.lbl}'.str, nodes.data, nodes.len, wasm.type_auto)
+	return wa.block(g.mod, 'BLK${g.lbl}'.str, nodes.data, nodes.len, type_auto)
 }
 
 fn (mut g Gen) if_branch(ifexpr ast.IfExpr, idx int) wa.Expression {
@@ -320,7 +319,7 @@ fn (mut g Gen) get_ident(node ast.Ident, expected ast.Type) (wa.Expression, int)
 	idx, typ := g.get_local_from_ident(node)
 	expr := wa.localget(g.mod, idx, typ)
 
-	return g.cast(expr, typ, g.is_signed(g.local_stack[idx].ast_typ), g.get_wasm_type(expected)), idx
+	return g.cast(expr, typ, g.is_signed(g.local_temporaries[idx].ast_typ), g.get_wasm_type(expected)), idx
 }
 
 fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
@@ -337,7 +336,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 		ast.StructInit {
 			ts := g.table.sym(node.typ)
 			info := ts.info as ast.Struct
-			
+
 			mut exprs := []wa.Expression{len: info.fields.len}
 
 			for f in node.fields {
@@ -346,7 +345,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 				}
 				exprs[field.i] = g.expr(f.expr, field.typ)
 			}
-			
+
 			wa.structnew(g.mod, exprs.data, exprs.len, g.structs[node.typ])
 		}
 		ast.MatchExpr {
@@ -400,9 +399,9 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 				// It's a checker error to cast to bool anyway...
 
 				bexpr := g.cast(expr, g.get_wasm_type(node.expr_type), g.is_signed(node.expr_type),
-					wasm.type_i32)
+					type_i32)
 				wa.bselect(g.mod, bexpr, wa.constant(g.mod, wa.literalint32(1)), wa.constant(g.mod,
-					wa.literalint32(0)), wasm.type_i32)
+					wa.literalint32(0)), type_i32)
 			} else {
 				g.cast(expr, g.get_wasm_type(node.expr_type), g.is_signed(node.expr_type),
 					g.get_wasm_type(node.typ))
@@ -447,9 +446,9 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
 	temporary := g.new_local_temporary(ret)
 
 	// Set multi return function to temporary, then use `tuple.extract`.
-	exprs << wa.localset(g.mod, temporary, g.expr(node.right[0], 0))	
+	exprs << wa.localset(g.mod, temporary, g.expr(node.right[0], 0))
 
-	for i := 0 ; i < node.left.len ; i++ {
+	for i := 0; i < node.left.len; i++ {
 		left := node.left[i]
 		typ := node.left_types[i]
 		rtyp := node.right_types[i]
@@ -519,7 +518,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 				]
 				loop := wa.loop(g.mod, lpp_name.str, g.mkblock(lbody))
 
-				wa.block(g.mod, blk_name.str, &loop, 1, wasm.type_none)
+				wa.block(g.mod, blk_name.str, &loop, 1, type_none)
 			} else {
 				wa.loop(g.mod, lpp_name.str, wa.br(g.mod, lpp_name.str, unsafe { nil },
 					unsafe { nil }))
@@ -624,8 +623,7 @@ pub fn (mut g Gen) toplevel_stmts(stmts []ast.Stmt) {
 
 fn (mut g Gen) housekeeping() {
 	// Create stack pointer.
-
-	wa.addglobal(g.mod, c"__stack_pointer", type_i32, true, wa.constant(wa.literalint32()))
+	wa.addglobal(g.mod, c'__stack_pointer', type_i32, true, wa.constant(g.mod, wa.literalint32(0)))
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Preferences) {
