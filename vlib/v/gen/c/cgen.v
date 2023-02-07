@@ -1909,70 +1909,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.BranchStmt {
 			g.write_v_source_line_info(node.pos)
-
-			if node.label != '' {
-				x := g.labeled_loops[node.label] or {
-					panic('${node.label} doesn\'t exist ${g.file.path}, ${node.pos}')
-				}
-				match x {
-					ast.ForCStmt {
-						if x.scope.contains(g.cur_lock.pos.pos) {
-							g.unlock_locks()
-						}
-					}
-					ast.ForInStmt {
-						if x.scope.contains(g.cur_lock.pos.pos) {
-							g.unlock_locks()
-						}
-					}
-					ast.ForStmt {
-						if x.scope.contains(g.cur_lock.pos.pos) {
-							g.unlock_locks()
-						}
-					}
-					else {}
-				}
-
-				if node.kind == .key_break {
-					g.writeln('goto ${node.label}__break;')
-				} else {
-					// assert node.kind == .key_continue
-					g.writeln('goto ${node.label}__continue;')
-				}
-			} else {
-				inner_loop := g.inner_loop
-				match inner_loop {
-					ast.ForCStmt {
-						if inner_loop.scope.contains(g.cur_lock.pos.pos) {
-							g.unlock_locks()
-						}
-					}
-					ast.ForInStmt {
-						if inner_loop.scope.contains(g.cur_lock.pos.pos) {
-							g.unlock_locks()
-						}
-					}
-					ast.ForStmt {
-						if inner_loop.scope.contains(g.cur_lock.pos.pos) {
-							g.unlock_locks()
-						}
-					}
-					else {}
-				}
-				// continue or break
-				if g.is_autofree && !g.is_builtin_mod {
-					g.trace_autofree('// free before continue/break')
-					g.autofree_scope_vars_stop(node.pos.pos - 1, node.pos.line_nr, true,
-						g.branch_parent_pos)
-				}
-				g.writeln('${node.kind};')
-			}
+			g.branch_stmt(node)
 		}
 		ast.ConstDecl {
 			g.write_v_source_line_info(node.pos)
-			// if g.pref.build_mode != .build_module {
 			g.const_decl(node)
-			// }
 		}
 		ast.ComptimeFor {
 			g.comptime_for(node)
@@ -2077,116 +2018,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('goto ${c_name(node.name)};')
 		}
 		ast.HashStmt {
-			line_nr := node.pos.line_nr + 1
-			mut ct_condition := ''
-			if node.ct_conds.len > 0 {
-				ct_condition_start := g.out.len
-				for idx, ct_expr in node.ct_conds {
-					g.comptime_if_cond(ct_expr, false)
-					if idx < node.ct_conds.len - 1 {
-						g.write(' && ')
-					}
-				}
-				ct_condition = g.out.cut_to(ct_condition_start).trim_space()
-				// dump(node)
-				// dump(ct_condition)
-			}
-			// #include etc
-			if node.kind == 'include' {
-				mut missing_message := 'Header file ${node.main}, needed for module `${node.mod}` was not found.'
-				if node.msg != '' {
-					missing_message += ' ${node.msg}.'
-				} else {
-					missing_message += ' Please install the corresponding development headers.'
-				}
-				mut guarded_include := get_guarded_include_text(node.main, missing_message)
-				if node.main == '<errno.h>' {
-					// fails with musl-gcc and msvc; but an unguarded include works:
-					guarded_include = '#include ${node.main}'
-				}
-				if node.main.contains('.m') {
-					g.definitions.writeln('\n')
-					if ct_condition.len > 0 {
-						g.definitions.writeln('#if ${ct_condition}')
-					}
-					// Objective C code import, include it after V types, so that e.g. `string` is
-					// available there
-					g.definitions.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
-					g.definitions.writeln(guarded_include)
-					if ct_condition.len > 0 {
-						g.definitions.writeln('#endif // \$if ${ct_condition}')
-					}
-					g.definitions.writeln('\n')
-				} else {
-					g.includes.writeln('\n')
-					if ct_condition.len > 0 {
-						g.includes.writeln('#if ${ct_condition}')
-					}
-					g.includes.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
-					g.includes.writeln(guarded_include)
-					if ct_condition.len > 0 {
-						g.includes.writeln('#endif // \$if ${ct_condition}')
-					}
-					g.includes.writeln('\n')
-				}
-			} else if node.kind == 'preinclude' {
-				mut missing_message := 'Header file ${node.main}, needed for module `${node.mod}` was not found.'
-				if node.msg != '' {
-					missing_message += ' ${node.msg}.'
-				} else {
-					missing_message += ' Please install the corresponding development headers.'
-				}
-				mut guarded_include := get_guarded_include_text(node.main, missing_message)
-				if node.main == '<errno.h>' {
-					// fails with musl-gcc and msvc; but an unguarded include works:
-					guarded_include = '#include ${node.main}'
-				}
-				if node.main.contains('.m') {
-					// Might need to support '#preinclude' for .m files as well but for the moment
-					// this does the same as '#include' for them
-					g.definitions.writeln('\n')
-					if ct_condition.len > 0 {
-						g.definitions.writeln('#if ${ct_condition}')
-					}
-					// Objective C code import, include it after V types, so that e.g. `string` is
-					// available there
-					g.definitions.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
-					g.definitions.writeln(guarded_include)
-					if ct_condition.len > 0 {
-						g.definitions.writeln('#endif // \$if ${ct_condition}')
-					}
-					g.definitions.writeln('\n')
-				} else {
-					g.preincludes.writeln('\n')
-					if ct_condition.len > 0 {
-						g.preincludes.writeln('#if ${ct_condition}')
-					}
-					g.preincludes.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
-					g.preincludes.writeln(guarded_include)
-					if ct_condition.len > 0 {
-						g.preincludes.writeln('#endif // \$if ${ct_condition}')
-					}
-					g.preincludes.writeln('\n')
-				}
-			} else if node.kind == 'insert' {
-				if ct_condition.len > 0 {
-					g.includes.writeln('#if ${ct_condition}')
-				}
-				g.includes.writeln('// inserted by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
-				g.includes.writeln(node.val)
-				if ct_condition.len > 0 {
-					g.includes.writeln('#endif // \$if ${ct_condition}')
-				}
-			} else if node.kind == 'define' {
-				if ct_condition.len > 0 {
-					g.includes.writeln('#if ${ct_condition}')
-				}
-				g.includes.writeln('// defined by module `${node.mod}`')
-				g.includes.writeln('#define ${node.main}')
-				if ct_condition.len > 0 {
-					g.includes.writeln('#endif // \$if ${ct_condition}')
-				}
-			}
+			g.hash_stmt(node)
 		}
 		ast.Import {}
 		ast.InterfaceDecl {
@@ -4488,6 +4320,178 @@ fn (mut g Gen) gen_option_error(target_type ast.Type, expr ast.Expr) {
 	g.write('(${styp}){ .state=2, .err=')
 	g.expr(expr)
 	g.write(', .data={EMPTY_STRUCT_INITIALIZATION} }')
+}
+
+fn (mut g Gen) hash_stmt(node ast.HashStmt) {
+	line_nr := node.pos.line_nr + 1
+	mut ct_condition := ''
+	if node.ct_conds.len > 0 {
+		ct_condition_start := g.out.len
+		for idx, ct_expr in node.ct_conds {
+			g.comptime_if_cond(ct_expr, false)
+			if idx < node.ct_conds.len - 1 {
+				g.write(' && ')
+			}
+		}
+		ct_condition = g.out.cut_to(ct_condition_start).trim_space()
+		// dump(node)
+		// dump(ct_condition)
+	}
+	// #include etc
+	if node.kind == 'include' {
+		mut missing_message := 'Header file ${node.main}, needed for module `${node.mod}` was not found.'
+		if node.msg != '' {
+			missing_message += ' ${node.msg}.'
+		} else {
+			missing_message += ' Please install the corresponding development headers.'
+		}
+		mut guarded_include := get_guarded_include_text(node.main, missing_message)
+		if node.main == '<errno.h>' {
+			// fails with musl-gcc and msvc; but an unguarded include works:
+			guarded_include = '#include ${node.main}'
+		}
+		if node.main.contains('.m') {
+			g.definitions.writeln('\n')
+			if ct_condition.len > 0 {
+				g.definitions.writeln('#if ${ct_condition}')
+			}
+			// Objective C code import, include it after V types, so that e.g. `string` is
+			// available there
+			g.definitions.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
+			g.definitions.writeln(guarded_include)
+			if ct_condition.len > 0 {
+				g.definitions.writeln('#endif // \$if ${ct_condition}')
+			}
+			g.definitions.writeln('\n')
+		} else {
+			g.includes.writeln('\n')
+			if ct_condition.len > 0 {
+				g.includes.writeln('#if ${ct_condition}')
+			}
+			g.includes.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
+			g.includes.writeln(guarded_include)
+			if ct_condition.len > 0 {
+				g.includes.writeln('#endif // \$if ${ct_condition}')
+			}
+			g.includes.writeln('\n')
+		}
+	} else if node.kind == 'preinclude' {
+		mut missing_message := 'Header file ${node.main}, needed for module `${node.mod}` was not found.'
+		if node.msg != '' {
+			missing_message += ' ${node.msg}.'
+		} else {
+			missing_message += ' Please install the corresponding development headers.'
+		}
+		mut guarded_include := get_guarded_include_text(node.main, missing_message)
+		if node.main == '<errno.h>' {
+			// fails with musl-gcc and msvc; but an unguarded include works:
+			guarded_include = '#include ${node.main}'
+		}
+		if node.main.contains('.m') {
+			// Might need to support '#preinclude' for .m files as well but for the moment
+			// this does the same as '#include' for them
+			g.definitions.writeln('\n')
+			if ct_condition.len > 0 {
+				g.definitions.writeln('#if ${ct_condition}')
+			}
+			// Objective C code import, include it after V types, so that e.g. `string` is
+			// available there
+			g.definitions.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
+			g.definitions.writeln(guarded_include)
+			if ct_condition.len > 0 {
+				g.definitions.writeln('#endif // \$if ${ct_condition}')
+			}
+			g.definitions.writeln('\n')
+		} else {
+			g.preincludes.writeln('\n')
+			if ct_condition.len > 0 {
+				g.preincludes.writeln('#if ${ct_condition}')
+			}
+			g.preincludes.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
+			g.preincludes.writeln(guarded_include)
+			if ct_condition.len > 0 {
+				g.preincludes.writeln('#endif // \$if ${ct_condition}')
+			}
+			g.preincludes.writeln('\n')
+		}
+	} else if node.kind == 'insert' {
+		if ct_condition.len > 0 {
+			g.includes.writeln('#if ${ct_condition}')
+		}
+		g.includes.writeln('// inserted by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
+		g.includes.writeln(node.val)
+		if ct_condition.len > 0 {
+			g.includes.writeln('#endif // \$if ${ct_condition}')
+		}
+	} else if node.kind == 'define' {
+		if ct_condition.len > 0 {
+			g.includes.writeln('#if ${ct_condition}')
+		}
+		g.includes.writeln('// defined by module `${node.mod}`')
+		g.includes.writeln('#define ${node.main}')
+		if ct_condition.len > 0 {
+			g.includes.writeln('#endif // \$if ${ct_condition}')
+		}
+	}
+}
+
+fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
+	if node.label != '' {
+		x := g.labeled_loops[node.label] or {
+			panic('${node.label} doesn\'t exist ${g.file.path}, ${node.pos}')
+		}
+		match x {
+			ast.ForCStmt {
+				if x.scope.contains(g.cur_lock.pos.pos) {
+					g.unlock_locks()
+				}
+			}
+			ast.ForInStmt {
+				if x.scope.contains(g.cur_lock.pos.pos) {
+					g.unlock_locks()
+				}
+			}
+			ast.ForStmt {
+				if x.scope.contains(g.cur_lock.pos.pos) {
+					g.unlock_locks()
+				}
+			}
+			else {}
+		}
+
+		if node.kind == .key_break {
+			g.writeln('goto ${node.label}__break;')
+		} else {
+			// assert node.kind == .key_continue
+			g.writeln('goto ${node.label}__continue;')
+		}
+	} else {
+		inner_loop := g.inner_loop
+		match inner_loop {
+			ast.ForCStmt {
+				if inner_loop.scope.contains(g.cur_lock.pos.pos) {
+					g.unlock_locks()
+				}
+			}
+			ast.ForInStmt {
+				if inner_loop.scope.contains(g.cur_lock.pos.pos) {
+					g.unlock_locks()
+				}
+			}
+			ast.ForStmt {
+				if inner_loop.scope.contains(g.cur_lock.pos.pos) {
+					g.unlock_locks()
+				}
+			}
+			else {}
+		}
+		// continue or break
+		if g.is_autofree && !g.is_builtin_mod {
+			g.trace_autofree('// free before continue/break')
+			g.autofree_scope_vars_stop(node.pos.pos - 1, node.pos.line_nr, true, g.branch_parent_pos)
+		}
+		g.writeln('${node.kind};')
+	}
 }
 
 fn (mut g Gen) return_stmt(node ast.Return) {
