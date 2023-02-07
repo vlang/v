@@ -32,7 +32,7 @@ pub fn new_ws_client(transport Transport) !WsClient {
 }
 
 fn server() ! {
-	mut s := ws_.new_server(.ip6, 8081, '/')
+	mut s := ws.new_server(.ip6, 8081, '/')
 
 	s.on_connect(fn (mut s ws.ServerClient) !bool {
 		if s.resource_name != '/' {
