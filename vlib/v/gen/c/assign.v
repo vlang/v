@@ -36,9 +36,7 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 	if expr_typ == ast.none_type {
 		g.inside_opt_or_res = true
 	}
-	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)
-		&& (expr in [ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr]
-		|| (expr is ast.CastExpr && (expr as ast.CastExpr).expr is ast.None)) {
+	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)&& (expr in [ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr, ast.CastExpr]) {
 		if expr is ast.Ident {
 			g.inside_opt_or_res = true
 		}
