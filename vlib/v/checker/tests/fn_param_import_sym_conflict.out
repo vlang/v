@@ -63,7 +63,7 @@ vlib/v/checker/tests/fn_param_import_sym_conflict.vv:37:16: error: duplicate of 
    36 |
    37 | fn (foo Foo) z(arrays []int) {
       |                ~~~~~~
-   38 |    
+   38 |
    39 | }
 vlib/v/checker/tests/fn_param_import_sym_conflict.vv:41:5: error: duplicate of an import symbol `arrays`
    39 | }
