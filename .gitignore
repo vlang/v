@@ -120,3 +120,4 @@ vls.log
 # ignore Intellij files
 .idea/
 /*.iml
+wasm.v

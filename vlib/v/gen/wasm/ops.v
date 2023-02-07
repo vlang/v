@@ -5,12 +5,12 @@ import v.token
 import binaryen as wa
 
 const (
-	type_none = wa.typenone()
-	type_auto = wa.typeauto()
-	type_i32  = wa.typeint32()
-	type_i64  = wa.typeint64()
-	type_f32  = wa.typefloat32()
-	type_f64  = wa.typefloat64()
+	type_none      = wa.typenone()
+	type_auto      = wa.typeauto()
+	type_i32       = wa.typeint32()
+	type_i64       = wa.typeint64()
+	type_f32       = wa.typefloat32()
+	type_f64       = wa.typefloat64()
 	type_structref = wa.typestructref()
 )
 
@@ -19,15 +19,15 @@ fn (mut g Gen) new_struct_entry(typ ast.Type) {
 	info := ts.info as ast.Struct
 
 	tb := wa.typebuildercreate(1)
-	mut f_t := []wa.Type{cap: info.fields.len}       // Types of each field
-	mut f_m := []bool{cap: info.fields.len}          // Mutability of each field
+	mut f_t := []wa.Type{cap: info.fields.len} // Types of each field
+	mut f_m := []bool{cap: info.fields.len} // Mutability of each field
 	mut f_p := []wa.PackedType{cap: info.fields.len} // Packed types, for 8/16 bit types
 
 	if info.is_union {
-		g.w_error("unions are not implemented yet")
+		g.w_error('unions are not implemented yet')
 	}
 	if info.is_generic {
-		g.w_error("generic structs are not implemented yet")
+		g.w_error('generic structs are not implemented yet')
 	}
 
 	for field in info.fields {
@@ -42,7 +42,7 @@ fn (mut g Gen) new_struct_entry(typ ast.Type) {
 		}
 	}
 	wa.typebuildersetstructtype(tb, 0, f_t.data, f_p.data, f_m.data, f_t.len)
-	
+
 	mut heap_type := wa.HeapType(unsafe { nil })
 	assert wa.typebuilderbuildanddispose(tb, &heap_type, unsafe { nil }, unsafe { nil })
 
@@ -54,34 +54,34 @@ fn (mut g Gen) new_struct_entry(typ ast.Type) {
 fn (mut g Gen) get_wasm_type(typ_ ast.Type) wa.Type {
 	typ := ast.mktyp(typ_)
 	if typ == ast.void_type_idx {
-		return type_none
+		return wasm.type_none
 	}
 	if typ.is_real_pointer() {
-		return type_i32
+		return wasm.type_i32
 	}
 	if typ in ast.number_type_idxs {
 		return match typ {
 			ast.isize_type_idx, ast.usize_type_idx, ast.i8_type_idx, ast.u8_type_idx,
 			ast.char_type_idx, ast.rune_type_idx, ast.i16_type_idx, ast.u16_type_idx,
 			ast.int_type_idx, ast.u32_type_idx {
-				type_i32
+				wasm.type_i32
 			}
 			ast.i64_type_idx, ast.u64_type_idx, ast.int_literal_type_idx {
-				type_i64
+				wasm.type_i64
 			}
 			ast.f32_type_idx {
-				type_f32
+				wasm.type_f32
 			}
 			ast.f64_type_idx, ast.float_literal_type_idx {
-				type_f64
+				wasm.type_f64
 			}
 			else {
-				type_i32
+				wasm.type_i32
 			}
 		}
 	}
 	if typ == ast.bool_type_idx {
-		return type_i32
+		return wasm.type_i32
 	}
 	ts := g.table.sym(typ)
 	match ts.info {
@@ -89,7 +89,7 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wa.Type {
 			if typ !in g.structs {
 				g.new_struct_entry(typ)
 			}
-			return type_structref
+			return wasm.type_structref
 		}
 		ast.MultiReturn {
 			// TODO: cache??
@@ -99,7 +99,7 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wa.Type {
 		}
 		else {}
 	}
-	
+
 	g.w_error("get_wasm_type: unreachable type '${*g.table.sym(typ)}'")
 }
 
@@ -111,7 +111,7 @@ fn (mut g Gen) infix_from_typ(typ ast.Type, op token.Kind) wa.Op {
 	wasm_typ := g.get_wasm_type(typ)
 
 	match wasm_typ {
-		type_i32 {
+		wasm.type_i32 {
 			match op {
 				.plus {
 					return wa.addint32()
@@ -194,7 +194,7 @@ fn (mut g Gen) infix_from_typ(typ ast.Type, op token.Kind) wa.Op {
 				else {}
 			}
 		}
-		type_i64 {
+		wasm.type_i64 {
 			match op {
 				.plus {
 					return wa.addint64()
@@ -277,7 +277,7 @@ fn (mut g Gen) infix_from_typ(typ ast.Type, op token.Kind) wa.Op {
 				else {}
 			}
 		}
-		type_f32 {
+		wasm.type_f32 {
 			match op {
 				.plus {
 					return wa.addfloat32()
@@ -312,7 +312,7 @@ fn (mut g Gen) infix_from_typ(typ ast.Type, op token.Kind) wa.Op {
 				else {}
 			}
 		}
-		type_f64 {
+		wasm.type_f64 {
 			match op {
 				.plus {
 					return wa.addfloat64()

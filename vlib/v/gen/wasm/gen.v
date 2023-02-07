@@ -622,6 +622,12 @@ pub fn (mut g Gen) toplevel_stmts(stmts []ast.Stmt) {
 	}
 }
 
+fn (mut g Gen) housekeeping() {
+	// Create stack pointer.
+
+	wa.addglobal(g.mod, c"__stack_pointer", type_i32, true, wa.constant(wa.literalint32()))
+}
+
 pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Preferences) {
 	mut g := &Gen{
 		table: table
@@ -631,6 +637,8 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 		mod: wa.modulecreate()
 	}
 	wa.modulesetfeatures(g.mod, wa.featureall())
+
+	g.housekeeping()
 
 	for file in g.files {
 		if file.errors.len > 0 {
