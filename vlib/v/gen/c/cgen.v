@@ -4447,6 +4447,10 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			g.gen_option_error(node.typ, node.expr)
 		} else if sym.kind != .alias && node.typ.has_flag(.option) {
 			g.expr_with_opt(node.expr, node.expr_type, node.typ)
+		} else if node.expr_type.has_flag(.option) {
+			g.write('*((${g.base_type(node.typ)}*)')
+			g.expr_with_cast(node.expr, node.expr_type, node.typ)
+			g.write('.data)')
 		} else {
 			g.write('(${cast_label}(')
 			if sym.kind == .alias && g.table.final_sym(node.typ).kind == .string {
