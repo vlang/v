@@ -87,7 +87,7 @@ fn (g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
 	}
 	info := g.gen_reflection_sym_info(tsym)
 	methods := g.gen_function_array(tsym.methods)
-	return '(${c.cprefix}TypeSymbol){.name=_SLIT("${tsym.name}"),.idx=${tsym.idx},.parent_idx=${tsym.parent_idx},.language=v__ast__Language__${tsym.language},.kind=v__ast__Kind__${kind_name},.info=${info},.methods=${methods}}'
+	return '(${c.cprefix}TypeSymbol){.name=_SLIT("${tsym.name}"),.idx=${tsym.idx},.parent_idx=${tsym.parent_idx},.language=${c.cprefix}VLanguage__${tsym.language},.kind=${c.cprefix}VKind__${kind_name},.info=${info},.methods=${methods}}'
 }
 
 // gen_attrs_array generates C code for []Attr
@@ -187,7 +187,7 @@ fn (g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 		}
 		.alias {
 			info := tsym.info as ast.Alias
-			s := 'ADDR(${c.cprefix}Alias,(((${c.cprefix}Alias){.parent_idx=${info.parent_type.idx()},.language=v__ast__Language__${info.language.str()}})))'
+			s := 'ADDR(${c.cprefix}Alias,(((${c.cprefix}Alias){.parent_idx=${info.parent_type.idx()},.language=${c.cprefix}VLanguage__${info.language.str()}})))'
 			return '(${c.cprefix}TypeInfo){._${c.cprefix}Alias=memdup(${s},sizeof(${c.cprefix}Alias)),._typ=${g.table.find_type_idx('v.reflection.Alias')}}'
 		}
 		.multi_return {

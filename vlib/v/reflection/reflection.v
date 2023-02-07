@@ -1,7 +1,6 @@
 [has_globals]
 module reflection
 
-import v.ast
 import arrays
 
 __global g_reflection = Reflection{}
@@ -18,6 +17,84 @@ pub mut:
 	strings      map[int]string
 }
 
+pub enum VLanguage {
+	v
+	c
+	js
+	amd64 // aka x86_64
+	i386
+	arm64 // 64-bit arm
+	arm32 // 32-bit arm
+	rv64 // 64-bit risc-v
+	rv32 // 32-bit risc-v
+	wasm32
+}
+
+type VType = int
+
+// max of 8
+pub enum VTypeFlag {
+	option
+	result
+	variadic
+	generic
+	shared_f
+	atomic_f
+}
+
+pub enum VKind {
+	placeholder
+	void
+	voidptr
+	byteptr
+	charptr
+	i8
+	i16
+	int
+	i64
+	isize
+	u8
+	u16
+	u32
+	u64
+	usize
+	f32
+	f64
+	char
+	rune
+	bool
+	none_
+	string
+	array
+	array_fixed
+	map
+	chan
+	any
+	struct_
+	generic_inst
+	multi_return
+	sum_type
+	alias
+	enum_
+	function
+	interface_
+	float_literal
+	int_literal
+	aggregate
+	thread
+}
+
+// return true if `flag` is set on `t`
+[inline]
+pub fn (t VType) has_flag(flag VTypeFlag) bool {
+	return int(t) & (1 << (int(flag) + 24)) > 0
+}
+
+[inline]
+pub fn (t VType) idx() int {
+	return u16(t) & 0xffff
+}
+
 pub struct ArrayFixed {
 pub:
 	size      int // array size
@@ -32,8 +109,8 @@ pub:
 
 pub struct Alias {
 pub:
-	parent_idx int // parent type idx
-	language   ast.Language // language
+	parent_idx int       // parent type idx
+	language   VLanguage // language
 }
 
 pub struct Interface {
@@ -58,7 +135,7 @@ pub:
 pub struct StructField {
 pub:
 	name   string   // field name
-	typ    ast.Type // type
+	typ    VType    // type
 	attrs  []string // field attrs
 	is_pub bool     // is pub?
 	is_mut bool     // is mut?
@@ -73,19 +150,19 @@ pub:
 
 pub struct SumType {
 pub:
-	parent_idx int        // parent type
-	variants   []ast.Type // variant type
+	parent_idx int     // parent type
+	variants   []VType // variant type
 }
 
 pub struct Map {
 pub:
-	key_type   ast.Type // key type
-	value_type ast.Type // value type
+	key_type   VType // key type
+	value_type VType // value type
 }
 
 pub struct MultiReturn {
 pub:
-	types []ast.Type // types
+	types []VType // types
 }
 
 pub type TypeInfo = Alias
@@ -102,13 +179,13 @@ pub type TypeInfo = Alias
 
 pub struct TypeSymbol {
 pub:
-	name       string       // symbol name
-	idx        int          // symbol idx
-	parent_idx int          // symbol parent idx
-	language   ast.Language // language
-	kind       ast.Kind     // kind
-	info       TypeInfo     // info
-	methods    []Function   // methods
+	name       string     // symbol name
+	idx        int        // symbol idx
+	parent_idx int        // symbol parent idx
+	language   VLanguage  // language
+	kind       VKind      // kind
+	info       TypeInfo   // info
+	methods    []Function // methods
 }
 
 pub struct Type {
@@ -125,9 +202,9 @@ pub:
 
 pub struct FunctionArg {
 pub:
-	name   string   // argument name
-	typ    ast.Type // argument type idx
-	is_mut bool     // is mut?
+	name   string // argument name
+	typ    VType  // argument type idx
+	is_mut bool   // is mut?
 }
 
 pub struct Function {
@@ -135,13 +212,13 @@ pub:
 	mod_name     string        // module name
 	name         string        // function/method name
 	args         []FunctionArg // function/method args
-	file_idx     int      // source file name
-	line_start   int      // decl start line
-	line_end     int      // decl end line
-	is_variadic  bool     // is variadic?
-	return_typ   ast.Type // return type idx
-	receiver_typ ast.Type // receiver type idx (is a method)
-	is_pub       bool     // is pub?
+	file_idx     int   // source file name
+	line_start   int   // decl start line
+	line_end     int   // decl end line
+	is_variadic  bool  // is variadic?
+	return_typ   VType // return type idx
+	receiver_typ VType // receiver type idx (is a method)
+	is_pub       bool  // is pub?
 }
 
 // API module

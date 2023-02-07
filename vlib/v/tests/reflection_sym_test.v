@@ -53,8 +53,8 @@ fn test_sumtype_sym() {
 	var := MySum(1)
 	typ := reflection.type_of(var)
 	assert typ.sym.kind == .sum_type
-	assert (typ.sym.info as reflection.SumType).variants[0].is_float()
-	assert (typ.sym.info as reflection.SumType).variants[1].is_int()
+	assert (typ.sym.info as reflection.SumType).variants[0] == typeof[f64]().idx
+	assert (typ.sym.info as reflection.SumType).variants[1] == typeof[int]().idx
 }
 
 fn test_alias_sym() {
@@ -110,7 +110,6 @@ fn test_struct_sym() {
 	field2 := (var.sym.info as reflection.Struct).fields[1]
 	field2_typ := (var.sym.info as reflection.Struct).fields[1].typ
 	assert field2_typ.has_flag(.option)
-	assert field2_typ.is_string()
 	assert field2.name == 'n'
 	assert field2.attrs.len == 2
 	assert field2.attrs == ['test2', 'test3']
