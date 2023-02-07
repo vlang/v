@@ -32,9 +32,9 @@ pub fn new_ws_client(transport Transport) !WsClient {
 }
 
 fn server() ! {
-	mut s := ws.new_server(.ip6, 8081, '/')
+	mut s := ws_.new_server(.ip6, 8081, '/')
 
-	s.on_connect(fn (mut s ws.ServerClient) !bool {
+	s.on_connect(fn (mut s ws_.ServerClient) !bool {
 		if s.resource_name != '/' {
 			return false
 		}
@@ -42,14 +42,14 @@ fn server() ! {
 		return true
 	})!
 
-	s.on_message(fn (mut ws ws.Client, msg &RawMessage) ! {
+	s.on_message(fn (mut ws_ ws.Client, msg &RawMessage) ! {
 		mut transport := WsTransport{}
 		mut ws_client := new_ws_client(transport)!
 		_ := ws_client
 	})
 
-	s.on_close(fn (mut ws ws.Client, code int, reason string) ! {
-		println('client (${ws.id}) closed connection')
+	s.on_close(fn (mut ws_ ws.Client, code int, reason string) ! {
+		println('client (${ws_.id}) closed connection')
 	})
 
 	s.listen() or { println('error on server listen: ${err}') }
