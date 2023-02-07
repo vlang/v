@@ -28,3 +28,10 @@ fn test_main() {
 	mut t7 := ?Struct(Struct{})
 	assert t7 == none
 }
+
+fn test_cast() {
+	var := ?u8(1)
+	println(?int(var)) // Option(1)
+	println(?int(?u8(255))) // Option(255)
+	println(?int(none)) // Option(error: none)
+}

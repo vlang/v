@@ -30,6 +30,38 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 	}
 }
 
+// expr_opt_with_cast is used in cast expr when converting compatible option types
+// e.g. ?int(?u8(0))
+fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type) string {
+	if !expr_typ.has_flag(.option) || !ret_typ.has_flag(.option) {
+		panic('expected params to be options')
+	}
+
+	if expr_typ.idx() == ret_typ.idx() {
+		return g.expr_with_opt(expr, expr_typ, ret_typ)
+	} else {
+		stmt_str := g.go_before_stmt(0).trim_space()
+		styp := g.base_type(ret_typ)
+		g.empty_line = true
+		tmp_var := g.new_tmp_var()
+		g.writeln('${g.typ(ret_typ)} ${tmp_var};')
+		g.write('_option_ok(&(${styp}[]) {')
+
+		if expr is ast.CastExpr && expr_typ.has_flag(.option) {
+			g.write('*((${g.base_type(expr_typ)}*)')
+			g.expr(expr)
+			g.write('.data)')
+		} else {
+			g.inside_opt_or_res = false
+			g.expr(expr)
+		}
+		g.writeln(' }, (_option*)(&${tmp_var}), sizeof(${styp}));')
+		g.write(stmt_str)
+		g.write(tmp_var)
+		return tmp_var
+	}
+}
+
 // expr_with_opt is used in assign expr to `optinal`.
 // e.g. x = y (option lhs and rhs), mut x = ?int(123), y = none
 fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type) string {
@@ -37,7 +69,10 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 		g.inside_opt_or_res = true
 	}
 	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)&& (expr in [ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr, ast.CastExpr]) {
-		if expr is ast.Ident {
+		if expr in [ast.Ident, ast.CastExpr] {
+			if expr_typ.idx() != ret_typ.idx() {
+				return g.expr_opt_with_cast(expr, expr_typ, ret_typ)
+			}
 			g.inside_opt_or_res = true
 		}
 		g.expr(expr)
