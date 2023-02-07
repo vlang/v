@@ -2832,12 +2832,9 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast type `${ft}` to `${tt}`', node.pos)
-	} else if from_type.has_flag(.option) || from_type.has_flag(.result)
-		|| from_type.has_flag(.variadic) {
+	} else if from_type.has_flag(.result) || from_type.has_flag(.variadic) {
 		// variadic case can happen when arrays are converted into variadic
-		msg := if from_type.has_flag(.option) {
-			'an Option'
-		} else if from_type.has_flag(.result) {
+		msg := if from_type.has_flag(.result) {
 			'a result'
 		} else {
 			'a variadic'
@@ -2865,7 +2862,9 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast string to `${tt}`, use `${snexpr}[index]` instead.', node.pos)
 	} else if final_from_sym.kind == .array && !from_type.is_ptr() && to_type != ast.string_type
-		&& !(to_type.has_flag(.option) && from_type.idx() == to_type.idx()) {
+		&& !(to_type.has_flag(.option) && (from_type.idx() == to_type.idx()
+		|| ((final_from_sym.info as ast.Array).elem_type == ast.u8_type && to_sym.kind == .array
+		&& (to_sym.info as ast.Array).elem_type.is_number()))) {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast array `${ft}` to `${tt}`', node.pos)

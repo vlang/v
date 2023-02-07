@@ -4445,7 +4445,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		}
 		if node.typ.has_flag(.option) && node.expr is ast.None {
 			g.gen_option_error(node.typ, node.expr)
-		} else if node.typ.has_flag(.option) {
+		} else if sym.kind != .alias && node.typ.has_flag(.option) {
 			g.expr_with_opt(node.expr, node.expr_type, node.typ)
 		} else {
 			g.write('(${cast_label}(')
