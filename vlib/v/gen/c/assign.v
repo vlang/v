@@ -34,7 +34,7 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 // e.g. ?int(?u8(0))
 fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type) string {
 	if !expr_typ.has_flag(.option) || !ret_typ.has_flag(.option) {
-		panic('expected params to be options')
+		panic('cgen: expected expr_type and ret_typ to be options')
 	}
 
 	if expr_typ.idx() == ret_typ.idx() {
