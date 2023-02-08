@@ -35,7 +35,23 @@ $if $pkgconfig('openssl') {
 #include <openssl/err.h>
 
 [typedef]
-struct C.SSL {
+pub struct C.SSL {
+}
+
+[typedef]
+pub struct C.SSL_CTX {
+}
+
+// The above C structs, have incomplete declarations in the OpenSSL headers.
+// For this reason, we have to prevent the automatic str() generation for them,
+// by adding manual implementations of their .str() methods, that are defined on
+// pointers to them:
+fn (s &C.SSL) str() string {
+	return 'C.SSL(0x${voidptr(s)})'
+}
+
+fn (c &C.SSL_CTX) str() string {
+	return 'C.SSL_CTX(0x${voidptr(c)})'
 }
 
 fn C.BIO_new_ssl_connect(ctx &C.SSL_CTX) &C.BIO

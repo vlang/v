@@ -912,7 +912,6 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, typ_str string, 
 		} else {
 			g.get_str_fn(ftyp_noshared)
 		}
-
 		// with floats we use always the g representation:
 		if sym.kind !in [.f32, .f64] {
 			fn_body.write_string('{_SLIT("${quote_str}"), ${int(base_fmt)}, {.${data_str(base_fmt)}=')
