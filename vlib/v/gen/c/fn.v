@@ -435,6 +435,9 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) !string {
 			return error('none')
 		}
 		name = g.cc_type(node.receiver.typ, false) + '_' + name
+		if unwrapped_rec_sym.language == .c {
+			name = name.replace_once('C__', '')
+		}
 	}
 	if node.language == .c {
 		name = util.no_dots(name)
