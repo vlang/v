@@ -19,7 +19,7 @@ fn (g Gen) reflection_string(str string) int {
 [inline]
 fn (mut g Gen) gen_reflection_strings() {
 	for str, idx in g.reflection_strings {
-		g.writeln('\t${c.cprefix}add_string(_SLIT("${str}"), ${idx});\n')
+		g.writeln('\t${c.cprefix}add_string(_SLIT("${str}"), ${idx});')
 	}
 }
 
@@ -206,15 +206,19 @@ fn (g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 fn (mut g Gen) gen_reflection_data() {
 	// modules declaration
 	for mod_name in g.table.modules {
-		g.writeln('\t${c.cprefix}add_module(_SLIT("${mod_name}"));\n')
+		g.writeln('\t${c.cprefix}add_module(_SLIT("${mod_name}"));')
+	}
+
+	// type symbols declaration
+	for _, tsym in g.table.type_symbols {
+		sym := g.gen_reflection_sym(tsym)
+		g.writeln('\t${c.cprefix}add_type_symbol(${sym});')
 	}
 
 	// types declaration
 	for full_name, idx in g.table.type_idxs {
-		tsym := g.table.sym_by_idx(idx)
 		name := full_name.all_after_last('.')
-		sym := g.gen_reflection_sym(tsym)
-		g.writeln('\t${c.cprefix}add_type((${c.cprefix}Type){.name=_SLIT("${name}"),.idx=${idx},.sym=${sym}});\n')
+		g.writeln('\t${c.cprefix}add_type((${c.cprefix}Type){.name=_SLIT("${name}"),.idx=${idx}});')
 	}
 
 	// func declaration (methods come from struct methods)
@@ -223,13 +227,7 @@ fn (mut g Gen) gen_reflection_data() {
 			continue
 		}
 		func := g.gen_reflection_fn(fn_)
-		g.writeln('\t${c.cprefix}add_func(${func});\n')
-	}
-
-	// type symbols declaration
-	for _, tsym in g.table.type_symbols {
-		sym := g.gen_reflection_sym(tsym)
-		g.writeln('\t${c.cprefix}add_type_symbol(${sym});\n')
+		g.writeln('\t${c.cprefix}add_func(${func});')
 	}
 
 	g.gen_reflection_strings()

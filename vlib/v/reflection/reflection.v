@@ -30,7 +30,7 @@ pub enum VLanguage {
 	wasm32
 }
 
-type VType = int
+type VType = u32
 
 // max of 8
 pub enum VTypeFlag {
@@ -93,6 +93,10 @@ pub fn (t VType) has_flag(flag VTypeFlag) bool {
 [inline]
 pub fn (t VType) idx() int {
 	return u16(t) & 0xffff
+}
+
+pub fn (t VType) str() string {
+	return 'VType(0x${t.hex()} = ${u32(t)})'
 }
 
 pub struct ArrayFixed {
@@ -319,7 +323,10 @@ fn add_func(func Function) {
 
 [markused]
 fn add_type(type_ Type) {
-	g_reflection.types << type_
+	g_reflection.types << Type{
+		...type_
+		sym: g_reflection.type_symbols.filter(it.idx == type_.idx).first()
+	}
 }
 
 [markused]
