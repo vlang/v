@@ -18,18 +18,20 @@ mut:
 	errors   []errors.Error
 	table    &ast.Table = unsafe { nil }
 	//
-	rbp_idx           int            // Stack pointer temporary's index for function, if needed (-1 for none)
-	mod               wa.Module      // Current Binaryen WebAssembly module
-	local_stack       map[string]int // Variable address with respect to the local stack pointer -> [rbp-i]
-	curr_ret          []ast.Type     // Current return value, multi returns will be split into an array
-	local_temporaries []FuncIdent    // Local WebAssembly temporaries, referenced with an index
+	bp_idx            int                     // Base pointer temporary's index for function, if needed (-1 for none)
+	stack_frame       int                     // Size of the current stack frame, if needed
+	mod               wa.Module               // Current Binaryen WebAssembly module
+	local_stack       map[string]int          // Variable address with respect to the local stack pointer -> [rbp-i]
+	curr_ret          []ast.Type              // Current return value, multi returns will be split into an array
+	local_temporaries []Temporary             // Local WebAssembly temporaries, referenced with an index
+	local_addresses   map[string]Struct       // Local stack structures relative to `rbp_idx`
+	structs           map[ast.Type]StructInfo // Cached struct field offsets
 	lbl               int
 }
 
-struct FuncIdent {
-	name    string
-	typ     wa.Type
-	ast_typ ast.Type
+struct StructInfo {
+mut:
+	offsets []int
 }
 
 pub fn (mut g Gen) v_error(s string, pos token.Pos) {
@@ -65,56 +67,6 @@ pub fn (mut g Gen) w_error(s string) {
 		print_backtrace()
 	}
 	util.verror('wasm error', s)
-}
-
-fn (mut g Gen) get_local(name string) int {
-	if g.local_temporaries.len == 0 {
-		g.w_error('get_local: g.local_temporaries.len == 0')
-	}
-	mut c := g.local_temporaries.len
-	for {
-		c--
-		if g.local_temporaries[c].name == name {
-			return c
-		}
-		if c == 0 {
-			break
-		}
-	}
-	g.w_error("get_local: cannot get '${name}'")
-}
-
-fn (mut g Gen) get_local_from_ident(ident ast.Ident) (int, wa.Type) {
-	mut obj := ident.obj
-	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
-		obj = ident.scope.find(ident.name) or { g.w_error('unknown variable ${ident.name}') }
-	}
-	match mut obj {
-		ast.Var {
-			idx := g.get_local(obj.name)
-			return idx, g.local_temporaries[idx].typ
-		}
-		else {
-			g.w_error('unsupported variable type type:${obj} name:${ident.name}')
-		}
-	}
-}
-
-fn (mut g Gen) new_local_temporary(typ ast.Type) int {
-	ret := g.local_temporaries.len
-	g.local_temporaries << FuncIdent{
-		typ: g.get_wasm_type(typ)
-		ast_typ: typ
-	}
-	return ret
-}
-
-fn (mut g Gen) new_local(name string, typ ast.Type) {
-	g.local_temporaries << FuncIdent{
-		name: name
-		typ: g.get_wasm_type(typ)
-		ast_typ: typ
-	}
 }
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
@@ -160,7 +112,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	for p in node.params {
 		typ := g.get_wasm_type(p.typ)
-		g.local_temporaries << FuncIdent{
+		g.local_temporaries << Temporary{
 			name: p.name
 			typ: typ
 			ast_typ: p.typ
@@ -226,7 +178,7 @@ fn (mut g Gen) postfix_expr(node ast.PostfixExpr) wa.Expression {
 
 	kind := if node.op == .inc { token.Kind.plus } else { token.Kind.minus }
 
-	idx, typ := g.get_local_from_ident(node.expr as ast.Ident)
+	idx, typ := g.get_local_temporary_from_ident(node.expr as ast.Ident)
 	atyp := g.local_temporaries[idx].ast_typ
 
 	op := g.infix_from_typ(atyp, kind)
@@ -316,7 +268,7 @@ fn (mut g Gen) if_expr(ifexpr ast.IfExpr) wa.Expression {
 }
 
 fn (mut g Gen) get_ident(node ast.Ident, expected ast.Type) (wa.Expression, int) {
-	idx, typ := g.get_local_from_ident(node)
+	idx, typ := g.get_local_temporary_from_ident(node)
 	expr := wa.localget(g.mod, idx, typ)
 
 	return g.cast(expr, typ, g.is_signed(g.local_temporaries[idx].ast_typ), g.get_wasm_type(expected)), idx
@@ -334,6 +286,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			g.w_error('wasm backend does not support threads')
 		}
 		ast.StructInit {
+			/*
 			ts := g.table.sym(node.typ)
 			info := ts.info as ast.Struct
 
@@ -346,7 +299,11 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 				exprs[field.i] = g.expr(f.expr, field.typ)
 			}
 
-			wa.structnew(g.mod, exprs.data, exprs.len, g.structs[node.typ])
+			wa.structnew(g.mod, exprs.data, exprs.len, g.structs[node.typ])*/
+			pos := g.allocate_struct('_anonstruct', node.typ)
+			g.init_struct(Struct{ address: pos, ast_typ: node.typ }, node)
+
+			g.w_error('wasm backend does not support structs expressions yet')
 		}
 		ast.MatchExpr {
 			g.w_error('wasm backend does not support match expressions yet')
@@ -443,7 +400,7 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
 
 	ret := (node.right[0] as ast.CallExpr).return_type
 	wret := g.get_wasm_type(ret)
-	temporary := g.new_local_temporary(ret)
+	temporary := g.new_local_temporary_anon(ret)
 
 	// Set multi return function to temporary, then use `tuple.extract`.
 	exprs << wa.localset(g.mod, temporary, g.expr(node.right[0], 0))
@@ -459,7 +416,7 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
 				continue
 			}
 			if node.op == .decl_assign {
-				g.new_local(left.name, typ)
+				g.new_local_temporary(left.name, typ)
 			}
 		}
 
@@ -468,7 +425,7 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
 		popexpr = g.cast(popexpr, wartyp, g.is_signed(rtyp), g.get_wasm_type(typ))
 
 		// TODO: only supports local identifiers, no path.expressions or global names
-		idx, _ := g.get_local_from_ident(left as ast.Ident)
+		idx, _ := g.get_local_temporary_from_ident(left as ast.Ident)
 		exprs << wa.localset(g.mod, idx, popexpr)
 	}
 
@@ -548,12 +505,12 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 							continue
 						}
 						if node.op == .decl_assign {
-							g.new_local(left.name, typ)
+							g.new_local_temporary(left.name, typ)
 						}
 					}
 
 					// TODO: only supports local identifiers, no path.expressions or global names
-					idx, var_typ := g.get_local_from_ident(left as ast.Ident)
+					idx, var_typ := g.get_local_temporary_from_ident(left as ast.Ident)
 					expr := if node.op !in [.decl_assign, .assign] {
 						op := g.infix_from_typ(typ, token.assign_op_to_infix_op(node.op))
 						infix := wa.binary(g.mod, op, wa.localget(g.mod, idx, var_typ),
@@ -622,8 +579,8 @@ pub fn (mut g Gen) toplevel_stmts(stmts []ast.Stmt) {
 }
 
 fn (mut g Gen) housekeeping() {
-	// Create stack pointer.
-	wa.addglobal(g.mod, c'__stack_pointer', type_i32, true, wa.constant(g.mod, wa.literalint32(0)))
+	wa.addglobalimport(g.mod, c'__vsp', c'env', c'__vsp', type_i32, true)
+	wa.addmemoryimport(g.mod, c'__vmem', c'env', c'__vmem', 0)
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Preferences) {

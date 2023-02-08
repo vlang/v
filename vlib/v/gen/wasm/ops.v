@@ -14,41 +14,6 @@ const (
 	type_structref = wa.typestructref()
 )
 
-fn (mut g Gen) new_struct_entry(typ ast.Type) {
-	ts := g.table.sym(typ)
-	info := ts.info as ast.Struct
-
-	tb := wa.typebuildercreate(1)
-	mut f_t := []wa.Type{cap: info.fields.len} // Types of each field
-	mut f_m := []bool{cap: info.fields.len} // Mutability of each field
-	mut f_p := []wa.PackedType{cap: info.fields.len} // Packed types, for 8/16 bit types
-
-	if info.is_union {
-		g.w_error('unions are not implemented yet')
-	}
-	if info.is_generic {
-		g.w_error('generic structs are not implemented yet')
-	}
-
-	for field in info.fields {
-		f_t << g.get_wasm_type(field.typ)
-		f_m << field.is_mut
-		f_p << if field.typ in [ast.i8_type, ast.u8_type] {
-			wa.packedtypeint8()
-		} else if field.typ in [ast.i16_type, ast.u16_type] {
-			wa.packedtypeint16()
-		} else {
-			wa.packedtypenotpacked()
-		}
-	}
-	wa.typebuildersetstructtype(tb, 0, f_t.data, f_p.data, f_m.data, f_t.len)
-
-	mut heap_type := wa.HeapType(unsafe { nil })
-	assert wa.typebuilderbuildanddispose(tb, &heap_type, unsafe { nil }, unsafe { nil })
-
-	g.structs[typ] = heap_type
-}
-
 // "Register size" types such as int, i64 and bool boil down to their WASM counterparts.
 // Structures and unions are pointers, i32.
 fn (mut g Gen) get_wasm_type(typ_ ast.Type) wa.Type {
@@ -86,9 +51,6 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wa.Type {
 	ts := g.table.sym(typ)
 	match ts.info {
 		ast.Struct {
-			if typ !in g.structs {
-				g.new_struct_entry(typ)
-			}
 			return wasm.type_structref
 		}
 		ast.MultiReturn {
