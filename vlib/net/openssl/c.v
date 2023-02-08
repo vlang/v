@@ -35,7 +35,11 @@ $if $pkgconfig('openssl') {
 #include <openssl/err.h>
 
 [typedef]
-struct C.SSL {
+pub struct C.SSL {
+}
+
+[typedef]
+pub struct C.SSL_CTX {
 }
 
 fn C.BIO_new_ssl_connect(ctx &C.SSL_CTX) &C.BIO
