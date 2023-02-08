@@ -44,7 +44,7 @@ fn (g Gen) gen_functionarg_array(type_name string, node ast.Fn) string {
 
 // gen_functionarg_array generates the code for functionarg argument
 [inline]
-fn (g Gen) gen_function_array(nodes []ast.Fn) string {
+fn (mut g Gen) gen_function_array(nodes []ast.Fn) string {
 	type_name := '${c.cprefix}Function'
 
 	if nodes.len == 0 {
@@ -60,7 +60,7 @@ fn (g Gen) gen_function_array(nodes []ast.Fn) string {
 
 // gen_reflection_fn generates C code for Function struct
 [inline]
-fn (g Gen) gen_reflection_fn(node ast.Fn) string {
+fn (mut g Gen) gen_reflection_fn(node ast.Fn) string {
 	mut arg_str := '((${c.cprefix}Function){'
 	v_name := node.name.all_after_last('.')
 	arg_str += '.mod_name=_SLIT("${node.mod}"),'
@@ -79,7 +79,7 @@ fn (g Gen) gen_reflection_fn(node ast.Fn) string {
 
 // gen_reflection_sym generates C code for TypeSymbol struct
 [inline]
-fn (g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
+fn (mut g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
 	kind_name := if tsym.kind in [.none_, .struct_, .enum_, .interface_] {
 		tsym.kind.str() + '_'
 	} else {
@@ -137,7 +137,7 @@ fn (g Gen) gen_string_array(strs []string) string {
 
 // gen_reflection_sym_info generates C code for TypeSymbol's info sum type
 [inline]
-fn (g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
+fn (mut g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 	match tsym.kind {
 		.array {
 			info := tsym.info as ast.Array
