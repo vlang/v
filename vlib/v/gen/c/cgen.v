@@ -237,10 +237,7 @@ mut:
 	out_fn_start_pos []int  // for generating multiple .c files, stores locations of all fn positions in `out` string builder
 	static_modifier  string // for parallel_cc
 
-	has_reflection bool
-	// reflection metadata initialization
-	reflection_funcs   strings.Builder
-	reflection_others  strings.Builder
+	has_reflection     bool
 	reflection_strings &map[string]int
 }
 
@@ -314,8 +311,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 			|| pref_.os in [.wasm32, .wasm32_emscripten])
 		static_modifier: if pref_.parallel_cc { 'static' } else { '' }
 		has_reflection: 'v.reflection' in table.modules
-		reflection_funcs: strings.new_builder(100)
-		reflection_others: strings.new_builder(100)
 		reflection_strings: &reflection_strings
 	}
 
@@ -370,7 +365,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 			global_g.embedded_data.write(g.embedded_data) or { panic(err) }
 			global_g.shared_types.write(g.shared_types) or { panic(err) }
 			global_g.shared_functions.write(g.channel_definitions) or { panic(err) }
-			global_g.reflection_funcs.write(g.reflection_funcs) or { panic(err) }
 
 			global_g.force_main_console = global_g.force_main_console || g.force_main_console
 
@@ -679,8 +673,6 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		is_cc_msvc: global_g.is_cc_msvc
 		use_segfault_handler: global_g.use_segfault_handler
 		has_reflection: 'v.reflection' in global_g.table.modules
-		reflection_funcs: strings.new_builder(100)
-		reflection_others: strings.new_builder(100)
 		reflection_strings: global_g.reflection_strings
 	}
 	g.gen_file()

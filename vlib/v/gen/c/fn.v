@@ -288,7 +288,6 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		}
 		fn_header := '${visibility_kw}${type_name} ${fn_attrs}${name}('
 		g.definitions.write_string(fn_header)
-		g.gen_reflection_function(node)
 		g.write(fn_header)
 	}
 	arg_start_pos := g.out.len
