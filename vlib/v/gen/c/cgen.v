@@ -6466,15 +6466,18 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 		}
 		for vtyp, variants in inter_info.conversions {
 			vsym := g.table.sym(vtyp)
-			conversion_functions.write_string('static inline bool I_${interface_name}_is_I_${vsym.cname}(${interface_name} x) {\n\treturn ')
-			for i, variant in variants {
-				variant_sym := g.table.sym(variant)
-				if i > 0 {
-					conversion_functions.write_string(' || ')
+
+			if variants.len > 0 {
+				conversion_functions.write_string('static inline bool I_${interface_name}_is_I_${vsym.cname}(${interface_name} x) {\n\treturn ')
+				for i, variant in variants {
+					variant_sym := g.table.sym(variant)
+					if i > 0 {
+						conversion_functions.write_string(' || ')
+					}
+					conversion_functions.write_string('(x._typ == _${interface_name}_${variant_sym.cname}_index)')
 				}
-				conversion_functions.write_string('(x._typ == _${interface_name}_${variant_sym.cname}_index)')
+				conversion_functions.writeln(';\n}')
 			}
-			conversion_functions.writeln(';\n}')
 
 			conversion_functions.writeln('static inline ${vsym.cname} I_${interface_name}_as_I_${vsym.cname}(${interface_name} x) {')
 			for variant in variants {
