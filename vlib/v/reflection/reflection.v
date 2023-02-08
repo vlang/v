@@ -252,7 +252,7 @@ pub fn get_modules() []Module {
 // get_functions returns the functions built with V source
 pub fn get_funcs() []Function {
 	mut out := g_reflection.funcs.clone()
-	out << arrays.flatten[Function](get_types().map(it.sym.methods))
+	out << arrays.flatten[Function](get_types().map(it.sym.methods).filter(it.len))
 	return out
 }
 
