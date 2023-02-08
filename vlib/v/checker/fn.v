@@ -249,6 +249,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					}
 				}
 			}
+			// Check if parameter name is already registered as imported module symbol
+			if c.check_import_sym_conflict(param.name) {
+				c.error('duplicate of an import symbol `${param.name}`', param.pos)
+			}
+		}
+		// Check if function name is already registered as imported module symbol
+		if !node.is_method && c.check_import_sym_conflict(node.short_name) {
+			c.error('duplicate of an import symbol `${node.short_name}`', node.pos)
 		}
 	}
 	if node.language == .v && node.name.after_char(`.`) == 'init' && !node.is_method

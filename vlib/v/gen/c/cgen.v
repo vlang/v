@@ -254,13 +254,13 @@ struct GlobalConstDef {
 	is_precomputed bool     // can be declared as a const in C: primitive, and a simple definition
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string, string, string, []int) {
+pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string, string, string, []int) {
 	// println('start cgen2')
 	mut module_built := ''
-	if pref.build_mode == .build_module {
+	if pref_.build_mode == .build_module {
 		for file in files {
-			if file.path.contains(pref.path)
-				&& file.mod.short_name == pref.path.all_after_last(os.path_separator).trim_right(os.path_separator) {
+			if file.path.contains(pref_.path)
+				&& file.mod.short_name == pref_.path.all_after_last(os.path_separator).trim_right(os.path_separator) {
 				module_built = file.mod.name
 				break
 			}
@@ -300,19 +300,19 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 		json_forward_decls: strings.new_builder(100)
 		sql_buf: strings.new_builder(100)
 		table: table
-		pref: pref
+		pref: pref_
 		fn_decl: 0
-		is_autofree: pref.autofree
+		is_autofree: pref_.autofree
 		indent: -1
 		module_built: module_built
 		timers_should_print: timers_should_print
 		timers: util.new_timers(should_print: timers_should_print, label: 'global_cgen')
 		inner_loop: &ast.empty_stmt
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
-		is_cc_msvc: pref.ccompiler == 'msvc'
-		use_segfault_handler: !('no_segfault_handler' in pref.compile_defines
-			|| pref.os in [.wasm32, .wasm32_emscripten])
-		static_modifier: if pref.parallel_cc { 'static' } else { '' }
+		is_cc_msvc: pref_.ccompiler == 'msvc'
+		use_segfault_handler: !('no_segfault_handler' in pref_.compile_defines
+			|| pref_.os in [.wasm32, .wasm32_emscripten])
+		static_modifier: if pref_.parallel_cc { 'static' } else { '' }
 		has_reflection: 'v.reflection' in table.modules
 		reflection_funcs: strings.new_builder(100)
 		reflection_others: strings.new_builder(100)
@@ -330,7 +330,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 	*/
 	// anon fn may include assert and thus this needs
 	// to be included before any test contents are written
-	if pref.is_test {
+	if pref_.is_test {
 		global_g.write_tests_definitions()
 	}
 
@@ -342,7 +342,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 	util.timing_measure('cgen init')
 	global_g.tests_inited = false
 	global_g.file = files.last()
-	if !pref.no_parallel {
+	if !pref_.no_parallel {
 		util.timing_start('cgen parallel processing')
 		mut pp := pool.new_pool_processor(callback: cgen_process_one_file_cb)
 		pp.set_shared_context(global_g) // TODO: make global_g shared

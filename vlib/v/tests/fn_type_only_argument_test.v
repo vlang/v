@@ -1,8 +1,8 @@
 import time
 
 struct Game {
-	update fn (mut time.Time) = fn (mut time time.Time) {}
-	draw   fn (mut time.Time) = fn (mut time time.Time) {}
+	update fn (mut time.Time) = fn (mut time_ time.Time) {}
+	draw   fn (mut time.Time) = fn (mut time_ time.Time) {}
 mut:
 	time time.Time
 }

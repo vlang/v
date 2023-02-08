@@ -29,9 +29,9 @@ const (
 	u64_iter_count = calculate_iterations_for(64)
 )
 
-fn calculate_iterations_for(bits int) int {
-	base := bits / sys.rand_bitsize
-	extra := if bits % sys.rand_bitsize == 0 { 0 } else { 1 }
+fn calculate_iterations_for(bits_ int) int {
+	base := bits_ / sys.rand_bitsize
+	extra := if bits_ % sys.rand_bitsize == 0 { 0 } else { 1 }
 	return base + extra
 }
 
