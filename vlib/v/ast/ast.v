@@ -1535,14 +1535,15 @@ pub const (
 	}
 )
 
+// `assert a == 0, 'a is zero'`
 [minify]
 pub struct AssertStmt {
 pub:
 	pos       token.Pos
 	extra_pos token.Pos
 pub mut:
-	expr    Expr
-	extra   Expr
+	expr    Expr // `a == 0`
+	extra   Expr // `'a is zero'`
 	is_used bool // asserts are used in _test.v files, as well as in non -prod builds of all files
 }
 
@@ -1558,8 +1559,8 @@ pub struct IfGuardExpr {
 pub:
 	vars []IfGuardVar
 pub mut:
-	expr      Expr
-	expr_type Type
+	expr      Expr // `opt()`
+	expr_type Type // type of `opt()`
 }
 
 pub enum OrKind {

@@ -147,12 +147,12 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				g.write('${ptr_typ}_alias_eq(')
 				if left.typ.is_ptr() {
-					g.write('*')
+					g.write('*'.repeat(left.typ.nr_muls()))
 				}
 				g.expr(node.left)
 				g.write(', ')
 				if right.typ.is_ptr() {
-					g.write('*')
+					g.write('*'.repeat(right.typ.nr_muls()))
 				}
 				g.expr(node.right)
 				g.write(')')
@@ -164,7 +164,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				g.write('${ptr_typ}_arr_eq(')
 				if left.typ.is_ptr() && !left.typ.has_flag(.shared_f) {
-					g.write('*')
+					g.write('*'.repeat(left.typ.nr_muls()))
 				}
 				g.expr(node.left)
 				if left.typ.has_flag(.shared_f) {
@@ -172,7 +172,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				g.write(', ')
 				if right.typ.is_ptr() && !right.typ.has_flag(.shared_f) {
-					g.write('*')
+					g.write('*'.repeat(right.typ.nr_muls()))
 				}
 				g.expr(node.right)
 				if right.typ.has_flag(.shared_f) {
@@ -213,36 +213,32 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				g.write('${ptr_typ}_map_eq(')
 				if left.typ.is_ptr() {
-					g.write('*')
+					g.write('*'.repeat(left.typ.nr_muls()))
 				}
 				g.expr(node.left)
 				g.write(', ')
 				if right.typ.is_ptr() {
-					g.write('*')
+					g.write('*'.repeat(right.typ.nr_muls()))
 				}
 				g.expr(node.right)
 				g.write(')')
 			}
 			.struct_ {
-				// if g.pref.translated {
-				// g.gen_plain_infix_expr(node)
-				//} else {
 				ptr_typ := g.equality_fn(left.unaliased)
 				if node.op == .ne {
 					g.write('!')
 				}
 				g.write('${ptr_typ}_struct_eq(')
 				if left.typ.is_ptr() {
-					g.write('*')
+					g.write('*'.repeat(left.typ.nr_muls()))
 				}
 				g.expr(node.left)
 				g.write(', ')
 				if right.typ.is_ptr() {
-					g.write('*')
+					g.write('*'.repeat(right.typ.nr_muls()))
 				}
 				g.expr(node.right)
 				g.write(')')
-				//}
 			}
 			.sum_type {
 				ptr_typ := g.equality_fn(left.unaliased)
@@ -251,12 +247,12 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				g.write('${ptr_typ}_sumtype_eq(')
 				if left.typ.is_ptr() {
-					g.write('*')
+					g.write('*'.repeat(left.typ.nr_muls()))
 				}
 				g.expr(node.left)
 				g.write(', ')
 				if right.typ.is_ptr() {
-					g.write('*')
+					g.write('*'.repeat(right.typ.nr_muls()))
 				}
 				g.expr(node.right)
 				g.write(')')
@@ -268,12 +264,12 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				g.write('${ptr_typ}_interface_eq(')
 				if left.typ.is_ptr() {
-					g.write('*')
+					g.write('*'.repeat(left.typ.nr_muls()))
 				}
 				g.expr(node.left)
 				g.write(', ')
 				if right.typ.is_ptr() {
-					g.write('*')
+					g.write('*'.repeat(right.typ.nr_muls()))
 				}
 				g.expr(node.right)
 				g.write(')')

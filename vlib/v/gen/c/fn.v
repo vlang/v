@@ -435,6 +435,9 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) !string {
 			return error('none')
 		}
 		name = g.cc_type(node.receiver.typ, false) + '_' + name
+		if unwrapped_rec_sym.language == .c && node.receiver.typ.is_real_pointer() {
+			name = name.replace_once('C__', '')
+		}
 	}
 	if node.language == .c {
 		name = util.no_dots(name)
@@ -1171,7 +1174,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('${name}(')
 		}
 	}
-	is_node_name_in_first_last_repeat := node.name in ['first', 'last', 'repeat']
+	is_array_method_first_last_repeat := final_left_sym.kind == .array
+		&& node.name in ['first', 'last', 'repeat']
 	if node.receiver_type.is_ptr() && (!left_type.is_ptr()
 		|| node.from_embed_types.len != 0 || (left_type.has_flag(.shared_f) && node.name != 'str')) {
 		// The receiver is a reference, but the caller provided a value
@@ -1181,7 +1185,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			if !node.left.is_lvalue() {
 				g.write('ADDR(${rec_cc_type}, ')
 				has_cast = true
-			} else if !is_node_name_in_first_last_repeat && !(left_type.has_flag(.shared_f)
+			} else if !is_array_method_first_last_repeat && !(left_type.has_flag(.shared_f)
 				&& left_type == node.receiver_type) {
 				g.write('&')
 			}
@@ -1209,7 +1213,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
 		if left_sym.kind == .array && node.left.is_auto_deref_var()
-			&& is_node_name_in_first_last_repeat {
+			&& is_array_method_first_last_repeat {
 			g.write('*')
 		}
 		if node.left is ast.MapInit {
@@ -1245,7 +1249,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write(embed_name)
 		}
 		if left_type.has_flag(.shared_f)
-			&& (left_type != node.receiver_type || is_node_name_in_first_last_repeat) {
+			&& (left_type != node.receiver_type || is_array_method_first_last_repeat) {
 			g.write('->val')
 		}
 	}

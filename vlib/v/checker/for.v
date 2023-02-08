@@ -113,6 +113,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 				else {}
 			}
+		} else if node.val_is_mut {
+			c.error('string type is immutable, it cannot be changed', node.pos)
+			return
 		}
 		if sym.kind == .struct_ {
 			// iterators
@@ -139,8 +142,6 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.kind = sym.kind
 			node.val_type = val_type
 			node.scope.update_var_type(node.val_var, val_type)
-		} else if sym.kind == .string && node.val_is_mut {
-			c.error('string type is immutable, it cannot be changed', node.pos)
 		} else if sym.kind == .any {
 			node.cond_type = typ
 			node.kind = sym.kind
