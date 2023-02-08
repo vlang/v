@@ -434,7 +434,9 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) !string {
 			return error('none')
 		}
 		name = g.cc_type(node.receiver.typ, false) + '_' + name
-		if unwrapped_rec_sym.language == .c && node.receiver.typ.is_real_pointer() {
+		if unwrapped_rec_sym.language == .c && node.receiver.typ.is_real_pointer()
+			&& node.name == 'str' {
+			// TODO: handle this in a more general way, perhaps add a `[typedef_incomplete]` attribute, for C structs instead of this hack
 			name = name.replace_once('C__', '')
 		}
 	}
