@@ -99,6 +99,14 @@ pub fn (t VType) str() string {
 	return 'VType(0x${t.hex()} = ${u32(t)})'
 }
 
+// return true if `t` is a pointer (nr_muls>0)
+[inline]
+pub fn (t VType) is_ptr() bool {
+	// any normal pointer, i.e. &Type, &&Type etc;
+	// Note: voidptr, charptr and byteptr are NOT included!
+	return (int(t) >> 16) & 0xff > 0
+}
+
 pub struct ArrayFixed {
 pub:
 	size      int // array size
