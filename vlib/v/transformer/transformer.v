@@ -13,9 +13,9 @@ mut:
 	is_assert bool
 }
 
-pub fn new_transformer(pref &pref.Preferences) &Transformer {
+pub fn new_transformer(pref_ &pref.Preferences) &Transformer {
 	return &Transformer{
-		pref: pref
+		pref: pref_
 		index: &IndexState{
 			saved_key_vals: [][]KeyVal{cap: 1000}
 			saved_disabled: []bool{cap: 1000}
@@ -23,8 +23,8 @@ pub fn new_transformer(pref &pref.Preferences) &Transformer {
 	}
 }
 
-pub fn new_transformer_with_table(table &ast.Table, pref &pref.Preferences) &Transformer {
-	mut transformer := new_transformer(pref)
+pub fn new_transformer_with_table(table &ast.Table, pref_ &pref.Preferences) &Transformer {
+	mut transformer := new_transformer(pref_)
 	transformer.table = table
 	return transformer
 }

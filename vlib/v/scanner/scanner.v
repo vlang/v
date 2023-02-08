@@ -106,19 +106,19 @@ pub enum CommentsMode {
 }
 
 // new scanner from file.
-pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences) !&Scanner {
+pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref_ &pref.Preferences) !&Scanner {
 	if !os.is_file(file_path) {
 		return error('${file_path} is not a .v file')
 	}
 	raw_text := util.read_file(file_path) or { return err }
 	mut s := &Scanner{
-		pref: pref
+		pref: pref_
 		text: raw_text
 		all_tokens: []token.Token{cap: raw_text.len / 3}
 		is_print_line_on_error: true
 		is_print_colored_error: true
 		is_print_rel_paths_on_error: true
-		is_fmt: pref.is_fmt
+		is_fmt: pref_.is_fmt
 		comments_mode: comments_mode
 		file_path: file_path
 		file_base: os.base(file_path)
@@ -128,15 +128,15 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref
 }
 
 // new scanner from string.
-pub fn new_scanner(text string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
+pub fn new_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferences) &Scanner {
 	mut s := &Scanner{
-		pref: pref
+		pref: pref_
 		text: text
 		all_tokens: []token.Token{cap: text.len / 3}
 		is_print_line_on_error: true
 		is_print_colored_error: true
 		is_print_rel_paths_on_error: true
-		is_fmt: pref.is_fmt
+		is_fmt: pref_.is_fmt
 		comments_mode: comments_mode
 		file_path: 'internal_memory'
 		file_base: 'internal_memory'

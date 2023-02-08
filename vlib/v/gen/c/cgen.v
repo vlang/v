@@ -238,10 +238,7 @@ mut:
 	out_fn_start_pos []int  // for generating multiple .c files, stores locations of all fn positions in `out` string builder
 	static_modifier  string // for parallel_cc
 
-	has_reflection bool
-	// reflection metadata initialization
-	reflection_funcs   strings.Builder
-	reflection_others  strings.Builder
+	has_reflection     bool
 	reflection_strings &map[string]int
 }
 
@@ -255,13 +252,13 @@ struct GlobalConstDef {
 	is_precomputed bool     // can be declared as a const in C: primitive, and a simple definition
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string, string, string, []int) {
+pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string, string, string, []int) {
 	// println('start cgen2')
 	mut module_built := ''
-	if pref.build_mode == .build_module {
+	if pref_.build_mode == .build_module {
 		for file in files {
-			if file.path.contains(pref.path)
-				&& file.mod.short_name == pref.path.all_after_last(os.path_separator).trim_right(os.path_separator) {
+			if file.path.contains(pref_.path)
+				&& file.mod.short_name == pref_.path.all_after_last(os.path_separator).trim_right(os.path_separator) {
 				module_built = file.mod.name
 				break
 			}
@@ -301,22 +298,20 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 		json_forward_decls: strings.new_builder(100)
 		sql_buf: strings.new_builder(100)
 		table: table
-		pref: pref
+		pref: pref_
 		fn_decl: 0
-		is_autofree: pref.autofree
+		is_autofree: pref_.autofree
 		indent: -1
 		module_built: module_built
 		timers_should_print: timers_should_print
 		timers: util.new_timers(should_print: timers_should_print, label: 'global_cgen')
 		inner_loop: &ast.empty_stmt
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
-		is_cc_msvc: pref.ccompiler == 'msvc'
-		use_segfault_handler: !('no_segfault_handler' in pref.compile_defines
-			|| pref.os in [.wasm32, .wasm32_emscripten])
-		static_modifier: if pref.parallel_cc { 'static' } else { '' }
+		is_cc_msvc: pref_.ccompiler == 'msvc'
+		use_segfault_handler: !('no_segfault_handler' in pref_.compile_defines
+			|| pref_.os in [.wasm32, .wasm32_emscripten])
+		static_modifier: if pref_.parallel_cc { 'static' } else { '' }
 		has_reflection: 'v.reflection' in table.modules
-		reflection_funcs: strings.new_builder(100)
-		reflection_others: strings.new_builder(100)
 		reflection_strings: &reflection_strings
 	}
 
@@ -331,7 +326,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 	*/
 	// anon fn may include assert and thus this needs
 	// to be included before any test contents are written
-	if pref.is_test {
+	if pref_.is_test {
 		global_g.write_tests_definitions()
 	}
 
@@ -343,7 +338,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 	util.timing_measure('cgen init')
 	global_g.tests_inited = false
 	global_g.file = files.last()
-	if !pref.no_parallel {
+	if !pref_.no_parallel {
 		util.timing_start('cgen parallel processing')
 		mut pp := pool.new_pool_processor(callback: cgen_process_one_file_cb)
 		pp.set_shared_context(global_g) // TODO: make global_g shared
@@ -371,7 +366,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 			global_g.embedded_data.write(g.embedded_data) or { panic(err) }
 			global_g.shared_types.write(g.shared_types) or { panic(err) }
 			global_g.shared_functions.write(g.channel_definitions) or { panic(err) }
-			global_g.reflection_funcs.write(g.reflection_funcs) or { panic(err) }
 
 			global_g.force_main_console = global_g.force_main_console || g.force_main_console
 
@@ -680,8 +674,6 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		is_cc_msvc: global_g.is_cc_msvc
 		use_segfault_handler: global_g.use_segfault_handler
 		has_reflection: 'v.reflection' in global_g.table.modules
-		reflection_funcs: strings.new_builder(100)
-		reflection_others: strings.new_builder(100)
 		reflection_strings: global_g.reflection_strings
 	}
 	g.gen_file()
@@ -6513,15 +6505,18 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 		}
 		for vtyp, variants in inter_info.conversions {
 			vsym := g.table.sym(vtyp)
-			conversion_functions.write_string('static inline bool I_${interface_name}_is_I_${vsym.cname}(${interface_name} x) {\n\treturn ')
-			for i, variant in variants {
-				variant_sym := g.table.sym(variant)
-				if i > 0 {
-					conversion_functions.write_string(' || ')
+
+			if variants.len > 0 {
+				conversion_functions.write_string('static inline bool I_${interface_name}_is_I_${vsym.cname}(${interface_name} x) {\n\treturn ')
+				for i, variant in variants {
+					variant_sym := g.table.sym(variant)
+					if i > 0 {
+						conversion_functions.write_string(' || ')
+					}
+					conversion_functions.write_string('(x._typ == _${interface_name}_${variant_sym.cname}_index)')
 				}
-				conversion_functions.write_string('(x._typ == _${interface_name}_${variant_sym.cname}_index)')
+				conversion_functions.writeln(';\n}')
 			}
-			conversion_functions.writeln(';\n}')
 
 			conversion_functions.writeln('static inline ${vsym.cname} I_${interface_name}_as_I_${vsym.cname}(${interface_name} x) {')
 			for variant in variants {

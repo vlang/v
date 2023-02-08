@@ -301,13 +301,13 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 		vmod_path := os.join_path(final_module_path, 'v.mod')
 		if os.exists(vmod_path) {
 			data := os.read_file(vmod_path) or { return }
-			vmod := parse_vmod(data) or {
+			vmod_ := parse_vmod(data) or {
 				eprintln(err)
 				return
 			}
-			minfo := mod_name_info(vmod.name)
+			minfo := mod_name_info(vmod_.name)
 			if final_module_path != minfo.final_module_path {
-				println('Relocating module from "${name}" to "${vmod.name}" ( "${minfo.final_module_path}" ) ...')
+				println('Relocating module from "${name}" to "${vmod_.name}" ( "${minfo.final_module_path}" ) ...')
 				if os.exists(minfo.final_module_path) {
 					eprintln('Warning module "${minfo.final_module_path}" already exsits!')
 					eprintln('Removing module "${minfo.final_module_path}" ...')
@@ -330,10 +330,10 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 					}
 					continue
 				}
-				println('Module "${name}" relocated to "${vmod.name}" successfully.')
+				println('Module "${name}" relocated to "${vmod_.name}" successfully.')
 				final_module_path = minfo.final_module_path
 			}
-			name = vmod.name
+			name = vmod_.name
 		}
 		resolve_dependencies(name, final_module_path, module_names)
 	}
@@ -646,13 +646,13 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 		return
 	}
 	data := os.read_file(vmod_path) or { return }
-	vmod := parse_vmod(data) or {
+	vmod_ := parse_vmod(data) or {
 		eprintln(err)
 		return
 	}
 	mut deps := []string{}
 	// filter out dependencies that were already specified by the user
-	for d in vmod.deps {
+	for d in vmod_.deps {
 		if d !in module_names {
 			deps << d
 		}
@@ -666,11 +666,11 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 
 fn parse_vmod(data string) !Vmod {
 	manifest := vmod.decode(data) or { return error('Parsing v.mod file failed, ${err}') }
-	mut vmod := Vmod{}
-	vmod.name = manifest.name
-	vmod.version = manifest.version
-	vmod.deps = manifest.dependencies
-	return vmod
+	mut vmod_ := Vmod{}
+	vmod_.name = manifest.name
+	vmod_.version = manifest.version
+	vmod_.deps = manifest.dependencies
+	return vmod_
 }
 
 fn get_working_server_url() string {

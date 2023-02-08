@@ -223,8 +223,8 @@ fn get_backend(arch pref.Arch) !CodeGen {
 	return error('unsupported architecture')
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Preferences) (int, int) {
-	exe_name := if pref.os == .windows && !out_name.ends_with('.exe') {
+pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref_ &pref.Preferences) (int, int) {
+	exe_name := if pref_.os == .windows && !out_name.ends_with('.exe') {
 		out_name + '.exe'
 	} else {
 		out_name
@@ -233,16 +233,16 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 		table: table
 		sect_header_name_pos: 0
 		out_name: exe_name
-		pref: pref
+		pref: pref_
 		files: files
 		// TODO: workaround, needs to support recursive init
-		code_gen: get_backend(pref.arch) or {
+		code_gen: get_backend(pref_.arch) or {
 			eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
 			exit(1)
 		}
 		labels: 0
 		structs: []Struct{len: table.type_symbols.len}
-		eval: eval.new_eval(table, pref)
+		eval: eval.new_eval(table, pref_)
 	}
 	g.code_gen.g = g
 	g.generate_header()
