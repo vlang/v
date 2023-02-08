@@ -6,7 +6,7 @@ import v.util
 const cprefix = 'v__reflection__'
 
 // reflection_string maps string to its idx
-fn (g Gen) reflection_string(str string) int {
+fn (mut g Gen) reflection_string(str string) int {
 	return unsafe {
 		g.reflection_strings[str] or {
 			g.reflection_strings[str] = g.reflection_strings.len
