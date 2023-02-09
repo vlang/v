@@ -223,14 +223,14 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {
 					for i, f in ts.info.fields {
 						field_to_be_set := init.fields.map(it.name).contains(f.name)
 						if !field_to_be_set {
-							if f.has_default_expr {
-								offset := g.structs[var.ast_typ.idx()].offsets[i]
-								initexpr := g.expr(f.default_expr, f.typ) // or `unaliased_typ`?
-
-								exprs << g.mov_expr_to_var(var, initexpr, offset, f.typ)
+							offset := g.structs[var.ast_typ.idx()].offsets[i]
+							initexpr := if f.has_default_expr {
+								g.expr(f.default_expr, f.typ) // or `unaliased_typ`?
 							} else {
-								// blit zeros to all fields, recursively
+								g.literal("0", f.typ)
 							}
+							
+							exprs << g.mov_expr_to_var(var, initexpr, f.typ, offset)
 						}
 					}
 				}

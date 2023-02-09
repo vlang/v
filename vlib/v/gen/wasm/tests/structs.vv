@@ -1,0 +1,12 @@
+struct AA {
+	a int = 22
+	b i64
+}
+
+pub fn zeroed() {
+	_ := AA{}
+}
+
+pub fn field() {
+	_ := AA{a: 23}
+}
