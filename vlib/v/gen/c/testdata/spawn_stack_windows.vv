@@ -20,7 +20,7 @@ fn my_print2() {
 	println('ahoj svet')
 }
 
-// 64KB  stack size
+// 128KB  stack size
 [spawn_stack: 131072]
 fn my_print3() {
 	println('здравей свят')
