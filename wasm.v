@@ -1,12 +1,8 @@
 struct AA {
-	a i64
-	b int
-}
-
-pub fn ehe() int {
-	return 22
+	a int
+	b i64
 }
 
 pub fn test() {
-	_ = ehe()
+	_ := AA{a: 10, b: 2}
 }

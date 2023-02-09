@@ -21,10 +21,9 @@ mut:
 	bp_idx            int                     // Base pointer temporary's index for function, if needed (-1 for none)
 	stack_frame       int                     // Size of the current stack frame, if needed
 	mod               wa.Module               // Current Binaryen WebAssembly module
-	local_stack       map[string]int          // Variable address with respect to the local stack pointer -> [rbp-i]
 	curr_ret          []ast.Type              // Current return value, multi returns will be split into an array
 	local_temporaries []Temporary             // Local WebAssembly temporaries, referenced with an index
-	local_addresses   map[string]Struct       // Local stack structures relative to `rbp_idx`
+	local_addresses   map[string]Struct       // Local stack structures relative to `bp_idx`
 	structs           map[ast.Type]StructInfo // Cached struct field offsets
 	lbl               int
 }
@@ -69,6 +68,37 @@ pub fn (mut g Gen) w_error(s string) {
 	util.verror('wasm error', s)
 }
 
+fn (mut g Gen) setup_stack_frame(body wa.Expression) wa.Expression {
+	// stack_enter:
+	//     global.get $__vsp
+	//     i32.const {stack_frame}
+	//     i32.sub
+	//     local.tee $bp_idx
+	//     global.set $__vsp
+	// stack_enter:
+	//     local.get $bp_idx
+	//     i32.const {stack_frame}
+	//     i32.add
+	//     global.set $__vsp
+
+	// vfmt off
+	stack_enter := 
+		wa.globalset(g.mod, c'__vsp', 
+			wa.localtee(g.mod, g.bp_idx, 
+				wa.binary(g.mod, wa.subint32(),
+					wa.globalget(g.mod, c'__vsp', type_i32), 
+					wa.constant(g.mod, wa.literalint32(g.stack_frame))), type_i32))
+	stack_leave :=
+		wa.globalset(g.mod, c'__vsp', 
+			wa.binary(g.mod, wa.addint32(),
+				wa.localget(g.mod, g.bp_idx, type_i32), 
+				wa.constant(g.mod, wa.literalint32(g.stack_frame))))
+	// vfmt on
+
+	return g.mkblock([stack_enter, body, stack_leave])
+}
+
+
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	name := if node.is_method {
 		'${g.table.get_type_name(node.receiver.typ)}.${node.name}'
@@ -104,11 +134,11 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	// Multi returns are implemented with a binaryen tuple type, not a struct reference.
 
 	ts := g.table.sym(node.return_type)
-
 	return_type := g.get_wasm_type(node.return_type)
 
 	mut paraml := []wa.Type{cap: node.params.len + 1}
-	g.rbp_idx = -1
+	g.bp_idx = -1
+	g.stack_frame = 0
 
 	for p in node.params {
 		typ := g.get_wasm_type(p.typ)
@@ -126,7 +156,12 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	} else {
 		[node.return_type]
 	}
-	wasm_expr := g.expr_stmts(node.stmts, ast.void_type)
+
+	mut wasm_expr := g.expr_stmts(node.stmts, ast.void_type)
+
+	if g.bp_idx != -1 {
+		wasm_expr = g.setup_stack_frame(wasm_expr)
+	}
 
 	mut temporaries := []wa.Type{cap: g.local_temporaries.len - paraml.len}
 	for idx := paraml.len; idx < g.local_temporaries.len; idx++ {
@@ -145,6 +180,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 
 	g.local_temporaries.clear()
+	g.local_addresses.clear()
 }
 
 // println("${g.table.sym(expected)} ${node.val}")
@@ -302,8 +338,6 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			wa.structnew(g.mod, exprs.data, exprs.len, g.structs[node.typ])*/
 			pos := g.allocate_struct('_anonstruct', node.typ)
 			g.init_struct(Struct{ address: pos, ast_typ: node.typ }, node)
-
-			g.w_error('wasm backend does not support structs expressions yet')
 		}
 		ast.MatchExpr {
 			g.w_error('wasm backend does not support match expressions yet')
@@ -365,6 +399,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			}
 		}
 		ast.CallExpr {
+			/*
 			if node.name in ['println'] {
 				// TODO: will only print `int` values using `console.log`
 
@@ -378,19 +413,19 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 				nexpr := g.cast_t(g.expr(expr, typ), typ, ast.int_type)
 			
 				wa.call(g.mod, c"__vlog", &nexpr, 1, type_none)
-			} else {
-				mut arguments := []wa.Expression{cap: node.args.len}
-				for idx, arg in node.args {
-					arguments << g.expr(arg.expr, node.expected_arg_types[idx])
-				}
-
-				call := wa.call(g.mod, node.name.str, arguments.data, arguments.len, g.get_wasm_type(node.return_type))
-				if node.is_noreturn {
-					g.mkblock([call, wa.unreachable(g.mod)])
-				} else {
-					call
-				}
+			} else {*/
+			mut arguments := []wa.Expression{cap: node.args.len}
+			for idx, arg in node.args {
+				arguments << g.expr(arg.expr, node.expected_arg_types[idx])
 			}
+
+			call := wa.call(g.mod, node.name.str, arguments.data, arguments.len, g.get_wasm_type(node.return_type))
+			if node.is_noreturn {
+				g.mkblock([call, wa.unreachable(g.mod)])
+			} else {
+				call
+			}
+			//}
 		}
 		else {
 			g.w_error('wasm.expr(): unhandled node: ' + node.type_name())

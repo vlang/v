@@ -11,7 +11,6 @@ const (
 	type_i64       = wa.typeint64()
 	type_f32       = wa.typefloat32()
 	type_f64       = wa.typefloat64()
-	type_structref = wa.typestructref()
 )
 
 // "Register size" types such as int, i64 and bool boil down to their WASM counterparts.
@@ -51,7 +50,7 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wa.Type {
 	ts := g.table.sym(typ)
 	match ts.info {
 		ast.Struct {
-			return wasm.type_structref
+			return wasm.type_i32 // pointer
 		}
 		ast.MultiReturn {
 			// TODO: cache??

@@ -70,14 +70,6 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
 	}
 }
 
-/*
-fn (mut g Gen) get_local_address(name string) int {
-	if name !in g.local_addresses {
-		g.w_error('unknown variable `${name}`')
-	}
-	return g.local_addresses[name]
-}*/
-
 fn (mut g Gen) get_local_temporary(name string) int {
 	if g.local_temporaries.len == 0 {
 		g.w_error('get_local: g.local_temporaries.len == 0')
@@ -170,6 +162,7 @@ fn (mut g Gen) allocate_struct(name string, typ ast.Type) int {
 
 	size, align := g.get_type_size_align(typ)
 	padding := (align - g.stack_frame % align) % align
+	address := g.stack_frame
 	g.stack_frame += size + padding
 	g.local_addresses[name] = Struct{
 		name: name
@@ -177,7 +170,7 @@ fn (mut g Gen) allocate_struct(name string, typ ast.Type) int {
 		address: g.stack_frame
 	}
 
-	return g.stack_frame
+	return address
 }
 
 fn (mut g Gen) get_bp() wa.Expression {
@@ -187,15 +180,39 @@ fn (mut g Gen) get_bp() wa.Expression {
 	return wa.localget(g.mod, g.bp_idx, type_i32)
 }
 
-fn (mut g Gen) mov_ptr_to_var(expr wa.Expression, var Var, offset int, ast_typ ast.Type) wa.Expression {
-	// size, _ := g.table.type_size(f.typ)
-	// wa.store(g.mod, size, var.address + offset, 0, g.get_bp(), initexpr, g.get_wasm_type(f.typ), memoryname &i8) Expression
+// Copy fields from `ptr` to `address` in stack memory
+fn (mut g Gen) blit_struct(ptr wa.Expression, ast_typ ast.Type, address int) wa.Expression {
+	return wa.nop(g.mod)
 }
 
-fn (mut g Gen) init_struct(var Var, init ast.StructInit) {
+// `offset` is optional and only used with struct variables
+fn (mut g Gen) mov_expr_to_var(var Var, expr wa.Expression, ast_typ ast.Type, offset int) wa.Expression {
+	return match var {
+		ast.Ident {
+			g.mov_expr_to_var(g.get_var_from_ident(var), expr, offset, ast_typ)
+		}
+		Temporary {
+			wa.localset(g.mod, var.idx, expr)
+		}
+		Struct {
+			ts := g.table.sym(ast_typ)
+
+			if ts.kind == .struct_ {
+				// `expr` is pointer
+				g.blit_struct(expr, ast_typ, var.address + offset)
+			} else {
+				size, _ := g.table.type_size(ast_typ)
+				// println("address: ${var.address}, offset: ${offset}, align: ${align}")
+				wa.store(g.mod, u32(size), u32(var.address + offset), 0, g.get_bp(), expr, g.get_wasm_type(ast_typ), c'__vmem')
+			}
+		}
+	}
+}
+
+fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {
 	match var {
 		ast.Ident {
-			g.init_struct(g.get_var_from_ident(var), init)
+			return g.init_struct(g.get_var_from_ident(var), init)
 		}
 		Struct {
 			mut exprs := []wa.Expression{}
@@ -210,7 +227,7 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) {
 								offset := g.structs[var.ast_typ.idx()].offsets[i]
 								initexpr := g.expr(f.default_expr, f.typ) // or `unaliased_typ`?
 
-								exprs << g.mov_ptr_to_var(initexpr, var, offset, f.typ)
+								exprs << g.mov_expr_to_var(var, initexpr, offset, f.typ)
 							} else {
 								// blit zeros to all fields, recursively
 							}
@@ -225,32 +242,20 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) {
 					g.w_error('could not find field `${f.name}` on init')
 				}
 				offset := g.structs[var.ast_typ.idx()].offsets[field.i]
-				initexpr := g.expr(f.expr, f.typ)
+				initexpr := g.expr(f.expr, f.expected_type)
 
-				exprs << g.mov_ptr_to_var(initexpr, var, offset, f.typ)
+				exprs << g.mov_expr_to_var(var, initexpr, f.expected_type, offset)
 			}
+
+			if var.address != 0 {
+				exprs << wa.binary(g.mod, wa.addint32(), g.get_bp(), wa.constant(g.mod, wa.literalint32(var.address)))
+			} else {
+				exprs << g.get_bp()
+			}
+
+			return g.mkblock(exprs)
 		}
 		else {}
 	}
+	panic("unreachable")
 }
-
-/*
-fn (mut g Gen) set(v Var, expr wa.Expression, typ ast.Type) wa.Expression {
-	return match v {
-		Temporary {
-			wa.localset(g.mod, v.idx, g.cast_t(expr, typ, v.typ))
-		}
-		Struct {
-			assert v.typ == typ
-			// For all fields
-			ti := g.table.sym(v.ast_typ).info as ast.Struct
-			
-			for i, f in ti.fields {
-				
-			}
-		}
-		Global {
-			wa.globalset(g.mod, v.name.str, g.cast_t(expr, typ, v.typ))
-		}
-	}
-}*/
