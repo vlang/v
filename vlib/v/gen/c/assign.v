@@ -37,7 +37,7 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 		panic('cgen: expected expr_type and ret_typ to be options')
 	}
 
-	if expr_typ.idx() == ret_typ.idx() {
+	if expr_typ.idx() == ret_typ.idx() && g.table.sym(expr_typ).kind != .alias {
 		return g.expr_with_opt(expr, expr_typ, ret_typ)
 	} else {
 		stmt_str := g.go_before_stmt(0).trim_space()

@@ -909,6 +909,9 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 	} else if left_node is ast.None {
 		g.gen_expr_to_string(left_node, ast.none_type)
 		return true
+	} else if node.left_type.has_flag(.option) {
+		g.gen_expr_to_string(left_node, g.unwrap_generic(node.left_type))
+		return true
 	}
 	g.get_str_fn(rec_type)
 	return false
@@ -976,8 +979,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 
 	mut typ_sym := g.table.sym(unwrapped_rec_type)
-	// alias type that undefined this method (not include `str`) need to use parent type
-	if typ_sym.kind == .alias && node.name != 'str' && !typ_sym.has_method(node.name) {
+	// non-option alias type that undefined this method (not include `str`) need to use parent type
+	if !left_type.has_flag(.option) && typ_sym.kind == .alias && node.name != 'str'
+		&& !typ_sym.has_method(node.name) {
 		unwrapped_rec_type = (typ_sym.info as ast.Alias).parent_type
 		typ_sym = g.table.sym(unwrapped_rec_type)
 	} else if typ_sym.kind == .array && !typ_sym.has_method(node.name) {

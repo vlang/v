@@ -1,5 +1,7 @@
 type SumType = f64 | int
 
+type MyByte = u8
+
 struct Struct {
 	a int
 }
@@ -31,9 +33,10 @@ fn test_main() {
 
 fn test_cast() {
 	var := ?u8(1)
-	println(?int(var)) // Option(1)
-	println(?int(?u8(255))) // Option(255)
-	println(?int(none)) // Option(error: none)
+	println(?u8(var))
+	println(?u8(?u8(255)))
+	println(?int(none))
+	println(?int(var?))
 
 	a := ?Struct{}
 	assert a == none
@@ -48,4 +51,11 @@ fn test_cast() {
 	assert v1?.str() == 'false'
 	v1 = ?bool(false)
 	assert v1?.str() == 'false'
+}
+
+fn test_cast_alias() {
+	assert ?MyByte(0).str() == 'Option(MyByte(0))'
+	assert ?MyByte(255).str() == 'Option(MyByte(255))'
+	assert ?MyByte(?u8(0)).str() == 'Option(MyByte(0))'
+	assert ?MyByte(?u8(255)).str() == 'Option(MyByte(255))'
 }

@@ -64,12 +64,6 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 			unwrapped = ast.u64_type
 		}
 	}
-	if typ.has_flag(.option) {
-		unwrapped.set_flag(.option)
-	}
-	if typ.has_flag(.result) {
-		unwrapped.set_flag(.result)
-	}
 	styp := g.typ(unwrapped)
 	mut sym := g.table.sym(unwrapped)
 	mut str_fn_name := styp_to_str_fn_name(styp)
