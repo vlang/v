@@ -408,20 +408,31 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			}
 		}
 		ast.CallExpr {
-			if node.language != .v {
-				g.w_error('functions with bodies outside of V are not implemented')
-			}
+			if node.name in ['println'] {
+				// TODO: will only print `int` values using `console.log`
 
-			mut arguments := []wa.Expression{cap: node.args.len}
-			for idx, arg in node.args {
-				arguments << g.expr(arg.expr, node.expected_arg_types[idx])
-			}
-
-			call := wa.call(g.mod, node.name.str, arguments.data, arguments.len, g.get_wasm_type(node.return_type))
-			if node.is_noreturn {
-				g.mkblock([call, wa.unreachable(g.mod)])
+				expr := node.args[0].expr
+				typ := node.args[0].typ
+				
+				if !typ.is_pure_int() {
+					g.w_error("the `println` builtin function can only print integers")
+				}
+				
+				nexpr := g.cast_t(g.expr(expr, typ), typ, ast.int_type)
+			
+				wa.call(g.mod, c"__vlog", &nexpr, 1, type_none)
 			} else {
-				call
+				mut arguments := []wa.Expression{cap: node.args.len}
+				for idx, arg in node.args {
+					arguments << g.expr(arg.expr, node.expected_arg_types[idx])
+				}
+
+				call := wa.call(g.mod, node.name.str, arguments.data, arguments.len, g.get_wasm_type(node.return_type))
+				if node.is_noreturn {
+					g.mkblock([call, wa.unreachable(g.mod)])
+				} else {
+					call
+				}
 			}
 		}
 		else {
