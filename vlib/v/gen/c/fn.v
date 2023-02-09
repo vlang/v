@@ -1972,7 +1972,8 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		} else {
 			'thread_${tmp}'
 		}
-		g.writeln('HANDLE ${simple_handle} = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)${wrapper_fn_name}, ${arg_tmp_var}, 0, 0);')
+		stack_size := g.get_cur_thread_stack_size(expr.name)
+		g.writeln('HANDLE ${simple_handle} = CreateThread(0, ${stack_size}, (LPTHREAD_START_ROUTINE)${wrapper_fn_name}, ${arg_tmp_var}, 0, 0); // fn: ${expr.name}')
 		g.writeln('if (!${simple_handle}) panic_lasterr(tos3("`go ${name}()`: "));')
 		if node.is_expr && node.call_expr.return_type != ast.void_type {
 			g.writeln('${gohandle_name} thread_${tmp} = {')
