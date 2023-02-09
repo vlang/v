@@ -200,8 +200,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.is_cc_tcc = ccompiler_file_name.contains('tcc') || ccoptions.guessed_compiler == 'tcc'
 	ccoptions.is_cc_gcc = ccompiler_file_name.contains('gcc') || ccoptions.guessed_compiler == 'gcc'
 	ccoptions.is_cc_icc = ccompiler_file_name.contains('icc') || ccoptions.guessed_compiler == 'icc'
-	ccoptions.is_cc_msvc = ccompiler_file_name.contains('msvc') || ccoptions.guessed_compiler == 'msvc'
-	ccoptions.is_cc_clang = ccompiler_file_name.contains('clang') || ccoptions.guessed_compiler == 'clang'
+	ccoptions.is_cc_msvc = ccompiler_file_name.contains('msvc')
+		|| ccoptions.guessed_compiler == 'msvc'
+	ccoptions.is_cc_clang = ccompiler_file_name.contains('clang')
+		|| ccoptions.guessed_compiler == 'clang'
 	// For C++ we must be very tolerant
 	if ccoptions.guessed_compiler.contains('++') {
 		ccoptions.args << '-fpermissive'
