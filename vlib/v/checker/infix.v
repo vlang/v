@@ -476,7 +476,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 								right_pos)
 						}
 					} else {
-						right_value_type := c.table.value_type(right_type)
+						right_value_type := c.table.value_type(c.unwrap_generic(right_type))
 						if !c.table.is_sumtype_or_in_variant(left_value_type, ast.mktyp(right_value_type)) {
 							c.error('cannot append `${right_sym.name}` to `${left_sym.name}`',
 								right_pos)
