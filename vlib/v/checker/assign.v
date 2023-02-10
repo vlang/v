@@ -18,7 +18,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	mut right_type0 := ast.void_type
 	for i, mut right in node.right {
 		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr,
-			ast.SelectorExpr] {
+			ast.SelectorExpr, ast.ParExpr] {
 			if right in [ast.IfExpr, ast.MatchExpr] && node.left.len == node.right.len && !is_decl
 				&& node.left[i] in [ast.Ident, ast.SelectorExpr] && !node.left[i].is_blank_ident() {
 				c.expected_type = c.expr(node.left[i])
@@ -79,6 +79,13 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			c.error('assignment mismatch: ${node.left.len} variable(s) but `${right_first.name}()` returns ${right_len} value(s)',
 				node.pos)
+		} else if right_first is ast.ParExpr {
+			if right_first.expr is ast.CallExpr {
+				if right_first.expr.return_type == ast.void_type {
+					c.error('assignment mismatch: expected ${node.left.len} value(s) but `${right_first.expr.name}()` returns ${right_len} value(s)',
+						node.pos)
+				}
+			}
 		} else {
 			c.error('assignment mismatch: ${node.left.len} variable(s) ${right_len} value(s)',
 				node.pos)
@@ -303,6 +310,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							if obj is ast.ConstField {
 								c.warn('duplicate of a const name `${full_name}`', left.pos)
 							}
+						}
+						// Check if variable name is already registered as imported module symbol
+						if c.check_import_sym_conflict(left.name) {
+							c.error('duplicate of an import symbol `${left.name}`', left.pos)
 						}
 					}
 				}

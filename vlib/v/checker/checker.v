@@ -117,16 +117,16 @@ mut:
 	goto_labels                      map[string]ast.GotoLabel // to check for unused goto labels
 }
 
-pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
+pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 	mut timers_should_print := false
 	$if time_checking ? {
 		timers_should_print = true
 	}
 	return &Checker{
 		table: table
-		pref: pref
+		pref: pref_
 		timers: util.new_timers(should_print: timers_should_print, label: 'checker')
-		match_exhaustive_cutoff_limit: pref.checker_match_exhaustive_cutoff_limit
+		match_exhaustive_cutoff_limit: pref_.checker_match_exhaustive_cutoff_limit
 	}
 }
 
@@ -4508,4 +4508,18 @@ fn (mut c Checker) deprecate_old_isreftype_and_sizeof_of_a_guessed_type(is_guess
 		c.note('`${label}(${styp})` is deprecated. Use `v fmt -w .` to convert it to `${label}[${styp}]()` instead.',
 			pos)
 	}
+}
+
+fn (c &Checker) check_import_sym_conflict(ident string) bool {
+	for import_sym in c.file.imports {
+		// Check if alias exists or not
+		if !import_sym.alias.is_blank() {
+			if import_sym.alias == ident {
+				return true
+			}
+		} else if import_sym.mod == ident {
+			return true
+		}
+	}
+	return false
 }

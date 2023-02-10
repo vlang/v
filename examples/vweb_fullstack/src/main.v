@@ -21,6 +21,7 @@ fn main() {
 
 	sql db {
 		create table User
+		create table Product
 	} or { panic('error on create table: ${err}') }
 
 	db.close() or { panic(err) }

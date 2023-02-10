@@ -15,10 +15,10 @@ fn main() {
 }
 
 fn process_files(files []string) ! {
-	mut pref := pref.new_preferences()
-	pref.is_fmt = true
-	pref.skip_warnings = true
-	pref.output_mode = .silent
+	mut pref_ := pref.new_preferences()
+	pref_.is_fmt = true
+	pref_.skip_warnings = true
+	pref_.output_mode = .silent
 	mut sw := time.new_stopwatch()
 	mut total_us := i64(0)
 	mut total_bytes := i64(0)
@@ -31,7 +31,7 @@ fn process_files(files []string) ! {
 			continue
 		}
 		sw.restart()
-		s := scanner.new_scanner_file(f, .skip_comments, pref)!
+		s := scanner.new_scanner_file(f, .skip_comments, pref_)!
 		f_us := sw.elapsed().microseconds()
 		total_us += f_us
 		total_bytes += s.text.len

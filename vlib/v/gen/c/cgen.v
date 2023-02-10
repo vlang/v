@@ -237,10 +237,7 @@ mut:
 	out_fn_start_pos []int  // for generating multiple .c files, stores locations of all fn positions in `out` string builder
 	static_modifier  string // for parallel_cc
 
-	has_reflection bool
-	// reflection metadata initialization
-	reflection_funcs   strings.Builder
-	reflection_others  strings.Builder
+	has_reflection     bool
 	reflection_strings &map[string]int
 }
 
@@ -254,13 +251,13 @@ struct GlobalConstDef {
 	is_precomputed bool     // can be declared as a const in C: primitive, and a simple definition
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string, string, string, []int) {
+pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string, string, string, []int) {
 	// println('start cgen2')
 	mut module_built := ''
-	if pref.build_mode == .build_module {
+	if pref_.build_mode == .build_module {
 		for file in files {
-			if file.path.contains(pref.path)
-				&& file.mod.short_name == pref.path.all_after_last(os.path_separator).trim_right(os.path_separator) {
+			if file.path.contains(pref_.path)
+				&& file.mod.short_name == pref_.path.all_after_last(os.path_separator).trim_right(os.path_separator) {
 				module_built = file.mod.name
 				break
 			}
@@ -300,22 +297,20 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 		json_forward_decls: strings.new_builder(100)
 		sql_buf: strings.new_builder(100)
 		table: table
-		pref: pref
+		pref: pref_
 		fn_decl: 0
-		is_autofree: pref.autofree
+		is_autofree: pref_.autofree
 		indent: -1
 		module_built: module_built
 		timers_should_print: timers_should_print
 		timers: util.new_timers(should_print: timers_should_print, label: 'global_cgen')
 		inner_loop: &ast.empty_stmt
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
-		is_cc_msvc: pref.ccompiler == 'msvc'
-		use_segfault_handler: !('no_segfault_handler' in pref.compile_defines
-			|| pref.os in [.wasm32, .wasm32_emscripten])
-		static_modifier: if pref.parallel_cc { 'static' } else { '' }
+		is_cc_msvc: pref_.ccompiler == 'msvc'
+		use_segfault_handler: !('no_segfault_handler' in pref_.compile_defines
+			|| pref_.os in [.wasm32, .wasm32_emscripten])
+		static_modifier: if pref_.parallel_cc { 'static' } else { '' }
 		has_reflection: 'v.reflection' in table.modules
-		reflection_funcs: strings.new_builder(100)
-		reflection_others: strings.new_builder(100)
 		reflection_strings: &reflection_strings
 	}
 
@@ -330,7 +325,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 	*/
 	// anon fn may include assert and thus this needs
 	// to be included before any test contents are written
-	if pref.is_test {
+	if pref_.is_test {
 		global_g.write_tests_definitions()
 	}
 
@@ -342,7 +337,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 	util.timing_measure('cgen init')
 	global_g.tests_inited = false
 	global_g.file = files.last()
-	if !pref.no_parallel {
+	if !pref_.no_parallel {
 		util.timing_start('cgen parallel processing')
 		mut pp := pool.new_pool_processor(callback: cgen_process_one_file_cb)
 		pp.set_shared_context(global_g) // TODO: make global_g shared
@@ -370,7 +365,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 			global_g.embedded_data.write(g.embedded_data) or { panic(err) }
 			global_g.shared_types.write(g.shared_types) or { panic(err) }
 			global_g.shared_functions.write(g.channel_definitions) or { panic(err) }
-			global_g.reflection_funcs.write(g.reflection_funcs) or { panic(err) }
 
 			global_g.force_main_console = global_g.force_main_console || g.force_main_console
 
@@ -679,8 +673,6 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		is_cc_msvc: global_g.is_cc_msvc
 		use_segfault_handler: global_g.use_segfault_handler
 		has_reflection: 'v.reflection' in global_g.table.modules
-		reflection_funcs: strings.new_builder(100)
-		reflection_others: strings.new_builder(100)
 		reflection_strings: global_g.reflection_strings
 	}
 	g.gen_file()
@@ -1831,8 +1823,8 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 	return last_stmt_was_return
 }
 
-// expr_with_tmp_var is used in assign expr to `optinal` or `result` type.
-// applicable to situations where the expr_typ does not have `optinal` and `result`,
+// expr_with_tmp_var is used in assign expr to `option` or `result` type.
+// applicable to situations where the expr_typ does not have `option` and `result`,
 // e.g. field default: "foo ?int = 1", field assign: "foo = 1", field init: "foo: 1"
 fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type, tmp_var string) {
 	if !ret_typ.has_flag(.option) && !ret_typ.has_flag(.result) {
@@ -1909,70 +1901,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.BranchStmt {
 			g.write_v_source_line_info(node.pos)
-
-			if node.label != '' {
-				x := g.labeled_loops[node.label] or {
-					panic('${node.label} doesn\'t exist ${g.file.path}, ${node.pos}')
-				}
-				match x {
-					ast.ForCStmt {
-						if x.scope.contains(g.cur_lock.pos.pos) {
-							g.unlock_locks()
-						}
-					}
-					ast.ForInStmt {
-						if x.scope.contains(g.cur_lock.pos.pos) {
-							g.unlock_locks()
-						}
-					}
-					ast.ForStmt {
-						if x.scope.contains(g.cur_lock.pos.pos) {
-							g.unlock_locks()
-						}
-					}
-					else {}
-				}
-
-				if node.kind == .key_break {
-					g.writeln('goto ${node.label}__break;')
-				} else {
-					// assert node.kind == .key_continue
-					g.writeln('goto ${node.label}__continue;')
-				}
-			} else {
-				inner_loop := g.inner_loop
-				match inner_loop {
-					ast.ForCStmt {
-						if inner_loop.scope.contains(g.cur_lock.pos.pos) {
-							g.unlock_locks()
-						}
-					}
-					ast.ForInStmt {
-						if inner_loop.scope.contains(g.cur_lock.pos.pos) {
-							g.unlock_locks()
-						}
-					}
-					ast.ForStmt {
-						if inner_loop.scope.contains(g.cur_lock.pos.pos) {
-							g.unlock_locks()
-						}
-					}
-					else {}
-				}
-				// continue or break
-				if g.is_autofree && !g.is_builtin_mod {
-					g.trace_autofree('// free before continue/break')
-					g.autofree_scope_vars_stop(node.pos.pos - 1, node.pos.line_nr, true,
-						g.branch_parent_pos)
-				}
-				g.writeln('${node.kind};')
-			}
+			g.branch_stmt(node)
 		}
 		ast.ConstDecl {
 			g.write_v_source_line_info(node.pos)
-			// if g.pref.build_mode != .build_module {
 			g.const_decl(node)
-			// }
 		}
 		ast.ComptimeFor {
 			g.comptime_for(node)
@@ -2077,116 +2010,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('goto ${c_name(node.name)};')
 		}
 		ast.HashStmt {
-			line_nr := node.pos.line_nr + 1
-			mut ct_condition := ''
-			if node.ct_conds.len > 0 {
-				ct_condition_start := g.out.len
-				for idx, ct_expr in node.ct_conds {
-					g.comptime_if_cond(ct_expr, false)
-					if idx < node.ct_conds.len - 1 {
-						g.write(' && ')
-					}
-				}
-				ct_condition = g.out.cut_to(ct_condition_start).trim_space()
-				// dump(node)
-				// dump(ct_condition)
-			}
-			// #include etc
-			if node.kind == 'include' {
-				mut missing_message := 'Header file ${node.main}, needed for module `${node.mod}` was not found.'
-				if node.msg != '' {
-					missing_message += ' ${node.msg}.'
-				} else {
-					missing_message += ' Please install the corresponding development headers.'
-				}
-				mut guarded_include := get_guarded_include_text(node.main, missing_message)
-				if node.main == '<errno.h>' {
-					// fails with musl-gcc and msvc; but an unguarded include works:
-					guarded_include = '#include ${node.main}'
-				}
-				if node.main.contains('.m') {
-					g.definitions.writeln('\n')
-					if ct_condition.len > 0 {
-						g.definitions.writeln('#if ${ct_condition}')
-					}
-					// Objective C code import, include it after V types, so that e.g. `string` is
-					// available there
-					g.definitions.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
-					g.definitions.writeln(guarded_include)
-					if ct_condition.len > 0 {
-						g.definitions.writeln('#endif // \$if ${ct_condition}')
-					}
-					g.definitions.writeln('\n')
-				} else {
-					g.includes.writeln('\n')
-					if ct_condition.len > 0 {
-						g.includes.writeln('#if ${ct_condition}')
-					}
-					g.includes.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
-					g.includes.writeln(guarded_include)
-					if ct_condition.len > 0 {
-						g.includes.writeln('#endif // \$if ${ct_condition}')
-					}
-					g.includes.writeln('\n')
-				}
-			} else if node.kind == 'preinclude' {
-				mut missing_message := 'Header file ${node.main}, needed for module `${node.mod}` was not found.'
-				if node.msg != '' {
-					missing_message += ' ${node.msg}.'
-				} else {
-					missing_message += ' Please install the corresponding development headers.'
-				}
-				mut guarded_include := get_guarded_include_text(node.main, missing_message)
-				if node.main == '<errno.h>' {
-					// fails with musl-gcc and msvc; but an unguarded include works:
-					guarded_include = '#include ${node.main}'
-				}
-				if node.main.contains('.m') {
-					// Might need to support '#preinclude' for .m files as well but for the moment
-					// this does the same as '#include' for them
-					g.definitions.writeln('\n')
-					if ct_condition.len > 0 {
-						g.definitions.writeln('#if ${ct_condition}')
-					}
-					// Objective C code import, include it after V types, so that e.g. `string` is
-					// available there
-					g.definitions.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
-					g.definitions.writeln(guarded_include)
-					if ct_condition.len > 0 {
-						g.definitions.writeln('#endif // \$if ${ct_condition}')
-					}
-					g.definitions.writeln('\n')
-				} else {
-					g.preincludes.writeln('\n')
-					if ct_condition.len > 0 {
-						g.preincludes.writeln('#if ${ct_condition}')
-					}
-					g.preincludes.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
-					g.preincludes.writeln(guarded_include)
-					if ct_condition.len > 0 {
-						g.preincludes.writeln('#endif // \$if ${ct_condition}')
-					}
-					g.preincludes.writeln('\n')
-				}
-			} else if node.kind == 'insert' {
-				if ct_condition.len > 0 {
-					g.includes.writeln('#if ${ct_condition}')
-				}
-				g.includes.writeln('// inserted by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
-				g.includes.writeln(node.val)
-				if ct_condition.len > 0 {
-					g.includes.writeln('#endif // \$if ${ct_condition}')
-				}
-			} else if node.kind == 'define' {
-				if ct_condition.len > 0 {
-					g.includes.writeln('#if ${ct_condition}')
-				}
-				g.includes.writeln('// defined by module `${node.mod}`')
-				g.includes.writeln('#define ${node.main}')
-				if ct_condition.len > 0 {
-					g.includes.writeln('#endif // \$if ${ct_condition}')
-				}
-			}
+			g.hash_stmt(node)
 		}
 		ast.Import {}
 		ast.InterfaceDecl {
@@ -2580,7 +2404,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			return
 		}
 	}
-	if exp_sym.kind == .function {
+	if exp_sym.kind == .function && !expected_type.has_flag(.option)
+		&& !expected_type.has_flag(.result) {
 		g.write('(voidptr)')
 	}
 	// no cast
@@ -4487,6 +4312,178 @@ fn (mut g Gen) gen_option_error(target_type ast.Type, expr ast.Expr) {
 	g.write('(${styp}){ .state=2, .err=')
 	g.expr(expr)
 	g.write(', .data={EMPTY_STRUCT_INITIALIZATION} }')
+}
+
+fn (mut g Gen) hash_stmt(node ast.HashStmt) {
+	line_nr := node.pos.line_nr + 1
+	mut ct_condition := ''
+	if node.ct_conds.len > 0 {
+		ct_condition_start := g.out.len
+		for idx, ct_expr in node.ct_conds {
+			g.comptime_if_cond(ct_expr, false)
+			if idx < node.ct_conds.len - 1 {
+				g.write(' && ')
+			}
+		}
+		ct_condition = g.out.cut_to(ct_condition_start).trim_space()
+		// dump(node)
+		// dump(ct_condition)
+	}
+	// #include etc
+	if node.kind == 'include' {
+		mut missing_message := 'Header file ${node.main}, needed for module `${node.mod}` was not found.'
+		if node.msg != '' {
+			missing_message += ' ${node.msg}.'
+		} else {
+			missing_message += ' Please install the corresponding development headers.'
+		}
+		mut guarded_include := get_guarded_include_text(node.main, missing_message)
+		if node.main == '<errno.h>' {
+			// fails with musl-gcc and msvc; but an unguarded include works:
+			guarded_include = '#include ${node.main}'
+		}
+		if node.main.contains('.m') {
+			g.definitions.writeln('\n')
+			if ct_condition.len > 0 {
+				g.definitions.writeln('#if ${ct_condition}')
+			}
+			// Objective C code import, include it after V types, so that e.g. `string` is
+			// available there
+			g.definitions.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
+			g.definitions.writeln(guarded_include)
+			if ct_condition.len > 0 {
+				g.definitions.writeln('#endif // \$if ${ct_condition}')
+			}
+			g.definitions.writeln('\n')
+		} else {
+			g.includes.writeln('\n')
+			if ct_condition.len > 0 {
+				g.includes.writeln('#if ${ct_condition}')
+			}
+			g.includes.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
+			g.includes.writeln(guarded_include)
+			if ct_condition.len > 0 {
+				g.includes.writeln('#endif // \$if ${ct_condition}')
+			}
+			g.includes.writeln('\n')
+		}
+	} else if node.kind == 'preinclude' {
+		mut missing_message := 'Header file ${node.main}, needed for module `${node.mod}` was not found.'
+		if node.msg != '' {
+			missing_message += ' ${node.msg}.'
+		} else {
+			missing_message += ' Please install the corresponding development headers.'
+		}
+		mut guarded_include := get_guarded_include_text(node.main, missing_message)
+		if node.main == '<errno.h>' {
+			// fails with musl-gcc and msvc; but an unguarded include works:
+			guarded_include = '#include ${node.main}'
+		}
+		if node.main.contains('.m') {
+			// Might need to support '#preinclude' for .m files as well but for the moment
+			// this does the same as '#include' for them
+			g.definitions.writeln('\n')
+			if ct_condition.len > 0 {
+				g.definitions.writeln('#if ${ct_condition}')
+			}
+			// Objective C code import, include it after V types, so that e.g. `string` is
+			// available there
+			g.definitions.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
+			g.definitions.writeln(guarded_include)
+			if ct_condition.len > 0 {
+				g.definitions.writeln('#endif // \$if ${ct_condition}')
+			}
+			g.definitions.writeln('\n')
+		} else {
+			g.preincludes.writeln('\n')
+			if ct_condition.len > 0 {
+				g.preincludes.writeln('#if ${ct_condition}')
+			}
+			g.preincludes.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
+			g.preincludes.writeln(guarded_include)
+			if ct_condition.len > 0 {
+				g.preincludes.writeln('#endif // \$if ${ct_condition}')
+			}
+			g.preincludes.writeln('\n')
+		}
+	} else if node.kind == 'insert' {
+		if ct_condition.len > 0 {
+			g.includes.writeln('#if ${ct_condition}')
+		}
+		g.includes.writeln('// inserted by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
+		g.includes.writeln(node.val)
+		if ct_condition.len > 0 {
+			g.includes.writeln('#endif // \$if ${ct_condition}')
+		}
+	} else if node.kind == 'define' {
+		if ct_condition.len > 0 {
+			g.includes.writeln('#if ${ct_condition}')
+		}
+		g.includes.writeln('// defined by module `${node.mod}`')
+		g.includes.writeln('#define ${node.main}')
+		if ct_condition.len > 0 {
+			g.includes.writeln('#endif // \$if ${ct_condition}')
+		}
+	}
+}
+
+fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
+	if node.label != '' {
+		x := g.labeled_loops[node.label] or {
+			panic('${node.label} doesn\'t exist ${g.file.path}, ${node.pos}')
+		}
+		match x {
+			ast.ForCStmt {
+				if x.scope.contains(g.cur_lock.pos.pos) {
+					g.unlock_locks()
+				}
+			}
+			ast.ForInStmt {
+				if x.scope.contains(g.cur_lock.pos.pos) {
+					g.unlock_locks()
+				}
+			}
+			ast.ForStmt {
+				if x.scope.contains(g.cur_lock.pos.pos) {
+					g.unlock_locks()
+				}
+			}
+			else {}
+		}
+
+		if node.kind == .key_break {
+			g.writeln('goto ${node.label}__break;')
+		} else {
+			// assert node.kind == .key_continue
+			g.writeln('goto ${node.label}__continue;')
+		}
+	} else {
+		inner_loop := g.inner_loop
+		match inner_loop {
+			ast.ForCStmt {
+				if inner_loop.scope.contains(g.cur_lock.pos.pos) {
+					g.unlock_locks()
+				}
+			}
+			ast.ForInStmt {
+				if inner_loop.scope.contains(g.cur_lock.pos.pos) {
+					g.unlock_locks()
+				}
+			}
+			ast.ForStmt {
+				if inner_loop.scope.contains(g.cur_lock.pos.pos) {
+					g.unlock_locks()
+				}
+			}
+			else {}
+		}
+		// continue or break
+		if g.is_autofree && !g.is_builtin_mod {
+			g.trace_autofree('// free before continue/break')
+			g.autofree_scope_vars_stop(node.pos.pos - 1, node.pos.line_nr, true, g.branch_parent_pos)
+		}
+		g.writeln('${node.kind};')
+	}
 }
 
 fn (mut g Gen) return_stmt(node ast.Return) {
@@ -6461,15 +6458,18 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 		}
 		for vtyp, variants in inter_info.conversions {
 			vsym := g.table.sym(vtyp)
-			conversion_functions.write_string('static inline bool I_${interface_name}_is_I_${vsym.cname}(${interface_name} x) {\n\treturn ')
-			for i, variant in variants {
-				variant_sym := g.table.sym(variant)
-				if i > 0 {
-					conversion_functions.write_string(' || ')
+
+			if variants.len > 0 {
+				conversion_functions.write_string('static inline bool I_${interface_name}_is_I_${vsym.cname}(${interface_name} x) {\n\treturn ')
+				for i, variant in variants {
+					variant_sym := g.table.sym(variant)
+					if i > 0 {
+						conversion_functions.write_string(' || ')
+					}
+					conversion_functions.write_string('(x._typ == _${interface_name}_${variant_sym.cname}_index)')
 				}
-				conversion_functions.write_string('(x._typ == _${interface_name}_${variant_sym.cname}_index)')
+				conversion_functions.writeln(';\n}')
 			}
-			conversion_functions.writeln(';\n}')
 
 			conversion_functions.writeln('static inline ${vsym.cname} I_${interface_name}_as_I_${vsym.cname}(${interface_name} x) {')
 			for variant in variants {

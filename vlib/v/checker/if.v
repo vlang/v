@@ -292,6 +292,19 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						if is_noreturn_callexpr(stmt.expr) {
 							continue
 						}
+						if (node.typ.has_flag(.option) || node.typ.has_flag(.result))
+							&& c.table.sym(stmt.typ).kind == .struct_
+							&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
+							stmt.expr = ast.CastExpr{
+								expr: stmt.expr
+								typname: 'IError'
+								typ: ast.error_type
+								expr_type: stmt.typ
+								pos: node.pos
+							}
+							stmt.typ = ast.error_type
+							continue
+						}
 						c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
 							node.pos)
 					}

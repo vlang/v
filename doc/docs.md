@@ -448,17 +448,6 @@ fn main() {
 Unlike most languages, variable shadowing is not allowed. Declaring a variable with a name
 that is already used in a parent scope will cause a compilation error.
 
-You can shadow imported modules though, as it is very useful in some situations:
-```v ignore
-import ui
-import gg
-
-fn draw(ctx &gg.Context) {
-	gg := ctx.parent.get_ui().gg
-	gg.draw_rect(10, 10, 100, 50)
-}
-```
-
 ## V Types
 
 ### Primitive types
@@ -946,6 +935,7 @@ mut square := []int{len: 6, init: it * it}
 #### Array Types
 
 An array can be of these types:
+
 | Types        | Example Definition                   |
 | ------------ | ------------------------------------ |
 | Number       | `[]int,[]i64`                        |
@@ -1424,8 +1414,8 @@ import os { input, user_os }
 
 name := input('Enter your name: ')
 println('Name: ${name}')
-os := user_os()
-println('Your OS is ${os}.')
+current_os := user_os()
+println('Your OS is ${current_os}.')
 ```
 
 ### Module import aliasing
@@ -5310,6 +5300,7 @@ Right now it can be used to detect an OS, compiler, platform or compilation opti
 is compiled with `v -g` or `v -cg`.
 If you're using a custom ifdef, then you do need `$if option ? {}` and compile with`v -d option`.
 Full list of builtin options:
+
 | OS                            | Compilers         | Platforms             | Other                     |
 | ---                           | ---               | ---                   | ---                       |
 | `windows`, `linux`, `macos`   | `gcc`, `tinyc`    | `amd64`, `arm64`      | `debug`, `prod`, `test`   |

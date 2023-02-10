@@ -232,9 +232,9 @@ fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_pa
 		}
 		diff_cmd := foptions.find_diff_cmd()
 		foptions.vlog('Using diff command: ${diff_cmd}')
-		diff := diff.color_compare_files(diff_cmd, file, formatted_file_path)
-		if diff.len > 0 {
-			println(diff)
+		diff_ := diff.color_compare_files(diff_cmd, file, formatted_file_path)
+		if diff_.len > 0 {
+			println(diff_)
 		}
 		return
 	}
