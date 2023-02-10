@@ -118,31 +118,31 @@ $if prod && opt_size ? {
 #include <mbedtls/error.h>
 
 [typedef]
-struct C.mbedtls_net_context {
+pub struct C.mbedtls_net_context {
 mut:
 	fd int
 }
 
 [typedef]
-struct C.mbedtls_x509_crt {}
+pub struct C.mbedtls_x509_crt {}
 
 [typedef]
-struct C.mbedtls_x509_crl {}
+pub struct C.mbedtls_x509_crl {}
 
 [typedef]
-struct C.mbedtls_pk_context {}
+pub struct C.mbedtls_pk_context {}
 
 [typedef]
-struct C.mbedtls_entropy_context {}
+pub struct C.mbedtls_entropy_context {}
 
 [typedef]
-struct C.mbedtls_ctr_drbg_context {}
+pub struct C.mbedtls_ctr_drbg_context {}
 
 [typedef]
-struct C.mbedtls_ssl_context {}
+pub struct C.mbedtls_ssl_context {}
 
 [typedef]
-struct C.mbedtls_ssl_config {}
+pub struct C.mbedtls_ssl_config {}
 
 fn C.mbedtls_net_init(&C.mbedtls_net_context)
 fn C.mbedtls_ssl_init(&C.mbedtls_ssl_context)
