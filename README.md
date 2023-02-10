@@ -174,7 +174,7 @@ On Termux, V needs some packages preinstalled - a working C compiler, also `libe
 `libgc` and `libgc-static`. After installing them, you can use the same script, like on
 Linux/macos:
 ```bash
-pkg install clang libexecinfo libgc libgc-static
+pkg install clang libexecinfo libgc libgc-static make
 git clone https://github.com/vlang/v
 cd v
 make
