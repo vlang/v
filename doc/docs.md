@@ -935,6 +935,7 @@ mut square := []int{len: 6, init: it * it}
 #### Array Types
 
 An array can be of these types:
+
 | Types        | Example Definition                   |
 | ------------ | ------------------------------------ |
 | Number       | `[]int,[]i64`                        |
@@ -5299,6 +5300,7 @@ Right now it can be used to detect an OS, compiler, platform or compilation opti
 is compiled with `v -g` or `v -cg`.
 If you're using a custom ifdef, then you do need `$if option ? {}` and compile with`v -d option`.
 Full list of builtin options:
+
 | OS                            | Compilers         | Platforms             | Other                     |
 | ---                           | ---               | ---                   | ---                       |
 | `windows`, `linux`, `macos`   | `gcc`, `tinyc`    | `amd64`, `arm64`      | `debug`, `prod`, `test`   |
