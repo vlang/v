@@ -369,9 +369,6 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting_ ast.Type) Object {
 		ast.None {
 			return none_
 		}
-		ast.OrExpr {
-			//
-		}
 		ast.StringInterLiteral {
 			mut res := expr.vals[0]
 
@@ -384,7 +381,6 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting_ ast.Type) Object {
 		}
 		ast.StructInit {
 			// eprintln('unhandled struct init at line $expr.pos.line_nr')
-			return 'helo'
 		}
 		ast.SizeOf {
 			return Uint{e.type_to_size(expr.typ), 64}
@@ -451,17 +447,24 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting_ ast.Type) Object {
 		}
 		ast.DumpExpr {
 			value := e.expr(expr.expr, expr.expr_type).string()
-			eprintln('[${e.cur_file}:${expr.pos.line_nr}] ${expr.expr}: ${value}')
+			mut cur_file := e.cur_file
+			if cur_file.starts_with(util.normalised_workdir) {
+				cur_file = cur_file.replace_once(util.normalised_workdir, '')
+			}
+			eprintln('[${cur_file}:${expr.pos.line_nr}] ${expr.expr}: ${value}')
 			return empty
 		}
 		ast.AtExpr {
 			return expr.val
 		}
-		ast.AnonFn, ast.ArrayDecompose, ast.AsCast, ast.Assoc, ast.CTempVar, ast.Comment,
-		ast.ComptimeCall, ast.ComptimeSelector, ast.ComptimeType, ast.ConcatExpr, ast.EmptyExpr,
-		ast.EnumVal, ast.IfGuardExpr, ast.IndexExpr, ast.IsRefType, ast.Likely, ast.LockExpr,
-		ast.MapInit, ast.MatchExpr, ast.NodeError, ast.OffsetOf, ast.RangeExpr, ast.SelectExpr,
-		ast.SqlExpr, ast.TypeNode, ast.TypeOf {
+		ast.OrExpr, ast.Comment, ast.CTempVar {
+			// ignore
+		}
+		ast.AnonFn, ast.ArrayDecompose, ast.AsCast, ast.Assoc, ast.ComptimeCall,
+		ast.ComptimeSelector, ast.ComptimeType, ast.ConcatExpr, ast.EmptyExpr, ast.EnumVal,
+		ast.IfGuardExpr, ast.IndexExpr, ast.IsRefType, ast.Likely, ast.LockExpr, ast.MapInit,
+		ast.MatchExpr, ast.NodeError, ast.OffsetOf, ast.RangeExpr, ast.SelectExpr, ast.SqlExpr,
+		ast.TypeNode, ast.TypeOf {
 			e.error('unhandled expression ${typeof(expr).name}')
 		}
 	}

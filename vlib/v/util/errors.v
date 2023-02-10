@@ -73,7 +73,7 @@ pub fn color(kind string, msg string) string {
 	return term.magenta(msg)
 }
 
-const normalised_workdir = os.wd_at_startup.replace('\\', '/') + '/'
+pub const normalised_workdir = os.wd_at_startup.replace('\\', '/') + '/'
 
 const verror_paths_absolute = os.getenv('VERROR_PATHS') == 'absolute'
 

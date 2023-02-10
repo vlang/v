@@ -59,7 +59,7 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 	old_mod := e.cur_mod
 	old_file := e.cur_file
 	e.cur_mod = func.mod
-	e.cur_file = func.file
+	e.cur_file = func.source_file.path
 	e.inside_main = func.is_main
 	defer {
 		e.inside_main = old_inside_main
