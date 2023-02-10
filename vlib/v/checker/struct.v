@@ -583,6 +583,11 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					continue
 				}
 				if sym.kind == .struct_ {
+					mut zero_struct_init := ast.StructInit{
+						pos: node.pos
+						typ: field.typ
+					}
+					c.struct_init(mut zero_struct_init)
 					c.check_ref_fields_initialized(sym, mut checked_types, '${type_sym.name}.${field.name}',
 						node)
 				} else if sym.kind == .alias {

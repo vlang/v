@@ -21,7 +21,7 @@ import v.util
 // All lines after `// vfmt off` are passed on *without any modification* to the output.
 // All lines after `// vfmt on` are going to be formatted, and then added to the output.
 
-struct FormatState {
+pub struct FormatState {
 mut:
 	is_vfmt_on           bool = true
 	last_off_source_line int // the source line where // vfmt off was encountered first

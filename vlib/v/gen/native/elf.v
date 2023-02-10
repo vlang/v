@@ -277,7 +277,7 @@ fn (mut g Gen) gen_program_header(p ProgramHeader) {
 	g.println('; ^^^ program header (64)')
 }
 
-struct SectionHeader {
+pub struct SectionHeader {
 mut:
 	name      int // Offset to name string in .shstrtab.
 	typ       int // Section type.
@@ -439,7 +439,7 @@ type SectionData = DynSymSection
 	| []RelASection
 	| []SymbolTableSection
 
-struct Section {
+pub struct Section {
 	name string
 mut:
 	header SectionHeader
