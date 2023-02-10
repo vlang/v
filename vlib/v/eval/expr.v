@@ -451,7 +451,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting_ ast.Type) Object {
 		}
 		ast.DumpExpr {
 			value := e.expr(expr.expr, expr.expr_type).string()
-			eprintln('[${e.trace_file_paths.last()}:${expr.pos.line_nr}] ${expr.expr}: ${value}')
+			eprintln('[${e.cur_file}:${expr.pos.line_nr}] ${expr.expr}: ${value}')
 			return empty
 		}
 		ast.AtExpr {
