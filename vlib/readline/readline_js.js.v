@@ -2,7 +2,7 @@ module readline
 
 #const $readline = require('readline')
 
-struct Termios {}
+pub struct Termios {}
 
 // Only use standard os.get_line
 // Need implementation for readline capabilities

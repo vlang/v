@@ -10,7 +10,7 @@ module readline
 
 import os
 
-struct Termios {
+pub struct Termios {
 }
 
 // Only use standard os.get_line

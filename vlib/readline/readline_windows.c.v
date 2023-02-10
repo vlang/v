@@ -11,7 +11,7 @@ module readline
 import os
 
 // needed for parity with readline_default.c.v
-struct Termios {
+pub struct Termios {
 }
 
 // Only use standard os.get_line

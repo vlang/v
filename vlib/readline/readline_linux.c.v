@@ -26,7 +26,7 @@ mut:
 	c_cc    [cclen]int
 }
 
-struct Termios {
+pub struct Termios {
 mut:
 	c_iflag u32
 	c_oflag u32
