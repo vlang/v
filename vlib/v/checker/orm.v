@@ -189,10 +189,21 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			c.error('undefined ident: `${inserting_object_name}`', node.pos)
 			return ast.void_type
 		}
+		mut inserting_object_type := inserting_object_var.typ
 
-		if inserting_object_var.typ != node.table_expr.typ {
+		if inserting_object_type.is_ptr() {
+			inserting_object_type = inserting_object_var.typ.deref()
+		}
+
+		if inserting_object_var is ast.Var {
+			if inserting_object_var.is_mut {
+				inserting_object_type = inserting_object_var.typ.deref()
+			}
+		}
+
+		if inserting_object_type != node.table_expr.typ {
 			table_name := table_sym.name
-			inserting_type_name := c.table.sym(inserting_object_var.typ).name
+			inserting_type_name := c.table.sym(inserting_object_type).name
 
 			c.error('cannot use `${inserting_type_name}` as `${table_name}`', node.pos)
 			return ast.void_type

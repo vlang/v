@@ -193,7 +193,21 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 			if typ == 'time__Time' {
 				typ = 'time'
 			}
-			g.write('orm__${typ}_to_primitive(${node.object_var_name}.${f.name}),')
+
+			inserting_object_var := node.scope.find(node.object_var_name) or { verror(err.str()) }
+			mut member_access_type := '.'
+
+			if inserting_object_var.typ.is_ptr() {
+				member_access_type = '->'
+			}
+
+			if inserting_object_var is ast.Var {
+				if inserting_object_var.is_mut {
+					member_access_type = '->'
+				}
+			}
+
+			g.write('orm__${typ}_to_primitive(${node.object_var_name}${member_access_type}${f.name}),')
 		}
 		g.write('})')
 	} else {
