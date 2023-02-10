@@ -1,7 +1,7 @@
 module websocket
 
 // Uri represents an Uri for websocket connections
-struct Uri {
+pub struct Uri {
 mut:
 	url         string // url to the websocket endpoint
 	hostname    string // hostname of the websocket endpoint
