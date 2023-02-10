@@ -182,12 +182,6 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 		if inserting_object.typ.is_ptr() {
 			member_access_type = '->'
 		}
-
-		if inserting_object is ast.Var {
-			if inserting_object.is_mut {
-				member_access_type = '->'
-			}
-		}
 	}
 
 	g.write('.data = new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(orm__Primitive),')

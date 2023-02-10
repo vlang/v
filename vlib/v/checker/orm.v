@@ -195,12 +195,6 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			inserting_object_type = inserting_object.typ.deref()
 		}
 
-		if inserting_object is ast.Var {
-			if inserting_object.is_mut {
-				inserting_object_type = inserting_object.typ.deref()
-			}
-		}
-
 		if inserting_object_type != node.table_expr.typ {
 			table_name := table_sym.name
 			inserting_type_name := c.table.sym(inserting_object_type).name
