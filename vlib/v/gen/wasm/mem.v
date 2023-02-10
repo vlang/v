@@ -114,11 +114,33 @@ fn (mut g Gen) new_local_temporary_anon(typ ast.Type) int {
 }
 
 fn (mut g Gen) new_local_temporary(name string, typ ast.Type) {
+	idx := g.local_temporaries.len
 	g.local_temporaries << Temporary{
 		name: name
 		typ: g.get_wasm_type(typ)
 		ast_typ: typ
+		idx: idx
 	}
+}
+
+fn (mut g Gen) new_local(var ast.Ident, typ ast.Type) {
+	if g.is_pure_type(typ) {
+		g.new_local_temporary(var.name, typ)
+	} else {
+		g.allocate_struct(var.name, typ)
+	}
+}
+
+fn (mut g Gen) deref(expr wa.Expression, expected ast.Type) wa.Expression {
+	size, _ := g.table.type_size(expected)
+
+	return wa.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected), expr, c'__vmem')
+}
+
+fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
+	ts := g.table.sym(typ)
+	field := ts.find_field(name) or { g.w_error('could not find field `${name}` on init') }
+	return g.structs[typ.idx()].offsets[field.i]
 }
 
 fn (mut g Gen) get_type_size_align(typ ast.Type) (int, int) {
@@ -180,33 +202,92 @@ fn (mut g Gen) get_bp() wa.Expression {
 	return wa.localget(g.mod, g.bp_idx, type_i32)
 }
 
-// Copy fields from `ptr` to `address` in stack memory
-fn (mut g Gen) blit_struct(ptr wa.Expression, ast_typ ast.Type, address int) wa.Expression {
-	return wa.nop(g.mod)
-}
 
-// `offset` is optional and only used with struct variables
-fn (mut g Gen) mov_expr_to_var(var Var, expr wa.Expression, ast_typ ast.Type, offset int) wa.Expression {
+/* fn (mut g Gen) get_ident(node ast.Ident, expected ast.Type) (wa.Expression, int) {
+	idx, typ := g.get_local_temporary_from_ident(node)
+	expr := wa.localget(g.mod, idx, typ)
+
+	return g.cast(expr, typ, g.is_signed(g.local_temporaries[idx].ast_typ), g.get_wasm_type(expected)), idx
+} */
+
+fn (mut g Gen) get_var(var Var) wa.Expression {
 	return match var {
 		ast.Ident {
-			g.mov_expr_to_var(g.get_var_from_ident(var), expr, offset, ast_typ)
+			g.get_var(g.get_var_from_ident(var))
+		}
+		Temporary {
+			wa.localget(g.mod, var.idx, var.typ)
+		}
+		Struct {
+			if var.address != 0 {
+				wa.binary(g.mod, wa.addint32(), g.get_bp(), wa.constant(g.mod, wa.literalint32(var.address)))
+			} else {
+				g.get_bp()
+			}
+		}
+	}
+}
+
+// Will automatcally cast value from `var` to `ast_type`, will ignore if struct value.
+// TODO: When supporting base types on the stack, actually cast them.
+fn (mut g Gen) get_var_t(var Var, ast_typ ast.Type) wa.Expression {
+	return match var {
+		ast.Ident {
+			g.get_var_t(g.get_var_from_ident(var), ast_typ)
+		}
+		Temporary {
+			expr := wa.localget(g.mod, var.idx, var.typ)
+			g.cast_t(expr, var.ast_typ, ast_typ)
+		}
+		Struct {
+			if var.address != 0 {
+				wa.binary(g.mod, wa.addint32(), g.get_bp(), wa.constant(g.mod, wa.literalint32(var.address)))
+			} else {
+				g.get_bp()
+			}
+		}
+	}
+}
+
+[params]
+struct SetConfig {
+	offset  int
+	ast_typ ast.Type
+}
+
+fn (mut g Gen) set_var(var Var, expr wa.Expression, cfg SetConfig) wa.Expression {
+	return match var {
+		ast.Ident {
+			g.set_var(g.get_var_from_ident(var), expr, cfg)
 		}
 		Temporary {
 			wa.localset(g.mod, var.idx, expr)
 		}
 		Struct {
+			ast_typ := if cfg.ast_typ != 0 {
+				cfg.ast_typ
+			} else {
+				var.ast_typ
+			}
+			
 			ts := g.table.sym(ast_typ)
 
 			if ts.kind == .struct_ {
 				// `expr` is pointer
-				g.blit_struct(expr, ast_typ, var.address + offset)
+				g.blit_struct(expr, ast_typ, var.address + cfg.offset)
 			} else {
 				size, _ := g.table.type_size(ast_typ)
 				// println("address: ${var.address}, offset: ${offset}, align: ${align}")
-				wa.store(g.mod, u32(size), u32(var.address + offset), 0, g.get_bp(), expr, g.get_wasm_type(ast_typ), c'__vmem')
+				wa.store(g.mod, u32(size), u32(var.address + cfg.offset), 0, g.get_bp(), expr, g.get_wasm_type(ast_typ), c'__vmem')
 			}
 		}
 	}
+}
+
+// Copy fields from `ptr` to `address` in stack memory
+fn (mut g Gen) blit_struct(ptr wa.Expression, ast_typ ast.Type, address int) wa.Expression {
+	g.w_error("blit_struct: implemented")
+	return wa.nop(g.mod)
 }
 
 fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {
@@ -230,7 +311,7 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {
 								g.literal("0", f.typ)
 							}
 							
-							exprs << g.mov_expr_to_var(var, initexpr, f.typ, offset)
+							exprs << g.set_var(var, initexpr, ast_typ: f.typ, offset: offset)
 						}
 					}
 				}
@@ -244,14 +325,11 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {
 				offset := g.structs[var.ast_typ.idx()].offsets[field.i]
 				initexpr := g.expr(f.expr, f.expected_type)
 
-				exprs << g.mov_expr_to_var(var, initexpr, f.expected_type, offset)
+				exprs << g.set_var(var, initexpr, ast_typ: f.expected_type, offset: offset)
 			}
 
-			if var.address != 0 {
-				exprs << wa.binary(g.mod, wa.addint32(), g.get_bp(), wa.constant(g.mod, wa.literalint32(var.address)))
-			} else {
-				exprs << g.get_bp()
-			}
+			// `lea` address
+			exprs << g.get_var(var)
 
 			return g.mkblock(exprs)
 		}

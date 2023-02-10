@@ -142,10 +142,12 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	for p in node.params {
 		typ := g.get_wasm_type(p.typ)
+		idx := g.local_temporaries.len
 		g.local_temporaries << Temporary{
 			name: p.name
 			typ: typ
 			ast_typ: p.typ
+			idx: idx
 		}
 		paraml << typ
 	}
@@ -321,29 +323,20 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 		ast.GoExpr {
 			g.w_error('wasm backend does not support threads')
 		}
+		ast.SelectorExpr {
+			mut expr := g.expr(node.expr, type_i32)
+
+			offset := g.get_field_offset(node.expr_type, node.field_name)
+			expr = wa.binary(g.mod, wa.addint32(), expr, wa.constant(g.mod, wa.literalint32(offset)))
+
+			g.deref(expr, expected)
+		}
 		ast.StructInit {
-			/*
-			ts := g.table.sym(node.typ)
-			info := ts.info as ast.Struct
-
-			mut exprs := []wa.Expression{len: info.fields.len}
-
-			for f in node.fields {
-				field := ts.find_field(f.name) or {
-					g.w_error('could not find field `${f.name}` on init')
-				}
-				exprs[field.i] = g.expr(f.expr, field.typ)
-			}
-
-			wa.structnew(g.mod, exprs.data, exprs.len, g.structs[node.typ])*/
 			pos := g.allocate_struct('_anonstruct', node.typ)
 			g.init_struct(Struct{ address: pos, ast_typ: node.typ }, node)
 		}
 		ast.MatchExpr {
 			g.w_error('wasm backend does not support match expressions yet')
-		}
-		ast.SelectorExpr {
-			g.w_error('wasm backend does not support selection expressions yet')
 		}
 		ast.EnumVal {
 			g.w_error('wasm backend does not support enums yet, however it would be dead simple to implement them')
@@ -363,8 +356,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 		}
 		ast.Ident {
 			// TODO: only supports local identifiers, no path.expressions or global names
-			v, _ := g.get_ident(node, expected)
-			v
+			g.get_var_t(node, expected)
 		}
 		ast.IntegerLiteral, ast.FloatLiteral {
 			g.literal(node.val, expected)
@@ -551,22 +543,59 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 							continue
 						}
 						if node.op == .decl_assign {
-							g.new_local_temporary(left.name, typ)
+							g.new_local(left, typ)
 						}
-					}
 
-					// TODO: only supports local identifiers, no path.expressions or global names
-					idx, var_typ := g.get_local_temporary_from_ident(left as ast.Ident)
-					expr := if node.op !in [.decl_assign, .assign] {
-						op := g.infix_from_typ(typ, token.assign_op_to_infix_op(node.op))
-						infix := wa.binary(g.mod, op, wa.localget(g.mod, idx, var_typ),
-							g.expr(right, typ))
+						var := g.get_var_from_ident(left)
 
-						infix
+						/* exprs << match var {
+							Temporary {
+								expr := if node.op !in [.decl_assign, .assign] {
+									op := g.infix_from_typ(typ, token.assign_op_to_infix_op(node.op))
+									infix := wa.binary(g.mod, op, wa.localget(g.mod, var.idx, var.typ),
+										g.expr(right, typ))
+
+									infix
+								} else {
+									g.expr(right, typ)
+								}
+								wa.localset(g.mod, var.idx, expr)
+							}
+							Struct {
+								g.mov_expr_to_var()
+							}
+							else {
+								panic("unreachable")
+							}
+						} */
+
+						exprs << if right is ast.StructInit {
+							wa.drop(g.mod, g.init_struct(var, right))
+						} else {
+							expr := if node.op !in [.decl_assign, .assign] {
+								match var {
+									Temporary {
+										op := g.infix_from_typ(typ, token.assign_op_to_infix_op(node.op))
+										infix := wa.binary(g.mod, op, wa.localget(g.mod, var.idx, var.typ),
+											g.expr(right, typ))
+
+										infix
+									}
+									Struct {
+										g.w_error("unimplemented")
+									}
+									else {
+										panic("unreachable")
+									}
+								}
+							} else {
+								g.expr(right, typ)
+							}
+							g.set_var(var, expr)
+						}
 					} else {
-						g.expr(right, typ)
+						
 					}
-					exprs << wa.localset(g.mod, idx, expr)
 				}
 
 				if exprs.len == 1 {
