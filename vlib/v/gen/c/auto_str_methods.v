@@ -904,7 +904,9 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, typ_str string, 
 		sftyp := g.typ(ftyp_noshared)
 		mut field_styp := sftyp.replace('*', '')
 		field_styp_fn_name := if sym_has_str_method {
-			mut field_fn_name := '${field_styp}_str'
+			left_cc_type := g.cc_type(ftyp_noshared, false)
+			left_fn_name := util.no_dots(left_cc_type)
+			mut field_fn_name := '${left_fn_name}_str'
 			if sym.info is ast.Struct {
 				field_fn_name = g.generic_fn_name(sym.info.concrete_types, field_fn_name)
 			}
