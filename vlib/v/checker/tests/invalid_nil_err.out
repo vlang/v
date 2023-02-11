@@ -1,6 +1,0 @@
-vlib/v/checker/tests/invalid_nil_err.vv:2:18: error: unexpected keyword `nil`
-    1 | fn main() {
-    2 |   a := unsafe { &nil }
-      |                  ~~~
-    3 |   assert false
-    4 | }
