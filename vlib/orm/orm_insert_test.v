@@ -21,16 +21,40 @@ mut:
 	text     string
 }
 
+pub fn insert_parent(db sqlite.DB, mut parent Parent) {
+	sql db {
+		insert parent into Parent
+	}
+}
+
+fn test_orm_insert_mut_object() {
+	db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql db {
+		create table Parent
+		create table Child
+		create table Note
+	}
+
+	mut parent := Parent{
+		name: 'test'
+	}
+
+	insert_parent(db, mut parent)
+
+	parents := sql db {
+		select from Parent
+	}
+
+	assert parents.len == 1
+}
+
 fn test_orm_insert_with_multiple_child_elements() {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 
 	sql db {
 		create table Parent
-	}
-	sql db {
 		create table Child
-	}
-	sql db {
 		create table Note
 	}
 
