@@ -3644,7 +3644,7 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	node.right_type = right_type
 	if node.op == .amp {
 		if node.right is ast.Nil {
-			c.error('`nil` is a concept, it does not have an address', node.right.pos())
+			c.error('invalid operation: cannot take address of nil', node.right.pos())
 		}
 		if mut node.right is ast.PrefixExpr {
 			if node.right.op == .amp {
