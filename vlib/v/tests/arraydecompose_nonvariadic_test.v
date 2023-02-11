@@ -16,6 +16,14 @@ fn baz(s string) string {
 	return s
 }
 
+fn f_arr(i int, f f64) string {
+	return '${i} : ${f}'
+}
+
+fn f_var(s string, args ...string) string {
+	return '${s} [ ${args.map(it).join(',')} ]'
+}
+
 fn varargs[T](args ...T) string {
 	assert args.len > 0
 	return args.map(it.str()).join(' : ')
@@ -56,4 +64,10 @@ fn test_main() {
 	c << 1.2
 	c << 'test'
 	assert varargs(...c) == "Any(10) : Any(1.2) : Any('test')"
+
+	var := [0.0]
+	assert f_arr(1, ...var) == '1 : 0.0'
+
+	var2 := ['a', 'b', 'c']
+	assert f_var('foo', ...var2) == 'foo [ a,b,c ]'
 }

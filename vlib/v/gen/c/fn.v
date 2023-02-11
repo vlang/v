@@ -1765,14 +1765,16 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				}
 			}
 		} else if arg.expr is ast.ArrayDecompose {
+			mut d_count := 0
 			for d_i in i .. expected_types.len {
 				g.write('*(${g.typ(expected_types[d_i])}*)array_get(')
 				g.expr(arg.expr)
-				g.write(', ${d_i})')
+				g.write(', ${d_count})')
 
 				if d_i < expected_types.len - 1 {
 					g.write(', ')
 				}
+				d_count++
 			}
 			continue
 		}
