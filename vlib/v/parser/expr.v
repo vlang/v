@@ -672,6 +672,9 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 	// p.warn('unsafe')
 	// }
 	p.next()
+	if op == .amp && p.tok.kind == .key_nil {
+		p.unexpected()
+	}
 	mut right := p.expr(int(token.Precedence.prefix))
 	p.is_amp = false
 	if op == .amp {
