@@ -2638,7 +2638,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			if node.unresolved {
 				return c.expr(ast.resolve_init(node, c.unwrap_generic(node.typ), c.table))
 			}
-			return c.struct_init(mut node)
+			return c.struct_init(mut node, false)
 		}
 		ast.TypeNode {
 			if !c.inside_x_is_type && node.typ.has_flag(.generic) && unsafe { c.table.cur_fn != 0 }
