@@ -109,9 +109,9 @@ Otherwise, follow these instructions:
 - [Installing a C compiler on Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
 
 ### Symlinking
-NB: it is *highly recommended*, that you put V on your PATH. That saves
-you the effort to type in the full path to your v executable every time.
-V provides a convenience `v symlink` command to do that more easily.
+> Note: It is *highly recommended*, that you put V on your PATH. That saves
+> you the effort to type in the full path to your v executable every time.
+> V provides a convenience `v symlink` command to do that more easily.
 
 On Unix systems, it creates a `/usr/local/bin/v` symlink to your
 executable. To do that, run:
@@ -133,7 +133,7 @@ v symlink
 That will make V available everywhere, by adding it to your PATH. Please restart your
 shell/editor after that, so that it can pick up the new PATH variable.
 
-NB: there is no need to run `v symlink` more than once - v will still be available, even after
+> Note: There is no need to run `v symlink` more than once - v will still be available, even after
 `v up`, restarts, and so on.  You only need to run it again if you decide to move the V repo
 folder somewhere else.
 
@@ -203,7 +203,7 @@ v run tetris/tetris.v
 ```
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300 alt='tetris screenshot'>
 
-NB: In order to build Tetris or 2048 (or anything else using `sokol` or `gg` graphics modules),
+In order to build Tetris or 2048 (or anything else using `sokol` or `gg` graphics modules),
 you will need additional development libraries for your system.
 For some Linux distros (Debian/Ubuntu based), you need to run this:
 `sudo apt install libxi-dev libxcursor-dev`.

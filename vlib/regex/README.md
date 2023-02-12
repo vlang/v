@@ -2,7 +2,7 @@
 `regex` is a small but powerful regular expression library,
 written in pure V.
 
-NB: `regex` is *not* PCRE compatible.
+> Note: `regex` is *not* PCRE compatible.
 
 [TOC]
 
@@ -19,9 +19,9 @@ In a query string a simple character is a token.
 
 ## Differences with PCRE:
 
-NB: We must point out that the **V-Regex module is not PCRE compliant** and thus
-some behaviour will be different. This difference is due to the V philosophy,
-to have one way and keep it simple.
+> Note: We must point out that the **V-Regex module is not PCRE compliant** and thus
+> some behaviour will be different. This difference is due to the V philosophy,
+> to have one way and keep it simple.
 
 The main differences can be summarized in the following points:
 
@@ -81,12 +81,12 @@ latin chars `a-z` and all the digits `\d`.
 
 It is possible to mix all the properties of the char class together.
 
-NB: In order to match the `-` (minus) char, it must be preceded by
-    a backslash in the cc, for example `[\-_\d\a]` will match:
-      `-` minus,
-      `_` underscore,
-      `\d` numeric chars,
-	  `\a` lower case chars.
+> Note: In order to match the `-` (minus) char, it must be preceded by
+> a backslash in the cc, for example `[\-_\d\a]` will match:
+> - `-` minus,
+> - `_` underscore,
+> - `\d` numeric chars,
+> - `\a` lower case chars.
 
 ### Meta-chars
 
@@ -158,9 +158,10 @@ The OR token can work in a "chained way": `a|(b)|cd ` means test first `a`,
 if the char is not `a`, then test the group `(b)`, and if the group doesn't
 match too, finally test the token `c`.
 
-NB: ** unlike in PCRE, the OR operation works at token level!**
-It doesn't work at concatenation level!
-NB2: **Two char classes with an `OR` in the middle is a syntax error.**
+> Note: Unlike in PCRE, the OR operation works at token level!
+> It doesn't work at concatenation level!
+
+> Note: Two char classes with an `OR` in the middle is a syntax error.
 
 That also means, that a query string like `abc|bde` is not equal to
 `(abc)|(bde)`, but instead to `ab(c|b)de.
