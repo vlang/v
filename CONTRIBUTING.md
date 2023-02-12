@@ -94,7 +94,7 @@ making pullrequests, and you can just do normal git operations such as:
 5. When finished with a feature/bugfix/change, you can:
 `git checkout -b fix_alabala`
    - Don't forget to keep formatting standards, run `v fmt -w YOUR_MODIFIED_FILES` before committing
-6. `git push pullrequest`  # (NOTE: the `pullrequest` remote was setup on step 4)
+6. `git push pullrequest` Note: The `pullrequest` remote was setup on step 4
 7. On GitHub's web interface, go to: https://github.com/vlang/v/pulls
 
    Here the UI shows a dialog with a button to make a new pull request based on

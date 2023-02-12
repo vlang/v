@@ -85,12 +85,13 @@ V is constantly being updated. To update V, simply run:
 v up
 ```
 
-* *(* ***NOTE:*** *If you run into any trouble, or you have a different operating
-system or Linux distribution that doesn't install or work immediately, please see
-[Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues)
-and search for your OS and problem. If you can't find your problem, please add it to an
-existing discussion if one exists for your OS, or create a new one if a main discussion
-doesn't yet exist for your OS.)*
+> If you run into any trouble, or you have a different operating
+> system or Linux distribution that doesn't install or work immediately, please see
+> [Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues)
+> and search for your OS and problem. 
+>
+> If you can't find your problem, please add it to an existing discussion if one exists for 
+> your OS, or create a new one if a main discussion doesn't yet exist for your OS.
 
 ### C compiler
 The [Tiny C Compiler (tcc)](https://repo.or.cz/w/tinycc.git) is downloaded for you by `make` if

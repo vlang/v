@@ -50,8 +50,8 @@ rng.int() // among others ...
 You can change the default generator to a different one. The only requirement is that
 the generator must implement the `PRNG` interface. See `get_current_rng()` and `set_rng()`.
 
-**Note:** The global PRNG is not thread safe. It is recommended to use separate generators for
-separate threads in multi-threaded applications.
+> Note: The global PRNG is not thread safe. It is recommended to use separate generators for
+> separate threads in multi-threaded applications.
 
 There are only a few extra functions that are defined only in this top-level `rand` module.
 Otherwise, there is feature parity between the generator functions and the top-level functions.

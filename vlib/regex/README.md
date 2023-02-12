@@ -146,8 +146,8 @@ parsing source string.
 | `ab.{3} .*e` | `abccc dde` |
 The dot matches any character, until the next token match is satisfied.
 
-**Important Note:** *Consecutive dots, for example `...`, are not allowed.*
-*This will cause a syntax error. Use a quantifier instead.*
+> Important Note: Consecutive dots, for example `...`, are not allowed.
+> This will cause a syntax error. Use a quantifier instead.
 
 ### OR token
 
@@ -221,8 +221,8 @@ for gi < re.groups.len {
 // 1 :[pa]
 ```
 
-**note:** *to show the `group id number` in the result of the `get_query()`*
-*the flag `debug` of the RE object must be `1` or `2`*
+> Note: To show the `group id number` in the result of the `get_query()`
+> the flag `debug` of the RE object must be `1` or `2`
 
 In order to simplify the use of the captured groups, it possible to use the
 utility function: `get_group_list`.
@@ -249,7 +249,7 @@ fn convert_html_rgb(in_col string) u32 {
 	mut n_digit := if in_col.len == 4 { 1 } else { 2 }
 	mut col_mul := if in_col.len == 4 { 4 } else { 0 }
 	// this is the regex query, it use the V string interpolation to customize the regex query
-	// NOTE: if you want use escaped code you must use the r"" (raw) strings,
+	// Note: If you want use escaped code you must use the r"" (raw) strings,
 	// *** please remember that the V interpoaltion doesn't work on raw strings. ***
 	query := '#([a-fA-F0-9]{${n_digit}})([a-fA-F0-9]{${n_digit}})([a-fA-F0-9]{${n_digit}})'
 	mut re := regex.regex_opt(query) or { panic(err) }
@@ -599,7 +599,7 @@ in this example we used the group `0` in the replace string: `\0`, the result wi
 Today it is a good day. => Tod__[ay]__it is a good d__[ay]__
 ```
 
-**Note:** in the replace strings can be used only groups from `0` to `9`.
+> Note: In the replace strings can be used only groups from `0` to `9`.
 
 If the usage of `groups` in the replace process, is not needed, it is possible
 to use a quick function:
