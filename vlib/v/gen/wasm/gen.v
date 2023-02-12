@@ -23,7 +23,7 @@ mut:
 	mod               wa.Module               // Current Binaryen WebAssembly module
 	curr_ret          []ast.Type              // Current return value, multi returns will be split into an array
 	local_temporaries []Temporary             // Local WebAssembly temporaries, referenced with an index
-	local_addresses   map[string]Struct       // Local stack structures relative to `bp_idx`
+	local_addresses   map[string]Stack       // Local stack structures relative to `bp_idx`
 	structs           map[ast.Type]StructInfo // Cached struct field offsets
 	lbl               int
 }
@@ -95,7 +95,15 @@ fn (mut g Gen) setup_stack_frame(body wa.Expression) wa.Expression {
 				wa.constant(g.mod, wa.literalint32(g.stack_frame))))
 	// vfmt on
 
-	return g.mkblock([stack_enter, body, stack_leave])
+	// If the function returns something, it would never fall through.
+	// If it does not, generate stack frame leave code.
+
+	mut n_body := [stack_enter, body]
+	if g.curr_ret[0] == ast.void_type {
+		n_body << stack_leave
+	}
+
+	return g.mkblock(n_body)
 }
 
 
@@ -184,8 +192,6 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.local_temporaries.clear()
 	g.local_addresses.clear()
 }
-
-// println("${g.table.sym(expected)} ${node.val}")
 
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) wa.Expression {
 	if expr is ast.IntegerLiteral {
@@ -282,6 +288,11 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr) wa.Expression {
 	}
 }
 
+fn (mut g Gen) mknblock(name string, nodes []wa.Expression) wa.Expression {
+	g.lbl++
+	return wa.block(g.mod, '${name}${g.lbl}'.str, nodes.data, nodes.len, type_auto)
+}
+
 fn (mut g Gen) mkblock(nodes []wa.Expression) wa.Expression {
 	g.lbl++
 	return wa.block(g.mod, 'BLK${g.lbl}'.str, nodes.data, nodes.len, type_auto)
@@ -329,11 +340,12 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			offset := g.get_field_offset(node.expr_type, node.field_name)
 			expr = wa.binary(g.mod, wa.addint32(), expr, wa.constant(g.mod, wa.literalint32(offset)))
 
-			g.deref(expr, expected)
+			g.cast_t(g.deref(expr, node.typ), node.typ, expected)
 		}
 		ast.StructInit {
 			pos := g.allocate_struct('_anonstruct', node.typ)
-			g.init_struct(Struct{ address: pos, ast_typ: node.typ }, node)
+			expr := g.init_struct(Stack{ address: pos, ast_typ: node.typ }, node)
+			return g.mknblock("EXPR(STRUCTINIT)", [expr, g.lea_address(pos)])
 		}
 		ast.MatchExpr {
 			g.w_error('wasm backend does not support match expressions yet')
@@ -473,13 +485,11 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
 fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 	return match node {
 		ast.Return {
-			if node.exprs.len == 1 {
-				expr := g.expr(node.exprs[0], g.curr_ret[0])
-				wa.ret(g.mod, expr)
+			expr := if node.exprs.len == 1 {
+				wa.ret(g.mod, g.expr(node.exprs[0], g.curr_ret[0]))
 			} else if node.exprs.len == 0 {
 				wa.ret(g.mod, unsafe { nil })
 			} else {
-				// g.w_error("multi returns are WIP/not implemented")
 				mut exprs := []wa.Expression{cap: node.exprs.len}
 				for idx in 0 .. node.exprs.len {
 					exprs << g.expr(node.exprs[idx], g.curr_ret[idx])
@@ -537,6 +547,13 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 					// `_ = expr` must be evaluated even if the value is being dropped!
 					// The optimiser would remove expressions without side effects.
 
+					// a    =  expr
+					// b    *= expr
+					// _    =  expr
+					// a.b  =  expr
+					// *a   =  expr
+					// a[b] =  expr
+
 					if left is ast.Ident {
 						if left.kind == .blank_ident {
 							exprs << wa.drop(g.mod, g.expr(right, typ))
@@ -545,57 +562,35 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 						if node.op == .decl_assign {
 							g.new_local(left, typ)
 						}
+					}
 
-						var := g.get_var_from_ident(left)
+					var := g.get_var_from_expr(left)
 
-						/* exprs << match var {
+					expr := if node.op !in [.decl_assign, .assign] {
+						match var {
 							Temporary {
-								expr := if node.op !in [.decl_assign, .assign] {
-									op := g.infix_from_typ(typ, token.assign_op_to_infix_op(node.op))
-									infix := wa.binary(g.mod, op, wa.localget(g.mod, var.idx, var.typ),
-										g.expr(right, typ))
+								op := g.infix_from_typ(typ, token.assign_op_to_infix_op(node.op))
+								infix := wa.binary(g.mod, op, wa.localget(g.mod, var.idx, var.typ),
+									g.expr(right, typ))
 
-									infix
-								} else {
-									g.expr(right, typ)
-								}
-								wa.localset(g.mod, var.idx, expr)
+								infix
 							}
-							Struct {
-								g.mov_expr_to_var()
+							Stack {
+								g.w_error("unimplemented")
 							}
 							else {
 								panic("unreachable")
 							}
-						} */
-
-						exprs << if right is ast.StructInit {
-							wa.drop(g.mod, g.init_struct(var, right))
-						} else {
-							expr := if node.op !in [.decl_assign, .assign] {
-								match var {
-									Temporary {
-										op := g.infix_from_typ(typ, token.assign_op_to_infix_op(node.op))
-										infix := wa.binary(g.mod, op, wa.localget(g.mod, var.idx, var.typ),
-											g.expr(right, typ))
-
-										infix
-									}
-									Struct {
-										g.w_error("unimplemented")
-									}
-									else {
-										panic("unreachable")
-									}
-								}
-							} else {
-								g.expr(right, typ)
-							}
-							g.set_var(var, expr)
 						}
 					} else {
-						
+						if right is ast.StructInit {
+							exprs << g.init_struct(var, right)
+							continue
+						}
+						g.expr(right, typ)
 					}
+					exprs << g.set_var(var, expr)
+					
 				}
 
 				if exprs.len == 1 {
@@ -653,9 +648,23 @@ pub fn (mut g Gen) toplevel_stmts(stmts []ast.Stmt) {
 	}
 }
 
+fn (mut g Gen) vsp_leave() wa.Expression {
+	frame := wa.constant(g.mod, wa.literalint32(g.stack_frame))
+	
+	return wa.call(g.mod, c'__vsp_leave', &frame, 1, type_none)
+}
+
 fn (mut g Gen) housekeeping() {
 	wa.addglobalimport(g.mod, c'__vsp', c'env', c'__vsp', type_i32, true)
 	wa.addmemoryimport(g.mod, c'__vmem', c'env', c'__vmem', 0)
+
+	// vfmt off
+	wa.addfunction(g.mod, c'__vsp_leave', type_i32, type_none, unsafe { nil }, 0, 
+		wa.globalset(g.mod, c'__vsp', 
+			wa.binary(g.mod, wa.addint32(),
+				wa.localget(g.mod, 0, type_i32), 
+				wa.globalget(g.mod, c'__vsp', type_i32))))
+	// vfmt on
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Preferences) {

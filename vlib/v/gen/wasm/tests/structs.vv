@@ -10,3 +10,19 @@ pub fn zeroed() {
 pub fn field() {
 	_ := AA{a: 23}
 }
+
+pub fn selector(input int) int {
+	mut a := AA{}
+	
+	c := 10 + a.a
+	
+	return c
+}
+
+pub fn reassign(input int) int {
+	mut a := AA{}
+
+	a = AA{b: input}
+	
+	return a.b + input
+}

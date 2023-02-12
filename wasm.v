@@ -1,8 +1,12 @@
 struct AA {
-	a int
+mut:
+	a int = 22
 	b i64
 }
 
-pub fn test() {
-	_ := AA{a: 10, b: 2}
+pub fn reassign(input int) int {
+	mut a := AA{a: 20}
+	a.b = 2500000
+
+	return int(a.b)
 }
