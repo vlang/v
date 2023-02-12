@@ -85,7 +85,7 @@ V is constantly being updated. To update V, simply run:
 v up
 ```
 
-> If you run into any trouble, or you have a different operating
+> Note: If you run into any trouble, or you have a different operating
 > system or Linux distribution that doesn't install or work immediately, please see
 > [Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues)
 > and search for your OS and problem. 
