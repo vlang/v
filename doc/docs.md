@@ -2526,7 +2526,7 @@ Output: `Size: 4B, clr1.b: 136, clr2.b: 0`
 
 Union member access must be performed in an `unsafe` block.
 
-Note that the embedded struct arguments are not necessarily stored in the order listed.
+> Note: Embedded struct arguments are not necessarily stored in the order listed.
 
 ## Functions 2
 
@@ -2541,7 +2541,7 @@ are a function of their arguments only, and their evaluation has no side effects
 
 Function arguments are immutable by default, even when [references](#references) are passed.
 
-Note that V is not a purely functional language however.
+> Note: V is not a purely functional language however.
 
 There is a compiler flag to enable global variables (`-enable-globals`), but this is
 intended for low-level applications like kernels and drivers.
@@ -3744,7 +3744,8 @@ user := repo.find_user_by_id(7) or { return }
 Here, you can either call `panic()` or `exit()`, which will stop the execution of the
 entire program, or use a control flow statement (`return`, `break`, `continue`, etc)
 to break from the current block.
-Note that `break` and `continue` can only be used inside a `for` loop.
+
+> Note: `break` and `continue` can only be used inside a `for` loop.
 
 V does not have a way to forcibly "unwrap" an option (as other languages do,
 for instance Rust's `unwrap()` or Swift's `!`). To do this, use `or { panic(err) }` instead.
@@ -4484,9 +4485,9 @@ For developers willing to have more low level control, autofree can be disabled 
 `-manualfree`, or by adding a `[manualfree]` on each function that wants manage its
 memory manually. (See [attributes](#attributes)).
 
-Note 2: Autofree is still WIP. Until it stabilises and becomes the default, please
-avoid using it. Right now allocations are handled by a minimal and well performing GC
-until V's autofree engine is production ready.
+> Note: Autofree is still WIP. Until it stabilises and becomes the default, please
+> avoid using it. Right now allocations are handled by a minimal and well performing GC
+> until V's autofree engine is production ready.
 
 **Examples**
 
