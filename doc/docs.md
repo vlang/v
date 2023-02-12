@@ -643,14 +643,15 @@ To use a format specifier, follow this pattern:
   integer and will render it as octal digits, `b` requires an integer and will render it as binary
   digits, `s` requires a string (almost never used).
 
-> **Note**
-> When a numeric type can render alphabetic characters, such as hex strings or special values
-> like `infinity`, the lowercase version of the type forces lowercase alphabetics and the uppercase
-> version forces uppercase alphabetics.
+  > **Note**
+  > When a numeric type can render alphabetic characters, such as hex strings or special values
+  > like `infinity`, the lowercase version of the type forces lowercase alphabetics and the
+  > uppercase version forces uppercase alphabetics.
 
-> Also note: In most cases, it's best to leave the format type empty. Floats will be rendered by
-> default as `g`, integers will be rendered by default as `d`, and `s` is almost always redundant.
-> There are only three cases where specifying a type is recommended:
+  > **Note**
+  > In most cases, it's best to leave the format type empty. Floats will be rendered by
+  > default as `g`, integers will be rendered by default as `d`, and `s` is almost always redundant.
+  > There are only three cases where specifying a type is recommended:
 
 - format strings are parsed at compile time, so specifying a type can help detect errors then
 - format strings default to using lowercase letters for hex digits and the `e` in exponents. Use a
