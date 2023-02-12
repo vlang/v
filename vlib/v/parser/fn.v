@@ -169,24 +169,26 @@ fn (mut p Parser) parse_const() []ast.Attr {
 		return p.attrs
 	}
 	err_masange := 'spawn_stack can be set only to
-	ultiples of 4096 by number or number with combination M or K, for example 128K'
+	ultiples of 4096 by number or number with combination M or K, it must be at leat 4K, for example 128K'
 	mut constant_in_char := 1
 	attr0 := p.attrs[attr_stack_index]
 	arg := attr0.arg
 	last_index := arg.len - 1
+	kilo := 1024
+	mega := 1024*1024
 	argument_last_char := arg[last_index]
 	if argument_last_char == 'K'[0] {
-		constant_in_char = 1024
+		constant_in_char = kilo
 	}
 	if argument_last_char == 'M'[0] {
-		constant_in_char = 1024 * 1024
+		constant_in_char = mega
 	}
 	mut num := strconv.atoi(arg[..last_index]) or {
 		p.error_with_pos('${err_masange}, ${err}', p.tok.pos())
 		0
 	}
 	num = num * constant_in_char
-	if (num % 4096) != 0 {
+	if (num % 4096) != 0 || num < 4096 {
 		p.error_with_pos(err_masange, p.tok.pos())
 	}
 	mut attrs := []ast.Attr{cap: p.attrs.len}
