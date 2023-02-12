@@ -58,7 +58,8 @@ matches an expected .out file. You can also check for code that does panic
 using this test runner - just paste the start of the `panic()` output in the
 corresponding .out file.
 
-> Note: These tests, expect to find a pair of `.vv` and `.out` files, in the folder:
+> **Note**
+> These tests, expect to find a pair of `.vv` and `.out` files, in the folder:
 > vlib/v/slow_tests/inout
 
 The test runner will run each `.vv` file, and will check that its output, matches
@@ -80,7 +81,8 @@ file is compiled with `-o -` .
 ## `v vlib/v/slow_tests/run_project_folders_test.v`
 This *test runner*, checks whether whole project folders, can be compiled, and run.
 
-> Note: Each project in these folders, should finish with an exit code of 0,
+> **Note**
+> Each project in these folders, should finish with an exit code of 0,
 > and it should output `OK` as its last stdout line.
 
 ## `v vlib/v/tests/known_errors/known_errors_test.v`
@@ -151,7 +153,8 @@ This runs tests for:
 * `vlib/v/checker/tests/*.vv`
 * `vlib/v/parser/tests/*.vv`
 
-> Note: There are special folders, that compiler_errors_test.v will try to
+> **Note**
+> There are special folders, that compiler_errors_test.v will try to
 > run/compile with specific options:
 
 vlib/v/checker/tests/globals_run/ - `-enable-globals run`; 

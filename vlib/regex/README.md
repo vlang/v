@@ -2,7 +2,8 @@
 `regex` is a small but powerful regular expression library,
 written in pure V.
 
-> Note: `regex` is *not* PCRE compatible.
+> **Note**
+> `regex` is *not* PCRE compatible.
 
 [TOC]
 
@@ -19,7 +20,8 @@ In a query string a simple character is a token.
 
 ## Differences with PCRE:
 
-> Note: We must point out that the **V-Regex module is not PCRE compliant** and thus
+> **Note**
+> We must point out that the **V-Regex module is not PCRE compliant** and thus
 > some behaviour will be different. This difference is due to the V philosophy,
 > to have one way and keep it simple.
 
@@ -81,7 +83,8 @@ latin chars `a-z` and all the digits `\d`.
 
 It is possible to mix all the properties of the char class together.
 
-> Note: In order to match the `-` (minus) char, it must be preceded by
+> **Note**
+> In order to match the `-` (minus) char, it must be preceded by
 > a backslash in the cc, for example `[\-_\d\a]` will match:
 > - `-` minus,
 > - `_` underscore,
@@ -158,10 +161,12 @@ The OR token can work in a "chained way": `a|(b)|cd ` means test first `a`,
 if the char is not `a`, then test the group `(b)`, and if the group doesn't
 match too, finally test the token `c`.
 
-> Note: Unlike in PCRE, the OR operation works at token level!
+> **Note**
+> Unlike in PCRE, the OR operation works at token level!
 > It doesn't work at concatenation level!
 
-> Note: Two char classes with an `OR` in the middle is a syntax error.
+> **Note**
+> Two char classes with an `OR` in the middle is a syntax error.
 
 That also means, that a query string like `abc|bde` is not equal to
 `(abc)|(bde)`, but instead to `ab(c|b)de.
@@ -221,7 +226,8 @@ for gi < re.groups.len {
 // 1 :[pa]
 ```
 
-> Note: To show the `group id number` in the result of the `get_query()`
+> **Note**
+> To show the `group id number` in the result of the `get_query()`
 > the flag `debug` of the RE object must be `1` or `2`
 
 In order to simplify the use of the captured groups, it possible to use the
@@ -599,7 +605,8 @@ in this example we used the group `0` in the replace string: `\0`, the result wi
 Today it is a good day. => Tod__[ay]__it is a good d__[ay]__
 ```
 
-> Note: In the replace strings can be used only groups from `0` to `9`.
+> **Note**
+> In the replace strings can be used only groups from `0` to `9`.
 
 If the usage of `groups` in the replace process, is not needed, it is possible
 to use a quick function:

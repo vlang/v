@@ -129,7 +129,8 @@ You can download the `hub` tool from https://hub.github.com/ . Using
 to make PRs. Most remote operations can be done through the `hub` CLI
 command.
 
-> Note: You still need to have a GitHub account.
+> **Note**
+> You still need to have a GitHub account.
 
 ### Preparation:
 (steps 1..3 need to be done just *once*):

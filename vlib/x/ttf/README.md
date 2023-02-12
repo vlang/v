@@ -18,7 +18,8 @@ ttf_font.buf = os.read_bytes("arial.ttf") or { panic(err) }
 ttf_font.init()
 ```
 
-> Note: The font must be passed to the `TTF_file` as RAM buffer.
+> **Note**
+> The font must be passed to the `TTF_file` as RAM buffer.
 
 At this point the font "arial" is loaded and parsed and if it is a valid TTF font it is
 ready for the rendering.
@@ -118,7 +119,8 @@ fn main() {
 This is the low level render that draw ther text on a bitmap and save the bitmap on a disk as
 `.ppm` file.
 
-> Note: The render in this case is a raw rendering without any postfiltering or other processing.
+> **Note**
+> The render in this case is a raw rendering without any postfiltering or other processing.
 
 Using the low level rendering you need to manage all the amenities like allocate and release
 memory and other tasks like calc the character dimensions.

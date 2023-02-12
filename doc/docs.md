@@ -252,7 +252,8 @@ This means that a "hello world" program in V is as simple as
 println('hello world')
 ```
 
-> Note: If you do not use explicitly `fn main() {}`, you need to make sure, that all your
+> **Note**
+> If you do not use explicitly `fn main() {}`, you need to make sure, that all your
 > declarations, come before any variable assignment statements, or top level function calls,
 > since V will consider everything after the first assignment/function call as part of your
 > implicit main function.
@@ -285,11 +286,13 @@ import os
 println(os.args)
 ```
 
-> Note: After a successful run, V will delete the generated executable.
+> **Note**
+> After a successful run, V will delete the generated executable.
 > If you want to keep it, use `v -keepc run .` instead, or just compile
 > manually with `v .` .
 
-> Note: Any V compiler flags should be passed *before* the `run` command.
+> **Note**
+> Any V compiler flags should be passed *before* the `run` command.
 > Everything after the source file/folder, will be passed to the program
 > as is - it will not be processed by V.
 
@@ -359,7 +362,8 @@ Functions are private (not exported) by default.
 To allow other [modules](#module-imports) to use them, prepend `pub`. The same applies
 to [structs](#structs), [constants](#constants) and [types](#type-declarations).
 
-> Note: `pub` can only be used from a named module.
+> **Note**
+> `pub` can only be used from a named module.
 > For information about creating a module, see [Modules](#modules).
 
 ## Variables
@@ -477,7 +481,8 @@ voidptr // this one is mostly used for [C interoperability](#v-and-c)
 any // similar to C's void* and Go's interface{}
 ```
 
-> Note: Unlike C and Go, `int` is always a 32 bit integer.
+> **Note**
+> Unlike C and Go, `int` is always a 32 bit integer.
 
 There is an exception to the rule that all operators
 in V must have values of the same type on both sides. A small primitive type
@@ -624,7 +629,8 @@ To use a format specifier, follow this pattern:
 
 - flags: may be zero or more of the following: `-` to left-align output within the field, `0` to use
   `0` as the padding character instead of the default `space` character.
-  > Note: V does not currently support the use of `'` or `#` as format flags, and V supports but
+  > **Note**
+  > V does not currently support the use of `'` or `#` as format flags, and V supports but
   > doesn't need `+` to right-align since that's the default.
 - width: may be an integer value describing the minimum width of total field to output.
 - precision: an integer value preceded by a `.` will guarantee that many digits after the decimal
@@ -637,7 +643,8 @@ To use a format specifier, follow this pattern:
   integer and will render it as octal digits, `b` requires an integer and will render it as binary
   digits, `s` requires a string (almost never used).
 
-> Note: When a numeric type can render alphabetic characters, such as hex strings or special values
+> **Note**
+> When a numeric type can render alphabetic characters, such as hex strings or special values
 > like `infinity`, the lowercase version of the type forces lowercase alphabetics and the uppercase
 > version forces uppercase alphabetics.
 
@@ -887,7 +894,8 @@ println(nums.len) // "0"
 `data` is a field (of type `voidptr`) with the address of the first
 element. This is for low-level [`unsafe`](#memory-unsafe-code) code.
 
-> Note: Fields are read-only and can't be modified by the user.
+> **Note**
+> Fields are read-only and can't be modified by the user.
 
 #### Array Initialization
 
@@ -933,7 +941,8 @@ for i in 0 .. 1000 {
 }
 ```
 
-> Note: The above code uses a [range `for`](#range-for) statement.
+> **Note**
+> The above code uses a [range `for`](#range-for) statement.
 
 You can initialize the array by accessing the `it` variable which gives
 the index as shown here:
@@ -1441,7 +1450,8 @@ fn main() {
 }
 ```
 
-> Note: This will import the module as well. Also, this is not allowed for
+> **Note**
+> This will import the module as well. Also, this is not allowed for
 > constants - they must always be prefixed.
 
 You can import several specific symbols at once:
@@ -1459,7 +1469,8 @@ println('Your OS is ${current_os}.')
 
 Any imported module name can be aliased using the `as` keyword:
 
-> Note: This example will not compile unless you have created `mymod/sha256.v`
+> **Note**
+> This example will not compile unless you have created `mymod/sha256.v`
 
 ```v failcompile
 import crypto.sha256
@@ -1737,7 +1748,8 @@ println(num)
 
 Constants can also be used in the range branch expressions.
 
-> Note: `match` as an expression is not usable in `for` loop and `if` statements.
+> **Note**
+> `match` as an expression is not usable in `for` loop and `if` statements.
 
 ### In operator
 
@@ -2526,7 +2538,8 @@ Output: `Size: 4B, clr1.b: 136, clr2.b: 0`
 
 Union member access must be performed in an `unsafe` block.
 
-> Note: Embedded struct arguments are not necessarily stored in the order listed.
+> **Note**
+> Embedded struct arguments are not necessarily stored in the order listed.
 
 ## Functions 2
 
@@ -2541,7 +2554,8 @@ are a function of their arguments only, and their evaluation has no side effects
 
 Function arguments are immutable by default, even when [references](#references) are passed.
 
-> Note: V is not a purely functional language however.
+> **Note**
+> V is not a purely functional language however.
 
 There is a compiler flag to enable global variables (`-enable-globals`), but this is
 intended for low-level applications like kernels and drivers.
@@ -2901,7 +2915,8 @@ fn panic(s string) // prints a message and backtraces on stderr, and terminates 
 fn print_backtrace() // prints backtraces on stderr
 ```
 
-> Note: Although the `print` functions take a string, V accepts other printable types too.
+> **Note**
+> Although the `print` functions take a string, V accepts other printable types too.
 > See below for details.
 
 There is also a special built-in function called [`dump`](#dumping-expressions-at-runtime).
@@ -3745,7 +3760,8 @@ Here, you can either call `panic()` or `exit()`, which will stop the execution o
 entire program, or use a control flow statement (`return`, `break`, `continue`, etc)
 to break from the current block.
 
-> Note: `break` and `continue` can only be used inside a `for` loop.
+> **Note**
+> `break` and `continue` can only be used inside a `for` loop.
 
 V does not have a way to forcibly "unwrap" an option (as other languages do,
 for instance Rust's `unwrap()` or Swift's `!`). To do this, use `or { panic(err) }` instead.
@@ -4304,7 +4320,8 @@ assert fails it is reported to *stderr*, and the values on each side of a compar
 unexpected value. Assert statements can be used in any function, not just test ones,
 which is handy when developing new functionality, to keep your invariants in check.
 
-> Note: All `assert` statements are *removed*, when you compile your program with the `-prod` flag.
+> **Note**
+> All `assert` statements are *removed*, when you compile your program with the `-prod` flag.
 
 ### Asserts with an extra message
 
@@ -4352,7 +4369,8 @@ assert_continues_example.v:3: FAIL: fn main.abc: assert ii == 2
   right value: 2
 ```
 
-> Note: V also supports a command line flag `-assert continues`, which will change the
+> **Note**
+> V also supports a command line flag `-assert continues`, which will change the
 > behaviour of all asserts globally, as if you had tagged every function with `[assert_continues]`.
 
 ### Test files
@@ -4382,7 +4400,8 @@ fn test_hello() {
 To run the test file above, use `v hello_test.v`. This will check that the function `hello` is
 producing the correct output. V executes all test functions in the file.
 
-> Note: All `_test.v` files (both external and internal ones), are compiled as *separate programs*.
+> **Note**
+> All `_test.v` files (both external and internal ones), are compiled as *separate programs*.
 > In other words, you may have as many `_test.v` files, and tests in them as you like, they will
 > not affect the compilation of your other code in `.v` files normally at all, but only when you
 > do explicitly `v file_test.v` or `v test .`.
@@ -4436,7 +4455,8 @@ put .v files with invalid V source code, or other tests, including known
 failing ones, that should be run in a specific way/options by a parent _test.v
 file.
 
-> Note: The path to the V compiler, is available through @VEXE, so a _test.v
+> **Note**
+> The path to the V compiler, is available through @VEXE, so a _test.v
 > file, can easily run *other* test files like this:
 
 ```v oksyntax
@@ -4485,7 +4505,8 @@ For developers willing to have more low level control, autofree can be disabled 
 `-manualfree`, or by adding a `[manualfree]` on each function that wants manage its
 memory manually. (See [attributes](#attributes)).
 
-> Note: Autofree is still WIP. Until it stabilises and becomes the default, please
+> **Note**
+> Autofree is still WIP. Until it stabilises and becomes the default, please
 > avoid using it. Right now allocations are handled by a minimal and well performing GC
 > until V's autofree engine is production ready.
 
@@ -5617,7 +5638,8 @@ With the example above:
   That corresponds to `$if customflag ? {}`, but for a whole file, not just a
   single block. `customflag` should be a snake_case identifier, it can not
   contain arbitrary characters (only lower case latin letters + numbers + `_`).
-  > Note: A combinatorial `_d_customflag_linux.c.v` postfix will not work.
+  > **Note**
+> A combinatorial `_d_customflag_linux.c.v` postfix will not work.
   > If you do need a custom flag file, that has platform dependent code, use the
   > postfix `_d_customflag.v`, and then use plaftorm dependent compile time
   > conditional blocks inside it, i.e. `$if linux {}` etc.
@@ -5670,7 +5692,8 @@ If you suspect your program does violate memory-safety, you have a head start on
 finding the cause: look at the `unsafe` blocks (and how they interact with
 surrounding code).
 
-> Note: This is work in progress.
+> **Note**
+> This is work in progress.
 
 ## Structs with reference fields
 
@@ -5798,7 +5821,8 @@ with `-prod`. There are some situations though, where you may want to give
 additional hints to the compiler, so that it can further optimize some
 blocks of code.
 
-> Note: These are *rarely* needed, and should not be used, unless you
+> **Note**
+> These are *rarely* needed, and should not be used, unless you
 > *profile your code*, and then see that there are significant benefits for them.
 > To cite gcc's documentation: "programmers are notoriously bad at predicting
 > how their programs actually perform".
@@ -5971,7 +5995,8 @@ or
 v -os linux .
 ```
 
-> Note: Cross-compiling a windows binary on a linux machine requires the GNU C compiler for
+> **Note**
+> Cross-compiling a windows binary on a linux machine requires the GNU C compiler for
 > MinGW-w64 (targeting Win64) to first be installed.
 
 For Ubuntu/Debian based distributions:
@@ -6153,7 +6178,8 @@ Add `#flag` directives to the top of your V files to provide C compilation flags
 You can (optionally) use different flags for different targets.
 Currently the `linux`, `darwin` , `freebsd`, and `windows` flags are supported.
 
-> Note: Each flag must go on its own line (for now)
+> **Note**
+> Each flag must go on its own line (for now)
 
 ```v oksyntax
 #flag linux -lsdl2
@@ -6229,7 +6255,8 @@ Module {
 #include "header.h"
 ```
 
-> Note: @VMODROOT will be replaced by V with the *nearest parent folder, 
+> **Note**
+> @VMODROOT will be replaced by V with the *nearest parent folder, 
 > where there is a v.mod file*.
 > Any .v file beside or below the folder where the v.mod file is,
 > can use `#flag @VMODROOT/abc` to refer to this folder.
@@ -6254,7 +6281,8 @@ Ordinary zero terminated C strings can be converted to V strings with
 `unsafe { &char(cstring).vstring() }` or if you know their length already with
 `unsafe { &char(cstring).vstring_with_len(len) }`.
 
-> Note: The `.vstring()` and `.vstring_with_len()` methods do NOT create a copy of the `cstring`,
+> **Note**
+> The `.vstring()` and `.vstring_with_len()` methods do NOT create a copy of the `cstring`,
 > so you should NOT free it after calling the method `.vstring()`.
 > If you need to make a copy of the C string (some libc APIs like `getenv` pretty much require that,
 > since they return pointers to internal libc memory), you can use `cstring_to_vstring(cstring)`.
