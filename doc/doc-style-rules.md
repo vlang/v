@@ -128,7 +128,7 @@ using `^` to show where exactly the error is:
 fn main() {
 	if true {
 		foo = 100
-//      ^^^ error: unknown variable `foo`
+//		^^^ error: unknown variable `foo`
 	}
 }
 ```
