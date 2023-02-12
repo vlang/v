@@ -124,11 +124,11 @@ If you want to show the output of your block of code, then:
 If you want to show that there will be a compilation error in the code, then mark it in the code
 using `^` to show where exactly the error is:
 
-```v
+```v failcompile
 fn main() {
 	if true {
-		foo = 100
-//		^^^ error: unknown variable `foo`
+		println(foo)
+		//      ^^^ error: unknown identifier `foo`
 	}
 }
 ```
