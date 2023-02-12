@@ -3414,7 +3414,8 @@ They are just a convenient way to write `i.some_function()` instead of
 `some_function(i)`, similar to how struct methods can be looked at, as
 a convenience for writing `s.xyz()` instead of `xyz(s)`.
 
-N.B. This feature is NOT a "default implementation" like in C#.
+> **Note**
+> This feature is NOT a "default implementation" like in C#.
 
 For example, if a struct `cat` is wrapped in an interface `a`, that has
 implemented a method with the same name `speak`, as a method implemented by
