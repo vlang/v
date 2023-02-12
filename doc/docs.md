@@ -644,6 +644,7 @@ To use a format specifier, follow this pattern:
   digits, `s` requires a string (almost never used).
 
   > **Note**
+  > 
   > When a numeric type can render alphabetic characters, such as hex strings or special values
   > like `infinity`, the lowercase version of the type forces lowercase alphabetics and the
   > uppercase version forces uppercase alphabetics.
