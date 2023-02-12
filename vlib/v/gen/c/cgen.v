@@ -4208,9 +4208,13 @@ fn (mut g Gen) ident(node ast.Ident) {
 
 fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	node_typ := g.unwrap_generic(node.typ)
+	mut expr_type := node.expr_type
 	sym := g.table.sym(node_typ)
+	if node.expr is ast.Ident && g.is_comptime_var(node.expr) {
+		expr_type = g.unwrap_generic(g.comptime_for_field_type)
+	}
 	if sym.kind in [.sum_type, .interface_] {
-		g.expr_with_cast(node.expr, node.expr_type, node_typ)
+		g.expr_with_cast(node.expr, expr_type, node_typ)
 	} else if sym.kind == .struct_ && !node.typ.is_ptr() && !(sym.info as ast.Struct).is_typedef {
 		// deprecated, replaced by Struct{...exr}
 		styp := g.typ(node.typ)
@@ -4222,7 +4226,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			g.write('(${g.typ(node.expr.typ)})')
 		}
 		g.expr(node.expr)
-	} else if node.expr_type == ast.bool_type && node.typ.is_int() {
+	} else if expr_type == ast.bool_type && node.typ.is_int() {
 		styp := g.typ(node_typ)
 		g.write('(${styp}[]){(')
 		g.expr(node.expr)
@@ -4241,7 +4245,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		mut cast_label := ''
 		// `ast.string_type` is done for MSVC's bug
 		if sym.kind != .alias
-			|| (sym.info as ast.Alias).parent_type !in [node.expr_type, ast.string_type] {
+			|| (sym.info as ast.Alias).parent_type !in [expr_type, ast.string_type] {
 			cast_label = '(${styp})'
 		}
 		if node.typ.has_flag(.option) && node.expr is ast.None {
@@ -4249,7 +4253,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		} else {
 			g.write('(${cast_label}(')
 			if sym.kind == .alias && g.table.final_sym(node.typ).kind == .string {
-				ptr_cnt := node.typ.nr_muls() - node.expr_type.nr_muls()
+				ptr_cnt := node.typ.nr_muls() - expr_type.nr_muls()
 				if ptr_cnt > 0 {
 					g.write('&'.repeat(ptr_cnt))
 				}
