@@ -389,6 +389,7 @@ pub fn run[T](global_app &T, port int) {
 pub struct RunParams {
 	host                 string
 	port                 int = 8080
+	num_workers          int = 4
 	family               net.AddrFamily = .ip6 // use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
 	show_startup_message bool = true
 }
@@ -404,6 +405,14 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 		ecode := err.code()
 		return error('failed to listen ${ecode} ${err}')
 	}
+
+	mut ch := chan Workerfn{cap: 10_000}
+	mut ws := []thread{cap: params.num_workers}
+	for _ in 0 .. params.num_workers {
+		ws << new_worker(ch)
+	}
+
+	println("Worker count ${ws.len}")
 
 	// Parsing methods attributes
 	mut routes := map[string]Route{}
@@ -447,7 +456,10 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 			eprintln('accept() failed with error: ${err.msg()}')
 			continue
 		}
-		spawn handle_conn[T](mut conn, mut request_app, routes)
+
+		ch <- fn [mut conn, mut request_app, routes] [T] () {
+			handle_conn[T](mut conn, mut request_app, routes)
+		}
 	}
 }
 
