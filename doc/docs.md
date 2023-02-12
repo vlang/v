@@ -887,7 +887,7 @@ println(nums.len) // "0"
 `data` is a field (of type `voidptr`) with the address of the first
 element. This is for low-level [`unsafe`](#memory-unsafe-code) code.
 
-Note that the fields are read-only and can't be modified by the user.
+> Note: Fields are read-only and can't be modified by the user.
 
 #### Array Initialization
 
