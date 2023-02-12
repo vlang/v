@@ -126,15 +126,15 @@ pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt(false)
 }
 
-pub fn parse_comptime(tmpl_path string, text string, table &ast.Table, pref &pref.Preferences, scope &ast.Scope) &ast.File {
+pub fn parse_comptime(tmpl_path string, text string, table &ast.Table, pref_ &pref.Preferences, scope &ast.Scope) &ast.File {
 	$if trace_parse_comptime ? {
 		eprintln('> ${@MOD}.${@FN} text: ${text}')
 	}
 	mut p := Parser{
 		file_name: tmpl_path
-		scanner: scanner.new_scanner(text, .skip_comments, pref)
+		scanner: scanner.new_scanner(text, .skip_comments, pref_)
 		table: table
-		pref: pref
+		pref: pref_
 		scope: scope
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
@@ -144,7 +144,7 @@ pub fn parse_comptime(tmpl_path string, text string, table &ast.Table, pref &pre
 	return res
 }
 
-pub fn parse_text(text string, path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences) &ast.File {
+pub fn parse_text(text string, path string, table &ast.Table, comments_mode scanner.CommentsMode, pref_ &pref.Preferences) &ast.File {
 	$if trace_parse_text ? {
 		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: ${path:-20} | text: ${text}')
 	}
@@ -152,7 +152,7 @@ pub fn parse_text(text string, path string, table &ast.Table, comments_mode scan
 		scanner: scanner.new_scanner(text, comments_mode, pref)
 		comments_mode: comments_mode
 		table: table
-		pref: pref
+		pref: pref_
 		scope: &ast.Scope{
 			start_pos: 0
 			parent: table.global_scope
