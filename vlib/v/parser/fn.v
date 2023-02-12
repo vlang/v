@@ -7,6 +7,7 @@ import v.ast
 import v.token
 import v.util
 import os
+import strconv
 
 pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.pos()
@@ -151,10 +152,63 @@ mut:
 	language ast.Language
 }
 
+fn (mut p Parser) contains_spawn_stack_return_index() (bool, int) {
+	mut i := 0
+	for attr in p.attrs {
+		if attr.name == 'spawn_stack' {
+			return true, i
+		}
+		i++
+	}
+	return false, 0
+}
+
+fn (mut p Parser) parse_const() []ast.Attr {
+	contains_spawn_stack, attr_stack_index := p.contains_spawn_stack_return_index()
+	if !contains_spawn_stack {
+		return p.attrs
+	}
+	err_masange := 'spawn_stack can be set only to
+	ultiples of 4096 by number or number with combination M or K, for example 128K'
+	mut constant_in_char := 1
+	attr0 := p.attrs[attr_stack_index]
+	arg := attr0.arg
+	last_index := arg.len - 1
+	argument_last_char := arg[last_index]
+	if argument_last_char == 'K'[0] {
+		constant_in_char = 1024
+	}
+	if argument_last_char == 'M'[0] {
+		constant_in_char = 1024 * 1024
+	}
+	mut num := strconv.atoi(arg[..last_index]) or {
+		p.error_with_pos('${err_masange}, ${err}', p.tok.pos())
+		0
+	}
+	num = num * constant_in_char
+	if (num % 4096) != 0 {
+		p.error_with_pos(err_masange, p.tok.pos())
+	}
+	mut attrs := []ast.Attr{cap: p.attrs.len}
+	attrs << p.attrs[..attr_stack_index]
+	attrs << p.attrs[attr_stack_index+1..]
+	attrs << ast.Attr{
+		name: attr0.name
+		has_arg: attr0.has_arg
+		arg: '${num}'
+		kind: attr0.kind
+		ct_expr: attr0.ct_expr
+		ct_opt: attr0.ct_opt
+		pos: attr0.pos
+		ct_evaled: attr0.ct_evaled
+		ct_skip: attr0.ct_skip
+	}
+	return attrs
+}
+
 fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.top_level_statement_start()
 	start_pos := p.tok.pos()
-
 	mut is_manualfree := p.is_manualfree
 	mut is_deprecated := false
 	mut is_direct_arr := false
@@ -459,7 +513,7 @@ run them via `v file.v` instead',
 			is_method: true
 			receiver_type: rec.typ
 			//
-			attrs: p.attrs
+			attrs: p.parse_const()
 			is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx
 			ctdefine_idx: conditional_ctdefine_idx
 			//
@@ -509,7 +563,7 @@ run them via `v file.v` instead',
 			is_method: false
 			is_file_translated: p.is_translated
 			//
-			attrs: p.attrs
+			attrs: p.parse_const()
 			is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx
 			ctdefine_idx: conditional_ctdefine_idx
 			//
@@ -565,7 +619,7 @@ run them via `v file.v` instead',
 		is_markused: is_markused
 		is_file_translated: p.is_translated
 		//
-		attrs: p.attrs
+		attrs: p.parse_const()
 		is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx
 		ctdefine_idx: conditional_ctdefine_idx
 		//
