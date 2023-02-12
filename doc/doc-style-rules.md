@@ -16,7 +16,7 @@ The same goes for Warning:
 ```
 > **Warning**
 > Text of
->your warning
+> your warning
 ```
 
 Do not use `->`, `=>` instead of `–`:
