@@ -6229,7 +6229,8 @@ Module {
 #include "header.h"
 ```
 
-> Note: @VMODROOT will be replaced by V with the *nearest parent folder, where there is a v.mod file*.
+> Note: @VMODROOT will be replaced by V with the *nearest parent folder, 
+> where there is a v.mod file*.
 > Any .v file beside or below the folder where the v.mod file is,
 > can use `#flag @VMODROOT/abc` to refer to this folder.
 > The @VMODROOT folder is also *prepended* to the module lookup path,
