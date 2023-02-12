@@ -16,7 +16,7 @@ TMPLEGACY := $(LEGACYLIBS)/source
 TCCOS := unknown
 TCCARCH := unknown
 GITCLEANPULL := git clean -xf && git pull --quiet
-GITFASTCLONE := git clone --depth 1 --quiet --single-branch
+GITFASTCLONE := git clone --filter=blob:none --quiet
 
 #### Platform detections and overrides:
 _SYS := $(shell uname 2>/dev/null || echo Unknown)
@@ -54,6 +54,11 @@ TCCOS := netbsd
 LDFLAGS += -lexecinfo
 endif
 
+ifeq ($(_SYS),OpenBSD)
+TCCOS := openbsd
+LDFLAGS += -lexecinfo
+endif
+
 ifdef ANDROID_ROOT
 ANDROID := 1
 undefine LINUX
@@ -85,7 +90,7 @@ endif
 endif
 endif
 
-.PHONY: all clean check fresh_vc fresh_tcc fresh_legacy check_for_working_tcc
+.PHONY: all clean rebuild check fresh_vc fresh_tcc fresh_legacy check_for_working_tcc
 
 ifdef prod
 VFLAGS+=-prod
@@ -118,6 +123,8 @@ clean:
 	rm -rf $(TMPTCC)
 	rm -rf $(LEGACYLIBS)
 	rm -rf $(VC)
+
+rebuild: clean all
 
 ifndef local
 latest_vc: $(VC)/.git/config

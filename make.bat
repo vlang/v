@@ -1,6 +1,6 @@
 @setlocal EnableDelayedExpansion EnableExtensions
 
-IF NOT DEFINED VERBOSE_MAKE @echo off
+@IF NOT DEFINED VERBOSE_MAKE @echo off
 
 REM Option flags
 set /a shift_counter=0
@@ -11,24 +11,29 @@ set compiler=
 set subcmd=
 set target=build
 
+set V_EXE=./v.exe
+set V_BOOTSTRAP=./v_win_bootstrap.exe
+set V_OLD=./v_old.exe
+set V_UPDATED=./v_up.exe
+
 REM TCC variables
-set "tcc_url=https://github.com/vlang/tccbin"
-set "tcc_dir=thirdparty\tcc"
-set "tcc_exe=thirdparty\tcc\tcc.exe"
-if "%PROCESSOR_ARCHITECTURE%" == "x86" ( set "tcc_branch=thirdparty-windows-i386" ) else ( set "tcc_branch=thirdparty-windows-amd64" )
-if "%~1" == "-tcc32" set "tcc_branch=thirdparty-windows-i386"
+set tcc_url=https://github.com/vlang/tccbin
+set tcc_dir=thirdparty/tcc
+set tcc_exe=thirdparty/tcc/tcc.exe
+if "%PROCESSOR_ARCHITECTURE%" == "x86" ( set tcc_branch="thirdparty-windows-i386" ) else ( set tcc_branch="thirdparty-windows-amd64" )
+if "%~1" == "-tcc32" set tcc_branch="thirdparty-windows-i386"
 
 REM VC settings
-set "vc_url=https://github.com/vlang/vc"
-set "vc_dir=%~dp0vc"
+set vc_url=https://github.com/vlang/vc
+set vc_dir=%~dp0vc
 
 REM Let a particular environment specify their own TCC and VC repos (to help mirrors)
-if /I not ["%TCC_GIT%"] == [""] set "tcc_url=%TCC_GIT%"
-if /I not ["%TCC_BRANCH%"] == [""] set "tcc_branch=%TCC_BRANCH%"
+if /I not ["%TCC_GIT%"] == [""] set tcc_url=%TCC_GIT%
+if /I not ["%TCC_BRANCH%"] == [""] set tcc_branch=%TCC_BRANCH%
 
-if /I not ["%VC_GIT%"] == [""] set "vc_url=%VC_GIT%"
+if /I not ["%VC_GIT%"] == [""] set vc_url=%VC_GIT%
 
-pushd %~dp0
+pushd "%~dp0"
 
 :verifyopt
 REM Read stdin EOF
@@ -37,9 +42,9 @@ if ["%~1"] == [""] goto :init
 REM Target options
 if !shift_counter! LSS 1 (
     if "%~1" == "help" (
-        if not ["%~2"] == [""] set "subcmd=%~2"& shift& set /a shift_counter+=1
+        if not ["%~2"] == [""] set subcmd=%~2& shift& set /a shift_counter+=1
     )
-    for %%z in (build clean cleanall check help) do (
+    for %%z in (build clean cleanall check help rebuild) do (
         if "%~1" == "%%z" set target=%1& shift& set /a shift_counter+=1& goto :verifyopt
     )
 )
@@ -70,7 +75,7 @@ goto :!target!
 :check
 echo.
 echo Check everything
-v.exe test-all
+"%V_EXE%" test-all
 exit /b 0
 
 :cleanall
@@ -89,9 +94,13 @@ echo Cleanup build artifacts
 echo  ^> Purge debug symbols
 del *.pdb *.lib *.bak *.out *.ilk *.exp *.obj *.o *.a *.so
 
-echo  ^> Delete old V executable
-del v_old.exe v*.exe
+echo  ^> Delete old V executable(s)
+del v*.exe
 exit /b 0
+
+:rebuild
+call :cleanall
+goto :build
 
 :help
 if [!subcmd!] == [] (
@@ -109,7 +118,7 @@ if !flag_local! NEQ 1 (
     pushd "%vc_dir%" && (
         echo Updating vc...
         echo  ^> Sync with remote !vc_url!
-        cd "%vc_dir%"
+        cd %vc_dir%
         git pull --quiet
         cd ..
         popd
@@ -124,13 +133,13 @@ if not [!compiler!] == [] goto :!compiler!_strap
 REM By default, use tcc, since we have it prebuilt:
 :tcc_strap
 :tcc32_strap
-echo  ^> Attempting to build v_win.c with "!tcc_exe!"
-"!tcc_exe!" -Bthirdparty/tcc -bt10 -g -w -o v.exe vc\v_win.c -ladvapi32
+echo  ^> Attempting to build "%V_BOOTSTRAP%" (from v_win.c) with "!tcc_exe!"
+"!tcc_exe!" -Bthirdparty/tcc -bt10 -g -w -o "%V_BOOTSTRAP%" ./vc/v_win.c -ladvapi32
 if %ERRORLEVEL% NEQ 0 goto :compile_error
-echo  ^> Compiling .\v.exe with itself
-v.exe -keepc -g -showcc -cc "!tcc_exe!" -cflags -Bthirdparty/tcc -o v2.exe cmd/v
+echo  ^> Compiling "%V_EXE%" with "%V_BOOTSTRAP%"
+"%V_BOOTSTRAP%" -keepc -g -showcc -cc "!tcc_exe!" -cflags -Bthirdparty/tcc -o "%V_UPDATED%" cmd/v
 if %ERRORLEVEL% NEQ 0 goto :clang_strap
-call :move_v2_to_v
+call :move_updated_to_v
 goto :success
 
 :clang_strap
@@ -141,18 +150,18 @@ if %ERRORLEVEL% NEQ 0 (
 	goto :gcc_strap
 )
 
-echo  ^> Attempting to build v_win.c with Clang
-clang -std=c99 -municode -g -w -o v.exe .\vc\v_win.c -ladvapi32
+echo  ^> Attempting to build "%V_BOOTSTRAP%" (from v_win.c) with Clang
+clang -std=c99 -municode -g -w -o "%V_BOOTSTRAP%" ./vc/v_win.c -ladvapi32
 if %ERRORLEVEL% NEQ 0 (
 	echo In most cases, compile errors happen because the version of Clang installed is too old
 	clang --version
 	goto :compile_error
 )
 
-echo  ^> Compiling .\v.exe with itself
-v.exe -keepc -g -showcc -cc clang -o v2.exe cmd/v
+echo  ^> Compiling "%V_EXE%" with "%V_BOOTSTRAP%"
+"%V_BOOTSTRAP%" -keepc -g -showcc -cc clang -o "%V_UPDATED%" cmd/v
 if %ERRORLEVEL% NEQ 0 goto :compile_error
-call :move_v2_to_v
+call :move_updated_to_v
 goto :success
 
 :gcc_strap
@@ -163,18 +172,18 @@ if %ERRORLEVEL% NEQ 0 (
 	goto :msvc_strap
 )
 
-echo  ^> Attempting to build v_win.c with GCC
-gcc -std=c99 -municode -g -w -o v.exe .\vc\v_win.c -ladvapi32
+echo  ^> Attempting to build "%V_BOOTSTRAP%" (from v_win.c) with GCC
+gcc -std=c99 -municode -g -w -o "%V_BOOTSTRAP%" ./vc/v_win.c -ladvapi32
 if %ERRORLEVEL% NEQ 0 (
 	echo In most cases, compile errors happen because the version of GCC installed is too old
 	gcc --version
 	goto :compile_error
 )
 
-echo  ^> Compiling .\v.exe with itself
-v.exe -keepc -g -showcc -cc gcc -o v2.exe cmd/v
+echo  ^> Compiling "%V_EXE%" with "%V_BOOTSTRAP%"
+"%V_BOOTSTRAP%" -keepc -g -showcc -cc gcc -o "%V_UPDATED%" cmd/v
 if %ERRORLEVEL% NEQ 0 goto :compile_error
-call :move_v2_to_v
+call :move_updated_to_v
 goto :success
 
 :msvc_strap
@@ -186,41 +195,41 @@ if "%PROCESSOR_ARCHITECTURE%" == "x86" (
 	set HostArch=x86
 )
 
-if not exist "%VsWhereDir%\Microsoft Visual Studio\Installer\vswhere.exe" (
+if not exist "%VsWhereDir%/Microsoft Visual Studio/Installer/vswhere.exe" (
 	echo  ^> MSVC not found
 	if not [!compiler!] == [] goto :error
 	goto :compile_error
 )
 
-for /f "usebackq tokens=*" %%i in (`"%VsWhereDir%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
+for /f "usebackq tokens=*" %%i in (`"%VsWhereDir%/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
 	set InstallDir=%%i
 )
 
-if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
-	call "%InstallDir%\Common7\Tools\vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo
-) else if exist "%VsWhereDir%\Microsoft Visual Studio 14.0\Common7\Tools\vsdevcmd.bat" (
-	call "%VsWhereDir%\Microsoft Visual Studio 14.0\Common7\Tools\vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo
+if exist "%InstallDir%/Common7/Tools/vsdevcmd.bat" (
+	call "%InstallDir%/Common7/Tools/vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo
+) else if exist "%VsWhereDir%/Microsoft Visual Studio 14.0/Common7/Tools/vsdevcmd.bat" (
+	call "%VsWhereDir%/Microsoft Visual Studio 14.0/Common7/Tools/vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo
 )
 
 set ObjFile=.v.c.obj
 
-echo  ^> Attempting to build v_win.c with MSVC
-cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no
+echo  ^> Attempting to build "%V_BOOTSTRAP%" (from v_win.c) with MSVC
+cl.exe /volatile:ms /Fo%ObjFile% /W0 /MD /D_VBOOTSTRAP "vc/v_win.c" user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:"%V_BOOTSTRAP%" /incremental:no
 if %ERRORLEVEL% NEQ 0 (
     echo In some cases, compile errors happen because of the MSVC compiler version
     cl.exe
     goto :compile_error
 )
 
-echo  ^> Compiling .\v.exe with itself
-v.exe -keepc -g -showcc -cc msvc -o v2.exe cmd/v
+echo  ^> Compiling "%V_EXE%" with "%V_BOOTSTRAP%"
+"%V_BOOTSTRAP%" -keepc -g -showcc -cc msvc -o "%V_UPDATED%" cmd/v
 del %ObjFile%
 if %ERRORLEVEL% NEQ 0 goto :compile_error
-call :move_v2_to_v
+call :move_updated_to_v
 goto :success
 
 :download_tcc
-pushd %tcc_dir% && (
+pushd "%tcc_dir%" && (
     echo Updating TCC
     echo  ^> Syncing TCC from !tcc_url!
     git pull --quiet
@@ -243,14 +252,14 @@ echo ERROR: please follow the instructions in https://github.com/vlang/v/wiki/In
 exit /b 1
 
 :success
-.\v.exe run cmd\tools\detect_tcc.v
+"%V_EXE%" run cmd/tools/detect_tcc.v
 echo  ^> V built successfully!
-echo  ^> To add V to your PATH, run `.\v.exe symlink`.
+echo  ^> To add V to your PATH, run `%V_EXE% symlink`.
 
 :version
 echo.
 echo | set /p="V version: "
-.\v.exe version
+"%V_EXE%" version
 goto :eof
 
 :usage
@@ -266,6 +275,7 @@ echo     clean             Clean build artifacts and debugging symbols
 echo     cleanall          Cleanup entire ALL build artifacts and vc repository
 echo     check             Check that tests pass, and the repository is in a good shape for Pull Requests
 echo     help              Display help for the given target
+echo     rebuild           Fully clean/reset repository and rebuild V
 echo.
 echo Examples:
 echo     make.bat -msvc
@@ -311,18 +321,30 @@ echo    --local     Use the local vc repository without
 echo                syncing with remote
 exit /b 0
 
+:help_rebuild
+echo Usage:
+echo     make.bat rebuild [compiler] [options]
+echo.
+echo Compiler:
+echo     -msvc ^| -gcc ^| -tcc ^| -tcc32 ^| -clang    Set C compiler
+echo.
+echo Options:
+echo    --local     Use the local vc repository without
+echo                syncing with remote
+exit /b 0
+
 :bootstrap_tcc
-echo Bootstraping TCC...
+echo Bootstrapping TCC...
 echo  ^> TCC not found
 if "!tcc_branch!" == "thirdparty-windows-i386" ( echo  ^> Downloading TCC32 from !tcc_url! , branch !tcc_branch! ) else ( echo  ^> Downloading TCC64 from !tcc_url! , branch !tcc_branch! )
-git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%"
-git -C "%tcc_dir%" log -n3
+git clone --filter=blob:none --quiet --branch !tcc_branch! !tcc_url! "%tcc_dir%"
+git --no-pager -C "%tcc_dir%" log -n3
 exit /b 0
 
 :cloning_vc
 echo Cloning vc...
 echo  ^> Cloning from remote !vc_url!
-git clone --depth 1 --quiet "%vc_url%"
+git clone --filter=blob:none --quiet "%vc_url%"
 exit /b 0
 
 :eof
@@ -330,9 +352,10 @@ popd
 endlocal
 exit /b 0
 
-:move_v2_to_v
-del v.exe
+:move_updated_to_v
+@REM del "%V_EXE%" &:: breaks if `make.bat` is run from `v up` b/c of held file handle on `%V_EXE%`
+if exist "%V_EXE%" move "%V_EXE%" "%V_OLD%" >nul
 REM sleep for at most 100ms
 ping 192.0.2.1 -n 1 -w 100 >nul
-move v2.exe v.exe
+move "%V_UPDATED%" "%V_EXE%" >nul
 exit /b 0

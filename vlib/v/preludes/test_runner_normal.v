@@ -92,7 +92,7 @@ fn (mut runner NormalTestRunner) fn_fail() {
 
 fn (mut runner NormalTestRunner) fn_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
 	filepath := if runner.use_relative_paths { file.clone() } else { os.real_path(file) }
-	mut final_filepath := filepath + ':$line_nr:'
+	mut final_filepath := filepath + ':${line_nr}:'
 	if runner.use_color {
 		final_filepath = term.gray(final_filepath)
 	}
@@ -101,7 +101,7 @@ fn (mut runner NormalTestRunner) fn_error(line_nr int, file string, mod string, 
 		final_funcname = term.red('✗ ' + final_funcname)
 	}
 	final_msg := if runner.use_color { term.dim(errmsg) } else { errmsg.clone() }
-	eprintln('$final_filepath $final_funcname failed propagation with error: $final_msg')
+	eprintln('${final_filepath} ${final_funcname} failed propagation with error: ${final_msg}')
 	if os.is_file(file) {
 		source_lines := os.read_lines(file) or { []string{len: line_nr + 1} }
 		eprintln('${line_nr:5} | ${source_lines[line_nr - 1]}')
@@ -130,12 +130,12 @@ fn (mut runner NormalTestRunner) assert_fail(i &VAssertMetaInfo) {
 	} else {
 		'assert ' + i.src
 	}
-	eprintln('$final_filepath $final_funcname')
+	eprintln('${final_filepath} ${final_funcname}')
 	if i.op.len > 0 && i.op != 'call' {
 		mut lvtitle := '    Left value:'
 		mut rvtitle := '    Right value:'
-		mut slvalue := '$i.lvalue'
-		mut srvalue := '$i.rvalue'
+		mut slvalue := '${i.lvalue}'
+		mut srvalue := '${i.rvalue}'
 		if runner.use_color {
 			slvalue = term.yellow(slvalue)
 			srvalue = term.yellow(srvalue)
@@ -144,27 +144,27 @@ fn (mut runner NormalTestRunner) assert_fail(i &VAssertMetaInfo) {
 		}
 		cutoff_limit := 30
 		if slvalue.len > cutoff_limit || srvalue.len > cutoff_limit {
-			eprintln('  > $final_src')
+			eprintln('  > ${final_src}')
 			eprintln(lvtitle)
-			eprintln('      $slvalue')
+			eprintln('      ${slvalue}')
 			eprintln(rvtitle)
-			eprintln('      $srvalue')
+			eprintln('      ${srvalue}')
 		} else {
-			eprintln('   > $final_src')
-			eprintln(' $lvtitle $slvalue')
-			eprintln('$rvtitle $srvalue')
+			eprintln('   > ${final_src}')
+			eprintln(' ${lvtitle} ${slvalue}')
+			eprintln('${rvtitle} ${srvalue}')
 		}
 	} else {
-		eprintln('    $final_src')
+		eprintln('    ${final_src}')
 	}
 	if i.has_msg {
 		mut mtitle := '        Message:'
-		mut mvalue := '$i.message'
+		mut mvalue := '${i.message}'
 		if runner.use_color {
 			mvalue = term.yellow(mvalue)
 			mtitle = term.gray(mtitle)
 		}
-		eprintln('$mtitle $mvalue')
+		eprintln('${mtitle} ${mvalue}')
 	}
 	eprintln('')
 	runner.all_assertsions << i

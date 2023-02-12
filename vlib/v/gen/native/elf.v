@@ -560,7 +560,7 @@ fn (mut g Gen) gen_section_header(mut sh SectionHeader) {
 fn (mut g Gen) gen_sections(mut sections []Section) {
 	for mut section in sections {
 		g.gen_section_header(mut section.header)
-		g.println('; ^^^ section header (64) "$section.name"')
+		g.println('; ^^^ section header (64) "${section.name}"')
 	}
 }
 
@@ -576,7 +576,7 @@ fn (mut g Gen) gen_symtab_data(section Section, data []SymbolTableSection) {
 		g.write16(symbol.shndx)
 		g.write64(symbol.value)
 		g.write64(symbol.size)
-		g.println('; SHT_SYMTAB $symbol.str_name')
+		g.println('; SHT_SYMTAB ${symbol.str_name}')
 	}
 
 	size := native.elf_symtab_size * data.len
@@ -598,7 +598,7 @@ fn (mut g Gen) gen_section_data(sections []Section) {
 				for str in data.strings {
 					g.write(str.bytes())
 					g.write8(0) // null-terminate string
-					g.println('; "$str"')
+					g.println('; "${str}"')
 				}
 				g.write8(0) // null-postfixed
 
@@ -621,7 +621,7 @@ fn (mut g Gen) gen_section_data(sections []Section) {
 					g.fn_addr[rela.name] = rela.offset
 					g.write64(rela.info)
 					g.write64(rela.addend)
-					g.println('; SHT_RELA `$rela.name` ($rela.offset, $rela.info, $rela.addend)')
+					g.println('; SHT_RELA `${rela.name}` (${rela.offset}, ${rela.info}, ${rela.addend})')
 				}
 
 				size := native.elf_rela_size * data.len
@@ -635,7 +635,7 @@ fn (mut g Gen) gen_section_data(sections []Section) {
 				for dyn in data {
 					g.write64(dyn.tag)
 					g.write64(dyn.un)
-					g.println('; SHT_DYNAMIC ($dyn.tag, $dyn.un)')
+					g.println('; SHT_DYNAMIC (${dyn.tag}, ${dyn.un})')
 				}
 
 				size := native.elf_dynamic_size * data.len
@@ -665,7 +665,7 @@ fn (mut g Gen) gen_section_data(sections []Section) {
 			RelSection {
 				g.write64(data.offset)
 				g.write64(data.info)
-				g.println('; SHT_REL ($data.offset, $data.info)')
+				g.println('; SHT_REL (${data.offset}, ${data.info})')
 
 				size := native.elf_rel_size
 				g.write64_at(section.header.pos + 32, i64(size))
@@ -747,7 +747,7 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 
 	// user code starts here
 	if g.pref.is_verbose {
-		eprintln('code_start_pos = $g.buf.len.hex()')
+		eprintln('code_start_pos = ${g.buf.len.hex()}')
 	}
 
 	g.code_start_pos = g.pos()
@@ -795,7 +795,7 @@ pub fn (mut g Gen) generate_simple_elf_header() {
 
 	// user code starts here
 	if g.pref.is_verbose {
-		eprintln('code_start_pos = $g.buf.len.hex()')
+		eprintln('code_start_pos = ${g.buf.len.hex()}')
 	}
 
 	g.code_start_pos = g.pos()
@@ -817,26 +817,33 @@ pub fn (mut g Gen) generate_simple_elf_header() {
 			g.syscall()
 		}
 		else {
-			g.n_error('unsupported platform $g.pref.arch')
+			g.n_error('unsupported platform ${g.pref.arch}')
 		}
 	}
 }
 
 pub fn (mut g Gen) elf_string_table() {
+	mut generated := map[string]int{}
+
 	for _, s in g.strs {
+		pos := generated[s.str] or { g.buf.len }
+
 		match s.typ {
 			.abs64 {
-				// g.write64_at(native.segment_start + g.buf.len, int(g.str_pos[i]))
-				g.write64_at(s.pos, g.buf.len)
+				g.write64_at(s.pos, pos)
 			}
 			.rel32 {
-				g.write32_at(s.pos, g.buf.len - s.pos - 4)
+				g.write32_at(s.pos, pos - s.pos - 4)
 			}
 			else {
 				g.n_error('unsupported string reloc type')
 			}
 		}
-		g.write_string(s.str)
+
+		if s.str !in generated {
+			generated[s.str] = pos
+			g.write_string(s.str)
+		}
 	}
 }
 
@@ -901,7 +908,7 @@ pub fn (mut g Gen) find_o_path(fname string) string {
 			g.prepend_vobjpath(['/usr/lib/aarch64-linux-gnu', '/usr/lib'])
 		}
 		else {
-			g.n_error('unknown architecture $g.pref.arch')
+			g.n_error('unknown architecture ${g.pref.arch}')
 			['/dev/null']
 		}
 	}
@@ -925,11 +932,11 @@ pub fn (mut g Gen) get_lpaths() string {
 			g.prepend_vobjpath(['/usr/lib/aarch64-linux-gnu', '/usr/lib', '/lib'])
 		}
 		else {
-			g.n_error('unknown architecture $g.pref.arch')
+			g.n_error('unknown architecture ${g.pref.arch}')
 			['/dev/null']
 		}
 	}
-	return lpaths.map('-L$it').join(' ')
+	return lpaths.map('-L${it}').join(' ')
 }
 
 pub fn (mut g Gen) link_elf_file(obj_file string) {
@@ -946,7 +953,7 @@ pub fn (mut g Gen) link_elf_file(obj_file string) {
 			'aarch64elf'
 		}
 		else {
-			g.n_error('unknown architecture $g.pref.arch')
+			g.n_error('unknown architecture ${g.pref.arch}')
 			'elf_x86_64' // default to x86_64
 		}
 	}
@@ -960,7 +967,7 @@ pub fn (mut g Gen) link_elf_file(obj_file string) {
 	linker_args := [
 		'-v',
 		lpaths,
-		'-m $arch',
+		'-m ${arch}',
 		'-dynamic-linker',
 		dynamic_linker,
 		crt1,
@@ -969,8 +976,8 @@ pub fn (mut g Gen) link_elf_file(obj_file string) {
 		'-lm',
 		'-lpthread',
 		crtn,
-		'$obj_file',
-		'-o $g.out_name',
+		'${obj_file}',
+		'-o ${g.out_name}',
 	]
 	slinker_args := linker_args.join(' ')
 
@@ -981,18 +988,18 @@ pub fn (mut g Gen) link_elf_file(obj_file string) {
 		ld = custom_linker
 	}
 	linker_path := os.real_path(ld)
-	linker_cmd := '${os.quoted_path(linker_path)} $slinker_args'
+	linker_cmd := '${os.quoted_path(linker_path)} ${slinker_args}'
 	if g.pref.is_verbose {
 		println(linker_cmd)
 	}
 
 	res := os.execute(linker_cmd)
 	if res.exit_code != 0 {
-		g.n_error('ELF linking failed ($ld):\n$res.output')
+		g.n_error('ELF linking failed (${ld}):\n${res.output}')
 		return
 	}
 
 	if g.pref.is_verbose {
-		println('linking with $ld finished successfully:\n$res.output')
+		println('linking with ${ld} finished successfully:\n${res.output}')
 	}
 }

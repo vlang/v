@@ -129,7 +129,7 @@ fn main() {
 	)
 	app.qt = app.qt.create(0, 0, 1340, 640, 8, 4, 0)
 	app.start()
-	go app.run()
+	spawn app.run()
 	app.gg.run()
 }
 
@@ -177,8 +177,8 @@ fn (app &App) display() {
 		app.gg.draw_rect_filled(f32(retrieved.x + 1), f32(retrieved.y + 1), f32(retrieved.width - 2),
 			f32(retrieved.height - 2), gx.green)
 	}
-	app.gg.draw_text(1200, 25, 'Nodes: $app.nodes.len', font_small)
-	app.gg.draw_text(1200, 50, 'Particles: $app.particles.len', font_small)
+	app.gg.draw_text(1200, 25, 'Nodes: ${app.nodes.len}', font_small)
+	app.gg.draw_text(1200, 50, 'Particles: ${app.particles.len}', font_small)
 }
 
 fn (app &App) draw() {

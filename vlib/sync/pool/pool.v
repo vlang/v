@@ -22,7 +22,7 @@ mut:
 	thread_contexts []voidptr
 }
 
-pub type ThreadCB = fn (p &PoolProcessor, idx int, task_id int) voidptr
+pub type ThreadCB = fn (mut p PoolProcessor, idx int, task_id int) voidptr
 
 pub struct PoolProcessorConfig {
 	maxjobs  int
@@ -72,7 +72,7 @@ pub fn (mut pool PoolProcessor) set_max_jobs(njobs int) {
 // by the number of available cores on the system.
 // work_on_items returns *after* all threads finish.
 // You can optionally call get_results after that.
-pub fn (mut pool PoolProcessor) work_on_items<T>(items []T) {
+pub fn (mut pool PoolProcessor) work_on_items[T](items []T) {
 	pool.work_on_pointers(unsafe { items.pointers() })
 }
 
@@ -89,7 +89,7 @@ pub fn (mut pool PoolProcessor) work_on_pointers(items []voidptr) {
 		pool.waitgroup.add(njobs)
 		for i := 0; i < njobs; i++ {
 			if njobs > 1 {
-				go process_in_thread(mut pool, i)
+				spawn process_in_thread(mut pool, i)
 			} else {
 				// do not run concurrently, just use the same thread:
 				process_in_thread(mut pool, i)
@@ -110,37 +110,37 @@ fn process_in_thread(mut pool PoolProcessor, task_id int) {
 		if idx >= ilen {
 			break
 		}
-		pool.results[idx] = cb(pool, idx, task_id)
+		pool.results[idx] = cb(mut pool, idx, task_id)
 	}
 	pool.waitgroup.done()
 }
 
 // get_item - called by the worker callback.
 // Retrieves a type safe instance of the currently processed item
-pub fn (pool &PoolProcessor) get_item<T>(idx int) T {
-	return *(&T(pool.items[idx]))
+pub fn (pool &PoolProcessor) get_item[T](idx int) T {
+	return unsafe { *(&T(pool.items[idx])) }
 }
 
 // get_result - called by the main thread to get a specific result.
 // Retrieves a type safe instance of the produced result.
-pub fn (pool &PoolProcessor) get_result<T>(idx int) T {
-	return *(&T(pool.results[idx]))
+pub fn (pool &PoolProcessor) get_result[T](idx int) T {
+	return unsafe { *(&T(pool.results[idx])) }
 }
 
 // get_results - get a list of type safe results in the main thread.
-pub fn (pool &PoolProcessor) get_results<T>() []T {
+pub fn (pool &PoolProcessor) get_results[T]() []T {
 	mut res := []T{cap: pool.results.len}
 	for i in 0 .. pool.results.len {
-		res << *(&T(pool.results[i]))
+		res << unsafe { *(&T(pool.results[i])) }
 	}
 	return res
 }
 
 // get_results_ref - get a list of type safe results in the main thread.
-pub fn (pool &PoolProcessor) get_results_ref<T>() []&T {
+pub fn (pool &PoolProcessor) get_results_ref[T]() []&T {
 	mut res := []&T{cap: pool.results.len}
 	for i in 0 .. pool.results.len {
-		res << &T(pool.results[i])
+		res << unsafe { &T(pool.results[i]) }
 	}
 	return res
 }

@@ -38,10 +38,10 @@ pub fn compile_c(mut b builder.Builder) {
 
 pub fn gen_c(mut b builder.Builder, v_files []string) string {
 	b.front_and_middle_stages(v_files) or {
-		if err.code() != 9999 {
-			builder.verror(err.msg())
+		if err.code() > 7000 {
+			return ''
 		}
-		return ''
+		builder.verror(err.msg())
 	}
 
 	util.timing_start('C GEN')
@@ -60,7 +60,7 @@ pub fn gen_c(mut b builder.Builder, v_files []string) string {
 pub fn build_c(mut b builder.Builder, v_files []string, out_file string) {
 	b.out_name_c = out_file
 	b.pref.out_name_c = os.real_path(out_file)
-	b.info('build_c($out_file)')
+	b.info('build_c(${out_file})')
 	output2 := gen_c(mut b, v_files)
 	os.write_file(out_file, output2) or { panic(err) }
 	if b.pref.is_stats {

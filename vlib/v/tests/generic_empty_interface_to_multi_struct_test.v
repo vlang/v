@@ -13,7 +13,7 @@ struct Container {
 	concrete_b Any
 }
 
-fn cast_struct<T>(any_struct Any) &T {
+fn cast_struct[T](any_struct Any) &T {
 	if any_struct is T {
 		return any_struct
 	}
@@ -21,8 +21,8 @@ fn cast_struct<T>(any_struct Any) &T {
 }
 
 fn test_generic_empty_interface_to_multi_struct() {
-	concrete_a := cast_struct<ConcreteA>(ConcreteA{12345})
-	concrete_b := cast_struct<ConcreteB>(ConcreteB{54321})
+	concrete_a := cast_struct[ConcreteA](ConcreteA{12345})
+	concrete_b := cast_struct[ConcreteB](ConcreteB{54321})
 	println(concrete_a.a)
 	println(concrete_b.b)
 	assert concrete_a.a == 12345

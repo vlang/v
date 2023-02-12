@@ -5,6 +5,13 @@ vlib/v/checker/tests/incorrect_smartcast_err.vv:10:5: notice: smartcasting requi
       |        ~~~~~~~
    11 |         println(example.field)
    12 |     }
+vlib/v/checker/tests/incorrect_smartcast_err.vv:10:5: error: smart casting a mutable interface value requires `if mut example is ...`
+    8 | fn main(){
+    9 |     mut example := IExample(Example{field:"test"})
+   10 |     if example is Example{
+      |        ~~~~~~~
+   11 |         println(example.field)
+   12 |     }
 vlib/v/checker/tests/incorrect_smartcast_err.vv:11:19: error: type `IExample` has no field named `field`
     9 |     mut example := IExample(Example{field:"test"})
    10 |     if example is Example{

@@ -13,6 +13,7 @@ mut:
 
 const ctx_ptr = &Context(0)
 
+// init initializes the terminal console with Config `cfg`.
 pub fn init(cfg Config) &Context {
 	mut ctx := &Context{
 		cfg: cfg
@@ -42,12 +43,13 @@ fn load_title() {
 	flush_stdout()
 }
 
+// run sets up and starts the terminal.
 pub fn (mut ctx Context) run() ? {
 	if ctx.cfg.use_x11 {
 		ctx.fail('error: x11 backend not implemented yet')
 		exit(1)
 	} else {
-		ctx.termios_setup()?
+		ctx.termios_setup() or { panic(err) }
 		ctx.termios_loop()
 	}
 }

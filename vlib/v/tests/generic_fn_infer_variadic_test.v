@@ -1,5 +1,5 @@
-fn generic<T>(items ...T) string {
-	return '$items'
+fn generic[T](items ...T) string {
+	return '${items}'
 }
 
 fn test_generic_fn_infer_variadic() {

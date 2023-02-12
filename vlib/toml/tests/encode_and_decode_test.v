@@ -15,7 +15,7 @@ pub mut:
 	title    JobTitle
 }
 
-fn (e Employee) to_toml() string {
+pub fn (e Employee) to_toml() string {
 	mut mp := map[string]toml.Any{}
 	mp['name'] = toml.Any(e.name)
 	mp['age'] = toml.Any(e.age)
@@ -25,7 +25,7 @@ fn (e Employee) to_toml() string {
 	return mp.to_toml()
 }
 
-fn (mut e Employee) from_toml(any toml.Any) {
+pub fn (mut e Employee) from_toml(any toml.Any) {
 	mp := any.as_map()
 	e.name = mp['name'] or { toml.Any('') }.string()
 	e.age = mp['age'] or { toml.Any(0) }.int()
@@ -36,20 +36,20 @@ fn (mut e Employee) from_toml(any toml.Any) {
 
 fn test_encode_and_decode() {
 	x := Employee{'Peter', 28, 95000.5, true, .worker}
-	s := toml.encode<Employee>(x)
-	eprintln('Employee x: $s')
+	s := toml.encode[Employee](x)
+	eprintln('Employee x: ${s}')
 	assert s == r'name = "Peter"
 age = 28
 salary = 95000.5
 is_human = true
 title = 2'
 
-	y := toml.decode<Employee>(s) or {
+	y := toml.decode[Employee](s) or {
 		println(err)
 		assert false
 		return
 	}
-	eprintln('Employee y: $y')
+	eprintln('Employee y: ${y}')
 	assert y.name == 'Peter'
 	assert y.age == 28
 	assert y.salary == 95000.5

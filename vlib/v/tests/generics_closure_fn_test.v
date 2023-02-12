@@ -1,5 +1,5 @@
-fn setter<T>(mut m map[T]int) fn (T, int) {
-	return fn [mut m] <T>(x T, k int) {
+fn setter[T](mut m map[T]int) fn (T, int) {
+	return fn [mut m] [T](x T, k int) {
 		m[x] = k
 	}
 }

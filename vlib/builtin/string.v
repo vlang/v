@@ -499,7 +499,7 @@ pub fn (s string) replace_each(vals []string) string {
 // Example: assert '\tHello!'.replace_char(`\t`,` `,8) == '        Hello!'
 [direct_array_access]
 pub fn (s string) replace_char(rep u8, with u8, repeat int) string {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if repeat <= 0 {
 			panic('string.replace_char(): tab length too short')
 		}
@@ -841,24 +841,34 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 
 // split_into_lines splits the string by newline characters.
 // newlines are stripped.
-// Both `\n` and `\r\n` newline endings are supported.
+// `\r` (MacOS), `\n` (POSIX), and `\r\n` (WinOS) line endings are all supported (including mixed line endings).
+// NOTE: algorithm is "greedy", consuming '\r\n' as a single line ending with higher priority than '\r' and '\n' as multiple endings
 [direct_array_access]
 pub fn (s string) split_into_lines() []string {
 	mut res := []string{}
 	if s.len == 0 {
 		return res
 	}
-	mut start := 0
-	mut end := 0
+	cr := `\r`
+	lf := `\n`
+	mut line_start := 0
 	for i := 0; i < s.len; i++ {
-		if s[i] == 10 {
-			end = if i > 0 && s[i - 1] == 13 { i - 1 } else { i }
-			res << if start == end { '' } else { s[start..end] }
-			start = i + 1
+		if line_start <= i {
+			if s[i] == lf {
+				res << if line_start == i { '' } else { s[line_start..i] }
+				line_start = i + 1
+			} else if s[i] == cr {
+				res << if line_start == i { '' } else { s[line_start..i] }
+				if ((i + 1) < s.len) && (s[i + 1] == lf) {
+					line_start = i + 2
+				} else {
+					line_start = i + 1
+				}
+			}
 		}
 	}
-	if start < s.len {
-		res << s[start..]
+	if line_start < s.len {
+		res << s[line_start..]
 	}
 	return res
 }
@@ -873,9 +883,9 @@ fn (s string) substr2(start int, _end int, end_max bool) string {
 // Example: assert 'ABCD'.substr(1,3) == 'BC'
 [direct_array_access]
 pub fn (s string) substr(start int, end int) string {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-			panic('substr($start, $end) out of bounds (len=$s.len)')
+			panic('substr(${start}, ${end}) out of bounds (len=${s.len})')
 		}
 	}
 	len := end - start
@@ -902,7 +912,7 @@ pub fn (s string) substr(start int, end int) string {
 [direct_array_access]
 pub fn (s string) substr_with_check(start int, end int) ?string {
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-		return error('substr($start, $end) out of bounds (len=$s.len)')
+		return error('substr(${start}, ${end}) out of bounds (len=${s.len})')
 	}
 	len := end - start
 	if len == s.len {
@@ -1413,11 +1423,18 @@ pub fn (s string) trim_space() string {
 
 // trim strips any of the characters given in `cutset` from the start and end of the string.
 // Example: assert ' ffHello V ffff'.trim(' f') == 'Hello V'
-[direct_array_access]
 pub fn (s string) trim(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s.clone()
 	}
+	left, right := s.trim_indexes(cutset)
+	return s.substr(left, right)
+}
+
+// trim_indexes gets the new start and end indicies of a string when any of the characters given in `cutset` were stripped from the start and end of the string. Should be used as an input to `substr()`. If the string contains only the characters in `cutset`, both values returned are zero.
+// Example: left, right := '-hi-'.trim_indexes('-')
+[direct_array_access]
+pub fn (s string) trim_indexes(cutset string) (int, int) {
 	mut pos_left := 0
 	mut pos_right := s.len - 1
 	mut cs_match := true
@@ -1438,10 +1455,10 @@ pub fn (s string) trim(cutset string) string {
 			}
 		}
 		if pos_left > pos_right {
-			return ''
+			return 0, 0
 		}
 	}
-	return s.substr(pos_left, pos_right + 1)
+	return pos_left, pos_right + 1
 }
 
 // trim_left strips any of the characters given in `cutset` from the left of the string.
@@ -1575,9 +1592,9 @@ pub fn (s string) str() string {
 // at returns the byte at index `idx`.
 // Example: assert 'ABC'.at(1) == u8(`B`)
 fn (s string) at(idx int) byte {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if idx < 0 || idx >= s.len {
-			panic('string index out of range: $idx / $s.len')
+			panic('string index out of range: ${idx} / ${s.len}')
 		}
 	}
 	unsafe {
@@ -1874,7 +1891,7 @@ pub fn (s string) bytes() []u8 {
 [direct_array_access]
 pub fn (s string) repeat(count int) string {
 	if count < 0 {
-		panic('string.repeat: count is negative: $count')
+		panic('string.repeat: count is negative: ${count}')
 	} else if count == 0 {
 		return ''
 	} else if count == 1 {
@@ -1934,6 +1951,8 @@ pub fn (s string) fields() []string {
 // Note: the delimiter has to be a byte at this time. That means surrounding
 // the value in ``.
 //
+// See also: string.trim_indent()
+//
 // Example:
 // ```v
 // st := 'Hello there,
@@ -1992,6 +2011,99 @@ pub fn (s string) strip_margin_custom(del u8) string {
 		ret[count] = 0
 		return ret.vstring_with_len(count)
 	}
+}
+
+// trim_indent detects a common minimal indent of all the input lines,
+// removes it from every line and also removes the first and the last
+// lines if they are blank (notice difference blank vs empty).
+//
+// Note that blank lines do not affect the detected indent level.
+//
+// In case if there are non-blank lines with no leading whitespace characters
+// (no indent at all) then the common indent is 0, and therefore this function
+// doesn't change the indentation.
+//
+// Example:
+// ```v
+// st := '
+//      Hello there,
+//      this is a string,
+//      all the leading indents are removed
+//      and also the first and the last lines if they are blank
+// '.trim_indent()
+//
+// assert st == 'Hello there,
+// this is a string,
+// all the leading indents are removed
+// and also the first and the last lines if they are blank'
+// ```
+pub fn (s string) trim_indent() string {
+	mut lines := s.split_into_lines()
+
+	lines_indents := lines
+		.filter(!it.is_blank())
+		.map(it.indent_width())
+
+	mut min_common_indent := int(2147483647) // max int
+	for line_indent in lines_indents {
+		if line_indent < min_common_indent {
+			min_common_indent = line_indent
+		}
+	}
+
+	// trim first line if it's blank
+	if lines.len > 0 && lines.first().is_blank() {
+		lines = lines[1..]
+	}
+
+	// trim last line if it's blank
+	if lines.len > 0 && lines.last().is_blank() {
+		lines = lines[..lines.len - 1]
+	}
+
+	mut trimmed_lines := []string{cap: lines.len}
+
+	for line in lines {
+		if line.is_blank() {
+			trimmed_lines << line
+			continue
+		}
+
+		trimmed_lines << line[min_common_indent..]
+	}
+
+	return trimmed_lines.join('\n')
+}
+
+// indent_width returns the number of spaces or tabs at the beginning of the string.
+// Example: assert '  v'.indent_width() == 2
+// Example: assert '\t\tv'.indent_width() == 2
+pub fn (s string) indent_width() int {
+	for i, c in s {
+		if !c.is_space() {
+			return i
+		}
+	}
+
+	return 0
+}
+
+// is_blank returns true if the string is empty or contains only white-space.
+// Example: assert ' '.is_blank()
+// Example: assert '\t'.is_blank()
+// Example: assert 'v'.is_blank() == false
+pub fn (s string) is_blank() bool {
+	if s.len == 0 {
+		return true
+	}
+
+	for c in s {
+		if !c.is_space() {
+			return false
+		}
+	}
+
+	return true
 }
 
 // match_glob matches the string, with a Unix shell-style wildcard pattern.

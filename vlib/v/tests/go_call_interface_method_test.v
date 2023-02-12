@@ -21,7 +21,7 @@ fn test_go_call_interface_method() {
 	tasks << Task2{}
 
 	for task in tasks {
-		go task.task()
+		spawn task.task()
 	}
 
 	assert true

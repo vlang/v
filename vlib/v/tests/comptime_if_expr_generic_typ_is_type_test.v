@@ -1,6 +1,4 @@
-module main
-
-fn write<T>(out T) string {
+fn write[T](out T) string {
 	$if T.typ is bool {
 		println('FOO')
 		return 'FOO'
@@ -13,6 +11,6 @@ fn write<T>(out T) string {
 
 fn test_comptime_if_expr_generic_typ_is_type() {
 	mut val := false
-	ret := write<bool>(val)
+	ret := write[bool](val)
 	assert ret == 'FOO'
 }

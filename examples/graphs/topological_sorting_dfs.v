@@ -9,7 +9,7 @@
 // THE DFS RECURSIVE .... classical searchig for leaves nodes
 // the arguments are used in the function to avoid global variables....
 fn dfs_recursive(u string, mut visited map[string]bool, graph map[string][]string, mut top_sorting []string) {
-	print(' Visiting: $u -> ')
+	print(' Visiting: ${u} -> ')
 	visited[u] = true
 
 	for v in graph[u] {
@@ -67,7 +67,7 @@ fn main() {
 
 	mut graph := map[string][]string{} // the graph: adjacency matrix
 	for index, g_value in [graph_01, graph_02, graph_03] {
-		println('Topological sorting for the graph $index using a DFS recursive')
+		println('Topological sorting for the graph ${index} using a DFS recursive')
 		graph = g_value.clone() // graphs_sample[g].clone() // choice your SAMPLE
 
 		// mut n_nodes := graph.len
@@ -82,7 +82,7 @@ fn main() {
 			}
 		}
 
-		print('\n A topological sorting of graph $index : ')
+		print('\n A topological sorting of graph ${index} : ')
 		// println(g_value)
 		println(top_sorting.reverse())
 		println('')

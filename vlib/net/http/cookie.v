@@ -143,7 +143,7 @@ pub fn (c &Cookie) str() string {
 	}
 	if c.expires.year > 1600 {
 		e := c.expires
-		time_str := '$e.weekday_str(), $e.day.str() $e.smonth() $e.year $e.hhmmss() GMT'
+		time_str := '${e.weekday_str()}, ${e.day.str()} ${e.smonth()} ${e.year} ${e.hhmmss()} GMT'
 		b.write_string('; expires=')
 		b.write_string(time_str)
 	}
@@ -214,7 +214,7 @@ pub fn sanitize_cookie_value(v string) string {
 	}
 	// Check for the existence of a space or comma
 	if val.starts_with(' ') || val.ends_with(' ') || val.starts_with(',') || val.ends_with(',') {
-		return '"$v"'
+		return '"${v}"'
 	}
 	return v
 }

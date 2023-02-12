@@ -14,7 +14,8 @@ const (
 	addr_ip_any  = [4]u8{init: u8(0)}
 )
 
-fn new_ip6(port u16, addr [16]u8) Addr {
+// new_ip6 creates a new Addr from the IP6 address family, based on the given port and addr
+pub fn new_ip6(port u16, addr [16]u8) Addr {
 	a := Addr{
 		f: u8(AddrFamily.ip6)
 		addr: AddrData{
@@ -29,7 +30,8 @@ fn new_ip6(port u16, addr [16]u8) Addr {
 	return a
 }
 
-fn new_ip(port u16, addr [4]u8) Addr {
+// new_ip creates a new Addr from the IPv4 address family, based on the given port and addr
+pub fn new_ip(port u16, addr [4]u8) Addr {
 	a := Addr{
 		f: u8(AddrFamily.ip)
 		addr: AddrData{
@@ -56,6 +58,7 @@ fn temp_unix() !Addr {
 	return addrs[0]
 }
 
+// family returns the family/kind of the given address `a`
 pub fn (a Addr) family() AddrFamily {
 	return unsafe { AddrFamily(a.f) }
 }
@@ -65,7 +68,8 @@ const (
 	max_ip6_len = 46
 )
 
-fn (a Ip) str() string {
+// str returns a string representation of `a`
+pub fn (a Ip) str() string {
 	buf := [net.max_ip_len]char{}
 
 	res := &char(C.inet_ntop(.ip, &a.addr, &buf[0], buf.len))
@@ -77,10 +81,11 @@ fn (a Ip) str() string {
 	saddr := unsafe { cstring_to_vstring(&buf[0]) }
 	port := C.ntohs(a.port)
 
-	return '$saddr:$port'
+	return '${saddr}:${port}'
 }
 
-fn (a Ip6) str() string {
+// str returns a string representation of `a`
+pub fn (a Ip6) str() string {
 	buf := [net.max_ip6_len]char{}
 
 	res := &char(C.inet_ntop(.ip6, &a.addr, &buf[0], buf.len))
@@ -92,12 +97,13 @@ fn (a Ip6) str() string {
 	saddr := unsafe { cstring_to_vstring(&buf[0]) }
 	port := C.ntohs(a.port)
 
-	return '[$saddr]:$port'
+	return '[${saddr}]:${port}'
 }
 
 const aoffset = __offsetof(Addr, addr)
 
-fn (a Addr) len() u32 {
+// len returns the length in bytes of the address `a`, depending on its family
+pub fn (a Addr) len() u32 {
 	match a.family() {
 		.ip {
 			return sizeof(Ip) + net.aoffset
@@ -114,6 +120,7 @@ fn (a Addr) len() u32 {
 	}
 }
 
+// resolve_addrs converts the given `addr`, `family` and `@type` to a list of addresses
 pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ![]Addr {
 	match family {
 		.ip, .ip6, .unspec {
@@ -143,6 +150,7 @@ pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ![]Addr {
 	}
 }
 
+// resolve_addrs converts the given `addr` and `@type` to a list of addresses
 pub fn resolve_addrs_fuzzy(addr string, @type SocketType) ![]Addr {
 	if addr.len == 0 {
 		return error('none')
@@ -160,6 +168,7 @@ pub fn resolve_addrs_fuzzy(addr string, @type SocketType) ![]Addr {
 	return resolve_addrs(addr, .unix, @type)
 }
 
+// resolve_ipaddrs converts the given `addr`, `family` and `typ` to a list of addresses
 pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
 	address, port := split_address(addr)!
 
@@ -187,7 +196,7 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
 
 	results := &C.addrinfo(0)
 
-	sport := '$port'
+	sport := '${port}'
 
 	// This might look silly but is recommended by MSDN
 	$if windows {
@@ -230,7 +239,7 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
 				addresses << new_addr
 			}
 			else {
-				panic('Unexpected address family $result.ai_family')
+				panic('Unexpected address family ${result.ai_family}')
 			}
 		}
 	}
@@ -238,7 +247,8 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
 	return addresses
 }
 
-fn (a Addr) str() string {
+// str returns a string representation of the address `a`
+pub fn (a Addr) str() string {
 	match unsafe { AddrFamily(a.f) } {
 		.ip {
 			unsafe {
@@ -261,6 +271,7 @@ fn (a Addr) str() string {
 	}
 }
 
+// addr_from_socket_handle returns an address, based on the given integer socket `handle`
 pub fn addr_from_socket_handle(handle int) Addr {
 	addr := Addr{
 		addr: AddrData{

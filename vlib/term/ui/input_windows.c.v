@@ -34,6 +34,7 @@ fn restore_terminal_state() {
 	os.flush()
 }
 
+// init initializes the context of a windows console given the `cfg`.
 pub fn init(cfg Config) &Context {
 	mut ctx := &Context{
 		cfg: cfg
@@ -75,7 +76,7 @@ pub fn init(cfg Config) &Context {
 	}
 
 	if ctx.cfg.window_title != '' {
-		print('\x1b]0;$ctx.cfg.window_title\x07')
+		print('\x1b]0;${ctx.cfg.window_title}\x07')
 		flush_stdout()
 	}
 
@@ -99,6 +100,7 @@ pub fn init(cfg Config) &Context {
 	return ctx
 }
 
+// run starts the windows console or restarts if it was paused.
 pub fn (mut ctx Context) run() ? {
 	frame_time := 1_000_000 / ctx.cfg.frame_rate
 	mut init_called := false
@@ -293,7 +295,7 @@ fn (mut ctx Context) parse_events() {
 				}
 				w := sb.srWindow.Right - sb.srWindow.Left + 1
 				h := sb.srWindow.Bottom - sb.srWindow.Top + 1
-				utf8 := '($ctx.window_width, $ctx.window_height) -> ($w, $h)'
+				utf8 := '(${ctx.window_width}, ${ctx.window_height}) -> (${w}, ${h})'
 				if w != ctx.window_width || h != ctx.window_height {
 					ctx.window_width, ctx.window_height = w, h
 					mut event := &Event{

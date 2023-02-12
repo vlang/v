@@ -24,14 +24,14 @@ fn main() {
 	}
 
 	for id in 0 .. args.workers {
-		workers << go sim.sim_worker(id, app.request_chan, [app.result_chan])
+		workers << spawn sim.sim_worker(id, app.request_chan, [app.result_chan])
 	}
 
 	handle_request := fn [app] (request &sim.SimRequest) ! {
 		app.request_chan <- request
 	}
 
-	go app.gg.run()
+	spawn app.gg.run()
 
 	sim.run(args.params, grid: args.grid, on_request: sim.SimRequestHandler(handle_request))
 }

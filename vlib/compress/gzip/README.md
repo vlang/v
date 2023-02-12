@@ -11,8 +11,8 @@ import compress.gzip
 
 fn main() {
 	uncompressed := 'Hello world!'
-	compressed := gzip.compress(uncompressed.bytes())?
-	decompressed := gzip.decompress(compressed)?
+	compressed := gzip.compress(uncompressed.bytes())!
+	decompressed := gzip.decompress(compressed)!
 	assert decompressed == uncompressed.bytes()
 }
 ```

@@ -5,5 +5,5 @@ type Result = Ints | Strings
 fn test_string_interpolation_sumtype() {
 	res := Result(Ints([1, 2, 3]))
 	println(res)
-	assert '$res' == 'Result(Ints([1, 2, 3]))'
+	assert '${res}' == 'Result(Ints([1, 2, 3]))'
 }

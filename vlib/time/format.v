@@ -20,6 +20,14 @@ pub fn (t Time) format_ss_milli() string {
 	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.microsecond / 1000):03d}'
 }
 
+// format_rfc3339 returns a date string in "YYYY-MM-DDTHH:mm:ss.123Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+// RFC3339 is an Internet profile, based on the ISO 8601 standard for for representation of dates and times using the Gregorian calendar.
+// It is intended to improve consistency and interoperability, when representing and using date and time in Internet protocols.
+pub fn (t Time) format_rfc3339() string {
+	u := t.local_to_utc()
+	return '${u.year:04d}-${u.month:02d}-${u.day:02d}T${u.hour:02d}:${u.minute:02d}:${u.second:02d}.${(u.microsecond / 1000):03d}Z'
+}
+
 // format_ss_micro returns a date string in "YYYY-MM-DD HH:mm:ss.123456" format (24h).
 pub fn (t Time) format_ss_micro() string {
 	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${t.microsecond:06d}'
@@ -271,10 +279,10 @@ pub fn (t Time) custom_format(s string) string {
 			'Z' {
 				mut hours := offset() / seconds_per_hour
 				if hours >= 0 {
-					sb.write_string('+$hours')
+					sb.write_string('+${hours}')
 				} else {
 					hours = -hours
-					sb.write_string('-$hours')
+					sb.write_string('-${hours}')
 				}
 			}
 			'ZZ' {
@@ -367,13 +375,13 @@ pub fn (t Time) get_fmt_time_str(fmt_time FormatTime) string {
 		t.hour
 	}
 	return match fmt_time {
-		.hhmm12 { '$hour_:${t.minute:02d} $tp' }
+		.hhmm12 { '${hour_}:${t.minute:02d} ${tp}' }
 		.hhmm24 { '${t.hour:02d}:${t.minute:02d}' }
-		.hhmmss12 { '$hour_:${t.minute:02d}:${t.second:02d} $tp' }
+		.hhmmss12 { '${hour_}:${t.minute:02d}:${t.second:02d} ${tp}' }
 		.hhmmss24 { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}' }
 		.hhmmss24_milli { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.microsecond / 1000):03d}' }
 		.hhmmss24_micro { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${t.microsecond:06d}' }
-		else { 'unknown enumeration $fmt_time' }
+		else { 'unknown enumeration ${fmt_time}' }
 	}
 }
 
@@ -386,17 +394,17 @@ pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate)
 	month := t.smonth()
 	year := '${(t.year % 100):02d}'
 	mut res := match fmt_date {
-		.ddmmyy { '${t.day:02d}|${t.month:02d}|$year' }
+		.ddmmyy { '${t.day:02d}|${t.month:02d}|${year}' }
 		.ddmmyyyy { '${t.day:02d}|${t.month:02d}|${t.year:04d}' }
-		.mmddyy { '${t.month:02d}|${t.day:02d}|$year' }
+		.mmddyy { '${t.month:02d}|${t.day:02d}|${year}' }
 		.mmddyyyy { '${t.month:02d}|${t.day:02d}|${t.year:04d}' }
-		.mmmd { '$month|$t.day' }
-		.mmmdd { '$month|${t.day:02d}' }
-		.mmmddyy { '$month|${t.day:02d}|$year' }
-		.mmmddyyyy { '$month|${t.day:02d}|${t.year:04d}' }
+		.mmmd { '${month}|${t.day}' }
+		.mmmdd { '${month}|${t.day:02d}' }
+		.mmmddyy { '${month}|${t.day:02d}|${year}' }
+		.mmmddyyyy { '${month}|${t.day:02d}|${t.year:04d}' }
 		.yyyymmdd { '${t.year:04d}|${t.month:02d}|${t.day:02d}' }
-		.yymmdd { '$year|${t.month:02d}|${t.day:02d}' }
-		else { 'unknown enumeration $fmt_date' }
+		.yymmdd { '${year}|${t.month:02d}|${t.day:02d}' }
+		else { 'unknown enumeration ${fmt_date}' }
 	}
 	del := match fmt_dlmtr {
 		.dot { '.' }
@@ -424,7 +432,7 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
 		if fmt_time != .no_time {
 			dstr := t.get_fmt_date_str(fmt_dlmtr, fmt_date)
 			tstr := t.get_fmt_time_str(fmt_time)
-			return '$dstr $tstr'
+			return '${dstr} ${tstr}'
 		} else {
 			return t.get_fmt_date_str(fmt_dlmtr, fmt_date)
 		}
@@ -435,7 +443,7 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
 pub fn (t Time) utc_string() string {
 	day_str := t.weekday_str()
 	month_str := t.smonth()
-	utc_string := '$day_str, $t.day $month_str $t.year ${t.hour:02d}:${t.minute:02d}:${t.second:02d} UTC'
+	utc_string := '${day_str}, ${t.day} ${month_str} ${t.year} ${t.hour:02d}:${t.minute:02d}:${t.second:02d} UTC'
 	return utc_string
 }
 

@@ -90,7 +90,7 @@ fn (upd VlsUpdater) exec_asset_file_name() string {
 
 fn (upd VlsUpdater) update_manifest(new_path string, from_source bool, timestamp time.Time) ! {
 	upd.log('Updating permissions...')
-	os.chmod(new_path, 755)!
+	os.chmod(new_path, 0o755)!
 
 	upd.log('Updating vls.config.json...')
 	mut manifest := upd.manifest_config() or {
@@ -154,8 +154,7 @@ fn (upd VlsUpdater) download_prebuilt() ! {
 	}
 
 	latest_release := releases_json[0].as_map()
-	latest_assets := latest_release['assets'] or { return }
-	assets := latest_assets.arr()
+	assets := latest_release['assets']!.arr()
 
 	mut checksum_asset_idx := -1
 	mut exec_asset_idx := -1
@@ -199,13 +198,11 @@ fn (upd VlsUpdater) download_prebuilt() ! {
 
 	upd.log('Executable found for this system. Downloading...')
 	upd.init_download_prebuilt()!
-	t_asset := exec_asset['browser_download_url'] or { return }
-	http.download_file(t_asset.str(), exec_asset_file_path)!
+	http.download_file(exec_asset['browser_download_url']!.str(), exec_asset_file_path)!
 
 	checksum_file_path := os.join_path(vls_cache_folder, 'checksums.txt')
 	checksum_file_asset := assets[checksum_asset_idx].as_map()
-	t_checksum_asset := checksum_file_asset['browser_download_url'] or { return }
-	http.download_file(t_checksum_asset.str(), checksum_file_path)!
+	http.download_file(checksum_file_asset['browser_download_url']!.str(), checksum_file_path)!
 	checksums := os.read_file(checksum_file_path)!.split_into_lines()
 
 	upd.log('Verifying checksum...')
@@ -229,7 +226,7 @@ fn (upd VlsUpdater) download_prebuilt() ! {
 }
 
 fn (upd VlsUpdater) print_new_vls_version(new_vls_exec_path string) {
-	exec_version := os.execute('$new_vls_exec_path --version')
+	exec_version := os.execute('${new_vls_exec_path} --version')
 	if exec_version.exit_code == 0 {
 		upd.log('VLS was updated to version: ${exec_version.output.all_after('vls version ').trim_space()}')
 	}
@@ -245,13 +242,13 @@ fn (upd VlsUpdater) compile_from_source() ! {
 
 	if !os.exists(vls_src_folder) {
 		upd.log('Cloning VLS repo...')
-		clone_result := os.execute('$git clone https://github.com/nedpals/vls $vls_src_folder')
+		clone_result := os.execute('${git} clone https://github.com/nedpals/vls ${vls_src_folder}')
 		if clone_result.exit_code != 0 {
-			return error('Failed to build VLS from source. Reason: $clone_result.output')
+			return error('Failed to build VLS from source. Reason: ${clone_result.output}')
 		}
 	} else {
 		upd.log('Updating VLS repo...')
-		pull_result := os.execute('$git -C $vls_src_folder pull')
+		pull_result := os.execute('${git} -C ${vls_src_folder} pull')
 		if !upd.is_force && pull_result.output.trim_space() == 'Already up to date.' {
 			upd.log("VLS was already updated to it's latest version.")
 			return
@@ -274,7 +271,7 @@ fn (upd VlsUpdater) compile_from_source() ! {
 
 	compile_result := os.execute('v run ${os.join_path(vls_src_folder, 'build.vsh')} ${possible_compilers[selected_compiler_idx]}')
 	if compile_result.exit_code != 0 {
-		return error('Cannot compile VLS from source: $compile_result.output')
+		return error('Cannot compile VLS from source: ${compile_result.output}')
 	}
 
 	exec_path := os.join_path(vls_src_folder, 'bin', 'vls')
@@ -375,10 +372,10 @@ fn (mut upd VlsUpdater) parse(mut fp flag.FlagParser) ! {
 fn (upd VlsUpdater) log(msg string) {
 	match upd.output {
 		.text {
-			println('> $msg')
+			println('> ${msg}')
 		}
 		.json {
-			print('{"message":"$msg"}')
+			print('{"message":"${msg}"}')
 			flush_stdout()
 		}
 		.silent {}
@@ -400,7 +397,7 @@ fn (upd VlsUpdater) error_details(err IError) string {
   the specified path exists and is a valid executable.
 - If you have an existing installation of VLS, be sure
   to remove "vls.config.json" and "bin" located inside
-  "$vls_dir_shortened" and re-install.
+  "${vls_dir_shortened}" and re-install.
 
   If none of the options listed have solved your issue,
   please report it at https://github.com/vlang/v/issues
@@ -416,7 +413,7 @@ fn (upd VlsUpdater) error_details(err IError) string {
 fn (upd VlsUpdater) cli_error(err IError) {
 	match upd.output {
 		.text {
-			eprintln('v ls error: $err.msg() ($err.code())')
+			eprintln('v ls error: ${err.msg()} (${err.code()})')
 			if err !is none {
 				eprintln(upd.error_details(err))
 			}
@@ -424,7 +421,7 @@ fn (upd VlsUpdater) cli_error(err IError) {
 			print_backtrace()
 		}
 		.json {
-			print('{"error":{"message":${json.encode(err.msg())},"code":"$err.code()","details":${json.encode(upd.error_details(err).trim_space())}}}')
+			print('{"error":{"message":${json.encode(err.msg())},"code":"${err.code()}","details":${json.encode(upd.error_details(err).trim_space())}}}')
 			flush_stdout()
 		}
 		.silent {}
@@ -436,7 +433,7 @@ fn (upd VlsUpdater) check_installation() {
 	if upd.ls_path.len == 0 {
 		upd.log('Language server is not installed')
 	} else {
-		upd.log('Language server is installed at: $upd.ls_path')
+		upd.log('Language server is installed at: ${upd.ls_path}')
 	}
 }
 
@@ -460,7 +457,7 @@ fn (upd VlsUpdater) run(fp flag.FlagParser) ! {
 			}
 		}
 	} else if upd.pass_to_ls {
-		exit(os.system('$upd.ls_path ${upd.args.join(' ')}'))
+		exit(os.system('${upd.ls_path} ${upd.args.join(' ')}'))
 	} else if upd.is_help {
 		println(fp.usage())
 		exit(0)

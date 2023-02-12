@@ -21,5 +21,5 @@ fn test_str_method() {
 		x: 1
 		y: 2
 	}
-	assert '$one' == '1 2'
+	assert '${one}' == '1 2'
 }

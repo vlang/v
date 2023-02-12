@@ -136,7 +136,7 @@ pub fn (mut g Gen) write_pe_header() {
 	// optional here comes here
 	p_opthdr := g.buf.len // should be 0x110
 	if p_opthdr != 0x98 {
-		eprintln('Invalid optdr location $p_opthdr != 0x98')
+		eprintln('Invalid optdr location ${p_opthdr} != 0x98')
 	}
 	g.write16(0x20b) // magic (0x10b=pe32, 0x20b=pe32+)
 	g.write8(0x1) // major linker version

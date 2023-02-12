@@ -3,9 +3,9 @@
 // that can be found in the LICENSE file.
 module main
 
-import help
 import os
 import term
+import v.help
 import v.pref
 import v.util
 import v.util.version
@@ -34,6 +34,7 @@ const (
 		'self',
 		'setup-freetype',
 		'shader',
+		'share',
 		'should-compile-all',
 		'symlink',
 		'scan',
@@ -67,6 +68,7 @@ fn main() {
 	timers.show('v start')
 	timers.start('parse_CLI_args')
 	args := os.args[1..]
+
 	if args.len == 0 || args[0] in ['-', 'repl'] {
 		if args.len == 0 {
 			// Running `./v` without args launches repl
@@ -149,7 +151,7 @@ fn main() {
 	all_commands << external_tools
 	all_commands << other_commands
 	all_commands.sort()
-	eprintln(util.new_suggestion(command, all_commands).say('v: unknown command `$command`'))
+	eprintln(util.new_suggestion(command, all_commands).say('v: unknown command `${command}`'))
 	eprintln('Run ${term.highlight_command('v help')} for usage.')
 	exit(1)
 }

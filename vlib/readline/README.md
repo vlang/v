@@ -22,5 +22,5 @@ or just:
 import readline { read_line }
 
 input := read_line('What is your name: ')?
-println('Your name is: $input')
+println('Your name is: ${input}')
 ```

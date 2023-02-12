@@ -1,0 +1,5 @@
+vlib/v/parser/tests/prefix_inc_err.vv:3:1: error: prefix `--mp['a']` is unsupported, use suffix form `mp['a']--`
+    1 | mut mp := map[string]int{}
+    2 | mp["a"] = 1
+    3 | --mp["a"]
+      | ~~~~~~~~~

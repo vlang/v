@@ -189,7 +189,7 @@ fn accept_callback(loop &C.picoev_loop, fd int, events int, cb_arg voidptr) {
 }
 
 fn default_err_cb(data voidptr, req picohttpparser.Request, mut res picohttpparser.Response, error IError) {
-	eprintln('picoev: $error')
+	eprintln('picoev: ${error}')
 	res.end()
 }
 
@@ -240,7 +240,7 @@ pub fn new(config Config) &Picoev {
 	}
 
 	C.picoev_add(voidptr(loop), fd, int(Event.read), 0, accept_callback, pv)
-	go update_date(mut pv)
+	spawn update_date(mut pv)
 	return pv
 }
 

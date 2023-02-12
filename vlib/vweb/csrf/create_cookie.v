@@ -25,7 +25,7 @@ fn generate() string {
 	mut out := ''
 	for _ in 0 .. 42 {
 		i := rand.intn(csrf.chars.len_utf8()) or {
-			panic('Error while trying to generate Csrf-Token: $err')
+			panic('Error while trying to generate Csrf-Token: ${err}')
 		}
 		out = out + csrf.chars[i..i + 1]
 	}
@@ -49,8 +49,8 @@ pub fn (mut app App) get_csrf_token() ?string {
 	if app.csrf_cookie_value != '' {
 		return app.csrf_cookie_value
 	} else {
-		return IError(CsrfError{
+		return CsrfError{
 			m: 'The CSRF-Token-Value is empty. Please check if you have setted a cookie!'
-		})
+		}
 	}
 }

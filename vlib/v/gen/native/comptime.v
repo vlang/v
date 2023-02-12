@@ -9,20 +9,19 @@ fn (mut g Gen) comptime_at(node ast.AtExpr) string {
 	return node.val
 }
 
-fn (mut g Gen) comptime_conditional(node ast.IfExpr) {
+fn (mut g Gen) comptime_conditional(node ast.IfExpr) ?[]ast.Stmt {
 	if node.branches.len == 0 {
-		return
+		return none
 	}
 
 	for i, branch in node.branches {
 		// handle $else branch, which does not have a condition
-		if node.has_else && i + 1 == node.branches.len {
-			g.stmts(branch.stmts)
-		} else if g.comptime_is_truthy(branch.cond) {
-			g.stmts(branch.stmts)
-			break
+		if (node.has_else && i + 1 == node.branches.len) || g.comptime_is_truthy(branch.cond) {
+			return branch.stmts
 		}
 	}
+
+	return none
 }
 
 fn (mut g Gen) comptime_is_truthy(cond ast.Expr) bool {
@@ -39,7 +38,7 @@ fn (mut g Gen) comptime_is_truthy(cond ast.Expr) bool {
 					return !g.comptime_is_truthy(cond.right)
 				}
 				else {
-					g.n_error('Compile time infix expr `$cond` is not handled by the native backed.')
+					g.n_error('Compile time infix expr `${cond}` is not handled by the native backed.')
 				}
 			}
 		}
@@ -61,7 +60,7 @@ fn (mut g Gen) comptime_is_truthy(cond ast.Expr) bool {
 					return g.comptime_is_truthy(cond.left) != g.comptime_is_truthy(cond.right)
 				}
 				else {
-					g.n_error('Compile time infix expr `$cond` is not handled by the native backend.')
+					g.n_error('Compile time infix expr `${cond}` is not handled by the native backend.')
 				}
 			}
 		}
@@ -73,13 +72,13 @@ fn (mut g Gen) comptime_is_truthy(cond ast.Expr) bool {
 		}
 		else {
 			// should be unreachable
-			g.n_error('Compile time conditional `$cond` is not handled by the native backend.')
+			g.n_error('Compile time conditional `${cond}` is not handled by the native backend.')
 		}
 	}
 	return false
 }
 
-fn (mut g Gen) comptime_ident(name string, is_comptime_optional bool) bool {
+fn (mut g Gen) comptime_ident(name string, is_comptime_option bool) bool {
 	return match name {
 		//
 		// Operating systems
@@ -205,11 +204,11 @@ fn (mut g Gen) comptime_ident(name string, is_comptime_optional bool) bool {
 			g.pref.is_script
 		}
 		else {
-			if is_comptime_optional
+			if is_comptime_option
 				|| (g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
 				true
 			} else {
-				g.n_error('Unhandled os ifdef name "$name".')
+				g.n_error('Unhandled os ifdef name "${name}".')
 				false
 			}
 		}

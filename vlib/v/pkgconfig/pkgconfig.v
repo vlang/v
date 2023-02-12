@@ -18,7 +18,7 @@ const (
 		'/usr/local/libdata/pkgconfig', // FreeBSD
 		'/usr/lib/i386-linux-gnu/pkgconfig', // Debian 32bit
 	]
-	version       = '0.3.2'
+	version       = '0.3.3'
 )
 
 pub struct Options {
@@ -46,6 +46,7 @@ pub mut:
 	requires         []string
 	requires_private []string
 	conflicts        []string
+	loaded           []string
 }
 
 fn (mut pc PkgConfig) parse_list_no_comma(s string) []string {
@@ -77,7 +78,7 @@ fn (mut pc PkgConfig) parse_line(s string) string {
 		mut tok1 := r[tok0..].index('}') or { break }
 		tok1 += tok0
 		v := r[tok0 + 2..tok1]
-		r = r.replace('\${$v}', pc.vars[v])
+		r = r.replace('\${${v}}', pc.vars[v])
 	}
 	return r.trim_space()
 }
@@ -149,13 +150,13 @@ fn (mut pc PkgConfig) resolve(pkgname string) ?string {
 			pc.paths << '.'
 		}
 		for path in pc.paths {
-			file := '$path/${pkgname}.pc'
+			file := '${path}/${pkgname}.pc'
 			if os.exists(file) {
 				return file
 			}
 		}
 	}
-	return error('Cannot find "$pkgname" pkgconfig file')
+	return error('Cannot find "${pkgname}" pkgconfig file')
 }
 
 pub fn atleast(v string) bool {
@@ -199,26 +200,39 @@ fn (mut pc PkgConfig) load_requires() ? {
 }
 
 fn (mut pc PkgConfig) load_require(dep string) ? {
+	if dep in pc.loaded {
+		return
+	}
+	pc.loaded << dep
 	mut pcdep := PkgConfig{
 		paths: pc.paths
+		loaded: pc.loaded
 	}
 	depfile := pcdep.resolve(dep) or {
 		if pc.options.debug {
-			eprintln('cannot resolve $dep')
+			eprintln('cannot resolve ${dep}')
 		}
-		return error('could not resolve dependency $dep')
+		return error('could not resolve dependency ${dep}')
 	}
 	if !pcdep.parse(depfile) {
-		return error('required file "$depfile" could not be parsed')
+		return error('required file "${depfile}" could not be parsed')
 	}
-	pcdep.load_requires()?
+	if !pc.options.norecurse {
+		pcdep.load_requires()?
+	}
 	pc.extend(pcdep)?
 }
 
 fn (mut pc PkgConfig) add_path(path string) {
-	p := if path.ends_with('/') { path[0..path.len - 1] } else { path }
+	if path == '' {
+		return
+	}
+	p := path.trim_right('/')
 	if !os.exists(p) {
 		return
+	}
+	$if trace_pkgconfig_add_path ? {
+		eprintln('> PkgConfig.add_path path: ${p}')
 	}
 	if pc.paths.index(p) == -1 {
 		pc.paths << p
@@ -226,9 +240,19 @@ fn (mut pc PkgConfig) add_path(path string) {
 }
 
 fn (mut pc PkgConfig) load_paths() {
-	if pc.options.use_default_paths {
-		for path in pkgconfig.default_paths {
+	// Allow for full custom user control over the default paths too, through
+	// setting `PKG_CONFIG_PATH_DEFAULTS` to a list of search paths, separated
+	// by `:`.
+	config_path_override := os.getenv('PKG_CONFIG_PATH_DEFAULTS')
+	if config_path_override != '' {
+		for path in config_path_override.split(':') {
 			pc.add_path(path)
+		}
+	} else {
+		if pc.options.use_default_paths {
+			for path in pkgconfig.default_paths {
+				pc.add_path(path)
+			}
 		}
 	}
 	for path in pc.options.path.split(':') {
@@ -251,7 +275,7 @@ pub fn load(pkgname string, options Options) ?&PkgConfig {
 	pc.load_paths()
 	file := pc.resolve(pkgname) or { return err }
 	if !pc.parse(file) {
-		return error('file "$file" could not be parsed')
+		return error('file "${file}" could not be parsed')
 	}
 	if !options.norecurse {
 		pc.load_requires()?

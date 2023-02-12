@@ -7,16 +7,16 @@ fn main() {
 		'E': ['B', 'F']
 		'F': ['C', 'E']
 	}
-	println('Graph: $graph')
+	println('Graph: ${graph}')
 	path := breadth_first_search_path(graph, 'A', 'F')
-	println('The shortest path from node A to node F is: $path')
+	println('The shortest path from node A to node F is: ${path}')
 	assert path == ['A', 'C', 'F']
 }
 
 // Breadth-First Search (BFS) allows you to ﬁnd the shortest distance between two nodes in the graph.
 fn breadth_first_search_path(graph map[string][]string, vertex string, target string) []string {
 	mut path := []string{}
-	mut visited := []string{init: vertex}
+	mut visited := []string{len: 6, init: vertex}
 	mut queue := [][][]string{}
 	queue << [[vertex], path]
 	for queue.len > 0 {

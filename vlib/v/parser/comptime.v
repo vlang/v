@@ -12,7 +12,7 @@ const (
 	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
 		'compile_warn']
 	comptime_types           = ['Map', 'Array', 'Int', 'Float', 'Struct', 'Interface', 'Enum',
-		'Sumtype']
+		'Sumtype', 'Alias', 'Function']
 )
 
 pub fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
@@ -21,7 +21,7 @@ pub fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 	p.check(.dollar)
 	name := p.check_name()
 	if name !in parser.comptime_types {
-		p.error('unsupported compile-time type `$name`: only $parser.comptime_types are supported')
+		p.error('unsupported compile-time type `${name}`: only ${parser.comptime_types} are supported')
 	}
 	mut cty := ast.ComptimeTypeKind.map_
 	match name {
@@ -39,6 +39,12 @@ pub fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 		}
 		'Float' {
 			cty = .float
+		}
+		'Alias' {
+			cty = .alias
+		}
+		'Function' {
+			cty = .function
 		}
 		'Array' {
 			cty = .array
@@ -63,7 +69,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 	p.next()
 	mut main_str := ''
 	mut msg := ''
-	content := val.all_after('$kind ').all_before('//')
+	content := val.all_after('${kind} ').all_before('//')
 	if content.contains(' #') {
 		main_str = content.all_before(' #').trim_space()
 		msg = content.all_after(' #').trim_space()
@@ -106,6 +112,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	is_html := method_name == 'html'
 	// $env('ENV_VAR_NAME')
 	p.check(.lpar)
+	arg_pos := p.tok.pos()
 	if method_name in ['env', 'pkgconfig', 'compile_error', 'compile_warn'] {
 		s := p.tok.lit
 		p.check(.string)
@@ -120,15 +127,30 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			pos: start_pos.extend(p.prev_tok.pos())
 		}
 	}
-	literal_string_param := if is_html { '' } else { p.tok.lit }
+	mut literal_string_param := if is_html { '' } else { p.tok.lit }
+	if p.tok.kind == .name {
+		if var := p.scope.find_var(p.tok.lit) {
+			if var.expr is ast.StringLiteral {
+				literal_string_param = var.expr.val
+			}
+		} else if var := p.table.global_scope.find_const(p.mod + '.' + p.tok.lit) {
+			if var.expr is ast.StringLiteral {
+				literal_string_param = var.expr.val
+			}
+		}
+	}
 	path_of_literal_string_param := literal_string_param.replace('/', os.path_separator)
+	mut arg := ast.CallArg{}
 	if !is_html {
-		p.check(.string)
+		arg_expr := p.expr(0)
+		arg = ast.CallArg{
+			expr: arg_expr
+		}
 	}
 	mut embed_compression_type := 'none'
 	if is_embed_file {
 		if p.tok.kind == .comma {
-			p.check(.comma)
+			p.next()
 			p.check(.dot)
 			embed_compression_type = p.check_name()
 		}
@@ -136,33 +158,6 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	p.check(.rpar)
 	// $embed_file('/path/to/file')
 	if is_embed_file {
-		mut epath := path_of_literal_string_param
-		// Validate that the epath exists, and that it is actually a file.
-		if epath == '' {
-			p.error_with_pos('supply a valid relative or absolute file path to the file to embed',
-				start_pos)
-			return err_node
-		}
-		if !p.pref.is_fmt {
-			abs_path := os.real_path(epath)
-			// check absolute path first
-			if !os.exists(abs_path) {
-				// ... look relative to the source file:
-				epath = os.real_path(os.join_path_single(os.dir(p.file_name), epath))
-				if !os.exists(epath) {
-					p.error_with_pos('"$epath" does not exist so it cannot be embedded',
-						start_pos)
-					return err_node
-				}
-				if !os.is_file(epath) {
-					p.error_with_pos('"$epath" is not a file so it cannot be embedded',
-						start_pos)
-					return err_node
-				}
-			} else {
-				epath = abs_path
-			}
-		}
 		p.register_auto_import('v.preludes.embed_file')
 		if embed_compression_type == 'zlib' {
 			p.register_auto_import('v.preludes.embed_file.zlib')
@@ -171,10 +166,9 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			scope: 0
 			is_embed: true
 			embed_file: ast.EmbeddedFile{
-				rpath: literal_string_param
-				apath: epath
 				compression_type: embed_compression_type
 			}
+			args: [arg]
 			pos: start_pos.extend(p.prev_tok.pos())
 		}
 	}
@@ -209,13 +203,14 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 					is_vweb: true
 					method_name: method_name
 					args_var: literal_string_param
+					args: [arg]
 					pos: start_pos.extend(p.prev_tok.pos())
 				}
 			}
 			if is_html {
-				p.error('vweb HTML template "$path" not found')
+				p.error_with_pos('vweb HTML template "${tmpl_path}" not found', arg_pos)
 			} else {
-				p.error('template file "$path" not found')
+				p.error_with_pos('template file "${tmpl_path}" not found', arg_pos)
 			}
 			return err_node
 		}
@@ -223,18 +218,18 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 	tmp_fn_name := p.cur_fn_name.replace('.', '__') + start_pos.pos.str()
 	$if trace_comptime ? {
-		println('>>> compiling comptime template file "$path" for $tmp_fn_name')
+		println('>>> compiling comptime template file "${path}" for ${tmp_fn_name}')
 	}
 	v_code := p.compile_template_file(path, tmp_fn_name)
 	$if print_vweb_template_expansions ? {
 		lines := v_code.split('\n')
 		for i, line in lines {
-			println('$path:${i + 1}: $line')
+			println('${path}:${i + 1}: ${line}')
 		}
 	}
 	$if trace_comptime ? {
 		println('')
-		println('>>> template for $path:')
+		println('>>> template for ${path}:')
 		println(v_code)
 		println('>>> end of template END')
 		println('')
@@ -250,6 +245,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		vweb_tmpl: file
 		method_name: method_name
 		args_var: literal_string_param
+		args: [arg]
 		pos: start_pos.extend(p.prev_tok.pos())
 	}
 }
@@ -292,7 +288,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 		})
 		kind = .attributes
 	} else {
-		p.error_with_pos('unknown kind `$for_val`, available are: `methods`, `fields` or `attributes`',
+		p.error_with_pos('unknown kind `${for_val}`, available are: `methods`, `fields` or `attributes`',
 			p.prev_tok.pos())
 		return ast.ComptimeFor{}
 	}
@@ -350,7 +346,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		args := p.call_args()
 		p.check(.rpar)
 		if p.tok.kind == .key_orelse {
-			p.check(.key_orelse)
+			p.next()
 			p.check(.lcbr)
 		}
 		return ast.ComptimeCall{
@@ -365,7 +361,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 	}
 	mut has_parens := false
 	if p.tok.kind == .lpar {
-		p.check(.lpar)
+		p.next()
 		has_parens = true
 	} else {
 		p.warn_with_pos('use brackets instead e.g. `s.$(field.name)` - run vfmt', p.tok.pos())

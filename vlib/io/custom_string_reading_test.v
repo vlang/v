@@ -12,10 +12,10 @@ fn imin(a int, b int) int {
 
 fn (mut s StringReader) read(mut buf []u8) !int {
 	$if debug {
-		eprintln('>>>> StringReader.read output buf.len: $buf.len')
+		eprintln('>>>> StringReader.read output buf.len: ${buf.len}')
 	}
 	if s.place > s.text.len + 1 {
-		return IError(io.Eof{})
+		return io.Eof{}
 	}
 	mut howmany := imin(buf.len, s.text.len - s.place)
 	xxx := s.text[s.place..s.place + howmany].bytes()
@@ -37,7 +37,7 @@ fn read_from_string(text string, capacity int) []u8 {
 		z := stream.read(mut buf) or { break }
 		res << buf
 		$if debug {
-			println('capacity: $capacity, i: $i, buf: $buf | z: $z')
+			println('capacity: ${capacity}, i: ${i}, buf: ${buf} | z: ${z}')
 		}
 		i++
 	}

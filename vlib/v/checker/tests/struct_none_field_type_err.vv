@@ -1,0 +1,12 @@
+struct Jaca {
+	lala none
+}
+
+fn f() {
+	mut s := Jaca{
+		lala: none
+	}
+	println(s)
+}
+
+f()

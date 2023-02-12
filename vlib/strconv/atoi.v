@@ -3,7 +3,7 @@ module strconv
 // Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-// TODO: use optionals, or some way to return default with error.
+// TODO: use options, or some way to return default with error.
 const (
 	// int_size is the size in bits of an int or uint value.
 	// int_size = 32 << (~u32(0) >> 63)
@@ -24,10 +24,10 @@ pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit 
 	// TODO: error_on_non_digit and error_on_high_digit have no difference
 	if err != 0 && (error_on_non_digit || error_on_high_digit) {
 		match err {
-			-1 { return error('common_parse_uint: wrong base $_base for $s') }
-			-2 { return error('common_parse_uint: wrong bit size $_bit_size for $s') }
-			-3 { return error('common_parse_uint: integer overflow $s') }
-			else { return error('common_parse_uint: syntax error $s') }
+			-1 { return error('common_parse_uint: wrong base ${_base} for ${s}') }
+			-2 { return error('common_parse_uint: wrong bit size ${_bit_size} for ${s}') }
+			-3 { return error('common_parse_uint: integer overflow ${s}') }
+			else { return error('common_parse_uint: syntax error ${s}') }
 		}
 	}
 	return result
@@ -196,7 +196,7 @@ pub fn atoi(s string) !int {
 			start_idx++
 			if s.len - start_idx < 1 {
 				// return 0, &NumError{fnAtoi, s0, ErrSyntax}
-				return error('strconv.atoi: parsing "$s": invalid syntax')
+				return error('strconv.atoi: parsing "${s}": invalid syntax')
 			}
 		}
 		mut n := 0
@@ -204,7 +204,7 @@ pub fn atoi(s string) !int {
 			ch := s[i] - `0`
 			if ch > 9 {
 				// return 0, &NumError{fnAtoi, s0, ErrSyntax}
-				return error('strconv.atoi: parsing "$s": invalid syntax')
+				return error('strconv.atoi: parsing "${s}": invalid syntax')
 			}
 			n = n * 10 + int(ch)
 		}

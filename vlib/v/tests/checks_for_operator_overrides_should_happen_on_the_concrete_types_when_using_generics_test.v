@@ -1,5 +1,3 @@
-module main
-
 import datatypes
 
 struct Item {
@@ -16,7 +14,7 @@ fn (a Item) == (b Item) bool {
 
 // Issue https://github.com/vlang/v/issues/13318
 fn test_comparison_operator_override_works_with_generic_datatypes() {
-	mut heap := datatypes.MinHeap<Item>{}
+	mut heap := datatypes.MinHeap[Item]{}
 	heap.insert(Item{10})
 	assert heap.peek()?.priority == 10
 	heap.insert(Item{100})

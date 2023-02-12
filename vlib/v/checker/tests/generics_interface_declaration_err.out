@@ -1,4 +1,4 @@
-vlib/v/checker/tests/generics_interface_declaration_err.vv:1:1: error: generic interface declaration must specify the generic type names, e.g. Foo<T>
+vlib/v/checker/tests/generics_interface_declaration_err.vv:1:1: error: generic interface `Expr` declaration must specify the generic type names, e.g. Expr[T]
     1 | interface Expr {
       | ~~~~~~~~~~~~~~~~
     2 |     accept(v Visitor<R>) R

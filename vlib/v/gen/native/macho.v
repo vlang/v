@@ -5,20 +5,20 @@ module native
 
 const (
 	s_attr_some_instructions = 0x0400
-	s_attr_pure_instructions = 0x80000000
+	s_attr_pure_instructions = u32(0x80000000)
 	s_attr_ext_reloc         = 0x0200
 	s_attr_loc_reloc         = 0x0100
 	macho_symcmd_size        = 0x18
 	macho_d_size             = 0x50
 	mh_object                = 1
 	mh_execute               = 2
-	lc_dyld_chained_fixups   = 0x80000034
-	lc_dyld_exports_trie     = 0x80000033
-	lc_dyld_info_only        = 0x80000022
+	lc_dyld_chained_fixups   = u32(0x80000034)
+	lc_dyld_exports_trie     = u32(0x80000033)
+	lc_dyld_info_only        = u32(0x80000022)
 	lc_dysymtab              = 0xb
 	lc_load_dylib            = 0xc
 	lc_load_dylinker         = 0xe
-	lc_main                  = 0x80000028
+	lc_main                  = u32(0x80000028)
 	lc_segment_64            = 0x19
 	lc_symtab                = 0x2
 	base_addr                = i64(0x1_0000_0000)
@@ -340,7 +340,7 @@ pub fn (mut g Gen) generate_macho_object_header() {
 		g.write32(0)
 	}
 	if g.pref.is_verbose {
-		println('commands size = $g.buf.len')
+		println('commands size = ${g.buf.len}')
 		if g.buf.len != 0x138 {
 			println('macho: invalid header size')
 		}
@@ -374,7 +374,7 @@ pub fn (mut g Gen) generate_macho_footer() {
 	} else {
 		call_delta := int(g.main_fn_addr - g.code_start_pos)
 		if (call_delta % 4) != 0 || call_delta < 0 {
-			g.n_error('Invalid entrypoint->main delta ($call_delta)')
+			g.n_error('Invalid entrypoint->main delta (${call_delta})')
 		} else {
 			blop := (0x94 << 24) | (call_delta / 4)
 			g.write32_at(g.code_start_pos, int(blop))
@@ -441,7 +441,7 @@ pub fn (mut g Gen) zeroes(n int) {
 
 fn (mut g Gen) write_relocs() {
 	if g.pref.is_verbose {
-		println('relocs at $g.buf.len should be 0x160')
+		println('relocs at ${g.buf.len} should be 0x160')
 	}
 	g.write32(0x8)
 	g.write32(0x2d000003)
@@ -478,22 +478,30 @@ fn (mut g Gen) write_symbol(s Symbol) {
 fn (mut g Gen) sym_string_table() int {
 	begin := g.buf.len
 	g.zeroes(1)
+
+	mut generated := map[string]int{}
+
 	for _, s in g.strs {
-		pos := g.buf.len - s.pos - 4
+		pos := generated[s.str] or { g.buf.len }
+
 		match s.typ {
 			.rel32 {
-				g.write32_at(s.pos, pos)
+				g.write32_at(s.pos, pos - s.pos - 4)
 			}
 			else {
 				if g.pref.os == .windows {
 					// that should be .rel32, not windows-specific
-					g.write32_at(s.pos, pos)
+					g.write32_at(s.pos, pos - s.pos - 4)
 				} else {
-					g.write64_at(s.pos, g.buf.len + native.base_addr)
+					g.write64_at(s.pos, pos + native.base_addr)
 				}
 			}
 		}
-		g.write_string(s.str)
+
+		if s.str !in generated {
+			generated[s.str] = pos
+			g.write_string(s.str)
+		}
 	}
 	return g.buf.len - begin
 }

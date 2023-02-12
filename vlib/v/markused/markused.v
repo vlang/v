@@ -7,7 +7,7 @@ import v.util
 import v.pref
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively
-pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.File) {
+pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.File) {
 	mut all_fns, all_consts, all_globals := all_fn_const_and_global(ast_files)
 	util.timing_start(@METHOD)
 	defer {
@@ -126,7 +126,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'v.embed_file.find_index_entry_by_path',
 	]
 
-	if pref.is_bare {
+	if pref_.is_bare {
 		all_fn_root_names << [
 			'strlen',
 			'memcmp',
@@ -137,11 +137,11 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		]
 	}
 
-	is_noscan_whitelisted := pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt]
+	is_noscan_whitelisted := pref_.gc_mode in [.boehm_full_opt, .boehm_incr_opt]
 
 	for k, mut mfn in all_fns {
 		$if trace_skip_unused_all_fns ? {
-			println('k: $k | mfn: $mfn.name')
+			println('k: ${k} | mfn: ${mfn.name}')
 		}
 		// _noscan functions/methods are selected when the `-gc boehm` is on:
 		if is_noscan_whitelisted && mfn.name.ends_with('_noscan') {
@@ -186,7 +186,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			all_fn_root_names << k
 			continue
 		}
-		if pref.is_prof {
+		if pref_.is_prof {
 			if k.starts_with('time.vpc_now') || k.starts_with('v.profile.') {
 				// needed for -profile
 				all_fn_root_names << k
@@ -210,7 +210,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			continue
 		}
 		// testing framework:
-		if pref.is_test {
+		if pref_.is_test {
 			if k.starts_with('test_') || k.contains('.test_') {
 				all_fn_root_names << k
 				continue
@@ -223,7 +223,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		}
 		// public/exported functions can not be skipped,
 		// especially when producing a shared library:
-		if mfn.is_pub && pref.is_shared {
+		if mfn.is_pub && pref_.is_shared {
 			all_fn_root_names << k
 			continue
 		}
@@ -232,19 +232,19 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			all_fn_root_names << k
 			continue
 		}
-		if pref.prealloc && k.starts_with('prealloc_') {
+		if pref_.prealloc && k.starts_with('prealloc_') {
 			all_fn_root_names << k
 			continue
 		}
 	}
 
 	// handle assertions and testing framework callbacks:
-	if pref.is_debug {
+	if pref_.is_debug {
 		all_fn_root_names << 'panic_debug'
 	}
-	all_fn_root_names << 'panic_optional_not_set'
+	all_fn_root_names << 'panic_option_not_set'
 	all_fn_root_names << 'panic_result_not_set'
-	if pref.is_test {
+	if pref_.is_test {
 		all_fn_root_names << 'main.cb_assertion_ok'
 		all_fn_root_names << 'main.cb_assertion_failed'
 		if benched_tests_sym := table.find_sym('main.BenchedTests') {
@@ -275,9 +275,9 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			interface_types := [ptype, ntype]
 			for method in interface_info.methods {
 				for typ in interface_types {
-					interface_implementation_method_name := '${int(typ)}.$method.name'
+					interface_implementation_method_name := '${int(typ)}.${method.name}'
 					$if trace_skip_unused_interface_methods ? {
-						eprintln('>> isym.name: $isym.name | interface_implementation_method_name: $interface_implementation_method_name')
+						eprintln('>> isym.name: ${isym.name} | interface_implementation_method_name: ${interface_implementation_method_name}')
 					}
 					all_fn_root_names << interface_implementation_method_name
 				}
@@ -308,7 +308,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 				}
 				pvgt := vgt.set_nr_muls(1)
 				// eprintln('vgt: $vgt | pvgt: $pvgt | sym_app.name: $sym_app.name | m.name: $m.name')
-				all_fn_root_names << '${int(pvgt)}.$m.name'
+				all_fn_root_names << '${int(pvgt)}.${m.name}'
 			}
 		}
 	}
@@ -333,7 +333,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	}
 
 	// handle -live main programs:
-	if pref.is_livemain {
+	if pref_.is_livemain {
 		all_fn_root_names << 'v.live.executable.start_reloader'
 		all_fn_root_names << 'v.live.executable.new_live_reload_info'
 	}
@@ -344,7 +344,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		all_fns: all_fns
 		all_consts: all_consts
 		all_globals: all_globals
-		pref: pref
+		pref: pref_
 	}
 	// println( all_fns.keys() )
 	walker.mark_markused_fns() // tagged with `[markused]`
@@ -367,7 +367,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 				|| k.starts_with('map_') {
 				walker.fn_decl(mut mfn)
 			}
-			if pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+			if pref_.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
 				if k in ['new_map_noscan_key', 'new_map_noscan_value', 'new_map_noscan_key_value',
 					'new_map_init_noscan_key', 'new_map_init_noscan_value',
 					'new_map_init_noscan_key_value'] {
@@ -392,15 +392,15 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 
 	$if trace_skip_unused_fn_names ? {
 		for key, _ in walker.used_fns {
-			println('> used fn key: $key')
+			println('> used fn key: ${key}')
 		}
 	}
 
 	for kcon, con in all_consts {
-		if pref.is_shared && con.is_pub {
+		if pref_.is_shared && con.is_pub {
 			walker.mark_const_as_used(kcon)
 		}
-		if !pref.is_shared && con.is_pub && con.name.starts_with('main.') {
+		if !pref_.is_shared && con.is_pub && con.name.starts_with('main.') {
 			walker.mark_const_as_used(kcon)
 		}
 	}
@@ -410,10 +410,10 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	table.used_globals = walker.used_globals.move()
 
 	$if trace_skip_unused ? {
-		eprintln('>> t.used_fns: $table.used_fns.keys()')
-		eprintln('>> t.used_consts: $table.used_consts.keys()')
-		eprintln('>> t.used_globals: $table.used_globals.keys()')
-		eprintln('>> walker.table.used_maps: $walker.table.used_maps')
+		eprintln('>> t.used_fns: ${table.used_fns.keys()}')
+		eprintln('>> t.used_consts: ${table.used_consts.keys()}')
+		eprintln('>> t.used_globals: ${table.used_globals.keys()}')
+		eprintln('>> walker.table.used_maps: ${walker.table.used_maps}')
 	}
 }
 

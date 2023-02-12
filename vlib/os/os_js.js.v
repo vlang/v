@@ -1,15 +1,15 @@
 module os
 
-pub fn mkdir(path string, params MkdirParams) !bool {
+pub fn mkdir(path string, params MkdirParams) ! {
 	$if js_node {
 		if path == '.' {
-			return true
+			return
 		}
 		#$fs.mkdirSync(path.valueOf())
 
-		return true
+		return
 	} $else {
-		return false
+		return error('could not create folder')
 	}
 }
 
@@ -57,7 +57,7 @@ pub fn exists(path string) bool {
 
 pub fn ls(path string) ![]string {
 	if !is_dir(path) {
-		return error('ls(): cannot open dir $dir')
+		return error('ls(): cannot open dir ${dir}')
 	}
 
 	result := []string{}
@@ -117,6 +117,20 @@ pub fn cp(src string, dst string) ! {
 		#return;
 		#} catch (e) {
 		#err.str = 'failed to copy ' + src.str + ' to ' + dst.str + ': ' + e.toString();
+		#}
+
+		return error(err)
+	}
+}
+
+pub fn rename(src string, dst string) ! {
+	$if js_node {
+		err := ''
+		#try {
+		#$fs.renameSync(src.str,dst.str);
+		#return;
+		#} catch (e) {
+		#err.str = 'failed to rename ' + src.str + ' to ' + dst.str + ': ' + e.toString();
 		#}
 
 		return error(err)

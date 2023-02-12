@@ -85,10 +85,10 @@ pub fn (x f32) str() string {
 			f: x
 		}
 		if f.u == strconv.single_minus_zero {
-			return '-0.'
+			return '-0.0'
 		}
 		if f.u == strconv.single_plus_zero {
-			return '0.'
+			return '0.0'
 		}
 	}
 	abs_x := f32_abs(x)
@@ -113,7 +113,7 @@ pub fn (x f32) strg() string {
 	}
 }
 
-// strsci returns the `f32` as a `string` in scientific notation with `digit_num` deciamals displayed, max 8 digits.
+// strsci returns the `f32` as a `string` in scientific notation with `digit_num` decimals displayed, max 8 digits.
 // Example: assert f32(1.234).strsci(3) == '1.234e+00'
 [inline]
 pub fn (x f32) strsci(digit_num int) string {

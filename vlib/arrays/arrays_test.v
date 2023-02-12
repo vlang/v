@@ -14,7 +14,7 @@ fn test_min() {
 	c := [u8(4), 9, 3, 1]
 	mut rb := min(c)!
 	assert rb == u8(1)
-	rb = min(c[..3])?
+	rb = min(c[..3])!
 	assert rb == u8(3)
 }
 
@@ -65,10 +65,10 @@ fn test_merge() {
 	b := [2, 4, 4, 5, 6, 8]
 	c := []int{}
 	d := []int{}
-	assert merge<int>(a, b) == [1, 2, 3, 4, 4, 5, 5, 5, 6, 7, 8]
-	assert merge<int>(c, d) == []
-	assert merge<int>(a, c) == a
-	assert merge<int>(d, b) == b
+	assert merge[int](a, b) == [1, 2, 3, 4, 4, 5, 5, 5, 6, 7, 8]
+	assert merge[int](c, d) == []
+	assert merge[int](a, c) == a
+	assert merge[int](d, b) == b
 }
 
 fn test_fixed_array_assignment() {
@@ -94,14 +94,14 @@ fn test_fixed_array_assignment() {
 
 fn test_array_flat_map() {
 	a := ['Hello V', 'Hello World', 'V Lang']
-	assert flat_map<string, string>(a, fn (e string) []string {
+	assert flat_map[string, string](a, fn (e string) []string {
 		return e.split(' ')
 	}) == ['Hello', 'V', 'Hello', 'World', 'V', 'Lang']
 }
 
 fn test_array_flat_map_indexed() {
 	a := ['AB', 'CD', 'EF']
-	assert flat_map_indexed<string, string>(a, fn (i int, e string) []string {
+	assert flat_map_indexed[string, string](a, fn (i int, e string) []string {
 		mut arr := [i.str()]
 		arr << e.split('')
 		return arr
@@ -110,7 +110,7 @@ fn test_array_flat_map_indexed() {
 
 fn test_map_indexed() {
 	a := [1, 2, 3]
-	assert map_indexed<int, int>(a, fn (i int, e int) int {
+	assert map_indexed[int, int](a, fn (i int, e int) int {
 		return i + e * e
 	}) == [1, 5, 11]
 }
@@ -119,59 +119,59 @@ fn test_group() {
 	x := [4, 5, 6]
 	y := [2, 1, 3]
 
-	z := group<int>(x, y)
+	z := group[int](x, y)
 	assert z == [[4, 2], [5, 1], [6, 3]]
 	x2 := [8, 9]
-	z2 := group<int>(x2, y)
+	z2 := group[int](x2, y)
 	assert z2 == [[8, 2], [9, 1]]
-	assert group<int>(x, []int{}) == [][]int{}
+	assert group[int](x, []int{}) == [][]int{}
 }
 
 fn test_chunk() {
 	x := [1, 2, 3, 4, 5]
 	y := ['a', 'b', 'c', 'd', 'e', 'f']
 
-	z1 := chunk<int>(x, 2)
+	z1 := chunk[int](x, 2)
 	assert z1 == [[1, 2], [3, 4], [5]]
-	z2 := chunk<string>(y, 3)
+	z2 := chunk[string](y, 3)
 	assert z2 == [['a', 'b', 'c'], ['d', 'e', 'f']]
-	assert chunk<int>([]int{}, 2) == [][]int{}
+	assert chunk[int]([]int{}, 2) == [][]int{}
 }
 
 fn test_window() {
 	x := [1, 2, 3, 4, 5, 6]
 
-	assert window<int>(x, size: 3) == [[1, 2, 3], [2, 3, 4], [3, 4, 5],
+	assert window[int](x, size: 3) == [[1, 2, 3], [2, 3, 4], [3, 4, 5],
 		[4, 5, 6]]
-	assert window<int>(x, size: 3, step: 2) == [[1, 2, 3], [3, 4, 5]]
-	assert window<int>([]int{}, size: 2) == [][]int{}
+	assert window[int](x, size: 3, step: 2) == [[1, 2, 3], [3, 4, 5]]
+	assert window[int]([]int{}, size: 2) == [][]int{}
 }
 
 fn test_sum() {
 	x := [1, 2, 3, 4, 5]
 
-	assert sum<int>(x) or { 0 } == 15
-	assert sum<f64>([1.0, 2.5, 3.5, 4.0]) or { 0 } == 11.0
-	assert sum<int>([]int{}) or { 0 } == 0
+	assert sum[int](x) or { 0 } == 15
+	assert sum[f64]([1.0, 2.5, 3.5, 4.0]) or { 0 } == 11.0
+	assert sum[int]([]int{}) or { 0 } == 0
 }
 
 fn test_reduce() {
 	x := [1, 2, 3, 4, 5]
 
-	assert reduce<int>(x, fn (t1 int, t2 int) int {
+	assert reduce[int](x, fn (t1 int, t2 int) int {
 		return t1 + t2
 	}) or { 0 } == 15
-	assert reduce<string>(['H', 'e', 'l', 'l', 'o'], fn (t1 string, t2 string) string {
+	assert reduce[string](['H', 'e', 'l', 'l', 'o'], fn (t1 string, t2 string) string {
 		return t1 + t2
 	}) or { '' } == 'Hello' // For the sake please use array's join instead.
-	assert reduce<int>([]int{}, fn (t1 int, t2 int) int {
+	assert reduce[int]([]int{}, fn (t1 int, t2 int) int {
 		return 0
 	}) or { -1 } == -1
 }
 
 fn test_reduce_indexed() {
 	x := [1, 2, 3, 4, 5]
-	assert reduce_indexed<int>(x, fn (idx int, t1 int, t2 int) int {
+	assert reduce_indexed[int](x, fn (idx int, t1 int, t2 int) int {
 		return idx + t1 + t2
 	}) or { 0 } == 25
 }
@@ -179,7 +179,7 @@ fn test_reduce_indexed() {
 fn test_filter_indexed() {
 	x := [0, 1, 2, 3, 4, 5]
 
-	assert filter_indexed<int>(x, fn (idx int, e int) bool {
+	assert filter_indexed[int](x, fn (idx int, e int) bool {
 		return idx % 2 == 0
 	}) == [0, 2, 4]
 }
@@ -187,13 +187,13 @@ fn test_filter_indexed() {
 fn test_fold() {
 	x := [1, 2, 3, 4, 5]
 
-	assert fold<int, int>(x, 5, fn (r int, t int) int {
+	assert fold[int, int](x, 5, fn (r int, t int) int {
 		return r + t
 	}) == 20
-	assert fold<string, int>(['H', 'e', 'l', 'l', 'l'], 0, fn (r int, t string) int {
+	assert fold[string, int](['H', 'e', 'l', 'l', 'l'], 0, fn (r int, t string) int {
 		return r + t[0]
 	}) == 497
-	assert fold<int, int>([]int{}, -1, fn (t1 int, t2 int) int {
+	assert fold[int, int]([]int{}, -1, fn (t1 int, t2 int) int {
 		return 0
 	}) == -1
 }
@@ -201,7 +201,7 @@ fn test_fold() {
 fn test_fold_indexed() {
 	x := [1, 2, 3, 4, 5]
 
-	assert fold_indexed<int, int>(x, 5, fn (idx int, r int, t int) int {
+	assert fold_indexed[int, int](x, 5, fn (idx int, r int, t int) int {
 		return idx + r + t
 	}) == 30
 }
@@ -209,20 +209,20 @@ fn test_fold_indexed() {
 fn test_flatten() {
 	x := [[1, 2, 3], [4, 5, 6]]
 
-	assert flatten<int>(x) == [1, 2, 3, 4, 5, 6]
-	assert flatten<int>([[]int{}]) == []
+	assert flatten[int](x) == [1, 2, 3, 4, 5, 6]
+	assert flatten[int]([[]int{}]) == []
 }
 
 fn test_group_by() {
 	x := ['H', 'el', 'l', 'o ']
 
-	assert group_by<int, string>(x, fn (v string) int {
+	assert group_by[int, string](x, fn (v string) int {
 		return v.len
 	}) == {
 		1: ['H', 'l']
 		2: ['el', 'o ']
 	}
-	assert group_by<int, int>([]int{}, fn (v int) int {
+	assert group_by[int, int]([]int{}, fn (v int) int {
 		return 0
 	}) == map[int][]int{}
 }
@@ -243,7 +243,7 @@ fn test_concat_string() {
 
 fn test_binary_search() {
 	a := [1, 3, 3, 4, 5, 6, 7, 8, 10]
-	assert binary_search(a, 3)? == 1
+	assert binary_search(a, 3)! == 1
 	assert (binary_search(a, 0) or { -1 }) == -1
 }
 
@@ -251,18 +251,18 @@ fn test_lower_bound() {
 	a := [1, 3, 3, 4, 5, 6, 7, 8, 10]
 	b := []int{}
 	c := [1, 2, 3]
-	assert lower_bound(a, 2)? == 3
+	assert lower_bound(a, 2)! == 3
 	assert (lower_bound(b, 4) or { -1 }) == -1
-	assert lower_bound(c, 3)? == 3
+	assert lower_bound(c, 3)! == 3
 }
 
 fn test_upper_bound() {
 	a := [1, 3, 3, 4, 5, 6, 7, 8, 10]
 	b := []int{}
 	c := [1, 2, 3]
-	assert upper_bound(a, 9)? == 8
+	assert upper_bound(a, 9)! == 8
 	assert (upper_bound(b, 4) or { -1 }) == -1
-	assert upper_bound(c, 2)? == 2
+	assert upper_bound(c, 2)! == 2
 }
 
 fn test_rotate_right() {
@@ -329,15 +329,15 @@ fn test_copy() {
 }
 
 fn test_can_copy_bits() {
-	assert can_copy_bits<u8>()
-	assert can_copy_bits<int>()
-	assert can_copy_bits<voidptr>()
-	assert can_copy_bits<&u8>()
+	assert can_copy_bits[u8]()
+	assert can_copy_bits[int]()
+	assert can_copy_bits[voidptr]()
+	assert can_copy_bits[&u8]()
 	// autofree needs to intercept assign
-	assert !can_copy_bits<string>()
-	assert !can_copy_bits<[]int>()
+	assert !can_copy_bits[string]()
+	assert !can_copy_bits[[]int]()
 	// map not copyable
-	assert !can_copy_bits<map[string]int>()
+	assert !can_copy_bits[map[string]int]()
 }
 
 type Str = string
@@ -355,6 +355,52 @@ fn test_array_append_empty_struct() {
 	assert (XYZ{} in names) == true
 
 	// test fixed array
-	array := [XYZ{}]
+	array := [XYZ{}]!
 	assert (XYZ{} in names) == true
+}
+
+fn test_index_of_first() {
+	// vfmt off
+	assert index_of_first([1], fn (idx int, x int) bool { return x == 0 }) == -1
+	assert index_of_first([4, 5, 0, 7, 0, 9], fn (idx int, x int) bool { return x == 0 }) == 2
+	assert index_of_first([4, 5, 0, 7, 0, 9], fn (idx int, x int) bool { return x == 4 }) == 0
+	// vfmt on
+}
+
+fn test_index_of_last() {
+	// vfmt off
+	assert index_of_last([1], fn (idx int, x int) bool { return x == 0 }) == -1
+	assert index_of_last([4, 5, 0, 7, 0, 9], fn (idx int, x int) bool { return x == 0 }) == 4
+	assert index_of_last([4, 5, 0, 7, 0, 9], fn (idx int, x int) bool { return x == 4 }) == 0
+	// vfmt on
+}
+
+fn test_map_of_indexes() {
+	// vfmt off
+	assert arrays.map_of_indexes([]int{}) == {}
+	assert arrays.map_of_indexes([1]) == {1: [0]}
+	assert arrays.map_of_indexes([1, 2, 3, 999]) == {1: [0], 2: [1], 3: [2], 999: [3]}
+	assert arrays.map_of_indexes([999, 1, 2, 3]) == {1: [1], 2: [2], 3: [3], 999: [0]}
+	assert arrays.map_of_indexes([1, 2, 3, 4, 4, 2, 1, 4, 4, 999]) == {1: [0, 6], 2: [1, 5], 3: [2], 4: [3, 4, 7, 8], 999: [9]}
+	//
+	assert arrays.map_of_indexes([]string{}) == {}
+	assert arrays.map_of_indexes(['abc']) == {'abc': [0]}
+	assert arrays.map_of_indexes(['abc', 'abc']) == {'abc': [0, 1]}
+	assert arrays.map_of_indexes(['abc', 'def', 'abc']) == {'abc': [0, 2], 'def': [1]}
+	// vfmt on
+}
+
+fn test_map_of_counts() {
+	// vfmt off
+	assert map_of_counts([]int{}) == {}
+	assert map_of_counts([1]) == {1: 1}
+	assert map_of_counts([1, 2, 3, 999]) == {1: 1, 2: 1, 3: 1, 999: 1}
+	assert map_of_counts([999, 1, 2, 3]) == {1: 1, 2: 1, 3: 1, 999: 1}
+	assert map_of_counts([1, 2, 3, 4, 4, 2, 1, 4, 4, 999]) == {1: 2, 2: 2, 3: 1, 4: 4, 999: 1}
+	//
+	assert map_of_counts([]string{}) == {}
+	assert map_of_counts(['abc']) == {'abc': 1}
+	assert map_of_counts(['abc', 'abc']) == {'abc': 2}
+	assert map_of_counts(['abc', 'def', 'abc']) == {'abc': 2, 'def': 1}
+	// vfmt on
 }

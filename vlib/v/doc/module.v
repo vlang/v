@@ -49,7 +49,7 @@ fn get_parent_mod(input_dir string) ?string {
 	}
 	parent_mod := get_parent_mod(base_dir) or { return input_dir_name }
 	if parent_mod.len > 0 {
-		return '${parent_mod}.$file_ast.mod.name'
+		return '${parent_mod}.${file_ast.mod.name}'
 	}
 	return file_ast.mod.name
 }
@@ -74,7 +74,7 @@ pub fn lookup_module_with_path(mod string, base_path string) ?string {
 		}
 		return path
 	}
-	return error('module "$mod" not found.')
+	return error('module "${mod}" not found.')
 }
 
 // lookup_module returns the result of the `lookup_module_with_path`

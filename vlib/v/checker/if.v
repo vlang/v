@@ -6,7 +6,7 @@ import v.ast
 import v.pref
 import v.token
 
-pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
+fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	if_kind := if node.is_comptime { '\$if' } else { 'if' }
 	mut node_is_expr := false
 	if node.branches.len > 0 && node.has_else {
@@ -36,7 +36,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	for i in 0 .. node.branches.len {
 		mut branch := node.branches[i]
 		if branch.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {
-			c.error('unnecessary `()` in `$if_kind` condition, use `$if_kind expr {` instead of `$if_kind (expr) {`.',
+			c.error('unnecessary `()` in `${if_kind}` condition, use `${if_kind} expr {` instead of `${if_kind} (expr) {`.',
 				branch.pos)
 		}
 		if !node.has_else || i < node.branches.len - 1 {
@@ -47,7 +47,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				// check condition type is boolean
 				c.expected_type = ast.bool_type
 				cond_typ := c.unwrap_generic(c.expr(branch.cond))
-				if (cond_typ.idx() != ast.bool_type_idx || cond_typ.has_flag(.optional)
+				if (cond_typ.idx() != ast.bool_type_idx || cond_typ.has_flag(.option)
 					|| cond_typ.has_flag(.result)) && !c.pref.translated && !c.file.is_translated {
 					c.error('non-bool type `${c.table.type_to_str(cond_typ)}` used as if condition',
 						branch.cond.pos())
@@ -59,7 +59,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			if sym.kind == .multi_return {
 				mr_info := sym.info as ast.MultiReturn
 				if branch.cond.vars.len != mr_info.types.len {
-					c.error('if guard expects $mr_info.types.len variables, but got $branch.cond.vars.len',
+					c.error('if guard expects ${mr_info.types.len} variables, but got ${branch.cond.vars.len}',
 						branch.pos)
 					continue
 				} else {
@@ -72,7 +72,13 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		if node.is_comptime { // Skip checking if needed
 			// smartcast field type on comptime if
 			mut comptime_field_name := ''
-			if mut branch.cond is ast.InfixExpr {
+			if branch.cond is ast.SelectorExpr && skip_state != .unknown {
+				is_comptime_type_is_expr = true
+			} else if mut branch.cond is ast.PrefixExpr {
+				if branch.cond.right is ast.SelectorExpr && skip_state != .unknown {
+					is_comptime_type_is_expr = true
+				}
+			} else if mut branch.cond is ast.InfixExpr {
 				if branch.cond.op == .key_is {
 					left := branch.cond.left
 					right := branch.cond.right
@@ -80,19 +86,35 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						c.error('invalid `\$if` condition: expected a type', branch.cond.right.pos())
 						return 0
 					}
-					if right is ast.ComptimeType && left is ast.TypeNode {
-						is_comptime_type_is_expr = true
-						checked_type := c.unwrap_generic(left.typ)
-						skip_state = if c.table.is_comptime_type(checked_type, right as ast.ComptimeType) {
-							.eval
-						} else {
-							.skip
+					if right is ast.ComptimeType {
+						mut checked_type := ast.void_type
+						if left is ast.TypeNode {
+							is_comptime_type_is_expr = true
+							checked_type = c.unwrap_generic(left.typ)
+							skip_state = if c.table.is_comptime_type(checked_type, right as ast.ComptimeType) {
+								.eval
+							} else {
+								.skip
+							}
+						} else if left is ast.Ident && (left as ast.Ident).info is ast.IdentVar {
+							is_comptime_type_is_expr = true
+							if var := left.scope.find_var(left.name) {
+								checked_type = c.unwrap_generic(var.typ)
+							}
+							skip_state = if c.table.is_comptime_type(checked_type, right as ast.ComptimeType) {
+								.eval
+							} else {
+								.skip
+							}
+						} else if left is ast.SelectorExpr {
+							comptime_field_name = left.expr.str()
+							is_comptime_type_is_expr = true
 						}
 					} else {
 						got_type := c.unwrap_generic((right as ast.TypeNode).typ)
 						sym := c.table.sym(got_type)
 						if sym.kind == .placeholder || got_type.has_flag(.generic) {
-							c.error('unknown type `$sym.name`', branch.cond.right.pos())
+							c.error('unknown type `${sym.name}`', branch.cond.right.pos())
 						}
 
 						if left is ast.SelectorExpr {
@@ -125,8 +147,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			} else if skip_state == .skip {
 				c.skip_flags = true
 				skip_state = .unknown // Reset the value of `skip_state` for the next branch
-			} else if !is_comptime_type_is_expr && skip_state == .eval {
+			} else if skip_state == .eval {
 				found_branch = true // If a branch wasn't skipped, the rest must be
+				c.skip_flags = skip_state == .skip
 			}
 			if c.fn_level == 0 && c.pref.output_cross_c {
 				// do not skip any of the branches for top level `$if OS {`
@@ -196,7 +219,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						node.is_expr = true
 						node.typ = c.expected_type
 					}
-					if c.expected_type.has_flag(.optional) || c.expected_type.has_flag(.result) {
+					if c.expected_type.has_flag(.option) || c.expected_type.has_flag(.result) {
 						if node.typ == ast.void_type {
 							node.is_expr = true
 							node.typ = c.expected_type
@@ -262,15 +285,28 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						if is_noreturn_callexpr(stmt.expr) {
 							continue
 						}
+						if (node.typ.has_flag(.option) || node.typ.has_flag(.result))
+							&& c.table.sym(stmt.typ).kind == .struct_
+							&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
+							stmt.expr = ast.CastExpr{
+								expr: stmt.expr
+								typname: 'IError'
+								typ: ast.error_type
+								expr_type: stmt.typ
+								pos: node.pos
+							}
+							stmt.typ = ast.error_type
+							continue
+						}
 						c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
 							node.pos)
 					}
 				} else if !node.is_comptime {
-					c.error('`$if_kind` expression requires an expression as the last statement of every branch',
+					c.error('`${if_kind}` expression requires an expression as the last statement of every branch',
 						branch.pos)
 				}
 			} else if !node.is_comptime {
-				c.error('`$if_kind` expression requires an expression as the last statement of every branch',
+				c.error('`${if_kind}` expression requires an expression as the last statement of every branch',
 					branch.pos)
 			}
 		}
@@ -301,7 +337,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	node.typ = ast.mktyp(node.typ)
 	if expr_required && !node.has_else {
 		d := if node.is_comptime { '$' } else { '' }
-		c.error('`$if_kind` expression needs `${d}else` clause', node.pos)
+		c.error('`${if_kind}` expression needs `${d}else` clause', node.pos)
 	}
 	return node.typ
 }
@@ -321,7 +357,7 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 					ast.none_type_idx
 				}
 				else {
-					c.error('invalid type `$right_expr`', right_expr.pos())
+					c.error('invalid type `${right_expr}`', right_expr.pos())
 					ast.Type(0)
 				}
 			}
@@ -339,7 +375,7 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 				} else if !c.check_types(right_type, expr_type) && left_sym.kind != .sum_type {
 					expect_str := c.table.type_to_str(right_type)
 					expr_str := c.table.type_to_str(expr_type)
-					c.error('cannot use type `$expect_str` as type `$expr_str`', node.pos)
+					c.error('cannot use type `${expect_str}` as type `${expr_str}`', node.pos)
 				}
 				if node.left in [ast.Ident, ast.SelectorExpr] && node.right is ast.TypeNode {
 					is_variable := if node.left is ast.Ident {
@@ -352,6 +388,15 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 							|| (node.left is ast.SelectorExpr
 							&& (node.left as ast.SelectorExpr).is_mut) {
 							c.fail_if_immutable(node.left)
+						}
+						// TODO: Add check for sum types in a way that it doesn't break a lot of compiler code
+						if node.left is ast.Ident
+							&& (left_sym.kind == .interface_ && right_sym.kind != .interface_) {
+							v := scope.find_var(node.left.name) or { &ast.Var{} }
+							if v.is_mut && !node.left.is_mut {
+								c.error('smart casting a mutable interface value requires `if mut ${node.left.name} is ...`',
+									node.left.pos)
+							}
 						}
 						if left_sym.kind in [.interface_, .sum_type] {
 							c.smartcast(node.left, node.left_type, right_type, mut scope)

@@ -30,7 +30,7 @@ pub fn merge(ctx context.Context, ctxs ...context.Context) (context.Context, con
 		cancel_fn: cancel
 		cancel_ctx: cancel_ctx
 	}
-	go octx.run()
+	spawn octx.run()
 	return context.Context(octx), context.CancelFn(cancel)
 }
 
@@ -112,7 +112,7 @@ pub fn (mut octx OneContext) cancel(err IError) {
 }
 
 pub fn (mut octx OneContext) run_two_contexts(mut ctx1 context.Context, mut ctx2 context.Context) {
-	go fn (mut octx OneContext, mut ctx1 context.Context, mut ctx2 context.Context) {
+	spawn fn (mut octx OneContext, mut ctx1 context.Context, mut ctx2 context.Context) {
 		octx_cancel_done := octx.cancel_ctx.done()
 		c1done := ctx1.done()
 		c2done := ctx2.done()
@@ -131,7 +131,7 @@ pub fn (mut octx OneContext) run_two_contexts(mut ctx1 context.Context, mut ctx2
 }
 
 pub fn (mut octx OneContext) run_multiple_contexts(mut ctx context.Context) {
-	go fn (mut octx OneContext, mut ctx context.Context) {
+	spawn fn (mut octx OneContext, mut ctx context.Context) {
 		octx_cancel_done := octx.cancel_ctx.done()
 		cdone := ctx.done()
 		select {

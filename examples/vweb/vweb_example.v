@@ -18,6 +18,10 @@ mut:
 	cnt int
 }
 
+pub fn (app App) before_request() {
+	println('[vweb] before_request: ${app.req.method} ${app.req.url}')
+}
+
 fn main() {
 	println('vweb example')
 	vweb.run(&App{}, port)
@@ -47,10 +51,10 @@ pub fn (mut app App) show_text() vweb.Result {
 
 pub fn (mut app App) cookie() vweb.Result {
 	app.set_cookie(name: 'cookie', value: 'test')
-	return app.text('Response Headers\n$app.header')
+	return app.text('Response Headers\n${app.header}')
 }
 
 [post]
 pub fn (mut app App) post() vweb.Result {
-	return app.text('Post body: $app.req.data')
+	return app.text('Post body: ${app.req.data}')
 }

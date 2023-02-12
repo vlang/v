@@ -656,9 +656,8 @@ pub:
 
 // interpolation function
 [direct_array_access; manualfree]
-pub fn str_intp(data_len int, in_data voidptr) string {
+pub fn str_intp(data_len int, input_base &StrIntpData) string {
 	mut res := strings.new_builder(256)
-	input_base := &StrIntpData(in_data)
 	for i := 0; i < data_len; i++ {
 		data := unsafe { &input_base[i] }
 		// avoid empty strings
@@ -687,22 +686,22 @@ pub const (
 
 [inline]
 pub fn str_intp_sq(in_str string) string {
-	return 'str_intp(2, _MOV((StrIntpData[]){{_SLIT("\'"), $si_s_code, {.d_s = $in_str}},{_SLIT("\'"), 0, {.d_c = 0 }}}))'
+	return 'str_intp(2, _MOV((StrIntpData[]){{_SLIT("\'"), ${si_s_code}, {.d_s = ${in_str}}},{_SLIT("\'"), 0, {.d_c = 0 }}}))'
 }
 
 [inline]
 pub fn str_intp_rune(in_str string) string {
-	return 'str_intp(2, _MOV((StrIntpData[]){{_SLIT("\`"), $si_s_code, {.d_s = $in_str}},{_SLIT("\`"), 0, {.d_c = 0 }}}))'
+	return 'str_intp(2, _MOV((StrIntpData[]){{_SLIT("\`"), ${si_s_code}, {.d_s = ${in_str}}},{_SLIT("\`"), 0, {.d_c = 0 }}}))'
 }
 
 [inline]
 pub fn str_intp_g32(in_str string) string {
-	return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, $si_g32_code, {.d_f32 = $in_str }}}))'
+	return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${si_g32_code}, {.d_f32 = ${in_str} }}}))'
 }
 
 [inline]
 pub fn str_intp_g64(in_str string) string {
-	return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, $si_g64_code, {.d_f64 = $in_str }}}))'
+	return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${si_g64_code}, {.d_f64 = ${in_str} }}}))'
 }
 
 // replace %% with the in_str
@@ -718,12 +717,12 @@ pub fn str_intp_sub(base_str string, in_str string) string {
 		st_str := base_str[..index]
 		if index + 2 < base_str.len {
 			en_str := base_str[index + 2..]
-			res_str := 'str_intp(2, _MOV((StrIntpData[]){{_SLIT("$st_str"), $si_s_code, {.d_s = $in_str }},{_SLIT("$en_str"), 0, {.d_c = 0}}}))'
+			res_str := 'str_intp(2, _MOV((StrIntpData[]){{_SLIT("${st_str}"), ${si_s_code}, {.d_s = ${in_str} }},{_SLIT("${en_str}"), 0, {.d_c = 0}}}))'
 			st_str.free()
 			en_str.free()
 			return res_str
 		}
-		res2_str := 'str_intp(1, _MOV((StrIntpData[]){{_SLIT("$st_str"), $si_s_code, {.d_s = $in_str }}}))'
+		res2_str := 'str_intp(1, _MOV((StrIntpData[]){{_SLIT("${st_str}"), ${si_s_code}, {.d_s = ${in_str} }}}))'
 		st_str.free()
 		return res2_str
 	}

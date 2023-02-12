@@ -25,8 +25,8 @@ pub mut:
 }
 
 // create_image creates an `Image` from `file`.
-// TODO return ?Image
-pub fn (mut ctx Context) create_image(file string) Image {
+// TODO return !Image
+pub fn (ctx &Context) create_image(file string) Image {
 	// println('\ncreate_image("$file")')
 	if !os.exists(file) {
 		return Image{}
@@ -38,7 +38,9 @@ pub fn (mut ctx Context) create_image(file string) Image {
 			// println('created macos image: $img.path w=$img.width')
 			// C.printf('p = %p\n', img.data)
 			img.id = ctx.image_cache.len
-			ctx.image_cache << img
+			unsafe {
+				ctx.image_cache << img
+			}
 			return img
 		}
 	}
@@ -56,12 +58,16 @@ pub fn (mut ctx Context) create_image(file string) Image {
 			path: file
 			id: ctx.image_cache.len
 		}
-		ctx.image_cache << img
+		unsafe {
+			ctx.image_cache << img
+		}
 		return img
 	}
 	mut img := create_image(file)
 	img.id = ctx.image_cache.len
-	ctx.image_cache << img
+	unsafe {
+		ctx.image_cache << img
+	}
 	return img
 }
 
@@ -78,9 +84,22 @@ pub fn (mut img Image) init_sokol_image() &Image {
 		label: img.path.str
 		d3d11_texture: 0
 	}
+
+	// NOTE the following code, sometimes, result in hard-to-detect visual errors/bugs:
+	// img_size := usize(img.nr_channels * img.width * img.height)
+	// As an example see https://github.com/vlang/vab/issues/239
+	// The image will come out blank for some reason and no SOKOL_ASSERT
+	// nor any CI check will/can currently catch this.
+	// Since all of gg currently runs with more or less *defaults* from sokol_gfx/sokol_gl
+	// we should currently just use the sum of each of the RGB and A channels (= 4) here instead.
+	// Optimized PNG images that have no alpha channel is often optimized to only have
+	// 3 (or less) channels which stbi will correctly detect and set as `img.nr_channels`
+	// but the current sokol_gl context setup expects 4. It *should* be the same with
+	// all other stbi supported formats.
+	img_size := usize(4 * img.width * img.height)
 	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr: img.data
-		size: usize(img.nr_channels * img.width * img.height)
+		size: img_size
 	}
 	img.simg = gfx.make_image(&img_desc)
 	img.simg_ok = true
@@ -90,23 +109,6 @@ pub fn (mut img Image) init_sokol_image() &Image {
 
 // draw_image draws the provided image onto the screen.
 pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Image) {
-	$if macos {
-		if img_.id >= ctx.image_cache.len {
-			eprintln('gg: draw_image() bad img id $img_.id (img cache len = $ctx.image_cache.len)')
-			return
-		}
-		if ctx.native_rendering {
-			if img_.width == 0 {
-				return
-			}
-			if !os.exists(img_.path) {
-				return
-			}
-			C.darwin_draw_image(x, ctx.height - (y + height), width, height, img_)
-			return
-		}
-	}
-
 	ctx.draw_image_with_config(
 		img: img_
 		img_rect: Rect{x, y, width, height}
@@ -197,7 +199,7 @@ pub fn (mut ctx Context) create_image_with_size(file string, width int, height i
 // TODO remove this
 fn create_image(file string) Image {
 	if !os.exists(file) {
-		println('gg.create_image(): file not found: $file')
+		println('gg.create_image(): file not found: ${file}')
 		return Image{} // none
 	}
 	stb_img := stbi.load(file) or { return Image{} }
@@ -254,9 +256,53 @@ pub struct StreamingImageConfig {
 // draw_image_with_config takes in a config that details how the
 // provided image should be drawn onto the screen
 pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
+	$if macos {
+		unsafe {
+			mut img := config.img
+			if config.img == nil {
+				// Get image by id
+				if config.img_id > 0 {
+					img = &ctx.image_cache[config.img_id]
+				} else {
+					eprintln('gg: failed to get image to draw natively')
+					return
+				}
+			}
+			if img.id >= ctx.image_cache.len {
+				eprintln('gg: draw_image() bad img id ${img.id} (img cache len = ${ctx.image_cache.len})')
+				return
+			}
+			if ctx.native_rendering {
+				if img.width == 0 {
+					println('w=0')
+					return
+				}
+				if !os.exists(img.path) {
+					println('not exist path')
+					return
+				}
+				x := config.img_rect.x
+				y := config.img_rect.y
+				width := if config.img_rect.width == 0 {
+					f32(img.width)
+				} else {
+					config.img_rect.width
+				}
+				height := if config.img_rect.height == 0 {
+					f32(img.height)
+				} else {
+					config.img_rect.height
+				}
+				C.darwin_draw_image(x, ctx.height - (y + config.img_rect.height), width,
+					height, img)
+				return
+			}
+		}
+	}
+
 	id := if !isnil(config.img) { config.img.id } else { config.img_id }
 	if id >= ctx.image_cache.len {
-		eprintln('gg: draw_image() bad img id $id (img cache len = $ctx.image_cache.len)')
+		eprintln('gg: draw_image() bad img id ${id} (img cache len = ${ctx.image_cache.len})')
 		return
 	}
 
@@ -296,7 +342,12 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	mut v0f := if !flip_y { v0 } else { v1 }
 	mut v1f := if !flip_y { v1 } else { v0 }
 
-	sgl.load_pipeline(ctx.timage_pip)
+	// FIXME: is this okay?
+	match config.effect {
+		.alpha { sgl.load_pipeline(ctx.pipeline.alpha) }
+		.add { sgl.load_pipeline(ctx.pipeline.add) }
+	}
+
 	sgl.enable_texture()
 	sgl.texture(img.simg)
 

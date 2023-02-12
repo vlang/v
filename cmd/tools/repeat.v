@@ -183,7 +183,7 @@ fn (mut context Context) parse_options() ! {
 		scripting.set_verbose(true)
 	}
 	commands := fp.finalize() or {
-		eprintln('Error: $err')
+		eprintln('Error: ${err}')
 		exit(1)
 	}
 	context.commands = context.expand_all_commands(commands)
@@ -249,7 +249,7 @@ fn (mut context Context) run() {
 			mut duration := 0
 			mut sum := 0
 			mut oldres := ''
-			println('Series: ${si:4}/${context.series:-4}, command: $cmd')
+			println('Series: ${si:4}/${context.series:-4}, command: ${cmd}')
 			if context.warmup > 0 && run_warmups < context.commands.len {
 				for i in 1 .. context.warmup + 1 {
 					flushed_print('${context.cgoback}warming up run: ${i:4}/${context.warmup:-4} for ${cmd:-50s} took ${duration:6} ms ...')
@@ -273,7 +273,7 @@ fn (mut context Context) run() {
 				res := scripting.exec(cmd) or { continue }
 				duration = int(sw.elapsed().milliseconds())
 				if res.exit_code != 0 {
-					eprintln('${i:10} non 0 exit code for cmd: $cmd')
+					eprintln('${i:10} non 0 exit code for cmd: ${cmd}')
 					continue
 				}
 				trimed_output := res.output.trim_right('\r\n')
@@ -308,7 +308,7 @@ fn (mut context Context) run() {
 			for k, v in m {
 				// show a temporary summary for the current series/cmd cycle
 				s := new_aints(v, context.nmins, context.nmaxs)
-				println('  $k: $s')
+				println('  ${k}: ${s}')
 				summary[k] = s
 			}
 			// merge current raw results to the previous ones
@@ -346,7 +346,7 @@ fn (mut context Context) show_diff_summary() {
 		}
 		return 0
 	})
-	println('Summary (commands are ordered by ascending mean time), after $context.series series of $context.count repetitions:')
+	println('Summary (commands are ordered by ascending mean time), after ${context.series} series of ${context.count} repetitions:')
 	base := context.results[0].atiming.average
 	mut first_cmd_percentage := f64(100.0)
 	mut first_marker := ''
@@ -357,14 +357,14 @@ fn (mut context Context) show_diff_summary() {
 			first_marker = bold('>')
 			first_cmd_percentage = cpercent
 		}
-		println(' $first_marker${(i + 1):3} | ${cpercent:5.1f}% slower | ${r.cmd:-57s} | $r.atiming')
+		println(' ${first_marker}${(i + 1):3} | ${cpercent:5.1f}% slower | ${r.cmd:-57s} | ${r.atiming}')
 	}
 	$if debugcontext ? {
-		println('context: $context')
+		println('context: ${context}')
 	}
 	if int(base) > context.fail_on_maxtime {
 		flushed_print(performance_regression_label)
-		println('average time: ${base:6.1f} ms > $context.fail_on_maxtime ms threshold.')
+		println('average time: ${base:6.1f} ms > ${context.fail_on_maxtime} ms threshold.')
 		exit(2)
 	}
 	if context.fail_on_regress_percent == max_fail_percent || context.results.len < 2 {

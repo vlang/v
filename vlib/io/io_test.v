@@ -14,7 +14,7 @@ pub mut:
 
 fn (mut b Buf) read(mut buf []u8) !int {
 	if !(b.i < b.bytes.len) {
-		return IError(io.Eof{})
+		return io.Eof{}
 	}
 	n := copy(mut buf, b.bytes[b.i..])
 	b.i += n

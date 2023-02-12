@@ -29,6 +29,9 @@ pub struct SSLConnectConfig {
 
 // new_ssl_conn instance an new SSLCon struct
 pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
+	$if trace_ssl ? {
+		eprintln(@METHOD)
+	}
 	mut conn := &SSLConn{
 		config: config
 		sslctx: 0
@@ -48,6 +51,9 @@ enum Select {
 
 // shutdown closes the ssl connection and does cleanup
 pub fn (mut s SSLConn) shutdown() ! {
+	$if trace_ssl ? {
+		eprintln(@METHOD)
+	}
 	if s.ssl != 0 {
 		mut res := 0
 		for {
@@ -77,7 +83,7 @@ pub fn (mut s SSLConn) shutdown() ! {
 					if s.sslctx != 0 {
 						C.SSL_CTX_free(s.sslctx)
 					}
-					return error('unexepedted ssl error $err_res')
+					return error('unexepedted ssl error ${err_res}')
 				}
 				if s.ssl != 0 {
 					unsafe { C.SSL_free(voidptr(s.ssl)) }
@@ -85,7 +91,7 @@ pub fn (mut s SSLConn) shutdown() ! {
 				if s.sslctx != 0 {
 					C.SSL_CTX_free(s.sslctx)
 				}
-				return error('Could not connect using SSL. ($err_res),err')
+				return error('Could not connect using SSL. (${err_res}),err')
 			} else if res == 0 {
 				continue
 			} else if res == 1 {
@@ -98,17 +104,15 @@ pub fn (mut s SSLConn) shutdown() ! {
 		C.SSL_CTX_free(s.sslctx)
 	}
 	if s.owns_socket {
-		$if windows {
-			C.shutdown(s.handle, C.SD_BOTH)
-			net.socket_error(C.closesocket(s.handle))!
-		} $else {
-			C.shutdown(s.handle, C.SHUT_RDWR)
-			net.socket_error(C.close(s.handle))!
-		}
+		net.shutdown(s.handle)
+		net.close(s.handle)!
 	}
 }
 
 fn (mut s SSLConn) init() ! {
+	$if trace_ssl ? {
+		eprintln(@METHOD)
+	}
 	s.sslctx = unsafe { C.SSL_CTX_new(C.SSLv23_client_method()) }
 	if s.sslctx == 0 {
 		return error("Couldn't get ssl context")
@@ -155,14 +159,14 @@ fn (mut s SSLConn) init() ! {
 		if s.config.cert != '' {
 			res = C.SSL_CTX_use_certificate_file(voidptr(s.sslctx), &char(cert.str), C.SSL_FILETYPE_PEM)
 			if s.config.validate && res != 1 {
-				return error('http: openssl: SSL_CTX_use_certificate_file failed, res: $res')
+				return error('http: openssl: SSL_CTX_use_certificate_file failed, res: ${res}')
 			}
 		}
 		if s.config.cert_key != '' {
 			res = C.SSL_CTX_use_PrivateKey_file(voidptr(s.sslctx), &char(cert_key.str),
 				C.SSL_FILETYPE_PEM)
 			if s.config.validate && res != 1 {
-				return error('http: openssl: SSL_CTX_use_PrivateKey_file failed, res: $res')
+				return error('http: openssl: SSL_CTX_use_PrivateKey_file failed, res: ${res}')
 			}
 		}
 
@@ -176,6 +180,9 @@ fn (mut s SSLConn) init() ! {
 
 // connect to server using OpenSSL
 pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
+	$if trace_ssl ? {
+		eprintln('${@METHOD} hostname: ${hostname}')
+	}
 	s.handle = tcp_conn.sock.handle
 	s.duration = tcp_conn.read_timeout()
 
@@ -193,8 +200,11 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 
 // dial opens an ssl connection on hostname:port
 pub fn (mut s SSLConn) dial(hostname string, port int) ! {
+	$if trace_ssl ? {
+		eprintln('${@METHOD} hostname: ${hostname} | port: ${port}')
+	}
 	s.owns_socket = true
-	mut tcp_conn := net.dial_tcp('$hostname:$port') or { return err }
+	mut tcp_conn := net.dial_tcp('${hostname}:${port}') or { return err }
 	$if macos {
 		tcp_conn.set_blocking(true) or { return err }
 	}
@@ -202,6 +212,9 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 }
 
 fn (mut s SSLConn) complete_connect() ! {
+	$if trace_ssl ? {
+		eprintln(@METHOD)
+	}
 	for {
 		mut res := C.SSL_connect(voidptr(s.ssl))
 		if res != 1 {
@@ -223,7 +236,7 @@ fn (mut s SSLConn) complete_connect() ! {
 				}
 				continue
 			}
-			return error('Could not connect using SSL. ($err_res),err')
+			return error('Could not connect using SSL. (${err_res}),err')
 		}
 		break
 	}
@@ -250,7 +263,7 @@ fn (mut s SSLConn) complete_connect() ! {
 					}
 					continue
 				}
-				return error('Could not validate SSL certificate. ($err_res),err')
+				return error('Could not validate SSL certificate. (${err_res}),err')
 			}
 			break
 		}
@@ -269,32 +282,54 @@ fn (mut s SSLConn) complete_connect() ! {
 
 pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 	mut res := 0
+	$if trace_ssl ? {
+		defer {
+			if len > 0 {
+				eprintln('${@METHOD} res: ${res}: buf_ptr: ${voidptr(buf_ptr):x}, len: ${len}, hex: ${unsafe { buf_ptr.vbytes(len).hex() }} data: `${unsafe { buf_ptr.vstring_with_len(len) }}`')
+			}
+		}
+	}
 	for {
 		res = C.SSL_read(voidptr(s.ssl), buf_ptr, len)
 		if res > 0 {
 			return res
 		} else if res == 0 {
-			return IError(io.Eof{})
+			$if trace_ssl ? {
+				eprintln('${@METHOD} ---> res: io.Eof')
+			}
+			return io.Eof{}
 		} else {
 			err_res := ssl_error(res, s.ssl)!
 			match err_res {
 				.ssl_error_want_read {
 					ready := @select(s.handle, .read, s.duration)!
 					if !ready {
+						$if trace_ssl ? {
+							eprintln('${@METHOD} ---> res: net.err_timed_out .ssl_error_want_read')
+						}
 						return net.err_timed_out
 					}
 				}
 				.ssl_error_want_write {
 					ready := @select(s.handle, .write, s.duration)!
 					if !ready {
+						$if trace_ssl ? {
+							eprintln('${@METHOD} ---> res: net.err_timed_out .ssl_error_want_write')
+						}
 						return net.err_timed_out
 					}
 				}
 				.ssl_error_zero_return {
+					$if trace_ssl ? {
+						eprintln('${@METHOD} ---> res: 0 .ssl_error_zero_return')
+					}
 					return 0
 				}
 				else {
-					return error('Could not read using SSL. ($err_res)')
+					$if trace_ssl ? {
+						eprintln('${@METHOD} ---> res: could not read, err_res: ${err_res}')
+					}
+					return error('Could not read using SSL. (${err_res})')
 				}
 			}
 		}
@@ -303,15 +338,22 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 }
 
 pub fn (mut s SSLConn) read(mut buffer []u8) !int {
-	res := s.socket_read_into_ptr(&u8(buffer.data), buffer.len) or { return err }
-	return res
+	$if trace_ssl ? {
+		eprintln('${@METHOD} buffer.len: ${buffer.len}')
+	}
+	return s.socket_read_into_ptr(&u8(buffer.data), buffer.len)
 }
 
 // write_ptr writes `len` bytes from `bytes` to the ssl connection
 pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
+	mut total_sent := 0
+	$if trace_ssl ? {
+		defer {
+			eprintln('${@METHOD} total_sent: ${total_sent}, bytes: ${voidptr(bytes):x}, len: ${len}, hex: ${unsafe { bytes.vbytes(len).hex() }}, data:-=-=-=-\n${unsafe { bytes.vstring_with_len(len) }}\n-=-=-=-')
+		}
+	}
 	unsafe {
 		mut ptr_base := bytes
-		mut total_sent := 0
 		for total_sent < len {
 			ptr := ptr_base + total_sent
 			remaining := len - total_sent
@@ -334,23 +376,32 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 					}
 					continue
 				} else if err_res == .ssl_error_zero_return {
+					$if trace_ssl ? {
+						eprintln('${@METHOD} ---> res: ssl write on closed connection .ssl_error_zero_return')
+					}
 					return error('ssl write on closed connection') // Todo error_with_code close
 				}
-				return error_with_code('Could not write SSL. ($err_res),err', int(err_res))
+				$if trace_ssl ? {
+					eprintln('${@METHOD} ---> res: could not write SSL, err_res: ${err_res}')
+				}
+				return error_with_code('Could not write SSL. (${err_res}),err', int(err_res))
 			}
 			total_sent += sent
 		}
-		return total_sent
 	}
+	return total_sent
 }
 
 // write writes data from `bytes` to the ssl connection
 pub fn (mut s SSLConn) write(bytes []u8) !int {
-	return s.write_ptr(&u8(bytes.data), bytes.len)
+	return s.write_ptr(&u8(bytes.data), bytes.len)!
 }
 
 // write_string writes a string to the ssl connection
 pub fn (mut s SSLConn) write_string(str string) !int {
+	$if trace_ssl ? {
+		eprintln('${@METHOD} str: ${str}')
+	}
 	return s.write_ptr(str.str, str.len)
 }
 
@@ -365,6 +416,9 @@ This is basically a copy of Emily socket implementation of select.
 
 // Select waits for an io operation (specified by parameter `test`) to be available
 fn @select(handle int, test Select, timeout time.Duration) !bool {
+	$if trace_ssl ? {
+		eprintln('${@METHOD} handle: ${handle}, timeout: ${timeout}')
+	}
 	set := C.fd_set{}
 
 	C.FD_ZERO(&set)
@@ -397,5 +451,9 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 		}
 	}
 
-	return C.FD_ISSET(handle, &set)
+	res := C.FD_ISSET(handle, &set)
+	$if trace_ssl ? {
+		eprintln('${@METHOD} ---> res: ${res}')
+	}
+	return res
 }

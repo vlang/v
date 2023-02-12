@@ -167,11 +167,10 @@ pub fn ls(path string) ![]string {
 	// }
 	// C.FindClose(h_find_dir)
 	if !is_dir(path) {
-		return error('ls() couldnt open dir "$path": directory does not exist')
+		return error('ls() couldnt open dir "${path}": directory does not exist')
 	}
-	// NOTE: Should eventually have path struct & os dependant path seperator (eg os.PATH_SEPERATOR)
 	// we need to add files to path eg. c:\windows\*.dll or :\windows\*
-	path_files := '$path\\*'
+	path_files := '${path}\\*'
 	// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
 	// we should use FindFirstFileW and FindNextFileW
 	h_find_files := C.FindFirstFile(path_files.to_wide(), voidptr(&find_file_data))
@@ -190,16 +189,15 @@ pub fn ls(path string) ![]string {
 }
 
 // mkdir creates a new directory with the specified path.
-pub fn mkdir(path string, params MkdirParams) !bool {
+pub fn mkdir(path string, params MkdirParams) ! {
 	if path == '.' {
-		return true
+		return
 	}
 	apath := real_path(path)
 	if !C.CreateDirectory(apath.to_wide(), 0) {
-		return error('mkdir failed for "$apath", because CreateDirectory returned: ' +
+		return error('mkdir failed for "${apath}", because CreateDirectory returned: ' +
 			get_error_msg(int(C.GetLastError())))
 	}
-	return true
 }
 
 // Ref - https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/get-osfhandle?view=vs-2019
@@ -312,7 +310,7 @@ pub fn raw_execute(cmd string) Result {
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output: 'exec failed (CreatePipe): $error_msg'
+			output: 'exec failed (CreatePipe): ${error_msg}'
 		}
 	}
 	set_handle_info_ok := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT,
@@ -322,7 +320,7 @@ pub fn raw_execute(cmd string) Result {
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output: 'exec failed (SetHandleInformation): $error_msg'
+			output: 'exec failed (SetHandleInformation): ${error_msg}'
 		}
 	}
 	proc_info := ProcessInformation{}
@@ -346,7 +344,7 @@ pub fn raw_execute(cmd string) Result {
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output: 'exec failed (CreateProcess) with code $error_num: $error_msg cmd: $cmd'
+			output: 'exec failed (CreateProcess) with code ${error_num}: ${error_msg} cmd: ${cmd}'
 		}
 	}
 	C.CloseHandle(child_stdin)
@@ -378,7 +376,7 @@ pub fn raw_execute(cmd string) Result {
 	}
 }
 
-pub fn symlink(origin string, target string) !bool {
+pub fn symlink(origin string, target string) ! {
 	// this is a temporary fix for TCC32 due to runtime error
 	// TODO: find the cause why TCC32 for Windows does not work without the compiletime option
 	$if x64 || x32 {
@@ -397,12 +395,12 @@ pub fn symlink(origin string, target string) !bool {
 		if !exists(target) {
 			return error('C.CreateSymbolicLinkW reported success, but symlink still does not exist')
 		}
-		return true
+		return
 	}
-	return false
+	return error('could not symlink')
 }
 
-pub fn link(origin string, target string) !bool {
+pub fn link(origin string, target string) ! {
 	res := C.CreateHardLinkW(target.to_wide(), origin.to_wide(), C.NULL)
 	// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
 	if res != 1 {
@@ -411,7 +409,6 @@ pub fn link(origin string, target string) !bool {
 	if !exists(target) {
 		return error('C.CreateHardLinkW reported success, but link still does not exist')
 	}
-	return true
 }
 
 pub fn (mut f File) close() {
@@ -461,16 +458,25 @@ pub fn debugger_present() bool {
 	return C.IsDebuggerPresent()
 }
 
+// uname returns information about the platform on which the program is running.
+// Currently `uname` on windows is not standardized, so it just mimics current practices from other popular software/language implementations:
+//   busybox-v1.35.0 * `busybox uname -a` => "Windows_NT HOSTNAME 10.0 19044 x86_64 MS/Windows"
+//   rust/coreutils-v0.0.17 * `coreutils uname -a` => `Windows_NT HOSTNAME 10.0 19044 x86_64 MS/Windows (Windows 10)`
+//   Python3 => `uname_result(system='Windows', node='HOSTNAME', release='10', version='10.0.19044', machine='AMD64')`
+// See: [NT Version Info](https://en.wikipedia.org/wiki/Windows_NT) @@ <https://archive.is/GnnvF>
+// and: [NT Version Info (detailed)](https://en.wikipedia.org/wiki/Comparison_of_Microsoft_Windows_versions#NT_Kernel-based_2)
 pub fn uname() Uname {
-	sys_and_ver := execute('cmd /c ver').output.split('[')
 	nodename := hostname()
-	machine := getenv('PROCESSOR_ARCHITECTURE')
+	// ToDO: environment variables have low reliability; check for another quick way
+	machine := getenv('PROCESSOR_ARCHITECTURE') // * note: 'AMD64' == 'x86_64' (not standardized, but 'x86_64' use is more common; but, python == 'AMD64')
+	version_info := execute('cmd /d/c ver').output
+	version_n := (version_info.split(' '))[3].replace(']', '').trim_space()
 	return Uname{
-		sysname: sys_and_ver[0].trim_space()
+		sysname: 'Windows_NT' // as of 2022-12, WinOS has only two possible kernels ~ 'Windows_NT' or 'Windows_9x'
 		nodename: nodename
-		release: sys_and_ver[1].replace(']', '')
-		version: sys_and_ver[0] + '[' + sys_and_ver[1]
-		machine: machine
+		machine: machine.trim_space()
+		release: (version_n.split('.'))[0..2].join('.').trim_space() // Major.minor-only == "primary"/release version
+		version: (version_n.split('.'))[2].trim_space()
 	}
 }
 
@@ -494,19 +500,21 @@ pub fn loginname() string {
 	return unsafe { string_from_wide(&loginname[0]) }
 }
 
-// `is_writable_folder` - `folder` exists and is writable to the process
-pub fn is_writable_folder(folder string) !bool {
+// ensure_folder_is_writable checks that `folder` exists, and is writable to the process
+// by creating an empty file in it, then deleting it.
+pub fn ensure_folder_is_writable(folder string) ! {
 	if !exists(folder) {
-		return error('`$folder` does not exist')
+		return error_with_code('`${folder}` does not exist', 1)
 	}
 	if !is_dir(folder) {
-		return error('`folder` is not a folder')
+		return error_with_code('`folder` is not a folder', 2)
 	}
 	tmp_folder_name := 'tmp_perm_check_pid_' + getpid().str()
 	tmp_perm_check := join_path_single(folder, tmp_folder_name)
-	write_file(tmp_perm_check, 'test') or { return error('cannot write to folder "$folder": $err') }
+	write_file(tmp_perm_check, 'test') or {
+		return error_with_code('cannot write to folder "${folder}": ${err}', 3)
+	}
 	rm(tmp_perm_check)!
-	return true
 }
 
 [inline]

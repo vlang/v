@@ -45,7 +45,7 @@ fn main() {
 	)
 	// window.onkeydown(key_down)
 	println('Starting the game loop...')
-	go game.run()
+	spawn game.run()
 	game.gg.run()
 }
 

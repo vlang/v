@@ -4,6 +4,7 @@
 module parser
 
 import v.ast
+import v.token
 
 fn (mut p Parser) array_init() ast.ArrayInit {
 	first_pos := p.tok.pos()
@@ -28,7 +29,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		line_nr := p.tok.line_nr
 		p.next()
 		// []string
-		if p.tok.kind in [.name, .amp, .lsbr, .key_shared] && p.tok.line_nr == line_nr {
+		if p.tok.kind in [.name, .amp, .lsbr, .question, .key_shared] && p.tok.line_nr == line_nr {
 			elem_type_pos = p.tok.pos()
 			elem_type = p.parse_type()
 			// this is set here because it's a known type, others could be the
@@ -80,7 +81,12 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					pos := p.tok.pos()
 					n := p.check_name()
 					if n != 'init' {
-						p.error_with_pos('expected `init:`, not `$n`', pos)
+						if is_fixed {
+							p.error_with_pos('`len` and `cap` are invalid attributes for fixed array dimension',
+								pos)
+						} else {
+							p.error_with_pos('expected `init:`, not `${n}`', pos)
+						}
 						return ast.ArrayInit{}
 					}
 					p.check(.colon)
@@ -127,10 +133,12 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	mut has_cap := false
 	mut len_expr := ast.empty_expr
 	mut cap_expr := ast.empty_expr
+	mut attr_pos := token.Pos{}
 	if p.tok.kind == .lcbr && exprs.len == 0 && array_type != ast.void_type {
 		// `[]int{ len: 10, cap: 100}` syntax
 		p.next()
 		for p.tok.kind != .rcbr {
+			attr_pos = p.tok.pos()
 			key := p.check_name()
 			p.check(.colon)
 			match key {
@@ -158,7 +166,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					p.close_scope()
 				}
 				else {
-					p.error('wrong field `$key`, expecting `len`, `cap`, or `init`')
+					p.error('wrong field `${key}`, expecting `len`, `cap`, or `init`')
 					return ast.ArrayInit{}
 				}
 			}
@@ -167,6 +175,10 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			}
 		}
 		p.check(.rcbr)
+		if has_default && !has_len {
+			p.error_with_pos('cannot use `init` attribute unless `len` attribute is also provided',
+				attr_pos)
+		}
 	}
 	pos := first_pos.extend_with_last_line(last_pos, p.prev_tok.line_nr)
 	return ast.ArrayInit{
@@ -203,8 +215,13 @@ fn (mut p Parser) map_init() ast.MapInit {
 	mut comments := [][]ast.Comment{}
 	pre_cmnts := p.eat_comments()
 	for p.tok.kind !in [.rcbr, .eof] {
-		key := p.expr(0)
-		keys << key
+		if p.tok.kind == .name && p.tok.lit in ['r', 'c', 'js'] {
+			key := p.string_expr()
+			keys << key
+		} else {
+			key := p.expr(0)
+			keys << key
+		}
 		p.check(.colon)
 		val := p.expr(0)
 		vals << val

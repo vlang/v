@@ -1,10 +1,10 @@
-import sqlite
+import db.sqlite
 
 struct Person {
 }
 
 fn main() {
-	db := sqlite.connect(':memory:')?
+	db := sqlite.connect(':memory:')!
 	_ := sql db {
 		select from Person
 	}

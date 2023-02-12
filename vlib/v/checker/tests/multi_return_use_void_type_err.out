@@ -1,0 +1,5 @@
+vlib/v/checker/tests/multi_return_use_void_type_err.vv:2:2: error: type `void` cannot be used in multi-return
+    1 | fn main() {
+    2 |     print('a'), print('b')
+      |     ~~~~~~~~~~
+    3 | }

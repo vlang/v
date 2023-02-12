@@ -89,22 +89,23 @@ pub struct TypeSymbol {
 pub:
 	parent_idx int
 pub mut:
-	info     TypeInfo
-	kind     Kind
-	name     string // the internal & source name of the type, i.e. `[5]int`.
-	cname    string // the name with no dots for use in the generated C code
-	methods  []Fn
-	mod      string
-	is_pub   bool
-	language Language
-	idx      int
-	size     int = -1
-	align    int = -1
+	info          TypeInfo
+	kind          Kind
+	name          string // the internal & source name of the type, i.e. `[5]int`.
+	cname         string // the name with no dots for use in the generated C code
+	methods       []Fn
+	generic_types []Type
+	mod           string
+	is_pub        bool
+	language      Language
+	idx           int
+	size          int = -1
+	align         int = -1
 }
 
 // max of 8
 pub enum TypeFlag {
-	optional
+	option
 	result
 	variadic
 	generic
@@ -209,7 +210,7 @@ pub fn (t Type) ref() Type {
 pub fn (t Type) deref() Type {
 	nr_muls := (int(t) >> 16) & 0xff
 	if nr_muls == 0 {
-		panic('deref: type `$t` is not a pointer')
+		panic('deref: type `${t}` is not a pointer')
 	}
 	return int(t) & 0xff00ffff | int(u32(nr_muls - 1) << 16)
 }
@@ -242,8 +243,8 @@ pub fn (t Type) has_flag(flag TypeFlag) bool {
 pub fn (ts TypeSymbol) debug() []string {
 	mut res := []string{}
 	ts.dbg_common(mut res)
-	res << 'info: $ts.info'
-	res << 'methods ($ts.methods.len): ' + ts.methods.map(it.str()).join(', ')
+	res << 'info: ${ts.info}'
+	res << 'methods (${ts.methods.len}): ' + ts.methods.map(it.str()).join(', ')
 	return res
 }
 
@@ -255,18 +256,18 @@ pub fn (ts TypeSymbol) dbg() []string {
 }
 
 fn (ts TypeSymbol) dbg_common(mut res []string) {
-	res << 'idx: 0x$ts.idx.hex()'
-	res << 'parent_idx: 0x$ts.parent_idx.hex()'
-	res << 'mod: $ts.mod'
-	res << 'name: $ts.name'
-	res << 'cname: $ts.cname'
-	res << 'kind: $ts.kind'
-	res << 'is_pub: $ts.is_pub'
-	res << 'language: $ts.language'
+	res << 'idx: 0x${ts.idx.hex()}'
+	res << 'parent_idx: 0x${ts.parent_idx.hex()}'
+	res << 'mod: ${ts.mod}'
+	res << 'name: ${ts.name}'
+	res << 'cname: ${ts.cname}'
+	res << 'kind: ${ts.kind}'
+	res << 'is_pub: ${ts.is_pub}'
+	res << 'language: ${ts.language}'
 }
 
 pub fn (t Type) str() string {
-	return 'ast.Type(0x$t.hex() = ${u32(t)})'
+	return 'ast.Type(0x${t.hex()} = ${u32(t)})'
 }
 
 pub fn (t &Table) type_str(typ Type) string {
@@ -278,9 +279,12 @@ pub fn (t Type) debug() []string {
 	mut res := []string{}
 	res << 'idx: 0x${t.idx().hex():-8}'
 	res << 'type: 0x${t.hex():-8}'
-	res << 'nr_muls: $t.nr_muls()'
-	if t.has_flag(.optional) {
-		res << 'optional'
+	res << 'nr_muls: ${t.nr_muls()}'
+	if t.has_flag(.option) {
+		res << 'option'
+	}
+	if t.has_flag(.result) {
+		res << 'result'
 	}
 	if t.has_flag(.variadic) {
 		res << 'variadic'
@@ -482,7 +486,7 @@ pub const (
 
 pub const (
 	void_type          = new_type(void_type_idx)
-	ovoid_type         = new_type(void_type_idx).set_flag(.optional) // the return type of `fn ()?`
+	ovoid_type         = new_type(void_type_idx).set_flag(.option) // the return type of `fn ()?`
 	rvoid_type         = new_type(void_type_idx).set_flag(.result) // the return type of `fn () !`
 	voidptr_type       = new_type(voidptr_type_idx)
 	byteptr_type       = new_type(byteptr_type_idx)
@@ -565,7 +569,7 @@ pub mut:
 
 // returns TypeSymbol kind only if there are no type modifiers
 pub fn (t &Table) type_kind(typ Type) Kind {
-	if typ.nr_muls() > 0 || typ.has_flag(.optional) || typ.has_flag(.result) {
+	if typ.nr_muls() > 0 || typ.has_flag(.option) || typ.has_flag(.result) {
 		return Kind.placeholder
 	}
 	return t.sym(typ).kind
@@ -628,7 +632,7 @@ pub fn (t TypeSymbol) str() string {
 
 [noreturn]
 fn (t &TypeSymbol) no_info_panic(fname string) {
-	panic('$fname: no info for type: $t.name')
+	panic('${fname}: no info for type: ${t.name}')
 }
 
 [inline]
@@ -851,8 +855,13 @@ pub fn (t &TypeSymbol) is_number() bool {
 }
 
 [inline]
+pub fn (t &TypeSymbol) is_bool() bool {
+	return t.kind == .bool
+}
+
+[inline]
 pub fn (t &TypeSymbol) is_primitive() bool {
-	return t.is_number() || t.is_pointer() || t.is_string()
+	return t.is_number() || t.is_pointer() || t.is_string() || t.is_bool()
 }
 
 [inline]
@@ -862,7 +871,7 @@ pub fn (t &TypeSymbol) is_builtin() bool {
 
 // type_size returns the size and alignment (in bytes) of `typ`, similarly to  C's `sizeof()` and `alignof()`.
 pub fn (t &Table) type_size(typ Type) (int, int) {
-	if typ.has_flag(.optional) || typ.has_flag(.result) {
+	if typ.has_flag(.option) || typ.has_flag(.result) {
 		return t.type_size(ast.error_type_idx)
 	}
 	if typ.nr_muls() > 0 {
@@ -1041,7 +1050,7 @@ pub mut:
 pub struct GenericInst {
 pub mut:
 	parent_idx     int    // idx of the base generic struct
-	concrete_types []Type // concrete types, e.g. <int, string>
+	concrete_types []Type // concrete types, e.g. [int, string]
 }
 
 [minify]
@@ -1144,10 +1153,41 @@ pub fn (mytable &Table) type_to_code(t Type) string {
 	}
 }
 
-// clean type name from generics form. From Type<int> -> Type
+// clean type name from generics form. From Type[int] -> Type
 pub fn (t &Table) clean_generics_type_str(typ Type) string {
 	result := t.type_to_str(typ)
-	return result.all_before('<')
+	return result.all_before('[')
+}
+
+fn strip_extra_struct_types(name string) string {
+	mut start := 0
+	mut is_start := false
+	mut nested_count := 0
+	mut strips := []string{}
+
+	for i, ch in name {
+		if ch == `<` {
+			if is_start {
+				nested_count++
+			} else {
+				is_start = true
+				start = i
+			}
+		} else if ch == `>` {
+			if nested_count > 0 {
+				nested_count--
+			} else {
+				strips << name.substr(start, i + 1)
+				strips << ''
+				is_start = false
+			}
+		}
+	}
+	if strips.len > 0 {
+		return name.replace_each(strips)
+	} else {
+		return name
+	}
 }
 
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
@@ -1189,7 +1229,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			} else {
 				if sym.info is Array {
 					elem_str := t.type_to_str_using_aliases(sym.info.elem_type, import_aliases)
-					res = '[]$elem_str'
+					res = '[]${elem_str}'
 				} else {
 					res = 'array'
 				}
@@ -1199,9 +1239,9 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			info := sym.info as ArrayFixed
 			elem_str := t.type_to_str_using_aliases(info.elem_type, import_aliases)
 			if info.size_expr is EmptyExpr {
-				res = '[$info.size]$elem_str'
+				res = '[${info.size}]${elem_str}'
 			} else {
-				res = '[$info.size_expr]$elem_str'
+				res = '[${info.size_expr}]${elem_str}'
 			}
 		}
 		.chan {
@@ -1215,7 +1255,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 					elem_type = elem_type.set_nr_muls(elem_type.nr_muls() - 1)
 				}
 				elem_str := t.type_to_str_using_aliases(elem_type, import_aliases)
-				res = 'chan $mut_str$elem_str'
+				res = 'chan ${mut_str}${elem_str}'
 			}
 		}
 		.function {
@@ -1243,7 +1283,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			info := sym.info as Map
 			key_str := t.type_to_str_using_aliases(info.key_type, import_aliases)
 			val_str := t.type_to_str_using_aliases(info.value_type, import_aliases)
-			res = 'map[$key_str]$val_str'
+			res = 'map[${key_str}]${val_str}'
 		}
 		.multi_return {
 			res = '('
@@ -1260,14 +1300,14 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			if typ.has_flag(.generic) {
 				match sym.info {
 					Struct, Interface, SumType {
-						res += '<'
+						res += '['
 						for i, gtyp in sym.info.generic_types {
 							res += t.sym(gtyp).name
 							if i != sym.info.generic_types.len - 1 {
 								res += ', '
 							}
 						}
-						res += '>'
+						res += ']'
 					}
 					else {}
 				}
@@ -1276,23 +1316,24 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 					import_aliases))
 				res = '${variant_names.join('|')}'
 			} else {
+				res = strip_extra_struct_types(res)
 				res = t.shorten_user_defined_typenames(res, import_aliases)
 			}
 		}
 		.generic_inst {
 			info := sym.info as GenericInst
-			res = t.shorten_user_defined_typenames(sym.name.all_before('<'), import_aliases)
-			res += '<'
+			res = t.shorten_user_defined_typenames(sym.name.all_before('['), import_aliases)
+			res += '['
 			for i, ctyp in info.concrete_types {
 				res += t.type_to_str_using_aliases(ctyp, import_aliases)
 				if i != info.concrete_types.len - 1 {
 					res += ', '
 				}
 			}
-			res += '>'
+			res += ']'
 		}
 		.void {
-			if typ.has_flag(.optional) {
+			if typ.has_flag(.option) {
 				res = '?'
 				return res
 			}
@@ -1333,11 +1374,11 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	if nr_muls > 0 && !typ.has_flag(.variadic) {
 		res = strings.repeat(`&`, nr_muls) + res
 	}
-	if typ.has_flag(.optional) {
-		res = '?$res'
+	if typ.has_flag(.option) {
+		res = '?${res}'
 	}
 	if typ.has_flag(.result) {
-		res = '!$res'
+		res = '!${res}'
 	}
 	return res
 }
@@ -1361,16 +1402,18 @@ fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases 
 		// mod.submod.submod2.Type => submod2.Type
 		mut parts := res.split('.')
 		if parts.len > 1 {
-			ind := parts.len - 2
-			if t.is_fmt {
-				// Rejoin the module parts for correct usage of aliases
-				parts[ind] = parts[..ind + 1].join('.')
-			}
-			if parts[ind] in import_aliases {
-				parts[ind] = import_aliases[parts[ind]]
-			}
+			if parts[..parts.len - 1].all(!it.contains('[')) {
+				ind := parts.len - 2
+				if t.is_fmt {
+					// Rejoin the module parts for correct usage of aliases
+					parts[ind] = parts[..ind + 1].join('.')
+				}
+				if parts[ind] in import_aliases {
+					parts[ind] = import_aliases[parts[ind]]
+				}
 
-			res = parts[ind..].join('.')
+				res = parts[ind..].join('.')
+			}
 		} else {
 			res = parts[0]
 		}
@@ -1431,26 +1474,26 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 	return sb.str()
 }
 
-// Get the name of the complete quanlified name of the type
-// without the generic parts.
+// symbol_name_except_generic return the name of the complete qualified name of the type,
+// but without the generic parts. For example, `main.Abc[int]` -> `main.Abc`
 pub fn (t &TypeSymbol) symbol_name_except_generic() string {
-	// main.Abc<int>
+	// main.Abc[int]
 	mut embed_name := t.name
 	// remove generic part from name
-	// main.Abc<int> => main.Abc
-	if embed_name.contains('<') {
-		embed_name = embed_name.all_before('<')
+	// main.Abc[int] => main.Abc
+	if embed_name.contains('[') {
+		embed_name = embed_name.all_before('[')
 	}
 	return embed_name
 }
 
 pub fn (t &TypeSymbol) embed_name() string {
-	// main.Abc<int> => Abc<int>
+	// main.Abc[int] => Abc[int]
 	mut embed_name := t.name.split('.').last()
 	// remove generic part from name
-	// Abc<int> => Abc
-	if embed_name.contains('<') {
-		embed_name = embed_name.split('<')[0]
+	// Abc[int] => Abc
+	if embed_name.contains('[') {
+		embed_name = embed_name.split('[')[0]
 	}
 	return embed_name
 }
@@ -1575,6 +1618,12 @@ pub fn (t &TypeSymbol) find_field(name string) ?StructField {
 	}
 }
 
+pub fn (t &TypeSymbol) has_field(name string) bool {
+	t.find_field(name) or { return false }
+
+	return true
+}
+
 fn (a &Aggregate) find_field(name string) ?StructField {
 	for mut field in unsafe { a.fields } {
 		if field.name == name {
@@ -1624,7 +1673,7 @@ pub fn (s Struct) get_field(name string) StructField {
 	if field := s.find_field(name) {
 		return field
 	}
-	panic('unknown field `$name`')
+	panic('unknown field `${name}`')
 }
 
 pub fn (s &SumType) find_field(name string) ?StructField {

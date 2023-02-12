@@ -131,6 +131,7 @@ pub enum Kind {
 	key_static
 	key_volatile
 	key_unsafe
+	key_spawn
 	keyword_end
 	_end_
 }
@@ -189,7 +190,7 @@ pub const (
 	keywords        = build_keys()
 )
 
-pub const scanner_matcher = new_keywords_matcher_trie<Kind>(keywords)
+pub const scanner_matcher = new_keywords_matcher_trie[Kind](keywords)
 
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return
@@ -318,6 +319,7 @@ fn build_token_str() []string {
 	s[Kind.key_nil] = 'nil'
 	s[Kind.key_offsetof] = '__offsetof'
 	s[Kind.key_is] = 'is'
+	s[Kind.key_spawn] = 'spawn'
 	// The following kinds are not for tokens returned by the V scanner.
 	// They are used just for organisation/ease of checking:
 	s[Kind.keyword_beg] = 'keyword_beg'
@@ -326,7 +328,7 @@ fn build_token_str() []string {
 	$if debug_build_token_str ? {
 		for k, v in s {
 			if v == '' {
-				eprintln('>>> ${@MOD}.${@METHOD} missing k: $k | .${kind_to_string(unsafe { Kind(k) })}')
+				eprintln('>>> ${@MOD}.${@METHOD} missing k: ${k} | .${kind_to_string(unsafe { Kind(k) })}')
 			}
 		}
 	}
@@ -365,14 +367,14 @@ pub fn (t Token) str() string {
 		eprintln('missing token kind string')
 	} else if !s[0].is_letter() {
 		// punctuation, operators
-		return 'token `$s`'
+		return 'token `${s}`'
 	}
 	if is_key(t.lit) {
 		s = 'keyword'
 	}
 	if t.lit != '' {
 		// string contents etc
-		s += ' `$t.lit`'
+		s += ' `${t.lit}`'
 	}
 	return s
 }
@@ -380,14 +382,10 @@ pub fn (t Token) str() string {
 pub fn (t Token) debug() string {
 	ks := kind_to_string(t.kind)
 	s := if t.lit == '' { t.kind.str() } else { t.lit }
-	return 'tok: .${ks:-12} | lit: `$s`'
+	return 'tok: .${ks:-12} | lit: `${s}`'
 }
 
 // Representation of highest and lowest precedence
-/*
-pub const lowest_prec = 0
-pub const highest_prec = 8
-*/
 pub enum Precedence {
 	lowest
 	cond // OR or AND
@@ -398,14 +396,15 @@ pub enum Precedence {
 	sum // + - | ^
 	product // * / << >> >>> &
 	// mod // %
-	prefix // -X or !X
+	prefix // -X or !X; TODO: seems unused
 	postfix // ++ or --
 	call // func(X) or foo.method(X)
 	index // array[index], map[key]
+	highest
 }
 
 pub fn build_precedences() []Precedence {
-	mut p := []Precedence{len: int(Kind._end_)}
+	mut p := []Precedence{len: int(Kind._end_), init: Precedence.lowest}
 	p[Kind.lsbr] = .index
 	p[Kind.nilsbr] = .index
 	p[Kind.dot] = .call
@@ -460,10 +459,16 @@ pub fn build_precedences() []Precedence {
 
 const precedences = build_precedences()
 
-// precedence returns a tokens precedence if defined, otherwise lowest_prec
-[inline]
+// precedence returns a tokens precedence if defined, otherwise 0
+[direct_array_access; inline]
 pub fn (tok Token) precedence() int {
 	return int(token.precedences[tok.kind])
+}
+
+// precedence returns the precedence of the given token `kind` if defined, otherwise 0
+[direct_array_access; inline]
+pub fn (kind Kind) precedence() int {
+	return int(token.precedences[kind])
 }
 
 // is_scalar returns true if the token is a scalar
@@ -622,13 +627,14 @@ pub fn kind_to_string(k Kind) string {
 		.key_static { 'key_static' }
 		.key_volatile { 'key_volatile' }
 		.key_unsafe { 'key_unsafe' }
+		.key_spawn { 'key_spawn' }
 		.keyword_end { 'keyword_end' }
 		._end_ { '_end_' }
 		.key_nil { 'key_nil' }
 	}
 }
 
-pub fn kind_from_string(s string) ?Kind {
+pub fn kind_from_string(s string) !Kind {
 	return match s {
 		'unknown' { .unknown }
 		'eof' { .eof }
@@ -743,6 +749,7 @@ pub fn kind_from_string(s string) ?Kind {
 		'key_static' { .key_static }
 		'key_volatile' { .key_volatile }
 		'key_unsafe' { .key_unsafe }
+		'key_spawn' { .key_spawn }
 		'keyword_end' { .keyword_end }
 		'_end_' { ._end_ }
 		else { error('unknown') }

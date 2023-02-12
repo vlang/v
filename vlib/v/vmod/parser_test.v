@@ -8,7 +8,7 @@ fn test_ok() {
 	ok_source := "Module {
 	name: 'V'
 	description: 'The V programming language.'
-	version: '0.3.1'
+	version: '0.3.3'
 	license: 'MIT'
 	repo_url: 'https://github.com/vlang/v'
 	dependencies: []
@@ -18,7 +18,7 @@ fn test_ok() {
 		content := vmod.decode(s)?
 		assert content.name == 'V'
 		assert content.description == 'The V programming language.'
-		assert content.version == '0.3.1'
+		assert content.version == '0.3.3'
 		assert content.license == 'MIT'
 		assert content.repo_url == 'https://github.com/vlang/v'
 		assert content.dependencies == []
@@ -44,7 +44,7 @@ fn test_invalid_start() {
 
 fn test_invalid_end() {
 	vmod.decode('\nModule{\n \nname: ${quote}zzzz}') or {
-		assert err.msg() == 'vmod: invalid token ${quote}eof$quote, at line 4'
+		assert err.msg() == 'vmod: invalid token ${quote}eof${quote}, at line 4'
 		return
 	}
 	assert false

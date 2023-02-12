@@ -4,15 +4,15 @@ enum Color {
 	green
 }
 
-fn enum_optional_helper(b bool) ?Color {
+fn enum_option_helper(b bool) ?Color {
 	if b {
 		return .red
 	}
 	return error('failed')
 }
 
-fn test_enum_optional() {
-	a := enum_optional_helper(true) or {
+fn test_enum_option() {
+	a := enum_option_helper(true) or {
 		assert false
 		return
 	}
@@ -144,7 +144,7 @@ enum FileType {
 fn test_enum_instance() {
 	mut filetype := FileType{}
 	eprintln(filetype)
-	s := 'x $filetype z'
+	s := 'x ${filetype} z'
 	assert s == 'x unknown z'
 }
 

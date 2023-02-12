@@ -55,12 +55,12 @@ fn flush_println(s string) {
 
 fn (mut runner TAPTestRunner) start(ntests int) {
 	runner.plan_tests = ntests
-	flush_println('1..$ntests')
+	flush_println('1..${ntests}')
 }
 
 fn (mut runner TAPTestRunner) finish() {
-	flush_println('# $runner.plan_tests tests, ${runner.total_assert_fails +
-		runner.total_assert_passes} assertions, $runner.total_assert_fails failures')
+	flush_println('# ${runner.plan_tests} tests, ${runner.total_assert_fails +
+		runner.total_assert_passes} assertions, ${runner.total_assert_fails} failures')
 }
 
 fn (mut runner TAPTestRunner) exit_code() int {
@@ -84,16 +84,16 @@ fn (mut runner TAPTestRunner) fn_start() bool {
 
 fn (mut runner TAPTestRunner) fn_pass() {
 	runner.fn_passes++
-	flush_println('ok $runner.test_counter - $runner.fname')
+	flush_println('ok ${runner.test_counter} - ${runner.fname}')
 }
 
 fn (mut runner TAPTestRunner) fn_fail() {
-	flush_println('not ok $runner.test_counter - $runner.fname')
+	flush_println('not ok ${runner.test_counter} - ${runner.fname}')
 	runner.fn_fails++
 }
 
 fn (mut runner TAPTestRunner) fn_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
-	flush_println('# test function propagated error: $runner.fname, line_nr: $line_nr, file: $file, mod: $mod, fn_name: $fn_name, errmsg: $errmsg')
+	flush_println('# test function propagated error: ${runner.fname}, line_nr: ${line_nr}, file: ${file}, mod: ${mod}, fn_name: ${fn_name}, errmsg: ${errmsg}')
 }
 
 //
@@ -106,7 +106,7 @@ fn (mut runner TAPTestRunner) assert_pass(i &VAssertMetaInfo) {
 
 fn (mut runner TAPTestRunner) assert_fail(i &VAssertMetaInfo) {
 	runner.total_assert_fails++
-	flush_println('# failed assert: ${runner.fn_assert_passes + 1} in $runner.fname, assert was in ${normalise_fname(i.fn_name)}, line: ${
+	flush_println('# failed assert: ${runner.fn_assert_passes + 1} in ${runner.fname}, assert was in ${normalise_fname(i.fn_name)}, line: ${
 		i.line_nr + 1}')
 	unsafe { i.free() }
 }

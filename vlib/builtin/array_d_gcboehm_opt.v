@@ -24,9 +24,19 @@ fn __new_array_with_default_noscan(mylen int, cap int, elm_size int, val voidptr
 		len: mylen
 		cap: cap_
 	}
-	if val != 0 {
-		for i in 0 .. arr.len {
-			unsafe { arr.set_unsafe(i, val) }
+	if val != 0 && arr.data != unsafe { nil } {
+		if elm_size == 1 {
+			byte_value := *(&u8(val))
+			dptr := &u8(arr.data)
+			for i in 0 .. arr.len {
+				unsafe {
+					dptr[i] = byte_value
+				}
+			}
+		} else {
+			for i in 0 .. arr.len {
+				unsafe { arr.set_unsafe(i, val) }
+			}
 		}
 	}
 	return arr
@@ -66,6 +76,9 @@ fn (mut a array) ensure_cap_noscan(required int) {
 	if required <= a.cap {
 		return
 	}
+	if a.flags.has(.nogrow) {
+		panic('array.ensure_cap_noscan: array with the flag `.nogrow` cannot grow in size, array required new size: ${required}')
+	}
 	mut cap := if a.cap > 0 { a.cap } else { 2 }
 	for required > cap {
 		cap *= 2
@@ -89,7 +102,7 @@ fn (mut a array) ensure_cap_noscan(required int) {
 [unsafe]
 fn (a array) repeat_to_depth_noscan(count int, depth int) array {
 	if count < 0 {
-		panic('array.repeat: count is negative: $count')
+		panic('array.repeat: count is negative: ${count}')
 	}
 	mut size := u64(count) * u64(a.len) * u64(a.element_size)
 	if size == 0 {
@@ -122,9 +135,9 @@ fn (a array) repeat_to_depth_noscan(count int, depth int) array {
 
 // insert inserts a value in the array at index `i`
 fn (mut a array) insert_noscan(i int, val voidptr) {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i > a.len {
-			panic('array.insert: index out of range (i == $i, a.len == $a.len)')
+			panic('array.insert: index out of range (i == ${i}, a.len == ${a.len})')
 		}
 	}
 	a.ensure_cap_noscan(a.len + 1)
@@ -138,9 +151,9 @@ fn (mut a array) insert_noscan(i int, val voidptr) {
 // insert_many inserts many values into the array from index `i`.
 [unsafe]
 fn (mut a array) insert_many_noscan(i int, val voidptr, size int) {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i > a.len {
-			panic('array.insert_many: index out of range (i == $i, a.len == $a.len)')
+			panic('array.insert_many: index out of range (i == ${i}, a.len == ${a.len})')
 		}
 	}
 	a.ensure_cap_noscan(a.len + size)
@@ -167,7 +180,7 @@ fn (mut a array) prepend_many_noscan(val voidptr, size int) {
 // pop returns the last element of the array, and removes it.
 fn (mut a array) pop_noscan() voidptr {
 	// in a sense, this is the opposite of `a << x`
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if a.len == 0 {
 			panic('array.pop: array is empty')
 		}

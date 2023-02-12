@@ -1,9 +1,11 @@
 struct Foo {
 	name string
-	age int
+	age  int
 }
 
-struct Foo2 {b bool}
+struct Foo2 {
+	b bool
+}
 
 fn main() {
 	i := 2
@@ -33,3 +35,11 @@ fn empty() {
 	}
 }
 
+type AliasFoo = Foo
+
+fn alias() {
+	a := AliasFoo{}
+	_ = AliasFoo{
+		...a
+	}
+}

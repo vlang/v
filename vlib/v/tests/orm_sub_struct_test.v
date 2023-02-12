@@ -1,4 +1,4 @@
-import sqlite
+import db.sqlite
 
 struct Upper {
 	id  int       [primary; sql: serial]
@@ -14,6 +14,9 @@ fn test_orm_sub_structs() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	sql db {
 		create table Upper
+	}
+	sql db {
+		create table SubStruct
 	}
 
 	upper_1 := Upper{

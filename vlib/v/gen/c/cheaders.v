@@ -61,9 +61,9 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
 // Inspired from Chris Wellons's work
 // https://nullprogram.com/blog/2017/01/08/
 
-fn c_closure_helpers(pref &pref.Preferences) string {
+fn c_closure_helpers(pref_ &pref.Preferences) string {
 	mut builder := strings.new_builder(2048)
-	if pref.os != .windows {
+	if pref_.os != .windows {
 		builder.writeln('#include <sys/mman.h>')
 	}
 
@@ -253,8 +253,8 @@ static void* __closure_create(void* fn, void* data) {
 
 const c_common_macros = '
 #define EMPTY_VARG_INITIALIZATION 0
-#define EMPTY_STRUCT_INITIALIZATION 0
-#define EMPTY_STRUCT_DECLARATION voidptr _dummy_pad
+#define EMPTY_STRUCT_DECLARATION
+#define EMPTY_STRUCT_INITIALIZATION
 // Due to a tcc bug, the length of an array needs to be specified, but GCC crashes if it is...
 #define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
 #define TCCSKIP(x) x
@@ -312,16 +312,32 @@ const c_common_macros = '
 #ifdef __clang__
 	#undef __V_GCC__
 #endif
+
 #ifdef _MSC_VER
 	#undef __V_GCC__
+	#undef EMPTY_STRUCT_DECLARATION
 	#undef EMPTY_STRUCT_INITIALIZATION
+	#define EMPTY_STRUCT_DECLARATION unsigned char _dummy_pad
 	#define EMPTY_STRUCT_INITIALIZATION 0
 #endif
 
+#ifndef _WIN32
+	#if defined __has_include
+		#if __has_include (<execinfo.h>)
+			#include <execinfo.h>
+		#else
+			// On linux: int backtrace(void **__array, int __size);
+			// On BSD: size_t backtrace(void **, size_t);
+		#endif		
+	#endif
+#endif
+		      
 #ifdef __TINYC__
 	#define _Atomic volatile
 	#undef EMPTY_STRUCT_DECLARATION
-	#define EMPTY_STRUCT_DECLARATION voidptr _dummy_pad
+	#undef EMPTY_STRUCT_INITIALIZATION
+	#define EMPTY_STRUCT_DECLARATION unsigned char _dummy_pad
+	#define EMPTY_STRUCT_INITIALIZATION 0
 	#undef EMPTY_ARRAY_OF_ELEMS
 	#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
 	#undef __NOINLINE
@@ -333,7 +349,6 @@ const c_common_macros = '
 	#define TCCSKIP(x)
 	// #include <byteswap.h>
 	#ifndef _WIN32
-		#include <execinfo.h>
 		int tcc_backtrace(const char *fmt, ...);
 	#endif
 #endif
@@ -501,14 +516,6 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef _WIN32
-	#if defined __has_include
-		#if __has_include (<execinfo.h>)
-			#include <execinfo.h>
-		#endif
-	#endif
-#endif
-
 #include <stdarg.h> // for va_list
 
 //================================== GLOBALS =================================*/
@@ -592,10 +599,7 @@ voidptr memdup(voidptr src, int sz);
 		#define _Atomic volatile
 
 		// MSVC cannot parse some things properly
-		#undef EMPTY_STRUCT_DECLARATION
 		#undef OPTION_CAST
-
-		#define EMPTY_STRUCT_DECLARATION voidptr _dummy_pad
 		#define OPTION_CAST(x)
 		#undef __NOINLINE
 		#undef __IRQHANDLER

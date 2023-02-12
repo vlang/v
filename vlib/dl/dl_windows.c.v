@@ -1,8 +1,13 @@
 module dl
 
-pub const rtld_now = 0
-
-pub const rtld_lazy = 0
+pub const (
+	rtld_now      = 0
+	rtld_lazy     = 0
+	rtld_global   = 0
+	rtld_local    = 0
+	rtld_nodelete = 0
+	rtld_noload   = 0
+)
 
 fn C.LoadLibrary(libfilename &u16) voidptr
 
@@ -34,5 +39,5 @@ pub fn dlerror() string {
 	// https://docs.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-getlasterror
 	// Unlike dlerror(), GetLastError returns just an error code, that is function specific.
 	cerr := int(C.GetLastError())
-	return 'error code $cerr'
+	return 'error code ${cerr}'
 }

@@ -1,7 +1,7 @@
-vlib/v/parser/tests/generic_struct_parameter_err.vv:10:17: error: generic struct parameter name needs to be exactly one char
-    8 | struct MyContainer<T> {
-    9 | mut:
-   10 |     lst LinkedList<MyNode<T>>
-      |                    ~~~~~~~~~
-   11 | }
-   12 |
+vlib/v/parser/tests/generic_struct_parameter_err.vv:17:16: error: cannot use `MyNode[string]` as `string` in argument 1 to `datatypes.LinkedList[string].push`
+   15 |         data: data
+   16 |     }
+   17 |     c.lst.push[T](node)
+      |                   ~~~~
+   18 | }
+   19 |

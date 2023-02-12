@@ -12,13 +12,14 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		f.write('pub ')
 	}
 	if node.is_union {
-		f.write('union ')
+		f.write('union')
 	} else {
-		f.write('struct ')
+		f.write('struct')
 	}
-	f.write_language_prefix(node.language)
 	name := node.name.after('.') // strip prepended module
 	if !is_anon {
+		f.write(' ')
+		f.write_language_prefix(node.language)
 		f.write(name)
 	}
 	f.write_generic_types(node.generic_types)
@@ -66,9 +67,9 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 
 		f.comments_before_field(pre_comments)
 		if comments.len == 0 {
-			f.writeln('\t$styp')
+			f.writeln('\t${styp}')
 		} else {
-			f.write('\t$styp')
+			f.write('\t${styp}')
 			f.comments(comments, level: .indent)
 		}
 	}
@@ -119,7 +120,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		// Handle comments before the field
 		f.comments_before_field(before_comments)
 		volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
-		f.write('\t$volatile_prefix$field.name ')
+		f.write('\t${volatile_prefix}${field.name} ')
 		// Handle comments between field name and type
 		before_len := f.line_len
 		f.comments(between_comments, iembed: true, has_nl: false)
@@ -131,18 +132,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		}
 		f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
 		// Handle anon structs recursively
-		mut field_is_anon := false
-		sym := f.table.sym(field.typ)
-		if sym.kind == .struct_ {
-			info := sym.info as ast.Struct
-			field_is_anon = info.is_anon
-		}
-		if field_is_anon {
-			f.indent++
-			f.struct_decl(field.anon_struct_decl, true)
-			f.indent--
-		} else {
-			// If it's not an anon struct, just write the type of the field
+		if !f.write_anon_struct_field_decl(field.typ, field.anon_struct_decl) {
 			f.write(field_types[i])
 		}
 		f.mark_types_import_as_used(field.typ)
@@ -200,6 +190,47 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 	}
 }
 
+fn (mut f Fmt) write_anon_struct_field_decl(field_typ ast.Type, field_anon_decl ast.StructDecl) bool {
+	sym := f.table.sym(field_typ)
+	match sym.kind {
+		.struct_ {
+			info := sym.info as ast.Struct
+			if info.is_anon {
+				f.indent++
+				f.struct_decl(field_anon_decl, true)
+				f.indent--
+				return true
+			}
+		}
+		.array {
+			if sym.info is ast.Array {
+				elem_sym := f.table.sym(sym.info.elem_type)
+				if elem_sym.info is ast.Struct {
+					if elem_sym.info.is_anon {
+						f.write('[]'.repeat(sym.info.nr_dims))
+						f.write_anon_struct_field_decl(sym.info.elem_type, field_anon_decl)
+						return true
+					}
+				}
+			}
+		}
+		.array_fixed {
+			if sym.info is ast.ArrayFixed {
+				elem_sym := f.table.sym(sym.info.elem_type)
+				if elem_sym.info is ast.Struct {
+					if elem_sym.info.is_anon {
+						f.write('[${sym.info.size}]')
+						f.write_anon_struct_field_decl(sym.info.elem_type, field_anon_decl)
+						return true
+					}
+				}
+			}
+		}
+		else {}
+	}
+	return false
+}
+
 pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	struct_init_save := f.is_struct_init
 	f.is_struct_init = true
@@ -222,16 +253,16 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	if node.fields.len == 0 && !node.has_update_expr {
 		// `Foo{}` on one line if there are no fields or comments
 		if node.pre_comments.len == 0 {
-			f.write('$name{}')
+			f.write('${name}{}')
 		} else {
-			f.writeln('$name{')
+			f.writeln('${name}{')
 			f.comments(node.pre_comments, inline: true, has_nl: true, level: .indent)
 			f.write('}')
 		}
 		f.mark_import_as_used(name)
 	} else if node.no_keys {
 		// `Foo{1,2,3}` (short syntax, no keys)
-		f.write('$name{')
+		f.write('${name}{')
 		f.mark_import_as_used(name)
 		if node.has_update_expr {
 			f.write('...')
@@ -254,7 +285,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			single_line_fields = false
 		}
 		if !use_short_args || node.is_anon {
-			f.write('$name{')
+			f.write('${name}{')
 			f.mark_import_as_used(name)
 			if single_line_fields {
 				f.write(' ')
@@ -263,7 +294,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 		fields_start := f.out.len
 		fields_loop: for {
 			if !single_line_fields {
-				if use_short_args && f.out[f.out.len - 1] == ` ` {
+				if use_short_args && f.out.last() == ` ` {
 					//           v Remove space at tail of line
 					// f(a, b, c, \n
 					//     f1: 0\n
@@ -288,7 +319,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				f.comments(node.update_expr_comments, inline: true, has_nl: true, level: .keep)
 			}
 			for i, field in node.fields {
-				f.write('$field.name: ')
+				f.write('${field.name}: ')
 				f.expr(field.expr)
 				f.comments(field.comments, inline: true, has_nl: false, level: .indent)
 				if single_line_fields {

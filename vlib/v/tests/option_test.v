@@ -99,7 +99,7 @@ fn foo_str() ?string {
 	return 'something'
 }
 
-fn propagate_optional(b bool) ?int {
+fn propagate_option(b bool) ?int {
 	a := err_call(b)?
 	return a
 }
@@ -111,11 +111,11 @@ fn propagate_different_type(b bool) ?bool {
 
 fn test_propagation() {
 	println(1)
-	a := propagate_optional(true) or { 0 }
+	a := propagate_option(true) or { 0 }
 	println(2)
 	assert a == 42
 	println(3)
-	if _ := propagate_optional(false) {
+	if _ := propagate_option(false) {
 		assert false
 	}
 	println(4)
@@ -269,12 +269,12 @@ fn test_multi_return_opt() {
 }
 */
 
-fn test_optional_val_with_empty_or() {
+fn test_option_val_with_empty_or() {
 	ret_none() or {}
 	assert true
 }
 
-fn test_optional_void_return_types_of_anon_fn() {
+fn test_option_void_return_types_of_anon_fn() {
 	f := fn (i int) ? {
 		if i == 0 {
 			return error('0')
@@ -320,7 +320,7 @@ struct CC {
 	str string
 }
 
-fn optional_sum_type(a int) ?AA {
+fn option_sum_type(a int) ?AA {
 	match a {
 		1 {
 			return BB{'Test'}
@@ -334,12 +334,12 @@ fn optional_sum_type(a int) ?AA {
 	}
 }
 
-fn test_optional_sum_type() {
-	res1 := optional_sum_type(1) or {
+fn test_option_sum_type() {
+	res1 := option_sum_type(1) or {
 		assert false
 		BB{}
 	}
-	res2 := optional_sum_type(2) or {
+	res2 := option_sum_type(2) or {
 		assert false
 		CC{}
 	}
@@ -353,14 +353,14 @@ fn test_optional_sum_type() {
 	} else {
 		assert false
 	}
-	optional_sum_type(3) or {
+	option_sum_type(3) or {
 		assert true
 		return
 	}
 	assert false
 }
 
-struct MultiOptionalFieldTest {
+struct MultiOptionFieldTest {
 	a ?int
 	b ?int
 }
@@ -386,16 +386,16 @@ fn get_opt_pointer_to_c_struct() ?&C.stat {
 	return none
 }
 
-fn test_optional_ref_c_struct_gen() {
+fn test_option_ref_c_struct_gen() {
 	_ := get_opt_pointer_to_c_struct() or { &C.stat{} }
 }
 
-// For issue #16070: cgen error: missing * of optional non-ref structs
+// For issue #16070: cgen error: missing * of option non-ref structs
 fn get_opt_to_c_struct() ?C.stat {
 	return none
 }
 
-fn test_optional_c_struct_gen() {
+fn test_option_c_struct_gen() {
 	_ := get_opt_to_c_struct() or { C.stat{} }
 }
 

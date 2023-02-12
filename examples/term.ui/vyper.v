@@ -286,8 +286,7 @@ fn (mut a App) new_game() {
 }
 
 // initialize the app and record the width and height of the window
-fn init(x voidptr) {
-	mut app := &App(x)
+fn init(mut app App) {
 	w, h := app.termui.window_width, app.termui.window_height
 	app.width = w
 	app.height = h
@@ -295,8 +294,7 @@ fn init(x voidptr) {
 }
 
 // event handles different events for the app as they occur
-fn event(e &termui.Event, x voidptr) {
-	mut app := &App(x)
+fn event(e &termui.Event, mut app App) {
 	match e.typ {
 		.mouse_down {}
 		.mouse_drag {}
@@ -324,8 +322,7 @@ fn event(e &termui.Event, x voidptr) {
 }
 
 // frame perform actions on every tick
-fn frame(x voidptr) {
-	mut app := &App(x)
+fn frame(mut app App) {
 	app.update()
 	app.draw()
 }
@@ -436,7 +433,7 @@ fn (mut a App) draw_debug() {
 	snake := a.snake
 	a.termui.draw_text(block_size, 1 * block_size, 'Display_width: ${a.width:04d} Display_height: ${a.height:04d}')
 	a.termui.draw_text(block_size, 2 * block_size, 'Vx: ${snake.velocity.x:+02d} Vy: ${snake.velocity.y:+02d}')
-	a.termui.draw_text(block_size, 3 * block_size, 'F: $snake.direction')
+	a.termui.draw_text(block_size, 3 * block_size, 'F: ${snake.direction}')
 	snake_head := snake.get_head()
 	rat := a.rat
 	a.termui.draw_text(block_size, 4 * block_size, 'Sx: ${snake_head.pos.x:+03d} Sy: ${snake_head.pos.y:+03d}')

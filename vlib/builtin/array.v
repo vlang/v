@@ -14,7 +14,7 @@ pub:
 	element_size int // size in bytes of one element in the array.
 pub mut:
 	data   voidptr
-	offset int // in bytes (should be `usize`)
+	offset int // in bytes (should be `usize`), to avoid copying data while making slices, unless it starts changing
 	len    int // length of the array in elements.
 	cap    int // capacity of the array in elements.
 	flags  ArrayFlags
@@ -24,6 +24,8 @@ pub mut:
 pub enum ArrayFlags {
 	noslices // when <<, `.noslices` will free the old data block immediately (you have to be sure, that there are *no slices* to that specific array). TODO: integrate with reference counting/compiler support for the static cases.
 	noshrink // when `.noslices` and `.noshrink` are *both set*, .delete(x) will NOT allocate new memory and free the old. It will just move the elements in place, and adjust .len.
+	nogrow // the array will never be allowed to grow past `.cap`. set `.nogrow` and `.noshrink` for a truly fixed heap array
+	nofree // `.data` will never be freed
 }
 
 // Internal function, used by V (`nums := []int`)
@@ -45,38 +47,53 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 		len: mylen
 		cap: cap_
 	}
+	// x := []EmptyStruct{cap:5} ; for clang/gcc with -gc none,
+	//    -> sizeof(EmptyStruct) == 0 -> elm_size == 0
+	//    -> total_size == 0 -> malloc(0) -> panic;
+	//    to avoid it, just allocate a single byte
 	total_size := u64(cap_) * u64(elm_size)
 	if cap_ > 0 && mylen == 0 {
-		arr.data = unsafe { malloc(total_size) }
+		arr.data = unsafe { malloc(__at_least_one(total_size)) }
 	} else {
 		arr.data = vcalloc(total_size)
 	}
 	if val != 0 {
 		mut eptr := &u8(arr.data)
 		unsafe {
-			for _ in 0 .. arr.len {
-				vmemcpy(eptr, val, arr.element_size)
-				eptr += arr.element_size
+			if eptr != nil {
+				if arr.element_size == 1 {
+					byte_value := *(&u8(val))
+					for i in 0 .. arr.len {
+						eptr[i] = byte_value
+					}
+				} else {
+					for _ in 0 .. arr.len {
+						vmemcpy(eptr, val, arr.element_size)
+						eptr += arr.element_size
+					}
+				}
 			}
 		}
 	}
 	return arr
 }
 
-fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array) array {
+fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array, depth int) array {
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data: unsafe { malloc(u64(cap_) * u64(elm_size)) }
+		data: unsafe { malloc(__at_least_one(u64(cap_) * u64(elm_size))) }
 		len: mylen
 		cap: cap_
 	}
 	mut eptr := &u8(arr.data)
 	unsafe {
-		for _ in 0 .. arr.len {
-			val_clone := val.clone_to_depth(1)
-			vmemcpy(eptr, &val_clone, arr.element_size)
-			eptr += arr.element_size
+		if eptr != nil {
+			for _ in 0 .. arr.len {
+				val_clone := val.clone_to_depth(depth)
+				vmemcpy(eptr, &val_clone, arr.element_size)
+				eptr += arr.element_size
+			}
 		}
 	}
 	return arr
@@ -86,16 +103,18 @@ fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map) array
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data: unsafe { malloc(u64(cap_) * u64(elm_size)) }
+		data: unsafe { malloc(__at_least_one(u64(cap_) * u64(elm_size))) }
 		len: mylen
 		cap: cap_
 	}
 	mut eptr := &u8(arr.data)
 	unsafe {
-		for _ in 0 .. arr.len {
-			val_clone := val.clone()
-			vmemcpy(eptr, &val_clone, arr.element_size)
-			eptr += arr.element_size
+		if eptr != nil {
+			for _ in 0 .. arr.len {
+				val_clone := val.clone()
+				vmemcpy(eptr, &val_clone, arr.element_size)
+				eptr += arr.element_size
+			}
 		}
 	}
 	return arr
@@ -133,12 +152,15 @@ fn (mut a array) ensure_cap(required int) {
 	if required <= a.cap {
 		return
 	}
+	if a.flags.has(.nogrow) {
+		panic('array.ensure_cap: array with the flag `.nogrow` cannot grow in size, array required new size: ${required}')
+	}
 	mut cap := if a.cap > 0 { a.cap } else { 2 }
 	for required > cap {
 		cap *= 2
 	}
 	new_size := u64(cap) * u64(a.element_size)
-	new_data := unsafe { malloc(new_size) }
+	new_data := unsafe { malloc(__at_least_one(new_size)) }
 	if a.data != unsafe { nil } {
 		unsafe { vmemcpy(new_data, a.data, u64(a.len) * u64(a.element_size)) }
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
@@ -169,7 +191,7 @@ pub fn (a array) repeat(count int) array {
 [direct_array_access; unsafe]
 pub fn (a array) repeat_to_depth(count int, depth int) array {
 	if count < 0 {
-		panic('array.repeat: count is negative: $count')
+		panic('array.repeat: count is negative: ${count}')
 	}
 	mut size := u64(count) * u64(a.len) * u64(a.element_size)
 	if size == 0 {
@@ -186,14 +208,16 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 		arr_step_size := u64(a.len) * u64(arr.element_size)
 		mut eptr := &u8(arr.data)
 		unsafe {
-			for _ in 0 .. count {
-				if depth > 0 {
-					ary_clone := a.clone_to_depth(depth)
-					vmemcpy(eptr, &u8(ary_clone.data), a_total_size)
-				} else {
-					vmemcpy(eptr, &u8(a.data), a_total_size)
+			if eptr != nil {
+				for _ in 0 .. count {
+					if depth > 0 {
+						ary_clone := a.clone_to_depth(depth)
+						vmemcpy(eptr, &u8(ary_clone.data), a_total_size)
+					} else {
+						vmemcpy(eptr, &u8(a.data), a_total_size)
+					}
+					eptr += arr_step_size
 				}
-				eptr += arr_step_size
 			}
 		}
 	}
@@ -219,9 +243,9 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 // c.insert(0, [1, 2])     // c now is [[1, 2], [3, 4]]
 // ```
 pub fn (mut a array) insert(i int, val voidptr) {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i > a.len {
-			panic('array.insert: index out of range (i == $i, a.len == $a.len)')
+			panic('array.insert: index out of range (i == ${i}, a.len == ${a.len})')
 		}
 	}
 	if a.len >= a.cap {
@@ -238,9 +262,9 @@ pub fn (mut a array) insert(i int, val voidptr) {
 // into an the array beginning at `i`.
 [unsafe]
 fn (mut a array) insert_many(i int, val voidptr, size int) {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i > a.len {
-			panic('array.insert_many: index out of range (i == $i, a.len == $a.len)')
+			panic('array.insert_many: index out of range (i == ${i}, a.len == ${a.len})')
 		}
 	}
 	a.ensure_cap(a.len + size)
@@ -297,10 +321,10 @@ pub fn (mut a array) delete(i int) {
 // dump(b) // b: [1, 2, 3, 4, 5, 6, 7, 8, 9] // `b` is still the same
 // ```
 pub fn (mut a array) delete_many(i int, size int) {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i + size > a.len {
 			endidx := if size > 1 { '..${i + size}' } else { '' }
-			panic('array.delete: index out of range (i == $i$endidx, a.len == $a.len)')
+			panic('array.delete: index out of range (i == ${i}${endidx}, a.len == ${a.len})')
 		}
 	}
 	if a.flags.all(.noshrink | .noslices) {
@@ -379,9 +403,9 @@ fn (a array) get_unsafe(i int) voidptr {
 
 // Private function. Used to implement array[] operator.
 fn (a array) get(i int) voidptr {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i >= a.len {
-			panic('array.get: index out of range (i == $i, a.len == $a.len)')
+			panic('array.get: index out of range (i == ${i}, a.len == ${a.len})')
 		}
 	}
 	unsafe {
@@ -404,7 +428,7 @@ fn (a array) get_with_check(i int) voidptr {
 // However, `a[0]` returns an error object
 // so it can be handled with an `or` block.
 pub fn (a array) first() voidptr {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if a.len == 0 {
 			panic('array.first: array is empty')
 		}
@@ -415,7 +439,7 @@ pub fn (a array) first() voidptr {
 // last returns the last element of the `array`.
 // If the `array` is empty, this will panic.
 pub fn (a array) last() voidptr {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if a.len == 0 {
 			panic('array.last: array is empty')
 		}
@@ -442,7 +466,7 @@ pub fn (a array) last() voidptr {
 // ```
 pub fn (mut a array) pop() voidptr {
 	// in a sense, this is the opposite of `a << x`
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if a.len == 0 {
 			panic('array.pop: array is empty')
 		}
@@ -461,7 +485,7 @@ pub fn (mut a array) pop() voidptr {
 // See also: [trim](#array.trim)
 pub fn (mut a array) delete_last() {
 	// copy pasting code for performance
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if a.len == 0 {
 			panic('array.pop: array is empty')
 		}
@@ -480,15 +504,15 @@ pub fn (mut a array) delete_last() {
 // Alternative: `.slice_ni()` will always return an array.
 fn (a array) slice(start int, _end int) array {
 	mut end := _end
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if start > end {
-			panic('array.slice: invalid slice index ($start > $end)')
+			panic('array.slice: invalid slice index (${start} > ${end})')
 		}
 		if end > a.len {
-			panic('array.slice: slice bounds out of range ($end >= $a.len)')
+			panic('array.slice: slice bounds out of range (${end} >= ${a.len})')
 		}
 		if start < 0 {
-			panic('array.slice: slice bounds out of range ($start < 0)')
+			panic('array.slice: slice bounds out of range (${start} < 0)')
 		}
 	}
 	// TODO: integrate reference counting
@@ -581,13 +605,9 @@ pub fn (a &array) clone() array {
 // recursively clone given array - `unsafe` when called directly because depth is not checked
 [unsafe]
 pub fn (a &array) clone_to_depth(depth int) array {
-	mut size := u64(a.cap) * u64(a.element_size)
-	if size == 0 {
-		size++
-	}
 	mut arr := array{
 		element_size: a.element_size
-		data: vcalloc(size)
+		data: vcalloc(u64(a.cap) * u64(a.element_size))
 		len: a.len
 		cap: a.cap
 	}
@@ -616,9 +636,9 @@ fn (mut a array) set_unsafe(i int, val voidptr) {
 
 // Private function. Used to implement assignment to the array element.
 fn (mut a array) set(i int, val voidptr) {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i >= a.len {
-			panic('array.set: index out of range (i == $i, a.len == $a.len)')
+			panic('array.set: index out of range (i == ${i}, a.len == ${a.len})')
 		}
 	}
 	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(i), val, a.element_size) }
@@ -656,7 +676,7 @@ pub fn (mut a3 array) push_many(val voidptr, size int) {
 
 // reverse_in_place reverses existing array data, modifying original array.
 pub fn (mut a array) reverse_in_place() {
-	if a.len < 2 {
+	if a.len < 2 || a.element_size == 0 {
 		return
 	}
 	unsafe {
@@ -698,6 +718,9 @@ pub fn (a &array) free() {
 	// if a.is_slice {
 	// return
 	// }
+	if a.flags.has(.nofree) {
+		return
+	}
 	mblock_ptr := &u8(u64(a.data) - u64(a.offset))
 	unsafe { free(mblock_ptr) }
 }

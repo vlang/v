@@ -25,7 +25,7 @@ struct JwtPayload {
 	permissions string
 }
 
-fn (mut app App) service_auth(username string, password string) ?string {
+fn (mut app App) service_auth(username string, password string) !string {
 	mut db := databases.create_db_connection() or {
 		eprintln(err)
 		panic(err)
@@ -42,10 +42,10 @@ fn (mut app App) service_auth(username string, password string) ?string {
 		return error('user is not active')
 	}
 
-	db.close()?
+	db.close()!
 
 	bcrypt.compare_hash_and_password(password.bytes(), user.password.bytes()) or {
-		return error('Failed to auth user, $err')
+		return error('Failed to auth user, ${err}')
 	}
 
 	token := make_token(user)
@@ -58,22 +58,25 @@ fn make_token(user User) string {
 
 	jwt_header := JwtHeader{'HS256', 'JWT'}
 	jwt_payload := JwtPayload{
-		sub: '$user.id'
-		name: '$user.username'
+		sub: '${user.id}'
+		name: '${user.username}'
 		iat: time.now()
 	}
 
 	header := base64.url_encode(json.encode(jwt_header).bytes())
 	payload := base64.url_encode(json.encode(jwt_payload).bytes())
-	signature := base64.url_encode(hmac.new(secret.bytes(), '${header}.$payload'.bytes(),
+	signature := base64.url_encode(hmac.new(secret.bytes(), '${header}.${payload}'.bytes(),
 		sha256.sum, sha256.block_size).bytestr().bytes())
 
-	jwt := '${header}.${payload}.$signature'
+	jwt := '${header}.${payload}.${signature}'
 
 	return jwt
 }
 
 fn auth_verify(token string) bool {
+	if token == '' {
+		return false
+	}
 	secret := os.getenv('SECRET_KEY')
 	token_split := token.split('.')
 

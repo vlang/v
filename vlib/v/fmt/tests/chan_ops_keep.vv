@@ -39,7 +39,7 @@ fn do_rec_calc_send(chs []chan i64, sem sync.Semaphore) {
 fn test_channel_array_mut() {
 	mut chs := [chan i64{}, chan i64{cap: 10}]
 	sem := sync.new_semaphore()
-	go do_rec_calc_send(chs, sem)
+	spawn do_rec_calc_send(chs, sem)
 	mut t := i64(100)
 	for _ in 0 .. num_iterations {
 		chs[0] <- t
@@ -57,7 +57,7 @@ fn test_channel_array_mut() {
 	sem.wait()
 	assert t == 100 + num_iterations
 	ch2 := chan mut St{cap: 10}
-	go g(ch2)
+	spawn g(ch2)
 }
 
 fn g(ch chan mut St) {

@@ -126,6 +126,8 @@ pub enum ComptimeTypeKind {
 	array
 	sum_type
 	enum_
+	alias
+	function
 }
 
 pub struct ComptimeType {
@@ -144,6 +146,8 @@ pub fn (cty ComptimeType) str() string {
 		.array { '\$Array' }
 		.sum_type { '\$Sumtype' }
 		.enum_ { '\$Enum' }
+		.alias { '\$Alias' }
+		.function { '\$Function' }
 	}
 }
 
@@ -260,6 +264,7 @@ pub mut:
 	expr_type           Type // type of `Foo` in `Foo.bar`
 	typ                 Type // type of the entire thing (`Foo.bar`)
 	name_type           Type // T in `T.name` or typeof in `typeof(expr).name`
+	or_block            OrExpr
 	gkind_field         GenericKindField // `T.name` => ast.GenericKindField.name, `T.typ` => ast.GenericKindField.typ, or .unknown
 	scope               &Scope = unsafe { nil }
 	from_embed_types    []Type // holds the type of the embed that the method is called from
@@ -295,6 +300,7 @@ pub struct StructField {
 pub:
 	pos              token.Pos
 	type_pos         token.Pos
+	option_pos       token.Pos
 	comments         []Comment
 	i                int
 	has_default_expr bool
@@ -310,6 +316,7 @@ pub mut:
 	default_expr_typ Type
 	name             string
 	typ              Type
+	unaliased_typ    Type
 	anon_struct_decl StructDecl // only if the field is an anonymous struct
 }
 
@@ -456,6 +463,7 @@ pub mut:
 	typ                  Type   // the type of this struct
 	update_expr          Expr   // `a` in `...a`
 	update_expr_type     Type
+	update_expr_pos      token.Pos
 	update_expr_comments []Comment
 	is_update_embed      bool
 	has_update_expr      bool // has `...a`
@@ -505,39 +513,40 @@ pub mut:
 [minify]
 pub struct FnDecl {
 pub:
-	name            string // 'math.bits.normalize'
-	short_name      string // 'normalize'
-	mod             string // 'math.bits'
-	is_deprecated   bool
-	is_pub          bool
-	is_variadic     bool
-	is_anon         bool
-	is_noreturn     bool        // true, when [noreturn] is used on a fn
-	is_manualfree   bool        // true, when [manualfree] is used on a fn
-	is_main         bool        // true for `fn main()`
-	is_test         bool        // true for `fn test_abcde() {}`, false for `fn test_abc(x int) {}`, or for fns that do not start with test_
-	is_conditional  bool        // true for `[if abc] fn abc(){}`
-	is_exported     bool        // true for `[export: 'exact_C_name']`
-	is_keep_alive   bool        // passed memory must not be freed (by GC) before function returns
-	is_unsafe       bool        // true, when [unsafe] is used on a fn
-	is_markused     bool        // true, when an explict `[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
-	receiver        StructField // TODO this is not a struct field
-	receiver_pos    token.Pos   // `(u User)` in `fn (u User) name()` position
-	is_method       bool
-	method_type_pos token.Pos // `User` in ` fn (u User)` position
-	method_idx      int
-	rec_mut         bool // is receiver mutable
-	rec_share       ShareType
-	language        Language  // V, C, JS
-	file_mode       Language  // whether *the file*, where a function was a '.c.v', '.js.v' etc.
-	no_body         bool      // just a definition `fn C.malloc()`
-	is_builtin      bool      // this function is defined in builtin/strconv
-	body_pos        token.Pos // function bodys position
-	file            string
-	generic_names   []string
-	is_direct_arr   bool // direct array access
-	attrs           []Attr
-	ctdefine_idx    int = -1 // the index in fn.attrs of `[if xyz]`, when such attribute exists
+	name               string // 'math.bits.normalize'
+	short_name         string // 'normalize'
+	mod                string // 'math.bits'
+	is_deprecated      bool
+	is_pub             bool
+	is_variadic        bool
+	is_anon            bool
+	is_noreturn        bool        // true, when [noreturn] is used on a fn
+	is_manualfree      bool        // true, when [manualfree] is used on a fn
+	is_main            bool        // true for `fn main()`
+	is_test            bool        // true for `fn test_abcde() {}`, false for `fn test_abc(x int) {}`, or for fns that do not start with test_
+	is_conditional     bool        // true for `[if abc] fn abc(){}`
+	is_exported        bool        // true for `[export: 'exact_C_name']`
+	is_keep_alive      bool        // passed memory must not be freed (by GC) before function returns
+	is_unsafe          bool        // true, when [unsafe] is used on a fn
+	is_markused        bool        // true, when an explict `[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
+	is_file_translated bool        // true, when the file it resides in is `[translated]`
+	receiver           StructField // TODO this is not a struct field
+	receiver_pos       token.Pos   // `(u User)` in `fn (u User) name()` position
+	is_method          bool
+	method_type_pos    token.Pos // `User` in ` fn (u User)` position
+	method_idx         int
+	rec_mut            bool // is receiver mutable
+	rec_share          ShareType
+	language           Language  // V, C, JS
+	file_mode          Language  // whether *the file*, where a function was a '.c.v', '.js.v' etc.
+	no_body            bool      // just a definition `fn C.malloc()`
+	is_builtin         bool      // this function is defined in builtin/strconv
+	body_pos           token.Pos // function bodys position
+	file               string
+	generic_names      []string
+	is_direct_arr      bool // direct array access
+	attrs              []Attr
+	ctdefine_idx       int = -1 // the index in fn.attrs of `[if xyz]`, when such attribute exists
 pub mut:
 	idx               int // index in an external container; can be used to refer to the function in a more efficient way, just by its integer index
 	params            []Param
@@ -580,19 +589,23 @@ pub mut:
 	name               string // left.name()
 	is_method          bool
 	is_field           bool // temp hack, remove ASAP when re-impl CallExpr / Selector (joe)
-	is_fn_var          bool // fn variable
+	is_fn_var          bool // fn variable, `a := fn() {}`, then: `a()`
+	is_fn_a_const      bool // fn const, `const c = abc`, where `abc` is a function, then: `c()`
 	is_keep_alive      bool // GC must not free arguments before fn returns
 	is_noreturn        bool // whether the function/method is marked as [noreturn]
 	is_ctor_new        bool // if JS ctor calls requires `new` before call, marked as `[use_new]` in V
+	is_file_translated bool // true, when the file it resides in is `[translated]`
 	args               []CallArg
 	expected_arg_types []Type
+	comptime_ret_val   bool
 	language           Language
 	or_block           OrExpr
 	left               Expr // `user` in `user.register()`
 	left_type          Type // type of `user`
 	receiver_type      Type // User
 	return_type        Type
-	fn_var_type        Type   // fn variable type
+	fn_var_type        Type   // the fn type, when `is_fn_a_const` or `is_fn_var` is true
+	const_name         string // the fully qualified name of the const, i.e. `main.c`, given `const c = abc`, and callexpr: `c()`
 	should_be_skipped  bool   // true for calls to `[if someflag?]` functions, when there is no `-d someflag`
 	concrete_types     []Type // concrete types, e.g. <int, string>
 	concrete_list_pos  token.Pos
@@ -712,10 +725,10 @@ pub mut:
 [minify]
 pub struct EmbeddedFile {
 pub:
-	rpath            string // used in the source code, as an ID/key to the embed
-	apath            string // absolute path during compilation to the resource
 	compression_type string
 pub mut:
+	rpath string // used in the source code, as an ID/key to the embed
+	apath string // absolute path during compilation to the resource
 	// these are set by gen_embed_file_init in v/gen/c/embed
 	is_compressed bool
 	bytes         []u8
@@ -784,7 +797,7 @@ pub mut:
 	is_mut      bool
 	is_static   bool
 	is_volatile bool
-	is_optional bool
+	is_option   bool
 	share       ShareType
 }
 
@@ -853,12 +866,13 @@ pub:
 	pos     token.Pos
 	is_stmt bool
 pub mut:
-	left        Expr
-	right       Expr
-	left_type   Type
-	right_type  Type
-	auto_locked string
-	or_block    OrExpr
+	left          Expr
+	right         Expr
+	left_type     Type
+	right_type    Type
+	promoted_type Type = void_type
+	auto_locked   string
+	or_block      OrExpr
 	//
 	ct_left_value_evaled  bool
 	ct_left_value         ComptTimeConstValue = empty_comptime_const_expr()
@@ -1164,6 +1178,8 @@ pub:
 	comments         []Comment   // comments before the first EnumField
 	fields           []EnumField // all the enum fields
 	attrs            []Attr      // attributes of enum declaration
+	typ              Type        // the default is `int`; can be changed by `enum Big as u64 { a = 5 }`
+	typ_pos          token.Pos
 	pos              token.Pos
 }
 
@@ -1171,6 +1187,7 @@ pub struct AliasTypeDecl {
 pub:
 	name        string
 	is_pub      bool
+	typ         Type
 	parent_type Type
 	pos         token.Pos
 	type_pos    token.Pos
@@ -1238,6 +1255,8 @@ pub struct GotoLabel {
 pub:
 	name string
 	pos  token.Pos
+pub mut:
+	is_used bool
 }
 
 pub struct GotoStmt {
@@ -1317,6 +1336,7 @@ pub:
 pub mut:
 	low  Expr
 	high Expr
+	typ  Type // filled in by checker; the type of `0...1` is `int` for example, while `a`...`z` is `rune` etc
 }
 
 [minify]
@@ -1514,14 +1534,15 @@ pub const (
 	}
 )
 
+// `assert a == 0, 'a is zero'`
 [minify]
 pub struct AssertStmt {
 pub:
 	pos       token.Pos
 	extra_pos token.Pos
 pub mut:
-	expr    Expr
-	extra   Expr
+	expr    Expr // `a == 0`
+	extra   Expr // `'a is zero'`
 	is_used bool // asserts are used in _test.v files, as well as in non -prod builds of all files
 }
 
@@ -1537,8 +1558,8 @@ pub struct IfGuardExpr {
 pub:
 	vars []IfGuardVar
 pub mut:
-	expr      Expr
-	expr_type Type
+	expr      Expr // `opt()`
+	expr_type Type // type of `opt()`
 }
 
 pub enum OrKind {
@@ -1582,19 +1603,21 @@ pub mut:
 
 pub struct SizeOf {
 pub:
-	is_type bool
-	pos     token.Pos
+	guessed_type bool // a legacy `sizeof( GuessedType )` => a deprecation notice, suggesting `v fmt -w .` => `sizeof[ Type ]()`
+	is_type      bool
+	pos          token.Pos
 pub mut:
-	expr Expr // checker uses this to set typ
+	expr Expr // checker uses this to set typ, when !is_type
 	typ  Type
 }
 
 pub struct IsRefType {
 pub:
-	is_type bool
-	pos     token.Pos
+	guessed_type bool // a legacy `isreftype( GuessedType )` => a deprecation notice, suggesting `v fmt -w .` => `isreftype[ Type ]()`
+	is_type      bool
+	pos          token.Pos
 pub mut:
-	expr Expr // checker uses this to set typ
+	expr Expr // checker uses this to set typ, when !is_type
 	typ  Type
 }
 
@@ -1617,10 +1640,11 @@ pub mut:
 [minify]
 pub struct TypeOf {
 pub:
-	pos token.Pos
+	is_type bool
+	pos     token.Pos
 pub mut:
-	expr      Expr
-	expr_type Type
+	expr Expr // checker uses this to set typ, when !is_type
+	typ  Type
 }
 
 [minify]
@@ -1680,7 +1704,6 @@ pub:
 	method_pos  token.Pos
 	scope       &Scope = unsafe { nil }
 	left        Expr
-	args_var    string
 	//
 	is_vweb   bool
 	vweb_tmpl File
@@ -1695,6 +1718,7 @@ pub mut:
 	left_type   Type
 	result_type Type
 	env_value   string
+	args_var    string
 	args        []CallArg
 	embed_file  EmbeddedFile
 }
@@ -1714,11 +1738,12 @@ pub enum SqlStmtKind {
 
 pub struct SqlStmt {
 pub:
-	pos     token.Pos
 	db_expr Expr // `db` in `sql db {`
 	or_expr OrExpr
+	pos     token.Pos
 pub mut:
-	lines []SqlStmtLine
+	lines        []SqlStmtLine
+	db_expr_type Type // the type of the `db` in `sql db {`
 }
 
 pub struct SqlStmtLine {
@@ -1727,6 +1752,10 @@ pub:
 	pos          token.Pos
 	where_expr   Expr
 	update_exprs []Expr // for `update`
+	// is_top_level indicates that a statement is parsed from code
+	// and is not inserted by ORM for inserting in related tables.
+	is_top_level bool
+	scope        &Scope = unsafe { nil }
 pub mut:
 	object_var_name string   // `user`
 	updated_columns []string // for `update set x=y`
@@ -2154,7 +2183,7 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 						hash_index := name.index('#') or {
 							panic('all_registers: no hashtag found')
 						}
-						assembled_name := '${name[..hash_index]}$i${name[hash_index + 1..]}'
+						assembled_name := '${name[..hash_index]}${i}${name[hash_index + 1..]}'
 						res[assembled_name] = AsmRegister{
 							name: assembled_name
 							typ: t.bitsize_to_type(bit_size)
@@ -2213,7 +2242,7 @@ fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[str
 	for name, max_num in with_numbers {
 		for i in 0 .. max_num {
 			hash_index := name.index('#') or { panic('all_registers: no hashtag found') }
-			assembled_name := '${name[..hash_index]}$i${name[hash_index + 1..]}'
+			assembled_name := '${name[..hash_index]}${i}${name[hash_index + 1..]}'
 			res[assembled_name] = AsmRegister{
 				name: assembled_name
 				typ: t.bitsize_to_type(bit_size)
@@ -2251,6 +2280,18 @@ pub fn (expr Expr) is_literal() bool {
 			return false
 		}
 	}
+}
+
+pub fn (e Expr) is_nil() bool {
+	if e is Nil {
+		return true
+	}
+	if e is UnsafeExpr {
+		if e.expr is Nil {
+			return true
+		}
+	}
+	return false
 }
 
 pub fn type_can_start_with_token(tok &token.Token) bool {

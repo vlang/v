@@ -5,7 +5,7 @@ const (
 	// tfolder will contain all the temporary files/subfolders made by
 	// the different tests. It would be removed in testsuite_end(), so
 	// individual os tests do not need to clean up after themselves.
-	tfolder = os.join_path(os.temp_dir(), 'v', 'tests', 'os_test')
+	tfolder = os.join_path(os.vtmp_dir(), 'v', 'tests', 'os_test')
 )
 
 // os.args has to be *already initialized* with the program's argc/argv at this point
@@ -13,7 +13,7 @@ const (
 const args_at_start = os.args.clone()
 
 fn testsuite_begin() {
-	eprintln('testsuite_begin, tfolder = $tfolder')
+	eprintln('testsuite_begin, tfolder = ${tfolder}')
 	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	os.mkdir_all(tfolder) or { panic(err) }
@@ -42,7 +42,7 @@ fn test_open_file() {
 	file.write_string(hello) or { panic(err) }
 	file.close()
 	assert u64(hello.len) == os.file_size(filename)
-	read_hello := os.read_file(filename) or { panic('error reading file $filename') }
+	read_hello := os.read_file(filename) or { panic('error reading file ${filename}') }
 	assert hello == read_hello
 	os.rm(filename) or { panic(err) }
 }
@@ -82,7 +82,7 @@ fn test_open_file_binary() {
 	unsafe { file.write_ptr(bytes.data, bytes.len) }
 	file.close()
 	assert u64(hello.len) == os.file_size(filename)
-	read_hello := os.read_bytes(filename) or { panic('error reading file $filename') }
+	read_hello := os.read_bytes(filename) or { panic('error reading file ${filename}') }
 	assert bytes == read_hello
 	os.rm(filename) or { panic(err) }
 }
@@ -162,7 +162,7 @@ fn test_write_and_read_string_to_file() {
 	hello := 'hello world!'
 	os.write_file(filename, hello) or { panic(err) }
 	assert u64(hello.len) == os.file_size(filename)
-	read_hello := os.read_file(filename) or { panic('error reading file $filename') }
+	read_hello := os.read_file(filename) or { panic('error reading file ${filename}') }
 	assert hello == read_hello
 	os.rm(filename) or { panic(err) }
 }
@@ -173,7 +173,7 @@ fn test_write_and_read_bytes() {
 	file_name := './byte_reader_writer.tst'
 	payload := [u8(`I`), `D`, `D`, `Q`, `D`]
 	mut file_write := os.create(os.real_path(file_name)) or {
-		eprintln('failed to create file $file_name')
+		eprintln('failed to create file ${file_name}')
 		return
 	}
 	// We use the standard write_bytes function to write the payload and
@@ -182,7 +182,7 @@ fn test_write_and_read_bytes() {
 	file_write.close()
 	assert u64(payload.len) == os.file_size(file_name)
 	mut file_read := os.open(os.real_path(file_name)) or {
-		eprintln('failed to open file $file_name')
+		eprintln('failed to open file ${file_name}')
 		return
 	}
 	// We only need to test read_bytes because this function calls
@@ -194,7 +194,7 @@ fn test_write_and_read_bytes() {
 	// check that trying to read data from EOF doesn't error and returns 0
 	mut a := []u8{len: 5}
 	nread := file_read.read_bytes_into(5, mut a) or {
-		n := if err == IError(os.Eof{}) {
+		n := if err is os.Eof {
 			int(0)
 		} else {
 			eprintln(err)
@@ -323,7 +323,7 @@ fn test_cp() {
 	old_file_name := 'cp_example.txt'
 	new_file_name := 'cp_new_example.txt'
 	os.write_file(old_file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐') or { panic(err) }
-	os.cp(old_file_name, new_file_name) or { panic('$err') }
+	os.cp(old_file_name, new_file_name) or { panic('${err}') }
 	old_file := os.read_file(old_file_name) or { panic(err) }
 	new_file := os.read_file(new_file_name) or { panic(err) }
 	assert old_file == new_file
@@ -469,7 +469,7 @@ fn test_realpath_absolutepath_symlink() {
 	file_name := 'tolink_file.txt'
 	symlink_name := 'symlink.txt'
 	create_file(file_name)!
-	assert os.symlink(file_name, symlink_name)!
+	os.symlink(file_name, symlink_name)!
 	rpath := os.real_path(symlink_name)
 	println(rpath)
 	assert os.is_abs_path(rpath)
@@ -599,6 +599,10 @@ fn test_file_ext() {
 	assert os.file_ext('file...') == ''
 	assert os.file_ext('.file.') == ''
 	assert os.file_ext('..file..') == ''
+	assert os.file_ext('./.git') == ''
+	assert os.file_ext('./.git/') == ''
+	assert os.file_ext('\\.git') == ''
+	assert os.file_ext('\\.git\\') == ''
 }
 
 fn test_join() {
@@ -678,7 +682,7 @@ fn test_uname() {
 	assert u.machine.len > 0
 }
 
-// tests for write_file_array and read_file_array<T>:
+// tests for write_file_array and read_file_array[T]:
 const maxn = 3
 
 struct IntPoint {
@@ -706,7 +710,7 @@ fn test_write_file_array_structs() {
 		arr[i] = IntPoint{65 + i, 65 + i + 10}
 	}
 	os.write_file_array(fpath, arr) or { panic(err) }
-	rarr := os.read_file_array<IntPoint>(fpath)
+	rarr := os.read_file_array[IntPoint](fpath)
 	assert rarr == arr
 	assert rarr.len == maxn
 	// eprintln( rarr.str().replace('\n', ' ').replace('},', '},\n'))
@@ -925,4 +929,64 @@ fn test_reading_from_empty_file() {
 	content_bytes := os.read_bytes(empty_file)!
 	assert content_bytes.len == 0
 	os.rm(empty_file)!
+}
+
+fn move_across_partitions_using_function(f fn (src string, dst string) !) ! {
+	bindfs := os.find_abs_path_of_executable('bindfs') or {
+		eprintln('skipping test_mv_by_cp, because bindfs was not present')
+		return
+	}
+	// eprintln('>> $bindfs')
+	pfolder := os.join_path(tfolder, 'parent')
+	cfolder := os.join_path(pfolder, 'child')
+	mfolder := os.join_path(pfolder, 'mountpoint')
+	cdeepfolder := os.join_path(cfolder, 'deep', 'folder')
+	os.mkdir_all(mfolder)!
+	os.mkdir_all(cfolder)!
+	os.mkdir_all(cdeepfolder)!
+	//
+	original_path := os.join_path(pfolder, 'original.txt')
+	target_path := os.join_path(cdeepfolder, 'target.txt')
+	os.write_file(original_path, 'text')!
+	os.write_file(os.join_path(cdeepfolder, 'x.txt'), 'some text')!
+	// os.system('tree $pfolder')
+	/*
+	/tmp/v_1000/v/tests/os_test/parent
+	├── child
+	│   └── deep
+	│       └── folder
+	│           └── x.txt
+	├── mountpoint
+	└── original.txt
+	*/
+	os.system('${bindfs} --no-allow-other ${cfolder} ${mfolder}')
+	defer {
+		os.system('sync; umount ${mfolder}')
+	}
+	// os.system('tree $pfolder')
+	/*
+	/tmp/v_1000/v/tests/os_test/parent
+	├── child
+	│   └── deep
+	│       └── folder
+	│           └── x.txt
+	├── mountpoint
+	│   └── deep
+	│       └── folder
+	│           └── x.txt
+	└── original.txt
+	*/
+
+	f(original_path, target_path)!
+
+	assert os.exists(target_path)
+	assert !os.exists(original_path)
+}
+
+fn test_mv_by_cp_across_partitions() {
+	move_across_partitions_using_function(os.mv_by_cp)!
+}
+
+fn test_mv_across_partitions() {
+	move_across_partitions_using_function(os.mv)!
 }

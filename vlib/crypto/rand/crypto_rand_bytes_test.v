@@ -1,7 +1,7 @@
 import crypto.rand
 
-fn test_reading() ? {
-	a := rand.read(32)?
+fn test_reading() {
+	a := rand.read(32)!
 	// dump(a.hex())
 	assert a.len == 32
 	mut histogram := [256]int{}

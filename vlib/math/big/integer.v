@@ -1,13 +1,10 @@
 module big
 
-import math
 import math.bits
 import strings
 import strconv
 
-const (
-	digit_array = '0123456789abcdefghijklmnopqrstuvwxyz'.bytes()
-)
+const digit_array = '0123456789abcdefghijklmnopqrstuvwxyz'.bytes()
 
 // big.Integer
 // -----------
@@ -55,7 +52,7 @@ pub fn integer_from_int(value int) Integer {
 		return zero_int
 	}
 	return Integer{
-		digits: [u32(math.abs(value))]
+		digits: [u32(iabs(value))]
 		signum: int_signum(value)
 	}
 }
@@ -154,17 +151,17 @@ pub fn integer_from_bytes(input []u8, config IntegerConfig) Integer {
 
 // integer_from_string creates a new `big.Integer` from the decimal digits specified in the given string.
 // For other bases, use `big.integer_from_radix` instead.
-pub fn integer_from_string(characters string) ?Integer {
+pub fn integer_from_string(characters string) !Integer {
 	return integer_from_radix(characters, 10)
 }
 
 // integer_from_radix creates a new `big.Integer` from the given string and radix.
-pub fn integer_from_radix(all_characters string, radix u32) ?Integer {
+pub fn integer_from_radix(all_characters string, radix u32) !Integer {
 	if radix < 2 || radix > 36 {
 		return error('Radix must be between 2 and 36 (inclusive)')
 	}
 	characters := all_characters.to_lower()
-	validate_string(characters, radix)?
+	validate_string(characters, radix)!
 	return match radix {
 		2 {
 			integer_from_special_string(characters, 1)
@@ -179,7 +176,7 @@ pub fn integer_from_radix(all_characters string, radix u32) ?Integer {
 }
 
 [direct_array_access]
-fn validate_string(characters string, radix u32) ? {
+fn validate_string(characters string, radix u32) ! {
 	sign_present := characters[0] == `+` || characters[0] == `-`
 
 	start_index := if sign_present { 1 } else { 0 }
@@ -189,10 +186,10 @@ fn validate_string(characters string, radix u32) ? {
 		value := big.digit_array.index(digit)
 
 		if value == -1 {
-			return error('Invalid character $digit')
+			return error('Invalid character ${digit}')
 		}
 		if value >= radix {
-			return error('Invalid character $digit for base $radix')
+			return error('Invalid character ${digit} for base ${radix}')
 		}
 	}
 }
@@ -327,7 +324,7 @@ pub fn (integer Integer) - (subtrahend Integer) Integer {
 fn (integer Integer) add(addend Integer) Integer {
 	a := integer.digits
 	b := addend.digits
-	mut storage := []u32{len: math.max(a.len, b.len) + 1}
+	mut storage := []u32{len: imax(a.len, b.len) + 1}
 	add_digit_array(a, b, mut storage)
 	return Integer{
 		signum: integer.signum
@@ -585,7 +582,7 @@ pub fn (mut a Integer) set_bit(i u32, value bool) {
 pub fn (a Integer) bitwise_or(b Integer) Integer {
 	check_sign(a)
 	check_sign(b)
-	mut result := []u32{len: math.max(a.digits.len, b.digits.len)}
+	mut result := []u32{len: imax(a.digits.len, b.digits.len)}
 	bitwise_or_digit_array(a.digits, b.digits, mut result)
 	return Integer{
 		digits: result
@@ -597,7 +594,7 @@ pub fn (a Integer) bitwise_or(b Integer) Integer {
 pub fn (a Integer) bitwise_and(b Integer) Integer {
 	check_sign(a)
 	check_sign(b)
-	mut result := []u32{len: math.max(a.digits.len, b.digits.len)}
+	mut result := []u32{len: imax(a.digits.len, b.digits.len)}
 	bitwise_and_digit_array(a.digits, b.digits, mut result)
 	return Integer{
 		digits: result
@@ -620,7 +617,7 @@ pub fn (a Integer) bitwise_not() Integer {
 pub fn (a Integer) bitwise_xor(b Integer) Integer {
 	check_sign(a)
 	check_sign(b)
-	mut result := []u32{len: math.max(a.digits.len, b.digits.len)}
+	mut result := []u32{len: imax(a.digits.len, b.digits.len)}
 	bitwise_xor_digit_array(a.digits, b.digits, mut result)
 	return Integer{
 		digits: result
@@ -941,7 +938,7 @@ fn gcd_binary(x Integer, y Integer) Integer {
 
 	mut az := a.msb()
 	bz := b.msb()
-	shift := math.min(az, bz)
+	shift := umin(az, bz)
 	b = b.rshift(bz)
 
 	for a.signum != 0 {

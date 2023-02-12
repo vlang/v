@@ -71,7 +71,7 @@ fn todo_del() {}
 [typedef]
 struct C.XSelectionRequestEvent {
 mut:
-	display   &C.Display // Display the event was read from
+	display   &C.Display = unsafe { nil } // Display the event was read from
 	owner     Window
 	requestor Window
 	selection Atom
@@ -84,7 +84,7 @@ mut:
 struct C.XSelectionEvent {
 mut:
 	@type     int
-	display   &C.Display // Display the event was read from
+	display   &C.Display = unsafe { nil } // Display the event was read from
 	requestor Window
 	selection Atom
 	target    Atom
@@ -195,7 +195,7 @@ fn new_x11_clipboard(selection AtomType) &Clipboard {
 	cb.selection = cb.get_atom(selection)
 	// start the listener on another thread or
 	// we will be locked and will have to hard exit
-	go cb.start_listener()
+	spawn cb.start_listener()
 	return cb
 }
 

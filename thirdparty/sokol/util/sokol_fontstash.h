@@ -28,12 +28,9 @@
     ...optionally provide the following macros to override defaults:
 
     SOKOL_ASSERT(c)     - your own assert macro (default: assert(c))
-    SOKOL_MALLOC(s)     - your own malloc function (default: malloc(s))
-    SOKOL_FREE(p)       - your own free function (default: free(p))
     SOKOL_FONTSTASH_API_DECL    - public function declaration prefix (default: extern)
     SOKOL_API_DECL      - same as SOKOL_FONTSTASH_API_DECL
     SOKOL_API_IMPL      - public function implementation prefix (default: -)
-    SOKOL_LOG(msg)      - your own logging function (default: puts(msg))
     SOKOL_UNREACHABLE() - a guard macro for unreachable code (default: assert(false))
 
     Include the following headers before including sokol_fontstash.h:
@@ -55,7 +52,10 @@
     --- Create at least one fontstash context with sfons_create() (this replaces
         glfonsCreate() from fontstash.h's example GL renderer:
 
-            FONScontext* ctx = sfons_create(atlas_width, atlas_height, FONS_ZERO_TOPLEFT);
+            FONScontext* ctx = sfons_create(&(sfons_desc_t){
+                .width = atlas_width,
+                .height = atlas_height,
+            });
 
         Each FONScontext manages one font atlas texture which can hold rasterized
         glyphs for multiple fonts.
@@ -88,7 +88,7 @@
 
     --- finally on application shutdown, call:
 
-            sfons_shutdown()
+            sfons_destroy(FONScontext* ctx)
 
         before sgl_shutdown() and sg_shutdown()
 
@@ -96,7 +96,7 @@
     WHAT HAPPENS UNDER THE HOOD:
     ============================
 
-    sfons_create():
+    FONScontext* sfons_create(const sfons_desc_t* desc)
         - creates a sokol-gfx shader compatible with sokol-gl
         - creates an sgl_pipeline object with alpha-blending using
           this shader
@@ -122,13 +122,42 @@
           all calls to fonsDrawText() will be merged into a single draw call
           as long as all calls use the same FONScontext
 
-    sfons_flush():
+    sfons_flush(FONScontext* ctx):
         - this will call sg_update_image() on the font atlas texture
           if fontstash.h has added any rasterized glyphs since the last
           frame
 
-    sfons_shutdown():
+    sfons_destroy(FONScontext* ctx):
         - destroy the font atlas texture, sgl_pipeline and sg_shader objects
+
+
+    MEMORY ALLOCATION OVERRIDE
+    ==========================
+    You can override the memory allocation functions at initialization time
+    like this:
+
+        void* my_alloc(size_t size, void* user_data) {
+            return malloc(size);
+        }
+
+        void my_free(void* ptr, void* user_data) {
+            free(ptr);
+        }
+
+        ...
+        FONScontext* fons_context = sfons_create(&(sfons_desc_t){
+            ...
+            .allocator = {
+                .alloc = my_alloc,
+                .free = my_free,
+                .user_data = ...,
+            }
+        });
+        ...
+
+    If no overrides are provided, malloc and free will be used. Please
+    note that this doesn't affect any memory allocation performed
+    in fontstash.h (unfortunately those are hardwired to malloc/free).
 
     LICENSE
     =======
@@ -158,6 +187,7 @@
 #define SOKOL_FONTSTASH_INCLUDED (1)
 #include <stdint.h>
 #include <stdlib.h>
+#include <stddef.h> // size_t
 
 #if !defined(SOKOL_GFX_INCLUDED)
 #error "Please include sokol_gfx.h before sokol_fontstash.h"
@@ -179,7 +209,30 @@
 extern "C" {
 #endif
 
-SOKOL_FONTSTASH_API_DECL FONScontext* sfons_create(int width, int height, int flags);
+/*
+    sfonst_allocator_t
+
+    Used in sfons_desc_t to provide custom memory-alloc and -free functions
+    to sokol_fontstash.h. If memory management should be overridden, both the
+    alloc and free function must be provided (e.g. it's not valid to
+    override one function but not the other).
+
+    NOTE that this does not affect memory allocation calls inside
+    fontstash.h
+*/
+typedef struct sfons_allocator_t {
+    void* (*alloc)(size_t size, void* user_data);
+    void (*free)(void* ptr, void* user_data);
+    void* user_data;
+} sfons_allocator_t;
+
+typedef struct sfons_desc_t {
+    int width;    // initial width of font atlas texture (default: 512, must be power of 2)
+    int height;   // initial height of font atlas texture (default: 512, must be power of 2)
+    sfons_allocator_t allocator;    // optional memory allocation overrides
+} sfons_desc_t;
+
+SOKOL_FONTSTASH_API_DECL FONScontext* sfons_create(const sfons_desc_t* desc);
 SOKOL_FONTSTASH_API_DECL void sfons_destroy(FONScontext* ctx);
 SOKOL_FONTSTASH_API_DECL void sfons_flush(FONScontext* ctx);
 SOKOL_FONTSTASH_API_DECL uint32_t sfons_rgba(uint8_t r, uint8_t g, uint8_t b, uint8_t a);
@@ -192,7 +245,13 @@ SOKOL_FONTSTASH_API_DECL uint32_t sfons_rgba(uint8_t r, uint8_t g, uint8_t b, ui
 /*-- IMPLEMENTATION ----------------------------------------------------------*/
 #ifdef SOKOL_FONTSTASH_IMPL
 #define SOKOL_FONTSTASH_IMPL_INCLUDED (1)
-#include <string.h>     /* memset, memcpy */
+
+#if defined(SOKOL_MALLOC) || defined(SOKOL_CALLOC) || defined(SOKOL_FREE)
+#error "SOKOL_MALLOC/CALLOC/FREE macros are no longer supported, please use sfons_desc_t.allocator to override memory allocation functions"
+#endif
+
+#include <string.h>     // memset, memcpy
+#include <stdlib.h>     // malloc, free
 
 #if !defined(SOKOL_GL_INCLUDED)
 #error "Please include sokol_gl.h before sokol_fontstash.h"
@@ -206,25 +265,12 @@ SOKOL_FONTSTASH_API_DECL uint32_t sfons_rgba(uint8_t r, uint8_t g, uint8_t b, ui
 #endif
 #ifndef SOKOL_DEBUG
     #ifndef NDEBUG
-        #define SOKOL_DEBUG (1)
+        #define SOKOL_DEBUG
     #endif
 #endif
 #ifndef SOKOL_ASSERT
     #include <assert.h>
     #define SOKOL_ASSERT(c) assert(c)
-#endif
-#ifndef SOKOL_MALLOC
-    #include <stdlib.h>
-    #define SOKOL_MALLOC(s) malloc(s)
-    #define SOKOL_FREE(p) free(p)
-#endif
-#ifndef SOKOL_LOG
-    #ifdef SOKOL_DEBUG
-        #include <stdio.h>
-        #define SOKOL_LOG(s) { SOKOL_ASSERT(s); puts(s); }
-    #else
-        #define SOKOL_LOG(s)
-    #endif
 #endif
 #ifndef SOKOL_UNREACHABLE
     #define SOKOL_UNREACHABLE SOKOL_ASSERT(false)
@@ -1609,12 +1655,47 @@ static const char* _sfons_fs_source_dummy = "";
 #endif
 
 typedef struct _sfons_t {
+    sfons_desc_t desc;
     sg_shader shd;
     sgl_pipeline pip;
     sg_image img;
-    int width, height;
+    int cur_width, cur_height;
     bool img_dirty;
 } _sfons_t;
+
+static void _sfons_clear(void* ptr, size_t size) {
+    SOKOL_ASSERT(ptr && (size > 0));
+    memset(ptr, 0, size);
+}
+
+static void* _sfons_malloc(const sfons_allocator_t* allocator, size_t size) {
+    SOKOL_ASSERT(allocator && (size > 0));
+    void* ptr;
+    if (allocator->alloc) {
+        ptr = allocator->alloc(size, allocator->user_data);
+    }
+    else {
+        ptr = malloc(size);
+    }
+    SOKOL_ASSERT(ptr);
+    return ptr;
+}
+
+static void* _sfons_malloc_clear(const sfons_allocator_t* allocator, size_t size) {
+    void* ptr = _sfons_malloc(allocator, size);
+    _sfons_clear(ptr, size);
+    return ptr;
+}
+
+static void _sfons_free(const sfons_allocator_t* allocator, void* ptr) {
+    SOKOL_ASSERT(allocator);
+    if (allocator->free) {
+        allocator->free(ptr, allocator->user_data);
+    }
+    else {
+        free(ptr);
+    }
+}
 
 static int _sfons_render_create(void* user_ptr, int width, int height) {
     SOKOL_ASSERT(user_ptr && (width > 8) && (height > 8));
@@ -1623,7 +1704,7 @@ static int _sfons_render_create(void* user_ptr, int width, int height) {
     /* sokol-gl compatible shader which treats RED channel as alpha */
     if (sfons->shd.id == SG_INVALID_ID) {
         sg_shader_desc shd_desc;
-        memset(&shd_desc, 0, sizeof(shd_desc));
+        _sfons_clear(&shd_desc, sizeof(shd_desc));
         shd_desc.attrs[0].name = "position";
         shd_desc.attrs[1].name = "texcoord0";
         shd_desc.attrs[2].name = "color0";
@@ -1687,7 +1768,7 @@ static int _sfons_render_create(void* user_ptr, int width, int height) {
     /* sokol-gl pipeline object */
     if (sfons->pip.id == SG_INVALID_ID) {
         sg_pipeline_desc pip_desc;
-        memset(&pip_desc, 0, sizeof(pip_desc));
+        _sfons_clear(&pip_desc, sizeof(pip_desc));
         pip_desc.shader = sfons->shd;
         pip_desc.colors[0].blend.enabled = true;
         pip_desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
@@ -1700,14 +1781,14 @@ static int _sfons_render_create(void* user_ptr, int width, int height) {
         sg_destroy_image(sfons->img);
         sfons->img.id = SG_INVALID_ID;
     }
-    sfons->width = width;
-    sfons->height = height;
+    sfons->cur_width = width;
+    sfons->cur_height = height;
 
     SOKOL_ASSERT(sfons->img.id == SG_INVALID_ID);
     sg_image_desc img_desc;
-    memset(&img_desc, 0, sizeof(img_desc));
-    img_desc.width = sfons->width;
-    img_desc.height = sfons->height;
+    _sfons_clear(&img_desc, sizeof(img_desc));
+    img_desc.width = sfons->cur_width;
+    img_desc.height = sfons->cur_height;
     img_desc.min_filter = SG_FILTER_LINEAR;
     img_desc.mag_filter = SG_FILTER_LINEAR;
     img_desc.usage = SG_USAGE_DYNAMIC;
@@ -1759,42 +1840,43 @@ static void _sfons_render_delete(void* user_ptr) {
         sg_destroy_shader(sfons->shd);
         sfons->shd.id = SG_INVALID_ID;
     }
-    SOKOL_FREE(sfons);
 }
 
-// NOTE clang analyzer will report a potential memory leak for the call
-// to SOKOL_MALLOC in the sfons_create() function, this is a false positive
-// (the freeing happens in _sfons_render_delete()). The following macro
-// silences the false positive when compilation happens with the analyzer active
-#if __clang_analyzer__
-#define _SFONS_CLANG_ANALYZER_SILENCE_POTENTIAL_LEAK_FALSE_POSITIVE(x) SOKOL_FREE(x)
-#else
-#define _SFONS_CLANG_ANALYZER_SILENCE_POTENTIAL_LEAK_FALSE_POSITIVE(x)
-#endif
+#define _sfons_def(val, def) (((val) == 0) ? (def) : (val))
 
-SOKOL_API_IMPL FONScontext* sfons_create(int width, int height, int flags) {
-    SOKOL_ASSERT((width > 0) && (height > 0));
+static sfons_desc_t _sfons_desc_defaults(const sfons_desc_t* desc) {
+    SOKOL_ASSERT(desc);
+    sfons_desc_t res = *desc;
+    res.width = _sfons_def(res.width, 512);
+    res.height = _sfons_def(res.height, 512);
+    return res;
+}
+
+SOKOL_API_IMPL FONScontext* sfons_create(const sfons_desc_t* desc) {
+    SOKOL_ASSERT(desc);
+    SOKOL_ASSERT((desc->allocator.alloc && desc->allocator.free) || (!desc->allocator.alloc && !desc->allocator.free));
+    _sfons_t* sfons = (_sfons_t*) _sfons_malloc_clear(&desc->allocator, sizeof(_sfons_t));
+    sfons->desc = _sfons_desc_defaults(desc);
     FONSparams params;
-    _sfons_t* sfons = (_sfons_t*) SOKOL_MALLOC(sizeof(_sfons_t));
-    memset(sfons, 0, sizeof(_sfons_t));
-    memset(&params, 0, sizeof(params));
-    params.width = width;
-    params.height = height;
-    params.flags = (unsigned char) flags;
+    _sfons_clear(&params, sizeof(params));
+    params.width = sfons->desc.width;
+    params.height = sfons->desc.height;
+    params.flags = FONS_ZERO_TOPLEFT;
     params.renderCreate = _sfons_render_create;
     params.renderResize = _sfons_render_resize;
     params.renderUpdate = _sfons_render_update;
     params.renderDraw = _sfons_render_draw;
     params.renderDelete = _sfons_render_delete;
     params.userPtr = sfons;
-    FONScontext* ctx = fonsCreateInternal(&params);
-    _SFONS_CLANG_ANALYZER_SILENCE_POTENTIAL_LEAK_FALSE_POSITIVE(sfons);
-    return ctx;
+    return fonsCreateInternal(&params);
 }
 
 SOKOL_API_IMPL void sfons_destroy(FONScontext* ctx) {
     SOKOL_ASSERT(ctx);
+    _sfons_t* sfons = (_sfons_t*) ctx->params.userPtr;
     fonsDeleteInternal(ctx);
+    const sfons_allocator_t allocator = sfons->desc.allocator;
+    _sfons_free(&allocator, sfons);
 }
 
 SOKOL_API_IMPL void sfons_flush(FONScontext* ctx) {
@@ -1803,9 +1885,9 @@ SOKOL_API_IMPL void sfons_flush(FONScontext* ctx) {
     if (sfons->img_dirty) {
         sfons->img_dirty = false;
         sg_image_data data;
-        memset(&data, 0, sizeof(data));
+        _sfons_clear(&data, sizeof(data));
         data.subimage[0][0].ptr = ctx->texData;
-        data.subimage[0][0].size = (size_t) (sfons->width * sfons->height);
+        data.subimage[0][0].size = (size_t) (sfons->cur_width * sfons->cur_height);
         sg_update_image(sfons->img, &data);
     }
 }

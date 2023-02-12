@@ -5,7 +5,7 @@ import net
 // ensure that `net` is used, i.e. no warnings
 const use_net = net.no_timeout
 
-const tfolder = os.join_path(os.temp_dir(), 'v', 'net_and_unix_together')
+const tfolder = os.join_path(os.vtmp_dir(), 'v', 'net_and_unix_together')
 
 const test_port = os.join_path(tfolder, 'unix_domain_socket')
 
@@ -19,7 +19,7 @@ fn testsuite_end() {
 
 fn test_that_net_and_net_unix_can_be_imported_together_without_conflicts() {
 	mut l := unix.listen_stream(test_port) or { panic(err) }
-	go echo_server(mut l)
+	spawn echo_server(mut l)
 	defer {
 		l.close() or {}
 	}
@@ -45,7 +45,7 @@ fn handle_conn(mut c unix.StreamConn) ! {
 	for {
 		mut buf := []u8{len: 100, init: 0}
 		read := c.read(mut buf) or { return perror('Server: connection dropped') }
-		eprintln('> server read ${read:3}, buf: |$buf.bytestr()|')
+		eprintln('> server read ${read:3}, buf: |${buf.bytestr()}|')
 		c.write(buf[..read]) or { return perror('Server: connection dropped') }
 	}
 }

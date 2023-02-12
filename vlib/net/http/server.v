@@ -34,16 +34,18 @@ pub mut:
 	accept_timeout time.Duration = 30 * time.second
 }
 
+// listen_and_serve listens on the server port `s.port` over TCP network and
+// uses `s.parse_and_respond` to handle requests on incoming connections with `s.handler`.
 pub fn (mut s Server) listen_and_serve() {
 	if s.handler is DebugHandler {
 		eprintln('Server handler not set, using debug handler')
 	}
-	s.listener = net.listen_tcp(.ip6, ':$s.port') or {
-		eprintln('Listening on :$s.port failed')
+	s.listener = net.listen_tcp(.ip6, ':${s.port}') or {
+		eprintln('Listening on :${s.port} failed')
 		return
 	}
 	s.listener.set_accept_timeout(s.accept_timeout)
-	eprintln('Listening on :$s.port')
+	eprintln('Listening on :${s.port}')
 	s.state = .running
 	for {
 		// break if we have a stop signal
@@ -51,9 +53,11 @@ pub fn (mut s Server) listen_and_serve() {
 			break
 		}
 		mut conn := s.listener.accept() or {
-			if err.msg() != 'net: op timed out' {
-				eprintln('accept() failed: $err; skipping')
+			if err.code() == net.err_timed_out_code {
+				// just skip network timeouts, they are normal
+				continue
 			}
+			eprintln('accept() failed, reason: ${err}; skipping')
 			continue
 		}
 		conn.set_read_timeout(s.read_timeout)
@@ -66,19 +70,20 @@ pub fn (mut s Server) listen_and_serve() {
 	}
 }
 
-// stop signals the server that it should not respond anymore
+// stop signals the server that it should not respond anymore.
 [inline]
 pub fn (mut s Server) stop() {
 	s.state = .stopped
 }
 
-// close immediatly closes the port and signals the server that it has been closed
+// close immediatly closes the port and signals the server that it has been closed.
 [inline]
 pub fn (mut s Server) close() {
 	s.state = .closed
 	s.listener.close() or { return }
 }
 
+// status indicates whether the server is running, stopped, or closed.
 [inline]
 pub fn (s &Server) status() ServerStatus {
 	return s.state
@@ -86,7 +91,7 @@ pub fn (s &Server) status() ServerStatus {
 
 fn (mut s Server) parse_and_respond(mut conn net.TcpConn) {
 	defer {
-		conn.close() or { eprintln('close() failed: $err') }
+		conn.close() or { eprintln('close() failed: ${err}') }
 	}
 
 	mut reader := io.new_buffered_reader(reader: conn)
@@ -98,7 +103,7 @@ fn (mut s Server) parse_and_respond(mut conn net.TcpConn) {
 	req := parse_request(mut reader) or {
 		$if debug {
 			// only show in debug mode to prevent abuse
-			eprintln('error parsing request: $err')
+			eprintln('error parsing request: ${err}')
 		}
 		return
 	}
@@ -106,18 +111,18 @@ fn (mut s Server) parse_and_respond(mut conn net.TcpConn) {
 	if resp.version() == .unknown {
 		resp.set_version(req.version)
 	}
-	conn.write(resp.bytes()) or { eprintln('error sending response: $err') }
+	conn.write(resp.bytes()) or { eprintln('error sending response: ${err}') }
 }
 
 // DebugHandler implements the Handler interface by echoing the request
-// in the response
+// in the response.
 struct DebugHandler {}
 
 fn (d DebugHandler) handle(req Request) Response {
 	$if debug {
-		eprintln('[$time.now()] $req.method $req.url\n\r$req.header\n\r$req.data - 200 OK')
+		eprintln('[${time.now()}] ${req.method} ${req.url}\n\r${req.header}\n\r${req.data} - 200 OK')
 	} $else {
-		eprintln('[$time.now()] $req.method $req.url - 200')
+		eprintln('[${time.now()}] ${req.method} ${req.url} - 200')
 	}
 	mut r := Response{
 		body: req.data

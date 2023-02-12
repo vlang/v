@@ -1,8 +1,0 @@
-> trace fn init_os_args(argc int, argv &&u8) []string
-> trace pub fn getwd() string
-> trace fn main()
-> trace fn f1()
-> trace fn f2()
-> trace fn f3()
-> trace pub fn join_path(base string, dirs ...string) string
-end

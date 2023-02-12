@@ -23,14 +23,14 @@ fn test_sb() {
 	sb = strings.new_builder(10)
 	x := 10
 	y := MyInt(20)
-	sb.writeln('x = $x y = $y')
+	sb.writeln('x = ${x} y = ${y}')
 	res := sb.str()
 	assert res[res.len - 1] == `\n`
-	println('"$res"')
+	println('"${res}"')
 	assert res.trim_space() == 'x = 10 y = 20'
 	//
 	sb = strings.new_builder(10)
-	sb.write_string('x = $x y = $y')
+	sb.write_string('x = ${x} y = ${y}')
 	assert sb.str() == 'x = 10 y = 20'
 	//$if !windows {
 	sb = strings.new_builder(10)

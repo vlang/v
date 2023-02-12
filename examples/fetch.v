@@ -3,7 +3,7 @@ import net.http
 
 fn main() {
 	resp := http.get('https://vlang.io/utc_now') or {
-		eprintln('Failed to fetch data from the server. Error: $err')
+		eprintln('Failed to fetch data from the server. Error: ${err}')
 		return
 	}
 

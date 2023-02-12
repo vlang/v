@@ -223,7 +223,7 @@ pub fn (c Color) / (c2 Color) Color {
 	}
 }
 
-// over - implements an `a` over `b` operation.
+// over implements an `a` over `b` operation.
 // see https://keithp.com/~keithp/porterduff/p253-porter.pdf
 pub fn (a Color) over(b Color) Color {
 	aa := f32(a.a) / 255
@@ -248,24 +248,24 @@ pub fn (c Color) eq(c2 Color) bool {
 
 // str returns a string representation of the Color `c`
 pub fn (c Color) str() string {
-	return 'Color{$c.r, $c.g, $c.b, $c.a}'
+	return 'Color{${c.r}, ${c.g}, ${c.b}, ${c.a}}'
 }
 
-// rgba8 - convert a color value to an int in the RGBA8 order.
+// rgba8 converts a color value to an int in the RGBA8 order.
 // see https://developer.apple.com/documentation/coreimage/ciformat
 [inline]
 pub fn (c Color) rgba8() int {
 	return int(u32(c.r) << 24 | u32(c.g) << 16 | u32(c.b) << 8 | u32(c.a))
 }
 
-// bgra8 - convert a color value to an int in the BGRA8 order.
+// bgra8 converts a color value to an int in the BGRA8 order.
 // see https://developer.apple.com/documentation/coreimage/ciformat
 [inline]
 pub fn (c Color) bgra8() int {
 	return int(u32(c.b) << 24 | u32(c.g) << 16 | u32(c.r) << 8 | u32(c.a))
 }
 
-// abgr8 - convert a color value to an int in the ABGR8 order.
+// abgr8 converts a color value to an int in the ABGR8 order.
 // see https://developer.apple.com/documentation/coreimage/ciformat
 [inline]
 pub fn (c Color) abgr8() int {
@@ -305,5 +305,5 @@ pub fn color_from_string(s string) Color {
 
 // to_css_string returns a CSS compatible string e.g. `rgba(10,11,12,13)` of the color `c`.
 pub fn (c Color) to_css_string() string {
-	return 'rgba($c.r,$c.g,$c.b,$c.a)'
+	return 'rgba(${c.r},${c.g},${c.b},${c.a})'
 }

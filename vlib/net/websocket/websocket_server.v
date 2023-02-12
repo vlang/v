@@ -61,15 +61,15 @@ pub fn (mut s Server) set_ping_interval(seconds int) {
 
 // listen start listen and process to incoming connections from websocket clients
 pub fn (mut s Server) listen() ! {
-	s.logger.info('websocket server: start listen on port $s.port')
-	s.ls = net.listen_tcp(s.family, ':$s.port')!
+	s.logger.info('websocket server: start listen on port ${s.port}')
+	s.ls = net.listen_tcp(s.family, ':${s.port}')!
 	s.set_state(.open)
-	go s.handle_ping()
+	spawn s.handle_ping()
 	for {
 		mut c := s.accept_new_client() or { continue }
-		go s.serve_client(mut c)
+		spawn s.serve_client(mut c)
 	}
-	s.logger.info('websocket server: end listen on port $s.port')
+	s.logger.info('websocket server: end listen on port ${s.port}')
 }
 
 // Close closes server (not implemented yet)
@@ -83,7 +83,7 @@ fn (mut s Server) handle_ping() {
 	for s.state == .open {
 		time.sleep(s.ping_interval * time.second)
 		for i, _ in s.clients {
-			mut c := s.clients[i]
+			mut c := s.clients[i] or { continue }
 			if c.client.state == .open {
 				c.client.ping() or {
 					s.logger.debug('server-> error sending ping to client')
@@ -101,7 +101,7 @@ fn (mut s Server) handle_ping() {
 		}
 		// TODO: replace for with s.clients.delete_all(clients_to_remove) if (https://github.com/vlang/v/pull/6020) merges
 		for client in clients_to_remove {
-			lock  {
+			lock {
 				s.clients.delete(client)
 			}
 		}
@@ -111,9 +111,9 @@ fn (mut s Server) handle_ping() {
 
 // serve_client accepts incoming connection and sets up the callbacks
 fn (mut s Server) serve_client(mut c Client) ! {
-	c.logger.debug('server-> Start serve client ($c.id)')
+	c.logger.debug('server-> Start serve client (${c.id})')
 	defer {
-		c.logger.debug('server-> End serve client ($c.id)')
+		c.logger.debug('server-> End serve client (${c.id})')
 	}
 	mut handshake_response, mut server_client := s.handle_server_handshake(mut c)!
 	accept := s.send_connect_event(mut server_client)!
@@ -124,8 +124,10 @@ fn (mut s Server) serve_client(mut c Client) ! {
 	}
 	// the client is accepted
 	c.socket_write(handshake_response.bytes())!
-	lock  {
-		s.clients[server_client.client.id] = server_client
+	lock {
+		unsafe {
+			s.clients[server_client.client.id] = server_client
+		}
 	}
 	s.setup_callbacks(mut server_client)
 	c.listen() or {
@@ -157,7 +159,7 @@ fn (mut s Server) setup_callbacks(mut sc ServerClient) {
 	// set standard close so we can remove client if closed
 	sc.client.on_close_ref(fn (mut c Client, code int, reason string, mut sc ServerClient) ! {
 		c.logger.debug('server-> Delete client')
-		lock  {
+		lock {
 			sc.server.clients.delete(sc.client.id)
 		}
 	}, sc)
@@ -180,7 +182,7 @@ fn (mut s Server) accept_new_client() !&Client {
 
 // set_state sets current state in a thread safe way
 fn (mut s Server) set_state(state State) {
-	lock  {
+	lock {
 		s.state = state
 	}
 }

@@ -155,7 +155,7 @@ pub fn (instance BitField) extract(start int, len int) u64 {
 // insert sets bit numbers from 'start' to 'len' length with
 // the value converted from the number 'value'.
 // 0000 (1, 2, 0b10) => 0100
-pub fn (mut instance BitField) insert<T>(start int, len int, _value T) {
+pub fn (mut instance BitField) insert[T](start int, len int, _value T) {
 	// panic?
 	if start < 0 {
 		return
@@ -190,7 +190,7 @@ pub fn (instance BitField) extract_lowest_bits_first(start int, len int) u64 {
 // insert sets bit numbers from 'start' to 'len' length with
 // the value converted from the number 'value'.
 // 0000 (1, 2, 0b10) => 0010
-pub fn (mut instance BitField) insert_lowest_bits_first<T>(start int, len int, _value T) {
+pub fn (mut instance BitField) insert_lowest_bits_first[T](start int, len int, _value T) {
 	// panic?
 	if start < 0 {
 		return

@@ -23,10 +23,10 @@ fn main() {
 	ar := Cc{[Aa{3}, Aa{-4}, Aa{12}]}
 	aa := Aa{-13}
 	z := -14.75
-	println('$st.a.xy ${ar.a[2].xy} $aa.xy $z')
-	println('$st.a.xy${ar.a[2].xy}$aa.xy$z')
+	println('${st.a.xy} ${ar.a[2].xy} ${aa.xy} ${z}')
+	println('${st.a.xy}${ar.a[2].xy}${aa.xy}${z}')
 	println('${st.a.xy}ya ${ar.a[2].xy}X2 ${aa.xy}.b ${z}3')
 	println('${z:-5} ${z:+5.3} ${z:+09.3f} ${z:-7.2} ${z:+09} ${z:08.3f}')
-	println('$ar.f() ${ar.g(1, 2)} ${ar.a}() ${z}(')
+	println('${ar.f()} ${ar.g(1, 2)} ${ar.a}() ${z}(')
 	println('${z > 12.3 * z - 3} ${@VEXE} ${4 * 5}')
 }

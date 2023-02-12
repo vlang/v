@@ -1,0 +1,20 @@
+const end = 10
+
+const start = 'str'
+
+match 5 {
+	start...end {
+		println(start)
+	}
+	else {}
+}
+
+z := match 5 {
+	start...end {
+		2
+	}
+	else {
+		5
+	}
+}
+println(z)

@@ -1,0 +1,33 @@
+vlib/v/checker/tests/with_check_option/v_tictactoe.vv:4:31: error: `len` and `cap` are invalid attributes for fixed array dimension
+    2 | 
+    3 | fn new_board() [][]string {
+    4 |     mut board := [3][]string{ len: 3, init: []string{ len: 3, init: '' } }
+      |                               ~~~
+    5 |     for i in 0..9 {
+    6 |         board[i / 3][i % 3] = (i + 1).str()
+vlib/v/checker/tests/with_check_option/v_tictactoe.vv:4:36: error: expression evaluated but not used
+    2 | 
+    3 | fn new_board() [][]string {
+    4 |     mut board := [3][]string{ len: 3, init: []string{ len: 3, init: '' } }
+      |                                    ^
+    5 |     for i in 0..9 {
+    6 |         board[i / 3][i % 3] = (i + 1).str()
+vlib/v/checker/tests/with_check_option/v_tictactoe.vv:4:45: error: expression evaluated but not used
+    2 | 
+    3 | fn new_board() [][]string {
+    4 |     mut board := [3][]string{ len: 3, init: []string{ len: 3, init: '' } }
+      |                                             ~~~~~~~~~
+    5 |     for i in 0..9 {
+    6 |         board[i / 3][i % 3] = (i + 1).str()
+vlib/v/checker/tests/with_check_option/v_tictactoe.vv:1:1: error: unknown type
+    1 | module main
+      | ^
+    2 | 
+    3 | fn new_board() [][]string {
+vlib/v/checker/tests/with_check_option/v_tictactoe.vv:6:14: error: unknown type for expression `board`
+    4 |     mut board := [3][]string{ len: 3, init: []string{ len: 3, init: '' } }
+    5 |     for i in 0..9 {
+    6 |         board[i / 3][i % 3] = (i + 1).str()
+      |              ~~~~~~~
+    7 |     }
+    8 |     return board

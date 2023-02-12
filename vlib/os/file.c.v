@@ -108,7 +108,7 @@ pub fn open_file(path string, mode string, options ...int) !File {
 	fdopen_mode := mode.replace('b', '')
 	cfile := C.fdopen(fd, &char(fdopen_mode.str))
 	if isnil(cfile) {
-		return error('Failed to open or create file "$path"')
+		return error('Failed to open or create file "${path}"')
 	}
 	if seek_to_end {
 		// ensure appending will work, even on bsd/macos systems:
@@ -227,7 +227,7 @@ pub fn (mut f File) reopen(path string, mode string) ! {
 		cfile = C.freopen(&char(p.str), &char(mode.str), f.cfile)
 	}
 	if isnil(cfile) {
-		return error('Failed to reopen file "$path"')
+		return error('Failed to reopen file "${path}"')
 	}
 	f.cfile = cfile
 }
@@ -235,20 +235,20 @@ pub fn (mut f File) reopen(path string, mode string) ! {
 // read implements the Reader interface.
 pub fn (f &File) read(mut buf []u8) !int {
 	if buf.len == 0 {
-		return IError(Eof{})
+		return Eof{}
 	}
 	// the following is needed, because on FreeBSD, C.feof is a macro:
 	nbytes := int(C.fread(buf.data, 1, buf.len, &C.FILE(f.cfile)))
 	// if no bytes were read, check for errors and end-of-file.
 	if nbytes <= 0 {
 		if C.feof(&C.FILE(f.cfile)) != 0 {
-			return IError(Eof{})
+			return Eof{}
 		}
 		if C.ferror(&C.FILE(f.cfile)) != 0 {
-			return IError(NotExpected{
+			return NotExpected{
 				cause: 'unexpected error from fread'
 				code: -1
-			})
+			}
 		}
 	}
 	return nbytes
@@ -421,7 +421,7 @@ fn fread(ptr voidptr, item_size int, items int, stream &C.FILE) !int {
 		// read. The caller will get none on their next call because there will be
 		// no data available and the end-of-file will be encountered again.
 		if C.feof(stream) != 0 {
-			return IError(Eof{})
+			return Eof{}
 		}
 		// If fread encountered an error, return it. Note that fread and ferror do
 		// not tell us what the error was, so we can't return anything more specific
@@ -580,15 +580,15 @@ pub fn (err SizeOfTypeIs0Error) msg() string {
 }
 
 fn error_file_not_opened() IError {
-	return IError(&FileNotOpenedError{})
+	return &FileNotOpenedError{}
 }
 
 fn error_size_of_type_0() IError {
-	return IError(&SizeOfTypeIs0Error{})
+	return &SizeOfTypeIs0Error{}
 }
 
 // read_struct reads a single struct of type `T`
-pub fn (mut f File) read_struct<T>(mut t T) ! {
+pub fn (mut f File) read_struct[T](mut t T) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
@@ -603,7 +603,7 @@ pub fn (mut f File) read_struct<T>(mut t T) ! {
 }
 
 // read_struct_at reads a single struct of type `T` at position specified in file
-pub fn (mut f File) read_struct_at<T>(mut t T, pos u64) ! {
+pub fn (mut f File) read_struct_at[T](mut t T, pos u64) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
@@ -634,7 +634,7 @@ pub fn (mut f File) read_struct_at<T>(mut t T, pos u64) ! {
 }
 
 // read_raw reads and returns a single instance of type `T`
-pub fn (mut f File) read_raw<T>() !T {
+pub fn (mut f File) read_raw[T]() !T {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
@@ -651,7 +651,7 @@ pub fn (mut f File) read_raw<T>() !T {
 }
 
 // read_raw_at reads and returns a single instance of type `T` starting at file byte offset `pos`
-pub fn (mut f File) read_raw_at<T>(pos u64) !T {
+pub fn (mut f File) read_raw_at[T](pos u64) !T {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
@@ -697,7 +697,7 @@ pub fn (mut f File) read_raw_at<T>(pos u64) !T {
 }
 
 // write_struct writes a single struct of type `T`
-pub fn (mut f File) write_struct<T>(t &T) ! {
+pub fn (mut f File) write_struct[T](t &T) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
@@ -716,7 +716,7 @@ pub fn (mut f File) write_struct<T>(t &T) ! {
 }
 
 // write_struct_at writes a single struct of type `T` at position specified in file
-pub fn (mut f File) write_struct_at<T>(t &T, pos u64) ! {
+pub fn (mut f File) write_struct_at[T](t &T, pos u64) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
@@ -753,7 +753,7 @@ pub fn (mut f File) write_struct_at<T>(t &T, pos u64) ! {
 // TODO `write_raw[_at]` implementations are copy-pasted from `write_struct[_at]`
 
 // write_raw writes a single instance of type `T`
-pub fn (mut f File) write_raw<T>(t &T) ! {
+pub fn (mut f File) write_raw[T](t &T) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
@@ -772,7 +772,7 @@ pub fn (mut f File) write_raw<T>(t &T) ! {
 }
 
 // write_raw_at writes a single instance of type `T` starting at file byte offset `pos`
-pub fn (mut f File) write_raw_at<T>(t &T, pos u64) ! {
+pub fn (mut f File) write_raw_at[T](t &T, pos u64) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}

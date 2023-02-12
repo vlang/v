@@ -15,7 +15,7 @@ fn main() {
 	mut wg := sync.new_waitgroup()
 	for i := 0; i < 50; i++ {
 		wg.add(1)
-		go send_request(mut wg)
+		spawn send_request(mut wg)
 	}
 	wg.wait()
 }

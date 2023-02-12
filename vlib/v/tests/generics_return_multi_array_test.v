@@ -1,12 +1,12 @@
-fn example1<T>(data []T) [][]T {
+fn example1[T](data []T) [][]T {
 	return [data]
 }
 
-fn example2<T>(data [][]T) [][][]T {
+fn example2[T](data [][]T) [][][]T {
 	return [data]
 }
 
-fn example3<T>(data [][][]T) [][][][]T {
+fn example3[T](data [][][]T) [][][][]T {
 	return [data]
 }
 

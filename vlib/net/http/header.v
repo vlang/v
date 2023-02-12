@@ -6,7 +6,6 @@ module http
 import strings
 
 // Header represents the key-value pairs in an HTTP header
-[noinit]
 pub struct Header {
 mut:
 	data map[string][]string
@@ -598,7 +597,7 @@ pub fn (h Header) join(other Header) Header {
 		for v in other.custom_values(k, exact: true) {
 			combined.add_custom(k, v) or {
 				// panic because this should never fail
-				panic('unexpected error: $err')
+				panic('unexpected error: ${err}')
 			}
 		}
 	}
@@ -634,7 +633,7 @@ struct HeaderKeyError {
 }
 
 pub fn (err HeaderKeyError) msg() string {
-	return "Invalid header key: '$err.header'"
+	return "Invalid header key: '${err.header}'"
 }
 
 pub fn (err HeaderKeyError) code() int {
@@ -645,19 +644,19 @@ pub fn (err HeaderKeyError) code() int {
 fn is_valid(header string) ! {
 	for _, c in header {
 		if int(c) >= 128 || !is_token(c) {
-			return IError(HeaderKeyError{
+			return HeaderKeyError{
 				code: 1
 				header: header
 				invalid_char: c
-			})
+			}
 		}
 	}
 	if header.len == 0 {
-		return IError(HeaderKeyError{
+		return HeaderKeyError{
 			code: 2
 			header: header
 			invalid_char: 0
-		})
+		}
 	}
 }
 

@@ -25,7 +25,7 @@ fn failed_cfn_report_error(ok bool, label string) {
 	}
 	error_num := int(C.GetLastError())
 	error_msg := get_error_msg(error_num)
-	eprintln('failed $label: $error_msg')
+	eprintln('failed ${label}: ${error_msg}')
 	exit(1)
 }
 
@@ -94,7 +94,7 @@ fn (mut p Process) win_spawn_process() int {
 		start_info.h_std_error = wdata.child_stderr_write
 		start_info.dw_flags = u32(C.STARTF_USESTDHANDLES)
 	}
-	cmd := '$p.filename ' + p.args.join(' ')
+	cmd := '${p.filename} ' + p.args.join(' ')
 	C.ExpandEnvironmentStringsW(cmd.to_wide(), voidptr(&wdata.command_line[0]), 32768)
 
 	mut creation_flags := int(C.NORMAL_PRIORITY_CLASS)
@@ -117,7 +117,7 @@ fn (mut p Process) win_stop_process() {
 	if voidptr(the_fn) == 0 {
 		return
 	}
-	wdata := &WProcess(p.wdata)
+	wdata := unsafe { &WProcess(p.wdata) }
 	the_fn(wdata.proc_info.h_process)
 }
 
@@ -126,17 +126,17 @@ fn (mut p Process) win_resume_process() {
 	if voidptr(the_fn) == 0 {
 		return
 	}
-	wdata := &WProcess(p.wdata)
+	wdata := unsafe { &WProcess(p.wdata) }
 	the_fn(wdata.proc_info.h_process)
 }
 
 fn (mut p Process) win_kill_process() {
-	wdata := &WProcess(p.wdata)
+	wdata := unsafe { &WProcess(p.wdata) }
 	C.TerminateProcess(wdata.proc_info.h_process, 3)
 }
 
 fn (mut p Process) win_kill_pgroup() {
-	wdata := &WProcess(p.wdata)
+	wdata := unsafe { &WProcess(p.wdata) }
 	C.GenerateConsoleCtrlEvent(C.CTRL_BREAK_EVENT, wdata.proc_info.dw_process_id)
 	C.Sleep(20)
 	C.TerminateProcess(wdata.proc_info.h_process, 3)
@@ -144,7 +144,7 @@ fn (mut p Process) win_kill_pgroup() {
 
 fn (mut p Process) win_wait() {
 	exit_code := u32(1)
-	mut wdata := &WProcess(p.wdata)
+	mut wdata := unsafe { &WProcess(p.wdata) }
 	if p.wdata != 0 {
 		C.WaitForSingleObject(wdata.proc_info.h_process, C.INFINITE)
 		C.GetExitCodeProcess(wdata.proc_info.h_process, voidptr(&exit_code))
@@ -160,7 +160,7 @@ fn (mut p Process) win_wait() {
 
 fn (mut p Process) win_is_alive() bool {
 	exit_code := u32(0)
-	wdata := &WProcess(p.wdata)
+	wdata := unsafe { &WProcess(p.wdata) }
 	C.GetExitCodeProcess(wdata.proc_info.h_process, voidptr(&exit_code))
 	if exit_code == C.STILL_ACTIVE {
 		return true
@@ -171,11 +171,11 @@ fn (mut p Process) win_is_alive() bool {
 ///////////////
 
 fn (mut p Process) win_write_string(idx int, s string) {
-	panic('Process.write_string $idx is not implemented yet')
+	panic('Process.write_string ${idx} is not implemented yet')
 }
 
 fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {
-	mut wdata := &WProcess(p.wdata)
+	mut wdata := unsafe { &WProcess(p.wdata) }
 	if unsafe { wdata == 0 } {
 		return '', 0
 	}
@@ -207,7 +207,7 @@ fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {
 }
 
 fn (mut p Process) win_slurp(idx int) string {
-	mut wdata := &WProcess(p.wdata)
+	mut wdata := unsafe { &WProcess(p.wdata) }
 	if unsafe { wdata == 0 } {
 		return ''
 	}

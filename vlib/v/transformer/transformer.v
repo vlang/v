@@ -13,9 +13,9 @@ mut:
 	is_assert bool
 }
 
-pub fn new_transformer(pref &pref.Preferences) &Transformer {
+pub fn new_transformer(pref_ &pref.Preferences) &Transformer {
 	return &Transformer{
-		pref: pref
+		pref: pref_
 		index: &IndexState{
 			saved_key_vals: [][]KeyVal{cap: 1000}
 			saved_disabled: []bool{cap: 1000}
@@ -23,8 +23,8 @@ pub fn new_transformer(pref &pref.Preferences) &Transformer {
 	}
 }
 
-pub fn new_transformer_with_table(table &ast.Table, pref &pref.Preferences) &Transformer {
-	mut transformer := new_transformer(pref)
+pub fn new_transformer_with_table(table &ast.Table, pref_ &pref.Preferences) &Transformer {
+	mut transformer := new_transformer(pref_)
 	transformer.table = table
 	return transformer
 }
@@ -155,7 +155,7 @@ pub fn (mut t Transformer) check_safe_array(mut node ast.IndexExpr) {
 			}
 		}
 		ast.EnumVal {
-			debug_bounds_checking('? $name[.$index.val] safe?: no-idea (yet)!')
+			debug_bounds_checking('? ${name}[.${index.val}] safe?: no-idea (yet)!')
 		}
 		ast.Ident {
 			// we may be able to track const value in simple cases
@@ -404,8 +404,8 @@ pub fn (mut t Transformer) expr_stmt_match_expr(mut node ast.MatchExpr) ast.Expr
 
 			match cond {
 				ast.BoolLiteral {
-					if expr is ast.BoolLiteral {
-						if cond.val == (expr as ast.BoolLiteral).val {
+					if mut expr is ast.BoolLiteral {
+						if cond.val == expr.val {
 							branch.exprs = [expr]
 							node.branches = [branch]
 							terminate = true
@@ -413,8 +413,8 @@ pub fn (mut t Transformer) expr_stmt_match_expr(mut node ast.MatchExpr) ast.Expr
 					}
 				}
 				ast.IntegerLiteral {
-					if expr is ast.IntegerLiteral {
-						if cond.val.int() == (expr as ast.IntegerLiteral).val.int() {
+					if mut expr is ast.IntegerLiteral {
+						if cond.val.int() == expr.val.int() {
 							branch.exprs = [expr]
 							node.branches = [branch]
 							terminate = true
@@ -422,8 +422,8 @@ pub fn (mut t Transformer) expr_stmt_match_expr(mut node ast.MatchExpr) ast.Expr
 					}
 				}
 				ast.FloatLiteral {
-					if expr is ast.FloatLiteral {
-						if cond.val.f32() == (expr as ast.FloatLiteral).val.f32() {
+					if mut expr is ast.FloatLiteral {
+						if cond.val.f32() == expr.val.f32() {
 							branch.exprs = [expr]
 							node.branches = [branch]
 							terminate = true
@@ -431,8 +431,8 @@ pub fn (mut t Transformer) expr_stmt_match_expr(mut node ast.MatchExpr) ast.Expr
 					}
 				}
 				ast.StringLiteral {
-					if expr is ast.StringLiteral {
-						if cond.val == (expr as ast.StringLiteral).val {
+					if mut expr is ast.StringLiteral {
+						if cond.val == expr.val {
 							branch.exprs = [expr]
 							node.branches = [branch]
 							terminate = true
@@ -1041,45 +1041,38 @@ pub fn (mut t Transformer) sql_expr(mut node ast.SqlExpr) ast.Expr {
 // stmts list to let the gen backend generate the target specific code for the print.
 pub fn (mut t Transformer) fn_decl(mut node ast.FnDecl) {
 	if t.pref.trace_calls {
-		// Skip `C.fn()` and all of builtin
-		// builtin could probably be traced also but would need
-		// special cases for, at least, println/eprintln
-		if node.no_body || node.is_builtin {
+		if node.no_body {
+			// Skip `C.fn()` calls
 			return
 		}
-		call_expr := t.gen_trace_print_call_expr(node)
+		if node.name.starts_with('v.trace_calls.') {
+			// do not instrument the tracing functions, to avoid infinite regress
+			return
+		}
+		fname := if node.is_method {
+			receiver_name := global_table.type_to_str(node.receiver.typ)
+			'${node.mod} ${receiver_name}.${node.name}/${node.params.len}'
+		} else {
+			'${node.mod} ${node.name}/${node.params.len}'
+		}
+
 		expr_stmt := ast.ExprStmt{
-			expr: call_expr
+			expr: ast.CallExpr{
+				mod: node.mod
+				pos: node.pos
+				language: .v
+				scope: node.scope
+				name: 'v.trace_calls.on_call'
+				args: [
+					ast.CallArg{
+						expr: ast.StringLiteral{
+							val: fname
+						}
+						typ: ast.string_type_idx
+					},
+				]
+			}
 		}
 		node.stmts.prepend(expr_stmt)
 	}
-}
-
-// gen_trace_print_expr_stmt generates an ast.CallExpr representation of a
-// `eprint(...)` V code statement.
-fn (t Transformer) gen_trace_print_call_expr(node ast.FnDecl) ast.CallExpr {
-	print_str := '> trace ' + node.stringify(t.table, node.mod, map[string]string{})
-
-	call_arg := ast.CallArg{
-		expr: ast.StringLiteral{
-			val: print_str
-		}
-		typ: ast.string_type_idx
-	}
-	args := [call_arg]
-
-	fn_name := 'eprintln'
-	call_expr := ast.CallExpr{
-		name: fn_name
-		args: args
-		mod: node.mod
-		pos: node.pos
-		language: node.language
-		scope: node.scope
-		comments: [ast.Comment{
-			text: 'fn $node.short_name trace call'
-		}]
-	}
-
-	return call_expr
 }

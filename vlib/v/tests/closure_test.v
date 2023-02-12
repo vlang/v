@@ -179,13 +179,13 @@ struct Command {
 
 struct App {}
 
-fn main() {
+fn test_larger_closure_parameters() {
 	mut app := &App{}
 	eprintln('app ptr: ${u64(app)}')
 	f := fn [mut app] (cmd Command) u64 {
 		p := u64(app)
-		println('>>   p: $p')
-		println('>> cmd: $cmd')
+		println('>>   p: ${p}')
+		println('>> cmd: ${cmd}')
 		assert cmd.a == 1234
 		assert cmd.b == 2345
 		assert cmd.c == 3456
@@ -195,6 +195,31 @@ fn main() {
 	}
 	cmd := Command{}
 	res := f(cmd)
-	println('> res: $res | sizeof Command: ${sizeof(Command)}')
+	println('> res: ${res} | sizeof Command: ${sizeof(Command)}')
 	assert res == u64(app)
+}
+
+fn test_closure_in_for_in_loop() {
+	a := [2, 4, 6, 9]
+	for v in a {
+		func := fn [v] (msg string) string {
+			return '${msg}: ${v}'
+		}
+		res := func('hello')
+		assert res == 'hello: ${v}'
+		// dump(res)
+	}
+}
+
+fn ret_two() (int, int) {
+	return 2, 5
+}
+
+fn test_closure_over_variable_that_is_returned_from_a_multi_value_function() {
+	one, two := ret_two()
+	a := fn [one] () {
+		println(one)
+	}
+	a()
+	println(two)
 }

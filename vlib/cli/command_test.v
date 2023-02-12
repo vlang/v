@@ -30,7 +30,7 @@ fn test_if_subcommands_parse_args() {
 	cmd.parse(['command', 'subcommand', 'arg0', 'arg1'])
 }
 
-fn if_subcommands_parse_args_func(cmd cli.Command) ? {
+fn if_subcommands_parse_args_func(cmd cli.Command) ! {
 	assert cmd.name == 'subcommand' && compare_arrays(cmd.args, ['arg0', 'arg1'])
 }
 
@@ -51,8 +51,8 @@ fn test_if_command_has_default_version_subcommand_if_version_is_set() {
 	assert has_command(cmd, 'version')
 }
 
-fn flag_should_be_set(cmd cli.Command) ? {
-	flag := cmd.flags.get_string('flag')?
+fn flag_should_be_set(cmd cli.Command) ! {
+	flag := cmd.flags.get_string('flag')!
 	assert flag == 'value'
 }
 
@@ -95,10 +95,10 @@ fn test_if_flag_gets_set_with_long_arg() {
 	cmd.parse(['command', '--flag', 'value'])
 }
 
-fn flag_should_have_value_of_42(cmd cli.Command) ? {
-	flag := cmd.flags.get_string('flag')?
+fn flag_should_have_value_of_42(cmd cli.Command) ! {
+	flag := cmd.flags.get_string('flag')!
 	assert flag == 'value'
-	value := cmd.flags.get_int('value')?
+	value := cmd.flags.get_int('value')!
 	assert value == 42
 }
 
@@ -135,7 +135,7 @@ fn test_if_required_flags_get_set() {
 	cmd.parse(['command', '-flag', 'value', '-value', '42'])
 }
 
-fn flag_is_set_in_subcommand(cmd cli.Command) ? {
+fn flag_is_set_in_subcommand(cmd cli.Command) ! {
 	flag := cmd.flags.get_string('flag') or { panic(err) }
 	assert flag == 'value'
 }
@@ -197,7 +197,7 @@ fn test_command_setup() {
 }
 
 // helper functions
-fn empty_func(cmd cli.Command) ? {
+fn empty_func(cmd cli.Command) ! {
 }
 
 fn has_command(cmd cli.Command, name string) bool {

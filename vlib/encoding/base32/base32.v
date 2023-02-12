@@ -1,8 +1,8 @@
-// Copyright 2011 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 
-// Package base32 implements base32 encoding as specified by RFC 4648.
+// Module base32 implements base32 encoding as specified by RFC 4648.
 // Based off:   https://github.com/golang/go/blob/master/src/encoding/base32/base32.go
 // Last commit: https://github.com/golang/go/commit/e1b62efaf33988a5153510898d37309cee78f26e
 
@@ -24,53 +24,84 @@ mut:
 	decode_map [256]u8
 }
 
+// decode_string_to_string decodes a V string `src` using Base32
+// and returns the decoded string or a `corrupt_input_error_msg` error.
 pub fn decode_string_to_string(src string) ?string {
 	return decode_to_string(src.bytes())
 }
 
+// decode_to_string decodes a byte array `src` using Base32
+// and returns the decoded string or a `corrupt_input_error_msg` error.
 pub fn decode_to_string(src []u8) ?string {
 	res := decode(src)?
 	return res.bytestr()
 }
 
+// decode decodes a byte array `src` using Base32
+// and returns the decoded bytes or a `corrupt_input_error_msg` error.
 pub fn decode(src []u8) ?[]u8 {
 	mut e := new_encoding(base32.std_alphabet)
 	return e.decode(src)
 }
 
+// encode_string_to_string encodes the V string `src` using Base32
+// and returns the encoded bytes as a V string.
 pub fn encode_string_to_string(src string) string {
 	return encode_to_string(src.bytes())
 }
 
+// encode_to_string encodes a byte array `src` using Base32 and
+// returns the encoded bytes as a V string.
 pub fn encode_to_string(src []u8) string {
 	return encode(src).bytestr()
 }
 
+// encode encodes a byte array `src` using Base32 and returns the
+// encoded bytes.
 pub fn encode(src []u8) []u8 {
 	e := new_encoding(base32.std_alphabet)
 	return e.encode(src)
 }
 
+// encode_to_string encodes the Base32 encoding of `src` with
+// the encoding `enc` and returns the encoded bytes as a V string.
 pub fn (enc &Encoding) encode_to_string(src []u8) string {
 	return enc.encode(src).bytestr()
 }
 
+// encode_string_to_string encodes a V string `src` using Base32 with
+// the encoding `enc` and returns the encoded bytes as a V string.
 pub fn (enc &Encoding) encode_string_to_string(src string) string {
 	return enc.encode(src.bytes()).bytestr()
 }
 
+// new_std_encoding creates a standard Base32 `Encoding` as defined in
+// RFC 4648.
 pub fn new_std_encoding() Encoding {
 	return new_encoding_with_padding(base32.std_alphabet, base32.std_padding)
 }
 
+// new_std_encoding creates a standard Base32 `Encoding` identical to
+// `new_std_encoding` but with a specified character `padding`,
+// or `no_padding` to disable padding.
+// The `padding` character must not be '\r' or '\n', must not
+// be contained in the `Encoding`'s alphabet and must be a rune equal or
+// below '\xff'.
 pub fn new_std_encoding_with_padding(padding u8) Encoding {
 	return new_encoding_with_padding(base32.std_alphabet, padding)
 }
 
+// new_encoding returns a Base32 `Encoding` with standard
+// `alphabet`s and standard padding.
 pub fn new_encoding(alphabet []u8) Encoding {
 	return new_encoding_with_padding(alphabet, base32.std_padding)
 }
 
+// new_encoding_with_padding returns a Base32 `Encoding` with specified
+// encoding `alphabet`s and a specified `padding_char`.
+// The `padding_char` must not be '\r' or '\n', must not
+// be contained in the `Encoding`'s alphabet and must be a rune equal or
+// below '\xff'.
 pub fn new_encoding_with_padding(alphabet []u8, padding_char u8) Encoding {
 	if padding_char == `\r` || padding_char == `\n` || padding_char > 0xff {
 		panic('invalid padding')
@@ -94,6 +125,12 @@ pub fn new_encoding_with_padding(alphabet []u8, padding_char u8) Encoding {
 	}
 }
 
+// encode encodes `src` using the encoding `enc`, writing
+// and returning encoded_len(src.len) u8s.
+//
+// The encoding pads the output to a multiple of 8 u8s,
+// so encode is not appropriate for use on individual blocks
+// of a large data stream.
 fn (enc &Encoding) encode(src []u8) []u8 {
 	mut buf := []u8{len: enc.encoded_len(src.len)}
 	mut dst := unsafe { buf }
@@ -101,12 +138,12 @@ fn (enc &Encoding) encode(src []u8) []u8 {
 	return buf
 }
 
-// Encode encodes src using the encoding enc, writing
-// encoded_len(src.len) u8s to dst.
+// encode_ encodes `src` using the encoding `enc`, writing
+// encoded_len(src.len) u8s to `dst`.
 //
 // The encoding pads the output to a multiple of 8 u8s,
-// so Encode is not appropriate for use on individual blocks
-// of a large data stream. Use new_encoder() instead.
+// so encode_ is not appropriate for use on individual blocks
+// of a large data stream.
 fn (enc &Encoding) encode_(src_ []u8, mut dst []u8) {
 	mut src := unsafe { src_ }
 	for src.len > 0 {
@@ -187,6 +224,8 @@ fn (enc &Encoding) encoded_len(n int) int {
 	return (n + 4) / 5 * 8
 }
 
+// decode_string decodes a V string `src` using Base32 with the encoding `enc`
+// and returns the decoded bytes or a `corrupt_input_error_msg` error.
 pub fn (enc &Encoding) decode_string(src string) ?[]u8 {
 	return enc.decode(src.bytes())
 	// mut buf := strip_newlines(src.bytes())
@@ -196,11 +235,16 @@ pub fn (enc &Encoding) decode_string(src string) ?[]u8 {
 	// return buf[..n]
 }
 
+// decode_string_to_string decodes a V string `src` using Base32 with the
+// encoding `enc` and returns the decoded V string or a `corrupt_input_error_msg` error.
 pub fn (enc &Encoding) decode_string_to_string(src string) ?string {
 	decoded := enc.decode_string(src)?
 	return decoded.bytestr()
 }
 
+// decode decodes `src` using the encoding `enc`. It returns the decoded bytes
+// written or a `corrupt_input_error_msg` error.
+// New line characters (\r and \n) are ignored.
 pub fn (enc &Encoding) decode(src []u8) ?[]u8 {
 	mut buf := []u8{len: src.len}
 	// mut dst := unsafe { buf }
@@ -211,7 +255,7 @@ pub fn (enc &Encoding) decode(src []u8) ?[]u8 {
 	return buf[..n]
 }
 
-// decode is like Decode but returns an additional `end` value, which
+// decode_ returns the number of bytes written and a boolean value, which
 // indicates if end-of-message padding was encountered and thus any
 // additional data is an error. This method assumes that src has been
 // stripped of all supported whitespace (`\r` and `\n`).
@@ -305,7 +349,7 @@ fn (enc &Encoding) decode_(src_ []u8, mut dst []u8) ?(int, bool) {
 	return n, end
 }
 
-// stripNewlines removes newline characters and returns the number
+// strip_newlines removes newline characters and returns the number
 // of non-newline characters copied to dst.
 // fn strip_newlines(mut dst []u8, src []byte) int {
 // 	mut offset := 0
@@ -331,5 +375,5 @@ fn strip_newlines(src []u8) []u8 {
 
 fn corrupt_input_error_msg(e int) string {
 	// return error('illegal base32 data at input byte ' + strconv.FormatInt(int64(e), 10)
-	return 'illegal base32 data at input byte $e'
+	return 'illegal base32 data at input byte ${e}'
 }

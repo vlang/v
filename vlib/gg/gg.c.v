@@ -104,6 +104,51 @@ pub:
 }
 
 [heap]
+pub struct PipelineContainer {
+pub mut:
+	alpha sgl.Pipeline
+	add   sgl.Pipeline
+}
+
+fn (mut container PipelineContainer) init_pipeline() {
+	// FIXME(FireRedz): this looks kinda funny, find a better way to initialize pipeline.
+
+	// Alpha
+	mut alpha_pipdesc := gfx.PipelineDesc{
+		label: c'alpha-pipeline'
+	}
+
+	unsafe { vmemset(&alpha_pipdesc, 0, int(sizeof(alpha_pipdesc))) }
+
+	alpha_pipdesc.colors[0] = gfx.ColorState{
+		blend: gfx.BlendState{
+			enabled: true
+			src_factor_rgb: .src_alpha
+			dst_factor_rgb: .one_minus_src_alpha
+		}
+	}
+
+	container.alpha = sgl.make_pipeline(&alpha_pipdesc)
+
+	// Add
+	mut add_pipdesc := gfx.PipelineDesc{
+		label: c'additive-pipeline'
+	}
+
+	unsafe { vmemset(&add_pipdesc, 0, int(sizeof(add_pipdesc))) }
+
+	add_pipdesc.colors[0] = gfx.ColorState{
+		blend: gfx.BlendState{
+			enabled: true
+			src_factor_rgb: .src_alpha
+			dst_factor_rgb: .one
+		}
+	}
+
+	container.add = sgl.make_pipeline(&add_pipdesc)
+}
+
+[heap]
 pub struct Context {
 mut:
 	render_text bool = true
@@ -120,7 +165,8 @@ pub mut:
 	height      int
 	clear_pass  gfx.PassAction
 	window      sapp.Desc
-	timage_pip  sgl.Pipeline
+	timage_pip  sgl.Pipeline       [deprecated: 'Use `Context.pipeline.alpha` instead!']
+	pipeline    &PipelineContainer = unsafe { nil }
 	config      Config
 	user_data   voidptr
 	ft          &FT = unsafe { nil }
@@ -194,7 +240,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 		} else {
 			sfont := font.default()
 			if ctx.config.font_path != '' {
-				eprintln('font file "$ctx.config.font_path" does not exist, the system font ($sfont) was used instead.')
+				eprintln('font file "${ctx.config.font_path}" does not exist, the system font (${sfont}) was used instead.')
 			}
 
 			ctx.ft = new_ft(
@@ -205,22 +251,14 @@ fn gg_init_sokol_window(user_data voidptr) {
 			ctx.font_inited = true
 		}
 	}
-	//
-	mut pipdesc := gfx.PipelineDesc{
-		label: c'alpha_image'
-	}
-	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
 
-	color_state := gfx.ColorState{
-		blend: gfx.BlendState{
-			enabled: true
-			src_factor_rgb: .src_alpha
-			dst_factor_rgb: .one_minus_src_alpha
-		}
-	}
-	pipdesc.colors[0] = color_state
+	// Pipeline
+	ctx.pipeline = &PipelineContainer{}
+	ctx.pipeline.init_pipeline()
 
-	ctx.timage_pip = sgl.make_pipeline(&pipdesc)
+	// Keep the old pipeline for now, cuz v ui used it.
+	ctx.timage_pip = ctx.pipeline.alpha
+
 	//
 	if ctx.config.init_fn != unsafe { nil } {
 		$if android {
@@ -257,8 +295,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	}
 }
 
-fn gg_frame_fn(user_data voidptr) {
-	mut ctx := unsafe { &Context(user_data) }
+fn gg_frame_fn(mut ctx Context) {
 	ctx.frame++
 	if ctx.config.frame_fn == unsafe { nil } {
 		return
@@ -270,6 +307,7 @@ fn gg_frame_fn(user_data voidptr) {
 	ctx.record_frame()
 
 	if ctx.ui_mode && !ctx.needs_refresh {
+		// println('ui mode, exiting')
 		// Draw 3 more frames after the "stop refresh" command
 		ctx.ticks++
 		if ctx.ticks > 3 {
@@ -404,7 +442,7 @@ fn gg_fail_fn(msg &char, user_data voidptr) {
 	if ctx.config.fail_fn != unsafe { nil } {
 		ctx.config.fail_fn(vmsg, ctx.config.user_data)
 	} else {
-		eprintln('gg error: $vmsg')
+		eprintln('gg error: ${vmsg}')
 	}
 }
 
@@ -420,39 +458,42 @@ pub fn new_context(cfg Config) &Context {
 		ft: 0
 		ui_mode: cfg.ui_mode
 		native_rendering: cfg.native_rendering
-	}
-	if cfg.user_data == unsafe { nil } {
-		ctx.user_data = ctx
+		window: sapp.Desc{
+			init_userdata_cb: gg_init_sokol_window
+			frame_userdata_cb: gg_frame_fn
+			event_userdata_cb: gg_event_fn
+			fail_userdata_cb: gg_fail_fn
+			cleanup_userdata_cb: gg_cleanup_fn
+			window_title: &char(cfg.window_title.str)
+			html5_canvas_name: &char(cfg.window_title.str)
+			width: cfg.width
+			height: cfg.height
+			sample_count: cfg.sample_count
+			high_dpi: true
+			fullscreen: cfg.fullscreen
+			__v_native_render: cfg.native_rendering
+			// drag&drop
+			enable_dragndrop: cfg.enable_dragndrop
+			max_dropped_files: cfg.max_dropped_files
+			max_dropped_file_path_length: cfg.max_dropped_file_path_length
+			swap_interval: cfg.swap_interval
+		}
 	}
 	ctx.set_bg_color(cfg.bg_color)
 	// C.printf('new_context() %p\n', cfg.user_data)
-	window := sapp.Desc{
-		user_data: ctx
-		init_userdata_cb: gg_init_sokol_window
-		frame_userdata_cb: gg_frame_fn
-		event_userdata_cb: gg_event_fn
-		fail_userdata_cb: gg_fail_fn
-		cleanup_userdata_cb: gg_cleanup_fn
-		window_title: &char(cfg.window_title.str)
-		html5_canvas_name: &char(cfg.window_title.str)
-		width: cfg.width
-		height: cfg.height
-		sample_count: cfg.sample_count
-		high_dpi: true
-		fullscreen: cfg.fullscreen
-		__v_native_render: cfg.native_rendering
-		// drag&drop
-		enable_dragndrop: cfg.enable_dragndrop
-		max_dropped_files: cfg.max_dropped_files
-		max_dropped_file_path_length: cfg.max_dropped_file_path_length
-		swap_interval: cfg.swap_interval
-	}
-	ctx.window = window
 	return ctx
 }
 
 // run starts the main loop of the context.
-pub fn (ctx &Context) run() {
+pub fn (mut ctx Context) run() {
+	// set context late, in case it changed (e.g., due to embedding)
+	ctx.window = sapp.Desc{
+		...ctx.window
+		user_data: ctx
+	}
+	if ctx.user_data == unsafe { nil } {
+		ctx.user_data = ctx
+	}
 	sapp.run(&ctx.window)
 }
 

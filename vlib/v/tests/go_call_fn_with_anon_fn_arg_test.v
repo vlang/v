@@ -8,7 +8,7 @@ fn on_connect() {
 }
 
 fn test_go_call_fn_with_anon_fn_arg() {
-	g := go start(on_connect)
+	g := spawn start(on_connect)
 	ret := g.wait()
 	assert ret == 'ok!!'
 }

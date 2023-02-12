@@ -7,18 +7,14 @@ import v.ast
 
 fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 	if node.is_expr && node.return_type != ast.void_type && node.return_type != 0 {
-		cond_sym := g.table.final_sym(node.cond_type)
-		sym := g.table.sym(node.return_type)
-		if g.table.type_kind(node.return_type) == .sum_type {
+		if g.table.sym(node.return_type).kind in [.sum_type, .multi_return]
+			|| node.return_type.has_flag(.option) || node.return_type.has_flag(.result) {
 			return true
 		}
-		if node.return_type.has_flag(.optional) || node.return_type.has_flag(.result) {
+		if g.table.final_sym(node.cond_type).kind == .enum_ && node.branches.len > 5 {
 			return true
 		}
-		if sym.kind == .multi_return {
-			return false
-		}
-		if cond_sym.kind == .enum_ && node.branches.len > 5 {
+		if g.need_tmp_var_in_expr(node.cond) {
 			return true
 		}
 		for branch in node.branches {
@@ -31,6 +27,8 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 					if g.need_tmp_var_in_expr(stmt.expr) {
 						return true
 					}
+				} else if branch.stmts[0] is ast.Return {
+					return true
 				}
 			}
 		}
@@ -53,12 +51,12 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.inside_ternary++
 	}
 	if is_expr {
-		if node.return_type.has_flag(.optional) {
-			old := g.inside_match_optional
+		if node.return_type.has_flag(.option) {
+			old := g.inside_match_option
 			defer {
-				g.inside_match_optional = old
+				g.inside_match_option = old
 			}
-			g.inside_match_optional = true
+			g.inside_match_option = true
 		} else if node.return_type.has_flag(.result) {
 			old := g.inside_match_result
 			defer {
@@ -67,7 +65,11 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			g.inside_match_result = true
 		}
 	}
-	if node.cond in [ast.Ident, ast.SelectorExpr, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral] {
+	if node.cond in [ast.Ident, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral]
+		|| (node.cond is ast.SelectorExpr
+		&& (node.cond as ast.SelectorExpr).or_block.kind == .absent
+		&& ((node.cond as ast.SelectorExpr).expr !is ast.CallExpr
+		|| ((node.cond as ast.SelectorExpr).expr as ast.CallExpr).or_block.kind == .absent)) {
 		cond_var = g.expr_string(node.cond)
 	} else {
 		line := if is_expr {
@@ -77,7 +79,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			''
 		}
 		cond_var = g.new_tmp_var()
-		g.write('${g.typ(node.cond_type)} $cond_var = ')
+		g.write('${g.typ(node.cond_type)} ${cond_var} = ')
 		g.expr(node.cond)
 		g.writeln(';')
 		g.set_current_pos_as_last_stmt_pos()
@@ -87,7 +89,25 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.empty_line = true
 		cur_line = g.go_before_stmt(0).trim_left(' \t')
 		tmp_var = g.new_tmp_var()
-		g.writeln('${g.typ(node.return_type)} $tmp_var = ${g.type_default(node.return_type)};')
+		mut func_decl := ''
+		if g.table.final_sym(node.return_type).kind == .function {
+			func_sym := g.table.final_sym(node.return_type)
+			if func_sym.info is ast.FnType {
+				def := g.fn_var_signature(func_sym.info.func.return_type, func_sym.info.func.params.map(it.typ),
+					tmp_var)
+				func_decl = '${def} = &${g.typ(node.return_type)};'
+			}
+		}
+		if func_decl.len > 0 {
+			g.writeln(func_decl) // func, anon func declaration
+		} else {
+			g.writeln('${g.typ(node.return_type)} ${tmp_var} = ${g.type_default(node.return_type)};')
+		}
+		g.empty_line = true
+		if g.infix_left_var_name.len > 0 {
+			g.writeln('if (${g.infix_left_var_name}) {')
+			g.indent++
+		}
 	}
 
 	if is_expr && !need_tmp_var {
@@ -127,9 +147,17 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		}
 	}
 	g.set_current_pos_as_last_stmt_pos()
+	if need_tmp_var {
+		if g.infix_left_var_name.len > 0 {
+			g.writeln('')
+			g.indent--
+			g.writeln('}')
+			g.set_current_pos_as_last_stmt_pos()
+		}
+	}
 	g.write(cur_line)
 	if need_tmp_var {
-		g.write('$tmp_var')
+		g.write('${tmp_var}')
 	}
 	if is_expr && !need_tmp_var {
 		g.write(')')
@@ -138,15 +166,15 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 }
 
 fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
-	dot_or_ptr := if node.cond_type.is_ptr() { '->' } else { '.' }
+	dot_or_ptr := g.dot_or_ptr(node.cond_type)
 	use_ternary := is_expr && tmp_var.len == 0
+	cond_sym := g.table.sym(node.cond_type)
 	for j, branch in node.branches {
 		mut sumtype_index := 0
 		// iterates through all types in sumtype branches
 		for {
 			g.aggregate_type_idx = sumtype_index
-			is_last := j == node.branches.len - 1
-			sym := g.table.sym(node.cond_type)
+			is_last := j == node.branches.len - 1 && sumtype_index == branch.exprs.len - 1
 			if branch.is_else || (use_ternary && is_last) {
 				if use_ternary {
 					// TODO too many branches. maybe separate ?: matches
@@ -175,20 +203,19 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write('if (')
 				}
 				g.write(cond_var)
-				be := unsafe { &branch.exprs[sumtype_index] }
-				if sym.kind == .sum_type {
+				cur_expr := unsafe { &branch.exprs[sumtype_index] }
+				if cond_sym.kind == .sum_type {
 					g.write('${dot_or_ptr}_typ == ')
-					if be is ast.None {
-						g.write('$ast.none_type.idx() /* none */')
+					if cur_expr is ast.None {
+						g.write('${ast.none_type.idx()} /* none */')
 					} else {
-						g.expr(be)
+						g.expr(cur_expr)
 					}
-				} else if sym.kind == .interface_ {
-					if be is ast.TypeNode {
-						typ := be as ast.TypeNode
-						branch_sym := g.table.sym(g.unwrap_generic(typ.typ))
-						g.write('${dot_or_ptr}_typ == _${sym.cname}_${branch_sym.cname}_index')
-					} else if be is ast.None && sym.idx == ast.error_type_idx {
+				} else if cond_sym.kind == .interface_ {
+					if cur_expr is ast.TypeNode {
+						branch_sym := g.table.sym(g.unwrap_generic(cur_expr.typ))
+						g.write('${dot_or_ptr}_typ == _${cond_sym.cname}_${branch_sym.cname}_index')
+					} else if cur_expr is ast.None && cond_sym.idx == ast.error_type_idx {
 						g.write('${dot_or_ptr}_typ == _IError_None___index')
 					}
 				}
@@ -233,14 +260,14 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 	mut default_generated := false
 
 	g.empty_line = true
-	g.writeln('switch ($cond_var) {')
+	g.writeln('switch (${cond_var}) {')
 	g.indent++
 	for branch in node.branches {
 		if branch.is_else {
 			if cond_fsym.info is ast.Enum {
 				for val in (cond_fsym.info as ast.Enum).vals {
 					if val !in covered_enum {
-						g.writeln('case $cname$val:')
+						g.writeln('case ${cname}${val}:')
 					}
 				}
 			}
@@ -255,24 +282,17 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 							g.write(' || ')
 						}
 						if expr is ast.RangeExpr {
-							// if type is unsigned and low is 0, check is unneeded
-							mut skip_low := false
-							if expr.low is ast.IntegerLiteral {
-								if node_cond_type_unsigned && expr.low.val == '0' {
-									skip_low = true
-								}
-							}
 							g.write('(')
-							if !skip_low {
-								g.write('$cond_var >= ')
+							if g.should_check_low_bound_in_range_expr(expr, node_cond_type_unsigned) {
+								g.write('${cond_var} >= ')
 								g.expr(expr.low)
 								g.write(' && ')
 							}
-							g.write('$cond_var <= ')
+							g.write('${cond_var} <= ')
 							g.expr(expr.high)
 							g.write(')')
 						} else {
-							g.write('$cond_var == (')
+							g.write('${cond_var} == (')
 							g.expr(expr)
 							g.write(')')
 						}
@@ -327,24 +347,17 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 					g.write(' || ')
 				}
 				if expr is ast.RangeExpr {
-					// if type is unsigned and low is 0, check is unneeded
-					mut skip_low := false
-					if expr.low is ast.IntegerLiteral {
-						if node_cond_type_unsigned && expr.low.val == '0' {
-							skip_low = true
-						}
-					}
 					g.write('(')
-					if !skip_low {
-						g.write('$cond_var >= ')
+					if g.should_check_low_bound_in_range_expr(expr, node_cond_type_unsigned) {
+						g.write('${cond_var} >= ')
 						g.expr(expr.low)
 						g.write(' && ')
 					}
-					g.write('$cond_var <= ')
+					g.write('${cond_var} <= ')
 					g.expr(expr.high)
 					g.write(')')
 				} else {
-					g.write('$cond_var == (')
+					g.write('${cond_var} == (')
 					g.expr(expr)
 					g.write(')')
 				}
@@ -360,6 +373,28 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 	}
 	g.indent--
 	g.writeln('}')
+}
+
+fn (mut g Gen) should_check_low_bound_in_range_expr(expr ast.RangeExpr, node_cond_type_unsigned bool) bool {
+	// if the type is unsigned, and the low bound of the range expression is 0,
+	// checking it at runtime is not needed:
+	mut should_check_low_bound := true
+	if node_cond_type_unsigned {
+		if expr.low is ast.IntegerLiteral {
+			if expr.low.val == '0' {
+				should_check_low_bound = false
+			}
+		} else if expr.low is ast.Ident {
+			if mut obj := g.table.global_scope.find_const(expr.low.name) {
+				if mut obj.expr is ast.IntegerLiteral {
+					if obj.expr.val == '0' {
+						should_check_low_bound = false
+					}
+				}
+			}
+		}
+	}
+	return should_check_low_bound
 }
 
 fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
@@ -405,53 +440,46 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				match type_sym.kind {
 					.array {
 						ptr_typ := g.equality_fn(node.cond_type)
-						g.write('${ptr_typ}_arr_eq($cond_var, ')
+						g.write('${ptr_typ}_arr_eq(${cond_var}, ')
 						g.expr(expr)
 						g.write(')')
 					}
 					.array_fixed {
 						ptr_typ := g.equality_fn(node.cond_type)
-						g.write('${ptr_typ}_arr_eq($cond_var, ')
+						g.write('${ptr_typ}_arr_eq(${cond_var}, ')
 						g.expr(expr)
 						g.write(')')
 					}
 					.map {
 						ptr_typ := g.equality_fn(node.cond_type)
-						g.write('${ptr_typ}_map_eq($cond_var, ')
+						g.write('${ptr_typ}_map_eq(${cond_var}, ')
 						g.expr(expr)
 						g.write(')')
 					}
 					.string {
-						g.write('string__eq($cond_var, ')
+						g.write('string__eq(${cond_var}, ')
 						g.expr(expr)
 						g.write(')')
 					}
 					.struct_ {
 						ptr_typ := g.equality_fn(node.cond_type)
-						g.write('${ptr_typ}_struct_eq($cond_var, ')
+						g.write('${ptr_typ}_struct_eq(${cond_var}, ')
 						g.expr(expr)
 						g.write(')')
 					}
 					else {
 						if expr is ast.RangeExpr {
-							// if type is unsigned and low is 0, check is unneeded
-							mut skip_low := false
-							if expr.low is ast.IntegerLiteral {
-								if node_cond_type_unsigned && expr.low.val == '0' {
-									skip_low = true
-								}
-							}
 							g.write('(')
-							if !skip_low {
-								g.write('$cond_var >= ')
+							if g.should_check_low_bound_in_range_expr(expr, node_cond_type_unsigned) {
+								g.write('${cond_var} >= ')
 								g.expr(expr.low)
 								g.write(' && ')
 							}
-							g.write('$cond_var <= ')
+							g.write('${cond_var} <= ')
 							g.expr(expr.high)
 							g.write(')')
 						} else {
-							g.write('$cond_var == (')
+							g.write('${cond_var} == (')
 							g.expr(expr)
 							g.write(')')
 						}

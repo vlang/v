@@ -8,31 +8,50 @@ module openssl
 #flag linux -I/usr/local/include/openssl
 #flag linux -L/usr/local/lib
 $if $pkgconfig('openssl') {
-	#pkgconfig openssl
+	#pkgconfig --cflags --libs openssl
+} $else {
+	#flag windows -l libssl -l libcrypto
+	#flag -lssl -lcrypto
+	#flag linux -ldl -lpthread
+	// MacPorts
+	#flag darwin -I/opt/local/include
+	#flag darwin -L/opt/local/lib
+	// Brew
+	#flag darwin -I/usr/local/opt/openssl/include
+	#flag darwin -L/usr/local/opt/openssl/lib
+	// brew on macos-12 (ci runner)
+	#flag darwin -I/usr/local/opt/openssl@3/include
+	#flag darwin -L/usr/local/opt/openssl@3/lib
+	// Brew arm64
+	#flag darwin -I /opt/homebrew/opt/openssl/include
+	#flag darwin -L /opt/homebrew/opt/openssl/lib
+	// Procursus
+	#flag darwin -I/opt/procursus/include
+	#flag darwin -L/opt/procursus/lib
 }
 
-#flag windows -l libssl -l libcrypto
-#flag -lssl -lcrypto
-#flag linux -ldl -lpthread
-// MacPorts
-#flag darwin -I/opt/local/include
-#flag darwin -L/opt/local/lib
-// Brew
-#flag darwin -I/usr/local/opt/openssl/include
-#flag darwin -L/usr/local/opt/openssl/lib
-// Brew arm64
-#flag darwin -I /opt/homebrew/opt/openssl/include
-#flag darwin -L /opt/homebrew/opt/openssl/lib
-// Procursus
-#flag darwin -I/opt/procursus/include
-#flag darwin -L/opt/procursus/lib
-//
 #include <openssl/rand.h> # Please install OpenSSL development headers
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
 [typedef]
-struct C.SSL {
+pub struct C.SSL {
+}
+
+[typedef]
+pub struct C.SSL_CTX {
+}
+
+// The above C structs, have incomplete declarations in the OpenSSL headers.
+// For this reason, we have to prevent the automatic str() generation for them,
+// by adding manual implementations of their .str() methods, that are defined on
+// pointers to them:
+fn (s &C.SSL) str() string {
+	return 'C.SSL(0x${voidptr(s)})'
+}
+
+fn (c &C.SSL_CTX) str() string {
+	return 'C.SSL_CTX(0x${voidptr(c)})'
 }
 
 fn C.BIO_new_ssl_connect(ctx &C.SSL_CTX) &C.BIO

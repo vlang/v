@@ -1,5 +1,3 @@
-module main
-
 fn test_interface_embedding_call() {
 	g1 := G1{}
 	do_the_greet(g1)
@@ -13,7 +11,7 @@ fn (g G1) greet() string {
 
 fn do_the_greet(g ParentGreeter) {
 	greet := g.greet()
-	println('Someone says: $greet')
+	println('Someone says: ${greet}')
 	assert greet == 'hello from G1'
 }
 

@@ -11,11 +11,11 @@ import os
 pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.pos()
 	mut fn_name := if language == .c {
-		'C.$p.check_name()'
+		'C.${p.check_name()}'
 	} else if language == .js {
-		'JS.$p.check_js_name()'
+		'JS.${p.check_js_name()}'
 	} else if mod.len > 0 {
-		'${mod}.$p.check_name()'
+		'${mod}.${p.check_name()}'
 	} else {
 		p.check_name()
 	}
@@ -35,7 +35,7 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 
 	mut concrete_types := []ast.Type{}
 	mut concrete_list_pos := p.tok.pos()
-	if p.tok.kind == .lt {
+	if p.tok.kind in [.lt, .lsbr] {
 		// `foo<int>(10)`
 		p.expr_mod = ''
 		concrete_types = p.parse_concrete_types()
@@ -280,6 +280,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.fn_language = language
 	}
 	mut name := ''
+	mut type_sym := p.table.sym(rec.typ)
 	name_pos := p.tok.pos()
 	if p.tok.kind == .name {
 		// TODO high order fn
@@ -292,18 +293,17 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				scope: 0
 			}
 		}
-		type_sym := p.table.sym(rec.typ)
 		if is_method {
 			mut is_duplicate := type_sym.has_method(name)
 			// make sure this is a normal method and not an interface method
 			if type_sym.kind == .interface_ && is_duplicate {
-				if type_sym.info is ast.Interface {
+				if mut type_sym.info is ast.Interface {
 					// if the method is in info then its an interface method
 					is_duplicate = !type_sym.info.has_method(name)
 				}
 			}
 			if is_duplicate {
-				p.error_with_pos('duplicate method `$name`', name_pos)
+				p.error_with_pos('duplicate method `${name}`', name_pos)
 				return ast.FnDecl{
 					scope: 0
 				}
@@ -311,7 +311,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 		if !p.pref.is_fmt {
 			if name in p.imported_symbols {
-				p.error_with_pos('cannot redefine imported function `$name`', name_pos)
+				p.error_with_pos('cannot redefine imported function `${name}`', name_pos)
 				return ast.FnDecl{
 					scope: 0
 				}
@@ -327,13 +327,26 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	} else if p.tok.kind in [.ne, .gt, .ge, .le] && p.peek_tok.kind == .lpar {
 		p.error_with_pos('cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated from `==` and`<`',
 			p.tok.pos())
+	} else if p.tok.kind in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
+		extracted_op := match p.tok.kind {
+			.plus_assign { '+' }
+			.minus_assign { '-' }
+			.div_assign { '/' }
+			.mod_assign { '%' }
+			.mult_assign { '*' }
+			else { 'unknown op' }
+		}
+		if type_sym.has_method(extracted_op) {
+			p.error('cannot overload `${p.tok.kind}`, operator is implicitly overloaded because the `${extracted_op}` operator is overloaded')
+		}
+		p.error('cannot overload `${p.tok.kind}`, overload `${extracted_op}` and `${p.tok.kind}` will be automatically generated')
 	} else {
 		p.error_with_pos('expecting method name', p.tok.pos())
 		return ast.FnDecl{
 			scope: 0
 		}
 	}
-	// <T>
+	// [T]
 	_, mut generic_names := p.parse_generic_types()
 	// generic names can be infer with receiver's generic names
 	if is_method && rec.typ.has_flag(.generic) {
@@ -357,7 +370,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if !are_args_type_only {
 		for param in params {
 			if p.scope.known_var(param.name) {
-				p.error_with_pos('redefinition of parameter `$param.name`', param.pos)
+				p.error_with_pos('redefinition of parameter `${param.name}`', param.pos)
 				return ast.FnDecl{
 					scope: 0
 				}
@@ -412,7 +425,6 @@ run them via `v file.v` instead',
 	}
 	// Register
 	if is_method {
-		mut type_sym := p.table.sym(rec.typ)
 		// Do not allow to modify / add methods to types from other modules
 		// arrays/maps dont belong to a module only their element types do
 		// we could also check if kind is .array,  .array_fixed, .map instead of mod.len
@@ -424,7 +436,7 @@ run them via `v file.v` instead',
 				&& elem_type_sym.language == .v
 		}
 		if is_non_local {
-			p.error_with_pos('cannot define new methods on non-local type $type_sym.name',
+			p.error_with_pos('cannot define new methods on non-local type ${type_sym.name}',
 				rec.type_pos)
 			return ast.FnDecl{
 				scope: 0
@@ -459,9 +471,9 @@ run them via `v file.v` instead',
 		})
 	} else {
 		if language == .c {
-			name = 'C.$name'
+			name = 'C.${name}'
 		} else if language == .js {
-			name = 'JS.$name'
+			name = 'JS.${name}'
 		} else {
 			name = p.prepend_mod(name)
 		}
@@ -471,7 +483,7 @@ run them via `v file.v` instead',
 					if file_mode == .v && existing.file_mode != .v {
 						// a definition made in a .c.v file, should have a priority over a .v file definition of the same function
 						if !p.pref.is_fmt {
-							name = p.prepend_mod('pure_v_but_overriden_by_${existing.file_mode}_$short_fn_name')
+							name = p.prepend_mod('pure_v_but_overriden_by_${existing.file_mode}_${short_fn_name}')
 						}
 					} else {
 						p.table.redefined_fns << name
@@ -495,6 +507,7 @@ run them via `v file.v` instead',
 			is_test: is_test
 			is_keep_alive: is_keep_alive
 			is_method: false
+			is_file_translated: p.is_translated
 			//
 			attrs: p.attrs
 			is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx
@@ -550,6 +563,7 @@ run them via `v file.v` instead',
 		is_keep_alive: is_keep_alive
 		is_unsafe: is_unsafe
 		is_markused: is_markused
+		is_file_translated: p.is_translated
 		//
 		attrs: p.attrs
 		is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx
@@ -584,7 +598,7 @@ run them via `v file.v` instead',
 	return fn_decl
 }
 
-fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInfo) ? {
+fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInfo) ! {
 	p.inside_receiver_param = true
 	defer {
 		p.inside_receiver_param = false
@@ -687,7 +701,12 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		p.close_scope()
 	}
 	p.scope.detached_from_parent = true
-	inherited_vars := if p.tok.kind == .lsbr { p.closure_vars() } else { []ast.Param{} }
+	inherited_vars := if p.tok.kind == .lsbr && !(p.peek_tok.kind == .name
+		&& p.peek_tok.lit.len == 1 && p.peek_tok.lit[0].is_capital()) {
+		p.closure_vars()
+	} else {
+		[]ast.Param{}
+	}
 	_, generic_names := p.parse_generic_types()
 	args, _, is_variadic := p.fn_args()
 	for arg in args {
@@ -715,7 +734,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			return_type = p.parse_type()
 			return_type_pos = return_type_pos.extend(p.tok.pos())
 		} else if p.tok.kind != .lcbr {
-			p.error_with_pos('expected return type, not $p.tok for anonymous function',
+			p.error_with_pos('expected return type, not ${p.tok} for anonymous function',
 				p.tok.pos())
 		}
 	}
@@ -723,7 +742,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	no_body := p.tok.kind != .lcbr
 	same_line = p.tok.line_nr == p.prev_tok.line_nr
 	if no_body && same_line {
-		p.unexpected(got: '$p.tok after anonymous function signature', expecting: '`{`')
+		p.unexpected(got: '${p.tok} after anonymous function signature', expecting: '`{`')
 	}
 	mut label_names := []string{}
 	mut func := ast.Fn{
@@ -732,7 +751,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		return_type: return_type
 		is_method: false
 	}
-	name := 'anon_fn_${p.unique_prefix}_${p.table.fn_type_signature(func)}_$p.tok.pos'
+	name := 'anon_fn_${p.unique_prefix}_${p.table.fn_type_signature(func)}_${p.tok.pos}'
 	keep_fn_name := p.cur_fn_name
 	p.cur_fn_name = name
 	if p.tok.kind == .lcbr {
@@ -752,7 +771,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		for arg in args {
 			for var in inherited_vars {
 				if arg.name == var.name {
-					p.error_with_pos('the parameter name `$arg.name` conflicts with the captured value name',
+					p.error_with_pos('the parameter name `${arg.name}` conflicts with the captured value name',
 						arg.pos)
 					break
 				}
@@ -799,9 +818,9 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
 		|| (p.peek_tok.kind == .comma && (p.table.known_type(argname) || is_generic_type))
 		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar || p.fn_language == .c
-		|| (p.tok.kind == .key_mut && (p.peek_token(2).kind == .comma
-		|| p.peek_token(2).kind == .rpar || (p.peek_tok.kind == .name
-		&& p.peek_token(2).kind == .dot)))
+		|| (p.tok.kind == .key_mut && (p.peek_tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
+		|| p.peek_token(2).kind == .comma || p.peek_token(2).kind == .rpar
+		|| (p.peek_tok.kind == .name && p.peek_token(2).kind == .dot)))
 	// TODO copy paste, merge 2 branches
 	if types_only {
 		mut arg_no := 1
@@ -868,7 +887,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 
 			if p.tok.kind == .comma {
 				if is_variadic {
-					p.error_with_pos('cannot use ...(variadic) with non-final parameter no $arg_no',
+					p.error_with_pos('cannot use ...(variadic) with non-final parameter no ${arg_no}',
 						pos)
 					return []ast.Param{}, false, false
 				}
@@ -916,7 +935,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				if !p.pref.is_fmt {
 					p.warn(
 						'`fn f(x, y Type)` syntax has been deprecated and will soon be removed. ' +
-						'Use `fn f(x Type, y Type)` instead. You can run `v fmt -w "$p.scanner.file_path"` to automatically fix your code.')
+						'Use `fn f(x Type, y Type)` instead. You can run `v fmt -w "${p.scanner.file_path}"` to automatically fix your code.')
 				}
 				p.next()
 				arg_pos << p.tok.pos()
@@ -984,7 +1003,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				}
 				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
 				if is_variadic && p.tok.kind == .comma && p.peek_tok.kind != .rpar {
-					p.error_with_pos('cannot use ...(variadic) with non-final parameter $arg_name',
+					p.error_with_pos('cannot use ...(variadic) with non-final parameter ${arg_name}',
 						arg_pos[i])
 					return []ast.Param{}, false, false
 				}
@@ -1009,7 +1028,7 @@ fn (mut p Parser) go_expr() ast.GoExpr {
 	call_expr := if expr is ast.CallExpr {
 		expr
 	} else {
-		p.error_with_pos('expression in `go` must be a function call', expr.pos())
+		p.error_with_pos('expression in `spawn` must be a function call', expr.pos())
 		ast.CallExpr{
 			scope: p.scope
 		}
@@ -1039,11 +1058,11 @@ fn (mut p Parser) closure_vars() []ast.Param {
 		var_name := p.prev_tok.lit
 		mut var := p.scope.parent.find_var(var_name) or {
 			if p.table.global_scope.known_global(var_name) {
-				p.error_with_pos('no need to capture global variable `$var_name` in closure',
+				p.error_with_pos('no need to capture global variable `${var_name}` in closure',
 					p.prev_tok.pos())
 				continue
 			}
-			p.error_with_pos('undefined ident: `$var_name`', p.prev_tok.pos())
+			p.error_with_pos('undefined ident: `${var_name}`', p.prev_tok.pos())
 			continue
 		}
 		var.is_used = true
@@ -1092,7 +1111,7 @@ fn (mut p Parser) check_fn_mutable_arguments(typ ast.Type, pos token.Pos) {
 	}
 	p.error_with_pos(
 		'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\n' +
-		'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`',
+		'return values instead: `fn foo(mut n ${sym.name}) {` => `fn foo(n ${sym.name}) ${sym.name} {`',
 		pos)
 }
 
@@ -1108,7 +1127,7 @@ fn (mut p Parser) check_fn_atomic_arguments(typ ast.Type, pos token.Pos) {
 	sym := p.table.sym(typ)
 	if sym.kind !in [.u32, .int, .u64] {
 		p.error_with_pos('atomic arguments are only allowed for 32/64 bit integers\n' +
-			'use shared arguments instead: `fn foo(atomic n $sym.name) {` => `fn foo(shared n $sym.name) {`',
+			'use shared arguments instead: `fn foo(atomic n ${sym.name}) {` => `fn foo(shared n ${sym.name}) {`',
 			pos)
 	}
 }

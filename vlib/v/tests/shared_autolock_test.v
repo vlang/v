@@ -8,7 +8,7 @@ fn inc_array_elem(shared b []int, i int) {
 
 fn test_autolock_array() {
 	shared a := [1, 2, 7, 5]
-	t := go inc_array_elem(shared a, 2)
+	t := spawn inc_array_elem(shared a, 2)
 	for _ in 0 .. iterations {
 		a[2]++
 	}
@@ -31,7 +31,7 @@ fn test_autolock_map() {
 		'asd': 7
 		'iop': 5
 	}
-	t := go inc_map_elem(shared m, 'asd')
+	t := spawn inc_map_elem(shared m, 'asd')
 	for _ in 0 .. iterations {
 		m['asd']++
 	}

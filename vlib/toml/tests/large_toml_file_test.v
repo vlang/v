@@ -14,8 +14,8 @@ fn test_large_file() {
 		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
 		'.toml'
 	if os.exists(toml_file) {
-		println('Testing parsing of large (${os.file_size(toml_file)} bytes) "$toml_file"...')
+		println('Testing parsing of large (${os.file_size(toml_file)} bytes) "${toml_file}"...')
 		toml_doc := toml.parse_file(toml_file) or { panic(err) }
-		println('OK   [1/1] "$toml_file"...') // So it can be checked with `v -stats test ...`
+		println('OK   [1/1] "${toml_file}"...') // So it can be checked with `v -stats test ...`
 	}
 }

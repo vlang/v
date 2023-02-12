@@ -15,7 +15,7 @@ fn test_count_10_times_1_cycle_should_result_10_cycles_with_sync() {
 	mut counter := &Counter{}
 	wg.add(10)
 	for i := 0; i < 10; i++ {
-		go count_one_cycle(mut counter, mut wg)
+		spawn count_one_cycle(mut counter, mut wg)
 	}
 	wg.wait()
 	assert counter.counter == u64(desired_iterations)
@@ -29,7 +29,7 @@ fn test_count_10_times_1_cycle_should_not_be_10_cycles_without_sync() {
 	mut counter := &Counter{}
 	wg.add(10)
 	for i := 0; i < 10; i++ {
-		go count_one_cycle_without_sync(mut counter, mut wg)
+		spawn count_one_cycle_without_sync(mut counter, mut wg)
 	}
 	wg.wait()
 	// Note: we do not assert here, just print, because sometimes by chance counter.counter may be == desired_iterations

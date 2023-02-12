@@ -60,7 +60,7 @@ fn tokenise(args string) ?[]Value {
 						state = .expecting
 					}
 					else {
-						return error('invalid token $i')
+						return error('invalid token ${i}')
 					}
 				}
 			}
@@ -85,7 +85,7 @@ fn tokenise(args string) ?[]Value {
 						rv << cur_value
 					}
 					else {
-						return error('invalid token $i')
+						return error('invalid token ${i}')
 					}
 				}
 			}
@@ -101,7 +101,7 @@ fn tokenise(args string) ?[]Value {
 						rv << cur_value
 					}
 					else {
-						return error('invalid token $i')
+						return error('invalid token ${i}')
 					}
 				}
 			}
@@ -118,7 +118,7 @@ fn parse_args(argv []string) ?Expression {
 	tokens := tokenise(argv.join(' '))?
 
 	println(tokens)
-	assert '$tokens' == '[Value(1), Value(add), Value(subtract), Value(multiply), Value(divide)]'
+	assert '${tokens}' == '[Value(1), Value(add), Value(subtract), Value(multiply), Value(divide)]'
 
 	return rv
 }

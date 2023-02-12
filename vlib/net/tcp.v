@@ -23,7 +23,7 @@ mut:
 
 pub fn dial_tcp(address string) !&TcpConn {
 	addrs := resolve_addrs_fuzzy(address, .tcp) or {
-		return error('$err.msg(); could not resolve address $address in dial_tcp')
+		return error('${err.msg()}; could not resolve address ${address} in dial_tcp')
 	}
 
 	// Keep track of dialing errors that take place
@@ -32,7 +32,7 @@ pub fn dial_tcp(address string) !&TcpConn {
 	// Very simple dialer
 	for addr in addrs {
 		mut s := new_tcp_socket(addr.family()) or {
-			return error('$err.msg(); could not create new tcp socket in dial_tcp')
+			return error('${err.msg()}; could not create new tcp socket in dial_tcp')
 		}
 		s.connect(addr) or {
 			errs << err
@@ -51,12 +51,12 @@ pub fn dial_tcp(address string) !&TcpConn {
 	// Once we've failed now try and explain why we failed to connect
 	// to any of these addresses
 	mut err_builder := strings.new_builder(1024)
-	err_builder.write_string('dial_tcp failed for address $address\n')
+	err_builder.write_string('dial_tcp failed for address ${address}\n')
 	err_builder.write_string('tried addrs:\n')
 	for i := 0; i < errs.len; i++ {
 		addr := addrs[i]
 		why := errs[i]
-		err_builder.write_string('\t$addr: $why\n')
+		err_builder.write_string('\t${addr}: ${why}\n')
 	}
 
 	// failed
@@ -66,13 +66,13 @@ pub fn dial_tcp(address string) !&TcpConn {
 // bind local address and dial.
 pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
 	addrs := resolve_addrs_fuzzy(saddr, .tcp) or {
-		return error('$err.msg(); could not resolve address $saddr in dial_tcp_with_bind')
+		return error('${err.msg()}; could not resolve address ${saddr} in dial_tcp_with_bind')
 	}
 
 	// Very simple dialer
 	for addr in addrs {
 		mut s := new_tcp_socket(addr.family()) or {
-			return error('$err.msg(); could not create new tcp socket in dial_tcp_with_bind')
+			return error('${err.msg()}; could not create new tcp socket in dial_tcp_with_bind')
 		}
 		s.bind(laddr) or {
 			s.close() or { continue }
@@ -91,7 +91,7 @@ pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
 		}
 	}
 	// failed
-	return error('dial_tcp_with_bind failed for address $saddr')
+	return error('dial_tcp_with_bind failed for address ${saddr}')
 }
 
 pub fn (mut c TcpConn) close() ! {
@@ -104,11 +104,12 @@ pub fn (mut c TcpConn) close() ! {
 pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))!
 	$if trace_tcp ? {
-		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
 	}
 	if res > 0 {
 		$if trace_tcp_data_read ? {
-			eprintln('<<< TcpConn.read_ptr  | 1 data.len: ${res:6} | data: ' +
+			eprintln(
+				'<<< TcpConn.read_ptr  | 1 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
 				unsafe { buf_ptr.vstring_with_len(res) })
 		}
 		return res
@@ -118,11 +119,12 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		c.wait_for_read()!
 		res = wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))!
 		$if trace_tcp ? {
-			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
 		}
 		$if trace_tcp_data_read ? {
 			if res > 0 {
-				eprintln('<<< TcpConn.read_ptr  | 2 data.len: ${res:6} | data: ' +
+				eprintln(
+					'<<< TcpConn.read_ptr  | 2 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
 					unsafe { buf_ptr.vstring_with_len(res) })
 			}
 		}
@@ -135,10 +137,10 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 
 pub fn (c TcpConn) read(mut buf []u8) !int {
 	return c.read_ptr(buf.data, buf.len) or {
-		return IError(io.NotExpected{
+		return io.NotExpected{
 			cause: 'unexpected error in `read_ptr` function'
 			code: -1
-		})
+		}
 	}
 }
 
@@ -151,13 +153,17 @@ pub fn (mut c TcpConn) read_deadline() !time.Time {
 
 // write_ptr blocks and attempts to write all data
 pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
+	$if trace_tcp_sock_handle ? {
+		eprintln('>>> TcpConn.write_ptr | c: ${ptr_str(c)} | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} | len: ${len}')
+	}
 	$if trace_tcp ? {
 		eprintln(
-			'>>> TcpConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +
+			'>>> TcpConn.write_ptr | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} len: ${len} |\n' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	$if trace_tcp_data_write ? {
-		eprintln('>>> TcpConn.write_ptr | data.len: ${len:6} | data: ' +
+		eprintln(
+			'>>> TcpConn.write_ptr | data.len: ${len:6} | hex: ${unsafe { b.vbytes(len) }.hex()} | data: ' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	unsafe {
@@ -168,7 +174,7 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 			remaining := len - total_sent
 			mut sent := C.send(c.sock.handle, ptr, remaining, msg_nosignal)
 			$if trace_tcp_data_write ? {
-				eprintln('>>> TcpConn.write_ptr | data chunk, total_sent: ${total_sent:6}, chunk_size: ${chunk_size:6}, sent: ${sent:6}, ptr: ${ptr_str(ptr)}')
+				eprintln('>>> TcpConn.write_ptr | data chunk, total_sent: ${total_sent:6}, remaining: ${remaining:6}, ptr: ${voidptr(ptr):x} => sent: ${sent:6}')
 			}
 			if sent < 0 {
 				code := error_code()
@@ -257,7 +263,7 @@ pub fn (c &TcpConn) addr() !Addr {
 
 pub fn (c TcpConn) str() string {
 	s := c.sock.str().replace('\n', ' ').replace('  ', ' ')
-	return 'TcpConn{ write_deadline: $c.write_deadline, read_deadline: $c.read_deadline, read_timeout: $c.read_timeout, write_timeout: $c.write_timeout, sock: $s }'
+	return 'TcpConn{ write_deadline: ${c.write_deadline}, read_deadline: ${c.read_deadline}, read_timeout: ${c.read_timeout}, write_timeout: ${c.write_timeout}, sock: ${s} }'
 }
 
 pub struct TcpListener {
@@ -269,10 +275,10 @@ mut:
 }
 
 pub fn listen_tcp(family AddrFamily, saddr string) !&TcpListener {
-	s := new_tcp_socket(family) or { return error('$err.msg(); could not create new socket') }
+	s := new_tcp_socket(family) or { return error('${err.msg()}; could not create new socket') }
 
 	addrs := resolve_addrs(saddr, family, .tcp) or {
-		return error('$err.msg(); could not resolve address $saddr')
+		return error('${err.msg()}; could not resolve address ${saddr}')
 	}
 
 	// TODO(logic to pick here)
@@ -280,8 +286,8 @@ pub fn listen_tcp(family AddrFamily, saddr string) !&TcpListener {
 
 	// cast to the correct type
 	alen := addr.len()
-	socket_error_message(C.bind(s.handle, voidptr(&addr), alen), 'binding to $saddr failed')!
-	socket_error_message(C.listen(s.handle, 128), 'listening on $saddr failed')!
+	socket_error_message(C.bind(s.handle, voidptr(&addr), alen), 'binding to ${saddr} failed')!
+	socket_error_message(C.listen(s.handle, 128), 'listening on ${saddr} failed')!
 	return &TcpListener{
 		sock: s
 		accept_deadline: no_deadline
@@ -398,6 +404,17 @@ fn tcp_socket_from_handle(sockfd int) !TcpSocket {
 	return s
 }
 
+// tcp_socket_from_handle_raw is similar to tcp_socket_from_handle, but it does not modify any socket options
+pub fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
+	mut s := TcpSocket{
+		handle: sockfd
+	}
+	$if trace_tcp ? {
+		eprintln('    tcp_socket_from_handle_raw | s.handle: ${s.handle:6}')
+	}
+	return s
+}
+
 pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {
 	// TODO reenable when this `in` operation works again
 	// if opt !in opts_can_set {
@@ -423,7 +440,7 @@ pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ! {
 // bind a local rddress for TcpSocket
 pub fn (mut s TcpSocket) bind(addr string) ! {
 	addrs := resolve_addrs(addr, AddrFamily.ip, .tcp) or {
-		return error('$err.msg(); could not resolve address $addr')
+		return error('${err.msg()}; could not resolve address ${addr}')
 	}
 
 	// TODO(logic to pick here)
@@ -431,13 +448,14 @@ pub fn (mut s TcpSocket) bind(addr string) ! {
 
 	// cast to the correct type
 	alen := a.len()
-	socket_error_message(C.bind(s.handle, voidptr(&a), alen), 'binding to $addr failed') or {
+	socket_error_message(C.bind(s.handle, voidptr(&a), alen), 'binding to ${addr} failed') or {
 		return err
 	}
 }
 
 fn (mut s TcpSocket) close() ! {
-	return shutdown(s.handle)
+	shutdown(s.handle)
+	return close(s.handle)
 }
 
 fn (mut s TcpSocket) @select(test Select, timeout time.Duration) !bool {

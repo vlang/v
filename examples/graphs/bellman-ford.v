@@ -23,7 +23,7 @@ mut:
 
 // building a map of with all edges etc of a graph, represented from a matrix adjacency
 // Input: matrix adjacency --> Output: edges list of src, dest and weight
-fn build_map_edges_from_graph<T>(g [][]T) map[T]EDGE {
+fn build_map_edges_from_graph[T](g [][]T) map[T]EDGE {
 	n := g.len // TOTAL OF NODES for this graph -- its dimmension
 	mut edges_map := map[int]EDGE{} // a graph represented by map of edges
 
@@ -45,14 +45,14 @@ fn print_sol(dist []int) {
 	n_vertex := dist.len
 	print('\n Vertex   Distance from Source')
 	for i in 0 .. n_vertex {
-		print('\n   $i   -->   ${dist[i]}')
+		print('\n   ${i}   -->   ${dist[i]}')
 	}
 }
 
 // The main function that finds shortest distances from src
 // to all other vertices using Bellman-Ford algorithm.  The
 // function also detects negative weight cycle
-fn bellman_ford<T>(graph [][]T, src int) {
+fn bellman_ford[T](graph [][]T, src int) {
 	mut edges := build_map_edges_from_graph(graph)
 	// this function was done to adapt a graph representation
 	// by a adjacency matrix, to list of adjacency (using a MAP)
@@ -154,7 +154,7 @@ fn main() {
 		graph = g_value.clone() // graphs_sample[g].clone() // choice your SAMPLE
 		// allways starting by node 0
 		start_node := 0
-		println('\n\n Graph ${index + 1} using Bellman-Ford algorithm (source node: $start_node)')
+		println('\n\n Graph ${index + 1} using Bellman-Ford algorithm (source node: ${start_node})')
 		bellman_ford(graph, start_node)
 	}
 	println('\n BYE -- OK')

@@ -96,6 +96,12 @@ fn (mut dom DocumentObjectModel) add_tag_by_attribute(tag &Tag) {
 
 fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 	dom.constructed = true
+
+	// If there are no tags, accessing `tag_list` below does panic.
+	if tag_list.len == 0 {
+		return
+	}
+
 	mut temp_map := map[string]int{}
 	mut temp_int := null_element
 	mut temp_string := ''
@@ -106,6 +112,7 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 	temp_map['0'] = dom.btree.add_children(tag_list[0])
 	stack.push(0)
 	root_index := 0
+
 	for index := 1; index < tag_list.len; index++ {
 		mut tag := tag_list[index]
 		dom.print_debug(tag.str())
@@ -141,8 +148,8 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 				dom.print_debug("Added ${tag.name} as child of '" + tag_list[temp_int].name +
 					"' which now has ${dom.btree.get_children().len} childrens")
 				*/
-				dom.print_debug("Added $tag.name as child of '" + temp_tag.name +
-					"' which now has $temp_tag.children.len childrens")
+				dom.print_debug("Added ${tag.name} as child of '" + temp_tag.name +
+					"' which now has ${temp_tag.children.len} childrens")
 			} else { // dom.new_root(tag)
 				stack.push(root_index)
 			}
@@ -184,4 +191,9 @@ pub fn (dom DocumentObjectModel) get_root() &Tag {
 // get_tags returns all of the tags stored in the document.
 pub fn (dom DocumentObjectModel) get_tags() []&Tag {
 	return dom.all_tags
+}
+
+// get_tags_by_class_name retrieves all the tags recursively in the document that has the given class name(s).
+pub fn (dom DocumentObjectModel) get_tags_by_class_name(names ...string) []&Tag {
+	return dom.root.get_tags_by_class_name(...names)
 }

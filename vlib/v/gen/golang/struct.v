@@ -43,7 +43,7 @@ pub fn (mut f Gen) struct_decl(node ast.StructDecl) {
 	for embed in node.embeds {
 		f.mark_types_import_as_used(embed.typ)
 		styp := f.table.type_to_str_using_aliases(embed.typ, f.mod2alias)
-		f.writeln('\t$styp')
+		f.writeln('\t${styp}')
 	}
 	// mut field_align_i := 0
 	// mut comment_align_i := 0
@@ -74,14 +74,7 @@ pub fn (mut f Gen) struct_decl(node ast.StructDecl) {
 		}
 		// end_pos := field.pos.pos + field.pos.len
 		volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
-		f.write('\t$volatile_prefix$field.name ')
-		// before_len := f.line_len
-		// mut field_align := field_aligns[field_align_i]
-		// if field_align.line_nr < field.pos.line_nr {
-		// field_align_i++
-		// field_align = field_aligns[field_align_i]
-		//}
-		// f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
+		f.write('\t${volatile_prefix}${field.name} ')
 		f.write(field_types[i])
 		f.mark_types_import_as_used(field.typ)
 		// attrs_len := inline_attrs_len(field.attrs)
@@ -126,15 +119,15 @@ pub fn (mut f Gen) struct_init(node ast.StructInit) {
 	if node.fields.len == 0 && !node.has_update_expr {
 		// `Foo{}` on one line if there are no fields or comments
 		if node.pre_comments.len == 0 {
-			f.write('$name{}')
+			f.write('${name}{}')
 		} else {
-			f.writeln('$name{')
+			f.writeln('${name}{')
 			f.write('}')
 		}
 		f.mark_import_as_used(name)
 	} else if node.no_keys {
 		// `Foo{1,2,3}` (short syntax )
-		f.write('$name{')
+		f.write('${name}{')
 		f.mark_import_as_used(name)
 		if node.has_update_expr {
 			f.write('...')
@@ -157,7 +150,7 @@ pub fn (mut f Gen) struct_init(node ast.StructInit) {
 			single_line_fields = false
 		}
 		if !use_short_args {
-			f.write('$name{')
+			f.write('${name}{')
 			f.mark_import_as_used(name)
 			if single_line_fields {
 				f.write(' ')
@@ -166,7 +159,7 @@ pub fn (mut f Gen) struct_init(node ast.StructInit) {
 		// fields_start := f.out.len
 		fields_loop: for {
 			if !single_line_fields {
-				if use_short_args && f.out[f.out.len - 1] == ` ` {
+				if use_short_args && f.out.last() == ` ` {
 					//           v Remove space at tail of line
 					// f(a, b, c, \n
 					//     f1: 0\n
@@ -189,7 +182,7 @@ pub fn (mut f Gen) struct_init(node ast.StructInit) {
 				}
 			}
 			for i, field in node.fields {
-				f.write('$field.name: ')
+				f.write('${field.name}: ')
 				f.expr(field.expr)
 				if single_line_fields {
 					if i < node.fields.len - 1 {

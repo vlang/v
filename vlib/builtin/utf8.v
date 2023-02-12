@@ -84,7 +84,7 @@ pub fn utf8_str_len(s string) int {
 // valid utf8 in the string, and could result in
 // values greater than the utf32 spec
 // it has been replaced by `utf8_to_utf32` which
-// has an optional return type.
+// has an option return type.
 //
 // this function is left for backward compatibility
 // it is used in vlib/builtin/string.v,
@@ -122,29 +122,6 @@ pub fn (_bytes []u8) utf8_to_utf32() ?rune {
 		shift = 6
 	}
 	return res
-}
-
-// Calculate length to read from the first byte
-fn utf8_len(c u8) int {
-	mut b := 0
-	mut x := c
-	if (x & 240) != 0 {
-		// 0xF0
-		x >>= 4
-	} else {
-		b += 4
-	}
-	if (x & 12) != 0 {
-		// 0x0C
-		x >>= 2
-	} else {
-		b += 2
-	}
-	if (x & 2) == 0 {
-		// 0x02
-		b++
-	}
-	return b
 }
 
 // Calculate string length for formatting, i.e. number of "characters"

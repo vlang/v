@@ -144,16 +144,16 @@ fn test_ranges() {
 	assert s6 == 'first'
 }
 
-fn ranges_propagate_first(s string) ?string {
-	return s[10..]?
+fn ranges_propagate_first(s string) !string {
+	return s[10..]!
 }
 
-fn ranges_propagate_last(s string) ?string {
-	return s[..20]?
+fn ranges_propagate_last(s string) !string {
+	return s[..20]!
 }
 
-fn ranges_propagate_both(s string) ?string {
-	return s[1..20]?
+fn ranges_propagate_both(s string) !string {
+	return s[1..20]!
 }
 
 fn test_split_nth() {
@@ -293,16 +293,16 @@ fn main() {
 }
 
 fn test_join() {
-	mut strings := ['a', 'b', 'c']
-	mut s := strings.join(' ')
+	mut strs := ['a', 'b', 'c']
+	mut s := strs.join(' ')
 	assert s == 'a b c'
-	strings = [
+	strs = [
 		'one
 two ',
 		'three!
 four!',
 	]
-	s = strings.join(' ')
+	s = strs.join(' ')
 	assert s.contains('one') && s.contains('two ') && s.contains('four')
 	empty := []string{len: 0}
 	assert empty.join('A') == ''
@@ -536,6 +536,16 @@ fn test_trim() {
 	assert 'banana'.trim('bna') == ''
 	assert 'abc'.trim('ac') == 'b'
 	assert 'aaabccc'.trim('ac') == 'b'
+}
+
+fn test_trim_indexes() {
+	mut left, mut right := 0, 0
+	left, right = '- -- - '.trim_indexes(' -')
+	assert left == 0 && right == 0
+	left, right = '- hello-world!\t'.trim_indexes(' -\t')
+	assert left == 2 && right == 14
+	left, right = 'abc'.trim_indexes('ac')
+	assert left == 1 && right == 2
 }
 
 fn test_trim_left() {
@@ -795,7 +805,7 @@ fn test_raw() {
 	lines := raw.split('\n')
 	println(lines)
 	assert lines.len == 1
-	println('raw string: "$raw"')
+	println('raw string: "${raw}"')
 
 	raw2 := r'Hello V\0'
 	assert raw2[7] == `\\`
@@ -817,8 +827,8 @@ fn test_raw_with_quotes() {
 
 fn test_escape() {
 	a := 10
-	println("\"$a")
-	assert "\"$a" == '"10'
+	println("\"${a}")
+	assert "\"${a}" == '"10'
 }
 
 fn test_atoi() {
@@ -842,9 +852,9 @@ fn test_raw_inter() {
 fn test_c_r() {
 	// This used to break because of r'' and c''
 	c := 42
-	println('$c')
+	println('${c}')
 	r := 50
-	println('$r')
+	println('${r}')
 }
 
 fn test_inter_before_comptime_if() {
@@ -859,9 +869,9 @@ fn test_inter_before_comptime_if() {
 fn test_double_quote_inter() {
 	a := 1
 	b := 2
-	println('$a $b')
-	assert '$a $b' == '1 2'
-	assert '$a $b' == '1 2'
+	println('${a} ${b}')
+	assert '${a} ${b}' == '1 2'
+	assert '${a} ${b}' == '1 2'
 }
 
 fn foo(b u8) u8 {
@@ -873,8 +883,17 @@ fn filter(b u8) bool {
 }
 
 fn test_split_into_lines() {
-	line_content := 'Line'
-	text_crlf := '$line_content\r\n$line_content\r\n$line_content'
+	line_content := 'line content'
+
+	text_cr := '${line_content}\r${line_content}\r${line_content}'
+	lines_cr := text_cr.split_into_lines()
+
+	assert lines_cr.len == 3
+	for line in lines_cr {
+		assert line == line_content
+	}
+
+	text_crlf := '${line_content}\r\n${line_content}\r\n${line_content}'
 	lines_crlf := text_crlf.split_into_lines()
 
 	assert lines_crlf.len == 3
@@ -882,12 +901,28 @@ fn test_split_into_lines() {
 		assert line == line_content
 	}
 
-	text_lf := '$line_content\n$line_content\n$line_content'
+	text_lf := '${line_content}\n${line_content}\n${line_content}'
 	lines_lf := text_lf.split_into_lines()
 
 	assert lines_lf.len == 3
 	for line in lines_lf {
 		assert line == line_content
+	}
+
+	text_mixed := '${line_content}\n${line_content}\r${line_content}'
+	lines_mixed := text_mixed.split_into_lines()
+
+	assert lines_mixed.len == 3
+	for line in lines_mixed {
+		assert line == line_content
+	}
+
+	text_mixed_trailers := '${line_content}\n${line_content}\r${line_content}\r\r\r\n\n\n\r\r'
+	lines_mixed_trailers := text_mixed_trailers.split_into_lines()
+
+	assert lines_mixed_trailers.len == 9
+	for line in lines_mixed_trailers {
+		assert (line == line_content) || (line == '')
 	}
 }
 
@@ -955,24 +990,24 @@ fn test_interpolation_after_quoted_variable_still_works() {
 	tt := 'xyz'
 
 	// Basic interpolation, no internal quotes
-	yy := 'Replacing $rr with $tt'
+	yy := 'Replacing ${rr} with ${tt}'
 	assert yy == 'Replacing abc with xyz'
 
 	// Interpolation after quoted variable ending with 'r'quote
 	// that may be mistaken with the start of a raw string,
 	// ensure that it is not.
-	ss := 'Replacing "$rr" with "$tt"'
+	ss := 'Replacing "${rr}" with "${tt}"'
 	assert ss == 'Replacing "abc" with "xyz"'
-	zz := "Replacing '$rr' with '$tt'"
+	zz := "Replacing '${rr}' with '${tt}'"
 	assert zz == "Replacing 'abc' with 'xyz'"
 
 	// Interpolation after quoted variable ending with 'c'quote
 	// may be mistaken with the start of a c string, so
 	// check it is not.
 	cc := 'abc'
-	ccc := "Replacing '$cc' with '$tt'"
+	ccc := "Replacing '${cc}' with '${tt}'"
 	assert ccc == "Replacing 'abc' with 'xyz'"
-	cccq := 'Replacing "$cc" with "$tt"'
+	cccq := 'Replacing "${cc}" with "${tt}"'
 	assert cccq == 'Replacing "abc" with "xyz"'
 }
 
@@ -1020,4 +1055,27 @@ fn test_string_is_ascii() {
 
 fn test_string_with_zero_byte_escape() {
 	assert '\x00'.bytes() == [u8(0)]
+}
+
+fn test_is_blank() {
+	assert ''.is_blank()
+	assert ' '.is_blank()
+	assert ' \t'.is_blank()
+	assert ' \t
+
+'.is_blank()
+	assert ' \t\r'.is_blank()
+	assert ' \t\r
+
+'.is_blank()
+}
+
+fn test_indent_width() {
+	assert 'abc'.indent_width() == 0
+	assert ' abc'.indent_width() == 1
+	assert '  abc'.indent_width() == 2
+	assert '\tabc'.indent_width() == 1
+	assert '\t abc'.indent_width() == 2
+	assert '\t\tabc'.indent_width() == 2
+	assert '\t\t abc'.indent_width() == 3
 }

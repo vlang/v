@@ -75,7 +75,7 @@ This is a valid V program, and running it will give us the same result.
 
 This code is pretty similar to the original, you can notice one major difference.
 C allows one statement code blocks without brackets, and V doesn't, so in the
-translated code all blocks are explicitely marked with brackets.
+translated code all blocks are explicitly marked with brackets.
 
 C2V successfully converts C's bool type to V's bool.
 
@@ -108,19 +108,19 @@ int usersapi_get_number_of_users() {
 
 ```
 
-```
+```v oksyntax
 module usersapi
 
 fn C.usersapi_create_user(name &i8, password &i8, age int)
 
-pub fn f create_user(name &i8, password &i8, age int)  {
-    C.usersapi_create_user(name, password, age)
+pub fn create_user(name &i8, password &i8, age int) {
+	C.usersapi_create_user(name, password, age)
 }
 
 fn C.usersapi_get_number_of_users() int
 
-pub fn f get_number_of_users() int {
-    return C.usersapi_get_number_of_users()
+pub fn get_number_of_users() int {
+	return C.usersapi_get_number_of_users()
 }
 ```
 

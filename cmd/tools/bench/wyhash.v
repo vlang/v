@@ -10,7 +10,7 @@ fn main() {
 	sample_size := 10000000
 	min_str_len := 20
 	max_str_len := 40
-	println('Generating $sample_size strings between $min_str_len - $max_str_len chars long...')
+	println('Generating ${sample_size} strings between ${min_str_len} - ${max_str_len} chars long...')
 	mut checksum := u64(0)
 	mut start_pos := 0
 	mut bgenerating := benchmark.start()

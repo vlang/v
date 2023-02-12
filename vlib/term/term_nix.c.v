@@ -30,7 +30,7 @@ pub fn get_terminal_size() (int, int) {
 }
 
 // get_cursor_position returns a Coord containing the current cursor position
-pub fn get_cursor_position() ?Coord {
+pub fn get_cursor_position() !Coord {
 	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
 		return Coord{0, 0}
 	}
@@ -80,12 +80,24 @@ pub fn get_cursor_position() ?Coord {
 	return Coord{x, y}
 }
 
-// set_terminal_title change the terminal title
+// set_terminal_title change the terminal title (usually that is the containing terminal window title)
 pub fn set_terminal_title(title string) bool {
 	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
-		return true
+		return false
 	}
-	print('\033]0')
+	print('\033]0;')
+	print(title)
+	print('\007')
+	flush_stdout()
+	return true
+}
+
+// set_tab_title changes the terminal *tab title*, for terminal emulators like Konsole, that support several tabs
+pub fn set_tab_title(title string) bool {
+	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
+		return false
+	}
+	print('\033]30;')
 	print(title)
 	print('\007')
 	flush_stdout()
@@ -93,8 +105,12 @@ pub fn set_terminal_title(title string) bool {
 }
 
 // clear clears current terminal screen.
-pub fn clear() {
+pub fn clear() bool {
+	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
+		return false
+	}
 	print('\x1b[2J')
 	print('\x1b[H')
 	flush_stdout()
+	return true
 }

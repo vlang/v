@@ -58,7 +58,7 @@ fn (mut state AppState) update() {
 		threads.wait()
 	}
 	for t in 0 .. state.ntasks {
-		threads << go state.worker(t, chunk_channel, chunk_ready_channel)
+		threads << spawn state.worker(t, chunk_channel, chunk_ready_channel)
 	}
 	//
 	mut oview := ViewRect{}
@@ -191,7 +191,7 @@ fn graphics_keydown(code gg.KeyCode, mod gg.Modifier, mut state AppState) {
 	// movement
 	mut d_x, mut d_y := 0.0, 0.0
 	if code == .enter {
-		println('> ViewRect{$state.view.x_min, $state.view.x_max, $state.view.y_min, $state.view.y_max}')
+		println('> ViewRect{${state.view.x_min}, ${state.view.x_max}, ${state.view.y_min}, ${state.view.y_max}}')
 	}
 	if state.gg.pressed_keys[int(gg.KeyCode.left)] {
 		d_x -= s_x
@@ -237,6 +237,6 @@ fn main() {
 		scroll_fn: graphics_scroll
 		user_data: state
 	)
-	go state.update()
+	spawn state.update()
 	state.gg.run()
 }

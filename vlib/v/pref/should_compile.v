@@ -95,7 +95,7 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		no_postfix_key := fname_without_platform_postfix(file)
 		if no_postfix_key in fnames_no_postfixes {
 			if prefs.is_verbose {
-				println('>>> should_compile_filtered_files: skipping _default.c.v file $file ; the specialized versions are: ${fnames_no_postfixes[no_postfix_key]}')
+				println('>>> should_compile_filtered_files: skipping _default.c.v file ${file} ; the specialized versions are: ${fnames_no_postfixes[no_postfix_key]}')
 			}
 			continue
 		}
@@ -103,7 +103,7 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 	}
 	if prefs.is_verbose {
 		// println('>>> prefs: $prefs')
-		println('>>> should_compile_filtered_files: res: $res')
+		println('>>> should_compile_filtered_files: res: ${res}')
 	}
 	return res
 }
@@ -247,9 +247,9 @@ pub fn (prefs &Preferences) should_compile_asm(path string) bool {
 	if arch != prefs.arch && prefs.arch != ._auto && arch != ._auto {
 		return false
 	}
-	os := os_from_string(file.all_after_last('_').all_before('.')) or { OS._auto }
+	file_os := os_from_string(file.all_after_last('_').all_before('.')) or { OS._auto }
 
-	if os != prefs.os && prefs.os != ._auto && os != ._auto {
+	if file_os != prefs.os && prefs.os != ._auto && file_os != ._auto {
 		return false
 	}
 	return true

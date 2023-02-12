@@ -35,7 +35,7 @@ fn C.cJSON_free(voidptr)
 // decode tries to decode the provided JSON string, into a V structure.
 // If it can not do that, it returns an error describing the reason for
 // the parsing failure.
-pub fn decode(typ voidptr, s string) ?voidptr {
+pub fn decode(typ voidptr, s string) !voidptr {
 	// compiler implementation
 	return 0
 }

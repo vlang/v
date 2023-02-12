@@ -33,21 +33,19 @@ struct InvalidVersionFormatError {
 }
 
 pub fn (err InvalidVersionFormatError) msg() string {
-	return 'Invalid version format for input "$err.input"'
+	return 'Invalid version format for input "${err.input}"'
 }
 
 // * Constructor.
 // from returns a `Version` structure parsed from `input` `string`.
 pub fn from(input string) ?Version {
 	if input.len == 0 {
-		return IError(&EmptyInputError{})
+		return &EmptyInputError{}
 	}
 	raw_version := parse(input)
-	version := raw_version.validate() or {
-		return IError(&InvalidVersionFormatError{
-			input: input
-		})
-	}
+	version := raw_version.validate() or { return &InvalidVersionFormatError{
+		input: input
+	} }
 	return version
 }
 
@@ -99,12 +97,12 @@ pub fn (v1 Version) le(v2 Version) bool {
 
 // str returns the `string` representation of the `Version`.
 pub fn (ver Version) str() string {
-	common_string := '${ver.major}.${ver.minor}.$ver.patch'
+	common_string := '${ver.major}.${ver.minor}.${ver.patch}'
 
-	prerelease_string := if ver.prerelease.len > 0 { '-$ver.prerelease' } else { '' }
-	metadata_string := if ver.metadata.len > 0 { '+$ver.metadata' } else { '' }
+	prerelease_string := if ver.prerelease.len > 0 { '-${ver.prerelease}' } else { '' }
+	metadata_string := if ver.metadata.len > 0 { '+${ver.metadata}' } else { '' }
 
-	return '$common_string$prerelease_string$metadata_string'
+	return '${common_string}${prerelease_string}${metadata_string}'
 }
 
 // * Utilites.

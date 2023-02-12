@@ -100,8 +100,8 @@ fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 		len: 0
 		deletes: 0
 		all_deleted: 0
-		keys: unsafe { malloc(cap * key_bytes) }
-		values: unsafe { malloc(cap * value_bytes) }
+		keys: unsafe { malloc(__at_least_one(u64(cap) * u64(key_bytes))) }
+		values: unsafe { malloc(__at_least_one(u64(cap) * u64(value_bytes))) }
 	}
 }
 
@@ -299,6 +299,7 @@ pub fn (mut m map) move() map {
 // Example: a.clear() // `a.len` and `a.key_values.len` is now 0
 pub fn (mut m map) clear() {
 	m.len = 0
+	m.even_index = 0
 	m.key_values.len = 0
 }
 
@@ -424,6 +425,11 @@ fn (mut m map) expand() {
 // the max_load_factor in an operation.
 fn (mut m map) rehash() {
 	meta_bytes := sizeof(u32) * (m.even_index + 2 + m.extra_metas)
+	m.reserve(meta_bytes)
+}
+
+// reserve memory for the map meta data
+pub fn (mut m map) reserve(meta_bytes u32) {
 	unsafe {
 		// TODO: use realloc_data here too
 		x := v_realloc(&u8(m.metas), int(meta_bytes))

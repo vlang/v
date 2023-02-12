@@ -1,0 +1,20 @@
+vlib/v/checker/tests/infix_is_notis_interface_unimplemented_err.vv:8:14: error: `int` doesn't implement interface `IError`
+    6 |     if _ := f() {
+    7 |     } else {
+    8 |         _ = err is int
+      |                    ~~~
+    9 |     }
+   10 |
+vlib/v/checker/tests/infix_is_notis_interface_unimplemented_err.vv:12:14: error: `int` doesn't implement interface `IError`
+   10 | 
+   11 |     _ = f() or {
+   12 |         _ = err is int
+      |                    ~~~
+   13 |         0
+   14 |     }
+vlib/v/checker/tests/infix_is_notis_interface_unimplemented_err.vv:27:17: error: `int` doesn't implement method `some_method` of interface `IAbc`
+   25 | fn type_unimplemented_interface() {
+   26 |     ivalue := IAbc(Struct{})
+   27 |     _ := ivalue is int
+      |                    ~~~
+   28 | }

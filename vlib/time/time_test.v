@@ -93,6 +93,14 @@ fn test_format_ss_milli() {
 	assert '1980-07-11 21:23:42.123' == time_to_test.format_ss_milli()
 }
 
+fn test_format_rfc3339() {
+	// assert '1980-07-11T19:23:42.123Z'
+	res := time_to_test.format_rfc3339()
+	assert res.ends_with('23:42.123Z')
+	assert res.starts_with('1980-07-1')
+	assert res.contains('T')
+}
+
 fn test_format_ss_micro() {
 	assert '11.07.1980 21:23:42.123456' == time_to_test.get_fmt_str(.dot, .hhmmss24_micro,
 		.ddmmyyyy)
@@ -210,18 +218,18 @@ fn test_unix_time() {
 	t1 := time.utc()
 	time.sleep(50 * time.millisecond)
 	t2 := time.utc()
-	eprintln('t1: $t1')
-	eprintln('t2: $t2')
+	eprintln('t1: ${t1}')
+	eprintln('t2: ${t2}')
 	ut1 := t1.unix_time()
 	ut2 := t2.unix_time()
-	eprintln('ut1: $ut1')
-	eprintln('ut2: $ut2')
+	eprintln('ut1: ${ut1}')
+	eprintln('ut2: ${ut2}')
 	assert ut2 - ut1 < 2
 	//
 	utm1 := t1.unix_time_milli()
 	utm2 := t2.unix_time_milli()
-	eprintln('utm1: $utm1')
-	eprintln('utm2: $utm2')
+	eprintln('utm1: ${utm1}')
+	eprintln('utm2: ${utm2}')
 	assert (utm1 - ut1 * 1000) < 1000
 	assert (utm2 - ut2 * 1000) < 1000
 	//

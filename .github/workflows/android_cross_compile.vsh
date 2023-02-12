@@ -10,7 +10,7 @@ fn main() {
 	assert ndk.found()
 	assert vxt.found()
 
-	work_dir := os.join_path(os.temp_dir(), 'android_cross_compile_test')
+	work_dir := os.join_path(os.vtmp_dir(), 'android_cross_compile_test')
 	os.rm(work_dir) or {}
 	os.mkdir_all(work_dir) or { panic(err) }
 	vexe := vxt.vexe()

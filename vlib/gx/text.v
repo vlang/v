@@ -20,6 +20,8 @@ pub:
 	italic         bool
 }
 
+// to_css_string returns a CSS compatible string of the TextCfg `cfg`.
+// For example: `'mono 14px serif'`.
 pub fn (cfg TextCfg) to_css_string() string {
 	mut font_style := ''
 	if cfg.bold {
@@ -31,5 +33,5 @@ pub fn (cfg TextCfg) to_css_string() string {
 	if cfg.italic {
 		font_style += 'italic '
 	}
-	return '$font_style ${cfg.size}px $cfg.family'
+	return '${font_style} ${cfg.size}px ${cfg.family}'
 }

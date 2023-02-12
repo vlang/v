@@ -13,6 +13,7 @@ mut:
 	is_attribute     bool
 	opened_code_type string
 	line_count       int
+	outside_tag      bool
 	lexeme_builder   strings.Builder = strings.new_builder(100)
 	code_tags        map[string]bool = {
 		'script': true
@@ -90,6 +91,7 @@ fn (mut parser Parser) init() {
 	parser.tags = []&Tag{}
 	parser.dom.close_tags['/!document'] = true
 	parser.lexical_attributes.current_tag = &Tag{}
+	parser.lexical_attributes.outside_tag = true
 	parser.initialized = true
 }
 
@@ -123,7 +125,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 			} else if is_quote {
 				parser.lexical_attributes.open_string = string_code
 			} else if chr == `>` { // only execute verification if is a > // here will verify < to know if code tag is finished
-				name_close_tag := '</$parser.lexical_attributes.opened_code_type>'
+				name_close_tag := '</${parser.lexical_attributes.opened_code_type}>'
 				if parser.builder_str().to_lower().ends_with(name_close_tag) {
 					parser.lexical_attributes.open_code = false
 					// need to modify lexeme_builder to add script text as a content in next loop (not gave error in dom)
@@ -151,6 +153,13 @@ pub fn (mut parser Parser) split_parse(data string) {
 					nval := temp_lexeme.substr(1, temp_lexeme.len - 1)
 					// parser.print_debug(lattr + " = " + temp_lexeme)
 					parser.lexical_attributes.current_tag.attributes[lattr] = nval
+					if lattr == 'class' {
+						for class_name in nval.split_any('\t\r\n \x0D') {
+							if class_name != '' {
+								parser.lexical_attributes.current_tag.class_set.add(class_name)
+							}
+						}
+					}
 					parser.lexical_attributes.current_tag.last_attribute = ''
 				} else {
 					parser.lexical_attributes.current_tag.attributes[temp_lexeme.to_lower()] = ''
@@ -224,8 +233,27 @@ pub fn (mut parser Parser) split_parse(data string) {
 			parser.lexical_attributes.lexeme_builder.go_back_to(0)
 			parser.generate_tag()
 			parser.lexical_attributes.open_tag = true
+			parser.lexical_attributes.outside_tag = false
 		} else {
 			parser.lexical_attributes.lexeme_builder.write_u8(chr)
+		}
+	}
+
+	// If `data` has not tags but has only text.
+	if parser.lexical_attributes.outside_tag {
+		temp_string := parser.lexical_attributes.lexeme_builder.str()
+
+		if parser.tags.len == 0 {
+			parser.tags << &Tag{
+				name: 'text'
+				content: temp_string
+			}
+		} else if parser.tags.len == 1 {
+			mut tag := parser.tags.first()
+
+			if tag.name == 'text' {
+				tag.content += temp_string
+			}
 		}
 	}
 }
@@ -234,9 +262,11 @@ pub fn (mut parser Parser) split_parse(data string) {
 pub fn (mut parser Parser) parse_html(data string) {
 	parser.init()
 	mut lines := data.split_into_lines()
-	for line in lines {
+	for index, line in lines {
 		parser.lexical_attributes.line_count++
-		parser.split_parse(line)
+		// Parser shouldn't replace `\n`, because it may break JS code or text which sticks together.
+		// After `split_into_lines()` we need to add `\n` again.
+		parser.split_parse(if index < lines.len - 1 { '${line}\n' } else { line })
 	}
 	parser.generate_tag()
 	parser.dom.debug_file = parser.debug_file

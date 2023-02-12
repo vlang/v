@@ -17,7 +17,7 @@ fn test_integer_from_u64() {
 	assert big.integer_from_u64(1024).hex() == '400'
 	assert big.integer_from_u64(4294967295).hex() == 'ffffffff'
 	assert big.integer_from_u64(4398046511104).hex() == '40000000000'
-	max_value := big.integer_from_u64(-1)
+	max_value := big.integer_from_u64(u64(-1))
 
 	assert max_value.hex() == 'ffffffffffffffff'
 }
@@ -170,7 +170,7 @@ fn test_comparison() {
 fn test_conversion() {
 	ten := big.integer_from_int(10)
 
-	mut n := big.integer_from_u64(-1)
+	mut n := big.integer_from_u64(u64(-1))
 
 	mut digits := []rune{}
 	for n.signum != 0 {
@@ -226,7 +226,7 @@ fn test_str() {
 	assert big.integer_from_u64(1024).str() == '1024'
 	assert big.integer_from_u64(4294967295).str() == '4294967295'
 	assert big.integer_from_u64(4398046511104).str() == '4398046511104'
-	assert big.integer_from_u64(-1).str() == '18446744073709551615'
+	assert big.integer_from_u64(u64(-1)).str() == '18446744073709551615'
 	assert (big.integer_from_radix('e'.repeat(80), 16) or { panic('Cannot read hexadecimal') }).str() == '1993587900192849410235353592424915306962524220866209251950572167300738410728597846688097947807470'
 }
 

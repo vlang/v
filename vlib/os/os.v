@@ -55,7 +55,8 @@ fn executable_fallback() string {
 		}
 	}
 	if !is_abs_path(exepath) {
-		rexepath := exepath.replace_each(['/', path_separator, '\\', path_separator])
+		other_seperator := if path_separator == '/' { '\\' } else { '/' }
+		rexepath := exepath.replace(other_seperator, path_separator)
 		if rexepath.contains(path_separator) {
 			exepath = join_path_single(os.wd_at_startup, exepath)
 		} else {
@@ -123,6 +124,11 @@ pub fn cp_all(src string, dst string, overwrite bool) ! {
 pub fn mv_by_cp(source string, target string) ! {
 	cp(source, target)!
 	rm(source)!
+}
+
+// mv moves files or folders from `src` to `dst`.
+pub fn mv(source string, target string) ! {
+	rename(source, target) or { mv_by_cp(source, target)! }
 }
 
 // read_lines reads the file in `path` into an array of lines.
@@ -209,10 +215,11 @@ pub fn is_dir_empty(path string) bool {
 // assert os.file_ext('.ignore_me') == ''
 // assert os.file_ext('.') == ''
 // ```
-pub fn file_ext(path string) string {
-	if path.len < 3 {
+pub fn file_ext(opath string) string {
+	if opath.len < 3 {
 		return empty_str
 	}
+	path := file_name(opath)
 	pos := path.last_index(dot_str) or { return empty_str }
 	if pos + 1 >= path.len || pos == 0 {
 		return empty_str
@@ -229,7 +236,8 @@ pub fn dir(opath string) string {
 	if opath == '' {
 		return '.'
 	}
-	path := opath.replace_each(['/', path_separator, '\\', path_separator])
+	other_seperator := if path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_seperator, path_separator)
 	pos := path.last_index(path_separator) or { return '.' }
 	if pos == 0 && path_separator == '/' {
 		return '/'
@@ -245,7 +253,8 @@ pub fn base(opath string) string {
 	if opath == '' {
 		return '.'
 	}
-	path := opath.replace_each(['/', path_separator, '\\', path_separator])
+	other_seperator := if path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_seperator, path_separator)
 	if path == path_separator {
 		return path_separator
 	}
@@ -261,7 +270,8 @@ pub fn base(opath string) string {
 // file_name will return all characters found after the last occurence of `path_separator`.
 // file extension is included.
 pub fn file_name(opath string) string {
-	path := opath.replace_each(['/', path_separator, '\\', path_separator])
+	other_seperator := if path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_seperator, path_separator)
 	return path.all_after_last(path_separator)
 }
 
@@ -396,7 +406,7 @@ pub fn user_names() ![]string {
 	$if windows {
 		result := execute('wmic useraccount get name')
 		if result.exit_code != 0 {
-			return error('Failed to get user names. Exited with code $result.exit_code: $result.output')
+			return error('Failed to get user names. Exited with code ${result.exit_code}: ${result.output}')
 		}
 		mut users := result.output.split_into_lines()
 		// windows command prints an empty line at the end of output
@@ -455,7 +465,7 @@ pub fn (err ExecutableNotFoundError) msg() string {
 }
 
 fn error_failed_to_find_executable() IError {
-	return IError(&ExecutableNotFoundError{})
+	return &ExecutableNotFoundError{}
 }
 
 // find_abs_path_of_executable walks the environment PATH, just like most shell do, it returns
@@ -654,7 +664,8 @@ pub struct MkdirParams {
 
 // mkdir_all will create a valid full path of all directories given in `path`.
 pub fn mkdir_all(opath string, params MkdirParams) ! {
-	path := opath.replace('/', path_separator)
+	other_seperator := if path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_seperator, path_separator)
 	mut p := if path.starts_with(path_separator) { path_separator } else { '' }
 	path_parts := path.trim_left(path_separator).split(path_separator)
 	for subdir in path_parts {
@@ -662,7 +673,7 @@ pub fn mkdir_all(opath string, params MkdirParams) ! {
 		if exists(p) && is_dir(p) {
 			continue
 		}
-		mkdir(p, params) or { return error('folder: $p, error: $err') }
+		mkdir(p, params) or { return error('folder: ${p}, error: ${err}') }
 	}
 }
 
@@ -713,10 +724,30 @@ pub fn temp_dir() string {
 			path = cache_dir()
 		}
 	}
+	$if termux {
+		path = '/data/data/com.termux/files/usr/tmp'
+	}
 	if path == '' {
 		path = '/tmp'
 	}
 	return path
+}
+
+// vtmp_dir returns the path to a folder, that is writable to V programs, *and* specific
+// to the OS user. It can be overriden by setting the env variable `VTMP`.
+pub fn vtmp_dir() string {
+	mut vtmp := getenv('VTMP')
+	if vtmp.len > 0 {
+		return vtmp
+	}
+	uid := getuid()
+	vtmp = join_path_single(temp_dir(), 'v_${uid}')
+	if !exists(vtmp) || !is_dir(vtmp) {
+		// create a new directory, that is private to the user:
+		mkdir_all(vtmp, mode: 0o700) or { panic(err) }
+	}
+	setenv('VTMP', vtmp, true)
+	return vtmp
 }
 
 fn default_vmodules_path() string {
@@ -800,8 +831,8 @@ pub mut:
 pub fn execute_or_panic(cmd string) Result {
 	res := execute(cmd)
 	if res.exit_code != 0 {
-		eprintln('failed    cmd: $cmd')
-		eprintln('failed   code: $res.exit_code')
+		eprintln('failed    cmd: ${cmd}')
+		eprintln('failed   code: ${res.exit_code}')
 		panic(res.output)
 	}
 	return res
@@ -810,8 +841,8 @@ pub fn execute_or_panic(cmd string) Result {
 pub fn execute_or_exit(cmd string) Result {
 	res := execute(cmd)
 	if res.exit_code != 0 {
-		eprintln('failed    cmd: $cmd')
-		eprintln('failed   code: $res.exit_code')
+		eprintln('failed    cmd: ${cmd}')
+		eprintln('failed   code: ${res.exit_code}')
 		eprintln(res.output)
 		exit(1)
 	}
@@ -821,9 +852,13 @@ pub fn execute_or_exit(cmd string) Result {
 // quoted path - return a quoted version of the path, depending on the platform.
 pub fn quoted_path(path string) string {
 	$if windows {
-		return if path.ends_with(path_separator) { '"${path + path_separator}"' } else { '"$path"' }
+		return if path.ends_with(path_separator) {
+			'"${path + path_separator}"'
+		} else {
+			'"${path}"'
+		}
 	} $else {
-		return "'$path'"
+		return "'${path}'"
 	}
 }
 
@@ -855,4 +890,10 @@ pub fn config_dir() !string {
 		}
 	}
 	return error('Cannot find config directory')
+}
+
+[deprecated: 'use os.ensure_folder_is_writable instead']
+pub fn is_writable_folder(folder string) !bool {
+	ensure_folder_is_writable(folder)!
+	return true
 }
