@@ -18,6 +18,7 @@ Despite being simple, V gives the developer a lot of power.
 Anything you can do in other languages, you can do in V.
 
 ## Installing V from source
+
 The best way to get the latest and greatest V, is to install it from source.
 It is easy, and it takes only a few seconds:
 
@@ -27,17 +28,22 @@ cd v
 make
 # HINT: Using Windows?: run make.bat in the cmd.exe shell
 ```
-For more details, see the [Installing V](https://github.com/vlang/v/blob/master/README.md#installing-v-from-source)
+
+For more details, see the
+[Installing V](https://github.com/vlang/v/blob/master/README.md#installing-v-from-source)
 section in the README.md.
 
 ## Upgrading V to latest version
+
 If V is already installed on a machine, it can be upgraded to its latest version
 by using the V's built-in self-updater.
 To do so, run the command `v up`.
 
 ## Getting started
+
 You can let V automatically set up the bare-bones structure of a project for you
 by using any of the following commands in a terminal:
+
 * `v init` → adds necessary files to the current folder to make it a V project
 * `v new abc` → creates a new project in the new folder `abc`, by default a "hello world" project.
 * `v new abcd web` → creates a new project in the new folder `abcd`, using the vweb template.
@@ -134,8 +140,8 @@ by using any of the following commands in a terminal:
     * [Channels](#channels)
     * [Shared Objects](#shared-objects)
 * [JSON](#json)
-	* [Decoding JSON](#decoding-json)
-	* [Encoding JSON](#encoding-json)
+    * [Decoding JSON](#decoding-json)
+    * [Encoding JSON](#encoding-json)
 * [Testing](#testing)
     * [Asserts](#asserts)
     * [Asserts with an extra message](#asserts-with-an-extra-message)
@@ -160,7 +166,7 @@ by using any of the following commands in a terminal:
     * [Publish package](#publish-package)
 * [Advanced Topics](#advanced-topics)
     * [Attributes](#attributes)
-	* [Conditional compilation](#conditional-compilation)
+    * [Conditional compilation](#conditional-compilation)
         * [Compile time pseudo variables](#compile-time-pseudo-variables)
         * [Compile-time reflection](#compile-time-reflection)
         * [Compile time code](#compile-time-code)
@@ -170,10 +176,10 @@ by using any of the following commands in a terminal:
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
     * [Limited operator overloading](#limited-operator-overloading)
     * [Performance tuning](#performance-tuning)
-	* [Atomics](#atomics)
-	* [Global Variables](#global-variables)
+    * [Atomics](#atomics)
+    * [Global Variables](#global-variables)
     * [Cross compilation](#cross-compilation)
-	* [Debugging](#debugging)
+    * [Debugging](#debugging)
         * [C Backend binaries Default](#c-backend-binaries-default)
         * [Native Backend binaries](#native-backend-binaries)
         * [Javascript Backend](#javascript-backend)
@@ -181,20 +187,20 @@ by using any of the following commands in a terminal:
 </td><td valign=top>
 
 * [V and C](#v-and-c)
-	* [Calling C from V](#calling-c-from-v)
-	* [Calling V from C](#calling-v-from-c)
-	* [Passing C compilation flags](#passing-c-compilation-flags)
-	* [#pkgconfig](#pkgconfig)
-	* [Including C code](#including-c-code)
-	* [C types](#c-types)
-	* [C Declarations](#c-declarations)
-	* [Export to shared library](#export-to-shared-library)
-	* [Translating C to V](#translating-c-to-v)
+    * [Calling C from V](#calling-c-from-v)
+    * [Calling V from C](#calling-v-from-c)
+    * [Passing C compilation flags](#passing-c-compilation-flags)
+    * [#pkgconfig](#pkgconfig)
+    * [Including C code](#including-c-code)
+    * [C types](#c-types)
+    * [C Declarations](#c-declarations)
+    * [Export to shared library](#export-to-shared-library)
+    * [Translating C to V](#translating-c-to-v)
 * [Other V Features](#other-v-features)
-	* [Inline assembly](#inline-assembly)
-	* [Hot code reloading](#hot-code-reloading)
-	* [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
-	* [Vsh scripts with no extension](#vsh-scripts-with-no-extension)
+    * [Inline assembly](#inline-assembly)
+    * [Hot code reloading](#hot-code-reloading)
+    * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
+    * [Vsh scripts with no extension](#vsh-scripts-with-no-extension)
 * [Appendices](#appendices)
     * [Keywords](#appendix-i-keywords)
     * [Operators](#appendix-ii-operators)
@@ -203,13 +209,12 @@ by using any of the following commands in a terminal:
 </table>
 
 <!--
-NB: there are several special keywords, which you can put after the code fences for v:
+Note: There are several special keywords, which you can put after the code fences for v:
 compile, cgen, live, ignore, failcompile, okfmt, oksyntax, badsyntax, wip, nofmt
 For more details, do: `v check-md`
 -->
 
 ## Hello World
-
 
 ```v
 fn main() {
@@ -221,7 +226,7 @@ Save this snippet into a file named `hello.v`. Now do: `v run hello.v`.
 
 > That is assuming you have symlinked your V with `v symlink`, as described
 [here](https://github.com/vlang/v/blob/master/README.md#symlinking).
-If you haven't yet, you have to type the path to V manually.
+> If you haven't yet, you have to type the path to V manually.
 
 Congratulations - you just wrote and executed your first V program!
 
@@ -247,10 +252,11 @@ This means that a "hello world" program in V is as simple as
 println('hello world')
 ```
 
-Note: if you do not use explicitly `fn main() {}`, you need to make sure, that all your
-declarations, come before any variable assignment statements, or top level function calls,
-since V will consider everything after the first assignment/function call as part of your
-implicit main function.
+> **Note**
+> If you do not use explicitly `fn main() {}`, you need to make sure, that all your
+> declarations, come before any variable assignment statements, or top level function calls,
+> since V will consider everything after the first assignment/function call as part of your
+> implicit main function.
 
 ## Running a project folder with several files
 
@@ -273,18 +279,22 @@ after your folder/project), and then it will execute the program with
 `--yourparam some_other_stuff` passed to it as CLI parameters.
 
 Your program can then use the CLI parameters like this:
+
 ```v
 import os
 
 println(os.args)
 ```
-NB: after a successful run, V will delete the generated executable.
-If you want to keep it, use `v -keepc run .` instead, or just compile
-manually with `v .` .
 
-NB: any V compiler flags should be passed *before* the `run` command.
-Everything after the source file/folder, will be passed to the program
-as is - it will not be processed by V.
+> **Note**
+> After a successful run, V will delete the generated executable.
+> If you want to keep it, use `v -keepc run .` instead, or just compile
+> manually with `v .` .
+
+> **Note**
+> Any V compiler flags should be passed *before* the `run` command.
+> Everything after the source file/folder, will be passed to the program
+> as is - it will not be processed by V.
 
 ## Comments
 
@@ -352,8 +362,9 @@ Functions are private (not exported) by default.
 To allow other [modules](#module-imports) to use them, prepend `pub`. The same applies
 to [structs](#structs), [constants](#constants) and [types](#type-declarations).
 
-Note: `pub` can only be used from a named module.
-For information about creating a module, see [Modules](#modules).
+> **Note**
+> `pub` can only be used from a named module.
+> For information about creating a module, see [Modules](#modules).
 
 ## Variables
 
@@ -380,7 +391,6 @@ By default V does not allow **global variables**. See more [details](#global-var
 
 For consistency across different code bases, all variable and function names
 must use the `snake_case` style, as opposed to type names, which must use `PascalCase`.
-
 
 ### Mutable variables
 
@@ -471,7 +481,8 @@ voidptr // this one is mostly used for [C interoperability](#v-and-c)
 any // similar to C's void* and Go's interface{}
 ```
 
-Please note that unlike C and Go, `int` is always a 32 bit integer.
+> **Note**
+> Unlike C and Go, `int` is always a 32 bit integer.
 
 There is an exception to the rule that all operators
 in V must have values of the same type on both sides. A small primitive type
@@ -488,6 +499,7 @@ These are the allowed possibilities:
       ↘     ↘     ↘      ptr
    i8 → i16 → int → i64 ⬏
 ```
+
 An `int` value for example can be automatically promoted to `f64`
 or `i64` but not to `u32`. (`u32` would mean loss of the sign for
 negative values).
@@ -616,9 +628,10 @@ To use a format specifier, follow this pattern:
 `${varname:[flags][width][.precision][type]}`
 
 - flags: may be zero or more of the following: `-` to left-align output within the field, `0` to use
-  `0` as the padding character instead of the default `space` character. (Note: V does not currently
-  support the use of `'` or `#` as format flags, and V supports but doesn't need `+` to right-align
-  since that's the default.)
+  `0` as the padding character instead of the default `space` character.
+  > **Note**
+  > V does not currently support the use of `'` or `#` as format flags, and V supports but
+  > doesn't need `+` to right-align since that's the default.
 - width: may be an integer value describing the minimum width of total field to output.
 - precision: an integer value preceded by a `.` will guarantee that many digits after the decimal
   point, if the input variable is a float. Ignored if variable is an integer.
@@ -630,13 +643,15 @@ To use a format specifier, follow this pattern:
   integer and will render it as octal digits, `b` requires an integer and will render it as binary
   digits, `s` requires a string (almost never used).
 
-Note: when a numeric type can render alphabetic characters, such as hex strings or special values
-like `infinity`, the lowercase version of the type forces lowercase alphabetics and the uppercase
-version forces uppercase alphabetics.
+  > **Note**
+  > When a numeric type can render alphabetic characters, such as hex strings or special values
+  > like `infinity`, the lowercase version of the type forces lowercase alphabetics and the
+  > uppercase version forces uppercase alphabetics.
 
-Also note: in most cases, it's best to leave the format type empty. Floats will be rendered by
-default as `g`, integers will be rendered by default as `d`, and `s` is almost always redundant.
-There are only three cases where specifying a type is recommended:
+  > **Note**
+  > In most cases, it's best to leave the format type empty. Floats will be rendered by
+  > default as `g`, integers will be rendered by default as `d`, and `s` is almost always redundant.
+  > There are only three cases where specifying a type is recommended:
 
 - format strings are parsed at compile time, so specifying a type can help detect errors then
 - format strings default to using lowercase letters for hex digits and the `e` in exponents. Use a
@@ -699,7 +714,6 @@ println('age = ${age}')
 See all methods of [string](https://modules.vlang.io/index.html#string)
 and related modules [strings](https://modules.vlang.io/strings.html),
 [strconv](https://modules.vlang.io/strconv.html).
-
 
 ### Runes
 
@@ -803,10 +817,12 @@ f := 1.0
 f1 := f64(3.14)
 f2 := f32(3.14)
 ```
+
 If you do not specify the type explicitly, by default float literals
 will have the type of `f64`.
 
 Float literals can also be declared as a power of ten:
+
 ```v
 f0 := 42e1 // 420
 f1 := 123e-2 // 1.23
@@ -818,6 +834,7 @@ f2 := 456e+2 // 45600
 An array is a collection of data elements of the same type. An array literal is a
 list of expressions surrounded by square brackets. An individual element can be
 accessed using an *index* expression. Indexes start from `0`:
+
 ```v
 mut nums := [1, 2, 3]
 println(nums) // `[1, 2, 3]`
@@ -842,6 +859,7 @@ println(nums) // "[1, 2, 3, 4]"
 nums << [5, 6, 7]
 println(nums) // "[1, 2, 3, 4, 5, 6, 7]"
 ```
+
 ```v
 mut names := ['John']
 names << 'Peter'
@@ -859,11 +877,12 @@ println('Alex' in names) // "false"
 #### Array Fields
 
 There are two fields that control the "size" of an array:
+
 * `len`: *length* - the number of pre-allocated and initialized elements in the array
 * `cap`: *capacity* - the amount of memory space which has been reserved for elements,
-but not initialized or counted as elements. The array can grow up to this size without
-being reallocated. Usually, V takes care of this field automatically but there are
-cases where the user may want to do manual optimizations (see [below](#array-initialization)).
+  but not initialized or counted as elements. The array can grow up to this size without
+  being reallocated. Usually, V takes care of this field automatically but there are
+  cases where the user may want to do manual optimizations (see [below](#array-initialization)).
 
 ```v
 mut nums := [1, 2, 3]
@@ -872,14 +891,17 @@ println(nums.cap) // "3" or greater
 nums = [] // The array is now empty
 println(nums.len) // "0"
 ```
+
 `data` is a field (of type `voidptr`) with the address of the first
 element. This is for low-level [`unsafe`](#memory-unsafe-code) code.
 
-Note that the fields are read-only and can't be modified by the user.
+> **Note**
+> Fields are read-only and can't be modified by the user.
 
 #### Array Initialization
 
 The type of an array is determined by the first element:
+
 * `[1, 2, 3]` is an array of ints (`[]int`).
 * `['a', 'b']` is an array of strings (`[]string`).
 
@@ -889,6 +911,7 @@ This means that code like `[1, 'a']` will not compile.
 
 The above syntax is fine for a small number of known elements but for very large or empty
 arrays there is a second initialization syntax:
+
 ```v
 mut a := []int{len: 10000, cap: 30000, init: 3}
 ```
@@ -907,7 +930,6 @@ arr := []int{len: 5, init: -1}
 users := []int{}
 ```
 
-
 Setting the capacity improves performance of pushing elements to the array
 as reallocations can be avoided:
 
@@ -919,7 +941,9 @@ for i in 0 .. 1000 {
 	numbers << i
 }
 ```
-Note: The above code uses a [range `for`](#range-for) statement.
+
+> **Note**
+> The above code uses a [range `for`](#range-for) statement.
 
 You can initialize the array by accessing the `it` variable which gives
 the index as shown here:
@@ -937,7 +961,7 @@ mut square := []int{len: 6, init: it * it}
 An array can be of these types:
 
 | Types        | Example Definition                   |
-| ------------ | ------------------------------------ |
+|--------------|--------------------------------------|
 | Number       | `[]int,[]i64`                        |
 | String       | `[]string`                           |
 | Rune         | `[]rune`                             |
@@ -1003,6 +1027,7 @@ object_list: [ObjectSumType(Point{
 Arrays can have more than one dimension.
 
 2d array example:
+
 ```v
 mut a := [][]int{len: 2, init: []int{len: 3}}
 a[0][1] = 2
@@ -1010,6 +1035,7 @@ println(a) // [[0, 2, 0], [0, 0, 0]]
 ```
 
 3d array example:
+
 ```v
 mut a := [][][]int{len: 2, init: [][]int{len: 3, init: []int{len: 2}}}
 a[0][1][1] = 2
@@ -1041,6 +1067,7 @@ even_fn := nums.filter(fn (x int) bool {
 })
 println(even_fn)
 ```
+
 ```v
 words := ['hello', 'world']
 upper := words.map(it.to_upper())
@@ -1065,6 +1092,7 @@ println(nums.all(it >= 2)) // false
 ```
 
 There are further built-in methods for arrays:
+
 * `a.repeat(n)` concatenates the array elements `n` times
 * `a.insert(i, val)` inserts a new element `val` at index `i` and
   shifts all following elements to the right
@@ -1110,10 +1138,12 @@ mut users := [User{21, 'Bob'}, User{20, 'Zarkon'}, User{25, 'Alice'}]
 users.sort(a.age < b.age) // sort by User.age int field
 users.sort(a.name > b.name) // reverse sort by User.name string field
 ```
+
 V also supports custom sorting, through the `sort_with_compare` array method.
 Which expects a comparing function which will define the sort order.
 Useful for sorting on multiple fields at the same time by custom sorting rules.
 The code below sorts the array ascending on `name` and descending `age`.
+
 ```v
 struct User {
 	age  int
@@ -1178,6 +1208,7 @@ of the parent array is. As a result it is immediately reallocated and copied to 
 memory location when the size increases thus becoming independent from the
 parent array (*copy on grow*). In particular pushing elements to a slice
 does not alter the parent:
+
 ```v
 mut a := [0, 1, 2, 3, 4, 5]
 mut b := a[2..4]
@@ -1191,6 +1222,7 @@ println(b) // `[7, 3, 9]`
 
 Appending to the parent array may or may not make it independent from its child slices.
 The behaviour depends on the parent's capacity and is predictable:
+
 ```v
 mut a := []int{len: 5, cap: 6, init: 2}
 mut b := a[1..4]
@@ -1205,10 +1237,11 @@ println(b) // `[2, 3, 13]`
 ```
 
 You can call .clone() on the slice, if you do want to have an independent copy right away:
+
 ```v
 mut a := [0, 1, 2, 3, 4, 5]
 mut b := a[2..4].clone()
-b[0] = 7 // NB: `b[0]` is NOT referring to `a[2]`, as it would have been, without the .clone()
+b[0] = 7 // Note: `b[0]` is NOT referring to `a[2]`, as it would have been, without the .clone()
 println(a) // [0, 1, 2, 3, 4, 5]
 println(b) // [7, 3]
 ```
@@ -1223,6 +1256,7 @@ to add a `gate` between the array name and the square bracket: `a#[..-3]`.
 The `gate` specifies that this is a different type of slice and remember that
 the result is "locked" inside the array.
 The returned slice is always a valid array, though it may be empty:
+
 ```v
 a := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 println(a#[-3..]) // [7, 8, 9]
@@ -1237,6 +1271,7 @@ println(a#[20..30]) // []
 ```
 
 #### Array method chaining
+
 You can chain the calls of array methods like `.filter()` and `.map()` and use
 the `it` built-in variable to achieve a classic `map/filter` functional paradigm:
 
@@ -1260,6 +1295,7 @@ do not want additional heap allocations.
 
 Most methods are defined to work on ordinary arrays, not on fixed size arrays.
 You can convert a fixed size array to an ordinary array with slicing:
+
 ```v
 mut fnums := [3]int{} // fnums is a fixed size array with 3 elements.
 fnums[0] = 1
@@ -1274,6 +1310,7 @@ anums := fnums[..] // same as `anums := fnums[0..fnums.len]`
 println(anums) // => [1, 10, 100]
 println(typeof(anums).name) // => []int
 ```
+
 Note that slicing will cause the data of the fixed size array to be copied to
 the newly created ordinary array.
 
@@ -1289,9 +1326,11 @@ println('bad_key' in m) // Use `in` to detect whether such key exists
 println(m.keys()) // ['one', 'two']
 m.delete('two')
 ```
+
 Maps can have keys of type string, rune, integer, float or voidptr.
 
 The whole map can be initialized using this short syntax:
+
 ```v
 numbers := {
 	'one': 1
@@ -1309,6 +1348,7 @@ sm := {
 val := sm['bad_key']
 println(val) // ''
 ```
+
 ```v
 intm := {
 	1: 1234
@@ -1326,6 +1366,7 @@ val := mm['bad_key'] or { panic('key not found') }
 ```
 
 You can also check, if a key is present, and get its value, if it was present, in one go:
+
 ```v
 m := {
 	'abc': 'def'
@@ -1348,6 +1389,7 @@ println(val2)
 ```
 
 V also supports nested maps:
+
 ```v
 mut m := map[string]map[string]int{}
 m['greet'] = {
@@ -1363,7 +1405,10 @@ print(m)
 Maps are ordered by insertion, like dictionaries in Python. The order is a
 guaranteed language feature. This may change in the future.
 
-See all methods of [map](https://modules.vlang.io/index.html#map) and [maps](https://modules.vlang.io/maps.html).
+See all methods of
+[map](https://modules.vlang.io/index.html#map)
+and
+[maps](https://modules.vlang.io/maps.html).
 
 ## Module imports
 
@@ -1380,6 +1425,7 @@ fn main() {
 	println('Hello, ${name}!')
 }
 ```
+
 This program can use any public definitions from the `os` module, such
 as the `input` function. See the [standard library](https://modules.vlang.io/)
 documentation for a list of common modules and their public symbols.
@@ -1404,8 +1450,10 @@ fn main() {
 	println('Hello, ${name}!')
 }
 ```
-Note: This will import the module as well. Also, this is not allowed for
-constants - they must always be prefixed.
+
+> **Note**
+> This will import the module as well. Also, this is not allowed for
+> constants - they must always be prefixed.
 
 You can import several specific symbols at once:
 
@@ -1422,7 +1470,9 @@ println('Your OS is ${current_os}.')
 
 Any imported module name can be aliased using the `as` keyword:
 
-NOTE: this example will not compile unless you have created `mymod/sha256.v`
+> **Note**
+> This example will not compile unless you have created `mymod/sha256.v`
+
 ```v failcompile
 import crypto.sha256
 import mymod.sha256 as mysha256
@@ -1488,9 +1538,11 @@ println(s)
 ```
 
 #### Type checks and casts
+
 You can check the current type of a sum type using `is` and its negated form `!is`.
 
 You can do it either in an `if`:
+
 ```v cgen
 struct Abc {
 	val string
@@ -1511,7 +1563,9 @@ if x !is Abc {
 	println('Not Abc')
 }
 ```
+
 or using `match`:
+
 ```v oksyntax
 match x {
 	Abc {
@@ -1526,6 +1580,7 @@ match x {
 ```
 
 This works also with struct fields:
+
 ```v
 struct MyStruct {
 	x int
@@ -1567,6 +1622,7 @@ In such cases the developer must mark the expression with the `mut` keyword
 to tell the compiler that they know what they're doing.
 
 It works like this:
+
 ```v oksyntax
 mut x := MySumType(MyStruct{123})
 if mut x is MyStruct {
@@ -1693,7 +1749,8 @@ println(num)
 
 Constants can also be used in the range branch expressions.
 
-Note: `match` as an expression is not usable in `for` loop and `if` statements.
+> **Note**
+> `match` as an expression is not usable in `for` loop and `if` statements.
 
 ### In operator
 
@@ -1775,9 +1832,11 @@ for mut num in numbers {
 }
 println(numbers) // [1, 2, 3]
 ```
+
 When an identifier is just a single underscore, it is ignored.
 
 ##### Custom iterators
+
 Types that implement a `next` method returning an `Option` can be iterated
 with a `for` loop.
 
@@ -1808,6 +1867,7 @@ for squared in iter {
 ```
 
 The code above prints:
+
 ```
 1
 4
@@ -1831,6 +1891,7 @@ for key, value in m {
 ```
 
 Either key or value can be ignored by using a single underscore as the identifier.
+
 ```v
 m := {
 	'one': 1
@@ -1858,6 +1919,7 @@ for i in 0 .. 5 {
 	print(i)
 }
 ```
+
 `low..high` means an *exclusive* range, which represents all values
 from `low` up to *but not including* `high`.
 
@@ -1928,8 +1990,10 @@ outer: for i := 4; true; i++ {
 	}
 }
 ```
+
 The label must immediately precede the outer loop.
 The above code prints:
+
 ```
 4
 5
@@ -1974,6 +2038,7 @@ enum State {
 }
 
 // write log file and return number of bytes written
+
 fn write_log(s State) !int {
 	mut f := os.create('log.txt')!
 	defer {
@@ -2023,6 +2088,7 @@ if x {
 }
 my_label:
 ```
+
 `goto` should be avoided, particularly when `for` can be used instead.
 [Labelled break/continue](#labelled-break--continue) can be used to break out of
 a nested loop, and those do not risk violating memory-safety.
@@ -2088,6 +2154,7 @@ assert c.x == 2
 println(fc) // Foo{ x: 2 }
 println(c) // &Foo{ x: 2 } // Note `&` prefixed.
 ```
+
 see also [Stack and Heap](#stack-and-heap)
 
 ### Default field values
@@ -2119,6 +2186,7 @@ You can mark a struct field with the `[required]` [attribute](#attributes), to t
 that field must be initialized when creating an instance of that struct.
 
 This example will not compile, since the field `n` isn't explicitly initialized:
+
 ```v failcompile
 _ = Foo{}
 ```
@@ -2218,12 +2286,12 @@ new_button(ButtonConfig{text:'Click me', width:100})
 
 This only works for functions that take a struct for the last argument.
 
-NB: the `[params]` tag is used to tell V, that the trailing struct parameter
-can be omitted *entirely*, so that you can write `button := new_button()`.
-Without it, you have to specify *at least* one of the field names, even if it
-has its default value, otherwise the compiler will produce this error message,
-when you call the function with no parameters:
-`error: expected 1 arguments, but got 0`.
+> Note the `[params]` tag is used to tell V, that the trailing struct parameter
+> can be omitted *entirely*, so that you can write `button := new_button()`.
+> Without it, you have to specify *at least* one of the field names, even if it
+> has its default value, otherwise the compiler will produce this error message,
+> when you call the function with no parameters:
+> `error: expected 1 arguments, but got 0`.
 
 ### Access modifiers
 
@@ -2246,6 +2314,7 @@ __global:
 	f int // public and mutable both inside and outside parent module
 }
 ```
+
 Private fields are available only inside the same [module](#modules), any attempt
 to directly access them from another module will cause an error during compilation.
 Public immutable fields are readonly everywhere.
@@ -2388,6 +2457,7 @@ print(button)
 ```
 
 output :
+
 ```
 Button{
     Size: Size{
@@ -2469,7 +2539,8 @@ Output: `Size: 4B, clr1.b: 136, clr2.b: 0`
 
 Union member access must be performed in an `unsafe` block.
 
-Note that the embedded struct arguments are not necessarily stored in the order listed.
+> **Note**
+> Embedded struct arguments are not necessarily stored in the order listed.
 
 ## Functions 2
 
@@ -2484,12 +2555,14 @@ are a function of their arguments only, and their evaluation has no side effects
 
 Function arguments are immutable by default, even when [references](#references) are passed.
 
-Note that V is not a purely functional language however.
+> **Note**
+> V is not a purely functional language however.
 
 There is a compiler flag to enable global variables (`-enable-globals`), but this is
 intended for low-level applications like kernels and drivers.
 
 ### Mutable arguments
+
 It is possible to modify function arguments by declaring them with the keyword `mut`:
 
 ```v
@@ -2662,6 +2735,7 @@ print_counter() // 10
 
 The evaluation order of the parameters of function calls is *NOT* guaranteed.
 Take for example the following program:
+
 ```v
 fn f(a1 int, a2 int, a3 int) {
 	dump(a1 + a2 + a3)
@@ -2671,6 +2745,7 @@ fn main() {
 	f(dump(100), dump(200), dump(300))
 }
 ```
+
 V currently does not guarantee, that it will print 100, 200, 300 in that order.
 The only guarantee is that 600 (from the body of `f`), will be printed after all of them.
 That *may* change in V 1.0 .
@@ -2778,6 +2853,7 @@ println(numbers)
 println(red)
 println(blue)
 ```
+
 \* WIP - for now function calls are evaluated at program start-up
 
 Global variables are not normally allowed, so this can be really useful.
@@ -2785,6 +2861,7 @@ Global variables are not normally allowed, so this can be really useful.
 **Modules**
 
 Constants can be made public with `pub const`:
+
 ```v oksyntax
 module mymodule
 
@@ -2794,6 +2871,7 @@ fn calc() {
 	println(mymodule.golden_ratio)
 }
 ```
+
 The `pub` keyword is only allowed before the `const` keyword and cannot be used inside
 a `const ( )` block.
 
@@ -2837,8 +2915,10 @@ fn exit(code int) // terminates the program with a custom error code
 fn panic(s string) // prints a message and backtraces on stderr, and terminates the program with error code 1
 fn print_backtrace() // prints backtraces on stderr
 ```
-Note: Although the `print` functions take a string, V accepts other printable types too.
-See below for details.
+
+> **Note**
+> Although the `print` functions take a string, V accepts other printable types too.
+> See below for details.
 
 There is also a special built-in function called [`dump`](#dumping-expressions-at-runtime).
 
@@ -2892,6 +2972,7 @@ println(red)
 You can dump/trace the value of any V expression using `dump(expr)`.
 For example, save this code sample as `factorial.v`, then run it with
 `v run factorial.v`:
+
 ```v
 fn factorial(n u32) u32 {
 	if dump(n <= 1) {
@@ -2904,7 +2985,9 @@ fn main() {
 	println(factorial(5))
 }
 ```
+
 You will get:
+
 ```
 [factorial.v:2] n <= 1: false
 [factorial.v:2] n <= 1: false
@@ -2918,6 +3001,7 @@ You will get:
 [factorial.v:5] n * factorial(n - 1): 120
 120
 ```
+
 Note that `dump(expr)` will trace both the source location,
 the expression itself, and the expression value.
 
@@ -2940,6 +3024,7 @@ cd ~/code/modules
 mkdir mymodule
 vim mymodule/myfile.v
 ```
+
 ```v failcompile
 // myfile.v
 module mymodule
@@ -3079,6 +3164,7 @@ for _ in 0 .. 10 {
 ```
 
 Output:
+
 ```
 one
 two
@@ -3207,6 +3293,7 @@ There is no explicit declaration of intent, no "implements" keyword.
 An interface can have a `mut:` section. Implementing types will need
 to have a `mut` receiver, for methods declared in the `mut:` section
 of an interface.
+
 ```v
 // interface-example.2
 module main
@@ -3251,6 +3338,7 @@ fn fn1(s Foo) {
 #### Casting an interface
 
 We can test the underlying type of an interface using dynamic cast operators:
+
 ```v oksyntax
 // interface-exmaple.3 (continued from interface-exampe.1)
 interface Something {}
@@ -3326,7 +3414,8 @@ They are just a convenient way to write `i.some_function()` instead of
 `some_function(i)`, similar to how struct methods can be looked at, as
 a convenience for writing `s.xyz()` instead of `xyz(s)`.
 
-N.B. This feature is NOT a "default implementation" like in C#.
+> **Note**
+> This feature is NOT a "default implementation" like in C#.
 
 For example, if a struct `cat` is wrapped in an interface `a`, that has
 implemented a method with the same name `speak`, as a method implemented by
@@ -3411,10 +3500,12 @@ sum := World(Moon{})
 assert sum.type_name() == 'Moon'
 println(sum)
 ```
+
 The built-in method `type_name` returns the name of the currently held
 type.
 
 With sum types you could build recursive structures and write concise but powerful code on them.
+
 ```v
 // V's binary tree
 struct Empty {}
@@ -3428,6 +3519,7 @@ struct Node {
 type Tree = Empty | Node
 
 // sum up all node values
+
 fn sum(tree Tree) f64 {
 	return match tree {
 		Empty { 0 }
@@ -3486,6 +3578,7 @@ if w is Mars {
 	}
 }
 ```
+
 `w` has type `Mars` inside the body of the `if` statement. This is
 known as *flow-sensitive typing*.
 If `w` is a mutable identifier, it would be unsafe if the compiler smart casts it without a warning.
@@ -3499,6 +3592,7 @@ if mut w is Mars {
 	}
 }
 ```
+
 Otherwise `w` would keep its original type.
 > This works for both, simple variables and complex expressions like `user.name`
 
@@ -3564,7 +3658,6 @@ represent an error returned from a function.
 
 `Option` types are declared by prepending `?` to the type name: `?Type`.
 `Result` types use `!`: `!Type`.
-
 
 ```v
 struct User {
@@ -3668,7 +3761,9 @@ user := repo.find_user_by_id(7) or { return }
 Here, you can either call `panic()` or `exit()`, which will stop the execution of the
 entire program, or use a control flow statement (`return`, `break`, `continue`, etc)
 to break from the current block.
-Note that `break` and `continue` can only be used inside a `for` loop.
+
+> **Note**
+> `break` and `continue` can only be used inside a `for` loop.
 
 V does not have a way to forcibly "unwrap" an option (as other languages do,
 for instance Rust's `unwrap()` or Swift's `!`). To do this, use `or { panic(err) }` instead.
@@ -3704,9 +3799,9 @@ if resp := http.get('https://google.com') {
 	println(err)
 }
 ```
+
 Above, `http.get` returns a `!http.Response`. `resp` is only in scope for the first
 `if` branch. `err` is only in scope for the `else` branch.
-
 
 ### Custom error types
 
@@ -3783,6 +3878,7 @@ runtime parameter types. This is why `find_by_id` can omit `[T]`, because the
 receiver argument `r` uses a generic type `T`.
 
 Another example:
+
 ```v
 fn compare[T](a T, b T) int {
 	if a < b {
@@ -3808,9 +3904,10 @@ println(compare(1.1, 1.1)) //          0
 println(compare(1.1, 1.2)) //         -1
 ```
 
-
 ## Concurrency
+
 ### Spawning Concurrent Tasks
+
 V's model of concurrency is going to be very similar to Go's.
 For now, `spawn foo()` runs `foo()` concurrently in a different thread:
 
@@ -3827,13 +3924,13 @@ fn main() {
 	// p will be run in parallel thread
 	// It can also be written as follows
 	// spawn fn (a f64, b f64) {
-	//	c := math.sqrt(a * a + b * b)
-	//	println(c)
+	// 	c := math.sqrt(a * a + b * b)
+	// 	println(c)
 	// }(3, 4)
 }
 ```
 
-There's also a `go` keyword. Right now `go foo()` will be automatically renamed via vfmt 
+There's also a `go` keyword. Right now `go foo()` will be automatically renamed via vfmt
 to `spawn foo()`, and there will be a way to launch a coroutine with `go` (a lightweight
 thread managed by the runtime).
 
@@ -3930,11 +4027,13 @@ fn main() {
 ```
 
 ### Channels
+
 Channels are the preferred way to communicate between threads. V's channels work basically like
 those in Go. You can push objects into a channel on one end and pop objects from the other end.
 Channels can be buffered or unbuffered and it is possible to `select` from multiple channels.
 
 #### Syntax and Usage
+
 Channels have the type `chan objtype`. An optional buffer length can specified as the `cap` field
 in the declaration:
 
@@ -3998,8 +4097,9 @@ y := <-ch2 ?
 #### Channel Select
 
 The `select` command allows monitoring several channels at the same time
-without noticeable CPU load.  It consists of a list of possible transfers and associated branches
+without noticeable CPU load. It consists of a list of possible transfers and associated branches
 of statements - similar to the [match](#match) command:
+
 ```v
 import time
 
@@ -4051,6 +4151,7 @@ by adding an `else { ... }` branch. `else` and `<timeout>` are mutually exclusiv
 
 The `select` command can be used as an *expression* of type `bool`
 that becomes `false` if all channels are closed:
+
 ```v wip
 if select {
     ch <- a {
@@ -4066,6 +4167,7 @@ if select {
 #### Special Channel Features
 
 For special purposes there are some builtin fields and methods:
+
 ```v
 struct Abc {
 	x int
@@ -4124,6 +4226,7 @@ fn main() {
 	}
 }
 ```
+
 Shared variables must be structs, arrays or maps.
 
 ## JSON
@@ -4211,6 +4314,7 @@ mut v := [20]
 foo(mut v)
 assert v[0] < 4
 ```
+
 An `assert` statement checks that its expression evaluates to `true`. If an assert fails,
 the program will usually abort. Asserts should only be used to detect programming errors. When an
 assert fails it is reported to *stderr*, and the values on each side of a comparison operator
@@ -4218,7 +4322,8 @@ assert fails it is reported to *stderr*, and the values on each side of a compar
 unexpected value. Assert statements can be used in any function, not just test ones,
 which is handy when developing new functionality, to keep your invariants in check.
 
-Note: all `assert` statements are *removed*, when you compile your program with the `-prod` flag.
+> **Note**
+> All `assert` statements are *removed*, when you compile your program with the `-prod` flag.
 
 ### Asserts with an extra message
 
@@ -4235,10 +4340,12 @@ fn test_assertion_with_extra_message_failure() {
 ```
 
 ### Asserts that do not abort your program
+
 When initially prototyping functionality and tests, it is sometimes desirable to
 have asserts, that do not stop the program, but just print their failures. That can
 be achieved by tagging your assert containing functions with an `[assert_continues]`
 tag, for example running this program:
+
 ```v
 [assert_continues]
 fn abc(ii int) {
@@ -4249,7 +4356,9 @@ for i in 0 .. 4 {
 	abc(i)
 }
 ```
+
 ... will produce this output:
+
 ```
 assert_continues_example.v:3: FAIL: fn main.abc: assert ii == 2
    left value: ii = 0
@@ -4262,8 +4371,9 @@ assert_continues_example.v:3: FAIL: fn main.abc: assert ii == 2
   right value: 2
 ```
 
-Note: V also supports a command line flag `-assert continues`, which will change the
-behaviour of all asserts globally, as if you had tagged every function with `[assert_continues]`.
+> **Note**
+> V also supports a command line flag `-assert continues`, which will change the
+> behaviour of all asserts globally, as if you had tagged every function with `[assert_continues]`.
 
 ### Test files
 
@@ -4288,13 +4398,15 @@ fn test_hello() {
 	assert hello() == 'Hello world'
 }
 ```
+
 To run the test file above, use `v hello_test.v`. This will check that the function `hello` is
 producing the correct output. V executes all test functions in the file.
 
-Note: all `_test.v` files (both external and internal ones), are compiled as *separate programs*.
-In other words, you may have as many `_test.v` files, and tests in them as you like, they will
-not affect the compilation of your other code in `.v` files normally at all, but only when you
-do explicitly `v file_test.v` or `v test .`.
+> **Note**
+> All `_test.v` files (both external and internal ones), are compiled as *separate programs*.
+> In other words, you may have as many `_test.v` files, and tests in them as you like, they will
+> not affect the compilation of your other code in `.v` files normally at all, but only when you
+> do explicitly `v file_test.v` or `v test .`.
 
 * All test functions have to be inside a test file whose name ends in `_test.v`.
 * Test function names must begin with `test_` to mark them for execution.
@@ -4302,11 +4414,11 @@ do explicitly `v file_test.v` or `v test .`.
   symbols can also be defined in test files e.g. types.
 * There are two kinds of tests: external and internal.
 * Internal tests must *declare* their module, just like all other .v
-files from the same module. Internal tests can even call private functions in
-the same module.
+  files from the same module. Internal tests can even call private functions in
+  the same module.
 * External tests must *import* the modules which they test. They do not
-have access to the private functions/types of the modules. They can test only
-the external/public API that a module provides.
+  have access to the private functions/types of the modules. They can test only
+  the external/public API that a module provides.
 
 In the example above, `test_hello` is an internal test, that can call
 the private function `hello()` because `hello_test.v` has `module main`,
@@ -4315,6 +4427,7 @@ since `module main` is a regular module like the others, internal tests can
 be used to test private functions in your main program .v files too.
 
 You can also define these special test functions in a test file:
+
 * `testsuite_begin` which will be run *before* all other test functions.
 * `testsuite_end` which will be run *after* all other test functions.
 
@@ -4344,8 +4457,10 @@ put .v files with invalid V source code, or other tests, including known
 failing ones, that should be run in a specific way/options by a parent _test.v
 file.
 
-NB: the path to the V compiler, is available through @VEXE, so a _test.v
-file, can easily run *other* test files like this:
+> **Note**
+> The path to the V compiler, is available through @VEXE, so a _test.v
+> file, can easily run *other* test files like this:
+
 ```v oksyntax
 import os
 
@@ -4392,10 +4507,10 @@ For developers willing to have more low level control, autofree can be disabled 
 `-manualfree`, or by adding a `[manualfree]` on each function that wants manage its
 memory manually. (See [attributes](#attributes)).
 
-
-Note 2: Autofree is still WIP. Until it stabilises and becomes the default, please
-avoid using it. Right now allocations are handled by a minimal and well performing GC
-until V's autofree engine is production ready.
+> **Note**
+> Autofree is still WIP. Until it stabilises and becomes the default, please
+> avoid using it. Right now allocations are handled by a minimal and well performing GC
+> until V's autofree engine is production ready.
 
 **Examples**
 
@@ -4441,6 +4556,7 @@ fn test() []int {
 ```
 
 ### Stack and Heap
+
 #### Stack and Heap Basics
 
 Like with most other programming languages there are two locations where data can
@@ -4525,6 +4641,7 @@ fn (mut a MyStruct) f(b &MyStruct) int {
 	return x
 }
 ```
+
 Here the call `q.f(&w)` passes references to `q` and `w` because `a` is
 `mut` and `b` is of type `&MyStruct` in `f()`'s declaration, so technically
 these references are leaving `main()`. However the *lifetime* of these
@@ -4648,6 +4765,7 @@ mut:
 }
 
 // simple function - just to overwrite stack segment previously used by `g()`
+
 fn use_stack() {
 	x := 7.5
 	y := 3.25
@@ -4702,7 +4820,7 @@ V's ORM provides a number of benefits:
 - Safety. (All queries are automatically sanitised to prevent SQL injection.)
 - Compile time checks. (This prevents typos which can only be caught during runtime.)
 - Readability and simplicity. (You don't need to manually parse the results of a query and
-    then manually construct objects from the parsed results.)
+  then manually construct objects from the parsed results.)
 
 ```v
 import db.sqlite
@@ -4769,6 +4887,7 @@ Documentation for each function/type/const must be placed right before the decla
 
 ```v
 // clearall clears all bits in the array
+
 fn clearall() {
 }
 ```
@@ -4781,6 +4900,7 @@ span to the documented function using single line comments:
 ```v
 // copy_all recursively copies all elements of the array by their value,
 // if `dupes` is false all duplicate values are eliminated in the process.
+
 fn copy_all(dupes bool) {
 	// ...
 }
@@ -4829,8 +4949,9 @@ and use `v shader` to compile them for all supported target platforms.
 v shader /path/to/project/dir/or/file.v
 ```
 
-Currently you need to [include a header and declare a glue function](https://github.com/vlang/v/blob/c14c324/examples/sokol/02_cubes_glsl/cube_glsl.v#L43-L46) before
-using the shader in your code.
+Currently you need to
+[include a header and declare a glue function](https://github.com/vlang/v/blob/c14c324/examples/sokol/02_cubes_glsl/cube_glsl.v#L43-L46)
+before using the shader in your code.
 
 ### Profiling
 
@@ -4847,6 +4968,7 @@ You can sort on column 3 (average time per function) using:
 `sort -n -k3 profile.txt|tail`
 
 You can also use stopwatches to measure just portions of your code explicitly:
+
 ```v
 import time
 
@@ -4876,6 +4998,7 @@ v [package_command] [param]
 ```
 
 where a package command can be one of:
+
 ```
    install           Install a package from VPM.
    remove            Remove a package that was installed from VPM.
@@ -4887,19 +5010,25 @@ where a package command can be one of:
 ```
 
 You can install packages already created by someone else with [VPM](https://vpm.vlang.io/):
+
 ```powershell
 v install [package]
 ```
+
 **Example:**
+
 ```powershell
 v install ui
 ```
 
 Packages can be installed directly from git or mercurial repositories.
+
 ```powershell
 v install [--once] [--git|--hg] [url]
 ```
+
 **Example:**
+
 ```powershell
 v install --git https://github.com/vlang/markdown
 ```
@@ -4915,7 +5044,9 @@ Removing a package with v:
 ```powershell
 v remove [package]
 ```
+
 **Example:**
+
 ```powershell
 v remove ui
 ```
@@ -4925,12 +5056,15 @@ Updating an installed package from [VPM](https://vpm.vlang.io/):
 ```powershell
 v update [package]
 ```
+
 **Example:**
+
 ```powershell
 v update ui
 ```
 
 Or you can update all your packages:
+
 ```powershell
 v update
 ```
@@ -4940,7 +5074,9 @@ To see all the packages you have installed, you can use:
 ```powershell
 v list
 ```
+
 **Example:**
+
 ```powershell
 > v list
 Installed packages:
@@ -4949,10 +5085,13 @@ Installed packages:
 ```
 
 To see all the packages that need updates:
+
 ```powershell
 v outdated
 ```
+
 **Example:**
+
 ```powershell
 > v outdated
 Package are up to date.
@@ -4961,63 +5100,63 @@ Package are up to date.
 ### Publish package
 
 1. Put a `v.mod` file inside the toplevel folder of your package (if you
-	created your package with the command `v new mypackage` or `v init`
-	you already have a `v.mod` file).
+   created your package with the command `v new mypackage` or `v init`
+   you already have a `v.mod` file).
 
-	```sh
-	v new mypackage
-	Input your project description: My nice package.
-	Input your project version: (0.0.0) 0.0.1
-	Input your project license: (MIT)
-	Initialising ...
-	Complete!
-	```
+   ```sh
+   v new mypackage
+   Input your project description: My nice package.
+   Input your project version: (0.0.0) 0.0.1
+   Input your project license: (MIT)
+   Initialising ...
+   Complete!
+   ```
 
-	Example `v.mod`:
-	```v ignore
-	Module {
-		name: 'mypackage'
-		description: 'My nice package.'
-		version: '0.0.1'
-		license: 'MIT'
-		dependencies: []
-	}
-	```
+   Example `v.mod`:
+   ```v ignore
+   Module {
+       name: 'mypackage'
+       description: 'My nice package.'
+       version: '0.0.1'
+       license: 'MIT'
+       dependencies: []
+   }
+   ```
 
-	Minimal file structure:
-	```
-	v.mod
-	mypackage.v
-	```
+   Minimal file structure:
+   ```
+   v.mod
+   mypackage.v
+   ```
 
-	The name of your package should be used with the `module` directive
-	at the top of all files in your package. For `mypackage.v`:
-	```v
-	module mypackage
+   The name of your package should be used with the `module` directive
+   at the top of all files in your package. For `mypackage.v`:
+   ```v
+   module mypackage
 
-	pub fn hello_world() {
-		println('Hello World!')
-	}
-	```
+   pub fn hello_world() {
+       println('Hello World!')
+   }
+   ```
 
 2. Create a git repository in the folder with the `v.mod` file
-	(this is not required if you used `v new` or `v init`):
-	```sh
-	git init
-	git add .
-	git commit -m "INIT"
-	````
+   (this is not required if you used `v new` or `v init`):
+   ```sh
+   git init
+   git add .
+   git commit -m "INIT"
+   ````
 
 3. Create a public repository on github.com.
 4. Connect your local repository to the remote repository and push the changes.
 5. Add your package to the public V package registry VPM:
-	https://vpm.vlang.io/new
+   https://vpm.vlang.io/new
 
-	You will have to login with your Github account to register the package.
-	**Warning:** _Currently it is not possible to edit your entry after submitting.
-	Check your package name and github url twice as this cannot be changed by you later._
+   You will have to login with your Github account to register the package.
+   **Warning:** _Currently it is not possible to edit your entry after submitting.
+   Check your package name and github url twice as this cannot be changed by you later._
 6. The final package name is a combination of your github account and
-	the package name you provided e.g. `mygithubname.mypackage`.
+   the package name you provided e.g. `mygithubname.mypackage`.
 
 **Optional:** tag your V package with `vlang` and `vlang-package` on github.com
 to allow for a better search experience.
@@ -5058,6 +5197,7 @@ fn main() {
 ```
 
 Struct field deprecations:
+
 ```v oksyntax
 module abc
 
@@ -5071,13 +5211,16 @@ pub mut:
 ```
 
 Function/method deprecations:
+
 ```v
 // Calling this function will result in a deprecation warning
+
 [deprecated]
 fn old_function() {
 }
 
 // It can also display a custom deprecation message
+
 [deprecated: 'use new_function() instead']
 fn legacy_function() {}
 
@@ -5089,6 +5232,7 @@ fn legacy_function() {}
 // will not (all warnings are treated like errors with -prod).
 // 6 months after the deprecation date, calls will be hard
 // compiler errors.
+
 [deprecated: 'use new_function2() instead']
 [deprecated_after: '2021-05-27']
 fn legacy_function2() {}
@@ -5205,18 +5349,20 @@ that are substituted at compile time:
 - `@COLUMN` => replaced with the column where it appears (as a string).
 - `@VEXE` => replaced with the path to the V compiler
 - `@VEXEROOT`  => will be substituted with the *folder*,
-   where the V executable is (as a string).
+  where the V executable is (as a string).
 - `@VHASH`  => replaced with the shortened commit hash of the V compiler (as a string).
 - `@VMOD_FILE` => replaced with the contents of the nearest v.mod file (as a string).
 - `@VMODROOT` => will be substituted with the *folder*,
-   where the nearest v.mod file is (as a string).
+  where the nearest v.mod file is (as a string).
 
 That allows you to do the following example, useful while debugging/logging/tracing your code:
+
 ```v
 eprintln('file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
 ```
 
 Another example, is if you want to embed the version/name from v.mod *inside* your executable:
+
 ```v ignore
 import v.vmod
 vm := vmod.decode( @VMOD_FILE ) or { panic(err) }
@@ -5254,6 +5400,7 @@ for a more complete example.
 `$` is used as a prefix for compile-time operations.
 
 #### `$if` condition
+
 ```v
 fn main() {
 	// Support for multiple conditions in one branch
@@ -5301,13 +5448,13 @@ is compiled with `v -g` or `v -cg`.
 If you're using a custom ifdef, then you do need `$if option ? {}` and compile with`v -d option`.
 Full list of builtin options:
 
-| OS                            | Compilers         | Platforms             | Other                     |
-| ---                           | ---               | ---                   | ---                       |
-| `windows`, `linux`, `macos`   | `gcc`, `tinyc`    | `amd64`, `arm64`      | `debug`, `prod`, `test`   |
-| `mac`, `darwin`, `ios`,       | `clang`, `mingw`  | `x64`, `x32`          | `js`, `glibc`, `prealloc` |
-| `android`, `mach`, `dragonfly` | `msvc`            | `little_endian`       | `no_bounds_checking`, `freestanding`    |
-| `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          | `no_segfault_handler`, `no_backtrace`, `no_main` |
-| `solaris`, `termux` | | | |
+| OS                             | Compilers        | Platforms        | Other                                            |
+|--------------------------------|------------------|------------------|--------------------------------------------------|
+| `windows`, `linux`, `macos`    | `gcc`, `tinyc`   | `amd64`, `arm64` | `debug`, `prod`, `test`                          |
+| `mac`, `darwin`, `ios`,        | `clang`, `mingw` | `x64`, `x32`     | `js`, `glibc`, `prealloc`                        |
+| `android`, `mach`, `dragonfly` | `msvc`           | `little_endian`  | `no_bounds_checking`, `freestanding`             |
+| `gnu`, `hpux`, `haiku`, `qnx`  | `cplusplus`      | `big_endian`     | `no_segfault_handler`, `no_backtrace`, `no_main` |
+| `solaris`, `termux`            |                  |                  |                                                  |
 
 #### `$embed_file`
 
@@ -5343,13 +5490,14 @@ fn main() {
 }
 ```
 
-`$embed_file` returns [EmbedFileData](https://modules.vlang.io/v.embed_file.html#EmbedFileData) which could be used to obtain the file contents as `string` or `[]u8`.
+`$embed_file` returns
+[EmbedFileData](https://modules.vlang.io/v.embed_file.html#EmbedFileData)
+which could be used to obtain the file contents as `string` or `[]u8`.
 
 #### `$tmpl` for embedding and parsing V template files
 
 V has a simple template language for text and html templates, and they can easily
 be embedded via `$tmpl('path/to/template.txt')`:
-
 
 ```v ignore
 fn build() string {
@@ -5446,54 +5594,60 @@ If a file has an environment-specific suffix, it will only be compiled for that 
 - `.native.v` => will be used only by V's native backend.
 - `_nix.c.v` => will be used only on Unix systems (non Windows).
 - `_${os}.c.v` => will be used only on the specific `os` system.
-For example, `_windows.c.v` will be used only when compiling on Windows, or with `-os windows`.
+  For example, `_windows.c.v` will be used only when compiling on Windows, or with `-os windows`.
 - `_default.c.v` => will be used only if there is NOT a more specific platform file.
-For example, if you have both `file_linux.c.v` and `file_default.c.v`,
-and you are compiling for linux, then only `file_linux.c.v` will be used,
-and `file_default.c.v` will be ignored.
+  For example, if you have both `file_linux.c.v` and `file_default.c.v`,
+  and you are compiling for linux, then only `file_linux.c.v` will be used,
+  and `file_default.c.v` will be ignored.
 
 Here is a more complete example:
 main.v:
+
 ```v ignore
 module main
 fn main() { println(message) }
 ```
 
 main_default.c.v:
+
 ```v ignore
 module main
 const ( message = 'Hello world' )
 ```
 
 main_linux.c.v:
+
 ```v ignore
 module main
 const ( message = 'Hello linux' )
 ```
 
 main_windows.c.v:
+
 ```v ignore
 module main
 const ( message = 'Hello windows' )
 ```
 
 With the example above:
+
 - when you compile for windows, you will get 'Hello windows'
 - when you compile for linux, you will get 'Hello linux'
 - when you compile for any other platform, you will get the
-non specific 'Hello world' message.
+  non specific 'Hello world' message.
 
 - `_d_customflag.v` => will be used *only* if you pass `-d customflag` to V.
-That corresponds to `$if customflag ? {}`, but for a whole file, not just a
-single block. `customflag` should be a snake_case identifier, it can not
-contain arbitrary characters (only lower case latin letters + numbers + `_`).
-NB: a combinatorial `_d_customflag_linux.c.v` postfix will not work.
-If you do need a custom flag file, that has platform dependent code, use the
-postfix `_d_customflag.v`, and then use plaftorm dependent compile time
-conditional blocks inside it, i.e. `$if linux {}` etc.
+  That corresponds to `$if customflag ? {}`, but for a whole file, not just a
+  single block. `customflag` should be a snake_case identifier, it can not
+  contain arbitrary characters (only lower case latin letters + numbers + `_`).
+  > **Note**
+> A combinatorial `_d_customflag_linux.c.v` postfix will not work.
+  > If you do need a custom flag file, that has platform dependent code, use the
+  > postfix `_d_customflag.v`, and then use plaftorm dependent compile time
+  > conditional blocks inside it, i.e. `$if linux {}` etc.
 
 - `_notd_customflag.v` => similar to _d_customflag.v, but will be used
-*only* if you do NOT pass `-d customflag` to V.
+  *only* if you do NOT pass `-d customflag` to V.
 
 See also [Cross Compilation](#cross-compilation).
 
@@ -5540,7 +5694,8 @@ If you suspect your program does violate memory-safety, you have a head start on
 finding the cause: look at the `unsafe` blocks (and how they interact with
 surrounding code).
 
-* Note: This is work in progress.
+> **Note**
+> This is work in progress.
 
 ## Structs with reference fields
 
@@ -5641,10 +5796,10 @@ Operator overloading is possible for the following binary operators: `+, -, *, /
 
 - `==` is automatically generated by the compiler, but can be overridden.
 
-- `!=`, `>`, `<=` and `>=` are automatically generated when `==` and `<` are defined. 
+- `!=`, `>`, `<=` and `>=` are automatically generated when `==` and `<` are defined.
   They cannot be explicitly overridden.
-- Assignment operators (`*=`, `+=`, `/=`, etc) are automatically generated when the corresponding 
-  operators are defined and the operands are of the same type. 
+- Assignment operators (`*=`, `+=`, `/=`, etc) are automatically generated when the corresponding
+  operators are defined and the operands are of the same type.
   They cannot be explicitly overridden.
 
 ### Restriction
@@ -5668,10 +5823,11 @@ with `-prod`. There are some situations though, where you may want to give
 additional hints to the compiler, so that it can further optimize some
 blocks of code.
 
-NB: These are *rarely* needed, and should not be used, unless you
-*profile your code*, and then see that there are significant benefits for them.
-To cite gcc's documentation: "programmers are notoriously bad at predicting
-how their programs actually perform".
+> **Note**
+> These are *rarely* needed, and should not be used, unless you
+> *profile your code*, and then see that there are significant benefits for them.
+> To cite gcc's documentation: "programmers are notoriously bad at predicting
+> how their programs actually perform".
 
 `[inline]` - you can tag functions with `[inline]`, so the C compiler will
 try to inline them, which in some cases, may be beneficial for performance,
@@ -5811,6 +5967,7 @@ fn init() {
 	mtx.init()
 }
 ```
+
 Be aware that in multi threaded applications the access to global variables is subject
 to race conditions. There are several approaches to deal with these:
 
@@ -5839,15 +5996,19 @@ or
 ```shell
 v -os linux .
 ```
-NB: Cross-compiling a windows binary on a linux machine requires the GNU C compiler for
-MinGW-w64 (targeting Win64) to first be installed.
+
+> **Note**
+> Cross-compiling a windows binary on a linux machine requires the GNU C compiler for
+> MinGW-w64 (targeting Win64) to first be installed.
 
 For Ubuntu/Debian based distributions:
+
 ```shell
 sudo apt-get install gcc-mingw-w64-x86-64
 ```
 
 For Arch based distributions:
+
 ```shell
 sudo pacman -S mingw-w64-gcc
 ```
@@ -5867,20 +6028,20 @@ libraries and include files for Windows and Linux. V will provide you with a lin
 To debug issues in the generated binary (flag: `-b c`), you can pass these flags:
 
 - `-g` - produces a less optimized executable with more debug information in it.
-    V will enforce line numbers from the .v files in the stacktraces, that the
-    executable will produce on panic. It is usually better to pass -g, unless
-    you are writing low level code, in which case use the next option `-cg`.
+  V will enforce line numbers from the .v files in the stacktraces, that the
+  executable will produce on panic. It is usually better to pass -g, unless
+  you are writing low level code, in which case use the next option `-cg`.
 - `-cg` - produces a less optimized executable with more debug information in it.
-	The executable will use C source line numbers in this case. It is frequently
-    used in combination with `-keepc`, so that you can inspect the generated
-    C program in case of panic, or so that your debugger (`gdb`, `lldb` etc.)
-    can show you the generated C source code.
+  The executable will use C source line numbers in this case. It is frequently
+  used in combination with `-keepc`, so that you can inspect the generated
+  C program in case of panic, or so that your debugger (`gdb`, `lldb` etc.)
+  can show you the generated C source code.
 - `-showcc` - prints the C command that is used to build the program.
 - `-show-c-output` - prints the output, that your C compiler produced
-    while compiling your program.
+  while compiling your program.
 - `-keepc` - do not delete the generated C source code file after a successful
-    compilation. Also keep using the same file path, so it is more stable,
-    and easier to keep opened in an editor/IDE.
+  compilation. Also keep using the same file path, so it is more stable,
+  and easier to keep opened in an editor/IDE.
 
 For best debugging experience if you are writing a low level wrapper for an existing
 C library, you can pass several of these flags at the same time:
@@ -5905,11 +6066,13 @@ use `v help`, `v help build` and `v help build-c`.
 **Commandline Debugging**
 
 1. compile your binary with debugging info `v -g hello.v`
-2. debug with [lldb](https://lldb.llvm.org) or [GDB](https://www.gnu.org/software/gdb/) e.g. `lldb hello`
+2. debug with [lldb](https://lldb.llvm.org) or [GDB](https://www.gnu.org/software/gdb/)
+   e.g. `lldb hello`
 
 [Troubleshooting (debugging) executables created with V in GDB](https://github.com/vlang/v/wiki/Troubleshooting-(debugging)-executables-created-with-V-in-GDB)
 
 **Visual debugging Setup:**
+
 * [Visual Studio Code](vscode.md)
 
 ### Native Backend binaries
@@ -5930,6 +6093,7 @@ For all supported options check the latest help:
 ### Calling C from V
 
 **Example**
+
 ```v
 #flag -lsqlite3
 #include "sqlite3.h"
@@ -5949,6 +6113,7 @@ fn C.sqlite3_close(&C.sqlite3) int
 fn C.sqlite3_column_int(stmt &C.sqlite3_stmt, n int) int
 
 // ... you can also just define the type of parameter and leave out the C. prefix
+
 fn C.sqlite3_prepare_v2(&C.sqlite3, &char, int, &&C.sqlite3_stmt, &&char) int
 
 fn C.sqlite3_step(&C.sqlite3_stmt)
@@ -5976,7 +6141,7 @@ fn main() {
 	// C.sqlite3_open(db_path.str, &db)
 	query := 'select count(*) from users'
 	stmt := &C.sqlite3_stmt(0)
-	// NB: you can also use the `.str` field of a V string,
+	// Note: You can also use the `.str` field of a V string,
 	// to get its C style zero terminated representation
 	C.sqlite3_prepare_v2(db, &char(query.str), -1, &stmt, 0)
 	C.sqlite3_step(stmt)
@@ -6015,7 +6180,8 @@ Add `#flag` directives to the top of your V files to provide C compilation flags
 You can (optionally) use different flags for different targets.
 Currently the `linux`, `darwin` , `freebsd`, and `windows` flags are supported.
 
-NB: Each flag must go on its own line (for now)
+> **Note**
+> Each flag must go on its own line (for now)
 
 ```v oksyntax
 #flag linux -lsdl2
@@ -6026,6 +6192,7 @@ NB: Each flag must go on its own line (for now)
 ```
 
 In the console build command, you can use:
+
 * `-cflags` to pass custom flags to the backend C compiler.
 * `-cc` to change the default C backend compiler.
 * For example: `-cc gcc-9 -cflags -fsanitize=thread`.
@@ -6071,8 +6238,8 @@ For example, let's say that your C code is located in a folder named 'c' inside 
 Then:
 
 * Put a v.mod file inside the toplevel folder of your module (if you
-created your module with `v new` you already have v.mod file). For
-example:
+  created your module with `v new` you already have v.mod file). For example:
+
 ```v ignore
 Module {
 	name: 'mymodule',
@@ -6082,18 +6249,21 @@ Module {
 }
 ```
 
-
 * Add these lines to the top of your module:
+
 ```v oksyntax
 #flag -I @VMODROOT/c
 #flag @VMODROOT/c/implementation.o
 #include "header.h"
 ```
-NB: @VMODROOT will be replaced by V with the *nearest parent folder, where there is a v.mod file*.
-Any .v file beside or below the folder where the v.mod file is,
-can use `#flag @VMODROOT/abc` to refer to this folder.
-The @VMODROOT folder is also *prepended* to the module lookup path,
-so you can *import* other modules under your @VMODROOT, by just naming them.
+
+> **Note**
+> @VMODROOT will be replaced by V with the *nearest parent folder, 
+> where there is a v.mod file*.
+> Any .v file beside or below the folder where the v.mod file is,
+> can use `#flag @VMODROOT/abc` to refer to this folder.
+> The @VMODROOT folder is also *prepended* to the module lookup path,
+> so you can *import* other modules under your @VMODROOT, by just naming them.
 
 The instructions above will make V look for an compiled .o file in
 your module `folder/c/implementation.o`.
@@ -6113,10 +6283,11 @@ Ordinary zero terminated C strings can be converted to V strings with
 `unsafe { &char(cstring).vstring() }` or if you know their length already with
 `unsafe { &char(cstring).vstring_with_len(len) }`.
 
-NB: The .vstring() and .vstring_with_len() methods do NOT create a copy of the `cstring`,
-so you should NOT free it after calling the method `.vstring()`.
-If you need to make a copy of the C string (some libc APIs like `getenv` pretty much require that,
-since they return pointers to internal libc memory), you can use `cstring_to_vstring(cstring)`.
+> **Note**
+> The `.vstring()` and `.vstring_with_len()` methods do NOT create a copy of the `cstring`,
+> so you should NOT free it after calling the method `.vstring()`.
+> If you need to make a copy of the C string (some libc APIs like `getenv` pretty much require that,
+> since they return pointers to internal libc memory), you can use `cstring_to_vstring(cstring)`.
 
 On Windows, C APIs often return so called `wide` strings (utf16 encoding).
 These can be converted to V strings with `string_from_wide(&u16(cwidestring))` .
@@ -6249,14 +6420,16 @@ then of course you can always simply call this C code from V.
 Translating it to V gives you several advantages:
 
 - If you plan to develop that code base, you now have everything in one language,
-    which is much safer and easier to develop in than C.
+  which is much safer and easier to develop in than C.
 - Cross-compilation becomes a lot easier. You don't have to worry about it at all.
 - No more build flags and include files either.
 
 ## Other V Features
 
 ### Inline assembly
+
 <!-- ignore because it doesn't pass fmt test (why?) -->
+
 ```v ignore
 a := 100
 b := 20
@@ -6274,7 +6447,8 @@ println('b: ${b}') // 20
 println('c: ${c}') // 120
 ```
 
-For more examples, see [github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v](https://github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v)
+For more examples, see
+[github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v](https://github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v)
 
 ### Hot code reloading
 
@@ -6299,10 +6473,10 @@ fn main() {
 Build this example with `v -live message.v`.
 
 You can also run this example with `v -live run message.v`.
-	Make sure that in command you use a path to a V's file,
-	**not** a path to a folder (like `v -live run .`) -
-	in that case you need to modify content of a folder (add new file, for example),
-	because changes in *message.v* will have no effect.
+Make sure that in command you use a path to a V's file,
+**not** a path to a folder (like `v -live run .`) -
+in that case you need to modify content of a folder (add new file, for example),
+because changes in *message.v* will have no effect.
 
 Functions that you want to be reloaded must have `[live]` attribute
 before their definition.
@@ -6329,10 +6503,11 @@ step to compile them. V will also recompile an executable, produced by a `.vsh` 
 be faster, since there is no need for a re-compilation of a script, that has not been changed.
 
 An example `deploy.vsh`:
+
 ```v oksyntax
 #!/usr/bin/env -S v
 
-// Note: the shebang line above, associates the .vsh file to V on Unix-like systems,
+// Note: The shebang line above, associates the .vsh file to V on Unix-like systems,
 // so it can be run just by specifying the path to the .vsh file, once it's made
 // executable, using `chmod +x deploy.vsh`, i.e. after that chmod command, you can
 // run the .vsh script, by just typing its name/path like this: `./deploy.vsh`
@@ -6398,7 +6573,6 @@ were made and keep the binary as `tmp.<scriptfilename>`. **Caution**: if this fi
 exists the file will be overriden. If you want to rebuild each time and not keep this binary instead
 use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
 
-
 # Appendices
 
 ## Appendix I: Keywords
@@ -6451,6 +6625,7 @@ volatile
 __global
 __offsetof
 ```
+
 See also [V Types](#v-types).
 
 ## Appendix II: Operators
