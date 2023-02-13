@@ -6021,6 +6021,35 @@ when compiling GUI apps using the `ui` module or graphical apps using `gg`.
 You will need to install Clang, LLD linker, and download a zip file with
 libraries and include files for Windows and Linux. V will provide you with a link.
 
+## Working around C issues
+
+In some cases, C interop can be extremely difficult.
+One of these such cases is when headers conflict with each other.
+For example, V needs to include the Windows header libraries in order for your V binaries to work
+seamlessly across all platforms.
+
+However, since the Windows header libraries use extremely generic names such as `Rectangle`, this will cause a conflict
+if you wish to use C code that also has a name defined as `Rectangle`.
+
+For very specific cases like this, we have `#preinclude`.
+
+This will allow things to be configured before V adds in its built in libraries.
+
+Example usage:
+```v
+// This will include before built in libraries are used.
+#preinclude "@VMODROOT/pre_include.h"
+// This will include after built in libraries are used.
+#include "@VMODROOT/include.h"
+```
+
+An example of what might be included in `pre_include.h` can be [found here](https://github.com/irishgreencitrus/raylib.v/blob/main/include/pre.h)
+
+This is an advanced feature, and will not be necessary outside of very specific cases with C interop,
+meaning it could cause more issues than it solves.
+
+Consider it last resort!
+
 ## Debugging
 
 ### C Backend binaries (Default)
