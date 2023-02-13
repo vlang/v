@@ -408,8 +408,8 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 
 	ch := chan Workerfn{cap: 10_000}
 	mut ws := []thread{cap: params.num_workers}
-	for num in 0 .. params.num_workers {
-		ws << new_worker(ch, num)
+	for _ in 0 .. params.num_workers {
+		ws << new_worker(ch)
 	}
 
 	println('We have ${ws.len} workers')
