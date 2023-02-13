@@ -406,14 +406,13 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 		return error('failed to listen ${ecode} ${err}')
 	}
 
-	mut ch := chan Workerfn{cap: 10_000}
+	ch := chan Workerfn{cap: 10_000}
 	mut ws := []thread{cap: params.num_workers}
-	for _ in 0 .. params.num_workers {
-		ws << new_worker(ch)
+	for num in 0 .. params.num_workers {
+		ws << new_worker(ch, num)
 	}
 
-	println("Worker count ${ws.len}")
-
+	println('We have ${ws.len} workers')
 	// Parsing methods attributes
 	mut routes := map[string]Route{}
 	$for method in T.methods {
@@ -433,38 +432,45 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	}
 	flush_stdout()
 	for {
-		// Create a new app object for each connection, copy global data like db connections
-		mut request_app := &T{}
-		$if T is MiddlewareInterface {
-			request_app = &T{
-				middlewares: global_app.middlewares.clone()
-			}
-		}
-		$if T is DbInterface {
-			request_app.db = global_app.db
-		} $else {
-			// println('vweb no db')
-		}
-		$for field in T.fields {
-			if 'vweb_global' in field.attrs || field.is_shared {
-				request_app.$(field.name) = global_app.$(field.name)
-			}
-		}
-		request_app.Context = global_app.Context // copy the context ref that contains static files map etc
 		mut conn := l.accept() or {
 			// failures should not panic
 			eprintln('accept() failed with error: ${err.msg()}')
 			continue
 		}
 
-		ch <- fn [mut conn, mut request_app, routes] [T] () {
-			handle_conn[T](mut conn, mut request_app, routes)
+		ch <- fn [mut conn, global_app, routes] [T]() {
+			handle_conn[T](mut conn, global_app, routes)
 		}
 	}
 }
 
+fn new_request_app[T](global_app &T) &T {
+	// Create a new app object for each connection, copy global data like db connections
+	mut request_app := &T{}
+	$if T is MiddlewareInterface {
+		request_app = &T{
+			middlewares: global_app.middlewares.clone()
+		}
+	}
+	$if T is DbInterface {
+		request_app.db = global_app.db
+	} $else {
+		// println('vweb no db')
+	}
+	$for field in T.fields {
+		if 'vweb_global' in field.attrs || field.is_shared {
+			request_app.$(field.name) = global_app.$(field.name)
+		}
+	}
+	request_app.Context = global_app.Context // copy the context ref that contains static files map etc
+	return request_app
+}
+
 [manualfree]
-fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
+fn handle_conn[T](mut conn net.TcpConn, global_app T, routes map[string]Route) {
+	// Create a new app object for each connection, copy global data like db connections
+	mut app := new_request_app[T](global_app)
+
 	conn.set_read_timeout(30 * time.second)
 	conn.set_write_timeout(30 * time.second)
 	defer {
@@ -472,6 +478,11 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 		unsafe {
 			free(app)
 		}
+	}
+
+	conn.set_sock() or {
+		println('error setting socket')
+		return
 	}
 
 	mut reader := io.new_buffered_reader(reader: conn)
