@@ -4,14 +4,13 @@
 
 - 2 space initial indentation (titles exempt)
 - Description indentation of two spaces from the longest word
-- All descriptions should be indented to the same column within a block, with a 
-hard limit at column 80.  
-  - Multi-line descriptions should indent to match the description part of the previous line
-
+- All descriptions should be indented to the same column within a block, with a
+  hard limit at column 80.
+    - Multi-line descriptions should indent to match the description part of the previous line
 
 ## Example
 
-Adding a help file was made to be easy. All you have to do is create the text file in the 
+Adding a help file was made to be easy. All you have to do is create the text file in the
 appropriate category, and V should recognize it.
 
 ```text
