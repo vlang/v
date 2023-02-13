@@ -14,6 +14,7 @@ pub struct TcpConn {
 pub mut:
 	sock TcpSocket
 mut:
+	handle         int
 	write_deadline time.Time
 	read_deadline  time.Time
 	read_timeout   time.Duration
@@ -242,6 +243,13 @@ pub fn (mut c TcpConn) wait_for_write() ! {
 	return wait_for_write(c.sock.handle, c.write_deadline, c.write_timeout)
 }
 
+pub fn (mut c TcpConn) set_sock() ! {
+	c.sock = tcp_socket_from_handle(c.handle)!
+	$if trace_tcp ? {
+		eprintln('    TcpListener.accept | << new_sock.handle: ${c.handle:6}')
+	}
+}
+
 pub fn (c &TcpConn) peer_addr() !Addr {
 	mut addr := Addr{
 		addr: AddrData{
@@ -299,6 +307,7 @@ pub fn (mut l TcpListener) accept() !&TcpConn {
 	$if trace_tcp ? {
 		eprintln('    TcpListener.accept | l.sock.handle: ${l.sock.handle:6}')
 	}
+
 	mut new_handle := C.accept(l.sock.handle, 0, 0)
 	if new_handle <= 0 {
 		l.wait_for_accept()!
@@ -307,12 +316,9 @@ pub fn (mut l TcpListener) accept() !&TcpConn {
 			return error('accept failed')
 		}
 	}
-	new_sock := tcp_socket_from_handle(new_handle)!
-	$if trace_tcp ? {
-		eprintln('    TcpListener.accept | << new_sock.handle: ${new_sock.handle:6}')
-	}
+
 	return &TcpConn{
-		sock: new_sock
+		handle: new_handle
 		read_timeout: net.tcp_default_read_timeout
 		write_timeout: net.tcp_default_write_timeout
 	}
