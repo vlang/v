@@ -19,10 +19,10 @@ fn main() {
 
 fn process_files(files []string) ! {
 	mut table := ast.new_table()
-	mut pref := pref.new_preferences()
-	pref.is_fmt = true
-	pref.skip_warnings = true
-	pref.output_mode = .silent
+	mut pref_ := pref.new_preferences()
+	pref_.is_fmt = true
+	pref_.skip_warnings = true
+	pref_.output_mode = .silent
 	mut sw := time.new_stopwatch()
 	mut total_us := i64(0)
 	mut total_bytes := i64(0)
@@ -35,7 +35,7 @@ fn process_files(files []string) ! {
 			continue
 		}
 		// do not measure the scanning, but only the parsing:
-		mut p := new_parser(f, .skip_comments, table, pref)
+		mut p := new_parser(f, .skip_comments, table, pref_)
 		///
 		sw.restart()
 		_ := p.parse()
@@ -49,12 +49,12 @@ fn process_files(files []string) ! {
 	println('${total_us:10}us ${total_tokens:10} ${total_bytes:10} ${(f64(total_tokens) / total_bytes):7.3} | speed: ${(f64(total_bytes) / total_us):2.5f} MB/s')
 }
 
-fn new_parser(path string, comments_mode scanner.CommentsMode, table &ast.Table, pref &pref.Preferences) &parser.Parser {
+fn new_parser(path string, comments_mode scanner.CommentsMode, table &ast.Table, pref_ &pref.Preferences) &parser.Parser {
 	mut p := &parser.Parser{
-		scanner: scanner.new_scanner_file(path, comments_mode, pref) or { panic(err) }
+		scanner: scanner.new_scanner_file(path, comments_mode, pref_) or { panic(err) }
 		comments_mode: comments_mode
 		table: table
-		pref: pref
+		pref: pref_
 		scope: &ast.Scope{
 			start_pos: 0
 			parent: table.global_scope

@@ -126,15 +126,15 @@ pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt(false)
 }
 
-pub fn parse_comptime(tmpl_path string, text string, table &ast.Table, pref &pref.Preferences, scope &ast.Scope) &ast.File {
+pub fn parse_comptime(tmpl_path string, text string, table &ast.Table, pref_ &pref.Preferences, scope &ast.Scope) &ast.File {
 	$if trace_parse_comptime ? {
 		eprintln('> ${@MOD}.${@FN} text: ${text}')
 	}
 	mut p := Parser{
 		file_name: tmpl_path
-		scanner: scanner.new_scanner(text, .skip_comments, pref)
+		scanner: scanner.new_scanner(text, .skip_comments, pref_)
 		table: table
-		pref: pref
+		pref: pref_
 		scope: scope
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
@@ -144,15 +144,15 @@ pub fn parse_comptime(tmpl_path string, text string, table &ast.Table, pref &pre
 	return res
 }
 
-pub fn parse_text(text string, path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences) &ast.File {
+pub fn parse_text(text string, path string, table &ast.Table, comments_mode scanner.CommentsMode, pref_ &pref.Preferences) &ast.File {
 	$if trace_parse_text ? {
 		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: ${path:-20} | text: ${text}')
 	}
 	mut p := Parser{
-		scanner: scanner.new_scanner(text, comments_mode, pref)
+		scanner: scanner.new_scanner(text, comments_mode, pref_)
 		comments_mode: comments_mode
 		table: table
-		pref: pref
+		pref: pref_
 		scope: &ast.Scope{
 			start_pos: 0
 			parent: table.global_scope
@@ -222,7 +222,7 @@ pub fn (mut p Parser) set_path(path string) {
 	}
 }
 
-pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences) &ast.File {
+pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsMode, pref_ &pref.Preferences) &ast.File {
 	// Note: when comments_mode == .toplevel_comments,
 	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
 	// all the tricky inner comments. This is needed because we do not have a good general solution
@@ -231,10 +231,10 @@ pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsM
 		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: ${path}')
 	}
 	mut p := Parser{
-		scanner: scanner.new_scanner_file(path, comments_mode, pref) or { panic(err) }
+		scanner: scanner.new_scanner_file(path, comments_mode, pref_) or { panic(err) }
 		comments_mode: comments_mode
 		table: table
-		pref: pref
+		pref: pref_
 		scope: &ast.Scope{
 			start_pos: 0
 			parent: table.global_scope
@@ -248,7 +248,7 @@ pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsM
 	return res
 }
 
-pub fn parse_vet_file(path string, table_ &ast.Table, pref &pref.Preferences) (&ast.File, []vet.Error) {
+pub fn parse_vet_file(path string, table_ &ast.Table, pref_ &pref.Preferences) (&ast.File, []vet.Error) {
 	$if trace_parse_vet_file ? {
 		eprintln('> ${@MOD}.${@FN} path: ${path}')
 	}
@@ -256,10 +256,10 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref &pref.Preferences) (&
 		parent: 0
 	}
 	mut p := Parser{
-		scanner: scanner.new_scanner_file(path, .parse_comments, pref) or { panic(err) }
+		scanner: scanner.new_scanner_file(path, .parse_comments, pref_) or { panic(err) }
 		comments_mode: .parse_comments
 		table: table_
-		pref: pref
+		pref: pref_
 		scope: &ast.Scope{
 			start_pos: 0
 			parent: global_scope
@@ -335,12 +335,12 @@ pub fn (mut p Parser) parse() &ast.File {
 	}
 	p.scope.end_pos = p.tok.pos
 
-	mut errors := p.errors.clone()
+	mut errors_ := p.errors.clone()
 	mut warnings := p.warnings.clone()
 	mut notices := p.notices.clone()
 
 	if p.pref.check_only {
-		errors << p.scanner.errors
+		errors_ << p.scanner.errors
 		warnings << p.scanner.warnings
 		notices << p.scanner.notices
 	}
@@ -366,7 +366,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		stmts: stmts
 		scope: p.scope
 		global_scope: p.table.global_scope
-		errors: errors
+		errors: errors_
 		warnings: warnings
 		notices: notices
 		global_labels: p.global_labels
@@ -406,7 +406,7 @@ fn (mut q Queue) run() {
 	}
 }
 */
-pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&ast.File {
+pub fn parse_files(paths []string, table &ast.Table, pref_ &pref.Preferences) []&ast.File {
 	mut timers := util.new_timers(should_print: false, label: 'parse_files: ${paths}')
 	$if time_parsing ? {
 		timers.should_print = true
@@ -438,7 +438,7 @@ pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&
 		mut files := []&ast.File{cap: paths.len}
 		for path in paths {
 			timers.start('parse_file ${path}')
-			files << parse_file(path, table, .skip_comments, pref)
+			files << parse_file(path, table, .skip_comments, pref_)
 			timers.show('parse_file ${path}')
 		}
 		if codegen_files.len > 0 {
@@ -2516,7 +2516,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// type cast. TODO: finish
 		// if name in ast.builtin_type_names_to_idx {
 		if (!known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs)
-			&& name !in ['C.stat', 'C.sigaction']) || is_mod_cast || is_generic_cast
+			&& name !in ['C.statvfs', 'C.stat', 'C.sigaction']) || is_mod_cast
+			|| is_generic_cast
 			|| (language == .v && name.len > 0 && name[0].is_capital()) {
 			// MainLetter(x) is *always* a cast, as long as it is not `C.`
 			// TODO handle C.stat()

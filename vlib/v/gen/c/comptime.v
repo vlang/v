@@ -141,20 +141,24 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		} else {
 			false
 		}
+		mut has_decompose := !m.is_variadic
+			&& node.args.filter(it.expr is ast.ArrayDecompose).len > 0
 		// check argument length and types
 		if m.params.len - 1 != node.args.len && !expand_strs {
 			if g.inside_call {
 				g.error('expected ${m.params.len - 1} arguments to method ${sym.name}.${m.name}, but got ${node.args.len}',
 					node.pos)
 			} else {
-				// do not generate anything if the argument lengths don't match
-				g.writeln('/* skipping ${sym.name}.${m.name} due to mismatched arguments list */')
-				// g.writeln('println(_SLIT("skipping ${node.sym.name}.$m.name due to mismatched arguments list"));')
-				// eprintln('info: skipping ${node.sym.name}.$m.name due to mismatched arguments list\n' +
-				//'method.params: $m.params, args: $node.args\n\n')
-				// verror('expected ${m.params.len-1} arguments to method ${node.sym.name}.$m.name, but got $node.args.len')
+				if !has_decompose {
+					// do not generate anything if the argument lengths don't match
+					g.writeln('/* skipping ${sym.name}.${m.name} due to mismatched arguments list */')
+					// g.writeln('println(_SLIT("skipping ${node.sym.name}.$m.name due to mismatched arguments list"));')
+					// eprintln('info: skipping ${node.sym.name}.$m.name due to mismatched arguments list\n' +
+					//'method.params: $m.params, args: $node.args\n\n')
+					// verror('expected ${m.params.len-1} arguments to method ${node.sym.name}.$m.name, but got $node.args.len')
+					return
+				}
 			}
-			return
 		}
 
 		if !g.inside_call && (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
@@ -181,7 +185,21 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 					continue
 				}
 			}
-			if i - 1 < node.args.len - 1 {
+			if (i - 1 <= node.args.len - 1) && has_decompose
+				&& node.args[i - 1].expr is ast.ArrayDecompose {
+				mut d_count := 0
+				for d_i in i .. m.params.len {
+					g.write('*(${g.typ(m.params[i].typ)}*)array_get(')
+					g.expr(node.args[i - 1].expr)
+					g.write(', ${d_count})')
+
+					if d_i < m.params.len - 1 {
+						g.write(', ')
+					}
+					d_count++
+				}
+				break
+			} else if i - 1 < node.args.len - 1 {
 				g.expr(node.args[i - 1].expr)
 				g.write(', ')
 			} else if !expand_strs && i == node.args.len {

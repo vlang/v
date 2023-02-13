@@ -1,7 +1,0 @@
-Usage: v symlink [OPTIONS]
-
-This command adds a symlink for the V compiler executable.
-
-Note that on Unix systems this command requires write permissions to /usr/local/bin to work.
-
-For GitHub Actions, the option -githubci needs to be specified.

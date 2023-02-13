@@ -249,6 +249,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					}
 				}
 			}
+			// Check if parameter name is already registered as imported module symbol
+			if c.check_import_sym_conflict(param.name) {
+				c.error('duplicate of an import symbol `${param.name}`', param.pos)
+			}
+		}
+		// Check if function name is already registered as imported module symbol
+		if !node.is_method && c.check_import_sym_conflict(node.short_name) {
+			c.error('duplicate of an import symbol `${node.short_name}`', node.pos)
 		}
 	}
 	if node.language == .v && node.name.after_char(`.`) == 'init' && !node.is_method
@@ -800,7 +808,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 						typ = obj.smartcasts.last()
 					} else {
 						if obj.typ == 0 {
-							typ = c.expr(obj.expr)
+							if obj.expr is ast.IfGuardExpr {
+								typ = c.expr(obj.expr.expr)
+							} else {
+								typ = c.expr(obj.expr)
+							}
 						} else {
 							typ = obj.typ
 						}
@@ -953,11 +965,14 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		c.error('too many arguments in call to `${func.name}` (non-js backend: ${c.pref.backend})',
 			node.pos)
 	}
+	mut has_decompose := false
 	for i, mut call_arg in node.args {
 		if func.params.len == 0 {
 			continue
 		}
-
+		if !func.is_variadic && has_decompose {
+			c.error('cannot have parameter after array decompose', node.pos)
+		}
 		param := if func.is_variadic && i >= func.params.len - 1 {
 			func.params.last()
 		} else {
@@ -968,6 +983,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.error('too many arguments in call to `${func.name}`', node.pos)
 			}
 		}
+		has_decompose = call_arg.expr is ast.ArrayDecompose
 		if func.is_variadic && i >= func.params.len - 1 {
 			param_sym := c.table.sym(param.typ)
 			mut expected_type := param.typ
@@ -2036,6 +2052,12 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 	}
 	if f.is_variadic {
 		min_required_params--
+	} else {
+		has_decompose := node.args.filter(it.expr is ast.ArrayDecompose).len > 0
+		if has_decompose {
+			// if call(...args) is present
+			min_required_params = nr_args
+		}
 	}
 	if min_required_params < 0 {
 		min_required_params = 0
@@ -2232,7 +2254,11 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	if method_name == 'slice' && !c.is_builtin_mod {
 		c.error('.slice() is a private method, use `x[start..end]` instead', node.pos)
 	}
-	array_info := left_sym.info as ast.Array
+	array_info := if left_sym.info is ast.Array {
+		left_sym.info as ast.Array
+	} else {
+		c.table.sym(c.unwrap_generic(left_type)).info as ast.Array
+	}
 	elem_typ = array_info.elem_type
 	if method_name in ['filter', 'map', 'any', 'all'] {
 		// position of `it` doesn't matter
@@ -2321,6 +2347,8 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		// check fn
 		if node.return_type.has_flag(.shared_f) {
 			node.return_type = node.return_type.clear_flag(.shared_f).deref()
+		} else if node.left.is_auto_deref_var() {
+			node.return_type = node.return_type.deref()
 		}
 		c.check_map_and_filter(false, elem_typ, node)
 	} else if method_name in ['any', 'all'] {

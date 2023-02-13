@@ -280,6 +280,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.fn_language = language
 	}
 	mut name := ''
+	mut type_sym := p.table.sym(rec.typ)
 	name_pos := p.tok.pos()
 	if p.tok.kind == .name {
 		// TODO high order fn
@@ -292,12 +293,11 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				scope: 0
 			}
 		}
-		type_sym := p.table.sym(rec.typ)
 		if is_method {
 			mut is_duplicate := type_sym.has_method(name)
 			// make sure this is a normal method and not an interface method
 			if type_sym.kind == .interface_ && is_duplicate {
-				if type_sym.info is ast.Interface {
+				if mut type_sym.info is ast.Interface {
 					// if the method is in info then its an interface method
 					is_duplicate = !type_sym.info.has_method(name)
 				}
@@ -327,6 +327,19 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	} else if p.tok.kind in [.ne, .gt, .ge, .le] && p.peek_tok.kind == .lpar {
 		p.error_with_pos('cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated from `==` and`<`',
 			p.tok.pos())
+	} else if p.tok.kind in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
+		extracted_op := match p.tok.kind {
+			.plus_assign { '+' }
+			.minus_assign { '-' }
+			.div_assign { '/' }
+			.mod_assign { '%' }
+			.mult_assign { '*' }
+			else { 'unknown op' }
+		}
+		if type_sym.has_method(extracted_op) {
+			p.error('cannot overload `${p.tok.kind}`, operator is implicitly overloaded because the `${extracted_op}` operator is overloaded')
+		}
+		p.error('cannot overload `${p.tok.kind}`, overload `${extracted_op}` and `${p.tok.kind}` will be automatically generated')
 	} else {
 		p.error_with_pos('expecting method name', p.tok.pos())
 		return ast.FnDecl{
@@ -412,7 +425,6 @@ run them via `v file.v` instead',
 	}
 	// Register
 	if is_method {
-		mut type_sym := p.table.sym(rec.typ)
 		// Do not allow to modify / add methods to types from other modules
 		// arrays/maps dont belong to a module only their element types do
 		// we could also check if kind is .array,  .array_fixed, .map instead of mod.len

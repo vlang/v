@@ -724,6 +724,9 @@ pub fn temp_dir() string {
 			path = cache_dir()
 		}
 	}
+	$if termux {
+		path = '/data/data/com.termux/files/usr/tmp'
+	}
 	if path == '' {
 		path = '/tmp'
 	}

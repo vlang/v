@@ -45,7 +45,7 @@ fn test_type_name() {
 
 fn test_type_symbol() {
 	ret_typ := reflection.get_funcs().filter(it.name == 'test3')[0].return_typ
-	assert reflection.get_type_symbol(ret_typ)?.language == 'v'
+	assert reflection.get_type_symbol(ret_typ)?.language == .v
 }
 
 fn test_method() {
@@ -76,7 +76,7 @@ fn test_interfaces() {
 }
 
 fn test_enum_fields() {
-	assert reflection.get_enums().filter(it.name == 'TestEnum')[0].fields.map(it.name) == [
+	assert (reflection.get_enums().filter(it.name == 'TestEnum')[0].sym.info as reflection.Enum).vals == [
 		'foo',
 		'bar',
 	]

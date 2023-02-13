@@ -147,7 +147,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				if field.typ.is_ptr() {
 					if field.default_expr is ast.IntegerLiteral {
 						if !c.inside_unsafe && !c.is_builtin_mod && field.default_expr.val == '0' {
-							c.warn('default value of `0` for references can only be used inside `unsafe`',
+							c.error('default value of `0` for references can only be used inside `unsafe`',
 								field.default_expr.pos)
 						}
 					}
@@ -254,7 +254,7 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 	}
 }
 
-fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
+fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_init bool) ast.Type {
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure_cumulative(@METHOD)
@@ -327,7 +327,9 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0 {
 		c.table.unwrap_generic_type(node.typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types)
 	}
-	c.ensure_type_exists(node.typ, node.pos) or {}
+	if !is_field_zero_struct_init {
+		c.ensure_type_exists(node.typ, node.pos) or {}
+	}
 	type_sym := c.table.sym(node.typ)
 	if !c.inside_unsafe && type_sym.kind == .sum_type {
 		c.note('direct sum type init (`x := SumType{}`) will be removed soon', node.pos)
@@ -361,7 +363,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 	// allow init structs from generic if they're private except the type is from builtin module
 	if !node.has_update_expr && !type_sym.is_pub && type_sym.kind != .placeholder
 		&& type_sym.language != .c && (type_sym.mod != c.mod && !(node.typ.has_flag(.generic)
-		&& type_sym.mod != 'builtin')) {
+		&& type_sym.mod != 'builtin')) && !is_field_zero_struct_init {
 		c.error('type `${type_sym.name}` is private', node.pos)
 	}
 	if type_sym.kind == .struct_ {
@@ -626,6 +628,14 @@ fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 						c.error('field `${type_sym.name}.${field.name}` must be initialized',
 							node.pos)
 					}
+				}
+				if !field.has_default_expr && field.name !in inited_fields && !field.typ.is_ptr()
+					&& c.table.final_sym(field.typ).kind == .struct_ {
+					mut zero_struct_init := ast.StructInit{
+						pos: node.pos
+						typ: field.typ
+					}
+					c.struct_init(mut zero_struct_init, true)
 				}
 			}
 			// println('>> checked_types.len: $checked_types.len | checked_types: $checked_types | type_sym: $type_sym.name ')

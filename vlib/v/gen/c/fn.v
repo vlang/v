@@ -288,7 +288,6 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		}
 		fn_header := '${visibility_kw}${type_name} ${fn_attrs}${name}('
 		g.definitions.write_string(fn_header)
-		g.gen_reflection_function(node)
 		g.write(fn_header)
 	}
 	arg_start_pos := g.out.len
@@ -1167,7 +1166,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('${name}(')
 		}
 	}
-	is_node_name_in_first_last_repeat := node.name in ['first', 'last', 'repeat']
+	is_array_method_first_last_repeat := final_left_sym.kind == .array
+		&& node.name in ['first', 'last', 'repeat']
 	if node.receiver_type.is_ptr() && (!left_type.is_ptr()
 		|| node.from_embed_types.len != 0 || (left_type.has_flag(.shared_f) && node.name != 'str')) {
 		// The receiver is a reference, but the caller provided a value
@@ -1177,7 +1177,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			if !node.left.is_lvalue() {
 				g.write('ADDR(${rec_cc_type}, ')
 				has_cast = true
-			} else if !is_node_name_in_first_last_repeat && !(left_type.has_flag(.shared_f)
+			} else if !is_array_method_first_last_repeat && !(left_type.has_flag(.shared_f)
 				&& left_type == node.receiver_type) {
 				g.write('&')
 			}
@@ -1205,7 +1205,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
 		if left_sym.kind == .array && node.left.is_auto_deref_var()
-			&& is_node_name_in_first_last_repeat {
+			&& is_array_method_first_last_repeat {
 			g.write('*')
 		}
 		if node.left is ast.MapInit {
@@ -1241,7 +1241,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write(embed_name)
 		}
 		if left_type.has_flag(.shared_f)
-			&& (left_type != node.receiver_type || is_node_name_in_first_last_repeat) {
+			&& (left_type != node.receiver_type || is_array_method_first_last_repeat) {
 			g.write('->val')
 		}
 	}
@@ -1759,6 +1759,19 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					}
 				}
 			}
+		} else if arg.expr is ast.ArrayDecompose {
+			mut d_count := 0
+			for d_i in i .. expected_types.len {
+				g.write('*(${g.typ(expected_types[d_i])}*)array_get(')
+				g.expr(arg.expr)
+				g.write(', ${d_count})')
+
+				if d_i < expected_types.len - 1 {
+					g.write(', ')
+				}
+				d_count++
+			}
+			continue
 		}
 		use_tmp_var_autofree := g.is_autofree && arg.typ == ast.string_type && arg.is_tmp_autofree
 			&& !g.inside_const && !g.is_builtin_mod
@@ -1967,7 +1980,8 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		} else {
 			'thread_${tmp}'
 		}
-		g.writeln('HANDLE ${simple_handle} = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)${wrapper_fn_name}, ${arg_tmp_var}, 0, 0);')
+		stack_size := g.get_cur_thread_stack_size(expr.name)
+		g.writeln('HANDLE ${simple_handle} = CreateThread(0, ${stack_size}, (LPTHREAD_START_ROUTINE)${wrapper_fn_name}, ${arg_tmp_var}, 0, 0); // fn: ${expr.name}')
 		g.writeln('if (!${simple_handle}) panic_lasterr(tos3("`go ${name}()`: "));')
 		if node.is_expr && node.call_expr.return_type != ast.void_type {
 			g.writeln('${gohandle_name} thread_${tmp} = {')
@@ -1984,7 +1998,8 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		if g.pref.os != .vinix {
 			g.writeln('pthread_attr_t thread_${tmp}_attributes;')
 			g.writeln('pthread_attr_init(&thread_${tmp}_attributes);')
-			g.writeln('pthread_attr_setstacksize(&thread_${tmp}_attributes, ${g.pref.thread_stack_size});')
+			size := g.get_cur_thread_stack_size(expr.name)
+			g.writeln('pthread_attr_setstacksize(&thread_${tmp}_attributes, ${size}); // fn: ${expr.name}')
 			sthread_attributes = '&thread_${tmp}_attributes'
 		}
 		g.writeln('int ${tmp}_thr_res = pthread_create(&thread_${tmp}, ${sthread_attributes}, (void*)${wrapper_fn_name}, ${arg_tmp_var});')
@@ -2203,6 +2218,22 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		g.write(line)
 		g.write(handle)
 	}
+}
+
+// get current thread size, if fn hasn't defined return default
+[inline]
+fn (mut g Gen) get_cur_thread_stack_size(name string) string {
+	ast_fn := g.table.fns[name] or { return '${g.pref.thread_stack_size}' }
+	attrs := ast_fn.attrs
+	if isnil(attrs) {
+		return '${g.pref.thread_stack_size}'
+	}
+	for attr in attrs {
+		if attr.name == 'spawn_stack' {
+			return attr.arg
+		}
+	}
+	return '${g.pref.thread_stack_size}'
 }
 
 // similar to `autofree_call_pregen()` but only to to handle [keep_args_alive] for C functions

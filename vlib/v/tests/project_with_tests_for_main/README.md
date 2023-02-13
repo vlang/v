@@ -20,6 +20,7 @@ Instead, your test_ functions will get called inside the generated
 `int main(){...}` test runner, just like it is the case with all _test.v
 files (internal or external ones).
 
-NB: each _test.v file is compiled separately from all other _test.v
-files, so you can have conflicting test_ functions in them without a
-problem too.
+> **Note**
+> Each _test.v file is compiled separately from all other _test.v
+> files, so you can have conflicting test_ functions in them without a
+> problem too.
