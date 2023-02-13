@@ -3,16 +3,19 @@
 // that can be found in the LICENSE file.
 module vweb
 
-fn new_worker(ch chan Workerfn) thread {
+// TODO: Remove num when no longer neded for debugging
+fn new_worker(ch chan Workerfn, num int) thread {
 	mut w := &Worker{
 		ch: ch
+		num: num
 	}
 
 	return spawn w.scan()
 }
 
 struct Worker {
-	ch chan Workerfn
+	ch  chan Workerfn
+	num int
 }
 
 pub fn (mut w Worker) scan() {
