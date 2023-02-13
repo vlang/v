@@ -6,6 +6,22 @@ import v.ast
 import v.pref
 import v.token
 
+fn (mut c Checker) check_compatible_types(left_type ast.Type, right ast.TypeNode) ComptimeBranchSkipState {
+	right_type := c.unwrap_generic(right.typ)
+	sym := c.table.sym(right_type)
+
+	if sym.kind == .interface_ {
+		checked_type := c.unwrap_generic(left_type)
+		return if c.table.does_type_implement_interface(checked_type, right_type) {
+			.eval
+		} else {
+			.skip
+		}
+	} else {
+		return if left_type == right_type { .eval } else { .skip }
+	}
+}
+
 fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	if_kind := if node.is_comptime { '\$if' } else { 'if' }
 	mut node_is_expr := false
@@ -122,29 +138,14 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							c.comptime_fields_type[comptime_field_name] = got_type
 							is_comptime_type_is_expr = true
 							if comptime_field_name == c.comptime_for_field_var
-								&& left.field_name == 'typ' {
-								skip_state = if c.comptime_fields_default_type == got_type {
-									.eval
-								} else {
-									.skip
-								}
-							}
-						} else if right is ast.TypeNode && left is ast.TypeNode
-							&& sym.kind == .interface_ {
-							is_comptime_type_is_expr = true
-							// is interface
-							checked_type := c.unwrap_generic(left.typ)
-							skip_state = if c.table.does_type_implement_interface(checked_type,
-								got_type)
-							{
-								.eval
-							} else {
-								.skip
+								&& left.field_name in ['unaliased_typ', 'typ'] {
+								skip_state = c.check_compatible_types(c.comptime_fields_default_type,
+									right as ast.TypeNode)
 							}
 						} else if left is ast.TypeNode {
 							is_comptime_type_is_expr = true
 							left_type := c.unwrap_generic(left.typ)
-							skip_state = if left_type == got_type { .eval } else { .skip }
+							skip_state = c.check_compatible_types(left_type, right as ast.TypeNode)
 						}
 					}
 				}
