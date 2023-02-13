@@ -86,16 +86,17 @@ accordingly in the steps below.)
    your computer, say named nv/ (`git clone https://github.com/vlang/v nv`)
 3. `cd nv`
 4. `git remote add pullrequest https://github.com/YOUR_GITHUB_USERNAME/v`
-   NB: the remote named `pullrequest` should point to YOUR own forked repo, not the
+
+   Note: The remote named `pullrequest` should point to YOUR own forked repo, not the
    main v repository! After this, your local cloned repository is prepared for
    making pullrequests, and you can just do normal git operations such as:
    `git pull` `git status` and so on.
 
 5. When finished with a feature/bugfix/change, you can:
-   `git checkout -b fix_alabala`
-    - Don't forget to keep formatting standards, run `v fmt -w YOUR_MODIFIED_FILES` before
-      committing
-6. `git push pullrequest`  # (NOTE: the `pullrequest` remote was setup on step 4)
+`git checkout -b fix_alabala`
+   - Don't forget to keep formatting standards, run `v fmt -w YOUR_MODIFIED_FILES` before committing
+6. `git push pullrequest` Note: The `pullrequest` remote was setup on step 4
+
 7. On GitHub's web interface, go to: https://github.com/vlang/v/pulls
 
    Here the UI shows a dialog with a button to make a new pull request based on
@@ -131,7 +132,8 @@ You can download the `hub` tool from https://hub.github.com/ . Using
 to make PRs. Most remote operations can be done through the `hub` CLI
 command.
 
-NB: You still need to have a GitHub account.
+> **Note**
+> You still need to have a GitHub account.
 
 ### Preparation:
 

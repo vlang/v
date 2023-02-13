@@ -6,8 +6,9 @@ database server.
 Before you can use this module, you must first have PostgreSQL installed on your system.
 To do this, find your OS and perform the actions listed.
 
-**NOTE**: These instructions are meant only as a convenience. If your OS is not listed 
-or you need extra help, [go here](https://www.postgresql.org/download/).
+> **Note**
+> These instructions are meant only as a convenience. If your OS is not listed 
+> or you need extra help, [go here](https://www.postgresql.org/download/).
 
 ### Fedora 31
 ```

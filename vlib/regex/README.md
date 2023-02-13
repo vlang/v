@@ -2,7 +2,8 @@
 `regex` is a small but powerful regular expression library,
 written in pure V.
 
-NB: `regex` is *not* PCRE compatible.
+> **Note**
+> `regex` is *not* PCRE compatible.
 
 [TOC]
 
@@ -19,9 +20,10 @@ In a query string a simple character is a token.
 
 ## Differences with PCRE:
 
-NB: We must point out that the **V-Regex module is not PCRE compliant** and thus
-some behaviour will be different. This difference is due to the V philosophy,
-to have one way and keep it simple.
+> **Note**
+> We must point out that the **V-Regex module is not PCRE compliant** and thus
+> some behaviour will be different. This difference is due to the V philosophy,
+> to have one way and keep it simple.
 
 The main differences can be summarized in the following points:
 
@@ -81,12 +83,13 @@ latin chars `a-z` and all the digits `\d`.
 
 It is possible to mix all the properties of the char class together.
 
-NB: In order to match the `-` (minus) char, it must be preceded by
-    a backslash in the cc, for example `[\-_\d\a]` will match:
-      `-` minus,
-      `_` underscore,
-      `\d` numeric chars,
-	  `\a` lower case chars.
+> **Note**
+> In order to match the `-` (minus) char, it must be preceded by
+> a backslash in the cc, for example `[\-_\d\a]` will match:
+> - `-` minus,
+> - `_` underscore,
+> - `\d` numeric chars,
+> - `\a` lower case chars.
 
 ### Meta-chars
 
@@ -146,8 +149,8 @@ parsing source string.
 | `ab.{3} .*e` | `abccc dde` |
 The dot matches any character, until the next token match is satisfied.
 
-**Important Note:** *Consecutive dots, for example `...`, are not allowed.*
-*This will cause a syntax error. Use a quantifier instead.*
+> Important Note: Consecutive dots, for example `...`, are not allowed.
+> This will cause a syntax error. Use a quantifier instead.
 
 ### OR token
 
@@ -158,9 +161,12 @@ The OR token can work in a "chained way": `a|(b)|cd ` means test first `a`,
 if the char is not `a`, then test the group `(b)`, and if the group doesn't
 match too, finally test the token `c`.
 
-NB: ** unlike in PCRE, the OR operation works at token level!**
-It doesn't work at concatenation level!
-NB2: **Two char classes with an `OR` in the middle is a syntax error.**
+> **Note**
+> Unlike in PCRE, the OR operation works at token level!
+> It doesn't work at concatenation level!
+
+> **Note**
+> Two char classes with an `OR` in the middle is a syntax error.
 
 That also means, that a query string like `abc|bde` is not equal to
 `(abc)|(bde)`, but instead to `ab(c|b)de.
@@ -220,8 +226,9 @@ for gi < re.groups.len {
 // 1 :[pa]
 ```
 
-**note:** *to show the `group id number` in the result of the `get_query()`*
-*the flag `debug` of the RE object must be `1` or `2`*
+> **Note**
+> To show the `group id number` in the result of the `get_query()`
+> the flag `debug` of the RE object must be `1` or `2`
 
 In order to simplify the use of the captured groups, it possible to use the
 utility function: `get_group_list`.
@@ -248,7 +255,7 @@ fn convert_html_rgb(in_col string) u32 {
 	mut n_digit := if in_col.len == 4 { 1 } else { 2 }
 	mut col_mul := if in_col.len == 4 { 4 } else { 0 }
 	// this is the regex query, it use the V string interpolation to customize the regex query
-	// NOTE: if you want use escaped code you must use the r"" (raw) strings,
+	// Note: If you want use escaped code you must use the r"" (raw) strings,
 	// *** please remember that the V interpoaltion doesn't work on raw strings. ***
 	query := '#([a-fA-F0-9]{${n_digit}})([a-fA-F0-9]{${n_digit}})([a-fA-F0-9]{${n_digit}})'
 	mut re := regex.regex_opt(query) or { panic(err) }
@@ -598,7 +605,8 @@ in this example we used the group `0` in the replace string: `\0`, the result wi
 Today it is a good day. => Tod__[ay]__it is a good d__[ay]__
 ```
 
-**Note:** in the replace strings can be used only groups from `0` to `9`.
+> **Note**
+> In the replace strings can be used only groups from `0` to `9`.
 
 If the usage of `groups` in the replace process, is not needed, it is possible
 to use a quick function:

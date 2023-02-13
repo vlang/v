@@ -180,52 +180,59 @@ fn test_reassignment() {
 	assert x3 == 777
 }
 
-struct Person {
+struct OptionFieldsStruct {
 mut:
-	name  string
-	age   int
-	title ?string
+	text ?string
+	n    ?int
+	n1   ?int = 1
 }
 
-fn test_field_or() {
-	name := foo_str() or { 'nada' }
-	assert name == 'something'
-	/*
-	QTODO
-	mut p := Person{}
-	p.name = foo_str() or {
-		'nothing'
+fn get_opt_struct() ?OptionFieldsStruct {
+	return OptionFieldsStruct{}
+}
+
+fn test_option_field() ? {
+	mut v := OptionFieldsStruct{}
+	assert v.text or { 'default' } == 'default'
+	assert v.n or { 42 } == 42
+	assert v.n1 or { 42 } == 1
+	assert (v.n or { v.n1? }) == 1
+
+	if n := v.n {
+		assert false
+	} else {
+		assert true
 	}
-	assert p.name == 'something'
-	p.age = foo_ok() or {
-		panic('no age')
+	if n1 := v.n1 {
+		assert n1 == 1
+	} else {
+		assert false
 	}
-	assert p.age == 777
-	mytitle := p.title or {
-		'default'
+
+	n := v.n or { 10 }
+	assert n == 10
+	n1 := v.n1 or { 10 }
+	assert n1 == 1
+	n1_1 := v.n1? + (v.n or { 10 })
+	assert n1_1 == 11
+
+	v.text = 'text'
+	assert v.text? == 'text'
+	v.n = 42
+	assert v.n? == 42
+	v.n1 = 43
+	assert v.n1? == 43
+
+	v = OptionFieldsStruct{
+		text: 'init'
+		n: 0
+		n1: none
 	}
-	assert mytitle == 'default'
-	*/
-}
+	assert v.text? == 'init'
+	assert v.n? == 0
+	assert v.n1 or { 42 } == 42
 
-struct Thing {
-mut:
-	opt ?int
-}
-
-struct Thing2 {
-mut:
-	opt ?Thing
-}
-
-fn test_opt_field() {
-	/*
-	QTODO
-	mut t := Thing{}
-	t.opt = 5
-	val := t.opt or { return }
-	assert val == 5
-	*/
+	assert get_opt_struct()?.n1? == 1
 }
 
 fn opt_ptr(a &int) ?&int {
@@ -358,11 +365,6 @@ fn test_option_sum_type() {
 		return
 	}
 	assert false
-}
-
-struct MultiOptionFieldTest {
-	a ?int
-	b ?int
 }
 
 fn foo() ?int {
