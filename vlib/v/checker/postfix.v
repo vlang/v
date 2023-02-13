@@ -26,8 +26,6 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 		if c.inside_comptime_for_field {
 			if c.is_comptime_var(node.expr) {
 				return c.comptime_fields_default_type
-			} else if node.expr is ast.ComptimeSelector {
-				return c.comptime_fields_default_type
 			}
 		}
 

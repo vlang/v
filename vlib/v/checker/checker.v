@@ -2688,25 +2688,11 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 // 	return ast.void_type
 // }
 
-fn (mut c Checker) get_comptime_selector_type(node ast.ComptimeSelector, default_type ast.Type) ast.Type {
-	if node.field_expr is ast.SelectorExpr
-		&& c.check_comptime_is_field_selector(node.field_expr as ast.SelectorExpr)
-		&& (node.field_expr as ast.SelectorExpr).field_name == 'name' {
-		return c.comptime_fields_default_type
-	}
-	return default_type
-}
-
 fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	// Given: `Outside( Inside(xyz) )`,
 	//        node.expr_type: `Inside`
 	//        node.typ: `Outside`
 	node.expr_type = c.expr(node.expr) // type to be casted
-
-	if node.expr is ast.ComptimeSelector {
-		node.expr_type = c.get_comptime_selector_type(node.expr as ast.ComptimeSelector,
-			node.expr_type)
-	}
 
 	mut from_type := c.unwrap_generic(node.expr_type)
 	from_sym := c.table.sym(from_type)
