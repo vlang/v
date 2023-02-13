@@ -121,7 +121,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							comptime_field_name = left.expr.str()
 							c.comptime_fields_type[comptime_field_name] = got_type
 							is_comptime_type_is_expr = true
-							skip_state = if c.comptime_fields_default_type == got_type { .eval } else { .skip }
+							skip_state = if c.comptime_fields_default_type == got_type {
+								.eval
+							} else {
+								.skip
+							}
 						} else if right is ast.TypeNode && left is ast.TypeNode
 							&& sym.kind == .interface_ {
 							is_comptime_type_is_expr = true
