@@ -1759,6 +1759,19 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					}
 				}
 			}
+		} else if arg.expr is ast.ArrayDecompose {
+			mut d_count := 0
+			for d_i in i .. expected_types.len {
+				g.write('*(${g.typ(expected_types[d_i])}*)array_get(')
+				g.expr(arg.expr)
+				g.write(', ${d_count})')
+
+				if d_i < expected_types.len - 1 {
+					g.write(', ')
+				}
+				d_count++
+			}
+			continue
 		}
 		use_tmp_var_autofree := g.is_autofree && arg.typ == ast.string_type && arg.is_tmp_autofree
 			&& !g.inside_const && !g.is_builtin_mod
