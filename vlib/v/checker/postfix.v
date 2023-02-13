@@ -24,7 +24,7 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	}
 	if !(typ_sym.is_number() || ((c.inside_unsafe || c.pref.translated) && is_non_void_pointer)) {
 		if c.inside_comptime_for_field {
-			if c.is_comptime_var(node.expr) {
+			if c.is_comptime_var(node.expr) || node.expr is ast.ComptimeSelector {
 				return c.comptime_fields_default_type
 			}
 		}
