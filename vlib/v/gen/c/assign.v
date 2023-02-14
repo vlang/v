@@ -131,6 +131,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					key_str := g.get_comptime_selector_key_type(val)
 					if key_str != '' {
 						var_type = g.comptime_var_type_map[key_str] or { var_type }
+						val_type = var_type
 						left.obj.typ = var_type
 						is_comptime_var = true
 					}
