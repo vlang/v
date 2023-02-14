@@ -168,7 +168,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 							field.default_expr.pos)
 					}
 				} else if field.typ.has_flag(.result) {
-					// struct field does not support result for now. Nothing to do
+					// struct field does not support result. Nothing to do
 				} else {
 					match field.default_expr {
 						ast.IntegerLiteral {
