@@ -139,12 +139,12 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(typ)
 		g.write('${str_fn_name}(')
-		if str_method_expects_ptr && !is_ptr {
-			g.write('&')
-		} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
-			g.write('*')
-		}
 		if sym.kind != .function {
+			if str_method_expects_ptr && !is_ptr {
+				g.write('&')
+			} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
+				g.write('*')
+			}
 			g.expr_with_cast(expr, typ, typ)
 		}
 		g.write(')')
