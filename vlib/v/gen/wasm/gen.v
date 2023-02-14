@@ -22,8 +22,9 @@ mut:
 	stack_frame       int                     // Size of the current stack frame, if needed
 	mod               wa.Module               // Current Binaryen WebAssembly module
 	curr_ret          []ast.Type              // Current return value, multi returns will be split into an array
+	ret               Temporary               // Current return variable
 	local_temporaries []Temporary             // Local WebAssembly temporaries, referenced with an index
-	local_addresses   map[string]Stack       // Local stack structures relative to `bp_idx`
+	local_addresses   map[string]Stack        // Local stack structures relative to `bp_idx`
 	structs           map[ast.Type]StructInfo // Cached struct field offsets
 	lbl               int
 }
@@ -106,6 +107,11 @@ fn (mut g Gen) setup_stack_frame(body wa.Expression) wa.Expression {
 	return g.mkblock(n_body)
 }
 
+fn (mut g Gen) setup_block_return(body wa.Expression) wa.Expression {
+	wrap := wa.block(g.mod, c'__body', &body, 1, type_auto)
+	body_exprs := [body]
+	return g.mkblock(body_exprs)
+}
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	name := if node.is_method {
@@ -167,8 +173,11 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		[node.return_type]
 	}
 
+	if g.curr_ret[0] != ast.void_type {
+		g.ret = g.new_local_temporary('__return', node.return_type)
+	}
 	mut wasm_expr := g.expr_stmts(node.stmts, ast.void_type)
-
+	
 	if g.bp_idx != -1 {
 		wasm_expr = g.setup_stack_frame(wasm_expr)
 	}
@@ -345,7 +354,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 		ast.StructInit {
 			pos := g.allocate_struct('_anonstruct', node.typ)
 			expr := g.init_struct(Stack{ address: pos, ast_typ: node.typ }, node)
-			return g.mknblock("EXPR(STRUCTINIT)", [expr, g.lea_address(pos)])
+			return g.mknblock('EXPR(STRUCTINIT)', [expr, g.lea_address(pos)])
 		}
 		ast.MatchExpr {
 			g.w_error('wasm backend does not support match expressions yet')
@@ -485,7 +494,7 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
 fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 	return match node {
 		ast.Return {
-			expr := if node.exprs.len == 1 {
+			if node.exprs.len == 1 {
 				wa.ret(g.mod, g.expr(node.exprs[0], g.curr_ret[0]))
 			} else if node.exprs.len == 0 {
 				wa.ret(g.mod, unsafe { nil })
@@ -570,16 +579,16 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 						match var {
 							Temporary {
 								op := g.infix_from_typ(typ, token.assign_op_to_infix_op(node.op))
-								infix := wa.binary(g.mod, op, wa.localget(g.mod, var.idx, var.typ),
-									g.expr(right, typ))
+								infix := wa.binary(g.mod, op, wa.localget(g.mod, var.idx,
+									var.typ), g.expr(right, typ))
 
 								infix
 							}
 							Stack {
-								g.w_error("unimplemented")
+								g.w_error('unimplemented')
 							}
 							else {
-								panic("unreachable")
+								panic('unreachable')
 							}
 						}
 					} else {
@@ -590,7 +599,6 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 						g.expr(right, typ)
 					}
 					exprs << g.set_var(var, expr)
-					
 				}
 
 				if exprs.len == 1 {
@@ -650,7 +658,7 @@ pub fn (mut g Gen) toplevel_stmts(stmts []ast.Stmt) {
 
 fn (mut g Gen) vsp_leave() wa.Expression {
 	frame := wa.constant(g.mod, wa.literalint32(g.stack_frame))
-	
+
 	return wa.call(g.mod, c'__vsp_leave', &frame, 1, type_none)
 }
 
@@ -667,11 +675,11 @@ fn (mut g Gen) housekeeping() {
 	// vfmt on
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Preferences) {
+pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Preferences) {
 	mut g := &Gen{
 		table: table
 		out_name: out_name
-		pref: pref
+		pref: w_pref
 		files: files
 		mod: wa.modulecreate()
 	}
@@ -686,15 +694,15 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 		g.toplevel_stmts(file.stmts)
 	}
 	if wa.modulevalidate(g.mod) {
-		if pref.is_prod {
+		if w_pref.is_prod {
 			wa.moduleoptimize(g.mod)
 		}
-		if pref.out_name_c.ends_with('/-') || pref.out_name_c.ends_with(r'\-') {
-			wa.moduleprintstackir(g.mod, pref.is_prod)
+		if w_pref.out_name_c.ends_with('/-') || w_pref.out_name_c.ends_with(r'\-') {
+			wa.moduleprintstackir(g.mod, w_pref.is_prod)
 		} else {
 			bytes := wa.moduleallocateandwrite(g.mod, unsafe { nil })
 			str := unsafe { (&char(bytes.binary)).vstring_with_len(int(bytes.binaryBytes)) }
-			os.write_file(pref.out_name, str) or { panic(err) }
+			os.write_file(w_pref.out_name, str) or { panic(err) }
 		}
 	} else {
 		wa.moduleprint(g.mod)

@@ -5,12 +5,12 @@ import v.token
 import binaryen as wa
 
 const (
-	type_none      = wa.typenone()
-	type_auto      = wa.typeauto()
-	type_i32       = wa.typeint32()
-	type_i64       = wa.typeint64()
-	type_f32       = wa.typefloat32()
-	type_f64       = wa.typefloat64()
+	type_none = wa.typenone()
+	type_auto = wa.typeauto()
+	type_i32  = wa.typeint32()
+	type_i64  = wa.typeint64()
+	type_f32  = wa.typefloat32()
+	type_f64  = wa.typefloat64()
 )
 
 // "Register size" types such as int, i64 and bool boil down to their WASM counterparts.

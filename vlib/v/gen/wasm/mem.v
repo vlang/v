@@ -132,14 +132,16 @@ fn (mut g Gen) new_local_temporary_anon(typ ast.Type) int {
 	return ret
 }
 
-fn (mut g Gen) new_local_temporary(name string, typ ast.Type) {
+fn (mut g Gen) new_local_temporary(name string, typ ast.Type) Temporary {
 	idx := g.local_temporaries.len
-	g.local_temporaries << Temporary{
+	var := Temporary{
 		name: name
 		typ: g.get_wasm_type(typ)
 		ast_typ: typ
 		idx: idx
 	}
+	g.local_temporaries << var	
+	return var
 }
 
 fn (mut g Gen) new_local(var ast.Ident, typ ast.Type) {
