@@ -15,7 +15,7 @@ pub:
 
 fn C.tcgetattr(fd int, ptr &C.termios) int
 
-fn C.tcsetattr(fd int, action int, const_ptr &C.termios)
+fn C.tcsetattr(fd int, action int, const_ptr &C.termios) int
 
 fn C.ioctl(fd int, request u64, arg voidptr) int
 
