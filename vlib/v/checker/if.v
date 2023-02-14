@@ -137,10 +137,14 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							comptime_field_name = left.expr.str()
 							c.comptime_fields_type[comptime_field_name] = got_type
 							is_comptime_type_is_expr = true
-							if comptime_field_name == c.comptime_for_field_var
-								&& left.field_name in ['unaliased_typ', 'typ'] {
-								skip_state = c.check_compatible_types(c.comptime_fields_default_type,
-									right as ast.TypeNode)
+							if comptime_field_name == c.comptime_for_field_var {
+								if left.field_name == 'typ' {
+									skip_state = c.check_compatible_types(c.comptime_fields_default_type,
+										right as ast.TypeNode)
+								} else if left.field_name == 'unaliased_typ' {
+									skip_state = c.check_compatible_types(c.table.unaliased_type(c.comptime_fields_default_type),
+										right as ast.TypeNode)
+								}
 							} else if c.check_comptime_is_field_selector_bool(left) {
 								skip_state = if c.get_comptime_selector_bool_field(left.field_name) {
 									.eval

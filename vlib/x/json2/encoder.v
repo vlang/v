@@ -320,7 +320,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				$if field.unaliased_typ is string {
 					e.encode_string(val.$(field.name).str(), mut wr)!
 				} $else $if field.unaliased_typ is time.Time {
-					parsed_time := val.$(field.name) as time.Time
+					parsed_time := time.parse(val.$(field.name).str()) or { time.Time{} }
 					e.encode_string(parsed_time.format_rfc3339(), mut wr)!
 				} $else $if field.unaliased_typ in [bool, $Float, $Int] {
 					wr.write(val.$(field.name).str().bytes())!

@@ -158,11 +158,11 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 			c.error('compile time field access can only be used when iterating over `T.fields`',
 				left_pos)
 		}
-		expr_name := node.field_expr.expr.str()
 		expr_type = c.get_comptime_selector_type(node, ast.void_type)
 		if expr_type != ast.void_type {
 			return expr_type
 		}
+		expr_name := node.field_expr.expr.str()
 		if expr_name in c.comptime_fields_type {
 			return c.comptime_fields_type[expr_name]
 		}
