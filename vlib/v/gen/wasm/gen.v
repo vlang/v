@@ -22,7 +22,7 @@ mut:
 	stack_frame       int                     // Size of the current stack frame, if needed
 	mod               wa.Module               // Current Binaryen WebAssembly module
 	curr_ret          []ast.Type              // Current return value, multi returns will be split into an array
-	ret               Temporary               // Current return variable
+	//ret               Temporary               // Current return variable
 	local_temporaries []Temporary             // Local WebAssembly temporaries, referenced with an index
 	local_addresses   map[string]Stack        // Local stack structures relative to `bp_idx`
 	structs           map[ast.Type]StructInfo // Cached struct field offsets
@@ -96,21 +96,9 @@ fn (mut g Gen) setup_stack_frame(body wa.Expression) wa.Expression {
 				wa.constant(g.mod, wa.literalint32(g.stack_frame))))
 	// vfmt on
 
-	// If the function returns something, it would never fall through.
-	// If it does not, generate stack frame leave code.
-
-	mut n_body := [stack_enter, body]
-	if g.curr_ret[0] == ast.void_type {
-		n_body << stack_leave
-	}
+	mut n_body := [stack_enter, body, stack_leave]
 
 	return g.mkblock(n_body)
-}
-
-fn (mut g Gen) setup_block_return(body wa.Expression) wa.Expression {
-	wrap := wa.block(g.mod, c'__body', &body, 1, type_auto)
-	body_exprs := [body]
-	return g.mkblock(body_exprs)
 }
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
@@ -173,10 +161,8 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		[node.return_type]
 	}
 
-	if g.curr_ret[0] != ast.void_type {
-		g.ret = g.new_local_temporary('__return', node.return_type)
-	}
-	mut wasm_expr := g.expr_stmts(node.stmts, ast.void_type)
+	body := g.expr_stmts(node.stmts, ast.void_type)
+	mut wasm_expr := wa.block(g.mod, c'__body', &body, 1, type_auto)
 	
 	if g.bp_idx != -1 {
 		wasm_expr = g.setup_stack_frame(wasm_expr)
@@ -494,17 +480,18 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
 fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 	return match node {
 		ast.Return {
-			if node.exprs.len == 1 {
-				wa.ret(g.mod, g.expr(node.exprs[0], g.curr_ret[0]))
+			expr := if node.exprs.len == 1 {
+				g.expr(node.exprs[0], g.curr_ret[0])
 			} else if node.exprs.len == 0 {
-				wa.ret(g.mod, unsafe { nil })
+				unsafe { nil }
 			} else {
 				mut exprs := []wa.Expression{cap: node.exprs.len}
 				for idx in 0 .. node.exprs.len {
 					exprs << g.expr(node.exprs[idx], g.curr_ret[idx])
 				}
-				wa.ret(g.mod, wa.tuplemake(g.mod, exprs.data, exprs.len))
+				wa.tuplemake(g.mod, exprs.data, exprs.len)
 			}
+			wa.br(g.mod, c'__body', unsafe { nil }, expr)
 		}
 		ast.ExprStmt {
 			g.expr(node.expr, expected)
