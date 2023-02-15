@@ -6602,8 +6602,8 @@ should **not** be used for things like build or deploy scripts. To access this f
 file with `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp` where `tmp` is the prefix for
 the built executable. This will run in crun mode so it will only rebuild if changes to the script
 were made and keep the binary as `tmp.<scriptfilename>`. **Caution**: if this filename already
-exists the file will be overridden. If you want to rebuild each time and not keep this binary instead
-use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
+exists the file will be overridden. If you want to rebuild each time and not keep this binary
+instead use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
 
 # Appendices
 
