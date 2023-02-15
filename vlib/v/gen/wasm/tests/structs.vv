@@ -46,3 +46,27 @@ pub fn give(val int) int {
 pub fn take(input BB) int {
 	return int(input.b)
 }
+
+struct NBB {
+mut:
+	a i64 = 22
+	b NAA
+}
+
+struct NAA {
+mut:
+	a i64 = 91
+	b i64 = 92
+	c i64 = 93
+}
+
+pub fn make(nval NAA) i64 {
+	val := NBB{b: nval}
+
+	return val.b.b
+}
+
+pub fn reassign(nval int) int {
+	val := make(NAA{b: nval})
+	return int(val)
+}

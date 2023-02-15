@@ -64,16 +64,17 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) Var {
 			return g.get_var_from_ident(node)
 		}
 		ast.SelectorExpr {
-			var := g.get_var_from_expr(node.expr)
-			if var !is Stack {
-				g.w_error("get_var_from_expr: ast.SelectorExpr used on non stack variable")
-			}
-			var_a := (var as Stack).address
-			offset := g.get_field_offset(node.expr_type, node.field_name)
-			
-			return Stack {
-				ast_typ: node.typ
-				address: var_a + offset
+			address := g.path_expr_address(node)
+			match address {
+				wa.Expression {
+					panic("not implemented for complex expressions")
+				}
+				int {
+					return Stack {
+						ast_typ: node.typ
+						address: address
+					}
+				}
 			}
 		}
 		ast.IndexExpr {
@@ -250,6 +251,73 @@ fn (mut g Gen) get_var(var Var) wa.Expression {
 	}
 }
 
+// WASM expression and integer relative to base pointer.
+type PathAddress = wa.Expression | int
+
+// `node` is expected to not be `ast.Ident` when called externally.
+fn (mut g Gen) path_expr_address(node ast.Expr) PathAddress {
+	match node {
+		ast.SelectorExpr {
+			address := g.path_expr_address(node.expr)
+			offset := g.get_field_offset(node.expr_type, node.field_name)
+			return match address {
+				wa.Expression {
+					wa.binary(g.mod, wa.addint32(), address, wa.constant(g.mod, wa.literalint32(offset)))
+				}
+				int {
+					address + offset
+				}
+			}
+		}
+		ast.Ident {
+			var := g.get_var_from_ident(node)
+			return match var {
+				Temporary {
+					wa.localget(g.mod, var.idx, var.typ)
+				}
+				Stack {
+					var.address
+				}
+				else {
+					panic("unreachable")
+				}
+			}
+		}
+		// handle a[expr] and *a
+		else {
+			g.w_error("path_expr: forbidden node `${node.type_name()}`")
+		}
+	}
+}
+
+fn (mut g Gen) path_expr_ptr(node ast.Expr) wa.Expression {
+	// deref here
+	rel_address := g.path_expr_address(node)
+	return match rel_address {
+		wa.Expression { rel_address }
+		int { wa.constant(g.mod, wa.literalint32(rel_address)) }
+	}
+}
+
+fn (mut g Gen) path_expr_t(node ast.Expr, expected ast.Type) wa.Expression {
+	return g.deref_local(g.path_expr_address(node), expected)
+}
+
+fn (mut g Gen) deref_local(address PathAddress, expected ast.Type) wa.Expression {
+	size, _ := g.table.type_size(expected)
+
+	match address {
+		wa.Expression {
+			expr := wa.binary(g.mod, wa.addint32(), g.get_bp(), address)
+			return wa.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected), expr, c'__vmem')
+		}
+		int {
+			return wa.load(g.mod, u32(size), g.is_signed(expected), u32(address), 0, g.get_wasm_type(expected), g.get_bp(), c'__vmem')
+		}
+	}
+	// return wa.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected), expr, c'__vmem')
+}
+
 // Will automatcally cast value from `var` to `ast_type`, will ignore if struct value.
 // TODO: When supporting base types on the stack, actually cast them.
 fn (mut g Gen) get_var_t(var Var, ast_typ ast.Type) wa.Expression {
@@ -306,25 +374,10 @@ fn (mut g Gen) set_var(var Var, expr wa.Expression, cfg SetConfig) wa.Expression
 	}
 }
 
-fn (mut g Gen) set_address(address wa.Expression, expr wa.Expression, ast_typ ast.Type) wa.Expression {
-	ts := g.table.sym(ast_typ)
-
-	return if ts.kind == .struct_ {
-		// `expr` is pointer
-		// g.blit_struct(expr, ast_typ, address)
-		g.w_error("blit_struct for expression ptr not implemented")
-	} else {
-		size, _ := g.table.type_size(ast_typ)
-		actual := wa.binary(g.mod, wa.addint32(), g.get_bp(), address)
-
-		wa.store(g.mod, u32(size), 0, 0, actual, expr, g.get_wasm_type(ast_typ), c'__vmem')
-	}
-}
-
-// Copy fields from `ptr` to `address` in stack memory
+// Copy fields from `ptr` in stack memory to known local `address`.
 fn (mut g Gen) blit_struct(ptr wa.Expression, ast_typ ast.Type, address int) wa.Expression {
-	g.w_error("blit_struct: implemented")
-	return wa.nop(g.mod)
+	size, _ := g.get_type_size_align(ast_typ)
+	return wa.memorycopy(g.mod, g.lea_address(address), ptr, wa.constant(g.mod, wa.literalint32(size)), c'__vmem', c'__vmem')
 }
 
 fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {

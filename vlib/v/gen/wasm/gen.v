@@ -347,12 +347,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			g.w_error('wasm backend does not support threads')
 		}
 		ast.SelectorExpr {
-			mut expr := g.expr(node.expr, type_i32)
-
-			offset := g.get_field_offset(node.expr_type, node.field_name)
-			expr = wa.binary(g.mod, wa.addint32(), expr, wa.constant(g.mod, wa.literalint32(offset)))
-
-			g.cast_t(g.deref(expr, node.typ), node.typ, expected)
+			g.cast_t(g.path_expr_t(node, node.typ), node.typ, expected)
 		}
 		ast.StructInit {
 			pos := g.allocate_struct('_anonstruct', node.typ)
@@ -438,6 +433,8 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			call := wa.call(g.mod, node.name.str, arguments.data, arguments.len, g.get_wasm_type(node.return_type))
 			if node.is_noreturn {
 				g.mkblock([call, wa.unreachable(g.mod)])
+			} else if expected == ast.void_type {
+				wa.drop(g.mod, call)
 			} else {
 				call
 			}

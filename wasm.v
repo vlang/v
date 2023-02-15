@@ -1,19 +1,23 @@
-struct AA {
+struct BB {
 mut:
 	a i64 = 22
-	b i64
-	c i64
+	b AA
 }
 
-pub fn reassign(val int) int {
-
-	mut a := AA{}
-
-	a.b = val
-	
-	return take(a)
+struct AA {
+mut:
+	a i64 = 91
+	b i64 = 92
+	c i64 = 93
 }
 
-pub fn take(input AA) int {
-	return int(input.b)
+pub fn make(nval AA) i64 {
+	val := BB{b: nval}
+
+	return val.b.b
+}
+
+pub fn reassign(nval int) int {
+	val := make(AA{b: nval})
+	return int(val)
 }
