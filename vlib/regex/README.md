@@ -415,7 +415,7 @@ use a name map in the `re` struct, using the function `re.get_group_by_name`.
 
 Here is a more complex example of using them:
 ```v oksyntax
-// This function demostrate the use of the named groups
+// This function demonstrate the use of the named groups
 fn convert_html_rgb_n(in_col string) u32 {
 	mut n_digit := if in_col.len == 4 { 1 } else { 2 }
 	mut col_mul := if in_col.len == 4 { 4 } else { 0 }
@@ -535,9 +535,9 @@ re.prog = []Token    {len: pattern.len + 1}
 // can not be more char class the the length of the pattern
 re.cc   = []CharClass{len: pattern.len}
 
-re.group_csave_flag = false          // true enable continuos group saving if needed
+re.group_csave_flag = false          // true enable continuous group saving if needed
 re.group_max_nested = 128            // set max 128 group nested possible
-re.group_max        = pattern.len>>1 // we can't have more groups than the half of the pattern legth
+re.group_max        = pattern.len>>1 // we can't have more groups than the half of the pattern length
 re.group_stack = []int{len: re.group_max, init: -1}
 re.group_data  = []int{len: re.group_max, init: -1}
 ```
@@ -618,7 +618,7 @@ pub fn (mut re RE) replace_simple(in_txt string, repl string) string
 
 If it is needed to replace N instances of the found strings it is possible to use:
 ```v ignore
-// replace_n return a string where the firts `count` matches are replaced with the repl_str string
+// replace_n return a string where the first `count` matches are replaced with the repl_str string
 // `count` indicate the number of max replacements that will be done.
 // if count is > 0 the replace began from the start of the string toward the end
 // if count is < 0 the replace began from the end of the string toward the start
@@ -847,11 +847,11 @@ fn main(){
 	// can not be more char class the the length of the query
     re.cc   = []regex.CharClass{len: query.len}
     re.prog = []regex.Token    {len: query.len+1}
-	// enable continuos group saving
+	// enable continuous group saving
     re.group_csave_flag = true
 	// set max 128 group nested
     re.group_max_nested = 128
-	// we can't have more groups than the half of the query legth
+	// we can't have more groups than the half of the query length
     re.group_max        = query.len>>1
 
     // compile the query
@@ -864,7 +864,7 @@ fn main(){
         println("No Match")
     }
 
-    // show results for continuos group saving
+    // show results for continuous group saving
     if re.group_csave_flag == true && start >= 0 && re.group_csave.len > 0{
         println("cg: ${re.group_csave}")
         mut cs_i := 1

@@ -52,7 +52,7 @@ At high level no more action are required to use the loaded font.
 Multiple fonts can be loaded without problems at the same time.
 
 ## TTF Bitmap render
-In this modue it is possible to have different renders running at the same time.
+In this module it is possible to have different renders running at the same time.
 At the present time all the rendering are made on the CPU, sokol is used only to draw the
 rendered text to the screen.
 Let's start with a simple snippet of code:
@@ -68,7 +68,7 @@ fn main() {
 	println(ttf_font.get_info_string())
 }
 ```
-This simple code load a TTF font and display its basic informations.
+This simple code load a TTF font and display its basic information.
 
 ### draw_text
 The draw text function draw simple strings without indentation or other imagination tasks.
@@ -116,7 +116,7 @@ fn main() {
 	bmp.save_as_ppm('test.ppm')
 }
 ```
-This is the low level render that draw ther text on a bitmap and save the bitmap on a disk as
+This is the low level render that draw the text on a bitmap and save the bitmap on a disk as
 `.ppm` file.
 
 > **Note**
@@ -130,7 +130,7 @@ You can specify the style for the text rendering in the `BitMap` struct::
 enum Style {
 	outline
 	outline_aliased
-	filled // default syle
+	filled // default style
 	raw
 }
 ```
@@ -191,16 +191,16 @@ This is the low level render that draw text block on the bitmap.
 A text block is defined from a `Text_block` struct:
 ```v
 struct Text_block {
-	x         int  // x postion of the left high corner
-	y         int  // y postion of the left high corner
+	x         int  // x position of the left high corner
+	y         int  // y position of the left high corner
 	w         int  // width of the text block
-	h         int  // heigth of the text block
+	h         int  // height of the text block
 	cut_lines bool = true // force to cut the line if the length is over the text block width
 }
 ```
 and use the following bitmap fields:
 ```v ignore
-	style              Style      = .filled // default syle
+	style              Style      = .filled // default style
 	align              Text_align = .left   // default text align
 	justify            bool				    // justify text flag, default deactivated
 	justify_fill_ratio f32        = 0.5     // justify fill ratio, if the ratio of the filled

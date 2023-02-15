@@ -3095,7 +3095,7 @@ match color {
 }
 ```
 
-The enum type can be any integer type, but can be ommited, if it is `int`: `enum Color {`.
+The enum type can be any integer type, but can be omitted, if it is `int`: `enum Color {`.
 
 Enum match must be exhaustive or have an `else` branch.
 This ensures that if a new enum field is added, it's handled everywhere in the code.
@@ -4987,7 +4987,7 @@ contain one or more V modules. A V *package* should have a `v.mod` file
 at its top folder, describing the contents of the package.
 
 V packages are installed normally in your `~/.vmodules` folder. That
-location can be overriden by setting the env variable `VMODULES`.
+location can be overridden by setting the env variable `VMODULES`.
 
 ### Package commands
 
@@ -5314,7 +5314,7 @@ struct C.Foo {
 }
 
 // Used to add a custom calling convention to a function, available calling convention: stdcall, fastcall and cdecl.
-// This list aslo apply for type aliases (see below).
+// This list also apply for type aliases (see below).
 [callconv: "stdcall"]
 fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 
@@ -5644,7 +5644,7 @@ With the example above:
   > **Note**
 > A combinatorial `_d_customflag_linux.c.v` postfix will not work.
   > If you do need a custom flag file, that has platform dependent code, use the
-  > postfix `_d_customflag.v`, and then use plaftorm dependent compile time
+  > postfix `_d_customflag.v`, and then use platform dependent compile time
   > conditional blocks inside it, i.e. `$if linux {}` etc.
 
 - `_notd_customflag.v` => similar to _d_customflag.v, but will be used
@@ -5982,7 +5982,7 @@ to race conditions. There are several approaches to deal with these:
   where global variables are used to generate (non cryptographic) pseudo random numbers.
   In this case data races lead to random numbers in different threads becoming somewhat
   correlated, which is acceptable considering the performance penalty that using
-  synchonization primitives would represent.
+  synchronization primitives would represent.
 
 ## Cross compilation
 
@@ -6602,7 +6602,7 @@ should **not** be used for things like build or deploy scripts. To access this f
 file with `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp` where `tmp` is the prefix for
 the built executable. This will run in crun mode so it will only rebuild if changes to the script
 were made and keep the binary as `tmp.<scriptfilename>`. **Caution**: if this filename already
-exists the file will be overriden. If you want to rebuild each time and not keep this binary instead
+exists the file will be overridden. If you want to rebuild each time and not keep this binary instead
 use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
 
 # Appendices

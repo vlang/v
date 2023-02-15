@@ -10,7 +10,7 @@ hundreds/thousands of times.
 
 ## `v test-all`
 
-Test and build *everything*. Usefull to verify *locally*, that the CI will
+Test and build *everything*. Useful to verify *locally*, that the CI will
 most likely pass. Slowest, but most comprehensive.
 
 It works, by running these in succession:
@@ -168,7 +168,7 @@ NB 2: in case you need to modify many .out files, run *twice* in a row:
 `VAUTOFIX=1 ./v vlib/v/compiler_errors_test.v`
 This will fail the first time, but it will record the new output for each
 .vv file, and store it into the corresponding .out file. The second run
-should be now successfull, and so you can inspect the difference, and
+should be now successful, and so you can inspect the difference, and
 commit the new .out files with minimum manual effort.
 
 NB 3: To run only some of the tests, use:
