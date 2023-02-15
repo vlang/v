@@ -5314,7 +5314,7 @@ struct C.Foo {
 }
 
 // Used to add a custom calling convention to a function, available calling convention: stdcall, fastcall and cdecl.
-// This list also apply for type aliases (see below).
+// This list also applies for type aliases (see below).
 [callconv: "stdcall"]
 fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 
