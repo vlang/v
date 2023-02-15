@@ -217,9 +217,6 @@ fn (mut g Gen) allocate_struct(name string, typ ast.Type) int {
 }
 
 fn (mut g Gen) get_bp() wa.Expression {
-	if g.bp_idx == -1 {
-		g.bp_idx = g.new_local_temporary_anon(ast.int_type)
-	}
 	return wa.localget(g.mod, g.bp_idx, type_i32)
 }
 

@@ -24,5 +24,25 @@ pub fn reassign(input int) int {
 
 	a = AA{b: input}
 	
-	return a.b + input
+	return int(a.b + input)
+}
+
+struct BB {
+mut:
+	a i64 = 22
+	b i64
+	c i64
+}
+
+pub fn give(val int) int {
+
+	mut a := BB{}
+
+	a.b = val
+	
+	return take(a)
+}
+
+pub fn take(input BB) int {
+	return int(input.b)
 }

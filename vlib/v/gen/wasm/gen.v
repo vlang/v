@@ -69,34 +69,51 @@ pub fn (mut g Gen) w_error(s string) {
 	util.verror('wasm error', s)
 }
 
+fn (mut g Gen) vsp_leave() wa.Expression {
+	return wa.globalset(g.mod, c'__vsp', wa.localget(g.mod, g.bp_idx, type_i32))
+}
+
 fn (mut g Gen) setup_stack_frame(body wa.Expression) wa.Expression {
+	// The V WASM stack grows upwards. This is a choice that came
+	// to me after considering the following.
+	// 
+	// 1. Store operator offsets cannot be negative.
+	// 2. The size allocated for the stack is unknown until 
+	//    the end of the function's generation.
+	//    This means that stack deallocation code when returning
+	//    early from function's do not know how much to free.
+	// 3. I came up with an alternative, a single exit point
+	//    inside a function, with values "falling through" to the
+	//    end of a function and being returned.
+	//    This would fix problem 2. It did not work...
+	//      https://github.com/WebAssembly/binaryen/issues/5490
+	// 
+	// Any other option would cause a large amount of boilerplate
+	// WASM code being duplicated at every return statement.
+	// 
 	// stack_enter:
 	//     global.get $__vsp
-	//     i32.const {stack_frame}
-	//     i32.sub
 	//     local.tee $bp_idx
-	//     global.set $__vsp
-	// stack_enter:
-	//     local.get $bp_idx
 	//     i32.const {stack_frame}
 	//     i32.add
+	//     global.set $__vsp
+	// stack_leave:
+	//     local.get $bp_idx
 	//     global.set $__vsp
 
 	// vfmt off
 	stack_enter := 
 		wa.globalset(g.mod, c'__vsp', 
-			wa.localtee(g.mod, g.bp_idx, 
-				wa.binary(g.mod, wa.subint32(),
-					wa.globalget(g.mod, c'__vsp', type_i32), 
-					wa.constant(g.mod, wa.literalint32(g.stack_frame))), type_i32))
-	stack_leave :=
-		wa.globalset(g.mod, c'__vsp', 
 			wa.binary(g.mod, wa.addint32(),
-				wa.localget(g.mod, g.bp_idx, type_i32), 
-				wa.constant(g.mod, wa.literalint32(g.stack_frame))))
+				wa.constant(g.mod, wa.literalint32(g.stack_frame)),
+				wa.localtee(g.mod, g.bp_idx,
+					wa.globalget(g.mod, c'__vsp', type_i32), type_i32)))
 	// vfmt on
+	mut n_body := [stack_enter, body]
 
-	mut n_body := [stack_enter, body, stack_leave]
+	if g.curr_ret[0] == ast.void_type {
+		n_body << g.vsp_leave()
+	}
 
 	return g.mkblock(n_body)
 }
@@ -145,6 +162,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	for p in node.params {
 		typ := g.get_wasm_type(p.typ)
 		idx := g.local_temporaries.len
+		if g.table.sym(p.typ).kind == .struct_ {
+			g.get_type_size_align(p.typ)
+		}
 		g.local_temporaries << Temporary{
 			name: p.name
 			typ: typ
@@ -161,12 +181,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		[node.return_type]
 	}
 
-	body := g.expr_stmts(node.stmts, ast.void_type)
-	mut wasm_expr := wa.block(g.mod, c'__body', &body, 1, type_auto)
-	
-	if g.bp_idx != -1 {
-		wasm_expr = g.setup_stack_frame(wasm_expr)
-	}
+	g.bp_idx = g.new_local_temporary_anon(ast.int_type)
+	mut wasm_expr := g.expr_stmts(node.stmts, ast.void_type)
+	wasm_expr = g.setup_stack_frame(wasm_expr)
 
 	mut temporaries := []wa.Type{cap: g.local_temporaries.len - paraml.len}
 	for idx := paraml.len; idx < g.local_temporaries.len; idx++ {
@@ -480,7 +497,7 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
 fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 	return match node {
 		ast.Return {
-			expr := if node.exprs.len == 1 {
+			ret_expr := if node.exprs.len == 1 {
 				g.expr(node.exprs[0], g.curr_ret[0])
 			} else if node.exprs.len == 0 {
 				unsafe { nil }
@@ -491,7 +508,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 				}
 				wa.tuplemake(g.mod, exprs.data, exprs.len)
 			}
-			wa.br(g.mod, c'__body', unsafe { nil }, expr)
+			g.mkblock([g.vsp_leave(), wa.ret(g.mod, ret_expr)])
 		}
 		ast.ExprStmt {
 			g.expr(node.expr, expected)
@@ -643,23 +660,9 @@ pub fn (mut g Gen) toplevel_stmts(stmts []ast.Stmt) {
 	}
 }
 
-fn (mut g Gen) vsp_leave() wa.Expression {
-	frame := wa.constant(g.mod, wa.literalint32(g.stack_frame))
-
-	return wa.call(g.mod, c'__vsp_leave', &frame, 1, type_none)
-}
-
 fn (mut g Gen) housekeeping() {
 	wa.addglobalimport(g.mod, c'__vsp', c'env', c'__vsp', type_i32, true)
 	wa.addmemoryimport(g.mod, c'__vmem', c'env', c'__vmem', 0)
-
-	// vfmt off
-	wa.addfunction(g.mod, c'__vsp_leave', type_i32, type_none, unsafe { nil }, 0, 
-		wa.globalset(g.mod, c'__vsp', 
-			wa.binary(g.mod, wa.addint32(),
-				wa.localget(g.mod, 0, type_i32), 
-				wa.globalget(g.mod, c'__vsp', type_i32))))
-	// vfmt on
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Preferences) {

@@ -1,14 +1,19 @@
 struct AA {
 mut:
-	a int = 22
+	a i64 = 22
 	b i64
+	c i64
 }
 
-pub fn reassign(input int) int {
-	/* mut a := AA{a: 20}
-	a.b = 2500000
+pub fn reassign(val int) int {
 
-	return int(a.b) */
 	mut a := AA{}
-	return 2
+
+	a.b = val
+	
+	return take(a)
+}
+
+pub fn take(input AA) int {
+	return int(input.b)
 }
