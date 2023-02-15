@@ -348,6 +348,10 @@ fn (mut c Checker) check_sql_expr_type_is_int(expr &ast.Expr, sql_keyword string
 		if expr.obj.typ.is_int() {
 			return
 		}
+	} else if expr is ast.SelectorExpr {
+		if expr.typ.is_int() {
+			return
+		}
 	} else if expr is ast.CallExpr {
 		if expr.return_type == 0 {
 			return
