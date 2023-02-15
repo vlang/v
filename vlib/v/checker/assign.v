@@ -296,6 +296,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								}
 								if right is ast.ComptimeSelector {
 									left.obj.is_comptime_field = true
+									left.obj.typ = c.comptime_fields_default_type
 								}
 							}
 							ast.GlobalField {

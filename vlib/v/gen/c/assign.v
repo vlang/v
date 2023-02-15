@@ -131,6 +131,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					key_str := g.get_comptime_selector_key_type(val)
 					if key_str != '' {
 						var_type = g.comptime_var_type_map[key_str] or { var_type }
+						val_type = var_type
 						left.obj.typ = var_type
 						is_comptime_var = true
 					}
@@ -141,6 +142,17 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					is_comptime_var = true
 				}
 				is_auto_heap = left.obj.is_auto_heap
+			}
+		} else if mut left is ast.ComptimeSelector {
+			key_str := g.get_comptime_selector_key_type(left)
+			if key_str != '' {
+				var_type = g.comptime_var_type_map[key_str] or { var_type }
+			}
+			if val is ast.ComptimeSelector {
+				key_str_right := g.get_comptime_selector_key_type(val)
+				if key_str_right != '' {
+					val_type = g.comptime_var_type_map[key_str_right] or { var_type }
+				}
 			}
 		}
 		mut styp := g.typ(var_type)
@@ -490,8 +502,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						} else if val_type.has_flag(.shared_f) {
 							g.expr_with_cast(val, val_type, var_type)
 						} else if is_comptime_var && g.right_is_opt {
-							tmp_var := g.new_tmp_var()
-							g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
+							if var_type.has_flag(.option) && val is ast.ComptimeSelector {
+								g.expr(val)
+							} else {
+								tmp_var := g.new_tmp_var()
+								g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
+							}
 						} else {
 							g.expr(val)
 						}
