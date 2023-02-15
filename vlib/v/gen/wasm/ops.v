@@ -50,6 +50,7 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wa.Type {
 	ts := g.table.sym(typ)
 	match ts.info {
 		ast.Struct {
+			g.get_type_size_align(typ)
 			return wasm.type_i32 // pointer
 		}
 		ast.MultiReturn {

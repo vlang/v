@@ -48,7 +48,7 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
 		ast.Var {
 			if obj.name !in g.local_addresses {
 				return g.local_temporaries[g.get_local_temporary(obj.name)]
-			}				
+			}
 			return g.local_addresses[obj.name]
 		}
 		else {
@@ -129,6 +129,7 @@ fn (mut g Gen) new_local_temporary_anon(typ ast.Type) int {
 		name: '_'
 		typ: g.get_wasm_type(typ)
 		ast_typ: typ
+		idx: ret
 	}
 	return ret
 }
@@ -162,12 +163,15 @@ fn (mut g Gen) deref(expr wa.Expression, expected ast.Type) wa.Expression {
 fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
 	ts := g.table.sym(typ)
 	field := ts.find_field(name) or { g.w_error('could not find field `${name}` on init') }
+	if typ !in g.structs {
+		g.get_type_size_align(typ.idx())
+	}
 	return g.structs[typ.idx()].offsets[field.i]
 }
 
 fn (mut g Gen) get_type_size_align(typ ast.Type) (int, int) {
 	ts := g.table.sym(typ)
-	if ts.size != -1 {
+	if ts.size != -1 && typ in g.structs {
 		return ts.size, ts.align
 	}
 

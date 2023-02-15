@@ -18,11 +18,10 @@ mut:
 	errors   []errors.Error
 	table    &ast.Table = unsafe { nil }
 	//
-	bp_idx      int        // Base pointer temporary's index for function, if needed (-1 for none)
-	stack_frame int        // Size of the current stack frame, if needed
-	mod         wa.Module  // Current Binaryen WebAssembly module
-	curr_ret    []ast.Type // Current return value, multi returns will be split into an array
-	// ret               Temporary               // Current return variable
+	bp_idx            int                     // Base pointer temporary's index for function, if needed (-1 for none)
+	stack_frame       int                     // Size of the current stack frame, if needed
+	mod               wa.Module               // Current Binaryen WebAssembly module
+	curr_ret          []ast.Type              // Current return value, multi returns will be split into an array
 	local_temporaries []Temporary             // Local WebAssembly temporaries, referenced with an index
 	local_addresses   map[string]Stack        // Local stack structures relative to `bp_idx`
 	structs           map[ast.Type]StructInfo // Cached struct field offsets
@@ -118,8 +117,8 @@ fn (mut g Gen) setup_stack_frame(body wa.Expression) wa.Expression {
 	return g.mkblock(n_body)
 }
 
-fn (g Gen) function_return_wasm_type(typ ast.Type) wa.Type {
-	types := g.unpack_type(typ).filter(g.table.sym(it).kind != .struct_)
+fn (mut g Gen) function_return_wasm_type(typ ast.Type) wa.Type {
+	types := g.unpack_type(typ).filter(g.table.sym(it).kind != .struct_).map(g.get_wasm_type(it))
 	return wa.typecreate(types.data, types.len)
 }
 
@@ -193,9 +192,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	for p in node.params {
 		typ := g.get_wasm_type(p.typ)
-		if g.table.sym(p.typ).kind == .struct_ {
-			g.get_type_size_align(p.typ)
-		}
+		/* if g.table.sym(p.typ).kind == .struct_ {
+			println("INIT: ${g.structs}, ${g.table.sym(p.typ)}, ${g.table.sym(p.typ).idx}, ${p.typ}, ${p.typ.idx()}")
+		} */
 		g.local_temporaries << Temporary{
 			name: p.name
 			typ: typ
@@ -208,7 +207,10 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	g.bp_idx = g.new_local_temporary_anon(ast.int_type)
 	mut wasm_expr := g.expr_stmts(node.stmts, ast.void_type)
-	wasm_expr = g.setup_stack_frame(wasm_expr)
+	if node.stmts.len != 0 {
+		// an implicit `main.main` is just too damn long
+		wasm_expr = g.setup_stack_frame(wasm_expr)
+	}
 
 	mut temporaries := []wa.Type{cap: g.local_temporaries.len - paraml.len}
 	for idx := paraml.len; idx < g.local_temporaries.len; idx++ {
@@ -226,8 +228,10 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		// wa.setstart(g.mod, func)
 	}
 
+	// WTF?? map values are not resetting???
+	//   g.local_addresses.clear()
 	g.local_temporaries.clear()
-	g.local_addresses.clear()
+	g.local_addresses = map[string]Stack
 }
 
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) wa.Expression {
@@ -440,9 +444,9 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			rts := g.table.sym(node.return_type)
 
 			if rts.kind == .multi_return {
-				g.w_error("Gen.expr: (ast.CallExpr) with return type as multireturn, this should not happen")
+				g.w_error('Gen.expr: (ast.CallExpr) with return type as multireturn, this should not happen')
 			}
-			
+
 			ret_types := g.unpack_type(node.return_type)
 			structs := ret_types.filter(g.table.sym(it).kind == .struct_)
 			mut structs_addrs := []int{cap: structs.len}
@@ -457,7 +461,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			}
 
 			mut call := wa.call(g.mod, node.name.str, arguments.data, arguments.len, g.function_return_wasm_type(node.return_type))
-			
+
 			mut ret_expr := if rts.kind == .struct_ {
 				g.mkblock([call, g.lea_address(structs_addrs[0])])
 			} else {
@@ -466,7 +470,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			if expected == ast.void_type && node.return_type != ast.void_type {
 				ret_expr = wa.drop(g.mod, ret_expr)
 			}
-			
+
 			if node.is_noreturn {
 				g.mkblock([ret_expr, wa.unreachable(g.mod)])
 			} else {
@@ -532,21 +536,23 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 			for idx, expr in node.exprs {
 				if g.table.sym(g.curr_ret[idx]).kind == .struct_ {
 					// Could be adapted to use random pointers?
-					/* if expr is ast.StructInit {
+					/*
+					if expr is ast.StructInit {
 						var := g.local_temporaries[g.get_local_temporary('__return${idx}')]
 						leave_expr_list << g.init_struct(var, expr)
-					} */
+					}*/
 					var := g.local_temporaries[g.get_local_temporary('__return${idx}')]
 					address := g.expr(expr, g.curr_ret[idx])
 
-					leave_expr_list << g.blit(address, g.curr_ret[idx], wa.localget(g.mod, var.idx, var.typ))
+					leave_expr_list << g.blit(address, g.curr_ret[idx], wa.localget(g.mod,
+						var.idx, var.typ))
 				} else {
 					exprs << g.expr(expr, g.curr_ret[idx])
 				}
 			}
 
 			leave_expr_list << g.vsp_leave()
-			
+
 			ret_expr := if exprs.len == 1 {
 				exprs[0]
 			} else if exprs.len == 0 {
@@ -735,7 +741,8 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 			wa.moduleoptimize(g.mod)
 		}
 		if w_pref.out_name_c.ends_with('/-') || w_pref.out_name_c.ends_with(r'\-') {
-			wa.moduleprintstackir(g.mod, w_pref.is_prod)
+			// wa.moduleprintstackir(g.mod, w_pref.is_prod)
+			wa.moduleprint(g.mod)
 		} else {
 			bytes := wa.moduleallocateandwrite(g.mod, unsafe { nil })
 			str := unsafe { (&char(bytes.binary)).vstring_with_len(int(bytes.binaryBytes)) }
