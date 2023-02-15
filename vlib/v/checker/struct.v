@@ -161,20 +161,35 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 						}
 					}
 				}
-				if field.default_expr is ast.IntegerLiteral {
-					if field.default_expr.val == '0' {
-						c.warn('unnecessary default value of `0`: struct fields are zeroed by default',
+
+				if field.typ.has_flag(.option) {
+					if field.default_expr is ast.None {
+						c.warn('unnecessary default value of `none`: struct fields are zeroed by default',
 							field.default_expr.pos)
 					}
-				} else if field.default_expr is ast.StringLiteral {
-					if field.default_expr.val == '' {
-						c.warn("unnecessary default value of '': struct fields are zeroed by default",
-							field.default_expr.pos)
-					}
-				} else if field.default_expr is ast.BoolLiteral {
-					if field.default_expr.val == false {
-						c.warn('unnecessary default value `false`: struct fields are zeroed by default',
-							field.default_expr.pos)
+				} else if field.typ.has_flag(.result) {
+					// struct field does not support result. Nothing to do
+				} else {
+					match field.default_expr {
+						ast.IntegerLiteral {
+							if field.default_expr.val == '0' {
+								c.warn('unnecessary default value of `0`: struct fields are zeroed by default',
+									field.default_expr.pos)
+							}
+						}
+						ast.StringLiteral {
+							if field.default_expr.val == '' {
+								c.warn("unnecessary default value of '': struct fields are zeroed by default",
+									field.default_expr.pos)
+							}
+						}
+						ast.BoolLiteral {
+							if field.default_expr.val == false {
+								c.warn('unnecessary default value `false`: struct fields are zeroed by default',
+									field.default_expr.pos)
+							}
+						}
+						else {}
 					}
 				}
 			}
