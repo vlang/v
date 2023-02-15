@@ -1,9 +1,3 @@
-struct BB {
-mut:
-	a i64 = 22
-	b AA
-}
-
 struct AA {
 mut:
 	a i64 = 91
@@ -11,13 +5,10 @@ mut:
 	c i64 = 93
 }
 
-pub fn make(nval AA) i64 {
-	val := BB{b: nval}
-
-	return val.b.b
+fn my_func(val int) (AA, AA) {
+	return AA{b: val}, AA{a: val}
 }
 
-pub fn reassign(nval int) int {
-	val := make(AA{b: nval})
-	return int(val)
+fn accept() {
+	my_func(20)
 }

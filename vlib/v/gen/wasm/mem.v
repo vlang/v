@@ -364,7 +364,7 @@ fn (mut g Gen) set_var(var Var, expr wa.Expression, cfg SetConfig) wa.Expression
 
 			if ts.kind == .struct_ {
 				// `expr` is pointer
-				g.blit_struct(expr, ast_typ, var.address + cfg.offset)
+				g.blit_local(expr, ast_typ, var.address + cfg.offset)
 			} else {
 				size, _ := g.table.type_size(ast_typ)
 				// println("address: ${var.address}, offset: ${cfg.offset}")
@@ -374,10 +374,16 @@ fn (mut g Gen) set_var(var Var, expr wa.Expression, cfg SetConfig) wa.Expression
 	}
 }
 
-// Copy fields from `ptr` in stack memory to known local `address`.
-fn (mut g Gen) blit_struct(ptr wa.Expression, ast_typ ast.Type, address int) wa.Expression {
+// `memcpy` from `ptr` to known local `address` in stack memory.
+fn (mut g Gen) blit_local(ptr wa.Expression, ast_typ ast.Type, address int) wa.Expression {
 	size, _ := g.get_type_size_align(ast_typ)
 	return wa.memorycopy(g.mod, g.lea_address(address), ptr, wa.constant(g.mod, wa.literalint32(size)), c'__vmem', c'__vmem')
+}
+
+// `memcpy` from `ptr` to `dest`
+fn (mut g Gen) blit(ptr wa.Expression, ast_typ ast.Type, dest wa.Expression) wa.Expression {
+	size, _ := g.get_type_size_align(ast_typ)
+	return wa.memorycopy(g.mod, dest, ptr, wa.constant(g.mod, wa.literalint32(size)), c'__vmem', c'__vmem')
 }
 
 fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {

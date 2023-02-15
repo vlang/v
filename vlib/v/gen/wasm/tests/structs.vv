@@ -70,3 +70,11 @@ pub fn reassign(nval int) int {
 	val := make(NAA{b: nval})
 	return int(val)
 }
+
+fn my_func(val int) NAA {
+	return NAA{b: val}
+}
+
+fn accept() {
+	my_func(20)
+}

@@ -18,11 +18,11 @@ mut:
 	errors   []errors.Error
 	table    &ast.Table = unsafe { nil }
 	//
-	bp_idx            int                     // Base pointer temporary's index for function, if needed (-1 for none)
-	stack_frame       int                     // Size of the current stack frame, if needed
-	mod               wa.Module               // Current Binaryen WebAssembly module
-	curr_ret          []ast.Type              // Current return value, multi returns will be split into an array
-	//ret               Temporary               // Current return variable
+	bp_idx      int        // Base pointer temporary's index for function, if needed (-1 for none)
+	stack_frame int        // Size of the current stack frame, if needed
+	mod         wa.Module  // Current Binaryen WebAssembly module
+	curr_ret    []ast.Type // Current return value, multi returns will be split into an array
+	// ret               Temporary               // Current return variable
 	local_temporaries []Temporary             // Local WebAssembly temporaries, referenced with an index
 	local_addresses   map[string]Stack        // Local stack structures relative to `bp_idx`
 	structs           map[ast.Type]StructInfo // Cached struct field offsets
@@ -76,9 +76,9 @@ fn (mut g Gen) vsp_leave() wa.Expression {
 fn (mut g Gen) setup_stack_frame(body wa.Expression) wa.Expression {
 	// The V WASM stack grows upwards. This is a choice that came
 	// to me after considering the following.
-	// 
+	//
 	// 1. Store operator offsets cannot be negative.
-	// 2. The size allocated for the stack is unknown until 
+	// 2. The size allocated for the stack is unknown until
 	//    the end of the function's generation.
 	//    This means that stack deallocation code when returning
 	//    early from function's do not know how much to free.
@@ -87,10 +87,10 @@ fn (mut g Gen) setup_stack_frame(body wa.Expression) wa.Expression {
 	//    end of a function and being returned.
 	//    This would fix problem 2. It did not work...
 	//      https://github.com/WebAssembly/binaryen/issues/5490
-	// 
+	//
 	// Any other option would cause a large amount of boilerplate
 	// WASM code being duplicated at every return statement.
-	// 
+	//
 	// stack_enter:
 	//     global.get $__vsp
 	//     local.tee $bp_idx
@@ -116,6 +116,23 @@ fn (mut g Gen) setup_stack_frame(body wa.Expression) wa.Expression {
 	}
 
 	return g.mkblock(n_body)
+}
+
+fn (g Gen) function_return_wasm_type(typ ast.Type) wa.Type {
+	types := g.unpack_type(typ).filter(g.table.sym(it).kind != .struct_)
+	return wa.typecreate(types.data, types.len)
+}
+
+fn (g Gen) unpack_type(typ ast.Type) []ast.Type {
+	ts := g.table.sym(typ)
+	return match ts.info {
+		ast.MultiReturn {
+			ts.info.types
+		}
+		else {
+			[typ]
+		}
+	}
 }
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
@@ -153,15 +170,29 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	// Multi returns are implemented with a binaryen tuple type, not a struct reference.
 
 	ts := g.table.sym(node.return_type)
-	return_type := g.get_wasm_type(node.return_type)
+	return_type := if ts.kind != .struct_ { g.get_wasm_type(node.return_type) } else { type_none }
 
 	mut paraml := []wa.Type{cap: node.params.len + 1}
 	g.bp_idx = -1
 	g.stack_frame = 0
 
+	g.curr_ret = g.unpack_type(node.return_type)
+
+	for idx, typ in g.curr_ret {
+		sym := g.table.sym(typ)
+		if sym.kind == .struct_ {
+			g.local_temporaries << Temporary{
+				name: '__return${idx}'
+				typ: type_i32 // pointer
+				ast_typ: typ
+				idx: g.local_temporaries.len
+			}
+			paraml << ast.voidptr_type
+		}
+	}
+
 	for p in node.params {
 		typ := g.get_wasm_type(p.typ)
-		idx := g.local_temporaries.len
 		if g.table.sym(p.typ).kind == .struct_ {
 			g.get_type_size_align(p.typ)
 		}
@@ -169,17 +200,11 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			name: p.name
 			typ: typ
 			ast_typ: p.typ
-			idx: idx
+			idx: g.local_temporaries.len
 		}
 		paraml << typ
 	}
 	params_type := wa.typecreate(paraml.data, paraml.len)
-
-	g.curr_ret = if ts.kind == .multi_return {
-		(ts.info as ast.MultiReturn).types
-	} else {
-		[node.return_type]
-	}
 
 	g.bp_idx = g.new_local_temporary_anon(ast.int_type)
 	mut wasm_expr := g.expr_stmts(node.stmts, ast.void_type)
@@ -410,35 +435,43 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			}
 		}
 		ast.CallExpr {
-			/*
-			if node.name in ['println'] {
-				// TODO: will only print `int` values using `console.log`
-
-				expr := node.args[0].expr
-				typ := node.args[0].typ
-				
-				if !typ.is_pure_int() {
-					g.w_error("the `println` builtin function can only print integers")
-				}
-				
-				nexpr := g.cast_t(g.expr(expr, typ), typ, ast.int_type)
-			
-				wa.call(g.mod, c"__vlog", &nexpr, 1, type_none)
-			} else {*/
 			mut arguments := []wa.Expression{cap: node.args.len}
+
+			rts := g.table.sym(node.return_type)
+
+			if rts.kind == .multi_return {
+				g.w_error("Gen.expr: (ast.CallExpr) with return type as multireturn, this should not happen")
+			}
+			
+			ret_types := g.unpack_type(node.return_type)
+			structs := ret_types.filter(g.table.sym(it).kind == .struct_)
+			mut structs_addrs := []int{cap: structs.len}
+
+			for typ in structs {
+				pos := g.allocate_struct('_anonstruct', typ)
+				structs_addrs << pos
+				arguments << g.lea_address(pos)
+			}
 			for idx, arg in node.args {
 				arguments << g.expr(arg.expr, node.expected_arg_types[idx])
 			}
 
-			call := wa.call(g.mod, node.name.str, arguments.data, arguments.len, g.get_wasm_type(node.return_type))
-			if node.is_noreturn {
-				g.mkblock([call, wa.unreachable(g.mod)])
-			} else if expected == ast.void_type {
-				wa.drop(g.mod, call)
+			mut call := wa.call(g.mod, node.name.str, arguments.data, arguments.len, g.function_return_wasm_type(node.return_type))
+			
+			mut ret_expr := if rts.kind == .struct_ {
+				g.mkblock([call, g.lea_address(structs_addrs[0])])
 			} else {
 				call
 			}
-			//}
+			if expected == ast.void_type && node.return_type != ast.void_type {
+				ret_expr = wa.drop(g.mod, ret_expr)
+			}
+			
+			if node.is_noreturn {
+				g.mkblock([ret_expr, wa.unreachable(g.mod)])
+			} else {
+				ret_expr
+			}
 		}
 		else {
 			g.w_error('wasm.expr(): unhandled node: ' + node.type_name())
@@ -494,18 +527,35 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
 fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 	return match node {
 		ast.Return {
-			ret_expr := if node.exprs.len == 1 {
-				g.expr(node.exprs[0], g.curr_ret[0])
-			} else if node.exprs.len == 0 {
+			mut leave_expr_list := []wa.Expression{cap: node.exprs.len}
+			mut exprs := []wa.Expression{cap: node.exprs.len}
+			for idx, expr in node.exprs {
+				if g.table.sym(g.curr_ret[idx]).kind == .struct_ {
+					// Could be adapted to use random pointers?
+					/* if expr is ast.StructInit {
+						var := g.local_temporaries[g.get_local_temporary('__return${idx}')]
+						leave_expr_list << g.init_struct(var, expr)
+					} */
+					var := g.local_temporaries[g.get_local_temporary('__return${idx}')]
+					address := g.expr(expr, g.curr_ret[idx])
+
+					leave_expr_list << g.blit(address, g.curr_ret[idx], wa.localget(g.mod, var.idx, var.typ))
+				} else {
+					exprs << g.expr(expr, g.curr_ret[idx])
+				}
+			}
+
+			leave_expr_list << g.vsp_leave()
+			
+			ret_expr := if exprs.len == 1 {
+				exprs[0]
+			} else if exprs.len == 0 {
 				unsafe { nil }
 			} else {
-				mut exprs := []wa.Expression{cap: node.exprs.len}
-				for idx in 0 .. node.exprs.len {
-					exprs << g.expr(node.exprs[idx], g.curr_ret[idx])
-				}
 				wa.tuplemake(g.mod, exprs.data, exprs.len)
 			}
-			g.mkblock([g.vsp_leave(), wa.ret(g.mod, ret_expr)])
+			leave_expr_list << wa.ret(g.mod, ret_expr)
+			g.mkblock(leave_expr_list)
 		}
 		ast.ExprStmt {
 			g.expr(node.expr, expected)
