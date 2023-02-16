@@ -185,14 +185,19 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 
 	if node.kind == .insert && node.is_top_level {
 		inserting_object_name := node.object_var_name
-		inserting_object_var := node.scope.find(inserting_object_name) or {
+		inserting_object := node.scope.find(inserting_object_name) or {
 			c.error('undefined ident: `${inserting_object_name}`', node.pos)
 			return ast.void_type
 		}
+		mut inserting_object_type := inserting_object.typ
 
-		if inserting_object_var.typ != node.table_expr.typ {
+		if inserting_object_type.is_ptr() {
+			inserting_object_type = inserting_object.typ.deref()
+		}
+
+		if inserting_object_type != node.table_expr.typ {
 			table_name := table_sym.name
-			inserting_type_name := c.table.sym(inserting_object_var.typ).name
+			inserting_type_name := c.table.sym(inserting_object_type).name
 
 			c.error('cannot use `${inserting_type_name}` as `${table_name}`', node.pos)
 			return ast.void_type
@@ -341,6 +346,10 @@ fn (mut c Checker) check_sql_value_expr_is_comptime_with_natural_number_or_expr_
 fn (mut c Checker) check_sql_expr_type_is_int(expr &ast.Expr, sql_keyword string) {
 	if expr is ast.Ident {
 		if expr.obj.typ.is_int() {
+			return
+		}
+	} else if expr is ast.SelectorExpr {
+		if expr.typ.is_int() {
 			return
 		}
 	} else if expr is ast.CallExpr {

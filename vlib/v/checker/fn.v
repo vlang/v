@@ -962,11 +962,14 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		c.error('too many arguments in call to `${func.name}` (non-js backend: ${c.pref.backend})',
 			node.pos)
 	}
+	mut has_decompose := false
 	for i, mut call_arg in node.args {
 		if func.params.len == 0 {
 			continue
 		}
-
+		if !func.is_variadic && has_decompose {
+			c.error('cannot have parameter after array decompose', node.pos)
+		}
 		param := if func.is_variadic && i >= func.params.len - 1 {
 			func.params.last()
 		} else {
@@ -977,6 +980,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.error('too many arguments in call to `${func.name}`', node.pos)
 			}
 		}
+		has_decompose = call_arg.expr is ast.ArrayDecompose
 		if func.is_variadic && i >= func.params.len - 1 {
 			param_sym := c.table.sym(param.typ)
 			mut expected_type := param.typ
@@ -2045,6 +2049,12 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 	}
 	if f.is_variadic {
 		min_required_params--
+	} else {
+		has_decompose := node.args.filter(it.expr is ast.ArrayDecompose).len > 0
+		if has_decompose {
+			// if call(...args) is present
+			min_required_params = nr_args
+		}
 	}
 	if min_required_params < 0 {
 		min_required_params = 0

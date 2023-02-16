@@ -434,11 +434,6 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) !string {
 			return error('none')
 		}
 		name = g.cc_type(node.receiver.typ, false) + '_' + name
-		if unwrapped_rec_sym.language == .c && node.receiver.typ.is_real_pointer()
-			&& node.name == 'str' {
-			// TODO: handle this in a more general way, perhaps add a `[typedef_incomplete]` attribute, for C structs instead of this hack
-			name = name.replace_once('C__', '')
-		}
 	}
 	if node.language == .c {
 		name = util.no_dots(name)
@@ -1772,6 +1767,19 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					}
 				}
 			}
+		} else if arg.expr is ast.ArrayDecompose {
+			mut d_count := 0
+			for d_i in i .. expected_types.len {
+				g.write('*(${g.typ(expected_types[d_i])}*)array_get(')
+				g.expr(arg.expr)
+				g.write(', ${d_count})')
+
+				if d_i < expected_types.len - 1 {
+					g.write(', ')
+				}
+				d_count++
+			}
+			continue
 		}
 		use_tmp_var_autofree := g.is_autofree && arg.typ == ast.string_type && arg.is_tmp_autofree
 			&& !g.inside_const && !g.is_builtin_mod
@@ -1980,7 +1988,8 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		} else {
 			'thread_${tmp}'
 		}
-		g.writeln('HANDLE ${simple_handle} = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)${wrapper_fn_name}, ${arg_tmp_var}, 0, 0);')
+		stack_size := g.get_cur_thread_stack_size(expr.name)
+		g.writeln('HANDLE ${simple_handle} = CreateThread(0, ${stack_size}, (LPTHREAD_START_ROUTINE)${wrapper_fn_name}, ${arg_tmp_var}, 0, 0); // fn: ${expr.name}')
 		g.writeln('if (!${simple_handle}) panic_lasterr(tos3("`go ${name}()`: "));')
 		if node.is_expr && node.call_expr.return_type != ast.void_type {
 			g.writeln('${gohandle_name} thread_${tmp} = {')
@@ -1997,7 +2006,8 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		if g.pref.os != .vinix {
 			g.writeln('pthread_attr_t thread_${tmp}_attributes;')
 			g.writeln('pthread_attr_init(&thread_${tmp}_attributes);')
-			g.writeln('pthread_attr_setstacksize(&thread_${tmp}_attributes, ${g.pref.thread_stack_size});')
+			size := g.get_cur_thread_stack_size(expr.name)
+			g.writeln('pthread_attr_setstacksize(&thread_${tmp}_attributes, ${size}); // fn: ${expr.name}')
 			sthread_attributes = '&thread_${tmp}_attributes'
 		}
 		g.writeln('int ${tmp}_thr_res = pthread_create(&thread_${tmp}, ${sthread_attributes}, (void*)${wrapper_fn_name}, ${arg_tmp_var});')
@@ -2216,6 +2226,22 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		g.write(line)
 		g.write(handle)
 	}
+}
+
+// get current thread size, if fn hasn't defined return default
+[inline]
+fn (mut g Gen) get_cur_thread_stack_size(name string) string {
+	ast_fn := g.table.fns[name] or { return '${g.pref.thread_stack_size}' }
+	attrs := ast_fn.attrs
+	if isnil(attrs) {
+		return '${g.pref.thread_stack_size}'
+	}
+	for attr in attrs {
+		if attr.name == 'spawn_stack' {
+			return attr.arg
+		}
+	}
+	return '${g.pref.thread_stack_size}'
 }
 
 // similar to `autofree_call_pregen()` but only to to handle [keep_args_alive] for C functions

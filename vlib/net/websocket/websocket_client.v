@@ -337,6 +337,7 @@ pub fn (mut ws Client) close(code int, message string) ! {
 	defer {
 		ws.shutdown_socket() or {}
 		ws.reset_state() or {}
+		ws.send_close_event(code, message)
 	}
 	ws.set_state(.closing)
 	// mut code32 := 0

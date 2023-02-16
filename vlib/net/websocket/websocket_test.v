@@ -8,6 +8,7 @@ struct WebsocketTestResults {
 pub mut:
 	nr_messages      int
 	nr_pong_received int
+	nr_closes        int
 }
 
 // Do not run these tests everytime, since they are flaky.
@@ -125,4 +126,57 @@ fn ws_test(family net.AddrFamily, uri string) ! {
 	// We expect at least 2 pongs, one sent directly and one indirectly
 	assert test_results.nr_pong_received >= 2
 	assert test_results.nr_messages == 2
+}
+
+fn test_on_close_when_server_closing_connection() ! {
+	port := 30000 + rand.intn(1024) or { 0 }
+	mut ws := websocket.new_server(.ip, port, '')
+	ws.on_message(fn (mut cli websocket.Client, msg &websocket.Message) ! {
+		if msg.opcode == .text_frame {
+			cli.close(1000, 'closing connection')!
+		}
+	})
+
+	mut test_results := WebsocketTestResults{}
+	ws.on_close_ref(fn (mut cli websocket.Client, code int, reason string, mut res WebsocketTestResults) ! {
+		res.nr_closes++
+	}, test_results)
+	spawn ws.listen()
+
+	mut client := websocket.new_client('ws://localhost:${port}')!
+
+	client.connect()!
+	spawn client.listen()
+
+	time.sleep(1000 * time.millisecond)
+
+	client.write_string('a message')!
+
+	time.sleep(1000 * time.millisecond)
+
+	assert test_results.nr_closes == 1
+}
+
+fn test_on_close_when_client_closing_connection() ! {
+	port := 30000 + rand.intn(1024) or { 0 }
+	mut ws := websocket.new_server(.ip, port, '')
+	spawn ws.listen()
+
+	mut client := websocket.new_client('ws://localhost:${port}')!
+
+	mut test_results := WebsocketTestResults{}
+	client.on_close_ref(fn (mut cli websocket.Client, code int, reason string, mut res WebsocketTestResults) ! {
+		res.nr_closes++
+	}, test_results)
+
+	client.connect()!
+	spawn client.listen()
+
+	time.sleep(1000 * time.millisecond)
+
+	client.close(1000, 'closing connection')!
+
+	time.sleep(1000 * time.millisecond)
+
+	assert test_results.nr_closes == 1
 }
