@@ -89,7 +89,7 @@ accordingly in the steps below.)
 
    Note: The remote named `pullrequest` should point to YOUR own forked repo, not the
    main v repository! After this, your local cloned repository is prepared for
-   making pullrequests, and you can just do normal git operations such as:
+   making pull requests, and you can just do normal git operations such as:
    `git pull` `git status` and so on.
 
 5. When finished with a feature/bugfix/change, you can:
@@ -103,7 +103,7 @@ accordingly in the steps below.)
    the new pushed branch.
    (Example dialog: https://url4e.com/gyazo/images/364edc04.png)
 
-8. After making your pullrequest (aka, PR), you can continue to work on the
+8. After making your pull request (aka, PR), you can continue to work on the
    branch `fix_alabala` ... just do again `git push pullrequest` when you have more
    commits.
 

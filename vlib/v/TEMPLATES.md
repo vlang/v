@@ -1,6 +1,6 @@
 V allows for easily using text templates, expanded at compile time to
 V functions, that efficiently produce text output. This is especially
-usefull for templated HTML views, but the mechanism is general enough
+useful for templated HTML views, but the mechanism is general enough
 to be used for other kinds of text output also.
 
 # Template directives

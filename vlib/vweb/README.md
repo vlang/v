@@ -202,7 +202,7 @@ fn (mut app App) create_product() vweb.Result {
 
 #### - Parameters
 
-Parameters are passed direcly in endpoint route using colon sign `:` and received using the same
+Parameters are passed directly in endpoint route using colon sign `:` and received using the same
 name at function
 To pass a parameter to an endpoint, you simply define it inside an attribute, e. g.
 `['/hello/:user]`.
@@ -628,7 +628,7 @@ fn (mut app App) index() vweb.Result {
     // Set a Csrf-Cookie (Token will be generated automatically)
 	app.set_csrf_cookie()
 
-	// Get the token-value from the csrf-cookie that was just setted
+	// Get the token-value from the csrf-cookie that was just set
 	token := app.get_csrf_token() or { panic(err) }
 
 	return app.text("Csrf-Token set! It's value is: $token")

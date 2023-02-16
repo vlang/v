@@ -9,7 +9,7 @@ Then you can open `index.html` with your favourite browser.
 # Serve examples
 
 ### JS server
-Afer run `npm init -y` code and genared `./package.json`
+After run `npm init -y` code and genared `./package.json`
 You can put `start` and `build` at script in jason leaf.
 `path './package.json'`
 ```json
