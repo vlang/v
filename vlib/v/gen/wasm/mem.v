@@ -304,15 +304,6 @@ fn (mut g Gen) path_expr_address(node ast.Expr) PathAddress {
 	}
 }
 
-fn (mut g Gen) path_expr_ptr(node ast.Expr) wa.Expression {
-	// deref here
-	rel_address := g.path_expr_address(node)
-	return match rel_address {
-		wa.Expression { rel_address }
-		int { wa.constant(g.mod, wa.literalint32(rel_address)) }
-	}
-}
-
 fn (mut g Gen) path_expr_t(node ast.Expr, expected ast.Type) wa.Expression {
 	return g.deref_local(g.path_expr_address(node), expected)
 }
@@ -322,8 +313,7 @@ fn (mut g Gen) deref_local(address PathAddress, expected ast.Type) wa.Expression
 
 	match address {
 		wa.Expression {
-			expr := wa.binary(g.mod, wa.addint32(), g.get_bp(), address)
-			return wa.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected), expr, c'__vmem')
+			return wa.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected), address, c'__vmem')
 		}
 		int {
 			return wa.load(g.mod, u32(size), g.is_signed(expected), u32(address), 0, g.get_wasm_type(expected), g.get_bp(), c'__vmem')
