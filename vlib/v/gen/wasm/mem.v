@@ -57,7 +57,6 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
 	}
 }
 
-
 fn (mut g Gen) get_var_from_expr(node ast.Expr) Var {
 	match node {
 		ast.Ident {

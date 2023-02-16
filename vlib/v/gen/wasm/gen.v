@@ -140,7 +140,34 @@ fn (g Gen) unpack_type(typ ast.Type) []ast.Type {
 	}
 }
 
+fn (mut g Gen) fn_external_import(node ast.FnDecl) {
+	if !node.no_body || node.is_method {
+		g.v_error('external javascript functions cannot have bodies', node.body_pos)
+	}
+
+	mut paraml := []wa.Type{cap: node.params.len}
+	for arg in node.params {
+		if !g.is_pure_type(arg.typ) {
+			g.v_error('arguments to javascript functions must be numbers, pointers or booleans', arg.type_pos)
+		}
+		paraml << g.get_wasm_type(arg.typ)
+	}
+	if !(node.return_type == ast.void_type || g.is_pure_type(node.return_type)) {
+		g.v_error('javascript functions must return numbers, pointers or booleans', node.return_type_pos)
+	}
+	return_type := g.get_wasm_type(node.return_type)
+
+	// internal name: `JS.setpixel`
+	// external name: `setpixel`
+	wa.addfunctionimport(g.mod, node.name.str, c'env', node.short_name.str, wa.typecreate(paraml.data, paraml.len), return_type)
+}
+
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
+	if node.language == .js {
+		g.fn_external_import(node)
+		return
+	}
+	
 	name := if node.is_method {
 		'${g.table.get_type_name(node.receiver.typ)}.${node.name}'
 	} else {
@@ -278,6 +305,24 @@ fn (mut g Gen) postfix_expr(node ast.PostfixExpr) wa.Expression {
 }
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) wa.Expression {
+	if node.op in [.logical_or, .and] {
+		mut exprs := []wa.Expression{cap: 2}
+		
+		left := g.expr(node.left, node.left_type)
+
+		temporary := g.new_local_temporary_anon(ast.bool_type)
+		exprs << wa.localset(g.mod, temporary, left)
+
+		cmp := if node.op == .logical_or {
+			wa.unary(g.mod, wa.eqzint32(), wa.localget(g.mod, temporary, type_i32))
+		} else {
+			wa.localget(g.mod, temporary, type_i32)
+		}
+		exprs << wa.bif(g.mod, cmp, g.expr(node.right, node.right_type), wa.localget(g.mod, temporary, type_i32))
+
+		return g.mkblock(exprs)
+	}
+	
 	op := g.infix_from_typ(node.left_type, node.op)
 
 	infix := wa.binary(g.mod, op, g.expr(node.left, node.left_type), g.expr_with_cast(node.right,
@@ -325,6 +370,18 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr) wa.Expression {
 				wa.binary(g.mod, wa.xorint32(), expr, wa.constant(g.mod, wa.literalint32(-1)))
 			} else {
 				wa.binary(g.mod, wa.xorint64(), expr, wa.constant(g.mod, wa.literalint64(-1)))
+			}
+		}
+		.amp {
+			var := g.get_var_from_expr(node.right)
+			match var {
+				Stack {
+					g.lea_address(var.address)
+				}
+				else {
+					// TODO: function argument structs will just as pointers, handle them later
+					g.w_error("Gen.prefix_expr: &val not implemented for non struct values")
+				}
 			}
 		}
 		else {
@@ -444,23 +501,40 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			}
 		}
 		ast.CallExpr {
-			mut arguments := []wa.Expression{cap: node.args.len}
+			mut name := node.name
+			mut arguments := []wa.Expression{cap: node.args.len + 1}
+
+			if node.is_method {
+				name = '${g.table.get_type_name(node.receiver_type)}.${node.name}'
+			}
 
 			ret_types := g.unpack_type(node.return_type)
 			structs := ret_types.filter(g.table.sym(it).kind == .struct_)
 			mut structs_addrs := []int{cap: structs.len}
 
+			// ABI: {return structs} {method `self`}, then {arguments}
 			for typ in structs {
 				pos := g.allocate_struct('_anonstruct', typ)
 				structs_addrs << pos
 				arguments << g.lea_address(pos)
+			}
+			if node.is_method {
+				expr := if !node.left_type.is_ptr() && node.receiver_type.is_ptr() {
+					ast.Expr(ast.PrefixExpr{
+						op: .amp
+						right: node.left
+					})
+				} else {
+					node.left
+				}
+				arguments << g.expr(expr, node.receiver_type)
 			}
 			for idx, arg in node.args {
 				arguments << g.expr(arg.expr, node.expected_arg_types[idx])
 			}
 
 			fret := g.function_return_wasm_type(node.return_type)
-			mut call := wa.call(g.mod, node.name.str, arguments.data, arguments.len, fret)
+			mut call := wa.call(g.mod, name.str, arguments.data, arguments.len, fret)
 			if structs.len != 0 {
 				mut temporary := 0
 				// The function's return values contains structs and must be reordered
