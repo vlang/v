@@ -953,11 +953,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 
-	if node.left is ast.Ident {
+	if node.from_embed_types.len == 0 && node.left is ast.Ident {
 		if node.left.obj is ast.Var {
 			if node.left.obj.smartcasts.len > 0 {
-				rec_type := g.unwrap_generic(node.left.obj.smartcasts.last())
-				cast_sym := g.table.sym(rec_type)
+				unwrapped_rec_type = g.unwrap_generic(node.left.obj.smartcasts.last())
+				cast_sym := g.table.sym(unwrapped_rec_type)
 				if cast_sym.info is ast.Aggregate {
 					unwrapped_rec_type = cast_sym.info.types[g.aggregate_type_idx]
 				}
