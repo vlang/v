@@ -536,18 +536,30 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 				}
 				.eq, .ne {
 					// TODO Implement `$if method.args.len == 1`
-					if cond.left is ast.SelectorExpr && g.comptime_for_method.len > 0
+					if cond.left is ast.SelectorExpr
+						&& (g.comptime_for_field_var.len > 0 || g.comptime_for_method.len > 0)
 						&& cond.right is ast.StringLiteral {
 						selector := cond.left as ast.SelectorExpr
-						if selector.expr is ast.Ident
-							&& (selector.expr as ast.Ident).name == g.comptime_for_method_var && selector.field_name == 'name' {
-							is_equal := g.comptime_for_method == cond.right.val
-							if is_equal {
-								g.write('1')
-							} else {
-								g.write('0')
+						if selector.expr is ast.Ident && selector.field_name == 'name' {
+							if g.comptime_for_method_var.len > 0
+								&& (selector.expr as ast.Ident).name == g.comptime_for_method_var {
+								is_equal := g.comptime_for_method == cond.right.val
+								if is_equal {
+									g.write('1')
+								} else {
+									g.write('0')
+								}
+								return is_equal, true
+							} else if g.comptime_for_field_var.len > 0
+								&& (selector.expr as ast.Ident).name == g.comptime_for_field_var {
+								is_equal := g.comptime_for_field_value.name == cond.right.val
+								if is_equal {
+									g.write('1')
+								} else {
+									g.write('0')
+								}
+								return is_equal, true
 							}
-							return is_equal, true
 						}
 					}
 					if cond.left is ast.SelectorExpr || cond.right is ast.SelectorExpr {
