@@ -952,6 +952,19 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			else {}
 		}
 	}
+
+	if node.from_embed_types.len == 0 && node.left is ast.Ident {
+		if node.left.obj is ast.Var {
+			if node.left.obj.smartcasts.len > 0 {
+				unwrapped_rec_type = g.unwrap_generic(node.left.obj.smartcasts.last())
+				cast_sym := g.table.sym(unwrapped_rec_type)
+				if cast_sym.info is ast.Aggregate {
+					unwrapped_rec_type = cast_sym.info.types[g.aggregate_type_idx]
+				}
+			}
+		}
+	}
+
 	if g.inside_comptime_for_field {
 		mut node_ := unsafe { node }
 		comptime_args = g.change_comptime_args(mut node_)
