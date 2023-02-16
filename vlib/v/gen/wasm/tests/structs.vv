@@ -1,4 +1,4 @@
-/* struct AA {
+struct AA {
 	a int = 22
 	b i64
 }
@@ -25,7 +25,7 @@ pub fn reassign(input int) int {
 	a = AA{b: input}
 	
 	return int(a.b + input)
-} */
+}
 
 struct BB {
 mut:
@@ -34,19 +34,18 @@ mut:
 	c i64
 }
 
-/* pub fn give(val int) int {
+pub fn give(val int) int {
 
 	mut a := BB{}
 
 	a.b = val
 	
 	return take(a)
-} */
+}
 
-/* pub fn take(input BB) int {
+pub fn take(input BB) int {
 	return int(input.b)
-} */
-
+}
 
 struct BB_ {
 mut:
@@ -76,10 +75,26 @@ pub fn return_make(nval int) int {
 	return int(val)
 }
 
-/* fn my_func(val int) AA_ {
+fn my_func(val int) AA_ {
 	return AA_{b: val}
 }
 
 fn accept() {
 	my_func(20)
-} */
+}
+
+struct CC {
+mut:
+	a i64 = 91
+	b i64 = 92
+	c i64 = 93
+}
+
+fn my_func_multi(val int) (CC, CC) {
+	return CC{b: val}, CC{a: val}
+}
+
+pub fn accept_multi(val int) int {
+	a, b := my_func_multi(val)
+	return int(a.b + b.a)
+}

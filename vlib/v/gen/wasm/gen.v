@@ -118,7 +118,13 @@ fn (mut g Gen) setup_stack_frame(body wa.Expression) wa.Expression {
 }
 
 fn (mut g Gen) function_return_wasm_type(typ ast.Type) wa.Type {
+	if typ == ast.void_type {
+		return type_none
+	}
 	types := g.unpack_type(typ).filter(g.table.sym(it).kind != .struct_).map(g.get_wasm_type(it))
+	if types.len == 0 {
+		return type_none
+	}
 	return wa.typecreate(types.data, types.len)
 }
 
@@ -168,8 +174,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	//
 	// Multi returns are implemented with a binaryen tuple type, not a struct reference.
 
-	ts := g.table.sym(node.return_type)
-	return_type := if ts.kind != .struct_ { g.get_wasm_type(node.return_type) } else { type_none }
+	return_type := g.function_return_wasm_type(node.return_type)
 
 	mut paraml := []wa.Type{cap: node.params.len + 1}
 	g.bp_idx = -1
@@ -441,12 +446,6 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 		ast.CallExpr {
 			mut arguments := []wa.Expression{cap: node.args.len}
 
-			rts := g.table.sym(node.return_type)
-
-			if rts.kind == .multi_return {
-				g.w_error('Gen.expr: (ast.CallExpr) with return type as multireturn, this should not happen')
-			}
-
 			ret_types := g.unpack_type(node.return_type)
 			structs := ret_types.filter(g.table.sym(it).kind == .struct_)
 			mut structs_addrs := []int{cap: structs.len}
@@ -460,22 +459,44 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 				arguments << g.expr(arg.expr, node.expected_arg_types[idx])
 			}
 
-			mut call := wa.call(g.mod, node.name.str, arguments.data, arguments.len, g.function_return_wasm_type(node.return_type))
+			fret := g.function_return_wasm_type(node.return_type)
+			mut call := wa.call(g.mod, node.name.str, arguments.data, arguments.len, fret)
+			if structs.len != 0 {
+				mut temporary := 0
+				// The function's return values contains structs and must be reordered
 
-			mut ret_expr := if rts.kind == .struct_ {
-				g.mkblock([call, g.lea_address(structs_addrs[0])])
-			} else {
-				call
+				if ret_types.len - structs.len != 0 {
+					temporary = g.new_local_temporary_anon_wtyp(fret)
+					call = wa.localset(g.mod, temporary, call)
+				}
+				mut exprs := []wa.Expression{}
+				
+				mut sidx := 0
+				mut tidx := 0
+				for typ in ret_types {
+					ts := g.table.sym(typ)
+
+					if ts.kind == .struct_ {
+						exprs << g.lea_address(structs_addrs[tidx])
+						tidx++
+					} else {
+						exprs << wa.tupleextract(g.mod, wa.localget(g.mod, temporary, fret), sidx)
+						sidx++
+					}
+				}
+
+				vexpr := if exprs.len != 1 { wa.tuplemake(g.mod, exprs.data, exprs.len) } else { exprs[0] }
+
+				call = g.mkblock([call, vexpr])
 			}
 			if expected == ast.void_type && node.return_type != ast.void_type {
-				ret_expr = wa.drop(g.mod, ret_expr)
-			}
+				call = wa.drop(g.mod, call)
+			} else if node.is_noreturn {
+				// `[noreturn]` functions cannot return values
+				call = g.mkblock([call, wa.unreachable(g.mod)])
 
-			if node.is_noreturn {
-				g.mkblock([ret_expr, wa.unreachable(g.mod)])
-			} else {
-				ret_expr
 			}
+			call
 		}
 		else {
 			g.w_error('wasm.expr(): unhandled node: ' + node.type_name())
@@ -504,7 +525,7 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
 	for i := 0; i < node.left.len; i++ {
 		left := node.left[i]
 		typ := node.left_types[i]
-		rtyp := node.right_types[i]
+		//rtyp := node.right_types[i]
 
 		if left is ast.Ident {
 			// `_ = expr`
@@ -512,17 +533,12 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
 				continue
 			}
 			if node.op == .decl_assign {
-				g.new_local_temporary(left.name, typ)
+				g.new_local(left, typ)
 			}
 		}
-
-		wartyp := g.get_wasm_type(rtyp)
-		mut popexpr := wa.tupleextract(g.mod, wa.localget(g.mod, temporary, wret), i)
-		popexpr = g.cast(popexpr, wartyp, g.is_signed(rtyp), g.get_wasm_type(typ))
-
-		// TODO: only supports local identifiers, no path.expressions or global names
-		idx, _ := g.get_local_temporary_from_ident(left as ast.Ident)
-		exprs << wa.localset(g.mod, idx, popexpr)
+		var := g.get_var_from_expr(left)
+		popexpr := wa.tupleextract(g.mod, wa.localget(g.mod, temporary, wret), i)
+		exprs << g.set_var(var, popexpr)
 	}
 
 	return g.mkblock(exprs)
@@ -621,6 +637,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 					// a[b] =  expr
 
 					if left is ast.Ident {
+						// `_ = expr`
 						if left.kind == .blank_ident {
 							exprs << wa.drop(g.mod, g.expr(right, typ))
 							continue
@@ -741,8 +758,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 			wa.moduleoptimize(g.mod)
 		}
 		if w_pref.out_name_c.ends_with('/-') || w_pref.out_name_c.ends_with(r'\-') {
-			// wa.moduleprintstackir(g.mod, w_pref.is_prod)
-			wa.moduleprint(g.mod)
+			wa.moduleprintstackir(g.mod, w_pref.is_prod)
 		} else {
 			bytes := wa.moduleallocateandwrite(g.mod, unsafe { nil })
 			str := unsafe { (&char(bytes.binary)).vstring_with_len(int(bytes.binaryBytes)) }

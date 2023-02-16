@@ -55,7 +55,7 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wa.Type {
 		}
 		ast.MultiReturn {
 			// TODO: cache??
-			mut paraml := ts.info.types.filter(g.table.sym(it).kind != .struct_).map(g.get_wasm_type(it))
+			mut paraml := ts.info.types.map(g.get_wasm_type(it))
 			return wa.typecreate(paraml.data, paraml.len)
 		}
 		else {}

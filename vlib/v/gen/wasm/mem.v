@@ -123,6 +123,16 @@ fn (mut g Gen) get_local_temporary_from_ident(ident ast.Ident) (int, wa.Type) {
 	}
 }
 
+fn (mut g Gen) new_local_temporary_anon_wtyp(w_typ wa.Type) int {
+	ret := g.local_temporaries.len
+	g.local_temporaries << Temporary{
+		name: '_'
+		typ: w_typ
+		idx: ret
+	}
+	return ret
+}
+
 fn (mut g Gen) new_local_temporary_anon(typ ast.Type) int {
 	ret := g.local_temporaries.len
 	g.local_temporaries << Temporary{

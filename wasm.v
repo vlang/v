@@ -9,6 +9,7 @@ fn my_func(val int) (AA, AA) {
 	return AA{b: val}, AA{a: val}
 }
 
-fn accept() {
-	my_func(20)
+pub fn accept(val int) int {
+	a, b := my_func(val)
+	return int(a.b + b.a)
 }
