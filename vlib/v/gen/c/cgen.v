@@ -4234,9 +4234,9 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		if node.typ.has_flag(.option) && node.expr is ast.None {
 			g.gen_option_error(node.typ, node.expr)
 		} else if node.typ.has_flag(.option) {
-			g.expr_with_opt(node.expr, node.expr_type, node.typ)
+			g.expr_with_opt(node.expr, expr_type, node.typ)
 		} else {
-			g.expr_with_cast(node.expr, node.expr_type, node_typ)
+			g.expr_with_cast(node.expr, expr_type, node_typ)
 		}
 	} else if !node.typ.has_flag(.option) && sym.kind == .struct_ && !node.typ.is_ptr()
 		&& !(sym.info as ast.Struct).is_typedef {
@@ -4276,9 +4276,9 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			g.gen_option_error(node.typ, node.expr)
 		} else if node.typ.has_flag(.option) {
 			if sym.kind == .alias && node.expr_type.has_flag(.option) {
-				g.expr_opt_with_cast(node.expr, node.expr_type, node.typ)
+				g.expr_opt_with_cast(node.expr, expr_type, node.typ)
 			} else {
-				g.expr_with_opt(node.expr, node.expr_type, node.typ)
+				g.expr_with_opt(node.expr, expr_type, node.typ)
 			}
 		} else {
 			g.write('(${cast_label}(')
