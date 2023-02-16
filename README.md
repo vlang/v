@@ -244,12 +244,12 @@ use the `-d use_openssl` switch when you compile.
 
 To install OpenSSL on non-Windows systems:
 
-| System              | Installation command            |
-|---------------------|---------------------------------|
-| macOS               | `brew install openssl`          |
-| Debian/Ubuntu based | `sudo apt install libssl-dev`   |
-| Arch/Manjaro        | openssl is installed by default |
-| Fedora/CentOS/RH    | `sudo dnf install openssl-devel`|
+| System              | Installation command             |
+|---------------------|----------------------------------|
+| macOS               | `brew install openssl`           |
+| Debian/Ubuntu based | `sudo apt install libssl-dev`    |
+| Arch/Manjaro        | openssl is installed by default  |
+| Fedora/CentOS/RH    | `sudo dnf install openssl-devel` |
 
 On Windows, OpenSSL is simply hard to get working correctly. The instructions
 [here](https://tecadmin.net/install-openssl-on-windows/) may (or may not) help.
