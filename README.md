@@ -228,12 +228,12 @@ v run tetris/tetris.v
 
 In order to build Tetris or 2048 (or anything else using `sokol` or `gg` graphics modules),
 you will need additional development libraries for your system.
-For some Linux distros (Debian/Ubuntu based), you need to run this:
-`sudo apt install libxi-dev libxcursor-dev`.
-For Fedora/RH/CentOS, you need to run this:
-`sudo dnf install libXcursor-devel libXi-devel libX11-devel libglvnd-devel` .
-For NixOS, add these packages to your `environment.systemPackages`:
-`xorg.libX11.dev xorg.libXcursor.dev xorg.libXi.dev libGL.dev`
+
+| System              | Installation method                                                                                |
+|---------------------|----------------------------------------------------------------------------------------------------|
+| Debian/Ubuntu based | `sudo apt install libxi-dev libxcursor-dev`                                                        |
+| Fedora/RH/CentOS    | `sudo dnf install libXcursor-devel libXi-devel libX11-devel libglvnd-devel`                        |
+| NixOS               | add `xorg.libX11.dev xorg.libXcursor.dev xorg.libXi.dev libGL.dev` to `environment.systemPackages` |
 
 ## V net.http, net.websocket, `v install`
 
@@ -244,19 +244,12 @@ use the `-d use_openssl` switch when you compile.
 
 To install OpenSSL on non-Windows systems:
 
-```bash
-macOS:
-brew install openssl
-
-Debian/Ubuntu:
-sudo apt install libssl-dev
-
-Arch/Manjaro:
-openssl is installed by default
-
-Fedora:
-sudo dnf install openssl-devel
-```
+| System              | Installation command             |
+|---------------------|----------------------------------|
+| macOS               | `brew install openssl`           |
+| Debian/Ubuntu based | `sudo apt install libssl-dev`    |
+| Arch/Manjaro        | openssl is installed by default  |
+| Fedora/CentOS/RH    | `sudo dnf install openssl-devel` |
 
 On Windows, OpenSSL is simply hard to get working correctly. The instructions
 [here](https://tecadmin.net/install-openssl-on-windows/) may (or may not) help.
@@ -267,15 +260,11 @@ V's `sync` module and channel implementation uses libatomic.
 It is most likely already installed on your system, but if not,
 you can install it, by doing the following:
 
-```bash
-MacOS: already installed
-
-Debian/Ubuntu:
-sudo apt install libatomic1
-
-Fedora/CentOS/RH:
-sudo dnf install libatomic-static
-```
+| System              | Installation command                |
+|---------------------|-------------------------------------|
+| macOS               | already installed                   |
+| Debian/Ubuntu based | `sudo apt install libatomic1`       |
+| Fedora/CentOS/RH    | `sudo dnf install libatomic-static` |
 
 ## V UI
 
