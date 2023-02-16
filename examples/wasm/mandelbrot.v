@@ -1,10 +1,13 @@
+// v -b wasm -no-builtin mandelbrot.v # create `mandelbrot.wasm`
+// 
+// python -m http.server 8080
+// emrun mandelbrot.html
+// ....
+// ....
+
 fn JS.canvas_x() int
 fn JS.canvas_y() int
 fn JS.setpixel(x int, y int, c f64)
-
-fn test() bool {
-	return false
-}
 
 fn main() {
 	max_x := JS.canvas_x()

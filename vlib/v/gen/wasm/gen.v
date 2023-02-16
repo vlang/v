@@ -828,7 +828,9 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 		g.toplevel_stmts(file.stmts)
 	}
 	if wa.modulevalidate(g.mod) {
+		wa.setdebuginfo(w_pref.is_debug)
 		if w_pref.is_prod {
+			wa.setoptimizelevel(3)
 			wa.moduleoptimize(g.mod)
 		}
 		if w_pref.out_name_c.ends_with('/-') || w_pref.out_name_c.ends_with(r'\-') {

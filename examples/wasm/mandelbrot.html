@@ -13,8 +13,8 @@
 		var ctx = canvas.getContext("2d");
 
 		const env = {
-		    __vsp: new WebAssembly.Global({value: "i32", mutable: true}, 0),
-		    __vmem: new WebAssembly.Memory({initial: 256, maximum: 256}),
+			__vsp: new WebAssembly.Global({value: "i32", mutable: true}, 0),
+			__vmem: new WebAssembly.Memory({initial: 256, maximum: 256}),
 			canvas_x: () => canvas.width,
 			canvas_y: () => canvas.height,
 			setpixel: (x, y, c) => {
@@ -24,8 +24,9 @@
 		}
 
 		WebAssembly.instantiateStreaming(fetch("mandelbrot.wasm"), {env: env}).then((res) => {
-			console.log(canvas.width, canvas.height)
+			console.time('main.main')
 			res.instance.exports['main.main']()
+			console.timeEnd('main.main')
 		});
 	</script>
 </body>
