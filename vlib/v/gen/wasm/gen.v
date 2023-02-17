@@ -5,6 +5,7 @@ import v.pref
 import v.util
 import v.token
 import v.errors
+import v.eval
 import binaryen as wa
 import os
 
@@ -14,9 +15,11 @@ pub struct Gen {
 	pref     &pref.Preferences = unsafe { nil } // Preferences shared from V struct
 	files    []&ast.File
 mut:
-	warnings []errors.Warning
-	errors   []errors.Error
-	table    &ast.Table = unsafe { nil }
+	warnings  []errors.Warning
+	errors    []errors.Error
+	table     &ast.Table = unsafe { nil }
+	eval      eval.Eval
+	enum_vals map[string]Enum
 	//
 	bp_idx            int                     // Base pointer temporary's index for function, if needed (-1 for none)
 	stack_frame       int                     // Size of the current stack frame, if needed
@@ -294,6 +297,15 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	return g.cast_t(g.expr(expr, got_type), got_type, expected_type)
 }
 
+fn (mut g Gen) literalint(val i64, expected ast.Type) wa.Expression {
+	match g.get_wasm_type(expected) {
+		type_i32 { return wa.constant(g.mod, wa.literalint32(int(val))) }
+		type_i64 { return wa.constant(g.mod, wa.literalint64(val)) }
+		else {}
+	}
+	g.w_error('literalint: bad type `${expected}`')
+}
+
 fn (mut g Gen) literal(val string, expected ast.Type) wa.Expression {
 	match g.get_wasm_type(expected) {
 		type_i32 { return wa.constant(g.mod, wa.literalint32(val.int())) }
@@ -467,7 +479,9 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			g.w_error('wasm backend does not support match expressions yet')
 		}
 		ast.EnumVal {
-			g.w_error('wasm backend does not support enums yet, however it would be dead simple to implement them')
+			type_name := g.table.get_type_name(node.typ)
+			ts_type := (g.table.sym(node.typ).info as ast.Enum).typ
+			g.literalint(g.enum_vals[type_name].fields[node.val], ts_type)
 		}
 		ast.BoolLiteral {
 			val := if node.val { wa.literalint32(1) } else { wa.literalint32(0) }
@@ -941,16 +955,43 @@ fn (mut g Gen) housekeeping() {
 	}
 }
 
+struct Enum {
+mut:
+	fields map[string]i64
+}
+
+pub fn (mut g Gen) calculate_enum_fields() {
+	// `enum Enum as u64` is supported
+	for name, decl in g.table.enum_decls {
+		mut enum_vals := Enum{}
+		mut value := if decl.is_flag { i64(1) } else { 0 }
+		for field in decl.fields {
+			if field.has_expr {
+				value = g.eval.expr(field.expr, decl.typ).int_val()
+			}
+			enum_vals.fields[field.name] = value
+			if decl.is_flag {
+				value <<= 1
+			} else {
+				value++
+			}
+		}
+		g.enum_vals[name] = enum_vals
+	}
+}
+
 pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Preferences) {
 	mut g := &Gen{
 		table: table
 		pref: w_pref
 		files: files
+		eval: eval.new_eval(table, w_pref)
 		mod: wa.modulecreate()
 	}
 	g.table.pointer_size = 4
 	wa.modulesetfeatures(g.mod, wa.featureall())
 
+	g.calculate_enum_fields()
 	for file in g.files {
 		if file.errors.len > 0 {
 			util.verror('wasm error', file.errors[0].str())

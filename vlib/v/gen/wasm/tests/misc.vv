@@ -1,0 +1,12 @@
+enum Hello as u64 {
+	a
+	b
+	c = 20 + 10
+	d
+	e
+}
+
+fn enums() {
+	mut a := Hello.a
+	a = .c
+}

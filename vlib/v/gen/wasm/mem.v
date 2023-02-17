@@ -3,15 +3,7 @@ module wasm
 import v.ast
 import binaryen as wa
 
-type Var = /* Global | */ Stack | Temporary | ast.Ident
-
-//
-// Var {
-//   name    string
-//   typ     wa.Type
-//   ast_typ ast.Type
-// }
-//
+type Var = Stack | Temporary | ast.Ident
 
 struct Temporary {
 	name    string
@@ -28,11 +20,12 @@ struct Stack {
 	address int
 }
 
-/* struct Global {
+/*
+struct Global {
 	name    string
 	typ     wa.Type
 	ast_typ ast.Type
-} */
+}*/
 
 fn (g Gen) is_pure_type(typ ast.Type) bool {
 	return typ.is_pure_int() || typ.is_pure_float() || typ == ast.char_type_idx
@@ -66,10 +59,10 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) Var {
 			address := g.path_expr_address(node)
 			match address {
 				wa.Expression {
-					panic("not implemented for complex expressions")
+					panic('not implemented for complex expressions')
 				}
 				int {
-					return Stack {
+					return Stack{
 						ast_typ: node.typ
 						address: address
 					}
@@ -78,7 +71,7 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) Var {
 		}
 		ast.IndexExpr {
 			// TODO: this would require an unknown offset at compile time
-			g.w_error("`ident[expr] = expr` not implemented")
+			g.w_error('`ident[expr] = expr` not implemented')
 		}
 		ast.PrefixExpr {
 			g.w_error('`*ident = 10` not implemented')
@@ -86,7 +79,7 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) Var {
 		else {
 			g.w_error('get_var_from_expr: unexpected `${node.type_name()}`')
 		}
-	}	
+	}
 }
 
 fn (mut g Gen) get_local_temporary(name string) int {
@@ -151,22 +144,35 @@ fn (mut g Gen) new_local_temporary(name string, typ ast.Type) Temporary {
 		ast_typ: typ
 		idx: idx
 	}
-	g.local_temporaries << var	
+	g.local_temporaries << var
 	return var
 }
 
 fn (mut g Gen) new_local(var ast.Ident, typ ast.Type) {
 	if g.is_pure_type(typ) {
 		g.new_local_temporary(var.name, typ)
-	} else {
-		g.allocate_struct(var.name, typ)
+		return
+	}
+
+	ts := g.table.sym(typ)
+	match ts.info {
+		ast.Struct {
+			g.allocate_struct(var.name, typ)
+		}
+		ast.Enum {
+			g.new_local_temporary(var.name, ts.info.typ)
+		}
+		else {
+			g.w_error('new_local: type `${*ts}` is not a supported local type')
+		}
 	}
 }
 
 fn (mut g Gen) deref(expr wa.Expression, expected ast.Type) wa.Expression {
 	size, _ := g.table.type_size(expected)
 
-	return wa.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected), expr, c'__vmem')
+	return wa.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected),
+		expr, c'__vmem')
 }
 
 fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
@@ -234,13 +240,13 @@ fn (mut g Gen) get_bp() wa.Expression {
 	return wa.localget(g.mod, g.bp_idx, type_i32)
 }
 
-
-/* fn (mut g Gen) get_ident(node ast.Ident, expected ast.Type) (wa.Expression, int) {
+/*
+fn (mut g Gen) get_ident(node ast.Ident, expected ast.Type) (wa.Expression, int) {
 	idx, typ := g.get_local_temporary_from_ident(node)
 	expr := wa.localget(g.mod, idx, typ)
 
 	return g.cast(expr, typ, g.is_signed(g.local_temporaries[idx].ast_typ), g.get_wasm_type(expected)), idx
-} */
+}*/
 
 fn (mut g Gen) lea_address(address int) wa.Expression {
 	return if address != 0 {
@@ -265,7 +271,7 @@ fn (mut g Gen) get_var(var Var) wa.Expression {
 }
 
 // WASM expression and integer relative to base pointer.
-type PathAddress = wa.Expression | int
+type PathAddress = int | wa.Expression
 
 // `node` is expected to not be `ast.Ident` when called externally.
 fn (mut g Gen) path_expr_address(node ast.Expr) PathAddress {
@@ -292,13 +298,13 @@ fn (mut g Gen) path_expr_address(node ast.Expr) PathAddress {
 					var.address
 				}
 				else {
-					panic("unreachable")
+					panic('unreachable')
 				}
 			}
 		}
 		// handle a[expr] and *a
 		else {
-			g.w_error("path_expr: forbidden node `${node.type_name()}`")
+			g.w_error('path_expr: forbidden node `${node.type_name()}`')
 		}
 	}
 }
@@ -312,10 +318,12 @@ fn (mut g Gen) deref_local(address PathAddress, expected ast.Type) wa.Expression
 
 	match address {
 		wa.Expression {
-			return wa.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected), address, c'__vmem')
+			return wa.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected),
+				address, c'__vmem')
 		}
 		int {
-			return wa.load(g.mod, u32(size), g.is_signed(expected), u32(address), 0, g.get_wasm_type(expected), g.get_bp(), c'__vmem')
+			return wa.load(g.mod, u32(size), g.is_signed(expected), u32(address), 0, g.get_wasm_type(expected),
+				g.get_bp(), c'__vmem')
 		}
 	}
 	// return wa.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected), expr, c'__vmem')
@@ -362,7 +370,7 @@ fn (mut g Gen) set_var(var Var, expr wa.Expression, cfg SetConfig) wa.Expression
 			} else {
 				var.ast_typ
 			}
-			
+
 			ts := g.table.sym(ast_typ)
 
 			if ts.kind == .struct_ {
@@ -371,7 +379,8 @@ fn (mut g Gen) set_var(var Var, expr wa.Expression, cfg SetConfig) wa.Expression
 			} else {
 				size, _ := g.table.type_size(ast_typ)
 				// println("address: ${var.address}, offset: ${cfg.offset}")
-				wa.store(g.mod, u32(size), u32(var.address + cfg.offset), 0, g.get_bp(), expr, g.get_wasm_type(ast_typ), c'__vmem')
+				wa.store(g.mod, u32(size), u32(var.address + cfg.offset), 0, g.get_bp(),
+					expr, g.get_wasm_type(ast_typ), c'__vmem')
 			}
 		}
 	}
@@ -380,13 +389,15 @@ fn (mut g Gen) set_var(var Var, expr wa.Expression, cfg SetConfig) wa.Expression
 // `memcpy` from `ptr` to known local `address` in stack memory.
 fn (mut g Gen) blit_local(ptr wa.Expression, ast_typ ast.Type, address int) wa.Expression {
 	size, _ := g.get_struct_type_size_align(ast_typ)
-	return wa.memorycopy(g.mod, g.lea_address(address), ptr, wa.constant(g.mod, wa.literalint32(size)), c'__vmem', c'__vmem')
+	return wa.memorycopy(g.mod, g.lea_address(address), ptr, wa.constant(g.mod, wa.literalint32(size)),
+		c'__vmem', c'__vmem')
 }
 
 // `memcpy` from `ptr` to `dest`
 fn (mut g Gen) blit(ptr wa.Expression, ast_typ ast.Type, dest wa.Expression) wa.Expression {
 	size, _ := g.get_struct_type_size_align(ast_typ)
-	return wa.memorycopy(g.mod, dest, ptr, wa.constant(g.mod, wa.literalint32(size)), c'__vmem', c'__vmem')
+	return wa.memorycopy(g.mod, dest, ptr, wa.constant(g.mod, wa.literalint32(size)),
+		c'__vmem', c'__vmem')
 }
 
 fn (mut g Gen) allocate_literal_string(node ast.StringLiteral) {
@@ -400,7 +411,7 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {
 		}
 		Stack {
 			mut exprs := []wa.Expression{}
-			
+
 			ts := g.table.sym(var.ast_typ)
 			match ts.info {
 				ast.Struct {
@@ -411,9 +422,9 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {
 							initexpr := if f.has_default_expr {
 								g.expr(f.default_expr, f.typ) // or `unaliased_typ`?
 							} else {
-								g.literal("0", f.typ)
+								g.literal('0', f.typ)
 							}
-							
+
 							exprs << g.set_var(var, initexpr, ast_typ: f.typ, offset: offset)
 						}
 					}
@@ -431,9 +442,9 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {
 				exprs << g.set_var(var, initexpr, ast_typ: f.expected_type, offset: offset)
 			}
 
-			return g.mknblock("STRUCTINIT", exprs)
+			return g.mknblock('STRUCTINIT', exprs)
 		}
 		else {}
 	}
-	panic("unreachable")
+	panic('unreachable')
 }

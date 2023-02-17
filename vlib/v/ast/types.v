@@ -1075,6 +1075,7 @@ pub:
 	is_flag          bool
 	is_multi_allowed bool
 	uses_exprs       bool
+	typ              Type
 }
 
 [minify]

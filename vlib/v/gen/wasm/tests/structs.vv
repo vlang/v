@@ -8,22 +8,26 @@ pub fn zeroed() {
 }
 
 pub fn field() {
-	_ := AA{a: 23}
+	_ := AA{
+		a: 23
+	}
 }
 
 pub fn selector(input int) int {
 	mut a := AA{}
-	
+
 	c := 10 + a.a
-	
+
 	return c
 }
 
 pub fn reassign(input int) int {
 	mut a := AA{}
 
-	a = AA{b: input}
-	
+	a = AA{
+		b: input
+	}
+
 	return int(a.b + input)
 }
 
@@ -35,11 +39,10 @@ mut:
 }
 
 pub fn give(val int) int {
-
 	mut a := BB{}
 
 	a.b = val
-	
+
 	return take(a)
 }
 
@@ -61,22 +64,28 @@ mut:
 }
 
 fn e() BB_ {
-	return BB_{a: 2}
+	return BB_{
+		a: 2
+	}
 }
 
 pub fn make(nval AA_) i64 {
-	val := BB_{b: nval}
+	val := BB_{
+		b: nval
+	}
 
 	return val.b.b
 }
 
 pub fn return_make(nval int) int {
-	val := make(AA_{b: nval})
+	val := make(AA_{ b: nval })
 	return int(val)
 }
 
 fn my_func(val int) AA_ {
-	return AA_{b: val}
+	return AA_{
+		b: val
+	}
 }
 
 fn accept() {
@@ -91,7 +100,11 @@ mut:
 }
 
 fn my_func_multi(val int) (CC, CC) {
-	return CC{b: val}, CC{a: val}
+	return CC{
+		b: val
+	}, CC{
+		a: val
+	}
 }
 
 pub fn accept_multi(val int) int {

@@ -3848,6 +3848,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			is_flag: is_flag
 			is_multi_allowed: is_multi_allowed
 			uses_exprs: uses_exprs
+			typ: enum_type
 		}
 		is_pub: is_pub
 	})
