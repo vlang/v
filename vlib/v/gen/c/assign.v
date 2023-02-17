@@ -62,7 +62,7 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 	}
 }
 
-// expr_with_opt is used in assign expr to `optinal`.
+// expr_with_opt is used in assigning an expression to an `option` variable
 // e.g. x = y (option lhs and rhs), mut x = ?int(123), y = none
 fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type) string {
 	if expr_typ == ast.none_type {
