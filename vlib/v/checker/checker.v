@@ -2779,8 +2779,10 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		&& !(to_sym.info as ast.Struct).is_typedef {
 		// For now we ignore C typedef because of `C.Window(C.None)` in vlib/clipboard
 		if from_sym.kind == .struct_ && !from_type.is_ptr() {
-			c.warn('casting to struct is deprecated, use e.g. `Struct{...expr}` instead',
-				node.pos)
+			if !to_type.has_flag(.option) {
+				c.warn('casting to struct is deprecated, use e.g. `Struct{...expr}` instead',
+					node.pos)
+			}
 			from_type_info := from_sym.info as ast.Struct
 			to_type_info := to_sym.info as ast.Struct
 			if !c.check_struct_signature(from_type_info, to_type_info) {
