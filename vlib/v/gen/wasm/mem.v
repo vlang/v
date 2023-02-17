@@ -173,12 +173,12 @@ fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
 	ts := g.table.sym(typ)
 	field := ts.find_field(name) or { g.w_error('could not find field `${name}` on init') }
 	if typ !in g.structs {
-		g.get_type_size_align(typ.idx())
+		g.get_struct_type_size_align(typ.idx())
 	}
 	return g.structs[typ.idx()].offsets[field.i]
 }
 
-fn (mut g Gen) get_type_size_align(typ ast.Type) (int, int) {
+fn (mut g Gen) get_struct_type_size_align(typ ast.Type) (int, int) {
 	ts := g.table.sym(typ)
 	if ts.size != -1 && typ in g.structs {
 		return ts.size, ts.align
@@ -217,7 +217,7 @@ fn (mut g Gen) get_type_size_align(typ ast.Type) (int, int) {
 fn (mut g Gen) allocate_struct(name string, typ ast.Type) int {
 	// Gen.allocate_struct() must be called with a struct!
 
-	size, align := g.get_type_size_align(typ)
+	size, align := g.get_struct_type_size_align(typ)
 	padding := (align - g.stack_frame % align) % align
 	address := g.stack_frame
 	g.stack_frame += size + padding
@@ -379,14 +379,18 @@ fn (mut g Gen) set_var(var Var, expr wa.Expression, cfg SetConfig) wa.Expression
 
 // `memcpy` from `ptr` to known local `address` in stack memory.
 fn (mut g Gen) blit_local(ptr wa.Expression, ast_typ ast.Type, address int) wa.Expression {
-	size, _ := g.get_type_size_align(ast_typ)
+	size, _ := g.get_struct_type_size_align(ast_typ)
 	return wa.memorycopy(g.mod, g.lea_address(address), ptr, wa.constant(g.mod, wa.literalint32(size)), c'__vmem', c'__vmem')
 }
 
 // `memcpy` from `ptr` to `dest`
 fn (mut g Gen) blit(ptr wa.Expression, ast_typ ast.Type, dest wa.Expression) wa.Expression {
-	size, _ := g.get_type_size_align(ast_typ)
+	size, _ := g.get_struct_type_size_align(ast_typ)
 	return wa.memorycopy(g.mod, dest, ptr, wa.constant(g.mod, wa.literalint32(size)), c'__vmem', c'__vmem')
+}
+
+fn (mut g Gen) allocate_literal_string(node ast.StringLiteral) {
+	println(node)
 }
 
 fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {

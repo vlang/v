@@ -197,6 +197,8 @@ pub fn (v Builder) get_builtin_files() []string {
 			if v.pref.backend.is_js() {
 				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
 					'js'))
+			} else if v.pref.backend == .wasm {
+				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin', 'wasm'))
 			} else {
 				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin'))
 			}

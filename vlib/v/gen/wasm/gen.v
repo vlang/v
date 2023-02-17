@@ -25,7 +25,11 @@ mut:
 	local_temporaries []Temporary             // Local WebAssembly temporaries, referenced with an index
 	local_addresses   map[string]Stack        // Local stack structures relative to `bp_idx`
 	structs           map[ast.Type]StructInfo // Cached struct field offsets
-	lbl               int
+	//
+	lbl           int
+	for_labels    []string     // A stack of strings containing the names of blocks/loops to break/continue to
+	stack_patches []BlockPatch // See `Gen.stack_deinit_push_patch()`
+	needs_stack   bool // If true, will import `__vmem` and `__vsp`
 }
 
 struct StructInfo {
@@ -100,6 +104,12 @@ fn (mut g Gen) setup_stack_frame(body wa.Expression) wa.Expression {
 	//     local.get $bp_idx
 	//     global.set $__vsp
 
+	// No stack allocations needed!
+	if g.stack_frame == 0 {
+		return body
+	}
+	g.needs_stack = true
+
 	// vfmt off
 	stack_enter := 
 		wa.globalset(g.mod, c'__vsp', 
@@ -113,6 +123,12 @@ fn (mut g Gen) setup_stack_frame(body wa.Expression) wa.Expression {
 	if g.curr_ret[0] == ast.void_type {
 		n_body << g.vsp_leave()
 	}
+
+	for bp in g.stack_patches {
+		// Insert stack leave on all return calls
+		wa.blockinsertchildat(bp.block, bp.idx, g.vsp_leave())
+	}
+	g.stack_patches.clear()
 
 	return g.mkblock(n_body)
 }
@@ -148,7 +164,8 @@ fn (mut g Gen) fn_external_import(node ast.FnDecl) {
 	mut paraml := []wa.Type{cap: node.params.len}
 	for arg in node.params {
 		if !g.is_pure_type(arg.typ) {
-			g.v_error('arguments to javascript functions must be numbers, pointers or booleans', arg.type_pos)
+			g.v_error('arguments to javascript functions must be numbers, pointers or booleans',
+				arg.type_pos)
 		}
 		paraml << g.get_wasm_type(arg.typ)
 	}
@@ -159,7 +176,8 @@ fn (mut g Gen) fn_external_import(node ast.FnDecl) {
 
 	// internal name: `JS.setpixel`
 	// external name: `setpixel`
-	wa.addfunctionimport(g.mod, node.name.str, c'env', node.short_name.str, wa.typecreate(paraml.data, paraml.len), return_type)
+	wa.addfunctionimport(g.mod, node.name.str, c'env', node.short_name.str, wa.typecreate(paraml.data,
+		paraml.len), return_type)
 }
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
@@ -167,7 +185,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.fn_external_import(node)
 		return
 	}
-	
+
 	name := if node.is_method {
 		'${g.table.get_type_name(node.receiver.typ)}.${node.name}'
 	} else {
@@ -187,9 +205,6 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	if node.is_deprecated {
 		g.warning('fn_decl: ${name} is deprecated', node.pos)
-	}
-	if node.is_builtin {
-		g.warning('fn_decl: ${name} is builtin', node.pos)
 	}
 
 	// The first parameter is an address of returned struct,
@@ -224,9 +239,10 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	for p in node.params {
 		typ := g.get_wasm_type(p.typ)
-		/* if g.table.sym(p.typ).kind == .struct_ {
+		/*
+		if g.table.sym(p.typ).kind == .struct_ {
 			println("INIT: ${g.structs}, ${g.table.sym(p.typ)}, ${g.table.sym(p.typ).idx}, ${p.typ}, ${p.typ.idx()}")
-		} */
+		}*/
 		g.local_temporaries << Temporary{
 			name: p.name
 			typ: typ
@@ -263,7 +279,8 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	// WTF?? map values are not resetting???
 	//   g.local_addresses.clear()
 	g.local_temporaries.clear()
-	g.local_addresses = map[string]Stack
+	g.local_addresses = map[string]Stack{}
+	assert g.for_labels.len == 0
 }
 
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) wa.Expression {
@@ -307,7 +324,7 @@ fn (mut g Gen) postfix_expr(node ast.PostfixExpr) wa.Expression {
 fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) wa.Expression {
 	if node.op in [.logical_or, .and] {
 		mut exprs := []wa.Expression{cap: 2}
-		
+
 		left := g.expr(node.left, node.left_type)
 
 		temporary := g.new_local_temporary_anon(ast.bool_type)
@@ -318,11 +335,12 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) wa.Expression {
 		} else {
 			wa.localget(g.mod, temporary, type_i32)
 		}
-		exprs << wa.bif(g.mod, cmp, g.expr(node.right, node.right_type), wa.localget(g.mod, temporary, type_i32))
+		exprs << wa.bif(g.mod, cmp, g.expr(node.right, node.right_type), wa.localget(g.mod,
+			temporary, type_i32))
 
 		return g.mkblock(exprs)
 	}
-	
+
 	op := g.infix_from_typ(node.left_type, node.op)
 
 	infix := wa.binary(g.mod, op, g.expr(node.left, node.left_type), g.expr_with_cast(node.right,
@@ -380,7 +398,7 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr) wa.Expression {
 				}
 				else {
 					// TODO: function argument structs will just as pointers, handle them later
-					g.w_error("Gen.prefix_expr: &val not implemented for non struct values")
+					g.w_error('Gen.prefix_expr: &val not implemented for non struct values')
 				}
 			}
 		}
@@ -455,6 +473,25 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			val := if node.val { wa.literalint32(1) } else { wa.literalint32(0) }
 			wa.constant(g.mod, val)
 		}
+		ast.StringLiteral {
+			/*
+			pos := g.allocate_struct('_anonstring', ast.string_type)
+
+			g.allocate_literal_string(node)
+
+			if node.is_raw {
+
+			} else {
+				
+			}*/
+
+			// g.set_var(Stack{ address: pos, ast_typ: ast.charptr_type }, initexpr, ast_typ: f.expected_type, offset: offset)
+
+			/*
+			pos := g.allocate_struct('_anonstruct', node.typ)
+			expr := g.init_struct(Stack{ address: pos, ast_typ: ast.string_type }, node)*/
+			g.w_error('ast.StringLiteral not implemented')
+		}
 		ast.InfixExpr {
 			g.infix_expr(node, expected)
 		}
@@ -504,6 +541,14 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			mut name := node.name
 			mut arguments := []wa.Expression{cap: node.args.len + 1}
 
+			if name in ['panic', 'println', 'print', 'eprintln', 'eprint'] {
+				arg := node.args[0]
+				if arg.expr !is ast.StringLiteral {
+					g.v_error('builtin function `${name}` must be called with a string literal',
+						arg.pos)
+				}
+			}
+
 			if node.is_method {
 				name = '${g.table.get_type_name(node.receiver_type)}.${node.name}'
 			}
@@ -544,7 +589,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 					call = wa.localset(g.mod, temporary, call)
 				}
 				mut exprs := []wa.Expression{}
-				
+
 				mut sidx := 0
 				mut tidx := 0
 				for typ in ret_types {
@@ -554,12 +599,17 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 						exprs << g.lea_address(structs_addrs[tidx])
 						tidx++
 					} else {
-						exprs << wa.tupleextract(g.mod, wa.localget(g.mod, temporary, fret), sidx)
+						exprs << wa.tupleextract(g.mod, wa.localget(g.mod, temporary,
+							fret), sidx)
 						sidx++
 					}
 				}
 
-				vexpr := if exprs.len != 1 { wa.tuplemake(g.mod, exprs.data, exprs.len) } else { exprs[0] }
+				vexpr := if exprs.len != 1 {
+					wa.tuplemake(g.mod, exprs.data, exprs.len)
+				} else {
+					exprs[0]
+				}
 
 				call = g.mkblock([call, vexpr])
 			}
@@ -568,7 +618,6 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			} else if node.is_noreturn {
 				// `[noreturn]` functions cannot return values
 				call = g.mkblock([call, wa.unreachable(g.mod)])
-
 			}
 			call
 		}
@@ -599,7 +648,7 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
 	for i := 0; i < node.left.len; i++ {
 		left := node.left[i]
 		typ := node.left_types[i]
-		//rtyp := node.right_types[i]
+		// rtyp := node.right_types[i]
 
 		if left is ast.Ident {
 			// `_ = expr`
@@ -616,6 +665,34 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
 	}
 
 	return g.mkblock(exprs)
+}
+
+fn (mut g Gen) new_for_label(node_label string) string {
+	g.lbl++
+	label := if node_label != '' {
+		node_label
+	} else {
+		g.lbl.str()
+	}
+	g.for_labels << label
+
+	return label
+}
+
+fn (mut g Gen) pop_for_label() {
+	g.for_labels.pop()
+}
+
+struct BlockPatch {
+mut:
+	idx   int
+	block wa.Expression
+}
+
+// Adds another `BlockPatch` to the current function to "patch" in
+// a `g.vsp_leave()` when the function actually requires stack memory
+fn (mut g Gen) stack_deinit_push_patch(val BlockPatch) {
+	g.stack_patches
 }
 
 fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
@@ -641,7 +718,10 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 				}
 			}
 
-			leave_expr_list << g.vsp_leave()
+			mut patch := BlockPatch{
+				idx: leave_expr_list.len
+			}
+			// leave_expr_list << g.vsp_leave()
 
 			ret_expr := if exprs.len == 1 {
 				exprs[0]
@@ -651,20 +731,21 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 				wa.tuplemake(g.mod, exprs.data, exprs.len)
 			}
 			leave_expr_list << wa.ret(g.mod, ret_expr)
-			g.mkblock(leave_expr_list)
+
+			patch.block = g.mkblock(leave_expr_list)
+			g.stack_patches << patch
+
+			patch.block
 		}
 		ast.ExprStmt {
 			g.expr(node.expr, expected)
 		}
 		ast.ForStmt {
-			if node.label != '' {
-				g.w_error('wasm.expr(): `label: for` is unimplemented')
-			}
+			lbl := g.new_for_label(node.label)
 
-			g.lbl++
-			lpp_name := 'L${g.lbl}'
-			if !node.is_inf {
-				blk_name := 'B${g.lbl}'
+			lpp_name := 'L${lbl}'
+			blk_name := 'B${lbl}'
+			expr := if !node.is_inf {
 				// wa.bif(g.mod, g.expr(node.cond, ast.bool_type))
 
 				body := g.expr_stmts(node.stmts, ast.void_type)
@@ -681,9 +762,58 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 
 				wa.block(g.mod, blk_name.str, &loop, 1, type_none)
 			} else {
-				wa.loop(g.mod, lpp_name.str, wa.br(g.mod, lpp_name.str, unsafe { nil },
-					unsafe { nil }))
+				loop_top := wa.br(g.mod, lpp_name.str, unsafe { nil }, unsafe { nil })
+
+				loop := wa.loop(g.mod, lpp_name.str, g.mkblock([
+					g.expr_stmts(node.stmts, ast.void_type),
+					loop_top,
+				]))
+
+				wa.block(g.mod, blk_name.str, &loop, 1, type_none)
 			}
+			g.pop_for_label()
+			expr
+		}
+		ast.ForCStmt {
+			mut for_stmt := []wa.Expression{}
+			if node.has_init {
+				for_stmt << g.expr_stmt(node.init, ast.void_type)
+			}
+
+			lbl := g.new_for_label(node.label)
+			lpp_name := 'L${lbl}'
+			blk_name := 'B${lbl}'
+
+			mut loop_exprs := []wa.Expression{}
+			if node.has_cond {
+				condexpr := wa.unary(g.mod, wa.eqzint32(), g.expr(node.cond, ast.bool_type))
+				loop_exprs << wa.br(g.mod, blk_name.str, condexpr, unsafe { nil })
+			}
+			loop_exprs << g.expr_stmts(node.stmts, ast.void_type)
+
+			if node.has_inc {
+				loop_exprs << g.expr_stmt(node.inc, ast.void_type)
+			}
+			loop_exprs << wa.br(g.mod, lpp_name.str, unsafe { nil }, unsafe { nil })
+			loop := wa.loop(g.mod, lpp_name.str, g.mkblock(loop_exprs))
+
+			for_stmt << wa.block(g.mod, blk_name.str, &loop, 1, type_none)
+			g.pop_for_label()
+			g.mkblock(for_stmt)
+		}
+		ast.BranchStmt {
+			mut blabel := if node.label != '' {
+				node.label
+			} else {
+				g.for_labels[g.for_labels.len - 1]
+			}
+
+			if node.kind == .key_break {
+				blabel = 'B${blabel}'
+			} else {
+				blabel = 'L${blabel}'
+			}
+			wa.br(g.mod, blabel.str, unsafe { nil }, unsafe { nil })
 		}
 		ast.AssignStmt {
 			if (node.left.len > 1 && node.right.len == 1) || node.has_cross_var {
@@ -805,21 +935,21 @@ pub fn (mut g Gen) toplevel_stmts(stmts []ast.Stmt) {
 }
 
 fn (mut g Gen) housekeeping() {
-	wa.addglobalimport(g.mod, c'__vsp', c'env', c'__vsp', type_i32, true)
-	wa.addmemoryimport(g.mod, c'__vmem', c'env', c'__vmem', 0)
+	if g.needs_stack {
+		wa.addglobalimport(g.mod, c'__vsp', c'env', c'__vsp', type_i32, true)
+		wa.addmemoryimport(g.mod, c'__vmem', c'env', c'__vmem', 0)
+	}
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Preferences) {
 	mut g := &Gen{
 		table: table
-		out_name: out_name
 		pref: w_pref
 		files: files
 		mod: wa.modulecreate()
 	}
+	g.table.pointer_size = 4
 	wa.modulesetfeatures(g.mod, wa.featureall())
-
-	g.housekeeping()
 
 	for file in g.files {
 		if file.errors.len > 0 {
@@ -827,18 +957,22 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 		}
 		g.toplevel_stmts(file.stmts)
 	}
+	if g.structs.len != 0 {
+		g.needs_stack = true
+	}
+	g.housekeeping()
 	if wa.modulevalidate(g.mod) {
 		wa.setdebuginfo(w_pref.is_debug)
 		if w_pref.is_prod {
 			wa.setoptimizelevel(3)
 			wa.moduleoptimize(g.mod)
 		}
-		if w_pref.out_name_c.ends_with('/-') || w_pref.out_name_c.ends_with(r'\-') {
+		if out_name == '-' {
 			wa.moduleprintstackir(g.mod, w_pref.is_prod)
 		} else {
 			bytes := wa.moduleallocateandwrite(g.mod, unsafe { nil })
 			str := unsafe { (&char(bytes.binary)).vstring_with_len(int(bytes.binaryBytes)) }
-			os.write_file(w_pref.out_name, str) or { panic(err) }
+			os.write_file(out_name, str) or { panic(err) }
 		}
 	} else {
 		wa.moduleprint(g.mod)

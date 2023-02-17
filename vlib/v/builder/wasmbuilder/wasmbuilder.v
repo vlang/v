@@ -1,6 +1,5 @@
 module wasmbuilder
 
-import os
 import v.pref
 import v.util
 import v.builder
@@ -13,26 +12,24 @@ pub fn start() {
 }
 
 pub fn compile_wasm(mut b builder.Builder) {
-	// v.files << v.v_files_from_dir(os.join_path(v.pref.vlib_path,'builtin','bare'))
-	files := [b.pref.path]
+	mut files := b.get_builtin_files()
+	files << b.get_user_files()
 	b.set_module_lookup_paths()
-	build_wasm(mut b, files, b.pref.out_name)
+	if b.pref.is_verbose {
+		println('all .v files:')
+		println(files)
+	}
+	mut name := b.pref.out_name
+	if name.ends_with('/-') || name.ends_with(r'\-') || name == '-' {
+		name = '-'
+	} else if !name.ends_with('.wasm') {
+		name += '.wasm'
+	}
+	build_wasm(mut b, files, name)
 }
 
 pub fn build_wasm(mut b builder.Builder, v_files []string, out_file string) {
-	b.pref.out_name_c = b.pref.out_name
-	if !b.pref.out_name.ends_with('.wasm') {
-		b.pref.out_name += '.wasm'
-	}
-	mut nvf := []string{}
-	for vf in v_files {
-		if os.is_dir(vf) {
-			nvf << b.v_files_from_dir(vf)
-		} else {
-			nvf << vf
-		}
-	}
-	b.front_and_middle_stages(nvf) or { return }
+	b.front_and_middle_stages(v_files) or { return }
 	util.timing_start('WebAssembly GEN')
 	wasm.gen(b.parsed_files, b.table, out_file, b.pref)
 	util.timing_measure('WebAssembly GEN')

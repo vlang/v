@@ -75,7 +75,6 @@ fn (mut g Gen) cast_t(expr wa.Expression, from ast.Type, to ast.Type) wa.Express
 	return g.cast(expr, g.get_wasm_type(from), g.is_signed(from), g.get_wasm_type(to))
 }
 
-
 fn (mut g Gen) cast(expr wa.Expression, from wa.Type, is_signed bool, to wa.Type) wa.Expression {
 	if from == to {
 		return expr

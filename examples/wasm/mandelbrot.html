@@ -14,7 +14,7 @@
 
 		const env = {
 			__vsp: new WebAssembly.Global({value: "i32", mutable: true}, 0),
-			__vmem: new WebAssembly.Memory({initial: 256, maximum: 256}),
+			__vmem: new WebAssembly.Memory({initial: 1}),
 			canvas_x: () => canvas.width,
 			canvas_y: () => canvas.height,
 			setpixel: (x, y, c) => {
