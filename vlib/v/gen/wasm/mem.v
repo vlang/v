@@ -2,6 +2,7 @@ module wasm
 
 import v.ast
 import binaryen as wa
+import strconv
 
 type Var = Stack | Temporary | ast.Ident
 
@@ -189,7 +190,7 @@ fn (mut g Gen) get_struct_type_size_align(typ ast.Type) (int, int) {
 	if ts.size != -1 && typ in g.structs {
 		return ts.size, ts.align
 	}
-	
+
 	ti := ts.info as ast.Struct
 
 	// Code borrowed from native, hope you don't mind!
@@ -373,7 +374,7 @@ fn (mut g Gen) set_var(var Var, expr wa.Expression, cfg SetConfig) wa.Expression
 
 			ts := g.table.sym(ast_typ)
 
-			if ts.kind == .struct_ {
+			if ts.info is ast.Struct {
 				// `expr` is pointer
 				g.blit_local(expr, ast_typ, var.address + cfg.offset)
 			} else {
@@ -447,4 +448,119 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {
 		else {}
 	}
 	panic('unreachable')
+}
+
+// From native, this should be taken out into `StringLiteral.eval_escape_codes()`
+fn (mut g Gen) eval_escape_codes(str_lit ast.StringLiteral) string {
+	if str_lit.is_raw {
+		return str_lit.val
+	}
+
+	str := str_lit.val
+	mut buffer := []u8{}
+
+	mut i := 0
+	for i < str.len {
+		if str[i] != `\\` {
+			buffer << str[i]
+			i++
+			continue
+		}
+
+		// skip \
+		i++
+		match str[i] {
+			`\\`, `'`, `"` {
+				buffer << str[i]
+				i++
+			}
+			`a`, `b`, `f` {
+				buffer << str[i] - u8(90)
+				i++
+			}
+			`n` {
+				buffer << `\n`
+				i++
+			}
+			`r` {
+				buffer << `\r`
+				i++
+			}
+			`t` {
+				buffer << `\t`
+				i++
+			}
+			`u` {
+				i++
+				utf8 := strconv.parse_int(str[i..i + 4], 16, 16) or {
+					g.w_error('invalid \\u escape code (${str[i..i + 4]})')
+					0
+				}
+				i += 4
+				buffer << u8(utf8)
+				buffer << u8(utf8 >> 8)
+			}
+			`v` {
+				buffer << `\v`
+				i++
+			}
+			`x` {
+				i++
+				c := strconv.parse_int(str[i..i + 2], 16, 8) or {
+					g.w_error('invalid \\x escape code (${str[i..i + 2]})')
+					0
+				}
+				i += 2
+				buffer << u8(c)
+			}
+			`0`...`7` {
+				c := strconv.parse_int(str[i..i + 3], 8, 8) or {
+					g.w_error('invalid escape code \\${str[i..i + 3]}')
+					0
+				}
+				i += 3
+				buffer << u8(c)
+			}
+			else {
+				g.w_error('invalid escape code \\${str[i]}')
+			}
+		}
+	}
+
+	return buffer.bytestr()
+}
+
+struct ConstantData {
+	offset int
+	data   []u8
+}
+
+fn (mut g Gen) constant_data_intern_offset(data []u8) ?(int, int) {
+	for d in g.constant_data {
+		if d.data == data {
+			return d.offset, d.data.len
+		}
+	}
+	return none
+}
+
+// (offset, len)
+fn (mut g Gen) allocate_string(node ast.StringLiteral) (int, int) {
+	data := g.eval_escape_codes(node).bytes()
+
+	// `-prod` will only intern strings.
+	if g.pref.is_prod {
+		if offset, len := g.constant_data_intern_offset(data) {
+			return offset, len
+		}
+	}
+
+	offset := g.constant_data_offset
+	g.constant_data << ConstantData{
+		offset: offset
+		data: data
+	}
+
+	g.constant_data_offset += data.len
+	return offset, data.len
 }

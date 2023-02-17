@@ -1,0 +1,4 @@
+fn test() {
+	println('hello!')
+	panic('nooo!')
+}

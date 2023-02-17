@@ -11,6 +11,14 @@
 	<script>
 		var canvas = document.getElementById("canvas");
 		var ctx = canvas.getContext("2d");
+		var memory;
+
+		function get_string(ptr, len) {
+			const buf = new Uint8Array(memory.buffer, ptr, len);
+			const str = new TextDecoder("utf8").decode(buf);
+
+			return str
+		}
 
 		const env = {
 			__vsp: new WebAssembly.Global({value: "i32", mutable: true}, 0),
@@ -20,10 +28,18 @@
 			setpixel: (x, y, c) => {
 				ctx.fillStyle = "rgba(1,1,1,"+(c/255)+")";
 				ctx.fillRect(x, y, 1, 1);
+			},
+			__writeln: (ptr, len) => {
+				console.log(get_string(ptr, len))
+			},
+			__panic_abort: (ptr, len) => {
+				throw get_string(ptr, len);
 			}
 		}
 
 		WebAssembly.instantiateStreaming(fetch("mandelbrot.wasm"), {env: env}).then((res) => {
+			memory = res.instance.exports['__vmem'];
+			
 			console.time('main.main')
 			res.instance.exports['main.main']()
 			console.timeEnd('main.main')

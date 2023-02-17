@@ -33,6 +33,8 @@ mut:
 	for_labels    []string     // A stack of strings containing the names of blocks/loops to break/continue to
 	stack_patches []BlockPatch // See `Gen.stack_deinit_push_patch()`
 	needs_stack   bool // If true, will import `__vmem` and `__vsp`
+	constant_data []ConstantData
+	constant_data_offset int
 }
 
 struct StructInfo {
@@ -229,7 +231,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	for idx, typ in g.curr_ret {
 		sym := g.table.sym(typ)
-		if sym.kind == .struct_ {
+		if sym.info is ast.Struct {
 			g.local_temporaries << Temporary{
 				name: '__return${idx}'
 				typ: type_i32 // pointer
@@ -243,7 +245,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	for p in node.params {
 		typ := g.get_wasm_type(p.typ)
 		/*
-		if g.table.sym(p.typ).kind == .struct_ {
+		if g.table.sym(p.typ).info is ast.Struct {
 			println("INIT: ${g.structs}, ${g.table.sym(p.typ)}, ${g.table.sym(p.typ).idx}, ${p.typ}, ${p.typ.idx()}")
 		}*/
 		g.local_temporaries << Temporary{
@@ -470,7 +472,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 		ast.StructInit {
 			pos := g.allocate_struct('_anonstruct', node.typ)
 			expr := g.init_struct(Stack{ address: pos, ast_typ: node.typ }, node)
-			return g.mknblock('EXPR(STRUCTINIT)', [expr, g.lea_address(pos)])
+			g.mknblock('EXPR(STRUCTINIT)', [expr, g.lea_address(pos)])
 		}
 		ast.MatchExpr {
 			g.w_error('wasm backend does not support match expressions yet')
@@ -497,23 +499,14 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			wa.constant(g.mod, val)
 		}
 		ast.StringLiteral {
-			/*
 			pos := g.allocate_struct('_anonstring', ast.string_type)
-
-			g.allocate_literal_string(node)
-
-			if node.is_raw {
-
-			} else {
-				
-			}*/
-
-			// g.set_var(Stack{ address: pos, ast_typ: ast.charptr_type }, initexpr, ast_typ: f.expected_type, offset: offset)
-
-			/*
-			pos := g.allocate_struct('_anonstruct', node.typ)
-			expr := g.init_struct(Stack{ address: pos, ast_typ: ast.string_type }, node)*/
-			g.w_error('ast.StringLiteral not implemented')
+			
+			offset, len := g.allocate_string(node)
+			g.mknblock('EXPR(STRINGINIT)', [
+				g.set_var(Stack{ address: pos, ast_typ: ast.charptr_type }, g.literalint(offset, ast.u32_type), offset: 0),
+				g.set_var(Stack{ address: pos, ast_typ: ast.int_type }, g.literalint(len, ast.int_type), offset: g.table.pointer_size)
+				g.lea_address(pos)
+			])
 		}
 		ast.InfixExpr {
 			g.infix_expr(node, expected)
@@ -577,7 +570,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			}
 
 			ret_types := g.unpack_type(node.return_type)
-			structs := ret_types.filter(g.table.sym(it).kind == .struct_)
+			structs := ret_types.filter(g.table.sym(it).info is ast.Struct)
 			mut structs_addrs := []int{cap: structs.len}
 
 			// ABI: {return structs} {method `self`}, then {arguments}
@@ -618,7 +611,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 				for typ in ret_types {
 					ts := g.table.sym(typ)
 
-					if ts.kind == .struct_ {
+					if ts.info is ast.Struct {
 						exprs << g.lea_address(structs_addrs[tidx])
 						tidx++
 					} else {
@@ -724,7 +717,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 			mut leave_expr_list := []wa.Expression{cap: node.exprs.len}
 			mut exprs := []wa.Expression{cap: node.exprs.len}
 			for idx, expr in node.exprs {
-				if g.table.sym(g.curr_ret[idx]).kind == .struct_ {
+				if g.table.sym(g.curr_ret[idx]).info is ast.Struct {
 					// Could be adapted to use random pointers?
 					/*
 					if expr is ast.StructInit {
@@ -958,9 +951,27 @@ pub fn (mut g Gen) toplevel_stmts(stmts []ast.Stmt) {
 }
 
 fn (mut g Gen) housekeeping() {
+	if g.needs_stack || g.constant_data.len != 0 {
+		data := g.constant_data.map(it.data.data)
+		data_len := g.constant_data.map(it.data.len)
+		data_offsets := g.constant_data.map(wa.constant(g.mod, wa.literalint32(it.offset)))
+		passive := []bool{len: g.constant_data.len, init: false}
+
+		wa.setmemory(g.mod, 1, 1, c'__vmem', 
+			data.data,
+			passive.data,
+			data_offsets.data,
+			data_len.data,
+			data.len,
+			false,
+			false,
+			c'__vmem')
+	}
 	if g.needs_stack {
-		wa.addglobalimport(g.mod, c'__vsp', c'env', c'__vsp', type_i32, true)
-		wa.addmemoryimport(g.mod, c'__vmem', c'env', c'__vmem', 0)
+		// `g.constant_data_offset` rounded up to a multiple of 1024
+		offset := g.constant_data_offset + (1024 - g.constant_data_offset % 1024) % 1024
+		
+		wa.addglobal(g.mod, c'__vsp', type_i32, true, g.literalint(offset, ast.int_type))
 	}
 }
 

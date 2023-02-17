@@ -6,6 +6,8 @@ fn main() {
 	max_x := JS.canvas_x()
 	max_y := JS.canvas_y()
 
+	println('starting main.main!')
+
 	mut y := 0
 	for y < max_y {
 		y += 1
@@ -33,4 +35,6 @@ fn main() {
 			JS.setpixel(x, y, c)
 		}
 	}
+
+	panic('reached the end!')
 }
