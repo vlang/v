@@ -178,7 +178,7 @@ fn test_assert_option() {
 	assert var4 == none
 }
 
-fn test_opt_assing() {
+fn test_opt_assign() {
 	mut var1 := ?int(none)
 	assert var1 == none
 	var1 = 1
