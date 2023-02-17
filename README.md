@@ -15,7 +15,7 @@
 [![Patreon][PatreonBadge]][PatreonUrl]
 [![Discord][DiscordBadge]][DiscordUrl]
 [![Twitter][TwitterBadge]][TwitterUrl]
-[![Twitter][ModulesBadge]][ModulesUrl]
+[![Modules][ModulesBadge]][ModulesUrl]
 </div>
 
 ## Key Features of V
