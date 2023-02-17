@@ -1,9 +1,9 @@
 # V Mandelbrot Example
 
-1. First, create `mandelbrot.wasm`.
+1. First, create `mandelbrot.wasm`. Compile with `-os browser`.
 
 ```
-v -b wasm -no-builtin mandelbrot.v
+v -b wasm -os browser mandelbrot.v
 ```
 
 2. Then, open the `mandelbrot.html` file in the browser.

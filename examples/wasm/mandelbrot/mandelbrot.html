@@ -21,8 +21,6 @@
 		}
 
 		const env = {
-			__vsp: new WebAssembly.Global({value: "i32", mutable: true}, 0),
-			__vmem: new WebAssembly.Memory({initial: 1}),
 			canvas_x: () => canvas.width,
 			canvas_y: () => canvas.height,
 			setpixel: (x, y, c) => {
@@ -38,7 +36,7 @@
 		}
 
 		WebAssembly.instantiateStreaming(fetch("mandelbrot.wasm"), {env: env}).then((res) => {
-			memory = res.instance.exports['__vmem'];
+			memory = res.instance.exports['memory'];
 			
 			console.time('main.main')
 			res.instance.exports['main.main']()

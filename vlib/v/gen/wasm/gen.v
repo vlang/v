@@ -273,6 +273,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	// func :=
 	wa.addfunction(g.mod, name.str, params_type, return_type, temporaries.data, temporaries.len,
 		wasm_expr)
+	if node.is_pub {
+		wa.addfunctionexport(g.mod, name.str, name.str)
+	}
 
 	// WTF?? map values are not resetting???
 	//   g.local_addresses.clear()

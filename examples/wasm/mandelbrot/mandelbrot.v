@@ -2,7 +2,8 @@ fn JS.canvas_x() int
 fn JS.canvas_y() int
 fn JS.setpixel(x int, y int, c f64)
 
-fn main() {
+// `main` must be public!
+pub fn main() {
 	max_x := JS.canvas_x()
 	max_y := JS.canvas_y()
 
