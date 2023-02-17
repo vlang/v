@@ -695,7 +695,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.build_options << '${arg} ${sbackend}'
 				b := backend_from_string(sbackend) or {
 					eprintln('Unknown V backend: ${sbackend}')
-					eprintln('Valid -backend choices are: c, go, interpret, js, js_node, js_browser, js_freestanding, native')
+					eprintln('Valid -backend choices are: c, go, interpret, js, js_node, js_browser, js_freestanding, native, wasm')
 					exit(1)
 				}
 				if b.is_js() {
@@ -786,6 +786,14 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	if command == 'run' && res.is_prod && os.is_atty(1) > 0 {
 		eprintln_cond(show_output, "Note: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
 		eprintln_cond(show_output, 'Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
+	}
+	if res.os in [.browser, .wasi] && res.backend != .wasm {
+		eprintln('OS `${res.os}` forbidden for backends other than wasm')
+		exit(1)
+	}
+	if res.backend == .wasm && res.os !in [.browser, .wasi, ._auto]  {
+		eprintln('Native WebAssembly backend OS must be `browser` or `wasi`')
+		exit(1)
 	}
 
 	// res.use_cache = true
