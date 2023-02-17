@@ -335,6 +335,8 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.empty_line = true
 		g.write('${elem_styp} ${tmp}[')
 		g.expr(node.len_expr)
+		g.write('==0?1:')
+		g.expr(node.len_expr)
 		g.writeln('];')
 		ind := g.new_tmp_var()
 		g.write('for (int ${ind}=0; ${ind}<')
