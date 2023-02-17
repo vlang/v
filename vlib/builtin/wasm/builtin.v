@@ -1,12 +1,11 @@
 module builtin
 
-fn JS.__panic_abort(&u8, int)
-fn JS.__writeln(&u8, int)
-
-pub fn panic(s string) {
-	JS.__panic_abort(s.str, s.len)
-}
-
-pub fn println(s string) {
-	JS.__writeln(s.str, s.len)
-}
+// WASM memory builtins
+// 
+// similar to `sbrk`
+fn __memory_grow(size isize) isize
+// `memset`
+fn __memory_fill(dest &u8, value isize, size isize)
+// `memcpy`
+// `dest` and `src` can overlap regardless
+fn __memory_copy(dest &u8, src &u8, size isize)

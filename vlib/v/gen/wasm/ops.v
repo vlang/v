@@ -58,6 +58,9 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wa.Type {
 			mut paraml := ts.info.types.map(g.get_wasm_type(it))
 			return wa.typecreate(paraml.data, paraml.len)
 		}
+		ast.Alias {
+			return g.get_wasm_type(ts.info.parent_type)
+		}
 		else {}
 	}
 

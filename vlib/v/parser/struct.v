@@ -29,6 +29,8 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		ast.Language.c
 	} else if p.tok.lit == 'JS' && p.peek_tok.kind == .dot {
 		ast.Language.js
+	} else if p.tok.lit == 'WASM' && p.peek_tok.kind == .dot {
+		ast.Language.wasm
 	} else {
 		ast.Language.v
 	}
@@ -87,6 +89,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		orig_name = name
 	} else if language == .js {
 		name = 'JS.${name}'
+		orig_name = name
+	} else if language == .wasm {
+		name = 'WASM.${name}'
 		orig_name = name
 	} else {
 		name = p.prepend_mod(name)
@@ -510,7 +515,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		ast.Language.v
 	}
 	if language != .v {
-		p.next() // C || JS
+		p.next() // C || JS | WASM
 		p.next() // .
 	}
 	name_pos := p.tok.pos()

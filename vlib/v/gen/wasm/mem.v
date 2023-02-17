@@ -29,8 +29,15 @@ struct Global {
 }*/
 
 fn (g Gen) is_pure_type(typ ast.Type) bool {
-	return typ.is_pure_int() || typ.is_pure_float() || typ == ast.char_type_idx
-		|| typ.is_real_pointer() || typ.is_bool()
+	if typ.is_pure_int() || typ.is_pure_float() || typ == ast.char_type_idx
+		|| typ.is_real_pointer() || typ.is_bool() {
+		return true
+	}
+	ts := g.table.sym(typ)
+	if ts.info is ast.Alias {
+		return g.is_pure_type(ts.info.parent_type)
+	}
+	return false
 }
 
 fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
@@ -173,7 +180,7 @@ fn (mut g Gen) deref(expr wa.Expression, expected ast.Type) wa.Expression {
 	size, _ := g.table.type_size(expected)
 
 	return wa.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected),
-		expr, c'__vmem')
+		expr, c'memory')
 }
 
 fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
@@ -320,14 +327,14 @@ fn (mut g Gen) deref_local(address PathAddress, expected ast.Type) wa.Expression
 	match address {
 		wa.Expression {
 			return wa.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected),
-				address, c'__vmem')
+				address, c'memory')
 		}
 		int {
 			return wa.load(g.mod, u32(size), g.is_signed(expected), u32(address), 0, g.get_wasm_type(expected),
-				g.get_bp(), c'__vmem')
+				g.get_bp(), c'memory')
 		}
 	}
-	// return wa.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected), expr, c'__vmem')
+	// return wa.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected), expr, c'memory')
 }
 
 // Will automatcally cast value from `var` to `ast_type`, will ignore if struct value.
@@ -381,7 +388,7 @@ fn (mut g Gen) set_var(var Var, expr wa.Expression, cfg SetConfig) wa.Expression
 				size, _ := g.table.type_size(ast_typ)
 				// println("address: ${var.address}, offset: ${cfg.offset}")
 				wa.store(g.mod, u32(size), u32(var.address + cfg.offset), 0, g.get_bp(),
-					expr, g.get_wasm_type(ast_typ), c'__vmem')
+					expr, g.get_wasm_type(ast_typ), c'memory')
 			}
 		}
 	}
@@ -391,14 +398,14 @@ fn (mut g Gen) set_var(var Var, expr wa.Expression, cfg SetConfig) wa.Expression
 fn (mut g Gen) blit_local(ptr wa.Expression, ast_typ ast.Type, address int) wa.Expression {
 	size, _ := g.get_struct_type_size_align(ast_typ)
 	return wa.memorycopy(g.mod, g.lea_address(address), ptr, wa.constant(g.mod, wa.literalint32(size)),
-		c'__vmem', c'__vmem')
+		c'memory', c'memory')
 }
 
 // `memcpy` from `ptr` to `dest`
 fn (mut g Gen) blit(ptr wa.Expression, ast_typ ast.Type, dest wa.Expression) wa.Expression {
 	size, _ := g.get_struct_type_size_align(ast_typ)
 	return wa.memorycopy(g.mod, dest, ptr, wa.constant(g.mod, wa.literalint32(size)),
-		c'__vmem', c'__vmem')
+		c'memory', c'memory')
 }
 
 fn (mut g Gen) allocate_literal_string(node ast.StringLiteral) {

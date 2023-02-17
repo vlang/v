@@ -35,6 +35,7 @@ mut:
 	needs_stack   bool // If true, will import `__vmem` and `__vsp`
 	constant_data []ConstantData
 	constant_data_offset int
+	module_import_namespace string // `[wasm_import_namespace: 'wasi_snapshot_preview1']` else `env`
 }
 
 struct StructInfo {
@@ -163,30 +164,33 @@ fn (g Gen) unpack_type(typ ast.Type) []ast.Type {
 
 fn (mut g Gen) fn_external_import(node ast.FnDecl) {
 	if !node.no_body || node.is_method {
-		g.v_error('external javascript functions cannot have bodies', node.body_pos)
+		g.v_error('interop functions cannot have bodies', node.body_pos)
+	}
+	if node.language == .js && g.pref.os == .wasi {
+		g.v_error('javascript interop functions are not allowed in a `wasi` build', node.pos)
 	}
 
 	mut paraml := []wa.Type{cap: node.params.len}
 	for arg in node.params {
 		if !g.is_pure_type(arg.typ) {
-			g.v_error('arguments to javascript functions must be numbers, pointers or booleans',
+			g.v_error('arguments to interop functions must be numbers, pointers or booleans',
 				arg.type_pos)
 		}
 		paraml << g.get_wasm_type(arg.typ)
 	}
 	if !(node.return_type == ast.void_type || g.is_pure_type(node.return_type)) {
-		g.v_error('javascript functions must return numbers, pointers or booleans', node.return_type_pos)
+		g.v_error('interop functions must return numbers, pointers or booleans', node.return_type_pos)
 	}
 	return_type := g.get_wasm_type(node.return_type)
 
 	// internal name: `JS.setpixel`
 	// external name: `setpixel`
-	wa.addfunctionimport(g.mod, node.name.str, c'env', node.short_name.str, wa.typecreate(paraml.data,
+	wa.addfunctionimport(g.mod, node.name.str, g.module_import_namespace.str, node.short_name.str, wa.typecreate(paraml.data,
 		paraml.len), return_type)
 }
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
-	if node.language == .js {
+	if node.language in [.js, .wasm] {
 		g.fn_external_import(node)
 		return
 	}
@@ -269,14 +273,6 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	// func :=
 	wa.addfunction(g.mod, name.str, params_type, return_type, temporaries.data, temporaries.len,
 		wasm_expr)
-	if (node.is_pub && node.mod == 'main') || node.name == 'main.main' {
-		wa.addfunctionexport(g.mod, name.str, name.str)
-
-		// `_vinit` should be used to initialise the WASM module,
-		// then `main.main` can be called safely.
-		//
-		// wa.setstart(g.mod, func)
-	}
 
 	// WTF?? map values are not resetting???
 	//   g.local_addresses.clear()
@@ -455,6 +451,28 @@ fn (mut g Gen) get_ident(node ast.Ident, expected ast.Type) (wa.Expression, int)
 	return g.cast(expr, typ, g.is_signed(g.local_temporaries[idx].ast_typ), g.get_wasm_type(expected)), idx
 }
 
+const wasm_builtins = ['__memory_grow', '__memory_fill', '__memory_copy']
+
+fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) wa.Expression {
+	mut args := []wa.Expression{cap: node.args.len}
+	for idx, arg in node.args {
+		args << g.expr(arg.expr, node.expected_arg_types[idx])
+	}
+	
+	match name {
+		'__memory_grow' {
+			return wa.memorygrow(g.mod, args[0], c'memory', false)
+		}
+		'__memory_fill' {
+			return wa.memoryfill(g.mod, args[0], args[1], args[2], c'memory')
+		}
+		'__memory_copy' {
+			return wa.memorycopy(g.mod, args[0], args[1], args[2], c'memory', c'memory')
+		}
+		else { panic('unreachable') }
+	}
+}
+
 fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 	return match node {
 		ast.ParExpr, ast.UnsafeExpr {
@@ -563,6 +581,8 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 					g.v_error('builtin function `${name}` must be called with a string literal',
 						arg.pos)
 				}
+			} else if name in wasm_builtins {
+				return g.wasm_builtin(node.name, node)
 			}
 
 			if node.is_method {
@@ -934,10 +954,17 @@ fn (mut g Gen) toplevel_stmt(node ast.Stmt) {
 		ast.FnDecl {
 			g.fn_decl(node)
 		}
-		ast.Module {}
+		ast.Module {
+			if ns := node.attrs.find_first('wasm_import_namespace') {
+				g.module_import_namespace = ns.arg
+			} else {
+				g.module_import_namespace = 'env'
+			}
+		}
 		ast.Import {}
 		ast.StructDecl {}
 		ast.EnumDecl {}
+		ast.TypeDecl {}
 		else {
 			g.w_error('wasm.toplevel_stmt(): unhandled node: ' + node.type_name())
 		}
@@ -957,7 +984,7 @@ fn (mut g Gen) housekeeping() {
 		data_offsets := g.constant_data.map(wa.constant(g.mod, wa.literalint32(it.offset)))
 		passive := []bool{len: g.constant_data.len, init: false}
 
-		wa.setmemory(g.mod, 1, 1, c'__vmem', 
+		wa.setmemory(g.mod, 1, 1, c'memory', 
 			data.data,
 			passive.data,
 			data_offsets.data,
@@ -965,13 +992,21 @@ fn (mut g Gen) housekeeping() {
 			data.len,
 			false,
 			false,
-			c'__vmem')
+			c'memory')
 	}
 	if g.needs_stack {
 		// `g.constant_data_offset` rounded up to a multiple of 1024
 		offset := g.constant_data_offset + (1024 - g.constant_data_offset % 1024) % 1024
 		
 		wa.addglobal(g.mod, c'__vsp', type_i32, true, g.literalint(offset, ast.int_type))
+	}
+	if g.pref.os == .wasi {
+		// `_vinit` should be used to initialise the WASM module,
+		// then `main.main` can be called safely.
+
+		main_expr := wa.call(g.mod, c'main.main', unsafe { nil }, 0, type_none)
+		wa.addfunction(g.mod, c'_start', type_none, type_none, unsafe { nil }, 0, main_expr)
+		wa.addfunctionexport(g.mod, c'_start', c'_start')
 	}
 }
 
@@ -1010,6 +1045,10 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 	}
 	g.table.pointer_size = 4
 	wa.modulesetfeatures(g.mod, wa.featureall())
+
+	if g.pref.os == .browser {
+		eprintln("`-os browser` is experimental and will not live up to expectations...")
+	}
 
 	g.calculate_enum_fields()
 	for file in g.files {
