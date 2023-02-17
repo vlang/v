@@ -7,7 +7,7 @@ struct Test {
 }
 
 struct StructType2 {
-	a ?time.Time = none
+	a ?time.Time
 }
 
 struct StructType {

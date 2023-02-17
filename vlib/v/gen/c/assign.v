@@ -55,7 +55,7 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 			g.inside_opt_or_res = false
 			g.expr(expr)
 		}
-		g.writeln(' }, (_option*)(&${tmp_var}), sizeof(${styp}));')
+		g.writeln(' }, (${option_name}*)(&${tmp_var}), sizeof(${styp}));')
 		g.write(stmt_str)
 		g.write(tmp_var)
 		return tmp_var
@@ -66,19 +66,31 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 // e.g. x = y (option lhs and rhs), mut x = ?int(123), y = none
 fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type) string {
 	if expr_typ == ast.none_type {
+		old_inside_opt_data := g.inside_opt_data
 		g.inside_opt_or_res = true
+		defer {
+			g.inside_opt_data = old_inside_opt_data
+		}
 	}
 	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)&& (expr in [ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr, ast.CastExpr]) {
 		if expr in [ast.Ident, ast.CastExpr] {
 			if expr_typ.idx() != ret_typ.idx() {
 				return g.expr_opt_with_cast(expr, expr_typ, ret_typ)
 			}
+			old_inside_opt_data := g.inside_opt_data
 			g.inside_opt_or_res = true
+			defer {
+				g.inside_opt_data = old_inside_opt_data
+			}
 		}
 		g.expr(expr)
 		return expr.str()
 	} else {
+		old_inside_opt_data := g.inside_opt_data
 		g.inside_opt_or_res = true
+		defer {
+			g.inside_opt_data = old_inside_opt_data
+		}
 		tmp_out_var := g.new_tmp_var()
 		g.expr_with_tmp_var(expr, expr_typ, ret_typ, tmp_out_var)
 		return tmp_out_var
