@@ -1607,3 +1607,27 @@ fn test_using_array_name_variable() {
 	println(array)
 	assert array == [0, 1, 2, 3]
 }
+
+struct Data {
+mut:
+	sub_map map[int]int
+}
+
+fn test_array_of_struct_with_map_field() {
+	n := 3
+	mut arr := []Data{len: n}
+	for i, mut a in arr {
+		arr[i].sub_map[i] = 1
+		a.sub_map[i] += 1
+	}
+	println(arr)
+	assert arr[0].sub_map == {
+		0: 2
+	}
+	assert arr[1].sub_map == {
+		1: 2
+	}
+	assert arr[2].sub_map == {
+		2: 2
+	}
+}
