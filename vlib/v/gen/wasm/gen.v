@@ -258,10 +258,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	g.bp_idx = g.new_local_temporary_anon(ast.int_type)
 	mut wasm_expr := g.expr_stmts(node.stmts, ast.void_type)
-	if node.stmts.len != 0 {
-		// an implicit `main.main` is just too damn long
-		wasm_expr = g.setup_stack_frame(wasm_expr)
-	}
+	wasm_expr = g.setup_stack_frame(wasm_expr)
 
 	mut temporaries := []wa.Type{cap: g.local_temporaries.len - paraml.len}
 	for idx := paraml.len; idx < g.local_temporaries.len; idx++ {
@@ -482,6 +479,18 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			type_name := g.table.get_type_name(node.typ)
 			ts_type := (g.table.sym(node.typ).info as ast.Enum).typ
 			g.literalint(g.enum_vals[type_name].fields[node.val], ts_type)
+		}
+		ast.OffsetOf {
+			styp := g.table.sym(node.struct_type)
+			if styp.kind != .struct_ {
+				g.v_error('__offsetof expects a struct Type as first argument', node.pos)
+			}
+			off := g.get_field_offset(node.struct_type, node.field)
+			g.literalint(off, ast.u32_type)
+		}
+		ast.SizeOf {
+			size, _ := g.table.type_size(node.typ)
+			g.literalint(size, ast.u32_type)
 		}
 		ast.BoolLiteral {
 			val := if node.val { wa.literalint32(1) } else { wa.literalint32(0) }

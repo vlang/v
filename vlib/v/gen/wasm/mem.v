@@ -189,7 +189,7 @@ fn (mut g Gen) get_struct_type_size_align(typ ast.Type) (int, int) {
 	if ts.size != -1 && typ in g.structs {
 		return ts.size, ts.align
 	}
-
+	
 	ti := ts.info as ast.Struct
 
 	// Code borrowed from native, hope you don't mind!

@@ -10,3 +10,13 @@ fn enums() {
 	mut a := Hello.a
 	a = .c
 }
+
+struct AA {
+	a u8
+	b i64
+}
+
+fn of() {
+	a := __offsetof(AA, b)
+	b := sizeof(AA)
+}
