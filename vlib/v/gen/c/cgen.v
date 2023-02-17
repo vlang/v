@@ -4343,9 +4343,13 @@ fn (mut g Gen) gen_result_error(target_type ast.Type, expr ast.Expr) {
 // NB: remove this when option has no errors anymore
 fn (mut g Gen) gen_option_error(target_type ast.Type, expr ast.Expr) {
 	styp := g.typ(g.unwrap_generic(target_type))
-	g.write('(${styp}){ .state=2, .err=')
-	g.expr(expr)
-	g.write(', .data={EMPTY_STRUCT_INITIALIZATION} }')
+	if expr is ast.CallExpr {
+		g.write('(${styp}){ .state=2, .err=')
+		g.expr(expr)
+		g.write(', .data={EMPTY_STRUCT_INITIALIZATION} }')
+		return
+	}
+	g.write('(${styp}){ .state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION} }')
 }
 
 fn (mut g Gen) hash_stmt(node ast.HashStmt) {
