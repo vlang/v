@@ -1,9 +1,0 @@
-type OptStr = ?string
-
-fn foo() OptStr {
-	return 'abc'
-}
-
-fn main() {
-	println(foo())
-}

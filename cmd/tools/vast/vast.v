@@ -1459,6 +1459,7 @@ fn (t Tree) ident(node ast.Ident) &Node {
 	obj.add('mut_pos', t.pos(node.mut_pos))
 	obj.add('obj', t.scope_object(node.obj))
 	obj.add('scope', t.number_node(int(node.scope)))
+	obj.add_terse('or_expr', t.or_expr(node.or_expr))
 	return obj
 }
 

@@ -31,7 +31,13 @@ pub fn decode[T](src string) !T {
 			}
 		}
 
-		$if field.typ is u8 {
+		$if field.is_enum {
+			typ.$(field.name) = if key := res[field.name] {
+				key.int()
+			} else {
+				res[json_name]!.int()
+			}
+		} $else $if field.typ is u8 {
 			typ.$(field.name) = res[json_name]!.u64()
 		} $else $if field.typ is u16 {
 			typ.$(field.name) = res[json_name]!.u64()
@@ -62,12 +68,6 @@ pub fn decode[T](src string) !T {
 		} $else $if field.is_array {
 			// typ.$(field.name) = res[field.name]!.arr()
 		} $else $if field.is_struct {
-		} $else $if field.is_enum {
-			typ.$(field.name) = if key := res[field.name] {
-				key.int()
-			} else {
-				res[json_name]!.int()
-			}
 		} $else $if field.is_alias {
 		} $else $if field.is_map {
 		} $else {

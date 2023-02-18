@@ -2006,6 +2006,11 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		}
 		name := f.short_module(node.name)
 		f.write(name)
+		if node.or_expr.kind == .propagate_option {
+			f.write('?')
+		} else if node.or_expr.kind == .block {
+			f.or_expr(node.or_expr)
+		}
 		f.mark_import_as_used(name)
 	}
 }

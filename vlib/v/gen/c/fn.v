@@ -883,7 +883,11 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 		}
 	} else if left_node is ast.Ident {
 		if left_node.obj is ast.Var {
-			if g.comptime_var_type_map.len > 0 {
+			if left_node.obj.is_comptime_field {
+				rec_type = g.comptime_for_field_type
+				g.gen_expr_to_string(left_node, rec_type)
+				return true
+			} else if g.comptime_var_type_map.len > 0 {
 				rec_type = left_node.obj.typ
 				g.gen_expr_to_string(left_node, rec_type)
 				return true
@@ -899,6 +903,9 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 		}
 	} else if left_node is ast.None {
 		g.gen_expr_to_string(left_node, ast.none_type)
+		return true
+	} else if node.left_type.has_flag(.option) {
+		g.gen_expr_to_string(left_node, g.unwrap_generic(node.left_type))
 		return true
 	}
 	g.get_str_fn(rec_type)
@@ -980,8 +987,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 
 	mut typ_sym := g.table.sym(unwrapped_rec_type)
-	// alias type that undefined this method (not include `str`) need to use parent type
-	if typ_sym.kind == .alias && node.name != 'str' && !typ_sym.has_method(node.name) {
+	// non-option alias type that undefined this method (not include `str`) need to use parent type
+	if !left_type.has_flag(.option) && typ_sym.kind == .alias && node.name != 'str'
+		&& !typ_sym.has_method(node.name) {
 		unwrapped_rec_type = (typ_sym.info as ast.Alias).parent_type
 		typ_sym = g.table.sym(unwrapped_rec_type)
 	} else if typ_sym.kind == .array && !typ_sym.has_method(node.name) {
@@ -2353,6 +2361,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		}
 		g.expr(arg.expr)
 		g.write('->val')
+		return
+	} else if expected_type.has_flag(.option) {
+		g.expr_with_opt(arg.expr, arg_typ, expected_type)
 		return
 	} else if arg.expr is ast.ArrayInit {
 		if arg.expr.is_fixed {

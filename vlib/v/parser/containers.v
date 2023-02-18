@@ -8,6 +8,10 @@ import v.token
 
 fn (mut p Parser) array_init() ast.ArrayInit {
 	first_pos := p.tok.pos()
+	is_option := p.tok.kind == .question
+	if is_option {
+		p.next()
+	}
 	mut last_pos := p.tok.pos()
 	p.check(.lsbr)
 	// p.warn('array_init() exp=$p.expected_type')
@@ -39,6 +43,9 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 				array_type = ast.new_type(idx).set_flag(.generic)
 			} else {
 				array_type = ast.new_type(idx)
+			}
+			if is_option {
+				array_type = array_type.set_flag(.option)
 			}
 			has_type = true
 		}
@@ -107,7 +114,8 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 				last_pos = p.tok.pos()
 				p.check(.rcbr)
 			} else {
-				p.warn_with_pos('use e.g. `x := [1]Type{}` instead of `x := [1]Type`',
+				modifier := if is_option { '?' } else { '' }
+				p.warn_with_pos('use e.g. `x := ${modifier}[1]Type{}` instead of `x := ${modifier}[1]Type`',
 					first_pos.extend(last_pos))
 			}
 		} else {
@@ -126,7 +134,9 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	}
 	if exprs.len == 0 && p.tok.kind != .lcbr && has_type {
 		if !p.pref.is_fmt {
-			p.warn_with_pos('use `x := []Type{}` instead of `x := []Type`', first_pos.extend(last_pos))
+			modifier := if is_option { '?' } else { '' }
+			p.warn_with_pos('use `x := ${modifier}[]Type{}` instead of `x := ${modifier}[]Type`',
+				first_pos.extend(last_pos))
 		}
 	}
 	mut has_len := false
@@ -141,6 +151,9 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			attr_pos = p.tok.pos()
 			key := p.check_name()
 			p.check(.colon)
+			if is_option {
+				p.error('Option array cannot have initializers')
+			}
 			match key {
 				'len' {
 					has_len = true

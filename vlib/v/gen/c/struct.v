@@ -62,6 +62,8 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		} else {
 			g.write('&(${basetyp}){')
 		}
+	} else if node.typ.has_flag(.option) {
+		g.write('(${g.base_type(node.typ)}){')
 	} else if g.inside_cinit {
 		if is_multiline {
 			g.writeln('{')
