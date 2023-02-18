@@ -598,6 +598,10 @@ fn (mut f MDFile) check_examples() CheckResult {
 					oks++
 				}
 				'nofmt' {}
+				// mark the example as playable inside docs
+				'play' {}
+				// same as play, but run example as a test
+				'play-test' {}
 				else {
 					eprintln(eline(f.path, e.sline, 0, 'unrecognized command: "${command}", use one of: wip/ignore/compile/failcompile/okfmt/nofmt/oksyntax/badsyntax/cgen/globals/live/shared'))
 					should_cleanup_vfile = false
