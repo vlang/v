@@ -1,4 +1,4 @@
 fn test() {
-	println('hello!')
+	print('hello!')
 	panic('nooo!')
 }

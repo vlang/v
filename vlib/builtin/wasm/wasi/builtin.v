@@ -8,6 +8,7 @@ pub fn print(s string) {
 
 /* pub fn println(s string) {
 	elm := [CIOVec{buf: s.str, len: usize(s.len)}, CIOVec{buf: c'\n', len: 1}]!
+	//elm := [10]CIOVec{}
 	
 	WASM.fd_write(1, &elm[0], 2, -1)
 } */

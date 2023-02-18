@@ -6,6 +6,20 @@ import strconv
 
 type Var = Stack | Temporary | ast.Ident
 
+fn (v Var) ast_typ() int {
+	if v is Temporary {
+		return v.ast_typ
+	}
+	if v is Stack {
+		return v.ast_typ
+	}
+	panic("unreachable")
+}
+
+fn (v Var) address() int {
+	return (v as Stack).address
+}
+
 struct Temporary {
 	name    string
 	typ     wa.Type
@@ -164,14 +178,14 @@ fn (mut g Gen) new_local(var ast.Ident, typ ast.Type) {
 
 	ts := g.table.sym(typ)
 	match ts.info {
-		ast.Struct {
-			g.allocate_struct(var.name, typ)
+		ast.Struct, ast.ArrayFixed {
+			g.allocate_local_var(var.name, typ)
 		}
 		ast.Enum {
 			g.new_local_temporary(var.name, ts.info.typ)
 		}
 		else {
-			g.w_error('new_local: type `${*ts}` is not a supported local type')
+			g.w_error('new_local: type `${*ts}` (${ts.info.type_name()}) is not a supported local type')
 		}
 	}
 }
@@ -187,15 +201,19 @@ fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
 	ts := g.table.sym(typ)
 	field := ts.find_field(name) or { g.w_error('could not find field `${name}` on init') }
 	if typ !in g.structs {
-		g.get_struct_type_size_align(typ.idx())
+		g.get_type_size_align(typ.idx())
 	}
 	return g.structs[typ.idx()].offsets[field.i]
 }
 
-fn (mut g Gen) get_struct_type_size_align(typ ast.Type) (int, int) {
+fn (mut g Gen) get_type_size_align(typ ast.Type) (int, int) {
 	ts := g.table.sym(typ)
 	if ts.size != -1 && typ in g.structs {
 		return ts.size, ts.align
+	}
+
+	if ts.info !is ast.Struct {
+		return g.table.type_size(typ)
 	}
 
 	ti := ts.info as ast.Struct
@@ -228,10 +246,8 @@ fn (mut g Gen) get_struct_type_size_align(typ ast.Type) (int, int) {
 	return size, align
 }
 
-fn (mut g Gen) allocate_struct(name string, typ ast.Type) int {
-	// Gen.allocate_struct() must be called with a struct!
-
-	size, align := g.get_struct_type_size_align(typ)
+fn (mut g Gen) allocate_local_var(name string, typ ast.Type) int {
+	size, align := g.get_type_size_align(typ)
 	padding := (align - g.stack_frame % align) % align
 	address := g.stack_frame
 	g.stack_frame += size + padding
@@ -394,16 +410,22 @@ fn (mut g Gen) set_var(var Var, expr wa.Expression, cfg SetConfig) wa.Expression
 	}
 }
 
+// `memset` `val` to known local `address` in stack memory.
+fn (mut g Gen) memset(val wa.Expression, ast_typ ast.Type, address int) wa.Expression {
+	size, _ := g.get_type_size_align(ast_typ)
+	return wa.memoryfill(g.mod, g.lea_address(address), val, g.literalint(size, ast.int_type), c'memory')
+}
+
 // `memcpy` from `ptr` to known local `address` in stack memory.
 fn (mut g Gen) blit_local(ptr wa.Expression, ast_typ ast.Type, address int) wa.Expression {
-	size, _ := g.get_struct_type_size_align(ast_typ)
+	size, _ := g.get_type_size_align(ast_typ)
 	return wa.memorycopy(g.mod, g.lea_address(address), ptr, wa.constant(g.mod, wa.literalint32(size)),
 		c'memory', c'memory')
 }
 
 // `memcpy` from `ptr` to `dest`
 fn (mut g Gen) blit(ptr wa.Expression, ast_typ ast.Type, dest wa.Expression) wa.Expression {
-	size, _ := g.get_struct_type_size_align(ast_typ)
+	size, _ := g.get_type_size_align(ast_typ)
 	return wa.memorycopy(g.mod, dest, ptr, wa.constant(g.mod, wa.literalint32(size)),
 		c'memory', c'memory')
 }
@@ -423,6 +445,12 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {
 			ts := g.table.sym(var.ast_typ)
 			match ts.info {
 				ast.Struct {
+					if init.fields.len == 0 && !(ts.info.fields.any(it.has_default_expr)) {
+						// Struct definition contains no default initialisers
+						// AND struct init contains no set values.
+						return g.mknblock('STRUCTINIT(ZERO)', [g.memset(g.literalint(0, ast.int_type), var.ast_typ, var.address)])
+					}
+
 					for i, f in ts.info.fields {
 						field_to_be_set := init.fields.map(it.name).contains(f.name)
 						if !field_to_be_set {
@@ -433,6 +461,7 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {
 								g.literal('0', f.typ)
 							}
 
+							// TODO: replace invocations of `set_var` with `assign_expr_to_var`
 							exprs << g.set_var(var, initexpr, ast_typ: f.typ, offset: offset)
 						}
 					}

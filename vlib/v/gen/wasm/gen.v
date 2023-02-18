@@ -273,7 +273,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	// func :=
 	wa.addfunction(g.mod, name.str, params_type, return_type, temporaries.data, temporaries.len,
 		wasm_expr)
-	if node.is_pub {
+	if node.is_pub && node.mod == 'main' && g.pref.os == .browser {
 		wa.addfunctionexport(g.mod, name.str, name.str)
 	}
 
@@ -476,13 +476,57 @@ fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) wa.Expression {
 	}
 }
 
+fn (mut g Gen) assign_expr_to_var(_var Var, right ast.Expr) wa.Expression {
+	match right {
+		ast.StructInit {
+			return g.init_struct(_var, right)
+		}
+		ast.StringLiteral {
+			var := _var as Stack
+			
+			offset, len := g.allocate_string(right)
+			return g.mknblock('STRINGINIT', [
+				g.set_var(Stack{ address: var.address, ast_typ: ast.charptr_type }, g.literalint(offset, ast.u32_type), offset: 0),
+				g.set_var(Stack{ address: var.address, ast_typ: ast.int_type }, g.literalint(len, ast.int_type), offset: g.table.pointer_size)
+			])
+		}
+		ast.ArrayInit {
+			var := _var as Stack
+			mut exprs := []wa.Expression{}
+
+			if !right.is_fixed {
+				g.w_error('wasm backend does not support non fixed arrays yet')
+			}
+			elm_typ := right.elem_type
+			elm_size, _ := g.get_type_size_align(elm_typ)
+			mut offset := 0
+			if right.expr_types.len != right.exprs.len {
+				return g.mknblock('ARRAYINIT(ZERO)', [g.memset(g.literalint(0, ast.int_type), right.typ, var.address)])
+			}
+			// [10, 15]!
+			for e in right.exprs {
+				exprs << g.assign_expr_to_var(Stack{address: var.address + offset, ast_typ: elm_typ}, e)
+				offset += elm_size
+			}
+			return g.mknblock('ARRAYINIT', exprs)
+		}
+		else {
+			initexpr := g.expr(right, _var.ast_typ())
+
+			return g.set_var(_var, initexpr)
+		}
+	}
+}
+
 fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 	return match node {
 		ast.ParExpr, ast.UnsafeExpr {
 			g.expr(node.expr, expected)
 		}
 		ast.ArrayInit {
-			g.w_error('wasm backend does not support arrays yet')
+			pos := g.allocate_local_var('_anonarray', node.typ)
+			expr := g.assign_expr_to_var(Stack{ address: pos, ast_typ: node.typ }, node)
+			g.mknblock('EXPR(ARRAYINIT)', [expr, g.lea_address(pos)])
 		}
 		ast.GoExpr {
 			g.w_error('wasm backend does not support threads')
@@ -491,8 +535,8 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			g.cast_t(g.path_expr_t(node, node.typ), node.typ, expected)
 		}
 		ast.StructInit {
-			pos := g.allocate_struct('_anonstruct', node.typ)
-			expr := g.init_struct(Stack{ address: pos, ast_typ: node.typ }, node)
+			pos := g.allocate_local_var('_anonstruct', node.typ)
+			expr := g.assign_expr_to_var(Stack{ address: pos, ast_typ: node.typ }, node)
 			g.mknblock('EXPR(STRUCTINIT)', [expr, g.lea_address(pos)])
 		}
 		ast.MatchExpr {
@@ -520,14 +564,10 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			wa.constant(g.mod, val)
 		}
 		ast.StringLiteral {
-			pos := g.allocate_struct('_anonstring', ast.string_type)
-			
-			offset, len := g.allocate_string(node)
-			g.mknblock('EXPR(STRINGINIT)', [
-				g.set_var(Stack{ address: pos, ast_typ: ast.charptr_type }, g.literalint(offset, ast.u32_type), offset: 0),
-				g.set_var(Stack{ address: pos, ast_typ: ast.int_type }, g.literalint(len, ast.int_type), offset: g.table.pointer_size)
-				g.lea_address(pos)
-			])
+			pos := g.allocate_local_var('_anonstring', ast.string_type)
+
+			expr := g.assign_expr_to_var(Stack{address: pos, ast_typ: ast.string_type}, node)
+			g.mknblock('EXPR(STRINGINIT)', [expr, g.lea_address(pos)])
 		}
 		ast.InfixExpr {
 			g.infix_expr(node, expected)
@@ -598,7 +638,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 
 			// ABI: {return structs} {method `self`}, then {arguments}
 			for typ in structs {
-				pos := g.allocate_struct('_anonstruct', typ)
+				pos := g.allocate_local_var('_anonstruct', typ)
 				structs_addrs << pos
 				arguments << g.lea_address(pos)
 			}
@@ -892,8 +932,8 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 
 					var := g.get_var_from_expr(left)
 
-					expr := if node.op !in [.decl_assign, .assign] {
-						match var {
+					if node.op !in [.decl_assign, .assign] {
+						expr := match var {
 							Temporary {
 								op := g.infix_from_typ(typ, token.assign_op_to_infix_op(node.op))
 								infix := wa.binary(g.mod, op, wa.localget(g.mod, var.idx,
@@ -908,14 +948,10 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 								panic('unreachable')
 							}
 						}
+						exprs << g.set_var(var, expr)
 					} else {
-						if right is ast.StructInit {
-							exprs << g.init_struct(var, right)
-							continue
-						}
-						g.expr(right, typ)
+						exprs << g.assign_expr_to_var(var, right)
 					}
-					exprs << g.set_var(var, expr)
 				}
 
 				if exprs.len == 1 {
