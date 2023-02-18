@@ -333,11 +333,9 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		tmp := g.new_tmp_var()
 		line := g.go_before_stmt(0).trim_space()
 		g.empty_line = true
-		g.write('${elem_styp} ${tmp}[')
+		g.write('${elem_styp}* ${tmp} = malloc((')
 		g.expr(node.len_expr)
-		g.write('==0?1:')
-		g.expr(node.len_expr)
-		g.writeln('];')
+		g.writeln(') * sizeof(${elem_styp}));')
 		ind := g.new_tmp_var()
 		g.write('for (int ${ind}=0; ${ind}<')
 		g.expr(node.len_expr)
