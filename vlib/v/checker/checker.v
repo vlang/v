@@ -1629,7 +1629,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 					if signed {
 						val := field.expr.val.i64()
 						ival = val
-						if val < enum_imin || val >= enum_imax {
+						if val < enum_imin || val > enum_imax {
 							c.error('enum value `${field.expr.val}` overflows the enum type `${senum_type}`, values of which have to be in [${enum_imin}, ${enum_imax}]',
 								field.expr.pos)
 							overflows = true
