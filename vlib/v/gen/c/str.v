@@ -153,6 +153,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				g.write('*')
 			}
 			g.expr_with_cast(expr, typ, typ)
+		} else {
+			g.expr_with_cast(expr, typ, typ)
 		}
 		g.write(')')
 	}
