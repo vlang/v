@@ -629,9 +629,6 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	if p.tok.kind == .name && p.tok.lit == 'JS' {
 		rec.language = ast.Language.js
 	}
-	if p.tok.kind == .question {
-		p.unexpected()
-	}
 	// if rec.is_mut {
 	// p.check(.key_mut)
 	// }
