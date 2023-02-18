@@ -1,5 +1,0 @@
-vlib/v/checker/tests/var_option_map_error.vv:2:33: error: `}` expected; explicit `map` initialization does not support parameters
-    1 | fn main() {
-    2 |     mut var4 := ?map[string]string{1:1}
-      |                                    ^
-    3 | }

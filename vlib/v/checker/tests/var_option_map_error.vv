@@ -1,3 +1,0 @@
-fn main() {
-	mut var4 := ?map[string]string{1:1}
-}
