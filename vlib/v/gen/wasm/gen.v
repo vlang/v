@@ -31,8 +31,8 @@ mut:
 	//
 	lbl           int
 	for_labels    []string     // A stack of strings containing the names of blocks/loops to break/continue to
-	stack_patches []BlockPatch // See `Gen.stack_deinit_push_patch()`
-	needs_stack   bool // If true, will import `__vmem` and `__vsp`
+	stack_patches []BlockPatch
+	needs_stack   bool // If true, will use `memory` and `__vsp`
 	constant_data []ConstantData
 	constant_data_offset int
 	module_import_namespace string // `[wasm_import_namespace: 'wasi_snapshot_preview1']` else `env`
@@ -116,11 +116,13 @@ fn (mut g Gen) setup_stack_frame(body wa.Expression) wa.Expression {
 	}
 	g.needs_stack = true
 
+	padded_stack_frame := round_up_to_multiple(g.stack_frame, 8)
+
 	// vfmt off
 	stack_enter := 
 		wa.globalset(g.mod, c'__vsp', 
 			wa.binary(g.mod, wa.addint32(),
-				wa.constant(g.mod, wa.literalint32(g.stack_frame)),
+				wa.constant(g.mod, wa.literalint32(padded_stack_frame)),
 				wa.localtee(g.mod, g.bp_idx,
 					wa.globalget(g.mod, c'__vsp', type_i32), type_i32)))
 	// vfmt on
@@ -501,7 +503,7 @@ fn (mut g Gen) assign_expr_to_var(_var Var, right ast.Expr) wa.Expression {
 			elm_size, _ := g.get_type_size_align(elm_typ)
 			mut offset := 0
 			if right.expr_types.len != right.exprs.len {
-				return g.mknblock('ARRAYINIT(ZERO)', [g.memset(g.literalint(0, ast.int_type), right.typ, var.address)])
+				return g.mknblock('ARRAYINIT(ZERO)', [g.zero_fill(right.typ, var.address)])
 			}
 			// [10, 15]!
 			for e in right.exprs {
@@ -768,12 +770,6 @@ mut:
 	block wa.Expression
 }
 
-// Adds another `BlockPatch` to the current function to "patch" in
-// a `g.vsp_leave()` when the function actually requires stack memory
-fn (mut g Gen) stack_deinit_push_patch(val BlockPatch) {
-	g.stack_patches
-}
-
 fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 	return match node {
 		ast.Return {
@@ -1016,6 +1012,10 @@ pub fn (mut g Gen) toplevel_stmts(stmts []ast.Stmt) {
 	}
 }
 
+fn round_up_to_multiple(val int, multiple int) int {
+	return val + (multiple - val % multiple) % multiple
+}
+
 fn (mut g Gen) housekeeping() {
 	if g.needs_stack || g.constant_data.len != 0 {
 		data := g.constant_data.map(it.data.data)
@@ -1035,7 +1035,7 @@ fn (mut g Gen) housekeeping() {
 	}
 	if g.needs_stack {
 		// `g.constant_data_offset` rounded up to a multiple of 1024
-		offset := g.constant_data_offset + (1024 - g.constant_data_offset % 1024) % 1024
+		offset := round_up_to_multiple(g.constant_data_offset, 1024)
 		
 		wa.addglobal(g.mod, c'__vsp', type_i32, true, g.literalint(offset, ast.int_type))
 	}

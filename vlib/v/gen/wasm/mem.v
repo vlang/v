@@ -410,10 +410,18 @@ fn (mut g Gen) set_var(var Var, expr wa.Expression, cfg SetConfig) wa.Expression
 	}
 }
 
-// `memset` `val` to known local `address` in stack memory.
-fn (mut g Gen) memset(val wa.Expression, ast_typ ast.Type, address int) wa.Expression {
+// zero out stack memory in known local `address`.
+fn (mut g Gen) zero_fill(ast_typ ast.Type, address int) wa.Expression {
 	size, _ := g.get_type_size_align(ast_typ)
-	return wa.memoryfill(g.mod, g.lea_address(address), val, g.literalint(size, ast.int_type), c'memory')
+	
+	if size <= 4 {
+		zero := g.literalint(0, ast.int_type)
+		return wa.store(g.mod, u32(size), u32(address), 0, g.get_bp(), zero, type_i32, c'memory')
+	} else if size <= 8 {
+		zero := g.literalint(0, ast.i64_type)
+		return wa.store(g.mod, u32(size), u32(address), 0, g.get_bp(), zero, type_i64, c'memory')
+	}
+	return wa.memoryfill(g.mod, g.lea_address(address), g.literalint(0, ast.int_type), g.literalint(size, ast.int_type), c'memory')
 }
 
 // `memcpy` from `ptr` to known local `address` in stack memory.
@@ -448,21 +456,26 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {
 					if init.fields.len == 0 && !(ts.info.fields.any(it.has_default_expr)) {
 						// Struct definition contains no default initialisers
 						// AND struct init contains no set values.
-						return g.mknblock('STRUCTINIT(ZERO)', [g.memset(g.literalint(0, ast.int_type), var.ast_typ, var.address)])
+						return g.mknblock('STRUCTINIT(ZERO)', [g.zero_fill(var.ast_typ, var.address)])
 					}
 
 					for i, f in ts.info.fields {
 						field_to_be_set := init.fields.map(it.name).contains(f.name)
+						fts := g.table.sym(f.typ)
 						if !field_to_be_set {
+							g.get_type_size_align(var.ast_typ)
 							offset := g.structs[var.ast_typ.idx()].offsets[i]
-							initexpr := if f.has_default_expr {
-								g.expr(f.default_expr, f.typ) // or `unaliased_typ`?
+							if f.has_default_expr {
+								init_expr := g.expr(f.default_expr, f.typ) // or `unaliased_typ`?
+								exprs << g.set_var(var, init_expr, ast_typ: f.typ, offset: offset)
 							} else {
-								g.literal('0', f.typ)
+								if fts.info is ast.Struct {
+									exprs << g.init_struct(Stack{address: var.address + offset, ast_typ: f.typ}, ast.StructInit{})
+								} else {
+									exprs << g.zero_fill(f.typ, var.address + offset)
+								}
 							}
-
-							// TODO: replace invocations of `set_var` with `assign_expr_to_var`
-							exprs << g.set_var(var, initexpr, ast_typ: f.typ, offset: offset)
+							// TODO: replace invocations of `set_var` with `assign_expr_to_var`?						
 						}
 					}
 				}

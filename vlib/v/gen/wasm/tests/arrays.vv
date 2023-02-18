@@ -1,0 +1,10 @@
+struct TEST {
+	a int
+	b i64
+}
+
+fn static_arrays() {
+	a := [8]int{}
+	b := [10, 12, 150]!
+	c := [TEST{}, TEST{b: 10}]!
+}

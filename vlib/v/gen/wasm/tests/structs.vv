@@ -128,3 +128,19 @@ pub fn test(a int, b int) (int, int) {
 
 	return ret.x, ret.y
 }
+
+struct Aello {
+	a int
+	b i64
+	c int
+}
+
+struct Hello {
+	a int = 20
+	b Aello
+	c int = 222
+}
+
+pub fn recurse() {
+	a := Hello{}
+}
