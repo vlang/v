@@ -401,7 +401,7 @@ fn test_option_c_struct_gen() {
 	_ := get_opt_to_c_struct() or { C.stat{} }
 }
 
-// For issue #16062: checker disallow the return of voidptr(nil) in or block
+// For issue #16062: checker disallowed the return of voidptr(nil) in or block
 struct Bar {}
 
 fn get_bar(should_return_value bool) ?&Bar {
@@ -411,7 +411,7 @@ fn get_bar(should_return_value bool) ?&Bar {
 	return none
 }
 
-fn test_() {
+fn test_allow_returning_an_optional_pointer_to_a_struct() {
 	a := get_bar(true)?
 	assert a == unsafe { nil }
 	//
@@ -423,4 +423,20 @@ fn test_() {
 	//
 	get_bar(false) or { unsafe { nil } }
 	assert true
+}
+
+struct AFoo {
+mut:
+	name string
+}
+
+fn (mut f AFoo) opt_string(arr ?[]int) ?string {
+	return arr?.len.str()
+}
+
+fn test_creating_an_option_from_a_struct_value() {
+	mut m := ?AFoo(AFoo{})
+	assert m?.opt_string([1, 2, 3])? == '3'
+	m?.name = 'foo'
+	assert m?.name == 'foo'
 }
