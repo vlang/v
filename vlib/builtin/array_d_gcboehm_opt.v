@@ -42,7 +42,7 @@ fn __new_array_with_default_noscan(mylen int, cap int, elm_size int, val voidptr
 	return arr
 }
 
-fn __new_array_with_defaults_noscan(mylen int, cap int, elm_size int, val voidptr) array {
+fn __new_array_with_multi_default_noscan(mylen int, cap int, elm_size int, val voidptr) array {
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size

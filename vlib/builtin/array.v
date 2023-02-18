@@ -78,7 +78,7 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 	return arr
 }
 
-fn __new_array_with_defaults(mylen int, cap int, elm_size int, val voidptr) array {
+fn __new_array_with_multi_default(mylen int, cap int, elm_size int, val voidptr) array {
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
@@ -90,11 +90,7 @@ fn __new_array_with_defaults(mylen int, cap int, elm_size int, val voidptr) arra
 	//    -> total_size == 0 -> malloc(0) -> panic;
 	//    to avoid it, just allocate a single byte
 	total_size := u64(cap_) * u64(elm_size)
-	if cap_ > 0 && mylen == 0 {
-		arr.data = unsafe { malloc(__at_least_one(total_size)) }
-	} else {
-		arr.data = vcalloc(total_size)
-	}
+	arr.data = vcalloc(__at_least_one(total_size))
 	if val != 0 {
 		mut eptr := &u8(arr.data)
 		unsafe {

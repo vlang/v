@@ -20,7 +20,7 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 		'str_intp',
 		'format_sb',
 		'__new_array_with_default',
-		'__new_array_with_defaults',
+		'__new_array_with_multi_default',
 		'__new_array_with_array_default',
 		'init_global_allocator' /* needed for linux_bare and wasm_bare */,
 		'v_realloc' /* needed for _STR */,

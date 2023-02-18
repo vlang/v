@@ -294,7 +294,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 	} else if is_default_map {
 		g.write('__new_array_with_map_default${noscan}(')
 	} else if needs_more_defaults {
-		g.write('__new_array_with_defaults${noscan}(')
+		g.write('__new_array_with_multi_default${noscan}(')
 	} else {
 		g.write('__new_array_with_default${noscan}(')
 	}
