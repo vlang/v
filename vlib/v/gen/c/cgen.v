@@ -3492,7 +3492,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		&& (node.expr_type.has_flag(.option) || node.expr_type.has_flag(.result))
 	if is_opt_or_res {
 		opt_base_typ := g.base_type(node.expr_type)
-		g.writeln('(*(${opt_base_typ}*)')
+		g.write('(*(${opt_base_typ}*)')
 	}
 	if sym.kind in [.interface_, .sum_type] {
 		g.write('(*(')
@@ -4142,7 +4142,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				stmt_str := g.go_before_stmt(0).trim_space()
 				g.empty_line = true
 				g.or_block(name, node.or_expr, node.info.typ)
-				g.writeln(stmt_str)
+				g.write(stmt_str)
 			}
 			return
 		}
