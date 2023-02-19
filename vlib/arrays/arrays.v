@@ -530,18 +530,18 @@ fn ptr_rotate[T](left_ int, mid &T, right_ int) {
 
 	unsafe {
 		sz := usize(sizeof(T))
-		rawarray := C.malloc(raw_array_malloc_size[T]())
+		rawarray := malloc(isize(raw_array_malloc_size[T]()))
 		dim := &T(usize(voidptr(mid)) - left * sz + right * sz)
 		if left <= right {
-			C.memcpy(rawarray, voidptr(usize(voidptr(mid)) - left * sz), left * sz)
-			C.memmove(voidptr(usize(voidptr(mid)) - left * sz), voidptr(mid), right * sz)
-			C.memcpy(voidptr(dim), rawarray, left * sz)
+			vmemcpy(rawarray, voidptr(usize(voidptr(mid)) - left * sz), isize(left * sz))
+			vmemmove(voidptr(usize(voidptr(mid)) - left * sz), voidptr(mid), isize(right * sz))
+			vmemcpy(voidptr(dim), rawarray, isize(left * sz))
 		} else {
-			C.memcpy(rawarray, voidptr(mid), right * sz)
-			C.memmove(voidptr(dim), voidptr(usize(voidptr(mid)) - left * sz), left * sz)
-			C.memcpy(voidptr(usize(voidptr(mid)) - left * sz), rawarray, right * sz)
+			vmemcpy(rawarray, voidptr(mid), isize(right * sz))
+			vmemmove(voidptr(dim), voidptr(usize(voidptr(mid)) - left * sz), isize(left * sz))
+			vmemcpy(voidptr(usize(voidptr(mid)) - left * sz), rawarray, isize(right * sz))
 		}
-		C.free(rawarray)
+		free(rawarray)
 	}
 }
 
@@ -593,22 +593,22 @@ fn memswap(x voidptr, y voidptr, len usize) {
 		xi := usize(x) + i
 		yi := usize(y) + i
 		unsafe {
-			C.memcpy(t, voidptr(xi), block_size)
-			C.memcpy(voidptr(xi), voidptr(yi), block_size)
-			C.memcpy(t, voidptr(yi), block_size)
+			vmemcpy(t, voidptr(xi), isize(block_size))
+			vmemcpy(voidptr(xi), voidptr(yi), isize(block_size))
+			vmemcpy(t, voidptr(yi), isize(block_size))
 		}
 		i += block_size
 	}
 	if i < len {
 		mut t_ := UnalignedBlock{}
 		t := voidptr(&t_)
-		rem := len - i
+		rem := isize(len - i)
 		xi := usize(x) + i
 		yi := usize(y) + i
 		unsafe {
-			C.memcpy(t, voidptr(xi), rem)
-			C.memcpy(voidptr(xi), voidptr(yi), rem)
-			C.memcpy(voidptr(yi), t, rem)
+			vmemcpy(t, voidptr(xi), rem)
+			vmemcpy(voidptr(xi), voidptr(yi), rem)
+			vmemcpy(voidptr(yi), t, rem)
 		}
 	}
 }
