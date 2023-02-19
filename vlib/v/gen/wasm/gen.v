@@ -36,6 +36,22 @@ mut:
 	constant_data []ConstantData
 	constant_data_offset int
 	module_import_namespace string // `[wasm_import_namespace: 'wasi_snapshot_preview1']` else `env`
+	globals map[string]GlobalData
+}
+
+// Constants and globals
+struct GlobalData {
+	init ast.Expr
+	ast_typ ast.Type
+	abs_address int // relative to `Gen.constant_data_offset`
+}
+
+fn (gd GlobalData) to_var(name string) Global {
+	return Global{
+		name: name
+		ast_typ: gd.ast_typ
+		abs_address: gd.abs_address
+	}
 }
 
 struct StructInfo {
@@ -145,7 +161,7 @@ fn (mut g Gen) function_return_wasm_type(typ ast.Type) wa.Type {
 	if typ == ast.void_type {
 		return type_none
 	}
-	types := g.unpack_type(typ).filter(g.table.sym(it).kind != .struct_).map(g.get_wasm_type(it))
+	types := g.unpack_type(typ).filter(g.table.sym(it).info !is ast.Struct).map(g.get_wasm_type(it))
 	if types.len == 0 {
 		return type_none
 	}
@@ -189,6 +205,26 @@ fn (mut g Gen) fn_external_import(node ast.FnDecl) {
 	// external name: `setpixel`
 	wa.addfunctionimport(g.mod, node.name.str, g.module_import_namespace.str, node.short_name.str, wa.typecreate(paraml.data,
 		paraml.len), return_type)
+}
+
+fn (mut g Gen) bare_function_start() {
+	g.bp_idx = g.new_local_temporary_anon(ast.int_type)
+	g.stack_frame = 0
+}
+
+fn (mut g Gen) bare_function(name string, expr wa.Expression) wa.Function {
+	mut temporaries := []wa.Type{cap: g.local_temporaries.len}
+	for idx := 0; idx < g.local_temporaries.len; idx++ {
+		temporaries << g.local_temporaries[idx].typ
+	}
+
+	func := wa.addfunction(g.mod, name.str, type_none, type_none, temporaries.data, temporaries.len, expr)
+	
+	g.local_temporaries.clear()
+	g.local_addresses = map[string]Stack{}
+	assert g.for_labels.len == 0
+
+	return func
 }
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
@@ -272,7 +308,6 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	for idx := paraml.len; idx < g.local_temporaries.len; idx++ {
 		temporaries << g.local_temporaries[idx].typ
 	}
-	// func :=
 	wa.addfunction(g.mod, name.str, params_type, return_type, temporaries.data, temporaries.len,
 		wasm_expr)
 	if node.is_pub && node.mod == 'main' && g.pref.os == .browser {
@@ -324,13 +359,12 @@ fn (mut g Gen) postfix_expr(node ast.PostfixExpr) wa.Expression {
 
 	kind := if node.op == .inc { token.Kind.plus } else { token.Kind.minus }
 
-	idx, typ := g.get_local_temporary_from_ident(node.expr as ast.Ident)
-	atyp := g.local_temporaries[idx].ast_typ
+	var := g.get_var_from_ident(node.expr as ast.Ident) as Temporary
+	
+	op := g.infix_from_typ(var.ast_typ, kind)
 
-	op := g.infix_from_typ(atyp, kind)
-
-	return wa.localset(g.mod, idx, wa.binary(g.mod, op, wa.localget(g.mod, idx, typ),
-		g.literal('1', atyp)))
+	return wa.localset(g.mod, var.idx, wa.binary(g.mod, op, wa.localget(g.mod, var.idx, var.typ),
+		g.literal('1', var.ast_typ)))
 }
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) wa.Expression {
@@ -422,11 +456,19 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr) wa.Expression {
 }
 
 fn (mut g Gen) mknblock(name string, nodes []wa.Expression) wa.Expression {
+	if nodes.len == 0 {
+		return wa.nop(g.mod)
+	}
+	
 	g.lbl++
 	return wa.block(g.mod, '${name}${g.lbl}'.str, nodes.data, nodes.len, type_auto)
 }
 
 fn (mut g Gen) mkblock(nodes []wa.Expression) wa.Expression {
+	if nodes.len == 0 {
+		return wa.nop(g.mod)
+	}
+	
 	g.lbl++
 	return wa.block(g.mod, 'BLK${g.lbl}'.str, nodes.data, nodes.len, type_auto)
 }
@@ -447,13 +489,6 @@ fn (mut g Gen) if_branch(ifexpr ast.IfExpr, idx int) wa.Expression {
 
 fn (mut g Gen) if_expr(ifexpr ast.IfExpr) wa.Expression {
 	return g.if_branch(ifexpr, 0)
-}
-
-fn (mut g Gen) get_ident(node ast.Ident, expected ast.Type) (wa.Expression, int) {
-	idx, typ := g.get_local_temporary_from_ident(node)
-	expr := wa.localget(g.mod, idx, typ)
-
-	return g.cast(expr, typ, g.is_signed(g.local_temporaries[idx].ast_typ), g.get_wasm_type(expected)), idx
 }
 
 const wasm_builtins = ['__memory_grow', '__memory_fill', '__memory_copy']
@@ -484,6 +519,11 @@ fn (mut g Gen) assign_expr_to_var(_var Var, right ast.Expr) wa.Expression {
 			return g.init_struct(_var, right)
 		}
 		ast.StringLiteral {
+			if right.is_raw {
+				offset, _ := g.allocate_string(right)
+				return g.set_var(_var, g.literalint(offset, ast.int_type))
+			}
+			
 			var := _var as Stack
 			
 			offset, len := g.allocate_string(right)
@@ -502,7 +542,7 @@ fn (mut g Gen) assign_expr_to_var(_var Var, right ast.Expr) wa.Expression {
 			elm_typ := right.elem_type
 			elm_size, _ := g.get_type_size_align(elm_typ)
 			mut offset := 0
-			if right.expr_types.len != right.exprs.len {
+			if !right.has_val {
 				return g.mknblock('ARRAYINIT(ZERO)', [g.zero_fill(right.typ, var.address)])
 			}
 			// [10, 15]!
@@ -566,6 +606,11 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			wa.constant(g.mod, val)
 		}
 		ast.StringLiteral {
+			if node.is_raw {
+				offset, _ := g.allocate_string(node)
+				return g.literalint(offset, ast.int_type)
+			}
+			
 			pos := g.allocate_local_var('_anonstring', ast.string_type)
 
 			expr := g.assign_expr_to_var(Stack{address: pos, ast_typ: ast.string_type}, node)
@@ -621,11 +666,11 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			mut arguments := []wa.Expression{cap: node.args.len + 1}
 
 			if name in ['panic', 'println', 'print', 'eprintln', 'eprint'] {
-				arg := node.args[0]
+				/* arg := node.args[0]
 				if arg.expr !is ast.StringLiteral {
 					g.v_error('builtin function `${name}` must be called with a string literal',
 						arg.pos)
-				}
+				} */
 			} else if name in wasm_builtins {
 				return g.wasm_builtin(node.name, node)
 			}
@@ -996,6 +1041,7 @@ fn (mut g Gen) toplevel_stmt(node ast.Stmt) {
 				g.module_import_namespace = 'env'
 			}
 		}
+		ast.ConstDecl {}
 		ast.Import {}
 		ast.StructDecl {}
 		ast.EnumDecl {}
@@ -1009,43 +1055,6 @@ fn (mut g Gen) toplevel_stmt(node ast.Stmt) {
 pub fn (mut g Gen) toplevel_stmts(stmts []ast.Stmt) {
 	for stmt in stmts {
 		g.toplevel_stmt(stmt)
-	}
-}
-
-fn round_up_to_multiple(val int, multiple int) int {
-	return val + (multiple - val % multiple) % multiple
-}
-
-fn (mut g Gen) housekeeping() {
-	if g.needs_stack || g.constant_data.len != 0 {
-		data := g.constant_data.map(it.data.data)
-		data_len := g.constant_data.map(it.data.len)
-		data_offsets := g.constant_data.map(wa.constant(g.mod, wa.literalint32(it.offset)))
-		passive := []bool{len: g.constant_data.len, init: false}
-
-		wa.setmemory(g.mod, 1, 1, c'memory', 
-			data.data,
-			passive.data,
-			data_offsets.data,
-			data_len.data,
-			data.len,
-			false,
-			false,
-			c'memory')
-	}
-	if g.needs_stack {
-		// `g.constant_data_offset` rounded up to a multiple of 1024
-		offset := round_up_to_multiple(g.constant_data_offset, 1024)
-		
-		wa.addglobal(g.mod, c'__vsp', type_i32, true, g.literalint(offset, ast.int_type))
-	}
-	if g.pref.os == .wasi {
-		// `_vinit` should be used to initialise the WASM module,
-		// then `main.main` can be called safely.
-
-		main_expr := wa.call(g.mod, c'main.main', unsafe { nil }, 0, type_none)
-		wa.addfunction(g.mod, c'_start', type_none, type_none, unsafe { nil }, 0, main_expr)
-		wa.addfunctionexport(g.mod, c'_start', c'_start')
 	}
 }
 

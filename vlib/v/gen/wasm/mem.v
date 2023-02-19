@@ -4,7 +4,7 @@ import v.ast
 import binaryen as wa
 import strconv
 
-type Var = Stack | Temporary | ast.Ident
+type Var = Global | Stack | Temporary | ast.Ident
 
 fn (v Var) ast_typ() int {
 	if v is Temporary {
@@ -35,12 +35,12 @@ struct Stack {
 	address int
 }
 
-/*
 struct Global {
-	name    string
-	typ     wa.Type
-	ast_typ ast.Type
-}*/
+	name     string
+	ast_typ  ast.Type
+	//
+	abs_address int
+}
 
 fn (g Gen) is_pure_type(typ ast.Type) bool {
 	if typ.is_pure_int() || typ.is_pure_float() || typ == ast.char_type_idx
@@ -54,6 +54,18 @@ fn (g Gen) is_pure_type(typ ast.Type) bool {
 	return false
 }
 
+fn (mut g Gen) new_global_const(obj ast.ConstField) {
+	typ := ast.mktyp(obj.typ)
+
+	size, _ := g.get_type_size_align(typ)
+	g.globals[obj.name] = GlobalData {
+		init: obj.expr
+		ast_typ: typ
+		abs_address: g.constant_data_offset
+	}
+	g.constant_data_offset += size
+}
+
 fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
 	mut obj := ident.obj
 	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
@@ -65,6 +77,12 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
 				return g.local_temporaries[g.get_local_temporary(obj.name)]
 			}
 			return g.local_addresses[obj.name]
+		}
+		ast.ConstField {
+			if obj.name !in g.globals {
+				g.new_global_const(obj)
+			}
+			return g.globals[obj.name].to_var(obj.name)
 		}
 		else {
 			g.w_error('unsupported variable type type:${obj} name:${ident.name}')
@@ -119,22 +137,6 @@ fn (mut g Gen) get_local_temporary(name string) int {
 		}
 	}
 	g.w_error("get_local: cannot get '${name}'")
-}
-
-fn (mut g Gen) get_local_temporary_from_ident(ident ast.Ident) (int, wa.Type) {
-	mut obj := ident.obj
-	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
-		obj = ident.scope.find(ident.name) or { g.w_error('unknown variable ${ident.name}') }
-	}
-	match mut obj {
-		ast.Var {
-			idx := g.get_local_temporary(obj.name)
-			return idx, g.local_temporaries[idx].typ
-		}
-		else {
-			g.w_error('unsupported variable type type:${obj} name:${ident.name}')
-		}
-	}
 }
 
 fn (mut g Gen) new_local_temporary_anon_wtyp(w_typ wa.Type) int {
@@ -264,33 +266,11 @@ fn (mut g Gen) get_bp() wa.Expression {
 	return wa.localget(g.mod, g.bp_idx, type_i32)
 }
 
-/*
-fn (mut g Gen) get_ident(node ast.Ident, expected ast.Type) (wa.Expression, int) {
-	idx, typ := g.get_local_temporary_from_ident(node)
-	expr := wa.localget(g.mod, idx, typ)
-
-	return g.cast(expr, typ, g.is_signed(g.local_temporaries[idx].ast_typ), g.get_wasm_type(expected)), idx
-}*/
-
 fn (mut g Gen) lea_address(address int) wa.Expression {
 	return if address != 0 {
 		wa.binary(g.mod, wa.addint32(), g.get_bp(), wa.constant(g.mod, wa.literalint32(address)))
 	} else {
 		g.get_bp()
-	}
-}
-
-fn (mut g Gen) get_var(var Var) wa.Expression {
-	return match var {
-		ast.Ident {
-			g.get_var(g.get_var_from_ident(var))
-		}
-		Temporary {
-			wa.localget(g.mod, var.idx, var.typ)
-		}
-		Stack {
-			g.lea_address(var.address)
-		}
 	}
 }
 
@@ -365,10 +345,24 @@ fn (mut g Gen) get_var_t(var Var, ast_typ ast.Type) wa.Expression {
 			g.cast_t(expr, var.ast_typ, ast_typ)
 		}
 		Stack {
-			if var.address != 0 {
+			address := if var.address != 0 {
 				wa.binary(g.mod, wa.addint32(), g.get_bp(), wa.constant(g.mod, wa.literalint32(var.address)))
 			} else {
 				g.get_bp()
+			}
+			
+			if g.is_pure_type(var.ast_typ) {
+				g.cast_t(g.deref(address, var.ast_typ), var.ast_typ, ast_typ)
+			} else {
+				address
+			}
+		}
+		Global {
+			address := g.literalint(var.abs_address, ast.int_type)
+			if g.is_pure_type(var.ast_typ) {
+				g.cast_t(g.deref(address, var.ast_typ), var.ast_typ, ast_typ)
+			} else {
+				address
 			}
 		}
 	}
@@ -395,15 +389,30 @@ fn (mut g Gen) set_var(var Var, expr wa.Expression, cfg SetConfig) wa.Expression
 				var.ast_typ
 			}
 
-			ts := g.table.sym(ast_typ)
-
-			if ts.info is ast.Struct {
+			if !g.is_pure_type(ast_typ) {
 				// `expr` is pointer
 				g.blit_local(expr, ast_typ, var.address + cfg.offset)
 			} else {
 				size, _ := g.table.type_size(ast_typ)
 				// println("address: ${var.address}, offset: ${cfg.offset}")
 				wa.store(g.mod, u32(size), u32(var.address + cfg.offset), 0, g.get_bp(),
+					expr, g.get_wasm_type(ast_typ), c'memory')
+			}
+		}
+		Global {
+			ast_typ := if cfg.ast_typ != 0 {
+				cfg.ast_typ
+			} else {
+				var.ast_typ
+			}
+
+			address_expr := g.literalint(var.abs_address + cfg.offset, ast.int_type)
+			if !g.is_pure_type(ast_typ) {
+				// `expr` is pointer
+				g.blit(expr, ast_typ, address_expr)
+			} else {
+				size, _ := g.table.type_size(ast_typ)
+				wa.store(g.mod, u32(size), 0, 0, address_expr,
 					expr, g.get_wasm_type(ast_typ), c'memory')
 			}
 		}
@@ -436,10 +445,6 @@ fn (mut g Gen) blit(ptr wa.Expression, ast_typ ast.Type, dest wa.Expression) wa.
 	size, _ := g.get_type_size_align(ast_typ)
 	return wa.memorycopy(g.mod, dest, ptr, wa.constant(g.mod, wa.literalint32(size)),
 		c'memory', c'memory')
-}
-
-fn (mut g Gen) allocate_literal_string(node ast.StringLiteral) {
-	println(node)
 }
 
 fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {

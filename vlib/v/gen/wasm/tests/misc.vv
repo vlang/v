@@ -20,3 +20,12 @@ fn of() {
 	a := __offsetof(AA, b)
 	b := sizeof(AA)
 }
+
+fn constant() int {
+	return 100
+}
+
+const hello = "hello\n"
+const float = 1.0
+const integer = 888
+const runtime_init = constant()
