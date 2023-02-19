@@ -515,7 +515,7 @@ fn ptr_rotate[T](left_ int, mid &T, right_ int) {
 	limit := raw_array_cap[T]()
 	for {
 		delta := if left < right { left } else { right }
-		if delta <= limit {
+		if delta <= usize(limit) {
 			break
 		}
 		unsafe {
