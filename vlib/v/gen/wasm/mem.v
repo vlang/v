@@ -90,27 +90,108 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
 	}
 }
 
-fn (mut g Gen) get_var_from_expr(node ast.Expr) Var {
-	match node {
+type LocalOrPointer = Var | wa.Expression
+
+fn (mut g Gen) deref_local_or_pointer(lp LocalOrPointer, expected ast.Type) wa.Expression {
+	size, _ := g.table.type_size(expected)
+
+	mut offset := 0
+	expr := match lp {
+		wa.Expression {
+			lp
+		}
+		Var {
+			match lp {
+				Temporary {
+					wa.localget(g.mod, lp.idx, type_i32)
+				}
+				Stack {
+					offset = lp.address
+					g.get_bp()
+				}
+				Global {
+					g.literalint(lp.abs_address, ast.int_type)
+				}
+				else { panic("unreachable") }
+			}
+		}
+	}
+	load := wa.load(g.mod, u32(size), g.is_signed(expected), u32(offset), 0, g.get_wasm_type(expected),
+		expr, c'memory')
+	return load
+}
+
+fn (mut g Gen) lea_var_from_expr(node ast.Expr) wa.Expression {
+	var := g.get_var_from_expr(node)
+
+	return match var {
+		wa.Expression {
+			var
+		}
+		Var {
+			match var {
+				Temporary {
+					if g.is_pure_type(var.ast_typ) {
+						g.w_error("lea_var_from_expr: you cannot take the address of a pure temporary")
+					}
+					wa.localget(g.mod, var.idx, type_i32)
+				}
+				Stack {
+					g.lea_address(var.address)
+				}
+				Global {
+					g.literalint(var.abs_address, ast.int_type)
+				}
+				else { panic("unreachable") }
+			}
+		}
+	}
+}
+
+fn (mut g Gen) local_or_pointer_add_offset(v Var, offset int) LocalOrPointer {
+	return match v {
+		Temporary {
+			wa.binary(g.mod, wa.addint32(), wa.localget(g.mod, v.idx, type_i32), wa.constant(g.mod, wa.literalint32(offset)))
+		}
+		Stack {
+			Var(Stack {
+				...v
+				address: v.address + offset
+			})
+		}
+		Global {
+			Var(Global {
+				...v
+				abs_address: v.abs_address + offset
+			})
+		}
 		ast.Ident {
-			return g.get_var_from_ident(node)
+			panic("unreachable")
+		}
+	}
+}
+
+// TODO: return `Var | wa.Expression`
+fn (mut g Gen) get_var_from_expr(node ast.Expr) LocalOrPointer {
+	return match node {
+		ast.Ident {
+			g.get_var_from_ident(node)
 		}
 		ast.SelectorExpr {
-			address := g.path_expr_address(node)
+			address := g.get_var_from_expr(node)
+			offset := g.get_field_offset(node.expr_type, node.field_name)
+
 			match address {
 				wa.Expression {
-					panic('not implemented for complex expressions')
+					wa.binary(g.mod, wa.addint32(), address, wa.constant(g.mod, wa.literalint32(offset)))
 				}
-				int {
-					return Stack{
-						ast_typ: node.typ
-						address: address
-					}
+				Var {
+					g.local_or_pointer_add_offset(address, offset)
 				}
 			}
 		}
 		ast.IndexExpr {
-			// TODO: this would require an unknown offset at compile time
+			// TODO: impl this NEXT!
 			g.w_error('`ident[expr] = expr` not implemented')
 		}
 		ast.PrefixExpr {
@@ -272,65 +353,6 @@ fn (mut g Gen) lea_address(address int) wa.Expression {
 	} else {
 		g.get_bp()
 	}
-}
-
-// WASM expression and integer relative to base pointer.
-type PathAddress = int | wa.Expression
-
-// `node` is expected to not be `ast.Ident` when called externally.
-fn (mut g Gen) path_expr_address(node ast.Expr) PathAddress {
-	match node {
-		ast.SelectorExpr {
-			address := g.path_expr_address(node.expr)
-			offset := g.get_field_offset(node.expr_type, node.field_name)
-			return match address {
-				wa.Expression {
-					wa.binary(g.mod, wa.addint32(), address, wa.constant(g.mod, wa.literalint32(offset)))
-				}
-				int {
-					address + offset
-				}
-			}
-		}
-		ast.Ident {
-			var := g.get_var_from_ident(node)
-			return match var {
-				Temporary {
-					wa.localget(g.mod, var.idx, var.typ)
-				}
-				Stack {
-					var.address
-				}
-				else {
-					panic('unreachable')
-				}
-			}
-		}
-		// handle a[expr] and *a
-		else {
-			g.w_error('path_expr: forbidden node `${node.type_name()}`')
-		}
-	}
-}
-
-fn (mut g Gen) path_expr_t(node ast.Expr, expected ast.Type) wa.Expression {
-	return g.deref_local(g.path_expr_address(node), expected)
-}
-
-fn (mut g Gen) deref_local(address PathAddress, expected ast.Type) wa.Expression {
-	size, _ := g.table.type_size(expected)
-
-	match address {
-		wa.Expression {
-			return wa.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected),
-				address, c'memory')
-		}
-		int {
-			return wa.load(g.mod, u32(size), g.is_signed(expected), u32(address), 0, g.get_wasm_type(expected),
-				g.get_bp(), c'memory')
-		}
-	}
-	// return wa.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected), expr, c'memory')
 }
 
 // Will automatcally cast value from `var` to `ast_type`, will ignore if struct value.

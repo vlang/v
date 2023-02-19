@@ -424,7 +424,6 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr) wa.Expression {
 			}
 		}
 		.not {
-			assert node.right_type == ast.bool_type
 			wa.unary(g.mod, wa.eqzint32(), expr)
 		}
 		.bit_not {
@@ -436,17 +435,8 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr) wa.Expression {
 				wa.binary(g.mod, wa.xorint64(), expr, wa.constant(g.mod, wa.literalint64(-1)))
 			}
 		}
-		.amp {
-			var := g.get_var_from_expr(node.right)
-			match var {
-				Stack {
-					g.lea_address(var.address)
-				}
-				else {
-					// TODO: function argument structs will just as pointers, handle them later
-					g.w_error('Gen.prefix_expr: &val not implemented for non struct values')
-				}
-			}
+		.amp, .mul {
+			g.lea_var_from_expr(node.right)
 		}
 		else {
 			// impl deref (.mul), and impl address of (.amp)
@@ -574,7 +564,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			g.w_error('wasm backend does not support threads')
 		}
 		ast.SelectorExpr {
-			g.cast_t(g.path_expr_t(node, node.typ), node.typ, expected)
+			g.cast_t(g.deref_local_or_pointer(g.get_var_from_expr(node), node.typ), node.typ, expected)
 		}
 		ast.StructInit {
 			pos := g.allocate_local_var('_anonstruct', node.typ)
