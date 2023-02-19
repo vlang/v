@@ -1,5 +1,8 @@
 struct Test {
-	a ?int
+	a ?string
+	b ?int
+	c ?u8
+	d ?fn (int)
 }
 
 fn test_main() {
@@ -23,5 +26,17 @@ fn test_main() {
 		assert true
 	} else {
 		assert false
+	}
+}
+
+fn test_comptime() {
+	t := Test{}
+	$for f in Test.fields {
+		println('${f.name}')
+		if t.$(f.name) == none {
+			assert true
+		} else {
+			assert false
+		}
 	}
 }
