@@ -509,17 +509,18 @@ pub fn rotate_right[T](mut array []T, k int) {
 
 [unsafe]
 fn ptr_rotate[T](left_ int, mid &T, right_ int) {
+	sz := usize(sizeof(T))
 	mut left := usize(left_)
 	mut right := usize(right_)
+	limit := raw_array_cap[T]()
 	for {
 		delta := if left < right { left } else { right }
-
-		if delta <= raw_array_cap[T]() {
+		if delta <= limit {
 			break
 		}
 		unsafe {
-			swap_nonoverlapping[T](&T(usize(voidptr(mid)) - left * usize(sizeof(T))),
-				&T(usize(voidptr(mid)) + usize(right - delta) * usize(sizeof(T))), int(delta))
+			swap_nonoverlapping[T](&T(usize(voidptr(mid)) - left * sz), &T(usize(voidptr(mid)) +
+				usize(right - delta) * sz), int(delta))
 		}
 		if left <= right {
 			right -= delta
@@ -527,10 +528,11 @@ fn ptr_rotate[T](left_ int, mid &T, right_ int) {
 			left -= delta
 		}
 	}
-
 	unsafe {
-		sz := usize(sizeof(T))
-		rawarray := malloc(isize(raw_array_malloc_size[T]()))
+		rawarray := malloc(raw_array_malloc_size[T]())
+		defer {
+			free(rawarray)
+		}
 		dim := &T(usize(voidptr(mid)) - left * sz + right * sz)
 		if left <= right {
 			vmemcpy(rawarray, voidptr(usize(voidptr(mid)) - left * sz), isize(left * sz))
@@ -541,7 +543,6 @@ fn ptr_rotate[T](left_ int, mid &T, right_ int) {
 			vmemmove(voidptr(dim), voidptr(usize(voidptr(mid)) - left * sz), isize(left * sz))
 			vmemcpy(voidptr(usize(voidptr(mid)) - left * sz), rawarray, isize(right * sz))
 		}
-		free(rawarray)
 	}
 }
 
@@ -561,43 +562,43 @@ mut:
 	w u64
 }
 
-const (
-	extra_size = 32 * sizeof(usize)
-)
+const extra_size = 32 * isize(sizeof(usize))
 
-fn raw_array_cap[T]() usize {
-	if sizeof(T) > arrays.extra_size {
+fn raw_array_cap[T]() isize {
+	size := isize(sizeof(T))
+	if size > arrays.extra_size {
 		return 1
 	} else {
-		return arrays.extra_size / sizeof(T)
+		return arrays.extra_size / size
 	}
 }
 
-fn raw_array_malloc_size[T]() usize {
-	if sizeof(T) > arrays.extra_size {
-		return usize(sizeof(T)) * 2
+fn raw_array_malloc_size[T]() isize {
+	size := isize(sizeof(T))
+	if size > arrays.extra_size {
+		return size * 2
 	} else {
-		return 32 * usize(sizeof(usize))
+		return arrays.extra_size
 	}
 }
 
 [unsafe]
 fn memswap(x voidptr, y voidptr, len usize) {
-	block_size := sizeof(Block)
+	block_size := isize(sizeof(Block))
 
 	mut i := usize(0)
-	for i + block_size <= len {
+	for i + usize(block_size) <= len {
 		mut t_ := Block{}
 		t := voidptr(&t_)
 
 		xi := usize(x) + i
 		yi := usize(y) + i
 		unsafe {
-			vmemcpy(t, voidptr(xi), isize(block_size))
-			vmemcpy(voidptr(xi), voidptr(yi), isize(block_size))
-			vmemcpy(t, voidptr(yi), isize(block_size))
+			vmemcpy(t, voidptr(xi), block_size)
+			vmemcpy(voidptr(xi), voidptr(yi), block_size)
+			vmemcpy(t, voidptr(yi), block_size)
 		}
-		i += block_size
+		i += usize(block_size)
 	}
 	if i < len {
 		mut t_ := UnalignedBlock{}
@@ -633,7 +634,7 @@ pub fn copy[T](mut dst []T, src []T) int {
 		return 0
 	}
 	if can_copy_bits[T]() {
-		blen := min * int(sizeof(T))
+		blen := min * isize(sizeof(T))
 		unsafe { vmemmove(&T(dst.data), src.data, blen) }
 	} else {
 		for i in 0 .. min {
@@ -657,8 +658,9 @@ fn can_copy_bits[T]() bool {
 // carray_to_varray copies a C byte array into a V array of type `T`.
 // See also: `cstring_to_vstring`
 [unsafe]
-pub fn carray_to_varray[T](c_array voidptr, c_array_len int) []T {
-	mut v_array := []T{len: c_array_len}
-	unsafe { vmemcpy(v_array.data, c_array, c_array_len * int(sizeof(T))) }
+pub fn carray_to_varray[T](c_array_data voidptr, items int) []T {
+	mut v_array := []T{len: items}
+	total_size := items * isize(sizeof(T))
+	unsafe { vmemcpy(v_array.data, c_array_data, total_size) }
 	return v_array
 }
