@@ -361,7 +361,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			c.error('cannot initialize builtin type `${type_sym.name}`', node.pos)
 		}
 		if type_sym.kind == .enum_ && !c.pref.translated && !c.file.is_translated {
-			c.error('cannot initialize enum `${type_sym.name}`', node.pos)
+			c.error('cannot initialize enums', node.pos)
 		}
 	}
 	if type_sym.kind == .sum_type && node.fields.len == 1 {
