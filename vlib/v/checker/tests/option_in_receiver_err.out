@@ -1,0 +1,7 @@
+vlib/v/checker/tests/option_in_receiver_err.vv:10:9: error: option types cannot have methods
+    8 | }
+    9 | 
+   10 | fn (mut f ?Foo) t1(arr ?[]int) ?string {
+      |         ~~~
+   11 |     return arr?.len.str()
+   12 | }
