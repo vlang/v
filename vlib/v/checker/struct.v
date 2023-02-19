@@ -360,7 +360,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			&& type_sym.kind != .placeholder {
 			c.error('cannot initialize builtin type `${type_sym.name}`', node.pos)
 		}
-		if type_sym.kind == .enum_ {
+		if type_sym.kind == .enum_ && !c.pref.translated && !c.file.is_translated {
 			c.error('cannot initialize enum `${type_sym.name}`', node.pos)
 		}
 	}
