@@ -433,7 +433,7 @@ fn escape_sequence(buf_ string) (&Event, int) {
 		lo := typ & 0b00011
 		hi := typ & 0b11100
 
-		mut modifiers := Modifiers{}
+		mut modifiers := Modifiers.ctrl
 		if hi & 4 != 0 {
 			modifiers.set(.shift)
 		}
@@ -503,7 +503,7 @@ fn escape_sequence(buf_ string) (&Event, int) {
 	// ----------------------------
 
 	mut code := KeyCode.null
-	mut modifiers := Modifiers{}
+	mut modifiers := Modifiers.ctrl
 	match buf {
 		'[A', 'OA' { code = .up }
 		'[B', 'OB' { code = .down }

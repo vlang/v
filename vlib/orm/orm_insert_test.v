@@ -21,10 +21,31 @@ mut:
 	text     string
 }
 
+struct Account {
+	id int [primary; sql: serial]
+}
+
 pub fn insert_parent(db sqlite.DB, mut parent Parent) {
 	sql db {
 		insert parent into Parent
 	}
+}
+
+fn test_insert_empty_object() {
+	db := sqlite.connect(':memory:') or { panic(err) }
+
+	account := Account{}
+
+	sql db {
+		create table Account
+		insert account into Account
+	}
+
+	accounts := sql db {
+		select from Account
+	}
+
+	assert accounts.len == 1
 }
 
 fn test_orm_insert_mut_object() {

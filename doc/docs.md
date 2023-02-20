@@ -196,6 +196,7 @@ by using any of the following commands in a terminal:
     * [C Declarations](#c-declarations)
     * [Export to shared library](#export-to-shared-library)
     * [Translating C to V](#translating-c-to-v)
+    * [Working around C issues](#working-around-c-issues)
 * [Other V Features](#other-v-features)
     * [Inline assembly](#inline-assembly)
     * [Hot code reloading](#hot-code-reloading)
@@ -3094,7 +3095,7 @@ match color {
 }
 ```
 
-The enum type can be any integer type, but can be ommited, if it is `int`: `enum Color {`.
+The enum type can be any integer type, but can be omitted, if it is `int`: `enum Color {`.
 
 Enum match must be exhaustive or have an `else` branch.
 This ensures that if a new enum field is added, it's handled everywhere in the code.
@@ -4939,6 +4940,23 @@ A vfmt run is usually pretty cheap (takes <30ms).
 
 Always run `v fmt -w file.v` before pushing your code.
 
+#### Disabling the formatting locally
+
+To disable formatting for a block of code, wrap it with `// vfmt off` and
+`// vfmt on` comments.
+
+```bash
+// Not affected by fmt
+// vfmt off
+
+... your code here ...
+
+// vfmt on
+
+// Affected by fmt
+... your code here ...
+```
+
 ### v shader
 
 You can use GPU shaders with V graphical apps. You write your shaders in an
@@ -4986,7 +5004,7 @@ contain one or more V modules. A V *package* should have a `v.mod` file
 at its top folder, describing the contents of the package.
 
 V packages are installed normally in your `~/.vmodules` folder. That
-location can be overriden by setting the env variable `VMODULES`.
+location can be overridden by setting the env variable `VMODULES`.
 
 ### Package commands
 
@@ -5313,7 +5331,7 @@ struct C.Foo {
 }
 
 // Used to add a custom calling convention to a function, available calling convention: stdcall, fastcall and cdecl.
-// This list aslo apply for type aliases (see below).
+// This list also applies for type aliases (see below).
 [callconv: "stdcall"]
 fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 
@@ -5643,7 +5661,7 @@ With the example above:
   > **Note**
 > A combinatorial `_d_customflag_linux.c.v` postfix will not work.
   > If you do need a custom flag file, that has platform dependent code, use the
-  > postfix `_d_customflag.v`, and then use plaftorm dependent compile time
+  > postfix `_d_customflag.v`, and then use platform dependent compile time
   > conditional blocks inside it, i.e. `$if linux {}` etc.
 
 - `_notd_customflag.v` => similar to _d_customflag.v, but will be used
@@ -5981,7 +5999,7 @@ to race conditions. There are several approaches to deal with these:
   where global variables are used to generate (non cryptographic) pseudo random numbers.
   In this case data races lead to random numbers in different threads becoming somewhat
   correlated, which is acceptable considering the performance penalty that using
-  synchonization primitives would represent.
+  synchronization primitives would represent.
 
 ## Cross compilation
 
@@ -6424,6 +6442,37 @@ Translating it to V gives you several advantages:
 - Cross-compilation becomes a lot easier. You don't have to worry about it at all.
 - No more build flags and include files either.
 
+### Working around C issues
+
+In some cases, C interop can be extremely difficult.
+One of these such cases is when headers conflict with each other.
+For example, V needs to include the Windows header libraries in order for your V binaries to work
+seamlessly across all platforms.
+
+However, since the Windows header libraries use extremely generic names such as `Rectangle`,
+this will cause a conflict if you wish to use C code that also has a name defined as `Rectangle`.
+
+For very specific cases like this, we have `#preinclude`.
+
+This will allow things to be configured before V adds in its built in libraries.
+
+Example usage:
+```v ignore
+// This will include before built in libraries are used.
+#preinclude "pre_include.h"
+// This will include after built in libraries are used.
+#include "include.h"
+```
+
+An example of what might be included in `pre_include.h`
+can be [found here](https://github.com/irishgreencitrus/raylib.v/blob/main/include/pre.h)
+
+This is an advanced feature, and will not be necessary
+outside of very specific cases with C interop,
+meaning it could cause more issues than it solves.
+
+Consider it last resort!
+
 ## Other V Features
 
 ### Inline assembly
@@ -6570,8 +6619,8 @@ should **not** be used for things like build or deploy scripts. To access this f
 file with `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp` where `tmp` is the prefix for
 the built executable. This will run in crun mode so it will only rebuild if changes to the script
 were made and keep the binary as `tmp.<scriptfilename>`. **Caution**: if this filename already
-exists the file will be overriden. If you want to rebuild each time and not keep this binary instead
-use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
+exists the file will be overridden. If you want to rebuild each time and not keep this binary
+instead use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
 
 # Appendices
 

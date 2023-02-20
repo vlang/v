@@ -104,6 +104,10 @@ pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
 }
 
 pub fn (mut p Parser) parse_map_type() ast.Type {
+	is_option := p.tok.kind == .question && p.peek_tok.kind == .name // option map
+	if is_option {
+		p.next()
+	}
 	p.next()
 	if p.tok.kind != .lsbr {
 		return ast.map_type
@@ -143,7 +147,11 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 	if key_type.has_flag(.generic) || value_type.has_flag(.generic) {
 		return ast.new_type(idx).set_flag(.generic)
 	}
-	return ast.new_type(idx)
+	if is_option {
+		return ast.new_type(idx).set_flag(.option)
+	} else {
+		return ast.new_type(idx)
+	}
 }
 
 pub fn (mut p Parser) parse_chan_type() ast.Type {

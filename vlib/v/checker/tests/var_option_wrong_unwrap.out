@@ -1,0 +1,5 @@
+vlib/v/checker/tests/var_option_wrong_unwrap.vv:3:9: error: cannot use `?` on non-option variable
+    1 | var1 := ?int(none)
+    2 | var2 := var1 or { var1? }
+    3 | println(var2?)
+      |         ~~~~

@@ -64,12 +64,6 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 			unwrapped = ast.u64_type
 		}
 	}
-	if typ.has_flag(.option) {
-		unwrapped.set_flag(.option)
-	}
-	if typ.has_flag(.result) {
-		unwrapped.set_flag(.result)
-	}
 	styp := g.typ(unwrapped)
 	mut sym := g.table.sym(unwrapped)
 	mut str_fn_name := styp_to_str_fn_name(styp)
@@ -904,9 +898,13 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, typ_str string, 
 		sftyp := g.typ(ftyp_noshared)
 		mut field_styp := sftyp.replace('*', '')
 		field_styp_fn_name := if sym_has_str_method {
-			left_cc_type := g.cc_type(ftyp_noshared, false)
-			left_fn_name := util.no_dots(left_cc_type)
-			mut field_fn_name := '${left_fn_name}_str'
+			mut field_fn_name := if ftyp_noshared.has_flag(.option) {
+				'${field_styp}_str'
+			} else {
+				left_cc_type := g.cc_type(ftyp_noshared, false)
+				left_fn_name := util.no_dots(left_cc_type)
+				'${left_fn_name}_str'
+			}
 			if sym.info is ast.Struct {
 				field_fn_name = g.generic_fn_name(sym.info.concrete_types, field_fn_name)
 			}

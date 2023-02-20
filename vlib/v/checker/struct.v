@@ -161,20 +161,35 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 						}
 					}
 				}
-				if field.default_expr is ast.IntegerLiteral {
-					if field.default_expr.val == '0' {
-						c.warn('unnecessary default value of `0`: struct fields are zeroed by default',
+
+				if field.typ.has_flag(.option) {
+					if field.default_expr is ast.None {
+						c.warn('unnecessary default value of `none`: struct fields are zeroed by default',
 							field.default_expr.pos)
 					}
-				} else if field.default_expr is ast.StringLiteral {
-					if field.default_expr.val == '' {
-						c.warn("unnecessary default value of '': struct fields are zeroed by default",
-							field.default_expr.pos)
-					}
-				} else if field.default_expr is ast.BoolLiteral {
-					if field.default_expr.val == false {
-						c.warn('unnecessary default value `false`: struct fields are zeroed by default',
-							field.default_expr.pos)
+				} else if field.typ.has_flag(.result) {
+					// struct field does not support result. Nothing to do
+				} else {
+					match field.default_expr {
+						ast.IntegerLiteral {
+							if field.default_expr.val == '0' {
+								c.warn('unnecessary default value of `0`: struct fields are zeroed by default',
+									field.default_expr.pos)
+							}
+						}
+						ast.StringLiteral {
+							if field.default_expr.val == '' {
+								c.warn("unnecessary default value of '': struct fields are zeroed by default",
+									field.default_expr.pos)
+							}
+						}
+						ast.BoolLiteral {
+							if field.default_expr.val == false {
+								c.warn('unnecessary default value `false`: struct fields are zeroed by default',
+									field.default_expr.pos)
+							}
+						}
+						else {}
 					}
 				}
 			}
@@ -344,6 +359,9 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			&& (type_sym.kind != .struct_ || !(type_sym.info as ast.Struct).is_anon)
 			&& type_sym.kind != .placeholder {
 			c.error('cannot initialize builtin type `${type_sym.name}`', node.pos)
+		}
+		if type_sym.kind == .enum_ && !c.pref.translated && !c.file.is_translated {
+			c.error('cannot initialize enums', node.pos)
 		}
 	}
 	if type_sym.kind == .sum_type && node.fields.len == 1 {
@@ -647,8 +665,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		node.update_expr_type = update_type
 		if node.update_expr is ast.ComptimeSelector {
 			c.error('cannot use struct update syntax in compile time expressions', node.update_expr_pos)
-		}
-		if c.table.final_sym(update_type).kind != .struct_ {
+		} else if c.table.final_sym(update_type).kind != .struct_ {
 			s := c.table.type_to_str(update_type)
 			c.error('expected struct, found `${s}`', node.update_expr.pos())
 		} else if update_type != node.typ {

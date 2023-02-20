@@ -107,7 +107,7 @@
 - `utf8.is_number()`, `utf8.is_space()` functions.
 - New `encoding.base32` module.
 - `-skip-unused` fixes, soon to be made the default.
-- `gg.TouchPoint` to differenciate between different types of touch input.
+- `gg.TouchPoint` to differentiate between different types of touch input.
 - Anonymous structs visibility issues fixed.
 - orm: support parenthesized expressions like `select from User where (name == 'Sam' && is_customer == true) || id == 1`.
 - `vweb.csrf` module.
@@ -190,7 +190,7 @@
 - Generic interfaces.
 - TCC is now bundled with the language, this allows building V programs without an external C compiler dependency.
 - Null can be used in `unsafe` only (for example, for C interop).
-- Pointer arithmetics and comparing pointers to numbers is now also only allowed in `unsafe`.
+- Pointer arithmetic and comparing pointers to numbers is now also only allowed in `unsafe`.
 - Inline sumtypes.
 - New module `compress.gzip`.
 - Lots of `net`/`net.http`/`vweb` fixes (also used for the upcoming Gitly launch).
@@ -447,7 +447,7 @@ files with compilation errors.
 - V now enforces short enum syntax (`.green` instead of `Color.green`) when it's enough.
 - V UI for macOS.
 - Interfaces have been rewritten. `[]interface` support.
-- `os.cp()` for copying files and directores.
+- `os.cp()` for copying files and directories.
 - Additional compile-time flags: `$if clang, msvc, mingw, x32, x64, big_endian, little_endian {`.
 - All C functions now have to be declared, all missing C functions have been defined.
 - Global variables (only with the `-enable-globals` flag)
@@ -597,7 +597,7 @@ this backend.
 - `map.delete(key)`.
 - `libcurl` dependency was removed from the `http` module.
 - All function arguments are now immutable by default (previously they could be
-  modifed inside the function).
+  modified inside the function).
 - `http` functions now return options.
 - `sync.WaitGroup`.
 - `vweb` static files serving.

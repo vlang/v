@@ -247,6 +247,9 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	if name == 'void' {
 		name = ''
 	}
+	if node.typ.has_flag(.option) {
+		f.write('?')
+	}
 	if node.is_anon {
 		f.write('struct ')
 	}

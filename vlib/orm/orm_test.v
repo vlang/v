@@ -34,6 +34,33 @@ struct TestTime {
 	create time.Time
 }
 
+fn test_use_struct_field_as_limit() {
+	db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql db {
+		create table User
+	}
+
+	foo := Foo{
+		age: 10
+	}
+
+	sam := User{
+		age: 29
+		name: 'Sam'
+	}
+
+	sql db {
+		insert sam into User
+	}
+
+	users := sql db {
+		select from User limit foo.age
+	}
+
+	assert users.len == 1
+}
+
 fn test_orm() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 

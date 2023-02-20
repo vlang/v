@@ -7,6 +7,97 @@ import v.ast
 import v.util
 import v.token
 
+fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr ast.Expr, ret_typ ast.Type) {
+	gen_or := expr is ast.Ident && (expr as ast.Ident).or_expr.kind != .absent
+	if gen_or {
+		old_inside_opt_data := g.inside_opt_data
+		g.inside_opt_data = true
+		g.expr_with_cast(expr, expr_typ, ret_typ)
+		g.writeln(';')
+		g.writeln('if (${expr}.state != 0) {')
+		if expr is ast.Ident && (expr as ast.Ident).or_expr.kind == .propagate_option {
+			g.write('return ')
+			g.gen_option_error(g.cur_fn.return_type, expr)
+			g.writeln(';')
+		} else {
+			g.gen_or_block_stmts(var_expr.str(), '', (expr as ast.Ident).or_expr.stmts,
+				ret_typ, false)
+		}
+		g.writeln('}')
+		g.inside_opt_data = old_inside_opt_data
+	} else {
+		g.expr_with_opt(expr, expr_typ, ret_typ)
+	}
+}
+
+// expr_opt_with_cast is used in cast expr when converting compatible option types
+// e.g. ?int(?u8(0))
+fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type) string {
+	if !expr_typ.has_flag(.option) || !ret_typ.has_flag(.option) {
+		panic('cgen: expected expr_type and ret_typ to be options')
+	}
+
+	if expr_typ.idx() == ret_typ.idx() && g.table.sym(expr_typ).kind != .alias {
+		return g.expr_with_opt(expr, expr_typ, ret_typ)
+	} else {
+		stmt_str := g.go_before_stmt(0).trim_space()
+		styp := g.base_type(ret_typ)
+		g.empty_line = true
+		tmp_var := g.new_tmp_var()
+		g.writeln('${g.typ(ret_typ)} ${tmp_var};')
+		g.write('_option_ok(&(${styp}[]) {')
+
+		if expr is ast.CastExpr && expr_typ.has_flag(.option) {
+			g.write('*((${g.base_type(expr_typ)}*)')
+			g.expr(expr)
+			g.write('.data)')
+		} else {
+			g.inside_opt_or_res = false
+			g.expr(expr)
+		}
+		g.writeln(' }, (${option_name}*)(&${tmp_var}), sizeof(${styp}));')
+		g.write(stmt_str)
+		g.write(tmp_var)
+		return tmp_var
+	}
+}
+
+// expr_with_opt is used in assigning an expression to an `option` variable
+// e.g. x = y (option lhs and rhs), mut x = ?int(123), y = none
+fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type) string {
+	if expr_typ == ast.none_type {
+		old_inside_opt_data := g.inside_opt_data
+		g.inside_opt_or_res = true
+		defer {
+			g.inside_opt_data = old_inside_opt_data
+		}
+	}
+	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)&& (expr in [ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr, ast.CastExpr]) {
+		if expr in [ast.Ident, ast.CastExpr] {
+			if expr_typ.idx() != ret_typ.idx() {
+				return g.expr_opt_with_cast(expr, expr_typ, ret_typ)
+			}
+			old_inside_opt_data := g.inside_opt_data
+			g.inside_opt_or_res = true
+			defer {
+				g.inside_opt_data = old_inside_opt_data
+			}
+		}
+		g.expr(expr)
+		return expr.str()
+	} else {
+		old_inside_opt_data := g.inside_opt_data
+		g.inside_opt_or_res = true
+		defer {
+			g.inside_opt_data = old_inside_opt_data
+		}
+		tmp_out_var := g.new_tmp_var()
+		g.expr_with_tmp_var(expr, expr_typ, ret_typ, tmp_out_var)
+		return tmp_out_var
+	}
+	return ''
+}
+
 fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	mut node := unsafe { node_ }
 	if node.is_static {
@@ -98,8 +189,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		mut val_type := node.right_types[i]
 		val := node.right[i]
 		mut is_call := false
+		mut gen_or := false
 		mut blank_assign := false
-		mut is_comptime_var := false
 		mut ident := ast.Ident{
 			scope: 0
 		}
@@ -125,22 +216,43 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					&& (val as ast.Ident).info is ast.IdentVar && (val as ast.Ident).kind == .variable && (val as ast.Ident).obj is ast.Var && ((val as ast.Ident).obj as ast.Var).is_comptime_field {
 					var_type = g.unwrap_generic(g.comptime_for_field_type)
 					val_type = var_type
+					gen_or = val.or_expr.kind != .absent
+					if gen_or {
+						var_type = val_type.clear_flag(.option)
+					}
 					left.obj.typ = var_type
-					is_comptime_var = true
 				} else if val is ast.ComptimeSelector {
 					key_str := g.get_comptime_selector_key_type(val)
 					if key_str != '' {
 						var_type = g.comptime_var_type_map[key_str] or { var_type }
+						val_type = var_type
 						left.obj.typ = var_type
-						is_comptime_var = true
+						val_type = var_type
 					}
 				} else if val is ast.ComptimeCall {
 					key_str := '${val.method_name}.return_type'
 					var_type = g.comptime_var_type_map[key_str] or { var_type }
 					left.obj.typ = var_type
-					is_comptime_var = true
+				} else if is_decl && val is ast.Ident && (val as ast.Ident).info is ast.IdentVar {
+					val_info := (val as ast.Ident).info
+					gen_or = val.or_expr.kind != .absent
+					if val_info.is_option && gen_or {
+						var_type = val_type.clear_flag(.option)
+						left.obj.typ = var_type
+					}
 				}
 				is_auto_heap = left.obj.is_auto_heap
+			}
+		} else if mut left is ast.ComptimeSelector {
+			key_str := g.get_comptime_selector_key_type(left)
+			if key_str != '' {
+				var_type = g.comptime_var_type_map[key_str] or { var_type }
+			}
+			if val is ast.ComptimeSelector {
+				key_str_right := g.get_comptime_selector_key_type(val)
+				if key_str_right != '' {
+					val_type = g.comptime_var_type_map[key_str_right] or { var_type }
+				}
 			}
 		}
 		mut styp := g.typ(var_type)
@@ -206,9 +318,14 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			&& !g.pref.translated
 		g.is_assign_lhs = true
 		g.assign_op = node.op
-		if val_type.has_flag(.option) || val_type.has_flag(.result) {
-			g.right_is_opt = true
+
+		g.left_is_opt = var_type.has_flag(.option) || var_type.has_flag(.result)
+		g.right_is_opt = val_type.has_flag(.option) || val_type.has_flag(.result)
+		defer {
+			g.left_is_opt = false
+			g.right_is_opt = false
 		}
+
 		if blank_assign {
 			if val is ast.IndexExpr {
 				g.assign_op = .decl_assign
@@ -221,6 +338,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.is_void_expr_stmt = old_is_void_expr_stmt
 			} else if g.inside_for_c_stmt {
 				g.expr(val)
+			} else if var_type.has_flag(.option) {
+				g.expr_with_opt(val, val_type, var_type)
 			} else {
 				if left_sym.kind == .function {
 					g.write('{void* _ = ')
@@ -429,28 +548,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					cloned = true
 				}
 			}
-			unwrap_option := !var_type.has_flag(.option) && val_type.has_flag(.option)
-			if unwrap_option {
-				// Unwrap the option now that the testing code has been prepended.
-				// `pos := s.index(...
-				// `int pos = *(int)_t10.data;`
-				// if g.is_autofree {
-				/*
-				if is_option {
-					g.write('*($styp*)')
-					g.write(tmp_opt + '.data/*FFz*/')
-					g.right_is_opt = false
-					if g.inside_ternary == 0 && !node.is_simple {
-						g.writeln(';')
-					}
-					return
-				}
-				*/
-			}
 			if !cloned {
 				if !g.inside_comptime_for_field
 					&& ((var_type.has_flag(.option) && !val_type.has_flag(.option))
 					|| (var_type.has_flag(.result) && !val_type.has_flag(.result))) {
+					g.inside_opt_or_res = true
 					tmp_var := g.new_tmp_var()
 					g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
 				} else if is_fixed_array_var {
@@ -485,13 +587,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						if val.is_auto_deref_var() {
 							g.write('*')
 						}
-						if val is ast.ArrayInit {
+						if var_type.has_flag(.option) || gen_or {
+							g.expr_with_opt_or_block(val, val_type, left, var_type)
+						} else if val is ast.ArrayInit {
 							g.array_init(val, c_name(ident.name))
 						} else if val_type.has_flag(.shared_f) {
 							g.expr_with_cast(val, val_type, var_type)
-						} else if is_comptime_var && g.right_is_opt {
-							tmp_var := g.new_tmp_var()
-							g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
 						} else {
 							g.expr(val)
 						}
@@ -500,7 +601,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						}
 					}
 				} else {
-					if node.has_cross_var {
+					if var_type.has_flag(.option) || gen_or {
+						g.expr_with_opt_or_block(val, val_type, left, var_type)
+					} else if node.has_cross_var {
 						g.gen_cross_tmp_variable(node.left, val)
 					} else {
 						if op_overloaded {

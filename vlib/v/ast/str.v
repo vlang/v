@@ -385,7 +385,7 @@ pub fn (x Expr) str() string {
 			}
 		}
 		ComptimeSelector {
-			return '${x.left}.$${x.field_expr}'
+			return '${x.left}.$(${x.field_expr})'
 		}
 		ConcatExpr {
 			return x.vals.map(it.str()).join(',')

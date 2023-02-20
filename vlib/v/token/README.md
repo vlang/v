@@ -4,7 +4,7 @@
 syntax - the tokens, as well as utilities for working with them.
 
 ## KeywordsMatcherTrie 
-KeywordsMatcherTrie provides a faster way of determinining whether a given name is a reserved
+KeywordsMatcherTrie provides a faster way of determining whether a given name is a reserved
 word (belongs to a given set of previously known words `R`). It works by exploiting the fact,
 that the set of reserved words is small, and the words short.
 

@@ -77,7 +77,7 @@ fn main() {
 
 // the event handler
 fn on_error(receiver voidptr, e &Error, work &Work) {
-	println('error occured on ${work.hours}. Error: ${e.message}')
+	println('error occurred on ${work.hours}. Error: ${e.message}')
 }
 ```
 

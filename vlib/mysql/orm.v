@@ -132,18 +132,18 @@ pub fn (db Connection) insert(table string, data orm.QueryData) ! {
 		is_and: []
 	}
 
-	query, converted_data := orm.orm_stmt_gen(table, '`', .insert, false, '?', 1, converted_primitive_data,
-		orm.QueryData{})
+	query, converted_data := orm.orm_stmt_gen(.default, table, '`', .insert, false, '?',
+		1, converted_primitive_data, orm.QueryData{})
 	mysql_stmt_worker(db, query, converted_data, orm.QueryData{})!
 }
 
 pub fn (db Connection) update(table string, data orm.QueryData, where orm.QueryData) ! {
-	query, _ := orm.orm_stmt_gen(table, '`', .update, false, '?', 1, data, where)
+	query, _ := orm.orm_stmt_gen(.default, table, '`', .update, false, '?', 1, data, where)
 	mysql_stmt_worker(db, query, data, where)!
 }
 
 pub fn (db Connection) delete(table string, where orm.QueryData) ! {
-	query, _ := orm.orm_stmt_gen(table, '`', .delete, false, '?', 1, orm.QueryData{},
+	query, _ := orm.orm_stmt_gen(.default, table, '`', .delete, false, '?', 1, orm.QueryData{},
 		where)
 	mysql_stmt_worker(db, query, orm.QueryData{}, where)!
 }

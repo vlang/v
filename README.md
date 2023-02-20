@@ -15,7 +15,7 @@
 [![Patreon][PatreonBadge]][PatreonUrl]
 [![Discord][DiscordBadge]][DiscordUrl]
 [![Twitter][TwitterBadge]][TwitterUrl]
-[![Twitter][ModulesBadge]][ModulesUrl]
+[![Modules][ModulesBadge]][ModulesUrl]
 </div>
 
 ## Key Features of V
@@ -228,12 +228,12 @@ v run tetris/tetris.v
 
 In order to build Tetris or 2048 (or anything else using `sokol` or `gg` graphics modules),
 you will need additional development libraries for your system.
-For some Linux distros (Debian/Ubuntu based), you need to run this:
-`sudo apt install libxi-dev libxcursor-dev`.
-For Fedora/RH/CentOS, you need to run this:
-`sudo dnf install libXcursor-devel libXi-devel libX11-devel libglvnd-devel` .
-For NixOS, add these packages to your `environment.systemPackages`:
-`xorg.libX11.dev xorg.libXcursor.dev xorg.libXi.dev libGL.dev`
+
+| System              | Installation method                                                                                |
+|---------------------|----------------------------------------------------------------------------------------------------|
+| Debian/Ubuntu based | `sudo apt install libxi-dev libxcursor-dev`                                                        |
+| Fedora/RH/CentOS    | `sudo dnf install libXcursor-devel libXi-devel libX11-devel libglvnd-devel`                        |
+| NixOS               | add `xorg.libX11.dev xorg.libXcursor.dev xorg.libXi.dev libGL.dev` to `environment.systemPackages` |
 
 ## V net.http, net.websocket, `v install`
 
@@ -244,19 +244,12 @@ use the `-d use_openssl` switch when you compile.
 
 To install OpenSSL on non-Windows systems:
 
-```bash
-macOS:
-brew install openssl
-
-Debian/Ubuntu:
-sudo apt install libssl-dev
-
-Arch/Manjaro:
-openssl is installed by default
-
-Fedora:
-sudo dnf install openssl-devel
-```
+| System              | Installation command             |
+|---------------------|----------------------------------|
+| macOS               | `brew install openssl`           |
+| Debian/Ubuntu based | `sudo apt install libssl-dev`    |
+| Arch/Manjaro        | openssl is installed by default  |
+| Fedora/CentOS/RH    | `sudo dnf install openssl-devel` |
 
 On Windows, OpenSSL is simply hard to get working correctly. The instructions
 [here](https://tecadmin.net/install-openssl-on-windows/) may (or may not) help.
@@ -267,15 +260,11 @@ V's `sync` module and channel implementation uses libatomic.
 It is most likely already installed on your system, but if not,
 you can install it, by doing the following:
 
-```bash
-MacOS: already installed
-
-Debian/Ubuntu:
-sudo apt install libatomic1
-
-Fedora/CentOS/RH:
-sudo dnf install libatomic-static
-```
+| System              | Installation command                |
+|---------------------|-------------------------------------|
+| macOS               | already installed                   |
+| Debian/Ubuntu based | `sudo apt install libatomic1`       |
+| Fedora/CentOS/RH    | `sudo dnf install libatomic-static` |
 
 ## V UI
 
@@ -357,7 +346,7 @@ section on our
 [DiscordBadge]: https://img.shields.io/discord/592103645835821068?label=Discord&logo=discord&logoColor=white
 [PatreonBadge]: https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.vercel.app%2Fapi%3Fusername%3Dvlang%26type%3Dpatrons&style=flat
 [SponsorBadge]: https://camo.githubusercontent.com/da8bc40db5ed31e4b12660245535b5db67aa03ce/68747470733a2f2f696d672e736869656c64732e696f2f7374617469632f76313f6c6162656c3d53706f6e736f72266d6573736167653d254532253944254134266c6f676f3d476974487562
-[TwitterBadge]: https://img.shields.io/twitter/follow/v_language.svg?style=flatl&label=Follow&logo=twitter&logoColor=white&color=1da1f2
+[TwitterBadge]: https://img.shields.io/badge/follow-%40v_language-1DA1F2?logo=twitter&style=flat&logoColor=white&color=1da1f2
 [ModulesBadge]: https://img.shields.io/badge/modules-reference-027d9c?logo=v&logoColor=white&logoWidth=10
 
 [WorkflowUrl]: https://github.com/vlang/v/commits/master
