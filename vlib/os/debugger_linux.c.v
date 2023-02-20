@@ -4,6 +4,7 @@ module os
 
 fn C.ptrace(u32, u32, voidptr, voidptr) u64
 
+// debugger_present returns a bool indicating if the process is being debugged
 [inline]
 pub fn debugger_present() bool {
 	// check if the parent could trace its process,
