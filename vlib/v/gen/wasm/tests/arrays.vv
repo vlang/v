@@ -8,3 +8,11 @@ fn static_arrays() {
 	b := [10, 12, 150]!
 	c := [TEST{}, TEST{b: 10}]!
 }
+
+fn index_expression() {
+	b := [10, 12, 150]!
+
+	a := b[2]
+	c := 'hello'[4]
+	d := c'hello'[2]
+}

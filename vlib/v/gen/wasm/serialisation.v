@@ -46,7 +46,7 @@ fn (mut g Gen) bake_constants_plus_initialisers() []GlobalData {
 			ast.StringLiteral {
 				offset, len := g.allocate_string(global.init)
 
-				if global.init.is_raw {
+				if g.table.sym(global.ast_typ).info !is ast.Struct {
 					mut buf := []u8{len: 4}
 					bin.little_endian_put_u32(mut buf, u32(offset))
 					g.constant_data << ConstantData{
@@ -84,8 +84,6 @@ fn (mut g Gen) bake_constants_plus_initialisers() []GlobalData {
 				}
 			}
 			else {
-				/* expr := g.expr(global.init, global.ast_typ)
-				initialisers << g.set_var(global.to_var(''), expr) */
 				initialisers << global
 			}
 		}

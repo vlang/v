@@ -310,7 +310,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	wa.addfunction(g.mod, name.str, params_type, return_type, temporaries.data, temporaries.len,
 		wasm_expr)
-	if node.is_pub && node.mod == 'main' && g.pref.os == .browser {
+	if node.is_pub && node.mod == 'main' /* && g.pref.os == .browser */ {
 		wa.addfunctionexport(g.mod, name.str, name.str)
 	}
 
@@ -503,13 +503,21 @@ fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) wa.Expression {
 	}
 }
 
-fn (mut g Gen) assign_expr_to_var(address LocalOrPointer, right ast.Expr, expected ast.Type) wa.Expression {
+[params]
+struct AssignOpts {
+	op token.Kind = .assign
+}
+
+fn (mut g Gen) assign_expr_to_var(address LocalOrPointer, right ast.Expr, expected ast.Type, cfg AssignOpts) wa.Expression {
 	match right {
 		ast.StructInit {
+			if cfg.op !in [.decl_assign, .assign] {
+				g.w_error("arith unimplemented for struct")
+			}
 			return g.init_struct(address as Var, right)
 		}
 		ast.StringLiteral {
-			if right.is_raw {
+			if g.table.sym(expected).info !is ast.Struct {
 				offset, _ := g.allocate_string(right)
 				return g.set_var(address as Var, g.literalint(offset, ast.int_type))
 			}
@@ -543,6 +551,25 @@ fn (mut g Gen) assign_expr_to_var(address LocalOrPointer, right ast.Expr, expect
 			return g.mknblock('ARRAYINIT', exprs)
 		}
 		else {
+			if cfg.op !in [.decl_assign, .assign] {
+				// expr := match var {
+				// 	Temporary {
+				// 		op := g.infix_from_typ(typ, token.assign_op_to_infix_op(node.op))
+				// 		infix := wa.binary(g.mod, op, wa.localget(g.mod, var.idx,
+				// 			var.typ), g.expr(right, typ))
+
+				// 		infix
+				// 	}
+				// 	Stack {
+				// 		g.w_error('unimplemented')
+				// 	}
+				// 	else {
+				// 		panic('unreachable')
+				// 	}
+				// }
+				// exprs << g.set_var(var, expr)
+				g.w_error("arith unimplemented for struct")
+			}
 			initexpr := g.expr(right, expected)
 
 			return g.set_var(address, initexpr)
@@ -562,6 +589,25 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 		}
 		ast.GoExpr {
 			g.w_error('wasm backend does not support threads')
+		}
+		ast.IndexExpr {
+			// TODO: IMPLICIT BOUNDS CHECKING
+			/* if !node.is_direct {
+				g.w_error('implicit bounds checks are not implemented, create one manually')
+			} */
+
+			mut ptr := g.expr(node.left, ast.voidptr_type)
+			if node.left_type == ast.string_type {
+				ptr = g.deref(ptr, ast.voidptr_type)
+			}
+
+			size, _ := g.get_type_size_align(expected)
+			index := g.expr(node.index, ast.int_type)
+			
+			// ptr + index * size
+			new_ptr := wa.binary(g.mod, wa.addint32(), ptr, wa.binary(g.mod, wa.mulint32(), index, g.literalint(size, ast.int_type)))
+
+			g.deref(new_ptr, expected)
 		}
 		ast.SelectorExpr {
 			g.cast_t(g.deref_local_or_pointer(g.get_var_from_expr(node), node.typ), node.typ, expected)
@@ -596,7 +642,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			wa.constant(g.mod, val)
 		}
 		ast.StringLiteral {
-			if node.is_raw {
+			if g.table.sym(expected).info !is ast.Struct {
 				offset, _ := g.allocate_string(node)
 				return g.literalint(offset, ast.int_type)
 			}
@@ -965,28 +1011,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 					}
 
 					var := g.get_var_from_expr(left)
-
-					if node.op !in [.decl_assign, .assign] {
-						panic("not implemented")
-						// expr := match var {
-						// 	Temporary {
-						// 		op := g.infix_from_typ(typ, token.assign_op_to_infix_op(node.op))
-						// 		infix := wa.binary(g.mod, op, wa.localget(g.mod, var.idx,
-						// 			var.typ), g.expr(right, typ))
-
-						// 		infix
-						// 	}
-						// 	Stack {
-						// 		g.w_error('unimplemented')
-						// 	}
-						// 	else {
-						// 		panic('unreachable')
-						// 	}
-						// }
-						// exprs << g.set_var(var, expr)
-					} else {
-						exprs << g.assign_expr_to_var(var, right, typ)
-					}
+					exprs << g.assign_expr_to_var(var, right, typ, op: node.op)
 				}
 
 				if exprs.len == 1 {

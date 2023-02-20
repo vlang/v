@@ -191,8 +191,27 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) LocalOrPointer {
 			}
 		}
 		ast.IndexExpr {
-			// TODO: impl this NEXT!
-			g.w_error('`ident[expr] = expr` not implemented')
+			address := g.get_var_from_expr(node.left)
+
+			deref_type := if g.is_pure_type(node.left_type) {
+				node.left_type.set_nr_muls(node.left_type.nr_muls() - 1)
+			} else {
+				node.left_type
+			}
+			size, _ := g.get_type_size_align(deref_type)
+
+			index := g.expr(node.index, ast.int_type)
+			mut ptr_address := wa.Expression(0)
+			
+			if address is wa.Expression {
+				ptr_address = address
+			}
+			if address is Var {
+				ptr_address = g.get_var_t(address, ast.voidptr_type)
+			}
+			
+			// ptr + index * size
+			wa.binary(g.mod, wa.addint32(), ptr_address, wa.binary(g.mod, wa.mulint32(), index, g.literalint(size, ast.int_type)))
 		}
 		ast.PrefixExpr {
 			g.w_error('`*ident = 10` not implemented')
@@ -274,8 +293,7 @@ fn (mut g Gen) new_local(var ast.Ident, typ ast.Type) {
 }
 
 fn (mut g Gen) deref(expr wa.Expression, expected ast.Type) wa.Expression {
-	size, _ := g.table.type_size(expected)
-
+	size, _ := g.get_type_size_align(expected)
 	return wa.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected),
 		expr, c'memory')
 }

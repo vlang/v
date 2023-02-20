@@ -61,10 +61,13 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wa.Type {
 		ast.Alias {
 			return g.get_wasm_type(ts.info.parent_type)
 		}
+		ast.ArrayFixed {
+			return type_i32
+		}
 		else {}
 	}
 
-	g.w_error("get_wasm_type: unreachable type '${*g.table.sym(typ)}'")
+	g.w_error("get_wasm_type: unreachable type '${*g.table.sym(typ)}' ${ts.info}")
 }
 
 fn infix_kind_return_bool(op token.Kind) bool {
