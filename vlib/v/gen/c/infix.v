@@ -955,7 +955,7 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 }
 
 fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
-	if node.left is ast.Ident {
+	if node.left in [ast.Ident, ast.SelectorExpr] {
 		tmp_flag := g.left_is_opt
 		defer {
 			g.left_is_opt = tmp_flag

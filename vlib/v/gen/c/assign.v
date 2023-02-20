@@ -84,7 +84,11 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 			}
 		}
 		g.expr(expr)
-		return expr.str()
+		if expr is ast.ComptimeSelector {
+			return expr.left.str() + '.' + g.comptime_for_field_value.name
+		} else {
+			return expr.str()
+		}
 	} else {
 		old_inside_opt_data := g.inside_opt_data
 		g.inside_opt_or_res = true
