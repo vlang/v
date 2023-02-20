@@ -64,7 +64,7 @@ fn C.getgid() int
 
 fn C.getegid() int
 
-fn C.ptrace(u32, u32, voidptr, int) u64
+fn C.ptrace(u32, u32, voidptr, voidptr) u64
 
 enum GlobMatch {
 	exact
