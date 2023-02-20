@@ -1,8 +1,7 @@
 module os
 
-#include <debugapi.h>
-
-fn C.IsDebuggerPresent() bool
+// this is defined in builtin_windows.c.v in builtin
+// fn C.IsDebuggerPresent() bool
 
 [inline]
 pub fn debugger_present() bool {
