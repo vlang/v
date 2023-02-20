@@ -103,7 +103,7 @@ fn (mut g Gen) make_vinit() wa.Function {
 
 	g.bare_function_start()
 
-	body := runtime_inits.map(g.set_var(it.to_var(''), g.expr(it.init, it.ast_typ)))
+	body := runtime_inits.map(g.set_var_v(it.to_var(''), g.expr(it.init, it.ast_typ)))
 
 	return g.bare_function('_vinit', g.mkblock(body))
 }

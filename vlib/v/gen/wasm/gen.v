@@ -503,27 +503,27 @@ fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) wa.Expression {
 	}
 }
 
-fn (mut g Gen) assign_expr_to_var(_var Var, right ast.Expr) wa.Expression {
+fn (mut g Gen) assign_expr_to_var(address LocalOrPointer, right ast.Expr, expected ast.Type) wa.Expression {
 	match right {
 		ast.StructInit {
-			return g.init_struct(_var, right)
+			return g.init_struct(address as Var, right)
 		}
 		ast.StringLiteral {
 			if right.is_raw {
 				offset, _ := g.allocate_string(right)
-				return g.set_var(_var, g.literalint(offset, ast.int_type))
+				return g.set_var(address as Var, g.literalint(offset, ast.int_type))
 			}
 			
-			var := _var as Stack
+			var := (address as Var) as Stack
 			
 			offset, len := g.allocate_string(right)
 			return g.mknblock('STRINGINIT', [
-				g.set_var(Stack{ address: var.address, ast_typ: ast.charptr_type }, g.literalint(offset, ast.u32_type), offset: 0),
-				g.set_var(Stack{ address: var.address, ast_typ: ast.int_type }, g.literalint(len, ast.int_type), offset: g.table.pointer_size)
+				g.set_var_v(Stack{ address: var.address, ast_typ: ast.charptr_type }, g.literalint(offset, ast.u32_type), offset: 0),
+				g.set_var_v(Stack{ address: var.address, ast_typ: ast.int_type }, g.literalint(len, ast.int_type), offset: g.table.pointer_size)
 			])
 		}
 		ast.ArrayInit {
-			var := _var as Stack
+			var := (address as Var) as Stack
 			mut exprs := []wa.Expression{}
 
 			if !right.is_fixed {
@@ -537,15 +537,15 @@ fn (mut g Gen) assign_expr_to_var(_var Var, right ast.Expr) wa.Expression {
 			}
 			// [10, 15]!
 			for e in right.exprs {
-				exprs << g.assign_expr_to_var(Stack{address: var.address + offset, ast_typ: elm_typ}, e)
+				exprs << g.assign_expr_to_var(Var(Stack{address: var.address + offset, ast_typ: elm_typ}), e, elm_typ)
 				offset += elm_size
 			}
 			return g.mknblock('ARRAYINIT', exprs)
 		}
 		else {
-			initexpr := g.expr(right, _var.ast_typ())
+			initexpr := g.expr(right, expected)
 
-			return g.set_var(_var, initexpr)
+			return g.set_var(address, initexpr)
 		}
 	}
 }
@@ -557,7 +557,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 		}
 		ast.ArrayInit {
 			pos := g.allocate_local_var('_anonarray', node.typ)
-			expr := g.assign_expr_to_var(Stack{ address: pos, ast_typ: node.typ }, node)
+			expr := g.assign_expr_to_var(Var(Stack{ address: pos, ast_typ: node.typ }), node, node.typ)
 			g.mknblock('EXPR(ARRAYINIT)', [expr, g.lea_address(pos)])
 		}
 		ast.GoExpr {
@@ -568,7 +568,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 		}
 		ast.StructInit {
 			pos := g.allocate_local_var('_anonstruct', node.typ)
-			expr := g.assign_expr_to_var(Stack{ address: pos, ast_typ: node.typ }, node)
+			expr := g.assign_expr_to_var(Var(Stack{ address: pos, ast_typ: node.typ }), node, node.typ)
 			g.mknblock('EXPR(STRUCTINIT)', [expr, g.lea_address(pos)])
 		}
 		ast.MatchExpr {
@@ -603,7 +603,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			
 			pos := g.allocate_local_var('_anonstring', ast.string_type)
 
-			expr := g.assign_expr_to_var(Stack{address: pos, ast_typ: ast.string_type}, node)
+			expr := g.assign_expr_to_var(Var(Stack{address: pos, ast_typ: ast.string_type}), node, ast.string_type)
 			g.mknblock('EXPR(STRINGINIT)', [expr, g.lea_address(pos)])
 		}
 		ast.InfixExpr {
@@ -636,6 +636,10 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			expr := g.expr(node.expr, node.expr_type)
 
 			if node.typ == ast.bool_type {
+				panic("unreachable")
+			}
+
+			/* if node.typ == ast.bool_type {
 				// WebAssembly booleans use the `i32` type
 				//   = 0 | is false
 				//   > 0 | is true
@@ -646,10 +650,9 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 					type_i32)
 				wa.bselect(g.mod, bexpr, wa.constant(g.mod, wa.literalint32(1)), wa.constant(g.mod,
 					wa.literalint32(0)), type_i32)
-			} else {
-				g.cast(expr, g.get_wasm_type(node.expr_type), g.is_signed(node.expr_type),
-					g.get_wasm_type(node.typ))
-			}
+			} else */
+			g.cast(expr, g.get_wasm_type(node.expr_type), g.is_signed(node.expr_type),
+				g.get_wasm_type(node.typ))
 		}
 		ast.CallExpr {
 			mut name := node.name
@@ -964,24 +967,25 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 					var := g.get_var_from_expr(left)
 
 					if node.op !in [.decl_assign, .assign] {
-						expr := match var {
-							Temporary {
-								op := g.infix_from_typ(typ, token.assign_op_to_infix_op(node.op))
-								infix := wa.binary(g.mod, op, wa.localget(g.mod, var.idx,
-									var.typ), g.expr(right, typ))
+						panic("not implemented")
+						// expr := match var {
+						// 	Temporary {
+						// 		op := g.infix_from_typ(typ, token.assign_op_to_infix_op(node.op))
+						// 		infix := wa.binary(g.mod, op, wa.localget(g.mod, var.idx,
+						// 			var.typ), g.expr(right, typ))
 
-								infix
-							}
-							Stack {
-								g.w_error('unimplemented')
-							}
-							else {
-								panic('unreachable')
-							}
-						}
-						exprs << g.set_var(var, expr)
+						// 		infix
+						// 	}
+						// 	Stack {
+						// 		g.w_error('unimplemented')
+						// 	}
+						// 	else {
+						// 		panic('unreachable')
+						// 	}
+						// }
+						// exprs << g.set_var(var, expr)
 					} else {
-						exprs << g.assign_expr_to_var(var, right)
+						exprs << g.assign_expr_to_var(var, right, typ)
 					}
 				}
 

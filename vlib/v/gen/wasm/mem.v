@@ -178,7 +178,7 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) LocalOrPointer {
 			g.get_var_from_ident(node)
 		}
 		ast.SelectorExpr {
-			address := g.get_var_from_expr(node)
+			address := g.get_var_from_expr(node.expr)
 			offset := g.get_field_offset(node.expr_type, node.field_name)
 
 			match address {
@@ -396,46 +396,57 @@ struct SetConfig {
 	ast_typ ast.Type
 }
 
-fn (mut g Gen) set_var(var Var, expr wa.Expression, cfg SetConfig) wa.Expression {
-	return match var {
-		ast.Ident {
-			g.set_var(g.get_var_from_ident(var), expr, cfg)
-		}
-		Temporary {
-			wa.localset(g.mod, var.idx, expr)
-		}
-		Stack {
-			ast_typ := if cfg.ast_typ != 0 {
-				cfg.ast_typ
-			} else {
-				var.ast_typ
-			}
+fn (mut g Gen) set_to_address(address_expr wa.Expression, expr wa.Expression, ast_typ ast.Type) wa.Expression {
+	return if !g.is_pure_type(ast_typ) {
+		// `expr` is pointer
+		g.blit(expr, ast_typ, address_expr)
+	} else {
+		size, _ := g.table.type_size(ast_typ)
+		wa.store(g.mod, u32(size), 0, 0, address_expr,
+			expr, g.get_wasm_type(ast_typ), c'memory')
+	}
+}
 
-			if !g.is_pure_type(ast_typ) {
-				// `expr` is pointer
-				g.blit_local(expr, ast_typ, var.address + cfg.offset)
-			} else {
-				size, _ := g.table.type_size(ast_typ)
-				// println("address: ${var.address}, offset: ${cfg.offset}")
-				wa.store(g.mod, u32(size), u32(var.address + cfg.offset), 0, g.get_bp(),
-					expr, g.get_wasm_type(ast_typ), c'memory')
-			}
-		}
-		Global {
-			ast_typ := if cfg.ast_typ != 0 {
-				cfg.ast_typ
-			} else {
-				var.ast_typ
-			}
 
-			address_expr := g.literalint(var.abs_address + cfg.offset, ast.int_type)
-			if !g.is_pure_type(ast_typ) {
-				// `expr` is pointer
-				g.blit(expr, ast_typ, address_expr)
-			} else {
-				size, _ := g.table.type_size(ast_typ)
-				wa.store(g.mod, u32(size), 0, 0, address_expr,
-					expr, g.get_wasm_type(ast_typ), c'memory')
+fn (mut g Gen) set_var_v(address Var, expr wa.Expression, cfg SetConfig) wa.Expression {
+	return g.set_var(address, expr, cfg)
+}
+
+fn (mut g Gen) set_var(address LocalOrPointer, expr wa.Expression, cfg SetConfig) wa.Expression {
+	ast_typ := if cfg.ast_typ != 0 {
+		cfg.ast_typ
+	} else {
+		(address as Var).ast_typ()
+	}
+	match address {
+		wa.Expression {			
+			return g.set_to_address(address, expr, ast_typ)
+		}
+		Var {
+			var := address
+
+			return match var {
+				ast.Ident {
+					g.set_var(g.get_var_from_ident(var), expr, cfg)
+				}
+				Temporary {
+					wa.localset(g.mod, var.idx, expr)
+				}
+				Stack {
+					if !g.is_pure_type(ast_typ) {
+						// `expr` is pointer
+						g.blit_local(expr, ast_typ, var.address + cfg.offset)
+					} else {
+						size, _ := g.table.type_size(ast_typ)
+						// println("address: ${var.address}, offset: ${cfg.offset}")
+						wa.store(g.mod, u32(size), u32(var.address + cfg.offset), 0, g.get_bp(),
+							expr, g.get_wasm_type(ast_typ), c'memory')
+					}
+				}
+				Global {
+					address_expr := g.literalint(var.abs_address + cfg.offset, ast.int_type)
+					g.set_to_address(address_expr, expr, ast_typ)
+				}
 			}
 		}
 	}
@@ -494,7 +505,7 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {
 							offset := g.structs[var.ast_typ.idx()].offsets[i]
 							if f.has_default_expr {
 								init_expr := g.expr(f.default_expr, f.typ) // or `unaliased_typ`?
-								exprs << g.set_var(var, init_expr, ast_typ: f.typ, offset: offset)
+								exprs << g.set_var_v(var, init_expr, ast_typ: f.typ, offset: offset)
 							} else {
 								if fts.info is ast.Struct {
 									exprs << g.init_struct(Stack{address: var.address + offset, ast_typ: f.typ}, ast.StructInit{})
@@ -516,7 +527,7 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {
 				offset := g.structs[var.ast_typ.idx()].offsets[field.i]
 				initexpr := g.expr(f.expr, f.expected_type)
 
-				exprs << g.set_var(var, initexpr, ast_typ: f.expected_type, offset: offset)
+				exprs << g.set_var_v(var, initexpr, ast_typ: f.expected_type, offset: offset)
 			}
 
 			return g.mknblock('STRUCTINIT', exprs)
