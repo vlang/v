@@ -955,8 +955,23 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 }
 
 fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
-	g.expr(node.left)
-	g.write('.state')
+	if node.left is ast.Ident {
+		tmp_flag := g.left_is_opt
+		defer {
+			g.left_is_opt = tmp_flag
+		}
+		g.inside_opt_or_res = true
+		g.expr(node.left)
+		g.write('.state')
+	} else {
+		stmt_str := g.go_before_stmt(0).trim_space()
+		g.empty_line = true
+		left_var := g.expr_with_opt(node.left, node.left_type, node.left_type)
+		g.writeln(';')
+		g.write(stmt_str)
+		g.write(' ')
+		g.write('${left_var}.state')
+	}
 	g.write(' ${node.op.str()} ')
 	g.write('2') // none state
 }
