@@ -146,6 +146,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	if node.is_method {
+		if node.receiver.typ.has_flag(.option) {
+			c.error('option types cannot have methods', node.receiver_pos)
+		}
 		mut sym := c.table.sym(node.receiver.typ)
 		if sym.kind == .array && !c.is_builtin_mod && node.name == 'map' {
 			// TODO `node.map in array_builtin_methods`

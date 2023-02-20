@@ -676,6 +676,16 @@ pub fn window_size_real_pixels() Size {
 	return Size{sapp.width(), sapp.height()}
 }
 
+// is it fullscreen
+pub fn is_fullscreen() bool {
+	return sapp.is_fullscreen()
+}
+
+// toggle fullscreen
+pub fn toggle_fullscreen() {
+	sapp.toggle_fullscreen()
+}
+
 /*
 pub fn wait_events() {
 	unsafe {

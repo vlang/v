@@ -4940,6 +4940,23 @@ A vfmt run is usually pretty cheap (takes <30ms).
 
 Always run `v fmt -w file.v` before pushing your code.
 
+#### Disabling the formatting locally
+
+To disable formatting for a block of code, wrap it with `// vfmt off` and
+`// vfmt on` comments.
+
+```bash
+// Not affected by fmt
+// vfmt off
+
+... your code here ...
+
+// vfmt on
+
+// Affected by fmt
+... your code here ...
+```
+
 ### v shader
 
 You can use GPU shaders with V graphical apps. You write your shaders in an
