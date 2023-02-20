@@ -268,7 +268,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.writeln('{')
 		g.indent++
 		g.writeln('${elem_typ}* pelem = (${elem_typ}*)${tmp}.data;')
-		g.writeln('for(int it=0; it<${tmp}.len; it++, pelem++) {')
+		g.writeln('for (int it=0; it<${tmp}.len; it++, pelem++) {')
 		g.set_current_pos_as_last_stmt_pos()
 		g.indent++
 		g.write('*pelem = ')
@@ -334,9 +334,15 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		tmp := g.new_tmp_var()
 		line := g.go_before_stmt(0).trim_space()
 		g.empty_line = true
-		g.write('${elem_styp}* ${tmp} = malloc((')
-		g.expr(node.len_expr)
-		g.writeln(') * sizeof(${elem_styp}));')
+		if g.is_cc_msvc {
+			g.write('${elem_styp}* ${tmp} = malloc((')
+			g.expr(node.len_expr)
+			g.writeln(') * sizeof(${elem_styp}));')
+		} else {
+			g.write('${elem_styp} ${tmp}[')
+			g.expr(node.len_expr)
+			g.writeln('];')
+		}
 		ind := g.new_tmp_var()
 		g.write('for (int ${ind}=0; ${ind}<')
 		g.expr(node.len_expr)
