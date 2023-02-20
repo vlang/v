@@ -195,7 +195,8 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 	noscan := g.check_noscan(elem_type.typ)
 	is_default_array := elem_type.unaliased_sym.kind == .array && node.has_default
 	is_default_map := elem_type.unaliased_sym.kind == .map && node.has_default
-	needs_more_defaults := node.has_len && g.struct_has_array_or_map_field(elem_type.typ)
+	needs_more_defaults := node.has_len && (g.struct_has_array_or_map_field(elem_type.typ)
+		|| elem_type.unaliased_sym.kind in [.array, .map])
 	if node.has_it { // []int{len: 6, init: it * it} when variable it is used in init expression
 		g.inside_lambda = true
 		mut tmp := g.new_tmp_var()

@@ -142,7 +142,7 @@ enum FileType {
 }
 
 fn test_enum_instance() {
-	mut filetype := FileType{}
+	mut filetype := FileType.unknown
 	eprintln(filetype)
 	s := 'x ${filetype} z'
 	assert s == 'x unknown z'
