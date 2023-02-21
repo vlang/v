@@ -21,7 +21,7 @@ jobs:
     env:
       MY_V_PATH: '你好 my $path, @с интервали'
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           path: ${{env.MY_V_PATH}}
       - name: Build V
@@ -47,7 +47,7 @@ jobs:
     env:
       MY_V_PATH: '你好 my $path, @с интервали'
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           path: ${{env.MY_V_PATH}}
       - name: Build V
@@ -87,7 +87,7 @@ jobs:
       ## and that happens even for gcc builds, not just tcc ones
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           path: ${{env.MY_V_PATH}}
       - name: Build V

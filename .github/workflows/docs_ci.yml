@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-20.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Build V
         run: make
       - name: Check markdown line length & code examples
@@ -31,12 +31,12 @@ jobs:
     env:
       MOPTIONS: --relative-paths --exclude /vlib/v/ --exclude /builtin/linux_bare/ --exclude /testdata/ --exclude /tests/
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Build V
         run: make
 
       - name: Checkout previous v
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           repository: vlang/v
           ref: master   # important
