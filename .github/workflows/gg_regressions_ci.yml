@@ -20,7 +20,7 @@ jobs:
       VTMP: /tmp
     steps:
       - name: Checkout V
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Build local v
         run: make

@@ -14,7 +14,7 @@ jobs:
     env:
       VREPO: github.com/vlang/vc.git
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Build V
         run: make
       - name: Regenerate v.c and v_win.c

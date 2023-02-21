@@ -23,7 +23,7 @@ jobs:
       VFLAGS: -cc gcc
       VERBOSE_MAKE: 1
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions/setup-node@v1
         with:
           node-version: 12.x
@@ -86,7 +86,7 @@ jobs:
       VFLAGS: -cc msvc
       VERBOSE_MAKE: 1
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions/setup-node@v1
         with:
           node-version: 12.x
@@ -136,7 +136,7 @@ jobs:
       VTEST_SHOW_START: 1
       VERBOSE_MAKE: 1
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions/setup-node@v1
         with:
           node-version: 12.x
