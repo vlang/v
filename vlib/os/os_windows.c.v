@@ -452,12 +452,6 @@ pub fn add_vectored_exception_handler(first bool, handler VectoredExceptionHandl
 	C.AddVectoredExceptionHandler(u32(first), C.PVECTORED_EXCEPTION_HANDLER(handler))
 }
 
-// this is defined in builtin_windows.c.v in builtin
-// fn C.IsDebuggerPresent() bool
-pub fn debugger_present() bool {
-	return C.IsDebuggerPresent()
-}
-
 // uname returns information about the platform on which the program is running.
 // Currently `uname` on windows is not standardized, so it just mimics current practices from other popular software/language implementations:
 //   busybox-v1.35.0 * `busybox uname -a` => "Windows_NT HOSTNAME 10.0 19044 x86_64 MS/Windows"
