@@ -334,7 +334,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		tmp := g.new_tmp_var()
 		line := g.go_before_stmt(0).trim_space()
 		g.empty_line = true
-		if g.is_cc_msvc {
+		if g.is_cc_msvc && node.len_expr !is ast.IntegerLiteral {
 			g.write('${elem_styp}* ${tmp} = malloc((')
 			g.expr(node.len_expr)
 			g.writeln(') * sizeof(${elem_styp}));')
