@@ -186,7 +186,12 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			cond_var = g.new_tmp_var()
 			g.write(g.typ(node.cond_type))
 			g.write(' ${cond_var} = ')
+			old_inside_opt_or_res := g.inside_opt_or_res
+			if node.cond_type.has_flag(.option) {
+				g.inside_opt_or_res = true
+			}
 			g.expr(node.cond)
+			g.inside_opt_or_res = old_inside_opt_or_res
 			g.writeln(';')
 		}
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }

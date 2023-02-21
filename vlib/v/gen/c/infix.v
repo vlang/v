@@ -956,12 +956,10 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 
 fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 	if node.left in [ast.Ident, ast.SelectorExpr] {
-		tmp_flag := g.inside_opt_or_res
-		defer {
-			g.inside_opt_or_res = tmp_flag
-		}
+		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
 		g.expr(node.left)
+		g.inside_opt_or_res = old_inside_opt_or_res
 		g.write('.state')
 	} else {
 		stmt_str := g.go_before_stmt(0).trim_space()

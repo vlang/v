@@ -4702,7 +4702,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 			if g.table.sym(mr_info.types[i]).kind in [.sum_type, .interface_] {
 				g.expr_with_cast(expr, node.types[i], mr_info.types[i])
-			} else if mr_info.types[i].has_flag(.option) && !node.types[i].has_flag(.option) {
+			} else if mr_info.types[i].has_flag(.option) {
 				g.expr_with_opt(expr, node.types[i], mr_info.types[i])
 			} else {
 				g.expr(expr)
@@ -4790,7 +4790,11 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				}
 			}
 			for i, expr in node.exprs {
-				g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_flag(.result))
+				if fn_ret_type.has_flag(.option) {
+					g.expr_with_opt(expr, node.types[i], fn_ret_type.clear_flag(.result))
+				} else {
+					g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_flag(.result))
+				}
 				if i < node.exprs.len - 1 {
 					g.write(', ')
 				}
@@ -4837,6 +4841,8 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if g.fn_decl.return_type.is_ptr() {
 				var_str := g.expr_string(expr0)
 				g.write(var_str.trim('&'))
+			} else if g.fn_decl.return_type.has_flag(.option) {
+				g.expr_with_opt(expr0, node.types[0], g.fn_decl.return_type)
 			} else if g.table.sym(g.fn_decl.return_type).kind in [.sum_type, .interface_] {
 				g.expr_with_cast(expr0, node.types[0], g.fn_decl.return_type)
 			} else {
