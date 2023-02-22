@@ -438,7 +438,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						}
 					}
 				}
-			} else if node.left !is ast.Ident
+			} else if node.left !in [ast.Ident, ast.SelectorExpr, ast.ComptimeSelector]
 				&& (left_type.has_flag(.option) || right_type.has_flag(.option)) {
 				opt_comp_pos := if left_type.has_flag(.option) { left_pos } else { right_pos }
 				c.error('unwrapped option cannot be compared in an infix expression',
@@ -669,7 +669,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	// TODO move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
 	left_is_option := left_type.has_flag(.option)
 	right_is_option := right_type.has_flag(.option)
-	if node.left !is ast.Ident && (left_is_option || right_is_option) {
+	if node.left !in [ast.Ident, ast.SelectorExpr, ast.ComptimeSelector]
+		&& (left_is_option || right_is_option) {
 		opt_infix_pos := if left_is_option { left_pos } else { right_pos }
 		c.error('unwrapped option cannot be used in an infix expression', opt_infix_pos)
 	}

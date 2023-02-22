@@ -52,8 +52,10 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 			g.expr(expr)
 			g.write('.data)')
 		} else {
+			old_inside_opt_or_res := g.inside_opt_or_res
 			g.inside_opt_or_res = false
 			g.expr(expr)
+			g.inside_opt_or_res = old_inside_opt_or_res
 		}
 		g.writeln(' }, (${option_name}*)(&${tmp_var}), sizeof(${styp}));')
 		g.write(stmt_str)
@@ -65,32 +67,24 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 // expr_with_opt is used in assigning an expression to an `option` variable
 // e.g. x = y (option lhs and rhs), mut x = ?int(123), y = none
 fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type) string {
-	if expr_typ == ast.none_type {
-		old_inside_opt_data := g.inside_opt_data
-		g.inside_opt_or_res = true
-		defer {
-			g.inside_opt_data = old_inside_opt_data
-		}
+	old_inside_opt_or_res := g.inside_opt_or_res
+	g.inside_opt_or_res = true
+	defer {
+		g.inside_opt_or_res = old_inside_opt_or_res
 	}
 	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)&& (expr in [ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr, ast.CastExpr]) {
 		if expr in [ast.Ident, ast.CastExpr] {
 			if expr_typ.idx() != ret_typ.idx() {
 				return g.expr_opt_with_cast(expr, expr_typ, ret_typ)
 			}
-			old_inside_opt_data := g.inside_opt_data
-			g.inside_opt_or_res = true
-			defer {
-				g.inside_opt_data = old_inside_opt_data
-			}
 		}
 		g.expr(expr)
-		return expr.str()
-	} else {
-		old_inside_opt_data := g.inside_opt_data
-		g.inside_opt_or_res = true
-		defer {
-			g.inside_opt_data = old_inside_opt_data
+		if expr is ast.ComptimeSelector {
+			return '${expr.left.str()}.${g.comptime_for_field_value.name}'
+		} else {
+			return expr.str()
 		}
+	} else {
 		tmp_out_var := g.new_tmp_var()
 		g.expr_with_tmp_var(expr, expr_typ, ret_typ, tmp_out_var)
 		return tmp_out_var
@@ -552,6 +546,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if !g.inside_comptime_for_field
 					&& ((var_type.has_flag(.option) && !val_type.has_flag(.option))
 					|| (var_type.has_flag(.result) && !val_type.has_flag(.result))) {
+					old_inside_opt_or_res := g.inside_opt_or_res
+					defer {
+						g.inside_opt_or_res = old_inside_opt_or_res
+					}
 					g.inside_opt_or_res = true
 					tmp_var := g.new_tmp_var()
 					g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
