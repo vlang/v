@@ -899,7 +899,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, typ_str string, 
 		mut field_styp := sftyp.replace('*', '')
 		field_styp_fn_name := if sym_has_str_method {
 			mut field_fn_name := if ftyp_noshared.has_flag(.option) {
-				'${field_styp}_str'
+				g.get_str_fn(ftyp_noshared)
 			} else {
 				left_cc_type := g.cc_type(ftyp_noshared, false)
 				left_fn_name := util.no_dots(left_cc_type)

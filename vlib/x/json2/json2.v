@@ -55,16 +55,40 @@ pub fn decode[T](src string) !T {
 			// typ.$(field.name) = res[field.name]!.i32()
 		} $else $if field.typ is i64 {
 			typ.$(field.name) = res[json_name]!.i64()
+		} $else $if field.typ in [?u8, ?i8, ?i16, ?i32, ?u16, ?u32, ?u64, ?int] {
+			if json_name in res {
+				typ.$(field.name) = res[json_name]!.int()
+			}
 		} $else $if field.typ is f32 {
 			typ.$(field.name) = res[json_name]!.f32()
+		} $else $if field.typ is ?f32 {
+			if json_name in res {
+				typ.$(field.name) = res[json_name]!.f32()
+			}
 		} $else $if field.typ is f64 {
 			typ.$(field.name) = res[json_name]!.f64()
+		} $else $if field.typ is ?f64 {
+			if json_name in res {
+				typ.$(field.name) = res[json_name]!.f64()
+			}
 		} $else $if field.typ is bool {
 			typ.$(field.name) = res[json_name]!.bool()
+		} $else $if field.typ is ?bool {
+			if json_name in res {
+				typ.$(field.name) = res[json_name]!.bool()
+			}
 		} $else $if field.typ is string {
 			typ.$(field.name) = res[json_name]!.str()
+		} $else $if field.typ is ?string {
+			if json_name in res {
+				typ.$(field.name) = res[json_name]!.str()
+			}
 		} $else $if field.typ is time.Time {
 			typ.$(field.name) = res[field.name]!.to_time()!
+		} $else $if field.typ is ?time.Time {
+			if json_name in res {
+				typ.$(field.name) = res[field.name]!.to_time()!
+			}
 		} $else $if field.is_array {
 			// typ.$(field.name) = res[field.name]!.arr()
 		} $else $if field.is_struct {
