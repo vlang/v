@@ -55,9 +55,41 @@ pub fn decode[T](src string) !T {
 			typ.$(field.name) = i32(res[field.name]!.int())
 		} $else $if field.typ is i64 {
 			typ.$(field.name) = res[json_name]!.i64()
-		} $else $if field.typ in [?u8, ?i8, ?i16, ?i32, ?u16, ?u32, ?u64, ?int] {
+		} $else $if field.typ is ?u8 {
 			if json_name in res {
-				typ.$(field.name) = res[json_name]!.i64()
+				typ.$(field.name) = ?u8(res[json_name]!.i64())
+			}
+		} $else $if field.typ is ?i8 {
+			if json_name in res {
+				typ.$(field.name) = ?i8(res[json_name]!.i64())
+			}
+		} $else $if field.typ is ?u16 {
+			if json_name in res {
+				typ.$(field.name) = ?u16(res[json_name]!.i64())
+			}
+		} $else $if field.typ is ?i16 {
+			if json_name in res {
+				typ.$(field.name) = ?i16(res[json_name]!.i64())
+			}
+		} $else $if field.typ is ?u32 {
+			if json_name in res {
+				typ.$(field.name) = ?u32(res[json_name]!.i64())
+			}
+		} $else $if field.typ is ?i32 {
+			if json_name in res {
+				typ.$(field.name) = ?i32(res[json_name]!.i64())
+			}
+		} $else $if field.typ is ?u64 {
+			if json_name in res {
+				typ.$(field.name) = ?u64(res[json_name]!.i64())
+			}
+		} $else $if field.typ is ?i64 {
+			if json_name in res {
+				typ.$(field.name) = ?i64(res[json_name]!.i64())
+			}
+		} $else $if field.typ is ?int {
+			if json_name in res {
+				typ.$(field.name) = ?int(res[json_name]!.i64())
 			}
 		} $else $if field.typ is f32 {
 			typ.$(field.name) = res[json_name]!.f32()
