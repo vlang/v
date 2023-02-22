@@ -989,7 +989,8 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, _field_type ast.Type, fn_name strin
 		}
 		return 'indent_${fn_name}(${obj}, indent_count + 1)', true
 	} else if sym.kind == .function {
-		return '${fn_name}()', true
+		obj := '${deref}it.${c_name(field_name)}${sufix}'
+		return '${fn_name}(${obj})', true
 	} else if sym.kind == .chan {
 		return '${fn_name}(${deref}it.${c_name(field_name)}${sufix})', true
 	} else {
