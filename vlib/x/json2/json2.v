@@ -52,12 +52,12 @@ pub fn decode[T](src string) !T {
 		} $else $if field.typ is i16 {
 			typ.$(field.name) = res[json_name]!.int()
 		} $else $if field.typ is i32 {
-			// typ.$(field.name) = res[field.name]!.i32()
+			typ.$(field.name) = i32(res[field.name]!.int())
 		} $else $if field.typ is i64 {
 			typ.$(field.name) = res[json_name]!.i64()
 		} $else $if field.typ in [?u8, ?i8, ?i16, ?i32, ?u16, ?u32, ?u64, ?int] {
 			if json_name in res {
-				typ.$(field.name) = res[json_name]!.int()
+				typ.$(field.name) = res[json_name]!.i64()
 			}
 		} $else $if field.typ is f32 {
 			typ.$(field.name) = res[json_name]!.f32()
