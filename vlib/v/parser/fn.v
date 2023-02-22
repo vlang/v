@@ -713,6 +713,9 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		if arg.name.len == 0 && p.table.sym(arg.typ).kind != .placeholder {
 			p.error_with_pos('use `_` to name an unused parameter', arg.pos)
 		}
+		if p.scope.known_var(arg.name) {
+			p.error_with_pos('redefinition of parameter `${arg.name}`', arg.pos)
+		}
 		is_stack_obj := !arg.typ.has_flag(.shared_f) && (arg.is_mut || arg.typ.is_ptr())
 		p.scope.register(ast.Var{
 			name: arg.name
