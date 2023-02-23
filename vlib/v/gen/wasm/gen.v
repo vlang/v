@@ -319,6 +319,10 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		wa.functionsetdebuglocation(function, wasm_expr, g.file_path_idx, node.pos.line_nr, node.pos.col)
 	}
 
+	if g.pref.printfn_list.len > 0 && node.name in g.pref.printfn_list {
+		wa.expressionprint(wasm_expr)
+	}
+
 	// WTF?? map values are not resetting???
 	//   g.local_addresses.clear()
 	g.local_temporaries.clear()
@@ -651,7 +655,7 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) wa.Expression {
 		ast.StringLiteral {
 			if g.table.sym(expected).info !is ast.Struct {
 				offset, _ := g.allocate_string(node)
-				g.literalint(offset, ast.int_type)
+				return g.literalint(offset, ast.int_type)
 			}
 			
 			pos := g.allocate_local_var('_anonstring', ast.string_type)
