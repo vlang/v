@@ -244,7 +244,7 @@ pub fn hostname() string {
 		unsafe { free(buf) }
 		return hstnme
 	}
-	return ''
+	return Result<!string>
 }
 
 pub fn loginname() string {
@@ -252,7 +252,7 @@ pub fn loginname() string {
 	if !isnil(x) {
 		return unsafe { cstring_to_vstring(x) }
 	}
-	return ''
+	return Result<!string>
 }
 
 fn init_os_args(argc int, argv &&u8) []string {
