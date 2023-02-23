@@ -29,6 +29,7 @@ pub fn exit(code int) {
 	WASM.proc_exit(code)
 }
 
+[noreturn]
 pub fn panic(s string) {
 	eprint("V panic: ")
 	eprintln(s)

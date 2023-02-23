@@ -117,7 +117,7 @@ fn (mut g Gen) housekeeping() {
 		data_offsets := g.constant_data.map(wa.constant(g.mod, wa.literalint32(it.offset)))
 		passive := []bool{len: g.constant_data.len, init: false}
 
-		wa.setmemory(g.mod, 1, 1, c'memory', 
+		wa.setmemory(g.mod, 1, 4, c'memory', 
 			data.data,
 			passive.data,
 			data_offsets.data,

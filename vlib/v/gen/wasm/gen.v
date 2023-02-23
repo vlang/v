@@ -130,6 +130,7 @@ fn (mut g Gen) setup_stack_frame(body wa.Expression) wa.Expression {
 
 	// No stack allocations needed!
 	if g.stack_frame == 0 {
+		g.stack_patches.clear()
 		return body
 	}
 	g.needs_stack = true
@@ -795,7 +796,8 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) wa.Expression {
 			}
 			if expected == ast.void_type && node.return_type != ast.void_type {
 				call = wa.drop(g.mod, call)
-			} else if node.is_noreturn {
+			}
+			if node.is_noreturn {
 				// `[noreturn]` functions cannot return values
 				call = g.mkblock([call, wa.unreachable(g.mod)])
 			}
@@ -1086,6 +1088,7 @@ fn (mut g Gen) toplevel_stmt(node ast.Stmt) {
 				g.module_import_namespace = 'env'
 			}
 		}
+		ast.GlobalDecl {}
 		ast.ConstDecl {}
 		ast.Import {}
 		ast.StructDecl {}

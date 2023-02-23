@@ -54,12 +54,17 @@ fn (g Gen) is_pure_type(typ ast.Type) bool {
 	return false
 }
 
-fn (mut g Gen) new_global_const(obj ast.ConstField) {
+fn (mut g Gen) new_global_const(obj ast.ScopeObject) {
+	obj_expr := match obj {
+		ast.ConstField { obj.expr }
+		ast.GlobalField { obj.expr }
+		else { panic("unreachable") }
+	}
 	typ := ast.mktyp(obj.typ)
 
 	size, _ := g.get_type_size_align(typ)
 	g.globals[obj.name] = GlobalData {
-		init: obj.expr
+		init: obj_expr
 		ast_typ: typ
 		abs_address: g.constant_data_offset
 	}
@@ -79,6 +84,12 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
 			return g.local_addresses[obj.name]
 		}
 		ast.ConstField {
+			if obj.name !in g.globals {
+				g.new_global_const(obj)
+			}
+			return g.globals[obj.name].to_var(obj.name)
+		}
+		ast.GlobalField {
 			if obj.name !in g.globals {
 				g.new_global_const(obj)
 			}
