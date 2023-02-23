@@ -445,8 +445,11 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr) wa.Expression {
 				wa.binary(g.mod, wa.xorint64(), expr, wa.constant(g.mod, wa.literalint64(-1)))
 			}
 		}
-		.amp, .mul {
+		.amp {
 			g.lea_var_from_expr(node.right)
+		}
+		.mul {
+			g.deref(expr, node.right_type)
 		}
 		else {
 			// impl deref (.mul), and impl address of (.amp)
@@ -1170,7 +1173,11 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 			wa.moduleoptimize(g.mod)
 		}
 		if out_name == '-' {
-			wa.moduleprintstackir(g.mod, w_pref.is_prod)
+			if g.pref.is_verbose {
+				wa.moduleprint(g.mod)
+			} else {
+				wa.moduleprintstackir(g.mod, w_pref.is_prod)
+			}
 		} else {
 			bytes := wa.moduleallocateandwrite(g.mod, unsafe { nil })
 			str := unsafe { (&char(bytes.binary)).vstring_with_len(int(bytes.binaryBytes)) }

@@ -29,3 +29,20 @@ const hello = "hello\n"
 const float = 1.0
 const integer = 888
 const runtime_init = constant()
+
+struct EE {
+	a int
+	b int
+}
+
+fn ptr_arith() {
+	mut a := EE{}
+	mut b := &a.b
+
+	unsafe { *b = 12 }
+	println(a.b.str())
+	unsafe { *b = 14 }
+	println(a.b.str())
+	unsafe { *b = 102 }
+	println((*b).str())
+}

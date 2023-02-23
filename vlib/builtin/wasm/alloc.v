@@ -6,7 +6,6 @@ module builtin
 
 const wasm_page_size = 64 * 1024
 __global g_heap_base = isize(0)
-__global g_heap_top = isize(0)
 
 fn init() {
 	g_heap_base = __memory_grow(3)

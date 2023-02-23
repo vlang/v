@@ -147,6 +147,30 @@ fn (mut g Gen) get_or_lea_lop(lp LocalOrPointer, expected ast.Type) wa.Expressio
 	return wa.load(g.mod, u32(size), g.is_signed(expected), u32(offset), 0, g.get_wasm_type(expected), expr, c'memory')
 }
 
+fn (mut g Gen) lea_lop(lp LocalOrPointer, expected ast.Type) wa.Expression {
+	expr := match lp {
+		wa.Expression {
+			lp
+		}
+		Var {
+			match lp {
+				Temporary {
+					wa.localget(g.mod, lp.idx, g.get_wasm_type(expected))
+				}
+				Stack {
+					g.get_bp()
+				}
+				Global {
+					g.literalint(lp.abs_address, ast.int_type)
+				}
+				else { panic("unreachable") }
+			}
+		}
+	}
+
+	return expr
+}
+
 fn (mut g Gen) lea_var_from_expr(node ast.Expr) wa.Expression {
 	var := g.get_var_from_expr(node)
 
@@ -243,7 +267,7 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) LocalOrPointer {
 			wa.binary(g.mod, wa.addint32(), ptr_address, wa.binary(g.mod, wa.mulint32(), index, g.literalint(size, ast.int_type)))
 		}
 		ast.PrefixExpr {
-			g.w_error('`*ident = 10` not implemented')
+			g.lea_lop(g.get_var_from_expr(node.right), ast.voidptr_type)
 		}
 		else {
 			g.w_error('get_var_from_expr: unexpected `${node.type_name()}`')
