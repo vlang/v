@@ -6,7 +6,7 @@ pub fn print(s string) {
 		len: usize(s.len)
 	}
 
-	fd_write(1, &elm, 1, -1)
+	WASM.fd_write(1, &elm, 1, -1)
 }
 
 pub fn println(s string) {
@@ -18,7 +18,7 @@ pub fn println(s string) {
 		len: 1
 	}]!
 
-	fd_write(1, &elm[0], 2, -1)
+	WASM.fd_write(1, &elm[0], 2, -1)
 }
 
 pub fn eprint(s string) {
@@ -27,7 +27,7 @@ pub fn eprint(s string) {
 		len: usize(s.len)
 	}
 
-	fd_write(2, &elm, 1, -1)
+	WASM.fd_write(2, &elm, 1, -1)
 }
 
 pub fn eprintln(s string) {
@@ -39,12 +39,12 @@ pub fn eprintln(s string) {
 		len: 1
 	}]!
 
-	fd_write(2, &elm[0], 2, -1)
+	WASM.fd_write(2, &elm[0], 2, -1)
 }
 
 [noreturn]
 pub fn exit(code int) {
-	proc_exit(code)
+	WASM.proc_exit(code)
 }
 
 [noreturn]
