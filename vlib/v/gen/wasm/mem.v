@@ -13,6 +13,9 @@ fn (v Var) ast_typ() int {
 	if v is Stack {
 		return v.ast_typ
 	}
+	if v is Global {
+		return v.ast_typ
+	}
 	panic("unreachable")
 }
 
@@ -62,13 +65,14 @@ fn (mut g Gen) new_global_const(obj ast.ScopeObject) {
 	}
 	typ := ast.mktyp(obj.typ)
 
-	size, _ := g.get_type_size_align(typ)
+	size, align := g.get_type_size_align(typ)
+	padding := (align - g.constant_data_offset % align) % align
 	g.globals[obj.name] = GlobalData {
 		init: obj_expr
 		ast_typ: typ
 		abs_address: g.constant_data_offset
 	}
-	g.constant_data_offset += size
+	g.constant_data_offset += size + padding
 }
 
 fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
@@ -128,6 +132,7 @@ fn (mut g Gen) get_or_lea_lop(lp LocalOrPointer, expected ast.Type) wa.Expressio
 				}
 				Global {
 					parent_typ = lp.ast_typ
+					is_expr = true
 					g.literalint(lp.abs_address, ast.int_type)
 				}
 				else { panic("unreachable") }
@@ -690,6 +695,8 @@ fn (mut g Gen) allocate_string(node ast.StringLiteral) (int, int) {
 		data: data
 	}
 
-	g.constant_data_offset += data.len
+	padding := (8 - offset % 8) % 8
+	g.constant_data_offset += data.len + padding
+
 	return offset, data.len
 }

@@ -101,7 +101,22 @@ fn (mut g Gen) make_vinit() wa.Function {
 
 	g.bare_function_start()
 
-	body := runtime_inits.map(g.set_var_v(it.to_var(''), g.expr(it.init, it.ast_typ)))
+	mut body := runtime_inits.map(g.set_var_v(it.to_var(''), g.expr(it.init, it.ast_typ)))
+
+	for mod_name in g.table.modules {
+		if mod_name == 'v.reflection' {
+			g.w_error("the wasm backend does not implement `v.reflection` yet")
+		}
+		
+		init_fn_name := if mod_name != 'builtin' { '${mod_name}.init' } else { 'init' }
+		if _ := g.table.find_fn(init_fn_name) {
+			body << wa.call(g.mod, init_fn_name.str, unsafe { nil }, 0, type_none)
+		}
+		cleanup_fn_name := if mod_name != 'builtin' { '${mod_name}.cleanup' } else { 'cleanup' }
+		if _ := g.table.find_fn(cleanup_fn_name) {
+			body << wa.call(g.mod, cleanup_fn_name.str, unsafe { nil }, 0, type_none)
+		}
+	}
 
 	return g.bare_function('_vinit', g.mkblock(body))
 }
@@ -134,7 +149,7 @@ fn (mut g Gen) housekeeping() {
 		wa.addglobal(g.mod, c'__vsp', type_i32, true, g.literalint(offset, ast.int_type))
 	}
 	if g.pref.os == .wasi {
-		main_expr := g.mkblock([wa.call(g.mod, c'main.main', unsafe { nil }, 0, type_none), wa.call(g.mod, c'_vinit', unsafe { nil }, 0, type_none)])
+		main_expr := g.mkblock([wa.call(g.mod, c'_vinit', unsafe { nil }, 0, type_none), wa.call(g.mod, c'main.main', unsafe { nil }, 0, type_none)])
 		wa.addfunction(g.mod, c'_start', type_none, type_none, unsafe { nil }, 0, main_expr)
 		wa.addfunctionexport(g.mod, c'_start', c'_start')
 	} else {

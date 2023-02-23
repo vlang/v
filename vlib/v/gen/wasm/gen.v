@@ -577,7 +577,7 @@ fn (mut g Gen) assign_expr_to_var(address LocalOrPointer, right ast.Expr, expect
 					val := g.get_or_lea_lop(address, expected)
 					op := g.infix_from_typ(expected, token.assign_op_to_infix_op(cfg.op))
 					
-					wa.binary(g.mod, op, val, g.expr(right, expected))
+					wa.binary(g.mod, op, val, initexpr)
 				} else {
 					g.w_error("arith unimplemented or unreachable for struct")
 				}
@@ -1140,6 +1140,8 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 		mod: wa.modulecreate()
 	}
 	g.table.pointer_size = 4
+	// Offset all pointers by 8, so that 0 never points to valid memory
+	g.constant_data_offset = 8
 	wa.modulesetfeatures(g.mod, wa.featureall())
 
 	if g.pref.os == .browser {
@@ -1157,7 +1159,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 		}
 		g.toplevel_stmts(file.stmts)
 	}
-	if g.structs.len != 0 {
+	if g.globals.len != 0 {
 		g.needs_stack = true
 	}
 	g.housekeeping()

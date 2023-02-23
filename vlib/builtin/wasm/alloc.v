@@ -4,9 +4,17 @@ module builtin
 // Shitty `sbrk` basic `malloc` and `free` impl
 // TODO: implement pure V `walloc` later
 
-/* const wasm_page_size = 64 * 1024 * 1024
-__global g_heap_base = __memory_grow(4) * wasm_page_size
-__global g_heap_ptr = __memory_grow(4) * wasm_page_size */
+const wasm_page_size = 64 * 1024
+__global g_heap_base = isize(0)
+__global g_heap_top = isize(0)
+
+fn init() {
+	g_heap_base = __memory_grow(3)
+	if g_heap_base == -1 {
+		panic('g_heap_base: malloc() == nil')
+	}
+	g_heap_base *= wasm_page_size
+}
 
 [unsafe]
 pub fn malloc(n isize) &u8 {
@@ -14,14 +22,10 @@ pub fn malloc(n isize) &u8 {
 		panic('malloc(n <= 0)')
 	}
 
-	panic("forget")
-	/* if g_heap_ptr == -1 {
-		panic('malloc() == nil')
-	}
+	res := g_heap_base
+	g_heap_base += n
 
-	if 
-
-	return &u8(res) */
+	return &u8(res)
 }
 
 [unsafe]
