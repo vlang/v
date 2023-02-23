@@ -14,10 +14,14 @@ struct SourceFile {
 
 fn test_main() {
 	node := json.decode(Node, '{"loc": { "includedFrom": { "file": "/bin/foo" } } }')!
-	
+
 	mut source_file := node.location.source_file or { none }
 	assert source_file.path == ''
-	
-	source_file = node.location.source_file or {SourceFile{path: '-'}}
+
+	source_file = node.location.source_file or {
+		SourceFile{
+			path: '-'
+		}
+	}
 	assert source_file.path == '-'
 }
