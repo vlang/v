@@ -509,12 +509,19 @@ struct AssignOpts {
 }
 
 fn (mut g Gen) assign_expr_to_var(address LocalOrPointer, right ast.Expr, expected ast.Type, cfg AssignOpts) wa.Expression {
-	match right {
+	return match right {
 		ast.StructInit {
 			if cfg.op !in [.decl_assign, .assign] {
-				g.w_error("arith unimplemented for struct")
+				op := token.assign_op_to_infix_op(cfg.op)
+				name := '${g.table.get_type_name(expected)}.${op}'
+
+				// args: [&return, &left, &right]
+				args := [g.get_or_lea_lop(address, expected), g.get_or_lea_lop(address, expected), g.expr(right, expected)]
+
+				wa.call(g.mod, name.str, args.data, args.len, type_none)
+			} else {
+				g.init_struct(address as Var, right)
 			}
-			return g.init_struct(address as Var, right)
 		}
 		ast.StringLiteral {
 			if g.table.sym(expected).info !is ast.Struct {
@@ -525,7 +532,8 @@ fn (mut g Gen) assign_expr_to_var(address LocalOrPointer, right ast.Expr, expect
 			var := (address as Var) as Stack
 			
 			offset, len := g.allocate_string(right)
-			return g.mknblock('STRINGINIT', [
+			
+			g.mknblock('STRINGINIT', [
 				g.set_var_v(Stack{ address: var.address, ast_typ: ast.charptr_type }, g.literalint(offset, ast.u32_type), offset: 0),
 				g.set_var_v(Stack{ address: var.address, ast_typ: ast.int_type }, g.literalint(len, ast.int_type), offset: g.table.pointer_size)
 			])
@@ -548,31 +556,25 @@ fn (mut g Gen) assign_expr_to_var(address LocalOrPointer, right ast.Expr, expect
 				exprs << g.assign_expr_to_var(Var(Stack{address: var.address + offset, ast_typ: elm_typ}), e, elm_typ)
 				offset += elm_size
 			}
-			return g.mknblock('ARRAYINIT', exprs)
+			
+			g.mknblock('ARRAYINIT', exprs)
 		}
 		else {
-			if cfg.op !in [.decl_assign, .assign] {
-				// expr := match var {
-				// 	Temporary {
-				// 		op := g.infix_from_typ(typ, token.assign_op_to_infix_op(node.op))
-				// 		infix := wa.binary(g.mod, op, wa.localget(g.mod, var.idx,
-				// 			var.typ), g.expr(right, typ))
-
-				// 		infix
-				// 	}
-				// 	Stack {
-				// 		g.w_error('unimplemented')
-				// 	}
-				// 	else {
-				// 		panic('unreachable')
-				// 	}
-				// }
-				// exprs << g.set_var(var, expr)
-				g.w_error("arith unimplemented for struct")
-			}
 			initexpr := g.expr(right, expected)
-
-			return g.set_var(address, initexpr)
+			
+			expr := if cfg.op !in [.decl_assign, .assign] {
+				if g.is_pure_type(expected) {
+					val := g.get_or_lea_lop(address, expected)
+					op := g.infix_from_typ(expected, token.assign_op_to_infix_op(cfg.op))
+					
+					wa.binary(g.mod, op, val, g.expr(right, expected))
+				} else {
+					g.w_error("arith unimplemented or unreachable for struct")
+				}
+			} else {
+				initexpr
+			}
+			g.set_var(address, expr, ast_typ: expected)
 		}
 	}
 }
@@ -610,7 +612,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 			g.deref(new_ptr, expected)
 		}
 		ast.SelectorExpr {
-			g.cast_t(g.deref_local_or_pointer(g.get_var_from_expr(node), node.typ), node.typ, expected)
+			g.cast_t(g.get_or_lea_lop(g.get_var_from_expr(node), node.typ), node.typ, expected)
 		}
 		ast.StructInit {
 			pos := g.allocate_local_var('_anonstruct', node.typ)

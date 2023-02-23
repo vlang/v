@@ -16,3 +16,11 @@ fn index_expression() {
 	c := 'hello'[4]
 	d := c'hello'[2]
 }
+
+fn test_this(index int) int {
+	a := 'hello'
+	if index < a.len && index >= 0 {
+		return a[index]
+	} 
+	return 10
+}

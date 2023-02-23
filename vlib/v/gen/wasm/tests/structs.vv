@@ -144,3 +144,20 @@ struct Hello {
 pub fn recurse() {
 	a := Hello{}
 }
+
+struct DD {
+	x int
+	y int
+}
+
+fn (a DD) + (b DD) DD {
+	return DD{a.x + b.x, a.y + b.y}
+}
+
+pub fn valer() (int, int) {
+	mut a := DD{10, 15}
+
+	a += DD{10, 15}
+
+	return a.x, a.y
+}

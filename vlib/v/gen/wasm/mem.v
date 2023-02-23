@@ -92,33 +92,43 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
 
 type LocalOrPointer = Var | wa.Expression
 
-fn (mut g Gen) deref_local_or_pointer(lp LocalOrPointer, expected ast.Type) wa.Expression {
+fn (mut g Gen) get_or_lea_lop(lp LocalOrPointer, expected ast.Type) wa.Expression {
 	size, _ := g.table.type_size(expected)
 
-	mut offset := 0
+	mut offset := 0	
+	mut parent_typ := expected
+	mut is_expr := false
+
 	expr := match lp {
 		wa.Expression {
+			is_expr = true
 			lp
 		}
 		Var {
 			match lp {
 				Temporary {
-					wa.localget(g.mod, lp.idx, type_i32)
+					parent_typ = lp.ast_typ
+					wa.localget(g.mod, lp.idx, g.get_wasm_type(expected))
 				}
 				Stack {
+					parent_typ = lp.ast_typ
 					offset = lp.address
 					g.get_bp()
 				}
 				Global {
+					parent_typ = lp.ast_typ
 					g.literalint(lp.abs_address, ast.int_type)
 				}
 				else { panic("unreachable") }
 			}
 		}
 	}
-	load := wa.load(g.mod, u32(size), g.is_signed(expected), u32(offset), 0, g.get_wasm_type(expected),
-		expr, c'memory')
-	return load
+
+	if !is_expr && parent_typ == expected {
+		return expr
+	}
+
+	return wa.load(g.mod, u32(size), g.is_signed(expected), u32(offset), 0, g.get_wasm_type(expected), expr, c'memory')
 }
 
 fn (mut g Gen) lea_var_from_expr(node ast.Expr) wa.Expression {
