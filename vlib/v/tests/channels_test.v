@@ -45,3 +45,30 @@ fn test_chan_of_sumtype() {
 	println(ret)
 	assert '${ret}' == 'As(Aa{})'
 }
+
+struct Iter[T] {
+	item chan T
+}
+
+fn new_iter[T](ch chan T) Iter[T] {
+	return Iter[T]{
+		item: ch
+	}
+}
+
+fn (self Iter[T]) next() ?T {
+	self.item.close()
+	ch := <-self.item or { return none }
+	return ch
+}
+
+fn test_channel_with_or_block() {
+	ch := chan int{}
+	iter := new_iter[int](ch)
+	ret := iter.next() or {
+		assert true
+		return
+	}
+	println(ret)
+	assert false
+}

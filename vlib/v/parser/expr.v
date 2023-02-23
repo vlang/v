@@ -711,11 +711,14 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 	mut or_pos := p.tok.pos()
 	// allow `x := <-ch or {...}` to handle closed channel
 	if op == .arrow {
-		if p.tok.kind == .key_orelse {
+		if mut right is ast.SelectorExpr {
+			or_kind = right.or_block.kind
+			or_stmts = right.or_block.stmts.clone()
+			right.or_block = ast.OrExpr{}
+		} else if p.tok.kind == .key_orelse {
 			or_kind = .block
 			or_stmts, or_pos = p.or_block(.with_err_var)
-		}
-		if p.tok.kind == .question {
+		} else if p.tok.kind == .question {
 			p.next()
 			or_kind = .propagate_option
 		}
