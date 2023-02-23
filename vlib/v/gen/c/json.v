@@ -30,6 +30,9 @@ fn (mut g Gen) gen_json_for_type(typ ast.Type) {
 		return
 	}
 	g.json_types << utyp
+	if utyp.has_flag(.option) {
+		g.json_types << utyp.clear_flag(.option)
+	}
 }
 
 fn (mut g Gen) gen_jsons() {
@@ -52,16 +55,27 @@ fn (mut g Gen) gen_jsons() {
 		dec_fn_dec := '${result_name}_${styp} ${dec_fn_name}(cJSON* root)'
 
 		mut init_styp := '${styp} res'
-		if sym.kind == .struct_ {
-			init_styp += ' = '
-			g.set_current_pos_as_last_stmt_pos()
-			pos := g.out.len
-			g.write(init_styp)
-			g.expr(ast.Expr(ast.StructInit{
-				typ: utyp
-				typ_str: styp
-			}))
-			init_styp = g.out.cut_to(pos).trim_space()
+		if utyp.has_flag(.option) {
+			if sym.kind == .struct_ {
+				init_styp += ' = '
+				g.set_current_pos_as_last_stmt_pos()
+				pos := g.out.len
+				g.expr_with_tmp_var(ast.Expr(ast.StructInit{ typ: utyp, typ_str: styp }),
+					utyp, utyp, 'res')
+				init_styp = g.out.cut_to(pos).trim_space()
+			}
+		} else {
+			if sym.kind == .struct_ {
+				init_styp += ' = '
+				g.set_current_pos_as_last_stmt_pos()
+				pos := g.out.len
+				g.write(init_styp)
+				g.expr(ast.Expr(ast.StructInit{
+					typ: utyp
+					typ_str: styp
+				}))
+				init_styp = g.out.cut_to(pos).trim_space()
+			}
 		}
 
 		dec.writeln('
