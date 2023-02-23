@@ -363,18 +363,14 @@ fn (mut g Gen) literal(val string, expected ast.Type) wa.Expression {
 }
 
 fn (mut g Gen) postfix_expr(node ast.PostfixExpr) wa.Expression {
-	if node.expr !is ast.Ident {
-		g.w_error('postfix_expr: not ast.Ident')
-	}
-
 	kind := if node.op == .inc { token.Kind.plus } else { token.Kind.minus }
 
-	var := g.get_var_from_ident(node.expr as ast.Ident) as Temporary
-	
-	op := g.infix_from_typ(var.ast_typ, kind)
+	var := g.get_var_from_expr(node.expr)
+	op := g.infix_from_typ(node.typ, kind)
 
-	return wa.localset(g.mod, var.idx, wa.binary(g.mod, op, wa.localget(g.mod, var.idx, var.typ),
-		g.literal('1', var.ast_typ)))
+	expr := wa.binary(g.mod, op, g.get_or_lea_lop(var, node.typ), g.literal('1', node.typ))
+
+	return g.set_var(var, expr, ast_typ: node.typ)
 }
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) wa.Expression {

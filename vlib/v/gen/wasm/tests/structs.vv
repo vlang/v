@@ -161,3 +161,19 @@ pub fn valer() (int, int) {
 
 	return a.x, a.y
 }
+
+struct TEST {
+mut:
+	a int
+	b int
+}
+
+fn postfix_test() {
+	mut a := TEST{}
+	a.b++
+	a.a++
+}
+
+fn postfix_test_mut(mut a TEST) {
+	a.b++
+}
