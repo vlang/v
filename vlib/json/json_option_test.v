@@ -23,5 +23,6 @@ fn test_main() {
 			path: '-'
 		}
 	}
+
 	assert source_file.path == '-'
 }
