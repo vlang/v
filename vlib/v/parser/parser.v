@@ -2543,14 +2543,18 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			}
 		}
 	} else if p.peek_tok.kind == .lpar || is_generic_call || is_generic_cast
-		|| (is_option && p.peek_token(2).kind == .lpar) || (is_option && 
-		( (p.peek_tok.kind == .lsbr && p.peek_token(2).kind == .rsbr && p.peek_token(3).kind == .name && p.peek_token(4).kind == .lpar) 
-		|| (p.peek_tok.kind == .lsbr && p.peek_token(2).kind == .number && p.peek_token(3).kind == .rsbr && p.peek_token(4).kind == .name && p.peek_token(5).kind == .lpar))) {
+		|| (is_option && p.peek_token(2).kind == .lpar) || (is_option && ((p.peek_tok.kind == .lsbr
+		&& p.peek_token(2).kind == .rsbr && p.peek_token(3).kind == .name
+		&& p.peek_token(4).kind == .lpar) || (p.peek_tok.kind == .lsbr
+		&& p.peek_token(2).kind == .number && p.peek_token(3).kind == .rsbr
+		&& p.peek_token(4).kind == .name && p.peek_token(5).kind == .lpar))) {
 		is_array := p.peek_tok.kind == .lsbr
 		is_fixed_array := is_array && p.peek_token(2).kind == .number
 		// foo(), foo<int>() or type() cast
 		mut name := if is_option {
-			if is_array { p.peek_token(if is_fixed_array { 4 } else { 3 }).lit } else { p.peek_tok.lit }
+			if is_array { p.peek_token(if is_fixed_array { 4 } else { 3 }).lit
+			 } else { p.peek_tok.lit
+			 }
 		} else {
 			p.tok.lit
 		}
