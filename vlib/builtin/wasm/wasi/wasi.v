@@ -10,3 +10,5 @@ type Errno = u16
 type FileDesc = int
 
 fn WASM.fd_write(fd FileDesc, iovs &CIOVec, iovs_len usize, retptr &usize) Errno
+[noreturn]
+fn WASM.proc_exit(rval int)

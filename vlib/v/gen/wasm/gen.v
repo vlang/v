@@ -11,10 +11,12 @@ import os
 
 [heap; minify]
 pub struct Gen {
-	out_name string
-	pref     &pref.Preferences = unsafe { nil } // Preferences shared from V struct
-	files    []&ast.File
+	out_name  string
+	pref      &pref.Preferences = unsafe { nil } // Preferences shared from V struct
+	files     []&ast.File
 mut:
+	file_path string // current ast.File path
+	file_path_idx int // current binaryen debug info index, see `BinaryenModuleAddDebugInfoFileName`
 	warnings  []errors.Warning
 	errors    []errors.Error
 	table     &ast.Table = unsafe { nil }
@@ -61,11 +63,11 @@ mut:
 
 pub fn (mut g Gen) v_error(s string, pos token.Pos) {
 	if g.pref.output_mode == .stdout {
-		util.show_compiler_message('error:', pos: pos, file_path: g.pref.path, message: s)
+		util.show_compiler_message('error:', pos: pos, file_path: g.file_path, message: s)
 		exit(1)
 	} else {
 		g.errors << errors.Error{
-			file_path: g.pref.path
+			file_path: g.file_path
 			pos: pos
 			reporter: .gen
 			message: s
@@ -75,10 +77,10 @@ pub fn (mut g Gen) v_error(s string, pos token.Pos) {
 
 pub fn (mut g Gen) warning(s string, pos token.Pos) {
 	if g.pref.output_mode == .stdout {
-		util.show_compiler_message('warning:', pos: pos, file_path: g.pref.path, message: s)
+		util.show_compiler_message('warning:', pos: pos, file_path: g.file_path, message: s)
 	} else {
 		g.warnings << errors.Warning{
-			file_path: g.pref.path
+			file_path: g.file_path
 			pos: pos
 			reporter: .gen
 			message: s
@@ -308,10 +310,13 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	for idx := paraml.len; idx < g.local_temporaries.len; idx++ {
 		temporaries << g.local_temporaries[idx].typ
 	}
-	wa.addfunction(g.mod, name.str, params_type, return_type, temporaries.data, temporaries.len,
+	function := wa.addfunction(g.mod, name.str, params_type, return_type, temporaries.data, temporaries.len,
 		wasm_expr)
 	if node.is_pub && node.mod == 'main' /* && g.pref.os == .browser */ {
 		wa.addfunctionexport(g.mod, name.str, name.str)
+	}
+	if g.pref.is_debug {
+		wa.functionsetdebuglocation(function, wasm_expr, g.file_path_idx, node.pos.line_nr, node.pos.col)
 	}
 
 	// WTF?? map values are not resetting???
@@ -579,7 +584,7 @@ fn (mut g Gen) assign_expr_to_var(address LocalOrPointer, right ast.Expr, expect
 	}
 }
 
-fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
+fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) wa.Expression {
 	return match node {
 		ast.ParExpr, ast.UnsafeExpr {
 			g.expr(node.expr, expected)
@@ -646,7 +651,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 		ast.StringLiteral {
 			if g.table.sym(expected).info !is ast.Struct {
 				offset, _ := g.allocate_string(node)
-				return g.literalint(offset, ast.int_type)
+				g.literalint(offset, ast.int_type)
 			}
 			
 			pos := g.allocate_local_var('_anonstring', ast.string_type)
@@ -662,6 +667,10 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 		}
 		ast.PostfixExpr {
 			g.postfix_expr(node)
+		}
+		ast.CharLiteral {
+			rns := node.val.runes()[0]
+			g.literalint(rns, ast.u32_type)
 		}
 		ast.Ident {
 			// TODO: only supports local identifiers, no path.expressions or global names
@@ -794,6 +803,14 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 	}
 }
 
+fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
+	expr := g.expr_impl(node, expected)
+	
+	
+	
+	return expr
+}
+
 fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) wa.Expression {
 	if node.has_cross_var {
 		g.w_error('complex assign statements are not implemented')
@@ -858,6 +875,9 @@ mut:
 
 fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) wa.Expression {
 	return match node {
+		ast.Block {
+			g.expr_stmts(node.stmts, expected)
+		}
 		ast.Return {
 			mut leave_expr_list := []wa.Expression{cap: node.exprs.len}
 			mut exprs := []wa.Expression{cap: node.exprs.len}
@@ -1121,6 +1141,10 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 
 	g.calculate_enum_fields()
 	for file in g.files {
+		g.file_path = file.path
+		if g.pref.is_debug {
+			g.file_path_idx = wa.moduleadddebuginfofilename(g.mod, g.file_path.str)
+		}
 		if file.errors.len > 0 {
 			util.verror('wasm error', file.errors[0].str())
 		}

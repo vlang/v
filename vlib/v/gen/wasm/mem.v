@@ -203,8 +203,11 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) LocalOrPointer {
 		ast.IndexExpr {
 			address := g.get_var_from_expr(node.left)
 
+			ts := g.table.sym(node.left_type)
 			deref_type := if g.is_pure_type(node.left_type) {
 				node.left_type.set_nr_muls(node.left_type.nr_muls() - 1)
+			} else if ts.kind == .array_fixed {
+				(ts.info as ast.ArrayFixed).elem_type
 			} else {
 				node.left_type
 			}
