@@ -16,7 +16,7 @@ fn (v Var) ast_typ() int {
 	if v is Global {
 		return v.ast_typ
 	}
-	panic("unreachable")
+	panic('unreachable')
 }
 
 fn (v Var) address() int {
@@ -39,15 +39,15 @@ struct Stack {
 }
 
 struct Global {
-	name     string
-	ast_typ  ast.Type
+	name    string
+	ast_typ ast.Type
 	//
 	abs_address int
 }
 
 fn (g Gen) is_pure_type(typ ast.Type) bool {
-	if typ.is_pure_int() || typ.is_pure_float() || typ == ast.char_type_idx
-		|| typ.is_real_pointer() || typ.is_bool() {
+	if typ.is_pure_int() || typ.is_pure_float() || typ == ast.char_type_idx || typ.is_real_pointer()
+		|| typ.is_bool() {
 		return true
 	}
 	ts := g.table.sym(typ)
@@ -61,13 +61,13 @@ fn (mut g Gen) new_global_const(obj ast.ScopeObject) {
 	obj_expr := match obj {
 		ast.ConstField { obj.expr }
 		ast.GlobalField { obj.expr }
-		else { panic("unreachable") }
+		else { panic('unreachable') }
 	}
 	typ := ast.mktyp(obj.typ)
 
 	size, align := g.get_type_size_align(typ)
 	padding := (align - g.constant_data_offset % align) % align
-	g.globals[obj.name] = GlobalData {
+	g.globals[obj.name] = GlobalData{
 		init: obj_expr
 		ast_typ: typ
 		abs_address: g.constant_data_offset
@@ -110,7 +110,7 @@ type LocalOrPointer = Var | wa.Expression
 fn (mut g Gen) get_or_lea_lop(lp LocalOrPointer, expected ast.Type) wa.Expression {
 	size, _ := g.table.type_size(expected)
 
-	mut offset := 0	
+	mut offset := 0
 	mut parent_typ := expected
 	mut is_expr := false
 
@@ -135,7 +135,9 @@ fn (mut g Gen) get_or_lea_lop(lp LocalOrPointer, expected ast.Type) wa.Expressio
 					is_expr = true
 					g.literalint(lp.abs_address, ast.int_type)
 				}
-				else { panic("unreachable") }
+				else {
+					panic('unreachable')
+				}
 			}
 		}
 	}
@@ -144,7 +146,8 @@ fn (mut g Gen) get_or_lea_lop(lp LocalOrPointer, expected ast.Type) wa.Expressio
 		return expr
 	}
 
-	return wa.load(g.mod, u32(size), g.is_signed(expected), u32(offset), 0, g.get_wasm_type(expected), expr, c'memory')
+	return wa.load(g.mod, u32(size), g.is_signed(expected), u32(offset), 0, g.get_wasm_type(expected),
+		expr, c'memory')
 }
 
 fn (mut g Gen) lea_lop(lp LocalOrPointer, expected ast.Type) wa.Expression {
@@ -163,7 +166,9 @@ fn (mut g Gen) lea_lop(lp LocalOrPointer, expected ast.Type) wa.Expression {
 				Global {
 					g.literalint(lp.abs_address, ast.int_type)
 				}
-				else { panic("unreachable") }
+				else {
+					panic('unreachable')
+				}
 			}
 		}
 	}
@@ -182,7 +187,7 @@ fn (mut g Gen) lea_var_from_expr(node ast.Expr) wa.Expression {
 			match var {
 				Temporary {
 					if g.is_pure_type(var.ast_typ) {
-						g.w_error("lea_var_from_expr: you cannot take the address of a pure temporary")
+						g.w_error('lea_var_from_expr: you cannot take the address of a pure temporary')
 					}
 					wa.localget(g.mod, var.idx, type_i32)
 				}
@@ -192,7 +197,9 @@ fn (mut g Gen) lea_var_from_expr(node ast.Expr) wa.Expression {
 				Global {
 					g.literalint(var.abs_address, ast.int_type)
 				}
-				else { panic("unreachable") }
+				else {
+					panic('unreachable')
+				}
 			}
 		}
 	}
@@ -201,22 +208,23 @@ fn (mut g Gen) lea_var_from_expr(node ast.Expr) wa.Expression {
 fn (mut g Gen) local_or_pointer_add_offset(v Var, offset int) LocalOrPointer {
 	return match v {
 		Temporary {
-			wa.binary(g.mod, wa.addint32(), wa.localget(g.mod, v.idx, type_i32), wa.constant(g.mod, wa.literalint32(offset)))
+			wa.binary(g.mod, wa.addint32(), wa.localget(g.mod, v.idx, type_i32), wa.constant(g.mod,
+				wa.literalint32(offset)))
 		}
 		Stack {
-			Var(Stack {
+			Var(Stack{
 				...v
 				address: v.address + offset
 			})
 		}
 		Global {
-			Var(Global {
+			Var(Global{
 				...v
 				abs_address: v.abs_address + offset
 			})
 		}
 		ast.Ident {
-			panic("unreachable")
+			panic('unreachable')
 		}
 	}
 }
@@ -255,16 +263,17 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) LocalOrPointer {
 
 			index := g.expr(node.index, ast.int_type)
 			mut ptr_address := wa.Expression(0)
-			
+
 			if address is wa.Expression {
 				ptr_address = address
 			}
 			if address is Var {
 				ptr_address = g.get_var_t(address, ast.voidptr_type)
 			}
-			
+
 			// ptr + index * size
-			wa.binary(g.mod, wa.addint32(), ptr_address, wa.binary(g.mod, wa.mulint32(), index, g.literalint(size, ast.int_type)))
+			wa.binary(g.mod, wa.addint32(), ptr_address, wa.binary(g.mod, wa.mulint32(),
+				index, g.literalint(size, ast.int_type)))
 		}
 		ast.PrefixExpr {
 			g.lea_lop(g.get_var_from_expr(node.right), ast.voidptr_type)
@@ -443,7 +452,7 @@ fn (mut g Gen) get_var_t(var Var, ast_typ ast.Type) wa.Expression {
 			} else {
 				g.get_bp()
 			}
-			
+
 			if g.is_pure_type(var.ast_typ) {
 				g.cast_t(g.deref(address, var.ast_typ), var.ast_typ, ast_typ)
 			} else {
@@ -473,11 +482,10 @@ fn (mut g Gen) set_to_address(address_expr wa.Expression, expr wa.Expression, as
 		g.blit(expr, ast_typ, address_expr)
 	} else {
 		size, _ := g.table.type_size(ast_typ)
-		wa.store(g.mod, u32(size), 0, 0, address_expr,
-			expr, g.get_wasm_type(ast_typ), c'memory')
+		wa.store(g.mod, u32(size), 0, 0, address_expr, expr, g.get_wasm_type(ast_typ),
+			c'memory')
 	}
 }
-
 
 fn (mut g Gen) set_var_v(address Var, expr wa.Expression, cfg SetConfig) wa.Expression {
 	return g.set_var(address, expr, cfg)
@@ -490,7 +498,7 @@ fn (mut g Gen) set_var(address LocalOrPointer, expr wa.Expression, cfg SetConfig
 		(address as Var).ast_typ()
 	}
 	match address {
-		wa.Expression {			
+		wa.Expression {
 			return g.set_to_address(address, expr, ast_typ)
 		}
 		Var {
@@ -526,15 +534,18 @@ fn (mut g Gen) set_var(address LocalOrPointer, expr wa.Expression, cfg SetConfig
 // zero out stack memory in known local `address`.
 fn (mut g Gen) zero_fill(ast_typ ast.Type, address int) wa.Expression {
 	size, _ := g.get_type_size_align(ast_typ)
-	
+
 	if size <= 4 {
 		zero := g.literalint(0, ast.int_type)
-		return wa.store(g.mod, u32(size), u32(address), 0, g.get_bp(), zero, type_i32, c'memory')
+		return wa.store(g.mod, u32(size), u32(address), 0, g.get_bp(), zero, type_i32,
+			c'memory')
 	} else if size <= 8 {
 		zero := g.literalint(0, ast.i64_type)
-		return wa.store(g.mod, u32(size), u32(address), 0, g.get_bp(), zero, type_i64, c'memory')
+		return wa.store(g.mod, u32(size), u32(address), 0, g.get_bp(), zero, type_i64,
+			c'memory')
 	}
-	return wa.memoryfill(g.mod, g.lea_address(address), g.literalint(0, ast.int_type), g.literalint(size, ast.int_type), c'memory')
+	return wa.memoryfill(g.mod, g.lea_address(address), g.literalint(0, ast.int_type),
+		g.literalint(size, ast.int_type), c'memory')
 }
 
 // `memcpy` from `ptr` to known local `address` in stack memory.
@@ -565,7 +576,9 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {
 					if init.fields.len == 0 && !(ts.info.fields.any(it.has_default_expr)) {
 						// Struct definition contains no default initialisers
 						// AND struct init contains no set values.
-						return g.mknblock('STRUCTINIT(ZERO)', [g.zero_fill(var.ast_typ, var.address)])
+						return g.mknblock('STRUCTINIT(ZERO)', [
+							g.zero_fill(var.ast_typ, var.address),
+						])
 					}
 
 					for i, f in ts.info.fields {
@@ -579,7 +592,10 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {
 								exprs << g.set_var_v(var, init_expr, ast_typ: f.typ, offset: offset)
 							} else {
 								if fts.info is ast.Struct {
-									exprs << g.init_struct(Stack{address: var.address + offset, ast_typ: f.typ}, ast.StructInit{})
+									exprs << g.init_struct(Stack{
+										address: var.address + offset
+										ast_typ: f.typ
+									}, ast.StructInit{})
 								} else {
 									exprs << g.zero_fill(f.typ, var.address + offset)
 								}

@@ -25,9 +25,12 @@ fn constant() int {
 	return 100
 }
 
-const hello = "hello\n"
+const hello = 'hello\n'
+
 const float = 1.0
+
 const integer = 888
+
 const runtime_init = constant()
 
 struct EE {
@@ -39,10 +42,16 @@ fn ptr_arith() {
 	mut a := EE{}
 	mut b := &a.b
 
-	unsafe { *b = 12 }
+	unsafe {
+		*b = 12
+	}
 	println(a.b.str())
-	unsafe { *b = 14 }
+	unsafe {
+		*b = 14
+	}
 	println(a.b.str())
-	unsafe { *b = 102 }
+	unsafe {
+		*b = 102
+	}
 	println((*b).str())
 }

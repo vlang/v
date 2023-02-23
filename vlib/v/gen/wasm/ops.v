@@ -62,7 +62,7 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wa.Type {
 			return g.get_wasm_type(ts.info.parent_type)
 		}
 		ast.ArrayFixed {
-			return type_i32
+			return wasm.type_i32
 		}
 		else {}
 	}

@@ -10,14 +10,15 @@ fn (mut g Gen) bake_constants_plus_initialisers() []GlobalData {
 
 	for _, global in g.globals {
 		match global.init {
-			/* ast.ArrayInit {
+			/*
+			ast.ArrayInit {
 				// TODO: call a seraliser recursively over all elements
 				
 				if !global.init.is_fixed {
 					g.w_error('wasm backend does not support non fixed arrays yet')
 				}
 				for global.init
-			} */
+			}*/
 			ast.BoolLiteral {
 				g.constant_data << ConstantData{
 					offset: global.abs_address
@@ -33,7 +34,9 @@ fn (mut g Gen) bake_constants_plus_initialisers() []GlobalData {
 					}
 					type_f64 {
 						bin.little_endian_put_u64(mut buf, bits.f64_bits(global.init.val.f64()))
-						unsafe { buf.len = 4 } 
+						unsafe {
+							buf.len = 4
+						}
 					}
 					else {}
 				}
@@ -73,11 +76,13 @@ fn (mut g Gen) bake_constants_plus_initialisers() []GlobalData {
 					}
 					type_i64 {
 						bin.little_endian_put_u64(mut buf, u64(global.init.val.i64()))
-						unsafe { buf.len = 4 } 
+						unsafe {
+							buf.len = 4
+						}
 					}
 					else {}
 				}
-				
+
 				g.constant_data << ConstantData{
 					offset: global.abs_address
 					data: buf
@@ -105,9 +110,9 @@ fn (mut g Gen) make_vinit() wa.Function {
 
 	for mod_name in g.table.modules {
 		if mod_name == 'v.reflection' {
-			g.w_error("the wasm backend does not implement `v.reflection` yet")
+			g.w_error('the wasm backend does not implement `v.reflection` yet')
 		}
-		
+
 		init_fn_name := if mod_name != 'builtin' { '${mod_name}.init' } else { 'init' }
 		if _ := g.table.find_fn(init_fn_name) {
 			body << wa.call(g.mod, init_fn_name.str, unsafe { nil }, 0, type_none)
@@ -125,31 +130,25 @@ fn (mut g Gen) housekeeping() {
 	// `_vinit` should be used to initialise the WASM module,
 	// then `main.main` can be called safely.
 	vinit := g.make_vinit()
-	
+
 	if g.needs_stack || g.constant_data.len != 0 {
 		data := g.constant_data.map(it.data.data)
 		data_len := g.constant_data.map(it.data.len)
 		data_offsets := g.constant_data.map(wa.constant(g.mod, wa.literalint32(it.offset)))
 		passive := []bool{len: g.constant_data.len, init: false}
 
-		wa.setmemory(g.mod, 1, 4, c'memory', 
-			data.data,
-			passive.data,
-			data_offsets.data,
-			data_len.data,
-			data.len,
-			false,
-			false,
-			c'memory')
+		wa.setmemory(g.mod, 1, 4, c'memory', data.data, passive.data, data_offsets.data,
+			data_len.data, data.len, false, false, c'memory')
 	}
 	if g.needs_stack {
 		// `g.constant_data_offset` rounded up to a multiple of 1024
 		offset := round_up_to_multiple(g.constant_data_offset, 1024)
-		
+
 		wa.addglobal(g.mod, c'__vsp', type_i32, true, g.literalint(offset, ast.int_type))
 	}
 	if g.pref.os == .wasi {
-		main_expr := g.mkblock([wa.call(g.mod, c'_vinit', unsafe { nil }, 0, type_none), wa.call(g.mod, c'main.main', unsafe { nil }, 0, type_none)])
+		main_expr := g.mkblock([wa.call(g.mod, c'_vinit', unsafe { nil }, 0, type_none),
+			wa.call(g.mod, c'main.main', unsafe { nil }, 0, type_none)])
 		wa.addfunction(g.mod, c'_start', type_none, type_none, unsafe { nil }, 0, main_expr)
 		wa.addfunctionexport(g.mod, c'_start', c'_start')
 	} else {

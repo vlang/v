@@ -3422,8 +3422,9 @@ fn (mut p Parser) module_decl() ast.Module {
 					p.is_translated = true
 				}
 				'wasm_import_namespace' {
-					if p.pref.backend != .wasm {
-						p.error_with_pos('[wasm_import_namespace] is allowed only in the wasm backend', ma.pos)
+					if !p.pref.is_fmt && p.pref.backend != .wasm {
+						p.error_with_pos('[wasm_import_namespace] is allowed only in the wasm backend',
+							ma.pos)
 					}
 				}
 				else {

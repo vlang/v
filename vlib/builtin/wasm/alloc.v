@@ -5,6 +5,7 @@ module builtin
 // TODO: implement pure V `walloc` later
 
 const wasm_page_size = 64 * 1024
+
 __global g_heap_base = isize(0)
 
 fn init() {
@@ -41,7 +42,7 @@ pub fn vcalloc(n isize) &u8 {
 	}
 
 	res := unsafe { malloc(n) }
-	
+
 	__memory_fill(res, 0, n)
 
 	return res

@@ -1,5 +1,5 @@
 // `pub` functions will be exported.
-// 
+//
 // ```
 // v -b wasm -no-builtin functions.v
 // wasmer functions.wasm -i main.powi <a> <b>

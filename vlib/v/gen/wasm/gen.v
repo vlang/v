@@ -11,17 +11,17 @@ import os
 
 [heap; minify]
 pub struct Gen {
-	out_name  string
-	pref      &pref.Preferences = unsafe { nil } // Preferences shared from V struct
-	files     []&ast.File
+	out_name string
+	pref     &pref.Preferences = unsafe { nil } // Preferences shared from V struct
+	files    []&ast.File
 mut:
-	file_path string // current ast.File path
-	file_path_idx int // current binaryen debug info index, see `BinaryenModuleAddDebugInfoFileName`
-	warnings  []errors.Warning
-	errors    []errors.Error
-	table     &ast.Table = unsafe { nil }
-	eval      eval.Eval
-	enum_vals map[string]Enum
+	file_path     string // current ast.File path
+	file_path_idx int    // current binaryen debug info index, see `BinaryenModuleAddDebugInfoFileName`
+	warnings      []errors.Warning
+	errors        []errors.Error
+	table         &ast.Table = unsafe { nil }
+	eval          eval.Eval
+	enum_vals     map[string]Enum
 	//
 	bp_idx            int                     // Base pointer temporary's index for function, if needed (-1 for none)
 	stack_frame       int                     // Size of the current stack frame, if needed
@@ -31,20 +31,20 @@ mut:
 	local_addresses   map[string]Stack        // Local stack structures relative to `bp_idx`
 	structs           map[ast.Type]StructInfo // Cached struct field offsets
 	//
-	lbl           int
-	for_labels    []string     // A stack of strings containing the names of blocks/loops to break/continue to
-	stack_patches []BlockPatch
-	needs_stack   bool // If true, will use `memory` and `__vsp`
-	constant_data []ConstantData
-	constant_data_offset int
+	lbl                     int
+	for_labels              []string // A stack of strings containing the names of blocks/loops to break/continue to
+	stack_patches           []BlockPatch
+	needs_stack             bool // If true, will use `memory` and `__vsp`
+	constant_data           []ConstantData
+	constant_data_offset    int
 	module_import_namespace string // `[wasm_import_namespace: 'wasi_snapshot_preview1']` else `env`
-	globals map[string]GlobalData
+	globals                 map[string]GlobalData
 }
 
 // Constants and globals
 struct GlobalData {
-	init ast.Expr
-	ast_typ ast.Type
+	init        ast.Expr
+	ast_typ     ast.Type
 	abs_address int // relative to `Gen.constant_data_offset`
 }
 
@@ -206,8 +206,8 @@ fn (mut g Gen) fn_external_import(node ast.FnDecl) {
 
 	// internal name: `JS.setpixel`
 	// external name: `setpixel`
-	wa.addfunctionimport(g.mod, node.name.str, g.module_import_namespace.str, node.short_name.str, wa.typecreate(paraml.data,
-		paraml.len), return_type)
+	wa.addfunctionimport(g.mod, node.name.str, g.module_import_namespace.str, node.short_name.str,
+		wa.typecreate(paraml.data, paraml.len), return_type)
 }
 
 fn (mut g Gen) bare_function_start() {
@@ -221,8 +221,9 @@ fn (mut g Gen) bare_function(name string, expr wa.Expression) wa.Function {
 		temporaries << g.local_temporaries[idx].typ
 	}
 
-	func := wa.addfunction(g.mod, name.str, type_none, type_none, temporaries.data, temporaries.len, expr)
-	
+	func := wa.addfunction(g.mod, name.str, type_none, type_none, temporaries.data, temporaries.len,
+		expr)
+
 	g.local_temporaries.clear()
 	g.local_addresses = map[string]Stack{}
 	assert g.for_labels.len == 0
@@ -311,13 +312,15 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	for idx := paraml.len; idx < g.local_temporaries.len; idx++ {
 		temporaries << g.local_temporaries[idx].typ
 	}
-	function := wa.addfunction(g.mod, name.str, params_type, return_type, temporaries.data, temporaries.len,
-		wasm_expr)
-	if node.is_pub && node.mod == 'main' /* && g.pref.os == .browser */ {
+	function := wa.addfunction(g.mod, name.str, params_type, return_type, temporaries.data,
+		temporaries.len, wasm_expr)
+	//&& g.pref.os == .browser
+	if node.is_pub && node.mod == 'main' {
 		wa.addfunctionexport(g.mod, name.str, name.str)
 	}
 	if g.pref.is_debug {
-		wa.functionsetdebuglocation(function, wasm_expr, g.file_path_idx, node.pos.line_nr, node.pos.col)
+		wa.functionsetdebuglocation(function, wasm_expr, g.file_path_idx, node.pos.line_nr,
+			node.pos.col)
 	}
 
 	if g.pref.printfn_list.len > 0 && node.name in g.pref.printfn_list {
@@ -458,7 +461,7 @@ fn (mut g Gen) mknblock(name string, nodes []wa.Expression) wa.Expression {
 	if nodes.len == 0 {
 		return wa.nop(g.mod)
 	}
-	
+
 	g.lbl++
 	return wa.block(g.mod, '${name}${g.lbl}'.str, nodes.data, nodes.len, type_auto)
 }
@@ -467,7 +470,7 @@ fn (mut g Gen) mkblock(nodes []wa.Expression) wa.Expression {
 	if nodes.len == 0 {
 		return wa.nop(g.mod)
 	}
-	
+
 	g.lbl++
 	return wa.block(g.mod, 'BLK${g.lbl}'.str, nodes.data, nodes.len, type_auto)
 }
@@ -497,7 +500,7 @@ fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) wa.Expression {
 	for idx, arg in node.args {
 		args << g.expr(arg.expr, node.expected_arg_types[idx])
 	}
-	
+
 	match name {
 		'__memory_grow' {
 			return wa.memorygrow(g.mod, args[0], c'memory', false)
@@ -508,7 +511,9 @@ fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) wa.Expression {
 		'__memory_copy' {
 			return wa.memorycopy(g.mod, args[0], args[1], args[2], c'memory', c'memory')
 		}
-		else { panic('unreachable') }
+		else {
+			panic('unreachable')
+		}
 	}
 }
 
@@ -525,7 +530,8 @@ fn (mut g Gen) assign_expr_to_var(address LocalOrPointer, right ast.Expr, expect
 				name := '${g.table.get_type_name(expected)}.${op}'
 
 				// args: [&return, &left, &right]
-				args := [g.get_or_lea_lop(address, expected), g.get_or_lea_lop(address, expected), g.expr(right, expected)]
+				args := [g.get_or_lea_lop(address, expected),
+					g.get_or_lea_lop(address, expected), g.expr(right, expected)]
 
 				wa.call(g.mod, name.str, args.data, args.len, type_none)
 			} else {
@@ -537,14 +543,20 @@ fn (mut g Gen) assign_expr_to_var(address LocalOrPointer, right ast.Expr, expect
 				offset, _ := g.allocate_string(right)
 				return g.set_var(address as Var, g.literalint(offset, ast.int_type))
 			}
-			
+
 			var := (address as Var) as Stack
-			
+
 			offset, len := g.allocate_string(right)
-			
+
 			g.mknblock('STRINGINIT', [
-				g.set_var_v(Stack{ address: var.address, ast_typ: ast.charptr_type }, g.literalint(offset, ast.u32_type), offset: 0),
-				g.set_var_v(Stack{ address: var.address, ast_typ: ast.int_type }, g.literalint(len, ast.int_type), offset: g.table.pointer_size)
+				g.set_var_v(Stack{ address: var.address, ast_typ: ast.charptr_type },
+					g.literalint(offset, ast.u32_type),
+					offset: 0
+				),
+				g.set_var_v(Stack{ address: var.address, ast_typ: ast.int_type }, g.literalint(len,
+					ast.int_type),
+					offset: g.table.pointer_size
+				),
 			])
 		}
 		ast.ArrayInit {
@@ -558,27 +570,32 @@ fn (mut g Gen) assign_expr_to_var(address LocalOrPointer, right ast.Expr, expect
 			elm_size, _ := g.get_type_size_align(elm_typ)
 			mut offset := 0
 			if !right.has_val {
-				return g.mknblock('ARRAYINIT(ZERO)', [g.zero_fill(right.typ, var.address)])
+				return g.mknblock('ARRAYINIT(ZERO)', [
+					g.zero_fill(right.typ, var.address),
+				])
 			}
 			// [10, 15]!
 			for e in right.exprs {
-				exprs << g.assign_expr_to_var(Var(Stack{address: var.address + offset, ast_typ: elm_typ}), e, elm_typ)
+				exprs << g.assign_expr_to_var(Var(Stack{
+					address: var.address + offset
+					ast_typ: elm_typ
+				}), e, elm_typ)
 				offset += elm_size
 			}
-			
+
 			g.mknblock('ARRAYINIT', exprs)
 		}
 		else {
 			initexpr := g.expr(right, expected)
-			
+
 			expr := if cfg.op !in [.decl_assign, .assign] {
 				if g.is_pure_type(expected) {
 					val := g.get_or_lea_lop(address, expected)
 					op := g.infix_from_typ(expected, token.assign_op_to_infix_op(cfg.op))
-					
+
 					wa.binary(g.mod, op, val, initexpr)
 				} else {
-					g.w_error("arith unimplemented or unreachable for struct")
+					g.w_error('arith unimplemented or unreachable for struct')
 				}
 			} else {
 				initexpr
@@ -595,7 +612,8 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) wa.Expression {
 		}
 		ast.ArrayInit {
 			pos := g.allocate_local_var('_anonarray', node.typ)
-			expr := g.assign_expr_to_var(Var(Stack{ address: pos, ast_typ: node.typ }), node, node.typ)
+			expr := g.assign_expr_to_var(Var(Stack{ address: pos, ast_typ: node.typ }),
+				node, node.typ)
 			g.mknblock('EXPR(ARRAYINIT)', [expr, g.lea_address(pos)])
 		}
 		ast.GoExpr {
@@ -603,9 +621,10 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) wa.Expression {
 		}
 		ast.IndexExpr {
 			// TODO: IMPLICIT BOUNDS CHECKING
-			/* if !node.is_direct {
+			/*
+			if !node.is_direct {
 				g.w_error('implicit bounds checks are not implemented, create one manually')
-			} */
+			}*/
 
 			mut ptr := g.expr(node.left, ast.voidptr_type)
 			if node.left_type == ast.string_type {
@@ -614,18 +633,21 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) wa.Expression {
 
 			size, _ := g.get_type_size_align(expected)
 			index := g.expr(node.index, ast.int_type)
-			
+
 			// ptr + index * size
-			new_ptr := wa.binary(g.mod, wa.addint32(), ptr, wa.binary(g.mod, wa.mulint32(), index, g.literalint(size, ast.int_type)))
+			new_ptr := wa.binary(g.mod, wa.addint32(), ptr, wa.binary(g.mod, wa.mulint32(),
+				index, g.literalint(size, ast.int_type)))
 
 			g.deref(new_ptr, expected)
 		}
 		ast.SelectorExpr {
-			g.cast_t(g.get_or_lea_lop(g.get_var_from_expr(node), node.typ), node.typ, expected)
+			g.cast_t(g.get_or_lea_lop(g.get_var_from_expr(node), node.typ), node.typ,
+				expected)
 		}
 		ast.StructInit {
 			pos := g.allocate_local_var('_anonstruct', node.typ)
-			expr := g.assign_expr_to_var(Var(Stack{ address: pos, ast_typ: node.typ }), node, node.typ)
+			expr := g.assign_expr_to_var(Var(Stack{ address: pos, ast_typ: node.typ }),
+				node, node.typ)
 			g.mknblock('EXPR(STRUCTINIT)', [expr, g.lea_address(pos)])
 		}
 		ast.MatchExpr {
@@ -657,10 +679,11 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) wa.Expression {
 				offset, _ := g.allocate_string(node)
 				return g.literalint(offset, ast.int_type)
 			}
-			
+
 			pos := g.allocate_local_var('_anonstring', ast.string_type)
 
-			expr := g.assign_expr_to_var(Var(Stack{address: pos, ast_typ: ast.string_type}), node, ast.string_type)
+			expr := g.assign_expr_to_var(Var(Stack{ address: pos, ast_typ: ast.string_type }),
+				node, ast.string_type)
 			g.mknblock('EXPR(STRINGINIT)', [expr, g.lea_address(pos)])
 		}
 		ast.InfixExpr {
@@ -697,10 +720,11 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) wa.Expression {
 			expr := g.expr(node.expr, node.expr_type)
 
 			if node.typ == ast.bool_type {
-				panic("unreachable")
+				panic('unreachable')
 			}
 
-			/* if node.typ == ast.bool_type {
+			/*
+			if node.typ == ast.bool_type {
 				// WebAssembly booleans use the `i32` type
 				//   = 0 | is false
 				//   > 0 | is true
@@ -711,7 +735,8 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) wa.Expression {
 					type_i32)
 				wa.bselect(g.mod, bexpr, wa.constant(g.mod, wa.literalint32(1)), wa.constant(g.mod,
 					wa.literalint32(0)), type_i32)
-			} else */
+			} else
+			*/
 			g.cast(expr, g.get_wasm_type(node.expr_type), g.is_signed(node.expr_type),
 				g.get_wasm_type(node.typ))
 		}
@@ -720,12 +745,13 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) wa.Expression {
 			mut arguments := []wa.Expression{cap: node.args.len + 1}
 
 			if name in ['panic', 'println', 'print', 'eprintln', 'eprint'] {
-				/* arg := node.args[0]
+				/*
+				arg := node.args[0]
 				if arg.expr !is ast.StringLiteral {
 					g.v_error('builtin function `${name}` must be called with a string literal',
 						arg.pos)
-				} */
-			} else if name in wasm_builtins {
+				}*/
+			} else if name in wasm.wasm_builtins {
 				return g.wasm_builtin(node.name, node)
 			}
 
@@ -810,9 +836,7 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) wa.Expression {
 
 fn (mut g Gen) expr(node ast.Expr, expected ast.Type) wa.Expression {
 	expr := g.expr_impl(node, expected)
-	
-	
-	
+
 	return expr
 }
 
@@ -1144,7 +1168,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 	wa.modulesetfeatures(g.mod, wa.featureall())
 
 	if g.pref.os == .browser {
-		eprintln("`-os browser` is experimental and will not live up to expectations...")
+		eprintln('`-os browser` is experimental and will not live up to expectations...')
 	}
 
 	g.calculate_enum_fields()
