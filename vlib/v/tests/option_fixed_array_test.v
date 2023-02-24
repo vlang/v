@@ -3,21 +3,44 @@ fn f_test(args ?[2]int) ? {
 	assert args?.len == 2
 }
 
+fn f_arr(args ?[3]f64) ?[]f64 {
+	mut ret := ?[]f64(none)
+	ret = [-6.0]
+	ret?.pop()
+	ret? << args?[0]
+	ret? << args?[1]
+	ret? << args?[2]
+	return ret
+}
+
 fn test_simple() {
-	mut maybe_fixed1 := ?[3]int(none)
-	println(maybe_fixed1) // Option(error: none)
+	mut arr := ?[3]int(none)
+	println(arr) // Option(error: none)
 }
 
 fn test_simple_assign() {
-	mut maybe_fixed1 := ?[3]int(none)
-	assert maybe_fixed1 == none
+	mut arr := ?[3]int(none)
+	assert arr == none
 
-	maybe_fixed1 = [1, 2, 3]!
-	assert maybe_fixed1 != none
+	arr = [1, 2, 3]!
+	assert arr != none
 
-	println(maybe_fixed1) // Option([1, 2, 3])
+	println(arr) // Option([1, 2, 3])
 }
 
 fn test_array_fixed_param() {
 	f_test([1, 2]!)
+}
+
+fn test_assign() {
+	mut a := ?[2]string(none)
+	assert a == none
+	a = ['a', 'b']!
+	assert a != none
+	a = none
+	assert a == none
+}
+
+fn test_fn_call() {
+	assert f_arr([0.0, 1.2, 2.3]!)?.len == 3
 }
