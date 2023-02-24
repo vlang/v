@@ -7,6 +7,7 @@ module pathlib
 
 import net.urllib
 import os
+import regex
 
 // Path represents a filesystem path. It does not have to be an existing path
 // on the current system. Path provides many methods for performing different
@@ -16,38 +17,26 @@ import os
 pub struct Path {
 	parts []string [required]
 pub: // parts are the names of the folders, between the separators.
-	name   string [required] // name is the last part of the path.
-	root   string [required] // root is the first bit of the path, if absolute.
-	stem   string [required] // stem (name without suffix) of the filename.
-	suffix string [required] // suffix ('file extension') of the filename, including the `.`.
-	sep    string [required] // sep is the system separator used in e.g. `Path.str()`.
+	drive  string // drive letter, including the `:`.
+	name   string // name is the last part of the path.
+	root   string // root is the first bit of the path, if absolute.
+	sep    string = os.path_separator // sep is the system separator used in e.g. `Path.str()`.
+	stem   string // stem (name without suffix) of the filename.
+	suffix string // suffix ('file extension') of the filename, including the `.`.
 }
 
 // CONSTRUCTORS
 
 // path_from_parts constructs a new path instance, but from a list of folders
-// pointing to the file.
+// pointing to the file. It works naive, i.e. all parts are assumed to be
+// normal path segments (so not containing one or more path separators).
 //
 // Example:
 // ```v
 // assert path_from_parts(['a', 'b', 'c']) == path('a/b/c')
 // ```
 fn path_from_parts(parts []string) Path {
-	sep := os.path_separator
-	// parts[0] == '' means the path string started with a '/'
-	root := if parts[0] == '' { sep } else { '' }
-	filename := parts.last()
-	suffix := os.file_ext(filename)
-	stem := filename.trim_string_right(suffix)
-
-	return Path{
-		parts: parts
-		name: filename
-		root: root
-		stem: stem
-		suffix: suffix
-		sep: sep
-	}
+	panic(10)
 }
 
 // path constructs a new path instance given a string representation of a path.
@@ -56,26 +45,74 @@ fn path_from_parts(parts []string) Path {
 // assert path('.').absolute().str() == os.getwd()
 // ```
 pub fn path(path_string string) Path {
-	if path_string.len == 0 {
-		return path('.')
+	if path_string.len == 0 || path_string == "." || path_string == "./" {
+		return Path{
+			parts: ['.']
+		}
 	}
 
-	if path_string == os.path_separator {
-		return path_from_parts([''])
+	mut rest_path := path_string
+	mut parts := []string{}
+	mut drive := ''
+	mut name := ''
+	mut root := ''
+	sep := os.path_separator
+	mut stem := ''
+	mut suffix := ''
+
+	// work with right path separators from now on
+	if os.path_separator == '/' {
+		rest_path = rest_path.replace('\\', '/')
+	} else {
+		// fwd slashes don't always work on windows, so better to be safe
+		rest_path = rest_path.replace('/', '\\')
 	}
 
-	mut clean_path := path_string
-
-	// only trim right sep if it's not just '/'
-	if path_string.len != 1 {
-		clean_path = clean_path.trim_string_right(os.path_separator)
+	// strip drive from path
+	drive_re, _, _ := regex.regex_base(r"^[\a\A]:")
+	if drive_re.matches_string(path_string) {
+		// drive is two characters long
+		drive = rest_path[..2]
+		rest_path = rest_path[2..]
 	}
 
-	// TODO: reduce repeating separators (/) to one
+	// two slashes as root is allowed, see
+	// https://pubs.opengroup.org/onlinepubs/009695399/basedefs/xbd_chap04.html#tag_04_11
+	mut two_slash_root_re, _, _ := regex.regex_base(r"^([\/])+")
+	_, slash_count := two_slash_root_re.match_string(rest_path)
+	if slash_count == 2 {
+		root = rest_path[..2]
+		rest_path = rest_path[2..]
+	}
 
-	splitted := clean_path.split(os.path_separator)
-	return path_from_parts(splitted)
+	// strip `/./` parts
+	rest_path = rest_path.replace("/.", "")
+
+	// reduce repeating separators to one
+	mut sep_re, _, _ := regex.regex_base(r"([\\/])+")
+	rest_path = sep_re.replace(rest_path, r"\0")
+
+	// if path is absolute and root is not set yet
+	path_starts_with_slash := rest_path.len > 0 && rest_path[0] in [`/`, `\\`]
+	if path_starts_with_slash && root == '' {
+		// [0..1]: want string instead of rune
+		root = rest_path[0..1]
+		rest_path = rest_path[1..]
+	}
+
+	// extract filename if any
+	parts = rest_path.split_any(r'\/')
+	if parts.len > 0 {
+		name = parts.last()
+		suffix = os.file_ext(name)
+		stem = name.trim_string_right(suffix)
+	}
+
+	return Path{parts, drive, name, root, sep, stem, suffix}
 }
+
+// pub fn path_from_segments(...segments) Path {
+// }
 
 // cwd constructs a path instance representing the current working directory.
 // See also: `os.getwd`.
@@ -96,6 +133,7 @@ pub fn home() Path {
 // assert path('a/b') / path('c') == path('a/b/c')
 // ```
 pub fn (p1 Path) / (p2 Path) !Path {
+	// TODO: make more intelligent
 	return p1.join(p2)!
 }
 
@@ -119,10 +157,10 @@ pub fn (p Path) absolute() Path {
 // ```
 pub fn (p Path) as_posix() string {
 	// posix uses '/' as separator
-	return p.parts.join('/')
+	return '${p.drive}${p.root}${p.parts.join("/")}'
 }
 
-// as_uri converts the path to a `file://` uri, possibly escaping the path where needed.
+// as_uri converts the path to a `file://` URI, possibly escaping the path where needed.
 //
 // Example:
 // ```v
@@ -131,17 +169,18 @@ pub fn (p Path) as_posix() string {
 pub fn (p Path) as_uri() string {
 	absolute_path := p.absolute()
 
+	// first URL-escape the parts, because otherwise the separators are escaped
 	escaped_parts := absolute_path.parts.map(urllib.path_escape(it))
-	escaped_path := path_from_parts(escaped_parts)
+	escaped_path := p.with_parts(escaped_parts)
 
-	posix_path := escaped_path.as_posix()
+	mut posix_path := escaped_path.as_posix()
 
-	mut windows_add_sep := ''
+	// for windows paths starting with the drive name
 	if !posix_path.starts_with('/') {
-		windows_add_sep = '/'
+		posix_path = '/' + posix_path
 	}
 
-	return 'file://${windows_add_sep}${posix_path}'
+	return 'file://${posix_path}'
 }
 
 // chmod modifies the permissions if the path is a file.
@@ -192,9 +231,8 @@ pub fn (p Path) inode() os.FileMode {
 }
 
 // is_absolute returns if the path is an absolute path.
-// See also: `os.is_abs_path`.
 pub fn (p Path) is_absolute() bool {
-	return os.is_abs_path(p.str())
+	return p.root != ''
 }
 
 // is_block_device returns if path is a block device file.
@@ -247,6 +285,11 @@ pub fn (p Path) is_relative_to(other Path) bool {
 		return false
 	}
 
+	// drive and root also have to be the same
+	if p.root != other.root || p.drive != other.drive {
+		return false
+	}
+
 	return p.parts[..window.len] == window
 }
 
@@ -276,7 +319,8 @@ pub fn (p Path) is_regular() bool {
 // hidden files but excluding `.` and `..`.
 // See also: `os.ls`.
 pub fn (p Path) iterdir() ![]Path {
-	files := os.ls(p.str()) or {
+	path_str := p.str()
+	files := os.ls(path_str) or {
 		return IError(PathError{
 			path: p
 			msg: '${p} is not an existing directory'
@@ -284,7 +328,7 @@ pub fn (p Path) iterdir() ![]Path {
 		})
 	}
 	// convert string filenames to paths
-	return files.map(path(it))
+	return files.map(path('${path_str}/${it}'))
 }
 
 // join two paths together. raises an error if the other path is absolute.
@@ -310,10 +354,9 @@ pub fn (p Path) link(target Path) ! {
 
 // mkdir creates the directory path points to.
 // See also: `os.mkdir`.
-pub fn (p Path) mkdir(params os.MkdirParams) !Path {
+pub fn (p Path) mkdir(params os.MkdirParams) ! {
 	// TODO: include mkdir_all?
 	os.mkdir(p.str(), params)!
-	return p
 }
 
 // open the path if it's a file.
@@ -336,7 +379,7 @@ pub fn (p Path) open(mode string, options ...int) !os.File {
 // ```
 pub fn (p Path) parent() Path {
 	// parent of root ('/') and current ('.') are itself
-	if p.name == '' || p.name == '.' {
+	if (p.parts.len == 0 && p.root != '') || p.name == '.' {
 		return p
 	}
 
@@ -346,7 +389,7 @@ pub fn (p Path) parent() Path {
 
 	parts := p.parts#[..-1]
 
-	return path_from_parts(parts)
+	return p.with_parts(parts)
 }
 
 // parents returns a list of the parents.
@@ -357,14 +400,19 @@ pub fn (p Path) parent() Path {
 // ```
 pub fn (p Path) parents() []Path {
 	if p.parts.len == 1 {
-		return []
+		return [path('.')]
 	}
 
 	parent_parts := p.parts#[..-1]
 	mut parents := []Path{}
 
 	for i, _ in parent_parts {
-		parents << path_from_parts(parent_parts[..i + 1])
+		parents << p.with_parts(parent_parts[..i + 1])
+	}
+
+	// TODO: drive+root is one part
+	if p.is_absolute() {
+		parents << p.with_parts([])
 	}
 
 	return parents.reverse()
@@ -423,10 +471,10 @@ pub fn (p Path) rmdir() ! {
 
 // str converts the path to a string representation.
 pub fn (p Path) str() string {
-	if p.parts.len == 1 && p.parts[0] == '' {
-		return '/'
-	}
-	return p.parts.join(p.sep)
+	// if p.parts.len == 1 && p.parts[0] == '' {
+	// 	return '/'
+	// }
+	return p.drive + p.root + p.parts.join(p.sep)
 }
 
 // symlink path to the target.
@@ -479,6 +527,27 @@ pub fn (p Path) with_name(name string) !Path {
 	parts[parts.len - 1] = name
 
 	return path_from_parts(parts)
+}
+
+// with_parts returns the path where parts of it may be modified. Useful inside
+// the `pathlib` module.
+//
+// Example:
+// ```v
+// p := path('a/b/c d.txt')
+// escaped := p.parts.map(urllib.path_escape(it))
+// assert p.with_parts(escaped).parts == ['a', 'b', 'c%20d.txt']
+// ```
+fn (p Path) with_parts(parts []string) Path {
+	return Path{
+		parts: parts
+		drive: p.drive
+		name: p.name
+		root: p.root
+		sep: p.sep
+		stem: p.stem
+		suffix: p.suffix
+	}
 }
 
 // with_stem replaces the filename of the last element of path (the name without file
