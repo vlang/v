@@ -4344,7 +4344,12 @@ fn (mut g Gen) gen_result_error(target_type ast.Type, expr ast.Expr) {
 fn (mut g Gen) gen_option_error(target_type ast.Type, expr ast.Expr) {
 	styp := g.typ(g.unwrap_generic(target_type))
 	g.write('(${styp}){ .state=2, .err=')
-	g.expr(expr)
+	if target_type.has_flag(.option) && expr is ast.Ident
+		&& (expr as ast.Ident).or_expr.kind == .propagate_option {
+		g.expr(ast.None{}) // option type unwrapping error
+	} else {
+		g.expr(expr)
+	}
 	g.write(', .data={EMPTY_STRUCT_INITIALIZATION} }')
 }
 
