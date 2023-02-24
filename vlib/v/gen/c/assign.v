@@ -346,37 +346,43 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		} else if node.op == .assign && !g.pref.translated
 			&& (is_fixed_array_init || (right_sym.kind == .array_fixed && val is ast.Ident)) {
 			// Fixed arrays
-			mut v_var := ''
-			arr_typ := styp.trim('*')
-			if is_fixed_array_init {
-				right := val as ast.ArrayInit
-				v_var = g.new_tmp_var()
-				g.write('${arr_typ} ${v_var} = ')
-				g.expr(right)
-				g.writeln(';')
-			} else {
-				right := val as ast.Ident
-				v_var = right.name
-			}
-			pos := g.out.len
-			g.expr(left)
-
-			if g.is_arraymap_set && g.arraymap_set_pos > 0 {
-				g.go_back_to(g.arraymap_set_pos)
-				g.write(', &${v_var})')
-				g.is_arraymap_set = false
-				g.arraymap_set_pos = 0
-			} else {
-				g.go_back_to(pos)
-				is_var_mut := !is_decl && left.is_auto_deref_var()
-				addr_left := if is_var_mut { '' } else { '&' }
-				g.writeln('')
-				g.write('memcpy(${addr_left}')
+			if is_fixed_array_init && var_type.has_flag(.option) {
 				g.expr(left)
-				addr_val := if is_fixed_array_var { '' } else { '&' }
-				g.writeln(', ${addr_val}${v_var}, sizeof(${arr_typ}));')
+				g.write(' = ')
+				g.expr_with_opt(val, val_type, var_type)
+			} else {
+				mut v_var := ''
+				arr_typ := styp.trim('*')
+				if is_fixed_array_init {
+					right := val as ast.ArrayInit
+					v_var = g.new_tmp_var()
+					g.write('${arr_typ} ${v_var} = ')
+					g.expr(right)
+					g.writeln(';')
+				} else {
+					right := val as ast.Ident
+					v_var = right.name
+				}
+				pos := g.out.len
+				g.expr(left)
+
+				if g.is_arraymap_set && g.arraymap_set_pos > 0 {
+					g.go_back_to(g.arraymap_set_pos)
+					g.write(', &${v_var})')
+					g.is_arraymap_set = false
+					g.arraymap_set_pos = 0
+				} else {
+					g.go_back_to(pos)
+					is_var_mut := !is_decl && left.is_auto_deref_var()
+					addr_left := if is_var_mut { '' } else { '&' }
+					g.writeln('')
+					g.write('memcpy(${addr_left}')
+					g.expr(left)
+					addr_val := if is_fixed_array_var { '' } else { '&' }
+					g.writeln(', ${addr_val}${v_var}, sizeof(${arr_typ}));')
+				}
+				g.is_assign_lhs = false
 			}
-			g.is_assign_lhs = false
 		} else {
 			is_inside_ternary := g.inside_ternary != 0
 			cur_line := if is_inside_ternary && is_decl {
@@ -565,11 +571,17 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					} else {
 						'(byte*)&'
 					}
-					g.write('memcpy(${final_typ_str}')
-					g.expr(left)
-					g.write(', ${final_ref_str}')
-					g.expr(val)
-					g.write(', sizeof(${typ_str}))')
+					if val_type.has_flag(.option) {
+						g.expr(left)
+						g.write(' = ')
+						g.expr(val)
+					} else {
+						g.write('memcpy(${final_typ_str}')
+						g.expr(left)
+						g.write(', ${final_ref_str}')
+						g.expr(val)
+						g.write(', sizeof(${typ_str}))')
+					}
 				} else if is_decl {
 					g.is_shared = var_type.has_flag(.shared_f)
 					if is_fixed_array_init && !has_val {
