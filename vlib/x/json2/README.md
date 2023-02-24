@@ -15,7 +15,7 @@ mut:
 	name     string
 	age      ?int = 20
 	birthday time.Time
-	deathday ?time.Time = none
+	deathday ?time.Time
 }
 
 fn main() {
@@ -39,11 +39,11 @@ mut:
 	name     string
 	age      ?int = 20
 	birthday time.Time
-	deathday ?time.Time = none
+	deathday ?time.Time
 }
 
 fn main() {
-	resp := '{"name": "Bob", "age": 20, "birthday": ${time.now()}}'
+	resp := '{"name": "Bob", "age": 20, "birthday": "${time.now()}"}'
 	person := json2.decode[Person](resp)!
 	/*
 	struct Person {
