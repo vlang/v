@@ -2,7 +2,8 @@ module builtin
 
 // WASM memory builtins
 //
-// similar to `sbrk`
+// Similar to `sbrk`, grow by pages.
+// The size of a WebAssembly page is 64KiBs.
 fn __memory_grow(size isize) isize
 
 // `memset`

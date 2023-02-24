@@ -9,3 +9,10 @@ fn str_methods() {
 	println(i64(-192322).str())
 	println(false.str())
 }
+
+fn str_implicit() {
+	println(false)
+	println(true)
+	a := 100
+	println(a + 10)
+}

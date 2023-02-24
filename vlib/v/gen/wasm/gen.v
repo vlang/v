@@ -727,7 +727,7 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) wa.Expression {
 			if node.typ == ast.bool_type {
 				// WebAssembly booleans use the `i32` type
 				//   = 0 | is false
-				//   > 0 | is true
+				//   > 0 | is truestyp_to_str_fn_name
 				//
 				// It's a checker error to cast to bool anyway...
 
@@ -744,14 +744,10 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) wa.Expression {
 			mut name := node.name
 			mut arguments := []wa.Expression{cap: node.args.len + 1}
 
-			if name in ['panic', 'println', 'print', 'eprintln', 'eprint'] {
-				/*
-				arg := node.args[0]
-				if arg.expr !is ast.StringLiteral {
-					g.v_error('builtin function `${name}` must be called with a string literal',
-						arg.pos)
-				}*/
-			} else if name in wasm.wasm_builtins {
+			fret := g.function_return_wasm_type(node.return_type)
+			is_print := name in ['panic', 'println', 'print', 'eprintln', 'eprint']
+
+			if name in wasm.wasm_builtins {
 				return g.wasm_builtin(node.name, node)
 			}
 
@@ -781,10 +777,27 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) wa.Expression {
 				arguments << g.expr(expr, node.receiver_type)
 			}
 			for idx, arg in node.args {
-				arguments << g.expr(arg.expr, node.expected_arg_types[idx])
+				mut expr := arg.expr
+				typ := arg.typ
+				
+				if is_print && typ != ast.string_type {
+					has_str, _, _ := g.table.sym(typ).str_method_info()
+					if typ != ast.string_type && !has_str {
+						g.v_error('cannot implicitly convert as argument does not have a .str() function', arg.pos)
+					}
+
+					expr = ast.CallExpr{
+						name: 'str'
+						left: expr
+						left_type: typ
+						receiver_type: typ
+						return_type: ast.string_type
+						is_method: true
+					}
+				}
+				arguments << g.expr(expr, node.expected_arg_types[idx])
 			}
 
-			fret := g.function_return_wasm_type(node.return_type)
 			mut call := wa.call(g.mod, name.str, arguments.data, arguments.len, fret)
 			if structs.len != 0 {
 				mut temporary := 0
@@ -1204,7 +1217,6 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 			os.write_file(out_name, str) or { panic(err) }
 		}
 	} else {
-		wa.moduleprint(g.mod)
 		wa.moduledispose(g.mod)
 		g.w_error('validation failed, this should not happen. report an issue with the above messages')
 	}
