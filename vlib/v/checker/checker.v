@@ -3783,6 +3783,10 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	}
 	right_sym := c.table.final_sym(c.unwrap_generic(right_type))
 	if node.op == .mul {
+		if right_type.has_flag(.option) {
+			c.error('type `?${right_sym.name}` is an Option, it must be unwrapped first; use `*var?` to do it',
+				node.right.pos())
+		}
 		if right_type.is_ptr() {
 			return right_type.deref()
 		}
