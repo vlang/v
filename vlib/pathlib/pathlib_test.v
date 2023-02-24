@@ -14,12 +14,12 @@ fn test_constructors() {
 	assert path('/a/b/c.txt').str() == conv_seps('/a/b/c.txt')
 
 	// should skip single dot in path
-	assert path("/a/./c.txt").str() == "/a/c.txt"
-	assert path("/a/.").str() == "/a"
+	assert path('/a/./c.txt').str() == '/a/c.txt'
+	assert path('/a/.').str() == '/a'
 
 	// skip trailing separator
-	assert path("./").str() == "."
-	assert path("a/b/c/").str() == "a/b/c"
+	assert path('./').str() == '.'
+	assert path('a/b/c/').str() == 'a/b/c'
 
 	// root testing
 	assert path('/a/b/c.txt').root == conv_seps('/')

@@ -45,7 +45,7 @@ fn path_from_parts(parts []string) Path {
 // assert path('.').absolute().str() == os.getwd()
 // ```
 pub fn path(path_string string) Path {
-	if path_string.len == 0 || path_string == "." || path_string == "./" {
+	if path_string.len == 0 || path_string == '.' || path_string == './' {
 		return Path{
 			parts: ['.']
 		}
@@ -69,7 +69,7 @@ pub fn path(path_string string) Path {
 	}
 
 	// strip drive from path
-	drive_re, _, _ := regex.regex_base(r"^[\a\A]:")
+	drive_re, _, _ := regex.regex_base(r'^[\a\A]:')
 	if drive_re.matches_string(path_string) {
 		// drive is two characters long
 		drive = rest_path[..2]
@@ -78,7 +78,7 @@ pub fn path(path_string string) Path {
 
 	// two slashes as root is allowed, see
 	// https://pubs.opengroup.org/onlinepubs/009695399/basedefs/xbd_chap04.html#tag_04_11
-	mut two_slash_root_re, _, _ := regex.regex_base(r"^([\/])+")
+	mut two_slash_root_re, _, _ := regex.regex_base(r'^([\/])+')
 	_, slash_count := two_slash_root_re.match_string(rest_path)
 	if slash_count == 2 {
 		root = rest_path[..2]
@@ -86,11 +86,11 @@ pub fn path(path_string string) Path {
 	}
 
 	// strip `/./` parts
-	rest_path = rest_path.replace("/.", "")
+	rest_path = rest_path.replace('/.', '')
 
 	// reduce repeating separators to one
-	mut sep_re, _, _ := regex.regex_base(r"([\\/])+")
-	rest_path = sep_re.replace(rest_path, r"\0")
+	mut sep_re, _, _ := regex.regex_base(r'([\\/])+')
+	rest_path = sep_re.replace(rest_path, r'\0')
 
 	// if path is absolute and root is not set yet
 	path_starts_with_slash := rest_path.len > 0 && rest_path[0] in [`/`, `\\`]
@@ -157,7 +157,7 @@ pub fn (p Path) absolute() Path {
 // ```
 pub fn (p Path) as_posix() string {
 	// posix uses '/' as separator
-	return '${p.drive}${p.root}${p.parts.join("/")}'
+	return '${p.drive}${p.root}${p.parts.join('/')}'
 }
 
 // as_uri converts the path to a `file://` URI, possibly escaping the path where needed.
