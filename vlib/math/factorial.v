@@ -2,7 +2,7 @@ module math
 
 // factorial calculates the factorial of the provided value.
 pub fn factorial(n f64) f64 {
-	// For a large postive argument (n >= factorials_table.len) return max_f64
+	// For a large positive argument (n >= factorials_table.len) return max_f64
 	if n >= factorials_table.len {
 		return max_f64
 	}
@@ -15,7 +15,7 @@ pub fn factorial(n f64) f64 {
 
 // log_factorial calculates the log-factorial of the provided value.
 pub fn log_factorial(n f64) f64 {
-	// For a large postive argument (n < 0) return max_f64
+	// For a large positive argument (n < 0) return max_f64
 	if n < 0 {
 		return -max_f64
 	}

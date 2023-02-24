@@ -7,11 +7,10 @@
 Step 1: Compile the v code to a shared library using `v -cc gcc -shared v_test_print.v` or
 `v -cc gcc -shared v_test_math.v`.
 
-Step 2: Compile the c file using `gcc test_print.c v_test_print.so -o test_print` or
-`gcc test_math.c v_test_math.so -o test_math`.
+Step 2: Compile the c file using `gcc test_print.c v_test_print.so -o test_print -Wl,-rpath=.` or
+`gcc test_math.c v_test_math.so -o test_math -Wl,-rpath=.`.
 
-Step 3: Run the compiled c file using `LD_LIBRARY_PATH=. ./test_print` or
-`LD_LIBRARY_PATH=. ./test_math`.
+Step 3: Run the compiled c file using `./test_print` or `./test_math`.
 
 
 #### On Mac OSX:

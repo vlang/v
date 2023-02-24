@@ -822,13 +822,14 @@ pub:
 	mut_pos  token.Pos
 	comptime bool
 pub mut:
-	scope  &Scope = unsafe { nil }
-	obj    ScopeObject
-	mod    string
-	name   string
-	kind   IdentKind
-	info   IdentInfo
-	is_mut bool // if mut *token* is before name. Use `is_mut()` to lookup mut variable
+	scope   &Scope = unsafe { nil }
+	obj     ScopeObject
+	mod     string
+	name    string
+	kind    IdentKind
+	info    IdentInfo
+	is_mut  bool // if mut *token* is before name. Use `is_mut()` to lookup mut variable
+	or_expr OrExpr
 }
 
 pub fn (i &Ident) is_mut() bool {
@@ -1534,14 +1535,15 @@ pub const (
 	}
 )
 
+// `assert a == 0, 'a is zero'`
 [minify]
 pub struct AssertStmt {
 pub:
 	pos       token.Pos
 	extra_pos token.Pos
 pub mut:
-	expr    Expr
-	extra   Expr
+	expr    Expr // `a == 0`
+	extra   Expr // `'a is zero'`
 	is_used bool // asserts are used in _test.v files, as well as in non -prod builds of all files
 }
 
@@ -1557,8 +1559,8 @@ pub struct IfGuardExpr {
 pub:
 	vars []IfGuardVar
 pub mut:
-	expr      Expr
-	expr_type Type
+	expr      Expr // `opt()`
+	expr_type Type // type of `opt()`
 }
 
 pub enum OrKind {
@@ -1751,6 +1753,10 @@ pub:
 	pos          token.Pos
 	where_expr   Expr
 	update_exprs []Expr // for `update`
+	// is_top_level indicates that a statement is parsed from code
+	// and is not inserted by ORM for inserting in related tables.
+	is_top_level bool
+	scope        &Scope = unsafe { nil }
 pub mut:
 	object_var_name string   // `user`
 	updated_columns []string // for `update set x=y`

@@ -12,6 +12,10 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	if node.typ != ast.void_type {
 		if node.elem_type != 0 {
 			elem_sym := c.table.sym(node.elem_type)
+
+			if node.typ.has_flag(.option) && (node.has_cap || node.has_len) {
+				c.error('Option array `${elem_sym.name}` cannot have initializers', node.pos)
+			}
 			if elem_sym.kind == .struct_ {
 				elem_info := elem_sym.info as ast.Struct
 				if elem_info.generic_types.len > 0 && elem_info.concrete_types.len == 0

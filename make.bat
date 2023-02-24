@@ -337,14 +337,14 @@ exit /b 0
 echo Bootstrapping TCC...
 echo  ^> TCC not found
 if "!tcc_branch!" == "thirdparty-windows-i386" ( echo  ^> Downloading TCC32 from !tcc_url! , branch !tcc_branch! ) else ( echo  ^> Downloading TCC64 from !tcc_url! , branch !tcc_branch! )
-git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%"
+git clone --filter=blob:none --quiet --branch !tcc_branch! !tcc_url! "%tcc_dir%"
 git --no-pager -C "%tcc_dir%" log -n3
 exit /b 0
 
 :cloning_vc
 echo Cloning vc...
 echo  ^> Cloning from remote !vc_url!
-git clone --depth 1 --quiet "%vc_url%"
+git clone --filter=blob:none --quiet "%vc_url%"
 exit /b 0
 
 :eof

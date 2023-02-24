@@ -31,7 +31,13 @@ pub fn decode[T](src string) !T {
 			}
 		}
 
-		$if field.typ is u8 {
+		$if field.is_enum {
+			typ.$(field.name) = if key := res[field.name] {
+				key.int()
+			} else {
+				res[json_name]!.int()
+			}
+		} $else $if field.typ is u8 {
 			typ.$(field.name) = res[json_name]!.u64()
 		} $else $if field.typ is u16 {
 			typ.$(field.name) = res[json_name]!.u64()
@@ -62,12 +68,6 @@ pub fn decode[T](src string) !T {
 		} $else $if field.is_array {
 			// typ.$(field.name) = res[field.name]!.arr()
 		} $else $if field.is_struct {
-		} $else $if field.is_enum {
-			typ.$(field.name) = if key := res[field.name] {
-				key.int()
-			} else {
-				res[json_name]!.int()
-			}
 		} $else $if field.is_alias {
 		} $else $if field.is_map {
 		} $else {
@@ -79,25 +79,36 @@ pub fn decode[T](src string) !T {
 
 // encode is a generic function that encodes a type into a JSON string.
 pub fn encode[T](val T) string {
+	$if T is $Array {
+		$compile_error('Cannot use `json.encode` to encode array. Try `json.encode_array` instead')
+	}
 	mut sb := strings.new_builder(64)
+
 	defer {
 		unsafe { sb.free() }
 	}
-	$if T is $Array {
-		mut array_of_any := []Any{}
-		for value in val {
-			array_of_any << value
-		}
-		default_encoder.encode_value(array_of_any, mut sb) or {
-			dump(err)
-			default_encoder.encode_value[Null](null, mut sb) or {}
-		}
-	} $else {
-		default_encoder.encode_value(val, mut sb) or {
-			dump(err)
-			default_encoder.encode_value[Null](null, mut sb) or {}
-		}
+
+	default_encoder.encode_value(val, mut sb) or {
+		dump(err)
+		default_encoder.encode_value[Null](null, mut sb) or {}
 	}
+
+	return sb.str()
+}
+
+// encode_array is a generic function that encodes a array into a JSON string.
+pub fn encode_array[T](val []T) string {
+	mut sb := strings.new_builder(64)
+
+	defer {
+		unsafe { sb.free() }
+	}
+
+	default_encoder.encode_array(val, 1, mut sb) or {
+		dump(err)
+		default_encoder.encode_value[Null](null, mut sb) or {}
+	}
+
 	return sb.str()
 }
 

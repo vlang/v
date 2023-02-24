@@ -51,7 +51,8 @@ fn on_press(receiver voidptr, e &ClickEvent, sender voidptr) {
 For **usage across modules**
 [check the example](https://github.com/vlang/v/tree/master/examples/eventbus).
 
-_Note: As a general rule, you will need to **subscribe before publishing**._
+> **Note**
+> As a general rule, you will need to **subscribe before publishing**.
 
 **main.v**
 
@@ -76,7 +77,7 @@ fn main() {
 
 // the event handler
 fn on_error(receiver voidptr, e &Error, work &Work) {
-	println('error occured on ${work.hours}. Error: ${e.message}')
+	println('error occurred on ${work.hours}. Error: ${e.message}')
 }
 ```
 

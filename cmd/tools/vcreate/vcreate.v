@@ -133,10 +133,11 @@ fn init_project() {
 		c.write_vmod(false)
 		println('Change the description of your project in `v.mod`')
 	}
-
-	c.files << ProjectFiles{
-		path: 'src/main.v'
-		content: hello_world_content()
+	if !os.exists('src/main.v') {
+		c.files << ProjectFiles{
+			path: 'src/main.v'
+			content: hello_world_content()
+		}
 	}
 	c.create_files_and_directories()
 	c.write_gitattributes(false)

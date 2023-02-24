@@ -44,7 +44,7 @@ mut f := os.create('path/to/file') or {
     println("file not writable")
 }
 
-// >> do someting with file; file is locked <<
+// >> do something with file; file is locked <<
 
 f.close()
 ```

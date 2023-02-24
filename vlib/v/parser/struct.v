@@ -11,7 +11,6 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	p.top_level_statement_start()
 	// save attributes, they will be changed later in fields
 	attrs := p.attrs
-	p.attrs = []
 	start_pos := p.tok.pos()
 	mut is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -267,6 +266,8 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			}
 			// Comments after type (same line)
 			comments << p.eat_comments()
+			prev_attrs := p.attrs
+			p.attrs = []
 			if p.tok.kind == .lsbr {
 				p.inside_struct_attr_decl = true
 				// attrs are stored in `p.attrs`
@@ -331,7 +332,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				is_volatile: is_field_volatile
 				is_deprecated: is_field_deprecated
 			}
-			p.attrs = []
+			p.attrs = prev_attrs
 			i++
 		}
 		p.top_level_statement_end()

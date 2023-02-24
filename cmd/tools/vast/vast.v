@@ -120,15 +120,15 @@ fn json(file string) string {
 	// use as permissive preferences as possible, so that `v ast`
 	// can print the AST of arbitrary V files, even .vsh or ones
 	// that require globals:
-	mut pref := &pref.Preferences{}
-	pref.fill_with_defaults()
-	pref.enable_globals = true
-	pref.is_fmt = true
+	mut pref_ := &pref.Preferences{}
+	pref_.fill_with_defaults()
+	pref_.enable_globals = true
+	pref_.is_fmt = true
 	//
 	mut t := Tree{
 		root: new_object()
 		table: ast.new_table()
-		pref: pref
+		pref: pref_
 	}
 	// parse file with comment
 	ast_file := parser.parse_file(file, t.table, .parse_comments, t.pref)
@@ -359,9 +359,9 @@ fn (t Tree) imports(nodes []ast.Import) &Node {
 	return import_array
 }
 
-fn (t Tree) errors(errors []errors.Error) &Node {
+fn (t Tree) errors(errors_ []errors.Error) &Node {
 	mut errs := new_array()
-	for e in errors {
+	for e in errors_ {
 		obj := new_object()
 		obj.add_terse('message', t.string_node(e.message))
 		obj.add_terse('file_path', t.string_node(e.file_path))
@@ -1459,6 +1459,7 @@ fn (t Tree) ident(node ast.Ident) &Node {
 	obj.add('mut_pos', t.pos(node.mut_pos))
 	obj.add('obj', t.scope_object(node.obj))
 	obj.add('scope', t.number_node(int(node.scope)))
+	obj.add_terse('or_expr', t.or_expr(node.or_expr))
 	return obj
 }
 

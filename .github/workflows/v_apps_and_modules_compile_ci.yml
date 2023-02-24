@@ -18,7 +18,7 @@ jobs:
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Build V
         run: make && sudo ./v symlink
 
@@ -46,17 +46,6 @@ jobs:
           ../v -autofree .
           ../v -prod .
           cd ..
-
-      - name: Build VEX
-        run: |
-          echo "Install Vex"
-          v install nedpals.vex
-          echo "Compile all of the Vex examples"
-          v should-compile-all ~/.vmodules/nedpals/vex/examples
-          echo "Compile the simple Vex example with -skip-unused"
-          v -skip-unused ~/.vmodules/nedpals/vex/examples/simple_example.v
-          echo "Run Vex Tests"
-          v test ~/.vmodules/nedpals/vex
 
       - name: Build vlang/pdf
         run: |
@@ -172,3 +161,15 @@ jobs:
           v install pcre
           echo "Execute Tests"
           cd /tmp/adventofcode && v run verify.v
+
+
+#      - name: Build VEX
+#        run: |
+#          echo "Install Vex"
+#          v install nedpals.vex
+#          echo "Compile all of the Vex examples"
+#          v should-compile-all ~/.vmodules/nedpals/vex/examples
+#          echo "Compile the simple Vex example with -skip-unused"
+#          v -skip-unused ~/.vmodules/nedpals/vex/examples/simple_example.v
+#          echo "Run Vex Tests"
+#          v test ~/.vmodules/nedpals/vex

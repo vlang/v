@@ -3,6 +3,10 @@
 import time
 import db.sqlite
 
+const (
+	offset_const = 2
+)
+
 struct Module {
 	id           int       [primary; sql: serial]
 	name         string
@@ -28,6 +32,33 @@ struct Foo {
 struct TestTime {
 	id     int       [primary; sql: serial]
 	create time.Time
+}
+
+fn test_use_struct_field_as_limit() {
+	db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql db {
+		create table User
+	}
+
+	foo := Foo{
+		age: 10
+	}
+
+	sam := User{
+		age: 29
+		name: 'Sam'
+	}
+
+	sql db {
+		insert sam into User
+	}
+
+	users := sql db {
+		select from User limit foo.age
+	}
+
+	assert users.len == 1
 }
 
 fn test_orm() {
@@ -233,16 +264,17 @@ fn test_orm() {
 	assert y.len == 2
 	assert y[0].id == 2
 
-	offset_const := 2
 	z := sql db {
 		select from User order by id limit 2 offset offset_const
 	}
 	assert z.len == 2
 	assert z[0].id == 3
+
 	oldest := sql db {
 		select from User order by age desc limit 1
 	}
 	assert oldest.age == 34
+
 	offs := 1
 	second_oldest := sql db {
 		select from User order by age desc limit 1 offset offs

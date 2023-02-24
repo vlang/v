@@ -5,7 +5,7 @@ This module implements the `pkg-config` tool as a library in pure V.
 
 Features:
 
-* Simple API, but still not stable, but shouldnt change much
+* Simple API, but still not stable, but shouldn't change much
 * Runs 2x faster than original pkg-config
 * Commandline tool that aims to be compatible with `pkg-config`
 * Resolve full path for `.pc` file given a name
@@ -16,7 +16,7 @@ Features:
 Todo/Future/Wish:
 
 * 100% compatibility with `pkg-config` options
-* Strictier pc parsing logic, with better error reporting
+* Stricter pc parsing logic, with better error reporting
 
 Example
 -------
@@ -25,7 +25,7 @@ The commandline tool is available in `vlib/v/pkgconfig/bin/pkgconfig.v`
 
 ```
 $ ./bin/pkgconfig -h
-pkgconfig 0.3.2
+pkgconfig 0.3.3
 -----------------------------------------------
 Usage: pkgconfig [options] [ARGS]
 

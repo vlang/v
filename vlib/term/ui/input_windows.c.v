@@ -174,7 +174,7 @@ fn (mut ctx Context) parse_events() {
 					else { unsafe { KeyCode(ascii) } }
 				}
 
-				mut modifiers := Modifiers{}
+				mut modifiers := Modifiers.ctrl
 				if e.dwControlKeyState & (0x1 | 0x2) != 0 {
 					modifiers.set(.alt)
 				}
@@ -204,7 +204,7 @@ fn (mut ctx Context) parse_events() {
 				}
 				x := e.dwMousePosition.X + 1
 				y := int(e.dwMousePosition.Y) - sb_info.srWindow.Top + 1
-				mut modifiers := Modifiers{}
+				mut modifiers := Modifiers.ctrl
 				if e.dwControlKeyState & (0x1 | 0x2) != 0 {
 					modifiers.set(.alt)
 				}

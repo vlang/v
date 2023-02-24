@@ -37,15 +37,6 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 	c.in_for_count--
 }
 
-fn (mut c Checker) get_compselector_type_from_selector_name(node ast.ComptimeSelector) (bool, ast.Type) {
-	if c.inside_comptime_for_field && node.field_expr is ast.SelectorExpr
-		&& (node.field_expr as ast.SelectorExpr).expr.str() in c.comptime_fields_type
-		&& (node.field_expr as ast.SelectorExpr).field_name == 'name' {
-		return true, c.unwrap_generic(c.comptime_fields_default_type)
-	}
-	return false, ast.void_type
-}
-
 fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	c.in_for_count++
 	prev_loop_label := c.loop_label
@@ -97,10 +88,10 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					node.val_is_ref = node.cond.op == .amp
 				}
 				ast.ComptimeSelector {
-					found, selector_type := c.get_compselector_type_from_selector_name(node.cond)
-					if found {
-						sym = c.table.final_sym(selector_type)
-						typ = selector_type
+					comptime_typ := c.get_comptime_selector_type(node.cond, ast.void_type)
+					if comptime_typ != ast.void_type {
+						sym = c.table.final_sym(comptime_typ)
+						typ = comptime_typ
 					}
 				}
 				ast.Ident {
@@ -113,6 +104,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 				else {}
 			}
+		} else if node.val_is_mut {
+			c.error('string type is immutable, it cannot be changed', node.pos)
+			return
 		}
 		if sym.kind == .struct_ {
 			// iterators
@@ -139,8 +133,6 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.kind = sym.kind
 			node.val_type = val_type
 			node.scope.update_var_type(node.val_var, val_type)
-		} else if sym.kind == .string && node.val_is_mut {
-			c.error('string type is immutable, it cannot be changed', node.pos)
 		} else if sym.kind == .any {
 			node.cond_type = typ
 			node.kind = sym.kind

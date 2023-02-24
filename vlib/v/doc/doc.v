@@ -147,12 +147,12 @@ pub mut:
 pub fn new_vdoc_preferences() &pref.Preferences {
 	// vdoc should be able to parse as much user code as possible
 	// so its preferences should be permissive:
-	mut pref := &pref.Preferences{
+	mut pref_ := &pref.Preferences{
 		enable_globals: true
 		is_fmt: true
 	}
-	pref.fill_with_defaults()
-	return pref
+	pref_.fill_with_defaults()
+	return pref_
 }
 
 // new creates a new instance of a `Doc` struct.

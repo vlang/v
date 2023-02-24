@@ -8,9 +8,6 @@ import strings
 #include <sys/utsname.h>
 #include <sys/types.h>
 #include <utime.h>
-$if !solaris && !haiku && !emscripten ? {
-	#include <sys/ptrace.h>
-}
 
 pub const (
 	path_separator = '/'
@@ -63,8 +60,6 @@ fn C.getppid() int
 fn C.getgid() int
 
 fn C.getegid() int
-
-fn C.ptrace(u32, u32, voidptr, int) u64
 
 enum GlobMatch {
 	exact
@@ -432,18 +427,6 @@ pub fn (mut f File) close() {
 	f.is_opened = false
 	C.fflush(f.cfile)
 	C.fclose(f.cfile)
-}
-
-[inline]
-pub fn debugger_present() bool {
-	// check if the parent could trace its process,
-	// if not a debugger must be present
-	$if linux {
-		return C.ptrace(C.PTRACE_TRACEME, 0, 1, 0) == -1
-	} $else $if macos {
-		return C.ptrace(C.PT_TRACE_ME, 0, voidptr(1), 0) == -1
-	}
-	return false
 }
 
 fn C.mkstemp(stemplate &u8) int
