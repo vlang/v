@@ -13,6 +13,15 @@ fn f_arr(args ?[3]f64) ?[]f64 {
 	return ret
 }
 
+fn f_arr2(args ?[3]f64) ?[]f64 {
+	arr := args?
+	mut ret := []f64{}
+	ret << arr[0]
+	ret << arr[1]
+	ret << arr[2]
+	return ret
+}
+
 fn test_simple() {
 	mut arr := ?[3]int(none)
 	println(arr) // Option(error: none)
@@ -43,4 +52,8 @@ fn test_assign() {
 
 fn test_fn_call() {
 	assert f_arr([0.0, 1.2, 2.3]!)?.len == 3
+}
+
+fn test_fn_unwrap_call() {
+	assert f_arr2([0.0, 1.2, 2.3]!)?.len == 3
 }
