@@ -111,12 +111,21 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		if is_ptr && !is_var_mut {
 			ref_str := '&'.repeat(typ.nr_muls())
 			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("${ref_str}"), ${si_s_code} ,{.d_s = isnil(')
-			g.expr(expr)
-			g.write(') ? _SLIT("nil") : ')
+			if is_ptr && typ.has_flag(.option) {
+				g.write('*(${g.base_type(exp_typ)}*)&')
+				g.expr(expr)
+				g.write('.data')
+				g.write(') ? _SLIT("Option(&nil)") : ')
+			} else {
+				g.expr(expr)
+				g.write(') ? _SLIT("nil") : ')
+			}
 		}
 		g.write('${str_fn_name}(')
 		if str_method_expects_ptr && !is_ptr {
 			g.write('&')
+		} else if is_ptr && typ.has_flag(.option) {
+			g.write('*(${g.typ(typ.set_nr_muls(0))}*)&')
 		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
 			g.write('*'.repeat(typ.nr_muls()))
 		}
