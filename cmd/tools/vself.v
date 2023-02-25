@@ -7,7 +7,7 @@ import v.util.recompilation
 const is_debug = os.args.contains('-debug')
 
 // support a renamed `v` executable too:
-const vexe = os.getenv('VEXE')
+const vexe = os.getenv_opt('VEXE') or { @VEXE }
 
 const vroot = os.dir(vexe)
 
