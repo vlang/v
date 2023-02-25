@@ -90,7 +90,7 @@ jobs:
         run: g++-9 --version
       - name: V self compilation with g++ and -std=c++11
         run: ./v -cc g++-9 -no-std -cflags -std=c++11 -o v2 cmd/v && ./v2 -cc g++-9 -no-std -cflags -std=c++11 -o v3 cmd/v
-		
+
       - name: g++-11 version
         run: g++-11 --version
       - name: V self compilation with g++ and -std=c++20
@@ -153,4 +153,3 @@ jobs:
           ./v test-parser -S examples/cli_fuzz.v
           ./v test-parser -S examples/regex_example_fuzz.v
           ./v test-parser -S examples/2048/2048_fuzz.v
-
