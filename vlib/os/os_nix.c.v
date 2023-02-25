@@ -252,7 +252,7 @@ pub fn loginname() !string {
 	if !isnil(x) {
 		return unsafe { cstring_to_vstring(x) }
 	}
-	return error(posix_get_error_msg(C.errno_))
+	return error(posix_get_error_msg(C.errno))
 }
 
 fn init_os_args(argc int, argv &&u8) []string {
