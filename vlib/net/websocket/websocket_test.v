@@ -27,7 +27,7 @@ fn test_ws_ipv6() {
 	}
 	spawn start_server(.ip6, 30001)
 	time.sleep(1500 * time.millisecond)
-	ws_test(.ip6, 'ws://localhost:${port}') or {
+	ws_test(.ip6, 'ws://localhost:30001') or {
 		eprintln('> error while connecting .ip6, err: ${err}')
 		assert false
 	}
@@ -40,7 +40,7 @@ fn test_ws_ipv4() {
 	}
 	spawn start_server(.ip, 30002)
 	time.sleep(1500 * time.millisecond)
-	ws_test(.ip, 'ws://localhost:${port}') or {
+	ws_test(.ip, 'ws://localhost:30002') or {
 		eprintln('> error while connecting .ip, err: ${err}')
 		assert false
 	}
@@ -138,7 +138,7 @@ fn test_on_close_when_server_closing_connection() ! {
 	}, test_results)
 	spawn ws.listen()
 
-	mut client := websocket.new_client('ws://localhost:${port}')!
+	mut client := websocket.new_client('ws://localhost:30003')!
 
 	client.connect()!
 	spawn client.listen()
@@ -156,7 +156,7 @@ fn test_on_close_when_client_closing_connection() ! {
 	mut ws := websocket.new_server(.ip, 30004, '')
 	spawn ws.listen()
 
-	mut client := websocket.new_client('ws://localhost:${port}')!
+	mut client := websocket.new_client('ws://localhost:30004')!
 
 	mut test_results := WebsocketTestResults{}
 	client.on_close_ref(fn (mut cli websocket.Client, code int, reason string, mut res WebsocketTestResults) ! {
