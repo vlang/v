@@ -36,7 +36,7 @@ fn test_open_file() {
 	hello := 'hello world!'
 	os.open_file(filename, 'r+', 0o666) or {
 		assert err.msg() == 'No such file or directory'
-		os.File{}
+			os.File{}
 	}
 	mut file := os.open_file(filename, 'w+', 0o666) or { panic(err) }
 	file.write_string(hello) or { panic(err) }
@@ -75,7 +75,7 @@ fn test_open_file_binary() {
 	hello := 'hello \n world!'
 	os.open_file(filename, 'r+', 0o666) or {
 		assert err.msg() == 'No such file or directory'
-		os.File{}
+			os.File{}
 	}
 	mut file := os.open_file(filename, 'wb+', 0o666) or { panic(err) }
 	bytes := hello.bytes()
@@ -169,6 +169,7 @@ fn test_write_and_read_string_to_file() {
 
 // test_write_and_read_bytes checks for regressions made in the functions
 // read_bytes, read_bytes_at and write_bytes.
+
 fn test_write_and_read_bytes() {
 	file_name := './byte_reader_writer.tst'
 	payload := [u8(`I`), `D`, `D`, `Q`, `D`]
@@ -457,6 +458,7 @@ fn test_realpath_absolutizes_existing_relative_paths() {
 }
 
 // TODO: think much more about whether this is desirable:
+
 fn test_realpath_does_not_absolutize_non_existing_relative_paths() {
 	relative_path := os.join_path('one', 'nonexisting_folder', '..', 'something')
 	$if !windows {
@@ -554,6 +556,7 @@ fn test_make_hardlink_check_is_link_and_remove_hardlink_with_file() {
 // println(cpid)
 // }
 // }
+
 fn test_symlink() {
 	os.mkdir('symlink') or { panic(err) }
 	os.symlink('symlink', 'symlink2') or { panic(err) }
@@ -813,6 +816,8 @@ fn test_loginname() {
 	loginname := os.loginname() or { '' }
 	assert loginname.len > 2
 }
+
+//test test
 
 fn test_glob() {
 	os.mkdir('test_dir') or { panic(err) }
