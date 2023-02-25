@@ -805,7 +805,13 @@ fn test_truncate() {
 }
 
 fn test_hostname() {
-	assert os.hostname().len > 2
+	hostname := os.hostname() or { '' }
+	assert hostname.len > 2
+}
+
+fn test_loginname() {
+	loginname := os.loginname() or { '' }
+	assert loginname.len > 2
 }
 
 fn test_glob() {
