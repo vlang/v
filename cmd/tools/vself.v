@@ -30,7 +30,7 @@ fn main() {
 		uos := os.user_os()
 		uname := os.uname()
 		if uos == 'macos' && uname.machine == 'arm64' {
-			// Apple sillicon, like m1, m2 etc
+			// Apple silicon, like m1, m2 etc
 			// Use tcc by default for V, since tinycc is much faster and also
 			// it already supports compiling many programs like V itself, that do not depend on inlined objective-C code
 			args << '-cc tcc'
