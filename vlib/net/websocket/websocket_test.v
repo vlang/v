@@ -2,7 +2,6 @@ import os
 import net
 import net.websocket
 import time
-import rand
 
 struct WebsocketTestResults {
 pub mut:
@@ -26,9 +25,7 @@ fn test_ws_ipv6() {
 	if should_skip {
 		return
 	}
-	port := 30000 + rand.intn(1024) or { 0 }
-	eprintln('> port ipv6: ${port}')
-	spawn start_server(.ip6, port)
+	spawn start_server(.ip6, 30001)
 	time.sleep(1500 * time.millisecond)
 	ws_test(.ip6, 'ws://localhost:${port}') or {
 		eprintln('> error while connecting .ip6, err: ${err}')
@@ -41,9 +38,7 @@ fn test_ws_ipv4() {
 	if should_skip {
 		return
 	}
-	port := 30000 + rand.intn(1024) or { 0 }
-	eprintln('> port ipv4: ${port}')
-	spawn start_server(.ip, port)
+	spawn start_server(.ip, 30002)
 	time.sleep(1500 * time.millisecond)
 	ws_test(.ip, 'ws://localhost:${port}') or {
 		eprintln('> error while connecting .ip, err: ${err}')
@@ -52,6 +47,7 @@ fn test_ws_ipv4() {
 }
 
 fn start_server(family net.AddrFamily, listen_port int) ! {
+	eprintln('> start_server family:${family} | listen_port: ${listen_port}')
 	mut s := websocket.new_server(family, listen_port, '')
 	// make that in execution test time give time to execute at least one time
 	s.ping_interval = 1
@@ -129,8 +125,7 @@ fn ws_test(family net.AddrFamily, uri string) ! {
 }
 
 fn test_on_close_when_server_closing_connection() ! {
-	port := 30000 + rand.intn(1024) or { 0 }
-	mut ws := websocket.new_server(.ip, port, '')
+	mut ws := websocket.new_server(.ip, 30003, '')
 	ws.on_message(fn (mut cli websocket.Client, msg &websocket.Message) ! {
 		if msg.opcode == .text_frame {
 			cli.close(1000, 'closing connection')!
@@ -158,8 +153,7 @@ fn test_on_close_when_server_closing_connection() ! {
 }
 
 fn test_on_close_when_client_closing_connection() ! {
-	port := 30000 + rand.intn(1024) or { 0 }
-	mut ws := websocket.new_server(.ip, port, '')
+	mut ws := websocket.new_server(.ip, 30004, '')
 	spawn ws.listen()
 
 	mut client := websocket.new_client('ws://localhost:${port}')!
