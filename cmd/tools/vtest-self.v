@@ -2,7 +2,6 @@ module main
 
 import os
 import testing
-import v.pref
 
 const github_job = os.getenv('GITHUB_JOB')
 
@@ -292,7 +291,7 @@ const (
 // Note: musl misses openssl, thus the http tests can not be done there
 // Note: http_httpbin_test.v: fails with 'cgen error: json: map_string_string is not struct'
 fn main() {
-	vexe := pref.vexe_path()
+	vexe := os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 	vroot := os.dir(vexe)
 	os.chdir(vroot) or { panic(err) }
 	args := os.args.clone()
