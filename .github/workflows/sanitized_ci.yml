@@ -84,7 +84,7 @@ jobs:
       VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v1
+      - uses: actions/setup-node@v3
         with:
           node-version: 12.x
       - name: Install dependencies
@@ -112,7 +112,7 @@ jobs:
       VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v1
+      - uses: actions/setup-node@v3
         with:
           node-version: 12.x
       - name: Install dependencies
@@ -139,7 +139,7 @@ jobs:
       VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v1
+      - uses: actions/setup-node@v3
         with:
           node-version: 12.x
       - name: Install dependencies
@@ -171,7 +171,7 @@ jobs:
       VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v1
+      - uses: actions/setup-node@v3
         with:
           node-version: 12.x
       - name: Build
@@ -203,7 +203,7 @@ jobs:
       VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v1
+      - uses: actions/setup-node@v3
         with:
           node-version: 12.x
       - name: Install dependencies
@@ -235,7 +235,7 @@ jobs:
       VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v1
+      - uses: actions/setup-node@v3
         with:
           node-version: 12.x
       - name: Install dependencies
