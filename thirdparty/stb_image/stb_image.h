@@ -367,6 +367,7 @@ RECENT REVISION HISTORY:
 
 #ifdef __TINYC__
 #define STBI_NO_SIMD
+#define STBI_NO_THREAD_LOCALS
 #endif
 
 #ifndef STBI_NO_STDIO
