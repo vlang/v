@@ -6,6 +6,10 @@ module eval
 import v.ast
 import v.pref
 import v.util
+import v.builder
+
+import os
+import rand
 
 pub fn new_eval(table &ast.Table, pref_ &pref.Preferences) Eval {
 	return Eval{
@@ -13,6 +17,35 @@ pub fn new_eval(table &ast.Table, pref_ &pref.Preferences) Eval {
 		pref: pref_
 	}
 }
+
+pub fn eval_str(expression string, args ...Object) ![]Object {
+	tmpdir := os.join_path(os.vtmp_dir(), 'v', 'v_eval_${rand.ulid()}')
+	os.mkdir_all(tmpdir) or {}
+	defer {
+		os.rmdir_all(tmpdir) or {}
+	}
+	tmpfile := os.join_path(tmpdir, 'input.v')
+	os.write_file(tmpfile, expression)!
+	mut args_and_flags := []string{}
+	args_and_flags << "interpret"
+	args_and_flags << tmpfile
+	prefs, _ := pref.parse_args([], args_and_flags)
+	mut b := builder.new_builder(prefs)
+	mut e := interpret_v(mut b, ...args)!
+	return e.return_values
+}
+
+fn interpret_v(mut b builder.Builder, args ...Object) !Eval {
+	mut files := b.get_builtin_files()
+	files << b.get_user_files()
+	b.set_module_lookup_paths()
+	b.front_and_middle_stages(files)!
+	mut e := eval.new_eval(b.table, b.pref)
+	e.register_symbols(mut b.parsed_files)
+	e.run_func(e.mods['main']['main'] or { ast.FnDecl{} } as ast.FnDecl, ...args)
+	return e
+}
+
 
 // const/global is `Object`
 type Symbol = Object | ast.EmptyStmt | ast.FnDecl
