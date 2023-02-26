@@ -2742,7 +2742,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 // 			return c.table.bitsize_to_type(bit_size)
 // 		}
 // 	}
-// 	c.error('invalid register name: `$name`', node.pos)
+// 	c.error('invalidregister name: `$name`', node.pos)
 // 	return ast.void_type
 // }
 
@@ -2833,6 +2833,12 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	} else if to_sym.kind == .struct_ && to_type.is_ptr() {
 		if from_sym.kind == .alias {
 			from_type = (from_sym.info as ast.Alias).parent_type.derive_add_muls(from_type)
+		}
+		if mut node.expr is ast.IntegerLiteral {
+			if node.expr.val.int() == 0 {
+				c.error('cannot null cast a struct pointer, use &${to_sym.name}(unsafe { nil })',
+					node.pos)
+			}
 		}
 		if from_type == ast.voidptr_type_idx && !c.inside_unsafe {
 			// TODO make this an error

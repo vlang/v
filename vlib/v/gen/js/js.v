@@ -428,7 +428,7 @@ pub fn (mut g JsGen) enter_namespace(name string) {
 }
 
 pub fn (mut g JsGen) escape_namespace() {
-	g.ns = &Namespace(0)
+	g.ns = &Namespace(unsafe { nil })
 	g.inside_builtin = false
 }
 
