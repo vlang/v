@@ -36,7 +36,7 @@ fn test_open_file() {
 	hello := 'hello world!'
 	os.open_file(filename, 'r+', 0o666) or {
 		assert err.msg() == 'No such file or directory'
-			os.File{}
+		os.File{}
 	}
 	mut file := os.open_file(filename, 'w+', 0o666) or { panic(err) }
 	file.write_string(hello) or { panic(err) }
@@ -75,7 +75,7 @@ fn test_open_file_binary() {
 	hello := 'hello \n world!'
 	os.open_file(filename, 'r+', 0o666) or {
 		assert err.msg() == 'No such file or directory'
-			os.File{}
+		os.File{}
 	}
 	mut file := os.open_file(filename, 'wb+', 0o666) or { panic(err) }
 	bytes := hello.bytes()
@@ -816,8 +816,6 @@ fn test_loginname() {
 	loginname := os.loginname() or { '' }
 	assert loginname.len > 2
 }
-
-//test test
 
 fn test_glob() {
 	os.mkdir('test_dir') or { panic(err) }
