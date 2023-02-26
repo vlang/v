@@ -22,7 +22,7 @@ pub fn init(cfg Config) &Context {
 
 	// lmao
 	unsafe {
-		x := &ui.ctx_ptr
+		mut x := &ui.ctx_ptr
 		*x = ctx
 		_ = x
 	}
