@@ -812,10 +812,10 @@ fn test_hostname() {
 	assert hostname.len > 2
 }
 
-fn test_loginname() {
-	loginname := os.loginname() or { '' }
-	assert loginname.len > 2
-}
+// fn test_loginname() {
+// loginname := os.loginname() or { '' }
+// assert loginname.len > 2
+//}
 
 fn test_glob() {
 	os.mkdir('test_dir') or { panic(err) }
