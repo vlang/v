@@ -126,7 +126,7 @@ fn C.sqlite3_changes(&C.sqlite3) int
 
 // connect Opens the connection with a database.
 pub fn connect(path string) !DB {
-	db := &C.sqlite3(unsafe{ nil })
+	db := &C.sqlite3(unsafe { nil })
 	code := C.sqlite3_open(&char(path.str), &db)
 	if code != 0 {
 		return &SQLError{
