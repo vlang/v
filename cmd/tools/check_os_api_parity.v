@@ -40,7 +40,7 @@ mut:
 }
 
 fn main() {
-	vexe := pref.vexe_path()
+	vexe := os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 	vroot := os.dir(vexe)
 	util.set_vroot_folder(vroot)
 	os.chdir(vroot)!
