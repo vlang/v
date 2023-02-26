@@ -704,7 +704,7 @@ const (
 )
 
 fn init_settings() {
-	mut s := &VpmSettings(0)
+	mut s := &VpmSettings(unsafe { nil })
 	unsafe {
 		s = settings
 	}
