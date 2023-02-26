@@ -69,7 +69,21 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						ret_type = expr_type
 					}
 				} else if node.is_expr && ret_type.idx() != expr_type.idx() {
-					c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
+					if (node.expected_type.has_flag(.option)
+						|| node.expected_type.has_flag(.result))
+						&& c.table.sym(stmt.typ).kind == .struct_
+						&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
+						stmt.expr = ast.CastExpr{
+							expr: stmt.expr
+							typname: 'IError'
+							typ: ast.error_type
+							expr_type: stmt.typ
+							pos: node.pos
+						}
+						stmt.typ = ast.error_type
+					} else {
+						c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
+					}
 				}
 			} else if stmt !is ast.Return {
 				if node.is_expr && ret_type != ast.void_type {
