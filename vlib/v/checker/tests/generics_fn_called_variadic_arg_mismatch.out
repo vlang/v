@@ -1,7 +1,0 @@
-vlib/v/checker/tests/generics_fn_called_variadic_arg_mismatch.vv:12:16: error: cannot use `[]int` as `int` in argument 1 to `max`
-   10 |
-   11 | fn main() {
-   12 |     b := max[int]([1, 2, 3, 4])
-      |                   ~~~~~~~~~~~~
-   13 |     println(b)
-   14 | }

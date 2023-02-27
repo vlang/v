@@ -1,4 +1,0 @@
-fn main() {
-	println(u8(1))
-	dump(1)
-}

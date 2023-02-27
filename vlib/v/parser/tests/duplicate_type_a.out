@@ -1,5 +1,0 @@
-vlib/v/parser/tests/duplicate_type_a.vv:3:11: error: cannot register interface `Foo`, another type with this name exists
-    1 | struct Foo {}
-    2 | 
-    3 | interface Foo {}
-      |           ~~~

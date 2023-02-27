@@ -1,7 +1,0 @@
-fn main() {
-	a := [1,2,3]
-	dump(a)
-
-	a.pop()
-	dump(a)
-}

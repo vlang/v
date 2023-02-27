@@ -1,4 +1,0 @@
-vlib/v/parser/tests/for_mut_in_range.vv:1:5: error: variable in range `for` cannot be mut
-    1 | for mut i in 0..5 {
-      |     ~~~
-    2 | }

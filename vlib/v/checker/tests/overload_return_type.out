@@ -1,6 +1,0 @@
-vlib/v/checker/tests/overload_return_type.vv:20:8: error: cannot assign to `two`: expected `Point`, not `int`
-   18 |         y: 1
-   19 |     }
-   20 |     two = one + two
-      |           ~~~~~~~~~
-   21 | }

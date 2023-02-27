@@ -1,7 +1,0 @@
-vlib/v/checker/tests/orm_using_undefined_object_in_insert_error.vv:13:10: error: undefined ident: `bug`
-   11 |     sql db {
-   12 |         create table Node
-   13 |         insert bug into Node
-      |                ~~~
-   14 |     }!
-   15 | }

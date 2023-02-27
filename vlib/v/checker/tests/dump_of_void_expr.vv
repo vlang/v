@@ -1,3 +1,0 @@
-fn abc() {}
-
-dump(abc())

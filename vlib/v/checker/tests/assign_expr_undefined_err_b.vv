@@ -1,4 +1,0 @@
-fn main() {
-	a, b := a, b
-	println('$a, $b')
-}

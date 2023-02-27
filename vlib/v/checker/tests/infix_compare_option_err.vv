@@ -1,8 +1,0 @@
-fn foo() ?int {
-	return 0
-}
-
-fn main() {
-	if foo() > foo() {
-	}
-}

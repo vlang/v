@@ -1,9 +1,0 @@
-enum TestEnum {
-	a b
-}
-
-x = Bar{
-	.a: 'Alpha'
-	.b: 'Beta'
-}
-

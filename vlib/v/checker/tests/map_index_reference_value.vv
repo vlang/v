@@ -1,9 +1,0 @@
-struct Foo {
-	bar string
-}
-
-fn main() {
-	mut m := map[string]&Foo{}
-	m['bar'].bar = 'bar'
-	// m['bar'] << 'baz' // etc
-}

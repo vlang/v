@@ -1,7 +1,0 @@
-fn main() {
-	foo(bar())
-}
-
-fn foo(x int) {}
-
-fn bar() {}

@@ -1,2 +1,0 @@
-vlib/v/checker/tests/unfinished_string.vv:2:1: error: unfinished string literal
-    1 | a := '

@@ -1,5 +1,0 @@
-vlib/v/checker/tests/array_sort_struct_no_body_err.vv:6:5: error: custom sorting condition must be supplied for type `Foo`
-    4 | 
-    5 | mut arr := []Foo{}
-    6 | arr.sort()
-      |     ~~~~~~

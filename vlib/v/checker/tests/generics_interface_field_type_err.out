@@ -1,7 +1,0 @@
-vlib/v/checker/tests/generics_interface_field_type_err.vv:34:7: error: `IComponentStore` type is generic interface, must specify the generic type names, e.g. IComponentStore[T], IComponentStore[int]
-   32 | struct Registry {
-   33 | pub mut:
-   34 |     data map[string]IComponentStore
-      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~
-   35 | }
-   36 |

@@ -1,6 +1,0 @@
-import cli
-struct Foo2 {
-mut:
-	cli.Command
-}
-fn main() {}

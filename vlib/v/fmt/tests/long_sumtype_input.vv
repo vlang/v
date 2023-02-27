@@ -1,6 +1,0 @@
-import v.ast
-
-type ManyExpr = ast.AnonFn | ast.ArrayDecompose | ast.ArrayInit | ast.AsCast | ast.AtExpr | ast.BoolLiteral | ast.CTempVar | ast.CallExpr | ast.CastExpr
-
-type SomeStmt = ast.AsmStmt
-	| ast.AssertStmt

@@ -1,5 +1,0 @@
-vlib/v/checker/tests/import_mod_as_mod_err.vv:1:16: error: import alias `math as math` is redundant
-    1 | import math as math
-      |                ~~~~
-    2 |
-    3 | fn main() {

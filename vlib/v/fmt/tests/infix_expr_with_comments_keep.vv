@@ -1,9 +1,0 @@
-fn main() {
-	a := 4 // comment1
-	 + /* comment2 */ 6
-
-	b := 5 /* comment1 */ + // comment2
-	 6
-
-	c := 4 /* comment1 */ + /* comment2 */ 6 // comment3
-}

@@ -1,9 +1,0 @@
-module main
-
-struct Ok {
-	alibaba fn (Ok, )
-}
-
-struct OkInt {
-	a fn (int, )
-}

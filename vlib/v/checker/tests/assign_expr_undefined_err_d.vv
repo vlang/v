@@ -1,4 +1,0 @@
-fn main() {
-	s := '$s'
-	println(s)
-}

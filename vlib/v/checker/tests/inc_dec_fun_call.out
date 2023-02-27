@@ -1,6 +1,0 @@
-vlib/v/checker/tests/inc_dec_fun_call.vv:5:1: error: cannot decrement `foo()` because it is non lvalue expression
-    3 | }
-    4 |
-    5 | foo()--
-      | ~~~~~
-Details: try rewrite this as `foo() - 1`

@@ -1,7 +1,0 @@
-vlib/v/parser/tests/array_init_given_len_not_given_err.vv:8:27: error: cannot use `init` attribute unless `len` attribute is also provided
-    6 | 
-    7 | fn main() {
-    8 |     mut list_elem := [][]f64{init: [0.0, 0.0]}
-      |                              ~~~~
-    9 |     mut elem := 0.0
-   10 |     for i in 0 .. lenn {

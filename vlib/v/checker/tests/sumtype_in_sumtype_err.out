@@ -1,3 +1,0 @@
-vlib/v/checker/tests/sumtype_in_sumtype_err.vv:1:11: error: sum type cannot hold itself
-    1 | type AA = AA | int
-      |           ~~

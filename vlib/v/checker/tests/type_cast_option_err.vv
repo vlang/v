@@ -1,3 +1,0 @@
-fn main() {
-	println(int('hi'.last_index('i')))
-}

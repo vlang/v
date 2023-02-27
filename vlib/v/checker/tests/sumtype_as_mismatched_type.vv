@@ -1,8 +1,0 @@
-type Type = bool | int | string
-
-fn main() {
-	mut t := Type(123)
-	v := t as &int
-	t = 456
-	println(v)
-}

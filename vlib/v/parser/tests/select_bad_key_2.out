@@ -1,7 +1,0 @@
-vlib/v/parser/tests/select_bad_key_2.vv:7:3: error: invalid type `f64` for timeout - expected integer number of nanoseconds aka `time.Duration`
-    5 |             println(b)
-    6 |         }
-    7 |         a + 7 {
-      |         ~~~~~
-    8 |             println("shouldn't get here")
-    9 |         }

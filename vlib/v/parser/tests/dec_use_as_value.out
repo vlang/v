@@ -1,6 +1,0 @@
-vlib/v/parser/tests/dec_use_as_value.vv:2:16: error: cannot use i-- as value
-    1 | fn main() {
-    2 |     for i := 100; i--; i > 0 {
-      |                   ^
-    3 |     }
-    4 | }

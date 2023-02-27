@@ -1,7 +1,0 @@
-vlib/v/checker/tests/string_interpolation_invalid_fmt.vv:3:12: error: format specifier may only be one letter 
-    1 | fn interpolate_wrong() string {
-    2 |     a := 5
-    3 |     x := '${a:xy}'
-      |               ~~
-    4 |     return x
-    5 | }

@@ -1,6 +1,0 @@
-mut mp := map[string]int{}
-mut val := 100
-
-(val)++
-val++
-mp["100"]++

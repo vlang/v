@@ -1,8 +1,0 @@
-vlib/v/checker/tests/sumtype_in_unknown_types_err.vv:11:25: error: unknown type `FooD`.
-Did you mean `Foo`?
-    9 | fn main() {
-   10 |     foo := Foo(FooA{})
-   11 |     if foo in [FooB, FooC, FooD] {
-      |                            ~~~~
-   12 |         panic('not possible')
-   13 |     } else {

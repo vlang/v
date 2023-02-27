@@ -1,3 +1,0 @@
-struct foo {
-	int free;
-};

@@ -1,3 +1,0 @@
-vlib/v/checker/tests/no_main_println_err.vv:1:5: error: expected 1 arguments, but got 0
-    1 |     println()
-      |     ~~~~~~~~~

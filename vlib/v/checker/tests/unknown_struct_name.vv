@@ -1,5 +1,0 @@
-module main
-
-fn main() {
-	_ := F{}
-}

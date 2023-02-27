@@ -1,7 +1,0 @@
-fn ret_void() ?void {
-	return error('error')
-}
-
-fn main() {
-	_ = ret_void() or { panic('$err') }
-}

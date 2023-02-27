@@ -1,7 +1,0 @@
-vlib/v/checker/tests/for_in_value_redefinition.vv:4:8: error: redefinition of value iteration variable `value`
-    2 | value := 2
-    3 |
-    4 | for _, value in arr {
-      |        ~~~~~
-    5 |     println(value)
-    6 | }

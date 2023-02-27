@@ -1,8 +1,0 @@
-vlib/v/checker/tests/oversized_int_lit.vv:1:8: error: integer literal 18446744073709551616 overflows int
-    1 | assert 18446744073709551616 > 0
-      |        ~~~~~~~~~~~~~~~~~~~~
-    2 | assert -9223372036854775809 < 0
-vlib/v/checker/tests/oversized_int_lit.vv:2:8: error: integer literal -9223372036854775809 overflows int
-    1 | assert 18446744073709551616 > 0
-    2 | assert -9223372036854775809 < 0
-      |        ~~~~~~~~~~~~~~~~~~~~

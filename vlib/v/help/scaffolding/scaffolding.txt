@@ -1,6 +1,0 @@
-Project Scaffolding Utilities:
-
-  init  Sets up the file structure for an already existing V project.
-
-  new   Sets up a new V project with a 'v.mod' file, and a 'main.v' "Hello World"
-        file, and performs 'git init' (if git is installed on the system).

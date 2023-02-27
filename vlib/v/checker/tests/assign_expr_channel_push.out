@@ -1,4 +1,0 @@
-vlib/v/checker/tests/assign_expr_channel_push.vv:2:9: error: cannot use `<-` on the right-hand side of an assignment, as it does not return any values
-    1 | ch := chan f64{}
-    2 | _ := ch <- 4.56
-      |         ~~

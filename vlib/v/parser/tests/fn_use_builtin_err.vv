@@ -1,9 +1,0 @@
-fn print(strings ...string) {
-	for s in strings {
-		println(s)
-	}
-}
-
-fn main() {
-	print('text')
-}

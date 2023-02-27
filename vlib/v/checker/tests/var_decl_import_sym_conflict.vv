@@ -1,5 +1,0 @@
-import arrays
-
-fn x() {
-	arrays := 1
-}

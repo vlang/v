@@ -1,6 +1,0 @@
-vlib/v/checker/tests/multiple_pointer_yield_err.vv:9:8: error: unexpected `&`, expecting expression
-    7 | fn main() {
-    8 |     f := Fail{}
-    9 |     foo(&&&f)
-      |           ^
-   10 | }

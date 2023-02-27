@@ -1,9 +1,0 @@
-Installation Management Utilities:
-
-  self     Rebuild V with the passed options.
-
-  symlink  Add a symlink for the V compiler executable.
-
-  up       Update the V compiler to the latest version from https://github.com/vlang/v.
-
-  version  Print the version of V installed

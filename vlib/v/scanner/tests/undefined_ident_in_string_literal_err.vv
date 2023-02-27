@@ -1,9 +1,0 @@
-fn abc() string {
-	return 'abc $type'
-}
-
-fn xyz() string {
-	return '42P01'
-}
-
-fn main() {}

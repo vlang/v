@@ -1,7 +1,0 @@
-vlib/v/checker/tests/comptime_branching_working_with_a_custom_compile_error.vv:8:3: error: 11
-    6 |         return Value(val)
-    7 |     } $else {
-    8 |         $compile_error('11')
-      |         ~~~~~~~~~~~~~~~~~~~~
-    9 |         println('not bool ${val}')
-   10 |     }

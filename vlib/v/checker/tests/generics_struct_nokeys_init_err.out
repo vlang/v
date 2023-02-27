@@ -1,7 +1,0 @@
-vlib/v/checker/tests/generics_struct_nokeys_init_err.vv:6:9: error: initializing struct `Am` needs `1` field, but got `2`
-    4 | 
-    5 | fn convert[T](num int) T {
-    6 |     return T{num, 1}
-      |            ~~~~~~~~~
-    7 | }
-    8 |

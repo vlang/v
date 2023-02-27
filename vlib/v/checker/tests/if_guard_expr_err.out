@@ -1,7 +1,0 @@
-vlib/v/checker/tests/if_guard_expr_err.vv:6:7: error: if guard expects non-propagate option or result
-    4 |
-    5 | fn main() {
-    6 |     a := if r := foo() {
-      |          ~~~~~~~~~~~~~
-    7 |         println(r)
-    8 |         true

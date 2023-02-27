@@ -1,7 +1,0 @@
-vlib/v/checker/tests/for_in_iterator_returning_multiple_values_err.vv:8:10: error: iterator method `next()` must not return multiple values
-    6 | 
-    7 | t := TestStruct{}
-    8 | for x in t {
-      |          ^
-    9 |     println(x) // ('foo', 'bar')
-   10 |     break

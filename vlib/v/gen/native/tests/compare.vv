@@ -1,8 +1,0 @@
-fn main() {
-	a := 123
-	b := 456
-	for a < b {
-		println('a < b')
-		exit(0)
-	}
-}

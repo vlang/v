@@ -1,7 +1,0 @@
-fn foo(s string) int {
-	return 1
-}
-
-fn main() {
-	foo('s') = 1
-}

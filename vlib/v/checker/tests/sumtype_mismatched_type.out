@@ -1,5 +1,0 @@
-vlib/v/checker/tests/sumtype_mismatched_type.vv:4:8: error: infix expr: cannot use `int literal` (right expression) as `AA`
-    2 | 
-    3 | a := AA(3)
-    4 | assert a == 3
-      |        ~~~~~~

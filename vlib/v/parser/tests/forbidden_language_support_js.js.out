@@ -1,3 +1,0 @@
-vlib/v/parser/tests/forbidden_language_support_js.js.vv:1:4: error: C code is not allowed in .js.v files, please move it to a .c.v file
-    1 | fn C.a() int
-      |    ^

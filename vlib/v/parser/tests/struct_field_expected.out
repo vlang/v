@@ -1,7 +1,0 @@
-vlib/v/parser/tests/struct_field_expected.vv:6:4: error: invalid expression: unexpected token `:`
-    4 |
-    5 | x = Bar{
-    6 |     .a: 'Alpha'
-      |       ^
-    7 |     .b: 'Beta'
-    8 | }

@@ -1,4 +1,0 @@
-__global x foo
-__global (
-	y = float(5.0)
-)

@@ -1,7 +1,0 @@
-Upgrade all outdated modules.
-
-Usage:
-  v upgrade
-
-Options:
-  -v  Print more details about the upgrade.

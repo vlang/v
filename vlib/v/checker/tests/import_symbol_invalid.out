@@ -1,3 +1,0 @@
-vlib/v/checker/tests/import_symbol_invalid.vv:1:17: error: import syntax error, please specify a valid fn or type name
-    1 | import crypto { *_v }
-      |                 ^

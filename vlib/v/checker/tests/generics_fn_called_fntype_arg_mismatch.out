@@ -1,7 +1,0 @@
-vlib/v/checker/tests/generics_fn_called_fntype_arg_mismatch.vv:24:37: error: cannot use `fn (int) f64` as `fn (int) Point3D` in argument 2 to `new_array`
-   22 |     println(good_cloud)
-   23 |     // this should be a compilation error, because the function signature does not match:
-   24 |     bad_cloud := new_array[Point3D](3, fn (idx int) f64 {
-      |                                        ~~~~~~~~~~~~~~~~~~
-   25 |         return 12345
-   26 |     })

@@ -1,9 +1,0 @@
-struct Test {
-	foo bool
-	bar bool
-}
-
-fn main() {
-	_ = Test{true}
-	_ = Test{true, false, true}
-}

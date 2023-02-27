@@ -1,6 +1,0 @@
-02_cubes_glsl/cube_glsl.h
-03_march_tracing_glsl/rt_glsl.h
-04_multi_shader_glsl/rt_glsl_march.h
-04_multi_shader_glsl/rt_glsl_puppy.h
-05_instancing_glsl/rt_glsl_instancing.h
-06_obj_viewer/gouraud.h

@@ -1,2 +1,0 @@
-num := int(print(''))
-println(num)

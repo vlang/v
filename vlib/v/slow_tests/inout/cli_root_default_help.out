@@ -1,7 +1,0 @@
-Usage:  [flags] [commands]
-
-Flags:
-  -help               Prints help information.
-
-Commands:
-  help                Prints help information.

@@ -1,5 +1,0 @@
-vlib/v/checker/tests/pass_mut_lit.vv:10:12: error: cannot pass a struct initialization as `mut`, you may want to use a variable `mut var := Box{....}`
-    8 | }
-    9 |
-   10 | modify(mut Box{}, 10)
-      |            ~~~~~

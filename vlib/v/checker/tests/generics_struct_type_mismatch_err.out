@@ -1,7 +1,0 @@
-vlib/v/checker/tests/generics_struct_type_mismatch_err.vv:7:20: error: the number of generic types of struct `Example` is inconsistent with the concrete types
-    5 |
-    6 | fn main() {
-    7 |     example := Example[string]{
-      |                       ~~~~~~~~
-    8 |         key: 'key'
-    9 |         value: 'value'

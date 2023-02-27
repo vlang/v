@@ -1,7 +1,0 @@
-vlib/v/checker/tests/go_append_option_to_threads_err.vv:5:15: error: cannot append `thread !` to `[]thread`
-    3 | fn main() {
-    4 |     mut ths := []thread{}
-    5 |     ths << spawn foo()
-      |                  ~~~~~
-    6 |     ths.wait()
-    7 | }

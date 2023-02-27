@@ -1,3 +1,0 @@
-vlib/v/parser/tests/prohibit_redeclaration_of_builtin_types.vv:1:8: error: cannot register struct `Option`, another type with this name exists
-    1 | struct Option {}
-      |        ~~~~~~

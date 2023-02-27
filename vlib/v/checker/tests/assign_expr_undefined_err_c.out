@@ -1,6 +1,0 @@
-vlib/v/checker/tests/assign_expr_undefined_err_c.vv:2:10: error: undefined variable: `a`
-    1 | fn main() {
-    2 |     a, b := a + 1, b * 3
-      |             ^
-    3 |     println('$a, $b')
-    4 | }

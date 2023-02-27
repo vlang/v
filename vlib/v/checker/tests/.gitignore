@@ -1,5 +1,0 @@
-*.v
-*.c
-require_or_block_sumtype_map.err
-!*_test.v
-!modules/**/*.v

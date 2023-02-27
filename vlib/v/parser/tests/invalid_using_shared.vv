@@ -1,5 +1,0 @@
-fn main() {
-	if shared true {
-		println(true)
-	}
-}

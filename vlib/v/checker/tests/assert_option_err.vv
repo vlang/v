@@ -1,5 +1,0 @@
-import os
-
-fn main() {
-	assert os.truncate('testfile.txt', 6666) or { panic(err) }
-}

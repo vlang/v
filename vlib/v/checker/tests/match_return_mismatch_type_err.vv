@@ -1,7 +1,0 @@
-fn main() {
-	a := match 1 {
-		1 { 'aa' }
-		else { 22 }
-	}
-	println(a)
-}

@@ -1,7 +1,0 @@
-vlib/v/checker/tests/no_method_on_interface_propagation.vv:18:5: error: unknown method or field: `Cat.foo`
-   16 |     a := new_animal('persian')
-   17 |     if a is Cat {
-   18 |         a.foo()
-      |           ~~~~~
-   19 |     }
-   20 | }

@@ -1,7 +1,0 @@
-vlib/v/checker/tests/for_in_index_option.vv:4:17: error: for in: cannot index `![]string`
-    2 |
-    3 | fn main() {
-    4 |     for file in os.ls('.') {
-      |                    ~~~~~~~
-    5 |         println(file)
-    6 |     }

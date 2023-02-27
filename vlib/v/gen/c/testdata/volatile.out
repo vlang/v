@@ -1,6 +1,0 @@
-123
-&123
-Abc{
-    a_volatile_field: 0
-    a_non_volatile_field: 0
-}

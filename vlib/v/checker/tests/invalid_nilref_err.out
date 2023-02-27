@@ -1,6 +1,0 @@
-vlib/v/checker/tests/invalid_nilref_err.vv:2:19: error: invalid operation: cannot take address of nil
-    1 | fn main() {
-    2 |     var := unsafe { &nil }
-      |                      ~~~
-    3 |     println(var)
-    4 | }

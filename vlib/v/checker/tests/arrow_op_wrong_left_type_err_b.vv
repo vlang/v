@@ -1,6 +1,0 @@
-fn main() {
-	ch := chan string{}
-	mut obj := 9
-	obj = <-ch
-	_ = obj
-}

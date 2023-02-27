@@ -1,5 +1,0 @@
-type Foo = int
-
-struct Bar {
-	Foo
-}

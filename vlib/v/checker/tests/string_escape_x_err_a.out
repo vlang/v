@@ -1,5 +1,0 @@
-vlib/v/checker/tests/string_escape_x_err_a.vv:2:15: error: `\x` used without two following hex digits
-    1 | fn main() {
-    2 |     println('\x')
-      |               ^
-    3 | }

@@ -1,7 +1,0 @@
-vlib/v/checker/tests/index_of_option_err.vv:6:7: error: type `?[]int` is an Option, it must be unwrapped with `func()?`, or use `func() or {default}`
-    4 | 
-    5 | fn main() {
-    6 |     a := abc()[0] or { 5 }
-      |          ~~~~~
-    7 |     dump(a)
-    8 | }

@@ -1,5 +1,0 @@
-vlib/v/checker/tests/type_cast_option_err.vv:2:10: error: cannot type cast an Option
-    1 | fn main() {
-    2 |     println(int('hi'.last_index('i')))
-      |             ~~~~~~~~~~~~~~~~~~~~~~~~~
-    3 | }

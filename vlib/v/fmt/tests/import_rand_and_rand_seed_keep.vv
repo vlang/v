@@ -1,6 +1,0 @@
-import rand
-import rand.seed
-
-fn main() {
-	rand.seed(seed.time_seed_array(2))
-}

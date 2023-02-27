@@ -1,4 +1,0 @@
-volatile int *zzz = HEAP(int, (123));
-volatile int* pzzz = &(*(zzz));
-volatile int a_volatile_field;
-int a_non_volatile_field;

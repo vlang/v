@@ -1,5 +1,0 @@
-interface Abc {}
-
-// duplicate normal method definitions on interface
-fn (a Abc) foo() {}
-fn (a Abc) foo() {}

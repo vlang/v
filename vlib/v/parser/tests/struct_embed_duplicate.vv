@@ -1,9 +1,0 @@
-struct Abc {
-	foo int = 5
-}
-
-struct Xyz {
-	Abc
-	Abc
-	bar int
-}

@@ -1,7 +1,0 @@
-vlib/v/parser/tests/argumented_op_overloading_fn_op_overloaded_decl_err.vv:14:14: error: cannot overload `+=`, operator is implicitly overloaded because the `+` operator is overloaded
-   12 | }
-   13 |
-   14 | fn (p Point) += (q Point) Point {
-      |              ~~
-   15 |     return Point{p.x + q.x, p.y + q.y}
-   16 | }

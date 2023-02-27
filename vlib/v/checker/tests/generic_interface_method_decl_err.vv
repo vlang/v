@@ -1,9 +1,0 @@
-interface Expr {
-	accept<R>(v Visitor<R>) R
-}
-
-interface Visitor<R> {
-}
-
-fn main() {
-}

@@ -1,7 +1,0 @@
-fn f(m map[string]) {
-	println('illegal function')
-}
-
-fn main() {
-	println('Hello world')
-}

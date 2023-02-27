@@ -1,3 +1,0 @@
-type Ttt int
-
-fn main() {}

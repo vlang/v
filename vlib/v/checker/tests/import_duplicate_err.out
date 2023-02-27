@@ -1,6 +1,0 @@
-vlib/v/checker/tests/import_duplicate_err.vv:2:8: error: `time` was already imported on line 1
-    1 | import time
-    2 | import time
-      |        ~~~~
-    3 | fn main() {
-    4 |     println(time.now().unix_time())

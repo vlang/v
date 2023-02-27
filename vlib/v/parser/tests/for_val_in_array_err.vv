@@ -1,9 +1,0 @@
-type TokenValue = rune | u64
-
-fn main() {
-	val := `+`
-	for val in [TokenValue(`+`), TokenValue(`-`)] {
-		println("ok")
-		break
-	}
-}

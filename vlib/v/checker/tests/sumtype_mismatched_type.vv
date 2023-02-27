@@ -1,4 +1,0 @@
-type AA = int | string
-
-a := AA(3)
-assert a == 3

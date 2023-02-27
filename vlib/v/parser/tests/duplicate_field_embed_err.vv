@@ -1,9 +1,0 @@
-import v.vmod
-
-struct ModFileAndFolder {
-	name int = 5
-}
-struct Bar {
-	ModFileAndFolder
-	vmod.ModFileAndFolder
-}

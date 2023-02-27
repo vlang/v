@@ -1,7 +1,0 @@
-vlib/v/checker/tests/array_init_with_void_value_err.vv:4:8: error: invalid void array element type
-    2 |
-    3 | fn main() {
-    4 |     a := [yo()]
-      |           ~~~~
-    5 |     println(a)
-    6 | }

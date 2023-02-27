@@ -1,6 +1,0 @@
-vlib/v/checker/tests/no_interface_str.vv:18:12: error: interface `Animal` does not have a .str() method. Use typeof() instead
-   16 | fn moin() {
-   17 |     a := get_animal()
-   18 |     println(a.str())
-      |               ~~~~~
-   19 | }

@@ -1,3 +1,0 @@
-mut v := 4
-_ = v
-println(--v)

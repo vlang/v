@@ -1,5 +1,0 @@
-vlib/v/checker/tests/non_lvalue_as_voidptr.vv:5:13: error: expression cannot be passed as `voidptr`
-    3 | }
-    4 | 
-    5 | println(add(5, 10))
-      |             ^

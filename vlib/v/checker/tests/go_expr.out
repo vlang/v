@@ -1,5 +1,0 @@
-vlib/v/checker/tests/go_expr.vv:2:8: error: expression in `spawn` must be a function call
-    1 | fn main() {
-    2 |     spawn 1
-      |           ^
-    3 | }

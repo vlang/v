@@ -1,3 +1,0 @@
-[vlib/v/slow_tests/inout/dump_shared_arg.vv:12] inst: &AtomicStruct{
-    a: 1
-}

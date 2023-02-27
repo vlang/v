@@ -1,7 +1,0 @@
-vlib/v/checker/tests/interface_too_many_embedding_levels.vv:9:1: error: too many interface embedding levels: 101, for interface `I103`
-    7 | }
-    8 | 
-    9 | interface I103 {
-      | ~~~~~~~~~~~~~~~~
-   10 |     I102
-   11 | }

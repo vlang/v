@@ -1,6 +1,0 @@
-vlib/v/checker/tests/check_fn_init_as_mutable.vv:6:14: error: cannot pass a struct initialization as `mut`, you may want to use a variable `mut var := MyStruct{....}`
-    4 | 
-    5 | fn main() {
-    6 |     process(mut MyStruct{})
-      |                 ~~~~~~~~~~
-    7 | }

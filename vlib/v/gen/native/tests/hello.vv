@@ -1,3 +1,0 @@
-fn main() {
-	println('hello from native V')
-}

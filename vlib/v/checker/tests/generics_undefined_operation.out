@@ -1,7 +1,0 @@
-vlib/v/checker/tests/generics_undefined_operation.vv:12:5: error: undefined operation `V2d[int]` * `V2d[int]`
-   10 |     v3 := V2d[int]{4, 6}
-   11 |
-   12 |     if v1 * v2 == v3 {
-      |        ~~~~~~~
-   13 |     }
-   14 | }

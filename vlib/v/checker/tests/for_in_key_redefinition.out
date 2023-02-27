@@ -1,7 +1,0 @@
-vlib/v/checker/tests/for_in_key_redefinition.vv:4:5: error: redefinition of key iteration variable `value`
-    2 | value := 2
-    3 |
-    4 | for value, _ in arr {
-      |     ~~~~~
-    5 |     println(value)
-    6 | }

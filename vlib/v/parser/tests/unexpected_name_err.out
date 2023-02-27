@@ -1,6 +1,0 @@
-vlib/v/parser/tests/unexpected_name_err.vv:2:2: error: unexpected name `asfasfasfsfa`
-    1 | fn main() {
-    2 |     asfasfasfsfa
-      |     ~~~~~~~~~~~~
-    3 |     println('text')
-    4 | }

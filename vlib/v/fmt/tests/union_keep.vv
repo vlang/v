@@ -1,4 +1,0 @@
-union Un {
-	i int
-	b u8
-}

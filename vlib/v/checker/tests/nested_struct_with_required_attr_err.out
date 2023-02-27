@@ -1,7 +1,0 @@
-vlib/v/checker/tests/nested_struct_with_required_attr_err.vv:13:7: error: field `Egg.name` must be initialized
-   11 |
-   12 | fn main() {
-   13 |     f := Foo{}
-      |          ~~~~~
-   14 |     println(f)
-   15 | }

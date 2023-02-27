@@ -1,3 +1,0 @@
-vlib/v/parser/tests/interop_func_body_err.vv:1:23: error: interop functions cannot have a body
-    1 | fn C.printf(s string) {}
-      |                       ^

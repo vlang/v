@@ -1,4 +1,0 @@
-vlib/v/checker/tests/cast_void.vv:1:12: error: expression does not return a value so it cannot be cast
-    1 | num := int(print(''))
-      |            ~~~~~~~~~
-    2 | println(num)

@@ -1,4 +1,0 @@
-fn main() {
-    why := w'why'
-    println(why)
-}

@@ -1,5 +1,0 @@
-fn main() {
-	strings := 'hello'
-	a := strings.repeat(2)
-	println(a)
-}

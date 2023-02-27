@@ -1,6 +1,0 @@
-vlib/v/checker/tests/interface_init_err.vv:15:7: notice: interface field `Server.handler` must be initialized
-   13 | 
-   14 | fn main() {
-   15 |     _ := Server{}
-      |          ~~~~~~~~
-   16 | }

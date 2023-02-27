@@ -1,8 +1,0 @@
-struct AStruct {}
-
-fn main() {
-	ast := &AStruct{}
-	println(ast)
-	println(*ast)
-	println(&ast)
-}

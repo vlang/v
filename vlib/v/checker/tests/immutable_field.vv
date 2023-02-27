@@ -1,9 +1,0 @@
-struct Aaa {
-pub:
-	i1 int
-}
-
-fn main() {
-	a := Aaa{1}
-	a.i1 = 2
-}

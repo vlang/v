@@ -1,5 +1,0 @@
-import term.ui
-
-struct Inter {
-	code term.ui.KeyCode
-}

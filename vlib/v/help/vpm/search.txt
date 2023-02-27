@@ -1,9 +1,0 @@
-Searches https://vpm.vlang.io/ for matching KEYWORDs and displays the details
-
-Usage:
-  v search KEYWORD[...]
-
-Options:
-  -v           Print more details about the performed operation.
-  -server-url  When doing network operations, use this vpm server. Can be
-               given multiple times.

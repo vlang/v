@@ -1,6 +1,0 @@
-vlib/v/checker/tests/var_option_index_error.vv:4:2: error: type `?map[string]string` is an Option, it must be unwrapped first; use `var?[]` to do it
-    2 |     mut var4 := ?map[string]string{}
-    3 |     var4?['a'] = 'b'
-    4 |     var4['b'] = 'c'
-      |     ~~~~
-    5 | }

@@ -1,9 +1,0 @@
-type Abc = string | int
-
-fn main() {
-	x := map[string]Abc{}
-	if y := x['nonexisting'] {
-		println(y)
-	}
-	_ := x['nonexisting']
-}

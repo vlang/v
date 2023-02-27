@@ -1,7 +1,0 @@
-vlib/v/checker/tests/comptime_call_method_args_err.vv:9:14: cgen error: expected 0 arguments to method S1.method_hello, but got 1
-    7 |
-    8 |     $for method in S1.methods {
-    9 |         println(s1.$method('yo'))
-      |                    ~~~~~~~~~~~~~
-   10 |     }
-   11 | }

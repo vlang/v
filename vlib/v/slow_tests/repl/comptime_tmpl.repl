@@ -1,3 +1,0 @@
-$tmpl('./tmpl/hello.txt')
-===output===
-hello

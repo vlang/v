@@ -1,5 +1,0 @@
-vlib/v/checker/tests/import_syntax_err.vv:1:12: error: cannot import multiple modules at a time
-    1 | import time, os
-      |            ^
-    2 | fn main() {
-    3 |     println(time.now())

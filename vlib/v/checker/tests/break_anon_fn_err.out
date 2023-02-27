@@ -1,7 +1,0 @@
-vlib/v/checker/tests/break_anon_fn_err.vv:4:4: error: break statement not within a loop
-    2 |     for true {
-    3 |         _ := fn () int {
-    4 |             break
-      |             ~~~~~
-    5 |             return 3
-    6 |         }()
