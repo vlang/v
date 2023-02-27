@@ -99,7 +99,7 @@ const (
 // |        **Month** | M     | 1 2 ... 11 12                          |
 // |                  | Mo    | 1st 2nd ... 11th 12th                  |
 // |                  | MM    | 01 02 ... 11 12                        |
-// |                  | MMM   | 	Jan Feb ... Nov Dec                |
+// |                  | MMM   | Jan Feb ... Nov Dec                    |
 // |                  | MMMM  | January February ... November December |
 // |      **Quarter** | Q     | 1 2 3 4                                |
 // |                  | QQ    | 01 02 03 04                            |
