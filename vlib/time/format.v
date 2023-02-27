@@ -93,7 +93,6 @@ const (
 
 // custom_format returns a date with custom format
 //
-//
 // |                  | Token | Output                                 |
 // |-----------------:|:------|:---------------------------------------|
 // |        **Month** | M     | 1 2 ... 11 12                          |
