@@ -15,11 +15,19 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	conn := g.new_tmp_var()
 	g.writeln('')
 	g.writeln('// orm')
-	g.write('orm__Connection ${conn} = (orm__Connection){._')
+	g.write('orm__Connection ${conn} = ')
+
 	db_expr_ctype_name := g.typ(node.db_expr_type)
-	g.write('${db_expr_ctype_name} = &')
-	g.expr(node.db_expr)
-	g.writeln(', ._typ = _orm__Connection_${db_expr_ctype_name}_index};')
+
+	if db_expr_ctype_name == 'orm__Connection' {
+		g.expr(node.db_expr)
+		g.writeln(';')
+	} else {
+		g.write('(orm__Connection){._${db_expr_ctype_name} = &')
+		g.expr(node.db_expr)
+		g.writeln(', ._typ = _orm__Connection_${db_expr_ctype_name}_index};')
+	}
+
 	for line in node.lines {
 		g.sql_stmt_line(line, conn, node.or_expr)
 	}
@@ -534,14 +542,21 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	conn := g.new_tmp_var()
 	g.writeln('')
 	g.writeln('// orm')
-	g.write('orm__Connection ${conn} = (orm__Connection){._')
+	g.write('orm__Connection ${conn} = ')
 	db_expr_type := g.get_db_type(node.db_expr) or {
 		verror('sql orm error - unknown db type for ${node.db_expr}')
 	}
 	db_expr_ctype_name := g.typ(db_expr_type)
-	g.write('${db_expr_ctype_name} = &')
-	g.expr(node.db_expr)
-	g.writeln(', ._typ = _orm__Connection_${db_expr_ctype_name}_index};')
+
+	if db_expr_ctype_name == 'orm__Connection' {
+		g.expr(node.db_expr)
+		g.writeln(';')
+	} else {
+		g.write('(orm__Connection){._${db_expr_ctype_name} = &')
+		g.expr(node.db_expr)
+		g.writeln(', ._typ = _orm__Connection_${db_expr_ctype_name}_index};')
+	}
+
 	g.sql_select(node, conn, left, node.or_expr)
 }
 
