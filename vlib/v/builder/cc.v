@@ -778,6 +778,13 @@ fn (mut b Builder) cc_linux_cross() {
 
 fn (mut c Builder) cc_windows_cross() {
 	println('Cross compiling for Windows...')
+	cross_compiler_name := c.pref.vcross_compiler_name()
+	cross_compiler_name_path := os.find_abs_path_of_executable(cross_compiler_name) or {
+		eprintln('Could not find `${cross_compiler_name}` in your PATH.')
+		eprintln('See https://github.com/vlang/v/blob/master/doc/docs.md#cross-compilation for instructions on how to fix that.')
+		exit(1)
+	}
+	//
 	c.setup_ccompiler_options(c.pref.ccompiler)
 	c.build_thirdparty_obj_files()
 	c.setup_output_name()
@@ -854,7 +861,7 @@ fn (mut c Builder) cc_windows_cross() {
 	all_args << args
 	all_args << '-municode'
 	c.dump_c_options(all_args)
-	mut cmd := c.pref.vcross_compiler_name() + ' ' + all_args.join(' ')
+	mut cmd := cross_compiler_name_path + ' ' + all_args.join(' ')
 	// cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 ${pref.default_module_path}/$c.out_name_c'
 	if c.pref.is_verbose || c.pref.show_cc {
 		println(cmd)
@@ -934,7 +941,6 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	all_options << '-o ${os.quoted_path(opath)}'
 	all_options << '-c ${os.quoted_path(cfile)}'
 	cc_options := v.thirdparty_object_args(v.ccoptions, all_options).join(' ')
-
 	cmd := '${v.quote_compiler_name(v.pref.ccompiler)} ${cc_options}'
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_files cmd: ${cmd}')
