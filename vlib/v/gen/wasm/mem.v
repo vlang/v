@@ -1,7 +1,7 @@
 module wasm
 
 import v.ast
-import binaryen as wa
+import v.gen.wasm.binaryen
 import strconv
 
 type Var = Global | Stack | Temporary | ast.Ident
@@ -25,7 +25,7 @@ fn (v Var) address() int {
 
 struct Temporary {
 	name    string
-	typ     wa.Type
+	typ     binaryen.Type
 	ast_typ ast.Type
 	//
 	idx int
@@ -105,9 +105,9 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
 	}
 }
 
-type LocalOrPointer = Var | wa.Expression
+type LocalOrPointer = Var | binaryen.Expression
 
-fn (mut g Gen) get_or_lea_lop(lp LocalOrPointer, expected ast.Type) wa.Expression {
+fn (mut g Gen) get_or_lea_lop(lp LocalOrPointer, expected ast.Type) binaryen.Expression {
 	size, _ := g.table.type_size(expected)
 
 	mut offset := 0
@@ -115,7 +115,7 @@ fn (mut g Gen) get_or_lea_lop(lp LocalOrPointer, expected ast.Type) wa.Expressio
 	mut is_expr := false
 
 	expr := match lp {
-		wa.Expression {
+		binaryen.Expression {
 			is_expr = true
 			lp
 		}
@@ -123,7 +123,7 @@ fn (mut g Gen) get_or_lea_lop(lp LocalOrPointer, expected ast.Type) wa.Expressio
 			match lp {
 				Temporary {
 					parent_typ = lp.ast_typ
-					wa.localget(g.mod, lp.idx, g.get_wasm_type(expected))
+					binaryen.localget(g.mod, lp.idx, g.get_wasm_type(expected))
 				}
 				Stack {
 					parent_typ = lp.ast_typ
@@ -146,19 +146,19 @@ fn (mut g Gen) get_or_lea_lop(lp LocalOrPointer, expected ast.Type) wa.Expressio
 		return expr
 	}
 
-	return wa.load(g.mod, u32(size), g.is_signed(expected), u32(offset), 0, g.get_wasm_type(expected),
+	return binaryen.load(g.mod, u32(size), g.is_signed(expected), u32(offset), 0, g.get_wasm_type(expected),
 		expr, c'memory')
 }
 
-fn (mut g Gen) lea_lop(lp LocalOrPointer, expected ast.Type) wa.Expression {
+fn (mut g Gen) lea_lop(lp LocalOrPointer, expected ast.Type) binaryen.Expression {
 	expr := match lp {
-		wa.Expression {
+		binaryen.Expression {
 			lp
 		}
 		Var {
 			match lp {
 				Temporary {
-					wa.localget(g.mod, lp.idx, g.get_wasm_type(expected))
+					binaryen.localget(g.mod, lp.idx, g.get_wasm_type(expected))
 				}
 				Stack {
 					g.get_bp()
@@ -176,11 +176,11 @@ fn (mut g Gen) lea_lop(lp LocalOrPointer, expected ast.Type) wa.Expression {
 	return expr
 }
 
-fn (mut g Gen) lea_var_from_expr(node ast.Expr) wa.Expression {
+fn (mut g Gen) lea_var_from_expr(node ast.Expr) binaryen.Expression {
 	var := g.get_var_from_expr(node)
 
 	return match var {
-		wa.Expression {
+		binaryen.Expression {
 			var
 		}
 		Var {
@@ -189,7 +189,7 @@ fn (mut g Gen) lea_var_from_expr(node ast.Expr) wa.Expression {
 					if g.is_pure_type(var.ast_typ) {
 						g.w_error('lea_var_from_expr: you cannot take the address of a pure temporary')
 					}
-					wa.localget(g.mod, var.idx, type_i32)
+					binaryen.localget(g.mod, var.idx, type_i32)
 				}
 				Stack {
 					g.lea_address(var.address)
@@ -208,8 +208,8 @@ fn (mut g Gen) lea_var_from_expr(node ast.Expr) wa.Expression {
 fn (mut g Gen) local_or_pointer_add_offset(v Var, offset int) LocalOrPointer {
 	return match v {
 		Temporary {
-			wa.binary(g.mod, wa.addint32(), wa.localget(g.mod, v.idx, type_i32), wa.constant(g.mod,
-				wa.literalint32(offset)))
+			binaryen.binary(g.mod, binaryen.addint32(), binaryen.localget(g.mod, v.idx,
+				type_i32), binaryen.constant(g.mod, binaryen.literalint32(offset)))
 		}
 		Stack {
 			Var(Stack{
@@ -229,7 +229,7 @@ fn (mut g Gen) local_or_pointer_add_offset(v Var, offset int) LocalOrPointer {
 	}
 }
 
-// TODO: return `Var | wa.Expression`
+// TODO: return `Var | binaryen.Expression`
 fn (mut g Gen) get_var_from_expr(node ast.Expr) LocalOrPointer {
 	return match node {
 		ast.Ident {
@@ -240,8 +240,9 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) LocalOrPointer {
 			offset := g.get_field_offset(node.expr_type, node.field_name)
 
 			match address {
-				wa.Expression {
-					wa.binary(g.mod, wa.addint32(), address, wa.constant(g.mod, wa.literalint32(offset)))
+				binaryen.Expression {
+					binaryen.binary(g.mod, binaryen.addint32(), address, binaryen.constant(g.mod,
+						binaryen.literalint32(offset)))
 				}
 				Var {
 					g.local_or_pointer_add_offset(address, offset)
@@ -262,9 +263,9 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) LocalOrPointer {
 			size, _ := g.get_type_size_align(deref_type)
 
 			index := g.expr(node.index, ast.int_type)
-			mut ptr_address := wa.Expression(0)
+			mut ptr_address := binaryen.Expression(0)
 
-			if address is wa.Expression {
+			if address is binaryen.Expression {
 				ptr_address = address
 			}
 			if address is Var {
@@ -272,8 +273,8 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) LocalOrPointer {
 			}
 
 			// ptr + index * size
-			wa.binary(g.mod, wa.addint32(), ptr_address, wa.binary(g.mod, wa.mulint32(),
-				index, g.literalint(size, ast.int_type)))
+			binaryen.binary(g.mod, binaryen.addint32(), ptr_address, binaryen.binary(g.mod,
+				binaryen.mulint32(), index, g.literalint(size, ast.int_type)))
 		}
 		ast.PrefixExpr {
 			g.lea_lop(g.get_var_from_expr(node.right), ast.voidptr_type)
@@ -301,7 +302,7 @@ fn (mut g Gen) get_local_temporary(name string) int {
 	g.w_error("get_local: cannot get '${name}'")
 }
 
-fn (mut g Gen) new_local_temporary_anon_wtyp(w_typ wa.Type) int {
+fn (mut g Gen) new_local_temporary_anon_wtyp(w_typ binaryen.Type) int {
 	ret := g.local_temporaries.len
 	g.local_temporaries << Temporary{
 		name: '_'
@@ -354,9 +355,9 @@ fn (mut g Gen) new_local(var ast.Ident, typ ast.Type) {
 	}
 }
 
-fn (mut g Gen) deref(expr wa.Expression, expected ast.Type) wa.Expression {
+fn (mut g Gen) deref(expr binaryen.Expression, expected ast.Type) binaryen.Expression {
 	size, _ := g.get_type_size_align(expected)
-	return wa.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected),
+	return binaryen.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected),
 		expr, c'memory')
 }
 
@@ -423,13 +424,14 @@ fn (mut g Gen) allocate_local_var(name string, typ ast.Type) int {
 	return address
 }
 
-fn (mut g Gen) get_bp() wa.Expression {
-	return wa.localget(g.mod, g.bp_idx, type_i32)
+fn (mut g Gen) get_bp() binaryen.Expression {
+	return binaryen.localget(g.mod, g.bp_idx, type_i32)
 }
 
-fn (mut g Gen) lea_address(address int) wa.Expression {
+fn (mut g Gen) lea_address(address int) binaryen.Expression {
 	return if address != 0 {
-		wa.binary(g.mod, wa.addint32(), g.get_bp(), wa.constant(g.mod, wa.literalint32(address)))
+		binaryen.binary(g.mod, binaryen.addint32(), g.get_bp(), binaryen.constant(g.mod,
+			binaryen.literalint32(address)))
 	} else {
 		g.get_bp()
 	}
@@ -437,18 +439,19 @@ fn (mut g Gen) lea_address(address int) wa.Expression {
 
 // Will automatcally cast value from `var` to `ast_type`, will ignore if struct value.
 // TODO: When supporting base types on the stack, actually cast them.
-fn (mut g Gen) get_var_t(var Var, ast_typ ast.Type) wa.Expression {
+fn (mut g Gen) get_var_t(var Var, ast_typ ast.Type) binaryen.Expression {
 	return match var {
 		ast.Ident {
 			g.get_var_t(g.get_var_from_ident(var), ast_typ)
 		}
 		Temporary {
-			expr := wa.localget(g.mod, var.idx, var.typ)
+			expr := binaryen.localget(g.mod, var.idx, var.typ)
 			g.cast_t(expr, var.ast_typ, ast_typ)
 		}
 		Stack {
 			address := if var.address != 0 {
-				wa.binary(g.mod, wa.addint32(), g.get_bp(), wa.constant(g.mod, wa.literalint32(var.address)))
+				binaryen.binary(g.mod, binaryen.addint32(), g.get_bp(), binaryen.constant(g.mod,
+					binaryen.literalint32(var.address)))
 			} else {
 				g.get_bp()
 			}
@@ -476,29 +479,29 @@ struct SetConfig {
 	ast_typ ast.Type
 }
 
-fn (mut g Gen) set_to_address(address_expr wa.Expression, expr wa.Expression, ast_typ ast.Type) wa.Expression {
+fn (mut g Gen) set_to_address(address_expr binaryen.Expression, expr binaryen.Expression, ast_typ ast.Type) binaryen.Expression {
 	return if !g.is_pure_type(ast_typ) {
 		// `expr` is pointer
 		g.blit(expr, ast_typ, address_expr)
 	} else {
 		size, _ := g.table.type_size(ast_typ)
-		wa.store(g.mod, u32(size), 0, 0, address_expr, expr, g.get_wasm_type(ast_typ),
+		binaryen.store(g.mod, u32(size), 0, 0, address_expr, expr, g.get_wasm_type(ast_typ),
 			c'memory')
 	}
 }
 
-fn (mut g Gen) set_var_v(address Var, expr wa.Expression, cfg SetConfig) wa.Expression {
+fn (mut g Gen) set_var_v(address Var, expr binaryen.Expression, cfg SetConfig) binaryen.Expression {
 	return g.set_var(address, expr, cfg)
 }
 
-fn (mut g Gen) set_var(address LocalOrPointer, expr wa.Expression, cfg SetConfig) wa.Expression {
+fn (mut g Gen) set_var(address LocalOrPointer, expr binaryen.Expression, cfg SetConfig) binaryen.Expression {
 	ast_typ := if cfg.ast_typ != 0 {
 		cfg.ast_typ
 	} else {
 		(address as Var).ast_typ()
 	}
 	match address {
-		wa.Expression {
+		binaryen.Expression {
 			return g.set_to_address(address, expr, ast_typ)
 		}
 		Var {
@@ -509,7 +512,7 @@ fn (mut g Gen) set_var(address LocalOrPointer, expr wa.Expression, cfg SetConfig
 					g.set_var(g.get_var_from_ident(var), expr, cfg)
 				}
 				Temporary {
-					wa.localset(g.mod, var.idx, expr)
+					binaryen.localset(g.mod, var.idx, expr)
 				}
 				Stack {
 					if !g.is_pure_type(ast_typ) {
@@ -518,8 +521,8 @@ fn (mut g Gen) set_var(address LocalOrPointer, expr wa.Expression, cfg SetConfig
 					} else {
 						size, _ := g.table.type_size(ast_typ)
 						// println("address: ${var.address}, offset: ${cfg.offset}")
-						wa.store(g.mod, u32(size), u32(var.address + cfg.offset), 0, g.get_bp(),
-							expr, g.get_wasm_type(ast_typ), c'memory')
+						binaryen.store(g.mod, u32(size), u32(var.address + cfg.offset),
+							0, g.get_bp(), expr, g.get_wasm_type(ast_typ), c'memory')
 					}
 				}
 				Global {
@@ -532,43 +535,43 @@ fn (mut g Gen) set_var(address LocalOrPointer, expr wa.Expression, cfg SetConfig
 }
 
 // zero out stack memory in known local `address`.
-fn (mut g Gen) zero_fill(ast_typ ast.Type, address int) wa.Expression {
+fn (mut g Gen) zero_fill(ast_typ ast.Type, address int) binaryen.Expression {
 	size, _ := g.get_type_size_align(ast_typ)
 
 	if size <= 4 {
 		zero := g.literalint(0, ast.int_type)
-		return wa.store(g.mod, u32(size), u32(address), 0, g.get_bp(), zero, type_i32,
+		return binaryen.store(g.mod, u32(size), u32(address), 0, g.get_bp(), zero, type_i32,
 			c'memory')
 	} else if size <= 8 {
 		zero := g.literalint(0, ast.i64_type)
-		return wa.store(g.mod, u32(size), u32(address), 0, g.get_bp(), zero, type_i64,
+		return binaryen.store(g.mod, u32(size), u32(address), 0, g.get_bp(), zero, type_i64,
 			c'memory')
 	}
-	return wa.memoryfill(g.mod, g.lea_address(address), g.literalint(0, ast.int_type),
+	return binaryen.memoryfill(g.mod, g.lea_address(address), g.literalint(0, ast.int_type),
 		g.literalint(size, ast.int_type), c'memory')
 }
 
 // `memcpy` from `ptr` to known local `address` in stack memory.
-fn (mut g Gen) blit_local(ptr wa.Expression, ast_typ ast.Type, address int) wa.Expression {
+fn (mut g Gen) blit_local(ptr binaryen.Expression, ast_typ ast.Type, address int) binaryen.Expression {
 	size, _ := g.get_type_size_align(ast_typ)
-	return wa.memorycopy(g.mod, g.lea_address(address), ptr, wa.constant(g.mod, wa.literalint32(size)),
-		c'memory', c'memory')
+	return binaryen.memorycopy(g.mod, g.lea_address(address), ptr, binaryen.constant(g.mod,
+		binaryen.literalint32(size)), c'memory', c'memory')
 }
 
 // `memcpy` from `ptr` to `dest`
-fn (mut g Gen) blit(ptr wa.Expression, ast_typ ast.Type, dest wa.Expression) wa.Expression {
+fn (mut g Gen) blit(ptr binaryen.Expression, ast_typ ast.Type, dest binaryen.Expression) binaryen.Expression {
 	size, _ := g.get_type_size_align(ast_typ)
-	return wa.memorycopy(g.mod, dest, ptr, wa.constant(g.mod, wa.literalint32(size)),
+	return binaryen.memorycopy(g.mod, dest, ptr, binaryen.constant(g.mod, binaryen.literalint32(size)),
 		c'memory', c'memory')
 }
 
-fn (mut g Gen) init_struct(var Var, init ast.StructInit) wa.Expression {
+fn (mut g Gen) init_struct(var Var, init ast.StructInit) binaryen.Expression {
 	match var {
 		ast.Ident {
 			return g.init_struct(g.get_var_from_ident(var), init)
 		}
 		Stack {
-			mut exprs := []wa.Expression{}
+			mut exprs := []binaryen.Expression{}
 
 			ts := g.table.sym(var.ast_typ)
 			match ts.info {

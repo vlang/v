@@ -1,7 +1,7 @@
 module wasm
 
 import v.ast
-import binaryen as wa
+import v.gen.wasm.binaryen
 import encoding.binary as bin
 import math.bits
 
@@ -101,7 +101,7 @@ fn round_up_to_multiple(val int, multiple int) int {
 	return val + (multiple - val % multiple) % multiple
 }
 
-fn (mut g Gen) make_vinit() wa.Function {
+fn (mut g Gen) make_vinit() binaryen.Function {
 	runtime_inits := g.bake_constants_plus_initialisers()
 
 	g.bare_function_start()
@@ -115,11 +115,11 @@ fn (mut g Gen) make_vinit() wa.Function {
 
 		init_fn_name := if mod_name != 'builtin' { '${mod_name}.init' } else { 'init' }
 		if _ := g.table.find_fn(init_fn_name) {
-			body << wa.call(g.mod, init_fn_name.str, unsafe { nil }, 0, type_none)
+			body << binaryen.call(g.mod, init_fn_name.str, unsafe { nil }, 0, type_none)
 		}
 		cleanup_fn_name := if mod_name != 'builtin' { '${mod_name}.cleanup' } else { 'cleanup' }
 		if _ := g.table.find_fn(cleanup_fn_name) {
-			body << wa.call(g.mod, cleanup_fn_name.str, unsafe { nil }, 0, type_none)
+			body << binaryen.call(g.mod, cleanup_fn_name.str, unsafe { nil }, 0, type_none)
 		}
 	}
 
@@ -134,27 +134,28 @@ fn (mut g Gen) housekeeping() {
 	if g.needs_stack || g.constant_data.len != 0 {
 		data := g.constant_data.map(it.data.data)
 		data_len := g.constant_data.map(it.data.len)
-		data_offsets := g.constant_data.map(wa.constant(g.mod, wa.literalint32(it.offset)))
+		data_offsets := g.constant_data.map(binaryen.constant(g.mod, binaryen.literalint32(it.offset)))
 		passive := []bool{len: g.constant_data.len, init: false}
 
-		wa.setmemory(g.mod, 1, 4, c'memory', data.data, passive.data, data_offsets.data,
+		binaryen.setmemory(g.mod, 1, 4, c'memory', data.data, passive.data, data_offsets.data,
 			data_len.data, data.len, false, false, c'memory')
 	}
 	if g.needs_stack {
 		// `g.constant_data_offset` rounded up to a multiple of 1024
 		offset := round_up_to_multiple(g.constant_data_offset, 1024)
 
-		wa.addglobal(g.mod, c'__vsp', type_i32, true, g.literalint(offset, ast.int_type))
+		binaryen.addglobal(g.mod, c'__vsp', type_i32, true, g.literalint(offset, ast.int_type))
 	}
 	if g.pref.os == .wasi {
-		main_expr := g.mkblock([wa.call(g.mod, c'_vinit', unsafe { nil }, 0, type_none),
-			wa.call(g.mod, c'main.main', unsafe { nil }, 0, type_none)])
-		wa.addfunction(g.mod, c'_start', type_none, type_none, unsafe { nil }, 0, main_expr)
-		wa.addfunctionexport(g.mod, c'_start', c'_start')
+		main_expr := g.mkblock([binaryen.call(g.mod, c'_vinit', unsafe { nil }, 0, type_none),
+			binaryen.call(g.mod, c'main.main', unsafe { nil }, 0, type_none)])
+		binaryen.addfunction(g.mod, c'_start', type_none, type_none, unsafe { nil }, 0,
+			main_expr)
+		binaryen.addfunctionexport(g.mod, c'_start', c'_start')
 	} else {
 		// In `browser` mode, and function can be exported and called regardless.
 		// To avoid uninitialised data, `_vinit` is set to be ran immediately on
 		// WASM module creation.
-		wa.setstart(g.mod, vinit)
+		binaryen.setstart(g.mod, vinit)
 	}
 }
