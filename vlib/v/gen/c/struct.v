@@ -306,13 +306,28 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 
 fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 	sym := g.table.sym(field.typ)
-	if sym.kind == .struct_ {
-		info := sym.info as ast.Struct
-		if info.fields.len == 0 {
+	field_name := if sym.language == .v { c_name(field.name) } else { field.name }
+	if sym.info is ast.Struct {
+		if sym.info.fields.len == 0 {
 			return false
+		} else if !field.has_default_expr {
+			mut has_option_field := false
+			for fd in sym.info.fields {
+				if fd.typ.has_flag(.option) {
+					has_option_field = true
+					break
+				}
+			}
+			if has_option_field {
+				default_init := ast.StructInit{
+					typ: field.typ
+				}
+				g.write('.${field_name} = ')
+				g.struct_init(default_init)
+				return true
+			}
 		}
 	}
-	field_name := if sym.language == .v { c_name(field.name) } else { field.name }
 	g.write('.${field_name} = ')
 	if field.has_default_expr {
 		if sym.kind in [.sum_type, .interface_] {
