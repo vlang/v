@@ -137,14 +137,9 @@ fn (mut g Gen) setup_stack_frame(body binaryen.Expression) binaryen.Expression {
 
 	padded_stack_frame := round_up_to_multiple(g.stack_frame, 8)
 
-	// vfmt off
-	stack_enter := 
-		binaryen.globalset(g.mod, c'__vsp', 
-			binaryen.binary(g.mod, binaryen.addint32(),
-				binaryen.constant(g.mod, binaryen.literalint32(padded_stack_frame)),
-				binaryen.localtee(g.mod, g.bp_idx,
-					binaryen.globalget(g.mod, c'__vsp', type_i32), type_i32)))
-	// vfmt on
+	stack_enter := binaryen.globalset(g.mod, c'__vsp', binaryen.binary(g.mod, binaryen.addint32(),
+		binaryen.constant(g.mod, binaryen.literalint32(padded_stack_frame)), binaryen.localtee(g.mod,
+		g.bp_idx, binaryen.globalget(g.mod, c'__vsp', type_i32), type_i32)))
 	mut n_body := [stack_enter, body]
 
 	if g.curr_ret[0] == ast.void_type {
