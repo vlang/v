@@ -29,6 +29,9 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			if expr.name == 'int' {
 				e.error('methods not supported')
 			}
+			if expr.name == 'main.host_pop' {
+				return e.stack_vals.pop()
+			}
 			mut args := expr.args.map(e.expr(it.expr, it.typ))
 			if expr.is_method {
 				args.prepend(e.expr(expr.left, expr.receiver_type))
@@ -452,6 +455,10 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					return Array{
 						val: []Object{}
 					}
+				} else if expr.has_len && !expr.has_cap && !expr.has_default {
+					return Array{
+						val: []Object{}
+					}
 				} else {
 					e.error('unknown array init combination; len: ${expr.has_len}, cap: ${expr.has_cap}, init: ${expr.has_default}')
 				}
@@ -529,10 +536,13 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		ast.UnsafeExpr {
 			return e.expr(expr.expr, expecting)
 		}
+		ast.IndexExpr {
+			return (e.local_vars[(expr.left as ast.Ident).name].val as Array).val[0]
+		}
 		ast.AnonFn, ast.ArrayDecompose, ast.AsCast, ast.Assoc, ast.AtExpr, ast.CTempVar,
 		ast.ChanInit, ast.Comment, ast.ComptimeCall, ast.ComptimeSelector, ast.ComptimeType,
 		ast.ConcatExpr, ast.DumpExpr, ast.EmptyExpr, ast.EnumVal, ast.GoExpr, ast.IfGuardExpr,
-		ast.IndexExpr, ast.IsRefType, ast.Likely, ast.LockExpr, ast.MapInit, ast.MatchExpr,
+		 ast.IsRefType, ast.Likely, ast.LockExpr, ast.MapInit, ast.MatchExpr,
 		ast.Nil, ast.NodeError, ast.None, ast.OffsetOf, ast.OrExpr, ast.RangeExpr, ast.SelectExpr,
 		ast.SqlExpr, ast.TypeNode, ast.TypeOf {
 			e.error('unhandled expression ${typeof(expr).name}')

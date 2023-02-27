@@ -7,7 +7,6 @@ import v.ast
 import v.pref
 import v.util
 import v.builder
-
 import os
 import rand
 
@@ -18,46 +17,57 @@ pub fn new_eval(table &ast.Table, pref_ &pref.Preferences) Eval {
 	}
 }
 
-pub fn eval_str(expression string, args ...Object) ![]Object {
+// Host API
+
+pub fn new_interpreter() Eval {
+	return Eval{}
+}
+
+pub fn (mut e Eval) push_val(val Object) {
+	e.stack_vals << val
+}
+
+pub fn (mut e Eval) run(expression string, args ...Object) ![]Object {
 	tmpdir := os.join_path(os.vtmp_dir(), 'v', 'v_eval_${rand.ulid()}')
 	os.mkdir_all(tmpdir) or {}
 	defer {
 		os.rmdir_all(tmpdir) or {}
 	}
 	tmpfile := os.join_path(tmpdir, 'input.v')
-	os.write_file(tmpfile, expression)!
+	mut prepend := 'fn host_pop() voidptr { return 0 }\n'
+	os.write_file(tmpfile, prepend + expression)!
+
 	mut args_and_flags := []string{}
-	args_and_flags << "interpret"
+	args_and_flags << 'interpret'
 	args_and_flags << tmpfile
 	prefs, _ := pref.parse_args([], args_and_flags)
 	mut b := builder.new_builder(prefs)
-	mut e := interpret_v(mut b, ...args)!
-	return e.return_values
-}
 
-fn interpret_v(mut b builder.Builder, args ...Object) !Eval {
+	e.table = b.table
+	e.pref = b.pref
+
 	mut files := b.get_builtin_files()
 	files << b.get_user_files()
 	b.set_module_lookup_paths()
 	b.front_and_middle_stages(files)!
-	mut e := eval.new_eval(b.table, b.pref)
+
 	e.register_symbols(mut b.parsed_files)
 	e.run_func(e.mods['main']['main'] or { ast.FnDecl{} } as ast.FnDecl, ...args)
-	return e
+	return e.return_values
 }
-
 
 // const/global is `Object`
 type Symbol = Object | ast.EmptyStmt | ast.FnDecl
 
 pub struct Eval {
-	pref &pref.Preferences = unsafe { nil }
 pub mut:
-	table                  &ast.Table = unsafe { nil }
+	pref                   &pref.Preferences = unsafe { nil }
+	table                  &ast.Table        = unsafe { nil }
 	mods                   map[string]map[string]Symbol
 	future_register_consts map[string]map[string]map[string]ast.ConstField // mod:file:name:field
 	local_vars             map[string]Var
 	local_vars_stack       []map[string]Var
+	stack_vals             []Object
 	scope_idx              int // this is increased when e.open_scope() is called, decreased when e.close_scope() (and all variables with that scope level deleted)
 	returning              bool
 	return_values          []Object
@@ -93,9 +103,10 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 		e.cur_file = old_file
 		e.back_trace.pop()
 	}
+	is_main := func.name == 'main.main'
 	//
 	mut args := _args.clone()
-	if func.params.len != args.len && !func.is_variadic {
+	if !is_main && func.params.len != args.len && !func.is_variadic {
 		e.error('mismatched parameter length for ${func.name}: got `${args.len}`, expected `${func.params.len}`')
 	}
 
@@ -127,10 +138,13 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 		e.open_scope()
 		// have to do this because of cgen error
 		args__ := if func.is_method { args[1..] } else { args }
-		for i, arg in args__ {
-			e.local_vars[(func.params[i]).name] = Var{
-				val: arg
-				scope_idx: e.scope_idx
+		if !is_main {
+			for i, arg in args__ {
+				var_name := (func.params[i]).name
+				e.local_vars[var_name] = Var{
+					val: arg
+					scope_idx: e.scope_idx
+				}
 			}
 		}
 		if func.is_method {
@@ -213,7 +227,6 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 			}
 		}
 		ast.ExprStmt {
-			println('expr')
 			x := stmt.expr
 			match x {
 				ast.IfExpr {
@@ -223,7 +236,8 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 					for i, branch in x.branches {
 						mut do_if := false
 						println('branch:${branch}')
-						match branch.cond {
+						cond := branch.cond
+						match cond {
 							ast.Ident {
 								match (branch.cond as ast.Ident).name {
 									'windows' {
