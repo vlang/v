@@ -791,7 +791,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		eprintln('OS `${res.os}` forbidden for backends other than wasm')
 		exit(1)
 	}
-	if res.backend == .wasm && res.os !in [.browser, .wasi, ._auto]  {
+	if res.backend == .wasm && res.os !in [.browser, .wasi, ._auto] {
 		eprintln('Native WebAssembly backend OS must be `browser` or `wasi`')
 		exit(1)
 	}
