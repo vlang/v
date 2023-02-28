@@ -1,4 +1,4 @@
-#!/usr/bin/env -S ./v -raw-vsh-tmp-prefix tmp
+#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp
 
 import net.http
 import json
@@ -6,6 +6,17 @@ import os
 
 struct JQ {
 	tag_name string
+}
+
+root := os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
+
+tloc := '${root}/thirdparty'
+loc := '${tloc}/binaryen'
+
+if os.exists(loc) {
+	eprintln("thirdparty/binaryen exists, will not overwrite")
+	eprintln("delete the folder, and execute again")
+	exit(1)
 }
 
 jq := http.get_text('https://api.github.com/repos/WebAssembly/binaryen/releases/latest')
@@ -30,8 +41,6 @@ name := $if windows {
 fname := 'binaryen-${tag}'
 url := 'https://github.com/WebAssembly/binaryen/releases/download/${tag}/${fname}-${name}.tar.gz'
 
-tloc := '${@VEXEROOT}/thirdparty'
-loc := '${tloc}/binaryen'
 mkdir_all(loc, os.MkdirParams{})!
 println(loc)
 
@@ -51,4 +60,4 @@ println('${tloc}/${fname} to ${tloc}/binaryen')
 //	eprintln("cannot mv")
 //	exit(1)
 //}
-os.rename_dir('${tloc}/${fname}', '${tloc}/binaryen')!
+os.rename_dir('${tloc}/${fname}', loc)!
