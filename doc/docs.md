@@ -2717,8 +2717,6 @@ println(c()) // 3
 ```
 
 If you need the value to be modified outside the function, use a reference.
-**Warning**: _you need to make sure the reference is always valid,
-otherwise this can result in undefined behavior._
 
 ```v oksyntax
 mut i := 0
@@ -6276,7 +6274,7 @@ Module {
 ```
 
 > **Note**
-> @VMODROOT will be replaced by V with the *nearest parent folder, 
+> @VMODROOT will be replaced by V with the *nearest parent folder,
 > where there is a v.mod file*.
 > Any .v file beside or below the folder where the v.mod file is,
 > can use `#flag @VMODROOT/abc` to refer to this folder.
