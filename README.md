@@ -29,7 +29,9 @@
 - Safety: no null, no globals, no undefined behavior (wip), immutability by default
 - C to V translation ([Translating DOOM demo video](https://www.youtube.com/watch?v=6oXrz3oRoEg))
 - Hot code reloading
-- [Flexible memory management](https://vlang.io/#memory) ([demo video](https://www.youtube.com/watch?v=gmB8ea8uLsM))
+- [Flexible memory management](https://vlang.io/#memory). GC by default, manual via `v -gc none`,
+  arena allocation via `v -prealloc`, autofree via `v -autofree`
+  ([autofree demo video](https://www.youtube.com/watch?v=gmB8ea8uLsM)).
 - [Cross-platform UI library](https://github.com/vlang/ui)
 - Built-in graphics library
 - Easy cross-compilation
