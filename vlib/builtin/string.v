@@ -912,7 +912,7 @@ pub fn (s string) substr(start int, end int) string {
 [direct_array_access]
 pub fn (s string) substr_with_check(start int, end int) ?string {
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-		return error('substr(${start}, ${end}) out of bounds (len=${s.len})')
+		return none
 	}
 	len := end - start
 	if len == s.len {
@@ -1606,7 +1606,7 @@ fn (s string) at(idx int) byte {
 // return an error when the index is out of range
 fn (s string) at_with_check(idx int) ?u8 {
 	if idx < 0 || idx >= s.len {
-		return error('string index out of range')
+		return none
 	}
 	unsafe {
 		return s.str[idx]

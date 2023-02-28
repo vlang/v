@@ -562,8 +562,8 @@ pub fn (b []u8) bytestr() string {
 // from utf8 to utf32 and return the result as a rune
 // it will produce an error if there are more than
 // four bytes in the array.
-pub fn (b []u8) byterune() ?rune {
-	r := b.utf8_to_utf32()?
+pub fn (b []u8) byterune() !rune {
+	r := b.utf8_to_utf32()!
 	return rune(r)
 }
 

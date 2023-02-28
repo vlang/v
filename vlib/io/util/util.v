@@ -76,7 +76,7 @@ fn random_number() string {
 	return s.substr(1, s.len)
 }
 
-fn prefix_and_suffix(pattern string) ?(string, string) {
+fn prefix_and_suffix(pattern string) !(string, string) {
 	mut pat := pattern
 	if pat.contains(os.path_separator) {
 		return error('pattern cannot contain path separators (${os.path_separator}).')
