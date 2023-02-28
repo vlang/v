@@ -9,10 +9,11 @@ struct JQ {
 }
 
 fn main() {
-	root := os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
+	root := os.real_path(os.dir(os.getenv_opt('VEXE') or { @VEXE }))
+	os.chdir(root)! // make sure that the workfolder is stable
 
-	tloc := '${root}/thirdparty'
-	loc := '${tloc}/binaryen'
+	tloc := os.join_path(root, 'thirdparty')
+	loc := os.join_path(tloc, 'binaryen')
 
 	if os.exists(loc) {
 		eprintln('thirdparty/binaryen exists, will not overwrite')
@@ -34,22 +35,25 @@ fn main() {
 	} $else $if linux {
 		'x86_64-linux'
 	} $else {
-		eprintln('a premade binary library is not available for your system')
-		eprintln('build from source, documentation here: https://github.com/WebAssembly/binaryen/#building')
+		eprintln('A premade binary library is not available for your system.')
+		eprintln('Build it from source, following the documentation here: https://github.com/WebAssembly/binaryen/#building')
 		exit(1)
 	}
 
 	fname := 'binaryen-${tag}'
 	url := 'https://github.com/WebAssembly/binaryen/releases/download/${tag}/${fname}-${name}.tar.gz'
 
-	mkdir_all(loc, os.MkdirParams{})!
+	saveloc := os.join_path(tloc, '${fname}.tar.gz')
+	if !os.exists(saveloc) {
+		println('Downloading archive: ${saveloc}, from url: ${url} ...')
+		http.download_file(url, saveloc)!
+		// defer { os.rm(saveloc) or {}! }
+	}
+
+	mkdir_all(loc)!
 	println(loc)
 
-	saveloc := '${tloc}/${fname}.tar.gz'
-	if !os.exists(saveloc) {
-		println('downloading archive: ${saveloc}, from url: ${url}')
-		http.download_file(url, saveloc)!
-	}
+	println('Extracting `${tloc}/${fname}` to `${tloc}/binaryen` ...')
 	cmd := 'tar -xvf ${saveloc} --directory ${tloc}'
 	if os.system(cmd) != 0 {
 		eprintln('`${cmd}` exited with a non zero exit code')
@@ -57,7 +61,8 @@ fn main() {
 	}
 
 	println(cmd)
-	println('${tloc}/${fname} to ${tloc}/binaryen')
+	println('Moving `${tloc}/${fname}` to `${tloc}/binaryen` ...')
 
 	os.rename_dir('${tloc}/${fname}', loc)!
+	println('Done. You can now use `v -b wasm file.v` .')
 }
