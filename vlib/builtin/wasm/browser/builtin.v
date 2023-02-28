@@ -7,6 +7,7 @@ fn JS.__writeln(&u8, int)
 [noreturn]
 pub fn panic(s string) {
 	JS.__panic_abort(s.str, s.len)
+	for {}
 }
 
 // println prints a message with a line end, to stdout. stdout is flushed.
