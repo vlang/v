@@ -88,16 +88,12 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 	}
 }
 
-pub fn (mut b Builder) interpret_text(code string) ! {
-	mut files := b.get_builtin_files()
-	files << b.get_user_files()
-	b.set_module_lookup_paths()
-
+pub fn (mut b Builder) interpret_text(code string, v_files []string) ! {
 	mut timers := util.get_timers()
 	util.timing_start('PARSE')
 
 	util.timing_start('Builder.front_stages.interpret_text')
-	b.parsed_files = parser.parse_files(files, b.table, b.pref)
+	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
 	b.parsed_files << parser.parse_text(code, '', b.table, .skip_comments, b.pref)
 	util.timing_start('Builder.front_stages.interpret_text')
 

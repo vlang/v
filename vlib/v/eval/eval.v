@@ -32,10 +32,12 @@ pub fn (mut e Eval) run(expression string, args ...Object) ![]Object {
 	mut prepend := 'fn host_pop() voidptr { return 0 }\n'
 	mut b := builder.new_builder(e.pref)
 	e.table = b.table
+
 	mut files := b.get_builtin_files()
 	files << b.get_user_files()
 	b.set_module_lookup_paths()
-	b.interpret_text(prepend + expression)!
+
+	b.interpret_text(prepend + expression, files)!
 	e.register_symbols(mut b.parsed_files)
 	e.run_func(e.mods['main']['main'] or { ast.FnDecl{} } as ast.FnDecl, ...args)
 	return e.return_values
