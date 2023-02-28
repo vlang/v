@@ -252,6 +252,18 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		$if !macos {
 			skip_files << 'examples/macos_tray/tray.v'
 		}
+		// examples/wasm/mandelbrot/mandelbrot.v requires special compilation flags: `-b wasm -os browser`, skip it for now:
+		skip_files << 'examples/wasm/mandelbrot/mandelbrot.v'
+
+		// TODO: always build the wasm_builder in the future, not just when it was build manually before:
+		wasm_builder_executable := $if !windows {
+			'cmd/tools/builders/wasm_builder'
+		} $else {
+			'cmd/tools/builders/wasm_builder.exe'
+		}
+		if !os.exists(wasm_builder_executable) {
+			skip_files << os.join_path('cmd/tools/builders/wasm_builder.v')
+		}
 	}
 	vargs := _vargs.replace('-progress', '')
 	vexe := pref.vexe_path()

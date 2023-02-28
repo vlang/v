@@ -14,6 +14,8 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 		'C.${p.check_name()}'
 	} else if language == .js {
 		'JS.${p.check_js_name()}'
+	} else if language == .wasm {
+		'WASM.${p.check_name()}'
 	} else if mod.len > 0 {
 		'${mod}.${p.check_name()}'
 	} else {
@@ -242,6 +244,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		language = .c
 	} else if p.tok.kind == .name && p.tok.lit == 'JS' {
 		language = .js
+	} else if p.tok.kind == .name && p.tok.lit == 'WASM' {
+		language = .wasm
 	}
 	p.fn_language = language
 	if language != .v {
@@ -474,6 +478,8 @@ run them via `v file.v` instead',
 			name = 'C.${name}'
 		} else if language == .js {
 			name = 'JS.${name}'
+		} else if language == .wasm {
+			name = 'WASM.${name}'
 		} else {
 			name = p.prepend_mod(name)
 		}

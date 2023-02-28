@@ -329,6 +329,10 @@ fn main() {
 		tsession.skip_files << 'vlib/net/udp_test.v'
 	}
 
+	if !os.exists('cmd/tools/builders/wasm_builder') {
+		tsession.skip_files << 'vlib/v/gen/wasm/tests/wasm_test.v'
+	}
+
 	mut werror := false
 	mut sanitize_memory := false
 	mut sanitize_address := false

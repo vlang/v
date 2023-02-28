@@ -889,6 +889,7 @@ pub:
 	is_c2v_prefix bool // for `--x` (`x--$`), only for translated code until c2v can handle it
 pub mut:
 	expr        Expr
+	typ         Type
 	auto_locked string
 }
 
