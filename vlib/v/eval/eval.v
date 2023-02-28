@@ -28,13 +28,17 @@ pub fn (mut e Eval) push_val(val Object) {
 	e.stack_vals << val
 }
 
+pub fn (mut e Eval) add_file(filepath string) {
+	e.user_files << filepath
+}
+
 pub fn (mut e Eval) run(expression string, args ...Object) ![]Object {
 	mut prepend := 'fn host_pop() voidptr { return 0 }\n'
 	mut b := builder.new_builder(e.pref)
 	e.table = b.table
 
 	mut files := b.get_builtin_files()
-	files << b.get_user_files()
+	files << e.user_files
 	b.set_module_lookup_paths()
 
 	b.interpret_text(prepend + expression, files)!
@@ -54,8 +58,9 @@ pub mut:
 	future_register_consts map[string]map[string]map[string]ast.ConstField // mod:file:name:field
 	local_vars             map[string]Var
 	local_vars_stack       []map[string]Var
-	stack_vals             []Object
-	scope_idx              int // this is increased when e.open_scope() is called, decreased when e.close_scope() (and all variables with that scope level deleted)
+	stack_vals             []Object // host stack popped by host_pop() on interpreted code
+	user_files             []string // user additional files
+	scope_idx              int      // this is increased when e.open_scope() is called, decreased when e.close_scope() (and all variables with that scope level deleted)
 	returning              bool
 	return_values          []Object
 	cur_mod                string
