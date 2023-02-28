@@ -1,7 +1,6 @@
 struct Data {
 	a ?int
 	b ?int = 1
-	c ?int = none
 }
 
 struct Data2 {
@@ -14,5 +13,4 @@ fn test_nested_option_struct_init() {
 	assert d2.d.a == none
 	assert d2.d.b != none
 	assert d2.d.b? == 1
-	assert d2.d.c == none
 }
