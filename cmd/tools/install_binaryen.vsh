@@ -14,8 +14,8 @@ tloc := '${root}/thirdparty'
 loc := '${tloc}/binaryen'
 
 if os.exists(loc) {
-	eprintln("thirdparty/binaryen exists, will not overwrite")
-	eprintln("delete the folder, and execute again")
+	eprintln('thirdparty/binaryen exists, will not overwrite')
+	eprintln('delete the folder, and execute again')
 	exit(1)
 }
 
