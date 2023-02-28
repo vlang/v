@@ -1906,7 +1906,11 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 			inner_args := if node.args_var != '' {
 				node.args_var
 			} else {
-				node.args.map(it.str()).join(', ')
+				node.args.map(if it.expr is ast.ArrayDecompose {
+					'...${it.expr.expr.str()}'
+				} else {
+					it.str()
+				}).join(', ')
 			}
 			method_expr := if node.has_parens {
 				'(${node.method_name}(${inner_args}))'
@@ -2002,6 +2006,11 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		}
 		name := f.short_module(node.name)
 		f.write(name)
+		if node.or_expr.kind == .propagate_option {
+			f.write('?')
+		} else if node.or_expr.kind == .block {
+			f.or_expr(node.or_expr)
+		}
 		f.mark_import_as_used(name)
 	}
 }

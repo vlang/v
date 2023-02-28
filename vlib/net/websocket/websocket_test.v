@@ -2,12 +2,12 @@ import os
 import net
 import net.websocket
 import time
-import rand
 
 struct WebsocketTestResults {
 pub mut:
 	nr_messages      int
 	nr_pong_received int
+	nr_closes        int
 }
 
 // Do not run these tests everytime, since they are flaky.
@@ -25,11 +25,9 @@ fn test_ws_ipv6() {
 	if should_skip {
 		return
 	}
-	port := 30000 + rand.intn(1024) or { 0 }
-	eprintln('> port ipv6: ${port}')
-	spawn start_server(.ip6, port)
-	time.sleep(1500 * time.millisecond)
-	ws_test(.ip6, 'ws://localhost:${port}') or {
+	start_server(.ip6, 30001)!
+
+	ws_test(.ip6, 'ws://localhost:30001') or {
 		eprintln('> error while connecting .ip6, err: ${err}')
 		assert false
 	}
@@ -40,17 +38,16 @@ fn test_ws_ipv4() {
 	if should_skip {
 		return
 	}
-	port := 30000 + rand.intn(1024) or { 0 }
-	eprintln('> port ipv4: ${port}')
-	spawn start_server(.ip, port)
-	time.sleep(1500 * time.millisecond)
-	ws_test(.ip, 'ws://localhost:${port}') or {
+	start_server(.ip, 30002)!
+
+	ws_test(.ip, 'ws://localhost:30002') or {
 		eprintln('> error while connecting .ip, err: ${err}')
 		assert false
 	}
 }
 
 fn start_server(family net.AddrFamily, listen_port int) ! {
+	eprintln('> start_server family:${family} | listen_port: ${listen_port}')
 	mut s := websocket.new_server(family, listen_port, '')
 	// make that in execution test time give time to execute at least one time
 	s.ping_interval = 1
@@ -74,7 +71,19 @@ fn start_server(family net.AddrFamily, listen_port int) ! {
 	s.on_close(fn (mut ws websocket.Client, code int, reason string) ! {
 		// not used
 	})
-	s.listen() or { panic('websocket server could not listen, err: ${err}') }
+	start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut s)
+	eprintln('> start_server finished')
+}
+
+fn start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws websocket.Server) {
+	eprintln('-----------------------------------------------------------------------------')
+	spawn fn [mut ws] () {
+		ws.listen() or { panic('websocket server could not listen, err: ${err}') }
+	}()
+	for ws.state != .open {
+		time.sleep(10 * time.millisecond)
+	}
+	eprintln('-----------------------------------------------------------------------------')
 }
 
 // ws_test tests connect to the websocket server from websocket client
@@ -82,18 +91,18 @@ fn ws_test(family net.AddrFamily, uri string) ! {
 	eprintln('connecting to ${uri} ...')
 
 	mut test_results := WebsocketTestResults{}
-	mut ws := websocket.new_client(uri)!
-	ws.on_open(fn (mut ws websocket.Client) ! {
-		ws.pong()!
+	mut client := websocket.new_client(uri)!
+	client.on_open(fn (mut client websocket.Client) ! {
+		client.pong()!
 		assert true
 	})
-	ws.on_error(fn (mut ws websocket.Client, err string) ! {
+	client.on_error(fn (mut client websocket.Client, err string) ! {
 		println('error: ${err}')
 		// this can be thrown by internet connection problems
 		assert false
 	})
 
-	ws.on_message_ref(fn (mut ws websocket.Client, msg &websocket.Message, mut res WebsocketTestResults) ! {
+	client.on_message_ref(fn (mut client websocket.Client, msg &websocket.Message, mut res WebsocketTestResults) ! {
 		println('client got type: ${msg.opcode} payload:\n${msg.payload}')
 		if msg.opcode == .text_frame {
 			smessage := msg.payload.bytestr()
@@ -112,11 +121,14 @@ fn ws_test(family net.AddrFamily, uri string) ! {
 			println('Binary message: ${msg}')
 		}
 	}, test_results)
-	ws.connect() or { panic('fail to connect, err: ${err}') }
-	spawn ws.listen()
+	client.connect()!
+	spawn client.listen()
+
 	text := ['a'].repeat(2)
 	for msg in text {
-		ws.write(msg.bytes(), .text_frame) or { panic('fail to write to websocket, err: ${err}') }
+		client.write(msg.bytes(), .text_frame) or {
+			panic('fail to write to websocket, err: ${err}')
+		}
 		// sleep to give time to recieve response before send a new one
 		time.sleep(100 * time.millisecond)
 	}
@@ -125,4 +137,43 @@ fn ws_test(family net.AddrFamily, uri string) ! {
 	// We expect at least 2 pongs, one sent directly and one indirectly
 	assert test_results.nr_pong_received >= 2
 	assert test_results.nr_messages == 2
+}
+
+fn test_on_close_when_server_closing_connection() ! {
+	mut ws := websocket.new_server(.ip, 30003, '')
+	ws.on_message(fn (mut cli websocket.Client, msg &websocket.Message) ! {
+		if msg.opcode == .text_frame {
+			cli.close(1000, 'closing connection')!
+		}
+	})
+	mut test_results := WebsocketTestResults{}
+	ws.on_close_ref(fn (mut cli websocket.Client, code int, reason string, mut res WebsocketTestResults) ! {
+		res.nr_closes++
+	}, test_results)
+	start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws)
+	//
+	mut client := websocket.new_client('ws://localhost:30003')!
+	client.connect()!
+	spawn client.listen()
+	time.sleep(1000 * time.millisecond)
+	client.write_string('a message')!
+	time.sleep(1000 * time.millisecond)
+	assert test_results.nr_closes == 1
+}
+
+fn test_on_close_when_client_closing_connection() ! {
+	mut ws := websocket.new_server(.ip, 30004, '')
+	start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws)
+	//
+	mut client := websocket.new_client('ws://localhost:30004')!
+	mut test_results := WebsocketTestResults{}
+	client.on_close_ref(fn (mut cli websocket.Client, code int, reason string, mut res WebsocketTestResults) ! {
+		res.nr_closes++
+	}, test_results)
+	client.connect()!
+	spawn client.listen()
+	time.sleep(1000 * time.millisecond)
+	client.close(1000, 'closing connection')!
+	time.sleep(1000 * time.millisecond)
+	assert test_results.nr_closes == 1
 }

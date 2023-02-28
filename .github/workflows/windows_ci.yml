@@ -23,10 +23,10 @@ jobs:
       VFLAGS: -cc gcc
       VERBOSE_MAKE: 1
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
-          node-version: 12.x
+          node-version: 16
       - name: Build
         run: |
           gcc --version
@@ -86,10 +86,10 @@ jobs:
       VFLAGS: -cc msvc
       VERBOSE_MAKE: 1
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
-          node-version: 12.x
+          node-version: 16
       - name: Build
         run: |
           echo %VFLAGS%
@@ -136,10 +136,10 @@ jobs:
       VTEST_SHOW_START: 1
       VERBOSE_MAKE: 1
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
-          node-version: 12.x
+          node-version: 16
       - name: Build with make.bat -tcc
         run: |
           .\make.bat -tcc

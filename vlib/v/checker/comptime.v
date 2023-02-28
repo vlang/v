@@ -146,7 +146,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 
 fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 	node.left_type = c.expr(node.left)
-	expr_type := c.unwrap_generic(c.expr(node.field_expr))
+	mut expr_type := c.unwrap_generic(c.expr(node.field_expr))
 	expr_sym := c.table.sym(expr_type)
 	if expr_type != ast.string_type {
 		c.error('expected `string` instead of `${expr_sym.name}` (e.g. `field.name`)',
@@ -157,6 +157,10 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 		if c.comptime_fields_type.len == 0 {
 			c.error('compile time field access can only be used when iterating over `T.fields`',
 				left_pos)
+		}
+		expr_type = c.get_comptime_selector_type(node, ast.void_type)
+		if expr_type != ast.void_type {
+			return expr_type
 		}
 		expr_name := node.field_expr.expr.str()
 		if expr_name in c.comptime_fields_type {
@@ -755,6 +759,18 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 	return .unknown
 }
 
+// get_comptime_selector_type retrieves the var.$(field.name) type when field_name is 'name' otherwise default_type is returned
+[inline]
+fn (mut c Checker) get_comptime_selector_type(node ast.ComptimeSelector, default_type ast.Type) ast.Type {
+	if node.field_expr is ast.SelectorExpr
+		&& c.check_comptime_is_field_selector(node.field_expr as ast.SelectorExpr)
+		&& (node.field_expr as ast.SelectorExpr).field_name == 'name' {
+		return c.unwrap_generic(c.comptime_fields_default_type)
+	}
+	return default_type
+}
+
+// check_comptime_is_field_selector checks if the SelectorExpr is related to $for variable
 [inline]
 fn (mut c Checker) check_comptime_is_field_selector(node ast.SelectorExpr) bool {
 	if c.inside_comptime_for_field && node.expr is ast.Ident {
@@ -763,6 +779,7 @@ fn (mut c Checker) check_comptime_is_field_selector(node ast.SelectorExpr) bool 
 	return false
 }
 
+// check_comptime_is_field_selector_bool checks if the SelectorExpr is related to field.is_* boolean fields
 [inline]
 fn (mut c Checker) check_comptime_is_field_selector_bool(node ast.SelectorExpr) bool {
 	if c.check_comptime_is_field_selector(node) {
@@ -772,6 +789,7 @@ fn (mut c Checker) check_comptime_is_field_selector_bool(node ast.SelectorExpr) 
 	return false
 }
 
+// get_comptime_selector_bool_field evaluates the bool value for field.is_* fields
 fn (mut c Checker) get_comptime_selector_bool_field(field_name string) bool {
 	field := c.comptime_for_field_value
 	field_typ := c.comptime_fields_default_type

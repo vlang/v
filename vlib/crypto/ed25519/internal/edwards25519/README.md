@@ -13,7 +13,7 @@ This modules was port of Golang `edwards25519` library from [edwards25519](https
 About Edwards25519
 ------------------
 
-Twisted Edwards curves are a familly of elliptic curves allowing complete addition 
+Twisted Edwards curves are a family of elliptic curves allowing complete addition 
 formulas without any special case and no point at infinity. 
 Curve edwards25519 is based on prime 2^255 - 19 for efficient implementation. 
 Equation and parameters are given in RFC 7748.

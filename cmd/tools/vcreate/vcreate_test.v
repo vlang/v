@@ -7,19 +7,30 @@ const test_path = os.join_path(os.vtmp_dir(), 'v', 'test_vcreate')
 
 fn init_and_check() ! {
 	os.chdir(test_path)!
+
+	// if main file already exist we should not tamper it
+	mut main_last_modified_time := i64(0)
+	is_main_file_preexisting := os.exists('src/main.v')
+	if is_main_file_preexisting == true {
+		main_last_modified_time = os.file_last_mod_unix('src/main.v')
+	}
 	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
 
 	x := os.execute_or_exit('${os.quoted_path(@VEXE)} run .')
 	assert x.exit_code == 0
 	assert x.output.trim_space() == 'Hello World!'
 
-	assert os.read_file('src/main.v')! == [
-		'module main\n',
-		'fn main() {',
-		"	println('Hello World!')",
-		'}',
-		'',
-	].join_lines()
+	if is_main_file_preexisting == true {
+		assert main_last_modified_time == os.file_last_mod_unix('src/main.v')
+	} else {
+		assert os.read_file('src/main.v')! == [
+			'module main\n',
+			'fn main() {',
+			"	println('Hello World!')",
+			'}',
+			'',
+		].join_lines()
+	}
 
 	assert os.read_file('v.mod')! == [
 		'Module {',

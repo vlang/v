@@ -15,11 +15,19 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	conn := g.new_tmp_var()
 	g.writeln('')
 	g.writeln('// orm')
-	g.write('orm__Connection ${conn} = (orm__Connection){._')
+	g.write('orm__Connection ${conn} = ')
+
 	db_expr_ctype_name := g.typ(node.db_expr_type)
-	g.write('${db_expr_ctype_name} = &')
-	g.expr(node.db_expr)
-	g.writeln(', ._typ = _orm__Connection_${db_expr_ctype_name}_index};')
+
+	if db_expr_ctype_name == 'orm__Connection' {
+		g.expr(node.db_expr)
+		g.writeln(';')
+	} else {
+		g.write('(orm__Connection){._${db_expr_ctype_name} = &')
+		g.expr(node.db_expr)
+		g.writeln(', ._typ = _orm__Connection_${db_expr_ctype_name}_index};')
+	}
+
 	for line in node.lines {
 		g.sql_stmt_line(line, conn, node.or_expr)
 	}
@@ -174,6 +182,16 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 	}
 	g.write('),')
 
+	mut member_access_type := '.'
+
+	if node.scope != unsafe { nil } {
+		inserting_object := node.scope.find(node.object_var_name) or { verror(err.str()) }
+
+		if inserting_object.typ.is_ptr() {
+			member_access_type = '->'
+		}
+	}
+
 	g.write('.data = new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(orm__Primitive),')
 	if fields.len > 0 {
 		g.write(' _MOV((orm__Primitive[${fields.len}]){')
@@ -193,7 +211,8 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 			if typ == 'time__Time' {
 				typ = 'time'
 			}
-			g.write('orm__${typ}_to_primitive(${node.object_var_name}.${f.name}),')
+
+			g.write('orm__${typ}_to_primitive(${node.object_var_name}${member_access_type}${f.name}),')
 		}
 		g.write('})')
 	} else {
@@ -210,12 +229,12 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 		g.writeln('orm__Primitive ${id_name} = orm__int_to_primitive(orm__Connection_name_table[${expr}._typ]._method_last_id(${expr}._object));')
 		for i, mut arr in arrs {
 			idx := g.new_tmp_var()
-			g.writeln('for (int ${idx} = 0; ${idx} < ${arr.object_var_name}.${field_names[i]}.len; ${idx}++) {')
+			g.writeln('for (int ${idx} = 0; ${idx} < ${arr.object_var_name}${member_access_type}${field_names[i]}.len; ${idx}++) {')
 			last_ids := g.new_tmp_var()
 			res_ := g.new_tmp_var()
 			tmp_var := g.new_tmp_var()
 			ctyp := g.typ(arr.table_expr.typ)
-			g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)array_get(${arr.object_var_name}.${field_names[i]}, ${idx}));')
+			g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)array_get(${arr.object_var_name}${member_access_type}${field_names[i]}, ${idx}));')
 			arr.object_var_name = tmp_var
 			mut fff := []ast.StructField{}
 			for f in arr.fields {
@@ -523,14 +542,21 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	conn := g.new_tmp_var()
 	g.writeln('')
 	g.writeln('// orm')
-	g.write('orm__Connection ${conn} = (orm__Connection){._')
+	g.write('orm__Connection ${conn} = ')
 	db_expr_type := g.get_db_type(node.db_expr) or {
 		verror('sql orm error - unknown db type for ${node.db_expr}')
 	}
 	db_expr_ctype_name := g.typ(db_expr_type)
-	g.write('${db_expr_ctype_name} = &')
-	g.expr(node.db_expr)
-	g.writeln(', ._typ = _orm__Connection_${db_expr_ctype_name}_index};')
+
+	if db_expr_ctype_name == 'orm__Connection' {
+		g.expr(node.db_expr)
+		g.writeln(';')
+	} else {
+		g.write('(orm__Connection){._${db_expr_ctype_name} = &')
+		g.expr(node.db_expr)
+		g.writeln(', ._typ = _orm__Connection_${db_expr_ctype_name}_index};')
+	}
+
 	g.sql_select(node, conn, left, node.or_expr)
 }
 

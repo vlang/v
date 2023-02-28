@@ -7,7 +7,7 @@ import v.ast
 import v.pref
 
 const (
-	vexe          = pref.vexe_path()
+	vexe          = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 	vroot         = os.dir(vexe)
 	support_color = term.can_show_color_on_stderr() && term.can_show_color_on_stdout()
 	ecode_timeout = 101

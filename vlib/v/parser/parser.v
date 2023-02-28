@@ -2100,6 +2100,10 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 
 pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	// p.warn('name ')
+	is_option := p.tok.kind == .question && p.peek_tok.kind == .lsbr
+	if is_option {
+		p.next()
+	}
 	is_shared := p.tok.kind == .key_shared
 	is_atomic := p.tok.kind == .key_atomic
 	if is_shared {
@@ -2129,6 +2133,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 			scope: p.scope
 		}
 	}
+	in_select := p.prev_tok.kind == .arrow
 	pos := p.tok.pos()
 	mut name := p.check_name()
 	if name == '_' {
@@ -2142,6 +2147,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 				is_mut: false
 				is_static: false
 				is_volatile: false
+				is_option: is_option
 			}
 			scope: p.scope
 		}
@@ -2151,6 +2157,20 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	}
 	if p.expr_mod.len > 0 {
 		name = '${p.expr_mod}.${name}'
+	}
+
+	// parsers ident like var?, except on '<- var' '$if ident ?', '[if define ?]'
+	allowed_cases := !in_select && !p.inside_comptime_if && !p.inside_ct_if_expr
+	mut or_kind := ast.OrKind.absent
+	mut or_stmts := []ast.Stmt{}
+	mut or_pos := token.Pos{}
+
+	if allowed_cases && p.tok.kind == .question && p.peek_tok.kind != .lpar { // var?, not var?(
+		or_kind = ast.OrKind.propagate_option
+		p.check(.question)
+	} else if allowed_cases && p.tok.kind == .key_orelse {
+		or_kind = ast.OrKind.block
+		or_stmts, or_pos = p.or_block(.no_err_var)
 	}
 	return ast.Ident{
 		tok_kind: p.tok.kind
@@ -2166,9 +2186,15 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 			is_mut: is_mut
 			is_static: is_static
 			is_volatile: is_volatile
+			is_option: or_kind != ast.OrKind.absent
 			share: ast.sharetype_from_flags(is_shared, is_atomic)
 		}
 		scope: p.scope
+		or_expr: ast.OrExpr{
+			kind: or_kind
+			stmts: or_stmts
+			pos: or_pos
+		}
 	}
 }
 
@@ -2338,6 +2364,7 @@ fn (mut p Parser) is_generic_cast() bool {
 pub fn (mut p Parser) name_expr() ast.Expr {
 	prev_tok_kind := p.prev_tok.kind
 	mut node := ast.empty_expr
+
 	if p.expecting_type {
 		if p.tok.kind == .dollar {
 			node = p.parse_comptime_type()
@@ -2365,7 +2392,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	// p.warn('resetting')
 	p.expr_mod = ''
 	// `map[string]int` initialization
-	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
+	if (p.tok.lit == 'map' && p.peek_tok.kind == .lsbr)
+		|| (p.tok.kind == .question && p.peek_tok.lit == 'map') {
 		mut pos := p.tok.pos()
 		map_type := p.parse_map_type()
 		if p.tok.kind == .lcbr {
@@ -2484,12 +2512,21 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		p.check(.dot)
 		p.expr_mod = mod
 	}
+	is_option := p.tok.kind == .question
 	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 {
-		p.tok.lit[0].is_capital()
+		if is_option {
+			if p.peek_tok.kind != .eof && p.peek_tok.lit.len > 0 {
+				p.peek_tok.lit[0].is_capital()
+			} else {
+				false
+			}
+		} else {
+			p.tok.lit[0].is_capital()
+		}
 	} else {
 		false
 	}
-	is_option := p.tok.kind == .question
+
 	is_generic_call := p.is_generic_call()
 	is_generic_cast := p.is_generic_cast()
 	is_generic_struct_init := p.is_generic_struct_init()
@@ -2506,9 +2543,21 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			}
 		}
 	} else if p.peek_tok.kind == .lpar || is_generic_call || is_generic_cast
-		|| (is_option && p.peek_token(2).kind == .lpar) {
+		|| (is_option && p.peek_token(2).kind == .lpar) || (is_option && ((p.peek_tok.kind == .lsbr
+		&& p.peek_token(2).kind == .rsbr && p.peek_token(3).kind == .name
+		&& p.peek_token(4).kind == .lpar) || (p.peek_tok.kind == .lsbr
+		&& p.peek_token(2).kind == .number && p.peek_token(3).kind == .rsbr
+		&& p.peek_token(4).kind == .name && p.peek_token(5).kind == .lpar))) {
+		is_array := p.peek_tok.kind == .lsbr
+		is_fixed_array := is_array && p.peek_token(2).kind == .number
 		// foo(), foo<int>() or type() cast
-		mut name := if is_option { p.peek_tok.lit } else { p.tok.lit }
+		mut name := if is_option {
+			if is_array { p.peek_token(if is_fixed_array { 4 } else { 3 }).lit
+			 } else { p.peek_tok.lit
+			 }
+		} else {
+			p.tok.lit
+		}
 		if mod.len > 0 {
 			name = '${mod}.${name}'
 		}
@@ -2574,7 +2623,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				}
 			}
 		}
-	} else if (p.peek_tok.kind == .lcbr || is_generic_struct_init)
+	} else if (((!is_option && p.peek_tok.kind == .lcbr)
+		|| (is_option && p.peek_token(2).kind == .lcbr)) || is_generic_struct_init)
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
 		&& (!p.inside_for || p.inside_select) && !known_var {
@@ -2662,8 +2712,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			}
 			p.expr_mod = ''
 			return node
+		} else if p.tok.kind == .question && p.peek_tok.kind == .lsbr {
+			return p.array_init()
 		}
-
 		ident := p.parse_ident(language)
 		node = ident
 		if p.inside_defer {

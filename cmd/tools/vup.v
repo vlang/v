@@ -1,9 +1,12 @@
 module main
 
 import os
-import v.pref
 import v.util.version
 import v.util.recompilation
+
+const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
+
+const vroot = os.dir(vexe)
 
 struct App {
 	is_verbose bool
@@ -13,8 +16,6 @@ struct App {
 }
 
 fn new_app() App {
-	vexe := os.real_path(pref.vexe_path())
-	vroot := os.dir(vexe)
 	return App{
 		is_verbose: '-v' in os.args
 		is_prod: '-prod' in os.args

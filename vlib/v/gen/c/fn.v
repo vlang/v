@@ -434,11 +434,6 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) !string {
 			return error('none')
 		}
 		name = g.cc_type(node.receiver.typ, false) + '_' + name
-		if unwrapped_rec_sym.language == .c && node.receiver.typ.is_real_pointer()
-			&& node.name == 'str' {
-			// TODO: handle this in a more general way, perhaps add a `[typedef_incomplete]` attribute, for C structs instead of this hack
-			name = name.replace_once('C__', '')
-		}
 	}
 	if node.language == .c {
 		name = util.no_dots(name)
@@ -888,7 +883,11 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 		}
 	} else if left_node is ast.Ident {
 		if left_node.obj is ast.Var {
-			if g.comptime_var_type_map.len > 0 {
+			if left_node.obj.is_comptime_field {
+				rec_type = g.comptime_for_field_type
+				g.gen_expr_to_string(left_node, rec_type)
+				return true
+			} else if g.comptime_var_type_map.len > 0 {
 				rec_type = left_node.obj.typ
 				g.gen_expr_to_string(left_node, rec_type)
 				return true
@@ -904,6 +903,9 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 		}
 	} else if left_node is ast.None {
 		g.gen_expr_to_string(left_node, ast.none_type)
+		return true
+	} else if node.left_type.has_flag(.option) {
+		g.gen_expr_to_string(left_node, g.unwrap_generic(node.left_type))
 		return true
 	}
 	g.get_str_fn(rec_type)
@@ -957,6 +959,19 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			else {}
 		}
 	}
+
+	if node.from_embed_types.len == 0 && node.left is ast.Ident {
+		if node.left.obj is ast.Var {
+			if node.left.obj.smartcasts.len > 0 {
+				unwrapped_rec_type = g.unwrap_generic(node.left.obj.smartcasts.last())
+				cast_sym := g.table.sym(unwrapped_rec_type)
+				if cast_sym.info is ast.Aggregate {
+					unwrapped_rec_type = cast_sym.info.types[g.aggregate_type_idx]
+				}
+			}
+		}
+	}
+
 	if g.inside_comptime_for_field {
 		mut node_ := unsafe { node }
 		comptime_args = g.change_comptime_args(mut node_)
@@ -972,8 +987,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 
 	mut typ_sym := g.table.sym(unwrapped_rec_type)
-	// alias type that undefined this method (not include `str`) need to use parent type
-	if typ_sym.kind == .alias && node.name != 'str' && !typ_sym.has_method(node.name) {
+	// non-option alias type that undefined this method (not include `str`) need to use parent type
+	if !left_type.has_flag(.option) && typ_sym.kind == .alias && node.name != 'str'
+		&& !typ_sym.has_method(node.name) {
 		unwrapped_rec_type = (typ_sym.info as ast.Alias).parent_type
 		typ_sym = g.table.sym(unwrapped_rec_type)
 	} else if typ_sym.kind == .array && !typ_sym.has_method(node.name) {
@@ -1764,6 +1780,19 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					}
 				}
 			}
+		} else if arg.expr is ast.ArrayDecompose {
+			mut d_count := 0
+			for d_i in i .. expected_types.len {
+				g.write('*(${g.typ(expected_types[d_i])}*)array_get(')
+				g.expr(arg.expr)
+				g.write(', ${d_count})')
+
+				if d_i < expected_types.len - 1 {
+					g.write(', ')
+				}
+				d_count++
+			}
+			continue
 		}
 		use_tmp_var_autofree := g.is_autofree && arg.typ == ast.string_type && arg.is_tmp_autofree
 			&& !g.inside_const && !g.is_builtin_mod
@@ -2332,6 +2361,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		}
 		g.expr(arg.expr)
 		g.write('->val')
+		return
+	} else if expected_type.has_flag(.option) {
+		g.expr_with_opt(arg.expr, arg_typ, expected_type)
 		return
 	} else if arg.expr is ast.ArrayInit {
 		if arg.expr.is_fixed {

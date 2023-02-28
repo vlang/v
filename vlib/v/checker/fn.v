@@ -117,9 +117,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				if multi_type == ast.error_type {
 					c.error('type `IError` cannot be used in multi-return, return an option instead',
 						node.return_type_pos)
-				} else if multi_type.has_flag(.option) {
-					c.error('option cannot be used in multi-return, return an option instead',
-						node.return_type_pos)
 				} else if multi_type.has_flag(.result) {
 					c.error('result cannot be used in multi-return, return a result instead',
 						node.return_type_pos)
@@ -149,6 +146,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	if node.is_method {
+		if node.receiver.typ.has_flag(.option) {
+			c.error('option types cannot have methods', node.receiver_pos)
+		}
 		mut sym := c.table.sym(node.receiver.typ)
 		if sym.kind == .array && !c.is_builtin_mod && node.name == 'map' {
 			// TODO `node.map in array_builtin_methods`
@@ -211,8 +211,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('invalid use of reserved type `${param.name}` as a parameter name',
 					param.pos)
 			}
-			if param.typ.has_flag(.option) || param.typ.has_flag(.result) {
-				c.error('option or result type argument is not supported currently', param.type_pos)
+			if param.typ.has_flag(.result) {
+				c.error('result type argument is not supported currently', param.type_pos)
 			}
 			arg_typ_sym := c.table.sym(param.typ)
 			if arg_typ_sym.info is ast.Struct {
@@ -503,7 +503,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 			node.free_receiver = true
 		}
 	}
-	c.expected_or_type = node.return_type.clear_flag(.option).clear_flag(.result)
+	c.expected_or_type = node.return_type.clear_flag(.result)
 	c.stmts_ending_with_expression(node.or_block.stmts)
 	c.expected_or_type = ast.void_type
 
@@ -965,11 +965,14 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		c.error('too many arguments in call to `${func.name}` (non-js backend: ${c.pref.backend})',
 			node.pos)
 	}
+	mut has_decompose := false
 	for i, mut call_arg in node.args {
 		if func.params.len == 0 {
 			continue
 		}
-
+		if !func.is_variadic && has_decompose {
+			c.error('cannot have parameter after array decompose', node.pos)
+		}
 		param := if func.is_variadic && i >= func.params.len - 1 {
 			func.params.last()
 		} else {
@@ -980,6 +983,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.error('too many arguments in call to `${func.name}`', node.pos)
 			}
 		}
+		has_decompose = call_arg.expr is ast.ArrayDecompose
 		if func.is_variadic && i >= func.params.len - 1 {
 			param_sym := c.table.sym(param.typ)
 			mut expected_type := param.typ
@@ -1032,8 +1036,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		arg_typ_sym := c.table.sym(arg_typ)
-		if arg_typ_sym.kind == .none_ {
-			c.error('cannot use `none` as function argument', call_arg.pos)
+		if arg_typ_sym.kind == .none_ && param.typ.has_flag(.generic) {
+			c.error('cannot use `none` as generic argument', call_arg.pos)
 		}
 		param_typ_sym := c.table.sym(param.typ)
 		if func.is_variadic && arg_typ.has_flag(.variadic) && node.args.len - 1 > i {
@@ -1764,8 +1768,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				}
 				continue
 			}
-			if final_arg_sym.kind == .none_ {
-				c.error('cannot use `none` as method argument', arg.pos)
+			if final_arg_sym.kind == .none_ && param.typ.has_flag(.generic) {
+				c.error('cannot use `none` as generic argument', arg.pos)
 			}
 			if param.typ.is_ptr() && !arg.typ.is_real_pointer() && arg.expr.is_literal()
 				&& !c.pref.translated {
@@ -2049,6 +2053,12 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 	}
 	if f.is_variadic {
 		min_required_params--
+	} else {
+		has_decompose := node.args.filter(it.expr is ast.ArrayDecompose).len > 0
+		if has_decompose {
+			// if call(...args) is present
+			min_required_params = nr_args
+		}
 	}
 	if min_required_params < 0 {
 		min_required_params = 0

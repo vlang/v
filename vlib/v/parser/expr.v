@@ -52,6 +52,8 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				&& p.file_base in ['map.v', 'map_d_gcboehm_opt.v']) {
 				p.error_with_pos("deprecated map syntax, use syntax like `{'age': 20}`",
 					p.tok.pos())
+			} else if p.tok.kind == .question && p.peek_tok.kind == .amp {
+				node = p.prefix_expr()
 			} else {
 				if p.inside_comptime_if && p.is_generic_name() && p.peek_tok.kind != .dot {
 					// $if T is string {}
@@ -660,6 +662,10 @@ fn (p &Parser) fileis(s string) bool {
 
 fn (mut p Parser) prefix_expr() ast.Expr {
 	mut pos := p.tok.pos()
+	is_option := p.tok.kind == .question
+	if is_option {
+		p.next()
+	}
 	op := p.tok.kind
 	if op == .amp {
 		p.is_amp = true
@@ -678,6 +684,9 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 		if mut right is ast.CastExpr {
 			// Handle &Type(x), as well as &&Type(x) etc:
 			p.recast_as_pointer(mut right, pos)
+			if is_option {
+				right.typ = right.typ.set_flag(.option)
+			}
 			return right
 		}
 		if mut right is ast.SelectorExpr {
@@ -711,11 +720,14 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 	mut or_pos := p.tok.pos()
 	// allow `x := <-ch or {...}` to handle closed channel
 	if op == .arrow {
-		if p.tok.kind == .key_orelse {
+		if mut right is ast.SelectorExpr {
+			or_kind = right.or_block.kind
+			or_stmts = right.or_block.stmts.clone()
+			right.or_block = ast.OrExpr{}
+		} else if p.tok.kind == .key_orelse {
 			or_kind = .block
 			or_stmts, or_pos = p.or_block(.with_err_var)
-		}
-		if p.tok.kind == .question {
+		} else if p.tok.kind == .question {
 			p.next()
 			or_kind = .propagate_option
 		}

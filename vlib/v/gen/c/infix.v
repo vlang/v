@@ -97,7 +97,10 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.gen_plain_infix_expr(node)
 		return
 	}
-	if (left.typ.is_ptr() && right.typ.is_int()) || (right.typ.is_ptr() && left.typ.is_int()) {
+	is_none_check := node.left_type.has_flag(.option) && node.right is ast.None
+	if is_none_check {
+		g.gen_is_none_check(node)
+	} else if (left.typ.is_ptr() && right.typ.is_int()) || (right.typ.is_ptr() && left.typ.is_int()) {
 		g.gen_plain_infix_expr(node)
 	} else if (left.typ.idx() == ast.string_type_idx || (!has_defined_eq_operator
 		&& left.unaliased.idx() == ast.string_type_idx)) && node.right is ast.StringLiteral
@@ -949,6 +952,26 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 		}
 	}
 	g.gen_plain_infix_expr(node)
+}
+
+fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
+	if node.left in [ast.Ident, ast.SelectorExpr] {
+		old_inside_opt_or_res := g.inside_opt_or_res
+		g.inside_opt_or_res = true
+		g.expr(node.left)
+		g.inside_opt_or_res = old_inside_opt_or_res
+		g.write('.state')
+	} else {
+		stmt_str := g.go_before_stmt(0).trim_space()
+		g.empty_line = true
+		left_var := g.expr_with_opt(node.left, node.left_type, node.left_type)
+		g.writeln(';')
+		g.write(stmt_str)
+		g.write(' ')
+		g.write('${left_var}.state')
+	}
+	g.write(' ${node.op.str()} ')
+	g.write('2') // none state
 }
 
 // gen_plain_infix_expr generates basic code for infix expressions,
