@@ -1,7 +1,7 @@
 [translated]
 module binaryen
 
-#flag -lbinaryen
+#flag -lbinaryen -lstdc++ -L@VEXEROOT/thirdparty/binaryen/lib -I@VEXEROOT/thirdparty/binaryen/include
 
 type Index = u32
 type Type = u64
