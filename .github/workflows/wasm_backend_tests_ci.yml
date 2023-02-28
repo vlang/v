@@ -66,7 +66,7 @@ jobs:
         run: ./v cmd/tools/install_binaryen.vsh
 
       - name: Build the V WASM backend
-        run: ./v cmd/tools/builders/wasm_builder.v
+        run: ./v -cc clang -showcc -v cmd/tools/builders/wasm_builder.v
 
       - name: Test the WASM backend
         run: ./v test vlib/v/gen/wasm/tests/
@@ -88,7 +88,7 @@ jobs:
         run: ./v cmd/tools/install_binaryen.vsh
 
       - name: Build the V WASM backend
-        run: ./v cmd/tools/builders/wasm_builder.v
+        run: ./v -cc clang -showcc -v cmd/tools/builders/wasm_builder.v
 
       - name: Test the WASM backend
         run: ./v test vlib/v/gen/wasm/tests/

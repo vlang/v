@@ -4,7 +4,10 @@ module binaryen
 $if dynamic_binaryen ? {
 	#flag -lbinaryen
 } $else {
-	#flag -lbinaryen -lstdc++ -L@VEXEROOT/thirdparty/binaryen/lib -I@VEXEROOT/thirdparty/binaryen/include
+	#flag -I@VEXEROOT/thirdparty/binaryen/include
+	#flag -L@VEXEROOT/thirdparty/binaryen/lib
+	#flag -lbinaryen
+	#flag linux -lstdc++
 }
 
 type Index = u32
