@@ -306,7 +306,7 @@ pub fn (v &Builder) get_user_files() []string {
 		dir = os.dir(single_test_v_file)
 	}
 	does_exist := os.exists(dir)
-	if !does_exist {
+	if !does_exist && v.pref.backend != .interpret {
 		verror("${dir} doesn't exist")
 	}
 	is_real_file := does_exist && !os.is_dir(dir)
@@ -325,13 +325,13 @@ pub fn (v &Builder) get_user_files() []string {
 		}
 		// Add .v files from the directory being compiled
 		user_files << v.v_files_from_dir(dir)
-	} else {
+	} else if v.pref.backend != .interpret {
 		println('usage: `v file.v` or `v directory`')
 		ext := os.file_ext(dir)
 		println('unknown file extension `${ext}`')
 		exit(1)
 	}
-	if user_files.len == 0 {
+	if user_files.len == 0 && v.pref.backend != .interpret {
 		println('No input .v files')
 		exit(1)
 	}
