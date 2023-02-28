@@ -280,12 +280,6 @@ jobs:
           sudo apt-get install --quiet -y clang
       - name: Build V
         run: make -j4 && ./v -cc clang -cg -cstrict -o v cmd/v
-
-      - name: Install binaryen as build dependency for the V WASM backend
-        run: ./v cmd/tools/install_binaryen.vsh
-      - name: Build the V WASM backend
-        run: ./v cmd/tools/builders/wasm_builder.v
-
       - name: Valgrind
         run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
       - name: Run sanitizers
