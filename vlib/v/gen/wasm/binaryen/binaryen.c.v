@@ -1,11 +1,15 @@
 [translated]
 module binaryen
 
-#flag -I@VEXEROOT/thirdparty/binaryen/include
-#flag -L@VEXEROOT/thirdparty/binaryen/lib
-#flag -lbinaryen
-#flag darwin -lc++
-#flag linux -lstdc++
+$if dynamic_binaryen ? {
+	#flag -lbinaryen
+} $else {
+	#flag -I@VEXEROOT/thirdparty/binaryen/include
+	#flag -L@VEXEROOT/thirdparty/binaryen/lib
+	#flag -lbinaryen
+	#flag darwin -lc++ -Wl,-rpath,"@executable_path/../../../thirdparty/binaryen/lib"
+	#flag linux -lstdc++
+}
 
 type Index = u32
 type Type = u64
