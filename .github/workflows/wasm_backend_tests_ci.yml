@@ -116,4 +116,4 @@ jobs:
         run: v -stats test vlib/v/gen/wasm/tests/
 
       - name: Build examples
-        run: VTEST_ONLY=wasm v build-examples
+        run: $env:VTEST_ONLY='wasm'; v build-examples
