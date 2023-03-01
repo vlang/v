@@ -59,9 +59,6 @@ fn main() {
 		// defer { os.rm(saveloc) or {}! }
 	}
 
-	mkdir_all(loc)!
-	println(loc)
-
 	println('Extracting `${tloc}/${fname}` to `${tloc}/binaryen` ...')
 	cmd := 'tar -xvf ${saveloc} --directory ${tloc}'
 	if os.system(cmd) != 0 {
