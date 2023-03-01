@@ -2107,7 +2107,7 @@ mut p := Point{
 	y: 20
 }
 println(p.x) // Struct fields are accessed using a dot
-// Alternative literal syntax for structs with 3 fields or fewer
+// Alternative literal syntax
 p = Point{10, 20}
 assert p.x == 10
 ```
