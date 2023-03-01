@@ -140,7 +140,7 @@ fn (mut pc PkgConfig) parse(file string) bool {
 	return true
 }
 
-fn (mut pc PkgConfig) resolve(pkgname string) ?string {
+fn (mut pc PkgConfig) resolve(pkgname string) !string {
 	if pkgname.ends_with('.pc') {
 		if os.exists(pkgname) {
 			return pkgname
@@ -156,7 +156,7 @@ fn (mut pc PkgConfig) resolve(pkgname string) ?string {
 			}
 		}
 	}
-	return none
+	return error('Cannot find "${pkgname}" pkgconfig file')
 }
 
 pub fn atleast(v string) bool {
@@ -187,7 +187,7 @@ pub fn (mut pc PkgConfig) extend(pcdep &PkgConfig) !string {
 			pc.libs_private << lib
 		}
 	}
-	return ''
+	return error('')
 }
 
 fn (mut pc PkgConfig) load_requires() ! {
@@ -220,7 +220,7 @@ fn (mut pc PkgConfig) load_require(dep string) ! {
 	if !pc.options.norecurse {
 		pcdep.load_requires()!
 	}
-	pc.extend(pcdep)!
+	pc.extend(pcdep) or {}
 }
 
 fn (mut pc PkgConfig) add_path(path string) {

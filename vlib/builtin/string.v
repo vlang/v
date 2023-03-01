@@ -910,9 +910,9 @@ pub fn (s string) substr(start int, end int) string {
 // version of `substr()` that is used in `a[start..end] or {`
 // return an error when the index is out of range
 [direct_array_access]
-pub fn (s string) substr_with_check(start int, end int) ?string {
+pub fn (s string) substr_with_check(start int, end int) !string {
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-		return none
+		return error('substr(${start}, ${end}) out of bounds (len=${s.len})')
 	}
 	len := end - start
 	if len == s.len {
