@@ -7,7 +7,7 @@ $if dynamic_binaryen ? {
 	#flag -I@VEXEROOT/thirdparty/binaryen/include
 	#flag -L@VEXEROOT/thirdparty/binaryen/lib
 	#flag -lbinaryen
-	#flag darwin -lc++ -Wl,-rpath,"@executable_path/../../../thirdparty/binaryen/lib"  -Wl,rpath,"/opt/homebrew/lib"
+	#flag darwin -lc++ -Wl,-rpath,"@executable_path/../../../thirdparty/binaryen/lib"
 	#flag linux -lstdc++
 }
 

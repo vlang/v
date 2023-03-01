@@ -102,16 +102,18 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        run: .\make.bat -msvc
+      - name: Symlink V
+        run: .\v.exe symlink -githubci
 
       - name: Install binaryen as build dependency for the V WASM backend
-        run: ./v cmd/tools/install_binaryen.vsh
+        run: v cmd/tools/install_binaryen.vsh
 
       - name: Build the V WASM backend
-        run: ./v -cc msvc -showcc -v cmd/tools/builders/wasm_builder.v
+        run: v -cc msvc -showcc -v cmd/tools/builders/wasm_builder.v
 
       - name: Test the WASM backend
-        run: ./v -stats test vlib/v/gen/wasm/tests/
+        run: v -stats test vlib/v/gen/wasm/tests/
 
       - name: Build examples
-        run: VTEST_ONLY=wasm ./v build-examples
+        run: VTEST_ONLY=wasm v build-examples
