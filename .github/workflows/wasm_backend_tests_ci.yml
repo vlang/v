@@ -95,7 +95,7 @@ jobs:
         run: VTEST_ONLY=wasm ./v build-examples
 
   wasm-backend-windows:
-    runs-on: windows-2019
+    runs-on: windows-2022
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     steps:
