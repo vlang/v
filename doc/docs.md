@@ -3396,10 +3396,7 @@ fn main() {
 		dump(a)
 		// In order to execute instances that implements IBar.
 		if a is IBar {
-			// a.bar() // Error.
-			b := a as IBar
-			dump(b)
-			b.bar()
+			a.bar()
 		}
 	}
 }
