@@ -1,8 +1,9 @@
 #!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp
 
-import net.http
-import json
 import os
+import net.http
+
+const github_job = os.getenv('GITHUB_JOB')
 
 struct JQ {
 	tag_name string
@@ -21,8 +22,16 @@ fn main() {
 		exit(1)
 	}
 
+	/*
+	// TODO: add retries here, github requests can fail
 	jq := http.get_text('https://api.github.com/repos/WebAssembly/binaryen/releases/latest')
 	tag := json.decode(JQ, jq)!.tag_name
+        if github_job != '' {
+                dump(jq)
+                dump(tag)
+        }
+	*/
+	tag := 'version_112'
 
 	name := $if windows {
 		'x86_64-windows'
@@ -49,9 +58,6 @@ fn main() {
 		http.download_file(url, saveloc)!
 		// defer { os.rm(saveloc) or {}! }
 	}
-
-	mkdir_all(loc)!
-	println(loc)
 
 	println('Extracting `${tloc}/${fname}` to `${tloc}/binaryen` ...')
 	cmd := 'tar -xvf ${saveloc} --directory ${tloc}'

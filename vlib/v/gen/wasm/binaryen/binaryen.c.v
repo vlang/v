@@ -1,10 +1,19 @@
 [translated]
 module binaryen
 
-#flag -I@VEXEROOT/thirdparty/binaryen/include
-#flag -L@VEXEROOT/thirdparty/binaryen/lib
-#flag -lbinaryen -lstdc++
-#flag darwin -Wl,-rpath,/opt/homebrew/lib -Wl,-rpath,@VEXEROOT/thirdparty/binaryen/lib
+$if dynamic_binaryen ? {
+	#flag -lbinaryen
+} $else {
+	#flag -lbinaryen
+	#flag -I@VEXEROOT/thirdparty/binaryen/include
+	#flag -L@VEXEROOT/thirdparty/binaryen/lib
+
+	#flag darwin -lc++ -Wl,-rpath,"@executable_path/../../../thirdparty/binaryen/lib"
+	// the following, allows linking to the binaryen package from `brew install binaryen`, without having to run cmd/tools/install_binaryen.vsh first
+	#flag darwin -I/opt/homebrew/include -L/opt/homebrew/lib -Wl,-rpath,"/opt/homebrew/lib"
+
+	#flag linux -lstdc++
+}
 
 type Index = u32
 type Type = u64
