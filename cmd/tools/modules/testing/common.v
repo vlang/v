@@ -709,7 +709,7 @@ pub fn get_test_details(file string) TestDetails {
 	return res
 }
 
-pub fn find_started_process(pname string) ?string {
+pub fn find_started_process(pname string) !string {
 	for line in testing.all_processes {
 		if line.contains(pname) {
 			return line

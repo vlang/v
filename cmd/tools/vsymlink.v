@@ -152,7 +152,7 @@ fn warn_and_exit(err string) {
 }
 
 // get the system environment registry handle
-fn get_reg_sys_env_handle() ?voidptr {
+fn get_reg_sys_env_handle() !voidptr {
 	$if windows { // wrap for cross-compile compat
 		// open the registry key
 		reg_key_path := 'Environment'
@@ -166,7 +166,7 @@ fn get_reg_sys_env_handle() ?voidptr {
 }
 
 // get a value from a given $key
-fn get_reg_value(reg_env_key voidptr, key string) ?string {
+fn get_reg_value(reg_env_key voidptr, key string) !string {
 	$if windows {
 		// query the value (shortcut the sizing step)
 		reg_value_size := u32(4095) // this is the max length (not for the registry, but for the system %PATH%)
@@ -180,7 +180,7 @@ fn get_reg_value(reg_env_key voidptr, key string) ?string {
 }
 
 // sets the value for the given $key to the given  $value
-fn set_reg_value(reg_key voidptr, key string, value string) ?bool {
+fn set_reg_value(reg_key voidptr, key string, value string) !bool {
 	$if windows {
 		if C.RegSetValueExW(reg_key, key.to_wide(), 0, C.REG_EXPAND_SZ, value.to_wide(),
 			value.len * 2) != 0 {
@@ -193,7 +193,7 @@ fn set_reg_value(reg_key voidptr, key string, value string) ?bool {
 
 // Broadcasts a message to all listening windows (explorer.exe in particular)
 // letting them know that the system environment has changed and should be reloaded
-fn send_setting_change_msg(message_data string) ?bool {
+fn send_setting_change_msg(message_data string) !bool {
 	$if windows {
 		if C.SendMessageTimeoutW(os.hwnd_broadcast, os.wm_settingchange, 0, unsafe { &u32(message_data.to_wide()) },
 			os.smto_abortifhung, 5000, 0) == 0 {
