@@ -3,8 +3,10 @@ module binaryen
 
 #flag -I@VEXEROOT/thirdparty/binaryen/include
 #flag -L@VEXEROOT/thirdparty/binaryen/lib
-#flag -lbinaryen -lstdc++
-#flag darwin -Wl,-rpath,/opt/homebrew/lib -Wl,-rpath,@VEXEROOT/thirdparty/binaryen/lib
+#flag -lbinaryen
+#flag linux -lstdc++
+#flag darwin --Wl,-rpath,/opt/homebrew/lib -Wl,-rpath,@VEXEROOT/thirdparty/binaryen/lib
+#flag darwin -lc++
 
 type Index = u32
 type Type = u64
