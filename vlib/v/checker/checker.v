@@ -1119,12 +1119,12 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 				c.expected_or_type = ret_type.clear_flag(.option).clear_flag(.result)
 				last_stmt_typ := c.expr(stmt.expr)
 
-				if stmt.expr is ast.Ident {
-					if ret_type.has_flag(.option) && last_stmt_typ.has_flag(.option) {
-						expected_type_name := c.table.type_to_str(expr_return_type)
+				if ret_type.has_flag(.option) && last_stmt_typ.has_flag(.option) {
+					if stmt.expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr] {
+						expected_type_name := c.table.type_to_str(ret_type.clear_flag(.option).clear_flag(.result))
 						got_type_name := c.table.type_to_str(last_stmt_typ)
 						c.error('`or` block must provide a value of type `${expected_type_name}`, not `${got_type_name}`',
-							stmt.expr.pos)
+							stmt.expr.pos())
 						return
 					}
 				}
