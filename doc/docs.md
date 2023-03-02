@@ -2611,8 +2611,10 @@ For this reason V doesn't allow the modification of arguments with primitive typ
 Only more complex types such as arrays and maps may be modified.
 
 ### Variable number of arguments
-V supports functions that receive an arbitrary, variable amounts of arguments, denoted with the `...` prefix.
-Below, `a ...int` refers to an arbitrary amount of parameters that will be collected into an array named `a`.
+V supports functions that receive an arbitrary, variable amounts of arguments, denoted with the 
+`...` prefix.
+Below, `a ...int` refers to an arbitrary amount of parameters that will be collected 
+into an array named `a`.
 
 ```v
 fn sum(a ...int) int {
@@ -3268,7 +3270,7 @@ fn (c Cat) speak() string {
 	return 'meow'
 }
 
-// unlike Go, but like TypeScript, V's interfaces can define fields, not just methods.
+// unlike Go, but like TypeScript, V's interfaces can define both fields and methods.
 interface Speaker {
 	breed string
 	speak() string
