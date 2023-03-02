@@ -20,7 +20,8 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	}
 	expected_type_sym := c.table.sym(expected_type)
 	if (node.exprs.len > 0 && c.table.cur_fn.return_type == ast.void_type)
-		|| (node.exprs.len > 1 && c.table.cur_fn.return_type.clear_flag(.result).clear_flag(.option) == ast.void_type) {
+		|| (node.exprs.len > 1
+		&& c.table.cur_fn.return_type.clear_flag(.result).clear_flag(.option) == ast.void_type) {
 		c.error('unexpected argument, current function does not return anything', node.exprs[0].pos())
 		return
 	} else if node.exprs.len == 0 && !(c.expected_type == ast.void_type

@@ -1,0 +1,7 @@
+fn foo() ! {
+	return none, 100
+}
+
+fn foo2() ? {
+	return none, 100
+}

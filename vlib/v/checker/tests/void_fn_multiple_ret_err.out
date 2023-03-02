@@ -1,0 +1,12 @@
+vlib/v/checker/tests/void_fn_multiple_ret_err.vv:2:9: error: unexpected argument, current function does not return anything
+    1 | fn foo() ! {
+    2 |     return none, 100
+      |            ~~~~
+    3 | }
+    4 |
+vlib/v/checker/tests/void_fn_multiple_ret_err.vv:6:9: error: unexpected argument, current function does not return anything
+    4 | 
+    5 | fn foo2() ? {
+    6 |     return none, 100
+      |            ~~~~
+    7 | }
