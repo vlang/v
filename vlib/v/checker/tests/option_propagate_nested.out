@@ -12,17 +12,17 @@ Details: vlib/v/checker/tests/option_propagate_nested.vv:9:14: details: prepend 
       |              ~~~~~~
    10 |     s := ret(raise()?)
    11 |     return s
-vlib/v/checker/tests/option_propagate_nested.vv:28:21: error: to propagate the option call, `aa_propagate` must return an option
+vlib/v/checker/tests/option_propagate_nested.vv:28:21: error: to propagate the result call, `aa_propagate` must return a result
    26 |
    27 | fn (mut s St) aa_propagate() {
-   28 |     f := retf(s.raise()?)
+   28 |     f := retf(s.raise()!)
       |                        ^
    29 |     s.z = 7.5
    30 |     println(f)
-Details: vlib/v/checker/tests/option_propagate_nested.vv:27:30: details: prepend ? before the declaration of the return type of `aa_propagate`
+Details: vlib/v/checker/tests/option_propagate_nested.vv:27:30: details: prepend ! before the declaration of the return type of `aa_propagate`
    25 | }
    26 |
    27 | fn (mut s St) aa_propagate() {
       |                              ^
-   28 |     f := retf(s.raise()?)
+   28 |     f := retf(s.raise()!)
    29 |     s.z = 7.5

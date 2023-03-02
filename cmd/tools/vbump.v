@@ -169,7 +169,7 @@ Try ${tool_name} -h for more help...')
 	}
 }
 
-fn validate_options(options Options) ? {
+fn validate_options(options Options) ! {
 	if options.patch && options.major {
 		return error('Cannot specify both --patch and --major.')
 	}

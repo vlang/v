@@ -1,4 +1,4 @@
-fn return_option(fail bool) ?string {
+fn return_option(fail bool) !string {
 	if fail {
 		return error('nope')
 	}

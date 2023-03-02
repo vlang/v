@@ -96,6 +96,12 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	option_type_idx := c.table.type_idxs['_option']
 	result_type_idx := c.table.type_idxs['_result']
 	got_types_0_idx := got_types[0].idx()
+	if exp_is_option && got_types_0_idx == ast.error_type_idx {
+		c.warn('Option and Result types have been split, use `!Foo` to return errors',
+			node.pos)
+	} else if exp_is_result && got_types_0_idx == ast.none_type_idx {
+		c.warn('Option and Result types have been split, use `?Foo` to return none', node.pos)
+	}
 	if (exp_is_option
 		&& got_types_0_idx in [ast.none_type_idx, ast.error_type_idx, option_type_idx])
 		|| (exp_is_result && got_types_0_idx in [ast.error_type_idx, result_type_idx]) {

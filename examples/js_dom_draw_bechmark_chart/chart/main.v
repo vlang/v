@@ -69,7 +69,7 @@ fn new_app() &App {
 }
 
 ['/'; get]
-pub fn (mut app App) controller_get_all_task() ?vweb.Result {
+pub fn (mut app App) controller_get_all_task() !vweb.Result {
 	v_version := version.full_v_version(true)
 	orm_stmt_kinds := ['insert', 'select', 'update']
 
