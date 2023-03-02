@@ -342,7 +342,7 @@ V utilizes pre-built TCC binaries located at
 Please see the
 [Troubleshooting](https://github.com/vlang/v/wiki/Troubleshooting)
 section on our
-[wiki page](https://github.com/vlang/v/wiki)
+[wiki page](https://github.com/vlang/v/wiki).
 
 [WorkflowBadge]: https://github.com/vlang/v/workflows/CI/badge.svg
 [DiscordBadge]: https://img.shields.io/discord/592103645835821068?label=Discord&logo=discord&logoColor=white
