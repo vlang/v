@@ -254,7 +254,7 @@ println('hello world')
 ```
 
 > **Note**
-> If you do not explicitly use `fn main() {}` you need to make sure that all your
+> If you do not explicitly use `fn main() {}`, you need to make sure that all your
 > declarations come before any variable assignment statements or top level function calls,
 > since V will consider everything after the first assignment/function call as part of your
 > implicit main function.
@@ -402,9 +402,9 @@ age = 21
 println(age)
 ```
 
-To change the value of the variable use `=`. In V variables are
+To change the value of the variable use `=`. In V, variables are
 immutable by default.
-To be able to change the value of the variable you have to declare it with `mut`.
+To be able to change the value of the variable, you have to declare it with `mut`.
 
 Try compiling the program above after removing `mut` from the first line.
 
@@ -2547,7 +2547,7 @@ Union member access must be performed in an `unsafe` block.
 
 ### Immutable function args by default
 
-In V function arguments are immutable by default and mutable args have to be
+In V function arguments are immutable by default, and mutable args have to be
 marked on call.
 
 Since there are also no globals, that means that the return values of the functions,
@@ -2612,7 +2612,7 @@ Only more complex types such as arrays and maps may be modified.
 
 ### Variable number of arguments
 V supports functions that receive an arbitrary, variable amounts of arguments, denoted with the `...` prefix.
-Below, `a ...int` refers to an arbitrary amount of parameters that will be collected into `a`.
+Below, `a ...int` refers to an arbitrary amount of parameters that will be collected into an array named `a`.
 
 ```v
 fn sum(a ...int) int {
@@ -3268,7 +3268,7 @@ fn (c Cat) speak() string {
 	return 'meow'
 }
 
-// unlike Go but like TypeScript, V's interfaces can define fields, not just methods.
+// unlike Go, but like TypeScript, V's interfaces can define fields, not just methods.
 interface Speaker {
 	breed string
 	speak() string
