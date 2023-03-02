@@ -34,7 +34,7 @@ struct MainOptions {
 	args              []string
 }
 
-fn desc(mod string) ?string {
+fn desc(mod string) !string {
 	options := Options{
 		only_description: true
 	}
@@ -42,7 +42,7 @@ fn desc(mod string) ?string {
 	return pc.description
 }
 
-pub fn main(args []string) ?&Main {
+pub fn main(args []string) !&Main {
 	mut fp := flag.new_flag_parser(args)
 	fp.application('pkgconfig')
 	fp.version(version)
@@ -72,7 +72,7 @@ pub fn main(args []string) ?&Main {
 	return m
 }
 
-pub fn (mut m Main) run() ?string {
+pub fn (mut m Main) run() !string {
 	options := Options{
 		debug: m.opt.debug
 	}
@@ -94,7 +94,7 @@ pub fn (mut m Main) run() ?string {
 			res += pcdep.description
 		}
 		if unsafe { pc != 0 } {
-			pc.extend(pcdep)?
+			pc.extend(pcdep)!
 		} else {
 			pc = pcdep
 		}

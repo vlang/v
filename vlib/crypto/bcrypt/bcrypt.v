@@ -43,14 +43,14 @@ const magic_cipher_data = [u8(0x4f), 0x72, 0x70, 0x68, 0x65, 0x61, 0x6e, 0x42, 0
 	0x6c, 0x64, 0x65, 0x72, 0x53, 0x63, 0x72, 0x79, 0x44, 0x6f, 0x75, 0x62, 0x74]
 
 // generate_from_password return a bcrypt string from Hashed struct.
-pub fn generate_from_password(password []u8, cost int) ?string {
+pub fn generate_from_password(password []u8, cost int) !string {
 	mut p := new_from_password(password, cost) or { return error('Error: ${err}') }
 	x := p.hash_u8()
 	return x.bytestr()
 }
 
 // compare_hash_and_password compares a bcrypt hashed password with its possible hashed version.
-pub fn compare_hash_and_password(password []u8, hashed_password []u8) ? {
+pub fn compare_hash_and_password(password []u8, hashed_password []u8) ! {
 	mut p := new_from_hash(hashed_password) or { return error('Error: ${err}') }
 	p.salt << `=`
 	p.salt << `=`
@@ -76,7 +76,7 @@ pub fn generate_salt() string {
 }
 
 // new_from_password converting from password to a Hashed struct with bcrypt.
-fn new_from_password(password []u8, cost int) ?&Hashed {
+fn new_from_password(password []u8, cost int) !&Hashed {
 	mut cost_ := cost
 	if cost < bcrypt.min_cost {
 		cost_ = bcrypt.default_cost
@@ -98,7 +98,7 @@ fn new_from_password(password []u8, cost int) ?&Hashed {
 }
 
 // new_from_hash converting from hashed data to a Hashed struct.
-fn new_from_hash(hashed_secret []u8) ?&Hashed {
+fn new_from_hash(hashed_secret []u8) !&Hashed {
 	mut tmp := hashed_secret.clone()
 	if tmp.len < bcrypt.min_hash_size {
 		return error('hash to short')
@@ -118,7 +118,7 @@ fn new_from_hash(hashed_secret []u8) ?&Hashed {
 }
 
 // bcrypt hashing passwords.
-fn bcrypt(password []u8, cost int, salt []u8) ?[]u8 {
+fn bcrypt(password []u8, cost int, salt []u8) ![]u8 {
 	mut cipher_data := []u8{len: 72 - bcrypt.magic_cipher_data.len, init: 0}
 	cipher_data << bcrypt.magic_cipher_data
 
@@ -135,7 +135,7 @@ fn bcrypt(password []u8, cost int, salt []u8) ?[]u8 {
 }
 
 // expensive_blowfish_setup generate a Blowfish cipher, given key, cost and salt.
-fn expensive_blowfish_setup(key []u8, cost u32, salt []u8) ?&blowfish.Blowfish {
+fn expensive_blowfish_setup(key []u8, cost u32, salt []u8) !&blowfish.Blowfish {
 	csalt := base64.decode(salt.bytestr())
 	// Bug compatibility with C bcrypt implementations, which use the trailing NULL in the key string during expansion.
 	// See https://cs.opensource.google/go/x/crypto/+/master:bcrypt/bcrypt.go;l=226
@@ -180,7 +180,7 @@ fn (mut h Hashed) hash_u8() []u8 {
 }
 
 // decode_version decode bcrypt version.
-fn (mut h Hashed) decode_version(sbytes []u8) ?int {
+fn (mut h Hashed) decode_version(sbytes []u8) !int {
 	if sbytes[0] != `$` {
 		return error("bcrypt hashes must start with '$'")
 	}
@@ -197,7 +197,7 @@ fn (mut h Hashed) decode_version(sbytes []u8) ?int {
 }
 
 // decode_cost extracts the value of cost and returns the next index in the array.
-fn (mut h Hashed) decode_cost(sbytes []u8) ?int {
+fn (mut h Hashed) decode_cost(sbytes []u8) !int {
 	cost := sbytes[0..2].bytestr().int()
 	check_cost(cost) or { return err }
 	h.cost = cost
@@ -205,7 +205,7 @@ fn (mut h Hashed) decode_cost(sbytes []u8) ?int {
 }
 
 // check_cost check for reasonable quantities.
-fn check_cost(cost int) ? {
+fn check_cost(cost int) ! {
 	if cost < bcrypt.min_cost || cost > bcrypt.max_cost {
 		return error('invalid cost')
 	}
