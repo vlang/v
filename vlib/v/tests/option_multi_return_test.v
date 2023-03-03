@@ -1,10 +1,9 @@
-fn tuple() ?(int, int) {
-	return 1, 2
+fn foo(val ?int) (?int, ?int) {
+	return val, none
 }
 
-fn test_option_multi_return() {
-	println(tuple()?)
-	a, b := tuple()?
-	assert a == 1
-	assert b == 2
+fn test_multi_return() {
+	a, b := foo(100)
+	assert a == 100
+	assert b == none
 }
