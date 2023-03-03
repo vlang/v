@@ -24,6 +24,7 @@
 - [ ] Cross compilation of C
 - [ ] Big remaining bugs fixed
 - [ ] More powerful comptime
+- [ ] Constraits for generics
 
 ### Tooling
 
