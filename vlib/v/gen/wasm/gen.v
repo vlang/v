@@ -274,7 +274,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	for idx, typ in g.curr_ret {
 		sym := g.table.sym(typ)
-		if sym.info is ast.Struct {
+		if sym.info is ast.Struct && !typ.is_real_pointer() {
 			g.local_temporaries << Temporary{
 				name: '__return${idx}'
 				typ: type_i32 // pointer
