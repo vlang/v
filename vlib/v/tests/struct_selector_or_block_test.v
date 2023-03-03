@@ -24,12 +24,14 @@ fn test_main() {
 }
 
 struct CnameTest {
-    long ?string
-    short ?string
+	long  ?string
+	short ?string
 }
 
 fn test_cname_opt_field_selecor() {
-    x := CnameTest{short: 'xyz'}
-    assert (x.long or { 'NOPE' }) == 'NOPE'
-    assert (x.short or { 'NOPE' }) == 'xyz'
+	x := CnameTest{
+		short: 'xyz'
+	}
+	assert (x.long or { 'NOPE' }) == 'NOPE'
+	assert (x.short or { 'NOPE' }) == 'xyz'
 }
