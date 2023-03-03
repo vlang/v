@@ -216,8 +216,10 @@ fn (mut g Gen) bare_function(name string, expr binaryen.Expression) binaryen.Fun
 		temporaries << g.local_temporaries[idx].typ
 	}
 
+	wasm_expr := g.setup_stack_frame(expr)
+
 	func := binaryen.addfunction(g.mod, name.str, type_none, type_none, temporaries.data,
-		temporaries.len, expr)
+		temporaries.len, wasm_expr)
 
 	g.local_temporaries.clear()
 	g.local_addresses = map[string]Stack{}
