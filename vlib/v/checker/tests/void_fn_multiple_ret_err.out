@@ -5,7 +5,7 @@ vlib/v/checker/tests/void_fn_multiple_ret_err.vv:6:2: warning: Option and Result
       |     ~~~~~~~~~~~
     7 | }
     8 |
-vlib/v/checker/tests/void_fn_multiple_ret_err.vv:2:9: error: can only return `IError` from an Result-only return function
+vlib/v/checker/tests/void_fn_multiple_ret_err.vv:2:9: error: functions with Result-only return types can only return an error
     1 | fn foo_result_1() ! {
     2 |     return none, 100
       |            ~~~~

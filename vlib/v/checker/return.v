@@ -41,7 +41,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		c.error('can only return `none` from an Option-only return function', node.exprs[0].pos())
 		return
 	} else if node.exprs.len > 1 && c.table.cur_fn.return_type == ast.void_type.set_flag(.result) {
-		c.error('can only return `IError` from an Result-only return function', node.exprs[0].pos())
+		c.error('functions with Result-only return types can only return an error', node.exprs[0].pos())
 		return
 	} else if node.exprs.len == 0 && !(c.expected_type == ast.void_type
 		|| expected_type_sym.kind == .void) {
@@ -182,7 +182,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					if node.exprs[expr_idxs[i]] is ast.IntegerLiteral {
 						var := (node.exprs[expr_idxs[i]] as ast.IntegerLiteral).val
 						if var[0] == `-` {
-							c.note('cannot use a negative value as value of `${c.error_type_name(exp_type)}` in return argument',
+							c.note('cannot use a negative value as value of ${c.error_type_name(exp_type)} in return argument',
 								pos)
 						}
 					}
