@@ -674,6 +674,9 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) binaryen.Expression {
 			g.literalint(off, ast.u32_type)
 		}
 		ast.SizeOf {
+			if !g.table.known_type_idx(node.typ) {
+				g.v_error('unknown type `${*g.table.sym(node.typ)}`', node.pos)
+			}
 			size, _ := g.table.type_size(node.typ)
 			g.literalint(size, ast.u32_type)
 		}
