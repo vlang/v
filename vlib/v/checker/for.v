@@ -115,7 +115,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				return
 			}
 			if !next_fn.return_type.has_flag(.option) {
-				c.error('iterator method `next()` must return an option', node.cond.pos())
+				c.error('iterator method `next()` must return an Option', node.cond.pos())
 			}
 			return_sym := c.table.sym(next_fn.return_type)
 			if return_sym.kind == .multi_return {

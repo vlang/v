@@ -465,7 +465,7 @@ pub fn (mut p Parser) parse_type() ast.Type {
 		}
 		sym := p.table.sym(typ)
 		if is_option && sym.info is ast.SumType && (sym.info as ast.SumType).is_anon {
-			p.error_with_pos('an inline sum type cannot be an option', option_pos.extend(p.prev_tok.pos()))
+			p.error_with_pos('an inline sum type cannot be an Option', option_pos.extend(p.prev_tok.pos()))
 		}
 	}
 	if is_option {

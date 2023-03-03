@@ -1829,7 +1829,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 // e.g. field default: "foo ?int = 1", field assign: "foo = 1", field init: "foo: 1"
 fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type, tmp_var string) {
 	if !ret_typ.has_flag(.option) && !ret_typ.has_flag(.result) {
-		panic('cgen: parameter `ret_typ` of function `expr_with_tmp_var()` must be an option or result')
+		panic('cgen: parameter `ret_typ` of function `expr_with_tmp_var()` must be an Option or Result')
 	}
 
 	stmt_str := g.go_before_stmt(0).trim_space()
