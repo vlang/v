@@ -492,7 +492,7 @@ fn (mut g Gen) if_expr(ifexpr ast.IfExpr) binaryen.Expression {
 	return g.if_branch(ifexpr, 0)
 }
 
-const wasm_builtins = ['__memory_grow', '__memory_fill', '__memory_copy']
+const wasm_builtins = ['__memory_grow', '__memory_fill', '__memory_copy', '__heap_base']
 
 fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) binaryen.Expression {
 	mut args := []binaryen.Expression{cap: node.args.len}
@@ -509,6 +509,9 @@ fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) binaryen.Expression 
 		}
 		'__memory_copy' {
 			return binaryen.memorycopy(g.mod, args[0], args[1], args[2], c'memory', c'memory')
+		}
+		'__heap_base' {
+			return binaryen.globalget(g.mod, c'__heap_base', type_i32)
 		}
 		else {
 			panic('unreachable')

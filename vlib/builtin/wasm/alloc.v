@@ -4,17 +4,7 @@ module builtin
 // Shitty `sbrk` basic `malloc` and `free` impl
 // TODO: implement pure V `walloc` later
 
-const wasm_page_size = 64 * 1024
-
-__global g_heap_base = isize(0)
-
-fn init() {
-	g_heap_base = __memory_grow(3)
-	if g_heap_base == -1 {
-		panic('g_heap_base: malloc() == nil')
-	}
-	g_heap_base *= wasm_page_size
-}
+__global g_heap_base = usize(__heap_base())
 
 // malloc dynamically allocates a `n` bytes block of memory on the heap.
 // malloc returns a `byteptr` pointing to the memory address of the allocated space.
@@ -26,7 +16,7 @@ pub fn malloc(n isize) &u8 {
 	}
 
 	res := g_heap_base
-	g_heap_base += n
+	g_heap_base += usize(n)
 
 	return &u8(res)
 }

@@ -130,6 +130,13 @@ fn (mut g Gen) housekeeping() {
 	// `_vinit` should be used to initialise the WASM module,
 	// then `main.main` can be called safely.
 	vinit := g.make_vinit()
+	stack_base := round_up_to_multiple(g.constant_data_offset, 1024)
+	heap_base := if g.needs_stack {
+		stack_base + 1024 * 16 // 16KiB of stack
+	} else {
+		stack_base
+	}
+	pages_needed := heap_base / (1024 * 64) + 1
 
 	if g.needs_stack || g.constant_data.len != 0 {
 		data := g.constant_data.map(it.data.data)
@@ -137,14 +144,13 @@ fn (mut g Gen) housekeeping() {
 		data_offsets := g.constant_data.map(binaryen.constant(g.mod, binaryen.literalint32(it.offset)))
 		passive := []bool{len: g.constant_data.len, init: false}
 
-		binaryen.setmemory(g.mod, 1, 4, c'memory', data.data, passive.data, data_offsets.data,
+		binaryen.setmemory(g.mod, pages_needed, pages_needed + 4, c'memory', data.data, passive.data, data_offsets.data,
 			data_len.data, data.len, false, false, c'memory')
+		binaryen.addglobal(g.mod, c'__heap_base', type_i32, false, g.literalint(heap_base, ast.int_type))
 	}
 	if g.needs_stack {
 		// `g.constant_data_offset` rounded up to a multiple of 1024
-		offset := round_up_to_multiple(g.constant_data_offset, 1024)
-
-		binaryen.addglobal(g.mod, c'__vsp', type_i32, true, g.literalint(offset, ast.int_type))
+		binaryen.addglobal(g.mod, c'__vsp', type_i32, true, g.literalint(stack_base, ast.int_type))
 	}
 	if g.pref.os == .wasi {
 		main_expr := g.mkblock([binaryen.call(g.mod, c'_vinit', unsafe { nil }, 0, type_none),
