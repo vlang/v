@@ -362,14 +362,23 @@ fn (mut g Gen) literal(val string, expected ast.Type) binaryen.Expression {
 	g.w_error('literal: bad type `${expected}`')
 }
 
+fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type, expr binaryen.Expression) binaryen.Expression {
+	return if typ.is_ptr() {
+		size, _ := g.get_type_size_align(typ)
+		binaryen.binary(g.mod, binaryen.mulint32(), expr, g.literalint(size, ast.voidptr_type))
+	} else {
+		expr
+	}
+}
+
 fn (mut g Gen) postfix_expr(node ast.PostfixExpr) binaryen.Expression {
 	kind := if node.op == .inc { token.Kind.plus } else { token.Kind.minus }
 
 	var := g.get_var_from_expr(node.expr)
 	op := g.infix_from_typ(node.typ, kind)
 
-	expr := binaryen.binary(g.mod, op, g.get_or_lea_lop(var, node.typ), g.literal('1',
-		node.typ))
+	expr := binaryen.binary(g.mod, op, g.get_or_lea_lop(var, node.typ), g.handle_ptr_arithmetic(node.typ, g.literalint(1,
+		node.typ)))
 
 	return g.set_var(var, expr, ast_typ: node.typ)
 }
@@ -397,8 +406,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) binaryen.Expres
 
 	op := g.infix_from_typ(node.left_type, node.op)
 
-	infix := binaryen.binary(g.mod, op, g.expr(node.left, node.left_type), g.expr_with_cast(node.right,
-		node.right_type, node.left_type))
+	infix := binaryen.binary(g.mod, op, g.expr(node.left, node.left_type), g.handle_ptr_arithmetic(node.left_type, g.expr_with_cast(node.right,
+		node.right_type, node.left_type)))
 
 	res_typ := if infix_kind_return_bool(node.op) {
 		ast.bool_type
