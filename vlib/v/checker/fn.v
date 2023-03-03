@@ -513,12 +513,12 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		if node.or_block.kind == .propagate_result && !c.table.cur_fn.return_type.has_flag(.result)
 			&& !c.table.cur_fn.return_type.has_flag(.option) {
 			c.add_instruction_for_result_type()
-			c.error('to propagate the result call, `${c.table.cur_fn.name}` must return a Result',
+			c.error('to propagate the Result call, `${c.table.cur_fn.name}` must return a Result',
 				node.or_block.pos)
 		}
 		if node.or_block.kind == .propagate_option && !c.table.cur_fn.return_type.has_flag(.option) {
 			c.add_instruction_for_option_type()
-			c.error('to propagate the option call, `${c.table.cur_fn.name}` must return an Option',
+			c.error('to propagate the Option call, `${c.table.cur_fn.name}` must return an Option',
 				node.or_block.pos)
 		}
 	}

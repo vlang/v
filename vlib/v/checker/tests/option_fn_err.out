@@ -5,7 +5,7 @@ vlib/v/checker/tests/option_fn_err.vv:40:9: error: assert can be used only with 
       |            ~~~~~~~~~
    41 | 
    42 |     // struct
-vlib/v/checker/tests/option_fn_err.vv:60:13: error: cannot use option or result as index (array type `[]int`)
+vlib/v/checker/tests/option_fn_err.vv:60:13: error: cannot use Option or Result as index (array type `[]int`)
    58 |     _ := [1]int{init: bar(0)}
    59 |     // index
    60 |     println(arr[bar(0)])

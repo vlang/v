@@ -72,7 +72,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 
 		for i, field in node.fields {
 			if field.typ.has_flag(.result) {
-				c.error('struct field does not support storing result', field.option_pos)
+				c.error('struct field does not support storing Result', field.option_pos)
 			}
 			c.ensure_type_exists(field.typ, field.type_pos) or { return }
 			c.ensure_generic_type_specify_type_names(field.typ, field.type_pos) or { return }
