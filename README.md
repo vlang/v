@@ -20,7 +20,7 @@
 
 ## Key Features of V
 
-- Simplicity: the language can be learned in a weekend
+- Simplicity: the language can be learned over the course of a weekend
 - Fast compilation: ≈110k loc/s with a Clang backend,
   ≈500k loc/s with native and tcc backends *(Intel i5-7500, SSD, no
   optimization)* ([demo video](https://www.youtube.com/watch?v=pvP6wmcl_Sc))
@@ -64,7 +64,7 @@ language, very similar to the way it is right now.
 
 ### Linux, macOS, Windows, *BSD, Solaris, WSL, etc.
 
-Usually installing V is quite simple if you have an environment that already has a
+Usually, installing V is quite simple if you have an environment that already has a
 functional `git` installation.
 
 To get started, simply try to execute the following in your terminal/shell:
@@ -342,7 +342,7 @@ V utilizes pre-built TCC binaries located at
 Please see the
 [Troubleshooting](https://github.com/vlang/v/wiki/Troubleshooting)
 section on our
-[wiki page](https://github.com/vlang/v/wiki)
+[wiki page](https://github.com/vlang/v/wiki).
 
 [WorkflowBadge]: https://github.com/vlang/v/workflows/CI/badge.svg
 [DiscordBadge]: https://img.shields.io/discord/592103645835821068?label=Discord&logo=discord&logoColor=white
