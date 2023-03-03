@@ -2289,6 +2289,7 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 [inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
 	arg_typ := g.unwrap_generic(arg.typ)
+	arg_sym := g.table.sym(arg_typ)
 	exp_is_ptr := expected_type.is_ptr() || expected_type.idx() in ast.pointer_type_idxs
 	arg_is_ptr := arg_typ.is_ptr() || arg_typ.idx() in ast.pointer_type_idxs
 	if expected_type == 0 {
@@ -2300,7 +2301,6 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		g.write('&/*mut*/')
 	} else if exp_is_ptr && !arg_is_ptr {
 		if arg.is_mut {
-			arg_sym := g.table.sym(arg_typ)
 			if exp_sym.kind == .array {
 				if (arg.expr is ast.Ident && (arg.expr as ast.Ident).kind == .variable)
 					|| arg.expr is ast.SelectorExpr {
@@ -2352,6 +2352,19 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 						needs_closing = true
 						g.write('ADDR(${g.typ(atype)}/*qq*/, ')
 					}
+				}
+			} else if arg_sym.kind == .sum_type && exp_sym.kind == .sum_type {
+				// Automatically passing sum types by reference if the argument expects it,
+				// not only the argument is mutable.
+				if arg.expr is ast.SelectorExpr {
+					g.write('&/*sum*/')
+					g.expr(arg.expr)
+					return
+				} else if arg.expr is ast.CastExpr {
+					g.write('ADDR(${g.typ(expected_deref_type)}/*sum*/, ')
+					g.expr_with_cast(arg.expr, arg_typ, expected_type)
+					g.write(')')
+					return
 				}
 			}
 		}
