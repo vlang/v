@@ -120,6 +120,7 @@ mut:
 	inside_ternary            int  // ?: comma separated statements on a single line
 	inside_map_postfix        bool // inside map++/-- postfix expr
 	inside_map_infix          bool // inside map<</+=/-= infix expr
+	inside_assign             bool
 	inside_map_index          bool
 	inside_opt_or_res         bool
 	inside_opt_data           bool
@@ -4123,7 +4124,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				styp := g.base_type(node.info.typ)
 				g.write('(*(${styp}*)${name}.data)')
 			}
-			if node.or_expr.kind != .absent {
+			if node.or_expr.kind != .absent && !(g.inside_assign && !g.is_assign_lhs) {
 				stmt_str := g.go_before_stmt(0).trim_space()
 				g.empty_line = true
 				g.or_block(name, node.or_expr, node.info.typ)

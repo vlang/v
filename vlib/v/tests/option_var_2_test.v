@@ -15,10 +15,12 @@ fn test_option_var() {
 		assert true
 	}
 
+	mut counter := 0
 	val := other or {
-		println('without name')
+		counter++
 		'default'
 	}
 
 	assert val == 'default'
+	assert counter == 1
 }
