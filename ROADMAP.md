@@ -27,11 +27,14 @@
 
 ### Tooling
 
-- [ ] Interactive educational platform (learning to program for beginners)
 - [ ] More stable VLS
 - [ ] Profiler improvements
   - [ ] Basic interactive shell with search, sort, filter, etc.
 - [ ] VPM
   - [ ] New VPM site
   - [ ] Package versioning
+
+### Web
+
 - [ ] Site that brings everything together in a single style
+- [ ] Interactive educational platform (learning to program for beginners)
