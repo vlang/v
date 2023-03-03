@@ -2629,6 +2629,11 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			if !node.is_type {
 				node.typ = c.expr(node.expr)
 			}
+			sym := c.table.final_sym(node.typ)
+			if sym.kind == .placeholder && sym.language != .c {
+				// Allow `sizeof(C.MYSQL_TIME)` etc
+				c.error('unknown type `${sym.name}`', node.pos)
+			}
 			// c.deprecate_old_isreftype_and_sizeof_of_a_guessed_type(node.guessed_type,
 			//	node.typ, node.pos, 'sizeof')
 			return ast.u32_type
