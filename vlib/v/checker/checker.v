@@ -3134,8 +3134,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		info := node.info as ast.IdentVar
 		// Got a var with type T, return current generic type
 		if node.or_expr.kind != .absent {
-			if !info.typ.has_flag(.option) && node.or_expr.kind == .propagate_option {
-				c.error('cannot use `?` on non-option variable', node.pos)
+			if !info.typ.has_flag(.option) {
+				if node.or_expr.kind == .propagate_option {
+					c.error('cannot use `?` on non-option variable', node.pos)
+				} else if node.or_expr.kind == .block {
+					c.error('cannot use `or {}` block on non-option variable', node.pos)
+				}
 			}
 			unwrapped_typ := info.typ.clear_flag(.option).clear_flag(.result)
 			c.expected_or_type = unwrapped_typ
@@ -3228,8 +3232,13 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						if node.or_expr.kind == .absent {
 							return typ.clear_flag(.result)
 						}
-						if !typ.has_flag(.option) && node.or_expr.kind == .propagate_option {
-							c.error('cannot use `?` on non-option variable', node.pos)
+						if !typ.has_flag(.option) {
+							if node.or_expr.kind == .propagate_option {
+								c.error('cannot use `?` on non-option variable', node.pos)
+							} else if node.or_expr.kind == .block {
+								c.error('cannot use `or {}` block on non-option variable',
+									node.pos)
+							}
 						}
 						unwrapped_typ := typ.clear_flag(.option).clear_flag(.result)
 						c.expected_or_type = unwrapped_typ
@@ -3783,6 +3792,10 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	}
 	right_sym := c.table.final_sym(c.unwrap_generic(right_type))
 	if node.op == .mul {
+		if right_type.has_flag(.option) {
+			c.error('type `?${right_sym.name}` is an Option, it must be unwrapped first; use `*var?` to do it',
+				node.right.pos())
+		}
 		if right_type.is_ptr() {
 			return right_type.deref()
 		}

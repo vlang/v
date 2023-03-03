@@ -1,5 +1,4 @@
 import os
-import v.pref
 
 $if windows {
 	$if tinyc {
@@ -15,11 +14,9 @@ fn main() {
 		print('usage: v symlink [OPTIONS]')
 		exit(1)
 	}
+	vexe := os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 
-	ci_mode := '-githubci' in os.args
-
-	vexe := os.real_path(pref.vexe_path())
-	if ci_mode {
+	if '-githubci' in os.args {
 		setup_symlink_github()
 	} else {
 		$if windows {

@@ -26,10 +26,12 @@
   optimization)* ([demo video](https://www.youtube.com/watch?v=pvP6wmcl_Sc))
 - Easy to develop: V compiles itself in less than a second
 - Performance: as fast as C (V's main backend compiles to human-readable C)
-- Safety: no null, no globals, no undefined behavior, immutability by default
+- Safety: no null, no globals, no undefined behavior (wip), immutability by default
 - C to V translation ([Translating DOOM demo video](https://www.youtube.com/watch?v=6oXrz3oRoEg))
 - Hot code reloading
-- [Innovative memory management](https://vlang.io/#memory) ([demo video](https://www.youtube.com/watch?v=gmB8ea8uLsM))
+- [Flexible memory management](https://vlang.io/#memory). GC by default, manual via `v -gc none`,
+  arena allocation via `v -prealloc`, autofree via `v -autofree`
+  ([autofree demo video](https://www.youtube.com/watch?v=gmB8ea8uLsM)).
 - [Cross-platform UI library](https://github.com/vlang/ui)
 - Built-in graphics library
 - Easy cross-compilation
@@ -95,9 +97,9 @@ v up
 > If you run into any trouble, or you have a different operating
 > system or Linux distribution that doesn't install or work immediately, please see
 > [Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues)
-> and search for your OS and problem. 
+> and search for your OS and problem.
 >
-> If you can't find your problem, please add it to an existing discussion if one exists for 
+> If you can't find your problem, please add it to an existing discussion if one exists for
 > your OS, or create a new one if a main discussion doesn't yet exist for your OS.
 
 ### C compiler
@@ -308,7 +310,7 @@ With V's `vab` tool, building V UI and graphical apps for Android can become as 
 
 ## Developing web applications
 
-Check out the 
+Check out the
 [Building a simple web blog](https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/README.md)
 tutorial and Gitly, a light and fast alternative to GitHub/GitLab:
 
@@ -328,18 +330,18 @@ https://github.com/vlang/vinix
 
 ## Acknowledgement
 
-V thanks Fabrice Bellard for his original work on the 
-[TCC - Tiny C Compiler](https://bellard.org/tcc/). 
-Note the TCC website is old; the current TCC repository can be found 
-[here](https://repo.or.cz/w/tinycc.git). 
-V utilizes pre-built TCC binaries located at 
+V thanks Fabrice Bellard for his original work on the
+[TCC - Tiny C Compiler](https://bellard.org/tcc/).
+Note the TCC website is old; the current TCC repository can be found
+[here](https://repo.or.cz/w/tinycc.git).
+V utilizes pre-built TCC binaries located at
 [https://github.com/vlang/tccbin/](https://github.com/vlang/tccbin/).
 
 ## Troubleshooting
 
-Please see the 
-[Troubleshooting](https://github.com/vlang/v/wiki/Troubleshooting) 
-section on our 
+Please see the
+[Troubleshooting](https://github.com/vlang/v/wiki/Troubleshooting)
+section on our
 [wiki page](https://github.com/vlang/v/wiki)
 
 [WorkflowBadge]: https://github.com/vlang/v/workflows/CI/badge.svg

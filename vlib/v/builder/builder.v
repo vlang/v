@@ -88,6 +88,18 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 	}
 }
 
+pub fn (mut b Builder) interpret_text(code string, v_files []string) ! {
+	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
+	b.parsed_files << parser.parse_text(code, '', b.table, .skip_comments, b.pref)
+	b.parse_imports()
+
+	if b.pref.only_check_syntax {
+		return error_with_code('stop_after_parser', 7001)
+	}
+
+	b.middle_stages()!
+}
+
 pub fn (mut b Builder) front_stages(v_files []string) ! {
 	mut timers := util.get_timers()
 	util.timing_start('PARSE')

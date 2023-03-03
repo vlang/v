@@ -235,7 +235,7 @@ pub fn uname() Uname {
 	return u
 }
 
-pub fn hostname() string {
+pub fn hostname() !string {
 	mut hstnme := ''
 	size := 256
 	mut buf := unsafe { &char(malloc_noscan(size)) }
@@ -244,15 +244,15 @@ pub fn hostname() string {
 		unsafe { free(buf) }
 		return hstnme
 	}
-	return ''
+	return error(posix_get_error_msg(C.errno))
 }
 
-pub fn loginname() string {
+pub fn loginname() !string {
 	x := C.getlogin()
 	if !isnil(x) {
 		return unsafe { cstring_to_vstring(x) }
 	}
-	return ''
+	return error(posix_get_error_msg(C.errno))
 }
 
 fn init_os_args(argc int, argv &&u8) []string {

@@ -300,6 +300,8 @@ pub fn (mut p Parser) parse_language() ast.Language {
 		ast.Language.c
 	} else if p.tok.lit == 'JS' {
 		ast.Language.js
+	} else if p.tok.lit == 'WASM' {
+		ast.Language.wasm
 	} else {
 		ast.Language.v
 	}

@@ -196,6 +196,7 @@ fn (mut f Fmt) write_language_prefix(lang ast.Language) {
 	match lang {
 		.c { f.write('C.') }
 		.js { f.write('JS.') }
+		.wasm { f.write('WASM.') }
 		else {}
 	}
 }

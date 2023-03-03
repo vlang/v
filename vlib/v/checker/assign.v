@@ -469,7 +469,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					rtype = rtype.deref()
 				}
 				right_name := c.table.type_to_str(rtype)
-				c.error('mismatched types `${left_name}` and `${right_name}`', node.pos)
+				if !(left_type.has_flag(.option) && right_type == ast.none_type) {
+					c.error('mismatched types `${left_name}` and `${right_name}`', node.pos)
+				}
 			}
 		}
 		// Single side check

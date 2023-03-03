@@ -2387,6 +2387,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	} else if p.tok.lit == 'JS' {
 		language = ast.Language.js
 		p.check_for_impure_v(language, p.tok.pos())
+	} else if p.tok.lit == 'WASM' {
+		language = ast.Language.wasm
+		p.check_for_impure_v(language, p.tok.pos())
 	}
 	mut mod := ''
 	// p.warn('resetting')
@@ -2484,6 +2487,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			mod = 'C'
 		} else if language == .js {
 			mod = 'JS'
+		} else if language == .wasm {
+			mod = 'WASM'
 		} else {
 			if p.tok.lit in p.imports {
 				// mark the imported module as used
@@ -2543,13 +2548,18 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			}
 		}
 	} else if p.peek_tok.kind == .lpar || is_generic_call || is_generic_cast
-		|| (is_option && p.peek_token(2).kind == .lpar) || (is_option && p.peek_tok.kind == .lsbr
+		|| (is_option && p.peek_token(2).kind == .lpar) || (is_option && ((p.peek_tok.kind == .lsbr
 		&& p.peek_token(2).kind == .rsbr && p.peek_token(3).kind == .name
-		&& p.peek_token(4).kind == .lpar) {
+		&& p.peek_token(4).kind == .lpar) || (p.peek_tok.kind == .lsbr
+		&& p.peek_token(2).kind == .number && p.peek_token(3).kind == .rsbr
+		&& p.peek_token(4).kind == .name && p.peek_token(5).kind == .lpar))) {
 		is_array := p.peek_tok.kind == .lsbr
+		is_fixed_array := is_array && p.peek_token(2).kind == .number
 		// foo(), foo<int>() or type() cast
 		mut name := if is_option {
-			if is_array { p.peek_token(3).lit } else { p.peek_tok.lit }
+			if is_array { p.peek_token(if is_fixed_array { 4 } else { 3 }).lit
+			 } else { p.peek_tok.lit
+			 }
 		} else {
 			p.tok.lit
 		}
@@ -3416,6 +3426,12 @@ fn (mut p Parser) module_decl() ast.Module {
 				'translated' {
 					p.is_translated = true
 				}
+				'wasm_import_namespace' {
+					if !p.pref.is_fmt && p.pref.backend != .wasm {
+						p.error_with_pos('[wasm_import_namespace] is allowed only in the wasm backend',
+							ma.pos)
+					}
+				}
 				else {
 					p.error_with_pos('unknown module attribute `[${ma.name}]`', ma.pos)
 					return mod_node
@@ -3894,6 +3910,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			is_flag: is_flag
 			is_multi_allowed: is_multi_allowed
 			uses_exprs: uses_exprs
+			typ: enum_type
 		}
 		is_pub: is_pub
 	})

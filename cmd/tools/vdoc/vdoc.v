@@ -8,14 +8,13 @@ import strings
 import sync
 import runtime
 import v.doc
-import v.pref
 import v.vmod
 import json
 import term
 
 const (
 	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
-	vexe            = pref.vexe_path()
+	vexe            = os.getenv_opt('VEXE') or { @VEXE }
 	vroot           = os.dir(vexe)
 	tabs            = ['\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
 )
