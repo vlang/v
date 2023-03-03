@@ -36,7 +36,7 @@ mut:
 	stack_patches           []BlockPatch
 	needs_stack             bool // If true, will use `memory` and `__vsp`
 	constant_data           []ConstantData
-	constant_data_offset    int
+	constant_data_offset    int = 1024 // Low 1KiB of data unused, for optimisations
 	module_import_namespace string // `[wasm_import_namespace: 'wasi_snapshot_preview1']` else `env`
 	globals                 map[string]GlobalData
 }
@@ -1179,9 +1179,8 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 		mod: binaryen.modulecreate()
 	}
 	g.table.pointer_size = 4
-	// Offset all pointers by 8, so that 0 never points to valid memory
-	g.constant_data_offset = 8
 	binaryen.modulesetfeatures(g.mod, binaryen.featureall())
+	binaryen.setlowmemoryunused(true) // Low 1KiB of memory is unused.
 
 	if g.pref.os == .browser {
 		eprintln('`-os browser` is experimental and will not live up to expectations...')
