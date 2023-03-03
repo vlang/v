@@ -16,8 +16,9 @@ fn test_option_var() {
 	}
 
 	val := other or {
-		println("without name")
+		println('without name')
 		'default'
 	}
+
 	assert val == 'default'
 }
