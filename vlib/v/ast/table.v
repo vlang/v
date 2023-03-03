@@ -1195,7 +1195,7 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 		name += if mr_typ.has_flag(.result) { '!' } else { '' }
 		name += '${ref}${mr_type_sym.name}'
 		cname += if mr_typ.has_flag(.option) { '_option' } else { '' }
-		cname += if mr_typ.has_flag(.option) { '_result' } else { '' }
+		cname += if mr_typ.has_flag(.result) { '_result' } else { '' }
 		cname += '_${cref}${mr_type_sym.cname}'
 		if i < mr_typs.len - 1 {
 			name += ', '
