@@ -1,10 +1,10 @@
 module builtin
 
-pub fn __heap_base() voidptr
-pub fn __memory_size() usize
-pub fn __memory_grow(size usize) usize
-pub fn __memory_fill(dest &u8, value isize, size isize)
-pub fn __memory_copy(dest &u8, src &u8, size isize)
+fn __heap_base() voidptr
+fn __memory_size() usize
+fn __memory_grow(size usize) usize
+fn __memory_fill(dest &u8, value isize, size isize)
+fn __memory_copy(dest &u8, src &u8, size isize)
 
 // vcalloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // vcalloc returns a `byteptr` pointing to the memory address of the allocated space.
