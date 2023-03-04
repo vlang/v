@@ -180,10 +180,22 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 		c.error('unknown type `${sym.name}`', node.typ_pos)
 	}
 	if node.kind == .fields {
-		if sym.kind == .struct_ {
-			sym_info := sym.info as ast.Struct
+		if sym.kind in [.struct_, .interface_] {
+			fields := match sym.info {
+				ast.Struct {
+					sym.info.fields
+				}
+				ast.Interface {
+					sym.info.fields
+				}
+				else {
+					c.error('internal error: unsupported type for comptime field lookup at cheker phase: ${sym.name}',
+						node.typ_pos)
+					[]ast.StructField{len: 0}
+				}
+			}
 			c.inside_comptime_for_field = true
-			for field in sym_info.fields {
+			for field in fields {
 				c.comptime_for_field_value = field
 				c.comptime_for_field_var = node.val_var
 				c.comptime_fields_type[node.val_var] = node.typ
