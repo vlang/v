@@ -235,6 +235,9 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) LocalOrPointer {
 		ast.Ident {
 			g.get_var_from_ident(node)
 		}
+		ast.ParExpr {
+			g.get_var_from_expr(node.expr)
+		}
 		ast.SelectorExpr {
 			address := g.get_var_from_expr(node.expr)
 			offset := g.get_field_offset(node.expr_type, node.field_name)
