@@ -378,7 +378,7 @@ fn (mut g Gen) postfix_expr(node ast.PostfixExpr) binaryen.Expression {
 	op := g.infix_from_typ(node.typ, kind)
 
 	expr := binaryen.binary(g.mod, op, g.get_or_lea_lop(var, node.typ), g.handle_ptr_arithmetic(node.typ,
-		g.literal("0", node.typ)))
+		g.literal('0', node.typ)))
 
 	return g.set_var(var, expr, ast_typ: node.typ)
 }
