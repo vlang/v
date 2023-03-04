@@ -377,8 +377,8 @@ fn (mut g Gen) postfix_expr(node ast.PostfixExpr) binaryen.Expression {
 	var := g.get_var_from_expr(node.expr)
 	op := g.infix_from_typ(node.typ, kind)
 
-	expr := binaryen.binary(g.mod, op, g.get_or_lea_lop(var, node.typ), g.handle_ptr_arithmetic(node.typ, g.literalint(1,
-		node.typ)))
+	expr := binaryen.binary(g.mod, op, g.get_or_lea_lop(var, node.typ), g.handle_ptr_arithmetic(node.typ,
+		g.literalint(1, node.typ)))
 
 	return g.set_var(var, expr, ast_typ: node.typ)
 }
@@ -406,8 +406,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) binaryen.Expres
 
 	op := g.infix_from_typ(node.left_type, node.op)
 
-	infix := binaryen.binary(g.mod, op, g.expr(node.left, node.left_type), g.handle_ptr_arithmetic(node.left_type, g.expr_with_cast(node.right,
-		node.right_type, node.left_type)))
+	infix := binaryen.binary(g.mod, op, g.expr(node.left, node.left_type), g.handle_ptr_arithmetic(node.left_type,
+		g.expr_with_cast(node.right, node.right_type, node.left_type)))
 
 	res_typ := if infix_kind_return_bool(node.op) {
 		ast.bool_type
@@ -503,7 +503,8 @@ fn (mut g Gen) if_expr(ifexpr ast.IfExpr) binaryen.Expression {
 	return g.if_branch(ifexpr, 0)
 }
 
-const wasm_builtins = ['__memory_grow', '__memory_fill', '__memory_copy', '__memory_size', '__heap_base']
+const wasm_builtins = ['__memory_grow', '__memory_fill', '__memory_copy', '__memory_size',
+	'__heap_base']
 
 fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) binaryen.Expression {
 	mut args := []binaryen.Expression{cap: node.args.len}
@@ -960,8 +961,8 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) binaryen.Expression {
 					var := g.local_temporaries[g.get_local_temporary('__return${idx}')]
 					address := g.expr(expr, typ)
 
-					leave_expr_list << g.blit(address, typ, binaryen.localget(g.mod,
-						var.idx, var.typ))
+					leave_expr_list << g.blit(address, typ, binaryen.localget(g.mod, var.idx,
+						var.typ))
 				} else {
 					exprs << g.expr(expr, typ)
 				}
@@ -1205,7 +1206,9 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 	g.table.pointer_size = 4
 	binaryen.modulesetfeatures(g.mod, binaryen.featureall())
 	binaryen.setlowmemoryunused(true) // Low 1KiB of memory is unused.
-	defer { binaryen.moduledispose(g.mod) }
+	defer {
+		binaryen.moduledispose(g.mod)
+	}
 
 	if g.pref.os == .browser {
 		eprintln('`-os browser` is experimental and will not live up to expectations...')

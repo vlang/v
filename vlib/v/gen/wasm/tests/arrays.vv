@@ -32,7 +32,6 @@ struct AA {
 }
 
 fn main() {
-
 	a := AA{}
 
 	mut b := &int(0)

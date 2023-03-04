@@ -144,9 +144,10 @@ fn (mut g Gen) housekeeping() {
 		data_offsets := g.constant_data.map(binaryen.constant(g.mod, binaryen.literalint32(it.offset)))
 		passive := []bool{len: g.constant_data.len, init: false}
 
-		binaryen.setmemory(g.mod, pages_needed, pages_needed + 4, c'memory', data.data, passive.data, data_offsets.data,
-			data_len.data, data.len, false, false, c'memory')
-		binaryen.addglobal(g.mod, c'__heap_base', type_i32, false, g.literalint(heap_base, ast.int_type))
+		binaryen.setmemory(g.mod, pages_needed, pages_needed + 4, c'memory', data.data,
+			passive.data, data_offsets.data, data_len.data, data.len, false, false, c'memory')
+		binaryen.addglobal(g.mod, c'__heap_base', type_i32, false, g.literalint(heap_base,
+			ast.int_type))
 	}
 	if g.needs_stack {
 		// `g.constant_data_offset` rounded up to a multiple of 1024

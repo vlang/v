@@ -27,4 +27,3 @@ pub fn malloc(n isize) &u8 {
 pub fn free(ptr voidptr) {
 	_ := ptr
 }
-
