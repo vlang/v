@@ -3448,8 +3448,11 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
 
+	sym := g.table.sym(g.unwrap_generic(node.expr_type))
+	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
+
 	if node.or_block.kind != .absent && !g.is_assign_lhs && g.table.sym(node.typ).kind != .chan {
-		is_ptr := g.table.sym(g.unwrap_generic(node.expr_type)).kind in [.interface_, .sum_type]
+		is_ptr := sym.kind in [.interface_, .sum_type]
 		stmt_str := g.go_before_stmt(0).trim_space()
 		styp := g.typ(node.typ)
 		g.empty_line = true
@@ -3459,7 +3462,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			g.write('*(')
 		}
 		g.expr(node.expr)
-		g.write('.${node.field_name}')
+		g.write('.${field_name}')
 		if is_ptr {
 			g.write(')')
 		}
@@ -3472,7 +3475,6 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		return
 	}
 
-	sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	// if node expr is a root ident and an optional
 	mut is_opt_or_res := node.expr is ast.Ident
 		&& (node.expr_type.has_flag(.option) || node.expr_type.has_flag(.result))
@@ -3640,7 +3642,6 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if node.expr_type == 0 {
 		verror('cgen: SelectorExpr | expr_type: 0 | it.expr: `${node.expr}` | field: `${node.field_name}` | file: ${g.file.path} | line: ${node.pos.line_nr}')
 	}
-	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
 	g.write(field_name)
 	if sum_type_deref_field != '' {
 		g.write('${sum_type_dot}${sum_type_deref_field})')
