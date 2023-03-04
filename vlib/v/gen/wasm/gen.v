@@ -320,7 +320,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			node.pos.col)
 	}
 
-	if g.pref.printfn_list.len > 0 && node.name in g.pref.printfn_list {
+	if g.pref.printfn_list.len > 0 && name in g.pref.printfn_list {
 		binaryen.expressionprint(wasm_expr)
 	}
 
