@@ -26,3 +26,14 @@ fn test_this(index int) int {
 	}
 	return 10
 }
+
+struct AA {
+	a [10]&int
+}
+
+fn main() {
+	a := AA{}
+
+	mut b := &int(0)
+	b = a.a[2]
+}
