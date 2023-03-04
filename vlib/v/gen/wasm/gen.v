@@ -1205,6 +1205,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 	g.table.pointer_size = 4
 	binaryen.modulesetfeatures(g.mod, binaryen.featureall())
 	binaryen.setlowmemoryunused(true) // Low 1KiB of memory is unused.
+	defer { binaryen.moduledispose(g.mod) }
 
 	if g.pref.os == .browser {
 		eprintln('`-os browser` is experimental and will not live up to expectations...')
@@ -1225,26 +1226,31 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 		g.needs_stack = true
 	}
 	g.housekeeping()
-	if binaryen.modulevalidate(g.mod) {
+
+	mut valid := binaryen.modulevalidate(g.mod)
+	if valid {
 		binaryen.setdebuginfo(w_pref.is_debug)
 		if w_pref.is_prod {
 			binaryen.setoptimizelevel(3)
 			binaryen.moduleoptimize(g.mod)
 		}
-		if out_name == '-' {
-			if g.pref.is_verbose {
-				binaryen.moduleprint(g.mod)
-			} else {
-				binaryen.moduleprintstackir(g.mod, w_pref.is_prod)
-			}
+	}
+
+	if out_name == '-' {
+		if g.pref.is_verbose {
+			binaryen.moduleprint(g.mod)
 		} else {
-			bytes := binaryen.moduleallocateandwrite(g.mod, unsafe { nil })
-			str := unsafe { (&char(bytes.binary)).vstring_with_len(int(bytes.binaryBytes)) }
-			os.write_file(out_name, str) or { panic(err) }
+			binaryen.moduleprintstackir(g.mod, w_pref.is_prod)
 		}
-	} else {
-		binaryen.moduledispose(g.mod)
+	}
+
+	if !valid {
 		g.w_error('validation failed, this should not happen. report an issue with the above messages')
 	}
-	binaryen.moduledispose(g.mod)
+
+	if out_name != '-' {
+		bytes := binaryen.moduleallocateandwrite(g.mod, unsafe { nil })
+		str := unsafe { (&char(bytes.binary)).vstring_with_len(int(bytes.binaryBytes)) }
+		os.write_file(out_name, str) or { panic(err) }
+	}
 }

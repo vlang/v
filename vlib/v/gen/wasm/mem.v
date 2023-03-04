@@ -142,7 +142,7 @@ fn (mut g Gen) get_or_lea_lop(lp LocalOrPointer, expected ast.Type) binaryen.Exp
 		}
 	}
 
-	if !is_expr && parent_typ == expected {
+	if (!is_expr && parent_typ == expected) || !g.is_pure_type(expected) {
 		return expr
 	}
 
