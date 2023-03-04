@@ -5317,8 +5317,8 @@ fn (g &Gen) checker_bug(s string, pos token.Pos) {
 // write_calls_typeof_functions inserts calls to all typeof functions for
 // interfaces and sum-types in debug mode so that the compiler does not optimize them.
 // These functions are needed to be able to get the name of a specific structure/type in the debugger.
-fn (mut g Gen) write_calls_typeof_functions() {
-	if g.pref.is_debug {
+fn (mut g Gen) write_debug_calls_typeof_functions() {
+	if !g.pref.is_debug {
 		return
 	}
 
@@ -5361,7 +5361,7 @@ fn (mut g Gen) write_init_function() {
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
 	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
 
-	g.write_calls_typeof_functions()
+	g.write_debug_calls_typeof_functions()
 
 	if g.pref.trace_calls {
 		g.writeln('\tv__trace_calls__on_call(_SLIT("_vinit"));')
