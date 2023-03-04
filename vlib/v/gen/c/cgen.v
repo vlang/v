@@ -5316,6 +5316,37 @@ fn (g &Gen) checker_bug(s string, pos token.Pos) {
 	g.error('checker bug; ${s}', pos)
 }
 
+// write_debug_calls_typeof_functions inserts calls to all typeof functions for
+// interfaces and sum-types in debug mode so that the compiler does not optimize them.
+// These functions are needed to be able to get the name of a specific structure/type in the debugger.
+fn (mut g Gen) write_debug_calls_typeof_functions() {
+	if !g.pref.is_debug {
+		return
+	}
+
+	g.writeln('\t// we call these functions in debug mode so that the C compiler')
+	g.writeln('\t// does not optimize them and we can access them in the debugger.')
+	for _, sym in g.table.type_symbols {
+		if sym.kind == .sum_type {
+			sum_info := sym.info as ast.SumType
+			if sum_info.is_generic {
+				continue
+			}
+			g.writeln('\tv_typeof_sumtype_${sym.cname}(0);')
+		}
+		if sym.kind == .interface_ {
+			if sym.info !is ast.Interface {
+				continue
+			}
+			inter_info := sym.info as ast.Interface
+			if inter_info.is_generic {
+				continue
+			}
+			g.writeln('\tv_typeof_interface_${sym.cname}(0);')
+		}
+	}
+}
+
 fn (mut g Gen) write_init_function() {
 	if g.pref.no_builtin || (g.pref.translated && g.pref.is_o) {
 		return
@@ -5331,6 +5362,8 @@ fn (mut g Gen) write_init_function() {
 
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
 	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
+
+	g.write_debug_calls_typeof_functions()
 
 	if g.pref.trace_calls {
 		g.writeln('\tv__trace_calls__on_call(_SLIT("_vinit"));')
