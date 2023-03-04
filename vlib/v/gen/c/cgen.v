@@ -4563,8 +4563,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	ret_typ := g.typ(g.unwrap_generic(fn_ret_type))
 	mut use_tmp_var := g.defer_stmts.len > 0 || g.defer_profile_code.len > 0
 		|| g.cur_lock.lockeds.len > 0
+		|| (fn_return_is_multi && node.exprs.len >= 1 && fn_return_is_option)
 	// handle promoting none/error/function returning _option'
-	if fn_return_is_option && !fn_return_is_multi {
+	if fn_return_is_option {
 		option_none := node.exprs[0] is ast.None
 		ftyp := g.typ(node.types[0])
 		mut is_regular_option := ftyp == '_option'
@@ -4586,6 +4587,17 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.gen_option_error(fn_ret_type, node.exprs[0])
 			g.writeln(';')
 			if use_tmp_var {
+				// handle options when returning `none` for `?(int, ?int)`
+				if fn_return_is_multi && node.exprs.len >= 1 {
+					mr_info := sym.info as ast.MultiReturn
+					for i in 0 .. mr_info.types.len {
+						if mr_info.types[i].has_flag(.option) {
+							g.write('(*(${g.base_type(fn_ret_type)}*)${tmpvar}.data).arg${i} = ')
+							g.gen_option_error(mr_info.types[i], ast.None{})
+							g.writeln(';')
+						}
+					}
+				}
 				g.write_defer_stmts_when_needed()
 				g.writeln('return ${tmpvar};')
 			}
@@ -4631,9 +4643,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln('return ${tmpvar};')
 			return
 		}
-		typ_sym := g.table.sym(g.fn_decl.return_type)
-		mr_info := typ_sym.info as ast.MultiReturn
-		expected_vals := mr_info.types.len
+		mr_info := sym.info as ast.MultiReturn
 		mut styp := ''
 		if fn_return_is_option {
 			g.writeln('${ret_typ} ${tmpvar};')
@@ -4655,75 +4665,56 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		mut multi_unpack := ''
 		g.write('(${styp}){')
 		mut arg_idx := 0
-		mut i := 0
-
-		for {
-			// ?(?type, ?type) can return `none`
-			// so we should init the leading option values
-			if i == expected_vals {
-				break
-			}
-			if i < node.exprs.len {
-				expr := node.exprs[i]
-				// Check if we are dealing with a multi return and handle it seperately
-				if g.expr_is_multi_return_call(expr) {
-					call_expr := expr as ast.CallExpr
-					expr_sym := g.table.sym(call_expr.return_type)
-					mut tmp := g.new_tmp_var()
-					if !call_expr.return_type.has_flag(.option)
-						&& !call_expr.return_type.has_flag(.result) {
-						line := g.go_before_stmt(0)
-						expr_styp := g.typ(call_expr.return_type)
-						g.write('${expr_styp} ${tmp}=')
-						g.expr(expr)
-						g.writeln(';')
-						multi_unpack += g.go_before_stmt(0)
-						g.write(line)
-					} else {
-						line := g.go_before_stmt(0)
-						g.tmp_count--
-						g.expr(expr)
-						multi_unpack += g.go_before_stmt(0)
-						g.write(line)
-						expr_styp := g.base_type(call_expr.return_type)
-						tmp = ('(*(${expr_styp}*)${tmp}.data)')
-					}
-					expr_types := expr_sym.mr_info().types
-					for j, _ in expr_types {
-						g.write('.arg${arg_idx}=${tmp}.arg${j}')
-						if j < expr_types.len || i < node.exprs.len - 1 {
-							g.write(',')
-						}
-						arg_idx++
-					}
-					continue
-				}
-				g.write('.arg${arg_idx}=')
-				if expr.is_auto_deref_var() {
-					g.write('*')
-				}
-				if g.table.sym(mr_info.types[i]).kind in [.sum_type, .interface_] {
-					g.expr_with_cast(expr, node.types[i], mr_info.types[i])
-				} else if mr_info.types[i].has_flag(.option) {
-					g.expr_with_opt(expr, node.types[i], mr_info.types[i])
-				} else {
+		for i, expr in node.exprs {
+			// Check if we are dealing with a multi return and handle it seperately
+			if g.expr_is_multi_return_call(expr) {
+				call_expr := expr as ast.CallExpr
+				expr_sym := g.table.sym(call_expr.return_type)
+				mut tmp := g.new_tmp_var()
+				if !call_expr.return_type.has_flag(.option)
+					&& !call_expr.return_type.has_flag(.result) {
+					line := g.go_before_stmt(0)
+					expr_styp := g.typ(call_expr.return_type)
+					g.write('${expr_styp} ${tmp}=')
 					g.expr(expr)
+					g.writeln(';')
+					multi_unpack += g.go_before_stmt(0)
+					g.write(line)
+				} else {
+					line := g.go_before_stmt(0)
+					g.tmp_count--
+					g.expr(expr)
+					multi_unpack += g.go_before_stmt(0)
+					g.write(line)
+					expr_styp := g.base_type(call_expr.return_type)
+					tmp = ('(*(${expr_styp}*)${tmp}.data)')
 				}
-
-				if i < expected_vals - 1 {
-					g.write(', ')
-				}
-			} else {
-				if mr_info.types[i].has_flag(.option) {
-					g.expr_with_opt(ast.None{}, ast.none_type, mr_info.types[i])
-
-					if i < expected_vals - 1 {
-						g.write(', ')
+				expr_types := expr_sym.mr_info().types
+				for j, _ in expr_types {
+					g.write('.arg${arg_idx}=${tmp}.arg${j}')
+					if j < expr_types.len || i < node.exprs.len - 1 {
+						g.write(',')
 					}
+					arg_idx++
 				}
+				continue
+			}
+			g.write('.arg${arg_idx}=')
+			if expr.is_auto_deref_var() {
+				g.write('*')
+			}
+			if g.table.sym(mr_info.types[i]).kind in [.sum_type, .interface_] {
+				g.expr_with_cast(expr, node.types[i], mr_info.types[i])
+			} else if mr_info.types[i].has_flag(.option) {
+				g.expr_with_opt(expr, node.types[i], mr_info.types[i])
+			} else {
+				g.expr(expr)
+			}
+
+			if i < node.exprs.len - 1 {
+				g.write(', ')
 			}
 			arg_idx++
-			i++
 		}
 		g.write('}')
 		if fn_return_is_option {

@@ -1,3 +1,9 @@
+struct MmapRangeLocal {}
+
+fn addr2range() ?(&MmapRangeLocal, ?u64, u64) {
+	return none
+}
+
 fn foo(val ?int) (?int, ?int) {
 	return val, none
 }
@@ -46,4 +52,10 @@ fn test_tuple_4() {
 	a, b := tuple4()
 	assert a == none
 	assert b == none
+}
+
+fn test_none_ret() {
+	_, b, c := addr2range()
+	assert b == none
+	assert c == 0
 }
