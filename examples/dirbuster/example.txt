@@ -1,0 +1,5 @@
+backup
+admin
+wp-admin
+administrator
+login
