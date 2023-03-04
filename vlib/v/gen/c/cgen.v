@@ -5314,7 +5314,7 @@ fn (g &Gen) checker_bug(s string, pos token.Pos) {
 	g.error('checker bug; ${s}', pos)
 }
 
-// write_calls_typeof_functions inserts calls to all typeof functions for
+// write_debug_calls_typeof_functions inserts calls to all typeof functions for
 // interfaces and sum-types in debug mode so that the compiler does not optimize them.
 // These functions are needed to be able to get the name of a specific structure/type in the debugger.
 fn (mut g Gen) write_debug_calls_typeof_functions() {
