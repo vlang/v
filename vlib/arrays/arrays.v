@@ -218,6 +218,26 @@ pub fn sum[T](array []T) !T {
 	}
 }
 
+// sorted returns a sorted clone of the array
+// Example: arrays.sorted([6, 2, 1, 0, 3]) // => [0, 1, 2, 3, 6]
+pub fn sorted[T](array []T) []T {
+	mut cloned := array.clone()
+	cloned.sort(a < b)
+	sorted := cloned.clone()
+
+	return sorted
+}
+
+// sorted_with_compare returns a sorted clone of the array, sorted with the provided sorting function
+// Example: arrays.sorted([6, 2, 1, 0, 3]) // => [0, 1, 2, 3, 6]
+pub fn sorted_with_compare[T](array []T, callback fn (&T, &T) int) []T {
+	mut cloned := array.clone()
+	cloned.sort_with_compare(callback)
+	sorted := cloned.clone()
+
+	return sorted
+}
+
 // reduce sets `acc = array[0]`, then successively calls `acc = reduce_op(acc, elem)` for each remaining element in `array`.
 // returns the accumulated value in `acc`.
 // returns an error if the array is empty.

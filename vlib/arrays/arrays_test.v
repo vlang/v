@@ -155,6 +155,35 @@ fn test_sum() {
 	assert sum[int]([]int{}) or { 0 } == 0
 }
 
+fn test_sorted() {
+	ints := [5, 1, 3, 4, 2]
+	ints_sorted := [1, 2, 3, 4, 5]
+
+	assert sorted[int](ints) == ints_sorted
+
+	strings := ['a', 'c', 'd', 'b', 'e']
+	strings_sorted := ['a', 'b', 'c', 'd', 'e']
+
+	assert sorted[string](strings) == strings_sorted
+}
+
+fn test_sorted_with_compare() {
+	strings := ['a', 'c', 'd', 'b', 'e']
+	strings_sorted := ['e', 'd', 'c', 'b', 'a']
+
+	descending_string_sort_fn := fn (a &string, b &string) int {
+		if *a > *b {
+			return -1
+		}
+		if *a < *b {
+			return 1
+		}
+		return 0
+	}
+
+	assert sorted_with_compare[string](strings, descending_string_sort_fn) == strings_sorted
+}
+
 fn test_reduce() {
 	x := [1, 2, 3, 4, 5]
 
