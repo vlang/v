@@ -348,7 +348,7 @@ fn (mut g Gen) literalint(val i64, expected ast.Type) binaryen.Expression {
 		type_i64 { return binaryen.constant(g.mod, binaryen.literalint64(val)) }
 		else {}
 	}
-	g.w_error('literalint: bad type `${expected}`')
+	g.w_error('literalint: bad type `${*g.table.sym(expected)}`')
 }
 
 fn (mut g Gen) literal(val string, expected ast.Type) binaryen.Expression {
@@ -378,7 +378,7 @@ fn (mut g Gen) postfix_expr(node ast.PostfixExpr) binaryen.Expression {
 	op := g.infix_from_typ(node.typ, kind)
 
 	expr := binaryen.binary(g.mod, op, g.get_or_lea_lop(var, node.typ), g.handle_ptr_arithmetic(node.typ,
-		g.literalint(1, node.typ)))
+		g.literal("0", node.typ)))
 
 	return g.set_var(var, expr, ast_typ: node.typ)
 }
