@@ -649,7 +649,11 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	// multi return
 	// TODO Handle in if_expr
 	mr_var_name := 'mr_${node.pos.pos}'
-	mr_styp := g.typ(return_type.clear_flag(.option).clear_flag(.result))
+	mr_styp := g.typ(return_type.clear_flag(.result))
+	is_option := return_type.has_flag(.option)
+	if is_option {
+		g.left_is_opt = true
+	}
 	g.write('${mr_styp} ${mr_var_name} = ')
 	g.expr(node.right[0])
 	g.writeln(';')
@@ -679,12 +683,16 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 		if g.is_arraymap_set {
 			if is_auto_heap {
 				g.writeln('HEAP${noscan}(${styp}, ${mr_var_name}.arg${i}) });')
+			} else if is_option {
+				g.writeln('(*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i} });')
 			} else {
 				g.writeln('${mr_var_name}.arg${i} });')
 			}
 		} else {
 			if is_auto_heap {
 				g.writeln(' = HEAP${noscan}(${styp}, ${mr_var_name}.arg${i});')
+			} else if is_option {
+				g.writeln(' = (*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i};')
 			} else {
 				g.writeln(' = ${mr_var_name}.arg${i};')
 			}
