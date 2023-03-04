@@ -1,6 +1,6 @@
 module doc
 
-pub fn (nodes []DocNode) find(symname string) ?DocNode {
+pub fn (nodes []DocNode) find(symname string) !DocNode {
 	for node in nodes {
 		if node.name != symname {
 			continue

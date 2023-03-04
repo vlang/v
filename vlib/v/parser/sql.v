@@ -318,7 +318,7 @@ fn (p &Parser) has_sql_where_expr_with_comparison_with_id(expr &ast.Expr) bool {
 			return expr.left.name == 'id'
 		}
 	} else if expr is ast.ParExpr {
-		return p.has_sql_where_expr_with_comparison_with_id(&expr.expr)
+		return p.has_sql_where_expr_with_comparison_with_id(expr.expr)
 	}
 
 	return false
@@ -334,12 +334,12 @@ fn (mut p Parser) check_sql_where_expr_has_no_undefined_variables(expr &ast.Expr
 		}
 	} else if expr is ast.InfixExpr {
 		if expr.left is ast.Ident && expr.right is ast.Ident {
-			return p.check_sql_where_expr_has_no_undefined_variables(&expr.right, [
+			return p.check_sql_where_expr_has_no_undefined_variables(expr.right, [
 				expr.left.str(),
 			])
 		}
 
-		left_check_result := p.check_sql_where_expr_has_no_undefined_variables(&expr.left,
+		left_check_result := p.check_sql_where_expr_has_no_undefined_variables(expr.left,
 			[])
 
 		if left_check_result is ast.NodeError {
@@ -347,14 +347,14 @@ fn (mut p Parser) check_sql_where_expr_has_no_undefined_variables(expr &ast.Expr
 		}
 
 		variable_names := if expr.left is ast.Ident { [expr.left.str()] } else { []string{} }
-		right_check_result := p.check_sql_where_expr_has_no_undefined_variables(&expr.right,
+		right_check_result := p.check_sql_where_expr_has_no_undefined_variables(expr.right,
 			variable_names)
 
 		if right_check_result is ast.NodeError {
 			return right_check_result
 		}
 	} else if expr is ast.ParExpr {
-		return p.check_sql_where_expr_has_no_undefined_variables(&expr.expr, [])
+		return p.check_sql_where_expr_has_no_undefined_variables(expr.expr, [])
 	}
 
 	return ast.empty_expr

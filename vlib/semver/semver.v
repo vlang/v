@@ -38,7 +38,7 @@ pub fn (err InvalidVersionFormatError) msg() string {
 
 // * Constructor.
 // from returns a `Version` structure parsed from `input` `string`.
-pub fn from(input string) ?Version {
+pub fn from(input string) !Version {
 	if input.len == 0 {
 		return &EmptyInputError{}
 	}
@@ -114,7 +114,7 @@ import semver
 v := semver.coerce('1.3-RC1-b2') or { semver.Version{} }
 assert v.satisfies('>1.0 <2.0') == true // 1.3.0
 */
-pub fn coerce(input string) ?Version {
+pub fn coerce(input string) !Version {
 	return coerce_version(input)
 }
 

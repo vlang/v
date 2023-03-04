@@ -835,7 +835,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 	g.writeln('}// \$for')
 }
 
-fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) ?string {
+fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) !string {
 	match name {
 		// platforms/os-es:
 		'windows' {
@@ -991,5 +991,5 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) ?strin
 			return error('bad os ifdef name "${name}"') // should never happen, caught in the checker
 		}
 	}
-	return none
+	return error('none')
 }
