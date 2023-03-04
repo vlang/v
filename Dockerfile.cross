@@ -1,4 +1,4 @@
-FROM mstorsjo/llvm-mingw
+FROM mstorsjo/llvm-mingw:20230130
 
 LABEL maintainer="Delyan Angelov <delian66@gmail.com>"
 COPY . .
