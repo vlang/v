@@ -120,6 +120,7 @@ mut:
 	inside_ternary            int  // ?: comma separated statements on a single line
 	inside_map_postfix        bool // inside map++/-- postfix expr
 	inside_map_infix          bool // inside map<</+=/-= infix expr
+	inside_assign             bool
 	inside_map_index          bool
 	inside_opt_or_res         bool
 	inside_opt_data           bool
@@ -1829,7 +1830,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 // e.g. field default: "foo ?int = 1", field assign: "foo = 1", field init: "foo: 1"
 fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type, tmp_var string) {
 	if !ret_typ.has_flag(.option) && !ret_typ.has_flag(.result) {
-		panic('cgen: parameter `ret_typ` of function `expr_with_tmp_var()` must be an option or result')
+		panic('cgen: parameter `ret_typ` of function `expr_with_tmp_var()` must be an Option or Result')
 	}
 
 	stmt_str := g.go_before_stmt(0).trim_space()
@@ -3447,8 +3448,11 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
 
+	sym := g.table.sym(g.unwrap_generic(node.expr_type))
+	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
+
 	if node.or_block.kind != .absent && !g.is_assign_lhs && g.table.sym(node.typ).kind != .chan {
-		is_ptr := g.table.sym(g.unwrap_generic(node.expr_type)).kind in [.interface_, .sum_type]
+		is_ptr := sym.kind in [.interface_, .sum_type]
 		stmt_str := g.go_before_stmt(0).trim_space()
 		styp := g.typ(node.typ)
 		g.empty_line = true
@@ -3458,7 +3462,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			g.write('*(')
 		}
 		g.expr(node.expr)
-		g.write('.${node.field_name}')
+		g.write('.${field_name}')
 		if is_ptr {
 			g.write(')')
 		}
@@ -3471,7 +3475,6 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		return
 	}
 
-	sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	// if node expr is a root ident and an optional
 	mut is_opt_or_res := node.expr is ast.Ident
 		&& (node.expr_type.has_flag(.option) || node.expr_type.has_flag(.result))
@@ -3639,7 +3642,6 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if node.expr_type == 0 {
 		verror('cgen: SelectorExpr | expr_type: 0 | it.expr: `${node.expr}` | field: `${node.field_name}` | file: ${g.file.path} | line: ${node.pos.line_nr}')
 	}
-	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
 	g.write(field_name)
 	if sum_type_deref_field != '' {
 		g.write('${sum_type_dot}${sum_type_deref_field})')
@@ -4123,7 +4125,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				styp := g.base_type(node.info.typ)
 				g.write('(*(${styp}*)${name}.data)')
 			}
-			if node.or_expr.kind != .absent {
+			if node.or_expr.kind != .absent && !(g.inside_assign && !g.is_assign_lhs) {
 				stmt_str := g.go_before_stmt(0).trim_space()
 				g.empty_line = true
 				g.or_block(name, node.or_expr, node.info.typ)
@@ -5335,6 +5337,37 @@ fn (g &Gen) checker_bug(s string, pos token.Pos) {
 	g.error('checker bug; ${s}', pos)
 }
 
+// write_debug_calls_typeof_functions inserts calls to all typeof functions for
+// interfaces and sum-types in debug mode so that the compiler does not optimize them.
+// These functions are needed to be able to get the name of a specific structure/type in the debugger.
+fn (mut g Gen) write_debug_calls_typeof_functions() {
+	if !g.pref.is_debug {
+		return
+	}
+
+	g.writeln('\t// we call these functions in debug mode so that the C compiler')
+	g.writeln('\t// does not optimize them and we can access them in the debugger.')
+	for _, sym in g.table.type_symbols {
+		if sym.kind == .sum_type {
+			sum_info := sym.info as ast.SumType
+			if sum_info.is_generic {
+				continue
+			}
+			g.writeln('\tv_typeof_sumtype_${sym.cname}(0);')
+		}
+		if sym.kind == .interface_ {
+			if sym.info !is ast.Interface {
+				continue
+			}
+			inter_info := sym.info as ast.Interface
+			if inter_info.is_generic {
+				continue
+			}
+			g.writeln('\tv_typeof_interface_${sym.cname}(0);')
+		}
+	}
+}
+
 fn (mut g Gen) write_init_function() {
 	if g.pref.no_builtin || (g.pref.translated && g.pref.is_o) {
 		return
@@ -5350,6 +5383,8 @@ fn (mut g Gen) write_init_function() {
 
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
 	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
+
+	g.write_debug_calls_typeof_functions()
 
 	if g.pref.trace_calls {
 		g.writeln('\tv__trace_calls__on_call(_SLIT("_vinit"));')

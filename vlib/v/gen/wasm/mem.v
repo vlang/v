@@ -142,7 +142,7 @@ fn (mut g Gen) get_or_lea_lop(lp LocalOrPointer, expected ast.Type) binaryen.Exp
 		}
 	}
 
-	if !is_expr && parent_typ == expected {
+	if (!is_expr && parent_typ == expected) || !g.is_pure_type(expected) {
 		return expr
 	}
 
@@ -234,6 +234,9 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) LocalOrPointer {
 	return match node {
 		ast.Ident {
 			g.get_var_from_ident(node)
+		}
+		ast.ParExpr {
+			g.get_var_from_expr(node.expr)
 		}
 		ast.SelectorExpr {
 			address := g.get_var_from_expr(node.expr)

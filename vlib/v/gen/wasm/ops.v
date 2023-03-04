@@ -21,6 +21,7 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) binaryen.Type {
 		return wasm.type_none
 	}
 	if typ.is_real_pointer() {
+		g.needs_stack = true
 		return wasm.type_i32
 	}
 	if typ in ast.number_type_idxs {
@@ -63,6 +64,9 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) binaryen.Type {
 		}
 		ast.ArrayFixed {
 			return wasm.type_i32
+		}
+		ast.Enum {
+			return g.get_wasm_type(ts.info.typ)
 		}
 		else {}
 	}

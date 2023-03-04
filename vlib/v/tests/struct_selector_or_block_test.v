@@ -22,3 +22,16 @@ fn test_main() {
 	assert greet(Hello{}) == 'UNKNOWN'
 	assert greet(Hello{'cool', ''}) == 'cool'
 }
+
+struct CnameTest {
+	long  ?string
+	short ?string
+}
+
+fn test_cname_opt_field_selecor() {
+	x := CnameTest{
+		short: 'xyz'
+	}
+	assert (x.long or { 'NOPE' }) == 'NOPE'
+	assert (x.short or { 'NOPE' }) == 'xyz'
+}

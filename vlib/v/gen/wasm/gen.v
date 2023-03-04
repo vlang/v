@@ -36,7 +36,7 @@ mut:
 	stack_patches           []BlockPatch
 	needs_stack             bool // If true, will use `memory` and `__vsp`
 	constant_data           []ConstantData
-	constant_data_offset    int
+	constant_data_offset    int = 1024 // Low 1KiB of data unused, for optimisations
 	module_import_namespace string // `[wasm_import_namespace: 'wasi_snapshot_preview1']` else `env`
 	globals                 map[string]GlobalData
 }
@@ -159,7 +159,7 @@ fn (mut g Gen) function_return_wasm_type(typ ast.Type) binaryen.Type {
 	if typ == ast.void_type {
 		return type_none
 	}
-	types := g.unpack_type(typ).filter(g.table.sym(it).info !is ast.Struct).map(g.get_wasm_type(it))
+	types := g.unpack_type(typ).filter(it.is_real_pointer() || g.table.sym(it).info !is ast.Struct).map(g.get_wasm_type(it))
 	if types.len == 0 {
 		return type_none
 	}
@@ -216,8 +216,10 @@ fn (mut g Gen) bare_function(name string, expr binaryen.Expression) binaryen.Fun
 		temporaries << g.local_temporaries[idx].typ
 	}
 
+	wasm_expr := g.setup_stack_frame(expr)
+
 	func := binaryen.addfunction(g.mod, name.str, type_none, type_none, temporaries.data,
-		temporaries.len, expr)
+		temporaries.len, wasm_expr)
 
 	g.local_temporaries.clear()
 	g.local_addresses = map[string]Stack{}
@@ -272,7 +274,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	for idx, typ in g.curr_ret {
 		sym := g.table.sym(typ)
-		if sym.info is ast.Struct {
+		if sym.info is ast.Struct && !typ.is_real_pointer() {
 			g.local_temporaries << Temporary{
 				name: '__return${idx}'
 				typ: type_i32 // pointer
@@ -318,7 +320,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			node.pos.col)
 	}
 
-	if g.pref.printfn_list.len > 0 && node.name in g.pref.printfn_list {
+	if g.pref.printfn_list.len > 0 && name in g.pref.printfn_list {
 		binaryen.expressionprint(wasm_expr)
 	}
 
@@ -346,7 +348,7 @@ fn (mut g Gen) literalint(val i64, expected ast.Type) binaryen.Expression {
 		type_i64 { return binaryen.constant(g.mod, binaryen.literalint64(val)) }
 		else {}
 	}
-	g.w_error('literalint: bad type `${expected}`')
+	g.w_error('literalint: bad type `${*g.table.sym(expected)}`')
 }
 
 fn (mut g Gen) literal(val string, expected ast.Type) binaryen.Expression {
@@ -360,14 +362,23 @@ fn (mut g Gen) literal(val string, expected ast.Type) binaryen.Expression {
 	g.w_error('literal: bad type `${expected}`')
 }
 
+fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type, expr binaryen.Expression) binaryen.Expression {
+	return if typ.is_ptr() {
+		size, _ := g.get_type_size_align(typ)
+		binaryen.binary(g.mod, binaryen.mulint32(), expr, g.literalint(size, ast.voidptr_type))
+	} else {
+		expr
+	}
+}
+
 fn (mut g Gen) postfix_expr(node ast.PostfixExpr) binaryen.Expression {
 	kind := if node.op == .inc { token.Kind.plus } else { token.Kind.minus }
 
 	var := g.get_var_from_expr(node.expr)
 	op := g.infix_from_typ(node.typ, kind)
 
-	expr := binaryen.binary(g.mod, op, g.get_or_lea_lop(var, node.typ), g.literal('1',
-		node.typ))
+	expr := binaryen.binary(g.mod, op, g.get_or_lea_lop(var, node.typ), g.handle_ptr_arithmetic(node.typ,
+		g.literal('0', node.typ)))
 
 	return g.set_var(var, expr, ast_typ: node.typ)
 }
@@ -395,8 +406,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) binaryen.Expres
 
 	op := g.infix_from_typ(node.left_type, node.op)
 
-	infix := binaryen.binary(g.mod, op, g.expr(node.left, node.left_type), g.expr_with_cast(node.right,
-		node.right_type, node.left_type))
+	infix := binaryen.binary(g.mod, op, g.expr(node.left, node.left_type), g.handle_ptr_arithmetic(node.left_type,
+		g.expr_with_cast(node.right, node.right_type, node.left_type)))
 
 	res_typ := if infix_kind_return_bool(node.op) {
 		ast.bool_type
@@ -492,7 +503,8 @@ fn (mut g Gen) if_expr(ifexpr ast.IfExpr) binaryen.Expression {
 	return g.if_branch(ifexpr, 0)
 }
 
-const wasm_builtins = ['__memory_grow', '__memory_fill', '__memory_copy']
+const wasm_builtins = ['__memory_grow', '__memory_fill', '__memory_copy', '__memory_size',
+	'__heap_base']
 
 fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) binaryen.Expression {
 	mut args := []binaryen.Expression{cap: node.args.len}
@@ -509,6 +521,12 @@ fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) binaryen.Expression 
 		}
 		'__memory_copy' {
 			return binaryen.memorycopy(g.mod, args[0], args[1], args[2], c'memory', c'memory')
+		}
+		'__memory_size' {
+			return binaryen.memorysize(g.mod, c'memory', false)
+		}
+		'__heap_base' {
+			return binaryen.globalget(g.mod, c'__heap_base', type_i32)
 		}
 		else {
 			panic('unreachable')
@@ -666,6 +684,9 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) binaryen.Expression {
 			g.literalint(off, ast.u32_type)
 		}
 		ast.SizeOf {
+			if !g.table.known_type_idx(node.typ) {
+				g.v_error('unknown type `${*g.table.sym(node.typ)}`', node.pos)
+			}
 			size, _ := g.table.type_size(node.typ)
 			g.literalint(size, ast.u32_type)
 		}
@@ -704,6 +725,9 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) binaryen.Expression {
 		}
 		ast.IntegerLiteral, ast.FloatLiteral {
 			g.literal(node.val, expected)
+		}
+		ast.Nil {
+			g.literalint(0, expected)
 		}
 		ast.IfExpr {
 			if node.branches.len == 2 && node.is_expr {
@@ -755,7 +779,7 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) binaryen.Expression {
 			}
 
 			ret_types := g.unpack_type(node.return_type)
-			structs := ret_types.filter(g.table.sym(it).info is ast.Struct)
+			structs := ret_types.filter(g.table.sym(it).info is ast.Struct && !it.is_real_pointer())
 			mut structs_addrs := []int{cap: structs.len}
 
 			// ABI: {return structs} {method `self`}, then {arguments}
@@ -926,7 +950,8 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) binaryen.Expression {
 			mut leave_expr_list := []binaryen.Expression{cap: node.exprs.len}
 			mut exprs := []binaryen.Expression{cap: node.exprs.len}
 			for idx, expr in node.exprs {
-				if g.table.sym(g.curr_ret[idx]).info is ast.Struct {
+				typ := g.curr_ret[idx]
+				if g.table.sym(typ).info is ast.Struct && !typ.is_real_pointer() {
 					// Could be adapted to use random pointers?
 					/*
 					if expr is ast.StructInit {
@@ -934,12 +959,12 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) binaryen.Expression {
 						leave_expr_list << g.init_struct(var, expr)
 					}*/
 					var := g.local_temporaries[g.get_local_temporary('__return${idx}')]
-					address := g.expr(expr, g.curr_ret[idx])
+					address := g.expr(expr, typ)
 
-					leave_expr_list << g.blit(address, g.curr_ret[idx], binaryen.localget(g.mod,
-						var.idx, var.typ))
+					leave_expr_list << g.blit(address, typ, binaryen.localget(g.mod, var.idx,
+						var.typ))
 				} else {
-					exprs << g.expr(expr, g.curr_ret[idx])
+					exprs << g.expr(expr, typ)
 				}
 			}
 
@@ -1179,9 +1204,11 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 		mod: binaryen.modulecreate()
 	}
 	g.table.pointer_size = 4
-	// Offset all pointers by 8, so that 0 never points to valid memory
-	g.constant_data_offset = 8
 	binaryen.modulesetfeatures(g.mod, binaryen.featureall())
+	binaryen.setlowmemoryunused(true) // Low 1KiB of memory is unused.
+	defer {
+		binaryen.moduledispose(g.mod)
+	}
 
 	if g.pref.os == .browser {
 		eprintln('`-os browser` is experimental and will not live up to expectations...')
@@ -1202,26 +1229,31 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 		g.needs_stack = true
 	}
 	g.housekeeping()
-	if binaryen.modulevalidate(g.mod) {
+
+	mut valid := binaryen.modulevalidate(g.mod)
+	if valid {
 		binaryen.setdebuginfo(w_pref.is_debug)
 		if w_pref.is_prod {
 			binaryen.setoptimizelevel(3)
 			binaryen.moduleoptimize(g.mod)
 		}
-		if out_name == '-' {
-			if g.pref.is_verbose {
-				binaryen.moduleprint(g.mod)
-			} else {
-				binaryen.moduleprintstackir(g.mod, w_pref.is_prod)
-			}
+	}
+
+	if out_name == '-' {
+		if g.pref.is_verbose {
+			binaryen.moduleprint(g.mod)
 		} else {
-			bytes := binaryen.moduleallocateandwrite(g.mod, unsafe { nil })
-			str := unsafe { (&char(bytes.binary)).vstring_with_len(int(bytes.binaryBytes)) }
-			os.write_file(out_name, str) or { panic(err) }
+			binaryen.moduleprintstackir(g.mod, w_pref.is_prod)
 		}
-	} else {
-		binaryen.moduledispose(g.mod)
+	}
+
+	if !valid {
 		g.w_error('validation failed, this should not happen. report an issue with the above messages')
 	}
-	binaryen.moduledispose(g.mod)
+
+	if out_name != '-' {
+		bytes := binaryen.moduleallocateandwrite(g.mod, unsafe { nil })
+		str := unsafe { (&char(bytes.binary)).vstring_with_len(int(bytes.binaryBytes)) }
+		os.write_file(out_name, str) or { panic(err) }
+	}
 }
