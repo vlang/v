@@ -103,8 +103,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	mut return_type := ast.void_type
 	is_decl := node.op == .decl_assign
 	g.assign_op = node.op
+	g.inside_assign = true
 	defer {
 		g.assign_op = .unknown
+		g.inside_assign = false
 	}
 	op := if is_decl { token.Kind.assign } else { node.op }
 	right_expr := node.right[0]
@@ -597,7 +599,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						if val.is_auto_deref_var() {
 							g.write('*')
 						}
-						if var_type.has_flag(.option) || gen_or {
+						if (var_type.has_flag(.option) && val !in [ast.Ident, ast.SelectorExpr])
+							|| gen_or {
 							g.expr_with_opt_or_block(val, val_type, left, var_type)
 						} else if val is ast.ArrayInit {
 							g.array_init(val, c_name(ident.name))
