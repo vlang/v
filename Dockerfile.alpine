@@ -1,4 +1,4 @@
-FROM alpine:3.12
+FROM alpine:3.16
 
 LABEL maintainer="spytheman <spytheman@bulsynt.org>"
 
@@ -12,6 +12,7 @@ RUN mkdir -p /opt/vlang && ln -s /opt/vlang/v /usr/bin/v
 
 ARG USE_LOCAL
 
+RUN apk upgrade -U
 ## libexecinfo is needed for the bundled tcc
 RUN apk --no-cache add \
   git make upx gcc bash \

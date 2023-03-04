@@ -1,14 +1,14 @@
 #same container that golang use
-FROM buildpack-deps:buster-curl
+FROM buildpack-deps:bookworm-curl
 
 LABEL maintainer="ANAGO Ronnel <anagoandy@gmail.com>"
 WORKDIR /opt/vlang
 
 ARG USE_LOCAL
 
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gcc clang make git binutils && \
-    apt-get clean && rm -rf /var/cache/apt/archives/* && \
+RUN DEBIAN_FRONTEND=noninteractive apt update && apt full-upgrade -y
+RUN DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends gcc clang make git binutils && \
+    apt clean && rm -rf /var/cache/apt/archives/* && \
     rm -rf /var/lib/apt/lists/*
 
 COPY . /vlang-local
