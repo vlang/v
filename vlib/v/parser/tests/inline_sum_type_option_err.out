@@ -3,7 +3,7 @@ vlib/v/parser/tests/inline_sum_type_option_err.vv:1:11: warning: inline sum type
       |           ~~~~~~
     2 |     return 0
     3 | }
-vlib/v/parser/tests/inline_sum_type_option_err.vv:1:10: error: an inline sum type cannot be an option
+vlib/v/parser/tests/inline_sum_type_option_err.vv:1:10: error: an inline sum type cannot be an Option
     1 | fn foo() ?string | int {
       |          ~~~~~~~~~~~~~
     2 |     return 0

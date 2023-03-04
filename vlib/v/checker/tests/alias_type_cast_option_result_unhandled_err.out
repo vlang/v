@@ -1,4 +1,4 @@
-vlib/v/checker/tests/alias_type_cast_option_result_unhandled_err.vv:15:12: error: ret_abc_result() returns a result, so it should have either an `or {}` block, or `!` at the end
+vlib/v/checker/tests/alias_type_cast_option_result_unhandled_err.vv:15:12: error: ret_abc_result() returns a Result, so it should have either an `or {}` block, or `!` at the end
    13 | }
    14 | 
    15 | a := Alias(ret_abc_result())
