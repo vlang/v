@@ -4019,7 +4019,8 @@ fn (mut c Checker) comptime_enum_val(mut node ast.ComptimeEnumVal) ast.Type {
 		val: c.comptime_enum_field_value
 		pos: node.pos
 	}
-	return c.enum_val(mut enum_)
+	node.typ = c.enum_val(mut enum_)
+	return node.typ
 }
 
 // `.green` or `Color.green`
