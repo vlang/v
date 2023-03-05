@@ -11,6 +11,8 @@ pub enum MessageKind {
 	skip // the _test.v file was skipped for some reason
 	info // a generic information message, detailing the actions of the `v test` program (some tests could be repeated for example, and the details are sent with an .info status)
 	//
+	cannot_compile // when the _test.v file compiled with errors
+	//
 	sentinel // send just once after all executions are done; it signals that the reporting/printing thread should stop the loop and exit
 }
 
