@@ -69,7 +69,7 @@ fn (c Comparator) satisfies(ver Version) bool {
 	return false
 }
 
-fn parse_range(input string) ?Range {
+fn parse_range(input string) !Range {
 	raw_comparator_sets := input.split(semver.comparator_set_sep)
 	mut comparator_sets := []ComparatorSet{}
 	for raw_comp_set in raw_comparator_sets {
@@ -84,7 +84,7 @@ fn parse_range(input string) ?Range {
 	return Range{comparator_sets}
 }
 
-fn parse_comparator_set(input string) ?ComparatorSet {
+fn parse_comparator_set(input string) !ComparatorSet {
 	raw_comparators := input.split(semver.comparator_sep)
 	if raw_comparators.len > 2 {
 		return &InvalidComparatorFormatError{

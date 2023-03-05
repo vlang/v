@@ -211,6 +211,24 @@ pub fn file_size(path string) u64 {
 	return 0
 }
 
+// rename_dir renames the folder from `src` to `dst`.
+// Use mv to move or rename a file in a platform independent manner.
+pub fn rename_dir(src string, dst string) ! {
+	$if windows {
+		w_src := src.replace('/', '\\')
+		w_dst := dst.replace('/', '\\')
+		ret := C._wrename(w_src.to_wide(), w_dst.to_wide())
+		if ret != 0 {
+			return error_with_code('failed to rename ${src} to ${dst}', int(ret))
+		}
+	} $else {
+		ret := C.rename(&char(src.str), &char(dst.str))
+		if ret != 0 {
+			return error_with_code('failed to rename ${src} to ${dst}', ret)
+		}
+	}
+}
+
 // rename renames the file or folder from `src` to `dst`.
 // Use mv to move or rename a file in a platform independent manner.
 pub fn rename(src string, dst string) ! {

@@ -115,7 +115,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				return
 			}
 			if !next_fn.return_type.has_flag(.option) {
-				c.error('iterator method `next()` must return an option', node.cond.pos())
+				c.error('iterator method `next()` must return an Option', node.cond.pos())
 			}
 			return_sym := c.table.sym(next_fn.return_type)
 			if return_sym.kind == .multi_return {
@@ -195,12 +195,15 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 						c.error('map literal is immutable, it cannot be changed', node.cond.pos)
 					}
 					ast.SelectorExpr {
-						root_ident := node.cond.root_ident() or { node.cond.expr as ast.Ident }
-						if root_ident.kind != .unresolved {
-							if !(root_ident.obj as ast.Var).is_mut {
-								sym2 := c.table.sym(root_ident.obj.typ)
-								c.error('field `${sym2.name}.${node.cond.field_name}` is immutable, it cannot be changed',
-									node.cond.pos)
+						if root_ident := node.cond.root_ident() {
+							if root_ident.kind != .unresolved {
+								if var := node.scope.find_var(root_ident.name) {
+									if !var.is_mut {
+										sym2 := c.table.sym(root_ident.obj.typ)
+										c.error('field `${sym2.name}.${node.cond.field_name}` is immutable, it cannot be changed',
+											node.cond.pos)
+									}
+								}
 							}
 						}
 					}

@@ -254,8 +254,8 @@ println('hello world')
 ```
 
 > **Note**
-> If you do not use explicitly `fn main() {}`, you need to make sure, that all your
-> declarations, come before any variable assignment statements, or top level function calls,
+> If you do not explicitly use `fn main() {}`, you need to make sure that all your
+> declarations come before any variable assignment statements or top level function calls,
 > since V will consider everything after the first assignment/function call as part of your
 > implicit main function.
 
@@ -2107,7 +2107,7 @@ mut p := Point{
 	y: 20
 }
 println(p.x) // Struct fields are accessed using a dot
-// Alternative literal syntax for structs with 3 fields or fewer
+// Alternative literal syntax
 p = Point{10, 20}
 assert p.x == 10
 ```
@@ -2171,7 +2171,7 @@ struct Foo {
 
 All struct fields are zeroed by default during the creation of the struct.
 Array and map fields are allocated.
-In case of reference value, [see](#structs-with-reference-fields).
+In case of reference value, see [here](#structs-with-reference-fields).
 
 It's also possible to define custom default values.
 
@@ -2557,7 +2557,7 @@ are a function of their arguments only, and their evaluation has no side effects
 Function arguments are immutable by default, even when [references](#references) are passed.
 
 > **Note**
-> V is not a purely functional language however.
+> However, V is not a purely functional language.
 
 There is a compiler flag to enable global variables (`-enable-globals`), but this is
 intended for low-level applications like kernels and drivers.
@@ -2611,6 +2611,10 @@ For this reason V doesn't allow the modification of arguments with primitive typ
 Only more complex types such as arrays and maps may be modified.
 
 ### Variable number of arguments
+V supports functions that receive an arbitrary, variable amounts of arguments, denoted with the 
+`...` prefix.
+Below, `a ...int` refers to an arbitrary amount of parameters that will be collected 
+into an array named `a`.
 
 ```v
 fn sum(a ...int) int {
@@ -2717,8 +2721,6 @@ println(c()) // 3
 ```
 
 If you need the value to be modified outside the function, use a reference.
-**Warning**: _you need to make sure the reference is always valid,
-otherwise this can result in undefined behavior._
 
 ```v oksyntax
 mut i := 0
@@ -2747,9 +2749,10 @@ fn main() {
 }
 ```
 
-V currently does not guarantee, that it will print 100, 200, 300 in that order.
-The only guarantee is that 600 (from the body of `f`), will be printed after all of them.
-That *may* change in V 1.0 .
+V currently does not guarantee that it will print 100, 200, 300 in that order.
+The only guarantee is that 600 (from the body of `f`) will be printed after all of them.
+
+This *may* change in V 1.0 .
 
 ## References
 
@@ -3267,7 +3270,7 @@ fn (c Cat) speak() string {
 	return 'meow'
 }
 
-// unlike Go and like TypeScript, V's interfaces can define fields, not just methods.
+// unlike Go, but like TypeScript, V's interfaces can define both fields and methods.
 interface Speaker {
 	breed string
 	speak() string
@@ -3395,10 +3398,7 @@ fn main() {
 		dump(a)
 		// In order to execute instances that implements IBar.
 		if a is IBar {
-			// a.bar() // Error.
-			b := a as IBar
-			dump(b)
-			b.bar()
+			a.bar()
 		}
 	}
 }
@@ -3595,7 +3595,7 @@ if mut w is Mars {
 ```
 
 Otherwise `w` would keep its original type.
-> This works for both, simple variables and complex expressions like `user.name`
+> This works for both simple variables and complex expressions like `user.name`
 
 #### Matching sum types
 
@@ -6276,7 +6276,7 @@ Module {
 ```
 
 > **Note**
-> @VMODROOT will be replaced by V with the *nearest parent folder, 
+> @VMODROOT will be replaced by V with the *nearest parent folder,
 > where there is a v.mod file*.
 > Any .v file beside or below the folder where the v.mod file is,
 > can use `#flag @VMODROOT/abc` to refer to this folder.

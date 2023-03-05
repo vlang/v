@@ -1,0 +1,57 @@
+enum Hello as u64 {
+	a
+	b
+	c = 20 + 10
+	d
+	e
+}
+
+fn enums() {
+	mut a := Hello.a
+	a = .c
+}
+
+struct AA {
+	a u8
+	b i64
+}
+
+fn of() {
+	a := __offsetof(AA, b)
+	b := sizeof(AA)
+}
+
+fn constant() int {
+	return 100
+}
+
+const hello = 'hello\n'
+
+const float = 1.0
+
+const integer = 888
+
+const runtime_init = constant()
+
+struct EE {
+	a int
+	b int
+}
+
+fn ptr_arith() {
+	mut a := EE{}
+	mut b := &a.b
+
+	unsafe {
+		*b = 12
+	}
+	println(a.b.str())
+	unsafe {
+		*b = 14
+	}
+	println(a.b.str())
+	unsafe {
+		*b = 102
+	}
+	println((*b).str())
+}

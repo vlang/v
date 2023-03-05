@@ -95,7 +95,7 @@ pub fn chdir(path string) {
 	}
 }
 
-pub fn mkdir(path string) ? {
+pub fn mkdir(path string) ! {
 	verbose_trace_strong(modfn(@MOD, @FN), 'mkdir ${path}')
 	os.mkdir(path) or {
 		verbose_trace(modfn(@MOD, @FN), '## failed.')
@@ -103,7 +103,7 @@ pub fn mkdir(path string) ? {
 	}
 }
 
-pub fn mkdir_all(path string) ? {
+pub fn mkdir_all(path string) ! {
 	verbose_trace_strong(modfn(@MOD, @FN), 'mkdir -p ${path}')
 	os.mkdir_all(path) or {
 		verbose_trace(modfn(@MOD, @FN), '## failed.')
@@ -123,7 +123,7 @@ pub fn rmrf(path string) {
 }
 
 // execute a command, and return a result, or an error, if it failed in any way.
-pub fn exec(cmd string) ?os.Result {
+pub fn exec(cmd string) !os.Result {
 	verbose_trace_strong(modfn(@MOD, @FN), cmd)
 	x := os.execute(cmd)
 	if x.exit_code != 0 {

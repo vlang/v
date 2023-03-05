@@ -5,6 +5,21 @@ module checker
 import v.ast
 import v.pref
 
+// error_type_name returns a proper type name reference for error messages
+// ? => Option type
+// ! => Result type
+// others => type `name`
+[inline]
+fn (mut c Checker) error_type_name(exp_type ast.Type) string {
+	return if exp_type == ast.void_type.set_flag(.result) {
+		'Result type'
+	} else if exp_type == ast.void_type.set_flag(.option) {
+		'Option type'
+	} else {
+		'type `${c.table.type_to_str(exp_type)}`'
+	}
+}
+
 // TODO: non deferred
 fn (mut c Checker) return_stmt(mut node ast.Return) {
 	if c.table.cur_fn == unsafe { nil } {
@@ -21,6 +36,12 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	expected_type_sym := c.table.sym(expected_type)
 	if node.exprs.len > 0 && c.table.cur_fn.return_type == ast.void_type {
 		c.error('unexpected argument, current function does not return anything', node.exprs[0].pos())
+		return
+	} else if node.exprs.len > 1 && c.table.cur_fn.return_type == ast.void_type.set_flag(.option) {
+		c.error('can only return `none` from an Option-only return function', node.exprs[0].pos())
+		return
+	} else if node.exprs.len > 1 && c.table.cur_fn.return_type == ast.void_type.set_flag(.result) {
+		c.error('functions with Result-only return types can only return an error', node.exprs[0].pos())
 		return
 	} else if node.exprs.len == 0 && !(c.expected_type == ast.void_type
 		|| expected_type_sym.kind == .void) {
@@ -96,6 +117,12 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	option_type_idx := c.table.type_idxs['_option']
 	result_type_idx := c.table.type_idxs['_result']
 	got_types_0_idx := got_types[0].idx()
+	if exp_is_option && got_types_0_idx == ast.error_type_idx {
+		c.warn('Option and Result types have been split, use `!Foo` to return errors',
+			node.pos)
+	} else if exp_is_result && got_types_0_idx == ast.none_type_idx {
+		c.warn('Option and Result types have been split, use `?` to return none', node.pos)
+	}
 	if (exp_is_option
 		&& got_types_0_idx in [ast.none_type_idx, ast.error_type_idx, option_type_idx])
 		|| (exp_is_result && got_types_0_idx in [ast.error_type_idx, result_type_idx]) {
@@ -137,13 +164,13 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		got_typ := c.unwrap_generic(got_types[i])
 		if got_typ.has_flag(.option) && got_typ.clear_flag(.option) != exp_type.clear_flag(.option) {
 			pos := node.exprs[expr_idxs[i]].pos()
-			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
+			c.error('cannot use `${c.table.type_to_str(got_typ)}` as ${c.error_type_name(exp_type)} in return argument',
 				pos)
 		}
 		if got_typ.has_flag(.result) && (!exp_type.has_flag(.result)
 			|| c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
 			pos := node.exprs[expr_idxs[i]].pos()
-			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
+			c.error('cannot use `${c.table.type_to_str(got_typ)}` as ${c.error_type_name(exp_type)} in return argument',
 				pos)
 		}
 		if node.exprs[expr_idxs[i]] !is ast.ComptimeCall {
@@ -155,7 +182,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					if node.exprs[expr_idxs[i]] is ast.IntegerLiteral {
 						var := (node.exprs[expr_idxs[i]] as ast.IntegerLiteral).val
 						if var[0] == `-` {
-							c.note('cannot use a negative value as value of type `${c.table.type_to_str(exp_type)}` in return argument',
+							c.note('cannot use a negative value as value of ${c.error_type_name(exp_type)} in return argument',
 								pos)
 						}
 					}
@@ -188,7 +215,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				} else {
 					got_typ_sym.name
 				}
-				c.error('cannot use `${got_typ_name}` as type `${c.table.type_to_str(exp_type)}` in return argument',
+				c.error('cannot use `${got_typ_name}` as ${c.error_type_name(exp_type)} in return argument',
 					pos)
 			}
 		}

@@ -25,7 +25,7 @@ fn (mut app App) service_add_product(product_name string, user_id int) ! {
 	}
 }
 
-fn (mut app App) service_get_all_products_from(user_id int) ?[]Product {
+fn (mut app App) service_get_all_products_from(user_id int) ![]Product {
 	mut db := databases.create_db_connection() or {
 		println(err)
 		return err

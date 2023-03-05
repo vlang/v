@@ -14,6 +14,8 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 		'C.${p.check_name()}'
 	} else if language == .js {
 		'JS.${p.check_js_name()}'
+	} else if language == .wasm {
+		'WASM.${p.check_name()}'
 	} else if mod.len > 0 {
 		'${mod}.${p.check_name()}'
 	} else {
@@ -242,6 +244,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		language = .c
 	} else if p.tok.kind == .name && p.tok.lit == 'JS' {
 		language = .js
+	} else if p.tok.kind == .name && p.tok.lit == 'WASM' {
+		language = .wasm
 	}
 	p.fn_language = language
 	if language != .v {
@@ -474,6 +478,8 @@ run them via `v file.v` instead',
 			name = 'C.${name}'
 		} else if language == .js {
 			name = 'JS.${name}'
+		} else if language == .wasm {
+			name = 'WASM.${name}'
 		} else {
 			name = p.prepend_mod(name)
 		}
@@ -707,11 +713,18 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	} else {
 		[]ast.Param{}
 	}
+	inherited_vars_name := inherited_vars.map(it.name)
 	_, generic_names := p.parse_generic_types()
 	args, _, is_variadic := p.fn_args()
 	for arg in args {
 		if arg.name.len == 0 && p.table.sym(arg.typ).kind != .placeholder {
 			p.error_with_pos('use `_` to name an unused parameter', arg.pos)
+		}
+		if arg.name in inherited_vars_name {
+			p.error_with_pos('the parameter name `${arg.name}` conflicts with the captured value name',
+				arg.pos)
+		} else if p.scope.known_var(arg.name) {
+			p.error_with_pos('redefinition of parameter `${arg.name}`', arg.pos)
 		}
 		is_stack_obj := !arg.typ.has_flag(.shared_f) && (arg.is_mut || arg.typ.is_ptr())
 		p.scope.register(ast.Var{
@@ -767,17 +780,6 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	typ := ast.new_type(idx)
 	p.inside_defer = old_inside_defer
 	// name := p.table.get_type_name(typ)
-	if inherited_vars.len > 0 && args.len > 0 {
-		for arg in args {
-			for var in inherited_vars {
-				if arg.name == var.name {
-					p.error_with_pos('the parameter name `${arg.name}` conflicts with the captured value name',
-						arg.pos)
-					break
-				}
-			}
-		}
-	}
 	return ast.AnonFn{
 		decl: ast.FnDecl{
 			name: name

@@ -460,7 +460,7 @@ pub fn add_vectored_exception_handler(first bool, handler VectoredExceptionHandl
 // See: [NT Version Info](https://en.wikipedia.org/wiki/Windows_NT) @@ <https://archive.is/GnnvF>
 // and: [NT Version Info (detailed)](https://en.wikipedia.org/wiki/Comparison_of_Microsoft_Windows_versions#NT_Kernel-based_2)
 pub fn uname() Uname {
-	nodename := hostname()
+	nodename := hostname() or { '' }
 	// ToDO: environment variables have low reliability; check for another quick way
 	machine := getenv('PROCESSOR_ARCHITECTURE') // * note: 'AMD64' == 'x86_64' (not standardized, but 'x86_64' use is more common; but, python == 'AMD64')
 	version_info := execute('cmd /d/c ver').output
@@ -474,22 +474,22 @@ pub fn uname() Uname {
 	}
 }
 
-pub fn hostname() string {
+pub fn hostname() !string {
 	hostname := [255]u16{}
 	size := u32(255)
 	res := C.GetComputerNameW(&hostname[0], &size)
 	if !res {
-		return get_error_msg(int(C.GetLastError()))
+		return error(get_error_msg(int(C.GetLastError())))
 	}
 	return unsafe { string_from_wide(&hostname[0]) }
 }
 
-pub fn loginname() string {
+pub fn loginname() !string {
 	loginname := [255]u16{}
 	size := u32(255)
 	res := C.GetUserNameW(&loginname[0], &size)
 	if !res {
-		return get_error_msg(int(C.GetLastError()))
+		return error(get_error_msg(int(C.GetLastError())))
 	}
 	return unsafe { string_from_wide(&loginname[0]) }
 }
