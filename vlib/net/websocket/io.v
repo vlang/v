@@ -40,7 +40,7 @@ fn (mut ws Client) socket_read_ptr(buf_ptr &u8, len int) !int {
 fn (mut ws Client) socket_write(bytes []u8) !int {
 	lock {
 		if ws.state == .closed || ws.conn.sock.handle <= 1 {
-			ws.debug_log('socket_write: Socket allready closed')
+			ws.debug_log('socket_write: Socket already closed')
 			return error('socket_write: trying to write on a closed socket')
 		}
 		if ws.is_ssl {
