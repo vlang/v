@@ -466,7 +466,15 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 
 		ts.append_message(.cmd_begin, cmd, mtc)
 		d_cmd := time.new_stopwatch()
-		mut status := os.system(cmd)
+
+		mut res := os.execute(cmd)
+		if res.exit_code != 0 {
+			eprintln(res.output)
+		} else {
+			println(res.output)
+		}
+		mut status := res.exit_code
+
 		mut cmd_duration := d_cmd.elapsed()
 		ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
@@ -498,6 +506,12 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 					goto test_passed_system
 				}
 			}
+
+			// most probably compiler error
+			if res.output.contains(': error: ') {
+				ts.append_message(.cannot_compile, 'Cannot compile file ${file}', mtc)
+			}
+
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ts.add_failed_cmd(cmd)
