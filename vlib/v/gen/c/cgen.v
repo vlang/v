@@ -198,7 +198,8 @@ mut:
 	comptime_for_method_var          string // $for method in T.methods {}; the variable name
 	comptime_for_field_var           string // $for field in T.fields {}; the variable name
 	comptime_for_field_value         ast.StructField // value of the field variable
-	comptime_for_field_type          ast.Type        // type of the field variable inferred from `$if field.typ is T {}`
+	comptime_enum_field_value        string   // value of enum name
+	comptime_for_field_type          ast.Type // type of the field variable inferred from `$if field.typ is T {}`
 	comptime_var_type_map            map[string]ast.Type
 	comptime_values_stack            []CurrentComptimeValues // stores the values from the above on each $for loop, to make nesting them easier
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type
@@ -3116,6 +3117,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 		}
 		ast.DumpExpr {
 			g.dump_expr(node)
+		}
+		ast.ComptimeEnumVal {
+			g.comptime_enum_val(node)
 		}
 		ast.EnumVal {
 			g.enum_val(node)
@@ -6156,6 +6160,18 @@ fn (mut g Gen) size_of(node ast.SizeOf) {
 	}
 	styp := g.typ(node_typ)
 	g.write('sizeof(${util.no_dots(styp)})')
+}
+
+fn (mut g Gen) comptime_enum_val(node ast.ComptimeEnumVal) {
+	if g.pref.translated && node.typ.is_number() {
+		// Mostly in translated code, when C enums are used as ints in switches
+		// sym := g.table.sym(node.typ)
+		// g.write('/* $node enum val is_number $node.mod styp=$styp sym=$sym*/_const_main__$node.val')
+		g.write('_const_main__${g.comptime_enum_field_value}')
+	} else {
+		styp := g.typ(g.comptime_for_field_type)
+		g.write('${styp}__${g.comptime_enum_field_value}')
+	}
 }
 
 fn (mut g Gen) enum_val(node ast.EnumVal) {

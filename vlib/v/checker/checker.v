@@ -100,6 +100,7 @@ mut:
 	comptime_fields_default_type     ast.Type
 	comptime_fields_type             map[string]ast.Type
 	comptime_for_field_value         ast.StructField // value of the field variable
+	comptime_enum_field_value        string // current enum value name
 	fn_scope                         &ast.Scope = unsafe { nil }
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
@@ -2489,6 +2490,9 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			node.cname = tsym.cname
 			return node.expr_type
 		}
+		ast.ComptimeEnumVal {
+			return c.comptime_enum_val(mut node)
+		}
 		ast.EnumVal {
 			return c.enum_val(mut node)
 		}
@@ -4007,6 +4011,15 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	c.stmts_ending_with_expression(node.or_expr.stmts)
 	c.check_expr_opt_call(node, typ)
 	return typ
+}
+
+fn (mut c Checker) comptime_enum_val(mut node ast.ComptimeEnumVal) ast.Type {
+	mut enum_ := ast.EnumVal{
+		enum_name: c.table.type_to_str(c.comptime_fields_type[c.comptime_for_field_var])
+		val: c.comptime_enum_field_value
+		pos: node.pos
+	}
+	return c.enum_val(mut enum_)
 }
 
 // `.green` or `Color.green`

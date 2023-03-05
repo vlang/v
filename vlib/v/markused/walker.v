@@ -436,6 +436,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.orig)
 		}
 		ast.Comment {}
+		ast.ComptimeEnumVal {
+			w.expr(node.expr)
+		}
 		ast.EnumVal {}
 		ast.LockExpr {
 			w.stmts(node.stmts)

@@ -23,6 +23,7 @@ pub type Expr = AnonFn
 	| CharLiteral
 	| Comment
 	| ComptimeCall
+	| ComptimeEnumVal
 	| ComptimeSelector
 	| ComptimeType
 	| ConcatExpr
@@ -1146,6 +1147,15 @@ pub mut:
 	expr_type Type // from type
 }
 
+// An enum value, like .$(item.name)
+pub struct ComptimeEnumVal {
+pub:
+	expr Expr
+	pos  token.Pos
+pub mut:
+	typ Type
+}
+
 // An enum value, like OS.macos or .macos
 pub struct EnumVal {
 pub:
@@ -1820,7 +1830,7 @@ pub fn (expr Expr) pos() token.Pos {
 		EnumVal, DumpExpr, FloatLiteral, GoExpr, Ident, IfExpr, IntegerLiteral, IsRefType, Likely,
 		LockExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr,
 		RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral,
-		StructInit, TypeNode, TypeOf, UnsafeExpr, ComptimeType, Nil {
+		StructInit, TypeNode, TypeOf, UnsafeExpr, ComptimeType, Nil, ComptimeEnumVal {
 			return expr.pos
 		}
 		IndexExpr {

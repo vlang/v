@@ -71,8 +71,12 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			return node
 		}
 		.dot {
-			// .enum_val
-			node = p.enum_val()
+			// .$enum_val
+			if p.peek_tok.kind == .dollar {
+				node = p.comptime_enum_val()
+			} else { // .enum_val
+				node = p.enum_val()
+			}
 		}
 		.at {
 			node = p.at()

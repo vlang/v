@@ -390,6 +390,9 @@ pub fn (x Expr) str() string {
 		ConcatExpr {
 			return x.vals.map(it.str()).join(',')
 		}
+		ComptimeEnumVal {
+			return '.${x.expr}'
+		}
 		EnumVal {
 			return '.${x.val}'
 		}
