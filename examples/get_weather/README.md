@@ -1,6 +1,6 @@
 # get_weather
 get_weather is a very simple web crawler.
-Its goal is to get a weather forecast from caiyunapp.com.  
+It's goal is to get a weather forecast from caiyunapp.com.  
 
 # Compile and Run
 
