@@ -4563,6 +4563,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	ret_typ := g.typ(g.unwrap_generic(fn_ret_type))
 	mut use_tmp_var := g.defer_stmts.len > 0 || g.defer_profile_code.len > 0
 		|| g.cur_lock.lockeds.len > 0
+		|| (fn_return_is_multi && node.exprs.len >= 1 && fn_return_is_option)
 	// handle promoting none/error/function returning _option'
 	if fn_return_is_option {
 		option_none := node.exprs[0] is ast.None
@@ -4586,6 +4587,17 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.gen_option_error(fn_ret_type, node.exprs[0])
 			g.writeln(';')
 			if use_tmp_var {
+				// handle options when returning `none` for `?(int, ?int)`
+				if fn_return_is_multi && node.exprs.len >= 1 {
+					mr_info := sym.info as ast.MultiReturn
+					for i in 0 .. mr_info.types.len {
+						if mr_info.types[i].has_flag(.option) {
+							g.write('(*(${g.base_type(fn_ret_type)}*)${tmpvar}.data).arg${i} = ')
+							g.gen_option_error(mr_info.types[i], ast.None{})
+							g.writeln(';')
+						}
+					}
+				}
 				g.write_defer_stmts_when_needed()
 				g.writeln('return ${tmpvar};')
 			}
@@ -4631,8 +4643,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln('return ${tmpvar};')
 			return
 		}
-		typ_sym := g.table.sym(g.fn_decl.return_type)
-		mr_info := typ_sym.info as ast.MultiReturn
+		mr_info := sym.info as ast.MultiReturn
 		mut styp := ''
 		if fn_return_is_option {
 			g.writeln('${ret_typ} ${tmpvar};')
@@ -4699,10 +4710,11 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			} else {
 				g.expr(expr)
 			}
-			arg_idx++
+
 			if i < node.exprs.len - 1 {
 				g.write(', ')
 			}
+			arg_idx++
 		}
 		g.write('}')
 		if fn_return_is_option {
