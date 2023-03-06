@@ -323,7 +323,12 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 					typ: field.typ
 				}
 				g.write('.${field_name} = ')
-				g.struct_init(default_init)
+				if field.typ.has_flag(.option) {
+					tmp_var := g.new_tmp_var()
+					g.expr_with_tmp_var(default_init, field.typ, field.typ, tmp_var)
+				} else {
+					g.struct_init(default_init)
+				}
 				return true
 			}
 		}
