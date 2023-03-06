@@ -181,12 +181,13 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 	}
 	if node.kind == .fields {
 		if sym.kind in [.struct_, .interface_] {
-			fields := match sym.info {
+			mut fields := []ast.StructField{}
+			match sym.info {
 				ast.Struct {
-					sym.info.fields
+					fields = sym.info.fields.clone()
 				}
 				ast.Interface {
-					sym.info.fields
+					fields = sym.info.fields.clone()
 				}
 				else {
 					c.error('comptime field lookup supports only structs and interfaces currently, and ${sym.name} is neither',
