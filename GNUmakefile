@@ -112,7 +112,7 @@ ifdef LEGACY
 endif
 	$(CC) $(CFLAGS) -std=gnu99 -w -o v1.exe $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
 	./v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
-	./v2.exe -o $(VEXE) $(VFLAGS) cmd/v
+	./v2.exe -nocache -o $(VEXE) $(VFLAGS) cmd/v
 	rm -rf v1.exe v2.exe
 endif
 	@$(VEXE) run cmd/tools/detect_tcc.v

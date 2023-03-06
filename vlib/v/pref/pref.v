@@ -251,6 +251,14 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	res.run_only = os.getenv('VTEST_ONLY_FN').split_any(',')
 	mut command := ''
 	mut command_pos := -1
+
+	/*
+	$if macos || linux {
+		res.use_cache = true
+		res.skip_unused = true
+	}
+	*/
+
 	// for i, arg in args {
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
@@ -449,6 +457,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-skip-unused' {
 				res.skip_unused = true
+			}
+			'-no-skip-unused' {
+				res.skip_unused = false
 			}
 			'-compress' {
 				res.compress = true
@@ -796,7 +807,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		exit(1)
 	}
 
-	// res.use_cache = true
 	if command != 'doc' && res.out_name.ends_with('.v') {
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
