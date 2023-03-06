@@ -1,0 +1,6 @@
+vlib/v/checker/tests/wrong_none_on_or_block_err.vv:8:22: error: wrong return type `none` in the `or {}` block, expected `int`
+    6 |         `ő`: 25
+    7 |     }
+    8 |     println(m[`4`] or { none })
+      |                         ~~~~
+    9 | }
