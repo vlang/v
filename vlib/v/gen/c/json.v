@@ -26,13 +26,10 @@ import strings
 fn (mut g Gen) gen_json_for_type(typ ast.Type) {
 	utyp := g.unwrap_generic(typ).set_nr_muls(0)
 	sym := g.table.sym(utyp)
-	if is_js_prim(sym.name) || sym.kind == .enum_ {
+	if (is_js_prim(sym.name) && !utyp.has_flag(.option)) || sym.kind == .enum_ {
 		return
 	}
 	g.json_types << utyp
-	if !is_js_prim(sym.name) && utyp.has_flag(.option) {
-		g.json_types << utyp.clear_flag(.option)
-	}
 }
 
 fn (mut g Gen) gen_jsons() {
@@ -162,6 +159,8 @@ ${enc_fn_dec} {
 				verror('json: ${sym.name} is not a sumtype')
 			}
 			g.gen_sumtype_enc_dec(sym, mut enc, mut dec)
+		} else if utyp.has_flag(.option) && sym.info !is ast.Struct {
+			g.gen_option_enc_dec(utyp, mut enc, mut dec)
 		} else {
 			enc.writeln('\to = cJSON_CreateObject();')
 			// Structs. Range through fields
@@ -181,6 +180,16 @@ ${enc_fn_dec} {
 		g.gowrappers.writeln(dec.str())
 		g.gowrappers.writeln(enc.str())
 	}
+}
+
+[inline]
+fn (mut g Gen) gen_option_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec strings.Builder) {
+	enc.writeln('\tif (val.state == 2) {')
+	enc.writeln('\t\treturn NULL;')
+	enc.writeln('\t}')
+	type_str := g.typ(typ.clear_flag(.option))
+	encode_name := js_enc_name(type_str)
+	enc.writeln('\to = ${encode_name}(*(${type_str}*)val.data);')
 }
 
 [inline]
