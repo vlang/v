@@ -375,6 +375,27 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 				}
 			}
 		}
+		ast.IfExpr {
+			if !expr.is_comptime {
+				return none
+			}
+			for i in 0 .. expr.branches.len {
+				branch := expr.branches[i]
+				if !expr.has_else || i < expr.branches.len - 1 {
+					if c.comptime_if_branch(branch.cond, branch.pos) == .eval {
+						last_stmt := branch.stmts.last()
+						if last_stmt is ast.ExprStmt {
+							return c.eval_comptime_const_expr(last_stmt.expr, nlevel + 1)
+						}
+					}
+				} else {
+					last_stmt := branch.stmts.last()
+					if last_stmt is ast.ExprStmt {
+						return c.eval_comptime_const_expr(last_stmt.expr, nlevel + 1)
+					}
+				}
+			}
+		}
 		// ast.ArrayInit {}
 		// ast.PrefixExpr {
 		//	c.note('prefixexpr: $expr', expr.pos)
