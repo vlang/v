@@ -772,7 +772,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					sym.info.fields
 				}
 				else {
-					error('internal error: unsupported type for comptime field lookup at cgen phase: ${sym.name}')
+					g.error('comptime field lookup is supported only for structs and interfaces, and ${sym.name} is neither', node.pos)
 					[]ast.StructField{len: 0}
 				}
 			}

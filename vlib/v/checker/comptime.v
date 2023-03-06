@@ -189,9 +189,9 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 					sym.info.fields
 				}
 				else {
-					c.error('internal error: unsupported type for comptime field lookup at checker phase: ${sym.name}',
+					c.error('comptime field lookup supports only structs and interfaces currently, and ${sym.name} is neither',
 						node.typ_pos)
-					[]ast.StructField{len: 0}
+					return
 				}
 			}
 			c.inside_comptime_for_field = true
