@@ -26,7 +26,7 @@ import strings
 fn (mut g Gen) gen_json_for_type(typ ast.Type) {
 	utyp := g.unwrap_generic(typ).set_nr_muls(0)
 	sym := g.table.sym(utyp)
-	if (is_js_prim(sym.name) && !utyp.has_flag(.option)) || sym.kind == .enum_ {
+	if is_js_prim(sym.name) || sym.kind == .enum_ {
 		return
 	}
 	g.json_types << utyp
@@ -476,8 +476,6 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 
 				if field_sym.kind == .array_fixed {
 					dec.writeln('\t\tvmemcpy(${prefix}.${c_name(field.name)},*(${field_type}*)${tmp}.data,sizeof(${field_type}));')
-				} else if field.typ.has_flag(.option) {
-					dec.writeln('\t\tvmemcpy(&${prefix}.${c_name(field.name)},(${field_type}*)${tmp}.data,sizeof(${field_type}));')
 				} else {
 					dec.writeln('\t\t${prefix}.${c_name(field.name)} = *(${field_type}*) ${tmp}.data;')
 				}
