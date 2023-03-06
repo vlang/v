@@ -772,7 +772,8 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					sym.info.fields
 				}
 				else {
-					g.error('comptime field lookup is supported only for structs and interfaces, and ${sym.name} is neither', node.pos)
+					g.error('comptime field lookup is supported only for structs and interfaces, and ${sym.name} is neither',
+						node.pos)
 					[]ast.StructField{len: 0}
 				}
 			}
