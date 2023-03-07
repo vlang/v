@@ -5,7 +5,7 @@ interface IPerson {
 
 struct PersonImpl {
 	name string
-	age int
+	age  int
 }
 
 struct Person {
