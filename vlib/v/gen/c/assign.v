@@ -25,10 +25,14 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 				g.inside_or_block = false
 			}
 			stmts := (expr as ast.Ident).or_expr.stmts
+			// handles stmt block which returns something
+			// e.g. { return none }
 			if stmts.len > 0 && stmts.last() is ast.ExprStmt
 				&& (stmts.last() as ast.ExprStmt).typ != ast.void_type {
 				g.gen_or_block_stmts(var_expr.str(), '', stmts, ret_typ, false)
 			} else {
+				// handles stmt block which doesn't returns value
+				// e.g. { return }
 				g.stmts(stmts)
 				if stmts.len > 0 && stmts.last() is ast.ExprStmt {
 					g.writeln(';')
