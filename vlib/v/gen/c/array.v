@@ -343,9 +343,17 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.writeln('; ${ind}++) {')
 		g.write('\t${tmp}[${ind}] = ')
 		if node.has_default {
-			g.expr_with_cast(node.default_expr, node.default_type, node.elem_type)
+			if node.elem_type.has_flag(.option) {
+				g.expr_with_opt(node.default_expr, node.default_type, node.elem_type)
+			} else {
+				g.expr_with_cast(node.default_expr, node.default_type, node.elem_type)
+			}
 		} else {
-			g.write(g.type_default(node.elem_type))
+			if node.elem_type.has_flag(.option) {
+				g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
+			} else {
+				g.write(g.type_default(node.elem_type))
+			}
 		}
 		g.writeln(';')
 		g.writeln('}')
@@ -355,6 +363,10 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.write('&(${elem_styp}[]){')
 		g.expr_with_cast(node.default_expr, node.default_type, node.elem_type)
 		g.write('})')
+	} else if node.has_len && node.elem_type.has_flag(.option) {
+		g.write('&')
+		g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
+		g.write(')')
 	} else if node.has_len && node.elem_type == ast.string_type {
 		g.write('&(${elem_styp}[]){')
 		g.write('_SLIT("")')
