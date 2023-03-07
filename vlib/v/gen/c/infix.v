@@ -190,7 +190,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					g.write('*')
 				}
 				if node.left is ast.ArrayInit {
-					if !node.left.has_it {
+					if !node.left.has_index {
 						s := g.typ(left.unaliased)
 						g.write('(${s})')
 					}
@@ -198,7 +198,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.expr(node.left)
 				g.write(', ')
 				if node.right is ast.ArrayInit {
-					if !node.right.has_it {
+					if !node.right.has_index {
 						s := g.typ(right.unaliased)
 						g.write('(${s})')
 					}

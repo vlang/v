@@ -2380,7 +2380,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		return
 	} else if arg.expr is ast.ArrayInit {
 		if arg.expr.is_fixed {
-			if !arg.expr.has_it {
+			if !arg.expr.has_index {
 				g.write('(${g.typ(arg.expr.typ)})')
 			}
 		}
