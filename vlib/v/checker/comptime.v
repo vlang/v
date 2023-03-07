@@ -180,10 +180,23 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 		c.error('unknown type `${sym.name}`', node.typ_pos)
 	}
 	if node.kind == .fields {
-		if sym.kind == .struct_ {
-			sym_info := sym.info as ast.Struct
+		if sym.kind in [.struct_, .interface_] {
+			mut fields := []ast.StructField{}
+			match sym.info {
+				ast.Struct {
+					fields = sym.info.fields.clone()
+				}
+				ast.Interface {
+					fields = sym.info.fields.clone()
+				}
+				else {
+					c.error('comptime field lookup supports only structs and interfaces currently, and ${sym.name} is neither',
+						node.typ_pos)
+					return
+				}
+			}
 			c.inside_comptime_for_field = true
-			for field in sym_info.fields {
+			for field in fields {
 				c.comptime_for_field_value = field
 				c.comptime_for_field_var = node.val_var
 				c.comptime_fields_type[node.val_var] = node.typ
