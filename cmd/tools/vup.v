@@ -13,14 +13,22 @@ struct App {
 	is_prod    bool
 	vexe       string
 	vroot      string
+	reset_to   string
 }
 
 fn new_app() App {
+	mut reset_to := ''
+	for arg in os.args {
+		if !arg.starts_with('-') && arg.contains_only('0123456789abcdef') {
+			reset_to = arg
+		}
+	}
 	return App{
 		is_verbose: '-v' in os.args
 		is_prod: '-prod' in os.args
 		vexe: vexe
 		vroot: vroot
+		reset_to: reset_to
 	}
 }
 
@@ -30,6 +38,7 @@ fn main() {
 	os.chdir(app.vroot)!
 	println('Updating V...')
 	app.update_from_master()
+	app.reset_to_hash()
 	v_hash := version.githash(false)
 	current_hash := version.githash(true)
 	// println(v_hash)
@@ -70,6 +79,13 @@ fn (app App) update_from_master() {
 	} else {
 		// pull latest
 		app.git_command('pull https://github.com/vlang/v master')
+	}
+}
+
+fn (app App) reset_to_hash() {
+	if app.reset_to.len > 0 {
+		app.vprintln('> resetting to ${app.reset_to}')
+		app.git_command('reset --hard ${app.reset_to}')
 	}
 }
 

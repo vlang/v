@@ -1,7 +1,7 @@
 Update the V compiler to the latest version from https://github.com/vlang/v.
 
 Usage:
-  v up
+  v up [HASH]
 
 Options:
   -v     Print more details about the update.
