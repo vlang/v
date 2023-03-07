@@ -3,6 +3,6 @@ fn foo() ? {
 }
 
 fn test_main() {
-	println(foo()) // <void>
+	println(foo()) // <none>
 	assert true
 }
