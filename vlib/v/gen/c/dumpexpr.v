@@ -20,7 +20,8 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		if node.expr is ast.Ident {
 			// var
 			if node.expr.info is ast.IdentVar && node.expr.language == .v {
-				name = g.typ(g.unwrap_generic(node.expr.info.typ)).replace('*', '')
+				name = g.typ(g.unwrap_generic(node.expr.info.typ.clear_flag(.shared_f).clear_flag(.option).clear_flag(.result))).replace('*',
+					'')
 			}
 		}
 	}
