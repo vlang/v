@@ -1280,7 +1280,7 @@ pub:
 	has_len       bool
 	has_cap       bool
 	has_default   bool
-	has_it        bool // true if temp variable it is used
+	has_index     bool // true if temp variable index is used
 pub mut:
 	exprs        []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
 	len_expr     Expr   // len: expr

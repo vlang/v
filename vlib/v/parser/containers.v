@@ -25,7 +25,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	mut has_val := false
 	mut has_type := false
 	mut has_default := false
-	mut has_it := false
+	mut has_index := false
 	mut default_expr := ast.empty_expr
 	if p.tok.kind == .rsbr {
 		last_pos = p.tok.pos()
@@ -99,9 +99,9 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					p.check(.colon)
 					p.open_scope()
 					has_default = true
-					p.scope_register_it_as_index()
+					p.scope_register_index()
 					default_expr = p.expr(0)
-					has_it = if var := p.scope.find_var('it') {
+					has_index = if var := p.scope.find_var('index') {
 						mut variable := unsafe { var }
 						is_used := variable.is_used
 						variable.is_used = true
@@ -166,9 +166,9 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 				'init' {
 					p.open_scope()
 					has_default = true
-					p.scope_register_it_as_index()
+					p.scope_register_index()
 					default_expr = p.expr(0)
-					has_it = if var := p.scope.find_var('it') {
+					has_index = if var := p.scope.find_var('index') {
 						mut variable := unsafe { var }
 						is_used := variable.is_used
 						variable.is_used = true
@@ -209,7 +209,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		len_expr: len_expr
 		has_cap: has_cap
 		has_default: has_default
-		has_it: has_it
+		has_index: has_index
 		cap_expr: cap_expr
 		default_expr: default_expr
 	}
@@ -252,9 +252,9 @@ fn (mut p Parser) map_init() ast.MapInit {
 	}
 }
 
-fn (mut p Parser) scope_register_it_as_index() {
-	p.scope.objects['it'] = ast.Var{ // override it variable if it already exist, else create it variable
-		name: 'it'
+fn (mut p Parser) scope_register_index() {
+	p.scope.objects['index'] = ast.Var{ // override index variable if it already exist, else create index variable
+		name: 'index'
 		pos: p.tok.pos()
 		typ: ast.int_type
 		is_mut: false
