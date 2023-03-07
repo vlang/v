@@ -336,12 +336,21 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 	g.write('.${field_name} = ')
 	if field.has_default_expr {
 		if sym.kind in [.sum_type, .interface_] {
-			g.expr_with_cast(field.default_expr, field.default_expr_typ, field.typ)
+			if field.typ.has_flag(.option) {
+				g.expr_opt_with_cast(field.default_expr, field.default_expr_typ.set_flag(.option),
+					field.typ)
+			} else {
+				g.expr_with_cast(field.default_expr, field.default_expr_typ, field.typ)
+			}
 			return true
 		}
 
-		if (field.typ.has_flag(.option) && !field.default_expr_typ.has_flag(.option))
-			|| (field.typ.has_flag(.result) && !field.default_expr_typ.has_flag(.result)) {
+		if field.typ.has_flag(.option) {
+			tmp_var := g.new_tmp_var()
+			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ,
+				tmp_var)
+			return true
+		} else if field.typ.has_flag(.result) && !field.default_expr_typ.has_flag(.result) {
 			tmp_var := g.new_tmp_var()
 			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ,
 				tmp_var)

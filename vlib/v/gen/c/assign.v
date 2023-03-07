@@ -54,7 +54,7 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 		} else {
 			old_inside_opt_or_res := g.inside_opt_or_res
 			g.inside_opt_or_res = false
-			g.expr(expr)
+			g.expr_with_cast(expr, expr_typ, ret_typ)
 			g.inside_opt_or_res = old_inside_opt_or_res
 		}
 		g.writeln(' }, (${option_name}*)(&${tmp_var}), sizeof(${styp}));')
