@@ -45,8 +45,8 @@ fn test_primitives() {
 }
 
 fn test_arrays() {
-	// check_init_value_for_arrays_of_option[[]int]() // cgen error :-|
-	// check_init_value_for_arrays_of_option[[]f32]() // cgen error
+	check_init_value_for_arrays_of_option[[]int]()
+	check_init_value_for_arrays_of_option[[]f32]()
 }
 
 fn test_enums() {
