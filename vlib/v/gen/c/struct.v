@@ -538,10 +538,9 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 				g.write('/* autoref */&')
 			}
 
-			if (sfield.expected_type.has_flag(.option) && !sfield.typ.has_flag(.option))
+			if sfield.expected_type.has_flag(.option)
 				|| (sfield.expected_type.has_flag(.result) && !sfield.typ.has_flag(.result)) {
-				tmp_var := g.new_tmp_var()
-				g.expr_with_tmp_var(sfield.expr, sfield.typ, sfield.expected_type, tmp_var)
+				g.expr_with_opt(sfield.expr, sfield.typ, sfield.expected_type)
 			} else {
 				g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
 			}
