@@ -85,10 +85,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	} else if typ == ast.bool_type {
 		g.expr(expr)
 		g.write(' ? _SLIT("true") : _SLIT("false")')
-	} else if sym.kind == .none_ {
+	} else if sym.kind == .none_ || typ.clear_flag(.option) == ast.void_type {
 		g.write('_SLIT("<none>")')
-	} else if typ.clear_flag(.option) == ast.void_type {
-		g.write('_SLIT("<void>")')
 	} else if sym.kind == .enum_ {
 		if expr !is ast.EnumVal {
 			str_fn_name := g.get_str_fn(typ)
