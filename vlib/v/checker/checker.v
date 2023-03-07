@@ -913,8 +913,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				// TODO: remove once deprecation period for `IError` methods has ended
 				if inter_sym.idx == ast.error_type_idx
 					&& (imethod.name == 'msg' || imethod.name == 'code') {
-					// c.note("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`. The usage of fields is being deprecated in favor of methods.",
-					// 	pos)
+					c.note("`${styp}` doesn't implement method `${imethod.name}` of interface `${inter_sym.name}`. The usage of fields is being deprecated in favor of methods.",
+						pos)
 					return false
 				}
 				// <<
