@@ -12,7 +12,7 @@ const (
 	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
 		'compile_warn']
 	comptime_types           = ['Map', 'Array', 'Int', 'Float', 'Struct', 'Interface', 'Enum',
-		'Sumtype', 'Alias', 'Function']
+		'Sumtype', 'Alias', 'Function', 'Option']
 )
 
 pub fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
@@ -54,6 +54,9 @@ pub fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 		}
 		'Sumtype' {
 			cty = .sum_type
+		}
+		'Option' {
+			cty = .option
 		}
 		else {}
 	}
