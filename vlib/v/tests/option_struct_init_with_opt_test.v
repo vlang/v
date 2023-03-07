@@ -9,3 +9,11 @@ fn test_main() {
 	}
 	assert foo.x? == 'hi'
 }
+
+fn test_none() {
+	x := ?string(none)
+	foo := Foo{
+		x: x
+	}
+	assert foo.x == none
+}
