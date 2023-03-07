@@ -357,7 +357,7 @@ fn return_sb_str() string {
 	return sb.str() // sb should be freed, but only after .str() is called
 }
 
-fn parse_header0(s string) ?string {
+fn parse_header0(s string) !string {
 	if !s.contains(':') {
 		return error('missing colon in header')
 	}
@@ -366,7 +366,7 @@ fn parse_header0(s string) ?string {
 	return x
 }
 
-fn parse_header1(s string) ?string {
+fn parse_header1(s string) !string {
 	if !s.contains(':') {
 		return error('missing colon in header')
 	}
