@@ -1160,7 +1160,7 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 						&& c.table.sym(last_stmt_typ).kind == .voidptr {
 						return
 					}
-					if last_stmt_typ == ast.none_type_idx {
+					if last_stmt_typ == ast.none_type_idx && ret_type.has_flag(.option) {
 						return
 					}
 					type_name := c.table.type_to_str(last_stmt_typ)
