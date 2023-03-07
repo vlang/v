@@ -734,7 +734,7 @@ pub fn temp_dir() string {
 }
 
 // vtmp_dir returns the path to a folder, that is writable to V programs, *and* specific
-// to the OS user. It can be overriden by setting the env variable `VTMP`.
+// to the OS user. It can be overridden by setting the env variable `VTMP`.
 pub fn vtmp_dir() string {
 	mut vtmp := getenv('VTMP')
 	if vtmp.len > 0 {
