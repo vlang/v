@@ -60,11 +60,11 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 	styp := left.sym.cname
 	elem_type := (left.sym.info as ast.Chan).elem_type
 	gen_or := node.or_block.kind != .absent
-	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
+	tmp_res := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
 		elem_styp := g.typ(elem_type)
-		g.register_chan_push_option_fn(elem_styp, styp)
-		g.write('${option_name}_void ${tmp_opt} = __Option_${styp}_pushval(')
+		g.register_chan_push_result_fn(elem_styp, styp)
+		g.write('${result_name}_void ${tmp_res} = __Result_${styp}_pushval(')
 	} else {
 		g.write('__${styp}_pushval(')
 	}
@@ -77,7 +77,7 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 	}
 	g.write(')')
 	if gen_or {
-		g.or_block(tmp_opt, node.or_block, ast.void_type)
+		g.or_block(tmp_res, node.or_block, ast.void_type.set_flag(.result))
 	}
 }
 

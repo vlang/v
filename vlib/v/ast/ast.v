@@ -903,7 +903,7 @@ pub mut:
 	right_type Type
 	right      Expr
 	or_block   OrExpr
-	is_option  bool // IfGuard
+	is_result  bool // IfGuard
 }
 
 [minify]
@@ -919,7 +919,7 @@ pub mut:
 	is_map    bool
 	is_array  bool
 	is_farray bool
-	is_option bool // IfGuard
+	is_result bool // IfGuard
 	is_direct bool // Set if the underlying memory can be safely accessed
 	is_gated  bool // #[] gated array
 }

@@ -2514,14 +2514,14 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 				match mut node.expr {
 					ast.IndexExpr {
 						no_opt_or_res = false
-						node.expr_type = node.expr_type.set_flag(.option)
-						node.expr.is_option = true
+						node.expr_type = node.expr_type.set_flag(.result)
+						node.expr.is_result = true
 					}
 					ast.PrefixExpr {
 						if node.expr.op == .arrow {
 							no_opt_or_res = false
-							node.expr_type = node.expr_type.set_flag(.option)
-							node.expr.is_option = true
+							node.expr_type = node.expr_type.set_flag(.result)
+							node.expr.is_result = true
 						}
 					}
 					else {}

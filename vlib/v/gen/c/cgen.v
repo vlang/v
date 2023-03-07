@@ -111,8 +111,8 @@ mut:
 	results                   map[string]string // to avoid duplicates
 	done_options              shared []string   // to avoid duplicates
 	done_results              shared []string   // to avoid duplicates
-	chan_pop_options          map[string]string // types for `x := <-ch or {...}`
-	chan_push_options         map[string]string // types for `ch <- x or {...}`
+	chan_pop_results          map[string]string // types for `x := <-ch or {...}`
+	chan_push_results         map[string]string // types for `ch <- x or {...}`
 	mtxs                      string // array of mutexes if the `lock` has multiple variables
 	labeled_loops             map[string]&ast.Stmt
 	inner_loop                &ast.Stmt = unsafe { nil }
@@ -377,11 +377,11 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 			for k, v in g.shareds {
 				global_g.shareds[k] = v
 			}
-			for k, v in g.chan_pop_options {
-				global_g.chan_pop_options[k] = v
+			for k, v in g.chan_pop_results {
+				global_g.chan_pop_results[k] = v
 			}
-			for k, v in g.chan_push_options {
-				global_g.chan_push_options[k] = v
+			for k, v in g.chan_push_results {
+				global_g.chan_push_results[k] = v
 			}
 			for k, v in g.options {
 				global_g.options[k] = v
@@ -451,8 +451,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 		global_g.write_sumtype_casting_fn(sumtype_casting_fn)
 	}
 	global_g.write_shareds()
-	global_g.write_chan_pop_option_fns()
-	global_g.write_chan_push_option_fns()
+	global_g.write_chan_pop_result_fns()
+	global_g.write_chan_push_result_fns()
 	global_g.gen_array_contains_methods()
 	global_g.gen_array_index_methods()
 	global_g.gen_equality_fns()
@@ -1270,46 +1270,46 @@ ${ret_typ} ${fn_name}(${thread_arr_typ} a) {
 	return fn_name
 }
 
-fn (mut g Gen) register_chan_pop_option_call(opt_el_type string, styp string) {
-	g.chan_pop_options[opt_el_type] = styp
+fn (mut g Gen) register_chan_pop_result_call(res_el_type string, styp string) {
+	g.chan_pop_results[res_el_type] = styp
 }
 
-fn (mut g Gen) write_chan_pop_option_fns() {
+fn (mut g Gen) write_chan_pop_result_fns() {
 	mut done := []string{}
-	for opt_el_type, styp in g.chan_pop_options {
-		if opt_el_type in done {
+	for res_el_type, styp in g.chan_pop_results {
+		if res_el_type in done {
 			continue
 		}
-		done << opt_el_type
+		done << res_el_type
 		g.channel_definitions.writeln('
-static inline ${opt_el_type} __Option_${styp}_popval(${styp} ch) {
-	${opt_el_type} _tmp = {0};
+static inline ${res_el_type} __Result_${styp}_popval(${styp} ch) {
+	${res_el_type} _tmp = {0};
 	if (sync__Channel_try_pop_priv(ch, _tmp.data, false)) {
-		return (${opt_el_type}){ .state = 2, .err = _v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
+		return (${res_el_type}){ .is_error = true, .err = _v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
 	}
 	return _tmp;
 }')
 	}
 }
 
-fn (mut g Gen) register_chan_push_option_fn(el_type string, styp string) {
-	g.chan_push_options[styp] = el_type
+fn (mut g Gen) register_chan_push_result_fn(el_type string, styp string) {
+	g.chan_push_results[styp] = el_type
 }
 
-fn (mut g Gen) write_chan_push_option_fns() {
+fn (mut g Gen) write_chan_push_result_fns() {
 	mut done := []string{}
-	for styp, el_type in g.chan_push_options {
+	for styp, el_type in g.chan_push_results {
 		if styp in done {
 			continue
 		}
 		done << styp
-		g.register_option(ast.void_type.set_flag(.option))
+		g.register_result(ast.void_type.set_flag(.result))
 		g.channel_definitions.writeln('
-static inline ${c.option_name}_void __Option_${styp}_pushval(${styp} ch, ${el_type} e) {
+static inline ${c.result_name}_void __Result_${styp}_pushval(${styp} ch, ${el_type} e) {
 	if (sync__Channel_try_push_priv(ch, &e, false)) {
-		return (${c.option_name}_void){ .state = 2, .err = _v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
+		return (${c.result_name}_void){ .is_error = true, .err = _v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
 	}
-	return (${c.option_name}_void){0};
+	return (${c.result_name}_void){0};
 }')
 	}
 }
@@ -3235,7 +3235,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			}
 		}
 		ast.PrefixExpr {
-			gen_or := node.op == .arrow && (node.or_block.kind != .absent || node.is_option)
+			gen_or := node.op == .arrow && (node.or_block.kind != .absent || node.is_result)
 			if node.op == .amp {
 				g.is_amp = true
 			}
@@ -3252,24 +3252,23 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				} else {
 					''
 				}
-				tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
+				tmp_res := if gen_or { g.new_tmp_var() } else { '' }
 				if gen_or {
-					opt_elem_type := g.typ(elem_type.set_flag(.option))
-					g.register_chan_pop_option_call(opt_elem_type, styp)
-					g.write('${opt_elem_type} ${tmp_opt} = __Option_${styp}_popval(')
+					res_elem_type := g.typ(elem_type.set_flag(.result))
+					g.register_chan_pop_result_call(res_elem_type, styp)
+					g.write('${res_elem_type} ${tmp_res} = __Result_${styp}_popval(')
 				} else {
 					g.write('__${styp}_popval(')
 				}
 				g.expr(node.right)
 				g.write(')')
 				if gen_or {
-					if !node.is_option {
-						g.write('/*JJJ*/')
-						g.or_block(tmp_opt, node.or_block, elem_type)
+					if !node.is_result {
+						g.or_block(tmp_res, node.or_block, elem_type.set_flag(.result))
 					}
 					if is_gen_or_and_assign_rhs {
 						elem_styp := g.typ(elem_type)
-						g.write(';\n${cur_line}*(${elem_styp}*)${tmp_opt}.data')
+						g.write(';\n${cur_line}*(${elem_styp}*)${tmp_res}.data')
 					}
 				}
 			} else {

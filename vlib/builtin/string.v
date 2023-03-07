@@ -1613,6 +1613,17 @@ fn (s string) at_with_check(idx int) ?u8 {
 	}
 }
 
+// version of `at()` that is used in `a[i] or {`
+// return an error when the index is out of range
+fn (s string) at_with_check2(idx int) !u8 {
+	if idx < 0 || idx >= s.len {
+		return error('string index out of range')
+	}
+	unsafe {
+		return s.str[idx]
+	}
+}
+
 // is_space returns `true` if the byte is a white space character.
 // The following list is considered white space characters: ` `, `\t`, `\n`, `\v`, `\f`, `\r`, 0x85, 0xa0
 // Example: assert u8(` `).is_space() == true
