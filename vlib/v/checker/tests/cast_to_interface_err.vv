@@ -1,0 +1,21 @@
+fn main() {
+	dump(foo()!)
+}
+
+fn foo() !int {
+	// do something
+	if true {
+		return 1
+	}
+	return my_error()
+}
+
+struct CustomError {
+pub:
+	msg  string
+	code int
+}
+
+fn my_error() IError {
+	return IError(CustomError{})
+}
