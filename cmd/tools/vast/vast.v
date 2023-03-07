@@ -1337,7 +1337,7 @@ fn (t Tree) prefix_expr(node ast.PrefixExpr) &Node {
 	obj.add_terse('right', t.expr(node.right))
 	obj.add_terse('right_type', t.type_node(node.right_type))
 	obj.add_terse('or_block', t.or_expr(node.or_block))
-	obj.add_terse('is_option', t.bool_node(node.is_option))
+	obj.add_terse('is_result', t.bool_node(node.is_result))
 	obj.add('pos', t.pos(node.pos))
 	return obj
 }
