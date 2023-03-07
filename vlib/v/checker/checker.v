@@ -2828,6 +2828,11 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 					final_to_sym = c.table.final_sym(to_type)
 				}
 			}
+		} else {
+			ft := c.table.type_to_str(from_type)
+			tt := c.table.type_to_str(to_type)
+			c.error('`${ft}` does not implement interface `${tt}`, cannot cast `${ft}` to interface `${tt}`',
+				node.pos)
 		}
 	} else if to_type == ast.bool_type && from_type != ast.bool_type && !c.inside_unsafe
 		&& !c.pref.translated && !c.file.is_translated {
