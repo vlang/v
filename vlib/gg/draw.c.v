@@ -318,6 +318,18 @@ pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius
 	sgl.end()
 }
 
+// draw_rounded_rect_empty_with_thickness draws the outline of a rounded rectangle with a defined thickness.
+// `x`,`y` is the top-left corner of the rectangle.
+// `w` is the width, `h` is the height.
+// `radius` is the radius of the corner-rounding in pixels.
+// `thicnkness` is the thinkess of the rectangle
+// `c` is the color of the outline.
+pub fn (ctx &Context) draw_rounded_rect_empty_with_thickness(x f32, y f32, w f32, h f32, radius f32, thickness f32, c gx.Color) {
+	for i := 0; i < thickness; i++ {
+		ctx.draw_rounded_rect_empty(x + i, y + i, w - i * 2, h - i * 2, radius - i, c)
+	}
+}
+
 // draw_rounded_rect_filled draws a filled rounded rectangle.
 // `x`,`y` is the top-left corner of the rectangle.
 // `w` is the width, `h` is the height .
