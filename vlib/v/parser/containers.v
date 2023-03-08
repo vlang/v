@@ -107,7 +107,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 						variable.is_used = true
 						is_used
 					} else if var := p.scope.find_var('it') {
-						p.warning('variable `it` in array initialization will soon replaced with `index` in future version')
+						p.warning('variable `it` in array initialization will be soon replaced with `index` in future version')
 						mut variable := unsafe { var }
 						is_used := variable.is_used
 						variable.is_used = true
@@ -180,7 +180,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 						variable.is_used = true
 						is_used
 					} else if var := p.scope.find_var('it') {
-						p.warning('variable `it` in array initialization will soon replaced with `index` in future version')
+						p.warning('variable `it` in array initialization will soon be replaced with `index` in future version')
 						mut variable := unsafe { var }
 						is_used := variable.is_used
 						variable.is_used = true
