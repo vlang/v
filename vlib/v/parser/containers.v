@@ -180,7 +180,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 						is_used := variable.is_used
 						variable.is_used = true
 						has_index = is_used
-					} 
+					}
 					if var := p.scope.find_var('it') {
 						mut variable := unsafe { var }
 						is_used := variable.is_used
