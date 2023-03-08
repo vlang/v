@@ -428,6 +428,29 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 	sgl.end()
 }
 
+// draw_rect draws rect with a config
+// `x`, `y` defines coordinates
+// `cfg` defines config that will  be used to draw
+pub fn (ctx &Context) draw_rect(x f32, y f32, cfg gx.RectCfg) {
+	w := cfg.width
+	h := cfg.heigh
+	rad := cfg.radius
+	thickness := cfg.thickness
+	color := cfg.color
+	if thickness < 0 || w < 1 || h < 1 {return}
+	else if thickness == 0 {
+		if rad == 0 {ctx.draw_rect_filled(x, y, w, h, color)}
+		else {ctx.draw_rounded_rect_filled(x, y, w, h, rad, color)}
+	} else if thickness == 1 {
+		if rad == 0 {ctx.draw_rect_empty(x, y, w, h, color)}
+		else {ctx.draw_rounded_rect_empty(x, y, w, h, rad, color)}
+	} else {
+		for i := u8(0); i < thickness; i++ {
+			ctx.draw_rounded_rect_empty(x + i, y + i, w - i * 2, h - i * 2, rad - i, color)
+		}
+	}
+}
+
 // draw_triangle_empty draws the outline of a triangle.
 // `x`,`y` defines the first point
 // `x2`,`y2` defines the second point
