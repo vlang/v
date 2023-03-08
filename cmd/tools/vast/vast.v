@@ -1611,7 +1611,7 @@ fn (t Tree) array_init(node ast.ArrayInit) &Node {
 	obj.add_terse('has_len', t.bool_node(node.has_len))
 	obj.add_terse('has_cap', t.bool_node(node.has_cap))
 	obj.add_terse('has_default', t.bool_node(node.has_default))
-	obj.add_terse('has_it', t.bool_node(node.has_it))
+	obj.add_terse('has_index', t.bool_node(node.has_index))
 	obj.add_terse('expr_types', t.array_node_type(node.expr_types))
 	obj.add('pos', t.pos(node.pos))
 	return obj
