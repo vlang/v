@@ -2473,13 +2473,8 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			c.expected_type = ast.string_type
 			node.expr_type = c.expr(node.expr)
 
-			if node.expr is ast.Ident {
-				if c.is_comptime_var(node.expr) {
-					println('${node.expr} ${c.table.type_to_str(c.comptime_fields_default_type)}')
-					node.expr_type = c.comptime_fields_default_type
-				} else {
-					println((node.expr as ast.Ident).obj)
-				}
+			if node.expr is ast.Ident && c.is_comptime_var(node.expr) {
+				node.expr_type = c.comptime_fields_default_type
 			}
 			c.check_expr_opt_call(node.expr, node.expr_type)
 			etidx := node.expr_type.idx()

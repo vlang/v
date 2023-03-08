@@ -41,7 +41,6 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		expr_type = g.comptime_for_field_type
 		name = g.typ(g.unwrap_generic(expr_type.clear_flag(.shared_f).clear_flag(.result))).replace('*',
 			'')
-		println('>>> ${expr_type} ${name}')
 	}
 
 	if g.table.sym(node.expr_type).language == .c {
