@@ -44,7 +44,8 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 	inside_println_arg_save := c.inside_println_arg
 	c.inside_println_arg = true
 	for i, expr in node.exprs {
-		ftyp := c.expr(expr)
+		mut ftyp := c.expr(expr)
+		ftyp = c.check_expr_opt_call(expr, ftyp)
 		if ftyp == ast.void_type {
 			c.error('expression does not return a value', expr.pos())
 		} else if ftyp == ast.char_type && ftyp.nr_muls() == 0 {
