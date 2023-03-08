@@ -239,7 +239,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						var_type = g.comptime_var_type_map[key_str] or { var_type }
 						val_type = var_type
 						left.obj.typ = var_type
-						val_type = var_type
 					}
 				} else if val is ast.ComptimeCall {
 					key_str := '${val.method_name}.return_type'
@@ -250,6 +249,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					gen_or = val.or_expr.kind != .absent
 					if val_info.is_option && gen_or {
 						var_type = val_type.clear_flag(.option)
+						left.obj.typ = var_type
+					}
+				} else if val is ast.DumpExpr && (val as ast.DumpExpr).expr is ast.ComptimeSelector {
+					key_str := g.get_comptime_selector_key_type(val.expr as ast.ComptimeSelector)
+					if key_str != '' {
+						var_type = g.comptime_var_type_map[key_str] or { var_type }
+						val_type = var_type
 						left.obj.typ = var_type
 					}
 				}
