@@ -1,6 +1,6 @@
 const (
 	dat = 'Data tag ,No data'.split(',')
-	dd  = []Info{len: 4, init: Info{if it in tag { dat[0] + it.str() } else { dat[1] }}}
+	dd  = []Info{len: 4, init: Info{if index in tag { dat[0] + index.str() } else { dat[1] }}}
 	tag = [1, 2]
 )
 

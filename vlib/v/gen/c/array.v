@@ -72,7 +72,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 }
 
 fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name string) {
-	if node.has_it {
+	if node.has_index {
 		g.inside_lambda = true
 		mut tmp := g.new_tmp_var()
 		mut s := ''
@@ -116,8 +116,9 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.indent++
 		g.writeln('${elem_typ}* pelem = (${elem_typ}*)${tmp};')
 		g.writeln('int _len = (int)sizeof(${tmp}) / sizeof(${elem_typ});')
-		g.writeln('for(int it=0; it<_len; it++, pelem++) {')
+		g.writeln('for(int index=0; index<_len; index++, pelem++) {')
 		g.indent++
+		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden
 		g.write('*pelem = ')
 		g.expr(node.default_expr)
 		g.writeln(';')
@@ -197,7 +198,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 	is_default_map := elem_type.unaliased_sym.kind == .map && node.has_default
 	needs_more_defaults := node.has_len && (g.struct_has_array_or_map_field(elem_type.typ)
 		|| elem_type.unaliased_sym.kind in [.array, .map])
-	if node.has_it { // []int{len: 6, init: it * it} when variable it is used in init expression
+	if node.has_index { // []int{len: 6, init: it * it} when variable it is used in init expression
 		g.inside_lambda = true
 		mut tmp := g.new_tmp_var()
 		mut s := ''
@@ -268,9 +269,10 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.writeln('{')
 		g.indent++
 		g.writeln('${elem_typ}* pelem = (${elem_typ}*)${tmp}.data;')
-		g.writeln('for(int it=0; it<${tmp}.len; it++, pelem++) {')
+		g.writeln('for(int index=0; index<${tmp}.len; index++, pelem++) {')
 		g.set_current_pos_as_last_stmt_pos()
 		g.indent++
+		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden	
 		g.write('*pelem = ')
 		g.expr(node.default_expr)
 		g.writeln(';')

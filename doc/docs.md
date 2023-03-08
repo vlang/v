@@ -946,14 +946,14 @@ for i in 0 .. 1000 {
 > **Note**
 > The above code uses a [range `for`](#range-for) statement.
 
-You can initialize the array by accessing the `it` variable which gives
+You can initialize the array by accessing the `index` variable which gives
 the index as shown here:
 
 ```v
-count := []int{len: 4, init: it}
+count := []int{len: 4, init: index}
 assert count == [0, 1, 2, 3]
 
-mut square := []int{len: 6, init: it * it}
+mut square := []int{len: 6, init: index * index}
 // square == [0, 1, 4, 9, 16, 25]
 ```
 

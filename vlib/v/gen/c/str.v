@@ -132,7 +132,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		if expr is ast.ArrayInit {
 			if expr.is_fixed {
 				s := g.typ(expr.typ)
-				if !expr.has_it {
+				if !expr.has_index {
 					g.write('(${s})')
 				}
 			}
