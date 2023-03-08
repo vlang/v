@@ -154,6 +154,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 		}
 	}
 	$for field in U.fields {
+		mut ignore_field := false
 		value := val.$(field.name)
 		mut json_name := ''
 		for attr in field.attrs {
@@ -219,6 +220,8 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				} $else {
 					return error('type ${typeof(val).name} cannot be array encoded')
 				}
+			} else {
+				ignore_field = true
 			}
 		} $else {
 			is_none := val.$(field.name).str() == 'unknown sum type value'
@@ -345,10 +348,12 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			}
 		}
 
-		if i < fields_len - 1 {
+		if i < fields_len - 1 && !ignore_field {
 			wr.write(json2.comma_bytes)!
 		}
-		i++
+		if !ignore_field {
+			i++
+		}
 	}
 	e.encode_newline(level - 1, mut wr)!
 	wr.write([u8(`}`)])!
