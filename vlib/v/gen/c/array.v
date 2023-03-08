@@ -51,7 +51,11 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 				g.expr(expr)
 				g.write(')')
 			} else {
-				g.expr_with_cast(expr, node.expr_types[i], node.elem_type)
+				if node.elem_type.has_flag(.option) {
+					g.expr_with_opt(expr, node.expr_types[i], node.elem_type)
+				} else {
+					g.expr_with_cast(expr, node.expr_types[i], node.elem_type)
+				}
 			}
 			if i != len - 1 {
 				if i > 0 && i & 7 == 0 { // i > 0 && i % 8 == 0
