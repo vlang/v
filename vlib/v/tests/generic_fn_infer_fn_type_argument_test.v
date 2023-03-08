@@ -27,5 +27,5 @@ fn test_generic_fn_infer_fn_type_argument() {
 
 // [noah04 #14214] code
 fn fmap[I, O](func fn (I) O, list []I) []O {
-	return []O{len: list.len, init: func(list[it])}
+	return []O{len: list.len, init: func(list[index])}
 }
