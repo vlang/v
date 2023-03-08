@@ -4093,7 +4093,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		if node.obj is ast.Var {
 			if !g.is_assign_lhs && node.obj.is_comptime_field {
 				if g.comptime_for_field_type.has_flag(.option) {
-					if (g.inside_opt_or_res && node.or_expr.kind == .absent) || g.left_is_opt {
+					if (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {
 						g.write('${name}')
 					} else {
 						g.write('/*opt*/')
@@ -4103,7 +4103,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 				} else {
 					g.write('${name}')
 				}
-				if node.or_expr.kind != .absent {
+				if node.or_expr.kind != .absent && !(g.inside_opt_or_res && g.inside_assign
+					&& !g.is_assign_lhs) {
 					stmt_str := g.go_before_stmt(0).trim_space()
 					g.empty_line = true
 					g.or_block(name, node.or_expr, g.comptime_for_field_type)
@@ -4117,14 +4118,15 @@ fn (mut g Gen) ident(node ast.Ident) {
 		// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
 		// `println(x)` => `println(*(int*)x.data)`
 		if node.info.is_option && !(g.is_assign_lhs && g.right_is_opt) {
-			if (g.inside_opt_or_res && node.or_expr.kind == .absent) || g.left_is_opt {
+			if (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {
 				g.write('${name}')
 			} else {
 				g.write('/*opt*/')
 				styp := g.base_type(node.info.typ)
 				g.write('(*(${styp}*)${name}.data)')
 			}
-			if node.or_expr.kind != .absent && !(g.inside_assign && !g.is_assign_lhs) {
+			if node.or_expr.kind != .absent && !(g.inside_opt_or_res && g.inside_assign
+				&& !g.is_assign_lhs) {
 				stmt_str := g.go_before_stmt(0).trim_space()
 				g.empty_line = true
 				g.or_block(name, node.or_expr, node.info.typ)
