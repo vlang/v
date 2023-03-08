@@ -97,26 +97,8 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 						return ast.ArrayInit{}
 					}
 					p.check(.colon)
-					p.open_scope()
 					has_default = true
-					p.scope_register_index()
-					default_expr = p.expr(0)
-					if var := p.scope.find_var('index') {
-						mut variable := unsafe { var }
-						is_used := variable.is_used
-						variable.is_used = true
-						has_index = is_used
-					}
-					if !has_index && var := p.scope.find_var('it') { // FIXME: Remove this block when `it` is forbidden
-						mut variable := unsafe { var }
-						is_used := variable.is_used
-						if is_used {
-							p.warn('variable `it` in array initialization will soon be replaced with `index`')
-						}
-						variable.is_used = true
-						has_index = is_used
-					}
-					p.close_scope()
+					has_index = p.handle_index_variable(mut default_expr)
 				}
 				last_pos = p.tok.pos()
 				p.check(.rcbr)
@@ -171,26 +153,8 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					cap_expr = p.expr(0)
 				}
 				'init' {
-					p.open_scope()
 					has_default = true
-					p.scope_register_index()
-					default_expr = p.expr(0)
-					if var := p.scope.find_var('index') {
-						mut variable := unsafe { var }
-						is_used := variable.is_used
-						variable.is_used = true
-						has_index = is_used
-					}
-					if !has_index && var := p.scope.find_var('it') { // FIXME: Remove this block when `it` is forbidden
-						mut variable := unsafe { var }
-						is_used := variable.is_used
-						if is_used {
-							p.warn('variable `it` in array initialization will soon be replaced with `index`')
-						}
-						variable.is_used = true
-						has_index = is_used
-					}
-					p.close_scope()
+					has_index = p.handle_index_variable(mut default_expr)
 				}
 				else {
 					p.error('wrong field `${key}`, expecting `len`, `cap`, or `init`')
@@ -281,4 +245,30 @@ fn (mut p Parser) scope_register_index() {
 		is_mut: false
 		is_used: false
 	}
+}
+
+fn (mut p Parser) handle_index_variable(mut default_expr ast.Expr) bool {
+	mut has_index := false
+	p.open_scope()
+	p.scope_register_index()
+	default_expr = p.expr(0)
+	if var := p.scope.find_var('index') {
+		mut variable := unsafe { var }
+		is_used := variable.is_used
+		variable.is_used = true
+		has_index = is_used
+	}
+	if var := p.scope.find_var('it') { // FIXME: Remove this block when `it` is forbidden
+		mut variable := unsafe { var }
+		is_used := variable.is_used
+		if is_used {
+			p.warn('variable `it` in array initialization will soon be replaced with `index`')
+		}
+		variable.is_used = true
+		if !has_index {
+			has_index = is_used
+		}
+	}
+	p.close_scope()
+	return has_index
 }
