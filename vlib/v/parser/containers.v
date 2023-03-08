@@ -101,19 +101,20 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					has_default = true
 					p.scope_register_index()
 					default_expr = p.expr(0)
-					has_index = if var := p.scope.find_var('index') {
+					if var := p.scope.find_var('index') {
 						mut variable := unsafe { var }
 						is_used := variable.is_used
 						variable.is_used = true
-						is_used
-					} else if var := p.scope.find_var('it') {
-						p.warn('variable `it` in array initialization will be soon replaced with `index` in future version')
+						has_index = is_used
+					}
+					if var := p.scope.find_var('it') {
 						mut variable := unsafe { var }
 						is_used := variable.is_used
+						if is_used {
+							p.warn('variable `it` in array initialization will soon be replaced with `index` in future version')
+						}
 						variable.is_used = true
-						is_used
-					} else {
-						false
+						has_index = is_used
 					}
 					p.close_scope()
 				}
@@ -174,19 +175,21 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					has_default = true
 					p.scope_register_index()
 					default_expr = p.expr(0)
-					has_index = if var := p.scope.find_var('index') {
+					if var := p.scope.find_var('index') {
 						mut variable := unsafe { var }
 						is_used := variable.is_used
 						variable.is_used = true
-						is_used
-					} else if var := p.scope.find_var('it') {
+						has_index = is_used
+					} 
+					if var := p.scope.find_var('it') {
 						p.warn('variable `it` in array initialization will soon be replaced with `index` in future version')
 						mut variable := unsafe { var }
 						is_used := variable.is_used
+						if is_used {
+							p.warn('variable `it` in array initialization will soon be replaced with `index` in future version')
+						}
 						variable.is_used = true
-						is_used
-					} else {
-						false
+						has_index = is_used
 					}
 					p.close_scope()
 				}
