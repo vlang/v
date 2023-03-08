@@ -444,7 +444,7 @@ pub fn (mut rng PRNG) choose[T](array []T, k int) ![]T {
 		return error('Cannot choose ${k} elements without replacement from a ${n}-element array.')
 	}
 	mut results := []T{len: k}
-	mut indices := []int{len: n, init: it}
+	mut indices := []int{len: n, init: index}
 	rng.shuffle[int](mut indices)!
 	for i in 0 .. k {
 		results[i] = array[indices[i]]
