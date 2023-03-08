@@ -118,6 +118,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.writeln('int _len = (int)sizeof(${tmp}) / sizeof(${elem_typ});')
 		g.writeln('for(int index=0; index<_len; index++, pelem++) {')
 		g.indent++
+		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden
 		g.write('*pelem = ')
 		g.expr(node.default_expr)
 		g.writeln(';')
@@ -271,6 +272,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.writeln('for(int index=0; index<${tmp}.len; index++, pelem++) {')
 		g.set_current_pos_as_last_stmt_pos()
 		g.indent++
+		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden	
 		g.write('*pelem = ')
 		g.expr(node.default_expr)
 		g.writeln(';')
