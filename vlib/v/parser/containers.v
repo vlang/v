@@ -106,6 +106,12 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 						is_used := variable.is_used
 						variable.is_used = true
 						is_used
+					} else if var := p.scope.find_var('it') {
+						p.wraning('variable `it` in array initialization will soon replaced with `index` in future version')
+						mut variable := unsafe { var }
+						is_used := variable.is_used
+						variable.is_used = true
+						is_used
 					} else {
 						false
 					}
@@ -169,6 +175,12 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					p.scope_register_index()
 					default_expr = p.expr(0)
 					has_index = if var := p.scope.find_var('index') {
+						mut variable := unsafe { var }
+						is_used := variable.is_used
+						variable.is_used = true
+						is_used
+					} else if var := p.scope.find_var('it') {
+						p.wraning('variable `it` in array initialization will soon replaced with `index` in future version')
 						mut variable := unsafe { var }
 						is_used := variable.is_used
 						variable.is_used = true
@@ -255,6 +267,13 @@ fn (mut p Parser) map_init() ast.MapInit {
 fn (mut p Parser) scope_register_index() {
 	p.scope.objects['index'] = ast.Var{ // override index variable if it already exist, else create index variable
 		name: 'index'
+		pos: p.tok.pos()
+		typ: ast.int_type
+		is_mut: false
+		is_used: false
+	}
+	p.scope.objects['it'] = ast.Var{ // it is now deprecated, will be removed in future stable release
+		name: 'it'
 		pos: p.tok.pos()
 		typ: ast.int_type
 		is_mut: false
