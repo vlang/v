@@ -58,10 +58,7 @@ fn test_encode_decode3() {
 fn test_main() {
 	node := json.decode(Node, '{"loc": { "includedFrom": { "file": "/bin/foo" } } }')!
 
-	mut source_file := node.location.source_file or { none }
-	assert source_file.path == '/bin/foo'
-
-	source_file = node.location.source_file or {
+	source_file := node.location.source_file or {
 		SourceFile{
 			path: '-'
 		}
