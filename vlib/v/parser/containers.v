@@ -107,7 +107,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 						variable.is_used = true
 						has_index = is_used
 					}
-					if var := p.scope.find_var('it') {
+					if !has_index && var := p.scope.find_var('it') { // FIXME: Remove this block when `it` is forbidden
 						mut variable := unsafe { var }
 						is_used := variable.is_used
 						if is_used {
@@ -181,7 +181,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 						variable.is_used = true
 						has_index = is_used
 					}
-					if var := p.scope.find_var('it') {
+					if !has_index && var := p.scope.find_var('it') { // FIXME: Remove this block when `it` is forbidden
 						mut variable := unsafe { var }
 						is_used := variable.is_used
 						if is_used {
