@@ -168,3 +168,26 @@ fn test_linked_list_separate_iterators() {
 	}
 	assert res == [1, 2, 3]
 }
+
+struct Foo {
+mut:
+	field LinkedList[map[string]int]
+}
+
+fn test_linked_list_map() {
+	mut foo := Foo{}
+	foo.field.push({
+		'one': 1
+	})
+	foo.field.push({
+		'two': 2
+	})
+	println(foo)
+	mut iter := foo.field.iterator()
+	assert iter.next()! == {
+		'one': 1
+	}
+	assert iter.next()! == {
+		'two': 2
+	}
+}
