@@ -992,7 +992,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		&& !typ_sym.has_method(node.name) {
 		unwrapped_rec_type = (typ_sym.info as ast.Alias).parent_type
 		typ_sym = g.table.sym(unwrapped_rec_type)
-	} else if typ_sym.kind == .array && !typ_sym.has_method(node.name) {
+	} else if typ_sym.kind == .array && !typ_sym.has_method(node.name) && node.name != 'str' {
 		typ := g.table.unaliased_type((typ_sym.info as ast.Array).elem_type)
 		typ_idx := g.table.find_type_idx(g.table.array_name(typ))
 		if typ_idx > 0 {
