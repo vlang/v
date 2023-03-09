@@ -176,10 +176,18 @@ mut:
 
 fn test_linked_list_map() {
 	mut foo := Foo{}
-	foo.field.push({'one': 1})
-	foo.field.push({'two': 2})
+	foo.field.push({
+		'one': 1
+	})
+	foo.field.push({
+		'two': 2
+	})
 	println(foo)
 	mut iter := foo.field.iterator()
-	assert iter.next()! == {'one': 1}
-	assert iter.next()! == {'two': 2}
+	assert iter.next()! == {
+		'one': 1
+	}
+	assert iter.next()! == {
+		'two': 2
+	}
 }
