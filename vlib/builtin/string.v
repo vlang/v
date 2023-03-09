@@ -757,6 +757,10 @@ pub fn (s string) split_any(delim string) []string {
 	return res
 }
 
+// rsplit_any splits the string to an array by any of the `delim` chars in reverse order.
+// Example: "first row\nsecond row".rsplit_any(" \n") == ['row', 'second', 'row', 'first']
+// Split a string using the chars in the delimiter string as delimiters chars.
+// If the delimiter string is empty then `.rsplit()` is used.
 [direct_array_access]
 pub fn (s string) rsplit_any(delim string) []string {
 	mut res := []string{}
@@ -791,6 +795,10 @@ pub fn (s string) split(delim string) []string {
 	return s.split_nth(delim, 0)
 }
 
+// rsplit splits the string to an array by `delim` in reverse order.
+// Example: assert 'A B C'.rsplit(' ') == ['C','B','A']
+// If `delim` is empty the string is split by it's characters.
+// Example: assert 'DEF'.rsplit('') == ['F','E','D']
 pub fn (s string) rsplit(delim string) []string {
 	return s.rsplit_nth(delim, 0)
 }
@@ -869,6 +877,11 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	}
 }
 
+// rsplit_nth splits the string based on the passed `delim` substring in revese order.
+// It returns the first Nth parts. When N=0, return all the splits.
+// The last returned element has the remainder of the string, even if
+// the remainder contains more `delim` substrings.
+[direct_array_access]
 pub fn (s string) rsplit_nth(delim string, nth int) []string {
 	mut res := []string{}
 	mut i := s.len - 1
