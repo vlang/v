@@ -757,12 +757,40 @@ pub fn (s string) split_any(delim string) []string {
 	return res
 }
 
+[direct_array_access]
+pub fn (s string) rsplit_any(delim string) []string {
+	mut res := []string{}
+	mut i := delim.len - 1
+	if s.len > 0 {
+		if delim.len <= 0 {
+		}
+		mut rbound := i
+		for i >= 0 {
+			for delim_ch in delim {
+				if s[i] == delim_ch {
+					res << s[i..rbound]
+					rbound = i
+					break
+				}
+			}
+		}
+		if i >= 0 {
+			res << s[0..i]
+		}
+	}
+	return res
+}
+
 // split splits the string to an array by `delim`.
 // Example: assert 'A B C'.split(' ') == ['A','B','C']
 // If `delim` is empty the string is split by it's characters.
 // Example: assert 'DEF'.split('') == ['D','E','F']
 pub fn (s string) split(delim string) []string {
 	return s.split_nth(delim, 0)
+}
+
+pub fn (s string) rsplit(delim string) []string {
+	return s.rsplit_nth(delim, 0)
 }
 
 // split_nth splits the string based on the passed `delim` substring.
@@ -833,6 +861,69 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 			// Then the remaining right part of the string
 			if nth < 1 || res.len < nth {
 				res << s[start..]
+			}
+			return res
+		}
+	}
+}
+
+pub fn (s string) rsplit_nth(delim string, nth int) []string {
+	mut res := []string{}
+	mut i := s.len - 1
+
+	match delim.len {
+		0 {
+			for i >= 0 {
+				if nth > 0 && res.len == nth - 1 {
+					res << s[..i]
+					break
+				}
+				res << s[i].ascii_str()
+				i--
+			}
+			return res
+		}
+		1 {
+			mut rbound := s.len
+			delim_byte := delim[0]
+
+			for i >= 0 {
+				if s[i] == delim_byte {
+					if nth > 0 && res.len == nth - 1 {
+						break
+					}
+					res << s[i + 1..rbound]
+					rbound = i
+					i--
+				} else {
+					i--
+				}
+			}
+
+			if nth < 1 || res.len < nth {
+				res << s[0..rbound]
+			}
+			return res
+		}
+		else {
+			mut rbound := s.len
+
+			for i >= 0 {
+				is_delim := i - delim.len >= 0 && s[i - delim.len..i] == delim
+				if is_delim {
+					if nth > 0 && res.len == nth - 1 {
+						break
+					}
+					res << s[i..rbound]
+					rbound = i - delim.len
+					i -= delim.len
+				} else {
+					i--
+				}
+			}
+
+			if nth < 1 || res.len < nth {
+				res << s[0..rbound]
 			}
 			return res
 		}
