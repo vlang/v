@@ -46,7 +46,7 @@ fn string_array_to_map(a []string) map[string]bool {
 pub struct Gen {
 	pref                &pref.Preferences = unsafe { nil }
 	field_data_type     ast.Type // cache her to avoid map lookups
-	enum_data_type     ast.Type // cache her to avoid map lookups
+	enum_data_type      ast.Type // cache her to avoid map lookups
 	module_built        string
 	timers_should_print bool
 	table               &ast.Table = unsafe { nil }
@@ -3449,7 +3449,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		}
 	} else {
 		// for comp-time enum value evaluation
-		if node.expr_type == g.enum_data_type && node.expr is ast.Ident && (node.expr as ast.Ident).name == 'value' {
+		if node.expr_type == g.enum_data_type && node.expr is ast.Ident
+			&& (node.expr as ast.Ident).name == 'value' {
 			g.write(node.str())
 			return
 		}

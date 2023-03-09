@@ -109,7 +109,7 @@ pub:
 
 pub struct EnumData {
 pub:
-	name string
+	name  string
 	value i64
 }
 
