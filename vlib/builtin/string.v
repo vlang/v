@@ -760,22 +760,24 @@ pub fn (s string) split_any(delim string) []string {
 [direct_array_access]
 pub fn (s string) rsplit_any(delim string) []string {
 	mut res := []string{}
-	mut i := delim.len - 1
+	mut i := s.len - 1
 	if s.len > 0 {
 		if delim.len <= 0 {
+			return s.rsplit('')
 		}
-		mut rbound := i
+		mut rbound := s.len
 		for i >= 0 {
 			for delim_ch in delim {
 				if s[i] == delim_ch {
-					res << s[i..rbound]
+					res << s[i + 1..rbound]
 					rbound = i
 					break
 				}
 			}
+			i--
 		}
-		if i >= 0 {
-			res << s[0..i]
+		if rbound > 0 {
+			res << s[..rbound]
 		}
 	}
 	return res
@@ -901,7 +903,7 @@ pub fn (s string) rsplit_nth(delim string, nth int) []string {
 			}
 
 			if nth < 1 || res.len < nth {
-				res << s[0..rbound]
+				res << s[..rbound]
 			}
 			return res
 		}
@@ -923,7 +925,7 @@ pub fn (s string) rsplit_nth(delim string, nth int) []string {
 			}
 
 			if nth < 1 || res.len < nth {
-				res << s[0..rbound]
+				res << s[..rbound]
 			}
 			return res
 		}
