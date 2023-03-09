@@ -3461,7 +3461,12 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			g.write('*(')
 		}
 		g.expr(node.expr)
-		g.write('.${field_name}')
+		if node.expr_type.is_ptr() {
+			g.write('->')
+		} else {
+			g.write('.')
+		}
+		g.write(field_name)
 		if is_ptr {
 			g.write(')')
 		}
