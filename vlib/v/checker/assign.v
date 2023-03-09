@@ -312,6 +312,13 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								if right is ast.ComptimeSelector {
 									left.obj.is_comptime_field = true
 									left.obj.typ = c.comptime_fields_default_type
+								} else if right is ast.Ident
+									&& (right as ast.Ident).obj is ast.Var && (right as ast.Ident).or_expr.kind == .absent {
+									left.obj.is_comptime_field = ((right as ast.Ident).obj as ast.Var).is_comptime_field
+								} else if right is ast.DumpExpr
+									&& (right as ast.DumpExpr).expr is ast.ComptimeSelector {
+									left.obj.is_comptime_field = true
+									left.obj.typ = c.comptime_fields_default_type
 								}
 							}
 							ast.GlobalField {

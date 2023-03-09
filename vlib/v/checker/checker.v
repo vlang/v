@@ -2473,6 +2473,10 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		ast.DumpExpr {
 			c.expected_type = ast.string_type
 			node.expr_type = c.expr(node.expr)
+
+			if node.expr is ast.Ident && c.is_comptime_var(node.expr) {
+				node.expr_type = c.comptime_fields_default_type
+			}
 			c.check_expr_opt_call(node.expr, node.expr_type)
 			etidx := node.expr_type.idx()
 			if etidx == ast.void_type_idx {
@@ -2486,8 +2490,13 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 
 			unwrapped_expr_type := c.unwrap_generic(node.expr_type)
 			tsym := c.table.sym(unwrapped_expr_type)
-			c.table.dumps[int(unwrapped_expr_type.clear_flag(.option).clear_flag(.result))] = tsym.cname
-			node.cname = tsym.cname
+			type_cname := if node.expr_type.has_flag(.option) {
+				'_option_${tsym.cname}'
+			} else {
+				tsym.cname
+			}
+			c.table.dumps[int(unwrapped_expr_type.clear_flag(.result))] = type_cname
+			node.cname = type_cname
 			return node.expr_type
 		}
 		ast.EnumVal {

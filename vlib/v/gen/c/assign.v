@@ -88,7 +88,7 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 	defer {
 		g.inside_opt_or_res = old_inside_opt_or_res
 	}
-	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)&& (expr in [ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr, ast.CastExpr]) {
+	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)&& (expr in [ast.DumpExpr, ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr, ast.CastExpr]) {
 		if expr in [ast.Ident, ast.CastExpr] {
 			if expr_typ.idx() != ret_typ.idx() {
 				return g.expr_opt_with_cast(expr, expr_typ, ret_typ)
@@ -239,7 +239,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						var_type = g.comptime_var_type_map[key_str] or { var_type }
 						val_type = var_type
 						left.obj.typ = var_type
-						val_type = var_type
 					}
 				} else if val is ast.ComptimeCall {
 					key_str := '${val.method_name}.return_type'
@@ -250,6 +249,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					gen_or = val.or_expr.kind != .absent
 					if val_info.is_option && gen_or {
 						var_type = val_type.clear_flag(.option)
+						left.obj.typ = var_type
+					}
+				} else if val is ast.DumpExpr && (val as ast.DumpExpr).expr is ast.ComptimeSelector {
+					key_str := g.get_comptime_selector_key_type(val.expr as ast.ComptimeSelector)
+					if key_str != '' {
+						var_type = g.comptime_var_type_map[key_str] or { var_type }
+						val_type = var_type
 						left.obj.typ = var_type
 					}
 				}
