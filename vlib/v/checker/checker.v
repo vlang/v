@@ -1301,6 +1301,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		c.error('`${node.expr}` does not return a value', node.pos)
 		node.expr_type = ast.void_type
 		return ast.void_type
+	} else if typ == c.table.find_type_idx('EnumData') && node.field_name == 'value' {
+		// for comp-time enum.vals
+		node.expr_type = c.comptime_fields_type[c.comptime_for_field_var]
+		return node.expr_type
 	}
 	node.expr_type = typ
 	if !(node.expr is ast.Ident && (node.expr as ast.Ident).kind == .constant) {
@@ -2489,9 +2493,6 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			c.table.dumps[int(unwrapped_expr_type.clear_flag(.option).clear_flag(.result))] = tsym.cname
 			node.cname = tsym.cname
 			return node.expr_type
-		}
-		ast.ComptimeEnumVal {
-			return c.comptime_enum_val(mut node)
 		}
 		ast.EnumVal {
 			return c.enum_val(mut node)
@@ -4011,16 +4012,6 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	c.stmts_ending_with_expression(node.or_expr.stmts)
 	c.check_expr_opt_call(node, typ)
 	return typ
-}
-
-fn (mut c Checker) comptime_enum_val(mut node ast.ComptimeEnumVal) ast.Type {
-	mut enum_ := ast.EnumVal{
-		enum_name: c.table.type_to_str(c.comptime_fields_type[c.comptime_for_field_var])
-		val: c.comptime_enum_field_value
-		pos: node.pos
-	}
-	node.typ = c.enum_val(mut enum_)
-	return node.typ
 }
 
 // `.green` or `Color.green`

@@ -3196,19 +3196,6 @@ fn (mut p Parser) enum_val() ast.EnumVal {
 	}
 }
 
-// .$field
-fn (mut p Parser) comptime_enum_val() ast.ComptimeEnumVal {
-	start_pos := p.tok.pos()
-	p.check(.dot)
-	p.check(.dollar)
-	ident := p.parse_ident(ast.Language.v)
-	p.mark_var_as_used(ident.name)
-	return ast.ComptimeEnumVal{
-		expr: ident
-		pos: start_pos.extend(p.prev_tok.pos())
-	}
-}
-
 fn (mut p Parser) filter_string_vet_errors(pos token.Pos) {
 	if p.vet_errors.len == 0 {
 		return

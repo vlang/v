@@ -1132,9 +1132,6 @@ fn (t Tree) expr(expr ast.Expr) &Node {
 		ast.SqlExpr {
 			return t.sql_expr(expr)
 		}
-		ast.ComptimeEnumVal {
-			return t.comptime_enum_val(expr)
-		}
 		ast.ComptimeCall {
 			return t.comptime_call(expr)
 		}
@@ -1252,15 +1249,6 @@ fn (t Tree) enum_val(node ast.EnumVal) &Node {
 	obj.add_terse('enum_name', t.string_node(node.enum_name))
 	obj.add_terse('mod', t.string_node(node.mod))
 	obj.add_terse('val', t.string_node(node.val))
-	obj.add_terse('typ', t.type_node(node.typ))
-	obj.add('pos', t.pos(node.pos))
-	return obj
-}
-
-fn (t Tree) comptime_enum_val(node ast.ComptimeEnumVal) &Node {
-	mut obj := new_object()
-	obj.add_terse('ast_type', t.string_node('ComptimeEnumVal'))
-	obj.add_terse('expr', t.expr(node.expr))
 	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add('pos', t.pos(node.pos))
 	return obj

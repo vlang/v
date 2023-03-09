@@ -814,7 +814,9 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('}')
 				g.pop_existing_comptime_values()
 			}
-		} else if sym.kind == .enum_ {
+		}
+	} else if node.kind == .vals {
+		if sym.kind == .enum_ {
 			if sym.info is ast.Enum {
 				if sym.info.vals.len > 0 {
 					g.writeln('\tEnumData ${node.val_var} = {0};')
@@ -825,6 +827,12 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 
 					g.writeln('/* enum vals ${i} */ {')
 					g.writeln('\t${node.val_var}.name = _SLIT("${val}");')
+					g.write('\t${node.val_var}.value = ')
+					if g.pref.translated && node.typ.is_number() {
+						g.writeln('_const_main__${g.comptime_enum_field_value};')
+					} else {
+						g.writeln('${g.typ(g.comptime_for_field_type)}__${g.comptime_enum_field_value};')
+					}
 					g.stmts(node.stmts)
 					g.writeln('}')
 					i++

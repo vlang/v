@@ -46,6 +46,7 @@ fn string_array_to_map(a []string) map[string]bool {
 pub struct Gen {
 	pref                &pref.Preferences = unsafe { nil }
 	field_data_type     ast.Type // cache her to avoid map lookups
+	enum_data_type     ast.Type // cache her to avoid map lookups
 	module_built        string
 	timers_should_print bool
 	table               &ast.Table = unsafe { nil }
@@ -309,6 +310,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 		timers: util.new_timers(should_print: timers_should_print, label: 'global_cgen')
 		inner_loop: &ast.empty_stmt
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
+		enum_data_type: ast.Type(table.find_type_idx('EnumData'))
 		is_cc_msvc: pref_.ccompiler == 'msvc'
 		use_segfault_handler: !('no_segfault_handler' in pref_.compile_defines
 			|| pref_.os in [.wasm32, .wasm32_emscripten])
@@ -664,6 +666,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		)
 		inner_loop: &ast.empty_stmt
 		field_data_type: ast.Type(global_g.table.find_type_idx('FieldData'))
+		enum_data_type: ast.Type(global_g.table.find_type_idx('EnumData'))
 		array_sort_fn: global_g.array_sort_fn
 		waiter_fns: global_g.waiter_fns
 		threaded_fns: global_g.threaded_fns
@@ -3118,9 +3121,6 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 		ast.DumpExpr {
 			g.dump_expr(node)
 		}
-		ast.ComptimeEnumVal {
-			g.comptime_enum_val(node)
-		}
 		ast.EnumVal {
 			g.enum_val(node)
 		}
@@ -3446,6 +3446,12 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				}
 				g.error('unknown generic field', node.pos)
 			}
+		}
+	} else {
+		// for comp-time enum value evaluation
+		if node.expr_type == g.enum_data_type && node.expr is ast.Ident && (node.expr as ast.Ident).name == 'value' {
+			g.write(node.str())
+			return
 		}
 	}
 	if node.expr_type == 0 {
@@ -6160,18 +6166,6 @@ fn (mut g Gen) size_of(node ast.SizeOf) {
 	}
 	styp := g.typ(node_typ)
 	g.write('sizeof(${util.no_dots(styp)})')
-}
-
-fn (mut g Gen) comptime_enum_val(node ast.ComptimeEnumVal) {
-	if g.pref.translated && node.typ.is_number() {
-		// Mostly in translated code, when C enums are used as ints in switches
-		// sym := g.table.sym(node.typ)
-		// g.write('/* $node enum val is_number $node.mod styp=$styp sym=$sym*/_const_main__$node.val')
-		g.write('_const_main__${g.comptime_enum_field_value}')
-	} else {
-		styp := g.typ(g.comptime_for_field_type)
-		g.write('${styp}__${g.comptime_enum_field_value}')
-	}
 }
 
 fn (mut g Gen) enum_val(node ast.EnumVal) {
