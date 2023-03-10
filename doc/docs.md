@@ -3708,7 +3708,8 @@ fn main() {
 V used to combine `Option` and `Result` into one type, now they are separate.
 
 The amount of work required to "upgrade" a function to an option/result function is minimal;
-you have to add a `?` or `!` to the return type and return `none` or an error (respectively) when something goes wrong.
+you have to add a `?` or `!` to the return type and return `none` or an error (respectively)
+when something goes wrong.
 
 This is the primary mechanism for error handling in V. They are still values, like in Go,
 but the advantage is that errors can't be unhandled, and handling them is a lot less verbose.
@@ -5342,7 +5343,8 @@ type FastFn = fn (int) bool
 // Windows only:
 // Without this attribute all graphical apps will have the following behavior on Windows:
 // If run from a console or terminal; keep the terminal open so all (e)println statements can be viewed.
-// If run from e.g. Explorer, by double-click; app is opened, but no terminal is opened, and no (e)println output can be seen.
+// If run from e.g. Explorer, by double-click; app is opened, but no terminal is opened, and no
+// (e)println output can be seen.
 // Use it to force-open a terminal to view output in, even if the app is started from Explorer.
 // Valid before main() only.
 [console]
@@ -5466,13 +5468,13 @@ is compiled with `v -g` or `v -cg`.
 If you're using a custom ifdef, then you do need `$if option ? {}` and compile with`v -d option`.
 Full list of builtin options:
 
-| OS                             | Compilers        | Platforms        | Other                                            |
-|--------------------------------|------------------|------------------|--------------------------------------------------|
-| `windows`, `linux`, `macos`    | `gcc`, `tinyc`   | `amd64`, `arm64` | `debug`, `prod`, `test`                          |
-| `mac`, `darwin`, `ios`,        | `clang`, `mingw` | `x64`, `x32`     | `js`, `glibc`, `prealloc`                        |
-| `android`, `mach`, `dragonfly` | `msvc`           | `little_endian`  | `no_bounds_checking`, `freestanding`             |
-| `gnu`, `hpux`, `haiku`, `qnx`  | `cplusplus`      | `big_endian`     | `no_segfault_handler`, `no_backtrace`, `no_main` |
-| `solaris`, `termux`            |                  |                  |                                                  |
+| OS                             | Compilers        | Platforms        | Other                                         |
+|--------------------------------|------------------|------------------|-----------------------------------------------|
+| `windows`, `linux`, `macos`    | `gcc`, `tinyc`   | `amd64`, `arm64` | `debug`, `prod`, `test`                       |
+| `mac`, `darwin`, `ios`,        | `clang`, `mingw` | `x64`, `x32`     | `js`, `glibc`, `prealloc`                     |
+| `android`, `mach`, `dragonfly` | `msvc`           | `little_endian`  | `no_bounds_checking`, `freestanding`          |
+| `gnu`, `hpux`, `haiku`, `qnx`  | `cplusplus`      | `big_endian`     | `no_segfault_handler`, `no_backtrace`         |
+| `solaris`, `termux`            |                  |                  | `no_main`                                     |
 
 #### `$embed_file`
 
