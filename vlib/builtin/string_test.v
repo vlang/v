@@ -395,6 +395,30 @@ fn test_rsplit_any() {
 	assert 'first row\nsecond row'.rsplit_any(' \n') == ['row', 'second', 'row', 'first']
 }
 
+fn test_split_once() ? {
+	path1, ext1 := 'home/dir/lang.zip'.split_once('.')?
+	assert path1 == 'home/dir/lang'
+	assert ext1 == 'zip'
+	path2, ext2 := 'home/dir/lang.ts.dts'.split_once('.')?
+	assert path2 == 'home/dir/lang'
+	assert ext2 == 'ts.dts'
+	path3, ext3 := 'home/dir'.split_once('.') or { '', '' }
+	assert path3 == ''
+	assert ext3 == ''
+}
+
+fn test_rsplit_once() ? {
+	ext1, path1 := 'home/dir/lang.zip'.rsplit_once('.')?
+	assert path1 == 'home/dir/lang'
+	assert ext1 == 'zip'
+	ext2, path2 := 'home/dir/lang.ts.dts'.rsplit_once('.')?
+	assert path2 == 'home/dir/lang.ts'
+	assert ext2 == 'dts'
+	ext3, path3 := 'home/dir'.rsplit_once('.') or { '', '' }
+	assert path3 == ''
+	assert ext3 == ''
+}
+
 fn test_trim_space() {
 	a := ' a '
 	assert a.trim_space() == 'a'
