@@ -2872,7 +2872,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			'a variadic'
 		}
 		c.error('cannot type cast ${msg}', node.pos)
-	} else if !c.inside_unsafe && to_type.is_ptr() && from_type.is_ptr()
+	} else if !c.inside_unsafe && to_type.is_ptr() && from_type.is_ptr() && to_type != from_type
 		&& to_type.deref() != ast.char_type && from_type.deref() != ast.char_type {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
