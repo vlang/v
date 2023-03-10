@@ -803,6 +803,38 @@ pub fn (s string) rsplit(delim string) []string {
 	return s.rsplit_nth(delim, 0)
 }
 
+// split_once devides string into pair of string by `delim`.
+// Example:
+// ```v
+// _, ext := 'file.ts.dts'.splice_once('.')?
+// assert ext == 'ts.dts'
+// ```
+pub fn (s string) split_once(delim string) ?(string, string) {
+	result := s.split_nth(delim, 2)
+
+	if result.len != 2 {
+		return none
+	}
+
+	return result[0], result[1]
+}
+
+// rsplit_once devides string into pair of string by `delim`.
+// Example:
+// ```v
+// ext, _ := 'file.ts.dts'.splice_once('.')?
+// assert ext == 'dts'
+// ```
+pub fn (s string) rsplit_once(delim string) ?(string, string) {
+	result := s.rsplit_nth(delim, 2)
+
+	if result.len != 2 {
+		return none
+	}
+
+	return result[0], result[1]
+}
+
 // split_nth splits the string based on the passed `delim` substring.
 // It returns the first Nth parts. When N=0, return all the splits.
 // The last returned element has the remainder of the string, even if
