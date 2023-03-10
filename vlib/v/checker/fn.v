@@ -1598,18 +1598,27 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				arg_sym := c.table.sym(c.comptime_fields_default_type)
 				if arg_sym.kind == .array
 					&& c.table.sym(method.params[param_idx].typ).kind == .array {
-					c.table.register_fn_concrete_types(method.fkey(), [
+					if c.table.register_fn_concrete_types(method.fkey(), [
 						(arg_sym.info as ast.Array).elem_type,
 					])
+					{
+						c.need_recheck_generic_fns = true
+					}
 				} else {
-					c.table.register_fn_concrete_types(method.fkey(), [
+					if c.table.register_fn_concrete_types(method.fkey(), [
 						c.comptime_fields_default_type,
 					])
+					{
+						c.need_recheck_generic_fns = true
+					}
 				}
 			} else if c.inside_for_in_any_cond && method.params[param_idx].typ.has_flag(.generic) {
-				c.table.register_fn_concrete_types(method.fkey(), [
+				if c.table.register_fn_concrete_types(method.fkey(), [
 					c.for_in_any_val_type,
 				])
+				{
+					c.need_recheck_generic_fns = true
+				}
 			}
 			if no_type_promotion {
 				if got_arg_typ != exp_arg_typ {
