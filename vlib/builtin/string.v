@@ -806,7 +806,8 @@ pub fn (s string) rsplit(delim string) []string {
 // split_once devides string into pair of string by `delim`.
 // Example:
 // ```v
-// ext, _ := 'file.ts.dts'.splice_once('.')?
+// path, ext := 'file.ts.dts'.splice_once('.')?
+// assert path == 'file'
 // assert ext == 'ts.dts'
 // ```
 // Note that rsplit_once returns splitted string string as first part of pair,
@@ -818,13 +819,14 @@ pub fn (s string) split_once(delim string) ?(string, string) {
 		return none
 	}
 
-	return result[1], result[0]
+	return result[0], result[1]
 }
 
 // rsplit_once devides string into pair of string by `delim`.
 // Example:
 // ```v
-// ext, _ := 'file.ts.dts'.splice_once('.')?
+// path, ext := 'file.ts.dts'.splice_once('.')?
+// assert path == 'file.ts'
 // assert ext == 'dts'
 // ```
 // Note that rsplit_once returns remaining string as first part of pair,
