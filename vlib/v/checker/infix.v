@@ -636,6 +636,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 		else {}
 	}
+	if (left_type.has_flag(.option) || right_type.has_flag(.option))
+		&& node.op in [.eq, .ne, .lt, .gt, .le, .ge] {
+		opt_infix_pos := if left_type.has_flag(.option) { left_pos } else { right_pos }
+		c.add_error_detail('Use var? to unwrap it first')
+		c.error('Option needs to be unwrapped before comparing them', opt_infix_pos)
+	}
 	// TODO: Absorb this block into the above single side check block to accelerate.
 	if left_type == ast.bool_type && node.op !in [.eq, .ne, .logical_or, .and] {
 		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`',
