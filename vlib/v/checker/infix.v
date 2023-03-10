@@ -636,12 +636,6 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 		else {}
 	}
-	if (left_type.has_flag(.option) || right_type.has_flag(.option))
-		&& node.op in [.eq, .ne, .lt, .gt, .le, .ge] {
-		opt_infix_pos := if left_type.has_flag(.option) { left_pos } else { right_pos }
-		c.add_error_detail('Use var? to unwrap it first')
-		c.error('Option needs to be unwrapped before comparing them', opt_infix_pos)
-	}
 	// TODO: Absorb this block into the above single side check block to accelerate.
 	if left_type == ast.bool_type && node.op !in [.eq, .ne, .logical_or, .and] {
 		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`',
@@ -675,10 +669,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	// TODO move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
 	left_is_option := left_type.has_flag(.option)
 	right_is_option := right_type.has_flag(.option)
-	if node.left !in [ast.Ident, ast.SelectorExpr, ast.ComptimeSelector]
-		&& (left_is_option || right_is_option) {
+	if left_is_option || right_is_option {
 		opt_infix_pos := if left_is_option { left_pos } else { right_pos }
-		c.error('unwrapped option cannot be used in an infix expression', opt_infix_pos)
+		if node.left !in [ast.Ident, ast.SelectorExpr, ast.ComptimeSelector]
+			|| node.op in [.eq, .ne, .lt, .gt, .le, .ge] {
+			c.error('unwrapped option cannot be used in an infix expression', opt_infix_pos)
+		}
 	}
 
 	left_is_result := left_type.has_flag(.result)
