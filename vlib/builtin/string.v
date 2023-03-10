@@ -836,7 +836,7 @@ pub fn (s string) rsplit_once(delim string) ?(string, string) {
 		return none
 	}
 
-	return result[0], result[1]
+	return result[1], result[0]
 }
 
 // split_nth splits the string based on the passed `delim` substring.
