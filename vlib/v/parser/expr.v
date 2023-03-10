@@ -454,6 +454,9 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 	if p.inside_if_cond {
 		p.if_cond_comments << p.eat_comments()
 	}
+	if p.tok.kind == .comment && p.peek_tok.kind.is_infix() {
+		p.left_comments = p.eat_comments()
+	}
 	return p.expr_with_left(node, precedence, is_stmt_ident)
 }
 
@@ -606,6 +609,8 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	if p.inside_if_cond {
 		p.if_cond_comments << p.eat_comments()
 	}
+	before_op_comments := p.left_comments
+	after_op_comments := p.eat_comments()
 	mut right := ast.empty_expr
 	prev_expecting_type := p.expecting_type
 	if op in [.key_is, .not_is] {
@@ -648,6 +653,8 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		op: op
 		pos: pos
 		is_stmt: p.is_stmt_ident
+		before_op_comments: before_op_comments
+		after_op_comments: after_op_comments
 		or_block: ast.OrExpr{
 			stmts: or_stmts
 			kind: or_kind

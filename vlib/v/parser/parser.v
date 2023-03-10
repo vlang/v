@@ -93,6 +93,7 @@ mut:
 	anon_struct_decl          ast.StructDecl
 	struct_init_generic_types []ast.Type
 	if_cond_comments          []ast.Comment
+	left_comments             []ast.Comment
 	script_mode               bool
 	script_mode_start_token   token.Token
 pub mut:
