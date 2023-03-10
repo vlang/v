@@ -396,13 +396,13 @@ fn test_rsplit_any() {
 }
 
 fn test_split_once() ? {
-	path1, ext1 := 'home/dir/lang.zip'.split_once('.')?
+	ext1, path1 := 'home/dir/lang.zip'.split_once('.')?
 	assert path1 == 'home/dir/lang'
 	assert ext1 == 'zip'
-	path2, ext2 := 'home/dir/lang.ts.dts'.split_once('.')?
+	ext2, path2 := 'home/dir/lang.ts.dts'.split_once('.')?
 	assert path2 == 'home/dir/lang'
 	assert ext2 == 'ts.dts'
-	path3, ext3 := 'home/dir'.split_once('.') or { '', '' }
+	ext3, path3 := 'home/dir'.split_once('.') or { '', '' }
 	assert path3 == ''
 	assert ext3 == ''
 }
