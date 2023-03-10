@@ -661,6 +661,7 @@ pub fn (mut f Gen) expr(node_ ast.Expr) {
 				.enum_ { f.write('\$Enum') }
 				.alias { f.write('\$Alias') }
 				.function { f.write('\$Function') }
+				.option { f.write('\$Option') }
 			}
 		}
 	}
