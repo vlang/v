@@ -454,7 +454,7 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 	if p.inside_if_cond {
 		p.if_cond_comments << p.eat_comments()
 	}
-	if p.tok.kind == .comment && p.peek_tok.kind.is_infix() {
+	if p.tok.kind == .comment && p.peek_tok.kind.is_infix() && p.inside_infix {
 		p.left_comments = p.eat_comments()
 	}
 	return p.expr_with_left(node, precedence, is_stmt_ident)
@@ -598,6 +598,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 }
 
 fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
+	p.inside_infix = true
 	op := p.tok.kind
 	if op == .arrow {
 		p.or_is_handled = true
@@ -609,7 +610,8 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	if p.inside_if_cond {
 		p.if_cond_comments << p.eat_comments()
 	}
-	before_op_comments := p.left_comments
+	before_op_comments := p.left_comments.clone()
+	p.left_comments = []
 	after_op_comments := p.eat_comments()
 	mut right := ast.empty_expr
 	prev_expecting_type := p.expecting_type
@@ -647,6 +649,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		p.or_is_handled = false
 	}
 	pos.update_last_line(p.prev_tok.line_nr)
+	p.inside_infix = false
 	return ast.InfixExpr{
 		left: left
 		right: right
