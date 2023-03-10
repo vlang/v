@@ -16,9 +16,7 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 		g.writeln(';')
 		g.writeln('if (${expr}.state != 0) {')
 		if expr is ast.Ident && (expr as ast.Ident).or_expr.kind == .propagate_option {
-			g.write('return ')
-			g.gen_option_error(g.cur_fn.return_type, expr)
-			g.writeln(';')
+			g.writeln('\tpanic_option_not_set(_SLIT("none"));')
 		} else {
 			g.inside_or_block = true
 			defer {
