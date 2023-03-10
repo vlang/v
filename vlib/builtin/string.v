@@ -757,12 +757,88 @@ pub fn (s string) split_any(delim string) []string {
 	return res
 }
 
+// rsplit_any splits the string to an array by any of the `delim` chars in reverse order.
+// Example: "first row\nsecond row".rsplit_any(" \n") == ['row', 'second', 'row', 'first']
+// Split a string using the chars in the delimiter string as delimiters chars.
+// If the delimiter string is empty then `.rsplit()` is used.
+[direct_array_access]
+pub fn (s string) rsplit_any(delim string) []string {
+	mut res := []string{}
+	mut i := s.len - 1
+	if s.len > 0 {
+		if delim.len <= 0 {
+			return s.rsplit('')
+		}
+		mut rbound := s.len
+		for i >= 0 {
+			for delim_ch in delim {
+				if s[i] == delim_ch {
+					res << s[i + 1..rbound]
+					rbound = i
+					break
+				}
+			}
+			i--
+		}
+		if rbound > 0 {
+			res << s[..rbound]
+		}
+	}
+	return res
+}
+
 // split splits the string to an array by `delim`.
 // Example: assert 'A B C'.split(' ') == ['A','B','C']
 // If `delim` is empty the string is split by it's characters.
 // Example: assert 'DEF'.split('') == ['D','E','F']
 pub fn (s string) split(delim string) []string {
 	return s.split_nth(delim, 0)
+}
+
+// rsplit splits the string to an array by `delim` in reverse order.
+// Example: assert 'A B C'.rsplit(' ') == ['C','B','A']
+// If `delim` is empty the string is split by it's characters.
+// Example: assert 'DEF'.rsplit('') == ['F','E','D']
+pub fn (s string) rsplit(delim string) []string {
+	return s.rsplit_nth(delim, 0)
+}
+
+// split_once devides string into pair of string by `delim`.
+// Example:
+// ```v
+// path, ext := 'file.ts.dts'.splice_once('.')?
+// assert path == 'file'
+// assert ext == 'ts.dts'
+// ```
+// Note that rsplit_once returns splitted string string as first part of pair,
+// and returns remaining as second part of pair.
+pub fn (s string) split_once(delim string) ?(string, string) {
+	result := s.split_nth(delim, 2)
+
+	if result.len != 2 {
+		return none
+	}
+
+	return result[0], result[1]
+}
+
+// rsplit_once devides string into pair of string by `delim`.
+// Example:
+// ```v
+// path, ext := 'file.ts.dts'.splice_once('.')?
+// assert path == 'file.ts'
+// assert ext == 'dts'
+// ```
+// Note that rsplit_once returns remaining string as first part of pair,
+// and returns splitted string as second part of pair.
+pub fn (s string) rsplit_once(delim string) ?(string, string) {
+	result := s.rsplit_nth(delim, 2)
+
+	if result.len != 2 {
+		return none
+	}
+
+	return result[1], result[0]
 }
 
 // split_nth splits the string based on the passed `delim` substring.
@@ -833,6 +909,74 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 			// Then the remaining right part of the string
 			if nth < 1 || res.len < nth {
 				res << s[start..]
+			}
+			return res
+		}
+	}
+}
+
+// rsplit_nth splits the string based on the passed `delim` substring in revese order.
+// It returns the first Nth parts. When N=0, return all the splits.
+// The last returned element has the remainder of the string, even if
+// the remainder contains more `delim` substrings.
+[direct_array_access]
+pub fn (s string) rsplit_nth(delim string, nth int) []string {
+	mut res := []string{}
+	mut i := s.len - 1
+
+	match delim.len {
+		0 {
+			for i >= 0 {
+				if nth > 0 && res.len == nth - 1 {
+					res << s[..i]
+					break
+				}
+				res << s[i].ascii_str()
+				i--
+			}
+			return res
+		}
+		1 {
+			mut rbound := s.len
+			delim_byte := delim[0]
+
+			for i >= 0 {
+				if s[i] == delim_byte {
+					if nth > 0 && res.len == nth - 1 {
+						break
+					}
+					res << s[i + 1..rbound]
+					rbound = i
+					i--
+				} else {
+					i--
+				}
+			}
+
+			if nth < 1 || res.len < nth {
+				res << s[..rbound]
+			}
+			return res
+		}
+		else {
+			mut rbound := s.len
+
+			for i >= 0 {
+				is_delim := i - delim.len >= 0 && s[i - delim.len..i] == delim
+				if is_delim {
+					if nth > 0 && res.len == nth - 1 {
+						break
+					}
+					res << s[i..rbound]
+					rbound = i - delim.len
+					i -= delim.len
+				} else {
+					i--
+				}
+			}
+
+			if nth < 1 || res.len < nth {
+				res << s[..rbound]
 			}
 			return res
 		}

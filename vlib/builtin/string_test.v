@@ -188,6 +188,37 @@ fn test_split_nth() {
 	assert e.split_nth(',', 3).len == 3
 }
 
+fn test_rsplit_nth() {
+	a := '1,2,3'
+	assert a.rsplit(',').len == 3
+	assert a.rsplit_nth(',', -1).len == 3
+	assert a.rsplit_nth(',', 0).len == 3
+	assert a.rsplit_nth(',', 1).len == 1
+	assert a.rsplit_nth(',', 2).len == 2
+	assert a.rsplit_nth(',', 10).len == 3
+	b := '1::2::3'
+	assert b.rsplit('::').len == 3
+	assert b.rsplit_nth('::', -1).len == 3
+	assert b.rsplit_nth('::', 0).len == 3
+	assert b.rsplit_nth('::', 1).len == 1
+	assert b.rsplit_nth('::', 2).len == 2
+	assert b.rsplit_nth('::', 10).len == 3
+	c := 'ABCDEF'
+	assert c.rsplit('').len == 6
+	assert c.rsplit_nth('', 3).len == 3
+	assert c.rsplit_nth('BC', -1).len == 2
+	d := ','
+	assert d.rsplit(',').len == 2
+	assert d.rsplit_nth('', 3).len == 1
+	assert d.rsplit_nth(',', -1).len == 2
+	assert d.rsplit_nth(',', 3).len == 2
+	e := ',,,0,,,,,a,,b,'
+	assert e.rsplit(',,').len == 5
+	assert e.rsplit_nth(',,', 3).len == 3
+	assert e.rsplit_nth(',', -1).len == 12
+	assert e.rsplit_nth(',', 3).len == 3
+}
+
 fn test_split_nth_values() {
 	line := 'CMD=eprintln(phase=1)'
 
@@ -217,6 +248,37 @@ fn test_split_nth_values() {
 	assert a4[0] == 'CMD'
 	assert a4[1] == 'eprintln(phase'
 	assert a4[2] == '1)'
+}
+
+fn test_rsplit_nth_values() {
+	line := 'CMD=eprintln(phase=1)'
+
+	a0 := line.rsplit_nth('=', 0)
+	assert a0.len == 3
+	assert a0[0] == '1)'
+	assert a0[1] == 'eprintln(phase'
+	assert a0[2] == 'CMD'
+
+	a1 := line.rsplit_nth('=', 1)
+	assert a1.len == 1
+	assert a1[0] == 'CMD=eprintln(phase=1)'
+
+	a2 := line.rsplit_nth('=', 2)
+	assert a2.len == 2
+	assert a2[0] == '1)'
+	assert a2[1] == 'CMD=eprintln(phase'
+
+	a3 := line.rsplit_nth('=', 3)
+	assert a3.len == 3
+	assert a0[0] == '1)'
+	assert a0[1] == 'eprintln(phase'
+	assert a0[2] == 'CMD'
+
+	a4 := line.rsplit_nth('=', 4)
+	assert a4.len == 3
+	assert a0[0] == '1)'
+	assert a0[1] == 'eprintln(phase'
+	assert a0[2] == 'CMD'
 }
 
 fn test_split() {
@@ -265,6 +327,52 @@ fn test_split() {
 	assert vals[1] == ''
 }
 
+fn test_rsplit() {
+	mut s := 'volt/twitch.v:34'
+	mut vals := s.rsplit(':')
+	assert vals.len == 2
+	assert vals[0] == '34'
+	assert vals[1] == 'volt/twitch.v'
+	// /////////
+	s = '2018-01-01z13:01:02'
+	vals = s.rsplit('z')
+	assert vals.len == 2
+	assert vals[0] == '13:01:02'
+	assert vals[1] == '2018-01-01'
+	// //////////
+	s = '4627a862c3dec29fb3182a06b8965e0025759e18___1530207969___blue'
+	vals = s.rsplit('___')
+	assert vals.len == 3
+	assert vals[0] == 'blue'
+	assert vals[1] == '1530207969'
+	assert vals[2] == '4627a862c3dec29fb3182a06b8965e0025759e18'
+	// /////////
+	s = 'lalala'
+	vals = s.rsplit('a')
+	assert vals.len == 4
+	assert vals[0] == ''
+	assert vals[1] == 'l'
+	assert vals[2] == 'l'
+	assert vals[3] == 'l'
+	// /////////
+	s = 'awesome'
+	a := s.rsplit('')
+	assert a.len == 7
+	assert a[0] == 'e'
+	assert a[1] == 'm'
+	assert a[2] == 'o'
+	assert a[3] == 's'
+	assert a[4] == 'e'
+	assert a[5] == 'w'
+	assert a[6] == 'a'
+	// /////////
+	s = 'wavy turquoise bags'
+	vals = s.rsplit('wavy ')
+	assert vals.len == 2
+	assert vals[0] == 'turquoise bags'
+	assert vals[1] == ''
+}
+
 fn test_split_any() {
 	assert 'ABC'.split_any('') == ['A', 'B', 'C']
 	assert ''.split_any(' ') == []
@@ -274,6 +382,41 @@ fn test_split_any() {
 	assert 'Ciao+come*stai? '.split_any('+*') == ['Ciao', 'come', 'stai? ']
 	assert 'Ciao+come*stai? '.split_any('+* ') == ['Ciao', 'come', 'stai?']
 	assert 'first row\nsecond row'.split_any(' \n') == ['first', 'row', 'second', 'row']
+}
+
+fn test_rsplit_any() {
+	assert 'ABC'.rsplit_any('') == ['C', 'B', 'A']
+	assert ''.rsplit_any(' ') == []
+	assert ' '.rsplit_any(' ') == ['']
+	assert '  '.rsplit_any(' ') == ['', '']
+	assert ' Ciao come stai?'.rsplit_any(' ') == ['stai?', 'come', 'Ciao']
+	assert ' Ciao+come*stai?'.rsplit_any('+*') == ['stai?', 'come', ' Ciao']
+	assert ' Ciao+come*stai?'.rsplit_any('+* ') == ['stai?', 'come', 'Ciao']
+	assert 'first row\nsecond row'.rsplit_any(' \n') == ['row', 'second', 'row', 'first']
+}
+
+fn test_split_once() ? {
+	path1, ext1 := 'home/dir/lang.zip'.split_once('.')?
+	assert path1 == 'home/dir/lang'
+	assert ext1 == 'zip'
+	path2, ext2 := 'home/dir/lang.ts.dts'.split_once('.')?
+	assert path2 == 'home/dir/lang'
+	assert ext2 == 'ts.dts'
+	path3, ext3 := 'home/dir'.split_once('.') or { '', '' }
+	assert path3 == ''
+	assert ext3 == ''
+}
+
+fn test_rsplit_once() ? {
+	path1, ext1 := 'home/dir/lang.zip'.rsplit_once('.')?
+	assert path1 == 'home/dir/lang'
+	assert ext1 == 'zip'
+	path2, ext2 := 'home/dir/lang.ts.dts'.rsplit_once('.')?
+	assert path2 == 'home/dir/lang.ts'
+	assert ext2 == 'dts'
+	path3, ext3 := 'home/dir'.rsplit_once('.') or { '', '' }
+	assert path3 == ''
+	assert ext3 == ''
 }
 
 fn test_trim_space() {
