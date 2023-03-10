@@ -1823,7 +1823,7 @@ for i, name in names {
 The `for value in arr` form is used for going through elements of an array.
 If an index is required, an alternative form `for index, value in arr` can be used.
 
-Note, that the value is read-only.
+Note that the value is read-only.
 If you need to modify the array while looping, you need to declare the element as mutable:
 
 ```v
@@ -2599,7 +2599,7 @@ println(nums)
 // "[2, 4, 6]"
 ```
 
-Note, that you have to add `mut` before `nums` when calling this function. This makes
+Note that you have to add `mut` before `nums` when calling this function. This makes
 it clear that the function being called will modify the value.
 
 It is preferable to return values instead of modifying arguments,
@@ -3344,7 +3344,7 @@ fn fn1(s Foo) {
 We can test the underlying type of an interface using dynamic cast operators:
 
 ```v oksyntax
-// interface-exmaple.3 (continued from interface-exampe.1)
+// interface-example.3 (continued from interface-example.1)
 interface Something {}
 
 fn announce(s Something) {
@@ -3408,7 +3408,7 @@ For more information, see [Dynamic casts](#dynamic-casts).
 
 #### Interface method definitions
 
-Also unlike Go, an interface can have it's own methods, similar to how
+Also unlike Go, an interface can have its own methods, similar to how
 structs can have their methods. These 'interface methods' do not have
 to be implemented, by structs which implement that interface.
 They are just a convenient way to write `i.some_function()` instead of
@@ -3708,7 +3708,7 @@ fn main() {
 V used to combine `Option` and `Result` into one type, now they are separate.
 
 The amount of work required to "upgrade" a function to an option/result function is minimal;
-you have to add a `?` or `!` to the return type and return an error when something goes wrong.
+you have to add a `?` or `!` to the return type and return `none` or an error (respectively) when something goes wrong.
 
 This is the primary mechanism for error handling in V. They are still values, like in Go,
 but the advantage is that errors can't be unhandled, and handling them is a lot less verbose.
@@ -4328,7 +4328,7 @@ which is handy when developing new functionality, to keep your invariants in che
 
 ### Asserts with an extra message
 
-This form of the `assert` statement, will print the extra message when it fails. Note, that
+This form of the `assert` statement, will print the extra message when it fails. Note that
 you can use any string expression there - string literals, functions returning a string,
 strings that interpolate variables, etc.
 
@@ -4343,7 +4343,7 @@ fn test_assertion_with_extra_message_failure() {
 ### Asserts that do not abort your program
 
 When initially prototyping functionality and tests, it is sometimes desirable to
-have asserts, that do not stop the program, but just print their failures. That can
+have asserts that do not stop the program, but just print their failures. That can
 be achieved by tagging your assert containing functions with an `[assert_continues]`
 tag, for example running this program:
 
@@ -4421,7 +4421,7 @@ producing the correct output. V executes all test functions in the file.
   have access to the private functions/types of the modules. They can test only
   the external/public API that a module provides.
 
-In the example above, `test_hello` is an internal test, that can call
+In the example above, `test_hello` is an internal test that can call
 the private function `hello()` because `hello_test.v` has `module main`,
 just like `hello.v`, i.e. both are part of the same module. Note also that
 since `module main` is a regular module like the others, internal tests can
@@ -4613,7 +4613,7 @@ fn f() (RefStruct, &MyStruct) {
 }
 ```
 
-Here `a` is stored on the stack since it's address never leaves the function `f()`.
+Here `a` is stored on the stack since its address never leaves the function `f()`.
 However a reference to `b` is part of `e` which is returned. Also a reference to
 `c` is returned. For this reason `b` and `c` will be heap allocated.
 
