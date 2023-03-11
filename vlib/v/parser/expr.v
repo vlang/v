@@ -454,7 +454,7 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 	if p.inside_if_cond {
 		p.if_cond_comments << p.eat_comments()
 	}
-	if p.tok.kind == .comment && p.peek_tok.kind.is_infix() && !p.inside_infix
+	if p.pref.is_fmt && p.tok.kind == .comment && p.peek_tok.kind.is_infix() && !p.inside_infix
 		&& !(p.peek_tok.kind == .mul && p.peek_tok.pos().line_nr != p.tok.pos().line_nr) {
 		p.left_comments = p.eat_comments()
 	}
@@ -611,7 +611,11 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	if p.inside_if_cond {
 		p.if_cond_comments << p.eat_comments()
 	}
-	before_op_comments := p.left_comments.clone()
+	mut before_op_comments := []ast.Comment{}
+	if p.pref.is_fmt && p.left_comments.len > 0 {
+		before_op_comments = p.left_comments.clone()
+		p.left_comments = []
+	}
 	p.left_comments = []
 	after_op_comments := p.eat_comments()
 	mut right := ast.empty_expr
