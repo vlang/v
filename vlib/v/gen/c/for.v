@@ -132,7 +132,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	mut node := unsafe { node_ }
 	mut is_comptime := false
 
-	if node.cond is ast.Ident && g.is_comptime_var(node.cond) {
+	if (node.cond is ast.Ident && g.is_comptime_var(node.cond)) || node.cond is ast.ComptimeSelector {
 		is_comptime = true
 		mut unwrapped_typ := g.unwrap_generic(g.comptime_for_field_type)
 		mut unwrapped_sym := g.table.sym(unwrapped_typ)
