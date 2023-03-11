@@ -117,6 +117,7 @@ pub mut:
 	is_prof            bool   // benchmark every function
 	is_prod            bool   // use "-O2"
 	is_repl            bool
+	is_eval_argument   bool // true for `v -e 'println(2+2)'`. `println(2+2)` will be in pref.eval_argument .
 	is_run             bool // compile and run a v program, passing arguments to it, and deleting the executable afterwards
 	is_crun            bool // similar to run, but does not recompile the executable, if there were no changes to the sources
 	is_debug           bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
@@ -130,6 +131,7 @@ pub mut:
 	is_apk             bool     // build as Android .apk format
 	is_help            bool     // -h, -help or --help was passed
 	is_cstrict         bool     // turn on more C warnings; slightly slower
+	eval_argument      string   // `println(2+2)` on `v -e "println(2+2)"`. Note that this souce code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
 	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file       string   // the profile results will be stored inside profile_file
 	profile_no_inline  bool     // when true, [inline] functions would not be profiled
@@ -242,6 +244,37 @@ fn detect_musl(mut res Preferences) {
 	}
 }
 
+[noreturn]
+fn run_code_in_tmp_vfile_and_exit(args []string, mut res Preferences, option_name string, extension string, content string) {
+	tmp_file_path := rand.ulid()
+	mut tmp_exe_file_path := res.out_name
+	mut output_option := ''
+	if tmp_exe_file_path == '' {
+		tmp_exe_file_path = '${tmp_file_path}.exe'
+		output_option = '-o ${os.quoted_path(tmp_exe_file_path)} '
+	}
+	tmp_v_file_path := '${tmp_file_path}.${extension}'
+	os.write_file(tmp_v_file_path, content) or {
+		panic('Failed to create temporary file ${tmp_v_file_path}')
+	}
+	run_options := cmdline.options_before(args, [option_name]).join(' ')
+	command_options := cmdline.options_after(args, [option_name])[1..].join(' ')
+	vexe := vexe_path()
+	tmp_cmd := '${os.quoted_path(vexe)} ${output_option} ${run_options} run ${os.quoted_path(tmp_v_file_path)} ${command_options}'
+	//
+	res.vrun_elog('tmp_cmd: ${tmp_cmd}')
+	tmp_result := os.system(tmp_cmd)
+	res.vrun_elog('exit code: ${tmp_result}')
+	//
+	if output_option.len != 0 {
+		res.vrun_elog('remove tmp exe file: ${tmp_exe_file_path}')
+		os.rm(tmp_exe_file_path) or {}
+	}
+	res.vrun_elog('remove tmp v file: ${tmp_v_file_path}')
+	os.rm(tmp_v_file_path) or {}
+	exit(tmp_result)
+}
+
 pub fn parse_args_and_show_errors(known_external_commands []string, args []string, show_output bool) (&Preferences, string) {
 	mut res := &Preferences{}
 	detect_musl(mut res)
@@ -344,6 +377,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-nofloat' {
 				res.nofloat = true
 				res.compile_defines_all << 'nofloat' // so that `$if nofloat? {` works
+			}
+			'-e' {
+				res.is_eval_argument = true
+				res.eval_argument = cmdline.option(current_args, '-e', '')
+				i++
 			}
 			'-gc' {
 				gc_mode := cmdline.option(current_args, '-gc', '')
@@ -763,7 +801,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					if command == '' {
 						command = arg
 						command_pos = i
-						if command in ['run', 'crun'] {
+						if res.is_eval_argument || command in ['run', 'crun'] {
 							break
 						}
 					} else if is_source_file(command) && is_source_file(arg)
@@ -811,6 +849,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
 	}
+
+	if res.is_eval_argument {
+		// `v -e "println(2+5)"`
+		run_code_in_tmp_vfile_and_exit(args, mut res, '-e', 'vsh', res.eval_argument)
+	}
+
 	if res.is_run || res.is_crun {
 		if command_pos + 2 > args.len {
 			eprintln('v run: no v files listed')
@@ -819,34 +863,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		res.path = args[command_pos + 1]
 		res.run_args = args[command_pos + 2..]
 		if res.path == '-' {
-			tmp_file_path := rand.ulid()
-			mut tmp_exe_file_path := res.out_name
-			mut output_option := ''
-			if tmp_exe_file_path == '' {
-				tmp_exe_file_path = '${tmp_file_path}.exe'
-				output_option = '-o ${os.quoted_path(tmp_exe_file_path)} '
-			}
-			tmp_v_file_path := '${tmp_file_path}.v'
+			// `echo "println(2+5)" | v -`
 			contents := os.get_raw_lines_joined()
-			os.write_file(tmp_v_file_path, contents) or {
-				panic('Failed to create temporary file ${tmp_v_file_path}')
-			}
-			run_options := cmdline.options_before(args, ['run']).join(' ')
-			command_options := cmdline.options_after(args, ['run'])[1..].join(' ')
-			vexe := vexe_path()
-			tmp_cmd := '${os.quoted_path(vexe)} ${output_option} ${run_options} run ${os.quoted_path(tmp_v_file_path)} ${command_options}'
-			//
-			res.vrun_elog('tmp_cmd: ${tmp_cmd}')
-			tmp_result := os.system(tmp_cmd)
-			res.vrun_elog('exit code: ${tmp_result}')
-			//
-			if output_option.len != 0 {
-				res.vrun_elog('remove tmp exe file: ${tmp_exe_file_path}')
-				os.rm(tmp_exe_file_path) or {}
-			}
-			res.vrun_elog('remove tmp v file: ${tmp_v_file_path}')
-			os.rm(tmp_v_file_path) or {}
-			exit(tmp_result)
+			run_code_in_tmp_vfile_and_exit(args, mut res, 'run', 'v', contents)
 		}
 		must_exist(res.path)
 		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
