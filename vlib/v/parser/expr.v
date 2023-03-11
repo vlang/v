@@ -599,7 +599,11 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 }
 
 fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
+	prev_inside_infix := p.inside_infix
 	p.inside_infix = true
+	defer {
+		p.inside_infix = prev_inside_infix
+	}
 	op := p.tok.kind
 	if op == .arrow {
 		p.or_is_handled = true
@@ -654,7 +658,6 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		p.or_is_handled = false
 	}
 	pos.update_last_line(p.prev_tok.line_nr)
-	p.inside_infix = false
 	return ast.InfixExpr{
 		left: left
 		right: right
