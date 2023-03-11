@@ -216,7 +216,7 @@ V has plugins for many editors:
 
 V has a Language Server:
 [VLS](https://github.com/vlang/vls).
-VS Code plugin provides built-in support for VLS.
+The VS Code plugin provides built-in support for VLS.
 
 > **Note**
 > 
