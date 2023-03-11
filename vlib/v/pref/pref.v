@@ -244,6 +244,37 @@ fn detect_musl(mut res Preferences) {
 	}
 }
 
+[noreturn]
+fn run_code_in_tmp_vfile_and_exit(args []string, mut res Preferences, option_name string, extension string, content string) {
+	tmp_file_path := rand.ulid()
+	mut tmp_exe_file_path := res.out_name
+	mut output_option := ''
+	if tmp_exe_file_path == '' {
+		tmp_exe_file_path = '${tmp_file_path}.exe'
+		output_option = '-o ${os.quoted_path(tmp_exe_file_path)} '
+	}
+	tmp_v_file_path := '${tmp_file_path}.${extension}'
+	os.write_file(tmp_v_file_path, content) or {
+		panic('Failed to create temporary file ${tmp_v_file_path}')
+	}
+	run_options := cmdline.options_before(args, [option_name]).join(' ')
+	command_options := cmdline.options_after(args, [option_name])[1..].join(' ')
+	vexe := vexe_path()
+	tmp_cmd := '${os.quoted_path(vexe)} ${output_option} ${run_options} run ${os.quoted_path(tmp_v_file_path)} ${command_options}'
+	//
+	res.vrun_elog('tmp_cmd: ${tmp_cmd}')
+	tmp_result := os.system(tmp_cmd)
+	res.vrun_elog('exit code: ${tmp_result}')
+	//
+	if output_option.len != 0 {
+		res.vrun_elog('remove tmp exe file: ${tmp_exe_file_path}')
+		os.rm(tmp_exe_file_path) or {}
+	}
+	res.vrun_elog('remove tmp v file: ${tmp_v_file_path}')
+	os.rm(tmp_v_file_path) or {}
+	exit(tmp_result)
+}
+
 pub fn parse_args_and_show_errors(known_external_commands []string, args []string, show_output bool) (&Preferences, string) {
 	mut res := &Preferences{}
 	detect_musl(mut res)
@@ -819,35 +850,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		exit(1)
 	}
 
-	// v -e "println(2+5)"
 	if res.is_eval_argument {
-		tmp_file_path := rand.ulid()
-		mut tmp_exe_file_path := res.out_name
-		mut output_option := ''
-		if tmp_exe_file_path == '' {
-			tmp_exe_file_path = '${tmp_file_path}.exe'
-			output_option = '-o ${os.quoted_path(tmp_exe_file_path)} '
-		}
-		tmp_v_file_path := '${tmp_file_path}.vsh'
-		os.write_file(tmp_v_file_path, res.eval_argument) or {
-			panic('Failed to create temporary file ${tmp_v_file_path}')
-		}
-		run_options := cmdline.options_before(args, ['-e']).join(' ')
-		command_options := cmdline.options_after(args, ['-e'])[1..].join(' ')
-		vexe := vexe_path()
-		tmp_cmd := '${os.quoted_path(vexe)} ${output_option} ${run_options} run ${os.quoted_path(tmp_v_file_path)} ${command_options}'
-		//
-		res.vrun_elog('tmp_cmd: ${tmp_cmd}')
-		tmp_result := os.system(tmp_cmd)
-		res.vrun_elog('exit code: ${tmp_result}')
-		//
-		if output_option.len != 0 {
-			res.vrun_elog('remove tmp exe file: ${tmp_exe_file_path}')
-			os.rm(tmp_exe_file_path) or {}
-		}
-		res.vrun_elog('remove tmp v file: ${tmp_v_file_path}')
-		os.rm(tmp_v_file_path) or {}
-		exit(tmp_result)
+		// `v -e "println(2+5)"`
+		run_code_in_tmp_vfile_and_exit(args, mut res, '-e', 'vsh', res.eval_argument)
 	}
 
 	if res.is_run || res.is_crun {
@@ -858,34 +863,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		res.path = args[command_pos + 1]
 		res.run_args = args[command_pos + 2..]
 		if res.path == '-' {
-			tmp_file_path := rand.ulid()
-			mut tmp_exe_file_path := res.out_name
-			mut output_option := ''
-			if tmp_exe_file_path == '' {
-				tmp_exe_file_path = '${tmp_file_path}.exe'
-				output_option = '-o ${os.quoted_path(tmp_exe_file_path)} '
-			}
-			tmp_v_file_path := '${tmp_file_path}.v'
+			// `echo "println(2+5)" | v -`
 			contents := os.get_raw_lines_joined()
-			os.write_file(tmp_v_file_path, contents) or {
-				panic('Failed to create temporary file ${tmp_v_file_path}')
-			}
-			run_options := cmdline.options_before(args, ['run']).join(' ')
-			command_options := cmdline.options_after(args, ['run'])[1..].join(' ')
-			vexe := vexe_path()
-			tmp_cmd := '${os.quoted_path(vexe)} ${output_option} ${run_options} run ${os.quoted_path(tmp_v_file_path)} ${command_options}'
-			//
-			res.vrun_elog('tmp_cmd: ${tmp_cmd}')
-			tmp_result := os.system(tmp_cmd)
-			res.vrun_elog('exit code: ${tmp_result}')
-			//
-			if output_option.len != 0 {
-				res.vrun_elog('remove tmp exe file: ${tmp_exe_file_path}')
-				os.rm(tmp_exe_file_path) or {}
-			}
-			res.vrun_elog('remove tmp v file: ${tmp_v_file_path}')
-			os.rm(tmp_v_file_path) or {}
-			exit(tmp_result)
+			run_code_in_tmp_vfile_and_exit(args, mut res, 'run', 'v', contents)
 		}
 		must_exist(res.path)
 		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
