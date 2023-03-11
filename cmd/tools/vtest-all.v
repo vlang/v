@@ -95,6 +95,12 @@ fn get_all_commands() []Command {
 		okmsg: 'V can compile hello world with both -skip-unused and -profile .'
 		rmfile: 'examples/hello_world'
 	}
+	res << Command{
+		line: '${vexe} -e "print(84/2)"'
+		okmsg: 'V can run code given after `-e`'
+		runcmd: .execute
+		expect: '42'
+	}
 	$if linux || macos {
 		res << Command{
 			line: '${vexe} run examples/hello_world.v'
