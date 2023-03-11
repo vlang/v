@@ -818,7 +818,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
 	}
-	
+
 	// v -e "println(2+5)"
 	if res.is_eval_argument {
 		tmp_file_path := rand.ulid()
@@ -849,7 +849,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		os.rm(tmp_v_file_path) or {}
 		exit(tmp_result)
 	}
-	
+
 	if res.is_run || res.is_crun {
 		if command_pos + 2 > args.len {
 			eprintln('v run: no v files listed')
