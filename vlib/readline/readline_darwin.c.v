@@ -38,6 +38,7 @@ mut:
 	c_cc     [cclen]u8
 	c_ispeed int
 	c_ospeed int
+	padding  [200]char // Note: the padding here is larger than necessary, but that is better than overwriting the fields after Termios!
 }
 
 fn C.tcgetattr(fd int, termios_p &C.termios) int
