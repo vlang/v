@@ -172,7 +172,6 @@ fn test_split_nth() {
 	assert b.split_nth('::', 2).len == 2
 	assert b.split_nth('::', 10).len == 3
 	c := 'ABCDEF'
-	println(c.split('').len)
 	assert c.split('').len == 6
 	assert c.split_nth('', 3).len == 3
 	assert c.split_nth('BC', -1).len == 2
@@ -760,7 +759,6 @@ fn test_bytes_to_string() {
 
 fn test_charptr() {
 	foo := &char('VLANG'.str)
-	println(typeof(foo).name)
 	assert typeof(foo).name == '&char'
 	assert unsafe { foo.vstring() } == 'VLANG'
 	assert unsafe { foo.vstring_with_len(3) } == 'VLA'
@@ -872,7 +870,6 @@ fn test_for_loop_two() {
 
 fn test_quote() {
 	a := `'`
-	println('testing double quotes')
 	b := 'hi'
 	assert b == 'hi'
 	assert a.str() == "'"
@@ -946,9 +943,7 @@ fn test_trim_string_right() {
 fn test_raw() {
 	raw := r'raw\nstring'
 	lines := raw.split('\n')
-	println(lines)
 	assert lines.len == 1
-	println('raw string: "${raw}"')
 
 	raw2 := r'Hello V\0'
 	assert raw2[7] == `\\`
@@ -970,7 +965,6 @@ fn test_raw_with_quotes() {
 
 fn test_escape() {
 	a := 10
-	println("\"${a}")
 	assert "\"${a}" == '"10'
 }
 
@@ -986,7 +980,6 @@ fn test_atoi() {
 
 fn test_raw_inter() {
 	world := 'world'
-	println(world)
 	s := r'hello\n$world'
 	assert s == r'hello\n$world'
 	assert s.contains('$')
@@ -995,16 +988,15 @@ fn test_raw_inter() {
 fn test_c_r() {
 	// This used to break because of r'' and c''
 	c := 42
-	println('${c}')
+	cs := '${c}'
 	r := 50
-	println('${r}')
+	rs := '${r}'
 }
 
 fn test_inter_before_comptime_if() {
 	s := '123'
 	// This used to break ('123 $....')
 	$if linux {
-		println(s)
 	}
 	assert s == '123'
 }
@@ -1012,7 +1004,6 @@ fn test_inter_before_comptime_if() {
 fn test_double_quote_inter() {
 	a := 1
 	b := 2
-	println('${a} ${b}')
 	assert '${a} ${b}' == '1 2'
 	assert '${a} ${b}' == '1 2'
 }
