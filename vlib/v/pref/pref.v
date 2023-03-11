@@ -117,6 +117,7 @@ pub mut:
 	is_prof            bool   // benchmark every function
 	is_prod            bool   // use "-O2"
 	is_repl            bool
+	is_eval_argument   bool // true for `v -e 'println(2+2)'`. `println(2+2)` will be in pref.eval_argument .
 	is_run             bool // compile and run a v program, passing arguments to it, and deleting the executable afterwards
 	is_crun            bool // similar to run, but does not recompile the executable, if there were no changes to the sources
 	is_debug           bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
@@ -130,6 +131,7 @@ pub mut:
 	is_apk             bool     // build as Android .apk format
 	is_help            bool     // -h, -help or --help was passed
 	is_cstrict         bool     // turn on more C warnings; slightly slower
+	eval_argument      string   // `println(2+2)` on `v -e "println(2+2)"`. Note that this souce code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
 	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file       string   // the profile results will be stored inside profile_file
 	profile_no_inline  bool     // when true, [inline] functions would not be profiled
@@ -344,6 +346,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-nofloat' {
 				res.nofloat = true
 				res.compile_defines_all << 'nofloat' // so that `$if nofloat? {` works
+			}
+			'-e' {
+				res.is_eval_argument = true
+				res.eval_argument = cmdline.option(current_args, '-e', '')
+				i++
 			}
 			'-gc' {
 				gc_mode := cmdline.option(current_args, '-gc', '')
@@ -763,7 +770,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					if command == '' {
 						command = arg
 						command_pos = i
-						if command in ['run', 'crun'] {
+						if res.is_eval_argument || command in ['run', 'crun'] {
 							break
 						}
 					} else if is_source_file(command) && is_source_file(arg)
@@ -810,6 +817,35 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	if command != 'doc' && res.out_name.ends_with('.v') {
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
+	}
+	if res.is_eval_argument {
+		tmp_file_path := rand.ulid()
+		mut tmp_exe_file_path := res.out_name
+		mut output_option := ''
+		if tmp_exe_file_path == '' {
+			tmp_exe_file_path = '${tmp_file_path}.exe'
+			output_option = '-o ${os.quoted_path(tmp_exe_file_path)} '
+		}
+		tmp_v_file_path := '${tmp_file_path}.vsh'
+		os.write_file(tmp_v_file_path, res.eval_argument) or {
+			panic('Failed to create temporary file ${tmp_v_file_path}')
+		}
+		run_options := cmdline.options_before(args, ['-e']).join(' ')
+		command_options := cmdline.options_after(args, ['-e'])[1..].join(' ')
+		vexe := vexe_path()
+		tmp_cmd := '${os.quoted_path(vexe)} ${output_option} ${run_options} run ${os.quoted_path(tmp_v_file_path)} ${command_options}'
+		//
+		res.vrun_elog('tmp_cmd: ${tmp_cmd}')
+		tmp_result := os.system(tmp_cmd)
+		res.vrun_elog('exit code: ${tmp_result}')
+		//
+		if output_option.len != 0 {
+			res.vrun_elog('remove tmp exe file: ${tmp_exe_file_path}')
+			os.rm(tmp_exe_file_path) or {}
+		}
+		res.vrun_elog('remove tmp v file: ${tmp_v_file_path}')
+		os.rm(tmp_v_file_path) or {}
+		exit(tmp_result)
 	}
 	if res.is_run || res.is_crun {
 		if command_pos + 2 > args.len {
