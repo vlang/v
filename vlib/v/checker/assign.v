@@ -80,10 +80,18 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.error('assignment mismatch: ${node.left.len} variable(s) but `${right_first.name}()` returns ${right_len} value(s)',
 				node.pos)
 		} else if right_first is ast.ParExpr {
-			if right_first.expr is ast.CallExpr {
-				if right_first.expr.return_type == ast.void_type {
-					c.error('assignment mismatch: expected ${node.left.len} value(s) but `${right_first.expr.name}()` returns ${right_len} value(s)',
-						node.pos)
+			mut right_next := right_first
+			for {
+				if right_next.expr is ast.CallExpr {
+					if (right_next.expr as ast.CallExpr).return_type == ast.void_type {
+						c.error('assignment mismatch: expected ${node.left.len} value(s) but `${(right_next.expr as ast.CallExpr).name}()` returns ${right_len} value(s)',
+							node.pos)
+					}
+					break
+				} else if right_next.expr is ast.ParExpr {
+					right_next = right_next.expr as ast.ParExpr
+				} else {
+					break
 				}
 			}
 		} else {
