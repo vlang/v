@@ -149,10 +149,12 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 			e.open_scope()
 			// have to do this because of cgen error
 			args__ := if func.is_method { args[1..] } else { args }
-			for i, arg in args__ {
-				e.local_vars[func.params[i].name] = Var{
-					val: arg
-					scope_idx: e.scope_idx
+			if !is_main {
+				for i, arg in args__ {
+					e.local_vars[func.params[i].name] = Var{
+						val: arg
+						scope_idx: e.scope_idx
+					}
 				}
 			}
 			if func.is_method {
