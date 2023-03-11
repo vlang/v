@@ -227,7 +227,7 @@ VS Code plugin provides built-in support for VLS.
 The plugin for JetBrains IDE (IntelliJ, CLion, GoLand, etc) at the moment is
 the best choice if you want a great V development experience.
 You can see all its features in
-[documentation](https://plugins.jetbrains.com/plugin/20287-vlang/docs/syntax-highlighting.html).
+[its documentation](https://plugins.jetbrains.com/plugin/20287-vlang/docs/syntax-highlighting.html).
 
 ## Testing and running the examples
 
