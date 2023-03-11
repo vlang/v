@@ -201,6 +201,34 @@ cd v
 make
 ```
 
+## Installing editor/IDE plugin
+
+V has plugins for many editors:
+
+- [VS Code plugin](https://github.com/vlang/vscode-vlang)
+- [JetBrains IDE plugin](https://plugins.jetbrains.com/plugin/20287-vlang/docs/quick-start-guide.html)
+- [Vim plugins](https://github.com/vlang/awesome-v#vim)
+- [Emacs plugins](https://github.com/vlang/awesome-v#emacs)
+- [Sublime Text 3 plugins](https://github.com/vlang/awesome-v#sublime-text-3)
+- [Atom plugins](https://github.com/vlang/awesome-v#atom)
+
+### IntelliSense
+
+V has a Language Server:
+[VLS](https://github.com/vlang/vls).
+VS Code plugin provides built-in support for VLS.
+
+> **Note**
+> 
+> VLS may be unstable at the moment.
+> If you encounter any problem, please create a new
+> [issue](https://github.com/vlang/vls/issues).
+
+Plugin for JetBrains IDE (IntelliJ, CLion, GoLand, etc) at the moment
+the best choice if you want a great V development experience.
+You can see all its features in
+[documentation](https://plugins.jetbrains.com/plugin/20287-vlang/docs/syntax-highlighting.html).
+
 ## Testing and running the examples
 
 Make sure V can compile itself:
