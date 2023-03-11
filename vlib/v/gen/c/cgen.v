@@ -3095,7 +3095,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			}
 			g.write(', sizeof(')
 			g.write(elem_typ_str)
-			g.write('))')
+			g.write(')>0 ? sizeof(')
+			g.write(elem_typ_str)
+			g.write(') : 1)')
 		}
 		ast.CharLiteral {
 			g.char_literal(node)
