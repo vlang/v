@@ -116,6 +116,7 @@ mut:
 	is_index_assign                  bool
 	comptime_call_pos                int // needed for correctly checking use before decl for templates
 	goto_labels                      map[string]ast.GotoLabel // to check for unused goto labels
+	enum_data_type                   ast.Type
 }
 
 pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
@@ -1301,8 +1302,8 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		c.error('`${node.expr}` does not return a value', node.pos)
 		node.expr_type = ast.void_type
 		return ast.void_type
-	} else if typ == c.table.find_type_idx('EnumData') && node.field_name == 'value' {
-		// for comp-time enum.vals
+	} else if c.inside_comptime_for_field && typ == c.enum_data_type && node.field_name == 'value' {
+		// for comp-time enum.values
 		node.expr_type = c.comptime_fields_type[c.comptime_for_field_var]
 		return node.expr_type
 	}

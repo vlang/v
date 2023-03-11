@@ -273,13 +273,13 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 			typ: p.table.find_type_idx('FunctionData')
 			pos: var_pos
 		})
-	} else if for_val == 'vals' {
+	} else if for_val == 'values' {
 		p.scope.register(ast.Var{
 			name: val_var
 			typ: p.table.find_type_idx('EnumData')
 			pos: var_pos
 		})
-		kind = .vals
+		kind = .values
 	} else if for_val == 'fields' {
 		p.scope.register(ast.Var{
 			name: val_var

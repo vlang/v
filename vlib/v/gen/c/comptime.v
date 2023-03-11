@@ -815,7 +815,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.pop_existing_comptime_values()
 			}
 		}
-	} else if node.kind == .vals {
+	} else if node.kind == .values {
 		if sym.kind == .enum_ {
 			if sym.info is ast.Enum {
 				if sym.info.vals.len > 0 {

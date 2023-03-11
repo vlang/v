@@ -197,10 +197,13 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 			c.comptime_for_field_var = ''
 			c.inside_comptime_for_field = false
 		}
-	} else if node.kind == .vals {
+	} else if node.kind == .values {
 		if sym.kind == .enum_ {
 			sym_info := sym.info as ast.Enum
 			c.inside_comptime_for_field = true
+			if c.enum_data_type == 0 {
+				c.enum_data_type = ast.Type(c.table.find_type_idx('EnumData'))
+			}
 			for field in sym_info.vals {
 				c.comptime_enum_field_value = field
 				c.comptime_for_field_var = node.val_var
