@@ -10,21 +10,35 @@ import v.token
 fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr ast.Expr, ret_typ ast.Type) {
 	gen_or := expr is ast.Ident && (expr as ast.Ident).or_expr.kind != .absent
 	if gen_or {
-		old_inside_opt_data := g.inside_opt_data
-		g.inside_opt_data = true
+		old_inside_opt_or_res := g.inside_opt_or_res
+		g.inside_opt_or_res = true
 		g.expr_with_cast(expr, expr_typ, ret_typ)
 		g.writeln(';')
 		g.writeln('if (${expr}.state != 0) {')
 		if expr is ast.Ident && (expr as ast.Ident).or_expr.kind == .propagate_option {
-			g.write('return ')
-			g.gen_option_error(g.cur_fn.return_type, expr)
-			g.writeln(';')
+			g.writeln('\tpanic_option_not_set(_SLIT("none"));')
 		} else {
-			g.gen_or_block_stmts(var_expr.str(), '', (expr as ast.Ident).or_expr.stmts,
-				ret_typ, false)
+			g.inside_or_block = true
+			defer {
+				g.inside_or_block = false
+			}
+			stmts := (expr as ast.Ident).or_expr.stmts
+			// handles stmt block which returns something
+			// e.g. { return none }
+			if stmts.len > 0 && stmts.last() is ast.ExprStmt
+				&& (stmts.last() as ast.ExprStmt).typ != ast.void_type {
+				g.gen_or_block_stmts(var_expr.str(), '', stmts, ret_typ, false)
+			} else {
+				// handles stmt block which doesn't returns value
+				// e.g. { return }
+				g.stmts(stmts)
+				if stmts.len > 0 && stmts.last() is ast.ExprStmt {
+					g.writeln(';')
+				}
+			}
 		}
 		g.writeln('}')
-		g.inside_opt_data = old_inside_opt_data
+		g.inside_opt_or_res = old_inside_opt_or_res
 	} else {
 		g.expr_with_opt(expr, expr_typ, ret_typ)
 	}
@@ -54,7 +68,7 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 		} else {
 			old_inside_opt_or_res := g.inside_opt_or_res
 			g.inside_opt_or_res = false
-			g.expr(expr)
+			g.expr_with_cast(expr, expr_typ, ret_typ)
 			g.inside_opt_or_res = old_inside_opt_or_res
 		}
 		g.writeln(' }, (${option_name}*)(&${tmp_var}), sizeof(${styp}));')
@@ -72,7 +86,7 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 	defer {
 		g.inside_opt_or_res = old_inside_opt_or_res
 	}
-	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)&& (expr in [ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr, ast.CastExpr]) {
+	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)&& (expr in [ast.DumpExpr, ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr, ast.CastExpr]) {
 		if expr in [ast.Ident, ast.CastExpr] {
 			if expr_typ.idx() != ret_typ.idx() {
 				return g.expr_opt_with_cast(expr, expr_typ, ret_typ)
@@ -103,8 +117,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	mut return_type := ast.void_type
 	is_decl := node.op == .decl_assign
 	g.assign_op = node.op
+	g.inside_assign = true
 	defer {
 		g.assign_op = .unknown
+		g.inside_assign = false
 	}
 	op := if is_decl { token.Kind.assign } else { node.op }
 	right_expr := node.right[0]
@@ -221,7 +237,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						var_type = g.comptime_var_type_map[key_str] or { var_type }
 						val_type = var_type
 						left.obj.typ = var_type
-						val_type = var_type
 					}
 				} else if val is ast.ComptimeCall {
 					key_str := '${val.method_name}.return_type'
@@ -232,6 +247,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					gen_or = val.or_expr.kind != .absent
 					if val_info.is_option && gen_or {
 						var_type = val_type.clear_flag(.option)
+						left.obj.typ = var_type
+					}
+				} else if val is ast.DumpExpr && (val as ast.DumpExpr).expr is ast.ComptimeSelector {
+					key_str := g.get_comptime_selector_key_type(val.expr as ast.ComptimeSelector)
+					if key_str != '' {
+						var_type = g.comptime_var_type_map[key_str] or { var_type }
+						val_type = var_type
 						left.obj.typ = var_type
 					}
 				}
@@ -597,7 +619,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						if val.is_auto_deref_var() {
 							g.write('*')
 						}
-						if var_type.has_flag(.option) || gen_or {
+						if (var_type.has_flag(.option) && val !in [ast.Ident, ast.SelectorExpr])
+							|| gen_or {
 							g.expr_with_opt_or_block(val, val_type, left, var_type)
 						} else if val is ast.ArrayInit {
 							g.array_init(val, c_name(ident.name))
@@ -649,7 +672,12 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	// multi return
 	// TODO Handle in if_expr
 	mr_var_name := 'mr_${node.pos.pos}'
-	mr_styp := g.typ(return_type.clear_flag(.option).clear_flag(.result))
+	mut is_option := return_type.has_flag(.option)
+	mut mr_styp := g.typ(return_type.clear_flag(.result))
+	if node.right[0] is ast.CallExpr && (node.right[0] as ast.CallExpr).or_block.kind != .absent {
+		is_option = false
+		mr_styp = g.typ(return_type.clear_flag(.option).clear_flag(.result))
+	}
 	g.write('${mr_styp} ${mr_var_name} = ')
 	g.expr(node.right[0])
 	g.writeln(';')
@@ -679,12 +707,16 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 		if g.is_arraymap_set {
 			if is_auto_heap {
 				g.writeln('HEAP${noscan}(${styp}, ${mr_var_name}.arg${i}) });')
+			} else if is_option {
+				g.writeln('(*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i} });')
 			} else {
 				g.writeln('${mr_var_name}.arg${i} });')
 			}
 		} else {
 			if is_auto_heap {
 				g.writeln(' = HEAP${noscan}(${styp}, ${mr_var_name}.arg${i});')
+			} else if is_option {
+				g.writeln(' = (*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i};')
 			} else {
 				g.writeln(' = ${mr_var_name}.arg${i};')
 			}

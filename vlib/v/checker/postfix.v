@@ -35,5 +35,6 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	} else {
 		node.auto_locked, _ = c.fail_if_immutable(node.expr)
 	}
+	node.typ = typ
 	return typ
 }

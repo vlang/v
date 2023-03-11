@@ -131,7 +131,7 @@ pub fn norm_path(path string) string {
 
 // existing_path returns the existing part of the given `path`.
 // An error is returned if there is no existing part of the given `path`.
-pub fn existing_path(path string) ?string {
+pub fn existing_path(path string) !string {
 	err := error('path does not exist')
 	if path.len == 0 {
 		return err

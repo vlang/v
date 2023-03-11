@@ -763,12 +763,24 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 		}
 	} else if node.kind == .fields {
 		// TODO add fields
-		if sym.kind == .struct_ {
-			sym_info := sym.info as ast.Struct
-			if sym_info.fields.len > 0 {
+		if sym.kind in [.struct_, .interface_] {
+			fields := match sym.info {
+				ast.Struct {
+					sym.info.fields
+				}
+				ast.Interface {
+					sym.info.fields
+				}
+				else {
+					g.error('comptime field lookup is supported only for structs and interfaces, and ${sym.name} is neither',
+						node.pos)
+					[]ast.StructField{len: 0}
+				}
+			}
+			if fields.len > 0 {
 				g.writeln('\tFieldData ${node.val_var} = {0};')
 			}
-			for field in sym_info.fields {
+			for field in fields {
 				g.push_existing_comptime_values()
 				g.inside_comptime_for_field = true
 				g.comptime_for_field_var = node.val_var
@@ -835,7 +847,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 	g.writeln('}// \$for')
 }
 
-fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) ?string {
+fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) !string {
 	match name {
 		// platforms/os-es:
 		'windows' {
@@ -991,5 +1003,5 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) ?strin
 			return error('bad os ifdef name "${name}"') // should never happen, caught in the checker
 		}
 	}
-	return none
+	return error('none')
 }

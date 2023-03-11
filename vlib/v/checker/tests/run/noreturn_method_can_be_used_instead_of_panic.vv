@@ -7,7 +7,7 @@ fn (mut t Test) zz_exit() {
 	exit(0)
 }
 
-fn option() ?int {
+fn option() !int {
 	return error('oh no')
 }
 

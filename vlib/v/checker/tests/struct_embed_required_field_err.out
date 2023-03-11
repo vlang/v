@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_embed_required_field_err.vv:11:7: error: field `Foo.foo` must be initialized
+    9 |
+   10 | fn main() {
+   11 |     b := Bar {
+      |          ~~~~~
+   12 |         foo: 1
+   13 |     }

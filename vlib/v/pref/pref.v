@@ -53,6 +53,7 @@ pub enum Backend {
 	js_browser // The JavaScript browser backend
 	js_freestanding // The JavaScript freestanding backend
 	native // The Native backend
+	wasm // The WebAssembly backend
 }
 
 pub fn (b Backend) is_js() bool {
@@ -250,6 +251,14 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	res.run_only = os.getenv('VTEST_ONLY_FN').split_any(',')
 	mut command := ''
 	mut command_pos := -1
+
+	/*
+	$if macos || linux {
+		res.use_cache = true
+		res.skip_unused = true
+	}
+	*/
+
 	// for i, arg in args {
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
@@ -448,6 +457,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-skip-unused' {
 				res.skip_unused = true
+			}
+			'-no-skip-unused' {
+				res.skip_unused = false
 			}
 			'-compress' {
 				res.compress = true
@@ -694,7 +706,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.build_options << '${arg} ${sbackend}'
 				b := backend_from_string(sbackend) or {
 					eprintln('Unknown V backend: ${sbackend}')
-					eprintln('Valid -backend choices are: c, go, interpret, js, js_node, js_browser, js_freestanding, native')
+					eprintln('Valid -backend choices are: c, go, interpret, js, js_node, js_browser, js_freestanding, native, wasm')
 					exit(1)
 				}
 				if b.is_js() {
@@ -786,8 +798,15 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		eprintln_cond(show_output, "Note: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
 		eprintln_cond(show_output, 'Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
 	}
+	if res.os in [.browser, .wasi] && res.backend != .wasm {
+		eprintln('OS `${res.os}` forbidden for backends other than wasm')
+		exit(1)
+	}
+	if res.backend == .wasm && res.os !in [.browser, .wasi, ._auto] {
+		eprintln('Native WebAssembly backend OS must be `browser` or `wasi`')
+		exit(1)
+	}
 
-	// res.use_cache = true
 	if command != 'doc' && res.out_name.ends_with('.v') {
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
@@ -857,11 +876,13 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		res.path = args[command_pos + 1]
 		res.run_args = args[command_pos + 2..]
 
-		must_exist(res.path)
-		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
-			&& os.is_file(res.path + '.v') {
-			eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
-			res.path += '.v'
+		if res.path != '' {
+			must_exist(res.path)
+			if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
+				&& os.is_file(res.path + '.v') {
+				eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
+				res.path += '.v'
+			}
 		}
 	}
 	if command == 'build-module' {
@@ -980,6 +1001,7 @@ pub fn backend_from_string(s string) !Backend {
 		'js_browser' { return .js_browser }
 		'js_freestanding' { return .js_freestanding }
 		'native' { return .native }
+		'wasm' { return .wasm }
 		else { return error('Unknown backend type ${s}') }
 	}
 }

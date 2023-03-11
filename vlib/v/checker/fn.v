@@ -115,10 +115,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			for multi_type in return_sym.info.types {
 				multi_sym := c.table.sym(multi_type)
 				if multi_type == ast.error_type {
-					c.error('type `IError` cannot be used in multi-return, return an option instead',
+					c.error('type `IError` cannot be used in multi-return, return an Option instead',
 						node.return_type_pos)
 				} else if multi_type.has_flag(.result) {
-					c.error('result cannot be used in multi-return, return a result instead',
+					c.error('result cannot be used in multi-return, return a Result instead',
 						node.return_type_pos)
 				} else if multi_sym.kind == .array_fixed {
 					c.error('fixed array cannot be used in multi-return', node.return_type_pos)
@@ -212,7 +212,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					param.pos)
 			}
 			if param.typ.has_flag(.result) {
-				c.error('result type argument is not supported currently', param.type_pos)
+				c.error('Result type argument is not supported currently', param.type_pos)
 			}
 			arg_typ_sym := c.table.sym(param.typ)
 			if arg_typ_sym.info is ast.Struct {
@@ -513,12 +513,12 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		if node.or_block.kind == .propagate_result && !c.table.cur_fn.return_type.has_flag(.result)
 			&& !c.table.cur_fn.return_type.has_flag(.option) {
 			c.add_instruction_for_result_type()
-			c.error('to propagate the result call, `${c.table.cur_fn.name}` must return a result',
+			c.error('to propagate the Result call, `${c.table.cur_fn.name}` must return a Result',
 				node.or_block.pos)
 		}
 		if node.or_block.kind == .propagate_option && !c.table.cur_fn.return_type.has_flag(.option) {
 			c.add_instruction_for_option_type()
-			c.error('to propagate the option call, `${c.table.cur_fn.name}` must return an option',
+			c.error('to propagate the Option call, `${c.table.cur_fn.name}` must return an Option',
 				node.or_block.pos)
 		}
 	}
@@ -1346,10 +1346,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		'unknown method or field: `${left_sym.name}.${method_name}`'
 	}
 	if left_type.has_flag(.option) && method_name != 'str' {
-		c.error('option type cannot be called directly', node.left.pos())
+		c.error('Option type cannot be called directly', node.left.pos())
 		return ast.void_type
 	} else if left_type.has_flag(.result) {
-		c.error('result type cannot be called directly', node.left.pos())
+		c.error('Result type cannot be called directly', node.left.pos())
 		return ast.void_type
 	}
 	if left_sym.kind in [.sum_type, .interface_] {
@@ -1598,18 +1598,27 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				arg_sym := c.table.sym(c.comptime_fields_default_type)
 				if arg_sym.kind == .array
 					&& c.table.sym(method.params[param_idx].typ).kind == .array {
-					c.table.register_fn_concrete_types(method.fkey(), [
+					if c.table.register_fn_concrete_types(method.fkey(), [
 						(arg_sym.info as ast.Array).elem_type,
 					])
+					{
+						c.need_recheck_generic_fns = true
+					}
 				} else {
-					c.table.register_fn_concrete_types(method.fkey(), [
+					if c.table.register_fn_concrete_types(method.fkey(), [
 						c.comptime_fields_default_type,
 					])
+					{
+						c.need_recheck_generic_fns = true
+					}
 				}
 			} else if c.inside_for_in_any_cond && method.params[param_idx].typ.has_flag(.generic) {
-				c.table.register_fn_concrete_types(method.fkey(), [
+				if c.table.register_fn_concrete_types(method.fkey(), [
 					c.for_in_any_val_type,
 				])
+				{
+					c.need_recheck_generic_fns = true
+				}
 			}
 			if no_type_promotion {
 				if got_arg_typ != exp_arg_typ {

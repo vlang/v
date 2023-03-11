@@ -25,7 +25,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	mut has_val := false
 	mut has_type := false
 	mut has_default := false
-	mut has_it := false
+	mut has_index := false
 	mut default_expr := ast.empty_expr
 	if p.tok.kind == .rsbr {
 		last_pos = p.tok.pos()
@@ -97,19 +97,8 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 						return ast.ArrayInit{}
 					}
 					p.check(.colon)
-					p.open_scope()
 					has_default = true
-					p.scope_register_it_as_index()
-					default_expr = p.expr(0)
-					has_it = if var := p.scope.find_var('it') {
-						mut variable := unsafe { var }
-						is_used := variable.is_used
-						variable.is_used = true
-						is_used
-					} else {
-						false
-					}
-					p.close_scope()
+					has_index = p.handle_index_variable(mut default_expr)
 				}
 				last_pos = p.tok.pos()
 				p.check(.rcbr)
@@ -164,19 +153,8 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					cap_expr = p.expr(0)
 				}
 				'init' {
-					p.open_scope()
 					has_default = true
-					p.scope_register_it_as_index()
-					default_expr = p.expr(0)
-					has_it = if var := p.scope.find_var('it') {
-						mut variable := unsafe { var }
-						is_used := variable.is_used
-						variable.is_used = true
-						is_used
-					} else {
-						false
-					}
-					p.close_scope()
+					has_index = p.handle_index_variable(mut default_expr)
 				}
 				else {
 					p.error('wrong field `${key}`, expecting `len`, `cap`, or `init`')
@@ -209,7 +187,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		len_expr: len_expr
 		has_cap: has_cap
 		has_default: has_default
-		has_it: has_it
+		has_index: has_index
 		cap_expr: cap_expr
 		default_expr: default_expr
 	}
@@ -252,12 +230,45 @@ fn (mut p Parser) map_init() ast.MapInit {
 	}
 }
 
-fn (mut p Parser) scope_register_it_as_index() {
-	p.scope.objects['it'] = ast.Var{ // override it variable if it already exist, else create it variable
+fn (mut p Parser) scope_register_index() {
+	p.scope.objects['index'] = ast.Var{ // override index variable if it already exist, else create index variable
+		name: 'index'
+		pos: p.tok.pos()
+		typ: ast.int_type
+		is_mut: false
+		is_used: false
+	}
+	p.scope.objects['it'] = ast.Var{ // it is now deprecated, will be removed in future stable release
 		name: 'it'
 		pos: p.tok.pos()
 		typ: ast.int_type
 		is_mut: false
 		is_used: false
 	}
+}
+
+fn (mut p Parser) handle_index_variable(mut default_expr ast.Expr) bool {
+	mut has_index := false
+	p.open_scope()
+	p.scope_register_index()
+	default_expr = p.expr(0)
+	if var := p.scope.find_var('index') {
+		mut variable := unsafe { var }
+		is_used := variable.is_used
+		variable.is_used = true
+		has_index = is_used
+	}
+	if var := p.scope.find_var('it') { // FIXME: Remove this block when `it` is forbidden
+		mut variable := unsafe { var }
+		is_used := variable.is_used
+		if is_used {
+			p.warn('variable `it` in array initialization will soon be replaced with `index`')
+		}
+		variable.is_used = true
+		if !has_index {
+			has_index = is_used
+		}
+	}
+	p.close_scope()
+	return has_index
 }

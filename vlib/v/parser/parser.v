@@ -2387,6 +2387,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	} else if p.tok.lit == 'JS' {
 		language = ast.Language.js
 		p.check_for_impure_v(language, p.tok.pos())
+	} else if p.tok.lit == 'WASM' {
+		language = ast.Language.wasm
+		p.check_for_impure_v(language, p.tok.pos())
 	}
 	mut mod := ''
 	// p.warn('resetting')
@@ -2484,6 +2487,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			mod = 'C'
 		} else if language == .js {
 			mod = 'JS'
+		} else if language == .wasm {
+			mod = 'WASM'
 		} else {
 			if p.tok.lit in p.imports {
 				// mark the imported module as used
@@ -3421,6 +3426,12 @@ fn (mut p Parser) module_decl() ast.Module {
 				'translated' {
 					p.is_translated = true
 				}
+				'wasm_import_namespace' {
+					if !p.pref.is_fmt && p.pref.backend != .wasm {
+						p.error_with_pos('[wasm_import_namespace] is allowed only in the wasm backend',
+							ma.pos)
+					}
+				}
 				else {
 					p.error_with_pos('unknown module attribute `[${ma.name}]`', ma.pos)
 					return mod_node
@@ -3899,6 +3910,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			is_flag: is_flag
 			is_multi_allowed: is_multi_allowed
 			uses_exprs: uses_exprs
+			typ: enum_type
 		}
 		is_pub: is_pub
 	})

@@ -414,7 +414,7 @@ fn vpm_update(m []string) {
 	}
 }
 
-fn get_outdated() ?[]string {
+fn get_outdated() ![]string {
 	module_names := get_installed_modules()
 	mut outdated := []string{}
 	for name in module_names {
@@ -720,7 +720,7 @@ fn verbose_println(s string) {
 	}
 }
 
-fn get_mod_by_url(name string) ?Mod {
+fn get_mod_by_url(name string) !Mod {
 	if purl := urllib.parse(name) {
 		verbose_println('purl: ${purl}')
 		mod := Mod{
@@ -733,7 +733,7 @@ fn get_mod_by_url(name string) ?Mod {
 	return error('invalid url: ${name}')
 }
 
-fn get_module_meta_info(name string) ?Mod {
+fn get_module_meta_info(name string) !Mod {
 	if mod := get_mod_by_url(name) {
 		return mod
 	}

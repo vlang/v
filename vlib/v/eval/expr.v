@@ -523,6 +523,10 @@ fn (mut e Eval) call_expr(expr ast.CallExpr) Object {
 			mod := expr.mod
 			mut func := e.mods[mod][name] or { e.mods['builtin'][name] or { ast.EmptyStmt{} } }
 
+			if expr.name == 'main.host_pop' {
+				return e.stack_vals.pop()
+			}
+
 			if func is ast.FnDecl {
 				e.run_func(func as ast.FnDecl, ...args)
 				mut ret_val := if e.return_values.len == 1 {

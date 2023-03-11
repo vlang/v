@@ -8,7 +8,7 @@ pub mut:
 
 // new_cipher creates and returns a new Blowfish cipher.
 // The key argument should be the Blowfish key, from 1 to 56 bytes.
-pub fn new_cipher(key []u8) ?Blowfish {
+pub fn new_cipher(key []u8) !Blowfish {
 	mut bf := Blowfish{}
 	unsafe { vmemcpy(&bf.p[0], &p[0], int(sizeof(bf.p))) }
 	unsafe { vmemcpy(&bf.s[0], &s[0], int(sizeof(bf.s))) }
@@ -21,7 +21,7 @@ pub fn new_cipher(key []u8) ?Blowfish {
 }
 
 // new_salted_cipher returns a new Blowfish cipher that folds a salt into its key schedule.
-pub fn new_salted_cipher(key []u8, salt []u8) ?Blowfish {
+pub fn new_salted_cipher(key []u8, salt []u8) !Blowfish {
 	if salt.len == 0 {
 		return new_cipher(key)
 	}

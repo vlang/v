@@ -3717,7 +3717,7 @@ fn (mut g Gen) reverse_string(reg Register) {
 }
 
 fn (mut g Gen) gen_match_expr_amd64(expr ast.MatchExpr) {
-	branch_labels := []int{len: expr.branches.len, init: g.labels.new_label() + it * 0} // call new_label for all elements in the array
+	branch_labels := []int{len: expr.branches.len, init: g.labels.new_label() + index * 0} // call new_label for all elements in the array
 	end_label := g.labels.new_label()
 
 	if expr.is_sum_type {

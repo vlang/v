@@ -36,6 +36,7 @@ pub enum Language {
 	v
 	c
 	js
+	wasm
 	amd64 // aka x86_64
 	i386
 	arm64 // 64-bit arm
@@ -887,6 +888,7 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 		.placeholder, .void, .none_, .generic_inst {}
 		.voidptr, .byteptr, .charptr, .function, .usize, .isize, .any, .thread, .chan {
 			size = t.pointer_size
+			align = t.pointer_size
 		}
 		.i8, .u8, .char, .bool {
 			size = 1
@@ -1075,6 +1077,7 @@ pub:
 	is_flag          bool
 	is_multi_allowed bool
 	uses_exprs       bool
+	typ              Type
 }
 
 [minify]

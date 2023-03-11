@@ -72,7 +72,7 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 				tmp_opt = g.new_tmp_var()
 				cur_line = g.go_before_stmt(0)
 				g.out.write_string(util.tabs(g.indent))
-				opt_elem_type := g.typ(ast.string_type.set_flag(.option))
+				opt_elem_type := g.typ(ast.string_type.set_flag(.result))
 				g.write('${opt_elem_type} ${tmp_opt} = string_substr_with_check(')
 			} else {
 				g.write('string_substr(')
@@ -165,7 +165,7 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 
 	if gen_or {
 		if !node.is_option {
-			g.or_block(tmp_opt, node.or_expr, ast.string_type)
+			g.or_block(tmp_opt, node.or_expr, ast.string_type.set_flag(.result))
 		}
 
 		g.write('\n${cur_line}*(string*)&${tmp_opt}.data')

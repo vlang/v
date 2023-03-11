@@ -254,8 +254,8 @@ println('hello world')
 ```
 
 > **Note**
-> If you do not use explicitly `fn main() {}`, you need to make sure, that all your
-> declarations, come before any variable assignment statements, or top level function calls,
+> If you do not explicitly use `fn main() {}`, you need to make sure that all your
+> declarations come before any variable assignment statements or top level function calls,
 > since V will consider everything after the first assignment/function call as part of your
 > implicit main function.
 
@@ -946,14 +946,14 @@ for i in 0 .. 1000 {
 > **Note**
 > The above code uses a [range `for`](#range-for) statement.
 
-You can initialize the array by accessing the `it` variable which gives
+You can initialize the array by accessing the `index` variable which gives
 the index as shown here:
 
 ```v
-count := []int{len: 4, init: it}
+count := []int{len: 4, init: index}
 assert count == [0, 1, 2, 3]
 
-mut square := []int{len: 6, init: it * it}
+mut square := []int{len: 6, init: index * index}
 // square == [0, 1, 4, 9, 16, 25]
 ```
 
@@ -1823,7 +1823,7 @@ for i, name in names {
 The `for value in arr` form is used for going through elements of an array.
 If an index is required, an alternative form `for index, value in arr` can be used.
 
-Note, that the value is read-only.
+Note that the value is read-only.
 If you need to modify the array while looping, you need to declare the element as mutable:
 
 ```v
@@ -2107,7 +2107,7 @@ mut p := Point{
 	y: 20
 }
 println(p.x) // Struct fields are accessed using a dot
-// Alternative literal syntax for structs with 3 fields or fewer
+// Alternative literal syntax
 p = Point{10, 20}
 assert p.x == 10
 ```
@@ -2171,7 +2171,7 @@ struct Foo {
 
 All struct fields are zeroed by default during the creation of the struct.
 Array and map fields are allocated.
-In case of reference value, [see](#structs-with-reference-fields).
+In case of reference value, see [here](#structs-with-reference-fields).
 
 It's also possible to define custom default values.
 
@@ -2557,7 +2557,7 @@ are a function of their arguments only, and their evaluation has no side effects
 Function arguments are immutable by default, even when [references](#references) are passed.
 
 > **Note**
-> V is not a purely functional language however.
+> However, V is not a purely functional language.
 
 There is a compiler flag to enable global variables (`-enable-globals`), but this is
 intended for low-level applications like kernels and drivers.
@@ -2599,7 +2599,7 @@ println(nums)
 // "[2, 4, 6]"
 ```
 
-Note, that you have to add `mut` before `nums` when calling this function. This makes
+Note that you have to add `mut` before `nums` when calling this function. This makes
 it clear that the function being called will modify the value.
 
 It is preferable to return values instead of modifying arguments,
@@ -2611,6 +2611,10 @@ For this reason V doesn't allow the modification of arguments with primitive typ
 Only more complex types such as arrays and maps may be modified.
 
 ### Variable number of arguments
+V supports functions that receive an arbitrary, variable amounts of arguments, denoted with the 
+`...` prefix.
+Below, `a ...int` refers to an arbitrary amount of parameters that will be collected 
+into an array named `a`.
 
 ```v
 fn sum(a ...int) int {
@@ -2745,9 +2749,10 @@ fn main() {
 }
 ```
 
-V currently does not guarantee, that it will print 100, 200, 300 in that order.
-The only guarantee is that 600 (from the body of `f`), will be printed after all of them.
-That *may* change in V 1.0 .
+V currently does not guarantee that it will print 100, 200, 300 in that order.
+The only guarantee is that 600 (from the body of `f`) will be printed after all of them.
+
+This *may* change in V 1.0 .
 
 ## References
 
@@ -3265,7 +3270,7 @@ fn (c Cat) speak() string {
 	return 'meow'
 }
 
-// unlike Go and like TypeScript, V's interfaces can define fields, not just methods.
+// unlike Go, but like TypeScript, V's interfaces can define both fields and methods.
 interface Speaker {
 	breed string
 	speak() string
@@ -3339,7 +3344,7 @@ fn fn1(s Foo) {
 We can test the underlying type of an interface using dynamic cast operators:
 
 ```v oksyntax
-// interface-exmaple.3 (continued from interface-exampe.1)
+// interface-example.3 (continued from interface-example.1)
 interface Something {}
 
 fn announce(s Something) {
@@ -3393,10 +3398,7 @@ fn main() {
 		dump(a)
 		// In order to execute instances that implements IBar.
 		if a is IBar {
-			// a.bar() // Error.
-			b := a as IBar
-			dump(b)
-			b.bar()
+			a.bar()
 		}
 	}
 }
@@ -3406,7 +3408,7 @@ For more information, see [Dynamic casts](#dynamic-casts).
 
 #### Interface method definitions
 
-Also unlike Go, an interface can have it's own methods, similar to how
+Also unlike Go, an interface can have its own methods, similar to how
 structs can have their methods. These 'interface methods' do not have
 to be implemented, by structs which implement that interface.
 They are just a convenient way to write `i.some_function()` instead of
@@ -3593,7 +3595,7 @@ if mut w is Mars {
 ```
 
 Otherwise `w` would keep its original type.
-> This works for both, simple variables and complex expressions like `user.name`
+> This works for both simple variables and complex expressions like `user.name`
 
 #### Matching sum types
 
@@ -3706,7 +3708,8 @@ fn main() {
 V used to combine `Option` and `Result` into one type, now they are separate.
 
 The amount of work required to "upgrade" a function to an option/result function is minimal;
-you have to add a `?` or `!` to the return type and return an error when something goes wrong.
+you have to add a `?` or `!` to the return type and return `none` or an error (respectively)
+when something goes wrong.
 
 This is the primary mechanism for error handling in V. They are still values, like in Go,
 but the advantage is that errors can't be unhandled, and handling them is a lot less verbose.
@@ -4326,7 +4329,7 @@ which is handy when developing new functionality, to keep your invariants in che
 
 ### Asserts with an extra message
 
-This form of the `assert` statement, will print the extra message when it fails. Note, that
+This form of the `assert` statement, will print the extra message when it fails. Note that
 you can use any string expression there - string literals, functions returning a string,
 strings that interpolate variables, etc.
 
@@ -4341,7 +4344,7 @@ fn test_assertion_with_extra_message_failure() {
 ### Asserts that do not abort your program
 
 When initially prototyping functionality and tests, it is sometimes desirable to
-have asserts, that do not stop the program, but just print their failures. That can
+have asserts that do not stop the program, but just print their failures. That can
 be achieved by tagging your assert containing functions with an `[assert_continues]`
 tag, for example running this program:
 
@@ -4419,7 +4422,7 @@ producing the correct output. V executes all test functions in the file.
   have access to the private functions/types of the modules. They can test only
   the external/public API that a module provides.
 
-In the example above, `test_hello` is an internal test, that can call
+In the example above, `test_hello` is an internal test that can call
 the private function `hello()` because `hello_test.v` has `module main`,
 just like `hello.v`, i.e. both are part of the same module. Note also that
 since `module main` is a regular module like the others, internal tests can
@@ -4611,7 +4614,7 @@ fn f() (RefStruct, &MyStruct) {
 }
 ```
 
-Here `a` is stored on the stack since it's address never leaves the function `f()`.
+Here `a` is stored on the stack since its address never leaves the function `f()`.
 However a reference to `b` is part of `e` which is returned. Also a reference to
 `c` is returned. For this reason `b` and `c` will be heap allocated.
 
@@ -5340,7 +5343,8 @@ type FastFn = fn (int) bool
 // Windows only:
 // Without this attribute all graphical apps will have the following behavior on Windows:
 // If run from a console or terminal; keep the terminal open so all (e)println statements can be viewed.
-// If run from e.g. Explorer, by double-click; app is opened, but no terminal is opened, and no (e)println output can be seen.
+// If run from e.g. Explorer, by double-click; app is opened, but no terminal is opened, and no
+// (e)println output can be seen.
 // Use it to force-open a terminal to view output in, even if the app is started from Explorer.
 // Valid before main() only.
 [console]
@@ -5464,13 +5468,13 @@ is compiled with `v -g` or `v -cg`.
 If you're using a custom ifdef, then you do need `$if option ? {}` and compile with`v -d option`.
 Full list of builtin options:
 
-| OS                             | Compilers        | Platforms        | Other                                            |
-|--------------------------------|------------------|------------------|--------------------------------------------------|
-| `windows`, `linux`, `macos`    | `gcc`, `tinyc`   | `amd64`, `arm64` | `debug`, `prod`, `test`                          |
-| `mac`, `darwin`, `ios`,        | `clang`, `mingw` | `x64`, `x32`     | `js`, `glibc`, `prealloc`                        |
-| `android`, `mach`, `dragonfly` | `msvc`           | `little_endian`  | `no_bounds_checking`, `freestanding`             |
-| `gnu`, `hpux`, `haiku`, `qnx`  | `cplusplus`      | `big_endian`     | `no_segfault_handler`, `no_backtrace`, `no_main` |
-| `solaris`, `termux`            |                  |                  |                                                  |
+| OS                             | Compilers        | Platforms        | Other                                         |
+|--------------------------------|------------------|------------------|-----------------------------------------------|
+| `windows`, `linux`, `macos`    | `gcc`, `tinyc`   | `amd64`, `arm64` | `debug`, `prod`, `test`                       |
+| `mac`, `darwin`, `ios`,        | `clang`, `mingw` | `x64`, `x32`     | `js`, `glibc`, `prealloc`                     |
+| `android`, `mach`, `dragonfly` | `msvc`           | `little_endian`  | `no_bounds_checking`, `freestanding`          |
+| `gnu`, `hpux`, `haiku`, `qnx`  | `cplusplus`      | `big_endian`     | `no_segfault_handler`, `no_backtrace`         |
+| `solaris`, `termux`            |                  |                  | `no_main`                                     |
 
 #### `$embed_file`
 

@@ -252,6 +252,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		} else if branch.cond is ast.IfGuardExpr {
 			mut var_name := guard_vars[i]
 			mut short_opt := false
+			g.left_is_opt = true
 			if var_name == '' {
 				short_opt = true // we don't need a further tmp, so use the one we'll get later
 				var_name = g.new_tmp_var()

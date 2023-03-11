@@ -576,7 +576,7 @@ fn cleanup_files(file string) {
 	}
 }
 
-fn repl_run_vfile(file string) ?os.Result {
+fn repl_run_vfile(file string) !os.Result {
 	$if trace_repl_temp_files ? {
 		eprintln('>> repl_run_vfile file: ${file}')
 	}

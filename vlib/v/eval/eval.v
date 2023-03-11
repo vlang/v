@@ -6,6 +6,7 @@ module eval
 import v.ast
 import v.pref
 import v.util
+import v.builder
 
 $if interpreter {
 	$compile_error('cannot run the V interpreter with `-interpret` backend')
@@ -16,6 +17,38 @@ pub fn new_eval(table &ast.Table, pref_ &pref.Preferences) Eval {
 		table: table
 		pref: pref_
 	}
+}
+
+// Host API
+
+pub fn create() Eval {
+	t := ast.new_table()
+	mut p, _ := pref.parse_args([], ['interpret', ''])
+	p.is_script = true
+	return new_eval(t, p)
+}
+
+pub fn (mut e Eval) push_val(val Object) {
+	e.stack_vals << val
+}
+
+pub fn (mut e Eval) add_file(filepath string) {
+	e.user_files << filepath
+}
+
+pub fn (mut e Eval) run(expression string, args ...Object) ![]Object {
+	mut prepend := 'fn host_pop() voidptr { return 0 }\n'
+	mut b := builder.new_builder(e.pref)
+	e.table = b.table
+
+	mut files := b.get_builtin_files()
+	files << e.user_files
+	b.set_module_lookup_paths()
+
+	b.interpret_text(prepend + expression, files)!
+	e.register_symbols(mut b.parsed_files)
+	e.run_func(e.mods['main']['main'] or { ast.FnDecl{} } as ast.FnDecl, ...args)
+	return e.return_values
 }
 
 // const/global is `Object`
@@ -29,8 +62,10 @@ pub mut:
 	future_register_consts map[string]map[string]map[string]ast.ConstField // mod:file:name:field
 	local_vars             map[string]Var
 	local_vars_stack       []map[string]Var
-	scope_idx              int // this is increased when e.open_scope() is called, decreased when e.close_scope() (and all variables with that scope level deleted)
 	inside_main            bool
+	stack_vals             []Object // host stack popped by host_pop() on interpreted code
+	user_files             []string // user additional files
+	scope_idx              int      // this is increased when e.open_scope() is called, decreased when e.close_scope() (and all variables with that scope level deleted)
 	returning              bool
 	return_values          []Object
 	cur_mod                string
@@ -67,9 +102,10 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 		e.cur_file = old_file
 		e.back_trace.pop()
 	}
+	is_main := func.name == 'main.main'
 	//
 	mut args := _args.clone()
-	if func.params.len != args.len && !func.is_variadic {
+	if !is_main && func.params.len != args.len && !func.is_variadic {
 		e.error('mismatched parameter length for ${func.name}: got `${args.len}`, expected `${func.params.len}`')
 	}
 	if func.name == 'wait' && func.is_method && _args[0] is Thread {

@@ -1,4 +1,5 @@
 builtin/js
+builtin/wasm
 builtin/linux_bare
 builtin/wasm_bare
 os/bare

@@ -759,7 +759,8 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 		tmp_str := str_intp_rune('${elem_str_fn_name}(*(${val_styp}*)DenseArray_value(&m.key_values, i))')
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
 	} else {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(*(${val_styp}*)DenseArray_value(&m.key_values, i)));')
+		ptr_str := '*'.repeat(val_typ.nr_muls())
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(*${ptr_str}(${val_styp}*)DenseArray_value(&m.key_values, i)));')
 	}
 	g.auto_str_funcs.writeln('\t\tif (i != m.key_values.len-1) {')
 	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write_string(&sb, _SLIT(", "));')

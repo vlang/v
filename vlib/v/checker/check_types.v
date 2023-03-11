@@ -194,7 +194,7 @@ fn (c Checker) check_multiple_ptr_match(got ast.Type, expected ast.Type, param a
 	return true
 }
 
-fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, language ast.Language, arg ast.CallArg) ? {
+fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, language ast.Language, arg ast.CallArg) ! {
 	if got == 0 {
 		return error('unexpected 0 type')
 	}

@@ -285,7 +285,7 @@ pub fn is_leap_year(year int) bool {
 }
 
 // days_in_month returns a number of days in a given month.
-pub fn days_in_month(month int, year int) ?int {
+pub fn days_in_month(month int, year int) !int {
 	if month > 12 || month < 1 {
 		return error('Invalid month: ${month}')
 	}

@@ -196,6 +196,7 @@ fn (mut f Fmt) write_language_prefix(lang ast.Language) {
 	match lang {
 		.c { f.write('C.') }
 		.js { f.write('JS.') }
+		.wasm { f.write('WASM.') }
 		else {}
 	}
 }
@@ -740,6 +741,7 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 				.enum_ { f.write('\$Enum') }
 				.alias { f.write('\$Alias') }
 				.function { f.write('\$Function') }
+				.option { f.write('\$Option') }
 			}
 		}
 	}
@@ -1900,8 +1902,8 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 			f.write("\$env('${node.args_var}')")
 		} else if node.is_pkgconfig {
 			f.write("\$pkgconfig('${node.args_var}')")
-		} else if node.method_name == 'compile_error' {
-			f.write("\$compile_error('${node.args_var}')")
+		} else if node.method_name in ['compile_error', 'compile_warn'] {
+			f.write("\$${node.method_name}('${node.args_var}')")
 		} else {
 			inner_args := if node.args_var != '' {
 				node.args_var

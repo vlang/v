@@ -323,7 +323,12 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 					typ: field.typ
 				}
 				g.write('.${field_name} = ')
-				g.struct_init(default_init)
+				if field.typ.has_flag(.option) {
+					tmp_var := g.new_tmp_var()
+					g.expr_with_tmp_var(default_init, field.typ, field.typ, tmp_var)
+				} else {
+					g.struct_init(default_init)
+				}
 				return true
 			}
 		}
@@ -331,12 +336,21 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 	g.write('.${field_name} = ')
 	if field.has_default_expr {
 		if sym.kind in [.sum_type, .interface_] {
-			g.expr_with_cast(field.default_expr, field.default_expr_typ, field.typ)
+			if field.typ.has_flag(.option) {
+				g.expr_opt_with_cast(field.default_expr, field.default_expr_typ.set_flag(.option),
+					field.typ)
+			} else {
+				g.expr_with_cast(field.default_expr, field.default_expr_typ, field.typ)
+			}
 			return true
 		}
 
-		if (field.typ.has_flag(.option) && !field.default_expr_typ.has_flag(.option))
-			|| (field.typ.has_flag(.result) && !field.default_expr_typ.has_flag(.result)) {
+		if field.typ.has_flag(.option) {
+			tmp_var := g.new_tmp_var()
+			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ,
+				tmp_var)
+			return true
+		} else if field.typ.has_flag(.result) && !field.default_expr_typ.has_flag(.result) {
 			tmp_var := g.new_tmp_var()
 			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ,
 				tmp_var)
@@ -533,10 +547,9 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 				g.write('/* autoref */&')
 			}
 
-			if (sfield.expected_type.has_flag(.option) && !sfield.typ.has_flag(.option))
+			if sfield.expected_type.has_flag(.option)
 				|| (sfield.expected_type.has_flag(.result) && !sfield.typ.has_flag(.result)) {
-				tmp_var := g.new_tmp_var()
-				g.expr_with_tmp_var(sfield.expr, sfield.typ, sfield.expected_type, tmp_var)
+				g.expr_with_opt(sfield.expr, sfield.typ, sfield.expected_type)
 			} else {
 				g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
 			}

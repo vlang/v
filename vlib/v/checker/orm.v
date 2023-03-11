@@ -369,7 +369,7 @@ fn (mut c Checker) check_sql_expr_type_is_int(expr &ast.Expr, sql_keyword string
 
 		return
 	} else if expr is ast.ParExpr {
-		c.check_sql_expr_type_is_int(&expr.expr, sql_keyword)
+		c.check_sql_expr_type_is_int(expr.expr, sql_keyword)
 		return
 	}
 
@@ -407,10 +407,10 @@ fn (mut c Checker) check_expr_has_no_fn_calls_with_non_orm_return_type(expr &ast
 				expr.pos)
 		}
 	} else if expr is ast.ParExpr {
-		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&expr.expr)
+		c.check_expr_has_no_fn_calls_with_non_orm_return_type(expr.expr)
 	} else if expr is ast.InfixExpr {
-		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&expr.left)
-		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&expr.right)
+		c.check_expr_has_no_fn_calls_with_non_orm_return_type(expr.left)
+		c.check_expr_has_no_fn_calls_with_non_orm_return_type(expr.right)
 	}
 }
 
@@ -437,19 +437,19 @@ fn (mut c Checker) check_where_expr_has_no_pointless_exprs(table_type_symbol &as
 		} else if expr.left is ast.InfixExpr || expr.left is ast.ParExpr
 			|| expr.left is ast.PrefixExpr {
 			c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names,
-				&expr.left)
+				expr.left)
 		} else {
 			c.orm_error(has_no_field_error, expr.left.pos())
 		}
 
 		if expr.right is ast.InfixExpr || expr.right is ast.ParExpr || expr.right is ast.PrefixExpr {
 			c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names,
-				&expr.right)
+				expr.right)
 		}
 	} else if expr is ast.ParExpr {
-		c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names, &expr.expr)
+		c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names, expr.expr)
 	} else if expr is ast.PrefixExpr {
-		c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names, &expr.right)
+		c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names, expr.right)
 	} else {
 		c.orm_error('`where` expression must have at least one comparison for filtering rows',
 			expr.pos())

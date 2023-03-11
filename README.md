@@ -20,7 +20,7 @@
 
 ## Key Features of V
 
-- Simplicity: the language can be learned in a weekend
+- Simplicity: the language can be learned over the course of a weekend
 - Fast compilation: ≈110k loc/s with a Clang backend,
   ≈500k loc/s with native and tcc backends *(Intel i5-7500, SSD, no
   optimization)* ([demo video](https://www.youtube.com/watch?v=pvP6wmcl_Sc))
@@ -64,7 +64,7 @@ language, very similar to the way it is right now.
 
 ### Linux, macOS, Windows, *BSD, Solaris, WSL, etc.
 
-Usually installing V is quite simple if you have an environment that already has a
+Usually, installing V is quite simple if you have an environment that already has a
 functional `git` installation.
 
 To get started, simply try to execute the following in your terminal/shell:
@@ -200,6 +200,34 @@ git clone https://github.com/vlang/v
 cd v
 make
 ```
+
+## Installing editor/IDE plugin
+
+V has plugins for many editors:
+
+- [VS Code plugin](https://github.com/vlang/vscode-vlang)
+- [JetBrains IDE plugin](https://plugins.jetbrains.com/plugin/20287-vlang/docs/quick-start-guide.html)
+- [Vim plugins](https://github.com/vlang/awesome-v#vim)
+- [Emacs plugins](https://github.com/vlang/awesome-v#emacs)
+- [Sublime Text 3 plugins](https://github.com/vlang/awesome-v#sublime-text-3)
+- [Atom plugins](https://github.com/vlang/awesome-v#atom)
+
+### IntelliSense
+
+V has a Language Server:
+[VLS](https://github.com/vlang/vls).
+The VS Code plugin provides built-in support for VLS.
+
+> **Note**
+> 
+> VLS may be unstable at the moment.
+> If you encounter any problem, please create a new
+> [issue](https://github.com/vlang/vls/issues).
+
+The plugin for JetBrains IDE (IntelliJ, CLion, GoLand, etc) at the moment is
+the best choice if you want a great V development experience.
+You can see all its features in
+[its documentation](https://plugins.jetbrains.com/plugin/20287-vlang/docs/syntax-highlighting.html).
 
 ## Testing and running the examples
 
@@ -342,7 +370,7 @@ V utilizes pre-built TCC binaries located at
 Please see the
 [Troubleshooting](https://github.com/vlang/v/wiki/Troubleshooting)
 section on our
-[wiki page](https://github.com/vlang/v/wiki)
+[wiki page](https://github.com/vlang/v/wiki).
 
 [WorkflowBadge]: https://github.com/vlang/v/workflows/CI/badge.svg
 [DiscordBadge]: https://img.shields.io/discord/592103645835821068?label=Discord&logo=discord&logoColor=white

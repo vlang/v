@@ -1,5 +1,6 @@
 module os
 
+#include <sys/types.h>
 #include <sys/ptrace.h>
 
 fn C.ptrace(int, u32, voidptr, int) int
