@@ -2631,7 +2631,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			}
 		}
 	} else if (((!is_option && p.peek_tok.kind == .lcbr)
-		|| (is_option && p.peek_token(2).kind == .lcbr)) || is_generic_struct_init)
+		|| (is_option && p.peek_token(2).kind in [.lcbr, .dot]))
+		|| is_generic_struct_init)
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
 		&& (!p.inside_for || p.inside_select) && !known_var {
