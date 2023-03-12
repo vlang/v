@@ -4,7 +4,7 @@ enum Test {
 }
 
 fn test_main() {
-	$for item in Test.vals {
+	$for item in Test.values {
 		assert item.name in ['foo', 'bar']
 		match item.value {
 			.foo {
