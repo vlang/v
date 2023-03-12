@@ -2474,8 +2474,12 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			c.expected_type = ast.string_type
 			node.expr_type = c.expr(node.expr)
 
-			if node.expr is ast.Ident && c.is_comptime_var(node.expr) {
-				node.expr_type = c.comptime_fields_default_type
+			if c.inside_comptime_for_field && node.expr is ast.Ident {
+				if c.is_comptime_var(node.expr) {
+					node.expr_type = c.comptime_fields_default_type
+				} else if (node.expr as ast.Ident).name in c.comptime_fields_type {
+					node.expr_type = c.comptime_fields_type[(node.expr as ast.Ident).name]
+				}
 			}
 			c.check_expr_opt_call(node.expr, node.expr_type)
 			etidx := node.expr_type.idx()

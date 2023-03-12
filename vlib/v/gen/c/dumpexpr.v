@@ -37,10 +37,16 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 				}
 			}
 		}
-	} else if node.expr is ast.Ident && g.is_comptime_var(node.expr) {
-		expr_type = g.comptime_for_field_type
-		name = g.typ(g.unwrap_generic(expr_type.clear_flag(.shared_f).clear_flag(.result))).replace('*',
-			'')
+	} else if node.expr is ast.Ident && g.inside_comptime_for_field {
+		if g.is_comptime_var(node.expr) {
+			expr_type = g.comptime_for_field_type
+			name = g.typ(g.unwrap_generic(expr_type.clear_flag(.shared_f).clear_flag(.result))).replace('*',
+				'')
+		} else if node.expr.name in g.comptime_var_type_map {
+			expr_type = g.comptime_var_type_map[node.expr.name]
+			name = g.typ(g.unwrap_generic(expr_type.clear_flag(.shared_f).clear_flag(.result))).replace('*',
+				'')
+		}
 	}
 
 	if g.table.sym(node.expr_type).language == .c {

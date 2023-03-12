@@ -71,3 +71,26 @@ fn test_comptime_var_map_different_types() {
 }"
 	assert vals[1] == "{'c': 10}"
 }
+
+fn test_comptime_with_dump() {
+	data := Data{
+		users: {
+			'a': StructType{}
+		}
+		extra: {
+			'b': {
+				'c': 10
+			}
+		}
+	}
+
+	$for field in Data.fields {
+		$if field.typ is $Map {
+			for k, v in data.$(field.name) {
+				dump(k)
+				dump(v)
+			}
+		}
+	}
+	assert true
+}
