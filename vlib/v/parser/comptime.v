@@ -276,6 +276,13 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 			typ: p.table.find_type_idx('FunctionData')
 			pos: var_pos
 		})
+	} else if for_val == 'values' {
+		p.scope.register(ast.Var{
+			name: val_var
+			typ: p.table.find_type_idx('EnumData')
+			pos: var_pos
+		})
+		kind = .values
 	} else if for_val == 'fields' {
 		p.scope.register(ast.Var{
 			name: val_var
@@ -291,7 +298,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 		})
 		kind = .attributes
 	} else {
-		p.error_with_pos('unknown kind `${for_val}`, available are: `methods`, `fields` or `attributes`',
+		p.error_with_pos('unknown kind `${for_val}`, available are: `methods`, `fields`, `values`, or `attributes`',
 			p.prev_tok.pos())
 		return ast.ComptimeFor{}
 	}

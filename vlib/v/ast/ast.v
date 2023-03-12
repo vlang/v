@@ -1033,6 +1033,7 @@ pub enum ComptimeForKind {
 	methods
 	fields
 	attributes
+	values
 }
 
 pub struct ComptimeFor {

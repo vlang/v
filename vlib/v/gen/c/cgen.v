@@ -46,6 +46,7 @@ fn string_array_to_map(a []string) map[string]bool {
 pub struct Gen {
 	pref                &pref.Preferences = unsafe { nil }
 	field_data_type     ast.Type // cache her to avoid map lookups
+	enum_data_type      ast.Type // cache her to avoid map lookups
 	module_built        string
 	timers_should_print bool
 	table               &ast.Table = unsafe { nil }
@@ -198,7 +199,8 @@ mut:
 	comptime_for_method_var          string // $for method in T.methods {}; the variable name
 	comptime_for_field_var           string // $for field in T.fields {}; the variable name
 	comptime_for_field_value         ast.StructField // value of the field variable
-	comptime_for_field_type          ast.Type        // type of the field variable inferred from `$if field.typ is T {}`
+	comptime_enum_field_value        string   // value of enum name
+	comptime_for_field_type          ast.Type // type of the field variable inferred from `$if field.typ is T {}`
 	comptime_var_type_map            map[string]ast.Type
 	comptime_values_stack            []CurrentComptimeValues // stores the values from the above on each $for loop, to make nesting them easier
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type
@@ -308,6 +310,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 		timers: util.new_timers(should_print: timers_should_print, label: 'global_cgen')
 		inner_loop: &ast.empty_stmt
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
+		enum_data_type: ast.Type(table.find_type_idx('EnumData'))
 		is_cc_msvc: pref_.ccompiler == 'msvc'
 		use_segfault_handler: !('no_segfault_handler' in pref_.compile_defines
 			|| pref_.os in [.wasm32, .wasm32_emscripten])
@@ -663,6 +666,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		)
 		inner_loop: &ast.empty_stmt
 		field_data_type: ast.Type(global_g.table.find_type_idx('FieldData'))
+		enum_data_type: ast.Type(global_g.table.find_type_idx('EnumData'))
 		array_sort_fn: global_g.array_sort_fn
 		waiter_fns: global_g.waiter_fns
 		threaded_fns: global_g.threaded_fns
@@ -3443,6 +3447,13 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				}
 				g.error('unknown generic field', node.pos)
 			}
+		}
+	} else {
+		// for comp-time enum value evaluation
+		if node.expr_type == g.enum_data_type && node.expr is ast.Ident
+			&& (node.expr as ast.Ident).name == 'value' {
+			g.write(node.str())
+			return
 		}
 	}
 	if node.expr_type == 0 {

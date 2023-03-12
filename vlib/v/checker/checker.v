@@ -100,6 +100,7 @@ mut:
 	comptime_fields_default_type     ast.Type
 	comptime_fields_type             map[string]ast.Type
 	comptime_for_field_value         ast.StructField // value of the field variable
+	comptime_enum_field_value        string // current enum value name
 	fn_scope                         &ast.Scope = unsafe { nil }
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
@@ -115,6 +116,7 @@ mut:
 	is_index_assign                  bool
 	comptime_call_pos                int // needed for correctly checking use before decl for templates
 	goto_labels                      map[string]ast.GotoLabel // to check for unused goto labels
+	enum_data_type                   ast.Type
 }
 
 pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
@@ -1301,6 +1303,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		c.error('`${node.expr}` does not return a value', node.pos)
 		node.expr_type = ast.void_type
 		return ast.void_type
+	} else if c.inside_comptime_for_field && typ == c.enum_data_type && node.field_name == 'value' {
+		// for comp-time enum.values
+		node.expr_type = c.comptime_fields_type[c.comptime_for_field_var]
+		return node.expr_type
 	}
 	node.expr_type = typ
 	if !(node.expr is ast.Ident && (node.expr as ast.Ident).kind == .constant) {

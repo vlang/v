@@ -827,6 +827,30 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.pop_existing_comptime_values()
 			}
 		}
+	} else if node.kind == .values {
+		if sym.kind == .enum_ {
+			if sym.info is ast.Enum {
+				if sym.info.vals.len > 0 {
+					g.writeln('\tEnumData ${node.val_var} = {0};')
+				}
+				for val in sym.info.vals {
+					g.comptime_enum_field_value = val
+					g.comptime_for_field_type = node.typ
+
+					g.writeln('/* enum vals ${i} */ {')
+					g.writeln('\t${node.val_var}.name = _SLIT("${val}");')
+					g.write('\t${node.val_var}.value = ')
+					if g.pref.translated && node.typ.is_number() {
+						g.writeln('_const_main__${g.comptime_enum_field_value};')
+					} else {
+						g.writeln('${g.typ(g.comptime_for_field_type)}__${g.comptime_enum_field_value};')
+					}
+					g.stmts(node.stmts)
+					g.writeln('}')
+					i++
+				}
+			}
+		}
 	} else if node.kind == .attributes {
 		if sym.info is ast.Struct {
 			if sym.info.attrs.len > 0 {
@@ -840,6 +864,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('\t${node.val_var}.kind = AttributeKind__${attr.kind};')
 				g.stmts(node.stmts)
 				g.writeln('}')
+				i++
 			}
 		}
 	}
