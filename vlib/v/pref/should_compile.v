@@ -204,6 +204,9 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if prefs.os != .solaris && file.ends_with('_solaris.c.v') {
 		return false
 	}
+	if prefs.os != .qnx && file.ends_with('_qnx.c.v') {
+		return false
+	}
 	if prefs.os != .serenity && file.ends_with('_serenity.c.v') {
 		return false
 	}
