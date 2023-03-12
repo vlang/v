@@ -21,6 +21,7 @@ pub enum OS {
 	android
 	termux // like android, but compiling/running natively on the devices
 	solaris
+	qnx
 	serenity
 	vinix
 	haiku
@@ -151,6 +152,7 @@ pub fn (o OS) str() string {
 		.android { return 'Android' }
 		.termux { return 'Termux' }
 		.solaris { return 'Solaris' }
+		.qnx { return 'QNX' }
 		.serenity { return 'SerenityOS' }
 		.vinix { return 'Vinix' }
 		.haiku { return 'Haiku' }

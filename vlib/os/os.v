@@ -386,6 +386,9 @@ pub fn user_os() string {
 	$if solaris {
 		return 'solaris'
 	}
+	$if qnx {
+		return 'qnx'
+	}
 	$if haiku {
 		return 'haiku'
 	}
