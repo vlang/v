@@ -7,38 +7,9 @@
 //
 module readline
 
+import term.termios
 import term
 import os
-
-#include <termios.h>
-#include <sys/ioctl.h>
-
-const cclen = 10
-
-// Termios stores the terminal options on Linux.
-pub struct C.termios {
-mut:
-	c_iflag int
-	c_oflag int
-	c_cflag int
-	c_lflag int
-	c_line  u8
-	c_cc    [cclen]int
-}
-
-struct Termios {
-mut:
-	c_iflag u32
-	c_oflag u32
-	c_cflag u32
-	c_lflag u32
-	c_line  u8
-	c_cc    [cclen]int
-}
-
-fn C.tcgetattr(fd int, termios_p &C.termios) int
-
-fn C.tcsetattr(fd int, optional_actions int, const_termios_p &C.termios) int
 
 fn C.raise(sig int)
 
@@ -70,21 +41,20 @@ enum Action {
 // Please note that `enable_raw_mode` catches the `SIGUSER` (CTRL + C) signal.
 // For a method that does please see `enable_raw_mode_nosig`.
 pub fn (mut r Readline) enable_raw_mode() {
-	if unsafe { C.tcgetattr(0, &C.termios(&r.orig_termios)) } != 0 {
+	if termios.tcgetattr(0, mut r.orig_termios) != 0 {
 		r.is_tty = false
 		r.is_raw = false
 		return
 	}
-	mut raw := C.termios{}
-	unsafe { vmemcpy(&raw, &r.orig_termios, int(sizeof(raw))) }
+	mut raw := r.orig_termios
 	// println('> r.orig_termios: $r.orig_termios')
 	// println('>            raw: $raw')
-	raw.c_iflag &= ~(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
-	raw.c_cflag |= C.CS8
-	raw.c_lflag &= ~(C.ECHO | C.ICANON | C.IEXTEN | C.ISIG)
+	raw.c_iflag &= termios.invert(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
+	raw.c_cflag |= termios.flag(C.CS8)
+	raw.c_lflag &= termios.invert(C.ECHO | C.ICANON | C.IEXTEN | C.ISIG)
 	raw.c_cc[C.VMIN] = u8(1)
 	raw.c_cc[C.VTIME] = u8(0)
-	unsafe { C.tcsetattr(0, C.TCSADRAIN, &raw) }
+	termios.tcsetattr(0, C.TCSADRAIN, mut raw)
 	// println('>   after    raw: $raw')
 	r.is_raw = true
 	r.is_tty = true
@@ -95,19 +65,18 @@ pub fn (mut r Readline) enable_raw_mode() {
 // Please note that `enable_raw_mode_nosig` does not catch the `SIGUSER` (CTRL + C) signal
 // as opposed to `enable_raw_mode`.
 pub fn (mut r Readline) enable_raw_mode_nosig() {
-	if unsafe { C.tcgetattr(0, &C.termios(&r.orig_termios)) } != 0 {
+	if termios.tcgetattr(0, mut r.orig_termios) != 0 {
 		r.is_tty = false
 		r.is_raw = false
 		return
 	}
-	mut raw := C.termios{}
-	unsafe { vmemcpy(&raw, &r.orig_termios, int(sizeof(raw))) }
-	raw.c_iflag &= ~(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
-	raw.c_cflag |= C.CS8
-	raw.c_lflag &= ~(C.ECHO | C.ICANON | C.IEXTEN)
+	mut raw := r.orig_termios
+	raw.c_iflag &= termios.invert(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
+	raw.c_cflag |= termios.flag(C.CS8)
+	raw.c_lflag &= termios.invert(C.ECHO | C.ICANON | C.IEXTEN)
 	raw.c_cc[C.VMIN] = u8(1)
 	raw.c_cc[C.VTIME] = u8(0)
-	unsafe { C.tcsetattr(0, C.TCSADRAIN, &raw) }
+	termios.tcsetattr(0, C.TCSADRAIN, mut raw)
 	r.is_raw = true
 	r.is_tty = true
 }
@@ -116,7 +85,7 @@ pub fn (mut r Readline) enable_raw_mode_nosig() {
 // For a description of raw mode please see the `enable_raw_mode` method.
 pub fn (mut r Readline) disable_raw_mode() {
 	if r.is_raw {
-		unsafe { C.tcsetattr(0, C.TCSADRAIN, &C.termios(&r.orig_termios)) }
+		termios.tcsetattr(0, C.TCSADRAIN, mut r.orig_termios)
 		r.is_raw = false
 	}
 }

@@ -7,6 +7,8 @@
 //
 module readline
 
+import term.termios
+
 // Winsize stores the screen information on Linux.
 struct Winsize {
 	ws_row    u16
@@ -20,9 +22,9 @@ struct Winsize {
 pub struct Readline {
 mut:
 	is_raw            bool
-	orig_termios      Termios // Linux
-	current           []rune  // Line being edited
-	cursor            int     // Cursor position
+	orig_termios      termios.Termios // Linux
+	current           []rune // Line being edited
+	cursor            int    // Cursor position
 	overwrite         bool
 	cursor_row_offset int
 	prompt            string

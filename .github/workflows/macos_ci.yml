@@ -113,3 +113,7 @@ jobs:
         run: |
           ./v examples/password
           ./v examples/password/password_ci.vsh
+      - name: Test readline
+        run: |
+          ./v examples/readline/readline_ci.v
+          ./v examples/readline/readline_ci.vsh
