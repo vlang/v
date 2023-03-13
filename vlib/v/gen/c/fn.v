@@ -883,8 +883,8 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 		}
 	} else if left_node is ast.Ident {
 		if left_node.obj is ast.Var {
-			if left_node.obj.is_comptime_field {
-				rec_type = g.comptime_for_field_type
+			if left_node.obj.ct_type_var != .no_comptime {
+				rec_type = g.get_comptime_var_type(left_node)
 				g.gen_expr_to_string(left_node, rec_type)
 				return true
 			} else if g.comptime_var_type_map.len > 0 {
@@ -918,7 +918,7 @@ fn (mut g Gen) change_comptime_args(mut node_ ast.CallExpr) []int {
 		if mut call_arg.expr is ast.Ident {
 			if mut call_arg.expr.obj is ast.Var {
 				node_.args[i].typ = call_arg.expr.obj.typ
-				if call_arg.expr.obj.is_comptime_field {
+				if call_arg.expr.obj.ct_type_var != .no_comptime {
 					comptime_args << i
 				}
 			}

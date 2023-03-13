@@ -649,6 +649,13 @@ pub mut:
 	types []Type
 }
 
+pub enum ComptimeVarKind {
+	no_comptime // it is not a comptime var
+	key_var // map key from `for k,v in t.$(field.name)`
+	value_var // map value from `for k,v in t.$(field.name)`
+	field_var // comptime field var `a := t.$(field.name)`
+}
+
 [minify]
 pub struct Var {
 pub:
@@ -669,11 +676,10 @@ pub mut:
 	// 10 <- original type (orig_type)
 	//   [11, 12, 13] <- cast order (smartcasts)
 	//        12 <- the current casted type (typ)
-	pos               token.Pos
-	is_used           bool // whether the local variable was used in other expressions
-	is_changed        bool // to detect mutable vars that are never changed
-	is_comptime_field bool // comptime field var `a := t.$(field.name)`
-	//
+	pos         token.Pos
+	is_used     bool // whether the local variable was used in other expressions
+	is_changed  bool // to detect mutable vars that are never changed
+	ct_type_var ComptimeVarKind // comptime variable type
 	// (for setting the position after the or block for autofree)
 	is_or        bool // `x := foo() or { ... }`
 	is_tmp       bool // for tmp for loop vars, so that autofree can skip them

@@ -141,9 +141,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		node.scope.update_var_type(node.val_var, node.val_type)
 		node.kind = unwrapped_sym.kind
 
-		if g.inside_comptime_for_field {
-			g.comptime_var_type_map[node.val_var] = node.val_type
-		}
+		g.comptime_for_field_val_type = node.val_type
+		node.scope.update_ct_var_kind(node.val_var, .value_var)
+
 		if node.key_var.len > 0 {
 			key_type := match unwrapped_sym.kind {
 				.map { unwrapped_sym.map_info().key_type }
@@ -151,9 +151,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			}
 			node.key_type = key_type
 			node.scope.update_var_type(node.key_var, key_type)
-			if g.inside_comptime_for_field {
-				g.comptime_var_type_map[node.key_var] = key_type
-			}
+
+			g.comptime_for_field_key_type = node.key_type
+			node.scope.update_ct_var_kind(node.key_var, .key_var)
 		}
 	}
 

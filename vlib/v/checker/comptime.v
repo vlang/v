@@ -10,6 +10,20 @@ import v.util
 import v.pkgconfig
 import v.checker.constants
 
+fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
+	if node is ast.Ident {
+		return match (node.obj as ast.Var).ct_type_var {
+			.key_var { c.comptime_fields_key_type }
+			.value_var { c.comptime_fields_val_type }
+			.field_var { c.comptime_fields_default_type }
+			else { ast.void_type }
+		}
+	} else if node is ast.ComptimeSelector {
+		return c.get_comptime_selector_type(node, ast.void_type)
+	}
+	return ast.void_type
+}
+
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	if node.left !is ast.EmptyExpr {
 		node.left_type = c.expr(node.left)

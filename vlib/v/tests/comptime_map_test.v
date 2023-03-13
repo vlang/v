@@ -94,3 +94,33 @@ fn test_comptime_with_dump() {
 	}
 	assert true
 }
+
+fn test_comptime_dump_for_key_and_value() {
+	data := Data{
+		users: {
+			'a': StructType{}
+		}
+		extra: {
+			'b': {
+				'c': 10
+			}
+		}
+	}
+
+	mut key_types := []string{}
+	mut val_types := []string{}
+
+	$for field in Data.fields {
+		$if field.typ is $Map {
+			for k, v in data.$(field.name) {
+				key_types << typeof(k).name
+				val_types << typeof(v).name
+			}
+		}
+	}
+	assert val_types[0] == 'StructType'
+	assert val_types[1] == 'map[string]int'
+
+	assert key_types[0] == 'string'
+	assert key_types[1] == 'string'
+}
