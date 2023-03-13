@@ -124,3 +124,41 @@ fn test_comptime_dump_for_key_and_value() {
 	assert key_types[0] == 'string'
 	assert key_types[1] == 'string'
 }
+
+fn test_comptime_key_value_var() {
+	data := Data{
+		users: {
+			'a': StructType{}
+		}
+		extra: {
+			'b': {
+				'c': 10
+			}
+		}
+	}
+
+	mut keys := []string{}
+	mut vals := []string{}
+
+	$for field in Data.fields {
+		$if field.typ is $Map {
+			for k, v in data.$(field.name) {
+				if k == 'a' {
+					keys << dump(k)
+					vals << dump(v.str())
+				}
+				if k == 'b' {
+					keys << dump(k)
+					vals << dump(v.str())
+				}
+			}
+		}
+	}
+	assert keys[0] == 'a'
+	assert keys[1] == 'b'
+
+	assert vals[0] == "StructType{
+    val: 'string from StructType'
+}"
+	assert vals[1] == "{'c': 10}"
+}

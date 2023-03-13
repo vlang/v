@@ -8,6 +8,7 @@ import v.ast
 import v.util
 import v.pref
 
+[inline]
 fn (mut g Gen) get_comptime_selector_key_type(val ast.ComptimeSelector) string {
 	if val.field_expr is ast.SelectorExpr {
 		if val.field_expr.expr is ast.Ident {
@@ -17,6 +18,7 @@ fn (mut g Gen) get_comptime_selector_key_type(val ast.ComptimeSelector) string {
 	return ''
 }
 
+[inline]
 fn (mut g Gen) get_comptime_selector_var_type(node ast.ComptimeSelector) (ast.StructField, string) {
 	field_name := g.comptime_for_field_value.name
 	left_sym := g.table.sym(g.unwrap_generic(node.left_type))
