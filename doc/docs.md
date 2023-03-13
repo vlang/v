@@ -6213,8 +6213,9 @@ Currently the `linux`, `darwin` , `freebsd`, and `windows` flags are supported.
 
 In the console build command, you can use:
 
-* `-cflags` to pass custom flags to the backend C compiler.
 * `-cc` to change the default C backend compiler.
+* `-cflags` to pass custom flags to the backend C compiler (passed before other C options).
+* `-ldflags` to pass custom flags to the backend C linker (passed after every other C option).
 * For example: `-cc gcc-9 -cflags -fsanitize=thread`.
 
 You can define a `VFLAGS` environment variable in your terminal to store your `-cc`
@@ -6229,7 +6230,8 @@ As long as backticks can't be used in `#flag` and spawning processes is not desi
 and portability reasons, V uses its own pkgconfig library that is compatible with the standard
 freedesktop one.
 
-If no flags are passed it will add `--cflags` and `--libs`, both lines below do the same:
+If no flags are passed it will add `--cflags` and `--libs` to pkgconfig (not to V).
+In other words, both lines below do the same:
 
 ```v oksyntax
 #pkgconfig r_core
