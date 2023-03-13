@@ -48,6 +48,7 @@ mut:
 	inside_str_interp         bool
 	inside_array_lit          bool
 	inside_in_array           bool
+	inside_infix              bool
 	inside_match              bool // to separate `match A { }` from `Struct{}`
 	inside_select             bool // to allow `ch <- Struct{} {` inside `select`
 	inside_match_case         bool // to separate `match_expr { }` from `Struct{}`
@@ -93,6 +94,7 @@ mut:
 	anon_struct_decl          ast.StructDecl
 	struct_init_generic_types []ast.Type
 	if_cond_comments          []ast.Comment
+	left_comments             []ast.Comment
 	script_mode               bool
 	script_mode_start_token   token.Token
 pub mut:

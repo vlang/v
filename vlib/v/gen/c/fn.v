@@ -571,7 +571,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		}
 		param_type_sym := g.table.sym(typ)
 		mut param_type_name := g.typ(typ) // util.no_dots(param_type_sym.name)
-		if param_type_sym.kind == .function {
+		if param_type_sym.kind == .function && !typ.has_flag(.option) {
 			info := param_type_sym.info as ast.FnType
 			func := info.func
 			g.write('${g.typ(func.return_type)} (*${caname})(')

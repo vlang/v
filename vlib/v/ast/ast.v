@@ -887,6 +887,9 @@ pub mut:
 	ct_left_value         ComptTimeConstValue = empty_comptime_const_expr()
 	ct_right_value_evaled bool
 	ct_right_value        ComptTimeConstValue = empty_comptime_const_expr()
+	//
+	before_op_comments []Comment
+	after_op_comments  []Comment
 }
 
 // ++, --
@@ -1036,6 +1039,7 @@ pub enum ComptimeForKind {
 	methods
 	fields
 	attributes
+	values
 }
 
 pub struct ComptimeFor {
