@@ -88,8 +88,8 @@ pub enum Arch {
 	_max
 }
 
-pub const list_of_flags_with_param = ['o', 'd', 'define', 'b', 'backend', 'cc', 'os', 'cf', 'cflags',
-	'path', 'arch']
+pub const list_of_flags_with_param = ['b', 'd', 'e', 'o', 'define', 'backend', 'cc', 'os', 'cflags',
+	'ldflags', 'path', 'arch']
 
 pub const supported_test_runners = ['normal', 'simple', 'tap', 'dump', 'teamcity']
 
@@ -154,7 +154,8 @@ pub mut:
 	use_cache              bool   // when set, use cached modules to speed up subsequent compilations, at the cost of slower initial ones (while the modules are cached)
 	retry_compilation      bool = true // retry the compilation with another C compiler, if tcc fails.
 	// TODO Convert this into a []string
-	cflags string // Additional options which will be passed to the C compiler.
+	cflags  string // Additional options which will be passed to the C compiler *before* other options.
+	ldflags string // Additional options which will be passed to the C compiler *after* everything else.
 	// For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
 	// You could pass several -cflags XXX arguments. They will be merged with each other.
 	// You can also quote several options at the same time: -cflags '-Os -fno-inline-small-functions'.
@@ -691,6 +692,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-cflags' {
 				res.cflags += ' ' + cmdline.option(current_args, '-cflags', '')
 				res.build_options << '${arg} "${res.cflags.trim_space()}"'
+				i++
+			}
+			'-ldflags' {
+				res.ldflags += ' ' + cmdline.option(current_args, '-ldflags', '')
+				res.build_options << '${arg} "${res.ldflags.trim_space()}"'
 				i++
 			}
 			'-d', '-define' {
