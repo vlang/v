@@ -195,7 +195,7 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					pos: pos
 				}
 			} else {
-				node = p.array_init()
+				node = p.array_init(false)
 			}
 		}
 		.key_none {

@@ -2547,9 +2547,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			}
 		}
 	} else if p.peek_tok.kind == .lpar || is_generic_call || is_generic_cast
-		|| (p.tok.kind == .lsbr && p.peek_tok.kind == .rsbr)
-		|| (p.tok.kind == .lsbr && p.peek_tok.kind == .number && p.peek_token(2).kind == .rsbr) {
-		// foo(), foo<int>() or type() cast
+		|| (p.tok.kind == .lsbr && p.peek_tok.kind == .rsbr && p.peek_token(3).kind == .lpar)
+		|| (p.tok.kind == .lsbr && p.peek_tok.kind == .number && p.peek_token(2).kind == .rsbr
+		&& p.peek_token(4).kind == .lpar) {
+		// ?[]foo(), ?[1]foo, foo(), foo<int>() or type() cast
 		is_array := p.tok.kind == .lsbr
 		is_fixed_array := is_array && p.peek_tok.kind == .number
 		mut name := if is_array {
@@ -2690,7 +2691,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			|| p.table.find_type_idx(p.mod + '.' + p.tok.lit) > 0
 			|| p.inside_comptime_if) {
 			type_pos := p.tok.pos()
-			typ := p.parse_type()
+			mut typ := p.parse_type()
+			if is_option {
+				typ = typ.set_flag(.option)
+			}
 			return ast.TypeNode{
 				typ: typ
 				pos: type_pos
@@ -2714,7 +2718,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			p.expr_mod = ''
 			return node
 		} else if is_option && p.tok.kind == .lsbr {
-			return p.array_init()
+			return p.array_init(is_option)
 		}
 		ident := p.parse_ident(language)
 		node = ident

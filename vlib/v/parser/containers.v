@@ -6,12 +6,8 @@ module parser
 import v.ast
 import v.token
 
-fn (mut p Parser) array_init() ast.ArrayInit {
+fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 	first_pos := p.tok.pos()
-	is_option := p.tok.kind == .question
-	if is_option {
-		p.next()
-	}
 	mut last_pos := p.tok.pos()
 	p.check(.lsbr)
 	// p.warn('array_init() exp=$p.expected_type')
