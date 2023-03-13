@@ -2395,7 +2395,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	}
 	is_option := p.tok.kind == .question
 	if is_option {
-		p.check(.question)
+		if p.peek_tok.kind in [.name, .lsbr] {
+			p.check(.question)
+		}
 	}
 	mut mod := ''
 	// p.warn('resetting')
