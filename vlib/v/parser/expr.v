@@ -195,7 +195,7 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					pos: pos
 				}
 			} else {
-				node = p.array_init()
+				node = p.array_init(false)
 			}
 		}
 		.key_none {
@@ -436,7 +436,7 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			if p.tok.kind == .key_struct && p.peek_tok.kind == .lcbr {
 				// Anonymous struct
 				p.next()
-				return p.struct_init('', .anon)
+				return p.struct_init('', .anon, false)
 			}
 			if p.tok.kind != .eof && !(p.tok.kind == .rsbr && p.inside_asm) {
 				// eof should be handled where it happens

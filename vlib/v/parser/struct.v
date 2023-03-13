@@ -399,10 +399,13 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	}
 }
 
-fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind) ast.StructInit {
+fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option bool) ast.StructInit {
 	first_pos := (if kind == .short_syntax && p.prev_tok.kind == .lcbr { p.prev_tok } else { p.tok }).pos()
 	p.struct_init_generic_types = []ast.Type{}
-	typ := if kind == .short_syntax { ast.void_type } else { p.parse_type() }
+	mut typ := if kind == .short_syntax { ast.void_type } else { p.parse_type() }
+	if is_option {
+		typ = typ.set_flag(.option)
+	}
 	p.expr_mod = ''
 	if kind != .short_syntax {
 		p.check(.lcbr)
