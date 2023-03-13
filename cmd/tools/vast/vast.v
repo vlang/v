@@ -872,7 +872,7 @@ fn (t Tree) var(node ast.Var) &Node {
 	obj.add_terse('is_mut', t.bool_node(node.is_mut))
 	obj.add('is_used', t.bool_node(node.is_used))
 	obj.add('is_changed', t.bool_node(node.is_changed))
-	obj.add('is_comptime_field', t.bool_node(node.is_comptime_field))
+	obj.add_terse('ct_type_var', t.enum_node(node.ct_type_var))
 	obj.add('is_or', t.bool_node(node.is_or))
 	obj.add('is_tmp', t.bool_node(node.is_tmp))
 	obj.add('is_autofree_tmp', t.bool_node(node.is_autofree_tmp))
