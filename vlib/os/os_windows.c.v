@@ -558,3 +558,24 @@ pub fn (mut c Command) read_line() string {
 pub fn (mut c Command) close() ! {
 	panic('not implemented')
 }
+
+fn C.GetLongPathName(short_path &u16, long_path &u16, long_path_bufsize u32) u32
+
+// get_long_path has no meaning for *nix, but has for windows, where `c:\folder\some~1` for example
+// can be the equivalent of `c:\folder\some spa ces`. On *nix, it just returns a copy of the input path.
+fn get_long_path(path string) !string {
+	if !path.contains('~') {
+		return path
+	}
+	input_short_path := path.to_wide()
+	defer {
+		unsafe { free(input_short_path) }
+	}
+	long_path_buf := [4096]u16{}
+	res := C.GetLongPathName(input_short_path, &long_path_buf[0], sizeof(long_path_buf))
+	if res == 0 {
+		return error(get_error_msg(int(C.GetLastError())))
+	}
+	long_path := unsafe { string_from_wide(&long_path_buf[0]) }
+	return long_path
+}
