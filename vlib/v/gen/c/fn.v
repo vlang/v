@@ -912,18 +912,18 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 	return false
 }
 
-fn (mut g Gen) change_comptime_args(mut node_ ast.CallExpr) []int {
-	mut comptime_args := []int{}
+fn (mut g Gen) change_comptime_args(mut node_ ast.CallExpr) map[int]ast.Type {
+	mut comptime_args := map[int]ast.Type{}
 	for i, mut call_arg in node_.args {
 		if mut call_arg.expr is ast.Ident {
 			if mut call_arg.expr.obj is ast.Var {
 				node_.args[i].typ = call_arg.expr.obj.typ
 				if call_arg.expr.obj.ct_type_var != .no_comptime {
-					comptime_args << i
+					comptime_args[i] = g.get_comptime_var_type_from_kind(call_arg.expr.obj.ct_type_var)
 				}
 			}
 		} else if mut call_arg.expr is ast.ComptimeSelector {
-			comptime_args << i
+			comptime_args[i] = g.comptime_for_field_type
 		}
 	}
 	return comptime_args
@@ -940,7 +940,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	left_type := g.unwrap_generic(node.left_type)
 	mut unwrapped_rec_type := node.receiver_type
 	mut for_in_any_var_type := ast.void_type
-	mut comptime_args := []int{}
+	mut comptime_args := map[int]ast.Type{}
 	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 { // in generic fn
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
 	} else { // in non-generic fn
@@ -1151,13 +1151,13 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 		arg_sym := g.table.sym(g.comptime_for_field_type)
 		if m := g.table.find_method(g.table.sym(node.left_type), node.name) {
-			for k in comptime_args {
+			for k, v in comptime_args {
 				if m.generic_names.len > 0 && arg_sym.kind == .array
 					&& m.params[k + 1].typ.has_flag(.generic)
 					&& g.table.final_sym(m.params[k + 1].typ).kind == .array {
 					concrete_types[k] = (arg_sym.info as ast.Array).elem_type
 				} else {
-					concrete_types[k] = g.comptime_for_field_type
+					concrete_types[k] = v
 				}
 			}
 		}
@@ -1288,7 +1288,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// will be `0` for `foo()`
 	mut is_interface_call := false
 	mut is_selector_call := false
-	mut comptime_args := []int{}
+	mut comptime_args := map[int]ast.Type{}
 	if node.left_type != 0 {
 		left_sym := g.table.sym(node.left_type)
 		if left_sym.kind == .interface_ {
@@ -1408,12 +1408,12 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					&& comptime_args.len > 0 {
 					mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 					arg_sym := g.table.sym(g.comptime_for_field_type)
-					for k in comptime_args {
+					for k, v in comptime_args {
 						if arg_sym.kind == .array && func.params[k].typ.has_flag(.generic)
 							&& g.table.sym(func.params[k].typ).kind == .array {
 							concrete_types[k] = (arg_sym.info as ast.Array).elem_type
 						} else {
-							concrete_types[k] = g.comptime_for_field_type
+							concrete_types[k] = v
 						}
 					}
 					name = g.generic_fn_name(concrete_types, name)

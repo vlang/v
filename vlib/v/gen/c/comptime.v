@@ -660,14 +660,20 @@ struct CurrentComptimeValues {
 	comptime_var_type_map       map[string]ast.Type
 }
 
+[inline]
+fn (mut g Gen) get_comptime_var_type_from_kind(kind ast.ComptimeVarKind) ast.Type {
+	return match kind {
+		.key_var { g.comptime_for_field_key_type }
+		.value_var { g.comptime_for_field_val_type }
+		.field_var { g.comptime_for_field_type }
+		else { ast.void_type }
+	}
+}
+
+[inline]
 fn (mut g Gen) get_comptime_var_type(node ast.Expr) ast.Type {
-	if node is ast.Ident {
-		return match (node.obj as ast.Var).ct_type_var {
-			.key_var { g.comptime_for_field_key_type }
-			.value_var { g.comptime_for_field_val_type }
-			.field_var { g.comptime_for_field_type }
-			else { ast.void_type }
-		}
+	if node is ast.Ident && (node as ast.Ident).obj is ast.Var {
+		return g.get_comptime_var_type_from_kind((node.obj as ast.Var).ct_type_var)
 	} else if node is ast.ComptimeSelector {
 		key_str := g.get_comptime_selector_key_type(node)
 		if key_str != '' {

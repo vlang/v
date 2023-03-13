@@ -162,3 +162,42 @@ fn test_comptime_key_value_var() {
 }"
 	assert vals[1] == "{'c': 10}"
 }
+
+fn test_comptime_generic_argument() {
+	data := Data{
+		users: {
+			'a': StructType{}
+		}
+		extra: {
+			'b': {
+				'c': 10
+			}
+		}
+	}
+
+	$for field in Data.fields {
+		$if field.typ is $Map {
+			for k, v in data.$(field.name) {
+				process_value_from_map(v)
+				assert k in ['a', 'b']
+			}
+		}
+	}
+}
+
+fn process_value_from_map[T](v T) {
+	$if T is $Map {
+		assert typeof(v).name == 'map[string]int'
+		assert v.str() == "{'c': 10}"
+		assert true
+		return
+	} $else $if T is $Struct {
+		assert typeof(v).name == 'StructType'
+		assert v.str() == "StructType{
+    val: 'string from StructType'
+}"
+		assert true
+		return
+	}
+	assert false
+}
