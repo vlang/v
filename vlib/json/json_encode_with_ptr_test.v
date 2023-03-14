@@ -1,5 +1,3 @@
-module main
-
 import json
 
 struct User {
@@ -12,7 +10,7 @@ struct MyStruct {
 	users2 map[string]&User
 }
 
-fn main() {
+fn test_json_encode_with_ptr() {
 	user := User{
 		name: 'foo'
 	}
