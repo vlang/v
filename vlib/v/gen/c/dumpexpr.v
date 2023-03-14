@@ -37,8 +37,8 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 				}
 			}
 		}
-	} else if node.expr is ast.Ident && g.is_comptime_var(node.expr) {
-		expr_type = g.comptime_for_field_type
+	} else if node.expr is ast.Ident && g.inside_comptime_for_field && g.is_comptime_var(node.expr) {
+		expr_type = g.get_comptime_var_type(node.expr)
 		name = g.typ(g.unwrap_generic(expr_type.clear_flag(.shared_f).clear_flag(.result))).replace('*',
 			'')
 	}

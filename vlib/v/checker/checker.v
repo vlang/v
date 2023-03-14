@@ -98,6 +98,8 @@ mut:
 	for_in_any_val_type              ast.Type
 	comptime_for_field_var           string
 	comptime_fields_default_type     ast.Type
+	comptime_fields_key_type         ast.Type // key type on `$for k, v in val.$(field.name)`
+	comptime_fields_val_type         ast.Type // value type on `$for k, v in val.$(field.name)`
 	comptime_fields_type             map[string]ast.Type
 	comptime_for_field_value         ast.StructField // value of the field variable
 	comptime_enum_field_value        string // current enum value name
@@ -2480,8 +2482,12 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			c.expected_type = ast.string_type
 			node.expr_type = c.expr(node.expr)
 
-			if node.expr is ast.Ident && c.is_comptime_var(node.expr) {
-				node.expr_type = c.comptime_fields_default_type
+			if c.inside_comptime_for_field && node.expr is ast.Ident {
+				if c.is_comptime_var(node.expr) {
+					node.expr_type = c.get_comptime_var_type(node.expr as ast.Ident)
+				} else if (node.expr as ast.Ident).name in c.comptime_fields_type {
+					node.expr_type = c.comptime_fields_type[(node.expr as ast.Ident).name]
+				}
 			}
 			c.check_expr_opt_call(node.expr, node.expr_type)
 			etidx := node.expr_type.idx()
@@ -3656,7 +3662,7 @@ fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 
 pub fn (mut c Checker) is_comptime_var(node ast.Expr) bool {
 	return c.inside_comptime_for_field && node is ast.Ident
-		&& (node as ast.Ident).info is ast.IdentVar && (node as ast.Ident).kind == .variable && ((node as ast.Ident).obj as ast.Var).is_comptime_field
+		&& (node as ast.Ident).info is ast.IdentVar && (node as ast.Ident).kind == .variable && ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime
 }
 
 fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {

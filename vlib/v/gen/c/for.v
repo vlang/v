@@ -130,17 +130,40 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 
 fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	mut node := unsafe { node_ }
-	if node.kind == .any {
+	mut is_comptime := false
+
+	if (node.cond is ast.Ident && g.is_comptime_var(node.cond)) || node.cond is ast.ComptimeSelector {
+		is_comptime = true
+		mut unwrapped_typ := g.unwrap_generic(g.comptime_for_field_type)
+		mut unwrapped_sym := g.table.sym(unwrapped_typ)
+		node.cond_type = unwrapped_typ
+		node.val_type = g.table.value_type(unwrapped_typ)
+		node.scope.update_var_type(node.val_var, node.val_type)
+		node.kind = unwrapped_sym.kind
+
+		g.comptime_for_field_val_type = node.val_type
+		node.scope.update_ct_var_kind(node.val_var, .value_var)
+
+		if node.key_var.len > 0 {
+			key_type := match unwrapped_sym.kind {
+				.map { unwrapped_sym.map_info().key_type }
+				else { ast.int_type }
+			}
+			node.key_type = key_type
+			node.scope.update_var_type(node.key_var, key_type)
+
+			g.comptime_for_field_key_type = node.key_type
+			node.scope.update_ct_var_kind(node.key_var, .key_var)
+		}
+	}
+
+	if node.kind == .any && !is_comptime {
 		g.inside_for_in_any_cond = true
 		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
 		mut unwrapped_sym := g.table.sym(unwrapped_typ)
 		node.kind = unwrapped_sym.kind
 		node.cond_type = unwrapped_typ
 		if node.key_var.len > 0 {
-			if g.is_comptime_var(node.cond) {
-				unwrapped_typ = g.unwrap_generic(g.comptime_for_field_type)
-				unwrapped_sym = g.table.sym(unwrapped_typ)
-			}
 			key_type := match unwrapped_sym.kind {
 				.map { unwrapped_sym.map_info().key_type }
 				else { ast.int_type }

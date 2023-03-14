@@ -122,6 +122,13 @@ pub fn (mut s Scope) update_var_type(name string, typ Type) {
 	}
 }
 
+pub fn (mut s Scope) update_ct_var_kind(name string, kind ComptimeVarKind) {
+	mut obj := unsafe { s.objects[name] }
+	if mut obj is Var {
+		obj.ct_type_var = kind
+	}
+}
+
 // selector_expr:  name.field_name
 pub fn (mut s Scope) register_struct_field(name string, field ScopeStructField) {
 	if f := s.struct_fields[name] {
