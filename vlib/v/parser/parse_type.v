@@ -682,6 +682,7 @@ pub fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Lan
 						idx = p.table.register_sym(ast.TypeSymbol{
 							...sym
 							name: sym_name
+							rname: sym.name
 							generic_types: p.struct_init_generic_types.clone()
 						})
 					}

@@ -1325,7 +1325,7 @@ fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	// TODO: this needs to be removed; cgen shouldn't resolve generic types (job of checker)
 	match sym.info {
 		ast.Struct, ast.Interface, ast.SumType {
-			if sym.info.is_generic {
+			if sym.info.is_generic && sym.generic_types.len == 0 {
 				mut sgtyps := '_T'
 				for gt in sym.info.generic_types {
 					gts := g.table.sym(g.unwrap_generic(gt))
