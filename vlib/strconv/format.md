@@ -2,7 +2,8 @@
 
 These are v implementations of the C language `printf` and `sprintf` functions.
 
-***Note: These functions are platform dependent in C, but in V they are platform independent.***
+> **Note**
+> These functions are platform dependent in C, but in V they are platform independent.
 
 ### v_sprintf
 

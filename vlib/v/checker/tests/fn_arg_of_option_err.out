@@ -1,5 +1,0 @@
-vlib/v/checker/tests/fn_arg_of_option_err.vv:1:17: error: option or result type argument is not supported currently
-    1 | fn option_arg(x ?int) {
-      |                 ~~~~
-    2 |     println('int type: ${x}')
-    3 | }

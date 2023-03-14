@@ -160,15 +160,15 @@ fn (mut p Parser) peek(n int) !token.Token {
 		if n <= p.tokens.len {
 			return p.tokens[n - 1]
 		} else {
-			mut token := token.Token{}
+			mut token_ := token.Token{}
 			mut count := n - p.tokens.len
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'buffering ${count} tokens...')
-			for token.kind != .eof && count != 0 {
-				token = p.scanner.scan()!
-				p.tokens << token
+			for token_.kind != .eof && count != 0 {
+				token_ = p.scanner.scan()!
+				p.tokens << token_
 				count--
 			}
-			return token
+			return token_
 		}
 	}
 }

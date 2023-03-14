@@ -104,6 +104,10 @@ pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
 }
 
 pub fn (mut p Parser) parse_map_type() ast.Type {
+	is_option := p.tok.kind == .question && p.peek_tok.kind == .name // option map
+	if is_option {
+		p.next()
+	}
 	p.next()
 	if p.tok.kind != .lsbr {
 		return ast.map_type
@@ -143,7 +147,11 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 	if key_type.has_flag(.generic) || value_type.has_flag(.generic) {
 		return ast.new_type(idx).set_flag(.generic)
 	}
-	return ast.new_type(idx)
+	if is_option {
+		return ast.new_type(idx).set_flag(.option)
+	} else {
+		return ast.new_type(idx)
+	}
 }
 
 pub fn (mut p Parser) parse_chan_type() ast.Type {
@@ -292,6 +300,8 @@ pub fn (mut p Parser) parse_language() ast.Language {
 		ast.Language.c
 	} else if p.tok.lit == 'JS' {
 		ast.Language.js
+	} else if p.tok.lit == 'WASM' {
+		ast.Language.wasm
 	} else {
 		ast.Language.v
 	}
@@ -455,7 +465,7 @@ pub fn (mut p Parser) parse_type() ast.Type {
 		}
 		sym := p.table.sym(typ)
 		if is_option && sym.info is ast.SumType && (sym.info as ast.SumType).is_anon {
-			p.error_with_pos('an inline sum type cannot be an option', option_pos.extend(p.prev_tok.pos()))
+			p.error_with_pos('an inline sum type cannot be an Option', option_pos.extend(p.prev_tok.pos()))
 		}
 	}
 	if is_option {
@@ -672,6 +682,7 @@ pub fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Lan
 						idx = p.table.register_sym(ast.TypeSymbol{
 							...sym
 							name: sym_name
+							rname: sym.name
 							generic_types: p.struct_init_generic_types.clone()
 						})
 					}

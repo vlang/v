@@ -45,10 +45,10 @@ pub mut:
 	nlines             int
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, out_file string, pref &pref.Preferences) (int, int) {
+pub fn gen(files []&ast.File, table &ast.Table, out_file string, pref_ &pref.Preferences) (int, int) {
 	mut g := Gen{
 		table: table
-		pref: pref
+		pref: pref_
 		// is_debug: is_debug
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
@@ -661,6 +661,7 @@ pub fn (mut f Gen) expr(node_ ast.Expr) {
 				.enum_ { f.write('\$Enum') }
 				.alias { f.write('\$Alias') }
 				.function { f.write('\$Function') }
+				.option { f.write('\$Option') }
 			}
 		}
 	}

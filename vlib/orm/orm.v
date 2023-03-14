@@ -79,6 +79,11 @@ pub enum OrderType {
 	desc
 }
 
+pub enum SQLDialect {
+	default
+	sqlite
+}
+
 fn (kind OperationKind) to_str() string {
 	str := match kind {
 		.neq { '!=' }
@@ -175,15 +180,15 @@ pub interface Connection {
 	delete(table string, where QueryData) !
 	create(table string, fields []TableField) !
 	drop(table string) !
-	last_id() Primitive
+	last_id() int
 }
 
 // Generates an sql stmt, from universal parameter
 // q - The quotes character, which can be different in every type, so it's variable
 // num - Stmt uses nums at prepared statements (? or ?1)
-// qm - Character for prepared statment, qm because of quotation mark like in sqlite
+// qm - Character for prepared statement, qm because of quotation mark like in sqlite
 // start_pos - When num is true, it's the start position of the counter
-pub fn orm_stmt_gen(table string, q string, kind StmtKind, num bool, qm string, start_pos int, data QueryData, where QueryData) (string, QueryData) {
+pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKind, num bool, qm string, start_pos int, data QueryData, where QueryData) (string, QueryData) {
 	mut str := ''
 	mut c := start_pos
 	mut data_fields := []string{}
@@ -217,11 +222,19 @@ pub fn orm_stmt_gen(table string, q string, kind StmtKind, num bool, qm string, 
 				c++
 			}
 
-			str += 'INSERT INTO ${q}${table}${q} ('
-			str += select_fields.join(', ')
-			str += ') VALUES ('
-			str += values.join(', ')
-			str += ')'
+			str += 'INSERT INTO ${q}${table}${q} '
+
+			are_values_empty := values.len == 0
+
+			if sql_dialect == .sqlite && are_values_empty {
+				str += 'DEFAULT VALUES'
+			} else {
+				str += '('
+				str += select_fields.join(', ')
+				str += ') VALUES ('
+				str += values.join(', ')
+				str += ')'
+			}
 		}
 		.update {
 			str += 'UPDATE ${q}${table}${q} SET '

@@ -112,7 +112,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	if p.os == ._auto {
 		// No OS specifed? Use current system
-		p.os = get_host_os()
+		p.os = if p.backend != .wasm { get_host_os() } else { .wasi }
 	}
 	//
 	p.try_to_use_tcc_by_default()

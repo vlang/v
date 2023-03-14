@@ -257,3 +257,18 @@ fn test_multi_array_update_data() {
 	println(a)
 	assert '${a}' == '[[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]'
 }
+
+fn test_array_of_map_with_len_no_default() {
+	mut arr := []map[int]int{len: 3}
+	arr[0][0] = 0
+	arr[1][1] = 1
+	arr[2][2] = 2
+	println(arr)
+	assert arr == [{
+		0: 0
+	}, {
+		1: 1
+	}, {
+		2: 2
+	}]
+}

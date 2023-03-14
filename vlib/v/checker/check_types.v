@@ -194,7 +194,7 @@ fn (c Checker) check_multiple_ptr_match(got ast.Type, expected ast.Type, param a
 	return true
 }
 
-fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, language ast.Language, arg ast.CallArg) ? {
+fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, language ast.Language, arg ast.CallArg) ! {
 	if got == 0 {
 		return error('unexpected 0 type')
 	}
@@ -873,19 +873,12 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					typ = ast.new_type(idx).derive(arg.typ)
 				} else if c.inside_comptime_for_field && sym.kind in [.struct_, .any]
 					&& arg.expr is ast.ComptimeSelector {
-					compselector := arg.expr as ast.ComptimeSelector
-					if compselector.field_expr is ast.SelectorExpr {
-						selectorexpr := compselector.field_expr as ast.SelectorExpr
-						if selectorexpr.expr is ast.Ident {
-							ident := selectorexpr.expr as ast.Ident
-							if ident.name == c.comptime_for_field_var {
-								typ = c.comptime_fields_default_type
-
-								if func.return_type.has_flag(.generic)
-									&& gt_name == c.table.type_to_str(func.return_type) {
-									node.comptime_ret_val = true
-								}
-							}
+					comptime_typ := c.get_comptime_selector_type(arg.expr, ast.void_type)
+					if comptime_typ != ast.void_type {
+						typ = comptime_typ
+						if func.return_type.has_flag(.generic)
+							&& gt_name == c.table.type_to_str(func.return_type) {
+							node.comptime_ret_val = true
 						}
 					}
 				}
@@ -990,7 +983,11 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					mut concrete_types := []ast.Type{}
 					match arg_sym.info {
 						ast.Struct, ast.Interface, ast.SumType {
-							generic_types = arg_sym.info.generic_types.clone()
+							if param_type_sym.generic_types.len > 0 {
+								generic_types = param_type_sym.generic_types.clone()
+							} else {
+								generic_types = arg_sym.info.generic_types.clone()
+							}
 							concrete_types = arg_sym.info.concrete_types.clone()
 						}
 						else {}

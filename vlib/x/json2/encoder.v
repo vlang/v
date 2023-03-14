@@ -156,6 +156,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 		}
 	}
 	$for field in U.fields {
+		mut ignore_field := false
 		value := val.$(field.name)
 		mut json_name := ''
 		for attr in field.attrs {
@@ -221,6 +222,8 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				} $else {
 					return error('type ${typeof(val).name} cannot be array encoded')
 				}
+			} else {
+				ignore_field = true
 			}
 		} $else {
 			is_none := val.$(field.name).str() == 'unknown sum type value'
@@ -345,7 +348,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				$if field.unaliased_typ is string {
 					e.encode_string(val.$(field.name).str(), mut wr)!
 				} $else $if field.unaliased_typ is time.Time {
-					parsed_time := val.$(field.name) as time.Time
+					parsed_time := time.parse(val.$(field.name).str()) or { time.Time{} }
 					e.encode_string(parsed_time.format_rfc3339(), mut wr)!
 				} $else $if field.unaliased_typ in [bool, $Float, $Int] {
 					wr.write(val.$(field.name).str().bytes())!
@@ -370,10 +373,12 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			}
 		}
 
-		if i < fields_len - 1 {
+		if i < fields_len - 1 && !ignore_field {
 			wr.write(json2.comma_bytes)!
 		}
-		i++
+		if !ignore_field {
+			i++
+		}
 	}
 	e.encode_newline(level - 1, mut wr)!
 	wr.write([u8(`}`)])!
@@ -415,6 +420,12 @@ fn (e &Encoder) encode_array[U](val []U, level int, mut wr io.Writer) ! {
 			// e.encode_array(val[i], level + 1, mut wr)!
 		} $else $if U is $Struct {
 			e.encode_struct(val[i], level + 1, mut wr)!
+		} $else $if U is $Sumtype {
+			$if U is Any {
+				e.encode_any(val[i], level + 1, mut wr)!
+			} $else {
+				// TODO
+			}
 		} $else $if U is $Enum {
 			e.encode_any(i64(val[i]), level + 1, mut wr)!
 		} $else {

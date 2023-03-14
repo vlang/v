@@ -100,11 +100,11 @@ fn (mut g JsGen) write_tests_definitions() {
 	g.definitions.writeln('globalThis.g_test_fails = 0;')
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
+pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) string {
 	mut g := &JsGen{
 		definitions: strings.new_builder(100)
 		table: table
-		pref: pref
+		pref: pref_
 		fn_decl: 0
 		empty_line: true
 		doc: 0
@@ -115,7 +115,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	}
 	g.doc = new_jsdoc(g)
 	// TODO: Add '[-no]-jsdoc' flag
-	if pref.is_prod {
+	if g.pref.is_prod {
 		g.enable_doc = false
 		g.is_vlines_enabled = false
 	}

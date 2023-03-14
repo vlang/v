@@ -50,8 +50,9 @@ rng.int() // among others ...
 You can change the default generator to a different one. The only requirement is that
 the generator must implement the `PRNG` interface. See `get_current_rng()` and `set_rng()`.
 
-**Note:** The global PRNG is not thread safe. It is recommended to use separate generators for
-separate threads in multi-threaded applications.
+> **Note**
+> The global PRNG is not thread safe. It is recommended to use separate generators for
+> separate threads in multi-threaded applications.
 
 There are only a few extra functions that are defined only in this top-level `rand` module.
 Otherwise, there is feature parity between the generator functions and the top-level functions.
@@ -80,8 +81,8 @@ The helper functions publicly available in `rand.seed` module are:
 2. `time_seed_32()` and `time_seed_64()` - 32-bit and 64-bit values respectively
    that are generated from the current time.
 
-When composing your own seeds, use "typical" u32 numbers, not small numbers.  This
-is especially important for PRNGs with large state, such as `mt19937`.  You can create
+When composing your own seeds, use "typical" u32 numbers, not small numbers. This
+is especially important for PRNGs with large state, such as `mt19937`. You can create
 random unsigned integers with openssl `rand` or with `v repl` as follows:
 
 ```
@@ -110,7 +111,8 @@ A workaround (if you _must_ use the libc RNG) is to:
 
 # Notes
 
-Please note that [math interval](<https://en.wikipedia.org/wiki/Interval_(mathematics)#Including_or_excluding_endpoints>) notation is used throughout
-the function documentation to denote what numbers ranges include.
-An example of `[0, max)` thus denotes a range with all posible values
+[Math interval](<https://en.wikipedia.org/wiki/Interval_(mathematics)#Including_or_excluding_endpoints>)
+notation is used throughout the function documentation to denote what numbers ranges include.
+
+An example of `[0, max)` thus denotes a range with all possible values
 between `0` and `max` **including** 0 but **excluding** `max`.

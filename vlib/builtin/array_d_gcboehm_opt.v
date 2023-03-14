@@ -42,6 +42,22 @@ fn __new_array_with_default_noscan(mylen int, cap int, elm_size int, val voidptr
 	return arr
 }
 
+fn __new_array_with_multi_default_noscan(mylen int, cap int, elm_size int, val voidptr) array {
+	cap_ := if cap < mylen { mylen } else { cap }
+	mut arr := array{
+		element_size: elm_size
+		data: vcalloc_noscan(u64(cap_) * u64(elm_size))
+		len: mylen
+		cap: cap_
+	}
+	if val != 0 && arr.data != unsafe { nil } {
+		for i in 0 .. arr.len {
+			unsafe { arr.set_unsafe(i, charptr(val) + i * elm_size) }
+		}
+	}
+	return arr
+}
+
 fn __new_array_with_array_default_noscan(mylen int, cap int, elm_size int, val array) array {
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{

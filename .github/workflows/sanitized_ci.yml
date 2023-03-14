@@ -83,10 +83,10 @@ jobs:
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
-          node-version: 12.x
+          node-version: 16
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -111,10 +111,10 @@ jobs:
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
-          node-version: 12.x
+          node-version: 16
       - name: Install dependencies
         run: |
           sudo apt update
@@ -138,10 +138,10 @@ jobs:
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
-          node-version: 12.x
+          node-version: 16
       - name: Install dependencies
         run: |
           sudo apt update
@@ -170,10 +170,10 @@ jobs:
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
-          node-version: 12.x
+          node-version: 16
       - name: Build
         run: |
           echo %VFLAGS%
@@ -202,10 +202,10 @@ jobs:
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
-          node-version: 12.x
+          node-version: 16
       - name: Install dependencies
         run: |
           sudo apt update
@@ -234,10 +234,10 @@ jobs:
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
-          node-version: 12.x
+          node-version: 16
       - name: Install dependencies
         run: |
           sudo apt update

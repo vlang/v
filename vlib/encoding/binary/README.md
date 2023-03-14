@@ -19,5 +19,6 @@ sequence of bytes in the previous example: `0x12`, `0x34`, `0x56`, and `0x78`. I
 this sequence in little endian format, we get the integer `0x78563412`. If we encode this
 sequence in big endian, we get `0x12345678`.
 
-**NOTE:** The functions in this module assume appropriately sized u8 arrays. If the sizes
-are not valid, the functions will panic.
+> **Note**
+> The functions in this module assume appropriately sized u8 arrays. If the sizes
+> are not valid, the functions will panic.

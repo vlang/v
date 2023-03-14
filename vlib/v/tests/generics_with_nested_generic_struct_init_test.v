@@ -10,13 +10,13 @@ fn test_nested_generic_struct_init() {
 
 struct List[T] {
 pub mut:
-	head &ListNode[T] = 0
+	head &ListNode[T] = unsafe { nil }
 }
 
 struct ListNode[T] {
 pub mut:
 	value T
-	next  &ListNode[T] = 0
+	next  &ListNode[T] = unsafe { nil }
 }
 
 pub fn list_new[T]() &List[T] {

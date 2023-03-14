@@ -49,7 +49,7 @@ pub enum Platform {
 }
 
 // copy of pref.os_from_string
-pub fn platform_from_string(platform_str string) ?Platform {
+pub fn platform_from_string(platform_str string) !Platform {
 	match platform_str {
 		'all', 'cross' { return .cross }
 		'linux' { return .linux }
@@ -147,12 +147,12 @@ pub mut:
 pub fn new_vdoc_preferences() &pref.Preferences {
 	// vdoc should be able to parse as much user code as possible
 	// so its preferences should be permissive:
-	mut pref := &pref.Preferences{
+	mut pref_ := &pref.Preferences{
 		enable_globals: true
 		is_fmt: true
 	}
-	pref.fill_with_defaults()
-	return pref
+	pref_.fill_with_defaults()
+	return pref_
 }
 
 // new creates a new instance of a `Doc` struct.
@@ -177,7 +177,7 @@ pub fn new(input_path string) Doc {
 // stmt reads the data of an `ast.Stmt` node and returns a `DocNode`.
 // An option error is thrown if the symbol is not exposed to the public
 // (when `pub_only` is enabled) or the content's of the AST node is empty.
-pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
+pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) !DocNode {
 	mut name := d.stmt_name(stmt)
 	if name in d.common_symbols {
 		return error('already documented')
@@ -421,7 +421,7 @@ pub fn (mut d Doc) file_ast_with_pos(file_ast ast.File, pos int) map[string]DocN
 
 // generate is a `Doc` method that will start documentation
 // process based on a file path provided.
-pub fn (mut d Doc) generate() ? {
+pub fn (mut d Doc) generate() ! {
 	// get all files
 	d.base_path = if os.is_dir(d.base_path) {
 		d.base_path
@@ -451,7 +451,7 @@ pub fn (mut d Doc) generate() ? {
 
 // file_asts has the same function as the `file_ast` function but
 // accepts an array of `ast.File` and throws an error if necessary.
-pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
+pub fn (mut d Doc) file_asts(file_asts []ast.File) ! {
 	mut fname_has_set := false
 	d.orig_mod_name = file_asts[0].mod.name
 	for i, file_ast in file_asts {
@@ -506,7 +506,7 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 
 // generate documents a certain file directory and returns an
 // instance of `Doc` if it is successful. Otherwise, it will  throw an error.
-pub fn generate(input_path string, pub_only bool, with_comments bool, platform Platform, filter_symbol_names ...string) ?Doc {
+pub fn generate(input_path string, pub_only bool, with_comments bool, platform Platform, filter_symbol_names ...string) !Doc {
 	if platform == .js {
 		return error('vdoc: Platform `${platform}` is not supported.')
 	}
@@ -519,19 +519,19 @@ pub fn generate(input_path string, pub_only bool, with_comments bool, platform P
 	} else {
 		unsafe { pref.OS(int(platform)) }
 	}
-	doc.generate()?
+	doc.generate()!
 	return doc
 }
 
 // generate_with_pos has the same function as the `generate` function but
 // accepts an offset-based position and enables the comments by default.
-pub fn generate_with_pos(input_path string, filename string, pos int) ?Doc {
+pub fn generate_with_pos(input_path string, filename string, pos int) !Doc {
 	mut doc := new(input_path)
 	doc.pub_only = false
 	doc.with_comments = true
 	doc.with_pos = true
 	doc.filename = filename
 	doc.pos = pos
-	doc.generate()?
+	doc.generate()!
 	return doc
 }

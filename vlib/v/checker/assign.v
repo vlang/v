@@ -18,7 +18,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	mut right_type0 := ast.void_type
 	for i, mut right in node.right {
 		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr,
-			ast.SelectorExpr] {
+			ast.SelectorExpr, ast.ParExpr] {
 			if right in [ast.IfExpr, ast.MatchExpr] && node.left.len == node.right.len && !is_decl
 				&& node.left[i] in [ast.Ident, ast.SelectorExpr] && !node.left[i].is_blank_ident() {
 				c.expected_type = c.expr(node.left[i])
@@ -56,7 +56,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.error('unexpected `mut` on right-hand side of assignment', right.mut_pos)
 			}
 		}
-		if mut right is ast.None {
+		if is_decl && mut right is ast.None {
 			c.error('cannot assign a `none` value to a variable', right.pos)
 		}
 		// Handle `left_name := unsafe { none }`
@@ -79,6 +79,21 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			c.error('assignment mismatch: ${node.left.len} variable(s) but `${right_first.name}()` returns ${right_len} value(s)',
 				node.pos)
+		} else if right_first is ast.ParExpr {
+			mut right_next := right_first
+			for {
+				if right_next.expr is ast.CallExpr {
+					if (right_next.expr as ast.CallExpr).return_type == ast.void_type {
+						c.error('assignment mismatch: expected ${node.left.len} value(s) but `${(right_next.expr as ast.CallExpr).name}()` returns ${right_len} value(s)',
+							node.pos)
+					}
+					break
+				} else if right_next.expr is ast.ParExpr {
+					right_next = right_next.expr as ast.ParExpr
+				} else {
+					break
+				}
+			}
 		} else {
 			c.error('assignment mismatch: ${node.left.len} variable(s) ${right_len} value(s)',
 				node.pos)
@@ -105,6 +120,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		is_blank_ident := left.is_blank_ident()
 		mut left_type := ast.void_type
+		mut var_option := false
 		if !is_decl && !is_blank_ident {
 			if left in [ast.Ident, ast.SelectorExpr] {
 				c.prevent_sum_type_unwrapping_once = true
@@ -114,6 +130,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			left_type = c.expr(left)
 			c.is_index_assign = false
+			c.expected_type = c.unwrap_generic(left_type)
+		}
+		if c.inside_comptime_for_field && mut left is ast.ComptimeSelector {
+			left_type = c.comptime_fields_default_type
 			c.expected_type = c.unwrap_generic(left_type)
 		}
 		if node.right_types.len < node.left.len { // first type or multi return types added above
@@ -141,6 +161,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						right_type = obj.typ
 					}
 				}
+			}
+			if right.or_expr.kind in [.propagate_option, .block] {
+				right_type = right_type.clear_flag(.option)
 			}
 		} else if right is ast.ComptimeSelector {
 			right_type = c.comptime_fields_default_type
@@ -186,6 +209,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			// Make sure the variable is mutable
 			c.fail_if_immutable(left)
 			// left_type = c.expr(left)
+			// if right is ast.None && !left_type.has_flag(.option) {
+			// 	println(left_type)
+			// 	c.error('cannot assign a `none` value to a non-option variable', right.pos())
+			// }
 		}
 		if right_type.is_ptr() && left_type.is_ptr() {
 			if mut right is ast.Ident {
@@ -264,6 +291,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					if ident_var_info.share == .atomic_t {
 						left_type = left_type.set_flag(.atomic_f)
 					}
+					if ident_var_info.is_option {
+						var_option = true
+					}
 					node.left_types[i] = left_type
 					ident_var_info.typ = left_type
 					left.info = ident_var_info
@@ -288,7 +318,15 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									}
 								}
 								if right is ast.ComptimeSelector {
-									left.obj.is_comptime_field = true
+									left.obj.ct_type_var = .field_var
+									left.obj.typ = c.comptime_fields_default_type
+								} else if right is ast.Ident
+									&& (right as ast.Ident).obj is ast.Var && (right as ast.Ident).or_expr.kind == .absent {
+									left.obj.ct_type_var = ((right as ast.Ident).obj as ast.Var).ct_type_var
+								} else if right is ast.DumpExpr
+									&& (right as ast.DumpExpr).expr is ast.ComptimeSelector {
+									left.obj.ct_type_var = .field_var
+									left.obj.typ = c.comptime_fields_default_type
 								}
 							}
 							ast.GlobalField {
@@ -303,6 +341,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							if obj is ast.ConstField {
 								c.warn('duplicate of a const name `${full_name}`', left.pos)
 							}
+						}
+						// Check if variable name is already registered as imported module symbol
+						if c.check_import_sym_conflict(left.name) {
+							c.error('duplicate of an import symbol `${left.name}`', left.pos)
 						}
 					}
 				}
@@ -442,7 +484,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					rtype = rtype.deref()
 				}
 				right_name := c.table.type_to_str(rtype)
-				c.error('mismatched types `${left_name}` and `${right_name}`', node.pos)
+				if !(left_type.has_flag(.option) && right_type == ast.none_type) {
+					c.error('mismatched types `${left_name}` and `${right_name}`', node.pos)
+				}
 			}
 		}
 		// Single side check
@@ -606,7 +650,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							c.error('enums can only be assigned `int` values', right.pos())
 						}
 					} else {
-						c.error('cannot assign to `${left}`: ${err.msg()}', right.pos())
+						if !var_option || (var_option && right_type_unwrapped != ast.none_type) {
+							c.error('cannot assign to `${left}`: ${err.msg()}', right.pos())
+						}
 					}
 				}
 			}

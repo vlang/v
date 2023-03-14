@@ -308,6 +308,7 @@ pub fn (s string) len_utf8() int {
 
 // clone_static returns an independent copy of a given array.
 // It should be used only in -autofree generated code.
+[inline]
 fn (a string) clone_static() string {
 	return a.clone()
 }
@@ -565,56 +566,67 @@ pub fn (s string) normalize_tabs(tab_len int) string {
 }
 
 // bool returns `true` if the string equals the word "true" it will return `false` otherwise.
+[inline]
 pub fn (s string) bool() bool {
 	return s == 'true' || s == 't' // TODO t for pg, remove
 }
 
 // int returns the value of the string as an integer `'1'.int() == 1`.
+[inline]
 pub fn (s string) int() int {
 	return int(strconv.common_parse_int(s, 0, 32, false, false) or { 0 })
 }
 
 // i64 returns the value of the string as i64 `'1'.i64() == i64(1)`.
+[inline]
 pub fn (s string) i64() i64 {
 	return strconv.common_parse_int(s, 0, 64, false, false) or { 0 }
 }
 
 // i8 returns the value of the string as i8 `'1'.i8() == i8(1)`.
+[inline]
 pub fn (s string) i8() i8 {
 	return i8(strconv.common_parse_int(s, 0, 8, false, false) or { 0 })
 }
 
 // i16 returns the value of the string as i16 `'1'.i16() == i16(1)`.
+[inline]
 pub fn (s string) i16() i16 {
 	return i16(strconv.common_parse_int(s, 0, 16, false, false) or { 0 })
 }
 
 // f32 returns the value of the string as f32 `'1.0'.f32() == f32(1)`.
+[inline]
 pub fn (s string) f32() f32 {
 	return f32(strconv.atof64(s) or { 0 })
 }
 
 // f64 returns the value of the string as f64 `'1.0'.f64() == f64(1)`.
+[inline]
 pub fn (s string) f64() f64 {
 	return strconv.atof64(s) or { 0 }
 }
 
 // u8 returns the value of the string as u8 `'1'.u8() == u8(1)`.
+[inline]
 pub fn (s string) u8() u8 {
 	return u8(strconv.common_parse_uint(s, 0, 8, false, false) or { 0 })
 }
 
 // u16 returns the value of the string as u16 `'1'.u16() == u16(1)`.
+[inline]
 pub fn (s string) u16() u16 {
 	return u16(strconv.common_parse_uint(s, 0, 16, false, false) or { 0 })
 }
 
 // u32 returns the value of the string as u32 `'1'.u32() == u32(1)`.
+[inline]
 pub fn (s string) u32() u32 {
 	return u32(strconv.common_parse_uint(s, 0, 32, false, false) or { 0 })
 }
 
 // u64 returns the value of the string as u64 `'1'.u64() == u64(1)`.
+[inline]
 pub fn (s string) u64() u64 {
 	return strconv.common_parse_uint(s, 0, 64, false, false) or { 0 }
 }
@@ -624,6 +636,7 @@ pub fn (s string) u64() u64 {
 // This method directly exposes the `parse_int` function from `strconv`
 // as a method on `string`. For more advanced features,
 // consider calling `strconv.common_parse_int` directly.
+[inline]
 pub fn (s string) parse_uint(_base int, _bit_size int) !u64 {
 	return strconv.parse_uint(s, _base, _bit_size)
 }
@@ -644,6 +657,7 @@ pub fn (s string) parse_uint(_base int, _bit_size int) !u64 {
 // This method directly exposes the `parse_uint` function from `strconv`
 // as a method on `string`. For more advanced features,
 // consider calling `strconv.common_parse_uint` directly.
+[inline]
 pub fn (s string) parse_int(_base int, _bit_size int) !i64 {
 	return strconv.parse_int(s, _base, _bit_size)
 }
@@ -757,12 +771,90 @@ pub fn (s string) split_any(delim string) []string {
 	return res
 }
 
+// rsplit_any splits the string to an array by any of the `delim` chars in reverse order.
+// Example: "first row\nsecond row".rsplit_any(" \n") == ['row', 'second', 'row', 'first']
+// Split a string using the chars in the delimiter string as delimiters chars.
+// If the delimiter string is empty then `.rsplit()` is used.
+[direct_array_access]
+pub fn (s string) rsplit_any(delim string) []string {
+	mut res := []string{}
+	mut i := s.len - 1
+	if s.len > 0 {
+		if delim.len <= 0 {
+			return s.rsplit('')
+		}
+		mut rbound := s.len
+		for i >= 0 {
+			for delim_ch in delim {
+				if s[i] == delim_ch {
+					res << s[i + 1..rbound]
+					rbound = i
+					break
+				}
+			}
+			i--
+		}
+		if rbound > 0 {
+			res << s[..rbound]
+		}
+	}
+	return res
+}
+
 // split splits the string to an array by `delim`.
 // Example: assert 'A B C'.split(' ') == ['A','B','C']
 // If `delim` is empty the string is split by it's characters.
 // Example: assert 'DEF'.split('') == ['D','E','F']
+[inline]
 pub fn (s string) split(delim string) []string {
 	return s.split_nth(delim, 0)
+}
+
+// rsplit splits the string to an array by `delim` in reverse order.
+// Example: assert 'A B C'.rsplit(' ') == ['C','B','A']
+// If `delim` is empty the string is split by it's characters.
+// Example: assert 'DEF'.rsplit('') == ['F','E','D']
+[inline]
+pub fn (s string) rsplit(delim string) []string {
+	return s.rsplit_nth(delim, 0)
+}
+
+// split_once devides string into pair of string by `delim`.
+// Example:
+// ```v
+// path, ext := 'file.ts.dts'.splice_once('.')?
+// assert path == 'file'
+// assert ext == 'ts.dts'
+// ```
+// Note that rsplit_once returns splitted string string as first part of pair,
+// and returns remaining as second part of pair.
+pub fn (s string) split_once(delim string) ?(string, string) {
+	result := s.split_nth(delim, 2)
+
+	if result.len != 2 {
+		return none
+	}
+
+	return result[0], result[1]
+}
+
+// rsplit_once devides string into pair of string by `delim`.
+// Example:
+// ```v
+// path, ext := 'file.ts.dts'.splice_once('.')?
+// assert path == 'file.ts'
+// assert ext == 'dts'
+// ```
+// Note that rsplit_once returns remaining string as first part of pair,
+// and returns splitted string as second part of pair.
+pub fn (s string) rsplit_once(delim string) ?(string, string) {
+	result := s.rsplit_nth(delim, 2)
+
+	if result.len != 2 {
+		return none
+	}
+
+	return result[1], result[0]
 }
 
 // split_nth splits the string based on the passed `delim` substring.
@@ -839,6 +931,74 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	}
 }
 
+// rsplit_nth splits the string based on the passed `delim` substring in revese order.
+// It returns the first Nth parts. When N=0, return all the splits.
+// The last returned element has the remainder of the string, even if
+// the remainder contains more `delim` substrings.
+[direct_array_access]
+pub fn (s string) rsplit_nth(delim string, nth int) []string {
+	mut res := []string{}
+	mut i := s.len - 1
+
+	match delim.len {
+		0 {
+			for i >= 0 {
+				if nth > 0 && res.len == nth - 1 {
+					res << s[..i]
+					break
+				}
+				res << s[i].ascii_str()
+				i--
+			}
+			return res
+		}
+		1 {
+			mut rbound := s.len
+			delim_byte := delim[0]
+
+			for i >= 0 {
+				if s[i] == delim_byte {
+					if nth > 0 && res.len == nth - 1 {
+						break
+					}
+					res << s[i + 1..rbound]
+					rbound = i
+					i--
+				} else {
+					i--
+				}
+			}
+
+			if nth < 1 || res.len < nth {
+				res << s[..rbound]
+			}
+			return res
+		}
+		else {
+			mut rbound := s.len
+
+			for i >= 0 {
+				is_delim := i - delim.len >= 0 && s[i - delim.len..i] == delim
+				if is_delim {
+					if nth > 0 && res.len == nth - 1 {
+						break
+					}
+					res << s[i..rbound]
+					rbound = i - delim.len
+					i -= delim.len
+				} else {
+					i--
+				}
+			}
+
+			if nth < 1 || res.len < nth {
+				res << s[..rbound]
+			}
+			return res
+		}
+	}
+}
+
 // split_into_lines splits the string by newline characters.
 // newlines are stripped.
 // `\r` (MacOS), `\n` (POSIX), and `\r\n` (WinOS) line endings are all supported (including mixed line endings).
@@ -874,6 +1034,7 @@ pub fn (s string) split_into_lines() []string {
 }
 
 // used internally for [2..4]
+[inline]
 fn (s string) substr2(start int, _end int, end_max bool) string {
 	end := if end_max { s.len } else { _end }
 	return s.substr(start, end)
@@ -910,7 +1071,7 @@ pub fn (s string) substr(start int, end int) string {
 // version of `substr()` that is used in `a[start..end] or {`
 // return an error when the index is out of range
 [direct_array_access]
-pub fn (s string) substr_with_check(start int, end int) ?string {
+pub fn (s string) substr_with_check(start int, end int) !string {
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 		return error('substr(${start}, ${end}) out of bounds (len=${s.len})')
 	}
@@ -1417,6 +1578,7 @@ pub fn (s string) find_between(start string, end string) string {
 
 // trim_space strips any of ` `, `\n`, `\t`, `\v`, `\f`, `\r` from the start and end of the string.
 // Example: assert ' Hello V '.trim_space() == 'Hello V'
+[inline]
 pub fn (s string) trim_space() string {
 	return s.trim(' \n\t\v\f\r')
 }
@@ -1575,16 +1737,19 @@ fn compare_lower_strings(a &string, b &string) int {
 }
 
 // sort_ignore_case sorts the string array using case insesitive comparing.
+[inline]
 pub fn (mut s []string) sort_ignore_case() {
 	s.sort_with_compare(compare_lower_strings)
 }
 
 // sort_by_len sorts the the string array by each string's `.len` length.
+[inline]
 pub fn (mut s []string) sort_by_len() {
 	s.sort_with_compare(compare_strings_by_len)
 }
 
 // str returns a copy of the string
+[inline]
 pub fn (s string) str() string {
 	return s.clone()
 }
@@ -1606,7 +1771,7 @@ fn (s string) at(idx int) byte {
 // return an error when the index is out of range
 fn (s string) at_with_check(idx int) ?u8 {
 	if idx < 0 || idx >= s.len {
-		return error('string index out of range')
+		return none
 	}
 	unsafe {
 		return s.str[idx]
@@ -1770,6 +1935,7 @@ pub fn (s string) all_after_first(sub string) string {
 // Example: assert '23:34:45.234'.after(':') == '45.234'
 // Example: assert 'abcd'.after('z') == 'abcd'
 // TODO: deprecate either .all_after_last or .after
+[inline]
 pub fn (s string) after(sub string) string {
 	return s.all_after_last(sub)
 }
@@ -1829,6 +1995,7 @@ pub fn (a []string) join(sep string) string {
 }
 
 // join joins a string array into a string using a `\n` newline delimiter.
+[inline]
 pub fn (s []string) join_lines() string {
 	return s.join('\n')
 }
@@ -1963,6 +2130,7 @@ pub fn (s string) fields() []string {
 //   this is a string,
 //   Everything before the first | is removed'
 // ```
+[inline]
 pub fn (s string) strip_margin() string {
 	return s.strip_margin_custom(`|`)
 }
@@ -2216,6 +2384,7 @@ pub fn (name string) match_glob(pattern string) bool {
 }
 
 // is_ascii returns true  if all characters belong to the US-ASCII set ([` `..`~`])
+[inline]
 pub fn (s string) is_ascii() bool {
 	return !s.bytes().any(it < u8(` `) || it > u8(`~`))
 }

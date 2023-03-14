@@ -4,9 +4,11 @@ module checker
 
 import v.ast
 import v.token
+import v.util
 
 const (
 	fkey_attr_name = 'fkey'
+	v_orm_prefix   = 'V ORM'
 )
 
 fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
@@ -22,12 +24,13 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		c.cur_orm_ts = old_ts
 	}
 	if sym.info !is ast.Struct {
-		c.error('the table symbol `${sym.name}` has to be a struct', node.table_expr.pos)
+		c.orm_error('the table symbol `${sym.name}` has to be a struct', node.table_expr.pos)
 		return ast.void_type
 	}
 	info := sym.info as ast.Struct
 	mut fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, sym.name)
 	mut sub_structs := map[int]ast.SqlExpr{}
+
 	for f in fields.filter((c.table.type_symbols[int(it.typ)].kind == .struct_
 		|| (c.table.sym(it.typ).kind == .array
 		&& c.table.sym(c.table.sym(it.typ).array_info().elem_type).kind == .struct_))
@@ -39,9 +42,11 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		} else {
 			ast.Type(0)
 		}
+
 		mut n := ast.SqlExpr{
 			pos: node.pos
 			has_where: true
+			where_expr: ast.None{}
 			typ: typ
 			db_expr: node.db_expr
 			table_expr: ast.TypeNode{
@@ -49,9 +54,11 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 				typ: typ
 			}
 		}
+
 		tmp_inside_sql := c.inside_sql
 		c.sql_expr(mut n)
 		c.inside_sql = tmp_inside_sql
+
 		n.where_expr = ast.InfixExpr{
 			op: .eq
 			pos: n.pos
@@ -85,6 +92,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 
 		sub_structs[int(typ)] = n
 	}
+
 	if node.is_count {
 		fields = [
 			ast.StructField{
@@ -92,25 +100,50 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			},
 		]
 	}
+
 	node.fields = fields
 	node.sub_structs = sub_structs.move()
+	field_names := fields.map(it.name)
+
 	if node.has_where {
 		c.expr(node.where_expr)
+		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&node.where_expr)
+		c.check_where_expr_has_no_pointless_exprs(sym, field_names, &node.where_expr)
 	}
-	if node.has_offset {
-		c.expr(node.offset_expr)
+
+	if node.has_order {
+		if mut node.order_expr is ast.Ident {
+			order_ident_name := node.order_expr.name
+
+			if !sym.has_field(order_ident_name) {
+				c.orm_error(util.new_suggestion(order_ident_name, field_names).say('`${sym.name}` structure has no field with name `${order_ident_name}`'),
+					node.order_expr.pos)
+				return ast.void_type
+			}
+		} else {
+			c.orm_error("expected `${sym.name}` structure's field", node.order_expr.pos())
+			return ast.void_type
+		}
+
+		c.expr(node.order_expr)
 	}
+
 	if node.has_limit {
 		c.expr(node.limit_expr)
+		c.check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type(mut node.limit_expr,
+			'limit')
 	}
-	if node.has_order {
-		c.expr(node.order_expr)
+
+	if node.has_offset {
+		c.expr(node.offset_expr)
+		c.check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type(mut node.offset_expr,
+			'offset')
 	}
 	c.expr(node.db_expr)
 
 	if node.or_expr.kind == .block {
 		if node.or_expr.stmts.len == 0 {
-			c.error('or block needs to return a default value', node.or_expr.pos)
+			c.orm_error('or block needs to return a default value', node.or_expr.pos)
 		}
 		if node.or_expr.stmts.len > 0 && node.or_expr.stmts.last() is ast.ExprStmt {
 			c.expected_or_type = node.typ
@@ -149,10 +182,33 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	defer {
 		c.cur_orm_ts = old_ts
 	}
+
+	if node.kind == .insert && node.is_top_level {
+		inserting_object_name := node.object_var_name
+		inserting_object := node.scope.find(inserting_object_name) or {
+			c.error('undefined ident: `${inserting_object_name}`', node.pos)
+			return ast.void_type
+		}
+		mut inserting_object_type := inserting_object.typ
+
+		if inserting_object_type.is_ptr() {
+			inserting_object_type = inserting_object.typ.deref()
+		}
+
+		if inserting_object_type != node.table_expr.typ {
+			table_name := table_sym.name
+			inserting_type_name := c.table.sym(inserting_object_type).name
+
+			c.error('cannot use `${inserting_type_name}` as `${table_name}`', node.pos)
+			return ast.void_type
+		}
+	}
+
 	if table_sym.info !is ast.Struct {
 		c.error('unknown type `${table_sym.name}`', node.pos)
 		return ast.void_type
 	}
+
 	info := table_sym.info as ast.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
 	mut sub_structs := map[int]ast.SqlStmtLine{}
@@ -193,7 +249,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	for i, column in node.updated_columns {
 		x := node.fields.filter(it.name == column)
 		if x.len == 0 {
-			c.error('type `${table_sym.name}` has no field named `${column}`', node.pos)
+			c.orm_error('type `${table_sym.name}` has no field named `${column}`', node.pos)
 			continue
 		}
 		field := x[0]
@@ -218,19 +274,19 @@ fn (mut c Checker) check_orm_struct_field_attributes(field ast.StructField) {
 	for attr in field.attrs {
 		if attr.name == checker.fkey_attr_name {
 			if field_type.kind != .array && field_type.kind != .struct_ {
-				c.error('The `${checker.fkey_attr_name}` attribute must be used only with arrays and structures',
+				c.orm_error('the `${checker.fkey_attr_name}` attribute must be used only with arrays and structures',
 					attr.pos)
 				return
 			}
 
 			if !attr.has_arg {
-				c.error('The `${checker.fkey_attr_name}` attribute must have an argument',
+				c.orm_error('the `${checker.fkey_attr_name}` attribute must have an argument',
 					attr.pos)
 				return
 			}
 
 			if attr.kind != .string {
-				c.error('`${checker.fkey_attr_name}` attribute must be string. Try [${checker.fkey_attr_name}: \'${attr.arg}\'] instead of [${checker.fkey_attr_name}: ${attr.arg}]',
+				c.orm_error("`${checker.fkey_attr_name}` attribute must be string. Try [${checker.fkey_attr_name}: '${attr.arg}'] instead of [${checker.fkey_attr_name}: ${attr.arg}]",
 					attr.pos)
 				return
 			}
@@ -242,7 +298,7 @@ fn (mut c Checker) check_orm_struct_field_attributes(field ast.StructField) {
 			}
 
 			field_struct_type.find_field(attr.arg) or {
-				c.error('`${field_struct_type.name}` struct has no field with name `${attr.arg}`',
+				c.orm_error('`${field_struct_type.name}` struct has no field with name `${attr.arg}`',
 					attr.pos)
 				return
 			}
@@ -252,7 +308,7 @@ fn (mut c Checker) check_orm_struct_field_attributes(field ast.StructField) {
 	}
 
 	if field_type.kind == .array && !has_fkey_attr {
-		c.error('A field that holds an array must be defined with the `${checker.fkey_attr_name}` attribute',
+		c.orm_error('a field that holds an array must be defined with the `${checker.fkey_attr_name}` attribute',
 			field.pos)
 	}
 }
@@ -265,11 +321,150 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, t
 		&& c.table.sym(c.table.sym(it.typ).array_info().elem_type).kind == .struct_))
 		&& !it.attrs.contains('skip'))
 	if fields.len == 0 {
-		c.error('V orm: select: empty fields in `${table_name}`', pos)
+		c.orm_error('select: empty fields in `${table_name}`', pos)
 		return []ast.StructField{}
 	}
 	if fields[0].name != 'id' {
-		c.error('V orm: `id int` must be the first field in `${table_name}`', pos)
+		c.orm_error('`id int` must be the first field in `${table_name}`', pos)
 	}
 	return fields
+}
+
+// check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type checks that an expression is compile-time
+// and contains an integer greater than or equal to zero or it is a runtime expression with an integer type.
+fn (mut c Checker) check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type(mut expr ast.Expr, sql_keyword string) {
+	comptime_number := c.get_comptime_number_value(mut expr) or {
+		c.check_sql_expr_type_is_int(expr, sql_keyword)
+		return
+	}
+
+	if comptime_number < 0 {
+		c.orm_error('`${sql_keyword}` must be greater than or equal to zero', expr.pos())
+	}
+}
+
+fn (mut c Checker) check_sql_expr_type_is_int(expr &ast.Expr, sql_keyword string) {
+	if expr is ast.Ident {
+		if expr.obj.typ.is_int() {
+			return
+		}
+	} else if expr is ast.SelectorExpr {
+		if expr.typ.is_int() {
+			return
+		}
+	} else if expr is ast.CallExpr {
+		if expr.return_type == 0 {
+			return
+		}
+
+		type_symbol := c.table.sym(expr.return_type)
+		is_error_type := expr.return_type.has_flag(.result) || expr.return_type.has_flag(.option)
+		is_acceptable_type := type_symbol.is_int() && !is_error_type
+
+		if !is_acceptable_type {
+			error_type_symbol := c.fn_return_type_flag_to_string(expr.return_type)
+			c.orm_error('function calls in `${sql_keyword}` must return only an integer type, but `${expr.name}` returns `${error_type_symbol}${type_symbol.name}`',
+				expr.pos)
+		}
+
+		return
+	} else if expr is ast.ParExpr {
+		c.check_sql_expr_type_is_int(expr.expr, sql_keyword)
+		return
+	}
+
+	c.orm_error('the type of `${sql_keyword}` must be an integer type', expr.pos())
+}
+
+fn (mut c Checker) orm_error(message string, pos token.Pos) {
+	c.error('${checker.v_orm_prefix}: ${message}', pos)
+}
+
+// check_expr_has_no_fn_calls_with_non_orm_return_type checks that an expression has no function calls
+// that return complex types which can't be transformed into SQL.
+fn (mut c Checker) check_expr_has_no_fn_calls_with_non_orm_return_type(expr &ast.Expr) {
+	if expr is ast.CallExpr {
+		// `expr.return_type` may be empty. For example, a user call function incorrectly without passing all required arguments.
+		// This error will be handled in another place. Otherwise, `c.table.sym` below does panic.
+		//
+		// fn test(flag bool) {}
+		// test()
+		//      ~~~~~~ expected 1 arguments, but got 0
+		if expr.return_type == 0 {
+			return
+		}
+
+		type_symbol := c.table.sym(expr.return_type)
+		is_time := type_symbol.cname == 'time__Time'
+		is_not_pointer := !type_symbol.is_pointer()
+		is_error_type := expr.return_type.has_flag(.result) || expr.return_type.has_flag(.option)
+		is_acceptable_type := (type_symbol.is_primitive() || is_time) && is_not_pointer
+			&& !is_error_type
+
+		if !is_acceptable_type {
+			error_type_symbol := c.fn_return_type_flag_to_string(expr.return_type)
+			c.orm_error('function calls must return only primitive types and time.Time, but `${expr.name}` returns `${error_type_symbol}${type_symbol.name}`',
+				expr.pos)
+		}
+	} else if expr is ast.ParExpr {
+		c.check_expr_has_no_fn_calls_with_non_orm_return_type(expr.expr)
+	} else if expr is ast.InfixExpr {
+		c.check_expr_has_no_fn_calls_with_non_orm_return_type(expr.left)
+		c.check_expr_has_no_fn_calls_with_non_orm_return_type(expr.right)
+	}
+}
+
+// check_where_expr_has_no_pointless_exprs checks that an expression has no pointless expressions
+// which don't affect the result. For example, `where 3` is pointless.
+// Also, it checks that the left side of the infix expression is always the structure field.
+fn (mut c Checker) check_where_expr_has_no_pointless_exprs(table_type_symbol &ast.TypeSymbol, field_names []string, expr &ast.Expr) {
+	// Skip type checking for generated subqueries
+	// that are not linked to scope and vars but only created for cgen.
+	if expr is ast.None {
+		return
+	}
+
+	if expr is ast.InfixExpr {
+		has_no_field_error := "left side of the `${expr.op}` expression must be one of the `${table_type_symbol.name}`'s fields"
+
+		if expr.left is ast.Ident {
+			left_ident_name := expr.left.name
+
+			if !table_type_symbol.has_field(left_ident_name) {
+				c.orm_error(util.new_suggestion(left_ident_name, field_names).say(has_no_field_error),
+					expr.left.pos)
+			}
+		} else if expr.left is ast.InfixExpr || expr.left is ast.ParExpr
+			|| expr.left is ast.PrefixExpr {
+			c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names,
+				expr.left)
+		} else {
+			c.orm_error(has_no_field_error, expr.left.pos())
+		}
+
+		if expr.right is ast.InfixExpr || expr.right is ast.ParExpr || expr.right is ast.PrefixExpr {
+			c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names,
+				expr.right)
+		}
+	} else if expr is ast.ParExpr {
+		c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names, expr.expr)
+	} else if expr is ast.PrefixExpr {
+		c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names, expr.right)
+	} else {
+		c.orm_error('`where` expression must have at least one comparison for filtering rows',
+			expr.pos())
+	}
+}
+
+fn (_ &Checker) fn_return_type_flag_to_string(typ ast.Type) string {
+	is_result_type := typ.has_flag(.result)
+	is_option_type := typ.has_flag(.option)
+
+	return if is_result_type {
+		'!'
+	} else if is_option_type {
+		'?'
+	} else {
+		''
+	}
 }

@@ -7,8 +7,8 @@ import sokol.sgl
 
 // required for ui.DrawDevice interface (with &gg.Context as an instance)
 pub fn (ctx &Context) scissor_rect(x int, y int, w int, h int) {
-	sgl.scissor_rect(int(dpi_scale() * x), int(dpi_scale() * y), int(dpi_scale() * w),
-		int(dpi_scale() * h), true)
+	sgl.scissor_rect(int(ctx.scale * x), int(ctx.scale * y), int(ctx.scale * w), int(ctx.scale * h),
+		true)
 }
 
 pub fn (ctx &Context) has_text_style() bool {

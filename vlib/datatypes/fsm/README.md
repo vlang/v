@@ -12,7 +12,7 @@ On each `run()`, all the possible transitions from the current state are evaluat
 The first transition for the current state, whose condition evaluates to true is
 taken (the condition is specified by a transition callback function). 
 
-In a successfull transition, the current state changes to the new one.
+In a successful transition, the current state changes to the new one.
 When that happens:
 * the client-specified `on_exit()` handler from the current state is called.
 * the client-specified `on_entry()` handler of the new state is called.

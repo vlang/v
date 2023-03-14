@@ -98,8 +98,11 @@ mut:
 	for_in_any_val_type              ast.Type
 	comptime_for_field_var           string
 	comptime_fields_default_type     ast.Type
+	comptime_fields_key_type         ast.Type // key type on `$for k, v in val.$(field.name)`
+	comptime_fields_val_type         ast.Type // value type on `$for k, v in val.$(field.name)`
 	comptime_fields_type             map[string]ast.Type
 	comptime_for_field_value         ast.StructField // value of the field variable
+	comptime_enum_field_value        string // current enum value name
 	fn_scope                         &ast.Scope = unsafe { nil }
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
@@ -115,18 +118,19 @@ mut:
 	is_index_assign                  bool
 	comptime_call_pos                int // needed for correctly checking use before decl for templates
 	goto_labels                      map[string]ast.GotoLabel // to check for unused goto labels
+	enum_data_type                   ast.Type
 }
 
-pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
+pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 	mut timers_should_print := false
 	$if time_checking ? {
 		timers_should_print = true
 	}
 	return &Checker{
 		table: table
-		pref: pref
+		pref: pref_
 		timers: util.new_timers(should_print: timers_should_print, label: 'checker')
-		match_exhaustive_cutoff_limit: pref.checker_match_exhaustive_cutoff_limit
+		match_exhaustive_cutoff_limit: pref_.checker_match_exhaustive_cutoff_limit
 	}
 }
 
@@ -913,8 +917,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				// TODO: remove once deprecation period for `IError` methods has ended
 				if inter_sym.idx == ast.error_type_idx
 					&& (imethod.name == 'msg' || imethod.name == 'code') {
-					// c.note("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`. The usage of fields is being deprecated in favor of methods.",
-					// 	pos)
+					c.note("`${styp}` doesn't implement method `${imethod.name}` of interface `${inter_sym.name}`. The usage of fields is being deprecated in favor of methods.",
+						pos)
 					return false
 				}
 				// <<
@@ -990,12 +994,12 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 		}
 		if expr_ret_type.has_flag(.option) || expr_ret_type.has_flag(.result) {
 			return_modifier_kind := if expr_ret_type.has_flag(.option) {
-				'an option'
+				'an Option'
 			} else {
-				'a result'
+				'a Result'
 			}
 			return_modifier := if expr_ret_type.has_flag(.option) { '?' } else { '!' }
-			if expr.or_block.kind == .absent {
+			if expr_ret_type.has_flag(.result) && expr.or_block.kind == .absent {
 				if c.inside_defer {
 					c.error('${expr.name}() returns ${return_modifier_kind}, so it should have an `or {}` block at the end',
 						expr.pos)
@@ -1004,28 +1008,30 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 						expr.pos)
 				}
 			} else {
-				c.check_or_expr(expr.or_block, ret_type, expr_ret_type)
+				if expr.or_block.kind != .absent {
+					c.check_or_expr(expr.or_block, ret_type, expr_ret_type, expr)
+				}
 			}
-			return ret_type.clear_flag(.option).clear_flag(.result)
+			return ret_type.clear_flag(.result)
 		} else if expr.or_block.kind == .block {
-			c.error('unexpected `or` block, the function `${expr.name}` does not return an option or a result',
+			c.error('unexpected `or` block, the function `${expr.name}` does not return an Option or a Result',
 				expr.or_block.pos)
 		} else if expr.or_block.kind == .propagate_option {
-			c.error('unexpected `?`, the function `${expr.name}` does not return an option',
+			c.error('unexpected `?`, the function `${expr.name}` does not return an Option',
 				expr.or_block.pos)
 		} else if expr.or_block.kind == .propagate_result {
-			c.error('unexpected `!`, the function `${expr.name}` does not return a result',
+			c.error('unexpected `!`, the function `${expr.name}` does not return a Result',
 				expr.or_block.pos)
 		}
 	} else if expr is ast.SelectorExpr && c.table.sym(ret_type).kind != .chan {
 		if expr.typ.has_flag(.option) || expr.typ.has_flag(.result) {
 			with_modifier_kind := if expr.typ.has_flag(.option) {
-				'an option'
+				'an Option'
 			} else {
-				'a result'
+				'a Result'
 			}
 			with_modifier := if expr.typ.has_flag(.option) { '?' } else { '!' }
-			if expr.or_block.kind == .absent {
+			if expr.typ.has_flag(.result) && expr.or_block.kind == .absent {
 				if c.inside_defer {
 					c.error('field `${expr.field_name}` is ${with_modifier_kind}, so it should have an `or {}` block at the end',
 						expr.pos)
@@ -1034,42 +1040,51 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 						expr.pos)
 				}
 			} else {
-				c.check_or_expr(expr.or_block, ret_type, expr.typ)
+				if expr.or_block.kind != .absent {
+					c.check_or_expr(expr.or_block, ret_type, expr.typ, expr)
+				}
 			}
-			return ret_type.clear_flag(.option).clear_flag(.result)
+			return ret_type.clear_flag(.result)
 		} else if expr.or_block.kind == .block {
-			c.error('unexpected `or` block, the field `${expr.field_name}` is neither an option, nor a result',
+			c.error('unexpected `or` block, the field `${expr.field_name}` is neither an Option, nor a Result',
 				expr.or_block.pos)
 		} else if expr.or_block.kind == .propagate_option {
-			c.error('unexpected `?`, the field `${expr.field_name}` is not an option',
+			c.error('unexpected `?`, the field `${expr.field_name}` is not an Option',
 				expr.or_block.pos)
 		} else if expr.or_block.kind == .propagate_result {
-			c.error('unexpected `!`, result fields are not supported', expr.or_block.pos)
+			c.error('unexpected `!`, Result fields are not supported', expr.or_block.pos)
 		}
 	} else if expr is ast.IndexExpr {
 		if expr.or_expr.kind != .absent {
-			c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result))
+			c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result), expr)
 		}
 	} else if expr is ast.CastExpr {
+		c.check_expr_opt_call(expr.expr, ret_type)
+	} else if expr is ast.AsCast {
 		c.check_expr_opt_call(expr.expr, ret_type)
 	}
 	return ret_type
 }
 
-fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return_type ast.Type) {
+fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return_type ast.Type, expr ast.Expr) {
 	if node.kind == .propagate_option {
 		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.option)
 			&& !c.table.cur_fn.is_main && !c.table.cur_fn.is_test && !c.inside_const {
 			c.add_instruction_for_option_type()
-			c.error('to propagate the call, `${c.table.cur_fn.name}` must return an option type',
-				node.pos)
+			if expr is ast.Ident {
+				c.error('to propagate the Option, `${c.table.cur_fn.name}` must return an Option type',
+					expr.pos)
+			} else {
+				c.error('to propagate the call, `${c.table.cur_fn.name}` must return an Option type',
+					node.pos)
+			}
 		}
-		if !expr_return_type.has_flag(.option) {
+		if expr !is ast.Ident && !expr_return_type.has_flag(.option) {
 			if expr_return_type.has_flag(.result) {
-				c.warn('propagating a result like an option is deprecated, use `foo()!` instead of `foo()?`',
+				c.warn('propagating a Result like an Option is deprecated, use `foo()!` instead of `foo()?`',
 					node.pos)
 			} else {
-				c.error('to propagate an option, the call must also return an option type',
+				c.error('to propagate an Option, the call must also return an Option type',
 					node.pos)
 			}
 		}
@@ -1079,16 +1094,15 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.result)
 			&& !c.table.cur_fn.is_main && !c.table.cur_fn.is_test && !c.inside_const {
 			c.add_instruction_for_result_type()
-			c.error('to propagate the call, `${c.table.cur_fn.name}` must return a result type',
+			c.error('to propagate the call, `${c.table.cur_fn.name}` must return a Result type',
 				node.pos)
 		}
 		if !expr_return_type.has_flag(.result) {
-			c.error('to propagate a result, the call must also return a result type',
+			c.error('to propagate a Result, the call must also return a Result type',
 				node.pos)
 		}
 		return
 	}
-
 	if node.stmts.len == 0 {
 		if ret_type != ast.void_type {
 			// x := f() or {}
@@ -1108,6 +1122,18 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 				c.expected_type = ret_type
 				c.expected_or_type = ret_type.clear_flag(.option).clear_flag(.result)
 				last_stmt_typ := c.expr(stmt.expr)
+
+				if ret_type.has_flag(.option)
+					&& (last_stmt_typ.has_flag(.option) || last_stmt_typ == ast.none_type) {
+					if stmt.expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr, ast.None] {
+						expected_type_name := c.table.type_to_str(ret_type.clear_flag(.option).clear_flag(.result))
+						got_type_name := c.table.type_to_str(last_stmt_typ)
+						c.error('`or` block must provide a value of type `${expected_type_name}`, not `${got_type_name}`',
+							stmt.expr.pos())
+						return
+					}
+				}
+
 				c.expected_or_type = ast.void_type
 				type_fits := c.check_types(last_stmt_typ, ret_type)
 					&& last_stmt_typ.nr_muls() == ret_type.nr_muls()
@@ -1137,6 +1163,9 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 				} else {
 					if ret_type.is_ptr() && last_stmt_typ.is_pointer()
 						&& c.table.sym(last_stmt_typ).kind == .voidptr {
+						return
+					}
+					if last_stmt_typ == ast.none_type_idx && ret_type.has_flag(.option) {
 						return
 					}
 					type_name := c.table.type_to_str(last_stmt_typ)
@@ -1176,7 +1205,7 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 				}
 			}
 			else {
-				if stmt.typ == ast.void_type {
+				if stmt.typ == ast.void_type || expr_return_type == ast.void_type {
 					return
 				}
 				if is_noreturn_callexpr(stmt.expr) {
@@ -1276,14 +1305,18 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		c.error('`${node.expr}` does not return a value', node.pos)
 		node.expr_type = ast.void_type
 		return ast.void_type
+	} else if c.inside_comptime_for_field && typ == c.enum_data_type && node.field_name == 'value' {
+		// for comp-time enum.values
+		node.expr_type = c.comptime_fields_type[c.comptime_for_field_var]
+		return node.expr_type
 	}
 	node.expr_type = typ
 	if !(node.expr is ast.Ident && (node.expr as ast.Ident).kind == .constant) {
 		if node.expr_type.has_flag(.option) {
-			c.error('cannot access fields of an option, handle the error with `or {...}` or propagate it with `?`',
+			c.error('cannot access fields of an Option, handle the error with `or {...}` or propagate it with `?`',
 				node.pos)
 		} else if node.expr_type.has_flag(.result) {
-			c.error('cannot access fields of a result, handle the error with `or {...}` or propagate it with `!`',
+			c.error('cannot access fields of a Result, handle the error with `or {...}` or propagate it with `!`',
 				node.pos)
 		}
 	}
@@ -1579,7 +1612,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 		}
 		else {
 			c.error('`${senum_type}` is not one of `i8`,`i16`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`',
-				node.pos)
+				node.typ_pos)
 		}
 	}
 	if enum_imin > 0 {
@@ -2371,7 +2404,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 				}
 			} else if expr_type_sym.kind == .interface_ && type_sym.kind == .interface_ {
 				c.ensure_type_exists(node.typ, node.pos) or {}
-			} else if node.expr_type != node.typ {
+			} else if node.expr_type.clear_flag(.option) != node.typ.clear_flag(.option) {
 				mut s := 'cannot cast non-sum type `${expr_type_sym.name}` using `as`'
 				if type_sym.kind == .sum_type {
 					s += ' - use e.g. `${type_sym.name}(some_expr)` instead.'
@@ -2404,13 +2437,13 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			}
 			if !ret_type.has_flag(.option) && !ret_type.has_flag(.result) {
 				if node.or_block.kind == .block {
-					c.error('unexpected `or` block, the function `${node.name}` does not return an option or a result',
+					c.error('unexpected `or` block, the function `${node.name}` does not return an Option or a Result',
 						node.or_block.pos)
 				} else if node.or_block.kind == .propagate_option {
-					c.error('unexpected `?`, the function `${node.name}` does not return an option or a result',
+					c.error('unexpected `?`, the function `${node.name}` does not return an Option or a Result',
 						node.or_block.pos)
 				} else if node.or_block.kind == .propagate_result {
-					c.error('unexpected `!`, the function `${node.name}` does not return an option or a result',
+					c.error('unexpected `!`, the function `${node.name}` does not return an Option or a Result',
 						node.or_block.pos)
 				}
 			}
@@ -2448,6 +2481,14 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		ast.DumpExpr {
 			c.expected_type = ast.string_type
 			node.expr_type = c.expr(node.expr)
+
+			if c.inside_comptime_for_field && node.expr is ast.Ident {
+				if c.is_comptime_var(node.expr) {
+					node.expr_type = c.get_comptime_var_type(node.expr as ast.Ident)
+				} else if (node.expr as ast.Ident).name in c.comptime_fields_type {
+					node.expr_type = c.comptime_fields_type[(node.expr as ast.Ident).name]
+				}
+			}
 			c.check_expr_opt_call(node.expr, node.expr_type)
 			etidx := node.expr_type.idx()
 			if etidx == ast.void_type_idx {
@@ -2461,8 +2502,13 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 
 			unwrapped_expr_type := c.unwrap_generic(node.expr_type)
 			tsym := c.table.sym(unwrapped_expr_type)
-			c.table.dumps[int(unwrapped_expr_type.clear_flag(.option).clear_flag(.result))] = tsym.cname
-			node.cname = tsym.cname
+			type_cname := if node.expr_type.has_flag(.option) {
+				'_option_${tsym.cname}'
+			} else {
+				tsym.cname
+			}
+			c.table.dumps[int(unwrapped_expr_type.clear_flag(.result))] = type_cname
+			node.cname = type_cname
 			return node.expr_type
 		}
 		ast.EnumVal {
@@ -2503,7 +2549,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 					else {}
 				}
 				if no_opt_or_res {
-					c.error('expression should either return an option or a result', node.expr.pos())
+					c.error('expression should either return an Option or a Result', node.expr.pos())
 				}
 			}
 			return ast.bool_type
@@ -2581,13 +2627,13 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 
 			if !ret_type.has_flag(.option) && !ret_type.has_flag(.result) {
 				if node.or_block.kind == .block {
-					c.error('unexpected `or` block, the field `${node.field_name}` is neither an option, nor a result',
+					c.error('unexpected `or` block, the field `${node.field_name}` is neither an Option, nor a Result',
 						node.or_block.pos)
 				} else if node.or_block.kind == .propagate_option {
-					c.error('unexpected `?`, the field `${node.field_name}` is neither an option, nor a result',
+					c.error('unexpected `?`, the field `${node.field_name}` is neither an Option, nor a Result',
 						node.or_block.pos)
 				} else if node.or_block.kind == .propagate_result {
-					c.error('unexpected `!`, the field `${node.field_name}` is neither an option, nor a result',
+					c.error('unexpected `!`, the field `${node.field_name}` is neither an Option, nor a Result',
 						node.or_block.pos)
 				}
 			}
@@ -2604,6 +2650,11 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		ast.SizeOf {
 			if !node.is_type {
 				node.typ = c.expr(node.expr)
+			}
+			sym := c.table.final_sym(node.typ)
+			if sym.kind == .placeholder && sym.language != .c {
+				// Allow `sizeof(C.MYSQL_TIME)` etc
+				c.error('unknown type `${sym.name}`', node.pos)
 			}
 			// c.deprecate_old_isreftype_and_sizeof_of_a_guessed_type(node.guessed_type,
 			//	node.typ, node.pos, 'sizeof')
@@ -2637,7 +2688,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			if node.unresolved {
 				return c.expr(ast.resolve_init(node, c.unwrap_generic(node.typ), c.table))
 			}
-			return c.struct_init(mut node)
+			return c.struct_init(mut node, false)
 		}
 		ast.TypeNode {
 			if !c.inside_x_is_type && node.typ.has_flag(.generic) && unsafe { c.table.cur_fn != 0 }
@@ -2693,6 +2744,11 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	//        node.typ: `Outside`
 	node.expr_type = c.expr(node.expr) // type to be casted
 
+	if node.expr is ast.ComptimeSelector {
+		node.expr_type = c.get_comptime_selector_type(node.expr as ast.ComptimeSelector,
+			node.expr_type)
+	}
+
 	mut from_type := c.unwrap_generic(node.expr_type)
 	from_sym := c.table.sym(from_type)
 	final_from_sym := c.table.final_sym(from_type)
@@ -2701,10 +2757,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	mut to_sym := c.table.sym(to_type) // type to be used as cast
 	mut final_to_sym := c.table.final_sym(to_type)
 
-	if to_type.has_flag(.option) {
-		c.error('casting to option type is forbidden', node.pos)
-	} else if to_type.has_flag(.result) {
-		c.error('casting to result type is forbidden', node.pos)
+	if to_type.has_flag(.result) {
+		c.error('casting to Result type is forbidden', node.pos)
 	}
 
 	if (to_sym.is_number() && from_sym.name == 'JS.Number')
@@ -2728,7 +2782,9 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if from_type == ast.void_type {
 		c.error('expression does not return a value so it cannot be cast', node.expr.pos())
 	}
-	if to_sym.kind == .sum_type {
+	if to_type.has_flag(.option) && from_type == ast.none_type {
+		// allow conversion from none to every option type
+	} else if to_sym.kind == .sum_type {
 		if from_type in [ast.int_literal_type, ast.float_literal_type] {
 			xx := if from_type == ast.int_literal_type { ast.int_type } else { ast.f64_type }
 			node.expr_type = c.promote_num(node.expr_type, xx)
@@ -2752,8 +2808,10 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		&& !(to_sym.info as ast.Struct).is_typedef {
 		// For now we ignore C typedef because of `C.Window(C.None)` in vlib/clipboard
 		if from_sym.kind == .struct_ && !from_type.is_ptr() {
-			c.warn('casting to struct is deprecated, use e.g. `Struct{...expr}` instead',
-				node.pos)
+			if !to_type.has_flag(.option) {
+				c.warn('casting to struct is deprecated, use e.g. `Struct{...expr}` instead',
+					node.pos)
+			}
 			from_type_info := from_sym.info as ast.Struct
 			to_type_info := to_sym.info as ast.Struct
 			if !c.check_struct_signature(from_type_info, to_type_info) {
@@ -2792,6 +2850,11 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 					final_to_sym = c.table.final_sym(to_type)
 				}
 			}
+		} else {
+			ft := c.table.type_to_str(from_type)
+			tt := c.table.type_to_str(to_type)
+			c.error('`${ft}` does not implement interface `${tt}`, cannot cast `${ft}` to interface `${tt}`',
+				node.pos)
 		}
 	} else if to_type == ast.bool_type && from_type != ast.bool_type && !c.inside_unsafe
 		&& !c.pref.translated && !c.file.is_translated {
@@ -2810,18 +2873,18 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast type `${ft}` to `${tt}`', node.pos)
-	} else if from_type.has_flag(.option) || from_type.has_flag(.result)
-		|| from_type.has_flag(.variadic) {
+	} else if (from_type.has_flag(.option) && !to_type.has_flag(.option))
+		|| from_type.has_flag(.result) || from_type.has_flag(.variadic) {
 		// variadic case can happen when arrays are converted into variadic
 		msg := if from_type.has_flag(.option) {
-			'an option'
+			'an Option'
 		} else if from_type.has_flag(.result) {
-			'a result'
+			'a Result'
 		} else {
 			'a variadic'
 		}
 		c.error('cannot type cast ${msg}', node.pos)
-	} else if !c.inside_unsafe && to_type.is_ptr() && from_type.is_ptr()
+	} else if !c.inside_unsafe && to_type.is_ptr() && from_type.is_ptr() && to_type != from_type
 		&& to_type.deref() != ast.char_type && from_type.deref() != ast.char_type {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
@@ -2842,10 +2905,17 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		snexpr := node.expr.str()
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast string to `${tt}`, use `${snexpr}[index]` instead.', node.pos)
-	} else if final_from_sym.kind == .array && !from_type.is_ptr() && to_type != ast.string_type {
+	} else if final_from_sym.kind == .array && !from_type.is_ptr() && to_type != ast.string_type
+		&& !(to_type.has_flag(.option) && from_type.idx() == to_type.idx()) {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast array `${ft}` to `${tt}`', node.pos)
+	} else if from_type.has_flag(.option) && to_type.has_flag(.option)
+		&& to_sym.kind != final_from_sym.kind {
+		ft := c.table.type_to_str(from_type)
+		tt := c.table.type_to_str(to_type)
+		c.error('cannot cast incompatible option ${final_to_sym.name} `${ft}` to `${tt}`',
+			node.pos)
 	}
 
 	if to_sym.kind == .rune && from_sym.is_string() {
@@ -3080,7 +3150,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					return c.expected_type
 				}
 			}
-			c.error('cycle in constant `${c.const_decl}`', node.pos)
+			c.error('cycle in constant `${c.const_var.name}`', node.pos)
 			return ast.void_type
 		}
 		c.const_deps << name
@@ -3095,6 +3165,20 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	if node.kind in [.constant, .global, .variable] {
 		info := node.info as ast.IdentVar
 		// Got a var with type T, return current generic type
+		if node.or_expr.kind != .absent {
+			if !info.typ.has_flag(.option) {
+				if node.or_expr.kind == .propagate_option {
+					c.error('cannot use `?` on non-option variable', node.pos)
+				} else if node.or_expr.kind == .block {
+					c.error('cannot use `or {}` block on non-option variable', node.pos)
+				}
+			}
+			unwrapped_typ := info.typ.clear_flag(.option).clear_flag(.result)
+			c.expected_or_type = unwrapped_typ
+			c.stmts_ending_with_expression(node.or_expr.stmts)
+			c.check_or_expr(node.or_expr, info.typ, c.expected_or_type, node)
+			return unwrapped_typ
+		}
 		return info.typ
 	} else if node.kind == .function {
 		info := node.info as ast.IdentFn
@@ -3165,6 +3249,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						}
 					}
 					is_option := typ.has_flag(.option) || typ.has_flag(.result)
+						|| node.or_expr.kind != .absent
 					node.kind = .variable
 					node.info = ast.IdentVar{
 						typ: typ
@@ -3176,7 +3261,22 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					node.obj = obj
 					// unwrap option (`println(x)`)
 					if is_option {
-						return typ.clear_flag(.option).clear_flag(.result)
+						if node.or_expr.kind == .absent {
+							return typ.clear_flag(.result)
+						}
+						if !typ.has_flag(.option) {
+							if node.or_expr.kind == .propagate_option {
+								c.error('cannot use `?` on non-option variable', node.pos)
+							} else if node.or_expr.kind == .block {
+								c.error('cannot use `or {}` block on non-option variable',
+									node.pos)
+							}
+						}
+						unwrapped_typ := typ.clear_flag(.option).clear_flag(.result)
+						c.expected_or_type = unwrapped_typ
+						c.stmts_ending_with_expression(node.or_expr.stmts)
+						c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
+						return unwrapped_typ
 					}
 					return typ
 				}
@@ -3562,7 +3662,7 @@ fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 
 pub fn (mut c Checker) is_comptime_var(node ast.Expr) bool {
 	return c.inside_comptime_for_field && node is ast.Ident
-		&& (node as ast.Ident).info is ast.IdentVar && (node as ast.Ident).kind == .variable && ((node as ast.Ident).obj as ast.Var).is_comptime_field
+		&& (node as ast.Ident).info is ast.IdentVar && (node as ast.Ident).kind == .variable && ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime
 }
 
 fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
@@ -3642,6 +3742,9 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	c.inside_ref_lit = old_inside_ref_lit
 	node.right_type = right_type
 	if node.op == .amp {
+		if node.right is ast.Nil {
+			c.error('invalid operation: cannot take address of nil', node.right.pos())
+		}
 		if mut node.right is ast.PrefixExpr {
 			if node.right.op == .amp {
 				c.error('unexpected `&`, expecting expression', node.right.pos)
@@ -3658,7 +3761,7 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			}
 
 			if node.right.typ.has_flag(.option) {
-				c.error('cannot take the address of an option field', node.pos.extend(node.right.pos))
+				c.error('cannot take the address of an Option field', node.pos.extend(node.right.pos))
 			}
 		}
 	}
@@ -3721,6 +3824,10 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	}
 	right_sym := c.table.final_sym(c.unwrap_generic(right_type))
 	if node.op == .mul {
+		if right_type.has_flag(.option) {
+			c.error('type `?${right_sym.name}` is an Option, it must be unwrapped first; use `*var?` to do it',
+				node.right.pos())
+		}
 		if right_type.is_ptr() {
 			return right_type.deref()
 		}
@@ -3792,7 +3899,7 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 			} else {
 				'(array type `${typ_sym.name}`)'
 			}
-			c.error('cannot use option or result as index ${type_str}', pos)
+			c.error('cannot use Option or Result as index ${type_str}', pos)
 		}
 	}
 }
@@ -3834,10 +3941,15 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		c.error('type `${typ_sym.name}` does not support indexing', node.pos)
 	}
 	if typ.has_flag(.option) {
-		c.error('type `?${typ_sym.name}` is an option, it does not support indexing',
-			node.left.pos())
+		if node.left is ast.Ident && (node.left as ast.Ident).or_expr.kind == .absent {
+			c.error('type `?${typ_sym.name}` is an Option, it must be unwrapped first; use `var?[]` to do it',
+				node.left.pos())
+		} else if node.left is ast.CallExpr {
+			c.error('type `?${typ_sym.name}` is an Option, it must be unwrapped with `func()?`, or use `func() or {default}`',
+				node.left.pos())
+		}
 	} else if typ.has_flag(.result) {
-		c.error('type `!${typ_sym.name}` is a result, it does not support indexing', node.left.pos())
+		c.error('type `!${typ_sym.name}` is a Result, it does not support indexing', node.left.pos())
 	}
 	if typ_sym.kind == .string && !typ.is_ptr() && node.is_setter {
 		c.error('cannot assign to s[i] since V strings are immutable\n' +
@@ -4507,4 +4619,18 @@ fn (mut c Checker) deprecate_old_isreftype_and_sizeof_of_a_guessed_type(is_guess
 		c.note('`${label}(${styp})` is deprecated. Use `v fmt -w .` to convert it to `${label}[${styp}]()` instead.',
 			pos)
 	}
+}
+
+fn (c &Checker) check_import_sym_conflict(ident string) bool {
+	for import_sym in c.file.imports {
+		// Check if alias exists or not
+		if !import_sym.alias.is_blank() {
+			if import_sym.alias == ident {
+				return true
+			}
+		} else if import_sym.mod == ident {
+			return true
+		}
+	}
+	return false
 }

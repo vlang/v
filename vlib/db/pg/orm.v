@@ -33,28 +33,29 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 
 // insert is used internally by V's ORM for processing `INSERT ` queries
 pub fn (db DB) insert(table string, data orm.QueryData) ! {
-	query, converted_data := orm.orm_stmt_gen(table, '"', .insert, true, '$', 1, data,
-		orm.QueryData{})
+	query, converted_data := orm.orm_stmt_gen(.default, table, '"', .insert, true, '$',
+		1, data, orm.QueryData{})
 	pg_stmt_worker(db, query, converted_data, orm.QueryData{})!
 }
 
 // update is used internally by V's ORM for processing `UPDATE ` queries
 pub fn (db DB) update(table string, data orm.QueryData, where orm.QueryData) ! {
-	query, _ := orm.orm_stmt_gen(table, '"', .update, true, '$', 1, data, where)
+	query, _ := orm.orm_stmt_gen(.default, table, '"', .update, true, '$', 1, data, where)
 	pg_stmt_worker(db, query, data, where)!
 }
 
 // delete is used internally by V's ORM for processing `DELETE ` queries
 pub fn (db DB) delete(table string, where orm.QueryData) ! {
-	query, _ := orm.orm_stmt_gen(table, '"', .delete, true, '$', 1, orm.QueryData{}, where)
+	query, _ := orm.orm_stmt_gen(.default, table, '"', .delete, true, '$', 1, orm.QueryData{},
+		where)
 	pg_stmt_worker(db, query, orm.QueryData{}, where)!
 }
 
 // last_id is used internally by V's ORM for post-processing `INSERT ` queries
-pub fn (db DB) last_id() orm.Primitive {
+pub fn (db DB) last_id() int {
 	query := 'SELECT LASTVAL();'
-	id := db.q_int(query) or { 0 }
-	return orm.Primitive(id)
+
+	return db.q_int(query) or { 0 }
 }
 
 // DDL (table creation/destroying etc)

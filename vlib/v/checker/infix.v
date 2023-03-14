@@ -23,10 +23,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	if node.op == .amp && left_type.is_bool() && right_type.is_bool() && right_type.is_ptr() {
 		pos := node.pos.extend(node.right.pos())
 		c.error('the right expression should be separated from the `&&` by a space', pos)
+		node.promoted_type = ast.bool_type
 		return ast.bool_type
 	}
 	node.right_type = right_type
-	if left_type.is_number() && !left_type.is_ptr()
+	if !left_type.has_flag(.option) && left_type.is_number() && !left_type.is_ptr()
 		&& right_type in [ast.int_literal_type, ast.float_literal_type] {
 		node.right_type = left_type
 		if left_type in [ast.f32_type_idx, ast.f64_type_idx] && right_type == ast.float_literal_type {
@@ -164,6 +165,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							c.error('left operand to `${node.op}` does not match the array element type: ${err.msg()}',
 								left_right_pos)
 						}
+					} else {
+						if mut node.right is ast.ArrayInit {
+							for i, typ in node.right.expr_types {
+								c.ensure_type_exists(typ, node.right.exprs[i].pos()) or {}
+							}
+						}
 					}
 				}
 				.map {
@@ -188,6 +195,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						node.pos)
 				}
 			}
+			node.promoted_type = ast.bool_type
 			return ast.bool_type
 		}
 		.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe {
@@ -367,6 +375,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				c.error('only `==` and `!=` are defined on arrays', node.pos)
 			} else if left_sym.kind == .struct_
 				&& (left_sym.info as ast.Struct).generic_types.len > 0 {
+				node.promoted_type = ast.bool_type
 				return ast.bool_type
 			} else if left_sym.kind == .struct_ && right_sym.kind == .struct_
 				&& node.op in [.eq, .lt] {
@@ -429,7 +438,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						}
 					}
 				}
-			} else if left_type.has_flag(.option) || right_type.has_flag(.option) {
+			} else if node.left !in [ast.Ident, ast.SelectorExpr, ast.ComptimeSelector]
+				&& (left_type.has_flag(.option) || right_type.has_flag(.option)) {
 				opt_comp_pos := if left_type.has_flag(.option) { left_pos } else { right_pos }
 				c.error('unwrapped option cannot be compared in an infix expression',
 					opt_comp_pos)
@@ -467,7 +477,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 								right_pos)
 						}
 					} else {
-						right_value_type := c.table.value_type(right_type)
+						right_value_type := c.table.value_type(c.unwrap_generic(right_type))
 						if !c.table.is_sumtype_or_in_variant(left_value_type, ast.mktyp(right_value_type)) {
 							c.error('cannot append `${right_sym.name}` to `${left_sym.name}`',
 								right_pos)
@@ -489,11 +499,13 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				c.error('cannot append `${right_sym.name}` to `${left_sym.name}`', right_pos)
 				return ast.void_type
 			} else {
-				return c.check_shift(mut node, left_type, right_type)
+				node.promoted_type = c.check_shift(mut node, left_type, right_type)
+				return node.promoted_type
 			}
 		}
 		.right_shift {
-			return c.check_shift(mut node, left_type, right_type)
+			node.promoted_type = c.check_shift(mut node, left_type, right_type)
+			return node.promoted_type
 		}
 		.unsigned_right_shift {
 			modified_left_type := if !left_type.is_int() {
@@ -538,7 +550,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				or_block: node.or_block
 			}
 
-			return c.check_shift(mut node, left_type, right_type)
+			node.promoted_type = c.check_shift(mut node, left_type, right_type)
+
+			return node.promoted_type
 		}
 		.key_is, .not_is {
 			right_expr := node.right
@@ -579,6 +593,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 			}
+			node.promoted_type = ast.bool_type
 			return ast.bool_type
 		}
 		.arrow { // `chan <- elem`
@@ -656,7 +671,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	right_is_option := right_type.has_flag(.option)
 	if left_is_option || right_is_option {
 		opt_infix_pos := if left_is_option { left_pos } else { right_pos }
-		c.error('unwrapped option cannot be used in an infix expression', opt_infix_pos)
+		if (node.left !in [ast.Ident, ast.SelectorExpr, ast.ComptimeSelector]
+			|| node.op in [.eq, .ne, .lt, .gt, .le, .ge]) && right_sym.kind != .none_ {
+			c.error('unwrapped option cannot be used in an infix expression', opt_infix_pos)
+		}
 	}
 
 	left_is_result := left_type.has_flag(.result)
@@ -677,7 +695,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 			if left_type.nr_muls() > 0 && right_type.is_int() {
 				// pointer arithmetic is fine, it is checked in other places
+				node.promoted_type = return_type
 				return return_type
+			}
+			if node.right is ast.None && left_is_option {
+				return ast.bool_type
 			}
 			c.error('infix expr: cannot use `${right_sym.name}` (right expression) as `${left_sym.name}`',
 				left_right_pos)
@@ -698,7 +720,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		c.warn('`++` and `--` are statements, not expressions', node.pos)
 	}
 	*/
-	return if node.op.is_relational() { ast.bool_type } else { return_type }
+	node.promoted_type = if node.op.is_relational() { ast.bool_type } else { return_type }
+	return node.promoted_type
 }
 
 fn (mut c Checker) check_div_mod_by_zero(expr ast.Expr, op_kind token.Kind) {

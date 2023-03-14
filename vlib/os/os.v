@@ -386,6 +386,9 @@ pub fn user_os() string {
 	$if solaris {
 		return 'solaris'
 	}
+	$if qnx {
+		return 'qnx'
+	}
 	$if haiku {
 		return 'haiku'
 	}
@@ -713,6 +716,7 @@ pub fn temp_dir() string {
 				path = 'C:/tmp'
 			}
 		}
+		path = get_long_path(path) or { path }
 	}
 	$if macos {
 		// avoid /var/folders/6j/cmsk8gd90pd.... on macs
@@ -724,6 +728,9 @@ pub fn temp_dir() string {
 			path = cache_dir()
 		}
 	}
+	$if termux {
+		path = '/data/data/com.termux/files/usr/tmp'
+	}
 	if path == '' {
 		path = '/tmp'
 	}
@@ -731,7 +738,7 @@ pub fn temp_dir() string {
 }
 
 // vtmp_dir returns the path to a folder, that is writable to V programs, *and* specific
-// to the OS user. It can be overriden by setting the env variable `VTMP`.
+// to the OS user. It can be overridden by setting the env variable `VTMP`.
 pub fn vtmp_dir() string {
 	mut vtmp := getenv('VTMP')
 	if vtmp.len > 0 {

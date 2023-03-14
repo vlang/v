@@ -46,22 +46,22 @@ pub mut:
 	executable_exists     bool     // if the executable already exists, don't remove new executable after `v run`
 }
 
-pub fn new_builder(pref &pref.Preferences) Builder {
-	rdir := os.real_path(pref.path)
+pub fn new_builder(pref_ &pref.Preferences) Builder {
+	rdir := os.real_path(pref_.path)
 	compiled_dir := if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
 	mut table := ast.new_table()
 	table.is_fmt = false
-	if pref.use_color == .always {
+	if pref_.use_color == .always {
 		util.emanager.set_support_color(true)
 	}
-	if pref.use_color == .never {
+	if pref_.use_color == .never {
 		util.emanager.set_support_color(false)
 	}
-	table.pointer_size = if pref.m64 { 8 } else { 4 }
+	table.pointer_size = if pref_.m64 { 8 } else { 4 }
 	mut msvc := MsvcResult{}
 	$if windows {
-		msvc = find_msvc(pref.m64) or {
-			if pref.ccompiler == 'msvc' {
+		msvc = find_msvc(pref_.m64) or {
+			if pref_.ccompiler == 'msvc' {
 				// verror('cannot find MSVC on this OS')
 			}
 			MsvcResult{
@@ -69,23 +69,35 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 			}
 		}
 	}
-	util.timing_set_should_print(pref.show_timings || pref.is_verbose)
-	if pref.show_callgraph || pref.show_depgraph {
+	util.timing_set_should_print(pref_.show_timings || pref_.is_verbose)
+	if pref_.show_callgraph || pref_.show_depgraph {
 		dotgraph.start_digraph()
 	}
-	mut executable_name := pref.out_name
+	mut executable_name := pref_.out_name
 	$if windows {
 		executable_name += '.exe'
 	}
 	return Builder{
-		pref: pref
+		pref: pref_
 		table: table
-		checker: checker.new_checker(table, pref)
-		transformer: transformer.new_transformer_with_table(table, pref)
+		checker: checker.new_checker(table, pref_)
+		transformer: transformer.new_transformer_with_table(table, pref_)
 		compiled_dir: compiled_dir
 		cached_msvc: msvc
 		executable_exists: os.is_file(executable_name)
 	}
+}
+
+pub fn (mut b Builder) interpret_text(code string, v_files []string) ! {
+	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
+	b.parsed_files << parser.parse_text(code, '', b.table, .skip_comments, b.pref)
+	b.parse_imports()
+
+	if b.pref.only_check_syntax {
+		return error_with_code('stop_after_parser', 7001)
+	}
+
+	b.middle_stages()!
 }
 
 pub fn (mut b Builder) front_stages(v_files []string) ! {
@@ -356,7 +368,7 @@ pub fn module_path(mod string) string {
 
 // TODO: try to merge this & util.module functions to create a
 // reliable multi use function. see comments in util/module.v
-pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
+pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 	// support @VROOT/v.mod relative paths:
 	mut mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_file(fpath)

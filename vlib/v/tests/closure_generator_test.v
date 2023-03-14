@@ -3,8 +3,8 @@ import os
 
 const (
 	max_params       = 16
-	all_param_names  = []string{len: max_params, init: '${`a` + it}'}
-	all_param_values = []string{len: max_params, init: '${it + 1}'}
+	all_param_names  = []string{len: max_params, init: '${`a` + index}'}
+	all_param_values = []string{len: max_params, init: '${index + 1}'}
 )
 
 struct ReturnType {

@@ -204,6 +204,9 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if prefs.os != .solaris && file.ends_with('_solaris.c.v') {
 		return false
 	}
+	if prefs.os != .qnx && file.ends_with('_qnx.c.v') {
+		return false
+	}
 	if prefs.os != .serenity && file.ends_with('_serenity.c.v') {
 		return false
 	}
@@ -247,9 +250,9 @@ pub fn (prefs &Preferences) should_compile_asm(path string) bool {
 	if arch != prefs.arch && prefs.arch != ._auto && arch != ._auto {
 		return false
 	}
-	os := os_from_string(file.all_after_last('_').all_before('.')) or { OS._auto }
+	file_os := os_from_string(file.all_after_last('_').all_before('.')) or { OS._auto }
 
-	if os != prefs.os && prefs.os != ._auto && os != ._auto {
+	if file_os != prefs.os && prefs.os != ._auto && file_os != ._auto {
 		return false
 	}
 	return true

@@ -14,6 +14,8 @@ const diff_cmd = diff.find_working_diff_command() or { '' }
 
 const show_compilation_output = os.getenv('VTEST_SHOW_COMPILATION_OUTPUT').int() == 1
 
+const user_os = os.user_os()
+
 fn mm(s string) string {
 	return term.colorize(term.magenta, s)
 }
@@ -36,6 +38,9 @@ fn test_out_files() {
 	mut total_errors := 0
 	for out_path in paths {
 		basename, path, relpath, out_relpath := target2paths(out_path, '.out')
+		if should_skip(relpath) {
+			continue
+		}
 		pexe := os.join_path(output_path, '${basename}.exe')
 		//
 		file_options := get_file_options(path)
@@ -108,6 +113,9 @@ fn test_c_must_have_files() {
 	mut failed_descriptions := []string{cap: paths.len}
 	for must_have_path in paths {
 		basename, path, relpath, must_have_relpath := target2paths(must_have_path, '.c.must_have')
+		if should_skip(relpath) {
+			continue
+		}
 		file_options := get_file_options(path)
 		alloptions := '-o - ${file_options.vflags}'
 		description := mm('v ${alloptions} ${relpath}') +
@@ -220,4 +228,19 @@ pub fn get_file_options(file string) FileOptions {
 		}
 	}
 	return res
+}
+
+fn should_skip(relpath string) bool {
+	if user_os == 'windows' {
+		if relpath.contains('_nix.vv') {
+			eprintln('> skipping ${relpath} on windows')
+			return true
+		}
+	} else {
+		if relpath.contains('_windows.vv') {
+			eprintln('> skipping ${relpath} on !windows')
+			return true
+		}
+	}
+	return false
 }

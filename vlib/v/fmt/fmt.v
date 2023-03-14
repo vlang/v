@@ -61,11 +61,11 @@ pub struct FmtOptions {
 	source_text string
 }
 
-pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug bool, options FmtOptions) string {
+pub fn fmt(file ast.File, table &ast.Table, pref_ &pref.Preferences, is_debug bool, options FmtOptions) string {
 	mut f := Fmt{
 		file: file
 		table: table
-		pref: pref
+		pref: pref_
 		is_debug: is_debug
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
@@ -196,6 +196,7 @@ fn (mut f Fmt) write_language_prefix(lang ast.Language) {
 	match lang {
 		.c { f.write('C.') }
 		.js { f.write('JS.') }
+		.wasm { f.write('WASM.') }
 		else {}
 	}
 }
@@ -366,7 +367,8 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	mod := if imp.mod.len == 0 { imp.alias } else { imp.mod }
-	is_diff := imp.alias != mod && !mod.ends_with('.' + imp.alias)
+	normalized_mod := mod.all_after('src.') // Ignore the 'src.' folder prefix since src/ folder is root of code
+	is_diff := imp.alias != normalized_mod && !normalized_mod.ends_with('.' + imp.alias)
 	mut imp_alias_suffix := if is_diff { ' as ${imp.alias}' } else { '' }
 	mut syms := imp.syms.map(it.name).filter(f.import_syms_used[it])
 	syms.sort()
@@ -377,7 +379,7 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 			' {\n\t' + syms.join(',\n\t') + ',\n}'
 		}
 	}
-	return '${mod}${imp_alias_suffix}'
+	return '${normalized_mod}${imp_alias_suffix}'
 }
 
 //=== Node helpers ===//
@@ -740,6 +742,7 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 				.enum_ { f.write('\$Enum') }
 				.alias { f.write('\$Alias') }
 				.function { f.write('\$Function') }
+				.option { f.write('\$Option') }
 			}
 		}
 	}
@@ -1900,13 +1903,17 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 			f.write("\$env('${node.args_var}')")
 		} else if node.is_pkgconfig {
 			f.write("\$pkgconfig('${node.args_var}')")
-		} else if node.method_name == 'compile_error' {
-			f.write("\$compile_error('${node.args_var}')")
+		} else if node.method_name in ['compile_error', 'compile_warn'] {
+			f.write("\$${node.method_name}('${node.args_var}')")
 		} else {
 			inner_args := if node.args_var != '' {
 				node.args_var
 			} else {
-				node.args.map(it.str()).join(', ')
+				node.args.map(if it.expr is ast.ArrayDecompose {
+					'...${it.expr.expr.str()}'
+				} else {
+					it.str()
+				}).join(', ')
 			}
 			method_expr := if node.has_parens {
 				'(${node.method_name}(${inner_args}))'
@@ -2002,6 +2009,11 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		}
 		name := f.short_module(node.name)
 		f.write(name)
+		if node.or_expr.kind == .propagate_option {
+			f.write('?')
+		} else if node.or_expr.kind == .block {
+			f.or_expr(node.or_expr)
+		}
 		f.mark_import_as_used(name)
 	}
 }
@@ -2127,6 +2139,9 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	start_pos := f.out.len
 	start_len := f.line_len
 	f.expr(node.left)
+	if node.before_op_comments.len > 0 {
+		f.comments(node.before_op_comments, iembed: node.before_op_comments[0].is_inline)
+	}
 	is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit
 		&& (node.right as ast.ArrayInit).exprs.len == 1
 	is_and := node.op == .amp && f.node_str(node.right).starts_with('&')
@@ -2138,6 +2153,10 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 		f.write(' && ')
 	} else {
 		f.write(' ${node.op.str()} ')
+	}
+	if node.after_op_comments.len > 0 {
+		f.comments(node.after_op_comments, iembed: node.after_op_comments[0].is_inline)
+		f.write(' ')
 	}
 	if is_one_val_array_init && !f.inside_comptime_if {
 		// `var in [val]` => `var == val`

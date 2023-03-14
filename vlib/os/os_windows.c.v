@@ -452,12 +452,6 @@ pub fn add_vectored_exception_handler(first bool, handler VectoredExceptionHandl
 	C.AddVectoredExceptionHandler(u32(first), C.PVECTORED_EXCEPTION_HANDLER(handler))
 }
 
-// this is defined in builtin_windows.c.v in builtin
-// fn C.IsDebuggerPresent() bool
-pub fn debugger_present() bool {
-	return C.IsDebuggerPresent()
-}
-
 // uname returns information about the platform on which the program is running.
 // Currently `uname` on windows is not standardized, so it just mimics current practices from other popular software/language implementations:
 //   busybox-v1.35.0 * `busybox uname -a` => "Windows_NT HOSTNAME 10.0 19044 x86_64 MS/Windows"
@@ -466,7 +460,7 @@ pub fn debugger_present() bool {
 // See: [NT Version Info](https://en.wikipedia.org/wiki/Windows_NT) @@ <https://archive.is/GnnvF>
 // and: [NT Version Info (detailed)](https://en.wikipedia.org/wiki/Comparison_of_Microsoft_Windows_versions#NT_Kernel-based_2)
 pub fn uname() Uname {
-	nodename := hostname()
+	nodename := hostname() or { '' }
 	// ToDO: environment variables have low reliability; check for another quick way
 	machine := getenv('PROCESSOR_ARCHITECTURE') // * note: 'AMD64' == 'x86_64' (not standardized, but 'x86_64' use is more common; but, python == 'AMD64')
 	version_info := execute('cmd /d/c ver').output
@@ -480,22 +474,22 @@ pub fn uname() Uname {
 	}
 }
 
-pub fn hostname() string {
+pub fn hostname() !string {
 	hostname := [255]u16{}
 	size := u32(255)
 	res := C.GetComputerNameW(&hostname[0], &size)
 	if !res {
-		return get_error_msg(int(C.GetLastError()))
+		return error(get_error_msg(int(C.GetLastError())))
 	}
 	return unsafe { string_from_wide(&hostname[0]) }
 }
 
-pub fn loginname() string {
+pub fn loginname() !string {
 	loginname := [255]u16{}
 	size := u32(255)
 	res := C.GetUserNameW(&loginname[0], &size)
 	if !res {
-		return get_error_msg(int(C.GetLastError()))
+		return error(get_error_msg(int(C.GetLastError())))
 	}
 	return unsafe { string_from_wide(&loginname[0]) }
 }
@@ -563,4 +557,25 @@ pub fn (mut c Command) read_line() string {
 
 pub fn (mut c Command) close() ! {
 	panic('not implemented')
+}
+
+fn C.GetLongPathName(short_path &u16, long_path &u16, long_path_bufsize u32) u32
+
+// get_long_path has no meaning for *nix, but has for windows, where `c:\folder\some~1` for example
+// can be the equivalent of `c:\folder\some spa ces`. On *nix, it just returns a copy of the input path.
+fn get_long_path(path string) !string {
+	if !path.contains('~') {
+		return path
+	}
+	input_short_path := path.to_wide()
+	defer {
+		unsafe { free(input_short_path) }
+	}
+	long_path_buf := [4096]u16{}
+	res := C.GetLongPathName(input_short_path, &long_path_buf[0], sizeof(long_path_buf))
+	if res == 0 {
+		return error(get_error_msg(int(C.GetLastError())))
+	}
+	long_path := unsafe { string_from_wide(&long_path_buf[0]) }
+	return long_path
 }

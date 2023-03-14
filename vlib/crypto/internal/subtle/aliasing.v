@@ -12,7 +12,7 @@ pub fn any_overlap(x []u8, y []u8) bool {
 	// NOTE: Remember to come back to this (joe-c)
 	return x.len > 0 && y.len > 0 && // &x.data[0] <= &y.data[y.len-1] &&
 	// &y.data[0] <= &x.data[x.len-1]
-	unsafe { &x[0] <= &y[y.len - 1] && &y[0] <= &x[x.len - 1] }
+	 unsafe { &x[0] <= &y[y.len - 1] && &y[0] <= &x[x.len - 1] }
 }
 
 // inexact_overlap reports whether x and y share memory at any non-corresponding

@@ -2,7 +2,6 @@ module main
 
 import os
 import term
-import v.pref
 import os.cmdline
 
 // Symbol type to search
@@ -56,7 +55,7 @@ const (
 		'yes': .yes
 		'not': .not
 	}
-	vexe        = pref.vexe_path()
+	vexe        = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 	vlib_dir    = os.join_path(os.dir(vexe), 'vlib')
 	vmod_dir    = os.vmodules_dir()
 	vmod_paths  = os.vmodules_paths()[1..]

@@ -8,7 +8,7 @@ mut:
 struct ListNode[T] {
 mut:
 	val  T
-	next &ListNode[T] = 0
+	next &ListNode[T] = unsafe { nil }
 }
 
 fn create[T](arr []T) &List[T] {

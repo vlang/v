@@ -51,7 +51,11 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 				g.expr(expr)
 				g.write(')')
 			} else {
-				g.expr_with_cast(expr, node.expr_types[i], node.elem_type)
+				if node.elem_type.has_flag(.option) {
+					g.expr_with_opt(expr, node.expr_types[i], node.elem_type)
+				} else {
+					g.expr_with_cast(expr, node.expr_types[i], node.elem_type)
+				}
 			}
 			if i != len - 1 {
 				if i > 0 && i & 7 == 0 { // i > 0 && i % 8 == 0
@@ -72,7 +76,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 }
 
 fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name string) {
-	if node.has_it {
+	if node.has_index {
 		g.inside_lambda = true
 		mut tmp := g.new_tmp_var()
 		mut s := ''
@@ -116,8 +120,9 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.indent++
 		g.writeln('${elem_typ}* pelem = (${elem_typ}*)${tmp};')
 		g.writeln('int _len = (int)sizeof(${tmp}) / sizeof(${elem_typ});')
-		g.writeln('for(int it=0; it<_len; it++, pelem++) {')
+		g.writeln('for(int index=0; index<_len; index++, pelem++) {')
 		g.indent++
+		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden
 		g.write('*pelem = ')
 		g.expr(node.default_expr)
 		g.writeln(';')
@@ -175,13 +180,29 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	}
 }
 
+fn (mut g Gen) struct_has_array_or_map_field(elem_typ ast.Type) bool {
+	unaliased_sym := g.table.final_sym(elem_typ)
+	if unaliased_sym.kind == .struct_ {
+		info := unaliased_sym.info as ast.Struct
+		for field in info.fields {
+			field_sym := g.table.final_sym(field.typ)
+			if field_sym.kind in [.array, .map] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // `[]int{len: 6, cap: 10, init: it * it}`
 fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp bool, shared_styp string, var_name string) {
 	elem_styp := g.typ(elem_type.typ)
 	noscan := g.check_noscan(elem_type.typ)
 	is_default_array := elem_type.unaliased_sym.kind == .array && node.has_default
 	is_default_map := elem_type.unaliased_sym.kind == .map && node.has_default
-	if node.has_it { // []int{len: 6, init: it * it} when variable it is used in init expression
+	needs_more_defaults := node.has_len && (g.struct_has_array_or_map_field(elem_type.typ)
+		|| elem_type.unaliased_sym.kind in [.array, .map])
+	if node.has_index { // []int{len: 6, init: it * it} when variable it is used in init expression
 		g.inside_lambda = true
 		mut tmp := g.new_tmp_var()
 		mut s := ''
@@ -252,9 +273,10 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.writeln('{')
 		g.indent++
 		g.writeln('${elem_typ}* pelem = (${elem_typ}*)${tmp}.data;')
-		g.writeln('for(int it=0; it<${tmp}.len; it++, pelem++) {')
+		g.writeln('for(int index=0; index<${tmp}.len; index++, pelem++) {')
 		g.set_current_pos_as_last_stmt_pos()
 		g.indent++
+		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden	
 		g.write('*pelem = ')
 		g.expr(node.default_expr)
 		g.writeln(';')
@@ -278,6 +300,8 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.write('__new_array_with_array_default${noscan}(')
 	} else if is_default_map {
 		g.write('__new_array_with_map_default${noscan}(')
+	} else if needs_more_defaults {
+		g.write('__new_array_with_multi_default${noscan}(')
 	} else {
 		g.write('__new_array_with_default${noscan}(')
 	}
@@ -312,10 +336,47 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.write('(${elem_styp}[]){')
 		g.expr(node.default_expr)
 		g.write('}[0])')
+	} else if needs_more_defaults {
+		tmp := g.new_tmp_var()
+		line := g.go_before_stmt(0).trim_space()
+		g.empty_line = true
+		g.write('${elem_styp}* ${tmp} = malloc((')
+		g.expr(node.len_expr)
+		g.writeln(') * sizeof(${elem_styp}));')
+		ind := g.new_tmp_var()
+		g.write('for (int ${ind}=0; ${ind}<')
+		g.expr(node.len_expr)
+		g.writeln('; ${ind}++) {')
+		g.write('\t${tmp}[${ind}] = ')
+		if node.has_default {
+			if node.elem_type.has_flag(.option) {
+				g.expr_with_opt(node.default_expr, node.default_type, node.elem_type)
+			} else {
+				g.expr_with_cast(node.default_expr, node.default_type, node.elem_type)
+			}
+		} else {
+			if node.elem_type.has_flag(.option) {
+				g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
+			} else {
+				g.write(g.type_default(node.elem_type))
+			}
+		}
+		g.writeln(';')
+		g.writeln('}')
+		g.write(line)
+		g.write(' (voidptr)${tmp})')
 	} else if node.has_default {
 		g.write('&(${elem_styp}[]){')
-		g.expr_with_cast(node.default_expr, node.default_type, node.elem_type)
+		if node.elem_type.has_flag(.option) {
+			g.expr_with_opt(node.default_expr, node.default_type, node.elem_type)
+		} else {
+			g.expr_with_cast(node.default_expr, node.default_type, node.elem_type)
+		}
 		g.write('})')
+	} else if node.has_len && node.elem_type.has_flag(.option) {
+		g.write('&')
+		g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
+		g.write(')')
 	} else if node.has_len && node.elem_type == ast.string_type {
 		g.write('&(${elem_styp}[]){')
 		g.write('_SLIT("")')

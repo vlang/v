@@ -6,7 +6,6 @@ module http
 import strings
 
 // Header represents the key-value pairs in an HTTP header
-[noinit]
 pub struct Header {
 mut:
 	data map[string][]string

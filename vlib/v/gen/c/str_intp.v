@@ -16,6 +16,9 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 	mut base := 0 // numeric base
 	mut upper_case := false // set upercase for the result string
 	mut typ := g.unwrap_generic(node.expr_types[i])
+	if node.exprs[i].is_auto_deref_var() {
+		typ = typ.deref()
+	}
 	sym := g.table.sym(typ)
 
 	if sym.kind == .alias {
@@ -23,7 +26,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 	}
 	mut remove_tail_zeros := false
 	fspec := node.fmts[i]
-	mut fmt_type := StrIntpType{}
+	mut fmt_type := StrIntpType.si_no_str
 	g.write('/*${fspec} ${sym}*/')
 	// upper cases
 	if (fspec - `A`) <= (`Z` - `A`) {

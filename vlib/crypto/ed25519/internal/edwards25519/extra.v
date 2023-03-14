@@ -33,7 +33,7 @@ fn (mut s Scalar) pow2k(k int) {
 // If the coordinates are invalid or don't represent a valid point on the curve,
 // set_extended_coordinates returns an error and the receiver is
 // unchanged. Otherwise, set_extended_coordinates returns v.
-fn (mut v Point) set_extended_coordinates(x Element, y Element, z Element, t Element) ?Point {
+fn (mut v Point) set_extended_coordinates(x Element, y Element, z Element, t Element) !Point {
 	if !is_on_curve(x, y, z, t) {
 		return error('edwards25519: invalid point coordinates')
 	}

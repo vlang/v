@@ -20,6 +20,9 @@ pub fn (r TeamcityReporter) report(index int, message LogMessage) {
 		.cmd_end {
 			eprintln("##teamcity[testSuiteFinished name='${name}' flowId='${message.flow_id}' duration='${message.took}']")
 		}
+		.cannot_compile {
+			eprintln("##teamcity[testFailed name='${name}' message='${message.message}']")
+		}
 		else {}
 	}
 }

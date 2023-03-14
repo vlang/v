@@ -30,7 +30,7 @@ fn encode_struct[T](val T) map[string][]string {
 				// work if comment lines 27 and 28
 				write1(value)
 				wr.write2(value)
-				out[field.name] << '${value}'
+				out[field.name] << '${value:d}'
 			} $else {
 				write1(value)
 				wr.write2(value)
@@ -40,7 +40,7 @@ fn encode_struct[T](val T) map[string][]string {
 			$if field.is_option {
 				write1(value)
 				wr.write2(value)
-				out[field.name] << '${value}'
+				out[field.name] << '${value:d}'
 			} $else {
 				write1(value)
 				wr.write2(value)

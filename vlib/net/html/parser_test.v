@@ -2,6 +2,34 @@ module html
 
 import strings
 
+fn test_parse_empty_string() {
+	mut parser := Parser{}
+
+	parser.parse_html('')
+
+	assert parser.tags.len == 0
+}
+
+fn test_parse_text() {
+	mut parser := Parser{}
+	text_content := 'test\nparse\ntext'
+
+	parser.parse_html(text_content)
+
+	assert parser.tags.len == 1
+	assert parser.tags.first().text() == text_content
+}
+
+fn test_parse_one_tag_with_text() {
+	mut parser := Parser{}
+	text_content := 'tag\nwith\ntext'
+	p_tag := '<p>${text_content}</p>'
+
+	parser.parse_html(p_tag)
+
+	assert parser.tags.first().text() == text_content
+}
+
 fn test_split_parse() {
 	mut parser := Parser{}
 	parser.init()
@@ -37,5 +65,5 @@ fn test_script_tag() {
 	script_content := "\nvar googletag = googletag || {};\ngoogletag.cmd = googletag.cmd || [];if(3 > 5) {console.log('Birl');}\n"
 	temp_html := '<html><body><script>${script_content}</script></body></html>'
 	parser.parse_html(temp_html)
-	assert parser.tags[2].content.len == script_content.replace('\n', '').len
+	assert parser.tags[2].content.len == script_content.len
 }
