@@ -1339,9 +1339,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.empty_line = true
 			g.writeln('// json.encode')
 			g.write('cJSON* ${json_obj} = ${encode_name}(')
-			if node.args[0].typ.is_ptr() {
-				g.write('*')
-			}
 			g.call_args(node)
 			g.writeln(');')
 			tmp2 = g.new_tmp_var()
