@@ -40,8 +40,8 @@ fn test_parse_query() {
 	q2 := urllib.parse_query('format="%l:+%c+%t"')!
 	// dump(q1)
 	// dump(q2)
-	assert q1.get('format') == '"%l: %c %t"'
-	assert q2.get('format') == '"%l: %c %t"'
+	assert q1.get('format')? == '"%l: %c %t"'
+	assert q2.get('format')? == '"%l: %c %t"'
 }
 
 fn test_parse_query_orders() {
