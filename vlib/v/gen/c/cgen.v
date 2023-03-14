@@ -3448,7 +3448,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
 
-	sym := g.table.sym(g.unwrap_generic(node.expr_type))
+	unwrapped_type := g.table.unaliased_type(g.unwrap_generic(node.expr_type))
+	sym := g.table.sym(unwrapped_type)
 	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
 
 	if node.or_block.kind != .absent && !g.is_assign_lhs && g.table.sym(node.typ).kind != .chan {
@@ -3635,13 +3636,14 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			g.write(embed_name)
 		}
 	}
-	if (node.expr_type.is_ptr() || sym.kind == .chan) && node.from_embed_types.len == 0 {
+	if (node.expr_type.is_ptr() || unwrapped_type.is_ptr() || sym.kind == .chan)
+		&& node.from_embed_types.len == 0 {
 		g.write('->')
 	} else {
 		// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
 		g.write('.')
 	}
-	if node.expr_type.has_flag(.shared_f) {
+	if node.expr_type.has_flag(.shared_f) || unwrapped_type.has_flag(.shared_f) {
 		g.write('val.')
 	}
 	if node.expr_type == 0 {
