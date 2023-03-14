@@ -8,7 +8,6 @@ import v.ast
 import v.util
 import v.pref
 
-[inline]
 fn (mut g Gen) get_comptime_selector_key_type(val ast.ComptimeSelector) string {
 	if val.field_expr is ast.SelectorExpr {
 		if val.field_expr.expr is ast.Ident {
@@ -18,7 +17,6 @@ fn (mut g Gen) get_comptime_selector_key_type(val ast.ComptimeSelector) string {
 	return ''
 }
 
-[inline]
 fn (mut g Gen) get_comptime_selector_var_type(node ast.ComptimeSelector) (ast.StructField, string) {
 	field_name := g.comptime_for_field_value.name
 	left_sym := g.table.sym(g.unwrap_generic(node.left_type))
@@ -660,6 +658,33 @@ struct CurrentComptimeValues {
 	comptime_var_type_map       map[string]ast.Type
 }
 
+fn (mut g Gen) push_existing_comptime_values() {
+	g.comptime_values_stack << CurrentComptimeValues{
+		inside_comptime_for_field: g.inside_comptime_for_field
+		comptime_for_method: g.comptime_for_method
+		comptime_for_method_var: g.comptime_for_method_var
+		comptime_for_field_var: g.comptime_for_field_var
+		comptime_for_field_value: g.comptime_for_field_value
+		comptime_for_field_type: g.comptime_for_field_type
+		comptime_for_field_key_type: g.comptime_for_field_key_type
+		comptime_for_field_val_type: g.comptime_for_field_val_type
+		comptime_var_type_map: g.comptime_var_type_map.clone()
+	}
+}
+
+fn (mut g Gen) pop_existing_comptime_values() {
+	old := g.comptime_values_stack.pop()
+	g.inside_comptime_for_field = old.inside_comptime_for_field
+	g.comptime_for_method = old.comptime_for_method
+	g.comptime_for_method_var = old.comptime_for_method_var
+	g.comptime_for_field_var = old.comptime_for_field_var
+	g.comptime_for_field_value = old.comptime_for_field_value
+	g.comptime_for_field_type = old.comptime_for_field_type
+	g.comptime_for_field_key_type = old.comptime_for_field_key_type
+	g.comptime_for_field_val_type = old.comptime_for_field_val_type
+	g.comptime_var_type_map = old.comptime_var_type_map.clone()
+}
+
 [inline]
 fn (mut g Gen) get_comptime_var_type_from_kind(kind ast.ComptimeVarKind) ast.Type {
 	return match kind {
@@ -670,7 +695,6 @@ fn (mut g Gen) get_comptime_var_type_from_kind(kind ast.ComptimeVarKind) ast.Typ
 	}
 }
 
-[inline]
 fn (mut g Gen) get_comptime_var_type(node ast.Expr) ast.Type {
 	if node is ast.Ident && (node as ast.Ident).obj is ast.Var {
 		return g.get_comptime_var_type_from_kind((node.obj as ast.Var).ct_type_var)
@@ -688,23 +712,6 @@ fn (mut g Gen) resolve_comptime_type(node ast.Expr, default_type ast.Type) ast.T
 		return g.get_comptime_var_type(node)
 	}
 	return default_type
-}
-
-fn (mut g Gen) push_existing_comptime_values() {
-	g.comptime_values_stack << CurrentComptimeValues{g.inside_comptime_for_field, g.comptime_for_method, g.comptime_for_method_var, g.comptime_for_field_var, g.comptime_for_field_value, g.comptime_for_field_type, g.comptime_for_field_key_type, g.comptime_for_field_val_type, g.comptime_var_type_map.clone()}
-}
-
-fn (mut g Gen) pop_existing_comptime_values() {
-	old := g.comptime_values_stack.pop()
-	g.inside_comptime_for_field = old.inside_comptime_for_field
-	g.comptime_for_method = old.comptime_for_method
-	g.comptime_for_method_var = old.comptime_for_method_var
-	g.comptime_for_field_var = old.comptime_for_field_var
-	g.comptime_for_field_value = old.comptime_for_field_value
-	g.comptime_for_field_type = old.comptime_for_field_type
-	g.comptime_for_field_key_type = old.comptime_for_field_key_type
-	g.comptime_for_field_val_type = old.comptime_for_field_val_type
-	g.comptime_var_type_map = old.comptime_var_type_map.clone()
 }
 
 //
