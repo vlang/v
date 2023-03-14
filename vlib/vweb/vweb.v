@@ -393,7 +393,7 @@ pub struct RunParams {
 	host   string
 	port   int = 8080
 	family net.AddrFamily = .ip6 // use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
-	msg	   bool = true
+	msg    bool = true
 }
 
 // run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
