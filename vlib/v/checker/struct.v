@@ -337,6 +337,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				node.pos)
 			return ast.void_type
 		}
+	} else if struct_sym.info is ast.FnType {
+		c.error('cannot create a function in this way', node.pos)
 	}
 	// register generic struct type when current fn is generic fn
 	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0 {

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/wrong_fn_init_err.vv:4:7: error: cannot create a function in this way
+    2 | 
+    3 | fn main() {
+    4 |     a := MyCallback{}
+      |          ~~~~~~~~~~~~
+    5 |     println(a)
+    6 | }
