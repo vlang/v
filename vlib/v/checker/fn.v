@@ -95,6 +95,13 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	if node.name == 'main.main' {
 		c.main_fn_decl_node = *node
 	}
+	if node.language == .v && node.attrs.len > 0 {
+		if attr_export := node.attrs.find_first('export') {
+			if attr_export.arg == '' {
+				c.error('missing argument for [export] attribute', attr_export.pos)
+			}
+		}
+	}
 	if node.return_type != ast.void_type {
 		if ct_attr_idx := node.attrs.find_comptime_define() {
 			sexpr := node.attrs[ct_attr_idx].ct_expr.str()
