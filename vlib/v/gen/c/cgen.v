@@ -3636,7 +3636,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			g.write(embed_name)
 		}
 	}
-	if (node.expr_type.is_ptr() || unwrapped_type.is_ptr() || sym.kind == .chan) && node.from_embed_types.len == 0 {
+	if (node.expr_type.is_ptr() || unwrapped_type.is_ptr() || sym.kind == .chan)
+		&& node.from_embed_types.len == 0 {
 		g.write('->')
 	} else {
 		// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
