@@ -82,14 +82,14 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		} else if right_first is ast.ParExpr {
 			mut right_next := right_first
 			for {
-				if right_next.expr is ast.CallExpr {
-					if (right_next.expr as ast.CallExpr).return_type == ast.void_type {
-						c.error('assignment mismatch: expected ${node.left.len} value(s) but `${(right_next.expr as ast.CallExpr).name}()` returns ${right_len} value(s)',
+				if mut right_next.expr is ast.CallExpr {
+					if right_next.expr.return_type == ast.void_type {
+						c.error('assignment mismatch: expected ${node.left.len} value(s) but `${right_next.expr.name}()` returns ${right_len} value(s)',
 							node.pos)
 					}
 					break
-				} else if right_next.expr is ast.ParExpr {
-					right_next = right_next.expr as ast.ParExpr
+				} else if mut right_next.expr is ast.ParExpr {
+					right_next = right_next.expr
 				} else {
 					break
 				}
