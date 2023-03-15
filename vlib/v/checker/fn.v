@@ -1527,8 +1527,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				concrete_types << concrete_type
 			}
 		}
-
-		if c.inside_comptime_for_field {
+		if c.inside_comptime_for_field && concrete_types.len > 0 {
 			mut comptime_args := c.get_comptime_args(node)
 			mut comptime_types := concrete_types.clone()
 			for k, v in comptime_args {
@@ -1542,12 +1541,12 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				}
 			}
 			if comptime_args.len > 0
-				&& c.table.register_fn_concrete_types(node.fkey(), comptime_types) {
+				&& c.table.register_fn_concrete_types(method.fkey(), comptime_types) {
 				c.need_recheck_generic_fns = true
 			}
 		}
 		if concrete_types.len > 0 {
-			if c.table.register_fn_concrete_types(node.fkey(), concrete_types) {
+			if c.table.register_fn_concrete_types(method.fkey(), concrete_types) {
 				c.need_recheck_generic_fns = true
 			}
 		}
@@ -1610,11 +1609,6 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 
 		for i, mut arg in node.args {
-			param_idx := if method.is_variadic && i >= method.params.len - 1 {
-				method.params.len - 1
-			} else {
-				i + 1
-			}
 			if i > 0 || exp_arg_typ == ast.Type(0) {
 				exp_arg_typ = if method.is_variadic && i >= method.params.len - 1 {
 					method.params.last().typ
@@ -1629,14 +1623,6 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 
 			mut got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 			node.args[i].typ = got_arg_typ
-			if c.inside_for_in_any_cond && method.params[param_idx].typ.has_flag(.generic) {
-				if c.table.register_fn_concrete_types(method.fkey(), [
-					c.for_in_any_val_type,
-				])
-				{
-					c.need_recheck_generic_fns = true
-				}
-			}
 			if no_type_promotion {
 				if got_arg_typ != exp_arg_typ {
 					c.error('cannot use `${c.table.sym(got_arg_typ).name}` as argument for `${method.name}` (`${exp_arg_sym.name}` expected)',
