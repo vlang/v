@@ -9,7 +9,7 @@
 - [x] vfmt: add missing imports (like goimports)
 - [ ] Recursive structs via options: `struct Node { next ?Node }`
 - [x] First class Option type
-- [ ] Optional function struct fields
+- [x] Optional function struct fields
 - [ ] Handle function pointers safely, remove `if function == 0 {`
 - [x] Bundle OpenSSL like GC
 - [x] Anonymous structs
@@ -25,6 +25,8 @@
 - [ ] Big remaining bugs fixed
 - [ ] More powerful comptime
 - [ ] Constraits for generics
+- [ ] Autofree memory management option ready for production
+- [ ] C2V supporting entire C99 standard
 
 ### Tooling
 

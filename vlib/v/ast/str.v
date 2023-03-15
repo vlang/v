@@ -691,5 +691,6 @@ pub fn (e ComptimeForKind) str() string {
 		.methods { return 'methods' }
 		.fields { return 'fields' }
 		.attributes { return 'attributes' }
+		.values { return 'values' }
 	}
 }

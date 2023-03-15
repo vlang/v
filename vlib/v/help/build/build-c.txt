@@ -16,9 +16,14 @@ see also `v help build`.
    -cflags <flag>
       Pass the provided flag as is to the C compiler.
       Can be specified multiple times to provide multiple flags.
-      Use quotes to wrap the flag argument if it contains spaces.
+      Use quotes to wrap the flag argument, if it contains spaces.
 
-      V also supports the environment variables CFLAGS and LDFLAGS.
+   -ldflags <flag>
+      Pass the provided flag as is to the C compiler *after every other C option*.
+      Can be specified multiple times to provide multiple flags.
+      Use quotes to wrap the flag argument, if it contains spaces.
+
+      Note: V also supports the environment variables CFLAGS and LDFLAGS.
       The contents of the CFLAGS variable will be prepended as is, at the start
       of the C backend command, right after the name of the compiler.
       The contents of the LDFLAGS variable will be appended as is, at the end

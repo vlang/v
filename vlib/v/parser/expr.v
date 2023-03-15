@@ -195,7 +195,7 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					pos: pos
 				}
 			} else {
-				node = p.array_init()
+				node = p.array_init(false)
 			}
 		}
 		.key_none {
@@ -436,7 +436,7 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			if p.tok.kind == .key_struct && p.peek_tok.kind == .lcbr {
 				// Anonymous struct
 				p.next()
-				return p.struct_init('', .anon)
+				return p.struct_init('', .anon, false)
 			}
 			if p.tok.kind != .eof && !(p.tok.kind == .rsbr && p.inside_asm) {
 				// eof should be handled where it happens
@@ -453,6 +453,10 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 	}
 	if p.inside_if_cond {
 		p.if_cond_comments << p.eat_comments()
+	}
+	if p.pref.is_fmt && p.tok.kind == .comment && p.peek_tok.kind.is_infix() && !p.inside_infix
+		&& !(p.peek_tok.kind == .mul && p.peek_tok.pos().line_nr != p.tok.pos().line_nr) {
+		p.left_comments = p.eat_comments()
 	}
 	return p.expr_with_left(node, precedence, is_stmt_ident)
 }
@@ -595,6 +599,11 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 }
 
 fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
+	prev_inside_infix := p.inside_infix
+	p.inside_infix = true
+	defer {
+		p.inside_infix = prev_inside_infix
+	}
 	op := p.tok.kind
 	if op == .arrow {
 		p.or_is_handled = true
@@ -606,6 +615,13 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	if p.inside_if_cond {
 		p.if_cond_comments << p.eat_comments()
 	}
+	mut before_op_comments := []ast.Comment{}
+	if p.pref.is_fmt && p.left_comments.len > 0 {
+		before_op_comments = p.left_comments.clone()
+		p.left_comments = []
+	}
+	p.left_comments = []
+	after_op_comments := p.eat_comments()
 	mut right := ast.empty_expr
 	prev_expecting_type := p.expecting_type
 	if op in [.key_is, .not_is] {
@@ -648,6 +664,8 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		op: op
 		pos: pos
 		is_stmt: p.is_stmt_ident
+		before_op_comments: before_op_comments
+		after_op_comments: after_op_comments
 		or_block: ast.OrExpr{
 			stmts: or_stmts
 			kind: or_kind

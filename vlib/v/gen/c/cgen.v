@@ -46,6 +46,7 @@ fn string_array_to_map(a []string) map[string]bool {
 pub struct Gen {
 	pref                &pref.Preferences = unsafe { nil }
 	field_data_type     ast.Type // cache her to avoid map lookups
+	enum_data_type      ast.Type // cache her to avoid map lookups
 	module_built        string
 	timers_should_print bool
 	table               &ast.Table = unsafe { nil }
@@ -199,6 +200,9 @@ mut:
 	comptime_for_field_var           string // $for field in T.fields {}; the variable name
 	comptime_for_field_value         ast.StructField // value of the field variable
 	comptime_for_field_type          ast.Type        // type of the field variable inferred from `$if field.typ is T {}`
+	comptime_for_field_key_type      ast.Type        // type of key on comptime for on map field
+	comptime_for_field_val_type      ast.Type        // type of value on comptime for on map field
+	comptime_enum_field_value        string // value of enum name
 	comptime_var_type_map            map[string]ast.Type
 	comptime_values_stack            []CurrentComptimeValues // stores the values from the above on each $for loop, to make nesting them easier
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type
@@ -308,6 +312,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 		timers: util.new_timers(should_print: timers_should_print, label: 'global_cgen')
 		inner_loop: &ast.empty_stmt
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
+		enum_data_type: ast.Type(table.find_type_idx('EnumData'))
 		is_cc_msvc: pref_.ccompiler == 'msvc'
 		use_segfault_handler: !('no_segfault_handler' in pref_.compile_defines
 			|| pref_.os in [.wasm32, .wasm32_emscripten])
@@ -663,6 +668,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		)
 		inner_loop: &ast.empty_stmt
 		field_data_type: ast.Type(global_g.table.find_type_idx('FieldData'))
+		enum_data_type: ast.Type(global_g.table.find_type_idx('EnumData'))
 		array_sort_fn: global_g.array_sort_fn
 		waiter_fns: global_g.waiter_fns
 		threaded_fns: global_g.threaded_fns
@@ -1321,7 +1327,7 @@ fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	// TODO: this needs to be removed; cgen shouldn't resolve generic types (job of checker)
 	match sym.info {
 		ast.Struct, ast.Interface, ast.SumType {
-			if sym.info.is_generic {
+			if sym.info.is_generic && sym.generic_types.len == 0 {
 				mut sgtyps := '_T'
 				for gt in sym.info.generic_types {
 					gts := g.table.sym(g.unwrap_generic(gt))
@@ -3164,7 +3170,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			}
 		}
 		ast.IsRefType {
-			typ := g.get_type(node.typ)
+			typ := g.resolve_comptime_type(node.expr, g.get_type(node.typ))
 			node_typ := g.unwrap_generic(typ)
 			sym := g.table.sym(node_typ)
 			if sym.language == .v && sym.kind in [.placeholder, .any] {
@@ -3372,7 +3378,7 @@ fn (mut g Gen) type_name(raw_type ast.Type) {
 }
 
 fn (mut g Gen) typeof_expr(node ast.TypeOf) {
-	typ := g.get_type(node.typ)
+	typ := g.resolve_comptime_type(node.expr, g.get_type(node.typ))
 	sym := g.table.sym(typ)
 	if sym.kind == .sum_type {
 		// When encountering a .sum_type, typeof() should be done at runtime,
@@ -3395,20 +3401,6 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 	}
 }
 
-fn (mut g Gen) comptime_typeof(node ast.TypeOf, default_type ast.Type) ast.Type {
-	if node.expr is ast.ComptimeSelector {
-		key_str := g.get_comptime_selector_key_type(node.expr)
-		if key_str != '' {
-			return g.comptime_var_type_map[key_str] or { default_type }
-		}
-	} else if g.inside_comptime_for_field && node.expr is ast.Ident
-		&& (node.expr as ast.Ident).obj is ast.Var && ((node.expr as ast.Ident).obj as ast.Var).is_comptime_field == true {
-		// typeof(var) from T.fields
-		return g.comptime_for_field_type
-	}
-	return default_type
-}
-
 fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 	g.prevent_sum_type_unwrapping_once = false
@@ -3428,14 +3420,14 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					// typeof(expr).name
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
-						name_type = g.comptime_typeof(node.expr, name_type)
+						name_type = g.resolve_comptime_type(node.expr.expr, name_type)
 					}
 					g.type_name(name_type)
 					return
 				} else if node.field_name == 'idx' {
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
-						name_type = g.comptime_typeof(node.expr, name_type)
+						name_type = g.resolve_comptime_type(node.expr.expr, name_type)
 					}
 					// `typeof(expr).idx`
 					g.write(int(g.unwrap_generic(name_type)).str())
@@ -3443,6 +3435,13 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				}
 				g.error('unknown generic field', node.pos)
 			}
+		}
+	} else {
+		// for comp-time enum value evaluation
+		if node.expr_type == g.enum_data_type && node.expr is ast.Ident
+			&& (node.expr as ast.Ident).name == 'value' {
+			g.write(node.str())
+			return
 		}
 	}
 	if node.expr_type == 0 {
@@ -4065,7 +4064,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 
 pub fn (mut g Gen) is_comptime_var(node ast.Expr) bool {
 	return g.inside_comptime_for_field && node is ast.Ident
-		&& (node as ast.Ident).info is ast.IdentVar && ((node as ast.Ident).obj as ast.Var).is_comptime_field
+		&& (node as ast.Ident).info is ast.IdentVar && ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime
 }
 
 fn (mut g Gen) ident(node ast.Ident) {
@@ -4098,13 +4097,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 	mut is_auto_heap := false
 	if node.info is ast.IdentVar {
 		if node.obj is ast.Var {
-			if !g.is_assign_lhs && node.obj.is_comptime_field {
-				if g.comptime_for_field_type.has_flag(.option) {
+			if !g.is_assign_lhs && node.obj.ct_type_var != .no_comptime {
+				comptime_type := g.get_comptime_var_type(node)
+				if comptime_type.has_flag(.option) {
 					if (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {
 						g.write('${name}')
 					} else {
 						g.write('/*opt*/')
-						styp := g.base_type(g.comptime_for_field_type)
+						styp := g.base_type(comptime_type)
 						g.write('(*(${styp}*)${name}.data)')
 					}
 				} else {
@@ -4114,7 +4114,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 					&& !g.is_assign_lhs) {
 					stmt_str := g.go_before_stmt(0).trim_space()
 					g.empty_line = true
-					g.or_block(name, node.or_expr, g.comptime_for_field_type)
+					g.or_block(name, node.or_expr, comptime_type)
 					g.writeln(stmt_str)
 				}
 				return
@@ -4223,7 +4223,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	mut expr_type := node.expr_type
 	sym := g.table.sym(node_typ)
 	if node.expr is ast.Ident && g.is_comptime_var(node.expr) {
-		expr_type = g.unwrap_generic(g.comptime_for_field_type)
+		expr_type = g.unwrap_generic(g.get_comptime_var_type(node.expr))
 	}
 	if sym.kind in [.sum_type, .interface_] {
 		if node.typ.has_flag(.option) && node.expr is ast.None {
@@ -6150,7 +6150,7 @@ fn (mut g Gen) get_type(typ ast.Type) ast.Type {
 }
 
 fn (mut g Gen) size_of(node ast.SizeOf) {
-	typ := g.get_type(node.typ)
+	typ := g.resolve_comptime_type(node.expr, g.get_type(node.typ))
 	node_typ := g.unwrap_generic(typ)
 	sym := g.table.sym(node_typ)
 	if sym.language == .v && sym.kind in [.placeholder, .any] {

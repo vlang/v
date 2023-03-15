@@ -102,6 +102,10 @@ pub fn (mut b Builder) interpret_text(code string, v_files []string) ! {
 
 pub fn (mut b Builder) front_stages(v_files []string) ! {
 	mut timers := util.get_timers()
+	util.timing_start('ALL_FRONT_STAGES')
+	defer {
+		timers.show('ALL_FRONT_STAGES')
+	}
 	util.timing_start('PARSE')
 
 	util.timing_start('Builder.front_stages.parse_files')

@@ -94,6 +94,7 @@ pub mut:
 	kind          Kind
 	name          string // the internal & source name of the type, i.e. `[5]int`.
 	cname         string // the name with no dots for use in the generated C code
+	rname         string // the raw name
 	methods       []Fn
 	generic_types []Type
 	mod           string

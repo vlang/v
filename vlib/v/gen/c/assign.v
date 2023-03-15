@@ -222,9 +222,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 			}
 			if mut left.obj is ast.Var {
-				if val is ast.Ident
-					&& (val as ast.Ident).info is ast.IdentVar && (val as ast.Ident).kind == .variable && (val as ast.Ident).obj is ast.Var && ((val as ast.Ident).obj as ast.Var).is_comptime_field {
-					var_type = g.unwrap_generic(g.comptime_for_field_type)
+				if val is ast.Ident && g.is_comptime_var(val) {
+					var_type = g.unwrap_generic(g.get_comptime_var_type(val))
 					val_type = var_type
 					gen_or = val.or_expr.kind != .absent
 					if gen_or {

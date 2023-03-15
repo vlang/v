@@ -81,6 +81,12 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		node.high_type = high_type
 		node.scope.update_var_type(node.val_var, node.val_type)
 	} else {
+		mut is_comptime := false
+		if (node.cond is ast.Ident && c.is_comptime_var(node.cond))
+			|| node.cond is ast.ComptimeSelector {
+			is_comptime = true
+			typ = c.unwrap_generic(c.comptime_fields_default_type)
+		}
 		mut sym := c.table.final_sym(typ)
 		if sym.kind != .string {
 			match mut node.cond {
@@ -147,10 +153,20 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 				node.key_type = key_type
 				node.scope.update_var_type(node.key_var, key_type)
+
+				if is_comptime {
+					c.comptime_fields_key_type = key_type
+					node.scope.update_ct_var_kind(node.key_var, .key_var)
+				}
 			}
 
 			value_type := c.table.value_type(unwrapped_typ)
 			node.scope.update_var_type(node.val_var, value_type)
+
+			if is_comptime {
+				c.comptime_fields_val_type = value_type
+				node.scope.update_ct_var_kind(node.val_var, .value_var)
+			}
 
 			c.inside_for_in_any_cond = true
 			c.for_in_any_val_type = value_type
@@ -167,6 +183,11 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 				node.key_type = key_type
 				node.scope.update_var_type(node.key_var, key_type)
+
+				if is_comptime {
+					c.comptime_fields_key_type = key_type
+					node.scope.update_ct_var_kind(node.key_var, .key_var)
+				}
 			}
 			mut value_type := c.table.value_type(typ)
 			if sym.kind == .string {
@@ -216,6 +237,10 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.kind = sym.kind
 			node.val_type = value_type
 			node.scope.update_var_type(node.val_var, value_type)
+			if is_comptime {
+				c.comptime_fields_val_type = value_type
+				node.scope.update_ct_var_kind(node.val_var, .value_var)
+			}
 		}
 	}
 	c.check_loop_label(node.label, node.pos)

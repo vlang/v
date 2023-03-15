@@ -3,11 +3,13 @@
 // that can be found in the LICENSE file.
 module urllib
 
-fn test_add_key_val() {
+fn test_add_and_get_key_val() {
 	mut values := Values{}
 	values.add('key', 'value')
-	val := values.get('key')
-	assert val == 'value'
+	present_val := values.get('key') or { '' }
+	absent_val := values.get('key1') or { '' }
+	assert present_val == 'value'
+	assert absent_val == ''
 }
 
 fn test_get_all_with_key() {

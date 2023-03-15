@@ -983,7 +983,11 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					mut concrete_types := []ast.Type{}
 					match arg_sym.info {
 						ast.Struct, ast.Interface, ast.SumType {
-							generic_types = arg_sym.info.generic_types.clone()
+							if param_type_sym.generic_types.len > 0 {
+								generic_types = param_type_sym.generic_types.clone()
+							} else {
+								generic_types = arg_sym.info.generic_types.clone()
+							}
 							concrete_types = arg_sym.info.concrete_types.clone()
 						}
 						else {}

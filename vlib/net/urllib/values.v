@@ -27,17 +27,17 @@ pub fn new_values() Values {
 
 // get gets the first value associated with the given key.
 // If there are no values associated with the key, get returns
-// a empty string.
-pub fn (v &Values) get(key string) string {
+// none.
+pub fn (v &Values) get(key string) ?string {
 	if v.data.len == 0 {
-		return ''
+		return none
 	}
 	for qvalue in v.data {
 		if qvalue.key == key {
 			return qvalue.value
 		}
 	}
-	return ''
+	return none
 }
 
 // get_all gets the all the values associated with the given key.

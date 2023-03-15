@@ -1714,6 +1714,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 		Struct, Interface, SumType {
 			if sym.info.is_generic {
 				mut nrt := '${sym.name}['
+				mut rnrt := '${sym.rname}['
 				mut t_generic_names := generic_names.clone()
 				mut t_concrete_types := concrete_types.clone()
 				if sym.generic_types.len > 0 && sym.generic_types.len == sym.info.generic_types.len
@@ -1744,17 +1745,23 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 					{
 						gts := t.sym(ct)
 						nrt += gts.name
+						rnrt += gts.name
 						if i != sym.info.generic_types.len - 1 {
 							nrt += ', '
+							rnrt += ', '
 						}
 					} else {
 						return none
 					}
 				}
 				nrt += ']'
+				rnrt += ']'
 				mut idx := t.type_idxs[nrt]
 				if idx == 0 {
-					idx = t.add_placeholder_type(nrt, .v)
+					idx = t.type_idxs[rnrt]
+					if idx == 0 {
+						idx = t.add_placeholder_type(nrt, .v)
+					}
 				}
 				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
 			}

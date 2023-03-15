@@ -367,7 +367,8 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	mod := if imp.mod.len == 0 { imp.alias } else { imp.mod }
-	is_diff := imp.alias != mod && !mod.ends_with('.' + imp.alias)
+	normalized_mod := mod.all_after('src.') // Ignore the 'src.' folder prefix since src/ folder is root of code
+	is_diff := imp.alias != normalized_mod && !normalized_mod.ends_with('.' + imp.alias)
 	mut imp_alias_suffix := if is_diff { ' as ${imp.alias}' } else { '' }
 	mut syms := imp.syms.map(it.name).filter(f.import_syms_used[it])
 	syms.sort()
@@ -378,7 +379,7 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 			' {\n\t' + syms.join(',\n\t') + ',\n}'
 		}
 	}
-	return '${mod}${imp_alias_suffix}'
+	return '${normalized_mod}${imp_alias_suffix}'
 }
 
 //=== Node helpers ===//
@@ -2138,6 +2139,9 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	start_pos := f.out.len
 	start_len := f.line_len
 	f.expr(node.left)
+	if node.before_op_comments.len > 0 {
+		f.comments(node.before_op_comments, iembed: node.before_op_comments[0].is_inline)
+	}
 	is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit
 		&& (node.right as ast.ArrayInit).exprs.len == 1
 	is_and := node.op == .amp && f.node_str(node.right).starts_with('&')
@@ -2149,6 +2153,10 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 		f.write(' && ')
 	} else {
 		f.write(' ${node.op.str()} ')
+	}
+	if node.after_op_comments.len > 0 {
+		f.comments(node.after_op_comments, iembed: node.after_op_comments[0].is_inline)
+		f.write(' ')
 	}
 	if is_one_val_array_init && !f.inside_comptime_if {
 		// `var in [val]` => `var == val`

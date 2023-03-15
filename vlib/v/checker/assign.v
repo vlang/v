@@ -80,10 +80,18 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.error('assignment mismatch: ${node.left.len} variable(s) but `${right_first.name}()` returns ${right_len} value(s)',
 				node.pos)
 		} else if right_first is ast.ParExpr {
-			if right_first.expr is ast.CallExpr {
-				if right_first.expr.return_type == ast.void_type {
-					c.error('assignment mismatch: expected ${node.left.len} value(s) but `${right_first.expr.name}()` returns ${right_len} value(s)',
-						node.pos)
+			mut right_next := right_first
+			for {
+				if right_next.expr is ast.CallExpr {
+					if (right_next.expr as ast.CallExpr).return_type == ast.void_type {
+						c.error('assignment mismatch: expected ${node.left.len} value(s) but `${(right_next.expr as ast.CallExpr).name}()` returns ${right_len} value(s)',
+							node.pos)
+					}
+					break
+				} else if right_next.expr is ast.ParExpr {
+					right_next = right_next.expr as ast.ParExpr
+				} else {
+					break
 				}
 			}
 		} else {
@@ -310,14 +318,14 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									}
 								}
 								if right is ast.ComptimeSelector {
-									left.obj.is_comptime_field = true
+									left.obj.ct_type_var = .field_var
 									left.obj.typ = c.comptime_fields_default_type
 								} else if right is ast.Ident
 									&& (right as ast.Ident).obj is ast.Var && (right as ast.Ident).or_expr.kind == .absent {
-									left.obj.is_comptime_field = ((right as ast.Ident).obj as ast.Var).is_comptime_field
+									left.obj.ct_type_var = ((right as ast.Ident).obj as ast.Var).ct_type_var
 								} else if right is ast.DumpExpr
 									&& (right as ast.DumpExpr).expr is ast.ComptimeSelector {
-									left.obj.is_comptime_field = true
+									left.obj.ct_type_var = .field_var
 									left.obj.typ = c.comptime_fields_default_type
 								}
 							}

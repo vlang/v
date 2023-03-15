@@ -386,6 +386,9 @@ pub fn user_os() string {
 	$if solaris {
 		return 'solaris'
 	}
+	$if qnx {
+		return 'qnx'
+	}
 	$if haiku {
 		return 'haiku'
 	}
@@ -713,6 +716,7 @@ pub fn temp_dir() string {
 				path = 'C:/tmp'
 			}
 		}
+		path = get_long_path(path) or { path }
 	}
 	$if macos {
 		// avoid /var/folders/6j/cmsk8gd90pd.... on macs
