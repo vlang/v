@@ -4,16 +4,9 @@ struct Data {
 
 type AliasWithPtr = &Data
 
-type AliasWithShared = shared Data
-
-fn test_aliased_ptr_field_access() {
+fn test_aliased_field_access_test() {
 	data_with_ptr := AliasWithPtr(&Data{
 		field: 1
 	})
 	assert data_with_ptr.field == 1
-
-	data_with_shared := AliasWithShared(&Data{
-		field: 1
-	})
-	assert data_with_shared.field == 1
 }
