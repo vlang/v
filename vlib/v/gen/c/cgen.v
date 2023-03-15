@@ -3310,7 +3310,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 		}
 		ast.StructInit {
 			if node.unresolved {
-				g.expr(ast.resolve_init(node, g.unwrap_generic(node.typ), g.table))
+				g.expr(g.table.resolve_init(node, g.unwrap_generic(node.typ)))
 			} else {
 				// `user := User{name: 'Bob'}`
 				g.inside_struct_init = true

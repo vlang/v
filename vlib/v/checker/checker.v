@@ -2685,7 +2685,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		}
 		ast.StructInit {
 			if node.unresolved {
-				return c.expr(ast.resolve_init(node, c.unwrap_generic(node.typ), c.table))
+				return c.expr(c.table.resolve_init(node, c.unwrap_generic(node.typ)))
 			}
 			return c.struct_init(mut node, false)
 		}
