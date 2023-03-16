@@ -269,7 +269,7 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 	}
 }
 
-fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_init bool) ast.Type {
+fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_init bool, mut inited_fields []string) ast.Type {
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure_cumulative(@METHOD)
@@ -450,7 +450,6 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				info_fields_sorted = info.fields.clone()
 				info_fields_sorted.sort(a.i < b.i)
 			}
-			mut inited_fields := []string{}
 			for i, mut field in node.fields {
 				mut field_info := ast.StructField{}
 				mut field_name := ''
@@ -567,6 +566,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			// need to modify here accordingly.
 			fields := c.table.struct_fields(type_sym)
 			mut checked_types := []ast.Type{}
+
 			for i, field in fields {
 				if field.name in inited_fields {
 					continue
@@ -653,7 +653,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 						pos: node.pos
 						typ: field.typ
 					}
-					c.struct_init(mut zero_struct_init, true)
+					c.struct_init(mut zero_struct_init, true, mut inited_fields)
 				}
 			}
 			for embed in info.embeds {
@@ -661,7 +661,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					pos: node.pos
 					typ: embed
 				}
-				c.struct_init(mut zero_struct_init, true)
+				c.struct_init(mut zero_struct_init, true, mut inited_fields)
 			}
 			// println('>> checked_types.len: $checked_types.len | checked_types: $checked_types | type_sym: $type_sym.name ')
 		}
