@@ -200,7 +200,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 				typ = 'time'
 			}
 
-			g.write('orm__${typ}_to_primitive(${node.object_var_name}${member_access_type}${f.name}),')
+			g.write('orm__${typ}_to_primitive(${node.object_var_name}${member_access_type}${c_name(f.name)}),')
 		}
 		g.write('})')
 	} else {
