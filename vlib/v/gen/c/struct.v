@@ -324,8 +324,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 				}
 				g.write('.${field_name} = ')
 				if field.typ.has_flag(.option) {
-					tmp_var := g.new_tmp_var()
-					g.expr_with_tmp_var(default_init, field.typ, field.typ, tmp_var)
+					g.expr_with_opt(ast.None{}, ast.none_type, field.typ)
 				} else {
 					g.struct_init(default_init)
 				}
@@ -421,6 +420,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	} else {
 		g.type_definitions.writeln('struct ${name} {')
 	}
+
 	if s.fields.len > 0 || s.embeds.len > 0 {
 		for field in s.fields {
 			// Some of these structs may want to contain
@@ -439,7 +439,13 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 						last_text := g.type_definitions.after(start_pos).clone()
 						g.type_definitions.go_back_to(start_pos)
 						g.typedefs.writeln('typedef struct ${styp} ${styp};')
-						g.type_definitions.writeln('${g.option_type_text(styp, base)};')
+						if base == name {
+							size, align := g.table.type_size(field.typ.clear_flag(.option))
+							g.type_definitions.writeln('${g.option_type_text_with_size(styp,
+								base, size + align)};')
+						} else {
+							g.type_definitions.writeln('${g.option_type_text(styp, base)};')
+						}
 						g.type_definitions.write_string(last_text)
 					}
 				}
