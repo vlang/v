@@ -130,14 +130,14 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) !
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is []Any {
 		e.encode_any(val, level, mut wr)!
-	} $else $if T in [Null, bool, $Float, $Int] {
-		e.encode_any(val, level, mut wr)!
 	} $else $if T is Encodable {
 		wr.write(val.json_str().bytes())!
 	} $else $if T is $Struct {
 		e.encode_struct(val, level, mut wr)!
 	} $else $if T is $Enum {
 		e.encode_any(Any(int(val)), level, mut wr)!
+	} $else $if T in [Null, bool, $Float, $Int] {
+		e.encode_any(val, level, mut wr)!
 	} $else {
 		// dump(val.str())
 		return error('cannot encode value with ${typeof(val).name} type')

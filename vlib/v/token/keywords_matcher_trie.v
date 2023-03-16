@@ -70,7 +70,7 @@ pub fn new_keywords_matcher_trie[T](kw_map map[string]T) KeywordsMatcherTrie {
 		km.nodes << &TrieNode(0)
 	}
 	for k, v in kw_map {
-		km.add_word(k, v)
+		km.add_word(k, int(v))
 	}
 	// dump(km.min_len)
 	// dump(km.max_len)
