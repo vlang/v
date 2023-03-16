@@ -167,7 +167,8 @@ pub mut:
 
 	header http.Header // response headers
 	// ? It doesn't seem to be used anywhere
-	form_error string
+	form_error                  string
+	livereload_poll_interval_ms int = 250
 }
 
 struct FileData {
@@ -202,23 +203,22 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 		return false
 	}
 	ctx.done = true
-
-	// build header
-	header := http.new_header_from_map({
-		http.CommonHeader.content_type:   mimetype
-		http.CommonHeader.content_length: res.len.str()
-	}).join(ctx.header)
-
+	//
 	mut resp := http.Response{
-		header: header.join(vweb.headers_close)
 		body: res
 	}
 	$if vweb_livereload ? {
 		if mimetype == 'text/html' {
-			resp.body = res.replace('</html>', 'ctx.page_gen_start: ${ctx.page_gen_start}\n</html>')
-			dump(resp.body)
+			resp.body = res.replace('</html>', '<script src="/vweb_livereload/${vweb_livereload_server_start}/script.js"></script>\n</html>')
 		}
 	}
+	// build the header after the potential modification of resp.body from above
+	header := http.new_header_from_map({
+		http.CommonHeader.content_type:   mimetype
+		http.CommonHeader.content_length: resp.body.len.str()
+	}).join(ctx.header)
+	resp.header = header.join(vweb.headers_close)
+	//
 	resp.set_version(.v1_1)
 	resp.set_status(http.status_from_int(ctx.status.int()))
 	send_string(mut ctx.conn, resp.bytestr()) or { return false }
@@ -509,6 +509,19 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 
 	// Calling middleware...
 	app.before_request()
+
+	$if vweb_livereload ? {
+		if url.path.starts_with('/vweb_livereload/') {
+			if url.path.ends_with('current') {
+				app.handle_vweb_livereload_current()
+				return
+			}
+			if url.path.ends_with('script.js') {
+				app.handle_vweb_livereload_script()
+				return
+			}
+		}
+	}
 
 	// Static handling
 	if serve_if_static[T](mut app, url) {
