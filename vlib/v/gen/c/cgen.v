@@ -3635,10 +3635,11 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			g.write(embed_name)
 		}
 	}
-	if (node.expr_type.is_ptr() || sym.kind == .chan) && node.from_embed_types.len == 0 {
+	alias_to_ptr := sym.info is ast.Alias && (sym.info as ast.Alias).parent_type.is_ptr()
+	if (node.expr_type.is_ptr() || sym.kind == .chan || alias_to_ptr)
+		&& node.from_embed_types.len == 0 {
 		g.write('->')
 	} else {
-		// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
 		g.write('.')
 	}
 	if node.expr_type.has_flag(.shared_f) {
