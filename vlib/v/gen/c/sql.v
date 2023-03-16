@@ -723,7 +723,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 				where_expr.right = ident
 				sub.where_expr = where_expr
 
-				g.sql_select(sub, expr, '${tmp}.${field.name} = ', or_expr)
+				g.sql_select(sub, expr, '${tmp}.${c_name(field.name)} = ', or_expr)
 			} else if sym.kind == .array {
 				mut fkey := ''
 				for attr in field.attrs {
@@ -775,10 +775,10 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 					where_expr: where_expr
 				}
 
-				g.sql_select(arr, expr, '${tmp}.${field.name} = ', or_expr)
+				g.sql_select(arr, expr, '${tmp}.${c_name(field.name)} = ', or_expr)
 			} else {
 				mut typ := sym.cname
-				g.writeln('${tmp}.${field.name} = *(${sel}._${typ});')
+				g.writeln('${tmp}.${c_name(field.name)} = *(${sel}._${typ});')
 			}
 		}
 		g.indent--
