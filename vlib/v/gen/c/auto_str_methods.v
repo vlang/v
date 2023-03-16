@@ -56,7 +56,11 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 	$if trace_autostr ? {
 		eprintln('> get_str_fn: ${typ.debug()}')
 	}
-	mut unwrapped := g.unwrap_generic(typ).set_nr_muls(0).clear_flag(.variadic)
+	mut unwrapped := if typ.has_flag(.option) {
+		g.unwrap_generic(typ).clear_flag(.variadic)
+	} else {
+		g.unwrap_generic(typ).set_nr_muls(0).clear_flag(.variadic)
+	}
 	if g.pref.nofloat {
 		if typ == ast.f32_type {
 			unwrapped = ast.u32_type
@@ -515,6 +519,9 @@ fn styp_to_str_fn_name(styp string) string {
 
 // deref_kind returns deref, deref_label
 fn deref_kind(str_method_expects_ptr bool, is_elem_ptr bool, typ ast.Type) (string, string) {
+	if typ.has_flag(.option) {
+		return '', ''
+	}
 	if str_method_expects_ptr != is_elem_ptr {
 		if is_elem_ptr {
 			return '*'.repeat(typ.nr_muls()), '&'.repeat(typ.nr_muls())
@@ -936,7 +943,11 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, typ_str string, 
 			caller_should_free = false
 		} else if ftyp_noshared.is_ptr() {
 			// reference types can be "nil"
-			funcprefix += 'isnil(it.${c_name(field.name)})'
+			if ftyp_noshared.has_flag(.option) {
+				funcprefix += 'isnil(&it.${c_name(field.name)})'
+			} else {
+				funcprefix += 'isnil(it.${c_name(field.name)})'
+			}
 			funcprefix += ' ? _SLIT("nil") : '
 			// struct, floats and ints have a special case through the _str function
 			if sym.kind !in [.struct_, .alias, .enum_, .sum_type, .map, .interface_]
