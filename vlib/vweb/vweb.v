@@ -190,8 +190,8 @@ pub fn (ctx Context) init_server() {
 }
 
 // Defining this method is optional.
-// This method called before every request (aka middleware).
-// Probably you can use it for check user session cookie or add header.
+// This method is called before every request (aka middleware).
+// You can use it for checking user session cookies or to add headers.
 pub fn (ctx Context) before_request() {}
 
 // TODO - test
@@ -212,6 +212,12 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	mut resp := http.Response{
 		header: header.join(vweb.headers_close)
 		body: res
+	}
+	$if vweb_livereload ? {
+		if mimetype == 'text/html' {
+			resp.body = res.replace('</html>', 'ctx.page_gen_start: ${ctx.page_gen_start}\n</html>')
+			dump(resp.body)
+		}
 	}
 	resp.set_version(.v1_1)
 	resp.set_status(http.status_from_int(ctx.status.int()))
