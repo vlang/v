@@ -807,7 +807,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					if command == '' {
 						command = arg
 						command_pos = i
-						if res.is_eval_argument || command in ['run', 'crun'] {
+						if res.is_eval_argument || command in ['run', 'crun', 'watch'] {
 							break
 						}
 					} else if is_source_file(command) && is_source_file(arg)
