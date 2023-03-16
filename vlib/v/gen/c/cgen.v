@@ -5742,10 +5742,14 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 					field_deps << dep
 				}
 				for field in sym.info.fields {
-					if field.typ.is_ptr() || field.typ.has_flag(.option) {
+					if field.typ.is_ptr() {
 						continue
 					}
 					fsym := g.table.sym(field.typ)
+					// optional recursive struct
+					if fsym.name == sym.name && field.typ.has_flag(.option) {
+						continue
+					}
 					dep := fsym.name
 					// skip if not in types list or already in deps
 					if dep !in type_names || dep in field_deps {
