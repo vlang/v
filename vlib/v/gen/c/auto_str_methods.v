@@ -585,7 +585,10 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 			// Rune are managed at this level as strings
 			g.auto_str_funcs.writeln('\t\tstring x = str_intp(2, _MOV((StrIntpData[]){{_SLIT("\`"), ${c.si_s_code}, {.d_s = ${elem_str_fn_name}(it) }}, {_SLIT("\`"), 0, {.d_c = 0 }}}));\n')
 		} else if sym.kind == .string {
-			if is_elem_ptr {
+			if typ.has_flag(.option) {
+				func := g.get_str_fn(typ)
+				g.auto_str_funcs.writeln('\t\tstring x = ${func}(it);\n')
+			} else if is_elem_ptr {
 				g.auto_str_funcs.writeln('\t\tstring x = str_intp(2, _MOV((StrIntpData[]){{_SLIT("&\'"), ${c.si_s_code}, {.d_s = *it }}, {_SLIT("\'"), 0, {.d_c = 0 }}}));\n')
 			} else {
 				g.auto_str_funcs.writeln('\t\tstring x = str_intp(2, _MOV((StrIntpData[]){{_SLIT("\'"), ${c.si_s_code}, {.d_s = it }}, {_SLIT("\'"), 0, {.d_c = 0 }}}));\n')
