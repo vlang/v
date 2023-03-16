@@ -1049,7 +1049,7 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 		}
 		ast.StructInit {
 			if node.unresolved {
-				resolved := ast.resolve_init(node, g.unwrap_generic(node.typ), g.table)
+				resolved := g.table.resolve_init(node, g.unwrap_generic(node.typ))
 				g.expr(resolved)
 			} else {
 				g.gen_struct_init(node)
