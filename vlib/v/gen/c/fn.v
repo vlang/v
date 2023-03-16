@@ -1245,7 +1245,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.expr(node.left)
 			}
 		} else {
-			if has_str_method && left_type.is_ptr() && !node.receiver_type.is_ptr() {
+			if node.left is ast.Ident && has_str_method && left_type.is_ptr()
+				&& !node.receiver_type.is_ptr() {
 				g.write('*')
 			}
 			g.expr(node.left)
