@@ -26,7 +26,7 @@ import strings
 fn (mut g Gen) gen_json_for_type(typ ast.Type) {
 	utyp := g.unwrap_generic(typ)
 	sym := g.table.sym(utyp)
-	if (is_js_prim(sym.name) && !utyp.has_flag(.option)) || sym.kind == .enum_ {
+	if is_js_prim(sym.name) && !utyp.has_flag(.option) {
 		return
 	}
 	g.json_types << utyp
@@ -160,6 +160,8 @@ ${enc_fn_dec} {
 				verror('json: ${sym.name} is not a sumtype')
 			}
 			g.gen_sumtype_enc_dec(utyp, sym, mut enc, mut dec, ret_styp)
+		} else if sym.kind == .enum_ {
+			enc.writeln('\to = json__encode_u64(val);\n')
 		} else if utyp.has_flag(.option) && sym.info !is ast.Struct {
 			g.gen_option_enc_dec(utyp, mut enc, mut dec)
 		} else {
