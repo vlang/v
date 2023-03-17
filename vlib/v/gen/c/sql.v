@@ -200,7 +200,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 				typ = 'time'
 			}
 
-			g.write('orm__${typ}_to_primitive(${node.object_var_name}${member_access_type}${f.name}),')
+			g.write('orm__${typ}_to_primitive(${node.object_var_name}${member_access_type}${c_name(f.name)}),')
 		}
 		g.write('})')
 	} else {
@@ -216,13 +216,14 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 		mut id_name := g.new_tmp_var()
 		g.writeln('orm__Primitive ${id_name} = orm__int_to_primitive(orm__Connection_name_table[${expr}._typ]._method_last_id(${expr}._object));')
 		for i, mut arr in arrs {
+			c_field_name := c_name(field_names[i])
 			idx := g.new_tmp_var()
-			g.writeln('for (int ${idx} = 0; ${idx} < ${arr.object_var_name}${member_access_type}${field_names[i]}.len; ${idx}++) {')
+			g.writeln('for (int ${idx} = 0; ${idx} < ${arr.object_var_name}${member_access_type}${c_field_name}.len; ${idx}++) {')
 			last_ids := g.new_tmp_var()
 			res_ := g.new_tmp_var()
 			tmp_var := g.new_tmp_var()
 			ctyp := g.typ(arr.table_expr.typ)
-			g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)array_get(${arr.object_var_name}${member_access_type}${field_names[i]}, ${idx}));')
+			g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)array_get(${arr.object_var_name}${member_access_type}${c_field_name}, ${idx}));')
 			arr.object_var_name = tmp_var
 			mut fff := []ast.StructField{}
 			for f in arr.fields {
@@ -723,7 +724,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 				where_expr.right = ident
 				sub.where_expr = where_expr
 
-				g.sql_select(sub, expr, '${tmp}.${field.name} = ', or_expr)
+				g.sql_select(sub, expr, '${tmp}.${c_name(field.name)} = ', or_expr)
 			} else if sym.kind == .array {
 				mut fkey := ''
 				for attr in field.attrs {
@@ -775,10 +776,10 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 					where_expr: where_expr
 				}
 
-				g.sql_select(arr, expr, '${tmp}.${field.name} = ', or_expr)
+				g.sql_select(arr, expr, '${tmp}.${c_name(field.name)} = ', or_expr)
 			} else {
 				mut typ := sym.cname
-				g.writeln('${tmp}.${field.name} = *(${sel}._${typ});')
+				g.writeln('${tmp}.${c_name(field.name)} = *(${sel}._${typ});')
 			}
 		}
 		g.indent--
