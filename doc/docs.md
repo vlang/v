@@ -5872,19 +5872,24 @@ the boolean expression is highly improbable. In the JS backend, that does nothin
 ### Memory usage optimization
 
 V offers 2 attributes that can be applied to a structure type: `[packed]` and `[minify]`. 
-These attributes affect memory layout of a structure, potentially leading to reduced cache/memory usage and improved performance.
+These attributes affect memory layout of a structure, potentially leading to reduced
+cache/memory usage and improved performance.
 
 #### `[packed]`
 
-The `[packed]` attribute can be added to a structure to create an unaligned memory layout, which decreases the overall memory footprint of the structure.
+The `[packed]` attribute can be added to a structure to create an unaligned memory layout, 
+which decreases the overall memory footprint of the structure.
 
 > **Note**
-> Using the [packed] attribute may negatively impact performance or even be prohibited on certain CPU architectures.
-> Only use this attribute if minimizing memory usage is crucial for your program and you're willing to sacrifice performance.
+> Using the [packed] attribute may negatively impact performance 
+> or even be prohibited on certain CPU architectures.
+> Only use this attribute if minimizing memory usage is crucial for your program 
+> and you're willing to sacrifice performance.
 
 #### `[minify]`
 
-The `[minify]` attribute can be added to a struct, allowing the compiler to reorder the fields in a way that minimizes internal gaps while maintaining alignment.
+The `[minify]` attribute can be added to a struct, allowing the compiler to reorder the fields 
+in a way that minimizes internal gaps while maintaining alignment.
 
 > **Note**
 > Using the `[minify]` attribute may cause issues with binary serialization or reflection.
