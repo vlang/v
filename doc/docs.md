@@ -5871,7 +5871,7 @@ the boolean expression is highly improbable. In the JS backend, that does nothin
 
 ### Memory usage optimization
 
-V offers 2 attributes that can be applied to a structure type: `[packed]` and `[minify]`. 
+V offers these attributes related to memory usage that can be applied to a structure type: `[packed]` and `[minify]`. 
 These attributes affect memory layout of a structure, potentially leading to reduced
 cache/memory usage and improved performance.
 
