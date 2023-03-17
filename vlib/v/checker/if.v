@@ -321,7 +321,8 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							node.pos)
 					} else {
 						if c.inside_assign && node.is_expr && !node.typ.has_flag(.shared_f)
-							&& stmt.typ.is_ptr() != node.typ.is_ptr() {
+							&& stmt.typ.is_ptr() != node.typ.is_ptr()
+							&& stmt.typ != ast.voidptr_type {
 							c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
 								node.pos)
 						}
