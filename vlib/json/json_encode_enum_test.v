@@ -12,5 +12,9 @@ struct TestStruct {
 
 fn test_encode_with_enum() {
 	out := json.encode(TestStruct{ test: [TestEnum.one, TestEnum.one], test2: TestEnum.two })
-	assert out == '{"test":[1,1],"test2":2}'
+	assert out == '{"test":["one","one"],"test2":"two"}'
+}
+
+fn test_encode_direct_enum() {
+	assert json.encode(TestEnum.one) == '"one"'
 }
