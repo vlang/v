@@ -115,6 +115,7 @@ mut:
 	inside_println_arg               bool
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
+	inside_assign                    bool
 	is_index_assign                  bool
 	comptime_call_pos                int // needed for correctly checking use before decl for templates
 	goto_labels                      map[string]ast.GotoLabel // to check for unused goto labels
