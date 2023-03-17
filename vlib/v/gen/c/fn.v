@@ -1918,7 +1918,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		}
 	}
 	if expr.is_method {
-		receiver_sym := g.table.sym(expr.receiver_type)
+		receiver_sym := g.table.sym(g.unwrap_generic(expr.receiver_type))
 		name = receiver_sym.cname + '_' + name
 	} else if mut expr.left is ast.AnonFn {
 		if expr.left.inherited_vars.len > 0 {
@@ -2096,8 +2096,8 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 			fn_var = g.fn_var_signature(f.return_type, f.params.map(it.typ), 'fn')
 		} else {
 			if node.call_expr.is_method {
-				rec_sym := g.table.sym(node.call_expr.receiver_type)
-				if f := g.table.find_method(rec_sym, node.call_expr.name) {
+				rec_sym := g.table.sym(g.unwrap_generic(node.call_expr.receiver_type))
+				if f := rec_sym.find_method_with_generic_parent(node.call_expr.name) {
 					mut muttable := unsafe { &ast.Table(g.table) }
 					return_type := muttable.resolve_generic_to_concrete(f.return_type,
 						f.generic_names, node.call_expr.concrete_types) or { f.return_type }
