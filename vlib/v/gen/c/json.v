@@ -161,10 +161,7 @@ ${enc_fn_dec} {
 			}
 			g.gen_sumtype_enc_dec(utyp, sym, mut enc, mut dec, ret_styp)
 		} else if sym.kind == .enum_ {
-			strs := (sym.info as ast.Enum).vals
-			items := strs.map('_SLIT("${it}")').join(',')
-			enc.writeln('array enum_vals = new_array_from_c_array(${strs.len},${strs.len},sizeof(string),_MOV((string[${strs.len}]){${items}}));')
-			enc.writeln('\to = json__encode_string(*(string*)array_get(enum_vals, val - 1));\n')
+			enc.writeln('\to = json__encode_string(${c_name(sym.name)}_str(val));\n')
 		} else if utyp.has_flag(.option) && sym.info !is ast.Struct {
 			g.gen_option_enc_dec(utyp, mut enc, mut dec)
 		} else {
@@ -525,13 +522,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 			}
 		}
 		if field_sym.kind == .enum_ {
-			enc.writeln('\t{')
-			strs := (field_sym.info as ast.Enum).vals
-			items := strs.map('_SLIT("${it}")').join(',')
-
-			enc.writeln('\t\tarray enum_vals = new_array_from_c_array(${strs.len},${strs.len},sizeof(string),_MOV((string[${strs.len}]){${items}}));')
-			enc.writeln('\t\tcJSON_AddItemToObject(o, "${name}", json__encode_string(*(string*)array_get(enum_vals, ${prefix_enc}.${c_name(field.name)} - 1)));\n')
-			enc.writeln('\t}')
+			enc.writeln('\t\tcJSON_AddItemToObject(o, "${name}", json__encode_string(${c_name(field_sym.name)}_str(${prefix_enc}.${c_name(field.name)})));\n')
 		} else {
 			if field_sym.name == 'time.Time' {
 				// time struct requires special treatment
