@@ -449,7 +449,10 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.write('->val')
 		}
 		g.write(', &(${key_type_str}[]){')
+		old_is_assign_lhs := g.is_assign_lhs
+		g.is_assign_lhs = false
 		g.expr(node.index)
+		g.is_assign_lhs = old_is_assign_lhs
 		g.write('}, &(${elem_type_str}[]){ ${zero} }))')
 	} else {
 		zero := g.type_default(info.value_type)
