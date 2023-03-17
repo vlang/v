@@ -31,7 +31,7 @@ fn test_str_methods() {
 	assert u64(-1).str() == '18446744073709551615'
 	assert voidptr(-1).str() == '0xffffffffffffffff'
 	assert voidptr(1).str() == '0x1'
-	assert (&u8(-1)).str() == 'ffffffffffffffff'
+	assert (&u8(-1)).str() == '255'
 	assert (&u8(1)).str() == '1'
 	assert byteptr(-1).str() == '0xffffffffffffffff'
 	assert byteptr(1).str() == '0x1'
