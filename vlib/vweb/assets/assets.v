@@ -24,6 +24,8 @@ pub mut:
 struct Asset {
 	file_path     string
 	last_modified time.Time
+mut:
+	include_name string
 }
 
 // new_manager returns a new AssetManager
@@ -36,9 +38,31 @@ pub fn (mut am AssetManager) add_css(file string) bool {
 	return am.add('css', file)
 }
 
+// add_css_as adds a css asset with a custom href
+pub fn (mut am AssetManager) add_css_as(file string, href string) bool {
+	if am.add('css', file) {
+		// set name of added asset
+		am.css.last().include_name = href
+		return true
+	} else {
+		return false
+	}
+}
+
 // add_js adds a js asset
 pub fn (mut am AssetManager) add_js(file string) bool {
 	return am.add('js', file)
+}
+
+// add_js_as adds a js asset with a custom src
+pub fn (mut am AssetManager) add_js_as(file string, src string) bool {
+	if am.add('js', file) {
+		// set name of added asset
+		am.js.last().include_name = src
+		return true
+	} else {
+		return false
+	}
 }
 
 // combine_css returns the combined css as a string when to_file is false
@@ -126,7 +150,12 @@ fn (am AssetManager) include(asset_type string, combine bool) string {
 			return '<link rel="stylesheet" href="${file}">\n'
 		}
 		for asset in assets {
-			out += '<link rel="stylesheet" href="${asset.file_path}">\n'
+			mut href := asset.file_path
+			if asset.include_name.len > 0 {
+				href = asset.include_name
+			}
+
+			out += '<link rel="stylesheet" href="${href}">\n'
 		}
 	}
 	if asset_type == 'js' {
@@ -135,7 +164,12 @@ fn (am AssetManager) include(asset_type string, combine bool) string {
 			return '<script type="text/javascript" src="${file}"></script>\n'
 		}
 		for asset in assets {
-			out += '<script type="text/javascript" src="${asset.file_path}"></script>\n'
+			mut src := asset.file_path
+			if asset.include_name.len > 0 {
+				src = asset.include_name
+			}
+
+			out += '<script type="text/javascript" src="${src}"></script>\n'
 		}
 	}
 	return out
