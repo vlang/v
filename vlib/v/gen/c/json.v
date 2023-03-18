@@ -191,9 +191,8 @@ ${enc_fn_dec} {
 fn (mut g Gen) gen_enum_to_str(utyp ast.Type, sym ast.TypeSymbol, enum_var string, result_var string, ident string) string {
 	mut s := '${ident}switch (${enum_var}) {\n'
 	for val in (sym.info as ast.Enum).vals {
-		s += '${ident}\tcase ${g.gen_enum_prefix(utyp)}${c_name(val)}:\n'
-		s += '${ident}\t\t${result_var} = json__encode_string(_SLIT("${val}"));\n'
-		s += '${ident}\t\tbreak;\n'
+		s += '${ident}\tcase ${g.gen_enum_prefix(utyp)}${val}:\t'
+		s += '${result_var} = json__encode_string(_SLIT("${val}")); break;\n'
 	}
 	s += '${ident}}'
 	return s
@@ -204,11 +203,11 @@ fn (mut g Gen) gen_str_to_enum(utyp ast.Type, sym ast.TypeSymbol, val_var string
 	mut s := ''
 	for k, val in (sym.info as ast.Enum).vals {
 		if k == 0 {
-			s += '${ident}if (string__eq(_SLIT("${val}"), ${val_var}))\n'
+			s += '${ident}if (string__eq(_SLIT("${val}"), ${val_var}))\t'
 		} else {
-			s += '${ident}else if (string__eq(_SLIT("${val}"), ${val_var}))\n'
+			s += '${ident}else if (string__eq(_SLIT("${val}"), ${val_var}))\t'
 		}
-		s += '${ident}${result_var} = ${g.gen_enum_prefix(utyp)}${c_name(val)};\n'
+		s += '${result_var} = ${g.gen_enum_prefix(utyp)}${val};\n'
 	}
 	return s
 }
@@ -307,14 +306,8 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 				dec.writeln('\t\t${variant_typ} value;')
 				tmp2 := g.new_tmp_var()
 				dec.writeln('\t\tstring ${tmp2} = json__decode_string(jsonroot_${tmp});')
-				for k, val in (field_sym.info as ast.Enum).vals {
-					if k == 0 {
-						dec.writeln('\t\tif (string__eq(_SLIT("${val}"), ${tmp2}))')
-					} else {
-						dec.writeln('\t\telse if (string__eq(_SLIT("${val}"), ${tmp2}))')
-					}
-					dec.writeln('\t\t\tvalue = ${g.gen_enum_prefix(variant_typ)}${c_name(val)};')
-				}
+				dec.writeln(g.gen_enum_to_str(variant_typ, variant_sym, tmp2, 'value',
+					'\t\t'))
 			} else if variant_sym.name == 'time.Time' {
 				gen_js_get(variant_typ, tmp, unmangled_variant_name, mut dec, true)
 				dec.writeln('\t\t${variant_typ} value = time__unix(${js_dec_name('i64')}(jsonroot_${tmp}));')
@@ -501,14 +494,8 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				gen_js_get(styp, tmp, name, mut dec, is_required)
 				dec.writeln('\tif (jsonroot_${tmp}) {')
 				dec.writeln('\t\tstring ${tmp2} = json__decode_string(jsonroot_${tmp});')
-				for k, val in (field_sym.info as ast.Enum).vals {
-					if k == 0 {
-						dec.writeln('\t\tif (string__eq(_SLIT("${val}"), ${tmp2}))')
-					} else {
-						dec.writeln('\t\telse if (string__eq(_SLIT("${val}"), ${tmp2}))')
-					}
-					dec.writeln('\t\t\t${prefix}${op}${c_name(field.name)} = ${g.gen_enum_prefix(field.typ)}${c_name(val)};')
-				}
+				dec.writeln(g.gen_str_to_enum(field.typ, field_sym, tmp2, '${prefix}${op}${c_name(field.name)}',
+					'\t\t'))
 				if field.has_default_expr {
 					dec.writeln('\t} else {')
 					dec.writeln('\t\t${prefix}.${c_name(field.name)} = ${g.expr_string(field.default_expr)};')
@@ -597,10 +584,12 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 			}
 		}
 		if field_sym.kind == .enum_ {
-			enc.writeln('cJSON *enum_val;')
+			enc.writeln('\t{')
+			enc.writeln('\t\tcJSON *enum_val;')
 			enc.writeln(g.gen_enum_to_str(field.typ, field_sym, '${prefix_enc}.${c_name(field.name)}',
 				'enum_val', '\t\t'))
-			enc.writeln('\t\tcJSON_AddItemToObject(o, "${name}", enum_val);\n')
+			enc.writeln('\t\tcJSON_AddItemToObject(o, "${name}", enum_val);')
+			enc.writeln('\t}')
 		} else {
 			if field_sym.name == 'time.Time' {
 				// time struct requires special treatment
