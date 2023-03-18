@@ -2516,8 +2516,12 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			// println("ist_quant_n no_match_found")
 			result = regex.no_match_found
 			m_state = .stop
+
+			if re.state_list.len > 0 && re.state_list.last().group_index == -1
+				&& re.state_list.last().last_dot_pc > 0 {
+				return regex.no_match_found, 0
+			}
 			continue
-			// return no_match_found, 0
 		}
 		// ist_quant_p => quantifier positive test on token
 		else if m_state == .ist_quant_p {
