@@ -2517,6 +2517,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			result = regex.no_match_found
 			m_state = .stop
 
+			// stop already started matching outside a capturing group
 			if re.state_list.len > 0 && re.state_list.last().group_index == -1
 				&& re.state_list.last().last_dot_pc > 0 {
 				return regex.no_match_found, 0
