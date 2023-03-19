@@ -75,6 +75,12 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 			i++
 			continue
 		}
+		if ch == `%` && status == .field_char {
+			status = .norm_char
+			res.write_u8(ch)
+			i++
+			continue
+		}
 		if ch == `%` && status == .norm_char {
 			status = .field_char
 			i++
