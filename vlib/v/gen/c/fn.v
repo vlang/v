@@ -487,12 +487,30 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 			if obj is ast.Var {
 				if obj.has_inherited {
 					has_inherited = true
-					g.writeln('.${var.name} = ${c.closure_ctx}->${var.name},')
+					var_sym := g.table.sym(var.typ)
+					if var_sym.info is ast.ArrayFixed {
+						g.write('.${var.name} = {')
+						for i in 0 .. var_sym.info.size {
+							g.write('${c.closure_ctx}->${var.name}[${i}],')
+						}
+						g.writeln('},')
+					} else {
+						g.writeln('.${var.name} = ${c.closure_ctx}->${var.name},')
+					}
 				}
 			}
 		}
 		if !has_inherited {
-			g.writeln('.${var.name} = ${var.name},')
+			var_sym := g.table.sym(var.typ)
+			if var_sym.info is ast.ArrayFixed {
+				g.write('.${var.name} = {')
+				for i in 0 .. var_sym.info.size {
+					g.write('${var.name}[${i}],')
+				}
+				g.writeln('},')
+			} else {
+				g.writeln('.${var.name} = ${var.name},')
+			}
 		}
 	}
 	g.indent--
