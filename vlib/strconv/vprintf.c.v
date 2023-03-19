@@ -35,6 +35,7 @@ pub fn v_printf(str string, pt ...voidptr) {
 // x := 3.141516
 // assert strconv.v_sprintf('aaa %G', x) == 'aaa 3.141516'
 // ```
+[deprecated: 'use string interpolation instead']
 [direct_array_access; manualfree]
 pub fn v_sprintf(str string, pt ...voidptr) string {
 	mut res := strings.new_builder(pt.len * 16)
