@@ -193,10 +193,8 @@ pub fn (mut p Parser) set_path(path string) {
 	p.file_display_path = os.real_path(p.file_name).replace_once(parser.normalised_working_folder,
 		'').replace('\\', '/')
 	p.inside_vlib_file = p.file_name_dir.contains('vlib')
-	p.inside_test_file = p.file_base.ends_with('_test.v')
-		|| p.file_base.ends_with('_test.vv')
+	p.inside_test_file = p.file_base.ends_with('_test.v') || p.file_base.ends_with('_test.vv')
 		|| p.file_base.all_before_last('.v').all_before_last('.').ends_with('_test')
-		|| (p.file_name_dir.contains('vlib/v/slow_tests/inout/') && p.file_base.ends_with('.vv'))
 
 	hash := fnv1a.sum64_string(path)
 	p.unique_prefix = hash.hex_full()
