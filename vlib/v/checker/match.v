@@ -29,6 +29,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	c.ensure_type_exists(node.cond_type, node.pos) or { return ast.void_type }
 	c.check_expr_opt_call(node.cond, cond_type)
 	cond_type_sym := c.table.sym(cond_type)
+	cond_is_option := cond_type.has_flag(.option)
 	node.is_sum_type = cond_type_sym.kind in [.interface_, .sum_type]
 	c.match_exprs(mut node, cond_type_sym)
 	c.expected_type = cond_type
@@ -58,6 +59,10 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					c.expected_type = node.expected_type
 				}
 				expr_type := c.expr(stmt.expr)
+				if !branch.is_else && cond_is_option && !expr_type.has_flag(.option) {
+					c.error('`match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`',
+						stmt.pos)
+				}
 				stmt.typ = expr_type
 				if first_iteration {
 					if node.is_expr && (node.expected_type.has_flag(.option)
