@@ -39,6 +39,15 @@ struct TestStruct2 {
 	c TestSum2
 }
 
+struct Test {
+	ab ?int
+	a  ?MessageType
+}
+
+struct Test2 {
+	a ?MessageType2
+}
+
 fn test_encode_with_enum() {
 	out := json.encode(TestStruct{
 		test: [TestEnum.one, TestEnum.one]
@@ -83,4 +92,22 @@ fn test_enum_attr_encode() {
 		b: MessageType.log
 		c: 'test'
 	}) == '{"a":1,"b":4,"c":"test"}'
+}
+
+fn test_option_enum() {
+	assert dump(json.encode(Test{none, none})) == '{}'
+	assert dump(json.encode(Test{none, MessageType.log})) == '{"a":4}'
+	t := dump(json.decode(Test, '{"a":4}')!)
+	assert t.ab == none
+	assert t.a? == .log
+
+	t2 := dump(json.decode(Test, '{"a":null}')!)
+	assert t2.a == none
+
+	assert json.encode(Test2{none}) == '{}'
+	assert dump(json.encode(Test2{MessageType2.log})) == '{"a":"log"}'
+	z := dump(json.decode(Test2, '{"a":"log"}')!)
+	assert z.a? == .log
+	a := dump(json.decode(Test2, '{"a": null}')!)
+	assert a.a == none
 }
