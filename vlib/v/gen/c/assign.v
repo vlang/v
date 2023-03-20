@@ -454,6 +454,15 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					g.expr(val)
 					g.writeln(');')
 					return
+				} else if left_sym.kind == .alias
+					&& g.table.final_sym(g.unwrap_generic(var_type)).is_number()
+					&& !left_sym.has_method(extracted_op) {
+					g.write(' = ')
+					g.expr(left)
+					g.write(' ${extracted_op} ')
+					g.expr(val)
+					g.write(';')
+					return
 				} else {
 					g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
 					method := g.table.find_method(left_sym, extracted_op) or {
