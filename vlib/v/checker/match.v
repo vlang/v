@@ -60,9 +60,8 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				}
 				expr_type := c.expr(stmt.expr)
 				if !branch.is_else && cond_is_option && branch.exprs[0] !is ast.None {
-					println(c.table.type_to_str(expr_type))
 					c.error('`match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`',
-						stmt.pos)
+						branch.pos)
 				}
 				stmt.typ = expr_type
 				if first_iteration {
