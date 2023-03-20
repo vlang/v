@@ -604,7 +604,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 			} else {
 				enc.writeln('\t{')
 				enc.writeln('\t\tcJSON *enum_val;')
-				g.gen_enum_to_str(field.typ, field_sym, '${prefix_enc}.${c_name(field.name)}',
+				g.gen_enum_to_str(field.typ, field_sym, '${prefix_enc}${op}${c_name(field.name)}',
 					'enum_val', '\t\t', mut enc)
 				enc.writeln('\t\tcJSON_AddItemToObject(o, "${name}", enum_val);')
 				enc.writeln('\t}')
