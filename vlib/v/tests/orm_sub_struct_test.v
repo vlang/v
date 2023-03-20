@@ -29,9 +29,9 @@ fn test_orm_sub_structs() {
 		insert upper_1 into Upper
 	}
 
-	upper_s := sql db {
+	uppers := sql db {
 		select from Upper where id == 1
 	}
 
-	assert upper_s.sub.name == upper_1.sub.name
+	assert uppers.first().sub.name == upper_1.sub.name
 }
