@@ -2399,6 +2399,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			p.check(.question)
 		}
 	}
+	is_array := p.tok.kind == .lsbr
+	is_fixed_array := is_array && p.peek_tok.kind == .number
 	mut mod := ''
 	// p.warn('resetting')
 	p.expr_mod = ''
@@ -2553,8 +2555,6 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		|| (p.tok.kind == .lsbr && p.peek_tok.kind == .number && p.peek_token(2).kind == .rsbr
 		&& p.peek_token(4).kind == .lpar) {
 		// ?[]foo(), ?[1]foo, foo(), foo<int>() or type() cast
-		is_array := p.tok.kind == .lsbr
-		is_fixed_array := is_array && p.peek_tok.kind == .number
 		mut name := if is_array {
 			p.peek_token(if is_fixed_array { 3 } else { 2 }).lit
 		} else {
