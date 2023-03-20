@@ -48,6 +48,17 @@ struct Test2 {
 	a ?MessageType2
 }
 
+type TSum = MessageType | string
+type TSum2 = MessageType2 | string
+
+struct Test3 {
+	a ?TSum
+}
+
+struct Test4 {
+	a ?TSum2
+}
+
 fn test_encode_with_enum() {
 	out := json.encode(TestStruct{
 		test: [TestEnum.one, TestEnum.one]
@@ -110,4 +121,14 @@ fn test_option_enum() {
 	assert z.a? == .log
 	a := dump(json.decode(Test2, '{"a": null}')!)
 	assert a.a == none
+}
+
+fn test_option_sumtype_enum() {
+	assert dump(json.encode(Test3{none})) == '{}'
+	assert dump(json.encode(Test3{ a: 'foo' })) == '{"a":"foo"}'
+	assert dump(json.encode(Test3{ a: MessageType.warning })) == '{"a":2}'
+
+	assert dump(json.encode(Test4{none})) == '{}'
+	assert dump(json.encode(Test4{ a: 'foo' })) == '{"a":"foo"}'
+	assert dump(json.encode(Test4{ a: MessageType2.warning })) == '{"a":"warning"}'
 }

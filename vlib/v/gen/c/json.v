@@ -209,7 +209,6 @@ fn (mut g Gen) gen_str_to_enum(utyp ast.Type, sym ast.TypeSymbol, val_var string
 			dec.write_string('${ident}else if (string__eq(_SLIT("${val}"), ${val_var}))\t')
 		}
 		if is_option {
-			base_typ := g.base_type(utyp)
 			dec.writeln('_option_ok(&(u64[]){ ${enum_prefix}${val} }, ${result_var}, sizeof(u64));')
 		} else {
 			dec.writeln('${result_var} = ${enum_prefix}${val};')
@@ -230,8 +229,6 @@ fn (mut g Gen) is_enum_as_int(sym ast.TypeSymbol) bool {
 [inline]
 fn (mut g Gen) gen_enum_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc strings.Builder, mut dec strings.Builder) {
 	is_option := utyp.has_flag(.option)
-	styp := g.typ(utyp)
-	dec_name := js_dec_name(styp)
 
 	if g.is_enum_as_int(sym) {
 		if is_option {
@@ -243,15 +240,13 @@ fn (mut g Gen) gen_enum_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc strin
 			enc.writeln('\t\to = ${js_enc_name('u64')}(val);')
 		}
 	} else {
+		tmp := g.new_tmp_var()
+		dec.writeln('\t\tstring ${tmp} = ${js_dec_name('string')}(root);')
 		if is_option {
-			tmp := g.new_tmp_var()
-			dec.writeln('\t\tstring ${tmp} = ${js_dec_name('string')}(root);')
 			g.gen_str_to_enum(utyp, sym, tmp, '&res', '\t\t', mut dec)
 			g.gen_enum_to_str(utyp, sym, '*(${g.base_type(utyp)}*)val.data', 'o', '\t\t', mut
 				enc)
 		} else {
-			tmp := g.new_tmp_var()
-			dec.writeln('\t\tstring ${tmp} = ${js_dec_name('string')}(root);')
 			g.gen_str_to_enum(utyp, sym, tmp, 'res', '\t\t', mut dec)
 			g.gen_enum_to_str(utyp, sym, 'val', 'o', '\t\t', mut enc)
 		}
@@ -278,6 +273,8 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 	typ := g.table.type_idxs[sym.name]
 	prefix := if utyp.is_ptr() { '*' } else { '' }
 	field_op := if utyp.is_ptr() { '->' } else { '.' }
+	is_option := utyp.has_flag(.option)
+	var_data := if is_option { '(*(${g.base_type(utyp)}*)val.data)' } else { 'val' }
 
 	// DECODING (inline)
 	$if !json_no_inline_sumtypes ? {
@@ -309,7 +306,11 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 		g.definitions.writeln('static inline ${sym.cname} ${variant_typ}_to_sumtype_${sym.cname}(${variant_typ}* x);')
 
 		// ENCODING
-		enc.writeln('\tif (val${field_op}_typ == ${variant.idx()}) {')
+		if is_option {
+			enc.writeln('\tif (${var_data}${field_op}_typ == ${variant.idx()}) {')
+		} else {
+			enc.writeln('\tif (val${field_op}_typ == ${variant.idx()}) {')
+		}
 		$if json_no_inline_sumtypes ? {
 			if variant_sym.kind == .enum_ {
 				enc.writeln('\t\tcJSON_AddItemToObject(o, "${unmangled_variant_name}", ${js_enc_name('u64')}(*val${field_op}_${variant_typ}));')
@@ -320,14 +321,29 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 			}
 		} $else {
 			if is_js_prim(variant_typ) {
-				enc.writeln('\t\to = ${js_enc_name(variant_typ)}(*val${field_op}_${variant_typ});')
+				if is_option {
+					enc.writeln('\t\to = ${js_enc_name(variant_typ)}(*${var_data}${field_op}_${variant_typ});')
+				} else {
+					enc.writeln('\t\to = ${js_enc_name(variant_typ)}(*${var_data}${field_op}_${variant_typ});')
+				}
 			} else if variant_sym.kind == .enum_ {
 				if g.is_enum_as_int(variant_sym) {
-					enc.writeln('\t\to = ${js_enc_name('u64')}(*val${field_op}_${variant_typ});')
+					if utyp.has_flag(.option) {
+						enc.writeln('\t\to = ${js_enc_name('u64')}(*(*(${g.base_type(utyp)}*)val.data)${field_op}_${variant_typ});')
+					} else {
+						enc.writeln('\t\to = ${js_enc_name('u64')}(*val${field_op}_${variant_typ});')
+					}
 				} else {
 					tmp2 := g.new_tmp_var()
-					enc.writeln('\t\tu64 ${tmp2} = *val${field_op}_${variant_typ};')
-					g.gen_enum_to_str(variant, variant_sym, tmp2, 'o', '\t\t', mut enc)
+					if utyp.has_flag(.option) {
+						enc.writeln('\t\tu64 ${tmp2} = *${var_data}${field_op}_${variant_typ};')
+						g.gen_enum_to_str(variant, variant_sym, tmp2, 'o', '\t\t', mut
+							enc)
+					} else {
+						enc.writeln('\t\tu64 ${tmp2} = *${var_data}${field_op}_${variant_typ};')
+						g.gen_enum_to_str(variant, variant_sym, tmp2, 'o', '\t\t', mut
+							enc)
+					}
 				}
 			} else if variant_sym.name == 'time.Time' {
 				enc.writeln('\t\tcJSON_AddItemToObject(o, "_type", cJSON_CreateString("${unmangled_variant_name}"));')
@@ -418,7 +434,11 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 					last_number_type = var_t
 					dec.writeln('\t\tif (cJSON_IsNumber(root)) {')
 					dec.writeln('\t\t\t${var_t} value = ${js_dec_name('u64')}(root);')
-					dec.writeln('\t\t\t${prefix}res = ${var_t}_to_sumtype_${sym.cname}(&value);')
+					if utyp.has_flag(.option) {
+						dec.writeln('\t\t\t_option_ok(&(${sym.cname}[]){ ${var_t}_to_sumtype_${sym.cname}(&value) }, &${prefix}res, sizeof(${sym.cname}));')
+					} else {
+						dec.writeln('\t\t\t${prefix}res = ${var_t}_to_sumtype_${sym.cname}(&value);')
+					}
 					dec.writeln('\t\t}')
 				}
 
@@ -430,7 +450,11 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 					string_is_met = true
 					dec.writeln('\t\tif (cJSON_IsString(root)) {')
 					dec.writeln('\t\t\t${var_t} value = ${js_dec_name(var_t)}(root);')
-					dec.writeln('\t\t\t${prefix}res = ${var_t}_to_sumtype_${sym.cname}(&value);')
+					if utyp.has_flag(.option) {
+						dec.writeln('\t\t\t_option_ok(&(${sym.cname}[]){ ${var_t}_to_sumtype_${sym.cname}(&value) }, &${prefix}res, sizeof(${sym.cname}));')
+					} else {
+						dec.writeln('\t\t\t${prefix}res = ${var_t}_to_sumtype_${sym.cname}(&value);')
+					}
 					dec.writeln('\t\t}')
 				}
 
