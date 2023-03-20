@@ -293,9 +293,13 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 			if is_js_prim(variant_typ) {
 				enc.writeln('\t\to = ${js_enc_name(variant_typ)}(*val${field_op}_${variant_typ});')
 			} else if variant_sym.kind == .enum_ {
-				tmp2 := g.new_tmp_var()
-				enc.writeln('\t\tu64 ${tmp2} = *val${field_op}_${variant_typ};')
-				g.gen_enum_to_str(variant, variant_sym, tmp2, 'o', '\t\t', mut enc)
+				if g.is_enum_as_int(variant_sym) {
+					enc.writeln('\t\to = ${js_enc_name('u64')}(*val${field_op}_${variant_typ});')
+				} else {
+					tmp2 := g.new_tmp_var()
+					enc.writeln('\t\tu64 ${tmp2} = *val${field_op}_${variant_typ};')
+					g.gen_enum_to_str(variant, variant_sym, tmp2, 'o', '\t\t', mut enc)
+				}
 			} else if variant_sym.name == 'time.Time' {
 				enc.writeln('\t\tcJSON_AddItemToObject(o, "_type", cJSON_CreateString("${unmangled_variant_name}"));')
 				enc.writeln('\t\tcJSON_AddItemToObject(o, "value", ${js_enc_name('i64')}(val${field_op}_${variant_typ}->_v_unix));')
@@ -313,14 +317,12 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 			if is_js_prim(variant_typ) {
 				gen_js_get(variant_typ, tmp, unmangled_variant_name, mut dec, true)
 				dec.writeln('\t\t${variant_typ} value = ${js_dec_name(variant_typ)}(jsonroot_${tmp});')
-			} else if variant_sym.kind == .enum_ {
-				if !g.is_enum_as_int(variant_sym) {
-					gen_js_get(variant_typ, tmp, unmangled_variant_name, mut dec, true)
-					dec.writeln('\t\t${variant_typ} value;')
-					tmp2 := g.new_tmp_var()
-					dec.writeln('\t\tstring ${tmp2} = json__decode_string(jsonroot_${tmp});')
-					g.gen_enum_to_str(variant, variant_sym, tmp2, 'value', '\t\t', dec)
-				}
+			} else if variant_sym.kind == .enum_ && !g.is_enum_as_int(variant_sym) {
+				gen_js_get(variant_typ, tmp, unmangled_variant_name, mut dec, true)
+				dec.writeln('\t\t${variant_typ} value;')
+				tmp2 := g.new_tmp_var()
+				dec.writeln('\t\tstring ${tmp2} = json__decode_string(jsonroot_${tmp});')
+				g.gen_enum_to_str(variant, variant_sym, tmp2, 'value', '\t\t', dec)
 			} else if variant_sym.name == 'time.Time' {
 				gen_js_get(variant_typ, tmp, unmangled_variant_name, mut dec, true)
 				dec.writeln('\t\t${variant_typ} value = time__unix(${js_dec_name('i64')}(jsonroot_${tmp}));')

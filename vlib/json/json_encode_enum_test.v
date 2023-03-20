@@ -76,3 +76,11 @@ fn test_enum_attr_decode() {
 		c: 'test'
 	}
 }
+
+fn test_enum_attr_encode() {
+	assert json.encode(TestStruct2{
+		a: .error
+		b: MessageType.log
+		c: 'test'
+	}) == '{"a":1,"b":4,"c":"test"}'
+}
