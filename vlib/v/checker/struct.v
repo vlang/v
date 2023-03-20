@@ -297,11 +297,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			}
 		}
 		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0
-			&& !node.is_short_syntax {
-			if c.table.cur_concrete_types.len == 0 {
-				c.error('generic struct init must specify type parameter, e.g. Foo[int]',
-					node.pos)
-			} else if node.generic_types.len == 0 {
+			&& !node.is_short_syntax && c.table.cur_concrete_types.len != 0 {
+			if node.generic_types.len == 0 {
 				c.error('generic struct init must specify type parameter, e.g. Foo[T]',
 					node.pos)
 			} else if node.generic_types.len > 0
@@ -691,13 +688,12 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		}
 	}
 	if struct_sym.info is ast.Struct {
-		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0 {
-			if node.is_short_syntax {
-				concrete_types := c.infer_struct_generic_types(node.typ, node)
-				if concrete_types.len > 0 {
-					generic_names := struct_sym.info.generic_types.map(c.table.sym(it).name)
-					node.typ = c.table.unwrap_generic_type(node.typ, generic_names, concrete_types)
-				}
+		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0
+			&& c.table.cur_concrete_types.len == 0 {
+			concrete_types := c.infer_struct_generic_types(node.typ, node)
+			if concrete_types.len > 0 {
+				generic_names := struct_sym.info.generic_types.map(c.table.sym(it).name)
+				node.typ = c.table.unwrap_generic_type(node.typ, generic_names, concrete_types)
 			}
 		}
 	}
