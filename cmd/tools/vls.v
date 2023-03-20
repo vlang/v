@@ -433,7 +433,7 @@ fn (upd VlsUpdater) check_installation() {
 	if upd.ls_path.len == 0 {
 		upd.log('Language server is not installed')
 	} else {
-		upd.log('Language server is installed at: ${upd.ls_path}'.split(r'\').join(r"\\"))
+		upd.log('Language server is installed at: ${upd.ls_path}'.split(r'\').join(r'\\'))
 	}
 }
 
