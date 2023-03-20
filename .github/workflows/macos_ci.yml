@@ -44,7 +44,7 @@ jobs:
       - name: Test symlink
         run: ./v symlink
       - name: Build vpm
-        run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
+        run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . || ../v cmd/vpm && cd ..
       #    - name: Set up pg database
       #      run: |
       #        pg_ctl -D /usr/local/var/postgres -l /usr/local/var/postgres/server.log start

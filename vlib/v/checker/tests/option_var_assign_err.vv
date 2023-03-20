@@ -1,0 +1,14 @@
+module main
+
+fn trying_to_change_non_opt_to_option(value int) ?int {
+	mut result := 122
+
+	if value == 1 {
+		result = trying_to_change_non_opt_to_option(0)
+	}
+	return result
+}
+
+fn main() {
+	println(trying_to_change_non_opt_to_option(0))
+}

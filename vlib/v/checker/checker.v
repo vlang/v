@@ -548,7 +548,7 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 			c.error('sum type cannot hold a reference type', variant.pos)
 		}
 		c.ensure_type_exists(variant.typ, variant.pos) or {}
-		mut sym := c.table.sym(variant.typ)
+		sym := c.table.sym(variant.typ)
 		if sym.name in names_used {
 			c.error('sum type ${node.name} cannot hold the type `${sym.name}` more than once',
 				variant.pos)
@@ -558,7 +558,7 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 			c.error('sum type cannot hold an interface', variant.pos)
 		} else if sym.kind == .struct_ && sym.language == .js {
 			c.error('sum type cannot hold a JS struct', variant.pos)
-		} else if mut sym.info is ast.Struct {
+		} else if sym.info is ast.Struct {
 			if sym.info.is_generic {
 				if !variant.typ.has_flag(.generic) {
 					c.error('generic struct `${sym.name}` must specify generic type names, e.g. ${sym.name}[T]',
@@ -581,11 +581,10 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 				}
 			}
 		} else if sym.info is ast.FnType {
-			func := (sym.info as ast.FnType).func
-			if c.table.sym(func.return_type).name.ends_with('.${node.name}') {
+			if c.table.sym(sym.info.func.return_type).name.ends_with('.${node.name}') {
 				c.error('sum type `${node.name}` cannot be defined recursively', variant.pos)
 			}
-			for param in func.params {
+			for param in sym.info.func.params {
 				if c.table.sym(param.typ).name.ends_with('.${node.name}') {
 					c.error('sum type `${node.name}` cannot be defined recursively', variant.pos)
 				}
@@ -2686,9 +2685,10 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		}
 		ast.StructInit {
 			if node.unresolved {
-				return c.expr(ast.resolve_init(node, c.unwrap_generic(node.typ), c.table))
+				return c.expr(c.table.resolve_init(node, c.unwrap_generic(node.typ)))
 			}
-			return c.struct_init(mut node, false)
+			mut inited_fields := []string{}
+			return c.struct_init(mut node, false, mut inited_fields)
 		}
 		ast.TypeNode {
 			if !c.inside_x_is_type && node.typ.has_flag(.generic) && unsafe { c.table.cur_fn != 0 }

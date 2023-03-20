@@ -1,0 +1,7 @@
+vlib/v/checker/tests/option_var_assign_err.vv:7:12: error: cannot assign an Option value to a non-option variable
+    5 | 
+    6 |     if value == 1 {
+    7 |         result = trying_to_change_non_opt_to_option(0)
+      |                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    8 |     }
+    9 |     return result

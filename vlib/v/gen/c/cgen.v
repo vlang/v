@@ -123,6 +123,7 @@ mut:
 	inside_map_infix          bool // inside map<</+=/-= infix expr
 	inside_assign             bool
 	inside_map_index          bool
+	inside_array_index        bool
 	inside_opt_or_res         bool
 	inside_opt_data           bool
 	inside_if_option          bool
@@ -3310,7 +3311,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 		}
 		ast.StructInit {
 			if node.unresolved {
-				g.expr(ast.resolve_init(node, g.unwrap_generic(node.typ), g.table))
+				g.expr(g.table.resolve_init(node, g.unwrap_generic(node.typ)))
 			} else {
 				// `user := User{name: 'Bob'}`
 				g.inside_struct_init = true
@@ -3448,8 +3449,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
 
-	unwrapped_type := g.table.unaliased_type(g.unwrap_generic(node.expr_type))
-	sym := g.table.sym(unwrapped_type)
+	sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
 
 	if node.or_block.kind != .absent && !g.is_assign_lhs && g.table.sym(node.typ).kind != .chan {
@@ -3636,11 +3636,11 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			g.write(embed_name)
 		}
 	}
-	if (node.expr_type.is_ptr() || unwrapped_type.is_ptr() || sym.kind == .chan)
+	alias_to_ptr := sym.info is ast.Alias && (sym.info as ast.Alias).parent_type.is_ptr()
+	if (node.expr_type.is_ptr() || sym.kind == .chan || alias_to_ptr)
 		&& node.from_embed_types.len == 0 {
 		g.write('->')
 	} else {
-		// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
 		g.write('.')
 	}
 	if node.expr_type.has_flag(.shared_f) {

@@ -174,7 +174,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	if return_type != ast.void_type && return_type != 0 {
 		sym := g.table.sym(return_type)
 		if sym.kind == .multi_return {
-			g.gen_multi_return_assign(node, return_type)
+			g.gen_multi_return_assign(node, return_type, sym)
 			return
 		}
 	}
@@ -329,7 +329,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		unaliased_right_sym := g.table.final_sym(unwrapped_val_type)
 		is_fixed_array_var := unaliased_right_sym.kind == .array_fixed && val !is ast.ArrayInit
 			&& (val in [ast.Ident, ast.IndexExpr, ast.CallExpr, ast.SelectorExpr]
-			|| (val is ast.CastExpr && (val as ast.CastExpr).expr !is ast.ArrayInit))
+			|| (val is ast.CastExpr && (val as ast.CastExpr).expr !is ast.ArrayInit)
+			|| (val is ast.UnsafeExpr && (val as ast.UnsafeExpr).expr is ast.Ident))
 			&& !g.pref.translated
 		g.is_assign_lhs = true
 		g.assign_op = node.op
@@ -667,7 +668,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	}
 }
 
-fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Type) {
+fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Type, return_sym ast.TypeSymbol) {
 	// multi return
 	// TODO Handle in if_expr
 	mr_var_name := 'mr_${node.pos.pos}'
@@ -680,6 +681,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	g.write('${mr_styp} ${mr_var_name} = ')
 	g.expr(node.right[0])
 	g.writeln(';')
+	mr_types := (return_sym.info as ast.MultiReturn).types
 	for i, lx in node.left {
 		mut is_auto_heap := false
 		mut ident := ast.Ident{
@@ -701,23 +703,42 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 		if lx.is_auto_deref_var() {
 			g.write('*')
 		}
-		g.expr(lx)
 		noscan := if is_auto_heap { g.check_noscan(return_type) } else { '' }
-		if g.is_arraymap_set {
-			if is_auto_heap {
-				g.writeln('HEAP${noscan}(${styp}, ${mr_var_name}.arg${i}) });')
+		if node.left_types[i].has_flag(.option) {
+			base_typ := g.base_type(node.left_types[i])
+			tmp_var := if is_auto_heap {
+				'HEAP${noscan}(${styp}, ${mr_var_name}.arg${i})'
 			} else if is_option {
-				g.writeln('(*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i} });')
+				'(*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i}'
 			} else {
-				g.writeln('${mr_var_name}.arg${i} });')
+				'${mr_var_name}.arg${i}'
+			}
+			if mr_types[i].has_flag(.option) {
+				g.expr(lx)
+				g.write(' = ${tmp_var};')
+			} else {
+				g.write('_option_ok(&(${base_typ}[]) { ${tmp_var} }, (${option_name}*)(&')
+				g.expr(lx)
+				g.writeln('), sizeof(${base_typ}));')
 			}
 		} else {
-			if is_auto_heap {
-				g.writeln(' = HEAP${noscan}(${styp}, ${mr_var_name}.arg${i});')
-			} else if is_option {
-				g.writeln(' = (*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i};')
+			g.expr(lx)
+			if g.is_arraymap_set {
+				if is_auto_heap {
+					g.writeln('HEAP${noscan}(${styp}, ${mr_var_name}.arg${i}) });')
+				} else if is_option {
+					g.writeln('(*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i} });')
+				} else {
+					g.writeln('${mr_var_name}.arg${i} });')
+				}
 			} else {
-				g.writeln(' = ${mr_var_name}.arg${i};')
+				if is_auto_heap {
+					g.writeln(' = HEAP${noscan}(${styp}, ${mr_var_name}.arg${i});')
+				} else if is_option {
+					g.writeln(' = (*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i};')
+				} else {
+					g.writeln(' = ${mr_var_name}.arg${i};')
+				}
 			}
 		}
 	}
