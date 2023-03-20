@@ -522,8 +522,8 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 					if parent_type_sym.kind == .enum_ {
 						tmp2 := g.new_tmp_var()
 						dec.writeln('\t\tstring ${tmp2} = json__decode_string(${tmp}.data);')
-						g.gen_str_to_enum(alias.parent_type, parent_type_sym,
-							tmp2, '${prefix}${op}${c_name(field.name)}', '\t\t', mut dec)
+						g.gen_str_to_enum(alias.parent_type, parent_type_sym, tmp2, '${prefix}${op}${c_name(field.name)}',
+							'\t\t', mut dec)
 					} else {
 						dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = *(${field_type}*) ${tmp}.data;')
 					}
