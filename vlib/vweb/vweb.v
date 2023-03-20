@@ -390,9 +390,10 @@ pub fn run[T](global_app &T, port int) {
 
 [params]
 pub struct RunParams {
-	host   string
-	port   int = 8080
-	family net.AddrFamily = .ip6 // use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
+	host                 string
+	port                 int = 8080
+	family               net.AddrFamily = .ip6 // use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
+	show_startup_message bool = true
 }
 
 // run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
@@ -420,7 +421,9 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 		}
 	}
 	host := if params.host == '' { 'localhost' } else { params.host }
-	println('[Vweb] Running app on http://${host}:${params.port}/')
+	if params.show_startup_message {
+		println('[Vweb] Running app on http://${host}:${params.port}/')
+	}
 	flush_stdout()
 	for {
 		// Create a new app object for each connection, copy global data like db connections

@@ -5869,6 +5869,33 @@ the boolean expression is highly improbable. In the JS backend, that does nothin
 
 <a id='Reflection via codegen'>
 
+### Memory usage optimization
+
+V offers these attributes related to memory usage 
+that can be applied to a structure type: `[packed]` and `[minify]`. 
+These attributes affect memory layout of a structure, potentially leading to reduced
+cache/memory usage and improved performance.
+
+#### `[packed]`
+
+The `[packed]` attribute can be added to a structure to create an unaligned memory layout, 
+which decreases the overall memory footprint of the structure.
+
+> **Note**
+> Using the [packed] attribute may negatively impact performance 
+> or even be prohibited on certain CPU architectures.
+> Only use this attribute if minimizing memory usage is crucial for your program 
+> and you're willing to sacrifice performance.
+
+#### `[minify]`
+
+The `[minify]` attribute can be added to a struct, allowing the compiler to reorder the fields 
+in a way that minimizes internal gaps while maintaining alignment.
+
+> **Note**
+> Using the `[minify]` attribute may cause issues with binary serialization or reflection.
+> Be mindful of these potential side effects when using this attribute.
+
 ## Atomics
 
 V has no special support for atomics, yet, nevertheless it's possible to treat variables as atomics

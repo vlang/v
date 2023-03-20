@@ -612,9 +612,13 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				} else {
 					arg_prefix := if field.typ.is_ptr() { '' } else { '*' }
 					sptr_value := '${prefix_enc}${op}${c_name(field.name)}'
-					enc.writeln('\tif (${sptr_value} != 0) {')
-					enc.writeln('\t\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${arg_prefix}${sptr_value}));')
-					enc.writeln('\t}\n')
+					if !field.typ.has_flag(.option) {
+						enc.writeln('\tif (${sptr_value} != 0) {')
+						enc.writeln('\t\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${arg_prefix}${sptr_value}));')
+						enc.writeln('\t}\n')
+					} else {
+						enc.writeln('\t\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${arg_prefix}${sptr_value}));')
+					}
 				}
 			}
 		}
