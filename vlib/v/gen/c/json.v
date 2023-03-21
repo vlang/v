@@ -313,11 +313,11 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 		}
 		$if json_no_inline_sumtypes ? {
 			if variant_sym.kind == .enum_ {
-				enc.writeln('\t\tcJSON_AddItemToObject(o, "${unmangled_variant_name}", ${js_enc_name('u64')}(*val${field_op}_${variant_typ}));')
+				enc.writeln('\t\tcJSON_AddItemToObject(o, "${unmangled_variant_name}", ${js_enc_name('u64')}(*${var_data}${field_op}_${variant_typ}));')
 			} else if variant_sym.name == 'time.Time' {
-				enc.writeln('\t\tcJSON_AddItemToObject(o, "${unmangled_variant_name}", ${js_enc_name('i64')}(val${field_op}_${variant_typ}->_v_unix));')
+				enc.writeln('\t\tcJSON_AddItemToObject(o, "${unmangled_variant_name}", ${js_enc_name('i64')}(${var_data}${field_op}_${variant_typ}->_v_unix));')
 			} else {
-				enc.writeln('\t\tcJSON_AddItemToObject(o, "${unmangled_variant_name}", ${js_enc_name(variant_typ)}(*val${field_op}_${variant_typ}));')
+				enc.writeln('\t\tcJSON_AddItemToObject(o, "${unmangled_variant_name}", ${js_enc_name(variant_typ)}(*${var_data}${field_op}_${variant_typ}));')
 			}
 		} $else {
 			if is_js_prim(variant_typ) {
@@ -328,11 +328,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 				}
 			} else if variant_sym.kind == .enum_ {
 				if g.is_enum_as_int(variant_sym) {
-					if utyp.has_flag(.option) {
-						enc.writeln('\t\to = ${js_enc_name('u64')}(*(*(${g.base_type(utyp)}*)val.data)${field_op}_${variant_typ});')
-					} else {
-						enc.writeln('\t\to = ${js_enc_name('u64')}(*val${field_op}_${variant_typ});')
-					}
+					enc.writeln('\t\to = ${js_enc_name('u64')}(*${var_data}${field_op}_${variant_typ});')
 				} else {
 					tmp2 := g.new_tmp_var()
 					if utyp.has_flag(.option) {
@@ -360,14 +356,14 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 		$if json_no_inline_sumtypes ? {
 			dec.writeln('\tif (strcmp("${unmangled_variant_name}", root->child->string) == 0) {')
 			if is_js_prim(variant_typ) {
-				gen_js_get(variant_typ, tmp, unmangled_variant_name, mut dec, true)
+				gen_js_get(ret_styp, tmp, unmangled_variant_name, mut dec, true)
 				dec.writeln('\t\t${variant_typ} value = ${js_dec_name(variant_typ)}(jsonroot_${tmp});')
 			} else if variant_sym.kind == .enum_ {
 				if g.is_enum_as_int(variant_sym) {
-					gen_js_get(variant_typ, tmp, unmangled_variant_name, mut dec, true)
+					gen_js_get(ret_styp, tmp, unmangled_variant_name, mut dec, true)
 					dec.writeln('\t\t${variant_typ} value = ${js_dec_name('u64')}(jsonroot_${tmp});')
 				} else {
-					gen_js_get(sym.cname, tmp, unmangled_variant_name, mut dec, true)
+					gen_js_get(ret_styp, tmp, unmangled_variant_name, mut dec, true)
 					dec.writeln('\t\t${variant_typ} value;')
 					tmp2 := g.new_tmp_var()
 					dec.writeln('\t\tstring ${tmp2} = json__decode_string(jsonroot_${tmp});')
@@ -375,19 +371,23 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 						dec)
 				}
 			} else if variant_sym.name == 'time.Time' {
-				gen_js_get(variant_typ, tmp, unmangled_variant_name, mut dec, true)
+				gen_js_get(ret_styp, tmp, unmangled_variant_name, mut dec, true)
 				dec.writeln('\t\t${variant_typ} value = time__unix(${js_dec_name('i64')}(jsonroot_${tmp}));')
 			} else {
-				gen_js_get_opt(js_dec_name(variant_typ), variant_typ, sym.cname, tmp,
-					unmangled_variant_name, mut dec, true)
+				gen_js_get_opt(js_dec_name(variant_typ), variant_typ, ret_styp, tmp, unmangled_variant_name, mut
+					dec, true)
 				dec.writeln('\t\t${variant_typ} value = *(${variant_typ}*)(${tmp}.data);')
 			}
-			dec.writeln('\t\tres = ${variant_typ}_to_sumtype_${sym.cname}(&value);')
+			if is_option {
+				dec.writeln('\t\t\t_option_ok(&(${sym.cname}[]){ ${variant_typ}_to_sumtype_${sym.cname}(&value) }, &res, sizeof(${sym.cname}));')
+			} else {
+				dec.writeln('\t\tres = ${variant_typ}_to_sumtype_${ret_styp}(&value);')
+			}
 			dec.writeln('\t}')
 		} $else {
 			if variant_sym.name == 'time.Time' {
 				dec.writeln('\t\t\tif (strcmp("Time", ${type_var}) == 0) {')
-				gen_js_get(sym.cname, tmp, 'value', mut dec, true)
+				gen_js_get(ret_styp, tmp, 'value', mut dec, true)
 				dec.writeln('\t\t\t\t${variant_typ} ${tmp} = time__unix(${js_dec_name('i64')}(jsonroot_${tmp}));')
 				dec.writeln('\t\t\t\t${prefix}res = ${variant_typ}_to_sumtype_${sym.cname}(&${tmp});')
 				dec.writeln('\t\t\t}')
