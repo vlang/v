@@ -4836,7 +4836,7 @@ struct Customer {
 	country   string [nonull]
 }
 
-db := sqlite.connect('customers.db')?
+db := sqlite.connect('customers.db')!
 
 // you can create tables:
 // CREATE TABLE IF NOT EXISTS `Customer` (
@@ -4854,6 +4854,7 @@ nr_customers := sql db {
 	select count from Customer
 }
 println('number of all customers: ${nr_customers}')
+
 // V syntax can be used to build queries
 uk_customers := sql db {
 	select from Customer where country == 'uk' && nr_orders > 0
@@ -4862,11 +4863,7 @@ println(uk_customers.len)
 for customer in uk_customers {
 	println('${customer.id} - ${customer.name}')
 }
-// by adding `limit 1` we tell V that there will be only one object
-customer := sql db {
-	select from Customer where id == 1 limit 1
-}
-println('${customer.id} - ${customer.name}')
+
 // insert a new customer
 new_customer := Customer{
 	name: 'Bob'
