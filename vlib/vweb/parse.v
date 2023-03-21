@@ -4,13 +4,14 @@ import net.urllib
 import net.http
 
 // Parsing function attributes for methods and path.
-fn parse_attrs(name string, attrs []string) !([]http.Method, string) {
+fn parse_attrs(name string, attrs []string) !([]http.Method, string, string) {
 	if attrs.len == 0 {
-		return [http.Method.get], '/${name}'
+		return [http.Method.get], '/${name}', ''
 	}
 
 	mut x := attrs.clone()
 	mut methods := []http.Method{}
+	mut middleware := ''
 	mut path := ''
 
 	for i := 0; i < x.len; {
@@ -30,6 +31,11 @@ fn parse_attrs(name string, attrs []string) !([]http.Method, string) {
 			x.delete(i)
 			continue
 		}
+		if attr.starts_with('middleware:') {
+			middleware = attr.all_after('middleware:').trim_space()
+			x.delete(i)
+			continue
+		}
 		i++
 	}
 	if x.len > 0 {
@@ -44,7 +50,7 @@ fn parse_attrs(name string, attrs []string) !([]http.Method, string) {
 		path = '/${name}'
 	}
 	// Make path lowercase for case-insensitive comparisons
-	return methods, path.to_lower()
+	return methods, path.to_lower(), middleware
 }
 
 fn parse_query_from_url(url urllib.URL) map[string]string {

@@ -179,8 +179,9 @@ pub:
 }
 
 struct Route {
-	methods []http.Method
-	path    string
+	methods    []http.Method
+	path       string
+	middleware string
 }
 
 // Defining this method is optional.
@@ -383,6 +384,12 @@ interface DbInterface {
 	db voidptr
 }
 
+pub type Middleware = fn (mut Context) bool
+
+interface MiddlewareInterface {
+	middlewares map[string][]Middleware
+}
+
 // run - start a new VWeb server, listening to all available addresses, at the specified `port`
 pub fn run[T](global_app &T, port int) {
 	run_at[T](global_app, host: '', port: port, family: .ip6) or { panic(err.msg()) }
@@ -411,13 +418,14 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	// Parsing methods attributes
 	mut routes := map[string]Route{}
 	$for method in T.methods {
-		http_methods, route_path := parse_attrs(method.name, method.attrs) or {
+		http_methods, route_path, middleware := parse_attrs(method.name, method.attrs) or {
 			return error('error parsing method attributes: ${err}')
 		}
 
 		routes[method.name] = Route{
 			methods: http_methods
 			path: route_path
+			middleware: middleware
 		}
 	}
 	host := if params.host == '' { 'localhost' } else { params.host }
@@ -432,6 +440,9 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 			request_app.db = global_app.db
 		} $else {
 			// println('vweb no db')
+		}
+		$if T is MiddlewareInterface {
+			request_app.middlewares = global_app.middlewares.clone()
 		}
 		$for field in T.fields {
 			if 'vweb_global' in field.attrs || field.is_shared {
@@ -550,13 +561,28 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 				// should be called first.
 				if !route.path.contains('/:') && url_words == route_words {
 					// We found a match
+					$if T is MiddlewareInterface {
+						if validate_middleware(mut app, route.path) == false {
+							return
+						}
+					}
+
 					if req.method == .post && method.args.len > 0 {
 						// Populate method args with form values
 						mut args := []string{cap: method.args.len}
 						for param in method.args {
 							args << form[param.name]
 						}
-						app.$method(args)
+
+						if route.middleware != '' {
+							if validate_app_middleware(mut app, route.middleware, method.name) {
+								app.$method(args)
+							}
+						}
+					} else if route.middleware != '' {
+						if validate_app_middleware(mut app, route.middleware, method.name) {
+							app.$method()
+						}
 					} else {
 						app.$method()
 					}
@@ -564,7 +590,18 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 				}
 
 				if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
-					app.$method()
+					$if T is MiddlewareInterface {
+						if validate_middleware(mut app, route.path) == false {
+							return
+						}
+					}
+					if route.middleware != '' {
+						if validate_app_middleware(mut app, route.middleware, method.name) {
+							app.$method()
+						}
+					} else {
+						app.$method()
+					}
 					return
 				}
 
@@ -573,7 +610,19 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 					if method_args.len != method.args.len {
 						eprintln('warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the vweb route `${method.attrs}` (${method_args.len})')
 					}
-					app.$method(method_args)
+
+					$if T is MiddlewareInterface {
+						if validate_middleware(mut app, route.path) == false {
+							return
+						}
+					}
+					if route.middleware != '' {
+						if validate_app_middleware(mut app, route.middleware, method.name) {
+							app.$method(method_args)
+						}
+					} else {
+						app.$method(method_args)
+					}
 					return
 				}
 			}
@@ -581,6 +630,49 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 	}
 	// Route not found
 	conn.write(vweb.http_404.bytes()) or {}
+}
+
+// validate_middleware validates and fires all middlewares that are defined in the global app instance
+fn validate_middleware[T](mut app T, full_path string) bool {
+	for path, middleware_chain in app.middlewares {
+		// only execute middleware if route.path starts with `path`
+		if full_path.len >= path.len && full_path.starts_with(path) {
+			// there is middleware for this route
+			for func in middleware_chain {
+				if func(mut app.Context) == false {
+					return false
+				}
+			}
+		}
+	}
+	// passed all middleware checks
+	return true
+}
+
+// validate_app_middleware validates all middlewares as a method of `app`
+fn validate_app_middleware[T](mut app T, middleware string, method_name string) bool {
+	// then the middleware that is defined for this route specifically
+	valid := fire_app_middleware(mut app, middleware) or {
+		eprintln('warning: middleware `${middleware}` for the `${method_name}` are not found')
+		true
+	}
+	return valid
+}
+
+// fire_app_middleware fires all middlewares that are defined as a method of `app`
+fn fire_app_middleware[T](mut app T, method_name string) ?bool {
+	$for method in T.methods {
+		if method_name == method.name {
+			$if method.return_type is bool {
+				return app.$method()
+			} $else {
+				eprintln('error in `${method.name}, middleware functions must return bool')
+				return none
+			}
+		}
+	}
+	// no middleware function found
+	return none
 }
 
 fn route_matches(url_words []string, route_words []string) ?[]string {
