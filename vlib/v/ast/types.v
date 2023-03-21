@@ -1492,14 +1492,14 @@ pub fn (t &TypeSymbol) symbol_name_except_generic() string {
 }
 
 pub fn (t &TypeSymbol) embed_name() string {
-	// main.Abc[int] => Abc[int]
-	mut embed_name := t.name.split('.').last()
-	// remove generic part from name
-	// Abc[int] => Abc
-	if embed_name.contains('[') {
-		embed_name = embed_name.split('[')[0]
+	if t.name.contains('[') {
+		// Abc[int] => Abc
+		// main.Abc[main.Enum] => Abc
+		return t.name.split('[')[0].split('.').last()
+	} else {
+		// main.Abc => Abc
+		return t.name.split('.').last()
 	}
-	return embed_name
 }
 
 pub fn (t &TypeSymbol) has_method(name string) bool {
