@@ -25,15 +25,15 @@ pub mut:
 	// the exit code of the process, != -1 *only* when status is .exited *and* the process was not aborted
 	status ProcessState = .not_started
 	// the current status of the process
-	err           string   // if the process fails, contains the reason why
-	args          []string // the arguments that the command takes
-	env_is_custom bool     // true, when the environment was customized with .set_environment
-	env           []string // the environment with which the process was started  (list of 'var=val')
-	use_stdio_ctl bool     // when true, then you can use p.stdin_write(), p.stdout_slurp() and p.stderr_slurp()
-	use_pgroup    bool     // when true, the process will create a new process group, enabling .signal_pgkill()
-	stdio_fd      [3]int   // the stdio file descriptors for the child process, used only by the nix implementation
-	wdata         voidptr  // the WProcess; used only by the windows implementation
-	create_no_window bool  // sets a value indicating whether to start the process in a new window, The default is false; used only by the windows implementation
+	err              string   // if the process fails, contains the reason why
+	args             []string // the arguments that the command takes
+	env_is_custom    bool     // true, when the environment was customized with .set_environment
+	env              []string // the environment with which the process was started  (list of 'var=val')
+	use_stdio_ctl    bool     // when true, then you can use p.stdin_write(), p.stdout_slurp() and p.stderr_slurp()
+	use_pgroup       bool     // when true, the process will create a new process group, enabling .signal_pgkill()
+	stdio_fd         [3]int   // the stdio file descriptors for the child process, used only by the nix implementation
+	wdata            voidptr  // the WProcess; used only by the windows implementation
+	create_no_window bool     // sets a value indicating whether to start the process in a new window, The default is false; used only by the windows implementation
 }
 
 // new_process - create a new process descriptor
