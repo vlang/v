@@ -33,6 +33,7 @@ pub mut:
 	use_pgroup    bool     // when true, the process will create a new process group, enabling .signal_pgkill()
 	stdio_fd      [3]int   // the stdio file descriptors for the child process, used only by the nix implementation
 	wdata         voidptr  // the WProcess; used only by the windows implementation
+	create_no_window bool  // sets a value indicating whether to start the process in a new window, The default is false; used only by the windows implementation
 }
 
 // new_process - create a new process descriptor
