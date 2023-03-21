@@ -145,8 +145,8 @@ ${enc_fn_dec} {
 				g.gen_json_for_type(parent_typ)
 				continue
 			}
-			enc.writeln('\to = cJSON_CreateObject();')
 			if psym.info is ast.Struct {
+				enc.writeln('\to = cJSON_CreateObject();')
 				g.gen_struct_enc_dec(utyp, psym.info, ret_styp, mut enc, mut dec)
 			} else if psym.kind == .enum_ {
 				g.gen_enum_enc_dec(utyp, psym, mut enc, mut dec)
@@ -234,22 +234,22 @@ fn (mut g Gen) gen_enum_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc strin
 	if g.is_enum_as_int(sym) {
 		if is_option {
 			base_typ := g.typ(utyp.clear_flag(.option))
-			enc.writeln('\t\to = ${js_enc_name('u64')}(*val.data);')
-			dec.writeln('\t\t_option_ok(&(${base_typ}[]){ ${js_dec_name('u64')}(root) }, &res, sizeof(${base_typ}));')
+			enc.writeln('\to = ${js_enc_name('u64')}(*val.data);')
+			dec.writeln('\t_option_ok(&(${base_typ}[]){ ${js_dec_name('u64')}(root) }, &res, sizeof(${base_typ}));')
 		} else {
-			dec.writeln('\t\tres = ${js_dec_name('u64')}(root);')
-			enc.writeln('\t\to = ${js_enc_name('u64')}(val);')
+			dec.writeln('\tres = ${js_dec_name('u64')}(root);')
+			enc.writeln('\to = ${js_enc_name('u64')}(val);')
 		}
 	} else {
 		tmp := g.new_tmp_var()
-		dec.writeln('\t\tstring ${tmp} = ${js_dec_name('string')}(root);')
+		dec.writeln('\tstring ${tmp} = ${js_dec_name('string')}(root);')
 		if is_option {
-			g.gen_str_to_enum(utyp, sym, tmp, '&res', '\t\t', mut dec)
+			g.gen_str_to_enum(utyp, sym, tmp, '&res', '\t', mut dec)
 			g.gen_enum_to_str(utyp, sym, '*(${g.base_type(utyp)}*)val.data', 'o', '\t\t', mut
 				enc)
 		} else {
-			g.gen_str_to_enum(utyp, sym, tmp, 'res', '\t\t', mut dec)
-			g.gen_enum_to_str(utyp, sym, 'val', 'o', '\t\t', mut enc)
+			g.gen_str_to_enum(utyp, sym, tmp, 'res', '\t', mut dec)
+			g.gen_enum_to_str(utyp, sym, 'val', 'o', '\t', mut enc)
 		}
 	}
 }
@@ -322,15 +322,12 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 			}
 		} $else {
 			if is_js_prim(variant_typ) {
-				if is_option {
-					enc.writeln('\t\to = ${js_enc_name(variant_typ)}(*${var_data}${field_op}_${variant_typ});')
-				} else {
-					enc.writeln('\t\to = ${js_enc_name(variant_typ)}(*${var_data}${field_op}_${variant_typ});')
-				}
+				enc.writeln('\t\tcJSON_free(o); return ${js_enc_name(variant_typ)}(*${var_data}${field_op}_${variant_typ});')
 			} else if variant_sym.kind == .enum_ {
 				if g.is_enum_as_int(variant_sym) {
-					enc.writeln('\t\to = ${js_enc_name('u64')}(*${var_data}${field_op}_${variant_typ});')
+					enc.writeln('\t\tcJSON_free(o); return ${js_enc_name('u64')}(*${var_data}${field_op}_${variant_typ});')
 				} else {
+					enc.writeln('\t\tcJSON_free(o);')
 					tmp2 := g.new_tmp_var()
 					if utyp.has_flag(.option) {
 						enc.writeln('\t\tu64 ${tmp2} = *${var_data}${field_op}_${variant_typ};')
@@ -568,7 +565,6 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 					if is_option_field {
 						base_typ := g.base_type(field.typ)
 						dec.writeln('\t\t_option_ok(&(${base_typ}[]) { ${js_dec_name('u64')}(jsonroot_${tmp}) }, &${prefix}${op}${c_name(field.name)}, sizeof(${base_typ}));')
-						dec.writeln('\t\t_option_ok(&${prefix}${op}${c_name(field.name)}, &${tmp}.data, sizeof(${field_type}));')
 					} else {
 						dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = ${js_dec_name('u64')}(jsonroot_${tmp});')
 					}
@@ -620,14 +616,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 					tmp := g.new_tmp_var()
 					gen_js_get_opt(dec_name, field_type, styp, tmp, name, mut dec, is_required)
 					dec.writeln('\tif (jsonroot_${tmp}) {')
-					if parent_type_sym.kind == .enum_ && !g.is_enum_as_int(parent_type_sym) {
-						tmp2 := g.new_tmp_var()
-						dec.writeln('\t\tstring ${tmp2} = json__decode_string(${tmp}.data);')
-						g.gen_str_to_enum(alias.parent_type, parent_type_sym, tmp2, '${prefix}${op}${c_name(field.name)}',
-							'\t\t', mut dec)
-					} else {
-						dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = *(${field_type}*) ${tmp}.data;')
-					}
+					dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = *(${field_type}*) ${tmp}.data;')
 					if field.has_default_expr {
 						dec.writeln('\t} else {')
 						dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = ${g.expr_string(field.default_expr)};')
