@@ -599,7 +599,6 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 			} else if field_sym.kind == .alias {
 				alias := field_sym.info as ast.Alias
 				parent_type := g.typ(alias.parent_type)
-				parent_type_sym := g.table.sym(alias.parent_type)
 				parent_dec_name := js_dec_name(parent_type)
 				if is_js_prim(parent_type) {
 					tmp := g.new_tmp_var()
