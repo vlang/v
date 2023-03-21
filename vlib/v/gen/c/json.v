@@ -209,7 +209,8 @@ fn (mut g Gen) gen_str_to_enum(utyp ast.Type, sym ast.TypeSymbol, val_var string
 			dec.write_string('${ident}else if (string__eq(_SLIT("${val}"), ${val_var}))\t')
 		}
 		if is_option {
-			dec.writeln('_option_ok(&(u64[]){ ${enum_prefix}${val} }, ${result_var}, sizeof(u64));')
+			base_typ := g.base_type(utyp)
+			dec.writeln('_option_ok(&(${base_typ}[]){ ${enum_prefix}${val} }, ${result_var}, sizeof(${base_typ}));')
 		} else {
 			dec.writeln('${result_var} = ${enum_prefix}${val};')
 		}
@@ -573,7 +574,8 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 					}
 				} else {
 					if is_option_field {
-						dec.writeln('\t\t_option_ok(&(u64[]) { *(u64*)((${g.typ(field.typ)}*)${tmp}.data)->data }, &${prefix}${op}${c_name(field.name)}, sizeof(u64));')
+						base_typ := g.base_type(field.typ)
+						dec.writeln('\t\t_option_ok(&(${base_typ}[]) { *(${base_typ}*)((${g.typ(field.typ)}*)${tmp}.data)->data }, &${prefix}${op}${c_name(field.name)}, sizeof(${base_typ}));')
 					} else {
 						tmp2 := g.new_tmp_var()
 						dec.writeln('\t\tstring ${tmp2} = json__decode_string(jsonroot_${tmp});')
