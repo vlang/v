@@ -97,7 +97,11 @@ fn (mut p Process) win_spawn_process() int {
 	cmd := '${p.filename} ' + p.args.join(' ')
 	C.ExpandEnvironmentStringsW(cmd.to_wide(), voidptr(&wdata.command_line[0]), 32768)
 
-	mut creation_flags := int(C.NORMAL_PRIORITY_CLASS)
+	mut creation_flags := if p.create_no_window {
+		int(C.CREATE_NO_WINDOW)
+	} else {
+		int(C.NORMAL_PRIORITY_CLASS)
+	}
 	if p.use_pgroup {
 		creation_flags |= C.CREATE_NEW_PROCESS_GROUP
 	}
