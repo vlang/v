@@ -65,7 +65,9 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			g.inside_match_result = true
 		}
 	}
-	if node.cond in [ast.Ident, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral]
+	if (node.cond in [ast.Ident, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral]
+		&& (node.cond !is ast.Ident || (node.cond is ast.Ident
+		&& (node.cond as ast.Ident).or_expr.kind == .absent)))
 		|| (node.cond is ast.SelectorExpr
 		&& (node.cond as ast.SelectorExpr).or_block.kind == .absent
 		&& ((node.cond as ast.SelectorExpr).expr !is ast.CallExpr
@@ -437,6 +439,14 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				if i > 0 {
 					g.write(' || ')
 				}
+				if expr is ast.None {
+					old_left_is_opt := g.left_is_opt
+					g.left_is_opt = true
+					g.expr(node.cond)
+					g.left_is_opt = old_left_is_opt
+					g.write('.state == 2')
+					continue
+				}
 				match type_sym.kind {
 					.array {
 						ptr_typ := g.equality_fn(node.cond_type)
@@ -478,6 +488,12 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 							g.write('${cond_var} <= ')
 							g.expr(expr.high)
 							g.write(')')
+						} else if expr is ast.None {
+							old_left_is_opt := g.left_is_opt
+							g.left_is_opt = true
+							g.expr(node.cond)
+							g.left_is_opt = old_left_is_opt
+							g.write('.state == 2')
 						} else {
 							g.write('${cond_var} == (')
 							g.expr(expr)
