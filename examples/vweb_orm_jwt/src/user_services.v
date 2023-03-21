@@ -31,11 +31,11 @@ fn (mut app App) service_add_user(username string, password string) !User {
 		return err
 	}
 
-	result := sql db {
+	users := sql db {
 		select from User where username == username limit 1
 	}
 
-	return result
+	return users.first()
 }
 
 fn (mut app App) service_get_user_by_id(user_id int) !User {
@@ -48,11 +48,11 @@ fn (mut app App) service_get_user_by_id(user_id int) !User {
 		db.close() or { panic(err) }
 	}
 
-	results := sql db {
+	users := sql db {
 		select from User where id == user_id
 	}
 
-	return results
+	return users.first()
 }
 
 fn (mut app App) service_get_all_user() ![]User {
