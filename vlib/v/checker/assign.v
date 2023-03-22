@@ -7,9 +7,12 @@ import v.pref
 
 // TODO 600 line function
 fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
+	prev_inside_assign := c.inside_assign
+	c.inside_assign = true
 	c.expected_type = ast.none_type // TODO a hack to make `x := if ... work`
 	defer {
 		c.expected_type = ast.void_type
+		c.inside_assign = prev_inside_assign
 	}
 	is_decl := node.op == .decl_assign
 	right_first := node.right[0]
