@@ -136,7 +136,7 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) !
 		e.encode_struct(val, level, mut wr)!
 	} $else $if T is $enum {
 		e.encode_any(Any(int(val)), level, mut wr)!
-	} $else $if T in [Null, bool, $Float, $Int] {
+	} $else $if T in [Null, bool, $float, $int] {
 		e.encode_any(val, level, mut wr)!
 	} $else {
 		// dump(val.str())
@@ -245,7 +245,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				wr.write(json2.quote_bytes)!
 				wr.write(val.$(field.name).format_rfc3339().bytes())!
 				wr.write(json2.quote_bytes)!
-			} $else $if field.typ in [bool, $Float, $Int] {
+			} $else $if field.typ in [bool, $float, $int] {
 				wr.write(val.$(field.name).str().bytes())!
 			} $else $if field.is_array {
 				// TODO - replace for `field.typ is $array`
@@ -325,7 +325,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				} $else $if field.unaliased_typ is time.Time {
 					parsed_time := time.parse(val.$(field.name).str()) or { time.Time{} }
 					e.encode_string(parsed_time.format_rfc3339(), mut wr)!
-				} $else $if field.unaliased_typ in [bool, $Float, $Int] {
+				} $else $if field.unaliased_typ in [bool, $float, $int] {
 					wr.write(val.$(field.name).str().bytes())!
 				} $else $if field.unaliased_typ is $array {
 					// e.encode_array(val.$(field.name), level + 1, mut wr)! // FIXME - error: could not infer generic type `U` in call to `encode_array`

@@ -15,7 +15,7 @@ fn check[T](val T) string {
 		return 'array or struct'
 	} $else $if T in [u8, u16, u32] {
 		return 'unsigned int'
-	} $else $if T in [int, $Int] {
+	} $else $if T in [int, $int] {
 		return 'int'
 	} $else $if T in [$float, f64, f32] {
 		return 'f64'

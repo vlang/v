@@ -10,7 +10,7 @@ pub fn func1[T](t &T) {
 
 [inline]
 pub fn func2[T](t &T) {
-	$if T is $Array {
+	$if T is $array {
 		unsafe {
 			for i in 0 .. t.len {
 				func2(&t[i])
