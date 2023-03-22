@@ -125,7 +125,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		if str_method_expects_ptr && !is_ptr {
 			g.write('&')
 		} else if is_ptr && typ.has_flag(.option) {
-			g.write('*(${g.typ(typ.set_nr_muls(0))}*)&')
+			g.write('*(${g.typ(typ)}*)&')
 		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
 			g.write('*'.repeat(typ.nr_muls()))
 		}

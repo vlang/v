@@ -372,7 +372,7 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key DottedKe
 			if val := t[k] {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'found key "${k}" in ${t.keys()}')
 				if val is map[string]ast.Value {
-					t = &(val as map[string]ast.Value)
+					t = &val
 				} else {
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
 						' "${k}" in "${key}" is not a map but `${val.type_name()}`')
@@ -403,8 +403,7 @@ pub fn (mut p Parser) find_array_of_tables() ![]ast.Value {
 		if val := t[key.str()] {
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'found key "${key}" in ${t.keys()}')
 			if val is []ast.Value {
-				arr := (val as []ast.Value)
-				return arr
+				return val
 			}
 		}
 	}
@@ -420,7 +419,7 @@ pub fn (mut p Parser) allocate_in_table(mut table map[string]ast.Value, key Dott
 			if val := t[k] {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'found key "${k}" in ${t.keys()}')
 				if val is map[string]ast.Value {
-					t = &(val as map[string]ast.Value)
+					t = &val
 				} else {
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
 						' "${k}" in "${key}" is not a map (${val.type_name()})')
@@ -962,7 +961,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 
 		if val := t[last.str()] {
 			if val is []ast.Value {
-				arr := &(val as []ast.Value)
+				mut arr := &val
 				arr << p.double_array_of_tables_contents(dotted_key)!
 				t[last.str()] = arr
 			} else {
@@ -1326,13 +1325,13 @@ pub fn (mut p Parser) number_or_date() !ast.Value {
 		date_time_type := p.date_time()!
 		match date_time_type {
 			ast.Date {
-				return ast.Value(date_time_type as ast.Date)
+				return ast.Value(date_time_type)
 			}
 			ast.Time {
-				return ast.Value(date_time_type as ast.Time)
+				return ast.Value(date_time_type)
 			}
 			ast.DateTime {
-				return ast.Value(date_time_type as ast.DateTime)
+				return ast.Value(date_time_type)
 			}
 		}
 	}

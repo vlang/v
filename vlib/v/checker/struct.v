@@ -269,7 +269,7 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 	}
 }
 
-fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_init bool) ast.Type {
+fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_init bool, mut inited_fields []string) ast.Type {
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure_cumulative(@METHOD)
@@ -297,11 +297,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			}
 		}
 		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0
-			&& !node.is_short_syntax {
-			if c.table.cur_concrete_types.len == 0 {
-				c.error('generic struct init must specify type parameter, e.g. Foo[int]',
-					node.pos)
-			} else if node.generic_types.len == 0 {
+			&& !node.is_short_syntax && c.table.cur_concrete_types.len != 0 {
+			if node.generic_types.len == 0 {
 				c.error('generic struct init must specify type parameter, e.g. Foo[T]',
 					node.pos)
 			} else if node.generic_types.len > 0
@@ -337,6 +334,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				node.pos)
 			return ast.void_type
 		}
+	} else if struct_sym.info is ast.FnType {
+		c.error('functions must be defined, not instantiated like structs', node.pos)
 	}
 	// register generic struct type when current fn is generic fn
 	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0 {
@@ -450,7 +449,6 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				info_fields_sorted = info.fields.clone()
 				info_fields_sorted.sort(a.i < b.i)
 			}
-			mut inited_fields := []string{}
 			for i, mut field in node.fields {
 				mut field_info := ast.StructField{}
 				mut field_name := ''
@@ -567,6 +565,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			// need to modify here accordingly.
 			fields := c.table.struct_fields(type_sym)
 			mut checked_types := []ast.Type{}
+
 			for i, field in fields {
 				if field.name in inited_fields {
 					continue
@@ -653,7 +652,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 						pos: node.pos
 						typ: field.typ
 					}
-					c.struct_init(mut zero_struct_init, true)
+					c.struct_init(mut zero_struct_init, true, mut inited_fields)
 				}
 			}
 			for embed in info.embeds {
@@ -661,7 +660,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					pos: node.pos
 					typ: embed
 				}
-				c.struct_init(mut zero_struct_init, true)
+				c.struct_init(mut zero_struct_init, true, mut inited_fields)
 			}
 			// println('>> checked_types.len: $checked_types.len | checked_types: $checked_types | type_sym: $type_sym.name ')
 		}
@@ -689,13 +688,12 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		}
 	}
 	if struct_sym.info is ast.Struct {
-		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0 {
-			if node.is_short_syntax {
-				concrete_types := c.infer_struct_generic_types(node.typ, node)
-				if concrete_types.len > 0 {
-					generic_names := struct_sym.info.generic_types.map(c.table.sym(it).name)
-					node.typ = c.table.unwrap_generic_type(node.typ, generic_names, concrete_types)
-				}
+		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0
+			&& c.table.cur_concrete_types.len == 0 {
+			concrete_types := c.infer_struct_generic_types(node.typ, node)
+			if concrete_types.len > 0 {
+				generic_names := struct_sym.info.generic_types.map(c.table.sym(it).name)
+				node.typ = c.table.unwrap_generic_type(node.typ, generic_names, concrete_types)
 			}
 		}
 	}
