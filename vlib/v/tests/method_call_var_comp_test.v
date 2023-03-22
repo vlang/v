@@ -13,7 +13,7 @@ fn (e &Encoder) encode_array[T](val []T) []T {
 fn encode_struct[T](val T) []string {
 	e := Encoder{}
 	mut out := []string{}
-	$if T is $Struct {
+	$if T is $struct {
 		$for field in T.fields {
 			out << field.name
 			out << field.is_array.str()

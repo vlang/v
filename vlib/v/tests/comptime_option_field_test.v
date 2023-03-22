@@ -10,7 +10,7 @@ struct Test {
 fn test_option_comptime() {
 	mut opts := []string{}
 	$for f in Test.fields {
-		$if f.typ is $Option {
+		$if f.typ is $option {
 			opts << f.name
 		}
 	}

@@ -4,7 +4,7 @@ fn (t Test) test[T](val T) {
 	$for f in T.fields {
 		value := val.$(f.name)
 		$if f.is_option {
-			$if f.typ is $Struct {
+			$if f.typ is $struct {
 				_ := 1
 				t.test(value)
 			} $else $if f.typ is string {
@@ -15,7 +15,7 @@ fn (t Test) test[T](val T) {
 				_ := 4
 			}
 		} $else {
-			$if f.typ is $Struct {
+			$if f.typ is $struct {
 				t.test(value)
 			} $else $if f.typ is string {
 				_ := 5

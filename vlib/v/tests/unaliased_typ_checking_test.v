@@ -16,16 +16,16 @@ fn test_main() {
 	mut out := map[string][]string{}
 	$for field in Foo.fields {
 		print('${field.name} is ')
-		$if field.unaliased_typ is $Int {
+		$if field.unaliased_typ is $int {
 			println('numeric')
 			out[field.name] << 'numeric'
-		} $else $if field.unaliased_typ is $Array {
+		} $else $if field.unaliased_typ is $array {
 			println('array')
 			out[field.name] << 'array'
-		} $else $if field.unaliased_typ is $Float {
+		} $else $if field.unaliased_typ is $float {
 			println('float')
 			out[field.name] << 'float'
-		} $else $if field.unaliased_typ is $Map {
+		} $else $if field.unaliased_typ is $map {
 			println('map')
 			out[field.name] << 'map'
 		} $else $if field.unaliased_typ is string || field.unaliased_typ is ?string {

@@ -70,7 +70,7 @@ fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 		last_pos = p.tok.pos()
 		p.check(.rsbr)
 		if exprs.len == 1 && p.tok.line_nr == line_nr
-			&& (p.tok.kind in [.name, .amp] || (p.tok.kind == .lsbr && p.is_array_type())) {
+			&& (p.tok.kind in [.name, .amp, .question] || (p.tok.kind == .lsbr && p.is_array_type())) {
 			// [100]u8
 			elem_type = p.parse_type()
 			if p.table.sym(elem_type).name == 'byte' {

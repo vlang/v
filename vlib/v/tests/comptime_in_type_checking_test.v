@@ -11,19 +11,19 @@ struct Test {
 }
 
 fn check[T](val T) string {
-	$if T in [$Array, $Struct] {
+	$if T in [$array, $struct] {
 		return 'array or struct'
 	} $else $if T in [u8, u16, u32] {
 		return 'unsigned int'
 	} $else $if T in [int, $Int] {
 		return 'int'
-	} $else $if T in [$Float, f64, f32] {
+	} $else $if T in [$float, f64, f32] {
 		return 'f64'
-	} $else $if T in [$Map, map] {
+	} $else $if T in [$map, map] {
 		return 'map'
 	} $else $if T in [Abc, Abc] {
 		return 'Abc'
-	} $else $if T in [$Sumtype, Abc] {
+	} $else $if T in [$sumtype, Abc] {
 		return 'sumtype'
 	}
 
@@ -32,22 +32,22 @@ fn check[T](val T) string {
 
 fn check_not[T](val T) string {
 	mut str := string{}
-	$if T !in [$Array, $Array] {
+	$if T !in [$array, $array] {
 		str += '1'
 	}
 	$if T !in [u8, u16, u32] {
 		str += '2'
 	}
-	$if T !in [int, $Int] {
+	$if T !in [int, $int] {
 		str += '3'
 	}
-	$if T !in [$Float, f64, f32] {
+	$if T !in [$float, f64, f32] {
 		str += '4'
-	} $else $if T !in [$Map, map] {
+	} $else $if T !in [$map, map] {
 		str += '5'
 	} $else $if T !in [Abc, Abc] {
 		str += '6'
-	} $else $if T !in [$Sumtype, Abc] {
+	} $else $if T !in [$sumtype, Abc] {
 		str += '7'
 	}
 

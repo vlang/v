@@ -16,9 +16,9 @@ pub fn func2[T](t &T) {
 				func2(&t[i])
 			}
 		}
-	} $else $if T is $Map {
+	} $else $if T is $map {
 		// fake_map(t, df)
-	} $else $if T is $Struct {
+	} $else $if T is $struct {
 		$for f in T.fields {
 			$if f.typ is string {
 			}
