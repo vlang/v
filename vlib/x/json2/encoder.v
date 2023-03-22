@@ -129,7 +129,7 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) !
 		// weird quirk but val is destructured immediately to Any
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is $Map {
-		// e.encode_any(val, level, mut wr)!
+		// FIXME - `e.encode_struct` can not encode `map[string]map[string]int` type
 	} $else $if T is []Any {
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is Encodable {
@@ -257,21 +257,16 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			} $else $if field.typ is $Struct {
 				e.encode_struct(value, level + 1, mut wr)!
 			} $else $if field.is_map {
-				// e.encode_struct(value, level + 1, mut wr)!
-				// e.encode_value_with_level(value, level + 1, mut wr)!
 				wr.write([u8(`{`)])!
 				mut idx := 0
 				for k, v in value {
-					// dump(k)
-					// dump(v)
 					e.encode_newline(level, mut wr)!
 					e.encode_string(k.str(), mut wr)!
 					wr.write(json2.colon_bytes)!
 					if e.newline != 0 {
 						wr.write(json2.space_bytes)!
 					}
-					// FIXME - invalid memory access
-					// e.encode_value_with_level(v, level, mut wr)!
+					e.encode_value_with_level(v, level + 1, mut wr)!
 					if idx < value.len - 1 {
 						wr.write(json2.comma_bytes)!
 					}
