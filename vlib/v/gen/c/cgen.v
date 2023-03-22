@@ -136,6 +136,7 @@ mut:
 	inside_struct_init        bool
 	inside_or_block           bool
 	inside_call               bool
+	inside_nested_call        bool
 	inside_for_c_stmt         bool
 	inside_comptime_for_field bool
 	inside_cast_in_heap       int // inside cast to interface type in heap (resolve recursive calls)
@@ -144,6 +145,7 @@ mut:
 	inside_lambda             bool
 	inside_for_in_any_cond    bool
 	inside_cinit              bool
+	last_tmp_call_var         []string
 	loop_depth                int
 	ternary_names             map[string]string
 	ternary_level_names       map[string][]string
