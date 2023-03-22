@@ -106,10 +106,11 @@ fn test_orm_insert_with_multiple_child_elements() {
 		insert new_parent into Parent
 	}
 
-	parent := sql db {
+	parents := sql db {
 		select from Parent where id == 1
 	}
 
+	parent := parents.first()
 	assert parent.children.len == new_parent.children.len
 	assert parent.notes.len == new_parent.notes.len
 

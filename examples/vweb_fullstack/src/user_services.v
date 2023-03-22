@@ -61,5 +61,5 @@ fn (mut app App) service_get_user(id int) !User {
 		select from User where id == id
 	}
 
-	return results
+	return results.first()
 }
