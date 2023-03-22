@@ -18,7 +18,7 @@ fn test_sql_statement_inside_fn_call() {
 	sql db {
 		insert m into Movie
 	}
-	dump(x(sql db {
+	dump(x((sql db {
 		select from Movie where id == 1
-	}))
+	}).first()))
 }

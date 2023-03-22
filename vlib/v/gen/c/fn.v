@@ -487,12 +487,30 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 			if obj is ast.Var {
 				if obj.has_inherited {
 					has_inherited = true
-					g.writeln('.${var.name} = ${c.closure_ctx}->${var.name},')
+					var_sym := g.table.sym(var.typ)
+					if var_sym.info is ast.ArrayFixed {
+						g.write('.${var.name} = {')
+						for i in 0 .. var_sym.info.size {
+							g.write('${c.closure_ctx}->${var.name}[${i}],')
+						}
+						g.writeln('},')
+					} else {
+						g.writeln('.${var.name} = ${c.closure_ctx}->${var.name},')
+					}
 				}
 			}
 		}
 		if !has_inherited {
-			g.writeln('.${var.name} = ${var.name},')
+			var_sym := g.table.sym(var.typ)
+			if var_sym.info is ast.ArrayFixed {
+				g.write('.${var.name} = {')
+				for i in 0 .. var_sym.info.size {
+					g.write('${var.name}[${i}],')
+				}
+				g.writeln('},')
+			} else {
+				g.writeln('.${var.name} = ${var.name},')
+			}
 		}
 	}
 	g.indent--
@@ -1339,9 +1357,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.empty_line = true
 			g.writeln('// json.encode')
 			g.write('cJSON* ${json_obj} = ${encode_name}(')
-			if node.args[0].typ.is_ptr() {
-				g.write('*')
-			}
 			g.call_args(node)
 			g.writeln(');')
 			tmp2 = g.new_tmp_var()
@@ -1921,7 +1936,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		}
 	}
 	if expr.is_method {
-		receiver_sym := g.table.sym(expr.receiver_type)
+		receiver_sym := g.table.sym(g.unwrap_generic(expr.receiver_type))
 		name = receiver_sym.cname + '_' + name
 	} else if mut expr.left is ast.AnonFn {
 		if expr.left.inherited_vars.len > 0 {
@@ -2099,8 +2114,8 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 			fn_var = g.fn_var_signature(f.return_type, f.params.map(it.typ), 'fn')
 		} else {
 			if node.call_expr.is_method {
-				rec_sym := g.table.sym(node.call_expr.receiver_type)
-				if f := g.table.find_method(rec_sym, node.call_expr.name) {
+				rec_sym := g.table.sym(g.unwrap_generic(node.call_expr.receiver_type))
+				if f := rec_sym.find_method_with_generic_parent(node.call_expr.name) {
 					mut muttable := unsafe { &ast.Table(g.table) }
 					return_type := muttable.resolve_generic_to_concrete(f.return_type,
 						f.generic_names, node.call_expr.concrete_types) or { f.return_type }

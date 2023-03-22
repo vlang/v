@@ -73,7 +73,6 @@ pub mut:
 	inside_ct_attr            bool // true inside `[if expr]`
 	inside_x_is_type          bool // true inside the Type expression of `if x is Type {`
 	inside_comptime_for_field bool
-	inside_for_in_any_cond    bool
 	skip_flags                bool      // should `#flag` and `#include` be skipped
 	fn_level                  int       // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
 	smartcast_mut_pos         token.Pos // match mut foo, if mut foo is Foo
@@ -95,7 +94,6 @@ mut:
 	loop_label                       string     // set when inside a labelled for loop
 	vweb_gen_types                   []ast.Type // vweb route checks
 	timers                           &util.Timers = util.get_timers()
-	for_in_any_val_type              ast.Type
 	comptime_for_field_var           string
 	comptime_fields_default_type     ast.Type
 	comptime_fields_key_type         ast.Type // key type on `$for k, v in val.$(field.name)`
@@ -548,7 +546,7 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 			c.error('sum type cannot hold a reference type', variant.pos)
 		}
 		c.ensure_type_exists(variant.typ, variant.pos) or {}
-		mut sym := c.table.sym(variant.typ)
+		sym := c.table.sym(variant.typ)
 		if sym.name in names_used {
 			c.error('sum type ${node.name} cannot hold the type `${sym.name}` more than once',
 				variant.pos)
@@ -558,7 +556,7 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 			c.error('sum type cannot hold an interface', variant.pos)
 		} else if sym.kind == .struct_ && sym.language == .js {
 			c.error('sum type cannot hold a JS struct', variant.pos)
-		} else if mut sym.info is ast.Struct {
+		} else if sym.info is ast.Struct {
 			if sym.info.is_generic {
 				if !variant.typ.has_flag(.generic) {
 					c.error('generic struct `${sym.name}` must specify generic type names, e.g. ${sym.name}[T]',
@@ -581,11 +579,10 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 				}
 			}
 		} else if sym.info is ast.FnType {
-			func := (sym.info as ast.FnType).func
-			if c.table.sym(func.return_type).name.ends_with('.${node.name}') {
+			if c.table.sym(sym.info.func.return_type).name.ends_with('.${node.name}') {
 				c.error('sum type `${node.name}` cannot be defined recursively', variant.pos)
 			}
-			for param in func.params {
+			for param in sym.info.func.params {
 				if c.table.sym(param.typ).name.ends_with('.${node.name}') {
 					c.error('sum type `${node.name}` cannot be defined recursively', variant.pos)
 				}
@@ -2686,9 +2683,10 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		}
 		ast.StructInit {
 			if node.unresolved {
-				return c.expr(ast.resolve_init(node, c.unwrap_generic(node.typ), c.table))
+				return c.expr(c.table.resolve_init(node, c.unwrap_generic(node.typ)))
 			}
-			return c.struct_init(mut node, false)
+			mut inited_fields := []string{}
+			return c.struct_init(mut node, false, mut inited_fields)
 		}
 		ast.TypeNode {
 			if !c.inside_x_is_type && node.typ.has_flag(.generic) && unsafe { c.table.cur_fn != 0 }
