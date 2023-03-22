@@ -139,17 +139,17 @@ pub:
 
 pub fn (cty ComptimeType) str() string {
 	return match cty.kind {
-		.map_ { '\$Map' }
-		.int { '\$Int' }
-		.float { '\$Float' }
-		.struct_ { '\$Struct' }
-		.iface { '\$Interface' }
-		.array { '\$Array' }
-		.sum_type { '\$Sumtype' }
-		.enum_ { '\$Enum' }
-		.alias { '\$Alias' }
-		.function { '\$Function' }
-		.option { '\$Option' }
+		.map_ { '\$map' }
+		.int { '\$int' }
+		.float { '\$float' }
+		.struct_ { '\$struct' }
+		.iface { '\$interface' }
+		.array { '\$array' }
+		.sum_type { '\$sumtype' }
+		.enum_ { '\$enum' }
+		.alias { '\$alias' }
+		.function { '\$function' }
+		.option { '\$option' }
 	}
 }
 
