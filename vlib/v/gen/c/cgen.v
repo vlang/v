@@ -3427,13 +3427,6 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				g.error('unknown generic field', node.pos)
 			}
 		}
-	} else {
-		// for comp-time enum value evaluation
-		if node.expr_type == g.enum_data_type && node.expr is ast.Ident
-			&& (node.expr as ast.Ident).name == 'value' {
-			g.write(node.str())
-			return
-		}
 	}
 	if node.expr_type == 0 {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
