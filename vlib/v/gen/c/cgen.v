@@ -3430,8 +3430,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	} else {
 		// for comp-time enum value evaluation
 		if node.expr_type == g.enum_data_type && node.expr is ast.Ident
-			&& (node.expr as ast.Ident).name == 'value' {
-			g.write(node.str())
+			&& node.field_name in ['name', 'value'] {
+			g.expr(node.expr)
+			g.write('.${node.field_name}')
 			return
 		}
 	}

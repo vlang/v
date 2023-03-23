@@ -3,6 +3,12 @@ enum Test {
 	bar
 }
 
+enum Test2 {
+	alpha
+	bravo
+	charlie
+}
+
 fn test_main() {
 	$for item in Test.values {
 		assert item.name in ['foo', 'bar']
@@ -23,5 +29,12 @@ fn test_main() {
 			println('foo>> item: ${item.name}')
 			assert item.value == .bar
 		}
+	}
+}
+
+fn test_selectors() {
+	$for value in Test2.values {
+		println(value.name)
+		assert dump(value.value) == value.value
 	}
 }
