@@ -659,7 +659,6 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	if node.should_be_skipped {
 		return
 	}
-	mut nested_call := []ast.CallExpr{}
 	// NOTE: everything could be done this way
 	// see my comment in parser near anon_fn
 	if node.left is ast.AnonFn {
@@ -679,48 +678,27 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.expr(node.left)
 		g.is_fn_index_call = false
 	} else if !g.inside_nested_call && node.left is ast.CallExpr && node.name == '' {
-		g.inside_nested_call = true
-		mut next_call := node.left as ast.CallExpr
-		mut tmp_res := ''
-		for {
-			nested_call << next_call
-			if next_call.left is ast.CallExpr {
-				next_call = next_call.left as ast.CallExpr
-			} else {
-				nested_call << node
-				break
-			}
-		}
-		mut results := nested_call.filter(it.or_block.kind != .absent)
-		line := if results.len > 0 {
-			g.empty_line = true
-			g.go_before_stmt(0)
+		if node.or_block.kind == .absent {
+			g.expr(node.left)
 		} else {
-			''
-		}
-		// mut i_res := 0
-		if results.len > 0 {
-			tmp_res = g.new_tmp_var()
-			g.last_tmp_call_var << tmp_res
-			g.write('${g.typ(results[0].return_type)} ${tmp_res} = ')
-		}
+			g.inside_nested_call = true
+			ret_typ := node.return_type
 
-		for call_expr in nested_call {
-			g.expr(call_expr)
-		}
-		g.inside_nested_call = false
-		if line != '' {
+			line := g.go_before_stmt(0)
+			g.empty_line = true
+
+			tmp_res := g.new_tmp_var()
+			g.write('${g.typ(ret_typ)} ${tmp_res} = ')
+
+			g.last_tmp_call_var << tmp_res
+			g.expr(node.left)
+			g.expr(node)
+
+			g.inside_nested_call = false
 			g.write(line)
-			if tmp_res != '' {
-				ret_typ := results[0].return_type
-				if ret_typ.has_flag(.option) || ret_typ.has_flag(.result) {
-					g.write('*(${g.base_type(ret_typ)}*)${tmp_res}.data')
-				} else {
-					g.write(tmp_res)
-				}
-			}
+			g.write('*(${g.base_type(ret_typ)}*)${tmp_res}.data')
+			return
 		}
-		return
 	}
 	old_inside_call := g.inside_call
 	g.inside_call = true
