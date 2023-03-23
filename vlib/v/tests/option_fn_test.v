@@ -14,7 +14,7 @@ fn new_static_router2(route_not_found_handler ?HandlerFn) fn () {
 
 fn test_option_fn_alias_decl_with_none() {
 	b := new_static_router2(none)
-	$if b is $Function {
+	$if b is $function {
 		assert true
 	} $else {
 		assert false
@@ -23,7 +23,7 @@ fn test_option_fn_alias_decl_with_none() {
 
 fn test_option_fn_decl_with_none() {
 	a := new_static_router(none)
-	$if a is $Function {
+	$if a is $function {
 		assert true
 	} $else {
 		assert false

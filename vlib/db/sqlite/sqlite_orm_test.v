@@ -149,10 +149,11 @@ fn test_sqlite_orm() {
 		insert test_default_atribute into TestDefaultAtribute
 	}
 
-	result_test_default_atribute := sql db {
+	test_default_atributes := sql db {
 		select from TestDefaultAtribute limit 1
 	}
 
+	result_test_default_atribute := test_default_atributes.first()
 	assert result_test_default_atribute.name == 'Hitalo'
 	assert test_default_atribute.created_at.len == 0
 	assert test_default_atribute.created_at1.len == 0

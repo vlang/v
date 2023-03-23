@@ -23,7 +23,7 @@ fn (wr &Writer) write2[T](val T) {
 fn encode_struct[T](val T) map[string][]string {
 	wr := Writer{}
 	mut out := map[string][]string{}
-	$if T is $Struct {
+	$if T is $struct {
 		$for field in T.fields {
 			value := val.$(field.name)
 			$if field.typ is ?int {

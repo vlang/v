@@ -38,7 +38,7 @@ fn test_orm_array() {
 		insert par into Parent
 	}
 
-	parent := sql db {
+	parents := sql db {
 		select from Parent where id == 1
 	}
 
@@ -46,6 +46,7 @@ fn test_orm_array() {
 		drop table Parent
 	}
 
+	parent := parents.first()
 	assert parent.name == par.name
 	assert parent.children.len == par.children.len
 	assert parent.children[0].name == 'abc'
@@ -74,10 +75,11 @@ fn test_orm_relationship() {
 		insert par into Parent
 	}
 
-	mut parent := sql db {
+	mut parents := sql db {
 		select from Parent where id == 1
 	}
 
+	mut parent := parents.first()
 	child.parent_id = parent.id
 	child.name = 'atum'
 
@@ -94,10 +96,11 @@ fn test_orm_relationship() {
 	assert parent.name == par.name
 	assert parent.children.len == 0
 
-	parent = sql db {
+	parents = sql db {
 		select from Parent where id == 1
 	}
 
+	parent = parents.first()
 	assert parent.name == par.name
 	assert parent.children.len == 2
 	assert parent.children[0].name == 'atum'

@@ -6146,14 +6146,19 @@ fn (mut g Gen) size_of(node ast.SizeOf) {
 	g.write('sizeof(${util.no_dots(styp)})')
 }
 
-fn (mut g Gen) enum_val(node ast.EnumVal) {
-	styp := g.typ(g.table.unaliased_type(node.typ))
-	if g.pref.translated && node.typ.is_number() {
+[inline]
+fn (mut g Gen) gen_enum_prefix(typ ast.Type) string {
+	if g.pref.translated && typ.is_number() {
 		// Mostly in translated code, when C enums are used as ints in switches
-		g.write('_const_main__${node.val}')
+		return '_const_main__'
 	} else {
-		g.write('${styp}__${node.val}')
+		styp := g.typ(g.table.unaliased_type(typ))
+		return '${styp}__'
 	}
+}
+
+fn (mut g Gen) enum_val(node ast.EnumVal) {
+	g.write('${g.gen_enum_prefix(node.typ)}${node.val}')
 }
 
 fn (mut g Gen) as_cast(node ast.AsCast) {

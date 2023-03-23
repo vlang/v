@@ -16,18 +16,19 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	}
 	p.check(.lcbr)
 	p.check(.key_select)
-	n := p.check_name()
-	is_count := n == 'count'
+	is_count := p.check_name() == 'count'
 	mut typ := ast.void_type
+
 	if is_count {
 		p.check_name() // from
-		typ = ast.int_type
 	}
+
 	table_pos := p.tok.pos()
 	table_type := p.parse_type() // `User`
+
 	mut where_expr := ast.empty_expr
 	has_where := p.tok.kind == .name && p.tok.lit == 'where'
-	mut query_one := false // one object is returned, not an array
+
 	if has_where {
 		p.next()
 		where_expr = p.expr(0)
@@ -37,11 +38,8 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		if where_check_result is ast.NodeError {
 			return where_check_result
 		}
-
-		if !is_count {
-			query_one = p.has_sql_where_expr_with_comparison_with_id(&where_expr)
-		}
 	}
+
 	mut has_limit := false
 	mut limit_expr := ast.empty_expr
 	mut has_offset := false
@@ -64,29 +62,25 @@ fn (mut p Parser) sql_expr() ast.Expr {
 			has_desc = true
 		}
 	}
+
 	if p.tok.kind == .name && p.tok.lit == 'limit' {
-		// `limit 1` means that a single object is returned
 		p.check_name() // `limit`
-		if p.tok.kind == .number && p.tok.lit == '1' {
-			query_one = true
-		}
 		has_limit = true
 		limit_expr = p.expr(0)
 	}
+
 	if p.tok.kind == .name && p.tok.lit == 'offset' {
 		p.check_name() // `offset`
 		has_offset = true
 		offset_expr = p.expr(0)
 	}
-	if !query_one && !is_count {
-		// return an array
+
+	if is_count {
+		typ = ast.int_type
+	} else {
 		typ = ast.new_type(p.table.find_or_register_array(table_type))
-	} else if !is_count {
-		// return a single object
-		// TODO optional
-		// typ = table_type.set_flag(.optional)
-		typ = table_type
 	}
+
 	p.check(.rcbr)
 	p.inside_match = false
 	or_expr := p.parse_sql_or_block()
@@ -105,7 +99,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		has_order: has_order
 		order_expr: order_expr
 		has_desc: has_desc
-		is_array: !query_one
+		is_array: if is_count { false } else { true }
 		pos: pos.extend(p.prev_tok.pos())
 		table_expr: ast.TypeNode{
 			typ: table_type
@@ -302,26 +296,6 @@ fn (mut p Parser) check_sql_keyword(name string) ?bool {
 		return none
 	}
 	return true
-}
-
-// has_sql_where_expr_with_comparison_with_id tries to search comparison with the `id` field.
-// If `id` is found it means that a database "should" return one row,
-// but it is not true and depends on a database scheme.
-// For example, it will be hard to use V ORM in an existing database scheme which wrote before using V.
-fn (p &Parser) has_sql_where_expr_with_comparison_with_id(expr &ast.Expr) bool {
-	// This method will be removed in the future when we refuse it.
-	// A more difficult expression with `id` means a user tries to find more than one row or he is wrong.
-	// And there is no point to get one structure instead of an array.
-	// `id == x` means that a single object is returned.
-	if expr is ast.InfixExpr {
-		if expr.left is ast.Ident && expr.op == .eq {
-			return expr.left.name == 'id'
-		}
-	} else if expr is ast.ParExpr {
-		return p.has_sql_where_expr_with_comparison_with_id(expr.expr)
-	}
-
-	return false
 }
 
 // check_sql_where_expr_has_no_undefined_variables recursively tries to find undefined variables in the right part of infix expressions.
