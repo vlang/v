@@ -436,13 +436,15 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	for {
 		// Create a new app object for each connection, copy global data like db connections
 		mut request_app := &T{}
+		$if T is MiddlewareInterface {
+			request_app = &T{
+				middlewares: global_app.middlewares.clone()
+			}
+		}
 		$if T is DbInterface {
 			request_app.db = global_app.db
 		} $else {
 			// println('vweb no db')
-		}
-		$if T is MiddlewareInterface {
-			request_app.middlewares = global_app.middlewares.clone()
 		}
 		$for field in T.fields {
 			if 'vweb_global' in field.attrs || field.is_shared {
@@ -562,7 +564,7 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 				if !route.path.contains('/:') && url_words == route_words {
 					// We found a match
 					$if T is MiddlewareInterface {
-						if validate_middleware(mut app, route.path) == false {
+						if validate_middleware(mut app, url.path) == false {
 							return
 						}
 					}
@@ -574,32 +576,30 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 							args << form[param.name]
 						}
 
-						if route.middleware != '' {
-							if validate_app_middleware(mut app, route.middleware, method.name) {
-								app.$method(args)
-							}
-						}
-					} else if route.middleware != '' {
-						if validate_app_middleware(mut app, route.middleware, method.name) {
-							app.$method()
+						if route.middleware == '' {
+							app.$method(args)
+						} else if validate_app_middleware(mut app, route.middleware, method.name) {
+							app.$method(args)
 						}
 					} else {
-						app.$method()
+						if route.middleware == '' {
+							app.$method()
+						} else if validate_app_middleware(mut app, route.middleware, method.name) {
+							app.$method()
+						}
 					}
 					return
 				}
 
 				if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
 					$if T is MiddlewareInterface {
-						if validate_middleware(mut app, route.path) == false {
+						if validate_middleware(mut app, url.path) == false {
 							return
 						}
 					}
-					if route.middleware != '' {
-						if validate_app_middleware(mut app, route.middleware, method.name) {
-							app.$method()
-						}
-					} else {
+					if route.middleware == '' {
+						app.$method()
+					} else if validate_app_middleware(mut app, route.middleware, method.name) {
 						app.$method()
 					}
 					return
@@ -612,15 +612,13 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 					}
 
 					$if T is MiddlewareInterface {
-						if validate_middleware(mut app, route.path) == false {
+						if validate_middleware(mut app, url.path) == false {
 							return
 						}
 					}
-					if route.middleware != '' {
-						if validate_app_middleware(mut app, route.middleware, method.name) {
-							app.$method(method_args)
-						}
-					} else {
+					if route.middleware == '' {
+						app.$method(method_args)
+					} else if validate_app_middleware(mut app, route.middleware, method.name) {
 						app.$method(method_args)
 					}
 					return
