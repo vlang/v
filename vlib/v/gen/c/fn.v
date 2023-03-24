@@ -1160,13 +1160,18 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 		if m := g.table.find_method(g.table.sym(node.left_type), node.name) {
 			for k, v in comptime_args {
-				arg_sym := g.table.sym(v)
+				unwrapped_v := g.unwrap_generic(v)
+				arg_sym := g.table.sym(unwrapped_v)
 				if m.generic_names.len > 0 && arg_sym.kind == .array
 					&& m.params[k + 1].typ.has_flag(.generic)
 					&& g.table.final_sym(m.params[k + 1].typ).kind == .array {
 					concrete_types[k] = (arg_sym.info as ast.Array).elem_type
+				} else if m.generic_names.len > 0 && arg_sym.kind == .array_fixed 
+					&& m.params[k].typ.has_flag(.generic)
+					&& g.table.sym(m.params[k + 1].typ).kind in [.any, .array] {
+					concrete_types[k] = (arg_sym.info as ast.ArrayFixed).elem_type
 				} else {
-					concrete_types[k] = g.unwrap_generic(v)
+					concrete_types[k] = unwrapped_v
 				}
 			}
 		}
@@ -1320,7 +1325,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 		is_selector_call = true
 	}
-	if g.inside_comptime_for_field {
+	has_comptime_args := g.inside_comptime_for_field || (g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0)
+	if has_comptime_args {
 		mut node_ := unsafe { node }
 		comptime_args = g.change_comptime_args(mut node_)
 	}
@@ -1408,16 +1414,19 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	if !is_selector_call {
 		if func := g.table.find_fn(node.name) {
 			if func.generic_names.len > 0 {
-				if g.comptime_for_field_type != 0 && g.inside_comptime_for_field
-					&& comptime_args.len > 0 && node.concrete_types.len > 0 {
+				if has_comptime_args && comptime_args.len > 0 {
 					mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 					for k, v in comptime_args {
-						arg_sym := g.table.sym(v)
+						unwrapped_v := g.unwrap_generic(v)
+						arg_sym := g.table.sym(unwrapped_v)
 						if arg_sym.kind == .array && func.params[k].typ.has_flag(.generic)
 							&& g.table.sym(func.params[k].typ).kind == .array {
 							concrete_types[k] = (arg_sym.info as ast.Array).elem_type
+						} else if arg_sym.kind == .array_fixed && func.params[k].typ.has_flag(.generic)
+							&& g.table.sym(func.params[k].typ).kind in [.any, .array] {
+							concrete_types[k] = (arg_sym.info as ast.ArrayFixed).elem_type
 						} else {
-							concrete_types[k] = v
+							concrete_types[k] = unwrapped_v
 						}
 					}
 					name = g.generic_fn_name(concrete_types, name)

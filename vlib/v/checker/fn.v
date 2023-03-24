@@ -1542,20 +1542,21 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 		if (c.inside_comptime_for_field || method.generic_names.len > 0) && concrete_types.len > 0 {
 			mut comptime_args := c.get_comptime_args(node)
-			mut comptime_types := concrete_types.clone()
-			for k, v in comptime_args {
-				arg_sym := c.table.sym(v)
-				if method.generic_names.len > 0 && arg_sym.kind == .array
-					&& method.params[k + 1].typ.has_flag(.generic)
-					&& c.table.final_sym(method.params[k + 1].typ).kind == .array {
-					comptime_types[k] = (arg_sym.info as ast.Array).elem_type
-				} else {
-					comptime_types[k] = if v.has_flag(.generic) { concrete_types[k] } else { v }
+			if comptime_args.len > 0 {
+				mut comptime_types := concrete_types.clone()
+				for k, v in comptime_args {
+					arg_sym := c.table.sym(v)
+					if method.generic_names.len > 0 && arg_sym.kind == .array
+						&& method.params[k + 1].typ.has_flag(.generic)
+						&& c.table.final_sym(method.params[k + 1].typ).kind == .array {
+						comptime_types[k] = (arg_sym.info as ast.Array).elem_type
+					} else {
+						comptime_types[k] = if v.has_flag(.generic) { concrete_types[k] } else { v }
+					}
 				}
-			}
-			if comptime_args.len > 0
-				&& c.table.register_fn_concrete_types(method.fkey(), comptime_types) {
-				c.need_recheck_generic_fns = true
+				if c.table.register_fn_concrete_types(method.fkey(), comptime_types) {
+					c.need_recheck_generic_fns = true
+				}
 			}
 		}
 		if concrete_types.len > 0 {
