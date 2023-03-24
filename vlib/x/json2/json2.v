@@ -21,8 +21,8 @@ pub fn fast_raw_decode(src string) !Any {
 // decode is a generic function that decodes a JSON string into the target type.
 pub fn decode[T](src string) !T {
 	mut typ := T{}
+	res := raw_decode(src)!.as_map()
 	$if T is $struct {
-		res := raw_decode(src)!.as_map()
 		$for field in T.fields {
 			mut json_name := field.name
 			for attr in field.attrs {
@@ -132,7 +132,20 @@ pub fn decode[T](src string) !T {
 			}
 		}
 	} $else $if T is $map {
-		return error('Decode map is not allowed for now')
+		for k, v in res {
+			// // TODO - make this work to decode types like `map[string]StructType[bool]`
+			// $if typeof(typ[k]).idx is string {
+			// 	typ[k] = v.str()
+			// } $else $if typeof(typ[k]).idx is $struct {
+
+			// }
+			match v {
+				string {
+					typ[k] = v.str()
+				}
+				else {}
+			}
+		}
 	}
 	return typ
 }
