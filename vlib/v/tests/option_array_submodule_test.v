@@ -8,4 +8,12 @@ fn test_submodule_array_instance() {
 	y := ?amodule.SomeStruct(none)
 	dump(y)
 	assert y == none
+
+	w := ?[]amodule.SomeStruct(none)
+	dump(w)
+	assert w == none
+
+	z := ?[2]amodule.SomeStruct(none)
+	dump(z)
+	assert z == none
 }

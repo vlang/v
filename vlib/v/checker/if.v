@@ -319,6 +319,13 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						}
 						c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
 							node.pos)
+					} else {
+						if c.inside_assign && node.is_expr && !node.typ.has_flag(.shared_f)
+							&& stmt.typ.is_ptr() != node.typ.is_ptr()
+							&& stmt.typ != ast.voidptr_type {
+							c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
+								node.pos)
+						}
 					}
 				} else if !node.is_comptime {
 					c.error('`${if_kind}` expression requires an expression as the last statement of every branch',

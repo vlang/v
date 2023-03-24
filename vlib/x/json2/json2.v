@@ -139,7 +139,7 @@ pub fn decode[T](src string) !T {
 
 // encode is a generic function that encodes a type into a JSON string.
 pub fn encode[T](val T) string {
-	$if T is $Array {
+	$if T is $array {
 		$compile_error('Cannot use `json.encode` to encode array. Try `json.encode_array` instead')
 	}
 	mut sb := strings.new_builder(64)
@@ -410,7 +410,7 @@ pub fn (f Any) to_time() !time.Time {
 
 fn map_from[T](t T) map[string]Any {
 	mut m := map[string]Any{}
-	$if T is $Struct {
+	$if T is $struct {
 		$for field in T.fields {
 			value := t.$(field.name)
 

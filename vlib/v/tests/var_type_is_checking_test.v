@@ -5,18 +5,18 @@ struct Test {
 
 fn test_main() {
 	hh := 1 // i64(4)
-	$if hh is $Int {
+	$if hh is $int {
 		println('int')
 		assert true
-	} $else $if hh !is $Int {
+	} $else $if hh !is $int {
 		println('string')
 		assert false
 	}
 
 	b := 1.2
-	$if b is $Int {
+	$if b is $int {
 		assert false
-	} $else $if b is $Float {
+	} $else $if b is $float {
 		println('float')
 		assert true
 	}

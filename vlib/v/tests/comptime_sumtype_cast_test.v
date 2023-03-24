@@ -10,7 +10,7 @@ fn test_main() {
 }
 
 fn map_from[T](t T) {
-	$if T is $Struct {
+	$if T is $struct {
 		$for field in T.fields {
 			assert Any('string').str() == "Any('string')"
 			assert t.$(field.name).str() == 'true'

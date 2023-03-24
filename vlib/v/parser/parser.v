@@ -674,7 +674,12 @@ fn (mut p Parser) check_name() string {
 	if p.peek_tok.kind == .dot && name in p.imports {
 		p.register_used_import(name)
 	}
-	p.check(.name)
+	match p.tok.kind {
+		.key_struct { p.check(.key_struct) }
+		.key_enum { p.check(.key_enum) }
+		.key_interface { p.check(.key_interface) }
+		else { p.check(.name) }
+	}
 	return name
 }
 
@@ -2551,14 +2556,22 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			}
 		}
 	} else if p.peek_tok.kind == .lpar || is_generic_call || is_generic_cast
-		|| (p.tok.kind == .lsbr && p.peek_tok.kind == .rsbr && p.peek_token(3).kind == .lpar)
-		|| (p.tok.kind == .lsbr && p.peek_tok.kind == .number && p.peek_token(2).kind == .rsbr
-		&& p.peek_token(4).kind == .lpar) {
+		|| (p.tok.kind == .lsbr && p.peek_tok.kind == .rsbr && (p.peek_token(3).kind == .lpar
+		|| p.peek_token(5).kind == .lpar)) || (p.tok.kind == .lsbr && p.peek_tok.kind == .number
+		&& p.peek_token(2).kind == .rsbr && (p.peek_token(4).kind == .lpar
+		|| p.peek_token(6).kind == .lpar)) {
 		// ?[]foo(), ?[1]foo, foo(), foo<int>() or type() cast
 		mut name := if is_array {
 			p.peek_token(if is_fixed_array { 3 } else { 2 }).lit
 		} else {
 			p.tok.lit
+		}
+		if is_fixed_array && p.peek_token(4).kind == .dot {
+			mod = name
+			name = p.peek_token(5).lit
+		} else if is_array && p.peek_token(3).kind == .dot {
+			mod = name
+			name = p.peek_token(4).lit
 		}
 		if mod.len > 0 {
 			name = '${mod}.${name}'
