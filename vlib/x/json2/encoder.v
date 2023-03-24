@@ -132,7 +132,7 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) !
 	} $else $if T is map[string]Any {
 		// weird quirk but val is destructured immediately to Any
 		e.encode_any(val, level, mut wr)!
-	} $else $if T is $Map {
+	} $else $if T is $map {
 		// FIXME - `e.encode_struct` can not encode `map[string]map[string]int` type
 	} $else $if T is []Any {
 		e.encode_any(val, level, mut wr)!
