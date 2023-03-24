@@ -697,7 +697,11 @@ fn (mut g Gen) get_comptime_var_type_from_kind(kind ast.ComptimeVarKind) ast.Typ
 
 fn (mut g Gen) get_comptime_var_type(node ast.Expr) ast.Type {
 	if node is ast.Ident && (node as ast.Ident).obj is ast.Var {
-		return g.get_comptime_var_type_from_kind((node.obj as ast.Var).ct_type_var)
+		if (node.obj as ast.Var).ct_type_var == .generic_param {
+			return node.info.typ
+		} else {
+			return g.get_comptime_var_type_from_kind((node.obj as ast.Var).ct_type_var)
+		}
 	} else if node is ast.ComptimeSelector {
 		key_str := g.get_comptime_selector_key_type(node)
 		if key_str != '' {

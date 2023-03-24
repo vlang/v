@@ -85,8 +85,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		if (node.cond is ast.Ident && c.is_comptime_var(node.cond))
 			|| node.cond is ast.ComptimeSelector {
 			is_comptime = true
-			typ = c.unwrap_generic(c.comptime_fields_default_type)
+			typ = c.unwrap_generic(c.get_comptime_var_type(node.cond))
 		}
+
 		mut sym := c.table.final_sym(typ)
 		if sym.kind != .string {
 			match mut node.cond {
@@ -168,14 +169,17 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
 			}
 		} else {
+			unwrapped_typ := c.unwrap_generic(typ)
+			unwrapped_sym := c.table.sym(unwrapped_typ)
+
 			if sym.kind == .map && !(node.key_var.len > 0 && node.val_var.len > 0) {
 				c.error(
 					'declare a key and a value variable when ranging a map: `for key, val in map {`\n' +
 					'use `_` if you do not need the variable', node.pos)
 			}
 			if node.key_var.len > 0 {
-				key_type := match sym.kind {
-					.map { sym.map_info().key_type }
+				key_type := match unwrapped_sym.kind {
+					.map { unwrapped_sym.map_info().key_type }
 					else { ast.int_type }
 				}
 				node.key_type = key_type

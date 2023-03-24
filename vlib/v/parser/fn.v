@@ -389,6 +389,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				pos: param.pos
 				is_used: true
 				is_arg: true
+				ct_type_var: if param.typ.has_flag(.generic) { .generic_param } else { .no_comptime }
 			})
 		}
 	}

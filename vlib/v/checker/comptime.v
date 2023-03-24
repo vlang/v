@@ -23,6 +23,9 @@ fn (mut c Checker) get_comptime_var_type_from_kind(kind ast.ComptimeVarKind) ast
 [inline]
 fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
 	if node is ast.Ident && (node as ast.Ident).obj is ast.Var {
+		if (node.obj as ast.Var).ct_type_var == .generic_param {
+			return node.obj.typ
+		}
 		return c.get_comptime_var_type_from_kind((node.obj as ast.Var).ct_type_var)
 	} else if node is ast.ComptimeSelector {
 		return c.get_comptime_selector_type(node, ast.void_type)

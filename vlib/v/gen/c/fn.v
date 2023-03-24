@@ -936,7 +936,9 @@ fn (mut g Gen) change_comptime_args(mut node_ ast.CallExpr) map[int]ast.Type {
 		if mut call_arg.expr is ast.Ident {
 			if mut call_arg.expr.obj is ast.Var {
 				node_.args[i].typ = call_arg.expr.obj.typ
-				if call_arg.expr.obj.ct_type_var != .no_comptime {
+				if call_arg.expr.obj.ct_type_var == .generic_param {
+					comptime_args[i] = g.get_comptime_var_type(call_arg.expr)
+				} else if call_arg.expr.obj.ct_type_var != .no_comptime {
 					comptime_args[i] = g.get_comptime_var_type_from_kind(call_arg.expr.obj.ct_type_var)
 				}
 			}
@@ -957,7 +959,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	left_type := g.unwrap_generic(node.left_type)
 	mut unwrapped_rec_type := node.receiver_type
-	mut for_in_any_var_type := ast.void_type
 	mut comptime_args := map[int]ast.Type{}
 	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 { // in generic fn
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
@@ -990,20 +991,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 
-	if g.inside_comptime_for_field {
+	if g.inside_comptime_for_field || (g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0) {
 		mut node_ := unsafe { node }
 		comptime_args = g.change_comptime_args(mut node_)
 	}
-	if g.inside_for_in_any_cond {
-		for call_arg in node.args {
-			if call_arg.expr is ast.Ident {
-				if call_arg.expr.obj is ast.Var {
-					for_in_any_var_type = call_arg.expr.obj.typ
-				}
-			}
-		}
-	}
-
 	mut typ_sym := g.table.sym(unwrapped_rec_type)
 	// non-option alias type that undefined this method (not include `str`) need to use parent type
 	if !left_type.has_flag(.option) && typ_sym.kind == .alias && node.name != 'str'
@@ -1165,23 +1156,21 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 
-	if g.comptime_for_field_type != 0 && g.inside_comptime_for_field && comptime_args.len > 0 {
+	if comptime_args.len > 0 && node.concrete_types.len > 0 {
 		mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
-		arg_sym := g.table.sym(g.comptime_for_field_type)
 		if m := g.table.find_method(g.table.sym(node.left_type), node.name) {
 			for k, v in comptime_args {
+				arg_sym := g.table.sym(v)
 				if m.generic_names.len > 0 && arg_sym.kind == .array
 					&& m.params[k + 1].typ.has_flag(.generic)
 					&& g.table.final_sym(m.params[k + 1].typ).kind == .array {
 					concrete_types[k] = (arg_sym.info as ast.Array).elem_type
 				} else {
-					concrete_types[k] = v
+					concrete_types[k] = g.unwrap_generic(v)
 				}
 			}
 		}
 		name = g.generic_fn_name(concrete_types, name)
-	} else if g.inside_for_in_any_cond && for_in_any_var_type != ast.void_type {
-		name = g.generic_fn_name([for_in_any_var_type], name)
 	} else {
 		concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 		name = g.generic_fn_name(concrete_types, name)
@@ -1420,10 +1409,10 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		if func := g.table.find_fn(node.name) {
 			if func.generic_names.len > 0 {
 				if g.comptime_for_field_type != 0 && g.inside_comptime_for_field
-					&& comptime_args.len > 0 {
+					&& comptime_args.len > 0 && node.concrete_types.len > 0 {
 					mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
-					arg_sym := g.table.sym(g.comptime_for_field_type)
 					for k, v in comptime_args {
+						arg_sym := g.table.sym(v)
 						if arg_sym.kind == .array && func.params[k].typ.has_flag(.generic)
 							&& g.table.sym(func.params[k].typ).kind == .array {
 							concrete_types[k] = (arg_sym.info as ast.Array).elem_type

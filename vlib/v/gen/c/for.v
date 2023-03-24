@@ -134,8 +134,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 
 	if (node.cond is ast.Ident && g.is_comptime_var(node.cond)) || node.cond is ast.ComptimeSelector {
 		is_comptime = true
-		mut unwrapped_typ := g.unwrap_generic(g.comptime_for_field_type)
+		mut unwrapped_typ := g.unwrap_generic(g.get_comptime_var_type(node.cond))
 		mut unwrapped_sym := g.table.sym(unwrapped_typ)
+
 		node.cond_type = unwrapped_typ
 		node.val_type = g.table.value_type(unwrapped_typ)
 		node.scope.update_var_type(node.val_var, node.val_type)
@@ -194,7 +195,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		mut val_sym := g.table.sym(node.val_type)
 
 		if g.is_comptime_var(node.cond) {
-			unwrapped_typ := g.unwrap_generic(g.comptime_for_field_type)
+			unwrapped_typ := g.unwrap_generic(g.get_comptime_var_type(node.cond))
 			val_sym = g.table.sym(unwrapped_typ)
 			node.val_type = g.table.value_type(unwrapped_typ)
 			styp = g.typ(node.val_type)

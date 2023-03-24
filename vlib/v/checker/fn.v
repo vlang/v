@@ -1330,8 +1330,14 @@ fn (mut c Checker) get_comptime_args(node_ ast.CallExpr) map[int]ast.Type {
 	for i, call_arg in node_.args {
 		if call_arg.expr is ast.Ident {
 			if call_arg.expr.obj is ast.Var {
-				if call_arg.expr.obj.ct_type_var != .no_comptime {
-					comptime_args[i] = c.get_comptime_var_type_from_kind(call_arg.expr.obj.ct_type_var)
+				match call_arg.expr.obj.ct_type_var {
+					.key_var, .value_var, .field_var {
+						comptime_args[i] = c.get_comptime_var_type_from_kind(call_arg.expr.obj.ct_type_var)
+					}
+					.generic_param {
+						comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
+					}
+					.no_comptime {}
 				}
 			}
 		} else if call_arg.expr is ast.ComptimeSelector && c.is_comptime_var(call_arg.expr) {
@@ -1534,7 +1540,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				concrete_types << concrete_type
 			}
 		}
-		if c.inside_comptime_for_field && concrete_types.len > 0 {
+		if (c.inside_comptime_for_field || method.generic_names.len > 0) && concrete_types.len > 0 {
 			mut comptime_args := c.get_comptime_args(node)
 			mut comptime_types := concrete_types.clone()
 			for k, v in comptime_args {
@@ -1544,7 +1550,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					&& c.table.final_sym(method.params[k + 1].typ).kind == .array {
 					comptime_types[k] = (arg_sym.info as ast.Array).elem_type
 				} else {
-					comptime_types[k] = v
+					comptime_types[k] = if v.has_flag(.generic) { concrete_types[k] } else { v }
 				}
 			}
 			if comptime_args.len > 0

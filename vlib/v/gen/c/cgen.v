@@ -4048,8 +4048,8 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 }
 
 pub fn (mut g Gen) is_comptime_var(node ast.Expr) bool {
-	return g.inside_comptime_for_field && node is ast.Ident
-		&& (node as ast.Ident).info is ast.IdentVar && ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime
+	return node is ast.Ident
+		&& (node as ast.Ident).info is ast.IdentVar && (node as ast.Ident).obj is ast.Var && ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime
 }
 
 fn (mut g Gen) ident(node ast.Ident) {
