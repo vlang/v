@@ -39,6 +39,10 @@ const quote_bytes = [u8(`"`)]
 const escaped_chars = [(r'\b').bytes(), (r'\f').bytes(), (r'\n').bytes(),
 	(r'\r').bytes(), (r'\t').bytes()]
 
+const curly_open = [u8(`{`)]
+
+const curly_close = [u8(`}`)]
+
 // encode_value encodes a value to the specific writer.
 pub fn (e &Encoder) encode_value[T](val T, mut wr io.Writer) ! {
 	e.encode_value_with_level[T](val, 1, mut wr)!
@@ -83,7 +87,7 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 			wr.write(json2.zero_in_bytes)!
 		}
 		map[string]Any {
-			wr.write([u8(`{`)])!
+			wr.write(json2.curly_open)!
 			mut i := 0
 			for k, v in val {
 				e.encode_newline(level, mut wr)!
@@ -99,7 +103,7 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 				i++
 			}
 			e.encode_newline(level - 1, mut wr)!
-			wr.write([u8(`}`)])!
+			wr.write(json2.curly_close)!
 		}
 		[]Any {
 			wr.write([u8(`[`)])!
@@ -128,6 +132,8 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) !
 	} $else $if T is map[string]Any {
 		// weird quirk but val is destructured immediately to Any
 		e.encode_any(val, level, mut wr)!
+	} $else $if T is $map {
+		// FIXME - `e.encode_struct` can not encode `map[string]map[string]int` type
 	} $else $if T is []Any {
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is Encodable {
@@ -145,7 +151,7 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) !
 }
 
 fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
-	wr.write([u8(`{`)])!
+	wr.write(json2.curly_open)!
 	mut i := 0
 	mut fields_len := 0
 	$for field in U.fields {
@@ -254,6 +260,24 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				// e.encode_array(value, level + 1, mut wr)! // FIXME - error: could not infer generic type `U` in call to `encode_array`
 			} $else $if field.typ is $struct {
 				e.encode_struct(value, level + 1, mut wr)!
+			} $else $if field.is_map {
+				wr.write(json2.curly_open)!
+				mut idx := 0
+				for k, v in value {
+					e.encode_newline(level, mut wr)!
+					e.encode_string(k.str(), mut wr)!
+					wr.write(json2.colon_bytes)!
+					if e.newline != 0 {
+						wr.write(json2.space_bytes)!
+					}
+					e.encode_value_with_level(v, level + 1, mut wr)!
+					if idx < value.len - 1 {
+						wr.write(json2.comma_bytes)!
+					}
+					idx++
+				}
+				e.encode_newline(level, mut wr)!
+				wr.write(json2.curly_close)!
 			} $else $if field.is_enum {
 				// TODO - replace for `field.typ is $enum`
 				wr.write(int(val.$(field.name)).str().bytes())!
@@ -356,7 +380,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 		}
 	}
 	e.encode_newline(level - 1, mut wr)!
-	wr.write([u8(`}`)])!
+	wr.write(json2.curly_close)!
 }
 
 fn (e &Encoder) encode_array[U](val []U, level int, mut wr io.Writer) ! {
