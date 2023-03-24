@@ -2633,11 +2633,29 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				pos := p.tok.pos()
 				args := p.call_args()
 				p.check(.rpar)
+
+				mut or_kind := ast.OrKind.absent
+				mut or_stmts := []ast.Stmt{}
+				mut or_pos := p.tok.pos()
+				if p.tok.kind in [.not, .question] {
+					or_kind = if p.tok.kind == .not { .propagate_result } else { .propagate_option }
+					p.next()
+				}
+				if p.tok.kind == .key_orelse {
+					// `foo() or {}``
+					or_kind = .block
+					or_stmts, or_pos = p.or_block(.with_err_var)
+				}
 				node = ast.CallExpr{
 					left: node
 					args: args
 					pos: pos
 					scope: p.scope
+					or_block: ast.OrExpr{
+						stmts: or_stmts
+						kind: or_kind
+						pos: or_pos
+					}
 				}
 			}
 		}

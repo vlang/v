@@ -677,8 +677,29 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.is_fn_index_call = true
 		g.expr(node.left)
 		g.is_fn_index_call = false
-	} else if node.left is ast.CallExpr && node.name == '' {
-		g.expr(node.left)
+	} else if !g.inside_curry_call && node.left is ast.CallExpr && node.name == '' {
+		if node.or_block.kind == .absent {
+			g.expr(node.left)
+		} else {
+			old_inside_curry_call := g.inside_curry_call
+			g.inside_curry_call = true
+			ret_typ := node.return_type
+
+			line := g.go_before_stmt(0)
+			g.empty_line = true
+
+			tmp_res := g.new_tmp_var()
+			g.write('${g.typ(ret_typ)} ${tmp_res} = ')
+
+			g.last_tmp_call_var << tmp_res
+			g.expr(node.left)
+			g.expr(node)
+
+			g.inside_curry_call = old_inside_curry_call
+			g.write(line)
+			g.write('*(${g.base_type(ret_typ)}*)${tmp_res}.data')
+			return
+		}
 	}
 	old_inside_call := g.inside_call
 	g.inside_call = true
@@ -689,7 +710,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		&& g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt]
 	gen_or := node.or_block.kind != .absent // && !g.is_autofree
 	is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
-	mut cur_line := if is_gen_or_and_assign_rhs || gen_keep_alive { // && !g.is_autofree {
+	mut cur_line := if !g.inside_curry_call && (is_gen_or_and_assign_rhs || gen_keep_alive) { // && !g.is_autofree {
 		// `x := foo() or { ...}`
 		// cut everything that has been generated to prepend option variable creation
 		line := g.go_before_stmt(0)
@@ -699,7 +720,15 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		''
 	}
 	// g.write('/*EE line="$cur_line"*/')
-	tmp_opt := if gen_or || gen_keep_alive { g.new_tmp_var() } else { '' }
+	tmp_opt := if gen_or || gen_keep_alive {
+		if g.inside_curry_call && g.last_tmp_call_var.len > 0 {
+			g.last_tmp_call_var.pop()
+		} else {
+			g.new_tmp_var()
+		}
+	} else {
+		''
+	}
 	if gen_or || gen_keep_alive {
 		mut ret_typ := node.return_type
 		if g.table.sym(ret_typ).kind == .alias {
@@ -717,7 +746,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.writeln('if (${g.infix_left_var_name}) {')
 			g.indent++
 			g.write('${tmp_opt} = ')
-		} else {
+		} else if !g.inside_curry_call {
 			g.write('${styp} ${tmp_opt} = ')
 			if node.left is ast.AnonFn {
 				g.expr(node.left)
@@ -752,7 +781,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		}
 		if unwrapped_typ == ast.void_type {
 			g.write('\n ${cur_line}')
-		} else {
+		} else if !g.inside_curry_call {
 			if !g.inside_const_opt_or_res {
 				g.write('\n ${cur_line} (*(${unwrapped_styp}*)${tmp_opt}.data)')
 			} else {
