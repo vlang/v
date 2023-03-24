@@ -472,7 +472,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 						g.write(')')
 					}
 					.struct_ {
-						if g.table.sym(g.get_expr_type(expr)).name == type_sym.name {
+						if g.get_expr_type(expr).set_nr_muls(0) == node.cond_type.set_nr_muls(0) {
 							g.write('true')
 						} else {
 							ptr_typ := g.equality_fn(node.cond_type)

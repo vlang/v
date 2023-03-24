@@ -195,7 +195,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				_ := c.expr(expr)
 			}
 			if expr is ast.TypeNode && cond_sym.kind == .struct_ {
-				c.error('cannot match a type with itself', branch.pos)
+				c.error('struct instances cannot be matched by type name, they can only be matched to other instances of the same struct type.', branch.pos)
 			}
 			if mut expr is ast.RangeExpr {
 				// Allow for `match enum_value { 4..5 { } }`, even though usually int and enum values,
