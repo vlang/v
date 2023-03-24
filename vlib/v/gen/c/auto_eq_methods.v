@@ -293,9 +293,9 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 	left_elem := g.read_field(left_type, 'element_size', 'a')
 	right_elem := g.read_field(left_type, 'element_size', 'b')
 
-	// if left_type.has_flag(.option) {
-	// 	fn_builder.writeln('\tif (a.state != b.state) return false;')
-	// }
+	if left_type.has_flag(.option) {
+		fn_builder.writeln('\tif (a.state != b.state) return false;')
+	}
 
 	fn_builder.writeln('\tif (${left_len} != ${right_len}) {')
 	fn_builder.writeln('\t\treturn false;')
