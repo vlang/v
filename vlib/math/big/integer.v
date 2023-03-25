@@ -800,6 +800,10 @@ pub fn (a Integer) int() int {
 	if a.signum == 0 {
 		return 0
 	}
+	// Check for minimum value int
+	if a.digits[0] == -2147483648 {
+		return -2147483648
+	}
 	value := int(a.digits[0] & 0x7fffffff)
 	return value * a.signum
 }

@@ -198,6 +198,11 @@ fn test_integer_from_string() {
 		y := big.integer_from_int(int_values[index])
 		assert x == y
 	}
+
+	imin := big.integer_from_string('-2147483648') or {
+		panic('Minimum signed 32-bit int test fails.')
+	}
+	assert imin.int() == -2147483648
 }
 
 fn test_integer_from_powers_of_2() {
@@ -412,7 +417,7 @@ fn test_get_bit() {
 		'0000000000000000000000000000000000000000010000', '1110010', '0001001']
 	for value in values {
 		a := big.integer_from_radix(value, 2) or { panic('Could not read binary') }
-		bits := []bool{len: value.len, init: value[value.len - 1 - it] == `1`}
+		bits := []bool{len: value.len, init: value[value.len - 1 - index] == `1`}
 		for i in 0 .. value.len {
 			assert a.get_bit(i) == bits[i]
 		}
@@ -441,7 +446,7 @@ fn test_bit_len() ? {
 
 	assert big.one_int.lshift(1239).bit_len() == 1240
 
-	mut num := big.integer_from_string('4338476092346017364013796407961305761039463198075691378460917856')?
+	mut num := big.integer_from_string('4338476092346017364013796407961305761039463198075691378460917856')!
 	assert num.bit_len() == 212
 	for num.bit_len() > 0 {
 		num = num.rshift(8)
