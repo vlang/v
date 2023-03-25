@@ -87,6 +87,9 @@ fn (mut p Parser) next_with_err() ! {
 
 // TODO: copied from v.util to avoid the entire module and its functions
 // from being imported. remove later once -skip-unused is enabled by default.
+// skip_bom - skip Byte Order Mark (BOM)
+// The UTF-8 BOM is a sequence of Bytes at the start of a text-stream (EF BB BF or \ufeff)
+// that allows the reader to reliably determine if file is being encoded in UTF-8.
 fn skip_bom(file_content string) string {
 	mut raw_text := file_content
 	// BOM check
@@ -103,6 +106,7 @@ fn skip_bom(file_content string) string {
 	return raw_text
 }
 
+// new_parser - create a instance of Parser{}
 fn new_parser(srce string, convert_type bool) Parser {
 	src := skip_bom(srce)
 	return Parser{
