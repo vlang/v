@@ -194,6 +194,10 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				// ensure that the sub expressions of the branch are actually checked, before anything else:
 				_ := c.expr(expr)
 			}
+			if expr is ast.TypeNode && cond_sym.kind == .struct_ {
+				c.error('struct instances cannot be matched by type name, they can only be matched to other instances of the same struct type',
+					branch.pos)
+			}
 			if mut expr is ast.RangeExpr {
 				// Allow for `match enum_value { 4..5 { } }`, even though usually int and enum values,
 				// are considered incompatible outside unsafe{}, and are not allowed to be compared directly

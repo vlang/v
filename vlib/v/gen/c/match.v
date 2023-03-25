@@ -472,8 +472,10 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 						g.write(')')
 					}
 					.struct_ {
+						derefs_expr := '*'.repeat(g.get_expr_type(expr).nr_muls())
+						derefs_ctype := '*'.repeat(node.cond_type.nr_muls())
 						ptr_typ := g.equality_fn(node.cond_type)
-						g.write('${ptr_typ}_struct_eq(${cond_var}, ')
+						g.write('${ptr_typ}_struct_eq(${derefs_ctype}${cond_var}, ${derefs_expr}')
 						g.expr(expr)
 						g.write(')')
 					}
