@@ -8,10 +8,11 @@ struct Test2 {
 
 type Alias = int
 type AliasStruct = Test2
-type AliasStruct2 = fn()
+type AliasStruct2 = fn ()
+
 type AliasStruct3 = []int
 
-type SumType = int | f64 | AliasStruct2 | Alias
+type SumType = Alias | AliasStruct2 | f64 | int
 
 struct Test {
 mut:
@@ -21,9 +22,11 @@ mut:
 	d ?[]int
 	e ?[]string
 	f ?[]f64
-	g ?fn()
+	g ?fn ()
 	h ?Alias
-	i ?Interface = Test2{a:-1}
+	i ?Interface = Test2{
+		a: -1
+	}
 	j ?AliasStruct
 	k ?AliasStruct2
 	l ?AliasStruct3
@@ -38,11 +41,11 @@ fn test_simple_compare() {
 }
 
 fn test_anon_compare() {
-	z := fn() {}
-	d := fn() {}
+	z := fn () {}
+	d := fn () {}
 	mut a := Test{}
 	mut b := Test{}
-	
+
 	assert a == b
 
 	a.g = z
@@ -55,7 +58,7 @@ fn test_alias_compare() {
 	d := 2
 	mut a := Test{}
 	mut b := Test{}
-	
+
 	assert a == b
 
 	a.h = z
@@ -64,11 +67,19 @@ fn test_alias_compare() {
 }
 
 fn test_iface_compare() {
-	z := Test2{a:-1}
-	d := Test2{a:0}
-	mut a := Test{a:0}
-	mut b := Test{a:0}
-	
+	z := Test2{
+		a: -1
+	}
+	d := Test2{
+		a: 0
+	}
+	mut a := Test{
+		a: 0
+	}
+	mut b := Test{
+		a: 0
+	}
+
 	assert a == b
 
 	a.i = z
