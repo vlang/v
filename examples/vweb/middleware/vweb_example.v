@@ -3,7 +3,6 @@ module main
 import vweb
 
 // for another example see vlib/vweb/tests/middleware_test_server.v
-
 const (
 	http_port = 8080
 )
@@ -28,6 +27,7 @@ fn new_app() &App {
 			'/early':  [middleware_early]
 		}
 	}
+
 	// do stuff with app
 	// ...
 	return app
@@ -95,6 +95,7 @@ fn other_func1(mut ctx vweb.Context) bool {
 
 fn other_func2(mut ctx vweb.Context) bool {
 	println('2')
+
 	// ...
 	return true
 }
@@ -102,6 +103,7 @@ fn other_func2(mut ctx vweb.Context) bool {
 fn middleware_early(mut ctx vweb.Context) bool {
 	println('4')
 	ctx.text(':(')
+
 	// returns false, so the middleware propogation is stopped and the user will see the text ":("
 	return false
 }
