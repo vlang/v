@@ -187,22 +187,27 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 					prev_prev_line = lines[j - 1]
 				}
 				prev_line := lines[j]
+
+				if prev_line.starts_with('//') {
+					if prev_line.starts_with('// ${fn_name} ') {
+						grab = false
+						break
+					} else if prev_line.starts_with('// ${fn_name}')
+						&& !prev_prev_line.starts_with('//') {
+						grab = false
+						clean_line := line.all_before_last('{').trim(' ')
+						vt.warn('The documentation for "${clean_line}" seems incomplete.',
+							lnumber, .doc)
+						break
+					}
+
+					continue
+				}
+
 				if prev_line.contains('}') { // We've looked back to the above scope, stop here
-					break
-				} else if prev_line.starts_with('// ${fn_name} ') {
-					grab = false
-					break
-				} else if prev_line.starts_with('// ${fn_name}')
-					&& !prev_prev_line.starts_with('//') {
-					grab = false
-					clean_line := line.all_before_last('{').trim(' ')
-					vt.warn('The documentation for "${clean_line}" seems incomplete.',
-						lnumber, .doc)
 					break
 				} else if prev_line.starts_with('[') {
 					tags << collect_tags(prev_line)
-					continue
-				} else if prev_line.starts_with('//') { // Single-line comment
 					continue
 				}
 			}
