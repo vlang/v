@@ -28,31 +28,27 @@ fn test_complex_matching002() {
 </resources>
 '
 
-	mut re := regex.regex_opt(r'.*<resources>.+<string name="v_lib_name">([^<]+)') or {
-        panic(err)
-    }
-    
-    start, end := re.match_string(text)
-    if start >= 0  && re.groups.len > 0 {
-    	// check that we have obtained our 'v1' value
-    	assert text#[re.groups[0]..re.groups[1]] == 'v1'
-    	return
-    }
-    assert false
+	mut re := regex.regex_opt(r'.*<resources>.+<string name="v_lib_name">([^<]+)') or { panic(err) }
+
+	start, end := re.match_string(text)
+	if start >= 0 && re.groups.len > 0 {
+		// check that we have obtained our 'v1' value
+		assert text#[re.groups[0]..re.groups[1]] == 'v1'
+		return
+	}
+	assert false
 }
 
 fn test_complex_matching003() {
 	text := 'abcdefgt1234abcd<tag name="mio_tag">value</tag>'
 
-    mut re := regex.regex_opt(r'\w*<tag\s*name\s*="mio_tag">([^<]+)') or {
-        panic(err)
-    }
-    
-    start, end := re.match_string(text)
-    if start >= 0 && re.groups.len > 0  {
-        println("found ${text#[start..end]}")
-        println("group: ${text#[re.groups[0]..re.groups[1]]}")
+	mut re := regex.regex_opt(r'\w*<tag\s*name\s*="mio_tag">([^<]+)') or { panic(err) }
+
+	start, end := re.match_string(text)
+	if start >= 0 && re.groups.len > 0 {
+		println('found ${text#[start..end]}')
+		println('group: ${text#[re.groups[0]..re.groups[1]]}')
 		return
-    }
-    assert false
+	}
+	assert false
 }
