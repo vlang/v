@@ -256,6 +256,7 @@ fn (s Scanner) invalid_token() Token {
 }
 
 // scan returns a token based on the scanner's current position.
+// used to set the next token
 [manualfree]
 fn (mut s Scanner) scan() Token {
 	if s.pos < s.text.len && (s.text[s.pos] == ` ` || s.text[s.pos] in json2.newlines) {

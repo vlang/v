@@ -60,18 +60,20 @@ pub fn (err UnknownTokenError) msg() string {
 
 struct Parser {
 pub mut:
-	scanner      &Scanner = unsafe { nil }
-	p_tok        Token
+	scanner &Scanner = unsafe { nil }
+	// previous token
+	previous_tok Token
 	tok          Token
-	n_tok        Token
+	// next token
+	next_tok     Token
 	n_level      int
 	convert_type bool = true
 }
 
 fn (mut p Parser) next() {
-	p.p_tok = p.tok
-	p.tok = p.n_tok
-	p.n_tok = p.scanner.scan()
+	p.previous_tok = p.tok
+	p.tok = p.next_tok
+	p.next_tok = p.scanner.scan()
 }
 
 fn (mut p Parser) next_with_err() ! {
@@ -117,7 +119,7 @@ fn new_parser(srce string, convert_type bool) Parser {
 	}
 }
 
-// decode decodes provided JSON
+// decode - decodes provided JSON
 pub fn (mut p Parser) decode() !Any {
 	p.next()
 	p.next_with_err()!
@@ -141,7 +143,7 @@ fn (mut p Parser) decode_value() !Any {
 			return p.decode_array()
 		}
 		.lcbr {
-			return p.decode_object()
+			return p.decode_struct()
 		}
 		.int_, .float {
 			tl := p.tok.lit.bytestr()
@@ -213,7 +215,7 @@ fn (mut p Parser) decode_array() !Any {
 	return Any(items)
 }
 
-fn (mut p Parser) decode_object() !Any {
+fn (mut p Parser) decode_struct() !Any {
 	mut fields := map[string]Any{}
 	p.next_with_err()!
 	p.n_level++
