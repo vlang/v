@@ -2255,8 +2255,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					if function.return_type.has_flag(.generic) {
 						generic_names << t.sym(function.return_type).name
 					}
-					mut params := function.params
-					for mut param in params {
+					for mut param in function.params {
 						if param.typ.has_flag(.generic) {
 							if t_typ := t.resolve_generic_to_concrete(param.typ, generic_names,
 								info.concrete_types)
