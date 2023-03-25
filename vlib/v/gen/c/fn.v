@@ -1186,20 +1186,23 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if comptime_args.len > 0 && node.concrete_types.len > 0 {
 		mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 		if m := g.table.find_method(g.table.sym(node.left_type), node.name) {
+			is_method_generic := m.generic_names.len > 0
 			for k, v in comptime_args {
 				unwrapped_v := g.unwrap_generic(v)
 				arg_sym := g.table.sym(unwrapped_v)
-				if m.generic_names.len > 0 && arg_sym.kind == .array
-					&& m.params[k + 1].typ.has_flag(.generic)
-					&& g.table.final_sym(m.params[k + 1].typ).kind == .array {
-					concrete_types[k] = (arg_sym.info as ast.Array).elem_type
-				} else if m.generic_names.len > 0 && arg_sym.kind == .array_fixed
-					&& m.params[k].typ.has_flag(.generic)
-					&& g.table.sym(m.params[k + 1].typ).kind in [.any, .array] {
-					concrete_types[k] = (arg_sym.info as ast.ArrayFixed).elem_type
-				} else {
-					concrete_types[k] = unwrapped_v
+				if is_method_generic {
+					if arg_sym.kind == .array && m.params[k + 1].typ.has_flag(.generic)
+						&& g.table.final_sym(m.params[k + 1].typ).kind == .array {
+						concrete_types[k] = g.unwrap_generic((arg_sym.info as ast.Array).elem_type)
+						continue
+					} else if m.generic_names.len > 0 && arg_sym.kind == .array_fixed
+						&& m.params[k].typ.has_flag(.generic)
+						&& g.table.sym(m.params[k + 1].typ).kind in [.any, .array] {
+						concrete_types[k] = g.unwrap_generic((arg_sym.info as ast.ArrayFixed).elem_type)
+						continue
+					}
 				}
+				concrete_types[k] = unwrapped_v
 			}
 		}
 		name = g.generic_fn_name(concrete_types, name)
