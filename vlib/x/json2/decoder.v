@@ -60,11 +60,9 @@ pub fn (err UnknownTokenError) msg() string {
 
 struct Parser {
 pub mut:
-	scanner &Scanner = unsafe { nil }
-	// previous token
+	scanner      &Scanner = unsafe { nil }
 	previous_tok Token
 	tok          Token
-	// next token
 	next_tok     Token
 	n_level      int
 	convert_type bool = true
