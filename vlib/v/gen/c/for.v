@@ -133,8 +133,13 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	mut is_comptime := false
 
 	if (node.cond is ast.Ident && g.is_comptime_var(node.cond)) || node.cond is ast.ComptimeSelector {
-		is_comptime = true
-		mut unwrapped_typ := g.unwrap_generic(g.get_comptime_var_type(node.cond))
+		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
+		ctyp := g.get_comptime_var_type(node.cond)
+		if ctyp != ast.void_type {
+			unwrapped_typ = g.unwrap_generic(ctyp)
+			is_comptime = true
+		}
+
 		mut unwrapped_sym := g.table.sym(unwrapped_typ)
 
 		node.cond_type = unwrapped_typ
@@ -142,8 +147,11 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		node.scope.update_var_type(node.val_var, node.val_type)
 		node.kind = unwrapped_sym.kind
 
-		g.comptime_for_field_val_type = node.val_type
-		node.scope.update_ct_var_kind(node.val_var, .value_var)
+		if is_comptime {
+			// g.comptime_for_field_val_type = node.val_type
+			g.comptime_var_type_map[node.val_var] = node.val_type
+			node.scope.update_ct_var_kind(node.val_var, .value_var)
+		}
 
 		if node.key_var.len > 0 {
 			key_type := match unwrapped_sym.kind {
@@ -153,8 +161,10 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			node.key_type = key_type
 			node.scope.update_var_type(node.key_var, key_type)
 
-			g.comptime_for_field_key_type = node.key_type
-			node.scope.update_ct_var_kind(node.key_var, .key_var)
+			if is_comptime {
+				g.comptime_var_type_map[node.key_var] = node.key_type
+				node.scope.update_ct_var_kind(node.key_var, .key_var)
+			}
 		}
 	}
 
@@ -194,8 +204,12 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		mut styp := g.typ(node.val_type)
 		mut val_sym := g.table.sym(node.val_type)
 
-		if g.is_comptime_var(node.cond) {
-			unwrapped_typ := g.unwrap_generic(g.get_comptime_var_type(node.cond))
+		if is_comptime && g.is_comptime_var(node.cond) {
+			mut unwrapped_typ := g.unwrap_generic(node.cond_type)
+			ctyp := g.unwrap_generic(g.get_comptime_var_type(node.cond))
+			if ctyp != ast.void_type {
+				unwrapped_typ = ctyp
+			}
 			val_sym = g.table.sym(unwrapped_typ)
 			node.val_type = g.table.value_type(unwrapped_typ)
 			styp = g.typ(node.val_type)

@@ -1330,14 +1330,8 @@ fn (mut c Checker) get_comptime_args(node_ ast.CallExpr) map[int]ast.Type {
 	for i, call_arg in node_.args {
 		if call_arg.expr is ast.Ident {
 			if call_arg.expr.obj is ast.Var {
-				match call_arg.expr.obj.ct_type_var {
-					.key_var, .value_var, .field_var {
-						comptime_args[i] = c.get_comptime_var_type_from_kind(call_arg.expr.obj.ct_type_var)
-					}
-					.generic_param {
-						comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
-					}
-					.no_comptime {}
+				if call_arg.expr.obj.ct_type_var != .no_comptime {
+					comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
 				}
 			}
 		} else if call_arg.expr is ast.ComptimeSelector && c.is_comptime_var(call_arg.expr) {

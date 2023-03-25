@@ -84,8 +84,11 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		mut is_comptime := false
 		if (node.cond is ast.Ident && c.is_comptime_var(node.cond))
 			|| node.cond is ast.ComptimeSelector {
+			ctyp := c.get_comptime_var_type(node.cond)
 			is_comptime = true
-			typ = c.unwrap_generic(c.get_comptime_var_type(node.cond))
+			if ctyp != ast.void_type {
+				typ = ctyp
+			}
 		}
 
 		mut sym := c.table.final_sym(typ)
@@ -156,7 +159,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				node.scope.update_var_type(node.key_var, key_type)
 
 				if is_comptime {
-					c.comptime_fields_key_type = key_type
+					c.comptime_fields_type[node.key_var] = key_type
 					node.scope.update_ct_var_kind(node.key_var, .key_var)
 				}
 			}
@@ -165,12 +168,12 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.scope.update_var_type(node.val_var, value_type)
 
 			if is_comptime {
-				c.comptime_fields_val_type = value_type
+				c.comptime_fields_type[node.val_var] = value_type
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
 			}
 		} else {
-			unwrapped_typ := c.unwrap_generic(typ)
-			unwrapped_sym := c.table.sym(unwrapped_typ)
+			// unwrapped_typ := c.unwrap_generic(typ)
+			// unwrapped_sym := c.table.sym(unwrapped_typ)
 
 			if sym.kind == .map && !(node.key_var.len > 0 && node.val_var.len > 0) {
 				c.error(
@@ -178,15 +181,15 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					'use `_` if you do not need the variable', node.pos)
 			}
 			if node.key_var.len > 0 {
-				key_type := match unwrapped_sym.kind {
-					.map { unwrapped_sym.map_info().key_type }
+				key_type := match sym.kind {
+					.map { sym.map_info().key_type }
 					else { ast.int_type }
 				}
 				node.key_type = key_type
 				node.scope.update_var_type(node.key_var, key_type)
 
 				if is_comptime {
-					c.comptime_fields_key_type = key_type
+					c.comptime_fields_type[node.key_var] = key_type
 					node.scope.update_ct_var_kind(node.key_var, .key_var)
 				}
 			}
@@ -239,7 +242,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.val_type = value_type
 			node.scope.update_var_type(node.val_var, value_type)
 			if is_comptime {
-				c.comptime_fields_val_type = value_type
+				c.comptime_fields_type[node.val_var] = value_type
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
 			}
 		}

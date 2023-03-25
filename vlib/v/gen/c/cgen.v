@@ -203,8 +203,6 @@ mut:
 	comptime_for_field_var           string // $for field in T.fields {}; the variable name
 	comptime_for_field_value         ast.StructField // value of the field variable
 	comptime_for_field_type          ast.Type        // type of the field variable inferred from `$if field.typ is T {}`
-	comptime_for_field_key_type      ast.Type        // type of key on comptime for on map field
-	comptime_for_field_val_type      ast.Type        // type of value on comptime for on map field
 	comptime_enum_field_value        string // value of enum name
 	comptime_var_type_map            map[string]ast.Type
 	comptime_values_stack            []CurrentComptimeValues // stores the values from the above on each $for loop, to make nesting them easier

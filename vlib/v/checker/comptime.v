@@ -11,22 +11,22 @@ import v.pkgconfig
 import v.checker.constants
 
 [inline]
-fn (mut c Checker) get_comptime_var_type_from_kind(kind ast.ComptimeVarKind) ast.Type {
-	return match kind {
-		.key_var { c.comptime_fields_key_type }
-		.value_var { c.comptime_fields_val_type }
-		.field_var { c.comptime_fields_default_type }
-		else { ast.void_type }
-	}
-}
-
-[inline]
 fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
 	if node is ast.Ident && (node as ast.Ident).obj is ast.Var {
-		if (node.obj as ast.Var).ct_type_var == .generic_param {
-			return node.obj.typ
+		return match (node.obj as ast.Var).ct_type_var {
+			.generic_param {
+				c.comptime_fields_type[node.name] or { node.obj.typ }
+			}
+			.key_var, .value_var {
+				c.comptime_fields_type[node.name] or { ast.void_type }
+			}
+			.field_var {
+				c.comptime_fields_default_type
+			}
+			else {
+				ast.void_type
+			}
 		}
-		return c.get_comptime_var_type_from_kind((node.obj as ast.Var).ct_type_var)
 	} else if node is ast.ComptimeSelector {
 		return c.get_comptime_selector_type(node, ast.void_type)
 	} else if node is ast.SelectorExpr && c.is_comptime_selector_type(node as ast.SelectorExpr) {
