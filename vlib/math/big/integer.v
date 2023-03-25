@@ -801,7 +801,7 @@ pub fn (a Integer) int() int {
 		return 0
 	}
 	// Check for minimum value int
-	if a.digits[0] == -2147483648 {
+	if a.digits[0] == u32(-2147483648) {
 		return -2147483648
 	}
 	value := int(a.digits[0] & 0x7fffffff)
