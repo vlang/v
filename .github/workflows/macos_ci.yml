@@ -23,10 +23,10 @@ jobs:
       VFLAGS: -cc clang
       PKG_CONFIG_PATH: /usr/local/opt/pkgconfig:/usr/local/opt/libpq/lib/pkgconfig:/usr/local/opt/openssl@3/lib/pkgconfig:/opt/homebrew/lib/pkgconfig:/opt/homebrew/opt/libpq/lib/pkgconfig:/opt/homebrew/opt/openssl@3/lib/pkgconfig
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
-          node-version: 12.x
+          node-version: 16
       - name: Install dependencies
         run: |
           echo "PKG_CONFIG_PATH is '$PKG_CONFIG_PATH'"
@@ -44,7 +44,7 @@ jobs:
       - name: Test symlink
         run: ./v symlink
       - name: Build vpm
-        run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
+        run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . || ../v cmd/vpm && cd ..
       #    - name: Set up pg database
       #      run: |
       #        pg_ctl -D /usr/local/var/postgres -l /usr/local/var/postgres/server.log start

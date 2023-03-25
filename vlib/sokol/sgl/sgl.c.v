@@ -107,6 +107,11 @@ pub fn scissor_rect(x int, y int, w int, h int, origin_top_left bool) {
 }
 
 [inline]
+pub fn scissor_rectf(x f32, y f32, w f32, h f32, origin_top_left bool) {
+	C.sgl_scissor_rectf(x, y, w, h, origin_top_left)
+}
+
+[inline]
 pub fn enable_texture() {
 	C.sgl_enable_texture()
 }

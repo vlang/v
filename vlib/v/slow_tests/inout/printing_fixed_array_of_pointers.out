@@ -53,8 +53,8 @@ StructOfFixedArraysOfListeners{
 [&0, &0]
 [&&0, &&0]
 -----------------------------------------------------
-[EventListener{
+[&EventListener{
     x: 123
-}, EventListener{
+}, &EventListener{
     x: 0
 }]

@@ -14,7 +14,13 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 	c.expr(node.cond)
 	if node.has_inc {
 		if node.inc is ast.AssignStmt {
-			for right in node.inc.right {
+			assign := node.inc
+
+			if assign.op == .decl_assign {
+				c.error('for loop post statement cannot be a variable declaration', assign.pos)
+			}
+
+			for right in assign.right {
 				if right is ast.CallExpr {
 					if right.or_block.stmts.len > 0 {
 						c.error('options are not allowed in `for statement increment` (yet)',
@@ -29,15 +35,6 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 	c.stmts(node.stmts)
 	c.loop_label = prev_loop_label
 	c.in_for_count--
-}
-
-fn (mut c Checker) get_compselector_type_from_selector_name(node ast.ComptimeSelector) (bool, ast.Type) {
-	if c.inside_comptime_for_field && node.field_expr is ast.SelectorExpr
-		&& (node.field_expr as ast.SelectorExpr).expr.str() in c.comptime_fields_type
-		&& (node.field_expr as ast.SelectorExpr).field_name == 'name' {
-		return true, c.unwrap_generic(c.comptime_fields_default_type)
-	}
-	return false, ast.void_type
 }
 
 fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
@@ -84,6 +81,12 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		node.high_type = high_type
 		node.scope.update_var_type(node.val_var, node.val_type)
 	} else {
+		mut is_comptime := false
+		if (node.cond is ast.Ident && c.is_comptime_var(node.cond))
+			|| node.cond is ast.ComptimeSelector {
+			is_comptime = true
+			typ = c.unwrap_generic(c.comptime_fields_default_type)
+		}
 		mut sym := c.table.final_sym(typ)
 		if sym.kind != .string {
 			match mut node.cond {
@@ -91,10 +94,10 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					node.val_is_ref = node.cond.op == .amp
 				}
 				ast.ComptimeSelector {
-					found, selector_type := c.get_compselector_type_from_selector_name(node.cond)
-					if found {
-						sym = c.table.final_sym(selector_type)
-						typ = selector_type
+					comptime_typ := c.get_comptime_selector_type(node.cond, ast.void_type)
+					if comptime_typ != ast.void_type {
+						sym = c.table.final_sym(comptime_typ)
+						typ = comptime_typ
 					}
 				}
 				ast.Ident {
@@ -107,6 +110,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 				else {}
 			}
+		} else if node.val_is_mut {
+			c.error('string type is immutable, it cannot be changed', node.pos)
+			return
 		}
 		if sym.kind == .struct_ {
 			// iterators
@@ -115,7 +121,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				return
 			}
 			if !next_fn.return_type.has_flag(.option) {
-				c.error('iterator method `next()` must return an option', node.cond.pos())
+				c.error('iterator method `next()` must return an Option', node.cond.pos())
 			}
 			return_sym := c.table.sym(next_fn.return_type)
 			if return_sym.kind == .multi_return {
@@ -133,8 +139,6 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.kind = sym.kind
 			node.val_type = val_type
 			node.scope.update_var_type(node.val_var, val_type)
-		} else if sym.kind == .string && node.val_is_mut {
-			c.error('string type is immutable, it cannot be changed', node.pos)
 		} else if sym.kind == .any {
 			node.cond_type = typ
 			node.kind = sym.kind
@@ -149,13 +153,20 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 				node.key_type = key_type
 				node.scope.update_var_type(node.key_var, key_type)
+
+				if is_comptime {
+					c.comptime_fields_key_type = key_type
+					node.scope.update_ct_var_kind(node.key_var, .key_var)
+				}
 			}
 
 			value_type := c.table.value_type(unwrapped_typ)
 			node.scope.update_var_type(node.val_var, value_type)
 
-			c.inside_for_in_any_cond = true
-			c.for_in_any_val_type = value_type
+			if is_comptime {
+				c.comptime_fields_val_type = value_type
+				node.scope.update_ct_var_kind(node.val_var, .value_var)
+			}
 		} else {
 			if sym.kind == .map && !(node.key_var.len > 0 && node.val_var.len > 0) {
 				c.error(
@@ -169,6 +180,11 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 				node.key_type = key_type
 				node.scope.update_var_type(node.key_var, key_type)
+
+				if is_comptime {
+					c.comptime_fields_key_type = key_type
+					node.scope.update_ct_var_kind(node.key_var, .key_var)
+				}
 			}
 			mut value_type := c.table.value_type(typ)
 			if sym.kind == .string {
@@ -197,12 +213,15 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 						c.error('map literal is immutable, it cannot be changed', node.cond.pos)
 					}
 					ast.SelectorExpr {
-						root_ident := node.cond.root_ident() or { node.cond.expr as ast.Ident }
-						if root_ident.kind != .unresolved {
-							if !(root_ident.obj as ast.Var).is_mut {
-								sym2 := c.table.sym(root_ident.obj.typ)
-								c.error('field `${sym2.name}.${node.cond.field_name}` is immutable, it cannot be changed',
-									node.cond.pos)
+						if root_ident := node.cond.root_ident() {
+							if root_ident.kind != .unresolved {
+								if var := node.scope.find_var(root_ident.name) {
+									if !var.is_mut {
+										sym2 := c.table.sym(root_ident.obj.typ)
+										c.error('field `${sym2.name}.${node.cond.field_name}` is immutable, it cannot be changed',
+											node.cond.pos)
+									}
+								}
 							}
 						}
 					}
@@ -215,13 +234,15 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.kind = sym.kind
 			node.val_type = value_type
 			node.scope.update_var_type(node.val_var, value_type)
+			if is_comptime {
+				c.comptime_fields_val_type = value_type
+				node.scope.update_ct_var_kind(node.val_var, .value_var)
+			}
 		}
 	}
 	c.check_loop_label(node.label, node.pos)
 	c.stmts(node.stmts)
 	c.loop_label = prev_loop_label
-	c.inside_for_in_any_cond = false
-	c.for_in_any_val_type = 0
 	c.in_for_count--
 }
 

@@ -1,4 +1,4 @@
-vlib/v/checker/tests/wrong_propagate_ret_type.vv:10:17: error: to propagate the option call, `opt_call` must return an option
+vlib/v/checker/tests/wrong_propagate_ret_type.vv:10:17: error: to propagate the Option call, `opt_call` must return an Option
     8 |
     9 | fn opt_call() int {
    10 |     a := ret_none()?
@@ -12,7 +12,7 @@ Details: vlib/v/checker/tests/wrong_propagate_ret_type.vv:9:15: details: prepend
       |               ~~~
    10 |     a := ret_none()?
    11 |     return a
-vlib/v/checker/tests/wrong_propagate_ret_type.vv:15:17: error: to propagate the result call, `res_call` must return a result
+vlib/v/checker/tests/wrong_propagate_ret_type.vv:15:17: error: to propagate the Result call, `res_call` must return a Result
    13 |
    14 | fn res_call() bool {
    15 |     a := ret_bool()!

@@ -131,7 +131,7 @@ fn (mut runner TeamcityTestRunner) fn_fail() {
 		 |type='comparisonFailure'
 		 |actual='${actual}'
 		 |expected='${expected}'
-		 |message='${message}'
+		 |message='${runner.prepare_value(message)}'
 		 |]".strip_margin())
 	println('\n')
 }

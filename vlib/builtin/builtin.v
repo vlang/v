@@ -107,6 +107,12 @@ pub:
 	typ         int
 }
 
+pub struct EnumData {
+pub:
+	name  string
+	value i64
+}
+
 // FieldData holds information about a field. Fields reside on structs.
 pub struct FieldData {
 pub:

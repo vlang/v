@@ -1,6 +1,0 @@
-vlib/v/checker/tests/aliased_option_fn_call_err.vv:8:10: error: foo() returns an option, so it should have either an `or {}` block, or `?` at the end
-    6 |
-    7 | fn main() {
-    8 |     println(foo())
-      |             ~~~~~
-    9 | }

@@ -36,6 +36,7 @@ pub enum Language {
 	v
 	c
 	js
+	wasm
 	amd64 // aka x86_64
 	i386
 	arm64 // 64-bit arm
@@ -93,6 +94,7 @@ pub mut:
 	kind          Kind
 	name          string // the internal & source name of the type, i.e. `[5]int`.
 	cname         string // the name with no dots for use in the generated C code
+	rname         string // the raw name
 	methods       []Fn
 	generic_types []Type
 	mod           string
@@ -887,6 +889,7 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 		.placeholder, .void, .none_, .generic_inst {}
 		.voidptr, .byteptr, .charptr, .function, .usize, .isize, .any, .thread, .chan {
 			size = t.pointer_size
+			align = t.pointer_size
 		}
 		.i8, .u8, .char, .bool {
 			size = 1
@@ -1075,6 +1078,7 @@ pub:
 	is_flag          bool
 	is_multi_allowed bool
 	uses_exprs       bool
+	typ              Type
 }
 
 [minify]
@@ -1488,14 +1492,14 @@ pub fn (t &TypeSymbol) symbol_name_except_generic() string {
 }
 
 pub fn (t &TypeSymbol) embed_name() string {
-	// main.Abc[int] => Abc[int]
-	mut embed_name := t.name.split('.').last()
-	// remove generic part from name
-	// Abc[int] => Abc
-	if embed_name.contains('[') {
-		embed_name = embed_name.split('[')[0]
+	if t.name.contains('[') {
+		// Abc[int] => Abc
+		// main.Abc[main.Enum] => Abc
+		return t.name.split('[')[0].split('.').last()
+	} else {
+		// main.Abc => Abc
+		return t.name.split('.').last()
 	}
-	return embed_name
 }
 
 pub fn (t &TypeSymbol) has_method(name string) bool {
@@ -1616,6 +1620,12 @@ pub fn (t &TypeSymbol) find_field(name string) ?StructField {
 		SumType { return t.info.find_field(name) }
 		else { return none }
 	}
+}
+
+pub fn (t &TypeSymbol) has_field(name string) bool {
+	t.find_field(name) or { return false }
+
+	return true
 }
 
 fn (a &Aggregate) find_field(name string) ?StructField {

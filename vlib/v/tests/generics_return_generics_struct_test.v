@@ -128,7 +128,7 @@ fn test_generics_return_generic_struct_from_fn() {
 struct ListNode[T] {
 pub mut:
 	val  T
-	next &ListNode[T] = 0
+	next &ListNode[T] = unsafe { nil }
 }
 
 fn (mut node ListNode[T]) test() &ListNode[T] {

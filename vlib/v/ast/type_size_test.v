@@ -28,11 +28,11 @@ struct T08 {
 }
 
 fn test_type_size() {
-	mut pref := pref.new_preferences()
+	mut pref_ := pref.new_preferences()
 	$if x64 {
-		pref.m64 = true
+		pref_.m64 = true
 	}
-	mut b := builder.new_builder(pref)
+	mut b := builder.new_builder(pref_)
 	mut files := b.get_builtin_files()
 	b.set_module_lookup_paths()
 	parser.parse_files(files, b.table, b.pref)

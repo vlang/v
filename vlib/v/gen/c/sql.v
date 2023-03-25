@@ -12,16 +12,12 @@ enum SqlExprSide {
 }
 
 fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
-	conn := g.new_tmp_var()
-	g.writeln('')
-	g.writeln('// orm')
-	g.write('orm__Connection ${conn} = (orm__Connection){._')
-	db_expr_ctype_name := g.typ(node.db_expr_type)
-	g.write('${db_expr_ctype_name} = &')
-	g.expr(node.db_expr)
-	g.writeln(', ._typ = _orm__Connection_${db_expr_ctype_name}_index};')
+	connection_var_name := g.new_tmp_var()
+
+	g.write_orm_connection_init(connection_var_name, &node.db_expr)
+
 	for line in node.lines {
-		g.sql_stmt_line(line, conn, node.or_expr)
+		g.sql_stmt_line(line, connection_var_name, node.or_expr)
 	}
 }
 
@@ -156,7 +152,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 
 	for sub in subs {
 		g.sql_stmt_line(sub, expr, or_expr)
-		g.writeln('array_push(&${last_ids_arr}, _MOV((orm__Primitive[]){orm__Connection_name_table[${expr}._typ]._method_last_id(${expr}._object)}));')
+		g.writeln('array_push(&${last_ids_arr}, _MOV((orm__Primitive[]){orm__int_to_primitive(orm__Connection_name_table[${expr}._typ]._method_last_id(${expr}._object))}));')
 	}
 
 	g.write('${result_name}_void ${res} = orm__Connection_name_table[${expr}._typ]._method_')
@@ -173,6 +169,16 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 		g.write('NULL')
 	}
 	g.write('),')
+
+	mut member_access_type := '.'
+
+	if node.scope != unsafe { nil } {
+		inserting_object := node.scope.find(node.object_var_name) or { verror(err.str()) }
+
+		if inserting_object.typ.is_ptr() {
+			member_access_type = '->'
+		}
+	}
 
 	g.write('.data = new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(orm__Primitive),')
 	if fields.len > 0 {
@@ -193,7 +199,8 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 			if typ == 'time__Time' {
 				typ = 'time'
 			}
-			g.write('orm__${typ}_to_primitive(${node.object_var_name}.${f.name}),')
+
+			g.write('orm__${typ}_to_primitive(${node.object_var_name}${member_access_type}${c_name(f.name)}),')
 		}
 		g.write('})')
 	} else {
@@ -207,15 +214,16 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 
 	if arrs.len > 0 {
 		mut id_name := g.new_tmp_var()
-		g.writeln('orm__Primitive ${id_name} = orm__Connection_name_table[${expr}._typ]._method_last_id(${expr}._object);')
+		g.writeln('orm__Primitive ${id_name} = orm__int_to_primitive(orm__Connection_name_table[${expr}._typ]._method_last_id(${expr}._object));')
 		for i, mut arr in arrs {
+			c_field_name := c_name(field_names[i])
 			idx := g.new_tmp_var()
-			g.writeln('for (int ${idx} = 0; ${idx} < ${arr.object_var_name}.${field_names[i]}.len; ${idx}++) {')
+			g.writeln('for (int ${idx} = 0; ${idx} < ${arr.object_var_name}${member_access_type}${c_field_name}.len; ${idx}++) {')
 			last_ids := g.new_tmp_var()
 			res_ := g.new_tmp_var()
 			tmp_var := g.new_tmp_var()
 			ctyp := g.typ(arr.table_expr.typ)
-			g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)array_get(${arr.object_var_name}.${field_names[i]}, ${idx}));')
+			g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)array_get(${arr.object_var_name}${member_access_type}${c_field_name}, ${idx}));')
 			arr.object_var_name = tmp_var
 			mut fff := []ast.StructField{}
 			for f in arr.fields {
@@ -286,6 +294,9 @@ fn (mut g Gen) sql_expr_to_orm_primitive(expr ast.Expr) {
 		ast.StringLiteral {
 			g.sql_write_orm_primitive(ast.string_type, expr)
 		}
+		ast.StringInterLiteral {
+			g.sql_write_orm_primitive(ast.string_type, expr)
+		}
 		ast.IntegerLiteral {
 			g.sql_write_orm_primitive(ast.int_type, expr)
 		}
@@ -299,9 +310,12 @@ fn (mut g Gen) sql_expr_to_orm_primitive(expr ast.Expr) {
 		ast.SelectorExpr {
 			g.sql_write_orm_primitive(expr.typ, expr)
 		}
+		ast.CallExpr {
+			g.sql_write_orm_primitive(expr.return_type, expr)
+		}
 		else {
 			eprintln(expr)
-			verror('Unknown expr')
+			verror('V ORM: ${expr.type_name()} is not supported')
 		}
 	}
 }
@@ -320,6 +334,7 @@ fn (mut g Gen) sql_write_orm_primitive(t ast.Type, expr ast.Expr) {
 	if typ == 'orm__InfixType' {
 		typ = 'infix'
 	}
+
 	g.write('orm__${typ}_to_primitive(')
 	if expr is ast.InfixExpr {
 		g.write('(orm__InfixType){')
@@ -345,6 +360,8 @@ fn (mut g Gen) sql_write_orm_primitive(t ast.Type, expr ast.Expr) {
 		g.write('.right = ')
 		g.sql_expr_to_orm_primitive(expr.right)
 		g.write('}')
+	} else if expr is ast.CallExpr {
+		g.call_expr(expr)
 	} else {
 		g.expr(expr)
 	}
@@ -413,6 +430,9 @@ fn (mut g Gen) sql_where_data(expr ast.Expr, mut fields []string, mut parenthese
 		ast.StringLiteral {
 			data << expr
 		}
+		ast.StringInterLiteral {
+			data << expr
+		}
 		ast.IntegerLiteral {
 			data << expr
 		}
@@ -420,6 +440,9 @@ fn (mut g Gen) sql_where_data(expr ast.Expr, mut fields []string, mut parenthese
 			data << expr
 		}
 		ast.BoolLiteral {
+			data << expr
+		}
+		ast.CallExpr {
 			data << expr
 		}
 		else {}
@@ -505,18 +528,12 @@ fn (mut g Gen) sql_gen_where_data(where_expr ast.Expr) {
 
 fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	left := g.go_before_stmt(0)
-	conn := g.new_tmp_var()
+	connection_var_name := g.new_tmp_var()
 	g.writeln('')
-	g.writeln('// orm')
-	g.write('orm__Connection ${conn} = (orm__Connection){._')
-	db_expr_type := g.get_db_type(node.db_expr) or {
-		verror('sql orm error - unknown db type for ${node.db_expr}')
-	}
-	db_expr_ctype_name := g.typ(db_expr_type)
-	g.write('${db_expr_ctype_name} = &')
-	g.expr(node.db_expr)
-	g.writeln(', ._typ = _orm__Connection_${db_expr_ctype_name}_index};')
-	g.sql_select(node, conn, left, node.or_expr)
+
+	g.write_orm_connection_init(connection_var_name, &node.db_expr)
+
+	g.sql_select(node, connection_var_name, left, node.or_expr)
 }
 
 fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr ast.OrExpr) {
@@ -707,7 +724,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 				where_expr.right = ident
 				sub.where_expr = where_expr
 
-				g.sql_select(sub, expr, '${tmp}.${field.name} = ', or_expr)
+				g.sql_select(sub, expr, '${tmp}.${c_name(field.name)} = ', or_expr)
 			} else if sym.kind == .array {
 				mut fkey := ''
 				for attr in field.attrs {
@@ -759,10 +776,10 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 					where_expr: where_expr
 				}
 
-				g.sql_select(arr, expr, '${tmp}.${field.name} = ', or_expr)
+				g.sql_select(arr, expr, '${tmp}.${c_name(field.name)} = ', or_expr)
 			} else {
 				mut typ := sym.cname
-				g.writeln('${tmp}.${field.name} = *(${sel}._${typ});')
+				g.writeln('${tmp}.${c_name(field.name)} = *(${sel}._${typ});')
 			}
 		}
 		g.indent--
@@ -857,4 +874,25 @@ fn (mut g Gen) write_error_handling_for_orm_result(expr_pos &token.Pos, result_v
 	}
 
 	g.writeln('}')
+}
+
+fn (mut g Gen) write_orm_connection_init(connection_var_name string, db_expr &ast.Expr) {
+	db_expr_type := g.get_db_type(db_expr) or { verror('V ORM: unknown db type for ${db_expr}') }
+
+	mut db_ctype_name := g.typ(db_expr_type)
+	is_pointer := db_ctype_name.ends_with('*')
+	reference_sign := if is_pointer { '' } else { '&' }
+	db_ctype_name = db_ctype_name.trim_right('*')
+
+	g.writeln('// orm')
+	g.write('orm__Connection ${connection_var_name} = ')
+
+	if db_ctype_name == 'orm__Connection' {
+		g.expr(db_expr)
+		g.writeln(';')
+	} else {
+		g.write('(orm__Connection){._${db_ctype_name} = ${reference_sign}')
+		g.expr(db_expr)
+		g.writeln(', ._typ = _orm__Connection_${db_ctype_name}_index};')
+	}
 }

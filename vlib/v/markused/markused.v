@@ -7,7 +7,7 @@ import v.util
 import v.pref
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively
-pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.File) {
+pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.File) {
 	mut all_fns, all_consts, all_globals := all_fn_const_and_global(ast_files)
 	util.timing_start(@METHOD)
 	defer {
@@ -20,6 +20,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'str_intp',
 		'format_sb',
 		'__new_array_with_default',
+		'__new_array_with_multi_default',
 		'__new_array_with_array_default',
 		'init_global_allocator' /* needed for linux_bare and wasm_bare */,
 		'v_realloc' /* needed for _STR */,
@@ -126,7 +127,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'v.embed_file.find_index_entry_by_path',
 	]
 
-	if pref.is_bare {
+	if pref_.is_bare {
 		all_fn_root_names << [
 			'strlen',
 			'memcmp',
@@ -137,7 +138,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		]
 	}
 
-	is_noscan_whitelisted := pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt]
+	is_noscan_whitelisted := pref_.gc_mode in [.boehm_full_opt, .boehm_incr_opt]
 
 	for k, mut mfn in all_fns {
 		$if trace_skip_unused_all_fns ? {
@@ -186,7 +187,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			all_fn_root_names << k
 			continue
 		}
-		if pref.is_prof {
+		if pref_.is_prof {
 			if k.starts_with('time.vpc_now') || k.starts_with('v.profile.') {
 				// needed for -profile
 				all_fn_root_names << k
@@ -194,6 +195,11 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			}
 		}
 
+		if k.ends_with('before_request') {
+			// TODO: add a more specific check for the .before_request() method in vweb apps
+			all_fn_root_names << k
+			continue
+		}
 		if method_receiver_typename == '&sync.Channel' {
 			all_fn_root_names << k
 			continue
@@ -210,7 +216,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			continue
 		}
 		// testing framework:
-		if pref.is_test {
+		if pref_.is_test {
 			if k.starts_with('test_') || k.contains('.test_') {
 				all_fn_root_names << k
 				continue
@@ -223,7 +229,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		}
 		// public/exported functions can not be skipped,
 		// especially when producing a shared library:
-		if mfn.is_pub && pref.is_shared {
+		if mfn.is_pub && pref_.is_shared {
 			all_fn_root_names << k
 			continue
 		}
@@ -232,19 +238,19 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			all_fn_root_names << k
 			continue
 		}
-		if pref.prealloc && k.starts_with('prealloc_') {
+		if pref_.prealloc && k.starts_with('prealloc_') {
 			all_fn_root_names << k
 			continue
 		}
 	}
 
 	// handle assertions and testing framework callbacks:
-	if pref.is_debug {
+	if pref_.is_debug {
 		all_fn_root_names << 'panic_debug'
 	}
 	all_fn_root_names << 'panic_option_not_set'
 	all_fn_root_names << 'panic_result_not_set'
-	if pref.is_test {
+	if pref_.is_test {
 		all_fn_root_names << 'main.cb_assertion_ok'
 		all_fn_root_names << 'main.cb_assertion_failed'
 		if benched_tests_sym := table.find_sym('main.BenchedTests') {
@@ -333,7 +339,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	}
 
 	// handle -live main programs:
-	if pref.is_livemain {
+	if pref_.is_livemain {
 		all_fn_root_names << 'v.live.executable.start_reloader'
 		all_fn_root_names << 'v.live.executable.new_live_reload_info'
 	}
@@ -344,7 +350,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		all_fns: all_fns
 		all_consts: all_consts
 		all_globals: all_globals
-		pref: pref
+		pref: pref_
 	}
 	// println( all_fns.keys() )
 	walker.mark_markused_fns() // tagged with `[markused]`
@@ -367,7 +373,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 				|| k.starts_with('map_') {
 				walker.fn_decl(mut mfn)
 			}
-			if pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+			if pref_.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
 				if k in ['new_map_noscan_key', 'new_map_noscan_value', 'new_map_noscan_key_value',
 					'new_map_init_noscan_key', 'new_map_init_noscan_value',
 					'new_map_init_noscan_key_value'] {
@@ -397,10 +403,10 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	}
 
 	for kcon, con in all_consts {
-		if pref.is_shared && con.is_pub {
+		if pref_.is_shared && con.is_pub {
 			walker.mark_const_as_used(kcon)
 		}
-		if !pref.is_shared && con.is_pub && con.name.starts_with('main.') {
+		if !pref_.is_shared && con.is_pub && con.name.starts_with('main.') {
 			walker.mark_const_as_used(kcon)
 		}
 	}

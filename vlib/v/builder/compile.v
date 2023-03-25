@@ -10,10 +10,10 @@ import v.checker
 
 pub type FnBackend = fn (mut b Builder)
 
-pub fn compile(command string, pref &pref.Preferences, backend_cb FnBackend) {
-	check_if_output_folder_is_writable(pref)
+pub fn compile(command string, pref_ &pref.Preferences, backend_cb FnBackend) {
+	check_if_output_folder_is_writable(pref_)
 	// Construct the V object from command line arguments
-	mut b := new_builder(pref)
+	mut b := new_builder(pref_)
 	if b.should_rebuild() {
 		b.rebuild(backend_cb)
 	}
@@ -23,12 +23,12 @@ pub fn compile(command string, pref &pref.Preferences, backend_cb FnBackend) {
 	b.run_compiled_executable_and_exit()
 }
 
-fn check_if_output_folder_is_writable(pref &pref.Preferences) {
-	odir := os.dir(pref.out_name)
+fn check_if_output_folder_is_writable(pref_ &pref.Preferences) {
+	odir := os.dir(pref_.out_name)
 	// When pref.out_name is just the name of an executable, i.e. `./v -o executable main.v`
 	// without a folder component, just use the current folder instead:
 	mut output_folder := odir
-	if odir.len == pref.out_name.len {
+	if odir.len == pref_.out_name.len {
 		output_folder = os.getwd()
 	}
 	os.ensure_folder_is_writable(output_folder) or {
@@ -197,6 +197,16 @@ pub fn (v Builder) get_builtin_files() []string {
 			if v.pref.backend.is_js() {
 				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
 					'js'))
+			} else if v.pref.backend == .wasm {
+				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
+					'wasm'))
+				if v.pref.os == .browser {
+					builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
+						'wasm', 'browser'))
+				} else {
+					builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
+						'wasm', 'wasi'))
+				}
 			} else {
 				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin'))
 			}

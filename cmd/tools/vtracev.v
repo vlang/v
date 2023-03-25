@@ -1,10 +1,9 @@
 module main
 
 import os
-import v.pref
 
 fn main() {
-	vexe := pref.vexe_path()
+	vexe := os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 	vroot := os.dir(vexe)
 	os.chdir(vroot)!
 	os.setenv('VCOLORS', 'always', true)

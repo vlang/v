@@ -11,7 +11,7 @@ const (
 	bufsize              = 1536
 )
 
-// FetchConfig holds configurations of fetch
+// FetchConfig holds configuration data for the fetch function.
 pub struct FetchConfig {
 pub mut:
 	url        string
@@ -31,7 +31,9 @@ pub mut:
 	allow_redirect         bool = true // whether to allow redirect
 }
 
-pub fn new_request(method Method, url_ string, data string) ?Request {
+// new_request creates a new Request given the request `method`, `url_`, and
+// `data`.
+pub fn new_request(method Method, url_ string, data string) Request {
 	url := if method == .get && !url_.contains('?') { url_ + '?' + data } else { url_ }
 	// println('new req() method=$method url="$url" dta="$data"')
 	return Request{
@@ -46,12 +48,12 @@ pub fn new_request(method Method, url_ string, data string) ?Request {
 	}
 }
 
-// get sends a GET HTTP request to the URL
+// get sends a GET HTTP request to the give `url`.
 pub fn get(url string) !Response {
 	return fetch(method: .get, url: url)
 }
 
-// post sends a POST HTTP request to the URL with a string data
+// post sends the string `data` as an HTTP POST request to the given `url`.
 pub fn post(url string, data string) !Response {
 	return fetch(
 		method: .post
@@ -61,7 +63,7 @@ pub fn post(url string, data string) !Response {
 	)
 }
 
-// post_json sends a POST HTTP request to the URL with a JSON data
+// post_json sends the JSON `data` as an HTTP POST request to the given `url`.
 pub fn post_json(url string, data string) !Response {
 	return fetch(
 		method: .post
@@ -71,7 +73,8 @@ pub fn post_json(url string, data string) !Response {
 	)
 }
 
-// post_form sends a POST HTTP request to the URL with X-WWW-FORM-URLENCODED data
+// post_form sends the map `data` as X-WWW-FORM-URLENCODED data to an HTTP POST request
+// to the given `url`.
 pub fn post_form(url string, data map[string]string) !Response {
 	return fetch(
 		method: .post
@@ -89,7 +92,8 @@ pub mut:
 	header Header
 }
 
-// post_multipart_form sends a POST HTTP request to the URL with multipart form data
+// post_multipart_form sends multipart form data `conf` as an HTTP POST
+// request to the given `url`.
 pub fn post_multipart_form(url string, conf PostMultipartFormConfig) !Response {
 	body, boundary := multipart_form_body(conf.form, conf.files)
 	mut header := conf.header
@@ -102,7 +106,7 @@ pub fn post_multipart_form(url string, conf PostMultipartFormConfig) !Response {
 	)
 }
 
-// put sends a PUT HTTP request to the URL with a string data
+// put sends string `data` as an HTTP PUT request to the given `url`.
 pub fn put(url string, data string) !Response {
 	return fetch(
 		method: .put
@@ -112,7 +116,7 @@ pub fn put(url string, data string) !Response {
 	)
 }
 
-// patch sends a PATCH HTTP request to the URL with a string data
+// patch sends string `data` as an HTTP PATCH request to the given `url`.
 pub fn patch(url string, data string) !Response {
 	return fetch(
 		method: .patch
@@ -122,17 +126,17 @@ pub fn patch(url string, data string) !Response {
 	)
 }
 
-// head sends a HEAD HTTP request to the URL
+// head sends an HTTP HEAD request to the given `url`.
 pub fn head(url string) !Response {
 	return fetch(method: .head, url: url)
 }
 
-// delete sends a DELETE HTTP request to the URL
+// delete sends an HTTP DELETE request to the given `url`.
 pub fn delete(url string) !Response {
 	return fetch(method: .delete, url: url)
 }
 
-// fetch sends an HTTP request to the URL with the given method and configurations
+// fetch sends an HTTP request to the `url` with the given method and configuration.
 pub fn fetch(config FetchConfig) !Response {
 	if config.url == '' {
 		return error('http.fetch: empty url')
@@ -158,13 +162,13 @@ pub fn fetch(config FetchConfig) !Response {
 	return res
 }
 
-// get_text sends a GET HTTP request to the URL and returns the text content of the response
+// get_text sends an HTTP GET request to the given `url` and returns the text content of the response.
 pub fn get_text(url string) string {
 	resp := fetch(url: url, method: .get) or { return '' }
 	return resp.body
 }
 
-// url_encode_form_data converts mapped data to an URL encoded string
+// url_encode_form_data converts mapped data to a URL encoded string.
 pub fn url_encode_form_data(data map[string]string) string {
 	mut pieces := []string{}
 	for key_, value_ in data {

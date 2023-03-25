@@ -63,8 +63,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		typ = typ.clear_flag(.shared_f).set_nr_muls(0)
 	}
 	mut sym := g.table.sym(typ)
-	// when type is alias and doesn't has `str()`, print the aliased value
-	if mut sym.info is ast.Alias && !sym.has_method('str') {
+	// when type is non-option alias and doesn't has `str()`, print the aliased value
+	if mut sym.info is ast.Alias && !sym.has_method('str') && !etype.has_flag(.option) {
 		parent_sym := g.table.sym(sym.info.parent_type)
 		if parent_sym.has_method('str') {
 			typ = sym.info.parent_type
@@ -85,7 +85,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	} else if typ == ast.bool_type {
 		g.expr(expr)
 		g.write(' ? _SLIT("true") : _SLIT("false")')
-	} else if sym.kind == .none_ {
+	} else if sym.kind == .none_ || typ == ast.void_type.set_flag(.option) {
 		g.write('_SLIT("<none>")')
 	} else if sym.kind == .enum_ {
 		if expr !is ast.EnumVal {
@@ -103,30 +103,46 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 	} else if sym_has_str_method
 		|| sym.kind in [.array, .array_fixed, .map, .struct_, .multi_return, .sum_type, .interface_] {
-		is_ptr := typ.is_ptr()
+		unwrap_option := expr is ast.Ident && (expr as ast.Ident).or_expr.kind == .propagate_option
+		exp_typ := if unwrap_option { typ.clear_flag(.option) } else { typ }
+		is_ptr := exp_typ.is_ptr()
 		is_var_mut := expr.is_auto_deref_var()
-		str_fn_name := g.get_str_fn(typ)
+		str_fn_name := g.get_str_fn(exp_typ)
 		if is_ptr && !is_var_mut {
 			ref_str := '&'.repeat(typ.nr_muls())
 			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("${ref_str}"), ${si_s_code} ,{.d_s = isnil(')
-			g.expr(expr)
-			g.write(') ? _SLIT("nil") : ')
+			if is_ptr && typ.has_flag(.option) {
+				g.write('*(${g.base_type(exp_typ)}*)&')
+				g.expr(expr)
+				g.write('.data')
+				g.write(') ? _SLIT("Option(&nil)") : ')
+			} else {
+				g.expr(expr)
+				g.write(') ? _SLIT("nil") : ')
+			}
 		}
 		g.write('${str_fn_name}(')
 		if str_method_expects_ptr && !is_ptr {
 			g.write('&')
+		} else if is_ptr && typ.has_flag(.option) {
+			g.write('*(${g.typ(typ)}*)&')
 		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
 			g.write('*'.repeat(typ.nr_muls()))
 		}
 		if expr is ast.ArrayInit {
 			if expr.is_fixed {
 				s := g.typ(expr.typ)
-				if !expr.has_it {
+				if !expr.has_index {
 					g.write('(${s})')
 				}
 			}
 		}
-		g.expr_with_cast(expr, typ, typ)
+		if unwrap_option {
+			g.expr(expr)
+		} else {
+			g.expr_with_cast(expr, typ, typ)
+		}
+
 		if is_shared {
 			g.write('->val')
 		}
@@ -139,12 +155,14 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(typ)
 		g.write('${str_fn_name}(')
-		if str_method_expects_ptr && !is_ptr {
-			g.write('&')
-		} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
-			g.write('*')
-		}
 		if sym.kind != .function {
+			if str_method_expects_ptr && !is_ptr {
+				g.write('&')
+			} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
+				g.write('*')
+			}
+			g.expr_with_cast(expr, typ, typ)
+		} else {
 			g.expr_with_cast(expr, typ, typ)
 		}
 		g.write(')')

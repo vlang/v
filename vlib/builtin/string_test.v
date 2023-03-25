@@ -1,5 +1,3 @@
-import strings
-
 // Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
@@ -172,7 +170,6 @@ fn test_split_nth() {
 	assert b.split_nth('::', 2).len == 2
 	assert b.split_nth('::', 10).len == 3
 	c := 'ABCDEF'
-	println(c.split('').len)
 	assert c.split('').len == 6
 	assert c.split_nth('', 3).len == 3
 	assert c.split_nth('BC', -1).len == 2
@@ -186,6 +183,37 @@ fn test_split_nth() {
 	assert e.split_nth(',,', 3).len == 3
 	assert e.split_nth(',', -1).len == 12
 	assert e.split_nth(',', 3).len == 3
+}
+
+fn test_rsplit_nth() {
+	a := '1,2,3'
+	assert a.rsplit(',').len == 3
+	assert a.rsplit_nth(',', -1).len == 3
+	assert a.rsplit_nth(',', 0).len == 3
+	assert a.rsplit_nth(',', 1).len == 1
+	assert a.rsplit_nth(',', 2).len == 2
+	assert a.rsplit_nth(',', 10).len == 3
+	b := '1::2::3'
+	assert b.rsplit('::').len == 3
+	assert b.rsplit_nth('::', -1).len == 3
+	assert b.rsplit_nth('::', 0).len == 3
+	assert b.rsplit_nth('::', 1).len == 1
+	assert b.rsplit_nth('::', 2).len == 2
+	assert b.rsplit_nth('::', 10).len == 3
+	c := 'ABCDEF'
+	assert c.rsplit('').len == 6
+	assert c.rsplit_nth('', 3).len == 3
+	assert c.rsplit_nth('BC', -1).len == 2
+	d := ','
+	assert d.rsplit(',').len == 2
+	assert d.rsplit_nth('', 3).len == 1
+	assert d.rsplit_nth(',', -1).len == 2
+	assert d.rsplit_nth(',', 3).len == 2
+	e := ',,,0,,,,,a,,b,'
+	assert e.rsplit(',,').len == 5
+	assert e.rsplit_nth(',,', 3).len == 3
+	assert e.rsplit_nth(',', -1).len == 12
+	assert e.rsplit_nth(',', 3).len == 3
 }
 
 fn test_split_nth_values() {
@@ -217,6 +245,37 @@ fn test_split_nth_values() {
 	assert a4[0] == 'CMD'
 	assert a4[1] == 'eprintln(phase'
 	assert a4[2] == '1)'
+}
+
+fn test_rsplit_nth_values() {
+	line := 'CMD=eprintln(phase=1)'
+
+	a0 := line.rsplit_nth('=', 0)
+	assert a0.len == 3
+	assert a0[0] == '1)'
+	assert a0[1] == 'eprintln(phase'
+	assert a0[2] == 'CMD'
+
+	a1 := line.rsplit_nth('=', 1)
+	assert a1.len == 1
+	assert a1[0] == 'CMD=eprintln(phase=1)'
+
+	a2 := line.rsplit_nth('=', 2)
+	assert a2.len == 2
+	assert a2[0] == '1)'
+	assert a2[1] == 'CMD=eprintln(phase'
+
+	a3 := line.rsplit_nth('=', 3)
+	assert a3.len == 3
+	assert a0[0] == '1)'
+	assert a0[1] == 'eprintln(phase'
+	assert a0[2] == 'CMD'
+
+	a4 := line.rsplit_nth('=', 4)
+	assert a4.len == 3
+	assert a0[0] == '1)'
+	assert a0[1] == 'eprintln(phase'
+	assert a0[2] == 'CMD'
 }
 
 fn test_split() {
@@ -265,6 +324,52 @@ fn test_split() {
 	assert vals[1] == ''
 }
 
+fn test_rsplit() {
+	mut s := 'volt/twitch.v:34'
+	mut vals := s.rsplit(':')
+	assert vals.len == 2
+	assert vals[0] == '34'
+	assert vals[1] == 'volt/twitch.v'
+	// /////////
+	s = '2018-01-01z13:01:02'
+	vals = s.rsplit('z')
+	assert vals.len == 2
+	assert vals[0] == '13:01:02'
+	assert vals[1] == '2018-01-01'
+	// //////////
+	s = '4627a862c3dec29fb3182a06b8965e0025759e18___1530207969___blue'
+	vals = s.rsplit('___')
+	assert vals.len == 3
+	assert vals[0] == 'blue'
+	assert vals[1] == '1530207969'
+	assert vals[2] == '4627a862c3dec29fb3182a06b8965e0025759e18'
+	// /////////
+	s = 'lalala'
+	vals = s.rsplit('a')
+	assert vals.len == 4
+	assert vals[0] == ''
+	assert vals[1] == 'l'
+	assert vals[2] == 'l'
+	assert vals[3] == 'l'
+	// /////////
+	s = 'awesome'
+	a := s.rsplit('')
+	assert a.len == 7
+	assert a[0] == 'e'
+	assert a[1] == 'm'
+	assert a[2] == 'o'
+	assert a[3] == 's'
+	assert a[4] == 'e'
+	assert a[5] == 'w'
+	assert a[6] == 'a'
+	// /////////
+	s = 'wavy turquoise bags'
+	vals = s.rsplit('wavy ')
+	assert vals.len == 2
+	assert vals[0] == 'turquoise bags'
+	assert vals[1] == ''
+}
+
 fn test_split_any() {
 	assert 'ABC'.split_any('') == ['A', 'B', 'C']
 	assert ''.split_any(' ') == []
@@ -274,6 +379,41 @@ fn test_split_any() {
 	assert 'Ciao+come*stai? '.split_any('+*') == ['Ciao', 'come', 'stai? ']
 	assert 'Ciao+come*stai? '.split_any('+* ') == ['Ciao', 'come', 'stai?']
 	assert 'first row\nsecond row'.split_any(' \n') == ['first', 'row', 'second', 'row']
+}
+
+fn test_rsplit_any() {
+	assert 'ABC'.rsplit_any('') == ['C', 'B', 'A']
+	assert ''.rsplit_any(' ') == []
+	assert ' '.rsplit_any(' ') == ['']
+	assert '  '.rsplit_any(' ') == ['', '']
+	assert ' Ciao come stai?'.rsplit_any(' ') == ['stai?', 'come', 'Ciao']
+	assert ' Ciao+come*stai?'.rsplit_any('+*') == ['stai?', 'come', ' Ciao']
+	assert ' Ciao+come*stai?'.rsplit_any('+* ') == ['stai?', 'come', 'Ciao']
+	assert 'first row\nsecond row'.rsplit_any(' \n') == ['row', 'second', 'row', 'first']
+}
+
+fn test_split_once() ? {
+	path1, ext1 := 'home/dir/lang.zip'.split_once('.')?
+	assert path1 == 'home/dir/lang'
+	assert ext1 == 'zip'
+	path2, ext2 := 'home/dir/lang.ts.dts'.split_once('.')?
+	assert path2 == 'home/dir/lang'
+	assert ext2 == 'ts.dts'
+	path3, ext3 := 'home/dir'.split_once('.') or { '', '' }
+	assert path3 == ''
+	assert ext3 == ''
+}
+
+fn test_rsplit_once() ? {
+	path1, ext1 := 'home/dir/lang.zip'.rsplit_once('.')?
+	assert path1 == 'home/dir/lang'
+	assert ext1 == 'zip'
+	path2, ext2 := 'home/dir/lang.ts.dts'.rsplit_once('.')?
+	assert path2 == 'home/dir/lang.ts'
+	assert ext2 == 'dts'
+	path3, ext3 := 'home/dir'.rsplit_once('.') or { '', '' }
+	assert path3 == ''
+	assert ext3 == ''
 }
 
 fn test_trim_space() {
@@ -293,16 +433,16 @@ fn main() {
 }
 
 fn test_join() {
-	mut strings := ['a', 'b', 'c']
-	mut s := strings.join(' ')
+	mut strs := ['a', 'b', 'c']
+	mut s := strs.join(' ')
 	assert s == 'a b c'
-	strings = [
+	strs = [
 		'one
 two ',
 		'three!
 four!',
 	]
-	s = strings.join(' ')
+	s = strs.join(' ')
 	assert s.contains('one') && s.contains('two ') && s.contains('four')
 	empty := []string{len: 0}
 	assert empty.join('A') == ''
@@ -617,7 +757,6 @@ fn test_bytes_to_string() {
 
 fn test_charptr() {
 	foo := &char('VLANG'.str)
-	println(typeof(foo).name)
 	assert typeof(foo).name == '&char'
 	assert unsafe { foo.vstring() } == 'VLANG'
 	assert unsafe { foo.vstring_with_len(3) } == 'VLA'
@@ -729,7 +868,6 @@ fn test_for_loop_two() {
 
 fn test_quote() {
 	a := `'`
-	println('testing double quotes')
 	b := 'hi'
 	assert b == 'hi'
 	assert a.str() == "'"
@@ -803,9 +941,7 @@ fn test_trim_string_right() {
 fn test_raw() {
 	raw := r'raw\nstring'
 	lines := raw.split('\n')
-	println(lines)
 	assert lines.len == 1
-	println('raw string: "${raw}"')
 
 	raw2 := r'Hello V\0'
 	assert raw2[7] == `\\`
@@ -827,7 +963,6 @@ fn test_raw_with_quotes() {
 
 fn test_escape() {
 	a := 10
-	println("\"${a}")
 	assert "\"${a}" == '"10'
 }
 
@@ -843,7 +978,6 @@ fn test_atoi() {
 
 fn test_raw_inter() {
 	world := 'world'
-	println(world)
 	s := r'hello\n$world'
 	assert s == r'hello\n$world'
 	assert s.contains('$')
@@ -852,16 +986,15 @@ fn test_raw_inter() {
 fn test_c_r() {
 	// This used to break because of r'' and c''
 	c := 42
-	println('${c}')
+	cs := '${c}'
 	r := 50
-	println('${r}')
+	rs := '${r}'
 }
 
 fn test_inter_before_comptime_if() {
 	s := '123'
 	// This used to break ('123 $....')
 	$if linux {
-		println(s)
 	}
 	assert s == '123'
 }
@@ -869,7 +1002,6 @@ fn test_inter_before_comptime_if() {
 fn test_double_quote_inter() {
 	a := 1
 	b := 2
-	println('${a} ${b}')
 	assert '${a} ${b}' == '1 2'
 	assert '${a} ${b}' == '1 2'
 }
@@ -1078,4 +1210,36 @@ fn test_indent_width() {
 	assert '\t abc'.indent_width() == 2
 	assert '\t\tabc'.indent_width() == 2
 	assert '\t\t abc'.indent_width() == 3
+}
+
+fn test_index_u8() {
+	assert 'abcabca'.index_u8(`a`) == 0
+	assert 'abcabca'.index_u8(`b`) == 1
+	assert 'abcabca'.index_u8(`c`) == 2
+	//
+	assert 'abc'.index_u8(`d`) == -1
+	assert 'abc'.index_u8(`A`) == -1
+	assert 'abc'.index_u8(`B`) == -1
+	assert 'abc'.index_u8(`C`) == -1
+	//
+}
+
+fn test_last_index_u8() {
+	assert 'abcabca'.last_index_u8(`a`) == 6
+	assert 'abcabca'.last_index_u8(`c`) == 5
+	assert 'abcabca'.last_index_u8(`b`) == 4
+	assert 'Zabcabca'.last_index_u8(`Z`) == 0
+	//
+	assert 'abc'.index_u8(`d`) == -1
+	assert 'abc'.index_u8(`A`) == -1
+	assert 'abc'.index_u8(`B`) == -1
+	assert 'abc'.index_u8(`C`) == -1
+}
+
+fn test_contains_byte() {
+	assert 'abc abca'.contains_u8(`a`)
+	assert 'abc abca'.contains_u8(`b`)
+	assert 'abc abca'.contains_u8(`c`)
+	assert 'abc abca'.contains_u8(` `)
+	assert !'abc abca'.contains_u8(`A`)
 }

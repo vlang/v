@@ -6,9 +6,14 @@ $if linux {
 	#flag -ldl
 }
 
-pub const rtld_now = C.RTLD_NOW
-
-pub const rtld_lazy = C.RTLD_LAZY
+pub const (
+	rtld_now      = C.RTLD_NOW
+	rtld_lazy     = C.RTLD_LAZY
+	rtld_global   = C.RTLD_GLOBAL
+	rtld_local    = C.RTLD_LOCAL
+	rtld_nodelete = C.RTLD_NODELETE
+	rtld_noload   = C.RTLD_NOLOAD
+)
 
 fn C.dlopen(filename &char, flags int) voidptr
 

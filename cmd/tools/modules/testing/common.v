@@ -252,6 +252,18 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		$if !macos {
 			skip_files << 'examples/macos_tray/tray.v'
 		}
+		// examples/wasm/mandelbrot/mandelbrot.v requires special compilation flags: `-b wasm -os browser`, skip it for now:
+		skip_files << 'examples/wasm/mandelbrot/mandelbrot.v'
+
+		// TODO: always build the wasm_builder in the future, not just when it was build manually before:
+		wasm_builder_executable := $if !windows {
+			'cmd/tools/builders/wasm_builder'
+		} $else {
+			'cmd/tools/builders/wasm_builder.exe'
+		}
+		if !os.exists(wasm_builder_executable) {
+			skip_files << os.join_path('cmd/tools/builders/wasm_builder.v')
+		}
 	}
 	vargs := _vargs.replace('-progress', '')
 	vexe := pref.vexe_path()
@@ -454,7 +466,15 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 
 		ts.append_message(.cmd_begin, cmd, mtc)
 		d_cmd := time.new_stopwatch()
-		mut status := os.system(cmd)
+
+		mut res := os.execute(cmd)
+		if res.exit_code != 0 {
+			eprintln(res.output)
+		} else {
+			println(res.output)
+		}
+		mut status := res.exit_code
+
 		mut cmd_duration := d_cmd.elapsed()
 		ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
@@ -486,6 +506,12 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 					goto test_passed_system
 				}
 			}
+
+			// most probably compiler error
+			if res.output.contains(': error: ') {
+				ts.append_message(.cannot_compile, 'Cannot compile file ${file}', mtc)
+			}
+
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ts.add_failed_cmd(cmd)
@@ -709,7 +735,7 @@ pub fn get_test_details(file string) TestDetails {
 	return res
 }
 
-pub fn find_started_process(pname string) ?string {
+pub fn find_started_process(pname string) !string {
 	for line in testing.all_processes {
 		if line.contains(pname) {
 			return line

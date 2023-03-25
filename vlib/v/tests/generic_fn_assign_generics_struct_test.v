@@ -30,7 +30,7 @@ fn test_generics_assign_generics_struct() {
 struct Node[T] {
 pub mut:
 	val  T
-	next &Node[T] = 0
+	next &Node[T] = unsafe { nil }
 }
 
 fn new[T]() &Node[T] {

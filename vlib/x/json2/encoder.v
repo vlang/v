@@ -39,6 +39,10 @@ const quote_bytes = [u8(`"`)]
 const escaped_chars = [(r'\b').bytes(), (r'\f').bytes(), (r'\n').bytes(),
 	(r'\r').bytes(), (r'\t').bytes()]
 
+const curly_open = [u8(`{`)]
+
+const curly_close = [u8(`}`)]
+
 // encode_value encodes a value to the specific writer.
 pub fn (e &Encoder) encode_value[T](val T, mut wr io.Writer) ! {
 	e.encode_value_with_level[T](val, 1, mut wr)!
@@ -83,7 +87,7 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 			wr.write(json2.zero_in_bytes)!
 		}
 		map[string]Any {
-			wr.write([u8(`{`)])!
+			wr.write(json2.curly_open)!
 			mut i := 0
 			for k, v in val {
 				e.encode_newline(level, mut wr)!
@@ -99,7 +103,7 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 				i++
 			}
 			e.encode_newline(level - 1, mut wr)!
-			wr.write([u8(`}`)])!
+			wr.write(json2.curly_close)!
 		}
 		[]Any {
 			wr.write([u8(`[`)])!
@@ -128,16 +132,18 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) !
 	} $else $if T is map[string]Any {
 		// weird quirk but val is destructured immediately to Any
 		e.encode_any(val, level, mut wr)!
+	} $else $if T is $map {
+		// FIXME - `e.encode_struct` can not encode `map[string]map[string]int` type
 	} $else $if T is []Any {
-		e.encode_any(val, level, mut wr)!
-	} $else $if T in [Null, bool, $Float, $Int] {
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is Encodable {
 		wr.write(val.json_str().bytes())!
-	} $else $if T is $Struct {
+	} $else $if T is $struct {
 		e.encode_struct(val, level, mut wr)!
-	} $else $if T is $Enum {
+	} $else $if T is $enum {
 		e.encode_any(Any(int(val)), level, mut wr)!
+	} $else $if T in [Null, bool, $float, $int] {
+		e.encode_any(val, level, mut wr)!
 	} $else {
 		// dump(val.str())
 		return error('cannot encode value with ${typeof(val).name} type')
@@ -145,7 +151,7 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) !
 }
 
 fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
-	wr.write([u8(`{`)])!
+	wr.write(json2.curly_open)!
 	mut i := 0
 	mut fields_len := 0
 	$for field in U.fields {
@@ -154,6 +160,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 		}
 	}
 	$for field in U.fields {
+		mut ignore_field := false
 		value := val.$(field.name)
 		mut json_name := ''
 		for attr in field.attrs {
@@ -219,6 +226,8 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				} $else {
 					return error('type ${typeof(val).name} cannot be array encoded')
 				}
+			} else {
+				ignore_field = true
 			}
 		} $else {
 			is_none := val.$(field.name).str() == 'unknown sum type value'
@@ -242,21 +251,39 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				wr.write(json2.quote_bytes)!
 				wr.write(val.$(field.name).format_rfc3339().bytes())!
 				wr.write(json2.quote_bytes)!
-			} $else $if field.typ in [bool, $Float, $Int] {
+			} $else $if field.typ in [bool, $float, $int] {
 				wr.write(val.$(field.name).str().bytes())!
 			} $else $if field.is_array {
-				// TODO - replace for `field.typ is $Array`
+				// TODO - replace for `field.typ is $array`
 				e.encode_array(value, level + 1, mut wr)!
-			} $else $if field.typ is $Array {
+			} $else $if field.typ is $array {
 				// e.encode_array(value, level + 1, mut wr)! // FIXME - error: could not infer generic type `U` in call to `encode_array`
-			} $else $if field.typ is $Struct {
+			} $else $if field.typ is $struct {
 				e.encode_struct(value, level + 1, mut wr)!
+			} $else $if field.is_map {
+				wr.write(json2.curly_open)!
+				mut idx := 0
+				for k, v in value {
+					e.encode_newline(level, mut wr)!
+					e.encode_string(k.str(), mut wr)!
+					wr.write(json2.colon_bytes)!
+					if e.newline != 0 {
+						wr.write(json2.space_bytes)!
+					}
+					e.encode_value_with_level(v, level + 1, mut wr)!
+					if idx < value.len - 1 {
+						wr.write(json2.comma_bytes)!
+					}
+					idx++
+				}
+				e.encode_newline(level, mut wr)!
+				wr.write(json2.curly_close)!
 			} $else $if field.is_enum {
-				// TODO - replace for `field.typ is $Enum`
+				// TODO - replace for `field.typ is $enum`
 				wr.write(int(val.$(field.name)).str().bytes())!
-			} $else $if field.typ is $Enum {
+			} $else $if field.typ is $enum {
 				// wr.write(int(val.$(field.name)).str().bytes())! // FIXME - error: cannot cast string to `int`, use `val.$field.name.int()` instead.
-			} $else $if field.typ is $Sumtype {
+			} $else $if field.typ is $sumtype {
 				// dump(val.$(field.name).str())
 				// dump(is_none)
 				sum_type_value := value.str()#[typeof(val.$(field.name)).name.len + 1..-1]
@@ -316,27 +343,27 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				if is_string {
 					e.encode_string(sum_type_value#[1..-1], mut wr)!
 				}
-			} $else $if field.typ is $Alias {
+			} $else $if field.typ is $alias {
 				$if field.unaliased_typ is string {
 					e.encode_string(val.$(field.name).str(), mut wr)!
 				} $else $if field.unaliased_typ is time.Time {
-					parsed_time := val.$(field.name) as time.Time
+					parsed_time := time.parse(val.$(field.name).str()) or { time.Time{} }
 					e.encode_string(parsed_time.format_rfc3339(), mut wr)!
-				} $else $if field.unaliased_typ in [bool, $Float, $Int] {
+				} $else $if field.unaliased_typ in [bool, $float, $int] {
 					wr.write(val.$(field.name).str().bytes())!
-				} $else $if field.unaliased_typ is $Array {
+				} $else $if field.unaliased_typ is $array {
 					// e.encode_array(val.$(field.name), level + 1, mut wr)! // FIXME - error: could not infer generic type `U` in call to `encode_array`
-				} $else $if field.unaliased_typ is $Struct {
+				} $else $if field.unaliased_typ is $struct {
 					// e.encode_struct(val.$(field.name), level + 1, mut wr)! // FIXME - error: cannot use `BoolAlias` as `StringAlias` in argument 1 to `x.json2.Encoder.encode_struct`
 					e.encode_struct(value, level + 1, mut wr)!
-				} $else $if field.unaliased_typ is $Enum {
+				} $else $if field.unaliased_typ is $enum {
 					// enum_value := val.$(field.name)
 					// dump(int(val.$(field.name))) // FIXME
 					// dump(val.$(field.name).int()) // FIXME - error: unknown method or field: `BoolAlias.int`
 					// dump(val.$(field.name).int()) // FIXME - error: cannot convert 'enum <anonymous>' to 'struct string'
 
 					// wr.write(val.$(field.name).int().str().bytes())! // FIXME - error: unknown method or field: `BoolAlias.int`
-				} $else $if field.unaliased_typ is $Sumtype {
+				} $else $if field.unaliased_typ is $sumtype {
 				} $else {
 					return error('the alias ${typeof(val).name} cannot be encoded')
 				}
@@ -345,13 +372,15 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			}
 		}
 
-		if i < fields_len - 1 {
+		if i < fields_len - 1 && !ignore_field {
 			wr.write(json2.comma_bytes)!
 		}
-		i++
+		if !ignore_field {
+			i++
+		}
 	}
 	e.encode_newline(level - 1, mut wr)!
-	wr.write([u8(`}`)])!
+	wr.write(json2.curly_close)!
 }
 
 fn (e &Encoder) encode_array[U](val []U, level int, mut wr io.Writer) ! {
@@ -385,12 +414,18 @@ fn (e &Encoder) encode_array[U](val []U, level int, mut wr io.Writer) ! {
 			e.encode_any(u32(val[i]), level + 1, mut wr)!
 		} $else $if U is u64 {
 			e.encode_any(u64(val[i]), level + 1, mut wr)!
-		} $else $if U is $Array {
+		} $else $if U is $array {
 			// FIXME - error: could not infer generic type `U` in call to `encode_array`
 			// e.encode_array(val[i], level + 1, mut wr)!
-		} $else $if U is $Struct {
+		} $else $if U is $struct {
 			e.encode_struct(val[i], level + 1, mut wr)!
-		} $else $if U is $Enum {
+		} $else $if U is $sumtype {
+			$if U is Any {
+				e.encode_any(val[i], level + 1, mut wr)!
+			} $else {
+				// TODO
+			}
+		} $else $if U is $enum {
 			e.encode_any(i64(val[i]), level + 1, mut wr)!
 		} $else {
 			return error('type ${typeof(val).name} cannot be array encoded')

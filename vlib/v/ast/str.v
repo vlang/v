@@ -160,9 +160,7 @@ fn stringify_fn_after_name(node &FnDecl, mut f strings.Builder, t &Table, cur_mo
 				}
 			}
 			s = util.no_cur_mod(s, cur_mod)
-			for mod, alias in m2a {
-				s = s.replace(mod, alias)
-			}
+			s = shorten_full_name_based_on_aliases(s, m2a)
 			if should_add_type {
 				if !is_type_only {
 					f.write_string(' ')
@@ -181,7 +179,7 @@ fn stringify_fn_after_name(node &FnDecl, mut f strings.Builder, t &Table, cur_mo
 	if node.return_type != void_type {
 		sreturn_type := util.no_cur_mod(t.type_to_str(node.return_type), cur_mod)
 		short_sreturn_type := shorten_full_name_based_on_aliases(sreturn_type, m2a)
-		f.write_string(' ' + short_sreturn_type)
+		f.write_string(' ${short_sreturn_type}')
 	}
 }
 
@@ -192,6 +190,11 @@ struct StringifyModReplacement {
 }
 
 fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) string {
+	if m2a.len == 0 || -1 == input.index_u8(`.`) {
+		// a simple typename, like `string` or `[]bool`; no module aliasings apply,
+		// (or there just are not any mappings)
+		return input
+	}
 	// Shorten the full names to their aliases, but replace the longer mods first, so that:
 	//   `import user.project`
 	//   `import user.project.routes`
@@ -199,20 +202,41 @@ fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) strin
 	// Also take into account the nesting level, so `a.e.c.d` will be shortened before `a.xyz.b`, even though they are the same length.
 	mut replacements := []StringifyModReplacement{cap: m2a.len}
 	for mod, alias in m2a {
-		if input.contains(mod) {
-			replacements << StringifyModReplacement{
-				mod: mod
-				alias: alias
-				weight: mod.count('.') * 100 + mod.len
-			}
+		if mod == alias {
+			// for vlib modules like `import strings` -> mod: `strings` | alias: `strings`
+			// ... which is the same, so no replacements are needed
+			continue
+		}
+		if !input.contains(mod) {
+			continue
+		}
+		replacements << StringifyModReplacement{
+			mod: mod
+			alias: alias
+			weight: mod.count('.') * 100 + mod.len
 		}
 	}
-	mut res := input.clone()
-	if replacements.len > 0 {
+	if replacements.len == 0 {
+		return input
+	}
+	//
+	mut res := input
+	if replacements.len > 1 {
 		replacements.sort(a.weight > b.weight)
-		for r in replacements {
-			res = res.replace(r.mod, r.alias)
+	}
+	for r in replacements {
+		if -1 == res.index_u8(`.`) {
+			// there are no remaining module parts left in the type name, it is a local one after all
+			break
 		}
+		if !res.contains(r.mod) {
+			// nothing to replace as well (just minimises modifications and string clonings)
+			continue
+		}
+		// r.mod: `v.token` | r.alias: `xyz` | res: `v.token.Abc`                -> `xyz.Abc`
+		// r.mod: `v.ast`   | r.alias: `ast` | res: `v.ast.AliasTypeDecl`        -> `ast.AliasTypeDecl`
+		// r.mod: `v.ast`   | r.alias: `ast` | res: `[]v.ast.InterfaceEmbedding` -> `[]ast.InterfaceEmbedding`
+		res = res.replace(r.mod, r.alias)
 	}
 	return res
 }
@@ -361,7 +385,7 @@ pub fn (x Expr) str() string {
 			}
 		}
 		ComptimeSelector {
-			return '${x.left}.$${x.field_expr}'
+			return '${x.left}.$(${x.field_expr})'
 		}
 		ConcatExpr {
 			return x.vals.map(it.str()).join(',')
@@ -667,5 +691,6 @@ pub fn (e ComptimeForKind) str() string {
 		.methods { return 'methods' }
 		.fields { return 'fields' }
 		.attributes { return 'attributes' }
+		.values { return 'values' }
 	}
 }

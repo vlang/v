@@ -18,7 +18,7 @@ const (
 		'/usr/local/libdata/pkgconfig', // FreeBSD
 		'/usr/lib/i386-linux-gnu/pkgconfig', // Debian 32bit
 	]
-	version       = '0.3.2'
+	version       = '0.3.3'
 )
 
 pub struct Options {
@@ -140,7 +140,7 @@ fn (mut pc PkgConfig) parse(file string) bool {
 	return true
 }
 
-fn (mut pc PkgConfig) resolve(pkgname string) ?string {
+fn (mut pc PkgConfig) resolve(pkgname string) !string {
 	if pkgname.ends_with('.pc') {
 		if os.exists(pkgname) {
 			return pkgname
@@ -171,7 +171,7 @@ pub fn (mut pc PkgConfig) atleast(v string) bool {
 	return v0.gt(v1)
 }
 
-pub fn (mut pc PkgConfig) extend(pcdep &PkgConfig) ?string {
+pub fn (mut pc PkgConfig) extend(pcdep &PkgConfig) !string {
 	for flag in pcdep.cflags {
 		if pc.cflags.index(flag) == -1 {
 			pc.cflags << flag
@@ -187,19 +187,19 @@ pub fn (mut pc PkgConfig) extend(pcdep &PkgConfig) ?string {
 			pc.libs_private << lib
 		}
 	}
-	return none
+	return error('')
 }
 
-fn (mut pc PkgConfig) load_requires() ? {
+fn (mut pc PkgConfig) load_requires() ! {
 	for dep in pc.requires {
-		pc.load_require(dep)?
+		pc.load_require(dep)!
 	}
 	for dep in pc.requires_private {
-		pc.load_require(dep)?
+		pc.load_require(dep)!
 	}
 }
 
-fn (mut pc PkgConfig) load_require(dep string) ? {
+fn (mut pc PkgConfig) load_require(dep string) ! {
 	if dep in pc.loaded {
 		return
 	}
@@ -218,9 +218,9 @@ fn (mut pc PkgConfig) load_require(dep string) ? {
 		return error('required file "${depfile}" could not be parsed')
 	}
 	if !pc.options.norecurse {
-		pcdep.load_requires()?
+		pcdep.load_requires()!
 	}
-	pc.extend(pcdep)?
+	pc.extend(pcdep) or {}
 }
 
 fn (mut pc PkgConfig) add_path(path string) {
@@ -267,7 +267,7 @@ fn (mut pc PkgConfig) load_paths() {
 	}
 }
 
-pub fn load(pkgname string, options Options) ?&PkgConfig {
+pub fn load(pkgname string, options Options) !&PkgConfig {
 	mut pc := &PkgConfig{
 		modname: pkgname
 		options: options
@@ -278,7 +278,7 @@ pub fn load(pkgname string, options Options) ?&PkgConfig {
 		return error('file "${file}" could not be parsed')
 	}
 	if !options.norecurse {
-		pc.load_requires()?
+		pc.load_requires()!
 	}
 	return pc
 }

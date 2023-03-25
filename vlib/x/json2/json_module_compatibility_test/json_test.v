@@ -61,8 +61,8 @@ mut:
 	reg_date time.Time
 }
 
-// // User struct needs to be `pub mut` for now in order to access and manipulate values
-struct User {
+// User struct needs to be `pub mut` for now in order to access and manipulate values
+pub struct User {
 pub mut:
 	age           int
 	nums          []int
@@ -263,4 +263,57 @@ fn test_encode_alias_field() {
 		}
 	})
 	assert s == '{"sub":{"a":1}}'
+}
+
+pub struct City {
+mut:
+	name string
+}
+
+pub struct Country {
+mut:
+	cities []City
+	name   string
+}
+
+struct Data {
+mut:
+	countries []Country
+	users     map[string]User
+}
+
+fn test_nested_type() {
+	data_expected := '{"countries":[{"cities":[{"name":"London"},{"name":"Manchester"}],"name":"UK"},{"cities":[{"name":"Donlon"},{"name":"Termanches"}],"name":"KU"}],"users":{"Foo":{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"little foo"},"Boo":{"age":20,"nums":[5,3,1],"lastName":"Smith","IsRegistered":false,"type":4,"pet_animals":"little boo"}}}'
+	data := Data{
+		countries: [
+			Country{
+				name: 'UK'
+				cities: [City{'London'}, City{'Manchester'}]
+			},
+			Country{
+				name: 'KU'
+				cities: [City{'Donlon'}, City{'Termanches'}]
+			},
+		]
+		users: {
+			'Foo': User{
+				age: 10
+				nums: [1, 2, 3]
+				last_name: 'Johnson'
+				is_registered: true
+				typ: 0
+				pets: 'little foo'
+			}
+			'Boo': User{
+				age: 20
+				nums: [5, 3, 1]
+				last_name: 'Smith'
+				is_registered: false
+				typ: 4
+				pets: 'little boo'
+			}
+		}
+	}
+	out := json.encode(data)
+	assert out == data_expected
 }

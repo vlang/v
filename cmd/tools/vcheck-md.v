@@ -7,7 +7,7 @@ import os
 import os.cmdline
 import rand
 import term
-import vhelp
+import v.help
 import regex
 
 const (
@@ -43,7 +43,7 @@ fn (v1 CheckResult) + (v2 CheckResult) CheckResult {
 
 fn main() {
 	if non_option_args.len == 0 || '-help' in os.args {
-		vhelp.show_topic('check-md')
+		help.print_and_exit('check-md')
 		exit(0)
 	}
 	if '-all' in os.args {
@@ -96,7 +96,8 @@ fn md_file_paths(dir string) []string {
 	mut files_to_check := []string{}
 	md_files := os.walk_ext(dir, '.md')
 	for file in md_files {
-		if file.contains_any_substr(['/thirdparty/', 'CHANGELOG']) {
+		nfile := file.replace('\\', '/')
+		if nfile.contains_any_substr(['/thirdparty/', 'CHANGELOG']) {
 			continue
 		}
 		files_to_check << file
@@ -597,6 +598,10 @@ fn (mut f MDFile) check_examples() CheckResult {
 					oks++
 				}
 				'nofmt' {}
+				// mark the example as playable inside docs
+				'play' {}
+				// same as play, but run example as a test
+				'play-test' {}
 				else {
 					eprintln(eline(f.path, e.sline, 0, 'unrecognized command: "${command}", use one of: wip/ignore/compile/failcompile/okfmt/nofmt/oksyntax/badsyntax/cgen/globals/live/shared'))
 					should_cleanup_vfile = false

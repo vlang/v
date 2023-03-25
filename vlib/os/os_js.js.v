@@ -183,3 +183,9 @@ pub fn is_readable(path string) bool {
 		return false
 	}
 }
+
+// get_long_path has no meaning for *nix, but has for windows, where `c:\folder\some~1` for example
+// can be the equivalent of `c:\folder\some spa ces`. On *nix, it just returns a copy of the input path.
+fn get_long_path(path string) !string {
+	return path
+}

@@ -252,3 +252,24 @@ fn test_sumtypes() {
 		}
 	}) == '{"val":{"val":1}}'
 }
+
+fn test_maps() {
+	assert json.encode(StructType[map[string]map[string]int]{}) == '{"val":{}}'
+	assert json.encode(StructType[map[string]string]{
+		val: {
+			'1': '1'
+		}
+	}) == '{"val":{"1":"1"}}'
+	assert json.encode(StructType[map[string]int]{
+		val: {
+			'1': 1
+		}
+	}) == '{"val":{"1":1}}'
+	// assert json.encode(StructType[map[string]map[string]int]{
+	// 	val: {
+	// 		'a': {
+	// 			'1': 1
+	// 		}
+	// 	}
+	// }) == '{"val":{"a":{"1":1}}}'
+}

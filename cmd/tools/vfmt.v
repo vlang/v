@@ -13,7 +13,7 @@ import v.fmt
 import v.util
 import v.util.diff
 import v.parser
-import vhelp
+import v.help
 
 struct FormatOptions {
 	is_l       bool
@@ -88,7 +88,7 @@ fn main() {
 		exit(0)
 	}
 	if files.len == 0 || '-help' in args || '--help' in args {
-		vhelp.show_topic('fmt')
+		help.print_and_exit('fmt')
 		exit(0)
 	}
 	mut cli_args_no_files := []string{}
@@ -213,7 +213,7 @@ fn (mut foptions FormatOptions) find_diff_cmd() string {
 	return foptions.diff_cmd
 }
 
-fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_path string) ? {
+fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_path string) ! {
 	if formatted_file_path.len == 0 {
 		return
 	}
@@ -232,9 +232,9 @@ fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_pa
 		}
 		diff_cmd := foptions.find_diff_cmd()
 		foptions.vlog('Using diff command: ${diff_cmd}')
-		diff := diff.color_compare_files(diff_cmd, file, formatted_file_path)
-		if diff.len > 0 {
-			println(diff)
+		diff_ := diff.color_compare_files(diff_cmd, file, formatted_file_path)
+		if diff_.len > 0 {
+			println(diff_)
 		}
 		return
 	}
@@ -307,7 +307,7 @@ fn file_to_mod_name_and_is_module_file(file string) (string, bool) {
 	return mod_name, is_module_file
 }
 
-fn read_source_lines(file string) ?[]string {
+fn read_source_lines(file string) ![]string {
 	source_lines := os.read_lines(file) or { return error('can not read ${file}') }
 	return source_lines
 }

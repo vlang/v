@@ -13,7 +13,7 @@ pub struct TempFileOptions {
 	pattern string
 }
 
-// temp_file returns an uniquely named, open, writable, `os.File` and it's path
+// temp_file returns a uniquely named, open, writable, `os.File` and it's path.
 pub fn temp_file(tfo TempFileOptions) !(os.File, string) {
 	mut d := tfo.path
 	if d == '' {
@@ -50,7 +50,7 @@ fn error_for_temporary_folder(fn_name string, d string) !string {
 	return error('${fn_name} could not create temporary directory "${d}". Please ensure you have write permissions for it.')
 }
 
-// temp_dir returns an uniquely named, writable, directory path
+// temp_dir returns a uniquely named, writable, directory path.
 pub fn temp_dir(tdo TempFileOptions) !string {
 	mut d := tdo.path
 	if d == '' {
@@ -76,7 +76,7 @@ fn random_number() string {
 	return s.substr(1, s.len)
 }
 
-fn prefix_and_suffix(pattern string) ?(string, string) {
+fn prefix_and_suffix(pattern string) !(string, string) {
 	mut pat := pattern
 	if pat.contains(os.path_separator) {
 		return error('pattern cannot contain path separators (${os.path_separator}).')

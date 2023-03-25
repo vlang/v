@@ -1,0 +1,11 @@
+fn func() ?int {
+	return error('Some error')
+}
+
+fn main() {
+	mut a := ?int(5)
+	a = 1
+	a = none
+	a = func()
+	println(a)
+}

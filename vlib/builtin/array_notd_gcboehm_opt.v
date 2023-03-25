@@ -13,6 +13,10 @@ fn __new_array_with_default_noscan(mylen int, cap int, elm_size int, val voidptr
 	return __new_array_with_default(mylen, cap, elm_size, val)
 }
 
+fn __new_array_with_multi_default_noscan(mylen int, cap int, elm_size int, val voidptr) array {
+	return __new_array_with_multi_default(mylen, cap, elm_size, val)
+}
+
 fn __new_array_with_array_default_noscan(mylen int, cap int, elm_size int, val array, depth int) array {
 	return __new_array_with_array_default(mylen, cap, elm_size, val, depth)
 }

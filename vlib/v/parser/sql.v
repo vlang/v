@@ -16,37 +16,30 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	}
 	p.check(.lcbr)
 	p.check(.key_select)
-	n := p.check_name()
-	is_count := n == 'count'
+	is_count := p.check_name() == 'count'
 	mut typ := ast.void_type
+
 	if is_count {
 		p.check_name() // from
-		typ = ast.int_type
 	}
+
 	table_pos := p.tok.pos()
 	table_type := p.parse_type() // `User`
+
 	mut where_expr := ast.empty_expr
 	has_where := p.tok.kind == .name && p.tok.lit == 'where'
-	mut query_one := false // one object is returned, not an array
+
 	if has_where {
 		p.next()
 		where_expr = p.expr(0)
-		// `id == x` means that a single object is returned
-		if !is_count && mut where_expr is ast.InfixExpr {
-			if where_expr.op == .eq && mut where_expr.left is ast.Ident {
-				if where_expr.left.name == 'id' {
-					query_one = true
-				}
-			}
-			if mut where_expr.right is ast.Ident {
-				if !p.scope.known_var(where_expr.right.name) {
-					p.check_undefined_variables([where_expr.left.str()], where_expr.right) or {
-						return p.error_with_pos(err.msg(), where_expr.right.pos)
-					}
-				}
-			}
+
+		where_check_result := p.check_sql_where_expr_has_no_undefined_variables(&where_expr,
+			[])
+		if where_check_result is ast.NodeError {
+			return where_check_result
 		}
 	}
+
 	mut has_limit := false
 	mut limit_expr := ast.empty_expr
 	mut has_offset := false
@@ -69,29 +62,25 @@ fn (mut p Parser) sql_expr() ast.Expr {
 			has_desc = true
 		}
 	}
+
 	if p.tok.kind == .name && p.tok.lit == 'limit' {
-		// `limit 1` means that a single object is returned
 		p.check_name() // `limit`
-		if p.tok.kind == .number && p.tok.lit == '1' {
-			query_one = true
-		}
 		has_limit = true
 		limit_expr = p.expr(0)
 	}
+
 	if p.tok.kind == .name && p.tok.lit == 'offset' {
 		p.check_name() // `offset`
 		has_offset = true
 		offset_expr = p.expr(0)
 	}
-	if !query_one && !is_count {
-		// return an array
+
+	if is_count {
+		typ = ast.int_type
+	} else {
 		typ = ast.new_type(p.table.find_or_register_array(table_type))
-	} else if !is_count {
-		// return a single object
-		// TODO optional
-		// typ = table_type.set_flag(.optional)
-		typ = table_type
 	}
+
 	p.check(.rcbr)
 	p.inside_match = false
 	or_expr := p.parse_sql_or_block()
@@ -110,7 +99,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		has_order: has_order
 		order_expr: order_expr
 		has_desc: has_desc
-		is_array: !query_one
+		is_array: if is_count { false } else { true }
 		pos: pos.extend(p.prev_tok.pos())
 		table_expr: ast.TypeNode{
 			typ: table_type
@@ -208,6 +197,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 				typ: typ
 				pos: typ_pos
 			}
+			scope: p.scope
 		}
 	} else if n == 'drop' {
 		kind = .drop
@@ -225,6 +215,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 				typ: typ
 				pos: typ_pos
 			}
+			scope: p.scope
 		}
 	}
 	mut inserted_var_name := ''
@@ -294,6 +285,8 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		update_exprs: update_exprs
 		kind: kind
 		where_expr: where_expr
+		is_top_level: true
+		scope: p.scope
 	}
 }
 
@@ -303,4 +296,40 @@ fn (mut p Parser) check_sql_keyword(name string) ?bool {
 		return none
 	}
 	return true
+}
+
+// check_sql_where_expr_has_no_undefined_variables recursively tries to find undefined variables in the right part of infix expressions.
+fn (mut p Parser) check_sql_where_expr_has_no_undefined_variables(expr &ast.Expr, unacceptable_variable_names []string) ast.Expr {
+	if expr is ast.Ident {
+		if !p.scope.known_var(expr.name) {
+			p.check_undefined_variables(unacceptable_variable_names, expr) or {
+				return p.error_with_pos(err.msg(), expr.pos)
+			}
+		}
+	} else if expr is ast.InfixExpr {
+		if expr.left is ast.Ident && expr.right is ast.Ident {
+			return p.check_sql_where_expr_has_no_undefined_variables(expr.right, [
+				expr.left.str(),
+			])
+		}
+
+		left_check_result := p.check_sql_where_expr_has_no_undefined_variables(expr.left,
+			[])
+
+		if left_check_result is ast.NodeError {
+			return left_check_result
+		}
+
+		variable_names := if expr.left is ast.Ident { [expr.left.str()] } else { []string{} }
+		right_check_result := p.check_sql_where_expr_has_no_undefined_variables(expr.right,
+			variable_names)
+
+		if right_check_result is ast.NodeError {
+			return right_check_result
+		}
+	} else if expr is ast.ParExpr {
+		return p.check_sql_where_expr_has_no_undefined_variables(expr.expr, [])
+	}
+
+	return ast.empty_expr
 }

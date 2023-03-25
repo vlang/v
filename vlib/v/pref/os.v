@@ -21,12 +21,15 @@ pub enum OS {
 	android
 	termux // like android, but compiling/running natively on the devices
 	solaris
+	qnx
 	serenity
 	vinix
 	haiku
 	wasm32
 	wasm32_emscripten
 	wasm32_wasi
+	browser // -b wasm -os browser
+	wasi // -b wasm -os wasi
 	raw
 	all
 }
@@ -107,6 +110,13 @@ pub fn os_from_string(os_str string) !OS {
 		'wasm32_emscripten' {
 			return .wasm32_emscripten
 		}
+		// Native WASM options:
+		'browser' {
+			return .browser
+		}
+		'wasi' {
+			return .wasi
+		}
 		else {
 			// handle deprecated names:
 			match os_str {
@@ -142,12 +152,15 @@ pub fn (o OS) str() string {
 		.android { return 'Android' }
 		.termux { return 'Termux' }
 		.solaris { return 'Solaris' }
+		.qnx { return 'QNX' }
 		.serenity { return 'SerenityOS' }
 		.vinix { return 'Vinix' }
 		.haiku { return 'Haiku' }
 		.wasm32 { return 'WebAssembly' }
 		.wasm32_emscripten { return 'WebAssembly(Emscripten)' }
 		.wasm32_wasi { return 'WebAssembly(WASI)' }
+		.browser { return 'browser' }
+		.wasi { return 'wasi' }
 		.raw { return 'Raw' }
 		.all { return 'all' }
 	}

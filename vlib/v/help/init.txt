@@ -1,4 +1,0 @@
-Usage:
-  v init
-
-Setup the file structure for an already existing V project.

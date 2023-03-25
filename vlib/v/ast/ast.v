@@ -128,6 +128,7 @@ pub enum ComptimeTypeKind {
 	enum_
 	alias
 	function
+	option
 }
 
 pub struct ComptimeType {
@@ -138,16 +139,17 @@ pub:
 
 pub fn (cty ComptimeType) str() string {
 	return match cty.kind {
-		.map_ { '\$Map' }
-		.int { '\$Int' }
-		.float { '\$Float' }
-		.struct_ { '\$Struct' }
-		.iface { '\$Interface' }
-		.array { '\$Array' }
-		.sum_type { '\$Sumtype' }
-		.enum_ { '\$Enum' }
-		.alias { '\$Alias' }
-		.function { '\$Function' }
+		.map_ { '\$map' }
+		.int { '\$int' }
+		.float { '\$float' }
+		.struct_ { '\$struct' }
+		.iface { '\$interface' }
+		.array { '\$array' }
+		.sum_type { '\$sumtype' }
+		.enum_ { '\$enum' }
+		.alias { '\$alias' }
+		.function { '\$function' }
+		.option { '\$option' }
 	}
 }
 
@@ -513,39 +515,40 @@ pub mut:
 [minify]
 pub struct FnDecl {
 pub:
-	name            string // 'math.bits.normalize'
-	short_name      string // 'normalize'
-	mod             string // 'math.bits'
-	is_deprecated   bool
-	is_pub          bool
-	is_variadic     bool
-	is_anon         bool
-	is_noreturn     bool        // true, when [noreturn] is used on a fn
-	is_manualfree   bool        // true, when [manualfree] is used on a fn
-	is_main         bool        // true for `fn main()`
-	is_test         bool        // true for `fn test_abcde() {}`, false for `fn test_abc(x int) {}`, or for fns that do not start with test_
-	is_conditional  bool        // true for `[if abc] fn abc(){}`
-	is_exported     bool        // true for `[export: 'exact_C_name']`
-	is_keep_alive   bool        // passed memory must not be freed (by GC) before function returns
-	is_unsafe       bool        // true, when [unsafe] is used on a fn
-	is_markused     bool        // true, when an explict `[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
-	receiver        StructField // TODO this is not a struct field
-	receiver_pos    token.Pos   // `(u User)` in `fn (u User) name()` position
-	is_method       bool
-	method_type_pos token.Pos // `User` in ` fn (u User)` position
-	method_idx      int
-	rec_mut         bool // is receiver mutable
-	rec_share       ShareType
-	language        Language  // V, C, JS
-	file_mode       Language  // whether *the file*, where a function was a '.c.v', '.js.v' etc.
-	no_body         bool      // just a definition `fn C.malloc()`
-	is_builtin      bool      // this function is defined in builtin/strconv
-	body_pos        token.Pos // function bodys position
-	file            string
-	generic_names   []string
-	is_direct_arr   bool // direct array access
-	attrs           []Attr
-	ctdefine_idx    int = -1 // the index in fn.attrs of `[if xyz]`, when such attribute exists
+	name               string // 'math.bits.normalize'
+	short_name         string // 'normalize'
+	mod                string // 'math.bits'
+	is_deprecated      bool
+	is_pub             bool
+	is_variadic        bool
+	is_anon            bool
+	is_noreturn        bool        // true, when [noreturn] is used on a fn
+	is_manualfree      bool        // true, when [manualfree] is used on a fn
+	is_main            bool        // true for `fn main()`
+	is_test            bool        // true for `fn test_abcde() {}`, false for `fn test_abc(x int) {}`, or for fns that do not start with test_
+	is_conditional     bool        // true for `[if abc] fn abc(){}`
+	is_exported        bool        // true for `[export: 'exact_C_name']`
+	is_keep_alive      bool        // passed memory must not be freed (by GC) before function returns
+	is_unsafe          bool        // true, when [unsafe] is used on a fn
+	is_markused        bool        // true, when an explict `[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
+	is_file_translated bool        // true, when the file it resides in is `[translated]`
+	receiver           StructField // TODO this is not a struct field
+	receiver_pos       token.Pos   // `(u User)` in `fn (u User) name()` position
+	is_method          bool
+	method_type_pos    token.Pos // `User` in ` fn (u User)` position
+	method_idx         int
+	rec_mut            bool // is receiver mutable
+	rec_share          ShareType
+	language           Language  // V, C, JS
+	file_mode          Language  // whether *the file*, where a function was a '.c.v', '.js.v' etc.
+	no_body            bool      // just a definition `fn C.malloc()`
+	is_builtin         bool      // this function is defined in builtin/strconv
+	body_pos           token.Pos // function bodys position
+	file               string
+	generic_names      []string
+	is_direct_arr      bool // direct array access
+	attrs              []Attr
+	ctdefine_idx       int = -1 // the index in fn.attrs of `[if xyz]`, when such attribute exists
 pub mut:
 	idx               int // index in an external container; can be used to refer to the function in a more efficient way, just by its integer index
 	params            []Param
@@ -593,6 +596,7 @@ pub mut:
 	is_keep_alive      bool // GC must not free arguments before fn returns
 	is_noreturn        bool // whether the function/method is marked as [noreturn]
 	is_ctor_new        bool // if JS ctor calls requires `new` before call, marked as `[use_new]` in V
+	is_file_translated bool // true, when the file it resides in is `[translated]`
 	args               []CallArg
 	expected_arg_types []Type
 	comptime_ret_val   bool
@@ -645,6 +649,13 @@ pub mut:
 	types []Type
 }
 
+pub enum ComptimeVarKind {
+	no_comptime // it is not a comptime var
+	key_var // map key from `for k,v in t.$(field.name)`
+	value_var // map value from `for k,v in t.$(field.name)`
+	field_var // comptime field var `a := t.$(field.name)`
+}
+
 [minify]
 pub struct Var {
 pub:
@@ -665,11 +676,10 @@ pub mut:
 	// 10 <- original type (orig_type)
 	//   [11, 12, 13] <- cast order (smartcasts)
 	//        12 <- the current casted type (typ)
-	pos               token.Pos
-	is_used           bool // whether the local variable was used in other expressions
-	is_changed        bool // to detect mutable vars that are never changed
-	is_comptime_field bool // comptime field var `a := t.$(field.name)`
-	//
+	pos         token.Pos
+	is_used     bool // whether the local variable was used in other expressions
+	is_changed  bool // to detect mutable vars that are never changed
+	ct_type_var ComptimeVarKind // comptime variable type
 	// (for setting the position after the or block for autofree)
 	is_or        bool // `x := foo() or { ... }`
 	is_tmp       bool // for tmp for loop vars, so that autofree can skip them
@@ -820,13 +830,14 @@ pub:
 	mut_pos  token.Pos
 	comptime bool
 pub mut:
-	scope  &Scope = unsafe { nil }
-	obj    ScopeObject
-	mod    string
-	name   string
-	kind   IdentKind
-	info   IdentInfo
-	is_mut bool // if mut *token* is before name. Use `is_mut()` to lookup mut variable
+	scope   &Scope = unsafe { nil }
+	obj     ScopeObject
+	mod     string
+	name    string
+	kind    IdentKind
+	info    IdentInfo
+	is_mut  bool // if mut *token* is before name. Use `is_mut()` to lookup mut variable
+	or_expr OrExpr
 }
 
 pub fn (i &Ident) is_mut() bool {
@@ -864,17 +875,21 @@ pub:
 	pos     token.Pos
 	is_stmt bool
 pub mut:
-	left        Expr
-	right       Expr
-	left_type   Type
-	right_type  Type
-	auto_locked string
-	or_block    OrExpr
+	left          Expr
+	right         Expr
+	left_type     Type
+	right_type    Type
+	promoted_type Type = void_type
+	auto_locked   string
+	or_block      OrExpr
 	//
 	ct_left_value_evaled  bool
 	ct_left_value         ComptTimeConstValue = empty_comptime_const_expr()
 	ct_right_value_evaled bool
 	ct_right_value        ComptTimeConstValue = empty_comptime_const_expr()
+	//
+	before_op_comments []Comment
+	after_op_comments  []Comment
 }
 
 // ++, --
@@ -885,6 +900,7 @@ pub:
 	is_c2v_prefix bool // for `--x` (`x--$`), only for translated code until c2v can handle it
 pub mut:
 	expr        Expr
+	typ         Type
 	auto_locked string
 }
 
@@ -1023,6 +1039,7 @@ pub enum ComptimeForKind {
 	methods
 	fields
 	attributes
+	values
 }
 
 pub struct ComptimeFor {
@@ -1176,6 +1193,7 @@ pub:
 	fields           []EnumField // all the enum fields
 	attrs            []Attr      // attributes of enum declaration
 	typ              Type        // the default is `int`; can be changed by `enum Big as u64 { a = 5 }`
+	typ_pos          token.Pos
 	pos              token.Pos
 }
 
@@ -1274,7 +1292,7 @@ pub:
 	has_len       bool
 	has_cap       bool
 	has_default   bool
-	has_it        bool // true if temp variable it is used
+	has_index     bool // true if temp variable index is used
 pub mut:
 	exprs        []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
 	len_expr     Expr   // len: expr
@@ -1530,14 +1548,15 @@ pub const (
 	}
 )
 
+// `assert a == 0, 'a is zero'`
 [minify]
 pub struct AssertStmt {
 pub:
 	pos       token.Pos
 	extra_pos token.Pos
 pub mut:
-	expr    Expr
-	extra   Expr
+	expr    Expr // `a == 0`
+	extra   Expr // `'a is zero'`
 	is_used bool // asserts are used in _test.v files, as well as in non -prod builds of all files
 }
 
@@ -1553,8 +1572,8 @@ pub struct IfGuardExpr {
 pub:
 	vars []IfGuardVar
 pub mut:
-	expr      Expr
-	expr_type Type
+	expr      Expr // `opt()`
+	expr_type Type // type of `opt()`
 }
 
 pub enum OrKind {
@@ -1747,6 +1766,10 @@ pub:
 	pos          token.Pos
 	where_expr   Expr
 	update_exprs []Expr // for `update`
+	// is_top_level indicates that a statement is parsed from code
+	// and is not inserted by ORM for inserting in related tables.
+	is_top_level bool
+	scope        &Scope = unsafe { nil }
 pub mut:
 	object_var_name string   // `user`
 	updated_columns []string // for `update set x=y`

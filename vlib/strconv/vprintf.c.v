@@ -24,7 +24,7 @@ enum Char_parse_state {
 
 // v_printf prints a sprintf-like formated `string` to the terminal.
 [deprecated: 'use string interpolation instead']
-pub fn v_printf(str string, pt ...voidptr) {
+fn v_printf(str string, pt ...voidptr) {
 	print(v_sprintf(str, ...pt))
 }
 
@@ -35,6 +35,8 @@ pub fn v_printf(str string, pt ...voidptr) {
 // x := 3.141516
 // assert strconv.v_sprintf('aaa %G', x) == 'aaa 3.141516'
 // ```
+[deprecated: 'use string interpolation instead']
+[deprecated_after: '2023-06-30']
 [direct_array_access; manualfree]
 pub fn v_sprintf(str string, pt ...voidptr) string {
 	mut res := strings.new_builder(pt.len * 16)
@@ -71,6 +73,12 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 
 		ch := str[i]
 		if ch != `%` && status == .norm_char {
+			res.write_u8(ch)
+			i++
+			continue
+		}
+		if ch == `%` && status == .field_char {
+			status = .norm_char
 			res.write_u8(ch)
 			i++
 			continue

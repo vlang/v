@@ -1,6 +1,6 @@
 module io
 
-// BufferedReader provides a buffered interface for a reader
+// BufferedReader provides a buffered interface for a reader.
 pub struct BufferedReader {
 mut:
 	reader Reader
@@ -13,14 +13,14 @@ pub mut:
 	end_of_stream bool // whether we reached the end of the upstream reader
 }
 
-// BufferedReaderConfig are options that can be given to a reader
+// BufferedReaderConfig are options that can be given to a buffered reader.
 pub struct BufferedReaderConfig {
 	reader  Reader
 	cap     int = 128 * 1024 // large for fast reading of big(ish) files
 	retries int = 2 // how many times to retry before assuming the stream ended
 }
 
-// new_buffered_reader creates new BufferedReader
+// new_buffered_reader creates a new BufferedReader.
 pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 	if o.cap <= 0 {
 		panic('new_buffered_reader should be called with a positive `cap`')
@@ -35,7 +35,7 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 	return r
 }
 
-// read fufills the Reader interface
+// read fufills the Reader interface.
 pub fn (mut r BufferedReader) read(mut buf []u8) !int {
 	if r.end_of_stream {
 		return Eof{}
@@ -58,6 +58,7 @@ pub fn (mut r BufferedReader) read(mut buf []u8) !int {
 	return read
 }
 
+// free deallocates the memory for a buffered reader's internal buffer.
 pub fn (mut r BufferedReader) free() {
 	unsafe {
 		r.buf.free()
@@ -65,7 +66,7 @@ pub fn (mut r BufferedReader) free() {
 }
 
 // fill_buffer attempts to refill the internal buffer
-// and returns whether it got any data
+// and returns whether it got any data.
 fn (mut r BufferedReader) fill_buffer() bool {
 	if r.end_of_stream {
 		// we know we have already reached the end of stream
@@ -94,19 +95,19 @@ fn (mut r BufferedReader) fill_buffer() bool {
 	return true
 }
 
-// needs_fill returns whether the buffer needs refilling
+// needs_fill returns whether the buffer needs refilling.
 fn (r BufferedReader) needs_fill() bool {
 	return r.offset >= r.len
 }
 
-// end_of_stream returns whether the end of the stream was reached
+// end_of_stream returns whether the end of the stream was reached.
 pub fn (r BufferedReader) end_of_stream() bool {
 	return r.end_of_stream
 }
 
 // read_line attempts to read a line from the buffered reader
 // it will read until it finds a new line character (\n) or
-// the end of stream
+// the end of stream.
 pub fn (mut r BufferedReader) read_line() !string {
 	if r.end_of_stream {
 		return error('none')

@@ -93,24 +93,25 @@ pub fn (t &Table) panic(message string) {
 [minify]
 pub struct Fn {
 pub:
-	is_variadic     bool
-	language        Language
-	is_pub          bool
-	is_ctor_new     bool // `[use_new] fn JS.Array.prototype.constructor()`
-	is_deprecated   bool // `[deprecated] fn abc(){}`
-	is_noreturn     bool // `[noreturn] fn abc(){}`
-	is_unsafe       bool // `[unsafe] fn abc(){}`
-	is_placeholder  bool
-	is_main         bool // `fn main(){}`
-	is_test         bool // `fn test_abc(){}`
-	is_keep_alive   bool // passed memory must not be freed (by GC) before function returns
-	is_method       bool // true for `fn (x T) name()`, and for interface declarations (which are also for methods)
-	no_body         bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
-	mod             string
-	file            string
-	file_mode       Language
-	pos             token.Pos
-	return_type_pos token.Pos
+	is_variadic        bool
+	language           Language
+	is_pub             bool
+	is_ctor_new        bool // `[use_new] fn JS.Array.prototype.constructor()`
+	is_deprecated      bool // `[deprecated] fn abc(){}`
+	is_noreturn        bool // `[noreturn] fn abc(){}`
+	is_unsafe          bool // `[unsafe] fn abc(){}`
+	is_placeholder     bool
+	is_main            bool // `fn main(){}`
+	is_test            bool // `fn test_abc(){}`
+	is_keep_alive      bool // passed memory must not be freed (by GC) before function returns
+	is_method          bool // true for `fn (x T) name()`, and for interface declarations (which are also for methods)
+	no_body            bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
+	is_file_translated bool // true, when the file it resides in is `[translated]`
+	mod                string
+	file               string
+	file_mode          Language
+	pos                token.Pos
+	return_type_pos    token.Pos
 pub mut:
 	return_type    Type
 	receiver_type  Type // != 0, when .is_method == true
@@ -1190,7 +1191,11 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 	for i, mr_typ in mr_typs {
 		mr_type_sym := t.sym(mktyp(mr_typ))
 		ref, cref := if mr_typ.is_ptr() { '&', 'ref_' } else { '', '' }
+		name += if mr_typ.has_flag(.option) { '?' } else { '' }
+		name += if mr_typ.has_flag(.result) { '!' } else { '' }
 		name += '${ref}${mr_type_sym.name}'
+		cname += if mr_typ.has_flag(.option) { '_option' } else { '' }
+		cname += if mr_typ.has_flag(.result) { '_result' } else { '' }
 		cname += '_${cref}${mr_type_sym.cname}'
 		if i < mr_typs.len - 1 {
 			name += ', '
@@ -1709,6 +1714,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 		Struct, Interface, SumType {
 			if sym.info.is_generic {
 				mut nrt := '${sym.name}['
+				mut rnrt := '${sym.rname}['
 				mut t_generic_names := generic_names.clone()
 				mut t_concrete_types := concrete_types.clone()
 				if sym.generic_types.len > 0 && sym.generic_types.len == sym.info.generic_types.len
@@ -1739,17 +1745,23 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 					{
 						gts := t.sym(ct)
 						nrt += gts.name
+						rnrt += gts.name
 						if i != sym.info.generic_types.len - 1 {
 							nrt += ', '
+							rnrt += ', '
 						}
 					} else {
 						return none
 					}
 				}
 				nrt += ']'
+				rnrt += ']'
 				mut idx := t.type_idxs[nrt]
 				if idx == 0 {
-					idx = t.add_placeholder_type(nrt, .v)
+					idx = t.type_idxs[rnrt]
+					if idx == 0 {
+						idx = t.add_placeholder_type(nrt, .v)
+					}
 				}
 				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
 			}
@@ -2273,6 +2285,9 @@ pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
 		}
 		.function {
 			return x_kind == .function
+		}
+		.option {
+			return x.has_flag(.option)
 		}
 	}
 }

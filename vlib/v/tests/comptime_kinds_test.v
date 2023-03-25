@@ -1,5 +1,5 @@
 fn assert_map[T]() {
-	$if T is $Map {
+	$if T is $map {
 		assert true
 	} $else {
 		assert false
@@ -7,7 +7,7 @@ fn assert_map[T]() {
 }
 
 fn assert_array[T]() {
-	$if T is $Array {
+	$if T is $array {
 		assert true
 	} $else {
 		assert false
@@ -15,7 +15,7 @@ fn assert_array[T]() {
 }
 
 fn assert_struct[T]() {
-	$if T is $Struct {
+	$if T is $struct {
 		assert true
 	} $else {
 		assert false
@@ -23,7 +23,7 @@ fn assert_struct[T]() {
 }
 
 fn assert_not_struct[T]() {
-	$if T is $Struct {
+	$if T is $struct {
 		assert false
 	} $else {
 		assert true
@@ -31,7 +31,7 @@ fn assert_not_struct[T]() {
 }
 
 fn assert_not_map[T]() {
-	$if T is $Map {
+	$if T is $map {
 		assert false
 	} $else {
 		assert true
@@ -39,7 +39,7 @@ fn assert_not_map[T]() {
 }
 
 fn assert_not_array[T]() {
-	$if T is $Array {
+	$if T is $array {
 		assert false
 	} $else {
 		assert true
@@ -90,7 +90,7 @@ type AliasOfint = int
 type AliasOfstring = string
 
 fn assert_alias[T]() {
-	$if T is $Alias {
+	$if T is $alias {
 		assert true
 	} $else {
 		assert false
@@ -98,7 +98,7 @@ fn assert_alias[T]() {
 }
 
 fn assert_not_alias[T]() {
-	$if T is $Alias {
+	$if T is $alias {
 		assert false
 	} $else {
 		assert true
@@ -119,7 +119,7 @@ fn test_kind_alias() {
 
 //
 fn assert_function[T](f T) {
-	$if T is $Function {
+	$if T is $function {
 		assert true
 	} $else {
 		assert false
@@ -127,7 +127,7 @@ fn assert_function[T](f T) {
 }
 
 fn assert_not_function[T](f T) {
-	$if T is $Function {
+	$if T is $function {
 		assert false
 	} $else {
 		assert true

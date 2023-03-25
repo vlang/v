@@ -9,13 +9,13 @@ fn test_main() {
 	}
 	assert 'main' == main.a
 
-	test := test.Test{
+	test_ := test.Test{
 		a: 'test'
 	}
-	assert 'test' == test.a
+	assert 'test' == test_.a
 
-	test2 := test2.Test2{
+	test2_ := test2.Test2{
 		a: 'test2'
 	}
-	assert 'test2' == test2.a
+	assert 'test2' == test2_.a
 }

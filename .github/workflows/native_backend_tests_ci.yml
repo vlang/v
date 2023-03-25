@@ -10,7 +10,6 @@ on:
       - 'vlib/builtin/**.v'
       - 'vlib/v/ast/**.v'
       - 'vlib/v/scanner/**.v'
-      - 'vlib/v/scanner/**.v'
       - 'vlib/v/parser/**.v'
       - 'vlib/v/checker/**.v'
       - 'vlib/v/gen/c/**.v'
@@ -30,7 +29,6 @@ on:
       - 'cmd/tools/builders/**.v'
       - 'vlib/builtin/**.v'
       - 'vlib/v/ast/**.v'
-      - 'vlib/v/scanner/**.v'
       - 'vlib/v/scanner/**.v'
       - 'vlib/v/parser/**.v'
       - 'vlib/v/checker/**.v'
@@ -53,13 +51,13 @@ jobs:
     strategy:
       matrix:
         os: [
-          ubuntu-18.04, ubuntu-20.04,
+          ubuntu-20.04,
           macos-11, macos-12,
           windows-2019, windows-2022
         ]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install linker
         if: ${{ startsWith(matrix.os, 'ubuntu')}}

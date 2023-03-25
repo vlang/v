@@ -1,4 +1,4 @@
-fn abc() ?int {
+fn abc() !int {
 	return error('oh no')
 }
 

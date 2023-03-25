@@ -430,8 +430,9 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 	oargs << '/c "${cfile}"'
 	oargs << '/Fo"${obj_path}"'
 	env_ldflags := os.getenv('LDFLAGS')
-	if env_ldflags != '' {
-		oargs << env_ldflags
+	mut all_ldflags := '${env_ldflags} ${v.pref.ldflags}'
+	if all_ldflags != '' {
+		oargs << all_ldflags
 	}
 	v.dump_c_options(oargs)
 	str_oargs := oargs.join(' ')

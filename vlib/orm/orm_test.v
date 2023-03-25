@@ -3,6 +3,10 @@
 import time
 import db.sqlite
 
+const (
+	offset_const = 2
+)
+
 struct Module {
 	id           int       [primary; sql: serial]
 	name         string
@@ -28,6 +32,33 @@ struct Foo {
 struct TestTime {
 	id     int       [primary; sql: serial]
 	create time.Time
+}
+
+fn test_use_struct_field_as_limit() {
+	db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql db {
+		create table User
+	}
+
+	foo := Foo{
+		age: 10
+	}
+
+	sam := User{
+		age: 29
+		name: 'Sam'
+	}
+
+	sql db {
+		insert sam into User
+	}
+
+	users := sql db {
+		select from User limit foo.age
+	}
+
+	assert users.len == 1
 }
 
 fn test_orm() {
@@ -73,19 +104,16 @@ fn test_orm() {
 		select count from User
 	}
 	assert nr_all_users == 3
-	println('nr_all_users=${nr_all_users}')
 
 	nr_users1 := sql db {
 		select count from User where id == 1
 	}
 	assert nr_users1 == 1
-	println('nr_users1=${nr_users1}')
 
 	nr_peters := sql db {
 		select count from User where id == 2 && name == 'Peter'
 	}
 	assert nr_peters == 1
-	println('nr_peters=${nr_peters}')
 
 	nr_peters2 := sql db {
 		select count from User where id == 2 && name == name
@@ -103,24 +131,26 @@ fn test_orm() {
 	assert peters.len == 1
 	assert peters[0].name == 'Peter'
 
-	one_peter := sql db {
+	mut users := sql db {
 		select from User where name == name limit 1
 	}
+
+	one_peter := users.first()
 	assert one_peter.name == 'Peter'
 	assert one_peter.id == 2
 
-	user := sql db {
+	users = sql db {
 		select from User where id == 1
 	}
-	println(user)
+
+	user := users.first()
 	assert user.name == 'Sam'
 	assert user.id == 1
 	assert user.age == 29
 
-	users := sql db {
+	users = sql db {
 		select from User where id > 0
 	}
-	println(users)
 	assert users.len == 3
 	assert users[0].name == 'Sam'
 	assert users[1].name == 'Peter'
@@ -129,22 +159,15 @@ fn test_orm() {
 	users2 := sql db {
 		select from User where id < 0
 	}
-	println(users2)
 	assert users2.len == 0
 
 	users3 := sql db {
 		select from User where age == 29 || age == 31
 	}
-	println(users3)
+
 	assert users3.len == 2
 	assert users3[0].age == 29
 	assert users3[1].age == 31
-
-	missing_user := sql db {
-		select from User where id == 8777
-	}
-	println('missing_user:')
-	println(missing_user) // zero struct
 
 	new_user := User{
 		name: 'New user'
@@ -154,22 +177,27 @@ fn test_orm() {
 		insert new_user into User
 	}
 
-	x := sql db {
+	users = sql db {
 		select from User where id == 4
 	}
-	println(x)
+
+	x := users.first()
 	assert x.age == 30
 	assert x.id == 4
 	assert x.name == 'New user'
 
-	kate := sql db {
+	users = sql db {
 		select from User where id == 3
 	}
+
+	kate := users.first()
 	assert kate.is_customer == true
 
-	customer := sql db {
+	users = sql db {
 		select from User where is_customer == true limit 1
 	}
+
+	customer := users.first()
 	assert customer.is_customer == true
 	assert customer.name == 'Kate'
 
@@ -177,9 +205,10 @@ fn test_orm() {
 		update User set age = 31 where name == 'Kate'
 	}
 
-	kate2 := sql db {
+	users = sql db {
 		select from User where id == 3
 	}
+	kate2 := users.first()
 	assert kate2.age == 31
 	assert kate2.name == 'Kate'
 
@@ -187,9 +216,10 @@ fn test_orm() {
 		update User set age = 32, name = 'Kate N' where name == 'Kate'
 	}
 
-	mut kate3 := sql db {
+	users = sql db {
 		select from User where id == 3
 	}
+	mut kate3 := users.first()
 	assert kate3.age == 32
 	assert kate3.name == 'Kate N'
 
@@ -198,9 +228,11 @@ fn test_orm() {
 		update User set age = new_age, name = 'Kate N' where id == 3
 	}
 
-	kate3 = sql db {
+	users = sql db {
 		select from User where id == 3
 	}
+
+	kate3 = users.first()
 	assert kate3.age == 33
 	assert kate3.name == 'Kate N'
 
@@ -209,17 +241,18 @@ fn test_orm() {
 		update User set age = foo.age, name = 'Kate N' where id == 3
 	}
 
-	kate3 = sql db {
+	users = sql db {
 		select from User where id == 3
 	}
+	kate3 = users.first()
 	assert kate3.age == 34
 	assert kate3.name == 'Kate N'
 
 	no_user := sql db {
 		select from User where id == 30
 	}
-	assert no_user.name == '' // TODO optional
-	assert no_user.age == 0
+
+	assert no_user.len == 0
 
 	two_users := sql db {
 		select from User limit 2
@@ -233,40 +266,47 @@ fn test_orm() {
 	assert y.len == 2
 	assert y[0].id == 2
 
-	offset_const := 2
 	z := sql db {
 		select from User order by id limit 2 offset offset_const
 	}
 	assert z.len == 2
 	assert z[0].id == 3
-	oldest := sql db {
+
+	users = sql db {
 		select from User order by age desc limit 1
 	}
+
+	oldest := users.first()
 	assert oldest.age == 34
+
 	offs := 1
-	second_oldest := sql db {
+	users = sql db {
 		select from User order by age desc limit 1 offset offs
 	}
+
+	second_oldest := users.first()
 	assert second_oldest.age == 31
 	sql db {
 		delete from User where age == 34
 	}
 
-	updated_oldest := sql db {
+	users = sql db {
 		select from User order by age desc limit 1
 	}
+	updated_oldest := users.first()
 	assert updated_oldest.age == 31
 
 	// Remove this when pg is used
 	// db.exec('insert into User (name, age) values (NULL, 31)')
-	null_user := sql db {
+	users = sql db {
 		select from User where id == 5
 	}
-	assert null_user.name == ''
+	assert users.len == 0
 
-	age_test := sql db {
+	users = sql db {
 		select from User where id == 1
 	}
+	age_test := users.first()
 
 	assert age_test.age == 29
 
@@ -274,20 +314,22 @@ fn test_orm() {
 		update User set age = age + 1 where id == 1
 	}
 
-	mut first := sql db {
+	users = sql db {
 		select from User where id == 1
 	}
 
+	mut first := users.first()
 	assert first.age == 30
 
 	sql db {
 		update User set age = age * 2 where id == 1
 	}
 
-	first = sql db {
+	users = sql db {
 		select from User where id == 1
 	}
 
+	first = users.first()
 	assert first.age == 60
 
 	sql db {
@@ -321,31 +363,31 @@ fn test_orm() {
 		update Module set test_id = 11 where id == 1
 	}
 
-	test_id_mod := sql db {
+	mut modules := sql db {
 		select from Module where id == 1
 	}
 
-	assert test_id_mod.test_id == 11
+	assert modules.first().test_id == 11
 
 	t := time.now()
 	sql db {
 		update Module set created = t where id == 1
 	}
 
-	updated_time_mod := sql db {
+	modules = sql db {
 		select from Module where id == 1
 	}
 
 	// Note: usually updated_time_mod.created != t, because t has
 	// its microseconds set, while the value retrieved from the DB
 	// has them zeroed, because the db field resolution is seconds.
-	assert updated_time_mod.created.format_ss() == t.format_ss()
+	assert modules.first().created.format_ss() == t.format_ss()
 
-	para_select := sql db {
+	users = sql db {
 		select from User where (name == 'Sam' && is_customer == true) || id == 1
 	}
 
-	assert para_select[0] == first
+	assert users.first() == first
 
 	sql db {
 		drop table Module

@@ -309,11 +309,18 @@ fn main() {
 	context.pid = os.getpid()
 	context.vexe = os.getenv('VEXE')
 
-	mut fp := flag.new_flag_parser(os.args[1..])
+	watch_pos := os.args.index('watch')
+	all_args_before_watch_cmd := os.args#[1..watch_pos]
+	all_args_after_watch_cmd := os.args#[watch_pos + 1..]
+	// dump(os.getpid())
+	// dump(all_args_before_watch_cmd)
+	// dump(all_args_after_watch_cmd)
+
+	// Options after `run` should be ignored, since they are intended for the user program, not for the watcher.
+	// For example, `v watch run x.v -a -b -k', should pass all of -a -b -k to the compiled and run program.
+	only_watch_options, has_run := all_before('run', all_args_after_watch_cmd)
+	mut fp := flag.new_flag_parser(only_watch_options)
 	fp.application('v watch')
-	if os.args[1] == 'watch' {
-		fp.skip_executable()
-	}
 	fp.version('0.0.2')
 	fp.description('Collect all .v files needed for a compilation, then re-run the compilation when any of the source changes.')
 	fp.arguments_description('[--silent] [--clear] [--ignore .db] [--add /path/to/a/file.v] [run] program.v')
@@ -336,7 +343,12 @@ fn main() {
 		eprintln('Error: ${err}')
 		exit(1)
 	}
-	context.opts = remaining_options
+	context.opts = []
+	context.opts << all_args_before_watch_cmd
+	context.opts << remaining_options
+	if has_run {
+		context.opts << all_after('run', all_args_after_watch_cmd)
+	}
 	context.elog('>>> context.pid: ${context.pid}')
 	context.elog('>>> context.vexe: ${context.vexe}')
 	context.elog('>>> context.opts: ${context.opts}')
@@ -347,14 +359,15 @@ fn main() {
 	if context.is_worker {
 		context.worker_main()
 	} else {
-		context.manager_main()
+		context.manager_main(all_args_before_watch_cmd, all_args_after_watch_cmd)
 	}
 }
 
-fn (mut context Context) manager_main() {
+fn (mut context Context) manager_main(all_args_before_watch_cmd []string, all_args_after_watch_cmd []string) {
 	myexecutable := os.executable()
-	mut worker_opts := ['--vwatchworker']
-	worker_opts << os.args[2..]
+	mut worker_opts := all_args_before_watch_cmd.clone()
+	worker_opts << ['watch', '--vwatchworker']
+	worker_opts << all_args_after_watch_cmd
 	for {
 		mut worker_process := os.new_process(myexecutable)
 		worker_process.set_args(worker_opts)
@@ -383,4 +396,20 @@ fn (mut context Context) worker_main() {
 	}) or { panic(err) }
 	spawn context.compilation_runner_loop()
 	change_detection_loop(context)
+}
+
+fn all_before(needle string, all []string) ([]string, bool) {
+	needle_pos := all.index(needle)
+	if needle_pos == -1 {
+		return all, false
+	}
+	return all#[..needle_pos + 1], true
+}
+
+fn all_after(needle string, all []string) []string {
+	needle_pos := all.index(needle)
+	if needle_pos == -1 {
+		return all
+	}
+	return all#[needle_pos + 1..]
 }

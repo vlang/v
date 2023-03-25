@@ -1,6 +1,6 @@
-chdir(temp_dir())?
+chdir(temp_dir())!
 test_file_name := 'test_file'
-write_file_array(test_file_name, [u8(0xff), 0xff, 0xff, 0xff])?
+write_file_array(test_file_name, [u8(0xff), 0xff, 0xff, 0xff])!
 defer {
 	rm(test_file_name) or {}
 }

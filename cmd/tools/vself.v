@@ -2,10 +2,14 @@ module main
 
 import os
 import os.cmdline
-import v.pref
 import v.util.recompilation
 
 const is_debug = os.args.contains('-debug')
+
+// support a renamed `v` executable too:
+const vexe = os.getenv_opt('VEXE') or { @VEXE }
+
+const vroot = os.dir(vexe)
 
 fn main() {
 	// make testing `v up` easier, by providing a way to force `v self` to fail,
@@ -14,16 +18,24 @@ fn main() {
 		eprintln('v self failed')
 		exit(1)
 	}
-	// support a renamed `v` executable too:
-	vexe := pref.vexe_path()
-	vroot := os.dir(vexe)
 	vexe_name := os.file_name(vexe)
 	short_v_name := vexe_name.all_before('.')
 	//
 	recompilation.must_be_enabled(vroot, 'Please install V from source, to use `${vexe_name} self` .')
 	os.chdir(vroot)!
 	os.setenv('VCOLORS', 'always', true)
-	args := os.args[1..].filter(it != 'self')
+	mut args := os.args[1..].filter(it != 'self')
+	if args.len == 0 || ('-cc' !in args && '-prod' !in args) {
+		// compiling by default, i.e. `v self`:
+		uos := os.user_os()
+		uname := os.uname()
+		if uos == 'macos' && uname.machine == 'arm64' {
+			// Apple silicon, like m1, m2 etc
+			// Use tcc by default for V, since tinycc is much faster and also
+			// it already supports compiling many programs like V itself, that do not depend on inlined objective-C code
+			args << '-cc tcc'
+		}
+	}
 	jargs := args.join(' ')
 	obinary := cmdline.option(args, '-o', '')
 	sargs := if obinary != '' { jargs } else { '${jargs} -o v2' }

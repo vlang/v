@@ -1,5 +1,5 @@
 import db.sqlite
-import db.mysql
+import db.mysql as sql
 import db.pg
 
 [table: 'modules']
@@ -74,7 +74,7 @@ fn sqlite3_array() {
 }
 
 fn mysql_array() {
-	mut db := mysql.Connection{
+	mut db := sql.Connection{
 		host: 'localhost'
 		port: 3306
 		username: 'root'
@@ -186,7 +186,7 @@ fn sqlite3() {
 }
 
 fn mysql() {
-	mut conn := mysql.Connection{
+	mut conn := sql.Connection{
 		host: 'localhost'
 		port: 3306
 		username: 'root'

@@ -96,6 +96,12 @@ fn (mut dom DocumentObjectModel) add_tag_by_attribute(tag &Tag) {
 
 fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 	dom.constructed = true
+
+	// If there are no tags, accessing `tag_list` below does panic.
+	if tag_list.len == 0 {
+		return
+	}
+
 	mut temp_map := map[string]int{}
 	mut temp_int := null_element
 	mut temp_string := ''
@@ -106,6 +112,7 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 	temp_map['0'] = dom.btree.add_children(tag_list[0])
 	stack.push(0)
 	root_index := 0
+
 	for index := 1; index < tag_list.len; index++ {
 		mut tag := tag_list[index]
 		dom.print_debug(tag.str())

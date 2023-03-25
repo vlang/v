@@ -1,6 +1,11 @@
 import x.json2 as json
 import strings
 
+struct StructType[T] {
+mut:
+	val T
+}
+
 fn test_json_string_characters() {
 	text := json.raw_decode(r'"\n\r\b\f\t\\\"\/"') or { '' }
 	assert text.json_str() == '"\\n\\r\\b\\f\\t\\\\\\"\\/"'
@@ -116,7 +121,15 @@ fn test_encode_encodable() {
 }
 
 fn test_encode_array() {
-	assert json.encode([1, 2, 3]) == '[1,2,3]'
+	array_of_struct := [StructType[[]bool]{
+		val: [false, true]
+	}, StructType[[]bool]{
+		val: [true, false]
+	}]
+
+	assert json.encode_array([1, 2, 3]) == '[1,2,3]'
+
+	assert json.encode_array(array_of_struct) == '[{"val":[false,true]},{"val":[true,false]}]'
 }
 
 fn test_encode_simple() {

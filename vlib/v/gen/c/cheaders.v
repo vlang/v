@@ -61,9 +61,9 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
 // Inspired from Chris Wellons's work
 // https://nullprogram.com/blog/2017/01/08/
 
-fn c_closure_helpers(pref &pref.Preferences) string {
+fn c_closure_helpers(pref_ &pref.Preferences) string {
 	mut builder := strings.new_builder(2048)
-	if pref.os != .windows {
+	if pref_.os != .windows {
 		builder.writeln('#include <sys/mman.h>')
 	}
 

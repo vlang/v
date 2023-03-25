@@ -89,7 +89,13 @@ pub fn (mut cm CacheManager) key2cpath(key string) string {
 		cprefix_folder := os.join_path(cm.basepath, prefix)
 		cpath = os.join_path(cprefix_folder, khash)
 		if !os.is_dir(cprefix_folder) {
-			os.mkdir_all(cprefix_folder) or { panic(err) }
+			os.mkdir_all(cprefix_folder) or {
+				// The error here may be due to a race with another independent V process, that has already created the same folder.
+				// If that is the case, so be it - just reuse the folder ¯\_(ツ)_/¯ ...
+				if !os.is_dir(cprefix_folder) {
+					panic(err)
+				}
+			}
 		}
 		dlog(@FN, 'new hk')
 		dlog(@FN, '       key: ${key}')

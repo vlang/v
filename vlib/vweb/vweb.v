@@ -167,7 +167,8 @@ pub mut:
 
 	header http.Header // response headers
 	// ? It doesn't seem to be used anywhere
-	form_error string
+	form_error                  string
+	livereload_poll_interval_ms int = 250
 }
 
 struct FileData {
@@ -190,8 +191,8 @@ pub fn (ctx Context) init_server() {
 }
 
 // Defining this method is optional.
-// This method called before every request (aka middleware).
-// Probably you can use it for check user session cookie or add header.
+// This method is called before every request (aka middleware).
+// You can use it for checking user session cookies or to add headers.
 pub fn (ctx Context) before_request() {}
 
 // TODO - test
@@ -202,17 +203,22 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 		return false
 	}
 	ctx.done = true
-
-	// build header
-	header := http.new_header_from_map({
-		http.CommonHeader.content_type:   mimetype
-		http.CommonHeader.content_length: res.len.str()
-	}).join(ctx.header)
-
+	//
 	mut resp := http.Response{
-		header: header.join(vweb.headers_close)
 		body: res
 	}
+	$if vweb_livereload ? {
+		if mimetype == 'text/html' {
+			resp.body = res.replace('</html>', '<script src="/vweb_livereload/${vweb_livereload_server_start}/script.js"></script>\n</html>')
+		}
+	}
+	// build the header after the potential modification of resp.body from above
+	header := http.new_header_from_map({
+		http.CommonHeader.content_type:   mimetype
+		http.CommonHeader.content_length: resp.body.len.str()
+	}).join(ctx.header)
+	resp.header = header.join(vweb.headers_close)
+	//
 	resp.set_version(.v1_1)
 	resp.set_status(http.status_from_int(ctx.status.int()))
 	send_string(mut ctx.conn, resp.bytestr()) or { return false }
@@ -384,9 +390,10 @@ pub fn run[T](global_app &T, port int) {
 
 [params]
 pub struct RunParams {
-	host   string
-	port   int = 8080
-	family net.AddrFamily = .ip6 // use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
+	host                 string
+	port                 int = 8080
+	family               net.AddrFamily = .ip6 // use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
+	show_startup_message bool = true
 }
 
 // run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
@@ -414,7 +421,9 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 		}
 	}
 	host := if params.host == '' { 'localhost' } else { params.host }
-	println('[Vweb] Running app on http://${host}:${params.port}/')
+	if params.show_startup_message {
+		println('[Vweb] Running app on http://${host}:${params.port}/')
+	}
 	flush_stdout()
 	for {
 		// Create a new app object for each connection, copy global data like db connections
@@ -503,6 +512,19 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 
 	// Calling middleware...
 	app.before_request()
+
+	$if vweb_livereload ? {
+		if url.path.starts_with('/vweb_livereload/') {
+			if url.path.ends_with('current') {
+				app.handle_vweb_livereload_current()
+				return
+			}
+			if url.path.ends_with('script.js') {
+				app.handle_vweb_livereload_script()
+				return
+			}
+		}
+	}
 
 	// Static handling
 	if serve_if_static[T](mut app, url) {

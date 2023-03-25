@@ -16,7 +16,7 @@ TMPLEGACY := $(LEGACYLIBS)/source
 TCCOS := unknown
 TCCARCH := unknown
 GITCLEANPULL := git clean -xf && git pull --quiet
-GITFASTCLONE := git clone --depth 1 --quiet --single-branch
+GITFASTCLONE := git clone --filter=blob:none --quiet
 
 #### Platform detections and overrides:
 _SYS := $(shell uname 2>/dev/null || echo Unknown)
@@ -112,7 +112,7 @@ ifdef LEGACY
 endif
 	$(CC) $(CFLAGS) -std=gnu99 -w -o v1.exe $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
 	./v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
-	./v2.exe -o $(VEXE) $(VFLAGS) cmd/v
+	./v2.exe -nocache -o $(VEXE) $(VFLAGS) cmd/v
 	rm -rf v1.exe v2.exe
 endif
 	@$(VEXE) run cmd/tools/detect_tcc.v
