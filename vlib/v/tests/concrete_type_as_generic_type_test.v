@@ -7,7 +7,7 @@ fn func_fn_concrete() Fn[string] {
 }
 
 fn func_fn_dynamic[T]() Fn[T] {
-	return fn (_t T) {}
+	return fn [T](_t T) {}
 }
 
 // FIXME: FnReturn[string, string] fails to stencil
@@ -16,14 +16,16 @@ fn func_fn_dynamic[T]() Fn[T] {
 // 		return s
 // 	}
 // }
-fn func_fn_return_dynamic_1[T]() FnReturn[T, T] {
-	return fn (t T) T {
-		return t
+
+fn func_fn_return_dynamic[T, R]() FnReturn[T, R] {
+	return fn [T, R](t T) R {
+		return t.int()
 	}
 }
 
-fn func_fn_return_dynamic_2[T, R](r R) FnReturn[T, R] {
-	return fn [r] (_t) string {
-		return r
-	}
+fn test_concrete_function_type_as_generic_type() {
+	main.func_fn_concrete()('V')
+	main.func_fn_dynamic()('V')
+
+	assert main.func_fn_return_dynamic()('100') == 100
 }
