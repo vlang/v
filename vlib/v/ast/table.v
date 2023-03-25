@@ -2246,6 +2246,38 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						util.verror('generic error', 'the number of generic types of sumtype `${parent.name}` is inconsistent with the concrete types')
 					}
 				}
+				FnType {
+					// TODO: Cache function's generic types (parameters and return type) like Struct and Interface etc. do?
+					mut parent_info := parent.info as FnType
+					mut function := parent_info.func
+					mut generic_names := []string{cap: function.params.len + 1}
+					generic_names << function.params.filter(it.typ.has_flag(.generic)).map(t.sym(it.typ).name)
+					if function.return_type.has_flag(.generic) {
+						generic_names << t.sym(function.return_type).name
+					}
+					for mut param in function.params {
+						if param.typ.has_flag(.generic) {
+							if t_typ := t.resolve_generic_to_concrete(param.typ, generic_names,
+								info.concrete_types)
+							{
+								param.typ = t_typ
+							}
+						}
+					}
+					mut return_type := function.return_type
+					if return_type.has_flag(.generic) {
+						if return_type.idx() != info.parent_idx {
+							return_type = t.unwrap_generic_type(return_type, generic_names,
+								info.concrete_types)
+						}
+					}
+					sym.info = FnType{
+						...parent_info
+						func: function
+					}
+					sym.is_pub = true
+					sym.kind = parent.kind
+				}
 				else {}
 			}
 		}
