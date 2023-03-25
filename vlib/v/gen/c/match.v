@@ -472,14 +472,12 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 						g.write(')')
 					}
 					.struct_ {
-						if g.get_expr_type(expr).set_nr_muls(0) == node.cond_type.set_nr_muls(0) {
-							g.write('true')
-						} else {
-							ptr_typ := g.equality_fn(node.cond_type)
-							g.write('${ptr_typ}_struct_eq(${cond_var}, ')
-							g.expr(expr)
-							g.write(')')
-						}
+						derefs_expr := '*'.repeat(g.get_expr_type(expr).nr_muls())
+						derefs_ctype := '*'.repeat(node.cond_type.nr_muls())
+						ptr_typ := g.equality_fn(node.cond_type)
+						g.write('${ptr_typ}_struct_eq(${derefs_ctype}${cond_var}, ${derefs_expr}')
+						g.expr(expr)
+						g.write(')')
 					}
 					else {
 						if expr is ast.RangeExpr {
