@@ -2268,8 +2268,8 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					mut return_type := function.return_type
 					if return_type.has_flag(.generic) {
 						if return_type.idx() != info.parent_idx {
-							return_type = t.unwrap_generic_type(return_type, 
-								generic_names, info.concrete_types)
+							return_type = t.unwrap_generic_type(return_type, generic_names,
+								info.concrete_types)
 						}
 					}
 					sym.info = FnType{
