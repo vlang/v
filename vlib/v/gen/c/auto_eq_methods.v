@@ -230,12 +230,14 @@ fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('static bool ${ptr_styp}_alias_eq(${ptr_styp} a, ${ptr_styp} b) {')
 
-	left_var := if left_type.has_flag(.option) { '*' + g.read_opt(left_type, 'a') } else { 'a' }
-	right_var := if left_type.has_flag(.option) { '*' + g.read_opt(left_type, 'b') } else { 'b' }
+	is_option := info.parent_type.has_flag(.option) || left.typ.has_flag(.option)
+
+	left_var := if is_option { '*' + g.read_opt(info.parent_type, 'a') } else { 'a' }
+	right_var := if is_option { '*' + g.read_opt(info.parent_type, 'b') } else { 'b' }
 
 	sym := g.table.sym(info.parent_type)
 	if sym.kind == .string {
-		if info.parent_type.has_flag(.option) {
+		if is_option {
 			fn_builder.writeln('\treturn ((${left_var}).len == (${right_var}).len && (${left_var}).len == 0) || string__eq(${left_var}, ${right_var});')
 		} else {
 			fn_builder.writeln('\treturn string__eq(a, b);')
