@@ -252,20 +252,86 @@ pub fn (mut app App) controller_get_user_by_id() vweb.Result {
 ```
 ### Middleware
 
-V haven't a well defined middleware.
-For now, you can use `before_request()`. This method called before every request.
-Probably you can use it for check user session cookie or add header
+Vweb has different kinds of middleware.
+The `before_request()` method is always called before every request before any
+other middleware is processed. You could use it to check user session cookies or to add a header.
+
 **Example:**
 
-```v ignore
+```v
 pub fn (mut app App) before_request() {
     app.user_id = app.get_cookie('id') or { '0' }
 }
 ```
 
+Middleware functions can be passed directly when creating an App instance and is executed when the url starts with the defined key. 
+
+In the following example, if a user navigates to `/path/to/test` the middleware is executed in the following order: `middleware_func`, `other_func`, `global_middleware`. The middleware is executed in the same order as they are defined and if any function in the chain returns `false` the propogation is stopped.
+
+**Example:**
+```v
+struct App {
+	vweb.Context
+	middlewares map[string][]vweb.Middleware
+}
+
+
+fn new_app() &App {
+	mut app := &App{
+		middlewares: {
+			// chaining is allowed, middleware will be evaluated in order
+			'/path/to/': [middleware_func, other_func]        
+			'/': [global_middleware]
+		}
+	}
+	// do stuff with app
+	// ...
+	return app
+}
+
+fn middleware_func(mut ctx vweb.Context) bool {
+	// ...
+	return true
+}
+
+fn other_func(mut ctx vweb.Context) bool {
+	// ...
+	return true
+}
+
+fn global_middleware(mut ctx vweb.Context) bool {
+	// ...
+	return true
+}
+```
+
+Middleware functions will be of type `vweb.Middleware` and are not methods of App, so they could also be imported from other modules.
+```v
+pub type Middleware = fn (mut Context) bool
+```
+
+Middleware can also be added to route specific functions via attributes.
+
+**Example:**
+```v
+[middleware: check_auth]
+['/admin/data']
+pub fn (mut app App) admin() vweb.Result {
+	// ...
+}
+
+// check_auth is a method of App, so we don't need to pass the context as parameter.
+pub fn (mut app App) check_auth () bool {
+	// ...
+	return true
+}
+```
+For now you can only add 1 middleware to a route specific function via attributes.
+
 ### Redirect
 
 Used when you want be redirected to an url
+
 **Examples:**
 
 ```v ignore
@@ -281,6 +347,25 @@ pub fn (mut app App) articles() vweb.Result {
         app.redirect('/login')
     }
     return app.text("patatoes")
+}
+```
+
+You can also combine middleware and redirect.
+
+**Example:**
+
+```v
+[middleware: with_auth]
+['/admin/secret']
+pub fn (mut app App) admin_secret() vweb.Result {
+    // this code should never be reached
+	return app.text('secret')
+}
+
+['/redirect']
+pub fn (mut app App) with_auth() bool {
+    app.redirect('/auth/login')
+    return false
 }
 ```
 

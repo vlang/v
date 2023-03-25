@@ -7,7 +7,7 @@ import io
 
 const (
 	sport           = 12381
-	localserver     = 'localhost:${sport}'
+	localserver     = '127.0.0.1:${sport}'
 	exit_after_time = 12000 // milliseconds
 	vexe            = os.getenv('VEXE')
 	vweb_logfile    = os.getenv('VWEB_LOGFILE')
