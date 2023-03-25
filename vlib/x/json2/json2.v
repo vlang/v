@@ -123,13 +123,13 @@ pub fn decode[T](src string) !T {
 					typ.$(field.name) = res[field.name]!.to_time()!
 				}
 			} $else $if field.is_array {
-				typed_arr_element := new_empty_element_from(typ.$(field.name))
+				// typed_arr_element := new_empty_element_from(typ.$(field.name))
 
-				for variable in res[field.name] or { []Any{} }.arr() {
-					$if typed_arr_element is string {
-						typ.$(field.name) << variable.str()
-					}
-				}
+				// for variable in res[field.name] or { []Any{} }.arr() {
+				// 	$if typed_arr_element is string {
+				// 		typ.$(field.name) << variable.str()
+				// 	}
+				// }
 			} $else $if field.is_struct {
 			} $else $if field.is_alias {
 			} $else $if field.is_map {
