@@ -23,9 +23,14 @@ fn func_fn_return_dynamic[T, R]() FnReturn[T, R] {
 	}
 }
 
+// vfmt will erase explicit generic type (bug)
+// vfmt off
+
 fn test_concrete_function_type_as_generic_type() {
 	func_fn_concrete()('V')
 	func_fn_dynamic[string]()('V')
 
 	assert func_fn_return_dynamic[string, int]()('100') == 100
 }
+
+// vfmt on
