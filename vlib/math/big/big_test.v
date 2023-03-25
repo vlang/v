@@ -203,6 +203,11 @@ fn test_integer_from_string() {
 		panic('Minimum signed 32-bit int test fails.')
 	}
 	assert imin.int() == -2147483648
+
+	imax := big.integer_from_string('2147483647') or {
+		panic('Maximum signed 32-bit int test fails.')
+	}
+	assert imax.int() == 2147483647
 }
 
 fn test_integer_from_powers_of_2() {
