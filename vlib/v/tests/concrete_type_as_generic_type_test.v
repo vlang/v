@@ -24,8 +24,8 @@ fn func_fn_return_dynamic[T, R]() FnReturn[T, R] {
 }
 
 fn test_concrete_function_type_as_generic_type() {
-	main.func_fn_concrete()('V')
-	main.func_fn_dynamic()('V')
+	func_fn_concrete()('V')
+	func_fn_dynamic[string]()('V')
 
-	assert main.func_fn_return_dynamic()('100') == 100
+	assert func_fn_return_dynamic[string, int]()('100') == 100
 }
