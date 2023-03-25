@@ -2426,6 +2426,11 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		} else {
 			node.receiver_type = left_type
 		}
+	} else if method_name == 'delete' {
+		unwrapped_left_sym := c.table.sym(c.unwrap_generic(left_type))
+		if method := c.table.find_method(unwrapped_left_sym, method_name) {
+			node.receiver_type = method.receiver_type
+		}
 	}
 	return node.return_type
 }
