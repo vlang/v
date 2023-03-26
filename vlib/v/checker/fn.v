@@ -1353,6 +1353,9 @@ fn (mut c Checker) resolve_fn_generic_args(name string, func ast.Fn, mut node as
 		if comptime_args.len > 0 {
 			offset := if func.is_method { 1 } else { 0 }
 			for k, v in comptime_args {
+				if k >= concrete_types.len {
+					break
+				}
 				unwrapped_v := c.unwrap_generic(v)
 				arg_sym := c.table.sym(unwrapped_v)
 				if arg_sym.kind == .array && func.params[k + offset].typ.has_flag(.generic)
