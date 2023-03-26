@@ -1358,8 +1358,10 @@ fn (mut c Checker) resolve_fn_generic_args(name string, func ast.Fn, mut node as
 				if arg_sym.kind == .array && func.params[k + offset].typ.has_flag(.generic)
 					&& c.table.final_sym(func.params[k + offset].typ).kind == .array {
 					concrete_type = c.unwrap_generic((arg_sym.info as ast.Array).elem_type)
+				} else if v.has_flag(.generic) {
+					concrete_type = concrete_type.set_nr_muls(0)
 				} else {
-					concrete_type = concrete_type // .set_nr_muls(0)
+					// concrete_type = concrete_type // .set_nr_muls(0)
 				}
 				if k >= concrete_types.len {
 					// concrete_types << concrete_type
@@ -2397,7 +2399,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		if node.left.is_auto_deref_var() {
 			node.return_type = left_type.deref()
 		} else {
-			node.return_type = node.receiver_type // .set_nr_muls(0)
+			node.return_type = node.receiver_type.set_nr_muls(0)
 		}
 		if node.return_type.has_flag(.shared_f) {
 			node.return_type = node.return_type.clear_flag(.shared_f)
