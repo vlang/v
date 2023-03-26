@@ -3663,14 +3663,6 @@ pub fn (mut c Checker) is_comptime_var(node ast.Expr) bool {
 		&& (node as ast.Ident).info is ast.IdentVar && (node as ast.Ident).kind == .variable && ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime
 }
 
-[inline]
-pub fn (mut c Checker) get_var_comptime_type(node ast.Expr) ast.ComptimeVarKind {
-	if c.is_comptime_var(node) {
-		return ((node as ast.Ident).obj as ast.Var).ct_type_var
-	}
-	return .no_comptime
-}
-
 fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 	match mut node {
 		ast.Ident {

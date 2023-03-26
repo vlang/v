@@ -966,7 +966,10 @@ fn (mut g Gen) change_comptime_args(mut node_ ast.CallExpr) map[int]ast.Type {
 			if mut call_arg.expr.obj is ast.Var {
 				node_.args[i].typ = call_arg.expr.obj.typ
 				if call_arg.expr.obj.ct_type_var != .no_comptime {
-					comptime_args[i] = g.get_comptime_var_type(call_arg.expr)
+					ctyp := g.get_comptime_var_type(call_arg.expr)
+					if ctyp != ast.void_type {
+						comptime_args[i] = ctyp
+					}
 				}
 			}
 		} else if mut call_arg.expr is ast.ComptimeSelector {

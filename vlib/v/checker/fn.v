@@ -1353,10 +1353,8 @@ fn (mut c Checker) resolve_method_generic(method ast.Fn, mut node ast.CallExpr) 
 			concrete_types << concrete_type
 		}
 	}
-	if concrete_types.len > 0 {
-		if c.table.register_fn_concrete_types(method.fkey(), concrete_types) {
-			c.need_recheck_generic_fns = true
-		}
+	if concrete_types.len > 0 && c.table.register_fn_concrete_types(method.fkey(), concrete_types) {
+		c.need_recheck_generic_fns = true
 	}
 
 	// dynamic values from comptime and generic parameters
