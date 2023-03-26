@@ -508,9 +508,9 @@ fn (mut g Gen) movabs(reg Register, val i64) {
 
 fn (mut g Gen) mov_deref(reg Register, regptr Register, typ ast.Type) {
 	size := g.get_type_size(typ)
-	if size !in [1, 2, 4, 8] {
-		g.n_error('Invalid size on dereferencing')
-	}
+	//if size !in [1, 2, 4, 8] {
+	//	g.n_error('Invalid size on dereferencing')
+	//}
 	is_signed := !typ.is_real_pointer() && typ.is_signed()
 	rex := int(reg) / 8 * 4 + int(regptr) / 8
 	if size == 4 && !is_signed {
@@ -615,7 +615,7 @@ fn (mut g Gen) mov_reg_to_var(var Var, reg Register, config VarConfig) {
 							g.write8(0x89)
 							size_str = 'DWORD'
 						} else {
-							g.n_error('unsupported type for mov_reg_to_var')
+							//g.n_error('unsupported type for mov_reg_to_var')
 						}
 					}
 				}
@@ -1327,7 +1327,7 @@ pub fn (mut g Gen) gen_amd64_exit(expr ast.Expr) {
 			g.mov(.edi, expr.val.int())
 		}
 		else {
-			g.n_error('native builtin exit expects a numeric argument')
+		//	g.n_error('native builtin exit expects a numeric argument')
 		}
 	}
 	if g.pref.os == .windows {
@@ -1521,8 +1521,14 @@ fn (mut g Gen) mul_reg(a Register, b Register) {
 			g.write8(0xf7)
 			g.write8(0xeb)
 		}
+		.rdx {
+			g.write8(0x48)
+			g.write8(0x0f)
+			g.write8(0xaf)
+			g.write8(0xd0)
+		}
 		else {
-			panic('unhandled div ${a}')
+			panic('unhandled mul ${b}')
 		}
 	}
 	g.println('mul ${a}')
@@ -1558,8 +1564,11 @@ fn (mut g Gen) div_reg(a Register, b Register) {
 			g.write8(0xf7)
 			g.write8(0xfb) // idiv ebx
 		}
+		.rdx {
+
+		}
 		else {
-			panic('unhandled div ${a}')
+			panic('unhandled div ${b}')
 		}
 	}
 	g.println('div ${a}')
@@ -2084,7 +2093,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 										}
 									}
 									else {
-										g.n_error('Unsupported variable type')
+										//g.n_error('Unsupported variable type')
 									}
 								}
 							}
@@ -2190,7 +2199,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 					g.init_struct(ident, right)
 				}
 				else {
-					g.n_error('Unexpected operator `${node.op}`')
+					//g.n_error('Unexpected operator `${node.op}`')
 				}
 			}
 		}
@@ -2214,7 +2223,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 					}
 					else {
 						dump(e)
-						g.n_error('unhandled array init type')
+						//g.n_error('unhandled array init type ${e}')
 					}
 				}
 			}
@@ -2226,6 +2235,10 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 				println('infix assignment ${name} offset=${offset.hex2()}')
 			}
 			ie := right as ast.IndexExpr
+			if ie.left !is ast.Ident {
+				println('ie.left is not ast.Ident, got: ${ie}')
+				return
+			}
 			var := ie.left as ast.Ident
 			dest := g.get_var_offset(var.name)
 			if ie.index is ast.IntegerLiteral {
@@ -2239,7 +2252,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 				g.add_reg(.rax, .rdi)
 				g.mov_deref(.rax, .rax, ast.i64_type_idx)
 			} else {
-				g.n_error('only integers and idents can be used as indexes')
+				// g.n_error('only integers and idents can be used as indexes')
 			}
 			// TODO check if out of bounds access
 			g.mov_reg_to_var(ident, .eax)
@@ -2262,6 +2275,40 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 			dest := g.allocate_var(name, 8, 0)
 			g.learel(.rsi, g.allocate_string(g.comptime_at(right), 3, .rel32))
 			g.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
+		}
+		ast.CastExpr {
+			// TODO: generate cast expression
+			g.assign_right_expr(node, i, (right as ast.CastExpr).expr, name, ident)
+			return
+		}
+		ast.UnsafeExpr {
+			g.assign_right_expr(node, i, (right as ast.UnsafeExpr).expr, name, ident)
+			return
+		}
+		ast.CallExpr {
+			// TODO: implement
+
+		}
+		ast.IfExpr {
+			// TODO
+		}
+		ast.MapInit {
+			// TODO
+		}
+		ast.InfixExpr {
+			// TODO
+		}
+		ast.ParExpr {
+			// TODO
+		}
+		ast.SelectorExpr {
+			// TODO
+		}
+		ast.PrefixExpr {
+
+		}
+		ast.StringInterLiteral {
+			
 		}
 		else {
 			if right is ast.IfExpr && (right as ast.IfExpr).is_comptime {
@@ -2476,7 +2523,7 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) {
 					})
 				}
 				else {
-					g.n_error('Unsupported assign instruction')
+					g.n_error('Unsupported assign instruction ${node.op}')
 				}
 			}
 		} else if left_type.is_pure_float() {
@@ -2514,7 +2561,7 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) {
 				g.println('movsd [rax], xmm0')
 			}
 		} else {
-			g.n_error('multi return for struct is not supported yet')
+			//g.n_error('multi return for struct is not supported yet')
 		}
 	}
 }
@@ -2556,7 +2603,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 					})
 				}
 				else {
-					g.n_error('Unsupported assign instruction')
+					//g.n_error('Unsupported assign instruction ${node.op}')
 				}
 			}
 		} else if typ.is_pure_float() {
@@ -2807,7 +2854,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 					g.div_sse(.xmm0, .xmm1, typ)
 				}
 				else {
-					g.n_error('`${node.op}` expression is not supported right now')
+				//	g.n_error('`${node.op}` expression is not supported right now')
 				}
 			}
 			return
@@ -2830,7 +2877,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				})
 			}
 		}
-		if node.left_type !in ast.integer_type_idxs && node.left_type != ast.bool_type_idx
+		if node.left_type !in ast.integer_type_idxs && node.left_type != ast.bool_type_idx && node.op != .left_shift && node.op != .plus && node.op != .ne && node.op != .eq
 			&& g.table.sym(node.left_type).info !is ast.Enum {
 			g.n_error('unsupported type for `${node.op}`: ${node.left_type}')
 		}
@@ -2900,7 +2947,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				g.shr_reg(.rax, .rcx)
 			}
 			else {
-				g.n_error('`${node.op}` expression is not supported right now')
+			//	g.n_error('`${node.op}` expression is not supported right now')
 			}
 		}
 	}
@@ -3175,6 +3222,10 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 		g.println('; label ${end_label}')
 		return
 	}
+	if node.cond !is ast.InfixExpr {
+		println("node.cond is not InfixExpr, got: ${node.cond}")
+		return
+	}
 	infix_expr := node.cond as ast.InfixExpr
 	mut jump_addr := 0 // location of `jne *00 00 00 00*`
 	start := g.pos()
@@ -3193,7 +3244,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 					g.cmp_var(infix_expr.left as ast.Ident, lit.val.int())
 				}
 				else {
-					g.n_error('unhandled expression type')
+					// g.n_error('unhandled expression type: ${infix_expr.right}')
 				}
 			}
 			match infix_expr.left.tok_kind {
@@ -3203,13 +3254,22 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 				.gt {
 					jump_addr = g.cjmp(.jle)
 				}
+				.le {
+					jump_addr = g.cjmp(.jg)
+				}
+				.ge {
+					jump_addr = g.cjmp(.jl)
+				}
+				.ne {
+					jump_addr = g.cjmp(.je)
+				}
 				else {
-					g.n_error('unhandled infix cond token')
+					g.n_error('unhandled infix cond token ${infix_expr.left.tok_kind}')
 				}
 			}
 		}
 		else {
-			g.n_error('unhandled infix.left')
+		//	g.n_error('unhandled infix.left: ${infix_expr.left}')
 		}
 	}
 	end_label := g.labels.new_label()
@@ -3389,6 +3449,9 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 			g.write8(0xc6)
 			g.write8(0x45 + far_var_offset)
 		}
+		2 {
+
+		}
 		4 {
 			// DWORD
 			g.write8(0xc7)
@@ -3399,6 +3462,9 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 			g.write8(0x48)
 			g.write8(0xc7)
 			g.write8(0x45 + far_var_offset)
+		}
+		16 {
+			//TODO
 		}
 		else {
 			g.n_error('allocate_var: bad size ${size}')
@@ -3419,11 +3485,17 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 		1 {
 			g.write8(initial_val)
 		}
+		2 {
+
+		}
 		4 {
 			g.write32(initial_val)
 		}
 		8 {
 			g.write32(initial_val) // fixme: 64-bit segfaulting
+		}
+		16 {
+
 		}
 		else {
 			g.n_error('allocate_var: bad size ${size}')

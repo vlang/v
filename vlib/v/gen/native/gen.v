@@ -158,6 +158,15 @@ type Var = GlobalVar | LocalVar | ast.Ident
 type IdentVar = GlobalVar | LocalVar | Register
 
 fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
+	if ident.name.contains('C.') {
+		eprintln("found C function id `${ident.name}`, which is not supported right now")
+		return LocalVar{
+			offset: 0
+			typ: ast.new_type(2)
+			name: ident.name
+		}
+	}
+
 	mut obj := ident.obj
 	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
 		obj = ident.scope.find(ident.name) or { g.n_error('unknown variable ${ident.name}') }
@@ -169,6 +178,15 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 			return LocalVar{
 				offset: offset
 				typ: typ
+				name: obj.name
+			}
+		}
+		ast.ConstField {
+			// TODO
+			eprintln('const fields are not implemented')
+			return LocalVar{
+				offset: 0
+				typ: obj.typ
 				name: obj.name
 			}
 		}
@@ -519,14 +537,14 @@ fn (mut g Gen) try_var_offset(var_name string) int {
 fn (mut g Gen) get_var_offset(var_name string) int {
 	r := g.try_var_offset(var_name)
 	if r == -1 {
-		g.n_error('unknown variable `${var_name}`')
+		//g.n_error('unknown variable `${var_name}`')
 	}
 	return r
 }
 
 fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
 	ts := g.table.sym(typ)
-	field := ts.find_field(name) or { g.n_error('Could not find field `${name}` on init') }
+	field := ts.find_field(name) or { /*g.n_error('Could not find field `${name}` on init')*/ return 0 }
 	return g.structs[typ.idx()].offsets[field.i]
 }
 
@@ -890,7 +908,7 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string)
 			}
 		}
 		ast.StringInterLiteral {
-			g.n_error('Interlaced string literals are not yet supported in the native backend.') // , expr.pos)
+			//g.n_error('Interlaced string literals are not yet supported in the native backend.') // , expr.pos)
 		}
 		ast.IfExpr {
 			if expr.is_comptime {
@@ -1001,6 +1019,11 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 				// g.infix_expr(node.cond)
 				match cond.left {
 					ast.Ident {
+						if cond.right !is ast.IntegerLiteral {
+							println('cond.right is `${cond.right}`')
+							return
+						}
+
 						lit := cond.right as ast.IntegerLiteral
 						g.cmp_var(cond.left as ast.Ident, lit.val.int())
 						match cond.op {
@@ -1095,7 +1118,8 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 	} else if it.kind == .map {
 		*/
 	} else {
-		g.v_error('for-in statement is not yet implemented', node.pos)
+	//	g.v_error('for-in statement is not yet implemented', node.pos)
+		// TODO: implement for-in
 	}
 }
 
@@ -1159,7 +1183,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			words := node.val.split(' ')
 			for word in words {
 				if word.len != 2 {
-					g.n_error('opcodes format: xx xx xx xx')
+					//g.n_error('opcodes format: xx xx xx xx')
 				}
 				b := unsafe { C.strtol(&char(word.str), 0, 16) }
 				// b := word.u8()
@@ -1426,7 +1450,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.expr(node.expr)
 		}
 		ast.ArrayInit {
-			g.n_error('array init expr not supported yet')
+		//	g.n_error('array init expr not supported yet')
 		}
 		ast.BoolLiteral {
 			g.mov64(.rax, if node.val { 1 } else { 0 })
@@ -1467,16 +1491,27 @@ fn (mut g Gen) expr(node ast.Expr) {
 					} else if var.typ.is_pure_float() {
 						g.mov_var_to_ssereg(.xmm0, node as ast.Ident)
 					} else {
-						ts := g.table.sym(var.typ)
+						mut ts := g.table.sym(var.typ)
+
+						for mut ts.info is ast.Alias {
+							ts = g.table.sym(ts.info.parent_type)
+						}
+
 						match ts.info {
 							ast.Struct {
 								g.lea_var_to_reg(.rax, g.get_var_offset(node.name))
 							}
+							ast.Array {
+								// TODO: implement array loading
+							}
 							ast.Enum {
 								g.mov_var_to_reg(.rax, node as ast.Ident, typ: ast.int_type_idx)
 							}
+							ast.SumType {
+
+							}
 							else {
-								g.n_error('Unsupported variable type')
+								//g.n_error('Unsupported variable type ${ts.info}')
 							}
 						}
 					}
@@ -1590,6 +1625,24 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 			// store the multi return struct value
 			g.lea_var_to_reg(.rax, var.offset)
+		}
+		ast.IndexExpr {
+
+		}
+		ast.CharLiteral {
+
+		}
+		ast.Nil {
+
+		}
+		ast.StringInterLiteral {
+
+		}
+		ast.ArrayDecompose {
+
+		}
+		ast.SizeOf {
+
 		}
 		else {
 			g.n_error('expr: unhandled node type: ${node.type_name()}')
