@@ -148,7 +148,6 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		node.kind = unwrapped_sym.kind
 
 		if is_comptime {
-			// g.comptime_for_field_val_type = node.val_type
 			g.comptime_var_type_map[node.val_var] = node.val_type
 			node.scope.update_ct_var_kind(node.val_var, .value_var)
 		}

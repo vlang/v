@@ -683,7 +683,7 @@ fn (mut g Gen) get_comptime_var_type(node ast.Expr) ast.Type {
 	if node is ast.Ident && (node as ast.Ident).obj is ast.Var {
 		return match (node.obj as ast.Var).ct_type_var {
 			.generic_param {
-				g.comptime_var_type_map[node.name] or { node.info.typ }
+				g.comptime_var_type_map[node.name] or { node.obj.typ }
 			}
 			.key_var, .value_var {
 				g.comptime_var_type_map[node.name] or { ast.void_type }

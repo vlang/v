@@ -905,9 +905,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		c.error('unknown function: ${fn_name}', node.pos)
 		return ast.void_type
 	}
-
-	c.resolve_fn_generic_args(node.fkey(), func, mut node)
-
 	node.is_file_translated = func.is_file_translated
 	node.is_noreturn = func.is_noreturn
 	node.is_ctor_new = func.is_ctor_new
@@ -1249,6 +1246,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		c.infer_fn_generic_types(func, mut node)
 		concrete_types = node.concrete_types.map(c.unwrap_generic(it))
 	}
+	c.resolve_fn_generic_args(func.fkey(), func, mut node)
 	if func.generic_names.len > 0 {
 		for i, mut call_arg in node.args {
 			param := if func.is_variadic && i >= func.params.len - 1 {
@@ -1347,37 +1345,24 @@ fn (mut c Checker) get_comptime_args(node_ ast.CallExpr) map[int]ast.Type {
 }
 
 fn (mut c Checker) resolve_fn_generic_args(name string, func ast.Fn, mut node ast.CallExpr) []ast.Type {
-	mut concrete_types := []ast.Type{}
-	for concrete_type in node.concrete_types {
-		if concrete_type.has_flag(.generic) {
-			concrete_types << c.unwrap_generic(concrete_type)
-		} else {
-			concrete_types << concrete_type
-		}
-	}
-	if concrete_types.len > 0 && c.table.register_fn_concrete_types(name, concrete_types) {
-		c.need_recheck_generic_fns = true
-	}
+	mut concrete_types := node.concrete_types.map(c.unwrap_generic(it))
 
 	// dynamic values from comptime and generic parameters
-	is_generic_fn := func.generic_names.len > 0
-	if c.inside_comptime_for_field || is_generic_fn {
+	if concrete_types.len > 0 {
 		mut comptime_args := c.get_comptime_args(node)
 		if comptime_args.len > 0 {
-			mut concrete_typs := []ast.Type{}
 			offset := if func.is_method { 1 } else { 0 }
 			for k, v in comptime_args {
-				if is_generic_fn {
-					arg_sym := c.table.sym(c.unwrap_generic(v))
-					if arg_sym.kind == .array && func.params[k + offset].typ.has_flag(.generic)
-						&& c.table.final_sym(func.params[k + offset].typ).kind == .array {
-						concrete_typs << c.unwrap_generic((arg_sym.info as ast.Array).elem_type)
-						continue
-					}
+				unwrapped_v := c.unwrap_generic(v)
+				arg_sym := c.table.sym(unwrapped_v)
+				if arg_sym.kind == .array && func.params[k + offset].typ.has_flag(.generic)
+					&& c.table.final_sym(func.params[k + offset].typ).kind == .array {
+					concrete_types[k] = c.unwrap_generic((arg_sym.info as ast.Array).elem_type)
+				} else {
+					concrete_types[k] = unwrapped_v.set_nr_muls(0)
 				}
-				concrete_typs << c.unwrap_generic(v)
 			}
-			if concrete_typs.len > 0 && c.table.register_fn_concrete_types(name, concrete_typs) {
+			if c.table.register_fn_concrete_types(name, concrete_types) {
 				c.need_recheck_generic_fns = true
 			}
 		}
@@ -1571,8 +1556,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			}
 			else {}
 		}
-
-		mut concrete_types := c.resolve_fn_generic_args(method.fkey(), method, mut node)
+		mut concrete_types := node.concrete_types.map(c.unwrap_generic(it))
 		node.is_noreturn = method.is_noreturn
 		node.is_ctor_new = method.is_ctor_new
 		node.return_type = method.return_type
@@ -1865,6 +1849,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 		if concrete_types.len > 0 && !concrete_types[0].has_flag(.generic) {
 			c.table.register_fn_concrete_types(method.fkey(), concrete_types)
+			c.resolve_fn_generic_args(method.fkey(), method, mut node)
 		}
 
 		// resolve return generics struct to concrete type
