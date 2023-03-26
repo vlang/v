@@ -1194,10 +1194,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 					&& g.table.sym(m.params[k + 1].typ).kind in [.any, .array] {
 					concrete_type = g.unwrap_generic((arg_sym.info as ast.ArrayFixed).elem_type)
 				} else {
-					concrete_type = concrete_type.set_nr_muls(0)
+					concrete_type = concrete_type // .set_nr_muls(0)
 				}
 				if k >= concrete_types.len {
-					//concrete_types << concrete_type
+					// concrete_types << concrete_type
 				} else {
 					concrete_types[k] = concrete_type
 				}
@@ -1447,10 +1447,10 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 						&& g.table.sym(func.params[k].typ).kind in [.any, .array] {
 						concrete_type = g.unwrap_generic((arg_sym.info as ast.ArrayFixed).elem_type)
 					} else {
-						concrete_type = concrete_type.set_nr_muls(0)
+						concrete_type = concrete_type // .set_nr_muls(0)
 					}
 					if k >= concrete_types.len {
-						//concrete_types << concrete_type
+						// concrete_types << concrete_type
 					} else {
 						concrete_types[k] = concrete_type
 					}
