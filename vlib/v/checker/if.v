@@ -327,7 +327,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 								node.pos)
 						}
 					}
-				} else if !node.is_comptime {
+				} else if !node.is_comptime && stmt !is ast.Return {
 					c.error('`${if_kind}` expression requires an expression as the last statement of every branch',
 						branch.pos)
 				}
