@@ -1560,6 +1560,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			else {}
 		}
 		mut concrete_types := node.concrete_types.map(c.unwrap_generic(it))
+		if concrete_types.len > 0 && c.table.register_fn_concrete_types(node.fkey(), concrete_types) {
+			c.need_recheck_generic_fns = true
+		}
 		node.is_noreturn = method.is_noreturn
 		node.is_ctor_new = method.is_ctor_new
 		node.return_type = method.return_type
