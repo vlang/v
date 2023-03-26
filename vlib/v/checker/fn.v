@@ -1362,7 +1362,7 @@ fn (mut c Checker) resolve_fn_generic_args(name string, func ast.Fn, mut node as
 					concrete_type = concrete_type.set_nr_muls(0)
 				}
 				if k >= concrete_types.len {
-					concrete_types << concrete_type
+					//concrete_types << concrete_type
 				} else {
 					concrete_types[k] = concrete_type
 				}
