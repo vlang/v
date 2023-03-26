@@ -2105,7 +2105,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					}
 					mut fields := parent_info.fields.clone()
 					if parent_info.generic_types.len == info.concrete_types.len {
-						generic_names := parent_info.generic_types.map(t.sym(it).name)
+						generic_names := t.get_generic_names(parent_info.generic_types)
 						for i in 0 .. fields.len {
 							if fields[i].typ.has_flag(.generic) {
 								if fields[i].typ.idx() != info.parent_idx {
@@ -2151,7 +2151,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					}
 					if parent_info.generic_types.len == info.concrete_types.len {
 						mut fields := parent_info.fields.clone()
-						generic_names := parent_info.generic_types.map(t.sym(it).name)
+						generic_names := t.get_generic_names(parent_info.generic_types)
 						for i in 0 .. fields.len {
 							if t_typ := t.resolve_generic_to_concrete(fields[i].typ, generic_names,
 								info.concrete_types)
@@ -2209,7 +2209,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					if parent_info.generic_types.len == info.concrete_types.len {
 						mut fields := parent_info.fields.clone()
 						mut variants := parent_info.variants.clone()
-						generic_names := parent_info.generic_types.map(t.sym(it).name)
+						generic_names := t.get_generic_names(parent_info.generic_types)
 						for i in 0 .. fields.len {
 							if t_typ := t.resolve_generic_to_concrete(fields[i].typ, generic_names,
 								info.concrete_types)
@@ -2250,11 +2250,12 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					// TODO: Cache function's generic types (parameters and return type) like Struct and Interface etc. do?
 					mut parent_info := parent.info as FnType
 					mut function := parent_info.func
-					mut generic_names := []string{cap: function.params.len + 1}
-					generic_names << function.params.filter(it.typ.has_flag(.generic)).map(t.sym(it.typ).name)
+					mut generic_types := []Type{cap: function.params.len + 1}
+					generic_types << function.params.filter(it.typ.has_flag(.generic)).map(it.typ)
 					if function.return_type.has_flag(.generic) {
-						generic_names << t.sym(function.return_type).name
+						generic_types << function.return_type
 					}
+					generic_names := t.get_generic_names(generic_types)
 					for mut param in function.params {
 						if param.typ.has_flag(.generic) {
 							if t_typ := t.resolve_generic_to_concrete(param.typ, generic_names,
@@ -2264,11 +2265,11 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 							}
 						}
 					}
-					mut return_type := function.return_type
-					if return_type.has_flag(.generic) {
-						if return_type.idx() != info.parent_idx {
-							return_type = t.unwrap_generic_type(return_type, generic_names,
-								info.concrete_types)
+					if function.return_type.has_flag(.generic) {
+						if t_typ := t.resolve_generic_to_concrete(function.return_type, generic_names,
+							info.concrete_types)
+						{
+							function.return_type = t_typ
 						}
 					}
 					sym.info = FnType{
@@ -2285,7 +2286,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 }
 
 // Extracts all type names from given types, notice that MultiReturn will be decompose 
-// and will not included in returned string
+com// and will not included in returned string
 pub fn (t &Table) get_generic_names(generic_types []Type) []string {
 	mut generic_names := []string{ cap: generic_types.len }
 	for typ in generic_types {
