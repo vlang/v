@@ -1180,26 +1180,30 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 
 	if node.concrete_types.len > 0 {
+		mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 		if m := g.table.find_method(g.table.sym(node.left_type), node.name) {
-			mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 			mut node_ := unsafe { node }
 			comptime_args := g.change_comptime_args(mut node_)
 			for k, v in comptime_args {
-				if k >= concrete_types.len {
-					break
-				}
-				unwrapped_v := g.unwrap_generic(v)
-				arg_sym := g.table.sym(unwrapped_v)
+				mut concrete_type := g.unwrap_generic(v)
+				arg_sym := g.table.sym(concrete_type)
 				if arg_sym.kind == .array && m.params[k + 1].typ.has_flag(.generic)
 					&& g.table.final_sym(m.params[k + 1].typ).kind == .array {
-					concrete_types[k] = g.unwrap_generic((arg_sym.info as ast.Array).elem_type)
+					concrete_type = g.unwrap_generic((arg_sym.info as ast.Array).elem_type)
 				} else if arg_sym.kind == .array_fixed && m.params[k].typ.has_flag(.generic)
 					&& g.table.sym(m.params[k + 1].typ).kind in [.any, .array] {
-					concrete_types[k] = g.unwrap_generic((arg_sym.info as ast.ArrayFixed).elem_type)
+					concrete_type = g.unwrap_generic((arg_sym.info as ast.ArrayFixed).elem_type)
 				} else {
-					concrete_types[k] = unwrapped_v.set_nr_muls(0)
+					concrete_type = concrete_type.set_nr_muls(0)
+				}
+				if k >= concrete_types.len {
+					concrete_types << concrete_type
+				} else {
+					concrete_types[k] = concrete_type
 				}
 			}
+			name = g.generic_fn_name(concrete_types, name)
+		} else {
 			name = g.generic_fn_name(concrete_types, name)
 		}
 	}
@@ -1434,19 +1438,21 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			comptime_args := g.change_comptime_args(mut node_)
 			if concrete_types.len > 0 {
 				for k, v in comptime_args {
-					if k >= concrete_types.len {
-						break
-					}
-					unwrapped_v := g.unwrap_generic(v)
-					arg_sym := g.table.sym(unwrapped_v)
+					mut concrete_type := g.unwrap_generic(v)
+					arg_sym := g.table.sym(concrete_type)
 					if arg_sym.kind == .array && func.params[k].typ.has_flag(.generic)
 						&& g.table.sym(func.params[k].typ).kind == .array {
-						concrete_types[k] = g.unwrap_generic((arg_sym.info as ast.Array).elem_type)
+						concrete_type = g.unwrap_generic((arg_sym.info as ast.Array).elem_type)
 					} else if arg_sym.kind == .array_fixed && func.params[k].typ.has_flag(.generic)
 						&& g.table.sym(func.params[k].typ).kind in [.any, .array] {
-						concrete_types[k] = g.unwrap_generic((arg_sym.info as ast.ArrayFixed).elem_type)
+						concrete_type = g.unwrap_generic((arg_sym.info as ast.ArrayFixed).elem_type)
 					} else {
-						concrete_types[k] = unwrapped_v.set_nr_muls(0)
+						concrete_type = concrete_type.set_nr_muls(0)
+					}
+					if k >= concrete_types.len {
+						concrete_types << concrete_type
+					} else {
+						concrete_types[k] = concrete_type
 					}
 				}
 				name = g.generic_fn_name(concrete_types, name)
