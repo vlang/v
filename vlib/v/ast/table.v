@@ -2284,6 +2284,8 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 	}
 }
 
+// Extracts all type names from given types, notice that MultiReturn will be decompose 
+// and will not included in returned string
 pub fn (t &Table) get_generic_names(generic_types []Type) []string {
 	mut generic_names := []string{ cap: generic_types.len }
 	for typ in generic_types {
