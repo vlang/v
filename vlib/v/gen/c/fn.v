@@ -1185,6 +1185,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			mut node_ := unsafe { node }
 			comptime_args := g.change_comptime_args(mut node_)
 			for k, v in comptime_args {
+				if k >= concrete_types.len {
+					break
+				}
 				unwrapped_v := g.unwrap_generic(v)
 				arg_sym := g.table.sym(unwrapped_v)
 				if arg_sym.kind == .array && m.params[k + 1].typ.has_flag(.generic)
@@ -1431,6 +1434,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			comptime_args := g.change_comptime_args(mut node_)
 			if concrete_types.len > 0 {
 				for k, v in comptime_args {
+					if k >= concrete_types.len {
+						break
+					}
 					unwrapped_v := g.unwrap_generic(v)
 					arg_sym := g.table.sym(unwrapped_v)
 					if arg_sym.kind == .array && func.params[k].typ.has_flag(.generic)
