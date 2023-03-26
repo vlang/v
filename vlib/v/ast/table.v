@@ -2284,6 +2284,28 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 	}
 }
 
+pub fn (t &Table) get_generic_names(generic_types []Type) []string {
+	mut generic_names := []string{ cap: generic_types.len }
+	for typ in generic_types {
+		if !typ.has_flag(.generic) {
+			continue
+		}
+
+		sym := t.sym(typ)
+		info := sym.info
+
+		match info {
+			MultiReturn {
+				generic_names << t.get_generic_names(info.types)
+			}
+			else {
+				generic_names << sym.name
+			}
+		}
+	}
+	return generic_names
+}
+
 pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
 	x_kind := t.type_kind(x)
 	match y.kind {
