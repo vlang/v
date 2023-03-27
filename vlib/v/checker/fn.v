@@ -1358,10 +1358,6 @@ fn (mut c Checker) resolve_fn_generic_args(name string, func ast.Fn, mut node as
 				if arg_sym.kind == .array && func.params[k + offset].typ.has_flag(.generic)
 					&& c.table.final_sym(func.params[k + offset].typ).kind == .array {
 					concrete_type = c.unwrap_generic((arg_sym.info as ast.Array).elem_type)
-				} else if v.has_flag(.generic) {
-					concrete_type = concrete_type.set_nr_muls(0)
-				} else {
-					// concrete_type = concrete_type // .set_nr_muls(0)
 				}
 				if k >= concrete_types.len {
 					// concrete_types << concrete_type

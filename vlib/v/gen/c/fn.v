@@ -1193,8 +1193,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				} else if arg_sym.kind == .array_fixed && m.params[k].typ.has_flag(.generic)
 					&& g.table.sym(m.params[k + 1].typ).kind in [.any, .array] {
 					concrete_type = g.unwrap_generic((arg_sym.info as ast.ArrayFixed).elem_type)
-				} else if v.has_flag(.generic) {
-					concrete_type = concrete_type.set_nr_muls(0)
 				}
 				if k >= concrete_types.len {
 					// concrete_types << concrete_type
@@ -1446,8 +1444,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					} else if arg_sym.kind == .array_fixed && func.params[k].typ.has_flag(.generic)
 						&& g.table.sym(func.params[k].typ).kind in [.any, .array] {
 						concrete_type = g.unwrap_generic((arg_sym.info as ast.ArrayFixed).elem_type)
-					} else if v.has_flag(.generic) {
-						concrete_type = concrete_type.set_nr_muls(0)
 					}
 					if k >= concrete_types.len {
 						// concrete_types << concrete_type
