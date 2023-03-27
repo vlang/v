@@ -137,11 +137,13 @@ fn (mut p Parser) decode_value() !Any {
 		}
 	}
 	match p.tok.kind {
+		// `[`
 		.lsbr {
 			return p.decode_array()
 		}
+		// `{`
 		.lcbr {
-			return p.decode_struct()
+			return p.decode_object()
 		}
 		.int_, .float {
 			tl := p.tok.lit.bytestr()
@@ -191,6 +193,7 @@ fn (mut p Parser) decode_array() !Any {
 	mut items := []Any{}
 	p.next_with_err()!
 	p.n_level++
+	// `]`
 	for p.tok.kind != .rsbr {
 		item := p.decode_value()!
 		items << item
@@ -213,10 +216,11 @@ fn (mut p Parser) decode_array() !Any {
 	return Any(items)
 }
 
-fn (mut p Parser) decode_struct() !Any {
+fn (mut p Parser) decode_object() !Any {
 	mut fields := map[string]Any{}
 	p.next_with_err()!
 	p.n_level++
+	// `}`
 	for p.tok.kind != .rcbr {
 		if p.tok.kind != .str_ {
 			return InvalidTokenError{
