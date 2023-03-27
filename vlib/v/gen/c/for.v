@@ -168,7 +168,6 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	}
 
 	if node.kind == .any && !is_comptime {
-		g.inside_for_in_any_cond = true
 		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
 		mut unwrapped_sym := g.table.sym(unwrapped_typ)
 		node.kind = unwrapped_sym.kind
@@ -461,6 +460,5 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	if node.label.len > 0 {
 		g.writeln('\t${node.label}__break: {}')
 	}
-	g.inside_for_in_any_cond = false
 	g.loop_depth--
 }

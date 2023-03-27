@@ -143,7 +143,6 @@ mut:
 	inside_const              bool
 	inside_const_opt_or_res   bool
 	inside_lambda             bool
-	inside_for_in_any_cond    bool
 	inside_cinit              bool
 	last_tmp_call_var         []string
 	loop_depth                int
