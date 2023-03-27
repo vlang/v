@@ -1182,40 +1182,36 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if node.concrete_types.len > 0 {
 		mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 		if m := g.table.find_method(g.table.sym(node.left_type), node.name) {
+			rec_sym := g.table.final_sym(node.left_type)
+			rec_is_generic := node.left_type.has_flag(.generic)
+			mut rec_concrete_types_len := 0
+			match rec_sym.info {
+				ast.Struct, ast.SumType, ast.Interface {
+					if rec_sym.info.concrete_types.len > 0 {
+						rec_concrete_types_len = rec_sym.info.concrete_types.len
+					}
+					if rec_is_generic {
+						rec_concrete_types_len = rec_sym.info.generic_types.len
+					} else if !rec_is_generic {
+						rec_concrete_types_len = rec_sym.info.concrete_types.len
+					}
+				}
+				else {}
+			}
+			offset_c := rec_concrete_types_len
 			mut node_ := unsafe { node }
 			comptime_args := g.change_comptime_args(mut node_)
 			for k, v in comptime_args {
-				mut concrete_type := g.unwrap_generic(v)
-				arg_sym := g.table.sym(concrete_type)
+				mut concrete_type := v
+
+				arg_sym := g.table.sym(m.params[k + 1].typ)
+
 				if arg_sym.kind == .array && m.params[k + 1].typ.has_flag(.generic)
 					&& g.table.final_sym(m.params[k + 1].typ).kind == .array {
 					concrete_type = g.unwrap_generic((arg_sym.info as ast.Array).elem_type)
 				} else if arg_sym.kind == .array_fixed && m.params[k + 1].typ.has_flag(.generic)
-					&& g.table.sym(m.params[k + 1].typ).kind in [.any, .array] {
+					&& g.table.sym(m.params[k + 1].typ).kind == .array {
 					concrete_type = g.unwrap_generic((arg_sym.info as ast.ArrayFixed).elem_type)
-				} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
-					mut generic_types2 := []ast.Type{}
-					mut concrete_types2 := []ast.Type{}
-					param_sym := g.table.sym(m.params[k + 1].typ)
-					match arg_sym.info {
-						ast.Struct, ast.Interface, ast.SumType {
-							if param_sym.generic_types.len > 0 {
-								generic_types2 = param_sym.generic_types.clone()
-							} else {
-								generic_types2 = arg_sym.info.generic_types.clone()
-							}
-							concrete_types2 = arg_sym.info.concrete_types.clone()
-						}
-						else {}
-					}
-					generic_names := generic_types2.map(g.table.sym(it).name)
-					for _, gt_name in m.generic_names {
-						if gt_name in generic_names && generic_types2.len == concrete_types2.len {
-							idx := generic_names.index(gt_name)
-							concrete_type = concrete_types[idx]
-							break
-						}
-					}
 				}
 				if m.params[k + 1].typ.has_flag(.generic) {
 					if m.params[k + 1].typ.nr_muls() > 0 && concrete_type.nr_muls() > 0 {
@@ -1223,7 +1219,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 					}
 				}
 				if k < concrete_types.len {
-					concrete_types[k] = concrete_type
+					if concrete_type.has_flag(.generic) {
+						concrete_types[offset_c + k] = g.unwrap_generic(concrete_type)
+					} else {
+						concrete_types[offset_c + k] = concrete_type
+					}
 				}
 			}
 			name = g.generic_fn_name(concrete_types, name)
