@@ -4082,7 +4082,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 	mut is_auto_heap := false
 	if node.info is ast.IdentVar {
 		if node.obj is ast.Var {
-			if !g.is_assign_lhs && node.obj.ct_type_var != .no_comptime {
+			if !g.is_assign_lhs && node.obj.ct_type_var !in [.generic_param, .no_comptime] {
 				comptime_type := g.get_comptime_var_type(node)
 				if comptime_type.has_flag(.option) {
 					if (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {
