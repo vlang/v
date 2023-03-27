@@ -418,8 +418,11 @@ fn stripped_name(name string) string {
 }
 
 fn (mut c Checker) check_valid_pascal_case(name string, identifier string, pos token.Pos) {
+	if c.pref.translated || c.file.is_translated {
+		return
+	}
 	sname := stripped_name(name)
-	if sname.len > 0 && !sname[0].is_capital() && !c.pref.translated && !c.file.is_translated {
+	if sname.len > 0 && !sname[0].is_capital() {
 		c.error('${identifier} `${name}` must begin with capital letter', pos)
 	}
 }
