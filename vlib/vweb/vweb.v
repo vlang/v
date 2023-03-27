@@ -390,6 +390,80 @@ interface MiddlewareInterface {
 	middlewares map[string][]Middleware
 }
 
+// Create a new app object for each connection, copy global data like db connections
+fn create_request_app[T](global_app &T, ctx Context) &T {
+	mut request_app := &T{}
+	$if T is MiddlewareInterface {
+		request_app = &T{
+			middlewares: global_app.middlewares.clone()
+		}
+	}
+
+	$if T is DbInterface {
+		request_app.db = global_app.db
+	} $else {
+		// println('vweb no db')
+	}
+	$for field in T.fields {
+		if 'vweb_global' in field.attrs || field.is_shared {
+			request_app.$(field.name) = global_app.$(field.name)
+		}
+	}
+	// request_app.Context = global_app.Context // copy the context ref that contains static files map etc
+	request_app.Context = ctx
+	return request_app
+}
+
+// Generate route structs for an app
+fn generate_routes[T](app &T) !map[string]Route {
+	// Parsing methods attributes
+	mut routes := map[string]Route{}
+	$for method in T.methods {
+		http_methods, route_path, middleware := parse_attrs(method.name, method.attrs) or {
+			return error('error parsing method attributes: ${err}')
+		}
+
+		routes[method.name] = Route{
+			methods: http_methods
+			path: route_path
+			middleware: middleware
+		}
+	}
+	return routes
+}
+
+type ControllerHandler = fn (ctx Context, mut url urllib.URL)
+
+struct ControllerPath {
+	namespace string
+	handler   ControllerHandler
+}
+
+interface ControllerInterface {
+	controllers []ControllerPath
+}
+
+pub struct Controller {
+mut:
+	controllers []ControllerPath
+}
+
+pub fn (mut ctr Controller) register_controller[T](path string, global_app &T) {
+	routes := generate_routes(global_app) or { panic(err.msg()) }
+
+	ctr.controllers << ControllerPath{
+		namespace: path
+		handler: fn [global_app, path, routes] [T](ctx Context, mut url urllib.URL) {
+			// request_app is free'ed in `handle_route`
+			mut request_app := create_request_app(global_app, ctx)
+
+			// transform the url
+			url.path = url.path.all_after_first(path)
+			handle_route(mut request_app, url, routes)
+		}
+	}
+}
+
 // run - start a new VWeb server, listening to all available addresses, at the specified `port`
 pub fn run[T](global_app &T, port int) {
 	run_at[T](global_app, host: '', port: port, family: .ip6) or { panic(err.msg()) }
@@ -415,61 +489,29 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 		return error('failed to listen ${ecode} ${err}')
 	}
 
-	// Parsing methods attributes
-	mut routes := map[string]Route{}
-	$for method in T.methods {
-		http_methods, route_path, middleware := parse_attrs(method.name, method.attrs) or {
-			return error('error parsing method attributes: ${err}')
-		}
+	routes := generate_routes(global_app)!
 
-		routes[method.name] = Route{
-			methods: http_methods
-			path: route_path
-			middleware: middleware
-		}
-	}
 	host := if params.host == '' { 'localhost' } else { params.host }
 	if params.show_startup_message {
 		println('[Vweb] Running app on http://${host}:${params.port}/')
 	}
 	flush_stdout()
 	for {
-		// Create a new app object for each connection, copy global data like db connections
-		mut request_app := &T{}
-		$if T is MiddlewareInterface {
-			request_app = &T{
-				middlewares: global_app.middlewares.clone()
-			}
-		}
-		$if T is DbInterface {
-			request_app.db = global_app.db
-		} $else {
-			// println('vweb no db')
-		}
-		$for field in T.fields {
-			if 'vweb_global' in field.attrs || field.is_shared {
-				request_app.$(field.name) = global_app.$(field.name)
-			}
-		}
-		request_app.Context = global_app.Context // copy the context ref that contains static files map etc
 		mut conn := l.accept() or {
 			// failures should not panic
 			eprintln('accept() failed with error: ${err.msg()}')
 			continue
 		}
-		spawn handle_conn[T](mut conn, mut request_app, routes)
+		spawn handle_conn[T](mut conn, global_app, routes)
 	}
 }
 
 [manualfree]
-fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
+fn handle_conn[T](mut conn net.TcpConn, global_app T, routes map[string]Route) {
 	conn.set_read_timeout(30 * time.second)
 	conn.set_write_timeout(30 * time.second)
 	defer {
 		conn.close() or {}
-		unsafe {
-			free(app)
-		}
 	}
 
 	mut reader := io.new_buffered_reader(reader: conn)
@@ -496,14 +538,13 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 		dump(req.url)
 	}
 	// URL Parse
-	url := urllib.parse(req.url) or {
+	mut url := urllib.parse(req.url) or {
 		eprintln('error parsing path: ${err}')
 		return
 	}
 
 	// Query parse
 	query := parse_query_from_url(url)
-	url_words := url.path.split('/').filter(it != '')
 
 	// Form parse
 	form, files := parse_form_from_request(req) or {
@@ -512,16 +553,41 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 		return
 	}
 
-	app.Context = Context{
+	// cut off
+	ctx := Context{
 		req: req
 		page_gen_start: page_gen_start
 		conn: conn
 		query: query
 		form: form
 		files: files
-		static_files: app.static_files
-		static_mime_types: app.static_mime_types
+		static_files: global_app.static_files
+		static_mime_types: global_app.static_mime_types
 	}
+
+	$if T is ControllerInterface {
+		for controller in global_app.Controller.controllers {
+			if url.path.len >= controller.namespace.len
+				&& url.path.starts_with(controller.namespace) {
+				controller.handler(ctx, mut url)
+				return
+			}
+		}
+	}
+
+	mut request_app := create_request_app(global_app, ctx)
+	handle_route(mut request_app, url, routes)
+}
+
+[manualfree]
+fn handle_route[T](mut app T, url urllib.URL, routes map[string]Route) {
+	defer {
+		unsafe {
+			free(app)
+		}
+	}
+
+	url_words := url.path.split('/').filter(it != '')
 
 	// Calling middleware...
 	app.before_request()
@@ -554,7 +620,7 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 			}
 
 			// Skip if the HTTP request method does not match the attributes
-			if req.method in route.methods {
+			if app.req.method in route.methods {
 				// Used for route matching
 				route_words := route.path.split('/').filter(it != '')
 
@@ -569,11 +635,11 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 						}
 					}
 
-					if req.method == .post && method.args.len > 0 {
+					if app.req.method == .post && method.args.len > 0 {
 						// Populate method args with form values
 						mut args := []string{cap: method.args.len}
 						for param in method.args {
-							args << form[param.name]
+							args << app.form[param.name]
 						}
 
 						if route.middleware == '' {
@@ -627,7 +693,7 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 		}
 	}
 	// Route not found
-	conn.write(vweb.http_404.bytes()) or {}
+	app.conn.write(vweb.http_404.bytes()) or {}
 }
 
 // validate_middleware validates and fires all middlewares that are defined in the global app instance
