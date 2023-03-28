@@ -37,11 +37,11 @@ fn main() {
 					// someone is trying to connect
 					eprint('trying to connect.. ')
 					if conn := listener.accept() {
-						if _ := notifier.add(conn.sock.handle, .read | .peer_hangup) {
-							eprintln('connected')
-						} else {
+						notifier.add(conn.sock.handle, .read | .peer_hangup) or {
 							eprintln('error adding to notifier: ${err}')
+							return
 						}
+						eprintln('connected')
 					} else {
 						eprintln('unable to accept: ${err}')
 					}
@@ -57,11 +57,11 @@ fn main() {
 				else {
 					// remote connection
 					if event.kind.has(.peer_hangup) {
-						if _ := notifier.remove(event.fd) {
-							eprintln('remote disconnected')
-						} else {
+						notifier.remove(event.fd) or {
 							eprintln('error removing from notifier: ${err}')
+							return
 						}
+						eprintln('remote disconnected')
 					} else {
 						s, _ := os.fd_read(event.fd, 10)
 						os.fd_write(event.fd, s)
