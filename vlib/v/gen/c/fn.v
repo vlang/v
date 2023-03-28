@@ -1507,7 +1507,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			if concrete_types.len > 0 {
 				for k, v in comptime_args {
 					mut concrete_type := g.unwrap_generic(v)
-					arg_sym := g.table.final_sym(g.unwrap_generic(v))
+					arg_sym := g.table.final_sym(v)
 					param_typ := func.params[k].typ
 					if arg_sym.kind == .array && param_typ.has_flag(.generic)
 						&& g.table.final_sym(param_typ).kind == .array {
