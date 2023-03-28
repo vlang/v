@@ -315,16 +315,12 @@ pub fn (mut ctx Context) not_found() Result {
 
 // TODO - test
 // Sets a cookie
-pub fn (mut ctx Context) set_cookie(cookie http.Cookie) {
-	mut cookie_data := []string{}
-	mut secure := if cookie.secure { 'Secure;' } else { '' }
-	secure += if cookie.http_only { ' HttpOnly' } else { ' ' }
-	cookie_data << secure
-	if cookie.expires.unix > 0 {
-		cookie_data << 'expires=${cookie.expires.utc_string()}'
+pub fn (mut ctx Context) set_cookie(cookie http.Cookie) ! {
+	cookie_raw := cookie.str()
+	if cookie_raw == '' {
+		return error('error setting cookie: name of cookie is invalid')
 	}
-	data := cookie_data.join(' ')
-	ctx.add_header('Set-Cookie', '${cookie.name}=${cookie.value}; ${data}')
+	ctx.add_header('Set-Cookie', cookie_raw)
 }
 
 // Sets the response content type
@@ -333,27 +329,24 @@ pub fn (mut ctx Context) set_content_type(typ string) {
 }
 
 // TODO - test
-// Sets a cookie with a `expire_data`
-pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, expire_date time.Time) {
-	ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly; expires=${expire_date.utc_string()}')
+// Sets a cookie with a `expire_date`
+pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, expire_date time.Time) ! {
+	cookie := http.Cookie{
+		name: key
+		value: val
+		expires: expire_date
+	}
+	cookie_raw := cookie.str()
+	if cookie_raw == '' {
+		return error('error setting cookie: name of cookie is invalid')
+	}
+	ctx.add_header('Set-Cookie', cookie_raw)
 }
 
 // Gets a cookie by a key
-pub fn (ctx &Context) get_cookie(key string) !string { // TODO refactor
-	mut cookie_header := ctx.get_header('cookie')
-	if cookie_header == '' {
-		cookie_header = ctx.get_header('Cookie')
-	}
-	cookie_header = ' ' + cookie_header
-	// println('cookie_header="$cookie_header"')
-	// println(ctx.req.header)
-	cookie := if cookie_header.contains(';') {
-		cookie_header.find_between(' ${key}=', ';')
-	} else {
-		cookie_header.find_between(' ${key}=', '\r')
-	}
-	if cookie != '' {
-		return cookie.trim_space()
+pub fn (ctx &Context) get_cookie(key string) !string {
+	if value := ctx.req.cookies[key] {
+		return value
 	}
 	return error('Cookie not found')
 }

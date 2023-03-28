@@ -12,7 +12,7 @@ struct App {
 // index - will handle requests to path '/'
 fn (mut app App) index() vweb.Result {
 	// Set a Csrf-Cookie(Token will be generated automatically) and set http_only-status. If no argument ist passed, it will be true by default.
-	app.set_csrf_cookie(csrf.HttpOnly{false})
+	app.set_csrf_cookie(csrf.HttpOnly{false}) or { panic(err) }
 	// Get the token-value from the csrf-cookie that was just setted
 	token := app.get_csrf_token() or { panic(err) }
 	return app.text("Csrf-Token set! It's value is: ${token}")
