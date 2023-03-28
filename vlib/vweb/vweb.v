@@ -336,11 +336,7 @@ pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, exp
 		value: val
 		expires: expire_date
 	}
-	cookie_raw := cookie.str()
-	if cookie_raw == '' {
-		return error('error setting cookie: name of cookie is invalid')
-	}
-	ctx.add_header('Set-Cookie', cookie_raw)
+	ctx.set_cookie(cookie)!
 }
 
 // Gets a cookie by a key
