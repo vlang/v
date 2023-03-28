@@ -793,6 +793,9 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 					}
 				}
 			}
+			c.error('could not infer generic type `${gt_name}` in generic struct `${sym.name}[${generic_names.join(', ')}]`',
+				node.pos)
+			return concrete_types
 		}
 	}
 	return concrete_types
