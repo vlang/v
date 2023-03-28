@@ -1249,7 +1249,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			for k, v in comptime_args {
 				mut concrete_type := g.unwrap_generic(v)
 				param_typ := m.params[k + 1].typ
-				arg_sym := g.table.sym(param_typ)
+				arg_sym := g.table.sym(v)
 
 				if arg_sym.kind == .array && param_typ.has_flag(.generic)
 					&& g.table.final_sym(param_typ).kind == .array {
