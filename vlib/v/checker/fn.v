@@ -1391,26 +1391,30 @@ fn (mut c Checker) resolve_fn_generic_param(func ast.Fn, args []ast.CallArg, con
 
 fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
-	for i, call_arg in node_.args {
-		if call_arg.expr is ast.Ident {
-			if call_arg.expr.obj is ast.Var {
-				if call_arg.expr.obj.ct_type_var !in [.generic_param, .no_comptime] {
-					ctyp := c.get_comptime_var_type(call_arg.expr)
-					if ctyp != ast.void_type {
-						comptime_args[i] = ctyp
+	has_dynamic_vars := (c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0)
+		|| c.inside_comptime_for_field
+	if has_dynamic_vars {
+		for i, call_arg in node_.args {
+			if call_arg.expr is ast.Ident {
+				if call_arg.expr.obj is ast.Var {
+					if call_arg.expr.obj.ct_type_var !in [.generic_param, .no_comptime] {
+						ctyp := c.get_comptime_var_type(call_arg.expr)
+						if ctyp != ast.void_type {
+							comptime_args[i] = ctyp
+						}
 					}
 				}
+			} else if call_arg.expr is ast.ComptimeSelector && c.is_comptime_var(call_arg.expr) {
+				comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
 			}
-		} else if call_arg.expr is ast.ComptimeSelector && c.is_comptime_var(call_arg.expr) {
-			comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
 		}
-	}
-	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
-		&& node_.args.len > 0 && concrete_types.len > 0 {
-		ret_types := c.resolve_fn_generic_param(func, node_.args, concrete_types)
-		for k, v in ret_types {
-			if k !in comptime_args {
-				comptime_args[k] = v
+		if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
+			&& node_.args.len > 0 && concrete_types.len > 0 {
+			ret_types := c.resolve_fn_generic_param(func, node_.args, concrete_types)
+			for k, v in ret_types {
+				if k !in comptime_args {
+					comptime_args[k] = v
+				}
 			}
 		}
 	}

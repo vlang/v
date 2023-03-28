@@ -1036,7 +1036,6 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 						ctyp := g.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							comptime_args[i] = ctyp
-							node_.args[i].typ = ctyp
 						}
 					}
 				}
