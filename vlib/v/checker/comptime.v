@@ -15,7 +15,7 @@ fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
 	if node is ast.Ident && (node as ast.Ident).obj is ast.Var {
 		return match (node.obj as ast.Var).ct_type_var {
 			.generic_param {
-				c.comptime_fields_type[node.name] or { node.obj.typ }
+				node.obj.typ
 			}
 			.key_var, .value_var {
 				c.comptime_fields_type[node.name] or { ast.void_type }
