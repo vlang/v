@@ -1325,7 +1325,83 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	return func.return_type
 }
 
-fn (mut c Checker) get_comptime_args(node_ ast.CallExpr) map[int]ast.Type {
+fn (mut c Checker) resolve_fn_generic_param(func ast.Fn, args []ast.CallArg, concrete_types []ast.Type) map[int]ast.Type {
+	mut concrete_i := 0
+	mut node_i := 0
+	mut ret_types := map[int]ast.Type{}
+
+	for i, param in func.params {
+		if node_i - 1 == args.len || concrete_i - 1 == concrete_types.len {
+			break
+		}
+		if i == 0 && func.is_method {
+			if param.typ.has_flag(.generic) {
+				// skip receiver
+				concrete_i++
+			}
+			continue
+		}
+		if !param.typ.has_flag(.generic) {
+			node_i++
+			continue
+		}
+
+		if args[node_i].expr !is ast.Ident {
+			node_i++
+			concrete_i++
+			continue
+		}
+		ident := args[node_i].expr as ast.Ident
+		node_i++
+		var_name := ident.name
+		if ident.is_mut() {
+			concrete_i++
+			continue
+		}
+		for k, cur_param in c.table.cur_fn.params {
+			if (k == 0 && c.table.cur_fn.is_method)
+				|| !cur_param.typ.has_flag(.generic) || var_name != cur_param.name {
+				continue
+			}
+			mut typ := cur_param.typ
+			mut cparam_type_sym := c.table.sym(c.unwrap_generic(typ))
+			arg_sym := c.table.final_sym(args[node_i - 1].typ)
+			if cparam_type_sym.kind == .array {
+				typ = c.get_generic_array_element_type(cparam_type_sym.info as ast.Array)
+			} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
+				mut generic_types := []ast.Type{}
+				match arg_sym.info {
+					ast.Struct, ast.Interface, ast.SumType {
+						if cparam_type_sym.generic_types.len > 0 {
+							generic_types = cparam_type_sym.generic_types.clone()
+						} else {
+							generic_types = arg_sym.info.generic_types.clone()
+						}
+					}
+					else {}
+				}
+				generic_names := generic_types.map(c.table.sym(it).name)
+				for _, gt_name in c.table.cur_fn.generic_names {
+					if gt_name in generic_names && generic_types.len == concrete_types.len {
+						idx := generic_names.index(gt_name)
+						typ = concrete_types[idx]
+					}
+				}
+			}
+			ret_types[node_i - 1] = c.unwrap_generic(typ)
+			if typ.nr_muls() > 0 && args[node_i - 1].typ.nr_muls() > 0 {
+				ret_types[node_i - 1] = ret_types[node_i - 1].set_nr_muls(0)
+			}
+			break
+		}
+		if param.typ.has_flag(.generic) {
+			concrete_i++
+		}
+	}
+	return ret_types
+}
+
+fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	for i, call_arg in node_.args {
 		if call_arg.expr is ast.Ident {
@@ -1341,6 +1417,14 @@ fn (mut c Checker) get_comptime_args(node_ ast.CallExpr) map[int]ast.Type {
 			comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
 		}
 	}
+	if c.table.cur_fn != unsafe { nil } && node_.args.len > 0 && concrete_types.len > 0 {
+		ret_types := c.resolve_fn_generic_param(func, node_.args, concrete_types)
+		for k, v in ret_types {
+			if k !in comptime_args {
+				comptime_args[k] = v
+			}
+		}
+	}
 	return comptime_args
 }
 
@@ -1349,7 +1433,7 @@ fn (mut c Checker) resolve_fn_generic_args(func ast.Fn, mut node ast.CallExpr) [
 
 	// dynamic values from comptime and generic parameters
 	if concrete_types.len > 0 {
-		mut comptime_args := c.get_comptime_args(node)
+		mut comptime_args := c.get_comptime_args(func, node, concrete_types)
 		if comptime_args.len > 0 {
 			offset := if func.is_method { 1 } else { 0 }
 			for k, v in comptime_args {
