@@ -194,7 +194,7 @@ fn (mut g Gen) struct_has_array_or_map_field(elem_typ ast.Type) bool {
 	return false
 }
 
-// `[]int{len: 6, cap: 10, init: it * it}`
+// `[]int{len: 6, cap: 10, init: index * index}`
 fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp bool, shared_styp string, var_name string) {
 	elem_styp := g.typ(elem_type.typ)
 	noscan := g.check_noscan(elem_type.typ)
@@ -202,7 +202,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 	is_default_map := elem_type.unaliased_sym.kind == .map && node.has_default
 	needs_more_defaults := node.has_len && (g.struct_has_array_or_map_field(elem_type.typ)
 		|| elem_type.unaliased_sym.kind in [.array, .map])
-	if node.has_index { // []int{len: 6, init: it * it} when variable it is used in init expression
+	if node.has_index { // []int{len: 6, init: index * index} when variable it is used in init expression
 		g.inside_lambda = true
 		mut tmp := g.new_tmp_var()
 		mut s := ''
