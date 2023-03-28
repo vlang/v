@@ -2611,9 +2611,9 @@ For this reason V doesn't allow the modification of arguments with primitive typ
 Only more complex types such as arrays and maps may be modified.
 
 ### Variable number of arguments
-V supports functions that receive an arbitrary, variable amounts of arguments, denoted with the 
+V supports functions that receive an arbitrary, variable amounts of arguments, denoted with the
 `...` prefix.
-Below, `a ...int` refers to an arbitrary amount of parameters that will be collected 
+Below, `a ...int` refers to an arbitrary amount of parameters that will be collected
 into an array named `a`.
 
 ```v
@@ -4303,6 +4303,9 @@ println(json.encode(data)) // {"x":42,"y":360}
 println(json.encode(user)) // {"name":"Pierre","score":1024}
 ```
 
+The json module also supports anonymous struct fields, which helps with complex JSON apis with lots
+of levels.
+
 ## Testing
 
 ### Asserts
@@ -5866,25 +5869,25 @@ the boolean expression is highly improbable. In the JS backend, that does nothin
 
 ### Memory usage optimization
 
-V offers these attributes related to memory usage 
-that can be applied to a structure type: `[packed]` and `[minify]`. 
+V offers these attributes related to memory usage
+that can be applied to a structure type: `[packed]` and `[minify]`.
 These attributes affect memory layout of a structure, potentially leading to reduced
 cache/memory usage and improved performance.
 
 #### `[packed]`
 
-The `[packed]` attribute can be added to a structure to create an unaligned memory layout, 
+The `[packed]` attribute can be added to a structure to create an unaligned memory layout,
 which decreases the overall memory footprint of the structure.
 
 > **Note**
-> Using the [packed] attribute may negatively impact performance 
+> Using the [packed] attribute may negatively impact performance
 > or even be prohibited on certain CPU architectures.
-> Only use this attribute if minimizing memory usage is crucial for your program 
+> Only use this attribute if minimizing memory usage is crucial for your program
 > and you're willing to sacrifice performance.
 
 #### `[minify]`
 
-The `[minify]` attribute can be added to a struct, allowing the compiler to reorder the fields 
+The `[minify]` attribute can be added to a struct, allowing the compiler to reorder the fields
 in a way that minimizes internal gaps while maintaining alignment.
 
 > **Note**
