@@ -720,7 +720,7 @@ Then add a handler-function to define on which route or on which site the CSRF-T
 fn (mut app App) index() vweb.Result {
 
     // Set a Csrf-Cookie (Token will be generated automatically)
-	app.set_csrf_cookie() or { panic(err) }
+	app.set_csrf_cookie()
 
 	// Get the token-value from the csrf-cookie that was just set
 	token := app.get_csrf_token() or { panic(err) }
@@ -731,7 +731,7 @@ fn (mut app App) index() vweb.Result {
 
 If you want to set the cookies's HttpOnly-status to false in order to make it  
  accessible to scripts on your site, you can do it like this:
-`app.set_csrf_cookie(csrf.HttpOnly{false}) or { panic(err) }`
+`app.set_csrf_cookie(csrf.HttpOnly{false})`
 If no argument is passed the value will be set to true by default.
 
 

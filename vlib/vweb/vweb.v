@@ -315,10 +315,11 @@ pub fn (mut ctx Context) not_found() Result {
 
 // TODO - test
 // Sets a cookie
-pub fn (mut ctx Context) set_cookie(cookie http.Cookie) ! {
+pub fn (mut ctx Context) set_cookie(cookie http.Cookie) {
 	cookie_raw := cookie.str()
 	if cookie_raw == '' {
-		return error('error setting cookie: name of cookie is invalid')
+		eprintln('error setting cookie: name of cookie is invalid')
+		return
 	}
 	ctx.add_header('Set-Cookie', cookie_raw)
 }
@@ -330,13 +331,13 @@ pub fn (mut ctx Context) set_content_type(typ string) {
 
 // TODO - test
 // Sets a cookie with a `expire_date`
-pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, expire_date time.Time) ! {
+pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, expire_date time.Time) {
 	cookie := http.Cookie{
 		name: key
 		value: val
 		expires: expire_date
 	}
-	ctx.set_cookie(cookie)!
+	ctx.set_cookie(cookie)
 }
 
 // Gets a cookie by a key

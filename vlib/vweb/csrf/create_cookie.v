@@ -9,14 +9,14 @@ const cookie_key = '__Host-Csrf-Token'
 // set_csrf_cookie - generates a CSRF-Token and sets the CSRF-Cookie. It is possible to set the HttpOnly-status of the cookie to false by adding an argument of the HttpOnly-struct like this:
 // `app.set_csrf_cookie(csrf.HttpOnly{false})`
 // If no argument is set, http_only will be set to `true`by default.
-pub fn (mut app App) set_csrf_cookie(h ...HttpOnly) !App {
+pub fn (mut app App) set_csrf_cookie(h ...HttpOnly) App {
 	mut http_only := true
 	if h.len > 0 {
 		http_only = h[0].http_only
 	}
 	cookie := create_cookie(http_only)
 	app = App{app.Context, cookie.value}
-	app.set_cookie(cookie)!
+	app.set_cookie(cookie)
 	return app
 }
 
