@@ -1003,6 +1003,9 @@ fn (mut g Gen) resolve_fn_generic_param(func ast.Fn, args []ast.CallArg, concret
 				typ = g.get_generic_array_element_type(cparam_type_sym.info as ast.Array)
 			}
 			ret_types[concrete_i] = g.unwrap_generic(typ)
+			if typ.nr_muls() > 0 && args[node_i - 1].typ.nr_muls() > 0 {
+				ret_types[concrete_i] = ret_types[concrete_i].set_nr_muls(0)
+			}
 			break
 		}
 		if param.typ.has_flag(.generic) {
