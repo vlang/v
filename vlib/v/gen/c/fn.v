@@ -999,12 +999,32 @@ fn (mut g Gen) resolve_fn_generic_param(func ast.Fn, args []ast.CallArg, concret
 			}
 			mut typ := cur_param.typ
 			mut cparam_type_sym := g.table.sym(g.unwrap_generic(typ))
+			arg_sym := g.table.final_sym(args[node_i - 1].typ)
 			if cparam_type_sym.kind == .array {
 				typ = g.get_generic_array_element_type(cparam_type_sym.info as ast.Array)
+			} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
+				mut generic_types := []ast.Type{}
+				match arg_sym.info {
+					ast.Struct, ast.Interface, ast.SumType {
+						if cparam_type_sym.generic_types.len > 0 {
+							generic_types = cparam_type_sym.generic_types.clone()
+						} else {
+							generic_types = arg_sym.info.generic_types.clone()
+						}
+					}
+					else {}
+				}
+				generic_names := generic_types.map(g.table.sym(it).name)
+				for _, gt_name in g.cur_fn.generic_names {
+					if gt_name in generic_names && generic_types.len == concrete_types.len {
+						idx := generic_names.index(gt_name)
+						typ = concrete_types[idx]
+					}
+				}
 			}
-			ret_types[concrete_i] = g.unwrap_generic(typ)
+			ret_types[node_i - 1] = g.unwrap_generic(typ)
 			if typ.nr_muls() > 0 && args[node_i - 1].typ.nr_muls() > 0 {
-				ret_types[concrete_i] = ret_types[concrete_i].set_nr_muls(0)
+				ret_types[node_i - 1] = ret_types[node_i - 1].set_nr_muls(0)
 			}
 			break
 		}
