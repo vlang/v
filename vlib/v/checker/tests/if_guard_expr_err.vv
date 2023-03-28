@@ -4,6 +4,7 @@ fn foo() ! {
 
 fn main() {
 	a := if r := foo() {
+		println(r)
 		true
 	} else {
 		false
