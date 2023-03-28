@@ -1427,7 +1427,7 @@ fn (mut c Checker) resolve_fn_generic_args(func ast.Fn, mut node ast.CallExpr) [
 			offset := if func.is_method { 1 } else { 0 }
 			for k, v in comptime_args {
 				mut concrete_type := c.unwrap_generic(v)
-				arg_sym := c.table.final_sym(v)
+				arg_sym := c.table.sym(v)
 				param_typ := func.params[k + offset].typ
 				if arg_sym.kind == .array && param_typ.has_flag(.generic)
 					&& c.table.final_sym(param_typ).kind == .array {
