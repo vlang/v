@@ -1003,7 +1003,6 @@ fn (mut g Gen) resolve_fn_generic_param(func ast.Fn, args []ast.CallArg, concret
 				typ = g.get_generic_array_element_type(cparam_type_sym.info as ast.Array)
 			}
 			ret_types[concrete_i] = g.unwrap_generic(typ)
-			g.comptime_var_type_map[var_name] = ret_types[concrete_i]
 			break
 		}
 		if param.typ.has_flag(.generic) {
@@ -1249,7 +1248,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			for k, v in comptime_args {
 				mut concrete_type := g.unwrap_generic(v)
 				param_typ := m.params[k + 1].typ
-				arg_sym := g.table.sym(v)
+				arg_sym := g.table.final_sym(concrete_type)
 
 				if arg_sym.kind == .array && param_typ.has_flag(.generic)
 					&& g.table.final_sym(param_typ).kind == .array {
@@ -1496,10 +1495,10 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			if concrete_types.len > 0 {
 				for k, v in comptime_args {
 					mut concrete_type := g.unwrap_generic(v)
-					arg_sym := g.table.sym(v)
+					arg_sym := g.table.final_sym(g.unwrap_generic(v))
 					param_typ := func.params[k].typ
 					if arg_sym.kind == .array && param_typ.has_flag(.generic)
-						&& g.table.sym(param_typ).kind == .array {
+						&& g.table.final_sym(param_typ).kind == .array {
 						concrete_type = g.unwrap_generic((arg_sym.info as ast.Array).elem_type)
 					}
 					if k < concrete_types.len {
