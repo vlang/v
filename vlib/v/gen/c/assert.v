@@ -22,7 +22,10 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 	g.inside_ternary++
 	if g.pref.is_test {
 		g.write('if (')
+		prev_inside_ternary := g.inside_ternary
+		g.inside_ternary = 0
 		g.expr(node.expr)
+		g.inside_ternary = prev_inside_ternary
 		g.write(')')
 		g.decrement_inside_ternary()
 		g.writeln(' {')
@@ -35,7 +38,10 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 		g.writeln('}')
 	} else {
 		g.write('if (!(')
+		prev_inside_ternary := g.inside_ternary
+		g.inside_ternary = 0
 		g.expr(node.expr)
+		g.inside_ternary = prev_inside_ternary
 		g.write('))')
 		g.decrement_inside_ternary()
 		g.writeln(' {')
