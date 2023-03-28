@@ -4882,11 +4882,10 @@ The way it works is very similar to Go. It's very simple: there's no need to
 write documentation separately for your code,
 vdoc will generate it from docstrings in the source code.
 
-Documentation for each function/type/const must be placed right before the declaration:
+Documentation for each function/type/const must be placed right before the declaration 
 
 ```v
 // clearall clears all bits in the array
-
 fn clearall() {
 }
 ```
@@ -4899,7 +4898,6 @@ span to the documented function using single line comments:
 ```v
 // copy_all recursively copies all elements of the array by their value,
 // if `dupes` is false all duplicate values are eliminated in the process.
-
 fn copy_all(dupes bool) {
 	// ...
 }
