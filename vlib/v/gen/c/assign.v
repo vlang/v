@@ -258,6 +258,15 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						val_type = var_type
 						left.obj.typ = var_type
 					}
+				} else if val is ast.IndexExpr {
+					if val.left is ast.Ident && g.is_generic_param_var((val as ast.IndexExpr).left) {
+						ctyp := g.unwrap_generic(g.get_gn_var_type((val as ast.IndexExpr).left as ast.Ident))
+						if ctyp != ast.void_type {
+							var_type = ctyp
+							val_type = var_type
+							left.obj.typ = var_type
+						}
+					}
 				}
 				is_auto_heap = left.obj.is_auto_heap
 			}

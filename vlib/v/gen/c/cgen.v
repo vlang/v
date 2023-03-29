@@ -4046,6 +4046,13 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	}
 }
 
+[inline]
+pub fn (mut g Gen) is_generic_param_var(node ast.Expr) bool {
+	return node is ast.Ident
+		&& (node as ast.Ident).info is ast.IdentVar && (node as ast.Ident).obj is ast.Var && ((node as ast.Ident).obj as ast.Var).ct_type_var == .generic_param
+}
+
+[inline]
 pub fn (mut g Gen) is_comptime_var(node ast.Expr) bool {
 	return node is ast.Ident
 		&& (node as ast.Ident).info is ast.IdentVar && (node as ast.Ident).obj is ast.Var && ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime

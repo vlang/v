@@ -959,6 +959,27 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 	return false
 }
 
+fn (mut g Gen) get_gn_var_type(var ast.Ident) ast.Type {
+	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 {
+		for k, cur_param in g.cur_fn.params {
+			if (k == 0 && g.cur_fn.is_method) || !cur_param.typ.has_flag(.generic)
+				|| var.name != cur_param.name {
+				continue
+			}
+			mut typ := cur_param.typ
+			mut cparam_type_sym := g.table.sym(g.unwrap_generic(typ))
+
+			if cparam_type_sym.kind == .array {
+				typ = g.unwrap_generic((cparam_type_sym.info as ast.Array).elem_type)
+			} else if cparam_type_sym.kind == .array_fixed {
+				typ = g.unwrap_generic((cparam_type_sym.info as ast.ArrayFixed).elem_type)
+			}
+			return typ
+		}
+	}
+	return ast.void_type
+}
+
 fn (mut g Gen) resolve_fn_generic_param(func ast.Fn, args []ast.CallArg, concrete_types []ast.Type) map[int]ast.Type {
 	mut ret_types := map[int]ast.Type{}
 	offset := if func.is_method { 1 } else { 0 }
