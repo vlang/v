@@ -1225,13 +1225,14 @@ pub mut:
 
 pub struct FnTypeDecl {
 pub:
-	name     string
-	is_pub   bool
-	typ      Type
-	pos      token.Pos
-	type_pos token.Pos
-	comments []Comment
-	attrs    []Attr // attributes of type declaration
+	name          string
+	is_pub        bool
+	typ           Type
+	pos           token.Pos
+	type_pos      token.Pos
+	comments      []Comment
+	generic_types []Type
+	attrs         []Attr // attributes of type declaration
 }
 
 // TODO: handle this differently
