@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module vweb
@@ -179,8 +179,9 @@ pub:
 }
 
 struct Route {
-	methods []http.Method
-	path    string
+	methods    []http.Method
+	path       string
+	middleware string
 }
 
 // Defining this method is optional.
@@ -315,15 +316,12 @@ pub fn (mut ctx Context) not_found() Result {
 // TODO - test
 // Sets a cookie
 pub fn (mut ctx Context) set_cookie(cookie http.Cookie) {
-	mut cookie_data := []string{}
-	mut secure := if cookie.secure { 'Secure;' } else { '' }
-	secure += if cookie.http_only { ' HttpOnly' } else { ' ' }
-	cookie_data << secure
-	if cookie.expires.unix > 0 {
-		cookie_data << 'expires=${cookie.expires.utc_string()}'
+	cookie_raw := cookie.str()
+	if cookie_raw == '' {
+		eprintln('error setting cookie: name of cookie is invalid')
+		return
 	}
-	data := cookie_data.join(' ')
-	ctx.add_header('Set-Cookie', '${cookie.name}=${cookie.value}; ${data}')
+	ctx.add_header('Set-Cookie', cookie_raw)
 }
 
 // Sets the response content type
@@ -332,27 +330,20 @@ pub fn (mut ctx Context) set_content_type(typ string) {
 }
 
 // TODO - test
-// Sets a cookie with a `expire_data`
+// Sets a cookie with a `expire_date`
 pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, expire_date time.Time) {
-	ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly; expires=${expire_date.utc_string()}')
+	cookie := http.Cookie{
+		name: key
+		value: val
+		expires: expire_date
+	}
+	ctx.set_cookie(cookie)
 }
 
 // Gets a cookie by a key
-pub fn (ctx &Context) get_cookie(key string) !string { // TODO refactor
-	mut cookie_header := ctx.get_header('cookie')
-	if cookie_header == '' {
-		cookie_header = ctx.get_header('Cookie')
-	}
-	cookie_header = ' ' + cookie_header
-	// println('cookie_header="$cookie_header"')
-	// println(ctx.req.header)
-	cookie := if cookie_header.contains(';') {
-		cookie_header.find_between(' ${key}=', ';')
-	} else {
-		cookie_header.find_between(' ${key}=', '\r')
-	}
-	if cookie != '' {
-		return cookie.trim_space()
+pub fn (ctx &Context) get_cookie(key string) !string {
+	if value := ctx.req.cookies[key] {
+		return value
 	}
 	return error('Cookie not found')
 }
@@ -383,6 +374,12 @@ interface DbInterface {
 	db voidptr
 }
 
+pub type Middleware = fn (mut Context) bool
+
+interface MiddlewareInterface {
+	middlewares map[string][]Middleware
+}
+
 // run - start a new VWeb server, listening to all available addresses, at the specified `port`
 pub fn run[T](global_app &T, port int) {
 	run_at[T](global_app, host: '', port: port, family: .ip6) or { panic(err.msg()) }
@@ -411,13 +408,14 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	// Parsing methods attributes
 	mut routes := map[string]Route{}
 	$for method in T.methods {
-		http_methods, route_path := parse_attrs(method.name, method.attrs) or {
+		http_methods, route_path, middleware := parse_attrs(method.name, method.attrs) or {
 			return error('error parsing method attributes: ${err}')
 		}
 
 		routes[method.name] = Route{
 			methods: http_methods
 			path: route_path
+			middleware: middleware
 		}
 	}
 	host := if params.host == '' { 'localhost' } else { params.host }
@@ -428,6 +426,11 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	for {
 		// Create a new app object for each connection, copy global data like db connections
 		mut request_app := &T{}
+		$if T is MiddlewareInterface {
+			request_app = &T{
+				middlewares: global_app.middlewares.clone()
+			}
+		}
 		$if T is DbInterface {
 			request_app.db = global_app.db
 		} $else {
@@ -550,21 +553,45 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 				// should be called first.
 				if !route.path.contains('/:') && url_words == route_words {
 					// We found a match
+					$if T is MiddlewareInterface {
+						if validate_middleware(mut app, url.path) == false {
+							return
+						}
+					}
+
 					if req.method == .post && method.args.len > 0 {
 						// Populate method args with form values
 						mut args := []string{cap: method.args.len}
 						for param in method.args {
 							args << form[param.name]
 						}
-						app.$method(args)
+
+						if route.middleware == '' {
+							app.$method(args)
+						} else if validate_app_middleware(mut app, route.middleware, method.name) {
+							app.$method(args)
+						}
 					} else {
-						app.$method()
+						if route.middleware == '' {
+							app.$method()
+						} else if validate_app_middleware(mut app, route.middleware, method.name) {
+							app.$method()
+						}
 					}
 					return
 				}
 
 				if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
-					app.$method()
+					$if T is MiddlewareInterface {
+						if validate_middleware(mut app, url.path) == false {
+							return
+						}
+					}
+					if route.middleware == '' {
+						app.$method()
+					} else if validate_app_middleware(mut app, route.middleware, method.name) {
+						app.$method()
+					}
 					return
 				}
 
@@ -573,7 +600,17 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 					if method_args.len != method.args.len {
 						eprintln('warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the vweb route `${method.attrs}` (${method_args.len})')
 					}
-					app.$method(method_args)
+
+					$if T is MiddlewareInterface {
+						if validate_middleware(mut app, url.path) == false {
+							return
+						}
+					}
+					if route.middleware == '' {
+						app.$method(method_args)
+					} else if validate_app_middleware(mut app, route.middleware, method.name) {
+						app.$method(method_args)
+					}
 					return
 				}
 			}
@@ -581,6 +618,49 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 	}
 	// Route not found
 	conn.write(vweb.http_404.bytes()) or {}
+}
+
+// validate_middleware validates and fires all middlewares that are defined in the global app instance
+fn validate_middleware[T](mut app T, full_path string) bool {
+	for path, middleware_chain in app.middlewares {
+		// only execute middleware if route.path starts with `path`
+		if full_path.len >= path.len && full_path.starts_with(path) {
+			// there is middleware for this route
+			for func in middleware_chain {
+				if func(mut app.Context) == false {
+					return false
+				}
+			}
+		}
+	}
+	// passed all middleware checks
+	return true
+}
+
+// validate_app_middleware validates all middlewares as a method of `app`
+fn validate_app_middleware[T](mut app T, middleware string, method_name string) bool {
+	// then the middleware that is defined for this route specifically
+	valid := fire_app_middleware(mut app, middleware) or {
+		eprintln('warning: middleware `${middleware}` for the `${method_name}` are not found')
+		true
+	}
+	return valid
+}
+
+// fire_app_middleware fires all middlewares that are defined as a method of `app`
+fn fire_app_middleware[T](mut app T, method_name string) ?bool {
+	$for method in T.methods {
+		if method_name == method.name {
+			$if method.return_type is bool {
+				return app.$method()
+			} $else {
+				eprintln('error in `${method.name}, middleware functions must return bool')
+				return none
+			}
+		}
+	}
+	// no middleware function found
+	return none
 }
 
 fn route_matches(url_words []string, route_words []string) ?[]string {

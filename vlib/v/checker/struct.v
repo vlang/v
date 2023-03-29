@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -118,17 +118,15 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 
 			if field.has_default_expr {
 				c.expected_type = field.typ
-				default_expr_type := c.expr(field.default_expr)
 				if !field.typ.has_flag(.option) && !field.typ.has_flag(.result) {
-					c.check_expr_opt_call(field.default_expr, default_expr_type)
+					c.check_expr_opt_call(field.default_expr, field.default_expr_typ)
 				}
-				struct_sym.info.fields[i].default_expr_typ = default_expr_type
 				interface_implemented := sym.kind == .interface_
-					&& c.type_implements(default_expr_type, field.typ, field.pos)
-				c.check_expected(default_expr_type, field.typ) or {
+					&& c.type_implements(field.default_expr_typ, field.typ, field.pos)
+				c.check_expected(field.default_expr_typ, field.typ) or {
 					if sym.kind == .interface_ && interface_implemented {
-						if !c.inside_unsafe && !default_expr_type.is_real_pointer() {
-							if c.table.sym(default_expr_type).kind != .interface_ {
+						if !c.inside_unsafe && !field.default_expr_typ.is_real_pointer() {
+							if c.table.sym(field.default_expr_typ).kind != .interface_ {
 								c.mark_as_referenced(mut &node.fields[i].default_expr,
 									true)
 							}
@@ -492,6 +490,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				}
 				if !field_info.typ.has_flag(.option) && !field.typ.has_flag(.result) {
 					expr_type = c.check_expr_opt_call(field.expr, expr_type)
+					if expr_type.has_flag(.option) {
+						c.error('cannot assign an Option value to a non-option struct field',
+							field.pos)
+					}
 				}
 				expr_type_sym := c.table.sym(expr_type)
 				if field_type_sym.kind == .voidptr && expr_type_sym.kind == .struct_

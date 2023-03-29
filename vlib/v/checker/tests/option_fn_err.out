@@ -1,10 +1,17 @@
 vlib/v/checker/tests/option_fn_err.vv:40:9: error: assert can be used only with `bool` expressions, but found `bool` instead
-   38 | 
+   38 |
    39 |     // assert
    40 |     assert bar(true)
       |            ~~~~~~~~~
-   41 | 
+   41 |
    42 |     // struct
+vlib/v/checker/tests/option_fn_err.vv:45:3: error: cannot assign an Option value to a non-option struct field
+   43 |     mut v := Data{
+   44 |         f: fn (_ int) {}
+   45 |         value: bar(0)
+      |         ~~~~~~~~~~~~~
+   46 |         opt: bar(0)
+   47 |     }
 vlib/v/checker/tests/option_fn_err.vv:60:13: error: cannot use Option or Result as index (array type `[]int`)
    58 |     _ := [1]int{init: bar(0)}
    59 |     // index
@@ -31,5 +38,5 @@ vlib/v/checker/tests/option_fn_err.vv:69:18: error: type mismatch, `bar` must re
    68 |     println(arr.any(bar(true)))
    69 |     println(arr.all(bar(true)))
       |                     ~~~~~~~~~
-   70 | 
+   70 |
    71 |     match bar(0) {

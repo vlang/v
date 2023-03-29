@@ -1,7 +1,7 @@
 /*
 regex 1.0 alpha
 
-Copyright (c) 2019-2022 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2023 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
@@ -2520,7 +2520,9 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			// stop already started matching outside a capturing group
 			if re.state_list.len > 0 && re.state_list.last().group_index == -1
 				&& re.state_list.last().last_dot_pc > 0 {
-				return regex.no_match_found, 0
+				if ist == regex.ist_dot_char || ist == regex.ist_bsls_char {
+					return regex.no_match_found, 0
+				}
 			}
 			continue
 		}

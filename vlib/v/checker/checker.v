@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -25,7 +25,7 @@ const (
 
 pub const (
 	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
-		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
+		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop', 'delete']
 	array_builtin_methods_chk   = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
 	// TODO: remove `byte` from this list when it is no longer supported
 	reserved_type_names         = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16',
@@ -416,8 +416,11 @@ fn stripped_name(name string) string {
 }
 
 fn (mut c Checker) check_valid_pascal_case(name string, identifier string, pos token.Pos) {
+	if c.pref.translated || c.file.is_translated {
+		return
+	}
 	sname := stripped_name(name)
-	if sname.len > 0 && !sname[0].is_capital() && !c.pref.translated && !c.file.is_translated {
+	if sname.len > 0 && !sname[0].is_capital() {
 		c.error('${identifier} `${name}` must begin with capital letter', pos)
 	}
 }
@@ -1901,6 +1904,7 @@ fn (mut c Checker) stmt(node_ ast.Stmt) {
 
 fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 	cur_exp_typ := c.expected_type
+	c.expected_type = ast.bool_type
 	assert_type := c.check_expr_opt_call(node.expr, c.expr(node.expr))
 	if assert_type != ast.bool_type_idx {
 		atype_name := c.table.sym(assert_type).name

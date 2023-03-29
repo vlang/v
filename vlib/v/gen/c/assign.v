@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -422,10 +422,16 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			mut op_expected_left := ast.Type(0)
 			mut op_expected_right := ast.Type(0)
 			if node.op == .plus_assign && unaliased_right_sym.kind == .string {
-				if left is ast.IndexExpr {
-					// a[0] += str => `array_set(&a, 0, &(string[]) {string__plus(...))})`
-					g.expr(left)
-					g.write('string__plus(')
+				if mut left is ast.IndexExpr {
+					if g.table.sym(left.left_type).kind == .array_fixed {
+						// strs[0] += str2 => `strs[0] = string__plus(strs[0], str2)`
+						g.expr(left)
+						g.write(' = string__plus(')
+					} else {
+						// a[0] += str => `array_set(&a, 0, &(string[]) {string__plus(...))})`
+						g.expr(left)
+						g.write('string__plus(')
+					}
 				} else {
 					// str += str2 => `str = string__plus(str, str2)`
 					g.expr(left)
