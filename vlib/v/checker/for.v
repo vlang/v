@@ -161,6 +161,10 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				if is_comptime {
 					c.comptime_fields_type[node.key_var] = key_type
 					node.scope.update_ct_var_kind(node.key_var, .key_var)
+
+					defer {
+						c.comptime_fields_type.delete(node.key_var)
+					}
 				}
 			}
 
@@ -170,6 +174,10 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			if is_comptime {
 				c.comptime_fields_type[node.val_var] = value_type
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
+
+				defer {
+					c.comptime_fields_type.delete(node.val_var)
+				}
 			}
 		} else {
 			if sym.kind == .map && !(node.key_var.len > 0 && node.val_var.len > 0) {
@@ -188,6 +196,10 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				if is_comptime {
 					c.comptime_fields_type[node.key_var] = key_type
 					node.scope.update_ct_var_kind(node.key_var, .key_var)
+
+					defer {
+						c.comptime_fields_type.delete(node.key_var)
+					}
 				}
 			}
 			mut value_type := c.table.value_type(typ)
@@ -241,6 +253,10 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			if is_comptime {
 				c.comptime_fields_type[node.val_var] = value_type
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
+
+				defer {
+					c.comptime_fields_type.delete(node.val_var)
+				}
 			}
 		}
 	}
