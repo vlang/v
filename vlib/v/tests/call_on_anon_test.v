@@ -29,16 +29,16 @@ fn f5(s string) fn (string) !string {
 }
 
 fn test_call_nested_anon() {
-	println(main.f1('V')('Lang')!)
-	s1 := main.f1('V')('Lang')!
+	println(f1('V')('Lang')!)
+	s1 := f1('V')('Lang')!
 	println(s1)
-	s2 := main.f1('V')('Lang') or { 'ErrLang' }
+	s2 := f1('V')('Lang') or { 'ErrLang' }
 	println(s2)
-	s3 := main.f2('V')('Lang')?
+	s3 := f2('V')('Lang')?
 	println(s3)
-	s4 := main.f2('V')('Lang') or { 'NoneLang' }
+	s4 := f2('V')('Lang') or { 'NoneLang' }
 	println(s4)
-	s := main.f3('V')('Lang')
+	s := f3('V')('Lang')
 	println(s)
 	assert s == 'VLang'
 	assert s1 == 'VLang'
@@ -46,10 +46,10 @@ fn test_call_nested_anon() {
 	assert s3 == 'VLang'
 	assert s4 == 'VLang'
 
-	s5 := main.f4('V')('Lang') or { 'Lang++' }
+	s5 := f4('V')('Lang') or { 'Lang++' }
 	println(s5)
 	assert s5 == 'Lang++'
-	s6 := main.f5('V')('Lang') or { '${err}' }
+	s6 := f5('V')('Lang') or { '${err}' }
 	println(s6)
 	assert s6 == 'test'
 }
