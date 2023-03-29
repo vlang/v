@@ -679,21 +679,6 @@ fn (mut g Gen) pop_existing_comptime_values() {
 	g.comptime_var_type_map = old.comptime_var_type_map.clone()
 }
 
-fn (g Gen) get_generic_array_element_type(array ast.Array) ast.Type {
-	mut cparam_elem_info := array as ast.Array
-	mut cparam_elem_sym := g.table.sym(cparam_elem_info.elem_type)
-	mut typ := ast.void_type
-	if cparam_elem_sym.kind == .array {
-		cparam_elem_info = cparam_elem_sym.info as ast.Array
-		cparam_elem_sym = g.table.sym(cparam_elem_info.elem_type)
-	}
-	typ = cparam_elem_info.elem_type
-	if cparam_elem_info.elem_type.nr_muls() > 0 && typ.nr_muls() > 0 {
-		typ = typ.set_nr_muls(0)
-	}
-	return typ
-}
-
 fn (mut g Gen) get_comptime_var_type(node ast.Expr) ast.Type {
 	if node is ast.Ident && (node as ast.Ident).obj is ast.Var {
 		return match (node.obj as ast.Var).ct_type_var {

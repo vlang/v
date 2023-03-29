@@ -1358,7 +1358,9 @@ fn (mut c Checker) resolve_fn_generic_param(func ast.Fn, args []ast.CallArg, con
 			mut cparam_type_sym := c.table.sym(c.unwrap_generic(typ))
 			arg_sym := c.table.final_sym(arg.typ)
 			if cparam_type_sym.kind == .array {
-				typ = c.get_generic_array_element_type(cparam_type_sym.info as ast.Array)
+				typ = c.unwrap_generic((cparam_type_sym.info as ast.Array).elem_type)
+			} else if cparam_type_sym.kind == .array_fixed {
+				typ = c.unwrap_generic((cparam_type_sym.info as ast.ArrayFixed).elem_type)
 			} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
 				mut generic_types := []ast.Type{}
 				match arg_sym.info {
@@ -1376,13 +1378,16 @@ fn (mut c Checker) resolve_fn_generic_param(func ast.Fn, args []ast.CallArg, con
 					if gt_name in generic_names && generic_types.len == concrete_types.len {
 						idx := generic_names.index(gt_name)
 						typ = concrete_types[idx]
+						break
 					}
+				}
+			} else {
+				if typ.nr_muls() > 0 && arg.typ.nr_muls() > 0 {
+					typ = typ.set_nr_muls(0)
 				}
 			}
 			ret_types[i] = c.unwrap_generic(typ)
-			if typ.nr_muls() > 0 && arg.typ.nr_muls() > 0 {
-				ret_types[i] = ret_types[i].set_nr_muls(0)
-			}
+
 			break
 		}
 	}
