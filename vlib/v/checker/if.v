@@ -71,6 +71,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 		}
 		if mut branch.cond is ast.IfGuardExpr {
+			if branch.cond.expr_type.clear_flag(.option).clear_flag(.result) == ast.void_type
+				&& !(branch.cond.vars.len == 1 && branch.cond.vars[0].name == '_') {
+				c.error('if guard expects non-propagate option or result', branch.pos)
+				continue
+			}
 			sym := c.table.sym(branch.cond.expr_type)
 			if sym.kind == .multi_return {
 				mr_info := sym.info as ast.MultiReturn
