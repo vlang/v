@@ -963,7 +963,7 @@ fn (mut g Gen) resolve_fn_generic_param(func ast.Fn, args []ast.CallArg, concret
 	mut ret_types := map[int]ast.Type{}
 	offset := if func.is_method { 1 } else { 0 }
 	for i, arg in args {
-		if i == 0 && func.is_method {
+		if (i == 0 && func.is_method) || (offset + i) >= func.params.len {
 			continue
 		}
 		param_typ := func.params[offset + i].typ

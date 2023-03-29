@@ -1329,7 +1329,7 @@ fn (mut c Checker) resolve_fn_generic_param(func ast.Fn, args []ast.CallArg, con
 	mut ret_types := map[int]ast.Type{}
 	offset := if func.is_method { 1 } else { 0 }
 	for i, arg in args {
-		if i == 0 && func.is_method {
+		if (i == 0 && func.is_method) || (offset + i) >= func.params.len {
 			continue
 		}
 		param_typ := func.params[offset + i].typ
@@ -1387,7 +1387,6 @@ fn (mut c Checker) resolve_fn_generic_param(func ast.Fn, args []ast.CallArg, con
 				}
 			}
 			ret_types[i] = c.unwrap_generic(typ)
-
 			break
 		}
 	}
