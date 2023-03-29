@@ -164,7 +164,8 @@ ${enc_fn_dec} {
 			g.gen_sumtype_enc_dec(utyp, sym, mut enc, mut dec, ret_styp)
 		} else if sym.kind == .enum_ {
 			g.gen_enum_enc_dec(utyp, sym, mut enc, mut dec)
-		} else if utyp.has_flag(.option) && sym.info !is ast.Struct {
+		} else if utyp.has_flag(.option)
+			&& (is_js_prim(g.typ(utyp.clear_flag(.option))) || sym.info !is ast.Struct) {
 			g.gen_option_enc_dec(utyp, mut enc, mut dec)
 		} else {
 			enc.writeln('\to = cJSON_CreateObject();')
