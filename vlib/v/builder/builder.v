@@ -346,6 +346,12 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 				println('v_files_from_dir ("${src_path}") (/src/)')
 			}
 			files = os.ls(src_path) or { panic(err) }
+			src_path_offset := src_path.split('/').len
+			for file in os.walk_ext(src_path, '.v').map(it.split('/')#[src_path_offset..].join('/')) {
+				if !files.contains(file) {
+					files << file
+				}
+			}
 			return b.pref.should_compile_filtered_files(src_path, files)
 		}
 	}
