@@ -3491,7 +3491,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	mut sum_type_deref_field := ''
 	mut sum_type_dot := '.'
-	if f := g.table.find_field(sym, node.field_name) {
+	if f := g.table.find_field_with_embeds(sym, node.field_name) {
 		field_sym := g.table.sym(f.typ)
 		if field_sym.kind in [.sum_type, .interface_] {
 			if !prevent_sum_type_unwrapping_once {
