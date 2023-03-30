@@ -39,3 +39,5 @@ For HTML mode:
 For plain text mode:
   -l              Shows the locations of the generated signatures.
   -comments       Includes comments in the output.
+
+Note: set the environment variable `VDOC_SORT` to `false`, to avoid sorting the output.

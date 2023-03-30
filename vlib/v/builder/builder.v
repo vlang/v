@@ -304,7 +304,11 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 			deps << 'builtin'
 			if b.pref.backend == .c {
 				// TODO JavaScript backend doesn't handle os for now
-				if b.pref.is_vsh && p.mod.name !in ['os', 'dl', 'strings.textscanner'] {
+				// os import libraries so we exclude anything which could cause a loop
+				// git grep import vlib/os | cut -f2 -d: | cut -f2 -d" " | sort -u
+				// dl, os, os.cmdline, os.filelock, os.notify, strings, strings.textscanner, term.termios, time
+				if b.pref.is_vsh
+					&& p.mod.name !in ['os', 'dl', 'strings.textscanner', 'term.termios'] {
 					deps << 'os'
 				}
 			}

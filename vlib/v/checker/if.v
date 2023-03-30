@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -62,7 +62,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			} else {
 				// check condition type is boolean
 				c.expected_type = ast.bool_type
-				cond_typ := c.unwrap_generic(c.expr(branch.cond))
+				cond_typ := c.table.unaliased_type(c.unwrap_generic(c.expr(branch.cond)))
 				if (cond_typ.idx() != ast.bool_type_idx || cond_typ.has_flag(.option)
 					|| cond_typ.has_flag(.result)) && !c.pref.translated && !c.file.is_translated {
 					c.error('non-bool type `${c.table.type_to_str(cond_typ)}` used as if condition',
@@ -71,6 +71,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 		}
 		if mut branch.cond is ast.IfGuardExpr {
+			if branch.cond.expr_type.clear_flag(.option).clear_flag(.result) == ast.void_type
+				&& !(branch.cond.vars.len == 1 && branch.cond.vars[0].name == '_') {
+				c.error('if guard expects non-propagate option or result', branch.pos)
+				continue
+			}
 			sym := c.table.sym(branch.cond.expr_type)
 			if sym.kind == .multi_return {
 				mr_info := sym.info as ast.MultiReturn
@@ -327,7 +332,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 								node.pos)
 						}
 					}
-				} else if !node.is_comptime {
+				} else if !node.is_comptime && stmt !is ast.Return {
 					c.error('`${if_kind}` expression requires an expression as the last statement of every branch',
 						branch.pos)
 				}

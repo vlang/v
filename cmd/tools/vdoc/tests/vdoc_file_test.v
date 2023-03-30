@@ -30,42 +30,35 @@ fn get_main_files_in_dir(dir string) []string {
 }
 
 fn check_path(vexe string, dir string, tests []string) int {
-	mut nb_fail := 0
+	mut total_fails := 0
 	paths := vtest.filter_vtest_only(tests, basepath: vroot)
 	for path in paths {
+		mut fails := 0
 		program := path
 		print(path + ' ')
-		res := os.execute('${os.quoted_path(vexe)} doc ${os.quoted_path(program)}')
-		if res.exit_code < 0 {
-			panic(res.output)
-		}
-		mut expected := os.read_file(program.replace('main.v', 'main.out')) or { panic(err) }
-		expected = clean_line_endings(expected)
-		found := clean_line_endings(res.output)
-		if expected != found {
-			print_compare(expected, found)
-		}
-
-		res_comments := os.execute('${os.quoted_path(vexe)} doc -comments ${os.quoted_path(program)}')
-		if res_comments.exit_code < 0 {
-			panic(res_comments.output)
-		}
-		mut expected_comments := os.read_file(program.replace('main.v', 'main.comments.out')) or {
-			panic(err)
-		}
-		expected_comments = clean_line_endings(expected_comments)
-		found_comments := clean_line_endings(res_comments.output)
-		if expected_comments != found_comments {
-			print_compare(expected_comments, found_comments)
-		}
-
-		if expected == found && expected_comments == found_comments {
+		fails += check_output(
+			program: program
+			cmd: '${os.quoted_path(vexe)} doc ${os.quoted_path(program)}'
+			out_filename: 'main.out'
+		)
+		fails += check_output(
+			program: program
+			cmd: '${os.quoted_path(vexe)} doc -comments ${os.quoted_path(program)}'
+			out_filename: 'main.unsorted.out'
+			should_sort: false
+		)
+		fails += check_output(
+			program: program
+			cmd: '${os.quoted_path(vexe)} doc -comments ${os.quoted_path(program)}'
+			out_filename: 'main.comments.out'
+		)
+		total_fails += fails
+		if fails == 0 {
 			println(term.green('OK'))
-		} else {
-			nb_fail++
 		}
+		flush_stdout()
 	}
-	return nb_fail
+	return total_fails
 }
 
 fn print_compare(expected string, found string) {
@@ -89,4 +82,38 @@ fn clean_line_endings(s string) string {
 	res = res.replace('\r\n', '\n')
 	res = res.trim('\n')
 	return res
+}
+
+[params]
+struct CheckOutputParams {
+	program       string = 'some/dir/main.v'
+	cmd           string = 'v doc'
+	main_filename string = 'main.v'
+	out_filename  string = 'main.out'
+	should_sort   bool   = true
+}
+
+fn check_output(params CheckOutputParams) int {
+	out_file_path := params.program.replace(params.main_filename, params.out_filename)
+	if !os.exists(out_file_path) {
+		return 0
+	}
+	mut fails := 0
+	mut expected := os.read_file(out_file_path) or { panic(err) }
+	expected = clean_line_endings(expected)
+
+	os.setenv('VDOC_SORT', params.should_sort.str(), true)
+	res := os.execute(params.cmd)
+
+	if res.exit_code < 0 {
+		panic(res.output)
+	}
+	found := clean_line_endings(res.output)
+	if expected != found {
+		print_compare(expected, found)
+		eprintln('>>> out_file_path: ${out_file_path}')
+		eprintln('>>>           cmd: VDOC_SORT=${params.should_sort} ${params.cmd}')
+		fails++
+	}
+	return fails
 }

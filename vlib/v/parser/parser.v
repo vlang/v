@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 [has_globals]
@@ -4016,6 +4016,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			pos: decl_pos
 			type_pos: type_pos
 			comments: comments
+			generic_types: generic_types
 			attrs: attrs
 		}
 	}

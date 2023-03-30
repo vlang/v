@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module fmt
@@ -1396,7 +1396,12 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 	fn_typ_info := typ_sym.info as ast.FnType
 	fn_info := fn_typ_info.func
 	fn_name := f.no_cur_mod(node.name)
-	f.write('type ${fn_name} = fn (')
+	mut generic_types_str := ''
+	if node.generic_types.len > 0 {
+		generic_names := node.generic_types.map(f.table.sym(it).name)
+		generic_types_str = '[${generic_names.join(', ')}]'
+	}
+	f.write('type ${fn_name}${generic_types_str} = fn (')
 	for i, arg in fn_info.params {
 		if arg.is_mut {
 			f.write(arg.typ.share().str() + ' ')
@@ -1775,7 +1780,11 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		}
 	}
 	if node.mod == '' && node.name == '' {
-		f.write(node.left.str())
+		if node.left is ast.CallExpr {
+			f.expr(node.left)
+		} else {
+			f.write(node.left.str())
+		}
 	}
 	f.write_generic_call_if_require(node)
 	f.write('(')

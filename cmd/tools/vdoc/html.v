@@ -394,9 +394,13 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	node_class := if dn.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dn)
 	mut deprecated_tags := dn.tags.filter(it.starts_with('deprecated'))
-	deprecated_tags.sort()
+	if doc.should_sort {
+		deprecated_tags.sort()
+	}
 	mut tags := dn.tags.filter(!it.starts_with('deprecated'))
-	tags.sort()
+	if doc.should_sort {
+		tags.sort()
+	}
 	mut node_id := get_node_id(dn)
 	mut hash_link := if !head { ' <a href="#${node_id}">#</a>' } else { '' }
 	if head && is_module_readme(dn) {

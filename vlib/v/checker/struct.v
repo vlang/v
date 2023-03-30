@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -490,6 +490,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				}
 				if !field_info.typ.has_flag(.option) && !field.typ.has_flag(.result) {
 					expr_type = c.check_expr_opt_call(field.expr, expr_type)
+					if expr_type.has_flag(.option) {
+						c.error('cannot assign an Option value to a non-option struct field',
+							field.pos)
+					}
 				}
 				expr_type_sym := c.table.sym(expr_type)
 				if field_type_sym.kind == .voidptr && expr_type_sym.kind == .struct_

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module checker
@@ -793,6 +793,9 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 					}
 				}
 			}
+			c.error('could not infer generic type `${gt_name}` in generic struct `${sym.name}[${generic_names.join(', ')}]`',
+				node.pos)
+			return concrete_types
 		}
 	}
 	return concrete_types

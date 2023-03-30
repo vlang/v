@@ -77,13 +77,13 @@ fn err5(f fn ()) fn () {
 }
 
 fn test_main() {
-	var := main.err()()
+	var := err()()
 	assert var == 'b'
 
-	var2 := main.err2()()
+	var2 := err2()()
 	assert var2 == 'a'
 
-	var3 := main.err3()()
+	var3 := err3()()
 	assert var3 == 'c'
 
 	var4 := err4()
