@@ -48,15 +48,15 @@ mut:
 	args          []string
 }
 
-const vls_folder = os.join_path(os.home_dir(), '.vls')
+const vls_folder = os.join_path(os.vmodules_dir(), 'vls')
 
 const vls_bin_folder = os.join_path(vls_folder, 'bin')
 
-const vls_cache_folder = os.join_path(vls_folder, '.cache')
+const vls_cache_folder = os.join_path(os.cache_dir(), 'vls')
 
-const vls_manifest_path = os.join_path(vls_folder, 'vls.config.json')
+const vls_manifest_path = os.join_path(os.config_dir()!, 'vls', 'config.json')
 
-const vls_src_folder = os.join_path(vls_folder, 'src')
+const vls_src_folder = vls_folder
 
 const server_not_found_err = error_with_code('Language server is not installed nor found.',
 	101)
@@ -67,11 +67,52 @@ const json_enc = json2.Encoder{
 	escape_unicode: false
 }
 
+fn (upd VlsUpdater) check_or_move_old_vls_folder() ! {
+	old_path := os.join_path(os.home_dir(), '.vls')
+	if os.exists(old_path) {
+		old_manifest := os.join_path(old_path, 'vls.config.json')
+		os.mv(old_manifest, vls_manifest_path) or {}
+
+		old_src := os.join_path(old_path, 'src')
+		os.mv(old_src, vls_folder) or {}
+
+		old_bin := os.join_path(old_path, 'bin')
+		os.mv(old_bin, vls_folder) or {}
+
+		os.rmdir_all(old_path) or {}
+
+		mut manifest := upd.manifest_config() or {
+			map[string]json2.Any{}
+		}
+		mut manifest_file := os.open_file(vls_manifest_path, 'w+')!
+		defer {
+			manifest_file.close()
+		}
+
+		bin_name := upd.exec_asset_file_name()
+		manifest['server_path'] = json2.Any(os.join_path(vls_bin_folder, bin_name))
+		json_enc.encode_value(manifest, mut manifest_file)!
+	}
+}
+
 fn (upd VlsUpdater) check_or_create_vls_folder() ! {
 	if !os.exists(vls_folder) {
-		upd.log('Creating .vls folder...')
-		os.mkdir(vls_folder)!
+		upd.log('Creating \$VMODULES/vls folder...')
+		os.mkdir_all(vls_bin_folder)!
 	}
+
+	if !os.exists(vls_cache_folder) {
+		upd.log('Creating vls cache folder...')
+		os.mkdir_all(vls_cache_folder)!
+	}
+
+	config_dir := os.join_path(os.config_dir()!, 'vls')
+	if !os.exists(config_dir) {
+		upd.log('Creating vls config folder...')
+		os.mkdir_all(os.join_path(config_dir))!
+	}
+
+	upd.check_or_move_old_vls_folder()!
 }
 
 fn (upd VlsUpdater) manifest_config() !map[string]json2.Any {
@@ -92,7 +133,7 @@ fn (upd VlsUpdater) update_manifest(new_path string, from_source bool, timestamp
 	upd.log('Updating permissions...')
 	os.chmod(new_path, 0o755)!
 
-	upd.log('Updating vls.config.json...')
+	upd.log('Updating config.json...')
 	mut manifest := upd.manifest_config() or {
 		map[string]json2.Any{}
 	}
@@ -385,19 +426,13 @@ fn (upd VlsUpdater) log(msg string) {
 fn (upd VlsUpdater) error_details(err IError) string {
 	match err.code() {
 		101 {
-			mut vls_dir_shortened := '\$HOME/.vls'
-			$if windows {
-				vls_dir_shortened = '%USERPROFILE%\\.vls'
-			}
-
 			return '
 - If you are using this for the first time, please run
   `v ls --install` first to download and install VLS.
 - If you are using a custom version of VLS, check if
   the specified path exists and is a valid executable.
 - If you have an existing installation of VLS, be sure
-  to remove "vls.config.json" and "bin" located inside
-  "${vls_dir_shortened}" and re-install.
+  to remove "${vls_manifest_path}" and "${vls_bin_folder}" and re-install.
 
   If none of the options listed have solved your issue,
   please report it at https://github.com/vlang/v/issues
