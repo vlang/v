@@ -434,27 +434,29 @@ fn generate_routes[T](app &T) !map[string]Route {
 
 type ControllerHandler = fn (ctx Context, mut url urllib.URL)
 
-struct ControllerPath {
-	namespace string
-	handler   ControllerHandler
+pub struct ControllerPath {
+	path    string
+	handler ControllerHandler
 }
 
 interface ControllerInterface {
-	controllers []ControllerPath
+	controllers []&ControllerPath
 }
 
 pub struct Controller {
 mut:
-	controllers []ControllerPath
+	controllers []&ControllerPath
 }
 
-pub fn (mut ctr Controller) register_controller[T](path string, global_app &T) {
+pub fn controller[T](path string, global_app &T) &ControllerPath {
 	routes := generate_routes(global_app) or { panic(err.msg()) }
 
-	ctr.controllers << ControllerPath{
-		namespace: path
+	// generate struct with closure so the generic type is encapsulated in the closure
+	// no need to type `ControllerHandler` as generic since it's not needed for closures
+	return &ControllerPath{
+		path: path
 		handler: fn [global_app, path, routes] [T](ctx Context, mut url urllib.URL) {
-			// request_app is free'ed in `handle_route`
+			// request_app is freed in `handle_route`
 			mut request_app := create_request_app(global_app, ctx)
 
 			// transform the url
@@ -565,10 +567,10 @@ fn handle_conn[T](mut conn net.TcpConn, global_app T, routes map[string]Route) {
 		static_mime_types: global_app.static_mime_types
 	}
 
+	// match controller paths
 	$if T is ControllerInterface {
-		for controller in global_app.Controller.controllers {
-			if url.path.len >= controller.namespace.len
-				&& url.path.starts_with(controller.namespace) {
+		for controller in global_app.controllers {
+			if url.path.len >= controller.path.len && url.path.starts_with(controller.path) {
 				controller.handler(ctx, mut url)
 				return
 			}
