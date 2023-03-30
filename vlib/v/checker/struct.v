@@ -648,8 +648,9 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 							node.pos)
 					}
 				}
-				if !field.has_default_expr && field.name !in inited_fields && !field.typ.is_ptr()
-					&& !field.typ.has_flag(.option) && c.table.final_sym(field.typ).kind == .struct_ {
+				if !node.has_update_expr && !field.has_default_expr && field.name !in inited_fields
+					&& !field.typ.is_ptr() && !field.typ.has_flag(.option)
+					&& c.table.final_sym(field.typ).kind == .struct_ {
 					mut zero_struct_init := ast.StructInit{
 						pos: node.pos
 						typ: field.typ
