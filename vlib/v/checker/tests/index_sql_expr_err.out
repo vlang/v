@@ -1,0 +1,6 @@
+vlib/v/checker/tests/index_sql_expr_err.vv:17:3: error: cannot index sql queries
+   15 |     _ := sql db {
+   16 |         select from Account where id == 0 limit 1
+   17 |     }[0]
+      |      ~~~
+   18 | }

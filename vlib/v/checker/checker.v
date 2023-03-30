@@ -3939,6 +3939,9 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		}
 		else {}
 	}
+	if node.left is ast.SqlExpr {
+		c.error('cannot index sql queries', node.pos)
+	}
 	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr()
 		&& typ !in [ast.byteptr_type, ast.charptr_type] && !typ.has_flag(.variadic) {
 		c.error('type `${typ_sym.name}` does not support indexing', node.pos)

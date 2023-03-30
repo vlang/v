@@ -1,0 +1,18 @@
+module main
+
+import db.sqlite
+
+struct Account {
+	id int [nonnull; primary]
+}
+
+fn main() {
+	db := sqlite.connect('test.db')!
+	sql db {
+		create table Account
+	}
+
+	_ := sql db {
+		select from Account where id == 0 limit 1
+	}[0]
+}
