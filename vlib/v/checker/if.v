@@ -62,7 +62,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			} else {
 				// check condition type is boolean
 				c.expected_type = ast.bool_type
-				cond_typ := c.unwrap_generic(c.expr(branch.cond))
+				cond_typ := c.table.unaliased_type(c.unwrap_generic(c.expr(branch.cond)))
 				if (cond_typ.idx() != ast.bool_type_idx || cond_typ.has_flag(.option)
 					|| cond_typ.has_flag(.result)) && !c.pref.translated && !c.file.is_translated {
 					c.error('non-bool type `${c.table.type_to_str(cond_typ)}` used as if condition',
