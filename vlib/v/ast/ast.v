@@ -508,7 +508,7 @@ pub mut:
 	decl           FnDecl
 	inherited_vars []Param
 	typ            Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
-	has_gen        bool // has been generated
+	has_gen        map[string]bool // has been generated
 }
 
 // function or method declaration
