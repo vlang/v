@@ -3213,6 +3213,18 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 				.gt {
 					jump_addr = g.cjmp(.jle)
 				}
+				.le {
+					jump_addr = g.cjmp(.jg)
+				}
+				.ge {
+					jump_addr = g.cjmp(.jl)
+				}
+				.ne {
+					jump_addr = g.cjmp(.je)
+				}
+				.eq {
+					jump_addr = g.cjmp(.jne)
+				}
 				else {
 					g.n_error('unhandled infix cond token')
 				}
