@@ -498,7 +498,7 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 }
 
 [manualfree]
-fn handle_conn[T](mut conn net.TcpConn, global_app T, routes map[string]Route) {
+fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes map[string]Route) {
 	conn.set_read_timeout(30 * time.second)
 	conn.set_write_timeout(30 * time.second)
 	defer {
@@ -560,6 +560,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app T, routes map[string]Route) {
 	$if T is ControllerInterface {
 		for controller in global_app.controllers {
 			if url.path.len >= controller.path.len && url.path.starts_with(controller.path) {
+				// pass route handling to the controller
 				controller.handler(ctx, mut url)
 				return
 			}
