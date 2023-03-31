@@ -651,8 +651,12 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				if !node.has_update_expr && !field.has_default_expr && field.name !in inited_fields
 					&& !field.typ.is_ptr() && !field.typ.has_flag(.option)
 					&& c.table.final_sym(field.typ).kind == .struct_ {
+					mut generic_types := []ast.Type{}
+					if field.typ.has_flag(.generic) {
+						generic_types = node.generic_types.clone()
+					}
 					mut zero_struct_init := ast.StructInit{
-						generic_types: node.generic_types
+						generic_types: generic_types
 						pos: node.pos
 						typ: field.typ
 					}
@@ -660,8 +664,12 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				}
 			}
 			for embed in info.embeds {
+				mut generic_types := []ast.Type{}
+				if embed.has_flag(.generic) {
+					generic_types = node.generic_types.clone()
+				}
 				mut zero_struct_init := ast.StructInit{
-					generic_types: node.generic_types
+					generic_types: generic_types
 					pos: node.pos
 					typ: embed
 				}
