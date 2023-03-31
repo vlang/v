@@ -438,6 +438,7 @@ mut:
 	controllers []&ControllerPath
 }
 
+// controller generates a `ControllerPath` struct for the main App
 pub fn controller[T](path string, global_app &T) &ControllerPath {
 	routes := generate_routes(global_app) or { panic(err.msg()) }
 
