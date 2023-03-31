@@ -447,11 +447,10 @@ pub fn controller[T](path string, global_app &T) &ControllerPath {
 		path: path
 		handler: fn [global_app, path, routes] [T](ctx Context, mut url urllib.URL) {
 			// request_app is freed in `handle_route`
-			mut request_app := create_request_app(global_app, ctx)
-
+			mut request_app := create_request_app[T](global_app, ctx)
 			// transform the url
 			url.path = url.path.all_after_first(path)
-			handle_route(mut request_app, url, routes)
+			handle_route[T](mut request_app, url, routes)
 		}
 	}
 }
