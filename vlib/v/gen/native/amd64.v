@@ -1521,11 +1521,16 @@ fn (mut g Gen) mul_reg(a Register, b Register) {
 			g.write8(0xf7)
 			g.write8(0xeb)
 		}
+		.rdx {
+			g.write8(0x48)
+			g.write8(0xf7)
+			g.write8(0xe2)
+		}
 		else {
-			panic('unhandled div ${a}')
+			panic('unhandled mul ${b}')
 		}
 	}
-	g.println('mul ${a}')
+	g.println('mul ${b}')
 }
 
 fn (mut g Gen) imul_reg(r Register) {
@@ -1558,11 +1563,16 @@ fn (mut g Gen) div_reg(a Register, b Register) {
 			g.write8(0xf7)
 			g.write8(0xfb) // idiv ebx
 		}
+		.rdx {
+			g.write8(0x48)
+			g.write8(0xf7)
+			g.write8(0xf2)
+		}
 		else {
-			panic('unhandled div ${a}')
+			panic('unhandled div ${b}')
 		}
 	}
-	g.println('div ${a}')
+	g.println('div ${b}')
 }
 
 fn (mut g Gen) mod_reg(a Register, b Register) {
