@@ -31,19 +31,14 @@ fn func_fn_multi_return_concrete() FnMultiReturn[string, string, string] {
 	}
 }
 
-// vfmt will erase explicit generic type (bug reported in #17773)
-// vfmt off
-
 fn test_concrete_function_type_as_generic_type() {
 	func_fn_concrete()('V')
 	func_fn_dynamic[string]()('V')
 
 	assert func_fn_return_dynamic[string, int]()('100') == 100
-	
+
 	s1, s2 := func_fn_multi_return_concrete()('VLang')
 
 	assert s1 == 'V'
 	assert s2 == 'Lang'
 }
-
-// vfmt on
