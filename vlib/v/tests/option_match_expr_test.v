@@ -1,30 +1,30 @@
 pub struct ParamPrecos {
 pub:
-	codigo            string [required]
-	tabela_referencia ?i64
+	code      string [required]
+	table_ref ?i64
 }
 
 fn test_none() {
 	pp := ParamPrecos{
-		codigo: 'opa'
+		code: 'V'
 	}
 
-	tx_ref := match pp.tabela_referencia {
+	tx_ref := match pp.table_ref {
 		none { 'num: none' }
-		else { 'num: ${pp.tabela_referencia?}' }
+		else { 'num: ${pp.table_ref?}' }
 	}
 	assert tx_ref == 'num: none'
 }
 
 fn test_not_none() {
 	pp := ParamPrecos{
-		codigo: 'opa'
-		tabela_referencia: 123
+		code: 'V'
+		table_ref: 123
 	}
 
-	tx_ref := match pp.tabela_referencia {
+	tx_ref := match pp.table_ref {
 		none { 'num: none' }
-		else { 'num: ${pp.tabela_referencia?}' }
+		else { 'num: ${pp.table_ref?}' }
 	}
 	assert tx_ref == 'num: 123'
 }
