@@ -71,7 +71,7 @@ fn (mut parser Parser) verify_end_comment(remove bool) bool {
 fn blank_string(data string) bool {
 	mut count := 0
 	for chr in data {
-		if chr == 9 || chr == 32 {
+		if chr == 10 || chr == 9 || chr == 32 {
 			count++
 		}
 	}
