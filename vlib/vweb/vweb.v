@@ -388,10 +388,11 @@ pub fn run[T](global_app &T, port int) {
 
 [params]
 pub struct RunParams {
-	host                 string
-	port                 int = 8080
-	nr_workers           int = runtime.nr_jobs()
 	family               net.AddrFamily = .ip6 // use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
+	host                 string
+	port                 int  = 8080
+	nr_workers           int  = runtime.nr_jobs()
+	pool_channel_slots   int  = 1000
 	show_startup_message bool = true
 }
 
@@ -402,21 +403,34 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	if params.port <= 0 || params.port > 65535 {
 		return error('invalid port number `${params.port}`, it should be between 1 and 65535')
 	}
+	if params.pool_channel_slots < 1 {
+		return error('invalid pool_channel_slots `${params.pool_channel_slots}`, it should be above 0, preferably higher than 10 x nr_workers')
+	}
+	if params.nr_workers < 1 {
+		return error('invalid nr_workers `${params.nr_workers}`, it should be above 0')
+	}
+
 	mut l := net.listen_tcp(params.family, '${params.host}:${params.port}') or {
 		ecode := err.code()
 		return error('failed to listen ${ecode} ${err}')
 	}
 
-	ch := chan RequestParams{cap: 10_000}
+	host := if params.host == '' { 'localhost' } else { params.host }
+	if params.show_startup_message {
+		println('[Vweb] Running app on http://${host}:${params.port}/')
+	}
+
+	ch := chan &RequestParams{cap: params.pool_channel_slots}
 	mut ws := []thread{cap: params.nr_workers}
 	for worker_number in 0 .. params.nr_workers {
 		ws << new_worker[T](ch, worker_number)
 	}
-
 	if params.show_startup_message {
 		println('[Vweb] We have ${ws.len} workers')
 	}
-	// Parsing methods attributes
+	flush_stdout()
+
+	// Parse the attributes of vweb app methods:
 	mut routes := map[string]Route{}
 	$for method in T.methods {
 		http_methods, route_path, middleware := parse_attrs(method.name, method.attrs) or {
@@ -428,18 +442,15 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 			middleware: middleware
 		}
 	}
-	host := if params.host == '' { 'localhost' } else { params.host }
-	if params.show_startup_message {
-		println('[Vweb] Running app on http://${host}:${params.port}/')
-	}
-	flush_stdout()
+	// Forever accept every connection that comes, and
+	// pass it through the channel, to the thread pool:
 	for {
-		mut connection := l.accept() or {
+		mut connection := l.accept_only() or {
 			// failures should not panic
 			eprintln('[vweb] accept() failed with error: ${err.msg()}')
 			continue
 		}
-		ch <- RequestParams{
+		ch <- &RequestParams{
 			connection: connection
 			global_app: unsafe { global_app }
 			routes: &routes
@@ -882,18 +893,18 @@ mut:
 
 struct Worker[T] {
 	id int
-	ch chan RequestParams
+	ch chan &RequestParams
 }
 
-fn new_worker[T](ch chan RequestParams, id int) thread {
+fn new_worker[T](ch chan &RequestParams, id int) thread {
 	mut w := &Worker[T]{
 		id: id
 		ch: ch
 	}
-	return spawn w.scan[T]()
+	return spawn w.process_incomming_requests[T]()
 }
 
-pub fn (mut w Worker[T]) scan() {
+fn (mut w Worker[T]) process_incomming_requests() {
 	sid := '[vweb] tid: ${w.id:03d} received request'
 	for {
 		mut params := <-w.ch or { break }

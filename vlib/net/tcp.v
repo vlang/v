@@ -243,6 +243,8 @@ pub fn (mut c TcpConn) wait_for_write() ! {
 	return wait_for_write(c.sock.handle, c.write_deadline, c.write_timeout)
 }
 
+// set_sock initialises the c.sock field. It should be called after `.accept_only()!`.
+// Note: just use `.accept()!`. In most cases it is simpler, and calls `.set_sock()!` for you.
 pub fn (mut c TcpConn) set_sock() ! {
 	c.sock = tcp_socket_from_handle(c.handle)!
 	$if trace_tcp ? {
