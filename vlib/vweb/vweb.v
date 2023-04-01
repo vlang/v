@@ -264,7 +264,7 @@ pub fn (mut ctx Context) file(f_path string) Result {
 	}
 	content_type := vweb.mime_types[ext]
 	if content_type.len == 0 {
-		eprintln('no MIME type found for extension ${ext}')
+		eprintln('[vweb] no MIME type found for extension ${ext}')
 		ctx.server_error(500)
 	} else {
 		ctx.send_response_to_client(content_type, data)
@@ -319,7 +319,7 @@ pub fn (mut ctx Context) not_found() Result {
 pub fn (mut ctx Context) set_cookie(cookie http.Cookie) {
 	cookie_raw := cookie.str()
 	if cookie_raw == '' {
-		eprintln('error setting cookie: name of cookie is invalid')
+		eprintln('[vweb] error setting cookie: name of cookie is invalid')
 		return
 	}
 	ctx.add_header('Set-Cookie', cookie_raw)
@@ -436,7 +436,7 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	for {
 		mut connection := l.accept() or {
 			// failures should not panic
-			eprintln('accept() failed with error: ${err.msg()}')
+			eprintln('[vweb] accept() failed with error: ${err.msg()}')
 			continue
 		}
 		ch <- RequestParams{
@@ -478,7 +478,7 @@ fn new_request_app[T](global_app &T) &T {
 }
 
 [manualfree]
-fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route) {
+fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route, tid int) {
 	// Create a new app object for each connection, copy global data like db connections
 	mut app := new_request_app[T](global_app)
 
@@ -492,7 +492,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route)
 	}
 
 	conn.set_sock() or {
-		eprintln('error setting socket')
+		eprintln('[vweb] tid: ${tid:03d}, error setting socket')
 		return
 	}
 
@@ -509,7 +509,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route)
 	req := http.parse_request(mut reader) or {
 		// Prevents errors from being thrown when BufferedReader is empty
 		if '${err}' != 'none' {
-			eprintln('error parsing request: ${err}')
+			eprintln('[vweb] tid: ${tid:03d}, error parsing request: ${err}')
 		}
 		return
 	}
@@ -521,7 +521,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route)
 	}
 	// URL Parse
 	url := urllib.parse(req.url) or {
-		eprintln('error parsing path: ${err}')
+		eprintln('[vweb] tid: ${tid:03d}, error parsing path: ${err}')
 		return
 	}
 
@@ -573,7 +573,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route)
 	$for method in T.methods {
 		$if method.return_type is Result {
 			route := (*routes)[method.name] or {
-				eprintln('parsed attributes for the `${method.name}` are not found, skipping...')
+				eprintln('[vweb] tid: ${tid:03d}, parsed attributes for the `${method.name}` are not found, skipping...')
 				Route{}
 			}
 
@@ -632,7 +632,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route)
 				if params := route_matches(url_words, route_words) {
 					method_args := params.clone()
 					if method_args.len != method.args.len {
-						eprintln('warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the vweb route `${method.attrs}` (${method_args.len})')
+						eprintln('[vweb] tid: ${tid:03d}, warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the vweb route `${method.attrs}` (${method_args.len})')
 					}
 
 					$if T is MiddlewareInterface {
@@ -675,7 +675,7 @@ fn validate_middleware[T](mut app T, full_path string) bool {
 fn validate_app_middleware[T](mut app T, middleware string, method_name string) bool {
 	// then the middleware that is defined for this route specifically
 	valid := fire_app_middleware(mut app, middleware) or {
-		eprintln('warning: middleware `${middleware}` for the `${method_name}` are not found')
+		eprintln('[vweb] warning: middleware `${middleware}` for the `${method_name}` are not found')
 		true
 	}
 	return valid
@@ -688,7 +688,7 @@ fn fire_app_middleware[T](mut app T, method_name string) ?bool {
 			$if method.return_type is bool {
 				return app.$method()
 			} $else {
-				eprintln('error in `${method.name}, middleware functions must return bool')
+				eprintln('[vweb] error in `${method.name}, middleware functions must return bool')
 				return none
 			}
 		}
@@ -843,7 +843,7 @@ pub fn (ctx &Context) ip() string {
 
 // Set s to the form error
 pub fn (mut ctx Context) error(s string) {
-	eprintln('vweb error: ${s}')
+	eprintln('[vweb] Context.error: ${s}')
 	ctx.form_error = s
 }
 
@@ -894,13 +894,13 @@ fn new_worker[T](ch chan RequestParams, id int) thread {
 }
 
 pub fn (mut w Worker[T]) scan() {
-	sid := '[vweb] worker ${w.id}:'
+	sid := '[vweb] tid: ${w.id:03d} received request'
 	for {
 		mut params := <-w.ch or { break }
 		$if vweb_trace_worker_scan ? {
 			eprintln(sid)
 		}
-		handle_conn[T](mut params.connection, params.global_app, params.routes)
+		handle_conn[T](mut params.connection, params.global_app, params.routes, w.id)
 	}
 	$if vweb_trace_worker_scan ? {
 		eprintln('[vweb] closing worker ${w.id}.')
