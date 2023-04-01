@@ -390,7 +390,7 @@ pub fn run[T](global_app &T, port int) {
 pub struct RunParams {
 	host                 string
 	port                 int = 8080
-	num_workers          int = runtime.nr_jobs()
+	nr_workers           int = runtime.nr_jobs()
 	family               net.AddrFamily = .ip6 // use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
 	show_startup_message bool = true
 }
@@ -408,19 +408,20 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	}
 
 	ch := chan Workerfn{cap: 10_000}
-	mut ws := []thread{cap: params.num_workers}
-	for _ in 0 .. params.num_workers {
-		ws << new_worker(ch)
+	mut ws := []thread{cap: params.nr_workers}
+	for worker_number in 0 .. params.nr_workers {
+		ws << new_worker(ch, worker_number)
 	}
 
-	println('We have ${ws.len} workers')
+	if params.show_startup_message {
+		println('[Vweb] We have ${ws.len} workers')
+	}
 	// Parsing methods attributes
 	mut routes := map[string]Route{}
 	$for method in T.methods {
 		http_methods, route_path, middleware := parse_attrs(method.name, method.attrs) or {
 			return error('error parsing method attributes: ${err}')
 		}
-
 		routes[method.name] = Route{
 			methods: http_methods
 			path: route_path
@@ -438,7 +439,6 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 			eprintln('accept() failed with error: ${err.msg()}')
 			continue
 		}
-
 		ch <- fn [mut conn, global_app, routes] [T]() {
 			handle_conn[T](mut conn, global_app, routes)
 		}
@@ -455,8 +455,6 @@ fn new_request_app[T](global_app &T) &T {
 	}
 	$if T is DbInterface {
 		request_app.db = global_app.db
-	} $else {
-		// println('vweb no db')
 	}
 	$for field in T.fields {
 		if 'vweb_global' in field.attrs || field.is_shared {
@@ -482,7 +480,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app T, routes map[string]Route) {
 	}
 
 	conn.set_sock() or {
-		println('error setting socket')
+		eprintln('error setting socket')
 		return
 	}
 
@@ -860,4 +858,31 @@ fn send_string(mut conn net.TcpConn, s string) ! {
 // TODO: move it to template render
 fn filter(s string) string {
 	return html.escape(s)
+}
+
+// Worker functions for the thread pool:
+type Workerfn = fn ()
+
+struct Worker {
+	ch  chan Workerfn
+	num int
+}
+
+fn new_worker(ch chan Workerfn, num int) thread {
+	mut w := &Worker{
+		ch: ch
+		num: num
+	}
+
+	return spawn w.scan()
+}
+
+pub fn (mut w Worker) scan() {
+	for {
+		func := <-w.ch or {
+			eprintln('[vweb] closing worker ${w.num}')
+			return
+		}
+		func()
+	}
 }
