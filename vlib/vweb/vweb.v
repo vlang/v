@@ -5,6 +5,7 @@ module vweb
 
 import os
 import io
+import runtime
 import net
 import net.http
 import net.urllib
@@ -389,7 +390,7 @@ pub fn run[T](global_app &T, port int) {
 pub struct RunParams {
 	host                 string
 	port                 int = 8080
-	num_workers          int = 4
+	num_workers          int = runtime.nr_jobs()
 	family               net.AddrFamily = .ip6 // use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
 	show_startup_message bool = true
 }
