@@ -407,10 +407,10 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 		return error('failed to listen ${ecode} ${err}')
 	}
 
-	ch := chan Workerfn{cap: 10_000}
+	ch := chan RequestParams{cap: 10_000}
 	mut ws := []thread{cap: params.nr_workers}
 	for worker_number in 0 .. params.nr_workers {
-		ws << new_worker(ch, worker_number)
+		ws << new_worker[T](ch, worker_number)
 	}
 
 	if params.show_startup_message {
@@ -434,13 +434,15 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	}
 	flush_stdout()
 	for {
-		mut conn := l.accept() or {
+		mut connection := l.accept() or {
 			// failures should not panic
 			eprintln('accept() failed with error: ${err.msg()}')
 			continue
 		}
-		ch <- fn [mut conn, global_app, routes] [T]() {
-			handle_conn[T](mut conn, global_app, routes)
+		ch <- RequestParams{
+			connection: connection
+			global_app: unsafe { global_app }
+			routes: &routes
 		}
 	}
 }
@@ -476,7 +478,7 @@ fn new_request_app[T](global_app &T) &T {
 }
 
 [manualfree]
-fn handle_conn[T](mut conn net.TcpConn, global_app T, routes map[string]Route) {
+fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route) {
 	// Create a new app object for each connection, copy global data like db connections
 	mut app := new_request_app[T](global_app)
 
@@ -570,7 +572,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app T, routes map[string]Route) {
 	// Route matching
 	$for method in T.methods {
 		$if method.return_type is Result {
-			route := routes[method.name] or {
+			route := (*routes)[method.name] or {
 				eprintln('parsed attributes for the `${method.name}` are not found, skipping...')
 				Route{}
 			}
@@ -871,30 +873,34 @@ fn filter(s string) string {
 }
 
 // Worker functions for the thread pool:
-type Workerfn = fn ()
+struct RequestParams {
+	global_app voidptr
+	routes     &map[string]Route
+mut:
+	connection &net.TcpConn
+}
 
-struct Worker {
-	ch chan Workerfn
+struct Worker[T] {
 	id int
+	ch chan RequestParams
 }
 
-fn new_worker(ch chan Workerfn, id int) thread {
-	mut w := &Worker{
-		ch: ch
+fn new_worker[T](ch chan RequestParams, id int) thread {
+	mut w := &Worker[T]{
 		id: id
+		ch: ch
 	}
-
-	return spawn w.scan()
+	return spawn w.scan[T]()
 }
 
-pub fn (mut w Worker) scan() {
+pub fn (mut w Worker[T]) scan() {
 	sid := '[vweb] worker ${w.id}:'
 	for {
-		func := <-w.ch or { break }
+		mut params := <-w.ch or { break }
 		$if vweb_trace_worker_scan ? {
 			eprintln(sid)
 		}
-		func()
+		handle_conn[T](mut params.connection, params.global_app, params.routes)
 	}
 	$if vweb_trace_worker_scan ? {
 		eprintln('[vweb] closing worker ${w.id}.')
