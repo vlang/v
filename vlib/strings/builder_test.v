@@ -129,3 +129,18 @@ fn test_ensure_cap() {
 	sb.ensure_cap(-1)
 	assert sb.cap == 15
 }
+
+fn test_drain_builder() {
+	mut sb := strings.new_builder(0)
+	mut target_sb := strings.new_builder(0)
+	assert sb.cap == 0
+	assert target_sb.cap == 0
+
+	sb.write_string('abc')
+	assert sb.len == 3
+
+	target_sb.drain_builder(mut sb, 0)
+	assert sb.len == 0
+	assert target_sb.len == 3
+	assert target_sb.str() == 'abc'
+}
