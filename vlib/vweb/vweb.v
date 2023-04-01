@@ -5,6 +5,7 @@ module vweb
 
 import os
 import io
+import runtime
 import net
 import net.http
 import net.urllib
@@ -263,7 +264,7 @@ pub fn (mut ctx Context) file(f_path string) Result {
 	}
 	content_type := vweb.mime_types[ext]
 	if content_type.len == 0 {
-		eprintln('no MIME type found for extension ${ext}')
+		eprintln('[vweb] no MIME type found for extension ${ext}')
 		ctx.server_error(500)
 	} else {
 		ctx.send_response_to_client(content_type, data)
@@ -318,7 +319,7 @@ pub fn (mut ctx Context) not_found() Result {
 pub fn (mut ctx Context) set_cookie(cookie http.Cookie) {
 	cookie_raw := cookie.str()
 	if cookie_raw == '' {
-		eprintln('error setting cookie: name of cookie is invalid')
+		eprintln('[vweb] error setting cookie: name of cookie is invalid')
 		return
 	}
 	ctx.add_header('Set-Cookie', cookie_raw)
@@ -387,9 +388,11 @@ pub fn run[T](global_app &T, port int) {
 
 [params]
 pub struct RunParams {
-	host                 string
-	port                 int = 8080
 	family               net.AddrFamily = .ip6 // use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
+	host                 string
+	port                 int  = 8080
+	nr_workers           int  = runtime.nr_jobs()
+	pool_channel_slots   int  = 1000
 	show_startup_message bool = true
 }
 
@@ -400,59 +403,96 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	if params.port <= 0 || params.port > 65535 {
 		return error('invalid port number `${params.port}`, it should be between 1 and 65535')
 	}
+	if params.pool_channel_slots < 1 {
+		return error('invalid pool_channel_slots `${params.pool_channel_slots}`, it should be above 0, preferably higher than 10 x nr_workers')
+	}
+	if params.nr_workers < 1 {
+		return error('invalid nr_workers `${params.nr_workers}`, it should be above 0')
+	}
+
 	mut l := net.listen_tcp(params.family, '${params.host}:${params.port}') or {
 		ecode := err.code()
 		return error('failed to listen ${ecode} ${err}')
 	}
 
-	// Parsing methods attributes
+	host := if params.host == '' { 'localhost' } else { params.host }
+	if params.show_startup_message {
+		println('[Vweb] Running app on http://${host}:${params.port}/')
+	}
+
+	ch := chan &RequestParams{cap: params.pool_channel_slots}
+	mut ws := []thread{cap: params.nr_workers}
+	for worker_number in 0 .. params.nr_workers {
+		ws << new_worker[T](ch, worker_number)
+	}
+	if params.show_startup_message {
+		println('[Vweb] We have ${ws.len} workers')
+	}
+	flush_stdout()
+
+	// Parse the attributes of vweb app methods:
 	mut routes := map[string]Route{}
 	$for method in T.methods {
 		http_methods, route_path, middleware := parse_attrs(method.name, method.attrs) or {
 			return error('error parsing method attributes: ${err}')
 		}
-
 		routes[method.name] = Route{
 			methods: http_methods
 			path: route_path
 			middleware: middleware
 		}
 	}
-	host := if params.host == '' { 'localhost' } else { params.host }
-	if params.show_startup_message {
-		println('[Vweb] Running app on http://${host}:${params.port}/')
-	}
-	flush_stdout()
+	// Forever accept every connection that comes, and
+	// pass it through the channel, to the thread pool:
 	for {
-		// Create a new app object for each connection, copy global data like db connections
-		mut request_app := &T{}
-		$if T is MiddlewareInterface {
-			request_app = &T{
-				middlewares: global_app.middlewares.clone()
-			}
-		}
-		$if T is DbInterface {
-			request_app.db = global_app.db
-		} $else {
-			// println('vweb no db')
-		}
-		$for field in T.fields {
-			if 'vweb_global' in field.attrs || field.is_shared {
-				request_app.$(field.name) = global_app.$(field.name)
-			}
-		}
-		request_app.Context = global_app.Context // copy the context ref that contains static files map etc
-		mut conn := l.accept() or {
+		mut connection := l.accept_only() or {
 			// failures should not panic
-			eprintln('accept() failed with error: ${err.msg()}')
+			eprintln('[vweb] accept() failed with error: ${err.msg()}')
 			continue
 		}
-		spawn handle_conn[T](mut conn, mut request_app, routes)
+		ch <- &RequestParams{
+			connection: connection
+			global_app: unsafe { global_app }
+			routes: &routes
+		}
 	}
 }
 
+fn new_request_app[T](global_app &T) &T {
+	// Create a new app object for each connection, copy global data like db connections
+	mut request_app := &T{}
+	$if T is MiddlewareInterface {
+		request_app = &T{
+			middlewares: global_app.middlewares.clone()
+		}
+	}
+	$if T is DbInterface {
+		request_app.db = global_app.db
+	}
+	$for field in T.fields {
+		if field.is_shared {
+			unsafe {
+				// TODO: remove this horrible hack, when copying a shared field at comptime works properly!!!
+				raptr := &voidptr(&request_app.$(field.name))
+				gaptr := &voidptr(&global_app.$(field.name))
+				*raptr = *gaptr
+				_ = raptr // TODO: v produces a warning that `raptr` is unused otherwise, even though it was on the previous line
+			}
+		} else {
+			if 'vweb_global' in field.attrs {
+				request_app.$(field.name) = global_app.$(field.name)
+			}
+		}
+	}
+	request_app.Context = global_app.Context // copy the context ref that contains static files map etc
+	return request_app
+}
+
 [manualfree]
-fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
+fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route, tid int) {
+	// Create a new app object for each connection, copy global data like db connections
+	mut app := new_request_app[T](global_app)
+
 	conn.set_read_timeout(30 * time.second)
 	conn.set_write_timeout(30 * time.second)
 	defer {
@@ -460,6 +500,11 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 		unsafe {
 			free(app)
 		}
+	}
+
+	conn.set_sock() or {
+		eprintln('[vweb] tid: ${tid:03d}, error setting socket')
+		return
 	}
 
 	mut reader := io.new_buffered_reader(reader: conn)
@@ -475,7 +520,7 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 	req := http.parse_request(mut reader) or {
 		// Prevents errors from being thrown when BufferedReader is empty
 		if '${err}' != 'none' {
-			eprintln('error parsing request: ${err}')
+			eprintln('[vweb] tid: ${tid:03d}, error parsing request: ${err}')
 		}
 		return
 	}
@@ -487,7 +532,7 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 	}
 	// URL Parse
 	url := urllib.parse(req.url) or {
-		eprintln('error parsing path: ${err}')
+		eprintln('[vweb] tid: ${tid:03d}, error parsing path: ${err}')
 		return
 	}
 
@@ -538,8 +583,8 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 	// Route matching
 	$for method in T.methods {
 		$if method.return_type is Result {
-			route := routes[method.name] or {
-				eprintln('parsed attributes for the `${method.name}` are not found, skipping...')
+			route := (*routes)[method.name] or {
+				eprintln('[vweb] tid: ${tid:03d}, parsed attributes for the `${method.name}` are not found, skipping...')
 				Route{}
 			}
 
@@ -598,7 +643,7 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 				if params := route_matches(url_words, route_words) {
 					method_args := params.clone()
 					if method_args.len != method.args.len {
-						eprintln('warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the vweb route `${method.attrs}` (${method_args.len})')
+						eprintln('[vweb] tid: ${tid:03d}, warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the vweb route `${method.attrs}` (${method_args.len})')
 					}
 
 					$if T is MiddlewareInterface {
@@ -641,7 +686,7 @@ fn validate_middleware[T](mut app T, full_path string) bool {
 fn validate_app_middleware[T](mut app T, middleware string, method_name string) bool {
 	// then the middleware that is defined for this route specifically
 	valid := fire_app_middleware(mut app, middleware) or {
-		eprintln('warning: middleware `${middleware}` for the `${method_name}` are not found')
+		eprintln('[vweb] warning: middleware `${middleware}` for the `${method_name}` are not found')
 		true
 	}
 	return valid
@@ -654,7 +699,7 @@ fn fire_app_middleware[T](mut app T, method_name string) ?bool {
 			$if method.return_type is bool {
 				return app.$method()
 			} $else {
-				eprintln('error in `${method.name}, middleware functions must return bool')
+				eprintln('[vweb] error in `${method.name}, middleware functions must return bool')
 				return none
 			}
 		}
@@ -809,7 +854,7 @@ pub fn (ctx &Context) ip() string {
 
 // Set s to the form error
 pub fn (mut ctx Context) error(s string) {
-	eprintln('vweb error: ${s}')
+	eprintln('[vweb] Context.error: ${s}')
 	ctx.form_error = s
 }
 
@@ -836,4 +881,39 @@ fn send_string(mut conn net.TcpConn, s string) ! {
 // TODO: move it to template render
 fn filter(s string) string {
 	return html.escape(s)
+}
+
+// Worker functions for the thread pool:
+struct RequestParams {
+	global_app voidptr
+	routes     &map[string]Route
+mut:
+	connection &net.TcpConn
+}
+
+struct Worker[T] {
+	id int
+	ch chan &RequestParams
+}
+
+fn new_worker[T](ch chan &RequestParams, id int) thread {
+	mut w := &Worker[T]{
+		id: id
+		ch: ch
+	}
+	return spawn w.process_incomming_requests[T]()
+}
+
+fn (mut w Worker[T]) process_incomming_requests() {
+	sid := '[vweb] tid: ${w.id:03d} received request'
+	for {
+		mut params := <-w.ch or { break }
+		$if vweb_trace_worker_scan ? {
+			eprintln(sid)
+		}
+		handle_conn[T](mut params.connection, params.global_app, params.routes, w.id)
+	}
+	$if vweb_trace_worker_scan ? {
+		eprintln('[vweb] closing worker ${w.id}.')
+	}
 }
