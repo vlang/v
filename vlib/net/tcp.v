@@ -303,7 +303,28 @@ pub fn listen_tcp(family AddrFamily, saddr string) !&TcpListener {
 	}
 }
 
+// accept a tcp connection from an external source to the listener `l`.
 pub fn (mut l TcpListener) accept() !&TcpConn {
+	mut res := l.accept_only()!
+	res.set_sock()!
+	return res
+}
+
+// accept_only accepts a tcp connection from an external source to the listener `l`.
+// Unlike `accept`, `accept_only` *will not call* `.set_sock()!` on the result,
+// and is thus faster.
+//
+// Note: you *need* to call `.set_sock()!` manually, before using the
+// connection after calling `.accept_only()!`, but that does not have to happen
+// in the same thread that called `.accept_only()!`.
+// The intention of this API, is to have a more efficient way to accept
+// connections, that are later processed by a thread pool, while the main
+// thread remains active, so that it can accept other connections.
+// See also vlib/vweb/vweb.v .
+//
+// If you do not need that, just call `.accept()!` instead, which will call
+// `.set_sock()!` for you.
+pub fn (mut l TcpListener) accept_only() !&TcpConn {
 	$if trace_tcp ? {
 		eprintln('    TcpListener.accept | l.sock.handle: ${l.sock.handle:6}')
 	}
