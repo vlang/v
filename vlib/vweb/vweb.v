@@ -457,8 +457,18 @@ fn new_request_app[T](global_app &T) &T {
 		request_app.db = global_app.db
 	}
 	$for field in T.fields {
-		if 'vweb_global' in field.attrs || field.is_shared {
-			request_app.$(field.name) = global_app.$(field.name)
+		if field.is_shared {
+			unsafe {
+				// TODO: remove this horrible hack, when copying a shared field at comptime works properly!!!
+				raptr := &voidptr(&request_app.$(field.name))
+				gaptr := &voidptr(&global_app.$(field.name))
+				*raptr = *gaptr
+				_ = raptr // TODO: v produces a warning that `raptr` is unused otherwise, even though it was on the previous line
+			}
+		} else {
+			if 'vweb_global' in field.attrs {
+				request_app.$(field.name) = global_app.$(field.name)
+			}
 		}
 	}
 	request_app.Context = global_app.Context // copy the context ref that contains static files map etc
@@ -864,25 +874,29 @@ fn filter(s string) string {
 type Workerfn = fn ()
 
 struct Worker {
-	ch  chan Workerfn
-	num int
+	ch chan Workerfn
+	id int
 }
 
-fn new_worker(ch chan Workerfn, num int) thread {
+fn new_worker(ch chan Workerfn, id int) thread {
 	mut w := &Worker{
 		ch: ch
-		num: num
+		id: id
 	}
 
 	return spawn w.scan()
 }
 
 pub fn (mut w Worker) scan() {
+	sid := '[vweb] worker ${w.id}:'
 	for {
-		func := <-w.ch or {
-			eprintln('[vweb] closing worker ${w.num}')
-			return
+		func := <-w.ch or { break }
+		$if vweb_trace_worker_scan ? {
+			eprintln(sid)
 		}
 		func()
+	}
+	$if vweb_trace_worker_scan ? {
+		eprintln('[vweb] closing worker ${w.id}.')
 	}
 }
