@@ -479,6 +479,8 @@ fn (mut g Gen) fn_decl_str(info ast.FnType) string {
 		x := util.strip_main_name(g.table.get_type_name(g.unwrap_generic(info.func.return_type)))
 		if info.func.return_type.has_flag(.option) {
 			fn_str += ' ?${x}'
+		} else if info.func.return_type.has_flag(.result) {
+			fn_str += ' !${x}'
 		} else {
 			fn_str += ' ${x}'
 		}
