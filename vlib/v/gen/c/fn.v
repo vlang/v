@@ -999,7 +999,7 @@ fn (g Gen) get_generic_array_element_type(array ast.Array) ast.Type {
 	return typ
 }
 
-fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr) map[int]ast.Type {
+fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0)
 		|| g.inside_comptime_for_field
@@ -1042,7 +1042,6 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr) map[int
 								comptime_args[i] = ctyp
 							} else if arg_sym.kind == .struct_ {
 								mut generic_types := []ast.Type{}
-								mut concrete_types := []ast.Type{}
 								match arg_sym.info {
 									ast.Struct, ast.Interface, ast.SumType {
 										if param_typ_sym.generic_types.len > 0 {
@@ -1050,7 +1049,6 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr) map[int
 										} else {
 											generic_types = arg_sym.info.generic_types.clone()
 										}
-										concrete_types = arg_sym.info.concrete_types.clone()
 									}
 									else {}
 								}
@@ -1292,13 +1290,23 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 
 	if node.concrete_types.len > 0 {
+		mut rec_len := 0
+		if node.left_type.has_flag(.generic) {
+			rec_sym := g.table.final_sym(g.unwrap_generic(node.left_type))
+			match rec_sym.info {
+				ast.Struct, ast.Interface, ast.SumType {
+					rec_len += rec_sym.info.generic_types.len
+				}
+				else {}
+			}
+		}
 		mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 		if m := g.table.find_method(g.table.sym(node.left_type), node.name) {
 			mut node_ := unsafe { node }
-			comptime_args := g.change_comptime_args(m, mut node_)
+			comptime_args := g.change_comptime_args(m, mut node_, concrete_types)
 			for k, v in comptime_args {
-				if k < concrete_types.len {
-					concrete_types[k] = g.unwrap_generic(v)
+				if (rec_len + k) < concrete_types.len {
+					concrete_types[rec_len + k] = g.unwrap_generic(v)
 				}
 			}
 			name = g.generic_fn_name(concrete_types, name)
@@ -1534,7 +1542,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		if func := g.table.find_fn(node.name) {
 			mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 			mut node_ := unsafe { node }
-			comptime_args := g.change_comptime_args(func, mut node_)
+			comptime_args := g.change_comptime_args(func, mut node_, concrete_types)
 			if concrete_types.len > 0 {
 				for k, v in comptime_args {
 					if k < concrete_types.len {

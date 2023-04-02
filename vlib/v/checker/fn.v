@@ -1325,7 +1325,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	return func.return_type
 }
 
-fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr) map[int]ast.Type {
+fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0)
 		|| c.inside_comptime_for_field
@@ -1367,7 +1367,6 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr) map[int]as
 								comptime_args[i] = ctyp
 							} else if arg_sym.kind == .struct_ {
 								mut generic_types := []ast.Type{}
-								mut concrete_types := []ast.Type{}
 								match arg_sym.info {
 									ast.Struct, ast.Interface, ast.SumType {
 										if param_typ_sym.generic_types.len > 0 {
@@ -1375,7 +1374,6 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr) map[int]as
 										} else {
 											generic_types = arg_sym.info.generic_types.clone()
 										}
-										concrete_types = arg_sym.info.concrete_types.clone()
 									}
 									else {}
 								}
@@ -1420,12 +1418,25 @@ fn (mut c Checker) resolve_fn_generic_args(func ast.Fn, mut node ast.CallExpr) [
 	mut concrete_types := node.concrete_types.map(c.unwrap_generic(it))
 
 	// dynamic values from comptime and generic parameters
+	// overwrite concrete_types[ receiver_concrete_type + arg number ]
 	if concrete_types.len > 0 {
-		mut comptime_args := c.get_comptime_args(func, node)
+		mut rec_len := 0
+		// discover receiver concrete_type len
+		if func.is_method && node.left_type.has_flag(.generic) {
+			rec_sym := c.table.final_sym(c.unwrap_generic(node.left_type))
+			match rec_sym.info {
+				ast.Struct, ast.Interface, ast.SumType {
+					rec_len += rec_sym.info.generic_types.len
+				}
+				else {}
+			}
+		}
+
+		mut comptime_args := c.get_comptime_args(func, node, concrete_types)
 		if comptime_args.len > 0 {
 			for k, v in comptime_args {
-				if k < concrete_types.len {
-					concrete_types[k] = c.unwrap_generic(v)
+				if (rec_len + k) < concrete_types.len {
+					concrete_types[rec_len + k] = c.unwrap_generic(v)
 				}
 			}
 			if c.table.register_fn_concrete_types(func.fkey(), concrete_types) {
