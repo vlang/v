@@ -87,6 +87,12 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 			c.ensure_sumtype_array_has_default_value(node)
 		}
+		if node.has_cap {
+			cap_typ := c.check_expr_opt_call(node.cap_expr, c.expr(node.cap_expr))
+			if cap_typ.has_flag(.option) {
+				c.error('cannot use unwrapped Option as capacity', node.cap_expr.pos())
+			}
+		}
 		c.ensure_type_exists(node.elem_type, node.elem_type_pos) or {}
 		if node.typ.has_flag(.generic) && c.table.cur_fn != unsafe { nil }
 			&& c.table.cur_fn.generic_names.len == 0 {
