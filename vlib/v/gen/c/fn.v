@@ -980,6 +980,25 @@ fn (mut g Gen) get_gn_var_type(var ast.Ident) ast.Type {
 	return ast.void_type
 }
 
+fn (g Gen) get_generic_array_element_type(array ast.Array) ast.Type {
+	mut cparam_elem_info := array as ast.Array
+	mut cparam_elem_sym := g.table.sym(cparam_elem_info.elem_type)
+	mut typ := ast.void_type
+	for {
+		if cparam_elem_sym.kind == .array {
+			cparam_elem_info = cparam_elem_sym.info as ast.Array
+			cparam_elem_sym = g.table.sym(cparam_elem_info.elem_type)
+		} else {
+			typ = cparam_elem_info.elem_type
+			if cparam_elem_info.elem_type.nr_muls() > 0 && typ.nr_muls() > 0 {
+				typ = typ.set_nr_muls(0)
+			}
+			break
+		}
+	}
+	return typ
+}
+
 fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0)
@@ -998,9 +1017,8 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr) map[int
 					if call_arg.expr.obj.ct_type_var !in [.generic_param, .no_comptime] {
 						mut ctyp := g.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
-							param_typ := param.typ
 							arg_sym := g.table.sym(ctyp)
-
+							param_typ := param.typ
 							if arg_sym.kind == .array && param_typ.has_flag(.generic)
 								&& g.table.final_sym(param_typ).kind == .array {
 								ctyp = (arg_sym.info as ast.Array).elem_type
@@ -1011,7 +1029,8 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr) map[int
 						mut ctyp := g.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							param_typ := param.typ
-							arg_sym := g.table.sym(g.unwrap_generic(ctyp))
+							arg_sym := g.table.final_sym(call_arg.typ)
+							// arg_sym := g.table.sym(g.unwrap_generic(ctyp))
 							param_typ_sym := g.table.final_sym(param_typ)
 
 							if param_typ.has_flag(.variadic) {
@@ -1043,6 +1062,14 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr) map[int
 										comptime_args[i] = concrete_types[idx]
 										break
 									}
+								}
+							} else if arg_sym.kind == .any {
+								mut cparam_type_sym := g.table.sym(g.unwrap_generic(ctyp))
+								if param_typ_sym.kind == .array && cparam_type_sym.kind == .array {
+									ctyp = (cparam_type_sym.info as ast.Array).elem_type
+									comptime_args[i] = ctyp
+								} else {
+									comptime_args[i] = ctyp
 								}
 							} else {
 								comptime_args[i] = ctyp

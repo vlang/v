@@ -1354,7 +1354,8 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr) map[int]as
 						mut ctyp := c.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							param_typ := param.typ
-							arg_sym := c.table.sym(c.unwrap_generic(ctyp))
+							arg_sym := c.table.final_sym(call_arg.typ)
+							// arg_sym := c.table.sym(c.unwrap_generic(ctyp))
 							param_typ_sym := c.table.final_sym(param_typ)
 
 							if param_typ.has_flag(.variadic) {
@@ -1363,7 +1364,7 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr) map[int]as
 							} else if arg_sym.kind == .array && param_typ.has_flag(.generic)
 								&& param_typ_sym.kind == .array {
 								ctyp = (arg_sym.info as ast.Array).elem_type
-								comptime_args[i] = ctyp.set_nr_muls(0)
+								comptime_args[i] = ctyp
 							} else if arg_sym.kind == .struct_ {
 								mut generic_types := []ast.Type{}
 								mut concrete_types := []ast.Type{}
@@ -1386,6 +1387,14 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr) map[int]as
 										comptime_args[i] = concrete_types[idx]
 										break
 									}
+								}
+							} else if arg_sym.kind == .any {
+								mut cparam_type_sym := c.table.sym(c.unwrap_generic(ctyp))
+								if param_typ_sym.kind == .array && cparam_type_sym.kind == .array {
+									ctyp = (cparam_type_sym.info as ast.Array).elem_type
+									comptime_args[i] = ctyp
+								} else {
+									comptime_args[i] = ctyp
 								}
 							} else {
 								comptime_args[i] = ctyp
