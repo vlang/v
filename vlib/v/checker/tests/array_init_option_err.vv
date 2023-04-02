@@ -7,6 +7,9 @@ fn main() {
 
 	arr1 = []int{len: get()?, init: get()}
 	dump(arr1)
+
+	arr1 = []int{cap: get(), len: get()?, init: get()?}
+	dump(arr1)
 }
 
 fn get() ?int {
