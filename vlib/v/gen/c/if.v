@@ -37,6 +37,16 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 		return true
 	}
 	match expr {
+		ast.Ident {
+			return expr.or_expr.kind != .absent
+		}
+		ast.StringInterLiteral {
+			for e in expr.exprs {
+				if g.need_tmp_var_in_expr(e) {
+					return true
+				}
+			}
+		}
 		ast.IfExpr {
 			if g.need_tmp_var_in_if(expr) {
 				return true
@@ -134,7 +144,10 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			}
 		}
 		ast.SelectorExpr {
-			return g.need_tmp_var_in_expr(expr.expr)
+			if g.need_tmp_var_in_expr(expr.expr) {
+				return true
+			}
+			return expr.or_block.kind != .absent
 		}
 		else {}
 	}

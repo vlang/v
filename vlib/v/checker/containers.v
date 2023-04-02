@@ -66,11 +66,18 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			default_expr := node.default_expr
 			default_typ := c.check_expr_opt_call(default_expr, c.expr(default_expr))
 			node.default_type = default_typ
+			if !node.elem_type.has_flag(.option) && default_typ.has_flag(.option) {
+				c.error('cannot use unwrapped Option as initializer', default_expr.pos())
+			}
 			c.check_expected(default_typ, node.elem_type) or {
 				c.error(err.msg(), default_expr.pos())
 			}
 		}
 		if node.has_len {
+			len_typ := c.check_expr_opt_call(node.len_expr, c.expr(node.len_expr))
+			if len_typ.has_flag(.option) {
+				c.error('cannot use unwrapped Option as length', node.len_expr.pos())
+			}
 			if node.has_len && !node.has_default {
 				elem_type_sym := c.table.sym(node.elem_type)
 				if elem_type_sym.kind == .interface_ {

@@ -84,7 +84,7 @@ fn setup_symlink_windows(vexe string) {
 			}
 		}
 		// First, try to create a native symlink at .\.bin\v.exe
-		os.symlink(vsymlink, vexe) or {
+		os.symlink(vexe, vsymlink) or {
 			// typically only fails if you're on a network drive (VirtualBox)
 			// do batch file creation instead
 			eprintln('Could not create a native symlink: ${err}')
@@ -121,7 +121,7 @@ fn setup_symlink_windows(vexe string) {
 				new_paths << p
 			}
 		}
-		new_sys_env_path := new_paths.join(';')
+		new_sys_env_path := new_paths.join(os.path_delimiter)
 		if new_sys_env_path == sys_env_path {
 			println('System %PATH% was already configured.')
 		} else {

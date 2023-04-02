@@ -686,12 +686,15 @@ fn (mut g Gen) gen_match_expr(expr ast.MatchExpr) {
 	}
 }
 
-fn (mut g Gen) eval_escape_codes(str_lit ast.StringLiteral) string {
+fn (mut g Gen) eval_str_lit_escape_codes(str_lit ast.StringLiteral) string {
 	if str_lit.is_raw {
 		return str_lit.val
+	} else {
+		return g.eval_escape_codes(str_lit.val)
 	}
+}
 
-	str := str_lit.val
+fn (mut g Gen) eval_escape_codes(str string) string {
 	mut buffer := []u8{}
 
 	mut i := 0
@@ -705,7 +708,7 @@ fn (mut g Gen) eval_escape_codes(str_lit ast.StringLiteral) string {
 		// skip \
 		i++
 		match str[i] {
-			`\\`, `'`, `"` {
+			`\\`, `'`, `"`, `\`` {
 				buffer << str[i]
 				i++
 			}
@@ -792,9 +795,23 @@ fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
 	}
 }
 
-fn (mut g Gen) gen_var_to_string(reg Register, var Var, config VarConfig) {
+fn (mut g Gen) gen_var_to_string(reg Register, expr ast.Expr, var Var, config VarConfig) {
 	typ := g.get_type_from_var(var)
-	if typ.is_int() {
+	if typ == ast.rune_type_idx {
+		buffer := g.allocate_var('rune-buffer', 8, 0)
+		g.lea_var_to_reg(reg, buffer)
+		match reg {
+			.rax {
+				g.mov_var_to_reg(.rdi, var, config)
+				g.write8(0x48)
+				g.write8(0x89)
+				g.write8(0x38)
+			}
+			else {
+				g.n_error('rune to string not implemented for ${reg}')
+			}
+		}
+	} else if typ.is_int() {
 		buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
 		g.mov_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 0), var, config)
 		g.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), buffer)
@@ -804,7 +821,7 @@ fn (mut g Gen) gen_var_to_string(reg Register, var Var, config VarConfig) {
 		g.mov_var_to_reg(g.get_builtin_arg_reg(.bool_to_string, 0), var, config)
 		g.call_builtin(.bool_to_string)
 	} else if typ.is_string() {
-		g.mov_var_to_reg(.rax, var, config)
+		g.mov_var_to_reg(reg, var, config)
 	} else {
 		g.n_error('int-to-string conversion not implemented for type ${typ}')
 	}
@@ -815,7 +832,15 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string)
 	fd := if name in ['eprint', 'eprintln'] { 2 } else { 1 }
 	match expr {
 		ast.StringLiteral {
-			str := g.eval_escape_codes(expr)
+			str := g.eval_str_lit_escape_codes(expr)
+			if newline {
+				g.gen_print(str + '\n', fd)
+			} else {
+				g.gen_print(str, fd)
+			}
+		}
+		ast.CharLiteral {
+			str := g.eval_escape_codes(expr.val)
 			if newline {
 				g.gen_print(str + '\n', fd)
 			} else {
@@ -826,7 +851,7 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string)
 			vo := g.try_var_offset(expr.name)
 
 			if vo != -1 {
-				g.gen_var_to_string(.rax, expr as ast.Ident)
+				g.gen_var_to_string(.rax, expr, expr as ast.Ident)
 				g.gen_print_reg(.rax, -1, fd)
 				if newline {
 					g.gen_print('\n', fd)
@@ -1173,7 +1198,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			if node.exprs.len == 1 {
 				match node.exprs[0] {
 					ast.StringLiteral {
-						s = g.eval_escape_codes(node.exprs[0] as ast.StringLiteral)
+						s = g.eval_str_lit_escape_codes(node.exprs[0] as ast.StringLiteral)
 						g.expr(node.exprs[0])
 						g.mov64(.rax, g.allocate_string(s, 2, .abs64))
 					}
@@ -1383,7 +1408,7 @@ fn (mut g Gen) gen_syscall(node ast.CallExpr) {
 				if expr.field_name == 'str' {
 					match expr.expr {
 						ast.StringLiteral {
-							s := g.eval_escape_codes(expr.expr)
+							s := g.eval_str_lit_escape_codes(expr.expr)
 							g.allocate_string(s, 2, .abs64)
 							g.mov64(ra[i], 1)
 							done = true
@@ -1400,7 +1425,7 @@ fn (mut g Gen) gen_syscall(node ast.CallExpr) {
 					g.warning('C.syscall expects c"string" or "string".str, C backend will crash',
 						node.pos)
 				}
-				s := g.eval_escape_codes(expr)
+				s := g.eval_str_lit_escape_codes(expr)
 				g.allocate_string(s, 2, .abs64)
 				g.mov64(ra[i], 1)
 			}
@@ -1512,8 +1537,20 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.prefix_expr(node)
 		}
 		ast.StringLiteral {
-			str := g.eval_escape_codes(node)
+			str := g.eval_str_lit_escape_codes(node)
 			g.allocate_string(str, 3, .rel32)
+		}
+		ast.CharLiteral {
+			bytes := g.eval_escape_codes(node.val)
+				.bytes()
+			mut val := rune(0)
+			for i, v in bytes {
+				val |= v << (i * 8)
+				if i >= sizeof(rune) {
+					g.n_error('runes are only 4 bytes wide')
+				}
+			}
+			g.movabs(.rax, i64(val))
 		}
 		ast.StructInit {
 			pos := g.allocate_by_type('_anonstruct', node.typ)
