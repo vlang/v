@@ -1069,6 +1069,12 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr) map[int
 									ctyp = (cparam_type_sym.info as ast.Array).elem_type
 									comptime_args[i] = ctyp
 								} else {
+									if node_.args[i].expr.is_auto_deref_var() {
+										ctyp = ctyp.deref()
+									}
+									if ctyp.nr_muls() > 0 && param_typ.nr_muls() > 0 {
+										ctyp = ctyp.set_nr_muls(0)
+									}
 									comptime_args[i] = ctyp
 								}
 							} else {
