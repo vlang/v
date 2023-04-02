@@ -438,7 +438,7 @@ mut:
 	controllers []&ControllerPath
 }
 
-// controller generates a `ControllerPath` struct for the main App
+// controller generates a new Controller for the main app
 pub fn controller[T](path string, global_app &T) &ControllerPath {
 	routes := generate_routes(global_app) or { panic(err.msg()) }
 
@@ -482,6 +482,20 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	}
 
 	routes := generate_routes(global_app)!
+	// check duplicate routes in controllers
+	$if T is ControllerInterface {
+		mut paths := []string{}
+		for controller in global_app.controllers {
+			paths << controller.path
+		}
+		for method_name, route in routes {
+			for controller_path in paths {
+				if route.path.starts_with(controller_path) {
+					return error('method "${method_name}" with route "${route.path}" should be handled by the Controller of "${controller_path}"')
+				}
+			}
+		}
+	}
 
 	host := if params.host == '' { 'localhost' } else { params.host }
 	if params.show_startup_message {
