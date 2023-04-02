@@ -1040,7 +1040,7 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 								&& param_typ_sym.kind == .array {
 								ctyp = (arg_sym.info as ast.Array).elem_type
 								comptime_args[i] = ctyp
-							} else if arg_sym.kind == .struct_ {
+							} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
 								mut generic_types := []ast.Type{}
 								match arg_sym.info {
 									ast.Struct, ast.Interface, ast.SumType {
