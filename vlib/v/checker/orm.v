@@ -483,12 +483,11 @@ fn (mut c Checker) check_orm_or_expr(expr ORMExpr) {
 				expr.pos)
 		}
 	} else {
-		c.check_or_expr(
-			expr.or_expr,
-			return_type.clear_flag(.result),
-			return_type,
-			if expr is ast.SqlExpr { expr } else { ast.empty_expr }
-		)
+		c.check_or_expr(expr.or_expr, return_type.clear_flag(.result), return_type, if expr is ast.SqlExpr {
+			expr
+		} else {
+			ast.empty_expr
+		})
 	}
 
 	if expr.or_expr.kind == .block {
