@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module strings
@@ -87,7 +87,9 @@ pub fn (mut b Builder) write(data []u8) !int {
 // `other`, so that the `other` strings builder is ready to receive new content.
 [manualfree]
 pub fn (mut b Builder) drain_builder(mut other Builder, other_new_cap int) {
-	b.write(other) or { panic(err) }
+	if other.len > 0 {
+		b << *other
+	}
 	unsafe { other.free() }
 	other = new_builder(other_new_cap)
 }

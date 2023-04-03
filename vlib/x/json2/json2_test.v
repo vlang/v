@@ -121,3 +121,17 @@ fn test_struct_with_struct_to_map() {
 	assert json.map_from(StructType[StructType[string]]{StructType[string]{'3'}}).str() == '{"val":{"val":"3"}}'
 	assert json.map_from(StructType[StructType[int]]{StructType[int]{3}}).str() == '{"val":{"val":3}}'
 }
+
+fn test_maps() {
+	assert json.decode[map[string]string]('{"test":"abc"}') or {
+		dump(err)
+		assert false
+	} == {
+		'test': 'abc'
+	}
+
+	// assert json.decode[map[string]StructType[bool]]('{"test":{"val":true}}') or {
+	// 	dump(err)
+	// 	assert false
+	// } == {"test":StructType[bool]{true}}
+}

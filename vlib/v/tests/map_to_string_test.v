@@ -47,3 +47,19 @@ fn test_interpolation_map_to_string() {
 	}
 	assert '${f}' == "{'hello': [1, 2, 3]}"
 }
+
+fn test_interpolation_map_to_string_with_delete() {
+	mut m1 := map[string]int{}
+	m1['one'] = 1
+	m1['two'] = 2
+	m1.delete('two')
+	println(m1)
+	assert '${m1}' == "{'one': 1}"
+
+	mut m2 := map[string]int{}
+	m2['one'] = 1
+	m2['two'] = 2
+	m2.delete('one')
+	println(m2)
+	assert '${m2}' == "{'two': 2}"
+}

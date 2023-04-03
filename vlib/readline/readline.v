@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -6,6 +6,8 @@
 // based on the work of https://github.com/AmokHuginnsson/replxx
 //
 module readline
+
+import term.termios
 
 // Winsize stores the screen information on Linux.
 struct Winsize {
@@ -20,9 +22,9 @@ struct Winsize {
 pub struct Readline {
 mut:
 	is_raw            bool
-	orig_termios      Termios // Linux
-	current           []rune  // Line being edited
-	cursor            int     // Cursor position
+	orig_termios      termios.Termios // Linux
+	current           []rune // Line being edited
+	cursor            int    // Cursor position
 	overwrite         bool
 	cursor_row_offset int
 	prompt            string

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -136,6 +136,7 @@ mut:
 	inside_struct_init        bool
 	inside_or_block           bool
 	inside_call               bool
+	inside_curry_call         bool // inside foo()()!, foo()()?, foo()()
 	inside_for_c_stmt         bool
 	inside_comptime_for_field bool
 	inside_cast_in_heap       int // inside cast to interface type in heap (resolve recursive calls)
@@ -144,6 +145,7 @@ mut:
 	inside_lambda             bool
 	inside_for_in_any_cond    bool
 	inside_cinit              bool
+	last_tmp_call_var         []string
 	loop_depth                int
 	ternary_names             map[string]string
 	ternary_level_names       map[string][]string
@@ -3427,13 +3429,6 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				g.error('unknown generic field', node.pos)
 			}
 		}
-	} else {
-		// for comp-time enum value evaluation
-		if node.expr_type == g.enum_data_type && node.expr is ast.Ident
-			&& (node.expr as ast.Ident).name == 'value' {
-			g.write(node.str())
-			return
-		}
 	}
 	if node.expr_type == 0 {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
@@ -3496,7 +3491,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	mut sum_type_deref_field := ''
 	mut sum_type_dot := '.'
-	if f := g.table.find_field(sym, node.field_name) {
+	if f := g.table.find_field_with_embeds(sym, node.field_name) {
 		field_sym := g.table.sym(f.typ)
 		if field_sym.kind in [.sum_type, .interface_] {
 			if !prevent_sum_type_unwrapping_once {

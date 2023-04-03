@@ -766,10 +766,14 @@ fn (mut g JsGen) fn_args(args []ast.Param, is_variadic bool) {
 }
 
 fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
-	if fun.has_gen {
+	mut fn_name := fun.decl.name
+	if fun.decl.generic_names.len > 0 {
+		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
+	}
+	if fun.has_gen[fn_name] {
 		return
 	}
-	fun.has_gen = true
+	fun.has_gen[fn_name] = true
 	it := fun.decl
 	cur_fn_decl := g.fn_decl
 	unsafe {

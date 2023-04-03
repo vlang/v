@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -81,7 +81,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			''
 		}
 		cond_var = g.new_tmp_var()
-		g.write('${g.typ(node.cond_type)} ${cond_var} = ')
+		g.write('${g.typ(node.cond_type)} /*A*/ ${cond_var} = ')
 		g.expr(node.cond)
 		g.writeln(';')
 		g.set_current_pos_as_last_stmt_pos()
@@ -472,8 +472,10 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 						g.write(')')
 					}
 					.struct_ {
+						derefs_expr := '*'.repeat(g.get_expr_type(expr).nr_muls())
+						derefs_ctype := '*'.repeat(node.cond_type.nr_muls())
 						ptr_typ := g.equality_fn(node.cond_type)
-						g.write('${ptr_typ}_struct_eq(${cond_var}, ')
+						g.write('${ptr_typ}_struct_eq(${derefs_ctype}${cond_var}, ${derefs_expr}')
 						g.expr(expr)
 						g.write(')')
 					}

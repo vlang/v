@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module pref
@@ -811,7 +811,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 							break
 						}
 					} else if is_source_file(command) && is_source_file(arg)
-						&& command !in known_external_commands {
+						&& command !in known_external_commands && res.raw_vsh_tmp_prefix == '' {
 						eprintln('Too many targets. Specify just one target: <target.v|target_directory>.')
 						exit(1)
 					}

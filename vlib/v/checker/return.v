@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -229,8 +229,9 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			c.error('fn `${c.table.cur_fn.name}` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
-		if (exp_type.is_ptr() || exp_type.is_pointer())
-			&& (!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != ast.int_literal_type
+		unaliased_got_typ := c.table.unaliased_type(got_typ)
+		if (exp_type.is_ptr() || exp_type.is_pointer()) && !got_typ.is_real_pointer()
+			&& !unaliased_got_typ.is_real_pointer() && got_typ != ast.int_literal_type
 			&& !c.pref.translated && !c.file.is_translated {
 			pos := node.exprs[expr_idxs[i]].pos()
 			if node.exprs[expr_idxs[i]].is_auto_deref_var() {

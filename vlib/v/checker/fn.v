@@ -275,6 +275,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('fn `init` cannot have a return type', node.pos)
 		}
 	}
+
+	if node.language == .v && node.mod == 'main' && node.name.after_char(`.`) in reserved_type_names
+		&& !node.is_method && !c.is_builtin_mod {
+		c.error('top level declaration cannot shadow builtin type', node.pos)
+	}
 	if node.return_type != ast.Type(0) {
 		c.ensure_type_exists(node.return_type, node.return_type_pos) or { return }
 		if node.language == .v && node.is_method && node.name == 'str' {
@@ -2425,6 +2430,11 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			node.receiver_type = left_type.ref()
 		} else {
 			node.receiver_type = left_type
+		}
+	} else if method_name == 'delete' {
+		unwrapped_left_sym := c.table.sym(c.unwrap_generic(left_type))
+		if method := c.table.find_method(unwrapped_left_sym, method_name) {
+			node.receiver_type = method.receiver_type
 		}
 	}
 	return node.return_type

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
@@ -508,7 +508,7 @@ pub mut:
 	decl           FnDecl
 	inherited_vars []Param
 	typ            Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
-	has_gen        bool // has been generated
+	has_gen        map[string]bool // has been generated
 }
 
 // function or method declaration
@@ -1225,13 +1225,14 @@ pub mut:
 
 pub struct FnTypeDecl {
 pub:
-	name     string
-	is_pub   bool
-	typ      Type
-	pos      token.Pos
-	type_pos token.Pos
-	comments []Comment
-	attrs    []Attr // attributes of type declaration
+	name          string
+	is_pub        bool
+	typ           Type
+	pos           token.Pos
+	type_pos      token.Pos
+	comments      []Comment
+	generic_types []Type
+	attrs         []Attr // attributes of type declaration
 }
 
 // TODO: handle this differently
