@@ -1,5 +1,5 @@
 ================ V panic ================
    module: main
  function: main()
-  message: db.sqlite.SQLError: no such table: User (1) (INSERT INTO `User` (`id`, `name`) VALUES (?1, ?2);); code: 1
-     file: vlib/v/slow_tests/inout/orm_panic_for_insert_into_not_created_table.vv:16
+  message: no such table: User (1) (INSERT INTO `User` (`id`, `name`) VALUES (?1, ?2);); code: 1
+     file: vlib/v/slow_tests/inout/orm_panic_for_insert_into_not_created_table.vv:17
