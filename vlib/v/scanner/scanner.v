@@ -1071,7 +1071,7 @@ fn (mut s Scanner) text_scan() token.Token {
 							s.inc_line_number()
 							continue
 						}
-						if s.expect('/*', s.pos) {
+						if s.expect('/*', s.pos) && s.text[s.pos + 2] != `/` {
 							nest_count++
 							continue
 						}
