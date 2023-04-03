@@ -158,7 +158,7 @@ pub fn (mut s Scanner) free() {
 
 [inline]
 fn (s &Scanner) should_parse_comment() bool {
-	return (s.comments_mode == .parse_comments)
+	return s.comments_mode == .parse_comments
 		|| (s.comments_mode == .toplevel_comments && !s.is_inside_toplvl_statement)
 }
 
