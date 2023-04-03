@@ -645,7 +645,15 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 	}
 	g.writeln(');')
 
-	g.or_block(select_result_var_name, node.or_expr, node.typ)
+	unwrapped_typ := node.typ.clear_flag(.result)
+	unwrapped_c_typ := g.typ(unwrapped_typ)
+	c_typ := g.typ(node.typ)
+
+	mut non_orm_result_var_name := g.new_tmp_var()
+	g.writeln('${c_typ} ${non_orm_result_var_name};')
+	g.writeln('${non_orm_result_var_name}.is_error = ${select_result_var_name}.is_error;')
+	g.writeln('${non_orm_result_var_name}.err = ${select_result_var_name}.err;')
+	g.or_block(non_orm_result_var_name, node.or_expr, node.typ)
 	g.writeln('else {')
 	g.indent++
 
@@ -653,11 +661,8 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 
 	g.writeln('Array_Array_orm__Primitive ${select_unwrapped_result_var_name} = (*(Array_Array_orm__Primitive*)${select_result_var_name}.data);')
 
-	unwrapped_typ := node.typ.clear_flag(.result)
-	unwrapped_c_typ := g.typ(unwrapped_typ)
-
 	if node.is_count {
-		g.writeln('*(${unwrapped_c_typ}*) ${select_result_var_name}.data = *((*(orm__Primitive*) array_get((*(Array_orm__Primitive*)array_get(${select_unwrapped_result_var_name}, 0)), 0))._int);')
+		g.writeln('*(${unwrapped_c_typ}*) ${non_orm_result_var_name}.data = *((*(orm__Primitive*) array_get((*(Array_orm__Primitive*)array_get(${select_unwrapped_result_var_name}, 0)), 0))._int);')
 
 		g.indent--
 		g.writeln('}')
@@ -781,7 +786,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 			g.writeln('}')
 		}
 
-		g.write('*(${unwrapped_c_typ}*) ${select_result_var_name}.data = ${tmp}')
+		g.write('*(${unwrapped_c_typ}*) ${non_orm_result_var_name}.data = ${tmp}')
 		if node.is_array {
 			g.write('_array')
 		}
@@ -790,7 +795,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 		g.indent--
 		g.writeln('}')
 	}
-	g.write('${left} *(${unwrapped_c_typ}*) ${select_result_var_name}.data')
+	g.write('${left} *(${unwrapped_c_typ}*) ${non_orm_result_var_name}.data')
 
 	if node.is_generated {
 		g.write(';')
