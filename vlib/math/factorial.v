@@ -66,3 +66,17 @@ pub fn factoriali(n int) i64 {
 
 	return i64(-1)
 }
+
+// By using stirling approximation for n factorial, we can avoid using a lookup table
+// and still get a very accurate result, in O(1) time (O is actually theta(1)).
+pub fn stirling_factorial(n int) f64 {
+	if n <= 0 {
+		return 1
+	}
+	
+	if n < 21 {
+		return sqrt(2 * pi * n) * pow(n/e, n) * pow(e, 1 / (12 * n))
+	}
+
+	return i64(-1)
+}

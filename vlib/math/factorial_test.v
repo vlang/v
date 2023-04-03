@@ -20,3 +20,10 @@ fn test_factoriali() {
 	assert factoriali(-2) == 1
 	assert factoriali(1000) == -1
 }
+
+fn test_stirling_factorial() {
+	assert stirling_factorial(12) == 479001600
+	assert stirling_factorial(5) == 120
+	assert stirling_factorial(0) == 1
+	assert stirling_factorial(-2) == 1
+}
