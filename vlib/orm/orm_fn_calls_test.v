@@ -15,7 +15,7 @@ fn test_fn_calls() {
 
 	sql db {
 		create table User
-	}
+	}!
 
 	first_user := User{
 		name: 'first'
@@ -30,18 +30,18 @@ fn test_fn_calls() {
 	sql db {
 		insert first_user into User
 		insert second_user into User
-	}
+	}!
 
 	users_with_acceptable_age := sql db {
 		select from User where age >= get_acceptable_age()
-	}
+	}!
 
 	assert users_with_acceptable_age.len == 1
 	assert users_with_acceptable_age.first().name == 'first'
 
 	users_with_non_acceptable_age := sql db {
 		select from User where age < get_acceptable_age()
-	}
+	}!
 
 	assert users_with_non_acceptable_age.len == 1
 	assert users_with_non_acceptable_age.first().name == 'second'

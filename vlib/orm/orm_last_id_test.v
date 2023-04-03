@@ -10,7 +10,7 @@ fn test_last_id() {
 
 	sql db {
 		create table User
-	}
+	}!
 
 	first_user := User{
 		name: 'first'
@@ -23,7 +23,7 @@ fn test_last_id() {
 	sql db {
 		insert first_user into User
 		insert second_user into User
-	}
+	}!
 
 	last_id := db.last_id()
 
