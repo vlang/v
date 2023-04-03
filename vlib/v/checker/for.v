@@ -143,6 +143,15 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.kind = sym.kind
 			node.val_type = val_type
 			node.scope.update_var_type(node.val_var, val_type)
+
+			if is_comptime {
+				c.comptime_fields_type[node.val_var] = val_type
+				node.scope.update_ct_var_kind(node.val_var, .value_var)
+
+				defer {
+					c.comptime_fields_type.delete(node.val_var)
+				}
+			}
 		} else if sym.kind == .any {
 			node.cond_type = typ
 			node.kind = sym.kind

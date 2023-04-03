@@ -1245,8 +1245,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		// no type arguments given in call, attempt implicit instantiation
 		c.infer_fn_generic_types(func, mut node)
 		concrete_types = node.concrete_types.map(c.unwrap_generic(it))
+		c.resolve_fn_generic_args(func, mut node)
 	}
-	c.resolve_fn_generic_args(func, mut node)
 	if func.generic_names.len > 0 {
 		for i, mut call_arg in node.args {
 			param := if func.is_variadic && i >= func.params.len - 1 {
@@ -1337,6 +1337,9 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 			} else {
 				func.params[offset + i]
 			}
+			if !param.typ.has_flag(.generic) {
+				continue
+			}
 			if call_arg.expr is ast.Ident {
 				if call_arg.expr.obj is ast.Var {
 					if call_arg.expr.obj.ct_type_var !in [.generic_param, .no_comptime] {
@@ -1355,15 +1358,14 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 						if ctyp != ast.void_type {
 							param_typ := param.typ
 							arg_sym := c.table.final_sym(call_arg.typ)
-							// arg_sym := c.table.sym(c.unwrap_generic(ctyp))
-							param_typ_sym := c.table.final_sym(param_typ)
+							param_typ_sym := c.table.sym(param_typ)
 
 							if param_typ.has_flag(.variadic) {
 								ctyp = ast.mktyp(ctyp)
 								comptime_args[i] = ctyp
 							} else if arg_sym.kind == .array && param_typ.has_flag(.generic)
 								&& param_typ_sym.kind == .array {
-								ctyp = (arg_sym.info as ast.Array).elem_type
+								ctyp = c.get_generic_array_element_type(arg_sym.info as ast.Array)
 								comptime_args[i] = ctyp
 							} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
 								mut generic_types := []ast.Type{}

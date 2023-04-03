@@ -1011,6 +1011,9 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 			} else {
 				func.params[offset + i]
 			}
+			if !param.typ.has_flag(.generic) {
+				continue
+			}
 			if mut call_arg.expr is ast.Ident {
 				if mut call_arg.expr.obj is ast.Var {
 					node_.args[i].typ = call_arg.expr.obj.typ
@@ -1030,15 +1033,14 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 						if ctyp != ast.void_type {
 							param_typ := param.typ
 							arg_sym := g.table.final_sym(call_arg.typ)
-							// arg_sym := g.table.sym(g.unwrap_generic(ctyp))
-							param_typ_sym := g.table.final_sym(param_typ)
+							param_typ_sym := g.table.sym(param_typ)
 
 							if param_typ.has_flag(.variadic) {
 								ctyp = ast.mktyp(ctyp)
 								comptime_args[i] = ctyp
 							} else if arg_sym.kind == .array && param_typ.has_flag(.generic)
 								&& param_typ_sym.kind == .array {
-								ctyp = (arg_sym.info as ast.Array).elem_type
+								ctyp = g.get_generic_array_element_type(arg_sym.info as ast.Array)
 								comptime_args[i] = ctyp
 							} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
 								mut generic_types := []ast.Type{}
