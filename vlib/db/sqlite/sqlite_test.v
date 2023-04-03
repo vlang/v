@@ -19,10 +19,10 @@ fn (back Host) get_users() []User {
 	return []
 }
 
-fn create_host(db Connection) Host {
+fn create_host(db Connection) !Host {
 	sql db {
 		create table User
-	}
+	}!
 
 	return Host{
 		db: db
@@ -87,6 +87,6 @@ fn test_can_access_sqlite_result_consts() {
 }
 
 fn test_alias_db() {
-	create_host(sqlite.connect(':memory:')!)
+	create_host(sqlite.connect(':memory:')!)!
 	assert true
 }
