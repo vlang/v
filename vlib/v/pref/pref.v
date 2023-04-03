@@ -811,7 +811,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 							break
 						}
 					} else if is_source_file(command) && is_source_file(arg)
-						&& command !in known_external_commands {
+						&& command !in known_external_commands && res.raw_vsh_tmp_prefix == '' {
 						eprintln('Too many targets. Specify just one target: <target.v|target_directory>.')
 						exit(1)
 					}
