@@ -229,9 +229,11 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			c.error('fn `${c.table.cur_fn.name}` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
+		unaliased_got_typ := c.table.unaliased_type(got_typ)
 		if (exp_type.is_ptr() || exp_type.is_pointer())
-			&& (!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != ast.int_literal_type
-			&& !c.pref.translated && !c.file.is_translated {
+			&& (!got_typ.is_ptr() && !got_typ.is_pointer())
+			&& (!unaliased_got_typ.is_ptr() && !unaliased_got_typ.is_pointer())
+			&& got_typ != ast.int_literal_type && !c.pref.translated && !c.file.is_translated {
 			pos := node.exprs[expr_idxs[i]].pos()
 			if node.exprs[expr_idxs[i]].is_auto_deref_var() {
 				continue
