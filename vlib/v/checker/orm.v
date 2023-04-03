@@ -11,6 +11,8 @@ const (
 	v_orm_prefix   = 'V ORM'
 )
 
+type ORMExpr = ast.SqlExpr | ast.SqlStmt
+
 fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	c.inside_sql = true
 	defer {
@@ -47,12 +49,13 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			pos: node.pos
 			has_where: true
 			where_expr: ast.None{}
-			typ: typ
+			typ: typ.set_flag(.result)
 			db_expr: node.db_expr
 			table_expr: ast.TypeNode{
 				pos: node.table_expr.pos
 				typ: typ
 			}
+			is_generated: true
 		}
 
 		tmp_inside_sql := c.inside_sql
@@ -141,33 +144,21 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	}
 	c.expr(node.db_expr)
 
-	if node.or_expr.kind == .block {
-		if node.or_expr.stmts.len == 0 {
-			c.orm_error('or block needs to return a default value', node.or_expr.pos)
-		}
-		if node.or_expr.stmts.len > 0 && node.or_expr.stmts.last() is ast.ExprStmt {
-			c.expected_or_type = node.typ
-		}
-		c.stmts_ending_with_expression(node.or_expr.stmts)
-		c.check_expr_opt_call(node, node.typ)
-		c.expected_or_type = ast.void_type
-	}
-	return node.typ
+	c.check_orm_or_expr(node)
+
+	return node.typ.clear_flag(.result)
 }
 
 fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
 	node.db_expr_type = c.table.unaliased_type(c.expr(node.db_expr))
-	mut typ := ast.void_type
+
 	for mut line in node.lines {
-		a := c.sql_stmt_line(mut line)
-		if a != ast.void_type {
-			typ = a
-		}
+		c.sql_stmt_line(mut line)
 	}
-	if node.or_expr.kind == .block {
-		c.stmts_ending_with_expression(node.or_expr.stmts)
-	}
-	return typ
+
+	c.check_orm_or_expr(node)
+
+	return ast.void_type
 }
 
 fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
@@ -183,7 +174,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		c.cur_orm_ts = old_ts
 	}
 
-	if node.kind == .insert && node.is_top_level {
+	if node.kind == .insert && !node.is_generated {
 		inserting_object_name := node.object_var_name
 		inserting_object := node.scope.find(inserting_object_name) or {
 			c.error('undefined ident: `${inserting_object_name}`', node.pos)
@@ -238,6 +229,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 				typ: typ
 			}
 			object_var_name: object_var_name
+			is_generated: true
 		}
 		tmp_inside_sql := c.inside_sql
 		c.sql_stmt_line(mut n)
@@ -466,5 +458,42 @@ fn (_ &Checker) fn_return_type_flag_to_string(typ ast.Type) string {
 		'?'
 	} else {
 		''
+	}
+}
+
+fn (mut c Checker) check_orm_or_expr(expr ORMExpr) {
+	if expr is ast.SqlExpr {
+		if expr.is_generated {
+			return
+		}
+	}
+
+	return_type := if expr is ast.SqlExpr {
+		expr.typ
+	} else {
+		ast.void_type.set_flag(.result)
+	}
+
+	if expr.or_expr.kind == .absent {
+		if c.inside_defer {
+			c.error('V ORM returns a result, so it should have an `or {}` block at the end',
+				expr.pos)
+		} else {
+			c.error('V ORM returns a result, so it should have either an `or {}` block, or `!` at the end',
+				expr.pos)
+		}
+	} else {
+		c.check_or_expr(
+			expr.or_expr,
+			return_type.clear_flag(.result),
+			return_type,
+			if expr is ast.SqlExpr { expr } else { ast.empty_expr }
+		)
+	}
+
+	if expr.or_expr.kind == .block {
+		c.expected_or_type = return_type.clear_flag(.result)
+		c.stmts_ending_with_expression(expr.or_expr.stmts)
+		c.expected_or_type = ast.void_type
 	}
 }
