@@ -1563,8 +1563,15 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// g.generate_tmp_autofree_arg_vars(node, name)
 	// Handle `print(x)`
 	mut print_auto_str := false
-	if is_print && (node.args[0].typ != ast.string_type || g.comptime_for_method.len > 0) {
+	if is_print && (node.args[0].typ != ast.string_type
+		|| g.comptime_for_method.len > 0 || g.is_comptime_var(node.args[0].expr)) {
 		mut typ := node.args[0].typ
+		if g.is_comptime_var(node.args[0].expr) {
+			ctyp := g.get_comptime_var_type(node.args[0].expr)
+			if ctyp != ast.void_type {
+				typ = ctyp
+			}
+		}
 		if typ == 0 {
 			g.checker_bug('print arg.typ is 0', node.pos)
 		}
