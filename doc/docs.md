@@ -4847,18 +4847,18 @@ db := sqlite.connect('customers.db')!
 // )
 sql db {
 	create table Customer
-}
+}!
 
 // select count(*) from customers
 nr_customers := sql db {
 	select count from Customer
-}
+}!
 println('number of all customers: ${nr_customers}')
 
 // V syntax can be used to build queries
 uk_customers := sql db {
 	select from Customer where country == 'uk' && nr_orders > 0
-}
+}!
 println(uk_customers.len)
 for customer in uk_customers {
 	println('${customer.id} - ${customer.name}')
@@ -4871,7 +4871,7 @@ new_customer := Customer{
 }
 sql db {
 	insert new_customer into Customer
-}
+}!
 ```
 
 For more examples and the docs, see [vlib/orm](https://github.com/vlang/v/tree/master/vlib/orm).
