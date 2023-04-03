@@ -50,7 +50,7 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 
 	sql db {
 		create table Task
-	}
+	} or { panic(err) }
 
 	task_model := Task{
 		title: 'a'
@@ -62,7 +62,7 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 		sw.start()
 		sql db {
 			insert task_model into Task
-		}
+		} or { panic(err) }
 		sw.stop()
 		insert_stopwatchs << int(sw.end - sw.start)
 	}
@@ -72,7 +72,7 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 		sw.start()
 		result := sql db {
 			select from Task
-		}
+		} or { []Task{} }
 		sw.stop()
 		eprintln(result)
 		select_stopwatchs << int(sw.end - sw.start)
@@ -83,14 +83,14 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 		sw.start()
 		sql db {
 			update Task set title = 'b', status = 'finish' where id == i
-		}
+		} or { panic(err) }
 		sw.stop()
 		update_stopwatchs << int(sw.end - sw.start)
 	}
 
 	sql db {
 		drop table Task
-	}
+	} or { panic(err) }
 
 	response := Response{
 		insert: insert_stopwatchs

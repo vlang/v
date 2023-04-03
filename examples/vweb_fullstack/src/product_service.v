@@ -37,7 +37,7 @@ fn (mut app App) service_get_all_products_from(user_id int) ![]Product {
 
 	results := sql db {
 		select from Product where user_id == user_id
-	}
+	}!
 
 	return results
 }

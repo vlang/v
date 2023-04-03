@@ -66,7 +66,7 @@ pub fn (mut app App) delete() vweb.Result {
 
 	sql db {
 		drop table User
-	}
+	} or { panic(err) }
 
 	return app.text('Successfully deleted table')
 }

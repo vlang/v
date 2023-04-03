@@ -31,20 +31,20 @@ struct Child {
 }
 
 fn main() {
-	sqlite3_array()
-	mysql_array()
-	psql_array()
+	sqlite3_array()!
+	mysql_array()!
+	psql_array()!
 
-	sqlite3()
-	mysql()
-	psql()
+	sqlite3()!
+	mysql()!
+	psql()!
 }
 
-fn sqlite3_array() {
+fn sqlite3_array() ! {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	sql db {
 		create table Parent
-	}
+	}!
 
 	par := Parent{
 		name: 'test'
@@ -60,20 +60,20 @@ fn sqlite3_array() {
 
 	sql db {
 		insert par into Parent
-	}
+	}!
 
 	parent := sql db {
 		select from Parent where id == 1
-	}
+	}!
 
 	sql db {
 		drop table Parent
-	}
+	}!
 
 	eprintln(parent)
 }
 
-fn mysql_array() {
+fn mysql_array() ! {
 	mut db := sql.Connection{
 		host: 'localhost'
 		port: 3306
@@ -85,7 +85,7 @@ fn mysql_array() {
 
 	sql db {
 		create table Parent
-	}
+	}!
 
 	par := Parent{
 		name: 'test'
@@ -101,29 +101,29 @@ fn mysql_array() {
 
 	sql db {
 		insert par into Parent
-	}
+	}!
 
 	parent := sql db {
 		select from Parent where id == 1
-	}
+	}!
 
 	eprintln(parent)
 
 	sql db {
 		drop table Parent
-	}
+	}!
 
 	db.close()
 }
 
-fn psql_array() {
+fn psql_array() ! {
 	mut db := pg.connect(host: 'localhost', user: 'test', password: 'abc', dbname: 'test') or {
 		panic(err)
 	}
 
 	sql db {
 		create table Parent
-	}
+	}!
 
 	par := Parent{
 		name: 'test'
@@ -139,26 +139,26 @@ fn psql_array() {
 
 	sql db {
 		insert par into Parent
-	}
+	}!
 
 	parent := sql db {
 		select from Parent where id == 1
-	}
+	}!
 
 	eprintln(parent)
 
 	sql db {
 		drop table Parent
-	}
+	}!
 
 	db.close()
 }
 
-fn sqlite3() {
+fn sqlite3() ! {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	sql db {
 		create table Module
-	}
+	}!
 
 	mod := Module{
 		name: 'test'
@@ -171,21 +171,21 @@ fn sqlite3() {
 	}
 	sql db {
 		insert mod into Module
-	}
+	}!
 
 	modul := sql db {
 		select from Module where id == 1
-	}
+	}!
 
 	sql db {
 		drop table Module
-	}
+	}!
 
 	eprintln(modul)
 	db.close() or { panic(err) }
 }
 
-fn mysql() {
+fn mysql() ! {
 	mut conn := sql.Connection{
 		host: 'localhost'
 		port: 3306
@@ -197,7 +197,7 @@ fn mysql() {
 
 	sql conn {
 		create table Module
-	}
+	}!
 
 	mod := Module{
 		name: 'test'
@@ -211,17 +211,17 @@ fn mysql() {
 
 	sql conn {
 		insert mod into Module
-	}
+	}!
 
 	m := sql conn {
 		select from Module where id == 1
-	}
+	}!
 
 	eprintln(m)
 	conn.close()
 }
 
-fn psql() {
+fn psql() ! {
 	mut db := pg.connect(host: 'localhost', user: 'test', password: 'abc', dbname: 'test') or {
 		panic(err)
 	}
@@ -238,19 +238,19 @@ fn psql() {
 
 	sql db {
 		create table Module
-	}
+	}!
 
 	sql db {
 		insert mod into Module
-	}
+	}!
 
 	modul := sql db {
 		select from Module where id == 1
-	}
+	}!
 
 	sql db {
 		drop table Module
-	}
+	}!
 
 	eprintln(modul)
 	db.close()
