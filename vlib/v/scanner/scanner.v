@@ -1063,8 +1063,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					// Skip comment
 					for nest_count > 0 && s.pos < s.text.len - 1 {
 						s.pos++
-						if s.pos >= s.text.len {
-							s.line_nr--
+						if s.pos >= s.text.len - 1 {
 							s.error('comment not terminated')
 						}
 						if s.text[s.pos] == scanner.b_lf {

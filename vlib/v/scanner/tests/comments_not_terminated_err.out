@@ -1,0 +1,5 @@
+vlib/v/scanner/tests/comments_not_terminated_err.vv:7:2: error: comment not terminated
+    5 | /*
+    6 | fn tt() {
+    7 | }
+      |  ^
