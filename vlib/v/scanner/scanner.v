@@ -1063,9 +1063,9 @@ fn (mut s Scanner) text_scan() token.Token {
 					// Skip comment
 					for nest_count > 0 && s.pos < s.text.len - 1 {
 						s.pos++
-						if s.pos >= s.text.len {
-							s.line_nr--
-							s.error('comment not terminated')
+						if s.pos >= s.text.len - 1 {
+							s.line_nr = start_line
+							s.error('unterminated multiline comment')
 						}
 						if s.text[s.pos] == scanner.b_lf {
 							s.inc_line_number()
