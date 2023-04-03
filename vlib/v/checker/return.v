@@ -230,10 +230,9 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				pos)
 		}
 		unaliased_got_typ := c.table.unaliased_type(got_typ)
-		if (exp_type.is_ptr() || exp_type.is_pointer())
-			&& (!got_typ.is_ptr() && !got_typ.is_pointer())
-			&& (!unaliased_got_typ.is_ptr() && !unaliased_got_typ.is_pointer())
-			&& got_typ != ast.int_literal_type && !c.pref.translated && !c.file.is_translated {
+		if (exp_type.is_ptr() || exp_type.is_pointer()) && !got_typ.is_real_pointer()
+			&& !unaliased_got_typ.is_real_pointer() && got_typ != ast.int_literal_type
+			&& !c.pref.translated && !c.file.is_translated {
 			pos := node.exprs[expr_idxs[i]].pos()
 			if node.exprs[expr_idxs[i]].is_auto_deref_var() {
 				continue
