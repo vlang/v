@@ -209,6 +209,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		// g.writeln('// FOR IN array')
 		mut styp := g.typ(node.val_type)
 		mut val_sym := g.table.sym(node.val_type)
+		op_field := g.dot_or_ptr(node.cond_type)
 
 		if is_comptime && g.is_comptime_var(node.cond) {
 			mut unwrapped_typ := g.unwrap_generic(node.cond_type)
@@ -239,7 +240,6 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			g.writeln(';')
 		}
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		op_field := g.dot_or_ptr(node.cond_type)
 		g.empty_line = true
 		opt_expr := '(*(${g.typ(node.cond_type.clear_flag(.option))}*)${cond_var}${op_field}data)'
 		cond_expr := if node.cond_type.has_flag(.option) {
