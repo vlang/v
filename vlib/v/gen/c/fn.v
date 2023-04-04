@@ -531,6 +531,11 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	if node.has_gen[fn_name] {
 		return
 	}
+	prev_indent := g.indent
+	g.indent = 0
+	defer {
+		g.indent = prev_indent
+	}
 	node.has_gen[fn_name] = true
 	mut builder := strings.new_builder(256)
 	builder.writeln('/*F*/')
