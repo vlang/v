@@ -1320,7 +1320,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			comptime_args := g.change_comptime_args(m, mut node_, concrete_types)
 			for k, v in comptime_args {
 				if (rec_len + k) < concrete_types.len {
-					concrete_types[rec_len + k] = g.unwrap_generic(v)
+					if !node.concrete_types[k].has_flag(.generic) {
+						concrete_types[rec_len + k] = g.unwrap_generic(v)
+					}
 				}
 			}
 			name = g.generic_fn_name(concrete_types, name)
