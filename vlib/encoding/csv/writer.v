@@ -76,7 +76,7 @@ fn (w &Writer) field_needs_quotes(field string) bool {
 	if field == '' {
 		return false
 	}
-	if field.contains(w.delimiter.ascii_str()) || (field.index_any('"\r\n') != -1) {
+	if field.contains(w.delimiter.ascii_str()) || field.index_any('"\r\n') != -1 {
 		return true
 	}
 	return false

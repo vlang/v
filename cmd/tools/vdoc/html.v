@@ -169,7 +169,7 @@ fn (vd VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) 
 		os.file_name(cn.file_path)
 	}
 	src_link := get_src_link(vd.manifest.repo_url, file_path_name, cn.pos.line_nr + 1)
-	if cn.content.len != 0 || (cn.name == 'Constants') {
+	if cn.content.len != 0 || cn.name == 'Constants' {
 		hw.write_string(doc_node_html(cn, src_link, false, cfg.include_examples, d.table))
 	}
 	for child in cn.children {

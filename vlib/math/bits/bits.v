@@ -456,7 +456,7 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 	un0 := un10 & bits.mask32
 	mut q1 := un32 / yn1
 	mut rhat := un32 - (q1 * yn1)
-	for (q1 >= bits.two32) || (q1 * yn0) > ((bits.two32 * rhat) + un1) {
+	for q1 >= bits.two32 || (q1 * yn0) > ((bits.two32 * rhat) + un1) {
 		q1--
 		rhat += yn1
 		if rhat >= bits.two32 {
@@ -466,7 +466,7 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 	un21 := (un32 * bits.two32) + (un1 - (q1 * y))
 	mut q0 := un21 / yn1
 	rhat = un21 - q0 * yn1
-	for (q0 >= bits.two32) || (q0 * yn0) > ((bits.two32 * rhat) + un0) {
+	for q0 >= bits.two32 || (q0 * yn0) > ((bits.two32 * rhat) + un0) {
 		q0--
 		rhat += yn1
 		if rhat >= bits.two32 {

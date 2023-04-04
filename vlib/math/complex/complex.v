@@ -370,5 +370,5 @@ pub fn (c Complex) acsch() Complex {
 
 // Complex Equals
 pub fn (c1 Complex) equals(c2 Complex) bool {
-	return (c1.re == c2.re) && (c1.im == c2.im)
+	return c1.re == c2.re && c1.im == c2.im
 }

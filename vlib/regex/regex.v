@@ -1982,7 +1982,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 		// check if stop
 		else if m_state == .stop {
 			// we are in search mode, don't exit until the end
-			if ((re.flag & regex.f_src) != 0) && (ist != regex.ist_prog_end) {
+			if (re.flag & regex.f_src) != 0 && ist != regex.ist_prog_end {
 				last_fnd_pc = state.pc
 				state.pc = -1
 				state.i += char_len

@@ -233,8 +233,8 @@ fn underscore_ok(s string) bool {
 	}
 	// Optional base prefix.
 	mut hex := false
-	if (s.len - i >= 2) && (s[i] == `0`) && (((s[i + 1] | 32) == `b`)
-		|| ((s[i + 1] | 32) == `o`) || ((s[i + 1] | 32) == `x`)) {
+	if s.len - i >= 2 && s[i] == `0` && ((s[i + 1] | 32) == `b`
+		|| (s[i + 1] | 32) == `o` || (s[i + 1] | 32) == `x`) {
 		saw = `0` // base prefix counts as a digit for "underscore as digit separator"
 		hex = (s[i + 1] | 32) == `x`
 		i += 2
@@ -242,7 +242,7 @@ fn underscore_ok(s string) bool {
 	// Number proper.
 	for ; i < s.len; i++ {
 		// Digits are always okay.
-		if (`0` <= s[i] && s[i] <= `9`) || ((hex && `a` <= (s[i] | 32)) && ((s[i] | 32) <= `f`)) {
+		if (`0` <= s[i] && s[i] <= `9`) || ((hex && `a` <= (s[i] | 32)) && (s[i] | 32) <= `f`) {
 			saw = `0`
 			continue
 		}
