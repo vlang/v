@@ -163,7 +163,7 @@ fn parser(s string) (ParserState, PrepNumber) {
 	}
 
 	// read mantissa decimals
-	if (i < s.len) && (s[i] == `.`) {
+	if i < s.len && s[i] == `.` {
 		i++
 		for i < s.len && s[i].is_digit() {
 			if digx < strconv.digits {
@@ -177,7 +177,7 @@ fn parser(s string) (ParserState, PrepNumber) {
 	}
 
 	// read exponent
-	if (i < s.len) && ((s[i] == `e`) || (s[i] == `E`)) {
+	if i < s.len && (s[i] == `e` || s[i] == `E`) {
 		i++
 		if i < s.len {
 			// esponent sign

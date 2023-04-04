@@ -1054,7 +1054,7 @@ fn test_split_into_lines() {
 
 	assert lines_mixed_trailers.len == 9
 	for line in lines_mixed_trailers {
-		assert (line == line_content) || (line == '')
+		assert line == line_content || line == ''
 	}
 }
 

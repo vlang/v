@@ -51,7 +51,7 @@ pub fn (p PrimeSet) str() string {
 
 fn extract_count(s string) int {
 	digits := '0123456789'.split('')
-	if (s == '') || !s.split('').any(it in digits) {
+	if s == '' || !s.split('').any(it in digits) {
 		return 0
 	}
 	ds := s.split('').filter(it in digits)

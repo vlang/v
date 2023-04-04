@@ -289,7 +289,7 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand u8) !string {
 				continue
 			}
 			if (arg.len == 2 && arg[0] == `-` && arg[1] == shorthand) || arg == full {
-				if fs.args.len > i + 1 && (fs.args[i + 1] in ['true', 'false']) {
+				if fs.args.len > i + 1 && fs.args[i + 1] in ['true', 'false'] {
 					val := fs.args[i + 1]
 					fs.args.delete(i + 1)
 					fs.args.delete(i)

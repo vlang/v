@@ -691,7 +691,7 @@ fn test_regex_func() {
 	mut re, re_err, err_pos := regex.regex_base(query)
 	if re_err == regex.compile_ok {
 		start, end := re.match_string(test_str)
-		assert (start == 0) && (end == 6)
+		assert start == 0 && end == 6
 	} else {
 		eprintln('Error in query string in pos ${err_pos}')
 		eprintln('Error: ${re.get_parse_error_string(re_err)}')

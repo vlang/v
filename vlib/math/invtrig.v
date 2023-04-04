@@ -203,7 +203,7 @@ pub fn asin(x_ f64) f64 {
 // acos(x) = nan if x < -1 or x > 1
 [inline]
 pub fn acos(x f64) f64 {
-	if (x < -1.0) || (x > 1.0) {
+	if x < -1.0 || x > 1.0 {
 		return nan()
 	}
 	if x > 0.5 {

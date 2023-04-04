@@ -212,42 +212,41 @@ Private functions
 // Raw to_lower utf-8 function
 fn utf8_to_lower(in_cp int) int {
 	mut cp := in_cp
-	if ((0x0041 <= cp) && (0x005a >= cp)) || ((0x00c0 <= cp) && (0x00d6 >= cp))
-		|| ((0x00d8 <= cp) && (0x00de >= cp)) || ((0x0391 <= cp) && (0x03a1 >= cp))
-		|| ((0x03a3 <= cp) && (0x03ab >= cp)) || ((0x0410 <= cp) && (0x042f >= cp)) {
+	if (0x0041 <= cp && 0x005a >= cp) || (0x00c0 <= cp && 0x00d6 >= cp)
+		|| (0x00d8 <= cp && 0x00de >= cp) || (0x0391 <= cp && 0x03a1 >= cp)
+		|| (0x03a3 <= cp && 0x03ab >= cp) || (0x0410 <= cp && 0x042f >= cp) {
 		cp += 32
-	} else if (0x0400 <= cp) && (0x040f >= cp) {
+	} else if 0x0400 <= cp && 0x040f >= cp {
 		cp += 80
-	} else if ((0x0100 <= cp) && (0x012f >= cp)) || ((0x0132 <= cp) && (0x0137 >= cp))
-		|| ((0x014a <= cp) && (0x0177 >= cp)) || ((0x0182 <= cp) && (0x0185 >= cp))
-		|| ((0x01a0 <= cp) && (0x01a5 >= cp)) || ((0x01de <= cp) && (0x01ef >= cp))
-		|| ((0x01f8 <= cp) && (0x021f >= cp)) || ((0x0222 <= cp) && (0x0233 >= cp))
-		|| ((0x0246 <= cp) && (0x024f >= cp)) || ((0x03d8 <= cp) && (0x03ef >= cp))
-		|| ((0x0460 <= cp) && (0x0481 >= cp)) || ((0x048a <= cp) && (0x04ff >= cp)) {
+	} else if (0x0100 <= cp && 0x012f >= cp) || (0x0132 <= cp && 0x0137 >= cp)
+		|| (0x014a <= cp && 0x0177 >= cp) || (0x0182 <= cp && 0x0185 >= cp)
+		|| (0x01a0 <= cp && 0x01a5 >= cp) || (0x01de <= cp && 0x01ef >= cp)
+		|| (0x01f8 <= cp && 0x021f >= cp) || (0x0222 <= cp && 0x0233 >= cp)
+		|| (0x0246 <= cp && 0x024f >= cp) || (0x03d8 <= cp && 0x03ef >= cp)
+		|| (0x0460 <= cp && 0x0481 >= cp) || (0x048a <= cp && 0x04ff >= cp) {
 		cp |= 0x1
-	} else if ((0x0139 <= cp) && (0x0148 >= cp)) || ((0x0179 <= cp) && (0x017e >= cp))
-		|| ((0x01af <= cp) && (0x01b0 >= cp)) || ((0x01b3 <= cp) && (0x01b6 >= cp))
-		|| ((0x01cd <= cp) && (0x01dc >= cp)) {
+	} else if (0x0139 <= cp && 0x0148 >= cp) || (0x0179 <= cp && 0x017e >= cp)
+		|| (0x01af <= cp && 0x01b0 >= cp) || (0x01b3 <= cp && 0x01b6 >= cp)
+		|| (0x01cd <= cp && 0x01dc >= cp) {
 		cp += 1
 		cp &= ~0x1
-	} else if ((0x0531 <= cp) && (0x0556 >= cp)) || ((0x10A0 <= cp) && (0x10C5 >= cp)) {
+	} else if (0x0531 <= cp && 0x0556 >= cp) || (0x10A0 <= cp && 0x10C5 >= cp) {
 		// ARMENIAN or GEORGIAN
 		cp += 0x30
-	} else if (((0x1E00 <= cp) && (0x1E94 >= cp)) || ((0x1EA0 <= cp) && (0x1EF8 >= cp)))
-		&& (cp & 1 == 0) {
+	} else if ((0x1E00 <= cp && 0x1E94 >= cp) || (0x1EA0 <= cp && 0x1EF8 >= cp)) && cp & 1 == 0 {
 		// LATIN CAPITAL LETTER
 		cp += 1
-	} else if (0x24B6 <= cp) && (0x24CF >= cp) {
+	} else if 0x24B6 <= cp && 0x24CF >= cp {
 		// CIRCLED LATIN
 		cp += 0x1a
-	} else if (0xFF21 <= cp) && (0xFF3A >= cp) {
+	} else if 0xFF21 <= cp && 0xFF3A >= cp {
 		// FULLWIDTH LATIN CAPITAL
 		cp += 0x19
-	} else if ((0x1F08 <= cp) && (0x1F0F >= cp)) || ((0x1F18 <= cp) && (0x1F1D >= cp))
-		|| ((0x1F28 <= cp) && (0x1F2F >= cp)) || ((0x1F38 <= cp) && (0x1F3F >= cp))
-		|| ((0x1F48 <= cp) && (0x1F4D >= cp)) || ((0x1F68 <= cp) && (0x1F6F >= cp))
-		|| ((0x1F88 <= cp) && (0x1F8F >= cp)) || ((0x1F98 <= cp) && (0x1F9F >= cp))
-		|| ((0x1FA8 <= cp) && (0x1FAF >= cp)) {
+	} else if (0x1F08 <= cp && 0x1F0F >= cp) || (0x1F18 <= cp && 0x1F1D >= cp)
+		|| (0x1F28 <= cp && 0x1F2F >= cp) || (0x1F38 <= cp && 0x1F3F >= cp)
+		|| (0x1F48 <= cp && 0x1F4D >= cp) || (0x1F68 <= cp && 0x1F6F >= cp)
+		|| (0x1F88 <= cp && 0x1F8F >= cp) || (0x1F98 <= cp && 0x1F9F >= cp)
+		|| (0x1FA8 <= cp && 0x1FAF >= cp) {
 		// GREEK
 		cp -= 8
 	} else {
@@ -315,42 +314,41 @@ fn utf8_to_lower(in_cp int) int {
 // Raw to_upper utf-8 function
 fn utf8_to_upper(in_cp int) int {
 	mut cp := in_cp
-	if ((0x0061 <= cp) && (0x007a >= cp)) || ((0x00e0 <= cp) && (0x00f6 >= cp))
-		|| ((0x00f8 <= cp) && (0x00fe >= cp)) || ((0x03b1 <= cp) && (0x03c1 >= cp))
-		|| ((0x03c3 <= cp) && (0x03cb >= cp)) || ((0x0430 <= cp) && (0x044f >= cp)) {
+	if (0x0061 <= cp && 0x007a >= cp) || (0x00e0 <= cp && 0x00f6 >= cp)
+		|| (0x00f8 <= cp && 0x00fe >= cp) || (0x03b1 <= cp && 0x03c1 >= cp)
+		|| (0x03c3 <= cp && 0x03cb >= cp) || (0x0430 <= cp && 0x044f >= cp) {
 		cp -= 32
-	} else if (0x0450 <= cp) && (0x045f >= cp) {
+	} else if 0x0450 <= cp && 0x045f >= cp {
 		cp -= 80
-	} else if ((0x0100 <= cp) && (0x012f >= cp)) || ((0x0132 <= cp) && (0x0137 >= cp))
-		|| ((0x014a <= cp) && (0x0177 >= cp)) || ((0x0182 <= cp) && (0x0185 >= cp))
-		|| ((0x01a0 <= cp) && (0x01a5 >= cp)) || ((0x01de <= cp) && (0x01ef >= cp))
-		|| ((0x01f8 <= cp) && (0x021f >= cp)) || ((0x0222 <= cp) && (0x0233 >= cp))
-		|| ((0x0246 <= cp) && (0x024f >= cp)) || ((0x03d8 <= cp) && (0x03ef >= cp))
-		|| ((0x0460 <= cp) && (0x0481 >= cp)) || ((0x048a <= cp) && (0x04ff >= cp)) {
+	} else if (0x0100 <= cp && 0x012f >= cp) || (0x0132 <= cp && 0x0137 >= cp)
+		|| (0x014a <= cp && 0x0177 >= cp) || (0x0182 <= cp && 0x0185 >= cp)
+		|| (0x01a0 <= cp && 0x01a5 >= cp) || (0x01de <= cp && 0x01ef >= cp)
+		|| (0x01f8 <= cp && 0x021f >= cp) || (0x0222 <= cp && 0x0233 >= cp)
+		|| (0x0246 <= cp && 0x024f >= cp) || (0x03d8 <= cp && 0x03ef >= cp)
+		|| (0x0460 <= cp && 0x0481 >= cp) || (0x048a <= cp && 0x04ff >= cp) {
 		cp &= ~0x1
-	} else if ((0x0139 <= cp) && (0x0148 >= cp)) || ((0x0179 <= cp) && (0x017e >= cp))
-		|| ((0x01af <= cp) && (0x01b0 >= cp)) || ((0x01b3 <= cp) && (0x01b6 >= cp))
-		|| ((0x01cd <= cp) && (0x01dc >= cp)) {
+	} else if (0x0139 <= cp && 0x0148 >= cp) || (0x0179 <= cp && 0x017e >= cp)
+		|| (0x01af <= cp && 0x01b0 >= cp) || (0x01b3 <= cp && 0x01b6 >= cp)
+		|| (0x01cd <= cp && 0x01dc >= cp) {
 		cp -= 1
 		cp |= 0x1
-	} else if ((0x0561 <= cp) && (0x0586 >= cp)) || ((0x10D0 <= cp) && (0x10F5 >= cp)) {
+	} else if (0x0561 <= cp && 0x0586 >= cp) || (0x10D0 <= cp && 0x10F5 >= cp) {
 		// ARMENIAN or GEORGIAN
 		cp -= 0x30
-	} else if (((0x1E01 <= cp) && (0x1E95 >= cp)) || ((0x1EA1 <= cp) && (0x1EF9 >= cp)))
-		&& (cp & 1 == 1) {
+	} else if ((0x1E01 <= cp && 0x1E95 >= cp) || (0x1EA1 <= cp && 0x1EF9 >= cp)) && cp & 1 == 1 {
 		// LATIN CAPITAL LETTER
 		cp -= 1
-	} else if (0x24D0 <= cp) && (0x24E9 >= cp) {
+	} else if 0x24D0 <= cp && 0x24E9 >= cp {
 		// CIRCLED LATIN
 		cp -= 0x1a
-	} else if (0xFF41 <= cp) && (0xFF5A >= cp) {
+	} else if 0xFF41 <= cp && 0xFF5A >= cp {
 		// FULLWIDTH LATIN CAPITAL
 		cp -= 0x19
-	} else if ((0x1F00 <= cp) && (0x1F07 >= cp)) || ((0x1F10 <= cp) && (0x1F15 >= cp))
-		|| ((0x1F20 <= cp) && (0x1F27 >= cp)) || ((0x1F30 <= cp) && (0x1F37 >= cp))
-		|| ((0x1F40 <= cp) && (0x1F45 >= cp)) || ((0x1F60 <= cp) && (0x1F67 >= cp))
-		|| ((0x1F80 <= cp) && (0x1F87 >= cp)) || ((0x1F90 <= cp) && (0x1F97 >= cp))
-		|| ((0x1FA0 <= cp) && (0x1FA7 >= cp)) {
+	} else if (0x1F00 <= cp && 0x1F07 >= cp) || (0x1F10 <= cp && 0x1F15 >= cp)
+		|| (0x1F20 <= cp && 0x1F27 >= cp) || (0x1F30 <= cp && 0x1F37 >= cp)
+		|| (0x1F40 <= cp && 0x1F45 >= cp) || (0x1F60 <= cp && 0x1F67 >= cp)
+		|| (0x1F80 <= cp && 0x1F87 >= cp) || (0x1F90 <= cp && 0x1F97 >= cp)
+		|| (0x1FA0 <= cp && 0x1FA7 >= cp) {
 		// GREEK
 		cp += 8
 	} else {
