@@ -37,6 +37,16 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 		return true
 	}
 	match expr {
+		ast.Ident {
+			return expr.or_expr.kind != .absent
+		}
+		ast.StringInterLiteral {
+			for e in expr.exprs {
+				if g.need_tmp_var_in_expr(e) {
+					return true
+				}
+			}
+		}
 		ast.IfExpr {
 			if g.need_tmp_var_in_if(expr) {
 				return true
@@ -134,7 +144,10 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			}
 		}
 		ast.SelectorExpr {
-			return g.need_tmp_var_in_expr(expr.expr)
+			if g.need_tmp_var_in_expr(expr.expr) {
+				return true
+			}
+			return expr.or_block.kind != .absent
 		}
 		else {}
 	}
@@ -272,7 +285,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					g.writeln(', !${var_name}.is_error) {')
 				}
 			}
-			if short_opt || branch.cond.vars[0].name != '_' {
+			if short_opt || branch.cond.vars.len > 1 || branch.cond.vars[0].name != '_' {
 				base_type := g.base_type(branch.cond.expr_type)
 				if short_opt {
 					cond_var_name := if branch.cond.vars[0].name == '_' {
@@ -303,6 +316,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 						if sym.info is ast.MultiReturn {
 							if sym.info.types.len == branch.cond.vars.len {
 								for vi, var in branch.cond.vars {
+									if var.name == '_' {
+										continue
+									}
 									var_typ := g.typ(sym.info.types[vi])
 									left_var_name := c_name(var.name)
 									if is_auto_heap {

@@ -260,7 +260,7 @@ fn (mut context Context) print_status() {
 	if context.is_silent {
 		return
 	}
-	if (context.cut_index == 1) && (context.max_index == 0) {
+	if context.cut_index == 1 && context.max_index == 0 {
 		return
 	}
 	msg := '>   ${context.path:-30} | index: ${context.cut_index:5}/${context.max_index - 1:5}'

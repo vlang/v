@@ -9,14 +9,14 @@ fn main() {
 
 	sql db {
 		create table User
-	}
+	}!
 
 	first := 'first'
 	second := 'second'
 
 	users := sql db {
 		select from User where first == second
-	}
+	}!
 
 	println(users)
 }

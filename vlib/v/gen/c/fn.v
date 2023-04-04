@@ -204,7 +204,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	is_closure := node.scope.has_inherited_vars()
 	mut cur_closure_ctx := ''
 	if is_closure {
-		cur_closure_ctx = closure_ctx(node)
+		cur_closure_ctx = g.closure_ctx(node)
 		// declare the struct before its implementation
 		g.definitions.write_string(cur_closure_ctx)
 		g.definitions.writeln(';')
@@ -461,8 +461,12 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) !string {
 
 const closure_ctx = '_V_closure_ctx'
 
-fn closure_ctx(node ast.FnDecl) string {
-	return 'struct _V_${node.name}_Ctx'
+fn (mut g Gen) closure_ctx(node ast.FnDecl) string {
+	mut fn_name := node.name
+	if node.generic_names.len > 0 {
+		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
+	}
+	return 'struct _V_${fn_name}_Ctx'
 }
 
 fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
@@ -476,7 +480,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 		g.write(fn_name)
 		return
 	}
-	ctx_struct := closure_ctx(node.decl)
+	ctx_struct := g.closure_ctx(node.decl)
 	// it may be possible to optimize `memdup` out if the closure never leaves current scope
 	// TODO in case of an assignment, this should only call "__closure_set_data" and "__closure_set_function" (and free the former data)
 	g.write('__closure_create(${fn_name}, (${ctx_struct}*) memdup_uncollectable(&(${ctx_struct}){')
@@ -520,14 +524,18 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 }
 
 fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
-	if node.has_gen {
+	mut fn_name := node.decl.name
+	if node.decl.generic_names.len > 0 {
+		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
+	}
+	if node.has_gen[fn_name] {
 		return
 	}
-	node.has_gen = true
+	node.has_gen[fn_name] = true
 	mut builder := strings.new_builder(256)
 	builder.writeln('/*F*/')
 	if node.inherited_vars.len > 0 {
-		ctx_struct := closure_ctx(node.decl)
+		ctx_struct := g.closure_ctx(node.decl)
 		builder.writeln('${ctx_struct} {')
 		for var in node.inherited_vars {
 			var_sym := g.table.sym(var.typ)

@@ -21,8 +21,25 @@ fn test_raw_string() {
 	println(raw)
 }
 
+fn test_runes() {
+	mut a := `V`
+	println(a)
+
+	a = `😀`
+	println(a)
+
+	rocket := `🚀`
+	println(rocket)
+
+	// should all print `★`
+	print(`\u2605`)
+	print(`\xe2\x98\x85`)
+	println(`\xe2\x98\x85`) 
+}
+
 fn main() {
 	test_unicode_characters()
 	test_escape_codes()
 	test_raw_string()
+	test_runes()
 }

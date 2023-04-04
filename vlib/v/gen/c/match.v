@@ -81,7 +81,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			''
 		}
 		cond_var = g.new_tmp_var()
-		g.write('${g.typ(node.cond_type)} ${cond_var} = ')
+		g.write('${g.typ(node.cond_type)} /*A*/ ${cond_var} = ')
 		g.expr(node.cond)
 		g.writeln(';')
 		g.set_current_pos_as_last_stmt_pos()

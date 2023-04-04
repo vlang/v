@@ -1396,7 +1396,12 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 	fn_typ_info := typ_sym.info as ast.FnType
 	fn_info := fn_typ_info.func
 	fn_name := f.no_cur_mod(node.name)
-	f.write('type ${fn_name} = fn (')
+	mut generic_types_str := ''
+	if node.generic_types.len > 0 {
+		generic_names := node.generic_types.map(f.table.sym(it).name)
+		generic_types_str = '[${generic_names.join(', ')}]'
+	}
+	f.write('type ${fn_name}${generic_types_str} = fn (')
 	for i, arg in fn_info.params {
 		if arg.is_mut {
 			f.write(arg.typ.share().str() + ' ')
@@ -1775,7 +1780,11 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		}
 	}
 	if node.mod == '' && node.name == '' {
-		f.write(node.left.str())
+		if node.left is ast.CallExpr {
+			f.expr(node.left)
+		} else {
+			f.write(node.left.str())
+		}
 	}
 	f.write_generic_call_if_require(node)
 	f.write('(')
@@ -2138,7 +2147,18 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	}
 	start_pos := f.out.len
 	start_len := f.line_len
-	f.expr(node.left)
+	mut redundant_par := false
+	if node.left is ast.ParExpr && node.op in [.and, .logical_or] {
+		if node.left.expr is ast.InfixExpr {
+			if node.left.expr.op !in [.and, .logical_or] {
+				redundant_par = true
+				f.expr(node.left.expr)
+			}
+		}
+	}
+	if !redundant_par {
+		f.expr(node.left)
+	}
 	if node.before_op_comments.len > 0 {
 		f.comments(node.before_op_comments, iembed: node.before_op_comments[0].is_inline)
 	}
@@ -2164,7 +2184,18 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	} else if is_and {
 		f.write(f.node_str(node.right).trim_string_left('&'))
 	} else {
-		f.expr(node.right)
+		redundant_par = false
+		if node.right is ast.ParExpr && node.op in [.and, .logical_or] {
+			if node.right.expr is ast.InfixExpr {
+				if node.right.expr.op !in [.and, .logical_or] {
+					redundant_par = true
+					f.expr(node.right.expr)
+				}
+			}
+		}
+		if !redundant_par {
+			f.expr(node.right)
+		}
 	}
 	if !buffering_save && f.buffering {
 		f.buffering = false

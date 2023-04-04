@@ -185,7 +185,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 					continue
 				}
 			}
-			if (i - 1 <= node.args.len - 1) && has_decompose
+			if i - 1 <= node.args.len - 1 && has_decompose
 				&& node.args[i - 1].expr is ast.ArrayDecompose {
 				mut d_count := 0
 				for d_i in i .. m.params.len {

@@ -39,7 +39,7 @@ fn test_a_const_that_is_alias_to_fn_from_module() {
 
 const pg = fn_generator()
 
-const pg2 = main.fn_generator()()
+const pg2 = fn_generator()()
 
 fn fn_generator() fn () string {
 	return fn () string {
@@ -49,7 +49,7 @@ fn fn_generator() fn () string {
 }
 
 fn test_a_const_can_be_assigned_a_fn_produced_by_a_fn_generator_and_the_const_can_be_used() {
-	assert main.fn_generator()() == 'ok'
+	assert fn_generator()() == 'ok'
 
 	x := fn_generator()
 	assert x() == 'ok'

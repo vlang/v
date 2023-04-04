@@ -12,7 +12,7 @@ fn test_orm_interface() {
 
 	sql db {
 		create table User
-	}
+	}!
 
 	user := User{
 		name: 'test'
@@ -20,11 +20,11 @@ fn test_orm_interface() {
 
 	sql db {
 		insert user into User
-	}
+	}!
 
 	users := sql db {
 		select from User
-	}
+	}!
 
 	assert users.len == 1
 	assert users.first().name == user.name

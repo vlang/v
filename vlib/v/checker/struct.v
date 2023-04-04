@@ -295,7 +295,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			}
 		}
 		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0
-			&& !node.is_short_syntax && c.table.cur_concrete_types.len != 0 {
+			&& !node.is_short_syntax && c.table.cur_concrete_types.len != 0
+			&& !is_field_zero_struct_init {
 			if node.generic_types.len == 0 {
 				c.error('generic struct init must specify type parameter, e.g. Foo[T]',
 					node.pos)
@@ -648,8 +649,9 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 							node.pos)
 					}
 				}
-				if !field.has_default_expr && field.name !in inited_fields && !field.typ.is_ptr()
-					&& !field.typ.has_flag(.option) && c.table.final_sym(field.typ).kind == .struct_ {
+				if !node.has_update_expr && !field.has_default_expr && field.name !in inited_fields
+					&& !field.typ.is_ptr() && !field.typ.has_flag(.option)
+					&& c.table.final_sym(field.typ).kind == .struct_ {
 					mut zero_struct_init := ast.StructInit{
 						pos: node.pos
 						typ: field.typ

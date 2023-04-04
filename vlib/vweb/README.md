@@ -378,6 +378,109 @@ pub fn (mut app App) with_auth() bool {
 }
 ```
 
+### Controllers
+Controllers can be used to split up app logic so you are able to have one struct 
+per `"/"`.  E.g. a struct `Admin` for urls starting with `"/admin"` and a struct `Foo`
+for urls starting with `"/foo"`
+
+**Example:**
+```v
+module main
+
+import vweb
+
+struct App {
+	vweb.Context
+	vweb.Controller
+}
+
+struct Admin {
+	vweb.Context
+}
+
+struct Foo {
+	vweb.Context
+}
+
+fn main() {
+	mut app := &App{
+		controllers: [
+			vweb.controller('/admin', &Admin{}),
+			vweb.controller('/foo', &Foo{}),
+		]
+	}
+	vweb.run(app, 8080)
+}
+```
+
+You can do everything with a controller struct as with a regular `App` struct. 
+The only difference being is that only the main app that is being passed to `vweb.run`
+is able to have controllers. If you add `vweb.Controller` on a controller struct it 
+will simply be ignored.
+
+#### Routing
+Any route inside a controller struct is treated as a relative route to its controller namespace.
+
+```v ignore
+['/path']
+pub fn (mut app Admin) path vweb.Result {
+    return app.text('Admin')
+}
+```
+When we created the controller with `vweb.controller('/admin', &Admin{})` we told
+vweb that the namespace of that controller is `"/admin"` so in this example we would 
+see the text `"Admin"` if we navigate to the url `"/admin/path"`.
+
+Vweb doesn't support fallback routes or duplicate routes, so if we add the following 
+route to the example the code will produce an error.
+
+```v ignore
+['/admin/path']
+pub fn (mut app App) admin_path vweb.Result {
+    return app.text('Admin overwrite')
+}
+```
+There will be an error, because the controller `Admin` handles all routes starting with
+`"/admin"`; the method `admin_path` is unreachable.
+
+#### Databases and `[vweb_global]` in controllers
+
+Fields with `[vweb_global]` like a database have to passed to each controller individually.
+
+**Example:**
+```v
+module main
+
+import vweb
+import db.sqlite
+
+struct App {
+	vweb.Context
+	vweb.Controller
+pub mut:
+	db sqlite.DB [vweb_global]
+}
+
+struct Admin {
+	vweb.Context
+pub mut:
+	db sqlite.DB [vweb_global]
+}
+
+fn main() {
+	mut db := sqlite.connect('db')!
+
+	mut app := &App{
+		db: db
+		controllers: [
+			vweb.controller('/admin', &Admin{
+				db: db
+			}),
+		]
+	}
+}
+```
+
 ### Responses
 
 #### - set_status

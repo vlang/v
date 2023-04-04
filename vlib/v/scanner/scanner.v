@@ -158,7 +158,7 @@ pub fn (mut s Scanner) free() {
 
 [inline]
 fn (s &Scanner) should_parse_comment() bool {
-	return (s.comments_mode == .parse_comments)
+	return s.comments_mode == .parse_comments
 		|| (s.comments_mode == .toplevel_comments && !s.is_inside_toplvl_statement)
 }
 
@@ -520,7 +520,7 @@ fn (mut s Scanner) skip_whitespace() {
 			s.pos++
 			continue
 		}
-		if !(c == 32 || (c > 8 && c < 14) || (c == 0x85) || (c == 0xa0)) {
+		if !(c == 32 || (c > 8 && c < 14) || c == 0x85 || c == 0xa0) {
 			return
 		}
 		c_is_nl := c == scanner.b_cr || c == scanner.b_lf
@@ -1063,15 +1063,15 @@ fn (mut s Scanner) text_scan() token.Token {
 					// Skip comment
 					for nest_count > 0 && s.pos < s.text.len - 1 {
 						s.pos++
-						if s.pos >= s.text.len {
-							s.line_nr--
-							s.error('comment not terminated')
+						if s.pos >= s.text.len - 1 {
+							s.line_nr = start_line
+							s.error('unterminated multiline comment')
 						}
 						if s.text[s.pos] == scanner.b_lf {
 							s.inc_line_number()
 							continue
 						}
-						if s.expect('/*', s.pos) {
+						if s.expect('/*', s.pos) && s.text[s.pos + 2] != `/` {
 							nest_count++
 							continue
 						}
@@ -1432,7 +1432,7 @@ fn (mut s Scanner) ident_char() string {
 		// e.g. (octal) \141 (hex) \x61 or (unicode) \u2605
 		// we don't handle binary escape codes in rune literals
 		orig := c
-		if (c.len % 2 == 0) && (escaped_hex || escaped_unicode || escaped_octal) {
+		if c.len % 2 == 0 && (escaped_hex || escaped_unicode || escaped_octal) {
 			if escaped_unicode {
 				// there can only be one, so attempt to decode it now
 				c = s.decode_u_escapes(c, 0, [0])

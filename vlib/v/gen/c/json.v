@@ -648,11 +648,18 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 			'val'
 		}
 		is_option := field.typ.has_flag(.option)
+		indent := if is_option { '\t\t' } else { '\t' }
 		if is_option {
 			enc.writeln('\tif (val${op}${c_name(field.name)}.state != 2) {')
 		}
 		if is_omit_empty {
-			enc.writeln('\t if (val${op}${c_name(field.name)} != ${g.type_default(field.typ)})')
+			if field.typ.has_flag(.option) {
+				enc.writeln('${indent}if (val${op}${c_name(field.name)}.state != 2)')
+			} else if field.typ == ast.string_type {
+				enc.writeln('${indent}if (val${op}${c_name(field.name)}.len != 0)')
+			} else {
+				enc.writeln('${indent}if (val${op}${c_name(field.name)} != ${g.type_default(field.typ)})')
+			}
 		}
 		if !is_js_prim(field_type) {
 			if field_sym.kind == .alias {
@@ -663,44 +670,44 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 		if field_sym.kind == .enum_ {
 			if g.is_enum_as_int(field_sym) {
 				if field.typ.has_flag(.option) {
-					enc.writeln('\tcJSON_AddItemToObject(o, "${name}", json__encode_u64(*${prefix_enc}${op}${c_name(field.name)}.data));\n')
+					enc.writeln('${indent}\tcJSON_AddItemToObject(o, "${name}", json__encode_u64(*${prefix_enc}${op}${c_name(field.name)}.data));\n')
 				} else {
-					enc.writeln('\tcJSON_AddItemToObject(o, "${name}", json__encode_u64(${prefix_enc}${op}${c_name(field.name)}));\n')
+					enc.writeln('${indent}\tcJSON_AddItemToObject(o, "${name}", json__encode_u64(${prefix_enc}${op}${c_name(field.name)}));\n')
 				}
 			} else {
 				if field.typ.has_flag(.option) {
-					enc.writeln('\t{')
-					enc.writeln('\t\tcJSON *enum_val;')
+					enc.writeln('${indent}\t{')
+					enc.writeln('${indent}\t\tcJSON *enum_val;')
 					g.gen_enum_to_str(field.typ, field_sym, '*(${g.base_type(field.typ)}*)${prefix_enc}${op}${c_name(field.name)}.data',
-						'enum_val', '\t\t', mut enc)
-					enc.writeln('\t\tcJSON_AddItemToObject(o, "${name}", enum_val);')
-					enc.writeln('\t}')
+						'enum_val', '${indent}\t\t', mut enc)
+					enc.writeln('${indent}\t\tcJSON_AddItemToObject(o, "${name}", enum_val);')
+					enc.writeln('${indent}\t}')
 				} else {
-					enc.writeln('\t{')
-					enc.writeln('\t\tcJSON *enum_val;')
+					enc.writeln('${indent}\t{')
+					enc.writeln('${indent}\t\tcJSON *enum_val;')
 					g.gen_enum_to_str(field.typ, field_sym, '${prefix_enc}${op}${c_name(field.name)}',
-						'enum_val', '\t\t', mut enc)
-					enc.writeln('\t\tcJSON_AddItemToObject(o, "${name}", enum_val);')
-					enc.writeln('\t}')
+						'enum_val', '${indent}\t\t', mut enc)
+					enc.writeln('${indent}\t\tcJSON_AddItemToObject(o, "${name}", enum_val);')
+					enc.writeln('${indent}\t}')
 				}
 			}
 		} else {
 			if field_sym.name == 'time.Time' {
 				// time struct requires special treatment
 				// it has to be encoded as a unix timestamp number
-				enc.writeln('\tcJSON_AddItemToObject(o, "${name}", json__encode_u64(${prefix_enc}${op}${c_name(field.name)}._v_unix));')
+				enc.writeln('${indent}\tcJSON_AddItemToObject(o, "${name}", json__encode_u64(${prefix_enc}${op}${c_name(field.name)}._v_unix));')
 			} else {
 				if !field.typ.is_real_pointer() {
-					enc.writeln('\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${prefix_enc}${op}${c_name(field.name)})); /*A*/')
+					enc.writeln('${indent}\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${prefix_enc}${op}${c_name(field.name)})); /*A*/')
 				} else {
 					arg_prefix := if field.typ.is_ptr() { '' } else { '*' }
 					sptr_value := '${prefix_enc}${op}${c_name(field.name)}'
 					if !field.typ.has_flag(.option) {
-						enc.writeln('\tif (${sptr_value} != 0) {')
-						enc.writeln('\t\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${arg_prefix}${sptr_value}));')
-						enc.writeln('\t}\n')
+						enc.writeln('${indent}\tif (${sptr_value} != 0) {')
+						enc.writeln('${indent}\t\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${arg_prefix}${sptr_value}));')
+						enc.writeln('${indent}\t}\n')
 					} else {
-						enc.writeln('\t\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${arg_prefix}${sptr_value}));')
+						enc.writeln('${indent}\t\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${arg_prefix}${sptr_value}));')
 					}
 				}
 			}

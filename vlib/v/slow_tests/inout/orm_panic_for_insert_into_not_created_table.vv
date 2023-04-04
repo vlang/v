@@ -14,5 +14,5 @@ fn main() {
 
 	sql db {
 		insert user into User
-	}
+	}!
 }

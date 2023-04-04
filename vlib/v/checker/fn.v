@@ -275,6 +275,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('fn `init` cannot have a return type', node.pos)
 		}
 	}
+
+	if node.language == .v && node.mod == 'main' && node.name.after_char(`.`) in reserved_type_names
+		&& !node.is_method && !c.is_builtin_mod {
+		c.error('top level declaration cannot shadow builtin type', node.pos)
+	}
 	if node.return_type != ast.Type(0) {
 		c.ensure_type_exists(node.return_type, node.return_type_pos) or { return }
 		if node.language == .v && node.is_method && node.name == 'str' {
