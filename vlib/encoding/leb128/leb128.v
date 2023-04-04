@@ -82,11 +82,11 @@ pub fn decode_i64(value []u8) i64 {
 	mut result := i64(0)
 	mut shift := 0
 	for b in value {
-		result |= b & 0x7f << shift
+		result |= i64(b & 0x7f) << shift
 		shift += 7
 		if b & 0x80 == 0 {
 			if shift < 64 && b & 0x40 != 0 {
-				result |= ~0 << shift
+				result |= ~i64(0) << shift
 			}
 			break
 		}
@@ -98,7 +98,7 @@ pub fn decode_u64(value []u8) u64 {
 	mut result := u64(0)
 	mut shift := 0
 	for b in value {
-		result |= b & 0x7f << shift
+		result |= u64(b & 0x7f) << shift
 		if b & 0x80 == 0 {
 			break
 		}
@@ -111,7 +111,7 @@ pub fn decode_u32(value []u8) u32 {
 	mut result := u32(0)
 	mut shift := 0
 	for b in value {
-		result |= b & 0x7f << shift
+		result |= u32(b & 0x7f) << shift
 		if b & 0x80 == 0 {
 			break
 		}
