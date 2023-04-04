@@ -1,4 +1,4 @@
-import leb128
+import encoding.leb128
 import encoding.hex
 
 struct PairU {
@@ -23,7 +23,7 @@ fn test_unsigned_data() {
 		assert leb128.encode_u64(x.value).hex() == x.encoded, 'leb128.encode_u64( ${x.value} )  == ${x.encoded}'
 		bytes := hex.decode(x.encoded)!
 		eprintln('>> bytes: ${bytes} | pair: ${x}')
-		assert leb128.decode_u64( bytes ) == x.value, 'leb128.decode_u64( $x.encoded ) == ${x.value}'
+		assert leb128.decode_u64(bytes) == x.value, 'leb128.decode_u64( ${x.encoded} ) == ${x.value}'
 	}
 }
 
@@ -32,7 +32,7 @@ fn test_signed_data() {
 		assert leb128.encode_i64(x.value).hex() == x.encoded, 'k: ${x.value} | v: ${x.encoded}'
 		bytes := hex.decode(x.encoded)!
 		eprintln('>> bytes: ${bytes} | pair: ${x}')
-		assert leb128.decode_i64( bytes ) == x.value, 'leb128.decode_i64( $x.encoded ) == ${x.value}'
+		assert leb128.decode_i64(bytes) == x.value, 'leb128.decode_i64( ${x.encoded} ) == ${x.value}'
 	}
 }
 
