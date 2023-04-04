@@ -379,6 +379,11 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 	prev_inside_ternary := g.inside_ternary
 	g.inside_ternary = 0
+	prev_indent := g.indent
+	g.indent = 0
+	defer {
+		g.indent = prev_indent
+	}
 	g.stmts(node.stmts)
 	g.inside_ternary = prev_inside_ternary
 	if node.is_noreturn {
@@ -530,11 +535,6 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	}
 	if node.has_gen[fn_name] {
 		return
-	}
-	prev_indent := g.indent
-	g.indent = 0
-	defer {
-		g.indent = prev_indent
 	}
 	node.has_gen[fn_name] = true
 	mut builder := strings.new_builder(256)
