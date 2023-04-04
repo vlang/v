@@ -2147,7 +2147,18 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	}
 	start_pos := f.out.len
 	start_len := f.line_len
-	f.expr(node.left)
+	mut redundant_par := false
+	if node.left is ast.ParExpr && node.op in [.and, .logical_or] {
+		if node.left.expr is ast.InfixExpr {
+			if node.left.expr.op !in [.and, .logical_or] {
+				redundant_par = true
+				f.expr(node.left.expr)
+			}
+		}
+	}
+	if !redundant_par {
+		f.expr(node.left)
+	}
 	if node.before_op_comments.len > 0 {
 		f.comments(node.before_op_comments, iembed: node.before_op_comments[0].is_inline)
 	}
@@ -2173,7 +2184,18 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	} else if is_and {
 		f.write(f.node_str(node.right).trim_string_left('&'))
 	} else {
-		f.expr(node.right)
+		redundant_par = false
+		if node.right is ast.ParExpr && node.op in [.and, .logical_or] {
+			if node.right.expr is ast.InfixExpr {
+				if node.right.expr.op !in [.and, .logical_or] {
+					redundant_par = true
+					f.expr(node.right.expr)
+				}
+			}
+		}
+		if !redundant_par {
+			f.expr(node.right)
+		}
 	}
 	if !buffering_save && f.buffering {
 		f.buffering = false
