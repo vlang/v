@@ -14,20 +14,20 @@ fn test_insert_with_reserved_name() {
 	}
 	sql db {
 		create table Bad
-	}
+	}!
 	sql db {
 		insert bad into Bad
-	}
+	}!
 
 	sql db {
 		insert bad into Bad
 		insert bad into Bad
 		insert bad into Bad
-	}
+	}!
 
 	rows := sql db {
 		select from Bad
-	}
+	}!
 
 	assert rows.len == 4
 }

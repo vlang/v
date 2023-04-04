@@ -3,5 +3,5 @@ vlib/v/checker/tests/orm_wrong_where_expr_error.vv:15:26: error: V ORM: `where` 
    14 |     users := sql db {
    15 |         select from User where 3
       |                                ^
-   16 |     }
+   16 |     }!
    17 |

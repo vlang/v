@@ -14,13 +14,13 @@ fn main() {
 	db := sqlite.connect(':memory:')!
 	sql db {
 		create table User
-	}
+	}!
 	m := User{}
 	sql db {
 		insert m into User
-	}
+	}!
 
 	_ := sql db {
 		select from User where email == email
-	}
+	}!
 }

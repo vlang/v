@@ -5,10 +5,10 @@ struct User {
 	name string
 }
 
-fn get_users(mut db sqlite.DB) []User {
+fn get_users(mut db sqlite.DB) ![]User {
 	return sql db {
 		select from User
-	}
+	}!
 }
 
 fn test_orm_mut_db() {
@@ -16,7 +16,7 @@ fn test_orm_mut_db() {
 
 	sql db {
 		create table User
-	}
+	}!
 
 	first_user := User{
 		name: 'first'
@@ -28,9 +28,9 @@ fn test_orm_mut_db() {
 	sql db {
 		insert first_user into User
 		insert second_user into User
-	}
+	}!
 
-	users := get_users(mut db)
+	users := get_users(mut db)!
 
 	assert users.len == 2
 }

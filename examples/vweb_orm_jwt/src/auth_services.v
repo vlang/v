@@ -33,7 +33,7 @@ fn (mut app App) service_auth(username string, password string) !string {
 
 	users := sql db {
 		select from User where username == username
-	}
+	}!
 
 	if users.len == 0 {
 		return error('user not found')
