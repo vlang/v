@@ -1,6 +1,6 @@
 module leb128
 
-// encode_i32 encodes the int `value` as leb128 encoded byte array
+// encode_i32 encodes the `value` as leb128 encoded byte array
 pub fn encode_i32(value i32) []u8 {
 	mut result := []u8{cap: 4}
 	mut val := value
@@ -18,7 +18,7 @@ pub fn encode_i32(value i32) []u8 {
 	return result
 }
 
-// encode_i64 encodes the i64 `value` as leb128 encoded byte array
+// encode_i64 encodes the `value` as leb128 encoded byte array
 pub fn encode_i64(value i64) []u8 {
 	mut result := []u8{cap: 8}
 	mut val := value
@@ -34,7 +34,7 @@ pub fn encode_i64(value i64) []u8 {
 	return result
 }
 
-// encode_u64 encodes the u64 `value` as leb128 encoded byte array
+// encode_u64 encodes the `value` as leb128 encoded byte array
 pub fn encode_u64(value u64) []u8 {
 	mut result := []u8{cap: 8}
 	mut val := value
@@ -50,7 +50,7 @@ pub fn encode_u64(value u64) []u8 {
 	return result
 }
 
-// encode_u32 encodes the u32 `value` as leb128 encoded byte array
+// encode_u32 encodes the `value` as leb128 encoded byte array
 pub fn encode_u32(value u32) []u8 {
 	mut result := []u8{cap: 4}
 	mut val := value
@@ -66,7 +66,7 @@ pub fn encode_u32(value u32) []u8 {
 	return result
 }
 
-// decode_int decodes an i32 from the given leb128 encoded array `value`
+// decode_i32 decodes an i32 from the given leb128 encoded array `value`
 pub fn decode_i32(value []u8) i32 {
 	mut result := int(0)
 	mut shift := 0
@@ -85,19 +85,19 @@ pub fn decode_i32(value []u8) i32 {
 
 // decode_i64 decodes an i64 from the given leb128 encoded array `value`
 pub fn decode_i64(value []u8) i64 {
-	mut result := i64(0)
+	mut result := u64(0)
 	mut shift := 0
 	for b in value {
-		result |= i64(b & 0x7f) << shift
+		result |= u64(b & 0x7f) << shift
 		shift += 7
 		if b & 0x80 == 0 {
 			if shift < 64 && b & 0x40 != 0 {
-				result |= ~i64(0) << shift
+				result |= ~u64(0) << shift
 			}
 			break
 		}
 	}
-	return result
+	return i64(result)
 }
 
 // decode_u64 decodes an u64 from the given leb128 encoded array `value`
