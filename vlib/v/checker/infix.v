@@ -195,6 +195,18 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						node.pos)
 				}
 			}
+			if mut node.left is ast.CallExpr {
+				if node.left.return_type.has_flag(.option)
+					|| node.left.return_type.has_flag(.result) {
+					option_or_result := if node.left.return_type.has_flag(.option) {
+						'option'
+					} else {
+						'result'
+					}
+					c.error('unwrapped ${option_or_result} cannot be used with `${node.op.str()}`',
+						left_pos)
+				}
+			}
 			node.promoted_type = ast.bool_type
 			return ast.bool_type
 		}
