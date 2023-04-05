@@ -26,20 +26,20 @@ mut:
 
 // decode_string_to_string decodes a V string `src` using Base32
 // and returns the decoded string or a `corrupt_input_error_msg` error.
-pub fn decode_string_to_string(src string) ?string {
+pub fn decode_string_to_string(src string) !string {
 	return decode_to_string(src.bytes())
 }
 
 // decode_to_string decodes a byte array `src` using Base32
 // and returns the decoded string or a `corrupt_input_error_msg` error.
-pub fn decode_to_string(src []u8) ?string {
-	res := decode(src)?
+pub fn decode_to_string(src []u8) !string {
+	res := decode(src)!
 	return res.bytestr()
 }
 
 // decode decodes a byte array `src` using Base32
 // and returns the decoded bytes or a `corrupt_input_error_msg` error.
-pub fn decode(src []u8) ?[]u8 {
+pub fn decode(src []u8) ![]u8 {
 	mut e := new_encoding(base32.std_alphabet)
 	return e.decode(src)
 }
@@ -226,7 +226,7 @@ fn (enc &Encoding) encoded_len(n int) int {
 
 // decode_string decodes a V string `src` using Base32 with the encoding `enc`
 // and returns the decoded bytes or a `corrupt_input_error_msg` error.
-pub fn (enc &Encoding) decode_string(src string) ?[]u8 {
+pub fn (enc &Encoding) decode_string(src string) ![]u8 {
 	return enc.decode(src.bytes())
 	// mut buf := strip_newlines(src.bytes())
 	// mut dst := unsafe { buf }
@@ -237,15 +237,15 @@ pub fn (enc &Encoding) decode_string(src string) ?[]u8 {
 
 // decode_string_to_string decodes a V string `src` using Base32 with the
 // encoding `enc` and returns the decoded V string or a `corrupt_input_error_msg` error.
-pub fn (enc &Encoding) decode_string_to_string(src string) ?string {
-	decoded := enc.decode_string(src)?
+pub fn (enc &Encoding) decode_string_to_string(src string) !string {
+	decoded := enc.decode_string(src)!
 	return decoded.bytestr()
 }
 
 // decode decodes `src` using the encoding `enc`. It returns the decoded bytes
 // written or a `corrupt_input_error_msg` error.
 // New line characters (\r and \n) are ignored.
-pub fn (enc &Encoding) decode(src []u8) ?[]u8 {
+pub fn (enc &Encoding) decode(src []u8) ![]u8 {
 	mut buf := []u8{len: src.len}
 	// mut dst := unsafe { buf }
 	// l := strip_newlines(mut dst, src)
@@ -259,7 +259,7 @@ pub fn (enc &Encoding) decode(src []u8) ?[]u8 {
 // indicates if end-of-message padding was encountered and thus any
 // additional data is an error. This method assumes that src has been
 // stripped of all supported whitespace (`\r` and `\n`).
-fn (enc &Encoding) decode_(src_ []u8, mut dst []u8) ?(int, bool) {
+fn (enc &Encoding) decode_(src_ []u8, mut dst []u8) !(int, bool) {
 	mut src := unsafe { src_ }
 	mut n := 0
 	mut end := false
