@@ -771,6 +771,7 @@ pub mut:
 	notices          []errors.Notice   // all the checker notices in the file
 	generic_fns      []&FnDecl
 	global_labels    []string // from `asm { .globl labelname }`
+	template_paths   []string // all the .html/.md files that were processed with $tmpl
 }
 
 [unsafe]

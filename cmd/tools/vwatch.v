@@ -112,8 +112,8 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 		// The next command will make V parse the program, and print all .v files,
 		// needed for its compilation, without actually compiling it.
 		copts := context.opts.join(' ')
-		cmd := '"${context.vexe}" -silent -print-v-files ${copts}'
-		// context.elog('> cmd: $cmd')
+		cmd := '"${context.vexe}" -silent -print-watched-files ${copts}'
+		// context.elog('> cmd: ${cmd}')
 		mut paths := []string{}
 		if context.add_files.len > 0 && context.add_files[0] != '' {
 			paths << context.add_files
@@ -121,7 +121,11 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 		vfiles := os.execute(cmd)
 		if vfiles.exit_code == 0 {
 			paths_trimmed := vfiles.output.trim_space()
-			paths << paths_trimmed.split('\n')
+			reported_used_files := paths_trimmed.split('\n')
+			$if trace_reported_used_files ? {
+				context.elog('reported_used_files: ${reported_used_files}')
+			}
+			paths << reported_used_files
 		}
 		for vf in paths {
 			apaths[os.real_path(os.dir(vf))] = true

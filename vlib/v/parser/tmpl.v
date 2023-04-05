@@ -97,6 +97,7 @@ pub fn (mut p Parser) compile_template_file(template_file string, fn_name string
 		p.error('reading from ${template_file} failed')
 		return ''
 	}
+	p.template_paths << template_file
 	basepath := os.dir(template_file)
 	lstartlength := lines.len * 30
 	tmpl_str_start := "\tsb_${fn_name}.write_string('"
@@ -195,6 +196,7 @@ fn vweb_tmpl_${fn_name}() string {
 				})
 				''
 			}
+			p.template_paths << file_path
 			file_splitted := file_content.split_into_lines().reverse()
 			for f in file_splitted {
 				tline_number--
