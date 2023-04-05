@@ -243,6 +243,15 @@ pub fn (mut b Builder) parse_imports() {
 		}
 		exit(0)
 	}
+	if b.pref.print_watched_files {
+		for p in b.parsed_files {
+			println(p.path)
+			for tp in p.template_paths {
+				println(tp)
+			}
+		}
+		exit(0)
+	}
 	if b.pref.dump_files != '' {
 		b.dump_files(b.parsed_files.map(it.path))
 	}
