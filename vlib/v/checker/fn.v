@@ -1617,11 +1617,11 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			unknown_method_msg = err.msg()
 		}
 	}
-	mut rec_concrete_types := []ast.Type{}
 	if has_method {
 		// x is Bar[T], x.foo() -> x.foo[T]()
 		rec_sym := c.table.final_sym(node.left_type)
 		rec_is_generic := left_type.has_flag(.generic)
+		mut rec_concrete_types := []ast.Type{}
 		match rec_sym.info {
 			ast.Struct, ast.SumType, ast.Interface {
 				if rec_sym.info.concrete_types.len > 0 {
