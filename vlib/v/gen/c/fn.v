@@ -379,6 +379,11 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 	prev_inside_ternary := g.inside_ternary
 	g.inside_ternary = 0
+	prev_indent := g.indent
+	g.indent = 0
+	defer {
+		g.indent = prev_indent
+	}
 	g.stmts(node.stmts)
 	g.inside_ternary = prev_inside_ternary
 	if node.is_noreturn {
