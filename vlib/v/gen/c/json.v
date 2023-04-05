@@ -128,8 +128,8 @@ ${enc_fn_dec} {
 			value_type := g.table.value_type(utyp)
 			// If we have `[]Profile`, have to register a Profile en(de)coder first
 			g.gen_json_for_type(value_type)
-			dec.writeln(g.decode_array(value_type, array_size))
-			enc.writeln(g.encode_array(value_type, array_size))
+			dec.writeln(g.decode_array(utyp, value_type, array_size, ret_styp))
+			enc.writeln(g.encode_array(utyp, value_type, array_size))
 		} else if sym.kind == .map {
 			// Handle maps
 			m := sym.info as ast.Map
@@ -628,10 +628,18 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				gen_js_get_opt(dec_name, field_type, styp, tmp, name, mut dec, is_required)
 				dec.writeln('\tif (jsonroot_${tmp}) {')
 
-				if field_sym.kind == .array_fixed {
-					dec.writeln('\t\tvmemcpy(${prefix}${op}${c_name(field.name)},*(${field_type}*)${tmp}.data,sizeof(${field_type}));')
+				if field.typ.has_flag(.option) {
+					if field_sym.kind == .array_fixed {
+						dec.writeln('\t\tvmemcpy(&${prefix}${op}${c_name(field.name)}, (${field_type}*)${tmp}.data, sizeof(${field_type}));')
+					} else {
+						dec.writeln('\t\tvmemcpy(&${prefix}${op}${c_name(field.name)}, (${field_type}*)${tmp}.data, sizeof(${field_type}));')
+					}
 				} else {
-					dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = *(${field_type}*) ${tmp}.data;')
+					if field_sym.kind == .array_fixed {
+						dec.writeln('\t\tvmemcpy(${prefix}${op}${c_name(field.name)},*(${field_type}*)${tmp}.data,sizeof(${field_type}));')
+					} else {
+						dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = *(${field_type}*) ${tmp}.data;')
+					}
 				}
 				if field.has_default_expr {
 					dec.writeln('\t} else {')
@@ -757,23 +765,50 @@ fn is_js_prim(typ string) bool {
 		'u32', 'u64', 'byte']
 }
 
-fn (mut g Gen) decode_array(value_type ast.Type, fixed_array_size int) string {
+fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size int, ret_styp string) string {
 	styp := g.typ(value_type)
 	fn_name := js_dec_name(styp)
 	noscan := g.check_noscan(value_type)
 
-	fixed_array_str, fixed_array_size_str, res_str, array_free_str := if fixed_array_size > -1 {
-		// fixed array
-		'fixed_', '_${fixed_array_size}', '', ''
-	} else {
-		'', '', 'res = __new_array${noscan}(0, 0, sizeof(${styp}));', 'array_free(&res);'
-	}
+	// fixed_array_str, fixed_array_size_str, res_str, array_free_str := if fixed_array_size > -1 {
+	// 	// fixed array
+	// 	'fixed_', '_${fixed_array_size}', '', ''
+	// } else {
+	// 	'', '', 'res = __new_array${noscan}(0, 0, sizeof(${styp}));', 'array_free(&res);'
+	// }
 
-	fixed_array_idx, array_element_assign, fixed_array_idx_increment := if fixed_array_size > -1 {
-		// fixed array
-		'int fixed_array_idx = 0;', 'res[fixed_array_idx] = val;', 'fixed_array_idx++;'
+	// fixed_array_idx, array_element_assign, fixed_array_idx_increment := if fixed_array_size > -1 {
+	// 	// fixed array
+	// 	'int fixed_array_idx = 0;', 'res[fixed_array_idx] = val;', 'fixed_array_idx++;'
+	// } else {
+	// 	'', 'array_push${noscan}((array*)&res, &val);', ''
+	// }
+
+	mut res_str := ''
+	mut array_free_str := ''
+	mut fixed_array_idx := ''
+	mut fixed_array_idx_increment := ''
+	mut array_element_assign := ''
+	if utyp.has_flag(.option) {
+		if fixed_array_size > -1 {
+			fixed_array_idx += 'int fixed_array_idx = 0;'
+			array_element_assign += '((${styp}*)res.data)[fixed_array_idx] = val;'
+			fixed_array_idx_increment += 'fixed_array_idx++;'
+		} else {
+			array_element_assign += 'array_push${noscan}((array*)&res.data, &val);'
+			res_str += '_option_ok(&(${g.base_type(utyp)}[]) { __new_array${noscan}(0, 0, sizeof(${styp})) }, &res, sizeof(${g.base_type(utyp)}));'
+			array_free_str += 'array_free(&res.data);'
+		}
 	} else {
-		'', 'array_push${noscan}((array*)&res, &val);', ''
+		if fixed_array_size > -1 {
+			fixed_array_idx += 'int fixed_array_idx = 0;'
+			array_element_assign += 'res[fixed_array_idx] = val;'
+			fixed_array_idx_increment += 'fixed_array_idx++;'
+		} else {
+			array_element_assign += 'array_push${noscan}((array*)&res, &val);'
+			res_str += 'res = __new_array${noscan}(0, 0, sizeof(${styp}));'
+			array_free_str += 'array_free(&res);'
+		}
 	}
 
 	mut s := ''
@@ -784,7 +819,7 @@ fn (mut g Gen) decode_array(value_type ast.Type, fixed_array_size int) string {
 		${result_name}_${styp} val2 = ${fn_name} ((cJSON *)jsval);
 		if(val2.is_error) {
 			${array_free_str}
-			return *(${result_name}_Array_${fixed_array_str}${styp}${fixed_array_size_str}*)&val2;
+			return *(${result_name}_${ret_styp}*)&val2;
 		}
 		${styp} val = *(${styp}*)val2.data;
 '
@@ -792,7 +827,7 @@ fn (mut g Gen) decode_array(value_type ast.Type, fixed_array_size int) string {
 
 	return '
 	if(root && !cJSON_IsArray(root) && !cJSON_IsNull(root)) {
-		return (${result_name}_Array_${fixed_array_str}${styp}${fixed_array_size_str}){.is_error = true, .err = _v_error(string__plus(_SLIT("Json element is not an array: "), tos2((byteptr)cJSON_PrintUnformatted(root)))), .data = {0}};
+		return (${result_name}_${ret_styp}){.is_error = true, .err = _v_error(string__plus(_SLIT("Json element is not an array: "), tos2((byteptr)cJSON_PrintUnformatted(root)))), .data = {0}};
 	}
 	${res_str}
 	const cJSON *jsval = NULL;
@@ -806,21 +841,33 @@ fn (mut g Gen) decode_array(value_type ast.Type, fixed_array_size int) string {
 '
 }
 
-fn (mut g Gen) encode_array(value_type ast.Type, fixed_array_size int) string {
+fn (mut g Gen) encode_array(utyp ast.Type, value_type ast.Type, fixed_array_size int) string {
 	styp := g.typ(value_type)
 	fn_name := js_enc_name(styp)
 
-	data_str, size_str := if fixed_array_size > -1 {
-		// fixed array
-		'', '${fixed_array_size}'
+	mut data_str := ''
+	mut size_str := ''
+
+	if utyp.has_flag(.option) {
+		data_str, size_str = if fixed_array_size > -1 {
+			// fixed array
+			'(${styp}*)(*(${g.base_type(utyp)}*)val.data)', '${fixed_array_size}'
+		} else {
+			'(${styp}*)(*(${g.base_type(utyp)}*)val.data).data', '(*(${g.base_type(utyp)}*)val.data).len'
+		}
 	} else {
-		'.data', 'val.len'
+		data_str, size_str = if fixed_array_size > -1 {
+			// fixed array
+			'(${styp}*)val', '${fixed_array_size}'
+		} else {
+			'(${styp}*)val.data', 'val.len'
+		}
 	}
 
 	return '
 	o = cJSON_CreateArray();
 	for (int i = 0; i < ${size_str}; i++){
-		cJSON_AddItemToArray(o, ${fn_name} (  ((${styp}*)val${data_str})[i]  ));
+		cJSON_AddItemToArray(o, ${fn_name}( (${data_str})[i] ));
 	}
 '
 }
