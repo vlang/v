@@ -1050,10 +1050,6 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 								&& param_typ_sym.kind == .array {
 								ctyp = g.get_generic_array_element_type(arg_sym.info as ast.Array)
 								comptime_args[i] = ctyp
-
-								if func.fkey().contains('off_axis') {
-									eprintln('${func.fkey()} ${i} ${g.table.sym((arg_sym.info as ast.Array).elem_type).kind} ${g.table.type_to_str(g.unwrap_generic(ctyp))}')
-								}
 							} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
 								mut generic_types := []ast.Type{}
 								match arg_sym.info {

@@ -810,11 +810,7 @@ fn (g Checker) get_generic_array_element_type(array ast.Array) ast.Type {
 			cparam_elem_info = cparam_elem_sym.info as ast.Array
 			cparam_elem_sym = g.table.sym(cparam_elem_info.elem_type)
 		} else {
-			typ = cparam_elem_info.elem_type
-			if cparam_elem_info.elem_type.nr_muls() > 0 && typ.nr_muls() > 0 {
-				typ = typ.set_nr_muls(0)
-			}
-			break
+			return cparam_elem_info.elem_type.set_nr_muls(0)
 		}
 	}
 	return typ
@@ -829,11 +825,7 @@ fn (g Checker) get_generic_array_fixed_element_type(array ast.ArrayFixed) ast.Ty
 			cparam_elem_info = cparam_elem_sym.info as ast.ArrayFixed
 			cparam_elem_sym = g.table.sym(cparam_elem_info.elem_type)
 		} else {
-			typ = cparam_elem_info.elem_type
-			if cparam_elem_info.elem_type.nr_muls() > 0 && typ.nr_muls() > 0 {
-				typ = typ.set_nr_muls(0)
-			}
-			break
+			return cparam_elem_info.elem_type.set_nr_muls(0)
 		}
 	}
 	return typ

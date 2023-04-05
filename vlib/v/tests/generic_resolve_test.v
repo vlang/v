@@ -11,7 +11,6 @@ fn (e &Encoder) encode_struct[U](val U) ! {
 		$if field.typ is $struct {
 			e.encode_struct(value)!
 		} $else $if field.typ is $map {
-			// not work
 			e.encode_map(value)!
 		}
 	}
@@ -37,15 +36,15 @@ fn test_simple_cases() {
 		val: {
 			'1': '1'
 		}
-	})! // ok
-	e.encode_struct(StructType[map[string]map[string]int]{})! // break
+	})!
+	e.encode_struct(StructType[map[string]map[string]int]{})!
 	e.encode_struct(StructType[map[string]map[string]int]{
 		val: {
 			'a': {
 				'1': 1
 			}
 		}
-	})! // break
+	})!
 
 	assert true
 }
