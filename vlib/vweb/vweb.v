@@ -540,7 +540,12 @@ fn new_request_app[T](global_app &T, ctx Context) &T {
 			}
 		}
 	}
-	request_app.Context = ctx // copy the context ref that contains static files map etc
+	request_app.Context = ctx // copy request data such as form and query etc
+
+	// copy static files
+	request_app.Context.static_files = global_app.static_files.clone()
+	request_app.Context.static_mime_types = global_app.static_mime_types.clone()
+
 	return request_app
 }
 
@@ -596,7 +601,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route,
 		return
 	}
 
-	// cut off
+	// Create Context with request data
 	ctx := Context{
 		req: req
 		page_gen_start: page_gen_start
@@ -604,8 +609,6 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route,
 		query: query
 		form: form
 		files: files
-		static_files: global_app.static_files
-		static_mime_types: global_app.static_mime_types
 	}
 
 	// match controller paths
