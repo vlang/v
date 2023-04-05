@@ -770,20 +770,6 @@ fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 	fn_name := js_dec_name(styp)
 	noscan := g.check_noscan(value_type)
 
-	// fixed_array_str, fixed_array_size_str, res_str, array_free_str := if fixed_array_size > -1 {
-	// 	// fixed array
-	// 	'fixed_', '_${fixed_array_size}', '', ''
-	// } else {
-	// 	'', '', 'res = __new_array${noscan}(0, 0, sizeof(${styp}));', 'array_free(&res);'
-	// }
-
-	// fixed_array_idx, array_element_assign, fixed_array_idx_increment := if fixed_array_size > -1 {
-	// 	// fixed array
-	// 	'int fixed_array_idx = 0;', 'res[fixed_array_idx] = val;', 'fixed_array_idx++;'
-	// } else {
-	// 	'', 'array_push${noscan}((array*)&res, &val);', ''
-	// }
-
 	mut res_str := ''
 	mut array_free_str := ''
 	mut fixed_array_idx := ''
