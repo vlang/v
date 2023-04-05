@@ -1,8 +1,8 @@
 module leb128
 
 // encode_int encodes the int `value` as leb128 encoded byte array
-pub fn encode_int(value int) []u8 {
-	mut result := []u8{cap: int(sizeof(int))}
+pub fn encode_i32(value int) []u8 {
+	mut result := []u8{cap: 4}
 	mut val := value
 	mut i := 0
 	for {
@@ -67,14 +67,14 @@ pub fn encode_u32(value u32) []u8 {
 }
 
 // decode_int decodes an int from the given leb128 encoded array `value`
-pub fn decode_int(value []u8) int {
+pub fn decode_i32(value []u8) int {
 	mut result := int(0)
 	mut shift := 0
 	for b in value {
 		result |= b & 0x7f << shift
 		shift += 7
 		if b & 0x80 == 0 {
-			if shift < sizeof(int) * 8 && b & 0x40 != 0 {
+			if shift < 32 && b & 0x40 != 0 {
 				result |= ~0 << shift
 			}
 			break
