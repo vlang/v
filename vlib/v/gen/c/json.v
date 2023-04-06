@@ -534,8 +534,17 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 		prefix := if utyp.has_flag(.option) { '(*(${g.base_type(utyp)}*)res.data)' } else { 'res' }
 		// First generate decoding
 		if is_raw {
-			dec.writeln('\tres${op}${c_name(field.name)} = tos5(cJSON_PrintUnformatted(' +
-				'js_get(root, "${name}")));')
+			if field.typ.has_flag(.option) {
+				g.gen_json_for_type(field.typ)
+				base_typ := g.base_type(field.typ)
+				dec.writeln('\tif (!cJSON_IsString(js_get(root, "${name}")))')
+				dec.writeln('\t\t_option_none(&(${base_typ}[]) { {0} }, &${prefix}${op}${c_name(field.name)}, sizeof(${base_typ}));')
+				dec.writeln('\telse')
+				dec.writeln('\t\t_option_ok(&(${base_typ}[]) {  tos5(cJSON_PrintUnformatted(js_get(root, "${name}"))) }, &${prefix}${op}${c_name(field.name)}, sizeof(${base_typ}));')
+			} else {
+				dec.writeln('\tres${op}${c_name(field.name)} = tos5(cJSON_PrintUnformatted(' +
+					'js_get(root, "${name}")));')
+			}
 		} else {
 			// Now generate decoders for all field types in this struct
 			// need to do it here so that these functions are generated first
