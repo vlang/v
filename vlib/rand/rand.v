@@ -351,14 +351,16 @@ pub fn (mut rng PRNG) bernoulli(p f64) !bool {
 	return rng.f64() <= p
 }
 
-// normal returns a normally distributed pseudorandom f64 in range `[0, 1)`.
+// normal returns a normally distributed pseudorandom f64 with mean `mu` and standard
+// deviation `sigma`. By default, `mu` is 0.0 and `sigma` is 1.0.
 // NOTE: Use normal_pair() instead if you're generating a lot of normal variates.
 pub fn (mut rng PRNG) normal(conf config.NormalConfigStruct) !f64 {
 	x, _ := rng.normal_pair(conf)!
 	return x
 }
 
-// normal_pair returns a pair of normally distributed pseudorandom f64 in range `[0, 1)`.
+// normal_pair returns a pair of normally distributed pseudorandom f64 with mean `mu` and standard
+// deviation `sigma`. By default, `mu` is 0.0 and `sigma` is 1.0.
 pub fn (mut rng PRNG) normal_pair(conf config.NormalConfigStruct) !(f64, f64) {
 	if conf.sigma <= 0 {
 		return error('Standard deviation must be positive')
@@ -714,13 +716,15 @@ pub fn bernoulli(p f64) !bool {
 	return default_rng.bernoulli(p)
 }
 
-// normal returns a normally distributed pseudorandom f64 in range `[0, 1)`.
+// normal returns a normally distributed pseudorandom f64 with mean `mu` and standard
+// deviation `sigma`. By default, `mu` is 0.0 and `sigma` is 1.0.
 // NOTE: Use normal_pair() instead if you're generating a lot of normal variates.
 pub fn normal(config_ config.NormalConfigStruct) !f64 {
 	return default_rng.normal(config_)
 }
 
-// normal_pair returns a pair of normally distributed pseudorandom f64 in range `[0, 1)`.
+// normal_pair returns a pair of normally distributed pseudorandom f64 with mean `mu` and standard
+// deviation `sigma`. By default, `mu` is 0.0 and `sigma` is 1.0.
 pub fn normal_pair(config_ config.NormalConfigStruct) !(f64, f64) {
 	return default_rng.normal_pair(config_)
 }
