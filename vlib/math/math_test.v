@@ -1059,3 +1059,31 @@ fn test_min_max_int_str() {
 	assert min_i8.str() == '-128'
 	assert max_i8.str() == '127'
 }
+
+fn test_maxof_minof() {
+	assert maxof[i8]() == 127
+	assert maxof[i16]() == 32767
+	assert maxof[int]() == 2147483647
+	assert maxof[i32]() == 2147483647
+	assert maxof[i64]() == 9223372036854775807
+	assert maxof[u8]() == 255
+	assert maxof[byte]() == 255
+	assert maxof[u16]() == 65535
+	assert maxof[u32]() == 4294967295
+	assert maxof[u64]() == 18446744073709551615
+	assert maxof[f32]() == 3.40282346638528859811704183484516925440e+38
+	assert maxof[f64]() == 1.797693134862315708145274237317043567981e+308
+
+	assert minof[i8]() == -128
+	assert minof[i16]() == -32768
+	assert minof[int]() == -2147483648
+	assert minof[i32]() == -2147483648
+	assert minof[i64]() == -9223372036854775807 - 1
+	assert minof[u8]() == 0
+	assert minof[byte]() == 0
+	assert minof[u16]() == 0
+	assert minof[u32]() == 0
+	assert minof[u64]() == 0
+	assert minof[f32]() == -3.40282346638528859811704183484516925440e+38
+	assert minof[f64]() == -1.797693134862315708145274237317043567981e+308
+}
