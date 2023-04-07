@@ -175,9 +175,7 @@ pub fn (mut mod Module) compile() []u8 {
 	// https://webassembly.github.io/spec/core/binary/modules.html#binary-startsec
 	//
 	if start := mod.start {
-		ftt := mod.functions[start] or {
-			panic('start function ${start} does not exist')
-		}
+		ftt := mod.functions[start] or { panic('start function ${start} does not exist') }
 		mod.buf << u8(Section.start_section)
 		tpatch := mod.patch_start()
 		{

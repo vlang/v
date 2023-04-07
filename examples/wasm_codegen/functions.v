@@ -2,7 +2,9 @@ import wasm
 
 fn main() {
 	mut m := wasm.Module{}
-	mut pyth := m.new_function("pythagoras", parameters: [.f32_t, .f32_t], results: [.f32_t])
+	mut pyth := m.new_function('pythagoras', parameters: [.f32_t, .f32_t], results: [
+		.f32_t,
+	])
 	{
 		pyth.local_get(0)
 		pyth.local_get(0)
@@ -15,11 +17,11 @@ fn main() {
 		pyth.cast(.f32_t, true, .f64_t)
 	}
 	m.commit(pyth, true)
-	mut test := m.new_function("test", parameters: [.f32_t], results: [.f64_t])
+	mut test := m.new_function('test', parameters: [.f32_t], results: [.f64_t])
 	{
 		test.local_get(0)
 		test.f32_const(10.0)
-		test.call("pythagoras")
+		test.call('pythagoras')
 		test.cast(.f32_t, true, .f64_t)
 	}
 	m.commit(test, true)
