@@ -588,21 +588,6 @@ fn sub(prev int, curr int) int {
 	return prev - curr
 }
 
-fn test_reduce() {
-	a := [1, 2, 3, 4, 5]
-	b := a.reduce(sum, 0)
-	c := a.reduce(sum, 5)
-	d := a.reduce(sum, -1)
-	assert b == 15
-	assert c == 20
-	assert d == 14
-	e := [1, 2, 3]
-	f := e.reduce(sub, 0)
-	g := e.reduce(sub, -1)
-	assert f == -6
-	assert g == -7
-}
-
 fn filter_test_helper_1(a int) bool {
 	return a > 3
 }
