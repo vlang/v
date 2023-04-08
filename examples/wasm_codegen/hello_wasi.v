@@ -24,5 +24,5 @@ fn main() {
 	}
 	m.commit(func, true)
 
-	print(m.make().bytestr())
+	print(m.compile().bytestr())
 }

@@ -115,10 +115,10 @@ pub fn (mut mod Module) assign_start(name string) {
 }
 
 // new_function_import imports a new function into the current module.
-pub fn (mut mod Module) new_function_import(modn string, name string, typ FuncType) {
+pub fn (mut mod Module) new_function_import(modn string, name string, parameters []ValType, results []ValType) {
 	assert !mod.fn_imports.any(it.mod == modn && it.name == name)
 
-	tidx := mod.new_functype(typ)
+	tidx := mod.new_functype(FuncType{parameters, results})
 
 	mod.fn_imports << FunctionImport{
 		mod: modn
