@@ -33,6 +33,121 @@ pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit 
 	return result
 }
 
+pub fn common_parse_uint_t(s string, _base int, _bit_size int, error_on_non_digit bool, error_on_high_digit bool) !u64 {
+	result, err := common_parse_uint2t(s, _base, _bit_size)
+	// TODO: error_on_non_digit and error_on_high_digit have no difference
+	if err != 0 && (error_on_non_digit || error_on_high_digit) {
+		match err {
+			-1 { return error('common_parse_uint: wrong base ${_base} for ${s}') }
+			-2 { return error('common_parse_uint: wrong bit size ${_bit_size} for ${s}') }
+			-3 { return error('common_parse_uint: integer overflow ${s}') }
+			else { return error('common_parse_uint: syntax error ${s}') }
+		}
+	}
+	return result
+}
+
+// the first returned value contains the parsed value,
+// the second returned value contains the error code (0 = OK, >1 = index of first non-parseable character + 1, -1 = wrong base, -2 = wrong bit size, -3 = overflow)
+[direct_array_access]
+pub fn common_parse_uint2t(s string, _base int, _bit_size int) (u64, int) {
+	if s.len < 1 || !underscore_ok(s) {
+		// return error('parse_uint: syntax error $s')
+		return u64(0), 1
+	}
+	mut bit_size := _bit_size
+	mut base := _base
+	mut start_index := 0
+
+	// println("base: ${base} => ${s[start_index..]}")
+
+	if base == 0 {
+		// Look for octal, binary and hex prefix.
+		base = 10
+		if s[0] == `0` {
+			ch := s[1] | 32
+			if s.len >= 3 {
+				if ch == `b` {
+					base = 2
+					start_index += 2
+				} else if ch == `o` {
+					base = 8
+					start_index += 2
+				} else if ch == `x` {
+					base = 16
+					start_index += 2
+				} 
+			}
+			// manage leading zeros in decimal base's numbers
+			else if s.len >= 2 && (s[1] >= `0` && s[1] <= `9`) {
+				base = 10
+				start_index++
+			} else {
+				base = 8
+				start_index++
+			}
+			
+		}
+	}
+
+	// println("prefix check: ${s[start_index..]}")
+
+	// manage leading zeros
+	for start_index < s.len {
+		if s[start_index] != `0` {
+			break
+		}
+		start_index++
+		// println("skip zeros: ${s[start_index..]}")
+	}
+
+	if bit_size == 0 {
+		bit_size = strconv.int_size
+	} else if bit_size < 0 || bit_size > 64 {
+		// return error('parse_uint: bitsize error $s - $bit_size')
+		return u64(0), -2
+	}
+	// Cutoff is the smallest number such that cutoff*base > maxUint64.
+	// Use compile-time constants for common cases.
+	cutoff := strconv.max_u64 / u64(base) + u64(1)
+	max_val := if bit_size == 64 { strconv.max_u64 } else { (u64(1) << u64(bit_size)) - u64(1) }
+	mut n := u64(0)
+	for i in start_index .. s.len {
+		c := s[i]
+		mut d := 0
+		if c == `_` && _base == 0 {
+			// underscore_ok already called
+			continue
+		} 
+
+		// get the 0-9 digit
+		d = c - 48 // `0`=48
+		// ch2ck if we are in a superior base
+		if d > 9 {
+			d = c - 87 // - 98 + 10 + 1// 'a'=98
+		}
+
+		if d >= base {
+			return n, i + 1
+		}
+
+		if n >= cutoff {
+			// n*base overflows
+			// return error('parse_uint: range error $s')
+			return max_val, -3
+		}
+		n *= u64(base)
+		n1 := n + u64(d)
+		if n1 < n || n1 > max_val {
+			// n+v overflows
+			// return error('parse_uint: range error $s')
+			return max_val, -3
+		}
+		n = n1
+	}
+	return n, 0
+}
+
 // the first returned value contains the parsed value,
 // the second returned value contains the error code (0 = OK, >1 = index of first non-parseable character + 1, -1 = wrong base, -2 = wrong bit size, -3 = overflow)
 [direct_array_access]
