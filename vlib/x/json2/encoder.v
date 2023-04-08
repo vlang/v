@@ -155,7 +155,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 	mut i := 0
 	mut fields_len := 0
 	$for field in U.fields {
-		if val.$(field.name).str() != 'Option(error: none)' {
+		if val.$(field.name).str() != 'Option(none)' {
 			fields_len++
 		}
 	}
