@@ -51,15 +51,13 @@ pub fn common_parse_uint_t(s string, _base int, _bit_size int, error_on_non_digi
 // the second returned value contains the error code (0 = OK, >1 = index of first non-parseable character + 1, -1 = wrong base, -2 = wrong bit size, -3 = overflow)
 [direct_array_access]
 pub fn common_parse_uint2t(s string, _base int, _bit_size int) (u64, int) {
-	if s.len < 1 || !underscore_ok(s) {
-		// return error('parse_uint: syntax error $s')
+	if s.len < 1  {
 		return u64(0), 1
 	}
+	
 	mut bit_size := _bit_size
 	mut base := _base
 	mut start_index := 0
-
-	// println("base: ${base} => ${s[start_index..]}")
 
 	if base == 0 {
 		// Look for octal, binary and hex prefix.
@@ -76,9 +74,15 @@ pub fn common_parse_uint2t(s string, _base int, _bit_size int) (u64, int) {
 				} else if ch == `x` {
 					base = 16
 					start_index += 2
-				} 
+				}
+
+				// check for underscore after the base prefix
+				if s[start_index] == `_` {
+					start_index++
+				}
 			}
 			// manage leading zeros in decimal base's numbers
+			// otherwise it is an octal for C compatibility
 			else if s.len >= 2 && (s[1] >= `0` && s[1] <= `9`) {
 				base = 10
 				start_index++
@@ -90,54 +94,61 @@ pub fn common_parse_uint2t(s string, _base int, _bit_size int) (u64, int) {
 		}
 	}
 
-	// println("prefix check: ${s[start_index..]}")
-
-	// manage leading zeros
-	for start_index < s.len {
-		if s[start_index] != `0` {
-			break
-		}
-		start_index++
-		// println("skip zeros: ${s[start_index..]}")
-	}
-
 	if bit_size == 0 {
 		bit_size = strconv.int_size
 	} else if bit_size < 0 || bit_size > 64 {
-		// return error('parse_uint: bitsize error $s - $bit_size')
 		return u64(0), -2
 	}
 	// Cutoff is the smallest number such that cutoff*base > maxUint64.
 	// Use compile-time constants for common cases.
 	cutoff := strconv.max_u64 / u64(base) + u64(1)
 	max_val := if bit_size == 64 { strconv.max_u64 } else { (u64(1) << u64(bit_size)) - u64(1) }
+
 	mut n := u64(0)
 	for i in start_index .. s.len {
-		c := s[i]
-		mut d := 0
-		if c == `_` && _base == 0 {
-			// underscore_ok already called
+		mut c := s[i]
+		
+		// manage underscore inside the number
+		if c == `_` {
+			// println("Here: ${s#[i..]}")
+			if i == start_index || i >= (s.len - 1) {
+				// println("_ limit")
+				return u64(0), 1
+			}
+			if s[i-1] == `_` || s[i+1] == `_` {
+				// println("_ *2")
+				return u64(0), 1
+			}
+
 			continue
 		} 
 
 		// get the 0-9 digit
-		d = c - 48 // `0`=48
-		// ch2ck if we are in a superior base
-		if d > 9 {
-			d = c - 87 // - 98 + 10 + 1// 'a'=98
-		}
+		c -= 48 // subtract the rune `0` 
 
-		if d >= base {
+		// check if we are in a superior base rune [a..z]
+		if c >= base {
+			c -= 7
+		}
+		
+		// check if we are in a superior base rune [a..z]
+		if c >= base {
+			c -= 32 // subtract the `a` - `0` rune to obtain the value of the digit
+		}
+		
+		// check for digit over base
+		if c >= base {
 			return n, i + 1
 		}
 
+		// check if we are in the cutoff zone
 		if n >= cutoff {
 			// n*base overflows
 			// return error('parse_uint: range error $s')
 			return max_val, -3
 		}
 		n *= u64(base)
-		n1 := n + u64(d)
+		n1 := n + u64(c)
 		if n1 < n || n1 > max_val {
 			// n+v overflows
 			// return error('parse_uint: range error $s')
