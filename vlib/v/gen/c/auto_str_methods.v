@@ -950,8 +950,11 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, typ_str string, 
 			field.name, sym_has_str_method, str_method_expects_ptr)
 		ftyp_nr_muls := field.typ.nr_muls()
 		if ftyp_nr_muls > 1 || field.typ in ast.cptr_types {
-			func = '(voidptr) it.${field.name}'
-			caller_should_free = false
+			if is_opt_field {
+			} else {
+				func = '(voidptr) it.${field.name}'
+				caller_should_free = false
+			}
 		} else if ftyp_noshared.is_ptr() {
 			// reference types can be "nil"
 			if ftyp_noshared.has_flag(.option) {
