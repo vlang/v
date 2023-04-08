@@ -1,6 +1,6 @@
 module main
 
 struct AuthRequestDto {
-	username string [required]
-	password string [required]
+	username string [nonull]
+	password string [nonull]
 }
