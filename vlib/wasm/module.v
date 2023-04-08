@@ -147,7 +147,7 @@ pub fn (mut mod Module) new_data_segment(pos int, data []u8) int {
 	return len
 }
 
-// new_data_segment inserts a new passive data segment.
+// new_passive_data_segment inserts a new passive data segment.
 pub fn (mut mod Module) new_passive_data_segment(data []u8) {
 	mod.segments << DataSegment{
 		data: data
