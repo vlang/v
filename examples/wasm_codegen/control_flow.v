@@ -2,7 +2,7 @@ import wasm
 
 fn main() {
 	mut m := wasm.Module{}
-	mut bif := m.new_function('block_if', parameters: [.i32_t], results: [.i32_t])
+	mut bif := m.new_function('block_if', [.i32_t], [.i32_t])
 	{
 		loc := bif.new_local(.i32_t)
 
@@ -25,7 +25,7 @@ fn main() {
 		bif.local_get(loc)
 	}
 	m.commit(bif, true)
-	mut ifexpr := m.new_function('if_expr', parameters: [.i32_t], results: [.i64_t])
+	mut ifexpr := m.new_function('if_expr', [.i32_t], [.i64_t])
 	{
 		ifexpr.local_get(0)
 		ifexpr.c_if([], [.i64_t])

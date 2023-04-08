@@ -85,11 +85,11 @@ fn (mut mod Module) new_functype(ft FuncType) int {
 }
 
 // new_function creates a function struct.
-pub fn (mut mod Module) new_function(name string, typ FuncType) Function {
-	assert name !in mod.functions
+pub fn (mut mod Module) new_function(name string, parameters []ValType, results []ValType) Function {
+	assert name !in mod.functions.keys()
 
 	idx := mod.functions.len
-	tidx := mod.new_functype(typ)
+	tidx := mod.new_functype(FuncType{parameters, results})
 
 	return Function{
 		name: name
@@ -129,7 +129,7 @@ pub fn (mut mod Module) new_function_import(modn string, name string, typ FuncTy
 
 // commit commits a function to the module, use `export` to export the function.
 pub fn (mut mod Module) commit(func Function, export bool) {
-	assert func.name !in mod.functions
+	assert func.name !in mod.functions.keys()
 
 	mod.functions[func.name] = Function{
 		...func

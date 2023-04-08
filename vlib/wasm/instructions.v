@@ -442,6 +442,18 @@ pub fn (mut func Function) copysign(typ NumType) {
 	}
 }
 
+// eqz checks if the value with type `typ` is equal to zero, places an i32 boolean value on the stack.
+// WebAssembly instruction: `i32|i64.eqz`.
+pub fn (mut func Function) eqz(typ NumType) {
+	assert typ in [.i32_t, .i64_t]
+
+	match typ {
+		.i32_t { func.code << 0x45 } // i32.eqz
+		.i64_t { func.code << 0x50 } // i64.eqz
+		else {}
+	}
+}
+
 // eq checks if two values with type `typ` are equal, places an i32 boolean value on the stack.
 // WebAssembly instruction: `i32|i64|f32|f64.eq`.
 pub fn (mut func Function) eq(typ NumType) {
