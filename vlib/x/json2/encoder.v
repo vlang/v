@@ -171,7 +171,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 		}
 
 		$if field.is_option {
-			is_none := value.str() == 'Option(error: none)'
+			is_none := value.str() == 'Option(none)'
 
 			if !is_none {
 				e.encode_newline(level, mut wr)!

@@ -341,7 +341,7 @@ fn create_option_none() ?string {
 }
 
 fn test_option_none() {
-	assert '${create_option_none()}' == 'Option(error: none)'
+	assert '${create_option_none()}' == 'Option(none)'
 }
 
 fn create_option_string() ?string {
