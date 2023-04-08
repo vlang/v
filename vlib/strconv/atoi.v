@@ -37,10 +37,10 @@ pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit 
 // the second returned value contains the error code (0 = OK, >1 = index of first non-parseable character + 1, -1 = wrong base, -2 = wrong bit size, -3 = overflow)
 [direct_array_access]
 pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
-	if s.len < 1  {
+	if s.len < 1 {
 		return u64(0), 1
 	}
-	
+
 	mut bit_size := _bit_size
 	mut base := _base
 	mut start_index := 0
@@ -77,7 +77,6 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 				base = 8
 				start_index++
 			}
-			
 		}
 	}
 
@@ -94,7 +93,7 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 	mut n := u64(0)
 	for i in start_index .. s.len {
 		mut c := s[i]
-		
+
 		// manage underscore inside the number
 		if c == `_` {
 			// println("Here: ${s#[i..]}")
@@ -102,27 +101,27 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 				// println("_ limit")
 				return u64(0), 1
 			}
-			if s[i-1] == `_` || s[i+1] == `_` {
+			if s[i - 1] == `_` || s[i + 1] == `_` {
 				// println("_ *2")
 				return u64(0), 1
 			}
 
 			continue
-		} 
+		}
 
 		// get the 0-9 digit
-		c -= 48 // subtract the rune `0` 
+		c -= 48 // subtract the rune `0`
 
 		// check if we are in the superior base rune interval [A..Z]
 		if c >= base {
 			c -= 7
 		}
-		
+
 		// check if we are in the superior base rune interval [a..z]
 		if c >= base {
 			c -= 32 // subtract the `A` - `0` rune to obtain the value of the digit
 		}
-		
+
 		// check for digit over base
 		if c >= base {
 			return n, i + 1
@@ -241,4 +240,3 @@ pub fn atoi(s string) !int {
 	int64 := parse_int(s, 10, 0)!
 	return int(int64)
 }
-
