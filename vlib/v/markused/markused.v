@@ -338,12 +338,6 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 		}
 	}
 
-	// handle -live main programs:
-	if pref_.is_livemain {
-		all_fn_root_names << 'v.live.executable.start_reloader'
-		all_fn_root_names << 'v.live.executable.new_live_reload_info'
-	}
-
 	mut walker := Walker{
 		table: table
 		files: ast_files
