@@ -13,9 +13,13 @@ struct PairI {
 
 fn test_basic() {
 	assert leb128.encode_u64(624485) == [u8(0xe5), 0x8e, 0x26]
-	assert leb128.decode_u64([u8(0xe5), 0x8e, 0x26]) == 624485
+	uval, ulen := leb128.decode_u64([u8(0xe5), 0x8e, 0x26])
+	assert uval == 624485, 'val, _ := leb128.decode_u64([u8(0xe5), 0x8e, 0x26]) == 624486'
+	assert ulen == 3, '_, len := leb128.decode_u64([u8(0xe5), 0x8e, 0x26]) == 3'
 	assert leb128.encode_i64(-123456) == [u8(0xc0), 0xbb, 0x78]
-	assert leb128.decode_i64([u8(0xc0), 0xbb, 0x78]) == -123456
+	sval, slen := leb128.decode_i64([u8(0xc0), 0xbb, 0x78])
+	assert sval == -123456, 'val, _ := leb128.decode_i64([u8(0xc0), 0xbb, 0x78]) == -123456'
+	assert slen == 3, '_, len := leb128.decode_i64([u8(0xc0), 0xbb, 0x78]) == 3'
 }
 
 fn test_unsigned_data() {
@@ -23,7 +27,9 @@ fn test_unsigned_data() {
 		assert leb128.encode_u64(x.value).hex() == x.encoded, 'leb128.encode_u64( ${x.value} )  == ${x.encoded}'
 		bytes := hex.decode(x.encoded)!
 		// eprintln('>> bytes: ${bytes} | pair: ${x}')
-		assert leb128.decode_u64(bytes) == x.value, 'leb128.decode_u64( ${x.encoded} ) == ${x.value}'
+		val, len := leb128.decode_u64(bytes)
+		assert val == x.value, 'val, _ := leb128.decode_u64( ${x.encoded} ) == ${x.value}'
+		assert len == bytes.len, '_, len := leb128.decode_u64( ${x.encoded} ) = ${bytes.len}'
 	}
 }
 
@@ -32,7 +38,9 @@ fn test_signed_data() {
 		assert leb128.encode_i64(x.value).hex() == x.encoded, 'k: ${x.value} | v: ${x.encoded}'
 		bytes := hex.decode(x.encoded)!
 		// eprintln('>> bytes: ${bytes} | pair: ${x}')
-		assert leb128.decode_i64(bytes) == x.value, 'leb128.decode_i64( ${x.encoded} ) == ${x.value}'
+		val, len := leb128.decode_i64(bytes)
+		assert val == x.value, 'val, _ := leb128.decode_i64( ${x.encoded} ) == ${x.value}'
+		assert len == bytes.len, '_, len := leb128.decode_i64( ${x.encoded} ) == ${x.value}'
 	}
 }
 

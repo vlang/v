@@ -1762,10 +1762,17 @@ To do the opposite, use `!in`.
 nums := [1, 2, 3]
 println(1 in nums) // true
 println(4 !in nums) // true
+```
+
+> **Note**
+> `in` checks if map contains a key, not a value.
+
+```v
 m := {
 	'one': 1
 	'two': 2
 }
+
 println('one' in m) // true
 println('three' !in m) // true
 ```

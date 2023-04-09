@@ -37,30 +37,39 @@ pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit 
 // the second returned value contains the error code (0 = OK, >1 = index of first non-parseable character + 1, -1 = wrong base, -2 = wrong bit size, -3 = overflow)
 [direct_array_access]
 pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
-	if s.len < 1 || !underscore_ok(s) {
-		// return error('parse_uint: syntax error $s')
+	if s.len < 1 {
 		return u64(0), 1
 	}
+
 	mut bit_size := _bit_size
 	mut base := _base
 	mut start_index := 0
-	if 2 <= base && base <= 36 {
-		// valid base; nothing to do
-	} else if base == 0 {
-		// Look for octal, hex prefix.
+
+	if base == 0 {
+		// Look for octal, binary and hex prefix.
 		base = 10
 		if s[0] == `0` {
-			if s.len >= 3 && s[1] | 32 == `b` {
-				base = 2
-				start_index += 2
-			} else if s.len >= 3 && s[1] | 32 == `o` {
-				base = 8
-				start_index += 2
-			} else if s.len >= 3 && s[1] | 32 == `x` {
-				base = 16
-				start_index += 2
+			ch := s[1] | 32
+			if s.len >= 3 {
+				if ch == `b` {
+					base = 2
+					start_index += 2
+				} else if ch == `o` {
+					base = 8
+					start_index += 2
+				} else if ch == `x` {
+					base = 16
+					start_index += 2
+				}
+
+				// check for underscore after the base prefix
+				if s[start_index] == `_` {
+					start_index++
+				}
 			}
 			// manage leading zeros in decimal base's numbers
+			// otherwise it is an octal for C compatibility
+			// TODO: Check if this behaviour is logically right
 			else if s.len >= 2 && (s[1] >= `0` && s[1] <= `9`) {
 				base = 10
 				start_index++
@@ -69,46 +78,63 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 				start_index++
 			}
 		}
-	} else {
-		// return error('parse_uint: base error $s - $base')
-		return u64(0), -1
 	}
+
 	if bit_size == 0 {
 		bit_size = strconv.int_size
 	} else if bit_size < 0 || bit_size > 64 {
-		// return error('parse_uint: bitsize error $s - $bit_size')
 		return u64(0), -2
 	}
 	// Cutoff is the smallest number such that cutoff*base > maxUint64.
 	// Use compile-time constants for common cases.
 	cutoff := strconv.max_u64 / u64(base) + u64(1)
 	max_val := if bit_size == 64 { strconv.max_u64 } else { (u64(1) << u64(bit_size)) - u64(1) }
+
 	mut n := u64(0)
 	for i in start_index .. s.len {
-		c := s[i]
-		cl := c | 32
+		mut c := s[i]
 
-		mut d := u8(0)
-		if c == `_` && _base == 0 {
-			// underscore_ok already called
+		// manage underscore inside the number
+		if c == `_` {
+			// println("Here: ${s#[i..]}")
+			if i == start_index || i >= (s.len - 1) {
+				// println("_ limit")
+				return u64(0), 1
+			}
+			if s[i - 1] == `_` || s[i + 1] == `_` {
+				// println("_ *2")
+				return u64(0), 1
+			}
+
 			continue
-		} else if `0` <= c && c <= `9` {
-			d = c - `0`
-		} else if `a` <= cl && cl <= `z` {
-			d = cl - `a` + 10
-		} else {
+		}
+
+		// get the 0-9 digit
+		c -= 48 // subtract the rune `0`
+
+		// check if we are in the superior base rune interval [A..Z]
+		if c >= base {
+			c -= 7
+		}
+
+		// check if we are in the superior base rune interval [a..z]
+		if c >= base {
+			c -= 32 // subtract the `A` - `0` rune to obtain the value of the digit
+		}
+
+		// check for digit over base
+		if c >= base {
 			return n, i + 1
 		}
-		if d >= u8(base) {
-			return n, i + 1
-		}
+
+		// check if we are in the cutoff zone
 		if n >= cutoff {
 			// n*base overflows
 			// return error('parse_uint: range error $s')
 			return max_val, -3
 		}
 		n *= u64(base)
-		n1 := n + u64(d)
+		n1 := n + u64(c)
 		if n1 < n || n1 > max_val {
 			// n+v overflows
 			// return error('parse_uint: range error $s')
@@ -140,11 +166,18 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 	// Pick off leading sign.
 	mut neg := false
 	if s[0] == `+` {
-		s = s[1..]
+		// s = s[1..]
+		unsafe {
+			s = tos(s.str + 1, s.len - 1)
+		}
 	} else if s[0] == `-` {
 		neg = true
-		s = s[1..]
+		// s = s[1..]
+		unsafe {
+			s = tos(s.str + 1, s.len - 1)
+		}
 	}
+
 	// Convert unsigned and check range.
 	// un := parse_uint(s, base, bit_size) or {
 	// return i64(0)
@@ -213,53 +246,4 @@ pub fn atoi(s string) !int {
 	// Slow path for invalid, big, or underscored integers.
 	int64 := parse_int(s, 10, 0)!
 	return int(int64)
-}
-
-// underscore_ok reports whether the underscores in s are allowed.
-// Checking them in this one function lets all the parsers skip over them simply.
-// Underscore must appear only between digits or between a base prefix and a digit.
-[direct_array_access]
-fn underscore_ok(s string) bool {
-	// saw tracks the last character (class) we saw:
-	// ^ for beginning of number,
-	// 0 for a digit or base prefix,
-	// _ for an underscore,
-	// ! for none of the above.
-	mut saw := `^`
-	mut i := 0
-	// Optional sign.
-	if s.len >= 1 && (s[0] == `-` || s[0] == `+`) {
-		i++
-	}
-	// Optional base prefix.
-	mut hex := false
-	if s.len - i >= 2 && s[i] == `0` && ((s[i + 1] | 32) == `b`
-		|| (s[i + 1] | 32) == `o` || (s[i + 1] | 32) == `x`) {
-		saw = `0` // base prefix counts as a digit for "underscore as digit separator"
-		hex = (s[i + 1] | 32) == `x`
-		i += 2
-	}
-	// Number proper.
-	for ; i < s.len; i++ {
-		// Digits are always okay.
-		if (`0` <= s[i] && s[i] <= `9`) || ((hex && `a` <= (s[i] | 32)) && (s[i] | 32) <= `f`) {
-			saw = `0`
-			continue
-		}
-		// Underscore must follow digit.
-		if s[i] == `_` {
-			if saw != `0` {
-				return false
-			}
-			saw = `_`
-			continue
-		}
-		// Underscore must also be followed by digit.
-		if saw == `_` {
-			return false
-		}
-		// Saw non-digit, non-underscore.
-		saw = `!`
-	}
-	return saw != `_`
 }
