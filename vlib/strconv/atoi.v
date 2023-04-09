@@ -166,11 +166,18 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 	// Pick off leading sign.
 	mut neg := false
 	if s[0] == `+` {
-		s = s[1..]
+		// s = s[1..]
+		unsafe {
+			s = tos(s.str + 1, s.len - 1)
+		}
 	} else if s[0] == `-` {
 		neg = true
-		s = s[1..]
+		// s = s[1..]
+		unsafe {
+			s = tos(s.str + 1, s.len - 1)
+		}
 	}
+
 	// Convert unsigned and check range.
 	// un := parse_uint(s, base, bit_size) or {
 	// return i64(0)
