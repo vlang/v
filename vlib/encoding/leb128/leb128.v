@@ -66,8 +66,8 @@ pub fn encode_u32(value u32) []u8 {
 	return result
 }
 
-// decode_i32 decodes an i32 from the given leb128 encoded array `value`
-pub fn decode_i32(value []u8) i32 {
+// decode_i32 decodes an i32 and returns the number of bytes used from the given leb128 encoded array `value`
+pub fn decode_i32(value []u8) (i32, int) {
 	mut result := int(0)
 	mut shift := 0
 	for b in value {
@@ -80,11 +80,11 @@ pub fn decode_i32(value []u8) i32 {
 			break
 		}
 	}
-	return result
+	return result, shift / 7
 }
 
-// decode_i64 decodes an i64 from the given leb128 encoded array `value`
-pub fn decode_i64(value []u8) i64 {
+// decode_i64 decodes an i64 and returns the number of bytes used from the given leb128 encoded array `value`
+pub fn decode_i64(value []u8) (i64, int) {
 	mut result := u64(0)
 	mut shift := 0
 	for b in value {
@@ -97,11 +97,11 @@ pub fn decode_i64(value []u8) i64 {
 			break
 		}
 	}
-	return i64(result)
+	return i64(result), shift / 7
 }
 
-// decode_u64 decodes an u64 from the given leb128 encoded array `value`
-pub fn decode_u64(value []u8) u64 {
+// decode_u64 decodes an u64 and returns the number of bytes used from the given leb128 encoded array `value`
+pub fn decode_u64(value []u8) (u64, int) {
 	mut result := u64(0)
 	mut shift := 0
 	for b in value {
@@ -111,11 +111,11 @@ pub fn decode_u64(value []u8) u64 {
 		}
 		shift += 7
 	}
-	return result
+	return result, shift / 7 + 1
 }
 
-// decode_u32 decodes an u32 from the given leb128 encoded array `value`
-pub fn decode_u32(value []u8) u32 {
+// decode_u32 decodes an u32 and returns the number of bytes used from the given leb128 encoded array `value`
+pub fn decode_u32(value []u8) (u32, int) {
 	mut result := u32(0)
 	mut shift := 0
 	for b in value {
@@ -125,5 +125,5 @@ pub fn decode_u32(value []u8) u32 {
 		}
 		shift += 7
 	}
-	return result
+	return result, shift / 7 + 1
 }
