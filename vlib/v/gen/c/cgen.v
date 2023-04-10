@@ -143,7 +143,6 @@ mut:
 	inside_const              bool
 	inside_const_opt_or_res   bool
 	inside_lambda             bool
-	inside_for_in_any_cond    bool
 	inside_cinit              bool
 	last_tmp_call_var         []string
 	loop_depth                int
@@ -203,8 +202,6 @@ mut:
 	comptime_for_field_var           string // $for field in T.fields {}; the variable name
 	comptime_for_field_value         ast.StructField // value of the field variable
 	comptime_for_field_type          ast.Type        // type of the field variable inferred from `$if field.typ is T {}`
-	comptime_for_field_key_type      ast.Type        // type of key on comptime for on map field
-	comptime_for_field_val_type      ast.Type        // type of value on comptime for on map field
 	comptime_enum_field_value        string // value of enum name
 	comptime_var_type_map            map[string]ast.Type
 	comptime_values_stack            []CurrentComptimeValues // stores the values from the above on each $for loop, to make nesting them easier
@@ -4049,9 +4046,16 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	}
 }
 
+[inline]
+pub fn (mut g Gen) is_generic_param_var(node ast.Expr) bool {
+	return node is ast.Ident
+		&& (node as ast.Ident).info is ast.IdentVar && (node as ast.Ident).obj is ast.Var && ((node as ast.Ident).obj as ast.Var).ct_type_var == .generic_param
+}
+
+[inline]
 pub fn (mut g Gen) is_comptime_var(node ast.Expr) bool {
-	return g.inside_comptime_for_field && node is ast.Ident
-		&& (node as ast.Ident).info is ast.IdentVar && ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime
+	return node is ast.Ident
+		&& (node as ast.Ident).info is ast.IdentVar && (node as ast.Ident).obj is ast.Var && ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime
 }
 
 fn (mut g Gen) ident(node ast.Ident) {
@@ -4084,7 +4088,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 	mut is_auto_heap := false
 	if node.info is ast.IdentVar {
 		if node.obj is ast.Var {
-			if !g.is_assign_lhs && node.obj.ct_type_var != .no_comptime {
+			if !g.is_assign_lhs && node.obj.ct_type_var !in [.generic_param, .no_comptime] {
 				comptime_type := g.get_comptime_var_type(node)
 				if comptime_type.has_flag(.option) {
 					if (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {

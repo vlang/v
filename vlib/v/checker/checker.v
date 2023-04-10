@@ -96,8 +96,6 @@ mut:
 	timers                           &util.Timers = util.get_timers()
 	comptime_for_field_var           string
 	comptime_fields_default_type     ast.Type
-	comptime_fields_key_type         ast.Type // key type on `$for k, v in val.$(field.name)`
-	comptime_fields_val_type         ast.Type // value type on `$for k, v in val.$(field.name)`
 	comptime_fields_type             map[string]ast.Type
 	comptime_for_field_value         ast.StructField // value of the field variable
 	comptime_enum_field_value        string // current enum value name
@@ -3668,8 +3666,9 @@ fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 	return none
 }
 
+[inline]
 pub fn (mut c Checker) is_comptime_var(node ast.Expr) bool {
-	return c.inside_comptime_for_field && node is ast.Ident
+	return node is ast.Ident
 		&& (node as ast.Ident).info is ast.IdentVar && (node as ast.Ident).kind == .variable && ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime
 }
 

@@ -755,6 +755,7 @@ pub enum ComptimeVarKind {
 	key_var // map key from `for k,v in t.$(field.name)`
 	value_var // map value from `for k,v in t.$(field.name)`
 	field_var // comptime field var `a := t.$(field.name)`
+	generic_param // generic fn parameter
 }
 
 [minify]
