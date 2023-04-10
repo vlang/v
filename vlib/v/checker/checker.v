@@ -707,7 +707,12 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 			to_lock, pos = c.fail_if_immutable(expr.expr)
 		}
 		ast.PrefixExpr {
-			to_lock, pos = c.fail_if_immutable(expr.right)
+			if expr.op == .mul && expr.right is ast.Ident {
+				// Do not fail if dereference is immutable:
+				// `*x = foo()` doesn't modify `x`
+			} else {
+				to_lock, pos = c.fail_if_immutable(expr.right)
+			}
 		}
 		ast.PostfixExpr {
 			to_lock, pos = c.fail_if_immutable(expr.expr)
