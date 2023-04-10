@@ -969,9 +969,21 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, typ_str string, 
 				funcprefix += '*'
 			}
 		}
+		mut is_field_array := false
+		if sym.info is ast.Array {
+			field_styp = g.typ(sym.info.elem_type).trim('*')
+			is_field_array = true
+		} else if sym.info is ast.ArrayFixed {
+			field_styp = g.typ(sym.info.elem_type).trim('*')
+			is_field_array = true
+		}
 		// handle circular ref type of struct to the struct itself
 		if styp == field_styp && !allow_circular {
-			fn_body.write_string('${funcprefix}_SLIT("<circular>")')
+			if is_field_array {
+				fn_body.write_string('${funcprefix}_SLIT("[<circular>]")')
+			} else {
+				fn_body.write_string('${funcprefix}_SLIT("<circular>")')
+			}
 		} else {
 			// manage C charptr
 			if field.typ in ast.charptr_types {
