@@ -1973,6 +1973,7 @@ pub fn (expr Expr) is_lvalue() bool {
 		SelectorExpr { return expr.expr.is_lvalue() }
 		ParExpr { return expr.expr.is_lvalue() } // for var := &{...(*pointer_var)}
 		PrefixExpr { return expr.right.is_lvalue() }
+		ComptimeSelector { return expr.field_expr.is_lvalue() }
 		else {}
 	}
 	return false
