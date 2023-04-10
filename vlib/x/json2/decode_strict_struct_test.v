@@ -22,7 +22,7 @@ fn test_duplicate() {
 
 fn test_superfluous() {
 	json.strict_decode[StructTypeAndOptionType[string]]('{"val": "","val2": ""}') or {
-		assert err.msg() == '[x.json2] useless data detected. Try prune superfluous fields showed in err.superfluous_fields()'
+		assert err.msg() == '[x.json2] useless data detected. Try pruning superfluous fields shown in err.superfluous_fields()'
 		assert err.superfluous_fields() == ['val2']
 		return
 	}
