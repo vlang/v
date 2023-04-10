@@ -980,7 +980,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, typ_str string, 
 		// handle circular ref type of struct to the struct itself
 		if styp == field_styp && !allow_circular {
 			if is_field_array {
-				fn_body.write_string('${funcprefix}_SLIT("[<circular>]")')
+				fn_body.write_string('it.${c_name(field.name)}.len > 0 ? ${funcprefix}_SLIT("[<circular>]") : ${funcprefix}_SLIT("[]")')
 			} else {
 				fn_body.write_string('${funcprefix}_SLIT("<circular>")')
 			}
