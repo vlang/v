@@ -127,7 +127,7 @@ fn C.sqlite3_changes(&C.sqlite3) int
 
 // connect Opens the connection with a database.
 pub fn connect(path string) !DB {
-	db := &C.sqlite3(0)
+	db := &C.sqlite3(unsafe { nil })
 	code := C.sqlite3_open(&char(path.str), &db)
 	if code != 0 {
 		return &SQLError{
@@ -182,7 +182,7 @@ pub fn (db &DB) get_affected_rows_count() int {
 
 // q_int returns a single integer value, from the first column of the result of executing `query`
 pub fn (db &DB) q_int(query string) int {
-	stmt := &C.sqlite3_stmt(0)
+	stmt := &C.sqlite3_stmt(unsafe { nil })
 	defer {
 		C.sqlite3_finalize(stmt)
 	}
@@ -195,7 +195,7 @@ pub fn (db &DB) q_int(query string) int {
 
 // q_string returns a single string value, from the first column of the result of executing `query`
 pub fn (db &DB) q_string(query string) string {
-	stmt := &C.sqlite3_stmt(0)
+	stmt := &C.sqlite3_stmt(unsafe { nil })
 	defer {
 		C.sqlite3_finalize(stmt)
 	}
@@ -210,7 +210,7 @@ pub fn (db &DB) q_string(query string) string {
 // Result codes: https://www.sqlite.org/rescode.html
 [manualfree]
 pub fn (db &DB) exec(query string) ([]Row, int) {
-	stmt := &C.sqlite3_stmt(0)
+	stmt := &C.sqlite3_stmt(unsafe { nil })
 	defer {
 		C.sqlite3_finalize(stmt)
 	}
@@ -278,7 +278,7 @@ pub fn (db &DB) error_message(code int, query string) IError {
 // Use it, in case you don't expect any row results, but still want a result code.
 // e.g. for queries like these: `INSERT INTO ... VALUES (...)`
 pub fn (db &DB) exec_none(query string) int {
-	stmt := &C.sqlite3_stmt(0)
+	stmt := &C.sqlite3_stmt(unsafe { nil })
 	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	code := C.sqlite3_step(stmt)
 	C.sqlite3_finalize(stmt)

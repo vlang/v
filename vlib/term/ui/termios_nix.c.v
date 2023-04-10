@@ -255,7 +255,7 @@ fn (mut ctx Context) parse_events() {
 		if nr_iters > 100 {
 			ctx.shift(1)
 		}
-		mut event := &Event(0)
+		mut event := &Event(unsafe { nil })
 		if ctx.read_buf[0] == 0x1b {
 			e, len := escape_sequence(ctx.read_buf.bytestr())
 			event = e

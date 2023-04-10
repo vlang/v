@@ -2832,6 +2832,12 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		if from_sym.kind == .alias {
 			from_type = (from_sym.info as ast.Alias).parent_type.derive_add_muls(from_type)
 		}
+		if mut node.expr is ast.IntegerLiteral {
+			if node.expr.val.int() == 0 {
+				c.error('cannot null cast a struct pointer, use &${to_sym.name}(unsafe { nil })',
+					node.pos)
+			}
+		}
 		if from_type == ast.voidptr_type_idx && !c.inside_unsafe {
 			// TODO make this an error
 			c.warn('cannot cast voidptr to a struct outside `unsafe`', node.pos)
