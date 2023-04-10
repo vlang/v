@@ -135,7 +135,7 @@ ${enc_fn_dec} {
 			m := sym.info as ast.Map
 			g.gen_json_for_type(m.key_type)
 			g.gen_json_for_type(m.value_type)
-			dec.writeln(g.decode_map(m.key_type, m.value_type))
+			dec.writeln(g.decode_map(m.key_type, m.value_type, ret_styp))
 			enc.writeln(g.encode_map(m.key_type, m.value_type))
 		} else if sym.kind == .alias {
 			a := sym.info as ast.Alias
@@ -152,6 +152,12 @@ ${enc_fn_dec} {
 				g.gen_enum_enc_dec(utyp, psym, mut enc, mut dec)
 			} else if psym.kind == .sum_type {
 				verror('json: ${sym.name} aliased sumtypes does not work at the moment')
+			} else if psym.kind == .map {
+				m := psym.info as ast.Map
+				g.gen_json_for_type(m.key_type)
+				g.gen_json_for_type(m.value_type)
+				dec.writeln(g.decode_map(m.key_type, m.value_type, ret_styp))
+				enc.writeln(g.encode_map(m.key_type, m.value_type))
 			} else {
 				verror('json: ${sym.name} is not struct')
 			}
@@ -867,7 +873,7 @@ fn (mut g Gen) encode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 '
 }
 
-fn (mut g Gen) decode_map(key_type ast.Type, value_type ast.Type) string {
+fn (mut g Gen) decode_map(key_type ast.Type, value_type ast.Type, ustyp string) string {
 	styp := g.typ(key_type)
 	mut styp_v := g.typ(value_type)
 	ret_styp := styp_v.replace('*', '_ptr')
@@ -882,14 +888,14 @@ fn (mut g Gen) decode_map(key_type ast.Type, value_type ast.Type) string {
 		${result_name}_${ret_styp} val2 = ${fn_name_v} (js_get(root, jsval->string));
 		if(val2.is_error) {
 			map_free(&res);
-			return *(${result_name}_Map_${styp}_${ret_styp}*)&val2;
+			return *(${result_name}_${ustyp}*)&val2;
 		}
 		${styp_v} val = *(${styp_v}*)val2.data;
 '
 	}
 	return '
 	if(!cJSON_IsObject(root) && !cJSON_IsNull(root)) {
-		return (${result_name}_Map_${styp}_${ret_styp}){ .is_error = true, .err = _v_error(string__plus(_SLIT("Json element is not an object: "), tos2((byteptr)cJSON_PrintUnformatted(root)))), .data = {0}};
+		return (${result_name}_${ustyp}){ .is_error = true, .err = _v_error(string__plus(_SLIT("Json element is not an object: "), tos2((byteptr)cJSON_PrintUnformatted(root)))), .data = {0}};
 	}
 	res = new_map(sizeof(${styp}), sizeof(${styp_v}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn});
 	cJSON *jsval = NULL;
