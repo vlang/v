@@ -222,6 +222,7 @@ fn (mut p Parser) decode_object() !Any {
 	p.n_level++
 	// `}`
 	for p.tok.kind != .rcbr {
+		// step 1 -> key
 		if p.tok.kind != .str_ {
 			return InvalidTokenError{
 				token: p.tok
@@ -231,6 +232,7 @@ fn (mut p Parser) decode_object() !Any {
 
 		cur_key := p.tok.lit.bytestr()
 		p.next_with_err()!
+		// step 2 -> colon separator
 		if p.tok.kind != .colon {
 			return InvalidTokenError{
 				token: p.tok
@@ -239,6 +241,7 @@ fn (mut p Parser) decode_object() !Any {
 		}
 
 		p.next_with_err()!
+		// step 3 -> value
 		fields[cur_key] = p.decode_value()!
 		if p.tok.kind != .comma && p.tok.kind != .rcbr {
 			return UnknownTokenError{
@@ -250,6 +253,7 @@ fn (mut p Parser) decode_object() !Any {
 		}
 	}
 	p.next_with_err()!
+	// step 4 -> eof (end)
 	p.n_level--
 	return Any(fields)
 }
