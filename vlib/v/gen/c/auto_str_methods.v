@@ -192,13 +192,9 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	} else {
 		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(*(${sym.cname}*)it.data);')
 	}
-	g.auto_str_funcs.writeln('\t} else {')
-
-	tmp_str := str_intp_sub('error: %%', 'IError_str(it.err)')
-	g.auto_str_funcs.writeln('\t\tres = ${tmp_str};')
+	g.auto_str_funcs.writeln('\t\treturn ${str_intp_sub('Option(%%)', 'res')};')
 	g.auto_str_funcs.writeln('\t}')
-
-	g.auto_str_funcs.writeln('\treturn ${str_intp_sub('Option(%%)', 'res')};')
+	g.auto_str_funcs.writeln('\treturn _SLIT("Option(none)");')
 	g.auto_str_funcs.writeln('}')
 }
 
@@ -231,7 +227,7 @@ fn (mut g Gen) gen_str_for_result(typ ast.Type, styp string, str_fn_name string)
 	g.auto_str_funcs.writeln('\t\tres = ${tmp_str};')
 	g.auto_str_funcs.writeln('\t}')
 
-	g.auto_str_funcs.writeln('\treturn ${str_intp_sub('result(%%)', 'res')};')
+	g.auto_str_funcs.writeln('\treturn ${str_intp_sub('Result(%%)', 'res')};')
 	g.auto_str_funcs.writeln('}')
 }
 
@@ -897,16 +893,19 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, typ_str string, 
 			''
 		}
 		base_fmt := g.type_to_fmt(g.unwrap_generic(field.typ))
+		is_opt_field := field.typ.has_flag(.option)
 
 		// manage prefix and quote symbol for the filed
 		mut quote_str := ''
 		mut prefix := ''
 		sym := g.table.sym(g.unwrap_generic(field.typ))
-		if sym.kind == .string {
-			quote_str = "'"
-		} else if field.typ in ast.charptr_types {
-			quote_str = '\\"'
-			prefix = 'C'
+		if !is_opt_field {
+			if sym.kind == .string {
+				quote_str = "'"
+			} else if field.typ in ast.charptr_types {
+				quote_str = '\\"'
+				prefix = 'C'
+			}
 		}
 
 		if is_first {
@@ -937,7 +936,9 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, typ_str string, 
 			g.get_str_fn(ftyp_noshared)
 		}
 		// with floats we use always the g representation:
-		if sym.kind !in [.f32, .f64] {
+		if is_opt_field {
+			fn_body.write_string('{_SLIT("${quote_str}"), ${c.si_s_code}, {.d_s=')
+		} else if sym.kind !in [.f32, .f64] {
 			fn_body.write_string('{_SLIT("${quote_str}"), ${int(base_fmt)}, {.${data_str(base_fmt)}=')
 		} else {
 			g_fmt := '0x' + (u32(base_fmt) | u32(0x7F) << 9).hex()
@@ -949,8 +950,11 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, typ_str string, 
 			field.name, sym_has_str_method, str_method_expects_ptr)
 		ftyp_nr_muls := field.typ.nr_muls()
 		if ftyp_nr_muls > 1 || field.typ in ast.cptr_types {
-			func = '(voidptr) it.${field.name}'
-			caller_should_free = false
+			if is_opt_field {
+			} else {
+				func = '(voidptr) it.${field.name}'
+				caller_should_free = false
+			}
 		} else if ftyp_noshared.is_ptr() {
 			// reference types can be "nil"
 			if ftyp_noshared.has_flag(.option) {
@@ -1004,7 +1008,7 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, _field_type ast.Type, fn_name strin
 	deref, _ := deref_kind(expects_ptr, field_type.is_ptr(), field_type)
 	if sym.kind == .enum_ {
 		return '${fn_name}(${deref}(it.${c_name(field_name)}))', true
-	} else if should_use_indent_func(sym.kind) {
+	} else if _field_type.has_flag(.option) || should_use_indent_func(sym.kind) {
 		obj := '${deref}it.${c_name(field_name)}${sufix}'
 		if has_custom_str {
 			return '${fn_name}(${obj})', true
