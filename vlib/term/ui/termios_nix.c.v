@@ -420,7 +420,7 @@ fn escape_sequence(buf_ string) (&Event, int) {
 	if buf.len > 2 && buf[1] == `<` {
 		split := buf[2..].split(';')
 		if split.len < 3 {
-			return &Event(0), 0
+			return &Event(unsafe { nil }), 0
 		}
 
 		typ, x, y := split[0].int(), split[1].int(), split[2].int()
