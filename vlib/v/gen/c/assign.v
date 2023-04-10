@@ -740,21 +740,27 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 			}
 		} else {
 			g.expr(lx)
-			if g.is_arraymap_set {
-				if is_auto_heap {
-					g.writeln('HEAP${noscan}(${styp}, ${mr_var_name}.arg${i}) });')
-				} else if is_option {
-					g.writeln('(*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i} });')
-				} else {
-					g.writeln('${mr_var_name}.arg${i} });')
-				}
+			sym := g.table.sym(node.left_types[i])
+			if sym.kind == .array_fixed {
+				g.writeln(';')
+				g.writeln('memcpy(&${g.expr_string(lx)}, &${mr_var_name}.arg${i}, sizeof(${styp}));')
 			} else {
-				if is_auto_heap {
-					g.writeln(' = HEAP${noscan}(${styp}, ${mr_var_name}.arg${i});')
-				} else if is_option {
-					g.writeln(' = (*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i};')
+				if g.is_arraymap_set {
+					if is_auto_heap {
+						g.writeln('HEAP${noscan}(${styp}, ${mr_var_name}.arg${i}) });')
+					} else if is_option {
+						g.writeln('(*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i} });')
+					} else {
+						g.writeln('${mr_var_name}.arg${i} });')
+					}
 				} else {
-					g.writeln(' = ${mr_var_name}.arg${i};')
+					if is_auto_heap {
+						g.writeln(' = HEAP${noscan}(${styp}, ${mr_var_name}.arg${i});')
+					} else if is_option {
+						g.writeln(' = (*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i};')
+					} else {
+						g.writeln(' = ${mr_var_name}.arg${i};')
+					}
 				}
 			}
 		}
