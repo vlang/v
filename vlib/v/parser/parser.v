@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 [has_globals]
@@ -98,11 +98,12 @@ mut:
 	script_mode               bool
 	script_mode_start_token   token.Token
 pub mut:
-	scanner    &scanner.Scanner = unsafe { nil }
-	errors     []errors.Error
-	warnings   []errors.Warning
-	notices    []errors.Notice
-	vet_errors []vet.Error
+	scanner        &scanner.Scanner = unsafe { nil }
+	errors         []errors.Error
+	warnings       []errors.Warning
+	notices        []errors.Notice
+	vet_errors     []vet.Error
+	template_paths []string // record all compiled $tmpl files; needed for `v watch run webserver.v`
 }
 
 __global codegen_files = unsafe { []&ast.File{} }
@@ -372,6 +373,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		warnings: warnings
 		notices: notices
 		global_labels: p.global_labels
+		template_paths: p.template_paths
 	}
 }
 
@@ -3018,7 +3020,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	name_pos := p.tok.pos()
 	mut field_name := ''
 	// check if the name is on the same line as the dot
-	if (p.prev_tok.pos().line_nr == name_pos.line_nr) || p.tok.kind != .name {
+	if p.prev_tok.pos().line_nr == name_pos.line_nr || p.tok.kind != .name {
 		field_name = p.check_name()
 	} else {
 		p.name_error = true
@@ -4016,6 +4018,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			pos: decl_pos
 			type_pos: type_pos
 			comments: comments
+			generic_types: generic_types
 			attrs: attrs
 		}
 	}

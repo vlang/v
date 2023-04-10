@@ -89,7 +89,7 @@ fn is_dog_or_cat(a Animal) bool {
 	println('Animal is Dog or Cat: is a Dog: ${is_dog}, is a Cat: ${is_cat}')
 	// return is_dog || is_cat
 	// shorter syntax
-	is_dog_or_cat := if (a is Dog) || (a is Cat) { true } else { false }
+	is_dog_or_cat := if a is Dog || a is Cat { true } else { false }
 	println('Animal is Dog or Cat: ${is_dog_or_cat}')
 	return is_dog_or_cat
 }
@@ -359,7 +359,7 @@ fn is_dog(a Animal) bool {
 	println('with type: ${typeof(a).name}') // get implementation type (if possible)
 
 	// sample (additional checks) here
-	is_dog_or_cat := if (a is Dog) || (a is Cat) { true } else { false }
+	is_dog_or_cat := if a is Dog || a is Cat { true } else { false }
 	println('Animal is Dog or Cat: ${is_dog_or_cat}')
 
 	// use/test even another syntax

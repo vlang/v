@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module json2
@@ -155,7 +155,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 	mut i := 0
 	mut fields_len := 0
 	$for field in U.fields {
-		if val.$(field.name).str() != 'Option(error: none)' {
+		if val.$(field.name).str() != 'Option(none)' {
 			fields_len++
 		}
 	}
@@ -171,7 +171,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 		}
 
 		$if field.is_option {
-			is_none := value.str() == 'Option(error: none)'
+			is_none := value.str() == 'Option(none)'
 
 			if !is_none {
 				e.encode_newline(level, mut wr)!

@@ -31,7 +31,7 @@ fn main() {
 	sql db {
 		create table Parent
 		create table Child
-	}
+	}!
 
 	new_parent := Parent{
 		name: 'test'
@@ -40,17 +40,17 @@ fn main() {
 
 	sql db {
 		insert new_parent into Parent
-	}
+	}!
 
 	first_child := get_first_child()
 
 	sql db {
 		insert first_child into Child
-	}
+	}!
 
 	steve := sql db {
 		select from Parent where child == get_second_child()
-	}
+	}!
 
 	dump(steve)
 }

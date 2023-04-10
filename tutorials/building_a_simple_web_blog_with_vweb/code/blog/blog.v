@@ -18,7 +18,7 @@ fn main() {
 	}
 	sql app.db {
 		create table Article
-	}
+	}!
 	vweb.run(app, 8081)
 }
 
@@ -61,7 +61,7 @@ pub fn (mut app App) new_article(title string, text string) vweb.Result {
 	println(article)
 	sql app.db {
 		insert article into Article
-	}
+	} or {}
 
 	return app.redirect('/')
 }

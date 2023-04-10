@@ -169,7 +169,7 @@ fn (vd VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) 
 		os.file_name(cn.file_path)
 	}
 	src_link := get_src_link(vd.manifest.repo_url, file_path_name, cn.pos.line_nr + 1)
-	if cn.content.len != 0 || (cn.name == 'Constants') {
+	if cn.content.len != 0 || cn.name == 'Constants' {
 		hw.write_string(doc_node_html(cn, src_link, false, cfg.include_examples, d.table))
 	}
 	for child in cn.children {
@@ -394,9 +394,13 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	node_class := if dn.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dn)
 	mut deprecated_tags := dn.tags.filter(it.starts_with('deprecated'))
-	deprecated_tags.sort()
+	if doc.should_sort {
+		deprecated_tags.sort()
+	}
 	mut tags := dn.tags.filter(!it.starts_with('deprecated'))
-	tags.sort()
+	if doc.should_sort {
+		tags.sort()
+	}
 	mut node_id := get_node_id(dn)
 	mut hash_link := if !head { ' <a href="#${node_id}">#</a>' } else { '' }
 	if head && is_module_readme(dn) {

@@ -24,7 +24,7 @@ fn f_arr2(args ?[3]f64) ?[]f64 {
 
 fn test_simple() {
 	mut arr := ?[3]int(none)
-	println(arr) // Option(error: none)
+	println(arr) // Option(none)
 }
 
 fn test_simple_assign() {

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -84,9 +84,13 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		mut is_comptime := false
 		if (node.cond is ast.Ident && c.is_comptime_var(node.cond))
 			|| node.cond is ast.ComptimeSelector {
-			is_comptime = true
-			typ = c.unwrap_generic(c.comptime_fields_default_type)
+			ctyp := c.get_comptime_var_type(node.cond)
+			if ctyp != ast.void_type {
+				is_comptime = true
+				typ = ctyp
+			}
 		}
+
 		mut sym := c.table.final_sym(typ)
 		if sym.kind != .string {
 			match mut node.cond {
@@ -139,6 +143,15 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.kind = sym.kind
 			node.val_type = val_type
 			node.scope.update_var_type(node.val_var, val_type)
+
+			if is_comptime {
+				c.comptime_fields_type[node.val_var] = val_type
+				node.scope.update_ct_var_kind(node.val_var, .value_var)
+
+				defer {
+					c.comptime_fields_type.delete(node.val_var)
+				}
+			}
 		} else if sym.kind == .any {
 			node.cond_type = typ
 			node.kind = sym.kind
@@ -155,8 +168,12 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				node.scope.update_var_type(node.key_var, key_type)
 
 				if is_comptime {
-					c.comptime_fields_key_type = key_type
+					c.comptime_fields_type[node.key_var] = key_type
 					node.scope.update_ct_var_kind(node.key_var, .key_var)
+
+					defer {
+						c.comptime_fields_type.delete(node.key_var)
+					}
 				}
 			}
 
@@ -164,8 +181,12 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.scope.update_var_type(node.val_var, value_type)
 
 			if is_comptime {
-				c.comptime_fields_val_type = value_type
+				c.comptime_fields_type[node.val_var] = value_type
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
+
+				defer {
+					c.comptime_fields_type.delete(node.val_var)
+				}
 			}
 		} else {
 			if sym.kind == .map && !(node.key_var.len > 0 && node.val_var.len > 0) {
@@ -182,8 +203,12 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				node.scope.update_var_type(node.key_var, key_type)
 
 				if is_comptime {
-					c.comptime_fields_key_type = key_type
+					c.comptime_fields_type[node.key_var] = key_type
 					node.scope.update_ct_var_kind(node.key_var, .key_var)
+
+					defer {
+						c.comptime_fields_type.delete(node.key_var)
+					}
 				}
 			}
 			mut value_type := c.table.value_type(typ)
@@ -235,8 +260,12 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.val_type = value_type
 			node.scope.update_var_type(node.val_var, value_type)
 			if is_comptime {
-				c.comptime_fields_val_type = value_type
+				c.comptime_fields_type[node.val_var] = value_type
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
+
+				defer {
+					c.comptime_fields_type.delete(node.val_var)
+				}
 			}
 		}
 	}

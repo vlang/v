@@ -281,7 +281,7 @@ pub fn (t Time) long_weekday_str() string {
 
 // is_leap_year checks if a given a year is a leap year.
 pub fn is_leap_year(year int) bool {
-	return (year % 4 == 0) && (year % 100 != 0 || year % 400 == 0)
+	return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
 }
 
 // days_in_month returns a number of days in a given month.

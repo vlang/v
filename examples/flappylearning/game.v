@@ -190,7 +190,7 @@ fn main() {
 		frame_fn: frame
 		event_fn: on_event
 		user_data: app
-		init_fn: init_images
+		init_fn: app.init_images_wrapper
 		font_path: font_path
 	)
 	app.nv = neuroevolution.Generations{
@@ -209,21 +209,25 @@ fn (mut app App) run() {
 	}
 }
 
-fn init_images(mut app App) {
+fn (mut app App) init_images_wrapper() {
+	app.init_images() or { panic(err) }
+}
+
+fn (mut app App) init_images() ! {
 	$if android {
-		background := os.read_apk_asset('img/background.png') or { panic(err) }
-		app.background = app.gg.create_image_from_byte_array(background)
-		bird := os.read_apk_asset('img/bird.png') or { panic(err) }
-		app.bird = app.gg.create_image_from_byte_array(bird)
-		pipetop := os.read_apk_asset('img/pipetop.png') or { panic(err) }
-		app.pipetop = app.gg.create_image_from_byte_array(pipetop)
-		pipebottom := os.read_apk_asset('img/pipebottom.png') or { panic(err) }
-		app.pipebottom = app.gg.create_image_from_byte_array(pipebottom)
+		background := os.read_apk_asset('img/background.png')!
+		app.background = app.gg.create_image_from_byte_array(background)!
+		bird := os.read_apk_asset('img/bird.png')!
+		app.bird = app.gg.create_image_from_byte_array(bird)!
+		pipetop := os.read_apk_asset('img/pipetop.png')!
+		app.pipetop = app.gg.create_image_from_byte_array(pipetop)!
+		pipebottom := os.read_apk_asset('img/pipebottom.png')!
+		app.pipebottom = app.gg.create_image_from_byte_array(pipebottom)!
 	} $else {
-		app.background = app.gg.create_image(os.resource_abs_path('assets/img/background.png'))
-		app.bird = app.gg.create_image(os.resource_abs_path('assets/img/bird.png'))
-		app.pipetop = app.gg.create_image(os.resource_abs_path('assets/img/pipetop.png'))
-		app.pipebottom = app.gg.create_image(os.resource_abs_path('assets/img/pipebottom.png'))
+		app.background = app.gg.create_image(os.resource_abs_path('assets/img/background.png'))!
+		app.bird = app.gg.create_image(os.resource_abs_path('assets/img/bird.png'))!
+		app.pipetop = app.gg.create_image(os.resource_abs_path('assets/img/pipetop.png'))!
+		app.pipebottom = app.gg.create_image(os.resource_abs_path('assets/img/pipebottom.png'))!
 	}
 }
 

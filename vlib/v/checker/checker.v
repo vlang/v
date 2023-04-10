@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -25,11 +25,11 @@ const (
 
 pub const (
 	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
-		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
+		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop', 'delete']
 	array_builtin_methods_chk   = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
 	// TODO: remove `byte` from this list when it is no longer supported
 	reserved_type_names         = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16',
-		'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune']
+		'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr']
 	reserved_type_names_chk     = token.new_keywords_matcher_from_array_trie(reserved_type_names)
 	vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 )
@@ -96,8 +96,6 @@ mut:
 	timers                           &util.Timers = util.get_timers()
 	comptime_for_field_var           string
 	comptime_fields_default_type     ast.Type
-	comptime_fields_key_type         ast.Type // key type on `$for k, v in val.$(field.name)`
-	comptime_fields_val_type         ast.Type // value type on `$for k, v in val.$(field.name)`
 	comptime_fields_type             map[string]ast.Type
 	comptime_for_field_value         ast.StructField // value of the field variable
 	comptime_enum_field_value        string // current enum value name
@@ -418,8 +416,11 @@ fn stripped_name(name string) string {
 }
 
 fn (mut c Checker) check_valid_pascal_case(name string, identifier string, pos token.Pos) {
+	if c.pref.translated || c.file.is_translated {
+		return
+	}
 	sname := stripped_name(name)
-	if sname.len > 0 && !sname[0].is_capital() && !c.pref.translated && !c.file.is_translated {
+	if sname.len > 0 && !sname[0].is_capital() {
 		c.error('${identifier} `${name}` must begin with capital letter', pos)
 	}
 }
@@ -704,7 +705,12 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 			to_lock, pos = c.fail_if_immutable(expr.expr)
 		}
 		ast.PrefixExpr {
-			to_lock, pos = c.fail_if_immutable(expr.right)
+			if expr.op == .mul && expr.right is ast.Ident {
+				// Do not fail if dereference is immutable:
+				// `*x = foo()` doesn't modify `x`
+			} else {
+				to_lock, pos = c.fail_if_immutable(expr.right)
+			}
 		}
 		ast.PostfixExpr {
 			to_lock, pos = c.fail_if_immutable(expr.expr)
@@ -1903,6 +1909,7 @@ fn (mut c Checker) stmt(node_ ast.Stmt) {
 
 fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 	cur_exp_typ := c.expected_type
+	c.expected_type = ast.bool_type
 	assert_type := c.check_expr_opt_call(node.expr, c.expr(node.expr))
 	if assert_type != ast.bool_type_idx {
 		atype_name := c.table.sym(assert_type).name
@@ -3659,8 +3666,9 @@ fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 	return none
 }
 
+[inline]
 pub fn (mut c Checker) is_comptime_var(node ast.Expr) bool {
-	return c.inside_comptime_for_field && node is ast.Ident
+	return node is ast.Ident
 		&& (node as ast.Ident).info is ast.IdentVar && (node as ast.Ident).kind == .variable && ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime
 }
 
@@ -3839,7 +3847,8 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			c.error('cannot dereference to void', node.pos)
 		}
 	}
-	if node.op == .bit_not && !right_type.is_int() && !c.pref.translated && !c.file.is_translated {
+	if node.op == .bit_not && !c.unwrap_generic(right_type).is_int() && !c.pref.translated
+		&& !c.file.is_translated {
 		c.type_error_for_operator('~', 'integer', right_sym.name, node.pos)
 	}
 	if node.op == .not && right_type != ast.bool_type_idx && !c.pref.translated

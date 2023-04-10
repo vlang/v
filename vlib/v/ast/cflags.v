@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
@@ -70,7 +70,7 @@ pub fn (mut t Table) parse_cflag(cflg string, mod string, ctimedefines []string)
 		if index == -1 {
 			value = flag.trim_space()
 		}
-		if (name in ['-I', '-l', '-L']) && value == '' {
+		if name in ['-I', '-l', '-L'] && value == '' {
 			hint := if name == '-l' { 'library name' } else { 'path' }
 			return error('bad #flag `${flag_orig}`: missing ${hint} after `${name}`')
 		}

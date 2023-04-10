@@ -11,5 +11,5 @@ fn main() {
 	sql db {
 		create table Node
 		insert bug into Node
-	}
+	}!
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -85,9 +85,10 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	p.inside_match = false
 	or_expr := p.parse_sql_or_block()
 	p.inside_match = tmp_inside_match
+
 	return ast.SqlExpr{
 		is_count: is_count
-		typ: typ
+		typ: typ.set_flag(.result)
 		or_expr: or_expr
 		db_expr: db_expr
 		where_expr: where_expr
@@ -100,6 +101,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		order_expr: order_expr
 		has_desc: has_desc
 		is_array: if is_count { false } else { true }
+		is_generated: false
 		pos: pos.extend(p.prev_tok.pos())
 		table_expr: ast.TypeNode{
 			typ: table_type
@@ -149,21 +151,11 @@ fn (mut p Parser) parse_sql_or_block() ast.OrExpr {
 	mut pos := p.tok.pos()
 
 	if p.tok.kind == .key_orelse {
-		was_inside_or_expr := p.inside_or_expr
-		p.inside_or_expr = true
-		p.next()
-		p.open_scope()
-		p.scope.register(ast.Var{
-			name: 'err'
-			typ: ast.error_type
-			pos: p.tok.pos()
-			is_used: true
-		})
 		kind = .block
-		stmts = p.parse_block_no_scope(false)
-		pos = pos.extend(p.prev_tok.pos())
-		p.close_scope()
-		p.inside_or_expr = was_inside_or_expr
+		stmts, pos = p.or_block(.with_err_var)
+	} else if p.tok.kind == .not {
+		kind = .propagate_result
+		p.next()
 	}
 
 	return ast.OrExpr{
@@ -198,6 +190,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 				pos: typ_pos
 			}
 			scope: p.scope
+			is_generated: false
 		}
 	} else if n == 'drop' {
 		kind = .drop
@@ -215,6 +208,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 				typ: typ
 				pos: typ_pos
 			}
+			is_generated: false
 			scope: p.scope
 		}
 	}
@@ -285,14 +279,14 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		update_exprs: update_exprs
 		kind: kind
 		where_expr: where_expr
-		is_top_level: true
+		is_generated: false
 		scope: p.scope
 	}
 }
 
 fn (mut p Parser) check_sql_keyword(name string) ?bool {
 	if p.check_name() != name {
-		p.error('orm: expecting `${name}`')
+		p.error('V ORM: expecting `${name}`')
 		return none
 	}
 	return true

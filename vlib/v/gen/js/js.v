@@ -1465,7 +1465,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				should_cast := if stmt.left_types.len == 0 {
 					false
 				} else {
-					(g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables)
+					g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables
 						&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
 				}
 

@@ -22,11 +22,13 @@ fn main() {
 	{
 		{
 			{
-				// Indent this much to force a break after the assign (`:=`).
-				// Check that the trailing space is removed
-				should_cast :=
-					(g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables)
-					&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
+				{
+					// Indent this much to force a break after the assign (`:=`).
+					// Check that the trailing space is removed
+					should_cast :=
+						g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables
+						&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
+				}
 			}
 		}
 	}

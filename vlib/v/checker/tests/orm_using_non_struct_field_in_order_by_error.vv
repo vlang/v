@@ -12,7 +12,7 @@ fn main() {
 
 	users := sql db {
 		select from User order by database
-	}
+	}!
 
 	println(users)
 }

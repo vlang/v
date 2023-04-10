@@ -74,7 +74,7 @@ fn bellman_ford[T](graph [][]T, src int) {
 			mut u := edges[j].src
 			mut v := edges[j].dest
 			mut weight := edges[j].weight
-			if (dist[u] != large) && (dist[u] + weight < dist[v]) {
+			if dist[u] != large && dist[u] + weight < dist[v] {
 				dist[v] = dist[u] + weight
 			}
 		}
@@ -88,7 +88,7 @@ fn bellman_ford[T](graph [][]T, src int) {
 		mut u := edges[j].src
 		mut v := edges[j].dest
 		mut weight := edges[j].weight
-		if (dist[u] != large) && (dist[u] + weight < dist[v]) {
+		if dist[u] != large && dist[u] + weight < dist[v] {
 			print('\n Graph contains negative weight cycle')
 			// If negative cycle is detected, simply
 			// return or an exit(1)

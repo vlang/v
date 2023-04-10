@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module checker
@@ -272,7 +272,7 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 		if got_typ_sym.symbol_name_except_generic() == expected_typ_sym.symbol_name_except_generic() {
 			// Check if we are making a comparison between two different types of
 			// the same type like `Type[int] and &Type[]`
-			if (got.is_ptr() != expected.is_ptr())
+			if got.is_ptr() != expected.is_ptr()
 				|| !c.check_same_module(got, expected)
 				|| (!got.is_ptr() && !expected.is_ptr()
 				&& got_typ_sym.name != expected_typ_sym.name) {
@@ -793,9 +793,42 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 					}
 				}
 			}
+			c.error('could not infer generic type `${gt_name}` in generic struct `${sym.name}[${generic_names.join(', ')}]`',
+				node.pos)
+			return concrete_types
 		}
 	}
 	return concrete_types
+}
+
+fn (g Checker) get_generic_array_element_type(array ast.Array) ast.Type {
+	mut cparam_elem_info := array as ast.Array
+	mut cparam_elem_sym := g.table.sym(cparam_elem_info.elem_type)
+	mut typ := ast.void_type
+	for {
+		if cparam_elem_sym.kind == .array {
+			cparam_elem_info = cparam_elem_sym.info as ast.Array
+			cparam_elem_sym = g.table.sym(cparam_elem_info.elem_type)
+		} else {
+			return cparam_elem_info.elem_type.set_nr_muls(0)
+		}
+	}
+	return typ
+}
+
+fn (g Checker) get_generic_array_fixed_element_type(array ast.ArrayFixed) ast.Type {
+	mut cparam_elem_info := array as ast.ArrayFixed
+	mut cparam_elem_sym := g.table.sym(cparam_elem_info.elem_type)
+	mut typ := ast.void_type
+	for {
+		if cparam_elem_sym.kind == .array_fixed {
+			cparam_elem_info = cparam_elem_sym.info as ast.ArrayFixed
+			cparam_elem_sym = g.table.sym(cparam_elem_info.elem_type)
+		} else {
+			return cparam_elem_info.elem_type.set_nr_muls(0)
+		}
+	}
+	return typ
 }
 
 fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
@@ -975,6 +1008,24 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					if gt_name in generic_names && generic_types.len == concrete_types.len {
 						idx := generic_names.index(gt_name)
 						typ = concrete_types[idx]
+					}
+				} else if arg_sym.kind == .any && c.table.cur_fn.generic_names.len > 0
+					&& c.table.cur_fn.params.len > 0 && func.generic_names.len > 0
+					&& arg.expr is ast.Ident {
+					var_name := (arg.expr as ast.Ident).name
+					for cur_param in c.table.cur_fn.params {
+						if !cur_param.typ.has_flag(.generic) || cur_param.name != var_name {
+							continue
+						}
+						typ = cur_param.typ
+						mut cparam_type_sym := c.table.sym(c.unwrap_generic(typ))
+						if cparam_type_sym.kind == .array {
+							typ = c.get_generic_array_element_type(cparam_type_sym.info as ast.Array)
+						} else if cparam_type_sym.kind == .array_fixed {
+							typ = c.get_generic_array_fixed_element_type(cparam_type_sym.info as ast.ArrayFixed)
+						}
+						typ = c.unwrap_generic(typ)
+						break
 					}
 				}
 			}

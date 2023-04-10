@@ -14,6 +14,7 @@ pub struct TcpConn {
 pub mut:
 	sock TcpSocket
 mut:
+	handle         int
 	write_deadline time.Time
 	read_deadline  time.Time
 	read_timeout   time.Duration
@@ -242,6 +243,15 @@ pub fn (mut c TcpConn) wait_for_write() ! {
 	return wait_for_write(c.sock.handle, c.write_deadline, c.write_timeout)
 }
 
+// set_sock initialises the c.sock field. It should be called after `.accept_only()!`.
+// Note: just use `.accept()!`. In most cases it is simpler, and calls `.set_sock()!` for you.
+pub fn (mut c TcpConn) set_sock() ! {
+	c.sock = tcp_socket_from_handle(c.handle)!
+	$if trace_tcp ? {
+		eprintln('    TcpListener.accept | << new_sock.handle: ${c.handle:6}')
+	}
+}
+
 pub fn (c &TcpConn) peer_addr() !Addr {
 	mut addr := Addr{
 		addr: AddrData{
@@ -295,10 +305,32 @@ pub fn listen_tcp(family AddrFamily, saddr string) !&TcpListener {
 	}
 }
 
+// accept a tcp connection from an external source to the listener `l`.
 pub fn (mut l TcpListener) accept() !&TcpConn {
+	mut res := l.accept_only()!
+	res.set_sock()!
+	return res
+}
+
+// accept_only accepts a tcp connection from an external source to the listener `l`.
+// Unlike `accept`, `accept_only` *will not call* `.set_sock()!` on the result,
+// and is thus faster.
+//
+// Note: you *need* to call `.set_sock()!` manually, before using the
+// connection after calling `.accept_only()!`, but that does not have to happen
+// in the same thread that called `.accept_only()!`.
+// The intention of this API, is to have a more efficient way to accept
+// connections, that are later processed by a thread pool, while the main
+// thread remains active, so that it can accept other connections.
+// See also vlib/vweb/vweb.v .
+//
+// If you do not need that, just call `.accept()!` instead, which will call
+// `.set_sock()!` for you.
+pub fn (mut l TcpListener) accept_only() !&TcpConn {
 	$if trace_tcp ? {
 		eprintln('    TcpListener.accept | l.sock.handle: ${l.sock.handle:6}')
 	}
+
 	mut new_handle := C.accept(l.sock.handle, 0, 0)
 	if new_handle <= 0 {
 		l.wait_for_accept()!
@@ -307,12 +339,9 @@ pub fn (mut l TcpListener) accept() !&TcpConn {
 			return error('accept failed')
 		}
 	}
-	new_sock := tcp_socket_from_handle(new_handle)!
-	$if trace_tcp ? {
-		eprintln('    TcpListener.accept | << new_sock.handle: ${new_sock.handle:6}')
-	}
+
 	return &TcpConn{
-		sock: new_sock
+		handle: new_handle
 		read_timeout: net.tcp_default_read_timeout
 		write_timeout: net.tcp_default_write_timeout
 	}

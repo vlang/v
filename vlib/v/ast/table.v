@@ -1,11 +1,10 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 [has_globals]
 module ast
 
 import v.cflag
-import v.token
 import v.util
 
 [heap; minify]
@@ -88,107 +87,6 @@ pub fn (t &Table) panic(message string) {
 	mut mt := unsafe { &Table(t) }
 	mt.panic_npanics++
 	t.panic_handler(t, message)
-}
-
-[minify]
-pub struct Fn {
-pub:
-	is_variadic        bool
-	language           Language
-	is_pub             bool
-	is_ctor_new        bool // `[use_new] fn JS.Array.prototype.constructor()`
-	is_deprecated      bool // `[deprecated] fn abc(){}`
-	is_noreturn        bool // `[noreturn] fn abc(){}`
-	is_unsafe          bool // `[unsafe] fn abc(){}`
-	is_placeholder     bool
-	is_main            bool // `fn main(){}`
-	is_test            bool // `fn test_abc(){}`
-	is_keep_alive      bool // passed memory must not be freed (by GC) before function returns
-	is_method          bool // true for `fn (x T) name()`, and for interface declarations (which are also for methods)
-	no_body            bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
-	is_file_translated bool // true, when the file it resides in is `[translated]`
-	mod                string
-	file               string
-	file_mode          Language
-	pos                token.Pos
-	return_type_pos    token.Pos
-pub mut:
-	return_type    Type
-	receiver_type  Type // != 0, when .is_method == true
-	name           string
-	params         []Param
-	source_fn      voidptr // set in the checker, while processing fn declarations // TODO get rid of voidptr
-	usages         int
-	generic_names  []string
-	dep_names      []string // globals or consts dependent names
-	attrs          []Attr   // all fn attributes
-	is_conditional bool     // true for `[if abc]fn(){}`
-	ctdefine_idx   int      // the index of the attribute, containing the compile time define [if mytag]
-}
-
-fn (f &Fn) method_equals(o &Fn) bool {
-	return f.params[1..].equals(o.params[1..]) && f.return_type == o.return_type
-		&& f.is_variadic == o.is_variadic && f.language == o.language
-		&& f.generic_names == o.generic_names && f.is_pub == o.is_pub && f.mod == o.mod
-		&& f.name == o.name
-}
-
-[minify]
-pub struct Param {
-pub:
-	pos         token.Pos
-	name        string
-	is_mut      bool
-	is_auto_rec bool
-	type_pos    token.Pos
-	is_hidden   bool // interface first arg
-pub mut:
-	typ Type
-}
-
-pub fn (f &Fn) new_method_with_receiver_type(new_type Type) Fn {
-	unsafe {
-		mut new_method := f
-		new_method.params = f.params.clone()
-		for i in 1 .. new_method.params.len {
-			if new_method.params[i].typ == new_method.params[0].typ {
-				new_method.params[i].typ = new_type
-			}
-		}
-		new_method.params[0].typ = new_type
-
-		return *new_method
-	}
-}
-
-pub fn (f &FnDecl) new_method_with_receiver_type(new_type Type) FnDecl {
-	unsafe {
-		mut new_method := f
-		new_method.params = f.params.clone()
-		for i in 1 .. new_method.params.len {
-			if new_method.params[i].typ == new_method.params[0].typ {
-				new_method.params[i].typ = new_type
-			}
-		}
-		new_method.params[0].typ = new_type
-		return *new_method
-	}
-}
-
-fn (p &Param) equals(o &Param) bool {
-	return p.name == o.name && p.is_mut == o.is_mut && p.typ == o.typ && p.is_hidden == o.is_hidden
-}
-
-fn (p []Param) equals(o []Param) bool {
-	if p.len != o.len {
-		return false
-	}
-	for i in 0 .. p.len {
-		if !p[i].equals(o[i]) {
-			return false
-		}
-	}
-	return true
 }
 
 pub fn new_table() &Table {
@@ -2105,7 +2003,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					}
 					mut fields := parent_info.fields.clone()
 					if parent_info.generic_types.len == info.concrete_types.len {
-						generic_names := parent_info.generic_types.map(t.sym(it).name)
+						generic_names := t.get_generic_names(parent_info.generic_types)
 						for i in 0 .. fields.len {
 							if fields[i].typ.has_flag(.generic) {
 								if fields[i].typ.idx() != info.parent_idx {
@@ -2151,7 +2049,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					}
 					if parent_info.generic_types.len == info.concrete_types.len {
 						mut fields := parent_info.fields.clone()
-						generic_names := parent_info.generic_types.map(t.sym(it).name)
+						generic_names := t.get_generic_names(parent_info.generic_types)
 						for i in 0 .. fields.len {
 							if t_typ := t.resolve_generic_to_concrete(fields[i].typ, generic_names,
 								info.concrete_types)
@@ -2209,7 +2107,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					if parent_info.generic_types.len == info.concrete_types.len {
 						mut fields := parent_info.fields.clone()
 						mut variants := parent_info.variants.clone()
-						generic_names := parent_info.generic_types.map(t.sym(it).name)
+						generic_names := t.get_generic_names(parent_info.generic_types)
 						for i in 0 .. fields.len {
 							if t_typ := t.resolve_generic_to_concrete(fields[i].typ, generic_names,
 								info.concrete_types)
@@ -2246,10 +2144,67 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						util.verror('generic error', 'the number of generic types of sumtype `${parent.name}` is inconsistent with the concrete types')
 					}
 				}
+				FnType {
+					// TODO: Cache function's generic types (parameters and return type) like Struct and Interface etc. do?
+					mut parent_info := parent.info as FnType
+					mut function := parent_info.func
+					mut generic_types := []Type{cap: function.params.len + 1}
+					generic_types << function.params.filter(it.typ.has_flag(.generic)).map(it.typ)
+					if function.return_type.has_flag(.generic) {
+						generic_types << function.return_type
+					}
+					generic_names := t.get_generic_names(generic_types)
+					for mut param in function.params {
+						if param.typ.has_flag(.generic) {
+							if t_typ := t.resolve_generic_to_concrete(param.typ, generic_names,
+								info.concrete_types)
+							{
+								param.typ = t_typ
+							}
+						}
+					}
+					if function.return_type.has_flag(.generic) {
+						if t_typ := t.resolve_generic_to_concrete(function.return_type,
+							generic_names, info.concrete_types)
+						{
+							function.return_type = t_typ
+						}
+					}
+					sym.info = FnType{
+						...parent_info
+						func: function
+					}
+					sym.is_pub = true
+					sym.kind = parent.kind
+				}
 				else {}
 			}
 		}
 	}
+}
+
+// Extracts all type names from given types, notice that MultiReturn will be decompose
+// and will not included in returned string
+pub fn (t &Table) get_generic_names(generic_types []Type) []string {
+	mut generic_names := []string{cap: generic_types.len}
+	for typ in generic_types {
+		if !typ.has_flag(.generic) {
+			continue
+		}
+
+		sym := t.sym(typ)
+		info := sym.info
+
+		match info {
+			MultiReturn {
+				generic_names << t.get_generic_names(info.types)
+			}
+			else {
+				generic_names << sym.name
+			}
+		}
+	}
+	return generic_names
 }
 
 pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
