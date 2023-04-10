@@ -3613,9 +3613,10 @@ fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 }
 
 fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) ast.Type {
+	prev_unsafe := c.inside_unsafe
 	c.inside_unsafe = true
 	t := c.expr(node.expr)
-	c.inside_unsafe = false
+	c.inside_unsafe = prev_unsafe
 	return t
 }
 
