@@ -124,14 +124,16 @@ fn test_http_client_index() {
 }
 
 fn test_http_client_404() {
+	server := 'http://${localserver}'
 	url_404_list := [
-		'http://${localserver}/zxcnbnm',
-		'http://${localserver}/JHKAJA',
-		'http://${localserver}/unknown',
+		'/zxcnbnm',
+		'/JHKAJA',
+		'/unknown',
 	]
 	for url in url_404_list {
-		res := http.get(url) or { panic(err) }
+		res := http.get('${server}${url}') or { panic(err) }
 		assert res.status() == .not_found
+		assert res.body == '404 on "${url}"'
 	}
 }
 
@@ -234,7 +236,6 @@ fn test_http_client_shutdown_does_not_work_without_a_cookie() {
 		return
 	}
 	assert x.status() == .not_found
-	assert x.body == '404 Not Found'
 }
 
 fn testsuite_end() {
