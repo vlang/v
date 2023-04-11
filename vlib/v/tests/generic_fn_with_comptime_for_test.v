@@ -6,7 +6,7 @@ fn fn_a[T](data T, depth int, nl bool) {
 		print('int: ${data}')
 	} $else $if T.typ is string {
 		print('string: ${data}')
-	} $else $if T is $Array {
+	} $else $if T is $array {
 		println('array: [')
 		for i, elem in data {
 			fn_a(elem, depth + 1, false)
@@ -16,7 +16,7 @@ fn fn_a[T](data T, depth int, nl bool) {
 			println('')
 		}
 		print(']')
-	} $else $if T is $Map {
+	} $else $if T is $map {
 		println('map: {')
 		for key, value in data {
 			print('\t(key) ')
@@ -25,7 +25,7 @@ fn fn_a[T](data T, depth int, nl bool) {
 			fn_a(value, depth, true)
 		}
 		print('}')
-	} $else $if T is $Struct {
+	} $else $if T is $struct {
 		println('struct ${T.name}: {')
 		$for field in T.fields {
 			print('\t(${field.name}) ')

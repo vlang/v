@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -11,8 +11,8 @@ import v.token
 const (
 	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
 		'compile_warn']
-	comptime_types           = ['Map', 'Array', 'Int', 'Float', 'Struct', 'Interface', 'Enum',
-		'Sumtype', 'Alias', 'Function', 'Option']
+	comptime_types           = ['map', 'array', 'int', 'float', 'struct', 'interface', 'enum',
+		'sumtype', 'alias', 'function', 'option']
 )
 
 pub fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
@@ -25,37 +25,37 @@ pub fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 	}
 	mut cty := ast.ComptimeTypeKind.map_
 	match name {
-		'Map' {
+		'map' {
 			cty = .map_
 		}
-		'Struct' {
+		'struct' {
 			cty = .struct_
 		}
-		'Interface' {
+		'interface' {
 			cty = .iface
 		}
-		'Int' {
+		'int' {
 			cty = .int
 		}
-		'Float' {
+		'float' {
 			cty = .float
 		}
-		'Alias' {
+		'alias' {
 			cty = .alias
 		}
-		'Function' {
+		'function' {
 			cty = .function
 		}
-		'Array' {
+		'array' {
 			cty = .array
 		}
-		'Enum' {
+		'enum' {
 			cty = .enum_
 		}
-		'Sumtype' {
+		'sumtype' {
 			cty = .sum_type
 		}
-		'Option' {
+		'option' {
 			cty = .option
 		}
 		else {}

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -202,7 +202,14 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 				g.write('&')
 			}
 		}
-		g.expr(node.left)
+		if node.left is ast.IndexExpr {
+			g.inside_array_index = true
+			g.expr(node.left)
+			g.inside_array_index = false
+		} else {
+			g.expr(node.left)
+		}
+
 		if node.left_type.has_flag(.shared_f) {
 			if left_is_ptr {
 				g.write('->val')
@@ -393,7 +400,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.typ(elem_type.clear_flag(.option).clear_flag(.result))
 		}
 	}
-	get_and_set_types := elem_sym.kind in [.struct_, .map]
+	get_and_set_types := elem_sym.kind in [.struct_, .map, .array]
 	if g.is_assign_lhs && !g.is_arraymap_set && !get_and_set_types {
 		if g.assign_op == .assign || info.value_type == ast.string_type {
 			g.is_arraymap_set = true
@@ -434,6 +441,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.write('${zero} })))')
 		}
 	} else if g.inside_map_postfix || g.inside_map_infix || g.inside_map_index
+		|| g.inside_array_index
 		|| (g.is_assign_lhs && !g.is_arraymap_set && get_and_set_types) {
 		zero := g.type_default(info.value_type)
 		if node.is_setter {
@@ -449,7 +457,10 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.write('->val')
 		}
 		g.write(', &(${key_type_str}[]){')
+		old_is_assign_lhs := g.is_assign_lhs
+		g.is_assign_lhs = false
 		g.expr(node.index)
+		g.is_assign_lhs = old_is_assign_lhs
 		g.write('}, &(${elem_type_str}[]){ ${zero} }))')
 	} else {
 		zero := g.type_default(info.value_type)

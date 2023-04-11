@@ -275,6 +275,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('fn `init` cannot have a return type', node.pos)
 		}
 	}
+
+	if node.language == .v && node.mod == 'main' && node.name.after_char(`.`) in reserved_type_names
+		&& !node.is_method && !c.is_builtin_mod {
+		c.error('top level declaration cannot shadow builtin type', node.pos)
+	}
 	if node.return_type != ast.Type(0) {
 		c.ensure_type_exists(node.return_type, node.return_type_pos) or { return }
 		if node.language == .v && node.is_method && node.name == 'str' {
@@ -1325,6 +1330,22 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	return func.return_type
 }
 
+fn (mut c Checker) get_comptime_args(node_ ast.CallExpr) map[int]ast.Type {
+	mut comptime_args := map[int]ast.Type{}
+	for i, call_arg in node_.args {
+		if call_arg.expr is ast.Ident {
+			if call_arg.expr.obj is ast.Var {
+				if call_arg.expr.obj.ct_type_var != .no_comptime {
+					comptime_args[i] = c.get_comptime_var_type_from_kind(call_arg.expr.obj.ct_type_var)
+				}
+			}
+		} else if call_arg.expr is ast.ComptimeSelector && c.is_comptime_var(call_arg.expr) {
+			comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
+		}
+	}
+	return comptime_args
+}
+
 fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	left_type := c.expr(node.left)
 	if left_type == ast.void_type {
@@ -1518,8 +1539,26 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				concrete_types << concrete_type
 			}
 		}
+		if c.inside_comptime_for_field && concrete_types.len > 0 {
+			mut comptime_args := c.get_comptime_args(node)
+			mut comptime_types := concrete_types.clone()
+			for k, v in comptime_args {
+				arg_sym := c.table.sym(v)
+				if method.generic_names.len > 0 && arg_sym.kind == .array
+					&& method.params[k + 1].typ.has_flag(.generic)
+					&& c.table.final_sym(method.params[k + 1].typ).kind == .array {
+					comptime_types[k] = (arg_sym.info as ast.Array).elem_type
+				} else {
+					comptime_types[k] = v
+				}
+			}
+			if comptime_args.len > 0
+				&& c.table.register_fn_concrete_types(method.fkey(), comptime_types) {
+				c.need_recheck_generic_fns = true
+			}
+		}
 		if concrete_types.len > 0 {
-			if c.table.register_fn_concrete_types(node.fkey(), concrete_types) {
+			if c.table.register_fn_concrete_types(method.fkey(), concrete_types) {
 				c.need_recheck_generic_fns = true
 			}
 		}
@@ -1582,11 +1621,6 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 
 		for i, mut arg in node.args {
-			param_idx := if method.is_variadic && i >= method.params.len - 1 {
-				method.params.len - 1
-			} else {
-				i + 1
-			}
 			if i > 0 || exp_arg_typ == ast.Type(0) {
 				exp_arg_typ = if method.is_variadic && i >= method.params.len - 1 {
 					method.params.last().typ
@@ -1601,32 +1635,6 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 
 			mut got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 			node.args[i].typ = got_arg_typ
-			if c.inside_comptime_for_field && method.params[param_idx].typ.has_flag(.generic) {
-				arg_sym := c.table.sym(c.comptime_fields_default_type)
-				if arg_sym.kind == .array
-					&& c.table.sym(method.params[param_idx].typ).kind == .array {
-					if c.table.register_fn_concrete_types(method.fkey(), [
-						(arg_sym.info as ast.Array).elem_type,
-					])
-					{
-						c.need_recheck_generic_fns = true
-					}
-				} else {
-					if c.table.register_fn_concrete_types(method.fkey(), [
-						c.comptime_fields_default_type,
-					])
-					{
-						c.need_recheck_generic_fns = true
-					}
-				}
-			} else if c.inside_for_in_any_cond && method.params[param_idx].typ.has_flag(.generic) {
-				if c.table.register_fn_concrete_types(method.fkey(), [
-					c.for_in_any_val_type,
-				])
-				{
-					c.need_recheck_generic_fns = true
-				}
-			}
 			if no_type_promotion {
 				if got_arg_typ != exp_arg_typ {
 					c.error('cannot use `${c.table.sym(got_arg_typ).name}` as argument for `${method.name}` (`${exp_arg_sym.name}` expected)',
@@ -1792,7 +1800,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				c.error('literal argument cannot be passed as reference parameter `${c.table.type_to_str(param.typ)}`',
 					arg.pos)
 			}
-			c.check_expected_call_arg(got_arg_typ, exp_arg_typ, node.language, arg) or {
+			c.check_expected_call_arg(c.unwrap_generic(got_arg_typ), exp_arg_typ, node.language,
+				arg) or {
 				// str method, allow type with str method if fn arg is string
 				// Passing an int or a string array produces a c error here
 				// Deleting this condition results in propper V error messages
@@ -2422,6 +2431,12 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		} else {
 			node.receiver_type = left_type
 		}
+	} else if method_name == 'delete' {
+		unwrapped_left_sym := c.table.sym(c.unwrap_generic(left_type))
+		if method := c.table.find_method(unwrapped_left_sym, method_name) {
+			node.receiver_type = method.receiver_type
+		}
+		node.return_type = ast.void_type
 	}
 	return node.return_type
 }

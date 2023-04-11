@@ -27,7 +27,7 @@ fn test_comptimeselector_map_different_types() {
 	mut vals := []string{}
 
 	$for field in Data.fields {
-		$if field.typ is $Map {
+		$if field.typ is $map {
 			for k, v in data.$(field.name) {
 				keys << k.str()
 				vals << v.str()
@@ -57,7 +57,7 @@ fn test_comptime_var_map_different_types() {
 	mut vals := []string{}
 
 	$for field in Data.fields {
-		$if field.typ is $Map {
+		$if field.typ is $map {
 			gg := data.$(field.name)
 			for k, v in gg {
 				keys << k.str()
@@ -85,7 +85,7 @@ fn test_comptime_with_dump() {
 	}
 
 	$for field in Data.fields {
-		$if field.typ is $Map {
+		$if field.typ is $map {
 			for k, v in data.$(field.name) {
 				dump(k)
 				dump(v)
@@ -111,7 +111,7 @@ fn test_comptime_dump_for_key_and_value() {
 	mut val_types := []string{}
 
 	$for field in Data.fields {
-		$if field.typ is $Map {
+		$if field.typ is $map {
 			for k, v in data.$(field.name) {
 				key_types << typeof(k).name
 				val_types << typeof(v).name
@@ -141,7 +141,7 @@ fn test_comptime_key_value_var() {
 	mut vals := []string{}
 
 	$for field in Data.fields {
-		$if field.typ is $Map {
+		$if field.typ is $map {
 			for k, v in data.$(field.name) {
 				if k == 'a' {
 					keys << dump(k)
@@ -176,7 +176,7 @@ fn test_comptime_generic_argument() {
 	}
 
 	$for field in Data.fields {
-		$if field.typ is $Map {
+		$if field.typ is $map {
 			for k, v in data.$(field.name) {
 				process_value_from_map(v)
 				assert k in ['a', 'b']
@@ -186,12 +186,12 @@ fn test_comptime_generic_argument() {
 }
 
 fn process_value_from_map[T](v T) {
-	$if T is $Map {
+	$if T is $map {
 		assert typeof(v).name == 'map[string]int'
 		assert v.str() == "{'c': 10}"
 		assert true
 		return
-	} $else $if T is $Struct {
+	} $else $if T is $struct {
 		assert typeof(v).name == 'StructType'
 		assert v.str() == "StructType{
     val: 'string from StructType'

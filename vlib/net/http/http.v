@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -33,7 +33,7 @@ pub mut:
 
 // new_request creates a new Request given the request `method`, `url_`, and
 // `data`.
-pub fn new_request(method Method, url_ string, data string) ?Request {
+pub fn new_request(method Method, url_ string, data string) Request {
 	url := if method == .get && !url_.contains('?') { url_ + '?' + data } else { url_ }
 	// println('new req() method=$method url="$url" dta="$data"')
 	return Request{

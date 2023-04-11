@@ -1,8 +1,8 @@
+// vtest flaky: true
+// vtest retry: 3
 import os
 
-const (
-	test = @VROOT + '/vlib/v/tests/testdata/test_array_bound.v'
-)
+const test = @VROOT + '/vlib/v/tests/testdata/test_array_bound.v'
 
 fn direct(line string) {
 	if !line.contains('\tmain__direct(') {
@@ -39,7 +39,12 @@ fn test_array_optimisation() {
 	p.wait()
 	p.close()
 
-	assert stdout.contains('// THE END.')
+	ending := '// THE END.'
+	it_ends_properly := stdout.contains(ending)
+	if !it_ends_properly {
+		dump(stdout)
+	}
+	assert it_ends_properly
 
 	for line in stdout.split('\n') {
 		direct(line)

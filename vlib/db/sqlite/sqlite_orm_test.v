@@ -101,7 +101,7 @@ fn test_sqlite_orm() {
 
 	sql db {
 		create table TestCustomSqlType
-	}
+	}!
 
 	mut result_custom_sql, mut exec_custom_code := db.exec('
 		pragma table_info(TestCustomSqlType);
@@ -119,14 +119,14 @@ fn test_sqlite_orm() {
 
 	sql db {
 		drop table TestCustomSqlType
-	}
+	}!
 
 	/** test default attribute
 	*/
 
 	sql db {
 		create table TestDefaultAtribute
-	}
+	}!
 
 	mut result_default_sql, mut code := db.exec('
 			pragma table_info(TestDefaultAtribute);
@@ -147,12 +147,13 @@ fn test_sqlite_orm() {
 
 	sql db {
 		insert test_default_atribute into TestDefaultAtribute
-	}
+	}!
 
-	result_test_default_atribute := sql db {
+	test_default_atributes := sql db {
 		select from TestDefaultAtribute limit 1
-	}
+	}!
 
+	result_test_default_atribute := test_default_atributes.first()
 	assert result_test_default_atribute.name == 'Hitalo'
 	assert test_default_atribute.created_at.len == 0
 	assert test_default_atribute.created_at1.len == 0
@@ -163,7 +164,7 @@ fn test_sqlite_orm() {
 
 	sql db {
 		drop table TestDefaultAtribute
-	}
+	}!
 }
 
 fn test_get_affected_rows_count() {
@@ -203,26 +204,26 @@ fn test_get_affected_rows_count() {
 
 	all := sql db {
 		select from EntityToTest
-	}
+	}!
 	assert 1 == all.len
 
 	sql db {
 		update EntityToTest set smth = '2' where id == 1
-	}
+	}!
 	assert db.get_affected_rows_count() == 1
 
 	sql db {
 		update EntityToTest set smth = '2' where id == 2
-	}
+	}!
 	assert db.get_affected_rows_count() == 0
 
 	sql db {
 		delete from EntityToTest where id == 2
-	}
+	}!
 	assert db.get_affected_rows_count() == 0
 
 	sql db {
 		delete from EntityToTest where id == 1
-	}
+	}!
 	assert db.get_affected_rows_count() == 1
 }

@@ -17,5 +17,5 @@ fn main() {
 	sql db {
 		create table Tiddlers
 		insert tiddler into Tiddlers
-	}
+	}!
 }

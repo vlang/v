@@ -3,5 +3,5 @@ vlib/v/checker/tests/orm_insert_object_with_mismatched_type_error.vv:19:10: erro
    18 |         create table Tiddlers
    19 |         insert tiddler into Tiddlers
       |                ~~~~~~~
-   20 |     }
+   20 |     }!
    21 | }

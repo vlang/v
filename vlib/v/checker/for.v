@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -167,9 +167,6 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				c.comptime_fields_val_type = value_type
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
 			}
-
-			c.inside_for_in_any_cond = true
-			c.for_in_any_val_type = value_type
 		} else {
 			if sym.kind == .map && !(node.key_var.len > 0 && node.val_var.len > 0) {
 				c.error(
@@ -246,8 +243,6 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	c.check_loop_label(node.label, node.pos)
 	c.stmts(node.stmts)
 	c.loop_label = prev_loop_label
-	c.inside_for_in_any_cond = false
-	c.for_in_any_val_type = 0
 	c.in_for_count--
 }
 

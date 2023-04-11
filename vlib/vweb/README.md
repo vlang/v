@@ -252,9 +252,10 @@ pub fn (mut app App) controller_get_user_by_id() vweb.Result {
 ```
 ### Middleware
 
-V haven't a well defined middleware.
-For now, you can use `before_request()`. This method called before every request.
-Probably you can use it for check user session cookie or add header
+Vweb has different kinds of middleware.
+The `before_request()` method is always called before every request before any
+other middleware is processed. You could use it to check user session cookies or to add a header.
+
 **Example:**
 
 ```v ignore
@@ -263,24 +264,220 @@ pub fn (mut app App) before_request() {
 }
 ```
 
+Middleware functions can be passed directly when creating an App instance and is 
+executed when the url starts with the defined key. 
+
+In the following example, if a user navigates to `/path/to/test` the middleware 
+is executed in the following order: `middleware_func`, `other_func`, `global_middleware`.
+The middleware is executed in the same order as they are defined and if any function in
+the chain returns `false` the propogation is stopped.
+
+**Example:**
+```v
+module main
+
+import vweb
+
+struct App {
+	vweb.Context
+	middlewares map[string][]vweb.Middleware
+}
+
+fn new_app() &App {
+	mut app := &App{
+		middlewares: {
+			// chaining is allowed, middleware will be evaluated in order
+			'/path/to/': [middleware_func, other_func]
+			'/':         [global_middleware]
+		}
+	}
+
+	// do stuff with app
+	// ...
+	return app
+}
+
+fn middleware_func(mut ctx vweb.Context) bool {
+	// ...
+	return true
+}
+
+fn other_func(mut ctx vweb.Context) bool {
+	// ...
+	return true
+}
+
+fn global_middleware(mut ctx vweb.Context) bool {
+	// ...
+	return true
+}
+```
+
+Middleware functions will be of type `vweb.Middleware` and are not methods of App, 
+so they could also be imported from other modules.
+```v ignore
+pub type Middleware = fn (mut Context) bool
+```
+
+Middleware can also be added to route specific functions via attributes.
+
+**Example:**
+```v ignore
+[middleware: check_auth]
+['/admin/data']
+pub fn (mut app App) admin() vweb.Result {
+	// ...
+}
+
+// check_auth is a method of App, so we don't need to pass the context as parameter.
+pub fn (mut app App) check_auth () bool {
+	// ...
+	return true
+}
+```
+For now you can only add 1 middleware to a route specific function via attributes.
+
 ### Redirect
 
 Used when you want be redirected to an url
+
 **Examples:**
 
 ```v ignore
 pub fn (mut app App) before_request() {
-    app.user_id = app.get_cookie('id') or { app.redirect('/') }
+	app.user_id = app.get_cookie('id') or { app.redirect('/') }
 }
 ```
 
 ```v ignore
 ['/articles'; get]
 pub fn (mut app App) articles() vweb.Result {
-    if !app.token {
-        app.redirect('/login')
-    }
-    return app.text("patatoes")
+	if !app.token {
+		app.redirect('/login')
+	}
+	return app.text('patatoes')
+}
+```
+
+You can also combine middleware and redirect.
+
+**Example:**
+
+```v ignore
+[middleware: with_auth]
+['/admin/secret']
+pub fn (mut app App) admin_secret() vweb.Result {
+	// this code should never be reached
+	return app.text('secret')
+}
+
+['/redirect']
+pub fn (mut app App) with_auth() bool {
+	app.redirect('/auth/login')
+	return false
+}
+```
+
+### Controllers
+Controllers can be used to split up app logic so you are able to have one struct 
+per `"/"`.  E.g. a struct `Admin` for urls starting with `"/admin"` and a struct `Foo`
+for urls starting with `"/foo"`
+
+**Example:**
+```v
+module main
+
+import vweb
+
+struct App {
+	vweb.Context
+	vweb.Controller
+}
+
+struct Admin {
+	vweb.Context
+}
+
+struct Foo {
+	vweb.Context
+}
+
+fn main() {
+	mut app := &App{
+		controllers: [
+			vweb.controller('/admin', &Admin{}),
+			vweb.controller('/foo', &Foo{}),
+		]
+	}
+	vweb.run(app, 8080)
+}
+```
+
+You can do everything with a controller struct as with a regular `App` struct. 
+The only difference being is that only the main app that is being passed to `vweb.run`
+is able to have controllers. If you add `vweb.Controller` on a controller struct it 
+will simply be ignored.
+
+#### Routing
+Any route inside a controller struct is treated as a relative route to its controller namespace.
+
+```v ignore
+['/path']
+pub fn (mut app Admin) path vweb.Result {
+    return app.text('Admin')
+}
+```
+When we created the controller with `vweb.controller('/admin', &Admin{})` we told
+vweb that the namespace of that controller is `"/admin"` so in this example we would 
+see the text `"Admin"` if we navigate to the url `"/admin/path"`.
+
+Vweb doesn't support fallback routes or duplicate routes, so if we add the following 
+route to the example the code will produce an error.
+
+```v ignore
+['/admin/path']
+pub fn (mut app App) admin_path vweb.Result {
+    return app.text('Admin overwrite')
+}
+```
+There will be an error, because the controller `Admin` handles all routes starting with
+`"/admin"`; the method `admin_path` is unreachable.
+
+#### Databases and `[vweb_global]` in controllers
+
+Fields with `[vweb_global]` like a database have to passed to each controller individually.
+
+**Example:**
+```v
+module main
+
+import vweb
+import db.sqlite
+
+struct App {
+	vweb.Context
+	vweb.Controller
+pub mut:
+	db sqlite.DB [vweb_global]
+}
+
+struct Admin {
+	vweb.Context
+pub mut:
+	db sqlite.DB [vweb_global]
+}
+
+fn main() {
+	mut db := sqlite.connect('db')!
+
+	mut app := &App{
+		db: db
+		controllers: [
+			vweb.controller('/admin', &Admin{
+				db: db
+			}),
+		]
+	}
 }
 ```
 

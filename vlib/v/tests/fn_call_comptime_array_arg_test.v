@@ -6,7 +6,7 @@ fn encode_array[U](val []U) []string {
 	mut out := []string{}
 	$if U is int {
 		out << 'is int'
-	} $else $if U is $Struct {
+	} $else $if U is $struct {
 		out << 'is struct'
 	}
 	return out

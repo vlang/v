@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -1019,7 +1019,7 @@ pub fn (s string) split_into_lines() []string {
 				line_start = i + 1
 			} else if s[i] == cr {
 				res << if line_start == i { '' } else { s[line_start..i] }
-				if ((i + 1) < s.len) && (s[i + 1] == lf) {
+				if (i + 1) < s.len && s[i + 1] == lf {
 					line_start = i + 2
 				} else {
 					line_start = i + 1
@@ -1287,12 +1287,12 @@ pub fn (s string) index_after(p string, start int) int {
 	return -1
 }
 
-// index_byte returns the index of byte `c` if found in the string.
-// index_byte returns -1 if the byte can not be found.
+// index_u8 returns the index of byte `c` if found in the string.
+// index_u8 returns -1 if the byte can not be found.
 [direct_array_access]
 pub fn (s string) index_u8(c u8) int {
-	for i in 0 .. s.len {
-		if unsafe { s.str[i] } == c {
+	for i, b in s {
+		if b == c {
 			return i
 		}
 	}
@@ -1348,22 +1348,33 @@ pub fn (s string) count(substr string) int {
 	return 0 // TODO can never get here - v doesn't know that
 }
 
+// contains_u8 returns `true` if the string contains the byte value `x`.
+// See also: [`string.index_u8`](#string.index_u8) , to get the index of the byte as well.
+pub fn (s string) contains_u8(x u8) bool {
+	for c in s {
+		if x == c {
+			return true
+		}
+	}
+	return false
+}
+
 // contains returns `true` if the string contains `substr`.
 // See also: [`string.index`](#string.index)
 pub fn (s string) contains(substr string) bool {
 	if substr.len == 0 {
 		return true
 	}
-	if s.index_(substr) == -1 {
-		return false
+	if substr.len == 1 {
+		return s.contains_u8(unsafe { substr.str[0] })
 	}
-	return true
+	return s.index_(substr) != -1
 }
 
 // contains_any returns `true` if the string contains any chars in `chars`.
 pub fn (s string) contains_any(chars string) bool {
 	for c in chars {
-		if s.contains(c.ascii_str()) {
+		if s.contains_u8(c) {
 			return true
 		}
 	}
@@ -1785,7 +1796,7 @@ fn (s string) at_with_check(idx int) ?u8 {
 pub fn (c u8) is_space() bool {
 	// 0x85 is NEXT LINE (NEL)
 	// 0xa0 is NO-BREAK SPACE
-	return c == 32 || (c > 8 && c < 14) || (c == 0x85) || (c == 0xa0)
+	return c == 32 || (c > 8 && c < 14) || c == 0x85 || c == 0xa0
 }
 
 // is_digit returns `true` if the byte is in range 0-9 and `false` otherwise.

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 [has_globals]
@@ -98,11 +98,12 @@ mut:
 	script_mode               bool
 	script_mode_start_token   token.Token
 pub mut:
-	scanner    &scanner.Scanner = unsafe { nil }
-	errors     []errors.Error
-	warnings   []errors.Warning
-	notices    []errors.Notice
-	vet_errors []vet.Error
+	scanner        &scanner.Scanner = unsafe { nil }
+	errors         []errors.Error
+	warnings       []errors.Warning
+	notices        []errors.Notice
+	vet_errors     []vet.Error
+	template_paths []string // record all compiled $tmpl files; needed for `v watch run webserver.v`
 }
 
 __global codegen_files = unsafe { []&ast.File{} }
@@ -372,6 +373,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		warnings: warnings
 		notices: notices
 		global_labels: p.global_labels
+		template_paths: p.template_paths
 	}
 }
 
@@ -674,7 +676,12 @@ fn (mut p Parser) check_name() string {
 	if p.peek_tok.kind == .dot && name in p.imports {
 		p.register_used_import(name)
 	}
-	p.check(.name)
+	match p.tok.kind {
+		.key_struct { p.check(.key_struct) }
+		.key_enum { p.check(.key_enum) }
+		.key_interface { p.check(.key_interface) }
+		else { p.check(.name) }
+	}
 	return name
 }
 
@@ -2399,6 +2406,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			p.check(.question)
 		}
 	}
+	is_array := p.tok.kind == .lsbr
+	is_fixed_array := is_array && p.peek_tok.kind == .number
 	mut mod := ''
 	// p.warn('resetting')
 	p.expr_mod = ''
@@ -2549,16 +2558,22 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			}
 		}
 	} else if p.peek_tok.kind == .lpar || is_generic_call || is_generic_cast
-		|| (p.tok.kind == .lsbr && p.peek_tok.kind == .rsbr && p.peek_token(3).kind == .lpar)
-		|| (p.tok.kind == .lsbr && p.peek_tok.kind == .number && p.peek_token(2).kind == .rsbr
-		&& p.peek_token(4).kind == .lpar) {
+		|| (p.tok.kind == .lsbr && p.peek_tok.kind == .rsbr && (p.peek_token(3).kind == .lpar
+		|| p.peek_token(5).kind == .lpar)) || (p.tok.kind == .lsbr && p.peek_tok.kind == .number
+		&& p.peek_token(2).kind == .rsbr && (p.peek_token(4).kind == .lpar
+		|| p.peek_token(6).kind == .lpar)) {
 		// ?[]foo(), ?[1]foo, foo(), foo<int>() or type() cast
-		is_array := p.tok.kind == .lsbr
-		is_fixed_array := is_array && p.peek_tok.kind == .number
 		mut name := if is_array {
 			p.peek_token(if is_fixed_array { 3 } else { 2 }).lit
 		} else {
 			p.tok.lit
+		}
+		if is_fixed_array && p.peek_token(4).kind == .dot {
+			mod = name
+			name = p.peek_token(5).lit
+		} else if is_array && p.peek_token(3).kind == .dot {
+			mod = name
+			name = p.peek_token(4).lit
 		}
 		if mod.len > 0 {
 			name = '${mod}.${name}'
@@ -2620,11 +2635,29 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				pos := p.tok.pos()
 				args := p.call_args()
 				p.check(.rpar)
+
+				mut or_kind := ast.OrKind.absent
+				mut or_stmts := []ast.Stmt{}
+				mut or_pos := p.tok.pos()
+				if p.tok.kind in [.not, .question] {
+					or_kind = if p.tok.kind == .not { .propagate_result } else { .propagate_option }
+					p.next()
+				}
+				if p.tok.kind == .key_orelse {
+					// `foo() or {}``
+					or_kind = .block
+					or_stmts, or_pos = p.or_block(.with_err_var)
+				}
 				node = ast.CallExpr{
 					left: node
 					args: args
 					pos: pos
 					scope: p.scope
+					or_block: ast.OrExpr{
+						stmts: or_stmts
+						kind: or_kind
+						pos: or_pos
+					}
 				}
 			}
 		}
@@ -2987,7 +3020,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	name_pos := p.tok.pos()
 	mut field_name := ''
 	// check if the name is on the same line as the dot
-	if (p.prev_tok.pos().line_nr == name_pos.line_nr) || p.tok.kind != .name {
+	if p.prev_tok.pos().line_nr == name_pos.line_nr || p.tok.kind != .name {
 		field_name = p.check_name()
 	} else {
 		p.name_error = true
@@ -3985,6 +4018,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			pos: decl_pos
 			type_pos: type_pos
 			comments: comments
+			generic_types: generic_types
 			attrs: attrs
 		}
 	}

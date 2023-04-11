@@ -5,6 +5,20 @@ vlib/v/checker/tests/option_fn_err.vv:40:9: error: assert can be used only with 
       |            ~~~~~~~~~
    41 | 
    42 |     // struct
+vlib/v/checker/tests/option_fn_err.vv:45:3: error: cannot assign an Option value to a non-option struct field
+   43 |     mut v := Data{
+   44 |         f: fn (_ int) {}
+   45 |         value: bar(0)
+      |         ~~~~~~~~~~~~~
+   46 |         opt: bar(0)
+   47 |     }
+vlib/v/checker/tests/option_fn_err.vv:56:27: error: cannot use unwrapped Option as initializer
+   54 |     // init
+   55 |     _ := [bar(0)]
+   56 |     _ := []int{len: 1, init: bar(0)}
+      |                              ~~~~~~
+   57 |     _ := [bar(0)]!
+   58 |     _ := [1]int{init: bar(0)}
 vlib/v/checker/tests/option_fn_err.vv:60:13: error: cannot use Option or Result as index (array type `[]int`)
    58 |     _ := [1]int{init: bar(0)}
    59 |     // index

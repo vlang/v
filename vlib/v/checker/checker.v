@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -25,11 +25,11 @@ const (
 
 pub const (
 	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
-		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
+		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop', 'delete']
 	array_builtin_methods_chk   = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
 	// TODO: remove `byte` from this list when it is no longer supported
 	reserved_type_names         = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16',
-		'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune']
+		'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr']
 	reserved_type_names_chk     = token.new_keywords_matcher_from_array_trie(reserved_type_names)
 	vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 )
@@ -73,7 +73,6 @@ pub mut:
 	inside_ct_attr            bool // true inside `[if expr]`
 	inside_x_is_type          bool // true inside the Type expression of `if x is Type {`
 	inside_comptime_for_field bool
-	inside_for_in_any_cond    bool
 	skip_flags                bool      // should `#flag` and `#include` be skipped
 	fn_level                  int       // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
 	smartcast_mut_pos         token.Pos // match mut foo, if mut foo is Foo
@@ -95,7 +94,6 @@ mut:
 	loop_label                       string     // set when inside a labelled for loop
 	vweb_gen_types                   []ast.Type // vweb route checks
 	timers                           &util.Timers = util.get_timers()
-	for_in_any_val_type              ast.Type
 	comptime_for_field_var           string
 	comptime_fields_default_type     ast.Type
 	comptime_fields_key_type         ast.Type // key type on `$for k, v in val.$(field.name)`
@@ -115,6 +113,7 @@ mut:
 	inside_println_arg               bool
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
+	inside_assign                    bool
 	is_index_assign                  bool
 	comptime_call_pos                int // needed for correctly checking use before decl for templates
 	goto_labels                      map[string]ast.GotoLabel // to check for unused goto labels
@@ -419,8 +418,11 @@ fn stripped_name(name string) string {
 }
 
 fn (mut c Checker) check_valid_pascal_case(name string, identifier string, pos token.Pos) {
+	if c.pref.translated || c.file.is_translated {
+		return
+	}
 	sname := stripped_name(name)
-	if sname.len > 0 && !sname[0].is_capital() && !c.pref.translated && !c.file.is_translated {
+	if sname.len > 0 && !sname[0].is_capital() {
 		c.error('${identifier} `${name}` must begin with capital letter', pos)
 	}
 }
@@ -1904,6 +1906,7 @@ fn (mut c Checker) stmt(node_ ast.Stmt) {
 
 fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 	cur_exp_typ := c.expected_type
+	c.expected_type = ast.bool_type
 	assert_type := c.check_expr_opt_call(node.expr, c.expr(node.expr))
 	if assert_type != ast.bool_type_idx {
 		atype_name := c.table.sym(assert_type).name
@@ -2687,7 +2690,8 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			if node.unresolved {
 				return c.expr(c.table.resolve_init(node, c.unwrap_generic(node.typ)))
 			}
-			return c.struct_init(mut node, false)
+			mut inited_fields := []string{}
+			return c.struct_init(mut node, false, mut inited_fields)
 		}
 		ast.TypeNode {
 			if !c.inside_x_is_type && node.typ.has_flag(.generic) && unsafe { c.table.cur_fn != 0 }
@@ -3839,7 +3843,8 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			c.error('cannot dereference to void', node.pos)
 		}
 	}
-	if node.op == .bit_not && !right_type.is_int() && !c.pref.translated && !c.file.is_translated {
+	if node.op == .bit_not && !c.unwrap_generic(right_type).is_int() && !c.pref.translated
+		&& !c.file.is_translated {
 		c.type_error_for_operator('~', 'integer', right_sym.name, node.pos)
 	}
 	if node.op == .not && right_type != ast.bool_type_idx && !c.pref.translated

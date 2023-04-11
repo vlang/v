@@ -180,6 +180,11 @@ fn get_all_commands() []Command {
 			okmsg: 'V can compile 2048 with -skip-unused.'
 			rmfile: 'examples/2048/2048'
 		}
+		res << Command{
+			line: '${vexe} -skip-unused  -live examples/hot_reload/bounce.v'
+			okmsg: 'V can compile the hot code reloading bounce.v example with both: -skip-unused -live'
+			rmfile: 'examples/hot_reload/bounce'
+		}
 	}
 	res << Command{
 		line: '${vexe} -o vtmp cmd/v'

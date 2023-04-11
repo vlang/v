@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -7,9 +7,12 @@ import v.pref
 
 // TODO 600 line function
 fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
+	prev_inside_assign := c.inside_assign
+	c.inside_assign = true
 	c.expected_type = ast.none_type // TODO a hack to make `x := if ... work`
 	defer {
 		c.expected_type = ast.void_type
+		c.inside_assign = prev_inside_assign
 	}
 	is_decl := node.op == .decl_assign
 	right_first := node.right[0]
@@ -82,14 +85,14 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		} else if right_first is ast.ParExpr {
 			mut right_next := right_first
 			for {
-				if right_next.expr is ast.CallExpr {
-					if (right_next.expr as ast.CallExpr).return_type == ast.void_type {
-						c.error('assignment mismatch: expected ${node.left.len} value(s) but `${(right_next.expr as ast.CallExpr).name}()` returns ${right_len} value(s)',
+				if mut right_next.expr is ast.CallExpr {
+					if right_next.expr.return_type == ast.void_type {
+						c.error('assignment mismatch: expected ${node.left.len} value(s) but `${right_next.expr.name}()` returns ${right_len} value(s)',
 							node.pos)
 					}
 					break
-				} else if right_next.expr is ast.ParExpr {
-					right_next = right_next.expr as ast.ParExpr
+				} else if mut right_next.expr is ast.ParExpr {
+					right_next = right_next.expr
 				} else {
 					break
 				}

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -204,7 +204,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	is_closure := node.scope.has_inherited_vars()
 	mut cur_closure_ctx := ''
 	if is_closure {
-		cur_closure_ctx = closure_ctx(node)
+		cur_closure_ctx = g.closure_ctx(node)
 		// declare the struct before its implementation
 		g.definitions.write_string(cur_closure_ctx)
 		g.definitions.writeln(';')
@@ -379,6 +379,11 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 	prev_inside_ternary := g.inside_ternary
 	g.inside_ternary = 0
+	prev_indent := g.indent
+	g.indent = 0
+	defer {
+		g.indent = prev_indent
+	}
 	g.stmts(node.stmts)
 	g.inside_ternary = prev_inside_ternary
 	if node.is_noreturn {
@@ -461,8 +466,12 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) !string {
 
 const closure_ctx = '_V_closure_ctx'
 
-fn closure_ctx(node ast.FnDecl) string {
-	return 'struct _V_${node.name}_Ctx'
+fn (mut g Gen) closure_ctx(node ast.FnDecl) string {
+	mut fn_name := node.name
+	if node.generic_names.len > 0 {
+		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
+	}
+	return 'struct _V_${fn_name}_Ctx'
 }
 
 fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
@@ -476,7 +485,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 		g.write(fn_name)
 		return
 	}
-	ctx_struct := closure_ctx(node.decl)
+	ctx_struct := g.closure_ctx(node.decl)
 	// it may be possible to optimize `memdup` out if the closure never leaves current scope
 	// TODO in case of an assignment, this should only call "__closure_set_data" and "__closure_set_function" (and free the former data)
 	g.write('__closure_create(${fn_name}, (${ctx_struct}*) memdup_uncollectable(&(${ctx_struct}){')
@@ -487,12 +496,30 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 			if obj is ast.Var {
 				if obj.has_inherited {
 					has_inherited = true
-					g.writeln('.${var.name} = ${c.closure_ctx}->${var.name},')
+					var_sym := g.table.sym(var.typ)
+					if var_sym.info is ast.ArrayFixed {
+						g.write('.${var.name} = {')
+						for i in 0 .. var_sym.info.size {
+							g.write('${c.closure_ctx}->${var.name}[${i}],')
+						}
+						g.writeln('},')
+					} else {
+						g.writeln('.${var.name} = ${c.closure_ctx}->${var.name},')
+					}
 				}
 			}
 		}
 		if !has_inherited {
-			g.writeln('.${var.name} = ${var.name},')
+			var_sym := g.table.sym(var.typ)
+			if var_sym.info is ast.ArrayFixed {
+				g.write('.${var.name} = {')
+				for i in 0 .. var_sym.info.size {
+					g.write('${var.name}[${i}],')
+				}
+				g.writeln('},')
+			} else {
+				g.writeln('.${var.name} = ${var.name},')
+			}
 		}
 	}
 	g.indent--
@@ -502,14 +529,18 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 }
 
 fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
-	if node.has_gen {
+	mut fn_name := node.decl.name
+	if node.decl.generic_names.len > 0 {
+		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
+	}
+	if node.has_gen[fn_name] {
 		return
 	}
-	node.has_gen = true
+	node.has_gen[fn_name] = true
 	mut builder := strings.new_builder(256)
 	builder.writeln('/*F*/')
 	if node.inherited_vars.len > 0 {
-		ctx_struct := closure_ctx(node.decl)
+		ctx_struct := g.closure_ctx(node.decl)
 		builder.writeln('${ctx_struct} {')
 		for var in node.inherited_vars {
 			var_sym := g.table.sym(var.typ)
@@ -659,8 +690,29 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.is_fn_index_call = true
 		g.expr(node.left)
 		g.is_fn_index_call = false
-	} else if node.left is ast.CallExpr && node.name == '' {
-		g.expr(node.left)
+	} else if !g.inside_curry_call && node.left is ast.CallExpr && node.name == '' {
+		if node.or_block.kind == .absent {
+			g.expr(node.left)
+		} else {
+			old_inside_curry_call := g.inside_curry_call
+			g.inside_curry_call = true
+			ret_typ := node.return_type
+
+			line := g.go_before_stmt(0)
+			g.empty_line = true
+
+			tmp_res := g.new_tmp_var()
+			g.write('${g.typ(ret_typ)} ${tmp_res} = ')
+
+			g.last_tmp_call_var << tmp_res
+			g.expr(node.left)
+			g.expr(node)
+
+			g.inside_curry_call = old_inside_curry_call
+			g.write(line)
+			g.write('*(${g.base_type(ret_typ)}*)${tmp_res}.data')
+			return
+		}
 	}
 	old_inside_call := g.inside_call
 	g.inside_call = true
@@ -671,7 +723,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		&& g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt]
 	gen_or := node.or_block.kind != .absent // && !g.is_autofree
 	is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
-	mut cur_line := if is_gen_or_and_assign_rhs || gen_keep_alive { // && !g.is_autofree {
+	mut cur_line := if !g.inside_curry_call && (is_gen_or_and_assign_rhs || gen_keep_alive) { // && !g.is_autofree {
 		// `x := foo() or { ...}`
 		// cut everything that has been generated to prepend option variable creation
 		line := g.go_before_stmt(0)
@@ -681,7 +733,15 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		''
 	}
 	// g.write('/*EE line="$cur_line"*/')
-	tmp_opt := if gen_or || gen_keep_alive { g.new_tmp_var() } else { '' }
+	tmp_opt := if gen_or || gen_keep_alive {
+		if g.inside_curry_call && g.last_tmp_call_var.len > 0 {
+			g.last_tmp_call_var.pop()
+		} else {
+			g.new_tmp_var()
+		}
+	} else {
+		''
+	}
 	if gen_or || gen_keep_alive {
 		mut ret_typ := node.return_type
 		if g.table.sym(ret_typ).kind == .alias {
@@ -699,7 +759,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.writeln('if (${g.infix_left_var_name}) {')
 			g.indent++
 			g.write('${tmp_opt} = ')
-		} else {
+		} else if !g.inside_curry_call {
 			g.write('${styp} ${tmp_opt} = ')
 			if node.left is ast.AnonFn {
 				g.expr(node.left)
@@ -734,7 +794,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		}
 		if unwrapped_typ == ast.void_type {
 			g.write('\n ${cur_line}')
-		} else {
+		} else if !g.inside_curry_call {
 			if !g.inside_const_opt_or_res {
 				g.write('\n ${cur_line} (*(${unwrapped_styp}*)${tmp_opt}.data)')
 			} else {
@@ -1339,9 +1399,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.empty_line = true
 			g.writeln('// json.encode')
 			g.write('cJSON* ${json_obj} = ${encode_name}(')
-			if node.args[0].typ.is_ptr() {
-				g.write('*')
-			}
 			g.call_args(node)
 			g.writeln(');')
 			tmp2 = g.new_tmp_var()
@@ -1921,7 +1978,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		}
 	}
 	if expr.is_method {
-		receiver_sym := g.table.sym(expr.receiver_type)
+		receiver_sym := g.table.sym(g.unwrap_generic(expr.receiver_type))
 		name = receiver_sym.cname + '_' + name
 	} else if mut expr.left is ast.AnonFn {
 		if expr.left.inherited_vars.len > 0 {
@@ -2099,8 +2156,8 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 			fn_var = g.fn_var_signature(f.return_type, f.params.map(it.typ), 'fn')
 		} else {
 			if node.call_expr.is_method {
-				rec_sym := g.table.sym(node.call_expr.receiver_type)
-				if f := g.table.find_method(rec_sym, node.call_expr.name) {
+				rec_sym := g.table.sym(g.unwrap_generic(node.call_expr.receiver_type))
+				if f := rec_sym.find_method_with_generic_parent(node.call_expr.name) {
 					mut muttable := unsafe { &ast.Table(g.table) }
 					return_type := muttable.resolve_generic_to_concrete(f.return_type,
 						f.generic_names, node.call_expr.concrete_types) or { f.return_type }
@@ -2294,8 +2351,8 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
 	arg_typ := g.unwrap_generic(arg.typ)
 	arg_sym := g.table.sym(arg_typ)
-	exp_is_ptr := expected_type.is_ptr() || expected_type.idx() in ast.pointer_type_idxs
-	arg_is_ptr := arg_typ.is_ptr() || arg_typ.idx() in ast.pointer_type_idxs
+	exp_is_ptr := expected_type.is_real_pointer()
+	arg_is_ptr := arg_typ.is_real_pointer()
 	if expected_type == 0 {
 		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
 	}
@@ -2303,7 +2360,8 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	mut needs_closing := false
 	if arg.is_mut && !exp_is_ptr {
 		g.write('&/*mut*/')
-	} else if exp_is_ptr && !arg_is_ptr {
+	} else if exp_is_ptr && !arg_is_ptr && !(arg_sym.kind == .alias
+		&& g.table.unaliased_type(arg_typ).is_pointer() && expected_type.is_pointer()) {
 		if arg.is_mut {
 			if exp_sym.kind == .array {
 				if (arg.expr is ast.Ident && (arg.expr as ast.Ident).kind == .variable)

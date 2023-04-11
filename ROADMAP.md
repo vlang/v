@@ -17,7 +17,8 @@
 - [ ] -skip-unused on by default
 - [ ] `any` type
 - [ ] `copy()` builtin function (e.g. for easier conversion from `[]Foo` to `[4]Foo`)
-- [ ] better documentation platform
+- [ ] A better documentation platform
+- [ ] Improve vweb: allow separation of logic via "controllers", lots of other fixes
 
 ## [Version 1.0]
 

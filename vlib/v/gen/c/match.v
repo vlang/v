@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -65,7 +65,9 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			g.inside_match_result = true
 		}
 	}
-	if node.cond in [ast.Ident, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral]
+	if (node.cond in [ast.Ident, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral]
+		&& (node.cond !is ast.Ident || (node.cond is ast.Ident
+		&& (node.cond as ast.Ident).or_expr.kind == .absent)))
 		|| (node.cond is ast.SelectorExpr
 		&& (node.cond as ast.SelectorExpr).or_block.kind == .absent
 		&& ((node.cond as ast.SelectorExpr).expr !is ast.CallExpr
@@ -79,7 +81,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			''
 		}
 		cond_var = g.new_tmp_var()
-		g.write('${g.typ(node.cond_type)} ${cond_var} = ')
+		g.write('${g.typ(node.cond_type)} /*A*/ ${cond_var} = ')
 		g.expr(node.cond)
 		g.writeln(';')
 		g.set_current_pos_as_last_stmt_pos()
@@ -437,6 +439,14 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				if i > 0 {
 					g.write(' || ')
 				}
+				if expr is ast.None {
+					old_left_is_opt := g.left_is_opt
+					g.left_is_opt = true
+					g.expr(node.cond)
+					g.left_is_opt = old_left_is_opt
+					g.write('.state == 2')
+					continue
+				}
 				match type_sym.kind {
 					.array {
 						ptr_typ := g.equality_fn(node.cond_type)
@@ -462,8 +472,10 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 						g.write(')')
 					}
 					.struct_ {
+						derefs_expr := '*'.repeat(g.get_expr_type(expr).nr_muls())
+						derefs_ctype := '*'.repeat(node.cond_type.nr_muls())
 						ptr_typ := g.equality_fn(node.cond_type)
-						g.write('${ptr_typ}_struct_eq(${cond_var}, ')
+						g.write('${ptr_typ}_struct_eq(${derefs_ctype}${cond_var}, ${derefs_expr}')
 						g.expr(expr)
 						g.write(')')
 					}
@@ -478,6 +490,12 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 							g.write('${cond_var} <= ')
 							g.expr(expr.high)
 							g.write(')')
+						} else if expr is ast.None {
+							old_left_is_opt := g.left_is_opt
+							g.left_is_opt = true
+							g.expr(node.cond)
+							g.left_is_opt = old_left_is_opt
+							g.write('.state == 2')
 						} else {
 							g.write('${cond_var} == (')
 							g.expr(expr)

@@ -1,5 +1,6 @@
 struct Foo {
 	foo u8 [required]
+	bar u8 [required]
 }
 
 struct Bar {

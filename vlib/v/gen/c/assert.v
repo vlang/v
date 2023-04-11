@@ -1,9 +1,15 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
 
 import v.ast
+
+enum AssertMetainfoKind {
+	pass
+	fail
+	panic
+}
 
 fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 	if !original_assert_statement.is_used {
@@ -22,24 +28,30 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 	g.inside_ternary++
 	if g.pref.is_test {
 		g.write('if (')
+		prev_inside_ternary := g.inside_ternary
+		g.inside_ternary = 0
 		g.expr(node.expr)
+		g.inside_ternary = prev_inside_ternary
 		g.write(')')
 		g.decrement_inside_ternary()
 		g.writeln(' {')
-		metaname_ok := g.gen_assert_metainfo(node)
+		metaname_ok := g.gen_assert_metainfo(node, .pass)
 		g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_assert_pass(test_runner._object, &${metaname_ok});')
 		g.writeln('} else {')
-		metaname_fail := g.gen_assert_metainfo(node)
+		metaname_fail := g.gen_assert_metainfo(node, .fail)
 		g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_assert_fail(test_runner._object, &${metaname_fail});')
 		g.gen_assert_postfailure_mode(node)
 		g.writeln('}')
 	} else {
 		g.write('if (!(')
+		prev_inside_ternary := g.inside_ternary
+		g.inside_ternary = 0
 		g.expr(node.expr)
+		g.inside_ternary = prev_inside_ternary
 		g.write('))')
 		g.decrement_inside_ternary()
 		g.writeln(' {')
-		metaname_panic := g.gen_assert_metainfo(node)
+		metaname_panic := g.gen_assert_metainfo(node, .panic)
 		g.writeln('\t__print_assert_failure(&${metaname_panic});')
 		g.gen_assert_postfailure_mode(node)
 		g.writeln('}')
@@ -101,7 +113,7 @@ fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
 	}
 }
 
-fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt) string {
+fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt, kind AssertMetainfoKind) string {
 	mod_path := cestring(g.file.path)
 	fn_name := g.fn_decl.name
 	line_nr := node.pos.line_nr
@@ -125,12 +137,14 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt) string {
 			g.writeln('\t${metaname}.op = ${expr_op_str};')
 			g.writeln('\t${metaname}.llabel = ${expr_left_str};')
 			g.writeln('\t${metaname}.rlabel = ${expr_right_str};')
-			g.write('\t${metaname}.lvalue = ')
-			g.gen_assert_single_expr(node.expr.left, node.expr.left_type)
-			g.writeln(';')
-			g.write('\t${metaname}.rvalue = ')
-			g.gen_assert_single_expr(node.expr.right, node.expr.right_type)
-			g.writeln(';')
+			if kind != .pass {
+				g.write('\t${metaname}.lvalue = ')
+				g.gen_assert_single_expr(node.expr.left, node.expr.left_type)
+				g.writeln(';')
+				g.write('\t${metaname}.rvalue = ')
+				g.gen_assert_single_expr(node.expr.right, node.expr.right_type)
+				g.writeln(';')
+			}
 		}
 		ast.CallExpr {
 			g.writeln('\t${metaname}.op = _SLIT("call");')

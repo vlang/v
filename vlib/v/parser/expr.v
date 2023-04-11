@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -79,7 +79,7 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		}
 		.dollar {
 			match p.peek_tok.kind {
-				.name {
+				.name, .key_struct, .key_enum, .key_interface {
 					if p.peek_tok.lit in comptime_types {
 						node = p.parse_comptime_type()
 					} else {

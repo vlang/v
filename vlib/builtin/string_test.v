@@ -1,6 +1,4 @@
-import strings
-
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -1056,7 +1054,7 @@ fn test_split_into_lines() {
 
 	assert lines_mixed_trailers.len == 9
 	for line in lines_mixed_trailers {
-		assert (line == line_content) || (line == '')
+		assert line == line_content || line == ''
 	}
 }
 
@@ -1212,4 +1210,36 @@ fn test_indent_width() {
 	assert '\t abc'.indent_width() == 2
 	assert '\t\tabc'.indent_width() == 2
 	assert '\t\t abc'.indent_width() == 3
+}
+
+fn test_index_u8() {
+	assert 'abcabca'.index_u8(`a`) == 0
+	assert 'abcabca'.index_u8(`b`) == 1
+	assert 'abcabca'.index_u8(`c`) == 2
+	//
+	assert 'abc'.index_u8(`d`) == -1
+	assert 'abc'.index_u8(`A`) == -1
+	assert 'abc'.index_u8(`B`) == -1
+	assert 'abc'.index_u8(`C`) == -1
+	//
+}
+
+fn test_last_index_u8() {
+	assert 'abcabca'.last_index_u8(`a`) == 6
+	assert 'abcabca'.last_index_u8(`c`) == 5
+	assert 'abcabca'.last_index_u8(`b`) == 4
+	assert 'Zabcabca'.last_index_u8(`Z`) == 0
+	//
+	assert 'abc'.index_u8(`d`) == -1
+	assert 'abc'.index_u8(`A`) == -1
+	assert 'abc'.index_u8(`B`) == -1
+	assert 'abc'.index_u8(`C`) == -1
+}
+
+fn test_contains_byte() {
+	assert 'abc abca'.contains_u8(`a`)
+	assert 'abc abca'.contains_u8(`b`)
+	assert 'abc abca'.contains_u8(`c`)
+	assert 'abc abca'.contains_u8(` `)
+	assert !'abc abca'.contains_u8(`A`)
 }

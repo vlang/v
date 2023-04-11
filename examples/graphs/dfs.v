@@ -91,7 +91,7 @@ fn build_path_reverse(graph map[string][]string, start string, final string, vis
 
 	for current != start {
 		for i in array_of_nodes {
-			if (current in graph[i]) && (visited[i] == true) {
+			if current in graph[i] && visited[i] == true {
 				current = i
 				break // the first ocurrence is enough
 			}

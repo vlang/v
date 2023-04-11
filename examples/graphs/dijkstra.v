@@ -41,7 +41,7 @@ fn push_pq[T](mut prior_queue []T, data int, priority int) {
 	lenght_pq := prior_queue.len
 
 	mut i := 0
-	for (i < lenght_pq) && (priority > prior_queue[i].priority) {
+	for i < lenght_pq && priority > prior_queue[i].priority {
 		temp << prior_queue[i]
 		i++
 	}
