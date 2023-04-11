@@ -2837,6 +2837,19 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				c.error('cannot null cast a struct pointer, use &${to_sym.name}(unsafe { nil })',
 					node.pos)
 			}
+		} else if mut node.expr is ast.Ident {
+			match mut node.expr.obj {
+				ast.GlobalField, ast.ConstField, ast.Var {
+					if mut node.expr.obj.expr is ast.IntegerLiteral {
+						if node.expr.obj.expr.val.int() == 0 && !c.pref.translated
+							&& !c.file.is_translated {
+							c.error('cannot null cast a struct pointer, use &${to_sym.name}(unsafe { nil })',
+								node.pos)
+						}
+					}
+				}
+				else {}
+			}
 		}
 		if from_type == ast.voidptr_type_idx && !c.inside_unsafe {
 			// TODO make this an error

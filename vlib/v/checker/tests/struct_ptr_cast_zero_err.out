@@ -1,5 +1,18 @@
-vlib/v/checker/tests/struct_ptr_cast_zero_err.vv:3:5: error: cannot null cast a struct pointer, use &Context(unsafe { nil })
-    1 | struct Context {}
-    2 |
-    3 | _ = &Context(0)
+vlib/v/checker/tests/struct_ptr_cast_zero_err.vv:6:5: error: cannot null cast a struct pointer, use &Context(unsafe { nil })
+    4 | b := 0
+    5 |
+    6 | _ = &Context(0)
+      |     ~~~~~~~~~~~
+    7 | _ = &Context(a)
+    8 | _ = &Context(b)
+vlib/v/checker/tests/struct_ptr_cast_zero_err.vv:7:5: error: cannot null cast a struct pointer, use &Context(unsafe { nil })
+    5 |
+    6 | _ = &Context(0)
+    7 | _ = &Context(a)
+      |     ~~~~~~~~~~~
+    8 | _ = &Context(b)
+vlib/v/checker/tests/struct_ptr_cast_zero_err.vv:8:5: error: cannot null cast a struct pointer, use &Context(unsafe { nil })
+    6 | _ = &Context(0)
+    7 | _ = &Context(a)
+    8 | _ = &Context(b)
       |     ~~~~~~~~~~~
