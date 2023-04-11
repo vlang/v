@@ -1,0 +1,5 @@
+vlib/v/checker/tests/struct_ptr_cast_zero_err.vv:3:5: error: cannot null cast a struct pointer, use &Context(unsafe { nil })
+    1 | struct Context {}
+    2 |
+    3 | _ = &Context(0)
+      |     ~~~~~~~~~~~

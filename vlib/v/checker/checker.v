@@ -2833,7 +2833,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			from_type = (from_sym.info as ast.Alias).parent_type.derive_add_muls(from_type)
 		}
 		if mut node.expr is ast.IntegerLiteral {
-			if node.expr.val.int() == 0 {
+			if node.expr.val.int() == 0 && !c.pref.translated && !c.file.is_translated {
 				c.error('cannot null cast a struct pointer, use &${to_sym.name}(unsafe { nil })',
 					node.pos)
 			}

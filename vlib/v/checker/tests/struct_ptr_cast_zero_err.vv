@@ -1,0 +1,3 @@
+struct Context {}
+
+_ = &Context(0)
