@@ -1157,6 +1157,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			typ_sym = g.table.sym(unwrapped_rec_type)
 		}
 	}
+	if node.from_embed_types.len > 0 && !typ_sym.has_method(node.name) {
+		unwrapped_rec_type = node.from_embed_types.last()
+		typ_sym = g.table.sym(unwrapped_rec_type)
+	}
 	rec_cc_type := g.cc_type(unwrapped_rec_type, false)
 	mut receiver_type_name := util.no_dots(rec_cc_type)
 	if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method(node.name) {
