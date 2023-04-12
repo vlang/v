@@ -2836,7 +2836,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			if node.expr.val.int() == 0 && !c.pref.translated && !c.file.is_translated {
 				c.error('cannot null cast a struct pointer, use &${to_sym.name}(unsafe { nil })',
 					node.pos)
-			} else if !c.inside_unsafe {
+			} else if !c.inside_unsafe && !c.pref.translated && !c.file.is_translated {
 				c.error('cannot cast int to a struct pointer outside `unsafe`', node.pos)
 			}
 		} else if mut node.expr is ast.Ident {
@@ -2847,7 +2847,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 							&& !c.file.is_translated {
 							c.error('cannot null cast a struct pointer, use &${to_sym.name}(unsafe { nil })',
 								node.pos)
-						} else if !c.inside_unsafe {
+						} else if !c.inside_unsafe && !c.pref.translated && !c.file.is_translated {
 							c.error('cannot cast int to a struct pointer outside `unsafe`',
 								node.pos)
 						}
