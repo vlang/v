@@ -1,4 +1,5 @@
 # Description
+
 `regex` is a small but powerful regular expression library,
 written in pure V.
 
@@ -16,7 +17,6 @@ are valid for all the `regex` module features:
 
 2. The basic atomic elements of this regex engine are the tokens.
 In a query string a simple character is a token.
-
 
 ## Differences with PCRE:
 
@@ -45,18 +45,15 @@ at new line characters.
 The tokens are the atomic units, used by this regex engine.
 They can be one of the following:
 
-
 ### Simple char
 
 This token is a simple single character like `a` or `b` etc.
-
 
 ### Match positional delimiters
 
 `^` Matches the start of the string.
 
 `$` Matches the end of the string.
-
 
 ### Char class (cc)
 
@@ -147,6 +144,7 @@ parsing source string.
 | `.*dd`	   | `abcc dd`   |
 | `ab.*e`      | `abccc dde` |
 | `ab.{3} .*e` | `abccc dde` |
+
 The dot matches any character, until the next token match is satisfied.
 
 > Important Note: Consecutive dots, for example `...`, are not allowed.
@@ -375,6 +373,7 @@ that is a map from `string` to `int`, where the value is the index in
 `group_csave` list of indexes.
 
 Here is an example for how to use them:
+
 ```v ignore
 import regex
 
@@ -416,6 +415,7 @@ In order to simplify the use of the named groups, it is possible to
 use a name map in the `re` struct, using the function `re.get_group_by_name`.
 
 Here is a more complex example of using them:
+
 ```v oksyntax
 // This function demonstrate the use of the named groups
 fn convert_html_rgb_n(in_col string) u32 {
@@ -451,8 +451,6 @@ for name in re.group_map.keys() {
 		bounds: ${re.get_group_bounds_by_name(name)}")
 }
 ```
-
-
 
 ### Groups query functions
 
@@ -525,8 +523,11 @@ pub fn regex_opt(in_query string) ?RE
 // new_regex create a REgex of small size, usually sufficient for ordinary use
 pub fn new() RE
 ```
+
 #### **Custom initialization**
+
 For some particular needs, it is possible to initialize a fully customized regex:
+
 ```v ignore
 pattern = r'ab(.*)(ac)'
 // init custom regex
@@ -542,6 +543,7 @@ re.group_max = pattern.len >> 1 // we can't have more groups than the half of th
 re.group_stack = []int{len: re.group_max, init: -1}
 re.group_data = []int{len: re.group_max, init: -1}
 ```
+
 ### Compiling
 
 After an initializer is used, the regex expression must be compiled with:
@@ -617,6 +619,7 @@ pub fn (mut re RE) replace_simple(in_txt string, repl string) string
 ```
 
 If it is needed to replace N instances of the found strings it is possible to use:
+
 ```v ignore
 // replace_n return a string where the first `count` matches are replaced with the repl_str string
 // `count` indicate the number of max replacements that will be done.
@@ -674,8 +677,6 @@ Output:
 ```
 today *[*John*]* is gone to his house with *(*Jack*)* and *[*Marie*]*.
 ```
-
-
 
 ## Debugging
 
@@ -833,7 +834,9 @@ fn main() {
 	}
 }
 ```
+
 Here an example of total customization of the regex environment creation:
+
 ```v ignore
 import regex
 
