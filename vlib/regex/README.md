@@ -16,7 +16,7 @@ are valid for all the `regex` module features:
 1. The matching stops at the end of the string, *not* at newline characters.
 
 2. The basic atomic elements of this regex engine are the tokens.
-In a query string a simple character is a token.
+   In a query string a simple character is a token.
 
 ## Differences with PCRE:
 
@@ -28,17 +28,19 @@ In a query string a simple character is a token.
 The main differences can be summarized in the following points:
 
 - The basic element **is the token not the sequence of symbols**, and the most
-simple token, is a single character.
+  simple token, is a single character.
 
 - `|` **the OR operator acts on tokens,** for example `abc|ebc` is not
-`abc` OR `ebc`. Instead it is evaluated like `ab`, followed by `c OR e`,
-followed by `bc`, because the **token is the base element**,
-not the sequence of symbols.
-Note: **Two char classes with an `OR` in the middle is a syntax error.**
+  `abc` OR `ebc`. Instead it is evaluated like `ab`, followed by `c OR e`,
+  followed by `bc`, because the **token is the base element**,
+  not the sequence of symbols.
+  Note: **Two char classes with an `OR` in the middle is a syntax error.**
 
 - The **match operation stops at the end of the string**. It does *NOT* stop
-at new line characters.
+  at new line characters.
 
+- The **match operation stops at the end of the string**. It does *NOT* stop
+  at new line characters.
 
 ## Tokens
 
@@ -95,14 +97,14 @@ For example `\w` is the meta-char `w`.
 
 A meta-char can match different types of characters.
 
-* `\w` matches a word char char `[a-zA-Z0-9_]`
-* `\W` matches a non word char
-* `\d` matches a digit `[0-9]`
-* `\D` matches a non digit
-* `\s` matches a space char, one of `[' ','\t','\n','\r','\v','\f']`
-* `\S` matches a non space char
-* `\a` matches only a lowercase char `[a-z]`
-* `\A` matches only an uppercase char `[A-Z]`
+- `\w` matches a word char char `[a-zA-Z0-9_]`
+- `\W` matches a non word char
+- `\d` matches a digit `[0-9]`
+- `\D` matches a non digit
+- `\s` matches a space char, one of `[' ','\t','\n','\r','\v','\f']`
+- `\S` matches a non space char
+- `\a` matches only a lowercase char `[a-z]`
+- `\A` matches only an uppercase char `[A-Z]`
 
 ### Quantifier
 
@@ -120,9 +122,9 @@ must be matched.
 - `{x}` matches exactly x times, `a{2}` matches `aa`, but not `aaa` or `a`
 - `{min,}` matches at least min times, `a{2,}` matches `aaa` or `aa`, not `a`
 - `{,max}` matches at least 0 times and at maximum max times,
-   for example, `a{,2}` matches `a` and `aa`, but doesn't match `aaa`
+  for example, `a{,2}` matches `a` and `aa`, but doesn't match `aaa`
 - `{min,max}` matches from min times, to max times, for example
-    `a{2,3}` matches `aa` and `aaa`, but doesn't match `a` or `aaaa`
+  `a{2,3}` matches `aa` and `aaa`, but doesn't match `a` or `aaaa`
 
 A long quantifier, may have a `greedy off` flag, that is the `?`
 character after the brackets. `{2,4}?` means to match the minimum
@@ -493,15 +495,15 @@ re.flag = regex.f_bin
 - `f_bin`: parse a string as bytes, utf-8 management disabled.
 
 - `f_efm`: exit on the first char matches in the query, used by the
-           find function.
+  find function.
 
-- `f_ms`:  matches only if the index of the start match is 0,
-           same as `^` at the start of the query string.
+- `f_ms`: matches only if the index of the start match is 0,
+  same as `^` at the start of the query string.
 
-- `f_me`:  matches only if the end index of the match is the last char
-           of the input string, same as `$` end of query string.
+- `f_me`: matches only if the end index of the match is the last char
+  of the input string, same as `$` end of query string.
 
-- `f_nl`:  stop the matching if found a new line char `\n` or `\r`
+- `f_nl`: stop the matching if found a new line char `\n` or `\r`
 
 ## Functions
 
