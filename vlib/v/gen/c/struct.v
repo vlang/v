@@ -269,7 +269,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				}
 				g.write(c_name(field.name))
 			} else {
-				if !g.zero_struct_field(field, node.typ == field.typ.clear_flag(.option)) {
+				if !g.zero_struct_field(field) {
 					nr_fields--
 					continue
 				}
@@ -304,7 +304,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	}
 }
 
-fn (mut g Gen) zero_struct_field(field ast.StructField, is_nested bool) bool {
+fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 	sym := g.table.sym(field.typ)
 	field_name := if sym.language == .v { c_name(field.name) } else { field.name }
 	if sym.info is ast.Struct {
@@ -324,7 +324,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField, is_nested bool) bool {
 				}
 				g.write('.${field_name} = ')
 				if field.typ.has_flag(.option) {
-					if is_nested {
+					if field.is_recursive {
 						g.expr_with_opt(ast.None{}, ast.none_type, field.typ)
 					} else {
 						tmp_var := g.new_tmp_var()

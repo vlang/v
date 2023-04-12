@@ -680,7 +680,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 			g.write('${typ_str} ${tmp} = (${typ_str}) {')
 			inf := g.table.sym(info.elem_type).struct_info()
 			for i, field in inf.fields {
-				g.zero_struct_field(field, node.typ == field.typ.clear_flag(.option))
+				g.zero_struct_field(field)
 				if i != inf.fields.len - 1 {
 					g.write(', ')
 				}
@@ -690,7 +690,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 			g.write('${unwrapped_c_typ} ${tmp} = (${unwrapped_c_typ}){')
 			info := g.table.sym(node.typ).struct_info()
 			for i, field in info.fields {
-				g.zero_struct_field(field, node.typ == field.typ.clear_flag(.option))
+				g.zero_struct_field(field)
 				if i != info.fields.len - 1 {
 					g.write(', ')
 				}

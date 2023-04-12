@@ -314,6 +314,7 @@ pub:
 	is_volatile      bool
 	is_deprecated    bool
 pub mut:
+	is_recursive	 bool
 	default_expr     Expr
 	default_expr_typ Type
 	name             string
