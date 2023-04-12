@@ -278,10 +278,10 @@ Others utility functions are `get_group_by_id` and `get_group_bounds_by_id`
 that get  directly the string of a group using its `id`:
 
 ```v ignore
-txt := "my used string...."
-for g_index := 0; g_index < re.group_count ; g_index++ {
-	println("#${g_index} [${re.get_group_by_id(txt, g_index)}] \
-    	bounds: ${re.get_group_bounds_by_id(g_index)}")
+txt := 'my used string....'
+for g_index := 0; g_index < re.group_count; g_index++ {
+	println('#${g_index} [${re.get_group_by_id(txt, g_index)}] \
+		bounds: ${re.get_group_bounds_by_id(g_index)}')
 }
 ```
 
@@ -311,35 +311,36 @@ not be saved.
 
 ```v ignore
 import regex
-fn main(){
-    txt   := "http://www.ciao.mondo/hello/pippo12_/pera.html"
-    query := r"(?P<format>https?)|(?P<format>ftps?)://(?P<token>[\w_]+.)+"
 
-    mut re := regex.regex_opt(query) or { panic(err) }
-    //println(re.get_code())   // uncomment to see the print of the regex execution code
-    re.debug=2  // enable maximum log
-    println("String: ${txt}")
-    println("Query : ${re.get_query()}")
-    re.debug=0  // disable log
-    re.group_csave_flag = true
-    start, end := re.match_string(txt)
-    if start >= 0 {
-        println("Match (${start}, ${end}) => [${txt[start..end]}]")
-    } else {
-        println("No Match")
-    }
+fn main() {
+	txt := 'http://www.ciao.mondo/hello/pippo12_/pera.html'
+	query := r'(?P<format>https?)|(?P<format>ftps?)://(?P<token>[\w_]+.)+'
 
-    if re.group_csave_flag == true && start >= 0 && re.group_csave.len > 0{
-        println("cg: ${re.group_csave}")
-        mut cs_i := 1
-        for cs_i < re.group_csave[0]*3 {
-            g_id := re.group_csave[cs_i]
-            st   := re.group_csave[cs_i+1]
-            en   := re.group_csave[cs_i+2]
-            println("cg[${g_id}] ${st} ${en}:[${txt[st..en]}]")
-            cs_i += 3
-        }
-    }
+	mut re := regex.regex_opt(query) or { panic(err) }
+	// println(re.get_code())   // uncomment to see the print of the regex execution code
+	re.debug = 2 // enable maximum log
+	println('String: ${txt}')
+	println('Query : ${re.get_query()}')
+	re.debug = 0 // disable log
+	re.group_csave_flag = true
+	start, end := re.match_string(txt)
+	if start >= 0 {
+		println('Match (${start}, ${end}) => [${txt[start..end]}]')
+	} else {
+		println('No Match')
+	}
+
+	if re.group_csave_flag == true && start >= 0 && re.group_csave.len > 0 {
+		println('cg: ${re.group_csave}')
+		mut cs_i := 1
+		for cs_i < re.group_csave[0] * 3 {
+			g_id := re.group_csave[cs_i]
+			st := re.group_csave[cs_i + 1]
+			en := re.group_csave[cs_i + 2]
+			println('cg[${g_id}] ${st} ${en}:[${txt[st..en]}]')
+			cs_i += 3
+		}
+	}
 }
 ```
 
@@ -376,27 +377,28 @@ that is a map from `string` to `int`, where the value is the index in
 Here is an example for how to use them:
 ```v ignore
 import regex
-fn main(){
-    txt   := "http://www.ciao.mondo/hello/pippo12_/pera.html"
-    query := r"(?P<format>https?)|(?P<format>ftps?)://(?P<token>[\w_]+.)+"
 
-    mut re := regex.regex_opt(query) or { panic(err) }
-    //println(re.get_code())   // uncomment to see the print of the regex execution code
-    re.debug=2  // enable maximum log
-    println("String: ${txt}")
-    println("Query : ${re.get_query()}")
-    re.debug=0  // disable log
-    start, end := re.match_string(txt)
-    if start >= 0 {
-        println("Match (${start}, ${end}) => [${txt[start..end]}]")
-    } else {
-        println("No Match")
-    }
+fn main() {
+	txt := 'http://www.ciao.mondo/hello/pippo12_/pera.html'
+	query := r'(?P<format>https?)|(?P<format>ftps?)://(?P<token>[\w_]+.)+'
 
-    for name in re.group_map.keys() {
-        println("group:'${name}' \t=> [${re.get_group_by_name(txt, name)}] \
-        bounds: ${re.get_group_bounds_by_name(name)}")
-    }
+	mut re := regex.regex_opt(query) or { panic(err) }
+	// println(re.get_code())   // uncomment to see the print of the regex execution code
+	re.debug = 2 // enable maximum log
+	println('String: ${txt}')
+	println('Query : ${re.get_query()}')
+	re.debug = 0 // disable log
+	start, end := re.match_string(txt)
+	if start >= 0 {
+		println('Match (${start}, ${end}) => [${txt[start..end]}]')
+	} else {
+		println('No Match')
+	}
+
+	for name in re.group_map.keys() {
+		println("group:'${name}' \t=> [${re.get_group_by_name(txt, name)}] \
+			bounds: ${re.get_group_bounds_by_name(name)}")
+	}
 }
 ```
 
@@ -443,10 +445,10 @@ Other utilities are `get_group_by_name` and `get_group_bounds_by_name`,
 that return the string of a group using its `name`:
 
 ```v ignore
-txt := "my used string...."
+txt := 'my used string....'
 for name in re.group_map.keys() {
 	println("group:'${name}' \t=> [${re.get_group_by_name(txt, name)}] \
-    bounds: ${re.get_group_bounds_by_name(name)}")
+		bounds: ${re.get_group_bounds_by_name(name)}")
 }
 ```
 
@@ -522,24 +524,23 @@ pub fn regex_opt(in_query string) ?RE
 ```v ignore
 // new_regex create a REgex of small size, usually sufficient for ordinary use
 pub fn new() RE
-
 ```
 #### **Custom initialization**
 For some particular needs, it is possible to initialize a fully customized regex:
 ```v ignore
-pattern = r"ab(.*)(ac)"
+pattern = r'ab(.*)(ac)'
 // init custom regex
 mut re := regex.RE{}
 // max program length, can not be longer then the pattern
-re.prog = []Token    {len: pattern.len + 1}
+re.prog = []Token{len: pattern.len + 1}
 // can not be more char class the the length of the pattern
-re.cc   = []CharClass{len: pattern.len}
+re.cc = []CharClass{len: pattern.len}
 
-re.group_csave_flag = false          // true enable continuous group saving if needed
-re.group_max_nested = 128            // set max 128 group nested possible
-re.group_max        = pattern.len>>1 // we can't have more groups than the half of the pattern length
+re.group_csave_flag = false // true enable continuous group saving if needed
+re.group_max_nested = 128 // set max 128 group nested possible
+re.group_max = pattern.len >> 1 // we can't have more groups than the half of the pattern length
 re.group_stack = []int{len: re.group_max, init: -1}
-re.group_data  = []int{len: re.group_max, init: -1}
+re.group_data = []int{len: re.group_max, init: -1}
 ```
 ### Compiling
 
@@ -547,7 +548,7 @@ After an initializer is used, the regex expression must be compiled with:
 
 ```v ignore
 // compile compiles the REgex returning an error if the compilation fails
-pub fn (re mut RE) compile_opt(in_txt string)?
+pub fn (mut re RE) compile_opt(in_txt string) ?
 ```
 
 ### Matching Functions
@@ -556,8 +557,7 @@ These are the matching functions
 
 ```v ignore
 // match_string try to match the input string, return start and end index if found else start is -1
-pub fn (re mut RE) match_string(in_txt string) (int,int)
-
+pub fn (mut re RE) match_string(in_txt string) (int, int)
 ```
 
 ## Find and Replace
@@ -569,16 +569,16 @@ There are the following find  and replace functions:
 ```v ignore
 // find try to find the first match in the input string
 // return start and end index if found else start is -1
-pub fn (re mut RE) find(in_txt string) (int,int)
+pub fn (mut re RE) find(in_txt string) (int, int)
 
 // find_all find all the "non overlapping" occurrences of the matching pattern
 // return a list of start end indexes like: [3,4,6,8]
 // the matches are [3,4] and [6,8]
-pub fn (re mut RE) find_all(in_txt string) []int
+pub fn (mut re RE) find_all(in_txt string) []int
 
 // find_all find all the "non overlapping" occurrences of the matching pattern
 // return a list of strings
-// the result is like ["first match","secon match"]
+// the result is like ['first match','secon match']
 pub fn (mut re RE) find_all_str(in_txt string) []string
 ```
 
@@ -587,16 +587,16 @@ pub fn (mut re RE) find_all_str(in_txt string) []string
 ```v ignore
 // replace return a string where the matches are replaced with the repl_str string,
 // this function support groups in the replace string
-pub fn (re mut RE) replace(in_txt string, repl string) string
+pub fn (mut re RE) replace(in_txt string, repl string) string
 ```
 
 replace string can include groups references:
 
 ```v ignore
-txt   := "Today it is a good day."
+txt := 'Today it is a good day.'
 query := r'(a\w)[ ,.]'
 mut re := regex.regex_opt(query)?
-res := re.replace(txt, r"__[\0]__")
+res := re.replace(txt, r'__[\0]__')
 ```
 
 in this example we used the group `0` in the replace string: `\0`, the result will be:
@@ -650,21 +650,22 @@ The following example will clarify its usage:
 import regex
 // customized replace functions
 // it will be called on each non overlapped find
+
 fn my_repl(re regex.RE, in_txt string, start int, end int) string {
-    g0 := re.get_group_by_id(in_txt, 0)
-    g1 := re.get_group_by_id(in_txt, 1)
-    g2 := re.get_group_by_id(in_txt, 2)
-    return "*${g0}*${g1}*${g2}*"
+	g0 := re.get_group_by_id(in_txt, 0)
+	g1 := re.get_group_by_id(in_txt, 1)
+	g2 := re.get_group_by_id(in_txt, 2)
+	return '*${g0}*${g1}*${g2}*'
 }
 
-fn main(){
-    txt   := "today [John] is gone to his house with (Jack) and [Marie]."
-    query := r"(.)(\A\w+)(.)"
+fn main() {
+	txt := 'today [John] is gone to his house with (Jack) and [Marie].'
+	query := r'(.)(\A\w+)(.)'
 
-    mut re := regex.regex_opt(query) or { panic(err) }
+	mut re := regex.regex_opt(query) or { panic(err) }
 
-    result := re.replace_by_fn(txt, my_repl)
-    println(result)
+	result := re.replace_by_fn(txt, my_repl)
+	println(result)
 }
 ```
 
@@ -810,87 +811,87 @@ Here an example that perform some basically match of strings
 ```v ignore
 import regex
 
-fn main(){
-    txt   := "http://www.ciao.mondo/hello/pippo12_/pera.html"
-    query := r"(?P<format>https?)|(?P<format>ftps?)://(?P<token>[\w_]+.)+"
+fn main() {
+	txt := 'http://www.ciao.mondo/hello/pippo12_/pera.html'
+	query := r'(?P<format>https?)|(?P<format>ftps?)://(?P<token>[\w_]+.)+'
 
-    mut re := regex.regex_opt(query) or { panic(err) }
+	mut re := regex.regex_opt(query) or { panic(err) }
 
-    start, end := re.match_string(txt)
-    if start >= 0 {
-        println("Match (${start}, ${end}) => [${txt[start..end]}]")
-        for g_index := 0; g_index < re.group_count ; g_index++ {
-            println("#${g_index} [${re.get_group_by_id(txt, g_index)}] \
-            bounds: ${re.get_group_bounds_by_id(g_index)}")
-        }
-        for name in re.group_map.keys() {
-            println("group:'${name}' \t=> [${re.get_group_by_name(txt, name)}] \
-            bounds: ${re.get_group_bounds_by_name(name)}")
-        }
-    } else {
-        println("No Match")
-    }
+	start, end := re.match_string(txt)
+	if start >= 0 {
+		println('Match (${start}, ${end}) => [${txt[start..end]}]')
+		for g_index := 0; g_index < re.group_count; g_index++ {
+			println('#${g_index} [${re.get_group_by_id(txt, g_index)}] \
+				bounds: ${re.get_group_bounds_by_id(g_index)}')
+		}
+		for name in re.group_map.keys() {
+			println("group:'${name}' \t=> [${re.get_group_by_name(txt, name)}] \
+				bounds: ${re.get_group_bounds_by_name(name)}")
+		}
+	} else {
+		println('No Match')
+	}
 }
 ```
 Here an example of total customization of the regex environment creation:
 ```v ignore
 import regex
 
-fn main(){
-    txt   := "today John is gone to his house with Jack and Marie."
-    query := r"(?:(?P<word>\A\w+)|(?:\a\w+)[\s.]?)+"
+fn main() {
+	txt := 'today John is gone to his house with Jack and Marie.'
+	query := r'(?:(?P<word>\A\w+)|(?:\a\w+)[\s.]?)+'
 
-    // init regex
-    mut re := regex.RE{}
+	// init regex
+	mut re := regex.RE{}
 	// max program length, can not be longer then the query
-    re.prog = []regex.Token    {len: query.len + 1}
+	re.prog = []regex.Token{len: query.len + 1}
 	// can not be more char class the the length of the query
-    re.cc   = []regex.CharClass{len: query.len}
-    re.prog = []regex.Token    {len: query.len+1}
+	re.cc = []regex.CharClass{len: query.len}
+	re.prog = []regex.Token{len: query.len + 1}
 	// enable continuous group saving
-    re.group_csave_flag = true
+	re.group_csave_flag = true
 	// set max 128 group nested
-    re.group_max_nested = 128
+	re.group_max_nested = 128
 	// we can't have more groups than the half of the query length
-    re.group_max        = query.len>>1
+	re.group_max = query.len >> 1
 
-    // compile the query
-    re.compile_opt(query) or { panic(err) }
+	// compile the query
+	re.compile_opt(query) or { panic(err) }
 
-    start, end := re.match_string(txt)
-    if start >= 0 {
-        println("Match (${start}, ${end}) => [${txt[start..end]}]")
-    } else {
-        println("No Match")
-    }
+	start, end := re.match_string(txt)
+	if start >= 0 {
+		println('Match (${start}, ${end}) => [${txt[start..end]}]')
+	} else {
+		println('No Match')
+	}
 
-    // show results for continuous group saving
-    if re.group_csave_flag == true && start >= 0 && re.group_csave.len > 0{
-        println("cg: ${re.group_csave}")
-        mut cs_i := 1
-        for cs_i < re.group_csave[0]*3 {
-            g_id := re.group_csave[cs_i]
-            st   := re.group_csave[cs_i+1]
-            en   := re.group_csave[cs_i+2]
-            println("cg[${g_id}] ${st} ${en}:[${txt[st..en]}]")
-            cs_i += 3
-        }
-    }
+	// show results for continuous group saving
+	if re.group_csave_flag == true && start >= 0 && re.group_csave.len > 0 {
+		println('cg: ${re.group_csave}')
+		mut cs_i := 1
+		for cs_i < re.group_csave[0] * 3 {
+			g_id := re.group_csave[cs_i]
+			st := re.group_csave[cs_i + 1]
+			en := re.group_csave[cs_i + 2]
+			println('cg[${g_id}] ${st} ${en}:[${txt[st..en]}]')
+			cs_i += 3
+		}
+	}
 
-    // show results for captured groups
-    if start >= 0 {
-        println("Match (${start}, ${end}) => [${txt[start..end]}]")
-        for g_index := 0; g_index < re.group_count ; g_index++ {
-            println("#${g_index} [${re.get_group_by_id(txt, g_index)}] \
-            bounds: ${re.get_group_bounds_by_id(g_index)}")
-        }
-        for name in re.group_map.keys() {
-            println("group:'${name}' \t=> [${re.get_group_by_name(txt, name)}] \
-            bounds: ${re.get_group_bounds_by_name(name)}")
-        }
-    } else {
-        println("No Match")
-    }
+	// show results for captured groups
+	if start >= 0 {
+		println('Match (${start}, ${end}) => [${txt[start..end]}]')
+		for g_index := 0; g_index < re.group_count; g_index++ {
+			println('#${g_index} [${re.get_group_by_id(txt, g_index)}] \
+				bounds: ${re.get_group_bounds_by_id(g_index)}')
+		}
+		for name in re.group_map.keys() {
+			println("group:'${name}' \t=> [${re.get_group_by_name(txt, name)}] \
+				bounds: ${re.get_group_bounds_by_name(name)}")
+		}
+	} else {
+		println('No Match')
+	}
 }
 ```
 
