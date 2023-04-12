@@ -140,10 +140,10 @@ Suppose you have `abccc ddeef` as a source string, that you want to parse
 with a regex. The following table show the query strings and the result of
 parsing source string.
 
-| query string |   result    |
-|--------------|-------------|
+| query string | result      |
+| ------------ | ----------- |
 | `.*c`        | `abc`       |
-| `.*dd`	   | `abcc dd`   |
+| `.*dd`       | `abcc dd`   |
 | `ab.*e`      | `abccc dde` |
 | `ab.{3} .*e` | `abccc dde` |
 
@@ -169,8 +169,7 @@ match too, finally test the token `c`.
 > Two char classes with an `OR` in the middle is a syntax error.
 
 That also means, that a query string like `abc|bde` is not equal to
-`(abc)|(bde)`, but instead to `ab(c|b)de.
-The OR operation works only for `c|b`, not at char concatenation level.
+`(abc)|(bde)`, but instead to `ab(c|b)de. The OR operation works only for `c|b`, not at char concatenation level.
 
 ### Groups
 
@@ -195,7 +194,7 @@ i.e. the space char (ascii code 32) followed by the `?` quantifier,
 which means that the preceding space should be matched 0 or 1 time.
 
 This explains why the `(c(pa)+z ?)+` query string,
-can match `cpaz cpapaz cpapapaz` .
+can match `cpaz cpapaz cpapapaz`.
 
 In this implementation the groups are "capture groups". This means that the
 last temporal result for each group, can be retrieved from the `RE` struct.
@@ -275,7 +274,7 @@ fn convert_html_rgb(in_col string) u32 {
 ```
 
 Others utility functions are `get_group_by_id` and `get_group_bounds_by_id`
-that get  directly the string of a group using its `id`:
+that get directly the string of a group using its `id`:
 
 ```v ignore
 txt := 'my used string....'
@@ -365,7 +364,7 @@ cg[1] 42 46:[html]
 
 This regex module supports partially the question mark `?` PCRE syntax for groups.
 
-`(?:abcd)` **non capturing group**:  the content of the group will not be saved.
+`(?:abcd)` **non capturing group**: the content of the group will not be saved.
 
 `(?P<mygroup>abcdef)` **named group:** the group content is saved and labeled
 as `mygroup`.
@@ -566,7 +565,7 @@ pub fn (mut re RE) match_string(in_txt string) (int, int)
 
 ## Find and Replace
 
-There are the following find  and replace functions:
+There are the following find and replace functions:
 
 #### Find functions
 
@@ -731,7 +730,7 @@ PC: 10 ist: 88000000 PROG_END {  0,  0}
 
 `query_ch` is the type of token.
 
-`{m,n}` is the quantifier, the greedy off flag  `?`  will be showed if present in the token
+`{m,n}` is the quantifier, the greedy off flag `?` will be showed if present in the token
 
 ### **Log debug**
 
