@@ -705,7 +705,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	mut mr_styp := g.typ(return_type.clear_flag(.result))
 	if node.right[0] is ast.CallExpr && (node.right[0] as ast.CallExpr).or_block.kind != .absent {
 		is_option = false
-		mr_styp = g.typ(return_type.clear_flag(.option).clear_flag(.result))
+		mr_styp = g.typ(return_type.clear_flags(.option, .result))
 	}
 	g.write('${mr_styp} ${mr_var_name} = ')
 	g.expr(node.right[0])

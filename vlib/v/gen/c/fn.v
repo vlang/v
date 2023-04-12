@@ -779,11 +779,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	if gen_or {
 		g.or_block(tmp_opt, node.or_block, node.return_type)
-		mut unwrapped_typ := node.return_type.clear_flag(.option).clear_flag(.result)
+		mut unwrapped_typ := node.return_type.clear_flags(.option, .result)
 		if g.table.sym(unwrapped_typ).kind == .alias {
 			unaliased_type := g.table.unaliased_type(unwrapped_typ)
 			if unaliased_type.has_flag(.option) || unaliased_type.has_flag(.result) {
-				unwrapped_typ = unaliased_type.clear_flag(.option).clear_flag(.result)
+				unwrapped_typ = unaliased_type.clear_flags(.option, .result)
 			}
 		}
 		unwrapped_styp := g.typ(unwrapped_typ)
