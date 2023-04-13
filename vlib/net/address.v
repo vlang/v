@@ -194,7 +194,7 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
 	hints.ai_socktype = int(typ)
 	hints.ai_flags = C.AI_PASSIVE
 
-	results := &C.addrinfo(0)
+	results := &C.addrinfo(unsafe { nil })
 
 	sport := '${port}'
 

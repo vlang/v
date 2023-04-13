@@ -267,7 +267,7 @@ struct SimpleTcpClientConfig {
 }
 
 fn simple_tcp_client(config SimpleTcpClientConfig) !string {
-	mut client := &net.TcpConn(0)
+	mut client := &net.TcpConn(unsafe { nil })
 	mut tries := 0
 	for tries < config.retries {
 		tries++
@@ -308,7 +308,7 @@ ${config.content}'
 }
 
 fn simple_tcp_client_post_json(config SimpleTcpClientConfig) !string {
-	mut client := &net.TcpConn(0)
+	mut client := &net.TcpConn(unsafe { nil })
 	mut tries := 0
 	for tries < config.retries {
 		tries++

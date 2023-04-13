@@ -78,7 +78,7 @@ pub fn (mut m Main) run() !string {
 	}
 	// m.opt = options
 	opt := m.opt
-	mut pc := &PkgConfig(0)
+	mut pc := &PkgConfig(unsafe { nil })
 	mut res := m.res
 	for arg in opt.args {
 		mut pcdep := load(arg, options) or {

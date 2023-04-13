@@ -2836,6 +2836,30 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		if from_sym.kind == .alias {
 			from_type = (from_sym.info as ast.Alias).parent_type.derive_add_muls(from_type)
 		}
+		if mut node.expr is ast.IntegerLiteral {
+			if node.expr.val.int() == 0 && !c.pref.translated && !c.file.is_translated {
+				c.error('cannot null cast a struct pointer, use &${to_sym.name}(unsafe { nil })',
+					node.pos)
+			} else if !c.inside_unsafe && !c.pref.translated && !c.file.is_translated {
+				c.error('cannot cast int to a struct pointer outside `unsafe`', node.pos)
+			}
+		} else if mut node.expr is ast.Ident {
+			match mut node.expr.obj {
+				ast.GlobalField, ast.ConstField, ast.Var {
+					if mut node.expr.obj.expr is ast.IntegerLiteral {
+						if node.expr.obj.expr.val.int() == 0 && !c.pref.translated
+							&& !c.file.is_translated {
+							c.error('cannot null cast a struct pointer, use &${to_sym.name}(unsafe { nil })',
+								node.pos)
+						} else if !c.inside_unsafe && !c.pref.translated && !c.file.is_translated {
+							c.error('cannot cast int to a struct pointer outside `unsafe`',
+								node.pos)
+						}
+					}
+				}
+				else {}
+			}
+		}
 		if from_type == ast.voidptr_type_idx && !c.inside_unsafe {
 			// TODO make this an error
 			c.warn('cannot cast voidptr to a struct outside `unsafe`', node.pos)
@@ -3611,9 +3635,10 @@ fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 }
 
 fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) ast.Type {
+	prev_unsafe := c.inside_unsafe
 	c.inside_unsafe = true
 	t := c.expr(node.expr)
-	c.inside_unsafe = false
+	c.inside_unsafe = prev_unsafe
 	return t
 }
 

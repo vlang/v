@@ -6188,12 +6188,12 @@ fn my_callback(arg voidptr, howmany int, cvalues &&char, cnames &&char) int {
 }
 
 fn main() {
-	db := &C.sqlite3(0) // this means `sqlite3* db = 0`
+	db := &C.sqlite3(unsafe { nil }) // this means `sqlite3* db = 0`
 	// passing a string literal to a C function call results in a C string, not a V string
 	C.sqlite3_open(c'users.db', &db)
 	// C.sqlite3_open(db_path.str, &db)
 	query := 'select count(*) from users'
-	stmt := &C.sqlite3_stmt(0)
+	stmt := &C.sqlite3_stmt(unsafe { nil })
 	// Note: You can also use the `.str` field of a V string,
 	// to get its C style zero terminated representation
 	C.sqlite3_prepare_v2(db, &char(query.str), -1, &stmt, 0)
