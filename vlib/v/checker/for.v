@@ -135,7 +135,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			if next_fn.params.len != 1 {
 				c.error('iterator method `next()` must have 0 parameters', node.cond.pos())
 			}
-			mut val_type := next_fn.return_type.clear_flag(.option).clear_flag(.result)
+			mut val_type := next_fn.return_type.clear_flags(.option, .result)
 			if node.val_is_mut {
 				val_type = val_type.ref()
 			}

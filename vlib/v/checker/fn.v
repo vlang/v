@@ -2285,7 +2285,7 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 			} else if !is_map && arg_expr.return_type != ast.bool_type {
 				if arg_expr.or_block.kind != .absent && (arg_expr.return_type.has_flag(.option)
 					|| arg_expr.return_type.has_flag(.result))
-					&& arg_expr.return_type.clear_flag(.option).clear_flag(.result) == ast.bool_type {
+					&& arg_expr.return_type.clear_flags(.option, .result) == ast.bool_type {
 					return
 				}
 				c.error('type mismatch, `${arg_expr.name}` must return a bool', arg_expr.pos)

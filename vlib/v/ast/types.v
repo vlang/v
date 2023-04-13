@@ -354,10 +354,18 @@ pub fn (t Type) clear_flag(flag TypeFlag) Type {
 	return int(t) & ~(1 << (int(flag) + 24))
 }
 
-// clear all flags
+// clear all flags or multi flags
 [inline]
-pub fn (t Type) clear_flags() Type {
-	return int(t) & 0xffffff
+pub fn (t Type) clear_flags(flags ...TypeFlag) Type {
+	if flags.len == 0 {
+		return int(t) & 0xffffff
+	} else {
+		mut typ := int(t)
+		for flag in flags {
+			typ = typ & ~(1 << (int(flag) + 24))
+		}
+		return typ
+	}
 }
 
 // return true if `flag` is set on `t`
