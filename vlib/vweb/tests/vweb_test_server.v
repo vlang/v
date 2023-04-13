@@ -95,6 +95,16 @@ pub fn (mut app App) form_echo() vweb.Result {
 	return app.ok(app.form['foo'])
 }
 
+['/file_echo'; post]
+pub fn (mut app App) file_echo() vweb.Result {
+	if 'file' !in app.files {
+		app.set_status(500, '')
+		return app.text('no file')
+	}
+
+	return app.text(app.files['file'][0].data)
+}
+
 // Make sure [post] works without the path
 [post]
 pub fn (mut app App) json() vweb.Result {
