@@ -210,10 +210,8 @@ fn test_http_client_multipart_form_data() {
 			'foo': 'baz buzz'
 		}
 	}
-	println(form_config.header)
 
 	mut x := http.post_multipart_form('http://${localserver}/form_echo', form_config)!
-	println(form_config.header)
 
 	$if debug_net_socket_client ? {
 		eprintln('/form_echo endpoint response: ${x}')
