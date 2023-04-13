@@ -50,6 +50,15 @@ fn (mut p Process) unix_spawn_process() int {
 		fd_close(pipeset[3])
 		fd_close(pipeset[5])
 	}
+	if p.work_folder != '' {
+		if !is_abs_path(p.filename) {
+			// Ensure p.filename contains an absolute path, so it
+			// can be located reliably, even after changing the
+			// current folder in the child process:
+			p.filename = abs_path(p.filename)
+		}
+		chdir(p.work_folder) or {}
+	}
 	execve(p.filename, p.args, p.env) or {
 		eprintln(err)
 		exit(1)
