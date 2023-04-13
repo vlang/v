@@ -5,7 +5,7 @@ import encoding.leb128
 // constexpr_value returns a constant expression that evaluates to a single value.
 pub fn constexpr_value[T](v T) ConstExpression {
 	mut expr := ConstExpression{}
-	
+
 	$if T is i64 {
 		expr.i64_const(v)
 	} $else $if T is $int {
@@ -15,7 +15,7 @@ pub fn constexpr_value[T](v T) ConstExpression {
 	} $else $if T is f64 {
 		expr.f64_const(v)
 	} $else {
-		$compile_error("values can only be int, i32, i64, f32, f64")
+		$compile_error('values can only be int, i32, i64, f32, f64')
 	}
 
 	return expr
@@ -24,7 +24,7 @@ pub fn constexpr_value[T](v T) ConstExpression {
 // constexpr_ref_null returns a constant expression that evaluates to a null reference.
 pub fn constexpr_ref_null(rt RefType) ConstExpression {
 	mut expr := ConstExpression{}
-	
+
 	expr.ref_null(rt)
 
 	return expr

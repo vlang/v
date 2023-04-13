@@ -25,7 +25,7 @@ fn validate(mod []u8) ! {
 fn test_globals() {
 	mut m := wasm.Module{}
 
-	vsp := m.new_global("__vsp", .i32_t, true, wasm.constexpr_value(10))
+	vsp := m.new_global('__vsp', .i32_t, true, wasm.constexpr_value(10))
 	mut func := m.new_function('vsp', [], [.i32_t])
 	{
 		func.global_get(vsp)
@@ -35,8 +35,8 @@ fn test_globals() {
 		func.global_get(vsp)
 	}
 	m.commit(func, true)
-	
-	fref := m.new_global("__ref", .funcref_t, true, wasm.constexpr_ref_null(.funcref_t))
+
+	fref := m.new_global('__ref', .funcref_t, true, wasm.constexpr_ref_null(.funcref_t))
 	mut func1 := m.new_function('ref', [], [])
 	{
 		func1.ref_func('vsp')
@@ -44,7 +44,7 @@ fn test_globals() {
 	}
 	m.commit(func1, true)
 
-	gimport := m.new_global_import("env", "__import", .f64_t, false)
+	gimport := m.new_global_import('env', '__import', .f64_t, false)
 	mut func2 := m.new_function('import', [], [.f64_t])
 	{
 		func2.global_get(gimport)
