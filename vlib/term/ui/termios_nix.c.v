@@ -255,7 +255,7 @@ fn (mut ctx Context) parse_events() {
 		if nr_iters > 100 {
 			ctx.shift(1)
 		}
-		mut event := &Event(0)
+		mut event := &Event(unsafe { nil })
 		if ctx.read_buf[0] == 0x1b {
 			e, len := escape_sequence(ctx.read_buf.bytestr())
 			event = e
@@ -420,7 +420,7 @@ fn escape_sequence(buf_ string) (&Event, int) {
 	if buf.len > 2 && buf[1] == `<` {
 		split := buf[2..].split(';')
 		if split.len < 3 {
-			return &Event(0), 0
+			return &Event(unsafe { nil }), 0
 		}
 
 		typ, x, y := split[0].int(), split[1].int(), split[2].int()

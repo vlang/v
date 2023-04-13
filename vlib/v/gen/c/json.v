@@ -673,15 +673,15 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 		is_option := field.typ.has_flag(.option)
 		indent := if is_option { '\t\t' } else { '\t' }
 		if is_option {
-			enc.writeln('\tif (val${op}${c_name(field.name)}.state != 2) {')
+			enc.writeln('\tif (${prefix_enc}${op}${c_name(field.name)}.state != 2) {')
 		}
 		if is_omit_empty {
 			if field.typ.has_flag(.option) {
-				enc.writeln('${indent}if (val${op}${c_name(field.name)}.state != 2)')
+				enc.writeln('${indent}if (${prefix_enc}${op}${c_name(field.name)}.state != 2)')
 			} else if field.typ == ast.string_type {
-				enc.writeln('${indent}if (val${op}${c_name(field.name)}.len != 0)')
+				enc.writeln('${indent}if (${prefix_enc}${op}${c_name(field.name)}.len != 0)')
 			} else {
-				enc.writeln('${indent}if (val${op}${c_name(field.name)} != ${g.type_default(field.typ)})')
+				enc.writeln('${indent}if (${prefix_enc}${op}${c_name(field.name)} != ${g.type_default(field.typ)})')
 			}
 		}
 		if !is_js_prim(field_type) {
