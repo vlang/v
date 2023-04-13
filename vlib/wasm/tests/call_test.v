@@ -22,7 +22,7 @@ fn validate(mod []u8) ! {
 	proc.close()
 }
 
-fn test_add() {
+fn test_call() {
 	mut m := wasm.Module{}
 	mut a1 := m.new_function('const-i32', [], [.i32_t])
 	{
