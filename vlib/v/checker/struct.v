@@ -56,7 +56,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 		util.timing_start('Checker.struct setting default_expr_typ')
 		old_expected_type := c.expected_type
 		for mut field in node.fields {
-			if field.typ.clear_flag(.option) == struct_typ_idx {
+			if field.typ.clear_flag(.option).set_nr_muls(0) == struct_typ_idx {
 				for mut symfield in struct_sym.info.fields {
 					if symfield.name == field.name {
 						symfield.is_recursive = true
