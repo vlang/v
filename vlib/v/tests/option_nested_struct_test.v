@@ -1,12 +1,10 @@
 struct Node {
 mut:
-	next ?&Node = unsafe { nil }
+	next ?&Node
 }
 
 fn test_struct_nested_option() {
-	mut b := Node{
-		next: unsafe { nil }
-	}
+	mut b := Node{}
 	mut a := Node{
 		next: &b
 	}
