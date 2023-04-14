@@ -10,12 +10,12 @@ pub:
 	// and also the default value, when the flag is not given
 }
 
-struct UnkownFlagError {
+struct UnknownFlagError {
 	Error
 	flag string
 }
 
-fn (err UnkownFlagError) msg() string {
+fn (err UnknownFlagError) msg() string {
 	return 'Unknown flag `${err.flag}`'
 }
 
@@ -620,7 +620,7 @@ pub fn (mut fs FlagParser) finalize() ![]string {
 	if !fs.allow_unknown_args {
 		for a in remaining {
 			if (a.len >= 2 && a[..2] == '--') || (a.len == 2 && a[0] == `-`) {
-				return &UnkownFlagError{
+				return &UnknownFlagError{
 					flag: a
 				}
 			}
