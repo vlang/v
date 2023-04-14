@@ -13,6 +13,5 @@ fn test_struct_nested_option() {
 	dump(a)
 	assert a.next != none
 	dump(a.next?)
-	assert a.next?.next != none
-	dump(a.next?.next?)
+	assert a.next?.next == none
 }
