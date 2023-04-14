@@ -1,6 +1,7 @@
 module wasm
 
 import encoding.leb128
+import math.bits
 
 fn (mut mod Module) u32(v u32) {
 	mod.buf << leb128.encode_u32(v)
@@ -34,34 +35,71 @@ fn (mut mod Module) function_type(ft FuncType) {
 	mod.result_type(ft.results)
 }
 
-fn (mut mod Module) patch_calls(ft Function) {
+fn (mut mod Module) global_type(vt ValType, is_mut bool) {
+	mod.buf << u8(vt)
+	mod.buf << u8(is_mut)
+}
+
+fn push_f32(mut buf []u8, v f32) {
+	rv := bits.f32_bits(v)
+	buf << u8(rv >> u32(0))
+	buf << u8(rv >> u32(8))
+	buf << u8(rv >> u32(16))
+	buf << u8(rv >> u32(24))
+}
+
+fn push_f64(mut buf []u8, v f64) {
+	rv := bits.f64_bits(v)
+	buf << u8(rv >> u32(0))
+	buf << u8(rv >> u32(8))
+	buf << u8(rv >> u32(16))
+	buf << u8(rv >> u32(24))
+	buf << u8(rv >> u32(32))
+	buf << u8(rv >> u32(40))
+	buf << u8(rv >> u32(48))
+	buf << u8(rv >> u32(56))
+}
+
+fn (mod &Module) get_function_idx(patch CallPatch) int {
+	mut idx := -1
+
+	match patch {
+		FunctionCallPatch {
+			ftt := mod.functions[patch.name] or {
+				panic('called function ${patch.name} does not exist')
+			}
+			idx = ftt.idx + mod.fn_imports.len
+		}
+		ImportCallPatch {
+			for fnidx, c in mod.fn_imports {
+				if c.mod == patch.mod && c.name == patch.name {
+					idx = fnidx
+					break
+				}
+			}
+			if idx == -1 {
+				panic('called imported function ${patch.mod}.${patch.name} does not exist')
+			}
+		}
+	}
+
+	return idx
+}
+
+fn (mut mod Module) patch(ft Function) {
 	mut ptr := 0
 
 	for patch in ft.call_patches {
-		mut idx := -1
-
-		match patch {
-			FunctionCallPatch {
-				ftt := mod.functions[patch.name] or {
-					panic('called function ${patch.name} does not exist')
-				}
-				idx = ftt.idx + mod.fn_imports.len
-			}
-			ImportCallPatch {
-				for fnidx, c in mod.fn_imports {
-					if c.mod == patch.mod && c.name == patch.name {
-						idx = fnidx
-						break
-					}
-				}
-				if idx == -1 {
-					panic('called imported function ${patch.mod}.${patch.name} does not exist')
-				}
-			}
-		}
+		idx := mod.get_function_idx(patch)
 
 		mod.buf << ft.code[ptr..patch.pos]
-		mod.buf << 0x10 // call
+		mod.u32(u32(idx))
+		ptr = patch.pos
+	}
+
+	for patch in ft.global_patches {
+		idx := mod.global_imports.len + patch.idx
+		mod.buf << ft.code[ptr..patch.pos]
 		mod.u32(u32(idx))
 		ptr = patch.pos
 	}
@@ -93,12 +131,11 @@ pub fn (mut mod Module) compile() []u8 {
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#import-section
 	//
-	if mod.fn_imports.len > 0 {
-		// Types
+	if mod.fn_imports.len > 0 || mod.global_imports.len > 0 {
 		mod.buf << u8(Section.import_section)
 		tpatch := mod.patch_start()
 		{
-			mod.u32(u32(mod.fn_imports.len))
+			mod.u32(u32(mod.fn_imports.len + mod.global_imports.len))
 			for ft in mod.fn_imports {
 				mod.u32(u32(ft.mod.len))
 				mod.buf << ft.mod.bytes()
@@ -106,6 +143,14 @@ pub fn (mut mod Module) compile() []u8 {
 				mod.buf << ft.name.bytes()
 				mod.buf << 0x00 // function
 				mod.u32(u32(ft.tidx))
+			}
+			for gt in mod.global_imports {
+				mod.u32(u32(gt.mod.len))
+				mod.buf << gt.mod.bytes()
+				mod.u32(u32(gt.name.len))
+				mod.buf << gt.name.bytes()
+				mod.buf << 0x03 // global
+				mod.global_type(gt.typ, gt.is_mut)
 			}
 		}
 		mod.patch_len(tpatch)
@@ -137,6 +182,32 @@ pub fn (mut mod Module) compile() []u8 {
 			} else {
 				mod.buf << 0x00 // limit, max not present
 				mod.u32(memory.min)
+			}
+		}
+		mod.patch_len(tpatch)
+	}
+	// https://webassembly.github.io/spec/core/binary/modules.html#global-section
+	//
+	if mod.globals.len > 0 {
+		mod.buf << u8(Section.global_section)
+		tpatch := mod.patch_start()
+		{
+			mod.u32(u32(mod.globals.len))
+			for gt in mod.globals {
+				mod.global_type(gt.typ, gt.is_mut)
+
+				{
+					mut ptr := 0
+					for patch in gt.init.call_patches {
+						idx := mod.get_function_idx(patch)
+
+						mod.buf << gt.init.code[ptr..patch.pos]
+						mod.u32(u32(idx))
+						ptr = patch.pos
+					}
+					mod.buf << gt.init.code[ptr..]
+				}
+				mod.buf << 0x0B // END expression opcode
 			}
 		}
 		mod.patch_len(tpatch)
@@ -208,7 +279,7 @@ pub fn (mut mod Module) compile() []u8 {
 						mod.u32(1)
 						mod.buf << u8(lt)
 					}
-					mod.patch_calls(ft)
+					mod.patch(ft)
 					mod.buf << 0x0B // END expression opcode
 				}
 				mod.patch_len(fpatch)

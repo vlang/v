@@ -740,7 +740,7 @@ fn handle_route[T](mut app T, url urllib.URL, routes &map[string]Route, tid int)
 		}
 	}
 	// Route not found
-	app.conn.write(vweb.http_404.bytes()) or {}
+	app.not_found()
 }
 
 // validate_middleware validates and fires all middlewares that are defined in the global app instance

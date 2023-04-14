@@ -179,7 +179,7 @@ pub fn (mut p Parser) free_scanner() {
 	unsafe {
 		if p.scanner != 0 {
 			p.scanner.free()
-			p.scanner = &scanner.Scanner(0)
+			p.scanner = &scanner.Scanner(nil)
 		}
 	}
 }

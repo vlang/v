@@ -102,7 +102,7 @@ pub fn new_table() &Table {
 	return t
 }
 
-__global global_table = &Table(0)
+__global global_table = &Table(unsafe { nil })
 
 pub fn set_global_table(t &Table) {
 	global_table = t

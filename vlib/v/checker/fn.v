@@ -910,7 +910,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		c.error('unknown function: ${fn_name}', node.pos)
 		return ast.void_type
 	}
-
 	node.is_file_translated = func.is_file_translated
 	node.is_noreturn = func.is_noreturn
 	node.is_ctor_new = func.is_ctor_new
@@ -1251,6 +1250,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		// no type arguments given in call, attempt implicit instantiation
 		c.infer_fn_generic_types(func, mut node)
 		concrete_types = node.concrete_types.map(c.unwrap_generic(it))
+		c.resolve_fn_generic_args(func, mut node)
 	}
 	if func.generic_names.len > 0 {
 		for i, mut call_arg in node.args {
@@ -1330,20 +1330,129 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	return func.return_type
 }
 
-fn (mut c Checker) get_comptime_args(node_ ast.CallExpr) map[int]ast.Type {
+fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
-	for i, call_arg in node_.args {
-		if call_arg.expr is ast.Ident {
-			if call_arg.expr.obj is ast.Var {
-				if call_arg.expr.obj.ct_type_var != .no_comptime {
-					comptime_args[i] = c.get_comptime_var_type_from_kind(call_arg.expr.obj.ct_type_var)
-				}
+	has_dynamic_vars := (c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0)
+		|| c.inside_comptime_for_field
+	if has_dynamic_vars {
+		offset := if func.is_method { 1 } else { 0 }
+		for i, call_arg in node_.args {
+			param := if func.is_variadic && i >= func.params.len - (offset + 1) {
+				func.params.last()
+			} else {
+				func.params[offset + i]
 			}
-		} else if call_arg.expr is ast.ComptimeSelector && c.is_comptime_var(call_arg.expr) {
-			comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
+			if !param.typ.has_flag(.generic) {
+				continue
+			}
+			if call_arg.expr is ast.Ident {
+				if call_arg.expr.obj is ast.Var {
+					if call_arg.expr.obj.ct_type_var !in [.generic_param, .no_comptime] {
+						mut ctyp := c.get_comptime_var_type(call_arg.expr)
+						if ctyp != ast.void_type {
+							arg_sym := c.table.sym(ctyp)
+							param_typ := param.typ
+							if arg_sym.kind == .array && param_typ.has_flag(.generic)
+								&& c.table.final_sym(param_typ).kind == .array {
+								ctyp = (arg_sym.info as ast.Array).elem_type
+							}
+							comptime_args[i] = ctyp
+						}
+					} else if call_arg.expr.obj.ct_type_var == .generic_param {
+						mut ctyp := c.get_comptime_var_type(call_arg.expr)
+						if ctyp != ast.void_type {
+							param_typ := param.typ
+							arg_sym := c.table.final_sym(call_arg.typ)
+							param_typ_sym := c.table.sym(param_typ)
+
+							if param_typ.has_flag(.variadic) {
+								ctyp = ast.mktyp(ctyp)
+								comptime_args[i] = ctyp
+							} else if arg_sym.kind == .array && param_typ.has_flag(.generic)
+								&& param_typ_sym.kind == .array {
+								ctyp = c.get_generic_array_element_type(arg_sym.info as ast.Array)
+								comptime_args[i] = ctyp
+							} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
+								mut generic_types := []ast.Type{}
+								match arg_sym.info {
+									ast.Struct, ast.Interface, ast.SumType {
+										if param_typ_sym.generic_types.len > 0 {
+											generic_types = param_typ_sym.generic_types.clone()
+										} else {
+											generic_types = arg_sym.info.generic_types.clone()
+										}
+									}
+									else {}
+								}
+								generic_names := generic_types.map(c.table.sym(it).name)
+								for _, gt_name in c.table.cur_fn.generic_names {
+									if gt_name in generic_names
+										&& generic_types.len == concrete_types.len {
+										idx := generic_names.index(gt_name)
+										comptime_args[i] = concrete_types[idx]
+										break
+									}
+								}
+							} else if arg_sym.kind == .any {
+								mut cparam_type_sym := c.table.sym(c.unwrap_generic(ctyp))
+								if param_typ_sym.kind == .array && cparam_type_sym.kind == .array {
+									ctyp = (cparam_type_sym.info as ast.Array).elem_type
+									comptime_args[i] = ctyp
+								} else {
+									if node_.args[i].expr.is_auto_deref_var() {
+										ctyp = ctyp.deref()
+									}
+									if ctyp.nr_muls() > 0 && param_typ.nr_muls() > 0 {
+										ctyp = ctyp.set_nr_muls(0)
+									}
+									comptime_args[i] = ctyp
+								}
+							} else {
+								comptime_args[i] = ctyp
+							}
+						}
+					}
+				}
+			} else if call_arg.expr is ast.ComptimeSelector && c.is_comptime_var(call_arg.expr) {
+				comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
+			}
 		}
 	}
 	return comptime_args
+}
+
+fn (mut c Checker) resolve_fn_generic_args(func ast.Fn, mut node ast.CallExpr) []ast.Type {
+	mut concrete_types := node.concrete_types.map(c.unwrap_generic(it))
+
+	// dynamic values from comptime and generic parameters
+	// overwrite concrete_types[ receiver_concrete_type + arg number ]
+	if concrete_types.len > 0 {
+		mut rec_len := 0
+		// discover receiver concrete_type len
+		if func.is_method && node.left_type.has_flag(.generic) {
+			rec_sym := c.table.final_sym(c.unwrap_generic(node.left_type))
+			match rec_sym.info {
+				ast.Struct, ast.Interface, ast.SumType {
+					rec_len += rec_sym.info.generic_types.len
+				}
+				else {}
+			}
+		}
+
+		mut comptime_args := c.get_comptime_args(func, node, concrete_types)
+		if comptime_args.len > 0 {
+			for k, v in comptime_args {
+				if (rec_len + k) < concrete_types.len {
+					concrete_types[rec_len + k] = c.unwrap_generic(v)
+				}
+			}
+			if c.table.register_fn_concrete_types(func.fkey(), concrete_types) {
+				c.need_recheck_generic_fns = true
+			}
+		}
+	}
+
+	return concrete_types
 }
 
 fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
@@ -1531,36 +1640,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			}
 			else {}
 		}
-		mut concrete_types := []ast.Type{}
-		for concrete_type in node.concrete_types {
-			if concrete_type.has_flag(.generic) {
-				concrete_types << c.unwrap_generic(concrete_type)
-			} else {
-				concrete_types << concrete_type
-			}
-		}
-		if c.inside_comptime_for_field && concrete_types.len > 0 {
-			mut comptime_args := c.get_comptime_args(node)
-			mut comptime_types := concrete_types.clone()
-			for k, v in comptime_args {
-				arg_sym := c.table.sym(v)
-				if method.generic_names.len > 0 && arg_sym.kind == .array
-					&& method.params[k + 1].typ.has_flag(.generic)
-					&& c.table.final_sym(method.params[k + 1].typ).kind == .array {
-					comptime_types[k] = (arg_sym.info as ast.Array).elem_type
-				} else {
-					comptime_types[k] = v
-				}
-			}
-			if comptime_args.len > 0
-				&& c.table.register_fn_concrete_types(method.fkey(), comptime_types) {
-				c.need_recheck_generic_fns = true
-			}
-		}
-		if concrete_types.len > 0 {
-			if c.table.register_fn_concrete_types(method.fkey(), concrete_types) {
-				c.need_recheck_generic_fns = true
-			}
+		mut concrete_types := node.concrete_types.map(c.unwrap_generic(it))
+		if concrete_types.len > 0
+			&& c.table.register_fn_concrete_types(method.fkey(), concrete_types) {
+			c.need_recheck_generic_fns = true
 		}
 		node.is_noreturn = method.is_noreturn
 		node.is_ctor_new = method.is_ctor_new
@@ -1854,6 +1937,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 		if concrete_types.len > 0 && !concrete_types[0].has_flag(.generic) {
 			c.table.register_fn_concrete_types(method.fkey(), concrete_types)
+			c.resolve_fn_generic_args(method, mut node)
 		}
 
 		// resolve return generics struct to concrete type
@@ -2201,7 +2285,7 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 			} else if !is_map && arg_expr.return_type != ast.bool_type {
 				if arg_expr.or_block.kind != .absent && (arg_expr.return_type.has_flag(.option)
 					|| arg_expr.return_type.has_flag(.result))
-					&& arg_expr.return_type.clear_flag(.option).clear_flag(.result) == ast.bool_type {
+					&& arg_expr.return_type.clear_flags(.option, .result) == ast.bool_type {
 					return
 				}
 				c.error('type mismatch, `${arg_expr.name}` must return a bool', arg_expr.pos)

@@ -14,7 +14,7 @@ struct Admin {
 }
 
 ['/admin/duplicate']
-fn (mut app App) duplicate() vweb.Result {
+pub fn (mut app App) duplicate() vweb.Result {
 	return app.text('duplicate')
 }
 

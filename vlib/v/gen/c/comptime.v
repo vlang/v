@@ -647,15 +647,13 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 //
 
 struct CurrentComptimeValues {
-	inside_comptime_for_field   bool
-	comptime_for_method         string
-	comptime_for_method_var     string
-	comptime_for_field_var      string
-	comptime_for_field_value    ast.StructField
-	comptime_for_field_type     ast.Type
-	comptime_for_field_key_type ast.Type
-	comptime_for_field_val_type ast.Type
-	comptime_var_type_map       map[string]ast.Type
+	inside_comptime_for_field bool
+	comptime_for_method       string
+	comptime_for_method_var   string
+	comptime_for_field_var    string
+	comptime_for_field_value  ast.StructField
+	comptime_for_field_type   ast.Type
+	comptime_var_type_map     map[string]ast.Type
 }
 
 fn (mut g Gen) push_existing_comptime_values() {
@@ -666,8 +664,6 @@ fn (mut g Gen) push_existing_comptime_values() {
 		comptime_for_field_var: g.comptime_for_field_var
 		comptime_for_field_value: g.comptime_for_field_value
 		comptime_for_field_type: g.comptime_for_field_type
-		comptime_for_field_key_type: g.comptime_for_field_key_type
-		comptime_for_field_val_type: g.comptime_for_field_val_type
 		comptime_var_type_map: g.comptime_var_type_map.clone()
 	}
 }
@@ -680,29 +676,46 @@ fn (mut g Gen) pop_existing_comptime_values() {
 	g.comptime_for_field_var = old.comptime_for_field_var
 	g.comptime_for_field_value = old.comptime_for_field_value
 	g.comptime_for_field_type = old.comptime_for_field_type
-	g.comptime_for_field_key_type = old.comptime_for_field_key_type
-	g.comptime_for_field_val_type = old.comptime_for_field_val_type
 	g.comptime_var_type_map = old.comptime_var_type_map.clone()
 }
 
+// check_comptime_is_field_selector checks if the SelectorExpr is related to $for variable accessing .typ field
 [inline]
-fn (mut g Gen) get_comptime_var_type_from_kind(kind ast.ComptimeVarKind) ast.Type {
-	return match kind {
-		.key_var { g.comptime_for_field_key_type }
-		.value_var { g.comptime_for_field_val_type }
-		.field_var { g.comptime_for_field_type }
-		else { ast.void_type }
+fn (mut g Gen) is_comptime_selector_type(node ast.SelectorExpr) bool {
+	if g.inside_comptime_for_field && node.expr is ast.Ident {
+		return (node.expr as ast.Ident).name == g.comptime_for_field_var && node.field_name == 'typ'
 	}
+	return false
 }
 
 fn (mut g Gen) get_comptime_var_type(node ast.Expr) ast.Type {
 	if node is ast.Ident && (node as ast.Ident).obj is ast.Var {
-		return g.get_comptime_var_type_from_kind((node.obj as ast.Var).ct_type_var)
+		return match (node.obj as ast.Var).ct_type_var {
+			.generic_param {
+				// generic parameter from current function
+				node.obj.typ
+			}
+			.key_var, .value_var {
+				// key and value variables from normal for stmt
+				g.comptime_var_type_map[node.name] or { ast.void_type }
+			}
+			.field_var {
+				// field var from $for loop
+				g.comptime_for_field_type
+			}
+			else {
+				ast.void_type
+			}
+		}
 	} else if node is ast.ComptimeSelector {
+		// val.$(field.name)
 		key_str := g.get_comptime_selector_key_type(node)
 		if key_str != '' {
 			return g.comptime_var_type_map[key_str] or { ast.void_type }
 		}
+	} else if node is ast.SelectorExpr && g.is_comptime_selector_type(node as ast.SelectorExpr) {
+		// field_var.typ from $for field
+		return g.comptime_for_field_type
 	}
 	return ast.void_type
 }
