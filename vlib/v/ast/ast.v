@@ -165,11 +165,11 @@ pub:
 	pos token.Pos
 }
 
-pub const empty_expr = Expr(EmptyExpr(0))
-
-pub const empty_stmt = Stmt(EmptyStmt{})
-
-pub const empty_node = Node(EmptyNode{})
+pub const (
+	empty_expr = Expr(EmptyExpr(0))
+	empty_stmt = Stmt(EmptyStmt{})
+	empty_node = Node(EmptyNode{})
+)
 
 // `{stmts}` or `unsafe {stmts}`
 pub struct Block {
@@ -560,11 +560,11 @@ pub mut:
 	should_be_skipped bool      // true, when -skip-unused could not find any usages of that function, starting from main + other known used functions
 	ninstances        int  // 0 for generic functions with no concrete instances
 	has_await         bool // 'true' if this function uses JS.await
-	//
+
 	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
 	end_comments  []Comment // comments *after* header declarations. E.g.: `fn C.C_func(x int) int // Comment`
 	next_comments []Comment // comments that are one line after the decl; used for InterfaceDecl
-	//
+
 	source_file &File  = unsafe { nil }
 	scope       &Scope = unsafe { nil }
 	label_names []string
@@ -725,6 +725,7 @@ pub struct AutofreeArgVar {
 	idx  int
 }
 */
+
 // function call argument: `f(callarg)`
 [minify]
 pub struct CallArg {
@@ -963,7 +964,6 @@ pub fn (i &Ident) var_info() IdentVar {
 			return i.info
 		}
 		else {
-			// return IdentVar{}
 			panic('Ident.var_info(): info is not IdentVar variant')
 		}
 	}
@@ -985,12 +985,12 @@ pub mut:
 	promoted_type Type = void_type
 	auto_locked   string
 	or_block      OrExpr
-	//
+
 	ct_left_value_evaled  bool
 	ct_left_value         ComptTimeConstValue = empty_comptime_const_expr()
 	ct_right_value_evaled bool
 	ct_right_value        ComptTimeConstValue = empty_comptime_const_expr()
-	//
+
 	before_op_comments []Comment
 	after_op_comments  []Comment
 }
@@ -1153,7 +1153,6 @@ pub:
 	pos     token.Pos
 	typ_pos token.Pos
 pub mut:
-	// expr    Expr
 	typ Type
 }
 
@@ -1232,6 +1231,7 @@ pub:
 	name string
 }
 */
+
 // variable assign statement
 [minify]
 pub struct AssignStmt {
@@ -1816,21 +1816,17 @@ pub mut:
 [minify]
 pub struct ComptimeCall {
 pub:
-	pos         token.Pos
-	has_parens  bool // if $() is used, for vfmt
-	method_name string
-	method_pos  token.Pos
-	scope       &Scope = unsafe { nil }
-	left        Expr
-	//
-	is_vweb   bool
-	vweb_tmpl File
-	//
-	is_embed bool
-	//
-	is_env  bool
-	env_pos token.Pos
-	//
+	pos          token.Pos
+	has_parens   bool // if $() is used, for vfmt
+	method_name  string
+	method_pos   token.Pos
+	scope        &Scope = unsafe { nil }
+	left         Expr
+	is_vweb      bool
+	vweb_tmpl    File
+	is_embed     bool
+	is_env       bool
+	env_pos      token.Pos
 	is_pkgconfig bool
 pub mut:
 	left_type   Type
@@ -1967,28 +1963,22 @@ pub fn (expr Expr) pos() token.Pos {
 }
 
 pub fn (expr Expr) is_lvalue() bool {
-	match expr {
-		Ident { return true }
-		CTempVar { return true }
-		IndexExpr { return expr.left.is_lvalue() }
-		SelectorExpr { return expr.expr.is_lvalue() }
-		ParExpr { return expr.expr.is_lvalue() } // for var := &{...(*pointer_var)}
-		PrefixExpr { return expr.right.is_lvalue() }
-		ComptimeSelector { return expr.field_expr.is_lvalue() }
-		else {}
+	return match expr {
+		Ident, CTempVar { true }
+		IndexExpr { expr.left.is_lvalue() }
+		SelectorExpr { expr.expr.is_lvalue() }
+		ParExpr { expr.expr.is_lvalue() } // for var := &{...(*pointer_var)}
+		PrefixExpr { expr.right.is_lvalue() }
+		ComptimeSelector { expr.field_expr.is_lvalue() }
+		else { false }
 	}
-	return false
 }
 
 pub fn (expr Expr) is_expr() bool {
-	match expr {
-		IfExpr { return expr.is_expr }
-		LockExpr { return expr.is_expr }
-		MatchExpr { return expr.is_expr }
-		SelectExpr { return expr.is_expr }
-		else {}
+	return match expr {
+		IfExpr, LockExpr, MatchExpr, SelectExpr { expr.is_expr }
+		else { true }
 	}
-	return true
 }
 
 pub fn (expr Expr) is_pure_literal() bool {
@@ -2019,16 +2009,10 @@ pub fn (expr Expr) is_auto_deref_var() bool {
 
 // returns if an expression can be used in `lock x, y.z {`
 pub fn (e &Expr) is_lockable() bool {
-	match e {
-		Ident {
-			return true
-		}
-		SelectorExpr {
-			return e.expr.is_lockable()
-		}
-		else {
-			return false
-		}
+	return match e {
+		Ident { true }
+		SelectorExpr { e.expr.is_lockable() }
+		else { false }
 	}
 }
 
