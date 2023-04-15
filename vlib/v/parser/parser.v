@@ -751,15 +751,20 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				if p.peek_tok.kind == .eof {
 					return p.unexpected(got: 'eof')
 				}
-				if_expr := p.if_expr(true)
-				cur_stmt := ast.ExprStmt{
-					expr: if_expr
-					pos: if_expr.pos
-				}
-				if comptime_if_expr_contains_top_stmt(if_expr) {
-					return cur_stmt
+				if p.peek_tok.kind == .key_for {
+					comptime_for_stmt := p.comptime_for()
+					return p.other_stmts(comptime_for_stmt)
 				} else {
-					return p.other_stmts(cur_stmt)
+					if_expr := p.if_expr(true)
+					cur_stmt := ast.ExprStmt{
+						expr: if_expr
+						pos: if_expr.pos
+					}
+					if comptime_if_expr_contains_top_stmt(if_expr) {
+						return cur_stmt
+					} else {
+						return p.other_stmts(cur_stmt)
+					}
 				}
 			}
 			.hash {
