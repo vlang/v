@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  wasm-backend-ubuntu:
+  wasm-wabt-ubuntu:
     runs-on: ubuntu-22.04
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 31
@@ -37,7 +37,7 @@ jobs:
       - name: Test the WASM backend
         run: v test vlib/wasm/
 
-  wasm-backend-macos:
+  wasm-wabt-macos:
     runs-on: macOS-12
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 31
@@ -52,8 +52,8 @@ jobs:
 
       - name: Test the WASM backend
         run: v test vlib/wasm/
-        
-  wasm-backend-windows:
+
+  wasm-wabt-windows:
     runs-on: windows-2022
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 31
@@ -62,7 +62,7 @@ jobs:
 
       - name: Build V
         run: .\make.bat -msvc
-        
+
       - name: Symlink V
         run: .\v.exe symlink -githubci
 
