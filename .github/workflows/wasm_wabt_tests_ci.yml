@@ -1,0 +1,73 @@
+name: wasm wabt validate tests CI
+
+on:
+  push:
+    paths:
+      - '!**'
+      - '!**.md'
+      - 'vlib/builtin/**.v'
+      - 'vlib/wasm/**.v'
+      - 'vlib/wasm/tests/**.v'
+  pull_request:
+    paths:
+      - '!**'
+      - '!**.md'
+      - 'vlib/builtin/**.v'
+      - 'vlib/wasm/**.v'
+      - 'vlib/wasm/tests/**.v'
+
+concurrency:
+  group: wasm-wabt-ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  wasm-backend-ubuntu:
+    runs-on: ubuntu-22.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 31
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build V
+        run: make && ./v symlink -githubci
+
+      - name: Install wabt to get the wasm-validate executable
+        run: v cmd/tools/install_wabt.vsh
+
+      - name: Test the WASM backend
+        run: v test vlib/wasm/
+
+  wasm-backend-macos:
+    runs-on: macOS-12
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 31
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build V
+        run: make && ./v symlink -githubci
+
+      - name: Install wabt to get the wasm-validate executable
+        run: v cmd/tools/install_wabt.vsh
+
+      - name: Test the WASM backend
+        run: v test vlib/wasm/
+        
+  wasm-backend-windows:
+    runs-on: windows-2022
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 31
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build V
+        run: .\make.bat -msvc
+        
+      - name: Symlink V
+        run: .\v.exe symlink -githubci
+
+      - name: Install wabt to get the wasm-validate executable
+        run: v cmd/tools/install_wabt.vsh
+
+      - name: Test the WASM backend
+        run: v test vlib/wasm/
