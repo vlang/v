@@ -19,8 +19,7 @@ pub fn decode[T](toml_txt string) !T {
 	mut typ := T{}
 	$for field in T.fields {
 		$if field.is_enum {
-			// TODO: check enums
-			doc.value(field.name).int()
+			typ.$(field.name) = doc.value(field.name).int()
 		} $else $if field.typ is string {
 			typ.$(field.name) = doc.value(field.name).string()
 		} $else $if field.typ is bool {
@@ -51,7 +50,7 @@ pub fn encode[T](typ T) string {
 		$for field in T.fields {
 			value := typ.$(field.name)
 			$if field.is_enum {
-				mp[field.name] = Any(value.str())
+				mp[field.name] = Any(int(value))
 			} $else {
 				mp[field.name] = Any(value)
 			}
