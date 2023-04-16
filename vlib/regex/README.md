@@ -526,26 +526,6 @@ pub fn regex_opt(in_query string) ?RE
 pub fn new() RE
 ```
 
-#### **Custom initialization**
-
-For some particular needs, it is possible to initialize a fully customized regex:
-
-```v ignore
-pattern = r'ab(.*)(ac)'
-// init custom regex
-mut re := regex.RE{}
-// max program length, can not be longer then the pattern
-re.prog = []Token{len: pattern.len + 1}
-// can not be more char class the the length of the pattern
-re.cc = []CharClass{len: pattern.len}
-
-re.group_csave_flag = false // true enable continuous group saving if needed
-re.group_max_nested = 128 // set max 128 group nested possible
-re.group_max = pattern.len >> 1 // we can't have more groups than the half of the pattern length
-re.group_stack = []int{len: re.group_max, init: -1}
-re.group_data = []int{len: re.group_max, init: -1}
-```
-
 ### Compiling
 
 After an initializer is used, the regex expression must be compiled with:
@@ -821,69 +801,6 @@ fn main() {
 	mut re := regex.regex_opt(query) or { panic(err) }
 
 	start, end := re.match_string(txt)
-	if start >= 0 {
-		println('Match (${start}, ${end}) => [${txt[start..end]}]')
-		for g_index := 0; g_index < re.group_count; g_index++ {
-			println('#${g_index} [${re.get_group_by_id(txt, g_index)}] \
-				bounds: ${re.get_group_bounds_by_id(g_index)}')
-		}
-		for name in re.group_map.keys() {
-			println("group:'${name}' \t=> [${re.get_group_by_name(txt, name)}] \
-				bounds: ${re.get_group_bounds_by_name(name)}")
-		}
-	} else {
-		println('No Match')
-	}
-}
-```
-
-Here an example of total customization of the regex environment creation:
-
-```v ignore
-import regex
-
-fn main() {
-	txt := 'today John is gone to his house with Jack and Marie.'
-	query := r'(?:(?P<word>\A\w+)|(?:\a\w+)[\s.]?)+'
-
-	// init regex
-	mut re := regex.RE{}
-	// max program length, can not be longer then the query
-	re.prog = []regex.Token{len: query.len + 1}
-	// can not be more char class the the length of the query
-	re.cc = []regex.CharClass{len: query.len}
-	re.prog = []regex.Token{len: query.len + 1}
-	// enable continuous group saving
-	re.group_csave_flag = true
-	// set max 128 group nested
-	re.group_max_nested = 128
-	// we can't have more groups than the half of the query length
-	re.group_max = query.len >> 1
-
-	// compile the query
-	re.compile_opt(query) or { panic(err) }
-
-	start, end := re.match_string(txt)
-	if start >= 0 {
-		println('Match (${start}, ${end}) => [${txt[start..end]}]')
-	} else {
-		println('No Match')
-	}
-
-	// show results for continuous group saving
-	if re.group_csave_flag == true && start >= 0 && re.group_csave.len > 0 {
-		println('cg: ${re.group_csave}')
-		mut cs_i := 1
-		for cs_i < re.group_csave[0] * 3 {
-			g_id := re.group_csave[cs_i]
-			st := re.group_csave[cs_i + 1]
-			en := re.group_csave[cs_i + 2]
-			println('cg[${g_id}] ${st} ${en}:[${txt[st..en]}]')
-			cs_i += 3
-		}
-	}
-
-	// show results for captured groups
 	if start >= 0 {
 		println('Match (${start}, ${end}) => [${txt[start..end]}]')
 		for g_index := 0; g_index < re.group_count; g_index++ {
