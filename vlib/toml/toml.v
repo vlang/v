@@ -17,13 +17,12 @@ pub struct Null {
 // `T` can have a custom `.from_toml()` method that will be used in decode.
 pub fn decode[T](toml_txt string) !T {
 	doc := parse_text(toml_txt)!
+	typ := decode_struct[T](doc.to_any())
+	return typ
+}
+
+fn decode_struct[T](doc Any) T {
 	mut typ := T{}
-	$for method in T.methods {
-		$if method.name == 'from_toml' {
-			typ.$method(doc.to_any())
-			return typ
-		}
-	}
 	$for field in T.fields {
 		$if field.is_enum {
 			typ.$(field.name) = doc.value(field.name).int()
@@ -41,8 +40,10 @@ pub fn decode[T](toml_txt string) !T {
 			typ.$(field.name) = doc.value(field.name).f32()
 		} $else $if field.typ is f64 {
 			typ.$(field.name) = doc.value(field.name).f64()
-			// TODO: extend
+		} $else $if field.is_struct {
+			// typ.$(field.name) = decode_struct(doc.value(field.name))
 		} $else $if field.typ is time.Time {
+			// TODO: extend
 			typ.$(field.name) = doc.value(field.name).datetime()
 		}
 	}
@@ -57,18 +58,23 @@ pub fn encode[T](typ T) string {
 			return typ.$method()
 		}
 	}
+	mp := encode_struct[T](typ)
+	return mp.to_toml()
+}
+
+fn encode_struct[T](typ T) map[string]Any {
 	mut mp := map[string]Any{}
-	$if T is $struct {
-		$for field in T.fields {
-			value := typ.$(field.name)
-			$if field.is_enum {
-				mp[field.name] = Any(int(value))
-			} $else {
-				mp[field.name] = Any(value)
-			}
+	$for field in T.fields {
+		value := typ.$(field.name)
+		$if field.is_enum {
+			mp[field.name] = Any(int(value))
+		} $else $if field.is_struct {
+			mp[field.name] = encode_struct(value)
+		} $else {
+			mp[field.name] = Any(value)
 		}
 	}
-	return mp.to_toml()
+	return mp
 }
 
 // DateTime is the representation of an RFC 3339 datetime string.
