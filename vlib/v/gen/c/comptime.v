@@ -727,15 +727,12 @@ fn (mut g Gen) resolve_comptime_type(node ast.Expr, default_type ast.Type) ast.T
 	return default_type
 }
 
-//
-
 fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 	sym := g.table.final_sym(g.unwrap_generic(node.typ))
-	g.writeln('/* \$for ${node.val_var} in ${sym.name}(${node.kind.str()}) */ {')
+	g.writeln('/* \$for ${node.val_var} in ${sym.name}.${node.kind.str()} */ {')
 	g.indent++
-	// vweb_result_type := ast.new_type(g.table.find_type_idx('vweb.Result'))
 	mut i := 0
-	// g.writeln('string method = _SLIT("");')
+
 	if node.kind == .methods {
 		mut methods := sym.methods.filter(it.attrs.len == 0) // methods without attrs first
 		methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods with attrs second
@@ -809,7 +806,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			ret_typ := method.return_type.idx()
 			g.writeln('\t${node.val_var}.typ = ${styp};')
 			g.writeln('\t${node.val_var}.return_type = ${ret_typ};')
-			//
+
 			g.comptime_var_type_map['${node.val_var}.return_type'] = ret_typ
 			g.comptime_var_type_map['${node.val_var}.typ'] = styp
 			g.stmts(node.stmts)
@@ -818,7 +815,6 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.pop_existing_comptime_values()
 		}
 	} else if node.kind == .fields {
-		// TODO add fields
 		if sym.kind in [.struct_, .interface_] {
 			fields := match sym.info {
 				ast.Struct {
@@ -853,7 +849,6 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 						attrs.join(', ') + '}));\n')
 				}
 				field_sym := g.table.sym(field.typ)
-				// g.writeln('\t${node.val_var}.typ = _SLIT("$field_sym.name");')
 				styp := field.typ
 				unaliased_styp := g.table.unaliased_type(styp)
 
@@ -861,20 +856,20 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('\t${node.val_var}.unaliased_typ = ${unaliased_styp.idx()};')
 				g.writeln('\t${node.val_var}.is_pub = ${field.is_pub};')
 				g.writeln('\t${node.val_var}.is_mut = ${field.is_mut};')
-				//
+
 				g.writeln('\t${node.val_var}.is_shared = ${field.typ.has_flag(.shared_f)};')
 				g.writeln('\t${node.val_var}.is_atomic = ${field.typ.has_flag(.atomic_f)};')
 				g.writeln('\t${node.val_var}.is_option = ${field.typ.has_flag(.option)};')
-				//
+
 				g.writeln('\t${node.val_var}.is_array = ${field_sym.kind in [.array, .array_fixed]};')
 				g.writeln('\t${node.val_var}.is_map = ${field_sym.kind == .map};')
 				g.writeln('\t${node.val_var}.is_chan = ${field_sym.kind == .chan};')
 				g.writeln('\t${node.val_var}.is_struct = ${field_sym.kind == .struct_};')
 				g.writeln('\t${node.val_var}.is_alias = ${field_sym.kind == .alias};')
 				g.writeln('\t${node.val_var}.is_enum = ${field_sym.kind == .enum_};')
-				//
+
 				g.writeln('\t${node.val_var}.indirections = ${field.typ.nr_muls()};')
-				//
+
 				g.comptime_var_type_map['${node.val_var}.typ'] = styp
 				g.comptime_var_type_map['${node.val_var}.unaliased_typ'] = unaliased_styp
 				g.stmts(node.stmts)
