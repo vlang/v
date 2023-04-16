@@ -14,12 +14,13 @@ pub struct Null {
 }
 
 // decode decodes a TOML `string` into the target type `T`.
+// `T` can have a custom `.from_toml()` method to be used for decoding.
 pub fn decode[T](toml_txt string) !T {
 	doc := parse_text(toml_txt)!
 	mut typ := T{}
 	$for method in T.methods {
 		$if method.name == 'from_toml' {
-			typ.from_toml(doc.to_any())
+			typ.$method(doc.to_any())
 			return typ
 		}
 	}
@@ -49,11 +50,11 @@ pub fn decode[T](toml_txt string) !T {
 }
 
 // encode encodes the type `T` into a TOML string.
-// Currently encode expects the method `.to_toml()` exists on `T`.
+// `T` can have a custom `.to_toml()` method to be used for decoding.
 pub fn encode[T](typ T) string {
 	$for method in T.methods {
 		$if method.name == 'to_toml' {
-			return typ.to_toml()
+			return typ.$method()
 		}
 	}
 	mut mp := map[string]Any{}
