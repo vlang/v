@@ -754,7 +754,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				if p.peek_tok.kind == .key_for {
 					comptime_for_stmt := p.comptime_for()
 					return p.other_stmts(comptime_for_stmt)
-				} else {
+				} else if p.peek_tok.kind == .key_if {
 					if_expr := p.if_expr(true)
 					cur_stmt := ast.ExprStmt{
 						expr: if_expr
@@ -765,6 +765,8 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					} else {
 						return p.other_stmts(cur_stmt)
 					}
+				} else {
+					return p.unexpected()
 				}
 			}
 			.hash {
