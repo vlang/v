@@ -49,6 +49,8 @@ fn C.chmod(&char, u32) int
 
 fn C.printf(&char, ...voidptr) int
 
+fn C.scanf(&char, ...voidptr) int
+
 fn C.puts(&char) int
 fn C.abs(f64) f64
 
