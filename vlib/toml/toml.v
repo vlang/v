@@ -7,6 +7,7 @@ import toml.ast
 import toml.input
 import toml.scanner
 import toml.parser
+import time
 
 // Null is used in sumtype checks as a "default" value when nothing else is possible.
 pub struct Null {
@@ -16,14 +17,47 @@ pub struct Null {
 pub fn decode[T](toml_txt string) !T {
 	doc := parse_text(toml_txt)!
 	mut typ := T{}
-	typ.from_toml(doc.to_any())
+	$for field in T.fields {
+		$if field.is_enum {
+			// TODO: check enums
+			doc.value(field.name).int()
+		} $else $if field.typ is string {
+			typ.$(field.name) = doc.value(field.name).string()
+		} $else $if field.typ is bool {
+			typ.$(field.name) = doc.value(field.name).bool()
+		} $else $if field.typ is int {
+			typ.$(field.name) = doc.value(field.name).int()
+		} $else $if field.typ is i64 {
+			typ.$(field.name) = doc.value(field.name).i64()
+		} $else $if field.typ is u64 {
+			typ.$(field.name) = doc.value(field.name).u64()
+		} $else $if field.typ is f32 {
+			typ.$(field.name) = doc.value(field.name).f32()
+		} $else $if field.typ is f64 {
+			typ.$(field.name) = doc.value(field.name).f64()
+			// TODO: extend
+		} $else $if field.typ is time.Time {
+			typ.$(field.name) = doc.value(field.name).datetime()
+		}
+	}
 	return typ
 }
 
 // encode encodes the type `T` into a TOML string.
 // Currently encode expects the method `.to_toml()` exists on `T`.
 pub fn encode[T](typ T) string {
-	return typ.to_toml()
+	mut mp := map[string]Any{}
+	$if T is $struct {
+		$for field in T.fields {
+			value := typ.$(field.name)
+			$if field.is_enum {
+				mp[field.name] = Any(value.str())
+			} $else {
+				mp[field.name] = Any(value)
+			}
+		}
+	}
+	return mp.to_toml()
 }
 
 // DateTime is the representation of an RFC 3339 datetime string.
