@@ -17,6 +17,12 @@ pub struct Null {
 pub fn decode[T](toml_txt string) !T {
 	doc := parse_text(toml_txt)!
 	mut typ := T{}
+	$for method in T.methods {
+		$if method.name == 'from_toml' {
+			typ.from_toml(doc.to_any())
+			return typ
+		}
+	}
 	$for field in T.fields {
 		$if field.is_enum {
 			typ.$(field.name) = doc.value(field.name).int()
@@ -45,6 +51,11 @@ pub fn decode[T](toml_txt string) !T {
 // encode encodes the type `T` into a TOML string.
 // Currently encode expects the method `.to_toml()` exists on `T`.
 pub fn encode[T](typ T) string {
+	$for method in T.methods {
+		$if method.name == 'to_toml' {
+			return typ.to_toml()
+		}
+	}
 	mut mp := map[string]Any{}
 	$if T is $struct {
 		$for field in T.fields {
