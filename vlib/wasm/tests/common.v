@@ -2,26 +2,21 @@ module main
 
 import os
 
-const exe = os.find_abs_path_of_executable('wasm-validate') or {
+const wasm_validate_exe = os.find_abs_path_of_executable('wasm-validate') or {
 	println('skipping test, since wasm-validate could not be found')
 	exit(0)
 }
 
-pub fn validate(mod []u8) ! {
-	mut proc := os.new_process(exe)
-	proc.set_args(['-'])
-	proc.set_redirect_stdio()
-	proc.run()
-	{
-		os.fd_write(proc.stdio_fd[0], mod.bytestr())
-		os.fd_close(proc.stdio_fd[0])
+const pid = os.getpid()
+
+pub fn validate(code []u8) ! {
+	outfile := os.join_path(os.temp_dir(), 'code_${pid}.wasm')
+	os.write_file(outfile, code.bytestr())!
+	validation_cmd := '${os.quoted_path(wasm_validate_exe)} ${os.quoted_path(outfile)}'
+	res := os.execute(validation_cmd)
+	if res.exit_code != 0 {
+		eprintln('failed exit code: ${res.exit_code} | command:\n${validation_cmd}')
+		return error('wasm-validate exited with a non zero exit code: ${res.exit_code}')
 	}
-	proc.wait()
-	if proc.status != .exited {
-		return error('wasm-validate exited abormally')
-	}
-	if proc.code != 0 {
-		return error('wasm-validate exited with a non zero exit code')
-	}
-	proc.close()
+	os.rm(outfile)!
 }
