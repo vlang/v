@@ -9,7 +9,7 @@ fn test_struct_nested_option() {
 		next: &b
 	}
 	dump(a)
-	assert a.next != none
-	dump(a.next?)
+	dump(a.next)
+	dump(a.next?.next)
 	assert a.next?.next == none
 }

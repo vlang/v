@@ -1093,15 +1093,6 @@ fn (mut g Gen) result_type_name(t ast.Type) (string, string) {
 	return styp, base
 }
 
-fn (g Gen) option_type_text_with_size(styp string, base string, size isize) string {
-	ret := 'struct ${styp} {
-	byte state;
-	IError err;
-	byte data[${size}];
-}'
-	return ret
-}
-
 fn (g Gen) option_type_text(styp string, base string) string {
 	// replace void with something else
 	size := if base == 'void' {
@@ -5730,8 +5721,8 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 						continue
 					}
 					fsym := g.table.sym(field.typ)
-					// optional recursive struct
-					if fsym.name == sym.name && field.typ.has_flag(.option) {
+					// optional recursive struct ptr
+					if field.typ.is_ptr() && fsym.name == sym.name && field.typ.has_flag(.option) {
 						continue
 					}
 					dep := fsym.name

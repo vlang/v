@@ -444,13 +444,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 						last_text := g.type_definitions.after(start_pos).clone()
 						g.type_definitions.go_back_to(start_pos)
 						g.typedefs.writeln('typedef struct ${styp} ${styp};')
-						if base == name {
-							size, align := g.table.type_size(field.typ.clear_flag(.option))
-							g.type_definitions.writeln('${g.option_type_text_with_size(styp,
-								base, size + align)};')
-						} else {
-							g.type_definitions.writeln('${g.option_type_text(styp, base)};')
-						}
+						g.type_definitions.writeln('${g.option_type_text(styp, base)};')
 						g.type_definitions.write_string(last_text)
 					}
 				}
