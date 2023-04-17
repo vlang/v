@@ -1540,7 +1540,7 @@ println(s)
 
 Similar to Rust's `if let`, a value can be bound to a variable within an if statement.
 
-```
+```v
 m := {
 	'foo': 'bar'
 }
