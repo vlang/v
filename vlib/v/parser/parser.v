@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 [has_globals]
@@ -48,6 +48,7 @@ mut:
 	inside_str_interp         bool
 	inside_array_lit          bool
 	inside_in_array           bool
+	inside_infix              bool
 	inside_match              bool // to separate `match A { }` from `Struct{}`
 	inside_select             bool // to allow `ch <- Struct{} {` inside `select`
 	inside_match_case         bool // to separate `match_expr { }` from `Struct{}`
@@ -93,14 +94,16 @@ mut:
 	anon_struct_decl          ast.StructDecl
 	struct_init_generic_types []ast.Type
 	if_cond_comments          []ast.Comment
+	left_comments             []ast.Comment
 	script_mode               bool
 	script_mode_start_token   token.Token
 pub mut:
-	scanner    &scanner.Scanner = unsafe { nil }
-	errors     []errors.Error
-	warnings   []errors.Warning
-	notices    []errors.Notice
-	vet_errors []vet.Error
+	scanner        &scanner.Scanner = unsafe { nil }
+	errors         []errors.Error
+	warnings       []errors.Warning
+	notices        []errors.Notice
+	vet_errors     []vet.Error
+	template_paths []string // record all compiled $tmpl files; needed for `v watch run webserver.v`
 }
 
 __global codegen_files = unsafe { []&ast.File{} }
@@ -176,7 +179,7 @@ pub fn (mut p Parser) free_scanner() {
 	unsafe {
 		if p.scanner != 0 {
 			p.scanner.free()
-			p.scanner = &scanner.Scanner(0)
+			p.scanner = &scanner.Scanner(nil)
 		}
 	}
 }
@@ -370,6 +373,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		warnings: warnings
 		notices: notices
 		global_labels: p.global_labels
+		template_paths: p.template_paths
 	}
 }
 
@@ -672,7 +676,12 @@ fn (mut p Parser) check_name() string {
 	if p.peek_tok.kind == .dot && name in p.imports {
 		p.register_used_import(name)
 	}
-	p.check(.name)
+	match p.tok.kind {
+		.key_struct { p.check(.key_struct) }
+		.key_enum { p.check(.key_enum) }
+		.key_interface { p.check(.key_interface) }
+		else { p.check(.name) }
+	}
 	return name
 }
 
@@ -742,15 +751,22 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				if p.peek_tok.kind == .eof {
 					return p.unexpected(got: 'eof')
 				}
-				if_expr := p.if_expr(true)
-				cur_stmt := ast.ExprStmt{
-					expr: if_expr
-					pos: if_expr.pos
-				}
-				if comptime_if_expr_contains_top_stmt(if_expr) {
-					return cur_stmt
+				if p.peek_tok.kind == .key_for {
+					comptime_for_stmt := p.comptime_for()
+					return p.other_stmts(comptime_for_stmt)
+				} else if p.peek_tok.kind == .key_if {
+					if_expr := p.if_expr(true)
+					cur_stmt := ast.ExprStmt{
+						expr: if_expr
+						pos: if_expr.pos
+					}
+					if comptime_if_expr_contains_top_stmt(if_expr) {
+						return cur_stmt
+					} else {
+						return p.other_stmts(cur_stmt)
+					}
 				} else {
-					return p.other_stmts(cur_stmt)
+					return p.unexpected()
 				}
 			}
 			.hash {
@@ -2391,14 +2407,21 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		language = ast.Language.wasm
 		p.check_for_impure_v(language, p.tok.pos())
 	}
+	is_option := p.tok.kind == .question
+	if is_option {
+		if p.peek_tok.kind in [.name, .lsbr] {
+			p.check(.question)
+		}
+	}
+	is_array := p.tok.kind == .lsbr
+	is_fixed_array := is_array && p.peek_tok.kind == .number
 	mut mod := ''
 	// p.warn('resetting')
 	p.expr_mod = ''
 	// `map[string]int` initialization
-	if (p.tok.lit == 'map' && p.peek_tok.kind == .lsbr)
-		|| (p.tok.kind == .question && p.peek_tok.lit == 'map') {
+	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
 		mut pos := p.tok.pos()
-		map_type := p.parse_map_type()
+		mut map_type := p.parse_map_type()
 		if p.tok.kind == .lcbr {
 			p.next()
 			if p.tok.kind == .rcbr {
@@ -2412,6 +2435,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				}
 				p.error('`}` expected; explicit `map` initialization does not support parameters')
 			}
+		}
+		if is_option {
+			map_type = map_type.set_flag(.option)
 		}
 		return ast.MapInit{
 			typ: map_type
@@ -2517,17 +2543,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		p.check(.dot)
 		p.expr_mod = mod
 	}
-	is_option := p.tok.kind == .question
 	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 {
-		if is_option {
-			if p.peek_tok.kind != .eof && p.peek_tok.lit.len > 0 {
-				p.peek_tok.lit[0].is_capital()
-			} else {
-				false
-			}
-		} else {
-			p.tok.lit[0].is_capital()
-		}
+		p.tok.lit[0].is_capital()
 	} else {
 		false
 	}
@@ -2548,20 +2565,22 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			}
 		}
 	} else if p.peek_tok.kind == .lpar || is_generic_call || is_generic_cast
-		|| (is_option && p.peek_token(2).kind == .lpar) || (is_option && ((p.peek_tok.kind == .lsbr
-		&& p.peek_token(2).kind == .rsbr && p.peek_token(3).kind == .name
-		&& p.peek_token(4).kind == .lpar) || (p.peek_tok.kind == .lsbr
-		&& p.peek_token(2).kind == .number && p.peek_token(3).kind == .rsbr
-		&& p.peek_token(4).kind == .name && p.peek_token(5).kind == .lpar))) {
-		is_array := p.peek_tok.kind == .lsbr
-		is_fixed_array := is_array && p.peek_token(2).kind == .number
-		// foo(), foo<int>() or type() cast
-		mut name := if is_option {
-			if is_array { p.peek_token(if is_fixed_array { 4 } else { 3 }).lit
-			 } else { p.peek_tok.lit
-			 }
+		|| (p.tok.kind == .lsbr && p.peek_tok.kind == .rsbr && (p.peek_token(3).kind == .lpar
+		|| p.peek_token(5).kind == .lpar)) || (p.tok.kind == .lsbr && p.peek_tok.kind == .number
+		&& p.peek_token(2).kind == .rsbr && (p.peek_token(4).kind == .lpar
+		|| p.peek_token(6).kind == .lpar)) {
+		// ?[]foo(), ?[1]foo, foo(), foo<int>() or type() cast
+		mut name := if is_array {
+			p.peek_token(if is_fixed_array { 3 } else { 2 }).lit
 		} else {
 			p.tok.lit
+		}
+		if is_fixed_array && p.peek_token(4).kind == .dot {
+			mod = name
+			name = p.peek_token(5).lit
+		} else if is_array && p.peek_token(3).kind == .dot {
+			mod = name
+			name = p.peek_token(4).lit
 		}
 		if mod.len > 0 {
 			name = '${mod}.${name}'
@@ -2571,8 +2590,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// if name in ast.builtin_type_names_to_idx {
 		if (!known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs)
 			&& name !in ['C.statvfs', 'C.stat', 'C.sigaction']) || is_mod_cast
-			|| is_generic_cast
-			|| (language == .v && name.len > 0 && name[0].is_capital()) {
+			|| is_generic_cast || (language == .v && name.len > 0 && (name[0].is_capital()
+			|| name.all_after_last('.')[0].is_capital())) {
 			// MainLetter(x) is *always* a cast, as long as it is not `C.`
 			// TODO handle C.stat()
 			start_pos := p.tok.pos()
@@ -2597,6 +2616,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			}
 			end_pos := p.tok.pos()
 			p.check(.rpar)
+			if is_option {
+				to_typ = to_typ.set_flag(.option)
+			}
 			node = ast.CastExpr{
 				typ: to_typ
 				typname: p.table.sym(to_typ).name
@@ -2620,25 +2642,42 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				pos := p.tok.pos()
 				args := p.call_args()
 				p.check(.rpar)
+
+				mut or_kind := ast.OrKind.absent
+				mut or_stmts := []ast.Stmt{}
+				mut or_pos := p.tok.pos()
+				if p.tok.kind in [.not, .question] {
+					or_kind = if p.tok.kind == .not { .propagate_result } else { .propagate_option }
+					p.next()
+				}
+				if p.tok.kind == .key_orelse {
+					// `foo() or {}``
+					or_kind = .block
+					or_stmts, or_pos = p.or_block(.with_err_var)
+				}
 				node = ast.CallExpr{
 					left: node
 					args: args
 					pos: pos
 					scope: p.scope
+					or_block: ast.OrExpr{
+						stmts: or_stmts
+						kind: or_kind
+						pos: or_pos
+					}
 				}
 			}
 		}
-	} else if (((!is_option && p.peek_tok.kind == .lcbr)
-		|| (is_option && p.peek_token(2).kind == .lcbr)) || is_generic_struct_init)
+	} else if (p.peek_tok.kind == .lcbr || is_generic_struct_init)
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
 		&& (!p.inside_for || p.inside_select) && !known_var {
-		return p.struct_init(p.mod + '.' + p.tok.lit, .normal) // short_syntax: false
+		return p.struct_init(p.mod + '.' + p.tok.lit, .normal, is_option) // short_syntax: false
 	} else if p.peek_tok.kind == .lcbr
 		&& ((p.inside_if && lit0_is_capital && p.tok.lit.len > 1 && !known_var && language == .v)
 		|| (p.inside_match_case && p.tok.kind == .name && p.peek_tok.pos - p.tok.pos == p.tok.len)) {
 		// `if a == Foo{} {...}` or `match foo { Foo{} {...} }`
-		return p.struct_init(p.mod + '.' + p.tok.lit, .normal)
+		return p.struct_init(p.mod + '.' + p.tok.lit, .normal, is_option)
 	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
 		// T.name
 		if p.is_generic_name() {
@@ -2694,7 +2733,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			|| p.table.find_type_idx(p.mod + '.' + p.tok.lit) > 0
 			|| p.inside_comptime_if) {
 			type_pos := p.tok.pos()
-			typ := p.parse_type()
+			mut typ := p.parse_type()
+			if is_option {
+				typ = typ.set_flag(.option)
+			}
 			return ast.TypeNode{
 				typ: typ
 				pos: type_pos
@@ -2717,8 +2759,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			}
 			p.expr_mod = ''
 			return node
-		} else if p.tok.kind == .question && p.peek_tok.kind == .lsbr {
-			return p.array_init()
+		} else if is_option && p.tok.kind == .lsbr {
+			return p.array_init(is_option)
 		}
 		ident := p.parse_ident(language)
 		node = ident
@@ -2985,7 +3027,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	name_pos := p.tok.pos()
 	mut field_name := ''
 	// check if the name is on the same line as the dot
-	if (p.prev_tok.pos().line_nr == name_pos.line_nr) || p.tok.kind != .name {
+	if p.prev_tok.pos().line_nr == name_pos.line_nr || p.tok.kind != .name {
 		field_name = p.check_name()
 	} else {
 		p.name_error = true
@@ -3983,6 +4025,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			pos: decl_pos
 			type_pos: type_pos
 			comments: comments
+			generic_types: generic_types
 			attrs: attrs
 		}
 	}

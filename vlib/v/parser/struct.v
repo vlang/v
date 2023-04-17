@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -67,11 +67,6 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	no_body := p.tok.kind != .lcbr
 	if language == .v && no_body {
 		p.error('`${p.tok.lit}` lacks body')
-		return ast.StructDecl{}
-	}
-	if language == .v && !p.builtin_mod && !p.is_translated && name.len > 0 && !name[0].is_capital()
-		&& !p.pref.translated && !p.is_translated && !is_anon {
-		p.error_with_pos('struct name `${name}` must begin with capital letter', name_pos)
 		return ast.StructDecl{}
 	}
 	if name.len == 1 {
@@ -399,10 +394,13 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	}
 }
 
-fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind) ast.StructInit {
+fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option bool) ast.StructInit {
 	first_pos := (if kind == .short_syntax && p.prev_tok.kind == .lcbr { p.prev_tok } else { p.tok }).pos()
 	p.struct_init_generic_types = []ast.Type{}
-	typ := if kind == .short_syntax { ast.void_type } else { p.parse_type() }
+	mut typ := if kind == .short_syntax { ast.void_type } else { p.parse_type() }
+	if is_option {
+		typ = typ.set_flag(.option)
+	}
 	p.expr_mod = ''
 	if kind != .short_syntax {
 		p.check(.lcbr)

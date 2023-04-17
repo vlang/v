@@ -12,9 +12,9 @@ pub mut:
 	image gg.Image
 }
 
-pub fn (mut window Window) init(_ voidptr) {
+pub fn (mut window Window) init() {
 	logo_path := os.resource_abs_path(os.join_path('..', 'assets', 'logo.png'))
-	window.image = window.ctx.create_image(logo_path)
+	window.image = window.ctx.create_image(logo_path) or { panic(err) }
 }
 
 pub fn (mut window Window) draw(_ voidptr) {

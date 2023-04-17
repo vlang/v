@@ -328,12 +328,12 @@ fn test_multi_generic_struct() {
 	assert x.str() == 'MultiGenericStruct[TestStruct, TestStruct]{\n    t: TestStruct{\n        x: 0\n    }\n    x: TestStruct{\n        x: 0\n    }\n}'
 }
 
-fn create_option_err() ?string {
+fn create_option_err() !string {
 	return error('this is an error')
 }
 
-fn test_option_err() {
-	assert '${create_option_err()}' == 'Option(error: this is an error)'
+fn test_result_err() {
+	assert '${create_option_err()}' == 'Result(error: this is an error)'
 }
 
 fn create_option_none() ?string {
@@ -341,7 +341,7 @@ fn create_option_none() ?string {
 }
 
 fn test_option_none() {
-	assert '${create_option_none()}' == 'Option(error: none)'
+	assert '${create_option_none()}' == 'Option(none)'
 }
 
 fn create_option_string() ?string {

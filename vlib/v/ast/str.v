@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
@@ -691,5 +691,6 @@ pub fn (e ComptimeForKind) str() string {
 		.methods { return 'methods' }
 		.fields { return 'fields' }
 		.attributes { return 'attributes' }
+		.values { return 'values' }
 	}
 }

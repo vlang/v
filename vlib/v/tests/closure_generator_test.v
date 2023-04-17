@@ -2,10 +2,18 @@ import strings
 import os
 
 const (
-	max_params       = 16
-	all_param_names  = []string{len: max_params, init: '${`a` + it}'}
-	all_param_values = []string{len: max_params, init: '${it + 1}'}
+	max_params       = get_max_params()
+	all_param_names  = []string{len: max_params, init: '${`a` + index}'}
+	all_param_values = []string{len: max_params, init: '${index + 1}'}
 )
+
+fn get_max_params() int {
+	$if macos {
+		// on m1, 10 or more parameters are not supported
+		return 9
+	}
+	return 16
+}
 
 struct ReturnType {
 	name         string
@@ -42,7 +50,7 @@ const return_types = [
 		assertion: " == 'hello'"
 	},
 	ReturnType{
-		name: '?'
+		name: '!'
 		init: "error('an error')"
 		assertion: " or { assert err.msg() == 'an error' return }\npanic('got no error')"
 		no_assert_kw: true
@@ -62,7 +70,7 @@ const return_types = [
 // test_closures_with_n_args generates a new V file containing closures of `i`
 // and parameters of type `typ`, to makes sure that all combinations work correctly
 fn test_closures_with_n_args() {
-	mut v_code := strings.new_builder(1024)
+	mut v_code := strings.new_builder(50_000)
 	// Note: the type or value of the captured arg doesn't matter for this test,
 	// as the entire closure context is always passed as one pointer anyways
 
@@ -127,11 +135,11 @@ fn test_big_closure_${typ}_${i}() {
 
 	for return_type in return_types {
 		typ := return_type.name
-		styp := typ.replace('?', 'option_').to_lower()
+		styp := typ.replace_each(['?', 'option_', '!', 'result_']).to_lower()
 		init := return_type.init
 		assertion := return_type.assertion
 
-		for i in 0 .. 10 {
+		for i in 0 .. max_params {
 			param_names := all_param_names[..i]
 			params := param_names.map('${it} int')
 			values := all_param_values[..i]
@@ -144,7 +152,7 @@ fn test_big_closure_${typ}_${i}() {
 			// Note: the captured arg doesn't matter for this test, as closures always receive
 			// a pointer to the entire closure context as their last argument anyways
 			v_code.writeln("
-fn test_closure_return_${styp}_${i}() ? {
+fn test_closure_return_${styp}_${i}() ! {
 	println('test_closure_return_${styp}_${i}')
 	mut local := 123
 	mut local_2 := 234
@@ -163,17 +171,18 @@ fn test_closure_return_${styp}_${i}() ? {
 	code := v_code.str()
 	println('Compiling V code (${code.count('\n')} lines) ...')
 	wrkdir := os.join_path(os.vtmp_dir(), 'v', 'tests', 'closures')
-	os.mkdir_all(wrkdir)?
-	os.chdir(wrkdir)?
-	os.write_file('closure_return_test.v', code)!
+	os.mkdir_all(wrkdir)!
+	os.chdir(wrkdir)!
+	full_path_to_target := os.join_path(wrkdir, 'closure_return_test.v')
+	os.write_file(full_path_to_target, code)!
 	vexe := os.getenv('VEXE')
-	res := os.execute('${os.quoted_path(vexe)} -keepc -cg -showcc closure_return_test.v')
+	cmd := '${os.quoted_path(vexe)} -keepc -cg -showcc ${full_path_to_target}'
+	res := os.execute(cmd)
 	if res.exit_code != 0 {
 		eprintln(res.output)
+		eprintln('> failed exit code: ${res.exit_code} | cmd:\n${cmd}')
 		assert false
 	}
-	println('Process exited with code ${res.exit_code}')
-
 	os.chdir(os.dir(vexe)) or {}
 	os.rmdir_all(wrkdir) or {}
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -9,6 +9,12 @@
 module readline
 
 import os
+
+// termios definitions
+// https://github.com/openbsd/src/blob/master/sys/sys/termios.h
+// https://github.com/vocho/openqnx/blob/master/trunk/lib/c/public/termios.h
+// https://github.com/omniti-labs/illumos-omnios/blob/master/usr/src/uts/common/sys/termios.h
+// https://github.com/torvalds/linux/blob/master/include/uapi/asm-generic/termbits.h
 
 struct Termios {
 }

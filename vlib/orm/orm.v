@@ -305,6 +305,12 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 		}
 	}
 	str += ';'
+	$if trace_orm_stmt ? {
+		eprintln('> orm_stmt sql_dialect: ${sql_dialect} | table: ${table} | kind: ${kind} | query: ${str}')
+	}
+	$if trace_orm ? {
+		eprintln('> orm: ${str}')
+	}
 	return str, QueryData{
 		fields: data_fields
 		data: data_data
@@ -393,6 +399,12 @@ pub fn orm_select_gen(orm SelectConfig, q string, num bool, qm string, start_pos
 	}
 
 	str += ';'
+	$if trace_orm_query ? {
+		eprintln('> orm_query: ${str}')
+	}
+	$if trace_orm ? {
+		eprintln('> orm: ${str}')
+	}
 	return str
 }
 
@@ -515,6 +527,12 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 	fs << unique_fields
 	str += fs.join(', ')
 	str += ');'
+	$if trace_orm_create ? {
+		eprintln('> orm_create table: ${table} | query: ${str}')
+	}
+	$if trace_orm ? {
+		eprintln('> orm: ${str}')
+	}
 	return str
 }
 

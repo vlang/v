@@ -272,7 +272,7 @@ pub fn ls(path string) ![]string {
 	if isnil(dir) {
 		return error('ls() couldnt open dir "${path}"')
 	}
-	mut ent := &C.dirent(0)
+	mut ent := &C.dirent(unsafe { nil })
 	// mut ent := &C.dirent{!}
 	for {
 		ent = C.readdir(dir)
@@ -499,4 +499,10 @@ pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 		false { new_mode &= (0o7777 - mode) }
 	}
 	C.chmod(path, int(new_mode))
+}
+
+// get_long_path has no meaning for *nix, but has for windows, where `c:\folder\some~1` for example
+// can be the equivalent of `c:\folder\some spa ces`. On *nix, it just returns a copy of the input path.
+fn get_long_path(path string) !string {
+	return path
 }

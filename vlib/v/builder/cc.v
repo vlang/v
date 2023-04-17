@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builder
@@ -120,6 +120,7 @@ mut:
 	source_args  []string // for `x.tmp.c`
 	post_args    []string // options that should go after .o_args
 	linker_flags []string // `-lm`
+	ldflags      []string // `-labcd' from `v -ldflags "-labcd"`
 }
 
 fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
@@ -129,6 +130,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	mut optimization_options := ['-O2']
 	// arguments for the C compiler
 	ccoptions.args = [v.pref.cflags]
+	ccoptions.ldflags = [v.pref.ldflags]
 	if !v.pref.no_std {
 		if v.pref.os == .linux {
 			ccoptions.args << '-std=gnu99 -D_DEFAULT_SOURCE'
@@ -430,6 +432,7 @@ fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 	if v.pref.build_mode != .build_module {
 		all << ccoptions.linker_flags
 		all << ccoptions.env_ldflags
+		all << ccoptions.ldflags
 	}
 	return all
 }
@@ -442,6 +445,7 @@ fn (v &Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []stri
 	// NOTE do not append linker flags in .o build process,
 	// compilers are inconsistent about how they handle:
 	// all << ccoptions.env_ldflags
+	// all << ccoptions.ldflags
 	return all
 }
 
@@ -854,12 +858,15 @@ fn (mut c Builder) cc_windows_cross() {
 		println(os.user_os())
 		panic('your platform is not supported yet')
 	}
+	//
 	mut all_args := []string{}
 	all_args << optimization_options
 	all_args << debug_options
 	all_args << '-std=gnu11'
+	//
 	all_args << args
 	all_args << '-municode'
+	all_args << '${c.pref.ldflags}'
 	c.dump_c_options(all_args)
 	mut cmd := cross_compiler_name_path + ' ' + all_args.join(' ')
 	// cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 ${pref.default_module_path}/$c.out_name_c'

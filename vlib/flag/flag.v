@@ -10,12 +10,12 @@ pub:
 	// and also the default value, when the flag is not given
 }
 
-struct UnkownFlagError {
+struct UnknownFlagError {
 	Error
 	flag string
 }
 
-fn (err UnkownFlagError) msg() string {
+fn (err UnknownFlagError) msg() string {
 	return 'Unknown flag `${err.flag}`'
 }
 
@@ -289,7 +289,7 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand u8) !string {
 				continue
 			}
 			if (arg.len == 2 && arg[0] == `-` && arg[1] == shorthand) || arg == full {
-				if fs.args.len > i + 1 && (fs.args[i + 1] in ['true', 'false']) {
+				if fs.args.len > i + 1 && fs.args[i + 1] in ['true', 'false'] {
 					val := fs.args[i + 1]
 					fs.args.delete(i + 1)
 					fs.args.delete(i)
@@ -620,7 +620,7 @@ pub fn (mut fs FlagParser) finalize() ![]string {
 	if !fs.allow_unknown_args {
 		for a in remaining {
 			if (a.len >= 2 && a[..2] == '--') || (a.len == 2 && a[0] == `-`) {
-				return &UnkownFlagError{
+				return &UnknownFlagError{
 					flag: a
 				}
 			}

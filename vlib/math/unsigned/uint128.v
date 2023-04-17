@@ -417,7 +417,7 @@ pub fn uint128_new(lo u64, hi u64) Uint128 {
 	return Uint128{lo, hi}
 }
 
-pub fn uint128_from_dec_str(value string) ?Uint128 {
+pub fn uint128_from_dec_str(value string) !Uint128 {
 	mut res := unsigned.uint128_zero
 	for b_ in value.bytes() {
 		b := b_ - '0'.bytes()[0]

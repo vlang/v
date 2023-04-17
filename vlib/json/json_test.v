@@ -18,7 +18,7 @@ fn test_simple() {
 	x := Employee{'Peter', 28, 95000.5, .worker}
 	s := json.encode(x)
 	// eprintln('Employee x: $s')
-	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
+	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":"worker"}'
 	y := json.decode(Employee, s)!
 	// eprintln('Employee y: $y')
 	assert y.name == 'Peter'
@@ -95,14 +95,15 @@ fn test_encode_decode_sumtype() {
 	enc := json.encode(game)
 	// eprintln('Encoded Game: $enc')
 
-	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},1,"Stool",{"_type":"Time","value":${t.unix_time()}}]}'
+	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},"cat","Stool",{"_type":"Time","value":${t.unix_time()}}]}'
 
 	dec := json.decode(SomeGame, enc)!
 	// eprintln('Decoded Game: $dec')
 
 	assert game.title == dec.title
 	assert game.player == dec.player
-	assert (game.other[2] as Animal) == (dec.other[2] as Animal)
+	assert (game.other[2] as Animal) == .cat
+	assert dec.other[2] == Entity('cat')
 	assert (game.other[4] as time.Time).unix_time() == (dec.other[4] as time.Time).unix_time()
 }
 

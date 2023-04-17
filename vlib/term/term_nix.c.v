@@ -1,9 +1,9 @@
 module term
 
 import os
+import term.termios
 
 #include <sys/ioctl.h>
-#include <termios.h> // TIOCGWINSZ
 
 pub struct C.winsize {
 pub:
@@ -12,10 +12,6 @@ pub:
 	ws_xpixel u16
 	ws_ypixel u16
 }
-
-fn C.tcgetattr(fd int, ptr &C.termios) int
-
-fn C.tcsetattr(fd int, action int, const_ptr &C.termios) int
 
 fn C.ioctl(fd int, request u64, arg voidptr) int
 
@@ -35,21 +31,22 @@ pub fn get_cursor_position() !Coord {
 		return Coord{0, 0}
 	}
 
-	old_state := C.termios{}
-	if unsafe { C.tcgetattr(0, &old_state) } != 0 {
+	mut old_state := termios.Termios{}
+	if termios.tcgetattr(0, mut old_state) != 0 {
 		return os.last_error()
 	}
 	defer {
 		// restore the old terminal state:
-		unsafe { C.tcsetattr(0, C.TCSANOW, &old_state) }
+		termios.tcsetattr(0, C.TCSANOW, mut old_state)
 	}
 
-	mut state := C.termios{}
-	if unsafe { C.tcgetattr(0, &state) } != 0 {
+	mut state := termios.Termios{}
+	if termios.tcgetattr(0, mut state) != 0 {
 		return os.last_error()
 	}
-	state.c_lflag &= int(~(u32(C.ICANON) | u32(C.ECHO)))
-	unsafe { C.tcsetattr(0, C.TCSANOW, &state) }
+
+	state.c_lflag &= termios.invert(u32(C.ICANON) | u32(C.ECHO))
+	termios.tcsetattr(0, C.TCSANOW, mut state)
 
 	print('\e[6n')
 	flush_stdout()

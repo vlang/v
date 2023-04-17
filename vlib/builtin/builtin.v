@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 [has_globals]
@@ -105,6 +105,12 @@ pub:
 	args        []MethodArgs
 	return_type int
 	typ         int
+}
+
+pub struct EnumData {
+pub:
+	name  string
+	value i64
 }
 
 // FieldData holds information about a field. Fields reside on structs.

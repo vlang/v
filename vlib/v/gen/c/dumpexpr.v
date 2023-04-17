@@ -20,8 +20,8 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		if node.expr is ast.Ident {
 			// var
 			if node.expr.info is ast.IdentVar && node.expr.language == .v {
-				name = g.typ(g.unwrap_generic(node.expr.info.typ.clear_flag(.shared_f).clear_flag(.option).clear_flag(.result))).replace('*',
-					'')
+				name = g.typ(g.unwrap_generic(node.expr.info.typ.clear_flags(.shared_f,
+					.result))).replace('*', '')
 			}
 		}
 	}
@@ -32,11 +32,15 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 				if node.expr.field_expr.expr.name == g.comptime_for_field_var
 					&& node.expr.field_expr.field_name == 'name' {
 					field, _ := g.get_comptime_selector_var_type(node.expr)
-					name = g.typ(g.unwrap_generic(field.typ.clear_flag(.shared_f).clear_flag(.option).clear_flag(.result)))
+					name = g.typ(g.unwrap_generic(field.typ.clear_flags(.shared_f, .result)))
 					expr_type = field.typ
 				}
 			}
 		}
+	} else if node.expr is ast.Ident && g.inside_comptime_for_field && g.is_comptime_var(node.expr) {
+		expr_type = g.get_comptime_var_type(node.expr)
+		name = g.typ(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
+			'')
 	}
 
 	if g.table.sym(node.expr_type).language == .c {
@@ -49,7 +53,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		g.write('&')
 		g.expr(node.expr)
 		g.write('->val')
-	} else if expr_type.has_flag(.option) || expr_type.has_flag(.result) {
+	} else if expr_type.has_flag(.result) {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
 		g.write('(*(${name}*)')
@@ -57,7 +61,10 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		g.write('.data)')
 		g.inside_opt_or_res = old_inside_opt_or_res
 	} else {
+		old_inside_opt_or_res := g.inside_opt_or_res
+		g.inside_opt_or_res = true
 		g.expr(node.expr)
+		g.inside_opt_or_res = old_inside_opt_or_res
 	}
 	g.write(')')
 }
@@ -76,13 +83,16 @@ fn (mut g Gen) dump_expr_definitions() {
 		typ := ast.Type(dump_type)
 		is_ptr := typ.is_ptr()
 		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, dump_type)
-		to_string_fn_name := g.get_str_fn(typ.clear_flag(.shared_f).clear_flag(.option).clear_flag(.result))
+		to_string_fn_name := g.get_str_fn(typ.clear_flags(.shared_f, .result))
 		ptr_asterisk := if is_ptr { '*'.repeat(typ.nr_muls()) } else { '' }
 		mut str_dumparg_type := ''
 		if dump_sym.kind == .none_ {
 			str_dumparg_type = 'IError' + ptr_asterisk
 		} else {
-			str_dumparg_type = g.cc_type(dump_type, true) + ptr_asterisk
+			if typ.has_flag(.option) {
+				str_dumparg_type += '_option_'
+			}
+			str_dumparg_type += g.cc_type(dump_type, true) + ptr_asterisk
 		}
 		if dump_sym.kind == .function {
 			fninfo := dump_sym.info as ast.FnType

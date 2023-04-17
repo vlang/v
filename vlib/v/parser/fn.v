@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -113,7 +113,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 		mut expr := ast.empty_expr
 		if p.tok.kind == .name && p.peek_tok.kind == .colon {
 			// `foo(key:val, key2:val2)`
-			expr = p.struct_init('void_type', .short_syntax)
+			expr = p.struct_init('void_type', .short_syntax, false)
 		} else {
 			expr = p.expr(0)
 		}
@@ -372,7 +372,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	params << args2
 	if !are_args_type_only {
-		for param in params {
+		for k, param in params {
 			if p.scope.known_var(param.name) {
 				p.error_with_pos('redefinition of parameter `${param.name}`', param.pos)
 				return ast.FnDecl{
@@ -389,6 +389,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				pos: param.pos
 				is_used: true
 				is_arg: true
+				ct_type_var: if (!is_method || k > 0) && param.typ.has_flag(.generic)
+					&& !param.typ.has_flag(.variadic) {
+					.generic_param
+				} else {
+					.no_comptime
+				}
 			})
 		}
 	}

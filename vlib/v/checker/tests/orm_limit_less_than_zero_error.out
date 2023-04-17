@@ -3,5 +3,5 @@ vlib/v/checker/tests/orm_limit_less_than_zero_error.vv:18:26: error: V ORM: `lim
    17 |     users := sql db {
    18 |         select from User limit user_limit
       |                                ~~~~~~~~~~
-   19 |     }
+   19 |     }!
    20 |

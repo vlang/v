@@ -29,6 +29,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	c.ensure_type_exists(node.cond_type, node.pos) or { return ast.void_type }
 	c.check_expr_opt_call(node.cond, cond_type)
 	cond_type_sym := c.table.sym(cond_type)
+	cond_is_option := cond_type.has_flag(.option)
 	node.is_sum_type = cond_type_sym.kind in [.interface_, .sum_type]
 	c.match_exprs(mut node, cond_type_sym)
 	c.expected_type = cond_type
@@ -58,6 +59,10 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					c.expected_type = node.expected_type
 				}
 				expr_type := c.expr(stmt.expr)
+				if !branch.is_else && cond_is_option && branch.exprs[0] !is ast.None {
+					c.error('`match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`',
+						branch.pos)
+				}
 				stmt.typ = expr_type
 				if first_iteration {
 					if node.is_expr && (node.expected_type.has_flag(.option)
@@ -188,6 +193,10 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			if expr !is ast.EnumVal {
 				// ensure that the sub expressions of the branch are actually checked, before anything else:
 				_ := c.expr(expr)
+			}
+			if expr is ast.TypeNode && cond_sym.kind == .struct_ {
+				c.error('struct instances cannot be matched by type name, they can only be matched to other instances of the same struct type',
+					branch.pos)
 			}
 			if mut expr is ast.RangeExpr {
 				// Allow for `match enum_value { 4..5 { } }`, even though usually int and enum values,

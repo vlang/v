@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
@@ -128,6 +128,7 @@ pub enum ComptimeTypeKind {
 	enum_
 	alias
 	function
+	option
 }
 
 pub struct ComptimeType {
@@ -138,16 +139,17 @@ pub:
 
 pub fn (cty ComptimeType) str() string {
 	return match cty.kind {
-		.map_ { '\$Map' }
-		.int { '\$Int' }
-		.float { '\$Float' }
-		.struct_ { '\$Struct' }
-		.iface { '\$Interface' }
-		.array { '\$Array' }
-		.sum_type { '\$Sumtype' }
-		.enum_ { '\$Enum' }
-		.alias { '\$Alias' }
-		.function { '\$Function' }
+		.map_ { '\$map' }
+		.int { '\$int' }
+		.float { '\$float' }
+		.struct_ { '\$struct' }
+		.iface { '\$interface' }
+		.array { '\$array' }
+		.sum_type { '\$sumtype' }
+		.enum_ { '\$enum' }
+		.alias { '\$alias' }
+		.function { '\$function' }
+		.option { '\$option' }
 	}
 }
 
@@ -163,11 +165,11 @@ pub:
 	pos token.Pos
 }
 
-pub const empty_expr = Expr(EmptyExpr(0))
-
-pub const empty_stmt = Stmt(EmptyStmt{})
-
-pub const empty_node = Node(EmptyNode{})
+pub const (
+	empty_expr = Expr(EmptyExpr(0))
+	empty_stmt = Stmt(EmptyStmt{})
+	empty_node = Node(EmptyNode{})
+)
 
 // `{stmts}` or `unsafe {stmts}`
 pub struct Block {
@@ -506,7 +508,7 @@ pub mut:
 	decl           FnDecl
 	inherited_vars []Param
 	typ            Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
-	has_gen        bool // has been generated
+	has_gen        map[string]bool // has been generated
 }
 
 // function or method declaration
@@ -558,15 +560,116 @@ pub mut:
 	should_be_skipped bool      // true, when -skip-unused could not find any usages of that function, starting from main + other known used functions
 	ninstances        int  // 0 for generic functions with no concrete instances
 	has_await         bool // 'true' if this function uses JS.await
-	//
+
 	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
 	end_comments  []Comment // comments *after* header declarations. E.g.: `fn C.C_func(x int) int // Comment`
 	next_comments []Comment // comments that are one line after the decl; used for InterfaceDecl
-	//
+
 	source_file &File  = unsafe { nil }
 	scope       &Scope = unsafe { nil }
 	label_names []string
 	pos         token.Pos // function declaration position
+}
+
+pub fn (f &FnDecl) new_method_with_receiver_type(new_type Type) FnDecl {
+	unsafe {
+		mut new_method := f
+		new_method.params = f.params.clone()
+		for i in 1 .. new_method.params.len {
+			if new_method.params[i].typ == new_method.params[0].typ {
+				new_method.params[i].typ = new_type
+			}
+		}
+		new_method.params[0].typ = new_type
+		return *new_method
+	}
+}
+
+[minify]
+pub struct Fn {
+pub:
+	is_variadic        bool
+	language           Language
+	is_pub             bool
+	is_ctor_new        bool // `[use_new] fn JS.Array.prototype.constructor()`
+	is_deprecated      bool // `[deprecated] fn abc(){}`
+	is_noreturn        bool // `[noreturn] fn abc(){}`
+	is_unsafe          bool // `[unsafe] fn abc(){}`
+	is_placeholder     bool
+	is_main            bool // `fn main(){}`
+	is_test            bool // `fn test_abc(){}`
+	is_keep_alive      bool // passed memory must not be freed (by GC) before function returns
+	is_method          bool // true for `fn (x T) name()`, and for interface declarations (which are also for methods)
+	no_body            bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
+	is_file_translated bool // true, when the file it resides in is `[translated]`
+	mod                string
+	file               string
+	file_mode          Language
+	pos                token.Pos
+	return_type_pos    token.Pos
+pub mut:
+	return_type    Type
+	receiver_type  Type // != 0, when .is_method == true
+	name           string
+	params         []Param
+	source_fn      voidptr // set in the checker, while processing fn declarations // TODO get rid of voidptr
+	usages         int
+	generic_names  []string
+	dep_names      []string // globals or consts dependent names
+	attrs          []Attr   // all fn attributes
+	is_conditional bool     // true for `[if abc]fn(){}`
+	ctdefine_idx   int      // the index of the attribute, containing the compile time define [if mytag]
+}
+
+fn (f &Fn) method_equals(o &Fn) bool {
+	return f.params[1..].equals(o.params[1..]) && f.return_type == o.return_type
+		&& f.is_variadic == o.is_variadic && f.language == o.language
+		&& f.generic_names == o.generic_names && f.is_pub == o.is_pub && f.mod == o.mod
+		&& f.name == o.name
+}
+
+[minify]
+pub struct Param {
+pub:
+	pos         token.Pos
+	name        string
+	is_mut      bool
+	is_auto_rec bool
+	type_pos    token.Pos
+	is_hidden   bool // interface first arg
+pub mut:
+	typ Type
+}
+
+pub fn (f &Fn) new_method_with_receiver_type(new_type Type) Fn {
+	unsafe {
+		mut new_method := f
+		new_method.params = f.params.clone()
+		for i in 1 .. new_method.params.len {
+			if new_method.params[i].typ == new_method.params[0].typ {
+				new_method.params[i].typ = new_type
+			}
+		}
+		new_method.params[0].typ = new_type
+
+		return *new_method
+	}
+}
+
+fn (p &Param) equals(o &Param) bool {
+	return p.name == o.name && p.is_mut == o.is_mut && p.typ == o.typ && p.is_hidden == o.is_hidden
+}
+
+fn (p []Param) equals(o []Param) bool {
+	if p.len != o.len {
+		return false
+	}
+	for i in 0 .. p.len {
+		if !p[i].equals(o[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // break, continue
@@ -622,6 +725,7 @@ pub struct AutofreeArgVar {
 	idx  int
 }
 */
+
 // function call argument: `f(callarg)`
 [minify]
 pub struct CallArg {
@@ -647,6 +751,14 @@ pub mut:
 	types []Type
 }
 
+pub enum ComptimeVarKind {
+	no_comptime // it is not a comptime var
+	key_var // map key from `for k,v in t.$(field.name)`
+	value_var // map value from `for k,v in t.$(field.name)`
+	field_var // comptime field var `a := t.$(field.name)`
+	generic_param // generic fn parameter
+}
+
 [minify]
 pub struct Var {
 pub:
@@ -667,11 +779,10 @@ pub mut:
 	// 10 <- original type (orig_type)
 	//   [11, 12, 13] <- cast order (smartcasts)
 	//        12 <- the current casted type (typ)
-	pos               token.Pos
-	is_used           bool // whether the local variable was used in other expressions
-	is_changed        bool // to detect mutable vars that are never changed
-	is_comptime_field bool // comptime field var `a := t.$(field.name)`
-	//
+	pos         token.Pos
+	is_used     bool // whether the local variable was used in other expressions
+	is_changed  bool // to detect mutable vars that are never changed
+	ct_type_var ComptimeVarKind // comptime variable type
 	// (for setting the position after the or block for autofree)
 	is_or        bool // `x := foo() or { ... }`
 	is_tmp       bool // for tmp for loop vars, so that autofree can skip them
@@ -763,6 +874,7 @@ pub mut:
 	notices          []errors.Notice   // all the checker notices in the file
 	generic_fns      []&FnDecl
 	global_labels    []string // from `asm { .globl labelname }`
+	template_paths   []string // all the .html/.md files that were processed with $tmpl
 }
 
 [unsafe]
@@ -852,7 +964,6 @@ pub fn (i &Ident) var_info() IdentVar {
 			return i.info
 		}
 		else {
-			// return IdentVar{}
 			panic('Ident.var_info(): info is not IdentVar variant')
 		}
 	}
@@ -874,11 +985,14 @@ pub mut:
 	promoted_type Type = void_type
 	auto_locked   string
 	or_block      OrExpr
-	//
+
 	ct_left_value_evaled  bool
 	ct_left_value         ComptTimeConstValue = empty_comptime_const_expr()
 	ct_right_value_evaled bool
 	ct_right_value        ComptTimeConstValue = empty_comptime_const_expr()
+
+	before_op_comments []Comment
+	after_op_comments  []Comment
 }
 
 // ++, --
@@ -1028,6 +1142,7 @@ pub enum ComptimeForKind {
 	methods
 	fields
 	attributes
+	values
 }
 
 pub struct ComptimeFor {
@@ -1038,7 +1153,6 @@ pub:
 	pos     token.Pos
 	typ_pos token.Pos
 pub mut:
-	// expr    Expr
 	typ Type
 }
 
@@ -1117,6 +1231,7 @@ pub:
 	name string
 }
 */
+
 // variable assign statement
 [minify]
 pub struct AssignStmt {
@@ -1213,13 +1328,14 @@ pub mut:
 
 pub struct FnTypeDecl {
 pub:
-	name     string
-	is_pub   bool
-	typ      Type
-	pos      token.Pos
-	type_pos token.Pos
-	comments []Comment
-	attrs    []Attr // attributes of type declaration
+	name          string
+	is_pub        bool
+	typ           Type
+	pos           token.Pos
+	type_pos      token.Pos
+	comments      []Comment
+	generic_types []Type
+	attrs         []Attr // attributes of type declaration
 }
 
 // TODO: handle this differently
@@ -1280,7 +1396,7 @@ pub:
 	has_len       bool
 	has_cap       bool
 	has_default   bool
-	has_it        bool // true if temp variable it is used
+	has_index     bool // true if temp variable index is used
 pub mut:
 	exprs        []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
 	len_expr     Expr   // len: expr
@@ -1700,21 +1816,17 @@ pub mut:
 [minify]
 pub struct ComptimeCall {
 pub:
-	pos         token.Pos
-	has_parens  bool // if $() is used, for vfmt
-	method_name string
-	method_pos  token.Pos
-	scope       &Scope = unsafe { nil }
-	left        Expr
-	//
-	is_vweb   bool
-	vweb_tmpl File
-	//
-	is_embed bool
-	//
-	is_env  bool
-	env_pos token.Pos
-	//
+	pos          token.Pos
+	has_parens   bool // if $() is used, for vfmt
+	method_name  string
+	method_pos   token.Pos
+	scope        &Scope = unsafe { nil }
+	left         Expr
+	is_vweb      bool
+	vweb_tmpl    File
+	is_embed     bool
+	is_env       bool
+	env_pos      token.Pos
 	is_pkgconfig bool
 pub mut:
 	left_type   Type
@@ -1754,9 +1866,8 @@ pub:
 	pos          token.Pos
 	where_expr   Expr
 	update_exprs []Expr // for `update`
-	// is_top_level indicates that a statement is parsed from code
-	// and is not inserted by ORM for inserting in related tables.
-	is_top_level bool
+	// is_generated indicates a statement is generated by ORM for complex queries with related tables.
+	is_generated bool
 	scope        &Scope = unsafe { nil }
 pub mut:
 	object_var_name string   // `user`
@@ -1775,8 +1886,10 @@ pub:
 	has_offset bool
 	has_desc   bool
 	is_array   bool
-	or_expr    OrExpr
-	pos        token.Pos
+	// is_generated indicates a statement is generated by ORM for complex queries with related tables.
+	is_generated bool
+	or_expr      OrExpr
+	pos          token.Pos
 pub mut:
 	typ         Type
 	db_expr     Expr // `db` in `sql db {`
@@ -1850,27 +1963,22 @@ pub fn (expr Expr) pos() token.Pos {
 }
 
 pub fn (expr Expr) is_lvalue() bool {
-	match expr {
-		Ident { return true }
-		CTempVar { return true }
-		IndexExpr { return expr.left.is_lvalue() }
-		SelectorExpr { return expr.expr.is_lvalue() }
-		ParExpr { return expr.expr.is_lvalue() } // for var := &{...(*pointer_var)}
-		PrefixExpr { return expr.right.is_lvalue() }
-		else {}
+	return match expr {
+		Ident, CTempVar { true }
+		IndexExpr { expr.left.is_lvalue() }
+		SelectorExpr { expr.expr.is_lvalue() }
+		ParExpr { expr.expr.is_lvalue() } // for var := &{...(*pointer_var)}
+		PrefixExpr { expr.right.is_lvalue() }
+		ComptimeSelector { expr.field_expr.is_lvalue() }
+		else { false }
 	}
-	return false
 }
 
 pub fn (expr Expr) is_expr() bool {
-	match expr {
-		IfExpr { return expr.is_expr }
-		LockExpr { return expr.is_expr }
-		MatchExpr { return expr.is_expr }
-		SelectExpr { return expr.is_expr }
-		else {}
+	return match expr {
+		IfExpr, LockExpr, MatchExpr, SelectExpr { expr.is_expr }
+		else { true }
 	}
-	return true
 }
 
 pub fn (expr Expr) is_pure_literal() bool {
@@ -1901,16 +2009,10 @@ pub fn (expr Expr) is_auto_deref_var() bool {
 
 // returns if an expression can be used in `lock x, y.z {`
 pub fn (e &Expr) is_lockable() bool {
-	match e {
-		Ident {
-			return true
-		}
-		SelectorExpr {
-			return e.expr.is_lockable()
-		}
-		else {
-			return false
-		}
+	return match e {
+		Ident { true }
+		SelectorExpr { e.expr.is_lockable() }
+		else { false }
 	}
 }
 

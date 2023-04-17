@@ -31,13 +31,15 @@ fn (mut app App) service_auth(username string, password string) !string {
 		panic(err)
 	}
 
-	user := sql db {
-		select from User where username == username limit 1
-	}
-	if user.username != username {
+	users := sql db {
+		select from User where username == username
+	}!
+
+	if users.len == 0 {
 		return error('user not found')
 	}
 
+	user := users.first()
 	if !user.active {
 		return error('user is not active')
 	}

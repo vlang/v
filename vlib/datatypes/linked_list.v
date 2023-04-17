@@ -207,7 +207,7 @@ pub fn (mut iter ListIter[T]) next() ?T {
 	if iter.node == unsafe { nil } {
 		return none
 	}
-	res := iter.node.data
+	res := unsafe { iter.node.data }
 	iter.node = iter.node.next
 	return res
 }

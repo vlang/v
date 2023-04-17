@@ -42,7 +42,7 @@ fn (mut app App) service_get_all_user() ![]User {
 
 	results := sql db {
 		select from User
-	}
+	}!
 
 	return results
 }
@@ -59,7 +59,7 @@ fn (mut app App) service_get_user(id int) !User {
 
 	results := sql db {
 		select from User where id == id
-	}
+	}!
 
-	return results
+	return results.first()
 }

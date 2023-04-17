@@ -195,6 +195,18 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						node.pos)
 				}
 			}
+			if mut node.left is ast.CallExpr {
+				if node.left.return_type.has_flag(.option)
+					|| node.left.return_type.has_flag(.result) {
+					option_or_result := if node.left.return_type.has_flag(.option) {
+						'option'
+					} else {
+						'result'
+					}
+					c.error('unwrapped ${option_or_result} cannot be used with `${node.op.str()}`',
+						left_pos)
+				}
+			}
 			node.promoted_type = ast.bool_type
 			return ast.bool_type
 		}
@@ -669,10 +681,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	// TODO move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
 	left_is_option := left_type.has_flag(.option)
 	right_is_option := right_type.has_flag(.option)
-	if node.left !in [ast.Ident, ast.SelectorExpr, ast.ComptimeSelector]
-		&& (left_is_option || right_is_option) {
+	if left_is_option || right_is_option {
 		opt_infix_pos := if left_is_option { left_pos } else { right_pos }
-		c.error('unwrapped option cannot be used in an infix expression', opt_infix_pos)
+		if (node.left !in [ast.Ident, ast.SelectorExpr, ast.ComptimeSelector]
+			|| node.op in [.eq, .ne, .lt, .gt, .le, .ge]) && right_sym.kind != .none_ {
+			c.error('unwrapped option cannot be used in an infix expression', opt_infix_pos)
+		}
 	}
 
 	left_is_result := left_type.has_flag(.result)

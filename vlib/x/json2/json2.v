@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module json2
@@ -20,114 +20,131 @@ pub fn fast_raw_decode(src string) !Any {
 
 // decode is a generic function that decodes a JSON string into the target type.
 pub fn decode[T](src string) !T {
-	res := raw_decode(src)!.as_map()
 	mut typ := T{}
-	$for field in T.fields {
-		mut json_name := field.name
-		for attr in field.attrs {
-			if attr.contains('json: ') {
-				json_name = attr.replace('json: ', '')
-				break
+	res := raw_decode(src)!.as_map()
+	$if T is $struct {
+		$for field in T.fields {
+			mut json_name := field.name
+			for attr in field.attrs {
+				if attr.contains('json: ') {
+					json_name = attr.replace('json: ', '')
+					break
+				}
+			}
+
+			$if field.is_enum {
+				typ.$(field.name) = if key := res[field.name] {
+					key.int()
+				} else {
+					res[json_name]!.int()
+				}
+			} $else $if field.typ is u8 {
+				typ.$(field.name) = res[json_name]!.u64()
+			} $else $if field.typ is u16 {
+				typ.$(field.name) = res[json_name]!.u64()
+			} $else $if field.typ is u32 {
+				typ.$(field.name) = res[json_name]!.u64()
+			} $else $if field.typ is u64 {
+				typ.$(field.name) = res[json_name]!.u64()
+			} $else $if field.typ is int {
+				typ.$(field.name) = res[json_name]!.int()
+			} $else $if field.typ is i8 {
+				typ.$(field.name) = res[json_name]!.int()
+			} $else $if field.typ is i16 {
+				typ.$(field.name) = res[json_name]!.int()
+			} $else $if field.typ is i32 {
+				typ.$(field.name) = i32(res[field.name]!.int())
+			} $else $if field.typ is i64 {
+				typ.$(field.name) = res[json_name]!.i64()
+			} $else $if field.typ is ?u8 {
+				if json_name in res {
+					typ.$(field.name) = ?u8(res[json_name]!.i64())
+				}
+			} $else $if field.typ is ?i8 {
+				if json_name in res {
+					typ.$(field.name) = ?i8(res[json_name]!.i64())
+				}
+			} $else $if field.typ is ?u16 {
+				if json_name in res {
+					typ.$(field.name) = ?u16(res[json_name]!.i64())
+				}
+			} $else $if field.typ is ?i16 {
+				if json_name in res {
+					typ.$(field.name) = ?i16(res[json_name]!.i64())
+				}
+			} $else $if field.typ is ?u32 {
+				if json_name in res {
+					typ.$(field.name) = ?u32(res[json_name]!.i64())
+				}
+			} $else $if field.typ is ?i32 {
+				if json_name in res {
+					typ.$(field.name) = ?i32(res[json_name]!.i64())
+				}
+			} $else $if field.typ is ?u64 {
+				if json_name in res {
+					typ.$(field.name) = ?u64(res[json_name]!.i64())
+				}
+			} $else $if field.typ is ?i64 {
+				if json_name in res {
+					typ.$(field.name) = ?i64(res[json_name]!.i64())
+				}
+			} $else $if field.typ is ?int {
+				if json_name in res {
+					typ.$(field.name) = ?int(res[json_name]!.i64())
+				}
+			} $else $if field.typ is f32 {
+				typ.$(field.name) = res[json_name]!.f32()
+			} $else $if field.typ is ?f32 {
+				if json_name in res {
+					typ.$(field.name) = res[json_name]!.f32()
+				}
+			} $else $if field.typ is f64 {
+				typ.$(field.name) = res[json_name]!.f64()
+			} $else $if field.typ is ?f64 {
+				if json_name in res {
+					typ.$(field.name) = res[json_name]!.f64()
+				}
+			} $else $if field.typ is bool {
+				typ.$(field.name) = res[json_name]!.bool()
+			} $else $if field.typ is ?bool {
+				if json_name in res {
+					typ.$(field.name) = res[json_name]!.bool()
+				}
+			} $else $if field.typ is string {
+				typ.$(field.name) = res[json_name]!.str()
+			} $else $if field.typ is ?string {
+				if json_name in res {
+					typ.$(field.name) = res[json_name]!.str()
+				}
+			} $else $if field.typ is time.Time {
+				typ.$(field.name) = res[field.name]!.to_time()!
+			} $else $if field.typ is ?time.Time {
+				if json_name in res {
+					typ.$(field.name) = res[field.name]!.to_time()!
+				}
+			} $else $if field.is_array {
+				// typ.$(field.name) = res[field.name]!.arr()
+			} $else $if field.is_struct {
+			} $else $if field.is_alias {
+			} $else $if field.is_map {
+			} $else {
+				return error("The type of `${field.name}` can't be decoded. Please open an issue at https://github.com/vlang/v/issues/new/choose")
 			}
 		}
+	} $else $if T is $map {
+		for k, v in res {
+			// // TODO - make this work to decode types like `map[string]StructType[bool]`
+			// $if typeof(typ[k]).idx is string {
+			// 	typ[k] = v.str()
+			// } $else $if typeof(typ[k]).idx is $struct {
 
-		$if field.is_enum {
-			typ.$(field.name) = if key := res[field.name] {
-				key.int()
-			} else {
-				res[json_name]!.int()
+			// }
+			match v {
+				string {
+					typ[k] = v.str()
+				}
+				else {}
 			}
-		} $else $if field.typ is u8 {
-			typ.$(field.name) = res[json_name]!.u64()
-		} $else $if field.typ is u16 {
-			typ.$(field.name) = res[json_name]!.u64()
-		} $else $if field.typ is u32 {
-			typ.$(field.name) = res[json_name]!.u64()
-		} $else $if field.typ is u64 {
-			typ.$(field.name) = res[json_name]!.u64()
-		} $else $if field.typ is int {
-			typ.$(field.name) = res[json_name]!.int()
-		} $else $if field.typ is i8 {
-			typ.$(field.name) = res[json_name]!.int()
-		} $else $if field.typ is i16 {
-			typ.$(field.name) = res[json_name]!.int()
-		} $else $if field.typ is i32 {
-			typ.$(field.name) = i32(res[field.name]!.int())
-		} $else $if field.typ is i64 {
-			typ.$(field.name) = res[json_name]!.i64()
-		} $else $if field.typ is ?u8 {
-			if json_name in res {
-				typ.$(field.name) = ?u8(res[json_name]!.i64())
-			}
-		} $else $if field.typ is ?i8 {
-			if json_name in res {
-				typ.$(field.name) = ?i8(res[json_name]!.i64())
-			}
-		} $else $if field.typ is ?u16 {
-			if json_name in res {
-				typ.$(field.name) = ?u16(res[json_name]!.i64())
-			}
-		} $else $if field.typ is ?i16 {
-			if json_name in res {
-				typ.$(field.name) = ?i16(res[json_name]!.i64())
-			}
-		} $else $if field.typ is ?u32 {
-			if json_name in res {
-				typ.$(field.name) = ?u32(res[json_name]!.i64())
-			}
-		} $else $if field.typ is ?i32 {
-			if json_name in res {
-				typ.$(field.name) = ?i32(res[json_name]!.i64())
-			}
-		} $else $if field.typ is ?u64 {
-			if json_name in res {
-				typ.$(field.name) = ?u64(res[json_name]!.i64())
-			}
-		} $else $if field.typ is ?i64 {
-			if json_name in res {
-				typ.$(field.name) = ?i64(res[json_name]!.i64())
-			}
-		} $else $if field.typ is ?int {
-			if json_name in res {
-				typ.$(field.name) = ?int(res[json_name]!.i64())
-			}
-		} $else $if field.typ is f32 {
-			typ.$(field.name) = res[json_name]!.f32()
-		} $else $if field.typ is ?f32 {
-			if json_name in res {
-				typ.$(field.name) = res[json_name]!.f32()
-			}
-		} $else $if field.typ is f64 {
-			typ.$(field.name) = res[json_name]!.f64()
-		} $else $if field.typ is ?f64 {
-			if json_name in res {
-				typ.$(field.name) = res[json_name]!.f64()
-			}
-		} $else $if field.typ is bool {
-			typ.$(field.name) = res[json_name]!.bool()
-		} $else $if field.typ is ?bool {
-			if json_name in res {
-				typ.$(field.name) = res[json_name]!.bool()
-			}
-		} $else $if field.typ is string {
-			typ.$(field.name) = res[json_name]!.str()
-		} $else $if field.typ is ?string {
-			if json_name in res {
-				typ.$(field.name) = res[json_name]!.str()
-			}
-		} $else $if field.typ is time.Time {
-			typ.$(field.name) = res[field.name]!.to_time()!
-		} $else $if field.typ is ?time.Time {
-			if json_name in res {
-				typ.$(field.name) = res[field.name]!.to_time()!
-			}
-		} $else $if field.is_array {
-			// typ.$(field.name) = res[field.name]!.arr()
-		} $else $if field.is_struct {
-		} $else $if field.is_alias {
-		} $else $if field.is_map {
-		} $else {
-			return error("The type of `${field.name}` can't be decoded. Please open an issue at https://github.com/vlang/v/issues/new/choose")
 		}
 	}
 	return typ
@@ -135,25 +152,26 @@ pub fn decode[T](src string) !T {
 
 // encode is a generic function that encodes a type into a JSON string.
 pub fn encode[T](val T) string {
-	$if T is $Array {
-		$compile_error('Cannot use `json.encode` to encode array. Try `json.encode_array` instead')
-	}
-	mut sb := strings.new_builder(64)
+	$if T is $array {
+		return encode_array(val)
+	} $else {
+		mut sb := strings.new_builder(64)
 
-	defer {
-		unsafe { sb.free() }
-	}
+		defer {
+			unsafe { sb.free() }
+		}
 
-	default_encoder.encode_value(val, mut sb) or {
-		dump(err)
-		default_encoder.encode_value[Null](null, mut sb) or {}
-	}
+		default_encoder.encode_value(val, mut sb) or {
+			dump(err)
+			default_encoder.encode_value[Null](null, mut sb) or {}
+		}
 
-	return sb.str()
+		return sb.str()
+	}
 }
 
 // encode_array is a generic function that encodes a array into a JSON string.
-pub fn encode_array[T](val []T) string {
+fn encode_array[T](val []T) string {
 	mut sb := strings.new_builder(64)
 
 	defer {
@@ -406,7 +424,7 @@ pub fn (f Any) to_time() !time.Time {
 
 fn map_from[T](t T) map[string]Any {
 	mut m := map[string]Any{}
-	$if T is $Struct {
+	$if T is $struct {
 		$for field in T.fields {
 			value := t.$(field.name)
 

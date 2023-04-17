@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module c
 
@@ -85,7 +85,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	} else if typ == ast.bool_type {
 		g.expr(expr)
 		g.write(' ? _SLIT("true") : _SLIT("false")')
-	} else if sym.kind == .none_ {
+	} else if sym.kind == .none_ || typ == ast.void_type.set_flag(.option) {
 		g.write('_SLIT("<none>")')
 	} else if sym.kind == .enum_ {
 		if expr !is ast.EnumVal {
@@ -125,14 +125,14 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		if str_method_expects_ptr && !is_ptr {
 			g.write('&')
 		} else if is_ptr && typ.has_flag(.option) {
-			g.write('*(${g.typ(typ.set_nr_muls(0))}*)&')
+			g.write('*(${g.typ(typ)}*)&')
 		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
 			g.write('*'.repeat(typ.nr_muls()))
 		}
 		if expr is ast.ArrayInit {
 			if expr.is_fixed {
 				s := g.typ(expr.typ)
-				if !expr.has_it {
+				if !expr.has_index {
 					g.write('(${s})')
 				}
 			}

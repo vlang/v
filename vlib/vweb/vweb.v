@@ -1,10 +1,11 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module vweb
 
 import os
 import io
+import runtime
 import net
 import net.http
 import net.urllib
@@ -167,7 +168,8 @@ pub mut:
 
 	header http.Header // response headers
 	// ? It doesn't seem to be used anywhere
-	form_error string
+	form_error                  string
+	livereload_poll_interval_ms int = 250
 }
 
 struct FileData {
@@ -178,8 +180,9 @@ pub:
 }
 
 struct Route {
-	methods []http.Method
-	path    string
+	methods    []http.Method
+	path       string
+	middleware string
 }
 
 // Defining this method is optional.
@@ -190,8 +193,8 @@ pub fn (ctx Context) init_server() {
 }
 
 // Defining this method is optional.
-// This method called before every request (aka middleware).
-// Probably you can use it for check user session cookie or add header.
+// This method is called before every request (aka middleware).
+// You can use it for checking user session cookies or to add headers.
 pub fn (ctx Context) before_request() {}
 
 // TODO - test
@@ -202,17 +205,22 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 		return false
 	}
 	ctx.done = true
-
-	// build header
-	header := http.new_header_from_map({
-		http.CommonHeader.content_type:   mimetype
-		http.CommonHeader.content_length: res.len.str()
-	}).join(ctx.header)
-
+	//
 	mut resp := http.Response{
-		header: header.join(vweb.headers_close)
 		body: res
 	}
+	$if vweb_livereload ? {
+		if mimetype == 'text/html' {
+			resp.body = res.replace('</html>', '<script src="/vweb_livereload/${vweb_livereload_server_start}/script.js"></script>\n</html>')
+		}
+	}
+	// build the header after the potential modification of resp.body from above
+	header := http.new_header_from_map({
+		http.CommonHeader.content_type:   mimetype
+		http.CommonHeader.content_length: resp.body.len.str()
+	}).join(ctx.header)
+	resp.header = header.join(vweb.headers_close)
+	//
 	resp.set_version(.v1_1)
 	resp.set_status(http.status_from_int(ctx.status.int()))
 	send_string(mut ctx.conn, resp.bytestr()) or { return false }
@@ -256,7 +264,7 @@ pub fn (mut ctx Context) file(f_path string) Result {
 	}
 	content_type := vweb.mime_types[ext]
 	if content_type.len == 0 {
-		eprintln('no MIME type found for extension ${ext}')
+		eprintln('[vweb] no MIME type found for extension ${ext}')
 		ctx.server_error(500)
 	} else {
 		ctx.send_response_to_client(content_type, data)
@@ -309,15 +317,12 @@ pub fn (mut ctx Context) not_found() Result {
 // TODO - test
 // Sets a cookie
 pub fn (mut ctx Context) set_cookie(cookie http.Cookie) {
-	mut cookie_data := []string{}
-	mut secure := if cookie.secure { 'Secure;' } else { '' }
-	secure += if cookie.http_only { ' HttpOnly' } else { ' ' }
-	cookie_data << secure
-	if cookie.expires.unix > 0 {
-		cookie_data << 'expires=${cookie.expires.utc_string()}'
+	cookie_raw := cookie.str()
+	if cookie_raw == '' {
+		eprintln('[vweb] error setting cookie: name of cookie is invalid')
+		return
 	}
-	data := cookie_data.join(' ')
-	ctx.add_header('Set-Cookie', '${cookie.name}=${cookie.value}; ${data}')
+	ctx.add_header('Set-Cookie', cookie_raw)
 }
 
 // Sets the response content type
@@ -326,27 +331,20 @@ pub fn (mut ctx Context) set_content_type(typ string) {
 }
 
 // TODO - test
-// Sets a cookie with a `expire_data`
+// Sets a cookie with a `expire_date`
 pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, expire_date time.Time) {
-	ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly; expires=${expire_date.utc_string()}')
+	cookie := http.Cookie{
+		name: key
+		value: val
+		expires: expire_date
+	}
+	ctx.set_cookie(cookie)
 }
 
 // Gets a cookie by a key
-pub fn (ctx &Context) get_cookie(key string) !string { // TODO refactor
-	mut cookie_header := ctx.get_header('cookie')
-	if cookie_header == '' {
-		cookie_header = ctx.get_header('Cookie')
-	}
-	cookie_header = ' ' + cookie_header
-	// println('cookie_header="$cookie_header"')
-	// println(ctx.req.header)
-	cookie := if cookie_header.contains(';') {
-		cookie_header.find_between(' ${key}=', ';')
-	} else {
-		cookie_header.find_between(' ${key}=', '\r')
-	}
-	if cookie != '' {
-		return cookie.trim_space()
+pub fn (ctx &Context) get_cookie(key string) !string {
+	if value := ctx.req.cookies[key] {
+		return value
 	}
 	return error('Cookie not found')
 }
@@ -377,6 +375,64 @@ interface DbInterface {
 	db voidptr
 }
 
+pub type Middleware = fn (mut Context) bool
+
+interface MiddlewareInterface {
+	middlewares map[string][]Middleware
+}
+
+// Generate route structs for an app
+fn generate_routes[T](app &T) !map[string]Route {
+	// Parsing methods attributes
+	mut routes := map[string]Route{}
+	$for method in T.methods {
+		http_methods, route_path, middleware := parse_attrs(method.name, method.attrs) or {
+			return error('error parsing method attributes: ${err}')
+		}
+
+		routes[method.name] = Route{
+			methods: http_methods
+			path: route_path
+			middleware: middleware
+		}
+	}
+	return routes
+}
+
+type ControllerHandler = fn (ctx Context, mut url urllib.URL, tid int)
+
+pub struct ControllerPath {
+	path    string
+	handler ControllerHandler
+}
+
+interface ControllerInterface {
+	controllers []&ControllerPath
+}
+
+pub struct Controller {
+mut:
+	controllers []&ControllerPath
+}
+
+// controller generates a new Controller for the main app
+pub fn controller[T](path string, global_app &T) &ControllerPath {
+	routes := generate_routes(global_app) or { panic(err.msg()) }
+
+	// generate struct with closure so the generic type is encapsulated in the closure
+	// no need to type `ControllerHandler` as generic since it's not needed for closures
+	return &ControllerPath{
+		path: path
+		handler: fn [global_app, path, routes] [T](ctx Context, mut url urllib.URL, tid int) {
+			// request_app is freed in `handle_route`
+			mut request_app := new_request_app[T](global_app, ctx)
+			// transform the url
+			url.path = url.path.all_after_first(path)
+			handle_route[T](mut request_app, url, &routes, tid)
+		}
+	}
+}
+
 // run - start a new VWeb server, listening to all available addresses, at the specified `port`
 pub fn run[T](global_app &T, port int) {
 	run_at[T](global_app, host: '', port: port, family: .ip6) or { panic(err.msg()) }
@@ -384,9 +440,12 @@ pub fn run[T](global_app &T, port int) {
 
 [params]
 pub struct RunParams {
-	host   string
-	port   int = 8080
-	family net.AddrFamily = .ip6 // use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
+	family               net.AddrFamily = .ip6 // use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
+	host                 string
+	port                 int  = 8080
+	nr_workers           int  = runtime.nr_jobs()
+	pool_channel_slots   int  = 1000
+	show_startup_message bool = true
 }
 
 // run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
@@ -396,58 +455,111 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	if params.port <= 0 || params.port > 65535 {
 		return error('invalid port number `${params.port}`, it should be between 1 and 65535')
 	}
+	if params.pool_channel_slots < 1 {
+		return error('invalid pool_channel_slots `${params.pool_channel_slots}`, it should be above 0, preferably higher than 10 x nr_workers')
+	}
+	if params.nr_workers < 1 {
+		return error('invalid nr_workers `${params.nr_workers}`, it should be above 0')
+	}
+
 	mut l := net.listen_tcp(params.family, '${params.host}:${params.port}') or {
 		ecode := err.code()
 		return error('failed to listen ${ecode} ${err}')
 	}
 
-	// Parsing methods attributes
-	mut routes := map[string]Route{}
-	$for method in T.methods {
-		http_methods, route_path := parse_attrs(method.name, method.attrs) or {
-			return error('error parsing method attributes: ${err}')
+	routes := generate_routes(global_app)!
+	// check duplicate routes in controllers
+	$if T is ControllerInterface {
+		mut paths := []string{}
+		for controller in global_app.controllers {
+			paths << controller.path
 		}
-
-		routes[method.name] = Route{
-			methods: http_methods
-			path: route_path
-		}
-	}
-	host := if params.host == '' { 'localhost' } else { params.host }
-	println('[Vweb] Running app on http://${host}:${params.port}/')
-	flush_stdout()
-	for {
-		// Create a new app object for each connection, copy global data like db connections
-		mut request_app := &T{}
-		$if T is DbInterface {
-			request_app.db = global_app.db
-		} $else {
-			// println('vweb no db')
-		}
-		$for field in T.fields {
-			if 'vweb_global' in field.attrs || field.is_shared {
-				request_app.$(field.name) = global_app.$(field.name)
+		for method_name, route in routes {
+			for controller_path in paths {
+				if route.path.starts_with(controller_path) {
+					return error('method "${method_name}" with route "${route.path}" should be handled by the Controller of "${controller_path}"')
+				}
 			}
 		}
-		request_app.Context = global_app.Context // copy the context ref that contains static files map etc
-		mut conn := l.accept() or {
+	}
+
+	host := if params.host == '' { 'localhost' } else { params.host }
+	if params.show_startup_message {
+		println('[Vweb] Running app on http://${host}:${params.port}/')
+	}
+
+	ch := chan &RequestParams{cap: params.pool_channel_slots}
+	mut ws := []thread{cap: params.nr_workers}
+	for worker_number in 0 .. params.nr_workers {
+		ws << new_worker[T](ch, worker_number)
+	}
+	if params.show_startup_message {
+		println('[Vweb] We have ${ws.len} workers')
+	}
+	flush_stdout()
+
+	// Forever accept every connection that comes, and
+	// pass it through the channel, to the thread pool:
+	for {
+		mut connection := l.accept_only() or {
 			// failures should not panic
-			eprintln('accept() failed with error: ${err.msg()}')
+			eprintln('[vweb] accept() failed with error: ${err.msg()}')
 			continue
 		}
-		spawn handle_conn[T](mut conn, mut request_app, routes)
+		ch <- &RequestParams{
+			connection: connection
+			global_app: unsafe { global_app }
+			routes: &routes
+		}
 	}
 }
 
+fn new_request_app[T](global_app &T, ctx Context) &T {
+	// Create a new app object for each connection, copy global data like db connections
+	mut request_app := &T{}
+	$if T is MiddlewareInterface {
+		request_app = &T{
+			middlewares: global_app.middlewares.clone()
+		}
+	}
+	$if T is DbInterface {
+		request_app.db = global_app.db
+	}
+	$for field in T.fields {
+		if field.is_shared {
+			unsafe {
+				// TODO: remove this horrible hack, when copying a shared field at comptime works properly!!!
+				raptr := &voidptr(&request_app.$(field.name))
+				gaptr := &voidptr(&global_app.$(field.name))
+				*raptr = *gaptr
+				_ = raptr // TODO: v produces a warning that `raptr` is unused otherwise, even though it was on the previous line
+			}
+		} else {
+			if 'vweb_global' in field.attrs {
+				request_app.$(field.name) = global_app.$(field.name)
+			}
+		}
+	}
+	request_app.Context = ctx // copy request data such as form and query etc
+
+	// copy static files
+	request_app.Context.static_files = global_app.static_files.clone()
+	request_app.Context.static_mime_types = global_app.static_mime_types.clone()
+
+	return request_app
+}
+
 [manualfree]
-fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
+fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route, tid int) {
 	conn.set_read_timeout(30 * time.second)
 	conn.set_write_timeout(30 * time.second)
 	defer {
 		conn.close() or {}
-		unsafe {
-			free(app)
-		}
+	}
+
+	conn.set_sock() or {
+		eprintln('[vweb] tid: ${tid:03d}, error setting socket')
+		return
 	}
 
 	mut reader := io.new_buffered_reader(reader: conn)
@@ -463,7 +575,7 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 	req := http.parse_request(mut reader) or {
 		// Prevents errors from being thrown when BufferedReader is empty
 		if '${err}' != 'none' {
-			eprintln('error parsing request: ${err}')
+			eprintln('[vweb] tid: ${tid:03d}, error parsing request: ${err}')
 		}
 		return
 	}
@@ -474,14 +586,13 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 		dump(req.url)
 	}
 	// URL Parse
-	url := urllib.parse(req.url) or {
-		eprintln('error parsing path: ${err}')
+	mut url := urllib.parse(req.url) or {
+		eprintln('[vweb] tid: ${tid:03d}, error parsing path: ${err}')
 		return
 	}
 
 	// Query parse
 	query := parse_query_from_url(url)
-	url_words := url.path.split('/').filter(it != '')
 
 	// Form parse
 	form, files := parse_form_from_request(req) or {
@@ -490,19 +601,56 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 		return
 	}
 
-	app.Context = Context{
+	// Create Context with request data
+	ctx := Context{
 		req: req
 		page_gen_start: page_gen_start
 		conn: conn
 		query: query
 		form: form
 		files: files
-		static_files: app.static_files
-		static_mime_types: app.static_mime_types
 	}
+
+	// match controller paths
+	$if T is ControllerInterface {
+		for controller in global_app.controllers {
+			if url.path.len >= controller.path.len && url.path.starts_with(controller.path) {
+				// pass route handling to the controller
+				controller.handler(ctx, mut url, tid)
+				return
+			}
+		}
+	}
+
+	mut request_app := new_request_app(global_app, ctx)
+	handle_route(mut request_app, url, routes, tid)
+}
+
+[manualfree]
+fn handle_route[T](mut app T, url urllib.URL, routes &map[string]Route, tid int) {
+	defer {
+		unsafe {
+			free(app)
+		}
+	}
+
+	url_words := url.path.split('/').filter(it != '')
 
 	// Calling middleware...
 	app.before_request()
+
+	$if vweb_livereload ? {
+		if url.path.starts_with('/vweb_livereload/') {
+			if url.path.ends_with('current') {
+				app.handle_vweb_livereload_current()
+				return
+			}
+			if url.path.ends_with('script.js') {
+				app.handle_vweb_livereload_script()
+				return
+			}
+		}
+	}
 
 	// Static handling
 	if serve_if_static[T](mut app, url) {
@@ -513,13 +661,13 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 	// Route matching
 	$for method in T.methods {
 		$if method.return_type is Result {
-			route := routes[method.name] or {
-				eprintln('parsed attributes for the `${method.name}` are not found, skipping...')
+			route := (*routes)[method.name] or {
+				eprintln('[vweb] tid: ${tid:03d}, parsed attributes for the `${method.name}` are not found, skipping...')
 				Route{}
 			}
 
 			// Skip if the HTTP request method does not match the attributes
-			if req.method in route.methods {
+			if app.req.method in route.methods {
 				// Used for route matching
 				route_words := route.path.split('/').filter(it != '')
 
@@ -528,37 +676,114 @@ fn handle_conn[T](mut conn net.TcpConn, mut app T, routes map[string]Route) {
 				// should be called first.
 				if !route.path.contains('/:') && url_words == route_words {
 					// We found a match
-					if req.method == .post && method.args.len > 0 {
+					$if T is MiddlewareInterface {
+						if validate_middleware(mut app, url.path) == false {
+							return
+						}
+					}
+
+					if app.req.method == .post && method.args.len > 0 {
 						// Populate method args with form values
 						mut args := []string{cap: method.args.len}
 						for param in method.args {
-							args << form[param.name]
+							args << app.form[param.name]
 						}
-						app.$method(args)
+
+						if route.middleware == '' {
+							app.$method(args)
+						} else if validate_app_middleware(mut app, route.middleware, method.name) {
+							app.$method(args)
+						}
 					} else {
-						app.$method()
+						if route.middleware == '' {
+							app.$method()
+						} else if validate_app_middleware(mut app, route.middleware, method.name) {
+							app.$method()
+						}
 					}
 					return
 				}
 
 				if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
-					app.$method()
+					$if T is MiddlewareInterface {
+						if validate_middleware(mut app, url.path) == false {
+							return
+						}
+					}
+					if route.middleware == '' {
+						app.$method()
+					} else if validate_app_middleware(mut app, route.middleware, method.name) {
+						app.$method()
+					}
 					return
 				}
 
 				if params := route_matches(url_words, route_words) {
 					method_args := params.clone()
 					if method_args.len != method.args.len {
-						eprintln('warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the vweb route `${method.attrs}` (${method_args.len})')
+						eprintln('[vweb] tid: ${tid:03d}, warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the vweb route `${method.attrs}` (${method_args.len})')
 					}
-					app.$method(method_args)
+
+					$if T is MiddlewareInterface {
+						if validate_middleware(mut app, url.path) == false {
+							return
+						}
+					}
+					if route.middleware == '' {
+						app.$method(method_args)
+					} else if validate_app_middleware(mut app, route.middleware, method.name) {
+						app.$method(method_args)
+					}
 					return
 				}
 			}
 		}
 	}
 	// Route not found
-	conn.write(vweb.http_404.bytes()) or {}
+	app.not_found()
+}
+
+// validate_middleware validates and fires all middlewares that are defined in the global app instance
+fn validate_middleware[T](mut app T, full_path string) bool {
+	for path, middleware_chain in app.middlewares {
+		// only execute middleware if route.path starts with `path`
+		if full_path.len >= path.len && full_path.starts_with(path) {
+			// there is middleware for this route
+			for func in middleware_chain {
+				if func(mut app.Context) == false {
+					return false
+				}
+			}
+		}
+	}
+	// passed all middleware checks
+	return true
+}
+
+// validate_app_middleware validates all middlewares as a method of `app`
+fn validate_app_middleware[T](mut app T, middleware string, method_name string) bool {
+	// then the middleware that is defined for this route specifically
+	valid := fire_app_middleware(mut app, middleware) or {
+		eprintln('[vweb] warning: middleware `${middleware}` for the `${method_name}` are not found')
+		true
+	}
+	return valid
+}
+
+// fire_app_middleware fires all middlewares that are defined as a method of `app`
+fn fire_app_middleware[T](mut app T, method_name string) ?bool {
+	$for method in T.methods {
+		if method_name == method.name {
+			$if method.return_type is bool {
+				return app.$method()
+			} $else {
+				eprintln('[vweb] error in `${method.name}, middleware functions must return bool')
+				return none
+			}
+		}
+	}
+	// no middleware function found
+	return none
 }
 
 fn route_matches(url_words []string, route_words []string) ?[]string {
@@ -707,7 +932,7 @@ pub fn (ctx &Context) ip() string {
 
 // Set s to the form error
 pub fn (mut ctx Context) error(s string) {
-	eprintln('vweb error: ${s}')
+	eprintln('[vweb] Context.error: ${s}')
 	ctx.form_error = s
 }
 
@@ -734,4 +959,39 @@ fn send_string(mut conn net.TcpConn, s string) ! {
 // TODO: move it to template render
 fn filter(s string) string {
 	return html.escape(s)
+}
+
+// Worker functions for the thread pool:
+struct RequestParams {
+	global_app voidptr
+	routes     &map[string]Route
+mut:
+	connection &net.TcpConn
+}
+
+struct Worker[T] {
+	id int
+	ch chan &RequestParams
+}
+
+fn new_worker[T](ch chan &RequestParams, id int) thread {
+	mut w := &Worker[T]{
+		id: id
+		ch: ch
+	}
+	return spawn w.process_incomming_requests[T]()
+}
+
+fn (mut w Worker[T]) process_incomming_requests() {
+	sid := '[vweb] tid: ${w.id:03d} received request'
+	for {
+		mut params := <-w.ch or { break }
+		$if vweb_trace_worker_scan ? {
+			eprintln(sid)
+		}
+		handle_conn[T](mut params.connection, params.global_app, params.routes, w.id)
+	}
+	$if vweb_trace_worker_scan ? {
+		eprintln('[vweb] closing worker ${w.id}.')
+	}
 }

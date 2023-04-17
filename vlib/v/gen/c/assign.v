@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -10,15 +10,13 @@ import v.token
 fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr ast.Expr, ret_typ ast.Type) {
 	gen_or := expr is ast.Ident && (expr as ast.Ident).or_expr.kind != .absent
 	if gen_or {
-		old_inside_opt_data := g.inside_opt_data
-		g.inside_opt_data = true
+		old_inside_opt_or_res := g.inside_opt_or_res
+		g.inside_opt_or_res = true
 		g.expr_with_cast(expr, expr_typ, ret_typ)
 		g.writeln(';')
 		g.writeln('if (${expr}.state != 0) {')
 		if expr is ast.Ident && (expr as ast.Ident).or_expr.kind == .propagate_option {
-			g.write('return ')
-			g.gen_option_error(g.cur_fn.return_type, expr)
-			g.writeln(';')
+			g.writeln('\tpanic_option_not_set(_SLIT("none"));')
 		} else {
 			g.inside_or_block = true
 			defer {
@@ -40,7 +38,7 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 			}
 		}
 		g.writeln('}')
-		g.inside_opt_data = old_inside_opt_data
+		g.inside_opt_or_res = old_inside_opt_or_res
 	} else {
 		g.expr_with_opt(expr, expr_typ, ret_typ)
 	}
@@ -58,9 +56,10 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 	} else {
 		stmt_str := g.go_before_stmt(0).trim_space()
 		styp := g.base_type(ret_typ)
+		decl_styp := g.typ(ret_typ).replace('*', '_ptr')
 		g.empty_line = true
 		tmp_var := g.new_tmp_var()
-		g.writeln('${g.typ(ret_typ)} ${tmp_var};')
+		g.writeln('${decl_styp} ${tmp_var};')
 		g.write('_option_ok(&(${styp}[]) {')
 
 		if expr is ast.CastExpr && expr_typ.has_flag(.option) {
@@ -88,7 +87,8 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 	defer {
 		g.inside_opt_or_res = old_inside_opt_or_res
 	}
-	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)&& (expr in [ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr, ast.CastExpr]) {
+	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)
+		&& expr in [ast.DumpExpr, ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr, ast.CastExpr] {
 		if expr in [ast.Ident, ast.CastExpr] {
 			if expr_typ.idx() != ret_typ.idx() {
 				return g.expr_opt_with_cast(expr, expr_typ, ret_typ)
@@ -176,7 +176,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	if return_type != ast.void_type && return_type != 0 {
 		sym := g.table.sym(return_type)
 		if sym.kind == .multi_return {
-			g.gen_multi_return_assign(node, return_type)
+			g.gen_multi_return_assign(node, return_type, sym)
 			return
 		}
 	}
@@ -224,22 +224,23 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 			}
 			if mut left.obj is ast.Var {
-				if val is ast.Ident
-					&& (val as ast.Ident).info is ast.IdentVar && (val as ast.Ident).kind == .variable && (val as ast.Ident).obj is ast.Var && ((val as ast.Ident).obj as ast.Var).is_comptime_field {
-					var_type = g.unwrap_generic(g.comptime_for_field_type)
-					val_type = var_type
-					gen_or = val.or_expr.kind != .absent
-					if gen_or {
-						var_type = val_type.clear_flag(.option)
+				if val is ast.Ident && g.is_comptime_var(val) {
+					ctyp := g.unwrap_generic(g.get_comptime_var_type(val))
+					if ctyp != ast.void_type {
+						var_type = ctyp
+						val_type = var_type
+						gen_or = val.or_expr.kind != .absent
+						if gen_or {
+							var_type = val_type.clear_flag(.option)
+						}
+						left.obj.typ = var_type
 					}
-					left.obj.typ = var_type
 				} else if val is ast.ComptimeSelector {
 					key_str := g.get_comptime_selector_key_type(val)
 					if key_str != '' {
 						var_type = g.comptime_var_type_map[key_str] or { var_type }
 						val_type = var_type
 						left.obj.typ = var_type
-						val_type = var_type
 					}
 				} else if val is ast.ComptimeCall {
 					key_str := '${val.method_name}.return_type'
@@ -251,6 +252,22 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					if val_info.is_option && gen_or {
 						var_type = val_type.clear_flag(.option)
 						left.obj.typ = var_type
+					}
+				} else if val is ast.DumpExpr && (val as ast.DumpExpr).expr is ast.ComptimeSelector {
+					key_str := g.get_comptime_selector_key_type(val.expr as ast.ComptimeSelector)
+					if key_str != '' {
+						var_type = g.comptime_var_type_map[key_str] or { var_type }
+						val_type = var_type
+						left.obj.typ = var_type
+					}
+				} else if val is ast.IndexExpr {
+					if val.left is ast.Ident && g.is_generic_param_var((val as ast.IndexExpr).left) {
+						ctyp := g.unwrap_generic(g.get_gn_var_type((val as ast.IndexExpr).left as ast.Ident))
+						if ctyp != ast.void_type {
+							var_type = ctyp
+							val_type = var_type
+							left.obj.typ = var_type
+						}
 					}
 				}
 				is_auto_heap = left.obj.is_auto_heap
@@ -326,7 +343,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		unaliased_right_sym := g.table.final_sym(unwrapped_val_type)
 		is_fixed_array_var := unaliased_right_sym.kind == .array_fixed && val !is ast.ArrayInit
 			&& (val in [ast.Ident, ast.IndexExpr, ast.CallExpr, ast.SelectorExpr]
-			|| (val is ast.CastExpr && (val as ast.CastExpr).expr !is ast.ArrayInit))
+			|| (val is ast.CastExpr && (val as ast.CastExpr).expr !is ast.ArrayInit)
+			|| (val is ast.UnsafeExpr && (val as ast.UnsafeExpr).expr is ast.Ident))
 			&& !g.pref.translated
 		g.is_assign_lhs = true
 		g.assign_op = node.op
@@ -415,10 +433,16 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			mut op_expected_left := ast.Type(0)
 			mut op_expected_right := ast.Type(0)
 			if node.op == .plus_assign && unaliased_right_sym.kind == .string {
-				if left is ast.IndexExpr {
-					// a[0] += str => `array_set(&a, 0, &(string[]) {string__plus(...))})`
-					g.expr(left)
-					g.write('string__plus(')
+				if mut left is ast.IndexExpr {
+					if g.table.sym(left.left_type).kind == .array_fixed {
+						// strs[0] += str2 => `strs[0] = string__plus(strs[0], str2)`
+						g.expr(left)
+						g.write(' = string__plus(')
+					} else {
+						// a[0] += str => `array_set(&a, 0, &(string[]) {string__plus(...))})`
+						g.expr(left)
+						g.write('string__plus(')
+					}
 				} else {
 					// str += str2 => `str = string__plus(str, str2)`
 					g.expr(left)
@@ -449,6 +473,15 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					g.write(', ')
 					g.expr(val)
 					g.writeln(');')
+					return
+				} else if left_sym.kind == .alias
+					&& g.table.final_sym(g.unwrap_generic(var_type)).is_number()
+					&& !left_sym.has_method(extracted_op) {
+					g.write(' = ')
+					g.expr(left)
+					g.write(' ${extracted_op} ')
+					g.expr(val)
+					g.write(';')
 					return
 				} else {
 					g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
@@ -664,7 +697,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	}
 }
 
-fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Type) {
+fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Type, return_sym ast.TypeSymbol) {
 	// multi return
 	// TODO Handle in if_expr
 	mr_var_name := 'mr_${node.pos.pos}'
@@ -672,11 +705,12 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	mut mr_styp := g.typ(return_type.clear_flag(.result))
 	if node.right[0] is ast.CallExpr && (node.right[0] as ast.CallExpr).or_block.kind != .absent {
 		is_option = false
-		mr_styp = g.typ(return_type.clear_flag(.option).clear_flag(.result))
+		mr_styp = g.typ(return_type.clear_flags(.option, .result))
 	}
 	g.write('${mr_styp} ${mr_var_name} = ')
 	g.expr(node.right[0])
 	g.writeln(';')
+	mr_types := (return_sym.info as ast.MultiReturn).types
 	for i, lx in node.left {
 		mut is_auto_heap := false
 		mut ident := ast.Ident{
@@ -698,23 +732,42 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 		if lx.is_auto_deref_var() {
 			g.write('*')
 		}
-		g.expr(lx)
 		noscan := if is_auto_heap { g.check_noscan(return_type) } else { '' }
-		if g.is_arraymap_set {
-			if is_auto_heap {
-				g.writeln('HEAP${noscan}(${styp}, ${mr_var_name}.arg${i}) });')
+		if node.left_types[i].has_flag(.option) {
+			base_typ := g.base_type(node.left_types[i])
+			tmp_var := if is_auto_heap {
+				'HEAP${noscan}(${styp}, ${mr_var_name}.arg${i})'
 			} else if is_option {
-				g.writeln('(*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i} });')
+				'(*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i}'
 			} else {
-				g.writeln('${mr_var_name}.arg${i} });')
+				'${mr_var_name}.arg${i}'
+			}
+			if mr_types[i].has_flag(.option) {
+				g.expr(lx)
+				g.write(' = ${tmp_var};')
+			} else {
+				g.write('_option_ok(&(${base_typ}[]) { ${tmp_var} }, (${option_name}*)(&')
+				g.expr(lx)
+				g.writeln('), sizeof(${base_typ}));')
 			}
 		} else {
-			if is_auto_heap {
-				g.writeln(' = HEAP${noscan}(${styp}, ${mr_var_name}.arg${i});')
-			} else if is_option {
-				g.writeln(' = (*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i};')
+			g.expr(lx)
+			if g.is_arraymap_set {
+				if is_auto_heap {
+					g.writeln('HEAP${noscan}(${styp}, ${mr_var_name}.arg${i}) });')
+				} else if is_option {
+					g.writeln('(*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i} });')
+				} else {
+					g.writeln('${mr_var_name}.arg${i} });')
+				}
 			} else {
-				g.writeln(' = ${mr_var_name}.arg${i};')
+				if is_auto_heap {
+					g.writeln(' = HEAP${noscan}(${styp}, ${mr_var_name}.arg${i});')
+				} else if is_option {
+					g.writeln(' = (*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i};')
+				} else {
+					g.writeln(' = ${mr_var_name}.arg${i};')
+				}
 			}
 		}
 	}

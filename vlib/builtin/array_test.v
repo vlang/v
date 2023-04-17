@@ -212,7 +212,7 @@ fn test_compare_ints() {
 
 fn test_repeat_int() {
 	a := [1234].repeat(5)
-	dump(a)
+	// dump(a)
 	assert a.len == 5
 	for x in a {
 		assert x == 1234
@@ -221,7 +221,7 @@ fn test_repeat_int() {
 
 fn test_repeat_f64() {
 	a := [1.1].repeat(10)
-	dump(a)
+	// dump(a)
 	assert a.len == 10
 	assert a[0] == 1.1
 	assert a[5] == 1.1
@@ -230,7 +230,7 @@ fn test_repeat_f64() {
 
 fn test_repeat_f32() {
 	a := [f32(1.1)].repeat(10)
-	dump(a)
+	// dump(a)
 	assert a.len == 10
 	assert a[0] == f32(1.1)
 	assert a[5] == f32(1.1)
@@ -239,7 +239,7 @@ fn test_repeat_f32() {
 
 fn test_repeat_i64() {
 	a := [i64(-123)].repeat(10)
-	dump(a)
+	// dump(a)
 	assert a.len == 10
 	assert a[0] == -123
 	assert a[5] == -123
@@ -255,7 +255,7 @@ fn test_repeat_u64() {
 
 fn test_repeat_several_ints() {
 	a := [1, 2].repeat(2)
-	dump(a)
+	// dump(a)
 	assert a.len == 4
 	assert a[0] == 1
 	assert a[1] == 2
@@ -265,7 +265,7 @@ fn test_repeat_several_ints() {
 
 fn test_repeat_several_strings_2() {
 	a := ['1', 'abc'].repeat(2)
-	dump(a)
+	// dump(a)
 	assert a.len == 4
 	assert a[0] == '1'
 	assert a[1] == 'abc'
@@ -275,7 +275,7 @@ fn test_repeat_several_strings_2() {
 
 fn test_repeat_several_strings_0() {
 	mut a := ['1', 'abc'].repeat(0)
-	dump(a)
+	// dump(a)
 	assert a.len == 0
 	a << 'abc'
 	assert a[0] == 'abc'
@@ -284,7 +284,7 @@ fn test_repeat_several_strings_0() {
 fn test_deep_repeat() {
 	mut a3 := [[[1, 1], [2, 2], [3, 3]], [[4, 4], [5, 5], [6, 6]]]
 	r := a3.repeat(3)
-	dump(r)
+	// dump(r)
 	a3[1][1][0] = 17
 	assert r == [
 		[[1, 1], [2, 2], [3, 3]],
@@ -586,21 +586,6 @@ fn sum(prev int, curr int) int {
 
 fn sub(prev int, curr int) int {
 	return prev - curr
-}
-
-fn test_reduce() {
-	a := [1, 2, 3, 4, 5]
-	b := a.reduce(sum, 0)
-	c := a.reduce(sum, 5)
-	d := a.reduce(sum, -1)
-	assert b == 15
-	assert c == 20
-	assert d == 14
-	e := [1, 2, 3]
-	f := e.reduce(sub, 0)
-	g := e.reduce(sub, -1)
-	assert f == -6
-	assert g == -7
 }
 
 fn filter_test_helper_1(a int) bool {
@@ -1598,12 +1583,12 @@ fn f(x int, y int) []int {
 }
 
 fn test_2d_array_init_with_it() {
-	a := [][]int{len: 6, init: f(it, 2 * it)}
+	a := [][]int{len: 6, init: f(index, 2 * index)}
 	assert a == [[0, 0], [1, 2], [2, 4], [3, 6], [4, 8], [5, 10]]
 }
 
 fn test_using_array_name_variable() {
-	array := []int{len: 4, init: it}
+	array := []int{len: 4, init: index}
 	println(array)
 	assert array == [0, 1, 2, 3]
 }
@@ -1621,6 +1606,12 @@ fn test_array_of_struct_with_map_field() {
 		a.sub_map[i] += 1
 	}
 	println(arr)
+	// Note: test_array_of_struct_with_map_field fails sporadically on windows with the default `-gc boehm_full_opt`,
+	// but it *does not* with any other `-gc` setting. The compiler does not matter; tested with tcc, gcc, clang .
+	// The failure is from: `assert arr[0].sub_map == { 0: 2 }`, and it seems to also depend on the previous dump() calls
+	// in this test file. If all of them are commented, it succeeds.
+	// Tested with: rm vlib/builtin/array_test ; xtime v -keepc vlib/builtin/array_test.v ; for((i=0;i<100;i++)); do echo ">>>>>>>>>>>>>>>>>>>>>>>> $i"; ./vlib/builtin/array_test || break ; echo "done with $i"; done
+	// executed in a git bash shell. It usually fails after the first 3-5 iterations.
 	assert arr[0].sub_map == {
 		0: 2
 	}

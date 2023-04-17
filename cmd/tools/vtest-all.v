@@ -95,6 +95,12 @@ fn get_all_commands() []Command {
 		okmsg: 'V can compile hello world with both -skip-unused and -profile .'
 		rmfile: 'examples/hello_world'
 	}
+	res << Command{
+		line: '${vexe} -e "print(84/2)"'
+		okmsg: 'V can run code given after `-e`'
+		runcmd: .execute
+		expect: '42'
+	}
 	$if linux || macos {
 		res << Command{
 			line: '${vexe} run examples/hello_world.v'
@@ -173,6 +179,11 @@ fn get_all_commands() []Command {
 			line: '${vexe} -skip-unused examples/2048'
 			okmsg: 'V can compile 2048 with -skip-unused.'
 			rmfile: 'examples/2048/2048'
+		}
+		res << Command{
+			line: '${vexe} -skip-unused  -live examples/hot_reload/bounce.v'
+			okmsg: 'V can compile the hot code reloading bounce.v example with both: -skip-unused -live'
+			rmfile: 'examples/hot_reload/bounce'
 		}
 	}
 	res << Command{

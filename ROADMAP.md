@@ -9,7 +9,7 @@
 - [x] vfmt: add missing imports (like goimports)
 - [ ] Recursive structs via options: `struct Node { next ?Node }`
 - [x] First class Option type
-- [ ] Optional function struct fields
+- [x] Optional function struct fields
 - [ ] Handle function pointers safely, remove `if function == 0 {`
 - [x] Bundle OpenSSL like GC
 - [x] Anonymous structs
@@ -17,7 +17,9 @@
 - [ ] -skip-unused on by default
 - [ ] `any` type
 - [ ] `copy()` builtin function (e.g. for easier conversion from `[]Foo` to `[4]Foo`)
-- [ ] better documentation platform
+- [ ] A better documentation platform
+- [ ] Improve vweb: allow separation of logic via "controllers", lots of other fixes
+- [ ] 64/32 bit int depending on arch (will remove array.len limitation on 64 bit systems)
 
 ## [Version 1.0]
 
@@ -25,6 +27,8 @@
 - [ ] Big remaining bugs fixed
 - [ ] More powerful comptime
 - [ ] Constraits for generics
+- [ ] Autofree memory management option ready for production
+- [ ] C2V supporting entire C99 standard
 
 ### Tooling
 

@@ -1521,11 +1521,16 @@ fn (mut g Gen) mul_reg(a Register, b Register) {
 			g.write8(0xf7)
 			g.write8(0xeb)
 		}
+		.rdx {
+			g.write8(0x48)
+			g.write8(0xf7)
+			g.write8(0xe2)
+		}
 		else {
-			panic('unhandled div ${a}')
+			panic('unhandled mul ${b}')
 		}
 	}
-	g.println('mul ${a}')
+	g.println('mul ${b}')
 }
 
 fn (mut g Gen) imul_reg(r Register) {
@@ -1558,11 +1563,16 @@ fn (mut g Gen) div_reg(a Register, b Register) {
 			g.write8(0xf7)
 			g.write8(0xfb) // idiv ebx
 		}
+		.rdx {
+			g.write8(0x48)
+			g.write8(0xf7)
+			g.write8(0xf2)
+		}
 		else {
-			panic('unhandled div ${a}')
+			panic('unhandled div ${b}')
 		}
 	}
-	g.println('div ${a}')
+	g.println('div ${b}')
 }
 
 fn (mut g Gen) mod_reg(a Register, b Register) {
@@ -2207,7 +2217,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 					}
 					ast.StringLiteral {
 						// TODO: use learel
-						str := g.eval_escape_codes(e)
+						str := g.eval_str_lit_escape_codes(e)
 						g.mov64(.rsi, g.allocate_string(str, 2, .abs64)) // for rsi its 2
 						g.mov_reg_to_var(LocalVar{pos, ast.u64_type_idx, ''}, .rsi)
 						pos += 8
@@ -2247,7 +2257,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 		ast.StringLiteral {
 			dest := g.allocate_var(name, 8, 0)
 			ie := right as ast.StringLiteral
-			str := g.eval_escape_codes(ie)
+			str := g.eval_str_lit_escape_codes(ie)
 			g.learel(.rsi, g.allocate_string(str, 3, .rel32))
 			g.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
 		}
@@ -2831,7 +2841,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			}
 		}
 		if node.left_type !in ast.integer_type_idxs && node.left_type != ast.bool_type_idx
-			&& g.table.sym(node.left_type).info !is ast.Enum {
+			&& g.table.sym(node.left_type).info !is ast.Enum && !node.left_type.is_ptr()
+			&& !node.left_type.is_voidptr() {
 			g.n_error('unsupported type for `${node.op}`: ${node.left_type}')
 		}
 		// left: rax, right: rdx
@@ -3202,6 +3213,18 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 				}
 				.gt {
 					jump_addr = g.cjmp(.jle)
+				}
+				.le {
+					jump_addr = g.cjmp(.jg)
+				}
+				.ge {
+					jump_addr = g.cjmp(.jl)
+				}
+				.ne {
+					jump_addr = g.cjmp(.je)
+				}
+				.eq {
+					jump_addr = g.cjmp(.jne)
 				}
 				else {
 					g.n_error('unhandled infix cond token')
@@ -3717,7 +3740,7 @@ fn (mut g Gen) reverse_string(reg Register) {
 }
 
 fn (mut g Gen) gen_match_expr_amd64(expr ast.MatchExpr) {
-	branch_labels := []int{len: expr.branches.len, init: g.labels.new_label() + it * 0} // call new_label for all elements in the array
+	branch_labels := []int{len: expr.branches.len, init: g.labels.new_label() + index * 0} // call new_label for all elements in the array
 	end_label := g.labels.new_label()
 
 	if expr.is_sum_type {

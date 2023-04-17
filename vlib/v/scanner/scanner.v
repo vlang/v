@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module scanner
@@ -34,6 +34,7 @@ pub mut:
 	last_nl_pos                 int = -1 // for calculating column
 	is_crlf                     bool   // special check when computing columns
 	is_inside_string            bool   // set to true in a string, *at the start* of an $var or ${expr}
+	is_nested_string            bool   // '${'abc':-12s}'
 	is_inter_start              bool   // for hacky string interpolation TODO simplify
 	is_inter_end                bool
 	is_enclosed_inter           bool
@@ -158,7 +159,7 @@ pub fn (mut s Scanner) free() {
 
 [inline]
 fn (s &Scanner) should_parse_comment() bool {
-	return (s.comments_mode == .parse_comments)
+	return s.comments_mode == .parse_comments
 		|| (s.comments_mode == .toplevel_comments && !s.is_inside_toplvl_statement)
 }
 
@@ -268,7 +269,7 @@ fn (mut s Scanner) ident_bin_number() string {
 			s.error('cannot use `_` consecutively')
 		}
 		if !c.is_bin_digit() && c != scanner.num_sep {
-			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string {
+			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string || s.is_nested_string {
 				break
 			} else if !has_wrong_digit {
 				has_wrong_digit = true
@@ -312,7 +313,7 @@ fn (mut s Scanner) ident_hex_number() string {
 			s.error('cannot use `_` consecutively')
 		}
 		if !c.is_hex_digit() && c != scanner.num_sep {
-			if !c.is_letter() || s.is_inside_string {
+			if !c.is_letter() || s.is_inside_string || s.is_nested_string {
 				break
 			} else if !has_wrong_digit {
 				has_wrong_digit = true
@@ -352,7 +353,7 @@ fn (mut s Scanner) ident_oct_number() string {
 			s.error('cannot use `_` consecutively')
 		}
 		if !c.is_oct_digit() && c != scanner.num_sep {
-			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string {
+			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string || s.is_nested_string {
 				break
 			} else if !has_wrong_digit {
 				has_wrong_digit = true
@@ -390,7 +391,7 @@ fn (mut s Scanner) ident_dec_number() string {
 			s.error('cannot use `_` consecutively')
 		}
 		if !c.is_digit() && c != scanner.num_sep {
-			if !c.is_letter() || c in [`e`, `E`] || s.is_inside_string {
+			if !c.is_letter() || c in [`e`, `E`] || s.is_inside_string || s.is_nested_string {
 				break
 			} else if !has_wrong_digit {
 				has_wrong_digit = true
@@ -415,7 +416,8 @@ fn (mut s Scanner) ident_dec_number() string {
 				for s.pos < s.text.len {
 					c := s.text[s.pos]
 					if !c.is_digit() {
-						if !c.is_letter() || c in [`e`, `E`] || s.is_inside_string {
+						if !c.is_letter() || c in [`e`, `E`] || s.is_inside_string
+							|| s.is_nested_string {
 							// 5.5.str()
 							if c == `.` && s.pos + 1 < s.text.len && s.text[s.pos + 1].is_letter() {
 								call_method = true
@@ -461,7 +463,7 @@ fn (mut s Scanner) ident_dec_number() string {
 		for s.pos < s.text.len {
 			c := s.text[s.pos]
 			if !c.is_digit() {
-				if !c.is_letter() || s.is_inside_string {
+				if !c.is_letter() || s.is_inside_string || s.is_nested_string {
 					// 5e5.str()
 					if c == `.` && s.pos + 1 < s.text.len && s.text[s.pos + 1].is_letter() {
 						call_method = true
@@ -520,7 +522,7 @@ fn (mut s Scanner) skip_whitespace() {
 			s.pos++
 			continue
 		}
-		if !(c == 32 || (c > 8 && c < 14) || (c == 0x85) || (c == 0xa0)) {
+		if !(c == 32 || (c > 8 && c < 14) || c == 0x85 || c == 0xa0) {
 			return
 		}
 		c_is_nl := c == scanner.b_cr || c == scanner.b_lf
@@ -1063,15 +1065,15 @@ fn (mut s Scanner) text_scan() token.Token {
 					// Skip comment
 					for nest_count > 0 && s.pos < s.text.len - 1 {
 						s.pos++
-						if s.pos >= s.text.len {
-							s.line_nr--
-							s.error('comment not terminated')
+						if s.pos >= s.text.len - 1 {
+							s.line_nr = start_line
+							s.error('unterminated multiline comment')
 						}
 						if s.text[s.pos] == scanner.b_lf {
 							s.inc_line_number()
 							continue
 						}
-						if s.expect('/*', s.pos) {
+						if s.expect('/*', s.pos) && s.text[s.pos + 2] != `/` {
 							nest_count++
 							continue
 						}
@@ -1130,6 +1132,12 @@ fn (s &Scanner) count_symbol_before(p int, sym u8) int {
 
 [direct_array_access]
 fn (mut s Scanner) ident_string() string {
+	// determines if it is a nested string
+	if s.is_inside_string {
+		s.is_nested_string = true
+	} else {
+		s.is_nested_string = false
+	}
 	lspos := token.Pos{
 		line_nr: s.line_nr
 		pos: s.pos
@@ -1432,7 +1440,7 @@ fn (mut s Scanner) ident_char() string {
 		// e.g. (octal) \141 (hex) \x61 or (unicode) \u2605
 		// we don't handle binary escape codes in rune literals
 		orig := c
-		if (c.len % 2 == 0) && (escaped_hex || escaped_unicode || escaped_octal) {
+		if c.len % 2 == 0 && (escaped_hex || escaped_unicode || escaped_octal) {
 			if escaped_unicode {
 				// there can only be one, so attempt to decode it now
 				c = s.decode_u_escapes(c, 0, [0])

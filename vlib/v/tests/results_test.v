@@ -21,7 +21,7 @@ fn test_return_err_var() {
 }
 
 fn test_str() {
-	assert '${foo()}' == 'result(1)'
+	assert '${foo()}' == 'Result(1)'
 }
 
 fn result_void(err bool) ! {

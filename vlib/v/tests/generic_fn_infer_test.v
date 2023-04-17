@@ -5,6 +5,11 @@ fn simple[T](p T) T {
 	return p
 }
 
+fn bit_not_op_generic[T]() T {
+	x := ~T(0)
+	return x
+}
+
 fn test_infer() {
 	call(3)
 	i := 4
@@ -17,6 +22,8 @@ fn test_explicit_calls_should_also_work() {
 	assert true
 	simple[int](5)
 	assert true
+	x := bit_not_op_generic[u32]()
+	assert x == u32(4294967295)
 }
 
 fn get_type_name[T](x T) string {

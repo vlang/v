@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module markused
 
@@ -195,6 +195,11 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 			}
 		}
 
+		if k.ends_with('before_request') {
+			// TODO: add a more specific check for the .before_request() method in vweb apps
+			all_fn_root_names << k
+			continue
+		}
 		if method_receiver_typename == '&sync.Channel' {
 			all_fn_root_names << k
 			continue
@@ -331,12 +336,6 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 			all_fn_root_names << '${int(orm_type)}.drop'
 			all_fn_root_names << '${int(orm_type)}.last_id'
 		}
-	}
-
-	// handle -live main programs:
-	if pref_.is_livemain {
-		all_fn_root_names << 'v.live.executable.start_reloader'
-		all_fn_root_names << 'v.live.executable.new_live_reload_info'
 	}
 
 	mut walker := Walker{

@@ -1,0 +1,10 @@
+enum Test {
+	foo
+	bar
+}
+
+fn test_main() {
+	$for item in Test.abcde {
+		dump(item)
+	}
+}

@@ -581,7 +581,11 @@ fn (t Tree) anon_fn(node ast.AnonFn) &Node {
 	obj.add_terse('decl', t.fn_decl(node.decl))
 	obj.add('inherited_vars', t.array_node_arg(node.inherited_vars))
 	obj.add_terse('typ', t.type_node(node.typ))
-	obj.add('has_gen', t.bool_node(node.has_gen))
+	symbol_obj := new_object()
+	for key, val in node.has_gen {
+		symbol_obj.add_terse(key.str(), t.bool_node(val))
+	}
+	obj.add_terse('has_gen', symbol_obj)
 	return obj
 }
 
@@ -872,7 +876,7 @@ fn (t Tree) var(node ast.Var) &Node {
 	obj.add_terse('is_mut', t.bool_node(node.is_mut))
 	obj.add('is_used', t.bool_node(node.is_used))
 	obj.add('is_changed', t.bool_node(node.is_changed))
-	obj.add('is_comptime_field', t.bool_node(node.is_comptime_field))
+	obj.add_terse('ct_type_var', t.enum_node(node.ct_type_var))
 	obj.add('is_or', t.bool_node(node.is_or))
 	obj.add('is_tmp', t.bool_node(node.is_tmp))
 	obj.add('is_autofree_tmp', t.bool_node(node.is_autofree_tmp))
@@ -1611,7 +1615,7 @@ fn (t Tree) array_init(node ast.ArrayInit) &Node {
 	obj.add_terse('has_len', t.bool_node(node.has_len))
 	obj.add_terse('has_cap', t.bool_node(node.has_cap))
 	obj.add_terse('has_default', t.bool_node(node.has_default))
-	obj.add_terse('has_it', t.bool_node(node.has_it))
+	obj.add_terse('has_index', t.bool_node(node.has_index))
 	obj.add_terse('expr_types', t.array_node_type(node.expr_types))
 	obj.add('pos', t.pos(node.pos))
 	return obj

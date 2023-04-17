@@ -3,5 +3,5 @@ vlib/v/checker/tests/orm_fn_call_with_wrong_return_type.vv:52:37: error: V ORM: 
    51 |     steve := sql db {
    52 |         select from Parent where child == get_second_child()
       |                                           ~~~~~~~~~~~~~~~~~~
-   53 |     }
+   53 |     }!
    54 |

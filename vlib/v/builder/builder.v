@@ -102,6 +102,10 @@ pub fn (mut b Builder) interpret_text(code string, v_files []string) ! {
 
 pub fn (mut b Builder) front_stages(v_files []string) ! {
 	mut timers := util.get_timers()
+	util.timing_start('ALL_FRONT_STAGES')
+	defer {
+		timers.show('ALL_FRONT_STAGES')
+	}
 	util.timing_start('PARSE')
 
 	util.timing_start('Builder.front_stages.parse_files')
@@ -239,6 +243,15 @@ pub fn (mut b Builder) parse_imports() {
 		}
 		exit(0)
 	}
+	if b.pref.print_watched_files {
+		for p in b.parsed_files {
+			println(p.path)
+			for tp in p.template_paths {
+				println(tp)
+			}
+		}
+		exit(0)
+	}
 	if b.pref.dump_files != '' {
 		b.dump_files(b.parsed_files.map(it.path))
 	}
@@ -300,7 +313,11 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 			deps << 'builtin'
 			if b.pref.backend == .c {
 				// TODO JavaScript backend doesn't handle os for now
-				if b.pref.is_vsh && p.mod.name !in ['os', 'dl', 'strings.textscanner'] {
+				// os import libraries so we exclude anything which could cause a loop
+				// git grep import vlib/os | cut -f2 -d: | cut -f2 -d" " | sort -u
+				// dl, os, os.cmdline, os.filelock, os.notify, strings, strings.textscanner, term.termios, time
+				if b.pref.is_vsh
+					&& p.mod.name !in ['os', 'dl', 'strings.textscanner', 'term.termios'] {
 					deps << 'os'
 				}
 			}

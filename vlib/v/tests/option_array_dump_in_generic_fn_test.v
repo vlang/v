@@ -1,6 +1,6 @@
-fn abc[T]() []int {
+fn abc[T]() []?int {
 	a := []?int{len: 2}
-	mut s := []int{}
+	mut s := []?int{}
 	for v in a {
 		s << dump(v)
 	}
@@ -10,6 +10,8 @@ fn abc[T]() []int {
 fn test_main() {
 	arr := abc[int]()
 	assert arr.len == 2
-	assert arr[0] == 0
-	assert arr[1] == 0
+	mut t := arr[0]
+	assert t == none
+	t = arr[1]
+	assert t == none
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -9,6 +9,36 @@ import v.token
 import v.util
 import v.pkgconfig
 import v.checker.constants
+
+[inline]
+fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
+	if node is ast.Ident && (node as ast.Ident).obj is ast.Var {
+		return match (node.obj as ast.Var).ct_type_var {
+			.generic_param {
+				// generic parameter from current function
+				node.obj.typ
+			}
+			.key_var, .value_var {
+				// key and value variables from normal for stmt
+				c.comptime_fields_type[node.name] or { ast.void_type }
+			}
+			.field_var {
+				// field var from $for loop
+				c.comptime_fields_default_type
+			}
+			else {
+				ast.void_type
+			}
+		}
+	} else if node is ast.ComptimeSelector {
+		// val.$(field.name)
+		return c.get_comptime_selector_type(node, ast.void_type)
+	} else if node is ast.SelectorExpr && c.is_comptime_selector_type(node as ast.SelectorExpr) {
+		// field_var.typ from $for field
+		return c.comptime_fields_default_type
+	}
+	return ast.void_type
+}
 
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	if node.left !is ast.EmptyExpr {
@@ -205,10 +235,24 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 
 				unwrapped_expr_type := c.unwrap_generic(field.typ)
 				tsym := c.table.sym(unwrapped_expr_type)
-				c.table.dumps[int(unwrapped_expr_type.clear_flag(.option).clear_flag(.result).clear_flag(.atomic_f))] = tsym.cname
+				c.table.dumps[int(unwrapped_expr_type.clear_flags(.option, .result, .atomic_f))] = tsym.cname
 			}
 			c.comptime_for_field_var = ''
 			c.inside_comptime_for_field = false
+		}
+	} else if node.kind == .values {
+		if sym.kind == .enum_ {
+			sym_info := sym.info as ast.Enum
+			c.inside_comptime_for_field = true
+			if c.enum_data_type == 0 {
+				c.enum_data_type = ast.Type(c.table.find_type_idx('EnumData'))
+			}
+			for field in sym_info.vals {
+				c.comptime_enum_field_value = field
+				c.comptime_for_field_var = node.val_var
+				c.comptime_fields_type[node.val_var] = node.typ
+				c.stmts(node.stmts)
+			}
 		}
 	} else {
 		c.stmts(node.stmts)
@@ -592,6 +636,16 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 					} else if cond.left in [ast.Ident, ast.SelectorExpr, ast.TypeNode] {
 						// `$if method.@type is string`
 						c.expr(cond.left)
+						if cond.left is ast.SelectorExpr
+							&& c.is_comptime_selector_type(cond.left as ast.SelectorExpr)
+							&& cond.right is ast.ComptimeType {
+							checked_type := c.get_comptime_var_type(cond.left)
+							return if c.table.is_comptime_type(checked_type, cond.right) {
+								.eval
+							} else {
+								.skip
+							}
+						}
 						return .unknown
 					} else {
 						c.error('invalid `\$if` condition: expected a type or a selector expression or an interface check',
@@ -802,6 +856,15 @@ fn (mut c Checker) get_comptime_selector_type(node ast.ComptimeSelector, default
 		return c.unwrap_generic(c.comptime_fields_default_type)
 	}
 	return default_type
+}
+
+// check_comptime_is_field_selector checks if the SelectorExpr is related to $for variable accessing .typ field
+[inline]
+fn (mut c Checker) is_comptime_selector_type(node ast.SelectorExpr) bool {
+	if c.inside_comptime_for_field && node.expr is ast.Ident {
+		return (node.expr as ast.Ident).name == c.comptime_for_field_var && node.field_name == 'typ'
+	}
+	return false
 }
 
 // check_comptime_is_field_selector checks if the SelectorExpr is related to $for variable

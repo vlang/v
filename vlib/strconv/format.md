@@ -3,7 +3,7 @@
 These are v implementations of the C language `printf` and `sprintf` functions.
 
 > **Note**
-> These functions are platform dependent in C, but in V they are platform independent.
+> These functions are deprecated and will be removed soon. Use string interpolation instead.
 
 ### v_sprintf
 

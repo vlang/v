@@ -3,5 +3,5 @@ vlib/v/parser/tests/sql_undefined_variables_in_complex_exprs.vv:13:73: error: un
    12 |     _ := sql _ {
    13 |         select from User where (age > 18) && (city == 'London' || username == username)
       |                                                                               ~~~~~~~~
-   14 |     }
+   14 |     }!
    15 | }

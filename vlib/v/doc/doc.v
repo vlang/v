@@ -375,7 +375,7 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 				kind: parent_node_kind
 			}
 		}
-		if d.with_comments && (preceeding_comments.len > 0) {
+		if d.with_comments && preceeding_comments.len > 0 {
 			node.comments << preceeding_comments
 		}
 		preceeding_comments = []

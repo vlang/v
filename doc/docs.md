@@ -9,7 +9,7 @@ V is a statically typed compiled programming language designed for building main
 It's similar to Go and its design has also been influenced by Oberon, Rust, Swift,
 Kotlin, and Python.
 
-V is a very simple language. Going through this documentation will take you about an hour,
+V is a very simple language. Going through this documentation will take you about a weekend,
 and by the end of it you will have pretty much learned the entire language.
 
 The language promotes writing simple and clear code with minimal abstraction.
@@ -946,14 +946,14 @@ for i in 0 .. 1000 {
 > **Note**
 > The above code uses a [range `for`](#range-for) statement.
 
-You can initialize the array by accessing the `it` variable which gives
+You can initialize the array by accessing the `index` variable which gives
 the index as shown here:
 
 ```v
-count := []int{len: 4, init: it}
+count := []int{len: 4, init: index}
 assert count == [0, 1, 2, 3]
 
-mut square := []int{len: 6, init: it * it}
+mut square := []int{len: 6, init: index * index}
 // square == [0, 1, 4, 9, 16, 25]
 ```
 
@@ -1762,10 +1762,17 @@ To do the opposite, use `!in`.
 nums := [1, 2, 3]
 println(1 in nums) // true
 println(4 !in nums) // true
+```
+
+> **Note**
+> `in` checks if map contains a key, not a value.
+
+```v
 m := {
 	'one': 1
 	'two': 2
 }
+
 println('one' in m) // true
 println('three' !in m) // true
 ```
@@ -1823,7 +1830,7 @@ for i, name in names {
 The `for value in arr` form is used for going through elements of an array.
 If an index is required, an alternative form `for index, value in arr` can be used.
 
-Note, that the value is read-only.
+Note that the value is read-only.
 If you need to modify the array while looping, you need to declare the element as mutable:
 
 ```v
@@ -2599,7 +2606,7 @@ println(nums)
 // "[2, 4, 6]"
 ```
 
-Note, that you have to add `mut` before `nums` when calling this function. This makes
+Note that you have to add `mut` before `nums` when calling this function. This makes
 it clear that the function being called will modify the value.
 
 It is preferable to return values instead of modifying arguments,
@@ -2611,9 +2618,9 @@ For this reason V doesn't allow the modification of arguments with primitive typ
 Only more complex types such as arrays and maps may be modified.
 
 ### Variable number of arguments
-V supports functions that receive an arbitrary, variable amounts of arguments, denoted with the 
+V supports functions that receive an arbitrary, variable amounts of arguments, denoted with the
 `...` prefix.
-Below, `a ...int` refers to an arbitrary amount of parameters that will be collected 
+Below, `a ...int` refers to an arbitrary amount of parameters that will be collected
 into an array named `a`.
 
 ```v
@@ -3344,7 +3351,7 @@ fn fn1(s Foo) {
 We can test the underlying type of an interface using dynamic cast operators:
 
 ```v oksyntax
-// interface-exmaple.3 (continued from interface-exampe.1)
+// interface-example.3 (continued from interface-example.1)
 interface Something {}
 
 fn announce(s Something) {
@@ -3408,7 +3415,7 @@ For more information, see [Dynamic casts](#dynamic-casts).
 
 #### Interface method definitions
 
-Also unlike Go, an interface can have it's own methods, similar to how
+Also unlike Go, an interface can have its own methods, similar to how
 structs can have their methods. These 'interface methods' do not have
 to be implemented, by structs which implement that interface.
 They are just a convenient way to write `i.some_function()` instead of
@@ -3708,7 +3715,8 @@ fn main() {
 V used to combine `Option` and `Result` into one type, now they are separate.
 
 The amount of work required to "upgrade" a function to an option/result function is minimal;
-you have to add a `?` or `!` to the return type and return an error when something goes wrong.
+you have to add a `?` or `!` to the return type and return `none` or an error (respectively)
+when something goes wrong.
 
 This is the primary mechanism for error handling in V. They are still values, like in Go,
 but the advantage is that errors can't be unhandled, and handling them is a lot less verbose.
@@ -3825,10 +3833,11 @@ fn (err PathError) msg() string {
 	return 'Failed to open path: ${err.path}'
 }
 
-fn try_open(path string) ? {
-	return IError(PathError{
+fn try_open(path string) ! {
+	// V automatically casts this to IError
+	return PathError{
 		path: path
-	})
+	}
 }
 
 fn main() {
@@ -4302,6 +4311,9 @@ println(json.encode(data)) // {"x":42,"y":360}
 println(json.encode(user)) // {"name":"Pierre","score":1024}
 ```
 
+The json module also supports anonymous struct fields, which helps with complex JSON apis with lots
+of levels.
+
 ## Testing
 
 ### Asserts
@@ -4328,7 +4340,7 @@ which is handy when developing new functionality, to keep your invariants in che
 
 ### Asserts with an extra message
 
-This form of the `assert` statement, will print the extra message when it fails. Note, that
+This form of the `assert` statement, will print the extra message when it fails. Note that
 you can use any string expression there - string literals, functions returning a string,
 strings that interpolate variables, etc.
 
@@ -4343,7 +4355,7 @@ fn test_assertion_with_extra_message_failure() {
 ### Asserts that do not abort your program
 
 When initially prototyping functionality and tests, it is sometimes desirable to
-have asserts, that do not stop the program, but just print their failures. That can
+have asserts that do not stop the program, but just print their failures. That can
 be achieved by tagging your assert containing functions with an `[assert_continues]`
 tag, for example running this program:
 
@@ -4421,7 +4433,7 @@ producing the correct output. V executes all test functions in the file.
   have access to the private functions/types of the modules. They can test only
   the external/public API that a module provides.
 
-In the example above, `test_hello` is an internal test, that can call
+In the example above, `test_hello` is an internal test that can call
 the private function `hello()` because `hello_test.v` has `module main`,
 just like `hello.v`, i.e. both are part of the same module. Note also that
 since `module main` is a regular module like the others, internal tests can
@@ -4613,7 +4625,7 @@ fn f() (RefStruct, &MyStruct) {
 }
 ```
 
-Here `a` is stored on the stack since it's address never leaves the function `f()`.
+Here `a` is stored on the stack since its address never leaves the function `f()`.
 However a reference to `b` is part of `e` which is returned. Also a reference to
 `c` is returned. For this reason `b` and `c` will be heap allocated.
 
@@ -4835,7 +4847,7 @@ struct Customer {
 	country   string [nonull]
 }
 
-db := sqlite.connect('customers.db')?
+db := sqlite.connect('customers.db')!
 
 // you can create tables:
 // CREATE TABLE IF NOT EXISTS `Customer` (
@@ -4846,26 +4858,23 @@ db := sqlite.connect('customers.db')?
 // )
 sql db {
 	create table Customer
-}
+}!
 
 // select count(*) from customers
 nr_customers := sql db {
 	select count from Customer
-}
+}!
 println('number of all customers: ${nr_customers}')
+
 // V syntax can be used to build queries
 uk_customers := sql db {
 	select from Customer where country == 'uk' && nr_orders > 0
-}
+}!
 println(uk_customers.len)
 for customer in uk_customers {
 	println('${customer.id} - ${customer.name}')
 }
-// by adding `limit 1` we tell V that there will be only one object
-customer := sql db {
-	select from Customer where id == 1 limit 1
-}
-println('${customer.id} - ${customer.name}')
+
 // insert a new customer
 new_customer := Customer{
 	name: 'Bob'
@@ -4873,7 +4882,7 @@ new_customer := Customer{
 }
 sql db {
 	insert new_customer into Customer
-}
+}!
 ```
 
 For more examples and the docs, see [vlib/orm](https://github.com/vlang/v/tree/master/vlib/orm).
@@ -4888,7 +4897,6 @@ Documentation for each function/type/const must be placed right before the decla
 
 ```v
 // clearall clears all bits in the array
-
 fn clearall() {
 }
 ```
@@ -4901,7 +4909,6 @@ span to the documented function using single line comments:
 ```v
 // copy_all recursively copies all elements of the array by their value,
 // if `dupes` is false all duplicate values are eliminated in the process.
-
 fn copy_all(dupes bool) {
 	// ...
 }
@@ -5342,7 +5349,8 @@ type FastFn = fn (int) bool
 // Windows only:
 // Without this attribute all graphical apps will have the following behavior on Windows:
 // If run from a console or terminal; keep the terminal open so all (e)println statements can be viewed.
-// If run from e.g. Explorer, by double-click; app is opened, but no terminal is opened, and no (e)println output can be seen.
+// If run from e.g. Explorer, by double-click; app is opened, but no terminal is opened, and no
+// (e)println output can be seen.
 // Use it to force-open a terminal to view output in, even if the app is started from Explorer.
 // Valid before main() only.
 [console]
@@ -5466,13 +5474,13 @@ is compiled with `v -g` or `v -cg`.
 If you're using a custom ifdef, then you do need `$if option ? {}` and compile with`v -d option`.
 Full list of builtin options:
 
-| OS                             | Compilers        | Platforms        | Other                                            |
-|--------------------------------|------------------|------------------|--------------------------------------------------|
-| `windows`, `linux`, `macos`    | `gcc`, `tinyc`   | `amd64`, `arm64` | `debug`, `prod`, `test`                          |
-| `mac`, `darwin`, `ios`,        | `clang`, `mingw` | `x64`, `x32`     | `js`, `glibc`, `prealloc`                        |
-| `android`, `mach`, `dragonfly` | `msvc`           | `little_endian`  | `no_bounds_checking`, `freestanding`             |
-| `gnu`, `hpux`, `haiku`, `qnx`  | `cplusplus`      | `big_endian`     | `no_segfault_handler`, `no_backtrace`, `no_main` |
-| `solaris`, `termux`            |                  |                  |                                                  |
+| OS                             | Compilers        | Platforms        | Other                                         |
+|--------------------------------|------------------|------------------|-----------------------------------------------|
+| `windows`, `linux`, `macos`    | `gcc`, `tinyc`   | `amd64`, `arm64` | `debug`, `prod`, `test`                       |
+| `mac`, `darwin`, `ios`,        | `clang`, `mingw` | `x64`, `x32`     | `js`, `glibc`, `prealloc`                     |
+| `android`, `mach`, `dragonfly` | `msvc`           | `little_endian`  | `no_bounds_checking`, `freestanding`          |
+| `gnu`, `hpux`, `haiku`, `qnx`  | `cplusplus`      | `big_endian`     | `no_segfault_handler`, `no_backtrace`         |
+| `solaris`, `termux`            |                  |                  | `no_main`                                     |
 
 #### `$embed_file`
 
@@ -5867,6 +5875,33 @@ the boolean expression is highly improbable. In the JS backend, that does nothin
 
 <a id='Reflection via codegen'>
 
+### Memory usage optimization
+
+V offers these attributes related to memory usage
+that can be applied to a structure type: `[packed]` and `[minify]`.
+These attributes affect memory layout of a structure, potentially leading to reduced
+cache/memory usage and improved performance.
+
+#### `[packed]`
+
+The `[packed]` attribute can be added to a structure to create an unaligned memory layout,
+which decreases the overall memory footprint of the structure.
+
+> **Note**
+> Using the [packed] attribute may negatively impact performance
+> or even be prohibited on certain CPU architectures.
+> Only use this attribute if minimizing memory usage is crucial for your program
+> and you're willing to sacrifice performance.
+
+#### `[minify]`
+
+The `[minify]` attribute can be added to a struct, allowing the compiler to reorder the fields
+in a way that minimizes internal gaps while maintaining alignment.
+
+> **Note**
+> Using the `[minify]` attribute may cause issues with binary serialization or reflection.
+> Be mindful of these potential side effects when using this attribute.
+
 ## Atomics
 
 V has no special support for atomics, yet, nevertheless it's possible to treat variables as atomics
@@ -6153,12 +6188,12 @@ fn my_callback(arg voidptr, howmany int, cvalues &&char, cnames &&char) int {
 }
 
 fn main() {
-	db := &C.sqlite3(0) // this means `sqlite3* db = 0`
+	db := &C.sqlite3(unsafe { nil }) // this means `sqlite3* db = 0`
 	// passing a string literal to a C function call results in a C string, not a V string
 	C.sqlite3_open(c'users.db', &db)
 	// C.sqlite3_open(db_path.str, &db)
 	query := 'select count(*) from users'
-	stmt := &C.sqlite3_stmt(0)
+	stmt := &C.sqlite3_stmt(unsafe { nil })
 	// Note: You can also use the `.str` field of a V string,
 	// to get its C style zero terminated representation
 	C.sqlite3_prepare_v2(db, &char(query.str), -1, &stmt, 0)
@@ -6211,8 +6246,9 @@ Currently the `linux`, `darwin` , `freebsd`, and `windows` flags are supported.
 
 In the console build command, you can use:
 
-* `-cflags` to pass custom flags to the backend C compiler.
 * `-cc` to change the default C backend compiler.
+* `-cflags` to pass custom flags to the backend C compiler (passed before other C options).
+* `-ldflags` to pass custom flags to the backend C linker (passed after every other C option).
 * For example: `-cc gcc-9 -cflags -fsanitize=thread`.
 
 You can define a `VFLAGS` environment variable in your terminal to store your `-cc`
@@ -6227,7 +6263,8 @@ As long as backticks can't be used in `#flag` and spawning processes is not desi
 and portability reasons, V uses its own pkgconfig library that is compatible with the standard
 freedesktop one.
 
-If no flags are passed it will add `--cflags` and `--libs`, both lines below do the same:
+If no flags are passed it will add `--cflags` and `--libs` to pkgconfig (not to V).
+In other words, both lines below do the same:
 
 ```v oksyntax
 #pkgconfig r_core
