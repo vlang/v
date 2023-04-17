@@ -5720,10 +5720,6 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 					if field.typ.is_ptr() {
 						continue
 					}
-					// optional recursive struct ptr
-					if field.is_recursive {
-						continue
-					}
 					fsym := g.table.sym(field.typ)
 					dep := fsym.name
 					// skip if not in types list or already in deps
