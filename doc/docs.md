@@ -1538,6 +1538,27 @@ println(s)
 // "odd"
 ```
 
+Similar to Rust's `if let`, a value can be bound to a variable within an if statement.
+
+```
+m := {
+	'foo': 'bar'
+}
+
+if v := m['foo'] {
+	println(v) // bar
+} else {
+	println('not found')
+}
+
+res := if v := m['foobar'] {
+	v
+} else {
+	'baz'
+}
+println(res) // baz
+```
+
 #### Type checks and casts
 
 You can check the current type of a sum type using `is` and its negated form `!is`.
