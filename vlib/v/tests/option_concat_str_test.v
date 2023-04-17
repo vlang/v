@@ -4,11 +4,12 @@ fn test_str_concat() {
 		0 { 'abc' }
 		else { 'def' }
 	} + opt or { '!!!' }
-	println(x)
+	assert x == 'def!!!'
 
 	y := opt or { '!!!' } + match 1 {
 		0 { 'abc' }
 		else { 'def' }
 	}
 	println(y)
+	assert y == '!!!def'
 }
