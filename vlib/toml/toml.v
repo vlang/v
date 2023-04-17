@@ -17,7 +17,14 @@ pub struct Null {
 // `T` can have a custom `.from_toml()` method that will be used in decode.
 pub fn decode[T](toml_txt string) !T {
 	doc := parse_text(toml_txt)!
-	typ := decode_struct[T](doc.to_any())
+	mut typ := T{}
+	$for method in T.methods {
+		$if method.name == 'from_toml' {
+			typ.$method(doc.to_any())
+			return typ
+		}
+	}
+	typ = decode_struct[T](doc.to_any())
 	return typ
 }
 

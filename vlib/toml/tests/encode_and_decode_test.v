@@ -41,9 +41,9 @@ pub fn (e Employee) to_toml() string {
 	mut mp := map[string]toml.Any{}
 	mp['name'] = toml.Any(e.name)
 	mp['age'] = toml.Any(e.age)
-	mp['salary'] = toml.Any(e.salary)
+	mp['salary'] = toml.Any(f32(e.salary) + 5000.0)
 	mp['is_human'] = toml.Any(e.is_human)
-	mp['rank'] = toml.Any(int(e.rank))
+	mp['rank'] = toml.Any(int(e.rank) + 1)
 	return mp.to_toml()
 }
 
@@ -51,9 +51,9 @@ pub fn (mut e Employee) from_toml(any toml.Any) {
 	mp := any.as_map()
 	e.name = mp['name'] or { toml.Any('') }.string()
 	e.age = mp['age'] or { toml.Any(0) }.int()
-	e.salary = mp['salary'] or { toml.Any(0) }.f32()
+	e.salary = mp['salary'] or { toml.Any(0) }.f32() - 15000.0
 	e.is_human = mp['is_human'] or { toml.Any(false) }.bool()
-	e.rank = unsafe { Rank(mp['rank'] or { toml.Any(0) }.int()) }
+	e.rank = unsafe { Rank(mp['rank'] or { toml.Any(0) }.int() - 2) }
 }
 
 fn test_custom_encode_and_decode() {
@@ -62,9 +62,9 @@ fn test_custom_encode_and_decode() {
 	eprintln('Employee x: ${s}')
 	assert s == r'name = "Peter"
 age = 28
-salary = 95000.5
+salary = 100000.5
 is_human = true
-rank = 1'
+rank = 2'
 
 	y := toml.decode[Employee](s) or {
 		println(err)
@@ -74,7 +74,7 @@ rank = 1'
 	eprintln('Employee y: ${y}')
 	assert y.name == 'Peter'
 	assert y.age == 28
-	assert y.salary == 95000.5
+	assert y.salary == 85000.5
 	assert y.is_human == true
-	assert y.rank == .medium
+	assert y.rank == .low
 }
