@@ -722,11 +722,25 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 			g.gen_plain_infix_expr(node)
 			return
 		}
+
+		mut right_var := ''
+		if node.right is ast.Ident && (node.right as ast.Ident).or_expr.kind != .absent {
+			cur_line := g.go_before_stmt(0).trim_space()
+			right_var = g.new_tmp_var()
+			g.write('${g.typ(right.typ)} ${right_var} = ')
+			g.op_arg(node.right, method.params[1].typ, right.typ)
+			g.writeln(';')
+			g.write(cur_line)
+		}
 		g.write(method_name)
 		g.write('(')
 		g.op_arg(node.left, method.params[0].typ, left.typ)
-		g.write(', ')
-		g.op_arg(node.right, method.params[1].typ, right.typ)
+		if right_var != '' {
+			g.write(', ${right_var}')
+		} else {
+			g.write(', ')
+			g.op_arg(node.right, method.params[1].typ, right.typ)
+		}
 		g.write(')')
 	}
 }
