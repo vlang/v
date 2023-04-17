@@ -232,10 +232,12 @@ pub fn (m map[string]Any) to_toml() string {
 // as an inline table encoded TOML `string`.
 pub fn (m map[string]Any) to_inline_toml() string {
 	mut toml_text := '{'
+	mut i := 1
 	for k, v in m {
 		key := if k.contains(' ') { '"${k}"' } else { k }
 		delimeter := if i < m.len { ',' } else { '' }
-		toml_text += ' ${key} = ${v.to_toml()},'
+		toml_text += ' ${key} = ${v.to_toml()}${delimeter}'
+		i++
 	}
 	return toml_text + ' }'
 }
