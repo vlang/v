@@ -4755,7 +4755,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			styp := g.base_type(fn_ret_type)
 			g.writeln('${ret_typ} ${tmpvar};')
 			g.write('_option_ok(&(${styp}[]) { ')
-			if !fn_ret_type.is_ptr() && node.types[0].is_ptr() {
+			if !g.unwrap_generic(fn_ret_type).is_ptr() && node.types[0].is_ptr() {
 				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
 					g.write('*')
 				}
