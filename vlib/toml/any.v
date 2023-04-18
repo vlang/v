@@ -221,11 +221,8 @@ pub fn (m map[string]Any) as_strings() map[string]string {
 pub fn (m map[string]Any) to_toml() string {
 	mut toml_text := ''
 	for k, v in m {
-		mut key := k
-		if key.contains(' ') {
-			key = '"${key}"'
-		}
-		toml_text += '${key} = ' + v.to_toml() + '\n'
+		key := if k.contains(' ') { '"${k}"' } else { k }
+		toml_text += '${key} = ${v.to_toml()}\n'
 	}
 	toml_text = toml_text.trim_right('\n')
 	return toml_text
@@ -235,12 +232,12 @@ pub fn (m map[string]Any) to_toml() string {
 // as an inline table encoded TOML `string`.
 pub fn (m map[string]Any) to_inline_toml() string {
 	mut toml_text := '{'
+	mut i := 1
 	for k, v in m {
-		mut key := k
-		if key.contains(' ') {
-			key = '"${key}"'
-		}
-		toml_text += ' ${key} = ' + v.to_toml() + ','
+		key := if k.contains(' ') { '"${k}"' } else { k }
+		delimeter := if i < m.len { ',' } else { '' }
+		toml_text += ' ${key} = ${v.to_toml()}${delimeter}'
+		i++
 	}
 	return toml_text + ' }'
 }
