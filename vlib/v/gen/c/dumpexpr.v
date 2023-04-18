@@ -84,13 +84,14 @@ fn (mut g Gen) dump_expr_definitions() {
 		is_ptr := typ.is_ptr()
 		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, dump_type)
 		to_string_fn_name := g.get_str_fn(typ.clear_flags(.shared_f, .result))
-		ptr_asterisk := if is_ptr { '*'.repeat(typ.nr_muls()) } else { '' }
+		mut ptr_asterisk := if is_ptr { '*'.repeat(typ.nr_muls()) } else { '' }
 		mut str_dumparg_type := ''
 		if dump_sym.kind == .none_ {
 			str_dumparg_type = 'IError' + ptr_asterisk
 		} else {
 			if typ.has_flag(.option) {
 				str_dumparg_type += '_option_'
+				ptr_asterisk = ptr_asterisk.replace('*', '_ptr')
 			}
 			str_dumparg_type += g.cc_type(dump_type, true) + ptr_asterisk
 		}
@@ -118,8 +119,13 @@ fn (mut g Gen) dump_expr_definitions() {
 		} else if dump_sym.kind == .none_ {
 			surrounder.add('\tstring value = _SLIT("none");', '\tstring_free(&value);')
 		} else if is_ptr {
-			surrounder.add('\tstring value = (dump_arg == NULL) ? _SLIT("nil") : ${to_string_fn_name}(${deref}dump_arg);',
-				'\tstring_free(&value);')
+			if typ.has_flag(.option) {
+				surrounder.add('\tstring value = isnil(&dump_arg.data) ? _SLIT("nil") : ${to_string_fn_name}(${deref}dump_arg);',
+					'\tstring_free(&value);')
+			} else {
+				surrounder.add('\tstring value = (dump_arg == NULL) ? _SLIT("nil") : ${to_string_fn_name}(${deref}dump_arg);',
+					'\tstring_free(&value);')
+			}
 		} else {
 			surrounder.add('\tstring value = ${to_string_fn_name}(${deref}dump_arg);',
 				'\tstring_free(&value);')
