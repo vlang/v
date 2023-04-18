@@ -17,7 +17,7 @@ fn test_long_description() {
 	greet_cmd.add_flag(Flag{
 		flag: .string_array
 		name: 'fun'
-		description: 'foo '.repeat(50) + 'a'.repeat(100)
+		description: '\'{"uri":"mqtt://broker.emqx.io:1883","topic":"test_emq/1","filters":[{"producer_id":0,"trace_group":2,"string_id":3001},{"string_id":3002}]}\''
 	})
 	cmd.add_command(greet_cmd)
 	cmd.setup()
