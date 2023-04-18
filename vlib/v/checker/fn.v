@@ -2109,9 +2109,9 @@ fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 	}
 
 	if c.pref.backend.is_js() {
-		return c.table.find_or_register_promise(ret_type)
+		return c.table.find_or_register_promise(c.unwrap_generic(ret_type))
 	} else {
-		return c.table.find_or_register_thread(ret_type)
+		return c.table.find_or_register_thread(c.unwrap_generic(ret_type))
 	}
 }
 
@@ -2420,7 +2420,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			if node.args.len != 0 {
 				c.error('`.wait()` does not have any arguments', node.args[0].pos)
 			}
-			thread_ret_type := elem_sym.thread_info().return_type
+			thread_ret_type := c.unwrap_generic(elem_sym.thread_info().return_type)
 			if thread_ret_type.has_flag(.option) {
 				c.error('`.wait()` cannot be called for an array when thread functions return options. Iterate over the arrays elements instead and handle each returned option with `or`.',
 					node.pos)

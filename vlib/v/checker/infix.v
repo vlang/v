@@ -499,6 +499,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 				// []T << T or []T << []T
 				unwrapped_right_type := c.unwrap_generic(right_type)
+				if left_value_type.has_flag(.generic) {
+					return ast.void_type
+				}
 				if c.check_types(unwrapped_right_type, left_value_type) {
 					// []&T << T is wrong: we check for that, !(T.is_ptr()) && ?(&T).is_ptr()
 					if !(!unwrapped_right_type.is_ptr() && left_value_type.is_ptr()
