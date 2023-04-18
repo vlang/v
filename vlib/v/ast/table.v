@@ -1530,6 +1530,18 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 				}
 			}
 		}
+		Thread {
+			if typ := t.resolve_generic_to_concrete(sym.info.return_type, generic_names,
+				concrete_types)
+			{
+				idx := t.find_or_register_thread(typ)
+				if typ.has_flag(.generic) {
+					return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
+				} else {
+					return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+				}
+			}
+		}
 		FnType {
 			mut func := sym.info.func
 			mut has_generic := false
@@ -1771,6 +1783,11 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 		Chan {
 			unwrap_typ := t.unwrap_generic_type(ts.info.elem_type, generic_names, concrete_types)
 			idx := t.find_or_register_chan(unwrap_typ, unwrap_typ.nr_muls() > 0)
+			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
+		}
+		Thread {
+			unwrap_typ := t.unwrap_generic_type(ts.info.return_type, generic_names, concrete_types)
+			idx := t.find_or_register_thread(unwrap_typ)
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
 		Map {
