@@ -104,11 +104,12 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.warn('arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`)',
 				node.pos)
 		}
+
+		if c.table.sym(node.typ).name == '[]array' {
+			c.error('`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc',
+				node.pos)
+		}
 		return node.typ
-	}
-	if c.table.sym(node.typ).name == '[]array' {
-		c.error('`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc',
-			node.pos)
 	}
 
 	if node.is_fixed {
