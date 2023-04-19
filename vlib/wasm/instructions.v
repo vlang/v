@@ -1,7 +1,6 @@
 module wasm
 
 import encoding.leb128
-import math.bits
 
 fn (mut func Function) u32(v u32) {
 	func.code << leb128.encode_u32(v)
@@ -25,7 +24,7 @@ fn (mut func Function) blocktype(typ FuncType) {
 
 // new_local creates a function local and returns it's index.
 // See `local_get`, `local_set`, `local_tee`.
-pub fn (mut func Function) new_local(v ValType) int {
+pub fn (mut func Function) new_local(v ValType) LocalIndex {
 	ldiff := func.mod.functypes[func.tidx].parameters.len
 	ret := func.locals.len + ldiff
 
@@ -51,47 +50,71 @@ pub fn (mut func Function) i64_const(v i64) {
 // WebAssembly instruction: `f32.const`.
 pub fn (mut func Function) f32_const(v f32) {
 	func.code << 0x43 // f32.const
-	rv := bits.f32_bits(v)
-	func.code << u8(rv >> u32(0))
-	func.code << u8(rv >> u32(8))
-	func.code << u8(rv >> u32(16))
-	func.code << u8(rv >> u32(24))
+	push_f32(mut func.code, v)
 }
 
 // f64_const places a constant f64 value on the stack.
 // WebAssembly instruction: `f64.const`.
 pub fn (mut func Function) f64_const(v f64) {
 	func.code << 0x44 // f64.const
-	rv := bits.f64_bits(v)
-	func.code << u8(rv >> u32(0))
-	func.code << u8(rv >> u32(8))
-	func.code << u8(rv >> u32(16))
-	func.code << u8(rv >> u32(24))
-	func.code << u8(rv >> u32(32))
-	func.code << u8(rv >> u32(40))
-	func.code << u8(rv >> u32(48))
-	func.code << u8(rv >> u32(56))
+	push_f64(mut func.code, v)
 }
 
 // local_get places the value of the local at the index `local` on the stack.
 // WebAssembly instruction: `local.get`.
-pub fn (mut func Function) local_get(local int) {
+pub fn (mut func Function) local_get(local LocalIndex) {
 	func.code << 0x20 // local.get
 	func.u32(u32(local))
 }
 
 // local_get sets the local at the index `local` to the value on the stack.
 // WebAssembly instruction: `local.set`.
-pub fn (mut func Function) local_set(local int) {
+pub fn (mut func Function) local_set(local LocalIndex) {
 	func.code << 0x21 // local.set
 	func.u32(u32(local))
 }
 
 // local_tee sets the local at the index `local` to the value on the stack, then places it's value on the stack.
 // WebAssembly instruction: `local.tee`.
-pub fn (mut func Function) local_tee(local int) {
+pub fn (mut func Function) local_tee(local LocalIndex) {
 	func.code << 0x22 // local.tee
 	func.u32(u32(local))
+}
+
+type GlobalIndices = GlobalImportIndex | GlobalIndex
+
+// global_get places the value of the global at the index `global` on the stack.
+// WebAssembly instruction: `global.get`.
+pub fn (mut func Function) global_get(global GlobalIndices) {
+	func.code << 0x23 // global.get
+	match global {
+		GlobalIndex {
+			func.global_patches << FunctionGlobalPatch{
+				idx: global
+				pos: func.code.len
+			}
+		}
+		GlobalImportIndex {
+			func.u32(u32(global))
+		}
+	}
+}
+
+// global_set sets the global at the index `global` to the value on the stack.
+// WebAssembly instruction: `global.set`.
+pub fn (mut func Function) global_set(global GlobalIndices) {
+	func.code << 0x24 // global.set
+	match global {
+		GlobalIndex {
+			func.global_patches << FunctionGlobalPatch{
+				idx: global
+				pos: func.code.len
+			}
+		}
+		GlobalImportIndex {
+			func.u32(u32(global))
+		}
+	}
 }
 
 // drop drops the value on the stack
@@ -847,9 +870,10 @@ pub fn (mut func Function) c_end_if() {
 }
 
 // call calls a locally defined function.
-// If this function does not exist when calling `compile` on the module, it panic.
+// If this function does not exist when calling `compile` on the module, it will panic.
 // WebAssembly instruction: `call`.
 pub fn (mut func Function) call(name string) {
+	func.code << 0x10 // call
 	func.call_patches << FunctionCallPatch{
 		name: name
 		pos: func.code.len
@@ -857,9 +881,10 @@ pub fn (mut func Function) call(name string) {
 }
 
 // call calls an imported function.
-// If the imported function does not exist when calling `compile` on the module, it panic.
+// If the imported function does not exist when calling `compile` on the module, it will panic.
 // WebAssembly instruction: `call`.
 pub fn (mut func Function) call_import(mod string, name string) {
+	func.code << 0x10 // call
 	func.call_patches << ImportCallPatch{
 		mod: mod
 		name: name
@@ -1009,7 +1034,7 @@ pub fn (mut func Function) memory_grow() {
 
 // memory_init copies from a passive memory segment to the memory instance.
 // WebAssembly instruction: `memory.init`.
-pub fn (mut func Function) memory_init(idx int) {
+pub fn (mut func Function) memory_init(idx DataSegmentIndex) {
 	func.code << 0xFC
 	func.code << 0x08
 	func.u32(u32(idx))
@@ -1018,7 +1043,7 @@ pub fn (mut func Function) memory_init(idx int) {
 
 // data_drop prevents further use of a passive memory segment.
 // WebAssembly instruction: `data.drop`.
-pub fn (mut func Function) data_drop(idx int) {
+pub fn (mut func Function) data_drop(idx DataSegmentIndex) {
 	func.code << 0xFC
 	func.code << 0x09
 	func.u32(u32(idx))
@@ -1036,4 +1061,40 @@ pub fn (mut func Function) memory_copy() {
 // WebAssembly instruction: `memory.copy`.
 pub fn (mut func Function) memory_fill() {
 	func.code << [u8(0xFC), 0x0B, 0x00]
+}
+
+// ref_null places a null reference on the stack.
+// WebAssembly instruction: `ref.null`.
+pub fn (mut func Function) ref_null(rt RefType) {
+	func.code << 0xD0 // ref.null
+	func.code << u8(rt)
+}
+
+// ref_is_null checks if the reference value on the stack is null, places an i32 boolean value on the stack.
+// WebAssembly instruction: `ref_is_null`.
+pub fn (mut func Function) ref_is_null(rt RefType) {
+	func.code << 0xD1 // ref_is_null
+}
+
+// ref_func places a reference to a function with `name` on the stack.
+// If this function does not exist when calling `compile` on the module, it will panic.
+// WebAssembly instruction: `ref.func`.
+pub fn (mut func Function) ref_func(name string) {
+	func.code << 0xD2 // ref.func
+	func.call_patches << FunctionCallPatch{
+		name: name
+		pos: func.code.len
+	}
+}
+
+// ref_func places a reference to an imported function with `name` on the stack.
+// If the imported function does not exist when calling `compile` on the module, it will panic.
+// WebAssembly instruction: `ref.func`.
+pub fn (mut func Function) ref_func_import(mod string, name string) {
+	func.code << 0xD2 // ref.func
+	func.call_patches << ImportCallPatch{
+		mod: mod
+		name: name
+		pos: func.code.len
+	}
 }

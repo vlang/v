@@ -48,7 +48,7 @@ pub fn new_request(method Method, url_ string, data string) Request {
 	}
 }
 
-// get sends a GET HTTP request to the give `url`.
+// get sends a GET HTTP request to the given `url`.
 pub fn get(url string) !Response {
 	return fetch(method: .get, url: url)
 }

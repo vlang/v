@@ -378,6 +378,19 @@ pub fn (mut app App) with_auth() bool {
 }
 ```
 
+### Fallback route
+You can implement a fallback `not_found` route that is called when a request is made and no 
+matching route is found.
+
+**Example:**
+
+``` v ignore
+pub fn (mut app App) not_found() vweb.Result {
+	app.set_status(404, 'Not Found')
+	return app.html('<h1>Page not found</h1>')
+}
+```
+
 ### Controllers
 Controllers can be used to split up app logic so you are able to have one struct 
 per `"/"`.  E.g. a struct `Admin` for urls starting with `"/admin"` and a struct `Foo`

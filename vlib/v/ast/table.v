@@ -102,7 +102,7 @@ pub fn new_table() &Table {
 	return t
 }
 
-__global global_table = &Table(0)
+__global global_table = &Table(unsafe { nil })
 
 pub fn set_global_table(t &Table) {
 	global_table = t
@@ -1313,7 +1313,8 @@ pub fn (t &Table) has_deep_child_no_ref(ts &TypeSymbol, name string) bool {
 	if ts.info is Struct {
 		for field in ts.info.fields {
 			sym := t.sym(field.typ)
-			if !field.typ.is_ptr() && (sym.name == name || t.has_deep_child_no_ref(sym, name)) {
+			if !field.typ.is_ptr() && ((sym.name == name && !field.typ.has_flag(.option))
+				|| t.has_deep_child_no_ref(sym, name)) {
 				return true
 			}
 		}
@@ -1523,6 +1524,18 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 				concrete_types)
 			{
 				idx := t.find_or_register_chan(typ, typ.nr_muls() > 0)
+				if typ.has_flag(.generic) {
+					return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
+				} else {
+					return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+				}
+			}
+		}
+		Thread {
+			if typ := t.resolve_generic_to_concrete(sym.info.return_type, generic_names,
+				concrete_types)
+			{
+				idx := t.find_or_register_thread(typ)
 				if typ.has_flag(.generic) {
 					return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
 				} else {
@@ -1771,6 +1784,11 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 		Chan {
 			unwrap_typ := t.unwrap_generic_type(ts.info.elem_type, generic_names, concrete_types)
 			idx := t.find_or_register_chan(unwrap_typ, unwrap_typ.nr_muls() > 0)
+			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
+		}
+		Thread {
+			unwrap_typ := t.unwrap_generic_type(ts.info.return_type, generic_names, concrete_types)
+			idx := t.find_or_register_thread(unwrap_typ)
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
 		Map {

@@ -154,7 +154,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			&& expected.has_flag(.result)) {
 			// IError
 			return true
-		} else if !c.check_basic(got, expected.clear_flag(.option).clear_flag(.result)) {
+		} else if !c.check_basic(got, expected.clear_flags(.option, .result)) {
 			return false
 		}
 	}

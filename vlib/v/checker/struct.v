@@ -56,6 +56,20 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 		util.timing_start('Checker.struct setting default_expr_typ')
 		old_expected_type := c.expected_type
 		for mut field in node.fields {
+			// when the field has the same type that the struct itself (recursive)
+			if field.typ.clear_flag(.option).set_nr_muls(0) == struct_typ_idx {
+				for mut symfield in struct_sym.info.fields {
+					if symfield.name == field.name {
+						// only ?&Struct is allowed to be recursive
+						if field.typ.is_ptr() {
+							symfield.is_recursive = true
+						} else {
+							c.error('recursive struct is only possible with optional pointer (e.g. ?&${c.table.type_to_str(field.typ.clear_flag(.option))})',
+								node.pos)
+						}
+					}
+				}
+			}
 			if field.has_default_expr {
 				c.expected_type = field.typ
 				field.default_expr_typ = c.expr(field.default_expr)
@@ -522,7 +536,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					}
 				} else {
 					if field_info.typ.is_ptr() && !expr_type.is_real_pointer()
-						&& field.expr.str() != '0' {
+						&& field.expr.str() != '0' && !field_info.typ.has_flag(.option) {
 						c.error('reference field must be initialized with reference',
 							field.pos)
 					}
@@ -598,8 +612,9 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					}
 					continue
 				}
-				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !node.has_update_expr
-					&& !c.pref.translated && !c.file.is_translated {
+				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f)
+					&& !field.typ.has_flag(.option) && !node.has_update_expr && !c.pref.translated
+					&& !c.file.is_translated {
 					c.warn('reference field `${type_sym.name}.${field.name}` must be initialized',
 						node.pos)
 					continue
@@ -721,7 +736,8 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 			// an embedded struct field
 			continue
 		}
-		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.has_default_expr {
+		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.typ.has_flag(.option)
+			&& !field.has_default_expr {
 			c.warn('reference field `${linked_name}.${field.name}` must be initialized (part of struct `${struct_sym.name}`)',
 				node.pos)
 			continue

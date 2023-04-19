@@ -255,8 +255,10 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 
 fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	// p.comptime_for() handles these special forms:
-	// $for method in App(methods) {
-	// $for field in App(fields) {
+	// `$for method in App.methods {`
+	// `$for val in App.values {`
+	// `$for field in App.fields {`
+	// `$for attr in App.attributes {`
 	p.next()
 	p.check(.key_for)
 	var_pos := p.tok.pos()

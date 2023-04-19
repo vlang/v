@@ -279,6 +279,9 @@ fn (db DB) handle_error_or_result(res voidptr, elabel string) ![]Row {
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
 		C.PQclear(res)
+		$if trace_pg_error ? {
+			eprintln('pg error: ${e}')
+		}
 		return error('pg ${elabel} error:\n${e}')
 	}
 	return res_to_rows(res)
