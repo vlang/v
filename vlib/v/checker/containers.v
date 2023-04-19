@@ -54,10 +54,6 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				}
 			}
 		}
-		if c.table.sym(node.typ).name == '[]array' {
-			c.error('`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc',
-				node.pos)
-		}
 		if node.exprs.len == 0 {
 			if node.has_cap {
 				c.check_array_init_para_type('cap', node.cap_expr, node.pos)
@@ -110,6 +106,11 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		}
 		return node.typ
 	}
+	if c.table.sym(node.typ).name == '[]array' {
+		c.error('`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc',
+			node.pos)
+	}
+
 	if node.is_fixed {
 		c.ensure_sumtype_array_has_default_value(node)
 		c.ensure_type_exists(node.elem_type, node.elem_type_pos) or {}
