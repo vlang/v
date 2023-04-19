@@ -23,14 +23,14 @@ fn (wr &Writer) write2[T](val T) {
 fn encode_struct[T](val T) map[string][]string {
 	wr := Writer{}
 	mut out := map[string][]string{}
-	$if T is $Struct {
+	$if T is $struct {
 		$for field in T.fields {
 			value := val.$(field.name)
 			$if field.typ is ?int {
 				// work if comment lines 27 and 28
 				write1(value)
 				wr.write2(value)
-				out[field.name] << '${value}'
+				out[field.name] << '${value:d}'
 			} $else {
 				write1(value)
 				wr.write2(value)
@@ -40,7 +40,7 @@ fn encode_struct[T](val T) map[string][]string {
 			$if field.is_option {
 				write1(value)
 				wr.write2(value)
-				out[field.name] << '${value}'
+				out[field.name] << '${value:d}'
 			} $else {
 				write1(value)
 				wr.write2(value)

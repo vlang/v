@@ -79,7 +79,7 @@ To query for a value that might not be in the document you
 can use the `.default_to(...)` function to provide a
 default value.
 
-For cases where a default value might not be appropiate or
+For cases where a default value might not be appropriate or
 to check if a value exists you can use `doc.value_opt('query')!`
 instead.
 

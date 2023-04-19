@@ -1,15 +1,14 @@
 module help
 
-// TODO: move this file outside internal, and merge it with cmd/tools/modules/vhelp/vhelp.v .
 import os
-import v.pref
 
 const (
 	unknown_topic = '`v help`: unknown help topic provided. Use `v help` for usage information.'
 )
 
+// print_and_exit Prints the help topic and exits
 pub fn print_and_exit(topic string) {
-	vexe := pref.vexe_path()
+	vexe := @VEXE
 	vroot := os.dir(vexe)
 	topicdir := os.join_path(vroot, 'vlib', 'v', 'help')
 
@@ -20,14 +19,47 @@ pub fn print_and_exit(topic string) {
 		eprintln(help.unknown_topic)
 		exit(1)
 	}
-	// `init` has the same help topic as `new`
-	name := if topic == 'init' { 'new' } else { topic }
+
+	mut path_to := topic
+	mut topics := os.walk_ext(topicdir, '.txt')
+	mut items := [][]string{}
+
+	mut item_rev := []string{}
+	mut delim := ''
+
+	// Getting the directory, splitting at `/`, trimming to only indexes 0 and 1,
+	// and reversing that into the items array
+	for mut item in topics {
+		$if windows {
+			delim = '\\'
+		} $else {
+			delim = '/'
+		}
+		item_rev = item.split(delim).reverse()
+		item_rev.trim(2)
+		items << item_rev.reverse()
+	}
+
+	// Getting the path to the help topic text file
+	for cmds in items {
+		if '${topic}.txt' in cmds {
+			path_to = '${cmds[0]}/${cmds[1].replace('.txt', '')}'
+			break
+		}
+	}
+
+	topic_dir := if topic == 'default' {
+		os.join_path(topicdir, 'default.txt')
+	} else {
+		os.join_path(topicdir, '${path_to}.txt')
+	}
+
 	if topic == 'topics' {
 		println(known_topics(topicdir))
 		exit(0)
 	}
-	target_topic := os.join_path(topicdir, '${name}.txt')
-	content := os.read_file(target_topic) or {
+
+	content := os.read_file(topic_dir) or {
 		eprintln(help.unknown_topic)
 		eprintln(known_topics(topicdir))
 		exit(1)
@@ -36,13 +68,14 @@ pub fn print_and_exit(topic string) {
 	exit(0)
 }
 
+// known_topics Getting topics known to V
 fn known_topics(topicdir string) string {
 	mut res := []string{}
 	res << 'Known help topics: '
-	topic_files := os.glob(os.join_path(topicdir, '*.txt')) or { [] }
-	mut topics := topic_files.map(os.file_name(it).replace('.txt', ''))
+
+	mut topics := os.walk_ext(topicdir, '.txt').map(os.file_name(it).replace('.txt', ''))
 	topics.sort()
 	res << topics.join(', ')
 	res << '.'
-	return res.join('')
+	return res.join('').replace('default, ', '')
 }

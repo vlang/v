@@ -4,7 +4,7 @@ import toml.to
 import toml.ast
 
 const empty_toml_document = toml.Doc{
-	ast: &ast.Root(0)
+	ast: &ast.Root(unsafe { nil })
 }
 
 const (

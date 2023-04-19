@@ -137,7 +137,7 @@ fn test_pg_orm() {
 
 	sql db {
 		create table TestCustomSqlType
-	}
+	}!
 
 	mut result_custom_sql := db.exec("
 		SELECT DATA_TYPE
@@ -157,7 +157,7 @@ fn test_pg_orm() {
 
 	sql db {
 		drop table TestCustomSqlType
-	}
+	}!
 
 	assert information_schema_data_types_results == information_schema_custom_sql
 
@@ -180,19 +180,19 @@ fn test_pg_orm() {
 
 	sql db {
 		create table TestTimeType
-	}
+	}!
 
 	sql db {
 		insert model into TestTimeType
-	}
+	}!
 
 	results := sql db {
 		select from TestTimeType where username == 'hitalo'
-	}
+	}!
 
 	sql db {
 		drop table TestTimeType
-	}
+	}!
 
 	assert results[0].username == model.username
 	assert results[0].created_at == model.created_at
@@ -203,7 +203,7 @@ fn test_pg_orm() {
 	*/
 	sql db {
 		create table TestDefaultAtribute
-	}
+	}!
 
 	mut result_defaults := db.exec("
 		SELECT column_default
@@ -221,6 +221,6 @@ fn test_pg_orm() {
 	}
 	sql db {
 		drop table TestDefaultAtribute
-	}
+	}!
 	assert ['gen_random_uuid()', '', 'CURRENT_TIMESTAMP'] == information_schema_defaults_results
 }

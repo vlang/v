@@ -286,3 +286,9 @@ fn test_add_seconds_to_time() {
 	future_tm := now_tm.add_seconds(60)
 	assert now_tm.unix < future_tm.unix
 }
+
+fn test_plus_equals_duration() {
+	mut d := time.second
+	d += time.second
+	assert d == 2 * time.second
+}

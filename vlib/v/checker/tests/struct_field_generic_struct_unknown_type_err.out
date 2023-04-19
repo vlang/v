@@ -5,3 +5,9 @@ vlib/v/checker/tests/struct_field_generic_struct_unknown_type_err.vv:9:7: error:
       |       ~~~~~~~~~~~~~~~~~~
    10 | }
    11 |
+vlib/v/checker/tests/struct_field_generic_struct_unknown_type_err.vv:13:9: error: unknown type `UnknownType`
+   11 |
+   12 | fn main() {
+   13 |     _ = MyType {}
+      |         ~~~~~~~~~
+   14 | }

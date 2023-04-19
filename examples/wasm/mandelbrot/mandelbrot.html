@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>V Mandelbrot WebAssembly Example</title>
+</head>
+<body>
+	<canvas id="canvas" width="200" height="200" style="width:100%;height:100%;image-rendering: crisp-edges;"></canvas>
+	<script>
+		var canvas = document.getElementById("canvas");
+		var ctx = canvas.getContext("2d");
+		var memory;
+
+		function get_string(ptr, len) {
+			const buf = new Uint8Array(memory.buffer, ptr, len);
+			const str = new TextDecoder("utf8").decode(buf);
+
+			return str
+		}
+
+		const env = {
+			canvas_x: () => canvas.width,
+			canvas_y: () => canvas.height,
+			setpixel: (x, y, c) => {
+				ctx.fillStyle = "rgba(1,1,1,"+(c/255)+")";
+				ctx.fillRect(x, y, 1, 1);
+			},
+			__writeln: (ptr, len) => {
+				console.log(get_string(ptr, len))
+			},
+			__panic_abort: (ptr, len) => {
+				throw get_string(ptr, len);
+			}
+		}
+
+		WebAssembly.instantiateStreaming(fetch("mandelbrot.wasm"), {env: env}).then((res) => {
+			memory = res.instance.exports['memory'];
+			
+			console.time('main.main')
+			res.instance.exports['main.main']()
+			console.timeEnd('main.main')
+		});
+	</script>
+</body>
+</html>

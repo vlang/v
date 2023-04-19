@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -123,6 +123,16 @@ struct _option {
 	// Data is trailing after err
 	// and is not included in here but in the
 	// derived _option_xxx types
+}
+
+fn _option_none(data voidptr, mut option _option, size int) {
+	unsafe {
+		*option = _option{
+			state: 2
+		}
+		// use err to get the end of OptionBase and then memcpy into it
+		vmemcpy(&u8(&option.err) + sizeof(IError), data, size)
+	}
 }
 
 fn _option_ok(data voidptr, mut option _option, size int) {

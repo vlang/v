@@ -1,0 +1,16 @@
+struct Bar[K] {
+}
+
+struct Foo[K] {
+mut:
+	bars []Bar[K]
+}
+
+fn main() {
+	mut f := Foo[int]{[Bar[int]{}]}
+	f.xy()
+}
+
+pub fn (mut f Foo[K]) xy() {
+	f.bars.delete(0)
+}

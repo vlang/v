@@ -8,9 +8,6 @@ import strings
 #include <sys/utsname.h>
 #include <sys/types.h>
 #include <utime.h>
-$if !solaris && !haiku && !emscripten ? {
-	#include <sys/ptrace.h>
-}
 
 pub const (
 	path_separator = '/'
@@ -63,8 +60,6 @@ fn C.getppid() int
 fn C.getgid() int
 
 fn C.getegid() int
-
-fn C.ptrace(u32, u32, voidptr, int) u64
 
 enum GlobMatch {
 	exact
@@ -240,7 +235,7 @@ pub fn uname() Uname {
 	return u
 }
 
-pub fn hostname() string {
+pub fn hostname() !string {
 	mut hstnme := ''
 	size := 256
 	mut buf := unsafe { &char(malloc_noscan(size)) }
@@ -249,15 +244,15 @@ pub fn hostname() string {
 		unsafe { free(buf) }
 		return hstnme
 	}
-	return ''
+	return error(posix_get_error_msg(C.errno))
 }
 
-pub fn loginname() string {
+pub fn loginname() !string {
 	x := C.getlogin()
 	if !isnil(x) {
 		return unsafe { cstring_to_vstring(x) }
 	}
-	return ''
+	return error(posix_get_error_msg(C.errno))
 }
 
 fn init_os_args(argc int, argv &&u8) []string {
@@ -277,7 +272,7 @@ pub fn ls(path string) ![]string {
 	if isnil(dir) {
 		return error('ls() couldnt open dir "${path}"')
 	}
-	mut ent := &C.dirent(0)
+	mut ent := &C.dirent(unsafe { nil })
 	// mut ent := &C.dirent{!}
 	for {
 		ent = C.readdir(dir)
@@ -434,18 +429,6 @@ pub fn (mut f File) close() {
 	C.fclose(f.cfile)
 }
 
-[inline]
-pub fn debugger_present() bool {
-	// check if the parent could trace its process,
-	// if not a debugger must be present
-	$if linux {
-		return C.ptrace(C.PTRACE_TRACEME, 0, 1, 0) == -1
-	} $else $if macos {
-		return C.ptrace(C.PT_TRACE_ME, 0, voidptr(1), 0) == -1
-	}
-	return false
-}
-
 fn C.mkstemp(stemplate &u8) int
 
 // ensure_folder_is_writable checks that `folder` exists, and is writable to the process
@@ -516,4 +499,10 @@ pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 		false { new_mode &= (0o7777 - mode) }
 	}
 	C.chmod(path, int(new_mode))
+}
+
+// get_long_path has no meaning for *nix, but has for windows, where `c:\folder\some~1` for example
+// can be the equivalent of `c:\folder\some spa ces`. On *nix, it just returns a copy of the input path.
+fn get_long_path(path string) !string {
+	return path
 }

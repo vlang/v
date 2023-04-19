@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -11,7 +11,6 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	p.top_level_statement_start()
 	// save attributes, they will be changed later in fields
 	attrs := p.attrs
-	p.attrs = []
 	start_pos := p.tok.pos()
 	mut is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -30,6 +29,8 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		ast.Language.c
 	} else if p.tok.lit == 'JS' && p.peek_tok.kind == .dot {
 		ast.Language.js
+	} else if p.tok.lit == 'WASM' && p.peek_tok.kind == .dot {
+		ast.Language.wasm
 	} else {
 		ast.Language.v
 	}
@@ -68,11 +69,6 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		p.error('`${p.tok.lit}` lacks body')
 		return ast.StructDecl{}
 	}
-	if language == .v && !p.builtin_mod && !p.is_translated && name.len > 0 && !name[0].is_capital()
-		&& !p.pref.translated && !p.is_translated && !is_anon {
-		p.error_with_pos('struct name `${name}` must begin with capital letter', name_pos)
-		return ast.StructDecl{}
-	}
 	if name.len == 1 {
 		p.error_with_pos('struct names must have more than one character', name_pos)
 		return ast.StructDecl{}
@@ -88,6 +84,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		orig_name = name
 	} else if language == .js {
 		name = 'JS.${name}'
+		orig_name = name
+	} else if language == .wasm {
+		name = 'WASM.${name}'
 		orig_name = name
 	} else {
 		name = p.prepend_mod(name)
@@ -267,6 +266,8 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			}
 			// Comments after type (same line)
 			comments << p.eat_comments()
+			prev_attrs := p.attrs
+			p.attrs = []
 			if p.tok.kind == .lsbr {
 				p.inside_struct_attr_decl = true
 				// attrs are stored in `p.attrs`
@@ -331,7 +332,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				is_volatile: is_field_volatile
 				is_deprecated: is_field_deprecated
 			}
-			p.attrs = []
+			p.attrs = prev_attrs
 			i++
 		}
 		p.top_level_statement_end()
@@ -393,10 +394,13 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	}
 }
 
-fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind) ast.StructInit {
+fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option bool) ast.StructInit {
 	first_pos := (if kind == .short_syntax && p.prev_tok.kind == .lcbr { p.prev_tok } else { p.tok }).pos()
 	p.struct_init_generic_types = []ast.Type{}
-	typ := if kind == .short_syntax { ast.void_type } else { p.parse_type() }
+	mut typ := if kind == .short_syntax { ast.void_type } else { p.parse_type() }
+	if is_option {
+		typ = typ.set_flag(.option)
+	}
 	p.expr_mod = ''
 	if kind != .short_syntax {
 		p.check(.lcbr)
@@ -509,7 +513,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		ast.Language.v
 	}
 	if language != .v {
-		p.next() // C || JS
+		p.next() // C || JS | WASM
 		p.next() // .
 	}
 	name_pos := p.tok.pos()

@@ -1,10 +1,26 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
 import v.ast
 import v.pref
 import v.token
+
+fn (mut c Checker) check_compatible_types(left_type ast.Type, right ast.TypeNode) ComptimeBranchSkipState {
+	right_type := c.unwrap_generic(right.typ)
+	sym := c.table.sym(right_type)
+
+	if sym.kind == .interface_ {
+		checked_type := c.unwrap_generic(left_type)
+		return if c.table.does_type_implement_interface(checked_type, right_type) {
+			.eval
+		} else {
+			.skip
+		}
+	} else {
+		return if left_type == right_type { .eval } else { .skip }
+	}
+}
 
 fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	if_kind := if node.is_comptime { '\$if' } else { 'if' }
@@ -46,7 +62,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			} else {
 				// check condition type is boolean
 				c.expected_type = ast.bool_type
-				cond_typ := c.unwrap_generic(c.expr(branch.cond))
+				cond_typ := c.table.unaliased_type(c.unwrap_generic(c.expr(branch.cond)))
 				if (cond_typ.idx() != ast.bool_type_idx || cond_typ.has_flag(.option)
 					|| cond_typ.has_flag(.result)) && !c.pref.translated && !c.file.is_translated {
 					c.error('non-bool type `${c.table.type_to_str(cond_typ)}` used as if condition',
@@ -55,6 +71,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 		}
 		if mut branch.cond is ast.IfGuardExpr {
+			if branch.cond.expr_type.clear_flags(.option, .result) == ast.void_type
+				&& !(branch.cond.vars.len == 1 && branch.cond.vars[0].name == '_') {
+				c.error('if guard expects non-propagate option or result', branch.pos)
+				continue
+			}
 			sym := c.table.sym(branch.cond.expr_type)
 			if sym.kind == .multi_return {
 				mr_info := sym.info as ast.MultiReturn
@@ -121,22 +142,25 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							comptime_field_name = left.expr.str()
 							c.comptime_fields_type[comptime_field_name] = got_type
 							is_comptime_type_is_expr = true
-						} else if right is ast.TypeNode && left is ast.TypeNode
-							&& sym.kind == .interface_ {
-							is_comptime_type_is_expr = true
-							// is interface
-							checked_type := c.unwrap_generic(left.typ)
-							skip_state = if c.table.does_type_implement_interface(checked_type,
-								got_type)
-							{
-								.eval
-							} else {
-								.skip
+							if comptime_field_name == c.comptime_for_field_var {
+								left_type := c.unwrap_generic(c.comptime_fields_default_type)
+								if left.field_name == 'typ' {
+									skip_state = c.check_compatible_types(left_type, right as ast.TypeNode)
+								} else if left.field_name == 'unaliased_typ' {
+									skip_state = c.check_compatible_types(c.table.unaliased_type(left_type),
+										right as ast.TypeNode)
+								}
+							} else if c.check_comptime_is_field_selector_bool(left) {
+								skip_state = if c.get_comptime_selector_bool_field(left.field_name) {
+									.eval
+								} else {
+									.skip
+								}
 							}
 						} else if left is ast.TypeNode {
 							is_comptime_type_is_expr = true
 							left_type := c.unwrap_generic(left.typ)
-							skip_state = if left_type == got_type { .eval } else { .skip }
+							skip_state = c.check_compatible_types(left_type, right as ast.TypeNode)
 						}
 					}
 				}
@@ -285,10 +309,30 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						if is_noreturn_callexpr(stmt.expr) {
 							continue
 						}
+						if (node.typ.has_flag(.option) || node.typ.has_flag(.result))
+							&& c.table.sym(stmt.typ).kind == .struct_
+							&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
+							stmt.expr = ast.CastExpr{
+								expr: stmt.expr
+								typname: 'IError'
+								typ: ast.error_type
+								expr_type: stmt.typ
+								pos: node.pos
+							}
+							stmt.typ = ast.error_type
+							continue
+						}
 						c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
 							node.pos)
+					} else {
+						if c.inside_assign && node.is_expr && !node.typ.has_flag(.shared_f)
+							&& stmt.typ.is_ptr() != node.typ.is_ptr()
+							&& stmt.typ != ast.voidptr_type {
+							c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
+								node.pos)
+						}
 					}
-				} else if !node.is_comptime {
+				} else if !node.is_comptime && stmt !is ast.Return {
 					c.error('`${if_kind}` expression requires an expression as the last statement of every branch',
 						branch.pos)
 				}

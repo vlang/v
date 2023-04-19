@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 import net.urllib
@@ -40,8 +40,8 @@ fn test_parse_query() {
 	q2 := urllib.parse_query('format="%l:+%c+%t"')!
 	// dump(q1)
 	// dump(q2)
-	assert q1.get('format') == '"%l: %c %t"'
-	assert q2.get('format') == '"%l: %c %t"'
+	assert q1.get('format')? == '"%l: %c %t"'
+	assert q2.get('format')? == '"%l: %c %t"'
 }
 
 fn test_parse_query_orders() {

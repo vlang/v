@@ -7,7 +7,7 @@ import v.ast
 import v.pref
 
 const (
-	vexe          = pref.vexe_path()
+	vexe          = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 	vroot         = os.dir(vexe)
 	support_color = term.can_show_color_on_stderr() && term.can_show_color_on_stdout()
 	ecode_timeout = 101
@@ -260,7 +260,7 @@ fn (mut context Context) print_status() {
 	if context.is_silent {
 		return
 	}
-	if (context.cut_index == 1) && (context.max_index == 0) {
+	if context.cut_index == 1 && context.max_index == 0 {
 		return
 	}
 	msg := '>   ${context.path:-30} | index: ${context.cut_index:5}/${context.max_index - 1:5}'

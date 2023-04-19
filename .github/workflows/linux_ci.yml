@@ -22,7 +22,7 @@ jobs:
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -99,6 +99,10 @@ jobs:
         run: |
           ./v examples/password
           ./v examples/password/password_ci.vsh
+      - name: Test readline
+        run: |
+          ./v examples/readline/readline_ci.v
+          ./v examples/readline/readline.vsh
 
 
   ubuntu-tcc-boehm-gc:
@@ -108,7 +112,7 @@ jobs:
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -163,10 +167,10 @@ jobs:
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
-          node-version: 12.x
+          node-version: 16
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -191,7 +195,7 @@ jobs:
       #    - name: Build Vorum
       #      run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
       - name: Build vpm
-        run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
+        run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . || ../v cmd/vpm && cd ..
       - name: Freestanding
         run: ./v -freestanding run vlib/os/bare/bare_example_linux.v
       - name: V self compilation
@@ -268,10 +272,10 @@ jobs:
     env:
       VFLAGS: -cc clang
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
-          node-version: 12.x
+          node-version: 16
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -360,7 +364,7 @@ jobs:
 #    env:
 #      VFLAGS: -cc gcc
 #    steps:
-#    - uses: actions/checkout@v2
+#    - uses: actions/checkout@v3
 #    - name: Build V
 #      run: make -j4
 #    - name: V self compilation with -autofree
@@ -375,10 +379,10 @@ jobs:
 #       VFLAGS: -cc musl-gcc
 #       V_CI_MUSL: 1
 #     steps:
-#     - uses: actions/checkout@v2
-#     - uses: actions/setup-node@v1
+#     - uses: actions/checkout@v3
+#     - uses: actions/setup-node@v3
 #       with:
-#         node-version: 12.x
+#         node-version: 16
 #     - name: Install dependencies
 #       run: |
 #          sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind

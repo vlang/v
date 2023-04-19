@@ -38,20 +38,26 @@ fn test_sql_or_block_for_insert() {
 	user := User{1, 'bilbo'}
 
 	eprintln('> inserting user 1 (first try)...')
+	mut is_user_inserted := true
+
 	sql db {
 		insert user into User
 	} or {
 		println('user should have been inserted, but could not, err: ${err}')
-		assert false
+		is_user_inserted = false
 	}
+
+	assert is_user_inserted
 
 	eprintln('> inserting user 1 (second try)...')
 	sql db {
 		insert user into User
 	} or {
-		assert true
 		println('user could not be inserted, err: ${err}')
+		is_user_inserted = false
 	}
+
+	assert !is_user_inserted
 	eprintln('LINE: ${@LINE}')
 	db.close()!
 }
@@ -60,26 +66,26 @@ fn test_sql_or_block_for_select() {
 	mut db := sqlite.connect(db_path)!
 
 	eprintln('> selecting user with id 1...')
-	single := sql db {
+	mut users := sql db {
 		select from User where id == 1
 	} or {
 		eprintln('could not select user, err: ${err}')
-		User{0, ''}
+		[]User{}
 	}
 	eprintln('LINE: ${@LINE}')
 
+	single := users.first()
 	assert single.id == 1
 
-	failed := sql db {
+	users = sql db {
 		select from User where id == 0
 	} or {
 		eprintln('could not select user, err: ${err}')
-		User{0, ''}
+		[]User{}
 	}
 	eprintln('LINE: ${@LINE}')
 
-	assert failed.id == 0
-	assert failed.name == ''
+	assert users.len == 0
 	eprintln('LINE: ${@LINE}')
 
 	eprintln('> selecting users...')

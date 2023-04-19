@@ -24,8 +24,7 @@ pub fn smart_quote(str string, raw bool) string {
 		mut is_pure := true
 		for i := 0; i < len; i++ {
 			ch := u8(str[i])
-			if (ch >= 37 && ch <= 90) || (ch >= 95 && ch <= 126)
-				|| (ch in [` `, `!`, `#`, `[`, `]`]) {
+			if (ch >= 37 && ch <= 90) || (ch >= 95 && ch <= 126) || ch in [` `, `!`, `#`, `[`, `]`] {
 				// safe punctuation + digits + big latin letters,
 				// small latin letters + more safe punctuation,
 				// important punctuation exceptions, that are not

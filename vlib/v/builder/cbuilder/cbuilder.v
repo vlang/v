@@ -36,6 +36,18 @@ pub fn compile_c(mut b builder.Builder) {
 	}
 }
 
+pub fn build_c(mut b builder.Builder, v_files []string, out_file string) {
+	b.out_name_c = out_file
+	b.pref.out_name_c = os.real_path(out_file)
+	b.info('build_c(${out_file})')
+	output2 := gen_c(mut b, v_files)
+	os.write_file(out_file, output2) or { panic(err) }
+	if b.pref.is_stats {
+		b.stats_lines = output2.count('\n') + 1
+		b.stats_bytes = output2.len
+	}
+}
+
 pub fn gen_c(mut b builder.Builder, v_files []string) string {
 	b.front_and_middle_stages(v_files) or {
 		if err.code() > 7000 {
@@ -55,16 +67,4 @@ pub fn gen_c(mut b builder.Builder, v_files []string) string {
 	}
 
 	return res
-}
-
-pub fn build_c(mut b builder.Builder, v_files []string, out_file string) {
-	b.out_name_c = out_file
-	b.pref.out_name_c = os.real_path(out_file)
-	b.info('build_c(${out_file})')
-	output2 := gen_c(mut b, v_files)
-	os.write_file(out_file, output2) or { panic(err) }
-	if b.pref.is_stats {
-		b.stats_lines = output2.count('\n') + 1
-		b.stats_bytes = output2.len
-	}
 }

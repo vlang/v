@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_insert_object_with_mismatched_type_error.vv:19:10: error: cannot use `Tiddler` as `Tiddlers`
+   17 |     sql db {
+   18 |         create table Tiddlers
+   19 |         insert tiddler into Tiddlers
+      |                ~~~~~~~
+   20 |     }!
+   21 | }

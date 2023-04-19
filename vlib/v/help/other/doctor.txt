@@ -1,0 +1,4 @@
+Display some useful info about your system necessary for bug reports.
+
+Usage:
+  v doctor

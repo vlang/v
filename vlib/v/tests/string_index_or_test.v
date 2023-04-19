@@ -48,5 +48,5 @@ fn test_propagation() {
 	x := get_propagate(s, 2) or { '${err}' }
 	y := get_propagate(s, 5) or { '${err}' }
 	assert x == 'got `c`'
-	assert y == 'string index out of range'
+	assert y == 'none'
 }

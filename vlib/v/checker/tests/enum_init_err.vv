@@ -1,0 +1,10 @@
+enum Hello {
+	aaa
+	bbb
+	ccc
+}
+
+fn main() {
+	a := Hello{}
+	println(a)
+}

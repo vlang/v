@@ -1,7 +1,0 @@
-vlib/v/checker/tests/option_or_block_none_err.vv:19:32: error: wrong return type `none` in the `or {}` block, expected `Animal`
-   17 |
-   18 | fn main() {
-   19 |     mut dog := new_animal(9) or { none }
-      |                                   ~~~~
-   20 |
-   21 |     println(dog)

@@ -4,8 +4,9 @@ The vlib/v/preludes/ contains small v code snippets, that V uses when
 compiling certain v programs. V adds the files below automatically itself.
 Each file is used in different situations (see below).
 
-NB: preludes are *NOT* intended to be used by user programs/modules.
-The folder vlib/v/preludes/ is *NOT* a v module.
+> **Note**
+> Preludes are *NOT* intended to be used by user programs/modules.
+> The folder vlib/v/preludes/ is *NOT* a v module.
 
 ## Details:
 

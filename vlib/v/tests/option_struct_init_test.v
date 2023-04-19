@@ -1,22 +1,20 @@
-struct Foo {
-	a int
-	b int
-	c int
+pub struct MyStruct {
+pub mut:
+	valueb ?int
 }
 
-struct Holder {
-mut:
-	i int
+pub struct MyStruct2 {
+pub mut:
+	valuea int
+	valueb ?MyStruct
 }
 
-fn add(mut h Holder) ?int {
-	h.i++
-	return h.i
-}
-
-fn test_struct_init_with_multiple_options() {
-	mut h := Holder{}
-	foo := Foo{add(mut h) or { 0 }, add(mut h) or { 0 }, add(mut h) or { 0 }}
-
-	assert foo == Foo{1, 2, 3}
+fn test_main() {
+	a := MyStruct2{
+		valuea: 1
+	}
+	assert a.str() == 'MyStruct2{
+    valuea: 1
+    valueb: Option(none)
+}'
 }

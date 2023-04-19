@@ -1,0 +1,11 @@
+struct User {
+	id int
+}
+
+fn main() {
+	db := true
+
+	_ := sql db {
+		select from User
+	}
+}

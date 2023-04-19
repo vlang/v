@@ -24,10 +24,8 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	}
 	if !(typ_sym.is_number() || ((c.inside_unsafe || c.pref.translated) && is_non_void_pointer)) {
 		if c.inside_comptime_for_field {
-			if c.is_comptime_var(node.expr) {
-				return c.comptime_fields_default_type
-			} else if node.expr is ast.ComptimeSelector {
-				return c.comptime_fields_default_type
+			if c.is_comptime_var(node.expr) || node.expr is ast.ComptimeSelector {
+				return c.unwrap_generic(c.get_comptime_var_type(node.expr))
 			}
 		}
 
@@ -37,5 +35,6 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	} else {
 		node.auto_locked, _ = c.fail_if_immutable(node.expr)
 	}
+	node.typ = typ
 	return typ
 }

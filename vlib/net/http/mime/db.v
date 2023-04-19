@@ -184,6 +184,12 @@ const (
 			compressible: false
 			charset: ''
 		}
+		'application/appinstaller':                                                             MimeType{
+			source: ''
+			extensions: ['appinstaller']
+			compressible: false
+			charset: ''
+		}
 		'application/applefile':                                                                MimeType{
 			source: 'iana'
 			extensions: []
@@ -193,6 +199,18 @@ const (
 		'application/applixware':                                                               MimeType{
 			source: 'apache'
 			extensions: ['aw']
+			compressible: false
+			charset: ''
+		}
+		'application/appx':                                                                     MimeType{
+			source: ''
+			extensions: ['appx']
+			compressible: false
+			charset: ''
+		}
+		'application/appxbundle':                                                               MimeType{
+			source: ''
+			extensions: ['appxbundle']
 			compressible: false
 			charset: ''
 		}
@@ -284,6 +302,18 @@ const (
 			source: 'iana'
 			extensions: []
 			compressible: true
+			charset: ''
+		}
+		'application/automationml-aml+xml':                                                     MimeType{
+			source: 'iana'
+			extensions: ['aml']
+			compressible: true
+			charset: ''
+		}
+		'application/automationml-amlx+zip':                                                    MimeType{
+			source: 'iana'
+			extensions: ['amlx']
+			compressible: false
 			charset: ''
 		}
 		'application/bacnet-xdd+zip':                                                           MimeType{
@@ -496,6 +526,12 @@ const (
 			compressible: false
 			charset: ''
 		}
+		'application/concise-problem-details+cbor':                                             MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
 		'application/conference-info+xml':                                                      MimeType{
 			source: 'iana'
 			extensions: []
@@ -515,6 +551,12 @@ const (
 			charset: ''
 		}
 		'application/cose-key-set':                                                             MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
+		'application/cose-x509':                                                                MimeType{
 			source: 'iana'
 			extensions: []
 			compressible: false
@@ -788,6 +830,12 @@ const (
 			source: 'iana'
 			extensions: []
 			compressible: false
+			charset: ''
+		}
+		'application/emergencycalldata.legacyesn+json':                                         MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: true
 			charset: ''
 		}
 		'application/emergencycalldata.providerinfo+xml':                                       MimeType{
@@ -1282,6 +1330,12 @@ const (
 			compressible: true
 			charset: ''
 		}
+		'application/logout+jwt':                                                               MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
 		'application/lost+xml':                                                                 MimeType{
 			source: 'iana'
 			extensions: ['lostxml']
@@ -1560,7 +1614,7 @@ const (
 		}
 		'application/mp4':                                                                      MimeType{
 			source: 'iana'
-			extensions: ['mp4s', 'm4p']
+			extensions: ['mp4', 'mpg4', 'mp4s', 'm4p']
 			compressible: false
 			charset: ''
 		}
@@ -1605,6 +1659,18 @@ const (
 			extensions: []
 			compressible: true
 			charset: 'UTF-8'
+		}
+		'application/msix':                                                                     MimeType{
+			source: ''
+			extensions: ['msix']
+			compressible: false
+			charset: ''
+		}
+		'application/msixbundle':                                                               MimeType{
+			source: ''
+			extensions: ['msixbundle']
+			compressible: false
+			charset: ''
 		}
 		'application/msword':                                                                   MimeType{
 			source: 'iana'
@@ -2077,7 +2143,7 @@ const (
 			charset: ''
 		}
 		'application/remote-printing':                                                          MimeType{
-			source: 'iana'
+			source: 'apache'
 			extensions: []
 			compressible: false
 			charset: ''
@@ -2140,6 +2206,12 @@ const (
 			source: 'iana'
 			extensions: ['rusd']
 			compressible: true
+			charset: ''
+		}
+		'application/rpki-checklist':                                                           MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
 			charset: ''
 		}
 		'application/rpki-ghostbusters':                                                        MimeType{
@@ -2498,7 +2570,7 @@ const (
 		}
 		'application/sql':                                                                      MimeType{
 			source: 'iana'
-			extensions: []
+			extensions: ['sql']
 			compressible: false
 			charset: ''
 		}
@@ -2536,6 +2608,12 @@ const (
 			source: 'iana'
 			extensions: []
 			compressible: true
+			charset: ''
+		}
+		'application/swid+cbor':                                                                MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
 			charset: ''
 		}
 		'application/swid+xml':                                                                 MimeType{
@@ -2676,6 +2754,12 @@ const (
 			compressible: true
 			charset: ''
 		}
+		'application/tm+json':                                                                  MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: true
+			charset: ''
+		}
 		'application/tnauthlist':                                                               MimeType{
 			source: 'iana'
 			extensions: []
@@ -2802,7 +2886,25 @@ const (
 			compressible: true
 			charset: ''
 		}
+		'application/vnd.3gpp-prose-pc3a+xml':                                                  MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: true
+			charset: ''
+		}
+		'application/vnd.3gpp-prose-pc3ach+xml':                                                MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: true
+			charset: ''
+		}
 		'application/vnd.3gpp-prose-pc3ch+xml':                                                 MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: true
+			charset: ''
+		}
+		'application/vnd.3gpp-prose-pc8+xml':                                                   MimeType{
 			source: 'iana'
 			extensions: []
 			compressible: true
@@ -3066,6 +3168,18 @@ const (
 			compressible: false
 			charset: ''
 		}
+		'application/vnd.3gpp.seal-info+xml':                                                   MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: true
+			charset: ''
+		}
+		'application/vnd.3gpp.seal-location-info+xml':                                          MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: true
+			charset: ''
+		}
 		'application/vnd.3gpp.sms':                                                             MimeType{
 			source: 'iana'
 			extensions: []
@@ -3097,6 +3211,12 @@ const (
 			charset: ''
 		}
 		'application/vnd.3gpp.ussd+xml':                                                        MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: true
+			charset: ''
+		}
+		'application/vnd.3gpp.vae-info+xml':                                                    MimeType{
 			source: 'iana'
 			extensions: []
 			compressible: true
@@ -3414,6 +3534,12 @@ const (
 			compressible: false
 			charset: ''
 		}
+		'application/vnd.apexlang':                                                             MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
 		'application/vnd.api+json':                                                             MimeType{
 			source: 'iana'
 			extensions: []
@@ -3565,6 +3691,12 @@ const (
 			charset: ''
 		}
 		'application/vnd.belightsoft.lhzd+zip':                                                 MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
+		'application/vnd.belightsoft.lhzl+zip':                                                 MimeType{
 			source: 'iana'
 			extensions: []
 			compressible: false
@@ -3741,6 +3873,18 @@ const (
 		'application/vnd.cluetrust.cartomobile-config-pkg':                                     MimeType{
 			source: 'iana'
 			extensions: ['c11amz']
+			compressible: false
+			charset: ''
+		}
+		'application/vnd.cncf.helm.chart.content.v1.tar+gzip':                                  MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
+		'application/vnd.cncf.helm.chart.provenance.v1.prov':                                   MimeType{
+			source: 'iana'
+			extensions: []
 			compressible: false
 			charset: ''
 		}
@@ -4017,6 +4161,12 @@ const (
 		'application/vnd.data-vision.rdz':                                                      MimeType{
 			source: 'iana'
 			extensions: ['rdz']
+			compressible: false
+			charset: ''
+		}
+		'application/vnd.datalog':                                                              MimeType{
+			source: 'iana'
+			extensions: []
 			compressible: false
 			charset: ''
 		}
@@ -4375,6 +4525,12 @@ const (
 			charset: ''
 		}
 		'application/vnd.efi.iso':                                                              MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
+		'application/vnd.eln+zip':                                                              MimeType{
 			source: 'iana'
 			extensions: []
 			compressible: false
@@ -4884,6 +5040,48 @@ const (
 			compressible: true
 			charset: ''
 		}
+		'application/vnd.gentoo.catmetadata+xml':                                               MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: true
+			charset: ''
+		}
+		'application/vnd.gentoo.ebuild':                                                        MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
+		'application/vnd.gentoo.eclass':                                                        MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
+		'application/vnd.gentoo.gpkg':                                                          MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
+		'application/vnd.gentoo.manifest':                                                      MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
+		'application/vnd.gentoo.pkgmetadata+xml':                                               MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: true
+			charset: ''
+		}
+		'application/vnd.gentoo.xpak':                                                          MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
 		'application/vnd.geo+json':                                                             MimeType{
 			source: 'apache'
 			extensions: []
@@ -5017,6 +5215,12 @@ const (
 			charset: ''
 		}
 		'application/vnd.gov.sk.xmldatacontainer+xml':                                          MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: true
+			charset: ''
+		}
+		'application/vnd.gpxsee.map+xml':                                                       MimeType{
 			source: 'iana'
 			extensions: []
 			compressible: true
@@ -5163,6 +5367,12 @@ const (
 		'application/vnd.hp-pclxl':                                                             MimeType{
 			source: 'iana'
 			extensions: ['pclxl']
+			compressible: false
+			charset: ''
+		}
+		'application/vnd.hsl':                                                                  MimeType{
+			source: 'iana'
+			extensions: []
 			compressible: false
 			charset: ''
 		}
@@ -5407,6 +5617,18 @@ const (
 			charset: ''
 		}
 		'application/vnd.ipld.car':                                                             MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
+		'application/vnd.ipld.dag-cbor':                                                        MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
+		'application/vnd.ipld.dag-json':                                                        MimeType{
 			source: 'iana'
 			extensions: []
 			compressible: false
@@ -5823,6 +6045,12 @@ const (
 		'application/vnd.mediastation.cdkey':                                                   MimeType{
 			source: 'iana'
 			extensions: ['cdkey']
+			compressible: false
+			charset: ''
+		}
+		'application/vnd.medicalholodeck.recordxr':                                             MimeType{
+			source: 'iana'
+			extensions: []
 			compressible: false
 			charset: ''
 		}
@@ -6570,6 +6798,12 @@ const (
 			compressible: false
 			charset: ''
 		}
+		'application/vnd.oasis.opendocument.base':                                              MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
 		'application/vnd.oasis.opendocument.chart':                                             MimeType{
 			source: 'iana'
 			extensions: ['odc']
@@ -6583,7 +6817,7 @@ const (
 			charset: ''
 		}
 		'application/vnd.oasis.opendocument.database':                                          MimeType{
-			source: 'iana'
+			source: 'apache'
 			extensions: ['odb']
 			compressible: false
 			charset: ''
@@ -8202,6 +8436,12 @@ const (
 			compressible: false
 			charset: ''
 		}
+		'application/vnd.smintio.portals.archive':                                              MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
 		'application/vnd.snesdev-page-table':                                                   MimeType{
 			source: 'iana'
 			extensions: []
@@ -8395,6 +8635,12 @@ const (
 			charset: ''
 		}
 		'application/vnd.swiftview-ics':                                                        MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
+		'application/vnd.sybyl.mol2':                                                           MimeType{
 			source: 'iana'
 			extensions: []
 			compressible: false
@@ -8778,6 +9024,12 @@ const (
 			compressible: false
 			charset: ''
 		}
+		'application/vnd.wasmflow.wafl':                                                        MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
 		'application/vnd.webturbo':                                                             MimeType{
 			source: 'iana'
 			extensions: ['wtb']
@@ -8835,6 +9087,12 @@ const (
 		'application/vnd.wolfram.player':                                                       MimeType{
 			source: 'iana'
 			extensions: ['nbp']
+			compressible: false
+			charset: ''
+		}
+		'application/vnd.wordlift':                                                             MimeType{
+			source: 'iana'
+			extensions: []
 			compressible: false
 			charset: ''
 		}
@@ -11377,7 +11635,7 @@ const (
 			charset: ''
 		}
 		'image/apng':                                                                           MimeType{
-			source: ''
+			source: 'iana'
 			extensions: ['apng']
 			compressible: false
 			charset: ''
@@ -11415,6 +11673,12 @@ const (
 		'image/dicom-rle':                                                                      MimeType{
 			source: 'iana'
 			extensions: ['drle']
+			compressible: false
+			charset: ''
+		}
+		'image/dpx':                                                                            MimeType{
+			source: 'iana'
+			extensions: ['dpx']
 			compressible: false
 			charset: ''
 		}
@@ -11516,7 +11780,7 @@ const (
 		}
 		'image/jpm':                                                                            MimeType{
 			source: 'iana'
-			extensions: ['jpm']
+			extensions: ['jpm', 'jpgm']
 			compressible: false
 			charset: ''
 		}
@@ -11744,7 +12008,7 @@ const (
 		}
 		'image/vnd.mozilla.apng':                                                               MimeType{
 			source: 'iana'
-			extensions: ['apng']
+			extensions: []
 			compressible: false
 			charset: ''
 		}
@@ -11839,7 +12103,7 @@ const (
 			charset: ''
 		}
 		'image/webp':                                                                           MimeType{
-			source: 'apache'
+			source: 'iana'
 			extensions: ['webp']
 			compressible: false
 			charset: ''
@@ -11967,6 +12231,12 @@ const (
 		'image/x-xwindowdump':                                                                  MimeType{
 			source: 'apache'
 			extensions: ['xwd']
+			compressible: false
+			charset: ''
+		}
+		'message/bhttp':                                                                        MimeType{
+			source: 'iana'
+			extensions: []
 			compressible: false
 			charset: ''
 		}
@@ -12120,6 +12390,12 @@ const (
 			compressible: false
 			charset: ''
 		}
+		'model/jt':                                                                             MimeType{
+			source: 'iana'
+			extensions: ['jt']
+			compressible: false
+			charset: ''
+		}
 		'model/mesh':                                                                           MimeType{
 			source: 'iana'
 			extensions: ['msh', 'mesh', 'silo']
@@ -12177,6 +12453,12 @@ const (
 		'model/u3d':                                                                            MimeType{
 			source: 'iana'
 			extensions: ['u3d']
+			compressible: false
+			charset: ''
+		}
+		'model/vnd.cld':                                                                        MimeType{
+			source: 'iana'
+			extensions: ['cld']
 			compressible: false
 			charset: ''
 		}
@@ -12267,6 +12549,12 @@ const (
 		'model/vnd.sap.vds':                                                                    MimeType{
 			source: 'iana'
 			extensions: ['vds']
+			compressible: false
+			charset: ''
+		}
+		'model/vnd.usda':                                                                       MimeType{
+			source: 'iana'
+			extensions: ['usda']
 			compressible: false
 			charset: ''
 		}
@@ -12547,6 +12835,12 @@ const (
 			charset: ''
 		}
 		'text/grammar-ref-list':                                                                MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
+		'text/hl7v2':                                                                           MimeType{
 			source: 'iana'
 			extensions: []
 			compressible: false
@@ -12858,6 +13152,12 @@ const (
 			compressible: false
 			charset: 'UTF-8'
 		}
+		'text/vnd.exchangeable':                                                                MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
 		'text/vnd.familysearch.gedcom':                                                         MimeType{
 			source: 'iana'
 			extensions: ['ged']
@@ -13019,6 +13319,12 @@ const (
 			extensions: ['vtt']
 			compressible: true
 			charset: 'UTF-8'
+		}
+		'text/wgsl':                                                                            MimeType{
+			source: 'iana'
+			extensions: ['wgsl']
+			compressible: false
+			charset: ''
 		}
 		'text/x-asm':                                                                           MimeType{
 			source: 'apache'
@@ -13291,6 +13597,12 @@ const (
 			charset: ''
 		}
 		'video/h265':                                                                           MimeType{
+			source: 'iana'
+			extensions: []
+			compressible: false
+			charset: ''
+		}
+		'video/h266':                                                                           MimeType{
 			source: 'iana'
 			extensions: []
 			compressible: false
@@ -13821,7 +14133,10 @@ const (
 	}
 	ext_to_mt_str = {
 		'ez':                       'application/andrew-inset'
+		'appinstaller':             'application/appinstaller'
 		'aw':                       'application/applixware'
+		'appx':                     'application/appx'
+		'appxbundle':               'application/appxbundle'
 		'atom':                     'application/atom+xml'
 		'atomcat':                  'application/atomcat+xml'
 		'atomdeleted':              'application/atomdeleted+xml'
@@ -13829,6 +14144,8 @@ const (
 		'dwd':                      'application/atsc-dwd+xml'
 		'held':                     'application/atsc-held+xml'
 		'rsat':                     'application/atsc-rsat+xml'
+		'aml':                      'application/automationml-aml+xml'
+		'amlx':                     'application/automationml-amlx+zip'
 		'bdoc':                     'application/x-bdoc'
 		'xcs':                      'application/calendar+xml'
 		'ccxml':                    'application/ccxml+xml'
@@ -13901,8 +14218,12 @@ const (
 		'mods':                     'application/mods+xml'
 		'm21':                      'application/mp21'
 		'mp21':                     'application/mp21'
+		'mp4':                      'video/mp4'
+		'mpg4':                     'video/mp4'
 		'mp4s':                     'application/mp4'
 		'm4p':                      'application/mp4'
+		'msix':                     'application/msix'
+		'msixbundle':               'application/msixbundle'
 		'doc':                      'application/msword'
 		'dot':                      'application/msword'
 		'mxf':                      'application/mxf'
@@ -13999,6 +14320,7 @@ const (
 		'smil':                     'application/smil+xml'
 		'rq':                       'application/sparql-query'
 		'srx':                      'application/sparql-results+xml'
+		'sql':                      'application/x-sql'
 		'gram':                     'application/srgs'
 		'grxml':                    'application/srgs+xml'
 		'sru':                      'application/sru+xml'
@@ -14579,7 +14901,6 @@ const (
 		'shar':                     'application/x-shar'
 		'swf':                      'application/x-shockwave-flash'
 		'xap':                      'application/x-silverlight-app'
-		'sql':                      'application/x-sql'
 		'sit':                      'application/x-stuffit'
 		'sitx':                     'application/x-stuffitx'
 		'srt':                      'application/x-subrip'
@@ -14711,7 +15032,7 @@ const (
 		'woff':                     'font/woff'
 		'woff2':                    'font/woff2'
 		'exr':                      'image/aces'
-		'apng':                     'image/vnd.mozilla.apng'
+		'apng':                     'image/apng'
 		'avci':                     'image/avci'
 		'avcs':                     'image/avcs'
 		'avif':                     'image/avif'
@@ -14719,6 +15040,7 @@ const (
 		'dib':                      'image/bmp'
 		'cgm':                      'image/cgm'
 		'drle':                     'image/dicom-rle'
+		'dpx':                      'image/dpx'
 		'fits':                     'image/fits'
 		'g3':                       'image/g3fax'
 		'gif':                      'image/gif'
@@ -14738,6 +15060,7 @@ const (
 		'jph':                      'image/jph'
 		'jhc':                      'image/jphc'
 		'jpm':                      'video/jpm'
+		'jpgm':                     'video/jpm'
 		'jpx':                      'image/jpx'
 		'jpf':                      'image/jpx'
 		'jxr':                      'image/jxr'
@@ -14822,6 +15145,7 @@ const (
 		'glb':                      'model/gltf-binary'
 		'igs':                      'model/iges'
 		'iges':                     'model/iges'
+		'jt':                       'model/jt'
 		'msh':                      'model/mesh'
 		'mesh':                     'model/mesh'
 		'silo':                     'model/mesh'
@@ -14830,6 +15154,7 @@ const (
 		'stpz':                     'model/step+zip'
 		'stpxz':                    'model/step-xml+zip'
 		'u3d':                      'model/u3d'
+		'cld':                      'model/vnd.cld'
 		'dae':                      'model/vnd.collada+xml'
 		'dwf':                      'model/vnd.dwf'
 		'gdl':                      'model/vnd.gdl'
@@ -14841,6 +15166,7 @@ const (
 		'pyo':                      'model/vnd.pytha.pyox'
 		'pyox':                     'model/vnd.pytha.pyox'
 		'vds':                      'model/vnd.sap.vds'
+		'usda':                     'model/vnd.usda'
 		'usdz':                     'model/vnd.usdz+zip'
 		'bsp':                      'model/vnd.valve.source.compiled-map'
 		'vtu':                      'model/vnd.vtu'
@@ -14916,6 +15242,7 @@ const (
 		'wml':                      'text/vnd.wap.wml'
 		'wmls':                     'text/vnd.wap.wmlscript'
 		'vtt':                      'text/vtt'
+		'wgsl':                     'text/wgsl'
 		's':                        'text/x-asm'
 		'asm':                      'text/x-asm'
 		'c':                        'text/x-c'
@@ -14956,13 +15283,10 @@ const (
 		'h264':                     'video/h264'
 		'm4s':                      'video/iso.segment'
 		'jpgv':                     'video/jpeg'
-		'jpgm':                     'video/jpm'
 		'mj2':                      'video/mj2'
 		'mjp2':                     'video/mj2'
 		'ts':                       'video/mp2t'
-		'mp4':                      'video/mp4'
 		'mp4v':                     'video/mp4'
-		'mpg4':                     'video/mp4'
 		'mpeg':                     'video/mpeg'
 		'mpg':                      'video/mpeg'
 		'mpe':                      'video/mpeg'

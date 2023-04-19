@@ -77,8 +77,8 @@ x := 10
 	table := ast.new_table()
 	vpref := &pref.Preferences{}
 	prog := parse_file(s, table, .skip_comments, vpref)
-	mut checker := checker.new_checker(table, vpref)
-	checker.check(prog)
+	mut checker_ := checker.new_checker(table, vpref)
+	checker_.check(prog)
 	res, _, _, _ := c.gen([prog], table, vpref)
 	println(res)
 }
@@ -105,8 +105,8 @@ fn test_one() {
 		scope: scope
 		global_scope: scope
 	}
-	mut checker := checker.new_checker(table, vpref)
-	checker.check(program)
+	mut checker_ := checker.new_checker(table, vpref)
+	checker_.check(program)
 	mut res, _, _, _ := c.gen([program], table, vpref)
 	res = res.replace('\n', '').trim_space().after('#endif')
 	println(res)

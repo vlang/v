@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Subhomoy Haldar. All rights reserved.
+// Copyright (c) 2019-2023 Subhomoy Haldar. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module main
 
@@ -169,7 +169,7 @@ Try ${tool_name} -h for more help...')
 	}
 }
 
-fn validate_options(options Options) ? {
+fn validate_options(options Options) ! {
 	if options.patch && options.major {
 		return error('Cannot specify both --patch and --major.')
 	}

@@ -1,6 +1,6 @@
 module strconv
 
-// Copyright (c) 2019-2022 Dario Deledda. All rights reserved.
+// Copyright (c) 2019-2023 Dario Deledda. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -163,7 +163,7 @@ fn parser(s string) (ParserState, PrepNumber) {
 	}
 
 	// read mantissa decimals
-	if (i < s.len) && (s[i] == `.`) {
+	if i < s.len && s[i] == `.` {
 		i++
 		for i < s.len && s[i].is_digit() {
 			if digx < strconv.digits {
@@ -177,7 +177,7 @@ fn parser(s string) (ParserState, PrepNumber) {
 	}
 
 	// read exponent
-	if (i < s.len) && ((s[i] == `e`) || (s[i] == `E`)) {
+	if i < s.len && (s[i] == `e` || s[i] == `E`) {
 		i++
 		if i < s.len {
 			// esponent sign

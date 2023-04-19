@@ -26,7 +26,7 @@ A message like `[Vweb] Running app on http://localhost:3001/` should appear
 
 `exit`
 
-# To implement new bechmarks in v
+# To implement new benchmarks in v
 
 In `examples/js_dom_draw_bechmark_chart/v_vweb_orm/src/main.v` path
 Create a route returning a `Response` struct like:
@@ -44,7 +44,7 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 
 	sql db {
 		create table Task
-	}
+	}!
 
 	task_model := Task{
 		title: 'a'
@@ -55,14 +55,14 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 		sw.start()
 		sql db {
 			insert task_model into Task
-		}
+		} or { []Task{} }
 		sw.stop()
 		insert_stopwatchs << int(sw.end - sw.start)
 	}
 
 	sql db {
 		drop table Task
-	}
+	}!
 
 	response := Response{
 		insert:	insert_stopwatchs

@@ -7,7 +7,7 @@ fn main() {
 }
 
 fn func[T](mut t T) {
-	$if T is $Array {
+	$if T is $array {
 		for i in 0 .. t.len {
 			println(t[i])
 		}

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module picoev
@@ -77,7 +77,7 @@ mut:
 }
 
 [inline]
-fn setup_sock(fd int) ? {
+fn setup_sock(fd int) ! {
 	flag := 1
 	if C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_NODELAY, &flag, sizeof(int)) < 0 {
 		return error('setup_sock.setup_sock failed')

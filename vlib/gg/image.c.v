@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
@@ -25,11 +25,10 @@ pub mut:
 }
 
 // create_image creates an `Image` from `file`.
-// TODO return !Image
-pub fn (ctx &Context) create_image(file string) Image {
+pub fn (ctx &Context) create_image(file string) !Image {
 	// println('\ncreate_image("$file")')
 	if !os.exists(file) {
-		return Image{}
+		return error('image file "${file}" not found')
 	}
 	$if macos {
 		if ctx.native_rendering {
@@ -47,7 +46,7 @@ pub fn (ctx &Context) create_image(file string) Image {
 	if !gfx.is_valid() {
 		// Sokol is not initialized yet, add stbi object to a queue/cache
 		// ctx.image_queue << file
-		stb_img := stbi.load(file) or { return Image{} }
+		stb_img := stbi.load(file)!
 		img := Image{
 			width: stb_img.width
 			height: stb_img.height
@@ -220,8 +219,8 @@ fn create_image(file string) Image {
 // memory buffer `buf` of size `bufsize`.
 //
 // See also: create_image_from_byte_array
-pub fn (mut ctx Context) create_image_from_memory(buf &u8, bufsize int) Image {
-	stb_img := stbi.load_from_memory(buf, bufsize) or { return Image{} }
+pub fn (mut ctx Context) create_image_from_memory(buf &u8, bufsize int) !Image {
+	stb_img := stbi.load_from_memory(buf, bufsize)!
 	mut img := Image{
 		width: stb_img.width
 		height: stb_img.height
@@ -239,7 +238,7 @@ pub fn (mut ctx Context) create_image_from_memory(buf &u8, bufsize int) Image {
 // byte array `b`.
 //
 // See also: create_image_from_memory
-pub fn (mut ctx Context) create_image_from_byte_array(b []u8) Image {
+pub fn (mut ctx Context) create_image_from_byte_array(b []u8) !Image {
 	return ctx.create_image_from_memory(b.data, b.len)
 }
 
@@ -283,8 +282,18 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 				}
 				x := config.img_rect.x
 				y := config.img_rect.y
-				C.darwin_draw_image(x, ctx.height - (y + config.img_rect.height), config.img_rect.width,
-					config.img_rect.height, img)
+				width := if config.img_rect.width == 0 {
+					f32(img.width)
+				} else {
+					config.img_rect.width
+				}
+				height := if config.img_rect.height == 0 {
+					f32(img.height)
+				} else {
+					config.img_rect.height
+				}
+				C.darwin_draw_image(x, ctx.height - (y + config.img_rect.height), width,
+					height, img)
 				return
 			}
 		}

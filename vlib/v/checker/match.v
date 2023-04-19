@@ -1,7 +1,6 @@
 module checker
 
 import v.ast
-import v.pref
 import v.util
 import v.token
 import strings
@@ -30,6 +29,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	c.ensure_type_exists(node.cond_type, node.pos) or { return ast.void_type }
 	c.check_expr_opt_call(node.cond, cond_type)
 	cond_type_sym := c.table.sym(cond_type)
+	cond_is_option := cond_type.has_flag(.option)
 	node.is_sum_type = cond_type_sym.kind in [.interface_, .sum_type]
 	c.match_exprs(mut node, cond_type_sym)
 	c.expected_type = cond_type
@@ -59,6 +59,10 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					c.expected_type = node.expected_type
 				}
 				expr_type := c.expr(stmt.expr)
+				if !branch.is_else && cond_is_option && branch.exprs[0] !is ast.None {
+					c.error('`match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`',
+						branch.pos)
+				}
 				stmt.typ = expr_type
 				if first_iteration {
 					if node.is_expr && (node.expected_type.has_flag(.option)
@@ -70,7 +74,21 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						ret_type = expr_type
 					}
 				} else if node.is_expr && ret_type.idx() != expr_type.idx() {
-					c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
+					if (node.expected_type.has_flag(.option)
+						|| node.expected_type.has_flag(.result))
+						&& c.table.sym(stmt.typ).kind == .struct_
+						&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
+						stmt.expr = ast.CastExpr{
+							expr: stmt.expr
+							typname: 'IError'
+							typ: ast.error_type
+							expr_type: stmt.typ
+							pos: node.pos
+						}
+						stmt.typ = ast.error_type
+					} else {
+						c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
+					}
 				}
 			} else if stmt !is ast.Return {
 				if node.is_expr && ret_type != ast.void_type {
@@ -147,7 +165,10 @@ fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
 		return expr.val.i64()
 	}
 	if mut expr is ast.Ident {
-		if mut obj := c.table.global_scope.find_const(expr.name) {
+		has_expr_mod_in_name := expr.name.contains('.')
+		expr_name := if has_expr_mod_in_name { expr.name } else { '${expr.mod}.${expr.name}' }
+
+		if mut obj := c.table.global_scope.find_const(expr_name) {
 			if obj.typ == 0 {
 				obj.typ = c.expr(obj.expr)
 			}
@@ -172,6 +193,10 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			if expr !is ast.EnumVal {
 				// ensure that the sub expressions of the branch are actually checked, before anything else:
 				_ := c.expr(expr)
+			}
+			if expr is ast.TypeNode && cond_sym.kind == .struct_ {
+				c.error('struct instances cannot be matched by type name, they can only be matched to other instances of the same struct type',
+					branch.pos)
 			}
 			if mut expr is ast.RangeExpr {
 				// Allow for `match enum_value { 4..5 { } }`, even though usually int and enum values,

@@ -19,7 +19,7 @@ pub mut:
 	arch []GitRepoArch [fkey: 'repo_id']
 }
 
-pub fn (db &VieterDb) get_git_repos() []GitRepo {
+pub fn (db &VieterDb) get_git_repos() ![]GitRepo {
 	// NB: the query here, uses the `repo` field on GitRepo,
 	// while GitRepo is joined to GitRepoArch,
 	// which does *not* have a `repo` field.
@@ -28,7 +28,7 @@ pub fn (db &VieterDb) get_git_repos() []GitRepo {
 	// a lingering c.cur_orm_ts state. The fix was to save/restore c.cur_orm_ts .
 	res := sql db.conn {
 		select from GitRepo where repo == 'something' order by id
-	}
+	}!
 	return res
 }
 

@@ -60,9 +60,8 @@ fn departure(mut queue []string) string {
 // Creating aa map to initialize with of visited nodes .... all with false in the init
 // so these nodes are NOT VISITED YET
 fn visited_init(a_graph map[string][]string) map[string]bool {
-	mut array_of_keys := a_graph.keys() // get all keys of this map
 	mut temp := map[string]bool{} // attention in these initializations with maps
-	for i in array_of_keys {
+	for i, _ in a_graph {
 		temp[i] = false
 	}
 	return temp
@@ -78,7 +77,7 @@ fn build_path_reverse(graph map[string][]string, start string, final string, vis
 
 	for (current != start) {
 		for i in array_of_nodes {
-			if (current in graph[i]) && (visited[i] == true) {
+			if current in graph[i] && visited[i] == true {
 				current = i
 				break // the first ocurrence is enough
 			}

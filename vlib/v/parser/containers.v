@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -6,11 +6,10 @@ module parser
 import v.ast
 import v.token
 
-fn (mut p Parser) array_init() ast.ArrayInit {
+fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 	first_pos := p.tok.pos()
 	mut last_pos := p.tok.pos()
 	p.check(.lsbr)
-	// p.warn('array_init() exp=$p.expected_type')
 	mut array_type := ast.void_type
 	mut elem_type := ast.void_type
 	mut elem_type_pos := first_pos
@@ -21,7 +20,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	mut has_val := false
 	mut has_type := false
 	mut has_default := false
-	mut has_it := false
+	mut has_index := false
 	mut default_expr := ast.empty_expr
 	if p.tok.kind == .rsbr {
 		last_pos = p.tok.pos()
@@ -39,6 +38,9 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 				array_type = ast.new_type(idx).set_flag(.generic)
 			} else {
 				array_type = ast.new_type(idx)
+			}
+			if is_option {
+				array_type = array_type.set_flag(.option)
 			}
 			has_type = true
 		}
@@ -58,12 +60,6 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 		p.inside_array_lit = old_inside_array_lit
 		line_nr := p.tok.line_nr
-		$if tinyc {
-			// Note: do not remove the next line without testing
-			// v selfcompilation with tcc first
-			tcc_stack_bug := 12345
-			_ = tcc_stack_bug
-		}
 		last_pos = p.tok.pos()
 		p.check(.rsbr)
 		if exprs.len == 1 && p.tok.line_nr == line_nr
@@ -90,28 +86,18 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 						return ast.ArrayInit{}
 					}
 					p.check(.colon)
-					p.open_scope()
 					has_default = true
-					p.scope_register_it_as_index()
-					default_expr = p.expr(0)
-					has_it = if var := p.scope.find_var('it') {
-						mut variable := unsafe { var }
-						is_used := variable.is_used
-						variable.is_used = true
-						is_used
-					} else {
-						false
-					}
-					p.close_scope()
+					has_index = p.handle_index_variable(mut default_expr)
 				}
 				last_pos = p.tok.pos()
 				p.check(.rcbr)
 			} else {
-				p.warn_with_pos('use e.g. `x := [1]Type{}` instead of `x := [1]Type`',
+				modifier := if is_option { '?' } else { '' }
+				p.warn_with_pos('use e.g. `x := ${modifier}[1]Type{}` instead of `x := ${modifier}[1]Type`',
 					first_pos.extend(last_pos))
 			}
 		} else {
-			if p.tok.kind == .not { // && p.tok.line_nr == p.prev_tok.line_nr {
+			if p.tok.kind == .not {
 				last_pos = p.tok.pos()
 				is_fixed = true
 				has_val = true
@@ -126,7 +112,9 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	}
 	if exprs.len == 0 && p.tok.kind != .lcbr && has_type {
 		if !p.pref.is_fmt {
-			p.warn_with_pos('use `x := []Type{}` instead of `x := []Type`', first_pos.extend(last_pos))
+			modifier := if is_option { '?' } else { '' }
+			p.warn_with_pos('use `x := ${modifier}[]Type{}` instead of `x := ${modifier}[]Type`',
+				first_pos.extend(last_pos))
 		}
 	}
 	mut has_len := false
@@ -141,6 +129,9 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			attr_pos = p.tok.pos()
 			key := p.check_name()
 			p.check(.colon)
+			if is_option {
+				p.error('Option array cannot have initializers')
+			}
 			match key {
 				'len' {
 					has_len = true
@@ -151,19 +142,8 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					cap_expr = p.expr(0)
 				}
 				'init' {
-					p.open_scope()
 					has_default = true
-					p.scope_register_it_as_index()
-					default_expr = p.expr(0)
-					has_it = if var := p.scope.find_var('it') {
-						mut variable := unsafe { var }
-						is_used := variable.is_used
-						variable.is_used = true
-						is_used
-					} else {
-						false
-					}
-					p.close_scope()
+					has_index = p.handle_index_variable(mut default_expr)
 				}
 				else {
 					p.error('wrong field `${key}`, expecting `len`, `cap`, or `init`')
@@ -196,7 +176,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		len_expr: len_expr
 		has_cap: has_cap
 		has_default: has_default
-		has_it: has_it
+		has_index: has_index
 		cap_expr: cap_expr
 		default_expr: default_expr
 	}
@@ -239,12 +219,45 @@ fn (mut p Parser) map_init() ast.MapInit {
 	}
 }
 
-fn (mut p Parser) scope_register_it_as_index() {
-	p.scope.objects['it'] = ast.Var{ // override it variable if it already exist, else create it variable
+fn (mut p Parser) scope_register_index() {
+	p.scope.objects['index'] = ast.Var{ // override index variable if it already exist, else create index variable
+		name: 'index'
+		pos: p.tok.pos()
+		typ: ast.int_type
+		is_mut: false
+		is_used: false
+	}
+	p.scope.objects['it'] = ast.Var{ // it is now deprecated, will be removed in future stable release
 		name: 'it'
 		pos: p.tok.pos()
 		typ: ast.int_type
 		is_mut: false
 		is_used: false
 	}
+}
+
+fn (mut p Parser) handle_index_variable(mut default_expr ast.Expr) bool {
+	mut has_index := false
+	p.open_scope()
+	p.scope_register_index()
+	default_expr = p.expr(0)
+	if var := p.scope.find_var('index') {
+		mut variable := unsafe { var }
+		is_used := variable.is_used
+		variable.is_used = true
+		has_index = is_used
+	}
+	if var := p.scope.find_var('it') { // FIXME: Remove this block when `it` is forbidden
+		mut variable := unsafe { var }
+		is_used := variable.is_used
+		if is_used {
+			p.warn('variable `it` in array initialization will soon be replaced with `index`')
+		}
+		variable.is_used = true
+		if !has_index {
+			has_index = is_used
+		}
+	}
+	p.close_scope()
+	return has_index
 }

@@ -1,0 +1,91 @@
+fn func(a int, cond bool) i64 {
+	mut src := 0
+
+	if cond {
+		src = a
+	} else if cond {
+		src = 22
+	} else if cond {
+		src = 25
+	}
+
+	if cond {
+		src = a
+	} else if cond {
+		src = 22
+	} else if cond {
+		src = 25
+	} else {
+		src = src + src
+	}
+
+	return src
+}
+
+fn test(cond bool) int {
+	return if cond {
+		2
+	} else if !cond {
+		5
+	} else {
+		6
+	}
+}
+
+fn boolfor() int {
+	mut val := 0
+	for val == 0 {
+		val++
+	}
+	return val
+}
+
+fn inffor() int {
+	mut val := 0
+	for {
+		if val != 0 {
+			break
+		}
+		val++
+	}
+	return val
+}
+
+fn addcfor() int {
+	mut val := 0
+	for i := 0; i < 10; i++ {
+		val += i
+	}
+	return val
+}
+
+fn labelcfor() {
+	mut val := 0
+
+	hello: for {
+		for {
+			if val == 10 {
+				continue hello
+			}
+			val++
+
+			if val == 100 {
+				break hello
+			}
+		}
+		break
+	}
+}
+
+fn infcfor() int {
+	mut val := 0
+
+	for i := 0; true; i++ {
+		if val >= 10 {
+			return val
+		}
+		val += i
+	}
+
+	return 0
+}

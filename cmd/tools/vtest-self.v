@@ -2,7 +2,6 @@ module main
 
 import os
 import testing
-import v.pref
 
 const github_job = os.getenv('GITHUB_JOB')
 
@@ -125,6 +124,13 @@ const (
 		'vlib/orm/orm_sql_or_blocks_test.v',
 		'vlib/orm/orm_create_and_drop_test.v',
 		'vlib/orm/orm_insert_test.v',
+		'vlib/orm/orm_insert_reserved_name_test.v',
+		'vlib/orm/orm_fn_calls_test.v',
+		'vlib/orm/orm_last_id_test.v',
+		'vlib/orm/orm_string_interpolation_in_where_test.v',
+		'vlib/orm/orm_interface_test.v',
+		'vlib/orm/orm_mut_db_test.v',
+		'vlib/orm/orm_result_test.v',
 		'vlib/db/sqlite/sqlite_test.v',
 		'vlib/db/sqlite/sqlite_orm_test.v',
 		'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
@@ -151,6 +157,7 @@ const (
 		'vlib/net/websocket/websocket_test.v',
 		'vlib/orm/orm_create_and_drop_test.v',
 		'vlib/orm/orm_insert_test.v',
+		'vlib/orm/orm_insert_reserved_name_test.v',
 		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
@@ -159,6 +166,7 @@ const (
 		'do_not_remove',
 		'vlib/orm/orm_create_and_drop_test.v',
 		'vlib/orm/orm_insert_test.v',
+		'vlib/orm/orm_insert_reserved_name_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 	]
@@ -192,6 +200,13 @@ const (
 		'vlib/orm/orm_sql_or_blocks_test.v',
 		'vlib/orm/orm_create_and_drop_test.v',
 		'vlib/orm/orm_insert_test.v',
+		'vlib/orm/orm_insert_reserved_name_test.v',
+		'vlib/orm/orm_fn_calls_test.v',
+		'vlib/orm/orm_last_id_test.v',
+		'vlib/orm/orm_string_interpolation_in_where_test.v',
+		'vlib/orm/orm_interface_test.v',
+		'vlib/orm/orm_mut_db_test.v',
+		'vlib/orm/orm_result_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_joined_tables_select_test.v',
@@ -224,6 +239,7 @@ const (
 		'do_not_remove',
 		'vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v', // error C2099: initializer is not a constant
 		'vlib/v/tests/const_and_global_with_same_name_test.v', // error C2099: initializer is not a constant
+		'vlib/v/tests/sumtype_as_cast_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
 	]
 	skip_on_windows               = [
 		'do_not_remove',
@@ -285,7 +301,7 @@ const (
 // Note: musl misses openssl, thus the http tests can not be done there
 // Note: http_httpbin_test.v: fails with 'cgen error: json: map_string_string is not struct'
 fn main() {
-	vexe := pref.vexe_path()
+	vexe := os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 	vroot := os.dir(vexe)
 	os.chdir(vroot) or { panic(err) }
 	args := os.args.clone()
@@ -319,6 +335,10 @@ fn main() {
 		// TODO: fix these ASAP
 		tsession.skip_files << 'vlib/net/tcp_test.v'
 		tsession.skip_files << 'vlib/net/udp_test.v'
+	}
+
+	if !os.exists('cmd/tools/builders/wasm_builder') {
+		tsession.skip_files << 'vlib/v/gen/wasm/tests/wasm_test.v'
 	}
 
 	mut werror := false

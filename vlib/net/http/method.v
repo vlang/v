@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -18,6 +18,7 @@ pub enum Method {
 	patch
 }
 
+// str returns the string representation of the HTTP Method `m`.
 pub fn (m Method) str() string {
 	return match m {
 		.get { 'GET' }
@@ -32,6 +33,10 @@ pub fn (m Method) str() string {
 	}
 }
 
+// method_from_str returns the corresponding Method enum field
+// given a string `m`, e.g. `'GET'` would return Method.get.
+//
+// Currently, the default value is Method.get for unsupported string value.
 pub fn method_from_str(m string) Method {
 	return match m {
 		'GET' { Method.get }

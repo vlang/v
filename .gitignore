@@ -108,6 +108,8 @@ flake.nix
 .envrc
 
 thirdparty/stdatomic/nix/cpp/*.h
+thirdparty/binaryen*
+thirdparty/wabt*
 
 # ignore VLS log
 vls.log
@@ -120,3 +122,4 @@ vls.log
 # ignore Intellij files
 .idea/
 /*.iml
+wasm.v

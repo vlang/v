@@ -1,0 +1,9 @@
+Sets up a V project within the current directory.
+
+Usage:
+  v init
+
+If no '.v' file exists, then will create a 'main.v' file.
+If no 'v.mod' file exists, one will be created.
+If the current directory is not already controlled with 'git', will perform
+'git init' (if git is installed on the system).

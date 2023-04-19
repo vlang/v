@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -58,20 +58,22 @@ pub fn parse_response(resp string) !Response {
 // version, status code, and reason phrase
 fn parse_status_line(line string) !(string, int, string) {
 	if line.len < 5 || line[..5].to_lower() != 'http/' {
-		return error('response does not start with HTTP/')
+		return error('response does not start with HTTP/, line: `${line}`')
 	}
 	data := line.split_nth(' ', 3)
 	if data.len != 3 {
-		return error('expected at least 3 tokens')
+		return error('expected at least 3 tokens, but found: ${data.len}')
 	}
 	version := data[0].substr(5, data[0].len)
 	// validate version is 1*DIGIT "." 1*DIGIT
 	digits := version.split_nth('.', 3)
 	if digits.len != 2 {
-		return error('HTTP version malformed')
+		return error('HTTP version malformed, found: `${digits}`')
 	}
 	for digit in digits {
-		strconv.atoi(digit) or { return error('HTTP version must contain only integers') }
+		strconv.atoi(digit) or {
+			return error('HTTP version must contain only integers, found: `${digit}`')
+		}
 	}
 	return version, strconv.atoi(data[1])!, data[2]
 }

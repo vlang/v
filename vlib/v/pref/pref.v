@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module pref
@@ -53,6 +53,7 @@ pub enum Backend {
 	js_browser // The JavaScript browser backend
 	js_freestanding // The JavaScript freestanding backend
 	native // The Native backend
+	wasm // The WebAssembly backend
 }
 
 pub fn (b Backend) is_js() bool {
@@ -87,8 +88,8 @@ pub enum Arch {
 	_max
 }
 
-pub const list_of_flags_with_param = ['o', 'd', 'define', 'b', 'backend', 'cc', 'os', 'cf', 'cflags',
-	'path', 'arch']
+pub const list_of_flags_with_param = ['b', 'd', 'e', 'o', 'define', 'backend', 'cc', 'os', 'cflags',
+	'ldflags', 'path', 'arch']
 
 pub const supported_test_runners = ['normal', 'simple', 'tap', 'dump', 'teamcity']
 
@@ -116,6 +117,7 @@ pub mut:
 	is_prof            bool   // benchmark every function
 	is_prod            bool   // use "-O2"
 	is_repl            bool
+	is_eval_argument   bool // true for `v -e 'println(2+2)'`. `println(2+2)` will be in pref.eval_argument .
 	is_run             bool // compile and run a v program, passing arguments to it, and deleting the executable afterwards
 	is_crun            bool // similar to run, but does not recompile the executable, if there were no changes to the sources
 	is_debug           bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
@@ -129,6 +131,7 @@ pub mut:
 	is_apk             bool     // build as Android .apk format
 	is_help            bool     // -h, -help or --help was passed
 	is_cstrict         bool     // turn on more C warnings; slightly slower
+	eval_argument      string   // `println(2+2)` on `v -e "println(2+2)"`. Note that this souce code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
 	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file       string   // the profile results will be stored inside profile_file
 	profile_no_inline  bool     // when true, [inline] functions would not be profiled
@@ -151,7 +154,8 @@ pub mut:
 	use_cache              bool   // when set, use cached modules to speed up subsequent compilations, at the cost of slower initial ones (while the modules are cached)
 	retry_compilation      bool = true // retry the compilation with another C compiler, if tcc fails.
 	// TODO Convert this into a []string
-	cflags string // Additional options which will be passed to the C compiler.
+	cflags  string // Additional options which will be passed to the C compiler *before* other options.
+	ldflags string // Additional options which will be passed to the C compiler *after* everything else.
 	// For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
 	// You could pass several -cflags XXX arguments. They will be merged with each other.
 	// You can also quote several options at the same time: -cflags '-Os -fno-inline-small-functions'.
@@ -189,17 +193,20 @@ pub mut:
 	compile_defines     []string // just ['vfmt']
 	compile_defines_all []string // contains both: ['vfmt','another']
 	//
-	run_args         []string // `v run x.v 1 2 3` => `1 2 3`
-	printfn_list     []string // a list of generated function names, whose source should be shown, for debugging
-	print_v_files    bool     // when true, just print the list of all parsed .v files then stop.
-	skip_running     bool     // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
-	skip_warnings    bool     // like C's "-w", forces warnings to be ignored.
-	warn_impure_v    bool     // -Wimpure-v, force a warning for JS.fn()/C.fn(), outside of .js.v/.c.v files. TODO: turn to an error by default
-	warns_are_errors bool     // -W, like C's "-Werror", treat *every* warning is an error
-	fatal_errors     bool     // unconditionally exit after the first error with exit(1)
-	reuse_tmpc       bool     // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
-	no_rsp           bool     // when true, pass C backend options directly on the CLI (do not use `.rsp` files for them, some older C compilers do not support them)
-	no_std           bool     // when true, do not pass -std=gnu99(linux)/-std=c99 to the C backend
+	run_args     []string // `v run x.v 1 2 3` => `1 2 3`
+	printfn_list []string // a list of generated function names, whose source should be shown, for debugging
+	//
+	print_v_files       bool // when true, just print the list of all parsed .v files then stop.
+	print_watched_files bool // when true, just print the list of all parsed .v files + all the compiled $tmpl files, then stop. Used by `v watch run webserver.v`
+	//
+	skip_running     bool // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
+	skip_warnings    bool // like C's "-w", forces warnings to be ignored.
+	warn_impure_v    bool // -Wimpure-v, force a warning for JS.fn()/C.fn(), outside of .js.v/.c.v files. TODO: turn to an error by default
+	warns_are_errors bool // -W, like C's "-Werror", treat *every* warning is an error
+	fatal_errors     bool // unconditionally exit after the first error with exit(1)
+	reuse_tmpc       bool // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
+	no_rsp           bool // when true, pass C backend options directly on the CLI (do not use `.rsp` files for them, some older C compilers do not support them)
+	no_std           bool // when true, do not pass -std=gnu99(linux)/-std=c99 to the C backend
 	//
 	no_parallel       bool // do not use threads when compiling; slower, but more portable and sometimes less buggy
 	parallel_cc       bool // whether to split the resulting .c file into many .c files + a common .h file, that are then compiled in parallel, then linked together.
@@ -241,6 +248,37 @@ fn detect_musl(mut res Preferences) {
 	}
 }
 
+[noreturn]
+fn run_code_in_tmp_vfile_and_exit(args []string, mut res Preferences, option_name string, extension string, content string) {
+	tmp_file_path := rand.ulid()
+	mut tmp_exe_file_path := res.out_name
+	mut output_option := ''
+	if tmp_exe_file_path == '' {
+		tmp_exe_file_path = '${tmp_file_path}.exe'
+		output_option = '-o ${os.quoted_path(tmp_exe_file_path)} '
+	}
+	tmp_v_file_path := '${tmp_file_path}.${extension}'
+	os.write_file(tmp_v_file_path, content) or {
+		panic('Failed to create temporary file ${tmp_v_file_path}')
+	}
+	run_options := cmdline.options_before(args, [option_name]).join(' ')
+	command_options := cmdline.options_after(args, [option_name])[1..].join(' ')
+	vexe := vexe_path()
+	tmp_cmd := '${os.quoted_path(vexe)} ${output_option} ${run_options} run ${os.quoted_path(tmp_v_file_path)} ${command_options}'
+	//
+	res.vrun_elog('tmp_cmd: ${tmp_cmd}')
+	tmp_result := os.system(tmp_cmd)
+	res.vrun_elog('exit code: ${tmp_result}')
+	//
+	if output_option.len != 0 {
+		res.vrun_elog('remove tmp exe file: ${tmp_exe_file_path}')
+		os.rm(tmp_exe_file_path) or {}
+	}
+	res.vrun_elog('remove tmp v file: ${tmp_v_file_path}')
+	os.rm(tmp_v_file_path) or {}
+	exit(tmp_result)
+}
+
 pub fn parse_args_and_show_errors(known_external_commands []string, args []string, show_output bool) (&Preferences, string) {
 	mut res := &Preferences{}
 	detect_musl(mut res)
@@ -250,6 +288,14 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	res.run_only = os.getenv('VTEST_ONLY_FN').split_any(',')
 	mut command := ''
 	mut command_pos := -1
+
+	/*
+	$if macos || linux {
+		res.use_cache = true
+		res.skip_unused = true
+	}
+	*/
+
 	// for i, arg in args {
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
@@ -335,6 +381,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-nofloat' {
 				res.nofloat = true
 				res.compile_defines_all << 'nofloat' // so that `$if nofloat? {` works
+			}
+			'-e' {
+				res.is_eval_argument = true
+				res.eval_argument = cmdline.option(current_args, '-e', '')
+				i++
 			}
 			'-gc' {
 				gc_mode := cmdline.option(current_args, '-gc', '')
@@ -448,6 +499,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-skip-unused' {
 				res.skip_unused = true
+			}
+			'-no-skip-unused' {
+				res.skip_unused = false
 			}
 			'-compress' {
 				res.compress = true
@@ -611,6 +665,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-print-v-files' {
 				res.print_v_files = true
 			}
+			'-print-watched-files' {
+				res.print_watched_files = true
+			}
 			'-os' {
 				target_os := cmdline.option(current_args, '-os', '')
 				i++
@@ -641,6 +698,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-cflags' {
 				res.cflags += ' ' + cmdline.option(current_args, '-cflags', '')
 				res.build_options << '${arg} "${res.cflags.trim_space()}"'
+				i++
+			}
+			'-ldflags' {
+				res.ldflags += ' ' + cmdline.option(current_args, '-ldflags', '')
+				res.build_options << '${arg} "${res.ldflags.trim_space()}"'
 				i++
 			}
 			'-d', '-define' {
@@ -694,7 +756,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.build_options << '${arg} ${sbackend}'
 				b := backend_from_string(sbackend) or {
 					eprintln('Unknown V backend: ${sbackend}')
-					eprintln('Valid -backend choices are: c, go, interpret, js, js_node, js_browser, js_freestanding, native')
+					eprintln('Valid -backend choices are: c, go, interpret, js, js_node, js_browser, js_freestanding, native, wasm')
 					exit(1)
 				}
 				if b.is_js() {
@@ -751,11 +813,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					if command == '' {
 						command = arg
 						command_pos = i
-						if command in ['run', 'crun'] {
+						if res.is_eval_argument || command in ['run', 'crun', 'watch'] {
 							break
 						}
 					} else if is_source_file(command) && is_source_file(arg)
-						&& command !in known_external_commands {
+						&& command !in known_external_commands && res.raw_vsh_tmp_prefix == '' {
 						eprintln('Too many targets. Specify just one target: <target.v|target_directory>.')
 						exit(1)
 					}
@@ -786,12 +848,25 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		eprintln_cond(show_output, "Note: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
 		eprintln_cond(show_output, 'Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
 	}
+	if res.os in [.browser, .wasi] && res.backend != .wasm {
+		eprintln('OS `${res.os}` forbidden for backends other than wasm')
+		exit(1)
+	}
+	if res.backend == .wasm && res.os !in [.browser, .wasi, ._auto] {
+		eprintln('Native WebAssembly backend OS must be `browser` or `wasi`')
+		exit(1)
+	}
 
-	// res.use_cache = true
 	if command != 'doc' && res.out_name.ends_with('.v') {
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
 	}
+
+	if res.is_eval_argument {
+		// `v -e "println(2+5)"`
+		run_code_in_tmp_vfile_and_exit(args, mut res, '-e', 'vsh', res.eval_argument)
+	}
+
 	if res.is_run || res.is_crun {
 		if command_pos + 2 > args.len {
 			eprintln('v run: no v files listed')
@@ -800,34 +875,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		res.path = args[command_pos + 1]
 		res.run_args = args[command_pos + 2..]
 		if res.path == '-' {
-			tmp_file_path := rand.ulid()
-			mut tmp_exe_file_path := res.out_name
-			mut output_option := ''
-			if tmp_exe_file_path == '' {
-				tmp_exe_file_path = '${tmp_file_path}.exe'
-				output_option = '-o ${os.quoted_path(tmp_exe_file_path)} '
-			}
-			tmp_v_file_path := '${tmp_file_path}.v'
+			// `echo "println(2+5)" | v -`
 			contents := os.get_raw_lines_joined()
-			os.write_file(tmp_v_file_path, contents) or {
-				panic('Failed to create temporary file ${tmp_v_file_path}')
-			}
-			run_options := cmdline.options_before(args, ['run']).join(' ')
-			command_options := cmdline.options_after(args, ['run'])[1..].join(' ')
-			vexe := vexe_path()
-			tmp_cmd := '${os.quoted_path(vexe)} ${output_option} ${run_options} run ${os.quoted_path(tmp_v_file_path)} ${command_options}'
-			//
-			res.vrun_elog('tmp_cmd: ${tmp_cmd}')
-			tmp_result := os.system(tmp_cmd)
-			res.vrun_elog('exit code: ${tmp_result}')
-			//
-			if output_option.len != 0 {
-				res.vrun_elog('remove tmp exe file: ${tmp_exe_file_path}')
-				os.rm(tmp_exe_file_path) or {}
-			}
-			res.vrun_elog('remove tmp v file: ${tmp_v_file_path}')
-			os.rm(tmp_v_file_path) or {}
-			exit(tmp_result)
+			run_code_in_tmp_vfile_and_exit(args, mut res, 'run', 'v', contents)
 		}
 		must_exist(res.path)
 		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
@@ -857,11 +907,13 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		res.path = args[command_pos + 1]
 		res.run_args = args[command_pos + 2..]
 
-		must_exist(res.path)
-		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
-			&& os.is_file(res.path + '.v') {
-			eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
-			res.path += '.v'
+		if res.path != '' {
+			must_exist(res.path)
+			if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
+				&& os.is_file(res.path + '.v') {
+				eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
+				res.path += '.v'
+			}
 		}
 	}
 	if command == 'build-module' {
@@ -980,6 +1032,7 @@ pub fn backend_from_string(s string) !Backend {
 		'js_browser' { return .js_browser }
 		'js_freestanding' { return .js_freestanding }
 		'native' { return .native }
+		'wasm' { return .wasm }
 		else { return error('Unknown backend type ${s}') }
 	}
 }

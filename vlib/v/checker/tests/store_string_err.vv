@@ -1,4 +1,4 @@
-fn return_err() ?int {
+fn return_err() !int {
 	return error('')
 }
 

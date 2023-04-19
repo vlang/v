@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module eval
@@ -6,12 +6,45 @@ module eval
 import v.ast
 import v.pref
 import v.util
+import v.builder
 
-pub fn new_eval(table &ast.Table, pref &pref.Preferences) Eval {
+pub fn new_eval(table &ast.Table, pref_ &pref.Preferences) Eval {
 	return Eval{
 		table: table
-		pref: pref
+		pref: pref_
 	}
+}
+
+// Host API
+
+pub fn create() Eval {
+	t := ast.new_table()
+	mut p, _ := pref.parse_args([], ['interpret', ''])
+	p.is_script = true
+	return new_eval(t, p)
+}
+
+pub fn (mut e Eval) push_val(val Object) {
+	e.stack_vals << val
+}
+
+pub fn (mut e Eval) add_file(filepath string) {
+	e.user_files << filepath
+}
+
+pub fn (mut e Eval) run(expression string, args ...Object) ![]Object {
+	mut prepend := 'fn host_pop() voidptr { return 0 }\n'
+	mut b := builder.new_builder(e.pref)
+	e.table = b.table
+
+	mut files := b.get_builtin_files()
+	files << e.user_files
+	b.set_module_lookup_paths()
+
+	b.interpret_text(prepend + expression, files)!
+	e.register_symbols(mut b.parsed_files)
+	e.run_func(e.mods['main']['main'] or { ast.FnDecl{} } as ast.FnDecl, ...args)
+	return e.return_values
 }
 
 // const/global is `Object`
@@ -25,7 +58,9 @@ pub mut:
 	future_register_consts map[string]map[string]map[string]ast.ConstField // mod:file:name:field
 	local_vars             map[string]Var
 	local_vars_stack       []map[string]Var
-	scope_idx              int // this is increased when e.open_scope() is called, decreased when e.close_scope() (and all variables with that scope level deleted)
+	stack_vals             []Object // host stack popped by host_pop() on interpreted code
+	user_files             []string // user additional files
+	scope_idx              int      // this is increased when e.open_scope() is called, decreased when e.close_scope() (and all variables with that scope level deleted)
 	returning              bool
 	return_values          []Object
 	cur_mod                string
@@ -45,7 +80,7 @@ pub struct EvalTrace {
 pub fn (mut e Eval) eval(mut files []&ast.File) {
 	e.register_symbols(mut files)
 	// println(files.map(it.path_base))
-	e.run_func(e.mods['main']['main'] or { ast.EmptyStmt{} } as ast.FnDecl)
+	e.run_func(e.mods['main']['main'] or { ast.FnDecl{} } as ast.FnDecl)
 }
 
 // first arg is reciever (if method)
@@ -60,9 +95,10 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 		e.cur_file = old_file
 		e.back_trace.pop()
 	}
+	is_main := func.name == 'main.main'
 	//
 	mut args := _args.clone()
-	if func.params.len != args.len && !func.is_variadic {
+	if !is_main && func.params.len != args.len && !func.is_variadic {
 		e.error('mismatched parameter length for ${func.name}: got `${args.len}`, expected `${func.params.len}`')
 	}
 
@@ -94,10 +130,13 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 		e.open_scope()
 		// have to do this because of cgen error
 		args__ := if func.is_method { args[1..] } else { args }
-		for i, arg in args__ {
-			e.local_vars[(func.params[i]).name] = Var{
-				val: arg
-				scope_idx: e.scope_idx
+		if !is_main {
+			for i, arg in args__ {
+				var_name := (func.params[i]).name
+				e.local_vars[var_name] = Var{
+					val: arg
+					scope_idx: e.scope_idx
+				}
 			}
 		}
 		if func.is_method {
@@ -180,7 +219,6 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 			}
 		}
 		ast.ExprStmt {
-			println('expr')
 			x := stmt.expr
 			match x {
 				ast.IfExpr {
@@ -190,7 +228,8 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 					for i, branch in x.branches {
 						mut do_if := false
 						println('branch:${branch}')
-						match branch.cond {
+						cond := branch.cond
+						match cond {
 							ast.Ident {
 								match (branch.cond as ast.Ident).name {
 									'windows' {

@@ -120,15 +120,15 @@ fn json(file string) string {
 	// use as permissive preferences as possible, so that `v ast`
 	// can print the AST of arbitrary V files, even .vsh or ones
 	// that require globals:
-	mut pref := &pref.Preferences{}
-	pref.fill_with_defaults()
-	pref.enable_globals = true
-	pref.is_fmt = true
+	mut pref_ := &pref.Preferences{}
+	pref_.fill_with_defaults()
+	pref_.enable_globals = true
+	pref_.is_fmt = true
 	//
 	mut t := Tree{
 		root: new_object()
 		table: ast.new_table()
-		pref: pref
+		pref: pref_
 	}
 	// parse file with comment
 	ast_file := parser.parse_file(file, t.table, .parse_comments, t.pref)
@@ -359,9 +359,9 @@ fn (t Tree) imports(nodes []ast.Import) &Node {
 	return import_array
 }
 
-fn (t Tree) errors(errors []errors.Error) &Node {
+fn (t Tree) errors(errors_ []errors.Error) &Node {
 	mut errs := new_array()
-	for e in errors {
+	for e in errors_ {
 		obj := new_object()
 		obj.add_terse('message', t.string_node(e.message))
 		obj.add_terse('file_path', t.string_node(e.file_path))
@@ -581,7 +581,11 @@ fn (t Tree) anon_fn(node ast.AnonFn) &Node {
 	obj.add_terse('decl', t.fn_decl(node.decl))
 	obj.add('inherited_vars', t.array_node_arg(node.inherited_vars))
 	obj.add_terse('typ', t.type_node(node.typ))
-	obj.add('has_gen', t.bool_node(node.has_gen))
+	symbol_obj := new_object()
+	for key, val in node.has_gen {
+		symbol_obj.add_terse(key.str(), t.bool_node(val))
+	}
+	obj.add_terse('has_gen', symbol_obj)
 	return obj
 }
 
@@ -872,7 +876,7 @@ fn (t Tree) var(node ast.Var) &Node {
 	obj.add_terse('is_mut', t.bool_node(node.is_mut))
 	obj.add('is_used', t.bool_node(node.is_used))
 	obj.add('is_changed', t.bool_node(node.is_changed))
-	obj.add('is_comptime_field', t.bool_node(node.is_comptime_field))
+	obj.add_terse('ct_type_var', t.enum_node(node.ct_type_var))
 	obj.add('is_or', t.bool_node(node.is_or))
 	obj.add('is_tmp', t.bool_node(node.is_tmp))
 	obj.add('is_autofree_tmp', t.bool_node(node.is_autofree_tmp))
@@ -1350,6 +1354,7 @@ fn (t Tree) infix_expr(node ast.InfixExpr) &Node {
 	obj.add_terse('left_type', t.type_node(node.left_type))
 	obj.add_terse('right', t.expr(node.right))
 	obj.add_terse('right_type', t.type_node(node.right_type))
+	obj.add_terse('promoted_type', t.type_node(node.promoted_type))
 	obj.add('auto_locked', t.string_node(node.auto_locked))
 	obj.add_terse('or_block', t.or_expr(node.or_block))
 	obj.add_terse('is_stmt', t.bool_node(node.is_stmt))
@@ -1458,6 +1463,7 @@ fn (t Tree) ident(node ast.Ident) &Node {
 	obj.add('mut_pos', t.pos(node.mut_pos))
 	obj.add('obj', t.scope_object(node.obj))
 	obj.add('scope', t.number_node(int(node.scope)))
+	obj.add_terse('or_expr', t.or_expr(node.or_expr))
 	return obj
 }
 
@@ -1609,7 +1615,7 @@ fn (t Tree) array_init(node ast.ArrayInit) &Node {
 	obj.add_terse('has_len', t.bool_node(node.has_len))
 	obj.add_terse('has_cap', t.bool_node(node.has_cap))
 	obj.add_terse('has_default', t.bool_node(node.has_default))
-	obj.add_terse('has_it', t.bool_node(node.has_it))
+	obj.add_terse('has_index', t.bool_node(node.has_index))
 	obj.add_terse('expr_types', t.array_node_type(node.expr_types))
 	obj.add('pos', t.pos(node.pos))
 	return obj

@@ -35,7 +35,7 @@ fn parse_headers(block string) ?(map[string][]string, string) {
 	// so that we can manually index them
 	headers_seperated := headers_str.split_into_lines()
 
-	// index the key/value seperator ':', otherwise
+	// index the key/value separator ':', otherwise
 	// return none because it should exist
 	// the initialisation of this function already tells us headers are present
 	mut colon_index := headers_seperated[0].index(colon) or { return none }

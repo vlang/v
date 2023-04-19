@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module util
@@ -297,7 +297,7 @@ mut:
 
 [unsafe]
 pub fn cached_read_source_file(path string) !string {
-	mut static cache := &SourceCache(0)
+	mut static cache := &SourceCache(unsafe { nil })
 	if cache == unsafe { nil } {
 		cache = &SourceCache{}
 	}
@@ -308,7 +308,7 @@ pub fn cached_read_source_file(path string) !string {
 	if path.len == 0 {
 		unsafe { cache.sources.free() }
 		unsafe { free(cache) }
-		cache = &SourceCache(0)
+		cache = &SourceCache(unsafe { nil })
 		return error('memory source file cache cleared')
 	}
 

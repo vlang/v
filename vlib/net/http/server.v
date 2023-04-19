@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -34,6 +34,8 @@ pub mut:
 	accept_timeout time.Duration = 30 * time.second
 }
 
+// listen_and_serve listens on the server port `s.port` over TCP network and
+// uses `s.parse_and_respond` to handle requests on incoming connections with `s.handler`.
 pub fn (mut s Server) listen_and_serve() {
 	if s.handler is DebugHandler {
 		eprintln('Server handler not set, using debug handler')
@@ -68,19 +70,20 @@ pub fn (mut s Server) listen_and_serve() {
 	}
 }
 
-// stop signals the server that it should not respond anymore
+// stop signals the server that it should not respond anymore.
 [inline]
 pub fn (mut s Server) stop() {
 	s.state = .stopped
 }
 
-// close immediatly closes the port and signals the server that it has been closed
+// close immediatly closes the port and signals the server that it has been closed.
 [inline]
 pub fn (mut s Server) close() {
 	s.state = .closed
 	s.listener.close() or { return }
 }
 
+// status indicates whether the server is running, stopped, or closed.
 [inline]
 pub fn (s &Server) status() ServerStatus {
 	return s.state
@@ -112,7 +115,7 @@ fn (mut s Server) parse_and_respond(mut conn net.TcpConn) {
 }
 
 // DebugHandler implements the Handler interface by echoing the request
-// in the response
+// in the response.
 struct DebugHandler {}
 
 fn (d DebugHandler) handle(req Request) Response {

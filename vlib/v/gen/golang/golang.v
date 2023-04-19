@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module golang
@@ -45,10 +45,10 @@ pub mut:
 	nlines             int
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, out_file string, pref &pref.Preferences) (int, int) {
+pub fn gen(files []&ast.File, table &ast.Table, out_file string, pref_ &pref.Preferences) (int, int) {
 	mut g := Gen{
 		table: table
-		pref: pref
+		pref: pref_
 		// is_debug: is_debug
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
@@ -651,16 +651,17 @@ pub fn (mut f Gen) expr(node_ ast.Expr) {
 		}
 		ast.ComptimeType {
 			match node.kind {
-				.array { f.write('\$Array') }
-				.struct_ { f.write('\$Struct') }
-				.iface { f.write('\$Interface') }
-				.map_ { f.write('\$Map') }
-				.int { f.write('\$Int') }
-				.float { f.write('\$Float') }
-				.sum_type { f.write('\$Sumtype') }
-				.enum_ { f.write('\$Enum') }
-				.alias { f.write('\$Alias') }
-				.function { f.write('\$Function') }
+				.array { f.write('\$array') }
+				.struct_ { f.write('\$struct') }
+				.iface { f.write('\$interface') }
+				.map_ { f.write('\$map') }
+				.int { f.write('\$int') }
+				.float { f.write('\$float') }
+				.sum_type { f.write('\$sumtype') }
+				.enum_ { f.write('\$enum') }
+				.alias { f.write('\$alias') }
+				.function { f.write('\$function') }
+				.option { f.write('\$option') }
 			}
 		}
 	}

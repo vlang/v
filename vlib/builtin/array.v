@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -71,6 +71,33 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 						vmemcpy(eptr, val, arr.element_size)
 						eptr += arr.element_size
 					}
+				}
+			}
+		}
+	}
+	return arr
+}
+
+fn __new_array_with_multi_default(mylen int, cap int, elm_size int, val voidptr) array {
+	cap_ := if cap < mylen { mylen } else { cap }
+	mut arr := array{
+		element_size: elm_size
+		len: mylen
+		cap: cap_
+	}
+	// x := []EmptyStruct{cap:5} ; for clang/gcc with -gc none,
+	//    -> sizeof(EmptyStruct) == 0 -> elm_size == 0
+	//    -> total_size == 0 -> malloc(0) -> panic;
+	//    to avoid it, just allocate a single byte
+	total_size := u64(cap_) * u64(elm_size)
+	arr.data = vcalloc(__at_least_one(total_size))
+	if val != 0 {
+		mut eptr := &u8(arr.data)
+		unsafe {
+			if eptr != nil {
+				for i in 0 .. arr.len {
+					vmemcpy(eptr, charptr(val) + i * arr.element_size, arr.element_size)
+					eptr += arr.element_size
 				}
 			}
 		}

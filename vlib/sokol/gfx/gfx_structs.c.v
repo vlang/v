@@ -610,7 +610,7 @@ struct C.sg_pass_attachment_desc {
 pub mut:
 	image     Image
 	mip_level int
-	face      int
+	slice     int
 	// image sg_image
 	// mip_level int
 	// union {

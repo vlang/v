@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
@@ -34,6 +34,7 @@ const (
 		'self',
 		'setup-freetype',
 		'shader',
+		'share',
 		'should-compile-all',
 		'symlink',
 		'scan',
@@ -67,6 +68,7 @@ fn main() {
 	timers.show('v start')
 	timers.start('parse_CLI_args')
 	args := os.args[1..]
+
 	if args.len == 0 || args[0] in ['-', 'repl'] {
 		if args.len == 0 {
 			// Running `./v` without args launches repl
@@ -190,5 +192,19 @@ fn rebuild(prefs &pref.Preferences) {
 			println('using Go WIP backend...')
 			util.launch_tool(prefs.is_verbose, 'builders/golang_builder', os.args[1..])
 		}
+		.wasm {
+			assert_wasm_backend_thirdparty()
+			util.launch_tool(prefs.is_verbose, 'builders/wasm_builder', os.args[1..])
+		}
+	}
+}
+
+fn assert_wasm_backend_thirdparty() {
+	vroot := os.dir(pref.vexe_path())
+	if !os.exists('${vroot}/cmd/tools/builders/wasm_builder')
+		&& !os.exists('${vroot}/thirdparty/binaryen') {
+		eprintln('The WebAssembly backend requires `binaryen`, an external library dependency')
+		eprintln('This can be installed with `./cmd/tools/install_binaryen.vsh`, to download prebuilt libraries for your platform')
+		exit(1)
 	}
 }

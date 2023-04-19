@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module csv
@@ -76,7 +76,7 @@ fn (w &Writer) field_needs_quotes(field string) bool {
 	if field == '' {
 		return false
 	}
-	if field.contains(w.delimiter.ascii_str()) || (field.index_any('"\r\n') != -1) {
+	if field.contains(w.delimiter.ascii_str()) || field.index_any('"\r\n') != -1 {
 		return true
 	}
 	return false

@@ -30,7 +30,7 @@ fn (mut app App) service_add_user(username string, password string) ! {
 	}
 }
 
-fn (mut app App) service_get_all_user() ?[]User {
+fn (mut app App) service_get_all_user() ![]User {
 	mut db := databases.create_db_connection() or {
 		println(err)
 		return err
@@ -42,12 +42,12 @@ fn (mut app App) service_get_all_user() ?[]User {
 
 	results := sql db {
 		select from User
-	}
+	}!
 
 	return results
 }
 
-fn (mut app App) service_get_user(id int) ?User {
+fn (mut app App) service_get_user(id int) !User {
 	mut db := databases.create_db_connection() or {
 		println(err)
 		return err
@@ -59,7 +59,7 @@ fn (mut app App) service_get_user(id int) ?User {
 
 	results := sql db {
 		select from User where id == id
-	}
+	}!
 
-	return results
+	return results.first()
 }

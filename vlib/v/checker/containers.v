@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -12,6 +12,10 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	if node.typ != ast.void_type {
 		if node.elem_type != 0 {
 			elem_sym := c.table.sym(node.elem_type)
+
+			if node.typ.has_flag(.option) && (node.has_cap || node.has_len) {
+				c.error('Option array `${elem_sym.name}` cannot have initializers', node.pos)
+			}
 			if elem_sym.kind == .struct_ {
 				elem_info := elem_sym.info as ast.Struct
 				if elem_info.generic_types.len > 0 && elem_info.concrete_types.len == 0
@@ -62,11 +66,18 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			default_expr := node.default_expr
 			default_typ := c.check_expr_opt_call(default_expr, c.expr(default_expr))
 			node.default_type = default_typ
+			if !node.elem_type.has_flag(.option) && default_typ.has_flag(.option) {
+				c.error('cannot use unwrapped Option as initializer', default_expr.pos())
+			}
 			c.check_expected(default_typ, node.elem_type) or {
 				c.error(err.msg(), default_expr.pos())
 			}
 		}
 		if node.has_len {
+			len_typ := c.check_expr_opt_call(node.len_expr, c.expr(node.len_expr))
+			if len_typ.has_flag(.option) {
+				c.error('cannot use unwrapped Option as length', node.len_expr.pos())
+			}
 			if node.has_len && !node.has_default {
 				elem_type_sym := c.table.sym(node.elem_type)
 				if elem_type_sym.kind == .interface_ {
@@ -75,6 +86,12 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				}
 			}
 			c.ensure_sumtype_array_has_default_value(node)
+		}
+		if node.has_cap {
+			cap_typ := c.check_expr_opt_call(node.cap_expr, c.expr(node.cap_expr))
+			if cap_typ.has_flag(.option) {
+				c.error('cannot use unwrapped Option as capacity', node.cap_expr.pos())
+			}
 		}
 		c.ensure_type_exists(node.elem_type, node.elem_type_pos) or {}
 		if node.typ.has_flag(.generic) && c.table.cur_fn != unsafe { nil }
@@ -121,7 +138,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.expected_type.clear_flag(.shared_f).deref()
 		} else {
 			c.expected_type
-		}.clear_flag(.option).clear_flag(.result)
+		}.clear_flags(.option, .result)
 	}
 	// [1,2,3]
 	if node.exprs.len > 0 && node.elem_type == ast.void_type {
@@ -282,7 +299,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		sym := c.table.sym(c.expected_type)
 		if sym.kind == .map {
 			info := sym.map_info()
-			node.typ = c.expected_type.clear_flag(.option).clear_flag(.result)
+			node.typ = c.expected_type.clear_flags(.option, .result)
 			node.key_type = info.key_type
 			node.value_type = info.value_type
 			return node.typ

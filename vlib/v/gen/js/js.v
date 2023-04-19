@@ -100,11 +100,11 @@ fn (mut g JsGen) write_tests_definitions() {
 	g.definitions.writeln('globalThis.g_test_fails = 0;')
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
+pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) string {
 	mut g := &JsGen{
 		definitions: strings.new_builder(100)
 		table: table
-		pref: pref
+		pref: pref_
 		fn_decl: 0
 		empty_line: true
 		doc: 0
@@ -115,7 +115,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	}
 	g.doc = new_jsdoc(g)
 	// TODO: Add '[-no]-jsdoc' flag
-	if pref.is_prod {
+	if g.pref.is_prod {
 		g.enable_doc = false
 		g.is_vlines_enabled = false
 	}
@@ -428,7 +428,7 @@ pub fn (mut g JsGen) enter_namespace(name string) {
 }
 
 pub fn (mut g JsGen) escape_namespace() {
-	g.ns = &Namespace(0)
+	g.ns = &Namespace(unsafe { nil })
 	g.inside_builtin = false
 }
 
@@ -1049,7 +1049,7 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 		}
 		ast.StructInit {
 			if node.unresolved {
-				resolved := ast.resolve_init(node, g.unwrap_generic(node.typ), g.table)
+				resolved := g.table.resolve_init(node, g.unwrap_generic(node.typ))
 				g.expr(resolved)
 			} else {
 				g.gen_struct_init(node)
@@ -1465,7 +1465,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				should_cast := if stmt.left_types.len == 0 {
 					false
 				} else {
-					(g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables)
+					g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables
 						&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
 				}
 

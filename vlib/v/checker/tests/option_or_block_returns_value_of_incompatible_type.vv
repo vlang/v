@@ -1,4 +1,4 @@
-fn test_option(fail bool) ?string {
+fn test_option(fail bool) !string {
 	if fail {
 		return error('false')
 	}

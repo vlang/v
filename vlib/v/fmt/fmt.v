@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module fmt
@@ -61,11 +61,11 @@ pub struct FmtOptions {
 	source_text string
 }
 
-pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug bool, options FmtOptions) string {
+pub fn fmt(file ast.File, table &ast.Table, pref_ &pref.Preferences, is_debug bool, options FmtOptions) string {
 	mut f := Fmt{
 		file: file
 		table: table
-		pref: pref
+		pref: pref_
 		is_debug: is_debug
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
@@ -196,6 +196,7 @@ fn (mut f Fmt) write_language_prefix(lang ast.Language) {
 	match lang {
 		.c { f.write('C.') }
 		.js { f.write('JS.') }
+		.wasm { f.write('WASM.') }
 		else {}
 	}
 }
@@ -366,7 +367,8 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	mod := if imp.mod.len == 0 { imp.alias } else { imp.mod }
-	is_diff := imp.alias != mod && !mod.ends_with('.' + imp.alias)
+	normalized_mod := mod.all_after('src.') // Ignore the 'src.' folder prefix since src/ folder is root of code
+	is_diff := imp.alias != normalized_mod && !normalized_mod.ends_with('.' + imp.alias)
 	mut imp_alias_suffix := if is_diff { ' as ${imp.alias}' } else { '' }
 	mut syms := imp.syms.map(it.name).filter(f.import_syms_used[it])
 	syms.sort()
@@ -377,7 +379,7 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 			' {\n\t' + syms.join(',\n\t') + ',\n}'
 		}
 	}
-	return '${mod}${imp_alias_suffix}'
+	return '${normalized_mod}${imp_alias_suffix}'
 }
 
 //=== Node helpers ===//
@@ -730,16 +732,17 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 		}
 		ast.ComptimeType {
 			match node.kind {
-				.array { f.write('\$Array') }
-				.struct_ { f.write('\$Struct') }
-				.iface { f.write('\$Interface') }
-				.map_ { f.write('\$Map') }
-				.int { f.write('\$Int') }
-				.float { f.write('\$Float') }
-				.sum_type { f.write('\$Sumtype') }
-				.enum_ { f.write('\$Enum') }
-				.alias { f.write('\$Alias') }
-				.function { f.write('\$Function') }
+				.array { f.write('\$array') }
+				.struct_ { f.write('\$struct') }
+				.iface { f.write('\$interface') }
+				.map_ { f.write('\$map') }
+				.int { f.write('\$int') }
+				.float { f.write('\$float') }
+				.sum_type { f.write('\$sumtype') }
+				.enum_ { f.write('\$enum') }
+				.alias { f.write('\$alias') }
+				.function { f.write('\$function') }
+				.option { f.write('\$option') }
 			}
 		}
 	}
@@ -1393,7 +1396,12 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 	fn_typ_info := typ_sym.info as ast.FnType
 	fn_info := fn_typ_info.func
 	fn_name := f.no_cur_mod(node.name)
-	f.write('type ${fn_name} = fn (')
+	mut generic_types_str := ''
+	if node.generic_types.len > 0 {
+		generic_names := node.generic_types.map(f.table.sym(it).name)
+		generic_types_str = '[${generic_names.join(', ')}]'
+	}
+	f.write('type ${fn_name}${generic_types_str} = fn (')
 	for i, arg in fn_info.params {
 		if arg.is_mut {
 			f.write(arg.typ.share().str() + ' ')
@@ -1772,7 +1780,11 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		}
 	}
 	if node.mod == '' && node.name == '' {
-		f.write(node.left.str())
+		if node.left is ast.CallExpr {
+			f.expr(node.left)
+		} else {
+			f.write(node.left.str())
+		}
 	}
 	f.write_generic_call_if_require(node)
 	f.write('(')
@@ -1900,13 +1912,17 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 			f.write("\$env('${node.args_var}')")
 		} else if node.is_pkgconfig {
 			f.write("\$pkgconfig('${node.args_var}')")
-		} else if node.method_name == 'compile_error' {
-			f.write("\$compile_error('${node.args_var}')")
+		} else if node.method_name in ['compile_error', 'compile_warn'] {
+			f.write("\$${node.method_name}('${node.args_var}')")
 		} else {
 			inner_args := if node.args_var != '' {
 				node.args_var
 			} else {
-				node.args.map(it.str()).join(', ')
+				node.args.map(if it.expr is ast.ArrayDecompose {
+					'...${it.expr.expr.str()}'
+				} else {
+					it.str()
+				}).join(', ')
 			}
 			method_expr := if node.has_parens {
 				'(${node.method_name}(${inner_args}))'
@@ -2002,6 +2018,11 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		}
 		name := f.short_module(node.name)
 		f.write(name)
+		if node.or_expr.kind == .propagate_option {
+			f.write('?')
+		} else if node.or_expr.kind == .block {
+			f.or_expr(node.or_expr)
+		}
 		f.mark_import_as_used(name)
 	}
 }
@@ -2126,7 +2147,21 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	}
 	start_pos := f.out.len
 	start_len := f.line_len
-	f.expr(node.left)
+	mut redundant_par := false
+	if node.left is ast.ParExpr && node.op in [.and, .logical_or] {
+		if node.left.expr is ast.InfixExpr {
+			if node.left.expr.op !in [.and, .logical_or] {
+				redundant_par = true
+				f.expr(node.left.expr)
+			}
+		}
+	}
+	if !redundant_par {
+		f.expr(node.left)
+	}
+	if node.before_op_comments.len > 0 {
+		f.comments(node.before_op_comments, iembed: node.before_op_comments[0].is_inline)
+	}
 	is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit
 		&& (node.right as ast.ArrayInit).exprs.len == 1
 	is_and := node.op == .amp && f.node_str(node.right).starts_with('&')
@@ -2139,13 +2174,28 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	} else {
 		f.write(' ${node.op.str()} ')
 	}
+	if node.after_op_comments.len > 0 {
+		f.comments(node.after_op_comments, iembed: node.after_op_comments[0].is_inline)
+		f.write(' ')
+	}
 	if is_one_val_array_init && !f.inside_comptime_if {
 		// `var in [val]` => `var == val`
 		f.expr((node.right as ast.ArrayInit).exprs[0])
 	} else if is_and {
 		f.write(f.node_str(node.right).trim_string_left('&'))
 	} else {
-		f.expr(node.right)
+		redundant_par = false
+		if node.right is ast.ParExpr && node.op in [.and, .logical_or] {
+			if node.right.expr is ast.InfixExpr {
+				if node.right.expr.op !in [.and, .logical_or] {
+					redundant_par = true
+					f.expr(node.right.expr)
+				}
+			}
+		}
+		if !redundant_par {
+			f.expr(node.right)
+		}
 	}
 	if !buffering_save && f.buffering {
 		f.buffering = false
@@ -2587,17 +2637,17 @@ pub fn (mut f Fmt) selector_expr(node ast.SelectorExpr) {
 
 pub fn (mut f Fmt) size_of(node ast.SizeOf) {
 	f.write('sizeof')
-	if node.is_type {
-		// keep the old form for now
-		f.write('(')
-		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
-		f.write(')')
-		return
-	}
-	if node.is_type {
+	if node.is_type && !node.guessed_type {
+		// the new form was explicitly written in the source code; keep it:
 		f.write('[')
 		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 		f.write(']()')
+		return
+	}
+	if node.is_type {
+		f.write('(')
+		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
+		f.write(')')
 	} else {
 		f.write('(')
 		f.expr(node.expr)
@@ -2607,17 +2657,17 @@ pub fn (mut f Fmt) size_of(node ast.SizeOf) {
 
 pub fn (mut f Fmt) is_ref_type(node ast.IsRefType) {
 	f.write('isreftype')
-	if node.is_type {
-		// keep the old form for now
-		f.write('(')
-		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
-		f.write(')')
-		return
-	}
-	if node.is_type {
+	if node.is_type && !node.guessed_type {
+		// the new form was explicitly written in the source code; keep it:
 		f.write('[')
 		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 		f.write(']()')
+		return
+	}
+	if node.is_type {
+		f.write('(')
+		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
+		f.write(')')
 	} else {
 		f.write('(')
 		f.expr(node.expr)

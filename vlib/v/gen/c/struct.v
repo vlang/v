@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -62,6 +62,8 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		} else {
 			g.write('&(${basetyp}){')
 		}
+	} else if node.typ.has_flag(.option) {
+		g.write('(${g.base_type(node.typ)}){')
 	} else if g.inside_cinit {
 		if is_multiline {
 			g.writeln('{')
@@ -304,22 +306,55 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 
 fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 	sym := g.table.sym(field.typ)
-	if sym.kind == .struct_ {
-		info := sym.info as ast.Struct
-		if info.fields.len == 0 {
+	field_name := if sym.language == .v { c_name(field.name) } else { field.name }
+	if sym.info is ast.Struct {
+		if sym.info.fields.len == 0 {
 			return false
+		} else if !field.has_default_expr {
+			mut has_option_field := false
+			for fd in sym.info.fields {
+				if fd.typ.has_flag(.option) {
+					has_option_field = true
+					break
+				}
+			}
+			if has_option_field {
+				default_init := ast.StructInit{
+					typ: field.typ
+				}
+				g.write('.${field_name} = ')
+				if field.typ.has_flag(.option) {
+					if field.is_recursive {
+						g.expr_with_opt(ast.None{}, ast.none_type, field.typ)
+					} else {
+						tmp_var := g.new_tmp_var()
+						g.expr_with_tmp_var(default_init, field.typ, field.typ, tmp_var)
+					}
+				} else {
+					g.struct_init(default_init)
+				}
+				return true
+			}
 		}
 	}
-	field_name := if sym.language == .v { c_name(field.name) } else { field.name }
 	g.write('.${field_name} = ')
 	if field.has_default_expr {
 		if sym.kind in [.sum_type, .interface_] {
-			g.expr_with_cast(field.default_expr, field.default_expr_typ, field.typ)
+			if field.typ.has_flag(.option) {
+				g.expr_opt_with_cast(field.default_expr, field.default_expr_typ.set_flag(.option),
+					field.typ)
+			} else {
+				g.expr_with_cast(field.default_expr, field.default_expr_typ, field.typ)
+			}
 			return true
 		}
 
-		if (field.typ.has_flag(.option) && !field.default_expr_typ.has_flag(.option))
-			|| (field.typ.has_flag(.result) && !field.default_expr_typ.has_flag(.result)) {
+		if field.typ.has_flag(.option) {
+			tmp_var := g.new_tmp_var()
+			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ,
+				tmp_var)
+			return true
+		} else if field.typ.has_flag(.result) && !field.default_expr_typ.has_flag(.result) {
 			tmp_var := g.new_tmp_var()
 			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ,
 				tmp_var)
@@ -390,6 +425,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	} else {
 		g.type_definitions.writeln('struct ${name} {')
 	}
+
 	if s.fields.len > 0 || s.embeds.len > 0 {
 		for field in s.fields {
 			// Some of these structs may want to contain
@@ -518,9 +554,9 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 
 			if (sfield.expected_type.has_flag(.option) && !sfield.typ.has_flag(.option))
 				|| (sfield.expected_type.has_flag(.result) && !sfield.typ.has_flag(.result)) {
-				tmp_var := g.new_tmp_var()
-				g.expr_with_tmp_var(sfield.expr, sfield.typ, sfield.expected_type, tmp_var)
+				g.expr_with_opt(sfield.expr, sfield.typ, sfield.expected_type)
 			} else {
+				g.left_is_opt = true
 				g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
 			}
 		}

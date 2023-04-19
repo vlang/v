@@ -1,7 +1,6 @@
 module main
 
 import os
-import v.pref
 
 const freetype_repo_url = 'https://github.com/ubawurinna/freetype-windows-binaries'
 
@@ -10,7 +9,7 @@ const freetype_folder = os.join_path('thirdparty', 'freetype')
 fn main() {
 	$if windows {
 		println('Setup freetype...')
-		vroot := os.dir(pref.vexe_path())
+		vroot := os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 		os.chdir(vroot)!
 		if os.is_dir(freetype_folder) {
 			println('Thirdparty "freetype" is already installed.')

@@ -119,9 +119,9 @@ pub fn (mut ws Client) connect() ! {
 
 // listen listens and processes incoming messages
 pub fn (mut ws Client) listen() ! {
-	mut log := 'Starting client listener, server(${ws.is_server})...'
-	ws.logger.info(log)
-	unsafe { log.free() }
+	mut log_msg := 'Starting client listener, server(${ws.is_server})...'
+	ws.logger.info(log_msg)
+	unsafe { log_msg.free() }
 	defer {
 		ws.logger.info('Quit client listener, server(${ws.is_server})...')
 		if ws.state == .open {
@@ -143,9 +143,9 @@ pub fn (mut ws Client) listen() ! {
 		ws.debug_log('got message: ${msg.opcode}')
 		match msg.opcode {
 			.text_frame {
-				log = 'read: text'
-				ws.debug_log(log)
-				unsafe { log.free() }
+				log_msg = 'read: text'
+				ws.debug_log(log_msg)
+				unsafe { log_msg.free() }
 				ws.send_message_event(msg)
 				unsafe { msg.free() }
 			}
@@ -177,9 +177,9 @@ pub fn (mut ws Client) listen() ! {
 				}
 			}
 			.close {
-				log = 'read: close'
-				ws.debug_log(log)
-				unsafe { log.free() }
+				log_msg = 'read: close'
+				ws.debug_log(log_msg)
+				unsafe { log_msg.free() }
 				defer {
 					ws.manage_clean_close()
 				}
@@ -330,13 +330,14 @@ pub fn (mut ws Client) write_string(str string) !int {
 pub fn (mut ws Client) close(code int, message string) ! {
 	ws.debug_log('sending close, ${code}, ${message}')
 	if ws.state in [.closed, .closing] || ws.conn.sock.handle <= 1 {
-		ws.debug_log('close: Websocket allready closed (${ws.state}), ${message}, ${code} handle(${ws.conn.sock.handle})')
-		err_msg := 'Socket allready closed: ${code}'
+		ws.debug_log('close: Websocket already closed (${ws.state}), ${message}, ${code} handle(${ws.conn.sock.handle})')
+		err_msg := 'Socket already closed: ${code}'
 		return error(err_msg)
 	}
 	defer {
 		ws.shutdown_socket() or {}
 		ws.reset_state() or {}
+		ws.send_close_event(code, message)
 	}
 	ws.set_state(.closing)
 	// mut code32 := 0

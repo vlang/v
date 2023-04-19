@@ -18,7 +18,7 @@ jobs:
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: No GPL licensed code, should be added accidentally
         run: |
           ! grep -r --exclude="*.yml" "a GPL license" .
@@ -30,7 +30,7 @@ jobs:
     env:
       VFLAGS: -cc gcc
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Environment info
         run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
       - name: Build local v
@@ -47,7 +47,7 @@ jobs:
     env:
       VFLAGS: -cc gcc
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Environment info
         run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
       - name: Build local v
@@ -63,7 +63,7 @@ jobs:
       - name: Repeat -o hw.c examples/hello_world.v
         run: cmd/tools/repeat --max_time 251 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o hw.c examples/hello_world.v' . ./vmaster
       - name: Repeat -o v.c cmd/v
-        run: cmd/tools/repeat --max_time 1501 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
+        run: cmd/tools/repeat --max_time 1701 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
 
   misc-tooling:
     runs-on: ubuntu-20.04
@@ -72,7 +72,7 @@ jobs:
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 10
 
@@ -81,17 +81,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
-          sudo apt-get install --quiet -y g++-9
+          sudo apt-get install --quiet -y g++-9 g++-11
 
       - name: Build v
         run: make
 
-      - name: g++ version
+      - name: g++-9 version
         run: g++-9 --version
-      - name: V self compilation with g++
+      - name: V self compilation with g++ and -std=c++11
         run: ./v -cc g++-9 -no-std -cflags -std=c++11 -o v2 cmd/v && ./v2 -cc g++-9 -no-std -cflags -std=c++11 -o v3 cmd/v
-        ##    - name: Running tests with g++
-        ##      run: ./v -cc g++-9 test-self
+
+      - name: g++-11 version
+        run: g++-11 --version
+      - name: V self compilation with g++ and -std=c++20
+        run: ./v -cc g++-11 -no-std -cflags -std=c++20 -o v2 cmd/v && ./v2 -cc g++-11 -no-std -cflags -std=c++20 -o v3 cmd/v
 
       - name: Ensure V can be compiled with -autofree
         run: ./v -autofree -o v2 cmd/v  ## NB: this does not mean it runs, but at least keeps it from regressing
@@ -117,7 +120,7 @@ jobs:
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Install zzuf
         run: sudo apt install -qq zzuf
       - name: Build local v
@@ -150,4 +153,3 @@ jobs:
           ./v test-parser -S examples/cli_fuzz.v
           ./v test-parser -S examples/regex_example_fuzz.v
           ./v test-parser -S examples/2048/2048_fuzz.v
-

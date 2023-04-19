@@ -29,6 +29,9 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			if expr.name == 'int' {
 				e.error('methods not supported')
 			}
+			if expr.name == 'main.host_pop' {
+				return e.stack_vals.pop()
+			}
 			mut args := expr.args.map(e.expr(it.expr, it.typ))
 			if expr.is_method {
 				args.prepend(e.expr(expr.left, expr.receiver_type))

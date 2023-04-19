@@ -328,9 +328,6 @@ pub fn new_context(cfg Config) &Context {
 	sz.height = g.height
 	sz.width = g.width
 	g.config = cfg
-	if isnil(cfg.user_data) {
-		g.user_data = g
-	}
 	g.window = dom.window()
 	document := dom.document
 	canvas_elem := document.getElementById(cfg.canvas.str) or {
@@ -453,6 +450,11 @@ pub fn new_context(cfg Config) &Context {
 }
 
 pub fn (mut ctx Context) run() {
+	// set context late, in case it changed (e.g., due to embedding)
+	if isnil(ctx.user_data) {
+		ctx.user_data = ctx
+	}
+
 	gg_animation_frame_fn(mut ctx)
 }
 

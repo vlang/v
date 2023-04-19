@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -14,6 +14,8 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 		'C.${p.check_name()}'
 	} else if language == .js {
 		'JS.${p.check_js_name()}'
+	} else if language == .wasm {
+		'WASM.${p.check_name()}'
 	} else if mod.len > 0 {
 		'${mod}.${p.check_name()}'
 	} else {
@@ -111,7 +113,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 		mut expr := ast.empty_expr
 		if p.tok.kind == .name && p.peek_tok.kind == .colon {
 			// `foo(key:val, key2:val2)`
-			expr = p.struct_init('void_type', .short_syntax)
+			expr = p.struct_init('void_type', .short_syntax, false)
 		} else {
 			expr = p.expr(0)
 		}
@@ -242,6 +244,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		language = .c
 	} else if p.tok.kind == .name && p.tok.lit == 'JS' {
 		language = .js
+	} else if p.tok.kind == .name && p.tok.lit == 'WASM' {
+		language = .wasm
 	}
 	p.fn_language = language
 	if language != .v {
@@ -280,6 +284,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.fn_language = language
 	}
 	mut name := ''
+	mut type_sym := p.table.sym(rec.typ)
 	name_pos := p.tok.pos()
 	if p.tok.kind == .name {
 		// TODO high order fn
@@ -292,12 +297,11 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				scope: 0
 			}
 		}
-		type_sym := p.table.sym(rec.typ)
 		if is_method {
 			mut is_duplicate := type_sym.has_method(name)
 			// make sure this is a normal method and not an interface method
 			if type_sym.kind == .interface_ && is_duplicate {
-				if type_sym.info is ast.Interface {
+				if mut type_sym.info is ast.Interface {
 					// if the method is in info then its an interface method
 					is_duplicate = !type_sym.info.has_method(name)
 				}
@@ -327,6 +331,19 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	} else if p.tok.kind in [.ne, .gt, .ge, .le] && p.peek_tok.kind == .lpar {
 		p.error_with_pos('cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated from `==` and`<`',
 			p.tok.pos())
+	} else if p.tok.kind in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
+		extracted_op := match p.tok.kind {
+			.plus_assign { '+' }
+			.minus_assign { '-' }
+			.div_assign { '/' }
+			.mod_assign { '%' }
+			.mult_assign { '*' }
+			else { 'unknown op' }
+		}
+		if type_sym.has_method(extracted_op) {
+			p.error('cannot overload `${p.tok.kind}`, operator is implicitly overloaded because the `${extracted_op}` operator is overloaded')
+		}
+		p.error('cannot overload `${p.tok.kind}`, overload `${extracted_op}` and `${p.tok.kind}` will be automatically generated')
 	} else {
 		p.error_with_pos('expecting method name', p.tok.pos())
 		return ast.FnDecl{
@@ -355,7 +372,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	params << args2
 	if !are_args_type_only {
-		for param in params {
+		for k, param in params {
 			if p.scope.known_var(param.name) {
 				p.error_with_pos('redefinition of parameter `${param.name}`', param.pos)
 				return ast.FnDecl{
@@ -372,6 +389,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				pos: param.pos
 				is_used: true
 				is_arg: true
+				ct_type_var: if (!is_method || k > 0) && param.typ.has_flag(.generic)
+					&& !param.typ.has_flag(.variadic) {
+					.generic_param
+				} else {
+					.no_comptime
+				}
 			})
 		}
 	}
@@ -412,7 +435,6 @@ run them via `v file.v` instead',
 	}
 	// Register
 	if is_method {
-		mut type_sym := p.table.sym(rec.typ)
 		// Do not allow to modify / add methods to types from other modules
 		// arrays/maps dont belong to a module only their element types do
 		// we could also check if kind is .array,  .array_fixed, .map instead of mod.len
@@ -462,6 +484,8 @@ run them via `v file.v` instead',
 			name = 'C.${name}'
 		} else if language == .js {
 			name = 'JS.${name}'
+		} else if language == .wasm {
+			name = 'WASM.${name}'
 		} else {
 			name = p.prepend_mod(name)
 		}
@@ -495,6 +519,7 @@ run them via `v file.v` instead',
 			is_test: is_test
 			is_keep_alive: is_keep_alive
 			is_method: false
+			is_file_translated: p.is_translated
 			//
 			attrs: p.attrs
 			is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx
@@ -550,6 +575,7 @@ run them via `v file.v` instead',
 		is_keep_alive: is_keep_alive
 		is_unsafe: is_unsafe
 		is_markused: is_markused
+		is_file_translated: p.is_translated
 		//
 		attrs: p.attrs
 		is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx
@@ -693,11 +719,18 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	} else {
 		[]ast.Param{}
 	}
+	inherited_vars_name := inherited_vars.map(it.name)
 	_, generic_names := p.parse_generic_types()
 	args, _, is_variadic := p.fn_args()
 	for arg in args {
 		if arg.name.len == 0 && p.table.sym(arg.typ).kind != .placeholder {
 			p.error_with_pos('use `_` to name an unused parameter', arg.pos)
+		}
+		if arg.name in inherited_vars_name {
+			p.error_with_pos('the parameter name `${arg.name}` conflicts with the captured value name',
+				arg.pos)
+		} else if p.scope.known_var(arg.name) {
+			p.error_with_pos('redefinition of parameter `${arg.name}`', arg.pos)
 		}
 		is_stack_obj := !arg.typ.has_flag(.shared_f) && (arg.is_mut || arg.typ.is_ptr())
 		p.scope.register(ast.Var{
@@ -753,17 +786,6 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	typ := ast.new_type(idx)
 	p.inside_defer = old_inside_defer
 	// name := p.table.get_type_name(typ)
-	if inherited_vars.len > 0 && args.len > 0 {
-		for arg in args {
-			for var in inherited_vars {
-				if arg.name == var.name {
-					p.error_with_pos('the parameter name `${arg.name}` conflicts with the captured value name',
-						arg.pos)
-					break
-				}
-			}
-		}
-	}
 	return ast.AnonFn{
 		decl: ast.FnDecl{
 			name: name

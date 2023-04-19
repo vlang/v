@@ -1,0 +1,11 @@
+Removes all listed PACKAGEs.
+
+Usage:
+  v remove [PACKAGE...]
+
+If no PACKAGE is provided, removes ALL installed packages.
+
+Options:
+  -v           Print more details about the performed operation.
+  -server-url  When doing network operations, use this vpm server.
+               Can be given multiple times.
