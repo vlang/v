@@ -31,7 +31,7 @@ fn test_superfluous() {
 
 fn test_nested_superfluous() {
 	json.strict_decode[StructType[StructTypeAndOptionType[string]]]('{"val": {"val": "","val2": ""}}') or {
-		assert err.msg() == '[x.json2] useless data detected. Try prune superfluous fields showed in err.superfluous_fields()'
+		assert err.msg() == '[x.json2] unusable data detected. Try pruning superfluous fields shown in err.superfluous_fields()'
 		assert err.superfluous_fields() == ['val.val2']
 		return
 	}
