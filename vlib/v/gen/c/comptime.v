@@ -563,13 +563,17 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 							}
 						} else if cond.right is ast.IntegerLiteral {
 							if g.is_comptime_selector_field_name(cond.left, 'indirections') {
-								ret := match cond.op {
+								is_true := match cond.op {
 									.eq { g.comptime_for_field_type.nr_muls() == cond.right.val.i64() }
 									.ne { g.comptime_for_field_type.nr_muls() != cond.right.val.i64() }
 									else { false }
 								}
-								g.write(if ret { '1' } else { '0' })
-								return ret, true
+								if is_true {
+									g.write('1')
+								} else {
+									g.write('0')
+								}
+								return is_true, true
 							}
 						}
 					}
@@ -627,15 +631,19 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 						if g.is_comptime_selector_field_name(cond.left as ast.SelectorExpr,
 							'indirections')
 						{
-							ret := match cond.op {
+							is_true := match cond.op {
 								.gt { g.comptime_for_field_type.nr_muls() > cond.right.val.i64() }
 								.lt { g.comptime_for_field_type.nr_muls() < cond.right.val.i64() }
 								.ge { g.comptime_for_field_type.nr_muls() >= cond.right.val.i64() }
 								.le { g.comptime_for_field_type.nr_muls() <= cond.right.val.i64() }
 								else { false }
 							}
-							g.write(if ret { '1' } else { '0' })
-							return ret, true
+							if is_true {
+								g.write('1')
+							} else {
+								g.write('0')
+							}
+							return is_true, true
 						} else {
 							return true, false
 						}
