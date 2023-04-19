@@ -5,10 +5,12 @@ import v.ast
 
 struct Var {
 	name       string
+mut:
 	typ        ast.Type
 	idx        wasm.LocalIndex
 	is_pointer bool
-	is_global  bool
+	is_global  bool // TODO, unused for now
+	offset     int
 }
 
 fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
@@ -68,11 +70,21 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) ?Var {
 	}
 }
 
-fn (mut g Gen) bp() int {
+fn (mut g Gen) bp() wasm.LocalIndex {
 	if g.bp_idx == -1 {
 		g.bp_idx = g.func.new_local(.i32_t)
 	}
 	return g.bp_idx
+}
+
+fn (mut g Gen) sp() wasm.GlobalIndex {
+	if sp := g.sp_global {
+		return sp
+	}
+	// (64KiB - 1KiB) of stack space, grows downwards.
+	// Memory addresses from 0 to 1024 are forbidden.
+	g.sp_global = g.mod.new_global(none, .i32_t, true, wasm.constexpr_value(65536))
+	return g.sp()
 }
 
 fn (mut g Gen) new_local(node ast.Ident, typ ast.Type) {
@@ -90,22 +102,23 @@ fn (mut g Gen) new_local(node ast.Ident, typ ast.Type) {
 		else {}
 	}
 	
+	is_pointer := typ.is_ptr() || !g.is_pure_type(typ)
 	wtyp := g.get_wasm_type(typ)
 
-	idx := g.func.new_local(wtyp)
-	v := Var{
+	mut v := Var{
 		name: node.name
 		typ: typ
-		idx: idx
-		is_pointer: typ.is_ptr() || !g.is_pure_type(typ)
-	}
-	g.local_vars << v
-	
-	if !v.is_pointer {
-		return
+		is_pointer: is_pointer
 	}
 
-	// allocate memory, then assign to the local
+	if !is_pointer {
+		v.idx = g.func.new_local(wtyp)
+		g.local_vars << v
+		return
+	}
+	v.idx = g.bp()
+
+	// allocate memory, then assign an offset
 	// 
 	match ts.info {
 		ast.Struct, ast.ArrayFixed {
@@ -114,19 +127,13 @@ fn (mut g Gen) new_local(node ast.Ident, typ ast.Type) {
 			address := g.stack_frame
 			g.stack_frame += size + padding
 
-			// lea v, [bp + address]
-			// 
-			g.func.local_get(g.bp())
-			if address != 0 {
-				g.func.i32_const(address)
-				g.func.add(.i32_t)	
-			}
-			g.func.local_set(v.idx)
+			v.offset = address
 		}
 		else {
 			g.w_error('new_local: type `${*ts}` (${ts.info.type_name()}) is not a supported local type')
 		}
 	}
+	g.local_vars << v
 }
 
 // is_pure_type(voidptr) == true
@@ -153,25 +160,25 @@ fn log2(size int) int {
 	}
 }
 
-fn (mut g Gen) load(typ ast.Type) {
+fn (mut g Gen) load(typ ast.Type, offset int) {
 	size, align := g.table.type_size(typ)
 	wtyp := g.as_numtype(g.get_wasm_type(typ))
 
 	match size {
-		1 { g.func.load8(wtyp, typ.is_signed(), log2(align), 0) }
-		2 { g.func.load16(wtyp, typ.is_signed(), log2(align), 0) }
-		else { g.func.load(wtyp, log2(align), 0) }
+		1 { g.func.load8(wtyp, typ.is_signed(), log2(align), offset) }
+		2 { g.func.load16(wtyp, typ.is_signed(), log2(align), offset) }
+		else { g.func.load(wtyp, log2(align), offset) }
 	}
 }
 
-fn (mut g Gen) store(typ ast.Type) {
+fn (mut g Gen) store(typ ast.Type, offset int) {
 	size, align := g.table.type_size(typ)
 	wtyp := g.as_numtype(g.get_wasm_type(typ))
 
 	match size {
-		1 { g.func.store8(wtyp, log2(align), 0) }
-		2 { g.func.store16(wtyp, log2(align), 0) }
-		else { g.func.store(wtyp, log2(align), 0) }
+		1 { g.func.store8(wtyp, log2(align), offset) }
+		2 { g.func.store16(wtyp, log2(align), offset) }
+		else { g.func.store(wtyp, log2(align), offset) }
 	}
 }
 
@@ -183,7 +190,10 @@ fn (mut g Gen) get(v Var) {
 	}
 
 	if v.is_pointer && g.is_pure_type(v.typ) {
-		g.load(v.typ)
+		g.load(v.typ, v.offset)
+	} else if v.is_pointer && v.offset != 0 {
+		g.func.i32_const(v.offset)
+		g.func.add(.i32_t)
 	}
 }
 
@@ -207,14 +217,26 @@ fn (mut g Gen) set(v Var) {
 	}
 
 	if g.is_pure_type(v.typ) {
-		g.store(v.typ)
+		g.store(v.typ, v.offset)
 		return
+	} else {
+		// ...
+		// memcpy
 	}
 
 	panic('memcpy unimplemented')
 }
 
 fn (mut g Gen) ref(v Var) {
+	g.ref_ignore_offset(v)
+
+	if v.offset != 0 {
+		g.func.i32_const(v.offset)
+		g.func.add(.i32_t)
+	}
+}
+
+fn (mut g Gen) ref_ignore_offset(v Var) {
 	if !v.is_pointer {
 		panic('unreachable')
 	}
@@ -235,15 +257,8 @@ fn (mut g Gen) offset(v Var, typ ast.Type, offset int) Var {
 	nv := Var {
 		...v
 		typ: typ
-		idx: g.func.new_local(.i32_t)
+		offset: v.offset + offset
 	}
-
-	g.ref(v)
-	if offset != 0 {
-		g.func.i32_const(offset)
-		g.func.add(.i32_t)
-	}
-	g.func.local_set(nv.idx)
 
 	return nv
 }
@@ -251,36 +266,40 @@ fn (mut g Gen) offset(v Var, typ ast.Type, offset int) Var {
 fn (mut g Gen) zero_fill(v Var, size int) {
 	assert size > 0
 
-	// no need for a complex system utilising each different type of store
-	// to get full efficient coverage of all sizes, the webassembly optimiser
-	// will spot uses of `memory.fill` and do the work for us accordingly.
-	// 
-	// in the future though, do it!
-	// 
-	// reference code below:
-	// 
-	// ```v
-	// for size > 0 {
-	//     if size - 8 >= 0 {
-	//         size -= 8
-	//         // i64.store
-	//     } else if size - 4 >= 0 {
-	//         size -= 4
-	//         // i32.store
-	//     } else if size - 2 >= 0 {
-	//         size -= 2
-	//         // i32.store16
-	//     } else if size - 1 >= 0 {
-	//         size -= 1
-	//         // i32.store8
-	//     }
-	// }
-	// ```
-	
-	g.ref(v)
-	g.func.i32_const(0)
-	g.func.i32_const(size)
-	g.func.memory_fill()
+	if size > 16 {
+		g.ref(v)
+		g.func.i32_const(0)
+		g.func.i32_const(size)
+		g.func.memory_fill()
+		return
+	}
+
+	mut sz := size
+	mut oz := 0
+	for sz > 0 {
+		g.ref_ignore_offset(v)
+		if sz - 8 >= 0 {
+			g.func.i64_const(0)
+			g.store(ast.u64_type_idx, v.offset + oz)
+			sz -= 8
+			oz += 8
+		} else if sz - 4 >= 0 {
+			g.func.i32_const(0)
+			g.store(ast.u32_type_idx, v.offset + oz)
+			sz -= 4
+			oz += 4
+		} else if sz - 2 >= 0 {
+			g.func.i32_const(0)
+			g.store(ast.u16_type_idx, v.offset + oz)
+			sz -= 2
+			oz += 2
+		} else if sz - 1 >= 0 {
+			g.func.i32_const(0)
+			g.store(ast.u8_type_idx, v.offset + oz)
+			sz -= 1
+			oz += 1
+		}
+	}
 }
 
 fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {

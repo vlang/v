@@ -26,8 +26,10 @@ mut:
 	mod wasm.Module
 	func              wasm.Function
 	local_vars        []Var
-	bp_idx            int = -1 // Base pointer temporary's index for function, if needed (-1 for none)
+	bp_idx            wasm.LocalIndex = -1 // Base pointer temporary's index for function, if needed (-1 for none)
+	sp_global         ?wasm.GlobalIndex
 	stack_frame       int // Size of the current stack frame, if needed
+	is_leaf_function  bool = true
 	structs           map[ast.Type]StructInfo // Cached struct field offsets
 	module_import_namespace string
 }
@@ -129,13 +131,41 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	
 	g.func = g.mod.new_function(name, paraml, retl)
+	func_start := g.func.patch_pos()
 	{
 		g.expr_stmts(node.stmts, ast.void_type)
+
+		// Setup stack frame.
+		// If the function does not call other functions, 
+		// a leaf function, the omission of setting the 
+		// stack pointer is perfectly acceptable.
+		//
+		if g.stack_frame != 0 {
+			prolouge := g.func.patch_pos()
+			{
+				g.func.global_get(g.sp())
+				g.func.i32_const(g.stack_frame)
+				g.func.sub(.i32_t)
+				if !g.is_leaf_function {
+					g.func.local_tee(g.bp())
+					g.func.global_set(g.sp())
+				} else {
+					g.func.local_set(g.bp())					
+				}
+			}
+			g.func.patch(func_start, prolouge)
+			if !g.is_leaf_function {
+				g.func.local_get(g.bp())
+				g.func.global_set(g.sp())
+			}
+		}
 	}
 	g.mod.commit(g.func, false)
 	g.local_vars.clear()
 	g.bp_idx = -1
+	g.sp_global = none
 	g.stack_frame = 0
+	g.is_leaf_function = true
 }
 
 fn (mut g Gen) literal(val string, expected ast.Type) {

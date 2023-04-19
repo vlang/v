@@ -115,7 +115,7 @@ fn (mut g Gen) infix_from_typ(typ ast.Type, op token.Kind) {
 	match op {
 		.plus { g.func.add(wasm_typ) }
 		.minus { g.func.sub(wasm_typ)}
-		.mul { g.func.sub(wasm_typ) }
+		.mul { g.func.mul(wasm_typ) }
 		.mod { g.func.rem(wasm_typ, typ.is_signed()) }
 		.div { g.func.div(wasm_typ, typ.is_signed()) }
 		.eq { g.func.eq(wasm_typ) }
