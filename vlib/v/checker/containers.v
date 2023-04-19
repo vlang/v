@@ -12,7 +12,6 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	if node.typ != ast.void_type {
 		if node.elem_type != 0 {
 			elem_sym := c.table.sym(node.elem_type)
-
 			if node.typ.has_flag(.option) && (node.has_cap || node.has_len) {
 				c.error('Option array `${elem_sym.name}` cannot have initializers', node.pos)
 			}
@@ -53,6 +52,10 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 					}
 				}
 			}
+		}
+		if c.table.sym(node.typ).name == '[]array' {
+			c.error('`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc',
+				node.pos)
 		}
 		if node.exprs.len == 0 {
 			if node.has_cap {
