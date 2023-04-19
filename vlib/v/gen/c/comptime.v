@@ -537,28 +537,39 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 				.eq, .ne {
 					// TODO Implement `$if method.args.len == 1`
 					if cond.left is ast.SelectorExpr
-						&& (g.comptime_for_field_var.len > 0 || g.comptime_for_method.len > 0)
-						&& cond.right is ast.StringLiteral {
-						selector := cond.left as ast.SelectorExpr
-						if selector.expr is ast.Ident && selector.field_name == 'name' {
-							if g.comptime_for_method_var.len > 0
-								&& (selector.expr as ast.Ident).name == g.comptime_for_method_var {
-								is_equal := g.comptime_for_method == cond.right.val
-								if is_equal {
-									g.write('1')
-								} else {
-									g.write('0')
+						&& (g.comptime_for_field_var.len > 0 || g.comptime_for_method.len > 0) {
+						if cond.right is ast.StringLiteral {
+							selector := cond.left as ast.SelectorExpr
+							if selector.expr is ast.Ident && selector.field_name == 'name' {
+								if g.comptime_for_method_var.len > 0
+									&& (selector.expr as ast.Ident).name == g.comptime_for_method_var {
+									is_equal := g.comptime_for_method == cond.right.val
+									if is_equal {
+										g.write('1')
+									} else {
+										g.write('0')
+									}
+									return is_equal, true
+								} else if g.comptime_for_field_var.len > 0
+									&& (selector.expr as ast.Ident).name == g.comptime_for_field_var {
+									is_equal := g.comptime_for_field_value.name == cond.right.val
+									if is_equal {
+										g.write('1')
+									} else {
+										g.write('0')
+									}
+									return is_equal, true
 								}
-								return is_equal, true
-							} else if g.comptime_for_field_var.len > 0
-								&& (selector.expr as ast.Ident).name == g.comptime_for_field_var {
-								is_equal := g.comptime_for_field_value.name == cond.right.val
-								if is_equal {
-									g.write('1')
-								} else {
-									g.write('0')
+							}
+						} else if cond.right is ast.IntegerLiteral {
+							if g.is_comptime_selector_field_name(cond.left, 'indirections') {
+								ret := match cond.op {
+									.eq { g.comptime_for_field_type.nr_muls() == cond.right.val.i64() }
+									.ne { g.comptime_for_field_type.nr_muls() != cond.right.val.i64() }
+									else { false }
 								}
-								return is_equal, true
+								g.write(if ret { '1' } else { '0' })
+								return ret, true
 							}
 						}
 					}
@@ -610,6 +621,26 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 						g.write('1')
 						return true, true
 					}
+				}
+				.gt, .lt, .ge, .le {
+					if cond.left is ast.SelectorExpr && cond.right is ast.IntegerLiteral {
+						if g.is_comptime_selector_field_name(cond.left as ast.SelectorExpr,
+							'indirections')
+						{
+							ret := match cond.op {
+								.gt { g.comptime_for_field_type.nr_muls() > cond.right.val.i64() }
+								.lt { g.comptime_for_field_type.nr_muls() < cond.right.val.i64() }
+								.ge { g.comptime_for_field_type.nr_muls() >= cond.right.val.i64() }
+								.le { g.comptime_for_field_type.nr_muls() <= cond.right.val.i64() }
+								else { false }
+							}
+							g.write(if ret { '1' } else { '0' })
+							return ret, true
+						} else {
+							return true, false
+						}
+					}
+					return true, false
 				}
 				else {
 					return true, false
@@ -677,6 +708,13 @@ fn (mut g Gen) pop_existing_comptime_values() {
 	g.comptime_for_field_value = old.comptime_for_field_value
 	g.comptime_for_field_type = old.comptime_for_field_type
 	g.comptime_var_type_map = old.comptime_var_type_map.clone()
+}
+
+// is_comptime_selector_field_name checks if the SelectorExpr is related to $for variable accessing specific field name provided by `field_name`
+[inline]
+fn (mut g Gen) is_comptime_selector_field_name(node ast.SelectorExpr, field_name string) bool {
+	return g.inside_comptime_for_field && node.expr is ast.Ident
+		&& (node.expr as ast.Ident).name == g.comptime_for_field_var && node.field_name == field_name
 }
 
 // check_comptime_is_field_selector checks if the SelectorExpr is related to $for variable accessing .typ field
