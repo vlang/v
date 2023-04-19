@@ -22,6 +22,58 @@ fn (mut func Function) blocktype(typ FuncType) {
 	func.code << leb128.encode_i32(tidx)
 }
 
+pub type PatchPos = int
+
+// patch_pos returns a `PatchPos` for use with `patch`.
+pub fn (func Function) patch_pos() PatchPos {
+	return func.code.len
+}
+
+// patch "patches" the code generated starting from the last `patch_pos` call in `begin` to `loc`.
+//
+// ```v
+// start := func.patch_pos()
+//
+// ...
+//
+// patch_block := func.patch_pos()
+// {
+//     func.i32_const(10)
+//     func.local_set(idx)
+// }
+// func.patch(start, patch_block) // will patch code to the `start`.
+// // func.code[patch_block..]
+// ```
+pub fn (mut func Function) patch(loc PatchPos, begin PatchPos) {
+	if loc == begin {
+		return
+	}
+	assert loc < begin
+
+	// .....+.._....[.._.....]
+	//      \--|<---/  |
+	//         \---<---/
+	//
+	for mut patch in func.global_patches {
+		if patch.pos >= begin {
+			patch.pos -= begin - loc
+		} else if patch.pos >= loc {
+			patch.pos += func.code.len - begin
+		}
+	}
+	for mut patch in func.call_patches {
+		if patch.pos >= begin {
+			patch.pos -= begin - loc
+		} else if patch.pos >= loc {
+			patch.pos += func.code.len - begin
+		}
+	}
+	
+	v := func.code[begin..].clone()
+	func.code.trim(begin)
+	func.code.insert(int(loc), v)
+}
+
 // new_local creates a function local and returns it's index.
 // See `local_get`, `local_set`, `local_tee`.
 pub fn (mut func Function) new_local(v ValType) LocalIndex {

@@ -3,11 +3,13 @@ module wasm
 struct ImportCallPatch {
 	mod  string
 	name string
+mut:
 	pos  int
 }
 
 struct FunctionCallPatch {
 	name string
+mut:
 	pos  int
 }
 
@@ -15,6 +17,7 @@ type CallPatch = FunctionCallPatch | ImportCallPatch
 
 struct FunctionGlobalPatch {
 	idx GlobalIndex
+mut:
 	pos int
 }
 
