@@ -13,7 +13,6 @@ fn (e &Encoder) encode_struct[U](val U, mut wr Writer) ! {
 		if field.indirections == 1 {
 			assert field.indirections == 1
 			value := val.$(field.name)
-			// broken
 			$if field.indirections == 1 {
 				assert *value == 'ads'
 			} $else {
