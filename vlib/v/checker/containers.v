@@ -105,7 +105,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				node.pos)
 		}
 
-		if c.table.sym(node.typ).name == '[]array' {
+		if c.table.sym(node.elem_type).name.contains('array') {
 			c.error('`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc',
 				node.pos)
 		}
