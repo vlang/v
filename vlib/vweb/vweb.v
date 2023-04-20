@@ -12,6 +12,8 @@ import net.urllib
 import time
 import json
 import encoding.html
+import db.pg
+import db.sqlite
 
 // A type which don't get filtered inside templates
 pub type RawHtml = string
@@ -371,6 +373,12 @@ pub fn (ctx &Context) get_header(key string) string {
 	return ctx.req.header.get_custom(key) or { '' }
 }
 
+pub struct Database[T] {
+	get_connection fn (tid int) T
+mut:
+	db T
+}
+
 interface DbInterface {
 	db voidptr
 }
@@ -425,7 +433,7 @@ pub fn controller[T](path string, global_app &T) &ControllerPath {
 		path: path
 		handler: fn [global_app, path, routes] [T](ctx Context, mut url urllib.URL, tid int) {
 			// request_app is freed in `handle_route`
-			mut request_app := new_request_app[T](global_app, ctx)
+			mut request_app := new_request_app[T](global_app, ctx, tid)
 			// transform the url
 			url.path = url.path.all_after_first(path)
 			handle_route[T](mut request_app, url, &routes, tid)
@@ -514,7 +522,7 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	}
 }
 
-fn new_request_app[T](global_app &T, ctx Context) &T {
+fn new_request_app[T](global_app &T, ctx Context, tid int) &T {
 	// Create a new app object for each connection, copy global data like db connections
 	mut request_app := &T{}
 	$if T is MiddlewareInterface {
@@ -523,9 +531,19 @@ fn new_request_app[T](global_app &T, ctx Context) &T {
 		}
 	}
 	$if T is DbInterface {
+		// copy a database to a app without multithreading
 		request_app.db = global_app.db
 	}
+
 	$for field in T.fields {
+		// type has to be declared else a RUNTIME error is generated
+		// get database connection from the connection pool
+		$if field.typ is Database[pg.DB] {
+			request_app.db = global_app.$(field.name).get_connection(tid)
+		} $else $if field.typ is Database[sqlite.DB] {
+			request_app.db = global_app.$(field.name).get_connection(tid)
+		}
+
 		if field.is_shared {
 			unsafe {
 				// TODO: remove this horrible hack, when copying a shared field at comptime works properly!!!
@@ -622,7 +640,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route,
 		}
 	}
 
-	mut request_app := new_request_app(global_app, ctx)
+	mut request_app := new_request_app(global_app, ctx, tid)
 	handle_route(mut request_app, url, routes, tid)
 }
 
@@ -993,5 +1011,21 @@ fn (mut w Worker[T]) process_incomming_requests() {
 	}
 	$if vweb_trace_worker_scan ? {
 		eprintln('[vweb] closing worker ${w.id}.')
+	}
+}
+
+// database_pool creates a pool of database connections
+pub fn database_pool[T](create_connection fn () T, workers int) fn (tid int) T {
+	mut connections := []T{}
+	// create a database connection for each worker
+	for _ in 0 .. workers {
+		connections << create_connection()
+	}
+
+	return fn [connections] [T](tid int) T {
+		$if vweb_trace_worker_scan ? {
+			eprintln('[vweb] worker ${w.id} received database connection')
+		}
+		return connections[tid]
 	}
 }
