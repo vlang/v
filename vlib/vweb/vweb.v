@@ -12,8 +12,6 @@ import net.urllib
 import time
 import json
 import encoding.html
-import db.pg
-import db.sqlite
 
 // A type which don't get filtered inside templates
 pub type RawHtml = string
@@ -533,17 +531,12 @@ fn new_request_app[T](global_app &T, ctx Context, tid int) &T {
 	$if T is DbInterface {
 		// copy a database to a app without multithreading
 		request_app.db = global_app.db
+	} $else {
+		// get database connection from the connection pool
+		request_app.db = global_app.Database.get_connection(tid)
 	}
 
 	$for field in T.fields {
-		// type has to be declared else a RUNTIME error is generated
-		// get database connection from the connection pool
-		$if field.typ is Database[pg.DB] {
-			request_app.db = global_app.$(field.name).get_connection(tid)
-		} $else $if field.typ is Database[sqlite.DB] {
-			request_app.db = global_app.$(field.name).get_connection(tid)
-		}
-
 		if field.is_shared {
 			unsafe {
 				// TODO: remove this horrible hack, when copying a shared field at comptime works properly!!!
