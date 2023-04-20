@@ -586,9 +586,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			concrete_types << concrete_type
 		}
 	}
-	if node.concrete_types.len > 0 {
-		println('>>> ${c.table.type_to_str(concrete_types[0])}')
-	}
 	if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len == 0 && has_generic {
 		c.error('generic fn using generic types cannot be called outside of generic fn',
 			node.pos)
