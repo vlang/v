@@ -1545,27 +1545,40 @@ of an expression to a variable when that expression is not none nor an error.
 m := {
 	'foo': 'bar'
 }
+
 // handle missing keys
 if v := m['foo'] {
 	println(v) // bar
 } else {
 	println('not found')
 }
+```
 
+```v
 fn res() !int {
 	return 42
 }
+
 // functions that return a result type
 if v := res() {
 	println(v)
 }
+```
 
-res := if v := m['foobar'] {
-	v
-} else {
-	'baz'
+```v
+struct User {
+	name string
 }
-println(res) // baz
+
+arr := [User{'John'}]
+
+// if unwrapping with assignment of a variable
+u_name := if v := arr[0] {
+	v.name
+} else {
+	'Unnamed'
+}
+println(u_name) // John
 ```
 
 #### Type checks and casts
