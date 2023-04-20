@@ -143,9 +143,8 @@ ${enc_fn_dec} {
 			psym := g.table.sym(parent_typ)
 			if is_js_prim(g.typ(parent_typ)) {
 				g.gen_json_for_type(parent_typ)
-				continue
-			}
-			if psym.info is ast.Struct {
+				g.gen_prim_enc_dec(parent_typ, mut enc, mut dec)
+			} else if psym.info is ast.Struct {
 				enc.writeln('\to = cJSON_CreateObject();')
 				g.gen_struct_enc_dec(utyp, psym.info, ret_styp, mut enc, mut dec)
 			} else if psym.kind == .enum_ {
@@ -259,6 +258,16 @@ fn (mut g Gen) gen_enum_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc strin
 			g.gen_enum_to_str(utyp, sym, 'val', 'o', '\t', mut enc)
 		}
 	}
+}
+
+[inline]
+fn (mut g Gen) gen_prim_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec strings.Builder) {
+	type_str := g.typ(typ.clear_flag(.option))
+	encode_name := js_enc_name(type_str)
+	enc.writeln('\to = ${encode_name}(val);')
+
+	dec_name := js_dec_name(type_str)
+	dec.writeln('\tres = ${dec_name}(root);')
 }
 
 [inline]
