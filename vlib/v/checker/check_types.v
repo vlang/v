@@ -896,6 +896,7 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 				} else if c.inside_comptime_for_field && sym.kind in [.struct_, .any]
 					&& arg.expr is ast.ComptimeSelector {
 					comptime_typ := c.get_comptime_selector_type(arg.expr, ast.void_type)
+
 					if comptime_typ != ast.void_type {
 						typ = comptime_typ
 						if func.return_type.has_flag(.generic)
@@ -905,7 +906,8 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					}
 				}
 
-				if arg.expr.is_auto_deref_var() {
+				if arg.expr.is_auto_deref_var() || (arg.expr is ast.ComptimeSelector
+					&& (arg.expr as ast.ComptimeSelector).left.is_auto_deref_var()) {
 					typ = typ.deref()
 				}
 				// resolve &T &&T ...
