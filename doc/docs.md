@@ -1538,17 +1538,26 @@ println(s)
 // "odd"
 ```
 
-Similar to Rust's `if let`, a value can be bound to a variable within an if statement.
+Anywhere you can use `or {}`, you can also use "if unwrapping". This binds the unwrapped value
+of an expression to a variable when that expression is not none nor an error.
 
 ```v
 m := {
 	'foo': 'bar'
 }
-
+// handle missing keys
 if v := m['foo'] {
 	println(v) // bar
 } else {
 	println('not found')
+}
+
+fn res() !int {
+	return 42
+}
+// functions that return a result type
+if v := res() {
+	println(v)
 }
 
 res := if v := m['foobar'] {
