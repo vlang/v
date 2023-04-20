@@ -37,5 +37,4 @@ fn test_alias_to_primitive() {
 	mut test3 := MyInt(1000)
 	encoded = json.encode(test3)
 	assert dump(encoded) == '1000'
-
 }
