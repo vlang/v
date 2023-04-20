@@ -24,6 +24,7 @@ fn main() {
 		port: mailport
 		username: username
 		password: password
+		reader: unsafe { nil }
 	}
 	send_cfg := smtp.Mail{
 		to: to
