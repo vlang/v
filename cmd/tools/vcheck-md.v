@@ -50,6 +50,7 @@ fn main() {
 		println('´-all´ flag is deprecated. Please use ´v check-md .´ instead.')
 		exit(1)
 	}
+	mut skip_line_length_check := '-skip-line-length-check' in os.args
 	if show_progress {
 		// this is intended to be replaced by the progress lines
 		println('')
@@ -76,6 +77,7 @@ fn main() {
 			continue
 		}
 		mut mdfile := MDFile{
+			skip_line_length_check: skip_line_length_check
 			path: file_path
 			lines: lines
 		}
@@ -156,7 +158,8 @@ enum MDFileParserState {
 }
 
 struct MDFile {
-	path string
+	path                   string
+	skip_line_length_check bool
 mut:
 	lines    []string
 	examples []VCodeExample
@@ -176,34 +179,36 @@ fn (mut f MDFile) check() CheckResult {
 	mut anchor_data := AnchorData{}
 	for j, line in f.lines {
 		// f.progress('line: $j')
-		if f.state == .vexample {
-			if line.len > too_long_line_length_example {
-				wprintln(wline(f.path, j, line.len, 'example lines must be less than ${too_long_line_length_example} characters'))
-				wprintln(line)
-				res.warnings++
+		if !f.skip_line_length_check {
+			if f.state == .vexample {
+				if line.len > too_long_line_length_example {
+					wprintln(wline(f.path, j, line.len, 'example lines must be less than ${too_long_line_length_example} characters'))
+					wprintln(line)
+					res.warnings++
+				}
+			} else if f.state == .codeblock {
+				if line.len > too_long_line_length_codeblock {
+					wprintln(wline(f.path, j, line.len, 'code lines must be less than ${too_long_line_length_codeblock} characters'))
+					wprintln(line)
+					res.warnings++
+				}
+			} else if line.starts_with('|') {
+				if line.len > too_long_line_length_table {
+					wprintln(wline(f.path, j, line.len, 'table lines must be less than ${too_long_line_length_table} characters'))
+					wprintln(line)
+					res.warnings++
+				}
+			} else if line.contains('http') {
+				if line.all_after('https').len > too_long_line_length_link {
+					wprintln(wline(f.path, j, line.len, 'link lines must be less than ${too_long_line_length_link} characters'))
+					wprintln(line)
+					res.warnings++
+				}
+			} else if line.len > too_long_line_length_other {
+				eprintln(eline(f.path, j, line.len, 'must be less than ${too_long_line_length_other} characters'))
+				eprintln(line)
+				res.errors++
 			}
-		} else if f.state == .codeblock {
-			if line.len > too_long_line_length_codeblock {
-				wprintln(wline(f.path, j, line.len, 'code lines must be less than ${too_long_line_length_codeblock} characters'))
-				wprintln(line)
-				res.warnings++
-			}
-		} else if line.starts_with('|') {
-			if line.len > too_long_line_length_table {
-				wprintln(wline(f.path, j, line.len, 'table lines must be less than ${too_long_line_length_table} characters'))
-				wprintln(line)
-				res.warnings++
-			}
-		} else if line.contains('http') {
-			if line.all_after('https').len > too_long_line_length_link {
-				wprintln(wline(f.path, j, line.len, 'link lines must be less than ${too_long_line_length_link} characters'))
-				wprintln(line)
-				res.warnings++
-			}
-		} else if line.len > too_long_line_length_other {
-			eprintln(eline(f.path, j, line.len, 'must be less than ${too_long_line_length_other} characters'))
-			eprintln(line)
-			res.errors++
 		}
 		if f.state == .markdown {
 			anchor_data.add_links(j, line)
@@ -602,6 +607,8 @@ fn (mut f MDFile) check_examples() CheckResult {
 				'play' {}
 				// same as play, but run example as a test
 				'play-test' {}
+				// when ```vmod
+				'mod' {}
 				else {
 					eprintln(eline(f.path, e.sline, 0, 'unrecognized command: "${command}", use one of: wip/ignore/compile/failcompile/okfmt/nofmt/oksyntax/badsyntax/cgen/globals/live/shared'))
 					should_cleanup_vfile = false
