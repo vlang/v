@@ -4,8 +4,6 @@ import v.ast
 import v.pref
 import v.token
 
-const like_operator_type_error_message = 'the left operand of the `like` operator must be an identifier with a string type'
-
 fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	former_expected_type := c.expected_type
 	defer {
@@ -772,12 +770,9 @@ fn (mut c Checker) check_like_operator(node &ast.InfixExpr) ast.Type {
 	left_type := node.left_type
 	left_pos := node.left.pos()
 
-	if node.left !is ast.Ident {
-		c.error(checker.like_operator_type_error_message, left_pos)
-	}
-
-	if !left_type.is_string() {
-		c.error(checker.like_operator_type_error_message, left_pos)
+	if node.left !is ast.Ident || !left_type.is_string() {
+		c.error('the left operand of the `like` operator must be an identifier with a string type',
+			left_pos)
 	}
 
 	right_type := node.right_type
