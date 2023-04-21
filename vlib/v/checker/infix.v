@@ -9,7 +9,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	defer {
 		c.expected_type = former_expected_type
 	}
-	mut left_type := c.expr(node.left)
+	mut left_type := c.unwrap_generic(c.expr(node.left))
 	node.left_type = left_type
 	c.expected_type = left_type
 
@@ -283,8 +283,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			}
 
-			if !c.pref.translated
-				&& left_sym.kind in [.string, .array, .array_fixed, .map, .struct_] {
+			if !c.pref.translated && left_sym.kind in [.array, .array_fixed, .map, .struct_] {
 				if left_sym.has_method_with_generic_parent(node.op.str()) {
 					if method := left_sym.find_method_with_generic_parent(node.op.str()) {
 						return_type = method.return_type
@@ -302,8 +301,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							left_right_pos)
 					}
 				}
-			} else if !c.pref.translated
-				&& right_sym.kind in [.string, .array, .array_fixed, .map, .struct_] {
+			} else if !c.pref.translated && right_sym.kind in [.array, .array_fixed, .map, .struct_] {
 				if right_sym.has_method_with_generic_parent(node.op.str()) {
 					if method := right_sym.find_method_with_generic_parent(node.op.str()) {
 						return_type = method.return_type
