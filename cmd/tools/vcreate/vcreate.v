@@ -337,7 +337,7 @@ pub fn create_db_connection() !sqlite.DB {
 }
 
 div.products-table {
-    border: 1px solid; 
+    border: 1px solid;
     max-width: 720px;
     padding: 10px;
     margin: 10px;
@@ -349,13 +349,13 @@ div.products-table {
 <head>
     <!--Let browser know website is optimized for mobile-->
     <meta charset='UTF-8' name='viewport' content='width=device-width, initial-scale=1.0'>
-    
+
     <!-- Compiled and minified CSS -->
     <link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css'>
 
     <!-- Compiled and minified JavaScript -->
     <script src='https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js'></script>
-    
+
     <!-- Material UI icons -->
     <link href='https://fonts.googleapis.com/icon?family=Material+Icons' rel='stylesheet'>
 
@@ -399,7 +399,7 @@ div.products-table {
                  headers :{
                     token: getCookie('token')
                  }
-             })                
+             })
              .then( async (response) => {
                  if (response.status != 201) {
                      throw await response.text()
@@ -594,7 +594,7 @@ fn auth_verify(token string) bool {
             await fetch('/controller/user/create', {
                  method: 'POST',
                  body: formData
-             })                
+             })
              .then( async (response) => {
                  if (response.status != 201) {
                      throw await response.text()
@@ -614,7 +614,7 @@ fn auth_verify(token string) bool {
              await fetch('/controller/auth', {
                  method: 'POST',
                  body: formData
-             })  
+             })
              .then( async (response) => {
                  if (response.status != 200) {
                      throw await response.text()
@@ -875,6 +875,7 @@ import json
 
 ['/controller/users'; get]
 pub fn (mut app App) controller_get_all_user() vweb.Result {
+	// token := app.get_cookie('token') or { '' }
 	token := app.req.header.get_custom('token') or { '' }
 
 	if !auth_verify(token) {
@@ -891,6 +892,7 @@ pub fn (mut app App) controller_get_all_user() vweb.Result {
 
 ['/controller/user'; get]
 pub fn (mut app App) controller_get_user() vweb.Result {
+	// token := app.get_cookie('token') or { '' }
 	token := app.req.header.get_custom('token') or { '' }
 
 	if !auth_verify(token) {
@@ -941,8 +943,8 @@ pub fn (mut app App) controller_create_user(username string, password string) vw
 pub struct User {
 mut:
 	id       int       [primary; sql: serial]
-	username string    [required; sql_type: 'TEXT'; unique]
-	password string    [required; sql_type: 'TEXT']
+	username string    [nonull; sql_type: 'TEXT'; unique]
+	password string    [nonull; sql_type: 'TEXT']
 	active   bool
 	products []Product [fkey: 'user_id']
 }
@@ -955,8 +957,11 @@ mut:
 import crypto.bcrypt
 import databases
 
-fn (mut app App) service_add_user(username string, password string) ! {
-	mut db := databases.create_db_connection()!
+fn (mut app App) service_add_user(username string, password string) !User {
+	mut db := databases.create_db_connection() or {
+		eprintln(err)
+		return err
+	}
 
 	defer {
 		db.close() or { panic(err) }
@@ -973,16 +978,38 @@ fn (mut app App) service_add_user(username string, password string) ! {
 		active: true
 	}
 
-	mut insert_error := ''
 	sql db {
 		insert user_model into User
-	} or { insert_error = err.msg() }
-	if insert_error != '' {
-		return error(insert_error)
+	} or {
+		eprintln(err)
+		return err
 	}
+
+	users := sql db {
+		select from User where username == username limit 1
+	}!
+
+	return users.first()
 }
 
-fn (mut app App) service_get_all_user() ?[]User {
+fn (mut app App) service_get_user_by_id(user_id int) !User {
+	mut db := databases.create_db_connection() or {
+		println(err)
+		return err
+	}
+
+	defer {
+		db.close() or { panic(err) }
+	}
+
+	users := sql db {
+		select from User where id == user_id
+	}!
+
+	return users.first()
+}
+
+fn (mut app App) service_get_all_user() ![]User {
 	mut db := databases.create_db_connection() or {
 		println(err)
 		return err
@@ -994,12 +1021,12 @@ fn (mut app App) service_get_all_user() ?[]User {
 
 	results := sql db {
 		select from User
-	}
+	}!
 
 	return results
 }
 
-fn (mut app App) service_get_user(id int) ?User {
+fn (mut app App) service_get_by_username(username string) !User {
 	mut db := databases.create_db_connection() or {
 		println(err)
 		return err
@@ -1010,10 +1037,14 @@ fn (mut app App) service_get_user(id int) ?User {
 	}
 
 	results := sql db {
-		select from User where id == id
+		select from User where username == username
+	}!
+
+	if results.len == 0 {
+		return error('User not found')
 	}
 
-	return results
+	return results[0]
 }
 "
 	}
