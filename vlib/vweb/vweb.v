@@ -12,6 +12,7 @@ import net.urllib
 import time
 import json
 import encoding.html
+import db.pg
 
 // A type which don't get filtered inside templates
 pub type RawHtml = string
@@ -377,6 +378,16 @@ mut:
 	db T
 }
 
+interface DbPoolInterface[T] {
+	DatabaseInterface
+}
+
+interface DatabaseInterface[T] {
+	get_connection fn (tid int) T
+mut:
+	db T
+}
+
 interface DbInterface {
 	db voidptr
 }
@@ -531,7 +542,7 @@ fn new_request_app[T](global_app &T, ctx Context, tid int) &T {
 	$if T is DbInterface {
 		// copy a database to a app without multithreading
 		request_app.db = global_app.db
-	} $else {
+	} $else $if T is DbPoolInterface[pg.DB] {
 		// get database connection from the connection pool
 		request_app.db = global_app.Database.get_connection(tid)
 	}
