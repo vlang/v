@@ -16,7 +16,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	if node.op == .key_is {
 		c.inside_x_is_type = true
 	}
-	mut right_type := c.expr(node.right)
+	mut right_type := c.unwrap_generic(c.expr(node.right))
 	if node.op == .key_is {
 		c.inside_x_is_type = false
 	}
