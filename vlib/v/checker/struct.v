@@ -574,6 +574,13 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 						}
 					}
 				}
+
+				if mut field.expr is ast.StructInit {
+					if field.expr.is_anon {
+						c.error('cannot assign anonymous `struct` to a typed `struct`',
+							field.expr.pos)
+					}
+				}
 			}
 			// Check uninitialized refs/sum types
 			// The variable `fields` contains two parts, the first part is the same as info.fields,
