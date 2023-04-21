@@ -1,0 +1,6 @@
+vlib/v/checker/tests/like_operator_outside_orm_error.vv:4:15: error: the `like` operator must be used only in V ORM expressions
+    2 |     name := 'Luke'
+    3 | 
+    4 |     println(name like 'L%')
+      |                  ~~~~
+    5 | }

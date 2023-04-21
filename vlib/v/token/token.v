@@ -115,6 +115,7 @@ pub enum Kind {
 	key_none
 	key_return
 	key_select
+	key_like
 	key_sizeof
 	key_isreftype
 	key_likely
@@ -315,6 +316,7 @@ fn build_token_str() []string {
 	s[Kind.key_defer] = 'defer'
 	s[Kind.key_match] = 'match'
 	s[Kind.key_select] = 'select'
+	s[Kind.key_like] = 'like'
 	s[Kind.key_none] = 'none'
 	s[Kind.key_nil] = 'nil'
 	s[Kind.key_offsetof] = '__offsetof'
@@ -426,13 +428,14 @@ pub fn build_precedences() []Precedence {
 	p[Kind.minus] = .sum
 	p[Kind.pipe] = .sum
 	p[Kind.xor] = .sum
-	// `==` | `!=` | `<` | `<=` | `>` | `>=`
+	// `==` | `!=` | `<` | `<=` | `>` | `>=` | `like`
 	p[Kind.eq] = .eq
 	p[Kind.ne] = .eq
 	p[Kind.lt] = .eq
 	p[Kind.le] = .eq
 	p[Kind.gt] = .eq
 	p[Kind.ge] = .eq
+	p[Kind.key_like] = .eq
 	// `=` | `+=` | ...
 	p[Kind.assign] = .assign
 	p[Kind.plus_assign] = .assign
@@ -504,7 +507,7 @@ pub fn (kind Kind) is_prefix() bool {
 pub fn (kind Kind) is_infix() bool {
 	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in, .key_as, .ge,
 		.le, .logical_or, .xor, .not_in, .key_is, .not_is, .and, .dot, .pipe, .amp, .left_shift,
-		.right_shift, .unsigned_right_shift, .arrow]
+		.right_shift, .unsigned_right_shift, .arrow, .key_like]
 }
 
 [inline]
@@ -611,6 +614,7 @@ pub fn kind_to_string(k Kind) string {
 		.key_none { 'key_none' }
 		.key_return { 'key_return' }
 		.key_select { 'key_select' }
+		.key_like { 'key_like' }
 		.key_sizeof { 'key_sizeof' }
 		.key_isreftype { 'key_isreftype' }
 		.key_likely { 'key_likely' }
@@ -733,6 +737,7 @@ pub fn kind_from_string(s string) !Kind {
 		'key_none' { .key_none }
 		'key_return' { .key_return }
 		'key_select' { .key_select }
+		'key_like' { .key_like }
 		'key_sizeof' { .key_sizeof }
 		'key_isreftype' { .key_isreftype }
 		'key_likely' { .key_likely }
