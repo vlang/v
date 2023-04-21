@@ -681,17 +681,19 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 			} else if field.typ == ast.string_type {
 				enc.writeln('${indent}if (${prefix_enc}${op}${c_name(field.name)}.len != 0)')
 			} else {
-				ptr_typ := g.equality_fn(field.typ)
-				if field_sym.kind == .alias {
-					enc.writeln('${indent}if (!${ptr_typ}_alias_eq(${prefix_enc}${op}${c_name(field.name)}, ${g.type_default(field.typ)}))')
-				} else if field_sym.kind == .sum_type {
-					enc.writeln('${indent}if (${prefix_enc}${op}${c_name(field.name)}._typ != 0)')
-				} else if field_sym.kind == .map {
-					enc.writeln('${indent}if (!${ptr_typ}_map_eq(${prefix_enc}${op}${c_name(field.name)}, ${g.type_default(field.typ)}))')
-				} else if field_sym.kind == .array {
-					enc.writeln('${indent}if (!${ptr_typ}_arr_eq(${prefix_enc}${op}${c_name(field.name)}, ${g.type_default(field.typ)}))')
-				} else if field_sym.kind == .struct_ {
-					enc.writeln('${indent}if (!${ptr_typ}_struct_eq(${prefix_enc}${op}${c_name(field.name)}, ${g.type_default(field.typ)}))')
+				if field_sym.kind in [.alias, .sum_type, .map, .array, .struct_] {
+					ptr_typ := g.equality_fn(field.typ)
+					if field_sym.kind == .alias {
+						enc.writeln('${indent}if (!${ptr_typ}_alias_eq(${prefix_enc}${op}${c_name(field.name)}, ${g.type_default(field.typ)}))')
+					} else if field_sym.kind == .sum_type {
+						enc.writeln('${indent}if (${prefix_enc}${op}${c_name(field.name)}._typ != 0)')
+					} else if field_sym.kind == .map {
+						enc.writeln('${indent}if (!${ptr_typ}_map_eq(${prefix_enc}${op}${c_name(field.name)}, ${g.type_default(field.typ)}))')
+					} else if field_sym.kind == .array {
+						enc.writeln('${indent}if (!${ptr_typ}_arr_eq(${prefix_enc}${op}${c_name(field.name)}, ${g.type_default(field.typ)}))')
+					} else if field_sym.kind == .struct_ {
+						enc.writeln('${indent}if (!${ptr_typ}_struct_eq(${prefix_enc}${op}${c_name(field.name)}, ${g.type_default(field.typ)}))')
+					}
 				} else {
 					enc.writeln('${indent}if (${prefix_enc}${op}${c_name(field.name)} != ${g.type_default(field.typ)})')
 				}
