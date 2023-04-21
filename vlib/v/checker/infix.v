@@ -767,19 +767,13 @@ fn (mut c Checker) check_like_operator(node &ast.InfixExpr) ast.Type {
 		c.error('the `like` operator must be used only in V ORM expressions', node.pos)
 	}
 
-	left_type := node.left_type
-	left_pos := node.left.pos()
-
-	if node.left !is ast.Ident || !left_type.is_string() {
+	if node.left !is ast.Ident || !node.left_type.is_string() {
 		c.error('the left operand of the `like` operator must be an identifier with a string type',
-			left_pos)
+			node.left.pos())
 	}
 
-	right_type := node.right_type
-	right_pos := node.right.pos()
-
-	if !right_type.is_string() {
-		c.error('the right operand of the `like` operator must be a string type', right_pos)
+	if !node.right_type.is_string() {
+		c.error('the right operand of the `like` operator must be a string type', node.right.pos())
 	}
 
 	return node.promoted_type
