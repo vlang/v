@@ -185,6 +185,7 @@ const (
 		'vlib/v/slow_tests/profile/profile_test.v',
 		'vlib/gg/draw_fns_api_test.v',
 		'vlib/v/tests/skip_unused/gg_code.vv',
+		'vlib/v/tests/c_struct_with_reserved_field_name_test.v',
 	]
 	skip_on_ubuntu_musl           = [
 		'do_not_remove',

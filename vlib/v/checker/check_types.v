@@ -905,7 +905,8 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					}
 				}
 
-				if arg.expr.is_auto_deref_var() {
+				if arg.expr.is_auto_deref_var() || (arg.expr is ast.ComptimeSelector
+					&& (arg.expr as ast.ComptimeSelector).left.is_auto_deref_var()) {
 					typ = typ.deref()
 				}
 				// resolve &T &&T ...
