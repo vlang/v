@@ -461,8 +461,8 @@ pub fn (mut app App) controller_auth(username string, password string) vweb.Resu
 		content: 'module main
 
 struct AuthRequestDto {
-	username string [required]
-	password string [required]
+	username string [nonull]
+	password string [nonull]
 }
 '
 	}
@@ -504,9 +504,10 @@ fn (mut app App) service_auth(username string, password string) !string {
 		db.close() or { panic(err) }
 	}
 
-	user := sql db {
-		select from User where username == username limit 1
-	}
+	users := sql db {
+		select from User where username == username
+	}!
+	user := users.first()
 	if user.username != username {
 		return error('user not found')
 	}
@@ -588,6 +589,9 @@ fn auth_verify(token string) bool {
          </div>
       </form>
       <script type='text/javascript'>
+        // function eraseCookie(name) {
+        //     document.cookie = name + '=; Max-Age=0'
+        // }
          async function addUser() {
          const form = document.querySelector('#index_form');
          const formData = new FormData(form);
@@ -659,6 +663,7 @@ fn main() {
 
 	sql db {
 		create table User
+		create table Product
 	} or { panic('error on create table: \${err}') }
 
 	db.close() or { panic(err) }
@@ -752,7 +757,7 @@ pub fn (mut app App) controller_create_product(product_name string) vweb.Result 
 struct Product {
 	id         int    [primary; sql: serial]
 	user_id    int
-	name       string [required; sql_type: 'TEXT']
+	name       string [nonull; sql_type: 'TEXT']
 	created_at string [default: 'CURRENT_TIMESTAMP']
 }
 "
@@ -786,7 +791,7 @@ fn (mut app App) service_add_product(product_name string, user_id int) ! {
 	}
 }
 
-fn (mut app App) service_get_all_products_from(user_id int) ?[]Product {
+fn (mut app App) service_get_all_products_from(user_id int) ![]Product {
 	mut db := databases.create_db_connection() or {
 		println(err)
 		return err
@@ -798,7 +803,7 @@ fn (mut app App) service_get_all_products_from(user_id int) ?[]Product {
 
 	results := sql db {
 		select from Product where user_id == user_id
-	}
+	}!
 
 	return results
 }
@@ -957,11 +962,8 @@ mut:
 import crypto.bcrypt
 import databases
 
-fn (mut app App) service_add_user(username string, password string) !User {
-	mut db := databases.create_db_connection() or {
-		eprintln(err)
-		return err
-	}
+fn (mut app App) service_add_user(username string, password string) ! {
+	mut db := databases.create_db_connection()!
 
 	defer {
 		db.close() or { panic(err) }
@@ -978,35 +980,13 @@ fn (mut app App) service_add_user(username string, password string) !User {
 		active: true
 	}
 
+	mut insert_error := ''
 	sql db {
 		insert user_model into User
-	} or {
-		eprintln(err)
-		return err
+	} or { insert_error = err.msg() }
+	if insert_error != '' {
+		return error(insert_error)
 	}
-
-	users := sql db {
-		select from User where username == username limit 1
-	}!
-
-	return users.first()
-}
-
-fn (mut app App) service_get_user_by_id(user_id int) !User {
-	mut db := databases.create_db_connection() or {
-		println(err)
-		return err
-	}
-
-	defer {
-		db.close() or { panic(err) }
-	}
-
-	users := sql db {
-		select from User where id == user_id
-	}!
-
-	return users.first()
 }
 
 fn (mut app App) service_get_all_user() ![]User {
@@ -1026,7 +1006,7 @@ fn (mut app App) service_get_all_user() ![]User {
 	return results
 }
 
-fn (mut app App) service_get_by_username(username string) !User {
+fn (mut app App) service_get_user(id int) !User {
 	mut db := databases.create_db_connection() or {
 		println(err)
 		return err
@@ -1037,14 +1017,10 @@ fn (mut app App) service_get_by_username(username string) !User {
 	}
 
 	results := sql db {
-		select from User where username == username
+		select from User where id == id
 	}!
 
-	if results.len == 0 {
-		return error('User not found')
-	}
-
-	return results[0]
+	return results.first()
 }
 "
 	}
