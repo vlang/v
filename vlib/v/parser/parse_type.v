@@ -229,7 +229,7 @@ pub fn (mut p Parser) parse_multi_return_type() ast.Type {
 }
 
 // given anon name based off signature when `name` is blank
-pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
+pub fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type {
 	p.check(.key_fn)
 
 	for attr in p.attrs {
@@ -273,6 +273,7 @@ pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 		is_variadic: is_variadic
 		return_type: return_type
 		return_type_pos: return_type_pos
+		generic_names: generic_types.map(p.table.sym(it).name)
 		is_method: false
 		attrs: p.attrs
 	}
@@ -543,7 +544,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 	match p.tok.kind {
 		.key_fn {
 			// func
-			return p.parse_fn_type('')
+			return p.parse_fn_type('', []ast.Type{})
 		}
 		.lsbr, .nilsbr {
 			// array
