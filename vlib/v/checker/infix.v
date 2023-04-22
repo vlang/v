@@ -763,10 +763,6 @@ fn (mut c Checker) check_div_mod_by_zero(expr ast.Expr, op_kind token.Kind) {
 }
 
 fn (mut c Checker) check_like_operator(node &ast.InfixExpr) ast.Type {
-	if !c.inside_sql {
-		c.error('the `like` operator must be used only in V ORM expressions', node.pos)
-	}
-
 	if node.left !is ast.Ident || !node.left_type.is_string() {
 		c.error('the left operand of the `like` operator must be an identifier with a string type',
 			node.left.pos())

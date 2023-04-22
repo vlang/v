@@ -6,7 +6,11 @@ struct User {
 	country string
 }
 
+// like is an example function for checking that V allows using the `like` keyword as an identifier.
+fn like() {}
+
 fn test_like_operator() {
+	like()
 	db := sqlite.connect(':memory:')!
 
 	sql db {

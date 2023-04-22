@@ -3,13 +3,15 @@
 // that can be found in the LICENSE file.
 module token
 
+const orm_custom_operators = ['like']
+
 [minify]
 pub struct Token {
 pub:
 	kind    Kind   // the token number/enum; for quick comparisons
 	lit     string // literal representation of the token
-	line_nr int    // the line number in the source where the token occured
-	col     int    // the column in the source where the token occured
+	line_nr int    // the line number in the source where the token occurred
+	col     int    // the column in the source where the token occurred
 	// name_idx int // name table index for O(1) lookup
 	pos  int // the position of the token in scanner text
 	len  int // length of the literal
@@ -193,12 +195,18 @@ pub const (
 
 pub const scanner_matcher = new_keywords_matcher_trie[Kind](keywords)
 
-// build_keys genereates a map with keywords' string values:
+// build_keys generates a map with keywords' string values:
 // Keywords['return'] == .key_return
 fn build_keys() map[string]Kind {
 	mut res := map[string]Kind{}
 	for t in int(Kind.keyword_beg) + 1 .. int(Kind.keyword_end) {
 		key := token.token_str[t]
+
+		// Exclude custom ORM operators from V keyword list
+		if key in token.orm_custom_operators {
+			continue
+		}
+
 		res[key] = unsafe { Kind(t) }
 	}
 	return res
