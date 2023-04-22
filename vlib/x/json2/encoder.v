@@ -225,7 +225,6 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 					// FIXME - checker and cast error
 					// wr.write(int(val.$(field.name)?).str().bytes())!
 					return error('type ${typeof(val).name} cannot be encoded yet')
-				} $else $if field.indirections > 0 {
 				} $else $if field.is_alias {
 					match field.unaliased_typ {
 						typeof[string]().idx {
@@ -266,7 +265,21 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				}
 			}
 
-			$if field.typ is string {
+			$if field.indirections > 0 {
+				if val.$(field.name) != unsafe { nil } {
+					$if field.indirections == 1 {
+						e.encode_value_with_level(*val.$(field.name), level + 1, mut wr)!
+					}
+					$if field.indirections == 2 {
+						e.encode_value_with_level(**val.$(field.name), level + 1, mut
+							wr)!
+					}
+					$if field.indirections == 3 {
+						e.encode_value_with_level(***val.$(field.name), level + 1, mut
+							wr)!
+					}
+				}
+			} $else $if field.typ is string {
 				e.encode_string(val.$(field.name).str(), mut wr)!
 			} $else $if field.typ is time.Time {
 				wr.write(json2.quote_bytes)!
@@ -286,7 +299,6 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			} $else $if field.is_enum {
 				// TODO - replace for `field.typ is $enum`
 				wr.write(int(val.$(field.name)).str().bytes())!
-			} $else $if field.indirections > 0 {
 			} $else $if field.typ is $enum {
 				// wr.write(int(val.$(field.name)).str().bytes())! // FIXME - error: cannot cast string to `int`, use `val.$field.name.int()` instead.
 			} $else $if field.typ is $sumtype {
