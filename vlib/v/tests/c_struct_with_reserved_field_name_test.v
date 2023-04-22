@@ -17,6 +17,6 @@ fn test_c_struct_with_reserved_field_name() {
 		window_title: 'Polygons'
 	)
 	game.gg = cont
-	println(game.gg)
+	game.gg.str()
 	assert true
 }
