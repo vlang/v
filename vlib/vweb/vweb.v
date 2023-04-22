@@ -12,7 +12,6 @@ import net.urllib
 import time
 import json
 import encoding.html
-import db.pg
 
 // A type which don't get filtered inside templates
 pub type RawHtml = string
@@ -372,23 +371,16 @@ pub fn (ctx &Context) get_header(key string) string {
 	return ctx.req.header.get_custom(key) or { '' }
 }
 
-pub struct Database[T] {
-	get_connection fn (tid int) T
-mut:
-	db T
-}
+pub type DatabasePool[T] = fn (tid int) T
 
-interface DbPoolInterface[T] {
-	DatabaseInterface
-}
-
-interface DatabaseInterface[T] {
-	get_connection fn (tid int) T
+interface DbPoolInterface {
+	db_handle voidptr
 mut:
-	db T
+	db voidptr
 }
 
 interface DbInterface {
+mut:
 	db voidptr
 }
 
@@ -539,12 +531,13 @@ fn new_request_app[T](global_app &T, ctx Context, tid int) &T {
 			middlewares: global_app.middlewares.clone()
 		}
 	}
-	$if T is DbInterface {
-		// copy a database to a app without multithreading
-		request_app.db = global_app.db
-	} $else $if T is DbPoolInterface[pg.DB] {
+
+	$if T is DbPoolInterface {
 		// get database connection from the connection pool
-		request_app.db = global_app.Database.get_connection(tid)
+		request_app.db = global_app.db_handle(tid)
+	} $else $if T is DbInterface {
+		// copy a database to a app without pooling
+		request_app.db = global_app.db
 	}
 
 	$for field in T.fields {
@@ -1018,17 +1011,23 @@ fn (mut w Worker[T]) process_incomming_requests() {
 	}
 }
 
+[params]
+pub struct PoolParams[T] {
+	handler    fn () T [required]
+	nr_workers int = runtime.nr_jobs()
+}
+
 // database_pool creates a pool of database connections
-pub fn database_pool[T](create_connection fn () T, workers int) fn (tid int) T {
+pub fn database_pool[T](params PoolParams[T]) DatabasePool[T] {
 	mut connections := []T{}
 	// create a database connection for each worker
-	for _ in 0 .. workers {
-		connections << create_connection()
+	for _ in 0 .. params.nr_workers {
+		connections << params.handler()
 	}
 
 	return fn [connections] [T](tid int) T {
 		$if vweb_trace_worker_scan ? {
-			eprintln('[vweb] worker ${w.id} received database connection')
+			eprintln('[vweb] worker ${tid} received database connection')
 		}
 		return connections[tid]
 	}
