@@ -26,7 +26,7 @@ fn test_concrete_function_type_as_generic_type() {
 	println(val1)
 	assert val1.result == 'start'
 	assert val1.rest == ' test'
-	
+
 	println(val2)
 	assert val2.result == ''
 	assert val2.rest == ''
