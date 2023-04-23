@@ -3876,6 +3876,17 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		if right_type.is_voidptr() {
 			c.error('cannot dereference to void', node.pos)
 		}
+		if mut node.right is ast.Ident {
+			if mut var := node.right.scope.find_var('${node.right.name}') {
+				// Workaround for unused variable warning
+				_ = var
+				if mut var.expr is ast.UnsafeExpr {
+					if mut var.expr.expr is ast.Nil {
+						c.error('cannot deference a `nil` pointer', node.right.pos)
+					}
+				}
+			}
+		}
 	}
 	if node.op == .bit_not && !c.unwrap_generic(right_type).is_int() && !c.pref.translated
 		&& !c.file.is_translated {
