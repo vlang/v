@@ -4013,7 +4013,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	if p.tok.kind == .key_fn && p.is_fn_type_decl() {
 		// function type: `type mycallback = fn(string, int)`
 		fn_name := p.prepend_mod(name)
-		fn_type := p.parse_fn_type(fn_name)
+		fn_type := p.parse_fn_type(fn_name, generic_types)
 		p.table.sym(fn_type).is_pub = is_pub
 		type_pos = type_pos.extend(p.tok.pos())
 		comments = p.eat_comments(same_line: true)
