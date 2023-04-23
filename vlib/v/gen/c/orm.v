@@ -388,6 +388,9 @@ fn (mut g Gen) sql_where_data(expr ast.Expr, mut fields []string, mut parenthese
 				.le {
 					'orm__OperationKind__le'
 				}
+				.key_like {
+					'orm__OperationKind__orm_like'
+				}
 				else {
 					''
 				}

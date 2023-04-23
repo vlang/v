@@ -1570,6 +1570,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 				}
 			}
 			func.name = ''
+			func.generic_names = []
 			idx := t.find_or_register_fn_type(func, true, false)
 			if has_generic {
 				return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
@@ -2163,18 +2164,11 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					}
 				}
 				FnType {
-					// TODO: Cache function's generic types (parameters and return type) like Struct and Interface etc. do?
 					mut parent_info := parent.info as FnType
 					mut function := parent_info.func
-					mut generic_types := []Type{cap: function.params.len + 1}
-					generic_types << function.params.filter(it.typ.has_flag(.generic)).map(it.typ)
-					if function.return_type.has_flag(.generic) {
-						generic_types << function.return_type
-					}
-					generic_names := t.get_generic_names(generic_types)
 					for mut param in function.params {
 						if param.typ.has_flag(.generic) {
-							if t_typ := t.resolve_generic_to_concrete(param.typ, generic_names,
+							if t_typ := t.resolve_generic_to_concrete(param.typ, function.generic_names,
 								info.concrete_types)
 							{
 								param.typ = t_typ
@@ -2183,11 +2177,12 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					}
 					if function.return_type.has_flag(.generic) {
 						if t_typ := t.resolve_generic_to_concrete(function.return_type,
-							generic_names, info.concrete_types)
+							function.generic_names, info.concrete_types)
 						{
 							function.return_type = t_typ
 						}
 					}
+					function.generic_names = []
 					sym.info = FnType{
 						...parent_info
 						func: function
