@@ -40,7 +40,7 @@ fn test_native() {
 		work_test_path := '${wrkdir}/${test_file_name}'
 		exe_test_path := '${wrkdir}/${test_file_name}.exe'
 		tmperrfile := '${dir}/${test}.tmperr'
-		cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_test_path)} -b native ${os.quoted_path(full_test_path)} -d custom_define 2> ${os.quoted_path(tmperrfile)}'
+		cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_test_path)} -b native -skip-unused ${os.quoted_path(full_test_path)} -d custom_define 2> ${os.quoted_path(tmperrfile)}'
 		if is_verbose {
 			println(cmd)
 		}

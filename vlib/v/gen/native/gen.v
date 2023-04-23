@@ -945,13 +945,25 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string)
 	}
 }
 
+fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
+	mut used := true
+	if g.pref.skip_unused {
+		fkey := node.fkey()
+		used = g.table.used_fns[fkey]
+	}
+	return used
+}
+
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	name := if node.is_method {
 		'${g.table.get_type_name(node.receiver.typ)}.${node.name}'
 	} else {
 		node.name
 	}
-	if node.no_body {
+	if node.no_body || !g.is_used_by_main(node) {
+		if g.pref.is_verbose {
+			println(term.italic(term.green('\n-> skipping unused function `${name}`')))
+		}
 		return
 	}
 	if g.pref.is_verbose {
