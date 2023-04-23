@@ -16,11 +16,11 @@
 none
 3
 Foo{
-    bar: 3
-    baz: 0
+    bar: Option(3)
+    baz: Option(none)
 }
 [vlib/v/slow_tests/inout/struct_field_option.vv:61] f: Foo{
-    bar: 3
-    baz: 0
+    bar: Option(3)
+    baz: Option(none)
 }
 1

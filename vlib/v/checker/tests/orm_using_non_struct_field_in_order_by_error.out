@@ -4,10 +4,10 @@ vlib/v/checker/tests/orm_using_non_struct_field_in_order_by_error.vv:14:29: erro
    13 |     users := sql db {
    14 |         select from User order by database
       |                                   ~~~~~~~~
-   15 |     }
+   15 |     }!
    16 |
 vlib/v/checker/tests/orm_using_non_struct_field_in_order_by_error.vv:17:2: error: `println` can not print void expressions
-   15 |     }
+   15 |     }!
    16 | 
    17 |     println(users)
       |     ~~~~~~~~~~~~~~

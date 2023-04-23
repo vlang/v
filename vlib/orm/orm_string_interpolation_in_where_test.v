@@ -10,7 +10,7 @@ fn test_string_interpolation() {
 
 	sql db {
 		create table User
-	}
+	}!
 
 	user_suffix := '_user'
 
@@ -25,11 +25,11 @@ fn test_string_interpolation() {
 	sql db {
 		insert first_user into User
 		insert second_user into User
-	}
+	}!
 
 	users := sql db {
 		select from User where name == 'first${user_suffix}'
-	}
+	}!
 
 	assert users.len == 1
 	assert users.first().name == 'first${user_suffix}'

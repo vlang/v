@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -10,7 +10,6 @@ fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 	first_pos := p.tok.pos()
 	mut last_pos := p.tok.pos()
 	p.check(.lsbr)
-	// p.warn('array_init() exp=$p.expected_type')
 	mut array_type := ast.void_type
 	mut elem_type := ast.void_type
 	mut elem_type_pos := first_pos
@@ -61,12 +60,6 @@ fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 		}
 		p.inside_array_lit = old_inside_array_lit
 		line_nr := p.tok.line_nr
-		$if tinyc {
-			// Note: do not remove the next line without testing
-			// v selfcompilation with tcc first
-			tcc_stack_bug := 12345
-			_ = tcc_stack_bug
-		}
 		last_pos = p.tok.pos()
 		p.check(.rsbr)
 		if exprs.len == 1 && p.tok.line_nr == line_nr
@@ -104,7 +97,7 @@ fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 					first_pos.extend(last_pos))
 			}
 		} else {
-			if p.tok.kind == .not { // && p.tok.line_nr == p.prev_tok.line_nr {
+			if p.tok.kind == .not {
 				last_pos = p.tok.pos()
 				is_fixed = true
 				has_val = true

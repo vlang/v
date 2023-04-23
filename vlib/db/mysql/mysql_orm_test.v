@@ -116,10 +116,10 @@ fn test_mysql_orm() {
 	*/
 	sql db {
 		create table TestCustomSqlType
-	}
+	}!
 
 	mut result_custom_sql := db.query("
-		SELECT DATA_TYPE, COLUMN_TYPE 
+		SELECT DATA_TYPE, COLUMN_TYPE
 		FROM INFORMATION_SCHEMA.COLUMNS
 		WHERE TABLE_NAME = 'TestCustomSqlType'
 		ORDER BY ORDINAL_POSITION
@@ -161,7 +161,7 @@ fn test_mysql_orm() {
 
 	sql db {
 		drop table TestCustomSqlType
-	}
+	}!
 
 	assert result_custom_sql.maps() == information_schema_custom_sql
 
@@ -184,19 +184,19 @@ fn test_mysql_orm() {
 
 	sql db {
 		create table TestTimeType
-	}
+	}!
 
 	sql db {
 		insert model into TestTimeType
-	}
+	}!
 
 	results := sql db {
 		select from TestTimeType where username == 'hitalo'
-	}
+	}!
 
 	sql db {
 		drop table TestTimeType
-	}
+	}!
 
 	assert results[0].username == model.username
 	assert results[0].created_at == model.created_at
@@ -207,7 +207,7 @@ fn test_mysql_orm() {
 	*/
 	sql db {
 		create table TestDefaultAtribute
-	}
+	}!
 
 	mut result_defaults := db.query("
 		SELECT COLUMN_DEFAULT
@@ -222,7 +222,7 @@ fn test_mysql_orm() {
 
 	sql db {
 		drop table TestDefaultAtribute
-	}
+	}!
 
 	information_schema_column_default_sql := [{
 		'COLUMN_DEFAULT': ''

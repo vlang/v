@@ -56,7 +56,7 @@ fn test_if_expr_with_array_call_filter() {
 		assert true
 	}
 
-	if arr.len == 1 || (arr[1].bytes().filter(it.is_letter()).len == 0) {
+	if arr.len == 1 || arr[1].bytes().filter(it.is_letter()).len == 0 {
 		println('yes')
 		assert true
 	}

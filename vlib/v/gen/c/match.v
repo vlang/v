@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -81,7 +81,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			''
 		}
 		cond_var = g.new_tmp_var()
-		g.write('${g.typ(node.cond_type)} ${cond_var} = ')
+		g.write('${g.typ(node.cond_type)} /*A*/ ${cond_var} = ')
 		g.expr(node.cond)
 		g.writeln(';')
 		g.set_current_pos_as_last_stmt_pos()

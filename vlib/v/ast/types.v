@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -133,6 +133,131 @@ pub fn (t ShareType) str() string {
 	}
 }
 
+pub struct MultiReturn {
+pub mut:
+	types []Type
+}
+
+pub struct FnType {
+pub mut:
+	is_anon  bool
+	has_decl bool
+	func     Fn
+}
+
+[minify]
+pub struct Struct {
+pub:
+	attrs []Attr
+pub mut:
+	embeds         []Type
+	fields         []StructField
+	is_typedef     bool // C. [typedef]
+	is_union       bool
+	is_heap        bool
+	is_minify      bool
+	is_anon        bool
+	is_generic     bool
+	generic_types  []Type
+	concrete_types []Type
+	parent_type    Type
+}
+
+// instantiation of a generic struct
+pub struct GenericInst {
+pub mut:
+	parent_idx     int    // idx of the base generic struct
+	concrete_types []Type // concrete types, e.g. [int, string]
+}
+
+[minify]
+pub struct Interface {
+pub mut:
+	types   []Type // all types that implement this interface
+	fields  []StructField
+	methods []Fn
+	embeds  []Type
+	// `I1 is I2` conversions
+	conversions map[int][]Type
+	// generic interface support
+	is_generic     bool
+	generic_types  []Type
+	concrete_types []Type
+	parent_type    Type
+}
+
+pub struct Enum {
+pub:
+	vals             []string
+	is_flag          bool
+	is_multi_allowed bool
+	uses_exprs       bool
+	typ              Type
+}
+
+[minify]
+pub struct Alias {
+pub:
+	parent_type Type
+	language    Language
+	is_import   bool
+}
+
+pub struct Aggregate {
+mut:
+	fields []StructField // used for faster lookup inside the module
+pub:
+	sum_type Type
+	types    []Type
+}
+
+pub struct Array {
+pub:
+	nr_dims int
+pub mut:
+	elem_type Type
+}
+
+[minify]
+pub struct ArrayFixed {
+pub:
+	size      int
+	size_expr Expr // used by fmt for e.g. ´[my_const]u8´
+pub mut:
+	elem_type Type
+}
+
+pub struct Chan {
+pub mut:
+	elem_type Type
+	is_mut    bool
+}
+
+pub struct Thread {
+pub mut:
+	return_type Type
+}
+
+pub struct Map {
+pub mut:
+	key_type   Type
+	value_type Type
+}
+
+[minify]
+pub struct SumType {
+pub mut:
+	fields       []StructField
+	found_fields bool
+	is_anon      bool
+	// generic sumtype support
+	is_generic     bool
+	variants       []Type
+	generic_types  []Type
+	concrete_types []Type
+	parent_type    Type
+}
+
 // <atomic.h> defines special typenames
 pub fn (t Type) atomic_typename() string {
 	idx := t.idx()
@@ -229,10 +354,18 @@ pub fn (t Type) clear_flag(flag TypeFlag) Type {
 	return int(t) & ~(1 << (int(flag) + 24))
 }
 
-// clear all flags
+// clear all flags or multi flags
 [inline]
-pub fn (t Type) clear_flags() Type {
-	return int(t) & 0xffffff
+pub fn (t Type) clear_flags(flags ...TypeFlag) Type {
+	if flags.len == 0 {
+		return int(t) & 0xffffff
+	} else {
+		mut typ := int(t)
+		for flag in flags {
+			typ = typ & ~(1 << (int(flag) + 24))
+		}
+		return typ
+	}
 }
 
 // return true if `flag` is set on `t`
@@ -555,18 +688,6 @@ pub fn mktyp(typ Type) Type {
 		ast.int_literal_type { ast.int_type }
 		else { typ }
 	}
-}
-
-pub struct MultiReturn {
-pub mut:
-	types []Type
-}
-
-pub struct FnType {
-pub mut:
-	is_anon  bool
-	has_decl bool
-	func     Fn
 }
 
 // returns TypeSymbol kind only if there are no type modifiers
@@ -1029,119 +1150,6 @@ pub fn (kinds []Kind) str() string {
 		}
 	}
 	return kinds_str
-}
-
-[minify]
-pub struct Struct {
-pub:
-	attrs []Attr
-pub mut:
-	embeds         []Type
-	fields         []StructField
-	is_typedef     bool // C. [typedef]
-	is_union       bool
-	is_heap        bool
-	is_minify      bool
-	is_anon        bool
-	is_generic     bool
-	generic_types  []Type
-	concrete_types []Type
-	parent_type    Type
-}
-
-// instantiation of a generic struct
-pub struct GenericInst {
-pub mut:
-	parent_idx     int    // idx of the base generic struct
-	concrete_types []Type // concrete types, e.g. [int, string]
-}
-
-[minify]
-pub struct Interface {
-pub mut:
-	types   []Type // all types that implement this interface
-	fields  []StructField
-	methods []Fn
-	embeds  []Type
-	// `I1 is I2` conversions
-	conversions map[int][]Type
-	// generic interface support
-	is_generic     bool
-	generic_types  []Type
-	concrete_types []Type
-	parent_type    Type
-}
-
-pub struct Enum {
-pub:
-	vals             []string
-	is_flag          bool
-	is_multi_allowed bool
-	uses_exprs       bool
-	typ              Type
-}
-
-[minify]
-pub struct Alias {
-pub:
-	parent_type Type
-	language    Language
-	is_import   bool
-}
-
-pub struct Aggregate {
-mut:
-	fields []StructField // used for faster lookup inside the module
-pub:
-	sum_type Type
-	types    []Type
-}
-
-pub struct Array {
-pub:
-	nr_dims int
-pub mut:
-	elem_type Type
-}
-
-[minify]
-pub struct ArrayFixed {
-pub:
-	size      int
-	size_expr Expr // used by fmt for e.g. ´[my_const]u8´
-pub mut:
-	elem_type Type
-}
-
-pub struct Chan {
-pub mut:
-	elem_type Type
-	is_mut    bool
-}
-
-pub struct Thread {
-pub mut:
-	return_type Type
-}
-
-pub struct Map {
-pub mut:
-	key_type   Type
-	value_type Type
-}
-
-[minify]
-pub struct SumType {
-pub mut:
-	fields       []StructField
-	found_fields bool
-	is_anon      bool
-	// generic sumtype support
-	is_generic     bool
-	variants       []Type
-	generic_types  []Type
-	concrete_types []Type
-	parent_type    Type
 }
 
 // human readable type name, also used by vfmt

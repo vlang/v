@@ -28,7 +28,7 @@ pub fn (mut s System) init(sc SystemConfig) {
 }
 
 pub fn (mut s System) update(dt f64) {
-	mut p := &Particle(0)
+	mut p := &Particle(unsafe { nil })
 	mut moved := 0
 	for i := 0; i < s.pool.len; i++ {
 		p = s.pool[i]
@@ -70,7 +70,7 @@ pub fn (mut s System) reset() {
 pub fn (mut s System) explode(x f32, y f32) {
 	mut reserve := 500
 	center := vec.Vec2[f64]{x, y}
-	mut p := &Particle(0)
+	mut p := &Particle(unsafe { nil })
 	mut moved := 0
 	for i := 0; i < s.bin.len && reserve > 0; i++ {
 		p = s.bin[i]

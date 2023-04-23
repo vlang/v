@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builder
@@ -854,7 +854,7 @@ fn (mut c Builder) cc_windows_cross() {
 	obj_name = obj_name.replace('.o.o', '.o')
 	include := '-I $winroot/include '
 	*/
-	if os.user_os() !in ['macos', 'linux'] {
+	if os.user_os() !in ['macos', 'linux', 'termux'] {
 		println(os.user_os())
 		panic('your platform is not supported yet')
 	}

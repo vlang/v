@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -97,6 +97,7 @@ pub fn (mut p Parser) compile_template_file(template_file string, fn_name string
 		p.error('reading from ${template_file} failed')
 		return ''
 	}
+	p.template_paths << template_file
 	basepath := os.dir(template_file)
 	lstartlength := lines.len * 30
 	tmpl_str_start := "\tsb_${fn_name}.write_string('"
@@ -195,6 +196,7 @@ fn vweb_tmpl_${fn_name}() string {
 				})
 				''
 			}
+			p.template_paths << file_path
 			file_splitted := file_content.split_into_lines().reverse()
 			for f in file_splitted {
 				tline_number--

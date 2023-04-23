@@ -10,7 +10,9 @@ pub mut:
 }
 
 pub fn (mut window Window) init() {
-	window.img = window.ctx.create_image(os.resource_abs_path('../assets/logo.png'))
+	window.img = window.ctx.create_image(os.resource_abs_path('../assets/logo.png')) or {
+		panic(err)
+	}
 }
 
 pub fn (mut window Window) draw() {

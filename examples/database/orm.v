@@ -70,16 +70,16 @@ fn sqlite3_array() ! {
 		sql db {
 			drop table Parent
 			drop table Child
-		}
+		} or {}
 		db.close() or {}
 	}
-	//
+
 	sql db {
 		create table Parent
-	}
+	}!
 	sql db {
 		create table Child
-	}
+	}!
 	par := Parent{
 		name: 'test'
 		children: [
@@ -93,10 +93,10 @@ fn sqlite3_array() ! {
 	}
 	sql db {
 		insert par into Parent
-	}
+	}!
 	parent := sql db {
 		select from Parent where id == 1
-	}
+	}!
 	eprintln(parent)
 }
 
@@ -113,16 +113,16 @@ fn msql_array() ! {
 	defer {
 		sql db {
 			drop table Parent
-		}
+		} or {}
 		db.close()
 	}
-	//
+
 	db.query('drop table if exists Parent')!
 	db.query('drop table if exists Child')!
 	sql db {
 		create table Parent
 		create table Child
-	}
+	}!
 	par := Parent{
 		name: 'test'
 		children: [
@@ -136,10 +136,10 @@ fn msql_array() ! {
 	}
 	sql db {
 		insert par into Parent
-	}
+	}!
 	parent := sql db {
 		select from Parent where id == 1
-	}
+	}!
 	eprintln(parent)
 }
 
@@ -151,11 +151,11 @@ fn psql_array() ! {
 		db.close()
 	}
 	db.exec_one('drop table if exists "Parent", "Child"') or { eprintln(err) }
-	//
+
 	sql db {
 		create table Parent
 		create table Child
-	}
+	}!
 	par := Parent{
 		name: 'test'
 		children: [
@@ -169,10 +169,10 @@ fn psql_array() ! {
 	}
 	sql db {
 		insert par into Parent
-	}
+	}!
 	parent := sql db {
 		select from Parent where id == 1
-	}
+	}!
 	eprintln(parent)
 }
 
@@ -182,19 +182,17 @@ fn sqlite3() ! {
 	defer {
 		sql db {
 			drop table Module
-		}
-		sql db {
 			drop table User
-		}
+		} or {}
 		db.close() or {}
 	}
-	//
+
 	sql db {
 		create table Module
-	}
+	}!
 	sql db {
 		create table User
-	}
+	}!
 	mod := Module{
 		name: 'test'
 		nr_downloads: 10
@@ -206,10 +204,10 @@ fn sqlite3() ! {
 	}
 	sql db {
 		insert mod into Module
-	}
+	}!
 	modul := sql db {
 		select from Module where id == 1
-	}
+	}!
 	eprintln(modul)
 }
 
@@ -230,13 +228,13 @@ fn msql() ! {
 	}
 	conn.query('DROP TABLE IF EXISTS Module') or { eprintln(err) }
 	conn.query('DROP TABLE IF EXISTS User') or { eprintln(err) }
-	//
+
 	sql conn {
 		create table Module
-	}
+	}!
 	sql conn {
 		create table User
-	}
+	}!
 	mod := Module{
 		name: 'test'
 		nr_downloads: 10
@@ -248,10 +246,10 @@ fn msql() ! {
 	}
 	sql conn {
 		insert mod into Module
-	}
+	}!
 	m := sql conn {
 		select from Module where id == 1
-	}
+	}!
 	eprintln(m)
 }
 
@@ -266,7 +264,7 @@ fn psql() ! {
 	sql db {
 		create table Module
 		create table User
-	}
+	}!
 	mod := Module{
 		name: 'test'
 		nr_downloads: 10
@@ -278,13 +276,13 @@ fn psql() ! {
 	}
 	sql db {
 		insert mod into Module
-	}
+	}!
 	modul := sql db {
 		select from Module where id == 1
-	}
+	}!
 	sql db {
 		drop table Module
-	}
+	}!
 	eprintln(modul)
 }
 

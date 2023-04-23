@@ -428,7 +428,7 @@ pub fn (mut g JsGen) enter_namespace(name string) {
 }
 
 pub fn (mut g JsGen) escape_namespace() {
-	g.ns = &Namespace(0)
+	g.ns = &Namespace(unsafe { nil })
 	g.inside_builtin = false
 }
 
@@ -1465,7 +1465,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				should_cast := if stmt.left_types.len == 0 {
 					false
 				} else {
-					(g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables)
+					g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables
 						&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
 				}
 

@@ -30,7 +30,7 @@ fn run(mmff Maybefnfact) string {
 }
 
 fn test_sumtype_with_alias_fntype_fn_call() {
-	r1 := main.myfnfact()(1)
+	r1 := myfnfact()(1)
 	println(r1)
 	assert r1 == 1
 

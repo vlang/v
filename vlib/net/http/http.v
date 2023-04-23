@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -48,7 +48,7 @@ pub fn new_request(method Method, url_ string, data string) Request {
 	}
 }
 
-// get sends a GET HTTP request to the give `url`.
+// get sends a GET HTTP request to the given `url`.
 pub fn get(url string) !Response {
 	return fetch(method: .get, url: url)
 }

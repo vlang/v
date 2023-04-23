@@ -33,7 +33,7 @@ fn (mut app App) service_add_user(username string, password string) !User {
 
 	users := sql db {
 		select from User where username == username limit 1
-	}
+	}!
 
 	return users.first()
 }
@@ -50,7 +50,7 @@ fn (mut app App) service_get_user_by_id(user_id int) !User {
 
 	users := sql db {
 		select from User where id == user_id
-	}
+	}!
 
 	return users.first()
 }
@@ -67,7 +67,7 @@ fn (mut app App) service_get_all_user() ![]User {
 
 	results := sql db {
 		select from User
-	}
+	}!
 
 	return results
 }
@@ -84,7 +84,7 @@ fn (mut app App) service_get_by_username(username string) !User {
 
 	results := sql db {
 		select from User where username == username
-	}
+	}!
 
 	if results.len == 0 {
 		return error('User not found')

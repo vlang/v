@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -56,6 +56,20 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 		util.timing_start('Checker.struct setting default_expr_typ')
 		old_expected_type := c.expected_type
 		for mut field in node.fields {
+			// when the field has the same type that the struct itself (recursive)
+			if field.typ.clear_flag(.option).set_nr_muls(0) == struct_typ_idx {
+				for mut symfield in struct_sym.info.fields {
+					if symfield.name == field.name {
+						// only ?&Struct is allowed to be recursive
+						if field.typ.is_ptr() {
+							symfield.is_recursive = true
+						} else {
+							c.error('recursive struct is only possible with optional pointer (e.g. ?&${c.table.type_to_str(field.typ.clear_flag(.option))})',
+								node.pos)
+						}
+					}
+				}
+			}
 			if field.has_default_expr {
 				c.expected_type = field.typ
 				field.default_expr_typ = c.expr(field.default_expr)
@@ -295,7 +309,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			}
 		}
 		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0
-			&& !node.is_short_syntax && c.table.cur_concrete_types.len != 0 {
+			&& !node.is_short_syntax && c.table.cur_concrete_types.len != 0
+			&& !is_field_zero_struct_init {
 			if node.generic_types.len == 0 {
 				c.error('generic struct init must specify type parameter, e.g. Foo[T]',
 					node.pos)
@@ -490,6 +505,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				}
 				if !field_info.typ.has_flag(.option) && !field.typ.has_flag(.result) {
 					expr_type = c.check_expr_opt_call(field.expr, expr_type)
+					if expr_type.has_flag(.option) {
+						c.error('cannot assign an Option value to a non-option struct field',
+							field.pos)
+					}
 				}
 				expr_type_sym := c.table.sym(expr_type)
 				if field_type_sym.kind == .voidptr && expr_type_sym.kind == .struct_
@@ -517,7 +536,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					}
 				} else {
 					if field_info.typ.is_ptr() && !expr_type.is_real_pointer()
-						&& field.expr.str() != '0' {
+						&& field.expr.str() != '0' && !field_info.typ.has_flag(.option) {
 						c.error('reference field must be initialized with reference',
 							field.pos)
 					}
@@ -593,8 +612,9 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					}
 					continue
 				}
-				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !node.has_update_expr
-					&& !c.pref.translated && !c.file.is_translated {
+				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f)
+					&& !field.typ.has_flag(.option) && !node.has_update_expr && !c.pref.translated
+					&& !c.file.is_translated {
 					c.warn('reference field `${type_sym.name}.${field.name}` must be initialized',
 						node.pos)
 					continue
@@ -644,8 +664,9 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 							node.pos)
 					}
 				}
-				if !field.has_default_expr && field.name !in inited_fields && !field.typ.is_ptr()
-					&& !field.typ.has_flag(.option) && c.table.final_sym(field.typ).kind == .struct_ {
+				if !node.has_update_expr && !field.has_default_expr && field.name !in inited_fields
+					&& !field.typ.is_ptr() && !field.typ.has_flag(.option)
+					&& c.table.final_sym(field.typ).kind == .struct_ {
 					mut zero_struct_init := ast.StructInit{
 						pos: node.pos
 						typ: field.typ
@@ -715,7 +736,8 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 			// an embedded struct field
 			continue
 		}
-		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.has_default_expr {
+		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.typ.has_flag(.option)
+			&& !field.has_default_expr {
 			c.warn('reference field `${linked_name}.${field.name}` must be initialized (part of struct `${struct_sym.name}`)',
 				node.pos)
 			continue

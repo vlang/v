@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -56,9 +56,10 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 	} else {
 		stmt_str := g.go_before_stmt(0).trim_space()
 		styp := g.base_type(ret_typ)
+		decl_styp := g.typ(ret_typ).replace('*', '_ptr')
 		g.empty_line = true
 		tmp_var := g.new_tmp_var()
-		g.writeln('${g.typ(ret_typ)} ${tmp_var};')
+		g.writeln('${decl_styp} ${tmp_var};')
 		g.write('_option_ok(&(${styp}[]) {')
 
 		if expr is ast.CastExpr && expr_typ.has_flag(.option) {
@@ -86,7 +87,8 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 	defer {
 		g.inside_opt_or_res = old_inside_opt_or_res
 	}
-	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)&& (expr in [ast.DumpExpr, ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr, ast.CastExpr]) {
+	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)
+		&& expr in [ast.DumpExpr, ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr, ast.CastExpr] {
 		if expr in [ast.Ident, ast.CastExpr] {
 			if expr_typ.idx() != ret_typ.idx() {
 				return g.expr_opt_with_cast(expr, expr_typ, ret_typ)
@@ -223,13 +225,16 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			if mut left.obj is ast.Var {
 				if val is ast.Ident && g.is_comptime_var(val) {
-					var_type = g.unwrap_generic(g.get_comptime_var_type(val))
-					val_type = var_type
-					gen_or = val.or_expr.kind != .absent
-					if gen_or {
-						var_type = val_type.clear_flag(.option)
+					ctyp := g.unwrap_generic(g.get_comptime_var_type(val))
+					if ctyp != ast.void_type {
+						var_type = ctyp
+						val_type = var_type
+						gen_or = val.or_expr.kind != .absent
+						if gen_or {
+							var_type = val_type.clear_flag(.option)
+						}
+						left.obj.typ = var_type
 					}
-					left.obj.typ = var_type
 				} else if val is ast.ComptimeSelector {
 					key_str := g.get_comptime_selector_key_type(val)
 					if key_str != '' {
@@ -254,6 +259,15 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						var_type = g.comptime_var_type_map[key_str] or { var_type }
 						val_type = var_type
 						left.obj.typ = var_type
+					}
+				} else if val is ast.IndexExpr {
+					if val.left is ast.Ident && g.is_generic_param_var((val as ast.IndexExpr).left) {
+						ctyp := g.unwrap_generic(g.get_gn_var_type((val as ast.IndexExpr).left as ast.Ident))
+						if ctyp != ast.void_type {
+							var_type = ctyp
+							val_type = var_type
+							left.obj.typ = var_type
+						}
 					}
 				}
 				is_auto_heap = left.obj.is_auto_heap
@@ -419,10 +433,16 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			mut op_expected_left := ast.Type(0)
 			mut op_expected_right := ast.Type(0)
 			if node.op == .plus_assign && unaliased_right_sym.kind == .string {
-				if left is ast.IndexExpr {
-					// a[0] += str => `array_set(&a, 0, &(string[]) {string__plus(...))})`
-					g.expr(left)
-					g.write('string__plus(')
+				if mut left is ast.IndexExpr {
+					if g.table.sym(left.left_type).kind == .array_fixed {
+						// strs[0] += str2 => `strs[0] = string__plus(strs[0], str2)`
+						g.expr(left)
+						g.write(' = string__plus(')
+					} else {
+						// a[0] += str => `array_set(&a, 0, &(string[]) {string__plus(...))})`
+						g.expr(left)
+						g.write('string__plus(')
+					}
 				} else {
 					// str += str2 => `str = string__plus(str, str2)`
 					g.expr(left)
@@ -685,7 +705,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	mut mr_styp := g.typ(return_type.clear_flag(.result))
 	if node.right[0] is ast.CallExpr && (node.right[0] as ast.CallExpr).or_block.kind != .absent {
 		is_option = false
-		mr_styp = g.typ(return_type.clear_flag(.option).clear_flag(.result))
+		mr_styp = g.typ(return_type.clear_flags(.option, .result))
 	}
 	g.write('${mr_styp} ${mr_var_name} = ')
 	g.expr(node.right[0])

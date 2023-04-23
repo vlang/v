@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -633,9 +633,9 @@ pub fn (s string) u64() u64 {
 
 // parse_uint is like `parse_int` but for unsigned numbers
 //
-// This method directly exposes the `parse_int` function from `strconv`
+// This method directly exposes the `parse_uint` function from `strconv`
 // as a method on `string`. For more advanced features,
-// consider calling `strconv.common_parse_int` directly.
+// consider calling `strconv.common_parse_uint` directly.
 [inline]
 pub fn (s string) parse_uint(_base int, _bit_size int) !u64 {
 	return strconv.parse_uint(s, _base, _bit_size)
@@ -654,9 +654,9 @@ pub fn (s string) parse_uint(_base int, _bit_size int) !u64 {
 // correspond to int, int8, int16, int32, and int64.
 // If bitSize is below 0 or above 64, an error is returned.
 //
-// This method directly exposes the `parse_uint` function from `strconv`
+// This method directly exposes the `parse_int` function from `strconv`
 // as a method on `string`. For more advanced features,
-// consider calling `strconv.common_parse_uint` directly.
+// consider calling `strconv.common_parse_int` directly.
 [inline]
 pub fn (s string) parse_int(_base int, _bit_size int) !i64 {
 	return strconv.parse_int(s, _base, _bit_size)
@@ -1019,7 +1019,7 @@ pub fn (s string) split_into_lines() []string {
 				line_start = i + 1
 			} else if s[i] == cr {
 				res << if line_start == i { '' } else { s[line_start..i] }
-				if ((i + 1) < s.len) && (s[i + 1] == lf) {
+				if (i + 1) < s.len && s[i + 1] == lf {
 					line_start = i + 2
 				} else {
 					line_start = i + 1
@@ -1796,7 +1796,7 @@ fn (s string) at_with_check(idx int) ?u8 {
 pub fn (c u8) is_space() bool {
 	// 0x85 is NEXT LINE (NEL)
 	// 0xa0 is NO-BREAK SPACE
-	return c == 32 || (c > 8 && c < 14) || (c == 0x85) || (c == 0xa0)
+	return c == 32 || (c > 8 && c < 14) || c == 0x85 || c == 0xa0
 }
 
 // is_digit returns `true` if the byte is in range 0-9 and `false` otherwise.

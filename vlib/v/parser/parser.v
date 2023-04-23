@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 [has_globals]
@@ -63,6 +63,7 @@ mut:
 	inside_struct_field_decl  bool
 	inside_struct_attr_decl   bool
 	inside_map_init           bool
+	inside_orm                bool
 	or_is_handled             bool       // ignore `or` in this expression
 	builtin_mod               bool       // are we in the `builtin` module?
 	mod                       string     // current module name
@@ -98,11 +99,12 @@ mut:
 	script_mode               bool
 	script_mode_start_token   token.Token
 pub mut:
-	scanner    &scanner.Scanner = unsafe { nil }
-	errors     []errors.Error
-	warnings   []errors.Warning
-	notices    []errors.Notice
-	vet_errors []vet.Error
+	scanner        &scanner.Scanner = unsafe { nil }
+	errors         []errors.Error
+	warnings       []errors.Warning
+	notices        []errors.Notice
+	vet_errors     []vet.Error
+	template_paths []string // record all compiled $tmpl files; needed for `v watch run webserver.v`
 }
 
 __global codegen_files = unsafe { []&ast.File{} }
@@ -178,7 +180,7 @@ pub fn (mut p Parser) free_scanner() {
 	unsafe {
 		if p.scanner != 0 {
 			p.scanner.free()
-			p.scanner = &scanner.Scanner(0)
+			p.scanner = &scanner.Scanner(nil)
 		}
 	}
 }
@@ -372,6 +374,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		warnings: warnings
 		notices: notices
 		global_labels: p.global_labels
+		template_paths: p.template_paths
 	}
 }
 
@@ -749,15 +752,22 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				if p.peek_tok.kind == .eof {
 					return p.unexpected(got: 'eof')
 				}
-				if_expr := p.if_expr(true)
-				cur_stmt := ast.ExprStmt{
-					expr: if_expr
-					pos: if_expr.pos
-				}
-				if comptime_if_expr_contains_top_stmt(if_expr) {
-					return cur_stmt
+				if p.peek_tok.kind == .key_for {
+					comptime_for_stmt := p.comptime_for()
+					return p.other_stmts(comptime_for_stmt)
+				} else if p.peek_tok.kind == .key_if {
+					if_expr := p.if_expr(true)
+					cur_stmt := ast.ExprStmt{
+						expr: if_expr
+						pos: if_expr.pos
+					}
+					if comptime_if_expr_contains_top_stmt(if_expr) {
+						return cur_stmt
+					} else {
+						return p.other_stmts(cur_stmt)
+					}
 				} else {
-					return p.other_stmts(cur_stmt)
+					return p.unexpected()
 				}
 			}
 			.hash {
@@ -3018,7 +3028,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	name_pos := p.tok.pos()
 	mut field_name := ''
 	// check if the name is on the same line as the dot
-	if (p.prev_tok.pos().line_nr == name_pos.line_nr) || p.tok.kind != .name {
+	if p.prev_tok.pos().line_nr == name_pos.line_nr || p.tok.kind != .name {
 		field_name = p.check_name()
 	} else {
 		p.name_error = true
@@ -4003,7 +4013,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	if p.tok.kind == .key_fn && p.is_fn_type_decl() {
 		// function type: `type mycallback = fn(string, int)`
 		fn_name := p.prepend_mod(name)
-		fn_type := p.parse_fn_type(fn_name)
+		fn_type := p.parse_fn_type(fn_name, generic_types)
 		p.table.sym(fn_type).is_pub = is_pub
 		type_pos = type_pos.extend(p.tok.pos())
 		comments = p.eat_comments(same_line: true)
@@ -4016,6 +4026,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			pos: decl_pos
 			type_pos: type_pos
 			comments: comments
+			generic_types: generic_types
 			attrs: attrs
 		}
 	}

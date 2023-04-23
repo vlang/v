@@ -1,10 +1,10 @@
 0
 0
-Option(error: none)
-Option(error: none)
-Option(error: none)
-Option(error: none)
+Option(none)
+Option(none)
+Option(none)
+Option(none)
 1
 1
 println(NIL)
-Option(error: none)
+Option(none)

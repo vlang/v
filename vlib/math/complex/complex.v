@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -370,5 +370,5 @@ pub fn (c Complex) acsch() Complex {
 
 // Complex Equals
 pub fn (c1 Complex) equals(c2 Complex) bool {
-	return (c1.re == c2.re) && (c1.im == c2.im)
+	return c1.re == c2.re && c1.im == c2.im
 }

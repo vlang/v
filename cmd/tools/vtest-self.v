@@ -130,6 +130,8 @@ const (
 		'vlib/orm/orm_string_interpolation_in_where_test.v',
 		'vlib/orm/orm_interface_test.v',
 		'vlib/orm/orm_mut_db_test.v',
+		'vlib/orm/orm_result_test.v',
+		'vlib/orm/orm_custom_operators_test.v',
 		'vlib/db/sqlite/sqlite_test.v',
 		'vlib/db/sqlite/sqlite_orm_test.v',
 		'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
@@ -184,6 +186,7 @@ const (
 		'vlib/v/slow_tests/profile/profile_test.v',
 		'vlib/gg/draw_fns_api_test.v',
 		'vlib/v/tests/skip_unused/gg_code.vv',
+		'vlib/v/tests/c_struct_with_reserved_field_name_test.v',
 	]
 	skip_on_ubuntu_musl           = [
 		'do_not_remove',
@@ -205,6 +208,8 @@ const (
 		'vlib/orm/orm_string_interpolation_in_where_test.v',
 		'vlib/orm/orm_interface_test.v',
 		'vlib/orm/orm_mut_db_test.v',
+		'vlib/orm/orm_result_test.v',
+		'vlib/orm/orm_custom_operators_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_joined_tables_select_test.v',

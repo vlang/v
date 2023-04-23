@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -397,7 +397,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		if g.inside_return {
 			g.typ(elem_type)
 		} else {
-			g.typ(elem_type.clear_flag(.option).clear_flag(.result))
+			g.typ(elem_type.clear_flags(.option, .result))
 		}
 	}
 	get_and_set_types := elem_sym.kind in [.struct_, .map, .array]

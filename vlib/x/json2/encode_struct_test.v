@@ -200,6 +200,10 @@ fn test_option_array() {
 		val: false
 	}]
 	assert json.encode(StructTypeOption[[]StructType[bool]]{ val: array_of_struct }) == '{"val":[{"val":true},{"val":false}]}'
+
+	// assert json.encode(StructTypeOption[[][]int]{
+	// 	val: [[0, 1], [0, 2, 3], [2], [5, 1]]
+	// }) == '{"val":[[0,1],[0,2,3],[2],[5,1]]}'
 }
 
 fn test_alias() {
@@ -265,11 +269,11 @@ fn test_maps() {
 			'1': 1
 		}
 	}) == '{"val":{"1":1}}'
-	// assert json.encode(StructType[map[string]map[string]int]{
-	// 	val: {
-	// 		'a': {
-	// 			'1': 1
-	// 		}
-	// 	}
-	// }) == '{"val":{"a":{"1":1}}}'
+	assert json.encode(StructType[map[string]map[string]int]{
+		val: {
+			'a': {
+				'1': 1
+			}
+		}
+	}) == '{"val":{"a":{"1":1}}}'
 }

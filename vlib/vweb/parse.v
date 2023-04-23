@@ -71,7 +71,9 @@ fn parse_form_from_request(request http.Request) !(map[string]string, map[string
 			if boundary.len != 1 {
 				return error('detected more that one form-data boundary')
 			}
-			form, files = http.parse_multipart_form(request.data, boundary[0][9..])
+			// omit 'boundary="' and the last '"'
+			boundary_str := boundary[0].substr(10, boundary[0].len - 1)
+			form, files = http.parse_multipart_form(request.data, boundary_str)
 		} else {
 			form = http.parse_form(request.data)
 		}

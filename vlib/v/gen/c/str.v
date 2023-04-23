@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module c
 
@@ -162,7 +162,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				g.write('*')
 			}
 			g.expr_with_cast(expr, typ, typ)
-		} else {
+		} else if typ.has_flag(.option) {
+			// only Option fn receive argument
 			g.expr_with_cast(expr, typ, typ)
 		}
 		g.write(')')

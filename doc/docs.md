@@ -9,7 +9,7 @@ V is a statically typed compiled programming language designed for building main
 It's similar to Go and its design has also been influenced by Oberon, Rust, Swift,
 Kotlin, and Python.
 
-V is a very simple language. Going through this documentation will take you about an hour,
+V is a very simple language. Going through this documentation will take you about a weekend,
 and by the end of it you will have pretty much learned the entire language.
 
 The language promotes writing simple and clear code with minimal abstraction.
@@ -1762,10 +1762,17 @@ To do the opposite, use `!in`.
 nums := [1, 2, 3]
 println(1 in nums) // true
 println(4 !in nums) // true
+```
+
+> **Note**
+> `in` checks if map contains a key, not a value.
+
+```v
 m := {
 	'one': 1
 	'two': 2
 }
+
 println('one' in m) // true
 println('three' !in m) // true
 ```
@@ -2611,9 +2618,9 @@ For this reason V doesn't allow the modification of arguments with primitive typ
 Only more complex types such as arrays and maps may be modified.
 
 ### Variable number of arguments
-V supports functions that receive an arbitrary, variable amounts of arguments, denoted with the 
+V supports functions that receive an arbitrary, variable amounts of arguments, denoted with the
 `...` prefix.
-Below, `a ...int` refers to an arbitrary amount of parameters that will be collected 
+Below, `a ...int` refers to an arbitrary amount of parameters that will be collected
 into an array named `a`.
 
 ```v
@@ -3826,10 +3833,11 @@ fn (err PathError) msg() string {
 	return 'Failed to open path: ${err.path}'
 }
 
-fn try_open(path string) ? {
-	return IError(PathError{
+fn try_open(path string) ! {
+	// V automatically casts this to IError
+	return PathError{
 		path: path
-	})
+	}
 }
 
 fn main() {
@@ -4302,6 +4310,9 @@ data['y'] = 360
 println(json.encode(data)) // {"x":42,"y":360}
 println(json.encode(user)) // {"name":"Pierre","score":1024}
 ```
+
+The json module also supports anonymous struct fields, which helps with complex JSON apis with lots
+of levels.
 
 ## Testing
 
@@ -4847,18 +4858,18 @@ db := sqlite.connect('customers.db')!
 // )
 sql db {
 	create table Customer
-}
+}!
 
 // select count(*) from customers
 nr_customers := sql db {
 	select count from Customer
-}
+}!
 println('number of all customers: ${nr_customers}')
 
 // V syntax can be used to build queries
 uk_customers := sql db {
 	select from Customer where country == 'uk' && nr_orders > 0
-}
+}!
 println(uk_customers.len)
 for customer in uk_customers {
 	println('${customer.id} - ${customer.name}')
@@ -4871,7 +4882,7 @@ new_customer := Customer{
 }
 sql db {
 	insert new_customer into Customer
-}
+}!
 ```
 
 For more examples and the docs, see [vlib/orm](https://github.com/vlang/v/tree/master/vlib/orm).
@@ -4886,7 +4897,6 @@ Documentation for each function/type/const must be placed right before the decla
 
 ```v
 // clearall clears all bits in the array
-
 fn clearall() {
 }
 ```
@@ -4899,7 +4909,6 @@ span to the documented function using single line comments:
 ```v
 // copy_all recursively copies all elements of the array by their value,
 // if `dupes` is false all duplicate values are eliminated in the process.
-
 fn copy_all(dupes bool) {
 	// ...
 }
@@ -5868,25 +5877,25 @@ the boolean expression is highly improbable. In the JS backend, that does nothin
 
 ### Memory usage optimization
 
-V offers these attributes related to memory usage 
-that can be applied to a structure type: `[packed]` and `[minify]`. 
+V offers these attributes related to memory usage
+that can be applied to a structure type: `[packed]` and `[minify]`.
 These attributes affect memory layout of a structure, potentially leading to reduced
 cache/memory usage and improved performance.
 
 #### `[packed]`
 
-The `[packed]` attribute can be added to a structure to create an unaligned memory layout, 
+The `[packed]` attribute can be added to a structure to create an unaligned memory layout,
 which decreases the overall memory footprint of the structure.
 
 > **Note**
-> Using the [packed] attribute may negatively impact performance 
+> Using the [packed] attribute may negatively impact performance
 > or even be prohibited on certain CPU architectures.
-> Only use this attribute if minimizing memory usage is crucial for your program 
+> Only use this attribute if minimizing memory usage is crucial for your program
 > and you're willing to sacrifice performance.
 
 #### `[minify]`
 
-The `[minify]` attribute can be added to a struct, allowing the compiler to reorder the fields 
+The `[minify]` attribute can be added to a struct, allowing the compiler to reorder the fields
 in a way that minimizes internal gaps while maintaining alignment.
 
 > **Note**
@@ -6179,12 +6188,12 @@ fn my_callback(arg voidptr, howmany int, cvalues &&char, cnames &&char) int {
 }
 
 fn main() {
-	db := &C.sqlite3(0) // this means `sqlite3* db = 0`
+	db := &C.sqlite3(unsafe { nil }) // this means `sqlite3* db = 0`
 	// passing a string literal to a C function call results in a C string, not a V string
 	C.sqlite3_open(c'users.db', &db)
 	// C.sqlite3_open(db_path.str, &db)
 	query := 'select count(*) from users'
-	stmt := &C.sqlite3_stmt(0)
+	stmt := &C.sqlite3_stmt(unsafe { nil })
 	// Note: You can also use the `.str` field of a V string,
 	// to get its C style zero terminated representation
 	C.sqlite3_prepare_v2(db, &char(query.str), -1, &stmt, 0)

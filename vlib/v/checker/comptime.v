@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -11,22 +11,30 @@ import v.pkgconfig
 import v.checker.constants
 
 [inline]
-fn (mut c Checker) get_comptime_var_type_from_kind(kind ast.ComptimeVarKind) ast.Type {
-	return match kind {
-		.key_var { c.comptime_fields_key_type }
-		.value_var { c.comptime_fields_val_type }
-		.field_var { c.comptime_fields_default_type }
-		else { ast.void_type }
-	}
-}
-
-[inline]
 fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
 	if node is ast.Ident && (node as ast.Ident).obj is ast.Var {
-		return c.get_comptime_var_type_from_kind((node.obj as ast.Var).ct_type_var)
+		return match (node.obj as ast.Var).ct_type_var {
+			.generic_param {
+				// generic parameter from current function
+				node.obj.typ
+			}
+			.key_var, .value_var {
+				// key and value variables from normal for stmt
+				c.comptime_fields_type[node.name] or { ast.void_type }
+			}
+			.field_var {
+				// field var from $for loop
+				c.comptime_fields_default_type
+			}
+			else {
+				ast.void_type
+			}
+		}
 	} else if node is ast.ComptimeSelector {
+		// val.$(field.name)
 		return c.get_comptime_selector_type(node, ast.void_type)
 	} else if node is ast.SelectorExpr && c.is_comptime_selector_type(node as ast.SelectorExpr) {
+		// field_var.typ from $for field
 		return c.comptime_fields_default_type
 	}
 	return ast.void_type
@@ -227,7 +235,7 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 
 				unwrapped_expr_type := c.unwrap_generic(field.typ)
 				tsym := c.table.sym(unwrapped_expr_type)
-				c.table.dumps[int(unwrapped_expr_type.clear_flag(.option).clear_flag(.result).clear_flag(.atomic_f))] = tsym.cname
+				c.table.dumps[int(unwrapped_expr_type.clear_flags(.option, .result, .atomic_f))] = tsym.cname
 			}
 			c.comptime_for_field_var = ''
 			c.inside_comptime_for_field = false
@@ -647,6 +655,19 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 				.eq, .ne {
 					if cond.left is ast.SelectorExpr
 						&& cond.right in [ast.IntegerLiteral, ast.StringLiteral] {
+						if cond.right is ast.IntegerLiteral
+							&& c.is_comptime_selector_field_name(cond.left as ast.SelectorExpr, 'indirections') {
+							ret := match cond.op {
+								.eq { c.comptime_fields_default_type.nr_muls() == cond.right.val.i64() }
+								.ne { c.comptime_fields_default_type.nr_muls() != cond.right.val.i64() }
+								else { false }
+							}
+							return if ret {
+								ComptimeBranchSkipState.eval
+							} else {
+								ComptimeBranchSkipState.skip
+							}
+						}
 						return .unknown
 						// $if method.args.len == 1
 					} else if cond.left is ast.SelectorExpr
@@ -702,6 +723,27 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 					} else {
 						c.error('invalid `\$if` condition', cond.pos)
 					}
+				}
+				.gt, .lt, .ge, .le {
+					if cond.left is ast.SelectorExpr && cond.right is ast.IntegerLiteral {
+						if c.is_comptime_selector_field_name(cond.left as ast.SelectorExpr,
+							'indirections')
+						{
+							ret := match cond.op {
+								.gt { c.comptime_fields_default_type.nr_muls() > cond.right.val.i64() }
+								.lt { c.comptime_fields_default_type.nr_muls() < cond.right.val.i64() }
+								.ge { c.comptime_fields_default_type.nr_muls() >= cond.right.val.i64() }
+								.le { c.comptime_fields_default_type.nr_muls() <= cond.right.val.i64() }
+								else { false }
+							}
+							return if ret {
+								ComptimeBranchSkipState.eval
+							} else {
+								ComptimeBranchSkipState.skip
+							}
+						}
+					}
+					c.error('invalid `\$if` condition', cond.pos)
 				}
 				else {
 					c.error('invalid `\$if` condition', cond.pos)
@@ -850,7 +892,14 @@ fn (mut c Checker) get_comptime_selector_type(node ast.ComptimeSelector, default
 	return default_type
 }
 
-// check_comptime_is_field_selector checks if the SelectorExpr is related to $for variable
+// is_comptime_selector_field_name checks if the SelectorExpr is related to $for variable accessing specific field name provided by `field_name`
+[inline]
+fn (mut c Checker) is_comptime_selector_field_name(node ast.SelectorExpr, field_name string) bool {
+	return c.inside_comptime_for_field && node.expr is ast.Ident
+		&& (node.expr as ast.Ident).name == c.comptime_for_field_var && node.field_name == field_name
+}
+
+// is_comptime_selector_type checks if the SelectorExpr is related to $for variable accessing .typ field
 [inline]
 fn (mut c Checker) is_comptime_selector_type(node ast.SelectorExpr) bool {
 	if c.inside_comptime_for_field && node.expr is ast.Ident {

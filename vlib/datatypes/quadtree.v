@@ -49,7 +49,7 @@ pub fn (mut q Quadtree) insert(p AABB) {
 
 	q.particles << p
 
-	if (q.particles.len > q.capacity) && (q.level < q.depth) {
+	if q.particles.len > q.capacity && q.level < q.depth {
 		if q.nodes.len == 0 {
 			q.split()
 		}
