@@ -80,7 +80,6 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 				}
 			} else if c.is_comptime_var(expr) && c.get_comptime_var_type(expr) != ast.void_type {
 				// still `_` placeholder for comptime variable without specifier
-				println('>>> ${expr}')
 				node.need_fmts[i] = false
 			} else {
 				node.fmts[i] = fmt
