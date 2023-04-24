@@ -3383,11 +3383,22 @@ pub fn (mut g Gen) allocate_array(name string, size int, items int) int {
 	return pos
 }
 
+pub fn (mut g Gen) allocate_var_two_step(name string, size int, initial_val int) int {
+	// TODO: replace int by i64 or bigger
+	g.allocate_var(name, size - 8, 0)
+	return g.allocate_var(name, 8, initial_val)
+}
+
 pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 	if g.pref.arch == .arm64 {
 		// TODO
 		return 0
 	}
+
+	if size > 8 {
+		return g.allocate_var_two_step(name, size, initial_val)
+	}
+
 	padding := (size - g.stack_var_pos % size) % size
 	n := g.stack_var_pos + size + padding
 	is_far_var := n > 0x80 || n < -0x7f
@@ -3397,6 +3408,12 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 		1 {
 			// BYTE
 			g.write8(0xc6)
+			g.write8(0x45 + far_var_offset)
+		}
+		2 {
+			// WORD
+			g.write8(0x66)
+			g.write8(0xc7)
 			g.write8(0x45 + far_var_offset)
 		}
 		4 {
@@ -3428,6 +3445,9 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 	match size {
 		1 {
 			g.write8(initial_val)
+		}
+		2 {
+			g.write16(initial_val)
 		}
 		4 {
 			g.write32(initial_val)
