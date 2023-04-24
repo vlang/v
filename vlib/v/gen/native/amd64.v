@@ -1314,27 +1314,14 @@ pub fn (mut a Amd64) gen_exit(mut g Gen, node ast.Expr) {
 }
 
 pub fn (mut g Gen) gen_amd64_exit(expr ast.Expr) {
-	// ret value
-	match expr {
-		ast.CallExpr {
-			right := expr.return_type
-			g.n_error('native exit builtin: Unsupported call ${right}')
-		}
-		ast.Ident {
-			g.mov_var_to_reg(.edi, expr as ast.Ident)
-		}
-		ast.IntegerLiteral {
-			g.mov(.edi, expr.val.int())
-		}
-		else {
-			g.n_error('native builtin exit expects a numeric argument')
-		}
-	}
+	g.expr(expr)
+	g.mov_reg(.rdi, .rax)
+
 	if g.pref.os == .windows {
 		g.mov_reg(.rcx, .rdi)
 		g.apicall('ExitProcess')
 	} else {
-		g.mov(.eax, g.nsyscall_exit())
+		g.mov(.rax, g.nsyscall_exit())
 		g.syscall()
 	}
 	g.trap() // should never be reached, just in case
