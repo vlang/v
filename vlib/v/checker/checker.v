@@ -3877,11 +3877,9 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			c.error('cannot dereference to void', node.pos)
 		}
 		if mut node.right is ast.Ident {
-			if mut var := node.right.scope.find_var('${node.right.name}') {
-				// Workaround for unused variable warning
-				_ = var
-				if mut var.expr is ast.UnsafeExpr {
-					if mut var.expr.expr is ast.Nil {
+			if var := node.right.scope.find_var('${node.right.name}') {
+				if var.expr is ast.UnsafeExpr {
+					if var.expr.expr is ast.Nil {
 						c.error('cannot deference a `nil` pointer', node.right.pos)
 					}
 				}
