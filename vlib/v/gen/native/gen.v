@@ -1205,6 +1205,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			for word in words {
 				if word.len != 2 {
 					g.n_error('opcodes format: xx xx xx xx')
+					g.n_error('hash statements are not allowed with the native backend, use the C backend for extended C interoperability.')
 				}
 				b := unsafe { C.strtol(&char(word.str), 0, 16) }
 				// b := word.u8()
@@ -1387,9 +1388,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.AssertStmt {
 			g.gen_assert(node)
-		}
-		ast.HashStmt {
-			g.n_error('hash statements are not allowed with the native backend, use the C backend for extended C interoperability.')
 		}
 		ast.Import {} // do nothing here
 		ast.StructDecl {}
