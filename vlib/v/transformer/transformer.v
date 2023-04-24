@@ -368,9 +368,13 @@ pub fn (mut t Transformer) expr_stmt_if_expr(mut node ast.IfExpr) ast.Expr {
 	if stop_index != -1 {
 		unreachable_branches = unreachable_branches.filter(it < stop_index)
 		node.branches = node.branches[..stop_index + 1]
+		node.has_else = false // if any matches true, else case cannot be reached
 	}
 	for unreachable_branches.len != 0 {
 		node.branches.delete(unreachable_branches.pop())
+	}
+	if node.branches.len == 1 {
+		node.has_else = false
 	}
 	/*
 	FIXME: optimization causes cgen error `g.expr(): unhandled EmptyExpr`
