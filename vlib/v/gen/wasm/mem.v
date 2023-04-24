@@ -50,6 +50,15 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) ?Var {
 		ast.ParExpr {
 			return g.get_var_from_expr(node.expr)
 		}
+		ast.SelectorExpr {
+			addr := g.get_var_from_expr(node.expr) or {
+				g.field_offset(node.expr_type, node.field_name)
+				return none
+			}
+
+			offset := g.get_field_offset(node.expr_type, node.field_name)
+			return g.offset(addr, node.typ, offset)
+		}
 		/* ast.SelectorExpr {
 			
 		}
@@ -100,7 +109,7 @@ fn (mut g Gen) new_local(name string, typ ast.Type) Var {
 		else {}
 	}
 	
-	is_pointer := typ.is_ptr() || !g.is_pure_type(typ)
+	is_pointer := typ.nr_muls() == 0 && !g.is_pure_type(typ)
 	wtyp := g.get_wasm_type(typ)
 
 	mut v := Var{
@@ -196,6 +205,16 @@ fn (mut g Gen) get(v Var) {
 	}
 }
 
+/* fn (mut g Gen) copy(to Var, v Var) {
+	if v.is_pointer && !g.is_pure_type(v.typ) {
+
+		return
+	}
+
+	g.get(v)
+	g.set(to)
+} */
+
 // set structures with pointer, memcpy
 // set pointers with value, get local, store value
 // set value, set local
@@ -209,21 +228,57 @@ fn (mut g Gen) set(v Var) {
 		return
 	}
 
-	if v.is_global {
-		panic('globals unimplemented')
-	} else {
-		g.func.local_get(v.idx)
-	}
-
 	if g.is_pure_type(v.typ) {
+		if v.is_global {
+			panic('globals unimplemented')
+		} else {
+			g.func.local_get(v.idx)
+		}
+
 		g.store(v.typ, v.offset)
 		return
-	} else {
-		// ...
-		// memcpy
 	}
 
-	panic('memcpy unimplemented')
+	size, _ := g.get_type_size_align(v.typ)
+
+	l := g.func.new_local(.i32_t)
+	g.func.local_set(l)
+	
+	if size > 8 {
+		g.ref(v)
+		g.func.local_get(l)
+		g.func.i32_const(size)
+		g.func.memory_copy()
+		return
+	}
+
+	mut sz := size
+	mut oz := 0
+	for sz > 0 {
+		g.ref_ignore_offset(v)
+		g.func.local_get(l)
+		if sz - 8 >= 0 {
+			g.load(ast.u64_type_idx, oz)
+			g.store(ast.u64_type_idx, v.offset + oz)
+			sz -= 8
+			oz += 8
+		} else if sz - 4 >= 0 {
+			g.load(ast.u32_type_idx, oz)
+			g.store(ast.u32_type_idx, v.offset + oz)
+			sz -= 4
+			oz += 4
+		} else if sz - 2 >= 0 {
+			g.load(ast.u16_type_idx, oz)
+			g.store(ast.u16_type_idx, v.offset + oz)
+			sz -= 2
+			oz += 2
+		} else if sz - 1 >= 0 {
+			g.load(ast.u8_type_idx, oz)
+			g.store(ast.u8_type_idx, v.offset + oz)
+			sz -= 1
+			oz += 1
+		}
+	}
 }
 
 fn (mut g Gen) ref(v Var) {
@@ -374,6 +429,15 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 
 				g.expr(f.expr, f.expected_type)
 				g.set(offset_var)
+			}
+		}
+		ast.CallExpr {
+			// `set_with_expr` is never called with a multireturn call expression
+			is_pt := g.is_param_type(v.typ)
+
+			g.call_expr(init, v.typ, if is_pt { [v] } else { []Var{} })
+			if !is_pt {
+				g.set(v)
 			}
 		}
 		else {

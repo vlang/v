@@ -230,6 +230,14 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.is_leaf_function = true
 }
 
+fn (mut g Gen) literalint(val i64, expected ast.Type) {
+	match g.get_wasm_type(expected) {
+		.i32_t { g.func.i32_const(val) }
+		.i64_t { g.func.i64_const(val) }
+		else { g.w_error('literal: bad type `${expected}`') }
+	}
+}
+
 fn (mut g Gen) literal(val string, expected ast.Type) {
 	match g.get_wasm_type(expected) {
 		.i32_t { g.func.i32_const(val.int()) }
@@ -274,24 +282,26 @@ fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type) {
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 	if node.op in [.logical_or, .and] {
-		/* mut exprs := []binaryen.Expression{cap: 2}
-
-		left := g.expr(node.left, node.left_type)
-
-		temporary := g.new_local_temporary_anon(ast.bool_type)
-		exprs << binaryen.localset(g.mod, temporary, left)
-
-		cmp := if node.op == .logical_or {
-			binaryen.unary(g.mod, binaryen.eqzint32(), binaryen.localget(g.mod, temporary,
-				type_i32))
-		} else {
-			binaryen.localget(g.mod, temporary, type_i32)
+		temp := g.func.new_local(.i32_t)
+		{
+			g.expr(node.left, ast.bool_type)
+			g.func.local_set(temp)
 		}
-		exprs << binaryen.bif(g.mod, cmp, g.expr(node.right, node.right_type), binaryen.localget(g.mod,
-			temporary, type_i32))
 
-		return g.mkblock(exprs) */
-		assert false
+		g.func.local_get(temp)
+		if node.op == .logical_or {
+			g.func.eqz(.i32_t)
+		}
+
+		g.func.c_if([], [.i32_t])
+		{
+			g.expr(node.right, ast.bool_type)
+		}
+		g.func.c_else()
+		{
+			g.func.local_get(temp)
+		}
+		g.func.c_end_if()
 	}
 
 	{
@@ -343,51 +353,57 @@ fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) {
 	}
 }
 
-/* 
+fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
+	match node.op {
+		.minus {
+			if node.right_type.is_pure_float() {
+				g.expr(node.right, node.right_type)
+				if node.right_type == ast.f32_type_idx {
+					g.func.neg(.f32_t)
+				} else {
+					g.func.neg(.f64_t)
+				}
+			} else {
+				// -val == 0 - val
 
+				vt := g.get_wasm_type(node.right_type)
 
-fn (mut g Gen) literalint(val i64, expected ast.Type) binaryen.Expression {
-	match g.get_wasm_type(expected) {
-		type_i32 { return binaryen.constant(g.mod, binaryen.literalint32(int(val))) }
-		type_i64 { return binaryen.constant(g.mod, binaryen.literalint64(val)) }
-		else {}
+				g.literalint(0, node.right_type)
+				g.expr(node.right, node.right_type)
+				g.func.sub(g.as_numtype(vt))
+			}
+		}
+		.not {
+			g.expr(node.right, node.right_type)
+			g.func.eqz(.i32_t) // !expr
+		}
+		.bit_not {
+			// ~val == val ^ -1
+
+			vt := g.get_wasm_type(node.right_type)
+
+			g.expr(node.right, node.right_type)
+			g.literalint(-1, node.right_type)
+			g.func.b_xor(g.as_numtype(vt))
+		}
+		.amp {
+			v := g.get_var_from_expr(node.right) or { panic('unreachable') }
+			g.ref(v)
+		}
+		.mul {
+			g.expr(node.right, node.right_type)
+			if g.is_pure_type(expected) {
+				g.load(expected, 0)
+			}
+		}
+		else {
+			// impl deref (.mul), and impl address of (.amp)
+			g.w_error('`${node.op}val` prefix expression not implemented')
+		}
 	}
-	g.w_error('literalint: bad type `${*g.table.sym(expected)}`')
 }
 
-fn (mut g Gen) literal(val string, expected ast.Type) binaryen.Expression {
-	match g.get_wasm_type(expected) {
-		type_i32 { return binaryen.constant(g.mod, binaryen.literalint32(val.int())) }
-		type_i64 { return binaryen.constant(g.mod, binaryen.literalint64(val.i64())) }
-		type_f32 { return binaryen.constant(g.mod, binaryen.literalfloat32(val.f32())) }
-		type_f64 { return binaryen.constant(g.mod, binaryen.literalfloat64(val.f64())) }
-		else {}
-	}
-	g.w_error('literal: bad type `${expected}`')
-}
-
-fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type, expr binaryen.Expression) binaryen.Expression {
-	return if typ.is_ptr() {
-		size, _ := g.get_type_size_align(typ)
-		binaryen.binary(g.mod, binaryen.mulint32(), expr, g.literalint(size, ast.voidptr_type))
-	} else {
-		expr
-	}
-}
-
-fn (mut g Gen) postfix_expr(node ast.PostfixExpr) binaryen.Expression {
-	kind := if node.op == .inc { token.Kind.plus } else { token.Kind.minus }
-
-	var := g.get_var_from_expr(node.expr)
-	op := g.infix_from_typ(node.typ, kind)
-
-	expr := binaryen.binary(g.mod, op, g.get_or_lea_lop(var, node.typ), g.handle_ptr_arithmetic(node.typ,
-		g.literal('0', node.typ)))
-
-	return g.set_var(var, expr, ast_typ: node.typ)
-}
-
-fn (mut g Gen) prefix_expr(node ast.PrefixExpr) binaryen.Expression {
+/* fn (mut g Gen) prefix_expr(node ast.PrefixExpr) binaryen.Expression {
 	expr := g.expr(node.right, node.right_type)
 
 	return match node.op {
@@ -435,7 +451,10 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr) binaryen.Expression {
 			g.w_error('`${node.op}val` prefix expression not implemented')
 		}
 	}
-}
+} */
+
+/* 
+
 
 fn (mut g Gen) mknblock(name string, nodes []binaryen.Expression) binaryen.Expression {
 	if nodes.len == 0 {
@@ -453,24 +472,6 @@ fn (mut g Gen) mkblock(nodes []binaryen.Expression) binaryen.Expression {
 
 	g.lbl++
 	return binaryen.block(g.mod, 'BLK${g.lbl}'.str, nodes.data, nodes.len, type_auto)
-}
-
-fn (mut g Gen) if_branch(ifexpr ast.IfExpr, idx int) binaryen.Expression {
-	curr := ifexpr.branches[idx]
-
-	next := if ifexpr.has_else && idx + 2 >= ifexpr.branches.len {
-		g.expr_stmts(ifexpr.branches[idx + 1].stmts, ifexpr.typ)
-	} else if idx + 1 >= ifexpr.branches.len {
-		unsafe { nil }
-	} else {
-		g.if_branch(ifexpr, idx + 1)
-	}
-	return binaryen.bif(g.mod, g.expr(curr.cond, ast.bool_type), g.expr_stmts(curr.stmts,
-		ifexpr.typ), next)
-}
-
-fn (mut g Gen) if_expr(ifexpr ast.IfExpr) binaryen.Expression {
-	return g.if_branch(ifexpr, 0)
 }
 
 [params]
@@ -561,47 +562,6 @@ fn (mut g Gen) assign_expr_to_var(address LocalOrPointer, right ast.Expr, expect
 	}
 }
 
-fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) binaryen.Expression {
-	if node.has_cross_var {
-		g.w_error('complex assign statements are not implemented')
-	}
-
-	//
-	// Expected to be a `a, b := multi_return()`.
-	//
-
-	mut exprs := []binaryen.Expression{cap: node.left.len + 1}
-
-	ret := (node.right[0] as ast.CallExpr).return_type
-	wret := g.get_wasm_type(ret)
-	temporary := g.new_local_temporary_anon(ret)
-
-	// Set multi return function to temporary, then use `tuple.extract`.
-	exprs << binaryen.localset(g.mod, temporary, g.expr(node.right[0], 0))
-
-	for i := 0; i < node.left.len; i++ {
-		left := node.left[i]
-		typ := node.left_types[i]
-		// rtyp := node.right_types[i]
-
-		if left is ast.Ident {
-			// `_ = expr`
-			if left.kind == .blank_ident {
-				continue
-			}
-			if node.op == .decl_assign {
-				g.new_local(left, typ)
-			}
-		}
-		var := g.get_var_from_expr(left)
-		popexpr := binaryen.tupleextract(g.mod, binaryen.localget(g.mod, temporary, wret),
-			i)
-		exprs << g.set_var(var, popexpr)
-	}
-
-	return g.mkblock(exprs)
-}
-
 fn (mut g Gen) new_for_label(node_label string) string {
 	g.lbl++
 	label := if node_label != '' {
@@ -624,6 +584,163 @@ mut:
 	block binaryen.Expression
 } */
 
+fn (mut g Gen) if_branch(ifexpr ast.IfExpr, idx int) {
+	curr := ifexpr.branches[idx]
+	params := if ifexpr.typ == ast.void_type {
+		[]wasm.ValType{}
+	} else {
+		g.unpack_type(ifexpr.typ).map(g.get_wasm_type(it))
+	}
+	eprintln(params)
+
+	g.expr(curr.cond, ast.bool_type)
+	g.func.c_if([], params)
+	{
+		g.expr_stmts(curr.stmts, ifexpr.typ)
+	}
+	g.func.c_else()
+	{
+		if ifexpr.has_else && idx + 2 >= ifexpr.branches.len {
+			g.expr_stmts(ifexpr.branches[idx + 1].stmts, ifexpr.typ)
+		} else if !(idx + 1 >= ifexpr.branches.len) {
+			g.if_branch(ifexpr, idx + 1)
+		}
+	}
+	g.func.c_end_if()
+}
+
+fn (mut g Gen) if_expr(ifexpr ast.IfExpr) {
+	eprintln(ifexpr)
+	g.if_branch(ifexpr, 0)
+}
+
+fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []Var) {
+	g.is_leaf_function = false
+	mut name := node.name
+
+	is_print := name in ['panic', 'println', 'print', 'eprintln', 'eprint']
+
+	if name in wasm_builtins {
+		g.wasm_builtin(node.name, node)
+		return
+	}
+
+	if node.is_method {
+		name = '${g.table.get_type_name(node.receiver_type)}.${node.name}'
+	}
+
+	// callconv: {return structs} {method self} {arguments}
+	
+	// {return structs}
+	//
+	mut rvars := existing_rvars.clone()
+	rts := g.unpack_type(node.return_type)
+	if rvars.len == 0 {
+		for rt in rts {
+			if g.is_param_type(rt) {
+				v := g.new_local('', rt)
+				rvars << v
+			}
+		}
+	}
+	for v in rvars {
+		g.ref(v)
+	}
+
+	// {method self}
+	//
+	if node.is_method {
+		expr := if !node.left_type.is_ptr() && node.receiver_type.is_ptr() {
+			ast.Expr(ast.PrefixExpr{
+				op: .amp
+				right: node.left
+			})
+		} else {
+			node.left
+		}
+		g.expr(expr, node.receiver_type)
+	}
+	
+	// {arguments}
+	//
+	for idx, arg in node.args {
+		mut expr := arg.expr
+		
+		typ := arg.typ
+		if is_print && typ != ast.string_type {
+			has_str, _, _ := g.table.sym(typ).str_method_info()
+			if typ != ast.string_type && !has_str {
+				g.v_error('cannot implicitly convert as argument does not have a .str() function',
+					arg.pos)
+			}
+
+			expr = ast.CallExpr{
+				name: 'str'
+				left: expr
+				left_type: typ
+				receiver_type: typ
+				return_type: ast.string_type
+				is_method: true
+			}
+		}
+
+		g.expr(expr, node.expected_arg_types[idx])
+	}
+
+	g.func.call(name)
+
+	if expected == ast.void_type && node.return_type != ast.void_type {
+		for rt in rts { // order doesn't matter
+			if !g.is_param_type(rt) {
+				g.func.drop()
+			}
+		}
+	} else if rvars.len > 0 && existing_rvars.len == 0 {
+		mut rr_vars := []Var{cap: rts.len}
+		mut r := rvars.len
+
+		for rt in rts.reverse() {
+			if !g.is_param_type(rt) {
+				v := g.new_local('', rt)
+				rr_vars << v
+				g.set(v)
+			} else {
+				r--
+				rr_vars << rvars[r]
+			}
+		}
+
+		for v in rr_vars.reverse() {
+			g.get(v)
+		}
+	}
+	if node.is_noreturn {
+		g.func.unreachable()
+	}
+}
+
+fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
+	ts := g.table.sym(typ)
+	field := ts.find_field(name) or { g.w_error('could not find field `${name}` on init') }
+	if typ !in g.structs {
+		g.get_type_size_align(typ.idx())
+	}
+	return g.structs[typ.idx()].offsets[field.i]
+}
+
+fn (mut g Gen) field_offset(typ ast.Type, name string) {
+	offset := g.get_field_offset(typ, name)
+	if offset != 0 {
+		g.func.i32_const(offset)
+		g.func.add(.i32_t)
+	}
+}
+
+fn (mut g Gen) load_field(typ ast.Type, ftyp ast.Type, name string) {
+	offset := g.get_field_offset(typ, name)
+	g.load(ftyp, offset)
+}
+
 fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 	match node {
 		ast.ParExpr, ast.UnsafeExpr {
@@ -638,35 +755,39 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		ast.GoExpr {
 			g.w_error('wasm backend does not support threads')
 		}
-		/* ast.IndexExpr {
+		ast.IndexExpr {
 			// TODO: IMPLICIT BOUNDS CHECKING
 			/*
 			if !node.is_direct {
 				g.w_error('implicit bounds checks are not implemented, create one manually')
 			}*/
-
-			mut ptr := g.expr(node.left, ast.voidptr_type)
-			if node.left_type == ast.string_type {
-				ptr = g.deref(ptr, ast.voidptr_type)
-			}
-
-			size, _ := g.get_type_size_align(expected)
-			index := g.expr(node.index, ast.int_type)
-
+			
 			// ptr + index * size
-			new_ptr := binaryen.binary(g.mod, binaryen.addint32(), ptr, binaryen.binary(g.mod,
-				binaryen.mulint32(), index, g.literalint(size, ast.int_type)))
+			size, _ := g.get_type_size_align(expected)
 
-			g.deref(new_ptr, expected)
-		} */
+			g.expr(node.left, node.left_type)
+			if node.left_type == ast.string_type {
+				// be pedantic...
+				g.load_field(ast.string_type, ast.voidptr_type, 'str')
+			}
+			
+			g.expr(node.index, ast.int_type)
+			g.literalint(size, ast.int_type)
+			g.func.mul(.i32_t)
+			
+			g.func.add(.i32_t)
+
+			// ptr
+			g.load(expected, 0)
+		}
 		ast.StructInit {
 			v := g.new_local('', node.typ)
 			g.set_with_expr(node, v)
 			g.get(v)
 		}
-		/* ast.SelectorExpr {
-			g.cast_t(g.get_or_lea_lop(g.get_var_from_expr(node), node.typ), node.typ,
-				expected)
+		ast.SelectorExpr {
+			g.expr(node.expr, node.expr_type)
+			g.field_offset(node.expr_type, node.field_name)
 		}
 		ast.MatchExpr {
 			g.w_error('wasm backend does not support match expressions yet')
@@ -692,10 +813,9 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			g.literalint(size, ast.u32_type)
 		}
 		ast.BoolLiteral {
-			val := if node.val { binaryen.literalint32(1) } else { binaryen.literalint32(0) }
-			binaryen.constant(g.mod, val)
+			g.func.i32_const(i32(node.val))
 		}
-		ast.StringLiteral {
+		/* ast.StringLiteral {
 			if g.table.sym(expected).info !is ast.Struct {
 				offset, _ := g.allocate_string(node)
 				return g.literalint(offset, ast.int_type)
@@ -710,12 +830,19 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		ast.InfixExpr {
 			g.infix_expr(node, expected)
 		}
-		/* ast.PrefixExpr {
-			g.prefix_expr(node)
+		ast.PrefixExpr {
+			g.prefix_expr(node, expected)
 		}
 		ast.PostfixExpr {
-			g.postfix_expr(node)
-		} */
+			kind := if node.op == .inc { token.Kind.plus } else { token.Kind.minus }
+			v := g.get_var_from_expr(node.expr) or { panic("unreachable") }
+
+			g.get(v)
+			g.literal('1', node.typ)
+			g.handle_ptr_arithmetic(node.typ)
+			g.infix_from_typ(node.typ, kind)
+			g.set(v)
+		}
 		ast.CharLiteral {
 			rns := node.val.runes()[0]
 			g.func.i32_const(rns)
@@ -731,216 +858,23 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		ast.Nil {
 			g.func.i32_const(0)
 		}
-		/* ast.IfExpr {
+		ast.IfExpr {
 			g.if_expr(node)
-		} */
+		}
 		ast.CastExpr {
 			g.expr(node.expr, node.expr_type)
 			g.func.cast(g.as_numtype(g.get_wasm_type(node.expr_type)), node.expr_type.is_signed(), g.as_numtype(g.get_wasm_type(node.typ)))
 		}
 		ast.CallExpr {
-			g.is_leaf_function = false
-			mut name := node.name
+			g.call_expr(node, expected, [])
+		}
+		ast.ConcatExpr {
+			types := g.unpack_type(expected)
 
-			is_print := name in ['panic', 'println', 'print', 'eprintln', 'eprint']
-
-			if name in wasm.wasm_builtins {
-				g.wasm_builtin(node.name, node)
-				return
-			}
-
-			if node.is_method {
-				name = '${g.table.get_type_name(node.receiver_type)}.${node.name}'
-			}
-
-			// callconv: {return structs} {method self} {arguments}
-			
-			// {return structs}
-			//
-			mut rvars := []Var{}
-			rts := g.unpack_type(node.return_type)
-			for rt in rts {
-				if g.is_param_type(rt) {
-					v := g.new_local('', rt)
-					rvars << v
-					g.ref(v)
-				}
-			}
-
-			// {method self}
-			//
-			if node.is_method {
-				expr := if !node.left_type.is_ptr() && node.receiver_type.is_ptr() {
-					ast.Expr(ast.PrefixExpr{
-						op: .amp
-						right: node.left
-					})
-				} else {
-					node.left
-				}
-				g.expr(expr, node.receiver_type)
-			}
-			
-			// {arguments}
-			//
-			for idx, arg in node.args {
-				mut expr := arg.expr
-				
-				typ := arg.typ
-				if is_print && typ != ast.string_type {
-					has_str, _, _ := g.table.sym(typ).str_method_info()
-					if typ != ast.string_type && !has_str {
-						g.v_error('cannot implicitly convert as argument does not have a .str() function',
-							arg.pos)
-					}
-
-					expr = ast.CallExpr{
-						name: 'str'
-						left: expr
-						left_type: typ
-						receiver_type: typ
-						return_type: ast.string_type
-						is_method: true
-					}
-				}
-
-				g.expr(expr, node.expected_arg_types[idx])
-			}
-
-			g.func.call(name)
-
-			if expected == ast.void_type && node.return_type != ast.void_type {
-				for rt in rts { // order doesn't matter
-					if !g.is_param_type(rt) {
-						g.func.drop()
-					}
-				}
-			} else if rvars.len > 0 {
-				mut rr_vars := []Var{cap: rts.len}
-				mut r := 0
-				
-				for rt in rts.reverse() {
-					if !g.is_param_type(rt) {
-						v := g.new_local('', rt)
-						rr_vars << v
-						g.set(v)
-					} else {
-						rr_vars << rvars[r]
-						r++
-					}
-				}
-
-				for v in rr_vars {
-					g.get(v)
-				}
-			}
-			if node.is_noreturn {
-				g.func.unreachable()
+			for idx, expr in node.vals {
+				g.expr(expr, types[idx])
 			}
 		}
-		/* ast.CallExpr {
-			mut name := node.name
-			mut arguments := []binaryen.Expression{cap: node.args.len + 1}
-
-			fret := g.function_return_wasm_type(node.return_type)
-			is_print := name in ['panic', 'println', 'print', 'eprintln', 'eprint']
-
-			if name in wasm.wasm_builtins {
-				return g.wasm_builtin(node.name, node)
-			}
-
-			if node.is_method {
-				name = '${g.table.get_type_name(node.receiver_type)}.${node.name}'
-			}
-
-			ret_types := g.unpack_type(node.return_type)
-			structs := ret_types.filter(g.table.sym(it).info is ast.Struct && !it.is_real_pointer())
-			mut structs_addrs := []int{cap: structs.len}
-
-			// ABI: {return structs} {method `self`}, then {arguments}
-			for typ in structs {
-				pos := g.allocate_local_var('_anonstruct', typ)
-				structs_addrs << pos
-				arguments << g.lea_address(pos)
-			}
-			if node.is_method {
-				expr := if !node.left_type.is_ptr() && node.receiver_type.is_ptr() {
-					ast.Expr(ast.PrefixExpr{
-						op: .amp
-						right: node.left
-					})
-				} else {
-					node.left
-				}
-				arguments << g.expr(expr, node.receiver_type)
-			}
-			for idx, arg in node.args {
-				mut expr := arg.expr
-				typ := arg.typ
-
-				if is_print && typ != ast.string_type {
-					has_str, _, _ := g.table.sym(typ).str_method_info()
-					if typ != ast.string_type && !has_str {
-						g.v_error('cannot implicitly convert as argument does not have a .str() function',
-							arg.pos)
-					}
-
-					expr = ast.CallExpr{
-						name: 'str'
-						left: expr
-						left_type: typ
-						receiver_type: typ
-						return_type: ast.string_type
-						is_method: true
-					}
-				}
-				arguments << g.expr(expr, node.expected_arg_types[idx])
-			}
-
-			mut call := binaryen.call(g.mod, name.str, arguments.data, arguments.len,
-				fret)
-			if structs.len != 0 {
-				mut temporary := 0
-				// The function's return values contains structs and must be reordered
-
-				if ret_types.len - structs.len != 0 {
-					temporary = g.new_local_temporary_anon_wtyp(fret)
-					call = binaryen.localset(g.mod, temporary, call)
-				}
-				mut exprs := []binaryen.Expression{}
-
-				mut sidx := 0
-				mut tidx := 0
-				for typ in ret_types {
-					ts := g.table.sym(typ)
-
-					if ts.info is ast.Struct {
-						exprs << g.lea_address(structs_addrs[tidx])
-						tidx++
-					} else {
-						exprs << binaryen.tupleextract(g.mod, binaryen.localget(g.mod,
-							temporary, fret), sidx)
-						sidx++
-					}
-				}
-
-				vexpr := if exprs.len != 1 {
-					binaryen.tuplemake(g.mod, exprs.data, exprs.len)
-				} else {
-					exprs[0]
-				}
-
-				call = g.mkblock([call, vexpr])
-			}
-			if expected == ast.void_type && node.return_type != ast.void_type {
-				call = binaryen.drop(g.mod, call)
-			}
-			if node.is_noreturn {
-				// `[noreturn]` functions cannot return values
-				call = g.mkblock([call, binaryen.unreachable(g.mod)])
-			}
-			call
-		} */
 		else {
 			g.w_error('wasm.expr(): unhandled node: ' + node.type_name())
 		}
@@ -949,10 +883,16 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 
 fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 	match node {
-		/* ast.Block {
+		ast.Block {
 			g.expr_stmts(node.stmts, expected)
-		} */
+		}
 		ast.Return {
+			if node.exprs.len == 1 && node.exprs[0] is ast.CallExpr {
+				g.call_expr(node.exprs[0] as ast.CallExpr, 0, g.return_vars)
+				g.func.c_br(g.ret_br)
+				return
+			}
+
 			mut r := 0
 			for idx, expr in node.exprs {
 				typ := g.ret_types[idx] // node.types LIES
@@ -1045,15 +985,43 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 			binaryen.br(g.mod, blabel.str, unsafe { nil }, unsafe { nil })
 		} */
 		ast.AssignStmt {
-			if (node.left.len > 1 && node.right.len == 1) || node.has_cross_var {
+			if node.has_cross_var {
+				g.w_error('complex assign statements are not implemented')
 				// `a, b := foo()`
 				// `a, b := if cond { 1, 2 } else { 3, 4 }`
 				// `a, b = b, a`
-
-				// g.multi_assign_stmt(node)
-				panic("unimplemented")
 			} else {
 				// `a := 1` | `a, b := 1, 2`
+				is_multireturn := node.left.len > 1 && node.right.len == 1
+
+				if is_multireturn {
+					g.expr(node.right[0], 0)
+
+					for i := node.left.len ; i > 0 ; {
+						i--
+						left := node.left[i]
+						typ := node.left_types[i]
+
+						if left is ast.Ident {
+							// `_ = expr`
+							if left.kind == .blank_ident {
+								// expression still may have side effect
+								g.func.drop()
+								continue
+							}
+							if node.op == .decl_assign {
+								g.new_local(left.name, typ)
+							}
+						}
+
+						if v := g.get_var_from_expr(left) {
+							g.set(v)
+						} else {
+							panic("unimplemented")
+						}
+					}
+					return
+				}
 
 				for i, left in node.left {
 					right := node.right[i]
