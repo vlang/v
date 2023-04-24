@@ -28,4 +28,5 @@ println(stack)
 - [x] Min heap (priority queue)
 - [x] Set
 - [x] Quadtree
+- [x] CRDT Conflict-free replicated data type
 - [ ] ...
