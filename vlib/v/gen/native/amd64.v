@@ -1314,27 +1314,14 @@ pub fn (mut a Amd64) gen_exit(mut g Gen, node ast.Expr) {
 }
 
 pub fn (mut g Gen) gen_amd64_exit(expr ast.Expr) {
-	// ret value
-	match expr {
-		ast.CallExpr {
-			right := expr.return_type
-			g.n_error('native exit builtin: Unsupported call ${right}')
-		}
-		ast.Ident {
-			g.mov_var_to_reg(.edi, expr as ast.Ident)
-		}
-		ast.IntegerLiteral {
-			g.mov(.edi, expr.val.int())
-		}
-		else {
-			g.n_error('native builtin exit expects a numeric argument')
-		}
-	}
+	g.expr(expr)
+	g.mov_reg(.rdi, .rax)
+
 	if g.pref.os == .windows {
 		g.mov_reg(.rcx, .rdi)
 		g.apicall('ExitProcess')
 	} else {
-		g.mov(.eax, g.nsyscall_exit())
+		g.mov(.rax, g.nsyscall_exit())
 		g.syscall()
 	}
 	g.trap() // should never be reached, just in case
@@ -3396,11 +3383,22 @@ pub fn (mut g Gen) allocate_array(name string, size int, items int) int {
 	return pos
 }
 
+pub fn (mut g Gen) allocate_var_two_step(name string, size int, initial_val int) int {
+	// TODO: replace int by i64 or bigger
+	g.allocate_var(name, size - 8, 0)
+	return g.allocate_var(name, 8, initial_val)
+}
+
 pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 	if g.pref.arch == .arm64 {
 		// TODO
 		return 0
 	}
+
+	if size > 8 {
+		return g.allocate_var_two_step(name, size, initial_val)
+	}
+
 	padding := (size - g.stack_var_pos % size) % size
 	n := g.stack_var_pos + size + padding
 	is_far_var := n > 0x80 || n < -0x7f
@@ -3410,6 +3408,12 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 		1 {
 			// BYTE
 			g.write8(0xc6)
+			g.write8(0x45 + far_var_offset)
+		}
+		2 {
+			// WORD
+			g.write8(0x66)
+			g.write8(0xc7)
 			g.write8(0x45 + far_var_offset)
 		}
 		4 {
@@ -3441,6 +3445,9 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 	match size {
 		1 {
 			g.write8(initial_val)
+		}
+		2 {
+			g.write16(initial_val)
 		}
 		4 {
 			g.write32(initial_val)
