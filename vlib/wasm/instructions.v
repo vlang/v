@@ -57,30 +57,18 @@ pub fn (mut func Function) patch(loc PatchPos, begin PatchPos) {
 	lenn := begin
 	diff := loc - begin
 
-	for mut patch in func.global_patches {
+	for mut patch in func.patches {
 		if patch.pos >= begin {
-			if patch.pos >= begin {
-				patch.pos += diff
-			}
-			if patch.pos < lenn {
-				continue
-			}
-			delta := patch.pos - lenn
-			patch.pos = loc + delta
+			patch.pos += diff
 		}
-	}
-	for mut patch in func.call_patches {
-		if patch.pos >= begin {
-			if patch.pos >= begin {
-				patch.pos += diff
-			}
-			if patch.pos < lenn {
-				continue
-			}
-			delta := patch.pos - lenn
-			patch.pos = loc + delta
+		if patch.pos < lenn {
+			continue
 		}
+		delta := patch.pos - lenn
+		patch.pos = loc + delta
 	}
+
+	func.patches.sort(a.pos < b.pos)
 }
 
 // new_local creates a function local and returns it's index.
@@ -150,7 +138,7 @@ pub fn (mut func Function) global_get(global GlobalIndices) {
 	func.code << 0x23 // global.get
 	match global {
 		GlobalIndex {
-			func.global_patches << FunctionGlobalPatch{
+			func.patches << FunctionGlobalPatch{
 				idx: global
 				pos: func.code.len
 			}
@@ -167,7 +155,7 @@ pub fn (mut func Function) global_set(global GlobalIndices) {
 	func.code << 0x24 // global.set
 	match global {
 		GlobalIndex {
-			func.global_patches << FunctionGlobalPatch{
+			func.patches << FunctionGlobalPatch{
 				idx: global
 				pos: func.code.len
 			}
@@ -937,10 +925,10 @@ pub fn (mut func Function) c_end_if() {
 // WebAssembly instruction: `call`.
 pub fn (mut func Function) call(name string) {
 	func.code << 0x10 // call
-	func.call_patches << FunctionCallPatch{
+	func.patches << CallPatch(FunctionCallPatch{
 		name: name
 		pos: func.code.len
-	}
+	})
 }
 
 // call calls an imported function.
@@ -948,11 +936,11 @@ pub fn (mut func Function) call(name string) {
 // WebAssembly instruction: `call`.
 pub fn (mut func Function) call_import(mod string, name string) {
 	func.code << 0x10 // call
-	func.call_patches << ImportCallPatch{
+	func.patches << CallPatch(ImportCallPatch{
 		mod: mod
 		name: name
 		pos: func.code.len
-	}
+	})
 }
 
 // load loads a value with type `typ` from memory.
@@ -1144,10 +1132,10 @@ pub fn (mut func Function) ref_is_null(rt RefType) {
 // WebAssembly instruction: `ref.func`.
 pub fn (mut func Function) ref_func(name string) {
 	func.code << 0xD2 // ref.func
-	func.call_patches << FunctionCallPatch{
+	func.patches << CallPatch(FunctionCallPatch{
 		name: name
 		pos: func.code.len
-	}
+	})
 }
 
 // ref_func places a reference to an imported function with `name` on the stack.
@@ -1155,9 +1143,9 @@ pub fn (mut func Function) ref_func(name string) {
 // WebAssembly instruction: `ref.func`.
 pub fn (mut func Function) ref_func_import(mod string, name string) {
 	func.code << 0xD2 // ref.func
-	func.call_patches << ImportCallPatch{
+	func.patches << CallPatch(ImportCallPatch{
 		mod: mod
 		name: name
 		pos: func.code.len
-	}
+	})
 }
