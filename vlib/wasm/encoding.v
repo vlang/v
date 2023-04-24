@@ -87,50 +87,7 @@ fn (mod &Module) get_function_idx(patch CallPatch) int {
 }
 
 fn (mut mod Module) patch(ft Function) {
-	/* mut byte_idx := 0
-
-	for patch in ft.global_patches {
-		idx := mod.global_imports.len + patch.idx
-		if patch.pos > byte_idx {
-			mod.buf << ft.code[byte_idx..patch.pos]
-			byte_idx = patch.pos
-		}
-		mod.u32(u32(idx))
-	}
-	for patch in ft.call_patches {
-		idx := mod.get_function_idx(patch)
-		if patch.pos > byte_idx {
-			mod.buf << ft.code[byte_idx..patch.pos]
-			byte_idx = patch.pos
-		}
-		mod.u32(u32(idx))
-	}
-
-	mod.buf << ft.code[byte_idx..] */
-
-	/* mut icp, mut igp, mut bidx := 0, 0, 0
-	for bidx < ft.code.len {
-		if icp < ft.call_patches.len && ft.call_patches[icp].pos == bidx {
-			patch := ft.call_patches[icp]
-			{
-				idx := mod.get_function_idx(patch)
-				mod.buf << leb128.encode_u32(u32(idx))
-			}
-			icp++
-		} else if igp < ft.global_patches.len && ft.global_patches[igp].pos == bidx {
-			patch := ft.global_patches[igp]
-			{
-				idx := mod.global_imports.len + patch.idx
-				mod.buf << leb128.encode_u32(u32(idx))
-			}
-			igp++
-		}
-		
-		mod.buf << ft.code[bidx]
-		bidx++
-	} */
-
-	mut byte_idx := 0
+	mut ptr := 0
 
 	for patch in ft.patches {
 		mut idx := 0
@@ -142,14 +99,12 @@ fn (mut mod Module) patch(ft Function) {
 				idx = mod.global_imports.len + patch.idx
 			}
 		}
-		if patch.pos > byte_idx {
-			mod.buf << ft.code[byte_idx..patch.pos]
-			byte_idx = patch.pos
-		}
+		mod.buf << ft.code[ptr..patch.pos]
 		mod.u32(u32(idx))
+		ptr = patch.pos
 	}
 
-	mod.buf << ft.code[byte_idx..]
+	mod.buf << ft.code[ptr..]
 }
 
 // compile serialises the WebAssembly module into a byte array.
