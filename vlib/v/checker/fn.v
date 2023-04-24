@@ -1812,14 +1812,11 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					c.fail_if_unreadable(arg.expr, got_arg_typ, 'argument')
 				}
 			}
-			if method.generic_names.len != node.concrete_types.len {
-				// no type arguments given in call, attempt implicit instantiation
-				c.infer_fn_generic_types(method, mut node)
-				concrete_types = node.concrete_types.map(c.unwrap_generic(it))
-			}
-			if concrete_types.len > 0 { //} && !concrete_types[0].has_flag(.generic) {
-				c.table.register_fn_concrete_types(method.fkey(), concrete_types)
+			if concrete_types.len > 0 && method.generic_names.len != rec_concrete_types.len {
 				concrete_types = c.resolve_fn_generic_args(method, mut node)
+				if !concrete_types[0].has_flag(.generic) {
+					c.table.register_fn_concrete_types(method.fkey(), concrete_types)
+				}
 			}
 			if exp_arg_typ.has_flag(.generic) {
 				method_concrete_types := if method.generic_names.len == rec_concrete_types.len {
@@ -1944,6 +1941,15 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			node.receiver_type = left_type.derive(method.params[0].typ).set_flag(.generic)
 		} else {
 			node.receiver_type = method.params[0].typ
+		}
+		if method.generic_names.len != node.concrete_types.len {
+			// no type arguments given in call, attempt implicit instantiation
+			c.infer_fn_generic_types(method, mut node)
+			concrete_types = node.concrete_types.map(c.unwrap_generic(it))
+		}
+		if concrete_types.len > 0 && !concrete_types[0].has_flag(.generic) {
+			c.table.register_fn_concrete_types(method.fkey(), concrete_types)
+			c.resolve_fn_generic_args(method, mut node)
 		}
 
 		// resolve return generics struct to concrete type
