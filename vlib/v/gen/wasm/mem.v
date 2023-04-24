@@ -87,17 +87,15 @@ fn (mut g Gen) sp() wasm.GlobalIndex {
 	return g.sp()
 }
 
-fn (mut g Gen) new_local(node ast.Ident, typ ast.Type) {
+fn (mut g Gen) new_local(name string, typ ast.Type) Var {
 	ts := g.table.sym(typ)
 
 	match ts.info {
 		ast.Enum {
-			g.new_local(node, ts.info.typ)
-			return
+			return g.new_local(name, ts.info.typ)
 		}
 		ast.Alias {
-			g.new_local(node, ts.info.parent_type)
-			return
+			return g.new_local(name, ts.info.parent_type)
 		}
 		else {}
 	}
@@ -106,7 +104,7 @@ fn (mut g Gen) new_local(node ast.Ident, typ ast.Type) {
 	wtyp := g.get_wasm_type(typ)
 
 	mut v := Var{
-		name: node.name
+		name: name
 		typ: typ
 		is_pointer: is_pointer
 	}
@@ -114,7 +112,7 @@ fn (mut g Gen) new_local(node ast.Ident, typ ast.Type) {
 	if !is_pointer {
 		v.idx = g.func.new_local(wtyp)
 		g.local_vars << v
-		return
+		return v
 	}
 	v.idx = g.bp()
 
@@ -134,6 +132,7 @@ fn (mut g Gen) new_local(node ast.Ident, typ ast.Type) {
 		}
 	}
 	g.local_vars << v
+	return v
 }
 
 // is_pure_type(voidptr) == true
@@ -266,6 +265,37 @@ fn (mut g Gen) offset(v Var, typ ast.Type, offset int) Var {
 fn (mut g Gen) zero_fill(v Var, size int) {
 	assert size > 0
 
+	// TODO: support coalescing `zero_fill` calls together.
+	//       maybe with some kind of context?
+	//
+	// ```v
+	// struct AA {
+	//     a bool
+	//     b int = 20
+	//     c int
+	//     d int
+	// }
+	// ```
+	//
+	// ```wast
+	// (i32.store8
+	//  (local.get $0)
+	//  (i32.const 0)
+	// )
+	// (i32.store offset=4
+	//  (i32.const 20)
+	//  (local.get $0)
+	// )                    ;; /- join these together.
+	// (i32.store offset=8  ;;-\
+	//  (local.get $0)      ;; | 
+	//  (i32.const 0)       ;; |
+	// )                    ;; |
+	// (i32.store offset=12 ;; |
+	//  (local.get $0)      ;; |
+	//  (i32.const 0)       ;; |
+	// )                    ;;-/
+	// ```
+
 	if size > 16 {
 		g.ref(v)
 		g.func.i32_const(0)
@@ -347,7 +377,8 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 			}
 		}
 		else {
-			panic("unimplemented")
+			g.expr(init, v.typ)
+			g.set(v)
 		}
 	}
 }

@@ -22,10 +22,12 @@ mut:
 	eval          eval.Eval
 	enum_vals     map[string]Enum
 	//
-	ret_types []ast.Type
 	mod wasm.Module
 	func              wasm.Function
 	local_vars        []Var
+	return_vars       []Var
+	ret_types []ast.Type
+	ret_br wasm.LabelIndex
 	bp_idx            wasm.LocalIndex = -1 // Base pointer temporary's index for function, if needed (-1 for none)
 	sp_global         ?wasm.GlobalIndex
 	stack_frame       int // Size of the current stack frame, if needed
@@ -86,6 +88,10 @@ fn (g Gen) unpack_type(typ ast.Type) []ast.Type {
 	}
 }
 
+fn (g Gen) is_param_type(typ ast.Type) bool {
+	return !typ.is_ptr() && !g.is_pure_type(typ)
+}
+
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.language in [.js, .wasm] {
 		g.w_error('fn_decl: extern not implemented')
@@ -112,28 +118,81 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.warning('fn_decl: ${name} is deprecated', node.pos)
 	}
 
-	mut paraml := []wasm.ValType{cap: node.params.len + 1}
+	mut paraml := []wasm.ValType{cap: node.params.len}
+	mut retl := []wasm.ValType{cap: 1}
+
+	// fn ()!       | fn () &IError
+	// fn () ?(...) | fn () (..., bool)
+	// fn () !(...) | fn () (..., &IError)
+	// 
+	// fn (...) struct      | fn (_ &struct, ...)
+	// fn (...) !struct     | fn (_ &struct, ...) &IError
+	// fn (...) (...struct) | fn (...&struct, ...)
+
+	rt := node.return_type
+	rts := g.table.sym(rt)
+	match rts.info {
+		ast.MultiReturn {
+			for t in rts.info.types {
+				wtyp := g.get_wasm_type(t)
+				if g.is_param_type(t) {
+					paraml << wtyp
+					g.return_vars << Var{
+						typ: t
+						idx: g.return_vars.len
+						is_pointer: true
+					}
+				} else {
+					retl << wtyp
+				}
+				g.ret_types << t
+			}
+			if rt.has_flag(.option) {
+				retl << .i32_t // bool
+			}
+		}
+		else {
+			if rt.idx() != ast.void_type_idx {
+				wtyp := g.get_wasm_type(rt)
+				if g.is_param_type(rt) {
+					paraml << wtyp
+					g.return_vars << Var{
+						name: '__rval0'
+						typ: rt
+						is_pointer: true
+					}
+				} else {
+					retl << wtyp
+				}
+				g.ret_types << rt
+			} else if rt.has_flag(.option) {
+				g.v_error('returning a void option is forbidden', node.return_type_pos)
+			}
+		}
+	}
+	if rt.has_flag(.result) {
+		retl << .i32_t // &IError
+	}
+
 	for p in node.params {
 		typ := g.get_wasm_type(p.typ)
 		g.local_vars << Var{
 			name: p.name
 			typ: p.typ
-			idx: g.local_vars.len
+			idx: g.local_vars.len + g.return_vars.len
 			is_pointer: p.typ.is_ptr() || !g.is_pure_type(p.typ)
 		}
 		paraml << typ
 	}
-
-	g.ret_types = g.unpack_type(node.return_type)
-	mut retl := []wasm.ValType{cap: 1}
-	if node.return_type.idx() != ast.void_type_idx {
-		retl << g.get_wasm_type(node.return_type)
-	}
 	
 	g.func = g.mod.new_function(name, paraml, retl)
 	func_start := g.func.patch_pos()
-	{
-		g.expr_stmts(node.stmts, ast.void_type)
+	if node.stmts.len > 0 {
+		g.ret_br = g.func.c_block([], retl)
+		{
+			g.expr_stmts(node.stmts, ast.void_type)
+		}
+		g.func.c_end(g.ret_br)
 
 		// Setup stack frame.
 		// If the function does not call other functions, 
@@ -162,6 +221,8 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	g.mod.commit(g.func, false)
 	g.local_vars.clear()
+	g.return_vars.clear()
+	g.ret_types.clear()
 	g.bp_idx = -1
 	g.sp_global = none
 	g.stack_frame = 0
@@ -598,15 +659,14 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 
 			g.deref(new_ptr, expected)
 		} */
+		ast.StructInit {
+			v := g.new_local('', node.typ)
+			g.set_with_expr(node, v)
+			g.get(v)
+		}
 		/* ast.SelectorExpr {
 			g.cast_t(g.get_or_lea_lop(g.get_var_from_expr(node), node.typ), node.typ,
 				expected)
-		}
-		ast.StructInit {
-			pos := g.allocate_local_var('_anonstruct', node.typ)
-			expr := g.assign_expr_to_var(Var(Stack{ address: pos, ast_typ: node.typ }),
-				node, node.typ)
-			g.mknblock('EXPR(STRUCTINIT)', [expr, g.lea_address(pos)])
 		}
 		ast.MatchExpr {
 			g.w_error('wasm backend does not support match expressions yet')
@@ -677,6 +737,73 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		ast.CastExpr {
 			g.expr(node.expr, node.expr_type)
 			g.func.cast(g.as_numtype(g.get_wasm_type(node.expr_type)), node.expr_type.is_signed(), g.as_numtype(g.get_wasm_type(node.typ)))
+		}
+		ast.CallExpr {
+			println(node)
+			println(g.table.sym(expected))
+			exit(1)
+			mut name := node.name
+
+			is_print := name in ['panic', 'println', 'print', 'eprintln', 'eprint']
+
+			/* if name in wasm.wasm_builtins {
+				panic("unimplemented")
+				//return g.wasm_builtin(node.name, node)
+			} */
+
+			if node.is_method {
+				name = '${g.table.get_type_name(node.receiver_type)}.${node.name}'
+			}
+
+			// callconv: {return structs} {method self} {arguments}
+			
+			// {return structs}
+			//
+			rts := g.unpack_type(node.return_type)
+			for rt in rts {
+				v := g.new_local('', rt)
+			}
+
+			// {method self}
+			//
+			if node.is_method {
+				expr := if !node.left_type.is_ptr() && node.receiver_type.is_ptr() {
+					ast.Expr(ast.PrefixExpr{
+						op: .amp
+						right: node.left
+					})
+				} else {
+					node.left
+				}
+				g.expr(expr, node.receiver_type)
+			}
+			
+			// {arguments}
+			//
+			for idx, arg in node.args {
+				mut expr := arg.expr
+				
+				typ := arg.typ
+				if is_print && typ != ast.string_type {
+					has_str, _, _ := g.table.sym(typ).str_method_info()
+					if typ != ast.string_type && !has_str {
+						g.v_error('cannot implicitly convert as argument does not have a .str() function',
+							arg.pos)
+					}
+
+					expr = ast.CallExpr{
+						name: 'str'
+						left: expr
+						left_type: typ
+						receiver_type: typ
+						return_type: ast.string_type
+						is_method: true
+					}
+				}
+
+				g.expr(expr, node.expected_arg_types[idx])
+			}
+			g.func.call(name)
 		}
 		/* ast.CallExpr {
 			mut name := node.name
@@ -793,60 +920,21 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 			g.expr_stmts(node.stmts, expected)
 		} */
 		ast.Return {
-			/* mut leave_expr_list := []binaryen.Expression{cap: node.exprs.len}
-			mut exprs := []binaryen.Expression{cap: node.exprs.len}
+			mut r := 0
 			for idx, expr in node.exprs {
-				typ := g.curr_ret[idx]
-				if g.table.sym(typ).info is ast.Struct && !typ.is_real_pointer() {
-					// Could be adapted to use random pointers?
-					/*
-					if expr is ast.StructInit {
-						var := g.local_temporaries[g.get_local_temporary('__return${idx}')]
-						leave_expr_list << g.init_struct(var, expr)
-					}*/
-					var := g.local_temporaries[g.get_local_temporary('__return${idx}')]
-					address := g.expr(expr, typ)
-
-					leave_expr_list << g.blit(address, typ, binaryen.localget(g.mod, var.idx,
-						var.typ))
+				typ := g.ret_types[idx] // node.types LIES
+				if g.is_param_type(typ) {
+					g.set_with_expr(expr, g.return_vars[r])
+					r++
 				} else {
-					exprs << g.expr(expr, typ)
+					g.expr(expr, typ)
 				}
 			}
-
-			mut patch := BlockPatch{
-				idx: leave_expr_list.len
-			}
-			// leave_expr_list << g.vsp_leave()
-
-			ret_expr := if exprs.len == 1 {
-				exprs[0]
-			} else if exprs.len == 0 {
-				unsafe { nil }
-			} else {
-				binaryen.tuplemake(g.mod, exprs.data, exprs.len)
-			}
-			leave_expr_list << binaryen.ret(g.mod, ret_expr)
-
-			patch.block = g.mkblock(leave_expr_list)
-			g.stack_patches << patch
-
-			patch.block */
-
-			if node.exprs.len > 1 {
-				g.w_error('multireturns are not implemented')
-			}
-			for idx, expr in node.exprs {
-				typ := g.ret_types[idx]
-				// This function will store the value of the expression in
-				//     g.expr_to_lvalue(expr, typ)
-				g.expr(expr, typ)
-			}
-			g.func.c_return()
+			g.func.c_br(g.ret_br)
 		}
-		/* ast.ExprStmt {
+		ast.ExprStmt {
 			g.expr(node.expr, expected)
-		} */
+		}
 		/* ast.ForStmt {
 			lbl := g.new_for_label(node.label)
 
@@ -957,7 +1045,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 							continue
 						}
 						if node.op == .decl_assign {
-							g.new_local(left, typ)
+							g.new_local(left.name, typ)
 						}
 					}
 
