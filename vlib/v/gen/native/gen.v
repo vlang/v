@@ -1388,6 +1388,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.AssertStmt {
 			g.gen_assert(node)
 		}
+		ast.HashStmt {
+			g.n_error('hash statements are not allowed with the native backend, use the C backend for extended C interoperability.')
+		}
 		ast.Import {} // do nothing here
 		ast.StructDecl {}
 		ast.EnumDecl {}
