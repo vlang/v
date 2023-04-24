@@ -839,6 +839,14 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string)
 				g.gen_print(str, fd)
 			}
 		}
+		ast.Nil {
+			str := '0x0'
+			if newline {
+				g.gen_print(str + '\n', fd)
+			} else {
+				g.gen_print(str, fd)
+			}
+		}
 		ast.CharLiteral {
 			str := g.eval_escape_codes(expr.val)
 			if newline {
@@ -1541,6 +1549,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.IntegerLiteral {
 			g.movabs(.rax, i64(node.val.u64()))
 			// g.gen_print_reg(.rax, 3, fd)
+		}
+		ast.Nil {
+			g.movabs(.rax, 0)
 		}
 		ast.PostfixExpr {
 			g.postfix_expr(node)
