@@ -1831,7 +1831,6 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				} else {
 					continue
 				}
-
 				if got_arg_typ.has_flag(.generic) {
 					if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len > 0 {
 						got_arg_typ = c.unwrap_generic(got_arg_typ)
