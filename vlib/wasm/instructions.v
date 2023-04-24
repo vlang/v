@@ -850,10 +850,12 @@ pub fn (mut func Function) nop() {
 	func.code << 0x01
 }
 
+pub type LabelIndex = int
+
 // c_block creates a label that can later be branched out of with `c_br` and `c_br_if`.
 // Blocks are strongly typed, you must supply a list of types for `parameters` and `results`.
 // All blocks must be ended, see the `c_end` function.
-pub fn (mut func Function) c_block(parameters []ValType, results []ValType) int {
+pub fn (mut func Function) c_block(parameters []ValType, results []ValType) LabelIndex {
 	func.label++
 	func.code << 0x02
 	func.blocktype(parameters: parameters, results: results)
@@ -863,7 +865,7 @@ pub fn (mut func Function) c_block(parameters []ValType, results []ValType) int 
 // c_loop creates a label that can later be branched to of with `c_br` and `c_br_if`.
 // Loops are strongly typed, you must supply a list of types for `parameters` and `results`.
 // All loops must be ended, see the `c_end` function.
-pub fn (mut func Function) c_loop(parameters []ValType, results []ValType) int {
+pub fn (mut func Function) c_loop(parameters []ValType, results []ValType) LabelIndex {
 	func.label++
 	func.code << 0x03
 	func.blocktype(parameters: parameters, results: results)
@@ -891,7 +893,7 @@ pub fn (mut func Function) c_return() {
 }
 
 // c_end ends the block or loop with the label passed in at `label`.
-pub fn (mut func Function) c_end(label int) {
+pub fn (mut func Function) c_end(label LabelIndex) {
 	assert func.label == label, 'c_end: called with an invalid label ${label}'
 	func.label--
 	assert func.label >= 0, 'c_end: negative label index, unbalanced calls'
@@ -900,7 +902,7 @@ pub fn (mut func Function) c_end(label int) {
 
 // c_br branches to a loop or block with the label passed in at `label`.
 // WebAssembly instruction: `br`.
-pub fn (mut func Function) c_br(label int) {
+pub fn (mut func Function) c_br(label LabelIndex) {
 	v := func.label - label
 	assert v >= 0, 'c_br: malformed label index'
 	func.code << 0x0C // br
@@ -909,7 +911,7 @@ pub fn (mut func Function) c_br(label int) {
 
 // c_br_if branches to a loop or block with the label passed in at `label`, based on an i32 condition.
 // WebAssembly instruction: `br_if`.
-pub fn (mut func Function) c_br_if(label int) {
+pub fn (mut func Function) c_br_if(label LabelIndex) {
 	v := func.label - label
 	assert v >= 0, 'c_br_if: malformed label index'
 	func.code << 0x0D // br_if
