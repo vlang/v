@@ -403,164 +403,7 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
 	}
 }
 
-/* fn (mut g Gen) prefix_expr(node ast.PrefixExpr) binaryen.Expression {
-	expr := g.expr(node.right, node.right_type)
-
-	return match node.op {
-		.minus {
-			if node.right_type.is_pure_float() {
-				if node.right_type == ast.f32_type_idx {
-					binaryen.unary(g.mod, binaryen.negfloat32(), expr)
-				} else {
-					binaryen.unary(g.mod, binaryen.negfloat64(), expr)
-				}
-			} else {
-				// -val == 0 - val
-
-				if g.get_wasm_type(node.right_type) == type_i32 {
-					binaryen.binary(g.mod, binaryen.subint32(), binaryen.constant(g.mod,
-						binaryen.literalint32(0)), expr)
-				} else {
-					binaryen.binary(g.mod, binaryen.subint64(), binaryen.constant(g.mod,
-						binaryen.literalint64(0)), expr)
-				}
-			}
-		}
-		.not {
-			binaryen.unary(g.mod, binaryen.eqzint32(), expr)
-		}
-		.bit_not {
-			// ~val == val ^ -1
-
-			if g.get_wasm_type(node.right_type) == type_i32 {
-				binaryen.binary(g.mod, binaryen.xorint32(), expr, binaryen.constant(g.mod,
-					binaryen.literalint32(-1)))
-			} else {
-				binaryen.binary(g.mod, binaryen.xorint64(), expr, binaryen.constant(g.mod,
-					binaryen.literalint64(-1)))
-			}
-		}
-		.amp {
-			g.lea_var_from_expr(node.right)
-		}
-		.mul {
-			g.deref(expr, node.right_type)
-		}
-		else {
-			// impl deref (.mul), and impl address of (.amp)
-			g.w_error('`${node.op}val` prefix expression not implemented')
-		}
-	}
-} */
-
 /* 
-
-
-fn (mut g Gen) mknblock(name string, nodes []binaryen.Expression) binaryen.Expression {
-	if nodes.len == 0 {
-		return binaryen.nop(g.mod)
-	}
-
-	g.lbl++
-	return binaryen.block(g.mod, '${name}${g.lbl}'.str, nodes.data, nodes.len, type_auto)
-}
-
-fn (mut g Gen) mkblock(nodes []binaryen.Expression) binaryen.Expression {
-	if nodes.len == 0 {
-		return binaryen.nop(g.mod)
-	}
-
-	g.lbl++
-	return binaryen.block(g.mod, 'BLK${g.lbl}'.str, nodes.data, nodes.len, type_auto)
-}
-
-[params]
-struct AssignOpts {
-	op token.Kind = .assign
-}
-
-fn (mut g Gen) assign_expr_to_var(address LocalOrPointer, right ast.Expr, expected ast.Type, cfg AssignOpts) binaryen.Expression {
-	return match right {
-		ast.StructInit {
-			if cfg.op !in [.decl_assign, .assign] {
-				op := token.assign_op_to_infix_op(cfg.op)
-				name := '${g.table.get_type_name(expected)}.${op}'
-
-				// args: [&return, &left, &right]
-				args := [g.get_or_lea_lop(address, expected),
-					g.get_or_lea_lop(address, expected), g.expr(right, expected)]
-
-				binaryen.call(g.mod, name.str, args.data, args.len, type_none)
-			} else {
-				g.init_struct(address as Var, right)
-			}
-		}
-		ast.StringLiteral {
-			if g.table.sym(expected).info !is ast.Struct {
-				offset, _ := g.allocate_string(right)
-				return g.set_var(address as Var, g.literalint(offset, ast.int_type))
-			}
-
-			var := (address as Var) as Stack
-
-			offset, len := g.allocate_string(right)
-
-			g.mknblock('STRINGINIT', [
-				g.set_var_v(Stack{ address: var.address, ast_typ: ast.charptr_type },
-					g.literalint(offset, ast.u32_type),
-					offset: 0
-				),
-				g.set_var_v(Stack{ address: var.address, ast_typ: ast.int_type }, g.literalint(len,
-					ast.int_type),
-					offset: g.table.pointer_size
-				),
-			])
-		}
-		ast.ArrayInit {
-			var := (address as Var) as Stack
-			mut exprs := []binaryen.Expression{}
-
-			if !right.is_fixed {
-				g.w_error('wasm backend does not support non fixed arrays yet')
-			}
-			elm_typ := right.elem_type
-			elm_size, _ := g.get_type_size_align(elm_typ)
-			mut offset := 0
-			if !right.has_val {
-				return g.mknblock('ARRAYINIT(ZERO)', [
-					g.zero_fill(right.typ, var.address),
-				])
-			}
-			// [10, 15]!
-			for e in right.exprs {
-				exprs << g.assign_expr_to_var(Var(Stack{
-					address: var.address + offset
-					ast_typ: elm_typ
-				}), e, elm_typ)
-				offset += elm_size
-			}
-
-			g.mknblock('ARRAYINIT', exprs)
-		}
-		else {
-			initexpr := g.expr(right, expected)
-
-			expr := if cfg.op !in [.decl_assign, .assign] {
-				if g.is_pure_type(expected) {
-					val := g.get_or_lea_lop(address, expected)
-					op := g.infix_from_typ(expected, token.assign_op_to_infix_op(cfg.op))
-
-					binaryen.binary(g.mod, op, val, initexpr)
-				} else {
-					g.w_error('arith unimplemented or unreachable for struct')
-				}
-			} else {
-				initexpr
-			}
-			g.set_var(address, expr, ast_typ: expected)
-		}
-	}
-}
 
 fn (mut g Gen) new_for_label(node_label string) string {
 	g.lbl++
@@ -591,7 +434,6 @@ fn (mut g Gen) if_branch(ifexpr ast.IfExpr, idx int) {
 	} else {
 		g.unpack_type(ifexpr.typ).map(g.get_wasm_type(it))
 	}
-	eprintln(params)
 
 	g.expr(curr.cond, ast.bool_type)
 	g.func.c_if([], params)
@@ -610,7 +452,6 @@ fn (mut g Gen) if_branch(ifexpr ast.IfExpr, idx int) {
 }
 
 fn (mut g Gen) if_expr(ifexpr ast.IfExpr) {
-	eprintln(ifexpr)
 	g.if_branch(ifexpr, 0)
 }
 
