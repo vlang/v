@@ -63,22 +63,6 @@ pub fn (mut func Function) patch(loc PatchPos, begin PatchPos) {
 	}
 
 	func.patches.sort(a.pos < b.pos)
-
-	/* lenn := begin
-	diff := loc - begin
-
-	for mut patch in func.patches {
-		if patch.pos >= begin {
-			patch.pos += diff
-		}
-		if patch.pos <= lenn {
-			continue
-		}
-		delta := patch.pos - lenn
-		patch.pos = loc + delta
-	}
-
-	func.patches.sort(a.pos < b.pos) */
 }
 
 // new_local creates a function local and returns it's index.

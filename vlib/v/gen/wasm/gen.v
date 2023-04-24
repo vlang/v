@@ -32,6 +32,7 @@ mut:
 	sp_global         ?wasm.GlobalIndex
 	stack_frame       int // Size of the current stack frame, if needed
 	is_leaf_function  bool = true
+	is_return_call bool
 	structs           map[ast.Type]StructInfo // Cached struct field offsets
 	module_import_namespace string
 }
@@ -310,6 +311,38 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 	g.func.cast(g.as_numtype(g.get_wasm_type(res_typ)), res_typ.is_signed(), g.as_numtype(g.get_wasm_type(expected)))
 }
 
+const wasm_builtins = ['__memory_grow', '__memory_fill', '__memory_copy', '__memory_size',
+	'__heap_base']
+
+fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) {
+	for idx, arg in node.args {
+		g.expr(arg.expr, node.expected_arg_types[idx])
+	}
+
+	match name {
+		'__memory_grow' {
+			g.func.memory_grow()
+		}
+		'__memory_fill' {
+			g.func.memory_fill()
+		}
+		'__memory_copy' {
+			g.func.memory_copy()
+		}
+		'__memory_size' {
+			g.func.memory_size()
+		}
+		'__heap_base' {
+			panic('unimplemented')
+			// g.func.global_get()
+			// return binaryen.globalget(g.mod, c'__heap_base', type_i32)
+		}
+		else {
+			panic('unreachable')
+		}
+	}
+}
+
 /* 
 
 
@@ -438,37 +471,6 @@ fn (mut g Gen) if_branch(ifexpr ast.IfExpr, idx int) binaryen.Expression {
 
 fn (mut g Gen) if_expr(ifexpr ast.IfExpr) binaryen.Expression {
 	return g.if_branch(ifexpr, 0)
-}
-
-const wasm_builtins = ['__memory_grow', '__memory_fill', '__memory_copy', '__memory_size',
-	'__heap_base']
-
-fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) binaryen.Expression {
-	mut args := []binaryen.Expression{cap: node.args.len}
-	for idx, arg in node.args {
-		args << g.expr(arg.expr, node.expected_arg_types[idx])
-	}
-
-	match name {
-		'__memory_grow' {
-			return binaryen.memorygrow(g.mod, args[0], c'memory', false)
-		}
-		'__memory_fill' {
-			return binaryen.memoryfill(g.mod, args[0], args[1], args[2], c'memory')
-		}
-		'__memory_copy' {
-			return binaryen.memorycopy(g.mod, args[0], args[1], args[2], c'memory', c'memory')
-		}
-		'__memory_size' {
-			return binaryen.memorysize(g.mod, c'memory', false)
-		}
-		'__heap_base' {
-			return binaryen.globalget(g.mod, c'__heap_base', type_i32)
-		}
-		else {
-			panic('unreachable')
-		}
-	}
 }
 
 [params]
@@ -622,8 +624,6 @@ mut:
 	block binaryen.Expression
 } */
 
-
-
 fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 	match node {
 		ast.ParExpr, ast.UnsafeExpr {
@@ -739,17 +739,15 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			g.func.cast(g.as_numtype(g.get_wasm_type(node.expr_type)), node.expr_type.is_signed(), g.as_numtype(g.get_wasm_type(node.typ)))
 		}
 		ast.CallExpr {
-			println(node)
-			println(g.table.sym(expected))
-			exit(1)
+			g.is_leaf_function = false
 			mut name := node.name
 
 			is_print := name in ['panic', 'println', 'print', 'eprintln', 'eprint']
 
-			/* if name in wasm.wasm_builtins {
-				panic("unimplemented")
-				//return g.wasm_builtin(node.name, node)
-			} */
+			if name in wasm.wasm_builtins {
+				g.wasm_builtin(node.name, node)
+				return
+			}
 
 			if node.is_method {
 				name = '${g.table.get_type_name(node.receiver_type)}.${node.name}'
@@ -759,9 +757,14 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			
 			// {return structs}
 			//
+			mut rvars := []Var{}
 			rts := g.unpack_type(node.return_type)
 			for rt in rts {
-				v := g.new_local('', rt)
+				if g.is_param_type(rt) {
+					v := g.new_local('', rt)
+					rvars << v
+					g.ref(v)
+				}
 			}
 
 			// {method self}
@@ -803,7 +806,37 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 
 				g.expr(expr, node.expected_arg_types[idx])
 			}
+
 			g.func.call(name)
+
+			if expected == ast.void_type && node.return_type != ast.void_type {
+				for rt in rts { // order doesn't matter
+					if !g.is_param_type(rt) {
+						g.func.drop()
+					}
+				}
+			} else if rvars.len > 0 {
+				mut rr_vars := []Var{cap: rts.len}
+				mut r := 0
+				
+				for rt in rts.reverse() {
+					if !g.is_param_type(rt) {
+						v := g.new_local('', rt)
+						rr_vars << v
+						g.set(v)
+					} else {
+						rr_vars << rvars[r]
+						r++
+					}
+				}
+
+				for v in rr_vars {
+					g.get(v)
+				}
+			}
+			if node.is_noreturn {
+				g.func.unreachable()
+			}
 		}
 		/* ast.CallExpr {
 			mut name := node.name
