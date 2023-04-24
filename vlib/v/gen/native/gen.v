@@ -1204,8 +1204,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			words := node.val.split(' ')
 			for word in words {
 				if word.len != 2 {
-					g.n_error('opcodes format: xx xx xx xx')
-					g.n_error('hash statements are not allowed with the native backend, use the C backend for extended C interoperability.')
+					g.n_error('opcodes format: xx xx xx xx\nhash statements are not allowed with the native backend, use the C backend for extended C interoperability.')
 				}
 				b := unsafe { C.strtol(&char(word.str), 0, 16) }
 				// b := word.u8()
