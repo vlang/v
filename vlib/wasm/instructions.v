@@ -50,28 +50,37 @@ pub fn (mut func Function) patch(loc PatchPos, begin PatchPos) {
 	}
 	assert loc < begin
 
-	// .....+.._....[.._.....]
-	//      \--|<---/  |
-	//         \---<---/
-	//
+	v := func.code[begin..].clone()
+	func.code.trim(begin)
+	func.code.insert(int(loc), v)
+
+	lenn := begin
+	diff := loc - begin
+
 	for mut patch in func.global_patches {
 		if patch.pos >= begin {
-			patch.pos -= begin - loc
-		} else if patch.pos >= loc {
-			patch.pos += func.code.len - begin
+			if patch.pos >= begin {
+				patch.pos += diff
+			}
+			if patch.pos < lenn {
+				continue
+			}
+			delta := patch.pos - lenn
+			patch.pos = loc + delta
 		}
 	}
 	for mut patch in func.call_patches {
 		if patch.pos >= begin {
-			patch.pos -= begin - loc
-		} else if patch.pos >= loc {
-			patch.pos += func.code.len - begin
+			if patch.pos >= begin {
+				patch.pos += diff
+			}
+			if patch.pos < lenn {
+				continue
+			}
+			delta := patch.pos - lenn
+			patch.pos = loc + delta
 		}
 	}
-	
-	v := func.code[begin..].clone()
-	func.code.trim(begin)
-	func.code.insert(int(loc), v)
 }
 
 // new_local creates a function local and returns it's index.

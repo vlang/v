@@ -87,24 +87,24 @@ fn (mod &Module) get_function_idx(patch CallPatch) int {
 }
 
 fn (mut mod Module) patch(ft Function) {
-	mut ptr := 0
-
-	for patch in ft.call_patches {
-		idx := mod.get_function_idx(patch)
-
-		mod.buf << ft.code[ptr..patch.pos]
-		mod.u32(u32(idx))
-		ptr = patch.pos
-	}
+	mut byte_idx := 0
 
 	for patch in ft.global_patches {
 		idx := mod.global_imports.len + patch.idx
-		mod.buf << ft.code[ptr..patch.pos]
+		if patch.pos > byte_idx {
+			mod.buf << ft.code[byte_idx..patch.pos]
+			byte_idx = patch.pos
+		}
 		mod.u32(u32(idx))
-		ptr = patch.pos
 	}
-
-	mod.buf << ft.code[ptr..]
+	for patch in ft.call_patches {
+		idx := mod.get_function_idx(patch)
+		if patch.pos > byte_idx {
+			mod.buf << ft.code[byte_idx..patch.pos]
+			byte_idx = patch.pos
+		}
+		mod.u32(u32(idx))
+	}
 }
 
 // compile serialises the WebAssembly module into a byte array.
