@@ -1094,6 +1094,14 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 						}
 					}
 				}
+			} else if mut call_arg.expr is ast.PrefixExpr {
+				if call_arg.expr.right is ast.ComptimeSelector {
+					comptime_args[i] = g.comptime_for_field_type
+					comptime_args[i] = comptime_args[i].deref()
+					if param_typ.nr_muls() > 0 && comptime_args[i].nr_muls() > 0 {
+						comptime_args[i] = comptime_args[i].set_nr_muls(0)
+					}
+				}
 			} else if mut call_arg.expr is ast.ComptimeSelector {
 				comptime_args[i] = g.comptime_for_field_type
 				if call_arg.expr.left.is_auto_deref_var() {
