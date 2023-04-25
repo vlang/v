@@ -985,7 +985,10 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			g.write(')')
 		}
 		ast.CallExpr {
-			fn_name := val.name.replace('.', '__')
+			mut fn_name := val.name.replace('.', '__')
+			if val.concrete_types.len > 0 {
+				fn_name = g.generic_fn_name(val.concrete_types, fn_name)
+			}
 			g.write('${fn_name}(')
 			for i, arg in val.args {
 				g.gen_cross_tmp_variable(left, arg.expr)
