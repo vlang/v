@@ -2,12 +2,14 @@ module crdt
 
 import rand
 
+// ORSet resembles LWWESet, but using unique tags instead of timestamps.
 struct ORSet[T] {
 mut:
 	add_map map[T]map[string]T
 	rm_map  map[T]map[string]T
 }
 
+// new_orset returns an instance of ORSet.
 pub fn new_orset[T]() ORSet[T] {
 	return ORSet[T]{
 		add_map: map[T]map[string]T{}
@@ -15,6 +17,7 @@ pub fn new_orset[T]() ORSet[T] {
 	}
 }
 
+// add lets you add an element to set.
 pub fn (mut o ORSet[T]) add(value T) {
 	if value in o.add_map {
 		o.add_map[value][rand.ulid().str()] = value
@@ -23,6 +26,7 @@ pub fn (mut o ORSet[T]) add(value T) {
 	o.add_map[value][rand.ulid().str()] = value
 }
 
+// remove deletes the element from the set.
 pub fn (mut o ORSet[T]) remove(value T) {
 	if value in o.add_map {
 		for uid, _ in o.add_map[value] {
@@ -32,6 +36,8 @@ pub fn (mut o ORSet[T]) remove(value T) {
 	o.rm_map[value][rand.ulid().str()] = value
 }
 
+// lookup returns true if an element exists within the
+// set or false otherwise.
 pub fn (mut o ORSet[T]) lookup(value T) bool {
 	if value in o.add_map {
 		if value in o.rm_map {
@@ -49,6 +55,7 @@ pub fn (mut o ORSet[T]) lookup(value T) bool {
 	return false
 }
 
+// merge function to merge the ORSet object's payload with the argument's payload.
 pub fn (mut o ORSet[T]) merge(r ORSet[T]) {
 	for value, m in r.add_map {
 		if add_map := o.add_map[value] {
