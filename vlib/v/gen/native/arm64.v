@@ -239,7 +239,7 @@ fn (mut g Gen) gen_arm64_helloworld() {
 		g.svc()
 	}
 	zero := ast.IntegerLiteral{}
-	g.gen_exit(zero)
+	g.code_gen.gen_exit(zero)
 	g.write_string('Hello World!\n')
 	g.write8(0) // padding?
 	g.write8(0)
@@ -267,14 +267,14 @@ fn (mut g Gen) svc() {
 	}
 }
 
-pub fn (mut c Arm64) gen_exit(mut g Gen, expr ast.Expr) {
+pub fn (mut c Arm64) gen_exit(expr ast.Expr) {
 	mut return_code := u64(0)
 	match expr {
 		ast.IntegerLiteral {
 			return_code = expr.val.u64()
 		}
 		else {
-			g.n_error('native builtin exit expects a numeric argument')
+			c.g.n_error('native builtin exit expects a numeric argument')
 		}
 	}
 	match c.g.pref.os {
@@ -288,10 +288,10 @@ pub fn (mut c Arm64) gen_exit(mut g Gen, expr ast.Expr) {
 			c.g.mov_arm(.x0, 0)
 		}
 		else {
-			g.n_error('unsupported os ${c.g.pref.os}')
+			c.g.n_error('unsupported os ${c.g.pref.os}')
 		}
 	}
-	g.svc()
+	c.g.svc()
 }
 
 pub fn (mut g Gen) gen_arm64_exit(expr ast.Expr) {

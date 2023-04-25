@@ -14,7 +14,7 @@ enum Builtin {
 
 struct BuiltinFn {
 	body     fn (builtin BuiltinFn, mut g Gen)
-	arg_regs []Register
+	arg_regs []Amd64Register
 mut:
 	calls []i64 // call addresses
 }
@@ -78,7 +78,7 @@ pub fn (mut g Gen) generate_builtins() {
 	}
 }
 
-pub fn (mut g Gen) get_builtin_arg_reg(name Builtin, index int) Register {
+pub fn (mut g Gen) get_builtin_arg_reg(name Builtin, index int) Amd64Register {
 	builtin := g.builtins[name] or { panic('undefined builtin function ${name}') }
 	if index >= builtin.arg_regs.len {
 		g.n_error('builtin ${name} does only have ${builtin.arg_regs.len} arguments, requested ${index}')

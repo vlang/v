@@ -19,8 +19,8 @@ import strconv
 interface CodeGen {
 mut:
 	g &Gen
-	gen_exit(mut g Gen, expr ast.Expr)
-	// XXX WHY gen_exit fn (expr ast.Expr)
+
+	gen_exit(expr ast.Expr)
 }
 
 [heap; minify]
@@ -69,6 +69,8 @@ mut:
 
 	requires_linking bool
 }
+
+type Register = Amd64Register | Arm64Register
 
 enum RelocType {
 	rel8
@@ -664,6 +666,12 @@ fn (mut g Gen) get_sizeof_ident(ident ast.Ident) int {
 	return size
 }
 
+pub fn (mut g Gen) allocate_string(s string, opsize int, typ RelocType) int {
+	str_pos := g.buf.len + opsize
+	g.strs << String{s, str_pos, typ}
+	return str_pos
+}
+
 fn (mut g Gen) gen_typeof_expr(it ast.TypeOf, newline bool) {
 	nl := if newline { '\n' } else { '' }
 	r := g.typ(it.typ).name
@@ -768,7 +776,7 @@ fn (mut g Gen) eval_escape_codes(str string) string {
 	return buffer.bytestr()
 }
 
-fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
+fn (mut g Gen) gen_to_string(reg Amd64Register, typ ast.Type) {
 	if typ.is_int() {
 		buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
 		g.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), buffer)
@@ -795,7 +803,7 @@ fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
 	}
 }
 
-fn (mut g Gen) gen_var_to_string(reg Register, expr ast.Expr, var Var, config VarConfig) {
+fn (mut g Gen) gen_var_to_string(reg Amd64Register, expr ast.Expr, var Var, config VarConfig) {
 	typ := g.get_type_from_var(var)
 	if typ == ast.rune_type_idx {
 		buffer := g.allocate_var('rune-buffer', 8, 0)
@@ -1144,11 +1152,6 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 	}
 }
 
-pub fn (mut g Gen) gen_exit(node ast.Expr) {
-	// check node type and then call the code_gen method
-	g.code_gen.gen_exit(mut g, node)
-}
-
 fn (mut g Gen) stmt(node ast.Stmt) {
 	match node {
 		ast.AssignStmt {
@@ -1409,7 +1412,7 @@ fn C.strtol(str &char, endptr &&char, base int) int
 
 fn (mut g Gen) gen_syscall(node ast.CallExpr) {
 	mut i := 0
-	mut ra := [Register.rax, .rdi, .rsi, .rdx]
+	mut ra := [Amd64Register.rax, .rdi, .rsi, .rdx]
 	for i < node.args.len {
 		expr := node.args[i].expr
 		if i >= ra.len {
@@ -1480,7 +1483,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			if node.name == 'C.syscall' {
 				g.gen_syscall(node)
 			} else if node.name == 'exit' {
-				g.gen_exit(node.args[0].expr)
+				g.code_gen.gen_exit(node.args[0].expr)
 			} else if node.name in ['println', 'print', 'eprintln', 'eprint'] {
 				expr := node.args[0].expr
 				typ := node.args[0].typ
