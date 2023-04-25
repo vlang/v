@@ -571,7 +571,8 @@ pub fn get_raw_line() string {
 		max := usize(0)
 		buf := &char(0)
 		nr_chars := unsafe { C.getline(&buf, &max, C.stdin) }
-		ret := unsafe { tos_clone(&u8(buf)) }
+		str := unsafe { tos(&u8(buf), if nr_chars < 0 { 0 } else { nr_chars }) }
+		ret := str.clone()
 		unsafe {
 			if nr_chars > 0 && buf != 0 {
 				C.free(buf)
