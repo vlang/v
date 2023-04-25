@@ -310,16 +310,16 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		temporaries << g.local_temporaries[idx].typ
 	}
 
-	mut fn_name := name.str
-	if cattr := node.attrs.find_first('export') {
-		fn_name = cattr.arg.str
-	}
-
 	function := binaryen.addfunction(g.mod, name.str, params_type, return_type, temporaries.data,
 		temporaries.len, wasm_expr)
+	
+	mut export_name := name.str
+	if cattr := node.attrs.find_first('export') {
+		export_name = cattr.arg.str
+	}
 	//&& g.pref.os == .browser
 	if node.is_pub && node.mod == 'main' {
-		binaryen.addfunctionexport(g.mod, name.str, fn_name)
+		binaryen.addfunctionexport(g.mod, name.str, export_name)
 	}
 	if g.pref.is_debug {
 		binaryen.functionsetdebuglocation(function, wasm_expr, g.file_path_idx, node.pos.line_nr,
