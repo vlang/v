@@ -26,14 +26,14 @@ pub fn new_gcounter() GCounter {
 
 // increment increments the GCounter by the value of 1 everytime it
 // is called.
-fn (mut g GCounter) increment() {
+pub fn (mut g GCounter) increment() {
 	g.increment_value(1)
 }
 
 // inc_val allows passing in an arbitrary delta to increment the
 // current value of counter by. Only positive values are accepted.
 // If a negative value is provided the implementation will panic.
-fn (mut g GCounter) increment_value(value int) {
+pub fn (mut g GCounter) increment_value(value int) {
 	if value < 0 {
 		panic('Cannot decrement a gcounter')
 	}
@@ -42,7 +42,7 @@ fn (mut g GCounter) increment_value(value int) {
 
 // count returns the total count of this counter across all the
 // present replicas.
-fn (mut g GCounter) value() int {
+pub fn (mut g GCounter) value() int {
 	mut total := 0
 	for key in g.counter.keys() {
 		total += g.counter[key]
@@ -54,7 +54,7 @@ fn (mut g GCounter) value() int {
 // The property of idempotency is preserved here across
 // multiple merges as when no state is changed across any replicas,
 // the result should be exactly the same everytime.
-fn (mut g GCounter) merge(c &GCounter) {
+pub fn (mut g GCounter) merge(c &GCounter) {
 	for key, value in c.counter {
 		if key !in g.counter || g.counter[key] < value {
 			g.counter[key] = value

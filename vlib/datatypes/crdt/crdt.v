@@ -1,3 +1,1 @@
-module main
-
-fn main() {}
+module crdt
