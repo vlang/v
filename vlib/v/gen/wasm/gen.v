@@ -309,11 +309,17 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	for idx := paraml.len; idx < g.local_temporaries.len; idx++ {
 		temporaries << g.local_temporaries[idx].typ
 	}
+
+	mut fn_name := name.str
+	if cattr := node.attrs.find_first('export') {
+		fn_name = cattr.arg.str
+	}
+
 	function := binaryen.addfunction(g.mod, name.str, params_type, return_type, temporaries.data,
 		temporaries.len, wasm_expr)
 	//&& g.pref.os == .browser
 	if node.is_pub && node.mod == 'main' {
-		binaryen.addfunctionexport(g.mod, name.str, name.str)
+		binaryen.addfunctionexport(g.mod, name.str, fn_name)
 	}
 	if g.pref.is_debug {
 		binaryen.functionsetdebuglocation(function, wasm_expr, g.file_path_idx, node.pos.line_nr,
