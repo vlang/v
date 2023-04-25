@@ -46,7 +46,11 @@ fn (mut x Arm64) allocate_var(name string, size int, initial_val int) {
 	eprintln('TODO: allocating var on arm64 (${name}) = ${size} = ${initial_val}')
 }
 
-fn (mut g Gen) mov_arm(reg Arm64Register, val u64) {
+fn (mut c Arm64) mov(reg Register, val int) {
+	c.mov_arm(reg as Arm64Register, u64(val))
+}
+
+fn (mut c Arm64) mov_arm(reg Arm64Register, val u64) {
 	// m := u64(0xffff)
 	// x := u64(val)
 	// println('========')
@@ -55,10 +59,10 @@ fn (mut g Gen) mov_arm(reg Arm64Register, val u64) {
 	// g.write32(0x777777)
 	r := int(reg)
 	if r >= 0 && r <= 16 {
-		g.write32(int(u32(0xd2800000 + u32(r) + (u32(val) << 5))))
-		g.println('mov x${r}, ${val}')
+		c.g.write32(int(u32(0xd2800000 + u32(r) + (u32(val) << 5))))
+		c.g.println('mov x${r}, ${val}')
 	} else {
-		g.n_error('mov_arm unsupported values')
+		c.g.n_error('mov_arm unsupported values')
 	}
 	/*
 	if 1 ^ (x & ~m) != 0 {
@@ -74,34 +78,34 @@ fn (mut g Gen) mov_arm(reg Arm64Register, val u64) {
 	*/
 }
 
-fn (mut g Gen) neg_arm(r Arm64Register) {
-	g.neg_regs_arm(r, r)
+fn (mut c Arm64) neg(r Arm64Register) {
+	c.neg_regs(r, r)
 }
 
-fn (mut g Gen) neg_regs_arm(a Arm64Register, b Arm64Register) {
+fn (mut c Arm64) neg_regs(a Arm64Register, b Arm64Register) {
 	if u32(a) < 0x0f && u32(b) < 0x0f {
-		g.write32(int(0xe2600000 | (u32(a) << 16) | u32(b) << 12))
-		g.println('neg ${a}, ${b}')
+		c.g.write32(int(0xe2600000 | (u32(a) << 16) | u32(b) << 12))
+		c.g.println('neg ${a}, ${b}')
 	} else {
-		g.n_error('unhandled neg ${a}, ${b}')
+		c.g.n_error('unhandled neg ${a}, ${b}')
 	}
 }
 
-fn (mut g Gen) sub_sp(v int) {
-	if g.pref.arch != .arm64 {
-		g.n_error('sub_sp is arm64-specifig')
+fn (mut c Arm64) sub_sp(v int) {
+	if c.g.pref.arch != .arm64 {
+		c.g.n_error('sub_sp is arm64-specifig')
 		return
 	}
 	// this is for 0x20 only
 	if v < 0 {
-		g.write32(i32(0x910083ff)) // add sp, X
+		c.g.write32(i32(0x910083ff)) // add sp, X
 	} else {
-		g.write32(i32(0xd10083ff)) // sub sp, X
+		c.g.write32(i32(0xd10083ff)) // sub sp, X
 	}
 }
 
-pub fn (mut g Gen) fn_decl_arm64(node ast.FnDecl) {
-	g.gen_arm64_helloworld()
+pub fn (mut c Arm64) fn_decl(node ast.FnDecl) {
+	c.g.gen_arm64_helloworld()
 	/*
 	0x100003f6c      ff8300d1       sub sp, sp, 0x20           ; [00] -r-x section size 52 named 0.__TEXT.__text
             0x100003f70      fd7b01a9       stp x29, x30, [sp, 0x10]
@@ -162,7 +166,7 @@ pub fn (mut g Gen) fn_decl_arm64(node ast.FnDecl) {
 		g.push(.rax)
 		for defer_stmt in g.defer_stmts.reverse() {
 			defer_var := g.get_var_offset('_defer$defer_stmt.idx_in_fn')
-			g.mov_var_to_reg(.rax, defer_var)
+			g.code_gen.mov_var_to_reg(.rax, defer_var)
 			g.cmp_zero(.rax)
 			label := g.labels.new_label()
 			jump_addr := g.cjmp(.je)
@@ -181,62 +185,63 @@ pub fn (mut g Gen) fn_decl_arm64(node ast.FnDecl) {
 	*/
 }
 
-pub fn (mut g Gen) call_fn_arm64(node ast.CallExpr) {
+pub fn (mut c Arm64) call_fn(node ast.CallExpr) {
 	name := node.name
 	// println('call fn $name')
-	addr := g.fn_addr[name]
+	addr := c.g.fn_addr[name]
 	if addr == 0 {
-		g.n_error('fn addr of `${name}` = 0')
+		c.g.n_error('fn addr of `${name}` = 0')
 	}
 	// Copy values to registers (calling convention)
-	// g.mov_arm(.eax, 0)
+	// c.mov_arm(.eax, 0)
 	for i in 0 .. node.args.len {
 		expr := node.args[i].expr
 		match expr {
 			ast.IntegerLiteral {
 				// `foo(2)` => `mov edi,0x2`
-				// g.mov_arm(native.fn_arg_registers[i], expr.val.int())
+				// c.mov_arm(native.fn_arg_registers[i], expr.val.int())
 			}
 			/*
 			ast.Ident {
 				// `foo(x)` => `mov edi,DWORD PTR [rbp-0x8]`
-				var_offset := g.get_var_offset(expr.name)
-				if g.pref.is_verbose {
+				var_offset := c.g.get_var_offset(expr.name)
+				if c.g.pref.is_verbose {
 					println('i=$i fn name= $name offset=$var_offset')
 					println(int(native.fn_arg_registers[i]))
 				}
-				g.mov_var_to_reg(native.fn_arg_registers[i], var_offset)
+				c.g.code_gen.mov_var_to_reg(native.fn_arg_registers[i], var_offset)
 			}
 			*/
 			else {
-				g.n_error('unhandled call_fn (name=${name}) node: ' + expr.type_name())
+				c.g.n_error('unhandled call_fn (name=${name}) node: ' + expr.type_name())
 			}
 		}
 	}
 	if node.args.len > 6 {
-		g.n_error('more than 6 args not allowed for now')
+		c.g.n_error('more than 6 args not allowed for now')
 	}
-	g.call(int(addr))
-	g.println('fn call `${name}()`')
+	c.g.call(int(addr))
+	c.g.println('fn call `${name}()`')
 	// println('call $name $addr')
 }
 
 fn (mut g Gen) gen_arm64_helloworld() {
+	mut c := g.code_gen
 	if g.pref.os == .linux {
-		g.mov_arm(.x0, 1)
-		g.adr(.x1, 0x10)
-		g.mov_arm(.x2, 13)
-		g.mov_arm(.x8, 64) // write (linux-arm64)
-		g.svc()
+		c.mov(Arm64Register.x0, 1)
+		c.adr(Arm64Register.x1, 0x10)
+		c.mov(Arm64Register.x2, 13)
+		c.mov(Arm64Register.x8, 64) // write (linux-arm64)
+		c.svc()
 	} else {
-		g.mov_arm(.x0, 1)
-		g.adr(.x1, 0x10 + 4)
-		g.mov_arm(.x2, 13)
-		g.mov_arm(.x16, 4) // write
-		g.svc()
-		g.mov_arm(.x0, 0)
-		g.mov_arm(.x16, 1)
-		g.svc()
+		c.mov(Arm64Register.x0, 1)
+		c.adr(Arm64Register.x1, 0x10 + 4)
+		c.mov(Arm64Register.x2, 13)
+		c.mov(Arm64Register.x16, 4) // write
+		c.svc()
+		c.mov(Arm64Register.x0, 0)
+		c.mov(Arm64Register.x16, 1)
+		c.svc()
 	}
 	zero := ast.IntegerLiteral{}
 	g.code_gen.gen_exit(zero)
@@ -246,25 +251,29 @@ fn (mut g Gen) gen_arm64_helloworld() {
 	g.write8(0)
 }
 
-fn (mut g Gen) adr(r Arm64Register, delta int) {
-	g.write32(int(0x10000000 | int(r) | int(u32(delta) << 4)))
-	g.println('adr ${r}, ${delta}')
+fn (mut c Arm64) adr(r Arm64Register, delta int) {
+	c.g.write32(int(0x10000000 | int(r) | int(u32(delta) << 4)))
+	c.g.println('adr ${r}, ${delta}')
 }
 
-fn (mut g Gen) bl() {
+fn (mut c Arm64) bl() {
 	// g.write32(0xa9400000)
-	g.write32(0x94000000)
-	g.println('bl 0')
+	c.g.write32(0x94000000)
+	c.g.println('bl 0')
 }
 
-fn (mut g Gen) svc() {
-	if g.pref.os == .linux {
-		g.write32(0xd4001001)
-		g.println('svc 0x80')
+fn (mut c Arm64) svc() {
+	if c.g.pref.os == .linux {
+		c.g.write32(0xd4001001)
+		c.g.println('svc 0x80')
 	} else {
-		g.write32(0xd4000001)
-		g.println('svc 0')
+		c.g.write32(0xd4000001)
+		c.g.println('svc 0')
 	}
+}
+
+fn (mut c Arm64) syscall() {
+	panic('the `syscall` instruction is not available with arm64')
 }
 
 pub fn (mut c Arm64) gen_exit(expr ast.Expr) {
@@ -279,34 +288,74 @@ pub fn (mut c Arm64) gen_exit(expr ast.Expr) {
 	}
 	match c.g.pref.os {
 		.macos {
-			c.g.mov_arm(.x0, return_code)
-			c.g.mov_arm(.x16, 1) // syscall exit
+			c.mov_arm(.x0, return_code)
+			c.mov_arm(.x16, 1) // syscall exit
 		}
 		.linux {
-			c.g.mov_arm(.x16, return_code)
-			c.g.mov_arm(.x8, 93)
-			c.g.mov_arm(.x0, 0)
+			c.mov_arm(.x16, return_code)
+			c.mov_arm(.x8, 93)
+			c.mov_arm(.x0, 0)
 		}
 		else {
 			c.g.n_error('unsupported os ${c.g.pref.os}')
 		}
 	}
-	c.g.svc()
+	c.svc()
 }
 
-pub fn (mut g Gen) gen_arm64_exit(expr ast.Expr) {
+pub fn (mut c Arm64) gen_arm64_exit(expr ast.Expr) {
 	match expr {
 		ast.IntegerLiteral {
-			g.mov_arm(.x16, expr.val.u64())
+			c.mov_arm(.x16, expr.val.u64())
 		}
 		else {
-			g.n_error('native builtin exit expects a numeric argument')
+			c.g.n_error('native builtin exit expects a numeric argument')
 		}
 	}
-	g.mov_arm(.x0, 0)
-	g.svc()
+	c.mov_arm(.x0, 0)
+	c.svc()
 }
 
 fn (mut g Gen) gen_asm_stmt_arm64(asm_node ast.AsmStmt) {
 	g.v_error('The asm statement for arm64 not yet implemented', asm_node.pos)
+}
+
+fn (mut c Arm64) learel(reg Register, val int) {
+	panic('Arm64.learel() not implemented')
+}
+
+fn (mut c Arm64) lea_var_to_reg(reg Register, var_offset int) {
+	panic('Arm64.lea_var_to_reg() not implemented')
+}
+
+fn (mut c Arm64) main_reg() Register {
+	panic('Arm64.main_reg() not implemented')
+}
+
+fn (mut c Arm64) gen_match_expr(expr ast.MatchExpr) {
+	panic('Arm64.gen_match_expr() not implemented')
+}
+
+fn (mut c Arm64) convert_int_to_string(a Register, b Register) {
+	panic('Arm64.convert_int_to_string() not implemented')
+}
+
+fn (mut c Arm64) convert_bool_to_string(r Register) {
+	panic('Arm64.convert_bool_to_string() not implemented')
+}
+
+fn (mut c Arm64) reverse_string(r Register) {
+	panic('Arm64.reverse_string() not implemented')
+}
+
+fn (mut c Arm64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
+	panic('Arm64.mov_var_to_reg() not implemented')
+}
+
+fn (mut c Arm64) mov_reg(r1 Register, r2 Register) {
+	panic('Arm64.mov_reg() not implemented')
+}
+
+fn (mut c Arm64) convert_rune_to_string(r Register, buffer int, var Var, config VarConfig) {
+	panic('Arm64.convert_rune_to_string() not implemented')
 }

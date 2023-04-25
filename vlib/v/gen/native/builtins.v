@@ -14,7 +14,7 @@ enum Builtin {
 
 struct BuiltinFn {
 	body     fn (builtin BuiltinFn, mut g Gen)
-	arg_regs []Amd64Register
+	arg_regs []Register
 mut:
 	calls []i64 // call addresses
 }
@@ -28,21 +28,21 @@ pub fn (mut g Gen) init_builtins() {
 		.int_to_string:  BuiltinFn{
 			// 32-bit signed integer to string conversion
 			body: fn (builtin BuiltinFn, mut g Gen) {
-				g.convert_int_to_string(builtin.arg_regs[0], builtin.arg_regs[1])
+				g.code_gen.convert_int_to_string(builtin.arg_regs[0], builtin.arg_regs[1])
 			}
-			arg_regs: [.rcx, .rdi]
+			arg_regs: [Amd64Register.rcx, Amd64Register.rdi]
 		}
 		.bool_to_string: BuiltinFn{
 			body: fn (builtin BuiltinFn, mut g Gen) {
-				g.convert_bool_to_string(builtin.arg_regs[0])
+				g.code_gen.convert_bool_to_string(builtin.arg_regs[0])
 			}
-			arg_regs: [.rax]
+			arg_regs: [Amd64Register.rax]
 		}
 		.reverse_string: BuiltinFn{
 			body: fn (builtin BuiltinFn, mut g Gen) {
-				g.reverse_string(builtin.arg_regs[0])
+				g.code_gen.reverse_string(builtin.arg_regs[0])
 			}
-			arg_regs: [.rdi]
+			arg_regs: [Amd64Register.rdi]
 		}
 	}
 }
@@ -78,7 +78,7 @@ pub fn (mut g Gen) generate_builtins() {
 	}
 }
 
-pub fn (mut g Gen) get_builtin_arg_reg(name Builtin, index int) Amd64Register {
+pub fn (mut g Gen) get_builtin_arg_reg(name Builtin, index int) Register {
 	builtin := g.builtins[name] or { panic('undefined builtin function ${name}') }
 	if index >= builtin.arg_regs.len {
 		g.n_error('builtin ${name} does only have ${builtin.arg_regs.len} arguments, requested ${index}')

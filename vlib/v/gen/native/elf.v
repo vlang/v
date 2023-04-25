@@ -807,14 +807,14 @@ pub fn (mut g Gen) generate_simple_elf_header() {
 	// generate exit syscall
 	match g.pref.arch {
 		.arm64 {
-			g.mov_arm(.x16, 0)
-			g.mov_arm(.x0, 0)
-			g.svc()
+			g.code_gen.mov(Arm64Register.x16, 0)
+			g.code_gen.mov(Arm64Register.x0, 0)
+			g.code_gen.svc()
 		}
 		.amd64 {
-			g.mov(.edi, 0)
-			g.mov(.eax, g.nsyscall_exit())
-			g.syscall()
+			g.code_gen.mov(Amd64Register.edi, 0)
+			g.code_gen.mov(Amd64Register.eax, g.nsyscall_exit())
+			g.code_gen.syscall()
 		}
 		else {
 			g.n_error('unsupported platform ${g.pref.arch}')

@@ -61,6 +61,10 @@ const (
 	amd64_cpuregs        = ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi']
 )
 
+fn (mut c Amd64) main_reg() Register {
+	return Amd64Register.rax
+}
+
 fn (mut g Gen) dec(reg Amd64Register) {
 	g.write16(0xff48)
 	match reg {
@@ -573,7 +577,8 @@ fn (mut g Gen) mov_reg_to_var(var Var, reg Amd64Register, config VarConfig) {
 			typ := if config.typ == 0 { var.typ } else { config.typ }
 
 			mut size_str := 'UNKNOWN'
-			is_extended_register := int(reg) >= int(Amd64Register.r8) && int(reg) <= int(Amd64Register.r15)
+			is_extended_register := int(reg) >= int(Amd64Register.r8)
+				&& int(reg) <= int(Amd64Register.r15)
 			match typ {
 				ast.i64_type_idx, ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx,
 				ast.int_literal_type_idx {
@@ -721,43 +726,45 @@ fn (mut g Gen) mov_int_to_var(var Var, integer int, config VarConfig) {
 	}
 }
 
-fn (mut g Gen) lea_var_to_reg(reg Amd64Register, var_offset int) {
+fn (mut c Amd64) lea_var_to_reg(r Register, var_offset int) {
+	reg := r as Amd64Register
+
 	is_far_var := var_offset > 0x80 || var_offset < -0x7f
 	match reg {
 		.rax, .rbx, .rsi, .rdi {
-			g.write8(0x48)
+			c.g.write8(0x48)
 		}
 		else {}
 	}
-	g.write8(0x8d)
+	c.g.write8(0x8d)
 	far_var_offset := if is_far_var { 0x40 } else { 0 }
 	match reg {
-		.eax, .rax { g.write8(0x45 + far_var_offset) }
-		.edi, .rdi { g.write8(0x7d + far_var_offset) }
-		.rsi { g.write8(0x75 + far_var_offset) }
-		.rdx { g.write8(0x55 + far_var_offset) }
-		.rbx { g.write8(0x5d + far_var_offset) }
-		.rcx { g.write8(0x4d + far_var_offset) }
-		else { g.n_error('lea_var_to_reg ${reg}') }
+		.eax, .rax { c.g.write8(0x45 + far_var_offset) }
+		.edi, .rdi { c.g.write8(0x7d + far_var_offset) }
+		.rsi { c.g.write8(0x75 + far_var_offset) }
+		.rdx { c.g.write8(0x55 + far_var_offset) }
+		.rbx { c.g.write8(0x5d + far_var_offset) }
+		.rcx { c.g.write8(0x4d + far_var_offset) }
+		else { c.g.n_error('lea_var_to_reg ${reg}') }
 	}
 	if is_far_var {
-		g.write32(int((0xffffffff - i64(var_offset) + 1) % 0x100000000))
+		c.g.write32(int((0xffffffff - i64(var_offset) + 1) % 0x100000000))
 	} else {
-		g.write8((0xff - var_offset + 1) % 0x100)
+		c.g.write8((0xff - var_offset + 1) % 0x100)
 	}
-	g.println('lea ${reg}, [rbp-${var_offset.hex2()}]')
+	c.g.println('lea ${reg}, [rbp-${var_offset.hex2()}]')
 }
 
-fn (mut g Gen) mov_var_to_reg(reg Amd64Register, var Var, config VarConfig) {
+fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 	match var {
 		ast.Ident {
-			var_object := g.get_var_from_ident(var)
+			var_object := c.g.get_var_from_ident(var)
 			match var_object {
 				LocalVar {
-					g.mov_var_to_reg(reg, var_object as LocalVar, config)
+					c.mov_var_to_reg(reg, var_object as LocalVar, config)
 				}
 				GlobalVar {
-					g.mov_var_to_reg(reg, var_object as GlobalVar, config)
+					c.mov_var_to_reg(reg, var_object as GlobalVar, config)
 				}
 				Register {
 					// TODO
@@ -768,62 +775,62 @@ fn (mut g Gen) mov_var_to_reg(reg Amd64Register, var Var, config VarConfig) {
 			offset := var.offset - config.offset
 			is_far_var := offset > 0x80 || offset < -0x7f
 			typ := if config.typ == 0 { var.typ } else { config.typ }
-			size := g.get_type_size(typ)
+			size := c.g.get_type_size(typ)
 			is_signed := !typ.is_real_pointer() && typ.is_signed()
 
 			instruction, size_str := match true {
 				size == 4 && is_signed {
 					// movsxd rax, DWORD PTR [rbp-0x8]
-					g.write16(0x6348)
+					c.g.write16(0x6348)
 					'movsxd', 'DWORD'
 				}
 				size == 4 && !is_signed {
 					// mov eax, DWORD PTR [rbp-0x8]
-					g.write8(0x8b)
+					c.g.write8(0x8b)
 					'mov', 'DWORD'
 				}
 				size == 2 && is_signed {
 					// movsx rax, WORD PTR [rbp-0x8]
-					g.write([u8(0x48), 0x0f, 0xbf])
+					c.g.write([u8(0x48), 0x0f, 0xbf])
 					'movsx', 'WORD'
 				}
 				size == 2 && !is_signed {
 					// movzx rax, WORD PTR [rbp-0x8]
-					g.write([u8(0x48), 0x0f, 0xb7])
+					c.g.write([u8(0x48), 0x0f, 0xb7])
 					'movzx', 'WORD'
 				}
 				size == 1 && is_signed {
 					// movsx rax, BYTE PTR [rbp-0x8]
-					g.write([u8(0x48), 0x0f, 0xbe])
+					c.g.write([u8(0x48), 0x0f, 0xbe])
 					'movsx', 'BYTE'
 				}
 				size == 1 && !is_signed {
 					// movzx rax, BYTE PTR [rbp-0x8]
-					g.write([u8(0x48), 0x0f, 0xb6])
+					c.g.write([u8(0x48), 0x0f, 0xb6])
 					'movzx', 'BYTE'
 				}
 				else {
 					// mov rax, QWORD PTR [rbp-0x8]
-					g.write16(0x8b48)
+					c.g.write16(0x8b48)
 					'mov', 'QWORD'
 				}
 			}
 			far_var_offset := if is_far_var { 0x40 } else { 0 }
-			match reg {
-				.eax, .rax { g.write8(0x45 + far_var_offset) }
-				.edi, .rdi { g.write8(0x7d + far_var_offset) }
-				.rsi { g.write8(0x75 + far_var_offset) }
-				.rdx { g.write8(0x55 + far_var_offset) }
-				.rbx { g.write8(0x5d + far_var_offset) }
-				.rcx { g.write8(0x4d + far_var_offset) }
-				else { g.n_error('mov_var_to_reg ${reg}') }
+			match reg as Amd64Register {
+				.eax, .rax { c.g.write8(0x45 + far_var_offset) }
+				.edi, .rdi { c.g.write8(0x7d + far_var_offset) }
+				.rsi { c.g.write8(0x75 + far_var_offset) }
+				.rdx { c.g.write8(0x55 + far_var_offset) }
+				.rbx { c.g.write8(0x5d + far_var_offset) }
+				.rcx { c.g.write8(0x4d + far_var_offset) }
+				else { c.g.n_error('mov_var_to_reg ${reg}') }
 			}
 			if is_far_var {
-				g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+				c.g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
 			} else {
-				g.write8((0xff - offset + 1) % 0x100)
+				c.g.write8((0xff - offset + 1) % 0x100)
 			}
-			g.println('${instruction} ${reg}, ${size_str} PTR [rbp-${offset.hex2()}]')
+			c.g.println('${instruction} ${reg}, ${size_str} PTR [rbp-${offset.hex2()}]')
 		}
 		GlobalVar {
 			// TODO
@@ -869,11 +876,6 @@ fn (mut g Gen) call_addr_at(addr int, at i64) i64 {
 }
 
 fn (mut g Gen) call(addr int) i64 {
-	if g.pref.arch == .arm64 {
-		g.bl()
-		return 0
-	}
-
 	rel := g.call_addr_at(addr, g.pos())
 	c_addr := g.pos()
 	// println('call addr=$addr.hex2() rel_addr=$rel.hex2() pos=$g.buf.len')
@@ -899,11 +901,14 @@ fn (mut g Gen) extern_call(addr int) {
 	}
 }
 
-fn (mut g Gen) syscall() {
-	// g.write(0x050f)
-	g.write8(0x0f)
-	g.write8(0x05)
-	g.println('syscall')
+fn (mut c Amd64) syscall() {
+	c.g.write8(0x0f)
+	c.g.write8(0x05)
+	c.g.println('syscall')
+}
+
+fn (mut c Amd64) svc() {
+	panic('the svc instruction is not available with amd64')
 }
 
 fn (mut g Gen) cdq() {
@@ -1014,7 +1019,7 @@ fn (mut g Gen) sub8_var(reg Amd64Register, var_offset int) {
 [deprecated_after: '2999-01-01']
 fn (mut g Gen) div8_var(reg Amd64Register, var_offset int) {
 	if reg == .rax || reg == .eax {
-		g.mov_var_to_reg(.rbx, LocalVar{var_offset, ast.i64_type_idx, ''})
+		g.code_gen.mov_var_to_reg(Amd64Register.rbx, LocalVar{var_offset, ast.i64_type_idx, ''})
 		g.div_reg(.rax, .rbx)
 		g.mov_reg_to_var(LocalVar{var_offset, ast.i64_type_idx, ''}, .rax)
 	} else {
@@ -1068,7 +1073,7 @@ fn (mut g Gen) bitnot_reg(a Amd64Register) {
 
 fn (mut g Gen) shl_reg(a Amd64Register, b Amd64Register) {
 	if b != .rcx {
-		g.mov_reg(.rcx, b)
+		g.code_gen.mov_reg(Amd64Register.rcx, b)
 	}
 	g.write8(if int(a) >= int(Amd64Register.r8) { 0x49 } else { 0x48 })
 	g.write8(0xd3)
@@ -1078,7 +1083,7 @@ fn (mut g Gen) shl_reg(a Amd64Register, b Amd64Register) {
 
 fn (mut g Gen) sar_reg(a Amd64Register, b Amd64Register) {
 	if b != .rcx {
-		g.mov_reg(.rcx, b)
+		g.code_gen.mov_reg(Amd64Register.rcx, b)
 	}
 	g.write8(if int(a) > 7 { 0x49 } else { 0x48 })
 	g.write8(0xd3)
@@ -1088,7 +1093,7 @@ fn (mut g Gen) sar_reg(a Amd64Register, b Amd64Register) {
 
 fn (mut g Gen) shr_reg(a Amd64Register, b Amd64Register) {
 	if b != .rcx {
-		g.mov_reg(.rcx, b)
+		g.code_gen.mov_reg(Amd64Register.rcx, b)
 	}
 	g.write8(if int(a) > 7 { 0x49 } else { 0x48 })
 	g.write8(0xd3)
@@ -1104,7 +1109,7 @@ fn (mut g Gen) leave() {
 		for defer_stmt in g.defer_stmts.reverse() {
 			name := '_defer${defer_stmt.idx_in_fn}'
 			defer_var := g.get_var_offset(name)
-			g.mov_var_to_reg(.rax, LocalVar{defer_var, ast.i64_type_idx, name})
+			g.code_gen.mov_var_to_reg(Amd64Register.rax, LocalVar{defer_var, ast.i64_type_idx, name})
 			g.cmp_zero(.rax)
 			label := g.labels.new_label()
 			jump_addr := g.cjmp(.je)
@@ -1117,14 +1122,14 @@ fn (mut g Gen) leave() {
 		}
 		g.pop(.rax)
 	}
-	g.mov_reg(.rsp, .rbp)
+	g.code_gen.mov_reg(Amd64Register.rsp, Amd64Register.rbp)
 	g.pop(.rbp)
 	g.ret()
 }
 
 // returns label's relative address
 pub fn (mut g Gen) gen_loop_start(from int) int {
-	g.mov(.r12, from)
+	g.code_gen.mov(Amd64Register.r12, from)
 	label := g.buf.len
 	g.inc(.r12)
 	return label
@@ -1138,7 +1143,7 @@ pub fn (mut g Gen) gen_loop_end(to int, label int) {
 // not used?
 pub fn (mut g Gen) var_zero(vo int, size int) {
 	g.mov32(.rcx, size)
-	g.lea_var_to_reg(.rdi, vo)
+	g.code_gen.lea_var_to_reg(Amd64Register.rdi, vo)
 	g.write8(0xb0)
 	g.write8(0x00)
 	g.println('mov al, 0')
@@ -1197,28 +1202,28 @@ pub fn (mut g Gen) test_reg(r Amd64Register) {
 
 // return length in .rax of string pointed by given register
 pub fn (mut g Gen) inline_strlen(r Amd64Register) {
-	g.mov_reg(.rdi, r)
-	g.mov(.rcx, -1)
-	g.mov(.eax, 0)
+	g.code_gen.mov_reg(Amd64Register.rdi, r)
+	g.code_gen.mov(Amd64Register.rcx, -1)
+	g.code_gen.mov(Amd64Register.eax, 0)
 	g.cld_repne_scasb()
 	g.xor(.rcx, -1)
 	g.dec(.rcx)
-	g.mov_reg(.rax, .rcx)
+	g.code_gen.mov_reg(Amd64Register.rax, Amd64Register.rcx)
 	g.println('strlen rax, ${r}')
 }
 
 // TODO: strlen of string at runtime
 pub fn (mut g Gen) gen_print_reg(r Amd64Register, n int, fd int) {
-	g.mov_reg(.rsi, r)
+	g.code_gen.mov_reg(Amd64Register.rsi, r)
 	if n < 0 {
 		g.inline_strlen(.rsi)
-		g.mov_reg(.rdx, .rax)
+		g.code_gen.mov_reg(Amd64Register.rdx, Amd64Register.rax)
 	} else {
-		g.mov(.edx, n)
+		g.code_gen.mov(Amd64Register.edx, n)
 	}
-	g.mov(.eax, g.nsyscall_write())
-	g.mov(.edi, fd)
-	g.syscall()
+	g.code_gen.mov(Amd64Register.eax, g.nsyscall_write())
+	g.code_gen.mov(Amd64Register.edi, fd)
+	g.code_gen.syscall()
 }
 
 pub fn (mut g Gen) apicall(s string) {
@@ -1247,23 +1252,23 @@ pub fn (mut g Gen) apicall(s string) {
 pub fn (mut g Gen) gen_print(s string, fd int) {
 	if g.pref.os == .windows {
 		g.sub(.rsp, 0x38)
-		g.mov(.rcx, -11)
+		g.code_gen.mov(Amd64Register.rcx, -11)
 		g.apicall('GetStdHandle')
-		g.mov_reg(.rcx, .rax)
+		g.code_gen.mov_reg(Amd64Register.rcx, Amd64Register.rax)
 		// g.mov64(.rdx, g.allocate_string(s, 3))
 		g.lea(.rdx, g.allocate_string(s, 3, .abs64))
-		g.mov(.r8, s.len) // string length
+		g.code_gen.mov(Amd64Register.r8, s.len) // string length
 		g.write([u8(0x4c), 0x8d, 0x4c, 0x24, 0x20]) // lea r9, [rsp+0x20]
 		g.write([u8(0x48), 0xc7, 0x44, 0x24, 0x20])
 		g.write32(0) // mov qword[rsp+0x20], 0
-		// g.mov(.r9, rsp+0x20)
+		// g.code_gen.mov(Amd64Register.r9, rsp+0x20)
 		g.apicall('WriteFile')
 	} else {
-		g.mov(.eax, g.nsyscall_write())
-		g.mov(.edi, fd)
-		g.learel(.rsi, g.allocate_string(s, 3, .rel32)) // for rsi its 2
-		g.mov(.edx, s.len) // len
-		g.syscall()
+		g.code_gen.mov(Amd64Register.eax, g.nsyscall_write())
+		g.code_gen.mov(Amd64Register.edi, fd)
+		g.code_gen.learel(Amd64Register.rsi, g.allocate_string(s, 3, .rel32)) // for rsi its 2
+		g.code_gen.mov(Amd64Register.edx, s.len) // len
+		g.code_gen.syscall()
 	}
 }
 
@@ -1309,14 +1314,14 @@ pub fn (mut a Amd64) gen_exit(node ast.Expr) {
 
 pub fn (mut g Gen) gen_amd64_exit(expr ast.Expr) {
 	g.expr(expr)
-	g.mov_reg(.rdi, .rax)
+	g.code_gen.mov_reg(Amd64Register.rdi, Amd64Register.rax)
 
 	if g.pref.os == .windows {
-		g.mov_reg(.rcx, .rdi)
+		g.code_gen.mov_reg(Amd64Register.rcx, Amd64Register.rdi)
 		g.apicall('ExitProcess')
 	} else {
-		g.mov(.rax, g.nsyscall_exit())
-		g.syscall()
+		g.code_gen.mov(Amd64Register.rax, g.nsyscall_exit())
+		g.code_gen.syscall()
 	}
 	g.trap() // should never be reached, just in case
 }
@@ -1346,25 +1351,25 @@ fn (mut g Gen) relpc(dst Amd64Register, src Amd64Register) {
 	}
 }
 
-fn (mut g Gen) learel(reg Amd64Register, val int) {
-	g.write8(0x48)
-	g.write8(0x8d)
-	match reg {
+fn (mut c Amd64) learel(reg Register, val int) {
+	c.g.write8(0x48)
+	c.g.write8(0x8d)
+	match reg as Amd64Register {
 		.rax {
-			g.write8(0x05)
+			c.g.write8(0x05)
 		}
 		.rsi {
-			g.write8(0x35)
+			c.g.write8(0x35)
 		}
 		.rcx {
-			g.write8(0x0d)
+			c.g.write8(0x0d)
 		}
 		else {
-			g.n_error('learel must use rsi, rcx or rax')
+			c.g.n_error('learel must use rsi, rcx or rax')
 		}
 	}
-	g.write32(val)
-	g.println('lea ${reg}, rip + ${val}')
+	c.g.write32(val)
+	c.g.println('lea ${reg}, rip + ${val}')
 }
 
 fn (mut g Gen) lea(reg Amd64Register, val int) {
@@ -1375,115 +1380,116 @@ fn (mut g Gen) lea(reg Amd64Register, val int) {
 	g.println('lea ${reg}, ${val}')
 }
 
-fn (mut g Gen) mov(reg Amd64Register, val int) {
+fn (mut c Amd64) mov(r Register, val int) {
+	reg := r as Amd64Register
 	if val == -1 {
 		match reg {
 			.rax {
-				g.write8(0x48)
-				g.write8(0xc7)
-				g.write8(0xc0)
-				g.write32(-1)
-				g.println('mov ${reg}, ${val}')
+				c.g.write8(0x48)
+				c.g.write8(0xc7)
+				c.g.write8(0xc0)
+				c.g.write32(-1)
+				c.g.println('mov ${reg}, ${val}')
 			}
 			.rcx {
 				if val == -1 {
-					g.write8(0x48)
-					g.write8(0xc7)
-					g.write8(0xc1)
-					g.write32(-1)
+					c.g.write8(0x48)
+					c.g.write8(0xc7)
+					c.g.write8(0xc1)
+					c.g.write32(-1)
 				} else {
-					g.write8(0xff)
-					g.write8(0xff) // mov rcx 0xffff5
+					c.g.write8(0xff)
+					c.g.write8(0xff) // mov rcx 0xffff5
 				}
-				g.println('mov ${reg}, ${val}')
+				c.g.println('mov ${reg}, ${val}')
 			}
 			else {
-				g.n_error('unhandled mov ${reg}, -1')
+				c.g.n_error('unhandled mov ${reg}, -1')
 			}
 		}
-		g.println('mov ${reg}, ${val}')
+		c.g.println('mov ${reg}, ${val}')
 		return
 	}
 	if val == 0 {
 		// Optimise to xor reg, reg when val is 0
 		match reg {
 			.eax, .rax {
-				g.write8(0x31)
-				g.write8(0xc0)
+				c.g.write8(0x31)
+				c.g.write8(0xc0)
 			}
 			.edi, .rdi {
-				g.write8(0x31)
-				g.write8(0xff)
+				c.g.write8(0x31)
+				c.g.write8(0xff)
 			}
 			.rcx {
-				g.write8(0x48)
-				g.write8(0x31)
-				g.write8(0xc7)
+				c.g.write8(0x48)
+				c.g.write8(0x31)
+				c.g.write8(0xc7)
 			}
 			.rdx {
-				g.write8(0x48)
-				g.write8(0x31)
-				g.write8(0xd2)
+				c.g.write8(0x48)
+				c.g.write8(0x31)
+				c.g.write8(0xd2)
 			}
 			.edx {
-				g.write8(0x31)
-				g.write8(0xd2)
+				c.g.write8(0x31)
+				c.g.write8(0xd2)
 			}
 			.rsi {
-				g.write8(0x48)
-				g.write8(0x31)
-				g.write8(0xf6)
+				c.g.write8(0x48)
+				c.g.write8(0x31)
+				c.g.write8(0xf6)
 			}
 			.r12 {
-				g.write8(0x4d)
-				g.write8(0x31)
-				g.write8(0xe4)
+				c.g.write8(0x4d)
+				c.g.write8(0x31)
+				c.g.write8(0xe4)
 			}
 			else {
-				g.n_error('unhandled mov ${reg}, ${reg}')
+				c.g.n_error('unhandled mov ${reg}, ${reg}')
 			}
 		}
-		g.println('xor ${reg}, ${reg}')
+		c.g.println('xor ${reg}, ${reg}')
 	} else {
 		match reg {
 			.eax, .rax {
-				g.write8(0xb8)
+				c.g.write8(0xb8)
 			}
 			.edi, .rdi {
-				g.write8(0xbf)
+				c.g.write8(0xbf)
 			}
 			.rcx {
-				g.write8(0x48)
-				g.write8(0xc7)
-				g.write8(0xc1)
+				c.g.write8(0x48)
+				c.g.write8(0xc7)
+				c.g.write8(0xc1)
 			}
 			.r8 {
-				g.write8(0x41)
-				g.write8(0xb8)
+				c.g.write8(0x41)
+				c.g.write8(0xb8)
 			}
 			.r9 {
-				g.write8(0xb9)
+				c.g.write8(0xb9)
 			}
 			.rdx, .edx {
-				g.write8(0xba)
+				c.g.write8(0xba)
 			}
 			.rsi {
-				//	g.write8(0x48) // its 32bit!
-				g.write8(0xbe)
+				//	c.g.write8(0x48) // its 32bit!
+				c.g.write8(0xbe)
 			}
 			.r12 {
-				g.write8(0x41)
-				g.write8(0xbc) // r11 is 0xbb etc
+				c.g.write8(0x41)
+				c.g.write8(0xbc) // r11 is 0xbb etc
 			}
 			.rbx {
-				g.write8(0xbb)
+				c.g.write8(0xbb)
 			}
 			else {
-				g.n_error('unhandled mov ${reg}')
+				c.g.n_error('unhandled mov ${reg}')
 			}
 		}
-		g.write32(val)
-		g.println('mov ${reg}, ${val}')
+		c.g.write32(val)
+		c.g.println('mov ${reg}, ${val}')
 	}
 }
 
@@ -1539,7 +1545,7 @@ fn (mut g Gen) div_reg(a Amd64Register, b Amd64Register) {
 			g.write8(0xf8)
 		}
 		.rbx {
-			g.mov(.edx, 0)
+			g.code_gen.mov(Amd64Register.edx, 0)
 			g.write8(0x48)
 			g.write8(0xf7)
 			g.write8(0xfb) // idiv ebx
@@ -1558,7 +1564,7 @@ fn (mut g Gen) div_reg(a Amd64Register, b Amd64Register) {
 
 fn (mut g Gen) mod_reg(a Amd64Register, b Amd64Register) {
 	g.div_reg(a, b)
-	g.mov_reg(.rdx, .rax)
+	g.code_gen.mov_reg(Amd64Register.rdx, Amd64Register.rax)
 }
 
 fn (mut g Gen) sub_reg(a Amd64Register, b Amd64Register) {
@@ -1585,16 +1591,20 @@ fn (mut g Gen) add_reg(a Amd64Register, b Amd64Register) {
 	g.println('add ${a}, ${b}')
 }
 
-fn (mut g Gen) mov_reg(a Amd64Register, b Amd64Register) {
+fn (mut c Amd64) mov_reg_amd64(a Amd64Register, b Amd64Register) {
 	if int(a) <= int(Amd64Register.r15) && int(b) <= int(Amd64Register.r15) {
-		g.write8(0x48 + if int(a) >= int(Amd64Register.r8) { 1 } else { 0 } +
+		c.g.write8(0x48 + if int(a) >= int(Amd64Register.r8) { 1 } else { 0 } +
 			if int(b) >= int(Amd64Register.r8) { 4 } else { 0 })
-		g.write8(0x89)
-		g.write8(0xc0 + int(a) % 8 + int(b) % 8 * 8)
+		c.g.write8(0x89)
+		c.g.write8(0xc0 + int(a) % 8 + int(b) % 8 * 8)
 	} else {
-		g.n_error('unhandled mov_reg combination for ${a} ${b}')
+		c.g.n_error('unhandled mov_reg combination for ${a} ${b}')
 	}
-	g.println('mov ${a}, ${b}')
+	c.g.println('mov ${a}, ${b}')
+}
+
+fn (mut c Amd64) mov_reg(a Register, b Register) {
+	c.mov_reg_amd64(a as Amd64Register, b as Amd64Register)
 }
 
 fn (mut g Gen) add_store(a Amd64Register, b Amd64Register, size Size) {
@@ -1661,28 +1671,28 @@ fn (mut g Gen) sar8(r Amd64Register, val u8) {
 	g.println('sar ${r}, ${val}')
 }
 
-pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
+pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 	name := node.name
 	mut n := name
 	if !n.contains('.') {
 		n = 'main.${n}'
 	}
 	if node.is_method {
-		n = '${g.table.get_type_name(node.receiver_type)}.${node.name}'
+		n = '${c.g.table.get_type_name(node.receiver_type)}.${node.name}'
 	}
-	addr := g.fn_addr[n]
+	addr := c.g.fn_addr[n]
 
 	mut reg_args := []int{}
 	mut ssereg_args := []int{}
 	mut stack_args := []int{}
 	mut args := []ast.CallArg{cap: node.args.len + 2}
 
-	ts := g.table.sym(node.return_type)
-	return_size := g.get_type_size(node.return_type)
+	ts := c.g.table.sym(node.return_type)
+	return_size := c.g.get_type_size(node.return_type)
 	mut return_pos := -1
 	mut is_struct_return := false
 	if ts.kind in [.struct_, .multi_return] {
-		return_pos = g.allocate_by_type('', node.return_type)
+		return_pos = c.g.allocate_by_type('', node.return_type)
 		if return_size > 16 {
 			is_struct_return = true
 			args << ast.CallArg{
@@ -1708,7 +1718,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 
 	args_offset := args.len
 	args << node.args
-	args_size := args.map(g.get_type_size(it.typ))
+	args_size := args.map(c.g.get_type_size(it.typ))
 	is_floats := args.map(it.typ.is_pure_float())
 
 	mut reg_left := 6 - reg_args.len
@@ -1740,37 +1750,37 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 	})
 
 	// not aligned now XOR pushed args will be odd
-	is_16bit_aligned := if mut g.code_gen is Amd64 { g.code_gen.is_16bit_aligned } else { true } != (stack_size % 2 == 1)
+	is_16bit_aligned := c.is_16bit_aligned != (stack_size % 2 == 1)
 	if !is_16bit_aligned {
 		// dummy data
-		g.push(.rbp)
+		c.g.push(.rbp)
 	}
 	reg_args << ssereg_args
 	reg_args << stack_args
 	for i in reg_args.reverse() {
 		if i == 0 && is_struct_return {
-			g.lea_var_to_reg(.rax, return_pos)
-			g.push(.rax)
+			c.lea_var_to_reg(Amd64Register.rax, return_pos)
+			c.g.push(.rax)
 			continue
 		}
-		g.expr(args[i].expr)
-		if g.table.sym(args[i].typ).kind == .struct_ && !args[i].typ.is_ptr() {
+		c.g.expr(args[i].expr)
+		if c.g.table.sym(args[i].typ).kind == .struct_ && !args[i].typ.is_ptr() {
 			match args_size[i] {
 				1...8 {
-					g.mov_deref(.rax, .rax, ast.i64_type_idx)
+					c.g.mov_deref(.rax, .rax, ast.i64_type_idx)
 					if args_size[i] != 8 {
-						g.movabs(.rdx, i64((u64(1) << (args_size[i] * 8)) - 1))
-						g.bitand_reg(.rax, .rdx)
+						c.g.movabs(.rdx, i64((u64(1) << (args_size[i] * 8)) - 1))
+						c.g.bitand_reg(.rax, .rdx)
 					}
 				}
 				9...16 {
-					g.add(.rax, 8)
-					g.mov_deref(.rdx, .rax, ast.i64_type_idx)
-					g.sub(.rax, 8)
-					g.mov_deref(.rax, .rax, ast.i64_type_idx)
+					c.g.add(.rax, 8)
+					c.g.mov_deref(.rdx, .rax, ast.i64_type_idx)
+					c.g.sub(.rax, 8)
+					c.g.mov_deref(.rax, .rax, ast.i64_type_idx)
 					if args_size[i] != 16 {
-						g.movabs(.rbx, i64((u64(1) << ((args_size[i] - 8) * 8)) - 1))
-						g.bitand_reg(.rdx, .rbx)
+						c.g.movabs(.rbx, i64((u64(1) << ((args_size[i] - 8) * 8)) - 1))
+						c.g.bitand_reg(.rdx, .rbx)
 					}
 				}
 				else {}
@@ -1778,97 +1788,102 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		}
 		if is_floats[i] {
 			if args_size[i] == 8 && node.expected_arg_types[i + args_offset] == ast.f32_type_idx {
-				g.write32(0xc05a0ff2)
-				g.println('cvtsd2ss xmm0, xmm0')
+				c.g.write32(0xc05a0ff2)
+				c.g.println('cvtsd2ss xmm0, xmm0')
 			}
-			g.push_sse(.xmm0)
+			c.g.push_sse(.xmm0)
 		} else {
 			match args_size[i] {
 				1...8 {
-					g.push(.rax)
+					c.g.push(.rax)
 				}
 				9...16 {
-					g.push(.rdx)
-					g.push(.rax)
+					c.g.push(.rdx)
+					c.g.push(.rax)
 				}
 				else {
-					g.add(.rax, args_size[i] - ((args_size[i] + 7) % 8 + 1))
+					c.g.add(.rax, args_size[i] - ((args_size[i] + 7) % 8 + 1))
 					for _ in 0 .. (args_size[i] + 7) / 8 {
-						g.mov_deref(.rdx, .rax, ast.i64_type_idx)
-						g.push(.rdx)
-						g.sub(.rax, 8)
+						c.g.mov_deref(.rdx, .rax, ast.i64_type_idx)
+						c.g.push(.rdx)
+						c.g.sub(.rax, 8)
 					}
 				}
 			}
 		}
 	}
 	for i in 0 .. reg_size {
-		g.pop(native.fn_arg_registers[i])
+		c.g.pop(native.fn_arg_registers[i])
 	}
 	for i in 0 .. ssereg_args.len {
-		g.pop_sse(native.fn_arg_sse_registers[i])
+		c.g.pop_sse(native.fn_arg_sse_registers[i])
 	}
-	g.mov(.rax, ssereg_args.len)
-	if node.name in g.extern_symbols {
-		g.extern_fn_calls[g.pos()] = node.name
-		g.extern_call(int(addr))
+	c.mov(Amd64Register.rax, ssereg_args.len)
+	if node.name in c.g.extern_symbols {
+		c.g.extern_fn_calls[c.g.pos()] = node.name
+		c.g.extern_call(int(addr))
 	} else if addr == 0 {
-		g.delay_fn_call(n)
-		g.call(int(0))
+		c.g.delay_fn_call(n)
+		c.g.call(int(0))
 	} else {
-		g.call(int(addr))
+		c.g.call(int(addr))
 	}
-	g.println('call `${n}()`')
+	c.g.println('call `${n}()`')
 
 	if ts.kind in [.struct_, .multi_return] {
 		match return_size {
 			1...7 {
-				g.mov_var_to_reg(.rdx, LocalVar{ offset: return_pos, typ: ast.i64_type_idx })
-				g.movabs(.rcx, i64(0xffffffffffffffff - (u64(1) << (return_size * 8)) + 1))
-				g.bitand_reg(.rdx, .rcx)
-				g.bitor_reg(.rdx, .rax)
-				g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+				c.mov_var_to_reg(Amd64Register.rdx, LocalVar{
+					offset: return_pos
+					typ: ast.i64_type_idx
+				})
+				c.g.movabs(.rcx, i64(0xffffffffffffffff - (u64(1) << (return_size * 8)) + 1))
+				c.g.bitand_reg(.rdx, .rcx)
+				c.g.bitor_reg(.rdx, .rax)
+				c.g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
 					.rdx)
 			}
 			8 {
-				g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+				c.g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
 					.rax)
 			}
 			9...15 {
-				g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+				c.g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
 					.rax)
-				g.mov_var_to_reg(.rax, LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
-					
+				c.mov_var_to_reg(Amd64Register.rax, LocalVar{
+					offset: return_pos
+					typ: ast.i64_type_idx
+				},
 					offset: 8
 				)
-				g.movabs(.rcx, i64(0xffffffffffffffff - (u64(1) << (return_size * 8)) + 1))
-				g.bitand_reg(.rax, .rcx)
-				g.bitor_reg(.rax, .rdx)
-				g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+				c.g.movabs(.rcx, i64(0xffffffffffffffff - (u64(1) << (return_size * 8)) + 1))
+				c.g.bitand_reg(.rax, .rcx)
+				c.g.bitor_reg(.rax, .rdx)
+				c.g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
 					.rax,
 					offset: 8
 				)
 			}
 			16 {
-				g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+				c.g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
 					.rax)
-				g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+				c.g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
 					.rdx,
 					offset: 8
 				)
 			}
 			else {}
 		}
-		g.lea_var_to_reg(.rax, return_pos)
+		c.lea_var_to_reg(Amd64Register.rax, return_pos)
 	}
 
 	if !is_16bit_aligned {
 		// dummy data
-		g.pop(.rdi)
+		c.g.pop(.rdi)
 	}
 	for _ in 0 .. stack_size {
 		// args
-		g.pop(.rdi)
+		c.g.pop(.rdi)
 	}
 }
 
@@ -1923,23 +1938,23 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 			// g.allocate_var(name, 4, right.val.int())
 			match node.op {
 				.plus_assign {
-					g.mov_var_to_reg(.rax, ident)
+					g.code_gen.mov_var_to_reg(Amd64Register.rax, ident)
 					g.add(.rax, right.val.int())
 					g.mov_reg_to_var(ident, .rax)
 				}
 				.minus_assign {
-					g.mov_var_to_reg(.rax, ident)
+					g.code_gen.mov_var_to_reg(Amd64Register.rax, ident)
 					g.sub(.rax, right.val.int())
 					g.mov_reg_to_var(ident, .rax)
 				}
 				.mult_assign {
-					g.mov_var_to_reg(.rax, ident)
+					g.code_gen.mov_var_to_reg(Amd64Register.rax, ident)
 					g.mov64(.rdx, right.val.int())
 					g.mul_reg(.rax, .rdx)
 					g.mov_reg_to_var(ident, .rax)
 				}
 				.div_assign {
-					g.mov_var_to_reg(.rax, ident)
+					g.code_gen.mov_var_to_reg(Amd64Register.rax, ident)
 					g.mov64(.rdx, right.val.int())
 					g.div_reg(.rax, .rdx)
 					g.mov_reg_to_var(ident, .rax)
@@ -1953,7 +1968,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 						ast.Ident {
 							// lname := '${node.left[i]}'
 							// g.expr(node.right[i])
-							g.mov(.rax, right.val.int())
+							g.code_gen.mov(Amd64Register.rax, right.val.int())
 							g.mov_reg_to_var(ident, .rax)
 						}
 						else {
@@ -1973,21 +1988,21 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 			// eprintln('identr') dump(node) dump(right)
 			match node.op {
 				.plus_assign {
-					g.mov_var_to_reg(.rax, ident)
-					g.mov_var_to_reg(.rbx, right as ast.Ident)
+					g.code_gen.mov_var_to_reg(Amd64Register.rax, ident)
+					g.code_gen.mov_var_to_reg(Amd64Register.rbx, right as ast.Ident)
 					g.add_reg(.rax, .rbx)
 					g.mov_reg_to_var(ident, .rax)
 				}
 				.minus_assign {
-					g.mov_var_to_reg(.rax, ident)
-					g.mov_var_to_reg(.rbx, right as ast.Ident)
+					g.code_gen.mov_var_to_reg(Amd64Register.rax, ident)
+					g.code_gen.mov_var_to_reg(Amd64Register.rbx, right as ast.Ident)
 					g.sub_reg(.rax, .rbx)
 					g.mov_reg_to_var(ident, .rax)
 				}
 				.div_assign {
 					// this should be called when `a /= b` but it's not :?
-					g.mov_var_to_reg(.rax, ident)
-					g.mov_var_to_reg(.rbx, right as ast.Ident)
+					g.code_gen.mov_var_to_reg(Amd64Register.rax, ident)
+					g.code_gen.mov_var_to_reg(Amd64Register.rbx, right as ast.Ident)
 					g.div_reg(.rax, .rbx)
 					g.mov_reg_to_var(ident, .rax)
 				}
@@ -2011,7 +2026,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 						LocalVar {
 							var := var_ as LocalVar
 							if var.typ.is_number() || var.typ.is_real_pointer() || var.typ.is_bool() {
-								g.mov_var_to_reg(.rax, right as ast.Ident)
+								g.code_gen.mov_var_to_reg(Amd64Register.rax, right as ast.Ident)
 								g.mov_reg_to_var(ident, .rax)
 							} else {
 								ts := g.table.sym(var.typ)
@@ -2020,7 +2035,8 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 										size := g.get_type_size(var.typ)
 										if size >= 8 {
 											for offset in 0 .. size / 8 {
-												g.mov_var_to_reg(.rax, right_var,
+												g.code_gen.mov_var_to_reg(Amd64Register.rax,
+													right_var,
 													offset: offset * 8
 													typ: ast.i64_type_idx
 												)
@@ -2030,7 +2046,8 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 												)
 											}
 											if size % 8 != 0 {
-												g.mov_var_to_reg(.rax, right_var,
+												g.code_gen.mov_var_to_reg(Amd64Register.rax,
+													right_var,
 													offset: size - 8
 													typ: ast.i64_type_idx
 												)
@@ -2041,7 +2058,8 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 											}
 										} else {
 											mut left_size := if size >= 4 {
-												g.mov_var_to_reg(.rax, right_var,
+												g.code_gen.mov_var_to_reg(Amd64Register.rax,
+													right_var,
 													typ: ast.int_type_idx
 												)
 												g.mov_reg_to_var(var, .rax,
@@ -2052,7 +2070,8 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 												size
 											}
 											if left_size >= 2 {
-												g.mov_var_to_reg(.rax, right_var,
+												g.code_gen.mov_var_to_reg(Amd64Register.rax,
+													right_var,
 													offset: size - left_size
 													typ: ast.i16_type_idx
 												)
@@ -2063,7 +2082,8 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 												left_size -= 2
 											}
 											if left_size == 1 {
-												g.mov_var_to_reg(.rax, right_var,
+												g.code_gen.mov_var_to_reg(Amd64Register.rax,
+													right_var,
 													offset: size - left_size
 													typ: ast.i8_type_idx
 												)
@@ -2093,7 +2113,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 						LocalVar {
 							var := var_ as LocalVar
 							if var.typ.is_number() || var.typ.is_real_pointer() || var.typ.is_bool() {
-								g.mov_var_to_reg(.rax, right as ast.Ident)
+								g.code_gen.mov_var_to_reg(Amd64Register.rax, right as ast.Ident)
 								g.mov_reg_to_var(ident, .rax)
 							} else {
 								ts := g.table.sym(var.typ)
@@ -2102,7 +2122,8 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 										size := g.get_type_size(var.typ)
 										if size >= 8 {
 											for offset in 0 .. size / 8 {
-												g.mov_var_to_reg(.rax, right_var,
+												g.code_gen.mov_var_to_reg(Amd64Register.rax,
+													right_var,
 													offset: offset * 8
 													typ: ast.i64_type_idx
 												)
@@ -2112,7 +2133,8 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 												)
 											}
 											if size % 8 != 0 {
-												g.mov_var_to_reg(.rax, right_var,
+												g.code_gen.mov_var_to_reg(Amd64Register.rax,
+													right_var,
 													offset: size - 8
 													typ: ast.i64_type_idx
 												)
@@ -2123,7 +2145,8 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 											}
 										} else {
 											mut left_size := if size >= 4 {
-												g.mov_var_to_reg(.rax, right_var,
+												g.code_gen.mov_var_to_reg(Amd64Register.rax,
+													right_var,
 													typ: ast.int_type_idx
 												)
 												g.mov_reg_to_var(var, .rax,
@@ -2134,7 +2157,8 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 												size
 											}
 											if left_size >= 2 {
-												g.mov_var_to_reg(.rax, right_var,
+												g.code_gen.mov_var_to_reg(Amd64Register.rax,
+													right_var,
 													offset: size - left_size
 													typ: ast.i16_type_idx
 												)
@@ -2145,7 +2169,8 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 												left_size -= 2
 											}
 											if left_size == 1 {
-												g.mov_var_to_reg(.rax, right_var,
+												g.code_gen.mov_var_to_reg(Amd64Register.rax,
+													right_var,
 													offset: size - left_size
 													typ: ast.i8_type_idx
 												)
@@ -2192,7 +2217,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 			for e in right.exprs {
 				match e {
 					ast.IntegerLiteral {
-						g.mov(.rax, e.val.int())
+						g.code_gen.mov(Amd64Register.rax, e.val.int())
 						g.mov_reg_to_var(LocalVar{pos, ast.i64_type_idx, ''}, .rax)
 						pos += 8
 					}
@@ -2222,11 +2247,14 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 			if ie.index is ast.IntegerLiteral {
 				index := ie.index
 				ie_offset := index.val.int() * 8
-				g.mov_var_to_reg(.rax, var, typ: ast.i64_type_idx, offset: ie_offset)
+				g.code_gen.mov_var_to_reg(Amd64Register.rax, var,
+					typ: ast.i64_type_idx
+					offset: ie_offset
+				)
 			} else if ie.index is ast.Ident {
 				ie_ident := ie.index
-				g.lea_var_to_reg(.rax, dest)
-				g.mov_var_to_reg(.rdi, ie_ident)
+				g.code_gen.lea_var_to_reg(Amd64Register.rax, dest)
+				g.code_gen.mov_var_to_reg(Amd64Register.rdi, ie_ident)
 				g.add_reg(.rax, .rdi)
 				g.mov_deref(.rax, .rax, ast.i64_type_idx)
 			} else {
@@ -2239,7 +2267,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 			dest := g.allocate_var(name, 8, 0)
 			ie := right as ast.StringLiteral
 			str := g.eval_str_lit_escape_codes(ie)
-			g.learel(.rsi, g.allocate_string(str, 3, .rel32))
+			g.code_gen.learel(Amd64Register.rsi, g.allocate_string(str, 3, .rel32))
 			g.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
 		}
 		ast.GoExpr {
@@ -2247,11 +2275,12 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 		}
 		ast.TypeOf {
 			g.gen_typeof_expr(right as ast.TypeOf, true)
-			g.mov_reg(.rsi, .rax)
+			g.code_gen.mov_reg(Amd64Register.rsi, Amd64Register.rax)
 		}
 		ast.AtExpr {
 			dest := g.allocate_var(name, 8, 0)
-			g.learel(.rsi, g.allocate_string(g.comptime_at(right), 3, .rel32))
+			g.code_gen.learel(Amd64Register.rsi, g.allocate_string(g.comptime_at(right),
+				3, .rel32))
 			g.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
 		}
 		else {
@@ -2295,7 +2324,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 				match var {
 					LocalVar { g.mov_reg_to_var(var as LocalVar, .rax) }
 					GlobalVar { g.mov_reg_to_var(var as GlobalVar, .rax) }
-					Register { g.mov_reg(var as Amd64Register, .rax) }
+					Register { g.code_gen.mov_reg(var as Amd64Register, Amd64Register.rax) }
 				}
 			}
 		}
@@ -2341,7 +2370,7 @@ fn (mut g Gen) gen_type_promotion(from ast.Type, to ast.Type, option Amd64Regist
 			}
 			g.labels.addrs[label1] = g.pos()
 			// if castee has the leftmost bit
-			g.mov_reg(.rbx, .rax)
+			g.code_gen.mov_reg(Amd64Register.rbx, Amd64Register.rax)
 			g.write([u8(0x48), 0xd1, 0xe8])
 			g.println('shr rax')
 			g.write([u8(0x83), 0xe3, 0x01])
@@ -2394,9 +2423,9 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) {
 		}
 		// zero fill
 		mut left := if size >= 16 {
-			g.mov(.rax, 0)
-			g.mov(.rcx, size / 8)
-			g.lea_var_to_reg(.rdi, var.offset)
+			g.code_gen.mov(Amd64Register.rax, 0)
+			g.code_gen.mov(Amd64Register.rcx, size / 8)
+			g.code_gen.lea_var_to_reg(Amd64Register.rdi, var.offset)
 			g.write([u8(0xf3), 0x48, 0xab])
 			g.println('rep stosq')
 			size % 8
@@ -2426,11 +2455,11 @@ fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) {
 			g.mov_reg_to_var(var, .rax, offset: offset, typ: node.right_types[i])
 		}
 		// store the multi return struct value
-		g.lea_var_to_reg(.rax, var.offset)
+		g.code_gen.lea_var_to_reg(Amd64Register.rax, var.offset)
 	} else {
 		g.expr(node.right[0])
 	}
-	g.mov_reg(.rdx, .rax)
+	g.code_gen.mov_reg(Amd64Register.rdx, Amd64Register.rax)
 
 	mut current_offset := 0
 	for i, offset in multi_return.offsets {
@@ -2674,7 +2703,7 @@ fn (mut g Gen) gen_left_value(node ast.Expr) {
 	match node {
 		ast.Ident {
 			offset := g.get_var_offset(node.name)
-			g.lea_var_to_reg(.rax, offset)
+			g.code_gen.lea_var_to_reg(Amd64Register.rax, offset)
 		}
 		ast.SelectorExpr {
 			g.expr(node.expr)
@@ -2806,11 +2835,11 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		// optimize for ast.Ident
 		match node.left {
 			ast.Ident {
-				g.mov_reg(match node.op {
-					.left_shift, .right_shift, .unsigned_right_shift, .div, .mod { .rcx }
-					else { .rdx }
-				}, .rax)
-				g.mov_var_to_reg(.rax, node.left as ast.Ident)
+				g.code_gen.mov_reg(match node.op {
+					.left_shift, .right_shift, .unsigned_right_shift, .div, .mod { Amd64Register.rcx }
+					else { Amd64Register.rdx }
+				}, Amd64Register.rax)
+				g.code_gen.mov_var_to_reg(Amd64Register.rax, node.left as ast.Ident)
 			}
 			else {
 				g.push(.rax)
@@ -2871,7 +2900,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 					g.write([u8(0x48), 0xf7, 0xf9])
 					g.println('idiv rcx')
 				}
-				g.mov_reg(.rax, .rdx)
+				g.code_gen.mov_reg(Amd64Register.rax, Amd64Register.rdx)
 			}
 			.amp {
 				g.bitand_reg(.rax, .rdx)
@@ -3177,7 +3206,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 		ast.Ident {
 			match infix_expr.right {
 				ast.Ident {
-					g.mov_var_to_reg(.rax, infix_expr.right as ast.Ident)
+					g.code_gen.mov_var_to_reg(Amd64Register.rax, infix_expr.right as ast.Ident)
 					g.cmp_var_reg(infix_expr.left as ast.Ident, .rax)
 				}
 				ast.IntegerLiteral {
@@ -3238,11 +3267,11 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	g.println('jmp after for')
 }
 
-fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
-	g.push(.rbp)
-	g.mov_reg(.rbp, .rsp)
-	local_alloc_pos := g.pos()
-	g.sub(.rsp, 0)
+fn (mut c Amd64) fn_decl(node ast.FnDecl) {
+	c.g.push(.rbp)
+	c.mov_reg(Amd64Register.rbp, Amd64Register.rsp)
+	local_alloc_pos := c.g.pos()
+	c.g.sub(.rsp, 0)
 
 	// Copy values from registers to local vars (calling convention)
 	mut reg_args := []int{}
@@ -3251,8 +3280,8 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	mut params := []ast.Param{cap: node.params.len + 2}
 
 	// The first parameter is an address of returned struct if size > 16
-	ts := g.table.sym(node.return_type)
-	return_size := g.get_type_size(node.return_type)
+	ts := c.g.table.sym(node.return_type)
+	return_size := c.g.get_type_size(node.return_type)
 	if ts.kind in [.struct_, .multi_return] {
 		if return_size > 16 {
 			params << ast.Param{
@@ -3264,7 +3293,7 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 
 	params << node.params
 
-	args_size := params.map(g.get_type_size(it.typ))
+	args_size := params.map(c.g.get_type_size(it.typ))
 	is_floats := params.map(it.typ.is_pure_float())
 
 	mut reg_left := 6
@@ -3293,14 +3322,14 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	mut reg_idx := 0
 	for i in reg_args {
 		name := params[i].name
-		g.stack_var_pos += (8 - args_size[i] % 8) % 8
-		offset := g.allocate_by_type(name, params[i].typ)
+		c.g.stack_var_pos += (8 - args_size[i] % 8) % 8
+		offset := c.g.allocate_by_type(name, params[i].typ)
 		// copy
-		g.mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
+		c.g.mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
 			native.fn_arg_registers[reg_idx])
 		reg_idx++
 		if args_size[i] > 8 {
-			g.mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
+			c.g.mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
 				native.fn_arg_registers[reg_idx],
 				offset: 8
 			)
@@ -3310,46 +3339,46 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	// define and copy args on sse register
 	for idx, i in ssereg_args {
 		name := params[i].name
-		offset := g.allocate_by_type(name, params[i].typ)
+		offset := c.g.allocate_by_type(name, params[i].typ)
 		// copy
-		g.mov_ssereg_to_var(LocalVar{ offset: offset, typ: params[i].typ }, native.fn_arg_sse_registers[idx])
+		c.g.mov_ssereg_to_var(LocalVar{ offset: offset, typ: params[i].typ }, native.fn_arg_sse_registers[idx])
 	}
 	// define args on stack
 	mut offset := -2
 	for i in stack_args {
 		name := params[i].name
-		g.var_offset[name] = offset * 8
-		g.var_alloc_size[name] = args_size[i]
+		c.g.var_offset[name] = offset * 8
+		c.g.var_alloc_size[name] = args_size[i]
 		offset -= (args_size[i] + 7) / 8
 	}
 	// define defer vars
 	for i in 0 .. node.defer_stmts.len {
 		name := '_defer${i}'
-		g.allocate_var(name, 8, 0)
+		c.g.allocate_var(name, 8, 0)
 	}
 	// body
-	g.stmts(node.stmts)
+	c.g.stmts(node.stmts)
 	// 16 bytes align
-	g.stack_var_pos += 23
-	g.stack_var_pos /= 16
-	g.stack_var_pos *= 16
-	g.println('; stack frame size: ${g.stack_var_pos}')
-	g.write32_at(local_alloc_pos + 3, g.stack_var_pos)
+	c.g.stack_var_pos += 23
+	c.g.stack_var_pos /= 16
+	c.g.stack_var_pos *= 16
+	c.g.println('; stack frame size: ${c.g.stack_var_pos}')
+	c.g.write32_at(local_alloc_pos + 3, c.g.stack_var_pos)
 	is_main := node.name == 'main.main'
-	if is_main && g.pref.os != .linux {
+	if is_main && c.g.pref.os != .linux {
 		// println('end of main: gen exit')
 		zero := ast.IntegerLiteral{}
-		g.code_gen.gen_exit(zero)
-		g.ret()
+		c.gen_exit(zero)
+		c.g.ret()
 		return
 	}
-	g.labels.addrs[0] = g.pos()
-	g.leave()
+	c.g.labels.addrs[0] = c.g.pos()
+	c.g.leave()
 }
 
 pub fn (mut g Gen) builtin_decl_amd64(builtin BuiltinFn) {
 	g.push(.rbp)
-	g.mov_reg(.rbp, .rsp)
+	g.code_gen.mov_reg(Amd64Register.rbp, Amd64Register.rsp)
 	local_alloc_pos := g.pos()
 	g.sub(.rsp, 0)
 
@@ -3496,9 +3525,9 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) {
 
 			// zero fill
 			mut left := if size >= 16 {
-				g.mov(.rax, 0)
-				g.mov(.rcx, size / 8)
-				g.lea_var_to_reg(.rdi, var.offset)
+				g.code_gen.mov(Amd64Register.rax, 0)
+				g.code_gen.mov(Amd64Register.rcx, size / 8)
+				g.code_gen.lea_var_to_reg(Amd64Register.rdi, var.offset)
 				g.write([u8(0xf3), 0x48, 0xab])
 				g.println('rep stosq')
 				size % 8
@@ -3552,204 +3581,227 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) {
 	}
 }
 
-fn (mut g Gen) convert_bool_to_string(reg Amd64Register) {
-	g.cmp_zero(reg)
-	false_label := g.labels.new_label()
-	false_cjmp_addr := g.cjmp(.je)
-	g.labels.patches << LabelPatch{
+fn (mut c Amd64) convert_bool_to_string(r Register) {
+	reg := r as Amd64Register
+
+	c.g.cmp_zero(reg)
+	false_label := c.g.labels.new_label()
+	false_cjmp_addr := c.g.cjmp(.je)
+	c.g.labels.patches << LabelPatch{
 		id: false_label
 		pos: false_cjmp_addr
 	}
-	g.println('; jump to label ${false_label}')
+	c.g.println('; jump to label ${false_label}')
 
-	g.learel(reg, g.allocate_string('true', 3, .rel32))
+	c.learel(reg, c.g.allocate_string('true', 3, .rel32))
 
-	end_label := g.labels.new_label()
-	end_jmp_addr := g.jmp(0)
-	g.labels.patches << LabelPatch{
+	end_label := c.g.labels.new_label()
+	end_jmp_addr := c.g.jmp(0)
+	c.g.labels.patches << LabelPatch{
 		id: end_label
 		pos: end_jmp_addr
 	}
-	g.println('; jump to label ${end_label}')
+	c.g.println('; jump to label ${end_label}')
 
-	g.labels.addrs[false_label] = g.pos()
-	g.println('; label ${false_label}')
-	g.learel(reg, g.allocate_string('false', 3, .rel32))
+	c.g.labels.addrs[false_label] = c.g.pos()
+	c.g.println('; label ${false_label}')
+	c.learel(reg, c.g.allocate_string('false', 3, .rel32))
 
-	g.labels.addrs[end_label] = g.pos()
-	g.println('; label ${end_label}')
+	c.g.labels.addrs[end_label] = c.g.pos()
+	c.g.println('; label ${end_label}')
 }
 
-fn (mut g Gen) convert_int_to_string(r1 Amd64Register, r2 Amd64Register) {
+fn (mut c Amd64) convert_rune_to_string(reg Register, buffer int, var Var, config VarConfig) {
+	c.lea_var_to_reg(reg, buffer)
+
+	match reg as Amd64Register {
+		.rax {
+			c.mov_var_to_reg(Amd64Register.rdi, var, config)
+			c.g.write8(0x48)
+			c.g.write8(0x89)
+			c.g.write8(0x38)
+		}
+		else {
+			c.g.n_error('rune to string not implemented for ${reg}')
+		}
+	}
+}
+
+fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
+	r1 := a as Amd64Register
+	r2 := b as Amd64Register
+
 	if r1 != .rax {
-		g.mov_reg(.rax, r1)
+		c.mov_reg_amd64(.rax, r1)
 	}
 
 	if r2 != .rdi {
-		g.mov_reg(.rdi, r2)
+		c.mov_reg_amd64(.rdi, r2)
 	}
 
 	// check if value in rax is zero
-	g.cmp_zero(.rax)
-	skip_zero_label := g.labels.new_label()
-	skip_zero_cjmp_addr := g.cjmp(.jne)
-	g.labels.patches << LabelPatch{
+	c.g.cmp_zero(.rax)
+	skip_zero_label := c.g.labels.new_label()
+	skip_zero_cjmp_addr := c.g.cjmp(.jne)
+	c.g.labels.patches << LabelPatch{
 		id: skip_zero_label
 		pos: skip_zero_cjmp_addr
 	}
-	g.println('; jump to label ${skip_zero_label}')
+	c.g.println('; jump to label ${skip_zero_label}')
 
 	// handle zeros seperately
-	// g.mov_int_to_var(LocalVar{buffer, ast.u8_type_idx, ''}, '0'[0])
+	// c.g.mov_int_to_var(LocalVar{buffer, ast.u8_type_idx, ''}, '0'[0])
 
-	g.write8(0xc6)
-	g.write8(0x07)
-	g.write8(0x30)
-	g.println("mov BYTE PTR [rdi], '0'")
+	c.g.write8(0xc6)
+	c.g.write8(0x07)
+	c.g.write8(0x30)
+	c.g.println("mov BYTE PTR [rdi], '0'")
 
-	end_label := g.labels.new_label()
-	end_jmp_addr := g.jmp(0)
-	g.labels.patches << LabelPatch{
+	end_label := c.g.labels.new_label()
+	end_jmp_addr := c.g.jmp(0)
+	c.g.labels.patches << LabelPatch{
 		id: end_label
 		pos: end_jmp_addr
 	}
-	g.println('; jump to label ${end_label}')
+	c.g.println('; jump to label ${end_label}')
 
-	g.labels.addrs[skip_zero_label] = g.pos()
-	g.println('; label ${skip_zero_label}')
+	c.g.labels.addrs[skip_zero_label] = c.g.pos()
+	c.g.println('; label ${skip_zero_label}')
 
 	// load a pointer to the string to rdi
-	// g.lea_var_to_reg(.rdi, buffer)
+	// c.lea_var_to_reg(Amd64Register.rdi, buffer)
 
 	// detect if value in rax is negative
-	g.cmp_zero(.rax)
-	skip_minus_label := g.labels.new_label()
-	skip_minus_cjmp_addr := g.cjmp(.jge)
-	g.labels.patches << LabelPatch{
+	c.g.cmp_zero(.rax)
+	skip_minus_label := c.g.labels.new_label()
+	skip_minus_cjmp_addr := c.g.cjmp(.jge)
+	c.g.labels.patches << LabelPatch{
 		id: skip_minus_label
 		pos: skip_minus_cjmp_addr
 	}
-	g.println('; jump to label ${skip_minus_label}')
+	c.g.println('; jump to label ${skip_minus_label}')
 
 	// add a `-` sign as the first character
-	g.write8(0xc6)
-	g.write8(0x07)
-	g.write8(0x2d)
-	g.println("mov BYTE PTR [rdi], '-'")
+	c.g.write8(0xc6)
+	c.g.write8(0x07)
+	c.g.write8(0x2d)
+	c.g.println("mov BYTE PTR [rdi], '-'")
 
-	g.neg(.rax) // negate our integer to make it positive
-	g.inc(.rdi) // increment rdi to skip the `-` character
-	g.labels.addrs[skip_minus_label] = g.pos()
-	g.println('; label ${skip_minus_label}')
+	c.g.neg(.rax) // negate our integer to make it positive
+	c.g.inc(.rdi) // increment rdi to skip the `-` character
+	c.g.labels.addrs[skip_minus_label] = c.g.pos()
+	c.g.println('; label ${skip_minus_label}')
 
-	g.mov_reg(.r12, .rdi) // copy the buffer position to r12
+	c.mov_reg_amd64(.r12, .rdi) // copy the buffer position to r12
 
-	loop_label := g.labels.new_label()
-	loop_start := g.pos()
-	g.println('; label ${loop_label}')
+	loop_label := c.g.labels.new_label()
+	loop_start := c.g.pos()
+	c.g.println('; label ${loop_label}')
 
-	g.push(.rax)
+	c.g.push(.rax)
 
-	g.mov(.rdx, 0)
-	g.mov(.rbx, 10)
-	g.div_reg(.rax, .rbx)
-	g.add8(.rdx, '0'[0])
+	c.mov(Amd64Register.rdx, 0)
+	c.mov(Amd64Register.rbx, 10)
+	c.g.div_reg(.rax, .rbx)
+	c.g.add8(.rdx, '0'[0])
 
-	g.write8(0x66)
-	g.write8(0x89)
-	g.write8(0x17)
-	g.println('mov BYTE PTR [rdi], rdx')
+	c.g.write8(0x66)
+	c.g.write8(0x89)
+	c.g.write8(0x17)
+	c.g.println('mov BYTE PTR [rdi], rdx')
 
 	// divide the integer in rax by 10 for next iteration
-	g.pop(.rax)
-	g.mov(.rbx, 10)
-	g.cdq()
-	g.write8(0x48)
-	g.write8(0xf7)
-	g.write8(0xfb)
-	g.println('idiv rbx')
+	c.g.pop(.rax)
+	c.mov(Amd64Register.rbx, 10)
+	c.g.cdq()
+	c.g.write8(0x48)
+	c.g.write8(0xf7)
+	c.g.write8(0xfb)
+	c.g.println('idiv rbx')
 
 	// go to the next character
-	g.inc(.rdi)
+	c.g.inc(.rdi)
 
 	// if the number in rax still isn't zero, repeat
-	g.cmp_zero(.rax)
-	loop_cjmp_addr := g.cjmp(.jg)
-	g.labels.patches << LabelPatch{
+	c.g.cmp_zero(.rax)
+	loop_cjmp_addr := c.g.cjmp(.jg)
+	c.g.labels.patches << LabelPatch{
 		id: loop_label
 		pos: loop_cjmp_addr
 	}
-	g.println('; jump to label ${skip_minus_label}')
-	g.labels.addrs[loop_label] = loop_start
+	c.g.println('; jump to label ${skip_minus_label}')
+	c.g.labels.addrs[loop_label] = loop_start
 
 	// after all was converted, reverse the string
-	reg := g.get_builtin_arg_reg(.reverse_string, 0)
-	g.mov_reg(reg, .r12)
-	g.call_builtin(.reverse_string)
+	reg := c.g.get_builtin_arg_reg(.reverse_string, 0) as Amd64Register
+	c.mov_reg_amd64(reg, .r12)
+	c.g.call_builtin(.reverse_string)
 
-	g.labels.addrs[end_label] = g.pos()
-	g.println('; label ${end_label}')
+	c.g.labels.addrs[end_label] = c.g.pos()
+	c.g.println('; label ${end_label}')
 }
 
-fn (mut g Gen) reverse_string(reg Amd64Register) {
+fn (mut c Amd64) reverse_string(r Register) {
+	reg := r as Amd64Register
+
 	if reg != .rdi {
-		g.mov_reg(.rdi, reg)
+		c.mov_reg_amd64(.rdi, reg)
 	}
 
-	g.mov(.eax, 0)
+	c.mov(Amd64Register.eax, 0)
 
-	g.write8(0x48)
-	g.write8(0x8d)
-	g.write8(0x48)
-	g.write8(0xff)
-	g.println('lea rcx, [rax-0x1]')
+	c.g.write8(0x48)
+	c.g.write8(0x8d)
+	c.g.write8(0x48)
+	c.g.write8(0xff)
+	c.g.println('lea rcx, [rax-0x1]')
 
-	g.mov_reg(.rsi, .rdi)
+	c.mov_reg_amd64(.rsi, .rdi)
 
-	g.write8(0xf2)
-	g.write8(0xae)
-	g.println('repnz scas al, BYTE PTR es:[rdi]')
+	c.g.write8(0xf2)
+	c.g.write8(0xae)
+	c.g.println('repnz scas al, BYTE PTR es:[rdi]')
 
-	g.sub8(.rdi, 0x2)
-	g.cmp_reg(.rdi, .rsi)
+	c.g.sub8(.rdi, 0x2)
+	c.g.cmp_reg(.rdi, .rsi)
 
-	g.write8(0x7e)
-	g.write8(0x0a)
-	g.println('jle 0x1e')
+	c.g.write8(0x7e)
+	c.g.write8(0x0a)
+	c.g.println('jle 0x1e')
 
-	g.write8(0x86)
-	g.write8(0x07)
-	g.println('xchg BYTE PTR [rdi], al')
+	c.g.write8(0x86)
+	c.g.write8(0x07)
+	c.g.println('xchg BYTE PTR [rdi], al')
 
-	g.write8(0x86)
-	g.write8(0x06)
-	g.println('xchg BYTE PTR [rsi], al')
+	c.g.write8(0x86)
+	c.g.write8(0x06)
+	c.g.println('xchg BYTE PTR [rsi], al')
 
-	g.std()
+	c.g.std()
 
-	g.write8(0xaa)
-	g.println('stos BYTE PTR es:[rdi], al')
+	c.g.write8(0xaa)
+	c.g.println('stos BYTE PTR es:[rdi], al')
 
-	g.cld()
+	c.g.cld()
 
-	g.write8(0xac)
-	g.println('lods al, BYTE PTR ds:[rsi]')
+	c.g.write8(0xac)
+	c.g.println('lods al, BYTE PTR ds:[rsi]')
 
-	g.write8(0xeb)
-	g.write8(0xf1)
-	g.println('jmp 0xf')
+	c.g.write8(0xeb)
+	c.g.write8(0xf1)
+	c.g.println('jmp 0xf')
 }
 
-fn (mut g Gen) gen_match_expr_amd64(expr ast.MatchExpr) {
-	branch_labels := []int{len: expr.branches.len, init: g.labels.new_label() + index * 0} // call new_label for all elements in the array
-	end_label := g.labels.new_label()
+fn (mut c Amd64) gen_match_expr(expr ast.MatchExpr) {
+	branch_labels := []int{len: expr.branches.len, init: c.g.labels.new_label() + index * 0} // call new_label for all elements in the array
+	end_label := c.g.labels.new_label()
 
 	if expr.is_sum_type {
 		// TODO
 	} else {
-		g.expr(expr.cond)
+		c.g.expr(expr.cond)
 	}
-	g.push(.rax)
+	c.g.push(.rax)
 
 	mut else_label := 0
 	for i, branch in expr.branches {
@@ -3759,58 +3811,58 @@ fn (mut g Gen) gen_match_expr_amd64(expr ast.MatchExpr) {
 			for cond in branch.exprs {
 				match cond {
 					ast.RangeExpr {
-						g.pop(.rdx)
-						g.expr(cond.low)
-						g.cmp_reg(.rax, .rdx)
-						g.write([u8(0x0f), 0x9e, 0xc3])
-						g.println('setle bl')
-						g.expr(cond.high)
-						g.cmp_reg(.rax, .rdx)
-						g.write([u8(0x0f), 0x9d, 0xc1])
-						g.println('setge cl')
-						g.write([u8(0x20), 0xcb])
-						g.println('and bl, cl')
-						g.write([u8(0x84), 0xdb])
-						g.println('test bl, bl')
-						then_addr := g.cjmp(.jne)
-						g.labels.patches << LabelPatch{
+						c.g.pop(.rdx)
+						c.g.expr(cond.low)
+						c.g.cmp_reg(.rax, .rdx)
+						c.g.write([u8(0x0f), 0x9e, 0xc3])
+						c.g.println('setle bl')
+						c.g.expr(cond.high)
+						c.g.cmp_reg(.rax, .rdx)
+						c.g.write([u8(0x0f), 0x9d, 0xc1])
+						c.g.println('setge cl')
+						c.g.write([u8(0x20), 0xcb])
+						c.g.println('and bl, cl')
+						c.g.write([u8(0x84), 0xdb])
+						c.g.println('test bl, bl')
+						then_addr := c.g.cjmp(.jne)
+						c.g.labels.patches << LabelPatch{
 							id: branch_labels[i]
 							pos: then_addr
 						}
-						g.push(.rdx)
+						c.g.push(.rdx)
 					}
 					else {
-						g.expr(cond)
-						g.pop(.rdx)
-						g.cmp_reg(.rax, .rdx)
-						then_addr := g.cjmp(.je)
-						g.labels.patches << LabelPatch{
+						c.g.expr(cond)
+						c.g.pop(.rdx)
+						c.g.cmp_reg(.rax, .rdx)
+						then_addr := c.g.cjmp(.je)
+						c.g.labels.patches << LabelPatch{
 							id: branch_labels[i]
 							pos: then_addr
 						}
-						g.push(.rdx)
+						c.g.push(.rdx)
 					}
 				}
 			}
 		}
 	}
-	g.pop(.rdx)
-	else_addr := g.jmp(0)
-	g.labels.patches << LabelPatch{
+	c.g.pop(.rdx)
+	else_addr := c.g.jmp(0)
+	c.g.labels.patches << LabelPatch{
 		id: else_label
 		pos: else_addr
 	}
 	for i, branch in expr.branches {
-		g.labels.addrs[branch_labels[i]] = g.pos()
+		c.g.labels.addrs[branch_labels[i]] = c.g.pos()
 		for stmt in branch.stmts {
-			g.stmt(stmt)
+			c.g.stmt(stmt)
 		}
-		g.labels.patches << LabelPatch{
+		c.g.labels.patches << LabelPatch{
 			id: end_label
-			pos: g.jmp(0)
+			pos: c.g.jmp(0)
 		}
 	}
-	g.labels.addrs[end_label] = g.pos()
+	c.g.labels.addrs[end_label] = c.g.pos()
 }
 
 fn (mut g Gen) mov_ssereg_to_var(var Var, reg Amd64SSERegister, config VarConfig) {
@@ -4082,7 +4134,7 @@ fn (mut g Gen) gen_cast_expr_amd64(expr ast.CastExpr) {
 				}
 				g.labels.addrs[label1] = g.pos()
 				// if castee has the leftmost bit
-				g.mov_reg(.rdx, .rax)
+				g.code_gen.mov_reg(Amd64Register.rdx, Amd64Register.rax)
 				g.write([u8(0x48), 0xd1, 0xe8])
 				g.println('shr rax')
 				g.write([u8(0x83), 0xe2, 0x01])
@@ -4187,4 +4239,9 @@ fn (mut g Gen) gen_cast_expr_amd64(expr ast.CastExpr) {
 			g.mov_extend_reg(.rax, .rax, expr.typ)
 		}
 	}
+}
+
+// Temporary!
+fn (mut c Amd64) adr(r Arm64Register, delta int) {
+	panic('`adr` instruction not supported with amd64')
 }
