@@ -575,7 +575,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					}
 				}
 
-				if mut field.expr is ast.StructInit {
+				if field_type_sym.kind == .struct_ && !(field_type_sym.info as ast.Struct).is_anon
+					&& mut field.expr is ast.StructInit {
 					if field.expr.is_anon {
 						c.error('cannot assign anonymous `struct` to a typed `struct`',
 							field.expr.pos)
