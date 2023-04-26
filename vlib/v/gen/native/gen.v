@@ -332,6 +332,21 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref_ &pref.Pre
 	return g.nlines, g.buf.len
 }
 
+// used in macho_test.v
+pub fn macho_test_new_gen(p &pref.Preferences, out_name string) &Gen {
+	mut g := Gen{
+		pref: p
+		out_name: out_name
+		table: ast.new_table()
+		code_gen: Amd64{
+			g: 0
+		}
+		labels: 0
+	}
+	g.code_gen.g = &mut g
+	return &mut g
+}
+
 pub fn (mut g Gen) typ(a int) &ast.TypeSymbol {
 	return g.table.type_symbols[a]
 }
