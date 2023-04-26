@@ -655,21 +655,9 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 				.eq, .ne {
 					if cond.left is ast.SelectorExpr
 						&& cond.right in [ast.IntegerLiteral, ast.StringLiteral] {
-						if cond.right is ast.IntegerLiteral
-							&& c.is_comptime_selector_field_name(cond.left as ast.SelectorExpr, 'indirections') {
-							ret := match cond.op {
-								.eq { c.comptime_fields_default_type.nr_muls() == cond.right.val.i64() }
-								.ne { c.comptime_fields_default_type.nr_muls() != cond.right.val.i64() }
-								else { false }
-							}
-							return if ret {
-								ComptimeBranchSkipState.eval
-							} else {
-								ComptimeBranchSkipState.skip
-							}
-						}
-						return .unknown
+						// $if field.indirections == 1
 						// $if method.args.len == 1
+						return .unknown
 					} else if cond.left is ast.SelectorExpr
 						&& c.check_comptime_is_field_selector_bool(cond.left as ast.SelectorExpr) {
 						// field.is_public (from T.fields)

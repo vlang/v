@@ -3199,22 +3199,32 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	// second use
 	if node.kind in [.constant, .global, .variable] {
 		info := node.info as ast.IdentVar
+		typ := if c.is_comptime_var(node) {
+			ctype := c.get_comptime_var_type(node)
+			if ctype != ast.void_type {
+				ctype
+			} else {
+				info.typ
+			}
+		} else {
+			info.typ
+		}
 		// Got a var with type T, return current generic type
 		if node.or_expr.kind != .absent {
-			if !info.typ.has_flag(.option) {
+			if !typ.has_flag(.option) {
 				if node.or_expr.kind == .propagate_option {
 					c.error('cannot use `?` on non-option variable', node.pos)
 				} else if node.or_expr.kind == .block {
 					c.error('cannot use `or {}` block on non-option variable', node.pos)
 				}
 			}
-			unwrapped_typ := info.typ.clear_flags(.option, .result)
+			unwrapped_typ := typ.clear_flags(.option, .result)
 			c.expected_or_type = unwrapped_typ
 			c.stmts_ending_with_expression(node.or_expr.stmts)
-			c.check_or_expr(node.or_expr, info.typ, c.expected_or_type, node)
+			c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
 			return unwrapped_typ
 		}
-		return info.typ
+		return typ
 	} else if node.kind == .function {
 		info := node.info as ast.IdentFn
 		return info.typ
