@@ -88,7 +88,6 @@ see also `v help build`.
             and returns s.
          getchar() int
             Read one character from stdin and return it.
-            Print "V Panic" + msg, along with an optional backtrace, and then exit.
          vsprintf(str &char, format &char, ap va_list) int
             See `man vsprintf`.
          vsnprintf(str &char, size usize, format &char, ap va_list) int
@@ -116,7 +115,7 @@ see also `v help build`.
       systems also (although we do not test it as regularly as for the above):
             `vinix`,
             `ios`,
-            `android`, `termux`, 
+            `android`, `termux`,
             `freebsd`, `openbsd`, `netbsd`, `dragonfly`,
             `solaris`, `serenity`, `haiku`,
             `wasm32`, `wasm32-wasi`, `wasm32-emscripten`
