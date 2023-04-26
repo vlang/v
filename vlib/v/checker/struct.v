@@ -324,7 +324,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 						continue
 					}
 					gtyp_name := c.table.sym(gtyp).name
-					if gtyp_name !in c.table.cur_fn.generic_names {
+					if gtyp_name.len == 1 && gtyp_name !in c.table.cur_fn.generic_names {
 						cur_generic_names := '(' + c.table.cur_fn.generic_names.join(',') + ')'
 						c.error('generic struct init type parameter `${gtyp_name}` must be within the parameters `${cur_generic_names}` of the current generic function',
 							node.pos)
