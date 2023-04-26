@@ -251,6 +251,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			}
 		} $else {
 			is_none := val.$(field.name).str() == 'unknown sum type value'
+				|| val.$(field.name).str() == '&nil'
 			if !is_none {
 				e.encode_newline(level, mut wr)!
 				if json_name != '' {
@@ -265,7 +266,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				}
 			}
 
-			$if field.indirections > 0 {
+			$if field.indirections != 0 {
 				if val.$(field.name) != unsafe { nil } {
 					$if field.indirections == 1 {
 						e.encode_value_with_level(*val.$(field.name), level + 1, mut wr)!
