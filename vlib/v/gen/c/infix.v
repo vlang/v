@@ -100,7 +100,9 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	is_none_check := node.left_type.has_flag(.option) && node.right is ast.None
 	if is_none_check {
 		g.gen_is_none_check(node)
-	} else if (left.typ.is_ptr() && right.typ.is_int()) || (right.typ.is_ptr() && left.typ.is_int()) {
+	} else if (left.typ.is_ptr() && right.typ.is_int())
+		|| (right.typ.is_ptr() && left.typ.is_int())
+		|| (left.typ.is_ptr() && right.typ == ast.nil_type) {
 		g.gen_plain_infix_expr(node)
 	} else if (left.typ.idx() == ast.string_type_idx || (!has_defined_eq_operator
 		&& left.unaliased.idx() == ast.string_type_idx)) && node.right is ast.StringLiteral
