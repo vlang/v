@@ -312,7 +312,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	function := binaryen.addfunction(g.mod, name.str, params_type, return_type, temporaries.data,
 		temporaries.len, wasm_expr)
-	
+
 	mut export_name := name.str
 	if cattr := node.attrs.find_first('export') {
 		export_name = cattr.arg.str
