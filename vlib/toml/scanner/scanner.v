@@ -589,12 +589,22 @@ fn (mut s Scanner) extract_number() !string {
 	}
 	s.pos++
 	s.col++
-	if u8(s.peek(1)).is_digit() && (s.peek(2) == `\n` || s.peek(2) == `,`) && s.is_left_of_assign {
-		s.pos++
-		s.col++
-	}
 	for s.pos < s.text.len {
 		c = s.at()
+		// Adjust scanner position to floating point numbers
+		mut i, mut float_precision := 1, 0
+		for c_ := u8(s.peek(i)); c_ != scanner.end_of_text && c_ != `\n`; c_ = u8(s.peek(i)) {
+			if !u8(c_).is_digit() && c_ != `.` && c_ != `,` {
+				float_precision = 0
+				break
+			}
+			if u8(c_).is_digit() && c == `.` {
+				float_precision++
+			}
+			i++
+		}
+		s.pos += float_precision
+		s.col += float_precision
 		// Handle signed exponent notation. I.e.: 3e2, 3E2, 3e-2, 3E+2, 3e0, 3.1e2, 3.1E2, -1E-1
 		if c in [`e`, `E`] && s.peek(1) in [`+`, `-`] && u8(s.peek(2)).is_digit() {
 			s.pos += 2

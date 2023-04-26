@@ -20,9 +20,9 @@ floats = [0.0, 1.0, 2.0, 3.0]
 
 floats_br = [
   0.0,
-  1.0,
-  2.0,
-  3.0
+  1.05,
+  2.025,
+  3.5001
 ]
 
 int_map = {"a" = 0, "b" = 1, "c" = 2, "d" = 3}
@@ -81,7 +81,7 @@ fn test_reflect() {
 	assert user.strings == ['v matures', 'like rings', 'spread in the', 'water']
 	assert user.bools == [true, false, true, true]
 	assert user.floats == [f32(0.0), 1.0, 2.0, 3.0]
-	assert user.floats_br == [f32(0.0), 1.0, 2.0, 3.0]
+	assert user.floats_br == [f32(0.0), 1.05, 2.025, 3.5001]
 	assert user.int_map == {
 		'a': 0
 		'b': 1
