@@ -1345,13 +1345,13 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 			if !param.typ.has_flag(.generic) {
 				continue
 			}
+			param_typ := param.typ
 			if call_arg.expr is ast.Ident {
 				if call_arg.expr.obj is ast.Var {
 					if call_arg.expr.obj.ct_type_var !in [.generic_param, .no_comptime] {
 						mut ctyp := c.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := c.table.sym(ctyp)
-							param_typ := param.typ
 							if arg_sym.kind == .array && param_typ.has_flag(.generic)
 								&& c.table.final_sym(param_typ).kind == .array {
 								ctyp = (arg_sym.info as ast.Array).elem_type
@@ -1361,7 +1361,6 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 					} else if call_arg.expr.obj.ct_type_var == .generic_param {
 						mut ctyp := c.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
-							param_typ := param.typ
 							arg_sym := c.table.final_sym(call_arg.typ)
 							param_typ_sym := c.table.sym(param_typ)
 
@@ -1413,6 +1412,14 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 						}
 					}
 				}
+			} else if call_arg.expr is ast.PrefixExpr {
+				if call_arg.expr.right is ast.ComptimeSelector {
+					comptime_args[i] = c.get_comptime_var_type(call_arg.expr.right)
+					comptime_args[i] = comptime_args[i].deref()
+					if comptime_args[i].nr_muls() > 0 && param_typ.nr_muls() > 0 {
+						comptime_args[i] = comptime_args[i].set_nr_muls(0)
+					}
+				}
 			} else if call_arg.expr is ast.ComptimeSelector && c.is_comptime_var(call_arg.expr) {
 				comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
 			}
@@ -1438,7 +1445,6 @@ fn (mut c Checker) resolve_fn_generic_args(func ast.Fn, mut node ast.CallExpr) [
 				else {}
 			}
 		}
-
 		mut comptime_args := c.get_comptime_args(func, node, concrete_types)
 		if comptime_args.len > 0 {
 			for k, v in comptime_args {
@@ -1806,6 +1812,12 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					c.fail_if_unreadable(arg.expr, got_arg_typ, 'argument')
 				}
 			}
+			if concrete_types.len > 0 && method.generic_names.len != rec_concrete_types.len {
+				concrete_types = c.resolve_fn_generic_args(method, mut node)
+				if !concrete_types[0].has_flag(.generic) {
+					c.table.register_fn_concrete_types(method.fkey(), concrete_types)
+				}
+			}
 			if exp_arg_typ.has_flag(.generic) {
 				method_concrete_types := if method.generic_names.len == rec_concrete_types.len {
 					rec_concrete_types
@@ -1819,7 +1831,6 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				} else {
 					continue
 				}
-
 				if got_arg_typ.has_flag(.generic) {
 					if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len > 0 {
 						got_arg_typ = c.unwrap_generic(got_arg_typ)
