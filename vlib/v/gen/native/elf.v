@@ -760,13 +760,10 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 	g.elf_text_header_addr = text_section.header.offset
 	g.write64_at(g.elf_text_header_addr + 24, g.pos()) // write the code start pos to the text section
 
-	g.call(native.placeholder)
+	g.code_gen.call(native.placeholder)
 	g.println('; call main.main')
-	if g.pref.arch == .arm64 {
-	} else {
-		g.mov64(.rax, 0)
-	}
-	g.ret()
+	g.code_gen.mov64(g.code_gen.main_reg(), 0)
+	g.code_gen.ret()
 	g.println('; return 0')
 
 	g.debug_pos = g.buf.len
@@ -801,7 +798,7 @@ pub fn (mut g Gen) generate_simple_elf_header() {
 	g.code_start_pos = g.pos()
 	g.debug_pos = int(g.pos())
 
-	g.call(native.placeholder)
+	g.code_gen.call(native.placeholder)
 	g.println('; call main.main')
 
 	// generate exit syscall
@@ -813,7 +810,7 @@ pub fn (mut g Gen) generate_simple_elf_header() {
 		}
 		.amd64 {
 			g.code_gen.mov(Amd64Register.edi, 0)
-			g.code_gen.mov(Amd64Register.eax, g.nsyscall_exit())
+			g.code_gen.mov(Amd64Register.eax, g.nsyscall(.exit))
 			g.code_gen.syscall()
 		}
 		else {

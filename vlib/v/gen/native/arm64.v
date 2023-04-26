@@ -42,8 +42,9 @@ mut:
 	// arm64 specific stuff for code generation
 }
 
-fn (mut x Arm64) allocate_var(name string, size int, initial_val int) {
+fn (mut x Arm64) allocate_var(name string, size int, initial_val int) int {
 	eprintln('TODO: allocating var on arm64 (${name}) = ${size} = ${initial_val}')
+	return 0
 }
 
 fn (mut c Arm64) mov(reg Register, val int) {
@@ -220,7 +221,7 @@ pub fn (mut c Arm64) call_fn(node ast.CallExpr) {
 	if node.args.len > 6 {
 		c.g.n_error('more than 6 args not allowed for now')
 	}
-	c.g.call(int(addr))
+	c.call(int(addr))
 	c.g.println('fn call `${name}()`')
 	// println('call $name $addr')
 }
@@ -316,6 +317,14 @@ pub fn (mut c Arm64) gen_arm64_exit(expr ast.Expr) {
 	c.svc()
 }
 
+fn (mut c Arm64) gen_print(s string, fd int) {
+	panic('Arm64.gen_print() is not implemented')
+}
+
+fn (mut c Arm64) gen_print_reg(r Register, n int, fd int) {
+	panic('Arm64.gen_print_reg() is not implemented')
+}
+
 fn (mut g Gen) gen_asm_stmt_arm64(asm_node ast.AsmStmt) {
 	g.v_error('The asm statement for arm64 not yet implemented', asm_node.pos)
 }
@@ -356,6 +365,148 @@ fn (mut c Arm64) mov_reg(r1 Register, r2 Register) {
 	panic('Arm64.mov_reg() not implemented')
 }
 
+fn (mut c Arm64) mov64(r Register, val i64) {
+	panic('Arm64.mov64() not implemented')
+}
+
 fn (mut c Arm64) convert_rune_to_string(r Register, buffer int, var Var, config VarConfig) {
 	panic('Arm64.convert_rune_to_string() not implemented')
+}
+
+fn (mut c Arm64) apicall(call ApiCall) {
+	panic('Arm64.apicall() not implemented')
+}
+
+fn (mut c Arm64) trap() {
+	panic('Arm64.trap() not implemented')
+}
+
+fn (mut c Arm64) leave() {
+	panic('Arm64.leave() not implemented')
+}
+
+fn (mut c Arm64) ret() {
+	c.g.write32(0xd65f03c0)
+	c.g.println('ret')
+}
+
+fn (mut c Arm64) assign_stmt(node ast.AssignStmt) {
+	panic('Arm64.assign_stmt() not implemented')
+}
+
+fn (mut c Arm64) builtin_decl(builtin BuiltinFn) {
+	panic('Arm64.builtin_decl() not implemented')
+}
+
+fn (mut c Arm64) infix_expr(node ast.InfixExpr) {
+	panic('Arm64.infix_expr() not implemented')
+}
+
+fn (mut c Arm64) return_stmt(node ast.Return) {
+	panic('Arm64.return_stmt() not implemented')
+}
+
+fn (mut c Arm64) gen_cast_expr(expr ast.CastExpr) {
+	panic('Arm64.gen_cast_expr() not implemented')
+}
+
+fn (mut c Arm64) prefix_expr(expr ast.PrefixExpr) {
+	panic('Arm64.prefix_expr() not implemented')
+}
+
+fn (mut c Arm64) call_builtin(name Builtin) i64 {
+	panic('Arm64.call_builtin() not implemented')
+}
+
+fn (mut c Arm64) gen_asm_stmt(asm_node ast.AsmStmt) {
+	panic('Arm64.gen_asm_stmt() not implemented')
+}
+
+fn (mut c Arm64) gen_assert(assert_node ast.AssertStmt) {
+	panic('Arm64.gen_assert() not implemented')
+}
+
+fn (mut c Arm64) infloop() {
+	c.g.write32(u8(0x14))
+	c.g.println('jmp $$')
+}
+
+fn (mut c Arm64) jmp_back(start i64) {
+	panic('Arm64.jmp_back() not implemented')
+}
+
+fn (mut c Arm64) init_struct(var Var, init ast.StructInit) {
+	panic('Arm64.init_struct() not implemented')
+}
+
+fn (mut c Arm64) load_fp_var(var Var, config VarConfig) {
+	panic('Arm64.load_fp_var() not implemented')
+}
+
+fn (mut c Arm64) load_fp(val f64) {
+	panic('Arm64.load_fp() not implemented')
+}
+
+fn (mut c Arm64) for_in_stmt(node ast.ForInStmt) {
+	panic('Arm64.for_in_stmt() not implemented')
+}
+
+fn (mut c Arm64) cmp_zero(reg Register) {
+	panic('Arm64.cmp_zero() not implemented')
+}
+
+fn (mut c Arm64) cmp_var_reg(var Var, reg Register, config VarConfig) {
+	panic('Arm64.cmp_var_reg() not implemented')
+}
+
+fn (mut c Arm64) cmp_var(var Var, val int, config VarConfig) {
+	panic('Arm64.cmp_var() not implemented')
+}
+
+fn (mut c Arm64) dec_var(var Var, config VarConfig) {
+	panic('Arm64.dec_var() not implemented')
+}
+
+fn (mut c Arm64) inc_var(var Var, config VarConfig) {
+	panic('Arm64.inc_var() not implemented')
+}
+
+fn (mut c Arm64) cjmp(op JumpOp) int {
+	panic('Arm64.cjmp() not implemented')
+}
+
+fn (mut c Arm64) jmp(addr int) int {
+	panic('Arm64.jmp() not implemented')
+}
+
+fn (mut c Arm64) gen_syscall(node ast.CallExpr) {
+	panic('Arm64.gen_syscall() not implemented')
+}
+
+fn (mut c Arm64) movabs(reg Register, val i64) {
+	panic('Arm64.movabs() not implemented')
+}
+
+fn (mut c Arm64) gen_selector_expr(expr ast.SelectorExpr) {
+	panic('Arm64.gen_selector_expr() not implemented')
+}
+
+fn (mut c Arm64) mov_reg_to_var(var Var, reg Register, config VarConfig) {
+	panic('Arm64.mov_reg_to_var() not implemented')
+}
+
+fn (mut c Arm64) mov_int_to_var(var Var, integer int, config VarConfig) {
+	panic('Arm64.mov_int_to_var() not implemented')
+}
+
+fn (mut c Arm64) call(addr int) i64 {
+	panic('Arm64.call() not implemented')
+}
+
+fn (mut c Arm64) call_addr_at(addr int, at i64) i64 {
+	panic('Arm64.call_addr_at() not implemented')
+}
+
+fn (mut c Arm64) gen_concat_expr(expr ast.ConcatExpr) {
+	panic('Arm64.gen_concat_expr() not implemented')
 }
