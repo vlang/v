@@ -594,11 +594,11 @@ fn (mut s Scanner) extract_number() !string {
 		// Adjust scanner position to floating point numbers
 		mut i, mut float_precision := 1, 0
 		for c_ := u8(s.peek(i)); c_ != scanner.end_of_text && c_ != `\n`; c_ = u8(s.peek(i)) {
-			if !u8(c_).is_digit() && c_ != `.` && c_ != `,` {
+			if !c_.is_digit() && c_ != `.` && c_ != `,` {
 				float_precision = 0
 				break
 			}
-			if u8(c_).is_digit() && c == `.` {
+			if c_.is_digit() && c == `.` {
 				float_precision++
 			}
 			i++
