@@ -38,6 +38,13 @@ mut:
 	is_return_call bool
 	structs           map[ast.Type]StructInfo // Cached struct field offsets
 	module_import_namespace string
+	loop_breakpoint_stack []LoopBreakpoint
+}
+
+struct LoopBreakpoint {
+	c_continue wasm.LabelIndex
+	c_break    wasm.LabelIndex
+	name       string
 }
 
 struct StructInfo {
@@ -223,7 +230,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			}
 		}
 	}
-	g.mod.commit(g.func, false)
+	g.mod.commit(g.func, true)
 	g.local_vars.clear()
 	g.return_vars.clear()
 	g.ret_types.clear()
@@ -231,6 +238,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.sp_global = none
 	g.stack_frame = 0
 	g.is_leaf_function = true
+	assert g.loop_breakpoint_stack.len == 0
 }
 
 fn (mut g Gen) literalint(val i64, expected ast.Type) {
@@ -430,32 +438,32 @@ mut:
 	block binaryen.Expression
 } */
 
-fn (mut g Gen) if_branch(ifexpr ast.IfExpr, idx int) {
+fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, idx int) {
 	curr := ifexpr.branches[idx]
-	params := if ifexpr.typ == ast.void_type {
+	params := if expected == ast.void_type {
 		[]wasm.ValType{}
 	} else {
-		g.unpack_type(ifexpr.typ).map(g.get_wasm_type(it))
+		g.unpack_type(expected).map(g.get_wasm_type(it))
 	}
 
 	g.expr(curr.cond, ast.bool_type)
 	g.func.c_if([], params)
 	{
-		g.expr_stmts(curr.stmts, ifexpr.typ)
+		g.expr_stmts(curr.stmts, expected)
 	}
 	g.func.c_else()
 	{
 		if ifexpr.has_else && idx + 2 >= ifexpr.branches.len {
-			g.expr_stmts(ifexpr.branches[idx + 1].stmts, ifexpr.typ)
+			g.expr_stmts(ifexpr.branches[idx + 1].stmts, expected)
 		} else if !(idx + 1 >= ifexpr.branches.len) {
-			g.if_branch(ifexpr, idx + 1)
+			g.if_branch(ifexpr, expected, idx + 1)
 		}
 	}
 	g.func.c_end_if()
 }
 
-fn (mut g Gen) if_expr(ifexpr ast.IfExpr) {
-	g.if_branch(ifexpr, 0)
+fn (mut g Gen) if_expr(ifexpr ast.IfExpr, expected ast.Type) {
+	g.if_branch(ifexpr, expected, 0)
 }
 
 fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []Var) {
@@ -703,7 +711,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			g.func.i32_const(0)
 		}
 		ast.IfExpr {
-			g.if_expr(node)
+			g.if_expr(node, expected)
 		}
 		ast.CastExpr {
 			g.expr(node.expr, node.expr_type)
@@ -752,41 +760,35 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 		ast.ExprStmt {
 			g.expr(node.expr, expected)
 		}
-		/* ast.ForStmt {
-			lbl := g.new_for_label(node.label)
+		ast.ForStmt {
+			block := g.func.c_block([], [])
+			{
+				loop := g.func.c_loop([], [])
+				{
+					g.loop_breakpoint_stack << LoopBreakpoint{
+						c_continue: block
+						c_break: loop
+						name: node.label
+					}
 
-			lpp_name := 'L${lbl}'
-			blk_name := 'B${lbl}'
-			expr := if !node.is_inf {
-				// binaryen.bif(g.mod, g.expr(node.cond, ast.bool_type))
+					if !node.is_inf {
+						g.expr(node.cond, ast.bool_type)
+						g.func.eqz(.i32_t)
+						g.func.c_br_if(block) // !cond, goto end
+						g.expr_stmts(node.stmts, ast.void_type)
+						g.func.c_br(loop) // goto loop
+					} else {
+						g.expr_stmts(node.stmts, ast.void_type)
+						g.func.c_br(loop)
+					}
 
-				body := g.expr_stmts(node.stmts, ast.void_type)
-				lbody := [
-					// If !condition, leave.
-					binaryen.br(g.mod, blk_name.str, binaryen.unary(g.mod, binaryen.eqzint32(),
-						g.expr(node.cond, ast.bool_type)), unsafe { nil }),
-					// Body.
-					body,
-					// Unconditional loop back to top.
-					binaryen.br(g.mod, lpp_name.str, unsafe { nil }, unsafe { nil }),
-				]
-				loop := binaryen.loop(g.mod, lpp_name.str, g.mkblock(lbody))
-
-				binaryen.block(g.mod, blk_name.str, &loop, 1, type_none)
-			} else {
-				loop_top := binaryen.br(g.mod, lpp_name.str, unsafe { nil }, unsafe { nil })
-
-				loop := binaryen.loop(g.mod, lpp_name.str, g.mkblock([
-					g.expr_stmts(node.stmts, ast.void_type),
-					loop_top,
-				]))
-
-				binaryen.block(g.mod, blk_name.str, &loop, 1, type_none)
+					g.loop_breakpoint_stack.pop()
+				}
+				g.func.c_end(loop)
 			}
-			g.pop_for_label()
-			expr
+			g.func.c_end(block)
 		}
-		ast.ForCStmt {
+		/* ast.ForCStmt {
 			mut for_stmt := []binaryen.Expression{}
 			if node.has_init {
 				for_stmt << g.expr_stmt(node.init, ast.void_type)
