@@ -229,7 +229,8 @@ pub fn (mut p Parser) parse_multi_return_type() ast.Type {
 }
 
 // given anon name based off signature when `name` is blank
-pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
+pub fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type {
+	fn_type_pos := p.peek_token(-2).pos()
 	p.check(.key_fn)
 
 	for attr in p.attrs {
@@ -273,8 +274,13 @@ pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 		is_variadic: is_variadic
 		return_type: return_type
 		return_type_pos: return_type_pos
+		generic_names: generic_types.map(p.table.sym(it).name)
 		is_method: false
 		attrs: p.attrs
+	}
+	if has_generic && generic_types.len == 0 && name.len > 0 {
+		p.error_with_pos('`${name}` type is generic fntype, must specify the generic type names, e.g. ${name}[T]',
+			fn_type_pos)
 	}
 	// MapFooFn typedefs are manually added in cheaders.v
 	// because typedefs get generated after the map struct is generated
@@ -543,7 +549,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 	match p.tok.kind {
 		.key_fn {
 			// func
-			return p.parse_fn_type('')
+			return p.parse_fn_type('', []ast.Type{})
 		}
 		.lsbr, .nilsbr {
 			// array

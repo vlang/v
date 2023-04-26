@@ -337,7 +337,7 @@ pub fn create_db_connection() !sqlite.DB {
 }
 
 div.products-table {
-    border: 1px solid; 
+    border: 1px solid;
     max-width: 720px;
     padding: 10px;
     margin: 10px;
@@ -349,13 +349,13 @@ div.products-table {
 <head>
     <!--Let browser know website is optimized for mobile-->
     <meta charset='UTF-8' name='viewport' content='width=device-width, initial-scale=1.0'>
-    
+
     <!-- Compiled and minified CSS -->
     <link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css'>
 
     <!-- Compiled and minified JavaScript -->
     <script src='https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js'></script>
-    
+
     <!-- Material UI icons -->
     <link href='https://fonts.googleapis.com/icon?family=Material+Icons' rel='stylesheet'>
 
@@ -399,7 +399,7 @@ div.products-table {
                  headers :{
                     token: getCookie('token')
                  }
-             })                
+             })
              .then( async (response) => {
                  if (response.status != 201) {
                      throw await response.text()
@@ -461,8 +461,8 @@ pub fn (mut app App) controller_auth(username string, password string) vweb.Resu
 		content: 'module main
 
 struct AuthRequestDto {
-	username string [required]
-	password string [required]
+	username string [nonull]
+	password string [nonull]
 }
 '
 	}
@@ -504,9 +504,10 @@ fn (mut app App) service_auth(username string, password string) !string {
 		db.close() or { panic(err) }
 	}
 
-	user := sql db {
-		select from User where username == username limit 1
-	}
+	users := sql db {
+		select from User where username == username
+	}!
+	user := users.first()
 	if user.username != username {
 		return error('user not found')
 	}
@@ -588,13 +589,16 @@ fn auth_verify(token string) bool {
          </div>
       </form>
       <script type='text/javascript'>
+        // function eraseCookie(name) {
+        //     document.cookie = name + '=; Max-Age=0'
+        // }
          async function addUser() {
          const form = document.querySelector('#index_form');
          const formData = new FormData(form);
             await fetch('/controller/user/create', {
                  method: 'POST',
                  body: formData
-             })                
+             })
              .then( async (response) => {
                  if (response.status != 201) {
                      throw await response.text()
@@ -614,7 +618,7 @@ fn auth_verify(token string) bool {
              await fetch('/controller/auth', {
                  method: 'POST',
                  body: formData
-             })  
+             })
              .then( async (response) => {
                  if (response.status != 200) {
                      throw await response.text()
@@ -659,6 +663,7 @@ fn main() {
 
 	sql db {
 		create table User
+		create table Product
 	} or { panic('error on create table: \${err}') }
 
 	db.close() or { panic(err) }
@@ -752,7 +757,7 @@ pub fn (mut app App) controller_create_product(product_name string) vweb.Result 
 struct Product {
 	id         int    [primary; sql: serial]
 	user_id    int
-	name       string [required; sql_type: 'TEXT']
+	name       string [nonull; sql_type: 'TEXT']
 	created_at string [default: 'CURRENT_TIMESTAMP']
 }
 "
@@ -786,7 +791,7 @@ fn (mut app App) service_add_product(product_name string, user_id int) ! {
 	}
 }
 
-fn (mut app App) service_get_all_products_from(user_id int) ?[]Product {
+fn (mut app App) service_get_all_products_from(user_id int) ![]Product {
 	mut db := databases.create_db_connection() or {
 		println(err)
 		return err
@@ -798,7 +803,7 @@ fn (mut app App) service_get_all_products_from(user_id int) ?[]Product {
 
 	results := sql db {
 		select from Product where user_id == user_id
-	}
+	}!
 
 	return results
 }
@@ -875,6 +880,7 @@ import json
 
 ['/controller/users'; get]
 pub fn (mut app App) controller_get_all_user() vweb.Result {
+	// token := app.get_cookie('token') or { '' }
 	token := app.req.header.get_custom('token') or { '' }
 
 	if !auth_verify(token) {
@@ -891,6 +897,7 @@ pub fn (mut app App) controller_get_all_user() vweb.Result {
 
 ['/controller/user'; get]
 pub fn (mut app App) controller_get_user() vweb.Result {
+	// token := app.get_cookie('token') or { '' }
 	token := app.req.header.get_custom('token') or { '' }
 
 	if !auth_verify(token) {
@@ -941,8 +948,8 @@ pub fn (mut app App) controller_create_user(username string, password string) vw
 pub struct User {
 mut:
 	id       int       [primary; sql: serial]
-	username string    [required; sql_type: 'TEXT'; unique]
-	password string    [required; sql_type: 'TEXT']
+	username string    [nonull; sql_type: 'TEXT'; unique]
+	password string    [nonull; sql_type: 'TEXT']
 	active   bool
 	products []Product [fkey: 'user_id']
 }
@@ -982,7 +989,7 @@ fn (mut app App) service_add_user(username string, password string) ! {
 	}
 }
 
-fn (mut app App) service_get_all_user() ?[]User {
+fn (mut app App) service_get_all_user() ![]User {
 	mut db := databases.create_db_connection() or {
 		println(err)
 		return err
@@ -994,12 +1001,12 @@ fn (mut app App) service_get_all_user() ?[]User {
 
 	results := sql db {
 		select from User
-	}
+	}!
 
 	return results
 }
 
-fn (mut app App) service_get_user(id int) ?User {
+fn (mut app App) service_get_user(id int) !User {
 	mut db := databases.create_db_connection() or {
 		println(err)
 		return err
@@ -1011,9 +1018,9 @@ fn (mut app App) service_get_user(id int) ?User {
 
 	results := sql db {
 		select from User where id == id
-	}
+	}!
 
-	return results
+	return results.first()
 }
 "
 	}
