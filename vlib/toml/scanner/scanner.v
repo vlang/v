@@ -589,6 +589,10 @@ fn (mut s Scanner) extract_number() !string {
 	}
 	s.pos++
 	s.col++
+	if u8(s.peek(1)).is_digit() && s.peek(2) == 10 {
+		s.pos++
+		s.col++
+	}
 	for s.pos < s.text.len {
 		c = s.at()
 		// Handle signed exponent notation. I.e.: 3e2, 3E2, 3e-2, 3E+2, 3e0, 3.1e2, 3.1E2, -1E-1
