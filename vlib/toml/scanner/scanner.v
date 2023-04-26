@@ -589,7 +589,7 @@ fn (mut s Scanner) extract_number() !string {
 	}
 	s.pos++
 	s.col++
-	if u8(s.peek(1)).is_digit() && s.peek(2) == 10 && s.is_left_of_assign {
+	if u8(s.peek(1)).is_digit() && (s.peek(2) == `\n` || s.peek(2) == `,`) && s.is_left_of_assign {
 		s.pos++
 		s.col++
 	}
