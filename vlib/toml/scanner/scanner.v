@@ -142,7 +142,7 @@ pub fn (mut s Scanner) scan() !token.Token {
 
 		if util.is_key_char(byte_c) {
 			key := s.extract_key()
-			if !s.is_left_of_assign && (key == 'true' || key == 'false') {
+			if u8(s.peek(1)) != `=` && (key == 'true' || key == 'false') {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified a boolean "${key}" (${key.len})')
 				return s.new_token(.boolean, key, key.len)
 			}
