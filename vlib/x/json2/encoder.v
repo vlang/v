@@ -182,6 +182,9 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 	$for field in U.fields {
 		mut ignore_field := false
 		value := val.$(field.name)
+
+		is_nil := val.$(field.name).str() == '&nil'
+
 		mut json_name := ''
 		for attr in field.attrs {
 			if attr.contains('json: ') {
@@ -251,8 +254,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			}
 		} $else {
 			is_none := val.$(field.name).str() == 'unknown sum type value'
-				|| val.$(field.name).str() == '&nil'
-			if !is_none {
+			if !is_none && !is_nil {
 				e.encode_newline(level, mut wr)!
 				if json_name != '' {
 					e.encode_string(json_name, mut wr)!
@@ -392,7 +394,9 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 		}
 
 		if i < fields_len - 1 && !ignore_field {
-			wr.write(json2.comma_bytes)!
+			if !is_nil {
+				wr.write(json2.comma_bytes)!
+			}
 		}
 		if !ignore_field {
 			i++
