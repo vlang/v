@@ -4,7 +4,6 @@ module c
 
 import v.ast
 import v.util
-import orm
 
 enum SqlExprSide {
 	left
@@ -136,7 +135,7 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 			g.writeln('.name = _SLIT("${field.name}"),')
 			mut typ := int(field.typ)
 			if sym.name == 'time.Time' {
-				typ = orm.time
+				typ = -2
 			}
 			g.writeln('.typ = ${typ}, // `${sym.name}`')
 			g.writeln('.is_arr = ${sym.kind == .array}, ')
