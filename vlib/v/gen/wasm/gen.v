@@ -28,6 +28,7 @@ mut:
 	mod wasm.Module
 	func              wasm.Function
 	local_vars        []Var
+	global_vars       map[string]Var
 	return_vars       []Var
 	ret_types []ast.Type
 	ret_br wasm.LabelIndex

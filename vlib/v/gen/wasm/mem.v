@@ -12,7 +12,8 @@ mut:
 	typ        ast.Type
 	idx        wasm.LocalIndex
 	is_pointer bool
-	is_global  bool // TODO, unused for now
+	is_global  bool
+	g_idx      wasm.GlobalIndex
 	offset     int
 }
 
@@ -38,6 +39,12 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
 				}
 			}
 			g.w_error('get_var_from_ident: unreachable, variable not found')
+		}
+		ast.ConstField {
+			if gbl := g.global_vars {
+				return gbl
+			}
+			return g.new_global(obj.name, obj.expr)
 		}
 		else {
 			g.w_error('unsupported variable type type:${obj} name:${ident.name}')
@@ -195,7 +202,7 @@ fn (mut g Gen) store(typ ast.Type, offset int) {
 
 fn (mut g Gen) get(v Var) {
 	if v.is_global {
-		panic('globals unimplemented')
+		g.func.global_get(v.g_idx)
 	} else {
 		g.func.local_get(v.idx)
 	}
@@ -224,7 +231,7 @@ fn (mut g Gen) get(v Var) {
 fn (mut g Gen) set(v Var) {
 	if !v.is_pointer {
 		if v.is_global {
-			panic('globals unimplemented')
+			g.func.global_get(v.g_idx)
 		} else {
 			g.func.local_set(v.idx)
 		}
@@ -233,7 +240,7 @@ fn (mut g Gen) set(v Var) {
 
 	if g.is_pure_type(v.typ) {
 		if v.is_global {
-			panic('globals unimplemented')
+			g.func.global_get(v.g_idx)
 		} else {
 			g.func.local_get(v.idx)
 		}
@@ -299,7 +306,7 @@ fn (mut g Gen) ref_ignore_offset(v Var) {
 	}
 
 	if v.is_global {
-		panic('globals unimplemented')
+		g.func.global_get(v.g_idx)
 	} else {
 		g.func.local_get(v.idx)
 	}
