@@ -717,18 +717,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 						if c.is_comptime_selector_field_name(cond.left as ast.SelectorExpr,
 							'indirections')
 						{
-							ret := match cond.op {
-								.gt { c.comptime_fields_default_type.nr_muls() > cond.right.val.i64() }
-								.lt { c.comptime_fields_default_type.nr_muls() < cond.right.val.i64() }
-								.ge { c.comptime_fields_default_type.nr_muls() >= cond.right.val.i64() }
-								.le { c.comptime_fields_default_type.nr_muls() <= cond.right.val.i64() }
-								else { false }
-							}
-							return if ret {
-								ComptimeBranchSkipState.eval
-							} else {
-								ComptimeBranchSkipState.skip
-							}
+							return .unknown
 						}
 					}
 					c.error('invalid `\$if` condition', cond.pos)
