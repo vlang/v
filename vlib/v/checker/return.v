@@ -82,6 +82,9 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		// Unpack multi return types
 		sym := c.table.sym(typ)
 		if sym.kind == .multi_return {
+			if i > 0 || i != node.exprs.len - 1 {
+				c.error('cannot use multi-return with other return types', expr.pos())
+			}
 			for t in sym.mr_info().types {
 				got_types << t
 				expr_idxs << i
