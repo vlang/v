@@ -5823,6 +5823,14 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					g.write('${cvar_name} = ')
 					g.gen_option_error(return_type, expr_stmt.expr)
 					g.writeln(';')
+				} else if return_type == ast.rvoid_type {
+					// fn returns !, do not fill var.data
+					old_inside_opt_data := g.inside_opt_data
+					g.inside_opt_data = true
+					g.expr(expr_stmt.expr)
+					g.inside_opt_data = old_inside_opt_data
+					g.writeln(';')
+					g.stmt_path_pos.delete_last()
 				} else {
 					if is_option {
 						g.write('*(${cast_typ}*) ${cvar_name}.data = ')
