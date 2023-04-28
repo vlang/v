@@ -278,7 +278,6 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				g.write(',')
 			}
 			initialized = true
-			g.is_shared = old_is_shared
 		}
 		g.is_shared = old_is_shared
 	}
