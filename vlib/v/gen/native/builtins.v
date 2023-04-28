@@ -28,21 +28,21 @@ pub fn (mut g Gen) init_builtins() {
 		.int_to_string:  BuiltinFn{
 			// 32-bit signed integer to string conversion
 			body: fn (builtin BuiltinFn, mut g Gen) {
-				g.convert_int_to_string(builtin.arg_regs[0], builtin.arg_regs[1])
+				g.code_gen.convert_int_to_string(builtin.arg_regs[0], builtin.arg_regs[1])
 			}
-			arg_regs: [.rcx, .rdi]
+			arg_regs: [Amd64Register.rcx, Amd64Register.rdi]
 		}
 		.bool_to_string: BuiltinFn{
 			body: fn (builtin BuiltinFn, mut g Gen) {
-				g.convert_bool_to_string(builtin.arg_regs[0])
+				g.code_gen.convert_bool_to_string(builtin.arg_regs[0])
 			}
-			arg_regs: [.rax]
+			arg_regs: [Amd64Register.rax]
 		}
 		.reverse_string: BuiltinFn{
 			body: fn (builtin BuiltinFn, mut g Gen) {
-				g.reverse_string(builtin.arg_regs[0])
+				g.code_gen.reverse_string(builtin.arg_regs[0])
 			}
-			arg_regs: [.rdi]
+			arg_regs: [Amd64Register.rdi]
 		}
 	}
 }
@@ -62,17 +62,13 @@ pub fn (mut g Gen) generate_builtins() {
 		g.defer_stmts.clear()
 		g.labels = &LabelTable{}
 
-		if g.pref.arch == .arm64 {
-			g.n_error('builtins are not implemented for arm64')
-		} else {
-			g.builtin_decl_amd64(builtin)
-		}
+		g.code_gen.builtin_decl(builtin)
 
 		g.patch_labels()
 
 		// patch all call addresses where this builtin gets called
 		for call in builtin.calls {
-			rel := g.call_addr_at(int(call_addr), call)
+			rel := g.code_gen.call_addr_at(int(call_addr), call)
 			g.write32_at(call + 1, int(rel))
 		}
 	}
@@ -87,9 +83,5 @@ pub fn (mut g Gen) get_builtin_arg_reg(name Builtin, index int) Register {
 }
 
 pub fn (mut g Gen) call_builtin(name Builtin) {
-	if g.pref.arch == .arm64 {
-		g.n_error('builtin calls are not implemented for arm64')
-	} else {
-		g.builtins[name].calls << g.call_builtin_amd64(name)
-	}
+	g.builtins[name].calls << g.code_gen.call_builtin(name)
 }
