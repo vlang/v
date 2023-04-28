@@ -161,9 +161,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			g.is_shared = old_is_shared2
 		}
 		for mut field in info.fields {
-			if !field.typ.has_flag(.shared_f) {
-				g.is_shared = false
-			}
+			g.is_shared = field.typ.has_flag(.shared_f)
 			if mut sym.info is ast.Struct {
 				mut found_equal_fields := 0
 				for mut sifield in sym.info.fields {
@@ -280,7 +278,6 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				g.write(',')
 			}
 			initialized = true
-			g.is_shared = old_is_shared
 		}
 		g.is_shared = old_is_shared
 	}
