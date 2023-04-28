@@ -18,8 +18,14 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	defer {
 		c.inside_sql = false
 	}
-	sym := c.table.sym(node.table_expr.typ)
+
+	c.check_db_expr(node.db_expr) or {
+		c.orm_error(err.msg(), node.db_expr.pos())
+		return ast.void_type
+	}
 	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return ast.void_type }
+	sym := c.table.sym(node.table_expr.typ)
+
 	old_ts := c.cur_orm_ts
 	c.cur_orm_ts = *sym
 	defer {
@@ -150,6 +156,10 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 }
 
 fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
+	c.check_db_expr(node.db_expr) or {
+		c.orm_error(err.msg(), node.db_expr.pos())
+		return ast.void_type
+	}
 	node.db_expr_type = c.table.unaliased_type(c.expr(node.db_expr))
 
 	for mut line in node.lines {
@@ -494,5 +504,17 @@ fn (mut c Checker) check_orm_or_expr(expr ORMExpr) {
 		c.expected_or_type = return_type.clear_flag(.result)
 		c.stmts_ending_with_expression(expr.or_expr.stmts)
 		c.expected_or_type = ast.void_type
+	}
+}
+
+fn (mut c Checker) check_db_expr(db_expr &ast.Expr) ! {
+	connection_type_index := c.table.find_type_idx('orm.Connection')
+	connection_typ := ast.Type(connection_type_index)
+	db_expr_type := c.expr(db_expr)
+	is_implemented := c.type_implements(db_expr_type, connection_typ, db_expr.pos())
+	is_option := db_expr_type.has_flag(.option)
+
+	if is_implemented && is_option {
+		c.error(c.expected_msg(db_expr_type, db_expr_type.clear_flag(.option)), db_expr.pos())
 	}
 }
