@@ -914,6 +914,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	}
 	// voidptr is an escape hatch, it should be allowed to be passed
 	if utyp != ast.voidptr_type && utyp != ast.nil_type {
+		mut are_methods_implemented := true
+
 		// Verify methods
 		for imethod in imethods {
 			method := c.table.find_method_with_embeds(typ_sym, imethod.name) or {
@@ -930,6 +932,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				typ_sym.find_method_with_generic_parent(imethod.name) or {
 					c.error("`${styp}` doesn't implement method `${imethod.name}` of interface `${inter_sym.name}`",
 						pos)
+					are_methods_implemented = false
 					continue
 				}
 			}
@@ -943,6 +946,10 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 					pos)
 				return false
 			}
+		}
+
+		if !are_methods_implemented {
+			return false
 		}
 	}
 	// Verify fields
