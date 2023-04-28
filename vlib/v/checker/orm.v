@@ -7,8 +7,9 @@ import v.token
 import v.util
 
 const (
-	fkey_attr_name = 'fkey'
-	v_orm_prefix   = 'V ORM'
+	fkey_attr_name            = 'fkey'
+	v_orm_prefix              = 'V ORM'
+	connection_interface_name = 'orm.Connection'
 )
 
 type ORMExpr = ast.SqlExpr | ast.SqlStmt
@@ -19,8 +20,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		c.inside_sql = false
 	}
 
-	c.check_db_expr(node.db_expr) or {
-		c.orm_error(err.msg(), node.db_expr.pos())
+	if !c.check_db_expr(node.db_expr) {
 		return ast.void_type
 	}
 	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return ast.void_type }
@@ -156,8 +156,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 }
 
 fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
-	c.check_db_expr(node.db_expr) or {
-		c.orm_error(err.msg(), node.db_expr.pos())
+	if !c.check_db_expr(node.db_expr) {
 		return ast.void_type
 	}
 	node.db_expr_type = c.table.unaliased_type(c.expr(node.db_expr))
@@ -507,14 +506,26 @@ fn (mut c Checker) check_orm_or_expr(expr ORMExpr) {
 	}
 }
 
-fn (mut c Checker) check_db_expr(db_expr &ast.Expr) ! {
-	connection_type_index := c.table.find_type_idx('orm.Connection')
+fn (mut c Checker) check_db_expr(db_expr &ast.Expr) bool {
+	connection_type_index := c.table.find_type_idx(checker.connection_interface_name)
 	connection_typ := ast.Type(connection_type_index)
 	db_expr_type := c.expr(db_expr)
+
+	// If we didn't find `orm.Connection`, we don't have any imported modules
+	// that depend on `orm` and implement the `orm.Connection` interface.
+	if connection_type_index == 0 {
+		c.error('expected a type that implements the `${checker.connection_interface_name}` interface',
+			db_expr.pos())
+		return false
+	}
+
 	is_implemented := c.type_implements(db_expr_type, connection_typ, db_expr.pos())
 	is_option := db_expr_type.has_flag(.option)
 
 	if is_implemented && is_option {
 		c.error(c.expected_msg(db_expr_type, db_expr_type.clear_flag(.option)), db_expr.pos())
+		return false
 	}
+
+	return true
 }
