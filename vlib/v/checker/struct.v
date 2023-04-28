@@ -398,7 +398,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	}
 	if type_sym.kind == .struct_ {
 		info := type_sym.info as ast.Struct
-		if info.attrs.len > 0 && info.attrs[0].name == 'noinit' && type_sym.mod != c.mod {
+		if info.attrs.len > 0 && info.attrs.contains('noinit') && type_sym.mod != c.mod {
 			c.error('struct `${type_sym.name}` is declared with a `[noinit]` attribute, so ' +
 				'it cannot be initialized with `${type_sym.name}{}`', node.pos)
 		}
