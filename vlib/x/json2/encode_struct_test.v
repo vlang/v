@@ -227,6 +227,26 @@ fn test_alias() {
 	assert json.encode(StructType[StructAlias]{ val: StructType[int]{1} }) == '{"val":{"val":1}}'
 }
 
+fn test_pointer() {
+	mut string_initialized_with_reference := ''
+	assert json.encode(StructTypePointer[string]{ val: 0 }) == '{}'
+	assert json.encode(StructTypePointer[string]{ val: &string_initialized_with_reference }) == '{"val":""}'
+	string_initialized_with_reference = 'a'
+	assert json.encode(StructTypePointer[string]{ val: &string_initialized_with_reference }) == '{"val":"a"}'
+
+	mut bool_initialized_with_reference := false
+	assert json.encode(StructTypePointer[bool]{ val: 0 }) == '{}'
+	assert json.encode(StructTypePointer[bool]{ val: &bool_initialized_with_reference }) == '{"val":false}'
+	bool_initialized_with_reference = true
+	assert json.encode(StructTypePointer[bool]{ val: &bool_initialized_with_reference }) == '{"val":true}'
+
+	mut int_initialized_with_reference := 0
+	assert json.encode(StructTypePointer[int]{ val: 0 }) == '{}'
+	assert json.encode(StructTypePointer[int]{ val: &int_initialized_with_reference }) == '{"val":0}'
+	int_initialized_with_reference = 1
+	assert json.encode(StructTypePointer[int]{ val: &int_initialized_with_reference }) == '{"val":1}'
+}
+
 fn test_sumtypes() {
 	assert json.encode(StructType[SumTypes]{}) == '{}'
 	assert json.encode(StructType[SumTypes]{ val: '' }) == '{"val":""}'
