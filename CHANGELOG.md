@@ -1,3 +1,29 @@
+## V 0.3.4
+*wip*
+*30 Apr 2023*
+- A new VPM site: vpm.vlang.io. A better design, discoverability of packages,
+descriptions, most downloaded packages etc.
+- Lots of playground improvements: play.vlang.io.
+- `v share file.v` for sharing code via the playground.
+- Many ORM improvements: type checks for `limit/offset/order by/where`; support of ference objects in `insert`; struct fields can be used with `limit/offset`;
+- `v up` sped up for when it hasn't been run for a long time (vc/ bootstrapping has been optimized).
+- Lots of new checks in the checker.
+- Variable shadowing has been completely banned (previously variable names could conflict with module names).
+- If guards now work with struct fields which are `Option` functions. Such fields can now also be assigned to other fields/variables.
+- net.ssl: types using ssl contexts can now be converted to strings via `.str()`/printed via `println()`.
+- v.reflection: type symbol info metadata has been added.
+- cgen: do not generate unused interface functions.
+- A new `[spawn_stack: 131072]` fn attribute for controlling the max size of the stack of the spawned threads.
+- Final steps in making the Option type a first class type.
+- Lots of documentation/readme improvements.
+- Option receivers can no longer have methods.
+- `none` can now be cast to all Option type, including aliases.
+- Enums can no longer be initialized like structs.
+- Builtin methods `first/last/repeat` can now be used in custom user types (previously they only worked in builtin arrays).
+
+
+
+
 ## V 0.3.3
 *30 Jan 2023*
 - String interpolation simplified to just '${name}', enforced by vfmt, and updated in the entire code base.
