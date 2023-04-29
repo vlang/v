@@ -61,7 +61,8 @@ struct Global {
 	typ         ValType
 	is_mut      bool
 	export_name ?string
-	init        ConstExpression
+mut:
+	init ConstExpression
 }
 
 struct GlobalImport {
@@ -198,7 +199,7 @@ pub fn (mut mod Module) new_global(export_name ?string, typ ValType, is_mut bool
 }
 
 // new_global_import imports a new global into the current module and returns it's index.
-// See `global_import_get`, `global_import_set`.
+// See `global_get`, `global_set`.
 pub fn (mut mod Module) new_global_import(modn string, name string, typ ValType, is_mut bool) GlobalImportIndex {
 	assert !mod.fn_imports.any(it.mod == modn && it.name == name)
 
@@ -210,4 +211,10 @@ pub fn (mut mod Module) new_global_import(modn string, name string, typ ValType,
 		is_mut: is_mut
 	}
 	return len
+}
+
+// assign_global_init assigns a global with the constant expression `init`.
+// See `new_global`.
+pub fn (mut mod Module) assign_global_init(global GlobalIndex, init ConstExpression) {
+	mod.globals[global].init = init
 }
