@@ -4,13 +4,13 @@ struct ImportCallPatch {
 	mod  string
 	name string
 mut:
-	pos  int
+	pos int
 }
 
 struct FunctionCallPatch {
 	name string
 mut:
-	pos  int
+	pos int
 }
 
 type CallPatch = FunctionCallPatch | ImportCallPatch
