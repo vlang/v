@@ -914,6 +914,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	}
 	// voidptr is an escape hatch, it should be allowed to be passed
 	if utyp != ast.voidptr_type && utyp != ast.nil_type {
+		mut are_methods_implemented := true
+
 		// Verify methods
 		for imethod in imethods {
 			method := c.table.find_method_with_embeds(typ_sym, imethod.name) or {
@@ -930,6 +932,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				typ_sym.find_method_with_generic_parent(imethod.name) or {
 					c.error("`${styp}` doesn't implement method `${imethod.name}` of interface `${inter_sym.name}`",
 						pos)
+					are_methods_implemented = false
 					continue
 				}
 			}
@@ -943,6 +946,10 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 					pos)
 				return false
 			}
+		}
+
+		if !are_methods_implemented {
+			return false
 		}
 	}
 	// Verify fields
@@ -1127,8 +1134,7 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 				c.expected_or_type = ret_type.clear_flags(.option, .result)
 				last_stmt_typ := c.expr(stmt.expr)
 
-				if ret_type.has_flag(.option)
-					&& (last_stmt_typ.has_flag(.option) || last_stmt_typ == ast.none_type) {
+				if last_stmt_typ.has_flag(.option) || last_stmt_typ == ast.none_type {
 					if stmt.expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr, ast.None] {
 						expected_type_name := c.table.type_to_str(ret_type.clear_flags(.option,
 							.result))
@@ -1440,6 +1446,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		if node.or_block.kind == .block {
 			c.expected_or_type = node.typ.clear_flags(.option, .result)
 			c.stmts_ending_with_expression(node.or_block.stmts)
+			c.check_or_expr(node.or_block, node.typ, c.expected_or_type, node)
 			c.expected_or_type = ast.void_type
 		}
 		return field.typ
@@ -2239,7 +2246,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		else {
 			if node.kind == 'define' {
 				if !c.is_builtin_mod && !c.file.path.ends_with('.c.v')
-					&& !c.file.path.contains('vlib' + os.path_separator) {
+					&& !c.file.path.contains('vlib') {
 					c.error("#define can only be used in vlib (V's standard library) and *.c.v files",
 						node.pos)
 				}
@@ -3199,22 +3206,32 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	// second use
 	if node.kind in [.constant, .global, .variable] {
 		info := node.info as ast.IdentVar
+		typ := if c.is_comptime_var(node) {
+			ctype := c.get_comptime_var_type(node)
+			if ctype != ast.void_type {
+				ctype
+			} else {
+				info.typ
+			}
+		} else {
+			info.typ
+		}
 		// Got a var with type T, return current generic type
 		if node.or_expr.kind != .absent {
-			if !info.typ.has_flag(.option) {
+			if !typ.has_flag(.option) {
 				if node.or_expr.kind == .propagate_option {
 					c.error('cannot use `?` on non-option variable', node.pos)
 				} else if node.or_expr.kind == .block {
 					c.error('cannot use `or {}` block on non-option variable', node.pos)
 				}
 			}
-			unwrapped_typ := info.typ.clear_flags(.option, .result)
+			unwrapped_typ := typ.clear_flags(.option, .result)
 			c.expected_or_type = unwrapped_typ
 			c.stmts_ending_with_expression(node.or_expr.stmts)
-			c.check_or_expr(node.or_expr, info.typ, c.expected_or_type, node)
+			c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
 			return unwrapped_typ
 		}
-		return info.typ
+		return typ
 	} else if node.kind == .function {
 		info := node.info as ast.IdentFn
 		return info.typ
@@ -3875,6 +3892,15 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		}
 		if right_type.is_voidptr() {
 			c.error('cannot dereference to void', node.pos)
+		}
+		if mut node.right is ast.Ident {
+			if var := node.right.scope.find_var('${node.right.name}') {
+				if var.expr is ast.UnsafeExpr {
+					if var.expr.expr is ast.Nil {
+						c.error('cannot deference a `nil` pointer', node.right.pos)
+					}
+				}
+			}
 		}
 	}
 	if node.op == .bit_not && !c.unwrap_generic(right_type).is_int() && !c.pref.translated

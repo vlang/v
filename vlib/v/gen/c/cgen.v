@@ -4755,7 +4755,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			styp := g.base_type(fn_ret_type)
 			g.writeln('${ret_typ} ${tmpvar};')
 			g.write('_option_ok(&(${styp}[]) { ')
-			if !fn_ret_type.is_ptr() && node.types[0].is_ptr() {
+			if !g.unwrap_generic(fn_ret_type).is_ptr() && node.types[0].is_ptr() {
 				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
 					g.write('*')
 				}
@@ -5823,6 +5823,14 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					g.write('${cvar_name} = ')
 					g.gen_option_error(return_type, expr_stmt.expr)
 					g.writeln(';')
+				} else if return_type == ast.rvoid_type {
+					// fn returns !, do not fill var.data
+					old_inside_opt_data := g.inside_opt_data
+					g.inside_opt_data = true
+					g.expr(expr_stmt.expr)
+					g.inside_opt_data = old_inside_opt_data
+					g.writeln(';')
+					g.stmt_path_pos.delete_last()
 				} else {
 					if is_option {
 						g.write('*(${cast_typ}*) ${cvar_name}.data = ')

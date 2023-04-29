@@ -1,0 +1,7 @@
+vlib/v/checker/tests/assign_anon_struct_to_typed_struct_err.vv:11:18: error: cannot assign anonymous `struct` to a typed `struct`
+    9 |
+   10 | f := Fax{
+   11 |     message: struct {
+      |                     ^
+   12 |         a: 'A'
+   13 |     }

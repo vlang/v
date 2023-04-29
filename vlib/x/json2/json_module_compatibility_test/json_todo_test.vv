@@ -367,21 +367,3 @@ fn test_encode_sumtype_defined_ahead() {
 	ret := create_game_packet(&GamePacketData(GPScale{}))
 	assert ret == '{"value":0,"_type":"GPScale"}'
 }
-
-struct APrice {}
-
-struct Association {
-	association &Association = unsafe { nil }
-	price       APrice
-}
-
-//! FIX: returning null
-fn test_encoding_struct_with_pointers() {
-	value := Association{
-		association: &Association{
-			price: APrice{}
-		}
-		price: APrice{}
-	}
-	assert json.encode(value) == '{"association":{"price":{}},"price":{}}'
-}

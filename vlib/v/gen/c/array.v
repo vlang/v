@@ -980,7 +980,7 @@ fn (mut g Gen) gen_array_index(node ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_array_wait(node ast.CallExpr) {
-	arr := g.table.sym(node.receiver_type)
+	arr := g.table.sym(g.unwrap_generic(node.receiver_type))
 	thread_type := arr.array_info().elem_type
 	thread_sym := g.table.sym(thread_type)
 	thread_ret_type := thread_sym.thread_info().return_type

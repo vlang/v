@@ -1538,6 +1538,49 @@ println(s)
 // "odd"
 ```
 
+Anywhere you can use `or {}`, you can also use "if unwrapping". This binds the unwrapped value
+of an expression to a variable when that expression is not none nor an error.
+
+```v
+m := {
+	'foo': 'bar'
+}
+
+// handle missing keys
+if v := m['foo'] {
+	println(v) // bar
+} else {
+	println('not found')
+}
+```
+
+```v
+fn res() !int {
+	return 42
+}
+
+// functions that return a result type
+if v := res() {
+	println(v)
+}
+```
+
+```v
+struct User {
+	name string
+}
+
+arr := [User{'John'}]
+
+// if unwrapping with assignment of a variable
+u_name := if v := arr[0] {
+	v.name
+} else {
+	'Unnamed'
+}
+println(u_name) // John
+```
+
 #### Type checks and casts
 
 You can check the current type of a sum type using `is` and its negated form `!is`.

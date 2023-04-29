@@ -162,7 +162,7 @@ pub fn encode[T](val T) string {
 		}
 
 		default_encoder.encode_value(val, mut sb) or {
-			dump(err)
+			println(err)
 			default_encoder.encode_value[Null](null, mut sb) or {}
 		}
 
@@ -179,7 +179,7 @@ fn encode_array[T](val []T) string {
 	}
 
 	default_encoder.encode_array(val, 1, mut sb) or {
-		dump(err)
+		println(err)
 		default_encoder.encode_value[Null](null, mut sb) or {}
 	}
 
