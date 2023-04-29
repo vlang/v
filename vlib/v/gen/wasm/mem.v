@@ -41,10 +41,12 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
 			g.w_error('get_var_from_ident: unreachable, variable not found')
 		}
 		ast.ConstField {
-			if gbl := g.global_vars {
-				return gbl
+			if gbl := g.global_vars[obj.name] {
+				return gbl.v
 			}
-			return g.new_global(obj.name, obj.expr)
+			gbl := g.new_global(obj.name, obj.typ, obj.expr)
+			g.global_vars[obj.name] = gbl
+			return gbl.v
 		}
 		else {
 			g.w_error('unsupported variable type type:${obj} name:${ident.name}')
@@ -102,19 +104,20 @@ fn (mut g Gen) sp() wasm.GlobalIndex {
 	}
 	// (64KiB - 1KiB) of stack space, grows downwards.
 	// Memory addresses from 0 to 1024 are forbidden.
-	g.sp_global = g.mod.new_global(none, .i32_t, true, wasm.constexpr_value(65536))
+	g.sp_global = g.mod.new_global(none, .i32_t, true, wasm.constexpr_value(0))
 	return g.sp()
 }
 
-fn (mut g Gen) new_local(name string, typ ast.Type) Var {
+fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
+	mut typ := typ_
 	ts := g.table.sym(typ)
 
 	match ts.info {
 		ast.Enum {
-			return g.new_local(name, ts.info.typ)
+			typ = ts.info.typ
 		}
 		ast.Alias {
-			return g.new_local(name, ts.info.parent_type)
+			typ = ts.info.parent_type
 		}
 		else {}
 	}
@@ -139,8 +142,8 @@ fn (mut g Gen) new_local(name string, typ ast.Type) Var {
 	// 
 	match ts.info {
 		ast.Struct, ast.ArrayFixed {
-			size, align := g.get_type_size_align(typ)
-			padding := (align - g.stack_frame % align) % align
+			size, align := g.pool.type_size(typ)
+			padding := calc_padding(g.stack_frame, align)
 			address := g.stack_frame
 			g.stack_frame += size + padding
 
@@ -152,6 +155,86 @@ fn (mut g Gen) new_local(name string, typ ast.Type) Var {
 	}
 	g.local_vars << v
 	return v
+}
+
+fn (mut g Gen) literal_to_constant_expression(typ ast.Type, init ast.Expr) ?wasm.ConstExpression {
+	match init {
+		BoolLiteral {
+			return wasm.constexpr_value(int(init.val))
+		}
+		CharLiteral {
+			return wasm.constexpr_value(int(init.val.runes()[0]))
+		}
+		FloatLiteral {
+			if typ == ast.f32_type {
+				return wasm.constexpr_value(init.val.f32())
+			} else if typ == ast.f64_type {
+				return wasm.constexpr_value(init.val.f64())
+			}
+		}
+		IntegerLiteral {
+			if !typ.is_pure_int() {
+				return none
+			}
+			t := g.get_wasm_type(typ)
+			match t {
+				.i32_t { wasm.constexpr_value(init.val.int()) }
+				.i64_t { wasm.constexpr_value(init.val.i64()) }
+				else {}
+			}
+		}
+		else {}
+	}
+	return none
+}
+
+fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr) Global {
+	mut typ := typ_
+	ts := g.table.sym(typ)
+
+	match ts.info {
+		ast.Enum {
+			typ = ts.info.typ
+		}
+		ast.Alias {
+			typ = ts.info.parent_type
+		}
+		else {}
+	}
+
+	is_pointer := typ.nr_muls() == 0 && !g.is_pure_type(typ)
+	mut init_expr := ?ast.Expr(none)
+	cexpr := if cexpr_v := g.literal_to_constant_expression(typ, init) {
+		cexpr_v
+	} else {
+		// Isn't a literal ...
+		if is_pointer {
+			// ... allocate memory and append
+			pos, is_init := g.pool.append(init, typ)
+			if !is_init {
+				// ... AND wait for init in `_vinit`
+				init_expr = init
+			}
+			wasm.constexpr_value(pos)
+		} else {
+			// ... wait for init in `_vinit`
+			init_expr = init
+			wasm.constexpr_value(0)
+		}
+	}
+
+	mut glbl := Global{
+		init: init_expr
+		v: Var{
+			name: name
+			typ: typ
+			is_pointer: is_pointer
+			is_global: true
+			g_idx: g.mod.new_global(none, g.get_wasm_type(typ), is_mut, cexpr)
+		}
+	}
+
+	return glbl
 }
 
 // is_pure_type(voidptr) == true
@@ -249,7 +332,7 @@ fn (mut g Gen) set(v Var) {
 		return
 	}
 
-	size, _ := g.get_type_size_align(v.typ)
+	size, _ := g.pool.type_size(v.typ)
 
 	l := g.func.new_local(.i32_t)
 	g.func.local_set(l)
@@ -400,9 +483,10 @@ fn (mut g Gen) zero_fill(v Var, size int) {
 fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 	match init {
 		ast.StructInit {
-			size, _ := g.get_type_size_align(v.typ)
+			size, _ := g.pool.type_size(v.typ)
 			ts := g.table.sym(v.typ)
 			ts_info := ts.info as ast.Struct
+			si := g.pool.type_struct_info(v.typ) or { panic("unreachable") }
 			
 			if init.fields.len == 0 && !(ts_info.fields.any(it.has_default_expr)) {
 				// Struct definition contains no default initialisers
@@ -415,10 +499,10 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 				field_to_be_set := init.fields.map(it.name).contains(f.name)
 
 				if !field_to_be_set {
-					offset := g.structs[v.typ.idx()].offsets[i]
+					offset := si.offsets[i]
 					offset_var := g.offset(v, f.typ, offset)
 
-					fsize, _ := g.get_type_size_align(f.typ)
+					fsize, _ := g.pool.type_size(f.typ)
 					
 					if f.has_default_expr {
 						g.expr(f.default_expr, f.typ)
@@ -434,7 +518,7 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 					g.w_error('could not find field `${f.name}` on init')
 				}
 				
-				offset := g.structs[v.typ.idx()].offsets[field.i]
+				offset := si.offsets[field.i]
 				offset_var := g.offset(v, f.expected_type, offset)
 
 				g.expr(f.expr, f.expected_type)
@@ -454,5 +538,73 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 			g.expr(init, v.typ)
 			g.set(v)
 		}
+	}
+}
+
+fn calc_padding(value int, alignment int) int {
+	if alignment == 0 {
+		return value
+	}
+	return (alignment - value % alignment) % alignment
+}
+
+
+fn calc_align(value int, alignment int) int {
+	if alignment == 0 {
+		return value
+	}
+	return (value + alignment - 1) / alignment * alignment
+}
+
+fn (mut g Gen) make_vinit() {
+	g.func = g.mod.new_function('_vinit', [], [])
+	//func_start := g.func.patch_pos()
+	{
+		for mod_name in g.table.modules {
+			if mod_name == 'v.reflection' {
+				g.w_error('the wasm backend does not implement `v.reflection` yet')
+			}
+			init_fn_name := if mod_name != 'builtin' { '${mod_name}.init' } else { 'init' }
+			if _ := g.table.find_fn(init_fn_name) {
+				g.func.call(init_fn_name)
+			}
+			cleanup_fn_name := if mod_name != 'builtin' { '${mod_name}.cleanup' } else { 'cleanup' }
+			if _ := g.table.find_fn(cleanup_fn_name) {
+				g.func.call(cleanup_fn_name)
+			}
+		}
+		//g.bare_function_frame(func_start)
+	}
+	g.mod.commit(g.func, true)
+	g.bare_function_end()
+}
+
+fn (mut g Gen) housekeeping() {
+	g.make_vinit()
+	
+	stack_top := 1024 + (16 * 1024)
+	data_base := calc_align(stack_top + 1, g.pool.highest_alignment)
+	page_boundary := calc_align(data_base + g.pool.buf.len, 64 * 1024)
+	preallocated_pages := page_boundary / (64 * 1024)
+
+	if sp := g.sp_global {
+		g.mod.assign_global_init(sp, wasm.constexpr_value(stack_top))
+	}
+	if g.sp_global != none || g.pool.buf.len > 0 {
+		g.mod.assign_memory('memory', true, u32(preallocated_pages), none)
+		if g.pool.buf.len > 0 {
+			g.mod.new_data_segment(data_base, g.pool.buf)
+		}
+	}
+
+	if g.pref.os == .wasi {
+		mut fn_start := g.mod.new_function('_start', [], [])
+		{
+			fn_start.call('_vinit')
+			fn_start.call('main.main')
+		}
+		g.mod.commit(fn_start, true)
+	} else {
+		g.mod.assign_start('_vinit')
 	}
 }

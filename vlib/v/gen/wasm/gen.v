@@ -9,6 +9,7 @@ import v.util
 import v.token
 import v.errors
 import v.eval
+import v.serialise
 import wasm
 import os
 
@@ -26,9 +27,10 @@ mut:
 	enum_vals     map[string]Enum
 	//
 	mod wasm.Module
+	pool serialise.Pool
 	func              wasm.Function
 	local_vars        []Var
-	global_vars       map[string]Var
+	global_vars       map[string]Global
 	return_vars       []Var
 	ret_types []ast.Type
 	ret_br wasm.LabelIndex
@@ -37,20 +39,20 @@ mut:
 	stack_frame       int // Size of the current stack frame, if needed
 	is_leaf_function  bool = true
 	is_return_call bool
-	structs           map[ast.Type]StructInfo // Cached struct field offsets
 	module_import_namespace string
 	loop_breakpoint_stack []LoopBreakpoint
+}
+
+struct Global {
+mut:
+	init ?ast.Expr
+	v    Var
 }
 
 struct LoopBreakpoint {
 	c_continue wasm.LabelIndex
 	c_break    wasm.LabelIndex
 	name       string
-}
-
-struct StructInfo {
-mut:
-	offsets []int
 }
 
 pub fn (mut g Gen) v_error(s string, pos token.Pos) {
@@ -205,33 +207,40 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			g.expr_stmts(node.stmts, ast.void_type)
 		}
 		g.func.c_end(g.ret_br)
-
-		// Setup stack frame.
-		// If the function does not call other functions, 
-		// a leaf function, the omission of setting the 
-		// stack pointer is perfectly acceptable.
-		//
-		if g.stack_frame != 0 {
-			prolouge := g.func.patch_pos()
-			{
-				g.func.global_get(g.sp())
-				g.func.i32_const(g.stack_frame)
-				g.func.sub(.i32_t)
-				if !g.is_leaf_function {
-					g.func.local_tee(g.bp())
-					g.func.global_set(g.sp())
-				} else {
-					g.func.local_set(g.bp())					
-				}
-			}
-			g.func.patch(func_start, prolouge)
-			if !g.is_leaf_function {
-				g.func.local_get(g.bp())
-				g.func.global_set(g.sp())
-			}
-		}
+		g.bare_function_frame(func_start)
 	}
 	g.mod.commit(g.func, true)
+	g.bare_function_end()
+}
+
+fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
+	// Setup stack frame.
+	// If the function does not call other functions, 
+	// a leaf function, the omission of setting the 
+	// stack pointer is perfectly acceptable.
+	//
+	if g.stack_frame != 0 {
+		prolouge := g.func.patch_pos()
+		{
+			g.func.global_get(g.sp())
+			g.func.i32_const(g.stack_frame)
+			g.func.sub(.i32_t)
+			if !g.is_leaf_function {
+				g.func.local_tee(g.bp())
+				g.func.global_set(g.sp())
+			} else {
+				g.func.local_set(g.bp())					
+			}
+		}
+		g.func.patch(func_start, prolouge)
+		if !g.is_leaf_function {
+			g.func.local_get(g.bp())
+			g.func.global_set(g.sp())
+		}
+	}
+}
+
+fn (mut g Gen) bare_function_end() {
 	g.local_vars.clear()
 	g.return_vars.clear()
 	g.ret_types.clear()
@@ -286,7 +295,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 
 fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type) {
 	if typ.is_ptr() {
-		size, _ := g.get_type_size_align(typ)
+		size, _ := g.pool.type_size(typ)
 		g.func.i32_const(size)
 		g.func.mul(.i32_t)
 	}
@@ -305,15 +314,15 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 			g.func.eqz(.i32_t)
 		}
 
-		g.func.c_if([], [.i32_t])
+		blk := g.func.c_if([], [.i32_t])
 		{
 			g.expr(node.right, ast.bool_type)
 		}
-		g.func.c_else()
+		g.func.c_else(blk)
 		{
 			g.func.local_get(temp)
 		}
-		g.func.c_end_if()
+		g.func.c_end(blk)
 	}
 
 	{
@@ -448,19 +457,20 @@ fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, idx int) {
 	}
 
 	g.expr(curr.cond, ast.bool_type)
-	g.func.c_if([], params)
+	blk := g.func.c_if([], params)
 	{
 		g.expr_stmts(curr.stmts, expected)
 	}
-	g.func.c_else()
 	{
 		if ifexpr.has_else && idx + 2 >= ifexpr.branches.len {
+			g.func.c_else(blk)
 			g.expr_stmts(ifexpr.branches[idx + 1].stmts, expected)
 		} else if !(idx + 1 >= ifexpr.branches.len) {
+			g.func.c_else(blk)
 			g.if_branch(ifexpr, expected, idx + 1)
 		}
 	}
-	g.func.c_end_if()
+	g.func.c_end(blk)
 }
 
 fn (mut g Gen) if_expr(ifexpr ast.IfExpr, expected ast.Type) {
@@ -575,10 +585,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []
 fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
 	ts := g.table.sym(typ)
 	field := ts.find_field(name) or { g.w_error('could not find field `${name}` on init') }
-	if typ !in g.structs {
-		g.get_type_size_align(typ.idx())
-	}
-	return g.structs[typ.idx()].offsets[field.i]
+	si := g.pool.type_struct_info(typ) or { panic("unreachable") }
+	return si.offsets[field.i]
 }
 
 fn (mut g Gen) field_offset(typ ast.Type, name string) {
@@ -616,7 +624,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			}*/
 			
 			// ptr + index * size
-			size, _ := g.get_type_size_align(expected)
+			size, _ := g.pool.type_size(expected)
 
 			g.expr(node.left, node.left_type)
 			if node.left_type == ast.string_type {
@@ -834,12 +842,13 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 		ast.AssignStmt {
 			if node.has_cross_var {
 				g.w_error('complex assign statements are not implemented')
-				// `a, b := foo()`
-				// `a, b := if cond { 1, 2 } else { 3, 4 }`
 				// `a, b = b, a`
 			} else {
 				// `a := 1` | `a, b := 1, 2`
+
 				is_multireturn := node.left.len > 1 && node.right.len == 1
+				// `a, b := foo()`
+				// `a, b := if cond { 1, 2 } else { 3, 4 }`
 
 				if is_multireturn {
 					g.expr(node.right[0], 0)
@@ -898,6 +907,16 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 					}
 
 					if v := g.get_var_from_expr(left) {
+						if node.op !in [.decl_assign, .assign] {
+							rop := token.assign_op_to_infix_op(node.op)
+							// name := '${g.table.get_type_name(expected)}.${rop}'
+
+							g.get(v)
+							g.expr(right, v.typ)
+							g.infix_from_typ(v.typ, rop)
+							g.set(v)
+							return
+						}	
 						g.set_with_expr(right, v)
 					} else {
 						panic("unimplemented")
@@ -983,6 +1002,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 		pref: w_pref
 		files: files
 		eval: eval.new_eval(table, w_pref)
+		pool: serialise.new_pool(table)
 	}
 	g.table.pointer_size = 4
 	g.mod.assign_memory("memory", true, 1, none)
@@ -1002,7 +1022,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 		}
 		g.toplevel_stmts(file.stmts)
 	}
-	//g.housekeeping()
+	g.housekeeping()
 
 	/* mut valid := binaryen.modulevalidate(g.mod)
 	if valid {

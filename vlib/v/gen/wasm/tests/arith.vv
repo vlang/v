@@ -55,16 +55,15 @@ pub fn negate(a int) i64 {
 }
 
 pub fn powi(a i64, b i64) i64 {
-	/* mut b_ := b
+	mut b_ := b
 	mut p := a
-	mut v := i64(1) */
+	mut v := i64(1)
 
-	if b < 0 { // exponent < 0
-		return 9999992
-		/* if a == 0 {
-			return 4 // division by 0
-		} */
-		/* return if a * a != 1 {
+	if b_ < 0 { // exponent < 0
+		if a == 0 {
+			return -1 // division by 0
+		}
+		return if a * a != 1 {
 			0
 		} else {
 			if (b_ & 1) > 0 {
@@ -72,10 +71,10 @@ pub fn powi(a i64, b i64) i64 {
 			} else {
 				1
 			}
-		} */
+		}
 	}
 
-	/* for b_ > 0 {
+	for b_ > 0 {
 		if b_ & 1 > 0 {
 			v *= p
 		}
@@ -83,7 +82,5 @@ pub fn powi(a i64, b i64) i64 {
 		b_ >>= 1
 	}
 
-	return v */
-
-	return b
+	return v
 }

@@ -7,46 +7,6 @@ import v.ast
 import v.token
 import wasm
 
-fn (mut g Gen) get_type_size_align(typ ast.Type) (int, int) {
-	ts := g.table.sym(typ)
-	if ts.size != -1 && typ in g.structs {
-		return ts.size, ts.align
-	}
-
-	if ts.info !is ast.Struct {
-		return g.table.type_size(typ)
-	}
-
-	ti := ts.info as ast.Struct
-
-	// Code borrowed from native, hope you don't mind!
-
-	mut strc := StructInfo{}
-	mut size := 0
-	mut align := 1
-	for f in ti.fields {
-		f_size, f_align := g.table.type_size(f.typ)
-		if f_size == 0 {
-			strc.offsets << 0
-			continue
-		}
-		padding := (f_align - size % f_align) % f_align
-		strc.offsets << size + padding
-		size += f_size + padding
-		if f_align > align {
-			align = f_align
-		}
-	}
-	size = (size + align - 1) / align * align
-	g.structs[typ.idx()] = strc
-
-	mut ts_ := g.table.sym(typ)
-	ts_.size = size
-	ts_.align = align
-
-	return size, align
-}
-
 fn (mut g Gen) as_numtype(a wasm.ValType) wasm.NumType {
 	if a in [.funcref_t, .externref_t, .v128_t] {
 		g.w_error("as_numtype: called with '${a}'")
@@ -92,7 +52,7 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
 	ts := g.table.sym(typ)
 	match ts.info {
 		ast.Struct {
-			g.get_type_size_align(typ)
+			g.pool.type_size(typ)
 			return wasm.ValType.i32_t // pointer
 		}
 		ast.MultiReturn {
@@ -113,6 +73,10 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
 }
 
 fn (mut g Gen) infix_from_typ(typ ast.Type, op token.Kind) {
+	if g.is_param_type(typ) {
+		panic('unimplemented')
+	}
+	
 	wasm_typ := g.as_numtype(g.get_wasm_type(typ))
 
 	match op {
