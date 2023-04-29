@@ -856,7 +856,7 @@ pub fn (mut func Function) c_block(parameters []ValType, results []ValType) Labe
 	return func.label
 }
 
-// c_loop creates a label that can later be branched to of with `c_br` and `c_br_if`.
+// c_loop creates a label that can later be branched to with `c_br` and `c_br_if`.
 // Loops are strongly typed, you must supply a list of types for `parameters` and `results`.
 // All loops must be ended, see the `c_end` function.
 pub fn (mut func Function) c_loop(parameters []ValType, results []ValType) LabelIndex {
@@ -867,16 +867,20 @@ pub fn (mut func Function) c_loop(parameters []ValType, results []ValType) Label
 }
 
 // c_if opens an if expression. It executes a statement if the last item on the stack is true.
+// It creates a label that can later be branched out of with `c_br` and `c_br_if`.
 // If expressions are strongly typed, you must supply a list of types for `parameters` and `results`.
 // Call `c_else` to open the else case of an if expression, or close it by calling `c_end_if`.
-// All if expressions must be ended by calling with `c_end_if.
-pub fn (mut func Function) c_if(parameters []ValType, results []ValType) {
+// All if expressions must be ended, see the `c_end` function.
+pub fn (mut func Function) c_if(parameters []ValType, results []ValType) LabelIndex {
+	func.label++
 	func.code << 0x04
 	func.blocktype(parameters: parameters, results: results)
+	return func.label
 }
 
-// c_else starts the else case of an if expression, it must be closed by calling `c_end_if`.
-pub fn (mut func Function) c_else() {
+// c_else opens the else case of an if expression, it must be closed by calling `c_end`.
+pub fn (mut func Function) c_else(label LabelIndex) {
+	assert func.label == label, 'c_else: called with an invalid label ${label}'
 	func.code << 0x05
 }
 
