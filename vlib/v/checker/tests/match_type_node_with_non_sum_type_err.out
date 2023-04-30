@@ -1,4 +1,4 @@
-vlib/v/checker/tests/match_type_node_with_non_sum_type_err.vv:5:3: error: cannot match i64 with non sum type
+vlib/v/checker/tests/match_type_node_with_non_sum_type_err.vv:5:3: error: `match` by type can only be used for sum-types, `b` is of type `i64`
     3 |
     4 |     match b {
     5 |         i64 { println('i64') }
