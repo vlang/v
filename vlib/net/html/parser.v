@@ -14,6 +14,7 @@ mut:
 	opened_code_type string
 	line_count       int
 	outside_tag      bool
+	text_after_tag   bool
 	lexeme_builder   strings.Builder = strings.new_builder(100)
 	code_tags        map[string]bool = {
 		'script': true
@@ -221,10 +222,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 				if parser.lexical_attributes.current_tag.name.len > 1
 					&& parser.lexical_attributes.current_tag.name[0] == 47
 					&& !blank_string(temp_string) {
-					parser.tags << &Tag{
-						name: 'text'
-						content: temp_string
-					}
+					parser.lexical_attributes.text_after_tag = true
 				} else {
 					parser.lexical_attributes.current_tag.content = temp_string // verify later who has this content
 				}
@@ -234,6 +232,14 @@ pub fn (mut parser Parser) split_parse(data string) {
 			parser.generate_tag()
 			parser.lexical_attributes.open_tag = true
 			parser.lexical_attributes.outside_tag = false
+
+			if parser.lexical_attributes.text_after_tag == true {
+				parser.tags << &Tag{
+					name: 'text'
+					content: temp_string
+				}
+				parser.lexical_attributes.text_after_tag = false
+			}
 		} else {
 			parser.lexical_attributes.lexeme_builder.write_u8(chr)
 		}
