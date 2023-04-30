@@ -200,7 +200,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			}
 			if mut expr is ast.TypeNode && cond_sym.is_primitive() {
 				type_str := c.table.type_to_str(expr.typ)
-				c.error('`match` by type can only be used for sum-types, `${node.cond}` is of type `${type_str}`', branch.pos)
+				c.error('`match` by type can only be used for sum-types, `${node.cond}` is of type `${type_str}`',
+					branch.pos)
 			}
 			if mut expr is ast.RangeExpr {
 				// Allow for `match enum_value { 4..5 { } }`, even though usually int and enum values,
