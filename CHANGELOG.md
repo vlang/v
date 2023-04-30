@@ -1,11 +1,16 @@
 ## V 0.3.4
-*wip*
-*30 Apr 2023*
+*wip 30 Apr 2023*
 - A new VPM site: vpm.vlang.io. A better design, discoverability of packages,
 descriptions, most downloaded packages etc.
+- **vweb now supports live page reloading**. The website is instantly updated in the browser (no need to refresh the page) everytime a .v or a .html file is changed.
+- vweb is now significantly faster and more stable under load, due to a new multithreaded worker pool, which is much more efficient at spreading the workload among all threads equally.
+- A new pure WASM backend, based on binaryen, and a WASM `builtin` module.
 - Lots of playground improvements: play.vlang.io.
 - `v share file.v` for sharing code via the playground.
-- Many ORM improvements: type checks for `limit/offset/order by/where`; support of ference objects in `insert`; struct fields can be used with `limit/offset`;
+- All ORM queries now return `![]` (`Result` of an array). This allows to handle/propagate DB errors and simplifies working with ORM (one way).
+- Many ORM improvements: type checks for `limit/offset/order by/where`; support of reference objects in `insert`; struct fields can be used with `limit/offset`; `Connection` interface.
+- ORM now supports the `like` operator: `users := sql db { select from User where name like 'Bob%' }`.
+- A new command line flag `-e` for instant code execution: `v -e "println(2+5)"` (works just like Perl).
 - `v up` sped up for when it hasn't been run for a long time (vc/ bootstrapping has been optimized).
 - Lots of new checks in the checker.
 - Variable shadowing has been completely banned (previously variable names could conflict with module names).
@@ -20,6 +25,31 @@ descriptions, most downloaded packages etc.
 - `none` can now be cast to all Option type, including aliases.
 - Enums can no longer be initialized like structs.
 - Builtin methods `first/last/repeat` can now be used in custom user types (previously they only worked in builtin arrays).
+- `v init` no longer overwrites existing `src/main.v`.
+- Anonymous fn params can no longer be shadowed.
+- Channel pop now works with an `or` block: `ch := <-self.item or { return none }`
+- Option references are now supported: `?&Type`.
+- C++20 standard support in the C++ backend.
+- `v self` now uses a faster tcc backend on macOS/Apple Silicon, just like on Windows/Linux.
+- `os.hostname()` and `os.loginname()` now return `Result`.
+- The "Is V still fast?" web page has been sped up by splitting the results table into multiple years.
+- Allow `foo := Foo{}`, when `Foo` has an Option field, that is a struct, that has a `[required]` tag on its fields (#17516).
+- Comptime reflection now supports interface fields.
+- comptime: `$option` (`for f in Foo.fields { $if f.typ is $option { ...`).
+- comptime: compile-time enum evaluation with `$for
+ item in MyEnum.fields { dump(item.value) dump(item.name) }`.
+- Arrays of `Option`s are now allowed.
+- `it` has been renamed to `index` in array inits.
+- `datatypes.LinkedList[map]` now works correctly.
+- `crypto` and `math` modules have been updated to use `Result` instead of `Option`.
+- `[required]` fields are now checked for embedded structs.
+- `readline` module now works much better on macOS: key navigation, history, etc (now on par with Linux).
+- Basic QNX support.
+- A new `-ldflags` option, in addition to `-cflags`. Works just like LDFLAGS in C.
+- `urllib.Values.get()` now returns an Option.
+
+
+
 
 
 
