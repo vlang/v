@@ -1,16 +1,18 @@
 ## V 0.3.4
-*wip 30 Apr 2023*
-- A new VPM site: vpm.vlang.io. A better design, discoverability of packages,
-descriptions, most downloaded packages etc.
+*30 Apr 2023*
 - **vweb now supports live page reloading**. The website is instantly updated in the browser (no need to refresh the page) everytime a .v or a .html file is changed.
 - vweb is now significantly faster and more stable under load, due to a new multithreaded worker pool, which is much more efficient at spreading the workload among all threads equally.
-- A new pure WASM backend, based on binaryen, and a WASM `builtin` module.
-- Lots of playground improvements: play.vlang.io.
+- Middleware support in vweb.
+- vweb now supports controllers. It's now possible to have multiple app structs to better separate logic.
+- vweb: overridable `.not_found()` method for custom 404 pages.
+- A new pure WASM backend, based on binaryen, a WASM `builtin` module, and a pure V WASM serialization library.
+- Lots of playground improvements: play.vlang.io, including a really cool feature: "Show generated C code".
 - `v share file.v` for sharing code via the playground.
 - All ORM queries now return `![]` (`Result` of an array). This allows to handle/propagate DB errors and simplifies working with ORM (one way).
 - Many ORM improvements: type checks for `limit/offset/order by/where`; support of reference objects in `insert`; struct fields can be used with `limit/offset`; `Connection` interface.
 - ORM now supports the `like` operator: `users := sql db { select from User where name like 'Bob%' }`.
-- A new command line flag `-e` for instant code execution: `v -e "println(2+5)"` (works just like Perl).
+- A new `-d trace_orm` option to see all SQL queries generated and used by V ORM and `-d trace_pg_error` to trace PG errors.
+- A new command line flag `-e` for running short V programs on command line: `v -e "println(2+5)"` (works just like in Perl).
 - `v up` sped up for when it hasn't been run for a long time (vc/ bootstrapping has been optimized).
 - Lots of new checks in the checker.
 - Variable shadowing has been completely banned (previously variable names could conflict with module names).
@@ -37,6 +39,7 @@ descriptions, most downloaded packages etc.
 - Comptime reflection now supports interface fields.
 - comptime: `$option` (`for f in Foo.fields { $if f.typ is $option { ...`).
 - comptime: compile-time enum evaluation with `$for
+- comptime: all types are now lowercase (`$int, $enum, $option` etc).
  item in MyEnum.fields { dump(item.value) dump(item.name) }`.
 - Arrays of `Option`s are now allowed.
 - `it` has been renamed to `index` in array inits.
@@ -47,6 +50,31 @@ descriptions, most downloaded packages etc.
 - Basic QNX support.
 - A new `-ldflags` option, in addition to `-cflags`. Works just like LDFLAGS in C.
 - `urllib.Values.get()` now returns an Option.
+- `strconv`: `v_printf()` was made private, `v_sprintf()` was deprecated. String interpolation should be used instead.
+- Fixed a bug with closures with fixed array variables.
+- Generic struct inits no longer need explicit types provided: `struct Foo[T, U] { a T; b U } foo := Foo{a:2, b:'x'}`
+- `os.Process` now has a `create_no_window` option (Windows only).
+- `os.Process` now has a `set_work_folder()` method to set the initial working folder of the new child process.
+- `json`: enums are serialized as strings by default, `[json_as_number]` attribute can be used for the old behavior.
+- `net.http`: mime types have been updated to include all official types.
+- `gg`: `create_image()` now returns `!Image` instead of `Image`, allowing to handle errors.
+- sokol: errors during image creation no longer result in a panic, but can be handled by the programmer.
+- sokol: macOS apps can now be quit using Cmd+Q.
+- A new `termios` module.
+- Lots of fixes and new features in the native backend, including making codegen logic platform-independent.
+- `strconv.atoi` optimizations.
+- `println()` now supports arrays with recursive references.
+- Multipart form parsing fixes in vweb.
+- A database pool in vweb.
+- termux: support for cross-compilation from termux to other platforms.
+- GitHub Copilot summaries in PRs.
+- unsafe: dereferencing nil references is no longer allowed.
+- os: fixed a memleak in `getline()`.
+- Mixing multi-return results with other types in return statements is no longer allowed (this simplifies the code).
+- Assigning anonymous structs to named structs is no longer allowed.
+
+
+
 
 
 
