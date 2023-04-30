@@ -6,7 +6,7 @@ import clipboard
 import json
 
 struct Response {
-	hash string
+	hash  string
 	error string
 }
 
@@ -38,7 +38,7 @@ fn main() {
 	share := http.post_form('https://play.vlang.io/share', {
 		'code': content
 	})!
-	
+
 	response := json.decode(Response, share.body)!
 	url := 'https://play.vlang.io/p/${response.hash}'
 
