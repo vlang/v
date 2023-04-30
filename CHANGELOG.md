@@ -1,12 +1,12 @@
 ## V 0.3.4
 *30 Apr 2023*
-- **vweb now supports live page reloading**. The website is instantly updated in the browser (no need to refresh the page) everytime a .v or a .html file is changed.
+- **vweb now supports live page reloading**. The web app is instantly updated in the browser (no need to refresh the page) everytime a .v or a .html file is changed.
 - vweb is now significantly faster and more stable under load, due to a new multithreaded worker pool, which is much more efficient at spreading the workload among all threads equally.
 - Middleware support in vweb.
 - vweb now supports controllers. It's now possible to have multiple app structs to better separate logic.
 - vweb: overridable `.not_found()` method for custom 404 pages.
 - A new pure WASM backend, based on binaryen, a WASM `builtin` module, and a pure V WASM serialization library.
-- Lots of playground improvements: play.vlang.io, including a really cool feature: "Show generated C code".
+- Lots of playground improvements: [play.vlang.io](https://play.vlang.io), including a really cool feature: "Show generated C code".
 - `v share file.v` for sharing code via the playground.
 - All ORM queries now return `![]` (`Result` of an array). This allows to handle/propagate DB errors and simplifies working with ORM (one way).
 - Many ORM improvements: type checks for `limit/offset/order by/where`; support of reference objects in `insert`; struct fields can be used with `limit/offset`; `Connection` interface.
@@ -24,7 +24,7 @@
 - Final steps in making the Option type a first class type.
 - Lots of documentation/readme improvements.
 - Option receivers can no longer have methods.
-- `none` can now be cast to all Option type, including aliases.
+- `none` can now be cast to all `Option` types, including aliases.
 - Enums can no longer be initialized like structs.
 - Builtin methods `first/last/repeat` can now be used in custom user types (previously they only worked in builtin arrays).
 - `v init` no longer overwrites existing `src/main.v`.
@@ -72,14 +72,6 @@
 - os: fixed a memleak in `getline()`.
 - Mixing multi-return results with other types in return statements is no longer allowed (this simplifies the code).
 - Assigning anonymous structs to named structs is no longer allowed.
-
-
-
-
-
-
-
-
 
 
 ## V 0.3.3
