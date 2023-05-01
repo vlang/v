@@ -29,10 +29,8 @@ fn (e &Encoder) encode_struct[T](val T) {
 			}
 		} $else {
 			$if field.typ is ?int {
-				// returning Option(789) instead of '789'
 				assert val.$(field.name) ?.str() == '789'
 			} $else $if field.typ is ?string {
-				// error: option type cannot be called directly
 				assert val.$(field.name) ?.int() == 321
 			}
 		}

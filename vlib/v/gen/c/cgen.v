@@ -3219,20 +3219,19 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.write('(*')
 				g.expr(node.expr)
 				g.write(')')
-			} else if mut node.expr is ast.ComptimeSelector {
-				if node.expr.left is ast.Ident && g.comptime_for_field_value.typ.has_flag(.option) {
-					cur_line := g.go_before_stmt(0).trim_space()
-					expr_str := '${node.expr.left.str()}.${g.comptime_for_field_value.name}'
-					g.writeln('if (${expr_str}.state != 0) {')
-					g.writeln('\tpanic_option_not_set(_SLIT("none"));')
-					g.writeln('}')
-					g.write(cur_line)
-					g.write('*(${g.base_type(g.comptime_for_field_value.typ)}*)&')
-					g.expr(node.expr)
-					g.write('.data')
-				} else {
-					g.expr(node.expr)
-				}
+			} else if mut node.expr is ast.ComptimeSelector
+				&& (node.expr as ast.ComptimeSelector).left is ast.Ident
+				&& g.comptime_for_field_value.typ.has_flag(.option) {
+				// val.$(field.name)?
+				cur_line := g.go_before_stmt(0).trim_space()
+				expr_str := '${node.expr.left.str()}.${g.comptime_for_field_value.name}'
+				g.writeln('if (${expr_str}.state != 0) {')
+				g.writeln('\tpanic_option_not_set(_SLIT("none"));')
+				g.writeln('}')
+				g.write(cur_line)
+				g.write('*(${g.base_type(g.comptime_for_field_value.typ)}*)&')
+				g.expr(node.expr)
+				g.write('.data')
 			} else {
 				g.expr(node.expr)
 			}
