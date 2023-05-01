@@ -218,7 +218,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		&& c.table.get_type_name(it.typ) != 'time.Time') {
 		// Delete an uninitialized struct from fields and skip adding the current field
 		// to sub structs to skip inserting an empty struct in the related table.
-		if c.check_field_of_inserting_structure_is_uninitialized(node, f.name) {
+		if c.check_field_of_inserting_struct_is_uninitialized(node, f.name) {
 			fields.delete(fields.index(f))
 			continue
 		}
@@ -537,7 +537,7 @@ fn (mut c Checker) check_db_expr(db_expr &ast.Expr) bool {
 	return true
 }
 
-fn (_ &Checker) check_field_of_inserting_structure_is_uninitialized(node &ast.SqlStmtLine, field_name string) bool {
+fn (_ &Checker) check_field_of_inserting_struct_is_uninitialized(node &ast.SqlStmtLine, field_name string) bool {
 	struct_scope := node.scope.find_var(node.object_var_name) or { return false }
 
 	if struct_scope.expr is ast.StructInit {
