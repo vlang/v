@@ -538,16 +538,11 @@ fn (mut c Checker) check_db_expr(db_expr &ast.Expr) bool {
 }
 
 fn (_ &Checker) check_field_of_inserting_structure_is_uninitialized(node &ast.SqlStmtLine, field_name string) bool {
-	mut found := false
 	struct_scope := node.scope.find_var(node.object_var_name) or { return false }
 
 	if struct_scope.expr is ast.StructInit {
-		for field in struct_scope.expr.fields {
-			if field.name == field_name {
-				found = true
-			}
-		}
+		return struct_scope.expr.fields.filter(it.name == field_name).len == 0
 	}
 
-	return !found
+	return false
 }

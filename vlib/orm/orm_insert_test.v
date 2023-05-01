@@ -64,7 +64,7 @@ fn test_does_not_insert_uninitialized_field() {
 		select from User
 	}!
 
-	// users must be empty because the package doesn't have an initialized user structure.
+	// users must be empty because the package doesn't have an initialized `User` structure.
 	assert users.len == 0
 }
 
