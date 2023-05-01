@@ -3,6 +3,12 @@ module main
 import net.http
 import os
 import clipboard
+import json
+
+struct Response {
+	hash  string
+	error string
+}
 
 fn main() {
 	mut cb := clipboard.new()
@@ -32,7 +38,9 @@ fn main() {
 	share := http.post_form('https://play.vlang.io/share', {
 		'code': content
 	})!
-	url := 'https://play.vlang.io/p/${share.body}'
+
+	response := json.decode(Response, share.body)!
+	url := 'https://play.vlang.io/p/${response.hash}'
 
 	cb.copy(url)
 	println(url)
