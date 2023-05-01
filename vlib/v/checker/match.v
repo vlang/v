@@ -199,8 +199,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					branch.pos)
 			}
 			if mut expr is ast.TypeNode && cond_sym.is_primitive() {
-				type_str := c.table.type_to_str(expr.typ)
-				c.error('`match` by type can only be used for sum-types, `${node.cond}` is of type `${type_str}`',
+				c.error('matching by type can only be done for sum types, generics, interfaces, `${node.cond}` is none of those',
 					branch.pos)
 			}
 			if mut expr is ast.RangeExpr {
