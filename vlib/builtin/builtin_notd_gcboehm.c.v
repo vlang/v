@@ -14,6 +14,11 @@ fn C.GC_REALLOC(ptr voidptr, n usize) voidptr
 
 fn C.GC_FREE(ptr voidptr)
 
+fn C.GC_get_heap_size() usize
+fn C.GC_get_free_bytes() usize
+fn C.GC_get_memory_use() usize
+fn C.GC_get_total_bytes() usize
+
 // provide an empty function when manual memory management is used
 // to simplify leak detection
 //
