@@ -483,11 +483,13 @@ If you don't use the default number of workers (`nr_workers`) you have to change
 it to the same number in `vweb.run_at` as in `vweb.database_pool`
 
 ### Extending the App struct with `[vweb_global]`
-You can extend the `App` struct however you like, but there are some things you have to keep in mind.
-Under the hood at each request a new instance of `App` is constructed, and all fields are re-initialized with
-their default type values, except for the `db` field. 
-This behaviour ensures that each request is treated equally and in the same context, but problems arise 
-when we want to provide more context than just the default `vweb.Context`.
+You can extend the `App` struct however you like, but there are some things you
+have to keep in mind. Under the hood at each request a new instance of `App` is
+constructed, and all fields are re-initialized with their default type values, 
+except for the `db` field. 
+
+This behaviour ensures that each request is treated equally and in the same context, but
+problems arise when we want to provide more context than just the default `vweb.Context`.
 
 Let's view the following example where we want to provide a secret token to our app:
 
@@ -512,9 +514,10 @@ fn (mut app App) index() vweb.Result {
 }
 ```
 
-When you visit `localhost:8080/` you would expect to see the text `"My secret is: my secret"`, but instead
-there is only the text `"My secret is: "`. This is because of the way vweb works. But we can override 
-the default behaviour by adding the attribute `[vweb_global]` to the `secret` field.
+When you visit `localhost:8080/` you would expect to see the text 
+`"My secret is: my secret"`, but instead there is only the text 
+`"My secret is: "`. This is because of the way vweb works. We can override the default
+behaviour by adding the attribute `[vweb_global]` to the `secret` field.
 
 **Example:**
 ```v ignore
@@ -530,8 +533,9 @@ Now if you visit `localhost:8080/` you see the text `"My secret is: my secret"`.
 > next request. You can use shared fields for this.
 
 ### Shared Objects across requests
-We saw in the previous section that we can persist data across multiple requests, but what if we
-want to be able to mutate the data? Since vweb works with threads, we have to use `shared` fields.
+We saw in the previous section that we can persist data across multiple requests, 
+but what if we want to be able to mutate the data? Since vweb works with threads, 
+we have to use `shared` fields.
 
 Let's see how we can add a visitor counter to our `App`.
 
@@ -578,8 +582,8 @@ fn (mut app App) index() vweb.Result {
 The drawback of using shared objects is that it affects performance. In the previous example
 `App.counter` needs to be locked each time the page is loaded if there are simultaneous
 requests the next requests will have to wait for the lock to be released.
-In the context of the previous example, it would be better to make a call to a database to update 
-and get the visitor count.
+In the context of the previous example, it would be better to make a call to a database 
+to update and get the visitor count.
 
 It is best practice to limit the use of shared objects as much as possible.
 
