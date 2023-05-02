@@ -60,6 +60,7 @@ mut:
 	total_comments int
 	file_name      string    [skip]
 	comments       []Comment [skip]
+	skip_field     string    [json: '-']
 }
 
 fn test_skip_fields_should_be_initialised_by_json_decode() {
@@ -68,6 +69,15 @@ fn test_skip_fields_should_be_initialised_by_json_decode() {
 	assert task.id == 123
 	assert task.total_comments == 55
 	assert task.comments == []
+}
+
+fn test_skip_should_be_ignored() {
+	data := '{"total_comments": 55, "id": 123, "skip_field": "foo"}'
+	mut task := json.decode(Task, data)!
+	assert task.id == 123
+	assert task.total_comments == 55
+	assert task.comments == []
+	assert task.skip_field == ''
 }
 
 //
