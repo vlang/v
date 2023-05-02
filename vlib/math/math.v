@@ -209,8 +209,7 @@ pub fn alike(a f64, b f64) bool {
 }
 
 fn is_odd_int(x f64) bool {
-	xi, xf := modf(x)
-	return xf == 0 && (i64(xi) & 1) == 1
+	return math.fmod(x, 2) == 0
 }
 
 fn is_neg_int(x f64) bool {
