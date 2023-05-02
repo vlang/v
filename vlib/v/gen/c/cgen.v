@@ -3219,26 +3219,22 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.write('(*')
 				g.expr(node.expr)
 				g.write(')')
-			} else if mut node.expr is ast.ComptimeSelector
-				&& (node.expr as ast.ComptimeSelector).left is ast.Ident {
-				// val.$(field.name)?
+			} else if node.op == .question {
 				cur_line := g.go_before_stmt(0).trim_space()
-				expr_str := '${node.expr.left.str()}.${g.comptime_for_field_value.name}'
+				mut expr_str := ''
+				if mut node.expr is ast.ComptimeSelector
+					&& (node.expr as ast.ComptimeSelector).left is ast.Ident {
+					// val.$(field.name)?					
+					expr_str = '${node.expr.left.str()}.${g.comptime_for_field_value.name}'
+				} else if mut node.expr is ast.Ident && g.is_comptime_var(node.expr) {
+					// val?
+					expr_str = node.expr.name
+				}
 				g.writeln('if (${expr_str}.state != 0) {')
 				g.writeln('\tpanic_option_not_set(_SLIT("none"));')
 				g.writeln('}')
 				g.write(cur_line)
-				g.write('*(${g.base_type(g.comptime_for_field_type)}*)&')
-				g.expr(node.expr)
-				g.write('.data')
-			} else if mut node.expr is ast.Ident && g.is_comptime_var(node.expr) {
-				// val?
 				typ := g.resolve_comptime_type(node.expr, node.typ)
-				cur_line := g.go_before_stmt(0).trim_space()
-				g.writeln('if (${node.expr.name}.state != 0) {')
-				g.writeln('\tpanic_option_not_set(_SLIT("none"));')
-				g.writeln('}')
-				g.write(cur_line)
 				g.write('*(${g.base_type(typ)}*)&')
 				g.expr(node.expr)
 				g.write('.data')
