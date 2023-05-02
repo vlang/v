@@ -643,6 +643,42 @@ pub fn memdup_uncollectable(src voidptr, sz int) voidptr {
 	}
 }
 
+// gc_heap_size returns the number of bytes in the heap
+pub fn gc_heap_size() usize {
+	$if gcboehm ? {
+		return C.GC_get_heap_size()
+	} $else {
+		return 0
+	}
+}
+
+// gc_free_bytes returns a lower bound on the number of free bytes in the heap
+pub fn gc_free_bytes() usize {
+	$if gcboehm ? {
+		return C.GC_get_free_bytes()
+	} $else {
+		return 0
+	}
+}
+
+// gc_memory_use returns the total memory use in bytes by all allocated blocks
+pub fn gc_memory_use() usize {
+	$if gcboehm ? {
+		return C.GC_get_memory_use()
+	} $else {
+		return 0
+	}
+}
+
+// gc_total_bytes returns the total number of bytes allocated in this process
+pub fn gc_total_bytes() usize {
+	$if gcboehm ? {
+		return C.GC_get_total_bytes()
+	} $else {
+		return 0
+	}
+}
+
 [inline]
 fn v_fixed_index(i int, len int) int {
 	$if !no_bounds_checking {
