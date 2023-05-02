@@ -182,9 +182,9 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	defer {
 		c.cur_orm_ts = old_ts
 	}
+	inserting_object_name := node.object_var_name
 
 	if node.kind == .insert && !node.is_generated {
-		inserting_object_name := node.object_var_name
 		inserting_object := node.scope.find(inserting_object_name) or {
 			c.error('undefined ident: `${inserting_object_name}`', node.pos)
 			return ast.void_type
@@ -210,12 +210,19 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	}
 
 	info := table_sym.info as ast.Struct
-	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
+	mut fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
 	mut sub_structs := map[int]ast.SqlStmtLine{}
 	for f in fields.filter((c.table.type_symbols[int(it.typ)].kind == .struct_
 		|| (c.table.sym(it.typ).kind == .array
 		&& c.table.sym(c.table.sym(it.typ).array_info().elem_type).kind == .struct_))
 		&& c.table.get_type_name(it.typ) != 'time.Time') {
+		// Delete an uninitialized struct from fields and skip adding the current field
+		// to sub structs to skip inserting an empty struct in the related table.
+		if c.check_field_of_inserting_struct_is_uninitialized(node, f.name) {
+			fields.delete(fields.index(f))
+			continue
+		}
+
 		c.check_orm_struct_field_attributes(f)
 
 		typ := if c.table.sym(f.typ).kind == .struct_ {
@@ -528,4 +535,14 @@ fn (mut c Checker) check_db_expr(db_expr &ast.Expr) bool {
 	}
 
 	return true
+}
+
+fn (_ &Checker) check_field_of_inserting_struct_is_uninitialized(node &ast.SqlStmtLine, field_name string) bool {
+	struct_scope := node.scope.find_var(node.object_var_name) or { return false }
+
+	if struct_scope.expr is ast.StructInit {
+		return struct_scope.expr.fields.filter(it.name == field_name).len == 0
+	}
+
+	return false
 }

@@ -25,14 +25,75 @@ struct Account {
 	id int [primary; sql: serial]
 }
 
+struct Package {
+	id     int    [primary; sql: serial]
+	name   string [unique]
+	author User   [fkey: 'id']
+}
+
+struct User {
+pub mut:
+	id       int    [primary; sql: serial]
+	username string [unique]
+}
+
 pub fn insert_parent(db sqlite.DB, mut parent Parent) ! {
 	sql db {
 		insert parent into Parent
 	}!
 }
 
+fn test_does_not_insert_uninitialized_field() {
+	db := sqlite.connect(':memory:')!
+
+	sql db {
+		create table User
+		create table Package
+	}!
+
+	package := Package{
+		name: 'xml'
+		// author
+	}
+
+	sql db {
+		insert package into Package
+	}!
+
+	users := sql db {
+		select from User
+	}!
+
+	// users must be empty because the package doesn't have an initialized `User` structure.
+	assert users.len == 0
+}
+
+fn test_insert_empty_field() {
+	db := sqlite.connect(':memory:')!
+
+	sql db {
+		create table User
+		create table Package
+	}!
+
+	package := Package{
+		name: 'xml'
+		author: User{}
+	}
+
+	sql db {
+		insert package into Package
+	}!
+
+	users := sql db {
+		select from User
+	}!
+
+	assert users.len == 1
+}
+
 fn test_insert_empty_object() {
-	db := sqlite.connect(':memory:') or { panic(err) }
+	db := sqlite.connect(':memory:')!
 
 	account := Account{}
 
@@ -49,7 +110,7 @@ fn test_insert_empty_object() {
 }
 
 fn test_orm_insert_mut_object() {
-	db := sqlite.connect(':memory:') or { panic(err) }
+	db := sqlite.connect(':memory:')!
 
 	sql db {
 		create table Parent
@@ -71,7 +132,7 @@ fn test_orm_insert_mut_object() {
 }
 
 fn test_orm_insert_with_multiple_child_elements() {
-	mut db := sqlite.connect(':memory:') or { panic(err) }
+	mut db := sqlite.connect(':memory:')!
 
 	sql db {
 		create table Parent
