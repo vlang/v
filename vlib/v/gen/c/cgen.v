@@ -3220,8 +3220,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.expr(node.expr)
 				g.write(')')
 			} else if mut node.expr is ast.ComptimeSelector
-				&& (node.expr as ast.ComptimeSelector).left is ast.Ident
-				&& g.comptime_for_field_type.has_flag(.option) {
+				&& (node.expr as ast.ComptimeSelector).left is ast.Ident {
 				// val.$(field.name)?
 				cur_line := g.go_before_stmt(0).trim_space()
 				expr_str := '${node.expr.left.str()}.${g.comptime_for_field_value.name}'
@@ -3232,11 +3231,22 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.write('*(${g.base_type(g.comptime_for_field_type)}*)&')
 				g.expr(node.expr)
 				g.write('.data')
+			} else if mut node.expr is ast.Ident && g.is_comptime_var(node.expr) {
+				// val?
+				typ := g.resolve_comptime_type(node.expr, node.typ)
+				cur_line := g.go_before_stmt(0).trim_space()
+				g.writeln('if (${node.expr.name}.state != 0) {')
+				g.writeln('\tpanic_option_not_set(_SLIT("none"));')
+				g.writeln('}')
+				g.write(cur_line)
+				g.write('*(${g.base_type(typ)}*)&')
+				g.expr(node.expr)
+				g.write('.data')
 			} else {
 				g.expr(node.expr)
 			}
 			g.inside_map_postfix = false
-			if !node.is_c2v_prefix && node.expr !is ast.ComptimeSelector {
+			if !node.is_c2v_prefix && node.op != .question {
 				g.write(node.op.str())
 			}
 			if node.auto_locked != '' {
