@@ -135,6 +135,5 @@ pub fn gc_check_leaks() {
 
 fn C.GC_get_heap_size() usize
 fn C.GC_get_free_bytes() usize
-fn C.GC_get_bytes_since_gc() usize
 fn C.GC_get_memory_use() usize
 fn C.GC_get_total_bytes() usize
