@@ -3221,7 +3221,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.write(')')
 			} else if mut node.expr is ast.ComptimeSelector
 				&& (node.expr as ast.ComptimeSelector).left is ast.Ident
-				&& g.comptime_for_field_value.typ.has_flag(.option) {
+				&& g.comptime_for_field_type.has_flag(.option) {
 				// val.$(field.name)?
 				cur_line := g.go_before_stmt(0).trim_space()
 				expr_str := '${node.expr.left.str()}.${g.comptime_for_field_value.name}'
@@ -3229,7 +3229,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.writeln('\tpanic_option_not_set(_SLIT("none"));')
 				g.writeln('}')
 				g.write(cur_line)
-				g.write('*(${g.base_type(g.comptime_for_field_value.typ)}*)&')
+				g.write('*(${g.base_type(g.comptime_for_field_type)}*)&')
 				g.expr(node.expr)
 				g.write('.data')
 			} else {

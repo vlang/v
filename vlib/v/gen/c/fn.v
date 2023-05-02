@@ -933,6 +933,15 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 			return true
 		}
 	} else if left_node is ast.PostfixExpr {
+		if left_node.expr is ast.ComptimeSelector {
+			key_str := g.get_comptime_selector_key_type(left_node.expr)
+			if key_str != '' {
+				rec_type = g.comptime_var_type_map[key_str] or { rec_type }
+			}
+			if left_node.op == .question {
+				rec_type = rec_type.clear_flag(.option)
+			}
+		}
 		g.gen_expr_to_string(left_node, rec_type)
 		return true
 	} else if left_node is ast.ComptimeCall {
