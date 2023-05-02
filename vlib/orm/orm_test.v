@@ -49,6 +49,7 @@ fn test_use_struct_field_as_limit() {
 	sam := User{
 		age: 29
 		name: 'Sam'
+		skipped_string2: 'this should be ignored'
 	}
 
 	sql db {
@@ -60,6 +61,8 @@ fn test_use_struct_field_as_limit() {
 	}!
 
 	assert users.len == 1
+	assert users[0].name == 'Sam'
+	assert users[0].age == 29
 	assert users[0].skipped_string == ''
 	assert users[0].skipped_string2 == ''
 }
