@@ -3446,7 +3446,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					found_var := c.fn_scope.find_var(node.name)
 
 					if found_var != none {
-						c.error('variable `${node.name}` from the outer scope not added to the capturing list of the closure',
+						c.error('`${node.name}` must be added to the capture list for the closure to be used inside',
 							node.pos)
 						return ast.void_type
 					}

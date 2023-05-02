@@ -5,7 +5,7 @@ vlib/v/checker/tests/anon_fn_arg_type_err.vv:6:14: error: use `_` to name an unu
       |                 ^
     7 |         return i
     8 |     }
-vlib/v/checker/tests/anon_fn_arg_type_err.vv:7:10: error: variable `i` from the outer scope not added to the capturing list of the closure
+vlib/v/checker/tests/anon_fn_arg_type_err.vv:7:10: error: `i` must be added to the capture list for the closure to be used inside
     5 | 
     6 |     func := fn (i) int {
     7 |         return i
