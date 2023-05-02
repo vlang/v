@@ -528,6 +528,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 			match attr.name {
 				'json' {
 					if attr.arg == '-' {
+						// [json:'-']
 						is_skip = true
 					} else {
 						name = attr.arg

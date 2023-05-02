@@ -18,11 +18,12 @@ struct Module {
 
 [table: 'userlist']
 struct User {
-	id             int    [primary; sql: serial]
-	age            int
-	name           string [sql: 'username']
-	is_customer    bool
-	skipped_string string [skip]
+	id              int    [primary; sql: serial]
+	age             int
+	name            string [sql: 'username']
+	is_customer     bool
+	skipped_string  string [skip]
+	skipped_string2 string [sql: '-']
 }
 
 struct Foo {
@@ -59,6 +60,8 @@ fn test_use_struct_field_as_limit() {
 	}!
 
 	assert users.len == 1
+	assert users[0].skipped_string == ''
+	assert users[0].skipped_string2 == ''
 }
 
 fn test_orm() {
