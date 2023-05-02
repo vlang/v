@@ -3440,6 +3440,18 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 				c.error(util.new_suggestion(node.name, const_names_in_mod).say('undefined ident: `${node.name}`'),
 					node.pos)
 			} else {
+				// If a variable is not found in the scope of an anonymous function
+				// but is in an external scope, then we can suggest the user add it to the capturing list.
+				if c.inside_anon_fn {
+					found_var := c.fn_scope.find_var(node.name)
+
+					if found_var != none {
+						c.error('variable `${node.name}` from the outer scope not added to the capturing list of the closure',
+							node.pos)
+						return ast.void_type
+					}
+				}
+
 				c.error('undefined ident: `${node.name}`', node.pos)
 			}
 		}
