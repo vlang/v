@@ -25,9 +25,10 @@ struct Decoder {}
 fn (d &Decoder) decode[T](typ T) T {
 	$for field in T.fields {
 		$if field.is_option {
-			dump(typ.$(field.name) ?.str())
+			if typ.$(field.name) != none {
+				dump(typ.$(field.name) ?.str())
+			}
 			typ.$(field.name) = none
-			dump(typ.$(field.name) ?.str())
 		}
 	}
 	return typ
