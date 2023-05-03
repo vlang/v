@@ -643,21 +643,24 @@ pub fn memdup_uncollectable(src voidptr, sz int) voidptr {
 	}
 }
 
-// gc_heap_size returns the number of bytes in the heap
-pub fn gc_heap_size() usize {
-	$if gcboehm ? {
-		return C.GC_get_heap_size()
-	} $else {
-		return 0
-	}
+pub struct GCHeapUsage {
+pub:
+	heap_size      usize
+	free_bytes     usize
+	total_bytes    usize
+	unmapped_bytes usize
+	bytes_since_gc usize
 }
 
-// gc_free_bytes returns a lower bound on the number of free bytes in the heap
-pub fn gc_free_bytes() usize {
+// gc_heap_usage returns the info about heap usage
+pub fn gc_heap_usage() GCHeapUsage {
 	$if gcboehm ? {
-		return C.GC_get_free_bytes()
+		mut res := GCHeapUsage{}
+		C.GC_get_heap_usage_safe(&res.heap_size, &res.free_bytes, &res.unmapped_bytes,
+			&res.bytes_since_gc, &res.total_bytes)
+		return res
 	} $else {
-		return 0
+		return GCHeapUsage{}
 	}
 }
 
@@ -665,15 +668,6 @@ pub fn gc_free_bytes() usize {
 pub fn gc_memory_use() usize {
 	$if gcboehm ? {
 		return C.GC_get_memory_use()
-	} $else {
-		return 0
-	}
-}
-
-// gc_total_bytes returns the total number of bytes allocated in this process
-pub fn gc_total_bytes() usize {
-	$if gcboehm ? {
-		return C.GC_get_total_bytes()
 	} $else {
 		return 0
 	}
