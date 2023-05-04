@@ -127,7 +127,7 @@ Final steps in making the Option type a first class type:
 - Fixed a bug with closures with fixed array variables.
 - Builtin methods `first/last/repeat` can now be used in custom user types (previously they only
   worked in builtin arrays).
-- Generic struct initialization is no longer need explicit types provided:
+- Generic struct initialization no longer needs explicit types to be provided:
   ```v
   struct Foo[T, U] {
   	a T
