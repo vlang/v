@@ -143,6 +143,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	// fn (...) !struct     | fn (_ &struct, ...) &IError
 	// fn (...) (...struct) | fn (...&struct, ...)
 
+	// TODO: PRESERVE `pub` modifer and `export` attrs
+	// TODO: READ THROUGH EVERYTHING AND SUPPORT EVERYTHING
+
 	rt := node.return_type
 	rts := g.table.sym(rt)
 	match rts.info {
