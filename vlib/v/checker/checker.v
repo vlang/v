@@ -3609,6 +3609,12 @@ fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 						c.error('`<-` receive expression expected', branch.stmt.right[0].pos())
 					}
 				}
+				if mut branch.stmt.left[0] is ast.Ident {
+					ident := branch.stmt.left[0] as ast.Ident
+					if ident.kind == .blank_ident && branch.stmt.op != .decl_assign {
+						c.error('cannot send on `_`, use `_ := <- quit` instead', branch.stmt.left[0].pos())
+					}
+				}
 			}
 			else {
 				if !branch.is_else {
