@@ -146,7 +146,7 @@ fn test_day_of_year() {
 	mut day_of_month := 1
 	for i in 336 .. 367 {
 		// 2024 is a leap year, has 366 days
-		tt := time.Time{
+		t := time.Time{
 			year: 2024
 			month: 12
 			day: day_of_month
