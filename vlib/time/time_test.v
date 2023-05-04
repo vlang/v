@@ -142,6 +142,26 @@ fn test_day_of_week() {
 	}
 }
 
+fn test_day_of_year() {
+	mut day_of_month := 1
+	for i in 336 .. 367 {
+		// 2024 is a leap year, has 366 days
+		tt := time.Time{
+			year: 2024
+			month: 12
+			day: day_of_month
+			hour: 10
+			minute: 0
+			second: 0
+			unix: 0
+		}
+		day_of_month += 1
+		// testing if the December's days from 1st to 31st in 2024
+		// are numbered as 336 to 366
+		assert i == t.day_of_year()
+	}
+}
+
 fn test_weekday_str() {
 	day_names := ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 	for i, name in day_names {
