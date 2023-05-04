@@ -160,7 +160,7 @@ Final steps in making the Option type a first class type:
   spawned threads.
 - Channel pop now works with an `or` block: `ch := <-self.item or { return none }`
 - `it` has been renamed to `index` in array inits.
-- "Is V still fast?" web-page has been speed up by splitting the result table into multiple years.
+- "Is V still fast?" web-page has been sped up by splitting the result table into multiple years.
 
 ### Development
 
