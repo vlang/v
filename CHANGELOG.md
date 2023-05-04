@@ -1,5 +1,15 @@
 ## V 0.3.4
 *30 Apr 2023*
+
+### Breaking Changes
+
+- `json`: enums are serialized as strings by default, `[json_as_number]` attribute can be used for the old behavior.
+
+  If you are serializing enums to JSON in your application, then you will need to add the 
+  `[json_as_number]` attribute to keep the old behavior!
+
+### Other Changes
+
 - **vweb now supports live page reloading**. The web app is instantly updated in the browser (no need to refresh the page) everytime a .v or a .html file is changed.
 - vweb is now significantly faster and more stable under load, due to a new multithreaded worker pool, which is much more efficient at spreading the workload among all threads equally.
 - Middleware support in vweb.
@@ -55,7 +65,6 @@
 - Generic struct inits no longer need explicit types provided: `struct Foo[T, U] { a T; b U } foo := Foo{a:2, b:'x'}`
 - `os.Process` now has a `create_no_window` option (Windows only).
 - `os.Process` now has a `set_work_folder()` method to set the initial working folder of the new child process.
-- `json`: enums are serialized as strings by default, `[json_as_number]` attribute can be used for the old behavior.
 - `net.http`: mime types have been updated to include all official types.
 - `gg`: `create_image()` now returns `!Image` instead of `Image`, allowing to handle errors.
 - sokol: errors during image creation no longer result in a panic, but can be handled by the programmer.
