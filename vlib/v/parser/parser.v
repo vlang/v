@@ -2077,6 +2077,10 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	p.defer_vars = defer_vars
 
 	left0 := left[0]
+	if tok.kind in [.key_mut, .key_shared, .key_atomic] && left0.is_blank_ident() {
+		return p.error_with_pos('cannot use `${tok.kind}` on `_`', tok.pos())
+	}
+
 	if tok.kind == .key_mut && p.tok.kind != .decl_assign {
 		return p.error('expecting `:=` (e.g. `mut x :=`)')
 	}
