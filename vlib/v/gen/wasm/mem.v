@@ -157,29 +157,30 @@ fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
 	return v
 }
 
-fn (mut g Gen) literal_to_constant_expression(typ ast.Type, init ast.Expr) ?wasm.ConstExpression {
+fn (mut g Gen) literal_to_constant_expression(typ_ ast.Type, init ast.Expr) ?wasm.ConstExpression {
+	typ := ast.mktyp(typ_)
 	match init {
-		BoolLiteral {
+		ast.BoolLiteral {
 			return wasm.constexpr_value(int(init.val))
 		}
-		CharLiteral {
+		ast.CharLiteral {
 			return wasm.constexpr_value(int(init.val.runes()[0]))
 		}
-		FloatLiteral {
+		ast.FloatLiteral {
 			if typ == ast.f32_type {
 				return wasm.constexpr_value(init.val.f32())
 			} else if typ == ast.f64_type {
 				return wasm.constexpr_value(init.val.f64())
 			}
 		}
-		IntegerLiteral {
+		ast.IntegerLiteral {
 			if !typ.is_pure_int() {
 				return none
 			}
 			t := g.get_wasm_type(typ)
 			match t {
-				.i32_t { wasm.constexpr_value(init.val.int()) }
-				.i64_t { wasm.constexpr_value(init.val.i64()) }
+				.i32_t { return wasm.constexpr_value(init.val.int()) }
+				.i64_t { return wasm.constexpr_value(init.val.i64()) }
 				else {}
 			}
 		}
@@ -202,6 +203,7 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr) Global {
 		else {}
 	}
 
+	mut is_mut := false
 	is_pointer := typ.nr_muls() == 0 && !g.is_pure_type(typ)
 	mut init_expr := ?ast.Expr(none)
 	cexpr := if cexpr_v := g.literal_to_constant_expression(typ, init) {
@@ -214,12 +216,16 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr) Global {
 			if !is_init {
 				// ... AND wait for init in `_vinit`
 				init_expr = init
+				is_mut = true
 			}
 			wasm.constexpr_value(pos)
 		} else {
 			// ... wait for init in `_vinit`
 			init_expr = init
-			wasm.constexpr_value(0)
+			is_mut = true
+
+			t := g.get_wasm_type(typ)
+			wasm.constexpr_value_zero(t)
 		}
 	}
 
@@ -314,7 +320,7 @@ fn (mut g Gen) get(v Var) {
 fn (mut g Gen) set(v Var) {
 	if !v.is_pointer {
 		if v.is_global {
-			g.func.global_get(v.g_idx)
+			g.func.global_set(v.g_idx)
 		} else {
 			g.func.local_set(v.idx)
 		}
@@ -558,7 +564,7 @@ fn calc_align(value int, alignment int) int {
 
 fn (mut g Gen) make_vinit() {
 	g.func = g.mod.new_function('_vinit', [], [])
-	//func_start := g.func.patch_pos()
+	func_start := g.func.patch_pos()
 	{
 		for mod_name in g.table.modules {
 			if mod_name == 'v.reflection' {
@@ -572,8 +578,15 @@ fn (mut g Gen) make_vinit() {
 			if _ := g.table.find_fn(cleanup_fn_name) {
 				g.func.call(cleanup_fn_name)
 			}
+
+			for _, gv in g.global_vars {
+				if init := gv.init {
+					g.expr(init, gv.v.typ)
+					g.set(gv.v)
+				}
+			}
 		}
-		//g.bare_function_frame(func_start)
+		g.bare_function_frame(func_start)
 	}
 	g.mod.commit(g.func, true)
 	g.bare_function_end()
