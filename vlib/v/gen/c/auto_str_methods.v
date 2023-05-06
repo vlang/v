@@ -185,15 +185,16 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	g.auto_str_funcs.writeln('string indent_${str_fn_name}(${styp} it, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstring res;')
 	g.auto_str_funcs.writeln('\tif (it.state == 0) {')
+	deref := if typ.is_ptr() { '**(${sym.cname}**)&' } else { '*(${sym.cname}*)' }
 	if sym.kind == .string {
-		tmp_res := '${parent_str_fn_name}(*(${sym.cname}*)it.data)'
+		tmp_res := '${parent_str_fn_name}(${deref}it.data)'
 		g.auto_str_funcs.writeln('\t\tres = ${str_intp_sq(tmp_res)};')
 	} else if should_use_indent_func(sym.kind) && !sym_has_str_method {
-		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(*(${sym.cname}*)it.data, indent_count);')
+		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(${deref}it.data, indent_count);')
 	} else if sym.kind == .function {
 		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}();')
 	} else {
-		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(*(${sym.cname}*)it.data);')
+		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(${deref}it.data);')
 	}
 	g.auto_str_funcs.writeln('\t\treturn ${str_intp_sub('Option(%%)', 'res')};')
 	g.auto_str_funcs.writeln('\t}')
