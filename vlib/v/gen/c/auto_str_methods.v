@@ -962,13 +962,14 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		} else if ftyp_noshared.is_ptr() {
 			// reference types can be "nil"
 			if ftyp_noshared.has_flag(.option) {
-				funcprefix += 'isnil(&it.${field_name})'
+				funcprefix += 'isnil(&it.${field_name}) || isnil(&it.${field_name}.data)'
 			} else {
 				funcprefix += 'isnil(it.${field_name})'
 			}
 			funcprefix += ' ? _SLIT("nil") : '
 			// struct, floats and ints have a special case through the _str function
-			if sym.kind !in [.struct_, .alias, .enum_, .sum_type, .map, .interface_]
+			if !ftyp_noshared.has_flag(.option)
+				&& sym.kind !in [.struct_, .alias, .enum_, .sum_type, .map, .interface_]
 				&& !field.typ.is_int_valptr() && !field.typ.is_float_valptr() {
 				funcprefix += '*'
 			}
