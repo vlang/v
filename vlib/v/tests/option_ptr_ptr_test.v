@@ -23,11 +23,11 @@ fn test_ptr() {
 	foo := json.decode(Foo, data)!
 	println(foo)
 
-	dump(*foo.a)
-	dump(*foo.b)
-	dump(*foo.c)
-	dump(**foo.d)
-	dump(***foo.e)
+	assert dump(*foo.a) == 123
+	assert dump(*foo.b) == 'foo'
+	assert dump(*foo.c) == 1.2
+	assert dump(**foo.d) == 321
+	assert dump(***foo.e) == 'bar'
 }
 
 fn test_option_ptr() ? {
@@ -35,9 +35,9 @@ fn test_option_ptr() ? {
 	foo := json.decode(FooOption, data) or { return none }
 	println(foo)
 
-	dump(*foo.a?)
-	dump(*foo.b?)
-	dump(*foo.c?)
-	dump(**foo.d?)
-	dump(***foo.e?)
+	assert dump(*foo.a?) == 123
+	assert dump(*foo.b?) == 'foo'
+	assert dump(*foo.c?) == 1.2
+	assert dump(**foo.d?) == 321
+	assert dump(***foo.e?) == 'bar'
 }
