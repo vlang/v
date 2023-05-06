@@ -28,6 +28,8 @@ fn test_ptr() {
 	assert dump(*foo.c) == 1.2
 	assert dump(**foo.d) == 321
 	assert dump(***foo.e) == 'bar'
+
+	assert dump(json.encode(foo)) == '{"a":123,"b":"foo","c":1.2,"d":321,"e":"bar"}'
 }
 
 fn test_option_ptr() ? {
@@ -40,4 +42,6 @@ fn test_option_ptr() ? {
 	assert dump(*foo.c?) == 1.2
 	assert dump(**foo.d?) == 321
 	assert dump(***foo.e?) == 'bar'
+
+	assert dump(json.encode(foo)) == '{"a":123,"b":"foo","c":1.2,"d":321,"e":"bar"}'
 }

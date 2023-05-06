@@ -274,7 +274,7 @@ fn (mut g Gen) gen_prim_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec s
 		encode_name := js_enc_name(type_str_0)
 		dec_name := js_dec_name(type_str)
 		if typ.has_flag(.option) {
-			enc.writeln('\to = ${encode_name}(*(${type_str_0}*)&val.data);')
+			enc.writeln('\to = ${encode_name}(${'*'.repeat(typ.nr_muls()+1)}(${type_str_0}${'*'.repeat(typ.nr_muls())}*)&val.data);')
 		} else {
 			enc.writeln('\to = ${encode_name}(${'*'.repeat(typ.nr_muls())}val);')
 		}
