@@ -599,8 +599,15 @@ fn (mut g Gen) housekeeping() {
 	
 	stack_top := 1024 + (16 * 1024)
 	data_base := calc_align(stack_top + 1, g.pool.highest_alignment)
+	heap_base := calc_align(data_base + g.pool.buf.len, 16) // 16?
 	page_boundary := calc_align(data_base + g.pool.buf.len, 64 * 1024)
 	preallocated_pages := page_boundary / (64 * 1024)
+
+	if g.pref.is_verbose {
+		eprintln('housekeeping(): acceptable addresses are > 1024')
+		eprintln('housekeeping(): stack top: ${stack_top}, data_base: ${data_base} (size: ${g.pool.buf.len}), heap_base: ${heap_base}')
+		eprintln('housekeeping(): preallocated pages: ${preallocated_pages}')
+	}
 
 	if sp := g.sp_global {
 		g.mod.assign_global_init(sp, wasm.constexpr_value(stack_top))
@@ -615,6 +622,9 @@ fn (mut g Gen) housekeeping() {
 		if data_seg := gv.data_seg {
 			g.mod.assign_global_init(gv.v.g_idx, wasm.constexpr_value(data_base + data_seg))
 		}
+	}
+	if hp := g.heap_base {
+		g.mod.assign_global_init(hp, wasm.constexpr_value(heap_base))
 	}
 
 	if g.pref.os == .wasi {

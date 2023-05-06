@@ -36,6 +36,7 @@ mut:
 	ret_br wasm.LabelIndex
 	bp_idx            wasm.LocalIndex = -1 // Base pointer temporary's index for function, if needed (-1 for none)
 	sp_global         ?wasm.GlobalIndex
+	heap_base         ?wasm.GlobalIndex
 	stack_frame       int // Size of the current stack frame, if needed
 	is_leaf_function  bool = true
 	module_import_namespace string
@@ -366,9 +367,12 @@ fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) {
 			g.func.memory_size()
 		}
 		'__heap_base' {
-			panic('unimplemented')
-			// g.func.global_get()
-			// return binaryen.globalget(g.mod, c'__heap_base', type_i32)
+			if hp := g.heap_base {
+				g.func.global_get(hp)
+			}
+			hp := g.mod.new_global(none, .i32_t, false, wasm.constexpr_value(0))
+			g.func.global_get(hp)
+			g.heap_base = hp
 		}
 		else {
 			panic('unreachable')
