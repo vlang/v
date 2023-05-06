@@ -3440,6 +3440,18 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 				c.error(util.new_suggestion(node.name, const_names_in_mod).say('undefined ident: `${node.name}`'),
 					node.pos)
 			} else {
+				// If a variable is not found in the scope of an anonymous function
+				// but is in an external scope, then we can suggest the user add it to the capturing list.
+				if c.inside_anon_fn {
+					found_var := c.fn_scope.find_var(node.name)
+
+					if found_var != none {
+						c.error('`${node.name}` must be added to the capture list for the closure to be used inside',
+							node.pos)
+						return ast.void_type
+					}
+				}
+
 				c.error('undefined ident: `${node.name}`', node.pos)
 			}
 		}
@@ -3595,6 +3607,12 @@ fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 					}
 					else {
 						c.error('`<-` receive expression expected', branch.stmt.right[0].pos())
+					}
+				}
+				if mut branch.stmt.left[0] is ast.Ident {
+					ident := branch.stmt.left[0] as ast.Ident
+					if ident.kind == .blank_ident && branch.stmt.op != .decl_assign {
+						c.error('cannot send on `_`, use `_ := <- quit` instead', branch.stmt.left[0].pos())
 					}
 				}
 			}

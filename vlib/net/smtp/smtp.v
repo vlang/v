@@ -33,7 +33,7 @@ pub struct Client {
 mut:
 	conn     net.TcpConn
 	ssl_conn &ssl.SSLConn = unsafe { nil }
-	reader   io.BufferedReader
+	reader   ?&io.BufferedReader
 pub:
 	server   string
 	port     int = 25
@@ -139,7 +139,7 @@ fn (mut c Client) connect_ssl() ! {
 fn (mut c Client) expect_reply(expected ReplyCode) ! {
 	mut str := ''
 	for {
-		str = c.reader.read_line()!
+		str = c.reader or { return error('the Client.reader field is not set') }.read_line()!
 		if str.len < 4 {
 			return error('Invalid SMTP response: ${str}')
 		}

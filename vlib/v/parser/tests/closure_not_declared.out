@@ -1,4 +1,4 @@
-vlib/v/parser/tests/closure_not_declared.vv:4:9: error: undefined ident: `a`
+vlib/v/parser/tests/closure_not_declared.vv:4:9: error: `a` must be added to the capture list for the closure to be used inside
     2 |     a := 1
     3 |     f := fn () {
     4 |         print(a)

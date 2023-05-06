@@ -484,6 +484,17 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 			g.write('${ret_elem_type} ti = ')
 			g.expr(node.args[0].expr)
 		}
+		ast.CastExpr {
+			// value.map(Type(it)) when `value` is a comptime var
+			if expr.expr is ast.Ident && node.left is ast.Ident && g.is_comptime_var(node.left) {
+				ctyp := g.get_comptime_var_type(node.left)
+				if ctyp != ast.void_type {
+					expr.expr_type = g.table.value_type(ctyp)
+				}
+			}
+			g.write('${ret_elem_type} ti = ')
+			g.expr(node.args[0].expr)
+		}
 		else {
 			if closure_var_decl != '' {
 				g.write('${closure_var_decl} = ')
