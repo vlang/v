@@ -38,14 +38,14 @@ mut:
 	sp_global         ?wasm.GlobalIndex
 	stack_frame       int // Size of the current stack frame, if needed
 	is_leaf_function  bool = true
-	is_return_call bool
 	module_import_namespace string
 	loop_breakpoint_stack []LoopBreakpoint
 }
 
 struct Global {
 mut:
-	init ?ast.Expr
+	init     ?ast.Expr
+	data_seg ?int // pos offset from data segment
 	v    Var
 }
 
@@ -248,7 +248,6 @@ fn (mut g Gen) bare_function_end() {
 	g.return_vars.clear()
 	g.ret_types.clear()
 	g.bp_idx = -1
-	g.sp_global = none
 	g.stack_frame = 0
 	g.is_leaf_function = true
 	assert g.loop_breakpoint_stack.len == 0

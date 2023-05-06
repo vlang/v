@@ -206,6 +206,7 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr) Global {
 	mut is_mut := false
 	is_pointer := typ.nr_muls() == 0 && !g.is_pure_type(typ)
 	mut init_expr := ?ast.Expr(none)
+	mut data_seg_pos := ?int(none)
 	cexpr := if cexpr_v := g.literal_to_constant_expression(typ, init) {
 		cexpr_v
 	} else {
@@ -216,9 +217,9 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr) Global {
 			if !is_init {
 				// ... AND wait for init in `_vinit`
 				init_expr = init
-				is_mut = true
 			}
-			wasm.constexpr_value(pos)
+			data_seg_pos = pos
+			wasm.constexpr_value(0)
 		} else {
 			// ... wait for init in `_vinit`
 			init_expr = init
@@ -231,6 +232,7 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr) Global {
 
 	mut glbl := Global{
 		init: init_expr
+		data_seg: data_seg_pos
 		v: Var{
 			name: name
 			typ: typ
@@ -607,6 +609,11 @@ fn (mut g Gen) housekeeping() {
 		g.mod.assign_memory('memory', true, u32(preallocated_pages), none)
 		if g.pool.buf.len > 0 {
 			g.mod.new_data_segment(data_base, g.pool.buf)
+		}
+	}
+	for _, gv in g.global_vars {
+		if data_seg := gv.data_seg {
+			g.mod.assign_global_init(gv.v.g_idx, wasm.constexpr_value(data_base + data_seg))
 		}
 	}
 
