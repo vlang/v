@@ -44,7 +44,15 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
 			if gbl := g.global_vars[obj.name] {
 				return gbl.v
 			}
-			gbl := g.new_global(obj.name, obj.typ, obj.expr)
+			gbl := g.new_global(obj.name, obj.typ, obj.expr, false)
+			g.global_vars[obj.name] = gbl
+			return gbl.v
+		}
+		ast.GlobalField {
+			if gbl := g.global_vars[obj.name] {
+				return gbl.v
+			}
+			gbl := g.new_global(obj.name, obj.typ, obj.expr, true)
 			g.global_vars[obj.name] = gbl
 			return gbl.v
 		}
@@ -189,7 +197,7 @@ fn (mut g Gen) literal_to_constant_expression(typ_ ast.Type, init ast.Expr) ?was
 	return none
 }
 
-fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr) Global {
+fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_mut bool) Global {
 	mut typ := typ_
 	ts := g.table.sym(typ)
 
@@ -207,7 +215,9 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr) Global {
 	is_pointer := typ.nr_muls() == 0 && !g.is_pure_type(typ)
 	mut init_expr := ?ast.Expr(none)
 	mut data_seg_pos := ?int(none)
+
 	cexpr := if cexpr_v := g.literal_to_constant_expression(typ, init) {
+		is_mut = is_global_mut
 		cexpr_v
 	} else {
 		// Isn't a literal ...
@@ -533,6 +543,9 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 				g.set(offset_var)
 			}
 		}
+		/* ast.StringLiteral {
+			panic('slit')
+		} */
 		ast.CallExpr {
 			// `set_with_expr` is never called with a multireturn call expression
 			is_pt := g.is_param_type(v.typ)
@@ -599,6 +612,9 @@ fn (mut g Gen) housekeeping() {
 	
 	stack_top := 1024 + (16 * 1024)
 	data_base := calc_align(stack_top + 1, g.pool.highest_alignment)
+
+	// TODO: g.pool.apply_constant_reloc(data_base)
+	
 	heap_base := calc_align(data_base + g.pool.buf.len, 16) // 16?
 	page_boundary := calc_align(data_base + g.pool.buf.len, 64 * 1024)
 	preallocated_pages := page_boundary / (64 * 1024)

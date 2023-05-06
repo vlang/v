@@ -41,6 +41,12 @@ mut:
 	is_leaf_function  bool = true
 	module_import_namespace string
 	loop_breakpoint_stack []LoopBreakpoint
+	relocs []LiteralPtrReloc
+}
+
+struct LiteralPtrReloc {
+	pos    int
+	offset int
 }
 
 struct Global {
@@ -258,7 +264,9 @@ fn (mut g Gen) literalint(val i64, expected ast.Type) {
 	match g.get_wasm_type(expected) {
 		.i32_t { g.func.i32_const(val) }
 		.i64_t { g.func.i64_const(val) }
-		else { g.w_error('literal: bad type `${expected}`') }
+		.f32_t { g.func.f32_const(f32(val)) }
+		.f64_t { g.func.f64_const(f64(val)) }
+		else { g.w_error('literalint: bad type `${expected}`') }
 	}
 }
 
@@ -639,8 +647,10 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			}
 			
 			g.expr(node.index, ast.int_type)
-			g.literalint(size, ast.int_type)
-			g.func.mul(.i32_t)
+			if size > 1 {
+				g.literalint(size, ast.int_type)
+				g.func.mul(.i32_t)
+			}
 			
 			g.func.add(.i32_t)
 
@@ -694,6 +704,22 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 				node, ast.string_type)
 			g.mknblock('EXPR(STRINGINIT)', [expr, g.lea_address(pos)])
 		} */
+		/* ast.StringLiteral {
+			if expected != ast.string_type {
+				// c'str'
+
+				// appends only &u8
+				p, _ := g.pool.append(node)
+				g.relocs << LiteralPtrReloc{
+					pos: g.mod.buf.len
+					offset: p
+				}
+				return
+			}
+			v := g.new_local('', ast.string_type)
+			g.set_with_expr(node, v)
+			g.get(v)
+		} */
 		ast.InfixExpr {
 			g.infix_expr(node, expected)
 		}
@@ -705,7 +731,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			v := g.get_var_from_expr(node.expr) or { panic("unreachable") }
 
 			g.get(v)
-			g.literal('1', node.typ)
+			g.literalint(1, node.typ)
 			g.handle_ptr_arithmetic(node.typ)
 			g.infix_from_typ(node.typ, kind)
 			g.set(v)
@@ -1011,7 +1037,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 		pref: w_pref
 		files: files
 		eval: eval.new_eval(table, w_pref)
-		pool: serialise.new_pool(table)
+		pool: serialise.new_pool(table, store_relocs: true, null_terminated: false)
 	}
 	g.table.pointer_size = 4
 	g.mod.assign_memory("memory", true, 1, none)
