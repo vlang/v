@@ -21,6 +21,34 @@ pub fn constexpr_value[T](v T) ConstExpression {
 	return expr
 }
 
+// constexpr_value_zero returns a constant expression that evaluates to zero.
+pub fn constexpr_value_zero(v ValType) ConstExpression {
+	mut expr := ConstExpression{}
+
+	match v {
+		.i32_t {
+			expr.i32_const(0)
+		}
+		.i64_t {
+			expr.i64_const(0)
+		}
+		.f32_t {
+			expr.f32_const(0.0)
+		}
+		.f64_t {
+			expr.f64_const(0.0)
+		}
+		.funcref_t, .externref_t {
+			expr.ref_null(RefType(v))
+		}
+		.v128_t {
+			panic('type `v128_t` not permitted in a constant expression')
+		}
+	}
+
+	return expr
+}
+
 // constexpr_ref_null returns a constant expression that evaluates to a null reference.
 pub fn constexpr_ref_null(rt RefType) ConstExpression {
 	mut expr := ConstExpression{}
