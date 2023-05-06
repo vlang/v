@@ -283,7 +283,7 @@ fn (mut g Gen) gen_prim_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec s
 			g.gen_json_for_type(typ.clear_flag(.option).set_nr_muls(typ.nr_muls() - 1))
 			if typ.has_flag(.option) {
 				tmp_var := g.new_tmp_var()
-				dec.writeln('${type_str} ${tmp_var} = HEAP(${type_str}, ${dec_name}(root));')
+				dec.writeln('${type_str} ${tmp_var} = HEAP(${type_str}, *(${type_str}*) ${dec_name}(root).data);')
 				dec.writeln('\t_option_ok(&(${type_str}[]) { &(*(${tmp_var})) }, (${option_name}*)&res, sizeof(${type_str}));')
 			} else {
 				dec.writeln('\tres = HEAP(${type_str}, *(${type_str}*) ${dec_name}(root).data);')
