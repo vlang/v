@@ -781,8 +781,8 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 				loop := g.func.c_loop([], [])
 				{
 					g.loop_breakpoint_stack << LoopBreakpoint{
-						c_continue: block
-						c_break: loop
+						c_continue: loop
+						c_break: block
 						name: node.label
 					}
 
@@ -830,21 +830,24 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 			for_stmt << binaryen.block(g.mod, blk_name.str, &loop, 1, type_none)
 			g.pop_for_label()
 			g.mkblock(for_stmt)
-		}
+		} */
 		ast.BranchStmt {
-			mut blabel := if node.label != '' {
-				node.label
-			} else {
-				g.for_labels[g.for_labels.len - 1]
+			mut bp := g.loop_breakpoint_stack.last()
+			if node.label != '' {
+				for i := g.loop_breakpoint_stack.len ; i > 0 ; {
+					i--
+					if g.loop_breakpoint_stack[i].name == node.label {
+						bp = g.loop_breakpoint_stack[i]
+					}
+				}
 			}
 
 			if node.kind == .key_break {
-				blabel = 'B${blabel}'
+				g.func.c_br(bp.c_break)
 			} else {
-				blabel = 'L${blabel}'
+				g.func.c_br(bp.c_continue)
 			}
-			binaryen.br(g.mod, blabel.str, unsafe { nil }, unsafe { nil })
-		} */
+		}
 		ast.AssignStmt {
 			if node.has_cross_var {
 				g.w_error('complex assign statements are not implemented')
