@@ -635,6 +635,8 @@ pub:
 	pos         token.Pos
 	name        string
 	is_mut      bool
+	is_shared   bool
+	is_atomic   bool
 	is_auto_rec bool
 	type_pos    token.Pos
 	is_hidden   bool // interface first arg

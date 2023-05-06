@@ -692,6 +692,8 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 		pos: rec_start_pos
 		name: rec.name
 		is_mut: rec.is_mut
+		is_atomic: is_atomic
+		is_shared: is_shared
 		is_auto_rec: is_auto_rec
 		typ: rec.typ
 		type_pos: rec.type_pos
@@ -1006,6 +1008,8 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 					pos: arg_pos[i]
 					name: arg_name
 					is_mut: is_mut
+					is_atomic: is_atomic
+					is_shared: is_shared
 					typ: typ
 					type_pos: type_pos[i]
 				}
@@ -1090,6 +1094,8 @@ fn (mut p Parser) closure_vars() []ast.Param {
 			pos: var_pos
 			name: var_name
 			is_mut: is_mut
+			is_atomic: is_atomic
+			is_shared: is_shared
 		}
 		if p.tok.kind != .comma {
 			break
