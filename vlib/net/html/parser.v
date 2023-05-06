@@ -111,30 +111,29 @@ fn (mut parser Parser) generate_tag() {
 pub fn (mut parser Parser) split_parse(data string) {
 	parser.init()
 	for chr in data {
-		// returns true if byte is a " or '
 		is_quote := chr == `"` || chr == `'`
 		string_code := match chr {
-			`"` { 1 } // "
-			`'` { 2 } // '
+			`"` { 1 }
+			`'` { 2 }
 			else { 0 }
 		}
-		if parser.lexical_attributes.open_code { // here will verify all needed to know if open_code finishes and string in code
+		if parser.lexical_attributes.open_code { // verify if open_code is complete and handle string code
 			parser.lexical_attributes.lexeme_builder.write_u8(chr)
 			if parser.lexical_attributes.open_string > 0
 				&& parser.lexical_attributes.open_string == string_code {
 				parser.lexical_attributes.open_string = 0
-			} else if chr == `>` { // only execute verification if is a > // here will verify < to know if code tag is finished
+			} else if chr == `>` { // code tag is finished
 				name_close_tag := '</${parser.lexical_attributes.opened_code_type}>'
 				if parser.builder_str().to_lower().ends_with(name_close_tag) {
 					parser.lexical_attributes.open_code = false
-					// need to modify lexeme_builder to add script text as a content in next loop (not gave error in dom)
+					// modify lexeme_builder to include script text as content in the next loop
 					parser.lexical_attributes.lexeme_builder.go_back(name_close_tag.len)
 					parser.lexical_attributes.current_tag.closed = true
 					parser.lexical_attributes.current_tag.close_type = .new_tag
 				}
 			}
 		} else if parser.lexical_attributes.open_comment {
-			if chr == `>` && parser.verify_end_comment(false) { // close tag '>'
+			if chr == `>` && parser.verify_end_comment(false) {
 				// parser.print_debug(parser.builder_str() + " >> " + parser.lexical_attributes.line_count.str())
 				parser.lexical_attributes.lexeme_builder.go_back_to(0)
 				parser.lexical_attributes.open_comment = false
@@ -172,10 +171,10 @@ pub fn (mut parser Parser) split_parse(data string) {
 			if parser.lexical_attributes.lexeme_builder.len == 0 && is_quote {
 				parser.lexical_attributes.open_string = string_code
 				parser.lexical_attributes.lexeme_builder.write_u8(chr)
-			} else if chr == `>` { // close tag >
+			} else if chr == `>` {
 				complete_lexeme := parser.builder_str().to_lower()
 				parser.lexical_attributes.current_tag.closed = (complete_lexeme.len > 0
-					&& complete_lexeme[complete_lexeme.len - 1] == `/`) // if equals to /
+					&& complete_lexeme[complete_lexeme.len - 1] == `/`)
 				if complete_lexeme.len > 0 && complete_lexeme[0] == `/` {
 					parser.dom.close_tags[complete_lexeme] = true
 				}
@@ -205,7 +204,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 				} else {
 					parser.lexical_attributes.current_tag.attributes[complete_lexeme] = ''
 					parser.lexical_attributes.current_tag.last_attribute = ''
-					if chr == `=` { // if was a =
+					if chr == `=` {
 						parser.lexical_attributes.current_tag.last_attribute = complete_lexeme
 					}
 				}
@@ -214,7 +213,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 			if parser.builder_str() == '!--' {
 				parser.lexical_attributes.open_comment = true
 			}
-		} else if chr == `<` { // open tag '<'
+		} else if chr == `<` {
 			temp_string := parser.builder_str()
 			if parser.lexical_attributes.lexeme_builder.len >= 1 {
 				if parser.lexical_attributes.current_tag.name.len > 1
