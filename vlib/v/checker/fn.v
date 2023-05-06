@@ -262,10 +262,16 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					}
 				}
 			}
+			if node.mod == param.name && !c.file.path.contains('vlib') {
+				c.error('duplicate of a module name `${param.name}`', param.pos)
+			}
 			// Check if parameter name is already registered as imported module symbol
 			if c.check_import_sym_conflict(param.name) {
 				c.error('duplicate of an import symbol `${param.name}`', param.pos)
 			}
+		}
+		if node.mod == node.short_name && !c.file.path.contains('vlib') && node.mod != 'main' {
+			c.error('duplicate of a module name `${node.short_name}`', node.pos)
 		}
 		// Check if function name is already registered as imported module symbol
 		if !node.is_method && c.check_import_sym_conflict(node.short_name) {
