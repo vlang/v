@@ -924,7 +924,7 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 	if rec_type.has_flag(.shared_f) {
 		rec_type = rec_type.clear_flag(.shared_f).set_nr_muls(0)
 	}
-	left_node := if node.left is ast.PostfixExpr { node.left.expr } else { node.left }
+	left_node := node.left
 	if left_node is ast.ComptimeSelector {
 		key_str := g.get_comptime_selector_key_type(left_node)
 		if key_str != '' {
@@ -932,6 +932,13 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 			g.gen_expr_to_string(left_node, rec_type)
 			return true
 		}
+	} else if left_node is ast.PostfixExpr {
+		rec_type = g.resolve_comptime_type(left_node.expr, rec_type)
+		if left_node.op == .question {
+			rec_type = rec_type.clear_flag(.option)
+		}
+		g.gen_expr_to_string(left_node, rec_type)
+		return true
 	} else if left_node is ast.ComptimeCall {
 		if left_node.method_name == 'method' {
 			sym := g.table.sym(g.unwrap_generic(left_node.left_type))

@@ -132,3 +132,6 @@ pub fn gc_check_leaks() {
 		C.GC_gcollect()
 	}
 }
+
+fn C.GC_get_heap_usage_safe(pheap_size &usize, pfree_bytes &usize, punmapped_bytes &usize, pbytes_since_gc &usize, ptotal_bytes &usize)
+fn C.GC_get_memory_use() usize

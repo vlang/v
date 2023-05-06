@@ -1086,7 +1086,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		} else {
 			if param.is_mut {
-				tok := call_arg.share.str()
+				tok := if param.typ.has_flag(.shared_f) { 'shared' } else { call_arg.share.str() }
 				c.error('function `${node.name}` parameter `${param.name}` is `${tok}`, so use `${tok} ${call_arg.expr}` instead',
 					call_arg.expr.pos())
 			} else {
@@ -1805,7 +1805,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				}
 			} else {
 				if param_is_mut {
-					tok := arg.share.str()
+					tok := if param.typ.has_flag(.shared_f) { 'shared' } else { arg.share.str() }
 					c.error('method `${node.name}` parameter `${param.name}` is `${tok}`, so use `${tok} ${arg.expr}` instead',
 						arg.expr.pos())
 				} else {
@@ -2056,7 +2056,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					}
 				} else {
 					if param.is_mut {
-						tok := arg.share.str()
+						tok := if param.typ.has_flag(.shared_f) { 'shared' } else { arg.share.str() }
 						c.error('method `${node.name}` parameter ${i + 1} is `${tok}`, so use `${tok} ${arg.expr}` instead',
 							arg.expr.pos())
 					} else {
@@ -2535,6 +2535,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			node.receiver_type = left_type
 		}
 	} else if method_name == 'delete' {
+		c.fail_if_immutable(node.left)
 		unwrapped_left_sym := c.table.sym(c.unwrap_generic(left_type))
 		if method := c.table.find_method(unwrapped_left_sym, method_name) {
 			node.receiver_type = method.receiver_type

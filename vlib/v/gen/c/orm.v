@@ -404,6 +404,9 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 					if attr.name == 'skip' {
 						skip = true
 					}
+					if attr.name == 'sql' && attr.arg == '-' {
+						skip = true
+					}
 				}
 				if !skip && !primary {
 					fff << f
@@ -691,6 +694,9 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, le
 		mut skip := false
 		for attr in field.attrs {
 			if attr.name == 'skip' {
+				skip = true
+			}
+			if attr.name == 'sql' && attr.arg == '-' {
 				skip = true
 			}
 		}
@@ -994,6 +1000,9 @@ fn (_ &Gen) filter_struct_fields_by_orm_attrs(fields []ast.StructField) []ast.St
 				primary = true
 			}
 			if attr.name == 'skip' {
+				skip = true
+			}
+			if attr.name == 'sql' && attr.arg == '-' {
 				skip = true
 			}
 		}

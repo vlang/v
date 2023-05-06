@@ -643,6 +643,36 @@ pub fn memdup_uncollectable(src voidptr, sz int) voidptr {
 	}
 }
 
+pub struct GCHeapUsage {
+pub:
+	heap_size      usize
+	free_bytes     usize
+	total_bytes    usize
+	unmapped_bytes usize
+	bytes_since_gc usize
+}
+
+// gc_heap_usage returns the info about heap usage
+pub fn gc_heap_usage() GCHeapUsage {
+	$if gcboehm ? {
+		mut res := GCHeapUsage{}
+		C.GC_get_heap_usage_safe(&res.heap_size, &res.free_bytes, &res.unmapped_bytes,
+			&res.bytes_since_gc, &res.total_bytes)
+		return res
+	} $else {
+		return GCHeapUsage{}
+	}
+}
+
+// gc_memory_use returns the total memory use in bytes by all allocated blocks
+pub fn gc_memory_use() usize {
+	$if gcboehm ? {
+		return C.GC_get_memory_use()
+	} $else {
+		return 0
+	}
+}
+
 [inline]
 fn v_fixed_index(i int, len int) int {
 	$if !no_bounds_checking {

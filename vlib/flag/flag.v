@@ -123,7 +123,7 @@ fn (mut f FlagParser) free() {
 }
 
 pub const (
-	// used for formating usage message
+	// used for formatting usage message
 	space           = '                            '
 	underline       = '-----------------------------------------------'
 	max_args_number = 4048
