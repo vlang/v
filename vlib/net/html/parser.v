@@ -123,8 +123,6 @@ pub fn (mut parser Parser) split_parse(data string) {
 			if parser.lexical_attributes.open_string > 0
 				&& parser.lexical_attributes.open_string == string_code {
 				parser.lexical_attributes.open_string = 0
-			} else if is_quote {
-				parser.lexical_attributes.open_string = string_code
 			} else if chr == `>` { // only execute verification if is a > // here will verify < to know if code tag is finished
 				name_close_tag := '</${parser.lexical_attributes.opened_code_type}>'
 				if parser.builder_str().to_lower().ends_with(name_close_tag) {
