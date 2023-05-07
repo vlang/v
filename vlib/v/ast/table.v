@@ -744,7 +744,7 @@ pub fn (mut t Table) register_anon_struct(name string, sym_idx int) {
 }
 
 pub fn (t &Table) known_type(name string) bool {
-	return t.find_type_idx(name) != 0 || t.parsing_type == name
+	return t.find_type_idx(name) != 0 || t.parsing_type == name || name in ['i32', 'byte']
 }
 
 // start_parsing_type open the scope during the parsing of a type
