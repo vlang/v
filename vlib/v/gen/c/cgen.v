@@ -4211,6 +4211,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 				if cattr := func.attrs.find_first('c') {
 					name = cattr.arg
 				}
+			} else if node.concrete_types.len > 0 {
+				name = g.generic_fn_name(node.concrete_types, name)
 			}
 		}
 
