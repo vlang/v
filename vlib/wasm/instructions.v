@@ -67,7 +67,8 @@ pub fn (mut func Function) patch(loc PatchPos, begin PatchPos) {
 
 	func.patches.sort(a.pos < b.pos)
 
-	/* lenn := begin
+	/*
+	lenn := begin
 	diff := loc - begin
 
 	for mut patch in func.patches {
@@ -81,14 +82,16 @@ pub fn (mut func Function) patch(loc PatchPos, begin PatchPos) {
 		patch.pos = loc + delta
 	}
 
-	func.patches.sort(a.pos < b.pos) */
+	func.patches.sort(a.pos < b.pos)*/
 }
 
 // new_local creates a function local and returns it's index.
 // See `local_get`, `local_set`, `local_tee`.
 pub fn (mut func Function) new_local(v ValType) LocalIndex {
 	ret := func.locals.len
-	func.locals << FunctionLocal{typ: v}
+	func.locals << FunctionLocal{
+		typ: v
+	}
 	return ret
 }
 
@@ -97,7 +100,10 @@ pub fn (mut func Function) new_local(v ValType) LocalIndex {
 // See `local_get`, `local_set`, `local_tee`.
 pub fn (mut func Function) new_local_named(v ValType, name string) LocalIndex {
 	ret := func.locals.len
-	func.locals << FunctionLocal{typ: v, name: name}
+	func.locals << FunctionLocal{
+		typ: v
+		name: name
+	}
 	return ret
 }
 

@@ -160,7 +160,7 @@ pub fn (mut mod Module) new_debug_function(name string, typ FuncType, argument_n
 		tidx: tidx
 		idx: idx
 		mod: mod
-		locals: argument_names.map(FunctionLocal{name: it}) // specifying it's ValType doesn't matter
+		locals: argument_names.map(FunctionLocal{ name: it }) // specifying it's ValType doesn't matter
 	}
 }
 
