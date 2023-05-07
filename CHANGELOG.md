@@ -1,3 +1,10 @@
+## V 0.3.5
+*not yet released*
+- Struct fields can now be skipped during JSON/ORM serialization via `[json:'-']` and `[sql:'-']`,
+ in addition to `[skip]`. This allows having custom behavior for different serialization methods.
+- ORM: fixed a foreign key bug that could result in an extra insert.
+- Generic functions as function parameters are now supported: `fn f[T](x T, i int, f_ Fn[T]) T { `.
+
 ## V 0.3.4
 
 *30 Apr 2023*
