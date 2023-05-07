@@ -5,6 +5,7 @@ module wasm
 
 import wasm
 import v.ast
+import v.serialise
 
 struct Var {
 	name       string
@@ -214,7 +215,6 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_m
 	mut is_mut := false
 	is_pointer := typ.nr_muls() == 0 && !g.is_pure_type(typ)
 	mut init_expr := ?ast.Expr(none)
-	mut data_seg_pos := ?int(none)
 
 	cexpr := if cexpr_v := g.literal_to_constant_expression(typ, init) {
 		is_mut = is_global_mut
@@ -228,8 +228,7 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_m
 				// ... AND wait for init in `_vinit`
 				init_expr = init
 			}
-			data_seg_pos = pos
-			wasm.constexpr_value(0)
+			wasm.constexpr_value(g.data_base + pos)
 		} else {
 			// ... wait for init in `_vinit`
 			init_expr = init
@@ -242,7 +241,6 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_m
 
 	mut glbl := Global{
 		init: init_expr
-		data_seg: data_seg_pos
 		v: Var{
 			name: name
 			typ: typ
@@ -314,6 +312,16 @@ fn (mut g Gen) get(v Var) {
 		g.func.i32_const(v.offset)
 		g.func.add(.i32_t)
 	}
+}
+
+fn (mut g Gen) deref_as_field(v Var) {
+	if v.is_global {
+		g.func.global_get(v.g_idx)
+	} else {
+		g.func.local_get(v.idx)
+	}
+
+	g.load(v.typ, v.offset)
 }
 
 /* fn (mut g Gen) copy(to Var, v Var) {
@@ -543,9 +551,26 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 				g.set(offset_var)
 			}
 		}
-		/* ast.StringLiteral {
-			panic('slit')
-		} */
+		ast.StringLiteral {
+			val := serialise.eval_escape_codes(init) or { panic('unreachable') }
+			str_pos := g.pool.append_string(val)
+			
+			if v.typ != ast.string_type {
+				// c'str'
+				g.literalint(g.data_base + str_pos, ast.voidptr_type)
+				g.set(v)
+				return
+			}
+
+			// init struct
+			// fields: str, len
+			g.ref(v)
+			g.literalint(g.data_base + str_pos, ast.voidptr_type)
+			g.store_field(ast.string_type, ast.voidptr_type, 'str')
+			g.ref(v)
+			g.literalint(val.len, ast.int_type)
+			g.store_field(ast.string_type, ast.int_type, 'len')
+		}
 		ast.CallExpr {
 			// `set_with_expr` is never called with a multireturn call expression
 			is_pt := g.is_param_type(v.typ)
@@ -609,34 +634,25 @@ fn (mut g Gen) make_vinit() {
 
 fn (mut g Gen) housekeeping() {
 	g.make_vinit()
-	
-	stack_top := 1024 + (16 * 1024)
-	data_base := calc_align(stack_top + 1, g.pool.highest_alignment)
-
 	// TODO: g.pool.apply_constant_reloc(data_base)
 	
-	heap_base := calc_align(data_base + g.pool.buf.len, 16) // 16?
-	page_boundary := calc_align(data_base + g.pool.buf.len, 64 * 1024)
+	heap_base := calc_align(g.data_base + g.pool.buf.len, 16) // 16?
+	page_boundary := calc_align(g.data_base + g.pool.buf.len, 64 * 1024)
 	preallocated_pages := page_boundary / (64 * 1024)
 
 	if g.pref.is_verbose {
 		eprintln('housekeeping(): acceptable addresses are > 1024')
-		eprintln('housekeeping(): stack top: ${stack_top}, data_base: ${data_base} (size: ${g.pool.buf.len}), heap_base: ${heap_base}')
+		eprintln('housekeeping(): stack top: ${g.stack_top}, data_base: ${g.data_base} (size: ${g.pool.buf.len}), heap_base: ${heap_base}')
 		eprintln('housekeeping(): preallocated pages: ${preallocated_pages}')
 	}
 
 	if sp := g.sp_global {
-		g.mod.assign_global_init(sp, wasm.constexpr_value(stack_top))
+		g.mod.assign_global_init(sp, wasm.constexpr_value(g.stack_top))
 	}
 	if g.sp_global != none || g.pool.buf.len > 0 {
 		g.mod.assign_memory('memory', true, u32(preallocated_pages), none)
 		if g.pool.buf.len > 0 {
-			g.mod.new_data_segment(data_base, g.pool.buf)
-		}
-	}
-	for _, gv in g.global_vars {
-		if data_seg := gv.data_seg {
-			g.mod.assign_global_init(gv.v.g_idx, wasm.constexpr_value(data_base + data_seg))
+			g.mod.new_data_segment(g.data_base, g.pool.buf)
 		}
 	}
 	if hp := g.heap_base {

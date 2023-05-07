@@ -41,18 +41,13 @@ mut:
 	is_leaf_function  bool = true
 	module_import_namespace string
 	loop_breakpoint_stack []LoopBreakpoint
-	relocs []LiteralPtrReloc
-}
-
-struct LiteralPtrReloc {
-	pos    int
-	offset int
+	stack_top int // position in linear memory
+	data_base int // position in linear memory
 }
 
 struct Global {
 mut:
 	init     ?ast.Expr
-	data_seg ?int // pos offset from data segment
 	v    Var
 }
 
@@ -616,6 +611,11 @@ fn (mut g Gen) load_field(typ ast.Type, ftyp ast.Type, name string) {
 	g.load(ftyp, offset)
 }
 
+fn (mut g Gen) store_field(typ ast.Type, ftyp ast.Type, name string) {
+	offset := g.get_field_offset(typ, name)
+	g.store(ftyp, offset)
+}
+
 fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 	match node {
 		ast.ParExpr, ast.UnsafeExpr {
@@ -663,8 +663,9 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			g.get(v)
 		}
 		ast.SelectorExpr {
-			g.expr(node.expr, node.expr_type)
-			g.field_offset(node.expr_type, node.field_name)
+			v := g.get_var_from_expr(node) or { panic('unreachable') }
+			g.deref_as_field(v)
+			g.cast(v.typ, expected)
 		}
 		ast.MatchExpr {
 			g.w_error('wasm backend does not support match expressions yet')
@@ -692,34 +693,20 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		ast.BoolLiteral {
 			g.func.i32_const(i32(node.val))
 		}
-		/* ast.StringLiteral {
-			if g.table.sym(expected).info !is ast.Struct {
-				offset, _ := g.allocate_string(node)
-				return g.literalint(offset, ast.int_type)
-			}
-
-			pos := g.allocate_local_var('_anonstring', ast.string_type)
-
-			expr := g.assign_expr_to_var(Var(Stack{ address: pos, ast_typ: ast.string_type }),
-				node, ast.string_type)
-			g.mknblock('EXPR(STRINGINIT)', [expr, g.lea_address(pos)])
-		} */
-		/* ast.StringLiteral {
+		ast.StringLiteral {
 			if expected != ast.string_type {
-				// c'str'
+				val := serialise.eval_escape_codes(node) or { panic('unreachable') }
+				str_pos := g.pool.append_string(val)
 
-				// appends only &u8
-				p, _ := g.pool.append(node)
-				g.relocs << LiteralPtrReloc{
-					pos: g.mod.buf.len
-					offset: p
-				}
+				// c'str'
+				g.literalint(g.data_base + str_pos, ast.voidptr_type)
 				return
 			}
+
 			v := g.new_local('', ast.string_type)
 			g.set_with_expr(node, v)
 			g.get(v)
-		} */
+		}
 		ast.InfixExpr {
 			g.infix_expr(node, expected)
 		}
@@ -1032,12 +1019,15 @@ pub fn (mut g Gen) calculate_enum_fields() {
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Preferences) {
+	stack_top := 1024 + (16 * 1024)
 	mut g := &Gen{
 		table: table
 		pref: w_pref
 		files: files
 		eval: eval.new_eval(table, w_pref)
 		pool: serialise.new_pool(table, store_relocs: true, null_terminated: false)
+		stack_top: stack_top
+		data_base: calc_align(stack_top + 1, 16)
 	}
 	g.table.pointer_size = 4
 	g.mod.assign_memory("memory", true, 1, none)
