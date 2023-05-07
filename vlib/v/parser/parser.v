@@ -2116,7 +2116,6 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 }
 
 pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
-	// p.warn('name ')
 	is_option := p.tok.kind == .question && p.peek_tok.kind == .lsbr
 	if is_option {
 		p.next()
@@ -2169,9 +2168,13 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 			scope: p.scope
 		}
 	}
-	if p.inside_match_body && name == 'it' {
-		// p.warn('it')
+	mut is_known_generic_fn := false
+	if func := p.table.find_fn(p.prepend_mod(name)) {
+		if func.generic_names.len > 0 {
+			is_known_generic_fn = true
+		}
 	}
+	mut concrete_types := []ast.Type{}
 	if p.expr_mod.len > 0 {
 		name = '${p.expr_mod}.${name}'
 	}
@@ -2188,6 +2191,9 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	} else if allowed_cases && p.tok.kind == .key_orelse {
 		or_kind = ast.OrKind.block
 		or_stmts, or_pos = p.or_block(.no_err_var)
+	} else if is_known_generic_fn && p.tok.kind == .lsbr {
+		// `generic_fn[int]`
+		concrete_types = p.parse_concrete_types()
 	}
 	return ast.Ident{
 		tok_kind: p.tok.kind
@@ -2212,6 +2218,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 			stmts: or_stmts
 			pos: or_pos
 		}
+		concrete_types: concrete_types
 	}
 }
 
