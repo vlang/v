@@ -1099,6 +1099,8 @@ fn (g Gen) option_type_text(styp string, base string) string {
 		'u8'
 	} else if base.starts_with('anon_fn') {
 		'void*'
+	} else if base.starts_with('_option_') {
+		base.replace('*', '')
 	} else {
 		if base.starts_with('struct ') && !base.ends_with('*') { '${base}*' } else { base }
 	}
@@ -1116,6 +1118,8 @@ fn (g Gen) result_type_text(styp string, base string) string {
 		'u8'
 	} else if base.starts_with('anon_fn') {
 		'void*'
+	} else if base.starts_with('_option_') {
+		base.replace('*', '')
 	} else {
 		if base.starts_with('struct ') && !base.ends_with('*') { '${base}*' } else { base }
 	}
