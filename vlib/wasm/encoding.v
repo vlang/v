@@ -110,6 +110,25 @@ fn (mut mod Module) patch(ft Function) {
 	mod.buf << ft.code[ptr..]
 }
 
+pub fn (mut mod Module) name(name string) {
+	mod.u32(u32(name.len))
+	mod.buf << name.bytes()
+}
+
+pub fn (mut mod Module) start_subsection(sec Subsection) int {
+	mod.buf << u8(sec)
+	return mod.patch_start()
+}
+
+pub fn (mut mod Module) start_section(sec Section) int {
+	mod.buf << u8(sec)
+	return mod.patch_start()
+}
+
+pub fn (mut mod Module) end_section(tpatch int) {
+	mod.patch_len(tpatch)
+}
+
 // compile serialises the WebAssembly module into a byte array.
 // The returned byte array can be written out into a `.wasm`, or executed in memory.
 pub fn (mut mod Module) compile() []u8 {
@@ -121,22 +140,19 @@ pub fn (mut mod Module) compile() []u8 {
 	// https://webassembly.github.io/spec/core/binary/modules.html#type-section
 	//
 	if mod.functypes.len > 0 {
-		// Types
-		mod.buf << u8(Section.type_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.type_section)
 		{
 			mod.u32(u32(mod.functypes.len))
 			for ft in mod.functypes {
 				mod.function_type(ft)
 			}
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#import-section
 	//
 	if mod.fn_imports.len > 0 || mod.global_imports.len > 0 {
-		mod.buf << u8(Section.import_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.import_section)
 		{
 			mod.u32(u32(mod.fn_imports.len + mod.global_imports.len))
 			for ft in mod.fn_imports {
@@ -156,26 +172,24 @@ pub fn (mut mod Module) compile() []u8 {
 				mod.global_type(gt.typ, gt.is_mut)
 			}
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#binary-funcsec
 	//
 	if mod.functions.len > 0 {
-		mod.buf << u8(Section.function_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.function_section)
 		{
 			mod.u32(u32(mod.functions.len))
 			for _, ft in mod.functions {
 				mod.u32(u32(ft.tidx))
 			}
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#binary-memsec
 	//
 	if memory := mod.memory {
-		mod.buf << u8(Section.memory_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.memory_section)
 		{
 			mod.u32(1)
 			if max := memory.max {
@@ -187,13 +201,12 @@ pub fn (mut mod Module) compile() []u8 {
 				mod.u32(memory.min)
 			}
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#global-section
 	//
 	if mod.globals.len > 0 {
-		mod.buf << u8(Section.global_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.global_section)
 		{
 			mod.u32(u32(mod.globals.len))
 			for gt in mod.globals {
@@ -213,13 +226,12 @@ pub fn (mut mod Module) compile() []u8 {
 				mod.buf << 0x0B // END expression opcode
 			}
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#export-section
 	//
 	if mod.functions.len > 0 {
-		mod.buf << u8(Section.export_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.export_section)
 		{
 			lpatch := mod.patch_start()
 			mut lsz := 0
@@ -228,50 +240,45 @@ pub fn (mut mod Module) compile() []u8 {
 					continue
 				}
 				lsz++
-				mod.u32(u32(ft.name.len))
-				mod.buf << ft.name.bytes()
+				mod.name(ft.name)
 				mod.buf << 0x00 // function
 				mod.u32(u32(ft.idx + mod.fn_imports.len))
 			}
 			if memory := mod.memory {
 				if memory.export {
 					lsz++
-					mod.u32(u32(memory.name.len))
-					mod.buf << memory.name.bytes()
+					mod.name(memory.name)
 					mod.buf << 0x02 // function
 					mod.u32(0)
 				}
 			}
 			mod.patch_u32(lpatch, u32(lsz))
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#binary-startsec
 	//
 	if start := mod.start {
 		ftt := mod.functions[start] or { panic('start function ${start} does not exist') }
-		mod.buf << u8(Section.start_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.start_section)
 		{
 			mod.u32(u32(ftt.idx + mod.fn_imports.len))
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#data-count-section
 	//
 	if mod.segments.len > 0 {
-		mod.buf << u8(Section.data_count_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.data_count_section)
 		{
 			mod.u32(u32(mod.segments.len))
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#binary-codesec
 	//
 	if mod.functions.len > 0 {
-		mod.buf << u8(Section.code_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.code_section)
 		{
 			mod.u32(u32(mod.functions.len))
 			for _, ft in mod.functions {
@@ -288,13 +295,12 @@ pub fn (mut mod Module) compile() []u8 {
 				mod.patch_len(fpatch)
 			}
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#data-section
 	//
 	if mod.segments.len > 0 {
-		mod.buf << u8(Section.data_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.data_section)
 		{
 			mod.u32(u32(mod.segments.len))
 			for _, seg in mod.segments {
@@ -311,7 +317,34 @@ pub fn (mut mod Module) compile() []u8 {
 				mod.buf << seg.data
 			}
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
+	}
+	// https://webassembly.github.io/spec/core/appendix/custom.html#name-section
+	//
+	if mod.debug {
+		tpatch := mod.start_section(.custom_section)
+		mod.name('name')
+		{
+			mpatch := mod.start_subsection(.name_module)
+			{
+				mod.name('vlang')
+			}
+			mod.end_section(mpatch)
+		}
+		{
+			mpatch := mod.start_subsection(.name_function)
+			{
+				mod.u32(u32(mod.functions.len))
+				mut idx := 0
+				for n, _ in mod.functions {
+					mod.u32(u32(idx))
+					mod.name(n)
+					idx++
+				}
+			}
+			mod.end_section(mpatch)
+		}
+		mod.end_section(tpatch)
 	}
 
 	return mod.buf

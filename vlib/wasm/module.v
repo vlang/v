@@ -19,6 +19,20 @@ enum Section as u8 {
 	data_count_section
 }
 
+enum Subsection as u8 {
+	name_module
+	name_function
+	name_local
+	// see: https://github.com/WebAssembly/extended-name-section
+	name_label
+	name_type
+	name_table
+	name_memory
+	name_global
+	name_elem
+	name_data
+}
+
 pub enum NumType as u8 {
 	i32_t = 0x7f
 	i64_t = 0x7e
@@ -55,6 +69,7 @@ mut:
 	fn_imports     []FunctionImport
 	global_imports []GlobalImport
 	segments       []DataSegment
+	debug          bool
 }
 
 struct Global {
@@ -127,6 +142,11 @@ pub fn (mut mod Module) new_function(name string, parameters []ValType, results 
 		idx: idx
 		mod: mod
 	}
+}
+
+// debug sets whether to emit debug information for not.
+pub fn (mut mod Module) debug(debug bool) {
+	mod.debug = debug
 }
 
 // assign_memory assigns memory to the current module.
