@@ -110,21 +110,25 @@ fn (mut mod Module) patch(ft Function) {
 	mod.buf << ft.code[ptr..]
 }
 
+// name
 pub fn (mut mod Module) name(name string) {
 	mod.u32(u32(name.len))
 	mod.buf << name.bytes()
 }
 
+// start_subsection
 pub fn (mut mod Module) start_subsection(sec Subsection) int {
 	mod.buf << u8(sec)
 	return mod.patch_start()
 }
 
+// start_section
 pub fn (mut mod Module) start_section(sec Section) int {
 	mod.buf << u8(sec)
 	return mod.patch_start()
 }
 
+// end_section
 pub fn (mut mod Module) end_section(tpatch int) {
 	mod.patch_len(tpatch)
 }
