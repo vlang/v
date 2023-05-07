@@ -283,11 +283,12 @@ pub fn (mut mod Module) compile() []u8 {
 			mod.u32(u32(mod.functions.len))
 			for _, ft in mod.functions {
 				fpatch := mod.patch_start()
+				rloc := ft.locals[mod.functypes[ft.tidx].parameters.len..]
 				{
-					mod.u32(u32(ft.locals.len))
-					for lt in ft.locals {
+					mod.u32(u32(rloc.len))
+					for lt in rloc {
 						mod.u32(1)
-						mod.buf << u8(lt)
+						mod.buf << u8(lt.typ)
 					}
 					mod.patch(ft)
 					mod.buf << 0x0B // END expression opcode
@@ -324,10 +325,10 @@ pub fn (mut mod Module) compile() []u8 {
 	if mod.debug {
 		tpatch := mod.start_section(.custom_section)
 		mod.name('name')
-		{
+		if mod_name := mod.mod_name {
 			mpatch := mod.start_subsection(.name_module)
 			{
-				mod.name('vlang')
+				mod.name(mod_name)
 			}
 			mod.end_section(mpatch)
 		}
@@ -341,6 +342,51 @@ pub fn (mut mod Module) compile() []u8 {
 					mod.name(n)
 					idx++
 				}
+			}
+			mod.end_section(mpatch)
+		}
+		{
+			mpatch := mod.start_subsection(.name_local)
+			{
+				fpatch := mod.patch_start()
+				mut fcount := 0
+				mut idx := 0
+				for _, ft in mod.functions {
+					// only add entry if it contains a local with an assigned name
+					if ft.locals.any(it.name != none) {
+						mod.u32(u32(idx)) // function idx
+
+						mut lcount := 0
+						lcpatch := mod.patch_start()
+						for lidx, loc in ft.locals {
+							if name := loc.name {
+								mod.u32(u32(lidx))
+								mod.name(name)
+								lcount++
+							}
+						}
+						mod.patch_u32(lcpatch, u32(lcount))
+						fcount++
+					}
+					idx++
+				}
+				mod.patch_u32(fpatch, u32(fcount))
+			}
+			mod.end_section(mpatch)
+		}
+		{
+			mpatch := mod.start_subsection(.name_type)
+			{
+				fpatch := mod.patch_start()
+				mut fcount := 0
+				for idx, ft in mod.functypes {
+					if name := ft.name {
+						mod.u32(u32(idx))
+						mod.name(name)
+						fcount++
+					}
+				}
+				mod.patch_u32(fpatch, u32(fcount))
 			}
 			mod.end_section(mpatch)
 		}

@@ -87,10 +87,17 @@ pub fn (mut func Function) patch(loc PatchPos, begin PatchPos) {
 // new_local creates a function local and returns it's index.
 // See `local_get`, `local_set`, `local_tee`.
 pub fn (mut func Function) new_local(v ValType) LocalIndex {
-	ldiff := func.mod.functypes[func.tidx].parameters.len
-	ret := func.locals.len + ldiff
+	ret := func.locals.len
+	func.locals << FunctionLocal{typ: v}
+	return ret
+}
 
-	func.locals << v
+// new_local_named creates a function local with a name and returns it's index.
+// The `name` is used in debug information, where applicable.
+// See `local_get`, `local_set`, `local_tee`.
+pub fn (mut func Function) new_local_named(v ValType, name string) LocalIndex {
+	ret := func.locals.len
+	func.locals << FunctionLocal{typ: v, name: name}
 	return ret
 }
 

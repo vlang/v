@@ -26,6 +26,11 @@ mut:
 
 type FunctionPatch = CallPatch | FunctionGlobalPatch
 
+struct FunctionLocal {
+	typ  ValType
+	name ?string
+}
+
 pub struct Function {
 	tidx int
 	idx  int
@@ -35,7 +40,7 @@ mut:
 	export  bool
 	mod     &Module = unsafe { nil }
 	code    []u8
-	locals  []ValType
+	locals  []FunctionLocal
 pub:
 	name string
 }
