@@ -1,6 +1,3 @@
-// Copyright (c) 2023 l-m.dev. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module wasm
 
 enum Section as u8 {
