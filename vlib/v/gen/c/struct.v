@@ -321,7 +321,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 				}
 				g.write('.${field_name} = ')
 				if field.typ.has_flag(.option) {
-					if field.is_recursive {
+					if field.is_recursive || field.typ.is_ptr() {
 						g.expr_with_opt(ast.None{}, ast.none_type, field.typ)
 					} else {
 						tmp_var := g.new_tmp_var()
