@@ -8,7 +8,7 @@ const (
 <head></head>
 <body>
   <div id="1st">
-    <div class="bar"></div>
+    <div class="foo bar"></div>
   </div>
   <div id="2nd">
     <div class="foo">
@@ -30,7 +30,17 @@ const (
 </html>'
 )
 
-fn test_search_by_tag_type() {
+fn test_search_tag_by_type() {
+	mut dom := parse(html.html)
+	tag := dom.get_tag('body')[0]
+	assert tag.get_tag('div') or { assert false }.attributes['id'] == '1st'
+	assert tag.get_tag_by_attribute('href') or { assert false }.content == 'V'
+	// TODO: update after improved parsing to not add trailing white space to attribute values
+	assert tag.get_tag_by_attribute_value('id', '3rd') or { assert false }.str() == '<div id="3rd" ></div>'
+	assert tag.get_tag_by_class_name('foo') or { assert false }.attributes['class'] == 'foo bar'
+}
+
+fn test_search_tags_by_type() {
 	mut dom := parse(html.html)
 	tag := dom.get_tag_by_attribute_value('id', '2nd')[0]
 	assert tag.get_tags('div').len == 5
