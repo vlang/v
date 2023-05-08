@@ -644,6 +644,18 @@ pub mut:
 	typ Type
 }
 
+pub fn (p &Param) specifier() string {
+	if p.is_shared {
+		return 'shared'
+	} else if p.is_atomic {
+		return 'atomic'
+	} else if p.is_mut {
+		return 'mut'
+	} else {
+		return ''
+	}
+}
+
 pub fn (f &Fn) new_method_with_receiver_type(new_type Type) Fn {
 	unsafe {
 		mut new_method := f

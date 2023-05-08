@@ -2524,7 +2524,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			} else {
 				tsym.cname
 			}
-			c.table.dumps[int(unwrapped_expr_type.clear_flag(.result))] = type_cname
+			c.table.dumps[int(unwrapped_expr_type.clear_flag(.result).clear_flag(.atomic_f))] = type_cname
 			node.cname = type_cname
 			return node.expr_type
 		}
