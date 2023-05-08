@@ -2088,16 +2088,13 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	mut use_tmp_fn_var := false
 	tmp_fn := g.new_tmp_var()
 
-	for i, concrete_type in expr.concrete_types {
-		if concrete_type != ast.void_type && concrete_type != 0 {
-			// Using _T_ to differentiate between get<string> and get_string
-			// `foo<int>()` => `foo_T_int()`
-			if i == 0 {
-				name += '_T'
-			}
-			name += '_' + g.typ(concrete_type)
-		}
+	if expr.concrete_types.len > 0 {
+		name = g.generic_fn_name(expr.concrete_types, name)
+	} else if expr.is_fn_var && expr.fn_var_type.has_flag(.generic) {
+		fn_var_type := g.unwrap_generic(expr.fn_var_type)
+		name = g.typ(fn_var_type)
 	}
+
 	if expr.is_method {
 		receiver_sym := g.table.sym(g.unwrap_generic(expr.receiver_type))
 		name = receiver_sym.cname + '_' + name
@@ -2143,7 +2140,13 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	wrapper_fn_name := name + '_thread_wrapper'
 	arg_tmp_var := 'arg_' + tmp
 	g.writeln('${wrapper_struct_name} *${arg_tmp_var} = malloc(sizeof(thread_arg_${name}));')
-	fn_name := if use_tmp_fn_var { tmp_fn } else { name }
+	fn_name := if use_tmp_fn_var {
+		tmp_fn
+	} else if expr.is_fn_var {
+		expr.name
+	} else {
+		name
+	}
 	if !(expr.is_method && g.table.sym(expr.receiver_type).kind == .interface_) {
 		g.writeln('${arg_tmp_var}->fn = ${fn_name};')
 	}
