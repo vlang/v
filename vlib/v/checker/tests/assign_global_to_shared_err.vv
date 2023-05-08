@@ -1,0 +1,5 @@
+__global a = 0
+
+fn main() {
+	shared b := a
+}
