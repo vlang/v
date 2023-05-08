@@ -166,7 +166,7 @@ pub fn (mut mod Module) new_debug_function(name string, typ FuncType, argument_n
 	}
 }
 
-// debug sets whether to emit debug information for not.
+// enable_debug sets whether to emit debug information for not.
 pub fn (mut mod Module) enable_debug(mod_name ?string) {
 	mod.debug = true
 	mod.mod_name = mod_name

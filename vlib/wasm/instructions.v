@@ -1168,7 +1168,7 @@ pub fn (mut func Function) ref_func(name string) {
 	})
 }
 
-// ref_func places a reference to an imported function with `name` on the stack.
+// ref_func_import places a reference to an imported function with `name` on the stack.
 // If the imported function does not exist when calling `compile` on the module, it will panic.
 // WebAssembly instruction: `ref.func`.
 pub fn (mut func Function) ref_func_import(mod string, name string) {
