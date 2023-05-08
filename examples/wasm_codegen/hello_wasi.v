@@ -2,14 +2,15 @@ import wasm
 
 fn main() {
 	mut m := wasm.Module{}
+	m.enable_debug('vlang')
 	m.new_function_import('wasi_unstable', 'proc_exit', [.i32_t], [])
 	m.new_function_import('wasi_unstable', 'fd_write', [.i32_t, .i32_t, .i32_t, .i32_t],
 		[.i32_t])
 	m.assign_memory('memory', true, 1, none)
 
-	m.new_data_segment(0, [u8(8), 0, 0, 0]) // pointer to string
-	m.new_data_segment(4, [u8(13), 0, 0, 0]) // length of string
-	m.new_data_segment(8, 'Hello, WASI!\n'.bytes())
+	m.new_data_segment('CIOVec.str', 0, [u8(8), 0, 0, 0]) // pointer to string
+	m.new_data_segment('CIOVec.len', 4, [u8(13), 0, 0, 0]) // length of string
+	m.new_data_segment(none, 8, 'Hello, WASI!\n'.bytes())
 
 	mut func := m.new_function('_start', [], [])
 	{

@@ -4,7 +4,7 @@ import wasm
 
 fn test_patch() {
 	mut m := wasm.Module{}
-	vsp := m.new_global('__vsp', .i32_t, true, wasm.constexpr_value(10))
+	vsp := m.new_global('__vsp', false, .i32_t, true, wasm.constexpr_value(10))
 	mut at := m.new_function('add', [], [])
 	{
 		pp := at.patch_pos()

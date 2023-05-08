@@ -352,7 +352,7 @@ pub fn (mut mod Module) compile() []u8 {
 				mut idx := 0
 				for f in mod.fn_imports {
 					mod.u32(u32(idx))
-					mod.name("${f.mod}.${f.name}")
+					mod.name('${f.mod}.${f.name}')
 					idx++
 				}
 				for n, _ in mod.functions {
@@ -424,7 +424,7 @@ pub fn (mut mod Module) compile() []u8 {
 				mut fcount := 0
 				for gbl in mod.global_imports {
 					mod.u32(u32(fcount))
-					mod.name("${gbl.mod}.${gbl.name}")
+					mod.name('${gbl.mod}.${gbl.name}')
 					fcount++
 				}
 				for gbl in mod.globals {
@@ -436,6 +436,23 @@ pub fn (mut mod Module) compile() []u8 {
 			}
 			mod.end_section(mpatch)
 		}
+		if mod.segments.any(it.name != none) {
+			mpatch := mod.start_subsection(.name_data)
+			{
+				fpatch := mod.patch_start()
+				mut fcount := 0
+				for idx, ds in mod.segments {
+					if name := ds.name {
+						mod.u32(u32(idx))
+						mod.name(name)
+						fcount++
+					}
+				}
+				mod.patch_u32(fpatch, u32(fcount))
+			}
+			mod.end_section(mpatch)
+		}
+
 		mod.end_section(tpatch)
 	}
 

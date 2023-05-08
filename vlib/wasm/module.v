@@ -74,10 +74,10 @@ mut:
 }
 
 struct Global {
-	typ         ValType
-	is_mut      bool
-	name        string
-	export      bool
+	typ    ValType
+	is_mut bool
+	name   string
+	export bool
 mut:
 	init ConstExpression
 }
@@ -105,6 +105,7 @@ struct Memory {
 struct DataSegment {
 	idx  ?int
 	data []u8
+	name ?string
 }
 
 pub type LocalIndex = int
@@ -223,19 +224,23 @@ pub fn (mut mod Module) commit(func Function, export bool) {
 }
 
 // new_data_segment inserts a new data segment at the memory index `pos`.
-pub fn (mut mod Module) new_data_segment(pos int, data []u8) DataSegmentIndex {
+// `name` is optional, it is used for debug info.
+pub fn (mut mod Module) new_data_segment(name ?string, pos int, data []u8) DataSegmentIndex {
 	len := mod.segments.len
 	mod.segments << DataSegment{
 		idx: pos
 		data: data
+		name: name
 	}
 	return len
 }
 
 // new_passive_data_segment inserts a new passive data segment.
-pub fn (mut mod Module) new_passive_data_segment(data []u8) {
+// `name` is optional, it is used for debug info.
+pub fn (mut mod Module) new_passive_data_segment(name ?string, data []u8) {
 	mod.segments << DataSegment{
 		data: data
+		name: name
 	}
 }
 
