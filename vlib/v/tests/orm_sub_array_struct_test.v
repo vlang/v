@@ -22,7 +22,7 @@ fn test_orm_array() {
 		create table Child
 	}!
 
-	par := Parent{
+	new_parent := Parent{
 		name: 'test'
 		children: [
 			Child{
@@ -35,7 +35,7 @@ fn test_orm_array() {
 	}
 
 	sql db {
-		insert par into Parent
+		insert new_parent into Parent
 	}!
 
 	parents := sql db {
@@ -47,8 +47,8 @@ fn test_orm_array() {
 	}!
 
 	parent := parents.first()
-	assert parent.name == par.name
-	assert parent.children.len == par.children.len
+	assert parent.name == new_parent.name
+	assert parent.children.len == new_parent.children.len
 	assert parent.children[0].name == 'abc'
 	assert parent.children[1].name == 'def'
 }
@@ -57,8 +57,6 @@ fn test_orm_relationship() {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	sql db {
 		create table Parent
-	}!
-	sql db {
 		create table Child
 	}!
 
@@ -66,13 +64,12 @@ fn test_orm_relationship() {
 		name: 'abc'
 	}
 
-	par := Parent{
+	new_parent := Parent{
 		name: 'test'
 		children: []
 	}
-
 	sql db {
-		insert par into Parent
+		insert new_parent into Parent
 	}!
 
 	mut parents := sql db {
@@ -93,7 +90,7 @@ fn test_orm_relationship() {
 		insert child into Child
 	}!
 
-	assert parent.name == par.name
+	assert parent.name == new_parent.name
 	assert parent.children.len == 0
 
 	parents = sql db {
@@ -101,7 +98,7 @@ fn test_orm_relationship() {
 	}!
 
 	parent = parents.first()
-	assert parent.name == par.name
+	assert parent.name == new_parent.name
 	assert parent.children.len == 2
 	assert parent.children[0].name == 'atum'
 	assert parent.children[1].name == 'bacon'
