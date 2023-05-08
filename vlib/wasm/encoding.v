@@ -339,8 +339,13 @@ pub fn (mut mod Module) compile() []u8 {
 		{
 			mpatch := mod.start_subsection(.name_function)
 			{
-				mod.u32(u32(mod.functions.len))
+				mod.u32(u32(mod.functions.len + mod.fn_imports.len))
 				mut idx := 0
+				for f in mod.fn_imports {
+					mod.u32(u32(idx))
+					mod.name("${f.mod}.${f.name}")
+					idx++
+				}
 				for n, _ in mod.functions {
 					mod.u32(u32(idx))
 					mod.name(n)
@@ -354,7 +359,7 @@ pub fn (mut mod Module) compile() []u8 {
 			{
 				fpatch := mod.patch_start()
 				mut fcount := 0
-				mut idx := 0
+				mut idx := mod.fn_imports.len // after imports
 				for _, ft in mod.functions {
 					// only add entry if it contains a local with an assigned name
 					if ft.locals.any(it.name != none) {
