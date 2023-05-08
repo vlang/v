@@ -234,7 +234,7 @@ pub fn (mut mod Module) compile() []u8 {
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#export-section
 	//
-	if mod.functions.len > 0 {
+	{
 		tpatch := mod.start_section(.export_section)
 		{
 			lpatch := mod.patch_start()
@@ -255,6 +255,15 @@ pub fn (mut mod Module) compile() []u8 {
 					mod.buf << 0x02 // function
 					mod.u32(0)
 				}
+			}
+			for idx, gbl in mod.globals {
+				if !gbl.export {
+					continue
+				}
+				lsz++
+				mod.name(gbl.name)
+				mod.buf << 0x03 // global
+				mod.u32(u32(idx + mod.global_imports.len))
 			}
 			mod.patch_u32(lpatch, u32(lsz))
 		}

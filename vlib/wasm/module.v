@@ -76,7 +76,8 @@ mut:
 struct Global {
 	typ         ValType
 	is_mut      bool
-	export_name ?string
+	name        string
+	export      bool
 mut:
 	init ConstExpression
 }
@@ -241,12 +242,13 @@ pub fn (mut mod Module) new_passive_data_segment(data []u8) {
 // new_global creates a global and returns it's index.
 // If `export_name` is none, the global will not be exported.
 // See `global_get`, `global_set`.
-pub fn (mut mod Module) new_global(export_name ?string, typ ValType, is_mut bool, init ConstExpression) GlobalIndex {
+pub fn (mut mod Module) new_global(name string, export bool, typ ValType, is_mut bool, init ConstExpression) GlobalIndex {
 	len := mod.globals.len
 	mod.globals << Global{
 		typ: typ
 		is_mut: is_mut
-		export_name: export_name
+		name: name
+		export: export
 		init: init
 	}
 	return len
