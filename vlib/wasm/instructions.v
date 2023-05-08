@@ -66,15 +66,44 @@ pub fn (mut func Function) patch(loc PatchPos, begin PatchPos) {
 	}
 
 	func.patches.sort(a.pos < b.pos)
+
+	/*
+	lenn := begin
+	diff := loc - begin
+
+	for mut patch in func.patches {
+		if patch.pos >= begin {
+			patch.pos += diff
+		}
+		if patch.pos <= lenn {
+			continue
+		}
+		delta := patch.pos - lenn
+		patch.pos = loc + delta
+	}
+
+	func.patches.sort(a.pos < b.pos)*/
 }
 
 // new_local creates a function local and returns it's index.
 // See `local_get`, `local_set`, `local_tee`.
 pub fn (mut func Function) new_local(v ValType) LocalIndex {
-	ldiff := func.mod.functypes[func.tidx].parameters.len
-	ret := func.locals.len + ldiff
+	ret := func.locals.len
+	func.locals << FunctionLocal{
+		typ: v
+	}
+	return ret
+}
 
-	func.locals << v
+// new_local_named creates a function local with a name and returns it's index.
+// The `name` is used in debug information, where applicable.
+// See `local_get`, `local_set`, `local_tee`.
+pub fn (mut func Function) new_local_named(v ValType, name string) LocalIndex {
+	ret := func.locals.len
+	func.locals << FunctionLocal{
+		typ: v
+		name: name
+	}
 	return ret
 }
 
@@ -1139,7 +1168,7 @@ pub fn (mut func Function) ref_func(name string) {
 	})
 }
 
-// ref_func places a reference to an imported function with `name` on the stack.
+// ref_func_import places a reference to an imported function with `name` on the stack.
 // If the imported function does not exist when calling `compile` on the module, it will panic.
 // WebAssembly instruction: `ref.func`.
 pub fn (mut func Function) ref_func_import(mod string, name string) {

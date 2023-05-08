@@ -185,15 +185,24 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	g.auto_str_funcs.writeln('string indent_${str_fn_name}(${styp} it, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstring res;')
 	g.auto_str_funcs.writeln('\tif (it.state == 0) {')
+	deref := if typ.is_ptr() { '**(${sym.cname}**)&' } else { '*(${sym.cname}*)' }
 	if sym.kind == .string {
-		tmp_res := '${parent_str_fn_name}(*(${sym.cname}*)it.data)'
-		g.auto_str_funcs.writeln('\t\tres = ${str_intp_sq(tmp_res)};')
+		if typ.nr_muls() > 1 {
+			g.auto_str_funcs.writeln('\t\tres = ptr_str(*(${sym.cname}**)&it.data);')
+		} else {
+			tmp_res := '${parent_str_fn_name}(${deref}it.data)'
+			g.auto_str_funcs.writeln('\t\tres = ${str_intp_sq(tmp_res)};')
+		}
 	} else if should_use_indent_func(sym.kind) && !sym_has_str_method {
-		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(*(${sym.cname}*)it.data, indent_count);')
+		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(${deref}it.data, indent_count);')
 	} else if sym.kind == .function {
 		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}();')
 	} else {
-		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(*(${sym.cname}*)it.data);')
+		if typ.nr_muls() > 1 {
+			g.auto_str_funcs.writeln('\t\tres = ptr_str(*(${sym.cname}**)&it.data);')
+		} else {
+			g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(${deref}it.data);')
+		}
 	}
 	g.auto_str_funcs.writeln('\t\treturn ${str_intp_sub('Option(%%)', 'res')};')
 	g.auto_str_funcs.writeln('\t}')
@@ -962,13 +971,14 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		} else if ftyp_noshared.is_ptr() {
 			// reference types can be "nil"
 			if ftyp_noshared.has_flag(.option) {
-				funcprefix += 'isnil(&it.${field_name})'
+				funcprefix += 'isnil(&it.${field_name}) || isnil(&it.${field_name}.data)'
 			} else {
 				funcprefix += 'isnil(it.${field_name})'
 			}
 			funcprefix += ' ? _SLIT("nil") : '
 			// struct, floats and ints have a special case through the _str function
-			if sym.kind !in [.struct_, .alias, .enum_, .sum_type, .map, .interface_]
+			if !ftyp_noshared.has_flag(.option)
+				&& sym.kind !in [.struct_, .alias, .enum_, .sum_type, .map, .interface_]
 				&& !field.typ.is_int_valptr() && !field.typ.is_float_valptr() {
 				funcprefix += '*'
 			}

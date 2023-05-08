@@ -35,7 +35,7 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 	// Prefix
 	match p.tok.kind {
 		.key_mut, .key_shared, .key_atomic, .key_static, .key_volatile {
-			ident := p.parse_ident(ast.Language.v)
+			ident := p.ident(ast.Language.v)
 			node = ident
 			if p.inside_defer {
 				if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)

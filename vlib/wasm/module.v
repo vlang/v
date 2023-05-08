@@ -19,6 +19,20 @@ enum Section as u8 {
 	data_count_section
 }
 
+enum Subsection as u8 {
+	name_module
+	name_function
+	name_local
+	// see: https://github.com/WebAssembly/extended-name-section
+	name_label
+	name_type
+	name_table
+	name_memory
+	name_global
+	name_elem
+	name_data
+}
+
 pub enum NumType as u8 {
 	i32_t = 0x7f
 	i64_t = 0x7e
@@ -55,12 +69,15 @@ mut:
 	fn_imports     []FunctionImport
 	global_imports []GlobalImport
 	segments       []DataSegment
+	debug          bool
+	mod_name       ?string
 }
 
 struct Global {
-	typ         ValType
-	is_mut      bool
-	export_name ?string
+	typ    ValType
+	is_mut bool
+	name   string
+	export bool
 mut:
 	init ConstExpression
 }
@@ -88,6 +105,7 @@ struct Memory {
 struct DataSegment {
 	idx  ?int
 	data []u8
+	name ?string
 }
 
 pub type LocalIndex = int
@@ -95,11 +113,11 @@ pub type GlobalIndex = int
 pub type GlobalImportIndex = int
 pub type DataSegmentIndex = int
 
-[params]
 pub struct FuncType {
 pub:
 	parameters []ValType
 	results    []ValType
+	name       ?string
 }
 
 fn (mut mod Module) new_functype(ft FuncType) int {
@@ -119,14 +137,39 @@ pub fn (mut mod Module) new_function(name string, parameters []ValType, results 
 	assert name !in mod.functions.keys()
 
 	idx := mod.functions.len
-	tidx := mod.new_functype(FuncType{parameters, results})
+	tidx := mod.new_functype(FuncType{parameters, results, none})
 
 	return Function{
 		name: name
 		tidx: tidx
 		idx: idx
 		mod: mod
+		locals: parameters.map(FunctionLocal{}) // specifying it's ValType doesn't matter
 	}
+}
+
+// new_debug_function creates a function struct with extra debug information.
+// `argument_names` must be the same length as the parameters in the function type `typ`.
+pub fn (mut mod Module) new_debug_function(name string, typ FuncType, argument_names []?string) Function {
+	assert name !in mod.functions.keys()
+	assert typ.parameters.len == argument_names.len
+
+	idx := mod.functions.len
+	tidx := mod.new_functype(typ)
+
+	return Function{
+		name: name
+		tidx: tidx
+		idx: idx
+		mod: mod
+		locals: argument_names.map(FunctionLocal{ name: it }) // specifying it's ValType doesn't matter
+	}
+}
+
+// enable_debug sets whether to emit debug information for not.
+pub fn (mut mod Module) enable_debug(mod_name ?string) {
+	mod.debug = true
+	mod.mod_name = mod_name
 }
 
 // assign_memory assigns memory to the current module.
@@ -148,7 +191,20 @@ pub fn (mut mod Module) assign_start(name string) {
 pub fn (mut mod Module) new_function_import(modn string, name string, parameters []ValType, results []ValType) {
 	assert !mod.fn_imports.any(it.mod == modn && it.name == name)
 
-	tidx := mod.new_functype(FuncType{parameters, results})
+	tidx := mod.new_functype(FuncType{parameters, results, none})
+
+	mod.fn_imports << FunctionImport{
+		mod: modn
+		name: name
+		tidx: tidx
+	}
+}
+
+// new_function_import_debug imports a new function into the current module with extra debug information.
+pub fn (mut mod Module) new_function_import_debug(modn string, name string, typ FuncType) {
+	assert !mod.fn_imports.any(it.mod == modn && it.name == name)
+
+	tidx := mod.new_functype(typ)
 
 	mod.fn_imports << FunctionImport{
 		mod: modn
@@ -168,31 +224,35 @@ pub fn (mut mod Module) commit(func Function, export bool) {
 }
 
 // new_data_segment inserts a new data segment at the memory index `pos`.
-pub fn (mut mod Module) new_data_segment(pos int, data []u8) DataSegmentIndex {
+// `name` is optional, it is used for debug info.
+pub fn (mut mod Module) new_data_segment(name ?string, pos int, data []u8) DataSegmentIndex {
 	len := mod.segments.len
 	mod.segments << DataSegment{
 		idx: pos
 		data: data
+		name: name
 	}
 	return len
 }
 
 // new_passive_data_segment inserts a new passive data segment.
-pub fn (mut mod Module) new_passive_data_segment(data []u8) {
+// `name` is optional, it is used for debug info.
+pub fn (mut mod Module) new_passive_data_segment(name ?string, data []u8) {
 	mod.segments << DataSegment{
 		data: data
+		name: name
 	}
 }
 
 // new_global creates a global and returns it's index.
-// If `export_name` is none, the global will not be exported.
 // See `global_get`, `global_set`.
-pub fn (mut mod Module) new_global(export_name ?string, typ ValType, is_mut bool, init ConstExpression) GlobalIndex {
+pub fn (mut mod Module) new_global(name string, export bool, typ ValType, is_mut bool, init ConstExpression) GlobalIndex {
 	len := mod.globals.len
 	mod.globals << Global{
 		typ: typ
 		is_mut: is_mut
-		export_name: export_name
+		name: name
+		export: export
 		init: init
 	}
 	return len

@@ -935,14 +935,15 @@ pub:
 	mut_pos  token.Pos
 	comptime bool
 pub mut:
-	scope   &Scope = unsafe { nil }
-	obj     ScopeObject
-	mod     string
-	name    string
-	kind    IdentKind
-	info    IdentInfo
-	is_mut  bool // if mut *token* is before name. Use `is_mut()` to lookup mut variable
-	or_expr OrExpr
+	scope          &Scope = unsafe { nil }
+	obj            ScopeObject
+	mod            string
+	name           string
+	kind           IdentKind
+	info           IdentInfo
+	is_mut         bool // if mut *token* is before name. Use `is_mut()` to lookup mut variable
+	or_expr        OrExpr
+	concrete_types []Type
 }
 
 pub fn (i &Ident) is_mut() bool {

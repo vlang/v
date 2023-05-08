@@ -2077,6 +2077,10 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	p.defer_vars = defer_vars
 
 	left0 := left[0]
+	if tok.kind in [.key_mut, .key_shared, .key_atomic] && left0.is_blank_ident() {
+		return p.error_with_pos('cannot use `${tok.kind}` on `_`', tok.pos())
+	}
+
 	if tok.kind == .key_mut && p.tok.kind != .decl_assign {
 		return p.error('expecting `:=` (e.g. `mut x :=`)')
 	}
@@ -2115,8 +2119,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	}
 }
 
-pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
-	// p.warn('name ')
+pub fn (mut p Parser) ident(language ast.Language) ast.Ident {
 	is_option := p.tok.kind == .question && p.peek_tok.kind == .lsbr
 	if is_option {
 		p.next()
@@ -2169,9 +2172,13 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 			scope: p.scope
 		}
 	}
-	if p.inside_match_body && name == 'it' {
-		// p.warn('it')
+	mut is_known_generic_fn := false
+	if func := p.table.find_fn(p.prepend_mod(name)) {
+		if func.generic_names.len > 0 {
+			is_known_generic_fn = true
+		}
 	}
+	mut concrete_types := []ast.Type{}
 	if p.expr_mod.len > 0 {
 		name = '${p.expr_mod}.${name}'
 	}
@@ -2188,6 +2195,9 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 	} else if allowed_cases && p.tok.kind == .key_orelse {
 		or_kind = ast.OrKind.block
 		or_stmts, or_pos = p.or_block(.no_err_var)
+	} else if is_known_generic_fn && p.tok.kind == .lsbr {
+		// `generic_fn[int]`
+		concrete_types = p.parse_concrete_types()
 	}
 	return ast.Ident{
 		tok_kind: p.tok.kind
@@ -2212,6 +2222,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 			stmts: or_stmts
 			pos: or_pos
 		}
+		concrete_types: concrete_types
 	}
 }
 
@@ -2526,7 +2537,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				} else if p.peek_tok.kind == .dot && p.peek_token(2).kind != .eof
 					&& p.peek_token(2).lit.len == 0 {
 					// incomplete module selector must be handled by dot_expr instead
-					ident := p.parse_ident(language)
+					ident := p.ident(language)
 					node = ident
 					if p.inside_defer {
 						if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
@@ -2557,7 +2568,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	same_line := p.tok.line_nr == p.peek_tok.line_nr
 	// `(` must be on same line as name token otherwise it's a ParExpr
 	if !same_line && p.peek_tok.kind == .lpar {
-		ident := p.parse_ident(language)
+		ident := p.ident(language)
 		node = ident
 		if p.inside_defer {
 			if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
@@ -2763,7 +2774,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		} else if is_option && p.tok.kind == .lsbr {
 			return p.array_init(is_option)
 		}
-		ident := p.parse_ident(language)
+		ident := p.ident(language)
 		node = ident
 		if p.inside_defer {
 			if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
