@@ -7,10 +7,17 @@ fn async_map[T](arr []T, func fn (T) T) []T {
 }
 
 fn test_generic_array_of_threads() {
-	arr := [1, 2, 3, 4]
-	results := async_map(arr, fn (a int) int {
+	arr1 := [1, 2, 3, 4]
+	results1 := async_map(arr1, fn (a int) int {
 		return -a
 	})
-	println(results)
-	assert results == [-1, -2, -3, -4]
+	println(results1)
+	assert results1 == [-1, -2, -3, -4]
+
+	arr2 := [1.0, 2.0, 3.0, 4.0]
+	results2 := async_map(arr2, fn (a f64) f64 {
+		return -a
+	})
+	println(results2)
+	assert results2 == [-1.0, -2.0, -3.0, -4.0]
 }
