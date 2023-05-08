@@ -399,6 +399,15 @@ pub fn (mut mod Module) compile() []u8 {
 			}
 			mod.end_section(mpatch)
 		}
+		if memory := mod.memory {
+			mpatch := mod.start_subsection(.name_memory)
+			{
+				mod.u32(u32(1)) // one memory in vec
+				mod.u32(u32(0)) // 0 idx
+				mod.name(memory.name) // memory name
+			}
+			mod.end_section(mpatch)
+		}
 		mod.end_section(tpatch)
 	}
 
