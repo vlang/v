@@ -417,6 +417,25 @@ pub fn (mut mod Module) compile() []u8 {
 			}
 			mod.end_section(mpatch)
 		}
+		if mod.globals.len != 0 || mod.global_imports.len != 0 {
+			mpatch := mod.start_subsection(.name_global)
+			{
+				fpatch := mod.patch_start()
+				mut fcount := 0
+				for gbl in mod.global_imports {
+					mod.u32(u32(fcount))
+					mod.name("${gbl.mod}.${gbl.name}")
+					fcount++
+				}
+				for gbl in mod.globals {
+					mod.u32(u32(fcount))
+					mod.name(gbl.name)
+					fcount++
+				}
+				mod.patch_u32(fpatch, u32(fcount))
+			}
+			mod.end_section(mpatch)
+		}
 		mod.end_section(tpatch)
 	}
 
