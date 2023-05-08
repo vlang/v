@@ -1086,7 +1086,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		} else {
 			if param.is_mut {
-				tok := if param.typ.has_flag(.shared_f) { 'shared' } else { call_arg.share.str() }
+				tok := param.specifier()
 				c.error('function `${node.name}` parameter `${param.name}` is `${tok}`, so use `${tok} ${call_arg.expr}` instead',
 					call_arg.expr.pos())
 			} else {
@@ -2056,7 +2056,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					}
 				} else {
 					if param.is_mut {
-						tok := if param.typ.has_flag(.shared_f) { 'shared' } else { arg.share.str() }
+						tok := param.specifier()
 						c.error('method `${node.name}` parameter ${i + 1} is `${tok}`, so use `${tok} ${arg.expr}` instead',
 							arg.expr.pos())
 					} else {

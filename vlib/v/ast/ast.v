@@ -635,11 +635,25 @@ pub:
 	pos         token.Pos
 	name        string
 	is_mut      bool
+	is_shared   bool
+	is_atomic   bool
 	is_auto_rec bool
 	type_pos    token.Pos
 	is_hidden   bool // interface first arg
 pub mut:
 	typ Type
+}
+
+pub fn (p &Param) specifier() string {
+	if p.is_shared {
+		return 'shared'
+	} else if p.is_atomic {
+		return 'atomic'
+	} else if p.is_mut {
+		return 'mut'
+	} else {
+		return ''
+	}
 }
 
 pub fn (f &Fn) new_method_with_receiver_type(new_type Type) Fn {
