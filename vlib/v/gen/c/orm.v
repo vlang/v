@@ -302,6 +302,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	}
 
 	fields := node.fields.filter(g.table.sym(it.typ).kind != .array)
+	primary_field_name := g.get_orm_struct_primary_field_name(fields) or { '' }
 
 	for sub in subs {
 		g.sql_stmt_line(sub, connection_var_name, or_expr)
@@ -373,6 +374,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	g.indent--
 	g.writeln('),')
 	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
+	g.writeln('.primary_column_name = _SLIT("${primary_field_name}"),')
 	g.writeln('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 	g.writeln('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
 	g.indent--
@@ -396,11 +398,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			mut fff := []ast.StructField{}
 			for f in arr.fields {
 				mut skip := false
-				mut primary := false
 				for attr in f.attrs {
-					if attr.name == 'primary' {
-						primary = true
-					}
 					if attr.name == 'skip' {
 						skip = true
 					}
@@ -408,7 +406,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 						skip = true
 					}
 				}
-				if !skip && !primary {
+				if !skip {
 					fff << f
 				}
 			}
@@ -986,19 +984,14 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, le
 }
 
 // filter_struct_fields_by_orm_attrs filters struct fields taking into its attributes.
-// Used by non-create queries for skipping fields
-// if it has a `skip` attribute or `primary` that inserts automatically.
+// Used by non-create queries for skipping fields.
 fn (_ &Gen) filter_struct_fields_by_orm_attrs(fields []ast.StructField) []ast.StructField {
 	mut result := []ast.StructField{}
 
 	for field in fields {
 		mut skip := false
-		mut primary := false
 
 		for attr in field.attrs {
-			if attr.name == 'primary' {
-				primary = true
-			}
 			if attr.name == 'skip' {
 				skip = true
 			}
@@ -1007,7 +1000,7 @@ fn (_ &Gen) filter_struct_fields_by_orm_attrs(fields []ast.StructField) []ast.St
 			}
 		}
 
-		if !skip && !primary {
+		if !skip {
 			result << field
 		}
 	}

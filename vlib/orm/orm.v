@@ -116,12 +116,13 @@ fn (kind OrderType) to_str() string {
 // parentheses defines which fields will be inside ()
 pub struct QueryData {
 pub:
-	fields      []string
-	data        []Primitive
-	types       []int
-	parentheses [][]int
-	kinds       []OperationKind
-	is_and      []bool
+	fields              []string
+	data                []Primitive
+	types               []int
+	parentheses         [][]int
+	kinds               []OperationKind
+	primary_column_name string
+	is_and              []bool
 }
 
 pub struct InfixType {
@@ -202,7 +203,18 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 			mut select_fields := []string{}
 
 			for i in 0 .. data.fields.len {
+				column_name := data.fields[i]
+				is_primary_column := column_name == data.primary_column_name
+
 				if data.data.len > 0 {
+					// Allow the database to insert an automatically generated primary key
+					// under the hood if it is not passed by the user.
+					if is_primary_column && data.data[i].type_idx() in orm.nums {
+						if (data.data[i] as int) == 0 {
+							continue
+						}
+					}
+
 					match data.data[i].type_name() {
 						'string' {
 							if (data.data[i] as string).len == 0 {
@@ -218,9 +230,9 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 					}
 					data_data << data.data[i]
 				}
-				select_fields << '${q}${data.fields[i]}${q}'
+				select_fields << '${q}${column_name}${q}'
 				values << factory_insert_qm_value(num, qm, c)
-				data_fields << data.fields[i]
+				data_fields << column_name
 				c++
 			}
 
@@ -313,6 +325,7 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 	$if trace_orm ? {
 		eprintln('> orm: ${str}')
 	}
+
 	return str, QueryData{
 		fields: data_fields
 		data: data_data
@@ -519,9 +532,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 		}
 		fs << stmt
 	}
-	if primary == '' {
-		return error('A primary key is required for ${table}')
-	}
+
 	if unique.len > 0 {
 		for k, v in unique {
 			mut tmp := []string{}
@@ -531,7 +542,11 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 			fs << '/* ${k} */UNIQUE(${tmp.join(', ')})'
 		}
 	}
-	fs << 'PRIMARY KEY(${q}${primary}${q})'
+
+	if primary != '' {
+		fs << 'PRIMARY KEY(${q}${primary}${q})'
+	}
+
 	fs << unique_fields
 	str += fs.join(', ')
 	str += ');'
@@ -541,6 +556,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 	$if trace_orm ? {
 		eprintln('> orm: ${str}')
 	}
+
 	return str
 }
 

@@ -1,4 +1,5 @@
 import db.sqlite
+import rand
 
 struct Parent {
 	id       int     [primary; sql: serial]
@@ -37,10 +38,104 @@ pub mut:
 	username string [unique]
 }
 
+struct Entity {
+	uuid        string [primary]
+	description string
+}
+
+struct EntityWithFloatPrimary {
+	id   f64    [primary]
+	name string
+}
+
 pub fn insert_parent(db sqlite.DB, mut parent Parent) ! {
 	sql db {
 		insert parent into Parent
 	}!
+}
+
+fn test_set_primary_value() {
+	// The primary key is an constraint that ensures each record in a table is unique.
+	// Primary keys must contain unique values and cannot contain `NULL` values.
+	// However, this statement does not imply that a value cannot be inserted by the user.
+	// Therefore, let's allow this.
+	db := sqlite.connect(':memory:')!
+
+	sql db {
+		create table Child
+	}!
+
+	child := Child{
+		id: 10
+		parent_id: 20
+	}
+
+	sql db {
+		insert child into Child
+	}!
+
+	children := sql db {
+		select from Child
+	}!
+
+	assert children.first() == child
+}
+
+fn test_uuid_primary_key() {
+	db := sqlite.connect(':memory:')!
+	uuid := rand.uuid_v4()
+
+	sql db {
+		create table Entity
+	}!
+
+	entity := Entity{
+		uuid: uuid
+		description: 'Test'
+	}
+
+	sql db {
+		insert entity into Entity
+	}!
+
+	entities := sql db {
+		select from Entity where uuid == uuid
+	}!
+
+	mut is_duplicate_inserted := true
+
+	sql db {
+		insert entity into Entity
+	} or { is_duplicate_inserted = false }
+
+	assert entities.len == 1
+	assert entities.first() == entity
+	assert is_duplicate_inserted == false
+}
+
+fn test_float_primary_key() {
+	db := sqlite.connect(':memory:')!
+	id := 3.14
+
+	sql db {
+		create table EntityWithFloatPrimary
+	}!
+
+	entity := EntityWithFloatPrimary{
+		id: id
+		name: 'Test'
+	}
+
+	sql db {
+		insert entity into EntityWithFloatPrimary
+	}!
+
+	entities := sql db {
+		select from EntityWithFloatPrimary where id == id
+	}!
+
+	assert entities.len == 1
+	assert entities.first() == entity
 }
 
 fn test_does_not_insert_uninitialized_field() {
