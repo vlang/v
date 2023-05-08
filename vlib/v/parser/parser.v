@@ -2119,7 +2119,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	}
 }
 
-pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
+pub fn (mut p Parser) ident(language ast.Language) ast.Ident {
 	is_option := p.tok.kind == .question && p.peek_tok.kind == .lsbr
 	if is_option {
 		p.next()
@@ -2537,7 +2537,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				} else if p.peek_tok.kind == .dot && p.peek_token(2).kind != .eof
 					&& p.peek_token(2).lit.len == 0 {
 					// incomplete module selector must be handled by dot_expr instead
-					ident := p.parse_ident(language)
+					ident := p.ident(language)
 					node = ident
 					if p.inside_defer {
 						if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
@@ -2568,7 +2568,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	same_line := p.tok.line_nr == p.peek_tok.line_nr
 	// `(` must be on same line as name token otherwise it's a ParExpr
 	if !same_line && p.peek_tok.kind == .lpar {
-		ident := p.parse_ident(language)
+		ident := p.ident(language)
 		node = ident
 		if p.inside_defer {
 			if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
@@ -2774,7 +2774,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		} else if is_option && p.tok.kind == .lsbr {
 			return p.array_init(is_option)
 		}
-		ident := p.parse_ident(language)
+		ident := p.ident(language)
 		node = ident
 		if p.inside_defer {
 			if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
