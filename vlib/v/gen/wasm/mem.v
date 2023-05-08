@@ -102,7 +102,7 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) ?Var {
 
 fn (mut g Gen) bp() wasm.LocalIndex {
 	if g.bp_idx == -1 {
-		g.bp_idx = g.func.new_local(.i32_t)
+		g.bp_idx = g.func.new_local_named(.i32_t, '__vbp')
 	}
 	return g.bp_idx
 }
@@ -113,7 +113,7 @@ fn (mut g Gen) sp() wasm.GlobalIndex {
 	}
 	// (64KiB - 1KiB) of stack space, grows downwards.
 	// Memory addresses from 0 to 1024 are forbidden.
-	g.sp_global = g.mod.new_global(none, .i32_t, true, wasm.constexpr_value(0))
+	g.sp_global = g.mod.new_global('__vsp', false, .i32_t, true, wasm.constexpr_value(0))
 	return g.sp()
 }
 
@@ -141,7 +141,7 @@ fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
 	}
 
 	if !is_pointer {
-		v.idx = g.func.new_local(wtyp)
+		g.func.new_local_named(wtyp, g.dbg_type_name(name, typ))
 		g.local_vars << v
 		return v
 	}
@@ -246,7 +246,7 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_m
 			typ: typ
 			is_pointer: is_pointer
 			is_global: true
-			g_idx: g.mod.new_global(none, g.get_wasm_type(typ), is_mut, cexpr)
+			g_idx: g.mod.new_global(name, false, g.get_wasm_type(typ), is_mut, cexpr)
 		}
 	}
 
@@ -360,7 +360,7 @@ fn (mut g Gen) set(v Var) {
 
 	size, _ := g.pool.type_size(v.typ)
 
-	l := g.func.new_local(.i32_t)
+	l := g.func.new_local_named(.i32_t, '__tmp<voidptr>')
 	g.func.local_set(l)
 	
 	if size > 8 {
@@ -652,7 +652,7 @@ fn (mut g Gen) housekeeping() {
 	if g.sp_global != none || g.pool.buf.len > 0 {
 		g.mod.assign_memory('memory', true, u32(preallocated_pages), none)
 		if g.pool.buf.len > 0 {
-			g.mod.new_data_segment(g.data_base, g.pool.buf)
+			g.mod.new_data_segment(none, g.data_base, g.pool.buf)
 		}
 	}
 	if hp := g.heap_base {

@@ -108,6 +108,10 @@ fn (g Gen) is_param_type(typ ast.Type) bool {
 	return !typ.is_ptr() && !g.is_pure_type(typ)
 }
 
+fn (mut g Gen) dbg_type_name(name string, typ ast.Type) string {
+	return "${name}<${`&`.repeat(typ.nr_muls())}${*g.table.sym(typ)}>"
+}
+
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.language in [.js, .wasm] {
 		g.w_error('fn_decl: extern not implemented')
@@ -134,6 +138,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.warning('fn_decl: ${name} is deprecated', node.pos)
 	}
 
+	mut paramdbg := []?string{cap: node.params.len}
 	mut paraml := []wasm.ValType{cap: node.params.len}
 	mut retl := []wasm.ValType{cap: 1}
 
@@ -155,6 +160,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			for t in rts.info.types {
 				wtyp := g.get_wasm_type(t)
 				if g.is_param_type(t) {
+					paramdbg << g.dbg_type_name('__rval${g.return_vars.len}', t)
 					paraml << wtyp
 					g.return_vars << Var{
 						typ: t
@@ -174,9 +180,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			if rt.idx() != ast.void_type_idx {
 				wtyp := g.get_wasm_type(rt)
 				if g.is_param_type(rt) {
+					paramdbg << g.dbg_type_name('__rval', rt)
 					paraml << wtyp
 					g.return_vars << Var{
-						name: '__rval0'
 						typ: rt
 						is_pointer: true
 					}
@@ -201,10 +207,11 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			idx: g.local_vars.len + g.return_vars.len
 			is_pointer: p.typ.is_ptr() || !g.is_pure_type(p.typ)
 		}
+		paramdbg << g.dbg_type_name(p.name, p.typ)
 		paraml << typ
 	}
 	
-	g.func = g.mod.new_function(name, paraml, retl)
+	g.func = g.mod.new_debug_function(name, wasm.FuncType{paraml, retl, none}, paramdbg)
 	func_start := g.func.patch_pos()
 	if node.stmts.len > 0 {
 		g.ret_br = g.func.c_block([], retl)
@@ -309,7 +316,7 @@ fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type) {
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 	if node.op in [.logical_or, .and] {
-		temp := g.func.new_local(.i32_t)
+		temp := g.func.new_local_named(.i32_t, '<bool>')
 		{
 			g.expr(node.left, ast.bool_type)
 			g.func.local_set(temp)
@@ -373,7 +380,7 @@ fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) {
 			if hp := g.heap_base {
 				g.func.global_get(hp)
 			}
-			hp := g.mod.new_global(none, .i32_t, false, wasm.constexpr_value(0))
+			hp := g.mod.new_global('__heap_base', false, .i32_t, false, wasm.constexpr_value(0))
 			g.func.global_get(hp)
 			g.heap_base = hp
 		}
@@ -507,7 +514,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []
 	//
 	mut rvars := existing_rvars.clone()
 	rts := g.unpack_type(node.return_type)
-	if rvars.len == 0 {
+	if rvars.len == 0 && node.return_type != ast.void_type {
 		for rt in rts {
 			if g.is_param_type(rt) {
 				v := g.new_local('', rt)
@@ -622,10 +629,13 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			g.expr(node.expr, expected)
 		}
 		/* ast.ArrayInit {
-			pos := g.allocate_local_var('_anonarray', node.typ)
+			/* pos := g.allocate_local_var('_anonarray', node.typ)
 			expr := g.assign_expr_to_var(Var(Stack{ address: pos, ast_typ: node.typ }),
 				node, node.typ)
-			g.mknblock('EXPR(ARRAYINIT)', [expr, g.lea_address(pos)])
+			g.mknblock('EXPR(ARRAYINIT)', [expr, g.lea_address(pos)]) */
+			v := g.new_local('', node.typ)
+			g.set_with_expr(node, v)
+			g.get(v)
 		} */
 		ast.GoExpr {
 			g.w_error('wasm backend does not support threads')
@@ -1032,16 +1042,17 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 	g.table.pointer_size = 4
 	g.mod.assign_memory("memory", true, 1, none)
 
+	if g.pref.is_debug {
+		g.mod.enable_debug(none)
+	}
+
 	if g.pref.os == .browser {
-		eprintln('`-os browser` is experimental and will not live up to expectations...')
+		// eprintln('`-os browser` is experimental and will not live up to expectations...')
 	}
 
 	g.calculate_enum_fields()
 	for file in g.files {
 		g.file_path = file.path
-		if g.pref.is_debug {
-			// g.file_path_idx = binaryen.moduleadddebuginfofilename(g.mod, g.file_path.str)
-		}
 		if file.errors.len > 0 {
 			util.verror('wasm error', file.errors[0].str())
 		}
