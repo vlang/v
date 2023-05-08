@@ -13,6 +13,8 @@ V developers seeking to build high-performance web applications.
 The module is designed to generate a `[]u8`, which can be written to a `.wasm` file
 or executed in memory.
 
+Examples are present in `examples/wasm_codegen`.
+
 ```v
 import wasm
 import os

@@ -1,3 +1,6 @@
+// Copyright (c) 2023 l-m.dev. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 module wasm
 
 import encoding.leb128
@@ -16,6 +19,34 @@ pub fn constexpr_value[T](v T) ConstExpression {
 		expr.f64_const(v)
 	} $else {
 		$compile_error('values can only be int, i32, i64, f32, f64')
+	}
+
+	return expr
+}
+
+// constexpr_value_zero returns a constant expression that evaluates to zero.
+pub fn constexpr_value_zero(v ValType) ConstExpression {
+	mut expr := ConstExpression{}
+
+	match v {
+		.i32_t {
+			expr.i32_const(0)
+		}
+		.i64_t {
+			expr.i64_const(0)
+		}
+		.f32_t {
+			expr.f32_const(0.0)
+		}
+		.f64_t {
+			expr.f64_const(0.0)
+		}
+		.funcref_t, .externref_t {
+			expr.ref_null(RefType(v))
+		}
+		.v128_t {
+			panic('type `v128_t` not permitted in a constant expression')
+		}
 	}
 
 	return expr

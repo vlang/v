@@ -28,15 +28,15 @@ fn main() {
 	mut ifexpr := m.new_function('if_expr', [.i32_t], [.i64_t])
 	{
 		ifexpr.local_get(0)
-		ifexpr.c_if([], [.i64_t])
+		if_blk := ifexpr.c_if([], [.i64_t])
 		{
 			ifexpr.i64_const(5000)
 		}
-		ifexpr.c_else()
+		ifexpr.c_else(if_blk)
 		{
 			ifexpr.i64_const(-5000)
 		}
-		ifexpr.c_end_if()
+		ifexpr.c_end(if_blk)
 	}
 	m.commit(ifexpr, true)
 	print(m.compile().bytestr())
