@@ -95,7 +95,8 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) ?Var {
 			return none
 		} */
 		else {
-			g.w_error('get_var_from_expr: unexpected `${node.type_name()}`')
+			//g.w_error('get_var_from_expr: unexpected `${node.type_name()}`')
+			return none
 		}
 	}
 }
@@ -334,9 +335,58 @@ fn (mut g Gen) deref_as_field(v Var) {
 	g.set(to)
 } */
 
+fn (mut g Gen) mov(to Var, v Var) {
+	if !v.is_pointer || g.is_pure_type(v.typ) {
+		g.get(v)
+		g.set(to)
+		return
+	}
+	
+	size, _ := g.pool.type_size(v.typ)
+	
+	if size > 16 {
+		g.ref(v)
+		g.ref(to)
+		g.func.i32_const(size)
+		g.func.memory_copy()
+		return
+	}
+
+	mut sz := size
+	mut oz := 0
+	for sz > 0 {
+		g.ref_ignore_offset(v)
+		g.ref_ignore_offset(to)
+		if sz - 8 >= 0 {
+			g.load(ast.u64_type_idx, to.offset + oz)
+			g.store(ast.u64_type_idx, v.offset + oz)
+			sz -= 8
+			oz += 8
+		} else if sz - 4 >= 0 {
+			g.load(ast.u32_type_idx, to.offset + oz)
+			g.store(ast.u32_type_idx, v.offset + oz)
+			sz -= 4
+			oz += 4
+		} else if sz - 2 >= 0 {
+			g.load(ast.u16_type_idx, to.offset + oz)
+			g.store(ast.u16_type_idx, v.offset + oz)
+			sz -= 2
+			oz += 2
+		} else if sz - 1 >= 0 {
+			g.load(ast.u8_type_idx, to.offset + oz)
+			g.store(ast.u8_type_idx, v.offset + oz)
+			sz -= 1
+			oz += 1
+		}
+	}
+}
+
 // set structures with pointer, memcpy
 // set pointers with value, get local, store value
 // set value, set local
+// -- set works with a single value present on the stack beforehand
+// -- not optimial for copying stack memory or shuffling structs
+// -- use mov instead
 fn (mut g Gen) set(v Var) {
 	if !v.is_pointer {
 		if v.is_global {
@@ -358,46 +408,14 @@ fn (mut g Gen) set(v Var) {
 		return
 	}
 
-	size, _ := g.pool.type_size(v.typ)
-
-	l := g.func.new_local_named(.i32_t, '__tmp<voidptr>')
-	g.func.local_set(l)
-	
-	if size > 8 {
-		g.ref(v)
-		g.func.local_get(l)
-		g.func.i32_const(size)
-		g.func.memory_copy()
-		return
+	to := Var{
+		typ: v.typ
+		idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')//g.func.local_set(l)
+		is_pointer: v.is_pointer 
 	}
 
-	mut sz := size
-	mut oz := 0
-	for sz > 0 {
-		g.ref_ignore_offset(v)
-		g.func.local_get(l)
-		if sz - 8 >= 0 {
-			g.load(ast.u64_type_idx, oz)
-			g.store(ast.u64_type_idx, v.offset + oz)
-			sz -= 8
-			oz += 8
-		} else if sz - 4 >= 0 {
-			g.load(ast.u32_type_idx, oz)
-			g.store(ast.u32_type_idx, v.offset + oz)
-			sz -= 4
-			oz += 4
-		} else if sz - 2 >= 0 {
-			g.load(ast.u16_type_idx, oz)
-			g.store(ast.u16_type_idx, v.offset + oz)
-			sz -= 2
-			oz += 2
-		} else if sz - 1 >= 0 {
-			g.load(ast.u8_type_idx, oz)
-			g.store(ast.u8_type_idx, v.offset + oz)
-			sz -= 1
-			oz += 1
-		}
-	}
+	g.func.local_set(to.idx)
+	g.mov(to, v)
 }
 
 fn (mut g Gen) ref(v Var) {

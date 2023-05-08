@@ -787,7 +787,11 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 			for idx, expr in node.exprs {
 				typ := g.ret_types[idx] // node.types LIES
 				if g.is_param_type(typ) {
-					g.set_with_expr(expr, g.return_vars[r])
+					if rhs := g.get_var_from_expr(expr) {
+						g.mov(g.return_vars[r], rhs)
+					} else {
+						g.set_with_expr(expr, g.return_vars[r])
+					}					
 					r++
 				} else {
 					g.expr(expr, typ)
@@ -938,18 +942,22 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 						}
 					}
 
-					if v := g.get_var_from_expr(left) {
+					if lhs := g.get_var_from_expr(left) {
 						if node.op !in [.decl_assign, .assign] {
 							rop := token.assign_op_to_infix_op(node.op)
 							// name := '${g.table.get_type_name(expected)}.${rop}'
 
-							g.get(v)
-							g.expr(right, v.typ)
-							g.infix_from_typ(v.typ, rop)
-							g.set(v)
+							g.get(lhs)
+							g.expr(right, lhs.typ)
+							g.infix_from_typ(lhs.typ, rop)
+							g.set(lhs)
 							return
-						}	
-						g.set_with_expr(right, v)
+						}
+						if rhs := g.get_var_from_expr(right) {
+							g.mov(lhs, rhs)
+						} else {
+							g.set_with_expr(right, lhs)
+						}
 					} else {
 						panic("unimplemented")
 					}
