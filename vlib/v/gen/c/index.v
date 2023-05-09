@@ -474,6 +474,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 		tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 		tmp_opt_ptr := if gen_or { g.new_tmp_var() } else { '' }
+		mut is_fn_last_index_call := false
 		if gen_or {
 			g.write('${elem_type_str}* ${tmp_opt_ptr} = (${elem_type_str}*)(map_get_check(')
 		} else {
@@ -482,6 +483,8 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 					g.write('((')
 					g.write_fn_ptr_decl(&elem_sym.info, '')
 					g.write(')(*(voidptr*)map_get(')
+					is_fn_last_index_call = true
+					g.is_fn_index_call = false
 				}
 			} else {
 				g.write('(*(${elem_type_str}*)map_get(')
@@ -506,7 +509,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		g.write('}')
 		if gen_or {
 			g.write('))')
-		} else if g.is_fn_index_call {
+		} else if is_fn_last_index_call {
 			g.write(', &(voidptr[]){ ${zero} })))')
 		} else {
 			g.write(', &(${elem_type_str}[]){ ${zero} }))')
