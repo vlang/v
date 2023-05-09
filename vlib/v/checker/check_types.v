@@ -224,6 +224,15 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 			&& got == ast.int_type_idx {
 			return
 		}
+	} else {
+		exp_sym_idx := c.table.sym(expected).idx
+		got_sym_idx := c.table.sym(got).idx
+		if expected.is_ptr() && got.is_ptr() && exp_sym_idx != got_sym_idx
+			&& exp_sym_idx in [ast.u8_type_idx, ast.byteptr_type_idx]
+			&& got_sym_idx !in [ast.u8_type_idx, ast.byteptr_type_idx] {
+			got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
+			return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
+		}
 	}
 	// check int signed/unsigned mismatch
 	if got == ast.int_literal_type_idx && expected in ast.unsigned_integer_type_idxs
