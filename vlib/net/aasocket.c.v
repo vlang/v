@@ -53,7 +53,7 @@ fn C.ntohl(net u32) u32
 fn C.ntohs(net u16) u16
 
 // fn C.bind(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
-// use voidptr for arg 2 becasue sockaddr is a generic descriptor for any kind of socket operation,
+// use voidptr for arg 2 because sockaddr is a generic descriptor for any kind of socket operation,
 // it can also take sockaddr_in depending on the type of socket used in arg 1
 fn C.bind(sockfd int, addr &Addr, addrlen u32) int
 

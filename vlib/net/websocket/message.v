@@ -112,7 +112,7 @@ fn (mut ws Client) read_payload(frame &Frame) ![]u8 {
 fn (mut ws Client) validate_utf_8(opcode OPCode, payload []u8) ! {
 	if opcode in [.text_frame, .close] && !utf8.validate(payload.data, payload.len) {
 		ws.logger.error('malformed utf8 payload, payload len: (${payload.len})')
-		ws.send_error_event('Recieved malformed utf8.')
+		ws.send_error_event('Received malformed utf8.')
 		ws.close(1007, 'malformed utf8 payload')!
 		return error('malformed utf8 payload')
 	}
@@ -180,7 +180,7 @@ pub fn (mut ws Client) read_next_message() !Message {
 	return error('none')
 }
 
-// payload_from_fragments returs the whole paylaod from fragmented message
+// payload_from_fragments returns the whole paylaod from fragmented message
 fn (ws Client) payload_from_fragments(fin_payload []u8) ![]u8 {
 	mut total_size := 0
 	for f in ws.fragments {
@@ -231,7 +231,7 @@ pub fn (mut ws Client) parse_frame_header() !Frame {
 			frame.opcode = unsafe { OPCode(int(buffer[0] & 0x7F)) }
 			frame.has_mask = (buffer[1] & 0x80) == 0x80
 			frame.payload_len = buffer[1] & 0x7F
-			// if has mask set the byte postition where mask ends
+			// if has mask set the byte postilion where mask ends
 			if frame.has_mask {
 				mask_end_byte = if frame.payload_len < 126 {
 					websocket.header_len_offset + 4
