@@ -954,8 +954,11 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 							return
 						}
 						if rhs := g.get_var_from_expr(right) {
+							eprintln("RHS ${rhs}")
 							g.mov(lhs, rhs)
 						} else {
+							eprintln(lhs)
+							eprintln("none! ${right}")
 							g.set_with_expr(right, lhs)
 						}
 					} else {

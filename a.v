@@ -86,8 +86,10 @@ fn dd() {
 	}
 } */
 
-const a_a = 20
-
-fn main() {
-	a := a_a
+fn test() {
+	mut a := AA{}
+	//a.a = 10
+	//a.b = 20
+	b := &a.b
+	c := *b
 }
