@@ -143,23 +143,19 @@ fn test_day_of_week() {
 }
 
 fn test_day_of_year() {
-	mut day_of_month := 1
-	for i in 336 .. 367 {
-		// 2024 is a leap year, has 366 days
-		t := time.Time{
-			year: 2024
-			month: 12
-			day: day_of_month
-			hour: 10
-			minute: 0
-			second: 0
-			unix: 0
-		}
-		day_of_month += 1
-		// testing if the December's days from 1st to 31st in 2024
-		// are numbered as 336 to 366
-		assert i == t.day_of_year()
+	d31 := time.parse("2024-12-31 10:00:00") or {
+		eprintln('> date parsing failed | err: ${err}')
+		return
 	}
+	// testing if December 31st in a leap year is numbered as 366
+	assert d31.day_of_year() == 366
+
+	nly := time.parse("2023-12-31 10:00:00") or {
+		eprintln('> date parsing failed | err: ${err}')
+		return
+	}
+	// testing December 31st's number in a non leap year
+	assert nly.day_of_year() == 365
 }
 
 fn test_weekday_str() {

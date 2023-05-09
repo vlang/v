@@ -270,7 +270,7 @@ pub fn (t Time) day_of_week() int {
 // day_of_year returns the current day of the year as an integer. 
 // See also #Time.custom_format .
 pub fn (t Time) day_of_year() int {
-	return t.day + days_before[t.month - 1] + int(is_leap_year(t.year))
+	return t.day + time.days_before[t.month - 1] + int(is_leap_year(t.year))
 }
 
 // weekday_str returns the current day as a string 3 letter abbreviation.
