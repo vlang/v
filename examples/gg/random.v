@@ -30,7 +30,7 @@ fn (mut state AppState) update() {
 
 fn (mut state AppState) draw() {
 	mut istream_image := state.gg.get_cached_image_by_idx(state.istream_idx)
-	istream_image.update_pixel_data(&u8((&state.pixels))
+	istream_image.update_pixel_data(&u8((&state.pixels)))
 	size := gg.window_size()
 	state.gg.draw_image(0, 0, size.width, size.height, istream_image)
 }
