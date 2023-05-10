@@ -142,20 +142,23 @@ fn test_day_of_week() {
 	}
 }
 
-fn test_day_of_year() {
-	d31 := time.parse("2024-12-31 10:00:00") or {
-		eprintln('> date parsing failed | err: ${err}')
-		return
-	}
+fn test_year_day() {
 	// testing if December 31st in a leap year is numbered as 366
-	assert d31.day_of_year() == 366
+	assert time.parse('2024-12-31 20:00:00')!.year_day() == 366
 
-	nly := time.parse("2023-12-31 10:00:00") or {
-		eprintln('> date parsing failed | err: ${err}')
-		return
-	}
 	// testing December 31st's number in a non leap year
-	assert nly.day_of_year() == 365
+	assert time.parse('2025-12-31 20:00:00')!.year_day() == 365
+
+	assert time.parse('2024-02-28 20:00:00')!.year_day() == 59
+	assert time.parse('2024-02-29 20:00:00')!.year_day() == 60
+	assert time.parse('2024-03-01 20:00:00')!.year_day() == 61
+	assert time.parse('2024-03-02 20:00:00')!.year_day() == 62
+	
+	assert time.parse('2025-02-28 20:00:00')!.year_day() == 59
+	assert time.parse('2025-03-01 20:00:00')!.year_day() == 60
+
+	assert time.parse('2024-01-01 20:00:00')!.year_day() == 1
+	assert time.parse('2025-01-01 20:00:00')!.year_day() == 1
 }
 
 fn test_weekday_str() {
