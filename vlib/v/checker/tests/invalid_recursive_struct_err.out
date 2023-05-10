@@ -1,0 +1,5 @@
+vlib/v/checker/tests/invalid_recursive_struct_err.vv:1:1: error: recursive struct is only possible with optional pointer (e.g. ?&Node)
+    1 | struct Node {
+      | ~~~~~~~~~~~
+    2 | mut:
+    3 |   next ?Node

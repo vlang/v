@@ -8,7 +8,7 @@ import time
 
 const buf_size = 64
 
-const ctx_ptr = &Context(0)
+const ctx_ptr = &Context(unsafe { nil })
 
 const stdin_at_startup = u32(0)
 

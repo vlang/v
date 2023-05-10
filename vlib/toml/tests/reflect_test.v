@@ -16,7 +16,21 @@ strings = [
 
 bools = [true, false, true, true]
 
+bools_br = [
+  true,
+  false,
+  true,
+  true
+]
+
 floats = [0.0, 1.0, 2.0, 3.0]
+
+floats_br = [
+  0.0,
+  1.05,
+  2.025,
+  3.5001
+]
 
 int_map = {"a" = 0, "b" = 1, "c" = 2, "d" = 3}
 
@@ -44,14 +58,16 @@ struct Bio {
 }
 
 struct User {
-	name     string
-	age      int
-	height   f64
-	birthday toml.Date
-	strings  []string
-	bools    []bool
-	floats   []f32
-	int_map  map[string]int
+	name      string
+	age       int
+	height    f64
+	birthday  toml.Date
+	strings   []string
+	bools     []bool
+	bools_br  []bool
+	floats    []f32
+	floats_br []f32
+	int_map   map[string]int
 
 	config toml.Any
 mut:
@@ -72,7 +88,9 @@ fn test_reflect() {
 	assert user.birthday.str() == '1980-04-23'
 	assert user.strings == ['v matures', 'like rings', 'spread in the', 'water']
 	assert user.bools == [true, false, true, true]
+	assert user.bools_br == [true, false, true, true]
 	assert user.floats == [f32(0.0), 1.0, 2.0, 3.0]
+	assert user.floats_br == [f32(0.0), 1.05, 2.025, 3.5001]
 	assert user.int_map == {
 		'a': 0
 		'b': 1

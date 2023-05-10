@@ -59,6 +59,7 @@ pub enum OperationKind {
 	lt // <
 	ge // >=
 	le // <=
+	orm_like // LIKE
 }
 
 pub enum MathOperationKind {
@@ -92,6 +93,7 @@ fn (kind OperationKind) to_str() string {
 		.lt { '<' }
 		.ge { '>=' }
 		.le { '<=' }
+		.orm_like { 'LIKE' }
 	}
 	return str
 }
@@ -444,6 +446,12 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 		}
 		for attr in field.attrs {
 			match attr.name {
+				'sql' {
+					// [sql:'-']
+					if attr.arg == '-' {
+						is_skip = true
+					}
+				}
 				'primary' {
 					primary = field.name
 				}
@@ -468,13 +476,13 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 				}
 				'sql_type' {
 					if attr.kind != .string {
-						return error("sql_type attribute need be string. Try [sql_type: '${attr.arg}'] instead of [sql_type: ${attr.arg}]")
+						return error("sql_type attribute needs to be string. Try [sql_type: '${attr.arg}'] instead of [sql_type: ${attr.arg}]")
 					}
 					ctyp = attr.arg
 				}
 				'default' {
 					if attr.kind != .string {
-						return error("default attribute need be string. Try [default: '${attr.arg}'] instead of [default: ${attr.arg}]")
+						return error("default attribute needs to be string. Try [default: '${attr.arg}'] instead of [default: ${attr.arg}]")
 					}
 					if default_val == '' {
 						default_val = attr.arg

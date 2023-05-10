@@ -104,8 +104,14 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.warn('arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`)',
 				node.pos)
 		}
+
+		if node.elem_type.idx() == ast.array_type && !c.is_builtin_mod {
+			c.error('`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc',
+				node.pos)
+		}
 		return node.typ
 	}
+
 	if node.is_fixed {
 		c.ensure_sumtype_array_has_default_value(node)
 		c.ensure_type_exists(node.elem_type, node.elem_type_pos) or {}
@@ -138,7 +144,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.expected_type.clear_flag(.shared_f).deref()
 		} else {
 			c.expected_type
-		}.clear_flag(.option).clear_flag(.result)
+		}.clear_flags(.option, .result)
 	}
 	// [1,2,3]
 	if node.exprs.len > 0 && node.elem_type == ast.void_type {
@@ -299,7 +305,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		sym := c.table.sym(c.expected_type)
 		if sym.kind == .map {
 			info := sym.map_info()
-			node.typ = c.expected_type.clear_flag(.option).clear_flag(.result)
+			node.typ = c.expected_type.clear_flags(.option, .result)
 			node.key_type = info.key_type
 			node.value_type = info.value_type
 			return node.typ

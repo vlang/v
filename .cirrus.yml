@@ -3,6 +3,7 @@ freebsd_instance:
 
 freebsd_task:
   name: Code CI / freebsd
+  skip: "!changesInclude('.cirrus.yml', '**.{v,vsh}')"
   install_script: pkg install -y git
   script: |
     echo 'Building V'

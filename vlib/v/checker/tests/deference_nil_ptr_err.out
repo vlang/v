@@ -1,0 +1,5 @@
+vlib/v/checker/tests/deference_nil_ptr_err.vv:3:10: error: cannot deference a `nil` pointer
+    1 | foo_ptr := unsafe { nil }
+    2 |
+    3 | println(*foo_ptr)
+      |          ~~~~~~~

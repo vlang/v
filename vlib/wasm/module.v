@@ -33,18 +33,39 @@ pub enum ValType as u8 {
 	externref_t = 0x6f
 }
 
+pub enum RefType as u8 {
+	funcref_t = 0x70
+	externref_t = 0x6f
+}
+
 // Module contains the WebAssembly module.
 // Use the `compile` method to compile the module into a pure byte array.
 [heap]
 pub struct Module {
 mut:
-	buf        []u8
-	functypes  []FuncType
-	functions  map[string]Function
-	memory     ?Memory
-	start      ?string
-	fn_imports []FunctionImport
-	segments   []DataSegment
+	buf            []u8
+	functypes      []FuncType
+	functions      map[string]Function
+	globals        []Global
+	memory         ?Memory
+	start          ?string
+	fn_imports     []FunctionImport
+	global_imports []GlobalImport
+	segments       []DataSegment
+}
+
+struct Global {
+	typ         ValType
+	is_mut      bool
+	export_name ?string
+	init        ConstExpression
+}
+
+struct GlobalImport {
+	mod    string
+	name   string
+	typ    ValType
+	is_mut bool
 }
 
 struct FunctionImport {
@@ -64,6 +85,11 @@ struct DataSegment {
 	idx  ?int
 	data []u8
 }
+
+pub type LocalIndex = int
+pub type GlobalIndex = int
+pub type GlobalImportIndex = int
+pub type DataSegmentIndex = int
 
 [params]
 pub struct FuncType {
@@ -138,7 +164,7 @@ pub fn (mut mod Module) commit(func Function, export bool) {
 }
 
 // new_data_segment inserts a new data segment at the memory index `pos`.
-pub fn (mut mod Module) new_data_segment(pos int, data []u8) int {
+pub fn (mut mod Module) new_data_segment(pos int, data []u8) DataSegmentIndex {
 	len := mod.segments.len
 	mod.segments << DataSegment{
 		idx: pos
@@ -152,4 +178,33 @@ pub fn (mut mod Module) new_passive_data_segment(data []u8) {
 	mod.segments << DataSegment{
 		data: data
 	}
+}
+
+// new_global creates a global and returns it's index.
+// If `export_name` is none, the global will not be exported.
+// See `global_get`, `global_set`.
+pub fn (mut mod Module) new_global(export_name ?string, typ ValType, is_mut bool, init ConstExpression) GlobalIndex {
+	len := mod.globals.len
+	mod.globals << Global{
+		typ: typ
+		is_mut: is_mut
+		export_name: export_name
+		init: init
+	}
+	return len
+}
+
+// new_global_import imports a new global into the current module and returns it's index.
+// See `global_import_get`, `global_import_set`.
+pub fn (mut mod Module) new_global_import(modn string, name string, typ ValType, is_mut bool) GlobalImportIndex {
+	assert !mod.fn_imports.any(it.mod == modn && it.name == name)
+
+	len := mod.global_imports.len
+	mod.global_imports << GlobalImport{
+		mod: modn
+		name: name
+		typ: typ
+		is_mut: is_mut
+	}
+	return len
 }

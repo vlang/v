@@ -36,6 +36,39 @@ fn test_getpid() {
 	assert pid != 0
 }
 
+fn test_set_work_folder() {
+	new_work_folder := os.real_path(os.temp_dir())
+	parent_working_folder := os.getwd()
+	dump(new_work_folder)
+	dump(parent_working_folder)
+	if new_work_folder == parent_working_folder {
+		eprintln('... skipping ${@METHOD} because the working folder is the temporary one')
+		return
+	}
+	mut p := os.new_process(test_os_process)
+	p.set_args(['-show_wd', '-target', 'stdout'])
+	p.set_work_folder(new_work_folder)
+	p.set_redirect_stdio()
+	p.wait()
+	assert p.code == 0
+	output := p.stdout_slurp().trim_space()
+	p.close()
+	$if trace_process_output ? {
+		eprintln('p output: "${output}"')
+	}
+	child_work_folder := output.find_between('stdout, WORK_DIR=', '\n').trim_space()
+	dump(child_work_folder)
+	assert child_work_folder == new_work_folder
+	new_parent_work_folder := os.getwd()
+	dump(new_parent_work_folder)
+	assert new_parent_work_folder == parent_working_folder
+	assert new_parent_work_folder != child_work_folder
+}
+
+fn test_done() {
+	exit(0)
+}
+
 fn test_run() {
 	mut p := os.new_process(test_os_process)
 	p.set_args(['-timeout_ms', '150', '-period_ms', '50'])

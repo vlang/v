@@ -13,16 +13,22 @@ struct FunctionCallPatch {
 
 type CallPatch = FunctionCallPatch | ImportCallPatch
 
-struct Function {
+struct FunctionGlobalPatch {
+	idx GlobalIndex
+	pos int
+}
+
+pub struct Function {
 	tidx int
 	idx  int
 mut:
-	call_patches []CallPatch
-	label        int
-	export       bool
-	mod          &Module
-	code         []u8
-	locals       []ValType
+	call_patches   []CallPatch
+	global_patches []FunctionGlobalPatch
+	label          int
+	export         bool
+	mod            &Module = unsafe { nil }
+	code           []u8
+	locals         []ValType
 pub:
 	name string
 }

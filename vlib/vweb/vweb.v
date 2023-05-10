@@ -371,7 +371,16 @@ pub fn (ctx &Context) get_header(key string) string {
 	return ctx.req.header.get_custom(key) or { '' }
 }
 
+pub type DatabasePool[T] = fn (tid int) T
+
+interface DbPoolInterface {
+	db_handle voidptr
+mut:
+	db voidptr
+}
+
 interface DbInterface {
+mut:
 	db voidptr
 }
 
@@ -425,7 +434,7 @@ pub fn controller[T](path string, global_app &T) &ControllerPath {
 		path: path
 		handler: fn [global_app, path, routes] [T](ctx Context, mut url urllib.URL, tid int) {
 			// request_app is freed in `handle_route`
-			mut request_app := new_request_app[T](global_app, ctx)
+			mut request_app := new_request_app[T](global_app, ctx, tid)
 			// transform the url
 			url.path = url.path.all_after_first(path)
 			handle_route[T](mut request_app, url, &routes, tid)
@@ -514,7 +523,7 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	}
 }
 
-fn new_request_app[T](global_app &T, ctx Context) &T {
+fn new_request_app[T](global_app &T, ctx Context, tid int) &T {
 	// Create a new app object for each connection, copy global data like db connections
 	mut request_app := &T{}
 	$if T is MiddlewareInterface {
@@ -522,9 +531,15 @@ fn new_request_app[T](global_app &T, ctx Context) &T {
 			middlewares: global_app.middlewares.clone()
 		}
 	}
-	$if T is DbInterface {
+
+	$if T is DbPoolInterface {
+		// get database connection from the connection pool
+		request_app.db = global_app.db_handle(tid)
+	} $else $if T is DbInterface {
+		// copy a database to a app without pooling
 		request_app.db = global_app.db
 	}
+
 	$for field in T.fields {
 		if field.is_shared {
 			unsafe {
@@ -622,7 +637,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route,
 		}
 	}
 
-	mut request_app := new_request_app(global_app, ctx)
+	mut request_app := new_request_app(global_app, ctx, tid)
 	handle_route(mut request_app, url, routes, tid)
 }
 
@@ -740,7 +755,7 @@ fn handle_route[T](mut app T, url urllib.URL, routes &map[string]Route, tid int)
 		}
 	}
 	// Route not found
-	app.conn.write(vweb.http_404.bytes()) or {}
+	app.not_found()
 }
 
 // validate_middleware validates and fires all middlewares that are defined in the global app instance
@@ -993,5 +1008,27 @@ fn (mut w Worker[T]) process_incomming_requests() {
 	}
 	$if vweb_trace_worker_scan ? {
 		eprintln('[vweb] closing worker ${w.id}.')
+	}
+}
+
+[params]
+pub struct PoolParams[T] {
+	handler    fn () T [required]
+	nr_workers int = runtime.nr_jobs()
+}
+
+// database_pool creates a pool of database connections
+pub fn database_pool[T](params PoolParams[T]) DatabasePool[T] {
+	mut connections := []T{}
+	// create a database connection for each worker
+	for _ in 0 .. params.nr_workers {
+		connections << params.handler()
+	}
+
+	return fn [connections] [T](tid int) T {
+		$if vweb_trace_worker_scan ? {
+			eprintln('[vweb] worker ${tid} received database connection')
+		}
+		return connections[tid]
 	}
 }

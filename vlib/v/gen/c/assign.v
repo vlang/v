@@ -225,13 +225,16 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			if mut left.obj is ast.Var {
 				if val is ast.Ident && g.is_comptime_var(val) {
-					var_type = g.unwrap_generic(g.get_comptime_var_type(val))
-					val_type = var_type
-					gen_or = val.or_expr.kind != .absent
-					if gen_or {
-						var_type = val_type.clear_flag(.option)
+					ctyp := g.unwrap_generic(g.get_comptime_var_type(val))
+					if ctyp != ast.void_type {
+						var_type = ctyp
+						val_type = var_type
+						gen_or = val.or_expr.kind != .absent
+						if gen_or {
+							var_type = val_type.clear_flag(.option)
+						}
+						left.obj.typ = var_type
 					}
-					left.obj.typ = var_type
 				} else if val is ast.ComptimeSelector {
 					key_str := g.get_comptime_selector_key_type(val)
 					if key_str != '' {
@@ -256,6 +259,15 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						var_type = g.comptime_var_type_map[key_str] or { var_type }
 						val_type = var_type
 						left.obj.typ = var_type
+					}
+				} else if val is ast.IndexExpr {
+					if val.left is ast.Ident && g.is_generic_param_var((val as ast.IndexExpr).left) {
+						ctyp := g.unwrap_generic(g.get_gn_var_type((val as ast.IndexExpr).left as ast.Ident))
+						if ctyp != ast.void_type {
+							var_type = ctyp
+							val_type = var_type
+							left.obj.typ = var_type
+						}
 					}
 				}
 				is_auto_heap = left.obj.is_auto_heap
@@ -693,7 +705,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	mut mr_styp := g.typ(return_type.clear_flag(.result))
 	if node.right[0] is ast.CallExpr && (node.right[0] as ast.CallExpr).or_block.kind != .absent {
 		is_option = false
-		mr_styp = g.typ(return_type.clear_flag(.option).clear_flag(.result))
+		mr_styp = g.typ(return_type.clear_flags(.option, .result))
 	}
 	g.write('${mr_styp} ${mr_var_name} = ')
 	g.expr(node.right[0])
@@ -979,7 +991,10 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			g.write(')')
 		}
 		ast.CallExpr {
-			fn_name := val.name.replace('.', '__')
+			mut fn_name := val.name.replace('.', '__')
+			if val.concrete_types.len > 0 {
+				fn_name = g.generic_fn_name(val.concrete_types, fn_name)
+			}
 			g.write('${fn_name}(')
 			for i, arg in val.args {
 				g.gen_cross_tmp_variable(left, arg.expr)

@@ -133,16 +133,28 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	mut is_comptime := false
 
 	if (node.cond is ast.Ident && g.is_comptime_var(node.cond)) || node.cond is ast.ComptimeSelector {
-		is_comptime = true
-		mut unwrapped_typ := g.unwrap_generic(g.comptime_for_field_type)
+		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
+		ctyp := g.get_comptime_var_type(node.cond)
+		if ctyp != ast.void_type {
+			unwrapped_typ = g.unwrap_generic(ctyp)
+			is_comptime = true
+		}
+
 		mut unwrapped_sym := g.table.sym(unwrapped_typ)
+
 		node.cond_type = unwrapped_typ
 		node.val_type = g.table.value_type(unwrapped_typ)
 		node.scope.update_var_type(node.val_var, node.val_type)
 		node.kind = unwrapped_sym.kind
 
-		g.comptime_for_field_val_type = node.val_type
-		node.scope.update_ct_var_kind(node.val_var, .value_var)
+		if is_comptime {
+			g.comptime_var_type_map[node.val_var] = node.val_type
+			node.scope.update_ct_var_kind(node.val_var, .value_var)
+
+			defer {
+				g.comptime_var_type_map.delete(node.val_var)
+			}
+		}
 
 		if node.key_var.len > 0 {
 			key_type := match unwrapped_sym.kind {
@@ -152,13 +164,18 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			node.key_type = key_type
 			node.scope.update_var_type(node.key_var, key_type)
 
-			g.comptime_for_field_key_type = node.key_type
-			node.scope.update_ct_var_kind(node.key_var, .key_var)
+			if is_comptime {
+				g.comptime_var_type_map[node.key_var] = node.key_type
+				node.scope.update_ct_var_kind(node.key_var, .key_var)
+
+				defer {
+					g.comptime_var_type_map.delete(node.key_var)
+				}
+			}
 		}
 	}
 
 	if node.kind == .any && !is_comptime {
-		g.inside_for_in_any_cond = true
 		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
 		mut unwrapped_sym := g.table.sym(unwrapped_typ)
 		node.kind = unwrapped_sym.kind
@@ -192,9 +209,14 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		// g.writeln('// FOR IN array')
 		mut styp := g.typ(node.val_type)
 		mut val_sym := g.table.sym(node.val_type)
+		op_field := g.dot_or_ptr(node.cond_type)
 
-		if g.is_comptime_var(node.cond) {
-			unwrapped_typ := g.unwrap_generic(g.comptime_for_field_type)
+		if is_comptime && g.is_comptime_var(node.cond) {
+			mut unwrapped_typ := g.unwrap_generic(node.cond_type)
+			ctyp := g.unwrap_generic(g.get_comptime_var_type(node.cond))
+			if ctyp != ast.void_type {
+				unwrapped_typ = ctyp
+			}
 			val_sym = g.table.sym(unwrapped_typ)
 			node.val_type = g.table.value_type(unwrapped_typ)
 			styp = g.typ(node.val_type)
@@ -218,7 +240,6 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			g.writeln(';')
 		}
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		op_field := g.dot_or_ptr(node.cond_type)
 		g.empty_line = true
 		opt_expr := '(*(${g.typ(node.cond_type.clear_flag(.option))}*)${cond_var}${op_field}data)'
 		cond_expr := if node.cond_type.has_flag(.option) {
@@ -447,6 +468,5 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	if node.label.len > 0 {
 		g.writeln('\t${node.label}__break: {}')
 	}
-	g.inside_for_in_any_cond = false
 	g.loop_depth--
 }

@@ -127,9 +127,9 @@ fn test_encode_array() {
 		val: [true, false]
 	}]
 
-	assert json.encode_array([1, 2, 3]) == '[1,2,3]'
+	assert json.encode([1, 2, 3]) == '[1,2,3]'
 
-	assert json.encode_array(array_of_struct) == '[{"val":[false,true]},{"val":[true,false]}]'
+	assert json.encode(array_of_struct) == '[{"val":[false,true]},{"val":[true,false]}]'
 }
 
 fn test_encode_simple() {

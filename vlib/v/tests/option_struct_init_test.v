@@ -15,6 +15,6 @@ fn test_main() {
 	}
 	assert a.str() == 'MyStruct2{
     valuea: 1
-    valueb: Option(error: none)
+    valueb: Option(none)
 }'
 }

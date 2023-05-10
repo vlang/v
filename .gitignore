@@ -109,6 +109,7 @@ flake.nix
 
 thirdparty/stdatomic/nix/cpp/*.h
 thirdparty/binaryen*
+thirdparty/wabt*
 
 # ignore VLS log
 vls.log

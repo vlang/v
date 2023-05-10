@@ -854,7 +854,7 @@ fn (mut c Builder) cc_windows_cross() {
 	obj_name = obj_name.replace('.o.o', '.o')
 	include := '-I $winroot/include '
 	*/
-	if os.user_os() !in ['macos', 'linux'] {
+	if os.user_os() !in ['macos', 'linux', 'termux'] {
 		println(os.user_os())
 		panic('your platform is not supported yet')
 	}

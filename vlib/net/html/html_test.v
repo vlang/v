@@ -13,3 +13,20 @@ fn test_parse() {
 	assert h1_tag.str() == '<h1 class="title" >Hello world!</h1>'
 	// assert h1_tag.str() == '<h1 class="title">Hello world!</h1>'
 }
+
+fn test_parse_inline_tags() {
+	doc := parse('<html><body><p>before <span>in between</span> after</p></body></html>')
+	tags := doc.get_tag('span')
+	assert tags.len == 1
+
+	span_tag := tags[0]
+	assert span_tag.str() == '<span>in between</span>'
+
+	p_tags := doc.get_tag('p')
+	assert p_tags.len == 1
+
+	p_tag := p_tags[0]
+	assert p_tag.str() == '<p>before <span>in between</span><text> after</text></p>'
+
+	assert p_tag.text() == 'before in between after'
+}
