@@ -1,0 +1,7 @@
+vlib/v/checker/tests/array_delete_imut_err.vv:5:2: error: `a` is immutable, declare it with `mut` to make it mutable
+    3 |     println(a)
+    4 | 
+    5 |     a.delete(1)
+      |     ^
+    6 |     println(a)
+    7 | }

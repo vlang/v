@@ -40,4 +40,4 @@ pub enum Signal {
 	sys = 31
 }
 
-type SignalHandler = fn (Signal)
+pub type SignalHandler = fn (Signal)

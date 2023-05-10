@@ -482,6 +482,109 @@ fn main() {
 If you don't use the default number of workers (`nr_workers`) you have to change 
 it to the same number in `vweb.run_at` as in `vweb.database_pool`
 
+### Extending the App struct with `[vweb_global]`
+You can change your `App` struct however you like, but there are some things you
+have to keep in mind. Under the hood at each request a new instance of `App` is
+constructed, and all fields are re-initialized with their default type values, 
+except for the `db` field. 
+
+This behaviour ensures that each request is treated equally and in the same context, but
+problems arise when we want to provide more context than just the default `vweb.Context`.
+
+Let's view the following example where we want to provide a secret token to our app:
+
+```v
+module main
+
+import vweb
+
+struct App {
+	vweb.Context
+	secret string
+}
+
+fn main() {
+	vweb.run(&App{
+		secret: 'my secret'
+	}, 8080)
+}
+
+fn (mut app App) index() vweb.Result {
+	return app.text('My secret is: ${app.secret}')
+}
+```
+
+When you visit `localhost:8080/` you would expect to see the text 
+`"My secret is: my secret"`, but instead there is only the text 
+`"My secret is: "`. This is because of the way vweb works. We can override the default
+behaviour by adding the attribute `[vweb_global]` to the `secret` field.
+
+**Example:**
+```v ignore
+struct App {
+	vweb.Context
+	secret string [vweb_global]
+}
+```
+
+Now if you visit `localhost:8080/` you see the text `"My secret is: my secret"`.
+> **Note**: the value of `secret` gets initialized with the provided value when creating
+> `App`. If you would modify `secret` in one request the value won't be changed in the
+> next request. You can use shared fields for this.
+
+### Shared Objects across requests
+We saw in the previous section that we can persist data across multiple requests, 
+but what if we want to be able to mutate the data? Since vweb works with threads, 
+we have to use `shared` fields.
+
+Let's see how we can add a visitor counter to our `App`.
+
+**Example:**
+```v
+module main
+
+import vweb
+
+struct Counter {
+pub mut:
+	count int
+}
+
+struct App {
+	vweb.Context
+mut:
+	counter shared Counter // shared fields can only be structs, arrays or maps.
+}
+
+fn main() {
+	// initialize the shared object
+	shared counter := Counter{
+		count: 0
+	}
+
+	vweb.run(&App{
+		counter: counter
+	}, 8080)
+}
+
+fn (mut app App) index() vweb.Result {
+	mut count := 0
+	// lock the counter so we can modify it
+	lock app.counter {
+		app.counter.count += 1
+		count = app.counter.count
+	}
+	return app.text('Total visitors: ${count}')
+}
+```
+
+#### Drawback of Shared Objects
+The drawback of using shared objects is that it affects performance. In the previous example
+`App.counter` needs to be locked each time the page is loaded if there are simultaneous
+requests the next requests will have to wait for the lock to be released.
+
+It is best practice to limit the use of shared objects as much as possible.
+
 ### Controllers
 Controllers can be used to split up app logic so you are able to have one struct 
 per `"/"`.  E.g. a struct `Admin` for urls starting with `"/admin"` and a struct `Foo`

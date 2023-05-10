@@ -26,7 +26,7 @@ import strings
 fn (mut g Gen) gen_json_for_type(typ ast.Type) {
 	utyp := g.unwrap_generic(typ)
 	sym := g.table.sym(utyp)
-	if is_js_prim(sym.name) && !utyp.has_flag(.option) {
+	if is_js_prim(sym.name) && !utyp.has_flag(.option) && !typ.is_ptr() {
 		return
 	}
 	g.json_types << utyp
@@ -45,7 +45,11 @@ fn (mut g Gen) gen_jsons() {
 		sym := g.table.sym(utyp)
 		styp := g.typ(utyp)
 		ret_styp := styp.replace('*', '_ptr')
+		if utyp.is_ptr() && utyp.has_flag(.option) {
+			g.register_option(utyp.set_nr_muls(0))
+		}
 		g.register_result(utyp)
+
 		// decode_TYPE funcs receive an actual cJSON* object to decode
 		// cJSON_Parse(str) call is added by the compiler
 		// Codegen decoder
@@ -118,7 +122,9 @@ ${dec_fn_dec} {
 		enc.writeln('
 ${enc_fn_dec} {
 \tcJSON *o;')
-		if sym.kind == .array || sym.kind == .array_fixed {
+		if is_js_prim(sym.name) && utyp.is_ptr() {
+			g.gen_prim_enc_dec(utyp, mut enc, mut dec)
+		} else if sym.kind == .array || sym.kind == .array_fixed {
 			array_size := if sym.kind == .array_fixed {
 				(sym.info as ast.ArrayFixed).size
 			} else {
@@ -262,12 +268,42 @@ fn (mut g Gen) gen_enum_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc strin
 
 [inline]
 fn (mut g Gen) gen_prim_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec strings.Builder) {
-	type_str := g.typ(typ.clear_flag(.option))
-	encode_name := js_enc_name(type_str)
-	enc.writeln('\to = ${encode_name}(val);')
+	if typ.is_ptr() {
+		type_str := g.typ(typ.clear_flag(.option).set_nr_muls(typ.nr_muls() - 1))
+		type_str_0 := g.typ(typ.clear_flag(.option).set_nr_muls(0))
+		encode_name := js_enc_name(type_str_0)
+		dec_name := js_dec_name(type_str)
+		if typ.has_flag(.option) {
+			enc.writeln('\to = ${encode_name}(${'*'.repeat(typ.nr_muls() + 1)}(${type_str_0}${'*'.repeat(typ.nr_muls())}*)&val.data);')
+		} else {
+			enc.writeln('\to = ${encode_name}(${'*'.repeat(typ.nr_muls())}val);')
+		}
 
-	dec_name := js_dec_name(type_str)
-	dec.writeln('\tres = ${dec_name}(root);')
+		if typ.nr_muls() > 1 {
+			g.gen_json_for_type(typ.clear_flag(.option).set_nr_muls(typ.nr_muls() - 1))
+			if typ.has_flag(.option) {
+				tmp_var := g.new_tmp_var()
+				dec.writeln('${type_str}* ${tmp_var} = HEAP(${type_str}, *(${type_str}*) ${dec_name}(root).data);')
+				dec.writeln('\t_option_ok(&(${type_str}*[]) { &(*(${tmp_var})) }, (${option_name}*)&res, sizeof(${type_str}*));')
+			} else {
+				dec.writeln('\tres = HEAP(${type_str}, *(${type_str}*) ${dec_name}(root).data);')
+			}
+		} else {
+			if typ.has_flag(.option) {
+				tmp_var := g.new_tmp_var()
+				dec.writeln('${type_str}* ${tmp_var} = HEAP(${type_str}, ${dec_name}(root));')
+				dec.writeln('\t_option_ok(&(${type_str}*[]) { &(*(${tmp_var})) }, (${option_name}*)&res, sizeof(${type_str}*));')
+			} else {
+				dec.writeln('\tres = HEAP(${type_str}, ${dec_name}(root));')
+			}
+		}
+	} else {
+		type_str := g.typ(typ.clear_flag(.option))
+		encode_name := js_enc_name(type_str)
+		dec_name := js_dec_name(type_str)
+		enc.writeln('\to = ${encode_name}(val);')
+		dec.writeln('\tres = ${dec_name}(root);')
+	}
 }
 
 [inline]

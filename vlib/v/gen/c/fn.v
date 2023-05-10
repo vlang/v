@@ -924,7 +924,7 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 	if rec_type.has_flag(.shared_f) {
 		rec_type = rec_type.clear_flag(.shared_f).set_nr_muls(0)
 	}
-	left_node := if node.left is ast.PostfixExpr { node.left.expr } else { node.left }
+	left_node := node.left
 	if left_node is ast.ComptimeSelector {
 		key_str := g.get_comptime_selector_key_type(left_node)
 		if key_str != '' {
@@ -932,6 +932,13 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 			g.gen_expr_to_string(left_node, rec_type)
 			return true
 		}
+	} else if left_node is ast.PostfixExpr {
+		rec_type = g.resolve_comptime_type(left_node.expr, rec_type)
+		if left_node.op == .question {
+			rec_type = rec_type.clear_flag(.option)
+		}
+		g.gen_expr_to_string(left_node, rec_type)
+		return true
 	} else if left_node is ast.ComptimeCall {
 		if left_node.method_name == 'method' {
 			sym := g.table.sym(g.unwrap_generic(left_node.left_type))
@@ -2081,16 +2088,13 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	mut use_tmp_fn_var := false
 	tmp_fn := g.new_tmp_var()
 
-	for i, concrete_type in expr.concrete_types {
-		if concrete_type != ast.void_type && concrete_type != 0 {
-			// Using _T_ to differentiate between get<string> and get_string
-			// `foo<int>()` => `foo_T_int()`
-			if i == 0 {
-				name += '_T'
-			}
-			name += '_' + g.typ(concrete_type)
-		}
+	if expr.concrete_types.len > 0 {
+		name = g.generic_fn_name(expr.concrete_types, name)
+	} else if expr.is_fn_var && expr.fn_var_type.has_flag(.generic) {
+		fn_var_type := g.unwrap_generic(expr.fn_var_type)
+		name = g.typ(fn_var_type)
 	}
+
 	if expr.is_method {
 		receiver_sym := g.table.sym(g.unwrap_generic(expr.receiver_type))
 		name = receiver_sym.cname + '_' + name
@@ -2136,7 +2140,13 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	wrapper_fn_name := name + '_thread_wrapper'
 	arg_tmp_var := 'arg_' + tmp
 	g.writeln('${wrapper_struct_name} *${arg_tmp_var} = malloc(sizeof(thread_arg_${name}));')
-	fn_name := if use_tmp_fn_var { tmp_fn } else { name }
+	fn_name := if use_tmp_fn_var {
+		tmp_fn
+	} else if expr.is_fn_var {
+		expr.name
+	} else {
+		name
+	}
 	if !(expr.is_method && g.table.sym(expr.receiver_type).kind == .interface_) {
 		g.writeln('${arg_tmp_var}->fn = ${fn_name};')
 	}

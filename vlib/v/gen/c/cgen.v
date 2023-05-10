@@ -1100,6 +1100,8 @@ fn (g Gen) option_type_text(styp string, base string) string {
 		'u8'
 	} else if base.starts_with('anon_fn') {
 		'void*'
+	} else if base.starts_with('_option_') {
+		base.replace('*', '')
 	} else {
 		if base.starts_with('struct ') && !base.ends_with('*') { '${base}*' } else { base }
 	}
@@ -1117,6 +1119,8 @@ fn (g Gen) result_type_text(styp string, base string) string {
 		'u8'
 	} else if base.starts_with('anon_fn') {
 		'void*'
+	} else if base.starts_with('_option_') {
+		base.replace('*', '')
 	} else {
 		if base.starts_with('struct ') && !base.ends_with('*') { '${base}*' } else { base }
 	}
@@ -3238,11 +3242,30 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.write('(*')
 				g.expr(node.expr)
 				g.write(')')
+			} else if node.op == .question {
+				cur_line := g.go_before_stmt(0).trim_space()
+				mut expr_str := ''
+				if mut node.expr is ast.ComptimeSelector
+					&& (node.expr as ast.ComptimeSelector).left is ast.Ident {
+					// val.$(field.name)?					
+					expr_str = '${node.expr.left.str()}.${g.comptime_for_field_value.name}'
+				} else if mut node.expr is ast.Ident && g.is_comptime_var(node.expr) {
+					// val?
+					expr_str = node.expr.name
+				}
+				g.writeln('if (${expr_str}.state != 0) {')
+				g.writeln('\tpanic_option_not_set(_SLIT("none"));')
+				g.writeln('}')
+				g.write(cur_line)
+				typ := g.resolve_comptime_type(node.expr, node.typ)
+				g.write('*(${g.base_type(typ)}*)&')
+				g.expr(node.expr)
+				g.write('.data')
 			} else {
 				g.expr(node.expr)
 			}
 			g.inside_map_postfix = false
-			if !node.is_c2v_prefix {
+			if !node.is_c2v_prefix && node.op != .question {
 				g.write(node.op.str())
 			}
 			if node.auto_locked != '' {
@@ -4211,6 +4234,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 				if cattr := func.attrs.find_first('c') {
 					name = cattr.arg
 				}
+			} else if node.concrete_types.len > 0 {
+				name = g.generic_fn_name(node.concrete_types, name)
 			}
 		}
 

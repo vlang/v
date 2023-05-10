@@ -1,3 +1,6 @@
+// Copyright (c) 2023 l-m.dev. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 module wasm
 
 import encoding.leb128
@@ -89,22 +92,45 @@ fn (mod &Module) get_function_idx(patch CallPatch) int {
 fn (mut mod Module) patch(ft Function) {
 	mut ptr := 0
 
-	for patch in ft.call_patches {
-		idx := mod.get_function_idx(patch)
-
-		mod.buf << ft.code[ptr..patch.pos]
-		mod.u32(u32(idx))
-		ptr = patch.pos
-	}
-
-	for patch in ft.global_patches {
-		idx := mod.global_imports.len + patch.idx
+	for patch in ft.patches {
+		mut idx := 0
+		match patch {
+			CallPatch {
+				idx = mod.get_function_idx(patch)
+			}
+			FunctionGlobalPatch {
+				idx = mod.global_imports.len + patch.idx
+			}
+		}
 		mod.buf << ft.code[ptr..patch.pos]
 		mod.u32(u32(idx))
 		ptr = patch.pos
 	}
 
 	mod.buf << ft.code[ptr..]
+}
+
+// name
+pub fn (mut mod Module) name(name string) {
+	mod.u32(u32(name.len))
+	mod.buf << name.bytes()
+}
+
+// start_subsection
+pub fn (mut mod Module) start_subsection(sec Subsection) int {
+	mod.buf << u8(sec)
+	return mod.patch_start()
+}
+
+// start_section
+pub fn (mut mod Module) start_section(sec Section) int {
+	mod.buf << u8(sec)
+	return mod.patch_start()
+}
+
+// end_section
+pub fn (mut mod Module) end_section(tpatch int) {
+	mod.patch_len(tpatch)
 }
 
 // compile serialises the WebAssembly module into a byte array.
@@ -118,22 +144,19 @@ pub fn (mut mod Module) compile() []u8 {
 	// https://webassembly.github.io/spec/core/binary/modules.html#type-section
 	//
 	if mod.functypes.len > 0 {
-		// Types
-		mod.buf << u8(Section.type_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.type_section)
 		{
 			mod.u32(u32(mod.functypes.len))
 			for ft in mod.functypes {
 				mod.function_type(ft)
 			}
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#import-section
 	//
 	if mod.fn_imports.len > 0 || mod.global_imports.len > 0 {
-		mod.buf << u8(Section.import_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.import_section)
 		{
 			mod.u32(u32(mod.fn_imports.len + mod.global_imports.len))
 			for ft in mod.fn_imports {
@@ -153,26 +176,24 @@ pub fn (mut mod Module) compile() []u8 {
 				mod.global_type(gt.typ, gt.is_mut)
 			}
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#binary-funcsec
 	//
 	if mod.functions.len > 0 {
-		mod.buf << u8(Section.function_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.function_section)
 		{
 			mod.u32(u32(mod.functions.len))
 			for _, ft in mod.functions {
 				mod.u32(u32(ft.tidx))
 			}
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#binary-memsec
 	//
 	if memory := mod.memory {
-		mod.buf << u8(Section.memory_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.memory_section)
 		{
 			mod.u32(1)
 			if max := memory.max {
@@ -184,13 +205,12 @@ pub fn (mut mod Module) compile() []u8 {
 				mod.u32(memory.min)
 			}
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#global-section
 	//
 	if mod.globals.len > 0 {
-		mod.buf << u8(Section.global_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.global_section)
 		{
 			mod.u32(u32(mod.globals.len))
 			for gt in mod.globals {
@@ -210,13 +230,12 @@ pub fn (mut mod Module) compile() []u8 {
 				mod.buf << 0x0B // END expression opcode
 			}
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#export-section
 	//
-	if mod.functions.len > 0 {
-		mod.buf << u8(Section.export_section)
-		tpatch := mod.patch_start()
+	{
+		tpatch := mod.start_section(.export_section)
 		{
 			lpatch := mod.patch_start()
 			mut lsz := 0
@@ -225,59 +244,64 @@ pub fn (mut mod Module) compile() []u8 {
 					continue
 				}
 				lsz++
-				mod.u32(u32(ft.name.len))
-				mod.buf << ft.name.bytes()
+				mod.name(ft.name)
 				mod.buf << 0x00 // function
 				mod.u32(u32(ft.idx + mod.fn_imports.len))
 			}
 			if memory := mod.memory {
 				if memory.export {
 					lsz++
-					mod.u32(u32(memory.name.len))
-					mod.buf << memory.name.bytes()
+					mod.name(memory.name)
 					mod.buf << 0x02 // function
 					mod.u32(0)
 				}
 			}
+			for idx, gbl in mod.globals {
+				if !gbl.export {
+					continue
+				}
+				lsz++
+				mod.name(gbl.name)
+				mod.buf << 0x03 // global
+				mod.u32(u32(idx + mod.global_imports.len))
+			}
 			mod.patch_u32(lpatch, u32(lsz))
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#binary-startsec
 	//
 	if start := mod.start {
 		ftt := mod.functions[start] or { panic('start function ${start} does not exist') }
-		mod.buf << u8(Section.start_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.start_section)
 		{
 			mod.u32(u32(ftt.idx + mod.fn_imports.len))
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#data-count-section
 	//
 	if mod.segments.len > 0 {
-		mod.buf << u8(Section.data_count_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.data_count_section)
 		{
 			mod.u32(u32(mod.segments.len))
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#binary-codesec
 	//
 	if mod.functions.len > 0 {
-		mod.buf << u8(Section.code_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.code_section)
 		{
 			mod.u32(u32(mod.functions.len))
 			for _, ft in mod.functions {
 				fpatch := mod.patch_start()
+				rloc := ft.locals[mod.functypes[ft.tidx].parameters.len..]
 				{
-					mod.u32(u32(ft.locals.len))
-					for lt in ft.locals {
+					mod.u32(u32(rloc.len))
+					for lt in rloc {
 						mod.u32(1)
-						mod.buf << u8(lt)
+						mod.buf << u8(lt.typ)
 					}
 					mod.patch(ft)
 					mod.buf << 0x0B // END expression opcode
@@ -285,13 +309,12 @@ pub fn (mut mod Module) compile() []u8 {
 				mod.patch_len(fpatch)
 			}
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
 	}
 	// https://webassembly.github.io/spec/core/binary/modules.html#data-section
 	//
 	if mod.segments.len > 0 {
-		mod.buf << u8(Section.data_section)
-		tpatch := mod.patch_start()
+		tpatch := mod.start_section(.data_section)
 		{
 			mod.u32(u32(mod.segments.len))
 			for _, seg in mod.segments {
@@ -308,7 +331,129 @@ pub fn (mut mod Module) compile() []u8 {
 				mod.buf << seg.data
 			}
 		}
-		mod.patch_len(tpatch)
+		mod.end_section(tpatch)
+	}
+	// https://webassembly.github.io/spec/core/appendix/custom.html#name-section
+	//
+	if mod.debug {
+		tpatch := mod.start_section(.custom_section)
+		mod.name('name')
+		if mod_name := mod.mod_name {
+			mpatch := mod.start_subsection(.name_module)
+			{
+				mod.name(mod_name)
+			}
+			mod.end_section(mpatch)
+		}
+		{
+			mpatch := mod.start_subsection(.name_function)
+			{
+				mod.u32(u32(mod.functions.len + mod.fn_imports.len))
+				mut idx := 0
+				for f in mod.fn_imports {
+					mod.u32(u32(idx))
+					mod.name('${f.mod}.${f.name}')
+					idx++
+				}
+				for n, _ in mod.functions {
+					mod.u32(u32(idx))
+					mod.name(n)
+					idx++
+				}
+			}
+			mod.end_section(mpatch)
+		}
+		{
+			mpatch := mod.start_subsection(.name_local)
+			{
+				fpatch := mod.patch_start()
+				mut fcount := 0
+				mut idx := mod.fn_imports.len // after imports
+				for _, ft in mod.functions {
+					// only add entry if it contains a local with an assigned name
+					if ft.locals.any(it.name != none) {
+						mod.u32(u32(idx)) // function idx
+
+						mut lcount := 0
+						lcpatch := mod.patch_start()
+						for lidx, loc in ft.locals {
+							if name := loc.name {
+								mod.u32(u32(lidx))
+								mod.name(name)
+								lcount++
+							}
+						}
+						mod.patch_u32(lcpatch, u32(lcount))
+						fcount++
+					}
+					idx++
+				}
+				mod.patch_u32(fpatch, u32(fcount))
+			}
+			mod.end_section(mpatch)
+		}
+		{
+			mpatch := mod.start_subsection(.name_type)
+			{
+				fpatch := mod.patch_start()
+				mut fcount := 0
+				for idx, ft in mod.functypes {
+					if name := ft.name {
+						mod.u32(u32(idx))
+						mod.name(name)
+						fcount++
+					}
+				}
+				mod.patch_u32(fpatch, u32(fcount))
+			}
+			mod.end_section(mpatch)
+		}
+		if memory := mod.memory {
+			mpatch := mod.start_subsection(.name_memory)
+			{
+				mod.u32(u32(1)) // one memory in vec
+				mod.u32(u32(0)) // 0 idx
+				mod.name(memory.name) // memory name
+			}
+			mod.end_section(mpatch)
+		}
+		if mod.globals.len != 0 || mod.global_imports.len != 0 {
+			mpatch := mod.start_subsection(.name_global)
+			{
+				fpatch := mod.patch_start()
+				mut fcount := 0
+				for gbl in mod.global_imports {
+					mod.u32(u32(fcount))
+					mod.name('${gbl.mod}.${gbl.name}')
+					fcount++
+				}
+				for gbl in mod.globals {
+					mod.u32(u32(fcount))
+					mod.name(gbl.name)
+					fcount++
+				}
+				mod.patch_u32(fpatch, u32(fcount))
+			}
+			mod.end_section(mpatch)
+		}
+		if mod.segments.any(it.name != none) {
+			mpatch := mod.start_subsection(.name_data)
+			{
+				fpatch := mod.patch_start()
+				mut fcount := 0
+				for idx, ds in mod.segments {
+					if name := ds.name {
+						mod.u32(u32(idx))
+						mod.name(name)
+						fcount++
+					}
+				}
+				mod.patch_u32(fpatch, u32(fcount))
+			}
+			mod.end_section(mpatch)
+		}
+
+		mod.end_section(tpatch)
 	}
 
 	return mod.buf

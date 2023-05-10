@@ -1,3 +1,6 @@
+// Copyright (c) 2023 l-m.dev. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 module wasm
 
 import encoding.leb128
@@ -22,13 +25,85 @@ fn (mut func Function) blocktype(typ FuncType) {
 	func.code << leb128.encode_i32(tidx)
 }
 
+pub type PatchPos = int
+
+// patch_pos returns a `PatchPos` for use with `patch`.
+pub fn (func Function) patch_pos() PatchPos {
+	return func.code.len
+}
+
+// patch "patches" the code generated starting from the last `patch_pos` call in `begin` to `loc`.
+//
+// ```v
+// start := func.patch_pos()
+//
+// ...
+//
+// patch_block := func.patch_pos()
+// {
+//     func.i32_const(10)
+//     func.local_set(idx)
+// }
+// func.patch(start, patch_block) // will patch code to the `start`.
+// // func.code[patch_block..]
+// ```
+pub fn (mut func Function) patch(loc PatchPos, begin PatchPos) {
+	if loc == begin {
+		return
+	}
+	assert loc < begin
+
+	v := func.code[begin..].clone()
+	func.code.trim(begin)
+	func.code.insert(int(loc), v)
+
+	for mut patch in func.patches {
+		if patch.pos >= begin {
+			patch.pos -= begin - loc
+		} else if patch.pos >= loc {
+			patch.pos += func.code.len - begin
+		}
+	}
+
+	func.patches.sort(a.pos < b.pos)
+
+	/*
+	lenn := begin
+	diff := loc - begin
+
+	for mut patch in func.patches {
+		if patch.pos >= begin {
+			patch.pos += diff
+		}
+		if patch.pos <= lenn {
+			continue
+		}
+		delta := patch.pos - lenn
+		patch.pos = loc + delta
+	}
+
+	func.patches.sort(a.pos < b.pos)*/
+}
+
 // new_local creates a function local and returns it's index.
 // See `local_get`, `local_set`, `local_tee`.
 pub fn (mut func Function) new_local(v ValType) LocalIndex {
-	ldiff := func.mod.functypes[func.tidx].parameters.len
-	ret := func.locals.len + ldiff
+	ret := func.locals.len
+	func.locals << FunctionLocal{
+		typ: v
+	}
+	return ret
+}
 
-	func.locals << v
+// new_local_named creates a function local with a name and returns it's index.
+// The `name` is used in debug information, where applicable.
+// See `local_get`, `local_set`, `local_tee`.
+pub fn (mut func Function) new_local_named(v ValType, name string) LocalIndex {
+	ret := func.locals.len
+	func.locals << FunctionLocal{
+		typ: v
+		name: name
+	}
 	return ret
 }
 
@@ -89,7 +164,7 @@ pub fn (mut func Function) global_get(global GlobalIndices) {
 	func.code << 0x23 // global.get
 	match global {
 		GlobalIndex {
-			func.global_patches << FunctionGlobalPatch{
+			func.patches << FunctionGlobalPatch{
 				idx: global
 				pos: func.code.len
 			}
@@ -106,7 +181,7 @@ pub fn (mut func Function) global_set(global GlobalIndices) {
 	func.code << 0x24 // global.set
 	match global {
 		GlobalIndex {
-			func.global_patches << FunctionGlobalPatch{
+			func.patches << FunctionGlobalPatch{
 				idx: global
 				pos: func.code.len
 			}
@@ -798,20 +873,22 @@ pub fn (mut func Function) nop() {
 	func.code << 0x01
 }
 
+pub type LabelIndex = int
+
 // c_block creates a label that can later be branched out of with `c_br` and `c_br_if`.
 // Blocks are strongly typed, you must supply a list of types for `parameters` and `results`.
 // All blocks must be ended, see the `c_end` function.
-pub fn (mut func Function) c_block(parameters []ValType, results []ValType) int {
+pub fn (mut func Function) c_block(parameters []ValType, results []ValType) LabelIndex {
 	func.label++
 	func.code << 0x02
 	func.blocktype(parameters: parameters, results: results)
 	return func.label
 }
 
-// c_loop creates a label that can later be branched to of with `c_br` and `c_br_if`.
+// c_loop creates a label that can later be branched to with `c_br` and `c_br_if`.
 // Loops are strongly typed, you must supply a list of types for `parameters` and `results`.
 // All loops must be ended, see the `c_end` function.
-pub fn (mut func Function) c_loop(parameters []ValType, results []ValType) int {
+pub fn (mut func Function) c_loop(parameters []ValType, results []ValType) LabelIndex {
 	func.label++
 	func.code << 0x03
 	func.blocktype(parameters: parameters, results: results)
@@ -819,16 +896,20 @@ pub fn (mut func Function) c_loop(parameters []ValType, results []ValType) int {
 }
 
 // c_if opens an if expression. It executes a statement if the last item on the stack is true.
+// It creates a label that can later be branched out of with `c_br` and `c_br_if`.
 // If expressions are strongly typed, you must supply a list of types for `parameters` and `results`.
 // Call `c_else` to open the else case of an if expression, or close it by calling `c_end_if`.
-// All if expressions must be ended by calling with `c_end_if.
-pub fn (mut func Function) c_if(parameters []ValType, results []ValType) {
+// All if expressions must be ended, see the `c_end` function.
+pub fn (mut func Function) c_if(parameters []ValType, results []ValType) LabelIndex {
+	func.label++
 	func.code << 0x04
 	func.blocktype(parameters: parameters, results: results)
+	return func.label
 }
 
-// c_else starts the else case of an if expression, it must be closed by calling `c_end_if`.
-pub fn (mut func Function) c_else() {
+// c_else opens the else case of an if expression, it must be closed by calling `c_end`.
+pub fn (mut func Function) c_else(label LabelIndex) {
+	assert func.label == label, 'c_else: called with an invalid label ${label}'
 	func.code << 0x05
 }
 
@@ -839,7 +920,7 @@ pub fn (mut func Function) c_return() {
 }
 
 // c_end ends the block or loop with the label passed in at `label`.
-pub fn (mut func Function) c_end(label int) {
+pub fn (mut func Function) c_end(label LabelIndex) {
 	assert func.label == label, 'c_end: called with an invalid label ${label}'
 	func.label--
 	assert func.label >= 0, 'c_end: negative label index, unbalanced calls'
@@ -848,7 +929,7 @@ pub fn (mut func Function) c_end(label int) {
 
 // c_br branches to a loop or block with the label passed in at `label`.
 // WebAssembly instruction: `br`.
-pub fn (mut func Function) c_br(label int) {
+pub fn (mut func Function) c_br(label LabelIndex) {
 	v := func.label - label
 	assert v >= 0, 'c_br: malformed label index'
 	func.code << 0x0C // br
@@ -857,7 +938,7 @@ pub fn (mut func Function) c_br(label int) {
 
 // c_br_if branches to a loop or block with the label passed in at `label`, based on an i32 condition.
 // WebAssembly instruction: `br_if`.
-pub fn (mut func Function) c_br_if(label int) {
+pub fn (mut func Function) c_br_if(label LabelIndex) {
 	v := func.label - label
 	assert v >= 0, 'c_br_if: malformed label index'
 	func.code << 0x0D // br_if
@@ -874,10 +955,10 @@ pub fn (mut func Function) c_end_if() {
 // WebAssembly instruction: `call`.
 pub fn (mut func Function) call(name string) {
 	func.code << 0x10 // call
-	func.call_patches << FunctionCallPatch{
+	func.patches << CallPatch(FunctionCallPatch{
 		name: name
 		pos: func.code.len
-	}
+	})
 }
 
 // call calls an imported function.
@@ -885,11 +966,11 @@ pub fn (mut func Function) call(name string) {
 // WebAssembly instruction: `call`.
 pub fn (mut func Function) call_import(mod string, name string) {
 	func.code << 0x10 // call
-	func.call_patches << ImportCallPatch{
+	func.patches << CallPatch(ImportCallPatch{
 		mod: mod
 		name: name
 		pos: func.code.len
-	}
+	})
 }
 
 // load loads a value with type `typ` from memory.
@@ -1081,20 +1162,20 @@ pub fn (mut func Function) ref_is_null(rt RefType) {
 // WebAssembly instruction: `ref.func`.
 pub fn (mut func Function) ref_func(name string) {
 	func.code << 0xD2 // ref.func
-	func.call_patches << FunctionCallPatch{
+	func.patches << CallPatch(FunctionCallPatch{
 		name: name
 		pos: func.code.len
-	}
+	})
 }
 
-// ref_func places a reference to an imported function with `name` on the stack.
+// ref_func_import places a reference to an imported function with `name` on the stack.
 // If the imported function does not exist when calling `compile` on the module, it will panic.
 // WebAssembly instruction: `ref.func`.
 pub fn (mut func Function) ref_func_import(mod string, name string) {
 	func.code << 0xD2 // ref.func
-	func.call_patches << ImportCallPatch{
+	func.patches << CallPatch(ImportCallPatch{
 		mod: mod
 		name: name
 		pos: func.code.len
-	}
+	})
 }

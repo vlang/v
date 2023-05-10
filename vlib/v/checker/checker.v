@@ -2524,7 +2524,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			} else {
 				tsym.cname
 			}
-			c.table.dumps[int(unwrapped_expr_type.clear_flag(.result))] = type_cname
+			c.table.dumps[int(unwrapped_expr_type.clear_flag(.result).clear_flag(.atomic_f))] = type_cname
 			node.cname = type_cname
 			return node.expr_type
 		}
@@ -3387,7 +3387,16 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		}
 		// Non-anon-function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
-			fn_type := ast.new_type(c.table.find_or_register_fn_type(func, false, true))
+			mut fn_type := ast.new_type(c.table.find_or_register_fn_type(func, false,
+				true))
+			if func.generic_names.len > 0 {
+				if typ_ := c.table.resolve_generic_to_concrete(fn_type, func.generic_names,
+					node.concrete_types)
+				{
+					fn_type = typ_
+					c.table.register_fn_concrete_types(func.fkey(), node.concrete_types)
+				}
+			}
 			node.name = name
 			node.kind = .function
 			node.info = ast.IdentFn{
@@ -3440,6 +3449,18 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 				c.error(util.new_suggestion(node.name, const_names_in_mod).say('undefined ident: `${node.name}`'),
 					node.pos)
 			} else {
+				// If a variable is not found in the scope of an anonymous function
+				// but is in an external scope, then we can suggest the user add it to the capturing list.
+				if c.inside_anon_fn {
+					found_var := c.fn_scope.find_var(node.name)
+
+					if found_var != none {
+						c.error('`${node.name}` must be added to the capture list for the closure to be used inside',
+							node.pos)
+						return ast.void_type
+					}
+				}
+
 				c.error('undefined ident: `${node.name}`', node.pos)
 			}
 		}
@@ -3595,6 +3616,12 @@ fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 					}
 					else {
 						c.error('`<-` receive expression expected', branch.stmt.right[0].pos())
+					}
+				}
+				if mut branch.stmt.left[0] is ast.Ident {
+					ident := branch.stmt.left[0] as ast.Ident
+					if ident.kind == .blank_ident && branch.stmt.op != .decl_assign {
+						c.error('cannot send on `_`, use `_ := <- quit` instead', branch.stmt.left[0].pos())
 					}
 				}
 			}

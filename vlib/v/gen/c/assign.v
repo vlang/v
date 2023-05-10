@@ -851,6 +851,8 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 				if sym.kind == .array {
 					info := sym.info as ast.Array
 					elem_typ := g.table.sym(info.elem_type)
+					needs_clone := info.elem_type == ast.string_type && g.is_autofree
+
 					if elem_typ.kind == .function {
 						left_typ := node.left_types[i]
 						left_sym := g.table.sym(left_typ)
@@ -858,21 +860,20 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 						g.write(' = *(voidptr*)array_get(')
 					} else {
 						styp := g.typ(info.elem_type)
-						g.write('${styp} _var_${left.pos.pos} = *(${styp}*)array_get(')
+						string_clone := if needs_clone { '/*1*/string_clone(' } else { '' }
+
+						g.write('${styp} _var_${left.pos.pos} = ${string_clone}*(${styp}*)array_get(')
 					}
+
 					if left.left_type.is_ptr() {
 						g.write('*')
 					}
-					needs_clone := info.elem_type == ast.string_type && g.is_autofree
-					if needs_clone {
-						g.write('/*1*/string_clone(')
-					}
 					g.expr(left.left)
+					g.write(', ')
+					g.expr(left.index)
 					if needs_clone {
 						g.write(')')
 					}
-					g.write(', ')
-					g.expr(left.index)
 					g.writeln(');')
 				} else if sym.kind == .array_fixed {
 					info := sym.info as ast.ArrayFixed
@@ -891,7 +892,7 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 					}
 					needs_clone := info.elem_type == ast.string_type && g.is_autofree
 					if needs_clone {
-						g.write('/*1*/string_clone(')
+						g.write('/*2*/string_clone(')
 					}
 					g.expr(left)
 					if needs_clone {
