@@ -221,6 +221,13 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			// 	c.error('cannot assign a `none` value to a non-option variable', right.pos())
 			// }
 		}
+		if mut left is ast.Ident
+			&& (left as ast.Ident).info is ast.IdentVar && right is ast.Ident && (right as ast.Ident).name in c.global_names {
+			ident_var_info := left.info as ast.IdentVar
+			if ident_var_info.share == .shared_t {
+				c.error('cannot assign global variable to shared variable', right.pos())
+			}
+		}
 		if right_type.is_ptr() && left_type.is_ptr() {
 			if mut right is ast.Ident {
 				if mut right.obj is ast.Var {
