@@ -202,6 +202,11 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					}
 					continue
 				}
+				if exp_type_sym.kind == .array_fixed && got_type_sym.kind == .array_fixed {
+					if (exp_type_sym.info as ast.ArrayFixed).elem_type == (got_type_sym.info as ast.ArrayFixed).elem_type {
+						continue
+					}
+				}
 				// `fn foo() !int { return Err{} }`
 				if got_type_sym.kind == .struct_
 					&& c.type_implements(got_type, ast.error_type, node.pos) {

@@ -799,6 +799,7 @@ pub fn (mut g Gen) init() {
 	g.write_typedef_types()
 	g.write_typeof_functions()
 	g.write_sorted_types()
+	g.write_array_fixed_return_types()
 	g.write_multi_return_types()
 	g.definitions.writeln('// end of definitions #endif')
 	if g.pref.compile_defines_all.len > 0 {
@@ -1386,7 +1387,7 @@ pub fn (mut g Gen) write_typedef_types() {
 						mut def_str := 'typedef ${fixed};'
 						def_str = def_str.replace_once('(*)', '(*${styp}[${len}])')
 						g.type_definitions.writeln(def_str)
-					} else {
+					} else if !info.is_fn_ret {
 						g.type_definitions.writeln('typedef ${fixed} ${styp} [${len}];')
 						base := g.typ(info.elem_type.clear_flags(.option, .result))
 						if info.elem_type.has_flag(.option) && base !in g.options_forward {
@@ -1567,6 +1568,24 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 		}
 		g.type_definitions.writeln(')${call_conv_attribute_suffix};')
 	}
+}
+
+pub fn (mut g Gen) write_array_fixed_return_types() {
+	g.typedefs.writeln('\n// BEGIN_array_fixed_return_typedefs')
+	g.type_definitions.writeln('\n// BEGIN_array_fixed_return_structs')
+
+	for sym in g.table.type_symbols {
+		if sym.kind != .array_fixed || !(sym.info as ast.ArrayFixed).is_fn_ret {
+			continue
+		}
+		g.typedefs.writeln('typedef struct ${sym.cname} ${sym.cname};')
+		g.type_definitions.writeln('struct ${sym.cname} {')
+		g.type_definitions.writeln('\t${sym.cname[3..]} ret_arr;')
+		g.type_definitions.writeln('};')
+	}
+
+	g.typedefs.writeln('// END_array_fixed_return_typedefs\n')
+	g.type_definitions.writeln('// END_array_fixed_return_structs\n')
 }
 
 pub fn (mut g Gen) write_multi_return_types() {
@@ -4539,6 +4558,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	fn_return_is_multi := sym.kind == .multi_return
 	fn_return_is_option := fn_ret_type.has_flag(.option)
 	fn_return_is_result := fn_ret_type.has_flag(.result)
+	fn_return_is_fixed_array := sym.kind == .array_fixed
 
 	mut has_semicolon := false
 	if node.exprs.len == 0 {
@@ -4560,6 +4580,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	mut use_tmp_var := g.defer_stmts.len > 0 || g.defer_profile_code.len > 0
 		|| g.cur_lock.lockeds.len > 0
 		|| (fn_return_is_multi && node.exprs.len >= 1 && fn_return_is_option)
+		|| fn_return_is_fixed_array
 	// handle promoting none/error/function returning _option'
 	if fn_return_is_option {
 		option_none := node.exprs[0] is ast.None
@@ -4854,7 +4875,13 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if g.fn_decl.return_type.has_flag(.option) {
 				g.expr_with_opt(node.exprs[0], node.types[0], g.fn_decl.return_type)
 			} else {
+				if fn_return_is_fixed_array {
+					g.write('{.ret_arr=')
+				}
 				g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+				if fn_return_is_fixed_array {
+					g.write('}')
+				}
 			}
 		}
 		if use_tmp_var {
@@ -5613,7 +5640,8 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 			}
 			ast.ArrayFixed {
 				elem_sym := g.table.sym(sym.info.elem_type)
-				if !elem_sym.is_builtin() && !sym.info.elem_type.has_flag(.generic) {
+				if !elem_sym.is_builtin() && !sym.info.elem_type.has_flag(.generic)
+					&& !sym.info.is_fn_ret {
 					// .array_fixed {
 					styp := sym.cname
 					// array_fixed_char_300 => char x[300]

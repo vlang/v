@@ -622,15 +622,22 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					} else {
 						'(byte*)&'
 					}
-					if val_type.has_flag(.option) {
+					if val_type.has_flag(.option) || val is ast.CallExpr {
 						g.expr(left)
 						g.write(' = ')
 						g.expr(val)
 					} else {
 						g.write('memcpy(${final_typ_str}')
 						g.expr(left)
+						if left_sym.info is ast.ArrayFixed
+							&& (left_sym.info as ast.ArrayFixed).is_fn_ret {
+							g.write('.ret_arr')
+						}
 						g.write(', ${final_ref_str}')
 						g.expr(val)
+						if (right_sym.info as ast.ArrayFixed).is_fn_ret {
+							g.write('.ret_arr')
+						}
 						g.write(', sizeof(${typ_str}))')
 					}
 				} else if is_decl {
