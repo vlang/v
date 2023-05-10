@@ -367,6 +367,12 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	if c.table.sumtype_has_variant(expected, ast.mktyp(got), false) {
 		return true
 	}
+	// struct
+	if exp_sym.kind == .struct_ && got_sym.kind == .struct_ {
+		if c.table.type_to_str(expected) == c.table.type_to_str(got) {
+			return true
+		}
+	}
 	// type alias
 	if (got_sym.kind == .alias && got_sym.parent_idx == expected.idx())
 		|| (exp_sym.kind == .alias && exp_sym.parent_idx == got.idx()) {
@@ -671,7 +677,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 				if field_sym.name == gt_name {
 					for t in node.fields {
 						if ft.name == t.name && t.typ != 0 {
-							concrete_types << t.typ
+							concrete_types << ast.mktyp(t.typ)
 							continue gname
 						}
 					}
@@ -695,7 +701,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 												&& elem_typ.nr_muls() > 0 {
 												elem_typ = elem_typ.set_nr_muls(0)
 											}
-											concrete_types << elem_typ
+											concrete_types << ast.mktyp(elem_typ)
 											continue gname
 										}
 										break
@@ -723,7 +729,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 												&& elem_typ.nr_muls() > 0 {
 												elem_typ = elem_typ.set_nr_muls(0)
 											}
-											concrete_types << elem_typ
+											concrete_types << ast.mktyp(elem_typ)
 											continue gname
 										}
 										break
@@ -744,7 +750,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 										&& key_typ.nr_muls() > 0 {
 										key_typ = key_typ.set_nr_muls(0)
 									}
-									concrete_types << key_typ
+									concrete_types << ast.mktyp(key_typ)
 									continue gname
 								}
 								if field_sym.info.value_type.has_flag(.generic)
@@ -754,7 +760,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 										&& val_typ.nr_muls() > 0 {
 										val_typ = val_typ.set_nr_muls(0)
 									}
-									concrete_types << val_typ
+									concrete_types << ast.mktyp(val_typ)
 									continue gname
 								}
 							}
@@ -773,7 +779,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 											if fn_param.typ.nr_muls() > 0 && arg_typ.nr_muls() > 0 {
 												arg_typ = arg_typ.set_nr_muls(0)
 											}
-											concrete_types << arg_typ
+											concrete_types << ast.mktyp(arg_typ)
 											continue gname
 										}
 									}
@@ -784,7 +790,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 											&& ret_typ.nr_muls() > 0 {
 											ret_typ = ret_typ.set_nr_muls(0)
 										}
-										concrete_types << ret_typ
+										concrete_types << ast.mktyp(ret_typ)
 										continue gname
 									}
 								}
