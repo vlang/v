@@ -4583,7 +4583,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	fn_return_is_multi := sym.kind == .multi_return
 	fn_return_is_option := fn_ret_type.has_flag(.option)
 	fn_return_is_result := fn_ret_type.has_flag(.result)
-	fn_return_is_fixed_array := sym.kind == .array_fixed
+	fn_return_is_fixed_array := sym.kind == .array_fixed && (sym.info as ast.ArrayFixed).is_fn_ret
 
 	mut has_semicolon := false
 	if node.exprs.len == 0 {
