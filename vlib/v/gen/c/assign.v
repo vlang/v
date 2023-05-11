@@ -613,6 +613,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else if is_fixed_array_var {
 					// TODO Instead of the translated check, check if it's a pointer already
 					// and don't generate memcpy &
+					final_is_fixed_ret := left_sym.info is ast.ArrayFixed
+						&& (left_sym.info as ast.ArrayFixed).is_fn_ret
+					typ_is_fixed_ret := (right_sym.info as ast.ArrayFixed).is_fn_ret
 					typ_str := g.typ(val_type).trim('*')
 					final_typ_str := if is_fixed_array_var { '' } else { '(${typ_str}*)' }
 					final_ref_str := if is_fixed_array_var {
@@ -622,20 +625,19 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					} else {
 						'(byte*)&'
 					}
-					if val_type.has_flag(.option) || val is ast.CallExpr {
+					if val_type.has_flag(.option) {
 						g.expr(left)
 						g.write(' = ')
 						g.expr(val)
 					} else {
 						g.write('memcpy(${final_typ_str}')
 						g.expr(left)
-						if left_sym.info is ast.ArrayFixed
-							&& (left_sym.info as ast.ArrayFixed).is_fn_ret {
+						if final_is_fixed_ret {
 							g.write('.ret_arr')
 						}
 						g.write(', ${final_ref_str}')
 						g.expr(val)
-						if (right_sym.info as ast.ArrayFixed).is_fn_ret {
+						if typ_is_fixed_ret {
 							g.write('.ret_arr')
 						}
 						g.write(', sizeof(${typ_str}))')
