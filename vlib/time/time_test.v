@@ -153,7 +153,7 @@ fn test_year_day() {
 	assert time.parse('2024-02-29 20:00:00')!.year_day() == 60
 	assert time.parse('2024-03-01 20:00:00')!.year_day() == 61
 	assert time.parse('2024-03-02 20:00:00')!.year_day() == 62
-	
+
 	assert time.parse('2025-02-28 20:00:00')!.year_day() == 59
 	assert time.parse('2025-03-01 20:00:00')!.year_day() == 60
 
