@@ -942,6 +942,15 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					} else {
 						g.writeln('${g.typ(g.comptime_for_field_type)}__${g.comptime_enum_field_value};')
 					}
+					enum_attrs := sym.info.attrs[val]
+					if enum_attrs.len == 0 {
+						g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
+					} else {
+						attrs := cgen_attrs(enum_attrs)
+						g.writeln(
+							'\t${node.val_var}.attrs = new_array_from_c_array(${attrs.len}, ${attrs.len}, sizeof(string), _MOV((string[${attrs.len}]){' +
+							attrs.join(', ') + '}));\n')
+					}
 					g.stmts(node.stmts)
 					g.writeln('}')
 					i++
