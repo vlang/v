@@ -203,7 +203,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					continue
 				}
 				if exp_type_sym.kind == .array_fixed && got_type_sym.kind == .array_fixed {
-					if (exp_type_sym.info as ast.ArrayFixed).elem_type == (got_type_sym.info as ast.ArrayFixed).elem_type {
+					if (exp_type_sym.info as ast.ArrayFixed).size == (got_type_sym.info as ast.ArrayFixed).size && (exp_type_sym.info as ast.ArrayFixed).elem_type == (got_type_sym.info as ast.ArrayFixed).elem_type {
 						continue
 					}
 				}
