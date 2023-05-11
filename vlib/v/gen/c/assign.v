@@ -615,7 +615,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					// and don't generate memcpy &
 					final_is_fixed_ret := left_sym.info is ast.ArrayFixed
 						&& (left_sym.info as ast.ArrayFixed).is_fn_ret
-					typ_is_fixed_ret := (right_sym.info as ast.ArrayFixed).is_fn_ret
+					typ_is_fixed_ret := right_sym.info is ast.ArrayFixed
+						&& (right_sym.info as ast.ArrayFixed).is_fn_ret
 					typ_str := g.typ(val_type).trim('*')
 					final_typ_str := if is_fixed_array_var { '' } else { '(${typ_str}*)' }
 					final_ref_str := if is_fixed_array_var {
