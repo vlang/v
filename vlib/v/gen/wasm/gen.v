@@ -165,7 +165,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 					g.return_vars << Var{
 						typ: t
 						idx: g.return_vars.len
-						is_pointer: true
+						is_address: true
 					}
 				} else {
 					retl << wtyp
@@ -184,7 +184,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 					paraml << wtyp
 					g.return_vars << Var{
 						typ: rt
-						is_pointer: true
+						is_address: true
 					}
 				} else {
 					retl << wtyp
@@ -205,7 +205,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			name: p.name
 			typ: p.typ
 			idx: g.local_vars.len + g.return_vars.len
-			is_pointer: p.typ.is_ptr() || !g.is_pure_type(p.typ)
+			is_address: !g.is_pure_type(p.typ)
 		}
 		paramdbg << g.dbg_type_name(p.name, p.typ)
 		paraml << typ

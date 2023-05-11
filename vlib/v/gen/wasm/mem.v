@@ -12,7 +12,7 @@ struct Var {
 mut:
 	typ        ast.Type
 	idx        wasm.LocalIndex
-	is_pointer bool
+	is_address bool
 	is_global  bool
 	g_idx      wasm.GlobalIndex
 	offset     int
@@ -73,7 +73,7 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) ?Var {
 		}
 		ast.SelectorExpr {
 			addr := g.get_var_from_expr(node.expr) or {
-				g.field_offset(node.expr_type, node.field_name)
+				//g.field_offset(node.expr_type, node.field_name)
 				return none
 			}
 
@@ -132,17 +132,17 @@ fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
 		else {}
 	}
 	
-	is_pointer := typ.nr_muls() == 0 && !g.is_pure_type(typ)
+	is_address := !g.is_pure_type(typ)
 	wtyp := g.get_wasm_type(typ)
 
 	mut v := Var{
 		name: name
 		typ: typ
-		is_pointer: is_pointer
+		is_address: is_address
 	}
 
-	if !is_pointer {
-		g.func.new_local_named(wtyp, g.dbg_type_name(name, typ))
+	if !is_address {
+		v.idx = g.func.new_local_named(wtyp, g.dbg_type_name(name, typ))
 		g.local_vars << v
 		return v
 	}
@@ -214,7 +214,7 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_m
 	}
 
 	mut is_mut := false
-	is_pointer := typ.nr_muls() == 0 && !g.is_pure_type(typ)
+	is_address := !g.is_pure_type(typ)
 	mut init_expr := ?ast.Expr(none)
 
 	cexpr := if cexpr_v := g.literal_to_constant_expression(typ, init) {
@@ -222,7 +222,7 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_m
 		cexpr_v
 	} else {
 		// Isn't a literal ...
-		if is_pointer {
+		if is_address {
 			// ... allocate memory and append
 			pos, is_init := g.pool.append(init, typ)
 			if !is_init {
@@ -245,7 +245,7 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_m
 		v: Var{
 			name: name
 			typ: typ
-			is_pointer: is_pointer
+			is_address: is_address
 			is_global: true
 			g_idx: g.mod.new_global(name, false, g.get_wasm_type(typ), is_mut, cexpr)
 		}
@@ -257,7 +257,7 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_m
 // is_pure_type(voidptr) == true
 // is_pure_type(&Struct) == false
 fn (g Gen) is_pure_type(typ ast.Type) bool {
-	if typ.is_pure_int() || typ.is_pure_float() || typ == ast.char_type_idx || typ.is_pointer()
+	if typ.is_pure_int() || typ.is_pure_float() || typ == ast.char_type_idx || typ.is_real_pointer()
 		|| typ.is_bool() {
 		return true
 	}
@@ -307,9 +307,9 @@ fn (mut g Gen) get(v Var) {
 		g.func.local_get(v.idx)
 	}
 
-	if v.is_pointer && g.is_pure_type(v.typ) {
+	if v.is_address && g.is_pure_type(v.typ) {
 		g.load(v.typ, v.offset)
-	} else if v.is_pointer && v.offset != 0 {
+	} else if v.is_address && v.offset != 0 {
 		g.func.i32_const(v.offset)
 		g.func.add(.i32_t)
 	}
@@ -326,7 +326,7 @@ fn (mut g Gen) deref_as_field(v Var) {
 }
 
 /* fn (mut g Gen) copy(to Var, v Var) {
-	if v.is_pointer && !g.is_pure_type(v.typ) {
+	if v.is_address && !g.is_pure_type(v.typ) {
 
 		return
 	}
@@ -336,7 +336,7 @@ fn (mut g Gen) deref_as_field(v Var) {
 } */
 
 fn (mut g Gen) mov(to Var, v Var) {
-	if !v.is_pointer || g.is_pure_type(v.typ) {
+	if !v.is_address || g.is_pure_type(v.typ) {
 		g.get(v)
 		g.set(to)
 		return
@@ -388,7 +388,7 @@ fn (mut g Gen) mov(to Var, v Var) {
 // -- not optimial for copying stack memory or shuffling structs
 // -- use mov instead
 fn (mut g Gen) set(v Var) {
-	if !v.is_pointer {
+	if !v.is_address {
 		if v.is_global {
 			g.func.global_set(v.g_idx)
 		} else {
@@ -411,7 +411,7 @@ fn (mut g Gen) set(v Var) {
 	to := Var{
 		typ: v.typ
 		idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')//g.func.local_set(l)
-		is_pointer: v.is_pointer 
+		is_address: v.is_address 
 	}
 
 	g.func.local_set(to.idx)
@@ -428,7 +428,7 @@ fn (mut g Gen) ref(v Var) {
 }
 
 fn (mut g Gen) ref_ignore_offset(v Var) {
-	if !v.is_pointer {
+	if !v.is_address {
 		panic('unreachable')
 	}
 
@@ -441,7 +441,7 @@ fn (mut g Gen) ref_ignore_offset(v Var) {
 
 // creates a new pointer variable with the offset `offset` and type `typ`
 fn (mut g Gen) offset(v Var, typ ast.Type, offset int) Var {
-	if !v.is_pointer {
+	if !v.is_address {
 		panic('unreachable')
 	}
 	
