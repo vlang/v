@@ -2131,7 +2131,7 @@ fn (mut p Parser) is_following_concrete_types() bool {
 		} else if cur_tok.kind == .rsbr {
 			break
 		} else if cur_tok.kind == .name {
-			if !p.is_typename(cur_tok) {
+			if !(cur_tok.lit.len > 1 && p.is_typename(cur_tok)) {
 				return false
 			}
 		} else if cur_tok.kind != .comma {
