@@ -210,7 +210,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				} else {
 					elem_type = ast.mktyp(typ)
 				}
-				if typ.is_ptr() {
+				if typ.is_ptr() && c.in_for_count == 0 {
 					is_first_elem_ptr = true
 				}
 				c.expected_type = elem_type
