@@ -88,8 +88,10 @@ fn dd() {
 
 fn test() {
 	mut a := AA{}
-	//a.a = 10
-	//a.b = 20
-	b := &a.b
-	c := *b
+	// a.a = 10
+	// a.b = 20
+	// b := &a.b
+	// c := *b
+	b := a
+	c := b.b
 }

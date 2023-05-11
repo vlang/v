@@ -315,7 +315,7 @@ fn (mut g Gen) get(v Var) {
 	}
 }
 
-fn (mut g Gen) deref_as_field(v Var) {
+/* fn (mut g Gen) deref_as_field(v Var) {
 	if v.is_global {
 		g.func.global_get(v.g_idx)
 	} else {
@@ -323,7 +323,7 @@ fn (mut g Gen) deref_as_field(v Var) {
 	}
 
 	g.load(v.typ, v.offset)
-}
+} */
 
 /* fn (mut g Gen) copy(to Var, v Var) {
 	if v.is_address && !g.is_pure_type(v.typ) {
@@ -345,8 +345,8 @@ fn (mut g Gen) mov(to Var, v Var) {
 	size, _ := g.pool.type_size(v.typ)
 	
 	if size > 16 {
-		g.ref(v)
 		g.ref(to)
+		g.ref(v)
 		g.func.i32_const(size)
 		g.func.memory_copy()
 		return
@@ -358,23 +358,23 @@ fn (mut g Gen) mov(to Var, v Var) {
 		g.ref_ignore_offset(v)
 		g.ref_ignore_offset(to)
 		if sz - 8 >= 0 {
-			g.load(ast.u64_type_idx, to.offset + oz)
-			g.store(ast.u64_type_idx, v.offset + oz)
+			g.load(ast.u64_type_idx, v.offset + oz)
+			g.store(ast.u64_type_idx, to.offset + oz)
 			sz -= 8
 			oz += 8
 		} else if sz - 4 >= 0 {
-			g.load(ast.u32_type_idx, to.offset + oz)
-			g.store(ast.u32_type_idx, v.offset + oz)
+			g.load(ast.u32_type_idx, v.offset + oz)
+			g.store(ast.u32_type_idx, to.offset + oz)
 			sz -= 4
 			oz += 4
 		} else if sz - 2 >= 0 {
-			g.load(ast.u16_type_idx, to.offset + oz)
-			g.store(ast.u16_type_idx, v.offset + oz)
+			g.load(ast.u16_type_idx, v.offset + oz)
+			g.store(ast.u16_type_idx, to.offset + oz)
 			sz -= 2
 			oz += 2
 		} else if sz - 1 >= 0 {
-			g.load(ast.u8_type_idx, to.offset + oz)
-			g.store(ast.u8_type_idx, v.offset + oz)
+			g.load(ast.u8_type_idx, v.offset + oz)
+			g.store(ast.u8_type_idx, to.offset + oz)
 			sz -= 1
 			oz += 1
 		}

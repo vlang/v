@@ -424,8 +424,9 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
 			g.func.b_xor(g.as_numtype(vt))
 		}
 		.amp {
-			v := g.get_var_from_expr(node.right) or { panic('unreachable') }
-			g.ref(v)
+			if v := g.get_var_from_expr(node.right) {
+				g.ref(v)
+			}
 		}
 		.mul {
 			g.expr(node.right, node.right_type)
@@ -673,8 +674,13 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			g.get(v)
 		}
 		ast.SelectorExpr {
-			v := g.get_var_from_expr(node) or { panic('unreachable') }
-			g.deref_as_field(v)
+			// if v := g.get_var_from_expr(node) {
+			// 	g.deref_as_field(v)
+			// } else {
+			// 	g.load(node.typ, 0)
+			// }
+			v := g.get_var_from_expr(node) or {panic('')}
+			g.get(v)
 			g.cast(v.typ, expected)
 		}
 		ast.MatchExpr {
