@@ -493,58 +493,58 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 						continue
 					}
 				}
-				mut expr_type := ast.Type(0)
-				mut expected_type := ast.Type(0)
+				mut got_type := ast.Type(0)
+				mut exp_type := ast.Type(0)
 				inited_fields << field_name
-				field_type_sym := c.table.sym(field_info.typ)
-				expected_type = field_info.typ
-				c.expected_type = expected_type
-				expr_type = c.expr(field.expr)
-				if expr_type == ast.void_type {
+				exp_type = field_info.typ
+				exp_type_sym := c.table.sym(exp_type)
+				c.expected_type = exp_type
+				got_type = c.expr(field.expr)
+				got_type_sym := c.table.sym(got_type)
+				if got_type == ast.void_type {
 					c.error('`${field.expr}` (no value) used as value', field.pos)
 				}
-				if !field_info.typ.has_flag(.option) && !field.typ.has_flag(.result) {
-					expr_type = c.check_expr_opt_call(field.expr, expr_type)
-					if expr_type.has_flag(.option) {
+				if !exp_type.has_flag(.option) && !got_type.has_flag(.result) {
+					got_type = c.check_expr_opt_call(field.expr, got_type)
+					if got_type.has_flag(.option) {
 						c.error('cannot assign an Option value to a non-option struct field',
 							field.pos)
 					}
 				}
-				expr_type_sym := c.table.sym(expr_type)
-				if field_type_sym.kind == .voidptr && expr_type_sym.kind == .struct_
-					&& !expr_type.is_ptr() {
+				if exp_type_sym.kind == .voidptr && got_type_sym.kind == .struct_
+					&& !got_type.is_ptr() {
 					c.error('allocate on the heap for use in other functions', field.pos)
 				}
-				if field_type_sym.kind == .interface_ {
-					if c.type_implements(expr_type, field_info.typ, field.pos) {
-						if !c.inside_unsafe && expr_type_sym.kind != .interface_
-							&& !expr_type.is_real_pointer() {
+				if exp_type_sym.kind == .interface_ {
+					if c.type_implements(got_type, exp_type, field.pos) {
+						if !c.inside_unsafe && got_type_sym.kind != .interface_
+							&& !got_type.is_real_pointer() {
 							c.mark_as_referenced(mut &field.expr, true)
 						}
 					}
-				} else if expr_type != ast.void_type && expr_type_sym.kind != .placeholder
-					&& !field_info.typ.has_flag(.generic) {
-					c.check_expected(c.unwrap_generic(expr_type), c.unwrap_generic(field_info.typ)) or {
+				} else if got_type != ast.void_type && got_type_sym.kind != .placeholder
+					&& !exp_type.has_flag(.generic) {
+					c.check_expected(c.unwrap_generic(got_type), c.unwrap_generic(exp_type)) or {
 						c.error('cannot assign to field `${field_info.name}`: ${err.msg()}',
 							field.pos)
 					}
 				}
-				if field_info.typ.has_flag(.shared_f) {
-					if !expr_type.has_flag(.shared_f) && expr_type.is_ptr() {
+				if exp_type.has_flag(.shared_f) {
+					if !got_type.has_flag(.shared_f) && got_type.is_ptr() {
 						c.error('`shared` field must be initialized with `shared` or value',
 							field.pos)
 					}
 				} else {
-					if field_info.typ.is_ptr() && !expr_type.is_real_pointer()
-						&& field.expr.str() != '0' && !field_info.typ.has_flag(.option) {
+					if exp_type.is_ptr() && !got_type.is_real_pointer() && field.expr.str() != '0'
+						&& !exp_type.has_flag(.option) {
 						c.error('reference field must be initialized with reference',
 							field.pos)
 					}
 				}
-				node.fields[i].typ = expr_type
-				node.fields[i].expected_type = field_info.typ
+				node.fields[i].typ = got_type
+				node.fields[i].expected_type = exp_type
 
-				if expr_type.is_ptr() && expected_type.is_ptr() {
+				if got_type.is_ptr() && exp_type.is_ptr() {
 					if mut field.expr is ast.Ident {
 						if mut field.expr.obj is ast.Var {
 							mut obj := unsafe { &field.expr.obj }
@@ -575,7 +575,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					}
 				}
 
-				if field_type_sym.kind == .struct_ && !(field_type_sym.info as ast.Struct).is_anon
+				if exp_type_sym.kind == .struct_ && !(exp_type_sym.info as ast.Struct).is_anon
 					&& mut field.expr is ast.StructInit {
 					if field.expr.is_anon {
 						c.error('cannot assign anonymous `struct` to a typed `struct`',
