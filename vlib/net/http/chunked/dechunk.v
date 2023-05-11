@@ -1,38 +1,72 @@
 module chunked
 
-import io
-
-const max_read_len = 8 * 1024
+import strings
+// See: https://en.wikipedia.org/wiki/Chunked_transfer_encoding
+// /////////////////////////////////////////////////////////////
+// The chunk size is transferred as a hexadecimal number
+// followed by \r\n as a line separator,
+// followed by a chunk of data of the given size.
+// The end is marked with a chunk with size 0.
 
 struct ChunkScanner {
-	text string
 mut:
-	pos int
+	pos  int
+	text string
 }
 
-fn (mut s ChunkScanner) read(mut buf []u8) !int {
-	if s.pos >= s.text.len {
-		return io.Eof{}
+fn (mut s ChunkScanner) read_chunk_size() u32 {
+	mut n := u32(0)
+	for {
+		if s.pos >= s.text.len {
+			break
+		}
+		c := s.text[s.pos]
+		if !c.is_hex_digit() {
+			break
+		}
+		n = n << 4
+		n += u32(unhex(c))
+		s.pos++
 	}
-	end := if s.pos + chunked.max_read_len >= s.text.len {
-		s.text.len
-	} else {
-		s.pos + chunked.max_read_len
-	}
-	n := copy(mut buf, s.text[s.pos..end].bytes())
-	s.pos += n
 	return n
 }
 
-fn reader(s string) &io.BufferedReader {
-	return io.new_buffered_reader(
-		reader: &ChunkScanner{
-			text: s
-		}
-	)
+fn unhex(c u8) u8 {
+	if `0` <= c && c <= `9` {
+		return c - `0`
+	} else if `a` <= c && c <= `f` {
+		return c - `a` + 10
+	} else if `A` <= c && c <= `F` {
+		return c - `A` + 10
+	}
+	return 0
+}
+
+fn (mut s ChunkScanner) skip_crlf() {
+	s.pos += 2
+}
+
+fn (mut s ChunkScanner) read_chunk(chunksize u32) string {
+	startpos := s.pos
+	s.pos += int(chunksize)
+	return s.text[startpos..s.pos]
 }
 
 pub fn decode(text string) string {
-	mut reader_ := reader(text)
-	return io.read_all(reader: reader_) or { ''.bytes() }.bytestr()
+	mut sb := strings.new_builder(100)
+	mut cscanner := ChunkScanner{
+		pos: 0
+		text: text
+	}
+	for {
+		csize := cscanner.read_chunk_size()
+		if 0 == csize {
+			break
+		}
+		cscanner.skip_crlf()
+		sb.write_string(cscanner.read_chunk(csize))
+		cscanner.skip_crlf()
+	}
+	cscanner.skip_crlf()
+	return sb.str()
 }
