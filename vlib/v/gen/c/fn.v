@@ -223,7 +223,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 
 	mut name := g.c_fn_name(node) or { return }
-	mut type_name := g.typ(g.unwrap_generic(node.return_type))
+	mut type_name := g.ret_typ(node.return_type)
 
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') && !node.is_main
 		&& node.name != 'str' {

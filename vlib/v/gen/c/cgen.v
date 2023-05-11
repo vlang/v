@@ -989,6 +989,21 @@ fn (mut g Gen) typ(t ast.Type) string {
 	}
 }
 
+fn (mut g Gen) ret_typ(t ast.Type) string {
+	if t.has_flag(.generic) {
+		typ := g.unwrap_generic(t)
+		if typ.has_flag(.option) || typ.has_flag(.result) {
+			return g.typ(typ)
+		} else if g.table.sym(typ).kind == .array_fixed {
+			return '_v_' + g.base_type(typ)
+		} else {
+			return g.base_type(typ)
+		}
+	} else {
+		return g.typ(t)
+	}
+}
+
 fn (mut g Gen) base_type(_t ast.Type) string {
 	t := g.unwrap_generic(_t)
 	if g.pref.nofloat {
@@ -4607,7 +4622,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		return
 	}
 	tmpvar := g.new_tmp_var()
-	ret_typ := g.typ(g.unwrap_generic(fn_ret_type))
+	ret_typ := g.ret_typ(fn_ret_type)
 	mut use_tmp_var := g.defer_stmts.len > 0 || g.defer_profile_code.len > 0
 		|| g.cur_lock.lockeds.len > 0
 		|| (fn_return_is_multi && node.exprs.len >= 1 && fn_return_is_option)

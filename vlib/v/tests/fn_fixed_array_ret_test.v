@@ -74,12 +74,12 @@ fn test_assign() {
 	assert b.len == 4
 }
 
-// fn gn_fixed[T](a [4]T) [4]T {
-// 	return a
-// }
+fn gn_fixed[T](a [4]T) [4]T {
+	return a
+}
 
-// fn test_generic() {
-// 	b := [1,2,3,4]!
-// 	a := gn_fixed(b)
-// 	c := gn_fixed(a)
-// }
+fn test_generic() {
+	b := [1, 2, 3, 4]!
+	a := gn_fixed(b)
+	c := gn_fixed(a)
+}
