@@ -45,3 +45,41 @@ fn test_mr_fixed_opt_none() {
 	assert w2 == none
 	assert y2 == true
 }
+
+fn four(a [4]int) [4]int {
+	assert a.len == 4
+	return a
+}
+
+fn test_passing_arg() {
+	a := [1, 2, 3, 4]!
+	b := four(a)
+	assert b.len == 4
+	c := four(b)
+	assert c.len == 4
+}
+
+fn test_passing_opt_arg() {
+	a := fixed_opt()
+	four(a?)
+}
+
+fn test_assign() {
+	mut a := [1, 2, 3, 4]!
+	a = four(a)
+	assert a.len == 4
+	a = fixed_opt()?
+	assert a.len == 4
+	b := a
+	assert b.len == 4
+}
+
+// fn gn_fixed[T](a [4]T) [4]T {
+// 	return a
+// }
+
+// fn test_generic() {
+// 	b := [1,2,3,4]!
+// 	a := gn_fixed(b)
+// 	c := gn_fixed(a)
+// }

@@ -1579,7 +1579,8 @@ pub fn (mut g Gen) write_array_fixed_return_types() {
 	g.type_definitions.writeln('\n// BEGIN_array_fixed_return_structs')
 
 	for sym in g.table.type_symbols {
-		if sym.kind != .array_fixed || !(sym.info as ast.ArrayFixed).is_fn_ret {
+		if sym.kind != .array_fixed || (sym.info as ast.ArrayFixed).elem_type.has_flag(.generic)
+			|| !(sym.info as ast.ArrayFixed).is_fn_ret {
 			continue
 		}
 		g.typedefs.writeln('typedef struct ${sym.cname} ${sym.cname};')
@@ -2435,6 +2436,11 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 	// no cast
 	g.expr(expr)
+	if got_sym.info is ast.ArrayFixed && (got_sym.info as ast.ArrayFixed).is_fn_ret {
+		if !(exp_sym.info is ast.ArrayFixed && (exp_sym.info as ast.ArrayFixed).is_fn_ret) {
+			g.write('.ret_arr')
+		}
+	}
 }
 
 fn write_octal_escape(mut b strings.Builder, c u8) {
