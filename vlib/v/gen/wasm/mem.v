@@ -598,6 +598,26 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 				g.set(v)
 			}
 		}
+		ast.ArrayInit {
+			if !init.is_fixed {
+				g.v_error('wasm backend does not support non fixed arrays yet', init.pos)
+			}
+
+			elm_typ := init.elem_type
+			elm_size, _ := g.pool.type_size(elm_typ)
+
+			if !init.has_val {
+				g.zero_fill(v, elm_size)
+				return
+			}
+
+			mut voff := g.offset(v, elm_typ, 0) // index zero
+
+			for e in init.exprs {
+				g.set_with_expr(e, voff)
+				voff = g.offset(voff, elm_typ, elm_size)
+			}
+		}
 		else {
 			g.expr(init, v.typ)
 			g.set(v)

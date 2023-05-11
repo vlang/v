@@ -629,15 +629,11 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		ast.ParExpr, ast.UnsafeExpr {
 			g.expr(node.expr, expected)
 		}
-		/* ast.ArrayInit {
-			/* pos := g.allocate_local_var('_anonarray', node.typ)
-			expr := g.assign_expr_to_var(Var(Stack{ address: pos, ast_typ: node.typ }),
-				node, node.typ)
-			g.mknblock('EXPR(ARRAYINIT)', [expr, g.lea_address(pos)]) */
+		ast.ArrayInit {
 			v := g.new_local('', node.typ)
 			g.set_with_expr(node, v)
 			g.get(v)
-		} */
+		}
 		ast.GoExpr {
 			g.w_error('wasm backend does not support threads')
 		}

@@ -86,7 +86,7 @@ fn dd() {
 	}
 } */
 
-fn test() {
+/* fn test() {
 	mut a := AA{}
 	// a.a = 10
 	// a.b = 20
@@ -94,4 +94,8 @@ fn test() {
 	// c := *b
 	b := a
 	c := b.b
+} */
+
+fn main() {
+	a := [20, 25, 27]!
 }
