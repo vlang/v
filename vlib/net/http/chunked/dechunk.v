@@ -9,9 +9,9 @@ import strings
 // The end is marked with a chunk with size 0.
 
 struct ChunkScanner {
-mut:
-	pos  int
 	text string
+mut:
+	pos int
 }
 
 fn (mut s ChunkScanner) read_chunk_size() u32 {
@@ -43,12 +43,17 @@ fn unhex(c u8) u8 {
 }
 
 fn (mut s ChunkScanner) skip_crlf() {
-	s.pos += 2
+	if s.pos + 2 <= s.text.len {
+		s.pos += 2
+	}
 }
 
 fn (mut s ChunkScanner) read_chunk(chunksize u32) string {
 	startpos := s.pos
-	s.pos += int(chunksize)
+	cs := int(chunksize)
+	if s.pos + cs <= s.text.len {
+		s.pos += cs
+	}
 	return s.text[startpos..s.pos]
 }
 
