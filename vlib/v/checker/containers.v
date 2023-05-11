@@ -151,6 +151,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		mut expected_value_type := ast.void_type
 		mut expecting_interface_array := false
 		mut expecting_sumtype_array := false
+		mut is_first_elem_ptr := false
 		if c.expected_type != 0 {
 			expected_value_type = c.table.value_type(c.expected_type)
 			expected_value_sym := c.table.sym(expected_value_type)
@@ -209,8 +210,16 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				} else {
 					elem_type = ast.mktyp(typ)
 				}
+				if typ.is_ptr() {
+					is_first_elem_ptr = true
+				}
 				c.expected_type = elem_type
 				continue
+			} else {
+				if !typ.is_ptr() && is_first_elem_ptr {
+					c.error('cannot have non-pointer of type `${c.table.type_to_str(typ)}` in a pointer array of type `${c.table.type_to_str(elem_type)}`',
+						expr.pos())
+				}
 			}
 			if expr !is ast.TypeNode {
 				if c.table.type_kind(elem_type) == .interface_ {
