@@ -3923,6 +3923,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			p.attributes()
 			attrs << p.attrs
 			enum_attrs[val] = attrs
+			p.attrs = []
 		}
 		fields << ast.EnumField{
 			name: val
