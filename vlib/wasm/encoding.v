@@ -244,7 +244,7 @@ pub fn (mut mod Module) compile() []u8 {
 					continue
 				}
 				lsz++
-				mod.name(ft.name)
+				mod.name(ft.export_name or { ft.name })
 				mod.buf << 0x00 // function
 				mod.u32(u32(ft.idx + mod.fn_imports.len))
 			}
