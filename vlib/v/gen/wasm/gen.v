@@ -112,6 +112,47 @@ fn (mut g Gen) dbg_type_name(name string, typ ast.Type) string {
 	return "${name}<${`&`.repeat(typ.nr_muls())}${*g.table.sym(typ)}>"
 }
 
+fn (mut g Gen) fn_external_import(node ast.FnDecl) {
+	if !node.no_body || node.is_method {
+		g.v_error('interop functions cannot have bodies', node.body_pos)
+	}
+	if node.language == .js && g.pref.os == .wasi {
+		g.v_error('javascript interop functions are not allowed in a `wasi` build', node.pos)
+	}
+	if node.return_type.has_flag(.option) || node.return_type.has_flag(.result) {
+		g.v_error('interop functions must not return option or result', node.pos)
+	}
+
+	mut paraml := []wasm.ValType{cap: node.params.len}
+	mut retl := []wasm.ValType{cap: 1}
+	for arg in node.params {
+		if !g.is_pure_type(arg.typ) {
+			g.v_error('interop functions do not support complex arguments',
+				arg.type_pos)
+		}
+		paraml << g.get_wasm_type(arg.typ)
+	}
+
+	is_void := node.return_type != ast.void_type
+
+	if !(is_void || g.is_pure_type(node.return_type)) {
+		g.v_error('interop functions do not support complex returns', node.return_type_pos)
+	}
+	if is_void {
+		retl << g.get_wasm_type(node.return_type)
+	}
+
+
+	mut name := node.name
+	mut namespace := g.module_import_namespace
+	if cattr := node.attrs.find_first('wasm_import_namespace') {
+	}
+	if cattr := node.attrs.find_first('wasm_import_name') {
+	}
+	println(node)
+	panic("exit")
+}
+
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.language in [.js, .wasm] {
 		g.fn_external_import(node)
