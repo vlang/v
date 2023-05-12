@@ -3922,6 +3922,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	// mut default_exprs := []ast.Expr{}
 	mut fields := []ast.EnumField{}
 	mut uses_exprs := false
+	mut enum_attrs := map[string][]ast.Attr{}
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
 		pos := p.tok.pos()
 		val := p.check_name()
@@ -3935,6 +3936,13 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			has_expr = true
 			uses_exprs = true
 		}
+		mut attrs := []ast.Attr{}
+		if p.tok.kind == .lsbr {
+			p.attributes()
+			attrs << p.attrs
+			enum_attrs[val] = attrs
+			p.attrs = []
+		}
 		fields << ast.EnumField{
 			name: val
 			pos: pos
@@ -3942,6 +3950,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			has_expr: has_expr
 			comments: p.eat_comments(same_line: true)
 			next_comments: p.eat_comments()
+			attrs: attrs
 		}
 	}
 	p.top_level_statement_end()
@@ -3983,6 +3992,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			is_multi_allowed: is_multi_allowed
 			uses_exprs: uses_exprs
 			typ: enum_type
+			attrs: enum_attrs
 		}
 		is_pub: is_pub
 	})

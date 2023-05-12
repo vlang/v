@@ -205,7 +205,15 @@ fn (mut g Gen) gen_enum_to_str(utyp ast.Type, sym ast.TypeSymbol, enum_var strin
 	enc.writeln('${ident}switch (${enum_var}) {')
 	for val in (sym.info as ast.Enum).vals {
 		enc.write_string('${ident}\tcase ${enum_prefix}${val}:\t')
-		enc.writeln('${result_var} = json__encode_string(_SLIT("${val}")); break;')
+		// read [json:] attr from the Enum value
+		attr := g.table.enum_decls[sym.name].fields.filter(it.name == val)[0].attrs.find_first('json') or {
+			ast.Attr{}
+		}
+		if attr.has_arg {
+			enc.writeln('${result_var} = json__encode_string(_SLIT("${attr.arg}")); break;')
+		} else {
+			enc.writeln('${result_var} = json__encode_string(_SLIT("${val}")); break;')
+		}
 	}
 	enc.writeln('${ident}}')
 }
@@ -215,11 +223,19 @@ fn (mut g Gen) gen_str_to_enum(utyp ast.Type, sym ast.TypeSymbol, val_var string
 	enum_prefix := g.gen_enum_prefix(utyp.clear_flag(.option))
 	is_option := utyp.has_flag(.option)
 	for k, val in (sym.info as ast.Enum).vals {
-		if k == 0 {
-			dec.write_string('${ident}if (string__eq(_SLIT("${val}"), ${val_var}))\t')
-		} else {
-			dec.write_string('${ident}else if (string__eq(_SLIT("${val}"), ${val_var}))\t')
+		// read [json:] attr from the Enum value
+		attr := g.table.enum_decls[sym.name].fields.filter(it.name == val)[0].attrs.find_first('json') or {
+			ast.Attr{}
 		}
+		if k == 0 {
+			dec.write_string('${ident}if (string__eq(_SLIT("${val}"), ${val_var})')
+		} else {
+			dec.write_string('${ident}else if (string__eq(_SLIT("${val}"), ${val_var})')
+		}
+		if attr.has_arg {
+			dec.write_string(' || string__eq(_SLIT("${attr.arg}"), ${val_var})')
+		}
+		dec.write_string(')\t')
 		if is_option {
 			base_typ := g.base_type(utyp)
 			dec.writeln('_option_ok(&(${base_typ}[]){ ${enum_prefix}${val} }, ${result_var}, sizeof(${base_typ}));')
