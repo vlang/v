@@ -18,7 +18,7 @@ fn htonl64(payload_len u64) []u8 {
 	return ret
 }
 
-// create_masking_key returs a new masking key to use when masking websocket messages
+// create_masking_key returns a new masking key to use when masking websocket messages
 fn create_masking_key() []u8 {
 	mask_bit := rand.u8()
 	buf := []u8{len: 4, init: `0`}
@@ -26,10 +26,10 @@ fn create_masking_key() []u8 {
 	return buf
 }
 
-// create_key_challenge_response creates a key challange response from security key
+// create_key_challenge_response creates a key challenge response from security key
 fn create_key_challenge_response(seckey string) !string {
 	if seckey.len == 0 {
-		return error('unexpected seckey lengt zero')
+		return error('unexpected seckey length zero')
 	}
 	guid := '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 	sha1buf := seckey + guid

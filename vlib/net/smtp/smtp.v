@@ -162,7 +162,7 @@ fn (mut c Client) expect_reply(expected ReplyCode) ! {
 			return error('Received unexpected status code ${status}, expecting ${expected}')
 		}
 	} else {
-		return error('Recieved unexpected SMTP data: ${str}')
+		return error('Received unexpected SMTP data: ${str}')
 	}
 }
 
