@@ -114,7 +114,8 @@ fn (mut g Gen) dbg_type_name(name string, typ ast.Type) string {
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.language in [.js, .wasm] {
-		g.w_error('fn_decl: extern not implemented')
+		// TODO: g.fn_external_import(node)
+		return
 	}
 
 	name := if node.is_method {
@@ -210,6 +211,8 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		paramdbg << g.dbg_type_name(p.name, p.typ)
 		paraml << typ
 	}
+
+	mut should_export := node.is_pub && node.mod == 'main'
 	
 	g.func = g.mod.new_debug_function(name, wasm.FuncType{paraml, retl, none}, paramdbg)
 	func_start := g.func.patch_pos()
@@ -221,8 +224,14 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.func.c_end(g.ret_br)
 		g.bare_function_frame(func_start)
 	}
-	g.mod.commit(g.func, true)
+	if cattr := node.attrs.find_first('export') {
+		g.func.export_name(cattr.arg)
+		should_export = true
+	}
+	g.mod.commit(g.func, should_export)
 	g.bare_function_end()
+
+	// printfn is not implemented!
 }
 
 fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
@@ -819,12 +828,10 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 						g.expr(node.cond, ast.bool_type)
 						g.func.eqz(.i32_t)
 						g.func.c_br_if(block) // !cond, goto end
-						g.expr_stmts(node.stmts, ast.void_type)
-						g.func.c_br(loop) // goto loop
-					} else {
-						g.expr_stmts(node.stmts, ast.void_type)
-						g.func.c_br(loop)
 					}
+
+					g.expr_stmts(node.stmts, ast.void_type)
+					g.func.c_br(loop) // goto loop
 
 					g.loop_breakpoint_stack.pop()
 				}
@@ -832,34 +839,39 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 			}
 			g.func.c_end(block)
 		}
-		/* ast.ForCStmt {
-			mut for_stmt := []binaryen.Expression{}
-			if node.has_init {
-				for_stmt << g.expr_stmt(node.init, ast.void_type)
+		ast.ForCStmt {
+			block := g.func.c_block([], [])
+			{
+				if node.has_init {
+					g.expr_stmt(node.init, ast.void_type)
+				}
+				loop := g.func.c_loop([], [])
+				{
+					g.loop_breakpoint_stack << LoopBreakpoint{
+						c_continue: loop
+						c_break: block
+						name: node.label
+					}
+
+					if node.has_cond {
+						g.expr(node.cond, ast.bool_type)
+						g.func.eqz(.i32_t)
+						g.func.c_br_if(block) // !cond, goto end
+					}
+					
+					g.expr_stmts(node.stmts, ast.void_type)
+
+					if node.has_inc {
+						g.expr_stmt(node.inc, ast.void_type)
+					}
+
+					g.func.c_br(loop) // goto loop
+					g.loop_breakpoint_stack.pop()
+				}
+				g.func.c_end(loop)
 			}
-
-			lbl := g.new_for_label(node.label)
-			lpp_name := 'L${lbl}'
-			blk_name := 'B${lbl}'
-
-			mut loop_exprs := []binaryen.Expression{}
-			if node.has_cond {
-				condexpr := binaryen.unary(g.mod, binaryen.eqzint32(), g.expr(node.cond,
-					ast.bool_type))
-				loop_exprs << binaryen.br(g.mod, blk_name.str, condexpr, unsafe { nil })
-			}
-			loop_exprs << g.expr_stmts(node.stmts, ast.void_type)
-
-			if node.has_inc {
-				loop_exprs << g.expr_stmt(node.inc, ast.void_type)
-			}
-			loop_exprs << binaryen.br(g.mod, lpp_name.str, unsafe { nil }, unsafe { nil })
-			loop := binaryen.loop(g.mod, lpp_name.str, g.mkblock(loop_exprs))
-
-			for_stmt << binaryen.block(g.mod, blk_name.str, &loop, 1, type_none)
-			g.pop_for_label()
-			g.mkblock(for_stmt)
-		} */
+			g.func.c_end(block)
+		}
 		ast.BranchStmt {
 			mut bp := g.loop_breakpoint_stack.last()
 			if node.label != '' {

@@ -43,6 +43,7 @@ mut:
 	locals  []FunctionLocal
 pub:
 	name string
+pub mut:
 	export_name ?string
 }
 

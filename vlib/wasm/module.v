@@ -220,7 +220,6 @@ pub fn (mut mod Module) commit(func Function, export bool) {
 	mod.functions[func.name] = Function{
 		...func
 		export: export
-		export_name: export_name
 	}
 }
 

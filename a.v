@@ -96,6 +96,16 @@ fn dd() {
 	c := b.b
 } */
 
-fn main() {
-	a := [20, 25, 27]!
+// fn main() {
+// 	a := [20, 25, 27]!
+// }
+
+fn ret() int {
+	mut c := 0
+
+	for a := 0 ; a < 10 ; a++ {
+		c += a
+	}
+
+	return c
 }
