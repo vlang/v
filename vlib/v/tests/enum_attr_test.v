@@ -1,8 +1,8 @@
 import json
 
 enum Foo {
-	yay
-	foo
+	yay  [json: 'A'; yay]
+	foo  [foo; json: 'B']
 }
 
 struct FooStruct {
@@ -17,8 +17,8 @@ fn test_comptime() {
 			assert f.attrs[1] == 'yay'
 		}
 		if f.value == Foo.foo {
-			assert f.attrs[0] == 'json: B'
-			assert f.attrs[1] == 'foo'
+			assert f.attrs[1] == 'json: B'
+			assert f.attrs[0] == 'foo'
 		}
 	}
 }

@@ -986,6 +986,10 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 			f.write(' = ')
 			f.expr(field.expr)
 		}
+		if field.attrs.len > 0 {
+			f.write(' ')
+			f.single_line_attrs(field.attrs, inline: true)
+		}
 		f.comments(field.comments, inline: true, has_nl: false, level: .indent)
 		f.writeln('')
 		f.comments(field.next_comments, inline: false, has_nl: true, level: .indent)
