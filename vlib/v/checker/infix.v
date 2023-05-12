@@ -674,7 +674,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				c.error('only `==`, `!=`, `|` and `&` are defined on `[flag]` tagged `enum`, use an explicit cast to `int` if needed',
 					node.pos)
 			}
-		} else if !c.pref.translated && !c.file.is_translated {
+		} else if !c.pref.translated && !c.file.is_translated && !left_type.has_flag(.generic)
+			&& !right_type.has_flag(.generic) {
 			// Regular enums
 			c.error('only `==` and `!=` are defined on `enum`, use an explicit cast to `int` if needed',
 				node.pos)
