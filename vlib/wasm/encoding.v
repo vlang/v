@@ -160,18 +160,14 @@ pub fn (mut mod Module) compile() []u8 {
 		{
 			mod.u32(u32(mod.fn_imports.len + mod.global_imports.len))
 			for ft in mod.fn_imports {
-				mod.u32(u32(ft.mod.len))
-				mod.buf << ft.mod.bytes()
-				mod.u32(u32(ft.name.len))
-				mod.buf << ft.name.bytes()
+				mod.name(ft.mod)
+				mod.name(ft.name)
 				mod.buf << 0x00 // function
 				mod.u32(u32(ft.tidx))
 			}
 			for gt in mod.global_imports {
-				mod.u32(u32(gt.mod.len))
-				mod.buf << gt.mod.bytes()
-				mod.u32(u32(gt.name.len))
-				mod.buf << gt.name.bytes()
+				mod.name(gt.mod)
+				mod.name(gt.name)
 				mod.buf << 0x03 // global
 				mod.global_type(gt.typ, gt.is_mut)
 			}

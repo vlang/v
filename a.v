@@ -110,6 +110,10 @@ fn dd() {
 	return c
 } */
 
+[wasm_import_namespace: 'wasi_unstable']
+fn WASM.proc_exit(int)
+
 fn main() {
 	a := [16]int{}
+	WASM.proc_exit(0)
 }

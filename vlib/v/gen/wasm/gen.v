@@ -112,6 +112,20 @@ fn (mut g Gen) dbg_type_name(name string, typ ast.Type) string {
 	return "${name}<${`&`.repeat(typ.nr_muls())}${*g.table.sym(typ)}>"
 }
 
+fn (g &Gen) get_ns_plus_name(default_name string, attrs []ast.Attr) (string, string) {
+	mut name := default_name
+	mut namespace := g.module_import_namespace
+
+	if cattr := attrs.find_first('wasm_import_namespace') {
+		namespace = cattr.arg
+	}
+	if cattr := attrs.find_first('wasm_import_name') {
+		name = cattr.arg
+	}
+
+	return namespace, name
+}
+
 fn (mut g Gen) fn_external_import(node ast.FnDecl) {
 	if !node.no_body || node.is_method {
 		g.v_error('interop functions cannot have bodies', node.body_pos)
@@ -133,24 +147,17 @@ fn (mut g Gen) fn_external_import(node ast.FnDecl) {
 		paraml << g.get_wasm_type(arg.typ)
 	}
 
-	is_void := node.return_type != ast.void_type
+	is_ret := node.return_type != ast.void_type
 
-	if !(is_void || g.is_pure_type(node.return_type)) {
+	if is_ret && !g.is_pure_type(node.return_type) {
 		g.v_error('interop functions do not support complex returns', node.return_type_pos)
 	}
-	if is_void {
+	if is_ret {
 		retl << g.get_wasm_type(node.return_type)
 	}
 
-
-	mut name := node.name
-	mut namespace := g.module_import_namespace
-	if cattr := node.attrs.find_first('wasm_import_namespace') {
-	}
-	if cattr := node.attrs.find_first('wasm_import_name') {
-	}
-	println(node)
-	panic("exit")
+	namespace, name := g.get_ns_plus_name(node.short_name, node.attrs)
+	g.mod.new_function_import(namespace, name, paraml, retl)
 }
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
@@ -546,6 +553,7 @@ fn (mut g Gen) if_expr(ifexpr ast.IfExpr, expected ast.Type) {
 
 fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []Var) {
 	g.is_leaf_function = false
+	mut wasm_ns := ?string(none)
 	mut name := node.name
 
 	is_print := name in ['panic', 'println', 'print', 'eprintln', 'eprint']
@@ -558,6 +566,22 @@ fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []
 	if node.is_method {
 		name = '${g.table.get_type_name(node.receiver_type)}.${node.name}'
 	}
+
+	if node.language in [.js, .wasm] {
+		cfn_attrs := g.table.fns[node.name].attrs
+
+		short_name := if node.language == .js {
+			node.name.all_after_last("JS.")
+		} else {
+			node.name.all_after_last("WASM.")
+		}
+
+		eprintln("------- ${voidptr(g.table)}")
+		wasm_ns, name = g.get_ns_plus_name(short_name, cfn_attrs)
+		eprintln("------- ${voidptr(g.table)}")
+	}
+
+	eprintln("------- what?? ${voidptr(g.table)}")
 
 	// callconv: {return structs} {method self} {arguments}
 	
@@ -617,7 +641,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []
 		g.expr(expr, node.expected_arg_types[idx])
 	}
 
-	g.func.call(name)
+	if namespace := wasm_ns {
+		g.func.call_import(namespace, name)
+	} else {
+		g.func.call(name)
+	}
 
 	if expected == ast.void_type && node.return_type != ast.void_type {
 		for rt in rts { // order doesn't matter
