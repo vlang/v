@@ -233,7 +233,7 @@ fn (mut g Gen) gen_str_to_enum(utyp ast.Type, sym ast.TypeSymbol, val_var string
 			dec.write_string('${ident}else if (string__eq(_SLIT("${val}"), ${val_var})')
 		}
 		if attr.has_arg {
-			dec.write_string('|| string__eq(_SLIT("${attr.arg}"), ${val_var})')
+			dec.write_string(' || string__eq(_SLIT("${attr.arg}"), ${val_var})')
 		}
 		dec.write_string(')\t')
 		if is_option {
