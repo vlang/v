@@ -607,7 +607,9 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 			elm_size, _ := g.pool.type_size(elm_typ)
 
 			if !init.has_val {
-				g.zero_fill(v, elm_size)
+				arr_size, _ := g.pool.type_size(v.typ)
+
+				g.zero_fill(v, arr_size)
 				return
 			}
 

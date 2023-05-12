@@ -100,7 +100,7 @@ fn dd() {
 // 	a := [20, 25, 27]!
 // }
 
-fn ret() int {
+/* fn ret() int {
 	mut c := 0
 
 	for a := 0 ; a < 10 ; a++ {
@@ -108,4 +108,8 @@ fn ret() int {
 	}
 
 	return c
+} */
+
+fn main() {
+	a := [16]int{}
 }
