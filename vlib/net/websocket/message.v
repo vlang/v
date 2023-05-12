@@ -231,7 +231,7 @@ pub fn (mut ws Client) parse_frame_header() !Frame {
 			frame.opcode = unsafe { OPCode(int(buffer[0] & 0x7F)) }
 			frame.has_mask = (buffer[1] & 0x80) == 0x80
 			frame.payload_len = buffer[1] & 0x7F
-			// if has mask set the byte postilion where mask ends
+			// if has mask, set the byte position where the mask ends
 			if frame.has_mask {
 				mask_end_byte = if frame.payload_len < 126 {
 					websocket.header_len_offset + 4
