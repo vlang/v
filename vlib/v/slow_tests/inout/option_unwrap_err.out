@@ -1,0 +1,14 @@
+1234
+1
+ok
+1234
+================ V panic ================
+   module: main
+ function: main()
+  message: 
+     file: vlib/v/slow_tests/inout/option_unwrap_err.vv:12
+   v hash: 814d682
+=========================================
+/tmp/v_1000/option_unwrap_err.14515441765423791889.tmp.c:6768: at panic_debug: Backtrace
+/tmp/v_1000/option_unwrap_err.14515441765423791889.tmp.c:12525: by main__main
+/tmp/v_1000/option_unwrap_err.14515441765423791889.tmp.c:12902: by main
