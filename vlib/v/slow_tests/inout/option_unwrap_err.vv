@@ -9,6 +9,6 @@ fn main() {
 	t() or { println(1) }
 	println('ok')
 
-	t()?
+	t() or { return }
 	println('ok')
 }
