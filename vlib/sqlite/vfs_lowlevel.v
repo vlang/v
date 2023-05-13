@@ -118,14 +118,20 @@ pub fn get_default_vfs() ?&Sqlite3_vfs {
 pub fn (mut v Sqlite3_vfs) register_as_nondefault() ? {
 	res := C.sqlite3_vfs_register(v, 0)
 
-	return if sqlite_ok == res { none } else { error('sqlite3_vfs_register returned ${res}') }
+	if sqlite_ok == res {
+		return
+	}
+	error('sqlite3_vfs_register returned ${res}')
 }
 
 // unregister Requests sqlite to stop using VFS as passed in receiver argument
 pub fn (mut v Sqlite3_vfs) unregister() ? {
 	res := C.sqlite3_vfs_unregister(v)
 
-	return if sqlite_ok == res { none } else { error('sqlite3_vfs_unregister returned ${res}') }
+	return if sqlite_ok == res {
+		return
+	}
+	error('sqlite3_vfs_unregister returned ${res}')
 }
 
 // https://www.sqlite.org/c3ref/open.html
