@@ -144,7 +144,7 @@ fn find_headers_range(data string) !(int, int) {
 	start_idx := data.index('\n') or { return error('no start index found') } + 1
 	mut count := 0
 	for i := start_idx; i < data.len; i++ {
-		if data[i] == `\n` || (data[i] == `\r` && i + 1 < data.len && data[i + 1] == `\n`) {
+		if data[i] == `\n` || (data[i] == `\r` && data[i + 1] == `\n`) {
 			count++
 		} else if data[i] != `\r` {
 			count = 0
