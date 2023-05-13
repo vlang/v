@@ -1630,7 +1630,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 			if senum_type == 'i32' {
 				signed, enum_imin, enum_imax = true, -2_147_483_648, 0x7FFF_FFFF
 			} else {
-				c.error('`${senum_type}` is not one of `i8`,`i16`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`',
+				c.error('`${senum_type}` is not one of `i8`,`i16`,`i32`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`',
 					node.typ_pos)
 			}
 		}
