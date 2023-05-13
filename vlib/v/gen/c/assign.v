@@ -747,7 +747,10 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 				g.write(' = ${tmp_var};')
 			} else {
 				g.write('_option_ok(&(${base_typ}[]) { ${tmp_var} }, (${option_name}*)(&')
+				tmp_left_is_opt := g.left_is_opt
+				g.left_is_opt = true
 				g.expr(lx)
+				g.left_is_opt = tmp_left_is_opt
 				g.writeln('), sizeof(${base_typ}));')
 			}
 		} else {
