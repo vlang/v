@@ -4,6 +4,8 @@
  in addition to `[skip]`. This allows having custom behavior for different serialization methods.
 - ORM: fixed a foreign key bug that could result in an extra insert.
 - Generic functions as function parameters are now supported: `fn f[T](x T, i int, f_ Fn[T]) T { `.
+- Enum values now can have attributes. 
+- json: Enum value string serialization supports `[json:'alias']` to change its string values.
 
 ## V 0.3.4
 
