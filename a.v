@@ -111,6 +111,7 @@ fn dd() {
 } */
 
 [wasm_import_namespace: 'wasi_unstable']
+[wasm_import_name: 'proc_ee']
 fn WASM.proc_exit(int)
 
 fn main() {

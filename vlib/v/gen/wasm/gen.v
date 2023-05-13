@@ -576,12 +576,13 @@ fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []
 			node.name.all_after_last("WASM.")
 		}
 
-		eprintln("------- ${voidptr(g.table)}")
-		wasm_ns, name = g.get_ns_plus_name(short_name, cfn_attrs)
-		eprintln("------- ${voidptr(g.table)}")
-	}
+		// setting a `?string` in a multireturn causes UNDEFINED BEHAVIOR AND STACK CORRUPTION
+		// best to use a workaround till that is fixed
 
-	eprintln("------- what?? ${voidptr(g.table)}")
+		mut wasm_ns_storage := ''
+		wasm_ns_storage, name = g.get_ns_plus_name(short_name, cfn_attrs)
+		wasm_ns = wasm_ns_storage
+	}
 
 	// callconv: {return structs} {method self} {arguments}
 	
