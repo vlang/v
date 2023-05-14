@@ -18,8 +18,53 @@ mut:
 	owner_id int
 }
 
+struct Entity {
+	name        string [primary]
+	description string
+}
+
+fn test_create_without_id_field() {
+	db := sqlite.connect(':memory:')!
+
+	sql db {
+		create table Entity
+	}!
+
+	first := Entity{
+		name: 'First'
+		description: 'Such wow! No `id` field'
+	}
+	second := Entity{
+		name: 'Second'
+		description: 'Such wow! No `id` field again'
+	}
+
+	sql db {
+		insert first into Entity
+		insert second into Entity
+	}!
+
+	entities := sql db {
+		select from Entity
+	}!
+
+	assert entities.len == 2
+
+	first_entity := sql db {
+		select from Entity where name == 'First'
+	}!
+
+	assert first_entity.first().name == 'First'
+
+	second_entity := sql db {
+		select from Entity where name == 'Second'
+	}!
+
+	assert second_entity.first().name == 'Second'
+}
+
 fn test_create_only_one_table() {
-	mut db := sqlite.connect(':memory:') or { panic(err) }
+	mut db := sqlite.connect(':memory:')!
 
 	sql db {
 		create table Parent
@@ -47,7 +92,7 @@ fn test_create_only_one_table() {
 }
 
 fn test_drop_only_one_table() {
-	mut db := sqlite.connect(':memory:') or { panic(err) }
+	mut db := sqlite.connect(':memory:')!
 
 	sql db {
 		create table Parent

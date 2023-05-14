@@ -420,7 +420,7 @@ interface ControllerInterface {
 }
 
 pub struct Controller {
-mut:
+pub mut:
 	controllers []&ControllerPath
 }
 

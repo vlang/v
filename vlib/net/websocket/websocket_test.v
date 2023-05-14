@@ -10,7 +10,7 @@ pub mut:
 	nr_closes        int
 }
 
-// Do not run these tests everytime, since they are flaky.
+// Do not run these tests every time, since they are flaky.
 // They have their own specialized CI runner.
 const github_job = os.getenv('GITHUB_JOB')
 
@@ -129,10 +129,10 @@ fn ws_test(family net.AddrFamily, uri string) ! {
 		client.write(msg.bytes(), .text_frame) or {
 			panic('fail to write to websocket, err: ${err}')
 		}
-		// sleep to give time to recieve response before send a new one
+		// sleep to give time to receive response before send a new one
 		time.sleep(100 * time.millisecond)
 	}
-	// sleep to give time to recieve response before asserts
+	// sleep to give time to receive response before asserts
 	time.sleep(1500 * time.millisecond)
 	// We expect at least 2 pongs, one sent directly and one indirectly
 	assert test_results.nr_pong_received >= 2

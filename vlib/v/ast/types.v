@@ -193,6 +193,7 @@ pub:
 	is_multi_allowed bool
 	uses_exprs       bool
 	typ              Type
+	attrs            map[string][]Attr
 }
 
 [minify]

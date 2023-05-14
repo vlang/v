@@ -2119,6 +2119,29 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	}
 }
 
+fn (mut p Parser) is_following_concrete_types() bool {
+	if !(p.tok.kind == .lsbr && p.tok.pos - p.prev_tok.pos == p.prev_tok.len) {
+		return false
+	}
+	mut i := 1
+	for {
+		cur_tok := p.peek_token(i)
+		if cur_tok.kind == .eof {
+			return false
+		} else if cur_tok.kind == .rsbr {
+			break
+		} else if cur_tok.kind == .name {
+			if !(cur_tok.lit.len > 1 && p.is_typename(cur_tok)) {
+				return false
+			}
+		} else if cur_tok.kind != .comma {
+			return false
+		}
+		i++
+	}
+	return true
+}
+
 pub fn (mut p Parser) ident(language ast.Language) ast.Ident {
 	is_option := p.tok.kind == .question && p.peek_tok.kind == .lsbr
 	if is_option {
@@ -2172,12 +2195,7 @@ pub fn (mut p Parser) ident(language ast.Language) ast.Ident {
 			scope: p.scope
 		}
 	}
-	mut is_known_generic_fn := false
-	if func := p.table.find_fn(p.prepend_mod(name)) {
-		if func.generic_names.len > 0 {
-			is_known_generic_fn = true
-		}
-	}
+	is_following_concrete_types := p.is_following_concrete_types()
 	mut concrete_types := []ast.Type{}
 	if p.expr_mod.len > 0 {
 		name = '${p.expr_mod}.${name}'
@@ -2195,7 +2213,7 @@ pub fn (mut p Parser) ident(language ast.Language) ast.Ident {
 	} else if allowed_cases && p.tok.kind == .key_orelse {
 		or_kind = ast.OrKind.block
 		or_stmts, or_pos = p.or_block(.no_err_var)
-	} else if is_known_generic_fn && p.tok.kind == .lsbr {
+	} else if is_following_concrete_types {
 		// `generic_fn[int]`
 		concrete_types = p.parse_concrete_types()
 	}
@@ -3904,6 +3922,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	// mut default_exprs := []ast.Expr{}
 	mut fields := []ast.EnumField{}
 	mut uses_exprs := false
+	mut enum_attrs := map[string][]ast.Attr{}
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
 		pos := p.tok.pos()
 		val := p.check_name()
@@ -3917,6 +3936,13 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			has_expr = true
 			uses_exprs = true
 		}
+		mut attrs := []ast.Attr{}
+		if p.tok.kind == .lsbr {
+			p.attributes()
+			attrs << p.attrs
+			enum_attrs[val] = attrs
+			p.attrs = []
+		}
 		fields << ast.EnumField{
 			name: val
 			pos: pos
@@ -3924,6 +3950,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			has_expr: has_expr
 			comments: p.eat_comments(same_line: true)
 			next_comments: p.eat_comments()
+			attrs: attrs
 		}
 	}
 	p.top_level_statement_end()
@@ -3965,6 +3992,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			is_multi_allowed: is_multi_allowed
 			uses_exprs: uses_exprs
 			typ: enum_type
+			attrs: enum_attrs
 		}
 		is_pub: is_pub
 	})

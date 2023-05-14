@@ -1,6 +1,6 @@
 module openssl
 
-// On Linux, prefer a localy built openssl, because it is
+// On Linux, prefer a locally built openssl, because it is
 // much more likely for it to be newer, than the system
 // openssl from libssl-dev. If there is no local openssl,
 // the next #pkgconfig flag is harmless, since it will still

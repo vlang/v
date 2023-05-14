@@ -111,6 +111,7 @@ pub struct EnumData {
 pub:
 	name  string
 	value i64
+	attrs []string
 }
 
 // FieldData holds information about a field. Fields reside on structs.

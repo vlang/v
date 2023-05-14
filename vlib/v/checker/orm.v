@@ -212,6 +212,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	info := table_sym.info as ast.Struct
 	mut fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
 	mut sub_structs := map[int]ast.SqlStmtLine{}
+
 	for f in fields.filter((c.table.type_symbols[int(it.typ)].kind == .struct_
 		|| (c.table.sym(it.typ).kind == .array
 		&& c.table.sym(c.table.sym(it.typ).array_info().elem_type).kind == .struct_))
@@ -332,9 +333,7 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, t
 		c.orm_error('select: empty fields in `${table_name}`', pos)
 		return []ast.StructField{}
 	}
-	if fields[0].name != 'id' {
-		c.orm_error('`id int` must be the first field in `${table_name}`', pos)
-	}
+
 	return fields
 }
 
@@ -537,6 +536,20 @@ fn (mut c Checker) check_db_expr(db_expr &ast.Expr) bool {
 	return true
 }
 
+// walkingdevel: Now I don't think it's a good solution
+// because it only checks structure initialization,
+// but structure fields may be updated later before inserting.
+// For example,
+// ```v
+// mut package := Package{
+// 	name: 'xml'
+// }
+//
+// package.author = User{
+// 	username: 'walkingdevel'
+// }
+// ```
+// TODO: rewrite it, move to runtime.
 fn (_ &Checker) check_field_of_inserting_struct_is_uninitialized(node &ast.SqlStmtLine, field_name string) bool {
 	struct_scope := node.scope.find_var(node.object_var_name) or { return false }
 

@@ -201,7 +201,7 @@ fn (mut zftp FTP) pasv() !&DTP {
 		println('pass: ${data}')
 	}
 	if code != ftp.passive_mode {
-		return error('pasive mode not allowed')
+		return error('passive mode not allowed')
 	}
 	dtp := new_dtp(data)!
 	return dtp

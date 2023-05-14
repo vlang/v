@@ -69,6 +69,19 @@ pub fn (tag &Tag) str() string {
 	return html_str.str()
 }
 
+// get_tag retrieves the first found child tag in the tag that has the given tag name.
+pub fn (tag &Tag) get_tag(name string) ?&Tag {
+	for child in tag.children {
+		if child.name == name {
+			return child
+		}
+		if c := child.get_tag(name) {
+			return c
+		}
+	}
+	return none
+}
+
 // get_tags retrieves all the child tags recursively in the tag that has the given tag name.
 pub fn (tag &Tag) get_tags(name string) []&Tag {
 	mut res := []&Tag{}
@@ -79,6 +92,20 @@ pub fn (tag &Tag) get_tags(name string) []&Tag {
 		res << child.get_tags(name)
 	}
 	return res
+}
+
+// get_tag_by_attribute retrieves the first found child tag in the tag that has the given attribute name.
+pub fn (tag &Tag) get_tag_by_attribute(name string) ?&Tag {
+	// mut res := &Tag{}
+	for child in tag.children {
+		if child.attributes[name] != '' {
+			return child
+		}
+		if c := child.get_tag_by_attribute(name) {
+			return c
+		}
+	}
+	return none
 }
 
 // get_tags_by_attribute retrieves all the child tags recursively in the tag that has the given attribute name.
@@ -93,6 +120,19 @@ pub fn (tag &Tag) get_tags_by_attribute(name string) []&Tag {
 	return res
 }
 
+// get_tag_by_attribute_value retrieves the first found child tag in the tag that has the given attribute name and value.
+pub fn (tag &Tag) get_tag_by_attribute_value(name string, value string) ?&Tag {
+	for child in tag.children {
+		if child.attributes[name] == value {
+			return child
+		}
+		if c := child.get_tag_by_attribute_value(name, value) {
+			return c
+		}
+	}
+	return none
+}
+
 // get_tags_by_attribute_value retrieves all the child tags recursively in the tag that has the given attribute name and value.
 pub fn (tag &Tag) get_tags_by_attribute_value(name string, value string) []&Tag {
 	mut res := []&Tag{}
@@ -103,6 +143,26 @@ pub fn (tag &Tag) get_tags_by_attribute_value(name string, value string) []&Tag 
 		res << child.get_tags_by_attribute_value(name, value)
 	}
 	return res
+}
+
+// get_tag_by_class_name retrieves the first found child tag in the tag that has the given class name(s).
+pub fn (tag &Tag) get_tag_by_class_name(names ...string) ?&Tag {
+	for child in tag.children {
+		mut matched := true
+		for name in names {
+			matched = child.class_set.exists(name)
+			if !matched {
+				break
+			}
+		}
+		if matched {
+			return child
+		}
+		if c := child.get_tag_by_class_name(...names) {
+			return c
+		}
+	}
+	return none
 }
 
 // get_tags_by_class_name retrieves all the child tags recursively in the tag that has the given class name(s).
