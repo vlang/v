@@ -1,12 +1,10 @@
 import db.sqlite
 import rand
 
-const (
-	max_file_name_len = 256
-)
+const max_file_name_len = 256
 
 fn test_vfs_register() {
-	org_default_vfs := sqlite.get_default_vfs()?
+	org_default_vfs := sqlite.get_default_vfs()!
 
 	assert org_default_vfs.zName != 0
 
@@ -22,9 +20,9 @@ fn test_vfs_register() {
 
 	vfs_descr.register_as_nondefault() or { panic('vfs register failed ${err}') }
 
-	sqlite.get_vfs(vfs_name)?
+	sqlite.get_vfs(vfs_name)!
 
-	now_default_vfs := sqlite.get_default_vfs()?
+	now_default_vfs := sqlite.get_default_vfs()!
 
 	assert now_default_vfs.zName == org_default_vfs.zName
 
@@ -37,7 +35,7 @@ fn test_vfs_register() {
 
 // minimal vfs based on example https://www.sqlite.org/src/doc/trunk/src/test_demovfs.c
 fn test_verify_vfs_is_actually_used() {
-	wrapped := sqlite.get_default_vfs()?
+	wrapped := sqlite.get_default_vfs()!
 
 	vfs_name := 'sometest'
 	mut vfs_state := &ExampleVfsState{
@@ -64,7 +62,7 @@ fn test_verify_vfs_is_actually_used() {
 		xCurrentTimeInt64: wrapped.xCurrentTimeInt64
 	}
 
-	vfs_descr.register_as_nondefault()?
+	vfs_descr.register_as_nondefault()!
 
 	// normally this would be written to disk
 	mut db := sqlite.connect_full('foo.db', [.readwrite, .create], vfs_name)!

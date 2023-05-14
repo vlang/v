@@ -87,51 +87,40 @@ fn C.sqlite3_vfs_unregister(&C.sqlite3_vfs) int
 
 // get_vfs Requests sqlite to return instance of VFS with given name.
 // when such vfs is not known, `none` is returned
-pub fn get_vfs(name string) ?&Sqlite3_vfs {
+pub fn get_vfs(name string) !&Sqlite3_vfs {
 	res := C.sqlite3_vfs_find(name.str)
-
-	unsafe {
-		if res == nil {
-			return none
-		} else {
-			return res
-		}
+	if res != unsafe { nil } {
+		return res
 	}
+	return error('sqlite3_vfs_find returned 0')
 }
 
 // get_default_vfs Asks sqlite for default VFS instance
-pub fn get_default_vfs() ?&Sqlite3_vfs {
-	unsafe {
-		res := C.sqlite3_vfs_find(nil)
-		if res == nil {
-			return none
-		} else {
-			return res
-		}
+pub fn get_default_vfs() !&Sqlite3_vfs {
+	res := C.sqlite3_vfs_find(unsafe { nil })
+	if res != unsafe { nil } {
+		return res
 	}
+	return error('sqlite3_vfs_find(0) returned 0')
 }
 
 // register_as_nondefault Asks sqlite to register VFS passed in receiver argument as the known VFS.
 // more info about VFS: https://www.sqlite.org/c3ref/vfs.html
 // 'not TODOs' to prevent corruption: https://sqlite.org/howtocorrupt.html
 // example VFS: https://www.sqlite.org/src/doc/trunk/src/test_demovfs.c
-pub fn (mut v Sqlite3_vfs) register_as_nondefault() ? {
+pub fn (mut v Sqlite3_vfs) register_as_nondefault() ! {
 	res := C.sqlite3_vfs_register(v, 0)
-
-	if sqlite_ok == res {
-		return
+	if sqlite_ok != res {
+		return error('sqlite3_vfs_register returned ${res}')
 	}
-	error('sqlite3_vfs_register returned ${res}')
 }
 
 // unregister Requests sqlite to stop using VFS as passed in receiver argument
-pub fn (mut v Sqlite3_vfs) unregister() ? {
+pub fn (mut v Sqlite3_vfs) unregister() ! {
 	res := C.sqlite3_vfs_unregister(v)
-
-	if sqlite_ok == res {
-		return
+	if sqlite_ok != res {
+		return error('sqlite3_vfs_unregister returned ${res}')
 	}
-	error('sqlite3_vfs_unregister returned ${res}')
 }
 
 // https://www.sqlite.org/c3ref/open.html
