@@ -743,14 +743,21 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			}*/
 			
 			// ptr + index * size
-			size, _ := g.pool.type_size(expected)
+			mut typ := node.left_type
 
 			g.expr(node.left, node.left_type)
 			if node.left_type == ast.string_type {
 				// be pedantic...
 				g.load_field(ast.string_type, ast.voidptr_type, 'str')
+				typ = ast.u8_type
+			} else {
+				if typ.nr_muls() != 0 {
+					typ = typ.deref()
+				}
 			}
 			
+			size, _ := g.pool.type_size(typ)
+
 			g.expr(node.index, ast.int_type)
 			if size > 1 {
 				g.literalint(size, ast.int_type)
@@ -759,11 +766,11 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			
 			g.func.add(.i32_t)
 
-			if g.is_pure_type(node.left_type) && !g.needs_address {
+			if !g.needs_address {
 				// ptr
-				g.load(node.left_type, 0)
+				g.load(typ, 0)
 			}
-			g.cast(node.left_type, expected)
+			g.cast(typ, expected)
 		}
 		ast.StructInit {
 			v := g.new_local('', node.typ)

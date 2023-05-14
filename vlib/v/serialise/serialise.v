@@ -414,7 +414,7 @@ fn (mut p Pool) u8(v u8) {
 
 fn (mut p Pool) ptr(offset int) int {
 	assert p.table.pointer_size in [1, 2, 4, 8]
-	pos := p.alignment(p.table.pointer_size)
+	pos := p.buf.len // p.alignment(p.table.pointer_size)
 
 	if p.store_relocs {
 		p.relocs << Reloc{

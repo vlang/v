@@ -6,6 +6,7 @@ module wasm
 import wasm
 import v.ast
 import v.serialise
+import encoding.binary
 
 struct Var {
 	name       string
@@ -97,13 +98,15 @@ fn (mut g Gen) get_var_or_make_from_expr(node ast.Expr, typ ast.Type) Var {
 		return v
 	}
 
-	mut v := g.new_local('', typ)
-	v.is_address = true
+	mut v := g.new_local('__tmp', ast.voidptr_type)
 	g.needs_address = true
 	{
 		g.set_with_expr(node, v)
 	}
 	g.needs_address = false
+
+	v.typ = typ
+	v.is_address = true
 
 	return v
 }
@@ -773,7 +776,12 @@ fn (mut g Gen) housekeeping() {
 	if g.sp_global != none || g.pool.buf.len > 0 {
 		g.mod.assign_memory('memory', true, u32(preallocated_pages), none)
 		if g.pool.buf.len > 0 {
-			g.mod.new_data_segment(none, g.data_base, g.pool.buf)
+			mut buf := unsafe { g.pool.buf }
+
+			for reloc in g.pool.relocs {
+				binary.little_endian_put_u32_at(mut buf, u32(g.data_base + reloc.pos), reloc.offset)
+			}
+			g.mod.new_data_segment(none, g.data_base, buf)
 		}
 	}
 	if hp := g.heap_base {

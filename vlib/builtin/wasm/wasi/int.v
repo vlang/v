@@ -67,6 +67,12 @@ fn (nn int) str_l(max int) string {
 	}
 }
 
+// str returns the value of the `u8` as a `string`.
+// Example: assert u8(2).str() == '2'
+pub fn (n u8) str() string {
+	return int(n).str_l(5)
+}
+
 // str returns the value of the `i8` as a `string`.
 // Example: assert i8(-2).str() == '-2'
 pub fn (n i8) str() string {
