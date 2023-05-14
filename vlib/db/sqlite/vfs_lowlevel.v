@@ -7,14 +7,14 @@ type Sig2 = fn (&Sqlite3_file, &int) int // https://github.com/vlang/v/issues/16
 pub type Sqlite3_file = C.sqlite3_file
 
 // https://www.sqlite.org/c3ref/file.html
-struct C.sqlite3_file {
+pub struct C.sqlite3_file {
 pub mut:
 	pMethods &C.sqlite3_io_methods // Methods for an open file
 }
 
 // https://www.sqlite.org/c3ref/io_methods.html
 [heap]
-struct C.sqlite3_io_methods {
+pub struct C.sqlite3_io_methods {
 mut:
 	// version 1 and later fields
 	iVersion int
