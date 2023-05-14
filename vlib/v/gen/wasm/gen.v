@@ -1203,10 +1203,6 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 		g.mod.enable_debug(none)
 	}
 
-	if g.pref.os == .browser {
-		// eprintln('`-os browser` is experimental and will not live up to expectations...')
-	}
-
 	g.calculate_enum_fields()
 	for file in g.files {
 		g.file_path = file.path
@@ -1217,31 +1213,32 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 	}
 	g.housekeeping()
 
-	/* mut valid := binaryen.modulevalidate(g.mod)
-	if valid {
-		binaryen.setdebuginfo(w_pref.is_debug)
-		if w_pref.is_prod {
-			eprintln('`-prod` is not implemented')
-		}
-	} */
-
 	mod := g.mod.compile()
 
 	if out_name == '-' {
-		eprintln('pretty printing is not implemented')
+		eprintln('<stderr> stdout pretty printing is not implemented for the time being')
 		print(mod.bytestr())
-		/* if g.pref.is_verbose {
-			binaryen.moduleprint(g.mod)
-		} else {
-			binaryen.moduleprintstackir(g.mod, w_pref.is_prod)
-		} */
 	}
-
-	/* if !valid {
-		g.w_error('validation failed, this should not happen. report an issue with the above messages')
-	} */
 
 	if out_name != '-' {
 		os.write_file_array(out_name, mod) or { panic(err) }
+		if g.pref.wasm_validate {
+			if rt := os.find_abs_path_of_executable($if windows { 'wasm-validate.exe' } $else { 'wasm-validate' }) {
+				mut p := os.new_process(rt)
+				p.set_args([out_name])
+				p.set_redirect_stdio()
+				p.run()
+				err := p.stderr_slurp()
+				p.wait()
+				if p.code != 0 {
+					eprintln(err)
+					g.w_error('validation failed, this should not happen. report an issue with the above messages, the webassembly generated, and appropriate code.')
+				}
+			} else {
+				g.w_error('validation failed, this should not happen. report an issue with the above messages, the webassembly generated, and appropriate code.')
+			}
+		}
+	} else if g.pref.wasm_validate {
+		eprintln('stdout output, will not validate wasm')
 	}
 }
