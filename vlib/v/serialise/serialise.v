@@ -48,18 +48,18 @@ pub fn (mut p Pool) type_struct_info(typ ast.Type) ?StructInfo {
 		return none
 	}
 
-	if typ in p.structs {
-		return p.structs[typ]
+	if typ.idx() in p.structs {
+		return p.structs[typ.idx()]
 	}
 
 	// will cache inside `p.structs`
 	p.type_size(typ)
-	return p.structs[typ]
+	return p.structs[typ.idx()]
 }
 
 pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 	ts := p.table.sym(typ)
-	if ts.size != -1 && typ in p.structs {
+	if ts.size != -1 && typ.idx() in p.structs {
 		return ts.size, ts.align
 	}
 

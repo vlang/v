@@ -74,6 +74,7 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
 
 fn (mut g Gen) infix_from_typ(typ ast.Type, op token.Kind) {
 	if g.is_param_type(typ) {
+		eprintln(*g.table.sym(typ))
 		panic('unimplemented')
 	}
 	

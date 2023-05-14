@@ -39,10 +39,10 @@ mut:
 	heap_base         ?wasm.GlobalIndex
 	stack_frame       int // Size of the current stack frame, if needed
 	is_leaf_function  bool = true
-	module_import_namespace string
 	loop_breakpoint_stack []LoopBreakpoint
 	stack_top int // position in linear memory
 	data_base int // position in linear memory
+	needs_address bool
 }
 
 struct Global {
@@ -114,7 +114,7 @@ fn (mut g Gen) dbg_type_name(name string, typ ast.Type) string {
 
 fn (g &Gen) get_ns_plus_name(default_name string, attrs []ast.Attr) (string, string) {
 	mut name := default_name
-	mut namespace := g.module_import_namespace
+	mut namespace := 'env'
 
 	if cattr := attrs.find_first('wasm_import_namespace') {
 		namespace = cattr.arg
@@ -260,7 +260,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		paraml << typ
 	}
 
-	mut should_export := node.is_pub && node.mod == 'main'
+	mut should_export := g.pref.os == .browser && node.is_pub && node.mod == 'main'
 	
 	g.func = g.mod.new_debug_function(name, wasm.FuncType{paraml, retl, none}, paramdbg)
 	func_start := g.func.patch_pos()
@@ -303,7 +303,9 @@ fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
 		}
 		g.func.patch(func_start, prolouge)
 		if !g.is_leaf_function {
-			g.func.local_get(g.bp())
+			g.func.global_get(g.sp())
+			g.func.i32_const(g.stack_frame)
+			g.func.add(.i32_t)
 			g.func.global_set(g.sp())
 		}
 	}
@@ -373,7 +375,7 @@ fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type) {
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 	if node.op in [.logical_or, .and] {
-		temp := g.func.new_local_named(.i32_t, '<bool>')
+		temp := g.func.new_local_named(.i32_t, '__tmp<bool>')
 		{
 			g.expr(node.left, ast.bool_type)
 			g.func.local_set(temp)
@@ -393,6 +395,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 			g.func.local_get(temp)
 		}
 		g.func.c_end(blk)
+		return
 	}
 
 	{
@@ -482,12 +485,22 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
 		}
 		.amp {
 			if v := g.get_var_from_expr(node.right) {
+				if !v.is_address {
+					g.v_error('cannot take the address of a value that doesn\'t live on the stack', node.pos)
+				}
 				g.ref(v)
+			} else {
+				g.needs_address = true
+				{
+					g.expr(node.right, node.right_type)
+				}
+				g.needs_address = false
 			}
 		}
 		.mul {
 			g.expr(node.right, node.right_type)
 			if g.is_pure_type(expected) {
+				// in a RHS context, not lvalue
 				g.load(expected, 0)
 			}
 		}
@@ -552,7 +565,6 @@ fn (mut g Gen) if_expr(ifexpr ast.IfExpr, expected ast.Type) {
 }
 
 fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []Var) {
-	g.is_leaf_function = false
 	mut wasm_ns := ?string(none)
 	mut name := node.name
 
@@ -643,8 +655,13 @@ fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []
 	}
 
 	if namespace := wasm_ns {
+		// import calls won't touch `__vsp` !
+
 		g.func.call_import(namespace, name)
 	} else {
+		// other calls may...
+		g.is_leaf_function = false
+
 		g.func.call(name)
 	}
 
@@ -740,8 +757,11 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			
 			g.func.add(.i32_t)
 
-			// ptr
-			g.load(expected, 0)
+			if g.is_pure_type(node.left_type) && !g.needs_address {
+				// ptr
+				g.load(node.left_type, 0)
+			}
+			g.cast(node.left_type, expected)
 		}
 		ast.StructInit {
 			v := g.new_local('', node.typ)
@@ -749,14 +769,25 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			g.get(v)
 		}
 		ast.SelectorExpr {
-			// if v := g.get_var_from_expr(node) {
-			// 	g.deref_as_field(v)
-			// } else {
-			// 	g.load(node.typ, 0)
-			// }
-			v := g.get_var_from_expr(node) or {panic('')}
-			g.get(v)
-			g.cast(v.typ, expected)
+			if v := g.get_var_from_expr(node) {
+				if g.needs_address {
+					if !v.is_address {
+						g.v_error('cannot take the address of a value that doesn\'t live on the stack', node.pos)
+					}
+
+					g.ref(v)
+				} else {
+					g.get(v)
+				}
+			} else {
+				g.expr(node, node.typ)
+				g.field_offset(node.expr_type, node.field_name)
+				if g.is_pure_type(node.typ) && !g.needs_address {
+					// expected to be a pointer
+					g.load(node.typ, 0)
+				}
+			}
+			g.cast(node.typ, expected)
 		}
 		ast.MatchExpr {
 			g.w_error('wasm backend does not support match expressions yet')
@@ -806,13 +837,16 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		}
 		ast.PostfixExpr {
 			kind := if node.op == .inc { token.Kind.plus } else { token.Kind.minus }
-			v := g.get_var_from_expr(node.expr) or { panic("unreachable") }
+			v := g.get_var_or_make_from_expr(node.expr, node.typ)
 
-			g.get(v)
-			g.literalint(1, node.typ)
-			g.handle_ptr_arithmetic(node.typ)
-			g.infix_from_typ(node.typ, kind)
-			g.set(v)
+			g.set_prepare(v)
+			{
+				g.get(v)
+				g.literalint(1, node.typ)
+				g.handle_ptr_arithmetic(node.typ)
+				g.infix_from_typ(node.typ, kind)
+			}
+			g.set_set(v)
 		}
 		ast.CharLiteral {
 			rns := node.val.runes()[0]
@@ -898,13 +932,44 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 						g.expr(node.cond, ast.bool_type)
 						g.func.eqz(.i32_t)
 						g.func.c_br_if(block) // !cond, goto end
-						g.expr_stmts(node.stmts, ast.void_type)
-						g.func.c_br(loop) // goto loop
-					} else {
-						g.expr_stmts(node.stmts, ast.void_type)
-						g.func.c_br(loop)
+					}
+					g.expr_stmts(node.stmts, ast.void_type)
+					g.func.c_br(loop) // goto loop
+
+					g.loop_breakpoint_stack.pop()
+				}
+				g.func.c_end(loop)
+			}
+			g.func.c_end(block)
+		}
+		ast.ForCStmt {
+			block := g.func.c_block([], [])
+			{
+				if node.has_init {
+					g.expr_stmt(node.init, ast.void_type)
+				}
+
+				loop := g.func.c_loop([], [])
+				{
+					g.loop_breakpoint_stack << LoopBreakpoint{
+						c_continue: loop
+						c_break: block
+						name: node.label
 					}
 
+					if node.has_cond {
+						g.expr(node.cond, ast.bool_type)
+						g.func.eqz(.i32_t)
+						g.func.c_br_if(block) // !cond, goto end
+					}
+
+					g.expr_stmts(node.stmts, ast.void_type)
+
+					if node.has_inc {
+						g.expr_stmt(node.inc, ast.void_type)
+					}
+
+					g.func.c_br(loop)
 					g.loop_breakpoint_stack.pop()
 				}
 				g.func.c_end(loop)
@@ -987,11 +1052,8 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 							}
 						}
 
-						if v := g.get_var_from_expr(left) {
-							g.set(v)
-						} else {
-							panic("unimplemented")
-						}
+						v := g.get_var_or_make_from_expr(left, typ)
+						g.set(v)
 					}
 					return
 				}
@@ -1023,24 +1085,34 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 						}
 					}
 
-					if lhs := g.get_var_from_expr(left) {
-						if node.op !in [.decl_assign, .assign] {
-							rop := token.assign_op_to_infix_op(node.op)
-							// name := '${g.table.get_type_name(expected)}.${rop}'
+					lhs := g.get_var_or_make_from_expr(left, typ)
+					if node.op !in [.decl_assign, .assign] {
+						rop := token.assign_op_to_infix_op(node.op)
+						if !g.is_pure_type(lhs.typ) {
+							// main.struct.+
+							name := '${g.table.get_type_name(lhs.typ)}.${rop}'
 
+							g.ref(lhs)
+							g.ref(lhs)
+							g.expr(right, lhs.typ)
+							g.func.call(name)
+							return
+						}
+
+
+						g.set_prepare(lhs)
+						{
 							g.get(lhs)
 							g.expr(right, lhs.typ)
 							g.infix_from_typ(lhs.typ, rop)
-							g.set(lhs)
-							return
 						}
-						if rhs := g.get_var_from_expr(right) {
-							g.mov(lhs, rhs)
-						} else {
-							g.set_with_expr(right, lhs)
-						}
+						g.set_set(lhs)
+						return
+					}
+					if rhs := g.get_var_from_expr(right) {
+						g.mov(lhs, rhs)
 					} else {
-						panic("unimplemented")
+						g.set_with_expr(right, lhs)
 					}
 				}
 			}
@@ -1067,13 +1139,7 @@ fn (mut g Gen) toplevel_stmt(node ast.Stmt) {
 		ast.FnDecl {
 			g.fn_decl(node)
 		}
-		ast.Module {
-			if ns := node.attrs.find_first('wasm_import_namespace') {
-				g.module_import_namespace = ns.arg
-			} else {
-				g.module_import_namespace = 'env'
-			}
-		}
+		ast.Module {}
 		ast.GlobalDecl {}
 		ast.ConstDecl {}
 		ast.Import {}

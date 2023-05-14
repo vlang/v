@@ -72,33 +72,40 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) ?Var {
 			return g.get_var_from_expr(node.expr)
 		}
 		ast.SelectorExpr {
-			addr := g.get_var_from_expr(node.expr) or {
-				//g.field_offset(node.expr_type, node.field_name)
+			mut addr := g.get_var_from_expr(node.expr) or {
+				// if place {
+				// 	g.field_offset(node.expr_type, node.field_name)
+				// }
 				return none
 			}
+			addr.is_address = true
 
 			offset := g.get_field_offset(node.expr_type, node.field_name)
 			return g.offset(addr, node.typ, offset)
 		}
-		/* ast.SelectorExpr {
-			
-		}
-		ast.IndexExpr {
-
-		} */
-		/* ast.PrefixExpr {
-			// *p = expr
-			v := g.get_var_from_expr(node.expr) or {
-				return none
-			}
-			v.ref()
-			return none
-		} */
 		else {
 			//g.w_error('get_var_from_expr: unexpected `${node.type_name()}`')
 			return none
 		}
 	}
+}
+
+// ONLY call this with the LHS of an assign, an lvalue
+// use get_var_from_expr in all other cases
+fn (mut g Gen) get_var_or_make_from_expr(node ast.Expr, typ ast.Type) Var {
+	if v := g.get_var_from_expr(node) {
+		return v
+	}
+
+	mut v := g.new_local('', typ)
+	v.is_address = true
+	g.needs_address = true
+	{
+		g.set_with_expr(node, v)
+	}
+	g.needs_address = false
+
+	return v
 }
 
 fn (mut g Gen) bp() wasm.LocalIndex {
@@ -338,6 +345,7 @@ fn (mut g Gen) get(v Var) {
 fn (mut g Gen) mov(to Var, v Var) {
 	if !v.is_address || g.is_pure_type(v.typ) {
 		g.get(v)
+		g.cast(v.typ, to.typ)
 		g.set(to)
 		return
 	}
@@ -381,6 +389,46 @@ fn (mut g Gen) mov(to Var, v Var) {
 	}
 }
 
+fn (mut g Gen) set_prepare(v Var) {
+	if !v.is_address {
+		return
+	}
+
+	if g.is_pure_type(v.typ) {
+		if v.is_global {
+			g.func.global_get(v.g_idx)
+		} else {
+			g.func.local_get(v.idx)
+		}
+		return
+	}
+}
+
+fn (mut g Gen) set_set(v Var) {
+	if !v.is_address {
+		if v.is_global {
+			g.func.global_set(v.g_idx)
+		} else {
+			g.func.local_set(v.idx)
+		}
+		return
+	}
+
+	if g.is_pure_type(v.typ) {
+		g.store(v.typ, v.offset)
+		return
+	}
+
+	to := Var{
+		typ: v.typ
+		idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')
+		is_address: v.is_address
+	}
+
+	g.func.local_set(to.idx)
+	g.mov(to, v)
+}
+
 // set structures with pointer, memcpy
 // set pointers with value, get local, store value
 // set value, set local
@@ -398,11 +446,16 @@ fn (mut g Gen) set(v Var) {
 	}
 
 	if g.is_pure_type(v.typ) {
+		l := g.new_local('__tmp', v.typ)
+		g.func.local_set(l.idx)
+
 		if v.is_global {
 			g.func.global_get(v.g_idx)
 		} else {
 			g.func.local_get(v.idx)
 		}
+
+		g.func.local_get(l.idx)
 
 		g.store(v.typ, v.offset)
 		return
@@ -410,8 +463,8 @@ fn (mut g Gen) set(v Var) {
 
 	to := Var{
 		typ: v.typ
-		idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')//g.func.local_set(l)
-		is_address: v.is_address 
+		idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')
+		is_address: v.is_address
 	}
 
 	g.func.local_set(to.idx)
@@ -549,8 +602,7 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 					fsize, _ := g.pool.type_size(f.typ)
 					
 					if f.has_default_expr {
-						g.expr(f.default_expr, f.typ)
-						g.set(offset_var)
+						g.set_with_expr(f.default_expr, offset_var)
 					} else {
 						g.zero_fill(offset_var, fsize)
 					}						
@@ -565,8 +617,7 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 				offset := si.offsets[field.i]
 				offset_var := g.offset(v, f.expected_type, offset)
 
-				g.expr(f.expr, f.expected_type)
-				g.set(offset_var)
+				g.set_with_expr(f.expr, offset_var)
 			}
 		}
 		ast.StringLiteral {
@@ -575,8 +626,11 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 			
 			if v.typ != ast.string_type {
 				// c'str'
-				g.literalint(g.data_base + str_pos, ast.voidptr_type)
-				g.set(v)
+				g.set_prepare(v)
+				{
+					g.literalint(g.data_base + str_pos, ast.voidptr_type)
+				}
+				g.set_set(v)
 				return
 			}
 
@@ -621,8 +675,37 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 			}
 		}
 		else {
-			g.expr(init, v.typ)
-			g.set(v)
+			// impl of set but taken out
+
+			if !v.is_address {
+				g.expr(init, v.typ)
+				if v.is_global {
+					g.func.global_set(v.g_idx)
+				} else {
+					g.func.local_set(v.idx)
+				}
+				return
+			}
+
+			if g.is_pure_type(v.typ) {
+				if v.is_global {
+					g.func.global_get(v.g_idx)
+				} else {
+					g.func.local_get(v.idx)
+				}
+				g.expr(init, v.typ)
+				g.store(v.typ, v.offset)
+				return
+			}
+
+			to := Var{
+				typ: v.typ
+				idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')
+				is_address: v.is_address 
+			}
+
+			g.func.local_set(to.idx)
+			g.mov(to, v)
 		}
 	}
 }
@@ -658,17 +741,15 @@ fn (mut g Gen) make_vinit() {
 			if _ := g.table.find_fn(cleanup_fn_name) {
 				g.func.call(cleanup_fn_name)
 			}
-
-			for _, gv in g.global_vars {
-				if init := gv.init {
-					g.expr(init, gv.v.typ)
-					g.set(gv.v)
-				}
+		}
+		for _, gv in g.global_vars {
+			if init := gv.init {
+				g.set_with_expr(init, gv.v)
 			}
 		}
 		g.bare_function_frame(func_start)
 	}
-	g.mod.commit(g.func, true)
+	g.mod.commit(g.func, false)
 	g.bare_function_end()
 }
 
