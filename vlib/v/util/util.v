@@ -163,7 +163,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		for emodule in emodules {
 			check_module_is_installed(emodule, is_verbose) or { panic(err) }
 		}
-		mut compilation_command := '${os.quoted_path(vexe)} -skip-unused '
+		mut compilation_command := '${os.quoted_path(vexe)} '
 		if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
 			// These tools will be called by users in cases where there
 			// is high chance of there being a problem somewhere. Thus
