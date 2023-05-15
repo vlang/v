@@ -405,8 +405,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 	}
 	{
 		g.expr_with_cast(node.right, node.right_type, node.left_type)
-		if node.op in [.plus, .minus] {
-			g.handle_ptr_arithmetic(node.right_type)
+		if node.op in [.plus, .minus] && node.left_type.is_ptr() {
+			g.handle_ptr_arithmetic(node.left_type.deref())
 		}
 	}
 	g.infix_from_typ(node.left_type, node.op)
@@ -753,7 +753,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 				g.load_field(ast.string_type, ast.voidptr_type, 'str')
 				typ = ast.u8_type
 			} else {
-				if typ.nr_muls() != 0 {
+				if typ.is_ptr() {
 					typ = typ.deref()
 				}
 			}
