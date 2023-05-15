@@ -3234,6 +3234,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		return typ
 	} else if node.kind == .function {
 		info := node.info as ast.IdentFn
+		if func := c.table.find_fn(node.name) {
+			if func.generic_names.len > 0 {
+				concrete_types := node.concrete_types.map(c.unwrap_generic(it))
+				c.table.register_fn_concrete_types(func.fkey(), concrete_types)
+			}
+		}
 		return info.typ
 	} else if node.kind == .unresolved {
 		// first use
@@ -3390,11 +3396,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			mut fn_type := ast.new_type(c.table.find_or_register_fn_type(func, false,
 				true))
 			if func.generic_names.len > 0 {
+				concrete_types := node.concrete_types.map(c.unwrap_generic(it))
 				if typ_ := c.table.resolve_generic_to_concrete(fn_type, func.generic_names,
-					node.concrete_types)
+					concrete_types)
 				{
 					fn_type = typ_
-					c.table.register_fn_concrete_types(func.fkey(), node.concrete_types)
+					c.table.register_fn_concrete_types(func.fkey(), concrete_types)
 				}
 			}
 			node.name = name

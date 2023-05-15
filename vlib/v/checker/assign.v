@@ -182,6 +182,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				if right.op == .amp && right.right is ast.StructInit {
 					right_type = c.expr(right)
 				}
+			} else if mut right is ast.Ident {
+				if right.kind == .function {
+					c.expr(right)
+				}
 			}
 			if right.is_auto_deref_var() {
 				left_type = ast.mktyp(right_type.deref())
