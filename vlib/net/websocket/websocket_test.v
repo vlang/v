@@ -50,7 +50,9 @@ fn start_server(family net.AddrFamily, listen_port int) ! {
 	eprintln('> start_server family:${family} | listen_port: ${listen_port}')
 	mut s := websocket.new_server(family, listen_port, '')
 	// make that in execution test time give time to execute at least one time
-	s.ping_interval = 1
+	lock s.server_state {
+		s.server_state.ping_interval = 1
+	}
 
 	s.on_connect(fn (mut s websocket.ServerClient) !bool {
 		// here you can look att the client info and accept or not accept
@@ -80,7 +82,9 @@ fn start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws
 	spawn fn [mut ws] () {
 		ws.listen() or { panic('websocket server could not listen, err: ${err}') }
 	}()
-	for ws.state != .open {
+	for rlock ws.server_state {
+		ws.server_state.state
+	} != .open {
 		time.sleep(10 * time.millisecond)
 	}
 	eprintln('-----------------------------------------------------------------------------')
