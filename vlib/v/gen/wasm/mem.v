@@ -257,7 +257,7 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_m
 			typ: typ
 			is_address: is_address
 			is_global: true
-			g_idx: g.mod.new_global(name, false, g.get_wasm_type(typ), is_mut, cexpr)
+			g_idx: g.mod.new_global(g.dbg_type_name(name, typ), false, g.get_wasm_type(typ), is_mut, cexpr)
 		}
 	}
 
@@ -758,7 +758,6 @@ fn (mut g Gen) make_vinit() {
 
 fn (mut g Gen) housekeeping() {
 	g.make_vinit()
-	// TODO: g.pool.apply_constant_reloc(data_base)
 	
 	heap_base := calc_align(g.data_base + g.pool.buf.len, 16) // 16?
 	page_boundary := calc_align(g.data_base + g.pool.buf.len, 64 * 1024)
@@ -776,10 +775,10 @@ fn (mut g Gen) housekeeping() {
 	if g.sp_global != none || g.pool.buf.len > 0 {
 		g.mod.assign_memory('memory', true, u32(preallocated_pages), none)
 		if g.pool.buf.len > 0 {
-			mut buf := unsafe { g.pool.buf }
+			mut buf := g.pool.buf.clone()
 
 			for reloc in g.pool.relocs {
-				binary.little_endian_put_u32_at(mut buf, u32(g.data_base + reloc.pos), reloc.offset)
+				binary.little_endian_put_u32_at(mut buf, u32(g.data_base + reloc.offset), reloc.pos)
 			}
 			g.mod.new_data_segment(none, g.data_base, buf)
 		}

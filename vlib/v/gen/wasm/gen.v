@@ -405,7 +405,9 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 	}
 	{
 		g.expr_with_cast(node.right, node.right_type, node.left_type)
-		g.handle_ptr_arithmetic(node.left_type)
+		if node.op in [.plus, .minus] {
+			g.handle_ptr_arithmetic(node.right_type)
+		}
 	}
 	g.infix_from_typ(node.left_type, node.op)
 
@@ -858,7 +860,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			g.set_set(v)
 		}
 		ast.CharLiteral {
-			rns := node.val.runes()[0]
+			rns := serialise.eval_escape_codes_raw(node.val) or { panic('unreachable') }.runes()[0]
 			g.func.i32_const(rns)
 		}
 		ast.Ident {
