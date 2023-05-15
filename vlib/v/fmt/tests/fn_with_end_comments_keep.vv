@@ -1,0 +1,9 @@
+fn (c Color) is_blue() bool {
+	return c == .blue
+} // method of enum
+
+fn (c Color) show_int() int {
+	return int(c)
+} // method of enum
+
+fn main() {}
