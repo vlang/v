@@ -553,7 +553,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							}
 						}
 						if !is_used_var_styp {
-							g.write('${styp} ')
+							if !val_type.has_flag(.option) && left_sym.info is ast.ArrayFixed
+								&& (left_sym.info as ast.ArrayFixed).is_fn_ret {
+								g.write('${styp[3..]} ')
+							} else {
+								g.write('${styp} ')
+							}
 						}
 						if is_auto_heap {
 							g.write('*')
@@ -613,12 +618,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else if is_fixed_array_var {
 					// TODO Instead of the translated check, check if it's a pointer already
 					// and don't generate memcpy &
-					left_is_fixed_ret := left_sym.info is ast.ArrayFixed
-						&& (left_sym.info as ast.ArrayFixed).is_fn_ret
-					right_is_fixed_ret := (right_sym.info is ast.ArrayFixed
+					right_is_fixed_ret := !(val is ast.CallExpr
+						&& (val as ast.CallExpr).or_block.kind == .propagate_option)
+						&& ((right_sym.info is ast.ArrayFixed
 						&& (right_sym.info as ast.ArrayFixed).is_fn_ret)
 						|| (val is ast.CallExpr
-						&& g.table.sym(g.unwrap_generic((val as ast.CallExpr).return_type)).kind == .array_fixed)
+						&& g.table.sym(g.unwrap_generic((val as ast.CallExpr).return_type)).kind == .array_fixed))
 					typ_str := g.typ(val_type).trim('*')
 					final_typ_str := if is_fixed_array_var { '' } else { '(${typ_str}*)' }
 					final_ref_str := if is_fixed_array_var {
@@ -635,15 +640,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					} else {
 						g.write('memcpy(${final_typ_str}')
 						g.expr(left)
-						if left_is_fixed_ret {
-							g.write('.ret_arr')
-						}
 						g.write(', ${final_ref_str}')
 						g.expr(val)
 						if right_is_fixed_ret {
 							g.write('.ret_arr')
 						}
-						g.write(', sizeof(${typ_str}))')
+						g.write(', sizeof(${typ_str})) /*assign*/')
 					}
 				} else if is_decl {
 					g.is_shared = var_type.has_flag(.shared_f)

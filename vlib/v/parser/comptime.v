@@ -266,7 +266,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	p.check(.key_in)
 	mut typ_pos := p.tok.pos()
 	lang := p.parse_language()
-	typ := p.parse_any_type(lang, false, false)
+	typ := p.parse_any_type(lang, false, false, false)
 	typ_pos = typ_pos.extend(p.prev_tok.pos())
 	p.check(.dot)
 	for_val := p.check_name()

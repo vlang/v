@@ -83,3 +83,8 @@ fn test_generic() {
 	a := gn_fixed(b)
 	c := gn_fixed(a)
 }
+
+fn test_inline() {
+	mut a := [1, 2, 3, 4]!
+	assert four(a)[1] == 2
+}

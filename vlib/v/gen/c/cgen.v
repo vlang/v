@@ -989,21 +989,6 @@ fn (mut g Gen) typ(t ast.Type) string {
 	}
 }
 
-fn (mut g Gen) ret_typ(t ast.Type) string {
-	if t.has_flag(.generic) {
-		typ := g.unwrap_generic(t)
-		if typ.has_flag(.option) || typ.has_flag(.result) {
-			return g.typ(typ)
-		} else if g.table.sym(typ).kind == .array_fixed {
-			return '_v_' + g.base_type(typ)
-		} else {
-			return g.base_type(typ)
-		}
-	} else {
-		return g.typ(t)
-	}
-}
-
 fn (mut g Gen) base_type(_t ast.Type) string {
 	t := g.unwrap_generic(_t)
 	if g.pref.nofloat {
@@ -2451,11 +2436,6 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 	// no cast
 	g.expr(expr)
-	if got_sym.info is ast.ArrayFixed && (got_sym.info as ast.ArrayFixed).is_fn_ret {
-		if !(exp_sym.info is ast.ArrayFixed && (exp_sym.info as ast.ArrayFixed).is_fn_ret) {
-			g.write('.ret_arr')
-		}
-	}
 }
 
 fn write_octal_escape(mut b strings.Builder, c u8) {
@@ -4604,7 +4584,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	fn_return_is_multi := sym.kind == .multi_return
 	fn_return_is_option := fn_ret_type.has_flag(.option)
 	fn_return_is_result := fn_ret_type.has_flag(.result)
-	fn_return_is_fixed_array := sym.kind == .array_fixed
+	fn_return_is_fixed_array := sym.kind == .array_fixed && !fn_ret_type.has_flag(.option)
 
 	mut has_semicolon := false
 	if node.exprs.len == 0 {
@@ -4622,7 +4602,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		return
 	}
 	tmpvar := g.new_tmp_var()
-	ret_typ := g.ret_typ(fn_ret_type)
+	mut ret_typ := g.typ(g.unwrap_generic(fn_ret_type))
+	if fn_ret_type.has_flag(.generic) && fn_return_is_fixed_array {
+		ret_typ = '_v_${ret_typ}'
+	}
 	mut use_tmp_var := g.defer_stmts.len > 0 || g.defer_profile_code.len > 0
 		|| g.cur_lock.lockeds.len > 0
 		|| (fn_return_is_multi && node.exprs.len >= 1 && fn_return_is_option)
@@ -4921,16 +4904,16 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if g.fn_decl.return_type.has_flag(.option) {
 				g.expr_with_opt(node.exprs[0], node.types[0], g.fn_decl.return_type)
 			} else {
-				if fn_return_is_fixed_array {
+				if fn_return_is_fixed_array && !node.types[0].has_flag(.option) {
 					g.writeln('{0};')
 					if node.exprs[0] is ast.Ident {
-						g.write('memcpy(${tmpvar}.ret_arr, ${g.expr_string(node.exprs[0])}, sizeof(${g.typ(node.types[0])}))')
+						g.write('memcpy(${tmpvar}.ret_arr, ${g.expr_string(node.exprs[0])}, sizeof(${g.typ(node.types[0])})) /*ret*/')
 					} else {
 						tmpvar2 := g.new_tmp_var()
 						g.write('${g.typ(node.types[0])} ${tmpvar2} = ')
 						g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 						g.writeln(';')
-						g.write('memcpy(${tmpvar}.ret_arr, ${tmpvar2}, sizeof(${g.typ(node.types[0])}))')
+						g.write('memcpy(${tmpvar}.ret_arr, ${tmpvar2}, sizeof(${g.typ(node.types[0])})) /*ret*/')
 					}
 				} else {
 					g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)

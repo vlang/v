@@ -368,6 +368,10 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		} else {
 			g.expr(node.left)
 		}
+		if node.left is ast.CallExpr && sym.kind == .array_fixed
+			&& (sym.info as ast.ArrayFixed).is_fn_ret {
+			g.write('.ret_arr')
+		}
 	}
 	g.write('[')
 	if g.is_direct_array_access || g.pref.translated || node.index is ast.IntegerLiteral {
