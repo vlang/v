@@ -14,7 +14,7 @@ fn htonl64(payload_len u64) []u8 {
 
 // create_masking_key returns a new masking key to use when masking websocket messages
 fn create_masking_key() []u8 {
-	return rand.bytes(4) or {[0,0,0,0]}
+	return rand.bytes(4) or { [0, 0, 0, 0] }
 }
 
 // create_key_challenge_response creates a key challenge response from security key
@@ -36,5 +36,6 @@ fn create_key_challenge_response(seckey string) !string {
 
 // get_nonce creates a randomized array used in handshake process
 fn get_nonce(nonce_size int) string {
-	return rand.string_from_set('0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz',nonce_size)
+	return rand.string_from_set('0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz',
+		nonce_size)
 }
