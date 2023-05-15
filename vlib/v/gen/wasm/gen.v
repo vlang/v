@@ -420,7 +420,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 }
 
 const wasm_builtins = ['__memory_grow', '__memory_fill', '__memory_copy', '__memory_size',
-	'__heap_base']
+	'__heap_base', '__reinterpret_f32_u32', '__reinterpret_u32_f32', '__reinterpret_f64_u64', '__reinterpret_u64_f64']
 
 fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) {
 	for idx, arg in node.args {
@@ -447,6 +447,18 @@ fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) {
 			hp := g.mod.new_global('__heap_base', false, .i32_t, false, wasm.constexpr_value(0))
 			g.func.global_get(hp)
 			g.heap_base = hp
+		}
+		'__reinterpret_f32_u32' {
+			g.func.reinterpret(.f32_t)
+		}
+		'__reinterpret_u32_f32' {
+			g.func.reinterpret(.i32_t)
+		}
+		'__reinterpret_f64_u64' {
+			g.func.reinterpret(.f64_t)
+		}
+		'__reinterpret_u64_f64' {
+			g.func.reinterpret(.i64_t)
 		}
 		else {
 			panic('unreachable')

@@ -28,3 +28,13 @@ pub fn test_side_effect() int {
 
 	return a
 }
+
+fn main() {
+	println(multi(2))
+	{
+		a, b, c := multireturn(20)
+		println(a)
+		//println(b)
+		println(c)
+	}
+}
