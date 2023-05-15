@@ -1583,9 +1583,14 @@ pub fn (mut g Gen) write_array_fixed_return_types() {
 			|| !(sym.info as ast.ArrayFixed).is_fn_ret {
 			continue
 		}
+		info := sym.info as ast.ArrayFixed
+		mut fixed_elem_name := g.typ(info.elem_type.set_nr_muls(0))
+		if info.elem_type.is_ptr() {
+			fixed_elem_name += '*'.repeat(info.elem_type.nr_muls())
+		}
 		g.typedefs.writeln('typedef struct ${sym.cname} ${sym.cname};')
 		g.type_definitions.writeln('struct ${sym.cname} {')
-		g.type_definitions.writeln('\t${sym.cname[3..]} ret_arr;')
+		g.type_definitions.writeln('\t${fixed_elem_name} ret_arr[${info.size}];')
 		g.type_definitions.writeln('};')
 	}
 
