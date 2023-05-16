@@ -22,9 +22,7 @@ fn start_server() ! {
 		}
 	}
 	// Make that in execution test time give time to execute at least one time
-	lock s.server_state {
-		s.server_state.ping_interval = 100
-	}
+	s.set_ping_interval(100)
 	s.on_connect(fn (mut s websocket.ServerClient) !bool {
 		slog('s.on_connect')
 		// Here you can look att the client info and accept or not accept
@@ -45,7 +43,7 @@ fn start_server() ! {
 			mut c := rlock m.server_state {
 				m.server_state.clients[i] or { continue }
 			}
-			if c.client.state == .open && c.client.id != ws.id {
+			if c.client.get_state() == .open && c.client.id != ws.id {
 				c.client.write(msg.payload, websocket.OPCode.text_frame) or { panic(err) }
 			}
 		}

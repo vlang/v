@@ -7,10 +7,11 @@ import time
 import rand
 
 pub struct ServerState {
+mut:
+	ping_interval int   = 30 // interval for sending ping to clients (seconds)
+	state         State = .closed // current state of connection
 pub mut:
-	clients       map[string]&ServerClient // clients connected to this server
-	ping_interval int = 30 // interval for sending ping to clients (seconds)
-	state         State // current state of connection
+	clients map[string]&ServerClient // clients connected to this server
 }
 
 // Server represents a websocket server connection
@@ -65,6 +66,13 @@ pub fn (mut s Server) set_ping_interval(seconds int) {
 	}
 }
 
+// get_ping_interval return the interval that the server will send ping messages to clients
+pub fn (mut s Server) get_ping_interval() int {
+	return rlock s.server_state {
+		s.server_state.ping_interval
+	}
+}
+
 // listen start listen and process to incoming connections from websocket clients
 pub fn (mut s Server) listen() ! {
 	s.logger.info('websocket server: start listen on port ${s.port}')
@@ -86,19 +94,15 @@ fn (mut s Server) close() {
 // handle_ping sends ping to all clients every set interval
 fn (mut s Server) handle_ping() {
 	mut clients_to_remove := []string{}
-	for rlock s.server_state {
-		s.server_state.state
-	} == .open {
-		time.sleep(rlock s.server_state {
-			s.server_state.ping_interval
-		} * time.second)
+	for s.get_state() == .open {
+		time.sleep(s.get_ping_interval() * time.second)
 		for i, _ in rlock s.server_state {
 			s.server_state.clients
 		} {
 			mut c := rlock s.server_state {
 				s.server_state.clients[i] or { continue }
 			}
-			if c.client.state == .open {
+			if c.client.get_state() == .open {
 				c.client.ping() or {
 					s.logger.debug('server-> error sending ping to client')
 					c.client.close(1002, 'Closing connection: ping send error') or {
@@ -107,9 +111,7 @@ fn (mut s Server) handle_ping() {
 					}
 					clients_to_remove << c.client.id
 				}
-				if (time.now().unix - c.client.last_pong_ut) > rlock s.server_state {
-					s.server_state.ping_interval
-				} * 2 {
+				if (time.now().unix - c.client.last_pong_ut) > s.get_ping_interval() * 2 {
 					clients_to_remove << c.client.id
 					c.client.close(1000, 'no pong received') or { continue }
 				}
@@ -187,7 +189,9 @@ fn (mut s Server) accept_new_client() !&Client {
 		conn: new_conn
 		ssl_conn: ssl.new_ssl_conn()!
 		logger: s.logger
-		state: .open
+		client_state: ClientState{
+			state: .open
+		}
 		last_pong_ut: time.now().unix
 		id: rand.uuid_v4()
 	}
@@ -195,9 +199,16 @@ fn (mut s Server) accept_new_client() !&Client {
 }
 
 // set_state sets current state in a thread safe way
-fn (mut s Server) set_state(state State) {
+pub fn (mut s Server) set_state(state State) {
 	lock s.server_state {
 		s.server_state.state = state
+	}
+}
+
+// get_state return current state in a thread safe way
+pub fn (s Server) get_state() State {
+	return rlock s.server_state {
+		s.server_state.state
 	}
 }
 
