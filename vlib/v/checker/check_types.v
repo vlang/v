@@ -848,6 +848,7 @@ fn (g Checker) get_generic_array_fixed_element_type(array ast.ArrayFixed) ast.Ty
 
 fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 	mut inferred_types := []ast.Type{}
+	mut arg_inferred := []int{}
 	for gi, gt_name in func.generic_names {
 		// skip known types
 		if gi < node.concrete_types.len {
@@ -1027,7 +1028,7 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					}
 				} else if arg_sym.kind == .any && c.table.cur_fn.generic_names.len > 0
 					&& c.table.cur_fn.params.len > 0 && func.generic_names.len > 0
-					&& arg.expr is ast.Ident {
+					&& arg.expr is ast.Ident && arg_i !in arg_inferred {
 					var_name := (arg.expr as ast.Ident).name
 					for k, cur_param in c.table.cur_fn.params {
 						if !cur_param.typ.has_flag(.generic) || k < gi || cur_param.name != var_name {
@@ -1044,6 +1045,9 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 						break
 					}
 				}
+			}
+			if typ != ast.void_type {
+				arg_inferred << arg_i
 			}
 		}
 		if typ == ast.void_type {
