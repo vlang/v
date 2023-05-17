@@ -1,0 +1,10 @@
+================ V panic ================
+   module: main
+ function: main()
+  message: option not set ()
+     file: vlib/v/slow_tests/inout/option_panic.vv:7
+   v hash: a8e791a
+=========================================
+/tmp/v_1000/option_panic.16625367307221598521.tmp.c:6775: at panic_debug: Backtrace
+/tmp/v_1000/option_panic.16625367307221598521.tmp.c:12513: by main__main
+/tmp/v_1000/option_panic.16625367307221598521.tmp.c:12889: by main
