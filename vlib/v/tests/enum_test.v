@@ -88,6 +88,20 @@ fn test_nums() {
 	assert d == unsafe { Foo(-10) }
 }
 
+enum Number as i32 {
+	a = 100
+	b = 200
+	c = 300
+	d = 400
+}
+
+fn test_enum_as_i32() {
+	assert int(Number.a) == 100
+	assert int(Number.b) == 200
+	assert int(Number.c) == 300
+	assert int(Number.d) == 400
+}
+
 /*
 enum Expr {
 	BoolExpr(bool)

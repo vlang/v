@@ -1296,6 +1296,7 @@ pub:
 	comments      []Comment // comment after Enumfield in the same line
 	next_comments []Comment // comments between current EnumField and next EnumField
 	has_expr      bool      // true, when .expr has a value
+	attrs         []Attr
 pub mut:
 	expr Expr // the value of current EnumField; 123 in `ename = 123`
 }

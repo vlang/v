@@ -1,0 +1,14 @@
+fn t() ? {
+	a := ?int(1234)
+	println(a?)
+	b := ?int(none)
+	println(b?)
+}
+
+fn main() {
+	t() or { println(1) }
+	println('ok')
+
+	t() or { return }
+	println('ok')
+}

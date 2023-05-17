@@ -1627,8 +1627,12 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 			signed, enum_umin, enum_umax = false, 0, 0xFFFF_FFFF_FFFF_FFFF
 		}
 		else {
-			c.error('`${senum_type}` is not one of `i8`,`i16`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`',
-				node.typ_pos)
+			if senum_type == 'i32' {
+				signed, enum_imin, enum_imax = true, -2_147_483_648, 0x7FFF_FFFF
+			} else {
+				c.error('`${senum_type}` is not one of `i8`,`i16`,`i32`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`',
+					node.typ_pos)
+			}
 		}
 	}
 	if enum_imin > 0 {
@@ -3234,6 +3238,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		return typ
 	} else if node.kind == .function {
 		info := node.info as ast.IdentFn
+		if func := c.table.find_fn(node.name) {
+			if func.generic_names.len > 0 {
+				concrete_types := node.concrete_types.map(c.unwrap_generic(it))
+				c.table.register_fn_concrete_types(func.fkey(), concrete_types)
+			}
+		}
 		return info.typ
 	} else if node.kind == .unresolved {
 		// first use
@@ -3390,11 +3400,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			mut fn_type := ast.new_type(c.table.find_or_register_fn_type(func, false,
 				true))
 			if func.generic_names.len > 0 {
+				concrete_types := node.concrete_types.map(c.unwrap_generic(it))
 				if typ_ := c.table.resolve_generic_to_concrete(fn_type, func.generic_names,
-					node.concrete_types)
+					concrete_types)
 				{
 					fn_type = typ_
-					c.table.register_fn_concrete_types(func.fkey(), node.concrete_types)
+					c.table.register_fn_concrete_types(func.fkey(), concrete_types)
 				}
 			}
 			node.name = name

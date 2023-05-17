@@ -76,7 +76,7 @@ pub fn (mut s Server) stop() {
 	s.state = .stopped
 }
 
-// close immediatly closes the port and signals the server that it has been closed.
+// close immediately closes the port and signals the server that it has been closed.
 [inline]
 pub fn (mut s Server) close() {
 	s.state = .closed

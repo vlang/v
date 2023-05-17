@@ -986,6 +986,10 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 			f.write(' = ')
 			f.expr(field.expr)
 		}
+		if field.attrs.len > 0 {
+			f.write(' ')
+			f.single_line_attrs(field.attrs, inline: true)
+		}
 		f.comments(field.comments, inline: true, has_nl: false, level: .indent)
 		f.writeln('')
 		f.comments(field.next_comments, inline: false, has_nl: true, level: .indent)
@@ -997,7 +1001,7 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	f.attrs(node.attrs)
 	f.write(node.stringify(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
 	// Handle trailing comments after fn header declarations
-	if node.end_comments.len > 0 {
+	if node.no_body && node.end_comments.len > 0 {
 		first_comment := node.end_comments[0]
 		if first_comment.text.contains('\n') {
 			f.writeln('\n')
@@ -1041,6 +1045,25 @@ fn (mut f Fmt) fn_body(node ast.FnDecl) {
 				f.stmts(node.stmts)
 			}
 			f.write('}')
+			if node.end_comments.len > 0 {
+				first_comment := node.end_comments[0]
+				if first_comment.text.contains('\n') {
+					f.writeln('\n')
+				} else {
+					f.write(' ')
+				}
+				f.comment(first_comment)
+				if node.end_comments.len > 1 {
+					f.writeln('\n')
+					comments := node.end_comments[1..]
+					for i, comment in comments {
+						f.comment(comment)
+						if i != comments.len - 1 {
+							f.writeln('\n')
+						}
+					}
+				}
+			}
 		}
 		if !node.is_anon {
 			f.writeln('')
