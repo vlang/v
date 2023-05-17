@@ -114,7 +114,8 @@ pub struct TypeNode {
 pub:
 	pos token.Pos
 pub mut:
-	typ Type
+	typ          Type
+	end_comments []Comment // comments that after current type node
 }
 
 pub enum ComptimeTypeKind {
@@ -1335,7 +1336,6 @@ pub:
 	is_pub        bool
 	pos           token.Pos
 	name_pos      token.Pos
-	comments      []Comment
 	typ           Type
 	generic_types []Type
 	attrs         []Attr // attributes of type declaration
