@@ -1469,6 +1469,11 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 	f.writeln('')
 }
 
+struct Variant {
+	name string
+	id   int
+}
+
 pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	f.attrs(node.attrs)
 	start_pos := f.out.len
@@ -1479,33 +1484,42 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	f.write_generic_types(node.generic_types)
 	f.write(' = ')
 
-	mut sum_type_names := []string{cap: node.variants.len}
-	for variant in node.variants {
-		sum_type_names << f.table.type_to_str_using_aliases(variant.typ, f.mod2alias)
+	mut variants := []Variant{cap: node.variants.len}
+	for i, variant in node.variants {
+		variants << Variant{f.table.type_to_str_using_aliases(variant.typ, f.mod2alias), i}
 		f.mark_types_import_as_used(variant.typ)
 	}
-	sum_type_names.sort()
+	variants.sort(a.name < b.name)
 
 	mut separator := ' | '
+	mut is_multiline := false
 	// if line length is too long, put each type on its own line
 	mut line_length := f.out.len - start_pos
-	for sum_type_name in sum_type_names {
+	for variant in variants {
 		// 3 = length of ' = ' or ' | '
-		line_length += 3 + sum_type_name.len
-		if line_length > fmt.max_len.last() {
+		line_length += 3 + variant.name.len
+		if line_length > fmt.max_len.last() || (variant.id != node.variants.len - 1
+			&& node.variants[variant.id].end_comments.len > 0) {
 			separator = '\n\t| '
+			is_multiline = true
 			break
 		}
 	}
 
-	for i, name in sum_type_names {
+	for i, variant in variants {
 		if i > 0 {
 			f.write(separator)
 		}
-		f.write(name)
+		f.write(variant.name)
+		if node.variants[variant.id].end_comments.len > 0 && is_multiline {
+			f.comments(node.variants[variant.id].end_comments, has_nl: false)
+		}
 	}
-
-	f.comments(node.comments, has_nl: false)
+	if !is_multiline {
+		f.comments(node.variants.last().end_comments,
+			has_nl: false
+		)
+	}
 }
 
 //=== Specific Expr methods ===//

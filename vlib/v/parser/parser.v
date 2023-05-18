@@ -4099,7 +4099,6 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 				name_pos)
 			return ast.SumTypeDecl{}
 		}
-		comments = p.eat_comments(same_line: true)
 		return ast.SumTypeDecl{
 			name: name
 			typ: typ
@@ -4109,7 +4108,6 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			attrs: p.attrs
 			pos: decl_pos
 			name_pos: name_pos
-			comments: comments
 		}
 	}
 	// type MyType = int

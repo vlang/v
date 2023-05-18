@@ -371,6 +371,7 @@ pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 	for {
 		type_start_pos := p.tok.pos()
 		typ := p.parse_type()
+		end_comments := p.eat_comments(same_line: true)
 		// TODO: needs to be its own var, otherwise TCC fails because of a known stack error
 		prev_tok := p.prev_tok
 		type_end_pos := prev_tok.pos()
@@ -378,6 +379,7 @@ pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 		types << ast.TypeNode{
 			typ: typ
 			pos: type_pos
+			end_comments: end_comments
 		}
 		if p.tok.kind != .pipe {
 			break
