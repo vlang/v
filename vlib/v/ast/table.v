@@ -1061,14 +1061,15 @@ pub fn (mut t Table) find_or_register_array_with_dims(elem_type Type, nr_dims in
 	return t.find_or_register_array(t.find_or_register_array_with_dims(elem_type, nr_dims - 1))
 }
 
-pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size_expr Expr) int {
-	name := t.array_fixed_name(elem_type, size, size_expr)
+pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size_expr Expr, is_fn_ret bool) int {
+	prefix := if is_fn_ret { '_v_' } else { '' }
+	name := prefix + t.array_fixed_name(elem_type, size, size_expr)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
 		return existing_idx
 	}
-	cname := t.array_fixed_cname(elem_type, size)
+	cname := prefix + t.array_fixed_cname(elem_type, size)
 	// register
 	array_fixed_type := TypeSymbol{
 		kind: .array_fixed
@@ -1078,6 +1079,7 @@ pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size
 			elem_type: elem_type
 			size: size
 			size_expr: size_expr
+			is_fn_ret: is_fn_ret
 		}
 	}
 	return t.register_sym(array_fixed_type)
@@ -1381,7 +1383,8 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 			if bit_size % 8 != 0 { // there is no way to do `i2131(32)` so this should never be reached
 				t.panic('compiler bug: bitsizes must be multiples of 8')
 			}
-			return new_type(t.find_or_register_array_fixed(u8_type, bit_size / 8, empty_expr))
+			return new_type(t.find_or_register_array_fixed(u8_type, bit_size / 8, empty_expr,
+				false))
 		}
 	}
 }
@@ -1511,7 +1514,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 			if typ := t.resolve_generic_to_concrete(sym.info.elem_type, generic_names,
 				concrete_types)
 			{
-				idx := t.find_or_register_array_fixed(typ, sym.info.size, None{})
+				idx := t.find_or_register_array_fixed(typ, sym.info.size, None{}, false)
 				if typ.has_flag(.generic) {
 					return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
 				} else {
@@ -1779,7 +1782,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 		}
 		ArrayFixed {
 			unwrap_typ := t.unwrap_generic_type(ts.info.elem_type, generic_names, concrete_types)
-			idx := t.find_or_register_array_fixed(unwrap_typ, ts.info.size, None{})
+			idx := t.find_or_register_array_fixed(unwrap_typ, ts.info.size, None{}, false)
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
 		Chan {

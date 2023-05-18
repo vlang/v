@@ -225,6 +225,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	mut name := g.c_fn_name(node) or { return }
 	mut type_name := g.typ(g.unwrap_generic(node.return_type))
 
+	if node.return_type.has_flag(.generic) && g.table.sym(node.return_type).kind == .array_fixed {
+		type_name = '_v_${type_name}'
+	}
+
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') && !node.is_main
 		&& node.name != 'str' {
 		mut key := node.name

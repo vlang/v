@@ -553,7 +553,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							}
 						}
 						if !is_used_var_styp {
-							g.write('${styp} ')
+							if !val_type.has_flag(.option) && left_sym.info is ast.ArrayFixed
+								&& (left_sym.info as ast.ArrayFixed).is_fn_ret {
+								g.write('${styp[3..]} ')
+							} else {
+								g.write('${styp} ')
+							}
 						}
 						if is_auto_heap {
 							g.write('*')
@@ -613,6 +618,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else if is_fixed_array_var {
 					// TODO Instead of the translated check, check if it's a pointer already
 					// and don't generate memcpy &
+					right_is_fixed_ret := !(val is ast.CallExpr
+						&& (val as ast.CallExpr).or_block.kind == .propagate_option)
+						&& ((right_sym.info is ast.ArrayFixed
+						&& (right_sym.info as ast.ArrayFixed).is_fn_ret)
+						|| (val is ast.CallExpr
+						&& g.table.sym(g.unwrap_generic((val as ast.CallExpr).return_type)).kind == .array_fixed))
 					typ_str := g.typ(val_type).trim('*')
 					final_typ_str := if is_fixed_array_var { '' } else { '(${typ_str}*)' }
 					final_ref_str := if is_fixed_array_var {
@@ -631,7 +642,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.expr(left)
 						g.write(', ${final_ref_str}')
 						g.expr(val)
-						g.write(', sizeof(${typ_str}))')
+						if right_is_fixed_ret {
+							g.write('.ret_arr')
+						}
+						g.write(', sizeof(${typ_str})) /*assign*/')
 					}
 				} else if is_decl {
 					g.is_shared = var_type.has_flag(.shared_f)
@@ -755,21 +769,27 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 			}
 		} else {
 			g.expr(lx)
-			if g.is_arraymap_set {
-				if is_auto_heap {
-					g.writeln('HEAP${noscan}(${styp}, ${mr_var_name}.arg${i}) });')
-				} else if is_option {
-					g.writeln('(*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i} });')
-				} else {
-					g.writeln('${mr_var_name}.arg${i} });')
-				}
+			sym := g.table.sym(node.left_types[i])
+			if sym.kind == .array_fixed {
+				g.writeln(';')
+				g.writeln('memcpy(&${g.expr_string(lx)}, &${mr_var_name}.arg${i}, sizeof(${styp}));')
 			} else {
-				if is_auto_heap {
-					g.writeln(' = HEAP${noscan}(${styp}, ${mr_var_name}.arg${i});')
-				} else if is_option {
-					g.writeln(' = (*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i};')
+				if g.is_arraymap_set {
+					if is_auto_heap {
+						g.writeln('HEAP${noscan}(${styp}, ${mr_var_name}.arg${i}) });')
+					} else if is_option {
+						g.writeln('(*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i} });')
+					} else {
+						g.writeln('${mr_var_name}.arg${i} });')
+					}
 				} else {
-					g.writeln(' = ${mr_var_name}.arg${i};')
+					if is_auto_heap {
+						g.writeln(' = HEAP${noscan}(${styp}, ${mr_var_name}.arg${i});')
+					} else if is_option {
+						g.writeln(' = (*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i};')
+					} else {
+						g.writeln(' = ${mr_var_name}.arg${i};')
+					}
 				}
 			}
 		}

@@ -10,7 +10,7 @@ import v.token
 
 const maximum_inline_sum_type_variants = 3
 
-pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
+pub fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Type {
 	p.check(expecting)
 	// fixed array
 	if p.tok.kind in [.number, .name] {
@@ -72,7 +72,8 @@ pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
 		if fixed_size <= 0 {
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.pos())
 		}
-		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr)
+		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr,
+			!is_option && p.inside_fn_return)
 		if elem_type.has_flag(.generic) {
 			return ast.new_type(idx).set_flag(.generic)
 		}
@@ -462,7 +463,7 @@ pub fn (mut p Parser) parse_type() ast.Type {
 	is_array := p.tok.kind == .lsbr
 	pos := p.tok.pos()
 	if p.tok.kind != .lcbr {
-		typ = p.parse_any_type(language, nr_muls > 0, true)
+		typ = p.parse_any_type(language, nr_muls > 0, true, is_option)
 		if typ.idx() == 0 {
 			// error is set in parse_type
 			return 0
@@ -501,7 +502,7 @@ If you need to modify an array in a function, use a mutable argument instead: `f
 	return typ
 }
 
-pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot bool) ast.Type {
+pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot bool, is_option bool) ast.Type {
 	mut name := p.tok.lit
 	if language == .c {
 		name = 'C.${name}'
@@ -555,7 +556,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 		}
 		.lsbr, .nilsbr {
 			// array
-			return p.parse_array_type(p.tok.kind)
+			return p.parse_array_type(p.tok.kind, is_option)
 		}
 		else {
 			if p.tok.kind == .lpar {
