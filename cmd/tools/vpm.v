@@ -220,10 +220,9 @@ fn vpm_install_from_vpm(module_names []string) {
 			continue
 		}
 		println('Installing module "${name}" from "${mod.url}" to "${minfo.final_module_path}" ...')
-				increment_module_download_count(name) or {
+		increment_module_download_count(name) or {
 			errors++
 			eprintln('Errors while retrieving meta data for module ${name}:')
-			eprintln(err)
 			continue
 		}
 		vcs_install_cmd := supported_vcs_install_cmds[vcs]
@@ -780,12 +779,12 @@ fn get_module_meta_info(name string) !Mod {
 	return error(errors.join_lines())
 }
 
-fn increment_module_download_count(name string)! {
+fn increment_module_download_count(name string) ! {
 	mut errors := []string{}
 
 	for server_url in vpm_server_urls {
 		modurl := server_url + '/api/packages/${name}/incr_downloads'
-		r := http.post(modurl, "") or {
+		r := http.post(modurl, '') or {
 			errors << 'Http server did not respond to our request for "${modurl}" .'
 			errors << 'Error details: ${err}'
 			continue
