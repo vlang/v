@@ -190,7 +190,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				continue
 			} else if expecting_sumtype_array {
 				if i == 0 {
-					if c.table.is_sumtype_or_in_variant(expected_value_type, typ) {
+					if c.table.is_sumtype_or_in_variant(expected_value_type, ast.mktyp(typ)) {
 						elem_type = expected_value_type
 					} else {
 						if expr.is_auto_deref_var() {
