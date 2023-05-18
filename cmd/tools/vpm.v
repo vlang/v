@@ -223,7 +223,6 @@ fn vpm_install_from_vpm(module_names []string) {
 		increment_module_download_count(name) or {
 			errors++
 			eprintln('Errors while retrieving meta data for module ${name}:')
-			continue
 		}
 		vcs_install_cmd := supported_vcs_install_cmds[vcs]
 		cmd := '${vcs_install_cmd} "${mod.url}" "${minfo.final_module_path}"'
