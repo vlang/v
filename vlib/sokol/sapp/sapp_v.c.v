@@ -3,6 +3,8 @@ module sapp
 import os
 import stbi
 
+#define SOKOL_VALIDATE_NON_FATAL 1
+
 // v_sapp_gl_read_rgba_pixels reads pixles from the OpenGL buffer into `pixels`.
 fn C.v_sapp_gl_read_rgba_pixels(x int, y int, width int, height int, pixels charptr)
 

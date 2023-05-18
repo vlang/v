@@ -57,7 +57,16 @@ pub mut:
 	child_stderr_write &u32 = unsafe { nil }
 }
 
+[manualfree]
 fn (mut p Process) win_spawn_process() int {
+	mut to_be_freed := []voidptr{cap: 5}
+	defer {
+		for idx := to_be_freed.len - 1; idx >= 0; idx-- {
+			unsafe { free(to_be_freed[idx]) }
+		}
+		unsafe { to_be_freed.free() }
+	}
+	p.filename = abs_path(p.filename) // expand the path to an absolute one, in case we later change the working folder
 	mut wdata := &WProcess{
 		child_stdin: 0
 		child_stdout_read: 0
@@ -95,14 +104,27 @@ fn (mut p Process) win_spawn_process() int {
 		start_info.dw_flags = u32(C.STARTF_USESTDHANDLES)
 	}
 	cmd := '${p.filename} ' + p.args.join(' ')
-	C.ExpandEnvironmentStringsW(cmd.to_wide(), voidptr(&wdata.command_line[0]), 32768)
+	cmd_wide_ptr := cmd.to_wide()
+	to_be_freed << cmd_wide_ptr
+	C.ExpandEnvironmentStringsW(cmd_wide_ptr, voidptr(&wdata.command_line[0]), 32768)
 
-	mut creation_flags := int(C.NORMAL_PRIORITY_CLASS)
+	mut creation_flags := if p.create_no_window {
+		int(C.CREATE_NO_WINDOW)
+	} else {
+		int(C.NORMAL_PRIORITY_CLASS)
+	}
 	if p.use_pgroup {
 		creation_flags |= C.CREATE_NEW_PROCESS_GROUP
 	}
+
+	mut work_folder_ptr := voidptr(unsafe { nil })
+	if p.work_folder != '' {
+		work_folder_ptr = p.work_folder.to_wide()
+		to_be_freed << work_folder_ptr
+	}
+
 	create_process_ok := C.CreateProcessW(0, &wdata.command_line[0], 0, 0, C.TRUE, creation_flags,
-		0, 0, voidptr(&start_info), voidptr(&wdata.proc_info))
+		0, work_folder_ptr, voidptr(&start_info), voidptr(&wdata.proc_info))
 	failed_cfn_report_error(create_process_ok, 'CreateProcess')
 	if p.use_stdio_ctl {
 		close_valid_handle(&wdata.child_stdout_write)

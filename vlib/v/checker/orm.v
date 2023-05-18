@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -7,17 +7,25 @@ import v.token
 import v.util
 
 const (
-	fkey_attr_name = 'fkey'
-	v_orm_prefix   = 'V ORM'
+	fkey_attr_name            = 'fkey'
+	v_orm_prefix              = 'V ORM'
+	connection_interface_name = 'orm.Connection'
 )
+
+type ORMExpr = ast.SqlExpr | ast.SqlStmt
 
 fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	c.inside_sql = true
 	defer {
 		c.inside_sql = false
 	}
-	sym := c.table.sym(node.table_expr.typ)
+
+	if !c.check_db_expr(node.db_expr) {
+		return ast.void_type
+	}
 	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return ast.void_type }
+	sym := c.table.sym(node.table_expr.typ)
+
 	old_ts := c.cur_orm_ts
 	c.cur_orm_ts = *sym
 	defer {
@@ -47,12 +55,13 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			pos: node.pos
 			has_where: true
 			where_expr: ast.None{}
-			typ: typ
+			typ: typ.set_flag(.result)
 			db_expr: node.db_expr
 			table_expr: ast.TypeNode{
 				pos: node.table_expr.pos
 				typ: typ
 			}
+			is_generated: true
 		}
 
 		tmp_inside_sql := c.inside_sql
@@ -141,33 +150,24 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	}
 	c.expr(node.db_expr)
 
-	if node.or_expr.kind == .block {
-		if node.or_expr.stmts.len == 0 {
-			c.orm_error('or block needs to return a default value', node.or_expr.pos)
-		}
-		if node.or_expr.stmts.len > 0 && node.or_expr.stmts.last() is ast.ExprStmt {
-			c.expected_or_type = node.typ
-		}
-		c.stmts_ending_with_expression(node.or_expr.stmts)
-		c.check_expr_opt_call(node, node.typ)
-		c.expected_or_type = ast.void_type
-	}
-	return node.typ
+	c.check_orm_or_expr(node)
+
+	return node.typ.clear_flag(.result)
 }
 
 fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
+	if !c.check_db_expr(node.db_expr) {
+		return ast.void_type
+	}
 	node.db_expr_type = c.table.unaliased_type(c.expr(node.db_expr))
-	mut typ := ast.void_type
+
 	for mut line in node.lines {
-		a := c.sql_stmt_line(mut line)
-		if a != ast.void_type {
-			typ = a
-		}
+		c.sql_stmt_line(mut line)
 	}
-	if node.or_expr.kind == .block {
-		c.stmts_ending_with_expression(node.or_expr.stmts)
-	}
-	return typ
+
+	c.check_orm_or_expr(node)
+
+	return ast.void_type
 }
 
 fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
@@ -182,9 +182,9 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	defer {
 		c.cur_orm_ts = old_ts
 	}
+	inserting_object_name := node.object_var_name
 
-	if node.kind == .insert && node.is_top_level {
-		inserting_object_name := node.object_var_name
+	if node.kind == .insert && !node.is_generated {
 		inserting_object := node.scope.find(inserting_object_name) or {
 			c.error('undefined ident: `${inserting_object_name}`', node.pos)
 			return ast.void_type
@@ -210,12 +210,20 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	}
 
 	info := table_sym.info as ast.Struct
-	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
+	mut fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
 	mut sub_structs := map[int]ast.SqlStmtLine{}
-	for f in fields.filter(((c.table.type_symbols[int(it.typ)].kind == .struct_)
+
+	for f in fields.filter((c.table.type_symbols[int(it.typ)].kind == .struct_
 		|| (c.table.sym(it.typ).kind == .array
 		&& c.table.sym(c.table.sym(it.typ).array_info().elem_type).kind == .struct_))
 		&& c.table.get_type_name(it.typ) != 'time.Time') {
+		// Delete an uninitialized struct from fields and skip adding the current field
+		// to sub structs to skip inserting an empty struct in the related table.
+		if c.check_field_of_inserting_struct_is_uninitialized(node, f.name) {
+			fields.delete(fields.index(f))
+			continue
+		}
+
 		c.check_orm_struct_field_attributes(f)
 
 		typ := if c.table.sym(f.typ).kind == .struct_ {
@@ -238,6 +246,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 				typ: typ
 			}
 			object_var_name: object_var_name
+			is_generated: true
 		}
 		tmp_inside_sql := c.inside_sql
 		c.sql_stmt_line(mut n)
@@ -324,9 +333,7 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, t
 		c.orm_error('select: empty fields in `${table_name}`', pos)
 		return []ast.StructField{}
 	}
-	if fields[0].name != 'id' {
-		c.orm_error('`id int` must be the first field in `${table_name}`', pos)
-	}
+
 	return fields
 }
 
@@ -467,4 +474,88 @@ fn (_ &Checker) fn_return_type_flag_to_string(typ ast.Type) string {
 	} else {
 		''
 	}
+}
+
+fn (mut c Checker) check_orm_or_expr(expr ORMExpr) {
+	if expr is ast.SqlExpr {
+		if expr.is_generated {
+			return
+		}
+	}
+
+	return_type := if expr is ast.SqlExpr {
+		expr.typ
+	} else {
+		ast.void_type.set_flag(.result)
+	}
+
+	if expr.or_expr.kind == .absent {
+		if c.inside_defer {
+			c.error('V ORM returns a result, so it should have an `or {}` block at the end',
+				expr.pos)
+		} else {
+			c.error('V ORM returns a result, so it should have either an `or {}` block, or `!` at the end',
+				expr.pos)
+		}
+	} else {
+		c.check_or_expr(expr.or_expr, return_type.clear_flag(.result), return_type, if expr is ast.SqlExpr {
+			expr
+		} else {
+			ast.empty_expr
+		})
+	}
+
+	if expr.or_expr.kind == .block {
+		c.expected_or_type = return_type.clear_flag(.result)
+		c.stmts_ending_with_expression(expr.or_expr.stmts)
+		c.expected_or_type = ast.void_type
+	}
+}
+
+fn (mut c Checker) check_db_expr(db_expr &ast.Expr) bool {
+	connection_type_index := c.table.find_type_idx(checker.connection_interface_name)
+	connection_typ := ast.Type(connection_type_index)
+	db_expr_type := c.expr(db_expr)
+
+	// If we didn't find `orm.Connection`, we don't have any imported modules
+	// that depend on `orm` and implement the `orm.Connection` interface.
+	if connection_type_index == 0 {
+		c.error('expected a type that implements the `${checker.connection_interface_name}` interface',
+			db_expr.pos())
+		return false
+	}
+
+	is_implemented := c.type_implements(db_expr_type, connection_typ, db_expr.pos())
+	is_option := db_expr_type.has_flag(.option)
+
+	if is_implemented && is_option {
+		c.error(c.expected_msg(db_expr_type, db_expr_type.clear_flag(.option)), db_expr.pos())
+		return false
+	}
+
+	return true
+}
+
+// walkingdevel: Now I don't think it's a good solution
+// because it only checks structure initialization,
+// but structure fields may be updated later before inserting.
+// For example,
+// ```v
+// mut package := Package{
+// 	name: 'xml'
+// }
+//
+// package.author = User{
+// 	username: 'walkingdevel'
+// }
+// ```
+// TODO: rewrite it, move to runtime.
+fn (_ &Checker) check_field_of_inserting_struct_is_uninitialized(node &ast.SqlStmtLine, field_name string) bool {
+	struct_scope := node.scope.find_var(node.object_var_name) or { return false }
+
+	if struct_scope.expr is ast.StructInit {
+		return struct_scope.expr.fields.filter(it.name == field_name).len == 0
+	}
+
+	return false
 }

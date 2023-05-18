@@ -44,7 +44,7 @@ jobs:
       - name: Test symlink
         run: ./v symlink
       - name: Build vpm
-        run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
+        run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . || ../v cmd/vpm && cd ..
       #    - name: Set up pg database
       #      run: |
       #        pg_ctl -D /usr/local/var/postgres -l /usr/local/var/postgres/server.log start
@@ -72,6 +72,9 @@ jobs:
         run: |
           ./v -autofree -o tetris examples/tetris/tetris.v
           ./v -autofree -o blog tutorials/building_a_simple_web_blog_with_vweb/code/blog
+      - name: Build examples with -prod
+        run: |
+          ./v -prod examples/news_fetcher.v
       - name: v doctor
         run: |
           ./v doctor
@@ -113,3 +116,7 @@ jobs:
         run: |
           ./v examples/password
           ./v examples/password/password_ci.vsh
+      - name: Test readline
+        run: |
+          ./v examples/readline/readline_ci.v
+          ./v examples/readline/readline.vsh

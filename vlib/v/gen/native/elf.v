@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module native
@@ -760,13 +760,10 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 	g.elf_text_header_addr = text_section.header.offset
 	g.write64_at(g.elf_text_header_addr + 24, g.pos()) // write the code start pos to the text section
 
-	g.call(native.placeholder)
+	g.code_gen.call(native.placeholder)
 	g.println('; call main.main')
-	if g.pref.arch == .arm64 {
-	} else {
-		g.mov64(.rax, 0)
-	}
-	g.ret()
+	g.code_gen.mov64(g.code_gen.main_reg(), 0)
+	g.code_gen.ret()
 	g.println('; return 0')
 
 	g.debug_pos = g.buf.len
@@ -801,20 +798,20 @@ pub fn (mut g Gen) generate_simple_elf_header() {
 	g.code_start_pos = g.pos()
 	g.debug_pos = int(g.pos())
 
-	g.call(native.placeholder)
+	g.code_gen.call(native.placeholder)
 	g.println('; call main.main')
 
 	// generate exit syscall
 	match g.pref.arch {
 		.arm64 {
-			g.mov_arm(.x16, 0)
-			g.mov_arm(.x0, 0)
-			g.svc()
+			g.code_gen.mov(Arm64Register.x16, 0)
+			g.code_gen.mov(Arm64Register.x0, 0)
+			g.code_gen.svc()
 		}
 		.amd64 {
-			g.mov(.edi, 0)
-			g.mov(.eax, g.nsyscall_exit())
-			g.syscall()
+			g.code_gen.mov(Amd64Register.edi, 0)
+			g.code_gen.mov(Amd64Register.eax, g.nsyscall(.exit))
+			g.code_gen.syscall()
 		}
 		else {
 			g.n_error('unsupported platform ${g.pref.arch}')

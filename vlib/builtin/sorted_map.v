@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -70,7 +70,7 @@ fn new_node() &mapnode {
 fn (mut m SortedMap) set(key string, value voidptr) {
 	mut node := m.root
 	mut child_index := 0
-	mut parent := &mapnode(0)
+	mut parent := &mapnode(unsafe { nil })
 	for {
 		if node.len == max_len {
 			if parent == unsafe { nil } {
@@ -228,7 +228,7 @@ fn (mut n mapnode) remove_key(k string) bool {
 			n.fill(idx)
 		}
 
-		mut node := &mapnode(0)
+		mut node := &mapnode(unsafe { nil })
 		if flag && idx > n.len {
 			node = unsafe { &mapnode(n.children[idx - 1]) }
 		} else {

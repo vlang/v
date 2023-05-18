@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -10,7 +10,7 @@ import v.token
 
 const maximum_inline_sum_type_variants = 3
 
-pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
+pub fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Type {
 	p.check(expecting)
 	// fixed array
 	if p.tok.kind in [.number, .name] {
@@ -72,7 +72,8 @@ pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
 		if fixed_size <= 0 {
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.pos())
 		}
-		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr)
+		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr,
+			!is_option && p.inside_fn_return)
 		if elem_type.has_flag(.generic) {
 			return ast.new_type(idx).set_flag(.generic)
 		}
@@ -229,7 +230,8 @@ pub fn (mut p Parser) parse_multi_return_type() ast.Type {
 }
 
 // given anon name based off signature when `name` is blank
-pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
+pub fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type {
+	fn_type_pos := p.peek_token(-2).pos()
 	p.check(.key_fn)
 
 	for attr in p.attrs {
@@ -273,8 +275,13 @@ pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 		is_variadic: is_variadic
 		return_type: return_type
 		return_type_pos: return_type_pos
+		generic_names: generic_types.map(p.table.sym(it).name)
 		is_method: false
 		attrs: p.attrs
+	}
+	if has_generic && generic_types.len == 0 && name.len > 0 {
+		p.error_with_pos('`${name}` type is generic fntype, must specify the generic type names, e.g. ${name}[T]',
+			fn_type_pos)
 	}
 	// MapFooFn typedefs are manually added in cheaders.v
 	// because typedefs get generated after the map struct is generated
@@ -365,6 +372,7 @@ pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 	for {
 		type_start_pos := p.tok.pos()
 		typ := p.parse_type()
+		end_comments := p.eat_comments(same_line: true)
 		// TODO: needs to be its own var, otherwise TCC fails because of a known stack error
 		prev_tok := p.prev_tok
 		type_end_pos := prev_tok.pos()
@@ -372,6 +380,7 @@ pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 		types << ast.TypeNode{
 			typ: typ
 			pos: type_pos
+			end_comments: end_comments
 		}
 		if p.tok.kind != .pipe {
 			break
@@ -454,7 +463,7 @@ pub fn (mut p Parser) parse_type() ast.Type {
 	is_array := p.tok.kind == .lsbr
 	pos := p.tok.pos()
 	if p.tok.kind != .lcbr {
-		typ = p.parse_any_type(language, nr_muls > 0, true)
+		typ = p.parse_any_type(language, nr_muls > 0, true, is_option)
 		if typ.idx() == 0 {
 			// error is set in parse_type
 			return 0
@@ -493,7 +502,7 @@ If you need to modify an array in a function, use a mutable argument instead: `f
 	return typ
 }
 
-pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot bool) ast.Type {
+pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot bool, is_option bool) ast.Type {
 	mut name := p.tok.lit
 	if language == .c {
 		name = 'C.${name}'
@@ -543,11 +552,11 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 	match p.tok.kind {
 		.key_fn {
 			// func
-			return p.parse_fn_type('')
+			return p.parse_fn_type('', []ast.Type{})
 		}
 		.lsbr, .nilsbr {
 			// array
-			return p.parse_array_type(p.tok.kind)
+			return p.parse_array_type(p.tok.kind, is_option)
 		}
 		else {
 			if p.tok.kind == .lpar {
@@ -734,10 +743,6 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		if gts.kind == .multi_return {
 			p.error_with_pos('cannot use multi return as generic concrete type', type_pos)
 		}
-		// if gt.has_flag(.generic) && gts.name.len > 1 {
-		// 	p.error_with_pos('the parameter type name of a generic struct, must be a single capital letter placeholder name, like T or X, or a non-generic type name like int, string, etc.',
-		// 		type_pos)
-		// }
 		bs_name += gts.name
 		bs_cname += gts.cname
 		concrete_types << gt

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module fmt
@@ -732,17 +732,17 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 		}
 		ast.ComptimeType {
 			match node.kind {
-				.array { f.write('\$Array') }
-				.struct_ { f.write('\$Struct') }
-				.iface { f.write('\$Interface') }
-				.map_ { f.write('\$Map') }
-				.int { f.write('\$Int') }
-				.float { f.write('\$Float') }
-				.sum_type { f.write('\$Sumtype') }
-				.enum_ { f.write('\$Enum') }
-				.alias { f.write('\$Alias') }
-				.function { f.write('\$Function') }
-				.option { f.write('\$Option') }
+				.array { f.write('\$array') }
+				.struct_ { f.write('\$struct') }
+				.iface { f.write('\$interface') }
+				.map_ { f.write('\$map') }
+				.int { f.write('\$int') }
+				.float { f.write('\$float') }
+				.sum_type { f.write('\$sumtype') }
+				.enum_ { f.write('\$enum') }
+				.alias { f.write('\$alias') }
+				.function { f.write('\$function') }
+				.option { f.write('\$option') }
 			}
 		}
 	}
@@ -986,6 +986,10 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 			f.write(' = ')
 			f.expr(field.expr)
 		}
+		if field.attrs.len > 0 {
+			f.write(' ')
+			f.single_line_attrs(field.attrs, inline: true)
+		}
 		f.comments(field.comments, inline: true, has_nl: false, level: .indent)
 		f.writeln('')
 		f.comments(field.next_comments, inline: false, has_nl: true, level: .indent)
@@ -997,7 +1001,7 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	f.attrs(node.attrs)
 	f.write(node.stringify(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
 	// Handle trailing comments after fn header declarations
-	if node.end_comments.len > 0 {
+	if node.no_body && node.end_comments.len > 0 {
 		first_comment := node.end_comments[0]
 		if first_comment.text.contains('\n') {
 			f.writeln('\n')
@@ -1041,6 +1045,25 @@ fn (mut f Fmt) fn_body(node ast.FnDecl) {
 				f.stmts(node.stmts)
 			}
 			f.write('}')
+			if node.end_comments.len > 0 {
+				first_comment := node.end_comments[0]
+				if first_comment.text.contains('\n') {
+					f.writeln('\n')
+				} else {
+					f.write(' ')
+				}
+				f.comment(first_comment)
+				if node.end_comments.len > 1 {
+					f.writeln('\n')
+					comments := node.end_comments[1..]
+					for i, comment in comments {
+						f.comment(comment)
+						if i != comments.len - 1 {
+							f.writeln('\n')
+						}
+					}
+				}
+			}
 		}
 		if !node.is_anon {
 			f.writeln('')
@@ -1396,7 +1419,12 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 	fn_typ_info := typ_sym.info as ast.FnType
 	fn_info := fn_typ_info.func
 	fn_name := f.no_cur_mod(node.name)
-	f.write('type ${fn_name} = fn (')
+	mut generic_types_str := ''
+	if node.generic_types.len > 0 {
+		generic_names := node.generic_types.map(f.table.sym(it).name)
+		generic_types_str = '[${generic_names.join(', ')}]'
+	}
+	f.write('type ${fn_name}${generic_types_str} = fn (')
 	for i, arg in fn_info.params {
 		if arg.is_mut {
 			f.write(arg.typ.share().str() + ' ')
@@ -1441,6 +1469,11 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 	f.writeln('')
 }
 
+struct Variant {
+	name string
+	id   int
+}
+
 pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	f.attrs(node.attrs)
 	start_pos := f.out.len
@@ -1451,33 +1484,42 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	f.write_generic_types(node.generic_types)
 	f.write(' = ')
 
-	mut sum_type_names := []string{cap: node.variants.len}
-	for variant in node.variants {
-		sum_type_names << f.table.type_to_str_using_aliases(variant.typ, f.mod2alias)
+	mut variants := []Variant{cap: node.variants.len}
+	for i, variant in node.variants {
+		variants << Variant{f.table.type_to_str_using_aliases(variant.typ, f.mod2alias), i}
 		f.mark_types_import_as_used(variant.typ)
 	}
-	sum_type_names.sort()
+	variants.sort(a.name < b.name)
 
 	mut separator := ' | '
+	mut is_multiline := false
 	// if line length is too long, put each type on its own line
 	mut line_length := f.out.len - start_pos
-	for sum_type_name in sum_type_names {
+	for variant in variants {
 		// 3 = length of ' = ' or ' | '
-		line_length += 3 + sum_type_name.len
-		if line_length > fmt.max_len.last() {
+		line_length += 3 + variant.name.len
+		if line_length > fmt.max_len.last() || (variant.id != node.variants.len - 1
+			&& node.variants[variant.id].end_comments.len > 0) {
 			separator = '\n\t| '
+			is_multiline = true
 			break
 		}
 	}
 
-	for i, name in sum_type_names {
+	for i, variant in variants {
 		if i > 0 {
 			f.write(separator)
 		}
-		f.write(name)
+		f.write(variant.name)
+		if node.variants[variant.id].end_comments.len > 0 && is_multiline {
+			f.comments(node.variants[variant.id].end_comments, has_nl: false)
+		}
 	}
-
-	f.comments(node.comments, has_nl: false)
+	if !is_multiline {
+		f.comments(node.variants.last().end_comments,
+			has_nl: false
+		)
+	}
 }
 
 //=== Specific Expr methods ===//
@@ -1775,7 +1817,11 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		}
 	}
 	if node.mod == '' && node.name == '' {
-		f.write(node.left.str())
+		if node.left is ast.CallExpr {
+			f.expr(node.left)
+		} else {
+			f.write(node.left.str())
+		}
 	}
 	f.write_generic_call_if_require(node)
 	f.write('(')
@@ -2009,6 +2055,17 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		}
 		name := f.short_module(node.name)
 		f.write(name)
+		if node.concrete_types.len > 0 {
+			f.write('[')
+			for i, concrete_type in node.concrete_types {
+				typ_name := f.table.type_to_str_using_aliases(concrete_type, f.mod2alias)
+				f.write(typ_name)
+				if i != node.concrete_types.len - 1 {
+					f.write(', ')
+				}
+			}
+			f.write(']')
+		}
 		if node.or_expr.kind == .propagate_option {
 			f.write('?')
 		} else if node.or_expr.kind == .block {
@@ -2138,7 +2195,18 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	}
 	start_pos := f.out.len
 	start_len := f.line_len
-	f.expr(node.left)
+	mut redundant_par := false
+	if node.left is ast.ParExpr && node.op in [.and, .logical_or] {
+		if node.left.expr is ast.InfixExpr {
+			if node.left.expr.op !in [.and, .logical_or] {
+				redundant_par = true
+				f.expr(node.left.expr)
+			}
+		}
+	}
+	if !redundant_par {
+		f.expr(node.left)
+	}
 	if node.before_op_comments.len > 0 {
 		f.comments(node.before_op_comments, iembed: node.before_op_comments[0].is_inline)
 	}
@@ -2164,7 +2232,18 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	} else if is_and {
 		f.write(f.node_str(node.right).trim_string_left('&'))
 	} else {
-		f.expr(node.right)
+		redundant_par = false
+		if node.right is ast.ParExpr && node.op in [.and, .logical_or] {
+			if node.right.expr is ast.InfixExpr {
+				if node.right.expr.op !in [.and, .logical_or] {
+					redundant_par = true
+					f.expr(node.right.expr)
+				}
+			}
+		}
+		if !redundant_par {
+			f.expr(node.right)
+		}
 	}
 	if !buffering_save && f.buffering {
 		f.buffering = false
@@ -2606,17 +2685,17 @@ pub fn (mut f Fmt) selector_expr(node ast.SelectorExpr) {
 
 pub fn (mut f Fmt) size_of(node ast.SizeOf) {
 	f.write('sizeof')
-	if node.is_type {
-		// keep the old form for now
-		f.write('(')
-		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
-		f.write(')')
-		return
-	}
-	if node.is_type {
+	if node.is_type && !node.guessed_type {
+		// the new form was explicitly written in the source code; keep it:
 		f.write('[')
 		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 		f.write(']()')
+		return
+	}
+	if node.is_type {
+		f.write('(')
+		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
+		f.write(')')
 	} else {
 		f.write('(')
 		f.expr(node.expr)
@@ -2626,17 +2705,17 @@ pub fn (mut f Fmt) size_of(node ast.SizeOf) {
 
 pub fn (mut f Fmt) is_ref_type(node ast.IsRefType) {
 	f.write('isreftype')
-	if node.is_type {
-		// keep the old form for now
-		f.write('(')
-		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
-		f.write(')')
-		return
-	}
-	if node.is_type {
+	if node.is_type && !node.guessed_type {
+		// the new form was explicitly written in the source code; keep it:
 		f.write('[')
 		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 		f.write(']()')
+		return
+	}
+	if node.is_type {
+		f.write('(')
+		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
+		f.write(')')
 	} else {
 		f.write('(')
 		f.expr(node.expr)

@@ -200,6 +200,10 @@ fn test_option_array() {
 		val: false
 	}]
 	assert json.encode(StructTypeOption[[]StructType[bool]]{ val: array_of_struct }) == '{"val":[{"val":true},{"val":false}]}'
+
+	// assert json.encode(StructTypeOption[[][]int]{
+	// 	val: [[0, 1], [0, 2, 3], [2], [5, 1]]
+	// }) == '{"val":[[0,1],[0,2,3],[2],[5,1]]}'
 }
 
 fn test_alias() {
@@ -221,6 +225,26 @@ fn test_alias() {
 	assert json.encode(StructType[StructAlias]{}) == '{"val":{"val":0}}'
 	assert json.encode(StructType[StructAlias]{ val: StructType[int]{0} }) == '{"val":{"val":0}}'
 	assert json.encode(StructType[StructAlias]{ val: StructType[int]{1} }) == '{"val":{"val":1}}'
+}
+
+fn test_pointer() {
+	mut string_initialized_with_reference := ''
+	assert json.encode(StructTypePointer[string]{ val: 0 }) == '{}'
+	assert json.encode(StructTypePointer[string]{ val: &string_initialized_with_reference }) == '{"val":""}'
+	string_initialized_with_reference = 'a'
+	assert json.encode(StructTypePointer[string]{ val: &string_initialized_with_reference }) == '{"val":"a"}'
+
+	mut bool_initialized_with_reference := false
+	assert json.encode(StructTypePointer[bool]{ val: 0 }) == '{}'
+	assert json.encode(StructTypePointer[bool]{ val: &bool_initialized_with_reference }) == '{"val":false}'
+	bool_initialized_with_reference = true
+	assert json.encode(StructTypePointer[bool]{ val: &bool_initialized_with_reference }) == '{"val":true}'
+
+	mut int_initialized_with_reference := 0
+	assert json.encode(StructTypePointer[int]{ val: 0 }) == '{}'
+	assert json.encode(StructTypePointer[int]{ val: &int_initialized_with_reference }) == '{"val":0}'
+	int_initialized_with_reference = 1
+	assert json.encode(StructTypePointer[int]{ val: &int_initialized_with_reference }) == '{"val":1}'
 }
 
 fn test_sumtypes() {
@@ -251,4 +275,25 @@ fn test_sumtypes() {
 			val: 1
 		}
 	}) == '{"val":{"val":1}}'
+}
+
+fn test_maps() {
+	assert json.encode(StructType[map[string]map[string]int]{}) == '{"val":{}}'
+	assert json.encode(StructType[map[string]string]{
+		val: {
+			'1': '1'
+		}
+	}) == '{"val":{"1":"1"}}'
+	assert json.encode(StructType[map[string]int]{
+		val: {
+			'1': 1
+		}
+	}) == '{"val":{"1":1}}'
+	assert json.encode(StructType[map[string]map[string]int]{
+		val: {
+			'a': {
+				'1': 1
+			}
+		}
+	}) == '{"val":{"a":{"1":1}}}'
 }

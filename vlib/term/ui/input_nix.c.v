@@ -11,7 +11,7 @@ mut:
 	read_all_bytes bool = true
 }
 
-const ctx_ptr = &Context(0)
+const ctx_ptr = &Context(unsafe { nil })
 
 // init initializes the terminal console with Config `cfg`.
 pub fn init(cfg Config) &Context {

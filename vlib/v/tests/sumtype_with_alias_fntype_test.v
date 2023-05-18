@@ -23,7 +23,7 @@ fn test_sumtype_with_alias_fntype() {
 	myfnfact := fn () Myfn {
 		return abc
 	}
-	r1 := main.myfnfact()(1)
+	r1 := myfnfact()(1)
 	println(r1)
 	assert r1 == 1
 

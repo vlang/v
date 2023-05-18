@@ -208,8 +208,8 @@ pub fn (mut g Gen) generate_pe_header() {
 	pad_to(mut g.buf, 0x400)
 	g.code_start_pos = g.buf.len
 
-	g.call(0x18e)
-	g.ret()
+	g.code_gen.call(0x18e)
+	g.code_gen.ret()
 	g.main_fn_addr = g.buf.len
 }
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -7,9 +7,12 @@ import v.pref
 
 // TODO 600 line function
 fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
+	prev_inside_assign := c.inside_assign
+	c.inside_assign = true
 	c.expected_type = ast.none_type // TODO a hack to make `x := if ... work`
 	defer {
 		c.expected_type = ast.void_type
+		c.inside_assign = prev_inside_assign
 	}
 	is_decl := node.op == .decl_assign
 	right_first := node.right[0]
@@ -82,14 +85,14 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		} else if right_first is ast.ParExpr {
 			mut right_next := right_first
 			for {
-				if right_next.expr is ast.CallExpr {
-					if (right_next.expr as ast.CallExpr).return_type == ast.void_type {
-						c.error('assignment mismatch: expected ${node.left.len} value(s) but `${(right_next.expr as ast.CallExpr).name}()` returns ${right_len} value(s)',
+				if mut right_next.expr is ast.CallExpr {
+					if right_next.expr.return_type == ast.void_type {
+						c.error('assignment mismatch: expected ${node.left.len} value(s) but `${right_next.expr.name}()` returns ${right_len} value(s)',
 							node.pos)
 					}
 					break
-				} else if right_next.expr is ast.ParExpr {
-					right_next = right_next.expr as ast.ParExpr
+				} else if mut right_next.expr is ast.ParExpr {
+					right_next = right_next.expr
 				} else {
 					break
 				}
@@ -179,6 +182,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				if right.op == .amp && right.right is ast.StructInit {
 					right_type = c.expr(right)
 				}
+			} else if mut right is ast.Ident {
+				if right.kind == .function {
+					c.expr(right)
+				}
 			}
 			if right.is_auto_deref_var() {
 				left_type = ast.mktyp(right_type.deref())
@@ -208,11 +215,22 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		} else {
 			// Make sure the variable is mutable
 			c.fail_if_immutable(left)
+
+			if !is_blank_ident && !left_type.has_flag(.option) && right_type.has_flag(.option) {
+				c.error('cannot assign an Option value to a non-option variable', right.pos())
+			}
 			// left_type = c.expr(left)
 			// if right is ast.None && !left_type.has_flag(.option) {
 			// 	println(left_type)
 			// 	c.error('cannot assign a `none` value to a non-option variable', right.pos())
 			// }
+		}
+		if mut left is ast.Ident
+			&& (left as ast.Ident).info is ast.IdentVar && right is ast.Ident && (right as ast.Ident).name in c.global_names {
+			ident_var_info := left.info as ast.IdentVar
+			if ident_var_info.share == .shared_t {
+				c.error('cannot assign global variable to shared variable', right.pos())
+			}
 		}
 		if right_type.is_ptr() && left_type.is_ptr() {
 			if mut right is ast.Ident {
@@ -322,7 +340,13 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									left.obj.typ = c.comptime_fields_default_type
 								} else if right is ast.Ident
 									&& (right as ast.Ident).obj is ast.Var && (right as ast.Ident).or_expr.kind == .absent {
-									left.obj.ct_type_var = ((right as ast.Ident).obj as ast.Var).ct_type_var
+									if ((right as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime {
+										ctyp := c.get_comptime_var_type(right)
+										if ctyp != ast.void_type {
+											left.obj.ct_type_var = ((right as ast.Ident).obj as ast.Var).ct_type_var
+											left.obj.typ = ctyp
+										}
+									}
 								} else if right is ast.DumpExpr
 									&& (right as ast.DumpExpr).expr is ast.ComptimeSelector {
 									left.obj.ct_type_var = .field_var
@@ -459,7 +483,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		}
 		if left_sym.kind == .map && node.op in [.assign, .decl_assign] && right_sym.kind == .map
-			&& !left.is_blank_ident() && right.is_lvalue()
+			&& !left.is_blank_ident() && right.is_lvalue() && right !is ast.ComptimeSelector
 			&& (!right_type.is_ptr() || (right is ast.Ident && right.is_auto_deref_var())) {
 			// Do not allow `a = b`
 			c.error('cannot copy map: call `move` or `clone` method (or use a reference)',

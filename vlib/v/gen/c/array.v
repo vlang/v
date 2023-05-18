@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module c
 
@@ -194,7 +194,7 @@ fn (mut g Gen) struct_has_array_or_map_field(elem_typ ast.Type) bool {
 	return false
 }
 
-// `[]int{len: 6, cap: 10, init: it * it}`
+// `[]int{len: 6, cap: 10, init: index * index}`
 fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp bool, shared_styp string, var_name string) {
 	elem_styp := g.typ(elem_type.typ)
 	noscan := g.check_noscan(elem_type.typ)
@@ -202,7 +202,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 	is_default_map := elem_type.unaliased_sym.kind == .map && node.has_default
 	needs_more_defaults := node.has_len && (g.struct_has_array_or_map_field(elem_type.typ)
 		|| elem_type.unaliased_sym.kind in [.array, .map])
-	if node.has_index { // []int{len: 6, init: it * it} when variable it is used in init expression
+	if node.has_index { // []int{len: 6, init: index * index} when variable it is used in init expression
 		g.inside_lambda = true
 		mut tmp := g.new_tmp_var()
 		mut s := ''
@@ -421,11 +421,23 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	ret_sym := g.table.sym(node.return_type)
 	inp_sym := g.table.sym(node.receiver_type)
 	ret_info := ret_sym.info as ast.Array
-	ret_elem_type := g.typ(ret_info.elem_type)
+	mut ret_elem_type := g.typ(ret_info.elem_type)
 	inp_info := inp_sym.info as ast.Array
 	inp_elem_type := g.typ(inp_info.elem_type)
 	if inp_sym.kind != .array {
 		verror('map() requires an array')
+	}
+
+	mut closure_var_decl := ''
+	if node.args[0].expr is ast.SelectorExpr {
+		if node.args[0].expr.typ != ast.void_type {
+			var_sym := g.table.sym(node.args[0].expr.typ)
+			if var_sym.info is ast.FnType {
+				ret_elem_type = 'voidptr'
+				closure_var_decl = g.fn_var_signature(var_sym.info.func.return_type, var_sym.info.func.params.map(it.typ),
+					'ti')
+			}
+		}
 	}
 	g.empty_line = true
 	noscan := g.check_noscan(ret_info.elem_type)
@@ -472,8 +484,23 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 			g.write('${ret_elem_type} ti = ')
 			g.expr(node.args[0].expr)
 		}
-		else {
+		ast.CastExpr {
+			// value.map(Type(it)) when `value` is a comptime var
+			if expr.expr is ast.Ident && node.left is ast.Ident && g.is_comptime_var(node.left) {
+				ctyp := g.get_comptime_var_type(node.left)
+				if ctyp != ast.void_type {
+					expr.expr_type = g.table.value_type(ctyp)
+				}
+			}
 			g.write('${ret_elem_type} ti = ')
+			g.expr(node.args[0].expr)
+		}
+		else {
+			if closure_var_decl != '' {
+				g.write('${closure_var_decl} = ')
+			} else {
+				g.write('${ret_elem_type} ti = ')
+			}
 			g.expr(node.args[0].expr)
 		}
 	}
@@ -964,7 +991,7 @@ fn (mut g Gen) gen_array_index(node ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_array_wait(node ast.CallExpr) {
-	arr := g.table.sym(node.receiver_type)
+	arr := g.table.sym(g.unwrap_generic(node.receiver_type))
 	thread_type := arr.array_info().elem_type
 	thread_sym := g.table.sym(thread_type)
 	thread_ret_type := thread_sym.thread_info().return_type

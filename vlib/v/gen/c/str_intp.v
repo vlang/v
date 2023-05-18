@@ -1,7 +1,7 @@
 /*
 str_intp.v
 
-Copyright (c) 2019-2022 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2023 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
@@ -11,6 +11,40 @@ module c
 
 import v.ast
 import v.util
+
+fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
+	if ftyp.has_flag(.option) || ftyp.has_flag(.result) {
+		return `s`
+	} else if typ.is_float() {
+		return `g`
+	} else if typ.is_signed() || typ.is_int_literal() {
+		return `d`
+	} else if typ.is_unsigned() {
+		return `u`
+	} else if typ.is_pointer() {
+		return `p`
+	} else {
+		mut sym := g.table.sym(g.unwrap_generic(ftyp))
+		if sym.kind == .alias {
+			// string aliases should be printable
+			info := sym.info as ast.Alias
+			sym = g.table.sym(info.parent_type)
+			if info.parent_type == ast.string_type {
+				return `s`
+			}
+		}
+		if sym.kind == .function {
+			return `s`
+		}
+		if ftyp in [ast.string_type, ast.bool_type]
+			|| sym.kind in [.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type, .interface_, .none_]
+			|| ftyp.has_flag(.option) || ftyp.has_flag(.result) || sym.has_method('str') {
+			return `s`
+		} else {
+			return `_`
+		}
+	}
+}
 
 fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 	mut base := 0 // numeric base
@@ -202,12 +236,20 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
 
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	// fn (mut g Gen) str_int2(node ast.StringInterLiteral) {
-	if g.inside_comptime_for_field {
-		mut node_ := unsafe { node }
-		for i, mut expr in node_.exprs {
-			if mut expr is ast.Ident {
-				if mut expr.obj is ast.Var {
-					node_.expr_types[i] = expr.obj.typ
+	mut node_ := unsafe { node }
+	for i, mut expr in node_.exprs {
+		if g.is_comptime_var(expr) {
+			ctyp := g.get_comptime_var_type(expr)
+			if ctyp != ast.void_type {
+				node_.expr_types[i] = ctyp
+				if node_.fmts[i] == `_` {
+					ftyp_sym := g.table.sym(ctyp)
+					typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {
+						g.table.unalias_num_type(ctyp)
+					} else {
+						ctyp
+					}
+					node_.fmts[i] = g.get_default_fmt(ctyp, typ)
 				}
 			}
 		}

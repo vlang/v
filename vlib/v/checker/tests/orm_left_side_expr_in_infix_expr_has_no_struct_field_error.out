@@ -4,5 +4,5 @@ vlib/v/checker/tests/orm_left_side_expr_in_infix_expr_has_no_struct_field_error.
    17 |     users := sql db {
    18 |         select from User where first == second
       |                                ~~~~~
-   19 |     }
+   19 |     }!
    20 |

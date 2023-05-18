@@ -133,7 +133,6 @@ fn cube() {
 
 fn draw_cubes(app App) {
 	rot := [f32(1.0) * (app.frame_count % 360), 0.5 * f32(app.frame_count % 360)]
-	// rot := [f32(app.mouse_x), f32(app.mouse_y)]
 
 	sgl.defaults()
 	sgl.load_pipeline(app.pip_3d)

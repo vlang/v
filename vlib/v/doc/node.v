@@ -1,5 +1,9 @@
 module doc
 
+import os
+
+pub const should_sort = os.getenv_opt('VDOC_SORT') or { 'true' }.bool()
+
 pub fn (nodes []DocNode) find(symname string) !DocNode {
 	for node in nodes {
 		if node.name != symname {
@@ -12,12 +16,16 @@ pub fn (nodes []DocNode) find(symname string) !DocNode {
 
 // sort_by_name sorts the array based on the symbol names.
 pub fn (mut nodes []DocNode) sort_by_name() {
-	nodes.sort_with_compare(compare_nodes_by_name)
+	if doc.should_sort {
+		nodes.sort_with_compare(compare_nodes_by_name)
+	}
 }
 
 // sort_by_kind sorts the array based on the symbol kind.
 pub fn (mut nodes []DocNode) sort_by_kind() {
-	nodes.sort_with_compare(compare_nodes_by_kind)
+	if doc.should_sort {
+		nodes.sort_with_compare(compare_nodes_by_kind)
+	}
 }
 
 fn compare_nodes_by_kind(a &DocNode, b &DocNode) int {

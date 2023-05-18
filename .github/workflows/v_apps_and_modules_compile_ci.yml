@@ -67,23 +67,23 @@ jobs:
           echo "Build Coreutils"
           cd /tmp/coreutils; make
 
-      - name: Build vlang/gitly
-        run: |
-          echo "Install markdown"
-          v install markdown
-          echo "Install pcre"
-          v install pcre
-          echo "Clone Gitly"
-          git clone https://github.com/vlang/gitly /tmp/gitly
-          echo "Build Gitly"
-          v /tmp/gitly
-          ## echo "Build Gitly with -autofree"
-          ## v -autofree /tmp/gitly
-          echo "Compile gitly.css from gitly.scss"
-          sassc /tmp/gitly/src/static/css/gitly.scss > /tmp/gitly/src/static/css/gitly.css
-          echo "Run first_run.v"
-          v run /tmp/gitly/tests/first_run.v
-          # /tmp/gitly/gitly -ci_run
+#      - name: Build vlang/gitly
+#        run: |
+#          echo "Install markdown"
+#          v install markdown
+#          echo "Install pcre"
+#          v install pcre
+#          echo "Clone Gitly"
+#          git clone https://github.com/vlang/gitly /tmp/gitly
+#          echo "Build Gitly"
+#          v /tmp/gitly
+#          ## echo "Build Gitly with -autofree"
+#          ## v -autofree /tmp/gitly
+#          echo "Compile gitly.css from gitly.scss"
+#          sassc /tmp/gitly/src/static/css/gitly.scss > /tmp/gitly/src/static/css/gitly.css
+#          echo "Run first_run.v"
+#          v run /tmp/gitly/tests/first_run.v
+#          # /tmp/gitly/gitly -ci_run
 
       - name: Build V Language Server (VLS) vlang/vls
         run: |

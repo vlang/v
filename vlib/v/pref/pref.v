@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module pref
@@ -193,17 +193,20 @@ pub mut:
 	compile_defines     []string // just ['vfmt']
 	compile_defines_all []string // contains both: ['vfmt','another']
 	//
-	run_args         []string // `v run x.v 1 2 3` => `1 2 3`
-	printfn_list     []string // a list of generated function names, whose source should be shown, for debugging
-	print_v_files    bool     // when true, just print the list of all parsed .v files then stop.
-	skip_running     bool     // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
-	skip_warnings    bool     // like C's "-w", forces warnings to be ignored.
-	warn_impure_v    bool     // -Wimpure-v, force a warning for JS.fn()/C.fn(), outside of .js.v/.c.v files. TODO: turn to an error by default
-	warns_are_errors bool     // -W, like C's "-Werror", treat *every* warning is an error
-	fatal_errors     bool     // unconditionally exit after the first error with exit(1)
-	reuse_tmpc       bool     // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
-	no_rsp           bool     // when true, pass C backend options directly on the CLI (do not use `.rsp` files for them, some older C compilers do not support them)
-	no_std           bool     // when true, do not pass -std=gnu99(linux)/-std=c99 to the C backend
+	run_args     []string // `v run x.v 1 2 3` => `1 2 3`
+	printfn_list []string // a list of generated function names, whose source should be shown, for debugging
+	//
+	print_v_files       bool // when true, just print the list of all parsed .v files then stop.
+	print_watched_files bool // when true, just print the list of all parsed .v files + all the compiled $tmpl files, then stop. Used by `v watch run webserver.v`
+	//
+	skip_running     bool // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
+	skip_warnings    bool // like C's "-w", forces warnings to be ignored.
+	warn_impure_v    bool // -Wimpure-v, force a warning for JS.fn()/C.fn(), outside of .js.v/.c.v files. TODO: turn to an error by default
+	warns_are_errors bool // -W, like C's "-Werror", treat *every* warning is an error
+	fatal_errors     bool // unconditionally exit after the first error with exit(1)
+	reuse_tmpc       bool // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
+	no_rsp           bool // when true, pass C backend options directly on the CLI (do not use `.rsp` files for them, some older C compilers do not support them)
+	no_std           bool // when true, do not pass -std=gnu99(linux)/-std=c99 to the C backend
 	//
 	no_parallel       bool // do not use threads when compiling; slower, but more portable and sometimes less buggy
 	parallel_cc       bool // whether to split the resulting .c file into many .c files + a common .h file, that are then compiled in parallel, then linked together.
@@ -662,6 +665,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-print-v-files' {
 				res.print_v_files = true
 			}
+			'-print-watched-files' {
+				res.print_watched_files = true
+			}
 			'-os' {
 				target_os := cmdline.option(current_args, '-os', '')
 				i++
@@ -807,11 +813,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					if command == '' {
 						command = arg
 						command_pos = i
-						if res.is_eval_argument || command in ['run', 'crun'] {
+						if res.is_eval_argument || command in ['run', 'crun', 'watch'] {
 							break
 						}
 					} else if is_source_file(command) && is_source_file(arg)
-						&& command !in known_external_commands {
+						&& command !in known_external_commands && res.raw_vsh_tmp_prefix == '' {
 						eprintln('Too many targets. Specify just one target: <target.v|target_directory>.')
 						exit(1)
 					}

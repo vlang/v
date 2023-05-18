@@ -9,7 +9,7 @@ V is a statically typed compiled programming language designed for building main
 It's similar to Go and its design has also been influenced by Oberon, Rust, Swift,
 Kotlin, and Python.
 
-V is a very simple language. Going through this documentation will take you about an hour,
+V is a very simple language. Going through this documentation will take you about a weekend,
 and by the end of it you will have pretty much learned the entire language.
 
 The language promotes writing simple and clear code with minimal abstraction.
@@ -558,7 +558,7 @@ assert s.len == 10
 arr := s.bytes() // convert `string` to `[]u8`
 assert arr.len == 10
 
-s2 := arr.bytestr() // convert `[]byte` to `string`
+s2 := arr.bytestr() // convert `[]u8` to `string`
 assert s2 == s
 ```
 
@@ -571,9 +571,9 @@ s[0] = `H` // not allowed
 
 > error: cannot assign to `s[i]` since V strings are immutable
 
-Note that indexing a string will produce a `byte`, not a `rune` nor another `string`. Indexes
-correspond to _bytes_ in the string, not Unicode code points. If you want to convert the `byte` to a
-`string`, use the `.ascii_str()` method on the `byte`:
+Note that indexing a string will produce a `u8` (byte), not a `rune` nor another `string`. Indexes
+correspond to _bytes_ in the string, not Unicode code points. If you want to convert the `u8` to a
+`string`, use the `.ascii_str()` method on the `u8`:
 
 ```v
 country := 'Netherlands'
@@ -1538,6 +1538,49 @@ println(s)
 // "odd"
 ```
 
+Anywhere you can use `or {}`, you can also use "if unwrapping". This binds the unwrapped value
+of an expression to a variable when that expression is not none nor an error.
+
+```v
+m := {
+	'foo': 'bar'
+}
+
+// handle missing keys
+if v := m['foo'] {
+	println(v) // bar
+} else {
+	println('not found')
+}
+```
+
+```v
+fn res() !int {
+	return 42
+}
+
+// functions that return a result type
+if v := res() {
+	println(v)
+}
+```
+
+```v
+struct User {
+	name string
+}
+
+arr := [User{'John'}]
+
+// if unwrapping with assignment of a variable
+u_name := if v := arr[0] {
+	v.name
+} else {
+	'Unnamed'
+}
+println(u_name) // John
+```
+
 #### Type checks and casts
 
 You can check the current type of a sum type using `is` and its negated form `!is`.
@@ -1762,10 +1805,17 @@ To do the opposite, use `!in`.
 nums := [1, 2, 3]
 println(1 in nums) // true
 println(4 !in nums) // true
+```
+
+> **Note**
+> `in` checks if map contains a key, not a value.
+
+```v
 m := {
 	'one': 1
 	'two': 2
 }
+
 println('one' in m) // true
 println('three' !in m) // true
 ```
@@ -2509,10 +2559,10 @@ Just like structs, unions support embedding.
 
 ```v
 struct Rgba32_Component {
-	r byte
-	g byte
-	b byte
-	a byte
+	r u8
+	g u8
+	b u8
+	a u8
 }
 
 union Rgba32 {
@@ -2611,9 +2661,9 @@ For this reason V doesn't allow the modification of arguments with primitive typ
 Only more complex types such as arrays and maps may be modified.
 
 ### Variable number of arguments
-V supports functions that receive an arbitrary, variable amounts of arguments, denoted with the 
+V supports functions that receive an arbitrary, variable amounts of arguments, denoted with the
 `...` prefix.
-Below, `a ...int` refers to an arbitrary amount of parameters that will be collected 
+Below, `a ...int` refers to an arbitrary amount of parameters that will be collected
 into an array named `a`.
 
 ```v
@@ -3465,12 +3515,12 @@ Interfaces support embedding, just like structs:
 ```v
 pub interface Reader {
 mut:
-	read(mut buf []byte) ?int
+	read(mut buf []u8) ?int
 }
 
 pub interface Writer {
 mut:
-	write(buf []byte) ?int
+	write(buf []u8) ?int
 }
 
 // ReaderWriter embeds both Reader and Writer.
@@ -3826,10 +3876,11 @@ fn (err PathError) msg() string {
 	return 'Failed to open path: ${err.path}'
 }
 
-fn try_open(path string) ? {
-	return IError(PathError{
+fn try_open(path string) ! {
+	// V automatically casts this to IError
+	return PathError{
 		path: path
-	})
+	}
 }
 
 fn main() {
@@ -4302,6 +4353,9 @@ data['y'] = 360
 println(json.encode(data)) // {"x":42,"y":360}
 println(json.encode(user)) // {"name":"Pierre","score":1024}
 ```
+
+The json module also supports anonymous struct fields, which helps with complex JSON apis with lots
+of levels.
 
 ## Testing
 
@@ -4836,7 +4890,7 @@ struct Customer {
 	country   string [nonull]
 }
 
-db := sqlite.connect('customers.db')?
+db := sqlite.connect('customers.db')!
 
 // you can create tables:
 // CREATE TABLE IF NOT EXISTS `Customer` (
@@ -4847,26 +4901,23 @@ db := sqlite.connect('customers.db')?
 // )
 sql db {
 	create table Customer
-}
+}!
 
 // select count(*) from customers
 nr_customers := sql db {
 	select count from Customer
-}
+}!
 println('number of all customers: ${nr_customers}')
+
 // V syntax can be used to build queries
 uk_customers := sql db {
 	select from Customer where country == 'uk' && nr_orders > 0
-}
+}!
 println(uk_customers.len)
 for customer in uk_customers {
 	println('${customer.id} - ${customer.name}')
 }
-// by adding `limit 1` we tell V that there will be only one object
-customer := sql db {
-	select from Customer where id == 1 limit 1
-}
-println('${customer.id} - ${customer.name}')
+
 // insert a new customer
 new_customer := Customer{
 	name: 'Bob'
@@ -4874,7 +4925,7 @@ new_customer := Customer{
 }
 sql db {
 	insert new_customer into Customer
-}
+}!
 ```
 
 For more examples and the docs, see [vlib/orm](https://github.com/vlang/v/tree/master/vlib/orm).
@@ -4889,7 +4940,6 @@ Documentation for each function/type/const must be placed right before the decla
 
 ```v
 // clearall clears all bits in the array
-
 fn clearall() {
 }
 ```
@@ -4902,7 +4952,6 @@ span to the documented function using single line comments:
 ```v
 // copy_all recursively copies all elements of the array by their value,
 // if `dupes` is false all duplicate values are eliminated in the process.
-
 fn copy_all(dupes bool) {
 	// ...
 }
@@ -5869,6 +5918,33 @@ the boolean expression is highly improbable. In the JS backend, that does nothin
 
 <a id='Reflection via codegen'>
 
+### Memory usage optimization
+
+V offers these attributes related to memory usage
+that can be applied to a structure type: `[packed]` and `[minify]`.
+These attributes affect memory layout of a structure, potentially leading to reduced
+cache/memory usage and improved performance.
+
+#### `[packed]`
+
+The `[packed]` attribute can be added to a structure to create an unaligned memory layout,
+which decreases the overall memory footprint of the structure.
+
+> **Note**
+> Using the [packed] attribute may negatively impact performance
+> or even be prohibited on certain CPU architectures.
+> Only use this attribute if minimizing memory usage is crucial for your program
+> and you're willing to sacrifice performance.
+
+#### `[minify]`
+
+The `[minify]` attribute can be added to a struct, allowing the compiler to reorder the fields
+in a way that minimizes internal gaps while maintaining alignment.
+
+> **Note**
+> Using the `[minify]` attribute may cause issues with binary serialization or reflection.
+> Be mindful of these potential side effects when using this attribute.
+
 ## Atomics
 
 V has no special support for atomics, yet, nevertheless it's possible to treat variables as atomics
@@ -5879,7 +5955,7 @@ Since V does not support overloading functions by intention there are wrapper fu
 C headers named `atomic.h` that are part of the V compiler infrastructure.
 
 There are dedicated wrappers for all unsigned integer types and for pointers.
-(`byte` is not fully supported on Windows) &ndash; the function names include the type name
+(`u8` is not fully supported on Windows) &ndash; the function names include the type name
 as suffix. e.g. `C.atomic_load_ptr()` or `C.atomic_fetch_add_u64()`.
 
 To use these functions the C header for the used OS has to be included and the functions
@@ -6155,12 +6231,12 @@ fn my_callback(arg voidptr, howmany int, cvalues &&char, cnames &&char) int {
 }
 
 fn main() {
-	db := &C.sqlite3(0) // this means `sqlite3* db = 0`
+	db := &C.sqlite3(unsafe { nil }) // this means `sqlite3* db = 0`
 	// passing a string literal to a C function call results in a C string, not a V string
 	C.sqlite3_open(c'users.db', &db)
 	// C.sqlite3_open(db_path.str, &db)
 	query := 'select count(*) from users'
-	stmt := &C.sqlite3_stmt(0)
+	stmt := &C.sqlite3_stmt(unsafe { nil })
 	// Note: You can also use the `.str` field of a V string,
 	// to get its C style zero terminated representation
 	C.sqlite3_prepare_v2(db, &char(query.str), -1, &stmt, 0)
@@ -6317,7 +6393,7 @@ These can be converted to V strings with `string_from_wide(&u16(cwidestring))` .
 V has these types for easier interoperability with C:
 
 - `voidptr` for C's `void*`,
-- `&byte` for C's `byte*` and
+- `&u8` for C's `byte*` and
 - `&char` for C's `char*`.
 - `&&char` for C's `char**`
 
@@ -6355,7 +6431,7 @@ members of sub-data-structures may be directly declared in the containing struct
 
 ```v
 struct C.SomeCStruct {
-	implTraits  byte
+	implTraits  u8
 	memPoolData u16
 	// These members are part of sub data structures that can't currently be represented in V.
 	// Declaring them directly like this is sufficient for access.

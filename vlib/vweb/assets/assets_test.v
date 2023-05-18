@@ -65,11 +65,31 @@ fn test_add_css() {
 	// assert am.add_css(get_test_file_path('test1.js')) == false // TODO: test extension on add
 }
 
+fn test_add_css_as() {
+	mut am := assets.new_manager()
+	file_name := '/custom/path/test1.css'
+	assert am.add_css_as(get_test_file_path('test1.css'), file_name) == true
+
+	expected := '<link rel="stylesheet" href="${file_name}">\n'
+	actual := am.include_css(false)
+	assert actual == expected
+}
+
 fn test_add_js() {
 	mut am := assets.new_manager()
 	assert am.add_js('testx.js') == false
 	assert am.add_css(get_test_file_path('test1.js')) == true
 	// assert am.add_css(get_test_file_path('test1.css')) == false // TODO: test extension on add
+}
+
+fn test_add_js_as() {
+	mut am := assets.new_manager()
+	file_name := '/custom/path/test1.js'
+	assert am.add_js_as(get_test_file_path('test1.js'), file_name) == true
+
+	expected := '<script type="text/javascript" src="${file_name}"></script>\n'
+	actual := am.include_js(false)
+	assert expected == actual
 }
 
 fn test_combine_css() {

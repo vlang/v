@@ -12,7 +12,7 @@ questions or even make a REPL or an embedded console.
 import readline
 
 mut r := readline.Readline{}
-answer := r.read_line('hello: ')?
+answer := r.read_line('hello: ')!
 println(answer)
 ```
 
@@ -21,6 +21,6 @@ or just:
 ```v
 import readline { read_line }
 
-input := read_line('What is your name: ')?
+input := read_line('What is your name: ')!
 println('Your name is: ${input}')
 ```

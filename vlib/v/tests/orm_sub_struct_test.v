@@ -14,10 +14,10 @@ fn test_orm_sub_structs() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	sql db {
 		create table Upper
-	}
+	}!
 	sql db {
 		create table SubStruct
-	}
+	}!
 
 	upper_1 := Upper{
 		sub: SubStruct{
@@ -27,11 +27,11 @@ fn test_orm_sub_structs() {
 
 	sql db {
 		insert upper_1 into Upper
-	}
+	}!
 
-	upper_s := sql db {
+	uppers := sql db {
 		select from Upper where id == 1
-	}
+	}!
 
-	assert upper_s.sub.name == upper_1.sub.name
+	assert uppers.first().sub.name == upper_1.sub.name
 }

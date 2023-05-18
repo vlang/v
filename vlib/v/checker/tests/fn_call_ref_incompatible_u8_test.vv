@@ -1,0 +1,10 @@
+module main
+
+fn accept_only_u8_references(x &u8) {
+	println(ptr_str(x))
+}
+
+fn test_main() {
+	a := [1, 2, 3]
+	accept_only_u8_references(&a)
+}

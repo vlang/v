@@ -6,7 +6,7 @@ The [gitly](https://gitly.org/) site is based on vweb.
 
 **_Some features may not be complete, and have some bugs._**
 
-## Getting start
+## Quick Start
 Just run **`v new <name> web`** in your terminal
 
 ## Features
@@ -16,6 +16,7 @@ Just run **`v new <name> web`** in your terminal
 - **Easy to deploy** just one binary file that also includes all templates. No need to install any
   dependencies.
 - **Templates are precompiled** all errors are visible at compilation time, not at runtime.
+- **Multithreaded** by default
 
 ### Examples
 
@@ -252,9 +253,10 @@ pub fn (mut app App) controller_get_user_by_id() vweb.Result {
 ```
 ### Middleware
 
-V haven't a well defined middleware.
-For now, you can use `before_request()`. This method called before every request.
-Probably you can use it for check user session cookie or add header
+Vweb has different kinds of middleware.
+The `before_request()` method is always called before every request before any
+other middleware is processed. You could use it to check user session cookies or to add a header.
+
 **Example:**
 
 ```v ignore
@@ -263,24 +265,471 @@ pub fn (mut app App) before_request() {
 }
 ```
 
+Middleware functions can be passed directly when creating an App instance and is 
+executed when the url starts with the defined key. 
+
+In the following example, if a user navigates to `/path/to/test` the middleware 
+is executed in the following order: `middleware_func`, `other_func`, `global_middleware`.
+The middleware is executed in the same order as they are defined and if any function in
+the chain returns `false` the propogation is stopped.
+
+**Example:**
+```v
+module main
+
+import vweb
+
+struct App {
+	vweb.Context
+	middlewares map[string][]vweb.Middleware
+}
+
+fn new_app() &App {
+	mut app := &App{
+		middlewares: {
+			// chaining is allowed, middleware will be evaluated in order
+			'/path/to/': [middleware_func, other_func]
+			'/':         [global_middleware]
+		}
+	}
+
+	// do stuff with app
+	// ...
+	return app
+}
+
+fn middleware_func(mut ctx vweb.Context) bool {
+	// ...
+	return true
+}
+
+fn other_func(mut ctx vweb.Context) bool {
+	// ...
+	return true
+}
+
+fn global_middleware(mut ctx vweb.Context) bool {
+	// ...
+	return true
+}
+```
+
+Middleware functions will be of type `vweb.Middleware` and are not methods of App, 
+so they could also be imported from other modules.
+```v ignore
+pub type Middleware = fn (mut Context) bool
+```
+
+Middleware can also be added to route specific functions via attributes.
+
+**Example:**
+```v ignore
+[middleware: check_auth]
+['/admin/data']
+pub fn (mut app App) admin() vweb.Result {
+	// ...
+}
+
+// check_auth is a method of App, so we don't need to pass the context as parameter.
+pub fn (mut app App) check_auth () bool {
+	// ...
+	return true
+}
+```
+For now you can only add 1 middleware to a route specific function via attributes.
+
 ### Redirect
 
 Used when you want be redirected to an url
+
 **Examples:**
 
 ```v ignore
 pub fn (mut app App) before_request() {
-    app.user_id = app.get_cookie('id') or { app.redirect('/') }
+	app.user_id = app.get_cookie('id') or { app.redirect('/') }
 }
 ```
 
 ```v ignore
 ['/articles'; get]
 pub fn (mut app App) articles() vweb.Result {
-    if !app.token {
-        app.redirect('/login')
-    }
-    return app.text("patatoes")
+	if !app.token {
+		app.redirect('/login')
+	}
+	return app.text('patatoes')
+}
+```
+
+You can also combine middleware and redirect.
+
+**Example:**
+
+```v ignore
+[middleware: with_auth]
+['/admin/secret']
+pub fn (mut app App) admin_secret() vweb.Result {
+	// this code should never be reached
+	return app.text('secret')
+}
+
+['/redirect']
+pub fn (mut app App) with_auth() bool {
+	app.redirect('/auth/login')
+	return false
+}
+```
+
+### Fallback route
+You can implement a fallback `not_found` route that is called when a request is made and no 
+matching route is found.
+
+**Example:**
+
+``` v ignore
+pub fn (mut app App) not_found() vweb.Result {
+	app.set_status(404, 'Not Found')
+	return app.html('<h1>Page not found</h1>')
+}
+```
+
+### Databases
+The `db` field in a vweb app is reserved for database connections. The connection is 
+copied to each new request.
+
+**Example:**
+
+```v
+module main
+
+import vweb
+import db.sqlite
+
+struct App {
+	vweb.Context
+mut:
+	db sqlite.DB
+}
+
+fn main() {
+	// create the database connection
+	mut db := sqlite.connect('db')!
+
+	vweb.run(&App{
+		db: db
+	}, 8080)
+}
+```
+
+### Multithreading
+By default, a vweb app is multithreaded, that means that multiple requests can
+be handled in parallel by using multiple CPU's: a worker pool. You can 
+change the number of workers (maximum allowed threads) by altering the `nr_workers`
+option. The default behaviour is to use the maximum number of jobs (cores in most cases).
+
+**Example:**
+```v ignore
+fn main() {
+	// assign a maximum of 4 workers
+	vweb.run_at(&App{}, nr_workers: 4)
+}
+```
+
+#### Database Pool
+A single connection database works fine if you run your app with 1 worker, of if
+you access a file-based database like a sqlite file.
+
+This approach will fail when using a non-file based database connection like a mysql
+connection to another server somewhere on the internet. Multiple threads would need to access
+the same connection at the same time.
+
+To resolve this issue, you can use the vweb's built-in database pool. The database pool
+will keep a number of connections open when the app is started and each worker is
+assigned its own connection.
+
+Let's look how we can improve our previous example with database pooling and using a 
+postgresql server instead.
+
+**Example:**
+```v
+module main
+
+import vweb
+import db.pg
+
+struct App {
+	vweb.Context
+	db_handle vweb.DatabasePool[pg.DB]
+mut:
+	db pg.DB
+}
+
+fn get_database_connection() pg.DB {
+	// insert your own credentials
+	return pg.connect(user: 'user', password: 'password', dbname: 'database') or { panic(err) }
+}
+
+fn main() {
+	// create the database pool and pass our `get_database_connection` function as handler
+	pool := vweb.database_pool(handler: get_database_connection)
+
+	// no need to set the `db` field
+	vweb.run(&App{
+		db_handle: pool
+	}, 8080)
+}
+```
+
+If you don't use the default number of workers (`nr_workers`) you have to change 
+it to the same number in `vweb.run_at` as in `vweb.database_pool`
+
+### Extending the App struct with `[vweb_global]`
+You can change your `App` struct however you like, but there are some things you
+have to keep in mind. Under the hood at each request a new instance of `App` is
+constructed, and all fields are re-initialized with their default type values, 
+except for the `db` field. 
+
+This behaviour ensures that each request is treated equally and in the same context, but
+problems arise when we want to provide more context than just the default `vweb.Context`.
+
+Let's view the following example where we want to provide a secret token to our app:
+
+```v
+module main
+
+import vweb
+
+struct App {
+	vweb.Context
+	secret string
+}
+
+fn main() {
+	vweb.run(&App{
+		secret: 'my secret'
+	}, 8080)
+}
+
+fn (mut app App) index() vweb.Result {
+	return app.text('My secret is: ${app.secret}')
+}
+```
+
+When you visit `localhost:8080/` you would expect to see the text 
+`"My secret is: my secret"`, but instead there is only the text 
+`"My secret is: "`. This is because of the way vweb works. We can override the default
+behaviour by adding the attribute `[vweb_global]` to the `secret` field.
+
+**Example:**
+```v ignore
+struct App {
+	vweb.Context
+	secret string [vweb_global]
+}
+```
+
+Now if you visit `localhost:8080/` you see the text `"My secret is: my secret"`.
+> **Note**: the value of `secret` gets initialized with the provided value when creating
+> `App`. If you would modify `secret` in one request the value won't be changed in the
+> next request. You can use shared fields for this.
+
+### Shared Objects across requests
+We saw in the previous section that we can persist data across multiple requests, 
+but what if we want to be able to mutate the data? Since vweb works with threads, 
+we have to use `shared` fields.
+
+Let's see how we can add a visitor counter to our `App`.
+
+**Example:**
+```v
+module main
+
+import vweb
+
+struct Counter {
+pub mut:
+	count int
+}
+
+struct App {
+	vweb.Context
+mut:
+	counter shared Counter // shared fields can only be structs, arrays or maps.
+}
+
+fn main() {
+	// initialize the shared object
+	shared counter := Counter{
+		count: 0
+	}
+
+	vweb.run(&App{
+		counter: counter
+	}, 8080)
+}
+
+fn (mut app App) index() vweb.Result {
+	mut count := 0
+	// lock the counter so we can modify it
+	lock app.counter {
+		app.counter.count += 1
+		count = app.counter.count
+	}
+	return app.text('Total visitors: ${count}')
+}
+```
+
+#### Drawback of Shared Objects
+The drawback of using shared objects is that it affects performance. In the previous example
+`App.counter` needs to be locked each time the page is loaded if there are simultaneous
+requests the next requests will have to wait for the lock to be released.
+
+It is best practice to limit the use of shared objects as much as possible.
+
+### Controllers
+Controllers can be used to split up app logic so you are able to have one struct 
+per `"/"`.  E.g. a struct `Admin` for urls starting with `"/admin"` and a struct `Foo`
+for urls starting with `"/foo"`
+
+**Example:**
+```v
+module main
+
+import vweb
+
+struct App {
+	vweb.Context
+	vweb.Controller
+}
+
+struct Admin {
+	vweb.Context
+}
+
+struct Foo {
+	vweb.Context
+}
+
+fn main() {
+	mut app := &App{
+		controllers: [
+			vweb.controller('/admin', &Admin{}),
+			vweb.controller('/foo', &Foo{}),
+		]
+	}
+	vweb.run(app, 8080)
+}
+```
+
+You can do everything with a controller struct as with a regular `App` struct. 
+The only difference being is that only the main app that is being passed to `vweb.run`
+is able to have controllers. If you add `vweb.Controller` on a controller struct it 
+will simply be ignored.
+
+#### Routing
+Any route inside a controller struct is treated as a relative route to its controller namespace.
+
+```v ignore
+['/path']
+pub fn (mut app Admin) path vweb.Result {
+    return app.text('Admin')
+}
+```
+When we created the controller with `vweb.controller('/admin', &Admin{})` we told
+vweb that the namespace of that controller is `"/admin"` so in this example we would 
+see the text `"Admin"` if we navigate to the url `"/admin/path"`.
+
+Vweb doesn't support fallback routes or duplicate routes, so if we add the following 
+route to the example the code will produce an error.
+
+```v ignore
+['/admin/path']
+pub fn (mut app App) admin_path vweb.Result {
+    return app.text('Admin overwrite')
+}
+```
+There will be an error, because the controller `Admin` handles all routes starting with
+`"/admin"`; the method `admin_path` is unreachable.
+
+#### Databases and `[vweb_global]` in controllers
+
+Fields with `[vweb_global]` have to passed to each controller individually.
+The `db` field is unique and will be treated as a `vweb_global` field at all times.
+
+**Example:**
+```v
+module main
+
+import vweb
+import db.sqlite
+
+struct App {
+	vweb.Context
+	vweb.Controller
+mut:
+	db sqlite.DB
+}
+
+struct Admin {
+	vweb.Context
+mut:
+	db sqlite.DB
+}
+
+fn main() {
+	mut db := sqlite.connect('db')!
+
+	mut app := &App{
+		db: db
+		controllers: [
+			vweb.controller('/admin', &Admin{
+				db: db
+			}),
+		]
+	}
+}
+```
+
+#### Using a database pool
+
+**Example:**
+```v
+module main
+
+import vweb
+import db.pg
+
+struct App {
+	vweb.Context
+	vweb.Controller
+	db_handle vweb.DatabasePool[pg.DB]
+mut:
+	db pg.DB
+}
+
+struct Admin {
+	vweb.Context
+	db_handle vweb.DatabasePool[pg.DB]
+mut:
+	db pg.DB
+}
+
+fn get_database_connection() pg.DB {
+	// insert your own credentials
+	return pg.connect(user: 'user', password: 'password', dbname: 'database') or { panic(err) }
+}
+
+fn main() {
+	// create the database pool and pass our `get_database_connection` function as handler
+	pool := vweb.database_pool(handler: get_database_connection)
+
+	mut app := &App{
+		db_handle: pool
+		controllers: [
+			vweb.controller('/admin', &Admin{
+				db_handle: pool
+			}),
+		]
+	}
 }
 ```
 

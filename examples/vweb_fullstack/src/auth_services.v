@@ -34,9 +34,10 @@ fn (mut app App) service_auth(username string, password string) !string {
 		db.close() or { panic(err) }
 	}
 
-	user := sql db {
-		select from User where username == username limit 1
-	}
+	users := sql db {
+		select from User where username == username
+	}!
+	user := users.first()
 	if user.username != username {
 		return error('user not found')
 	}

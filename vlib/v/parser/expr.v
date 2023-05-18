@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -35,7 +35,7 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 	// Prefix
 	match p.tok.kind {
 		.key_mut, .key_shared, .key_atomic, .key_static, .key_volatile {
-			ident := p.parse_ident(ast.Language.v)
+			ident := p.ident(ast.Language.v)
 			node = ident
 			if p.inside_defer {
 				if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
@@ -79,7 +79,7 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		}
 		.dollar {
 			match p.peek_tok.kind {
-				.name {
+				.name, .key_struct, .key_enum, .key_interface {
 					if p.peek_tok.lit in comptime_types {
 						node = p.parse_comptime_type()
 					} else {
@@ -466,6 +466,9 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 	if p.inside_asm && p.prev_tok.pos().line_nr < p.tok.pos().line_nr {
 		return node
 	}
+
+	p.process_custom_orm_operators()
+
 	// Infix
 	for precedence < p.tok.kind.precedence() {
 		if p.tok.kind == .dot {
@@ -782,4 +785,26 @@ fn (mut p Parser) prefix_inc_dec_error() {
 
 	p.error_with_pos('prefix `${op}${expr}` is unsupported, use suffix form `${expr}${op}`',
 		full_expr_pos)
+}
+
+// process_custom_orm_operators checks whether a word in infix expressions is an ORM operator.
+// If it is, then a new kind is assigned to it, so that the parser will process it as a keyword.
+// This is necessary to ensure that parts of the ORM expression do not function
+// outside of the ORM and are not recognized as keywords in the language.
+// For example, there is a `like` operator in ORM, which should be used
+// in expressions like `name like 'M%'`, but it should not be used in V directly.
+[inline]
+fn (mut p Parser) process_custom_orm_operators() {
+	if !p.inside_orm {
+		return
+	}
+
+	is_like_operator := p.tok.kind == .name && p.tok.lit == 'like'
+
+	if is_like_operator {
+		p.tok = token.Token{
+			...p.tok
+			kind: .key_like
+		}
+	}
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -76,7 +76,7 @@ pub fn (mut s Server) stop() {
 	s.state = .stopped
 }
 
-// close immediatly closes the port and signals the server that it has been closed.
+// close immediately closes the port and signals the server that it has been closed.
 [inline]
 pub fn (mut s Server) close() {
 	s.state = .closed

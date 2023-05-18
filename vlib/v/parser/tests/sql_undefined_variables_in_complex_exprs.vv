@@ -11,5 +11,5 @@ mut:
 fn main() {
 	_ := sql _ {
 		select from User where (age > 18) && (city == 'London' || username == username)
-	}
+	}!
 }

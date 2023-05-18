@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -372,7 +372,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	params << args2
 	if !are_args_type_only {
-		for param in params {
+		for k, param in params {
 			if p.scope.known_var(param.name) {
 				p.error_with_pos('redefinition of parameter `${param.name}`', param.pos)
 				return ast.FnDecl{
@@ -389,6 +389,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				pos: param.pos
 				is_used: true
 				is_arg: true
+				ct_type_var: if (!is_method || k > 0) && param.typ.has_flag(.generic)
+					&& !param.typ.has_flag(.variadic) {
+					.generic_param
+				} else {
+					.no_comptime
+				}
 			})
 		}
 	}
@@ -686,6 +692,8 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 		pos: rec_start_pos
 		name: rec.name
 		is_mut: rec.is_mut
+		is_atomic: is_atomic
+		is_shared: is_shared
 		is_auto_rec: is_auto_rec
 		typ: rec.typ
 		type_pos: rec.type_pos
@@ -1000,6 +1008,8 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 					pos: arg_pos[i]
 					name: arg_name
 					is_mut: is_mut
+					is_atomic: is_atomic
+					is_shared: is_shared
 					typ: typ
 					type_pos: type_pos[i]
 				}
@@ -1084,6 +1094,8 @@ fn (mut p Parser) closure_vars() []ast.Param {
 			pos: var_pos
 			name: var_name
 			is_mut: is_mut
+			is_atomic: is_atomic
+			is_shared: is_shared
 		}
 		if p.tok.kind != .comma {
 			break

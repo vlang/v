@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module native
@@ -256,7 +256,7 @@ pub fn (mut g Gen) generate_macho_header() {
 
 	g.write32_at(cmdsize_offset, g.buf.len - 24)
 	g.write_nulls(pagesize - g.buf.len)
-	g.call(0)
+	g.code_gen.call(0)
 }
 
 fn (mut g Gen) get_pagesize() int {

@@ -581,7 +581,11 @@ fn (t Tree) anon_fn(node ast.AnonFn) &Node {
 	obj.add_terse('decl', t.fn_decl(node.decl))
 	obj.add('inherited_vars', t.array_node_arg(node.inherited_vars))
 	obj.add_terse('typ', t.type_node(node.typ))
-	obj.add('has_gen', t.bool_node(node.has_gen))
+	symbol_obj := new_object()
+	for key, val in node.has_gen {
+		symbol_obj.add_terse(key.str(), t.bool_node(val))
+	}
+	obj.add_terse('has_gen', symbol_obj)
 	return obj
 }
 
@@ -800,7 +804,6 @@ fn (t Tree) sum_type_decl(node ast.SumTypeDecl) &Node {
 	obj.add('pos', t.pos(node.pos))
 	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add_terse('generic_types', t.array_node_type(node.generic_types))
-	obj.add('comments', t.array_node_comment(node.comments))
 	obj.add_terse('variants', t.array_node_type_expr(node.variants))
 	obj.add('name_pos', t.pos(node.name_pos))
 	return obj

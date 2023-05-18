@@ -17,7 +17,9 @@
 - [ ] -skip-unused on by default
 - [ ] `any` type
 - [ ] `copy()` builtin function (e.g. for easier conversion from `[]Foo` to `[4]Foo`)
-- [ ] better documentation platform
+- [ ] A better documentation platform
+- [ ] Improve vweb: allow separation of logic via "controllers", lots of other fixes
+- [ ] 64/32 bit int depending on arch (will remove array.len limitation on 64 bit systems)
 
 ## [Version 1.0]
 

@@ -1355,7 +1355,7 @@ fn (mut dl Dlmalloc) segment_holding(ptr voidptr) &Segment {
 		}
 		sp = sp.next
 	}
-	return &Segment(0)
+	return &Segment(unsafe { nil })
 }
 
 // realloc behaves as libc realloc, but operates within the given space

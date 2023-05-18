@@ -113,3 +113,9 @@ fn test_sprintf_does_not_double_free_on_g() {
 	x := 3.141516
 	assert strconv.v_sprintf('aaa %G', x) == 'aaa 3.141516'
 }
+
+fn test_sprintf_with_escape() {
+	n := 69
+	s := strconv.v_sprintf('%d is 100%% awesome', n)
+	assert s == '69 is 100% awesome'
+}

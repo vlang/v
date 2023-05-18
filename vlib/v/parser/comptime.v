@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -11,8 +11,8 @@ import v.token
 const (
 	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
 		'compile_warn']
-	comptime_types           = ['Map', 'Array', 'Int', 'Float', 'Struct', 'Interface', 'Enum',
-		'Sumtype', 'Alias', 'Function', 'Option']
+	comptime_types           = ['map', 'array', 'int', 'float', 'struct', 'interface', 'enum',
+		'sumtype', 'alias', 'function', 'option']
 )
 
 pub fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
@@ -25,37 +25,37 @@ pub fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 	}
 	mut cty := ast.ComptimeTypeKind.map_
 	match name {
-		'Map' {
+		'map' {
 			cty = .map_
 		}
-		'Struct' {
+		'struct' {
 			cty = .struct_
 		}
-		'Interface' {
+		'interface' {
 			cty = .iface
 		}
-		'Int' {
+		'int' {
 			cty = .int
 		}
-		'Float' {
+		'float' {
 			cty = .float
 		}
-		'Alias' {
+		'alias' {
 			cty = .alias
 		}
-		'Function' {
+		'function' {
 			cty = .function
 		}
-		'Array' {
+		'array' {
 			cty = .array
 		}
-		'Enum' {
+		'enum' {
 			cty = .enum_
 		}
-		'Sumtype' {
+		'sumtype' {
 			cty = .sum_type
 		}
-		'Option' {
+		'option' {
 			cty = .option
 		}
 		else {}
@@ -255,8 +255,10 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 
 fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	// p.comptime_for() handles these special forms:
-	// $for method in App(methods) {
-	// $for field in App(fields) {
+	// `$for method in App.methods {`
+	// `$for val in App.values {`
+	// `$for field in App.fields {`
+	// `$for attr in App.attributes {`
 	p.next()
 	p.check(.key_for)
 	var_pos := p.tok.pos()
@@ -264,7 +266,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	p.check(.key_in)
 	mut typ_pos := p.tok.pos()
 	lang := p.parse_language()
-	typ := p.parse_any_type(lang, false, false)
+	typ := p.parse_any_type(lang, false, false, false)
 	typ_pos = typ_pos.extend(p.prev_tok.pos())
 	p.check(.dot)
 	for_val := p.check_name()

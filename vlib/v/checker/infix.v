@@ -195,6 +195,18 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						node.pos)
 				}
 			}
+			if mut node.left is ast.CallExpr {
+				if node.left.return_type.has_flag(.option)
+					|| node.left.return_type.has_flag(.result) {
+					option_or_result := if node.left.return_type.has_flag(.option) {
+						'option'
+					} else {
+						'result'
+					}
+					c.error('unwrapped ${option_or_result} cannot be used with `${node.op.str()}`',
+						left_pos)
+				}
+			}
 			node.promoted_type = ast.bool_type
 			return ast.bool_type
 		}
@@ -371,6 +383,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 		}
 		.gt, .lt, .ge, .le {
+			unwrapped_left_type := c.unwrap_generic(left_type)
+			left_sym = c.table.sym(unwrapped_left_type)
+			unwrapped_right_type := c.unwrap_generic(right_type)
+			right_sym = c.table.sym(unwrapped_right_type)
 			if left_sym.kind in [.array, .array_fixed] && right_sym.kind in [.array, .array_fixed] {
 				c.error('only `==` and `!=` are defined on arrays', node.pos)
 			} else if left_sym.kind == .struct_
@@ -380,8 +396,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			} else if left_sym.kind == .struct_ && right_sym.kind == .struct_
 				&& node.op in [.eq, .lt] {
 				if !(left_sym.has_method(node.op.str()) && right_sym.has_method(node.op.str())) {
-					left_name := c.table.type_to_str(left_type)
-					right_name := c.table.type_to_str(right_type)
+					left_name := c.table.type_to_str(unwrapped_left_type)
+					right_name := c.table.type_to_str(unwrapped_right_type)
 					if left_name == right_name {
 						if !(node.op == .lt && c.pref.translated) {
 							// Allow `&Foo < &Foo` in translated code.
@@ -444,6 +460,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				c.error('unwrapped option cannot be compared in an infix expression',
 					opt_comp_pos)
 			}
+		}
+		.key_like {
+			node.promoted_type = ast.bool_type
+
+			return c.check_like_operator(node)
 		}
 		.left_shift {
 			if left_final_sym.kind == .array {
@@ -653,7 +674,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				c.error('only `==`, `!=`, `|` and `&` are defined on `[flag]` tagged `enum`, use an explicit cast to `int` if needed',
 					node.pos)
 			}
-		} else if !c.pref.translated && !c.file.is_translated {
+		} else if !c.pref.translated && !c.file.is_translated && !left_type.has_flag(.generic)
+			&& !right_type.has_flag(.generic) {
 			// Regular enums
 			c.error('only `==` and `!=` are defined on `enum`, use an explicit cast to `int` if needed',
 				node.pos)
@@ -743,6 +765,19 @@ fn (mut c Checker) check_div_mod_by_zero(expr ast.Expr, op_kind token.Kind) {
 		}
 		else {}
 	}
+}
+
+fn (mut c Checker) check_like_operator(node &ast.InfixExpr) ast.Type {
+	if node.left !is ast.Ident || !node.left_type.is_string() {
+		c.error('the left operand of the `like` operator must be an identifier with a string type',
+			node.left.pos())
+	}
+
+	if !node.right_type.is_string() {
+		c.error('the right operand of the `like` operator must be a string type', node.right.pos())
+	}
+
+	return node.promoted_type
 }
 
 fn (mut c Checker) invalid_operator_error(op token.Kind, left_type ast.Type, right_type ast.Type, pos token.Pos) {

@@ -1,11 +1,10 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 [has_globals]
 module ast
 
 import v.cflag
-import v.token
 import v.util
 
 [heap; minify]
@@ -90,107 +89,6 @@ pub fn (t &Table) panic(message string) {
 	t.panic_handler(t, message)
 }
 
-[minify]
-pub struct Fn {
-pub:
-	is_variadic        bool
-	language           Language
-	is_pub             bool
-	is_ctor_new        bool // `[use_new] fn JS.Array.prototype.constructor()`
-	is_deprecated      bool // `[deprecated] fn abc(){}`
-	is_noreturn        bool // `[noreturn] fn abc(){}`
-	is_unsafe          bool // `[unsafe] fn abc(){}`
-	is_placeholder     bool
-	is_main            bool // `fn main(){}`
-	is_test            bool // `fn test_abc(){}`
-	is_keep_alive      bool // passed memory must not be freed (by GC) before function returns
-	is_method          bool // true for `fn (x T) name()`, and for interface declarations (which are also for methods)
-	no_body            bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
-	is_file_translated bool // true, when the file it resides in is `[translated]`
-	mod                string
-	file               string
-	file_mode          Language
-	pos                token.Pos
-	return_type_pos    token.Pos
-pub mut:
-	return_type    Type
-	receiver_type  Type // != 0, when .is_method == true
-	name           string
-	params         []Param
-	source_fn      voidptr // set in the checker, while processing fn declarations // TODO get rid of voidptr
-	usages         int
-	generic_names  []string
-	dep_names      []string // globals or consts dependent names
-	attrs          []Attr   // all fn attributes
-	is_conditional bool     // true for `[if abc]fn(){}`
-	ctdefine_idx   int      // the index of the attribute, containing the compile time define [if mytag]
-}
-
-fn (f &Fn) method_equals(o &Fn) bool {
-	return f.params[1..].equals(o.params[1..]) && f.return_type == o.return_type
-		&& f.is_variadic == o.is_variadic && f.language == o.language
-		&& f.generic_names == o.generic_names && f.is_pub == o.is_pub && f.mod == o.mod
-		&& f.name == o.name
-}
-
-[minify]
-pub struct Param {
-pub:
-	pos         token.Pos
-	name        string
-	is_mut      bool
-	is_auto_rec bool
-	type_pos    token.Pos
-	is_hidden   bool // interface first arg
-pub mut:
-	typ Type
-}
-
-pub fn (f &Fn) new_method_with_receiver_type(new_type Type) Fn {
-	unsafe {
-		mut new_method := f
-		new_method.params = f.params.clone()
-		for i in 1 .. new_method.params.len {
-			if new_method.params[i].typ == new_method.params[0].typ {
-				new_method.params[i].typ = new_type
-			}
-		}
-		new_method.params[0].typ = new_type
-
-		return *new_method
-	}
-}
-
-pub fn (f &FnDecl) new_method_with_receiver_type(new_type Type) FnDecl {
-	unsafe {
-		mut new_method := f
-		new_method.params = f.params.clone()
-		for i in 1 .. new_method.params.len {
-			if new_method.params[i].typ == new_method.params[0].typ {
-				new_method.params[i].typ = new_type
-			}
-		}
-		new_method.params[0].typ = new_type
-		return *new_method
-	}
-}
-
-fn (p &Param) equals(o &Param) bool {
-	return p.name == o.name && p.is_mut == o.is_mut && p.typ == o.typ && p.is_hidden == o.is_hidden
-}
-
-fn (p []Param) equals(o []Param) bool {
-	if p.len != o.len {
-		return false
-	}
-	for i in 0 .. p.len {
-		if !p[i].equals(o[i]) {
-			return false
-		}
-	}
-	return true
-}
-
 pub fn new_table() &Table {
 	mut t := &Table{
 		global_scope: &Scope{
@@ -204,7 +102,7 @@ pub fn new_table() &Table {
 	return t
 }
 
-__global global_table = &Table(0)
+__global global_table = &Table(unsafe { nil })
 
 pub fn set_global_table(t &Table) {
 	global_table = t
@@ -846,7 +744,7 @@ pub fn (mut t Table) register_anon_struct(name string, sym_idx int) {
 }
 
 pub fn (t &Table) known_type(name string) bool {
-	return t.find_type_idx(name) != 0 || t.parsing_type == name
+	return t.type_idxs[name] != 0 || t.parsing_type == name || name in ['i32', 'byte']
 }
 
 // start_parsing_type open the scope during the parsing of a type
@@ -1163,14 +1061,15 @@ pub fn (mut t Table) find_or_register_array_with_dims(elem_type Type, nr_dims in
 	return t.find_or_register_array(t.find_or_register_array_with_dims(elem_type, nr_dims - 1))
 }
 
-pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size_expr Expr) int {
-	name := t.array_fixed_name(elem_type, size, size_expr)
+pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size_expr Expr, is_fn_ret bool) int {
+	prefix := if is_fn_ret { '_v_' } else { '' }
+	name := prefix + t.array_fixed_name(elem_type, size, size_expr)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
 		return existing_idx
 	}
-	cname := t.array_fixed_cname(elem_type, size)
+	cname := prefix + t.array_fixed_cname(elem_type, size)
 	// register
 	array_fixed_type := TypeSymbol{
 		kind: .array_fixed
@@ -1180,6 +1079,7 @@ pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size
 			elem_type: elem_type
 			size: size
 			size_expr: size_expr
+			is_fn_ret: is_fn_ret
 		}
 	}
 	return t.register_sym(array_fixed_type)
@@ -1415,7 +1315,8 @@ pub fn (t &Table) has_deep_child_no_ref(ts &TypeSymbol, name string) bool {
 	if ts.info is Struct {
 		for field in ts.info.fields {
 			sym := t.sym(field.typ)
-			if !field.typ.is_ptr() && (sym.name == name || t.has_deep_child_no_ref(sym, name)) {
+			if !field.typ.is_ptr() && ((sym.name == name && !field.typ.has_flag(.option))
+				|| t.has_deep_child_no_ref(sym, name)) {
 				return true
 			}
 		}
@@ -1482,7 +1383,8 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 			if bit_size % 8 != 0 { // there is no way to do `i2131(32)` so this should never be reached
 				t.panic('compiler bug: bitsizes must be multiples of 8')
 			}
-			return new_type(t.find_or_register_array_fixed(u8_type, bit_size / 8, empty_expr))
+			return new_type(t.find_or_register_array_fixed(u8_type, bit_size / 8, empty_expr,
+				false))
 		}
 	}
 }
@@ -1612,7 +1514,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 			if typ := t.resolve_generic_to_concrete(sym.info.elem_type, generic_names,
 				concrete_types)
 			{
-				idx := t.find_or_register_array_fixed(typ, sym.info.size, None{})
+				idx := t.find_or_register_array_fixed(typ, sym.info.size, None{}, false)
 				if typ.has_flag(.generic) {
 					return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
 				} else {
@@ -1625,6 +1527,18 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 				concrete_types)
 			{
 				idx := t.find_or_register_chan(typ, typ.nr_muls() > 0)
+				if typ.has_flag(.generic) {
+					return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
+				} else {
+					return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+				}
+			}
+		}
+		Thread {
+			if typ := t.resolve_generic_to_concrete(sym.info.return_type, generic_names,
+				concrete_types)
+			{
+				idx := t.find_or_register_thread(typ)
 				if typ.has_flag(.generic) {
 					return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
 				} else {
@@ -1659,6 +1573,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 				}
 			}
 			func.name = ''
+			func.generic_names = []
 			idx := t.find_or_register_fn_type(func, true, false)
 			if has_generic {
 				return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
@@ -1867,12 +1782,17 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 		}
 		ArrayFixed {
 			unwrap_typ := t.unwrap_generic_type(ts.info.elem_type, generic_names, concrete_types)
-			idx := t.find_or_register_array_fixed(unwrap_typ, ts.info.size, None{})
+			idx := t.find_or_register_array_fixed(unwrap_typ, ts.info.size, None{}, false)
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
 		Chan {
 			unwrap_typ := t.unwrap_generic_type(ts.info.elem_type, generic_names, concrete_types)
 			idx := t.find_or_register_chan(unwrap_typ, unwrap_typ.nr_muls() > 0)
+			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
+		}
+		Thread {
+			unwrap_typ := t.unwrap_generic_type(ts.info.return_type, generic_names, concrete_types)
+			idx := t.find_or_register_thread(unwrap_typ)
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
 		Map {
@@ -2105,7 +2025,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					}
 					mut fields := parent_info.fields.clone()
 					if parent_info.generic_types.len == info.concrete_types.len {
-						generic_names := parent_info.generic_types.map(t.sym(it).name)
+						generic_names := t.get_generic_names(parent_info.generic_types)
 						for i in 0 .. fields.len {
 							if fields[i].typ.has_flag(.generic) {
 								if fields[i].typ.idx() != info.parent_idx {
@@ -2151,7 +2071,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					}
 					if parent_info.generic_types.len == info.concrete_types.len {
 						mut fields := parent_info.fields.clone()
-						generic_names := parent_info.generic_types.map(t.sym(it).name)
+						generic_names := t.get_generic_names(parent_info.generic_types)
 						for i in 0 .. fields.len {
 							if t_typ := t.resolve_generic_to_concrete(fields[i].typ, generic_names,
 								info.concrete_types)
@@ -2209,7 +2129,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 					if parent_info.generic_types.len == info.concrete_types.len {
 						mut fields := parent_info.fields.clone()
 						mut variants := parent_info.variants.clone()
-						generic_names := parent_info.generic_types.map(t.sym(it).name)
+						generic_names := t.get_generic_names(parent_info.generic_types)
 						for i in 0 .. fields.len {
 							if t_typ := t.resolve_generic_to_concrete(fields[i].typ, generic_names,
 								info.concrete_types)
@@ -2246,10 +2166,61 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						util.verror('generic error', 'the number of generic types of sumtype `${parent.name}` is inconsistent with the concrete types')
 					}
 				}
+				FnType {
+					mut parent_info := parent.info as FnType
+					mut function := parent_info.func
+					for mut param in function.params {
+						if param.typ.has_flag(.generic) {
+							if t_typ := t.resolve_generic_to_concrete(param.typ, function.generic_names,
+								info.concrete_types)
+							{
+								param.typ = t_typ
+							}
+						}
+					}
+					if function.return_type.has_flag(.generic) {
+						if t_typ := t.resolve_generic_to_concrete(function.return_type,
+							function.generic_names, info.concrete_types)
+						{
+							function.return_type = t_typ
+						}
+					}
+					function.generic_names = []
+					sym.info = FnType{
+						...parent_info
+						func: function
+					}
+					sym.is_pub = true
+					sym.kind = parent.kind
+				}
 				else {}
 			}
 		}
 	}
+}
+
+// Extracts all type names from given types, notice that MultiReturn will be decompose
+// and will not included in returned string
+pub fn (t &Table) get_generic_names(generic_types []Type) []string {
+	mut generic_names := []string{cap: generic_types.len}
+	for typ in generic_types {
+		if !typ.has_flag(.generic) {
+			continue
+		}
+
+		sym := t.sym(typ)
+		info := sym.info
+
+		match info {
+			MultiReturn {
+				generic_names << t.get_generic_names(info.types)
+			}
+			else {
+				generic_names << sym.name
+			}
+		}
+	}
+	return generic_names
 }
 
 pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
