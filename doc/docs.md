@@ -558,7 +558,7 @@ assert s.len == 10
 arr := s.bytes() // convert `string` to `[]u8`
 assert arr.len == 10
 
-s2 := arr.bytestr() // convert `[]byte` to `string`
+s2 := arr.bytestr() // convert `[]u8` to `string`
 assert s2 == s
 ```
 
@@ -571,9 +571,9 @@ s[0] = `H` // not allowed
 
 > error: cannot assign to `s[i]` since V strings are immutable
 
-Note that indexing a string will produce a `byte`, not a `rune` nor another `string`. Indexes
-correspond to _bytes_ in the string, not Unicode code points. If you want to convert the `byte` to a
-`string`, use the `.ascii_str()` method on the `byte`:
+Note that indexing a string will produce a `u8` (byte), not a `rune` nor another `string`. Indexes
+correspond to _bytes_ in the string, not Unicode code points. If you want to convert the `u8` to a
+`string`, use the `.ascii_str()` method on the `u8`:
 
 ```v
 country := 'Netherlands'
@@ -2559,10 +2559,10 @@ Just like structs, unions support embedding.
 
 ```v
 struct Rgba32_Component {
-	r byte
-	g byte
-	b byte
-	a byte
+	r u8
+	g u8
+	b u8
+	a u8
 }
 
 union Rgba32 {
@@ -3515,12 +3515,12 @@ Interfaces support embedding, just like structs:
 ```v
 pub interface Reader {
 mut:
-	read(mut buf []byte) ?int
+	read(mut buf []u8) ?int
 }
 
 pub interface Writer {
 mut:
-	write(buf []byte) ?int
+	write(buf []u8) ?int
 }
 
 // ReaderWriter embeds both Reader and Writer.
@@ -5955,7 +5955,7 @@ Since V does not support overloading functions by intention there are wrapper fu
 C headers named `atomic.h` that are part of the V compiler infrastructure.
 
 There are dedicated wrappers for all unsigned integer types and for pointers.
-(`byte` is not fully supported on Windows) &ndash; the function names include the type name
+(`u8` is not fully supported on Windows) &ndash; the function names include the type name
 as suffix. e.g. `C.atomic_load_ptr()` or `C.atomic_fetch_add_u64()`.
 
 To use these functions the C header for the used OS has to be included and the functions
@@ -6393,7 +6393,7 @@ These can be converted to V strings with `string_from_wide(&u16(cwidestring))` .
 V has these types for easier interoperability with C:
 
 - `voidptr` for C's `void*`,
-- `&byte` for C's `byte*` and
+- `&u8` for C's `byte*` and
 - `&char` for C's `char*`.
 - `&&char` for C's `char**`
 
@@ -6431,7 +6431,7 @@ members of sub-data-structures may be directly declared in the containing struct
 
 ```v
 struct C.SomeCStruct {
-	implTraits  byte
+	implTraits  u8
 	memPoolData u16
 	// These members are part of sub data structures that can't currently be represented in V.
 	// Declaring them directly like this is sufficient for access.

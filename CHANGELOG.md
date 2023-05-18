@@ -7,6 +7,7 @@
 - Enum values now can have attributes.
 - json: Enum value string serialization supports `[json:'alias']` to change its string values.
 - Functions can now return fixed size arrays.
+- The builtin websocket library is now thread safe.
 
 ## V 0.3.4
 
