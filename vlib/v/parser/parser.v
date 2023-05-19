@@ -3788,8 +3788,9 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		}
 	}
 
-	if !p.has_globals && !p.pref.enable_globals && !p.pref.is_fmt && !p.pref.translated
-		&& !p.is_translated && !p.pref.is_livemain && !p.pref.building_v && !p.builtin_mod {
+	if !p.has_globals && !p.pref.enable_globals && !p.pref.is_fmt && !p.pref.is_vet
+		&& !p.pref.translated && !p.is_translated && !p.pref.is_livemain && !p.pref.building_v
+		&& !p.builtin_mod {
 		p.error('use `v -enable-globals ...` to enable globals')
 		return ast.GlobalDecl{}
 	}
