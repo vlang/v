@@ -100,7 +100,7 @@ fn (mut s Server) parse_and_respond(mut conn net.TcpConn) {
 			reader.free()
 		}
 	}
-	req := parse_request(mut reader) or {
+	mut req := parse_request(mut reader) or {
 		$if debug {
 			// only show in debug mode to prevent abuse
 			eprintln('error parsing request: ${err}')
