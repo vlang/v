@@ -32,9 +32,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			right_type_sym := c.table.sym(right_type)
 			// fixed array returns an struct, but when assigning it must be the array type
-			if right_type_sym.kind == .array_fixed && (right_type_sym.info as ast.ArrayFixed).is_fn_ret {
+			if right_type_sym.kind == .array_fixed
+				&& (right_type_sym.info as ast.ArrayFixed).is_fn_ret {
 				info := right_type_sym.info as ast.ArrayFixed
-				right_type = c.table.find_or_register_array_fixed(info.elem_type, info.size, info.size_expr, false)
+				right_type = c.table.find_or_register_array_fixed(info.elem_type, info.size,
+					info.size_expr, false)
 			}
 			if i == 0 {
 				right_type0 = right_type
