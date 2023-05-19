@@ -107,6 +107,9 @@ fn (mut s Server) parse_and_respond(mut conn net.TcpConn) {
 		}
 		return
 	}
+
+	req.header.add_custom('Remote-Addr',  conn.peer_ip() or { '' })
+
 	mut resp := s.handler.handle(req)
 	if resp.version() == .unknown {
 		resp.set_version(req.version)
