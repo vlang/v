@@ -843,6 +843,7 @@ fn (mut g Gen) gen_assign_vars_autofree(node &ast.AssignStmt) {
 
 fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 	for i, left in node.left {
+		left_is_auto_deref_var := left.is_auto_deref_var()
 		match left {
 			ast.Ident {
 				left_typ := node.left_types[i]
@@ -851,9 +852,20 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 				if left_sym.kind == .function {
 					g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_${left.pos.pos}')
 					g.writeln(' = ${anon_ctx}${c_name(left.name)};')
+				} else if left_is_auto_deref_var {
+					styp := g.typ(left_typ).trim('*')
+					if left_sym.kind == .array {
+						g.writeln('${styp} _var_${left.pos.pos} = array_clone(${anon_ctx}${c_name(left.name)});')
+					} else {
+						g.writeln('${styp} _var_${left.pos.pos} = *${anon_ctx}${c_name(left.name)};')
+					}
 				} else {
 					styp := g.typ(left_typ)
-					g.writeln('${styp} _var_${left.pos.pos} = ${anon_ctx}${c_name(left.name)};')
+					if left_sym.kind == .array {
+						g.writeln('${styp} _var_${left.pos.pos} = array_clone(&${anon_ctx}${c_name(left.name)});')
+					} else {
+						g.writeln('${styp} _var_${left.pos.pos} = ${anon_ctx}${c_name(left.name)};')
+					}
 				}
 			}
 			ast.IndexExpr {
@@ -1009,18 +1021,36 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			g.write(')')
 		}
 		ast.CallExpr {
-			mut fn_name := val.name.replace('.', '__')
-			if val.concrete_types.len > 0 {
-				fn_name = g.generic_fn_name(val.concrete_types, fn_name)
-			}
-			g.write('${fn_name}(')
-			for i, arg in val.args {
-				g.gen_cross_tmp_variable(left, arg.expr)
-				if i != val.args.len - 1 {
-					g.write(', ')
+			if val.is_method {
+				rec_cc_type := g.cc_type(val.receiver_type, false)
+				mut rec_typ_name := util.no_dots(rec_cc_type)
+				if g.table.sym(val.receiver_type).kind == .array {
+					rec_typ_name = 'array'
 				}
+				fn_name := util.no_dots('${rec_typ_name}_${val.name}')
+				g.write('${fn_name}(&')
+				g.gen_cross_tmp_variable(left, val.left)
+				for i, arg in val.args {
+					g.gen_cross_tmp_variable(left, arg.expr)
+					if i != val.args.len - 1 {
+						g.write(', ')
+					}
+				}
+				g.write(')')
+			} else {
+				mut fn_name := val.name.replace('.', '__')
+				if val.concrete_types.len > 0 {
+					fn_name = g.generic_fn_name(val.concrete_types, fn_name)
+				}
+				g.write('${fn_name}(')
+				for i, arg in val.args {
+					g.gen_cross_tmp_variable(left, arg.expr)
+					if i != val.args.len - 1 {
+						g.write(', ')
+					}
+				}
+				g.write(')')
 			}
-			g.write(')')
 		}
 		ast.PrefixExpr {
 			g.write(val.op.str())
