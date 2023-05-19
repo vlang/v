@@ -2441,6 +2441,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 	// no cast
 	g.expr(expr)
+	if expr is ast.CallExpr && exp_sym.kind == .array_fixed {
+		g.write('.ret_arr')
+	}
 }
 
 fn write_octal_escape(mut b strings.Builder, c u8) {

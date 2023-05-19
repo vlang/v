@@ -98,3 +98,12 @@ fn test_simple_ret() {
 	dump(zzz)
 	dump(zzz[0])
 }
+
+fn g(a [4]int) {
+}
+
+fn test_arg_fixed() {
+	zzz := f()
+	g(zzz)
+	g(f())
+}
