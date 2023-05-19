@@ -47,10 +47,9 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 			.type_time, .type_date, .type_datetime, .type_time2, .type_datetime2 {
 				dataptr << unsafe { malloc(sizeof(C.MYSQL_TIME)) }
 			}
-			.type_string, .type_blob {
-				dataptr << unsafe { malloc(field.length) }
-			}
-			.type_var_string {
+			.type_string, .type_blob, .type_var_string {
+				// walkingdevel: maybe this solution will change while I'm working on this library,
+				// but the current solution addresses the issues reported.
 				dataptr << unsafe { malloc(field.length) }
 			}
 			else {
