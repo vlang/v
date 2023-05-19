@@ -1057,12 +1057,8 @@ pub fn (s string) substr(start int, end int) string {
 		str: unsafe { malloc_noscan(len + 1) }
 		len: len
 	}
-	for i in 0 .. len {
-		unsafe {
-			res.str[i] = s.str[start + i]
-		}
-	}
 	unsafe {
+		vmemcpy(res.str, s.str + start, len)
 		res.str[len] = 0
 	}
 	return res
@@ -1083,12 +1079,8 @@ pub fn (s string) substr_with_check(start int, end int) !string {
 		str: unsafe { malloc_noscan(len + 1) }
 		len: len
 	}
-	for i in 0 .. len {
-		unsafe {
-			res.str[i] = s.str[start + i]
-		}
-	}
 	unsafe {
+		vmemcpy(res.str, s.str + start, len)
 		res.str[len] = 0
 	}
 	return res
@@ -1120,14 +1112,7 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 	}
 
 	if start > s.len || end < start {
-		mut res := string{
-			str: unsafe { malloc_noscan(1) }
-			len: 0
-		}
-		unsafe {
-			res.str[0] = 0
-		}
-		return res
+		return ''
 	}
 
 	len := end - start
@@ -1137,12 +1122,8 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 		str: unsafe { malloc_noscan(len + 1) }
 		len: len
 	}
-	for i in 0 .. len {
-		unsafe {
-			res.str[i] = s.str[start + i]
-		}
-	}
 	unsafe {
+		vmemcpy(res.str, s.str + start, len)
 		res.str[len] = 0
 	}
 	return res
