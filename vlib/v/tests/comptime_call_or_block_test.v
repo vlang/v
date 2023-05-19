@@ -10,7 +10,7 @@ fn test_main() {
 	mut ret2 := ''
 	$for method in App.methods {
 		$if method.is_pub {
-			app.$method()
+			app.$method() or { ret2 = err.msg() }
 			dump(ret2)
 		}
 	}
