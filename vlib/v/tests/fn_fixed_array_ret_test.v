@@ -88,3 +88,13 @@ fn test_inline() {
 	mut a := [1, 2, 3, 4]!
 	assert four(a)[1] == 2
 }
+
+fn f() [4]int {
+	return [1, 2, 3, 4]!
+}
+
+fn test_simple_ret() {
+	zzz := f()
+	dump(zzz)
+	dump(zzz[0])
+}

@@ -26,9 +26,15 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				&& node.left[i] in [ast.Ident, ast.SelectorExpr] && !node.left[i].is_blank_ident() {
 				c.expected_type = c.expr(node.left[i])
 			}
-			right_type := c.expr(right)
+			mut right_type := c.expr(right)
 			if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr] {
 				c.fail_if_unreadable(right, right_type, 'right-hand side of assignment')
+			}
+			right_type_sym := c.table.sym(right_type)
+			// fixed array returns an struct, but when assigning it must be the array type
+			if right_type_sym.kind == .array_fixed && (right_type_sym.info as ast.ArrayFixed).is_fn_ret {
+				info := right_type_sym.info as ast.ArrayFixed
+				right_type = c.table.find_or_register_array_fixed(info.elem_type, info.size, info.size_expr, false)
 			}
 			if i == 0 {
 				right_type0 = right_type
@@ -36,7 +42,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.check_expr_opt_call(right, right_type0),
 				]
 			}
-			right_type_sym := c.table.sym(right_type)
 			if right_type_sym.kind == .multi_return {
 				if node.right.len > 1 {
 					c.error('cannot use multi-value ${right_type_sym.name} in single-value context',
