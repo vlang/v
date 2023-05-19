@@ -3,10 +3,6 @@ module mysql
 import orm
 import time
 
-type Prims = f32 | f64 | i16 | i64 | i8 | int | string | u16 | u32 | u64 | u8
-
-// sql expr
-
 // @select is used internally by V's ORM for processing `SELECT ` queries
 pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
 	query := orm.orm_select_gen(config, '`', false, '?', 0, where)
@@ -28,8 +24,8 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 	mut dataptr := []&u8{}
 
 	for i in 0 .. num_fields {
-		f := unsafe { fields[i] }
-		match unsafe { FieldType(f.@type) } {
+		field := unsafe { fields[i] }
+		match unsafe { FieldType(field.@type) } {
 			.type_tiny {
 				dataptr << unsafe { malloc(1) }
 			}
@@ -52,13 +48,13 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 				dataptr << unsafe { malloc(sizeof(C.MYSQL_TIME)) }
 			}
 			.type_string, .type_blob {
-				dataptr << unsafe { malloc(512) }
+				dataptr << unsafe { malloc(field.length) }
 			}
 			.type_var_string {
-				dataptr << unsafe { malloc(2) }
+				dataptr << unsafe { malloc(field.length) }
 			}
 			else {
-				return error('\'${unsafe { FieldType(f.@type) }}\' is not yet implemented. Please create a new issue at https://github.com/vlang/v/issues/new')
+				return error('\'${unsafe { FieldType(field.@type) }}\' is not yet implemented. Please create a new issue at https://github.com/vlang/v/issues/new')
 			}
 		}
 	}
