@@ -8,7 +8,6 @@ import v.token
 fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	mut elem_type := ast.void_type
 	// `x := []string{}` (the type was set in the parser)
-	// TODO type is not set for fixed arrays
 	if node.typ != ast.void_type {
 		if node.elem_type != 0 {
 			elem_sym := c.table.sym(node.elem_type)
@@ -99,7 +98,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.error('generic struct cannot be used in non-generic function', node.pos)
 		}
 
-		// &int{} check
+		// `&int{}` check
 		if node.elem_type.is_any_kind_of_pointer() && !c.inside_unsafe && node.has_len {
 			c.warn('arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`)',
 				node.pos)
@@ -120,9 +119,9 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				node.pos)
 		}
 	}
-	// a = []
+	// `a = []`
 	if node.exprs.len == 0 {
-		// a := fn_returing_opt_array() or { [] }
+		// `a := fn_returing_opt_array() or { [] }`
 		if c.expected_type == ast.void_type && c.expected_or_type != ast.void_type {
 			c.expected_type = c.expected_or_type
 		}
@@ -132,11 +131,6 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				node.pos)
 			return ast.void_type
 		}
-		// TODO: seperate errors once bug is fixed with `x := if expr { ... } else { ... }`
-		// if c.expected_type == ast.void_type {
-		// c.error('array_init: use `[]Type{}` instead of `[]`', node.pos)
-		// return ast.void_type
-		// }
 		array_info := type_sym.array_info()
 		node.elem_type = array_info.elem_type
 		// clear option flag incase of: `fn opt_arr() ?[]int { return [] }`
@@ -146,7 +140,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.expected_type
 		}.clear_flags(.option, .result)
 	}
-	// [1,2,3]
+	// `[1,2,3]`
 	if node.exprs.len > 0 && node.elem_type == ast.void_type {
 		mut expected_value_type := ast.void_type
 		mut expecting_interface_array := false
@@ -156,25 +150,19 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			expected_value_type = c.table.value_type(c.expected_type)
 			expected_value_sym := c.table.sym(expected_value_type)
 			if expected_value_sym.kind == .interface_ {
-				// Array of interfaces? (`[dog, cat]`) Save the interface type (`Animal`)
+				// array of interfaces? (`[dog, cat]`) Save the interface type (`Animal`)
 				expecting_interface_array = true
 			} else if expected_value_sym.kind == .sum_type {
 				expecting_sumtype_array = true
 			}
 		}
-		// expecting_interface_array := c.expected_type != 0 &&
-		// c.table.sym(c.table.value_type(c.expected_type)).kind ==			.interface_
-		//
-		// if expecting_interface_array {
-		// println('ex $c.expected_type')
-		// }
 		for i, mut expr in node.exprs {
 			typ := c.check_expr_opt_call(expr, c.expr(expr))
 			if typ == ast.void_type {
 				c.error('invalid void array element type', expr.pos())
 			}
 			node.expr_types << typ
-			// The first element's type
+			// the first element's type
 			if expecting_interface_array {
 				if i == 0 {
 					elem_type = expected_value_type
@@ -203,7 +191,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				}
 				continue
 			}
-			// The first element's type
+			// the first element's type
 			if i == 0 {
 				if expr.is_auto_deref_var() {
 					elem_type = ast.mktyp(typ.deref())
@@ -250,7 +238,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		}
 		node.elem_type = elem_type
 	} else if node.is_fixed && node.exprs.len == 1 && node.elem_type != ast.void_type {
-		// [50]u8
+		// `[50]u8`
 		mut fixed_size := i64(0)
 		init_expr := node.exprs[0]
 		c.expr(init_expr)
