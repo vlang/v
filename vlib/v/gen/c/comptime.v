@@ -234,8 +234,6 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 				g.write('${g.typ(m.return_type)} ${tmp_var} = ')
 				g.write(cur_line)
 				g.or_block(tmp_var, node.or_block, m.return_type)
-			} else {
-				g.or_block('', node.or_block, m.return_type)
 			}
 		}
 		return
