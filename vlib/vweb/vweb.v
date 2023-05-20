@@ -262,12 +262,13 @@ pub fn (mut ctx Context) file(f_path string) Result {
 		ctx.server_error(500)
 		return Result{}
 	}
-	content_type := vweb.mime_types[ext]
-	if content_type.len == 0 {
+	if ext in ctx.static_mime_types {
+		ctx.send_response_to_client(ctx.static_mime_types[ext], data)
+	} else if ext in vweb.mime_types {
+		ctx.send_response_to_client(vweb.mime_types[ext], data)
+	} else {
 		eprintln('[vweb] no MIME type found for extension ${ext}')
 		ctx.server_error(500)
-	} else {
-		ctx.send_response_to_client(content_type, data)
 	}
 	return Result{}
 }
@@ -849,9 +850,9 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 fn serve_if_static[T](mut app T, url urllib.URL) bool {
 	// TODO: handle url parameters properly - for now, ignore them
 	static_file := app.static_files[url.path] or { return false }
-	mime_type := app.static_mime_types[url.path] or { return false }
-	if static_file == '' || mime_type == '' {
-		return false
+	mut mime_type := app.static_mime_types[url.path]
+	if mime_type == '' {
+		mime_type = vweb.mime_types[url.path]
 	}
 	data := os.read_file(static_file) or {
 		send_string(mut app.conn, vweb.http_404.bytestr()) or {}
@@ -873,7 +874,9 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 				ext := os.file_ext(file)
 				// Rudimentary guard against adding files not in mime_types.
 				// Use serve_static directly to add non-standard mime types.
-				if ext in vweb.mime_types {
+				if ext in ctx.static_mime_types {
+					ctx.serve_static(mount_path.trim_right('/') + '/' + file, full_path)
+				} else if ext in vweb.mime_types {
 					ctx.serve_static(mount_path.trim_right('/') + '/' + file, full_path)
 				}
 			}
@@ -926,7 +929,11 @@ pub fn (mut ctx Context) serve_static(url string, file_path string) {
 	ctx.static_files[url] = file_path
 	// ctx.static_mime_types[url] = mime_type
 	ext := os.file_ext(file_path)
-	ctx.static_mime_types[url] = vweb.mime_types[ext]
+	if ext in ctx.static_mime_types {
+		ctx.static_mime_types[url] = ctx.static_mime_types[ext]
+	} else if ext in vweb.mime_types {
+		ctx.static_mime_types[url] = ctx.static_mime_types[ext]
+	}
 }
 
 // Returns the ip address from the current user
