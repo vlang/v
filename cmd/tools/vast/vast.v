@@ -1002,6 +1002,7 @@ fn (t Tree) comptime_call(node ast.ComptimeCall) &Node {
 	obj.add_terse('env_value', t.string_node(node.env_value))
 	obj.add('pos', t.pos(node.pos))
 	obj.add_terse('args', t.array_node_call_arg(node.args))
+	obj.add_terse('or_block', t.or_expr(node.or_block))
 	return obj
 }
 
