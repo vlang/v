@@ -107,3 +107,9 @@ fn test_arg_fixed() {
 	g(zzz)
 	g(f())
 }
+
+fn test_dump_ret() {
+	zzz := f()
+	a := dump(zzz)
+	b := dump(zzz[0])
+}
