@@ -103,19 +103,17 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 
 	for {
 		status = stmt.fetch_stmt()!
-		// Clone the `lengths` for the current iteration so that the nested loop
-		// with the `fetch_column` method call does not override the values we need.
-		cloned_lengths := lengths.clone()
 
 		if status == 1 || status == 100 {
 			break
 		}
 
 		for index, mut bind in string_binds_map {
-			string_length := cloned_lengths[index] + 1
+			string_length := lengths[index] + 1
 			dataptr[index] = unsafe { malloc(string_length) }
 			bind.buffer = dataptr[index]
 			bind.buffer_length = string_length
+			bind.length = unsafe { nil }
 
 			stmt.fetch_column(bind, index)!
 		}
