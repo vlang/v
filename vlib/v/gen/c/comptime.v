@@ -227,7 +227,8 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			&& (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
 			g.write('.data)')
 		}
-		if node.or_block.kind != .absent {
+		if node.or_block.kind != .absent
+			&& (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
 			if !g.inside_assign {
 				cur_line := g.go_before_stmt(0)
 				tmp_var := g.new_tmp_var()

@@ -5,6 +5,9 @@ pub fn (mut app App) app_index() ! {
 	return error('hhh')
 }
 
+pub fn (mut app App) no_error() {
+}
+
 fn test_main() {
 	mut app := App{}
 	mut ret2 := ''
