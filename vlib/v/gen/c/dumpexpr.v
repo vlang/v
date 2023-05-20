@@ -86,6 +86,7 @@ fn (mut g Gen) dump_expr_definitions() {
 		to_string_fn_name := g.get_str_fn(typ.clear_flags(.shared_f, .result))
 		mut ptr_asterisk := if is_ptr { '*'.repeat(typ.nr_muls()) } else { '' }
 		mut str_dumparg_type := ''
+		mut str_dumparg_ret_type := ''
 		if dump_sym.kind == .none_ {
 			str_dumparg_type = 'IError' + ptr_asterisk
 		} else {
@@ -103,11 +104,16 @@ fn (mut g Gen) dump_expr_definitions() {
 			str_tdef := g.out.after(tdef_pos)
 			g.go_back(str_tdef.len)
 			dump_typedefs['typedef ${str_tdef};'] = true
+			str_dumparg_ret_type = str_dumparg_type
+		} else if dump_sym.kind == .array_fixed {
+			str_dumparg_ret_type = '_v_' + str_dumparg_type
+		} else {
+			str_dumparg_ret_type = str_dumparg_type
 		}
 		dump_fn_name := '_v_dump_expr_${name}' +
 			(if is_ptr { '_ptr'.repeat(typ.nr_muls()) } else { '' })
-		dump_fn_defs.writeln('${str_dumparg_type} ${dump_fn_name}(string fpath, int line, string sexpr, ${str_dumparg_type} dump_arg);')
-		if g.writeln_fn_header('${str_dumparg_type} ${dump_fn_name}(string fpath, int line, string sexpr, ${str_dumparg_type} dump_arg)', mut
+		dump_fn_defs.writeln('${str_dumparg_ret_type} ${dump_fn_name}(string fpath, int line, string sexpr, ${str_dumparg_type} dump_arg);')
+		if g.writeln_fn_header('${str_dumparg_ret_type} ${dump_fn_name}(string fpath, int line, string sexpr, ${str_dumparg_type} dump_arg)', mut
 			dump_fns)
 		{
 			continue
@@ -157,7 +163,14 @@ fn (mut g Gen) dump_expr_definitions() {
 		dump_fns.writeln('\tstrings__Builder_write_string(&sb, value);')
 		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '\\n');")
 		surrounder.builder_write_afters(mut dump_fns)
-		dump_fns.writeln('\treturn dump_arg;')
+		if dump_sym.kind == .array_fixed {
+			tmp_var := g.new_tmp_var()
+			dump_fns.writeln('${str_dumparg_ret_type} ${tmp_var} = {0};')
+			dump_fns.writeln('memcpy(${tmp_var}.ret_arr, dump_arg, sizeof(${str_dumparg_type}));')
+			dump_fns.writeln('\treturn ${tmp_var};')
+		} else {
+			dump_fns.writeln('\treturn dump_arg;')
+		}
 		dump_fns.writeln('}')
 	}
 	for tdef, _ in dump_typedefs {
