@@ -119,6 +119,7 @@ pub fn protect(mut ctx vweb.Context, config &CsrfConfig) bool {
 		return false
 	}
 	secret := config.get_secret(ctx.req)
+	println('${cookie}, ${token}, ${secret}')
 
 	// generate new hmac based on information in the http request
 	expected_mac := hmac.new(secret.bytes(), token.bytes(), sha256.sum, sha256.block_size)
@@ -162,5 +163,5 @@ fn check_origin_and_referer(ctx vweb.Context, config &CsrfConfig) bool {
 // request_is_invalid sends an http 401 response
 fn request_is_invalid(mut ctx vweb.Context) {
 	ctx.set_status(401, '')
-	ctx.text('HTTP 401: Forbidden')
+	ctx.text('HTTP 401: Invalid or missing CSRF token')
 }
