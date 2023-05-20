@@ -1,4 +1,13 @@
-vlib/v/checker/tests/array_decl_type_err.vv:1:10: error: `array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc
-    1 | mut a := []array{}
+vlib/v/checker/tests/array_decl_type_err.vv:5:20: error: `array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc
+    3 |     max_size          string
+    4 |     filter_until_hour int   = 240 // 10 days
+    5 |     prune_list        array = ['all']
+      |                       ~~~~~
+    6 |     time_interval     int   = 300 // 5 min
+    7 | }
+vlib/v/checker/tests/array_decl_type_err.vv:9:10: error: `array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc
+    7 | }
+    8 |
+    9 | mut a := []array{}
       |          ~~~~~~~~
-    2 | a.insert(4, '1')
+   10 | a.insert(4, '1')

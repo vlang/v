@@ -217,6 +217,10 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					}
 				}
 			}
+			if field.typ.idx() == ast.array_type && !c.is_builtin_mod {
+				c.error('`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc',
+					field.type_pos)
+			}
 		}
 		if node.generic_types.len == 0 && has_generic_types {
 			c.error('generic struct `${node.name}` declaration must specify the generic type names, e.g. ${node.name}[T]',
