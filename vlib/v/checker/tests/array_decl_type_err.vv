@@ -1,3 +1,10 @@
+type Arr = array
+type ArraySumType = array | int
+
+interface Foo {
+	arr array
+}
+
 struct Config {
 mut:
 	max_size          string

@@ -439,6 +439,10 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 	}
 	c.ensure_type_exists(node.parent_type, node.type_pos) or { return }
+	if node.parent_type.idx() == ast.array_type && !c.is_builtin_mod {
+		c.error('`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc',
+			node.type_pos)
+	}
 	mut parent_typ_sym := c.table.sym(node.parent_type)
 	match parent_typ_sym.kind {
 		.placeholder, .int_literal, .float_literal {
@@ -546,6 +550,10 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 	for variant in node.variants {
 		if variant.typ.is_ptr() {
 			c.error('sum type cannot hold a reference type', variant.pos)
+		}
+		if variant.typ.idx() == ast.array_type && !c.is_builtin_mod {
+			c.error('`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc',
+				variant.pos)
 		}
 		c.ensure_type_exists(variant.typ, variant.pos) or {}
 		sym := c.table.sym(variant.typ)

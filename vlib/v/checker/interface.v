@@ -204,6 +204,10 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				c.error('recursive interface fields are not allowed because they cannot be initialised',
 					field.type_pos)
 			}
+			if field.typ.idx() == ast.array_type && !c.is_builtin_mod {
+				c.error('`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc',
+					field.type_pos)
+			}
 			for j in 0 .. i {
 				if field.name == node.fields[j].name {
 					c.error('field name `${field.name}` duplicate', field.pos)
