@@ -105,7 +105,8 @@ fn (mut g Gen) dump_expr_definitions() {
 			g.go_back(str_tdef.len)
 			dump_typedefs['typedef ${str_tdef};'] = true
 			str_dumparg_ret_type = str_dumparg_type
-		} else if dump_sym.kind == .array_fixed {
+		} else if !typ.has_flag(.option) && dump_sym.kind == .array_fixed {
+			// fixed array returned from function
 			str_dumparg_ret_type = '_v_' + str_dumparg_type
 		} else {
 			str_dumparg_ret_type = str_dumparg_type
@@ -163,10 +164,10 @@ fn (mut g Gen) dump_expr_definitions() {
 		dump_fns.writeln('\tstrings__Builder_write_string(&sb, value);')
 		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '\\n');")
 		surrounder.builder_write_afters(mut dump_fns)
-		if dump_sym.kind == .array_fixed {
+		if !typ.has_flag(.option) && dump_sym.kind == .array_fixed {
 			tmp_var := g.new_tmp_var()
-			dump_fns.writeln('${str_dumparg_ret_type} ${tmp_var} = {0};')
-			dump_fns.writeln('memcpy(${tmp_var}.ret_arr, dump_arg, sizeof(${str_dumparg_type}));')
+			dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = {0};')
+			dump_fns.writeln('\tmemcpy(${tmp_var}.ret_arr, dump_arg, sizeof(${str_dumparg_type}));')
 			dump_fns.writeln('\treturn ${tmp_var};')
 		} else {
 			dump_fns.writeln('\treturn dump_arg;')
