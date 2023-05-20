@@ -47,10 +47,10 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 			.type_time, .type_date, .type_datetime, .type_time2, .type_datetime2 {
 				dataptr << unsafe { malloc(sizeof(C.MYSQL_TIME)) }
 			}
-			.type_string, .type_blob, .type_var_string {
-				// walkingdevel: maybe this solution will change while I'm working on this library,
-				// but the current solution addresses the issues reported.
-				dataptr << unsafe { malloc(field.length) }
+			.type_string, .type_var_string, .type_blob, .type_tiny_blob, .type_medium_blob,
+			.type_long_blob {
+				// Memory will be allocated later dynamically depending on the length of the value.
+				dataptr << &u8(0)
 			}
 			else {
 				return error('\'${unsafe { FieldType(field.@type) }}\' is not yet implemented. Please create a new issue at https://github.com/vlang/v/issues/new')
@@ -58,26 +58,29 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 		}
 	}
 
-	lens := []u32{len: int(num_fields), init: 0}
-	stmt.bind_res(fields, dataptr, lens, num_fields)
+	lengths := []u32{len: int(num_fields), init: 0}
+	stmt.bind_res(fields, dataptr, lengths, num_fields)
 
-	mut row := 0
 	mut types := config.types.clone()
 	mut field_types := []FieldType{}
 	if config.is_count {
 		types = [orm.type_idx['u64']]
 	}
+	// Map stores column indexes and their binds in order to extract values
+	// for these columns separately, with individual memory allocation for each value.
+	mut string_binds_map := map[int]C.MYSQL_BIND{}
 
 	for i, mut mysql_bind in stmt.res {
-		f := unsafe { fields[i] }
-		field_types << unsafe { FieldType(f.@type) }
+		field := unsafe { fields[i] }
+		field_type := unsafe { FieldType(field.@type) }
+		field_types << field_type
+
 		match types[i] {
 			orm.type_string {
-				mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
-				mysql_bind.buffer_length = FieldType.type_blob.get_len()
+				string_binds_map[i] = mysql_bind
 			}
 			orm.time {
-				match unsafe { FieldType(f.@type) } {
+				match field_type {
 					.type_long {
 						mysql_bind.buffer_type = C.MYSQL_TYPE_LONG
 					}
@@ -87,7 +90,7 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 					}
 					.type_string, .type_blob {}
 					else {
-						return error('Unknown type ${f.@type}')
+						return error('Unknown type ${field.@type}')
 					}
 				}
 			}
@@ -97,13 +100,25 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 
 	stmt.bind_result_buffer()!
 	stmt.store_result()!
+
 	for {
 		status = stmt.fetch_stmt()!
+		// Clone the `lengths` for the current iteration so that the nested loop
+		// with the `fetch_column` method call does not override the values we need.
+		cloned_lengths := lengths.clone()
 
 		if status == 1 || status == 100 {
 			break
 		}
-		row++
+
+		for index, mut bind in string_binds_map {
+			string_length := cloned_lengths[index] + 1
+			dataptr[index] = unsafe { malloc(string_length) }
+			bind.buffer = dataptr[index]
+			bind.buffer_length = string_length
+
+			stmt.fetch_column(bind, index)!
+		}
 
 		data_list := buffer_to_primitive(dataptr, types, field_types)!
 		ret << data_list
