@@ -1,5 +1,7 @@
 # Cross-Site Request Forgery (CSRF) protection
 
+
+
 ## Quick Start
 Below is an example how you could use the csrf module.
 
@@ -22,8 +24,9 @@ pub mut:
 fn get_secret(req http.Request) string {
 	// verification of the session id should be done elsewhere
 	session_id := req.cookies['session_id'] or { '' }
+	user_id := get_user_id(session_id) or { '' }
 	// change 'my-secret' and update it regularly in production
-	secret := '${session_id}:my-secret'
+	secret := '${user_id}:my-secret'
 	return secret
 }
 
@@ -55,6 +58,6 @@ index.html
 <form action="/auth" method="post">
     <input type="hidden" name="@app.csrf.token_name" value="@app.csrf.token"/>
     <label for="password">Your password:</label>
-    <input type="text"  id="password" name="password" placeholder="Your password" />
+    <input type="text" id="password" name="password" placeholder="Your password" />
 </form>
 ```

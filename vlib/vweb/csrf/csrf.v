@@ -12,10 +12,9 @@ import vweb
 [params]
 pub struct CsrfConfig {
 pub:
-	// get_secret should return a secret that is user unique
-	get_secret fn (http.Request) string
-	// how long the random csrf-token should be
-	token_length int = 64
+	secret string
+	// how long the random part of the csrf-token should be
+	nonce_length int = 64
 	// HTTP "safe" methods meaning they shouldn't alter state.
 	// If a request with any of these methods is made, `protect` will always return true
 	// https://datatracker.ietf.org/doc/html/rfc7231#section-4.2.1
@@ -25,14 +24,17 @@ pub:
 	// Subdomains need to be included separately: a request from `"sub.example.com"`
 	//  will be rejected when `allowed_host = ['example.com']`.
 	allowed_hosts []string
-	// the name of the csrftoken in the hidden html input
+	// if set to true both the Referer and Origin headers must match `allowed_hosts`
+	// else if either one is valid the request is accepted
+	check_origin_and_referer bool = true
+	// the name of the csrf-token in the hidden html input
 	token_name string = 'csrftoken'
+	// the name of the cookie that contains the session id
+	session_cookie string
 	// cookie options
 	cookie_name string        = 'csrftoken'
 	same_site   http.SameSite = .same_site_strict_mode
-	http_only   bool   = true
-	secure      bool   = true
-	cookie_path string = '/'
+	cookie_path string        = '/'
 	// how long the cookie stays valid in seconds. Default is 30 days
 	max_age       int = 60 * 60 * 24 * 30
 	cookie_domain string
@@ -70,13 +72,11 @@ pub fn middleware(config &CsrfConfig) vweb.Middleware {
 // set_token returns the csrftoken and sets an encrypted cookie with the hmac of
 // `config.get_secret` and the csrftoken
 pub fn set_token(mut ctx vweb.Context, config &CsrfConfig) string {
-	secret := config.get_secret(ctx.req)
+	expire_time := time.now().add_seconds(config.max_age)
+	session_id := ctx.get_cookie(config.session_cookie) or { '' }
 
-	token := rand.string_from_set('0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz',
-		config.token_length)
-
-	// convert secret key based on the request context and a random token into an hmac key
-	cookie := base64.url_encode(hmac.new(secret.bytes(), token.bytes(), sha256.sum, sha256.block_size))
+	token := generate_token(expire_time.unix_time(), session_id, config.nonce_length)
+	cookie := generate_cookie(expire_time.unix_time(), token, config.secret)
 
 	// the hmac key is set as a cookie and later validated with `app.token` that must
 	// be in an html form
@@ -84,10 +84,10 @@ pub fn set_token(mut ctx vweb.Context, config &CsrfConfig) string {
 		name: config.cookie_name
 		value: cookie
 		same_site: config.same_site
-		http_only: config.http_only
-		secure: config.secure
+		http_only: true
+		secure: true
 		path: config.cookie_path
-		expires: time.now().add_seconds(config.max_age)
+		expires: expire_time
 		max_age: config.max_age
 	})
 
@@ -109,26 +109,47 @@ pub fn protect(mut ctx vweb.Context, config &CsrfConfig) bool {
 		return false
 	}
 
-	// get secret, cookie and csrftoken from the form
-	cookie := ctx.get_cookie(config.cookie_name) or {
-		request_is_invalid(mut ctx)
-		return false
-	}
-	token := ctx.form[config.token_name] or {
-		request_is_invalid(mut ctx)
-		return false
-	}
-	secret := config.get_secret(ctx.req)
-	println('${cookie}, ${token}, ${secret}')
+	// use the session id from the cookie, not from the csrftoken
+	session_id := ctx.get_cookie(config.session_cookie) or { '' }
 
+	actual_token := ctx.form[config.token_name] or {
+		request_is_invalid(mut ctx)
+		return false
+	}
+	// retrieve timestamp and nonce from csrftoken
+	data := base64.url_decode_str(actual_token).split('.')
+	if data.len < 3 {
+		request_is_invalid(mut ctx)
+		return false
+	}
+
+	// check the timestamp from the csrftoken against the current time
+	// if an attacker would change the timestamp on the cookie, the token or both the
+	// hmac would also change.
+	now := time.now().unix_time()
+	expire_timestamp := data[0].i64()
+	if expire_timestamp < now {
+		// token has expired
+		request_is_invalid(mut ctx)
+		return false
+	}
+
+	nonce := data.last()
+	expected_token := base64.url_encode_str('${expire_timestamp}.${session_id}.${nonce}')
+
+	actual_hash := ctx.get_cookie(config.cookie_name) or {
+		request_is_invalid(mut ctx)
+		return false
+	}
 	// generate new hmac based on information in the http request
-	expected_mac := hmac.new(secret.bytes(), token.bytes(), sha256.sum, sha256.block_size)
+	expected_hash := generate_cookie(expire_timestamp, expected_token, config.secret)
 
 	// if the new hmac matches the cookie value the request is legit
-	if hmac.equal(base64.url_decode(cookie), expected_mac) == false {
+	if actual_hash != expected_hash {
 		request_is_invalid(mut ctx)
 		return false
 	}
+
 	return true
 }
 
@@ -144,24 +165,41 @@ fn check_origin_and_referer(ctx vweb.Context, config &CsrfConfig) bool {
 	// Attackers shouldn't be able to bypass this check with the domain `example.com.attacker.com`
 
 	origin := ctx.get_header('Origin')
-	origin_url := urllib.parse(origin) or { return false }
+	origin_url := urllib.parse(origin) or { urllib.URL{} }
 
-	if origin_url.hostname() !in config.allowed_hosts {
-		return false
-	}
+	valid_origin := origin_url.hostname() in config.allowed_hosts
 
 	referer := ctx.get_header('Referer')
-	referer_url := urllib.parse(referer) or { return false }
+	referer_url := urllib.parse(referer) or { urllib.URL{} }
 
-	if referer_url.hostname() !in config.allowed_hosts {
-		return false
+	valid_referer := referer_url.hostname() in config.allowed_hosts
+
+	if config.check_origin_and_referer {
+		return valid_origin && valid_referer
+	} else {
+		return valid_origin || valid_referer
 	}
-
-	return true
 }
 
-// request_is_invalid sends an http 401 response
+// request_is_invalid sends an http 403 response
 fn request_is_invalid(mut ctx vweb.Context) {
-	ctx.set_status(401, '')
-	ctx.text('HTTP 401: Invalid or missing CSRF token')
+	ctx.set_status(403, '')
+	ctx.text('Forbidden: Invalid or missing CSRF token')
+}
+
+fn generate_token(expire_time i64, session_id string, nonce_length int) string {
+	nonce := rand.string_from_set('0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz',
+		nonce_length)
+	token := '${expire_time}.${session_id}.${nonce}'
+
+	return base64.url_encode_str(token)
+}
+
+// generate_cookie converts secret key based on the request context and a random
+// token into an hmac key
+fn generate_cookie(expire_time i64, token string, secret string) string {
+	hash := base64.url_encode(hmac.new(secret.bytes(), token.bytes(), sha256.sum, sha256.block_size))
+	cookie := '${expire_time}.${hash}'
+
+	return cookie
 }

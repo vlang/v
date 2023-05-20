@@ -12,14 +12,16 @@ const (
 
 	session_id_cookie_name = 'session_id'
 	csrf_config            = &csrf.CsrfConfig{
-		get_secret: get_secret
+		secret: 'my-256bit-secret'
 		allowed_hosts: ['*']
+		session_cookie: session_id_cookie_name
 	}
 
 	allowed_origin         = 'example.com'
 	csrf_config_origin     = &csrf.CsrfConfig{
-		get_secret: get_secret
+		secret: 'my-256bit-secret'
 		allowed_hosts: [allowed_origin]
+		session_cookie: session_id_cookie_name
 	}
 )
 
@@ -30,7 +32,6 @@ fn test_set_token() {
 	mut ctx := vweb.Context{}
 
 	token := csrf.set_token(mut ctx, csrf_config)
-	assert token.len == csrf_config.token_length
 
 	cookie := ctx.header.get(.set_cookie) or { '' }
 	assert cookie.len != 0
@@ -59,10 +60,47 @@ fn test_protect() {
 			cookies: cookie_map
 		}
 	}
-
 	valid := csrf.protect(mut ctx, csrf_config)
 
 	assert valid == true
+}
+
+fn test_timeout() {
+	timeout := 1
+	short_time_config := &csrf.CsrfConfig{
+		secret: 'my-256bit-secret'
+		allowed_hosts: ['*']
+		session_cookie: session_id_cookie_name
+		max_age: timeout
+	}
+
+	mut ctx := vweb.Context{}
+
+	token := csrf.set_token(mut ctx, short_time_config)
+
+	// after 2 seconds the cookie should expire (maxage)
+	time.sleep(2 * time.second)
+	mut cookie := ctx.header.get(.set_cookie) or { '' }
+	// get cookie value from "name=value;"
+	cookie = cookie.split(' ')[0].all_after('=').replace(';', '')
+
+	form := {
+		short_time_config.token_name: token
+	}
+	cookie_map := {
+		short_time_config.cookie_name: cookie
+	}
+	ctx = vweb.Context{
+		form: form
+		req: http.Request{
+			method: .post
+			cookies: cookie_map
+		}
+	}
+
+	valid := csrf.protect(mut ctx, short_time_config)
+
+	assert valid == false
 }
 
 fn test_valid_origin() {
@@ -151,13 +189,6 @@ pub mut:
 	middlewares map[string][]vweb.Middleware
 }
 
-fn get_secret(req http.Request) string {
-	// verification of the session id should be done elsewhere
-	session_id := req.cookies[session_id_cookie_name] or { '' }
-	secret := '${session_id}:my-secret'
-	return secret
-}
-
 pub fn (mut app App) index() vweb.Result {
 	app.csrf.set_token(mut app.Context)
 
@@ -219,8 +250,9 @@ fn exit_after_timeout[T](mut app T, timeout_in_ms int) {
 fn test_run_app_in_background() {
 	mut app := &App{
 		csrf: csrf.CsrfApp{
-			get_secret: get_secret
+			secret: 'my-256bit-secret'
 			allowed_hosts: [allowed_origin]
+			session_cookie: session_id_cookie_name
 		}
 		middlewares: {
 			'/middleware_auth': [csrf.middleware(csrf_config)]
@@ -257,7 +289,7 @@ fn protect_route_util(path string) {
 		url: 'http://${localserver}/${path}'
 	}
 	mut res := req.do() or { panic(err) }
-	assert res.status() == .unauthorized
+	assert res.status() == .forbidden
 
 	// A valid request with CSRF protection should have a cookie session id,
 	// csrftoken in `app.form` and the hmac of that token in a cookie
@@ -274,8 +306,7 @@ fn protect_route_util(path string) {
 	})
 
 	// session id is altered: test if session hijacking is possible
-	// if the session id is altered the result of `get_secret` is different
-	// so the random csrftoken can't be validated with the cookie
+	// if the session id the csrftoken changes so the cookie can't be validated
 	mut cookies := {
 		csrf_config.cookie_name: cookie
 		session_id_cookie_name:  'altered'
@@ -290,7 +321,7 @@ fn protect_route_util(path string) {
 	}
 
 	res = req.do() or { panic(err) }
-	assert res.status() == .unauthorized
+	assert res.status() == .forbidden
 
 	// Everything is valid now and the request should succeed
 	cookies[session_id_cookie_name] = session_id
