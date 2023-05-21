@@ -61,6 +61,7 @@ fn C.mysql_stmt_bind_result(&C.MYSQL_STMT, &C.MYSQL_BIND) bool
 fn C.mysql_stmt_fetch(&C.MYSQL_STMT) int
 fn C.mysql_stmt_next_result(&C.MYSQL_STMT) int
 fn C.mysql_stmt_store_result(&C.MYSQL_STMT) int
+fn C.mysql_stmt_fetch_column(&C.MYSQL_STMT, &C.MYSQL_BIND, u32, u64) int
 
 pub struct Stmt {
 	stmt  &C.MYSQL_STMT = &C.MYSQL_STMT(unsafe { nil })
@@ -248,14 +249,12 @@ pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 }
 
 // bind_res will store one result in the statement `stmt`
-pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lens []u32, num_fields int) {
+pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []u32, num_fields int) {
 	for i in 0 .. num_fields {
-		len := unsafe { FieldType(fields[i].@type).get_len() }
 		stmt.res << C.MYSQL_BIND{
 			buffer_type: unsafe { fields[i].@type }
 			buffer: dataptr[i]
-			length: &lens[i]
-			buffer_length: len
+			length: &lengths[i]
 		}
 	}
 }
@@ -281,5 +280,17 @@ pub fn (mut stmt Stmt) store_result() ! {
 	res := C.mysql_stmt_store_result(stmt.stmt)
 	if res != 0 && stmt.get_error_msg() != '' {
 		return stmt.error(res)
+	}
+}
+
+// fetch_column fetches one column from the current result set row.
+// `bind` provides the buffer where data should be placed.
+// It should be set up the same way as for `mysql_stmt_bind_result()`.
+// `column` indicates which column to fetch. The first column is numbered 0.
+pub fn (mut stmt Stmt) fetch_column(bind &C.MYSQL_BIND, column int) ! {
+	result := C.mysql_stmt_fetch_column(stmt.stmt, bind, column, 0)
+
+	if result != 0 && stmt.get_error_msg() != '' {
+		return stmt.error(result)
 	}
 }
