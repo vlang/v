@@ -4,23 +4,35 @@ import encoding.binary
 
 // host to net 64 (htonll)
 pub fn htn64(host u64) u64 {
-	mut b := []u8{len: 8}
-	binary.big_endian_put_u64(mut b, host)
-	return binary.little_endian_u64(b)
+	$if little_endian {
+		mut b := []u8{len: 8}
+		binary.little_endian_put_u64(mut b, host)
+		return binary.big_endian_u64(b)
+	} $else {
+		return host
+	}
 }
 
 // host to net 32 (htonl)
 pub fn htn32(host u32) u32 {
-	mut b := []u8{len: 4}
-	binary.big_endian_put_u32(mut b, host)
-	return binary.little_endian_u32(b)
+	$if little_endian {
+		mut b := []u8{len: 4}
+		binary.big_endian_put_u32(mut b, host)
+		return binary.little_endian_u32(b)
+	} $else {
+		return host
+	}
 }
 
 // host to net 16 (htons)
 pub fn htn16(host u16) u16 {
-	mut b := []u8{len: 2}
-	binary.big_endian_put_u16(mut b, host)
-	return binary.little_endian_u16(b)
+	$if little_endian {
+		mut b := []u8{len: 2}
+		binary.big_endian_put_u16(mut b, host)
+		return binary.little_endian_u16(b)
+	} $else {
+		return host
+	}
 }
 
 // net to host 64 (ntohll)
