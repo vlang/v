@@ -489,7 +489,8 @@ pub fn (mut p Parser) parse_type() ast.Type {
 	if is_atomic {
 		typ = typ.set_flag(.atomic_f)
 	}
-	if typ.idx() == ast.array_type && !p.builtin_mod && p.mod !in ['os', 'strconv'] {
+	if typ.idx() == ast.array_type && !p.builtin_mod && p.mod !in ['os', 'strconv', 'sync']
+		&& !p.inside_unsafe {
 		p.error_with_pos('`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc',
 			pos)
 	}
