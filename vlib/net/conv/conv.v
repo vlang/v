@@ -1,6 +1,6 @@
 module conv
 
-// host to net 64 (htonll)
+// htn64 converts a the 64 bit value `host` to the net format (htonll)
 pub fn htn64(host u64) u64 {
 	$if little_endian {
 		// vfmt off
@@ -20,7 +20,7 @@ pub fn htn64(host u64) u64 {
 	}
 }
 
-// host to net 32 (htonl)
+// htn32 converts the 32 bit value `host` to the net format (htonl)
 pub fn htn32(host u32) u32 {
 	$if little_endian {
 		// vfmt off
@@ -36,7 +36,7 @@ pub fn htn32(host u32) u32 {
 	}
 }
 
-// host to net 16 (htons)
+// htn16 converts the 16 bit value `host` to the net format (htons)
 pub fn htn16(host u16) u16 {
 	$if little_endian {
 		// vfmt off
@@ -50,17 +50,17 @@ pub fn htn16(host u16) u16 {
 	}
 }
 
-// net to host 64 (ntohll)
+// nth64 converts the 64 bit value `net` to the host format (ntohll)
 pub fn nth64(net u64) u64 {
 	return htn64(net)
 }
 
-// net to host 32 (ntohl)
+// nth32 converts the 32 bit value `net` to the host format (ntohl)
 pub fn nth32(net u32) u32 {
 	return htn32(net)
 }
 
-// net to host 16 (ntohs)
+// nth16 converts the 16 bit value `net` to the host format (ntohs)
 pub fn nth16(net u16) u16 {
 	return htn16(net)
 }
