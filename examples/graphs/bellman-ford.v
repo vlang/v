@@ -146,7 +146,7 @@ fn main() {
 		[5, 15, 4, 0],
 	]
 
-	// To find number of coluns
+	// To find number of columns
 	// mut cols := an_array[0].len
 	mut graph := [][]int{} // the graph: adjacency matrix
 	// for index, g_value in [graph_01, graph_02, graph_03] {
