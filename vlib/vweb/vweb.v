@@ -256,6 +256,10 @@ pub fn (mut ctx Context) json_pretty[T](j T) Result {
 // TODO - test
 // Response HTTP_OK with file as payload
 pub fn (mut ctx Context) file(f_path string) Result {
+	if !os.exists(f_path) {
+		eprintln('[vweb] file ${f_path} does not exist')
+		return ctx.not_found()
+	}
 	ext := os.file_ext(f_path)
 	data := os.read_file(f_path) or {
 		eprint(err.msg())
