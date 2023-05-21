@@ -45,83 +45,83 @@ fn main() {
 }
 
 fn test_struct() {
-	test2 := OmitEmptyStruct{
+	test := OmitEmptyStruct{
 		bug: Struct{}
 	}
-	encoded2 := json.encode(test2)
-	dump(encoded2)
-	test := OmitEmptyStruct{
+	encoded := json.encode(test)
+	dump(encoded)
+	test2 := OmitEmptyStruct{
 		bug: Struct{
 			name: 'mybug'
 		}
 	}
-	encoded := json.encode(test)
-	dump(encoded)
+	encoded2 := json.encode(test2)
+	dump(encoded2)
 }
 
 fn test_fnum_struct() {
 	test := OmitEmptyFNumStruct{
 		bug: FNumStruct{}
 	}
-	encode := json.encode(test)
-	dump(encode)
+	encoded := json.encode(test)
+	dump(encoded)
 	test2 := OmitEmptyFNumStruct{
 		bug: FNumStruct{
 			f_num: 1.5
 		}
 	}
-	encoded := json.encode(test)
-	dump(encoded)
+	encoded2 := json.encode(test)
+	dump(encoded2)
 }
 
 fn test_alias() {
-	test3 := OmitEmptyAlias{
+	test := OmitEmptyAlias{
 		bug: ''
 	}
-	encoded3 := json.encode(test3)
-	dump(encoded3)
-	test4 := OmitEmptyAlias{
+	encoded := json.encode(test)
+	dump(encoded)
+	test2 := OmitEmptyAlias{
 		bug: 'foo'
 	}
-	encoded4 := json.encode(test4)
-	dump(encoded4)
+	encoded2 := json.encode(test2)
+	dump(encoded2)
 }
 
 fn test_map() {
-	test3 := OmitEmptyMap{
+	test := OmitEmptyMap{
 		bug: {}
 	}
-	encoded3 := json.encode(test3)
-	dump(encoded3)
-	test4 := OmitEmptyMap{
+	encoded := json.encode(test)
+	dump(encoded)
+	test2 := OmitEmptyMap{
 		bug: {
 			'foo': 'bar'
 		}
 	}
-	encoded4 := json.encode(test4)
-	dump(encoded4)
+	encoded2 := json.encode(test2)
+	dump(encoded2)
 }
 
 fn test_sumtype() {
-	test3 := OmitEmptySumType{}
-	encoded3 := json.encode(test3)
-	dump(encoded3)
-	test4 := OmitEmptySumType{
+	test := OmitEmptySumType{}
+	encoded := json.encode(test)
+	dump(encoded)
+	test2 := OmitEmptySumType{
 		bug: 1
 	}
-	encoded4 := json.encode(test4)
-	dump(encoded4)
+	encoded2 := json.encode(test2)
+	dump(encoded2)
 }
 
 fn test_array() {
-	test3 := OmitEmptyArray{
+	test := OmitEmptyArray{
 		bug: []
 	}
-	encoded3 := json.encode(test3)
-	dump(encoded3)
-	test4 := OmitEmptyArray{
+	encoded := json.encode(test)
+	dump(encoded)
+	test2 := OmitEmptyArray{
 		bug: ['1']
 	}
-	encoded4 := json.encode(test4)
-	dump(encoded4)
+	encoded2 := json.encode(test2)
+	dump(encoded2)
 }
