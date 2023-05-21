@@ -36,14 +36,6 @@ struct OmitEmptyFNumStruct {
 	bug FNumStruct [omitempty]
 }
 
-fn main() {
-	test_struct()
-	test_alias()
-	test_map()
-	test_sumtype()
-	test_array()
-}
-
 fn test_struct() {
 	test := OmitEmptyStruct{
 		bug: Struct{}
