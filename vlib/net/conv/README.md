@@ -9,6 +9,6 @@ vary, depending on the CPU, and on most systems, is usually
 little endian.
 
 To avoid mismatches due to that, the network byte order is used by
-convention to send network data in a manner, that will be received
+convention to send network data in a manner that will be received
 coherently, regardless of the endianness of the sender system and
 the receiver system.
