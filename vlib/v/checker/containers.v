@@ -103,11 +103,6 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.warn('arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`)',
 				node.pos)
 		}
-
-		if node.elem_type.idx() == ast.array_type && !c.is_builtin_mod {
-			c.error('`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc',
-				node.pos)
-		}
 		return node.typ
 	}
 

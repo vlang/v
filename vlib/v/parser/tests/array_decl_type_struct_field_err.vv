@@ -1,9 +1,3 @@
-type Arr = array
-type ArraySumType = array | int
-
-interface Foo {
-	arr array
-}
 
 struct Config {
 mut:
@@ -12,6 +6,3 @@ mut:
 	prune_list        array = ['all']
 	time_interval     int   = 300 // 5 min
 }
-
-mut a := []array{}
-a.insert(4, '1')
