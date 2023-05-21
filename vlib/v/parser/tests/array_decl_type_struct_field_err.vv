@@ -1,0 +1,8 @@
+
+struct Config {
+mut:
+	max_size          string
+	filter_until_hour int   = 240 // 10 days
+	prune_list        array = ['all']
+	time_interval     int   = 300 // 5 min
+}
