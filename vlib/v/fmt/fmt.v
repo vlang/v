@@ -1968,6 +1968,7 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 			}
 			f.expr(node.left)
 			f.write('.$${method_expr}')
+			f.or_expr(node.or_block)
 		}
 	}
 }

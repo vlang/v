@@ -1845,6 +1845,7 @@ pub:
 	is_env       bool
 	env_pos      token.Pos
 	is_pkgconfig bool
+	or_block     OrExpr
 pub mut:
 	left_type   Type
 	result_type Type

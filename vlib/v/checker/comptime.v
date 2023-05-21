@@ -141,6 +141,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 			// check each arg expression
 			node.args[i].typ = c.expr(arg.expr)
 		}
+		c.stmts_ending_with_expression(node.or_block.stmts)
 		// assume string for now
 		return ast.string_type
 	}
