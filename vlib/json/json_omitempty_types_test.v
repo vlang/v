@@ -28,6 +28,14 @@ struct OmitEmptySumType {
 	bug MySum [omitempty]
 }
 
+struct FNumStruct {
+	f_num f64
+}
+
+struct OmitEmptyFNumStruct {
+	bug FNumStruct [omitempty]
+}
+
 fn main() {
 	test_struct()
 	test_alias()
@@ -45,6 +53,21 @@ fn test_struct() {
 	test := OmitEmptyStruct{
 		bug: Struct{
 			name: 'mybug'
+		}
+	}
+	encoded := json.encode(test)
+	dump(encoded)
+}
+
+fn test_fnum_struct() {
+	test := OmitEmptyFNumStruct{
+		bug: FNumStruct{}
+	}
+	encode := json.encode(test)
+	dump(encode)
+	test2 := OmitEmptyFNumStruct{
+		bug: FNumStruct{
+			f_num: 1.5
 		}
 	}
 	encoded := json.encode(test)
