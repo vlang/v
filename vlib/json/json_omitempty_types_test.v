@@ -62,7 +62,7 @@ fn test_fnum_struct() {
 			f_num: 1.5
 		}
 	}
-	encoded2 := json.encode(test)
+	encoded2 := json.encode(test2)
 	dump(encoded2)
 }
 
