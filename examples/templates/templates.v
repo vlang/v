@@ -33,7 +33,7 @@ fn data_get() []SiteConfig {
 			alias: 'tf'
 			path_code: '/Users/despiegk/codewww/github/threefoldfoundation/www_threefold_io'
 			domains: ['www.threefold.io', 'www.threefold.me']
-			descr: 'is our entry point for everyone, redirect to the detailed websites underneith.'
+			descr: 'is our entry point for everyone, redirect to the detailed websites underneath.'
 		},
 		SiteConfig{
 			name: 'www_threefold_cloud'
@@ -134,7 +134,7 @@ fn data_get() []SiteConfig {
 			alias: 'sdk'
 			path_code: '/Users/despiegk/codewww/github/threefoldfoundation/info_sdk'
 			domains: ['sdk.threefold.io', 'sdk_info.threefold.io']
-			descr: 'for IAC, devops, how to do Infrastruture As Code, 3bot, Ansible, tfgrid-sdk, ...'
+			descr: 'for IAC, devops, how to do Infrastructure As Code, 3bot, Ansible, tfgrid-sdk, ...'
 		},
 		SiteConfig{
 			name: 'info_legal'

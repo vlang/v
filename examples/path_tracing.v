@@ -161,7 +161,7 @@ fn (sp Sphere) intersect(r Ray) f64 {
 * 0) Cornell Box with 2 spheres
 * 1) Sunset
 * 2) Psychedelic
-* The sphere fileds are: Sphere{radius, position, emission, color, material}
+* The sphere fields are: Sphere{radius, position, emission, color, material}
 ******************************************************************************/
 const (
 	cen     = Vec{50, 40.8, -860} // used by scene 1
@@ -361,7 +361,7 @@ fn rand_f64() f64 {
 }
 
 const (
-	cache_len  = 65536 // the 2*pi angle will be splitted in 65536 part
+	cache_len  = 65536 // length on which the 2*pi angle will be split
 	cache_mask = cache_len - 1 // mask to speed-up the module process
 )
 

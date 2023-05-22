@@ -440,7 +440,7 @@ fn draw_cube_glsl_p(app App) {
 	rot := [f32(app.mouse_y), f32(app.mouse_x)]
 	tr_matrix := calc_tr_matrices(dw, dh, rot[0], rot[1], 2.3)
 
-	// apply the pipline and bindings
+	// apply the pipeline and bindings
 	gfx.apply_pipeline(app.pipe['puppy'])
 	gfx.apply_bindings(app.bind['puppy'])
 

@@ -143,7 +143,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, 
 /******************************************************************************
 * Render functions
 ******************************************************************************/
-// agregate all the part by materials
+// aggregate all the part by materials
 pub fn (mut obj_part ObjPart) init_render_data(texture gfx.Image) {
 	// create shader
 	// One shader for all the model
@@ -188,12 +188,12 @@ pub fn (mut obj_part ObjPart) init_render_data(texture gfx.Image) {
 }
 
 pub fn (obj_part ObjPart) bind_and_draw(rend_data_index int, in_data Shader_data) u32 {
-	// apply the pipline and bindings
+	// apply the pipeline and bindings
 	mut part_render_data := obj_part.rend_data[rend_data_index]
 
 	// pass light position
 	mut tmp_fs_params := Tmp_fs_param{}
-	tmp_fs_params.ligth = in_data.fs_data.ligth
+	tmp_fs_params.light = in_data.fs_data.light
 
 	if part_render_data.material in obj_part.mat_map {
 		mat_index := obj_part.mat_map[part_render_data.material]
@@ -215,7 +215,7 @@ pub fn (obj_part ObjPart) bind_and_draw(rend_data_index int, in_data Shader_data
 		if 'Ns' in mat.ns {
 			tmp_fs_params.ks.e[3] = mat.ns['Ns'] / 1000.0
 		} else {
-			// defautl value is 10
+			// default value is 10
 			tmp_fs_params.ks.e[3] = f32(10) / 1000.0
 		}
 

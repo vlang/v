@@ -197,7 +197,7 @@ fn gen_table_info(attribute_names []string, framework_platform map[string][]int)
 		// qtd. of values in 10 % of arrays
 		ten_perc := int(framework_platform[name].len / 10)
 
-		// get 10% highter
+		// get 10% higher
 		mut min_ten_array := framework_platform[name].clone()
 		min_ten_array.sort()
 		min_ten_array.trim(ten_perc)

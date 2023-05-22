@@ -255,7 +255,7 @@ pub fn (mut obj_part ObjPart) parse_obj_buffer(rows []string, single_material bo
 							// println("Vertex line: $c")
 							break
 						}
-						// parameteres uvw
+						// parameters uvw
 						`p` {
 							obj_part.vp << parse_3f(row, i + 2)
 							// println("Vertex line: ${obj_part.vp.len}")
@@ -350,7 +350,7 @@ fn (mut obj_part ObjPart) load_materials() {
 						break
 					}
 				}
-				// trasparency
+				// transparency
 				`d` {
 					if row[i + 1] == ` ` {
 						value, _ := get_float(row, i + 2)
@@ -396,7 +396,7 @@ fn (mut obj_part ObjPart) load_materials() {
 // vertex data struct
 pub struct Vertex_pnct {
 pub mut:
-	x  f32 // poistion
+	x  f32 // position
 	y  f32
 	z  f32
 	nx f32 // normal
@@ -562,7 +562,7 @@ pub fn tst() {
 	//fname := "Forklift.obj"
 	fname := "cube.obj"
 	//fname := "Orange Robot 3D ObjPart.obj"
-	
+
 	mut obj := ObjPart{}
 	buf := os.read_lines(fname) or { panic(err.msg) }
 	obj.parse_obj_buffer(buf)
