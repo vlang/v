@@ -986,7 +986,12 @@ fn (mut g Gen) gen_array_index(node ast.CallExpr) {
 	if node.args[0].expr.is_auto_deref_var() {
 		g.write('*')
 	}
-	g.expr(node.args[0].expr)
+	elem_typ := g.table.sym(node.left_type).array_info().elem_type
+	if g.table.sym(elem_typ).kind in [.interface_, .sum_type] {
+		g.expr_with_cast(node.args[0].expr, node.args[0].typ, elem_typ)
+	} else {
+		g.expr(node.args[0].expr)
+	}
 	g.write(')')
 }
 
