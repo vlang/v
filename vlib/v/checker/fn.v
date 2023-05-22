@@ -635,6 +635,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		panic('unreachable')
+	} else if node.args.len > 0 && fn_name == 'json.encode' && node.args[0].typ.has_flag(.shared_f) {
+		c.error('json.encode cannot handle shared data', node.pos)
+		return ast.void_type
 	} else if node.args.len > 0 && fn_name == 'json.decode' {
 		if node.args.len != 2 {
 			c.error("json.decode expects 2 arguments, a type and a string (e.g `json.decode(T, '')`)",
