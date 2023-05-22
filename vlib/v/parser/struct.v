@@ -387,7 +387,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		module_pos: module_pos
 		language: language
 		is_union: is_union
-		attrs: attrs
+		attrs: if is_anon { []ast.Attr{} } else { attrs } // anon structs can't have attributes
 		end_comments: end_comments
 		generic_types: generic_types
 		embeds: embeds
