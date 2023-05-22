@@ -505,6 +505,16 @@ pub fn seed(seed []u32) {
 	default_rng.seed(seed)
 }
 
+// u8 returns a uniformly distributed pseudorandom 8-bit unsigned positive `u8`.
+pub fn u8() u8 {
+	return default_rng.u8()
+}
+
+// u16 returns a uniformly distributed pseudorandom 16-bit unsigned positive `u16`.
+pub fn u16() u16 {
+	return default_rng.u16()
+}
+
 // u32 returns a uniformly distributed `u32` in range `[0, 2³²)`.
 pub fn u32() u32 {
 	return default_rng.u32()
@@ -548,11 +558,6 @@ pub fn int() int {
 // intn returns a uniformly distributed pseudorandom 32-bit signed positive `int` in range `[0, max)`.
 pub fn intn(max int) !int {
 	return default_rng.intn(max)
-}
-
-// byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
-pub fn u8() u8 {
-	return default_rng.u8()
 }
 
 // int_in_range returns a uniformly distributed pseudorandom  32-bit signed int in range `[min, max)`.
