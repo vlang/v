@@ -22,7 +22,7 @@ pub fn new_image_writer(mut writer PPMWriter, settings ImageSettings) &ImageWrit
 	mut buffer := []ValidColor{len: total_pixels, init: ValidColor{
 		valid: false
 	}}
-	return &ImageWrtter{
+	return &ImageWriter{
 		writer: writer
 		settings: settings
 		buffer: buffer
