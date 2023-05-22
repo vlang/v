@@ -1,4 +1,4 @@
-vlib/v/checker/tests/json_decode_shared_err.vv:6:22: error: json.encode cannot handle shared data
+vlib/v/checker/tests/json_decode_shared_err.vv:6:16: error: json.encode cannot handle shared data
     4 |     shared data := [1, 2, 3]
     5 |     rlock data {
     6 |         println(json.encode(data))
