@@ -336,8 +336,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									}
 								}
 								if right is ast.ComptimeSelector {
-									left.obj.ct_type_var = .field_var
-									left.obj.typ = c.comptime_fields_default_type
+									if is_decl {
+										left.obj.ct_type_var = .field_var
+										left.obj.typ = c.comptime_fields_default_type
+									}
 								} else if right is ast.Ident
 									&& (right as ast.Ident).obj is ast.Var && (right as ast.Ident).or_expr.kind == .absent {
 									if ((right as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime {
