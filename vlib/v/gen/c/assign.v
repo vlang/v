@@ -238,9 +238,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else if val is ast.ComptimeSelector {
 					key_str := g.get_comptime_selector_key_type(val)
 					if key_str != '' {
-						var_type = g.comptime_var_type_map[key_str] or { var_type }
-						val_type = var_type
-						left.obj.typ = var_type
+						if g.table.sym(var_type).kind != .sum_type {
+							var_type = g.comptime_var_type_map[key_str] or { var_type }
+							val_type = var_type
+							left.obj.typ = var_type
+						} else {
+							val_type = g.comptime_var_type_map[key_str] or { var_type }
+						}
 					}
 				} else if val is ast.ComptimeCall {
 					key_str := '${val.method_name}.return_type'
