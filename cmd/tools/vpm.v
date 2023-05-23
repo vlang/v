@@ -410,9 +410,9 @@ fn vpm_update(m []string) {
 			continue
 		} else {
 			verbose_println('    ${vcs_res.output.trim_space()}')
-			increment_module_download_count(name) or {
+			increment_module_download_count(zname) or {
 				errors++
-				eprintln('Errors while incrementing the download count for ${name}:')
+				eprintln('Errors while incrementing the download count for ${zname}:')
 			}
 		}
 		resolve_dependencies(modulename, final_module_path, module_names)
