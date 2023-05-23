@@ -24,8 +24,12 @@ fn get_component[T](entity Entity) !&T {
 
 fn test_array_of_interfaces_index() {
 	entity := Entity{1, [IsControlledByPlayerTag{}]}
-	id := entity.components.index(*get_component[IsControlledByPlayerTag](entity)!)
 
+	id := entity.components.index(*get_component[IsControlledByPlayerTag](entity)!)
 	println('id = ${id}')
 	assert id == 0
+
+	ret := entity.components.contains(*get_component[IsControlledByPlayerTag](entity)!)
+	println(ret)
+	assert ret
 }

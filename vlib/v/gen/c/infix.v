@@ -488,12 +488,21 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 						expr: node.left
 						expr_type: ast.mktyp(node.left_type)
 					}
-					g.gen_array_contains(node.right_type, node.right, new_node_left)
+					g.gen_array_contains(node.right_type, node.right, elem_type, new_node_left)
 					return
 				}
+			} else if elem_type_.sym.kind == .interface_ {
+				new_node_left := ast.CastExpr{
+					arg: ast.empty_expr
+					typ: elem_type
+					expr: node.left
+					expr_type: ast.mktyp(node.left_type)
+				}
+				g.gen_array_contains(node.right_type, node.right, elem_type, new_node_left)
+				return
 			}
 		}
-		g.gen_array_contains(node.right_type, node.right, node.left)
+		g.gen_array_contains(node.right_type, node.right, node.left_type, node.left)
 	} else if right.unaliased_sym.kind == .map {
 		g.write('_IN_MAP(')
 		if !left.typ.is_ptr() {
@@ -558,12 +567,12 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 						expr: node.left
 						expr_type: ast.mktyp(node.left_type)
 					}
-					g.gen_array_contains(node.right_type, node.right, new_node_left)
+					g.gen_array_contains(node.right_type, node.right, elem_type, new_node_left)
 					return
 				}
 			}
 		}
-		g.gen_array_contains(node.right_type, node.right, node.left)
+		g.gen_array_contains(node.right_type, node.right, node.left_type, node.left)
 	} else if right.unaliased_sym.kind == .string {
 		g.write('string_contains(')
 		g.expr(node.right)

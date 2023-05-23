@@ -891,7 +891,7 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type) bool
 			return true
 		}
 		'contains' {
-			g.gen_array_contains(left_type, node.left, node.args[0].expr)
+			g.gen_array_contains(left_type, node.left, node.args[0].typ, node.args[0].expr)
 			return true
 		}
 		'index' {
