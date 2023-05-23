@@ -238,7 +238,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else if val is ast.ComptimeSelector {
 					key_str := g.get_comptime_selector_key_type(val)
 					if key_str != '' {
-						if g.table.sym(var_type).kind != .sum_type {
+						if is_decl {
 							var_type = g.comptime_var_type_map[key_str] or { var_type }
 							val_type = var_type
 							left.obj.typ = var_type
@@ -286,6 +286,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if key_str_right != '' {
 					val_type = g.comptime_var_type_map[key_str_right] or { var_type }
 				}
+			}
+		} else if mut left is ast.IndexExpr && val is ast.ComptimeSelector {
+			key_str := g.get_comptime_selector_key_type(val)
+			if key_str != '' {
+				val_type = g.comptime_var_type_map[key_str] or { var_type }
 			}
 		}
 		mut styp := g.typ(var_type)

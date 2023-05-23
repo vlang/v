@@ -336,7 +336,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									}
 								}
 								if right is ast.ComptimeSelector {
-									if c.table.sym(left_type).kind != .sum_type {
+									if is_decl {
 										left.obj.ct_type_var = .field_var
 										left.obj.typ = c.comptime_fields_default_type
 									}
