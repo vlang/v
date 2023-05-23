@@ -2509,6 +2509,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				c.error('${err.msg()} in argument 1 to `.contains()`', node.args[0].pos)
 			}
 		}
+		for i, arg in node.args {
+			node.args[i].typ = c.expr(arg.expr)
+		}
 		node.return_type = ast.bool_type
 	} else if method_name == 'index' {
 		if node.args.len != 1 {
