@@ -291,7 +291,7 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref_ &pref.Preferences) (
 	return file, p.vet_errors
 }
 
-fn (mut p Parser) parse() &ast.File {
+pub fn (mut p Parser) parse() &ast.File {
 	util.timing_start('PARSE')
 	defer {
 		util.timing_measure_cumulative('PARSE')
