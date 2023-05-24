@@ -288,7 +288,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 				}
 			}
 			if f_key == '' {
-				verror('An field which holds an array, needs a fkey defined')
+				verror('a field which holds an array, needs a fkey defined ("${sym.name}")')
 			}
 			fkeys << f_key
 			info := sym.array_info()
@@ -911,7 +911,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, le
 				}
 				// TODO: move to the ORM checker
 				if fkey == '' {
-					verror('An field which holds an array, needs a `fkey` defined')
+					verror('fn field which holds an array, needs a `fkey` defined ("${sym.name}")')
 				}
 				info := sym.array_info()
 				arr_typ := info.elem_type
