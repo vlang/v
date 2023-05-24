@@ -3,54 +3,49 @@ module mysql
 import orm
 import time
 
-// @select is used internally by V's ORM for processing `SELECT ` queries
+// @select is used internally by V's ORM for processing `SELECT ` queries.
 pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
 	query := orm.orm_select_gen(config, '`', false, '?', 0, where)
-	mut ret := [][]orm.Primitive{}
+	mut result := [][]orm.Primitive{}
 	mut stmt := db.init_stmt(query)
 	stmt.prepare()!
 
-	mysql_stmt_binder(mut stmt, where)!
-	mysql_stmt_binder(mut stmt, data)!
+	mysql_stmt_bind_query_data(mut stmt, where)!
+	mysql_stmt_bind_query_data(mut stmt, data)!
 
 	if data.data.len > 0 || where.data.len > 0 {
 		stmt.bind_params()!
 	}
 
-	mut status := stmt.execute()!
-	num_fields := stmt.get_field_count()
+	stmt.execute()!
 	metadata := stmt.gen_metadata()
 	fields := stmt.fetch_fields(metadata)
-	mut dataptr := []&u8{}
+	num_fields := stmt.get_field_count()
+	mut data_pointers := []&u8{}
 
+	// Allocate memory for each column.
 	for i in 0 .. num_fields {
 		field := unsafe { fields[i] }
 		match unsafe { FieldType(field.@type) } {
 			.type_tiny {
-				dataptr << unsafe { malloc(1) }
+				data_pointers << unsafe { malloc(1) }
 			}
 			.type_short {
-				dataptr << unsafe { malloc(2) }
+				data_pointers << unsafe { malloc(2) }
 			}
-			.type_long {
-				dataptr << unsafe { malloc(4) }
+			.type_long, .type_float {
+				data_pointers << unsafe { malloc(4) }
 			}
-			.type_longlong {
-				dataptr << unsafe { malloc(8) }
-			}
-			.type_float {
-				dataptr << unsafe { malloc(4) }
-			}
-			.type_double {
-				dataptr << unsafe { malloc(8) }
+			.type_longlong, .type_double {
+				data_pointers << unsafe { malloc(8) }
 			}
 			.type_time, .type_date, .type_datetime, .type_time2, .type_datetime2 {
-				dataptr << unsafe { malloc(sizeof(C.MYSQL_TIME)) }
+				data_pointers << unsafe { malloc(sizeof(C.MYSQL_TIME)) }
 			}
 			.type_string, .type_var_string, .type_blob, .type_tiny_blob, .type_medium_blob,
 			.type_long_blob {
 				// Memory will be allocated later dynamically depending on the length of the value.
-				dataptr << &u8(0)
+				data_pointers << &u8(0)
 			}
 			else {
 				return error('\'${unsafe { FieldType(field.@type) }}\' is not yet implemented. Please create a new issue at https://github.com/vlang/v/issues/new')
@@ -59,13 +54,14 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 	}
 
 	lengths := []u32{len: int(num_fields), init: 0}
-	stmt.bind_res(fields, dataptr, lengths, num_fields)
+	stmt.bind_res(fields, data_pointers, lengths, num_fields)
 
 	mut types := config.types.clone()
 	mut field_types := []FieldType{}
 	if config.is_count {
 		types = [orm.type_idx['u64']]
 	}
+
 	// Map stores column indexes and their binds in order to extract values
 	// for these columns separately, with individual memory allocation for each value.
 	mut string_binds_map := map[int]C.MYSQL_BIND{}
@@ -85,6 +81,7 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 						mysql_bind.buffer_type = C.MYSQL_TYPE_LONG
 					}
 					.type_time, .type_date, .type_datetime {
+						// FIXME: Allocate memory for blobs dynamically.
 						mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
 						mysql_bind.buffer_length = FieldType.type_blob.get_len()
 					}
@@ -102,37 +99,37 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 	stmt.store_result()!
 
 	for {
-		status = stmt.fetch_stmt()!
+		// Fetch every row from the `select` result.
+		status := stmt.fetch_stmt()!
+		is_error := status == 1
+		are_no_rows_to_fetch := status == mysql_no_data
 
-		if status == 1 || status == 100 {
+		if is_error || are_no_rows_to_fetch {
 			break
 		}
 
+		// Fetch columns that should be allocated dynamically.
 		for index, mut bind in string_binds_map {
 			string_length := lengths[index] + 1
-			dataptr[index] = unsafe { malloc(string_length) }
-			bind.buffer = dataptr[index]
+			data_pointers[index] = unsafe { malloc(string_length) }
+			bind.buffer = data_pointers[index]
 			bind.buffer_length = string_length
 			bind.length = unsafe { nil }
 
 			stmt.fetch_column(bind, index)!
 		}
 
-		data_list := buffer_to_primitive(dataptr, types, field_types)!
-		ret << data_list
+		result << data_pointers_to_primitives(data_pointers, types, field_types)!
 	}
 
 	stmt.close()!
 
-	return ret
+	return result
 }
-
-// sql stmt
 
 // insert is used internally by V's ORM for processing `INSERT ` queries
 pub fn (db Connection) insert(table string, data orm.QueryData) ! {
-	mut converted_primitive_array := db.factory_orm_primitive_converted_from_sql(table,
-		data)!
+	mut converted_primitive_array := db.convert_query_data_to_primitives(table, data)!
 
 	converted_primitive_data := orm.QueryData{
 		fields: data.fields
@@ -168,8 +165,6 @@ pub fn (db Connection) last_id() int {
 	return id.rows()[0].vals[0].int()
 }
 
-// DDL (table creation/destroying etc)
-
 // create is used internally by V's ORM for processing table creation queries (DDL)
 pub fn (db Connection) create(table string, fields []orm.TableField) ! {
 	query := orm.orm_table_gen(table, '`', true, 0, fields, mysql_type_from_v, false) or {
@@ -184,25 +179,33 @@ pub fn (db Connection) drop(table string) ! {
 	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
 
+// mysql_stmt_worker executes the `query` with the provided `data` and `where` parameters
+// without returning the result.
+// This is commonly used for `INSERT`, `UPDATE`, `CREATE`, `DROP`, and `DELETE` queries.
 fn mysql_stmt_worker(db Connection, query string, data orm.QueryData, where orm.QueryData) ! {
 	mut stmt := db.init_stmt(query)
 	stmt.prepare()!
-	mysql_stmt_binder(mut stmt, data)!
-	mysql_stmt_binder(mut stmt, where)!
+
+	mysql_stmt_bind_query_data(mut stmt, data)!
+	mysql_stmt_bind_query_data(mut stmt, where)!
+
 	if data.data.len > 0 || where.data.len > 0 {
 		stmt.bind_params()!
 	}
+
 	stmt.execute()!
 	stmt.close()!
 }
 
-fn mysql_stmt_binder(mut stmt Stmt, d orm.QueryData) ! {
+// mysql_stmt_bind_query_data binds all the fields of `q` to the `stmt`.
+fn mysql_stmt_bind_query_data(mut stmt Stmt, d orm.QueryData) ! {
 	for data in d.data {
-		stmt_binder_match(mut stmt, data)
+		stmt_bind_primitive(mut stmt, data)
 	}
 }
 
-fn stmt_binder_match(mut stmt Stmt, data orm.Primitive) {
+// stmt_bind_primitive binds the `data` to the `stmt`.
+fn stmt_bind_primitive(mut stmt Stmt, data orm.Primitive) {
 	match data {
 		bool {
 			stmt.bind_bool(&data)
@@ -242,18 +245,20 @@ fn stmt_binder_match(mut stmt Stmt, data orm.Primitive) {
 		}
 		time.Time {
 			unix := int(data.unix)
-			stmt_binder_match(mut stmt, unix)
+			stmt_bind_primitive(mut stmt, unix)
 		}
 		orm.InfixType {
-			stmt_binder_match(mut stmt, data.right)
+			stmt_bind_primitive(mut stmt, data.right)
 		}
 	}
 }
 
-fn buffer_to_primitive(data_list []&u8, types []int, field_types []FieldType) ![]orm.Primitive {
-	mut res := []orm.Primitive{}
+// data_pointers_to_primitives returns an array of `Primitive`
+// cast from `data_pointers` using `types`.
+fn data_pointers_to_primitives(data_pointers []&u8, types []int, field_types []FieldType) ![]orm.Primitive {
+	mut result := []orm.Primitive{}
 
-	for i, data in data_list {
+	for i, data in data_pointers {
 		mut primitive := orm.Primitive(0)
 		match types[i] {
 			orm.type_idx['i8'] {
@@ -309,14 +314,15 @@ fn buffer_to_primitive(data_list []&u8, types []int, field_types []FieldType) ![
 				return error('Unknown type ${types[i]}')
 			}
 		}
-		res << primitive
+		result << primitive
 	}
 
-	return res
+	return result
 }
 
+// mysql_type_from_v converts the V type to the corresponding MySQL type.
 fn mysql_type_from_v(typ int) !string {
-	str := match typ {
+	sql_type := match typ {
 		orm.type_idx['i8'], orm.type_idx['u8'] {
 			'TINYINT'
 		}
@@ -345,48 +351,48 @@ fn mysql_type_from_v(typ int) !string {
 			'BOOLEAN'
 		}
 		else {
-			''
+			return error('Unknown type ${typ}')
 		}
 	}
-	if str == '' {
-		return error('Unknown type ${typ}')
-	}
-	return str
+
+	return sql_type
 }
 
-fn (db Connection) factory_orm_primitive_converted_from_sql(table string, data orm.QueryData) ![]orm.Primitive {
-	mut map_val := db.get_table_data_type_map(table)!
-
-	// adapt v type to sql time
+// convert_query_data_to_primitives converts the `data` representing the `QueryData`
+// into an array of `Primitive`.
+fn (db Connection) convert_query_data_to_primitives(table string, data orm.QueryData) ![]orm.Primitive {
+	mut column_type_map := db.get_table_column_type_map(table)!
 	mut converted_data := []orm.Primitive{}
+
 	for i, field in data.fields {
-		match data.data[i].type_name() {
-			'time.Time' {
-				if map_val[field] == 'datetime' {
-					converted_data << orm.Primitive((data.data[i] as time.Time).str())
-				} else {
-					converted_data << data.data[i]
-				}
-			}
-			else {
+		if data.data[i].type_name() == 'time.Time' {
+			if column_type_map[field] == 'datetime' {
+				converted_data << orm.Primitive((data.data[i] as time.Time).str())
+			} else {
 				converted_data << data.data[i]
 			}
+		} else {
+			converted_data << data.data[i]
 		}
 	}
+
 	return converted_data
 }
 
-fn (db Connection) get_table_data_type_map(table string) !map[string]string {
-	data_type_querys := "SELECT COLUMN_NAME, DATA_TYPE  FROM INFORMATION_SCHEMA.COLUMNS  WHERE TABLE_NAME = '${table}'"
-	mut map_val := map[string]string{}
+// get_table_column_type_map returns a map where the key represents the column name,
+// and the value represents its data type.
+fn (db Connection) get_table_column_type_map(table string) !map[string]string {
+	data_type_query := "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '${table}'"
+	mut column_type_map := map[string]string{}
+	results := db.query(data_type_query)!
 
-	results := db.query(data_type_querys)!
 	db.use_result()
 
 	for row in results.rows() {
-		map_val[row.vals[0]] = row.vals[1]
+		column_type_map[row.vals[0]] = row.vals[1]
 	}
 
 	unsafe { results.free() }
-	return map_val
+
+	return column_type_map
 }
