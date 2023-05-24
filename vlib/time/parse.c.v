@@ -8,7 +8,7 @@ module time
 // the differences between ISO-8601 and RFC 3339.
 pub fn parse_rfc3339(s string) !Time {
 	if s == '' {
-		return error_invalid_time(0)
+		return error_invalid_time(0, 'datetime string is empty')
 	}
 	// Normalize the input before parsing. Good since iso8601 doesn't permit lower case `t` and `z`.
 	sn := s.replace_each(['t', 'T', 'z', 'Z'])
@@ -54,24 +54,26 @@ pub fn parse_rfc3339(s string) !Time {
 		return t
 	}
 
-	return error_invalid_time(9)
+	return error_invalid_time(9, 'malformed date')
 }
 
 // parse returns time from a date string in "YYYY-MM-DD HH:mm:ss" format.
 pub fn parse(s string) !Time {
 	if s == '' {
-		return error_invalid_time(0)
+		return error_invalid_time(0, 'datetime string is empty')
 	}
-	pos := s.index(' ') or { return error_invalid_time(1) }
+	pos := s.index(' ') or {
+		return error_invalid_time(1, 'string has no space between date and time')
+	}
 	symd := s[..pos]
 	ymd := symd.split('-')
 	if ymd.len != 3 {
-		return error_invalid_time(2)
+		return error_invalid_time(2, 'date must be in the form of y-m-d')
 	}
 	shms := s[pos..]
 	hms := shms.split(':')
 	if hms.len != 3 {
-		return error_invalid_time(9)
+		return error_invalid_time(9, 'time must be in the form of H:i:s')
 	}
 	hour_ := hms[0][1..]
 	minute_ := hms[1]
@@ -85,22 +87,22 @@ pub fn parse(s string) !Time {
 	isecond := second_.int()
 	// eprintln('>> iyear: $iyear | imonth: $imonth | iday: $iday | ihour: $ihour | iminute: $iminute | isecond: $isecond')
 	if iyear > 9999 || iyear < -9999 {
-		return error_invalid_time(3)
+		return error_invalid_time(3, 'year must be between -10000 and 10000')
 	}
 	if imonth > 12 || imonth < 1 {
-		return error_invalid_time(4)
+		return error_invalid_time(4, 'month must be between 1 and 12')
 	}
 	if iday > 31 || iday < 1 {
-		return error_invalid_time(5)
+		return error_invalid_time(5, 'day must be between 1 and 31')
 	}
 	if ihour > 23 || ihour < 0 {
-		return error_invalid_time(6)
+		return error_invalid_time(6, 'hours must be between 0 and 24')
 	}
 	if iminute > 59 || iminute < 0 {
-		return error_invalid_time(7)
+		return error_invalid_time(7, 'minutes must be between 0 and 60')
 	}
 	if isecond > 59 || isecond < 0 {
-		return error_invalid_time(8)
+		return error_invalid_time(8, 'seconds must be between 0 and 60')
 	}
 	res := new_time(Time{
 		year: iyear
@@ -113,6 +115,14 @@ pub fn parse(s string) !Time {
 	return res
 }
 
+pub fn parse_format(s string, format string) !Time {
+	if s == '' {
+		return error_invalid_time(0, 'datetime string is empty')
+	}
+	mut p := new_datetime_parser(s, format)
+	return p.parse()
+}
+
 // parse_iso8601 parses rfc8601 time format yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd as local time
 // the fraction part is difference in milli seconds and the last part is offset
 // from UTC time and can be both +/- HH:mm
@@ -120,12 +130,12 @@ pub fn parse(s string) !Time {
 // also checks and support for leapseconds should be added in future PR
 pub fn parse_iso8601(s string) !Time {
 	if s == '' {
-		return error_invalid_time(0)
+		return error_invalid_time(0, 'datetime string is empty')
 	}
 	t_i := s.index('T') or { -1 }
 	parts := if t_i != -1 { [s[..t_i], s[t_i + 1..]] } else { s.split(' ') }
 	if !(parts.len == 1 || parts.len == 2) {
-		return error_invalid_time(12)
+		return error_invalid_time(12, 'malformed date')
 	}
 	year, month, day := parse_iso8601_date(parts[0])!
 	mut hour_, mut minute_, mut second_, mut microsecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, i64(0), true
@@ -157,13 +167,15 @@ pub fn parse_iso8601(s string) !Time {
 // parse_rfc2822 returns time from a date string in RFC 2822 datetime format.
 pub fn parse_rfc2822(s string) !Time {
 	if s == '' {
-		return error_invalid_time(0)
+		return error_invalid_time(0, 'datetime string is empty')
 	}
 	fields := s.split(' ')
 	if fields.len < 5 {
-		return error_invalid_time(1)
+		return error_invalid_time(1, 'datetime string must have 5 components, has: ${fields.len}')
 	}
-	pos := months_string.index(fields[2]) or { return error_invalid_time(2) }
+	pos := months_string.index(fields[2]) or {
+		return error_invalid_time(2, 'invalid month format')
+	}
 	mm := pos / 3 + 1
 	unsafe {
 		tmstr := malloc_noscan(s.len * 2)
@@ -178,16 +190,16 @@ fn parse_iso8601_date(s string) !(int, int, int) {
 	year, month, day, dummy := 0, 0, 0, u8(0)
 	count := unsafe { C.sscanf(&char(s.str), c'%4d-%2d-%2d%c', &year, &month, &day, &dummy) }
 	if count != 3 {
-		return error_invalid_time(10)
+		return error_invalid_time(10, 'datetime string must have 3 components, but has ${count}')
 	}
 	if year > 9999 {
-		return error_invalid_time(13)
+		return error_invalid_time(13, 'year must be smaller than 10000')
 	}
 	if month > 12 {
-		return error_invalid_time(14)
+		return error_invalid_time(14, 'month must be smaller than 12')
 	}
 	if day > 31 {
-		return error_invalid_time(15)
+		return error_invalid_time(15, 'day must be smaller than 31')
 	}
 	return year, month, day
 }
@@ -234,16 +246,16 @@ fn parse_iso8601_time(s string) !(int, int, int, int, i64, bool) {
 			count++ // Increment count because skipped microsecond
 		}
 		if count < 4 {
-			return error_invalid_time(10)
+			return error_invalid_time(10, 'malformed date')
 		}
 	}
 	is_local_time := plus_min_z == `a` && count == 4
 	is_utc := plus_min_z == `Z` && count == 5
 	if !(count == 7 || is_local_time || is_utc) {
-		return error_invalid_time(11)
+		return error_invalid_time(11, 'malformed date')
 	}
 	if plus_min_z != `+` && plus_min_z != `-` && !is_utc && !is_local_time {
-		return error_invalid_time(12)
+		return error_invalid_time(12, 'missing timezone')
 	}
 	mut unix_offset := 0
 	if offset_hour > 0 {

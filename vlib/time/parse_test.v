@@ -201,3 +201,33 @@ fn test_ad_second_to_parse_result_pre_2001() {
 	assert future_tm.str() == '2000-01-01 04:01:00'
 	assert now_tm.unix < future_tm.unix
 }
+
+fn test_parse_format() {
+	mut s := '2018-01-27 12:48:34'
+	mut t := time.parse_format(s, 'YYYY-MM-DD HH:mm:ss') or {
+		eprintln('> failing format: ${s} | err: ${err}')
+		assert false
+		return
+	}
+
+	assert t.year == 2018 && t.month == 1 && t.day == 27 && t.hour == 12 && t.minute == 48
+		&& t.second == 34
+
+	s = '2018-November-27 12:48:20'
+	t = time.parse_format(s, 'YYYY-MMMM-DD HH:mm:ss') or {
+		eprintln('> failing format: ${s} | err: ${err}')
+		assert false
+		return
+	}
+	assert t.year == 2018 && t.month == 11 && t.day == 27 && t.hour == 12 && t.minute == 48
+		&& t.second == 20
+
+	s = '2018-1-2 1:8:2'
+	t = time.parse_format(s, 'YYYY-M-D H:m:s') or {
+		eprintln('> failing format: ${s} | err: ${err}')
+		assert false
+		return
+	}
+	assert t.year == 2018 && t.month == 1 && t.day == 2 && t.hour == 1 && t.minute == 8
+		&& t.second == 2
+}
