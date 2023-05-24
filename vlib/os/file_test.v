@@ -418,7 +418,7 @@ fn test_open_file_wb_ab() {
 	mut afile := os.open_file('text.txt', 'ab', 0o666)!
 	afile.write_string('hello')!
 	afile.close()
-	assert os.read_file('text.txt')? == 'hellohello'
+	assert os.read_file('text.txt')! == 'hellohello'
 }
 
 fn test_open_append() {
@@ -437,4 +437,13 @@ fn test_open_append() {
 	f3.write_string('def\n')!
 	f3.close()
 	assert os.read_lines(tfile)! == ['abc', 'abc', 'def']
+}
+
+fn test_open_file_on_chinese_windows() {
+	os.rm('中文.txt') or {}
+	mut f1 := os.open_file('中文.txt', 'w+', 0x666) or { panic(err) }
+	f1.write_string('test')!
+	f1.close()
+
+	assert os.read_file('中文.txt')! == 'test'
 }
