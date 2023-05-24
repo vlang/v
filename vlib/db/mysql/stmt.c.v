@@ -98,7 +98,7 @@ pub fn (stmt Stmt) prepare() ! {
 pub fn (stmt Stmt) bind_params() ! {
 	result := C.mysql_stmt_bind_param(stmt.stmt, unsafe { &C.MYSQL_BIND(stmt.binds.data) })
 
-	if result != 0 && stmt.get_error_msg() != '' {
+	if result && stmt.get_error_msg() != '' {
 		return stmt.error(1)
 	}
 }
@@ -274,7 +274,7 @@ pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []
 pub fn (mut stmt Stmt) bind_result_buffer() ! {
 	result := C.mysql_stmt_bind_result(stmt.stmt, unsafe { &C.MYSQL_BIND(stmt.res.data) })
 
-	if result != 0 && stmt.get_error_msg() != '' {
+	if result && stmt.get_error_msg() != '' {
 		return stmt.error(1)
 	}
 }
