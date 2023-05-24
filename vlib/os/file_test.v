@@ -440,10 +440,12 @@ fn test_open_append() {
 }
 
 fn test_open_file_on_chinese_windows() {
-	os.rm('中文.txt') or {}
-	mut f1 := os.open_file('中文.txt', 'w+', 0x666) or { panic(err) }
-	f1.write_string('test')!
-	f1.close()
+	$if windows {
+		os.rm('中文.txt') or {}
+		mut f1 := os.open_file('中文.txt', 'w+', 0x666) or { panic(err) }
+		f1.write_string('test')!
+		f1.close()
 
-	assert os.read_file('中文.txt')! == 'test'
+		assert os.read_file('中文.txt')! == 'test'
+	}
 }
