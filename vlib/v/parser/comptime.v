@@ -15,7 +15,7 @@ const (
 		'sumtype', 'alias', 'function', 'option']
 )
 
-pub fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
+fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 	mut node := ast.ComptimeType{ast.ComptimeTypeKind.map_, p.tok.pos()}
 
 	p.check(.dollar)
