@@ -3027,27 +3027,6 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 	}
 }
 
-fn (mut p Parser) scope_register_it() {
-	p.scope.register(ast.Var{
-		name: 'it'
-		pos: p.tok.pos()
-		is_used: true
-	})
-}
-
-fn (mut p Parser) scope_register_ab() {
-	p.scope.register(ast.Var{
-		name: 'a'
-		pos: p.tok.pos()
-		is_used: true
-	})
-	p.scope.register(ast.Var{
-		name: 'b'
-		pos: p.tok.pos()
-		is_used: true
-	})
-}
-
 fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	p.next()
 	if p.tok.kind == .dollar {
