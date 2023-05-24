@@ -130,12 +130,12 @@ pub fn (mut conn Connection) autocommit(mode bool) {
 // If an empty string is passed, it will return all tables.
 // Calling `tables()` is similar to executing query `SHOW TABLES [LIKE wildcard]`.
 pub fn (conn &Connection) tables(wildcard string) ![]string {
-	c_result := C.mysql_list_tables(conn.conn, wildcard.str)
-	if isnil(c_result) {
+	c_mysql_result := C.mysql_list_tables(conn.conn, wildcard.str)
+	if isnil(c_mysql_result) {
 		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
 	}
 
-	result := Result{c_result}
+	result := Result{c_mysql_result}
 	mut tables := []string{}
 
 	for row in result.rows() {
@@ -166,12 +166,12 @@ pub fn (mut conn Connection) set_option(option_type int, val voidptr) {
 // get_option returns the value of an option, settable by `set_option`.
 // https://dev.mysql.com/doc/c-api/5.7/en/mysql-get-option.html
 pub fn (conn &Connection) get_option(option_type int) !voidptr {
-	result := unsafe { nil }
-	if C.mysql_get_option(conn.conn, option_type, &result) != 0 {
+	mysql_option := unsafe { nil }
+	if C.mysql_get_option(conn.conn, option_type, &mysql_option) != 0 {
 		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
 	}
 
-	return result
+	return mysql_option
 }
 
 // refresh flush the tables or caches, or resets replication server
