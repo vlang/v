@@ -53,7 +53,7 @@ fn create_texture(w int, h int, buf &u8) gfx.Image {
 		label: &u8(0)
 		d3d11_texture: 0
 	}
-	// common if .dynamic is enabled
+	// comment, if .dynamic is enabled
 	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr: buf
 		size: usize(sz)
