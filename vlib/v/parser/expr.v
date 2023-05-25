@@ -39,7 +39,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			node = ident
 			if p.inside_defer {
 				if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
-					&& ident.name != 'err' {
+					&& ident.name !in ['err', 'it'] {
 					p.defer_vars << ident
 				}
 			}
