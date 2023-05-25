@@ -698,6 +698,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 		}
+		if left_sym.kind == .struct_ && right is ast.StructInit && (right as ast.StructInit).is_anon {
+			c.error('cannot assign anonymous `struct` to a typed `struct`', right.pos())
+		}
 	}
 	// this needs to run after the assign stmt left exprs have been run through checker
 	// so that ident.obj is set
