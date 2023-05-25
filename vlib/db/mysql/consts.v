@@ -1,6 +1,7 @@
 module mysql
 
-// MYSQL REFRESH FLAGS
+// MySQL refresh flags.
+// Docs: https://dev.mysql.com/doc/c-api/8.0/en/mysql-refresh.html
 pub const (
 	refresh_grant   = u32(C.REFRESH_GRANT)
 	refresh_log     = u32(C.REFRESH_LOG)
