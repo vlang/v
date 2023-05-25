@@ -22,7 +22,7 @@ import strings
 // Help text
 const (
 	help_text_rows = [
-		'Image Viwer 0.9 help.',
+		'Image Viewer 0.9 help.',
 		'',
 		'ESC/q - Quit',
 		'cur. right - Next image',
@@ -35,7 +35,7 @@ const (
 		'',
 		'mouse wheel - next/previous images',
 		'keep pressed left  Mouse button - Pan on the image',
-		'keep pressed rigth Mouse button - Zoom on the image',
+		'keep pressed right Mouse button - Zoom on the image',
 	]
 )
 
@@ -94,7 +94,7 @@ mut:
 	show_help_flag bool
 	// zip container
 	zip       &szip.Zip = unsafe { nil } // pointer to the szip structure
-	zip_index int       = -1 // index of the zip contaire item
+	zip_index int       = -1 // index of the zip container item
 	// memory buffer
 	mem_buf      voidptr // buffer used to load items from files/containers
 	mem_buf_size int     // size of the buffer
@@ -392,7 +392,7 @@ fn frame(mut app App) {
 	sgl.translate(tr_x, tr_y, 0.0)
 	// scaling/zoom
 	sgl.scale(2.0 * app.scale, 2.0 * app.scale, 0.0)
-	// roation
+	// rotation
 	mut rotation := 0
 	if app.state == .show && app.item_list.n_item > 0 {
 		rotation = app.item_list.lst[app.item_list.item_index].rotation
@@ -767,7 +767,7 @@ fn main() {
 	font_path := os.join_path(os.temp_dir(), font_name)
 	println('Temporary path for the font file: [${font_path}]')
 
-	// if the font doesn't exist create it from the ebedded one
+	// if the font doesn't exist create it from the embedded one
 	if os.exists(font_path) == false {
 		println('Write font [${font_name}] in temp folder.')
 		embedded_file := $embed_file('../assets/fonts/RobotoMono-Regular.ttf')
@@ -781,7 +781,7 @@ fn main() {
 	logo_name := 'logo.png'
 	logo_path := os.join_path(os.temp_dir(), logo_name)
 	println('Temporary path for the logo: [${logo_path}]')
-	// if the logo doesn't exist create it from the ebedded one
+	// if the logo doesn't exist create it from the embedded one
 	if os.exists(logo_path) == false {
 		println('Write logo [${logo_name}] in temp folder.')
 		embedded_file := $embed_file('../assets/logo.png')

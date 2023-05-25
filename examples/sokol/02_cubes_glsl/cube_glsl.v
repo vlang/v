@@ -394,7 +394,7 @@ fn draw_cube_glsl(app App) {
 		tr_matrix := m4.calc_tr_matrices(dw, dh, rot[0], rot[1], 2.0)
 		gfx.apply_viewport(ws.width / 2, 0, ws.width / 2, ws.height / 2, true)
 
-		// apply the pipline and bindings
+		// apply the pipeline and bindings
 		gfx.apply_pipeline(app.cube_pip_glsl)
 		gfx.apply_bindings(app.cube_bind)
 

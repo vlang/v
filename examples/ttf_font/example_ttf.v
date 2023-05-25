@@ -67,7 +67,7 @@ fn draw_frame(mut app App_data) {
 		txt1.draw_text_bmp(app.gg, 30, 60)
 		// block test
 		block_txt := "Today it is a good day!
-Tommorow I'm not so sure :(
+Tomorrow I'm not so sure :(
 Frame: ${app.frame_c}
 But Vwill prevail for sure, V is the way!!
 òàèì@ò!£$%&
