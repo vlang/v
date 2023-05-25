@@ -8,7 +8,7 @@ import v.token
 import v.util
 import os
 
-pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
+fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.pos()
 	mut fn_name := if language == .c {
 		'C.${p.check_name()}'
@@ -89,7 +89,7 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 	}
 }
 
-pub fn (mut p Parser) call_args() []ast.CallArg {
+fn (mut p Parser) call_args() []ast.CallArg {
 	mut args := []ast.CallArg{}
 	start_pos := p.tok.pos()
 	for p.tok.kind != .rpar {

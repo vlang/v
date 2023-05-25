@@ -7,7 +7,7 @@ import v.ast
 import v.vet
 import v.token
 
-pub fn (mut p Parser) expr(precedence int) ast.Expr {
+fn (mut p Parser) expr(precedence int) ast.Expr {
 	return p.check_expr(precedence) or {
 		if token.is_decl(p.tok.kind) && p.disallow_declarations_in_script_mode() {
 			return ast.empty_expr
@@ -16,7 +16,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	}
 }
 
-pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
+fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 	p.trace_parser('expr(${precedence})')
 	mut node := ast.empty_expr
 	is_stmt_ident := p.is_stmt_ident
@@ -461,7 +461,7 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 	return p.expr_with_left(node, precedence, is_stmt_ident)
 }
 
-pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bool) ast.Expr {
+fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bool) ast.Expr {
 	mut node := left
 	if p.inside_asm && p.prev_tok.pos().line_nr < p.tok.pos().line_nr {
 		return node

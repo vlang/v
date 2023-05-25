@@ -6,7 +6,7 @@ module parser
 import v.ast
 
 // return true if file being parsed imports `mod`
-pub fn (p &Parser) known_import(mod string) bool {
+fn (p &Parser) known_import(mod string) bool {
 	return mod in p.imports
 }
 
