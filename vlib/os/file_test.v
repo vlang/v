@@ -447,5 +447,9 @@ fn test_open_file_on_chinese_windows() {
 		f1.close()
 
 		assert os.read_file('中文.txt')! == 'test'
+		assert os.file_size('中文.txt') == 4
+
+		os.truncate('中文.txt', 2)!
+		assert os.file_size('中文.txt') == 2
 	}
 }
