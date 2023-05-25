@@ -623,6 +623,9 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	if rec.is_mut {
 		p.next() // `mut`
 	}
+	if is_shared {
+		p.register_auto_import('sync')
+	}
 	rec_start_pos := p.tok.pos()
 	rec.name = p.check_name()
 	if !rec.is_mut {
