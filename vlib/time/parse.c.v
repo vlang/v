@@ -115,6 +115,24 @@ pub fn parse(s string) !Time {
 	return res
 }
 
+// parse_format parses the string `s`, as a custom `format`, containing the following specifiers:
+// YYYY - 4 digit year, 0000..9999
+// YY - 2 digit year, 00..99
+// M - month, 1..12
+// MM - month, 2 digits, 01..12
+// MMMM - name of month
+// D - day of the month, 1..31
+// DD - day of the month, 01..31
+// H - hour, 0..23
+// HH - hour, 00..23
+// h - hour, 0..23
+// hh - hour, 0..23
+// k - hour, 0..23
+// kk - hour, 0..23
+// m - minute, 0..59
+// mm - minute, 0..59
+// s - second, 0..59
+// ss - second, 0..59
 pub fn parse_format(s string, format string) !Time {
 	if s == '' {
 		return error_invalid_time(0, 'datetime string is empty')

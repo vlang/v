@@ -1,20 +1,20 @@
 module time
 
-pub struct DateTime_Parser {
+struct DateTime_Parser {
 	datetime string
 	format   string
 mut:
 	current_pos_datetime int
 }
 
-pub fn new_datetime_parser(datetime string, format string) DateTime_Parser {
+fn new_datetime_parser(datetime string, format string) DateTime_Parser {
 	return DateTime_Parser{
 		datetime: datetime
 		format: format
 	}
 }
 
-pub fn (mut p DateTime_Parser) next(length int) !string {
+fn (mut p DateTime_Parser) next(length int) !string {
 	if p.current_pos_datetime + length > p.datetime.len {
 		return error('end of string')
 	}
@@ -23,19 +23,19 @@ pub fn (mut p DateTime_Parser) next(length int) !string {
 	return val
 }
 
-pub fn (mut p DateTime_Parser) peek(length int) !string {
+fn (mut p DateTime_Parser) peek(length int) !string {
 	if p.current_pos_datetime + length > p.datetime.len {
 		return error('end of string')
 	}
 	return p.datetime[p.current_pos_datetime - length..p.current_pos_datetime]
 }
 
-pub fn (mut p DateTime_Parser) must_be_int(length int) !int {
+fn (mut p DateTime_Parser) must_be_int(length int) !int {
 	val := p.next(length) or { return err }
 	return val.int()
 }
 
-pub fn (mut p DateTime_Parser) must_be_single_int_with_optional_leading_zero() !int {
+fn (mut p DateTime_Parser) must_be_single_int_with_optional_leading_zero() !int {
 	mut val := p.next(1) or { return err }
 	if val == '0' {
 		val += p.next(1) or { return val.int() }
@@ -43,14 +43,14 @@ pub fn (mut p DateTime_Parser) must_be_single_int_with_optional_leading_zero() !
 	return val.int()
 }
 
-pub fn (mut p DateTime_Parser) must_be_string(must string) ! {
+fn (mut p DateTime_Parser) must_be_string(must string) ! {
 	val := p.next(must.len) or { return err }
 	if val != must {
 		return error('invalid string: "${val}"!="${must}"')
 	}
 }
 
-pub fn (mut p DateTime_Parser) must_be_string_one_of(oneof []string) !string {
+fn (mut p DateTime_Parser) must_be_string_one_of(oneof []string) !string {
 	for _, must in oneof {
 		val := p.peek(must.len) or { continue }
 		if val == must {
@@ -60,7 +60,7 @@ pub fn (mut p DateTime_Parser) must_be_string_one_of(oneof []string) !string {
 	return error('invalid string: must be one of ${oneof}, at ${p.current_pos_datetime}')
 }
 
-pub fn (mut p DateTime_Parser) must_be_valid_month() !int {
+fn (mut p DateTime_Parser) must_be_valid_month() !int {
 	for _, v in long_months {
 		if p.current_pos_datetime + v.len < p.datetime.len {
 			month_name := p.datetime[p.current_pos_datetime..p.current_pos_datetime + v.len]
@@ -73,7 +73,7 @@ pub fn (mut p DateTime_Parser) must_be_valid_month() !int {
 	return error_invalid_time(0, 'invalid month name')
 }
 
-pub fn (mut p DateTime_Parser) must_be_valid_week_day(letters int) !string {
+fn (mut p DateTime_Parser) must_be_valid_week_day(letters int) !string {
 	val := p.next(letters) or { return err }
 	for _, v in long_days {
 		if v[0..letters] == val {
