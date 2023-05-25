@@ -37,12 +37,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		.key_mut, .key_shared, .key_atomic, .key_static, .key_volatile {
 			ident := p.ident(ast.Language.v)
 			node = ident
-			if p.inside_defer {
-				if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
-					&& ident.name !in ['err', 'it'] {
-					p.defer_vars << ident
-				}
-			}
+			p.add_defer_var(ident)
 			p.is_stmt_ident = is_stmt_ident
 		}
 		.name, .question {
