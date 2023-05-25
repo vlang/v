@@ -1478,8 +1478,14 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	mut is_interface_call := false
 	mut is_selector_call := false
 	if node.left_type != 0 {
+		mut fn_typ := ast.Type(0)
 		left_sym := g.table.sym(node.left_type)
-		if left_sym.kind == .interface_ {
+		if node.is_field {
+			if field := g.table.find_field_with_embeds(left_sym, node.name) {
+				fn_typ = field.typ
+			}
+		}
+		if left_sym.kind == .interface_ || fn_typ.is_ptr() {
 			is_interface_call = true
 			g.write('(*')
 		}
