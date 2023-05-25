@@ -19,6 +19,8 @@ fn C.sigaction(int, voidptr, int) int
 
 fn C.open(&char, int, ...int) int
 
+fn C._wopen(&u16, int, ...int) int
+
 fn C.fdopen(fd int, mode &char) &C.FILE
 
 fn C.ferror(stream &C.FILE) int
