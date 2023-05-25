@@ -361,7 +361,7 @@ fn rand_f64() f64 {
 }
 
 const (
-	cache_len  = 65536 // length on which the 2*pi angle will be split
+	cache_len  = 65536 // the 2*pi angle will be split in 2^16 parts
 	cache_mask = cache_len - 1 // mask to speed-up the module process
 )
 
