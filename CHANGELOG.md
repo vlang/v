@@ -10,6 +10,7 @@
 - Functions can now return fixed size arrays.
 - The builtin websocket library is now thread safe.
 - Enhanced builtin csrf protection in vweb.
+- builtin: heap usage API (gc_memory_use() and gc_heap_usage())
 
 ## V 0.3.4
 
