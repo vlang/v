@@ -3,7 +3,8 @@ module semver
 // * Private functions.
 [inline]
 fn version_satisfies(ver Version, input string) bool {
-	return parse_range(input) or { return false }.satisfies(ver)
+	range := parse_range(input) or { return false }
+	return range.satisfies(ver)
 }
 
 fn compare_eq(v1 Version, v2 Version) bool {
