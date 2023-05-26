@@ -698,8 +698,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 		}
-		if left_sym.kind == .struct_ && !(left_sym.info as ast.Struct).is_anon
-			&& right is ast.StructInit && (right as ast.StructInit).is_anon {
+		if left_sym.kind == .struct_ && right is ast.StructInit && (right as ast.StructInit).is_anon {
 			c.error('cannot assign anonymous `struct` to a typed `struct`', right.pos())
 		}
 	}
