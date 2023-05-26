@@ -80,7 +80,10 @@ fn C.mysql_num_fields(res &C.MYSQL_RES) int
 fn C.mysql_num_rows(res &C.MYSQL_RES) u64
 
 // C.mysql_autocommit sets autocommit mode on if `mode` is 1, off if `mode` is 0.
-fn C.mysql_autocommit(mysql &C.MYSQL, mode bool)
+fn C.mysql_autocommit(mysql &C.MYSQL, mode bool) int
+
+// C.mysql_commit commits the current transaction.
+fn C.mysql_commit(mysql &C.MYSQL) int
 
 // C.mysql_refresh flush tables or caches, or resets replication server information.
 fn C.mysql_refresh(mysql &C.MYSQL, options u32) int
