@@ -104,7 +104,7 @@ pub fn (ver Version) str() string {
 	return '${common_string}${prerelease_string}${metadata_string}'
 }
 
-// * Utilites.
+// * Utilities.
 // coerce converts the `input` version to a `Version` struct.
 // coerce will strip any contents *after* the parsed version string:
 /*
