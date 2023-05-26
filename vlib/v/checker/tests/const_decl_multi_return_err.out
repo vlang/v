@@ -1,4 +1,4 @@
-vlib/v/checker/tests/const_decl_err.vv:6:6: error: const declarations do not support multiple return values yet
+vlib/v/checker/tests/const_decl_multi_return_err.vv:6:6: error: const declarations do not support multiple return values yet
     4 |
     5 | const (
     6 |     a = foo()
