@@ -74,7 +74,10 @@ fn (raw_ver RawVersion) complete() RawVersion {
 }
 
 fn (raw_ver RawVersion) validate() ?Version {
-	return if !raw_ver.is_valid() { none } else { raw_ver.to_version() }
+	if !raw_ver.is_valid() {
+		return none
+	}
+	return raw_ver.to_version()
 }
 
 fn (raw_ver RawVersion) to_version() Version {
