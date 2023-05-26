@@ -43,10 +43,9 @@ pub fn from(input string) !Version {
 		return &EmptyInputError{}
 	}
 	raw_version := parse(input)
-	version := raw_version.validate() or { return &InvalidVersionFormatError{
+	return raw_version.validate() or { return &InvalidVersionFormatError{
 		input: input
 	} }
-	return version
 }
 
 // build returns a `Version` structure with given `major`, `minor` and `patch` versions.
