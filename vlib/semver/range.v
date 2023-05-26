@@ -142,10 +142,7 @@ fn parse_xrange(input string) ?Version {
 			else {}
 		}
 	}
-	if !raw_ver.is_valid() {
-		return none
-	}
-	return raw_ver.to_version()
+	return raw_ver.validate()
 }
 
 fn can_expand(input string) bool {
