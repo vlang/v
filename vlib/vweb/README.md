@@ -336,7 +336,18 @@ pub fn (mut app App) check_auth () bool {
 	return true
 }
 ```
-For now you can only add 1 middleware to a route specific function via attributes.
+You can only add 1 middleware to a route specific function via attributes.
+
+#### Middleware evaluation order
+The middleware is executed in the following order:
+
+1. `before_request`
+2. The middleware in `app.middlewares`
+3. The middleware in the `[middleware]` attribute
+
+If any function of step 2 or 3 returns `false` the middleware functions that would
+come after it are not executed and the app handler will also not be executed. You 
+can think of it as a chain.
 
 ### Redirect
 
