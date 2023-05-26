@@ -2557,12 +2557,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 					// incomplete module selector must be handled by dot_expr instead
 					ident := p.ident(language)
 					node = ident
-					if p.inside_defer {
-						if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
-							&& ident.name != 'err' {
-							p.defer_vars << ident
-						}
-					}
+					p.add_defer_var(ident)
 					return node
 				}
 			}
@@ -2588,12 +2583,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 	if !same_line && p.peek_tok.kind == .lpar {
 		ident := p.ident(language)
 		node = ident
-		if p.inside_defer {
-			if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
-				&& ident.name != 'err' {
-				p.defer_vars << ident
-			}
-		}
+		p.add_defer_var(ident)
 	} else if p.peek_tok.kind == .lpar || is_generic_call || is_generic_cast
 		|| (p.tok.kind == .lsbr && p.peek_tok.kind == .rsbr && (p.peek_token(3).kind == .lpar
 		|| p.peek_token(5).kind == .lpar)) || (p.tok.kind == .lsbr && p.peek_tok.kind == .number
@@ -2794,12 +2784,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		}
 		ident := p.ident(language)
 		node = ident
-		if p.inside_defer {
-			if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
-				&& ident.name != 'err' {
-				p.defer_vars << ident
-			}
-		}
+		p.add_defer_var(ident)
 	}
 	p.expr_mod = ''
 	return node
@@ -4337,4 +4322,13 @@ fn (mut p Parser) show(params ParserShowParams) {
 	}
 	location := '${p.file_display_path}:${p.tok.line_nr}:'
 	println('>> ${location:-40s} ${params.msg} ${context.join('  ')}')
+}
+
+fn (mut p Parser) add_defer_var(ident ast.Ident) {
+	if p.inside_defer {
+		if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
+			&& ident.name !in ['err', 'it'] {
+			p.defer_vars << ident
+		}
+	}
 }
