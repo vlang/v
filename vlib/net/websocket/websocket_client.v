@@ -16,7 +16,7 @@ const (
 )
 
 pub struct ClientState {
-mut:
+pub mut:
 	state State = .closed // current state of connection
 }
 

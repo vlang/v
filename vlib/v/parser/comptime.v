@@ -15,7 +15,7 @@ const (
 		'sumtype', 'alias', 'function', 'option']
 )
 
-pub fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
+fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 	mut node := ast.ComptimeType{ast.ComptimeTypeKind.map_, p.tok.pos()}
 
 	p.check(.dollar)
@@ -357,9 +357,13 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		p.check(.lpar)
 		args := p.call_args()
 		p.check(.rpar)
+		mut or_kind := ast.OrKind.absent
+		mut or_pos := p.tok.pos()
+		mut or_stmts := []ast.Stmt{}
 		if p.tok.kind == .key_orelse {
-			p.next()
-			p.check(.lcbr)
+			// `$method() or {}``
+			or_kind = .block
+			or_stmts, or_pos = p.or_block(.with_err_var)
 		}
 		return ast.ComptimeCall{
 			left: left
@@ -369,6 +373,11 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 			args_var: ''
 			args: args
 			pos: start_pos.extend(p.prev_tok.pos())
+			or_block: ast.OrExpr{
+				stmts: or_stmts
+				kind: or_kind
+				pos: or_pos
+			}
 		}
 	}
 	mut has_parens := false

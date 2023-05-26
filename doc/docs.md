@@ -4532,13 +4532,20 @@ fn test_subtest() {
 V avoids doing unnecessary allocations in the first place by using value types,
 string buffers, promoting a simple abstraction-free code style.
 
-Most objects (~90-100%) are freed by V's autofree engine: the compiler inserts
-necessary free calls automatically during compilation. Remaining small percentage
-of objects is freed via reference counting.
+There are 4 ways to manage memory in V.
 
-The developer doesn't need to change anything in their code. "It just works", like in
-Python, Go, or Java, except there's no heavy GC tracing everything or expensive RC for
-each object.
+The default is a minimal and a well performing tracing GC.
+
+The second way is autofree, it can be enabled with `-autofree`. It takes care of most objects
+(~90-100%): the compiler inserts necessary free calls automatically during compilation.
+Remaining small percentage of objects is freed via GC. The developer doesn't need to change
+anything in their code. "It just works", like in Python, Go, or Java, except there's no
+heavy GC tracing everything or expensive RC for each object.
+
+For developers willing to have more low level control, memory can be managed manually with
+`-gc none`.
+
+Arena allocation is available via v `-prealloc`.
 
 ### Control
 

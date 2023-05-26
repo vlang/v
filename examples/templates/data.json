@@ -11,7 +11,7 @@
             "www.threefold.io",
             "www.threefold.me"
         ],
-        "descr": "is our entry point for everyone, redirect to the detailed websites underneith."
+        "descr": "is our entry point for everyone, redirect to the detailed websites underneath."
     },
     {
         "name": "www_threefold_cloud",
@@ -139,7 +139,7 @@
             "sdk.threefold.io",
             "sdk_info.threefold.io"
         ],
-        "descr": "for IAC, devops, how to do Infrastruture As Code, 3bot, Ansible, tfgrid-sdk, ..."
+        "descr": "for IAC, devops, how to do Infrastructure As Code, 3bot, Ansible, tfgrid-sdk, ..."
     },
     {
         "name": "info_legal",

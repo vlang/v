@@ -283,12 +283,12 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 					if attr.kind == .string {
 						f_key = attr.arg
 					} else {
-						verror("fkey attribute need be string. Try [fkey: '${attr.arg}'] instead of [fkey: ${attr.arg}]")
+						verror("`fkey` attribute need be string. Try [fkey: '${attr.arg}'] instead of [fkey: ${attr.arg}]")
 					}
 				}
 			}
 			if f_key == '' {
-				verror('An field which holds an array, needs a fkey defined')
+				verror('a field which holds an array, needs a `fkey` defined ("${sym.name}")')
 			}
 			fkeys << f_key
 			info := sym.array_info()
@@ -905,13 +905,13 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, le
 						if attr.kind == .string {
 							fkey = attr.arg
 						} else {
-							verror("fkey attribute need be string. Try [fkey: '${attr.arg}'] instead of [fkey: ${attr.arg}]")
+							verror("`fkey` attribute need be string. Try [fkey: '${attr.arg}'] instead of [fkey: ${attr.arg}]")
 						}
 					}
 				}
 				// TODO: move to the ORM checker
 				if fkey == '' {
-					verror('An field which holds an array, needs a `fkey` defined')
+					verror('a field which holds an array, needs a `fkey` defined ("${sym.name}")')
 				}
 				info := sym.array_info()
 				arr_typ := info.elem_type

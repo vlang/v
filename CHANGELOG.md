@@ -1,5 +1,6 @@
 ## V 0.3.5
 *not yet released*
+- A new VPM site: vpm.vlang.io. A better design, discoverability of packages, descriptions, most downloaded packages etc.
 - Struct fields can now be skipped during JSON/ORM serialization via `[json:'-']` and `[sql:'-']`,
  in addition to `[skip]`. This allows having custom behavior for different serialization methods.
 - ORM: fixed a foreign key bug that could result in an extra insert.
@@ -8,6 +9,8 @@
 - json: Enum value string serialization supports `[json:'alias']` to change its string values.
 - Functions can now return fixed size arrays.
 - The builtin websocket library is now thread safe.
+- Enhanced builtin csrf protection in vweb.
+- builtin: heap usage API (gc_memory_use() and gc_heap_usage())
 
 ## V 0.3.4
 

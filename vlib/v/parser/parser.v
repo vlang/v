@@ -176,7 +176,7 @@ pub fn (mut p Parser) free() {
 }
 
 [unsafe]
-pub fn (mut p Parser) free_scanner() {
+fn (mut p Parser) free_scanner() {
 	unsafe {
 		if p.scanner != 0 {
 			p.scanner.free()
@@ -463,19 +463,19 @@ pub fn (mut p Parser) codegen(code string) {
 	p.codegen_text += '\n' + code
 }
 
-pub fn (mut p Parser) init_parse_fns() {
+fn (mut p Parser) init_parse_fns() {
 	// p.prefix_parse_fns = make(100, 100, sizeof(PrefixParseFn))
 	// p.prefix_parse_fns[token.Kind.name] = parse_name
 }
 
-pub fn (mut p Parser) read_first_token() {
+fn (mut p Parser) read_first_token() {
 	// need to call next() 2 times to get peek token and current token
 	p.next()
 	p.next()
 }
 
 [inline]
-pub fn (p &Parser) peek_token(n int) token.Token {
+fn (p &Parser) peek_token(n int) token.Token {
 	return p.scanner.peek_token(n - 2)
 }
 
@@ -554,14 +554,14 @@ fn (p &Parser) is_array_type() bool {
 	return false
 }
 
-pub fn (mut p Parser) open_scope() {
+fn (mut p Parser) open_scope() {
 	p.scope = &ast.Scope{
 		parent: p.scope
 		start_pos: p.tok.pos
 	}
 }
 
-pub fn (mut p Parser) close_scope() {
+fn (mut p Parser) close_scope() {
 	// p.scope.end_pos = p.tok.pos
 	// NOTE: since this is usually called after `p.parse_block()`
 	// ie. when `prev_tok` is rcbr `}` we most likely want `prev_tok`
@@ -572,14 +572,14 @@ pub fn (mut p Parser) close_scope() {
 	p.scope = p.scope.parent
 }
 
-pub fn (mut p Parser) parse_block() []ast.Stmt {
+fn (mut p Parser) parse_block() []ast.Stmt {
 	p.open_scope()
 	stmts := p.parse_block_no_scope(false)
 	p.close_scope()
 	return stmts
 }
 
-pub fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
+fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	p.check(.lcbr)
 	mut stmts := []ast.Stmt{cap: 20}
 	if p.tok.kind != .rcbr {
@@ -691,7 +691,7 @@ fn (p &Parser) trace_parser(label string) {
 	eprintln('parsing: ${p.file_name:-30}|tok.pos: ${p.tok.pos().line_str():-39}|tok.kind: ${p.tok.kind:-10}|tok.lit: ${p.tok.lit:-10}|${label}')
 }
 
-pub fn (mut p Parser) top_stmt() ast.Stmt {
+fn (mut p Parser) top_stmt() ast.Stmt {
 	p.trace_parser('top_stmt')
 	for {
 		match p.tok.kind {
@@ -860,14 +860,14 @@ fn (mut p Parser) other_stmts(cur_stmt ast.Stmt) ast.Stmt {
 }
 
 // TODO [if vfmt]
-pub fn (mut p Parser) check_comment() ast.Comment {
+fn (mut p Parser) check_comment() ast.Comment {
 	if p.tok.kind == .comment {
 		return p.comment()
 	}
 	return ast.Comment{}
 }
 
-pub fn (mut p Parser) comment() ast.Comment {
+fn (mut p Parser) comment() ast.Comment {
 	mut pos := p.tok.pos()
 	text := p.tok.lit
 	num_newlines := text.count('\n')
@@ -888,7 +888,7 @@ pub fn (mut p Parser) comment() ast.Comment {
 	}
 }
 
-pub fn (mut p Parser) comment_stmt() ast.ExprStmt {
+fn (mut p Parser) comment_stmt() ast.ExprStmt {
 	comment := p.comment()
 	return ast.ExprStmt{
 		expr: comment
@@ -902,7 +902,7 @@ struct EatCommentsConfig {
 	follow_up bool // Comments directly below the previous token as long as there is no empty line
 }
 
-pub fn (mut p Parser) eat_comments(cfg EatCommentsConfig) []ast.Comment {
+fn (mut p Parser) eat_comments(cfg EatCommentsConfig) []ast.Comment {
 	mut line := p.prev_tok.line_nr
 	mut comments := []ast.Comment{}
 	for {
@@ -918,7 +918,7 @@ pub fn (mut p Parser) eat_comments(cfg EatCommentsConfig) []ast.Comment {
 	return comments
 }
 
-pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
+fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	p.trace_parser('stmt(${is_top_level})')
 	p.is_stmt_ident = p.tok.kind == .name
 	match p.tok.kind {
@@ -1874,19 +1874,19 @@ fn (mut p Parser) parse_attr() ast.Attr {
 	}
 }
 
-pub fn (mut p Parser) language_not_allowed_error(language ast.Language, pos token.Pos) {
+fn (mut p Parser) language_not_allowed_error(language ast.Language, pos token.Pos) {
 	upcase_language := language.str().to_upper()
 	p.error_with_pos('${upcase_language} code is not allowed in .${p.file_backend_mode}.v files, please move it to a .${language}.v file',
 		pos)
 }
 
-pub fn (mut p Parser) language_not_allowed_warning(language ast.Language, pos token.Pos) {
+fn (mut p Parser) language_not_allowed_warning(language ast.Language, pos token.Pos) {
 	upcase_language := language.str().to_upper()
 	p.warn_with_pos('${upcase_language} code will not be allowed in pure .v files, please move it to a .${language}.v file instead',
 		pos)
 }
 
-pub fn (mut p Parser) check_for_impure_v(language ast.Language, pos token.Pos) {
+fn (mut p Parser) check_for_impure_v(language ast.Language, pos token.Pos) {
 	if language == .v {
 		// pure V code is always allowed everywhere
 		return
@@ -1919,19 +1919,19 @@ pub fn (mut p Parser) check_for_impure_v(language ast.Language, pos token.Pos) {
 	}
 }
 
-pub fn (mut p Parser) error(s string) ast.NodeError {
+fn (mut p Parser) error(s string) ast.NodeError {
 	return p.error_with_pos(s, p.tok.pos())
 }
 
-pub fn (mut p Parser) warn(s string) {
+fn (mut p Parser) warn(s string) {
 	p.warn_with_pos(s, p.tok.pos())
 }
 
-pub fn (mut p Parser) note(s string) {
+fn (mut p Parser) note(s string) {
 	p.note_with_pos(s, p.tok.pos())
 }
 
-pub fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
+fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 	mut kind := 'error:'
 	if p.pref.fatal_errors {
 		util.show_compiler_message(kind, pos: pos, file_path: p.file_name, message: s)
@@ -1971,7 +1971,7 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 	}
 }
 
-pub fn (mut p Parser) error_with_error(error errors.Error) {
+fn (mut p Parser) error_with_error(error errors.Error) {
 	mut kind := 'error:'
 	if p.pref.fatal_errors {
 		util.show_compiler_message(kind, error.CompilerMessage)
@@ -2000,7 +2000,7 @@ pub fn (mut p Parser) error_with_error(error errors.Error) {
 	}
 }
 
-pub fn (mut p Parser) warn_with_pos(s string, pos token.Pos) {
+fn (mut p Parser) warn_with_pos(s string, pos token.Pos) {
 	if p.pref.warns_are_errors {
 		p.error_with_pos(s, pos)
 		return
@@ -2024,7 +2024,7 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Pos) {
 	}
 }
 
-pub fn (mut p Parser) note_with_pos(s string, pos token.Pos) {
+fn (mut p Parser) note_with_pos(s string, pos token.Pos) {
 	if p.pref.skip_warnings {
 		return
 	}
@@ -2043,7 +2043,7 @@ pub fn (mut p Parser) note_with_pos(s string, pos token.Pos) {
 	}
 }
 
-pub fn (mut p Parser) vet_error(msg string, line int, fix vet.FixKind, typ vet.ErrorType) {
+fn (mut p Parser) vet_error(msg string, line int, fix vet.FixKind, typ vet.ErrorType) {
 	pos := token.Pos{
 		line_nr: line + 1
 	}
@@ -2142,7 +2142,7 @@ fn (mut p Parser) is_following_concrete_types() bool {
 	return true
 }
 
-pub fn (mut p Parser) ident(language ast.Language) ast.Ident {
+fn (mut p Parser) ident(language ast.Language) ast.Ident {
 	is_option := p.tok.kind == .question && p.peek_tok.kind == .lsbr
 	if is_option {
 		p.next()
@@ -2407,7 +2407,7 @@ fn (mut p Parser) is_generic_cast() bool {
 	return false
 }
 
-pub fn (mut p Parser) name_expr() ast.Expr {
+fn (mut p Parser) name_expr() ast.Expr {
 	prev_tok_kind := p.prev_tok.kind
 	mut node := ast.empty_expr
 
@@ -2557,12 +2557,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 					// incomplete module selector must be handled by dot_expr instead
 					ident := p.ident(language)
 					node = ident
-					if p.inside_defer {
-						if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
-							&& ident.name != 'err' {
-							p.defer_vars << ident
-						}
-					}
+					p.add_defer_var(ident)
 					return node
 				}
 			}
@@ -2588,12 +2583,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	if !same_line && p.peek_tok.kind == .lpar {
 		ident := p.ident(language)
 		node = ident
-		if p.inside_defer {
-			if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
-				&& ident.name != 'err' {
-				p.defer_vars << ident
-			}
-		}
+		p.add_defer_var(ident)
 	} else if p.peek_tok.kind == .lpar || is_generic_call || is_generic_cast
 		|| (p.tok.kind == .lsbr && p.peek_tok.kind == .rsbr && (p.peek_token(3).kind == .lpar
 		|| p.peek_token(5).kind == .lpar)) || (p.tok.kind == .lsbr && p.peek_tok.kind == .number
@@ -2794,12 +2784,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 		ident := p.ident(language)
 		node = ident
-		if p.inside_defer {
-			if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
-				&& ident.name != 'err' {
-				p.defer_vars << ident
-			}
-		}
+		p.add_defer_var(ident)
 	}
 	p.expr_mod = ''
 	return node
@@ -3025,27 +3010,6 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		}
 		is_gated: is_gated
 	}
-}
-
-fn (mut p Parser) scope_register_it() {
-	p.scope.register(ast.Var{
-		name: 'it'
-		pos: p.tok.pos()
-		is_used: true
-	})
-}
-
-fn (mut p Parser) scope_register_ab() {
-	p.scope.register(ast.Var{
-		name: 'a'
-		pos: p.tok.pos()
-		is_used: true
-	})
-	p.scope.register(ast.Var{
-		name: 'b'
-		pos: p.tok.pos()
-		is_used: true
-	})
 }
 
 fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
@@ -3788,8 +3752,9 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		}
 	}
 
-	if !p.has_globals && !p.pref.enable_globals && !p.pref.is_fmt && !p.pref.translated
-		&& !p.is_translated && !p.pref.is_livemain && !p.pref.building_v && !p.builtin_mod {
+	if !p.has_globals && !p.pref.enable_globals && !p.pref.is_fmt && !p.pref.is_vet
+		&& !p.pref.translated && !p.is_translated && !p.pref.is_livemain && !p.pref.building_v
+		&& !p.builtin_mod {
 		p.error('use `v -enable-globals ...` to enable globals')
 		return ast.GlobalDecl{}
 	}
@@ -4245,7 +4210,7 @@ fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 }
 
 // returns true if `varname` is known
-pub fn (mut p Parser) mark_var_as_used(varname string) bool {
+fn (mut p Parser) mark_var_as_used(varname string) bool {
 	if mut obj := p.scope.find(varname) {
 		match mut obj {
 			ast.Var {
@@ -4357,4 +4322,13 @@ fn (mut p Parser) show(params ParserShowParams) {
 	}
 	location := '${p.file_display_path}:${p.tok.line_nr}:'
 	println('>> ${location:-40s} ${params.msg} ${context.join('  ')}')
+}
+
+fn (mut p Parser) add_defer_var(ident ast.Ident) {
+	if p.inside_defer {
+		if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
+			&& ident.name !in ['err', 'it'] {
+			p.defer_vars << ident
+		}
+	}
 }

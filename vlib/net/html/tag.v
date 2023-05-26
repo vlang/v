@@ -96,7 +96,6 @@ pub fn (tag &Tag) get_tags(name string) []&Tag {
 
 // get_tag_by_attribute retrieves the first found child tag in the tag that has the given attribute name.
 pub fn (tag &Tag) get_tag_by_attribute(name string) ?&Tag {
-	// mut res := &Tag{}
 	for child in tag.children {
 		if child.attributes[name] != '' {
 			return child

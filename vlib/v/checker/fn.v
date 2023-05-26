@@ -635,6 +635,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		panic('unreachable')
+	} else if node.args.len > 0 && fn_name == 'json.encode' && node.args[0].typ.has_flag(.shared_f) {
+		c.error('json.encode cannot handle shared data', node.pos)
+		return ast.void_type
 	} else if node.args.len > 0 && fn_name == 'json.decode' {
 		if node.args.len != 2 {
 			c.error("json.decode expects 2 arguments, a type and a string (e.g `json.decode(T, '')`)",
@@ -2510,6 +2513,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				c.error('${err.msg()} in argument 1 to `.contains()`', node.args[0].pos)
 			}
 		}
+		for i, arg in node.args {
+			node.args[i].typ = c.expr(arg.expr)
+		}
 		node.return_type = ast.bool_type
 	} else if method_name == 'index' {
 		if node.args.len != 1 {
@@ -2519,6 +2525,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			c.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0]) or {
 				c.error('${err.msg()} in argument 1 to `.index()`', node.args[0].pos)
 			}
+		}
+		for i, arg in node.args {
+			node.args[i].typ = c.expr(arg.expr)
 		}
 		node.return_type = ast.int_type
 	} else if method_name in ['first', 'last', 'pop'] {

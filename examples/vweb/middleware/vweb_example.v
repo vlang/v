@@ -104,6 +104,6 @@ fn middleware_early(mut ctx vweb.Context) bool {
 	println('4')
 	ctx.text(':(')
 
-	// returns false, so the middleware propogation is stopped and the user will see the text ":("
+	// returns false, so the middleware propagation is stopped and the user will see the text ":("
 	return false
 }

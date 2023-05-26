@@ -1,0 +1,12 @@
+struct Abc {
+	name string
+}
+
+mut y := Abc{
+	name: 'Abc'
+}
+println(y)
+y = struct {
+	name: 'Def'
+}
+println(y)
