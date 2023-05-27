@@ -1038,7 +1038,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 	return args, types_only, is_variadic
 }
 
-fn (mut p Parser) go_expr() ast.GoExpr {
+fn (mut p Parser) spawn_expr() ast.SpawnExpr {
 	p.next()
 	spos := p.tok.pos()
 	expr := p.expr(0)
@@ -1052,6 +1052,27 @@ fn (mut p Parser) go_expr() ast.GoExpr {
 	}
 	pos := spos.extend(p.prev_tok.pos())
 	p.register_auto_import('sync.threads')
+	p.table.gostmts++
+	return ast.SpawnExpr{
+		call_expr: call_expr
+		pos: pos
+	}
+}
+
+fn (mut p Parser) go_expr() ast.GoExpr {
+	p.next()
+	spos := p.tok.pos()
+	expr := p.expr(0)
+	call_expr := if expr is ast.CallExpr {
+		expr
+	} else {
+		p.error_with_pos('expression in `go` must be a function call', expr.pos())
+		ast.CallExpr{
+			scope: p.scope
+		}
+	}
+	pos := spos.extend(p.prev_tok.pos())
+	// p.register_auto_import('coroutines')
 	p.table.gostmts++
 	return ast.GoExpr{
 		call_expr: call_expr

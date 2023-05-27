@@ -640,6 +640,9 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 		ast.GoExpr {
 			f.go_expr(node)
 		}
+		ast.SpawnExpr {
+			f.spawn_expr(node)
+		}
 		ast.Ident {
 			f.ident(node)
 		}
@@ -1206,8 +1209,13 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 	}
 }
 
-pub fn (mut f Fmt) go_expr(node ast.GoExpr) {
+pub fn (mut f Fmt) spawn_expr(node ast.SpawnExpr) {
 	f.write('spawn ')
+	f.call_expr(node.call_expr)
+}
+
+pub fn (mut f Fmt) go_expr(node ast.GoExpr) {
+	f.write('go ')
 	f.call_expr(node.call_expr)
 }
 

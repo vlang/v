@@ -2548,6 +2548,9 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		ast.GoExpr {
 			return c.go_expr(mut node)
 		}
+		ast.SpawnExpr {
+			return c.spawn_expr(mut node)
+		}
 		ast.Ident {
 			return c.ident(mut node)
 		}

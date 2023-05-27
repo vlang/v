@@ -112,9 +112,15 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			}
 		}
 		.key_go, .key_spawn {
-			mut go_expr := p.go_expr()
-			go_expr.is_expr = true
-			node = go_expr
+			if p.pref.use_coroutines && p.tok.kind == .key_go {
+				mut go_expr := p.go_expr()
+				go_expr.is_expr = true
+				node = go_expr
+			} else {
+				mut spawn_expr := p.spawn_expr()
+				spawn_expr.is_expr = true
+				node = spawn_expr
+			}
 		}
 		.key_true, .key_false {
 			node = ast.BoolLiteral{

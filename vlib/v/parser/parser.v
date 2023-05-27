@@ -1078,10 +1078,18 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			}
 		}
 		.key_go, .key_spawn {
-			go_expr := p.go_expr()
-			return ast.ExprStmt{
-				expr: go_expr
-				pos: go_expr.pos
+			if p.pref.use_coroutines && p.tok.kind == .key_go {
+				go_expr := p.go_expr()
+				return ast.ExprStmt{
+					expr: go_expr
+					pos: go_expr.pos
+				}
+			} else {
+				spawn_expr := p.spawn_expr()
+				return ast.ExprStmt{
+					expr: spawn_expr
+					pos: spawn_expr.pos
+				}
 			}
 		}
 		.key_goto {

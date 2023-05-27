@@ -2090,6 +2090,11 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 }
 
 fn (mut g Gen) go_expr(node ast.GoExpr) {
+	g.writeln('/*go (coroutine) */')
+}
+
+fn (mut g Gen) spawn_expr(node ast.SpawnExpr) {
+	g.writeln('/*spawn (thread) */')
 	line := g.go_before_stmt(0)
 	mut handle := ''
 	tmp := g.new_tmp_var()

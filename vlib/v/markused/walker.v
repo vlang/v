@@ -273,7 +273,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.fn_by_name('eprint')
 			w.fn_by_name('eprintln')
 		}
-		ast.GoExpr {
+		ast.SpawnExpr {
 			w.expr(node.call_expr)
 			if w.pref.os == .windows {
 				w.fn_by_name('panic_lasterr')
@@ -282,6 +282,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.fn_by_name('c_error_number_str')
 				w.fn_by_name('panic_error_number')
 			}
+		}
+		ast.GoExpr {
+			w.expr(node.call_expr)
 		}
 		ast.IndexExpr {
 			w.expr(node.left)

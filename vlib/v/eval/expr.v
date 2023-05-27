@@ -534,10 +534,10 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		}
 		ast.AnonFn, ast.ArrayDecompose, ast.AsCast, ast.Assoc, ast.AtExpr, ast.CTempVar,
 		ast.ChanInit, ast.Comment, ast.ComptimeCall, ast.ComptimeSelector, ast.ComptimeType,
-		ast.ConcatExpr, ast.DumpExpr, ast.EmptyExpr, ast.EnumVal, ast.GoExpr, ast.IfGuardExpr,
-		ast.IndexExpr, ast.IsRefType, ast.Likely, ast.LockExpr, ast.MapInit, ast.MatchExpr,
-		ast.Nil, ast.NodeError, ast.None, ast.OffsetOf, ast.OrExpr, ast.RangeExpr, ast.SelectExpr,
-		ast.SqlExpr, ast.TypeNode, ast.TypeOf {
+		ast.ConcatExpr, ast.DumpExpr, ast.EmptyExpr, ast.EnumVal, ast.GoExpr, ast.SpawnExpr,
+		ast.IfGuardExpr, ast.IndexExpr, ast.IsRefType, ast.Likely, ast.LockExpr, ast.MapInit,
+		ast.MatchExpr, ast.Nil, ast.NodeError, ast.None, ast.OffsetOf, ast.OrExpr, ast.RangeExpr,
+		ast.SelectExpr, ast.SqlExpr, ast.TypeNode, ast.TypeOf {
 			e.error('unhandled expression ${typeof(expr).name}')
 		}
 	}

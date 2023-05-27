@@ -223,6 +223,7 @@ pub mut:
 	assert_failure_mode AssertFailureMode     // whether to call abort() or print_backtrace() after an assertion failure
 	message_limit       int = 150 // the maximum amount of warnings/errors/notices that will be accumulated
 	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
+	use_coroutines      bool // experimental coroutines
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
 	thread_stack_size                     int = 8388608 // Change with `-thread-stack-size 4194304`. Note: on macos it was 524288, which is too small for more complex programs with many nested callexprs.
@@ -797,6 +798,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-cmain' {
 				res.cmain = cmdline.option(current_args, '-cmain', '')
 				i++
+			}
+			'-use-coroutines' {
+				res.use_coroutines = true
 			}
 			else {
 				if command == 'build' && is_source_file(arg) {

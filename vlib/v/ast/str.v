@@ -403,6 +403,9 @@ pub fn (x Expr) str() string {
 		GoExpr {
 			return 'go ${x.call_expr}'
 		}
+		SpawnExpr {
+			return 'spawn ${x.call_expr}'
+		}
 		Ident {
 			return x.name.clone()
 		}
