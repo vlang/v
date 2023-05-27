@@ -414,7 +414,7 @@ fn generate_routes[T](app &T) !map[string]Route {
 	return routes
 }
 
-type ControllerHandler = fn (ctx Context, mut url urllib.URL, tid int)
+type ControllerHandler = fn (ctx Context, mut url urllib.URL, host string, tid int)
 
 pub struct ControllerPath {
 	path    string
