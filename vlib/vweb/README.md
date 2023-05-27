@@ -256,7 +256,7 @@ To restrict an endpoint to a specific host, you can use the `host` attribute fol
 
 **Example:**
 
-```v
+```v ignore
 ['/'; host: 'example.com']
 pub fn (mut app App) hello_web() vweb.Result {
 	return app.text('Hello World')
