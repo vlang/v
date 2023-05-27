@@ -251,6 +251,23 @@ pub fn (mut app App) controller_get_user_by_id() vweb.Result {
 	return app.text(app.query.str())
 }
 ```
+#### - Host
+To restrict an endpoint to a specific host, you can use the `host` attribute followed by a colon `:` and the host name.
+
+**Example:**
+
+```v
+['/'; host: 'example.com']
+pub fn (mut app App) hello_web() vweb.Result {
+	return app.text('Hello World')
+}
+
+['/'; host: 'api.example.org']
+pub fn (mut app App) hello_api() vweb.Result {
+	return app.text('Hello API')
+}
+```
+
 ### Middleware
 
 Vweb has different kinds of middleware.
