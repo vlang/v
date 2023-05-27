@@ -1,4 +1,4 @@
-vlib/v/checker/tests/struct_type_cast_err.vv:10:7: warning: byte s deprecated, use u8 instead
+vlib/v/checker/tests/struct_type_cast_err.vv:10:7: warning: byte is deprecated, use u8 instead
     8 |     _ := u32(foo)
     9 |     _ := rune(foo)
    10 |     _ := byte(foo)

@@ -703,7 +703,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.error('cannot assign anonymous `struct` to a typed `struct`', right.pos())
 		}
 		if right_sym.kind == .alias && right_sym.name == 'byte' {
-			c.warn('byte s deprecated, use u8 instead', right.pos())
+			c.warn('byte is deprecated, use u8 instead', right.pos())
 		}
 	}
 	// this needs to run after the assign stmt left exprs have been run through checker
