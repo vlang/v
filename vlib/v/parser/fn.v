@@ -755,7 +755,9 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	if same_line {
 		if (p.tok.kind.is_start_of_type() && (same_line || p.tok.kind != .lsbr))
 			|| (same_line && p.tok.kind == .key_fn) {
+			p.inside_fn_return = true
 			return_type = p.parse_type()
+			p.inside_fn_return = false
 			return_type_pos = return_type_pos.extend(p.tok.pos())
 		} else if p.tok.kind != .lcbr {
 			p.error_with_pos('expected return type, not ${p.tok} for anonymous function',
