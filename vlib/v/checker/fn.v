@@ -1136,6 +1136,10 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.error('literal argument cannot be passed as reference parameter `${c.table.type_to_str(param.typ)}`',
 				call_arg.pos)
 		}
+		// TODO: remove once deprecation period for byte has ended
+		if param_typ_sym.kind == .u8 && arg_typ_sym.info is ast.Alias && arg_typ_sym.name == 'byte' {
+			arg_typ = arg_typ_sym.info.parent_type
+		}
 		c.check_expected_call_arg(arg_typ, c.unwrap_generic(param.typ), node.language,
 			call_arg) or {
 			if param.typ.has_flag(.generic) {
