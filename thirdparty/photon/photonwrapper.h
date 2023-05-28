@@ -21,7 +21,7 @@ extern "C" {
 #endif
 
 int photon_init_default();
-void photon_thread_create11(void* (* f)(void*));
+void photon_thread_create(void* (* f)(void*), void* arg);
 void photon_sleep_s(int n);
 void photon_sleep_ms(int n);
 

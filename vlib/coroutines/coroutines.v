@@ -11,11 +11,16 @@ import time
 #include "photonwrapper.h"
 
 fn C.photon_init_default() int
-fn C.photon_thread_create11(f voidptr)
+fn C.photon_thread_create(f voidptr)
 fn C.photon_sleep_s(n int)
 fn C.photon_sleep_ms(n int)
 
 // sleep is coroutine-safe version of time.sleep()
 pub fn sleep(duration time.Duration) {
 	C.photon_sleep_ms(duration.milliseconds())
+}
+
+// init needs to be run
+pub fn initialize() int {
+	return C.photon_init_default()
 }

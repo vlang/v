@@ -3161,10 +3161,16 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			}
 		}
 		ast.SpawnExpr {
-			g.spawn_expr(node)
+			g.spawn_and_go_expr(node, .spawn_)
 		}
 		ast.GoExpr {
-			g.go_expr(node)
+			// XTODO this results in a cgen bug, order of fields is broken
+			// g.spawn_and_go_expr(ast.SpawnExpr{node.pos, node.call_expr, node.is_expr},
+			g.spawn_and_go_expr(ast.SpawnExpr{
+				pos: node.pos
+				call_expr: node.call_expr
+				is_expr: node.is_expr
+			}, .go_)
 		}
 		ast.Ident {
 			g.ident(node)

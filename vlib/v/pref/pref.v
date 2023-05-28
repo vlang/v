@@ -8,6 +8,7 @@ import os.cmdline
 import os
 import v.vcache
 import rand
+// import net.http // TODO can't use net.http on arm maccs: bignum.c arm asm error
 
 pub enum BuildMode {
 	// `v program.v'
@@ -801,6 +802,20 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-use-coroutines' {
 				res.use_coroutines = true
+				$if macos && arm64 {
+					vexe := vexe_path()
+					vroot := os.dir(vexe)
+					so_path := os.join_path(vroot, 'thirdparty', 'photon', 'photonwrapper.so')
+					so_url := 'https://github.com/vlang/photonbin/raw/master/photonwrapper_macos_arm64.so'
+					if !os.exists(so_path) {
+						println('coroutines .so not found, downloading...')
+						// http.download_file(so_url, so_path) or { panic(err) }
+						os.system('wget -O "${so_path}" "${so_url}"')
+						println('done!')
+					}
+				} $else {
+					println('coroutines only work on arm64 macos for now')
+				}
 			}
 			else {
 				if command == 'build' && is_source_file(arg) {

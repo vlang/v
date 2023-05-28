@@ -4199,7 +4199,13 @@ fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 	fsym := c.table.final_sym(typ)
 	if fsym.kind != .enum_ && !c.pref.translated && !c.file.is_translated {
 		// TODO in C int fields can be compared to enums, need to handle that in C2V
-		c.error('expected type is not an enum (`${typ_sym.name}`)', node.pos)
+		if typ_sym.kind == .placeholder {
+			// If it's a placeholder, the type doesn't exist, print
+			// an error that makes sense here.
+			c.error('unknown type `${typ_sym.name}`', node.pos)
+		} else {
+			c.error('expected type is not an enum (`${typ_sym.name}`)', node.pos)
+		}
 		return ast.void_type
 	}
 	if fsym.info !is ast.Enum {

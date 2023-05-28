@@ -6,8 +6,19 @@ module c
 import v.ast
 import v.util
 
-fn (mut g Gen) spawn_expr(node ast.SpawnExpr) {
-	g.writeln('/*spawn (thread) */')
+enum SpawnGoMode {
+	spawn_
+	go_
+}
+
+fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
+	is_spawn := mode == .spawn_
+	is_go := mode == .go_
+	if is_spawn {
+		g.writeln('/*spawn (thread) */')
+	} else {
+		g.writeln('/*go (coroutine) */')
+	}
 	line := g.go_before_stmt(0)
 	mut handle := ''
 	tmp := g.new_tmp_var()
@@ -67,7 +78,12 @@ fn (mut g Gen) spawn_expr(node ast.SpawnExpr) {
 	wrapper_struct_name := 'thread_arg_' + name
 	wrapper_fn_name := name + '_thread_wrapper'
 	arg_tmp_var := 'arg_' + tmp
-	g.writeln('${wrapper_struct_name} *${arg_tmp_var} = malloc(sizeof(thread_arg_${name}));')
+	if is_spawn {
+		g.writeln('${wrapper_struct_name} *${arg_tmp_var} = malloc(sizeof(thread_arg_${name}));')
+	} else if is_go {
+		g.writeln('${wrapper_struct_name} ${arg_tmp_var};')
+	}
+	dot := if is_spawn { '->' } else { '.' }
 	fn_name := if use_tmp_fn_var {
 		tmp_fn
 	} else if expr.is_fn_var {
@@ -76,15 +92,15 @@ fn (mut g Gen) spawn_expr(node ast.SpawnExpr) {
 		name
 	}
 	if !(expr.is_method && g.table.sym(expr.receiver_type).kind == .interface_) {
-		g.writeln('${arg_tmp_var}->fn = ${fn_name};')
+		g.writeln('${arg_tmp_var}${dot}fn = ${fn_name};')
 	}
 	if expr.is_method {
-		g.write('${arg_tmp_var}->arg0 = ')
+		g.write('${arg_tmp_var}${dot}arg0 = ')
 		g.expr(expr.left)
 		g.writeln(';')
 	}
 	for i, arg in expr.args {
-		g.write('${arg_tmp_var}->arg${i + 1} = ')
+		g.write('${arg_tmp_var}${dot}arg${i + 1} = ')
 		g.expr(arg.expr)
 		g.writeln(';')
 	}
@@ -108,39 +124,43 @@ fn (mut g Gen) spawn_expr(node ast.SpawnExpr) {
 		res := if is_res { '${result_name}_' } else { '' }
 		gohandle_name = '__v_thread_${opt}${res}${g.table.sym(g.unwrap_generic(node.call_expr.return_type)).cname}'
 	}
-	if g.pref.os == .windows {
-		simple_handle := if node.is_expr && node.call_expr.return_type != ast.void_type {
-			'thread_handle_${tmp}'
+	if is_spawn {
+		if g.pref.os == .windows {
+			simple_handle := if node.is_expr && node.call_expr.return_type != ast.void_type {
+				'thread_handle_${tmp}'
+			} else {
+				'thread_${tmp}'
+			}
+			stack_size := g.get_cur_thread_stack_size(expr.name)
+			g.writeln('HANDLE ${simple_handle} = CreateThread(0, ${stack_size}, (LPTHREAD_START_ROUTINE)${wrapper_fn_name}, ${arg_tmp_var}, 0, 0); // fn: ${expr.name}')
+			g.writeln('if (!${simple_handle}) panic_lasterr(tos3("`go ${name}()`: "));')
+			if node.is_expr && node.call_expr.return_type != ast.void_type {
+				g.writeln('${gohandle_name} thread_${tmp} = {')
+				g.writeln('\t.ret_ptr = ${arg_tmp_var}->ret_ptr,')
+				g.writeln('\t.handle = thread_handle_${tmp}')
+				g.writeln('};')
+			}
+			if !node.is_expr {
+				g.writeln('CloseHandle(thread_${tmp});')
+			}
 		} else {
-			'thread_${tmp}'
+			g.writeln('pthread_t thread_${tmp};')
+			mut sthread_attributes := 'NULL'
+			if g.pref.os != .vinix {
+				g.writeln('pthread_attr_t thread_${tmp}_attributes;')
+				g.writeln('pthread_attr_init(&thread_${tmp}_attributes);')
+				size := g.get_cur_thread_stack_size(expr.name)
+				g.writeln('pthread_attr_setstacksize(&thread_${tmp}_attributes, ${size}); // fn: ${expr.name}')
+				sthread_attributes = '&thread_${tmp}_attributes'
+			}
+			g.writeln('int ${tmp}_thr_res = pthread_create(&thread_${tmp}, ${sthread_attributes}, (void*)${wrapper_fn_name}, ${arg_tmp_var});')
+			g.writeln('if (${tmp}_thr_res) panic_error_number(tos3("`go ${name}()`: "), ${tmp}_thr_res);')
+			if !node.is_expr {
+				g.writeln('pthread_detach(thread_${tmp});')
+			}
 		}
-		stack_size := g.get_cur_thread_stack_size(expr.name)
-		g.writeln('HANDLE ${simple_handle} = CreateThread(0, ${stack_size}, (LPTHREAD_START_ROUTINE)${wrapper_fn_name}, ${arg_tmp_var}, 0, 0); // fn: ${expr.name}')
-		g.writeln('if (!${simple_handle}) panic_lasterr(tos3("`go ${name}()`: "));')
-		if node.is_expr && node.call_expr.return_type != ast.void_type {
-			g.writeln('${gohandle_name} thread_${tmp} = {')
-			g.writeln('\t.ret_ptr = ${arg_tmp_var}->ret_ptr,')
-			g.writeln('\t.handle = thread_handle_${tmp}')
-			g.writeln('};')
-		}
-		if !node.is_expr {
-			g.writeln('CloseHandle(thread_${tmp});')
-		}
-	} else {
-		g.writeln('pthread_t thread_${tmp};')
-		mut sthread_attributes := 'NULL'
-		if g.pref.os != .vinix {
-			g.writeln('pthread_attr_t thread_${tmp}_attributes;')
-			g.writeln('pthread_attr_init(&thread_${tmp}_attributes);')
-			size := g.get_cur_thread_stack_size(expr.name)
-			g.writeln('pthread_attr_setstacksize(&thread_${tmp}_attributes, ${size}); // fn: ${expr.name}')
-			sthread_attributes = '&thread_${tmp}_attributes'
-		}
-		g.writeln('int ${tmp}_thr_res = pthread_create(&thread_${tmp}, ${sthread_attributes}, (void*)${wrapper_fn_name}, ${arg_tmp_var});')
-		g.writeln('if (${tmp}_thr_res) panic_error_number(tos3("`go ${name}()`: "), ${tmp}_thr_res);')
-		if !node.is_expr {
-			g.writeln('pthread_detach(thread_${tmp});')
-		}
+	} else if is_go {
+		g.writeln('photon_thread_create((void*)${wrapper_fn_name}, &${arg_tmp_var});')
 	}
 	g.writeln('// end go')
 	if node.is_expr {
@@ -273,11 +293,11 @@ fn (mut g Gen) spawn_expr(node ast.SpawnExpr) {
 				receiver_type_name := util.no_dots(rec_cc_type)
 				g.gowrappers.write_string('${c_name(receiver_type_name)}_name_table[')
 				g.gowrappers.write_string('arg->arg0')
-				dot := if expr.left_type.is_ptr() { '->' } else { '.' }
+				idot := if expr.left_type.is_ptr() { '->' } else { '.' }
 				mname := c_name(expr.name)
-				g.gowrappers.write_string('${dot}_typ]._method_${mname}(')
+				g.gowrappers.write_string('${idot}_typ]._method_${mname}(')
 				g.gowrappers.write_string('arg->arg0')
-				g.gowrappers.write_string('${dot}_object')
+				g.gowrappers.write_string('${idot}_object')
 			} else {
 				g.gowrappers.write_string('arg->fn(')
 				g.gowrappers.write_string('arg->arg0')
@@ -354,9 +374,8 @@ fn (mut g Gen) spawn_expr(node ast.SpawnExpr) {
 	}
 }
 
-fn (mut g Gen) go_expr(node ast.GoExpr) {
-	g.writeln('/*go (coroutine) */')
-}
+// fn (mut g Gen) go_expr(node ast.GoExpr) {
+//}
 
 // get current thread size, if fn hasn't defined return default
 [inline]
