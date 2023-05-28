@@ -4196,9 +4196,19 @@ fn (mut g Gen) ident(node ast.Ident) {
 			if node.obj.smartcasts.len > 0 {
 				obj_sym := g.table.sym(node.obj.typ)
 				if !prevent_sum_type_unwrapping_once {
-					for _ in node.obj.smartcasts {
+					outer: for _, typ in node.obj.smartcasts {
 						g.write('(')
 						if obj_sym.kind == .sum_type && !is_auto_heap {
+							if g.sumtype_casting_fns.len > 0 {
+								typ_kind := g.table.sym(g.unwrap_generic(typ)).kind
+								if typ_kind == .function {
+									for f in g.sumtype_casting_fns {
+										if f.got == typ {
+											break outer
+										}
+									}
+								}
+							}
 							g.write('*')
 						}
 					}
