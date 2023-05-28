@@ -163,6 +163,10 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 								field.default_expr.pos)
 						}
 					}
+					if field.typ.has_flag(.option) && field.default_expr is ast.None {
+						c.warn('unnecessary default value of `none`: struct fields are zeroed by default',
+							field.default_expr.pos)
+					}
 					continue
 				}
 				if field.typ in ast.unsigned_integer_type_idxs {
