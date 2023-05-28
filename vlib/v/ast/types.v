@@ -955,13 +955,6 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	)
 	t.register_sym(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin')
 	t.register_sym(kind: .voidptr, name: 'nil', cname: 'voidptr', mod: 'builtin')
-
-	t.register_interface(InterfaceDecl{
-		name: 'any'
-		language: Language.v
-		typ: ast.any_type
-		is_pub: true
-	})
 }
 
 [inline]
