@@ -20,7 +20,6 @@ pub fn sleep(duration time.Duration) {
 	C.photon_sleep_ms(duration.milliseconds())
 }
 
-// init needs to be run
-pub fn initialize() int {
-	return C.photon_init_default()
+fn init() {
+	C.photon_init_default()
 }
