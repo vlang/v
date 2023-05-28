@@ -1,6 +1,3 @@
-
-
-
 #ifndef C_PHOTONWRAPPER_H_
 #define C_PHOTONWRAPPER_H_
 
@@ -20,18 +17,12 @@
 
 extern "C" {
 #else
-    typedef struct CppClass CppClass;
-#endif
 
-//CppClass *cpp_class_create();
-//void cpp_class_destroy(CppClass *c);
-//void cpp_class_do_work(CppClass *c);
+#endif
 
 int photon_init_default();
 void photon_thread_create11(void* (* f)(void*));
-
 void photon_sleep_s(int n);
-
 void photon_sleep_ms(int n);
 
 
