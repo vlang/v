@@ -22,7 +22,7 @@ struct VMemoryBlock {
 mut:
 	id        int
 	cap       isize
-	start     &byte = 0
+	start     &u8 = 0
 	previous  &VMemoryBlock = 0
 	remaining isize
 	current   &u8 = 0
@@ -46,7 +46,7 @@ fn vmemory_block_new(prev &VMemoryBlock, at_least isize) &VMemoryBlock {
 }
 
 [unsafe]
-fn vmemory_block_malloc(n isize) &byte {
+fn vmemory_block_malloc(n isize) &u8 {
 	unsafe {
 		if g_memory_block.remaining < n {
 			g_memory_block = vmemory_block_new(g_memory_block, n)
@@ -96,12 +96,12 @@ fn prealloc_vcleanup() {
 }
 
 [unsafe]
-fn prealloc_malloc(n isize) &byte {
+fn prealloc_malloc(n isize) &u8 {
 	return unsafe { vmemory_block_malloc(n) }
 }
 
 [unsafe]
-fn prealloc_realloc(old_data &byte, old_size isize, new_size isize) &byte {
+fn prealloc_realloc(old_data &u8, old_size isize, new_size isize) &u8 {
 	new_ptr := unsafe { vmemory_block_malloc(new_size) }
 	min_size := if old_size < new_size { old_size } else { new_size }
 	unsafe { C.memcpy(new_ptr, old_data, min_size) }
@@ -109,7 +109,7 @@ fn prealloc_realloc(old_data &byte, old_size isize, new_size isize) &byte {
 }
 
 [unsafe]
-fn prealloc_calloc(n isize) &byte {
+fn prealloc_calloc(n isize) &u8 {
 	new_ptr := unsafe { vmemory_block_malloc(n) }
 	unsafe { C.memset(new_ptr, 0, n) }
 	return new_ptr
