@@ -1078,7 +1078,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			}
 		}
 		.key_go, .key_spawn {
-			if p.pref.use_coroutines && p.tok.kind == .key_go {
+			if (p.pref.use_coroutines || p.pref.is_fmt) && p.tok.kind == .key_go {
 				go_expr := p.go_expr()
 				return ast.ExprStmt{
 					expr: go_expr

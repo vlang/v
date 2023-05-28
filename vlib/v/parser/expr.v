@@ -112,7 +112,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			}
 		}
 		.key_go, .key_spawn {
-			if p.pref.use_coroutines && p.tok.kind == .key_go {
+			if (p.pref.use_coroutines || p.pref.is_fmt) && p.tok.kind == .key_go {
 				mut go_expr := p.go_expr()
 				go_expr.is_expr = true
 				node = go_expr
