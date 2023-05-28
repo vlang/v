@@ -54,6 +54,7 @@ pub type Expr = AnonFn
 	| SelectExpr
 	| SelectorExpr
 	| SizeOf
+	| SpawnExpr
 	| SqlExpr
 	| StringInterLiteral
 	| StringLiteral
@@ -1386,6 +1387,15 @@ pub mut:
 	is_expr   bool
 }
 
+[minify]
+pub struct SpawnExpr {
+pub:
+	pos token.Pos
+pub mut:
+	call_expr CallExpr
+	is_expr   bool
+}
+
 pub struct GotoLabel {
 pub:
 	name string
@@ -1948,10 +1958,11 @@ pub fn (expr Expr) pos() token.Pos {
 		}
 		NodeError, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr,
 		CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector,
-		EnumVal, DumpExpr, FloatLiteral, GoExpr, Ident, IfExpr, IntegerLiteral, IsRefType, Likely,
-		LockExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr,
-		RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral,
-		StructInit, TypeNode, TypeOf, UnsafeExpr, ComptimeType, Nil {
+		EnumVal, DumpExpr, FloatLiteral, GoExpr, SpawnExpr, Ident, IfExpr, IntegerLiteral,
+		IsRefType, Likely, LockExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr,
+		PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr,
+		StringInterLiteral, StringLiteral, StructInit, TypeNode, TypeOf, UnsafeExpr, ComptimeType,
+		Nil {
 			return expr.pos
 		}
 		IndexExpr {

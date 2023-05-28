@@ -1531,6 +1531,13 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 			}
 			c.error('duplicate const `${field.name}`', name_pos)
 		}
+		if field.expr is ast.CallExpr {
+			sym := c.table.sym(c.check_expr_opt_call(field.expr, c.expr(field.expr)))
+			if sym.kind == .multi_return {
+				c.error('const declarations do not support multiple return values yet',
+					field.expr.pos)
+			}
+		}
 		c.const_names << field.name
 	}
 	for i, mut field in node.fields {
@@ -2540,6 +2547,9 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		}
 		ast.GoExpr {
 			return c.go_expr(mut node)
+		}
+		ast.SpawnExpr {
+			return c.spawn_expr(mut node)
 		}
 		ast.Ident {
 			return c.ident(mut node)
@@ -4189,7 +4199,13 @@ fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 	fsym := c.table.final_sym(typ)
 	if fsym.kind != .enum_ && !c.pref.translated && !c.file.is_translated {
 		// TODO in C int fields can be compared to enums, need to handle that in C2V
-		c.error('expected type is not an enum (`${typ_sym.name}`)', node.pos)
+		if typ_sym.kind == .placeholder {
+			// If it's a placeholder, the type doesn't exist, print
+			// an error that makes sense here.
+			c.error('unknown type `${typ_sym.name}`', node.pos)
+		} else {
+			c.error('expected type is not an enum (`${typ_sym.name}`)', node.pos)
+		}
 		return ast.void_type
 	}
 	if fsym.info !is ast.Enum {

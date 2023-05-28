@@ -46,7 +46,7 @@ fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	}
 }
 
-fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
+fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, string) {
 	mut base := 0 // numeric base
 	mut upper_case := false // set upercase for the result string
 	mut typ := g.unwrap_generic(node.expr_types[i])
@@ -59,7 +59,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 		typ = (sym.info as ast.Alias).parent_type
 	}
 	mut remove_tail_zeros := false
-	fspec := node.fmts[i]
+	fspec := fmts[i]
 	mut fmt_type := StrIntpType.si_no_str
 	g.write('/*${fspec} ${sym}*/')
 	// upper cases
@@ -159,9 +159,9 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 	return res, fmt_type.str()
 }
 
-fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
+fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	expr := node.exprs[i]
-
+	fmt := fmts[i]
 	typ := g.unwrap_generic(node.expr_types[i])
 	typ_sym := g.table.sym(typ)
 	if typ == ast.string_type && g.comptime_for_method.len == 0 {
@@ -187,7 +187,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
 		g.expr(expr)
 		g.write('${dot}_object')
 		g.write(')')
-	} else if node.fmts[i] == `s` || typ.has_flag(.variadic) {
+	} else if fmt == `s` || typ.has_flag(.variadic) {
 		mut exp_typ := typ
 		if expr is ast.Ident {
 			if expr.obj is ast.Var {
@@ -203,8 +203,8 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
 			}
 		}
 		g.gen_expr_to_string(expr, exp_typ)
-	} else if typ.is_number() || typ.is_pointer() || node.fmts[i] == `d` {
-		if typ.is_signed() && node.fmts[i] in [`x`, `X`, `o`] {
+	} else if typ.is_number() || typ.is_pointer() || fmt == `d` {
+		if typ.is_signed() && fmt in [`x`, `X`, `o`] {
 			// convert to unsigned first befors C's integer propagation strikes
 			if typ == ast.i8_type {
 				g.write('(byte)(')
@@ -237,6 +237,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	// fn (mut g Gen) str_int2(node ast.StringInterLiteral) {
 	mut node_ := unsafe { node }
+	mut fmts := node_.fmts.clone()
 	for i, mut expr in node_.exprs {
 		if g.is_comptime_var(expr) {
 			ctyp := g.get_comptime_var_type(expr)
@@ -249,7 +250,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 					} else {
 						ctyp
 					}
-					node_.fmts[i] = g.get_default_fmt(ctyp, typ)
+					fmts[i] = g.get_default_fmt(ctyp, typ)
 				}
 			}
 		}
@@ -271,16 +272,16 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			break
 		}
 
-		ft_u64, ft_str := g.str_format(node, i)
+		ft_u64, ft_str := g.str_format(node, i, fmts)
 		g.write('0x${ft_u64.hex()}, {.d_${ft_str} = ')
 
 		// for pointers we need a void* cast
 		if unsafe { ft_str.str[0] } == `p` {
 			g.write('(void*)(')
-			g.str_val(node, i)
+			g.str_val(node, i, fmts)
 			g.write(')')
 		} else {
-			g.str_val(node, i)
+			g.str_val(node, i, fmts)
 		}
 
 		g.write('}}')

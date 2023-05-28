@@ -1562,8 +1562,10 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 		} else {
 			''
 		}
-
-		g.type_definitions.write_string('typedef ${g.typ(func.return_type)} (${msvc_call_conv}*${fn_name})(')
+		ret_typ :=
+			if !func.return_type.has_flag(.option) && g.table.sym(func.return_type).kind == .array_fixed { '_v_' } else { '' } +
+			g.typ(func.return_type)
+		g.type_definitions.write_string('typedef ${ret_typ} (${msvc_call_conv}*${fn_name})(')
 		for i, param in func.params {
 			g.type_definitions.write_string(g.typ(param.typ))
 			if i < func.params.len - 1 {
@@ -2441,7 +2443,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 	// no cast
 	g.expr(expr)
-	if expr is ast.CallExpr && exp_sym.kind == .array_fixed {
+	if expr is ast.CallExpr && !(expr as ast.CallExpr).is_fn_var && !expected_type.has_flag(.option)
+		&& exp_sym.kind == .array_fixed {
+		// it's non-option fixed array, requires accessing .ret_arr member to get the array
 		g.write('.ret_arr')
 	}
 }
@@ -3156,8 +3160,17 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.write(node.val)
 			}
 		}
+		ast.SpawnExpr {
+			g.spawn_and_go_expr(node, .spawn_)
+		}
 		ast.GoExpr {
-			g.go_expr(node)
+			// XTODO this results in a cgen bug, order of fields is broken
+			// g.spawn_and_go_expr(ast.SpawnExpr{node.pos, node.call_expr, node.is_expr},
+			g.spawn_and_go_expr(ast.SpawnExpr{
+				pos: node.pos
+				call_expr: node.call_expr
+				is_expr: node.is_expr
+			}, .go_)
 		}
 		ast.Ident {
 			g.ident(node)
@@ -3256,7 +3269,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				mut expr_str := ''
 				if mut node.expr is ast.ComptimeSelector
 					&& (node.expr as ast.ComptimeSelector).left is ast.Ident {
-					// val.$(field.name)?					
+					// val.$(field.name)?
 					expr_str = '${node.expr.left.str()}.${g.comptime_for_field_value.name}'
 				} else if mut node.expr is ast.Ident && g.is_comptime_var(node.expr) {
 					// val?

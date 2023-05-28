@@ -1166,6 +1166,9 @@ fn (t Tree) expr(expr ast.Expr) &Node {
 		ast.GoExpr {
 			return t.go_expr(expr)
 		}
+		ast.SpawnExpr {
+			return t.spawn_expr(expr)
+		}
 		ast.OffsetOf {
 			return t.offset_of(expr)
 		}
@@ -1856,6 +1859,15 @@ fn (t Tree) array_decompose(expr ast.ArrayDecompose) &Node {
 fn (t Tree) go_expr(expr ast.GoExpr) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('GoExpr'))
+	obj.add_terse('call_expr', t.call_expr(expr.call_expr))
+	obj.add_terse('is_expr', t.bool_node(expr.is_expr))
+	obj.add('pos', t.pos(expr.pos))
+	return obj
+}
+
+fn (t Tree) spawn_expr(expr ast.SpawnExpr) &Node {
+	mut obj := new_object()
+	obj.add_terse('ast_type', t.string_node('SpawnExpr'))
 	obj.add_terse('call_expr', t.call_expr(expr.call_expr))
 	obj.add_terse('is_expr', t.bool_node(expr.is_expr))
 	obj.add('pos', t.pos(expr.pos))

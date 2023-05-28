@@ -43,10 +43,9 @@ pub fn from(input string) !Version {
 		return &EmptyInputError{}
 	}
 	raw_version := parse(input)
-	version := raw_version.validate() or { return &InvalidVersionFormatError{
+	return raw_version.validate() or { return &InvalidVersionFormatError{
 		input: input
 	} }
-	return version
 }
 
 // build returns a `Version` structure with given `major`, `minor` and `patch` versions.
@@ -105,7 +104,7 @@ pub fn (ver Version) str() string {
 	return '${common_string}${prerelease_string}${metadata_string}'
 }
 
-// * Utilites.
+// * Utilities.
 // coerce converts the `input` version to a `Version` struct.
 // coerce will strip any contents *after* the parsed version string:
 /*
