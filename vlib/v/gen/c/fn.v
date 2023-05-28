@@ -1115,6 +1115,12 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 				}
 			} else if mut call_arg.expr is ast.ComptimeSelector {
 				comptime_args[i] = g.comptime_for_field_type
+				arg_sym := g.table.final_sym(call_arg.typ)
+				param_typ_sym := g.table.sym(param_typ)
+				if arg_sym.kind == .array && param_typ.has_flag(.generic)
+					&& param_typ_sym.kind == .array {
+					comptime_args[i] = g.get_generic_array_element_type(arg_sym.info as ast.Array)
+				}
 				if call_arg.expr.left.is_auto_deref_var() {
 					comptime_args[i] = comptime_args[i].deref()
 				}
