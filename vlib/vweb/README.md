@@ -252,7 +252,8 @@ pub fn (mut app App) controller_get_user_by_id() vweb.Result {
 }
 ```
 #### - Host
-To restrict an endpoint to a specific host, you can use the `host` attribute followed by a colon `:` and the host name.
+To restrict an endpoint to a specific host, you can use the `host` attribute
+followed by a colon `:` and the host name.
 
 **Example:**
 
