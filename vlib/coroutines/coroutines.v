@@ -11,7 +11,7 @@ import time
 #include "photonwrapper.h"
 
 fn C.photon_init_default() int
-fn C.photon_thread_create(f voidptr)
+fn C.photon_thread_create(f voidptr, arg voidptr)
 fn C.photon_sleep_s(n int)
 fn C.photon_sleep_ms(n int)
 
@@ -21,5 +21,8 @@ pub fn sleep(duration time.Duration) {
 }
 
 fn init() {
-	C.photon_init_default()
+	ret := C.photon_init_default()
+	if ret < 0 {
+		panic('failed to initialize coroutines via photon (ret=${ret})')
+	}
 }
