@@ -923,7 +923,15 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_sym(kind: .array, name: 'array', cname: 'array', mod: 'builtin')
 	t.register_sym(kind: .map, name: 'map', cname: 'map', mod: 'builtin')
 	t.register_sym(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin')
-	t.register_sym(kind: .any, name: 'any', cname: 'any', mod: 'builtin')
+	t.register_sym(
+		kind: .interface_
+		name: 'any'
+		cname: 'any'
+		mod: 'builtin'
+		info: Interface{
+			is_generic: false
+		}
+	)
 	t.register_sym(
 		kind: .float_literal
 		name: 'float literal'
@@ -947,6 +955,13 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	)
 	t.register_sym(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin')
 	t.register_sym(kind: .voidptr, name: 'nil', cname: 'voidptr', mod: 'builtin')
+
+	t.register_interface(InterfaceDecl{
+		name: 'any'
+		language: Language.v
+		typ: ast.any_type
+		is_pub: true
+	})
 }
 
 [inline]

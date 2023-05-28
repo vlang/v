@@ -5568,7 +5568,8 @@ fn (mut g Gen) write_init_function() {
 }
 
 const (
-	builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', option_name, result_name]
+	builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', option_name, result_name,
+		'any']
 )
 
 fn (mut g Gen) write_builtin_types() {
@@ -5580,7 +5581,7 @@ fn (mut g Gen) write_builtin_types() {
 	// everything except builtin will get sorted
 	for builtin_name in c.builtins {
 		sym := g.table.sym_by_idx(g.table.type_idxs[builtin_name])
-		if sym.kind == .interface_ {
+		if sym.kind == .interface_ || sym.kind == .any {
 			g.write_interface_typedef(sym)
 			g.write_interface_typesymbol_declaration(sym)
 		} else {
