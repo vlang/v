@@ -439,11 +439,12 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) ?string {
 	}
 	if node.is_method {
 		unwrapped_rec_typ := g.unwrap_generic(node.receiver.typ)
-		if g.table.sym(unwrapped_rec_typ).kind == .placeholder
-			&& unwrapped_rec_typ.has_flag(.generic) {
+		name = g.cc_type(unwrapped_rec_typ, false) + '_' + name
+		unwrapped_rec_sym := g.table.sym(unwrapped_rec_typ)
+		if unwrapped_rec_sym.kind == .placeholder
+			&& unwrapped_rec_sym.cname.all_after_last('_').len == 1 {
 			return none
 		}
-		name = g.cc_type(unwrapped_rec_typ, false) + '_' + name
 	}
 	if node.language == .c {
 		name = util.no_dots(name)
