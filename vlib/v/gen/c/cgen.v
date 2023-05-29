@@ -3256,7 +3256,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				mut expr_str := ''
 				if mut node.expr is ast.ComptimeSelector
 					&& (node.expr as ast.ComptimeSelector).left is ast.Ident {
-					// val.$(field.name)?					
+					// val.$(field.name)?
 					expr_str = '${node.expr.left.str()}.${g.comptime_for_field_value.name}'
 				} else if mut node.expr is ast.Ident && g.is_comptime_var(node.expr) {
 					// val?
