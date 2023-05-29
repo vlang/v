@@ -183,6 +183,7 @@ struct Route {
 	methods    []http.Method
 	path       string
 	middleware string
+	host       string
 }
 
 // Defining this method is optional.
@@ -399,7 +400,7 @@ fn generate_routes[T](app &T) !map[string]Route {
 	// Parsing methods attributes
 	mut routes := map[string]Route{}
 	$for method in T.methods {
-		http_methods, route_path, middleware := parse_attrs(method.name, method.attrs) or {
+		http_methods, route_path, middleware, host := parse_attrs(method.name, method.attrs) or {
 			return error('error parsing method attributes: ${err}')
 		}
 
@@ -407,12 +408,13 @@ fn generate_routes[T](app &T) !map[string]Route {
 			methods: http_methods
 			path: route_path
 			middleware: middleware
+			host: host
 		}
 	}
 	return routes
 }
 
-type ControllerHandler = fn (ctx Context, mut url urllib.URL, tid int)
+type ControllerHandler = fn (ctx Context, mut url urllib.URL, host string, tid int)
 
 pub struct ControllerPath {
 	path    string
@@ -436,12 +438,12 @@ pub fn controller[T](path string, global_app &T) &ControllerPath {
 	// no need to type `ControllerHandler` as generic since it's not needed for closures
 	return &ControllerPath{
 		path: path
-		handler: fn [global_app, path, routes] [T](ctx Context, mut url urllib.URL, tid int) {
+		handler: fn [global_app, path, routes] [T](ctx Context, mut url urllib.URL, host string, tid int) {
 			// request_app is freed in `handle_route`
 			mut request_app := new_request_app[T](global_app, ctx, tid)
 			// transform the url
 			url.path = url.path.all_after_first(path)
-			handle_route[T](mut request_app, url, &routes, tid)
+			handle_route[T](mut request_app, url, host, &routes, tid)
 		}
 	}
 }
@@ -620,6 +622,8 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route,
 		return
 	}
 
+	host := req.header.get(http.CommonHeader.host) or { '' }.to_lower()
+
 	// Create Context with request data
 	ctx := Context{
 		req: req
@@ -635,18 +639,18 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route,
 		for controller in global_app.controllers {
 			if url.path.len >= controller.path.len && url.path.starts_with(controller.path) {
 				// pass route handling to the controller
-				controller.handler(ctx, mut url, tid)
+				controller.handler(ctx, mut url, host, tid)
 				return
 			}
 		}
 	}
 
 	mut request_app := new_request_app(global_app, ctx, tid)
-	handle_route(mut request_app, url, routes, tid)
+	handle_route(mut request_app, url, host, routes, tid)
 }
 
 [manualfree]
-fn handle_route[T](mut app T, url urllib.URL, routes &map[string]Route, tid int) {
+fn handle_route[T](mut app T, url urllib.URL, host string, routes &map[string]Route, tid int) {
 	defer {
 		unsafe {
 			free(app)
@@ -690,70 +694,77 @@ fn handle_route[T](mut app T, url urllib.URL, routes &map[string]Route, tid int)
 				// Used for route matching
 				route_words := route.path.split('/').filter(it != '')
 
-				// Route immediate matches first
-				// For example URL `/register` matches route `/:user`, but `fn register()`
-				// should be called first.
-				if !route.path.contains('/:') && url_words == route_words {
-					// We found a match
-					$if T is MiddlewareInterface {
-						if validate_middleware(mut app, url.path) == false {
-							return
+				// Skip if the host does not match or is empty
+				if route.host == '' || route.host == host {
+					// Route immediate matches first
+					// For example URL `/register` matches route `/:user`, but `fn register()`
+					// should be called first.
+					if !route.path.contains('/:') && url_words == route_words {
+						// We found a match
+						$if T is MiddlewareInterface {
+							if validate_middleware(mut app, url.path) == false {
+								return
+							}
 						}
+
+						if app.req.method == .post && method.args.len > 0 {
+							// Populate method args with form values
+							mut args := []string{cap: method.args.len}
+							for param in method.args {
+								args << app.form[param.name]
+							}
+
+							if route.middleware == '' {
+								app.$method(args)
+							} else if validate_app_middleware(mut app, route.middleware,
+								method.name)
+							{
+								app.$method(args)
+							}
+						} else {
+							if route.middleware == '' {
+								app.$method()
+							} else if validate_app_middleware(mut app, route.middleware,
+								method.name)
+							{
+								app.$method()
+							}
+						}
+						return
 					}
 
-					if app.req.method == .post && method.args.len > 0 {
-						// Populate method args with form values
-						mut args := []string{cap: method.args.len}
-						for param in method.args {
-							args << app.form[param.name]
+					if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
+						$if T is MiddlewareInterface {
+							if validate_middleware(mut app, url.path) == false {
+								return
+							}
 						}
-
-						if route.middleware == '' {
-							app.$method(args)
-						} else if validate_app_middleware(mut app, route.middleware, method.name) {
-							app.$method(args)
-						}
-					} else {
 						if route.middleware == '' {
 							app.$method()
 						} else if validate_app_middleware(mut app, route.middleware, method.name) {
 							app.$method()
 						}
+						return
 					}
-					return
-				}
 
-				if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
-					$if T is MiddlewareInterface {
-						if validate_middleware(mut app, url.path) == false {
-							return
+					if params := route_matches(url_words, route_words) {
+						method_args := params.clone()
+						if method_args.len != method.args.len {
+							eprintln('[vweb] tid: ${tid:03d}, warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the vweb route `${method.attrs}` (${method_args.len})')
 						}
-					}
-					if route.middleware == '' {
-						app.$method()
-					} else if validate_app_middleware(mut app, route.middleware, method.name) {
-						app.$method()
-					}
-					return
-				}
 
-				if params := route_matches(url_words, route_words) {
-					method_args := params.clone()
-					if method_args.len != method.args.len {
-						eprintln('[vweb] tid: ${tid:03d}, warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the vweb route `${method.attrs}` (${method_args.len})')
-					}
-
-					$if T is MiddlewareInterface {
-						if validate_middleware(mut app, url.path) == false {
-							return
+						$if T is MiddlewareInterface {
+							if validate_middleware(mut app, url.path) == false {
+								return
+							}
 						}
+						if route.middleware == '' {
+							app.$method(method_args)
+						} else if validate_app_middleware(mut app, route.middleware, method.name) {
+							app.$method(method_args)
+						}
+						return
 					}
-					if route.middleware == '' {
-						app.$method(method_args)
-					} else if validate_app_middleware(mut app, route.middleware, method.name) {
-						app.$method(method_args)
-					}
-					return
 				}
 			}
 		}
