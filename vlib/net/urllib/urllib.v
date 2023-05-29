@@ -1003,7 +1003,7 @@ pub fn (u &URL) port() string {
 // split_host_port separates host and port. If the port is not valid, it returns
 // the entire input as host, and it doesn't check the validity of the host.
 // Per RFC 3986, it requires ports to be numeric.
-fn split_host_port(hostport string) (string, string) {
+pub fn split_host_port(hostport string) (string, string) {
 	mut host := hostport
 	mut port := ''
 	colon := host.last_index_u8(`:`)

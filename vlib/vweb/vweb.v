@@ -417,8 +417,11 @@ fn generate_routes[T](app &T) !map[string]Route {
 type ControllerHandler = fn (ctx Context, mut url urllib.URL, host string, tid int)
 
 pub struct ControllerPath {
+pub:
 	path    string
 	handler ControllerHandler
+pub mut:
+	host string
 }
 
 interface ControllerInterface {
@@ -446,6 +449,13 @@ pub fn controller[T](path string, global_app &T) &ControllerPath {
 			handle_route[T](mut request_app, url, host, &routes, tid)
 		}
 	}
+}
+
+// controller_host generates a controller which only handles incoming requests from the `host` domain
+pub fn controller_host[T](host string, path string, global_app &T) &ControllerPath {
+	mut ctrl := controller(path, global_app)
+	ctrl.host = host
+	return ctrl
 }
 
 // run - start a new VWeb server, listening to all available addresses, at the specified `port`
@@ -487,12 +497,14 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	$if T is ControllerInterface {
 		mut paths := []string{}
 		for controller in global_app.controllers {
-			paths << controller.path
+			if controller.host == '' {
+				paths << controller.path
+			}
 		}
 		for method_name, route in routes {
 			for controller_path in paths {
 				if route.path.starts_with(controller_path) {
-					return error('method "${method_name}" with route "${route.path}" should be handled by the Controller of "${controller_path}"')
+					return error('conflicting paths: method "${method_name}" with route "${route.path}" should be handled by the Controller of path "${controller_path}"')
 				}
 			}
 		}
@@ -622,7 +634,9 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route,
 		return
 	}
 
-	host := req.header.get(http.CommonHeader.host) or { '' }.to_lower()
+	// remove the port from the HTTP Host header
+	host_with_port := req.header.get(.host) or { '' }
+	host, _ := urllib.split_host_port(host_with_port)
 
 	// Create Context with request data
 	ctx := Context{
@@ -637,6 +651,10 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route,
 	// match controller paths
 	$if T is ControllerInterface {
 		for controller in global_app.controllers {
+			// skip controller if the hosts don't match
+			if controller.host != '' && host != controller.host {
+				continue
+			}
 			if url.path.len >= controller.path.len && url.path.starts_with(controller.path) {
 				// pass route handling to the controller
 				controller.handler(ctx, mut url, host, tid)

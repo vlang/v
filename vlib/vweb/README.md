@@ -267,7 +267,16 @@ pub fn (mut app App) hello_web() vweb.Result {
 pub fn (mut app App) hello_api() vweb.Result {
 	return app.text('Hello API')
 }
+
+// define the handler without a host attribute last if you have conflicting paths.
+['/']
+pub fn (mut app App) hello_others() vweb.Result {
+	return app.text('Hello Others')
+}
 ```
+
+You can also [create a controller](#hosts) to handle all requests from a specific
+host in one app.
 
 ### Middleware
 
@@ -678,6 +687,43 @@ pub fn (mut app App) admin_path vweb.Result {
 ```
 There will be an error, because the controller `Admin` handles all routes starting with
 `"/admin"`; the method `admin_path` is unreachable.
+
+#### Hosts
+You can also set a host for a controller. All requests coming from that host will be handled
+by the controller.
+
+**Example:**
+```v
+module main
+
+import vweb
+
+struct App {
+	vweb.Context
+	vweb.Controller
+}
+
+pub fn (mut app App) index() vweb.Result {
+	return app.text('App')
+}
+
+struct Example {
+	vweb.Context
+}
+
+// You can only access this route at example.com: http://example.com/
+pub fn (mut app Example) index() vweb.Result {
+	return app.text('Example')
+}
+
+fn main() {
+	vweb.run(&App{
+		controllers: [
+			vweb.controller_host('example.com', '/', &Example{}),
+		]
+	}, 8080)
+}
+```
 
 #### Databases and `[vweb_global]` in controllers
 
