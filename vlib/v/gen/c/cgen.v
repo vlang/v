@@ -4204,7 +4204,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 								if typ_kind == .function {
 									for f in g.sumtype_casting_fns {
 										if f.got == typ {
-											break outer
+											continue outer
 										}
 									}
 								}
