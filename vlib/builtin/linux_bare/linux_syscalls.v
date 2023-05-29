@@ -231,17 +231,17 @@ fn split_int_errno(rc_in u64) (i64, Errno) {
 }
 
 // 0 sys_read
-fn sys_read(fd i64, buf &byte, count u64) (i64, Errno) {
+fn sys_read(fd i64, buf &u8, count u64) (i64, Errno) {
 	return split_int_errno(sys_call3(0, u64(fd), u64(buf), count))
 }
 
 // 1 sys_write
-pub fn sys_write(fd i64, buf &byte, count u64) (i64, Errno) {
+pub fn sys_write(fd i64, buf &u8, count u64) (i64, Errno) {
 	return split_int_errno(sys_call3(1, u64(fd), u64(buf), count))
 }
 
 // 2 sys_open
-fn sys_open(filename &byte, flags i64, mode int) (i64, Errno) {
+fn sys_open(filename &u8, flags i64, mode int) (i64, Errno) {
 	return split_int_errno(sys_call3(2, u64(filename), u64(flags), u64(mode)))
 }
 
@@ -251,7 +251,7 @@ fn sys_close(fd i64) Errno {
 }
 
 // 9 sys_mmap
-fn sys_mmap(addr &byte, len u64, prot MemProt, flags MapFlags, fildes i64, off u64) (&byte, Errno) {
+fn sys_mmap(addr &u8, len u64, prot MemProt, flags MapFlags, fildes i64, off u64) (&u8, Errno) {
 	rc := sys_call6(9, u64(addr), len, u64(prot), u64(flags), fildes, off)
 	a, e := split_int_errno(rc)
 	return &u8(a), e
@@ -263,7 +263,7 @@ fn sys_munmap(addr voidptr, len u64) Errno {
 }
 
 // 25 sys_mremap
-fn sys_mremap(old_addr voidptr, old_len u64, new_len u64, flags u64) (&byte, Errno) {
+fn sys_mremap(old_addr voidptr, old_len u64, new_len u64, flags u64) (&u8, Errno) {
 	rc := sys_call4(25, u64(old_addr), old_len, new_len, flags)
 	a, e := split_int_errno(rc)
 	return &u8(a), e
@@ -305,7 +305,7 @@ fn sys_dup2(oldfd int, newfd int) (i64, Errno) {
 }
 
 // 59  sys_execve
-fn sys_execve(filename &byte, argv []&byte, envp []&byte) int {
+fn sys_execve(filename &u8, argv []&u8, envp []&u8) int {
 	return int(sys_call3(59, u64(filename), argv.data, envp.data))
 }
 
