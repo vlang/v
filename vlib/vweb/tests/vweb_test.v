@@ -238,6 +238,20 @@ fn test_http_client_multipart_form_data() {
 	assert x.body == files[0].data
 }
 
+fn test_host() {
+	mut req := http.Request{
+		url: 'http://${localserver}/with_host'
+		method: .get
+	}
+
+	mut x := req.do()!
+	assert x.status() == .not_found
+
+	req.add_header(.host, 'example.com')
+	x = req.do()!
+	assert x.status() == .ok
+}
+
 fn test_http_client_shutdown_does_not_work_without_a_cookie() {
 	x := http.get('http://${localserver}/shutdown') or {
 		assert err.msg() == ''

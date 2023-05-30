@@ -137,9 +137,9 @@ fn test_duplicate_route() {
 	$if windows {
 		task := spawn os.execute(server_exec_cmd)
 		res := task.wait()
-		assert res.output.contains('V panic: method "duplicate" with route "/admin/duplicate" should be handled by the Controller of "/admin"')
+		assert res.output.contains('V panic: conflicting paths')
 	} $else {
 		res := os.execute(server_exec_cmd)
-		assert res.output.contains('V panic: method "duplicate" with route "/admin/duplicate" should be handled by the Controller of "/admin"')
+		assert res.output.contains('V panic: conflicting paths')
 	}
 }

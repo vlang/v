@@ -119,6 +119,12 @@ pub fn (mut app App) not_found() vweb.Result {
 	return app.html('404 on "${app.req.url}"')
 }
 
+[host: 'example.com']
+['/with_host']
+pub fn (mut app App) with_host() vweb.Result {
+	return app.ok('')
+}
+
 pub fn (mut app App) shutdown() vweb.Result {
 	session_key := app.get_cookie('skey') or { return app.not_found() }
 	if session_key != 'superman' {
