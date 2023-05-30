@@ -222,7 +222,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		eprintln('INFO: compile with `v -live ${g.pref.path} `, if you want to use the [live] function ${node.name} .')
 	}
 
-	mut name := g.c_fn_name(node) or { return }
+	mut name := g.c_fn_name(node)
 	mut type_name := g.typ(g.unwrap_generic(node.return_type))
 
 	if node.return_type.has_flag(.generic) && g.table.sym(node.return_type).kind == .array_fixed {
@@ -432,7 +432,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 }
 
-fn (mut g Gen) c_fn_name(node &ast.FnDecl) ?string {
+fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 	mut name := node.name
 	if name in ['+', '-', '*', '/', '%', '<', '=='] {
 		name = util.replace_op(name)
@@ -440,10 +440,8 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) ?string {
 	if node.is_method {
 		unwrapped_rec_typ := g.unwrap_generic(node.receiver.typ)
 		name = g.cc_type(unwrapped_rec_typ, false) + '_' + name
-		unwrapped_rec_sym := g.table.sym(unwrapped_rec_typ)
-		if unwrapped_rec_sym.kind == .placeholder
-			&& unwrapped_rec_sym.cname.all_after_last('_').len == 1 {
-			return none
+		if g.table.sym(unwrapped_rec_typ).kind == .placeholder {
+			name = name.replace_each(['[', '_T_', ']', ''])
 		}
 	}
 	if node.language == .c {
@@ -607,7 +605,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
 		}
 		param_type_sym := g.table.sym(typ)
-		mut param_type_name := g.typ(typ) // util.no_dots(param_type_sym.name)
+		mut param_type_name := g.typ(typ).replace_each(['[', '_T_', ']', ''])
 		if param_type_sym.kind == .function && !typ.has_flag(.option) {
 			info := param_type_sym.info as ast.FnType
 			func := info.func
