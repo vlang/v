@@ -34,7 +34,7 @@ struct InvalidComparatorFormatError {
 }
 
 fn (r Range) satisfies(ver Version) bool {
-	return true in r.comparator_sets.map(it.satisfies(ver))
+	return r.comparator_sets.any(it.satisfies(ver))
 }
 
 fn (set ComparatorSet) satisfies(ver Version) bool {
