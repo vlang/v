@@ -424,7 +424,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			]
 			mut is_statement := false
 			if filter_line.count('=') % 2 == 1
-				&& filter_line.count('>=') + filter_line.count('<=') == 0 {
+				&& (filter_line.count('!=') + filter_line.count('>=') + filter_line.count('<=')) == 0 {
 				is_statement = true
 			} else {
 				for pattern in possible_statement_patterns {
