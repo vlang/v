@@ -1,21 +1,20 @@
 ## [Version 0.3]
-
--- [x] gc option
--- [x] channels
--- [x] lock{}
--- [x] thread safe arrays
--- [x] rune type
--- [x] replace `ustring` with `[]rune`
--- [x] fix `byte.str()`
--- [x] maps with non-string keys
--- [x] iOS/Android support
--- [x] parallel cgen
--- [x] IO streams
--- [x] struct embedding
--- [x] interface embedding
--- [x] interfaces: allow struct fields (not just methods)
--- [x] short generics syntax (`foo(5)` instead of `foo<int>(5)`)
--- [x] more advanced errors, not just `error('message')`
+- [x] gc option
+- [x] channels
+- [x] lock{}
+- [x] thread safe arrays
+- [x] rune type
+- [x] replace `ustring` with `[]rune`
+- [x] fix `byte.str()`
+- [x] maps with non-string keys
+- [x] iOS/Android support
+- [x] parallel cgen
+- [x] IO streams
+- [x] struct embedding
+- [x] interface embedding
+- [x] interfaces: allow struct fields (not just methods)
+- [x] short generics syntax (`foo(5)` instead of `foo<int>(5)`)
+- [x] more advanced errors, not just `error('message')`
 
 ## [Version 0.4]
 
@@ -27,7 +26,6 @@
 - [ ] Handle function pointers safely, remove `if function == 0 {`
 - [x] Bundle OpenSSL like GC
 - [x] Anonymous structs
-- [ ] `any` type
 - [x] Improve vweb: allow separation of logic via "controllers", lots of other fixes
 - [x] New VPM site
 
