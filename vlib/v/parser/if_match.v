@@ -474,6 +474,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		}
 		branch_last_pos := p.tok.pos()
 		p.inside_match_body = true
+		p.inside_for = false
 		stmts := p.parse_block_no_scope(false)
 		p.close_scope()
 		p.inside_match_body = false
