@@ -567,6 +567,42 @@ fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func ast.
 	*/
 }
 
+fn (mut c Checker) needs_unwrap_generic_type(typ ast.Type) bool {
+	if typ == 0 || !typ.has_flag(.generic) {
+		return false
+	}
+	sym := c.table.sym(typ)
+	match sym.info {
+		ast.Struct, ast.Interface, ast.SumType {
+			return true
+		}
+		ast.Array {
+			return c.needs_unwrap_generic_type(sym.info.elem_type)
+		}
+		ast.ArrayFixed {
+			return c.needs_unwrap_generic_type(sym.info.elem_type)
+		}
+		ast.Map {
+			if c.needs_unwrap_generic_type(sym.info.key_type) {
+				return true
+			}
+			if c.needs_unwrap_generic_type(sym.info.value_type) {
+				return true
+			}
+		}
+		ast.Chan {
+			return c.needs_unwrap_generic_type(sym.info.elem_type)
+		}
+		ast.Thread {
+			return c.needs_unwrap_generic_type(sym.info.return_type)
+		}
+		else {
+			return false
+		}
+	}
+	return false
+}
+
 fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
 	fn_name := node.name
 	if fn_name == 'main' {
@@ -647,7 +683,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		expr := node.args[0].expr
 		if expr is ast.TypeNode {
 			mut unwrapped_typ := c.unwrap_generic(expr.typ)
-			if c.table.sym(expr.typ).kind == .struct_ && expr.typ.has_flag(.generic) {
+			if c.needs_unwrap_generic_type(expr.typ) {
 				unwrapped_typ = c.table.unwrap_generic_type(expr.typ, c.table.cur_fn.generic_names,
 					c.table.cur_concrete_types)
 			}
