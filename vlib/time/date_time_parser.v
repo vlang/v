@@ -38,7 +38,7 @@ fn (mut p DateTimeParser) must_be_int(length int) !int {
 fn (mut p DateTimeParser) must_be_int_with_minimum_length(min int, max int, allow_leading_zero bool) !int {
 	mut length := max + 1 - min
 	mut val := ''
-	for i in 0 .. length {
+	for _ in 0 .. length {
 		maybe_int := p.peek(1) or { break }
 		if maybe_int == '0' || maybe_int == '1' || maybe_int == '2' || maybe_int == '4'
 			|| maybe_int == '5' || maybe_int == '6' || maybe_int == '7' || maybe_int == '8'
