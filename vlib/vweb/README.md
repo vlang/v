@@ -1045,7 +1045,8 @@ pub fn (mut app App) form_echo() vweb.Result {
 #### -handle_static
 
 handle_static is used to mark a folder (relative to the current working folder) as one that
-contains only static resources (css files, images etc).
+contains only static resources (css files, images etc).\
+host_handle_static can be used to limit the static resources to a specific host.
 
 If `root` is set the mount path for the dir will be in '/'
 
@@ -1055,6 +1056,7 @@ If `root` is set the mount path for the dir will be in '/'
 fn main() {
     mut app := &App{}
     app.serve_static('/favicon.ico', 'favicon.ico')
+    // app.host_serve_static('localhost', '/favicon.ico', 'favicon.ico')
     // Automatically make available known static mime types found in given directory.
     os.chdir(os.dir(os.executable()))?
     app.handle_static('assets', true)
@@ -1070,11 +1072,15 @@ For example: suppose you have called .mount_static_folder_at('/var/share/myasset
 and you have a file /var/share/myassets/main.css .
 => That file will be available at URL: http://server/assets/main.css .
 
+mount_static_folder_at can be used to limit the static resources to a specific host.
+
 #### -serve_static
 
 Serves a file static.
 `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the
 file type
+
+host_serve_static can be used to limit the static resources to a specific host.
 
 **Example:**
 
@@ -1082,6 +1088,7 @@ file type
 fn main() {
     mut app := &App{}
     app.serve_static('/favicon.ico', 'favicon.ico')
+    // app.host_serve_static('localhost', /favicon.ico', 'favicon.ico')
     app.mount_static_folder_at(os.resource_abs_path('.'), '/')
     vweb.run(app, 8081)
 }

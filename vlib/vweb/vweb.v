@@ -158,6 +158,7 @@ pub mut:
 	conn              &net.TcpConn = unsafe { nil }
 	static_files      map[string]string
 	static_mime_types map[string]string
+	static_hosts      map[string]string
 	// Map containing query params for the route.
 	// http://localhost:3000/index?q=vpm&order_by=desc => { 'q': 'vpm', 'order_by': 'desc' }
 	query map[string]string
@@ -578,6 +579,7 @@ fn new_request_app[T](global_app &T, ctx Context, tid int) &T {
 	// copy static files
 	request_app.Context.static_files = global_app.static_files.clone()
 	request_app.Context.static_mime_types = global_app.static_mime_types.clone()
+	request_app.Context.static_hosts = global_app.static_hosts.clone()
 
 	return request_app
 }
@@ -694,7 +696,7 @@ fn handle_route[T](mut app T, url urllib.URL, host string, routes &map[string]Ro
 	}
 
 	// Static handling
-	if serve_if_static[T](mut app, url) {
+	if serve_if_static[T](mut app, url, host) {
 		// successfully served a static file
 		return
 	}
@@ -879,11 +881,15 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 // check if request is for a static file and serves it
 // returns true if we served a static file, false otherwise
 [manualfree]
-fn serve_if_static[T](mut app T, url urllib.URL) bool {
+fn serve_if_static[T](mut app T, url urllib.URL, host string) bool {
 	// TODO: handle url parameters properly - for now, ignore them
 	static_file := app.static_files[url.path] or { return false }
 	mime_type := app.static_mime_types[url.path] or { return false }
+	static_host := app.static_hosts[url.path] or { '' }
 	if static_file == '' || mime_type == '' {
+		return false
+	}
+	if static_host != '' && static_host != host {
 		return false
 	}
 	data := os.read_file(static_file) or {
@@ -895,19 +901,21 @@ fn serve_if_static[T](mut app T, url urllib.URL) bool {
 	return true
 }
 
-fn (mut ctx Context) scan_static_directory(directory_path string, mount_path string) {
+fn (mut ctx Context) scan_static_directory(directory_path string, mount_path string, host string) {
 	files := os.ls(directory_path) or { panic(err) }
 	if files.len > 0 {
 		for file in files {
 			full_path := os.join_path(directory_path, file)
 			if os.is_dir(full_path) {
-				ctx.scan_static_directory(full_path, mount_path.trim_right('/') + '/' + file)
+				ctx.scan_static_directory(full_path, mount_path.trim_right('/') + '/' + file,
+					host)
 			} else if file.contains('.') && !file.starts_with('.') && !file.ends_with('.') {
 				ext := os.file_ext(file)
 				// Rudimentary guard against adding files not in mime_types.
-				// Use serve_static directly to add non-standard mime types.
+				// Use host_serve_static directly to add non-standard mime types.
 				if ext in vweb.mime_types {
-					ctx.serve_static(mount_path.trim_right('/') + '/' + file, full_path)
+					ctx.host_serve_static(host, mount_path.trim_right('/') + '/' + file,
+						full_path)
 				}
 			}
 		}
@@ -923,6 +931,18 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 // app.handle_static('assets', true)
 // ```
 pub fn (mut ctx Context) handle_static(directory_path string, root bool) bool {
+	return ctx.host_handle_static('', directory_path, root)
+}
+
+// host_handle_static is used to mark a folder (relative to the current working folder)
+// as one that contains only static resources (css files, images etc).
+// If `root` is set the mount path for the dir will be in '/'
+// Usage:
+// ```v
+// os.chdir( os.executable() )?
+// app.host_handle_static('localhost', 'assets', true)
+// ```
+pub fn (mut ctx Context) host_handle_static(host string, directory_path string, root bool) bool {
 	if ctx.done || !os.exists(directory_path) {
 		return false
 	}
@@ -932,7 +952,7 @@ pub fn (mut ctx Context) handle_static(directory_path string, root bool) bool {
 		// Mount point hygene, "./assets" => "/assets".
 		mount_path = '/' + dir_path.trim_left('.').trim('/')
 	}
-	ctx.scan_static_directory(dir_path, mount_path)
+	ctx.scan_static_directory(dir_path, mount_path, host)
 	return true
 }
 
@@ -942,13 +962,22 @@ pub fn (mut ctx Context) handle_static(directory_path string, root bool) bool {
 // and you have a file /var/share/myassets/main.css .
 // => That file will be available at URL: http://server/assets/main.css .
 pub fn (mut ctx Context) mount_static_folder_at(directory_path string, mount_path string) bool {
+	return ctx.host_mount_static_folder_at('', directory_path, mount_path)
+}
+
+// TODO - test
+// host_mount_static_folder_at - makes all static files in `directory_path` and inside it, available at http://host/mount_path
+// For example: suppose you have called .host_mount_static_folder_at('localhost', '/var/share/myassets', '/assets'),
+// and you have a file /var/share/myassets/main.css .
+// => That file will be available at URL: http://localhost/assets/main.css .
+pub fn (mut ctx Context) host_mount_static_folder_at(host string, directory_path string, mount_path string) bool {
 	if ctx.done || mount_path.len < 1 || mount_path[0] != `/` || !os.exists(directory_path) {
 		return false
 	}
 	dir_path := directory_path.trim_right('/')
 
 	trim_mount_path := mount_path.trim_left('/').trim_right('/')
-	ctx.scan_static_directory(dir_path, '/${trim_mount_path}')
+	ctx.scan_static_directory(dir_path, '/${trim_mount_path}', host)
 	return true
 }
 
@@ -956,10 +985,19 @@ pub fn (mut ctx Context) mount_static_folder_at(directory_path string, mount_pat
 // Serves a file static
 // `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the file type
 pub fn (mut ctx Context) serve_static(url string, file_path string) {
+	ctx.host_serve_static('', url, file_path)
+}
+
+// TODO - test
+// Serves a file static
+// `url` is the access path on the site, `file_path` is the real path to the file
+// `mime_type` is the file type, `host` is the host to serve the file from
+pub fn (mut ctx Context) host_serve_static(host string, url string, file_path string) {
 	ctx.static_files[url] = file_path
 	// ctx.static_mime_types[url] = mime_type
 	ext := os.file_ext(file_path)
 	ctx.static_mime_types[url] = vweb.mime_types[ext]
+	ctx.static_hosts[url] = host
 }
 
 // Returns the ip address from the current user
