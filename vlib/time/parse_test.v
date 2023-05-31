@@ -230,4 +230,12 @@ fn test_parse_format() {
 	}
 	assert t.year == 2018 && t.month == 1 && t.day == 2 && t.hour == 1 && t.minute == 8
 		&& t.second == 2
+
+	//This should always fail, because we test if M and D allow for a 01 value which they shouldn't
+	s = '2018-01-02 1:8:2'
+	t = time.parse_format(s, 'YYYY-M-D H:m:s') or {				
+		return
+	}
+	eprintln('> failing for datetime: ${s}, the datetime string should not have passed the format "YYYY-M-D H:m:s"')	
+	assert false
 }
