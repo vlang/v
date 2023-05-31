@@ -1,7 +1,5 @@
 module time
 
-
-
 struct DateTimeParser {
 	datetime string
 	format   string
@@ -29,33 +27,37 @@ fn (mut p DateTimeParser) peek(length int) !string {
 	if p.current_pos_datetime + length > p.datetime.len {
 		return error('end of string')
 	}
-	return p.datetime[p.current_pos_datetime..p.current_pos_datetime+length]
+	return p.datetime[p.current_pos_datetime..p.current_pos_datetime + length]
 }
 
 fn (mut p DateTimeParser) must_be_int(length int) !int {
 	val := p.next(length) or { return err }
 	return val.int()
 }
-fn (mut p DateTimeParser) must_be_int_with_minimum_length(min int, max int,allow_leading_zero bool) !int {		
-	mut length:=max+1-min
-	mut val:=""	
-	for i in 0..length{
-		maybe_int := p.peek(1) or { break }			
-		if  maybe_int == "0" || maybe_int == "1" || maybe_int == "2" || maybe_int == "4" || maybe_int == "5" || maybe_int == "6"  || maybe_int == "7" || maybe_int == "8" || maybe_int == "9"     {
+
+fn (mut p DateTimeParser) must_be_int_with_minimum_length(min int, max int, allow_leading_zero bool) !int {
+	mut length := max + 1 - min
+	mut val := ''
+	for i in 0 .. length {
+		maybe_int := p.peek(1) or { break }
+		if maybe_int == '0' || maybe_int == '1' || maybe_int == '2' || maybe_int == '4'
+			|| maybe_int == '5' || maybe_int == '6' || maybe_int == '7' || maybe_int == '8'
+			|| maybe_int == '9' {
 			p.next(1)!
-			val+=maybe_int
-		}else{
+			val += maybe_int
+		} else {
 			break
 		}
-	}	
-	if val.len<min{
-		return error("expected int with a minimum length of ${min}, found: ${val.len}")
 	}
-	if !allow_leading_zero && val.starts_with("0"){
-		return error("0 is not allowed for this format")
+	if val.len < min {
+		return error('expected int with a minimum length of ${min}, found: ${val.len}')
+	}
+	if !allow_leading_zero && val.starts_with('0') {
+		return error('0 is not allowed for this format')
 	}
 	return val.int()
 }
+
 fn (mut p DateTimeParser) must_be_single_int_with_optional_leading_zero() !int {
 	mut val := p.next(1) or { return err }
 	if val == '0' {
@@ -162,10 +164,10 @@ fn (mut p DateTimeParser) parse() !Time {
 				}
 			}
 			'M' {
-				month_ = p.must_be_int_with_minimum_length(1,2,false) or {
+				month_ = p.must_be_int_with_minimum_length(1, 2, false) or {
 					return error_invalid_time(0, 'end of string reached before the month was specified')
 				}
-				if month_<1 || month_>12 {
+				if month_ < 1 || month_ > 12 {
 					return error_invalid_time(0, 'month must be  between 1 and 12')
 				}
 			}
@@ -173,7 +175,7 @@ fn (mut p DateTimeParser) parse() !Time {
 				month_ = p.must_be_int(2) or {
 					return error_invalid_time(0, 'end of string reached before the month was specified')
 				}
-				if month_<1 || month_>12 {
+				if month_ < 1 || month_ > 12 {
 					return error_invalid_time(0, 'month must be  between 01 and 12')
 				}
 			}
@@ -181,10 +183,10 @@ fn (mut p DateTimeParser) parse() !Time {
 				month_ = p.must_be_valid_month() or { return err }
 			}
 			'D' {
-				day_in_month = p.must_be_int_with_minimum_length(1,2,false) or {
+				day_in_month = p.must_be_int_with_minimum_length(1, 2, false) or {
 					return error_invalid_time(0, 'end of string reached before the day was specified')
 				}
-				if day_in_month<1 || day_in_month>31 {
+				if day_in_month < 1 || day_in_month > 31 {
 					return error_invalid_time(0, 'day must be  between 1 and 31')
 				}
 			}
@@ -192,15 +194,15 @@ fn (mut p DateTimeParser) parse() !Time {
 				day_in_month = p.must_be_int(2) or {
 					return error_invalid_time(0, 'end of string reached before the month was specified')
 				}
-				if day_in_month<1 || day_in_month>31 {
+				if day_in_month < 1 || day_in_month > 31 {
 					return error_invalid_time(0, 'day must be  between 01 and 31')
 				}
 			}
 			'H' {
-				hour_ = p.must_be_int_with_minimum_length(1,2,false) or {
+				hour_ = p.must_be_int_with_minimum_length(1, 2, false) or {
 					return error_invalid_time(0, 'end of string reached before hours where specified')
 				}
-				if hour_<0 || hour_>23 {
+				if hour_ < 0 || hour_ > 23 {
 					return error_invalid_time(0, 'hour must be  between 0 and 23')
 				}
 			}
@@ -208,15 +210,15 @@ fn (mut p DateTimeParser) parse() !Time {
 				hour_ = p.must_be_int(2) or {
 					return error_invalid_time(0, 'end of string reached before hours where specified')
 				}
-				if hour_<0 || hour_>23 {
+				if hour_ < 0 || hour_ > 23 {
 					return error_invalid_time(0, 'hour must be  between 00 and 23')
 				}
 			}
 			'h' {
-				hour_ = p.must_be_int_with_minimum_length(1,2,false) or {
+				hour_ = p.must_be_int_with_minimum_length(1, 2, false) or {
 					return error_invalid_time(0, 'end of string reached before hours where specified')
 				}
-				if hour_<0 || hour_>23 {
+				if hour_ < 0 || hour_ > 23 {
 					return error_invalid_time(0, 'hour must be  between 0 and 23')
 				}
 			}
@@ -224,7 +226,7 @@ fn (mut p DateTimeParser) parse() !Time {
 				hour_ = p.must_be_int(2) or {
 					return error_invalid_time(0, 'end of string reached before hours where specified')
 				}
-				if hour_<0 || hour_>23 {
+				if hour_ < 0 || hour_ > 23 {
 					return error_invalid_time(0, 'hour must be  between 00 and 23')
 				}
 			}
@@ -232,7 +234,7 @@ fn (mut p DateTimeParser) parse() !Time {
 				hour_ = p.must_be_int(1) or {
 					return error_invalid_time(0, 'end of string reached before hours where specified')
 				}
-				if hour_<0 || hour_>23 {
+				if hour_ < 0 || hour_ > 23 {
 					return error_invalid_time(0, 'hour must be  between 0 and 23')
 				}
 			}
@@ -240,7 +242,7 @@ fn (mut p DateTimeParser) parse() !Time {
 				hour_ = p.must_be_int(2) or {
 					return error_invalid_time(0, 'end of string reached before hours where specified')
 				}
-				if hour_<0 || hour_>23 {
+				if hour_ < 0 || hour_ > 23 {
 					return error_invalid_time(0, 'hour must be  between 00 and 23')
 				}
 			}
@@ -248,7 +250,7 @@ fn (mut p DateTimeParser) parse() !Time {
 				minute_ = p.must_be_int(1) or {
 					return error_invalid_time(0, 'end of string reached before minutes where specified')
 				}
-				if minute_<0 || minute_>59 {
+				if minute_ < 0 || minute_ > 59 {
 					return error_invalid_time(0, 'minute must be between 0 and 59')
 				}
 			}
@@ -256,7 +258,7 @@ fn (mut p DateTimeParser) parse() !Time {
 				minute_ = p.must_be_int(2) or {
 					return error_invalid_time(0, 'end of string reached before minutes where specified')
 				}
-				if minute_<0 || minute_>59 {
+				if minute_ < 0 || minute_ > 59 {
 					return error_invalid_time(0, 'minute must be between 00 and 59')
 				}
 			}
@@ -264,7 +266,7 @@ fn (mut p DateTimeParser) parse() !Time {
 				second_ = p.must_be_int(1) or {
 					return error_invalid_time(0, 'end of string reached before seconds where specified')
 				}
-				if second_<0 || second_>59 {
+				if second_ < 0 || second_ > 59 {
 					return error_invalid_time(0, 'second must be between 0 and 59')
 				}
 			}
@@ -272,7 +274,7 @@ fn (mut p DateTimeParser) parse() !Time {
 				second_ = p.must_be_int(2) or {
 					return error_invalid_time(0, 'end of string reached before seconds where specified')
 				}
-				if second_<0 || second_>59 {
+				if second_ < 0 || second_ > 59 {
 					return error_invalid_time(0, 'second must be between 00 and 59')
 				}
 			}
