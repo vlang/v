@@ -74,7 +74,7 @@ fn test_merge_nominal() {
 	}
 
 	if _ := ctx.value('baz') {
-		panic('this should never happen')
+		assert false
 	}
 
 	assert !eventually(ctx.done())
@@ -97,7 +97,7 @@ fn test_merge_deadline_context_1() {
 	if deadline := ctx.deadline() {
 		assert deadline.unix_time() != 0
 	} else {
-		panic('this should never happen')
+		assert false
 	}
 }
 
@@ -113,7 +113,7 @@ fn test_merge_deadline_context_2() {
 	if deadline := ctx.deadline() {
 		assert deadline.unix_time() != 0
 	} else {
-		panic('this should never happen')
+		assert false
 	}
 }
 
@@ -148,7 +148,7 @@ fn test_merge_deadline_none() {
 	mut ctx, _ := merge(ctx1, ctx2)
 
 	if _ := ctx.deadline() {
-		panic('this should never happen')
+		assert false
 	}
 }
 
