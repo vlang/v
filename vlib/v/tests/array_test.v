@@ -1,3 +1,21 @@
+enum Foo {
+	zero
+	first = 1
+	third = 3
+	fourth
+}
+
+fn test_enum_val_as_fixed_array_size() {
+	arr1 := [Foo.first]int{}
+	assert arr1 == [0]!
+
+	arr2 := [Foo.third]int{}
+	assert arr2 == [0, 0, 0]!
+
+	arr3 := [Foo.fourth]int{}
+	assert arr3 == [0, 0, 0, 0]!
+}
+
 fn test_for_in_array_named_array() {
 	mut array := [1]
 	for elem in array {

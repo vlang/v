@@ -241,6 +241,39 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			ast.IntegerLiteral {
 				fixed_size = init_expr.val.int()
 			}
+			ast.EnumVal {
+				enum_decl := c.table.enum_decls[init_expr.enum_name]
+				mut enum_vals := []i64{}
+				for field in enum_decl.fields {
+					if init_expr.val == field.name {
+						if field.has_expr {
+							if field.expr is ast.IntegerLiteral {
+								fixed_size = field.expr.val.i64()
+								break
+							}
+						} else {
+							if enum_vals.len > 0 {
+								fixed_size = enum_vals.last() + 1
+							} else {
+								fixed_size = 0
+							}
+							break
+						}
+					} else {
+						if field.has_expr {
+							if field.expr is ast.IntegerLiteral {
+								enum_vals << field.expr.val.i64()
+							}
+						} else {
+							if enum_vals.len > 0 {
+								enum_vals << enum_vals.last() + 1
+							} else {
+								enum_vals << 0
+							}
+						}
+					}
+				}
+			}
 			ast.Ident {
 				if init_expr.obj is ast.ConstField {
 					if comptime_value := c.eval_comptime_const_expr(init_expr.obj.expr,
