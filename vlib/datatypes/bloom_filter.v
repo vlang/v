@@ -23,15 +23,15 @@ const (
 	]
 )
 
-fn (mut b BloomFilter[T]) free() {
+fn (b &BloomFilter[T]) free() {
 	unsafe {
 		free(b.table)
 	}
 }
 
 // new_bloom_filter_fast create a new bloom_filter. `table_size` is 16384 , and `num_functions` is 4
-pub fn new_bloom_filter_fast[T](hash_func fn (T) u32) BloomFilter[T] {
-	return BloomFilter[T]{
+pub fn new_bloom_filter_fast[T](hash_func fn (T) u32) &BloomFilter[T] {
+	return &BloomFilter[T]{
 		hash_func: hash_func
 		table_size: 16384
 		num_functions: 4
@@ -40,7 +40,7 @@ pub fn new_bloom_filter_fast[T](hash_func fn (T) u32) BloomFilter[T] {
 }
 
 // new_bloom_filter create a new bloom_filter. `table_size` should greate than 0 , and `num_functions` should be 1~16
-pub fn new_bloom_filter[T](hash_func fn (T) u32, table_size int, num_functions int) !BloomFilter[T] {
+pub fn new_bloom_filter[T](hash_func fn (T) u32, table_size int, num_functions int) !&BloomFilter[T] {
 	if table_size <= 0 {
 		return error('table_size should great that 0')
 	}
@@ -48,7 +48,7 @@ pub fn new_bloom_filter[T](hash_func fn (T) u32, table_size int, num_functions i
 		return error('num_functions should between 1~${datatypes.salts.len}')
 	}
 
-	return BloomFilter[T]{
+	return &BloomFilter[T]{
 		hash_func: hash_func
 		table_size: table_size
 		num_functions: num_functions
@@ -69,7 +69,7 @@ pub fn (mut b BloomFilter[T]) add(element T) {
 }
 
 // checks the element is exists.
-pub fn (b BloomFilter[T]) exists(element T) bool {
+pub fn (b &BloomFilter[T]) exists(element T) bool {
 	hash := b.hash_func(element)
 	for i in 0 .. b.num_functions {
 		subhash := hash ^ datatypes.salts[i]
@@ -85,7 +85,7 @@ pub fn (b BloomFilter[T]) exists(element T) bool {
 }
 
 // @union returns the union of the two bloom filters.
-pub fn (l BloomFilter[T]) @union(r BloomFilter[T]) !BloomFilter[T] {
+pub fn (l &BloomFilter[T]) @union(r &BloomFilter[T]) !&BloomFilter[T] {
 	if l.table_size != r.table_size || l.num_functions != r.num_functions
 		|| l.hash_func != r.hash_func {
 		return error('Both filters must be created with the same values.')
@@ -101,11 +101,11 @@ pub fn (l BloomFilter[T]) @union(r BloomFilter[T]) !BloomFilter[T] {
 		new_f.table[i] = l.table[i] | r.table[i]
 	}
 
-	return new_f
+	return &new_f
 }
 
 // intersection returns the intersection of bloom filters.
-pub fn (l BloomFilter[T]) intersection(r BloomFilter[T]) !BloomFilter[T] {
+pub fn (l &BloomFilter[T]) intersection(r &BloomFilter[T]) !&BloomFilter[T] {
 	if l.table_size != r.table_size || l.num_functions != r.num_functions
 		|| l.hash_func != r.hash_func {
 		return error('Both filters must be created with the same values.')
@@ -121,5 +121,5 @@ pub fn (l BloomFilter[T]) intersection(r BloomFilter[T]) !BloomFilter[T] {
 		new_f.table[i] = l.table[i] & r.table[i]
 	}
 
-	return new_f
+	return &new_f
 }
