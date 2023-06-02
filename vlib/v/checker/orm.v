@@ -329,11 +329,12 @@ fn (mut c Checker) check_orm_struct_field_attributes(field ast.StructField) {
 
 fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, table_name string) []ast.StructField {
 	fields := info.fields.filter(fn [mut c] (field ast.StructField) bool {
+		field_sym := c.table.sym(field.typ)
 		is_primitive := field.typ.is_string() || field.typ.is_bool() || field.typ.is_number()
-		is_struct := c.table.type_symbols[int(field.typ)].kind == .struct_
-		is_array := c.table.sym(field.typ).kind == .array
+		is_struct := field_sym.kind == .struct_
+		is_array := field_sym.kind == .array
 		is_array_with_struct_elements := is_array
-			&& c.table.sym(c.table.sym(field.typ).array_info().elem_type).kind == .struct_
+			&& c.table.sym(field_sym.array_info().elem_type).kind == .struct_
 		has_no_skip_attr := !field.attrs.contains('skip')
 
 		return (is_primitive || is_struct || is_array_with_struct_elements) && has_no_skip_attr
