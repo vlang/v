@@ -5,7 +5,7 @@ fn main() {
 		eprintln('you need to supply a brainfuck program as a string argument')
 		exit(1) // exit with non-zero exit code if there is no program to run
 	}
-	program := os.args[1] // our program is fed in as a string
+	program := os.args[1] // our program is provided as a string
 
 	mut memory := []u8{len: 256} // we have 256 bytes of memory
 	mut address := u8(0) // as well as an 8-bit address register
