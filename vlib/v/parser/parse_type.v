@@ -73,7 +73,7 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.pos())
 		}
 		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr,
-			!is_option && p.inside_fn_return)
+			!is_option && (p.inside_fn_return || p.inside_chan_decl))
 		if elem_type.has_flag(.generic) {
 			return ast.new_type(idx).set_flag(.generic)
 		}
@@ -162,8 +162,10 @@ fn (mut p Parser) parse_chan_type() ast.Type {
 	}
 	p.register_auto_import('sync')
 	p.next()
+	p.inside_chan_decl = true
 	is_mut := p.tok.kind == .key_mut
 	elem_type := p.parse_type()
+	p.inside_chan_decl = false
 	idx := p.table.find_or_register_chan(elem_type, is_mut)
 	if elem_type.has_flag(.generic) {
 		return ast.new_type(idx).set_flag(.generic)
