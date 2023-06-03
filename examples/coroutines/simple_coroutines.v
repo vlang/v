@@ -3,6 +3,8 @@
 //
 import coroutines
 import time
+import os
+import net.http
 
 fn foo(a int) {
 	for {
@@ -12,9 +14,17 @@ fn foo(a int) {
 }
 
 fn foo2(a int) {
+	mut i := 0
 	for {
 		println('hello from foo2() a=${a}')
 		coroutines.sleep(2 * time.second)
+		i++
+		// resp := http.get('https://vlang.io/utc_now') or { panic(err) }
+		// resp := http.get('http://example.com') or { panic(err) }
+		// println(resp)
+		// mut f := os.create('/tmp/FOO2_a${i}') or { panic(err) }
+		// f.write_string(resp.body) or { panic(err) }
+		// f.close()
 	}
 }
 
@@ -29,6 +39,11 @@ fn main() {
 	go foo(10)
 	go foo2(20)
 	go foo3(30)
+	$if is_coroutine ? {
+		println('IS COROUTINE=true')
+	} $else {
+		println('IS COROUTINE=false')
+	}
 	for {
 		println('hello from MAIN')
 		coroutines.sleep(1 * time.second)
