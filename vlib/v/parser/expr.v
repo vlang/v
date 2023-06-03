@@ -485,7 +485,10 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 		} else if left !is ast.IntegerLiteral && p.tok.kind in [.lsbr, .nilsbr]
 			&& (p.tok.line_nr == p.prev_tok.line_nr || (p.prev_tok.kind == .string
 			&& p.tok.line_nr == p.prev_tok.line_nr + p.prev_tok.lit.count('\n'))) {
-			if p.tok.kind == .nilsbr {
+			if p.peek_tok.kind == .question && p.peek_token(2).kind == .name {
+				p.next()
+				p.error_with_pos('cannot use Option type name as concrete type', p.tok.pos())
+			} else if p.tok.kind == .nilsbr {
 				node = p.index_expr(node, true)
 			} else {
 				node = p.index_expr(node, false)
