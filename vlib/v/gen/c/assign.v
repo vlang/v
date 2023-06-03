@@ -697,12 +697,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					}
 				} else {
 					// var = &auto_heap_var
-					old_is_auto_heap := g.is_auto_heap
-					g.is_auto_heap = val is ast.PrefixExpr
+					old_is_auto_heap := g.is_option_auto_heap
+					g.is_option_auto_heap = val_type.has_flag(.option) && val is ast.PrefixExpr
 						&& (val as ast.PrefixExpr).right is ast.Ident
 						&& ((val as ast.PrefixExpr).right as ast.Ident).is_auto_heap()
 					defer {
-						g.is_auto_heap = old_is_auto_heap
+						g.is_option_auto_heap = old_is_auto_heap
 					}
 					if var_type.has_flag(.option) || gen_or {
 						g.expr_with_opt_or_block(val, val_type, left, var_type)

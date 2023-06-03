@@ -104,7 +104,7 @@ mut:
 	is_js_call                bool // for handling a special type arg #1 `json.decode(User, ...)`
 	is_fn_index_call          bool
 	is_cc_msvc                bool // g.pref.ccompiler == 'msvc'
-	is_auto_heap              bool
+	is_option_auto_heap       bool
 	vlines_path               string   // set to the proper path for generating #line directives
 	options_pos_forward       int      // insertion point to forward
 	options_forward           []string // to forward
@@ -3343,14 +3343,14 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 					}
 				}
 			} else {
-				if g.is_auto_heap && node.right_type.has_flag(.option) {
+				if g.is_option_auto_heap {
 					g.write('(${g.base_type(node.right_type)}*)')
 				}
-				if !g.is_auto_heap && !(g.is_amp && node.right.is_auto_deref_var()) {
+				if !g.is_option_auto_heap && !(g.is_amp && node.right.is_auto_deref_var()) {
 					g.write(node.op.str())
 				}
 				g.expr(node.right)
-				if g.is_auto_heap {
+				if g.is_option_auto_heap {
 					g.write('.data')
 				}
 			}
