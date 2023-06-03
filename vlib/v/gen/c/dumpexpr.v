@@ -63,10 +63,6 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	} else {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
-		if expr_type.has_flag(.option) && node.expr is ast.Ident
-			&& (node.expr as ast.Ident).is_auto_heap() {
-			g.write('*')
-		}
 		g.expr(node.expr)
 		g.inside_opt_or_res = old_inside_opt_or_res
 	}

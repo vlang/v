@@ -696,10 +696,16 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						}
 					}
 				} else {
+					// var = &auto_heap_var
+					old_is_auto_heap := g.is_auto_heap
+					g.is_auto_heap = val is ast.PrefixExpr
+						&& (val as ast.PrefixExpr).right is ast.Ident
+						&& ((val as ast.PrefixExpr).right as ast.Ident).is_auto_heap()
+					defer {
+						g.is_auto_heap = old_is_auto_heap
+					}
 					if var_type.has_flag(.option) || gen_or {
-						g.is_auto_heap = is_auto_heap
 						g.expr_with_opt_or_block(val, val_type, left, var_type)
-						g.is_auto_heap = false
 					} else if node.has_cross_var {
 						g.gen_cross_tmp_variable(node.left, val)
 					} else {
