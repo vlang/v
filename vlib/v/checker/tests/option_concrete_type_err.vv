@@ -1,0 +1,5 @@
+fn f[T]() T {
+	return none
+}
+
+r := f[?int]()
