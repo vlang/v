@@ -103,7 +103,8 @@ mut:
 	is_json_fn                bool // inside json.encode()
 	is_js_call                bool // for handling a special type arg #1 `json.decode(User, ...)`
 	is_fn_index_call          bool
-	is_cc_msvc                bool     // g.pref.ccompiler == 'msvc'
+	is_cc_msvc                bool // g.pref.ccompiler == 'msvc'
+	is_auto_heap              bool
 	vlines_path               string   // set to the proper path for generating #line directives
 	options_pos_forward       int      // insertion point to forward
 	options_forward           []string // to forward
@@ -3342,7 +3343,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 					}
 				}
 			} else {
-				if !(g.is_amp && node.right.is_auto_deref_var()) {
+				if !(g.is_auto_heap && g.is_amp && node.right.is_auto_deref_var()) {
 					g.write(node.op.str())
 				}
 				g.expr(node.right)
@@ -3560,8 +3561,10 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	mut sum_type_deref_field := ''
 	mut sum_type_dot := '.'
+	mut field_typ := ast.void_type
 	if f := g.table.find_field_with_embeds(sym, node.field_name) {
 		field_sym := g.table.sym(f.typ)
+		field_typ = f.typ
 		if field_sym.kind in [.sum_type, .interface_] {
 			if !prevent_sum_type_unwrapping_once {
 				// check first if field is sum type because scope searching is expensive
@@ -3660,6 +3663,11 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			return
 		}
 	}
+	field_is_opt := node.expr is ast.Ident && (node.expr as ast.Ident).is_auto_heap()
+		&& (node.expr as ast.Ident).or_expr.kind != .absent && field_typ.has_flag(.option)
+	if field_is_opt {
+		g.write('((${g.base_type(field_typ)})')
+	}
 	n_ptr := node.expr_type.nr_muls() - 1
 	if n_ptr > 0 {
 		g.write('(')
@@ -3668,6 +3676,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.write(')')
 	} else {
 		g.expr(node.expr)
+	}
+	if field_is_opt {
+		g.write(')')
 	}
 	if is_opt_or_res {
 		g.write('.data)')
@@ -3691,8 +3702,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		}
 	}
 	alias_to_ptr := sym.info is ast.Alias && (sym.info as ast.Alias).parent_type.is_ptr()
-	if (node.expr_type.is_ptr() || sym.kind == .chan || alias_to_ptr)
-		&& node.from_embed_types.len == 0 {
+	if field_is_opt
+		|| ((node.expr_type.is_ptr() || sym.kind == .chan || alias_to_ptr)
+		&& node.from_embed_types.len == 0) {
 		g.write('->')
 	} else {
 		g.write('.')
@@ -4158,6 +4170,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 	}
 	mut is_auto_heap := false
+	mut is_option := false
 	if node.info is ast.IdentVar {
 		if node.obj is ast.Var {
 			if !g.is_assign_lhs && node.obj.ct_type_var !in [.generic_param, .no_comptime] {
@@ -4177,7 +4190,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 					&& !g.is_assign_lhs) {
 					stmt_str := g.go_before_stmt(0).trim_space()
 					g.empty_line = true
-					g.or_block(name, node.or_expr, comptime_type)
+					var_opt := if node.obj.is_auto_heap { '(*${name})' } else { name }
+					g.or_block(var_opt, node.or_expr, comptime_type)
 					g.writeln(stmt_str)
 				}
 				return
@@ -4199,7 +4213,12 @@ fn (mut g Gen) ident(node ast.Ident) {
 				&& !g.is_assign_lhs) {
 				stmt_str := g.go_before_stmt(0).trim_space()
 				g.empty_line = true
-				g.or_block(name, node.or_expr, node.info.typ)
+				var_opt := if node.obj is ast.Var && (node.obj as ast.Var).is_auto_heap {
+					'(*${name})'
+				} else {
+					name
+				}
+				g.or_block(var_opt, node.or_expr, node.info.typ)
 				g.write(stmt_str)
 			}
 			return
@@ -4208,6 +4227,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			g.write('${name}.val')
 			return
 		}
+		is_option = node.info.is_option
 		if node.obj is ast.Var {
 			is_auto_heap = node.obj.is_auto_heap
 				&& (!g.is_assign_lhs || g.assign_op != .decl_assign)
@@ -4280,6 +4300,16 @@ fn (mut g Gen) ident(node ast.Ident) {
 	g.write(g.get_ternary_name(name))
 	if is_auto_heap {
 		g.write('))')
+		if is_option {
+			g.write('.data')
+		}
+	}
+	if node.or_expr.kind != .absent && !(g.inside_opt_or_res && g.inside_assign && !g.is_assign_lhs) {
+		stmt_str := g.go_before_stmt(0).trim_space()
+		g.empty_line = true
+		var_opt := if is_auto_heap { '(*${name})' } else { name }
+		g.or_block(var_opt, node.or_expr, node.info.typ)
+		g.write(stmt_str)
 	}
 }
 
