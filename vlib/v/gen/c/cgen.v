@@ -4183,19 +4183,18 @@ fn (mut g Gen) ident(node ast.Ident) {
 				comptime_type := g.get_comptime_var_type(node)
 				if comptime_type.has_flag(.option) {
 					if (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {
-						var_name := if !g.is_assign_lhs && is_auto_heap {
-							'(*${name})'
+						if !g.is_assign_lhs && is_auto_heap {
+							g.write('(*${name})')
 						} else {
-							name
+							g.write(name)
 						}
-						g.write('${var_name}')
 					} else {
 						g.write('/*opt*/')
 						styp := g.base_type(comptime_type)
 						g.write('(*(${styp}*)${name}.data)')
 					}
 				} else {
-					g.write('${name}')
+					g.write(name)
 				}
 				if node.or_expr.kind != .absent && !(g.inside_opt_or_res && g.inside_assign
 					&& !g.is_assign_lhs) {
@@ -4214,8 +4213,11 @@ fn (mut g Gen) ident(node ast.Ident) {
 		// `println(x)` => `println(*(int*)x.data)`
 		if node.info.is_option && !(g.is_assign_lhs && g.right_is_opt) {
 			if (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {
-				var_name := if !g.is_assign_lhs && is_auto_heap { '(*${name})' } else { name }
-				g.write('${var_name}')
+				if !g.is_assign_lhs && is_auto_heap {
+					g.write('(*${name})')
+				} else {
+					g.write(name)
+				}
 			} else {
 				g.write('/*opt*/')
 				styp := g.base_type(node.info.typ)
