@@ -15,9 +15,9 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 		g.expr_with_cast(expr, expr_typ, ret_typ)
 		g.writeln(';')
 		expr_var := if expr is ast.Ident && (expr as ast.Ident).is_auto_heap() {
-			'(*${expr})'
+			'(*${expr.name})'
 		} else {
-			'${expr}'
+			g.expr_string(expr)
 		}
 		g.writeln('if (${expr_var}.state != 0) { // assign')
 		if expr is ast.Ident && (expr as ast.Ident).or_expr.kind == .propagate_option {
