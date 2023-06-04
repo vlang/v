@@ -344,7 +344,8 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		mut key0_type := ast.void_type
 		mut val0_type := ast.void_type
 		use_expected_type := c.expected_type != ast.void_type && !c.inside_const
-			&& c.table.sym(c.expected_type).kind == .map
+			&& c.table.sym(c.expected_type).kind == .map && !(c.inside_fn_arg
+			&& c.expected_type.has_flag(.generic))
 		if use_expected_type {
 			sym := c.table.sym(c.expected_type)
 			info := sym.map_info()
