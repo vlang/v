@@ -11,6 +11,8 @@ pub mut:
 fn test_main() {
 	mut t := Teste{}
 	t.teste = &t
+	z := &ITeste(t)
+	dump(z)
 	dump(t)
-	assert t.teste? == &ITeste(t.teste?)
+	assert voidptr(t.teste?) == voidptr(z.teste?)
 }
