@@ -813,6 +813,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						os.system('wget -O "${so_path}" "${so_url}"')
 						println('done!')
 					}
+					res.compile_defines << 'is_coroutine'
+					res.compile_defines_all << 'is_coroutine'
 				} $else {
 					println('coroutines only work on arm64 macos for now')
 				}

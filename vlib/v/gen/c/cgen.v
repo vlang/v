@@ -1408,16 +1408,24 @@ pub fn (mut g Gen) write_typedef_types() {
 					chan_inf := sym.chan_info()
 					chan_elem_type := chan_inf.elem_type
 					if !chan_elem_type.has_flag(.generic) {
-						el_stype := g.typ(chan_elem_type)
+						mut el_stype := g.typ(chan_elem_type)
+						is_fixed_arr := g.table.sym(chan_elem_type).kind == .array_fixed
+						val_arg_pop := if is_fixed_arr { '&val.ret_arr' } else { '&val' }
+						val_arg_push := if is_fixed_arr { 'val' } else { '&val' }
+						push_arg := if is_fixed_arr {
+							el_stype.trim_string_left('_v_') + '*'
+						} else {
+							el_stype
+						}
 						g.channel_definitions.writeln('
 static inline ${el_stype} __${sym.cname}_popval(${sym.cname} ch) {
 	${el_stype} val;
-	sync__Channel_try_pop_priv(ch, &val, false);
+	sync__Channel_try_pop_priv(ch, ${val_arg_pop}, false);
 	return val;
 }')
 						g.channel_definitions.writeln('
-static inline void __${sym.cname}_pushval(${sym.cname} ch, ${el_stype} val) {
-	sync__Channel_try_push_priv(ch, &val, false);
+static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
+	sync__Channel_try_push_priv(ch, ${val_arg_push}, false);
 }')
 					}
 				}

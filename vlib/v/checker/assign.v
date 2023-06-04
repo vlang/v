@@ -188,6 +188,15 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			} else if mut right is ast.PrefixExpr {
 				if right.op == .amp && right.right is ast.StructInit {
 					right_type = c.expr(right)
+				} else if right.op == .arrow {
+					right_type = c.expr(right)
+					right_type_sym := c.table.sym(right_type)
+					if right_type_sym.kind == .array_fixed
+						&& (right_type_sym.info as ast.ArrayFixed).is_fn_ret {
+						info := right_type_sym.info as ast.ArrayFixed
+						right_type = c.table.find_or_register_array_fixed(info.elem_type,
+							info.size, info.size_expr, false)
+					}
 				}
 			} else if mut right is ast.Ident {
 				if right.kind == .function {
