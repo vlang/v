@@ -4118,7 +4118,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		p.error_with_pos('a type alias can not refer to itself: ${name}', decl_pos.extend(type_alias_pos))
 		return ast.AliasTypeDecl{}
 	}
-	comments = p.eat_comments(same_line: true)
+	comments = sum_variants[0].end_comments.clone()
 	return ast.AliasTypeDecl{
 		name: name
 		is_pub: is_pub
