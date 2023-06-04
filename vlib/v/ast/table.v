@@ -372,6 +372,7 @@ pub fn (t &Table) find_method_with_embeds(sym &TypeSymbol, method_name string) !
 	}
 }
 
+// find_enum_field_val finds the int value from the enum name and enum field
 pub fn (t &Table) find_enum_field_val(name string, field_ string) i64 {
 	mut val := i64(0)
 	enum_decl := t.enum_decls[name]
