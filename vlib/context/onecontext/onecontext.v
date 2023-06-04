@@ -92,7 +92,7 @@ pub fn (mut octx OneContext) run() {
 
 	octx.run_multiple_contexts(mut wrapped_ctx)
 	for mut ctx in octx.ctxs {
-		octx.run_multiple_contexts(mut &ctx)
+		octx.run_multiple_contexts(mut ctx)
 	}
 }
 

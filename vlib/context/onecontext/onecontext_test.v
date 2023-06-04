@@ -5,7 +5,7 @@ import time
 
 fn eventually(ch chan int) bool {
 	mut background := context.background()
-	mut timeout, cancel := context.with_timeout(mut &background, 30 * time.millisecond)
+	mut timeout, cancel := context.with_timeout(mut background, 30 * time.millisecond)
 	defer {
 		cancel()
 	}
@@ -27,32 +27,32 @@ struct Value {
 	val string
 }
 
-fn test_merge_nomilan() {
+fn test_merge_nominal() {
 	mut background := context.background()
-	foo := &Value{
-		val: 'foo'
-	}
+	foo := 'foo'
 	mut value_ctx1 := context.with_value(background, 'foo', foo)
-	mut ctx1, cancel := context.with_cancel(mut &value_ctx1)
+	mut ctx1, cancel := context.with_cancel(mut value_ctx1)
 	defer {
 		cancel()
 	}
 
-	bar := &Value{
-		val: 'bar'
-	}
+	bar := 'bar'
 	mut value_ctx2 := context.with_value(background, 'bar', bar)
-	mut ctx2, _ := context.with_cancel(mut &value_ctx2)
+	mut ctx2, _ := context.with_cancel(mut value_ctx2)
 
 	mut ctx, cancel2 := merge(ctx1, ctx2)
 
 	if deadline := ctx.deadline() {
-		panic('this should never happen')
+		assert false
 	}
 
-	val1 := ctx.value('foo') or { panic('wrong value access for key `foo`') }
+	val1 := ctx.value('foo') or {
+		assert false
+		return
+	}
+
 	match val1 {
-		Value {
+		string {
 			assert foo == val1
 		}
 		else {
@@ -60,9 +60,12 @@ fn test_merge_nomilan() {
 		}
 	}
 
-	val2 := ctx.value('bar') or { panic('wrong value access for key `bar`') }
+	val2 := ctx.value('bar') or {
+		assert false
+		return
+	}
 	match val2 {
-		Value {
+		string {
 			assert bar == val2
 		}
 		else {
@@ -71,7 +74,7 @@ fn test_merge_nomilan() {
 	}
 
 	if _ := ctx.value('baz') {
-		panic('this should never happen')
+		assert false
 	}
 
 	assert !eventually(ctx.done())
@@ -79,12 +82,12 @@ fn test_merge_nomilan() {
 
 	cancel2()
 	assert eventually(ctx.done())
-	assert ctx.err() is Error
+	assert ctx.err().str() == 'canceled context'
 }
 
 fn test_merge_deadline_context_1() {
 	mut background := context.background()
-	mut ctx1, cancel := context.with_timeout(mut &background, time.second)
+	mut ctx1, cancel := context.with_timeout(mut background, time.second)
 	defer {
 		cancel()
 	}
@@ -94,14 +97,14 @@ fn test_merge_deadline_context_1() {
 	if deadline := ctx.deadline() {
 		assert deadline.unix_time() != 0
 	} else {
-		panic('this should never happen')
+		assert false
 	}
 }
 
 fn test_merge_deadline_context_2() {
 	mut background := context.background()
 	ctx1 := context.background()
-	mut ctx2, cancel := context.with_timeout(mut &background, time.second)
+	mut ctx2, cancel := context.with_timeout(mut background, time.second)
 	defer {
 		cancel()
 	}
@@ -110,7 +113,7 @@ fn test_merge_deadline_context_2() {
 	if deadline := ctx.deadline() {
 		assert deadline.unix_time() != 0
 	} else {
-		panic('this should never happen')
+		assert false
 	}
 }
 
@@ -122,7 +125,7 @@ fn test_merge_deadline_context_n() {
 	for i in 0 .. 10 {
 		ctxs << context.background()
 	}
-	mut ctx_n, _ := context.with_timeout(mut &background, time.second)
+	mut ctx_n, _ := context.with_timeout(mut background, time.second)
 	ctxs << ctx_n
 
 	for i in 0 .. 10 {
@@ -135,7 +138,7 @@ fn test_merge_deadline_context_n() {
 	assert ctx.err() is none
 	cancel()
 	assert eventually(ctx.done())
-	assert ctx.err() is Error
+	assert ctx.err().str() == 'canceled context'
 }
 
 fn test_merge_deadline_none() {
@@ -145,7 +148,7 @@ fn test_merge_deadline_none() {
 	mut ctx, _ := merge(ctx1, ctx2)
 
 	if _ := ctx.deadline() {
-		panic('this should never happen')
+		assert false
 	}
 }
 
@@ -157,7 +160,7 @@ fn test_merge_cancel_two() {
 	cancel()
 
 	assert eventually(ctx.done())
-	assert ctx.err() is Error
+	assert ctx.err().str() == 'canceled context'
 	assert ctx.err().str() == 'canceled context'
 }
 
@@ -170,6 +173,6 @@ fn test_merge_cancel_multiple() {
 	cancel()
 
 	assert eventually(ctx.done())
-	assert ctx.err() is Error
+	assert ctx.err().str() == 'canceled context'
 	assert ctx.err().str() == 'canceled context'
 }
