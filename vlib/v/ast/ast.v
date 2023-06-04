@@ -962,6 +962,17 @@ pub mut:
 	concrete_types []Type
 }
 
+pub fn (i &Ident) is_auto_heap() bool {
+	match i.obj {
+		Var {
+			return i.obj.is_auto_heap
+		}
+		else {
+			return false
+		}
+	}
+}
+
 pub fn (i &Ident) is_mut() bool {
 	match i.obj {
 		Var {

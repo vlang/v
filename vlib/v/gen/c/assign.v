@@ -14,7 +14,12 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 		g.inside_opt_or_res = true
 		g.expr_with_cast(expr, expr_typ, ret_typ)
 		g.writeln(';')
-		g.writeln('if (${expr}.state != 0) {')
+		expr_var := if expr is ast.Ident && (expr as ast.Ident).is_auto_heap() {
+			'(*${expr.name})'
+		} else {
+			'${expr}'
+		}
+		g.writeln('if (${expr_var}.state != 0) { // assign')
 		if expr is ast.Ident && (expr as ast.Ident).or_expr.kind == .propagate_option {
 			g.writeln('\tpanic_option_not_set(_SLIT("none"));')
 		} else {
@@ -623,6 +628,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.inside_opt_or_res = old_inside_opt_or_res
 					}
 					g.inside_opt_or_res = true
+					if is_auto_heap && var_type.has_flag(.option) {
+						g.write('&')
+					}
 					tmp_var := g.new_tmp_var()
 					g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
 				} else if is_fixed_array_var {
@@ -688,6 +696,14 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						}
 					}
 				} else {
+					// var = &auto_heap_var
+					old_is_auto_heap := g.is_option_auto_heap
+					g.is_option_auto_heap = val_type.has_flag(.option) && val is ast.PrefixExpr
+						&& (val as ast.PrefixExpr).right is ast.Ident
+						&& ((val as ast.PrefixExpr).right as ast.Ident).is_auto_heap()
+					defer {
+						g.is_option_auto_heap = old_is_auto_heap
+					}
 					if var_type.has_flag(.option) || gen_or {
 						g.expr_with_opt_or_block(val, val_type, left, var_type)
 					} else if node.has_cross_var {
