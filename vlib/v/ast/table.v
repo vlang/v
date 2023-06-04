@@ -1905,7 +1905,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 			mut info := ts.info
 			info.is_generic = false
 			info.concrete_types = final_concrete_types
-			info.parent_type = typ
+			info.parent_type = typ.set_flag(.generic)
 			info.fields = fields
 			new_idx := t.register_sym(
 				kind: .struct_
@@ -1940,7 +1940,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 			mut info := ts.info
 			info.is_generic = false
 			info.concrete_types = final_concrete_types
-			info.parent_type = typ
+			info.parent_type = typ.set_flag(.generic)
 			info.fields = fields
 			info.variants = variants
 			new_idx := t.register_sym(
@@ -1984,7 +1984,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 			mut info := ts.info
 			info.is_generic = false
 			info.concrete_types = final_concrete_types
-			info.parent_type = typ
+			info.parent_type = typ.set_flag(.generic)
 			info.fields = fields
 			info.methods = imethods
 			new_idx := t.register_sym(
