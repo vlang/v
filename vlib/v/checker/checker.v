@@ -2530,6 +2530,12 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 
 			unwrapped_expr_type := c.unwrap_generic(node.expr_type)
 			tsym := c.table.sym(unwrapped_expr_type)
+			if tsym.kind == .array_fixed {
+				info := tsym.info as ast.ArrayFixed
+				// for dumping fixed array we must registed the fixed array struct to return from function
+				c.table.find_or_register_array_fixed(info.elem_type, info.size, info.size_expr,
+					true)
+			}
 			type_cname := if node.expr_type.has_flag(.option) {
 				'_option_${tsym.cname}'
 			} else {
