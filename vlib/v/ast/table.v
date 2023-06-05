@@ -2047,8 +2047,6 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 							...parent_info
 							is_generic: false
 							concrete_types: info.concrete_types.clone()
-							fields: fields
-							parent_type: new_type(info.parent_idx).set_flag(.generic)
 						}
 						sym.is_pub = true
 						sym.kind = parent.kind
