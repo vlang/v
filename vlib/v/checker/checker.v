@@ -643,6 +643,9 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 			return '', expr.pos
 		}
 		ast.ComptimeSelector {
+			if expr.left is ast.Ident {
+				c.fail_if_immutable(expr.left)
+			}
 			return '', expr.pos
 		}
 		ast.Ident {
