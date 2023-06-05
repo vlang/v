@@ -21,10 +21,12 @@ fn C.pthread_mutex_destroy(voidptr) int
 fn C.pthread_rwlockattr_init(voidptr) int
 fn C.pthread_rwlockattr_setkind_np(voidptr, int) int
 fn C.pthread_rwlockattr_setpshared(voidptr, int) int
+fn C.pthread_rwlockattr_destroy(voidptr) int
 fn C.pthread_rwlock_init(voidptr, voidptr) int
 fn C.pthread_rwlock_rdlock(voidptr) int
 fn C.pthread_rwlock_wrlock(voidptr) int
 fn C.pthread_rwlock_unlock(voidptr) int
+fn C.pthread_rwlock_destroy(voidptr) int
 fn C.sem_init(voidptr, int, u32) int
 fn C.sem_post(voidptr) int
 fn C.sem_wait(voidptr) int
@@ -87,6 +89,7 @@ pub fn (mut m RwMutex) init() {
 	C.pthread_rwlockattr_setkind_np(&a.attr, C.PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)
 	C.pthread_rwlockattr_setpshared(&a.attr, C.PTHREAD_PROCESS_PRIVATE)
 	C.pthread_rwlock_init(&m.mutex, &a.attr)
+	C.pthread_rwlockattr_destroy(&a.attr) // destroy the attr when done
 }
 
 // @lock(), for *manual* mutex handling, since `lock` is a keyword
@@ -98,6 +101,14 @@ pub fn (mut m Mutex) unlock() {
 	C.pthread_mutex_unlock(&m.mutex)
 }
 
+pub fn (mut m Mutex) destroy() {
+	res := C.pthread_mutex_destroy(&m.mutex)
+	if res == 0 {
+		return
+	}
+	panic(unsafe { tos_clone(&u8(C.strerror(res))) })
+}
+
 // RwMutex has separate read- and write locks
 pub fn (mut m RwMutex) @rlock() {
 	C.pthread_rwlock_rdlock(&m.mutex)
@@ -105,6 +116,14 @@ pub fn (mut m RwMutex) @rlock() {
 
 pub fn (mut m RwMutex) @lock() {
 	C.pthread_rwlock_wrlock(&m.mutex)
+}
+
+pub fn (mut m RwMutex) destroy() {
+	res := C.pthread_rwlock_destroy(&m.mutex)
+	if res == 0 {
+		return
+	}
+	panic(unsafe { tos_clone(&u8(C.strerror(res))) })
 }
 
 // Windows SRWLocks have different function to unlock
@@ -202,7 +221,7 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	return false
 }
 
-pub fn (sem Semaphore) destroy() {
+pub fn (mut sem Semaphore) destroy() {
 	res := C.sem_destroy(&sem.sem)
 	if res == 0 {
 		return
