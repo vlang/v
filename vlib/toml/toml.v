@@ -46,6 +46,12 @@ fn decode_struct[T](doc Any, mut typ T) {
 			typ.$(field.name) = value.f32()
 		} $else $if field.typ is f64 {
 			typ.$(field.name) = value.f64()
+		} $else $if field.typ is DateTime {
+			typ.$(field.name) = value.datetime()
+		} $else $if field.typ is Date {
+			typ.$(field.name) = value.date()
+		} $else $if field.typ is Time {
+			typ.$(field.name) = value.time()
 		} $else $if field.is_array {
 			arr := value.array()
 			match typeof(typ.$(field.name)).name {
@@ -62,22 +68,9 @@ fn decode_struct[T](doc Any, mut typ T) {
 				else {}
 			}
 		} $else $if field.is_struct {
-			match typeof(typ.$(field.name)).name {
-				'toml.DateTime' {
-					// typ.$(field.name) = DateTime{value.string()}
-				}
-				'toml.Date' {
-					// typ.$(field.name) = Date{value.string()}
-				}
-				'toml.Time' {
-					// typ.$(field.name) = Time{value.string()}
-				}
-				else {
-					mut s := typ.$(field.name)
-					decode_struct(value, mut s)
-					typ.$(field.name) = s
-				}
-			}
+			mut s := typ.$(field.name)
+			decode_struct(value, mut s)
+			typ.$(field.name) = s
 		}
 	}
 }
