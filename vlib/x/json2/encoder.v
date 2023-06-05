@@ -215,7 +215,8 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 					|| field.typ is ?i8 || field.typ is ?i16 || field.typ is ?int
 					|| field.typ is ?i64 || field.typ is ?u8 || field.typ is ?u16
 					|| field.typ is ?u32 || field.typ is ?u64 {
-					wr.write(val.$(field.name) ?.str().bytes())!
+					mut opt := val.$(field.name)
+					wr.write(opt ?.str().bytes())!
 				} $else $if field.typ is ?time.Time {
 					option_value := val.$(field.name) as ?time.Time
 					parsed_time := option_value as time.Time
