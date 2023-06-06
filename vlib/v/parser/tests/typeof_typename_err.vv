@@ -1,5 +1,0 @@
-fn f[T]() { println("type ${typeof(T)}") }
-f[int]()
-f[string]()
-
-		  
