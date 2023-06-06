@@ -802,21 +802,22 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-use-coroutines' {
 				res.use_coroutines = true
-				$if macos && arm64 {
+				$if macos {
+					arch := $if arm64 { 'arm64' } $else { 'amd64' }
 					vexe := vexe_path()
 					vroot := os.dir(vexe)
 					so_path := os.join_path(vroot, 'thirdparty', 'photon', 'photonwrapper.so')
-					so_url := 'https://github.com/vlang/photonbin/raw/master/photonwrapper_macos_arm64.so'
+					so_url := 'https://github.com/vlang/photonbin/raw/master/photonwrapper_macos_${arch}.so'
 					if !os.exists(so_path) {
 						println('coroutines .so not found, downloading...')
 						// http.download_file(so_url, so_path) or { panic(err) }
-						os.system('wget -O "${so_path}" "${so_url}"')
+						os.execute_or_panic('wget -O "${so_path}" "${so_url}"')
 						println('done!')
 					}
 					res.compile_defines << 'is_coroutine'
 					res.compile_defines_all << 'is_coroutine'
 				} $else {
-					println('coroutines only work on arm64 macos for now')
+					println('coroutines only work on macos for now')
 				}
 			}
 			else {
