@@ -1,0 +1,5 @@
+vlib/v/parser/tests/typeof_typename_err.vv:1:29: error: use `typeof[T]()`, instead of `typeof(T)`
+    1 | fn f[T]() { println("type ${typeof(T)}") }
+      |                             ~~~~~~
+    2 | f[int]()
+    3 | f[string]()

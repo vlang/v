@@ -223,6 +223,9 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				}
 			} else {
 				p.check(.lpar)
+				if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() {
+					p.error_with_pos('use `typeof[T]()`, instead of `typeof(T)`', spos)
+				}
 				expr := p.expr(0)
 				p.check(.rpar)
 				if p.tok.kind != .dot && p.tok.line_nr == p.prev_tok.line_nr {
