@@ -106,10 +106,13 @@ pub fn (s string) clone() string {
 	return string(s.str)
 }
 
+// contains returns `true` if the string contains `substr`.
+// See also: [`string.index`](#string.index)
 pub fn (s string) contains(substr string) bool {
 	return bool(s.str.includes(substr.str))
 }
 
+// contains_any returns `true` if the string contains any chars in `chars`.
 pub fn (s string) contains_any(chars string) bool {
 	sep := ''
 	res := chars.str.split(sep.str)
@@ -119,6 +122,26 @@ pub fn (s string) contains_any(chars string) bool {
 		}
 	}
 	return false
+}
+
+// contains_only returns `true`, if the string contains only the characters in `chars`.
+pub fn (s string) contains_only(chars string) bool {
+	if chars.len == 0 {
+		return false
+	}
+	for ch in s {
+		mut res := 0
+		for c in chars {
+			if ch == c {
+				res++
+				break
+			}
+		}
+		if res == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 pub fn (s string) contains_any_substr(chars []string) bool {
