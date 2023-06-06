@@ -172,6 +172,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	} else {
 		elem_sym := g.table.final_sym(node.elem_type)
 		if elem_sym.kind == .map {
+			// fixed array for map -- [N]map[key_type]value_type
 			info := array_type.unaliased_sym.info as ast.ArrayFixed
 			map_info := elem_sym.map_info()
 			g.expr(ast.MapInit{
@@ -183,6 +184,21 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				g.expr(ast.MapInit{
 					key_type: map_info.key_type
 					value_type: map_info.value_type
+				})
+			}
+		} else if elem_sym.kind == .array_fixed {
+			// nested fixed array -- [N][N]type
+			info := array_type.unaliased_sym.info as ast.ArrayFixed
+			arr_info := elem_sym.array_fixed_info()
+			g.expr(ast.ArrayInit{
+				typ: node.elem_type
+				elem_type: arr_info.elem_type
+			})
+			for _ in 1 .. info.size {
+				g.write(', ')
+				g.expr(ast.ArrayInit{
+					typ: node.elem_type
+					elem_type: arr_info.elem_type
 				})
 			}
 		} else {
