@@ -642,6 +642,13 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 			return '', expr.pos
 		}
 		ast.ComptimeSelector {
+			if mut expr.left is ast.Ident {
+				if mut expr.left.obj is ast.Var {
+					if expr.left.obj.ct_type_var != .generic_param {
+						c.fail_if_immutable(expr.left)
+					}
+				}
+			}
 			return '', expr.pos
 		}
 		ast.Ident {
