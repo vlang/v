@@ -185,6 +185,20 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 					value_type: map_info.value_type
 				})
 			}
+		} else if elem_sym.kind == .array_fixed {
+			info := array_type.unaliased_sym.info as ast.ArrayFixed
+			arr_info := elem_sym.array_fixed_info()
+			g.expr(ast.ArrayInit{
+				typ: node.elem_type
+				elem_type: arr_info.elem_type
+			})
+			for _ in 1 .. info.size {
+				g.write(', ')
+				g.expr(ast.ArrayInit{
+					typ: node.elem_type
+					elem_type: arr_info.elem_type
+				})
+			}
 		} else {
 			g.write('0')
 		}
