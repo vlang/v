@@ -934,9 +934,14 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					typ = typ.set_nr_muls(0)
 				}
 			} else if param.typ.has_flag(.generic) {
-				arg_sym := c.table.final_sym(arg.typ)
+				arg_typ := if c.table.sym(arg.typ).kind == .any {
+					c.unwrap_generic(arg.typ)
+				} else {
+					arg.typ
+				}
+				arg_sym := c.table.final_sym(arg_typ)
 				if param.typ.has_flag(.variadic) {
-					typ = ast.mktyp(arg.typ)
+					typ = ast.mktyp(arg_typ)
 				} else if arg_sym.info is ast.Array && param_sym.info is ast.Array {
 					mut arg_elem_typ, mut param_elem_typ := arg_sym.info.elem_type, param_sym.info.elem_type
 					mut arg_elem_sym, mut param_elem_sym := c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)

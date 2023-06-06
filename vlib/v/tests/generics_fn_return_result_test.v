@@ -1,6 +1,6 @@
 fn make_2x3[T](mut res [][]T) ! {
 	mut a := []T{len: 6}
-	res = reshape(a, [2, 3])!
+	res = reshape[T](a, [2, 3])!
 }
 
 fn reshape[T](y []T, dims []int) ![][]T {
