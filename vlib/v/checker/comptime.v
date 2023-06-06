@@ -8,7 +8,6 @@ import v.pref
 import v.token
 import v.util
 import v.pkgconfig
-import v.checker.constants
 
 [inline]
 fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
@@ -101,8 +100,8 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 			node.embed_file.apath = escaped_path
 		}
 		// c.file.embedded_files << node.embed_file
-		if node.embed_file.compression_type !in constants.valid_comptime_compression_types {
-			supported := constants.valid_comptime_compression_types.map('.${it}').join(', ')
+		if node.embed_file.compression_type !in ast.valid_comptime_compression_types {
+			supported := ast.valid_comptime_compression_types.map('.${it}').join(', ')
 			c.error('not supported compression type: .${node.embed_file.compression_type}. supported: ${supported}',
 				node.pos)
 		}
@@ -526,7 +525,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 	}
 	if node.ct_expr is ast.Ident {
 		if node.ct_opt {
-			if node.ct_expr.name in constants.valid_comptime_not_user_defined {
+			if node.ct_expr.name in ast.valid_comptime_not_user_defined {
 				c.error('option `[if expression ?]` tags, can be used only for user defined identifiers',
 					node.pos)
 				node.ct_skip = true
@@ -536,7 +535,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 			node.ct_evaled = true
 			return node.ct_skip
 		} else {
-			if node.ct_expr.name !in constants.valid_comptime_not_user_defined {
+			if node.ct_expr.name !in ast.valid_comptime_not_user_defined {
 				c.note('`[if ${node.ct_expr.name}]` is deprecated. Use `[if ${node.ct_expr.name} ?]` instead',
 					node.pos)
 				node.ct_skip = node.ct_expr.name !in c.pref.compile_defines
@@ -729,20 +728,20 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 		}
 		ast.Ident {
 			cname := cond.name
-			if cname in constants.valid_comptime_if_os {
+			if cname in ast.valid_comptime_if_os {
 				mut is_os_target_equal := true
 				if !c.pref.output_cross_c {
 					target_os := c.pref.os.str().to_lower()
 					is_os_target_equal = cname == target_os
 				}
 				return if is_os_target_equal { .eval } else { .skip }
-			} else if cname in constants.valid_comptime_if_compilers {
+			} else if cname in ast.valid_comptime_if_compilers {
 				return if pref.cc_from_string(cname) == c.pref.ccompiler_type {
 					.eval
 				} else {
 					.skip
 				}
-			} else if cname in constants.valid_comptime_if_platforms {
+			} else if cname in ast.valid_comptime_if_platforms {
 				if cname == 'aarch64' {
 					c.note('use `arm64` instead of `aarch64`', pos)
 				}
@@ -756,9 +755,9 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 					'rv32' { return if c.pref.arch == .rv32 { .eval } else { .skip } }
 					else { return .unknown }
 				}
-			} else if cname in constants.valid_comptime_if_cpu_features {
+			} else if cname in ast.valid_comptime_if_cpu_features {
 				return .unknown
-			} else if cname in constants.valid_comptime_if_other {
+			} else if cname in ast.valid_comptime_if_other {
 				match cname {
 					'apk' {
 						return if c.pref.is_apk { .eval } else { .skip }

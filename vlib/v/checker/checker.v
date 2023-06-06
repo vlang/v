@@ -12,7 +12,6 @@ import v.util
 import v.util.version
 import v.errors
 import v.pkgconfig
-import v.checker.constants
 
 const (
 	int_min                  = int(0x80000000)
@@ -1822,7 +1821,7 @@ fn (mut c Checker) stmt(node_ ast.Stmt) {
 			for i, ident in node.defer_vars {
 				mut id := ident
 				if mut id.info is ast.IdentVar {
-					if id.comptime && id.name in constants.valid_comptime_not_user_defined {
+					if id.comptime && id.name in ast.valid_comptime_not_user_defined {
 						node.defer_vars[i] = ast.Ident{
 							scope: 0
 							name: ''
