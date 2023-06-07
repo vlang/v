@@ -116,14 +116,14 @@ fn rw_callback(loop &C.picoev_loop, fd int, events int, context voidptr) {
 		// Request init
 		mut buf := p.buf
 		unsafe {
-			buf += fd * context.max_read // pointer magic
+			buf += fd * p.max_read // pointer magic
 		}
 		mut req := picohttpparser.Request{}
 
 		// Response init
 		mut out := p.out
 		unsafe {
-			out += fd * context.max_write // pointer magic
+			out += fd * p.max_write // pointer magic
 		}
 		mut res := picohttpparser.Response{
 			fd: fd
@@ -134,7 +134,7 @@ fn rw_callback(loop &C.picoev_loop, fd int, events int, context voidptr) {
 
 		for {
 			// Request parsing loop
-			r := req_read(fd, buf, context.max_read, p.idx[fd]) // Get data from socket
+			r := req_read(fd, buf, p.max_read, p.idx[fd]) // Get data from socket
 			if r == 0 {
 				// connection closed by peer
 				close_conn(loop, fd)
