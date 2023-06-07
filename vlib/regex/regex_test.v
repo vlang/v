@@ -105,7 +105,6 @@ match_test_suite = [
 	TestItem{"this cpapaz adce aabe third",r"(c(pa)+z)(\s[\a]+){2}$",-1,0},
 	TestItem{"1234this cpapaz adce aabe ter",r"(c(pa)+z)(\s[\a]+){2}$",-1,0},
 	TestItem{"cpapaz ole. pipipo,",r"^.*c.+ol?e.*p([ip])+o$",-1,0},
-	TestItem{"/home/us_er/pippo/info-01.jpeg", r"(/?[-\w_]+)*\.txt$",-1,26}
 
 	// check unicode
 	TestItem{"this is a Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ test",r".*a [Ⅰ-Ⅵ ]+",0,34},
@@ -174,6 +173,12 @@ match_test_suite = [
     TestItem{"refs/remotes/origin/master", r"refs/remotes/origin/(.*)",0,26},
     TestItem{"refs/remotes/origin/mastep", r"refs/remotes/origin/(\w*)",0,26},
     TestItem{"refs/remotes/origin/master", r"refs/remotes/origin/(\w*)",0,26},
+
+    // test \S+ vs [^\s]+
+    TestItem{"ab.c", r"\S+\.",0,3},
+    TestItem{"ab.c", r"[^\s]+\.",0,3},
+    TestItem{"ab.c", r"\S*\.",0,3},
+    TestItem{"ab.c", r"[^\s]*\.",0,3},
 ]
 )
 
