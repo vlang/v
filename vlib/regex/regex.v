@@ -1909,7 +1909,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				regex.ist_bsls_char,
 				regex.ist_dot_char,
 			] {
-				// println("***** We have a last special token")
+				//println("***** We have a last special token")
 				// println("PC: ${state.pc} last_dot_flag:${re.prog[state.pc].last_dot_flag}")
 				// println("rep: ${re.prog[state.pc].group_rep} min: ${re.prog[state.pc].rep_min} max: ${re.prog[state.pc].rep_max}")
 				// println("first match: ${state.first_match}")
@@ -2202,6 +2202,110 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			}
 			// char class IST
 			else if ist == regex.ist_char_class_pos || ist == regex.ist_char_class_neg {
+				// check next token to be false
+				mut next_check_flag := false
+
+				// if we are done with max go on dot char are dedicated case!!
+				if re.prog[state.pc].rep >= re.prog[state.pc].rep_max {
+					re.state_list.pop()
+					m_state = .ist_next
+					continue
+				}
+
+				if re.prog[state.pc].last_dot_flag == false && re.prog[state.pc].cc_check_pc >= 0
+					&& re.prog[state.pc].rep >= re.prog[state.pc].rep_min {
+					// load the char
+					// ch_t, _ := re.get_charb(in_txt, state.i+char_len)
+					ch_t := ch
+					chk_pc := re.prog[state.pc].cc_check_pc
+
+					// simple char
+					if re.prog[chk_pc].ist == regex.ist_simple_char {
+						if re.prog[chk_pc].ch == ch_t {
+							next_check_flag = true
+						}
+						// println("Check [ist_simple_char] [${re.prog[chk_pc].ch}]==[${ch_t:c}] => $next_check_flag")
+					}
+					// char char_class
+					else if re.prog[chk_pc].ist == regex.ist_char_class_pos
+						|| re.prog[chk_pc].ist == regex.ist_char_class_neg {
+						mut cc_neg := false
+						if re.prog[chk_pc].ist == regex.ist_char_class_neg {
+							cc_neg = true
+						}
+						mut cc_res := re.check_char_class(chk_pc, ch_t)
+
+						if cc_neg {
+							cc_res = !cc_res
+						}
+						next_check_flag = cc_res
+						// println("Check [ist_char_class] => $next_check_flag")
+					}
+					// check bsls
+					else if re.prog[chk_pc].ist == regex.ist_bsls_char {
+						next_check_flag = re.prog[chk_pc].validator(u8(ch_t))
+						// println("Check [ist_bsls_char] => $next_check_flag")
+					}
+				}
+
+				// check if we must continue or pass to the next IST
+				if next_check_flag == true && re.prog[state.pc + 1].ist != regex.ist_prog_end {
+					// println("save the state!!")
+					mut dot_state := StateObj{
+						group_index: state.group_index
+						match_flag: state.match_flag
+						match_index: state.match_index
+						first_match: state.first_match
+						pc: state.pc
+						i: state.i + char_len
+						char_len: char_len
+						last_dot_pc: state.pc
+					}
+					// if we are managing a \[something]* stay on the same char on return
+					if re.prog[state.pc].rep_min == 0 {
+						dot_state.i -= char_len
+					}
+
+					re.state_list << dot_state
+
+					m_state = .ist_quant_n
+					// println("dot_char stack len: ${re.state_list.len}")
+					continue
+				}
+
+				state.match_flag = false
+				mut cc_neg := false
+
+				if ist == regex.ist_char_class_neg {
+					cc_neg = true
+				}
+				mut cc_res := re.check_char_class(state.pc, ch)
+
+				if cc_neg {
+					cc_res = !cc_res
+				}
+
+				if cc_res {
+					state.match_flag = true
+					l_ist = u32(regex.ist_char_class_pos)
+
+					if state.first_match < 0 {
+						state.first_match = state.i
+					}
+
+					state.match_index = state.i
+
+					re.prog[state.pc].rep++ // increase repetitions
+					state.i += char_len // next char
+					m_state = .ist_quant_p
+					continue
+				}
+				m_state = .ist_quant_n
+				continue
+
+			}
+/*			// char class IST
+			else if ist == regex.ist_char_class_pos || ist == regex.ist_char_class_neg {
 				state.match_flag = false
 				mut cc_neg := false
 
@@ -2232,6 +2336,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				m_state = .ist_quant_n
 				continue
 			}
+*/
 			// check bsls
 			else if ist == regex.ist_bsls_char {
 				// println("ist_bsls_char rep: ${re.prog[state.pc].rep}")
