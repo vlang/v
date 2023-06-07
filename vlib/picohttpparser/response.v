@@ -2,7 +2,7 @@ module picohttpparser
 
 pub struct Response {
 pub:
-	fd int
+	fd        int
 	date      &u8 = unsafe { nil }
 	buf_start &u8 = unsafe { nil }
 pub mut:
