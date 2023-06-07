@@ -422,6 +422,11 @@ fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 				return false
 			}
 		}
+		if stmt is ast.EnumDecl {
+			if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
+				return false
+			}
+		}
 		if stmt is ast.FnDecl {
 			if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
 				return false
