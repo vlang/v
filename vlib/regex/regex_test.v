@@ -179,6 +179,8 @@ match_test_suite = [
     TestItem{"ab.c", r"[^\s]+\.",0,3},
     TestItem{"ab.c", r"\S*\.",0,3},
     TestItem{"ab.c", r"[^\s]*\.",0,3},
+    TestItem{"ab c", r"[\S]+\s",0,3},
+    TestItem{"ab c", r"[^\s]+\s",0,3},
 ]
 )
 

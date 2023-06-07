@@ -1909,7 +1909,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				regex.ist_bsls_char,
 				regex.ist_dot_char,
 			] {
-				//println("***** We have a last special token")
+				// println("***** We have a last special token")
 				// println("PC: ${state.pc} last_dot_flag:${re.prog[state.pc].last_dot_flag}")
 				// println("rep: ${re.prog[state.pc].group_rep} min: ${re.prog[state.pc].rep_min} max: ${re.prog[state.pc].rep_max}")
 				// println("first match: ${state.first_match}")
@@ -2302,41 +2302,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				}
 				m_state = .ist_quant_n
 				continue
-
 			}
-/*			// char class IST
-			else if ist == regex.ist_char_class_pos || ist == regex.ist_char_class_neg {
-				state.match_flag = false
-				mut cc_neg := false
-
-				if ist == regex.ist_char_class_neg {
-					cc_neg = true
-				}
-				mut cc_res := re.check_char_class(state.pc, ch)
-
-				if cc_neg {
-					cc_res = !cc_res
-				}
-
-				if cc_res {
-					state.match_flag = true
-					l_ist = u32(regex.ist_char_class_pos)
-
-					if state.first_match < 0 {
-						state.first_match = state.i
-					}
-
-					state.match_index = state.i
-
-					re.prog[state.pc].rep++ // increase repetitions
-					state.i += char_len // next char
-					m_state = .ist_quant_p
-					continue
-				}
-				m_state = .ist_quant_n
-				continue
-			}
-*/
 			// check bsls
 			else if ist == regex.ist_bsls_char {
 				// println("ist_bsls_char rep: ${re.prog[state.pc].rep}")
