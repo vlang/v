@@ -9,7 +9,7 @@ import net.http
 fn foo(a int) {
 	for {
 		println('1hello from foo() a=${a}')
-		//C.printf(c'hello from foo() a=%d\n', a)
+		// C.printf(c'hello from foo() a=%d\n', a)
 		coroutines.sleep(1 * time.second)
 	}
 }
@@ -18,7 +18,7 @@ fn foo2(a int) {
 	mut i := 0
 	for {
 		println('hello from foo2() a=${a}')
-		//C.printf(c'hello from foo2() a=%d\n', a)
+		// C.printf(c'hello from foo2() a=%d\n', a)
 		coroutines.sleep(2 * time.second)
 		i++
 		// resp := http.get('https://vlang.io/utc_now') or { panic(err) }
@@ -32,8 +32,8 @@ fn foo2(a int) {
 
 fn foo3(a int) {
 	for {
-		 println('hello from foo3() a=${a}')
-		//C.printf(c'hello from foo3() a=%d\n', a)
+		println('hello from foo3() a=${a}')
+		// C.printf(c'hello from foo3() a=%d\n', a)
 		coroutines.sleep(3 * time.second)
 	}
 }
@@ -41,7 +41,7 @@ fn foo3(a int) {
 fn foo4(a int) {
 	for {
 		println('hello from foo4() a=${a}')
-		//C.printf(c'hello from foo4() a=%d\n', a)
+		// C.printf(c'hello from foo4() a=%d\n', a)
 		coroutines.sleep(3 * time.second)
 	}
 }
