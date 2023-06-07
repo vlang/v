@@ -48,6 +48,7 @@ V projects can be created anywhere and don't need to have a certain structure:
 
 ```bash
 mkdir blog
+cd blog
 v init
 ```
 
