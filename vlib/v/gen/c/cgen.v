@@ -1884,11 +1884,10 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 	} else {
 		if ret_typ.has_flag(.generic) {
 			if expr is ast.SelectorExpr && g.cur_concrete_types.len == 0 {
-				if expr.expr is ast.Ident {
-					if (expr.expr as ast.Ident).obj is ast.Var {
-						if ((expr.expr as ast.Ident).obj as ast.Var).expr is ast.StructInit {
-							g.cur_concrete_types << (g.table.sym((expr.expr as ast.Ident).obj.typ).info as ast.Struct).concrete_types
-						}
+				// resolve generic struct on selectorExpr inside non-generic function
+				if expr.expr is ast.Ident && (expr.expr as ast.Ident).obj is ast.Var {
+					if ((expr.expr as ast.Ident).obj as ast.Var).expr is ast.StructInit {
+						g.cur_concrete_types << (g.table.sym((expr.expr as ast.Ident).obj.typ).info as ast.Struct).concrete_types
 					}
 				}
 			}
