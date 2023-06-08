@@ -661,9 +661,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.expr(left)
 						g.write(', ${final_ref_str}')
 						g.expr(val)
-						if right_is_fixed_ret {
-							g.write('.ret_arr')
-						}
 						g.write(', sizeof(${typ_str})) /*assign*/')
 					}
 				} else if is_decl {

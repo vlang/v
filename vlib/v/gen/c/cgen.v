@@ -138,6 +138,7 @@ mut:
 	inside_or_block           bool
 	inside_call               bool
 	inside_curry_call         bool // inside foo()()!, foo()()?, foo()()
+	expected_fixed_arr        bool
 	inside_for_c_stmt         bool
 	inside_comptime_for_field bool
 	inside_cast_in_heap       int // inside cast to interface type in heap (resolve recursive calls)
@@ -2452,11 +2453,6 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 	// no cast
 	g.expr(expr)
-	if expr is ast.CallExpr && !(expr as ast.CallExpr).is_fn_var && !expected_type.has_flag(.option)
-		&& exp_sym.kind == .array_fixed {
-		// it's non-option fixed array, requires accessing .ret_arr member to get the array
-		g.write('.ret_arr')
-	}
 }
 
 fn write_octal_escape(mut b strings.Builder, c u8) {

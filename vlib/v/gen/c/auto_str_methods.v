@@ -646,18 +646,18 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 		typ = sym.info.parent_type
 		sym = g.table.sym(typ)
 	}
+	styp_elem := '${g.typ(typ)}'
 	is_elem_ptr := typ.is_ptr()
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 	elem_str_fn_name := g.get_str_fn(typ)
 
-	g.definitions.writeln('static string ${str_fn_name}(${styp} a); // auto')
-	g.auto_str_funcs.writeln('static string ${str_fn_name}(${styp} a) { return indent_${str_fn_name}(a, 0);}')
-	g.definitions.writeln('static string indent_${str_fn_name}(${styp} a, int indent_count); // auto')
-	g.auto_str_funcs.writeln('static string indent_${str_fn_name}(${styp} a, int indent_count) {')
+	g.definitions.writeln('static string ${str_fn_name}(${styp_elem} a[${info.size}]); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}(${styp_elem} a[${info.size}]) { return indent_${str_fn_name}(a, 0);}')
+	g.definitions.writeln('static string indent_${str_fn_name}(${styp_elem} a[${info.size}], int indent_count); // auto')
+	g.auto_str_funcs.writeln('static string indent_${str_fn_name}(${styp_elem} a[${info.size}], int indent_count) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(${info.size} * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _SLIT("["));')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < ${info.size}; ++i) {')
-	suffix := if info.is_fn_ret { '.ret_arr' } else { '' }
 	if sym.kind == .function {
 		g.auto_str_funcs.writeln('\t\tstring x = ${elem_str_fn_name}();')
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, x);')
@@ -666,30 +666,30 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
 			if is_elem_ptr {
 				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _SLIT("${deref_label}"));')
-				g.auto_str_funcs.writeln('\t\tif ( 0 == a${suffix}[i] ) {')
+				g.auto_str_funcs.writeln('\t\tif ( 0 == a[i] ) {')
 				g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write_string(&sb, _SLIT("0"));')
 				g.auto_str_funcs.writeln('\t\t}else{')
-				g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}( ${deref} a${suffix}[i]) );')
+				g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}( ${deref} a[i]) );')
 				g.auto_str_funcs.writeln('\t\t}')
 			} else {
-				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}( ${deref} a${suffix}[i]) );')
+				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}( ${deref} a[i]) );')
 			}
 		} else if sym.kind in [.f32, .f64] {
 			if sym.kind == .f32 {
-				field_str := str_intp_g32('a${suffix}[i]')
+				field_str := str_intp_g32('a[i]')
 				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${field_str} );')
 			} else {
-				field_str := str_intp_g64('a${suffix}[i]')
+				field_str := str_intp_g64('a[i]')
 				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${field_str} );')
 			}
 		} else if sym.kind == .string {
-			field_str := str_intp_sq('a${suffix}[i]')
+			field_str := str_intp_sq('a[i]')
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${field_str});')
 		} else if sym.kind == .rune {
-			tmp_str := str_intp_rune('${elem_str_fn_name}(  ${deref} a${suffix}[i])')
+			tmp_str := str_intp_rune('${elem_str_fn_name}(  ${deref} a[i])')
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
 		} else {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}( ${deref} a${suffix}[i]));')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}( ${deref} a[i]));')
 		}
 	}
 	g.auto_str_funcs.writeln('\t\tif (i < ${info.size - 1}) {')

@@ -1776,6 +1776,11 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			if name != '&' {
 				g.write(')')
 			}
+			if !node.return_type.has_flag(.option)
+				&& g.table.type_kind(node.return_type) == .array_fixed {
+				// it's non-option fixed array, requires accessing .ret_arr member to get the array
+				g.write('.ret_arr')
+			}
 			if tmp_cnt_save >= 0 {
 				g.writeln(';')
 				g.keep_alive_call_postgen(node, tmp_cnt_save)
@@ -1916,6 +1921,10 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 }
 
 fn (mut g Gen) call_args(node ast.CallExpr) {
+	g.expected_fixed_arr = true
+	defer {
+		g.expected_fixed_arr = false
+	}
 	args := if g.is_js_call {
 		if node.args.len < 1 {
 			g.error('node should have at least 1 arg', node.pos)
