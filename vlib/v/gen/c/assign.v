@@ -636,13 +636,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else if is_fixed_array_var {
 					// TODO Instead of the translated check, check if it's a pointer already
 					// and don't generate memcpy &
-					right_is_fixed_ret := !(val is ast.CallExpr
-						&& (val as ast.CallExpr).or_block.kind == .propagate_option)
-						&& ((right_sym.info is ast.ArrayFixed
-						&& (right_sym.info as ast.ArrayFixed).is_fn_ret)
-						|| (val is ast.DumpExpr && right_sym.info is ast.ArrayFixed)
-						|| (val is ast.CallExpr
-						&& g.table.sym(g.unwrap_generic((val as ast.CallExpr).return_type)).kind == .array_fixed))
 					typ_str := g.typ(val_type).trim('*')
 					final_typ_str := if is_fixed_array_var { '' } else { '(${typ_str}*)' }
 					final_ref_str := if is_fixed_array_var {
