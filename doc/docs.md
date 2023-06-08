@@ -515,7 +515,7 @@ respectively, when their type has to be decided:
 u := u16(12)
 v := 13 + u    // v is of type `u16` - no promotion
 x := f32(45.6)
-y := x + 3.14  // x is of type `f32` - no promotion
+y := x + 3.14  // y is of type `f32` - no promotion
 a := 75        // a is of type `int` - default for int literal
 b := 14.7      // b is of type `f64` - default for float literal
 c := u + a     // c is of type `int` - automatic promotion of `u`'s value
@@ -1600,7 +1600,7 @@ type Alphabet = Abc | Xyz
 
 x := Alphabet(Abc{'test'}) // sum type
 if x is Abc {
-	// x is automatically casted to Abc and can be used here
+	// x is automatically cast to Abc and can be used here
 	println(x)
 }
 if x !is Abc {
@@ -1613,11 +1613,11 @@ or using `match`:
 ```v oksyntax
 match x {
 	Abc {
-		// x is automatically casted to Abc and can be used here
+		// x is automatically cast to Abc and can be used here
 		println(x)
 	}
 	Xyz {
-		// x is automatically casted to Xyz and can be used here
+		// x is automatically cast to Xyz and can be used here
 		println(x)
 	}
 }
@@ -1644,7 +1644,7 @@ x := Abc{
 	bar: MyStruct{123} // MyStruct will be converted to MySumType type automatically
 }
 if x.bar is MyStruct {
-	// x.bar is automatically casted
+	// x.bar is automatically cast
 	println(x.bar)
 } else if x.bar is MyStruct2 {
 	new_var := x.bar as MyStruct2
@@ -1653,7 +1653,7 @@ if x.bar is MyStruct {
 }
 match x.bar {
 	MyStruct {
-		// x.bar is automatically casted
+		// x.bar is automatically cast
 		println(x.bar)
 	}
 	else {}
@@ -1670,14 +1670,14 @@ It works like this:
 ```v oksyntax
 mut x := MySumType(MyStruct{123})
 if mut x is MyStruct {
-	// x is casted to MyStruct even if it's mutable
+	// x is cast to MyStruct even if it's mutable
 	// without the mut keyword that wouldn't work
 	println(x)
 }
 // same with match
 match mut x {
 	MyStruct {
-		// x is casted to MyStruct even if it's mutable
+		// x is cast to MyStruct even if it's mutable
 		// without the mut keyword that wouldn't work
 		println(x)
 	}
