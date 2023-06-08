@@ -646,15 +646,15 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 		typ = sym.info.parent_type
 		sym = g.table.sym(typ)
 	}
-	styp_elem := '${g.typ(typ)}'
 	is_elem_ptr := typ.is_ptr()
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 	elem_str_fn_name := g.get_str_fn(typ)
+	def_arg := if info.is_fn_ret { '${g.typ(typ)} a[${info.size}]' } else { '${styp} a' }
 
-	g.definitions.writeln('static string ${str_fn_name}(${styp_elem} a[${info.size}]); // auto')
-	g.auto_str_funcs.writeln('static string ${str_fn_name}(${styp_elem} a[${info.size}]) { return indent_${str_fn_name}(a, 0);}')
-	g.definitions.writeln('static string indent_${str_fn_name}(${styp_elem} a[${info.size}], int indent_count); // auto')
-	g.auto_str_funcs.writeln('static string indent_${str_fn_name}(${styp_elem} a[${info.size}], int indent_count) {')
+	g.definitions.writeln('static string ${str_fn_name}(); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}(${def_arg}) { return indent_${str_fn_name}(a, 0);}')
+	g.definitions.writeln('static string indent_${str_fn_name}(${def_arg}, int indent_count); // auto')
+	g.auto_str_funcs.writeln('static string indent_${str_fn_name}(${def_arg}, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(${info.size} * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _SLIT("["));')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < ${info.size}; ++i) {')

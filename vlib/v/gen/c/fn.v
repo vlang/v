@@ -1474,7 +1474,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write(', ${array_depth}')
 	}
 	g.write(')')
-	if !node.return_type.has_flag(.option) && g.table.type_kind(node.return_type) == .array_fixed {
+	if node.return_type != 0 && !node.return_type.has_flag(.option)
+		&& g.table.sym(node.return_type).kind == .array_fixed {
 		// it's non-option fixed array, requires accessing .ret_arr member to get the array
 		g.write('.ret_arr')
 	}
@@ -1780,8 +1781,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			if name != '&' {
 				g.write(')')
 			}
-			if !node.return_type.has_flag(.option)
-				&& g.table.type_kind(node.return_type) == .array_fixed {
+			if node.return_type != 0 && !node.return_type.has_flag(.option)
+				&& g.table.sym(node.return_type).kind == .array_fixed {
 				// it's non-option fixed array, requires accessing .ret_arr member to get the array
 				g.write('.ret_arr')
 			}
