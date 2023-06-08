@@ -10,7 +10,7 @@ import v.token
 
 const (
 	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
-		'compile_warn']
+		'compile_warn', 'res']
 	comptime_types           = ['map', 'array', 'int', 'float', 'struct', 'interface', 'enum',
 		'sumtype', 'alias', 'function', 'option']
 )
@@ -97,7 +97,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 	start_pos := p.tok.pos()
 	p.check(.dollar)
-	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$vweb.html()`, `\$compile_error()` and `\$compile_warn()` comptime functions are supported right now'
+	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$vweb.html()`, `\$compile_error()`, `\$compile_warn()` and `\$res()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		name := p.check_name() // skip `vweb.html()` TODO
 		if name != 'vweb' {
@@ -127,6 +127,28 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			is_env: method_name == 'env'
 			is_pkgconfig: method_name == 'pkgconfig'
 			env_pos: start_pos
+			pos: start_pos.extend(p.prev_tok.pos())
+		}
+	} else if method_name == 'res' {
+		mut has_args := false
+		mut type_index := ''
+		if p.tok.kind == .number {
+			has_args = true
+			type_index = p.tok.lit
+			p.check(.number)
+		}
+		p.check(.rpar)
+		if has_args {
+			return ast.ComptimeCall{
+				scope: 0
+				method_name: method_name
+				args_var: type_index
+				pos: start_pos.extend(p.prev_tok.pos())
+			}
+		}
+		return ast.ComptimeCall{
+			scope: 0
+			method_name: method_name
 			pos: start_pos.extend(p.prev_tok.pos())
 		}
 	}
