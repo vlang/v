@@ -1893,7 +1893,8 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 				}
 			}
 			styp = g.base_type(g.unwrap_generic(ret_typ))
-			g.writeln('${g.typ(g.unwrap_generic(ret_typ)).replace('*', '_ptr')} ${tmp_var};')
+			ret_styp := g.typ(g.unwrap_generic(ret_typ)).replace('*', '_ptr')
+			g.writeln('${ret_styp} ${tmp_var};')
 		} else {
 			g.writeln('${g.typ(ret_typ)} ${tmp_var};')
 		}
