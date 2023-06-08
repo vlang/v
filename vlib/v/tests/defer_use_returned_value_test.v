@@ -6,15 +6,15 @@ mut:
 
 fn (mut test Test) with_single_return() int {
 	defer {
-		test.a = $res('')
+		test.a = $res()
 	}
 	return 41
 }
 
 fn (mut test Test) with_multi_return() (int, string) {
 	defer {
-		test.a = $res('0')
-		test.b = $res('1')
+		test.a = $res(0)
+		test.b = $res(1)
 	}
 	return 41, 'foo'
 }

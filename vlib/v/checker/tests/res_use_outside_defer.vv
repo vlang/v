@@ -1,4 +1,4 @@
 fn test() string {
-	println($res(''))
+	println($res())
 	return 'test'
 }

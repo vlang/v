@@ -1,6 +1,6 @@
 fn test() (string, string) {
 	defer {
-		println($res('2'))
+		println($res(2))
 	}
 	return 'test', 'test2'
 }

@@ -1965,7 +1965,7 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 			f.write("\$${node.method_name}('${node.args_var}')")
 		} else if node.method_name == 'res' {
 			if node.args_var != '' {
-				f.write("\$res('${node.args_var}')")
+				f.write('\$res(${node.args_var})')
 			} else {
 				f.write('\$res()')
 			}
