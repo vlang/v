@@ -1874,7 +1874,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 	}
 
 	stmt_str := g.go_before_stmt(0).trim_space()
-	styp := g.base_type(ret_typ)
+	mut styp := g.base_type(ret_typ)
 	g.empty_line = true
 
 	if g.table.sym(expr_typ).kind == .none_ {
@@ -1882,7 +1882,21 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		g.gen_option_error(ret_typ, expr)
 		g.writeln(';')
 	} else {
-		g.writeln('${g.typ(ret_typ)} ${tmp_var};')
+		if ret_typ.has_flag(.generic) {
+			if expr is ast.SelectorExpr && g.cur_concrete_types.len == 0 {
+				if expr.expr is ast.Ident {
+					if (expr.expr as ast.Ident).obj is ast.Var {
+						if ((expr.expr as ast.Ident).obj as ast.Var).expr is ast.StructInit {
+							g.cur_concrete_types << (g.table.sym((expr.expr as ast.Ident).obj.typ).info as ast.Struct).concrete_types
+						}
+					}
+				}
+			}
+			styp = g.base_type(g.unwrap_generic(ret_typ))
+			g.writeln('${g.typ(g.unwrap_generic(ret_typ)).replace('*', '_ptr')} ${tmp_var};')
+		} else {
+			g.writeln('${g.typ(ret_typ)} ${tmp_var};')
+		}
 		if ret_typ.has_flag(.option) {
 			if expr_typ.has_flag(.option) && expr in [ast.StructInit, ast.ArrayInit, ast.MapInit] {
 				g.write('_option_none(&(${styp}[]) { ')
@@ -3669,9 +3683,13 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			return
 		}
 	}
-	field_is_opt := node.expr is ast.Ident && (node.expr as ast.Ident).is_auto_heap()
-		&& (node.expr as ast.Ident).or_expr.kind != .absent && field_typ.has_flag(.option)
-	if field_is_opt {
+	// var?.field_opt
+	field_is_opt := (node.expr is ast.Ident && (node.expr as ast.Ident).is_auto_heap()
+		&& (node.expr as ast.Ident).or_expr.kind != .absent && field_typ.has_flag(.option))
+	// var.field_opt
+	only_field_is_opt := (node.expr is ast.Ident && !node.expr_type.is_ptr()
+		&& !node.expr_type.has_flag(.option) && field_typ.is_ptr() && field_typ.has_flag(.option))
+	if field_is_opt || only_field_is_opt {
 		g.write('((${g.base_type(field_typ)})')
 	}
 	n_ptr := node.expr_type.nr_muls() - 1
@@ -3727,6 +3745,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	if sym.kind in [.interface_, .sum_type] {
 		g.write('))')
+	}
+	if only_field_is_opt {
+		g.write('.data)')
 	}
 }
 
