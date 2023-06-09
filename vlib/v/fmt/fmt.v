@@ -391,37 +391,45 @@ fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 	prev_line_nr := prev_node.pos().last_line
 	// The nodes are Stmts
 	if node is ast.Stmt && prev_node is ast.Stmt {
-		stmt := node
-		prev_stmt := prev_node
-		// Force a newline after a block of HashStmts
-		if prev_stmt is ast.HashStmt && stmt !in [ast.HashStmt, ast.ExprStmt] {
-			return true
-		}
-		// Force a newline after function declarations
-		// The only exception is inside an block of no_body functions
-		if prev_stmt is ast.FnDecl {
-			if stmt !is ast.FnDecl || !prev_stmt.no_body {
+		match prev_node {
+			// Force a newline after a block of HashStmts
+			ast.HashStmt {
+				if node !in [ast.HashStmt, ast.ExprStmt] {
+					return true
+				}
+			}
+			// Force a newline after function declarations
+			// The only exception is inside an block of no_body functions
+			ast.FnDecl {
+				if node !is ast.FnDecl || !prev_node.no_body {
+					return true
+				}
+			}
+			// Force a newline after struct declarations
+			ast.StructDecl {
 				return true
 			}
+			// Empty line after a block of type declarations
+			ast.TypeDecl {
+				if node !is ast.TypeDecl {
+					return true
+				}
+			}
+			// Imports are handled special hence they are ignored here
+			ast.Import {
+				return false
+			}
+			else {}
 		}
-		// Force a newline after struct declarations
-		if prev_stmt is ast.StructDecl {
-			return true
-		}
-		// Empty line after an block of type declarations
-		if prev_stmt is ast.TypeDecl && stmt !is ast.TypeDecl {
-			return true
-		}
-		// Imports are handled special hence they are ignored here
-		if stmt is ast.Import || prev_stmt is ast.Import {
-			return false
-		}
-		match stmt {
+		match node {
 			// Attributes are not respected in the stmts position, so this requires manual checking
 			ast.StructDecl, ast.EnumDecl, ast.FnDecl {
-				if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
+				if node.attrs.len > 0 && node.attrs[0].pos.line_nr - prev_line_nr <= 1 {
 					return false
 				}
+			}
+			ast.Import {
+				return false
 			}
 			else {}
 		}
