@@ -1277,7 +1277,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.get_free_method(rec_type)
 	}
 	mut has_cast := false
-	if left_sym.kind == .map && node.name in ['clone', 'move'] {
+	if final_left_sym.kind == .map && node.name in ['clone', 'move'] {
 		receiver_type_name = 'map'
 	}
 	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name))
