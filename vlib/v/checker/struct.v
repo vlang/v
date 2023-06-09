@@ -586,6 +586,16 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 							field.expr.pos)
 					}
 				}
+
+				// all the fields of initialized embedded struct are ignored, they are considered initialized
+				sym := c.table.sym(field.typ)
+				if field.name.len > 0 && field.name[0].is_capital() && sym.kind == .struct_
+					&& sym.language == .v {
+					struct_fields := c.table.struct_fields(sym)
+					for struct_field in struct_fields {
+						inited_fields << struct_field.name
+					}
+				}
 			}
 			// Check uninitialized refs/sum types
 			// The variable `fields` contains two parts, the first part is the same as info.fields,
