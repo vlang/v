@@ -1288,7 +1288,7 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 }
 
 pub fn (mut f Fmt) interface_field(field ast.StructField) {
-	mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
+	ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 	end_pos := field.pos.pos + field.pos.len
 	before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
 	between_comments := field.comments[before_comments.len..].filter(it.pos.pos < end_pos)
@@ -1823,7 +1823,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		} else if node.language != .v {
 			f.write('${node.name.after_char(`.`)}')
 		} else {
-			mut name := f.short_module(node.name)
+			name := f.short_module(node.name)
 			f.mark_import_as_used(name)
 			f.write('${name}')
 		}
