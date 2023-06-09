@@ -416,21 +416,14 @@ fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 		if stmt is ast.Import || prev_stmt is ast.Import {
 			return false
 		}
-		// Attributes are not respected in the stmts position, so this requires manual checking
-		if stmt is ast.StructDecl {
-			if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
-				return false
+		match stmt {
+			// Attributes are not respected in the stmts position, so this requires manual checking
+			ast.StructDecl, ast.EnumDecl, ast.FnDecl {
+				if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
+					return false
+				}
 			}
-		}
-		if stmt is ast.EnumDecl {
-			if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
-				return false
-			}
-		}
-		if stmt is ast.FnDecl {
-			if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
-				return false
-			}
+			else {}
 		}
 	}
 	// The node shouldn't have a newline before
