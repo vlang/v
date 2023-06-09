@@ -1952,36 +1952,42 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 			f.write('\$tmpl(${node.args[0].expr})')
 		}
 	} else {
-		if node.is_embed {
-			if node.embed_file.compression_type == 'none' {
-				f.write('\$embed_file(${node.args[0].expr})')
-			} else {
-				f.write('\$embed_file(${node.args[0].expr}, .${node.embed_file.compression_type})')
-			}
-		} else if node.is_env {
-			f.write("\$env('${node.args_var}')")
-		} else if node.is_pkgconfig {
-			f.write("\$pkgconfig('${node.args_var}')")
-		} else if node.method_name in ['compile_error', 'compile_warn'] {
-			f.write("\$${node.method_name}('${node.args_var}')")
-		} else {
-			inner_args := if node.args_var != '' {
-				node.args_var
-			} else {
-				node.args.map(if it.expr is ast.ArrayDecompose {
-					'...${it.expr.expr.str()}'
+		match true {
+			node.is_embed {
+				if node.embed_file.compression_type == 'none' {
+					f.write('\$embed_file(${node.args[0].expr})')
 				} else {
-					it.str()
-				}).join(', ')
+					f.write('\$embed_file(${node.args[0].expr}, .${node.embed_file.compression_type})')
+				}
 			}
-			method_expr := if node.has_parens {
-				'(${node.method_name}(${inner_args}))'
-			} else {
-				'${node.method_name}(${inner_args})'
+			node.is_env {
+				f.write("\$env('${node.args_var}')")
 			}
-			f.expr(node.left)
-			f.write('.$${method_expr}')
-			f.or_expr(node.or_block)
+			node.is_pkgconfig {
+				f.write("\$pkgconfig('${node.args_var}')")
+			}
+			node.method_name in ['compile_error', 'compile_warn'] {
+				f.write("\$${node.method_name}('${node.args_var}')")
+			}
+			else {
+				inner_args := if node.args_var != '' {
+					node.args_var
+				} else {
+					node.args.map(if it.expr is ast.ArrayDecompose {
+						'...${it.expr.expr.str()}'
+					} else {
+						it.str()
+					}).join(', ')
+				}
+				method_expr := if node.has_parens {
+					'(${node.method_name}(${inner_args}))'
+				} else {
+					'${node.method_name}(${inner_args})'
+				}
+				f.expr(node.left)
+				f.write('.$${method_expr}')
+				f.or_expr(node.or_block)
+			}
 		}
 	}
 }
@@ -2629,14 +2635,12 @@ pub fn (mut f Fmt) prefix_expr(node ast.PrefixExpr) {
 			if node.right.expr.op in [.key_in, .not_in, .key_is, .not_is]
 				&& node.right.expr.right !is ast.InfixExpr {
 				f.expr(node.right.expr.left)
-				if node.right.expr.op == .key_in {
-					f.write(' !in ')
-				} else if node.right.expr.op == .not_in {
-					f.write(' in ')
-				} else if node.right.expr.op == .key_is {
-					f.write(' !is ')
-				} else if node.right.expr.op == .not_is {
-					f.write(' is ')
+				match node.right.expr.op {
+					.key_in { f.write(' !in ') }
+					.not_in { f.write(' in ') }
+					.key_is { f.write(' !is ') }
+					.not_is { f.write(' is ') }
+					else {}
 				}
 				f.expr(node.right.expr.right)
 				return

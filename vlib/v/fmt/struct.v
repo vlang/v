@@ -79,38 +79,46 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 	mut default_expr_align_i := 0
 	mut inc_indent := false // for correct indents with multi line default exprs
 	for i, field in node.fields {
-		if i == node.mut_pos {
-			f.writeln('mut:')
-		} else if i == node.pub_pos {
-			f.writeln('pub:')
-		} else if i == node.pub_mut_pos {
-			f.writeln('pub mut:')
-		} else if i == node.global_pos {
-			f.writeln('__global:')
-		} else if i == node.module_pos {
-			f.writeln('module:')
-		} else if i > 0 {
-			// keep one empty line between fields (exclude one after mut:, pub:, ...)
-			last_field := node.fields[i - 1]
-			before_last_line := if last_field.comments.len > 0
-				&& last_field.pos.line_nr < last_field.comments.last().pos.last_line {
-				last_field.comments.last().pos.last_line
-			} else if last_field.has_default_expr {
-				last_field.default_expr.pos().last_line
-			} else {
-				last_field.pos.line_nr
+		match true {
+			i == node.mut_pos {
+				f.writeln('mut:')
 			}
+			i == node.pub_pos {
+				f.writeln('pub:')
+			}
+			i == node.pub_mut_pos {
+				f.writeln('pub mut:')
+			}
+			i == node.global_pos {
+				f.writeln('__global:')
+			}
+			i == node.module_pos {
+				f.writeln('module:')
+			}
+			i > 0 {
+				// keep one empty line between fields (exclude one after mut:, pub:, ...)
+				last_field := node.fields[i - 1]
+				before_last_line := if last_field.comments.len > 0
+					&& last_field.pos.line_nr < last_field.comments.last().pos.last_line {
+					last_field.comments.last().pos.last_line
+				} else if last_field.has_default_expr {
+					last_field.default_expr.pos().last_line
+				} else {
+					last_field.pos.line_nr
+				}
 
-			next_first_line := if field.comments.len > 0
-				&& field.pos.line_nr > field.comments[0].pos.line_nr {
-				field.comments[0].pos.line_nr
-			} else {
-				field.pos.line_nr
-			}
+				next_first_line := if field.comments.len > 0
+					&& field.pos.line_nr > field.comments[0].pos.line_nr {
+					field.comments[0].pos.line_nr
+				} else {
+					field.pos.line_nr
+				}
 
-			if next_first_line - before_last_line > 1 {
-				f.writeln('')
+				if next_first_line - before_last_line > 1 {
+					f.writeln('')
+				}
 			}
+			else {}
 		}
 		end_pos := field.pos.pos + field.pos.len
 		before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
