@@ -39,8 +39,6 @@ fn C.picoev_deinit() int
 const (
 	max_fds     = 1024
 	max_timeout = 10
-	max_read    = 4096
-	max_write   = 8192
 )
 
 enum Event {
@@ -60,6 +58,8 @@ pub:
 	user_data    voidptr = unsafe { nil }
 	timeout_secs int     = 8
 	max_headers  int     = 100
+	max_read     int     = 4096
+	max_write    int     = 8192
 }
 
 struct Picoev {
@@ -69,6 +69,8 @@ struct Picoev {
 	user_data    voidptr
 	timeout_secs int
 	max_headers  int
+	max_read     int
+	max_write    int
 mut:
 	date &u8 = unsafe { nil }
 	buf  &u8 = unsafe { nil }
@@ -114,14 +116,14 @@ fn rw_callback(loop &C.picoev_loop, fd int, events int, context voidptr) {
 		// Request init
 		mut buf := p.buf
 		unsafe {
-			buf += fd * picoev.max_read // pointer magic
+			buf += fd * p.max_read // pointer magic
 		}
 		mut req := picohttpparser.Request{}
 
 		// Response init
 		mut out := p.out
 		unsafe {
-			out += fd * picoev.max_write // pointer magic
+			out += fd * p.max_write // pointer magic
 		}
 		mut res := picohttpparser.Response{
 			fd: fd
@@ -132,7 +134,7 @@ fn rw_callback(loop &C.picoev_loop, fd int, events int, context voidptr) {
 
 		for {
 			// Request parsing loop
-			r := req_read(fd, buf, picoev.max_read, p.idx[fd]) // Get data from socket
+			r := req_read(fd, buf, p.max_read, p.idx[fd]) // Get data from socket
 			if r == 0 {
 				// connection closed by peer
 				close_conn(loop, fd)
@@ -234,9 +236,11 @@ pub fn new(config Config) &Picoev {
 		user_data: config.user_data
 		timeout_secs: config.timeout_secs
 		max_headers: config.max_headers
+		max_read: config.max_read
+		max_write: config.max_write
 		date: &u8(C.get_date())
-		buf: unsafe { malloc_noscan(picoev.max_fds * picoev.max_read + 1) }
-		out: unsafe { malloc_noscan(picoev.max_fds * picoev.max_write + 1) }
+		buf: unsafe { malloc_noscan(picoev.max_fds * config.max_read + 1) }
+		out: unsafe { malloc_noscan(picoev.max_fds * config.max_write + 1) }
 	}
 
 	C.picoev_add(voidptr(loop), fd, int(Event.read), 0, accept_callback, pv)

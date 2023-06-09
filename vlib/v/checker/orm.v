@@ -7,8 +7,8 @@ import v.token
 import v.util
 
 const (
-	fkey_attr_name            = 'fkey'
 	v_orm_prefix              = 'V ORM'
+	fkey_attr_name            = 'fkey'
 	connection_interface_name = 'orm.Connection'
 )
 
@@ -23,35 +23,31 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	if !c.check_db_expr(node.db_expr) {
 		return ast.void_type
 	}
+
+	// To avoid panics while working with `table_expr`,
+	// it is necessary to check if its type exists.
 	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return ast.void_type }
-	sym := c.table.sym(node.table_expr.typ)
+	table_sym := c.table.sym(node.table_expr.typ)
+
+	if !c.check_orm_table_expr_type(node.table_expr) {
+		return ast.void_type
+	}
 
 	old_ts := c.cur_orm_ts
-	c.cur_orm_ts = *sym
+	c.cur_orm_ts = *table_sym
 	defer {
 		c.cur_orm_ts = old_ts
 	}
-	if sym.info !is ast.Struct {
-		c.orm_error('the table symbol `${sym.name}` has to be a struct', node.table_expr.pos)
-		return ast.void_type
-	}
-	info := sym.info as ast.Struct
-	mut fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, sym.name)
+
+	info := table_sym.info as ast.Struct
+	mut fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
+	non_primitive_fields := c.get_orm_non_primitive_fields(fields)
 	mut sub_structs := map[int]ast.SqlExpr{}
 
-	for f in fields.filter((c.table.type_symbols[int(it.typ)].kind == .struct_
-		|| (c.table.sym(it.typ).kind == .array
-		&& c.table.sym(c.table.sym(it.typ).array_info().elem_type).kind == .struct_))
-		&& c.table.get_type_name(it.typ) != 'time.Time') {
-		typ := if c.table.sym(f.typ).kind == .struct_ {
-			f.typ
-		} else if c.table.sym(f.typ).kind == .array {
-			c.table.sym(f.typ).array_info().elem_type
-		} else {
-			ast.Type(0)
-		}
+	for field in non_primitive_fields {
+		typ := c.get_type_of_field_with_related_table(field)
 
-		mut n := ast.SqlExpr{
+		mut subquery_expr := ast.SqlExpr{
 			pos: node.pos
 			has_where: true
 			where_expr: ast.None{}
@@ -65,12 +61,12 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		}
 
 		tmp_inside_sql := c.inside_sql
-		c.sql_expr(mut n)
+		c.sql_expr(mut subquery_expr)
 		c.inside_sql = tmp_inside_sql
 
-		n.where_expr = ast.InfixExpr{
+		subquery_expr.where_expr = ast.InfixExpr{
 			op: .eq
-			pos: n.pos
+			pos: subquery_expr.pos
 			left: ast.Ident{
 				language: .v
 				tok_kind: .eq
@@ -99,7 +95,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			or_block: ast.OrExpr{}
 		}
 
-		sub_structs[int(typ)] = n
+		sub_structs[int(typ)] = subquery_expr
 	}
 
 	if node.is_count {
@@ -117,20 +113,20 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	if node.has_where {
 		c.expr(node.where_expr)
 		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&node.where_expr)
-		c.check_where_expr_has_no_pointless_exprs(sym, field_names, &node.where_expr)
+		c.check_where_expr_has_no_pointless_exprs(table_sym, field_names, &node.where_expr)
 	}
 
 	if node.has_order {
 		if mut node.order_expr is ast.Ident {
 			order_ident_name := node.order_expr.name
 
-			if !sym.has_field(order_ident_name) {
-				c.orm_error(util.new_suggestion(order_ident_name, field_names).say('`${sym.name}` structure has no field with name `${order_ident_name}`'),
+			if !table_sym.has_field(order_ident_name) {
+				c.orm_error(util.new_suggestion(order_ident_name, field_names).say('`${table_sym.name}` structure has no field with name `${order_ident_name}`'),
 					node.order_expr.pos)
 				return ast.void_type
 			}
 		} else {
-			c.orm_error("expected `${sym.name}` structure's field", node.order_expr.pos())
+			c.orm_error("expected `${table_sym.name}` structure's field", node.order_expr.pos())
 			return ast.void_type
 		}
 
@@ -175,13 +171,22 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	defer {
 		c.inside_sql = false
 	}
+
+	// To avoid panics while working with `table_expr`,
+	// it is necessary to check if its type exists.
 	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return ast.void_type }
 	table_sym := c.table.sym(node.table_expr.typ)
+
+	if !c.check_orm_table_expr_type(node.table_expr) {
+		return ast.void_type
+	}
+
 	old_ts := c.cur_orm_ts
 	c.cur_orm_ts = *table_sym
 	defer {
 		c.cur_orm_ts = old_ts
 	}
+
 	inserting_object_name := node.object_var_name
 
 	if node.kind == .insert && !node.is_generated {
@@ -212,32 +217,26 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	info := table_sym.info as ast.Struct
 	mut fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
 	mut sub_structs := map[int]ast.SqlStmtLine{}
-	for f in fields.filter((c.table.type_symbols[int(it.typ)].kind == .struct_
-		|| (c.table.sym(it.typ).kind == .array
-		&& c.table.sym(c.table.sym(it.typ).array_info().elem_type).kind == .struct_))
-		&& c.table.get_type_name(it.typ) != 'time.Time') {
+	non_primitive_fields := c.get_orm_non_primitive_fields(fields)
+
+	for field in non_primitive_fields {
 		// Delete an uninitialized struct from fields and skip adding the current field
 		// to sub structs to skip inserting an empty struct in the related table.
-		if c.check_field_of_inserting_struct_is_uninitialized(node, f.name) {
-			fields.delete(fields.index(f))
+		if c.check_field_of_inserting_struct_is_uninitialized(node, field.name) {
+			fields.delete(fields.index(field))
 			continue
 		}
 
-		c.check_orm_struct_field_attributes(f)
+		c.check_orm_struct_field_attributes(field)
 
-		typ := if c.table.sym(f.typ).kind == .struct_ {
-			f.typ
-		} else if c.table.sym(f.typ).kind == .array {
-			c.table.sym(f.typ).array_info().elem_type
-		} else {
-			ast.Type(0)
-		}
+		typ := c.get_type_of_field_with_related_table(field)
 
-		mut object_var_name := '${node.object_var_name}.${f.name}'
-		if typ != f.typ {
+		mut object_var_name := '${node.object_var_name}.${field.name}'
+		if typ != field.typ {
 			object_var_name = node.object_var_name
 		}
-		mut n := ast.SqlStmtLine{
+
+		mut subquery_expr := ast.SqlStmtLine{
 			pos: node.pos
 			kind: node.kind
 			table_expr: ast.TypeNode{
@@ -247,27 +246,34 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			object_var_name: object_var_name
 			is_generated: true
 		}
+
 		tmp_inside_sql := c.inside_sql
-		c.sql_stmt_line(mut n)
+		c.sql_stmt_line(mut subquery_expr)
 		c.inside_sql = tmp_inside_sql
-		sub_structs[typ] = n
+		sub_structs[typ] = subquery_expr
 	}
+
 	node.fields = fields
 	node.sub_structs = sub_structs.move()
+
 	for i, column in node.updated_columns {
-		x := node.fields.filter(it.name == column)
-		if x.len == 0 {
+		updated_fields := node.fields.filter(it.name == column)
+
+		if updated_fields.len == 0 {
 			c.orm_error('type `${table_sym.name}` has no field named `${column}`', node.pos)
 			continue
 		}
-		field := x[0]
+
+		field := updated_fields.first()
 		node.updated_columns[i] = c.fetch_field_name(field)
 	}
+
 	if node.kind == .update {
 		for expr in node.update_exprs {
 			c.expr(expr)
 		}
 	}
+
 	if node.where_expr !is ast.EmptyExpr {
 		c.expr(node.where_expr)
 	}
@@ -322,19 +328,22 @@ fn (mut c Checker) check_orm_struct_field_attributes(field ast.StructField) {
 }
 
 fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, table_name string) []ast.StructField {
-	fields := info.fields.filter(
-		(it.typ in [ast.string_type, ast.bool_type] || int(it.typ) in ast.number_type_idxs
-		|| c.table.type_symbols[int(it.typ)].kind == .struct_
-		|| (c.table.sym(it.typ).kind == .array
-		&& c.table.sym(c.table.sym(it.typ).array_info().elem_type).kind == .struct_))
-		&& !it.attrs.contains('skip'))
+	fields := info.fields.filter(fn [mut c] (field ast.StructField) bool {
+		is_primitive := field.typ.is_string() || field.typ.is_bool() || field.typ.is_number()
+		is_struct := c.table.type_symbols[int(field.typ)].kind == .struct_
+		is_array := c.table.sym(field.typ).kind == .array
+		is_array_with_struct_elements := is_array
+			&& c.table.sym(c.table.sym(field.typ).array_info().elem_type).kind == .struct_
+		has_no_skip_attr := !field.attrs.contains('skip')
+
+		return (is_primitive || is_struct || is_array_with_struct_elements) && has_no_skip_attr
+	})
+
 	if fields.len == 0 {
 		c.orm_error('select: empty fields in `${table_name}`', pos)
 		return []ast.StructField{}
 	}
-	if fields[0].name != 'id' {
-		c.orm_error('`id int` must be the first field in `${table_name}`', pos)
-	}
+
 	return fields
 }
 
@@ -513,6 +522,7 @@ fn (mut c Checker) check_orm_or_expr(expr ORMExpr) {
 	}
 }
 
+// check_db_expr checks the `db_expr` implements `orm.Connection` and has no `option` flag.
 fn (mut c Checker) check_db_expr(db_expr &ast.Expr) bool {
 	connection_type_index := c.table.find_type_idx(checker.connection_interface_name)
 	connection_typ := ast.Type(connection_type_index)
@@ -537,6 +547,60 @@ fn (mut c Checker) check_db_expr(db_expr &ast.Expr) bool {
 	return true
 }
 
+fn (mut c Checker) check_orm_table_expr_type(type_node &ast.TypeNode) bool {
+	table_sym := c.table.sym(type_node.typ)
+
+	if table_sym.info !is ast.Struct {
+		c.orm_error('the table symbol `${table_sym.name}` has to be a struct', type_node.pos)
+
+		return false
+	}
+
+	return true
+}
+
+// get_type_of_field_with_related_table gets the type of table in which
+// the primary key is used as the foreign key in the current table.
+// For example, if you are using `[]Child`, the related table type would be `Child`.
+fn (c &Checker) get_type_of_field_with_related_table(table_field &ast.StructField) ast.Type {
+	if c.table.sym(table_field.typ).kind == .struct_ {
+		return table_field.typ
+	} else if c.table.sym(table_field.typ).kind == .array {
+		return c.table.sym(table_field.typ).array_info().elem_type
+	} else {
+		return ast.Type(0)
+	}
+}
+
+// get_orm_non_primitive_fields filters the table fields by selecting only
+// non-primitive fields such as arrays and structs.
+fn (c &Checker) get_orm_non_primitive_fields(fields []ast.StructField) []ast.StructField {
+	return fields.filter(fn [c] (field ast.StructField) bool {
+		type_with_no_option_flag := field.typ.clear_flag(.option)
+		is_struct := c.table.type_symbols[int(type_with_no_option_flag)].kind == .struct_
+		is_array := c.table.sym(type_with_no_option_flag).kind == .array
+		is_array_with_struct_elements := is_array
+			&& c.table.sym(c.table.sym(type_with_no_option_flag).array_info().elem_type).kind == .struct_
+		is_time := c.table.get_type_name(type_with_no_option_flag) == 'time.Time'
+
+		return (is_struct || is_array_with_struct_elements) && !is_time
+	})
+}
+
+// walkingdevel: Now I don't think it's a good solution
+// because it only checks structure initialization,
+// but structure fields may be updated later before inserting.
+// For example,
+// ```v
+// mut package := Package{
+// 	name: 'xml'
+// }
+//
+// package.author = User{
+// 	username: 'walkingdevel'
+// }
+// ```
+// TODO: rewrite it, move to runtime.
 fn (_ &Checker) check_field_of_inserting_struct_is_uninitialized(node &ast.SqlStmtLine, field_name string) bool {
 	struct_scope := node.scope.find_var(node.object_var_name) or { return false }
 

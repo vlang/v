@@ -6,9 +6,8 @@ module context
 
 import time
 
-// An EmptyContext is never canceled, has no values, and has no deadline. It is not
-// struct{}, since vars of this type must have distinct addresses.
-pub type EmptyContext = int
+// An EmptyContext is never canceled, has no values.
+pub struct EmptyContext {}
 
 pub fn (ctx &EmptyContext) deadline() ?time.Time {
 	return none
@@ -16,9 +15,7 @@ pub fn (ctx &EmptyContext) deadline() ?time.Time {
 
 pub fn (ctx &EmptyContext) done() chan int {
 	ch := chan int{}
-	defer {
-		ch.close()
-	}
+	ch.close()
 	return ch
 }
 
@@ -31,11 +28,42 @@ pub fn (ctx &EmptyContext) value(key Key) ?Any {
 }
 
 pub fn (ctx &EmptyContext) str() string {
-	if ctx == background {
-		return 'context.Background'
-	}
-	if ctx == todo {
-		return 'context.TODO'
-	}
 	return 'unknown empty Context'
+}
+
+// A BackgroundContext is never canceled, has no values.
+struct BackgroundContext {
+	EmptyContext
+}
+
+// str returns a string describing the Context.
+pub fn (ctx &BackgroundContext) str() string {
+	return 'context.Background'
+}
+
+// background returns an empty Context. It is never canceled, has no
+// values, and has no deadline. It is typically used by the main function,
+// initialization, and tests, and as the top-level Context for incoming
+// requests.
+pub fn background() Context {
+	return &BackgroundContext{}
+}
+
+// A TodoContext is never canceled, has no values, and has no deadline. It is
+// never used for real work.
+struct TodoContext {
+	EmptyContext
+}
+
+// str returns a string describing the Context.
+pub fn (ctx &TodoContext) str() string {
+	return 'context.TODO'
+}
+
+// todo returns an empty Context. Code should use todo when
+// it's unclear which Context to use or it is not yet available (because the
+// surrounding function has not yet been extended to accept a Context
+// parameter).
+pub fn todo() Context {
+	return &TodoContext{}
 }

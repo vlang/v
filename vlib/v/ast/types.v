@@ -193,6 +193,7 @@ pub:
 	is_multi_allowed bool
 	uses_exprs       bool
 	typ              Type
+	attrs            map[string][]Attr
 }
 
 [minify]
@@ -225,6 +226,7 @@ pub:
 	size_expr Expr // used by fmt for e.g. ´[my_const]u8´
 pub mut:
 	elem_type Type
+	is_fn_ret bool
 }
 
 pub struct Chan {

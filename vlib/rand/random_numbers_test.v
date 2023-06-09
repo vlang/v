@@ -192,6 +192,31 @@ fn test_rand_u8() {
 	assert all[0] != all[128]
 }
 
+fn test_rand_u16() {
+	mut all := []u16{}
+	mut same_as_previous := 0
+	mut previous := u16(0)
+	for _ in 0 .. 65536 {
+		x := rand.u16()
+		assert x >= 0
+		assert x <= 65535
+		all << x
+		if previous == x {
+			same_as_previous++
+			// dump(previous)
+			// dump(x)
+		}
+		previous = x
+	}
+	assert same_as_previous < 1000
+	all.sort(a < b)
+	assert all[0] != all[65535]
+	assert all[0] != all[32768]
+	// dump( all[0] )
+	// dump( all[65535] )
+	// dump( all[32768] )
+}
+
 const (
 	string_count = 25
 )

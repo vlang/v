@@ -8,6 +8,7 @@ import os.cmdline
 import os
 import v.vcache
 import rand
+// import net.http // TODO can't use net.http on arm maccs: bignum.c arm asm error
 
 pub enum BuildMode {
 	// `v program.v'
@@ -223,6 +224,7 @@ pub mut:
 	assert_failure_mode AssertFailureMode     // whether to call abort() or print_backtrace() after an assertion failure
 	message_limit       int = 150 // the maximum amount of warnings/errors/notices that will be accumulated
 	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
+	use_coroutines      bool // experimental coroutines
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
 	thread_stack_size                     int = 8388608 // Change with `-thread-stack-size 4194304`. Note: on macos it was 524288, which is too small for more complex programs with many nested callexprs.
@@ -797,6 +799,26 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-cmain' {
 				res.cmain = cmdline.option(current_args, '-cmain', '')
 				i++
+			}
+			'-use-coroutines' {
+				res.use_coroutines = true
+				$if macos {
+					arch := $if arm64 { 'arm64' } $else { 'amd64' }
+					vexe := vexe_path()
+					vroot := os.dir(vexe)
+					so_path := os.join_path(vroot, 'thirdparty', 'photon', 'photonwrapper.so')
+					so_url := 'https://github.com/vlang/photonbin/raw/master/photonwrapper_macos_${arch}.so'
+					if !os.exists(so_path) {
+						println('coroutines .so not found, downloading...')
+						// http.download_file(so_url, so_path) or { panic(err) }
+						os.execute_or_panic('wget -O "${so_path}" "${so_url}"')
+						println('done!')
+					}
+					res.compile_defines << 'is_coroutine'
+					res.compile_defines_all << 'is_coroutine'
+				} $else {
+					println('coroutines only work on macos for now')
+				}
 			}
 			else {
 				if command == 'build' && is_source_file(arg) {

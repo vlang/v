@@ -7,7 +7,7 @@ import v.ast
 import v.vet
 import v.token
 
-pub fn (mut p Parser) expr(precedence int) ast.Expr {
+fn (mut p Parser) expr(precedence int) ast.Expr {
 	return p.check_expr(precedence) or {
 		if token.is_decl(p.tok.kind) && p.disallow_declarations_in_script_mode() {
 			return ast.empty_expr
@@ -16,7 +16,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	}
 }
 
-pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
+fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 	p.trace_parser('expr(${precedence})')
 	mut node := ast.empty_expr
 	is_stmt_ident := p.is_stmt_ident
@@ -37,12 +37,7 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		.key_mut, .key_shared, .key_atomic, .key_static, .key_volatile {
 			ident := p.ident(ast.Language.v)
 			node = ident
-			if p.inside_defer {
-				if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
-					&& ident.name != 'err' {
-					p.defer_vars << ident
-				}
-			}
+			p.add_defer_var(ident)
 			p.is_stmt_ident = is_stmt_ident
 		}
 		.name, .question {
@@ -117,9 +112,15 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			}
 		}
 		.key_go, .key_spawn {
-			mut go_expr := p.go_expr()
-			go_expr.is_expr = true
-			node = go_expr
+			if (p.pref.use_coroutines || p.pref.is_fmt) && p.tok.kind == .key_go {
+				mut go_expr := p.go_expr()
+				go_expr.is_expr = true
+				node = go_expr
+			} else {
+				mut spawn_expr := p.spawn_expr()
+				spawn_expr.is_expr = true
+				node = spawn_expr
+			}
 		}
 		.key_true, .key_false {
 			node = ast.BoolLiteral{
@@ -461,7 +462,7 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 	return p.expr_with_left(node, precedence, is_stmt_ident)
 }
 
-pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bool) ast.Expr {
+fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bool) ast.Expr {
 	mut node := left
 	if p.inside_asm && p.prev_tok.pos().line_nr < p.tok.pos().line_nr {
 		return node
@@ -481,10 +482,13 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 				return node
 			}
 			p.is_stmt_ident = is_stmt_ident
-		} else if p.tok.kind in [.lsbr, .nilsbr] && (p.tok.line_nr == p.prev_tok.line_nr
-			|| (p.prev_tok.kind == .string
+		} else if left !is ast.IntegerLiteral && p.tok.kind in [.lsbr, .nilsbr]
+			&& (p.tok.line_nr == p.prev_tok.line_nr || (p.prev_tok.kind == .string
 			&& p.tok.line_nr == p.prev_tok.line_nr + p.prev_tok.lit.count('\n'))) {
-			if p.tok.kind == .nilsbr {
+			if p.peek_tok.kind == .question && p.peek_token(2).kind == .name {
+				p.next()
+				p.error_with_pos('cannot use Option type name as concrete type', p.tok.pos())
+			} else if p.tok.kind == .nilsbr {
 				node = p.index_expr(node, true)
 			} else {
 				node = p.index_expr(node, false)

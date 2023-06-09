@@ -12,7 +12,6 @@ import v.util
 import v.util.version
 import v.errors
 import v.pkgconfig
-import v.checker.constants
 
 const (
 	int_min                  = int(0x80000000)
@@ -643,6 +642,13 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 			return '', expr.pos
 		}
 		ast.ComptimeSelector {
+			if mut expr.left is ast.Ident {
+				if mut expr.left.obj is ast.Var {
+					if expr.left.obj.ct_type_var != .generic_param {
+						c.fail_if_immutable(expr.left)
+					}
+				}
+			}
 			return '', expr.pos
 		}
 		ast.Ident {
@@ -1531,6 +1537,13 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 			}
 			c.error('duplicate const `${field.name}`', name_pos)
 		}
+		if field.expr is ast.CallExpr {
+			sym := c.table.sym(c.check_expr_opt_call(field.expr, c.expr(field.expr)))
+			if sym.kind == .multi_return {
+				c.error('const declarations do not support multiple return values yet',
+					field.expr.pos)
+			}
+		}
 		c.const_names << field.name
 	}
 	for i, mut field in node.fields {
@@ -1627,8 +1640,12 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 			signed, enum_umin, enum_umax = false, 0, 0xFFFF_FFFF_FFFF_FFFF
 		}
 		else {
-			c.error('`${senum_type}` is not one of `i8`,`i16`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`',
-				node.typ_pos)
+			if senum_type == 'i32' {
+				signed, enum_imin, enum_imax = true, -2_147_483_648, 0x7FFF_FFFF
+			} else {
+				c.error('`${senum_type}` is not one of `i8`,`i16`,`i32`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`',
+					node.typ_pos)
+			}
 		}
 	}
 	if enum_imin > 0 {
@@ -1811,7 +1828,7 @@ fn (mut c Checker) stmt(node_ ast.Stmt) {
 			for i, ident in node.defer_vars {
 				mut id := ident
 				if mut id.info is ast.IdentVar {
-					if id.comptime && id.name in constants.valid_comptime_not_user_defined {
+					if id.comptime && id.name in ast.valid_comptime_not_user_defined {
 						node.defer_vars[i] = ast.Ident{
 							scope: 0
 							name: ''
@@ -2519,12 +2536,18 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 
 			unwrapped_expr_type := c.unwrap_generic(node.expr_type)
 			tsym := c.table.sym(unwrapped_expr_type)
+			if tsym.kind == .array_fixed {
+				info := tsym.info as ast.ArrayFixed
+				// for dumping fixed array we must registed the fixed array struct to return from function
+				c.table.find_or_register_array_fixed(info.elem_type, info.size, info.size_expr,
+					true)
+			}
 			type_cname := if node.expr_type.has_flag(.option) {
 				'_option_${tsym.cname}'
 			} else {
 				tsym.cname
 			}
-			c.table.dumps[int(unwrapped_expr_type.clear_flag(.result))] = type_cname
+			c.table.dumps[int(unwrapped_expr_type.clear_flag(.result).clear_flag(.atomic_f))] = type_cname
 			node.cname = type_cname
 			return node.expr_type
 		}
@@ -2536,6 +2559,9 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		}
 		ast.GoExpr {
 			return c.go_expr(mut node)
+		}
+		ast.SpawnExpr {
+			return c.spawn_expr(mut node)
 		}
 		ast.Ident {
 			return c.ident(mut node)
@@ -3234,6 +3260,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		return typ
 	} else if node.kind == .function {
 		info := node.info as ast.IdentFn
+		if func := c.table.find_fn(node.name) {
+			if func.generic_names.len > 0 {
+				concrete_types := node.concrete_types.map(c.unwrap_generic(it))
+				c.table.register_fn_concrete_types(func.fkey(), concrete_types)
+			}
+		}
 		return info.typ
 	} else if node.kind == .unresolved {
 		// first use
@@ -3390,11 +3422,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			mut fn_type := ast.new_type(c.table.find_or_register_fn_type(func, false,
 				true))
 			if func.generic_names.len > 0 {
+				concrete_types := node.concrete_types.map(c.unwrap_generic(it))
 				if typ_ := c.table.resolve_generic_to_concrete(fn_type, func.generic_names,
-					node.concrete_types)
+					concrete_types)
 				{
 					fn_type = typ_
-					c.table.register_fn_concrete_types(func.fkey(), node.concrete_types)
+					c.table.register_fn_concrete_types(func.fkey(), concrete_types)
 				}
 			}
 			node.name = name
@@ -4178,7 +4211,13 @@ fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 	fsym := c.table.final_sym(typ)
 	if fsym.kind != .enum_ && !c.pref.translated && !c.file.is_translated {
 		// TODO in C int fields can be compared to enums, need to handle that in C2V
-		c.error('expected type is not an enum (`${typ_sym.name}`)', node.pos)
+		if typ_sym.kind == .placeholder {
+			// If it's a placeholder, the type doesn't exist, print
+			// an error that makes sense here.
+			c.error('unknown type `${typ_sym.name}`', node.pos)
+		} else {
+			c.error('expected type is not an enum (`${typ_sym.name}`)', node.pos)
+		}
 		return ast.void_type
 	}
 	if fsym.info !is ast.Enum {

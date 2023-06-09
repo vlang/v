@@ -52,7 +52,7 @@ pub fn (mut req Request) add_custom_header(key string, val string) ! {
 	return req.header.add_custom(key, val)
 }
 
-// do will send the HTTP request and returns `http.Response` as soon as the response is recevied
+// do will send the HTTP request and returns `http.Response` as soon as the response is received
 pub fn (req &Request) do() !Response {
 	mut url := urllib.parse(req.url) or { return error('http.Request.do: invalid url ${req.url}') }
 	mut rurl := url

@@ -202,6 +202,14 @@ pub fn (mut re RE) find(in_txt string) (int, int) {
 					re.groups[gi] += i
 					gi++
 				}
+				// when ^ (f_ms) is used, it must match on beginning of string
+				if (re.flag & f_ms) != 0 && s > 0 {
+					break
+				}
+				// when $ (f_me) is used, it must match on ending of string
+				if (re.flag & f_me) != 0 && i + e < in_txt.len {
+					break
+				}
 				return i + s, i + e
 			}
 			i++

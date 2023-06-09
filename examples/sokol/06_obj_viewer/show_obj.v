@@ -133,7 +133,7 @@ fn draw_model(app App, model_pos m4.Vec4) u32 {
 	z_light := f32(math.sin(time_ticks) * radius_light)
 
 	mut tmp_fs_params := obj.Tmp_fs_param{}
-	tmp_fs_params.ligth = m4.vec3(x_light, radius_light, z_light)
+	tmp_fs_params.light = m4.vec3(x_light, radius_light, z_light)
 
 	sd := obj.Shader_data{
 		vs_data: unsafe { &tmp_vs_param }
@@ -166,7 +166,7 @@ fn frame(mut app App) {
 	// render the data
 	draw_start_glsl(app)
 	draw_model(app, m4.Vec4{})
-	// uncoment if you want a raw benchmark mode
+	// uncomment if you want a raw benchmark mode
 	/*
 	mut n_vertex_drawn := u32(0)
 	n_x_obj := 20

@@ -804,7 +804,6 @@ fn (t Tree) sum_type_decl(node ast.SumTypeDecl) &Node {
 	obj.add('pos', t.pos(node.pos))
 	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add_terse('generic_types', t.array_node_type(node.generic_types))
-	obj.add('comments', t.array_node_comment(node.comments))
 	obj.add_terse('variants', t.array_node_type_expr(node.variants))
 	obj.add('name_pos', t.pos(node.name_pos))
 	return obj
@@ -1002,6 +1001,7 @@ fn (t Tree) comptime_call(node ast.ComptimeCall) &Node {
 	obj.add_terse('env_value', t.string_node(node.env_value))
 	obj.add('pos', t.pos(node.pos))
 	obj.add_terse('args', t.array_node_call_arg(node.args))
+	obj.add_terse('or_block', t.or_expr(node.or_block))
 	return obj
 }
 
@@ -1165,6 +1165,9 @@ fn (t Tree) expr(expr ast.Expr) &Node {
 		}
 		ast.GoExpr {
 			return t.go_expr(expr)
+		}
+		ast.SpawnExpr {
+			return t.spawn_expr(expr)
 		}
 		ast.OffsetOf {
 			return t.offset_of(expr)
@@ -1856,6 +1859,15 @@ fn (t Tree) array_decompose(expr ast.ArrayDecompose) &Node {
 fn (t Tree) go_expr(expr ast.GoExpr) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('GoExpr'))
+	obj.add_terse('call_expr', t.call_expr(expr.call_expr))
+	obj.add_terse('is_expr', t.bool_node(expr.is_expr))
+	obj.add('pos', t.pos(expr.pos))
+	return obj
+}
+
+fn (t Tree) spawn_expr(expr ast.SpawnExpr) &Node {
+	mut obj := new_object()
+	obj.add_terse('ast_type', t.string_node('SpawnExpr'))
 	obj.add_terse('call_expr', t.call_expr(expr.call_expr))
 	obj.add_terse('is_expr', t.bool_node(expr.is_expr))
 	obj.add('pos', t.pos(expr.pos))

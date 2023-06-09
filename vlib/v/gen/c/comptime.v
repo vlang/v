@@ -161,7 +161,8 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 		}
 
-		if !g.inside_call && (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
+		if !g.inside_call && node.or_block.kind != .block
+			&& (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
 			g.write('(*(${g.base_type(m.return_type)}*)')
 		}
 		// TODO: check argument types
@@ -222,8 +223,19 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 		}
 		g.write(')')
-		if !g.inside_call && (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
+		if !g.inside_call && node.or_block.kind != .block
+			&& (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
 			g.write('.data)')
+		}
+		if node.or_block.kind != .absent
+			&& (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
+			if !g.inside_assign {
+				cur_line := g.go_before_stmt(0)
+				tmp_var := g.new_tmp_var()
+				g.write('${g.typ(m.return_type)} ${tmp_var} = ')
+				g.write(cur_line)
+				g.or_block(tmp_var, node.or_block, m.return_type)
+			}
 		}
 		return
 	}
@@ -941,6 +953,15 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 						g.writeln('_const_main__${g.comptime_enum_field_value};')
 					} else {
 						g.writeln('${g.typ(g.comptime_for_field_type)}__${g.comptime_enum_field_value};')
+					}
+					enum_attrs := sym.info.attrs[val]
+					if enum_attrs.len == 0 {
+						g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
+					} else {
+						attrs := cgen_attrs(enum_attrs)
+						g.writeln(
+							'\t${node.val_var}.attrs = new_array_from_c_array(${attrs.len}, ${attrs.len}, sizeof(string), _MOV((string[${attrs.len}]){' +
+							attrs.join(', ') + '}));\n')
 					}
 					g.stmts(node.stmts)
 					g.writeln('}')

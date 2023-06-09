@@ -54,6 +54,7 @@ pub type Expr = AnonFn
 	| SelectExpr
 	| SelectorExpr
 	| SizeOf
+	| SpawnExpr
 	| SqlExpr
 	| StringInterLiteral
 	| StringLiteral
@@ -114,7 +115,8 @@ pub struct TypeNode {
 pub:
 	pos token.Pos
 pub mut:
-	typ Type
+	typ          Type
+	end_comments []Comment // comments that after current type node
 }
 
 pub enum ComptimeTypeKind {
@@ -635,11 +637,25 @@ pub:
 	pos         token.Pos
 	name        string
 	is_mut      bool
+	is_shared   bool
+	is_atomic   bool
 	is_auto_rec bool
 	type_pos    token.Pos
 	is_hidden   bool // interface first arg
 pub mut:
 	typ Type
+}
+
+pub fn (p &Param) specifier() string {
+	if p.is_shared {
+		return 'shared'
+	} else if p.is_atomic {
+		return 'atomic'
+	} else if p.is_mut {
+		return 'mut'
+	} else {
+		return ''
+	}
 }
 
 pub fn (f &Fn) new_method_with_receiver_type(new_type Type) Fn {
@@ -944,6 +960,17 @@ pub mut:
 	is_mut         bool // if mut *token* is before name. Use `is_mut()` to lookup mut variable
 	or_expr        OrExpr
 	concrete_types []Type
+}
+
+pub fn (i &Ident) is_auto_heap() bool {
+	match i.obj {
+		Var {
+			return i.obj.is_auto_heap
+		}
+		else {
+			return false
+		}
+	}
 }
 
 pub fn (i &Ident) is_mut() bool {
@@ -1282,6 +1309,7 @@ pub:
 	comments      []Comment // comment after Enumfield in the same line
 	next_comments []Comment // comments between current EnumField and next EnumField
 	has_expr      bool      // true, when .expr has a value
+	attrs         []Attr
 pub mut:
 	expr Expr // the value of current EnumField; 123 in `ename = 123`
 }
@@ -1320,7 +1348,6 @@ pub:
 	is_pub        bool
 	pos           token.Pos
 	name_pos      token.Pos
-	comments      []Comment
 	typ           Type
 	generic_types []Type
 	attrs         []Attr // attributes of type declaration
@@ -1364,6 +1391,15 @@ pub mut:
 
 [minify]
 pub struct GoExpr {
+pub:
+	pos token.Pos
+pub mut:
+	call_expr CallExpr
+	is_expr   bool
+}
+
+[minify]
+pub struct SpawnExpr {
 pub:
 	pos token.Pos
 pub mut:
@@ -1830,6 +1866,7 @@ pub:
 	is_env       bool
 	env_pos      token.Pos
 	is_pkgconfig bool
+	or_block     OrExpr
 pub mut:
 	left_type   Type
 	result_type Type
@@ -1932,10 +1969,11 @@ pub fn (expr Expr) pos() token.Pos {
 		}
 		NodeError, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr,
 		CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector,
-		EnumVal, DumpExpr, FloatLiteral, GoExpr, Ident, IfExpr, IntegerLiteral, IsRefType, Likely,
-		LockExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr,
-		RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral,
-		StructInit, TypeNode, TypeOf, UnsafeExpr, ComptimeType, Nil {
+		EnumVal, DumpExpr, FloatLiteral, GoExpr, SpawnExpr, Ident, IfExpr, IntegerLiteral,
+		IsRefType, Likely, LockExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr,
+		PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr,
+		StringInterLiteral, StringLiteral, StructInit, TypeNode, TypeOf, UnsafeExpr, ComptimeType,
+		Nil {
 			return expr.pos
 		}
 		IndexExpr {

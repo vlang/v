@@ -158,6 +158,7 @@ pub mut:
 	conn              &net.TcpConn = unsafe { nil }
 	static_files      map[string]string
 	static_mime_types map[string]string
+	static_hosts      map[string]string
 	// Map containing query params for the route.
 	// http://localhost:3000/index?q=vpm&order_by=desc => { 'q': 'vpm', 'order_by': 'desc' }
 	query map[string]string
@@ -183,6 +184,7 @@ struct Route {
 	methods    []http.Method
 	path       string
 	middleware string
+	host       string
 }
 
 // Defining this method is optional.
@@ -256,6 +258,10 @@ pub fn (mut ctx Context) json_pretty[T](j T) Result {
 // TODO - test
 // Response HTTP_OK with file as payload
 pub fn (mut ctx Context) file(f_path string) Result {
+	if !os.exists(f_path) {
+		eprintln('[vweb] file ${f_path} does not exist')
+		return ctx.not_found()
+	}
 	ext := os.file_ext(f_path)
 	data := os.read_file(f_path) or {
 		eprint(err.msg())
@@ -395,7 +401,7 @@ fn generate_routes[T](app &T) !map[string]Route {
 	// Parsing methods attributes
 	mut routes := map[string]Route{}
 	$for method in T.methods {
-		http_methods, route_path, middleware := parse_attrs(method.name, method.attrs) or {
+		http_methods, route_path, middleware, host := parse_attrs(method.name, method.attrs) or {
 			return error('error parsing method attributes: ${err}')
 		}
 
@@ -403,16 +409,20 @@ fn generate_routes[T](app &T) !map[string]Route {
 			methods: http_methods
 			path: route_path
 			middleware: middleware
+			host: host
 		}
 	}
 	return routes
 }
 
-type ControllerHandler = fn (ctx Context, mut url urllib.URL, tid int)
+type ControllerHandler = fn (ctx Context, mut url urllib.URL, host string, tid int)
 
 pub struct ControllerPath {
+pub:
 	path    string
 	handler ControllerHandler
+pub mut:
+	host string
 }
 
 interface ControllerInterface {
@@ -420,7 +430,7 @@ interface ControllerInterface {
 }
 
 pub struct Controller {
-mut:
+pub mut:
 	controllers []&ControllerPath
 }
 
@@ -432,14 +442,21 @@ pub fn controller[T](path string, global_app &T) &ControllerPath {
 	// no need to type `ControllerHandler` as generic since it's not needed for closures
 	return &ControllerPath{
 		path: path
-		handler: fn [global_app, path, routes] [T](ctx Context, mut url urllib.URL, tid int) {
+		handler: fn [global_app, path, routes] [T](ctx Context, mut url urllib.URL, host string, tid int) {
 			// request_app is freed in `handle_route`
 			mut request_app := new_request_app[T](global_app, ctx, tid)
 			// transform the url
 			url.path = url.path.all_after_first(path)
-			handle_route[T](mut request_app, url, &routes, tid)
+			handle_route[T](mut request_app, url, host, &routes, tid)
 		}
 	}
+}
+
+// controller_host generates a controller which only handles incoming requests from the `host` domain
+pub fn controller_host[T](host string, path string, global_app &T) &ControllerPath {
+	mut ctrl := controller(path, global_app)
+	ctrl.host = host
+	return ctrl
 }
 
 // run - start a new VWeb server, listening to all available addresses, at the specified `port`
@@ -481,12 +498,14 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	$if T is ControllerInterface {
 		mut paths := []string{}
 		for controller in global_app.controllers {
-			paths << controller.path
+			if controller.host == '' {
+				paths << controller.path
+			}
 		}
 		for method_name, route in routes {
 			for controller_path in paths {
 				if route.path.starts_with(controller_path) {
-					return error('method "${method_name}" with route "${route.path}" should be handled by the Controller of "${controller_path}"')
+					return error('conflicting paths: method "${method_name}" with route "${route.path}" should be handled by the Controller of path "${controller_path}"')
 				}
 			}
 		}
@@ -560,6 +579,7 @@ fn new_request_app[T](global_app &T, ctx Context, tid int) &T {
 	// copy static files
 	request_app.Context.static_files = global_app.static_files.clone()
 	request_app.Context.static_mime_types = global_app.static_mime_types.clone()
+	request_app.Context.static_hosts = global_app.static_hosts.clone()
 
 	return request_app
 }
@@ -616,6 +636,10 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route,
 		return
 	}
 
+	// remove the port from the HTTP Host header
+	host_with_port := req.header.get(.host) or { '' }
+	host, _ := urllib.split_host_port(host_with_port)
+
 	// Create Context with request data
 	ctx := Context{
 		req: req
@@ -629,20 +653,24 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route,
 	// match controller paths
 	$if T is ControllerInterface {
 		for controller in global_app.controllers {
+			// skip controller if the hosts don't match
+			if controller.host != '' && host != controller.host {
+				continue
+			}
 			if url.path.len >= controller.path.len && url.path.starts_with(controller.path) {
 				// pass route handling to the controller
-				controller.handler(ctx, mut url, tid)
+				controller.handler(ctx, mut url, host, tid)
 				return
 			}
 		}
 	}
 
 	mut request_app := new_request_app(global_app, ctx, tid)
-	handle_route(mut request_app, url, routes, tid)
+	handle_route(mut request_app, url, host, routes, tid)
 }
 
 [manualfree]
-fn handle_route[T](mut app T, url urllib.URL, routes &map[string]Route, tid int) {
+fn handle_route[T](mut app T, url urllib.URL, host string, routes &map[string]Route, tid int) {
 	defer {
 		unsafe {
 			free(app)
@@ -668,7 +696,7 @@ fn handle_route[T](mut app T, url urllib.URL, routes &map[string]Route, tid int)
 	}
 
 	// Static handling
-	if serve_if_static[T](mut app, url) {
+	if serve_if_static[T](mut app, url, host) {
 		// successfully served a static file
 		return
 	}
@@ -686,70 +714,77 @@ fn handle_route[T](mut app T, url urllib.URL, routes &map[string]Route, tid int)
 				// Used for route matching
 				route_words := route.path.split('/').filter(it != '')
 
-				// Route immediate matches first
-				// For example URL `/register` matches route `/:user`, but `fn register()`
-				// should be called first.
-				if !route.path.contains('/:') && url_words == route_words {
-					// We found a match
-					$if T is MiddlewareInterface {
-						if validate_middleware(mut app, url.path) == false {
-							return
+				// Skip if the host does not match or is empty
+				if route.host == '' || route.host == host {
+					// Route immediate matches first
+					// For example URL `/register` matches route `/:user`, but `fn register()`
+					// should be called first.
+					if !route.path.contains('/:') && url_words == route_words {
+						// We found a match
+						$if T is MiddlewareInterface {
+							if validate_middleware(mut app, url.path) == false {
+								return
+							}
 						}
+
+						if app.req.method == .post && method.args.len > 0 {
+							// Populate method args with form values
+							mut args := []string{cap: method.args.len}
+							for param in method.args {
+								args << app.form[param.name]
+							}
+
+							if route.middleware == '' {
+								app.$method(args)
+							} else if validate_app_middleware(mut app, route.middleware,
+								method.name)
+							{
+								app.$method(args)
+							}
+						} else {
+							if route.middleware == '' {
+								app.$method()
+							} else if validate_app_middleware(mut app, route.middleware,
+								method.name)
+							{
+								app.$method()
+							}
+						}
+						return
 					}
 
-					if app.req.method == .post && method.args.len > 0 {
-						// Populate method args with form values
-						mut args := []string{cap: method.args.len}
-						for param in method.args {
-							args << app.form[param.name]
+					if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
+						$if T is MiddlewareInterface {
+							if validate_middleware(mut app, url.path) == false {
+								return
+							}
 						}
-
-						if route.middleware == '' {
-							app.$method(args)
-						} else if validate_app_middleware(mut app, route.middleware, method.name) {
-							app.$method(args)
-						}
-					} else {
 						if route.middleware == '' {
 							app.$method()
 						} else if validate_app_middleware(mut app, route.middleware, method.name) {
 							app.$method()
 						}
+						return
 					}
-					return
-				}
 
-				if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
-					$if T is MiddlewareInterface {
-						if validate_middleware(mut app, url.path) == false {
-							return
+					if params := route_matches(url_words, route_words) {
+						method_args := params.clone()
+						if method_args.len != method.args.len {
+							eprintln('[vweb] tid: ${tid:03d}, warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the vweb route `${method.attrs}` (${method_args.len})')
 						}
-					}
-					if route.middleware == '' {
-						app.$method()
-					} else if validate_app_middleware(mut app, route.middleware, method.name) {
-						app.$method()
-					}
-					return
-				}
 
-				if params := route_matches(url_words, route_words) {
-					method_args := params.clone()
-					if method_args.len != method.args.len {
-						eprintln('[vweb] tid: ${tid:03d}, warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the vweb route `${method.attrs}` (${method_args.len})')
-					}
-
-					$if T is MiddlewareInterface {
-						if validate_middleware(mut app, url.path) == false {
-							return
+						$if T is MiddlewareInterface {
+							if validate_middleware(mut app, url.path) == false {
+								return
+							}
 						}
+						if route.middleware == '' {
+							app.$method(method_args)
+						} else if validate_app_middleware(mut app, route.middleware, method.name) {
+							app.$method(method_args)
+						}
+						return
 					}
-					if route.middleware == '' {
-						app.$method(method_args)
-					} else if validate_app_middleware(mut app, route.middleware, method.name) {
-						app.$method(method_args)
-					}
-					return
 				}
 			}
 		}
@@ -846,11 +881,15 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 // check if request is for a static file and serves it
 // returns true if we served a static file, false otherwise
 [manualfree]
-fn serve_if_static[T](mut app T, url urllib.URL) bool {
+fn serve_if_static[T](mut app T, url urllib.URL, host string) bool {
 	// TODO: handle url parameters properly - for now, ignore them
 	static_file := app.static_files[url.path] or { return false }
 	mime_type := app.static_mime_types[url.path] or { return false }
+	static_host := app.static_hosts[url.path] or { '' }
 	if static_file == '' || mime_type == '' {
+		return false
+	}
+	if static_host != '' && static_host != host {
 		return false
 	}
 	data := os.read_file(static_file) or {
@@ -862,19 +901,21 @@ fn serve_if_static[T](mut app T, url urllib.URL) bool {
 	return true
 }
 
-fn (mut ctx Context) scan_static_directory(directory_path string, mount_path string) {
+fn (mut ctx Context) scan_static_directory(directory_path string, mount_path string, host string) {
 	files := os.ls(directory_path) or { panic(err) }
 	if files.len > 0 {
 		for file in files {
 			full_path := os.join_path(directory_path, file)
 			if os.is_dir(full_path) {
-				ctx.scan_static_directory(full_path, mount_path.trim_right('/') + '/' + file)
+				ctx.scan_static_directory(full_path, mount_path.trim_right('/') + '/' + file,
+					host)
 			} else if file.contains('.') && !file.starts_with('.') && !file.ends_with('.') {
 				ext := os.file_ext(file)
 				// Rudimentary guard against adding files not in mime_types.
-				// Use serve_static directly to add non-standard mime types.
+				// Use host_serve_static directly to add non-standard mime types.
 				if ext in vweb.mime_types {
-					ctx.serve_static(mount_path.trim_right('/') + '/' + file, full_path)
+					ctx.host_serve_static(host, mount_path.trim_right('/') + '/' + file,
+						full_path)
 				}
 			}
 		}
@@ -890,6 +931,18 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 // app.handle_static('assets', true)
 // ```
 pub fn (mut ctx Context) handle_static(directory_path string, root bool) bool {
+	return ctx.host_handle_static('', directory_path, root)
+}
+
+// host_handle_static is used to mark a folder (relative to the current working folder)
+// as one that contains only static resources (css files, images etc).
+// If `root` is set the mount path for the dir will be in '/'
+// Usage:
+// ```v
+// os.chdir( os.executable() )?
+// app.host_handle_static('localhost', 'assets', true)
+// ```
+pub fn (mut ctx Context) host_handle_static(host string, directory_path string, root bool) bool {
 	if ctx.done || !os.exists(directory_path) {
 		return false
 	}
@@ -899,7 +952,7 @@ pub fn (mut ctx Context) handle_static(directory_path string, root bool) bool {
 		// Mount point hygene, "./assets" => "/assets".
 		mount_path = '/' + dir_path.trim_left('.').trim('/')
 	}
-	ctx.scan_static_directory(dir_path, mount_path)
+	ctx.scan_static_directory(dir_path, mount_path, host)
 	return true
 }
 
@@ -909,13 +962,22 @@ pub fn (mut ctx Context) handle_static(directory_path string, root bool) bool {
 // and you have a file /var/share/myassets/main.css .
 // => That file will be available at URL: http://server/assets/main.css .
 pub fn (mut ctx Context) mount_static_folder_at(directory_path string, mount_path string) bool {
+	return ctx.host_mount_static_folder_at('', directory_path, mount_path)
+}
+
+// TODO - test
+// host_mount_static_folder_at - makes all static files in `directory_path` and inside it, available at http://host/mount_path
+// For example: suppose you have called .host_mount_static_folder_at('localhost', '/var/share/myassets', '/assets'),
+// and you have a file /var/share/myassets/main.css .
+// => That file will be available at URL: http://localhost/assets/main.css .
+pub fn (mut ctx Context) host_mount_static_folder_at(host string, directory_path string, mount_path string) bool {
 	if ctx.done || mount_path.len < 1 || mount_path[0] != `/` || !os.exists(directory_path) {
 		return false
 	}
 	dir_path := directory_path.trim_right('/')
 
 	trim_mount_path := mount_path.trim_left('/').trim_right('/')
-	ctx.scan_static_directory(dir_path, '/${trim_mount_path}')
+	ctx.scan_static_directory(dir_path, '/${trim_mount_path}', host)
 	return true
 }
 
@@ -923,10 +985,19 @@ pub fn (mut ctx Context) mount_static_folder_at(directory_path string, mount_pat
 // Serves a file static
 // `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the file type
 pub fn (mut ctx Context) serve_static(url string, file_path string) {
+	ctx.host_serve_static('', url, file_path)
+}
+
+// TODO - test
+// Serves a file static
+// `url` is the access path on the site, `file_path` is the real path to the file
+// `mime_type` is the file type, `host` is the host to serve the file from
+pub fn (mut ctx Context) host_serve_static(host string, url string, file_path string) {
 	ctx.static_files[url] = file_path
 	// ctx.static_mime_types[url] = mime_type
 	ext := os.file_ext(file_path)
 	ctx.static_mime_types[url] = vweb.mime_types[ext]
+	ctx.static_hosts[url] = host
 }
 
 // Returns the ip address from the current user

@@ -251,6 +251,34 @@ pub fn (mut app App) controller_get_user_by_id() vweb.Result {
 	return app.text(app.query.str())
 }
 ```
+#### - Host
+To restrict an endpoint to a specific host, you can use the `host` attribute
+followed by a colon `:` and the host name. You can test the Host feature locally 
+by adding a host to the "hosts" file of your device.
+
+**Example:**
+
+```v ignore
+['/'; host: 'example.com']
+pub fn (mut app App) hello_web() vweb.Result {
+	return app.text('Hello World')
+}
+
+['/'; host: 'api.example.org']
+pub fn (mut app App) hello_api() vweb.Result {
+	return app.text('Hello API')
+}
+
+// define the handler without a host attribute last if you have conflicting paths.
+['/']
+pub fn (mut app App) hello_others() vweb.Result {
+	return app.text('Hello Others')
+}
+```
+
+You can also [create a controller](#hosts) to handle all requests from a specific
+host in one app.
+
 ### Middleware
 
 Vweb has different kinds of middleware.
@@ -336,7 +364,18 @@ pub fn (mut app App) check_auth () bool {
 	return true
 }
 ```
-For now you can only add 1 middleware to a route specific function via attributes.
+You can only add 1 middleware to a route specific function via attributes.
+
+#### Middleware evaluation order
+The middleware is executed in the following order:
+
+1. `before_request`
+2. The middleware in `app.middlewares`
+3. The middleware in the `[middleware]` attribute
+
+If any function of step 2 or 3 returns `false` the middleware functions that would
+come after it are not executed and the app handler will also not be executed. You 
+can think of it as a chain.
 
 ### Redirect
 
@@ -649,6 +688,43 @@ pub fn (mut app App) admin_path vweb.Result {
 ```
 There will be an error, because the controller `Admin` handles all routes starting with
 `"/admin"`; the method `admin_path` is unreachable.
+
+#### Hosts
+You can also set a host for a controller. All requests coming from that host will be handled
+by the controller.
+
+**Example:**
+```v
+module main
+
+import vweb
+
+struct App {
+	vweb.Context
+	vweb.Controller
+}
+
+pub fn (mut app App) index() vweb.Result {
+	return app.text('App')
+}
+
+struct Example {
+	vweb.Context
+}
+
+// You can only access this route at example.com: http://example.com/
+pub fn (mut app Example) index() vweb.Result {
+	return app.text('Example')
+}
+
+fn main() {
+	vweb.run(&App{
+		controllers: [
+			vweb.controller_host('example.com', '/', &Example{}),
+		]
+	}, 8080)
+}
+```
 
 #### Databases and `[vweb_global]` in controllers
 
@@ -969,7 +1045,8 @@ pub fn (mut app App) form_echo() vweb.Result {
 #### -handle_static
 
 handle_static is used to mark a folder (relative to the current working folder) as one that
-contains only static resources (css files, images etc).
+contains only static resources (css files, images etc).\
+host_handle_static can be used to limit the static resources to a specific host.
 
 If `root` is set the mount path for the dir will be in '/'
 
@@ -979,6 +1056,7 @@ If `root` is set the mount path for the dir will be in '/'
 fn main() {
     mut app := &App{}
     app.serve_static('/favicon.ico', 'favicon.ico')
+    // app.host_serve_static('localhost', '/favicon.ico', 'favicon.ico')
     // Automatically make available known static mime types found in given directory.
     os.chdir(os.dir(os.executable()))?
     app.handle_static('assets', true)
@@ -994,11 +1072,15 @@ For example: suppose you have called .mount_static_folder_at('/var/share/myasset
 and you have a file /var/share/myassets/main.css .
 => That file will be available at URL: http://server/assets/main.css .
 
+mount_static_folder_at can be used to limit the static resources to a specific host.
+
 #### -serve_static
 
 Serves a file static.
 `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the
 file type
+
+host_serve_static can be used to limit the static resources to a specific host.
 
 **Example:**
 
@@ -1006,6 +1088,7 @@ file type
 fn main() {
     mut app := &App{}
     app.serve_static('/favicon.ico', 'favicon.ico')
+    // app.host_serve_static('localhost', /favicon.ico', 'favicon.ico')
     app.mount_static_folder_at(os.resource_abs_path('.'), '/')
     vweb.run(app, 8081)
 }
@@ -1039,68 +1122,6 @@ pub fn (mut app App) error() vweb.Result {
 }
 ```
 # Cross-Site Request Forgery (CSRF) protection
-## Provides protection against Cross-Site Request Forgery 
 
-## Usage
-
-When building a csrf-protected service, first of all create a `struct`that implements `csrf.App`
-
-```v ignore
-module main
-
-import vweb
-import vweb.csrf
-
-// embeds the csrf.App struct in order to empower the struct to protect against CSRF
-struct App {
-	csrf.App
-}
-```
-
-Start a server e.g. in the main function.
-
-```v ignore
-fn main() {
-	vweb.run_at(&App{}, vweb.RunParams{
-        port: 8080
-    }) or { panic(err) }
-}
-```
-
-### Enable CSRF-protection
-
-Then add a handler-function to define on which route or on which site the CSRF-Token shall be set.
-
-```v ignore
-fn (mut app App) index() vweb.Result {
-
-    // Set a Csrf-Cookie (Token will be generated automatically)
-	app.set_csrf_cookie()
-
-	// Get the token-value from the csrf-cookie that was just set
-	token := app.get_csrf_token() or { panic(err) }
-
-	return app.text("Csrf-Token set! It's value is: $token")
-}
-```
-
-If you want to set the cookies's HttpOnly-status to false in order to make it  
- accessible to scripts on your site, you can do it like this:
-`app.set_csrf_cookie(csrf.HttpOnly{false})`
-If no argument is passed the value will be set to true by default.
-
-
-### Protect against CSRF
-
-If you want to protect a route or a site against CSRF just add  
-`app.csrf_protect()` at the beginning of the handler-function.
-
-```v ignore
-fn (mut app App) foo() vweb.Result {
-    // Protect this handler-function against CSRF
-	app.csrf_protect()
-	return app.text("Checked and passed csrf-guard")
-}
-```
-
-
+Vweb has built-in csrf protection. Go to the [csrf module](csrf/) to learn how 
+you can protect your app against CSRF.

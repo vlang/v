@@ -19,6 +19,8 @@ fn C.sigaction(int, voidptr, int) int
 
 fn C.open(&char, int, ...int) int
 
+fn C._wopen(&u16, int, ...int) int
+
 fn C.fdopen(fd int, mode &char) &C.FILE
 
 fn C.ferror(stream &C.FILE) int
@@ -145,12 +147,16 @@ pub fn read_file(path string) !string {
 // truncate changes the size of the file located in `path` to `len`.
 // Note that changing symbolic links on Windows only works as admin.
 pub fn truncate(path string, len u64) ! {
-	fp := C.open(&char(path.str), o_wronly | o_trunc, 0)
-	defer {
-		C.close(fp)
+	fp := $if windows {
+		C._wopen(path.to_wide(), o_wronly | o_trunc, 0)
+	} $else {
+		C.open(&char(path.str), o_wronly | o_trunc, 0)
 	}
 	if fp < 0 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+	}
+	defer {
+		C.close(fp)
 	}
 	$if windows {
 		if C._chsize_s(fp, len) != 0 {

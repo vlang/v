@@ -1,0 +1,4 @@
+struct St {}
+fn (shared b St) g() {}
+
+println('ok')

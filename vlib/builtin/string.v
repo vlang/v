@@ -725,15 +725,9 @@ fn (s string) + (a string) string {
 		str: unsafe { malloc_noscan(new_len + 1) }
 		len: new_len
 	}
-	for j in 0 .. s.len {
-		unsafe {
-			res.str[j] = s.str[j]
-		}
-	}
-	for j in 0 .. a.len {
-		unsafe {
-			res.str[s.len + j] = a.str[j]
-		}
+	unsafe {
+		vmemcpy(res.str, s.str, s.len)
+		vmemcpy(res.str + s.len, a.str, a.len)
 	}
 	unsafe {
 		res.str[new_len] = 0 // V strings are not null terminated, but just in case
@@ -1057,12 +1051,8 @@ pub fn (s string) substr(start int, end int) string {
 		str: unsafe { malloc_noscan(len + 1) }
 		len: len
 	}
-	for i in 0 .. len {
-		unsafe {
-			res.str[i] = s.str[start + i]
-		}
-	}
 	unsafe {
+		vmemcpy(res.str, s.str + start, len)
 		res.str[len] = 0
 	}
 	return res
@@ -1083,12 +1073,8 @@ pub fn (s string) substr_with_check(start int, end int) !string {
 		str: unsafe { malloc_noscan(len + 1) }
 		len: len
 	}
-	for i in 0 .. len {
-		unsafe {
-			res.str[i] = s.str[start + i]
-		}
-	}
 	unsafe {
+		vmemcpy(res.str, s.str + start, len)
 		res.str[len] = 0
 	}
 	return res
@@ -1120,14 +1106,7 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 	}
 
 	if start > s.len || end < start {
-		mut res := string{
-			str: unsafe { malloc_noscan(1) }
-			len: 0
-		}
-		unsafe {
-			res.str[0] = 0
-		}
-		return res
+		return ''
 	}
 
 	len := end - start
@@ -1137,12 +1116,8 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 		str: unsafe { malloc_noscan(len + 1) }
 		len: len
 	}
-	for i in 0 .. len {
-		unsafe {
-			res.str[i] = s.str[start + i]
-		}
-	}
 	unsafe {
+		vmemcpy(res.str, s.str + start, len)
 		res.str[len] = 0
 	}
 	return res
@@ -2077,10 +2052,8 @@ pub fn (s string) repeat(count int) string {
 	}
 	mut ret := unsafe { malloc_noscan(s.len * count + 1) }
 	for i in 0 .. count {
-		for j in 0 .. s.len {
-			unsafe {
-				ret[i * s.len + j] = s[j]
-			}
+		unsafe {
+			vmemcpy(ret + i * s.len, s.str, s.len)
 		}
 	}
 	new_len := s.len * count

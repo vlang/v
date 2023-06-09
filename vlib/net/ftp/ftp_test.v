@@ -1,6 +1,6 @@
 import net.ftp
 
-fn test_ftp_cleint() {
+fn test_ftp_client() {
 	$if !network ? {
 		return
 	}

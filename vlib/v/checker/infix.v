@@ -383,6 +383,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 		}
 		.gt, .lt, .ge, .le {
+			unwrapped_left_type := c.unwrap_generic(left_type)
+			left_sym = c.table.sym(unwrapped_left_type)
+			unwrapped_right_type := c.unwrap_generic(right_type)
+			right_sym = c.table.sym(unwrapped_right_type)
 			if left_sym.kind in [.array, .array_fixed] && right_sym.kind in [.array, .array_fixed] {
 				c.error('only `==` and `!=` are defined on arrays', node.pos)
 			} else if left_sym.kind == .struct_
@@ -392,8 +396,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			} else if left_sym.kind == .struct_ && right_sym.kind == .struct_
 				&& node.op in [.eq, .lt] {
 				if !(left_sym.has_method(node.op.str()) && right_sym.has_method(node.op.str())) {
-					left_name := c.table.type_to_str(left_type)
-					right_name := c.table.type_to_str(right_type)
+					left_name := c.table.type_to_str(unwrapped_left_type)
+					right_name := c.table.type_to_str(unwrapped_right_type)
 					if left_name == right_name {
 						if !(node.op == .lt && c.pref.translated) {
 							// Allow `&Foo < &Foo` in translated code.
@@ -670,7 +674,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				c.error('only `==`, `!=`, `|` and `&` are defined on `[flag]` tagged `enum`, use an explicit cast to `int` if needed',
 					node.pos)
 			}
-		} else if !c.pref.translated && !c.file.is_translated {
+		} else if !c.pref.translated && !c.file.is_translated && !left_type.has_flag(.generic)
+			&& !right_type.has_flag(.generic) {
 			// Regular enums
 			c.error('only `==` and `!=` are defined on `enum`, use an explicit cast to `int` if needed',
 				node.pos)

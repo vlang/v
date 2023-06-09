@@ -15,6 +15,11 @@ const (
 	empty_bytearr = []u8{} // used as empty response to avoid allocation
 )
 
+pub struct ClientState {
+pub mut:
+	state State = .closed // current state of connection
+}
+
 // Client represents websocket client
 pub struct Client {
 	is_server bool
@@ -36,8 +41,8 @@ pub mut:
 	header            http.Header  // headers that will be passed when connecting
 	conn              &net.TcpConn = unsafe { nil } // underlying TCP socket connection
 	nonce_size        int = 16 // size of nounce used for masking
-	panic_on_callback bool  // set to true of callbacks can panic
-	state             State // current state of connection
+	panic_on_callback bool // set to true of callbacks can panic
+	client_state      shared ClientState // current state of connection
 	// logger used to log messages
 	logger &log.Logger = &log.Logger(&log.Log{
 	level: .info
@@ -97,7 +102,9 @@ pub fn new_client(address string, opt ClientOpt) !&Client {
 		is_ssl: address.starts_with('wss')
 		logger: opt.logger
 		uri: uri
-		state: .closed
+		client_state: ClientState{
+			state: .closed
+		}
 		id: rand.uuid_v4()
 		header: http.new_header()
 		read_timeout: opt.read_timeout
@@ -124,20 +131,20 @@ pub fn (mut ws Client) listen() ! {
 	unsafe { log_msg.free() }
 	defer {
 		ws.logger.info('Quit client listener, server(${ws.is_server})...')
-		if ws.state == .open {
+		if ws.get_state() == .open {
 			ws.close(1000, 'closed by client') or {}
 		}
 	}
-	for ws.state == .open {
+	for ws.get_state() == .open {
 		msg := ws.read_next_message() or {
-			if ws.state in [.closed, .closing] {
+			if ws.get_state() in [.closed, .closing] {
 				return
 			}
 			ws.debug_log('failed to read next message: ${err}')
 			ws.send_error_event('failed to read next message: ${err}')
 			return err
 		}
-		if ws.state in [.closed, .closing] {
+		if ws.get_state() in [.closed, .closing] {
 			return
 		}
 		ws.debug_log('got message: ${msg.opcode}')
@@ -197,7 +204,7 @@ pub fn (mut ws Client) listen() ! {
 					if reason.len > 0 {
 						ws.validate_utf_8(.close, reason)!
 					}
-					if ws.state !in [.closing, .closed] {
+					if ws.get_state() !in [.closing, .closed] {
 						// sending close back according to spec
 						ws.debug_log('close with reason, code: ${code}, reason: ${reason}')
 						r := reason.bytestr()
@@ -205,7 +212,7 @@ pub fn (mut ws Client) listen() ! {
 					}
 					unsafe { msg.free() }
 				} else {
-					if ws.state !in [.closing, .closed] {
+					if ws.get_state() !in [.closing, .closed] {
 						ws.debug_log('close with reason, no code')
 						// sending close back according to spec
 						ws.close(1000, 'normal')!
@@ -242,7 +249,7 @@ pub fn (mut ws Client) pong() ! {
 // write_ptr writes len bytes provided a byteptr with a websocket messagetype
 pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
 	// ws.debug_log('write_ptr code: $code')
-	if ws.state != .open || ws.conn.sock.handle < 1 {
+	if ws.get_state() != .open || ws.conn.sock.handle < 1 {
 		// todo: send error here later
 		return error('trying to write on a closed socket!')
 	}
@@ -329,8 +336,9 @@ pub fn (mut ws Client) write_string(str string) !int {
 // close closes the websocket connection
 pub fn (mut ws Client) close(code int, message string) ! {
 	ws.debug_log('sending close, ${code}, ${message}')
-	if ws.state in [.closed, .closing] || ws.conn.sock.handle <= 1 {
-		ws.debug_log('close: Websocket already closed (${ws.state}), ${message}, ${code} handle(${ws.conn.sock.handle})')
+	ws_state := ws.get_state()
+	if ws_state in [.closed, .closing] || ws.conn.sock.handle <= 1 {
+		ws.debug_log('close: Websocket already closed (${ws_state}), ${message}, ${code} handle(${ws.conn.sock.handle})')
 		err_msg := 'Socket already closed: ${code}'
 		return error(err_msg)
 	}
@@ -362,7 +370,7 @@ pub fn (mut ws Client) close(code int, message string) ! {
 // send_control_frame sends a control frame to the server
 fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []u8) ! {
 	ws.debug_log('send control frame ${code}, frame_type: ${frame_typ}')
-	if ws.state !in [.open, .closing] && ws.conn.sock.handle > 1 {
+	if ws.get_state() !in [.open, .closing] && ws.conn.sock.handle > 1 {
 		return error('socket is not connected')
 	}
 	header_len := if ws.is_server { 2 } else { 6 }
@@ -446,15 +454,22 @@ fn parse_uri(url string) !&Uri {
 }
 
 // set_state sets current state of the websocket connection
-fn (mut ws Client) set_state(state State) {
-	lock {
-		ws.state = state
+pub fn (mut ws Client) set_state(state State) {
+	lock ws.client_state {
+		ws.client_state.state = state
+	}
+}
+
+// get_state return the current state of the websocket connection
+pub fn (ws Client) get_state() State {
+	return rlock ws.client_state {
+		ws.client_state.state
 	}
 }
 
 // assert_not_connected returns error if the connection is not connected
 fn (ws Client) assert_not_connected() ! {
-	match ws.state {
+	match ws.get_state() {
 		.connecting { return error('connect: websocket is connecting') }
 		.open { return error('connect: websocket already open') }
 		.closing { return error('connect: reconnect on closing websocket not supported, please use new client') }
@@ -463,9 +478,9 @@ fn (ws Client) assert_not_connected() ! {
 }
 
 // reset_state resets the websocket and initialize default settings
-fn (mut ws Client) reset_state() ! {
-	lock {
-		ws.state = .closed
+pub fn (mut ws Client) reset_state() ! {
+	lock ws.client_state {
+		ws.client_state.state = .closed
 		ws.ssl_conn = ssl.new_ssl_conn()!
 		ws.flags = []
 		ws.fragments = []

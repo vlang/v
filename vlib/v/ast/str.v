@@ -50,7 +50,11 @@ pub fn (node &AnonFn) stringify(t &Table, cur_mod string, m2a map[string]string)
 			if i > 0 {
 				f.write_string(', ')
 			}
-			if var.is_mut {
+			if var.is_shared {
+				f.write_string('shared ')
+			} else if var.is_atomic {
+				f.write_string('atomic ')
+			} else if var.is_mut {
 				f.write_string('mut ')
 			}
 			f.write_string(var.name)
@@ -399,6 +403,9 @@ pub fn (x Expr) str() string {
 		GoExpr {
 			return 'go ${x.call_expr}'
 		}
+		SpawnExpr {
+			return 'spawn ${x.call_expr}'
+		}
 		Ident {
 			return x.name.clone()
 		}
@@ -508,7 +515,7 @@ pub fn (x Expr) str() string {
 			return "'${x.val}'"
 		}
 		TypeNode {
-			return 'TypeNode(${x.typ})'
+			return 'TypeNode(${global_table.type_str(x.typ)})'
 		}
 		TypeOf {
 			if x.is_type {

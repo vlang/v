@@ -2,7 +2,7 @@
 // I follow literally code in C, done many years ago
 
 fn main() {
-	// Adjacency matrix as a map	
+	// Adjacency matrix as a map
 	// Example 01
 	graph_01 := {
 		'A': ['B', 'C']
@@ -44,7 +44,7 @@ fn depth_first_search_path(graph map[string][]string, start string, target strin
 
 		// check if this node is already visited
 		if visited[node] == false {
-			// if no ... test it searchin for a final node
+			// if no ... test it and search for a final node
 			visited[node] = true // means: node visited
 			if node == target {
 				path = build_path_reverse(graph, start, node, visited)
@@ -93,7 +93,7 @@ fn build_path_reverse(graph map[string][]string, start string, final string, vis
 		for i in array_of_nodes {
 			if current in graph[i] && visited[i] == true {
 				current = i
-				break // the first ocurrence is enough
+				break // the first occurrence is enough
 			}
 		}
 		path << current // updating the path tracked

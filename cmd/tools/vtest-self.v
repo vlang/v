@@ -86,8 +86,8 @@ const (
 		'do_not_remove',
 		'cmd/tools/vdoc/html_tag_escape_test.v', /* can't locate local module: markdown */
 		'cmd/tools/vdoc/tests/vdoc_file_test.v', /* fails on Windows; order of output is not as expected */
-		'vlib/context/onecontext/onecontext_test.v',
 		'vlib/context/deadline_test.v' /* sometimes blocks */,
+		'vlib/context/onecontext/onecontext_test.v' /* backtrace_symbols is missing. */,
 		'vlib/db/mysql/mysql_orm_test.v' /* mysql not installed */,
 		'vlib/db/pg/pg_orm_test.v' /* pg not installed */,
 	]
@@ -246,10 +246,6 @@ const (
 	]
 	skip_on_windows               = [
 		'do_not_remove',
-		'vlib/context/cancel_test.v',
-		'vlib/context/deadline_test.v',
-		'vlib/context/empty_test.v',
-		'vlib/context/value_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_joined_tables_select_test.v',

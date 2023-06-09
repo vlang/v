@@ -181,6 +181,10 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		// Check the README.md for detailed information.
 		skip_files << 'examples/call_v_from_c/v_test_print.v'
 		skip_files << 'examples/call_v_from_c/v_test_math.v'
+		// Skip the compilation of the coroutines example for now, since the Photon wrapper
+		// is only available on macos for now, and it is not yet trivial enough to
+		// build/install on the CI:
+		skip_files << 'examples/coroutines/simple_coroutines.v'
 		$if msvc {
 			skip_files << 'vlib/v/tests/const_comptime_eval_before_vinit_test.v' // _constructor used
 		}

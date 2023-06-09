@@ -101,7 +101,11 @@ pub fn open_file(path string, mode string, options ...int) !File {
 		}
 	}
 	p := fix_windows_path(path)
-	fd := C.open(&char(p.str), flags, permission)
+	fd := $if windows {
+		C._wopen(p.to_wide(), flags, permission)
+	} $else {
+		C.open(&char(p.str), flags, permission)
+	}
 	if fd == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}

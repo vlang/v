@@ -8,7 +8,7 @@
 *
 * TODO:
 * - add instancing
-* - add an exampel with shaders
+* - add an example with shaders
 **********************************************************************/
 import gg
 import gx
@@ -53,7 +53,7 @@ fn create_texture(w int, h int, buf &u8) gfx.Image {
 		label: &u8(0)
 		d3d11_texture: 0
 	}
-	// commen if .dynamic is enabled
+	// comment, if .dynamic is enabled
 	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr: buf
 		size: usize(sz)
@@ -133,7 +133,6 @@ fn cube() {
 
 fn draw_cubes(app App) {
 	rot := [f32(1.0) * (app.frame_count % 360), 0.5 * f32(app.frame_count % 360)]
-	// rot := [f32(app.mouse_x), f32(app.mouse_y)]
 
 	sgl.defaults()
 	sgl.load_pipeline(app.pip_3d)

@@ -220,6 +220,10 @@ fn vpm_install_from_vpm(module_names []string) {
 			continue
 		}
 		println('Installing module "${name}" from "${mod.url}" to "${minfo.final_module_path}" ...')
+		increment_module_download_count(name) or {
+			errors++
+			eprintln('Errors while incrementing the download count for ${name}:')
+		}
 		vcs_install_cmd := supported_vcs_install_cmds[vcs]
 		cmd := '${vcs_install_cmd} "${mod.url}" "${minfo.final_module_path}"'
 		verbose_println('      command: ${cmd}')
@@ -406,6 +410,10 @@ fn vpm_update(m []string) {
 			continue
 		} else {
 			verbose_println('    ${vcs_res.output.trim_space()}')
+			increment_module_download_count(zname) or {
+				errors++
+				eprintln('Errors while incrementing the download count for ${zname}:')
+			}
 		}
 		resolve_dependencies(modulename, final_module_path, module_names)
 	}
@@ -740,7 +748,7 @@ fn get_module_meta_info(name string) !Mod {
 	mut errors := []string{}
 
 	for server_url in vpm_server_urls {
-		modurl := server_url + '/jsmod/${name}'
+		modurl := server_url + '/api/packages/${name}'
 		verbose_println('Retrieving module metadata from: "${modurl}" ...')
 		r := http.get(modurl) or {
 			errors << 'Http server did not respond to our request for "${modurl}" .'
@@ -770,6 +778,25 @@ fn get_module_meta_info(name string) !Mod {
 			continue
 		}
 		return mod
+	}
+	return error(errors.join_lines())
+}
+
+fn increment_module_download_count(name string) ! {
+	mut errors := []string{}
+
+	for server_url in vpm_server_urls {
+		modurl := server_url + '/api/packages/${name}/incr_downloads'
+		r := http.post(modurl, '') or {
+			errors << 'Http server did not respond to our request for "${modurl}" .'
+			errors << 'Error details: ${err}'
+			continue
+		}
+		if r.status_code != 200 {
+			errors << 'Failed to increment the download count for module "${name}", since "${server_url}" responded with ${r.status_code} http status code. Please try again later.'
+			continue
+		}
+		return
 	}
 	return error(errors.join_lines())
 }

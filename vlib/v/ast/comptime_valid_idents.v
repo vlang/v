@@ -1,4 +1,4 @@
-module constants
+module ast
 
 pub const (
 	valid_comptime_if_os             = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
@@ -16,10 +16,10 @@ pub const (
 
 fn all_valid_comptime_idents() []string {
 	mut res := []string{}
-	res << constants.valid_comptime_if_os
-	res << constants.valid_comptime_if_compilers
-	res << constants.valid_comptime_if_platforms
-	res << constants.valid_comptime_if_cpu_features
-	res << constants.valid_comptime_if_other
+	res << ast.valid_comptime_if_os
+	res << ast.valid_comptime_if_compilers
+	res << ast.valid_comptime_if_platforms
+	res << ast.valid_comptime_if_cpu_features
+	res << ast.valid_comptime_if_other
 	return res
 }

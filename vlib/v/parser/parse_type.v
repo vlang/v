@@ -10,7 +10,7 @@ import v.token
 
 const maximum_inline_sum_type_variants = 3
 
-pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
+fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Type {
 	p.check(expecting)
 	// fixed array
 	if p.tok.kind in [.number, .name] {
@@ -72,7 +72,8 @@ pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
 		if fixed_size <= 0 {
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.pos())
 		}
-		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr)
+		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr,
+			!is_option && (p.inside_fn_return || p.inside_chan_decl))
 		if elem_type.has_flag(.generic) {
 			return ast.new_type(idx).set_flag(.generic)
 		}
@@ -103,7 +104,7 @@ pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
 	return ast.new_type(idx)
 }
 
-pub fn (mut p Parser) parse_map_type() ast.Type {
+fn (mut p Parser) parse_map_type() ast.Type {
 	is_option := p.tok.kind == .question && p.peek_tok.kind == .name // option map
 	if is_option {
 		p.next()
@@ -154,15 +155,17 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 	}
 }
 
-pub fn (mut p Parser) parse_chan_type() ast.Type {
+fn (mut p Parser) parse_chan_type() ast.Type {
 	if p.peek_tok.kind !in [.name, .key_mut, .amp, .lsbr] {
 		p.next()
 		return ast.chan_type
 	}
 	p.register_auto_import('sync')
 	p.next()
+	p.inside_chan_decl = true
 	is_mut := p.tok.kind == .key_mut
 	elem_type := p.parse_type()
+	p.inside_chan_decl = false
 	idx := p.table.find_or_register_chan(elem_type, is_mut)
 	if elem_type.has_flag(.generic) {
 		return ast.new_type(idx).set_flag(.generic)
@@ -170,7 +173,7 @@ pub fn (mut p Parser) parse_chan_type() ast.Type {
 	return ast.new_type(idx)
 }
 
-pub fn (mut p Parser) parse_thread_type() ast.Type {
+fn (mut p Parser) parse_thread_type() ast.Type {
 	is_opt := p.peek_tok.kind == .question
 	if is_opt {
 		p.next()
@@ -197,7 +200,7 @@ pub fn (mut p Parser) parse_thread_type() ast.Type {
 	return ast.new_type(idx)
 }
 
-pub fn (mut p Parser) parse_multi_return_type() ast.Type {
+fn (mut p Parser) parse_multi_return_type() ast.Type {
 	p.check(.lpar)
 	mut mr_types := []ast.Type{}
 	mut has_generic := false
@@ -229,7 +232,7 @@ pub fn (mut p Parser) parse_multi_return_type() ast.Type {
 }
 
 // given anon name based off signature when `name` is blank
-pub fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type {
+fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type {
 	fn_type_pos := p.peek_token(-2).pos()
 	p.check(.key_fn)
 
@@ -292,7 +295,7 @@ pub fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.T
 	return ast.new_type(idx)
 }
 
-pub fn (mut p Parser) parse_type_with_mut(is_mut bool) ast.Type {
+fn (mut p Parser) parse_type_with_mut(is_mut bool) ast.Type {
 	typ := p.parse_type()
 	if is_mut {
 		return typ.set_nr_muls(1)
@@ -301,7 +304,7 @@ pub fn (mut p Parser) parse_type_with_mut(is_mut bool) ast.Type {
 }
 
 // Parses any language indicators on a type.
-pub fn (mut p Parser) parse_language() ast.Language {
+fn (mut p Parser) parse_language() ast.Language {
 	language := if p.tok.lit == 'C' {
 		ast.Language.c
 	} else if p.tok.lit == 'JS' {
@@ -320,7 +323,7 @@ pub fn (mut p Parser) parse_language() ast.Language {
 
 // parse_inline_sum_type parses the type and registers it in case the type is an anonymous sum type.
 // It also takes care of inline sum types where parse_type only parses a standalone type.
-pub fn (mut p Parser) parse_inline_sum_type() ast.Type {
+fn (mut p Parser) parse_inline_sum_type() ast.Type {
 	if !p.pref.is_fmt {
 		p.warn(
 			'inline sum types have been deprecated and will be removed on January 1, 2023 due ' +
@@ -362,7 +365,7 @@ pub fn (mut p Parser) parse_inline_sum_type() ast.Type {
 
 // parse_sum_type_variants parses several types separated with a pipe and returns them as a list with at least one node.
 // If there is less than one node, it will add an error to the error list.
-pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
+fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 	p.inside_sum_type = true
 	defer {
 		p.inside_sum_type = false
@@ -371,6 +374,7 @@ pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 	for {
 		type_start_pos := p.tok.pos()
 		typ := p.parse_type()
+		end_comments := p.eat_comments(same_line: true)
 		// TODO: needs to be its own var, otherwise TCC fails because of a known stack error
 		prev_tok := p.prev_tok
 		type_end_pos := prev_tok.pos()
@@ -378,6 +382,7 @@ pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 		types << ast.TypeNode{
 			typ: typ
 			pos: type_pos
+			end_comments: end_comments
 		}
 		if p.tok.kind != .pipe {
 			break
@@ -387,7 +392,7 @@ pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 	return types
 }
 
-pub fn (mut p Parser) parse_type() ast.Type {
+fn (mut p Parser) parse_type() ast.Type {
 	// option or result
 	mut is_option := false
 	mut is_result := false
@@ -460,7 +465,7 @@ pub fn (mut p Parser) parse_type() ast.Type {
 	is_array := p.tok.kind == .lsbr
 	pos := p.tok.pos()
 	if p.tok.kind != .lcbr {
-		typ = p.parse_any_type(language, nr_muls > 0, true)
+		typ = p.parse_any_type(language, nr_muls > 0, true, is_option)
 		if typ.idx() == 0 {
 			// error is set in parse_type
 			return 0
@@ -486,6 +491,11 @@ pub fn (mut p Parser) parse_type() ast.Type {
 	if is_atomic {
 		typ = typ.set_flag(.atomic_f)
 	}
+	if typ.idx() == ast.array_type && !p.builtin_mod && p.mod !in ['os', 'strconv', 'sync']
+		&& !p.inside_unsafe {
+		p.error_with_pos('`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc',
+			pos)
+	}
 	if nr_muls > 0 {
 		typ = typ.set_nr_muls(nr_muls)
 		if is_array && nr_amps > 0 {
@@ -499,7 +509,7 @@ If you need to modify an array in a function, use a mutable argument instead: `f
 	return typ
 }
 
-pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot bool) ast.Type {
+fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot bool, is_option bool) ast.Type {
 	mut name := p.tok.lit
 	if language == .c {
 		name = 'C.${name}'
@@ -553,7 +563,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 		}
 		.lsbr, .nilsbr {
 			// array
-			return p.parse_array_type(p.tok.kind)
+			return p.parse_array_type(p.tok.kind, is_option)
 		}
 		else {
 			if p.tok.kind == .lpar {
@@ -662,7 +672,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 	}
 }
 
-pub fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Language) ast.Type {
+fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Language) ast.Type {
 	// struct / enum / placeholder
 	mut idx := p.table.find_type_idx(name)
 	if idx > 0 {
@@ -704,7 +714,7 @@ pub fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Lan
 	return ast.new_type(idx)
 }
 
-pub fn (mut p Parser) parse_generic_type(name string) ast.Type {
+fn (mut p Parser) parse_generic_type(name string) ast.Type {
 	mut idx := p.table.find_type_idx(name)
 	if idx > 0 {
 		return ast.new_type(idx).set_flag(.generic)
@@ -719,7 +729,7 @@ pub fn (mut p Parser) parse_generic_type(name string) ast.Type {
 	return ast.new_type(idx).set_flag(.generic)
 }
 
-pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
+fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 	mut bs_name := name
 	mut bs_cname := name
 	start_pos := p.tok.pos()

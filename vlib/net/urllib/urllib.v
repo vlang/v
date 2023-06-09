@@ -415,7 +415,7 @@ fn get_scheme(rawurl string) !string {
 	return split[0]
 }
 
-// split slices s into two substrings separated by the first occurence of
+// split slices s into two substrings separated by the first occurrence of
 // sep. If cutc is true then sep is included with the second substring.
 // If sep does not occur in s then s and the empty string is returned.
 fn split(s string, sep u8, cutc bool) (string, string) {
@@ -1003,7 +1003,7 @@ pub fn (u &URL) port() string {
 // split_host_port separates host and port. If the port is not valid, it returns
 // the entire input as host, and it doesn't check the validity of the host.
 // Per RFC 3986, it requires ports to be numeric.
-fn split_host_port(hostport string) (string, string) {
+pub fn split_host_port(hostport string) (string, string) {
 	mut host := hostport
 	mut port := ''
 	colon := host.last_index_u8(`:`)

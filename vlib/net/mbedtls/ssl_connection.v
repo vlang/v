@@ -12,14 +12,15 @@ fn init() {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
-	C.mbedtls_ctr_drbg_init(&mbedtls.ctr_drbg)
-	C.mbedtls_entropy_init(&mbedtls.entropy)
-
-	ret := C.mbedtls_ctr_drbg_seed(&mbedtls.ctr_drbg, C.mbedtls_entropy_func, &mbedtls.entropy,
-		0, 0)
-	if ret != 0 {
-		C.mbedtls_ctr_drbg_free(&mbedtls.ctr_drbg)
-		panic('Failed to seed ssl context: ${ret}')
+	unsafe { // Unsafe is needed for taking an address of const
+		C.mbedtls_ctr_drbg_init(&mbedtls.ctr_drbg)
+		C.mbedtls_entropy_init(&mbedtls.entropy)
+		ret := C.mbedtls_ctr_drbg_seed(&mbedtls.ctr_drbg, C.mbedtls_entropy_func, &mbedtls.entropy,
+			0, 0)
+		if ret != 0 {
+			C.mbedtls_ctr_drbg_free(&mbedtls.ctr_drbg)
+			panic('Failed to seed ssl context: ${ret}')
+		}
 	}
 }
 
@@ -110,7 +111,9 @@ fn (mut s SSLConn) init() ! {
 		return error_with_code('Failed to set SSL configuration', ret)
 	}
 
-	C.mbedtls_ssl_conf_rng(&s.conf, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+	unsafe {
+		C.mbedtls_ssl_conf_rng(&s.conf, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+	}
 
 	if s.config.verify != '' || s.config.cert != '' || s.config.cert_key != '' {
 		s.certs = &SSLCerts{}
@@ -127,8 +130,10 @@ fn (mut s SSLConn) init() ! {
 			ret = C.mbedtls_x509_crt_parse(&s.certs.client_cert, s.config.cert.str, s.config.cert.len)
 		}
 		if s.config.cert_key != '' {
-			ret = C.mbedtls_pk_parse_key(&s.certs.client_key, s.config.cert_key.str, s.config.cert_key.len,
-				0, 0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+			unsafe {
+				ret = C.mbedtls_pk_parse_key(&s.certs.client_key, s.config.cert_key.str,
+					s.config.cert_key.len, 0, 0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+			}
 		}
 	} else {
 		if s.config.verify != '' {
@@ -138,8 +143,10 @@ fn (mut s SSLConn) init() ! {
 			ret = C.mbedtls_x509_crt_parse_file(&s.certs.client_cert, &char(s.config.cert.str))
 		}
 		if s.config.cert_key != '' {
-			ret = C.mbedtls_pk_parse_keyfile(&s.certs.client_key, &char(s.config.cert_key.str),
-				0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+			unsafe {
+				ret = C.mbedtls_pk_parse_keyfile(&s.certs.client_key, &char(s.config.cert_key.str),
+					0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+			}
 		}
 	}
 	if ret < 0 {

@@ -106,10 +106,13 @@ pub fn (s string) clone() string {
 	return string(s.str)
 }
 
+// contains returns `true` if the string contains `substr`.
+// See also: [`string.index`](#string.index)
 pub fn (s string) contains(substr string) bool {
 	return bool(s.str.includes(substr.str))
 }
 
+// contains_any returns `true` if the string contains any chars in `chars`.
 pub fn (s string) contains_any(chars string) bool {
 	sep := ''
 	res := chars.str.split(sep.str)
@@ -119,6 +122,26 @@ pub fn (s string) contains_any(chars string) bool {
 		}
 	}
 	return false
+}
+
+// contains_only returns `true`, if the string contains only the characters in `chars`.
+pub fn (s string) contains_only(chars string) bool {
+	if chars.len == 0 {
+		return false
+	}
+	for ch in s {
+		mut res := 0
+		for c in chars {
+			if ch == c {
+				res++
+				break
+			}
+		}
+		if res == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 pub fn (s string) contains_any_substr(chars []string) bool {
@@ -595,7 +618,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 		}
 		else {
 			mut start := 0
-			// Take the left part for each delimiter occurence
+			// Take the left part for each delimiter occurrence
 			for i <= s.len {
 				is_delim := i + delim.len <= s.len && s[i..i + delim.len] == delim
 				if is_delim {
@@ -625,7 +648,7 @@ struct RepIndex {
 	val_idx int
 }
 
-// replace_each replaces all occurences of the string pairs given in `vals`.
+// replace_each replaces all occurrences of the string pairs given in `vals`.
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
 [direct_array_access]
 pub fn (s string) replace_each(vals []string) string {
@@ -722,7 +745,7 @@ pub fn (s string) replace_each(vals []string) string {
 	return b
 }
 
-// last_index returns the position of the last occurence of the input string.
+// last_index returns the position of the last occurrence of the input string.
 fn (s string) last_index_(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1
@@ -741,7 +764,7 @@ fn (s string) last_index_(p string) int {
 	return -1
 }
 
-// last_index returns the position of the last occurence of the input string.
+// last_index returns the position of the last occurrence of the input string.
 pub fn (s string) last_index(p string) ?int {
 	idx := s.last_index_(p)
 	if idx == -1 {
@@ -800,7 +823,7 @@ pub fn (s string) split_into_lines() []string {
 	return res
 }
 
-// replace_once replaces the first occurence of `rep` with the string passed in `with`.
+// replace_once replaces the first occurrence of `rep` with the string passed in `with`.
 pub fn (s string) replace_once(rep string, with_ string) string {
 	s2 := ''
 	#s2.val = s.str.replace(rep.str,with_.str)

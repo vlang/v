@@ -8,7 +8,7 @@ import v.token
 import v.util
 import os
 
-pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
+fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.pos()
 	mut fn_name := if language == .c {
 		'C.${p.check_name()}'
@@ -89,7 +89,7 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 	}
 }
 
-pub fn (mut p Parser) call_args() []ast.CallArg {
+fn (mut p Parser) call_args() []ast.CallArg {
 	mut args := []ast.CallArg{}
 	start_pos := p.tok.pos()
 	for p.tok.kind != .rpar {
@@ -623,6 +623,9 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	if rec.is_mut {
 		p.next() // `mut`
 	}
+	if is_shared {
+		p.register_auto_import('sync')
+	}
 	rec_start_pos := p.tok.pos()
 	rec.name = p.check_name()
 	if !rec.is_mut {
@@ -692,6 +695,8 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 		pos: rec_start_pos
 		name: rec.name
 		is_mut: rec.is_mut
+		is_atomic: is_atomic
+		is_shared: is_shared
 		is_auto_rec: is_auto_rec
 		typ: rec.typ
 		type_pos: rec.type_pos
@@ -750,7 +755,9 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	if same_line {
 		if (p.tok.kind.is_start_of_type() && (same_line || p.tok.kind != .lsbr))
 			|| (same_line && p.tok.kind == .key_fn) {
+			p.inside_fn_return = true
 			return_type = p.parse_type()
+			p.inside_fn_return = false
 			return_type_pos = return_type_pos.extend(p.tok.pos())
 		} else if p.tok.kind != .lcbr {
 			p.error_with_pos('expected return type, not ${p.tok} for anonymous function',
@@ -1006,6 +1013,8 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 					pos: arg_pos[i]
 					name: arg_name
 					is_mut: is_mut
+					is_atomic: is_atomic
+					is_shared: is_shared
 					typ: typ
 					type_pos: type_pos[i]
 				}
@@ -1029,7 +1038,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 	return args, types_only, is_variadic
 }
 
-fn (mut p Parser) go_expr() ast.GoExpr {
+fn (mut p Parser) spawn_expr() ast.SpawnExpr {
 	p.next()
 	spos := p.tok.pos()
 	expr := p.expr(0)
@@ -1043,6 +1052,27 @@ fn (mut p Parser) go_expr() ast.GoExpr {
 	}
 	pos := spos.extend(p.prev_tok.pos())
 	p.register_auto_import('sync.threads')
+	p.table.gostmts++
+	return ast.SpawnExpr{
+		call_expr: call_expr
+		pos: pos
+	}
+}
+
+fn (mut p Parser) go_expr() ast.GoExpr {
+	p.next()
+	spos := p.tok.pos()
+	expr := p.expr(0)
+	call_expr := if expr is ast.CallExpr {
+		expr
+	} else {
+		p.error_with_pos('expression in `go` must be a function call', expr.pos())
+		ast.CallExpr{
+			scope: p.scope
+		}
+	}
+	pos := spos.extend(p.prev_tok.pos())
+	// p.register_auto_import('coroutines')
 	p.table.gostmts++
 	return ast.GoExpr{
 		call_expr: call_expr
@@ -1090,6 +1120,8 @@ fn (mut p Parser) closure_vars() []ast.Param {
 			pos: var_pos
 			name: var_name
 			is_mut: is_mut
+			is_atomic: is_atomic
+			is_shared: is_shared
 		}
 		if p.tok.kind != .comma {
 			break

@@ -157,6 +157,9 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 			return p.check_cross_variables(exprs, val.expr)
 		}
 		ast.CallExpr {
+			if p.check_cross_variables(exprs, val.left) {
+				return true
+			}
 			for arg in val.args {
 				if p.check_cross_variables(exprs, arg.expr) {
 					return true

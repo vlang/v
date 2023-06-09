@@ -7,7 +7,6 @@ import strings
 import v.ast
 import v.util
 import v.pref
-import v.checker.constants
 
 const (
 	bs      = '\\'
@@ -423,6 +422,11 @@ fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 				return false
 			}
 		}
+		if stmt is ast.EnumDecl {
+			if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
+				return false
+			}
+		}
 		if stmt is ast.FnDecl {
 			if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
 				return false
@@ -639,6 +643,9 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 		}
 		ast.GoExpr {
 			f.go_expr(node)
+		}
+		ast.SpawnExpr {
+			f.spawn_expr(node)
 		}
 		ast.Ident {
 			f.ident(node)
@@ -986,6 +993,10 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 			f.write(' = ')
 			f.expr(field.expr)
 		}
+		if field.attrs.len > 0 {
+			f.write(' ')
+			f.single_line_attrs(field.attrs, inline: true)
+		}
 		f.comments(field.comments, inline: true, has_nl: false, level: .indent)
 		f.writeln('')
 		f.comments(field.next_comments, inline: false, has_nl: true, level: .indent)
@@ -997,7 +1008,7 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	f.attrs(node.attrs)
 	f.write(node.stringify(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
 	// Handle trailing comments after fn header declarations
-	if node.end_comments.len > 0 {
+	if node.no_body && node.end_comments.len > 0 {
 		first_comment := node.end_comments[0]
 		if first_comment.text.contains('\n') {
 			f.writeln('\n')
@@ -1041,6 +1052,25 @@ fn (mut f Fmt) fn_body(node ast.FnDecl) {
 				f.stmts(node.stmts)
 			}
 			f.write('}')
+			if node.end_comments.len > 0 {
+				first_comment := node.end_comments[0]
+				if first_comment.text.contains('\n') {
+					f.writeln('\n')
+				} else {
+					f.write(' ')
+				}
+				f.comment(first_comment)
+				if node.end_comments.len > 1 {
+					f.writeln('\n')
+					comments := node.end_comments[1..]
+					for i, comment in comments {
+						f.comment(comment)
+						if i != comments.len - 1 {
+							f.writeln('\n')
+						}
+					}
+				}
+			}
 		}
 		if !node.is_anon {
 			f.writeln('')
@@ -1183,8 +1213,13 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 	}
 }
 
-pub fn (mut f Fmt) go_expr(node ast.GoExpr) {
+pub fn (mut f Fmt) spawn_expr(node ast.SpawnExpr) {
 	f.write('spawn ')
+	f.call_expr(node.call_expr)
+}
+
+pub fn (mut f Fmt) go_expr(node ast.GoExpr) {
+	f.write('go ')
 	f.call_expr(node.call_expr)
 }
 
@@ -1446,6 +1481,11 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 	f.writeln('')
 }
 
+struct Variant {
+	name string
+	id   int
+}
+
 pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	f.attrs(node.attrs)
 	start_pos := f.out.len
@@ -1456,33 +1496,42 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	f.write_generic_types(node.generic_types)
 	f.write(' = ')
 
-	mut sum_type_names := []string{cap: node.variants.len}
-	for variant in node.variants {
-		sum_type_names << f.table.type_to_str_using_aliases(variant.typ, f.mod2alias)
+	mut variants := []Variant{cap: node.variants.len}
+	for i, variant in node.variants {
+		variants << Variant{f.table.type_to_str_using_aliases(variant.typ, f.mod2alias), i}
 		f.mark_types_import_as_used(variant.typ)
 	}
-	sum_type_names.sort()
+	variants.sort(a.name < b.name)
 
 	mut separator := ' | '
+	mut is_multiline := false
 	// if line length is too long, put each type on its own line
 	mut line_length := f.out.len - start_pos
-	for sum_type_name in sum_type_names {
+	for variant in variants {
 		// 3 = length of ' = ' or ' | '
-		line_length += 3 + sum_type_name.len
-		if line_length > fmt.max_len.last() {
+		line_length += 3 + variant.name.len
+		if line_length > fmt.max_len.last() || (variant.id != node.variants.len - 1
+			&& node.variants[variant.id].end_comments.len > 0) {
 			separator = '\n\t| '
+			is_multiline = true
 			break
 		}
 	}
 
-	for i, name in sum_type_names {
+	for i, variant in variants {
 		if i > 0 {
 			f.write(separator)
 		}
-		f.write(name)
+		f.write(variant.name)
+		if node.variants[variant.id].end_comments.len > 0 && is_multiline {
+			f.comments(node.variants[variant.id].end_comments, has_nl: false)
+		}
 	}
-
-	f.comments(node.comments, has_nl: false)
+	if !is_multiline {
+		f.comments(node.variants.last().end_comments,
+			has_nl: false
+		)
+	}
 }
 
 //=== Specific Expr methods ===//
@@ -1931,6 +1980,7 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 			}
 			f.expr(node.left)
 			f.write('.$${method_expr}')
+			f.or_expr(node.or_block)
 		}
 	}
 }
@@ -1963,7 +2013,7 @@ pub fn (mut f Fmt) enum_val(node ast.EnumVal) {
 
 pub fn (mut f Fmt) ident(node ast.Ident) {
 	if node.info is ast.IdentVar {
-		if node.comptime && node.name in constants.valid_comptime_not_user_defined {
+		if node.comptime && node.name in ast.valid_comptime_not_user_defined {
 			f.write(node.name)
 			return
 		}

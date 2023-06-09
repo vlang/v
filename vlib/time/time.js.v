@@ -43,6 +43,24 @@ pub fn sleep(dur Duration) {
 	#while (new Date().getTime() < now + Number(toWait)) {}
 }
 
+// new_time returns a time struct with calculated Unix time.
+pub fn new_time(t Time) Time {
+	if t.unix != 0 {
+		return t
+	}
+	mut res := Time{}
+	#res.year.val = t.year.val
+	#res.month.val = t.month.val
+	#res.day.val = t.day.val
+	#res.hour.val = t.hour.val
+	#res.minute.val = t.minute.val
+	#res.second.val = t.second.val
+	#res.microsecond.val = t.microsecond.val
+	#res.unix.val = t.unix.val
+
+	return res
+}
+
 pub fn ticks() i64 {
 	t := i64(0)
 	#t.val = BigInt(new Date().getTime())

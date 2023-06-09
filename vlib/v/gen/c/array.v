@@ -170,7 +170,40 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			g.expr(node.default_expr)
 		}
 	} else {
-		g.write('0')
+		elem_sym := g.table.final_sym(node.elem_type)
+		if elem_sym.kind == .map {
+			// fixed array for map -- [N]map[key_type]value_type
+			info := array_type.unaliased_sym.info as ast.ArrayFixed
+			map_info := elem_sym.map_info()
+			g.expr(ast.MapInit{
+				key_type: map_info.key_type
+				value_type: map_info.value_type
+			})
+			for _ in 1 .. info.size {
+				g.write(', ')
+				g.expr(ast.MapInit{
+					key_type: map_info.key_type
+					value_type: map_info.value_type
+				})
+			}
+		} else if elem_sym.kind == .array_fixed {
+			// nested fixed array -- [N][N]type
+			info := array_type.unaliased_sym.info as ast.ArrayFixed
+			arr_info := elem_sym.array_fixed_info()
+			g.expr(ast.ArrayInit{
+				typ: node.elem_type
+				elem_type: arr_info.elem_type
+			})
+			for _ in 1 .. info.size {
+				g.write(', ')
+				g.expr(ast.ArrayInit{
+					typ: node.elem_type
+					elem_type: arr_info.elem_type
+				})
+			}
+		} else {
+			g.write('0')
+		}
 	}
 	g.write('}')
 	if need_tmp_var {
@@ -885,22 +918,32 @@ fn (mut g Gen) gen_array_contains_methods() {
 }
 
 // `nums.contains(2)`
-fn (mut g Gen) gen_array_contains(typ ast.Type, left ast.Expr, right ast.Expr) {
-	fn_name := g.get_array_contains_method(typ)
+fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type ast.Type, right ast.Expr) {
+	fn_name := g.get_array_contains_method(left_type)
 	g.write('${fn_name}(')
-	g.write(strings.repeat(`*`, typ.nr_muls()))
-	if typ.share() == .shared_t {
+	g.write(strings.repeat(`*`, left_type.nr_muls()))
+	if left_type.share() == .shared_t {
 		g.go_back(1)
 	}
 	g.expr(left)
-	if typ.share() == .shared_t {
+	if left_type.share() == .shared_t {
 		g.write('->val')
 	}
 	g.write(', ')
 	if right.is_auto_deref_var() {
 		g.write('*')
 	}
-	g.expr(right)
+	left_sym := g.table.final_sym(left_type)
+	elem_typ := if left_sym.kind == .array {
+		left_sym.array_info().elem_type
+	} else {
+		left_sym.array_fixed_info().elem_type
+	}
+	if g.table.sym(elem_typ).kind in [.interface_, .sum_type] {
+		g.expr_with_cast(right, right_type, elem_typ)
+	} else {
+		g.expr(right)
+	}
 	g.write(')')
 }
 
@@ -986,7 +1029,12 @@ fn (mut g Gen) gen_array_index(node ast.CallExpr) {
 	if node.args[0].expr.is_auto_deref_var() {
 		g.write('*')
 	}
-	g.expr(node.args[0].expr)
+	elem_typ := g.table.sym(node.left_type).array_info().elem_type
+	if g.table.sym(elem_typ).kind in [.interface_, .sum_type] {
+		g.expr_with_cast(node.args[0].expr, node.args[0].typ, elem_typ)
+	} else {
+		g.expr(node.args[0].expr)
+	}
 	g.write(')')
 }
 

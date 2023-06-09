@@ -7,9 +7,6 @@ module context
 import time
 
 const (
-	background         = EmptyContext(0)
-	todo               = EmptyContext(1)
-
 	cancel_context_key = Key('context.CancelContext')
 
 	// canceled is the error returned by Context.err when the context is canceled.
@@ -72,22 +69,6 @@ pub interface Context {
 mut:
 	done() chan int
 	err() IError
-}
-
-// background returns an empty Context. It is never canceled, has no
-// values, and has no deadline. It is typically used by the main function,
-// initialization, and tests, and as the top-level Context for incoming
-// requests.
-pub fn background() Context {
-	return context.background
-}
-
-// todo returns an empty Context. Code should use todo when
-// it's unclear which Context to use or it is not yet available (because the
-// surrounding function has not yet been extended to accept a Context
-// parameter).
-pub fn todo() Context {
-	return context.todo
 }
 
 fn context_name(ctx Context) string {

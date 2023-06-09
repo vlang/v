@@ -218,10 +218,6 @@ pub fn default_tcc_compiler() string {
 }
 
 pub fn (mut p Preferences) default_c_compiler() {
-	// fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'
-	// if os.exists(fast_clang) {
-	// return fast_clang
-	// }
 	// TODO fix $if after 'string'
 	$if windows {
 		p.ccompiler = 'gcc'

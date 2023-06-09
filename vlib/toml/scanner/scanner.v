@@ -592,16 +592,17 @@ fn (mut s Scanner) extract_number() !string {
 	for s.pos < s.text.len {
 		c = s.at()
 		// Adjust scanner position to floating point numbers
-		mut i, mut float_precision := 1, 0
-		for c_ := u8(s.peek(i)); c_ != scanner.end_of_text && c_ != `\n`; c_ = u8(s.peek(i)) {
-			if !c_.is_digit() && c_ != `.` && c_ != `,` {
-				float_precision = 0
-				break
-			}
-			if c_.is_digit() && c == `.` {
+		mut float_precision := 0
+		if c == `.` {
+			mut i := 1
+			for c_ := u8(s.peek(i)); c_ != scanner.end_of_text && c_ != `\n`; c_ = u8(s.peek(i)) {
+				if !c_.is_digit() && c_ != `,` {
+					float_precision = 0
+					break
+				}
 				float_precision++
+				i++
 			}
-			i++
 		}
 		s.pos += float_precision
 		s.col += float_precision

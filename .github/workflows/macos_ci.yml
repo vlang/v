@@ -72,6 +72,9 @@ jobs:
         run: |
           ./v -autofree -o tetris examples/tetris/tetris.v
           ./v -autofree -o blog tutorials/building_a_simple_web_blog_with_vweb/code/blog
+      - name: Build examples with -prod
+        run: |
+          ./v -prod examples/news_fetcher.v
       - name: v doctor
         run: |
           ./v doctor
