@@ -399,7 +399,7 @@ fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 				}
 			}
 			// Force a newline after function declarations
-			// The only exception is inside an block of no_body functions
+			// The only exception is inside a block of no_body functions
 			ast.FnDecl {
 				if node !is ast.FnDecl || !prev_node.no_body {
 					return true
