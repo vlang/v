@@ -636,7 +636,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				}
 				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f)
 					&& !field.typ.has_flag(.option) && !node.has_update_expr && !c.pref.translated
-					&& !c.file.is_translated && node.fields.len != 0 {
+					&& !c.file.is_translated {
 					c.warn('reference field `${type_sym.name}.${field.name}` must be initialized',
 						node.pos)
 					continue
@@ -660,7 +660,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					}
 				}
 				if !field.typ.has_flag(.option) && sym.kind == .interface_
-					&& (!has_noinit && sym.language != .js) {
+					&& (!has_noinit && sym.language != .js) && !node.has_update_expr {
 					// TODO: should be an error instead, but first `ui` needs updating.
 					c.note('interface field `${type_sym.name}.${field.name}` must be initialized',
 						node.pos)
