@@ -555,7 +555,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 							if selector.expr is ast.Ident && selector.field_name == 'name' {
 								if g.comptime_for_method_var.len > 0
 									&& (selector.expr as ast.Ident).name == g.comptime_for_method_var {
-									mut is_true := if cond.op == .eq {
+									is_true := if cond.op == .eq {
 										g.comptime_for_method == cond.right.val
 									} else {
 										g.comptime_for_method != cond.right.val
@@ -568,7 +568,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 									return is_true, true
 								} else if g.comptime_for_field_var.len > 0
 									&& (selector.expr as ast.Ident).name == g.comptime_for_field_var {
-									mut is_true := if cond.op == .eq {
+									is_true := if cond.op == .eq {
 										g.comptime_for_field_value.name == cond.right.val
 									} else {
 										g.comptime_for_field_value.name != cond.right.val
