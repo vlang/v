@@ -555,22 +555,30 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 							if selector.expr is ast.Ident && selector.field_name == 'name' {
 								if g.comptime_for_method_var.len > 0
 									&& (selector.expr as ast.Ident).name == g.comptime_for_method_var {
-									is_equal := g.comptime_for_method == cond.right.val
-									if is_equal {
+									mut is_true := if cond.op == .eq {
+										g.comptime_for_method == cond.right.val
+									} else {
+										g.comptime_for_method == cond.right.val
+									}
+									if is_true {
 										g.write('1')
 									} else {
 										g.write('0')
 									}
-									return is_equal, true
+									return is_true, true
 								} else if g.comptime_for_field_var.len > 0
 									&& (selector.expr as ast.Ident).name == g.comptime_for_field_var {
-									is_equal := g.comptime_for_field_value.name == cond.right.val
-									if is_equal {
+									mut is_true := if cond.op == .eq {
+										g.comptime_for_field_value.name == cond.right.val
+									} else {
+										g.comptime_for_field_value.name != cond.right.val
+									}
+									if is_true {
 										g.write('1')
 									} else {
 										g.write('0')
 									}
-									return is_equal, true
+									return is_true, true
 								}
 							}
 						} else if cond.right is ast.IntegerLiteral {
