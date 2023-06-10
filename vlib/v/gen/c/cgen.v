@@ -1883,19 +1883,32 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		g.gen_option_error(ret_typ, expr)
 		g.writeln(';')
 	} else {
+		mut is_ptr_to_ptr_assign := false
 		g.writeln('${g.typ(ret_typ)} ${tmp_var};')
 		if ret_typ.has_flag(.option) {
 			if expr_typ.has_flag(.option) && expr in [ast.StructInit, ast.ArrayInit, ast.MapInit] {
 				g.write('_option_none(&(${styp}[]) { ')
 			} else {
-				g.write('_option_ok(&(${styp}[]) { ')
+				is_ptr_to_ptr_assign = (expr is ast.SelectorExpr
+					|| (expr is ast.Ident && !(expr as ast.Ident).is_auto_heap()))
+					&& ret_typ.is_ptr() && expr_typ.is_ptr() && expr_typ.has_flag(.option)
+				// option ptr assignment simplification
+				if is_ptr_to_ptr_assign {
+					g.write('${tmp_var} = ')
+				} else {
+					g.write('_option_ok(&(${styp}[]) { ')
+				}
 			}
 		} else {
 			g.write('_result_ok(&(${styp}[]) { ')
 		}
 		g.expr_with_cast(expr, expr_typ, ret_typ)
 		if ret_typ.has_flag(.option) {
-			g.writeln(' }, (${c.option_name}*)(&${tmp_var}), sizeof(${styp}));')
+			if is_ptr_to_ptr_assign {
+				g.writeln(';')
+			} else {
+				g.writeln(' }, (${c.option_name}*)(&${tmp_var}), sizeof(${styp}));')
+			}
 		} else {
 			g.writeln(' }, (${c.result_name}*)(&${tmp_var}), sizeof(${styp}));')
 		}
