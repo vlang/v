@@ -558,7 +558,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 									mut is_true := if cond.op == .eq {
 										g.comptime_for_method == cond.right.val
 									} else {
-										g.comptime_for_method == cond.right.val
+										g.comptime_for_method != cond.right.val
 									}
 									if is_true {
 										g.write('1')
