@@ -1893,7 +1893,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 					|| (expr is ast.Ident && !(expr as ast.Ident).is_auto_heap()))
 					&& ret_typ.is_ptr() && expr_typ.is_ptr() && expr_typ.has_flag(.option)
 				// option ptr assignment simplification
-				if is_ptr_to_ptr_assign {					
+				if is_ptr_to_ptr_assign {
 					g.write('${tmp_var} = ')
 				} else {
 					g.write('_option_ok(&(${styp}[]) { ')
