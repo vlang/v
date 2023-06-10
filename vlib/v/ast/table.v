@@ -398,8 +398,9 @@ pub fn (t &Table) find_enum_field_val(name string, field_ string) ?i64 {
 			if field.has_expr {
 				if field.expr is IntegerLiteral {
 					enum_vals << field.expr.val.i64()
+				} else {
+					return none
 				}
-				return none
 			} else {
 				if enum_vals.len > 0 {
 					enum_vals << enum_vals.last() + 1
