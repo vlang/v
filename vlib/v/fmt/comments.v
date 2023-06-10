@@ -31,7 +31,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 	}
 	defer {
 		// ensure that the `vfmt off` comment itself was sent to the output,
-		// by defering the check for that state transition:
+		// by deferring the check for that state transition:
 		if node.text.starts_with('\x01 vfmt off') {
 			f.vfmt_off(node.pos.line_nr)
 		}
