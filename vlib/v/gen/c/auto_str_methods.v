@@ -842,6 +842,10 @@ fn (g &Gen) type_to_fmt(typ ast.Type) StrIntpType {
 		return .si_u64
 	} else if sym.kind == .i64 {
 		return .si_i64
+	} else if sym.kind == .usize {
+		return .si_u64
+	} else if sym.kind == .isize {
+		return .si_i64
 	}
 	return .si_i32
 }
@@ -1076,9 +1080,12 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 				return 'str_intp(1, _MOV((StrIntpData[]){
 					{_SLIT0, ${si_g64_code}, {.d_f64 = *${method_str} }}
 				}))', true
-			} else if sym.kind == .u64 {
+			} else if sym.kind in [.u64, .usize] {
 				fmt_type := StrIntpType.si_u64
 				return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_u64 = *${method_str} }}}))', true
+			} else if sym.kind in [.i64, .isize] {
+				fmt_type := StrIntpType.si_i64
+				return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i64 = *${method_str} }}}))', true
 			}
 			fmt_type := StrIntpType.si_i32
 			return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i32 = *${method_str} }}}))', true
