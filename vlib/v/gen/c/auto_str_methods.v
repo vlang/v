@@ -838,9 +838,9 @@ fn (g &Gen) type_to_fmt(typ ast.Type) StrIntpType {
 		return .si_i32
 	} else if sym.kind == .u32 {
 		return .si_u32
-	} else if sym.kind == .u64 {
+	} else if sym.kind in [.u64, .usize] {
 		return .si_u64
-	} else if sym.kind == .i64 {
+	} else if sym.kind in [.i64, .isize] {
 		return .si_i64
 	}
 	return .si_i32
