@@ -1,0 +1,13 @@
+module ast
+
+struct MyChar {
+	c string
+}
+
+const a_char = MyChar{
+	c: 'a'
+}
+
+fn foo() {
+	mut b := &(ast.a_char)
+}
