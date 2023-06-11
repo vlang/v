@@ -6254,6 +6254,18 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 				return init_str
 			}
 		}
+		.enum_ {
+			// returns the enum's first value
+			if enum_decl := g.table.enum_decls[sym.name] {
+				return if enum_decl.fields[0].expr is ast.EmptyExpr {
+					'0'
+				} else {
+					g.expr_string(enum_decl.fields[0].expr)
+				}
+			} else {
+				return '0'
+			}
+		}
 		else {
 			return '0'
 		}
