@@ -1838,6 +1838,7 @@ pub fn (s &string) free() {
 	unsafe {
 		// C.printf(c's: %x %s\n', s.str, s.str)
 		free(s.str)
+		s.str = nil
 	}
 	s.is_lit = -98761234
 }
