@@ -96,7 +96,7 @@ fn subtract_align_last_byte_in_place(mut a []u32, b []u32) {
 	mut new_carry := u32(0)
 	offset := a.len - b.len
 	for index := a.len - b.len; index < a.len; index++ {
-		if a[index] < (b[index - offset] + carry) {
+		if a[index] < b[index - offset] || a[index] < (b[index - offset] + carry) {
 			new_carry = 1
 		} else {
 			new_carry = 0

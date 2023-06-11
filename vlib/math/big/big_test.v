@@ -124,29 +124,40 @@ fn test_mod() {
 	assert (big.integer_from_u64(7) % big.integer_from_u64(5)).int() == 2
 }
 
-fn test_divmod() {
-	x, y := big.integer_from_u64(13).div_mod(big.integer_from_u64(10))
-	assert x.int() == 1
-	assert y.int() == 3
-	p, q := big.integer_from_u64(13).div_mod(big.integer_from_u64(9))
-	assert p.int() == 1
-	assert q.int() == 4
-	c, d := big.integer_from_u64(7).div_mod(big.integer_from_u64(5))
-	assert c.int() == 1
-	assert d.int() == 2
-	x1 := big.integer_from_string('2103180314840157') or { panic('Cannot read decimal') }
-	y1 := big.integer_from_string('1631403814113') or { panic('Cannot read decimal') }
-	q0 := big.integer_from_int(1289)
-	r0 := big.integer_from_string('300798448500') or { panic('Cannot read decimal') }
-	q1, r1 := x1.div_mod(y1)
-	assert q1 == q0
-	assert r1 == r0
+struct DivisionTest {
+	dividend  string
+	divisor   string
+	quotient  string
+	remainder string
+}
 
-	e := big.integer_from_string('21408410031413414147401') or { panic('Cannot read decimal') }
-	f := big.integer_from_string('3130541314113413') or { panic('Cannot read decimal') }
-	g, h := e.div_mod(f)
-	assert g.str() == '6838564'
-	assert h.str() == '2900204736088469'
+const divmod_test_data = [
+	DivisionTest{'13', '10', '1', '3'},
+	DivisionTest{'13', '9', '1', '4'},
+	DivisionTest{'7', '5', '1', '2'},
+	DivisionTest{'2103180314840157', '1631403814113', '1289', '300798448500'},
+	DivisionTest{'21408410031413414147401', '3130541314113413', '6838564', '2900204736088469'}
+	// vfmt off
+	DivisionTest{
+		'13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084096',
+		'13407807926845237209807376456131917626043958556151178674833163543294276330515137663421134775482798690129946803802212663956180562088664022929883876655300863',
+		'1',
+		'3097359889766648542073928501435407264441214702890397900427487699558409313380739522684104737560085054384273386897573320723282547016549772350783233',
+	},
+	// vfmt on
+]
+
+fn test_divmod() {
+	for t in divmod_test_data {
+		a := big.integer_from_string(t.dividend) or { panic('Cannot read decimal') }
+		b := big.integer_from_string(t.divisor) or { panic('Cannot read decimal') }
+		eq := big.integer_from_string(t.quotient) or { panic('Cannot read decimal') }
+		er := big.integer_from_string(t.remainder) or { panic('Cannot read decimal') }
+
+		q, r := a.div_mod(b)
+		assert q == eq
+		assert r == er
+	}
 }
 
 fn test_comparison() {
