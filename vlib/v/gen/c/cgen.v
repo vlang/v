@@ -1898,6 +1898,9 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 				} else {
 					g.write('_option_ok(&(${styp}[]) { ')
 				}
+				if !expr_typ.is_ptr() && ret_typ.is_ptr() {
+					g.write('&/*ref*/')
+				}
 			}
 		} else {
 			g.write('_result_ok(&(${styp}[]) { ')
@@ -2450,7 +2453,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
 		got_is_opt_or_res := got_type.has_flag(.option) || got_type.has_flag(.result)
 		if deref_will_match || got_is_opt_or_res || expr.is_auto_deref_var() {
-			g.write('*')
+			g.write('*/*c*/')
 		}
 	}
 	if expr is ast.IntegerLiteral {
@@ -4271,7 +4274,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 					for _ in node.obj.smartcasts {
 						g.write('(')
 						if obj_sym.kind == .sum_type && !is_auto_heap {
-							g.write('*')
+							g.write('*/*d*/')
 						}
 					}
 					for i, typ in node.obj.smartcasts {

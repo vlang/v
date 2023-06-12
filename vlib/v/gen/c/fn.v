@@ -2193,7 +2193,12 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 			if arg_typ_sym.kind != .function && deref_sym.kind !in [.sum_type, .interface_]
 				&& lang != .c {
 				if arg.expr.is_lvalue() {
-					g.write('(voidptr)&/*qq*/')
+					if expected_type.has_flag(.option) {
+						g.expr_with_opt(arg.expr, arg_typ, expected_type)
+						return
+					} else {
+						g.write('(voidptr)&/*qq*/')
+					}
 				} else {
 					mut atype := expected_deref_type
 					if atype.has_flag(.generic) {
