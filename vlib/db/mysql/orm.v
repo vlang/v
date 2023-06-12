@@ -4,7 +4,7 @@ import orm
 import time
 
 // @select is used internally by V's ORM for processing `SELECT ` queries.
-pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
+pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
 	query := orm.orm_select_gen(config, '`', false, '?', 0, where)
 	mut result := [][]orm.Primitive{}
 	mut stmt := db.init_stmt(query)
@@ -128,7 +128,7 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 }
 
 // insert is used internally by V's ORM for processing `INSERT ` queries
-pub fn (db Connection) insert(table string, data orm.QueryData) ! {
+pub fn (db DB) insert(table string, data orm.QueryData) ! {
 	mut converted_primitive_array := db.convert_query_data_to_primitives(table, data)!
 
 	converted_primitive_data := orm.QueryData{
@@ -145,20 +145,20 @@ pub fn (db Connection) insert(table string, data orm.QueryData) ! {
 }
 
 // update is used internally by V's ORM for processing `UPDATE ` queries
-pub fn (db Connection) update(table string, data orm.QueryData, where orm.QueryData) ! {
+pub fn (db DB) update(table string, data orm.QueryData, where orm.QueryData) ! {
 	query, _ := orm.orm_stmt_gen(.default, table, '`', .update, false, '?', 1, data, where)
 	mysql_stmt_worker(db, query, data, where)!
 }
 
 // delete is used internally by V's ORM for processing `DELETE ` queries
-pub fn (db Connection) delete(table string, where orm.QueryData) ! {
+pub fn (db DB) delete(table string, where orm.QueryData) ! {
 	query, _ := orm.orm_stmt_gen(.default, table, '`', .delete, false, '?', 1, orm.QueryData{},
 		where)
 	mysql_stmt_worker(db, query, orm.QueryData{}, where)!
 }
 
 // last_id is used internally by V's ORM for post-processing `INSERT ` queries
-pub fn (db Connection) last_id() int {
+pub fn (db DB) last_id() int {
 	query := 'SELECT last_insert_id();'
 	id := db.query(query) or { return 0 }
 
@@ -166,7 +166,7 @@ pub fn (db Connection) last_id() int {
 }
 
 // create is used internally by V's ORM for processing table creation queries (DDL)
-pub fn (db Connection) create(table string, fields []orm.TableField) ! {
+pub fn (db DB) create(table string, fields []orm.TableField) ! {
 	query := orm.orm_table_gen(table, '`', true, 0, fields, mysql_type_from_v, false) or {
 		return err
 	}
@@ -174,7 +174,7 @@ pub fn (db Connection) create(table string, fields []orm.TableField) ! {
 }
 
 // drop is used internally by V's ORM for processing table destroying queries (DDL)
-pub fn (db Connection) drop(table string) ! {
+pub fn (db DB) drop(table string) ! {
 	query := 'DROP TABLE `${table}`;'
 	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
@@ -182,7 +182,7 @@ pub fn (db Connection) drop(table string) ! {
 // mysql_stmt_worker executes the `query` with the provided `data` and `where` parameters
 // without returning the result.
 // This is commonly used for `INSERT`, `UPDATE`, `CREATE`, `DROP`, and `DELETE` queries.
-fn mysql_stmt_worker(db Connection, query string, data orm.QueryData, where orm.QueryData) ! {
+fn mysql_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryData) ! {
 	mut stmt := db.init_stmt(query)
 	stmt.prepare()!
 
@@ -360,7 +360,7 @@ fn mysql_type_from_v(typ int) !string {
 
 // convert_query_data_to_primitives converts the `data` representing the `QueryData`
 // into an array of `Primitive`.
-fn (db Connection) convert_query_data_to_primitives(table string, data orm.QueryData) ![]orm.Primitive {
+fn (db DB) convert_query_data_to_primitives(table string, data orm.QueryData) ![]orm.Primitive {
 	mut column_type_map := db.get_table_column_type_map(table)!
 	mut converted_data := []orm.Primitive{}
 
@@ -381,7 +381,7 @@ fn (db Connection) convert_query_data_to_primitives(table string, data orm.Query
 
 // get_table_column_type_map returns a map where the key represents the column name,
 // and the value represents its data type.
-fn (db Connection) get_table_column_type_map(table string) !map[string]string {
+fn (db DB) get_table_column_type_map(table string) !map[string]string {
 	data_type_query := "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '${table}'"
 	mut column_type_map := map[string]string{}
 	results := db.query(data_type_query)!
