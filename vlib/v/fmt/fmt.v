@@ -2629,9 +2629,9 @@ pub fn (mut f Fmt) postfix_expr(node ast.PostfixExpr) {
 }
 
 pub fn (mut f Fmt) prefix_expr(node ast.PrefixExpr) {
-	// !(a in b) => a !in b, !(a is b) => a !is b
-	if node.op == .not && node.right is ast.ParExpr {
-		if node.right.expr is ast.InfixExpr {
+	if node.right is ast.ParExpr {
+		if node.op == .not && node.right.expr is ast.InfixExpr {
+			// !(a in b) => a !in b, !(a is b) => a !is b
 			if node.right.expr.op in [.key_in, .not_in, .key_is, .not_is]
 				&& node.right.expr.right !is ast.InfixExpr {
 				f.expr(node.right.expr.left)
@@ -2645,6 +2645,14 @@ pub fn (mut f Fmt) prefix_expr(node ast.PrefixExpr) {
 				f.expr(node.right.expr.right)
 				return
 			}
+		} else if node.op == .amp && node.right.expr is ast.Ident {
+			// Reference prefix ParExpr. E.g.: `a := &(modname.constname)`
+			f.write(node.op.str())
+			f.write('(')
+			f.expr(node.right)
+			f.or_expr(node.or_block)
+			f.write(')')
+			return
 		}
 	}
 	f.write(node.op.str())
