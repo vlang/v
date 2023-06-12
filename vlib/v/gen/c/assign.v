@@ -579,7 +579,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							}
 						}
 						if is_auto_heap && !(val_type.is_ptr() && val_type.has_flag(.option)) {
-							g.write('*/*aqui*/')
+							g.write('*')
 						}
 					}
 				}
@@ -591,7 +591,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.op_arg(left, op_expected_left, var_type)
 					} else {
 						if !is_decl && left.is_auto_deref_var() {
-							g.write('*/*aqui2*/')
+							g.write('*')
 						}
 						g.expr(left)
 						if !is_decl && var_type.has_flag(.shared_f) {
