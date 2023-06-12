@@ -4274,7 +4274,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 					for _ in node.obj.smartcasts {
 						g.write('(')
 						if obj_sym.kind == .sum_type && !is_auto_heap {
-							g.write('*/*d*/')
+							g.write('*')
 						}
 					}
 					for i, typ in node.obj.smartcasts {
