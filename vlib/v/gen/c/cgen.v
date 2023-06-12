@@ -2453,7 +2453,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
 		got_is_opt_or_res := got_type.has_flag(.option) || got_type.has_flag(.result)
 		if deref_will_match || got_is_opt_or_res || expr.is_auto_deref_var() {
-			g.write('*/*c*/')
+			g.write('*')
 		}
 	}
 	if expr is ast.IntegerLiteral {
