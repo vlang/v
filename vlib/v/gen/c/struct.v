@@ -507,7 +507,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	}
 	// g.type_definitions.writeln('} $name;\n')
 	//
-	ti_attrs := if s.attrs.contains('packed') {
+	ti_attrs := if !g.is_cc_msvc && s.attrs.contains('packed') {
 		'__attribute__((__packed__))'
 	} else {
 		''
