@@ -66,7 +66,7 @@ fn test_hmac_md5() {
 	]
 	mut result := ''
 	for i, key in hmac.keys {
-		result = hmac.new(key, hmac.data[i], md5.sum, md5.block_size).hex()
+		result = new(key, hmac.data[i], md5.sum, md5.block_size).hex()
 		assert result == md5_expected_results[i]
 	}
 }
@@ -83,7 +83,7 @@ fn test_hmac_sha1() {
 	]
 	mut result := ''
 	for i, key in hmac.keys {
-		result = hmac.new(key, hmac.data[i], sha1.sum, sha1.block_size).hex()
+		result = new(key, hmac.data[i], sha1.sum, sha1.block_size).hex()
 		assert result == sha1_expected_results[i]
 	}
 }
@@ -100,7 +100,7 @@ fn test_hmac_sha224() {
 	]
 	mut result := ''
 	for i, key in hmac.keys {
-		result = hmac.new(key, hmac.data[i], sha256.sum224, sha256.block_size).hex()
+		result = new(key, hmac.data[i], sha256.sum224, sha256.block_size).hex()
 		assert result == sha224_expected_results[i]
 	}
 }
@@ -117,7 +117,7 @@ fn test_hmac_sha256() {
 	]
 	mut result := ''
 	for i, key in hmac.keys {
-		result = hmac.new(key, hmac.data[i], sha256.sum, sha256.block_size).hex()
+		result = new(key, hmac.data[i], sha256.sum, sha256.block_size).hex()
 		assert result == sha256_expected_results[i]
 	}
 }
@@ -134,7 +134,7 @@ fn test_hmac_sha384() {
 	]
 	mut result := ''
 	for i, key in hmac.keys {
-		result = hmac.new(key, hmac.data[i], sha512.sum384, sha512.block_size).hex()
+		result = new(key, hmac.data[i], sha512.sum384, sha512.block_size).hex()
 		assert result == sha384_expected_results[i]
 	}
 }
@@ -151,7 +151,7 @@ fn test_hmac_sha512() {
 	]
 	mut result := ''
 	for i, key in hmac.keys {
-		result = hmac.new(key, hmac.data[i], sha512.sum512, sha512.block_size).hex()
+		result = new(key, hmac.data[i], sha512.sum512, sha512.block_size).hex()
 		assert result == sha512_expected_results[i]
 	}
 }
@@ -161,10 +161,10 @@ fn test_hmac_equal() {
 	mac1_2 := '7641c48a3b4aa8f887c07b3e83f96affb89c978fed8c96fcbbf4ad596eebfe496f9f16da6cd080ba393c6f365ad72b50d15c71bfb1d6b81f66a911786c6ce932'.bytes()
 	mac2_1 := '164b7a7bfcf819e2e395fbe73b56e0a387bd64222e831fd610270cd7ea2505549758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737'.bytes()
 	mac2_2 := '164b7a7bfcf819e2e395fbe73b56e0a387bd64222e831fd610270cd7ea2505549758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737'.bytes()
-	assert hmac.equal(mac1_1, mac1_2)
-	assert hmac.equal(mac2_1, mac2_2)
-	assert !hmac.equal(mac1_1, mac2_1)
-	assert !hmac.equal(mac1_1, mac2_2)
+	assert equal(mac1_1, mac1_2)
+	assert equal(mac2_1, mac2_2)
+	assert !equal(mac1_1, mac2_1)
+	assert !equal(mac1_1, mac2_2)
 }
 
 // not yet supported by crypto module
