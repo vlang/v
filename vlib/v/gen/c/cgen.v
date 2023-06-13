@@ -3798,7 +3798,11 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 		g.enum_typedefs.writeln(', // ${cur_value}')
 		cur_enum_offset++
 	}
-	packed_attribute := if node.typ != ast.int_type { '__attribute__((packed))' } else { '' }
+	packed_attribute := if !g.is_cc_msvc && node.typ != ast.int_type {
+		'__attribute__((packed))'
+	} else {
+		''
+	}
 	g.enum_typedefs.writeln('} ${packed_attribute} ${enum_name};')
 	if node.typ != ast.int_type {
 		g.enum_typedefs.writeln('#pragma pack(pop)\n')
