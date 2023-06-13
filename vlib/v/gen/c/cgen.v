@@ -1898,6 +1898,9 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 				} else {
 					g.write('_option_ok(&(${styp}[]) { ')
 				}
+				if !expr_typ.is_ptr() && ret_typ.is_ptr() {
+					g.write('&/*ref*/')
+				}
 			}
 		} else {
 			g.write('_result_ok(&(${styp}[]) { ')

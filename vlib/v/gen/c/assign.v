@@ -7,12 +7,15 @@ import v.ast
 import v.util
 import v.token
 
-fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr ast.Expr, ret_typ ast.Type) {
+fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr ast.Expr, ret_typ ast.Type, in_heap bool) {
 	gen_or := expr is ast.Ident && (expr as ast.Ident).or_expr.kind != .absent
 	if gen_or {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
 		g.expr_with_cast(expr, expr_typ, ret_typ)
+		if in_heap {
+			g.write('))')
+		}
 		g.writeln(';')
 		expr_var := if expr is ast.Ident && (expr as ast.Ident).is_auto_heap() {
 			'(*${expr.name})'
@@ -575,7 +578,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 								g.write('${styp} ')
 							}
 						}
-						if is_auto_heap {
+						if is_auto_heap && !(val_type.is_ptr() && val_type.has_flag(.option)) {
 							g.write('*')
 						}
 					}
@@ -665,15 +668,18 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.write('{0}')
 						}
 					} else {
+						is_option_unwrapped := (val is ast.Ident
+							&& (val as ast.Ident).or_expr.kind != .absent)
+						is_option_auto_heap := is_auto_heap && is_option_unwrapped
 						if is_auto_heap {
 							g.write('HEAP(${styp}, (')
 						}
-						if val.is_auto_deref_var() {
+						if val.is_auto_deref_var() && !is_option_unwrapped {
 							g.write('*')
 						}
 						if (var_type.has_flag(.option) && val !in [ast.Ident, ast.SelectorExpr])
 							|| gen_or {
-							g.expr_with_opt_or_block(val, val_type, left, var_type)
+							g.expr_with_opt_or_block(val, val_type, left, var_type, is_option_auto_heap)
 						} else if val is ast.ArrayInit {
 							g.array_init(val, c_name(ident.name))
 						} else if val_type.has_flag(.shared_f) {
@@ -681,7 +687,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						} else {
 							g.expr(val)
 						}
-						if is_auto_heap {
+						if is_auto_heap && !is_option_auto_heap {
 							g.write('))')
 						}
 					}
@@ -695,7 +701,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.is_option_auto_heap = old_is_auto_heap
 					}
 					if var_type.has_flag(.option) || gen_or {
-						g.expr_with_opt_or_block(val, val_type, left, var_type)
+						g.expr_with_opt_or_block(val, val_type, left, var_type, false)
 					} else if node.has_cross_var {
 						g.gen_cross_tmp_variable(node.left, val)
 					} else {
