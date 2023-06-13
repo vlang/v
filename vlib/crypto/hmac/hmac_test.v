@@ -1,7 +1,6 @@
 // tests are taken from https://tools.ietf.org/html/rfc2202
 module hmac
 
-import crypto.hmac
 import crypto.md5
 import crypto.sha1
 import crypto.sha256
