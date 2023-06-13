@@ -1053,7 +1053,7 @@ fn (mut s Scanner) text_scan() token.Token {
 							//     that are on a separate line
 							comment = '\x01' + comment
 						}
-						return s.new_token(.comment, comment, comment.len + 2)
+						return s.new_token(.comment, comment, s.line_comment.len + 2)
 					}
 					// Skip the comment (return the next token)
 					continue
