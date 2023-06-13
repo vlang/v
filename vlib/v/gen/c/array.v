@@ -201,6 +201,21 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 					elem_type: arr_info.elem_type
 				})
 			}
+		} else if elem_sym.kind == .chan {
+			// fixed array for chan -- [N]chan
+			info := array_type.unaliased_sym.info as ast.ArrayFixed
+			chan_info := elem_sym.chan_info()
+			g.expr(ast.ChanInit{
+				typ: node.elem_type
+				elem_type: chan_info.elem_type
+			})
+			for _ in 1 .. info.size {
+				g.write(', ')
+				g.expr(ast.ChanInit{
+					typ: node.elem_type
+					elem_type: chan_info.elem_type
+				})
+			}
 		} else {
 			g.write('0')
 		}
