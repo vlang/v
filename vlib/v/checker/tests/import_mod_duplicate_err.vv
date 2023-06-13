@@ -5,4 +5,3 @@ import x.json2
 any := json2.Any(json2.null)
 
 println(any)
-
