@@ -1,0 +1,7 @@
+vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:10:11: error: `a_char` is immutable, cannot have a mutable reference to it
+    8 | 
+    9 | fn foo() {
+   10 |     mut c := &(a_char)
+      |              ^
+   11 |     println(c)
+   12 | }

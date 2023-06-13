@@ -8,6 +8,10 @@ import v.token
 import v.util
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr) {
+	g.expected_fixed_arr = true
+	defer {
+		g.expected_fixed_arr = false
+	}
 	if node.auto_locked != '' {
 		g.writeln('sync__RwMutex_lock(&${node.auto_locked}->mtx);')
 	}

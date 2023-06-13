@@ -9,7 +9,7 @@ fn main() {
 	println('hello')
 	/*
 	this comment also
-	has mutliple lines
+	has multiple lines
 	but it's difference
 	is that it is indented !
 	*/

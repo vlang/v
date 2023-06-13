@@ -456,7 +456,8 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		p.if_cond_comments << p.eat_comments()
 	}
 	if p.pref.is_fmt && p.tok.kind == .comment && p.peek_tok.kind.is_infix() && !p.inside_infix
-		&& !(p.peek_tok.kind == .mul && p.peek_tok.pos().line_nr != p.tok.pos().line_nr) {
+		&& !p.inside_map_init && !(p.peek_tok.kind == .mul
+		&& p.peek_tok.pos().line_nr != p.tok.pos().line_nr) {
 		p.left_comments = p.eat_comments()
 	}
 	return p.expr_with_left(node, precedence, is_stmt_ident)

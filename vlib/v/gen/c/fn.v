@@ -1277,7 +1277,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.get_free_method(rec_type)
 	}
 	mut has_cast := false
-	if left_sym.kind == .map && node.name in ['clone', 'move'] {
+	if final_left_sym.kind == .map && node.name in ['clone', 'move'] {
 		receiver_type_name = 'map'
 	}
 	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name))
@@ -1474,6 +1474,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write(', ${array_depth}')
 	}
 	g.write(')')
+	if node.return_type != 0 && !node.return_type.has_flag(.option)
+		&& g.table.sym(node.return_type).kind == .array_fixed {
+		// it's non-option fixed array, requires accessing .ret_arr member to get the array
+		g.write('.ret_arr')
+	}
 }
 
 fn (mut g Gen) fn_call(node ast.CallExpr) {
@@ -1776,6 +1781,11 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			if name != '&' {
 				g.write(')')
 			}
+			if node.return_type != 0 && !node.return_type.has_flag(.option)
+				&& g.table.sym(node.return_type).kind == .array_fixed {
+				// it's non-option fixed array, requires accessing .ret_arr member to get the array
+				g.write('.ret_arr')
+			}
 			if tmp_cnt_save >= 0 {
 				g.writeln(';')
 				g.keep_alive_call_postgen(node, tmp_cnt_save)
@@ -1916,6 +1926,10 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 }
 
 fn (mut g Gen) call_args(node ast.CallExpr) {
+	g.expected_fixed_arr = true
+	defer {
+		g.expected_fixed_arr = false
+	}
 	args := if g.is_js_call {
 		if node.args.len < 1 {
 			g.error('node should have at least 1 arg', node.pos)
@@ -2179,7 +2193,12 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 			if arg_typ_sym.kind != .function && deref_sym.kind !in [.sum_type, .interface_]
 				&& lang != .c {
 				if arg.expr.is_lvalue() {
-					g.write('(voidptr)&/*qq*/')
+					if expected_type.has_flag(.option) {
+						g.expr_with_opt(arg.expr, arg_typ, expected_type)
+						return
+					} else {
+						g.write('(voidptr)&/*qq*/')
+					}
 				} else {
 					mut atype := expected_deref_type
 					if atype.has_flag(.generic) {

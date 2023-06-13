@@ -1567,7 +1567,6 @@ fn (t Tree) struct_init(node ast.StructInit) &Node {
 	obj.add('name_pos', t.pos(node.name_pos))
 	obj.add('update_expr_comments', t.array_node_comment(node.update_expr_comments))
 	obj.add_terse('fields', t.array_node_struct_init_field(node.fields))
-	obj.add_terse('embeds', t.array_node_struct_init_embed(node.embeds))
 	obj.add('pre_comments', t.array_node_comment(node.pre_comments))
 	return obj
 }
@@ -1584,19 +1583,6 @@ fn (t Tree) struct_init_field(node ast.StructInitField) &Node {
 	obj.add('next_comments', t.array_node_comment(node.next_comments))
 	obj.add('pos', t.pos(node.pos))
 	obj.add('name_pos', t.pos(node.name_pos))
-	return obj
-}
-
-fn (t Tree) struct_init_embed(node ast.StructInitEmbed) &Node {
-	mut obj := new_object()
-	obj.add_terse('ast_type', t.string_node('StructInitEmbed'))
-	obj.add_terse('name', t.string_node(node.name))
-	obj.add_terse('expr', t.expr(node.expr))
-	obj.add_terse('typ', t.type_node(node.typ))
-	obj.add_terse('expected_type', t.type_node(node.expected_type))
-	obj.add('comments', t.array_node_comment(node.comments))
-	obj.add('next_comments', t.array_node_comment(node.next_comments))
-	obj.add('pos', t.pos(node.pos))
 	return obj
 }
 
@@ -2302,14 +2288,6 @@ fn (t Tree) array_node_if_guard_var(nodes []ast.IfGuardVar) &Node {
 	mut arr := new_array()
 	for node in nodes {
 		arr.add_item(t.if_guard_var(node))
-	}
-	return arr
-}
-
-fn (t Tree) array_node_struct_init_embed(nodes []ast.StructInitEmbed) &Node {
-	mut arr := new_array()
-	for node in nodes {
-		arr.add_item(t.struct_init_embed(node))
 	}
 	return arr
 }

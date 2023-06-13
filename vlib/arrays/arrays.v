@@ -10,7 +10,7 @@ module arrays
 // - flatten - reduce dimensionality of array by one. e.g. arrays.flatten([[1,2],[3,4],[5,6]]) => [1,2,3,4,5,6]
 
 // min returns the minimum value in the array
-// Example: arrays.min([1,2,3,0,9]) // => 0
+// Example: arrays.min([1, 2, 3, 0, 9])! // => 0
 pub fn min[T](array []T) !T {
 	if array.len == 0 {
 		return error('.min called on an empty array')
@@ -25,7 +25,7 @@ pub fn min[T](array []T) !T {
 }
 
 // max returns the maximum value in the array
-// Example: arrays.max([1,2,3,0,9]) // => 9
+// Example: arrays.max([1, 2, 3, 0, 9])! // => 9
 pub fn max[T](array []T) !T {
 	if array.len == 0 {
 		return error('.max called on an empty array')
@@ -40,7 +40,7 @@ pub fn max[T](array []T) !T {
 }
 
 // idx_min returns the index of the minimum value in the array
-// Example: arrays.idx_min([1,2,3,0,9]) // => 3
+// Example: arrays.idx_min([1, 2, 3, 0, 9])! // => 3
 pub fn idx_min[T](array []T) !int {
 	if array.len == 0 {
 		return error('.idx_min called on an empty array')
@@ -57,7 +57,7 @@ pub fn idx_min[T](array []T) !int {
 }
 
 // idx_max returns the index of the maximum value in the array
-// Example: arrays.idx_max([1,2,3,0,9]) // => 4
+// Example: arrays.idx_max([1, 2, 3, 0, 9])! // => 4
 pub fn idx_max[T](array []T) !int {
 	if array.len == 0 {
 		return error('.idx_max called on an empty array')
@@ -74,7 +74,7 @@ pub fn idx_max[T](array []T) !int {
 }
 
 // merge two sorted arrays (ascending) and maintain sorted order
-// Example: arrays.merge([1,3,5,7], [2,4,6,8]) // => [1,2,3,4,5,6,7,8]
+// Example: arrays.merge([1, 3, 5, 7], [2, 4, 6, 8]) // => [1, 2, 3, 4, 5, 6, 7, 8]
 [direct_array_access]
 pub fn merge[T](a []T, b []T) []T {
 	mut m := []T{len: a.len + b.len}
@@ -113,7 +113,7 @@ pub fn merge[T](a []T, b []T) []T {
 // To fully interleave two arrays, follow this function with a call to `flatten`.
 //
 // NOTE: An error will be generated if the type annotation is omitted.
-// Example: arrays.group<int>([1,2,3],[4,5,6]) // => [[1, 4], [2, 5], [3, 6]]
+// Example: arrays.group[int]([1, 2, 3], [4, 5, 6]) // => [[1, 4], [2, 5], [3, 6]]
 pub fn group[T](arrays ...[]T) [][]T {
 	mut length := if arrays.len > 0 { arrays[0].len } else { 0 }
 	// calculate length of output by finding shortest input array
@@ -199,7 +199,7 @@ pub fn window[T](array []T, attr WindowAttribute) [][]T {
 // NOTICE: currently V has bug that cannot make sum function takes custom struct with + operator overloaded
 // which means you can only pass array of numbers for now.
 // TODO: Fix generic operator overloading detection issue.
-// Example: arrays.sum<int>([1, 2, 3, 4, 5])? // => 15
+// Example: arrays.sum[int]([1, 2, 3, 4, 5])! // => 15
 pub fn sum[T](array []T) !T {
 	if array.len == 0 {
 		return error('Cannot sum up array of nothing.')
@@ -283,7 +283,7 @@ pub fn filter_indexed[T](array []T, predicate fn (idx int, elem T) bool) []T {
 // ```v
 // // Sum the length of each string in an array
 // a := ['Hi', 'all']
-// r := arrays.fold<string, int>(a, 0,
+// r := arrays.fold[string, int](a, 0,
 // 	fn (r int, t string) int { return r + t.len })
 // assert r == 5
 // ```
@@ -370,7 +370,7 @@ pub fn map_indexed[T, R](array []T, transform fn (idx int, elem T) R) []R {
 }
 
 // group_by groups together elements, for which the `grouping_op` callback produced the same result.
-// Example: arrays.group_by<int, string>(['H', 'el', 'lo'], fn (v string) int { return v.len }) // => {1: ['H'], 2: ['el', 'lo']}
+// Example: arrays.group_by[int, string](['H', 'el', 'lo'], fn (v string) int { return v.len }) // => {1: ['H'], 2: ['el', 'lo']}
 pub fn group_by[K, V](array []V, grouping_op fn (val V) K) map[K][]V {
 	mut result := map[K][]V{}
 
@@ -404,7 +404,7 @@ pub fn concat[T](a []T, b ...T) []T {
 }
 
 // returns the smallest element >= val, requires `array` to be sorted
-// Example: arrays.lower_bound([2, 4, 6, 8], 3)? // => 4
+// Example: arrays.lower_bound([2, 4, 6, 8], 3)! // => 4
 pub fn lower_bound[T](array []T, val T) !T {
 	if array.len == 0 {
 		return error('.lower_bound called on an empty array')
@@ -452,7 +452,7 @@ pub fn upper_bound[T](array []T, val T) !T {
 // binary search, requires `array` to be sorted, returns index of found item or error.
 // Binary searches on sorted lists can be faster than other array searches because at maximum
 // the algorithm only has to traverse log N elements
-// Example: arrays.binary_search([1, 2, 3, 4], 4)? // => 3
+// Example: arrays.binary_search([1, 2, 3, 4], 4)! // => 3
 pub fn binary_search[T](array []T, target T) !int {
 	mut left := 0
 	mut right := array.len - 1

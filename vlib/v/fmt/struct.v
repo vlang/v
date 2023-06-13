@@ -79,39 +79,46 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 	mut default_expr_align_i := 0
 	mut inc_indent := false // for correct indents with multi line default exprs
 	for i, field in node.fields {
-		if i == node.mut_pos {
-			f.writeln('mut:')
-		} else if i == node.pub_pos {
-			f.writeln('pub:')
-		} else if i == node.pub_mut_pos {
-			f.writeln('pub mut:')
-		} else if i == node.global_pos {
-			f.writeln('__global:')
-		} else if i == node.module_pos {
-			f.writeln('module:')
-		} else if i > 0 {
-			// keep one empty line between fields (exclude one after mut:, pub:, ...)
-			mut before_last_line := node.fields[i - 1].pos.line_nr
-			if node.fields[i - 1].comments.len > 0 {
-				if before_last_line < node.fields[i - 1].comments.last().pos.last_line {
-					before_last_line = node.fields[i - 1].comments.last().pos.last_line
-				}
+		match true {
+			i == node.mut_pos {
+				f.writeln('mut:')
 			}
-			if node.fields[i - 1].has_default_expr {
-				if before_last_line < node.fields[i - 1].default_expr.pos().last_line {
-					before_last_line = node.fields[i - 1].default_expr.pos().last_line
-				}
+			i == node.pub_pos {
+				f.writeln('pub:')
 			}
+			i == node.pub_mut_pos {
+				f.writeln('pub mut:')
+			}
+			i == node.global_pos {
+				f.writeln('__global:')
+			}
+			i == node.module_pos {
+				f.writeln('module:')
+			}
+			i > 0 {
+				// keep one empty line between fields (exclude one after mut:, pub:, ...)
+				last_field := node.fields[i - 1]
+				before_last_line := if last_field.comments.len > 0
+					&& last_field.pos.line_nr < last_field.comments.last().pos.last_line {
+					last_field.comments.last().pos.last_line
+				} else if last_field.has_default_expr {
+					last_field.default_expr.pos().last_line
+				} else {
+					last_field.pos.line_nr
+				}
 
-			mut next_first_line := field.pos.line_nr
-			if field.comments.len > 0 {
-				if next_first_line > field.comments[0].pos.line_nr {
-					next_first_line = field.comments[0].pos.line_nr
+				next_first_line := if field.comments.len > 0
+					&& field.pos.line_nr > field.comments[0].pos.line_nr {
+					field.comments[0].pos.line_nr
+				} else {
+					field.pos.line_nr
+				}
+
+				if next_first_line - before_last_line > 1 {
+					f.writeln('')
 				}
 			}
-			if next_first_line - before_last_line > 1 {
-				f.writeln('')
-			}
+			else {}
 		}
 		end_pos := field.pos.pos + field.pos.len
 		before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
@@ -125,11 +132,10 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		before_len := f.line_len
 		f.comments(between_comments, iembed: true, has_nl: false)
 		comments_len := f.line_len - before_len
-		mut field_align := field_aligns[field_align_i]
-		if field_align.line_nr < field.pos.line_nr {
+		if field_aligns[field_align_i].line_nr < field.pos.line_nr {
 			field_align_i++
-			field_align = field_aligns[field_align_i]
 		}
+		field_align := field_aligns[field_align_i]
 		f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
 		// Handle anon structs recursively
 		if !f.write_anon_struct_field_decl(field.typ, field.anon_struct_decl) {
@@ -143,11 +149,10 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 			f.single_line_attrs(field.attrs, inline: true)
 		}
 		if field.has_default_expr {
-			mut align := default_expr_aligns[default_expr_align_i]
-			if align.line_nr < field.pos.line_nr {
+			if default_expr_aligns[default_expr_align_i].line_nr < field.pos.line_nr {
 				default_expr_align_i++
-				align = default_expr_aligns[default_expr_align_i]
 			}
+			align := default_expr_aligns[default_expr_align_i]
 			pad_len := align.max_len - attrs_len + align.max_type_len - field_types[i].len
 			f.write(strings.repeat(` `, pad_len))
 			f.write(' = ')
@@ -167,11 +172,10 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 				f.writeln('')
 			} else {
 				if !field.has_default_expr {
-					mut align := comment_aligns[comment_align_i]
-					if align.line_nr < field.pos.line_nr {
+					if comment_aligns[comment_align_i].line_nr < field.pos.line_nr {
 						comment_align_i++
-						align = comment_aligns[comment_align_i]
 					}
+					align := comment_aligns[comment_align_i]
 					pad_len := align.max_len - attrs_len + align.max_type_len - field_types[i].len
 					f.write(strings.repeat(` `, pad_len))
 				}
@@ -238,11 +242,12 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 		f.is_struct_init = struct_init_save
 	}
 	f.mark_types_import_as_used(node.typ)
-	type_sym := f.table.sym(node.typ)
+	sym_name := f.table.sym(node.typ).name
 	// f.write('<old name: $type_sym.name>')
-	mut name := type_sym.name
-	if !name.starts_with('C.') && !name.starts_with('JS.') {
-		name = f.no_cur_mod(f.short_module(type_sym.name)) // TODO f.type_to_str?
+	mut name := if !sym_name.starts_with('C.') && !sym_name.starts_with('JS.') {
+		f.no_cur_mod(f.short_module(sym_name)) // TODO f.type_to_str?
+	} else {
+		sym_name
 	}
 	if name == 'void' {
 		name = ''

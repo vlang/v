@@ -138,6 +138,7 @@ mut:
 	inside_or_block           bool
 	inside_call               bool
 	inside_curry_call         bool // inside foo()()!, foo()()?, foo()()
+	expected_fixed_arr        bool
 	inside_for_c_stmt         bool
 	inside_comptime_for_field bool
 	inside_cast_in_heap       int // inside cast to interface type in heap (resolve recursive calls)
@@ -1883,19 +1884,35 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		g.gen_option_error(ret_typ, expr)
 		g.writeln(';')
 	} else {
+		mut is_ptr_to_ptr_assign := false
 		g.writeln('${g.typ(ret_typ)} ${tmp_var};')
 		if ret_typ.has_flag(.option) {
 			if expr_typ.has_flag(.option) && expr in [ast.StructInit, ast.ArrayInit, ast.MapInit] {
 				g.write('_option_none(&(${styp}[]) { ')
 			} else {
-				g.write('_option_ok(&(${styp}[]) { ')
+				is_ptr_to_ptr_assign = (expr is ast.SelectorExpr
+					|| (expr is ast.Ident && !(expr as ast.Ident).is_auto_heap()))
+					&& ret_typ.is_ptr() && expr_typ.is_ptr() && expr_typ.has_flag(.option)
+				// option ptr assignment simplification
+				if is_ptr_to_ptr_assign {
+					g.write('${tmp_var} = ')
+				} else {
+					g.write('_option_ok(&(${styp}[]) { ')
+				}
+				if !expr_typ.is_ptr() && ret_typ.is_ptr() {
+					g.write('&/*ref*/')
+				}
 			}
 		} else {
 			g.write('_result_ok(&(${styp}[]) { ')
 		}
 		g.expr_with_cast(expr, expr_typ, ret_typ)
 		if ret_typ.has_flag(.option) {
-			g.writeln(' }, (${c.option_name}*)(&${tmp_var}), sizeof(${styp}));')
+			if is_ptr_to_ptr_assign {
+				g.writeln(';')
+			} else {
+				g.writeln(' }, (${c.option_name}*)(&${tmp_var}), sizeof(${styp}));')
+			}
 		} else {
 			g.writeln(' }, (${c.result_name}*)(&${tmp_var}), sizeof(${styp}));')
 		}
@@ -2453,11 +2470,6 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 	// no cast
 	g.expr(expr)
-	if expr is ast.CallExpr && !(expr as ast.CallExpr).is_fn_var && !expected_type.has_flag(.option)
-		&& exp_sym.kind == .array_fixed {
-		// it's non-option fixed array, requires accessing .ret_arr member to get the array
-		g.write('.ret_arr')
-	}
 }
 
 fn write_octal_escape(mut b strings.Builder, c u8) {
@@ -4991,12 +5003,16 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.writeln('{0};')
 					if node.exprs[0] is ast.Ident {
 						g.write('memcpy(${tmpvar}.ret_arr, ${g.expr_string(node.exprs[0])}, sizeof(${g.typ(node.types[0])})) /*ret*/')
-					} else {
+					} else if node.exprs[0] is ast.ArrayInit {
 						tmpvar2 := g.new_tmp_var()
 						g.write('${g.typ(node.types[0])} ${tmpvar2} = ')
 						g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 						g.writeln(';')
 						g.write('memcpy(${tmpvar}.ret_arr, ${tmpvar2}, sizeof(${g.typ(node.types[0])})) /*ret*/')
+					} else {
+						g.write('memcpy(${tmpvar}.ret_arr, ')
+						g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+						g.write(', sizeof(${g.typ(node.types[0])})) /*ret*/')
 					}
 				} else {
 					g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
@@ -6241,6 +6257,18 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 				return '(${styp}*)__dup${styp}(&(${styp}){.mtx = {0}, .val = ${init_str}}, sizeof(${styp}))'
 			} else {
 				return init_str
+			}
+		}
+		.enum_ {
+			// returns the enum's first value
+			if enum_decl := g.table.enum_decls[sym.name] {
+				return if enum_decl.fields[0].expr is ast.EmptyExpr {
+					'0'
+				} else {
+					g.expr_string(enum_decl.fields[0].expr)
+				}
+			} else {
+				return '0'
 			}
 		}
 		else {

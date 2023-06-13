@@ -32,6 +32,7 @@ pub mut:
 //
 // See https://tools.ietf.org/html/draft-ietf-httpbis-cookie-same-site-00 for details.
 pub enum SameSite {
+	same_site_not_set
 	same_site_default_mode = 1
 	same_site_lax_mode
 	same_site_strict_mode
@@ -162,6 +163,7 @@ pub fn (c &Cookie) str() string {
 		b.write_string('; Secure')
 	}
 	match c.same_site {
+		.same_site_not_set {}
 		.same_site_default_mode {
 			b.write_string('; SameSite')
 		}

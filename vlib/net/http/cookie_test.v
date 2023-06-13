@@ -416,7 +416,7 @@ const (
 				value: ','
 				raw: 'special-8=","'
 			}]
-		}
+		},
 		// TODO(bradfitz): users have reported seeing this in the
 		// wild, but do browsers handle it? RFC 6265 just says "don't
 		// do that" (section 3) and then never mentions header folding

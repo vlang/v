@@ -77,7 +77,7 @@ pub fn (s &Stmt) str() string {
 }
 
 // init_stmt creates a new statement, given the `query`.
-pub fn (db Connection) init_stmt(query string) Stmt {
+pub fn (db DB) init_stmt(query string) Stmt {
 	return Stmt{
 		stmt: C.mysql_stmt_init(db.conn)
 		query: query
