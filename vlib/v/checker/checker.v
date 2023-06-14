@@ -1679,7 +1679,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 					} else {
 						val := field.expr.val.u64()
 						uval = val
-						if val >= enum_umax {
+						if val > enum_umax {
 							c.error('enum value `${field.expr.val}` overflows the enum type `${senum_type}`, values of which have to be in [${enum_umin}, ${enum_umax}]',
 								field.expr.pos)
 							overflows = true
