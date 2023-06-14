@@ -169,11 +169,11 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 	c.change_current_file(ast_file)
 	for i, ast_import in ast_file.imports {
 		if c.mod == ast_import.mod && ast_import.mod == ast_import.alias {
-			c.error('duplicate of module name `${ast_import.mod}` on line ${
-				ast_file.stmts[0].pos.line_nr + 1}', ast_import.mod_pos)
+			c.error('cannot import `${ast_import.mod}` into a module with the same name',
+				ast_import.mod_pos)
 		} else if c.mod == ast_import.alias {
-			c.error('duplicate of module name `${ast_import.mod}` on line ${
-				ast_file.stmts[0].pos.line_nr + 1}', ast_import.alias_pos)
+			c.error('cannot import `${ast_import.mod}` as `${ast_import.alias}` into a module with the same name',
+				ast_import.alias_pos)
 		}
 		for sym in ast_import.syms {
 			full_name := ast_import.mod + '.' + sym.name
