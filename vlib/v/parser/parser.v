@@ -3223,6 +3223,9 @@ fn (mut p Parser) parse_concrete_types() []ast.Type {
 		if first_done {
 			p.check(.comma)
 		}
+		if p.tok.kind == .amp {
+			p.error('cannot use &Type as generic concrete type')
+		}
 		types << p.parse_type()
 		first_done = true
 	}
