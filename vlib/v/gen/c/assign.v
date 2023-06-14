@@ -7,12 +7,15 @@ import v.ast
 import v.util
 import v.token
 
-fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr ast.Expr, ret_typ ast.Type) {
+fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr ast.Expr, ret_typ ast.Type, in_heap bool) {
 	gen_or := expr is ast.Ident && (expr as ast.Ident).or_expr.kind != .absent
 	if gen_or {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
 		g.expr_with_cast(expr, expr_typ, ret_typ)
+		if in_heap {
+			g.write('))')
+		}
 		g.writeln(';')
 		expr_var := if expr is ast.Ident && (expr as ast.Ident).is_auto_heap() {
 			'(*${expr.name})'
@@ -93,7 +96,7 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 		g.inside_opt_or_res = old_inside_opt_or_res
 	}
 	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)
-		&& expr in [ast.DumpExpr, ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr, ast.CastExpr] {
+		&& expr in [ast.SelectorExpr, ast.DumpExpr, ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr, ast.CastExpr] {
 		if expr in [ast.Ident, ast.CastExpr] {
 			if expr_typ.idx() != ret_typ.idx() {
 				return g.expr_opt_with_cast(expr, expr_typ, ret_typ)
@@ -575,7 +578,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 								g.write('${styp} ')
 							}
 						}
-						if is_auto_heap {
+						if is_auto_heap && !(val_type.is_ptr() && val_type.has_flag(.option)) {
 							g.write('*')
 						}
 					}
@@ -636,13 +639,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else if is_fixed_array_var {
 					// TODO Instead of the translated check, check if it's a pointer already
 					// and don't generate memcpy &
-					right_is_fixed_ret := !(val is ast.CallExpr
-						&& (val as ast.CallExpr).or_block.kind == .propagate_option)
-						&& ((right_sym.info is ast.ArrayFixed
-						&& (right_sym.info as ast.ArrayFixed).is_fn_ret)
-						|| (val is ast.DumpExpr && right_sym.info is ast.ArrayFixed)
-						|| (val is ast.CallExpr
-						&& g.table.sym(g.unwrap_generic((val as ast.CallExpr).return_type)).kind == .array_fixed))
 					typ_str := g.typ(val_type).trim('*')
 					final_typ_str := if is_fixed_array_var { '' } else { '(${typ_str}*)' }
 					final_ref_str := if is_fixed_array_var {
@@ -661,9 +657,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.expr(left)
 						g.write(', ${final_ref_str}')
 						g.expr(val)
-						if right_is_fixed_ret {
-							g.write('.ret_arr')
-						}
 						g.write(', sizeof(${typ_str})) /*assign*/')
 					}
 				} else if is_decl {
@@ -675,15 +668,18 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.write('{0}')
 						}
 					} else {
+						is_option_unwrapped := (val is ast.Ident
+							&& (val as ast.Ident).or_expr.kind != .absent)
+						is_option_auto_heap := is_auto_heap && is_option_unwrapped
 						if is_auto_heap {
 							g.write('HEAP(${styp}, (')
 						}
-						if val.is_auto_deref_var() {
+						if val.is_auto_deref_var() && !is_option_unwrapped {
 							g.write('*')
 						}
 						if (var_type.has_flag(.option) && val !in [ast.Ident, ast.SelectorExpr])
 							|| gen_or {
-							g.expr_with_opt_or_block(val, val_type, left, var_type)
+							g.expr_with_opt_or_block(val, val_type, left, var_type, is_option_auto_heap)
 						} else if val is ast.ArrayInit {
 							g.array_init(val, c_name(ident.name))
 						} else if val_type.has_flag(.shared_f) {
@@ -691,7 +687,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						} else {
 							g.expr(val)
 						}
-						if is_auto_heap {
+						if is_auto_heap && !is_option_auto_heap {
 							g.write('))')
 						}
 					}
@@ -705,7 +701,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.is_option_auto_heap = old_is_auto_heap
 					}
 					if var_type.has_flag(.option) || gen_or {
-						g.expr_with_opt_or_block(val, val_type, left, var_type)
+						g.expr_with_opt_or_block(val, val_type, left, var_type, false)
 					} else if node.has_cross_var {
 						g.gen_cross_tmp_variable(node.left, val)
 					} else {

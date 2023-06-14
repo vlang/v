@@ -36,14 +36,13 @@ struct TestDefaultAtribute {
 }
 
 fn test_mysql_orm() {
-	mut db := mysql.Connection{
+	mut db := mysql.connect(
 		host: 'localhost'
 		port: 3306
 		username: 'root'
 		password: ''
 		dbname: 'mysql'
-	}
-	db.connect() or { panic(err) }
+	)!
 	defer {
 		db.close()
 	}
@@ -124,7 +123,6 @@ fn test_mysql_orm() {
 		WHERE TABLE_NAME = 'TestCustomSqlType'
 		ORDER BY ORDINAL_POSITION
 	") or {
-		println(err)
 		panic(err)
 	}
 

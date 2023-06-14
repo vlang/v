@@ -1,5 +1,5 @@
 // Build with
-// v -use-coroutines simple_coroutines.v
+// v -gc none -use-coroutines simple_coroutines.v
 //
 import coroutines
 import time
@@ -21,12 +21,11 @@ fn foo2(a int) {
 		// C.printf(c'hello from foo2() a=%d\n', a)
 		coroutines.sleep(2 * time.second)
 		i++
-		// resp := http.get('https://vlang.io/utc_now') or { panic(err) }
-		// resp := http.get('http://example.com') or { panic(err) }
-		// println(resp)
-		// mut f := os.create('/tmp/FOO2_a${i}') or { panic(err) }
-		// f.write_string(resp.body) or { panic(err) }
-		// f.close()
+		resp := http.get('https://vlang.io/utc_now') or { panic(err) }
+		println(resp)
+		mut f := os.create('/tmp/FOO2_a${i}') or { panic(err) }
+		f.write_string(resp.body) or { panic(err) }
+		f.close()
 	}
 }
 

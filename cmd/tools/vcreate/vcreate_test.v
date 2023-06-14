@@ -91,7 +91,6 @@ fn init_and_check() ! {
 		'',
 		'[*.v]',
 		'indent_style = tab',
-		'indent_size = 4',
 		'',
 	].join_lines()
 }
@@ -130,7 +129,6 @@ trim_trailing_whitespace = true
 
 [*.v]
 indent_style = tab
-indent_size = 4
 '
 	prepare_test_path()!
 	os.write_file('.gitattributes', git_attributes_content)!

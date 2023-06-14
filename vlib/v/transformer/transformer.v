@@ -662,9 +662,6 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			for mut field in node.fields {
 				field.expr = t.expr(mut field.expr)
 			}
-			for mut embed in node.embeds {
-				embed.expr = t.expr(mut embed.expr)
-			}
 		}
 		ast.UnsafeExpr {
 			node.expr = t.expr(mut node.expr)

@@ -270,7 +270,9 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			return c.eval_comptime_const_expr(expr.expr, nlevel + 1)
 		}
 		ast.EnumVal {
-			return c.table.find_enum_field_val(expr.enum_name, expr.val)
+			if val := c.table.find_enum_field_val(expr.enum_name, expr.val) {
+				return val
+			}
 		}
 		ast.SizeOf {
 			s, _ := c.table.type_size(expr.typ)

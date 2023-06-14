@@ -555,7 +555,7 @@ pub fn (typ Type) is_number() bool {
 
 [inline]
 pub fn (typ Type) is_string() bool {
-	return typ.idx() in ast.string_type_idxs
+	return typ.idx() == ast.string_type_idx
 }
 
 [inline]
@@ -618,7 +618,6 @@ pub const (
 		char_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx,
 		f32_type_idx, f64_type_idx, int_literal_type_idx, float_literal_type_idx, rune_type_idx]
 	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx, nil_type_idx]
-	string_type_idxs           = [string_type_idx]
 )
 
 pub const (

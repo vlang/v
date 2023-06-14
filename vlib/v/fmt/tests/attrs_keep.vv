@@ -1,4 +1,4 @@
-struct AttrsWithEscpaedStringArgs {
+struct AttrsWithEscapedStringArgs {
 	dollar    string [foo: '\$var']
 	double_bs string [bar: '\\baz']
 }
