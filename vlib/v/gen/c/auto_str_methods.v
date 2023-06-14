@@ -821,7 +821,7 @@ fn (g &Gen) type_to_fmt(typ ast.Type) StrIntpType {
 		return .si_p
 	}
 	sym := g.table.sym(typ)
-	if typ.is_ptr() && (typ.is_int_valptr() || typ.is_float_valptr()) {
+	if typ.is_int_valptr() || typ.is_float_valptr() {
 		return .si_s
 	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_,
 		.sum_type, .function, .alias, .chan] {
@@ -1069,8 +1069,7 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 		}
 		if sym.kind == .bool {
 			return '${method_str} ? _SLIT("true") : _SLIT("false")', false
-		} else if (field_type.is_int_valptr() || field_type.is_float_valptr())
-			&& field_type.is_ptr() && !expects_ptr {
+		} else if (field_type.is_int_valptr() || field_type.is_float_valptr()) && !expects_ptr {
 			// ptr int can be "nil", so this needs to be casted to a string
 			if sym.kind == .f32 {
 				return 'str_intp(1, _MOV((StrIntpData[]){
