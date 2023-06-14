@@ -1,7 +1,77 @@
+vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:11:12: warning: redundant parentheses are used
+    9 | fn foo() {
+   10 |     mut a := &(a_char)
+   11 |     mut b := &((a_char))
+      |               ~~~~~~~~~~
+   12 |     mut c := &((((a_char))))
+   13 |     println(a)
+vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:11:12: warning: redundant parentheses are used
+    9 | fn foo() {
+   10 |     mut a := &(a_char)
+   11 |     mut b := &((a_char))
+      |               ~~~~~~~~~~
+   12 |     mut c := &((((a_char))))
+   13 |     println(a)
+vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:12:12: warning: redundant parentheses are used
+   10 |     mut a := &(a_char)
+   11 |     mut b := &((a_char))
+   12 |     mut c := &((((a_char))))
+      |               ~~~~~~~~~~~~~~
+   13 |     println(a)
+   14 |     println(b)
+vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:12:13: warning: redundant parentheses are used
+   10 |     mut a := &(a_char)
+   11 |     mut b := &((a_char))
+   12 |     mut c := &((((a_char))))
+      |                ~~~~~~~~~~~~
+   13 |     println(a)
+   14 |     println(b)
+vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:12:14: warning: redundant parentheses are used
+   10 |     mut a := &(a_char)
+   11 |     mut b := &((a_char))
+   12 |     mut c := &((((a_char))))
+      |                 ~~~~~~~~~~
+   13 |     println(a)
+   14 |     println(b)
+vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:12:12: warning: redundant parentheses are used
+   10 |     mut a := &(a_char)
+   11 |     mut b := &((a_char))
+   12 |     mut c := &((((a_char))))
+      |               ~~~~~~~~~~~~~~
+   13 |     println(a)
+   14 |     println(b)
+vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:12:13: warning: redundant parentheses are used
+   10 |     mut a := &(a_char)
+   11 |     mut b := &((a_char))
+   12 |     mut c := &((((a_char))))
+      |                ~~~~~~~~~~~~
+   13 |     println(a)
+   14 |     println(b)
+vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:12:14: warning: redundant parentheses are used
+   10 |     mut a := &(a_char)
+   11 |     mut b := &((a_char))
+   12 |     mut c := &((((a_char))))
+      |                 ~~~~~~~~~~
+   13 |     println(a)
+   14 |     println(b)
 vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:10:11: error: `a_char` is immutable, cannot have a mutable reference to it
     8 | 
     9 | fn foo() {
-   10 |     mut c := &(a_char)
+   10 |     mut a := &(a_char)
       |              ^
-   11 |     println(c)
-   12 | }
+   11 |     mut b := &((a_char))
+   12 |     mut c := &((((a_char))))
+vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:11:11: error: `a_char` is immutable, cannot have a mutable reference to it
+    9 | fn foo() {
+   10 |     mut a := &(a_char)
+   11 |     mut b := &((a_char))
+      |              ^
+   12 |     mut c := &((((a_char))))
+   13 |     println(a)
+vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:12:11: error: `a_char` is immutable, cannot have a mutable reference to it
+   10 |     mut a := &(a_char)
+   11 |     mut b := &((a_char))
+   12 |     mut c := &((((a_char))))
+      |              ^
+   13 |     println(a)
+   14 |     println(b)
