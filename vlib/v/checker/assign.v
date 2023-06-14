@@ -733,7 +733,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.inside_ref_lit = old_inside_ref_lit
 			if right_node.op == .amp {
 				expr := if right_node.right is ast.ParExpr {
-					right_node.right.expr
+					mut expr_ := right_node.right.expr
+					for mut expr_ is ast.ParExpr {
+						expr_ = expr_.expr
+					}
+					expr_
 				} else {
 					right_node.right
 				}
