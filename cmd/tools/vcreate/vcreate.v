@@ -238,7 +238,6 @@ trim_trailing_whitespace = true
 
 [*.v]
 indent_style = tab
-indent_size = 4
 '
 }
 

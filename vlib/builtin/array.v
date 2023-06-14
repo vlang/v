@@ -750,6 +750,9 @@ pub fn (a &array) free() {
 	}
 	mblock_ptr := &u8(u64(a.data) - u64(a.offset))
 	unsafe { free(mblock_ptr) }
+	unsafe {
+		a.data = nil
+	}
 }
 
 // Some of the following functions have no implementation in V and exist here
@@ -867,12 +870,12 @@ pub fn (a array) contains(value voidptr) bool
 // or `-1` if the value is not found.
 pub fn (a array) index(value voidptr) int
 
-[unsafe]
+[direct_array_access; unsafe]
 pub fn (mut a []string) free() {
 	$if prealloc {
 		return
 	}
-	for s in a {
+	for mut s in a {
 		unsafe { s.free() }
 	}
 	unsafe { (&array(&a)).free() }
@@ -883,7 +886,7 @@ pub fn (mut a []string) free() {
 
 // str returns a string representation of an array of strings
 // Example: ['a', 'b', 'c'].str() // => "['a', 'b', 'c']".
-[manualfree]
+[direct_array_access; manualfree]
 pub fn (a []string) str() string {
 	mut sb_len := 4 // 2x" + 1x, + 1xspace
 	if a.len > 0 {

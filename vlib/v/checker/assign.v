@@ -732,13 +732,18 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.expr(right_node.right)
 			c.inside_ref_lit = old_inside_ref_lit
 			if right_node.op == .amp {
-				if right_node.right is ast.Ident {
-					if right_node.right.obj is ast.Var {
-						v := right_node.right.obj
+				expr := if right_node.right is ast.ParExpr {
+					right_node.right.expr
+				} else {
+					right_node.right
+				}
+				if expr is ast.Ident {
+					if expr.obj is ast.Var {
+						v := expr.obj
 						right_type0 = v.typ
 					}
-					if !c.inside_unsafe && assigned_var.is_mut() && !right_node.right.is_mut() {
-						c.error('`${right_node.right.name}` is immutable, cannot have a mutable reference to it',
+					if !c.inside_unsafe && assigned_var.is_mut() && !expr.is_mut() {
+						c.error('`${expr.name}` is immutable, cannot have a mutable reference to it',
 							right_node.pos)
 					}
 				}

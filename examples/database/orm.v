@@ -102,14 +102,13 @@ fn sqlite3_array() ! {
 
 fn msql_array() ! {
 	eprintln('------------ ${@METHOD} -----------------')
-	mut db := mysql.Connection{
+	mut db := mysql.connect(
 		host: mysql_host
 		port: mysql_port
 		username: mysql_user
 		password: mysql_pass
 		dbname: mysql_db
-	}
-	db.connect()!
+	)!
 	defer {
 		sql db {
 			drop table Parent
@@ -213,14 +212,13 @@ fn sqlite3() ! {
 
 fn msql() ! {
 	eprintln('------------ ${@METHOD} -----------------')
-	mut conn := mysql.Connection{
+	mut conn := mysql.connect(
 		host: mysql_host
 		port: mysql_port
 		username: mysql_user
 		password: mysql_pass
 		dbname: mysql_db
-	}
-	conn.connect()!
+	)!
 	defer {
 		conn.query('DROP TABLE IF EXISTS Module') or { eprintln(err) }
 		conn.query('DROP TABLE IF EXISTS User') or { eprintln(err) }

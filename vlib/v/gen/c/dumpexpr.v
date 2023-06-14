@@ -67,6 +67,10 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		g.inside_opt_or_res = old_inside_opt_or_res
 	}
 	g.write(')')
+	if (g.inside_assign || g.expected_fixed_arr) && !expr_type.has_flag(.option)
+		&& g.table.type_kind(expr_type) == .array_fixed {
+		g.write('.ret_arr')
+	}
 }
 
 fn (mut g Gen) dump_expr_definitions() {
@@ -106,8 +110,13 @@ fn (mut g Gen) dump_expr_definitions() {
 			dump_typedefs['typedef ${str_tdef};'] = true
 			str_dumparg_ret_type = str_dumparg_type
 		} else if !typ.has_flag(.option) && dump_sym.kind == .array_fixed {
-			// fixed array returned from function
-			str_dumparg_ret_type = '_v_' + str_dumparg_type
+			if (dump_sym.info as ast.ArrayFixed).is_fn_ret {
+				str_dumparg_ret_type = str_dumparg_type
+				str_dumparg_type = str_dumparg_type.trim_string_left('_v_')
+			} else {
+				// fixed array returned from function
+				str_dumparg_ret_type = '_v_' + str_dumparg_type
+			}
 		} else {
 			str_dumparg_ret_type = str_dumparg_type
 		}

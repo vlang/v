@@ -24,7 +24,7 @@ const (
 		u64(1e14),
 		u64(1e15),
 		u64(1e16),
-		u64(1e17)
+		u64(1e17),
 		// We only need to find the length of at most 17 digit numbers.
 	]
 

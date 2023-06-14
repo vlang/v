@@ -418,9 +418,6 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			for sif in node.fields {
 				w.expr(sif.expr)
 			}
-			for sie in node.embeds {
-				w.expr(sie.expr)
-			}
 		}
 		ast.TypeOf {
 			w.expr(node.expr)

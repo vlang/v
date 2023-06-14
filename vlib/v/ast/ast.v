@@ -437,18 +437,6 @@ pub mut:
 	parent_type   Type
 }
 
-pub struct StructInitEmbed {
-pub:
-	pos           token.Pos
-	comments      []Comment
-	next_comments []Comment
-pub mut:
-	expr          Expr
-	name          string
-	typ           Type
-	expected_type Type
-}
-
 // `s := Foo{
 //    ...a
 //    field1: 'hello'
@@ -473,7 +461,6 @@ pub mut:
 	is_update_embed      bool
 	has_update_expr      bool // has `...a`
 	fields               []StructInitField
-	embeds               []StructInitEmbed
 	generic_types        []Type
 }
 
