@@ -489,22 +489,22 @@ pub fn (typ Type) is_real_pointer() bool {
 
 [inline]
 pub fn (typ Type) is_float() bool {
-	return typ.clear_flags() in ast.float_type_idxs
+	return !typ.is_ptr() && typ.idx() in ast.float_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_int() bool {
-	return typ.clear_flags() in ast.integer_type_idxs
+	return !typ.is_ptr() && typ.idx() in ast.integer_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_int_valptr() bool {
-	return typ.idx() in ast.integer_type_idxs
+	return typ.is_ptr() && typ.idx() in ast.integer_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_float_valptr() bool {
-	return typ.idx() in ast.float_type_idxs
+	return typ.is_ptr() && typ.idx() in ast.float_type_idxs
 }
 
 [inline]
