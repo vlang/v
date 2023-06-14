@@ -183,7 +183,7 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 				c.error('`${ast_file.imports[j].mod}` was already imported as `${ast_import.alias}` on line ${
 					ast_file.imports[j].mod_pos.line_nr + 1}', ast_import.mod_pos)
 			} else if ast_import.alias == ast_file.imports[j].alias {
-				c.error('`${ast_file.imports[j].mod}` was already imported as `${ast_import.alias}` on line ${
+				c.error('`${ast_file.imports[j].mod}` was already imported on line ${
 					ast_file.imports[j].alias_pos.line_nr + 1}', ast_import.alias_pos)
 			}
 		}
