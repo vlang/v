@@ -2599,14 +2599,14 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 }
 
 pub fn (mut f Fmt) par_expr(node ast.ParExpr) {
-	requires_paren := node.expr !is ast.Ident
-	if requires_paren {
-		f.par_level++
-		f.write('(')
-	}
 	mut expr := node.expr
 	for mut expr is ast.ParExpr {
 		expr = expr.expr
+	}
+	requires_paren := expr !is ast.Ident
+	if requires_paren {
+		f.par_level++
+		f.write('(')
 	}
 	f.expr(expr)
 	if requires_paren {
