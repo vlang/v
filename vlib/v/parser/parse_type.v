@@ -741,6 +741,10 @@ fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 	mut is_instance := true
 	for p.tok.kind != .eof {
 		mut type_pos := p.tok.pos()
+		if p.tok.kind == .amp {
+			p.error_with_pos('cannot use &Type as generic concrete type, declare the function parameter as &T instead',
+				type_pos)
+		}
 		gt := p.parse_type()
 		type_pos = type_pos.extend(p.prev_tok.pos())
 		if gt.has_flag(.generic) {
