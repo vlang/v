@@ -2142,8 +2142,8 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
 	arg_typ := g.unwrap_generic(arg.typ)
 	arg_sym := g.table.sym(arg_typ)
-	exp_is_ptr := expected_type.is_real_pointer()
-	arg_is_ptr := arg_typ.is_real_pointer()
+	exp_is_ptr := expected_type.is_any_kind_of_pointer()
+	arg_is_ptr := arg_typ.is_any_kind_of_pointer()
 	if expected_type == 0 {
 		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
 	}

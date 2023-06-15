@@ -199,7 +199,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				c.expected_type = elem_type
 				continue
 			} else {
-				if !typ.is_real_pointer() && !typ.is_int() && is_first_elem_ptr {
+				if !typ.is_any_kind_of_pointer() && !typ.is_int() && is_first_elem_ptr {
 					c.error('cannot have non-pointer of type `${c.table.type_to_str(typ)}` in a pointer array of type `${c.table.type_to_str(elem_type)}`',
 						expr.pos())
 				}

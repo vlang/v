@@ -159,7 +159,8 @@ fn (mut g Gen) function_return_wasm_type(typ ast.Type) binaryen.Type {
 	if typ == ast.void_type {
 		return type_none
 	}
-	types := g.unpack_type(typ).filter(it.is_real_pointer() || g.table.sym(it).info !is ast.Struct).map(g.get_wasm_type(it))
+	types := g.unpack_type(typ).filter(it.is_any_kind_of_pointer()
+		|| g.table.sym(it).info !is ast.Struct).map(g.get_wasm_type(it))
 	if types.len == 0 {
 		return type_none
 	}
@@ -274,7 +275,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	for idx, typ in g.curr_ret {
 		sym := g.table.sym(typ)
-		if sym.info is ast.Struct && !typ.is_real_pointer() {
+		if sym.info is ast.Struct && !typ.is_any_kind_of_pointer() {
 			g.local_temporaries << Temporary{
 				name: '__return${idx}'
 				typ: type_i32 // pointer
@@ -785,7 +786,8 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) binaryen.Expression {
 			}
 
 			ret_types := g.unpack_type(node.return_type)
-			structs := ret_types.filter(g.table.sym(it).info is ast.Struct && !it.is_real_pointer())
+			structs := ret_types.filter(g.table.sym(it).info is ast.Struct
+				&& !it.is_any_kind_of_pointer())
 			mut structs_addrs := []int{cap: structs.len}
 
 			// ABI: {return structs} {method `self`}, then {arguments}
@@ -957,7 +959,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) binaryen.Expression {
 			mut exprs := []binaryen.Expression{cap: node.exprs.len}
 			for idx, expr in node.exprs {
 				typ := g.curr_ret[idx]
-				if g.table.sym(typ).info is ast.Struct && !typ.is_real_pointer() {
+				if g.table.sym(typ).info is ast.Struct && !typ.is_any_kind_of_pointer() {
 					// Could be adapted to use random pointers?
 					/*
 					if expr is ast.StructInit {

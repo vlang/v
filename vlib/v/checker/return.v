@@ -229,8 +229,8 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					pos)
 			}
 		}
-		if got_type.is_real_pointer() && !exp_type.is_real_pointer()
-			&& !c.table.unaliased_type(exp_type).is_real_pointer() {
+		if got_type.is_any_kind_of_pointer() && !exp_type.is_any_kind_of_pointer()
+			&& !c.table.unaliased_type(exp_type).is_any_kind_of_pointer() {
 			pos := node.exprs[expr_idxs[i]].pos()
 			if node.exprs[expr_idxs[i]].is_auto_deref_var() {
 				continue
@@ -239,8 +239,8 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			c.error('fn `${c.table.cur_fn.name}` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_type)}` instead',
 				pos)
 		}
-		if exp_type.is_real_pointer() && !got_type.is_real_pointer()
-			&& !c.table.unaliased_type(got_type).is_real_pointer()
+		if exp_type.is_any_kind_of_pointer() && !got_type.is_any_kind_of_pointer()
+			&& !c.table.unaliased_type(got_type).is_any_kind_of_pointer()
 			&& got_type != ast.int_literal_type && !c.pref.translated && !c.file.is_translated {
 			pos := node.exprs[expr_idxs[i]].pos()
 			if node.exprs[expr_idxs[i]].is_auto_deref_var() {

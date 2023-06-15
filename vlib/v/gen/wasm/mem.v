@@ -46,8 +46,8 @@ struct Global {
 }
 
 fn (g Gen) is_pure_type(typ ast.Type) bool {
-	if typ.is_pure_int() || typ.is_pure_float() || typ == ast.char_type_idx || typ.is_real_pointer()
-		|| typ.is_bool() {
+	if typ.is_pure_int() || typ.is_pure_float() || typ == ast.char_type_idx
+		|| typ.is_any_kind_of_pointer() || typ.is_bool() {
 		return true
 	}
 	ts := g.table.sym(typ)
