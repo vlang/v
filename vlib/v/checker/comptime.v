@@ -10,6 +10,15 @@ import v.util
 import v.pkgconfig
 
 [inline]
+fn (mut c Checker) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
+	return if node is ast.Ident && (node as ast.Ident).obj is ast.Var {
+		(node.obj as ast.Var).ct_type_var
+	} else {
+		.no_comptime
+	}
+}
+
+[inline]
 fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
 	if node is ast.Ident && (node as ast.Ident).obj is ast.Var {
 		return match (node.obj as ast.Var).ct_type_var {

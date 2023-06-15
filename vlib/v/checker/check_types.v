@@ -235,7 +235,8 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 			return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 		}
 
-		if !expected.is_ptr() && got.is_ptr() && got.has_flag(.option) {
+		if !expected.has_flag(.option) && got.has_flag(.option) && (arg.expr !is ast.Ident
+			|| (arg.expr is ast.Ident && c.get_ct_type_var(arg.expr) != .field_var)) {
 			got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
 			return error('cannot use `${got_typ_str}` as `${expected_typ_str}`, it must be unwrapped first')
 		}
