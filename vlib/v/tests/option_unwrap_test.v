@@ -9,7 +9,7 @@ fn set_trace(n &Node) int {
 		set_trace(n.parent or { &Node{} })
 		assert n.id != 0
 	} else {
-		assert n.id == 0
+		assert n.id == 1
 	}
 	return n.id
 }
