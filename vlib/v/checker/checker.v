@@ -169,7 +169,7 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 	c.change_current_file(ast_file)
 	for i, ast_import in ast_file.imports {
 		if c.mod == ast_import.alias {
-			if c.mod == ast_import.mod.all_after('.') {
+			if c.mod == ast_import.mod.all_after_last('.') {
 				c.error('cannot import `${ast_import.mod}` into a module with the same name',
 					ast_import.mod_pos)
 			}
