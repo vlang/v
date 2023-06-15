@@ -1885,7 +1885,7 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 		if arg.is_mut {
 			f.write(arg.share.str() + ' ')
 		}
-		if i > 0 && !f.single_line_if {
+		if i > 0 && !f.single_line_if && !f.use_short_fn_args {
 			f.wrap_long_line(3, true)
 		}
 		f.expr(arg.expr)
