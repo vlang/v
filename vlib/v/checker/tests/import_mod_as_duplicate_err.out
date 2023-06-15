@@ -1,12 +1,12 @@
-vlib/v/checker/tests/import_mod_as_duplicate_err.vv:3:19: error: cannot import `x.json2` as `json` into a module with the same name
-    1 | module json
+vlib/v/checker/tests/import_mod_as_duplicate_err.vv:3:16: error: cannot import `json` as `json2` into a module with the same name
+    1 | module json2
     2 | 
-    3 | import x.json2 as json
-      |                   ~~~~
+    3 | import json as json2
+      |                ~~~~~
     4 | 
-    5 | any := json.Any(json.null)
+    5 | const used = true
 vlib/v/checker/tests/import_mod_as_duplicate_err.vv:1:1: error: project must include a `main` module or be a shared library (compile with `v -shared`)
-    1 | module json
+    1 | module json2
       | ^
     2 | 
-    3 | import x.json2 as json
+    3 | import json as json2

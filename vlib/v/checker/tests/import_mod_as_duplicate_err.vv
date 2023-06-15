@@ -1,7 +1,7 @@
-module json
+module json2
 
-import x.json2 as json
+import json as json2
 
-any := json.Any(json.null)
+const used = true
 
-println(any)
+println(json2.used)
