@@ -349,38 +349,14 @@ const big_mod_pow_test_data = [
 	// vfmt on
 ]
 
-fn test_big_mod_exponentiation_1() {
-	a := big.integer_from_int(23)
-	b := big.integer_from_int(35)
-	c := big.integer_from_int(4205)
-	result := big.integer_from_int(552)
-	assert a.big_mod_pow(b, c) == result
-}
-
-fn test_big_mod_exponentiation_2() {
-	a := big.integer_from_string('2222589987119231759186196754430278233855361024') or {
-		panic('Could not read big integer')
+fn test_big_mod_pow() {
+	for t in big_mod_pow_test_data {
+		a := big.integer_from_string(t.base) or { panic('Could not read decimal') }
+		x := big.integer_from_string(t.exponent) or { panic('Could not read decimal') }
+		m := big.integer_from_string(t.modulus) or { panic('Could not read decimal') }
+		r := big.integer_from_string(t.expected) or { panic('Could not read decimal') }
+		assert a.big_mod_pow(x, m) or { panic(err) } == r
 	}
-	b := big.integer_from_string('3104719823194124242') or { panic('Could not read big integer') }
-	c := big.integer_from_string('15121308410741') or { panic('Could not read big integer') }
-	result := big.integer_from_string('487881863537') or { panic('Could not read big integer') }
-	assert a.big_mod_pow(b, c) == result
-}
-
-fn test_big_mod_exponentiation_3() {
-	a := big.integer_from_string('3192874698137469817346981364918346578619384619387463987413') or {
-		panic('Could not read big integer')
-	}
-	b := big.integer_from_string('3104981983749813749137493871037') or {
-		panic('Could not read big integer')
-	}
-	c := big.integer_from_string('2137476918375698711341313') or {
-		panic('Could not read big integer')
-	}
-	result := big.integer_from_string('418107071760838517119254') or {
-		panic('Could not read big integer')
-	}
-	assert a.big_mod_pow(b, c) == result
 }
 
 fn test_gcd() {
