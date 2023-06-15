@@ -43,7 +43,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 			if comment.pos.pos >= end_pos {
 				if comment.pos.line_nr == field.pos.line_nr {
 					comment_aligns.add_info(attrs_len, field_types[i].len, comment.pos.line_nr,
-						use_threshold: true)
+						use_threshold: true
+					)
 				}
 				continue
 			}
@@ -54,7 +55,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		field_aligns.add_info(comments_len + field.name.len, ft.len, field.pos.line_nr)
 		if field.has_default_expr {
 			default_expr_aligns.add_info(attrs_len, field_types[i].len, field.pos.line_nr,
-				use_threshold: true)
+				use_threshold: true
+			)
 		}
 	}
 	f.writeln(' {')

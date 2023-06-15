@@ -2049,24 +2049,20 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 										if size >= 8 {
 											for offset in 0 .. size / 8 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													offset: offset * 8
 													typ: ast.i64_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													offset: offset * 8
 													typ: ast.i64_type_idx
 												)
 											}
 											if size % 8 != 0 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													offset: size - 8
 													typ: ast.i64_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													offset: size - 8
 													typ: ast.i64_type_idx
 												)
@@ -2074,11 +2070,9 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 										} else {
 											mut left_size := if size >= 4 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													typ: ast.int_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													typ: ast.int_type_idx
 												)
 												size - 4
@@ -2087,12 +2081,10 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 											}
 											if left_size >= 2 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													offset: size - left_size
 													typ: ast.i16_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													offset: size - left_size
 													typ: ast.i16_type_idx
 												)
@@ -2100,12 +2092,10 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 											}
 											if left_size == 1 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													offset: size - left_size
 													typ: ast.i8_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													offset: size - left_size
 													typ: ast.i8_type_idx
 												)
@@ -2141,24 +2131,20 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 										if size >= 8 {
 											for offset in 0 .. size / 8 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													offset: offset * 8
 													typ: ast.i64_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													offset: offset * 8
 													typ: ast.i64_type_idx
 												)
 											}
 											if size % 8 != 0 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													offset: size - 8
 													typ: ast.i64_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													offset: size - 8
 													typ: ast.i64_type_idx
 												)
@@ -2166,11 +2152,9 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 										} else {
 											mut left_size := if size >= 4 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													typ: ast.int_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													typ: ast.int_type_idx
 												)
 												size - 4
@@ -2179,12 +2163,10 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 											}
 											if left_size >= 2 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													offset: size - left_size
 													typ: ast.i16_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													offset: size - left_size
 													typ: ast.i16_type_idx
 												)
@@ -2192,12 +2174,10 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 											}
 											if left_size == 1 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													offset: size - left_size
 													typ: ast.i8_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													offset: size - left_size
 													typ: ast.i8_type_idx
 												)

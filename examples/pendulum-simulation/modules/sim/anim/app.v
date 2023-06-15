@@ -47,7 +47,8 @@ pub fn new_app(args simargs.ParallelArgs) &App {
 
 fn init(mut app App) {
 	app.iidx = app.gg.new_streaming_image(app.args.grid.width, app.args.grid.height, 4,
-		pixel_format: .rgba8)
+		pixel_format: .rgba8
+	)
 	spawn pixels_worker(mut app)
 }
 
