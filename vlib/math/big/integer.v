@@ -435,7 +435,7 @@ fn (a Integer) mask_bits(n u32) Integer {
 		return a
 	}
 
-	return Integer {
+	return Integer{
 		digits: if b == 0 {
 			mut storage := []u32{len: int(w)}
 			for i := 0; i < storage.len; i++ {
@@ -449,7 +449,7 @@ fn (a Integer) mask_bits(n u32) Integer {
 			}
 			storage[w] &= ~(u32(-1) << b)
 			storage
-		},
+		}
 		signum: 1
 	}
 }
@@ -1024,43 +1024,45 @@ pub fn (a Integer) mod_inverse(n Integer) ?Integer {
 // see pub fn mod_inverse for explanation
 [direct_array_access]
 fn (a Integer) mod_inv(m Integer) Integer {
-    mut n := Integer{
-        digits: m.digits.clone()
-        signum: 1
-    }
-    mut b := a
-    mut x := one_int
-    mut y := zero_int
-    if b.signum < 0 || b.abs_cmp(n) >= 0 {
-        b = b % n
-    }
-    mut sign := -1
+	mut n := Integer{
+		digits: m.digits.clone()
+		signum: 1
+	}
+	mut b := a
+	mut x := one_int
+	mut y := zero_int
+	if b.signum < 0 || b.abs_cmp(n) >= 0 {
+		b = b % n
+	}
+	mut sign := -1
 
-    for b != zero_int {
+	for b != zero_int {
 		q, r := if n.bit_len() == b.bit_len() {
 			one_int, n - b
 		} else {
 			n.div_mod(b)
 		}
 
-        n = b
-        b = r
+		n = b
+		b = r
 
-		/* tmp := q * x + y */
+		// tmp := q * x + y
 		tmp := if q == one_int {
 			x
-		} else if q.digits.len == 1 && (q.digits[0] & (q.digits[0] - 1) == 0) {
+		} else if q.digits.len == 1 && q.digits[0] & (q.digits[0] - 1) == 0 {
 			x.lshift(u32(bits.trailing_zeros_32(q.digits[0])))
 		} else {
 			q * x
 		} + y
 
-        y = x
-        x = tmp
-        sign = -sign
-    }
+		y = x
+		x = tmp
+		sign = -sign
+	}
 
-    if sign < 0 { y = m - y }
+	if sign < 0 {
+		y = m - y
+	}
 
 	$if debug {
 		assert n == one_int

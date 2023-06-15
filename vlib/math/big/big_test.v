@@ -290,9 +290,9 @@ fn test_mod_exponentiation() {
 }
 
 struct BigModPowTest {
-	base string
+	base     string
 	exponent string
-	modulus string
+	modulus  string
 	expected string
 }
 
