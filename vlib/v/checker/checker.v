@@ -168,12 +168,12 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 	c.reset_checker_state_at_start_of_new_file()
 	c.change_current_file(ast_file)
 	for i, ast_import in ast_file.imports {
-		// Self imports and builtin imports into a module with the same name
+		// Imports with the same path and name (self-imports and module name conflicts with builtin module imports)
 		if c.mod == ast_import.mod {
 			c.error('cannot import `${ast_import.mod}` into a module with the same name',
 				ast_import.mod_pos)
 		}
-		// Import duplicates with the default or custom alias
+		// Duplicates of regular imports with the default alias (modname) and `as` imports with a custom alias
 		if c.mod == ast_import.alias {
 			if c.mod == ast_import.mod.all_after_last('.') {
 				c.error('cannot import `${ast_import.mod}` into a module with the same name',
