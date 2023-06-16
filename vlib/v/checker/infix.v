@@ -457,7 +457,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			} else if node.left !in [ast.Ident, ast.SelectorExpr, ast.ComptimeSelector]
 				&& (left_type.has_flag(.option) || right_type.has_flag(.option)) {
 				opt_comp_pos := if left_type.has_flag(.option) { left_pos } else { right_pos }
-				c.error('unwrapped option cannot be compared in an infix expression',
+				c.error('unwrapped Option cannot be compared in an infix expression',
 					opt_comp_pos)
 			}
 		}
@@ -470,6 +470,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			if left_final_sym.kind == .array {
 				if !node.is_stmt {
 					c.error('array append cannot be used in an expression', node.pos)
+				}
+				if left_type.has_flag(.option) && node.left is ast.Ident
+					&& (node.left as ast.Ident).or_expr.kind == .absent {
+					c.error('unwrapped Option cannot be used in an infix expression',
+						node.pos)
 				}
 				// `array << elm`
 				c.check_expr_opt_call(node.right, right_type)
@@ -695,7 +700,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		opt_infix_pos := if left_is_option { left_pos } else { right_pos }
 		if (node.left !in [ast.Ident, ast.SelectorExpr, ast.ComptimeSelector]
 			|| node.op in [.eq, .ne, .lt, .gt, .le, .ge]) && right_sym.kind != .none_ {
-			c.error('unwrapped option cannot be used in an infix expression', opt_infix_pos)
+			c.error('unwrapped Option cannot be used in an infix expression', opt_infix_pos)
 		}
 	}
 
@@ -703,7 +708,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	right_is_result := right_type.has_flag(.result)
 	if left_is_result || right_is_result {
 		opt_infix_pos := if left_is_result { left_pos } else { right_pos }
-		c.error('unwrapped result cannot be used in an infix expression', opt_infix_pos)
+		c.error('unwrapped Result cannot be used in an infix expression', opt_infix_pos)
 	}
 
 	// Dual sides check (compatibility check)
