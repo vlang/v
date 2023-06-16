@@ -1674,6 +1674,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 					mut overflows := false
 					mut uval := u64(0)
 					mut ival := i64(0)
+
 					if signed {
 						val := field.expr.val.i64()
 						ival = val
@@ -1686,9 +1687,22 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 						val := field.expr.val.u64()
 						uval = val
 						if val >= enum_umax {
-							c.error('enum value `${field.expr.val}` overflows the enum type `${senum_type}`, values of which have to be in [${enum_umin}, ${enum_umax}]',
-								field.expr.pos)
 							overflows = true
+							if val == enum_umax {
+								is_bin := field.expr.val.starts_with('0b')
+								is_oct := field.expr.val.starts_with('0o')
+								is_hex := field.expr.val.starts_with('0x')
+
+								if is_hex {
+									overflows = val.hex() != enum_umax.hex()
+								} else if !is_bin && !is_oct && !is_hex {
+									overflows = field.expr.val.str() != enum_umax.str()
+								}
+							}
+							if overflows {
+								c.error('enum value `${field.expr.val}` overflows the enum type `${senum_type}`, values of which have to be in [${enum_umin}, ${enum_umax}]',
+									field.expr.pos)
+							}
 						}
 					}
 					if !overflows && !c.pref.translated && !c.file.is_translated
