@@ -1449,7 +1449,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 							}
 							ast.Enum {
 								g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), node as ast.Ident,
-									
 									typ: ast.int_type_idx
 								)
 							}
