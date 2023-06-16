@@ -2132,7 +2132,7 @@ fn (mut g Gen) keep_alive_call_pregen(node ast.CallExpr) int {
 fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 	g.writeln('// keep_alive_call_postgen()')
 	for i, expected_type in node.expected_arg_types {
-		if expected_type.is_ptr() || expected_type.is_pointer() {
+		if expected_type.is_any_kind_of_pointer() {
 			g.writeln('GC_reachable_here(__tmp_arg_${tmp_cnt_save + i});')
 		}
 	}

@@ -507,13 +507,12 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.error('cannot copy map: call `move` or `clone` method (or use a reference)',
 				right.pos())
 		}
-		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
-		if left_is_ptr && !left.is_auto_deref_var() {
+		if left_type.is_any_kind_of_pointer() && !left.is_auto_deref_var() {
 			if !c.inside_unsafe && node.op !in [.assign, .decl_assign] {
 				// ptr op=
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
 			}
-			right_is_ptr := right_type.is_ptr() || right_sym.is_pointer()
+			right_is_ptr := right_type.is_any_kind_of_pointer()
 			if !right_is_ptr && node.op == .assign && right_type_unwrapped.is_number() {
 				c.error('cannot assign to `${left}`: ' +
 					c.expected_msg(right_type_unwrapped, left_type_unwrapped), right.pos())
@@ -701,7 +700,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		if left_sym.kind == .interface_ {
 			if c.type_implements(right_type, left_type, right.pos()) {
-				if !right_type.is_ptr() && !right_type.is_pointer() && right_sym.kind != .interface_
+				if !right_type.is_any_kind_of_pointer() && right_sym.kind != .interface_
 					&& !c.inside_unsafe {
 					c.mark_as_referenced(mut &node.right[i], true)
 				}

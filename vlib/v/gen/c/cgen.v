@@ -6824,7 +6824,7 @@ pub fn (mut g Gen) get_array_depth(el_typ ast.Type) int {
 // returns true if `t` includes any pointer(s) - during garbage collection heap regions
 // that contain no pointers do not have to be scanned
 pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
-	if el_typ.is_ptr() || el_typ.is_pointer() {
+	if el_typ.is_any_kind_of_pointer() {
 		return true
 	}
 	typ := g.unwrap_generic(el_typ)

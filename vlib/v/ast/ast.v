@@ -2400,8 +2400,7 @@ pub fn (expr Expr) is_literal() bool {
 			return expr.expr.is_literal()
 		}
 		CastExpr {
-			return !expr.has_arg && expr.expr.is_literal()
-				&& (expr.typ.is_ptr() || expr.typ.is_pointer()
+			return !expr.has_arg && expr.expr.is_literal() && (expr.typ.is_any_kind_of_pointer()
 				|| expr.typ in [i8_type, i16_type, int_type, i64_type, u8_type, u16_type, u32_type, u64_type, f32_type, f64_type, char_type, bool_type, rune_type])
 		}
 		SizeOf, IsRefType {
