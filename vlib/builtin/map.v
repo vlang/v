@@ -286,6 +286,9 @@ fn new_map_init(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_
 	return out
 }
 
+// move moves the map to a new location in memory.
+// It does this by copying to a new location, then setting the
+// old location to all `0` with `vmemset`
 pub fn (mut m map) move() map {
 	r := *m
 	unsafe {
