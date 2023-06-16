@@ -91,6 +91,9 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		}
 		p.close_scope()
 		return for_c_stmt
+	} else if p.tok.kind == .name
+		&& p.peek_tok.kind in [.inc, .dec, .plus_assign, .minus_assign, .mult_assign, .div_assign, .xor_assign, .mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign, .unsigned_right_shift_assign] {
+		return p.error('cannot use ${p.tok.lit}${p.peek_tok.kind} as initial value')
 	} else if p.peek_tok.kind in [.key_in, .comma]
 		|| (p.tok.kind == .key_mut && p.peek_token(2).kind in [.key_in, .comma]) {
 		// `for i in vals`, `for i in start .. end`, `for mut user in users`, `for i, mut user in users`

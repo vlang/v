@@ -1,0 +1,7 @@
+vlib/v/parser/tests/for_loop_update_stmt_first_err.vv:3:6: error: cannot use i++ as initial value
+    1 | fn main() {
+    2 |     i := 0
+    3 |     for i++; i < 10; i++ {
+      |         ^
+    4 |         println(i)
+    5 |     }
