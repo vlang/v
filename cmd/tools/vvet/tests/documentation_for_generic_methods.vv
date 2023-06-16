@@ -1,0 +1,2 @@
+// my_generic_method this is a documentation of my method
+pub fn my_generic_method[T](value T) {}
