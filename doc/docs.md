@@ -2123,7 +2123,7 @@ To access the result of the function inside a `defer` block the `$res()` express
 `$res()` is only used when a single value is returned, while on multi-return the `$res(idx)`
 is parameterized.
 
-```v
+```v ignore
 fn (mut app App) auth_middleware() bool {
 	defer {
 		if !$res() {
