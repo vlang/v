@@ -10,6 +10,8 @@ fn squash_multiple_empty_lines() {
 
 	println('b')
 
+	dump('c')
+
 	c := 0
 
 	d := 0
