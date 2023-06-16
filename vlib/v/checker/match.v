@@ -90,7 +90,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
 					}
 				}
-			} else if stmt !is ast.Return {
+			} else if stmt !in [ast.Return, ast.BranchStmt] {
 				if node.is_expr && ret_type != ast.void_type {
 					c.error('`match` expression requires an expression as the last statement of every branch',
 						stmt.pos)

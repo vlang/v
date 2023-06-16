@@ -29,6 +29,8 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 					}
 				} else if branch.stmts[0] is ast.Return {
 					return true
+				} else if branch.stmts[0] is ast.BranchStmt {
+					return true
 				}
 			}
 		}
