@@ -2473,7 +2473,7 @@ but a short, preferably one letter long, name.
 
 ### Embedded structs
 
-V support embedded structs .
+V supports embedded structs.
 
 ```v
 struct Size {
