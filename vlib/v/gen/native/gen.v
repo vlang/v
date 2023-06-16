@@ -618,7 +618,7 @@ fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
 // get type size, and calculate size and align and store them to the cache when the type is struct
 fn (mut g Gen) get_type_size(typ ast.Type) int {
 	// TODO type flags
-	if typ.is_real_pointer() {
+	if typ.is_any_kind_of_pointer() {
 		return 8
 	}
 	if typ in ast.number_type_idxs {
@@ -729,7 +729,8 @@ fn (mut g Gen) get_multi_return(types []ast.Type) MultiReturn {
 }
 
 fn (g Gen) is_register_type(typ ast.Type) bool {
-	return typ.is_pure_int() || typ == ast.char_type_idx || typ.is_real_pointer() || typ.is_bool()
+	return typ.is_pure_int() || typ == ast.char_type_idx || typ.is_any_kind_of_pointer()
+		|| typ.is_bool()
 }
 
 fn (mut g Gen) get_sizeof_ident(ident ast.Ident) int {

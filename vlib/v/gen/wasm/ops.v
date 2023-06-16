@@ -20,7 +20,7 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) binaryen.Type {
 	if typ == ast.void_type_idx {
 		return wasm.type_none
 	}
-	if typ.is_real_pointer() {
+	if typ.is_any_kind_of_pointer() {
 		g.needs_stack = true
 		return wasm.type_i32
 	}

@@ -311,6 +311,17 @@ pub fn (t Type) is_ptr() bool {
 }
 
 [inline]
+pub fn (typ Type) is_pointer() bool {
+	// builtin pointer types (voidptr, byteptr, charptr)
+	return typ.idx() in ast.pointer_type_idxs
+}
+
+[inline]
+pub fn (typ Type) is_voidptr() bool {
+	return typ.idx() == ast.voidptr_type_idx
+}
+
+[inline]
 pub fn (t Type) is_any_kind_of_pointer() bool {
 	return (int(t) >> 16) & 0xff > 0 || (u16(t) & 0xffff) in ast.pointer_type_idxs
 }
@@ -469,22 +480,6 @@ pub fn new_type_ptr(idx int, nr_muls int) Type {
 		panic('new_type_ptr: nr_muls must be between 0 & 255')
 	}
 	return (u32(nr_muls) << 16) | u16(idx)
-}
-
-[inline]
-pub fn (typ Type) is_pointer() bool {
-	// builtin pointer types (voidptr, byteptr, charptr)
-	return typ.idx() in ast.pointer_type_idxs
-}
-
-[inline]
-pub fn (typ Type) is_voidptr() bool {
-	return typ.idx() == ast.voidptr_type_idx
-}
-
-[inline]
-pub fn (typ Type) is_real_pointer() bool {
-	return typ.is_ptr() || typ.is_pointer()
 }
 
 [inline]

@@ -132,7 +132,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	}
 	// allow direct int-literal assignment for pointers for now
 	// maybe in the future options should be used for that
-	if expected.is_real_pointer() {
+	if expected.is_any_kind_of_pointer() {
 		if got == ast.int_literal_type {
 			return true
 		}

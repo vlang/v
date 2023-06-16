@@ -3016,7 +3016,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			ft := c.table.type_to_str(from_type)
 			c.error('cannot cast type `${ft}` to string, use `${snexpr}.str()` instead.',
 				node.pos)
-		} else if from_type.is_real_pointer() {
+		} else if from_type.is_any_kind_of_pointer() {
 			snexpr := node.expr.str()
 			ft := c.table.type_to_str(from_type)
 			c.error('cannot cast pointer type `${ft}` to string, use `&u8(${snexpr}).vstring()` or `cstring_to_vstring(${snexpr})` instead.',
@@ -4092,7 +4092,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	if !c.inside_unsafe && !c.is_builtin_mod && !c.inside_if_guard && !c.is_index_assign
 		&& typ_sym.kind == .map && node.or_expr.stmts.len == 0 {
 		elem_type := c.table.value_type(typ)
-		if elem_type.is_real_pointer() {
+		if elem_type.is_any_kind_of_pointer() {
 			c.note('accessing a pointer map value requires an `or {}` block outside `unsafe`',
 				node.pos)
 		}
