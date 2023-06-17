@@ -245,8 +245,9 @@ mut:
 	out_fn_start_pos []int  // for generating multiple .c files, stores locations of all fn positions in `out` string builder
 	static_modifier  string // for parallel_cc
 
-	has_reflection     bool
-	reflection_strings &map[string]int
+	has_reflection       bool
+	reflection_strings   &map[string]int
+	defer_return_tmp_var string
 }
 
 // global or const variable definition string
@@ -4699,6 +4700,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		return
 	}
 	tmpvar := g.new_tmp_var()
+	g.defer_return_tmp_var = tmpvar
 	mut ret_typ := g.typ(g.unwrap_generic(fn_ret_type))
 	if fn_ret_type.has_flag(.generic) && fn_return_is_fixed_array {
 		ret_typ = '_v_${ret_typ}'
@@ -4742,7 +4744,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					}
 				}
 				g.write_defer_stmts_when_needed()
-				g.writeln('return ${tmpvar};')
+				g.writeln('return ${tmpvar}; //test')
 			}
 			return
 		}
@@ -4770,7 +4772,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln(';')
 			if use_tmp_var {
 				g.write_defer_stmts_when_needed()
-				g.writeln('return ${tmpvar};')
+				g.writeln('return ${tmpvar}; //test1')
 			}
 			return
 		}
@@ -4878,7 +4880,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.writeln(';')
 			}
 			g.write_defer_stmts_when_needed()
-			g.writeln('return ${tmpvar};')
+			g.writeln('return ${tmpvar}; //test2')
 			has_semicolon = true
 		}
 	} else if node.exprs.len >= 1 {
@@ -4917,7 +4919,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln(' }, (${c.option_name}*)(&${tmpvar}), sizeof(${styp}));')
 			g.write_defer_stmts_when_needed()
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
-			g.writeln('return ${tmpvar};')
+			g.writeln('return ${tmpvar}; //test4')
 			return
 		}
 		expr_type_is_result := match expr0 {
@@ -4950,7 +4952,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln(' }, (${c.result_name}*)(&${tmpvar}), sizeof(${styp}));')
 			g.write_defer_stmts_when_needed()
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
-			g.writeln('return ${tmpvar};')
+			g.writeln('return ${tmpvar}; //test 4')
 			return
 		}
 		// autofree before `return`
@@ -5028,7 +5030,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if !g.is_builtin_mod {
 				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			}
-			g.write('return ${tmpvar}')
+			g.write('return ${tmpvar} /* test5 */')
 			has_semicolon = false
 		}
 	} else {

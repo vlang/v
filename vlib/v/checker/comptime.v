@@ -153,6 +153,40 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		// assume string for now
 		return ast.string_type
 	}
+	if node.method_name == 'res' {
+		if !c.inside_defer {
+			c.error('`res` can only be used in defer blocks', node.pos)
+			return ast.void_type
+		}
+
+		if c.fn_return_type == ast.void_type {
+			c.error('`res` can only be used in functions that returns something', node.pos)
+			return ast.void_type
+		}
+
+		sym := c.table.sym(c.fn_return_type)
+
+		if c.fn_return_type.has_flag(.result) {
+			c.error('`res` cannot be used in functions that returns a Result', node.pos)
+			return ast.void_type
+		}
+
+		if sym.info is ast.MultiReturn {
+			if node.args_var == '' {
+				c.error('`res` requires an index of the returned value', node.pos)
+				return ast.void_type
+			}
+			idx := node.args_var.int()
+			if idx < 0 || idx >= sym.info.types.len {
+				c.error('index ${idx} out of range of ${sym.info.types.len} return types',
+					node.pos)
+				return ast.void_type
+			}
+			return sym.info.types[idx]
+		}
+
+		return c.fn_return_type
+	}
 	if node.is_vweb {
 		return ast.string_type
 	}

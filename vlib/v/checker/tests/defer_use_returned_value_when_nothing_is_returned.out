@@ -1,0 +1,7 @@
+vlib/v/checker/tests/defer_use_returned_value_when_nothing_is_returned.vv:3:11: error: `res` can only be used in functions that returns something
+    1 | fn test() {
+    2 |     defer {
+    3 |         println($res())
+      |                 ~~~~~~
+    4 |     }
+    5 | }

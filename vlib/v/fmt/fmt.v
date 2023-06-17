@@ -1969,6 +1969,13 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 			node.method_name in ['compile_error', 'compile_warn'] {
 				f.write("\$${node.method_name}('${node.args_var}')")
 			}
+			node.method_name == 'res' {
+				if node.args_var != '' {
+					f.write('\$res(${node.args_var})')
+				} else {
+					f.write('\$res()')
+				}
+			}
 			else {
 				inner_args := if node.args_var != '' {
 					node.args_var
