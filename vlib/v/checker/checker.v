@@ -14,12 +14,14 @@ import v.errors
 import v.pkgconfig
 
 const (
-	int_min                  = int(0x80000000)
-	int_max                  = int(0x7FFFFFFF)
+	int_min                                        = int(0x80000000)
+	int_max                                        = int(0x7FFFFFFF)
 	// prevent stack overflows by restricting too deep recursion:
-	expr_level_cutoff_limit  = 40
-	stmt_level_cutoff_limit  = 40
-	iface_level_cutoff_limit = 100
+	expr_level_cutoff_limit                        = 40
+	stmt_level_cutoff_limit                        = 40
+	iface_level_cutoff_limit                       = 100
+	generic_fn_cutoff_limit_per_fn                 = 10_000 // how many times post_process_generic_fns, can visit the same function before bailing out
+	generic_fn_postprocess_iterations_cutoff_limit = 1000_000 // how many times the compiler will try to resolve all remaining generic functions
 )
 
 pub const (
@@ -323,7 +325,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	// is needed when the generic type is auto inferred from the call argument.
 	// we may have to loop several times, if there were more concrete types found.
 	mut post_process_generic_fns_iterations := 0
-	for {
+	post_process_iterations_loop: for post_process_generic_fns_iterations <= checker.generic_fn_postprocess_iterations_cutoff_limit {
 		$if trace_post_process_generic_fns_loop ? {
 			eprintln('>>>>>>>>> recheck_generic_fns loop iteration: ${post_process_generic_fns_iterations}')
 		}
@@ -334,7 +336,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 						file.generic_fns.map(it.name).str())
 				}
 				c.change_current_file(file)
-				c.post_process_generic_fns()
+				c.post_process_generic_fns() or { break post_process_iterations_loop }
 			}
 		}
 		if !c.need_recheck_generic_fns {

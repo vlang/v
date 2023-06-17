@@ -2210,16 +2210,23 @@ fn (mut c Checker) set_node_expected_arg_types(mut node ast.CallExpr, func &ast.
 	}
 }
 
-fn (mut c Checker) post_process_generic_fns() {
+fn (mut c Checker) post_process_generic_fns() ! {
+	mut all_generic_fns := map[string]int{}
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
 	for i in 0 .. c.file.generic_fns.len {
 		mut node := c.file.generic_fns[i]
 		c.mod = node.mod
 		fkey := node.fkey()
+		all_generic_fns[fkey]++
+		if all_generic_fns[fkey] > generic_fn_cutoff_limit_per_fn {
+			c.error('generic function visited more than ${generic_fn_cutoff_limit_per_fn} times',
+				node.pos)
+			return error('fkey: ${fkey}')
+		}
 		gtypes := c.table.fn_generic_types[fkey]
 		$if trace_post_process_generic_fns ? {
-			eprintln('> post_process_generic_fns ${node.mod} | ${node.name} | fkey: ${fkey} | gtypes: ${gtypes}')
+			eprintln('> post_process_generic_fns ${node.mod} | ${node.name} | fkey: ${fkey} | gtypes: ${gtypes} | c.file.generic_fns.len: ${c.file.generic_fns.len}')
 		}
 		for concrete_types in gtypes {
 			c.table.cur_concrete_types = concrete_types
