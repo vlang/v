@@ -510,10 +510,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		if left_sym.kind == .function && right_sym.info is ast.FnType {
 			return_sym := c.table.sym(right_sym.info.func.return_type)
 			if return_sym.kind == .placeholder {
-				c.error('cannot assign function `${right_sym.name}` to variable', right.pos())
+				c.error('unkown return type: cannot assign `${right}` as a function variable',
+					right.pos())
 			} else if (!right_sym.info.is_anon && return_sym.kind == .any)
 				|| (return_sym.info is ast.Struct && (return_sym.info as ast.Struct).is_generic) {
-				panic('cannot assign function `${right_sym.name}` with generic return type `${return_sym.name}` to a variable')
+				panic('cannot assign `${right}` as a generic function variable')
 			}
 		}
 		if left_type.is_any_kind_of_pointer() && !left.is_auto_deref_var() {
