@@ -2921,15 +2921,15 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			// TODO make this an error
 			c.warn('cannot cast voidptr to a struct outside `unsafe`', node.pos)
 		}
-		if !from_type.is_int() && final_from_sym.kind != .enum_ && !from_type.is_pointer()
-			&& !from_type.is_ptr() {
+		if !from_type.is_int() && final_from_sym.kind != .enum_
+			&& !from_type.is_any_kind_of_pointer() {
 			ft := c.table.type_to_str(from_type)
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `${ft}` to `${tt}`', node.pos)
 		}
 	} else if to_sym.kind == .interface_ {
 		if c.type_implements(from_type, to_type, node.pos) {
-			if !from_type.is_ptr() && !from_type.is_pointer() && from_sym.kind != .interface_
+			if !from_type.is_any_kind_of_pointer() && from_sym.kind != .interface_
 				&& !c.inside_unsafe {
 				c.mark_as_referenced(mut &node.expr, true)
 			}
@@ -2959,8 +2959,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			type_name := c.table.type_to_str(to_type)
 			c.error('cannot cast struct `${from_type_name}` to `${type_name}`', node.pos)
 		}
-	} else if to_sym.kind == .u8 && !final_from_sym.is_number() && !final_from_sym.is_pointer()
-		&& !from_type.is_ptr() && final_from_sym.kind !in [.char, .enum_, .bool] {
+	} else if to_sym.kind == .u8 && !final_from_sym.is_number()
+		&& !from_type.is_any_kind_of_pointer() && final_from_sym.kind !in [.char, .enum_, .bool] {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast type `${ft}` to `${tt}`', node.pos)

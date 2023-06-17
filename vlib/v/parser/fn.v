@@ -1138,7 +1138,7 @@ fn (mut p Parser) check_fn_mutable_arguments(typ ast.Type, pos token.Pos) {
 		.sum_type] {
 		return
 	}
-	if typ.is_ptr() || typ.is_pointer() {
+	if typ.is_any_kind_of_pointer() {
 		return
 	}
 	if sym.kind == .alias {

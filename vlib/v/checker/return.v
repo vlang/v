@@ -195,8 +195,8 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			} else {
 				if exp_type_sym.kind == .interface_ {
 					if c.type_implements(got_type, exp_type, node.pos) {
-						if !got_type.is_ptr() && !got_type.is_pointer()
-							&& got_type_sym.kind != .interface_ && !c.inside_unsafe {
+						if !got_type.is_any_kind_of_pointer() && got_type_sym.kind != .interface_
+							&& !c.inside_unsafe {
 							c.mark_as_referenced(mut &node.exprs[expr_idxs[i]], true)
 						}
 					}

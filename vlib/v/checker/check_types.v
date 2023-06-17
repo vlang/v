@@ -126,7 +126,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if exp_idx == ast.voidptr_type_idx || exp_idx == ast.nil_type_idx
 		|| exp_idx == ast.byteptr_type_idx
 		|| (expected.is_ptr() && expected.deref().idx() == ast.u8_type_idx) {
-		if got.is_ptr() || got.is_pointer() {
+		if got.is_any_kind_of_pointer() {
 			return true
 		}
 	}
@@ -140,7 +140,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if got_idx == ast.voidptr_type_idx || got_idx == ast.nil_type_idx
 		|| got_idx == ast.byteptr_type_idx
 		|| (got_idx == ast.u8_type_idx && got.is_ptr()) {
-		if expected.is_ptr() || expected.is_pointer() {
+		if expected.is_any_kind_of_pointer() {
 			return true
 		}
 	}
@@ -375,7 +375,7 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 		}
 	}
 	if !unalias_got.is_ptr() && got_sym.kind == .array_fixed
-		&& (unalias_expected.is_pointer() || unalias_expected.is_ptr()) {
+		&& unalias_expected.is_any_kind_of_pointer() {
 		// fixed array needs to be a struct, not a pointer
 		return false
 	}
@@ -440,8 +440,8 @@ fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol,
 		exp_arg := exp_fn.params[i]
 		exp_arg_typ := c.unwrap_generic(exp_arg.typ)
 		got_arg_typ := c.unwrap_generic(got_arg.typ)
-		exp_arg_is_ptr := exp_arg_typ.is_ptr() || exp_arg_typ.is_pointer()
-		got_arg_is_ptr := got_arg_typ.is_ptr() || got_arg_typ.is_pointer()
+		exp_arg_is_ptr := exp_arg_typ.is_any_kind_of_pointer()
+		got_arg_is_ptr := got_arg_typ.is_any_kind_of_pointer()
 		if exp_arg.is_mut && !got_arg.is_mut {
 			return false
 		}
@@ -671,13 +671,13 @@ fn (c &Checker) expected_msg(got ast.Type, expected ast.Type) string {
 fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
 	// allow direct int-literal assignment for pointers for now
 	// maybe in the future options should be used for that
-	if right.is_ptr() || right.is_pointer() {
+	if right.is_any_kind_of_pointer() {
 		if left == ast.int_literal_type {
 			return true
 		}
 	}
 	// allow direct int-literal assignment for pointers for now
-	if left.is_ptr() || left.is_pointer() {
+	if left.is_any_kind_of_pointer() {
 		if right == ast.int_literal_type {
 			return true
 		}
