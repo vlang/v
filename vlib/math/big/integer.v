@@ -455,15 +455,15 @@ fn (a Integer) mask_bits(n u32) Integer {
 }
 
 // pow returns the integer `a` raised to the power of the u32 `exponent`.
-pub fn (a Integer) pow(exponent u32) Integer {
+pub fn (base Integer) pow(exponent u32) Integer {
 	if exponent == 0 {
 		return one_int
 	}
 	if exponent == 1 {
-		return a.clone()
+		return base.clone()
 	}
 	mut n := exponent
-	mut x := a
+	mut x := base
 	mut y := one_int
 	for n > 1 {
 		if n & 1 == 1 {
@@ -476,15 +476,15 @@ pub fn (a Integer) pow(exponent u32) Integer {
 }
 
 // mod_pow returns the integer `a` raised to the power of the u32 `exponent` modulo the integer `modulus`.
-pub fn (a Integer) mod_pow(exponent u32, modulus Integer) Integer {
+pub fn (base Integer) mod_pow(exponent u32, modulus Integer) Integer {
 	if exponent == 0 {
 		return one_int
 	}
 	if exponent == 1 {
-		return a % modulus
+		return base % modulus
 	}
 	mut n := exponent
-	mut x := a % modulus
+	mut x := base % modulus
 	mut y := one_int
 	for n > 1 {
 		if n & 1 == 1 {
@@ -1009,19 +1009,31 @@ fn gcd_binary(x Integer, y Integer) Integer {
 // mod_inverse calculates the multiplicative inverse of the integer `a` in the ring `ℤ/nℤ`.
 // Therefore, the return value `x` satisfies `a * x == 1 (mod m)`.
 // -----
-// `none` is returned if `a` and `n` are not relatively prime, i.e. `gcd(a, n) != 1` or if n == 0
+// An error is returned if `a` and `n` are not relatively prime, i.e. `gcd(a, n) != 1` or
+// if n <= 1
 [inline]
-pub fn (a Integer) mod_inverse(n Integer) ?Integer {
-	if n.bit_len() <= 1 || a.gcd(n) != one_int {
-		return none
+pub fn (a Integer) mod_inverse(n Integer) !Integer {
+	return if n.bit_len() <= 1 {
+		error('math.big: Modulus `n` must be greater than 1')
+	} else if a.gcd(n) != one_int {
+		error('math.big: No multiplicative inverse')
+	} else {
+		a.mod_inv(n)
 	}
-
-	return a.mod_inv(n)
 }
 
-// this is an internal function therefore we assume valid inputs,
+// this is an internal function, therefore we assume valid inputs,
 // i.e. m > 1 and gcd(a, m) = 1
-// see pub fn mod_inverse for explanation
+// see pub fn mod_inverse for details on the result
+// -----
+// the algorithm is based on the Extended Euclidean algorithm which computes `ax + by = d`
+// in this case `b` is the input integer `a` and `a` is the input modulus `m`. The extended
+// Euclidean algorithm calculates the greatest common divisor `d` and two coefficients `x` and `y`
+// satisfying the above equality.
+//
+// For the sake of clarity, we refer to the input integer `a` as `b` and the integer `m` as `a`.
+// If `gcd(a, b) = d = 1` then the coefficient `y` is known to be the multiplicative inverse of
+// `b` in ring `Z/aZ`, since reducing `ax + by = 1` by `a` yields `by == 1 (mod a)`.
 [direct_array_access]
 fn (a Integer) mod_inv(m Integer) Integer {
 	mut n := Integer{
@@ -1080,8 +1092,9 @@ fn (x Integer) is_odd() bool {
 	return x.digits[0] & 1 == 1
 }
 
+// is_power_of_2 returns true when the integer `x` satisfies `2^n`, where `n >= 0`
 [inline]
-fn (x Integer) is_power_of_2() bool {
+pub fn (x Integer) is_power_of_2() bool {
 	return x.bitwise_and(x - one_int).bit_len() == 0
 }
 

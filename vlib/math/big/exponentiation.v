@@ -1,10 +1,9 @@
 module big
 
+/* for a detailed explanation on these internal functions and the algorithms they
+ * are based on refer to https://github.com/vlang/v/pull/18461 */
+
 import math.bits
-
-const window_size = 4
-
-const table_size = 1 << window_size
 
 // internal struct to make passing montgomery values simpler
 struct MontgomeryContext {
@@ -46,7 +45,9 @@ fn (a Integer) mont_odd(x Integer, m Integer) Integer {
 		assert m.is_odd()
 	}
 
-	mut table := []Integer{len: big.table_size}
+	window := get_window_size(u32(x.bit_len()))
+
+	mut table := []Integer{len: 1 << window}
 
 	ctx := m.montgomery()
 	aa := if a.signum < 0 || a.abs_cmp(m) >= 0 {
@@ -98,7 +99,7 @@ fn (a Integer) mont_odd(x Integer, m Integer) Integer {
 
 		wvalue = 1
 		wend = 0
-		for i := 1; i < big.window_size; i++ {
+		for i := 1; i < window; i++ {
 			if wstart - i < 0 {
 				break
 			}
@@ -213,7 +214,9 @@ fn (a Integer) exp_binary(x Integer, m Integer) Integer {
 
 	n := u32(m.bit_len()) - 1
 
-	mut table := []Integer{len: big.table_size}
+	window := get_window_size(u32(x.bit_len()))
+
+	mut table := []Integer{len: 1 << window}
 
 	// table[i] = a^i + 1, since a^0 is known to be 1, there is no point
 	// in eventually multiplying by one, so the for loop part continues until it
@@ -250,7 +253,7 @@ fn (a Integer) exp_binary(x Integer, m Integer) Integer {
 		}
 
 		// the bit x[wstart] is now known to be 1, so no reason to check it again
-		for i := 1; i < big.window_size; i++ {
+		for i := 1; i < window; i++ {
 			if wstart - i < 0 {
 				break
 			}
@@ -278,6 +281,29 @@ fn (a Integer) exp_binary(x Integer, m Integer) Integer {
 	}
 
 	return r.mask_bits(n)
+}
+
+// generally sticking to a window size of 4 for sliding window exponentiation
+// works well as the table stays relatively small and the blocks aren't too large.
+// though in terms of larger exponents it's faster to use larger windows (going over
+// a window size of 6, would cause extremely large table sizes, hindering performance)
+//
+// 6 is already a large window to use, requiring 64 elements in the table, so we'll
+// limit it to only the largest of exponents
+//
+// according to the paper on montgomery multiplication by Shay Gueron, for the
+// case of the exponent being 512 bits a window size of 5 is considered optimal
+[inline]
+fn get_window_size(n u32) int {
+	return if n > 768 {
+		6
+	} else if n > 256 {
+		5
+	} else if n > 32 {
+		4
+	} else {
+		3
+	}
 }
 
 // mont_mul performs multiplication of two variables in montgomery
