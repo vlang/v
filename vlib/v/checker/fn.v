@@ -819,7 +819,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 	}
 	if !found && c.pref.is_vsh {
-		// TOOD: test this hack more extensively
+		// TODO: test this hack more extensively
 		os_name := 'os.${fn_name}'
 		if f := c.table.find_fn(os_name) {
 			if f.generic_names.len == node.concrete_types.len {
@@ -2059,7 +2059,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			arg) or {
 			// str method, allow type with str method if fn arg is string
 			// Passing an int or a string array produces a c error here
-			// Deleting this condition results in propper V error messages
+			// Deleting this condition results in proper V error messages
 			// if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
 			// continue
 			// }

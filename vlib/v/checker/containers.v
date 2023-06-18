@@ -116,7 +116,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	}
 	// `a = []`
 	if node.exprs.len == 0 {
-		// `a := fn_returing_opt_array() or { [] }`
+		// `a := fn_returning_opt_array() or { [] }`
 		if c.expected_type == ast.void_type && c.expected_or_type != ast.void_type {
 			c.expected_type = c.expected_or_type
 		}
@@ -128,7 +128,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		}
 		array_info := type_sym.array_info()
 		node.elem_type = array_info.elem_type
-		// clear option flag incase of: `fn opt_arr() ?[]int { return [] }`
+		// clear option flag in case of: `fn opt_arr() ?[]int { return [] }`
 		return if c.expected_type.has_flag(.shared_f) {
 			c.expected_type.clear_flag(.shared_f).deref()
 		} else {

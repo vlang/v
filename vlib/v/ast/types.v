@@ -1213,7 +1213,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	}
 	// Note, that the duplication of code in some of the match branches here
 	// is VERY deliberate. DO NOT be tempted to use `else {}` instead, because
-	// that strongly reduces the usefullness of the exhaustive checking that
+	// that strongly reduces the usefulness of the exhaustive checking that
 	// match does.
 	//    Using else{} here led to subtle bugs in vfmt discovered *months*
 	// after the original code was written.
@@ -1401,7 +1401,7 @@ fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases 
 	} else {
 		// FIXME: clean this case and remove the following if
 		// because it is an hack to format well the type when
-		// there is a []modul.name
+		// there is a []mod.name
 		if res.contains('[]') {
 			idx := res.index('.') or { -1 }
 			return res[idx + 1..]

@@ -538,7 +538,7 @@ pub fn (mut v Builder) cc() {
 	mut tcc_output := os.Result{}
 	original_pwd := os.getwd()
 	for {
-		// try to compile with the choosen compiler
+		// try to compile with the chosen compiler
 		// if compilation fails, retry again with another
 		mut ccompiler := v.pref.ccompiler
 		if v.pref.os == .wasm32 {

@@ -198,10 +198,10 @@ fn (mut b Builder) rebuild_cached_module(vexe string, imp_path string) string {
 			println('Cached ${imp_path} .o file not found... Building .o file for ${imp_path}')
 		}
 		b.v_build_module(vexe, imp_path)
-		rebuilded_o := b.pref.cache_manager.mod_exists(imp_path, '.o', imp_path) or {
+		rebuilt_o := b.pref.cache_manager.mod_exists(imp_path, '.o', imp_path) or {
 			panic('could not rebuild cache module for ${imp_path}, error: ${err.msg()}')
 		}
-		return rebuilded_o
+		return rebuilt_o
 	}
 	return res
 }
@@ -227,8 +227,8 @@ fn (mut b Builder) handle_usecache(vexe string) {
 		for imp_stmt in ast_file.imports {
 			imp := imp_stmt.mod
 			// strconv is already imported inside builtin, so skip generating its object file
-			// TODO: incase we have other modules with the same name, make sure they are vlib
-			// is this even doign anything?
+			// TODO: in case we have other modules with the same name, make sure they are vlib
+			// is this even doing anything?
 			if util.module_is_builtin(imp) {
 				continue
 			}
@@ -240,7 +240,7 @@ fn (mut b Builder) handle_usecache(vexe string) {
 			}
 			// The problem is cmd/v is in module main and imports
 			// the relative module named help, which is built as cmd.v.help not help
-			// currently this got this workign by building into main, see ast.FnDecl in cgen
+			// currently this got this working by building into main, see ast.FnDecl in cgen
 			if imp == 'help' {
 				continue
 			}
