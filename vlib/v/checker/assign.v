@@ -514,7 +514,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					right.pos())
 			} else if (!right_sym.info.is_anon && return_sym.kind == .any)
 				|| (return_sym.info is ast.Struct && (return_sym.info as ast.Struct).is_generic) {
-				panic('cannot assign `${right}` as a generic function variable')
+				c.error('cannot assign `${right}` as a generic function variable', right.pos())
 			}
 		}
 		if left_type.is_any_kind_of_pointer() && !left.is_auto_deref_var() {
