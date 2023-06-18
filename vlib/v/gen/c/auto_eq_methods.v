@@ -230,7 +230,7 @@ fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('static bool ${ptr_styp}_alias_eq(${ptr_styp} a, ${ptr_styp} b) {')
 
-	is_option := info.parent_type.has_flag(.option) || left.typ.has_flag(.option)
+	is_option := left.typ.has_flag(.option)
 
 	left_var := if is_option { '*' + g.read_opt(info.parent_type, 'a') } else { 'a' }
 	right_var := if is_option { '*' + g.read_opt(info.parent_type, 'b') } else { 'b' }
