@@ -232,12 +232,14 @@ fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 
 	is_option := left.typ.has_flag(.option)
 
-	left_var := if is_option { '*' + g.read_opt(info.parent_type, 'a') } else { 'a' }
-	right_var := if is_option { '*' + g.read_opt(info.parent_type, 'b') } else { 'b' }
+	mut left_var := if is_option { '*' + g.read_opt(info.parent_type, 'a') } else { 'a' }
+	mut right_var := if is_option { '*' + g.read_opt(info.parent_type, 'b') } else { 'b' }
 
 	sym := g.table.sym(info.parent_type)
 	if sym.kind == .string {
-		if is_option {
+		if info.parent_type.has_flag(.option) {
+			left_var = '*' + g.read_opt(info.parent_type, 'a')
+			right_var = '*' + g.read_opt(info.parent_type, 'b')
 			fn_builder.writeln('\treturn ((${left_var}).len == (${right_var}).len && (${left_var}).len == 0) || string__eq(${left_var}, ${right_var});')
 		} else {
 			fn_builder.writeln('\treturn string__eq(a, b);')
