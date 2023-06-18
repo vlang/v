@@ -173,7 +173,7 @@ pub fn (mut b Builder) parse_imports() {
 	// parsed (but not all of them), then this will cause a problem.
 	// we could add a list of parsed files instead, but I think
 	// there is a better solution all around, I will revisit this.
-	// NOTE: there is a very similar occurance with the way
+	// NOTE: there is a very similar occurrence with the way
 	// internal module test's work, and this was the reason there
 	// were issues with duplicate declarations, so we should sort
 	// that out in a similar way.

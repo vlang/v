@@ -2116,7 +2116,7 @@ fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases []string) {
 			c.asm_arg(arg.base, stmt, aliases)
 			c.asm_arg(arg.index, stmt, aliases)
 		}
-		ast.BoolLiteral {} // all of these are guarented to be correct.
+		ast.BoolLiteral {} // all of these are guaranteed to be correct.
 		ast.FloatLiteral {}
 		ast.CharLiteral {}
 		ast.IntegerLiteral {}
@@ -4012,7 +4012,7 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	}
 	// FIXME
 	// there are currently other issues to investigate if right_type
-	// is unwraped directly as initialization, so do it here
+	// is unwrapped directly as initialization, so do it here
 	if node.op == .minus && !right_sym.is_number() {
 		c.type_error_for_operator('-', 'numeric', right_sym.name, node.pos)
 	}
@@ -4402,7 +4402,7 @@ fn (c &Checker) check_struct_signature(from ast.Struct, to ast.Struct) bool {
 		}
 		counterpart := filtered[0]
 		if field.typ != counterpart.typ {
-			// field has different tye
+			// field has different type
 			return false
 		}
 		if field.is_pub != counterpart.is_pub {
@@ -4615,7 +4615,7 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
 		}
 		.int_literal, .float_literal {
 			// Separate error condition for `int_literal` and `float_literal` because `util.suggestion` may give different
-			// suggestions due to f32 comparision issue.
+			// suggestions due to f32 comparison issue.
 			if !c.is_builtin_mod {
 				msg := if sym.kind == .int_literal {
 					'unknown type `${sym.name}`.\nDid you mean `int`?'

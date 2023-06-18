@@ -2,20 +2,20 @@ struct Inner {
 	ptr &u8
 }
 
-struct Outter {
+struct Outer {
 	Inner
 mut:
 	size int
 }
 
-fn new_outter() &Outter {
-	return &Outter{
+fn new_outer() &Outer {
+	return &Outer{
 		ptr: vcalloc(0)
 		size: 1
 	}
 }
 
 fn main () {
-	outter := new_outter()
-	println(outter)
+	outer := new_outer()
+	println(outer)
 }

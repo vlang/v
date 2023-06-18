@@ -509,7 +509,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 	match node.op {
 		.left_shift, .right_shift, .unsigned_right_shift {
 			// The following code tries to disallow C UBs and IDs at the V level.
-			// From the C++ standart (see https://pvs-studio.com/en/docs/warnings/v610/):
+			// From the C++ standard (see https://pvs-studio.com/en/docs/warnings/v610/):
 			// 1. The type of the result is that of the promoted left operand.
 			// The behavior is undefined (UB), if the right operand is negative,
 			// or greater than or equal to the length in bits of the promoted left operand.
