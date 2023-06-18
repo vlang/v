@@ -149,8 +149,8 @@ pub fn load_from_memory(buf &u8, bufsize int) !Image {
 //-----------------------------------------------------------------------------
 fn C.stbir_resize_uint8(input_pixels &u8, input_w int, input_h int, input_stride_in_bytes int, output_pixels &u8, output_w int, output_h int, output_stride_in_bytes int, num_channels int) int
 
-// stbi_resize_image resize `img` to dimensions of `output_w` and `output_h`
-pub fn stbi_resize_image(img &Image, output_w int, output_h int) !Image {
+// resize_uint8 resizes `img` to dimensions of `output_w` and `output_h`
+pub fn resize_uint8(img &Image, output_w int, output_h int) !Image {
 	mut res := Image{
 		ok: true
 		ext: img.ext

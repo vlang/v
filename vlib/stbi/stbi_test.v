@@ -52,7 +52,7 @@ fn test_stbi_resize() {
 
 	new_width, new_height := 100, 100
 
-	d_r := stbi.stbi_resize_image(d_s, new_width, new_height) or { panic(err) }
+	d_r := stbi.resize_uint8(d_s, new_width, new_height) or { panic(err) }
 	println('Resized Image source data:\n ${d_s}')
 
 	out_path := os.join_path(tfolder, 'test.png')
