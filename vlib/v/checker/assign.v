@@ -507,6 +507,16 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.error('cannot copy map: call `move` or `clone` method (or use a reference)',
 				right.pos())
 		}
+		if left_sym.kind == .function && right_sym.info is ast.FnType {
+			return_sym := c.table.sym(right_sym.info.func.return_type)
+			if return_sym.kind == .placeholder {
+				c.error('unkown return type: cannot assign `${right}` as a function variable',
+					right.pos())
+			} else if (!right_sym.info.is_anon && return_sym.kind == .any)
+				|| (return_sym.info is ast.Struct && (return_sym.info as ast.Struct).is_generic) {
+				c.error('cannot assign `${right}` as a generic function variable', right.pos())
+			}
+		}
 		if left_type.is_any_kind_of_pointer() && !left.is_auto_deref_var() {
 			if !c.inside_unsafe && node.op !in [.assign, .decl_assign] {
 				// ptr op=
