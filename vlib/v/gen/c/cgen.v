@@ -4245,7 +4245,20 @@ fn (mut g Gen) ident(node ast.Ident) {
 				if is_auto_heap {
 					g.write('(*(${styp}*)${name}->data)')
 				} else {
-					g.write('(*(${styp}*)${name}.data)')
+					type_sym := g.table.sym(node.info.typ)
+					if type_sym.kind == .alias {
+						// Alias to Option type
+						parent_typ := (type_sym.info as ast.Alias).parent_type
+						if parent_typ.has_flag(.option) {
+							g.write('*((${g.base_type(parent_typ)}*)')
+						}
+						g.write('(*(${styp}*)${name}.data)')
+						if parent_typ.has_flag(.option) {
+							g.write('.data)')
+						}
+					} else {
+						g.write('(*(${styp}*)${name}.data)')
+					}
 				}
 			}
 			if node.or_expr.kind != .absent && !(g.inside_opt_or_res && g.inside_assign
@@ -4398,17 +4411,38 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		mut cast_label := ''
 		// `ast.string_type` is done for MSVC's bug
 		if sym.kind != .alias
-			|| (sym.info as ast.Alias).parent_type !in [expr_type, ast.string_type] {
+			|| (!(sym.info as ast.Alias).parent_type.has_flag(.option)
+			&& (sym.info as ast.Alias).parent_type !in [expr_type, ast.string_type]) {
 			cast_label = '(${styp})'
 		}
 		if node.typ.has_flag(.option) && node.expr is ast.None {
 			g.gen_option_error(node.typ, node.expr)
 		} else if node.typ.has_flag(.option) {
-			if sym.kind == .alias && node.expr_type.has_flag(.option) {
-				g.expr_opt_with_cast(node.expr, expr_type, node.typ)
+			if sym.kind == .alias {
+				if (sym.info as ast.Alias).parent_type.has_flag(.option) {
+					cur_stmt := g.go_before_stmt(0)
+					g.empty_line = true
+					parent_type := (sym.info as ast.Alias).parent_type
+					tmp_var := g.new_tmp_var()
+					tmp_var2 := g.new_tmp_var()
+					g.writeln('${styp} ${tmp_var};')
+					g.writeln('${g.typ(parent_type)} ${tmp_var2};')
+					g.write('_option_ok(&(${g.base_type(parent_type)}[]) { ')
+					g.expr(node.expr)
+					g.writeln(' }, (${c.option_name}*)(&${tmp_var2}), sizeof(${g.base_type(parent_type)}));')
+					g.writeln('_option_ok(&(${g.typ(parent_type)}[]) { ${tmp_var2} }, (${c.option_name}*)&${tmp_var}, sizeof(${g.typ(parent_type)}));')
+					g.write(cur_stmt)
+					g.write(tmp_var)
+				} else if node.expr_type.has_flag(.option) {
+					g.expr_opt_with_cast(node.expr, expr_type, node.typ)
+				} else {
+					g.expr_with_opt(node.expr, expr_type, node.typ)
+				}
 			} else {
 				g.expr_with_opt(node.expr, expr_type, node.typ)
 			}
+		} else if sym.kind == .alias && (sym.info as ast.Alias).parent_type.has_flag(.option) {
+			g.expr_with_opt(node.expr, expr_type, (sym.info as ast.Alias).parent_type)
 		} else {
 			g.write('(${cast_label}(')
 			if sym.kind == .alias && g.table.final_sym(node.typ).kind == .string {
