@@ -10,9 +10,9 @@ fn empty() map[string]MyOpt {
 
 fn test_empty() {
 	expected := {
-		'key': MyOpt(none)
+		'key': ?MyOpt(none)
 	}
 	assert dump(expected) == {
-		'key': MyOpt(none)
+		'key': ?MyOpt(none)
 	}
 }

@@ -464,7 +464,11 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 			fn_builder.writeln('\t\tif (*(voidptr*)map_get(&b, k, &(voidptr[]){ 0 }) != v) {')
 		}
 		else {
-			fn_builder.writeln('\t\tif (*(${ptr_value_styp}*)map_get(&b, k, &(${ptr_value_styp}[]){ 0 }) != v) {')
+			if value.typ.has_flag(.option) {
+				fn_builder.writeln('\t\tif (memcmp(v.data, ((${ptr_value_styp}*)map_get(&b, k, &(${ptr_value_styp}[]){ 0 }))->data, sizeof(${g.base_type(value.typ)})) != 0) {')
+			} else {
+				fn_builder.writeln('\t\tif (*(${ptr_value_styp}*)map_get(&b, k, &(${ptr_value_styp}[]){ 0 }) != v) {')
+			}
 		}
 	}
 	fn_builder.writeln('\t\t\treturn false;')

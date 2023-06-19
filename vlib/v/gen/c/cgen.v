@@ -3923,7 +3923,7 @@ fn (mut g Gen) unlock_locks() {
 
 fn (mut g Gen) map_init(node ast.MapInit) {
 	unwrap_key_typ := g.unwrap_generic(node.key_type)
-	unwrap_val_typ := g.unwrap_generic(node.value_type).clear_flags(.option, .result)
+	unwrap_val_typ := g.unwrap_generic(node.value_type).clear_flags(.result)
 	key_typ_str := g.typ(unwrap_key_typ)
 	value_typ_str := g.typ(unwrap_val_typ)
 	value_sym := g.table.sym(unwrap_val_typ)
