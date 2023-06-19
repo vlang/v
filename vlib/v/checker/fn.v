@@ -459,12 +459,12 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		}
 		node.decl.scope.update_var_type(var.name, var.typ)
 	}
-	c.stmts(node.decl.stmts)
-	c.fn_decl(mut node.decl)
 	if has_generic && node.decl.generic_names.len == 0 {
 		c.error('generic closure fn must specify type parameter, e.g. fn [foo] [T]()',
 			node.decl.pos)
 	}
+	c.stmts(node.decl.stmts)
+	c.fn_decl(mut node.decl)
 	return node.typ
 }
 
