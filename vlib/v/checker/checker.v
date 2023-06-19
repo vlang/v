@@ -2857,6 +2857,12 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 
 	if to_sym.language != .c {
 		c.ensure_type_exists(to_type, node.pos) or {}
+
+		if to_sym.kind == .alias && (to_sym.info as ast.Alias).parent_type.has_flag(.option)
+			&& !to_type.has_flag(.option) {
+			c.error('alias to Option type requires to be used as Option type (?${to_sym.name}(...))',
+				node.pos)
+		}
 	}
 	if from_sym.kind == .u8 && from_type.is_ptr() && to_sym.kind == .string && !to_type.is_ptr() {
 		c.error('to convert a C string buffer pointer to a V string, use x.vstring() instead of string(x)',
