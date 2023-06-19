@@ -568,7 +568,7 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 	for variant in node.variants {
 		if variant.typ.is_ptr() {
 			c.error('sum type cannot hold a reference type,
-use non-references types and a reference to the sum type instead `&${node.name}`',
+declare it with non-reference types and use a reference to the sum type instead: `foo := &${node.name}(bar)`',
 				variant.pos)
 		}
 		c.ensure_type_exists(variant.typ, variant.pos) or {}
