@@ -566,13 +566,15 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 	c.check_valid_pascal_case(node.name, 'sum type', node.pos)
 	mut names_used := []string{}
 	for variant in node.variants {
-		if variant.typ.is_ptr() {
-			c.error('sum type cannot hold a reference type,
-declare it with non-reference types and use a reference to the sum type instead: `foo := &${node.name}(bar)`',
-				variant.pos)
-		}
 		c.ensure_type_exists(variant.typ, variant.pos) or {}
 		sym := c.table.sym(variant.typ)
+		if variant.typ.is_ptr() {
+			variant_name := sym.name.all_after_last('.')
+			lb, rb := if sym.kind == .struct_ { '{', '}' } else { '(', ')' }
+			c.add_error_detail('declare the sum type with non-reference types: `${node.name} = ${variant_name} | ...`
+and use a reference to the sum type instead: `var := &${node.name}(${variant_name}${lb}val${rb})`')
+			c.error('sum type cannot hold a reference type', variant.pos)
+		}
 		if sym.name in names_used {
 			c.error('sum type ${node.name} cannot hold the type `${sym.name}` more than once',
 				variant.pos)
