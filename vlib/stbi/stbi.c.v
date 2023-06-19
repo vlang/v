@@ -119,7 +119,7 @@ pub fn load(path string) !Image {
 		data: 0
 	}
 	res.data = C.stbi_load(&char(path.str), &res.width, &res.height, &res.nr_channels,
-		C.STBI_rgb_alpha)
+		0)
 
 	if isnil(res.data) {
 		return error('stbi_image failed to load from "${path}"')
