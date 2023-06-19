@@ -1,5 +1,6 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
 
 #include <stddef.h>
 
@@ -16,6 +17,7 @@ extern void   stbi__callback_free(void *ptr);
 
 #include "stb_image.h"
 #include "stb_image_write.h"
+#include "stb_image_resize.h"
 
 /*
 void set_png_compression_level(int level);
