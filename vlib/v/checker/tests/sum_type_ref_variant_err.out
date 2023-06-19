@@ -1,17 +1,20 @@
-vlib/v/checker/tests/sum_type_ref_variant_err.vv:7:33: error: sum type cannot hold a reference type
+vlib/v/checker/tests/sum_type_ref_variant_err.vv:7:33: error: sum type cannot hold a reference type,
+use non-references types and a reference to the sum type instead `&Alphabet1`
     5 |     foo string
     6 | }
     7 | type Alphabet1 = Abc | string | &Xyz
       |                                 ~~~~
     8 | type Alphabet2 = Abc | &Xyz | string
     9 | type Alphabet3 = &Xyz | Abc | string
-vlib/v/checker/tests/sum_type_ref_variant_err.vv:8:24: error: sum type cannot hold a reference type
+vlib/v/checker/tests/sum_type_ref_variant_err.vv:8:24: error: sum type cannot hold a reference type,
+use non-references types and a reference to the sum type instead `&Alphabet2`
     6 | }
     7 | type Alphabet1 = Abc | string | &Xyz
     8 | type Alphabet2 = Abc | &Xyz | string
       |                        ~~~~
     9 | type Alphabet3 = &Xyz | Abc | string
-vlib/v/checker/tests/sum_type_ref_variant_err.vv:9:18: error: sum type cannot hold a reference type
+vlib/v/checker/tests/sum_type_ref_variant_err.vv:9:18: error: sum type cannot hold a reference type,
+use non-references types and a reference to the sum type instead `&Alphabet3`
     7 | type Alphabet1 = Abc | string | &Xyz
     8 | type Alphabet2 = Abc | &Xyz | string
     9 | type Alphabet3 = &Xyz | Abc | string
