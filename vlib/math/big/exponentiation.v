@@ -2,7 +2,7 @@ module big
 
 /*
 for a detailed explanation on these internal functions and the algorithms they
- * are based on refer to https://github.com/vlang/v/pull/18461
+are based on refer to https://github.com/vlang/v/pull/18461
 */
 import math.bits
 
