@@ -545,8 +545,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 						c.error('reference field must be initialized with reference',
 							field.pos)
 					} else if exp_type.is_pointer() && !got_type.is_any_kind_of_pointer()
-						&& field.expr.str() != '0' && !(field.expr is ast.Ident
-						&& (field.expr as ast.Ident).language == .c) {
+						&& field.expr.str() != '0' && !got_type.is_int()
+						&& !(field.expr is ast.Ident && (field.expr as ast.Ident).language == .c) {
 						got_typ_str := c.table.type_to_str(got_type)
 						exp_typ_str := c.table.type_to_str(exp_type)
 						c.error('cannot assign to field `${field_info.name}`: expected a pointer `${exp_typ_str}`, but got `${got_typ_str}`',
