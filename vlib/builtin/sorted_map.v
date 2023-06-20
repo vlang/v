@@ -60,7 +60,7 @@ fn new_sorted_map_init(n int, value_bytes int, keys &string, values voidptr) Sor
 // each insertion.
 fn new_node() &mapnode {
 	return &mapnode{
-		children: 0
+		children: unsafe { nil }
 		len: 0
 	}
 }
