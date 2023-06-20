@@ -40,7 +40,6 @@ fn create_epoll_loop(id int) !&EpollLoop {
 
 	loop.epoll_fd = C.epoll_create(max_fds)
 	if loop.epoll_fd == -1 {
-		// deinit loop ?
 		return error('could not create epoll loop!')
 	}
 
