@@ -1008,7 +1008,6 @@ fn gcd_binary(x Integer, y Integer) Integer {
 
 // mod_inverse calculates the multiplicative inverse of the integer `a` in the ring `ℤ/nℤ`.
 // Therefore, the return value `x` satisfies `a * x == 1 (mod m)`.
-// -----
 // An error is returned if `a` and `n` are not relatively prime, i.e. `gcd(a, n) != 1` or
 // if n <= 1
 [inline]
