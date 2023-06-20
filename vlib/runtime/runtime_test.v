@@ -1,5 +1,10 @@
 import runtime
 
+fn test_physical_memory() {
+	total, free := runtime.physical_memory()
+	assert total > 0 && free > 0
+}
+
 fn test_nr_cpus() {
 	nr_cpus := runtime.nr_cpus()
 	assert nr_cpus > 0
