@@ -551,24 +551,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 
 				if got_type.is_ptr() && exp_type.is_ptr() {
 					if mut field.expr is ast.Ident {
-						if mut field.expr.obj is ast.Var {
-							mut obj := unsafe { &field.expr.obj }
-							if c.fn_scope != unsafe { nil } {
-								obj = c.fn_scope.find_var(obj.name) or { obj }
-							}
-							if obj.is_stack_obj && !c.inside_unsafe {
-								sym := c.table.sym(obj.typ.set_nr_muls(0))
-								if !sym.is_heap() && !c.pref.translated && !c.file.is_translated {
-									suggestion := if sym.kind == .struct_ {
-										'declaring `${sym.name}` as `[heap]`'
-									} else {
-										'wrapping the `${sym.name}` object in a `struct` declared as `[heap]`'
-									}
-									c.error('`${field.expr.name}` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
-										field.expr.pos)
-								}
-							}
-						}
+						c.fail_if_stack_sturct_action_outside_unsafe(mut field.expr, 'assigned')
 					}
 				}
 				if field_info.typ in ast.unsigned_integer_type_idxs {

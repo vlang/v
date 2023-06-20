@@ -250,24 +250,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		if right_type.is_ptr() && left_type.is_ptr() {
 			if mut right is ast.Ident {
-				if mut right.obj is ast.Var {
-					mut obj := unsafe { &right.obj }
-					if c.fn_scope != unsafe { nil } {
-						obj = c.fn_scope.find_var(right.obj.name) or { obj }
-					}
-					if obj.is_stack_obj && !c.inside_unsafe {
-						type_sym := c.table.sym(obj.typ.set_nr_muls(0))
-						if !type_sym.is_heap() && !c.pref.translated && !c.file.is_translated {
-							suggestion := if type_sym.kind == .struct_ {
-								'declaring `${type_sym.name}` as `[heap]`'
-							} else {
-								'wrapping the `${type_sym.name}` object in a `struct` declared as `[heap]`'
-							}
-							c.error('`${right.name}` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
-								right.pos)
-						}
-					}
-				}
+				c.fail_if_stack_sturct_action_outside_unsafe(mut right, 'assigned')
 			}
 		}
 		// Do not allow `a := 0; b := 0; a = &b`

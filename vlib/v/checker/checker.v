@@ -4721,6 +4721,27 @@ fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) 
 	}
 }
 
+fn (mut c Checker) fail_if_stack_sturct_action_outside_unsafe(mut ident ast.Ident, failed_action string) {
+	if mut ident.obj is ast.Var {
+		mut obj := unsafe { &ident.obj }
+		if c.fn_scope != unsafe { nil } {
+			obj = c.fn_scope.find_var(ident.obj.name) or { obj }
+		}
+		if obj.is_stack_obj && !c.inside_unsafe {
+			sym := c.table.sym(obj.typ.set_nr_muls(0))
+			if !sym.is_heap() && !c.pref.translated && !c.file.is_translated {
+				suggestion := if sym.kind == .struct_ {
+					'declaring `${sym.name}` as `[heap]`'
+				} else {
+					'wrapping the `${sym.name}` object in a `struct` declared as `[heap]`'
+				}
+				c.error('`${ident.name}` cannot be ${failed_action} outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
+					ident.pos)
+			}
+		}
+	}
+}
+
 fn (mut c Checker) goto_label(node ast.GotoLabel) {
 	// Register a goto label
 	if node.name !in c.goto_labels {
