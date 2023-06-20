@@ -107,7 +107,7 @@ pub fn (mut r Response) raw(response string) {
 [inline]
 pub fn (mut r Response) end() int {
 	n := int(i64(r.buf) - i64(r.buf_start))
-	if C.write(r.fd, r.buf_start, n) != n {
+	if C.send(r.fd, r.buf_start, n, 0) != n {
 		return -1
 	}
 	return n
