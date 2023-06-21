@@ -1,7 +1,8 @@
 import runtime
 
 fn test_physical_memory() {
-	total, free := runtime.physical_memory()
+	total := runtime.total_memory()
+	free := runtime.free_memory()
 	assert total > 0 && free > 0
 }
 
