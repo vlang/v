@@ -4714,7 +4714,7 @@ fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) 
 	}
 }
 
-fn (mut c Checker) fail_if_stack_sturct_action_outside_unsafe(mut ident ast.Ident, failed_action string) {
+fn (mut c Checker) fail_if_stack_struct_action_outside_unsafe(mut ident ast.Ident, failed_action string) {
 	if mut ident.obj is ast.Var {
 		mut obj := unsafe { &ident.obj }
 		if c.fn_scope != unsafe { nil } {

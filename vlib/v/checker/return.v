@@ -252,7 +252,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		if exp_type.is_ptr() && got_type.is_ptr() {
 			mut r_expr := &node.exprs[expr_idxs[i]]
 			if mut r_expr is ast.Ident {
-				c.fail_if_stack_sturct_action_outside_unsafe(mut r_expr, 'returned')
+				c.fail_if_stack_struct_action_outside_unsafe(mut r_expr, 'returned')
 			}
 		}
 	}

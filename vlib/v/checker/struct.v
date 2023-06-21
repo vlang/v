@@ -551,7 +551,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 
 				if got_type.is_ptr() && exp_type.is_ptr() {
 					if mut field.expr is ast.Ident {
-						c.fail_if_stack_sturct_action_outside_unsafe(mut field.expr, 'assigned')
+						c.fail_if_stack_struct_action_outside_unsafe(mut field.expr, 'assigned')
 					}
 				}
 				if field_info.typ in ast.unsigned_integer_type_idxs {

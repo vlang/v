@@ -250,7 +250,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		if right_type.is_ptr() && left_type.is_ptr() {
 			if mut right is ast.Ident {
-				c.fail_if_stack_sturct_action_outside_unsafe(mut right, 'assigned')
+				c.fail_if_stack_struct_action_outside_unsafe(mut right, 'assigned')
 			}
 		}
 		// Do not allow `a := 0; b := 0; a = &b`
