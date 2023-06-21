@@ -3,33 +3,92 @@
 // that can be found in the LICENSE file.
 module http
 
-// The methods listed here are some of the most used ones, ordered by
-// commonality. A comprehensive list is available at:
+// The methods listed here are all of those on the list available at:
 // https://www.iana.org/assignments/http-methods/http-methods.xhtml
-pub enum Method {
-	get
-	post
-	put
-	head
-	delete
-	options
-	trace
+pub enum Method { // as of 2023-06-20
+	acl
+	baseline_control
+	bind
+	checkin
+	checkout
 	connect
+	copy
+	delete
+	get
+	head
+	label
+	link
+	@lock
+	merge
+	mkactivity
+	mkcalendar
+	mkcol
+	mkredirectref
+	mkworkspace
+	move
+	options
+	orderpatch
 	patch
+	post
+	pri
+	propfind
+	proppatch
+	put
+	rebind
+	report
+	search
+	trace
+	unbind
+	uncheckout
+	unlink
+	unlock
+	update
+	updateredirectref
+	version_control
 }
 
 // str returns the string representation of the HTTP Method `m`.
 pub fn (m Method) str() string {
 	return match m {
-		.get { 'GET' }
-		.post { 'POST' }
-		.put { 'PUT' }
-		.head { 'HEAD' }
-		.delete { 'DELETE' }
-		.options { 'OPTIONS' }
-		.trace { 'TRACE' }
+		.acl { 'ACL' }
+		.baseline_control { 'BASELINE-CONTROL' }
+		.bind { 'BIND' }
+		.checkin { 'CHECKIN' }
+		.checkout { 'CHECKOUT' }
 		.connect { 'CONNECT' }
+		.copy { 'COPY' }
+		.delete { 'DELETE' }
+		.get { 'GET' }
+		.head { 'HEAD' }
+		.label { 'LABEL' }
+		.link { 'LINK' }
+		.@lock { 'LOCK' }
+		.merge { 'MERGE' }
+		.mkactivity { 'MKACTIVITY' }
+		.mkcalendar { 'MKCALENDAR' }
+		.mkcol { 'MKCOL' }
+		.mkredirectref { 'MKREDIRECTREF' }
+		.mkworkspace { 'MKWORKSPACE' }
+		.move { 'MOVE' }
+		.options { 'OPTIONS' }
+		.orderpatch { 'ORDERPATCH' }
 		.patch { 'PATCH' }
+		.post { 'POST' }
+		.pri { 'PRI' }
+		.propfind { 'PROPFIND' }
+		.proppatch { 'PROPPATCH' }
+		.put { 'PUT' }
+		.rebind { 'REBIND' }
+		.report { 'REPORT' }
+		.search { 'SEARCH' }
+		.trace { 'TRACE' }
+		.unbind { 'UNBIND' }
+		.uncheckout { 'UNCHECKOUT' }
+		.unlink { 'UNLINK' }
+		.unlock { 'UNLOCK' }
+		.update { 'UPDATE' }
+		.updateredirectref { 'UPDATEREDIRECTREF' }
+		.version_control { 'VERSION-CONTROL' }
 	}
 }
 
@@ -39,15 +98,45 @@ pub fn (m Method) str() string {
 // Currently, the default value is Method.get for unsupported string value.
 pub fn method_from_str(m string) Method {
 	return match m {
-		'GET' { Method.get }
-		'POST' { Method.post }
-		'PUT' { Method.put }
-		'HEAD' { Method.head }
-		'DELETE' { Method.delete }
-		'OPTIONS' { Method.options }
-		'TRACE' { Method.trace }
+		'ACL' { Method.acl }
+		'BASELINE-CONTROL' { Method.baseline_control }
+		'BIND' { Method.bind }
+		'CHECKIN' { Method.checkin }
+		'CHECKOUT' { Method.checkout }
 		'CONNECT' { Method.connect }
+		'COPY' { Method.copy }
+		'DELETE' { Method.delete }
+		'GET' { Method.get }
+		'HEAD' { Method.head }
+		'LABEL' { Method.label }
+		'LINK' { Method.link }
+		'LOCK' { Method.@lock }
+		'MERGE' { Method.merge }
+		'MKACTIVITY' { Method.mkactivity }
+		'MKCALENDAR' { Method.mkcalendar }
+		'MKCOL' { Method.mkcol }
+		'MKREDIRECTREF' { Method.mkredirectref }
+		'MKWORKSPACE' { Method.mkworkspace }
+		'MOVE' { Method.move }
+		'OPTIONS' { Method.options }
+		'ORDERPATCH' { Method.orderpatch }
 		'PATCH' { Method.patch }
+		'POST' { Method.post }
+		'PRI' { Method.pri }
+		'PROPFIND' { Method.propfind }
+		'PROPPATCH' { Method.proppatch }
+		'PUT' { Method.put }
+		'REBIND' { Method.rebind }
+		'REPORT' { Method.report }
+		'SEARCH' { Method.search }
+		'TRACE' { Method.trace }
+		'UNBIND' { Method.unbind }
+		'UNCHECKOUT' { Method.uncheckout }
+		'UNLINK' { Method.unlink }
+		'UNLOCK' { Method.unlock }
+		'UPDATE' { Method.update }
+		'UPDATEREDIRECTREF' { Method.updateredirectref }
+		'VERSION-CONTROL' { Method.version_control }
 		else { Method.get } // should we default to GET?
 	}
 }
