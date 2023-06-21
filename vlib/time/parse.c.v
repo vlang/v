@@ -252,7 +252,7 @@ fn parse_iso8601_time(s string) !(int, int, int, int, i64, bool) {
 		microsecond_ = nanosecond_ / 1000
 	} else {
 		count = unsafe {
-			C.sscanf(&char(s.str), c'%2d:%2d:%2d.%6d%c%2d:%2d', &hour_, &minute_, &second_,
+			C.sscanf(&char(s.str), c'%2d:%2d:%2d.%9d%c%2d:%2d', &hour_, &minute_, &second_,
 				&microsecond_, &char(&plus_min_z), &offset_hour, &offset_minute)
 		}
 		// Missread microsecond ([Sec Hour Minute].len == 3 < 4)
