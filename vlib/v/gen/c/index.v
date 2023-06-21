@@ -49,10 +49,18 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				}
 			}
 		} else {
-			g.expr(node.left)
-			g.write('[')
-			g.expr(node.index)
-			g.write(']')
+			if sym.kind == .aggregate
+				&& (sym.info as ast.Aggregate).types.filter(g.table.type_kind(it) !in [.array, .array_fixed, .string, .map]).len == 0 {
+				// treating sumtype of array types
+				unwrapped_got_type := (sym.info as ast.Aggregate).types[g.aggregate_type_idx]
+				value_type := g.table.value_type(unwrapped_got_type)
+				g.index_of_array(ast.IndexExpr{ ...node, left_type: value_type }, g.table.sym(unwrapped_got_type))
+			} else {
+				g.expr(node.left)
+				g.write('[')
+				g.expr(node.index)
+				g.write(']')
+			}
 		}
 	}
 }
