@@ -343,7 +343,7 @@ fn (mut upd VlsUpdater) parse(mut fp flag.FlagParser) ! {
 		upd.ls_path = ls_path
 
 		if upd.setup_kind != .none_ {
-			upd.update_source = .local_file		//use local path if both -p and --source are used
+			upd.update_source = .local_file // use local path if both -p and --source are used
 		}
 	}
 
@@ -464,7 +464,7 @@ fn (upd VlsUpdater) run(fp flag.FlagParser) ! {
 			.git_repo {
 				upd.compile_from_source()!
 			}
-			.local_file{
+			.local_file {
 				upd.log('Using local vls file to install or update..')
 				upd.copy_local_file(upd.ls_path, time.now())!
 			}
