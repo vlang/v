@@ -3619,7 +3619,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				}
 			}
 		}
-	} else if m := g.table.find_method(sym, node.field_name) {
+	} else if m := sym.find_method_with_generic_parent(node.field_name) {
 		mut has_embeds := false
 		if sym.info in [ast.Struct, ast.Aggregate] {
 			if node.from_embed_types.len > 0 {
@@ -3651,7 +3651,14 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			} else {
 				sb.write_string('\t')
 			}
-			sb.write_string('${expr_styp}_${m.name}(')
+			mut method_name := m.name
+			rec_sym := g.table.sym(receiver.typ)
+			if rec_sym.info is ast.Struct {
+				if rec_sym.info.concrete_types.len > 0 {
+					method_name = g.generic_fn_name(rec_sym.info.concrete_types, m.name)
+				}
+			}
+			sb.write_string('${expr_styp}_${method_name}(')
 			if !receiver.typ.is_ptr() {
 				sb.write_string('*')
 			}
