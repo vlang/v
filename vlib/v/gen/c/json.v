@@ -805,7 +805,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				// it has to be encoded as a unix timestamp number
 				enc.writeln('${indent}\tcJSON_AddItemToObject(o, "${name}", json__encode_u64(${prefix_enc}${op}${c_name(field.name)}._v_unix));')
 			} else {
-				if !field.typ.is_real_pointer() {
+				if !field.typ.is_any_kind_of_pointer() {
 					enc.writeln('${indent}\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${prefix_enc}${op}${c_name(field.name)})); /*A*/')
 				} else {
 					arg_prefix := if field.typ.is_ptr() { '' } else { '*' }

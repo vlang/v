@@ -33,12 +33,15 @@ fn keep_single_empty_line() {
 
 	println('c')
 
+	dump('d')
+
 	d := 0
 
 	if true {
 		println('e')
 	}
 
+	dump('f')
 	f := 0
 	arr << MyStruct{}
 

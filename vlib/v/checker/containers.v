@@ -116,7 +116,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	}
 	// `a = []`
 	if node.exprs.len == 0 {
-		// `a := fn_returing_opt_array() or { [] }`
+		// `a := fn_returning_opt_array() or { [] }`
 		if c.expected_type == ast.void_type && c.expected_or_type != ast.void_type {
 			c.expected_type = c.expected_or_type
 		}
@@ -128,7 +128,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		}
 		array_info := type_sym.array_info()
 		node.elem_type = array_info.elem_type
-		// clear option flag incase of: `fn opt_arr() ?[]int { return [] }`
+		// clear option flag in case of: `fn opt_arr() ?[]int { return [] }`
 		return if c.expected_type.has_flag(.shared_f) {
 			c.expected_type.clear_flag(.shared_f).deref()
 		} else {
@@ -164,7 +164,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 					c.expected_type = elem_type
 					c.type_implements(typ, elem_type, expr.pos())
 				}
-				if !typ.is_ptr() && !typ.is_pointer() && !c.inside_unsafe {
+				if !typ.is_any_kind_of_pointer() && !c.inside_unsafe {
 					typ_sym := c.table.sym(typ)
 					if typ_sym.kind != .interface_ {
 						c.mark_as_referenced(mut &expr, true)
@@ -199,7 +199,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				c.expected_type = elem_type
 				continue
 			} else {
-				if !typ.is_real_pointer() && !typ.is_int() && is_first_elem_ptr {
+				if !typ.is_any_kind_of_pointer() && !typ.is_int() && is_first_elem_ptr {
 					c.error('cannot have non-pointer of type `${c.table.type_to_str(typ)}` in a pointer array of type `${c.table.type_to_str(elem_type)}`',
 						expr.pos())
 				}

@@ -339,7 +339,7 @@ pub:
 	mod         string
 	name        string
 	is_pub      bool
-	is_markused bool // an explict `[markused]` tag; the const will NOT be removed by `-skip-unused`, no matter what
+	is_markused bool // an explicit `[markused]` tag; the const will NOT be removed by `-skip-unused`, no matter what
 	pos         token.Pos
 pub mut:
 	expr         Expr      // the value expr of field; everything after `=`
@@ -520,7 +520,7 @@ pub:
 	is_exported        bool        // true for `[export: 'exact_C_name']`
 	is_keep_alive      bool        // passed memory must not be freed (by GC) before function returns
 	is_unsafe          bool        // true, when [unsafe] is used on a fn
-	is_markused        bool        // true, when an explict `[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
+	is_markused        bool        // true, when an explicit `[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
 	is_file_translated bool        // true, when the file it resides in is `[translated]`
 	receiver           StructField // TODO this is not a struct field
 	receiver_pos       token.Pos   // `(u User)` in `fn (u User) name()` position
@@ -790,7 +790,7 @@ pub mut:
 	// (for setting the position after the or block for autofree)
 	is_or        bool // `x := foo() or { ... }`
 	is_tmp       bool // for tmp for loop vars, so that autofree can skip them
-	is_auto_heap bool // value whoes address goes out of scope
+	is_auto_heap bool // value whose address goes out of scope
 	is_stack_obj bool // may be pointer to stack value (`mut` or `&` arg and not [heap] struct)
 }
 
@@ -818,7 +818,7 @@ pub:
 	has_expr    bool
 	pos         token.Pos
 	typ_pos     token.Pos
-	is_markused bool // an explict `[markused]` tag; the global will NOT be removed by `-skip-unused`
+	is_markused bool // an explicit `[markused]` tag; the global will NOT be removed by `-skip-unused`
 	is_volatile bool
 pub mut:
 	expr     Expr
@@ -870,7 +870,7 @@ pub mut:
 	scope            &Scope = unsafe { nil }
 	stmts            []Stmt            // all the statements in the source file
 	imports          []Import          // all the imports
-	auto_imports     []string          // imports that were implicitely added
+	auto_imports     []string          // imports that were implicitly added
 	embedded_files   []EmbeddedFile    // list of files to embed in the binary
 	imported_symbols map[string]string // used for `import {symbol}`, it maps symbol => module.symbol
 	errors           []errors.Error    // all the checker errors in the file
@@ -1566,7 +1566,7 @@ pub mut:
 	index        AsmArg // gpr
 }
 
-// adressing modes:
+// addressing modes:
 pub enum AddressingMode {
 	invalid
 	displacement // displacement
@@ -1621,7 +1621,7 @@ pub const (
 	}
 	// no comments because maps do not support comments
 	// r#*: gp registers added in 64-bit extensions, can only be from 8-15 actually
-	// *mm#: vector/simd registors
+	// *mm#: vector/simd registers
 	// st#: floating point numbers
 	// cr#: control/status registers
 	// dr#: debug registers
@@ -1945,7 +1945,7 @@ pub fn (expr Expr) is_blank_ident() bool {
 pub fn (expr Expr) pos() token.Pos {
 	// all uncommented have to be implemented
 	// Note: please do not print here. the language server will hang
-	// as it uses STDIO primarly to communicate ~Ned
+	// as it uses STDIO primarily to communicate ~Ned
 	match expr {
 		AnonFn {
 			return expr.decl.pos
@@ -2400,8 +2400,7 @@ pub fn (expr Expr) is_literal() bool {
 			return expr.expr.is_literal()
 		}
 		CastExpr {
-			return !expr.has_arg && expr.expr.is_literal()
-				&& (expr.typ.is_ptr() || expr.typ.is_pointer()
+			return !expr.has_arg && expr.expr.is_literal() && (expr.typ.is_any_kind_of_pointer()
 				|| expr.typ in [i8_type, i16_type, int_type, i64_type, u8_type, u16_type, u32_type, u64_type, f32_type, f64_type, char_type, bool_type, rune_type])
 		}
 		SizeOf, IsRefType {

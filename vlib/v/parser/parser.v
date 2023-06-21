@@ -1704,7 +1704,7 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 		} else if mut expr is ast.Ident {
 			alias = expr.name
 		}
-		// for constraints like `a`, no alias is needed, it is reffered to as rcx
+		// for constraints like `a`, no alias is needed, it is referred to as rcx
 		mut comments := []ast.Comment{}
 		for p.tok.kind == .comment {
 			comments << p.comment()

@@ -1885,7 +1885,7 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 		if arg.is_mut {
 			f.write(arg.share.str() + ' ')
 		}
-		if i > 0 && !f.single_line_if {
+		if i > 0 && !f.single_line_if && !f.use_short_fn_args {
 			f.wrap_long_line(3, true)
 		}
 		f.expr(arg.expr)
@@ -1968,6 +1968,13 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 			}
 			node.method_name in ['compile_error', 'compile_warn'] {
 				f.write("\$${node.method_name}('${node.args_var}')")
+			}
+			node.method_name == 'res' {
+				if node.args_var != '' {
+					f.write('\$res(${node.args_var})')
+				} else {
+					f.write('\$res()')
+				}
 			}
 			else {
 				inner_args := if node.args_var != '' {

@@ -117,10 +117,10 @@ pub fn decode[T](src string) !T {
 					typ.$(field.name) = res[json_name]!.str()
 				}
 			} $else $if field.typ is time.Time {
-				typ.$(field.name) = res[field.name]!.to_time()!
+				typ.$(field.name) = res[json_name]!.to_time()!
 			} $else $if field.typ is ?time.Time {
 				if json_name in res {
-					typ.$(field.name) = res[field.name]!.to_time()!
+					typ.$(field.name) = res[json_name]!.to_time()!
 				}
 			} $else $if field.is_array {
 				// typ.$(field.name) = res[field.name]!.arr()
@@ -393,8 +393,8 @@ pub fn (f Any) to_time() !time.Time {
 			return time.unix(f)
 		}
 		string {
-			if f.len == 10 && f[4] == `-` && f[7] == `-` {
-				// just a date in the format `2001-01-01`
+			is_iso8601 := f[4] == `-` && f[7] == `-`
+			if is_iso8601 {
 				return time.parse_iso8601(f)!
 			}
 			is_rfc3339 := f.len == 24 && f[23] == `Z` && f[10] == `T`

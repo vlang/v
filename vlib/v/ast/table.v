@@ -1351,7 +1351,7 @@ pub fn (t &Table) known_type_names() []string {
 
 // has_deep_child_no_ref returns true if type is struct and has any child or nested child with the type of the given name
 // the given name consists of module and name (`mod.Name`)
-// it doesn't care about childs that are references
+// it doesn't care about children that are references
 pub fn (t &Table) has_deep_child_no_ref(ts &TypeSymbol, name string) bool {
 	if ts.info is Struct {
 		for field in ts.info.fields {

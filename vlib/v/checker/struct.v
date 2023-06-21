@@ -139,7 +139,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					&& c.type_implements(field.default_expr_typ, field.typ, field.pos)
 				c.check_expected(field.default_expr_typ, field.typ) or {
 					if sym.kind == .interface_ && interface_implemented {
-						if !c.inside_unsafe && !field.default_expr_typ.is_real_pointer() {
+						if !c.inside_unsafe && !field.default_expr_typ.is_any_kind_of_pointer() {
 							if c.table.sym(field.default_expr_typ).kind != .interface_ {
 								c.mark_as_referenced(mut &node.fields[i].default_expr,
 									true)
@@ -151,7 +151,8 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					}
 				}
 				if field.default_expr.is_nil() {
-					if !field.typ.is_real_pointer() && c.table.sym(field.typ).kind != .function {
+					if !field.typ.is_any_kind_of_pointer()
+						&& c.table.sym(field.typ).kind != .function {
 						c.error('cannot assign `nil` to a non-pointer field', field.type_pos)
 					}
 				}
@@ -522,7 +523,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				if exp_type_sym.kind == .interface_ {
 					if c.type_implements(got_type, exp_type, field.pos) {
 						if !c.inside_unsafe && got_type_sym.kind != .interface_
-							&& !got_type.is_real_pointer() {
+							&& !got_type.is_any_kind_of_pointer() {
 							c.mark_as_referenced(mut &field.expr, true)
 						}
 					}
@@ -539,9 +540,15 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 							field.pos)
 					}
 				} else {
-					if exp_type.is_ptr() && !got_type.is_real_pointer() && field.expr.str() != '0'
-						&& !exp_type.has_flag(.option) {
+					if exp_type.is_ptr() && !got_type.is_any_kind_of_pointer()
+						&& field.expr.str() != '0' && !exp_type.has_flag(.option) {
 						c.error('reference field must be initialized with reference',
+							field.pos)
+					} else if exp_type.is_pointer() && !got_type.is_any_kind_of_pointer()
+						&& !got_type.is_int() {
+						got_typ_str := c.table.type_to_str(got_type)
+						exp_typ_str := c.table.type_to_str(exp_type)
+						c.error('cannot assign to field `${field_info.name}`: expected a pointer `${exp_typ_str}`, but got `${got_typ_str}`',
 							field.pos)
 					}
 				}
@@ -550,24 +557,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 
 				if got_type.is_ptr() && exp_type.is_ptr() {
 					if mut field.expr is ast.Ident {
-						if mut field.expr.obj is ast.Var {
-							mut obj := unsafe { &field.expr.obj }
-							if c.fn_scope != unsafe { nil } {
-								obj = c.fn_scope.find_var(obj.name) or { obj }
-							}
-							if obj.is_stack_obj && !c.inside_unsafe {
-								sym := c.table.sym(obj.typ.set_nr_muls(0))
-								if !sym.is_heap() && !c.pref.translated && !c.file.is_translated {
-									suggestion := if sym.kind == .struct_ {
-										'declaring `${sym.name}` as `[heap]`'
-									} else {
-										'wrapping the `${sym.name}` object in a `struct` declared as `[heap]`'
-									}
-									c.error('`${field.expr.name}` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
-										field.expr.pos)
-								}
-							}
-						}
+						c.fail_if_stack_struct_action_outside_unsafe(mut field.expr, 'assigned')
 					}
 				}
 				if field_info.typ in ast.unsigned_integer_type_idxs {
@@ -623,7 +613,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 								info.fields[i].default_expr_typ = ast.new_type(idx)
 							}
 						} else if field.default_expr.is_nil() {
-							if field.typ.is_real_pointer() {
+							if field.typ.is_any_kind_of_pointer() {
 								info.fields[i].default_expr_typ = field.typ
 							}
 						} else {

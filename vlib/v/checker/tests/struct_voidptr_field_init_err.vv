@@ -1,0 +1,13 @@
+struct Example {
+	example voidptr
+}
+
+fn main() {
+	println(Example{
+		example: get()
+	})
+}
+
+fn get() string {
+	return 'hello'
+}

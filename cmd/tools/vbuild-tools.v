@@ -64,6 +64,9 @@ fn main() {
 			os.mv_by_cp(tpath, os.join_path(tfolder, tname, texe)) or { panic(err) }
 			continue
 		}
+		if os.is_dir(tpath) {
+			continue
+		}
 		target_path := os.join_path(tfolder, texe)
 		os.mv_by_cp(tpath, target_path) or {
 			emsg := err.msg()

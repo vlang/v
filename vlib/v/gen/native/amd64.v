@@ -537,7 +537,7 @@ fn (mut c Amd64) mov_deref(reg Amd64Register, regptr Amd64Register, typ ast.Type
 	if size !in [1, 2, 4, 8] {
 		c.g.n_error('Invalid size on dereferencing')
 	}
-	is_signed := !typ.is_real_pointer() && typ.is_signed()
+	is_signed := !typ.is_any_kind_of_pointer() && typ.is_signed()
 	rex := int(reg) / 8 * 4 + int(regptr) / 8
 	if size == 4 && !is_signed {
 		if rex > 0 {
@@ -628,7 +628,7 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 					size_str = 'BYTE'
 				}
 				else {
-					if typ.is_real_pointer() {
+					if typ.is_any_kind_of_pointer() {
 						c.g.write16(0x8948 + if is_extended_register { 4 } else { 0 })
 						size_str = 'QWORD'
 					} else {
@@ -796,7 +796,7 @@ fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 			is_far_var := offset > 0x80 || offset < -0x7f
 			typ := if config.typ == 0 { var.typ } else { config.typ }
 			size := c.g.get_type_size(typ)
-			is_signed := !typ.is_real_pointer() && typ.is_signed()
+			is_signed := !typ.is_any_kind_of_pointer() && typ.is_signed()
 
 			instruction, size_str := match true {
 				size == 4 && is_signed {
@@ -860,7 +860,7 @@ fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 
 fn (mut c Amd64) mov_extend_reg(a Amd64Register, b Amd64Register, typ ast.Type) {
 	size := c.g.get_type_size(typ)
-	is_signed := !typ.is_real_pointer() && typ.is_signed()
+	is_signed := !typ.is_any_kind_of_pointer() && typ.is_signed()
 
 	if size in [1, 2, 4] {
 		if size == 4 && !is_signed {
@@ -2021,7 +2021,7 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 				}
 				.decl_assign {
 					typ := node.left_types[i]
-					if typ.is_number() || typ.is_real_pointer() || typ.is_bool() {
+					if typ.is_number() || typ.is_any_kind_of_pointer() || typ.is_bool() {
 						c.allocate_var(name, c.g.get_type_size(typ), 0)
 					} else {
 						ts := c.g.table.sym(typ)
@@ -2038,7 +2038,8 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 					match var_ {
 						LocalVar {
 							var := var_ as LocalVar
-							if var.typ.is_number() || var.typ.is_real_pointer() || var.typ.is_bool() {
+							if var.typ.is_number() || var.typ.is_any_kind_of_pointer()
+								|| var.typ.is_bool() {
 								c.mov_var_to_reg(Amd64Register.rax, right as ast.Ident)
 								c.mov_reg_to_var(ident, Amd64Register.rax)
 							} else {
@@ -2049,24 +2050,20 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 										if size >= 8 {
 											for offset in 0 .. size / 8 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													offset: offset * 8
 													typ: ast.i64_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													offset: offset * 8
 													typ: ast.i64_type_idx
 												)
 											}
 											if size % 8 != 0 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													offset: size - 8
 													typ: ast.i64_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													offset: size - 8
 													typ: ast.i64_type_idx
 												)
@@ -2074,11 +2071,9 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 										} else {
 											mut left_size := if size >= 4 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													typ: ast.int_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													typ: ast.int_type_idx
 												)
 												size - 4
@@ -2087,12 +2082,10 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 											}
 											if left_size >= 2 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													offset: size - left_size
 													typ: ast.i16_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													offset: size - left_size
 													typ: ast.i16_type_idx
 												)
@@ -2100,12 +2093,10 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 											}
 											if left_size == 1 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													offset: size - left_size
 													typ: ast.i8_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													offset: size - left_size
 													typ: ast.i8_type_idx
 												)
@@ -2130,7 +2121,8 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 					match var_ {
 						LocalVar {
 							var := var_ as LocalVar
-							if var.typ.is_number() || var.typ.is_real_pointer() || var.typ.is_bool() {
+							if var.typ.is_number() || var.typ.is_any_kind_of_pointer()
+								|| var.typ.is_bool() {
 								c.mov_var_to_reg(Amd64Register.rax, right as ast.Ident)
 								c.mov_reg_to_var(ident, Amd64Register.rax)
 							} else {
@@ -2141,24 +2133,20 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 										if size >= 8 {
 											for offset in 0 .. size / 8 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													offset: offset * 8
 													typ: ast.i64_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													offset: offset * 8
 													typ: ast.i64_type_idx
 												)
 											}
 											if size % 8 != 0 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													offset: size - 8
 													typ: ast.i64_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													offset: size - 8
 													typ: ast.i64_type_idx
 												)
@@ -2166,11 +2154,9 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 										} else {
 											mut left_size := if size >= 4 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													typ: ast.int_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													typ: ast.int_type_idx
 												)
 												size - 4
@@ -2179,12 +2165,10 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 											}
 											if left_size >= 2 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													offset: size - left_size
 													typ: ast.i16_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													offset: size - left_size
 													typ: ast.i16_type_idx
 												)
@@ -2192,12 +2176,10 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 											}
 											if left_size == 1 {
 												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													
 													offset: size - left_size
 													typ: ast.i8_type_idx
 												)
 												c.mov_reg_to_var(var, Amd64Register.rax,
-													
 													offset: size - left_size
 													typ: ast.i8_type_idx
 												)

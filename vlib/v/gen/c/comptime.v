@@ -80,6 +80,15 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		g.write('_SLIT("${val}")')
 		return
 	}
+	if node.method_name == 'res' {
+		if node.args_var != '' {
+			g.write('${g.defer_return_tmp_var}.arg${node.args_var}')
+			return
+		}
+
+		g.write('${g.defer_return_tmp_var}')
+		return
+	}
 	if node.is_vweb {
 		is_html := node.method_name == 'html'
 		mut cur_line := ''

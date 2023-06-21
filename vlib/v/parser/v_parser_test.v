@@ -259,7 +259,7 @@ fn test_fn_is_html_open_tag() {
 	b = is_html_open_tag('style', s)
 	assert b == false
 
-	s = '<sript>'
+	s = '<script>'
 	b = is_html_open_tag('style', s)
 	assert b == false
 }

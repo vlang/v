@@ -1,4 +1,4 @@
-vlib/v/checker/tests/go_wait_or.vv:11:16: error: unexpected `?`, the function `wait` does not return an Option or a Result
+vlib/v/checker/tests/go_wait_or.vv:11:16: error: unexpected `?`, the function `wait` does not return an Option
     9 |         spawn d(1)
    10 |     ]
    11 |     r := tg.wait()?
@@ -19,7 +19,7 @@ vlib/v/checker/tests/go_wait_or.vv:19:13: error: unexpected `or` block, the func
       |                ~~~~~~~~~~~~~~~~~~~~~~~
    20 |     tg2[0].wait()?
    21 |     tg3 := [
-vlib/v/checker/tests/go_wait_or.vv:20:15: error: unexpected `?`, the function `wait` does not return an Option or a Result
+vlib/v/checker/tests/go_wait_or.vv:20:15: error: unexpected `?`, the function `wait` does not return an Option
    18 |     ]
    19 |     tg2.wait() or { panic('problem') }
    20 |     tg2[0].wait()?
