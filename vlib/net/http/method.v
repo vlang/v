@@ -50,6 +50,9 @@ pub enum Method { // as of 2023-06-20
 // str returns the string representation of the HTTP Method `m`.
 pub fn (m Method) str() string {
 	return match m {
+		.get { 'GET' }
+		.head { 'HEAD' }
+		.post { 'POST' }
 		.acl { 'ACL' }
 		.baseline_control { 'BASELINE-CONTROL' }
 		.bind { 'BIND' }
@@ -58,8 +61,6 @@ pub fn (m Method) str() string {
 		.connect { 'CONNECT' }
 		.copy { 'COPY' }
 		.delete { 'DELETE' }
-		.get { 'GET' }
-		.head { 'HEAD' }
 		.label { 'LABEL' }
 		.link { 'LINK' }
 		.@lock { 'LOCK' }
@@ -73,7 +74,6 @@ pub fn (m Method) str() string {
 		.options { 'OPTIONS' }
 		.orderpatch { 'ORDERPATCH' }
 		.patch { 'PATCH' }
-		.post { 'POST' }
 		.pri { 'PRI' }
 		.propfind { 'PROPFIND' }
 		.proppatch { 'PROPPATCH' }
@@ -98,6 +98,9 @@ pub fn (m Method) str() string {
 // Currently, the default value is Method.get for unsupported string value.
 pub fn method_from_str(m string) Method {
 	return match m {
+		'GET' { Method.get }
+		'HEAD' { Method.head }
+		'POST' { Method.post }
 		'ACL' { Method.acl }
 		'BASELINE-CONTROL' { Method.baseline_control }
 		'BIND' { Method.bind }
@@ -106,8 +109,6 @@ pub fn method_from_str(m string) Method {
 		'CONNECT' { Method.connect }
 		'COPY' { Method.copy }
 		'DELETE' { Method.delete }
-		'GET' { Method.get }
-		'HEAD' { Method.head }
 		'LABEL' { Method.label }
 		'LINK' { Method.link }
 		'LOCK' { Method.@lock }
@@ -121,7 +122,6 @@ pub fn method_from_str(m string) Method {
 		'OPTIONS' { Method.options }
 		'ORDERPATCH' { Method.orderpatch }
 		'PATCH' { Method.patch }
-		'POST' { Method.post }
 		'PRI' { Method.pri }
 		'PROPFIND' { Method.propfind }
 		'PROPPATCH' { Method.proppatch }
