@@ -1484,7 +1484,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 		return field.typ
 	}
-	if mut method := c.table.find_method(sym, field_name) {
+	if mut method := sym.find_method_with_generic_parent(field_name) {
 		if c.expected_type != 0 && c.expected_type != ast.none_type {
 			fn_type := ast.new_type(c.table.find_or_register_fn_type(method, false, true))
 			// if the expected type includes the receiver, don't hide it behind a closure
