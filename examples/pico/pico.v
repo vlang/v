@@ -3,7 +3,7 @@ import picoev
 import picohttpparser
 
 const (
-	port = 8088
+	port = 8080
 )
 
 struct Message {

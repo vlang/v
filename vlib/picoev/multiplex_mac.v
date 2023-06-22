@@ -64,7 +64,7 @@ pub fn (mut pv Picoev) ev_set(fd int, operation int, events int) {
 
 [inline]
 fn backend_build(next_fd int, events int) int {
-	return int((u32(next_fd) << 8) | (events & 0xff)))
+	return int((u32(next_fd) << 8) | u32(events & 0xff))
 }
 
 [inline]
@@ -116,7 +116,7 @@ fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 [direct_array_access]
 fn (mut pv Picoev) update_events(fd int, events int) int {
 	// check if fd is in range
-	assert fd < max_fds
+	assert fd < max_fds	
 
 	mut target := pv.file_descriptors[fd]
 
@@ -136,6 +136,8 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 		target.backend = backend_build(fd, events)
 		pv.loop.changed_fds = fd
 	}
+
+	eprintln('updating ${target} ev: ${events}')
 
 	// update events
 	target.events = u32(events & picoev_readwrite)
@@ -159,6 +161,7 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 
 	nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, &pv.loop.events, pv.loop.events.len,
 		&ts)
+	eprintln('events: ${nevents}')
 	if nevents == -1 {
 		// the errors we can only rescue
 		assert C.errno == C.EACCES || C.errno == C.EFAULT || C.errno == C.EINTR
@@ -167,6 +170,7 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 
 	for i := 0; i < nevents; i++ {
 		event := pv.loop.events[i]
+		eprintln('event: ${event}')
 		target := pv.file_descriptors[event.ident]
 
 		// changelist errors are fatal
