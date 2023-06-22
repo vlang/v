@@ -509,10 +509,13 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				if got_type == ast.void_type {
 					c.error('`${init_field.expr}` (no value) used as value', init_field.pos)
 				}
-				if !exp_type.has_flag(.option) && !got_type.has_flag(.result) {
+				if !exp_type.has_flag(.option) {
 					got_type = c.check_expr_opt_call(init_field.expr, got_type)
 					if got_type.has_flag(.option) {
 						c.error('cannot assign an Option value to a non-option struct field',
+							init_field.pos)
+					} else if got_type.has_flag(.result) {
+						c.error('cannot assign a Result value to a non-option struct field',
 							init_field.pos)
 					}
 				}
