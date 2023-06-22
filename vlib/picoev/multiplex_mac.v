@@ -4,13 +4,14 @@ module picoev
 #include <sys/types.h>
 #include <sys/events.h>
 
-fn C.kevent(kq_id int, changelist &C.Kevent, nchanges, int, eventlist &C.Kevent, nevents int, timout &C.timespec) int
+fn C.kevent(kq_id int, changelist &C.Kevent, nchanges int, eventlist &C.Kevent, nevents int, timout &C.timespec) int
 
 fn C.kqueue() int
 
 [export: 'kevent']
 [typedef]
 struct C.Kevent {
+pub mut:
 	ident int
 	// uintptr_t
 	filter i16
@@ -85,7 +86,7 @@ fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 				total++
 			}
 			if target.events != 0 {
-				pv.ev_set(target.fd, C.EV_ADD | C.EV_ENABLE, target.events)
+				pv.ev_set(target.fd, C.EV_ADD | C.EV_ENABLE, int(target.events))
 				total++
 			}
 			if total + 1 >= pv.loop.changelist.len {
@@ -128,7 +129,7 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 	}
 
 	// add to changed list if not yet being done
-	target.events = events & picoev_readwrite
+	target.events = u32(events & picoev_readwrite)
 
 	// apply immediately if is a DELETE
 	if events & picoev_del != 0 {
@@ -152,7 +153,7 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 		&ts)
 	if nevents == -1 {
 		// the errors we can only rescue
-		assert C.errno == C.EACCES || C.errno == C.EFAULT || C.errno == EINTR
+		assert C.errno == C.EACCES || C.errno == C.EFAULT || C.errno == C.EINTR
 		return -1
 	}
 
@@ -163,8 +164,8 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 		// changelist errors are fatal
 		assert event.flags & C.EV_ERROR == 0
 
-		if pv.loop.id == target.loop.id && event.filter & (C.EVFILT_READ | C.EVFILT_WRITE) != 0 {
-			read_events := match event.filter.int() {
+		if pv.loop.id == target.loop_id && event.filter & (C.EVFILT_READ | C.EVFILT_WRITE) != 0 {
+			read_events := match int(event.filter) {
 				C.EVFILT_READ {
 					picoev_read
 				}
@@ -177,7 +178,7 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 			}
 
 			// do callback!
-			unsafe { target.cb(event.data.fd, read_events, &pv) }
+			unsafe { target.cb(target.fd, read_events, &pv) }
 		}
 	}
 
