@@ -388,7 +388,7 @@ pub fn (t Type) has_flag(flag TypeFlag) bool {
 }
 
 // debug returns a verbose representation of the information in ts, useful for tracing/debugging
-pub fn (ts TypeSymbol) debug() []string {
+pub fn (ts &TypeSymbol) debug() []string {
 	mut res := []string{}
 	ts.dbg_common(mut res)
 	res << 'info: ${ts.info}'
@@ -397,13 +397,13 @@ pub fn (ts TypeSymbol) debug() []string {
 }
 
 // same as .debug(), but without the verbose .info and .methods fields
-pub fn (ts TypeSymbol) dbg() []string {
+pub fn (ts &TypeSymbol) dbg() []string {
 	mut res := []string{}
 	ts.dbg_common(mut res)
 	return res
 }
 
-fn (ts TypeSymbol) dbg_common(mut res []string) {
+fn (ts &TypeSymbol) dbg_common(mut res []string) {
 	res << 'idx: 0x${ts.idx.hex()}'
 	res << 'parent_idx: 0x${ts.parent_idx.hex()}'
 	res << 'mod: ${ts.mod}'
@@ -745,7 +745,7 @@ pub enum Kind {
 	thread
 }
 
-pub fn (t TypeSymbol) str() string {
+pub fn (t &TypeSymbol) str() string {
 	return t.name
 }
 
@@ -1391,7 +1391,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	return res
 }
 
-fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases map[string]string) string {
+fn (t &Table) shorten_user_defined_typenames(originalname string, import_aliases map[string]string) string {
 	mut res := originalname
 	if t.cmod_prefix.len > 0 && res.starts_with(t.cmod_prefix) {
 		// cur_mod.Type => Type
@@ -1668,7 +1668,7 @@ pub fn (i &Interface) has_method(name string) bool {
 	return false
 }
 
-pub fn (s Struct) find_field(name string) ?StructField {
+pub fn (s &Struct) find_field(name string) ?StructField {
 	for mut field in unsafe { s.fields } {
 		if field.name == name {
 			return field
@@ -1677,7 +1677,7 @@ pub fn (s Struct) find_field(name string) ?StructField {
 	return none
 }
 
-pub fn (s Struct) get_field(name string) StructField {
+pub fn (s &Struct) get_field(name string) StructField {
 	if field := s.find_field(name) {
 		return field
 	}
@@ -1693,7 +1693,7 @@ pub fn (s &SumType) find_field(name string) ?StructField {
 	return none
 }
 
-pub fn (i Interface) defines_method(name string) bool {
+pub fn (i &Interface) defines_method(name string) bool {
 	for mut method in unsafe { i.methods } {
 		if method.name == name {
 			return true

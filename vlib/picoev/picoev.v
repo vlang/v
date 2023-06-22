@@ -254,7 +254,7 @@ pub fn new(config Config) &Picoev {
 	return pv
 }
 
-pub fn (p Picoev) serve() {
+pub fn (p &Picoev) serve() {
 	for {
 		C.picoev_loop_once(p.loop, 1)
 	}

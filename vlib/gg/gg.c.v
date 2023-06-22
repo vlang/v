@@ -622,7 +622,7 @@ fn (mut ctx Context) set_scale() {
 }
 
 // window_size returns the current dimensions of the window.
-pub fn (ctx Context) window_size() Size {
+pub fn (ctx &Context) window_size() Size {
 	s := ctx.scale
 	return Size{int(sapp.width() / s), int(sapp.height() / s)}
 }

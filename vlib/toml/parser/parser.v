@@ -262,7 +262,7 @@ fn (mut p Parser) expect(expected_token token.Kind) ! {
 }
 
 // build_abs_dotted_key returns the absolute dotted key path.
-fn (p Parser) build_abs_dotted_key(key DottedKey) DottedKey {
+fn (p &Parser) build_abs_dotted_key(key DottedKey) DottedKey {
 	if p.root_map_key.len > 0 {
 		mut abs_dotted_key := DottedKey([]string{})
 		abs_dotted_key << p.root_map_key
@@ -279,7 +279,7 @@ fn todo_msvc_astring2dkey(s []string) DottedKey {
 }
 
 // check_explicitly_declared returns an error if `key` has been explicitly declared.
-fn (p Parser) check_explicitly_declared(key DottedKey) ! {
+fn (p &Parser) check_explicitly_declared(key DottedKey) ! {
 	if p.explicit_declared.len > 0 && p.explicit_declared.has(key) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' key `${key.str()}` is already explicitly declared. Unexpected redeclaration at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
@@ -288,7 +288,7 @@ fn (p Parser) check_explicitly_declared(key DottedKey) ! {
 
 // check_explicitly_declared_array_of_tables returns an error if `key` has been
 // explicitly declared as an array of tables.
-fn (p Parser) check_explicitly_declared_array_of_tables(key DottedKey) ! {
+fn (p &Parser) check_explicitly_declared_array_of_tables(key DottedKey) ! {
 	if p.explicit_declared_array_of_tables.len > 0 && p.explicit_declared_array_of_tables.has(key) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' key `${key.str()}` is already an explicitly declared array of tables. Unexpected redeclaration at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
@@ -296,7 +296,7 @@ fn (p Parser) check_explicitly_declared_array_of_tables(key DottedKey) ! {
 }
 
 // check_implicitly_declared returns an error if `key` has been implicitly declared.
-fn (p Parser) check_implicitly_declared(key DottedKey) ! {
+fn (p &Parser) check_implicitly_declared(key DottedKey) ! {
 	if p.implicit_declared.len > 0 && p.implicit_declared.has(key) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' key `${key.str()}` is already implicitly declared. Unexpected redeclaration at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
@@ -667,7 +667,7 @@ pub fn (mut p Parser) root_table() ! {
 }
 
 // excerpt returns a string of the characters surrounding `Parser.tok.pos`
-fn (p Parser) excerpt() string {
+fn (p &Parser) excerpt() string {
 	return p.scanner.excerpt(p.tok.pos, 10)
 }
 

@@ -190,14 +190,14 @@ struct Route {
 // Defining this method is optional.
 // This method called at server start.
 // You can use it for initializing globals.
-pub fn (ctx Context) init_server() {
+pub fn (ctx &Context) init_server() {
 	eprintln('init_server() has been deprecated, please init your web app in `fn main()`')
 }
 
 // Defining this method is optional.
 // This method is called before every request (aka middleware).
 // You can use it for checking user session cookies or to add headers.
-pub fn (ctx Context) before_request() {}
+pub fn (ctx &Context) before_request() {}
 
 // TODO - test
 // vweb intern function

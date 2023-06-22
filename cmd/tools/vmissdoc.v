@@ -33,7 +33,7 @@ mut:
 	additional_args []string
 }
 
-fn (opt Options) collect_undocumented_functions_in_dir(directory string) []UndocumentedFN {
+fn (opt &Options) collect_undocumented_functions_in_dir(directory string) []UndocumentedFN {
 	mut files := []string{}
 	collect(directory, mut files, fn (npath string, mut accumulated_paths []string) {
 		if !npath.ends_with('.v') {

@@ -1430,7 +1430,7 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 	}
 }
 
-pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
+pub fn (t &Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 	if typ.idx() == inter_typ.idx() {
 		// same type -> already casted to the interface
 		return true

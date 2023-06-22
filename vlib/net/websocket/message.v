@@ -288,7 +288,7 @@ pub fn (mut ws Client) parse_frame_header() !Frame {
 }
 
 // unmask_sequence unmask any given sequence
-fn (f Frame) unmask_sequence(mut buffer []u8) {
+fn (f &Frame) unmask_sequence(mut buffer []u8) {
 	for i in 0 .. buffer.len {
 		buffer[i] ^= f.masking_key[i % 4] & 0xff
 	}

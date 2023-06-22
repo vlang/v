@@ -206,7 +206,7 @@ pub fn (mut s Server) set_state(state State) {
 }
 
 // get_state return current state in a thread safe way
-pub fn (s Server) get_state() State {
+pub fn (s &Server) get_state() State {
 	return rlock s.server_state {
 		s.server_state.state
 	}

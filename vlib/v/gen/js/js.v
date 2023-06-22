@@ -334,7 +334,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) string 
 	return out
 }
 
-fn (g JsGen) create_sourcemap() string {
+fn (g &JsGen) create_sourcemap() string {
 	mut sm := g.sourcemap
 	mut out := '\n//# sourceMappingURL=data:application/json;base64,'
 	out += base64.encode(sm.to_json().str().bytes())
@@ -491,7 +491,7 @@ pub fn (mut g JsGen) init() {
 	g.definitions.writeln('function ReturnException(val) { this.val = val; }')
 }
 
-pub fn (g JsGen) hashes() string {
+pub fn (g &JsGen) hashes() string {
 	mut res := '// V_COMMIT_HASH ${version.vhash()}\n'
 	res += '// V_CURRENT_COMMIT_HASH ${version.githash(g.pref.building_v)}\n'
 	return res

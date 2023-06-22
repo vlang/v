@@ -281,14 +281,14 @@ pub fn (val ComptTimeConstValue) string() ?string {
 	return none
 }
 
-pub fn (obj ConstField) comptime_expr_value() ?ComptTimeConstValue {
+pub fn (obj &ConstField) comptime_expr_value() ?ComptTimeConstValue {
 	if obj.comptime_expr_value !is EmptyExpr {
 		return obj.comptime_expr_value
 	}
 	return none
 }
 
-pub fn (obj ConstField) is_simple_define_const() bool {
+pub fn (obj &ConstField) is_simple_define_const() bool {
 	return match obj.expr {
 		CharLiteral, FloatLiteral, IntegerLiteral { true }
 		else { false }

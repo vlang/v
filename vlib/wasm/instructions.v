@@ -28,7 +28,7 @@ fn (mut func Function) blocktype(typ FuncType) {
 pub type PatchPos = int
 
 // patch_pos returns a `PatchPos` for use with `patch`.
-pub fn (func Function) patch_pos() PatchPos {
+pub fn (func &Function) patch_pos() PatchPos {
 	return func.code.len
 }
 

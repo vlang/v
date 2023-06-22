@@ -183,7 +183,7 @@ pub fn (mut v Builder) set_module_lookup_paths() {
 	}
 }
 
-pub fn (v Builder) get_builtin_files() []string {
+pub fn (v &Builder) get_builtin_files() []string {
 	if v.pref.no_builtin {
 		v.log('v.pref.no_builtin is true, get_builtin_files == []')
 		return []

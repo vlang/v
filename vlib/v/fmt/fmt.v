@@ -216,7 +216,7 @@ pub fn (mut f Fmt) set_current_module_name(cmodname string) {
 	f.table.cmod_prefix = cmodname + '.'
 }
 
-fn (f Fmt) get_modname_prefix(mname string) (string, string) {
+fn (f &Fmt) get_modname_prefix(mname string) (string, string) {
 	// ./tests/proto_module_importing_vproto_keep.vv to know, why here is checked for ']' and '&'
 	if !mname.contains(']') && !mname.contains('&') {
 		return mname, ''
@@ -364,7 +364,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 	}
 }
 
-pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
+pub fn (f &Fmt) imp_stmt_str(imp ast.Import) string {
 	mod := if imp.mod.len == 0 { imp.alias } else { imp.mod }
 	normalized_mod := mod.all_after('src.') // Ignore the 'src.' folder prefix since src/ folder is root of code
 	is_diff := imp.alias != normalized_mod && !normalized_mod.ends_with('.' + imp.alias)
@@ -383,7 +383,7 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 
 //=== Node helpers ===//
 
-fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) bool {
+fn (f &Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) bool {
 	// No need to insert a newline if there is already one
 	if f.out.last_n(2) == '\n\n' {
 		return false

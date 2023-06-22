@@ -1133,7 +1133,7 @@ fn (mut tf TTF_File) read_panose_table() {
 * TTF_File Utility
 *
 ******************************************************************************/
-pub fn (tf TTF_File) get_info_string() string {
+pub fn (tf &TTF_File) get_info_string() string {
 	txt := '----- Font Info -----
 font_family     : ${tf.font_family}
 font_sub_family : ${tf.font_sub_family}

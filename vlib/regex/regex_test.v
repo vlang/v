@@ -706,7 +706,7 @@ fn test_regex_func() {
 	}
 }
 
-fn my_repl_1(re regex.RE, in_txt string, start int, end int) string {
+fn my_repl_1(re &regex.RE, in_txt string, start int, end int) string {
 	s0 := re.get_group_by_id(in_txt, 0)
 	println('[${start}, ${end}] => ${s0}')
 	return 'a' + s0.to_upper()
@@ -721,7 +721,7 @@ fn test_regex_func_replace1() {
 	assert result == 'aBBaBBBaBBBBaaBBa'
 }
 
-fn my_repl(re regex.RE, in_txt string, start int, end int) string {
+fn my_repl(re &regex.RE, in_txt string, start int, end int) string {
 	s0 := re.get_group_by_id(in_txt, 0)[0..1] + 'X'
 	s1 := re.get_group_by_id(in_txt, 1)[0..1] + 'X'
 	s2 := re.get_group_by_id(in_txt, 2)[0..1] + 'X'

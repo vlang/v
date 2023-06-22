@@ -9,7 +9,7 @@ const (
 module eval
 import v.token
 import v.ast
-fn(e Eval)infix_expr(left Object,right Object,op token.Kind,expecting ast.Type)Object{match op{'
+fn(e &Eval)infix_expr(left Object,right Object,op token.Kind,expecting ast.Type)Object{match op{'
 	footer = "else{e.error('unknown infix expression: \$op')}}return empty // should e.error before this anyway
 }
 "

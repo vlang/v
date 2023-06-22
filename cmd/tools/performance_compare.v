@@ -33,7 +33,7 @@ fn new_context() Context {
 	}
 }
 
-fn (c Context) compare_versions() {
+fn (c &Context) compare_versions() {
 	// Input is validated at this point...
 	// Cleanup artifacts from previous runs of this tool:
 	scripting.chdir(c.vgo.workdir)
@@ -130,7 +130,7 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 	}
 }
 
-fn (c Context) compare_v_performance(label string, commands []string) string {
+fn (c &Context) compare_v_performance(label string, commands []string) string {
 	println('---------------------------------------------------------------------------------')
 	println('Compare v performance when doing the following commands (${label}):')
 	mut source_location_a := ''

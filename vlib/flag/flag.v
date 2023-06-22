@@ -495,7 +495,7 @@ pub fn (mut fs FlagParser) arguments_description(description string) {
 // usage returns a nicely formatted usage screen, containing all the
 // possible options, as well as the description for the program.
 // That screen is usually shown when the `--help` option is given to the program.
-pub fn (fs FlagParser) usage() string {
+pub fn (fs &FlagParser) usage() string {
 	positive_min_arg := (fs.min_free_args > 0)
 	positive_max_arg := (fs.max_free_args > 0 && fs.max_free_args != flag.max_args_number)
 	no_arguments := (fs.min_free_args == 0 && fs.max_free_args == 0)

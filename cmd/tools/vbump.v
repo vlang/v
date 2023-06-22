@@ -39,19 +39,19 @@ struct Options {
 	patch     bool
 }
 
-type ReplacementFunction = fn (re regex.RE, input string, start int, end int) string
+type ReplacementFunction = fn (re &regex.RE, input string, start int, end int) string
 
-fn replace_with_increased_patch_version(re regex.RE, input string, start int, end int) string {
+fn replace_with_increased_patch_version(re &regex.RE, input string, start int, end int) string {
 	version := semver.from(input[start..end]) or { return input }
 	return version.increment(.patch).str()
 }
 
-fn replace_with_increased_minor_version(re regex.RE, input string, start int, end int) string {
+fn replace_with_increased_minor_version(re &regex.RE, input string, start int, end int) string {
 	version := semver.from(input[start..end]) or { return input }
 	return version.increment(.minor).str()
 }
 
-fn replace_with_increased_major_version(re regex.RE, input string, start int, end int) string {
+fn replace_with_increased_major_version(re &regex.RE, input string, start int, end int) string {
 	version := semver.from(input[start..end]) or { return input }
 	return version.increment(.major).str()
 }

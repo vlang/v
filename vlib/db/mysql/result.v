@@ -119,7 +119,7 @@ pub fn (r Result) fields() []Field {
 }
 
 // str serializes the field.
-pub fn (f Field) str() string {
+pub fn (f &Field) str() string {
 	return '
 {
 	name: "${f.name}"

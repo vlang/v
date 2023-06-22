@@ -49,7 +49,7 @@ pub fn print_manpage_for_command(man_cmd Command) ! {
 
 // manpage returns a `string` containing the mdoc(7) manpage for
 // this `Command`
-pub fn (cmd Command) manpage() string {
+pub fn (cmd &Command) manpage() string {
 	mut mdoc := '.Dd ${time.now().strftime('%B %d, %Y')}\n'
 	mdoc += '.Dt ${cmd.full_name().replace(' ', '-').to_upper()} 1\n'
 	mdoc += '.Os\n.Sh NAME\n.Nm ${cmd.full_name().replace(' ', '-')}\n.Nd ${cmd.description}\n'

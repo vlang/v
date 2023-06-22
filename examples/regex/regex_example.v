@@ -31,9 +31,9 @@ fn convert_html_rgb(in_col string) u32 {
 	mut res := u32(0)
 	if start >= 0 {
 		group_list := re.get_group_list()
-		r := ('0x' + in_col[group_list[0].start..group_list[0].end]).int() << col_mul
-		g := ('0x' + in_col[group_list[1].start..group_list[1].end]).int() << col_mul
-		b := ('0x' + in_col[group_list[2].start..group_list[2].end]).int() << col_mul
+		r := ('0x' + in_col[group_list[0].start..group_list[0].end]).u32() << col_mul
+		g := ('0x' + in_col[group_list[1].start..group_list[1].end]).u32() << col_mul
+		b := ('0x' + in_col[group_list[2].start..group_list[2].end]).u32() << col_mul
 		println('r: ${r} g: ${g} b: ${b}')
 		res = u32(r) << 16 | u32(g) << 8 | u32(b)
 	}
@@ -55,13 +55,13 @@ fn convert_html_rgb_n(in_col string) u32 {
 	mut res := u32(0)
 	if start >= 0 {
 		red_s, red_e := re.get_group_bounds_by_name('red')
-		r := ('0x' + in_col[red_s..red_e]).int() << col_mul
+		r := ('0x' + in_col[red_s..red_e]).u32() << col_mul
 
 		green_s, green_e := re.get_group_bounds_by_name('green')
-		g := ('0x' + in_col[green_s..green_e]).int() << col_mul
+		g := ('0x' + in_col[green_s..green_e]).u32() << col_mul
 
 		blue_s, blue_e := re.get_group_bounds_by_name('blue')
-		b := ('0x' + in_col[blue_s..blue_e]).int() << col_mul
+		b := ('0x' + in_col[blue_s..blue_e]).u32() << col_mul
 
 		println('r: ${r} g: ${g} b: ${b}')
 		res = u32(r) << 16 | u32(g) << 8 | u32(b)

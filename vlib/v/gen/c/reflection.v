@@ -25,13 +25,13 @@ fn (mut g Gen) gen_reflection_strings() {
 
 // gen_empty_array generates code for empty array
 [inline]
-fn (g Gen) gen_empty_array(type_name string) string {
+fn (g &Gen) gen_empty_array(type_name string) string {
 	return '__new_array_with_default(0, 0, sizeof(${type_name}), 0)'
 }
 
 // gen_functionarg_array generates the code for functionarg argument
 [inline]
-fn (g Gen) gen_functionarg_array(type_name string, node ast.Fn) string {
+fn (g &Gen) gen_functionarg_array(type_name string, node ast.Fn) string {
 	if node.params.len == 0 {
 		return g.gen_empty_array(type_name)
 	}
@@ -92,7 +92,7 @@ fn (mut g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
 
 // gen_attrs_array generates C code for []Attr
 [inline]
-fn (g Gen) gen_attrs_array(attrs []ast.Attr) string {
+fn (g &Gen) gen_attrs_array(attrs []ast.Attr) string {
 	if attrs.len == 0 {
 		return g.gen_empty_array('string')
 	}
@@ -105,7 +105,7 @@ fn (g Gen) gen_attrs_array(attrs []ast.Attr) string {
 
 // gen_fields_array generates C code for []StructField
 [inline]
-fn (g Gen) gen_fields_array(fields []ast.StructField) string {
+fn (g &Gen) gen_fields_array(fields []ast.StructField) string {
 	if fields.len == 0 {
 		return g.gen_empty_array('${c.cprefix}StructField')
 	}
@@ -118,7 +118,7 @@ fn (g Gen) gen_fields_array(fields []ast.StructField) string {
 
 // gen_type_array generates C code for []Type
 [inline]
-fn (g Gen) gen_type_array(types []ast.Type) string {
+fn (g &Gen) gen_type_array(types []ast.Type) string {
 	if types.len == 0 {
 		return g.gen_empty_array('int')
 	}
@@ -127,7 +127,7 @@ fn (g Gen) gen_type_array(types []ast.Type) string {
 
 // gen_string_array generates C code for []string
 [inline]
-fn (g Gen) gen_string_array(strs []string) string {
+fn (g &Gen) gen_string_array(strs []string) string {
 	if strs.len == 0 {
 		return g.gen_empty_array('string')
 	}

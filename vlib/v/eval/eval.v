@@ -262,13 +262,13 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 	}
 }
 
-fn (e Eval) error(msg string) {
+fn (e &Eval) error(msg string) {
 	eprintln('> V interpeter backtrace:')
 	e.print_backtrace()
 	util.verror('interpreter', msg)
 }
 
-fn (e Eval) panic(s string) {
+fn (e &Eval) panic(s string) {
 	commithash := unsafe { tos5(&char(C.V_CURRENT_COMMIT_HASH)) }
 	eprintln('V panic: ${s}')
 	eprintln('V hash: ${commithash}')
@@ -276,7 +276,7 @@ fn (e Eval) panic(s string) {
 	exit(1)
 }
 
-fn (e Eval) print_backtrace() {
+fn (e &Eval) print_backtrace() {
 	for i := e.back_trace.len - 1; i >= 0; i-- {
 		t := e.back_trace[i]
 		file_path := if path := e.trace_file_paths[t.file_idx] {

@@ -36,7 +36,7 @@ pub mut:
 }
 
 // str returns the `string` representation of the `Command`.
-pub fn (cmd Command) str() string {
+pub fn (cmd &Command) str() string {
 	mut res := []string{}
 	res << 'Command{'
 	res << '	name: "${cmd.name}"'
@@ -67,20 +67,20 @@ pub fn (cmd Command) str() string {
 }
 
 // is_root returns `true` if this `Command` has no parents.
-pub fn (cmd Command) is_root() bool {
+pub fn (cmd &Command) is_root() bool {
 	return isnil(cmd.parent)
 }
 
 // root returns the root `Command` of the command chain.
-pub fn (cmd Command) root() Command {
+pub fn (cmd &Command) root() Command {
 	if cmd.is_root() {
-		return cmd
+		return *cmd
 	}
 	return cmd.parent.root()
 }
 
 // full_name returns the full `string` representation of all commands int the chain.
-pub fn (cmd Command) full_name() string {
+pub fn (cmd &Command) full_name() string {
 	if cmd.is_root() {
 		return cmd.name
 	}
@@ -249,7 +249,7 @@ fn (mut cmd Command) handle_cb(cb FnCommandCallback, label string) {
 	}
 }
 
-fn (cmd Command) check_help_flag() {
+fn (cmd &Command) check_help_flag() {
 	if !cmd.disable_help && cmd.flags.contains('help') {
 		help_flag := cmd.flags.get_bool('help') or { return } // ignore error and handle command normally
 		if help_flag {
@@ -259,7 +259,7 @@ fn (cmd Command) check_help_flag() {
 	}
 }
 
-fn (cmd Command) check_man_flag() {
+fn (cmd &Command) check_man_flag() {
 	if !cmd.disable_man && cmd.flags.contains('man') {
 		man_flag := cmd.flags.get_bool('man') or { return } // ignore error and handle command normally
 		if man_flag {
@@ -269,7 +269,7 @@ fn (cmd Command) check_man_flag() {
 	}
 }
 
-fn (cmd Command) check_version_flag() {
+fn (cmd &Command) check_version_flag() {
 	if !cmd.disable_version && cmd.version != '' && cmd.flags.contains('version') {
 		version_flag := cmd.flags.get_bool('version') or { return } // ignore error and handle command normally
 		if version_flag {
@@ -280,7 +280,7 @@ fn (cmd Command) check_version_flag() {
 	}
 }
 
-fn (cmd Command) check_required_flags() {
+fn (cmd &Command) check_required_flags() {
 	for flag in cmd.flags {
 		if flag.required && flag.value.len == 0 {
 			full_name := cmd.full_name()
@@ -291,7 +291,7 @@ fn (cmd Command) check_required_flags() {
 
 // execute_help executes the callback registered
 // for the `-h`/`--help` flag option.
-pub fn (cmd Command) execute_help() {
+pub fn (cmd &Command) execute_help() {
 	if cmd.commands.contains('help') {
 		help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
 		help_cmd.execute(help_cmd) or { panic(err) }
@@ -302,7 +302,7 @@ pub fn (cmd Command) execute_help() {
 
 // execute_help executes the callback registered
 // for the `-man` flag option.
-pub fn (cmd Command) execute_man() {
+pub fn (cmd &Command) execute_man() {
 	if cmd.commands.contains('man') {
 		man_cmd := cmd.commands.get('man') or { return }
 		man_cmd.execute(man_cmd) or { panic(err) }

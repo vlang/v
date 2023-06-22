@@ -1097,7 +1097,7 @@ fn (mut g Gen) result_type_name(t ast.Type) (string, string) {
 	return styp, base
 }
 
-fn (g Gen) option_type_text(styp string, base string) string {
+fn (g &Gen) option_type_text(styp string, base string) string {
 	// replace void with something else
 	size := if base == 'void' {
 		'u8'
@@ -1116,7 +1116,7 @@ fn (g Gen) option_type_text(styp string, base string) string {
 	return ret
 }
 
-fn (g Gen) result_type_text(styp string, base string) string {
+fn (g &Gen) result_type_text(styp string, base string) string {
 	// replace void with something else
 	size := if base == 'void' {
 		'u8'
@@ -6322,7 +6322,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 	}
 }
 
-fn (g Gen) get_all_test_function_names() []string {
+fn (g &Gen) get_all_test_function_names() []string {
 	mut tfuncs := []string{}
 	mut tsuite_begin := ''
 	mut tsuite_end := ''
@@ -6463,7 +6463,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	}
 }
 
-fn (g Gen) as_cast_name_table() string {
+fn (g &Gen) as_cast_name_table() string {
 	if g.as_cast_type_names.len == 0 {
 		return 'new_array_from_c_array(1, 1, sizeof(VCastTypeIndexName), _MOV((VCastTypeIndexName[1]){(VCastTypeIndexName){.tindex = 0,.tname = _SLIT("unknown")}}));\n'
 	}
@@ -6478,7 +6478,7 @@ fn (g Gen) as_cast_name_table() string {
 	return name_ast.str()
 }
 
-fn (g Gen) has_been_referenced(fn_name string) bool {
+fn (g &Gen) has_been_referenced(fn_name string) bool {
 	mut referenced := false
 	lock g.referenced_fns {
 		referenced = g.referenced_fns[fn_name]

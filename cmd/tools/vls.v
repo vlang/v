@@ -67,20 +67,20 @@ const json_enc = json2.Encoder{
 	escape_unicode: false
 }
 
-fn (upd VlsUpdater) check_or_create_vls_folder() ! {
+fn (upd &VlsUpdater) check_or_create_vls_folder() ! {
 	if !os.exists(vls_folder) {
 		upd.log('Creating .vls folder...')
 		os.mkdir(vls_folder)!
 	}
 }
 
-fn (upd VlsUpdater) manifest_config() !map[string]json2.Any {
+fn (upd &VlsUpdater) manifest_config() !map[string]json2.Any {
 	manifest_buf := os.read_file(vls_manifest_path) or { '{}' }
 	manifest_contents := json2.raw_decode(manifest_buf)!.as_map()
 	return manifest_contents
 }
 
-fn (upd VlsUpdater) exec_asset_file_name() string {
+fn (upd &VlsUpdater) exec_asset_file_name() string {
 	// TODO: support for Arm and other archs
 	os_name := os.user_os()
 	arch := if runtime.is_64bit() { 'x64' } else { 'x86' }
@@ -88,7 +88,7 @@ fn (upd VlsUpdater) exec_asset_file_name() string {
 	return 'vls_${os_name}_${arch + ext}'
 }
 
-fn (upd VlsUpdater) update_manifest(new_path string, from_source bool, timestamp time.Time) ! {
+fn (upd &VlsUpdater) update_manifest(new_path string, from_source bool, timestamp time.Time) ! {
 	upd.log('Updating permissions...')
 	os.chmod(new_path, 0o755)!
 
@@ -115,7 +115,7 @@ fn (upd VlsUpdater) update_manifest(new_path string, from_source bool, timestamp
 	json_enc.encode_value(manifest, mut manifest_file)!
 }
 
-fn (upd VlsUpdater) init_download_prebuilt() ! {
+fn (upd &VlsUpdater) init_download_prebuilt() ! {
 	if !os.exists(vls_cache_folder) {
 		os.mkdir(vls_cache_folder)!
 	}
@@ -127,7 +127,7 @@ fn (upd VlsUpdater) init_download_prebuilt() ! {
 	os.mkdir(vls_bin_folder)!
 }
 
-fn (upd VlsUpdater) get_last_updated_at() !time.Time {
+fn (upd &VlsUpdater) get_last_updated_at() !time.Time {
 	if manifest := upd.manifest_config() {
 		if 'last_updated' in manifest {
 			return time.parse(manifest['last_updated'] or { '' }.str()) or { return error('none') }
@@ -136,7 +136,7 @@ fn (upd VlsUpdater) get_last_updated_at() !time.Time {
 	return error('none')
 }
 
-fn (upd VlsUpdater) download_prebuilt() ! {
+fn (upd &VlsUpdater) download_prebuilt() ! {
 	mut has_last_updated_at := true
 	last_updated_at := upd.get_last_updated_at() or {
 		has_last_updated_at = false
@@ -225,7 +225,7 @@ fn (upd VlsUpdater) download_prebuilt() ! {
 	upd.print_new_vls_version(new_exec_path)
 }
 
-fn (upd VlsUpdater) print_new_vls_version(new_vls_exec_path string) {
+fn (upd &VlsUpdater) print_new_vls_version(new_vls_exec_path string) {
 	exec_version := os.execute('${new_vls_exec_path} --version')
 	if exec_version.exit_code == 0 {
 		upd.log('VLS was updated to version: ${exec_version.output.all_after('vls version ').trim_space()}')
@@ -237,7 +237,7 @@ fn calculate_checksum(file_path string) !string {
 	return sha256.hexhash(data)
 }
 
-fn (upd VlsUpdater) compile_from_source() ! {
+fn (upd &VlsUpdater) compile_from_source() ! {
 	git := os.find_abs_path_of_executable('git') or { return error('Git not found.') }
 
 	if !os.exists(vls_src_folder) {
@@ -281,7 +281,7 @@ fn (upd VlsUpdater) compile_from_source() ! {
 	upd.print_new_vls_version(exec_path)
 }
 
-fn (upd VlsUpdater) find_ls_path() !string {
+fn (upd &VlsUpdater) find_ls_path() !string {
 	manifest := upd.manifest_config()!
 	if 'server_path' in manifest {
 		server_path := manifest['server_path'] or { return error('none') }
@@ -369,7 +369,7 @@ fn (mut upd VlsUpdater) parse(mut fp flag.FlagParser) ! {
 	}
 }
 
-fn (upd VlsUpdater) log(msg string) {
+fn (upd &VlsUpdater) log(msg string) {
 	match upd.output {
 		.text {
 			println('> ${msg}')
@@ -382,7 +382,7 @@ fn (upd VlsUpdater) log(msg string) {
 	}
 }
 
-fn (upd VlsUpdater) error_details(err IError) string {
+fn (upd &VlsUpdater) error_details(err IError) string {
 	match err.code() {
 		101 {
 			mut vls_dir_shortened := '\$HOME/.vls'
@@ -410,7 +410,7 @@ fn (upd VlsUpdater) error_details(err IError) string {
 }
 
 [noreturn]
-fn (upd VlsUpdater) cli_error(err IError) {
+fn (upd &VlsUpdater) cli_error(err IError) {
 	match upd.output {
 		.text {
 			eprintln('v ls error: ${err.msg()} (${err.code()})')
@@ -429,7 +429,7 @@ fn (upd VlsUpdater) cli_error(err IError) {
 	exit(1)
 }
 
-fn (upd VlsUpdater) check_installation() {
+fn (upd &VlsUpdater) check_installation() {
 	if upd.ls_path.len == 0 {
 		upd.log('Language server is not installed')
 	} else {
@@ -437,7 +437,7 @@ fn (upd VlsUpdater) check_installation() {
 	}
 }
 
-fn (upd VlsUpdater) run(fp flag.FlagParser) ! {
+fn (upd &VlsUpdater) run(fp flag.FlagParser) ! {
 	if upd.is_check {
 		upd.check_installation()
 	} else if upd.setup_kind != .none_ {

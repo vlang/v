@@ -1004,7 +1004,7 @@ fn (mut g Gen) get_gn_var_type(var ast.Ident) ast.Type {
 	return ast.void_type
 }
 
-fn (g Gen) get_generic_array_element_type(array ast.Array) ast.Type {
+fn (g &Gen) get_generic_array_element_type(array ast.Array) ast.Type {
 	mut cparam_elem_info := array as ast.Array
 	mut cparam_elem_sym := g.table.sym(cparam_elem_info.elem_type)
 	mut typ := ast.void_type

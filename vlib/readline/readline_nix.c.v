@@ -91,7 +91,7 @@ pub fn (mut r Readline) disable_raw_mode() {
 }
 
 // read_char reads a single character.
-pub fn (r Readline) read_char() !int {
+pub fn (r &Readline) read_char() !int {
 	return int(term.utf8_getchar() or { return err })
 }
 
@@ -168,7 +168,7 @@ pub fn read_line(prompt string) !string {
 }
 
 // analyse returns an `Action` based on the type of input byte given in `c`.
-fn (r Readline) analyse(c int) Action {
+fn (r &Readline) analyse(c int) Action {
 	if c > 255 {
 		return Action.insert_character
 	}
@@ -207,7 +207,7 @@ fn (r Readline) analyse(c int) Action {
 }
 
 // analyse_control returns an `Action` based on the type of input read by `read_char`.
-fn (r Readline) analyse_control() Action {
+fn (r &Readline) analyse_control() Action {
 	c := r.read_char() or { panic('Control sequence incomplete') }
 	match u8(c) {
 		`[` {
@@ -252,7 +252,7 @@ match c {
 
 // analyse_extended_control returns an `Action` based on the type of input read by `read_char`.
 // analyse_extended_control specialises in cursor control.
-fn (r Readline) analyse_extended_control() Action {
+fn (r &Readline) analyse_extended_control() Action {
 	r.read_char() or { panic('Control sequence incomplete') } // Removes ;
 	c := r.read_char() or { panic('Control sequence incomplete') }
 	match u8(c) {
@@ -271,7 +271,7 @@ fn (r Readline) analyse_extended_control() Action {
 
 // analyse_extended_control_no_eat returns an `Action` based on the type of input byte given in `c`.
 // analyse_extended_control_no_eat specialises in detection of delete and insert keys.
-fn (r Readline) analyse_extended_control_no_eat(last_c u8) Action {
+fn (r &Readline) analyse_extended_control_no_eat(last_c u8) Action {
 	c := r.read_char() or { panic('Control sequence incomplete') }
 	match u8(c) {
 		`~` {
@@ -474,7 +474,7 @@ fn (mut r Readline) move_cursor_end() {
 }
 
 // is_break_character returns true if the character is considered as a word-breaking character.
-fn (r Readline) is_break_character(c string) bool {
+fn (r &Readline) is_break_character(c string) bool {
 	break_characters := ' \t\v\f\a\b\r\n`~!@#$%^&*()-=+[{]}\\|;:\'",<.>/?'
 	return break_characters.contains(c)
 }

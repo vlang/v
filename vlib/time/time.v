@@ -87,7 +87,7 @@ pub enum FormatDelimiter {
 }
 
 // smonth returns month name abbreviation.
-pub fn (t Time) smonth() string {
+pub fn (t &Time) smonth() string {
 	if t.month <= 0 || t.month > 12 {
 		return '---'
 	}
@@ -97,18 +97,18 @@ pub fn (t Time) smonth() string {
 
 // unix_time returns Unix time.
 [inline]
-pub fn (t Time) unix_time() i64 {
+pub fn (t &Time) unix_time() i64 {
 	return t.unix
 }
 
 // unix_time_milli returns Unix time with millisecond resolution.
 [inline]
-pub fn (t Time) unix_time_milli() i64 {
+pub fn (t &Time) unix_time_milli() i64 {
 	return t.unix * 1000 + (t.microsecond / 1000)
 }
 
 // add returns a new time that duration is added
-pub fn (t Time) add(d Duration) Time {
+pub fn (t &Time) add(d Duration) Time {
 	microseconds := i64(t.unix) * 1_000_000 + t.microsecond + d.microseconds()
 	unix := microseconds / 1_000_000
 	micro := microseconds % 1_000_000
@@ -116,17 +116,17 @@ pub fn (t Time) add(d Duration) Time {
 }
 
 // add_seconds returns a new time struct with an added number of seconds.
-pub fn (t Time) add_seconds(seconds int) Time {
+pub fn (t &Time) add_seconds(seconds int) Time {
 	return t.add(seconds * time.second)
 }
 
 // add_days returns a new time struct with an added number of days.
-pub fn (t Time) add_days(days int) Time {
+pub fn (t &Time) add_days(days int) Time {
 	return t.add(days * 24 * time.hour)
 }
 
 // since returns the time duration elapsed since a given time.
-pub fn since(t Time) Duration {
+pub fn since(t &Time) Duration {
 	return now() - t
 }
 
@@ -145,7 +145,7 @@ pub fn since(t Time) Duration {
 // last Jan 15
 // 5 years ago
 // ```
-pub fn (t Time) relative() string {
+pub fn (t &Time) relative() string {
 	znow := now()
 	mut secs := znow.unix - t.unix
 	mut prefix := ''
@@ -207,7 +207,7 @@ pub fn (t Time) relative() string {
 // 2h ago
 // 5y ago
 // ```
-pub fn (t Time) relative_short() string {
+pub fn (t &Time) relative_short() string {
 	znow := now()
 	mut secs := znow.unix - t.unix
 	mut prefix := ''
@@ -263,13 +263,13 @@ pub fn day_of_week(y int, m int, d int) int {
 }
 
 // day_of_week returns the current day as an integer.
-pub fn (t Time) day_of_week() int {
+pub fn (t &Time) day_of_week() int {
 	return day_of_week(t.year, t.month, t.day)
 }
 
 // year_day returns the current day of the year as an integer.
 // See also #Time.custom_format .
-pub fn (t Time) year_day() int {
+pub fn (t &Time) year_day() int {
 	yday := t.day + time.days_before[t.month - 1]
 	if is_leap_year(t.year) && t.month > 2 {
 		return yday + 1
@@ -278,13 +278,13 @@ pub fn (t Time) year_day() int {
 }
 
 // weekday_str returns the current day as a string 3 letter abbreviation.
-pub fn (t Time) weekday_str() string {
+pub fn (t &Time) weekday_str() string {
 	i := t.day_of_week() - 1
 	return time.long_days[i][0..3]
 }
 
 // long_weekday_str returns the current day as a string.
-pub fn (t Time) long_weekday_str() string {
+pub fn (t &Time) long_weekday_str() string {
 	i := t.day_of_week() - 1
 	return time.long_days[i]
 }
@@ -305,7 +305,7 @@ pub fn days_in_month(month int, year int) !int {
 }
 
 // debug returns detailed breakdown of time (`Time{ year: YYYY month: MM day: dd hour: HH: minute: mm second: ss microsecond: micros unix: unix }`)
-pub fn (t Time) debug() string {
+pub fn (t &Time) debug() string {
 	return 'Time{ year: ${t.year:04} month: ${t.month:02} day: ${t.day:02} hour: ${t.hour:02} minute: ${t.minute:02} second: ${t.second:02} microsecond: ${t.microsecond:06} unix: ${t.unix:07} }'
 }
 
@@ -414,9 +414,9 @@ pub fn offset() int {
 
 // local_to_utc converts the receiver `t` to the corresponding UTC time, if it contains local time.
 // If the receiver already does contain UTC time, it returns it unchanged.
-pub fn (t Time) local_to_utc() Time {
+pub fn (t &Time) local_to_utc() Time {
 	if !t.is_local {
-		return t
+		return *t
 	}
 	return Time{
 		...t.add(-offset() * time.second)
@@ -426,9 +426,9 @@ pub fn (t Time) local_to_utc() Time {
 
 // utc_to_local converts the receiver `u` to the corresponding local time, if it contains UTC time.
 // If the receiver already does contain local time, it returns it unchanged.
-pub fn (u Time) utc_to_local() Time {
+pub fn (u &Time) utc_to_local() Time {
 	if u.is_local {
-		return u
+		return *u
 	}
 	return Time{
 		...u.add(offset() * time.second)
@@ -438,7 +438,7 @@ pub fn (u Time) utc_to_local() Time {
 
 // as_local returns the exact same time, as the receiver `t`, but with its .is_local field set to true.
 // See also #Time.utc_to_local .
-pub fn (t Time) as_local() Time {
+pub fn (t &Time) as_local() Time {
 	return Time{
 		...t
 		is_local: true
@@ -447,7 +447,7 @@ pub fn (t Time) as_local() Time {
 
 // as_utc returns the exact same time, as the receiver `t`, but with its .is_local field set to false.
 // See also #Time.local_to_utc .
-pub fn (t Time) as_utc() Time {
+pub fn (t &Time) as_utc() Time {
 	return Time{
 		...t
 		is_local: false
@@ -456,6 +456,6 @@ pub fn (t Time) as_utc() Time {
 
 // is_utc returns true, when the receiver `t` is a UTC time, and false otherwise.
 // See also #Time.utc_to_local .
-pub fn (t Time) is_utc() bool {
+pub fn (t &Time) is_utc() bool {
 	return !t.is_local
 }

@@ -714,7 +714,7 @@ fn valid_optional_port(port string) bool {
 // the form host/path does not add its own /.
 // - if u.raw_query is empty, ?query is omitted.
 // - if u.fragment is empty, #fragment is omitted.
-pub fn (u URL) str() string {
+pub fn (u &URL) str() string {
 	mut buf := strings.new_builder(200)
 	if u.scheme != '' {
 		buf.write_string(u.scheme)

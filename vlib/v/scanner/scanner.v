@@ -235,7 +235,7 @@ fn (mut s Scanner) ident_name() string {
 	return name
 }
 
-fn (s Scanner) num_lit(start int, end int) string {
+fn (s &Scanner) num_lit(start int, end int) string {
 	if s.is_fmt {
 		return s.text[start..end]
 	}

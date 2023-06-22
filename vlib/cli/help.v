@@ -56,7 +56,7 @@ pub fn print_help_for_command(help_cmd Command) ! {
 }
 
 // help_message returns a generated help message as a `string` for the `Command`.
-pub fn (cmd Command) help_message() string {
+pub fn (cmd &Command) help_message() string {
 	mut help := ''
 	help += 'Usage: ${cmd.full_name()}'
 	if cmd.flags.len > 0 {

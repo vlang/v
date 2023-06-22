@@ -728,7 +728,7 @@ fn (mut g Gen) get_multi_return(types []ast.Type) MultiReturn {
 	return ret
 }
 
-fn (g Gen) is_register_type(typ ast.Type) bool {
+fn (g &Gen) is_register_type(typ ast.Type) bool {
 	return typ.is_pure_int() || typ == ast.char_type_idx || typ.is_any_kind_of_pointer()
 		|| typ.is_bool()
 }

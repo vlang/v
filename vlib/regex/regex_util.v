@@ -38,7 +38,7 @@ pub fn regex_base(pattern string) (RE, int, int) {
 *
 ******************************************************************************/
 // get_group_bounds_by_name get a group boundaries by its name
-pub fn (re RE) get_group_bounds_by_name(group_name string) (int, int) {
+pub fn (re &RE) get_group_bounds_by_name(group_name string) (int, int) {
 	if group_name in re.group_map {
 		tmp_index := re.group_map[group_name] - 1
 		start := re.groups[tmp_index * 2]
@@ -49,7 +49,7 @@ pub fn (re RE) get_group_bounds_by_name(group_name string) (int, int) {
 }
 
 // get_group_by_name get a group boundaries by its name
-pub fn (re RE) get_group_by_name(in_txt string, group_name string) string {
+pub fn (re &RE) get_group_by_name(in_txt string, group_name string) string {
 	if group_name in re.group_map {
 		tmp_index := re.group_map[group_name] - 1
 		start := re.groups[tmp_index * 2]
@@ -62,7 +62,7 @@ pub fn (re RE) get_group_by_name(in_txt string, group_name string) string {
 }
 
 // get_group_by_id get a group string by its id
-pub fn (re RE) get_group_by_id(in_txt string, group_id int) string {
+pub fn (re &RE) get_group_by_id(in_txt string, group_id int) string {
 	if group_id < (re.groups.len >> 1) {
 		index := group_id * 2
 		start := re.groups[index]
@@ -75,7 +75,7 @@ pub fn (re RE) get_group_by_id(in_txt string, group_id int) string {
 }
 
 // get_group_by_id get a group boundaries by its id
-pub fn (re RE) get_group_bounds_by_id(group_id int) (int, int) {
+pub fn (re &RE) get_group_bounds_by_id(group_id int) (int, int) {
 	if group_id < re.group_count {
 		index := group_id * 2
 		return re.groups[index], re.groups[index + 1]
@@ -90,7 +90,7 @@ pub:
 }
 
 // get_group_list return a list of Re_group for the found groups
-pub fn (re RE) get_group_list() []Re_group {
+pub fn (re &RE) get_group_list() []Re_group {
 	mut res := []Re_group{len: re.groups.len >> 1}
 	mut gi := 0
 	// println("len: ${re.groups.len} groups: ${re.groups}")
@@ -408,7 +408,7 @@ pub fn (mut re RE) replace_simple(in_txt string, repl string) string {
 // start   index of the start of the match in in_txt
 // end     index of the end   of the match in in_txt
 // the match is in in_txt[start..end]
-pub type FnReplace = fn (re RE, in_txt string, start int, end int) string
+pub type FnReplace = fn (re &RE, in_txt string, start int, end int) string
 
 // replace_by_fn return a string where the matches are replaced with the string from the repl_fn callback function
 pub fn (mut re RE) replace_by_fn(in_txt string, repl_fn FnReplace) string {
@@ -451,7 +451,7 @@ pub fn (mut re RE) replace_by_fn(in_txt string, repl_fn FnReplace) string {
 	return res.str()
 }
 
-fn (re RE) parsed_replace_string(in_txt string, repl string) string {
+fn (re &RE) parsed_replace_string(in_txt string, repl string) string {
 	str_lst := repl.split('\\')
 	mut res := str_lst[0]
 	mut i := 1

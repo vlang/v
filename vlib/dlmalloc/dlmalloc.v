@@ -678,7 +678,7 @@ pub fn (mut dl Dlmalloc) free_(mem voidptr) {
 	}
 }
 
-fn (dl Dlmalloc) should_trim(size usize) bool {
+fn (dl &Dlmalloc) should_trim(size usize) bool {
 	return size > dl.trim_check
 }
 

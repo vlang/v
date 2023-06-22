@@ -226,7 +226,7 @@ fn (mut g Game) draw_ghost() {
 	}
 }
 
-fn (g Game) move_ghost() int {
+fn (g &Game) move_ghost() int {
 	mut pos_y := g.pos_y
 	mut end := false
 	for !end {

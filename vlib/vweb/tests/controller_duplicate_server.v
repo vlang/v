@@ -30,7 +30,7 @@ fn main() {
 	}
 	http_port := os.args[1].int()
 	assert http_port > 0
-	timeout := os.args[2].int()
+	spawn exit_after_timeout(os.args[2].int())
 	mut app_dup := &App{
 		controllers: [
 			vweb.controller('/admin', &Admin{}),

@@ -3231,7 +3231,7 @@ fn (mut p Parser) parse_concrete_types() []ast.Type {
 }
 
 // is_generic_name returns true if the current token is a generic name.
-fn (p Parser) is_generic_name() bool {
+fn (p &Parser) is_generic_name() bool {
 	return p.tok.kind == .name && util.is_generic_type_name(p.tok.lit)
 }
 

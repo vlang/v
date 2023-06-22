@@ -336,7 +336,7 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 	return graph
 }
 
-pub fn (b Builder) v_files_from_dir(dir string) []string {
+pub fn (b &Builder) v_files_from_dir(dir string) []string {
 	if !os.exists(dir) {
 		if dir == 'compiler' && os.is_dir('vlib') {
 			println('looks like you are trying to build V with an old command')
@@ -365,13 +365,13 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 	return res
 }
 
-pub fn (b Builder) log(s string) {
+pub fn (b &Builder) log(s string) {
 	if b.pref.is_verbose {
 		println(s)
 	}
 }
 
-pub fn (b Builder) info(s string) {
+pub fn (b &Builder) info(s string) {
 	if b.pref.is_verbose {
 		println(s)
 	}

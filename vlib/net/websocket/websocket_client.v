@@ -461,14 +461,14 @@ pub fn (mut ws Client) set_state(state State) {
 }
 
 // get_state return the current state of the websocket connection
-pub fn (ws Client) get_state() State {
+pub fn (ws &Client) get_state() State {
 	return rlock ws.client_state {
 		ws.client_state.state
 	}
 }
 
 // assert_not_connected returns error if the connection is not connected
-fn (ws Client) assert_not_connected() ! {
+fn (ws &Client) assert_not_connected() ! {
 	match ws.get_state() {
 		.connecting { return error('connect: websocket is connecting') }
 		.open { return error('connect: websocket already open') }

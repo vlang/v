@@ -42,7 +42,7 @@ pub fn (flags []Flag) get_all_found() []Flag {
 
 // get_bool returns `true` if the flag is set.
 // get_bool returns an error if the `FlagType` is not boolean.
-pub fn (flag Flag) get_bool() !bool {
+pub fn (flag &Flag) get_bool() !bool {
 	if flag.flag != .bool {
 		return error('${flag.name}: Invalid flag type `${flag.flag}`, expected `bool`')
 	}
@@ -61,7 +61,7 @@ pub fn (flags []Flag) get_bool(name string) !bool {
 
 // get_int returns the `int` value argument of the flag.
 // get_int returns an error if the `FlagType` is not integer.
-pub fn (flag Flag) get_int() !int {
+pub fn (flag &Flag) get_int() !int {
 	if flag.flag != .int {
 		return error('${flag.name}: Invalid flag type `${flag.flag}`, expected `int`')
 	}
@@ -77,7 +77,7 @@ pub fn (flag Flag) get_int() !int {
 
 // get_ints returns the array of `int` value argument of the flag specified in `name`.
 // get_ints returns an error if the `FlagType` is not integer.
-pub fn (flag Flag) get_ints() ![]int {
+pub fn (flag &Flag) get_ints() ![]int {
 	if flag.flag != .int_array {
 		return error('${flag.name}: Invalid flag type `${flag.flag}`, expected `int_array`')
 	}
@@ -113,7 +113,7 @@ pub fn (flags []Flag) get_ints(name string) ![]int {
 
 // get_float returns the `f64` value argument of the flag.
 // get_float returns an error if the `FlagType` is not floating point.
-pub fn (flag Flag) get_float() !f64 {
+pub fn (flag &Flag) get_float() !f64 {
 	if flag.flag != .float {
 		return error('${flag.name}: Invalid flag type `${flag.flag}`, expected `float`')
 	}
@@ -129,7 +129,7 @@ pub fn (flag Flag) get_float() !f64 {
 
 // get_floats returns the `f64` value argument of the flag.
 // get_floats returns an error if the `FlagType` is not floating point.
-pub fn (flag Flag) get_floats() ![]f64 {
+pub fn (flag &Flag) get_floats() ![]f64 {
 	if flag.flag != .float_array {
 		return error('${flag.name}: Invalid flag type `${flag.flag}`, expected `float_array`')
 	}
@@ -165,7 +165,7 @@ pub fn (flags []Flag) get_floats(name string) ![]f64 {
 
 // get_string returns the `string` value argument of the flag.
 // get_string returns an error if the `FlagType` is not string.
-pub fn (flag Flag) get_string() !string {
+pub fn (flag &Flag) get_string() !string {
 	if flag.flag != .string {
 		return error('${flag.name}: Invalid flag type `${flag.flag}`, expected `string`')
 	}
@@ -181,7 +181,7 @@ pub fn (flag Flag) get_string() !string {
 
 // get_strings returns the array of `string` value argument of the flag.
 // get_strings returns an error if the `FlagType` is not string.
-pub fn (flag Flag) get_strings() ![]string {
+pub fn (flag &Flag) get_strings() ![]string {
 	if flag.flag != .string_array {
 		return error('${flag.name}: Invalid flag type `${flag.flag}`, expected `string_array`')
 	}
@@ -286,7 +286,7 @@ fn (flags []Flag) contains(name string) bool {
 }
 
 // Check if value is set by command line option. If not, return default value.
-fn (flag Flag) get_value_or_default_value() []string {
+fn (flag &Flag) get_value_or_default_value() []string {
 	if flag.value.len == 0 && flag.default_value.len > 0 {
 		// If default value is set and no value provide, use default value.
 		return flag.default_value
