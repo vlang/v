@@ -3539,7 +3539,7 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 			match ts.info {
 				ast.Struct {
 					for i, f in ts.info.fields {
-						if f.has_default_expr && !init.fields.map(it.name).contains(f.name) {
+						if f.has_default_expr && !init.init_fields.map(it.name).contains(f.name) {
 							offset := c.g.structs[var.typ.idx()].offsets[i]
 							c.g.expr(f.default_expr)
 							// TODO expr not on rax
@@ -3549,7 +3549,7 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 				}
 				else {}
 			}
-			for f in init.fields {
+			for f in init.init_fields {
 				field := ts.find_field(f.name) or {
 					c.g.n_error('Could not find field `${f.name}` on init')
 				}

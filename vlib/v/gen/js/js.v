@@ -3419,22 +3419,22 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 	if name.contains('<') {
 		name = name[0..name.index('<') or { name.len }]
 	}
-	if it.fields.len == 0 && type_sym.kind != .interface_ {
+	if it.init_fields.len == 0 && type_sym.kind != .interface_ {
 		if type_sym.kind == .struct_ && type_sym.language == .js {
 			g.write('{}')
 		} else {
 			g.write('new ${g.js_name(name)}({})')
 		}
-	} else if it.fields.len == 0 && type_sym.kind == .interface_ {
+	} else if it.init_fields.len == 0 && type_sym.kind == .interface_ {
 		g.write('new ${g.js_name(name)}()') // JS interfaces can be instantiated with default ctor
-	} else if type_sym.kind == .interface_ && it.fields.len != 0 {
+	} else if type_sym.kind == .interface_ && it.init_fields.len != 0 {
 		g.writeln('(function () {')
 		g.inc_indent()
 		g.writeln('let tmp = new ${g.js_name(name)}()')
 
-		for field in it.fields {
-			g.write('tmp.${field.name} = ')
-			g.expr(field.expr)
+		for init_field in it.init_fields {
+			g.write('tmp.${init_field.name} = ')
+			g.expr(init_field.expr)
 			g.writeln(';')
 		}
 		g.writeln('return tmp')
@@ -3443,12 +3443,12 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 	} else if type_sym.kind == .struct_ && type_sym.language == .js {
 		g.writeln('{')
 		g.inc_indent()
-		for i, field in it.fields {
-			if field.name.len != 0 {
-				g.write('${field.name}: ')
+		for i, init_field in it.init_fields {
+			if init_field.name.len != 0 {
+				g.write('${init_field.name}: ')
 			}
-			g.expr(field.expr)
-			if i < it.fields.len - 1 {
+			g.expr(init_field.expr)
+			if i < it.init_fields.len - 1 {
 				g.write(',')
 			}
 			g.writeln('')
@@ -3462,10 +3462,10 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 		tmp := g.new_tmp_var()
 		g.writeln('let ${tmp} = new ${g.js_name(name)}({});')
 
-		for field in it.fields {
-			if field.name.len != 0 {
-				g.write('${tmp}.${field.name} = ')
-				g.expr(field.expr)
+		for init_field in it.init_fields {
+			if init_field.name.len != 0 {
+				g.write('${tmp}.${init_field.name} = ')
+				g.expr(init_field.expr)
 			}
 			g.write(';')
 

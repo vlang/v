@@ -4376,12 +4376,12 @@ fn (mut c Checker) error(message string, pos token.Pos) {
 }
 
 fn (c &Checker) check_struct_signature_init_fields(from ast.Struct, to ast.Struct, node ast.StructInit) bool {
-	if node.fields.len == 0 {
+	if node.init_fields.len == 0 {
 		return from.fields.len == to.fields.len
 	}
 
 	mut count_not_in_from := 0
-	for field in node.fields {
+	for field in node.init_fields {
 		filtered := from.fields.filter(it.name == field.name)
 		if filtered.len != 1 {
 			count_not_in_from++
