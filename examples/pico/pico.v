@@ -28,17 +28,21 @@ fn callback(data voidptr, req picohttpparser.Request, mut res picohttpparser.Res
 		if picohttpparser.cmp(req.path, '/t') {
 			res.http_ok()
 			res.header_server()
-			res.header_date()
+			// res.header_date()
 			res.plain()
 			res.body(hello_response())
 		} else if picohttpparser.cmp(req.path, '/j') {
 			res.http_ok()
 			res.header_server()
-			res.header_date()
+			// res.header_date()
 			res.json()
 			res.body(json_response())
 		} else {
-			res.http_404()
+			res.http_ok()
+			res.html()
+			res.body('Hello Picoev!')
+			res.end()
+			res.end()
 		}
 	} else {
 		res.http_405()
@@ -48,5 +52,6 @@ fn callback(data voidptr, req picohttpparser.Request, mut res picohttpparser.Res
 
 fn main() {
 	println('Starting webserver on http://127.0.0.1:${port}/ ...')
-	picoev.new(port: port, cb: &callback).serve()
+	mut server := picoev.new(port: port, cb: callback)
+	server.serve()
 }

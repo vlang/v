@@ -7,6 +7,7 @@ import picohttpparser
 $if windows {
 	#include <winsock2.h>
 	#include <ws2tcpip.h>
+} $else $if macos || freebsd {
 } $else {
 	#include <netinet/tcp.h>
 	#include <sys/resource.h>
@@ -31,6 +32,8 @@ pub mut:
 	loop_id int = -1
 	events  u32
 	cb      fn (int, int, voidptr)
+	// can be used by backends (never modified by core)
+	backend int
 }
 
 pub struct Config {
