@@ -61,8 +61,8 @@ pub fn (mut pv Picoev) ev_set(fd int, operation int, events int) {
 	// vfmt on
 	ev.flags = u16(events)
 	ev.fflags = 0
-	ev.data = 0
-	ev.udata = C.NULL
+	ev.data = unsafe { nil }
+	ev.udata = unsafe { nil }
 }
 
 [inline]
