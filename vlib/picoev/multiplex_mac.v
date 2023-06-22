@@ -50,16 +50,19 @@ fn create_kqueue_loop(id int) !&KqueueLoop {
 [inline; direct_array_access]
 pub fn (mut pv Picoev) ev_set(fd int, operation int, events int) {
 	mut ev := pv.loop.change_list[fd]
-	ev.filter = i16(pv.loop.changed_fds)
+	ev.ident = pv.loop.changed_fds
 
 	// vfmt off
-	ev.flags = u16(
+	ev.filter = i16(
 		(if events & picoev_read != 0 { C.EVFILT_READ } else { 0 })
 			|
 		(if events & picoev_write != 0 { C.EVFILT_WRITE } else { 0 })
 	)
 	// vfmt on
+	ev.flags = u16(events)
 	ev.fflags = 0
+	ev.data = 0
+	ev.udata = C.NULL
 }
 
 [inline]
