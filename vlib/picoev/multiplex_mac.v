@@ -5,8 +5,8 @@ module picoev
 #include <sys/event.h>
 
 fn C.kevent(int, changelist voidptr, nchanges int, eventlist voidptr, nevents int, timout &C.timespec) int
-
 fn C.kqueue() int
+fn C.EV_SET(kev voidptr, ident int, filter i16, flags u16, fflags u32, data voidptr, udata voidptr)
 
 struct Kevent {
 pub mut:
@@ -51,20 +51,16 @@ fn create_kqueue_loop(id int) !&KqueueLoop {
 
 [inline; direct_array_access]
 pub fn (mut pv Picoev) ev_set(index int, operation int, events int) {
-	mut ev := pv.loop.changelist[index]
-	ev.ident = pv.loop.changed_fds
 
 	// vfmt off
-	ev.filter = i16(
+	filter := i16(
 		(if events & picoev_read != 0 { C.EVFILT_READ } else { 0 })
 			|
 		(if events & picoev_write != 0 { C.EVFILT_WRITE } else { 0 })
 	)
 	// vfmt on
-	ev.flags = u16(operation)
-	ev.fflags = 0
-	ev.data = unsafe { nil }
-	ev.udata = unsafe { nil }
+	C.EV_SET(&pv.loop.changeslist[index], pv.loop.changed_fds, filter, operation, 0, 0, C.NULL)
+
 	eprintln('ev_set ind: ${index} = ${ev}, op: ${operation}')
 }
 
@@ -99,7 +95,6 @@ fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 				pv.ev_set(total, C.EV_ADD | C.EV_ENABLE, int(target.events))
 				total++
 			}
-			eprintln('changed: ${total}: ${pv.loop.changelist[total-1]}')
 			if total + 1 >= pv.loop.changelist.len {
 				nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, C.NULL, 0,
 					C.NULL)
