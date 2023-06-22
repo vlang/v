@@ -610,6 +610,8 @@ run them via `v file.v` instead',
 	return fn_decl
 }
 
+const warn_on_non_reference_receiver_with_more_than_8_fields = os.getenv('VWARN_FOR_NONREF_RECEIVER_WITH_MORE_THAN_8_FIELDS').bool() // use `VWARN_FOR_NONREF_RECEIVER_WITH_MORE_THAN_8_FIELDS=true ./v file.v` to activate
+
 fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInfo) ! {
 	p.inside_receiver_param = true
 	defer {
@@ -667,6 +669,17 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	if is_atomic {
 		rec.typ = rec.typ.set_flag(.atomic_f)
 	}
+	if parser.warn_on_non_reference_receiver_with_more_than_8_fields {
+		type_sym := p.table.sym(rec.typ)
+		if type_sym.kind == .struct_ {
+			info := type_sym.info as ast.Struct
+			if !rec.is_mut && !rec.typ.is_ptr() && info.fields.len > 8 {
+				p.warn_with_pos('automatic fn (a &big_foo) instead of fn (a big_foo), is no longer supported',
+					rec.type_pos)
+			}
+		}
+	}
+
 	if rec.language != .v {
 		p.check_for_impure_v(rec.language, rec.type_pos)
 	}
