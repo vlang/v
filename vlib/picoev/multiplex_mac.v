@@ -4,7 +4,7 @@ module picoev
 #include <sys/types.h>
 #include <sys/events.h>
 
-fn C.kevent(kq_id int, changelist &C.Kevent, nchanges int, eventlist &C.Kevent, nevents int, timout &C.timespec) int
+fn C.kevent(int, changelist voidptr, nchanges int, eventlist voidptr, nevents int, timout &C.timespec) int
 
 fn C.kqueue() int
 
@@ -52,7 +52,7 @@ fn create_kqueue_loop(id int) !&KqueueLoop {
 [inline; direct_array_access]
 pub fn (mut pv Picoev) ev_set(fd int, operation int, events int) {
 	mut ev := pv.loop.events[fd]
-	ev.filter = pv.loop.changed_fds.i16()
+	ev.filter = i16(pv.loop.changed_fds)
 
 	// vfmt off
 	ev.flags = u16(
@@ -90,7 +90,7 @@ fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 				total++
 			}
 			if total + 1 >= pv.loop.changelist.len {
-				nevents = C.kevent(pv.loop.kq_id, pv.loop.changelist, total, C.NULL, 0,
+				nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, C.NULL, 0,
 					C.NULL)
 				assert nevents == 0
 				total = 0
@@ -102,7 +102,7 @@ fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 	}
 
 	if apply_all && total != 0 {
-		nevents = C.kevent(pv.loop.kq_id, pv.loop.changelist, total, C.NULL, 0, C.NULL)
+		nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, C.NULL, 0, C.NULL)
 		assert nevents == 0
 		total = 0
 	}
@@ -149,7 +149,7 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 	mut total, mut nevents := 0, 0
 	total = pv.apply_pending_changes(false)
 
-	nevents = C.kevent(pv.loop.kq_id, pv.loop.changelist, total, pv.loop.events, pv.loop.events.len,
+	nevents = C.kevent(pv.loop.kq_id, pv.loop.changelist, total, &pv.loop.events, pv.loop.events.len,
 		&ts)
 	if nevents == -1 {
 		// the errors we can only rescue
