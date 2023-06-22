@@ -23,8 +23,7 @@ fn C.host_info(host C.host_t, flavor int, host_info_out &int, host_info_outCnt &
 fn C.host_statistics64(host C.host_t, flavor int, host_info_out &int, host_info_outCnt &u32) int
 fn C.host_page_size(host C.host_t, out_page_size &C.vm_size_t) int
 
-// total_memory returns total physical memory found on the system.
-pub fn total_memory() usize {
+fn total_memory_macos() usize {
 	mut hbi := C.host_basic_info{}
 	mut memsz := u32(C.HOST_BASIC_INFO_COUNT)
 	mut host := C.mach_host_self()
@@ -35,8 +34,7 @@ pub fn total_memory() usize {
 	return usize(hbi.max_mem)
 }
 
-// free_memory returns free physical memory found on the system.
-pub fn free_memory() usize {
+fn free_memory_macos() usize {
 	mut hs := C.vm_statistics64_data_t{}
 	mut vmsz := u32(C.HOST_VM_INFO64_COUNT)
 	mut hps := u32(0)
