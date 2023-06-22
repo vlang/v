@@ -393,7 +393,11 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 		return
 	}
 	if name.contains('_T_') {
-		g.typedefs.writeln('typedef struct ${name} ${name};')
+		if s.is_union {
+			g.typedefs.writeln('typedef union ${name} ${name};')
+		} else {
+			g.typedefs.writeln('typedef struct ${name} ${name};')
+		}
 	}
 	// TODO avoid buffer manip
 	start_pos := g.type_definitions.len
