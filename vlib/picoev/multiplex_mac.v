@@ -83,13 +83,14 @@ fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 	for pv.loop.changed_fds != -1 {
 		mut target := pv.file_descriptors[pv.loop.changed_fds]
 		old_events := backend_get_old_events(target.backend)
+		eprintln('change from ${target.events}, old: ${old_events}')
 		if target.events != old_events {
 			if old_events != 0 {
-				pv.ev_set(target.fd, C.EV_DISABLE, old_events)
+				pv.ev_set(total, C.EV_DISABLE, old_events)
 				total++
 			}
 			if target.events != 0 {
-				pv.ev_set(target.fd, C.EV_ADD | C.EV_ENABLE, int(target.events))
+				pv.ev_set(total, C.EV_ADD | C.EV_ENABLE, int(target.events))
 				total++
 			}
 			if total + 1 >= pv.loop.changelist.len {
