@@ -22,7 +22,10 @@ pub fn free_memory() usize {
 	$if macos {
 		return free_memory_macos()
 	}
-	page_size := usize(C.sysconf(C._SC_PAGESIZE))
-	av_phys_pages := usize(C.sysconf(C._SC_AVPHYS_PAGES))
-	return page_size * av_phys_pages
+	$if linux {
+		page_size := usize(C.sysconf(C._SC_PAGESIZE))
+		av_phys_pages := usize(C.sysconf(C._SC_AVPHYS_PAGES))
+		return page_size * av_phys_pages
+	}
+	return 1
 }
