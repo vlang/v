@@ -2,15 +2,13 @@ module picoev
 
 #include <errno.h>
 #include <sys/types.h>
-#include <sys/events.h>
+#include <sys/event.h>
 
 fn C.kevent(int, changelist voidptr, nchanges int, eventlist voidptr, nevents int, timout &C.timespec) int
 
 fn C.kqueue() int
 
-[export: 'kevent']
-[typedef]
-struct C.Kevent {
+struct Kevent {
 pub mut:
 	ident int
 	// uintptr_t
@@ -30,8 +28,8 @@ mut:
 	kq_id int
 	// -1 if not changed
 	changed_fds int
-	events      [1024]C.Kevent
-	changelist  [256]C.Kevent
+	events      [1024]Kevent
+	changelist  [256]Kevent
 }
 
 type LoopType = KqueueLoop
@@ -149,7 +147,7 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 	mut total, mut nevents := 0, 0
 	total = pv.apply_pending_changes(false)
 
-	nevents = C.kevent(pv.loop.kq_id, pv.loop.changelist, total, &pv.loop.events, pv.loop.events.len,
+	nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, &pv.loop.events, pv.loop.events.len,
 		&ts)
 	if nevents == -1 {
 		// the errors we can only rescue

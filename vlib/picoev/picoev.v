@@ -8,6 +8,10 @@ $if windows {
 	#include <winsock2.h>
 	#include <ws2tcpip.h>
 } $else $if macos || freebsd {
+	#include <sys/types.h>
+	#include <sys/socket.h>
+	#include <netinet/in.h>
+	#include <netinet/tcp.h>
 } $else {
 	#include <netinet/tcp.h>
 	#include <sys/resource.h>
@@ -206,6 +210,7 @@ fn close_socket(fd int) {
 fn setup_sock(fd int) ! {
 	flag := 1
 
+
 	if C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_NODELAY, &flag, sizeof(int)) < 0 {
 		return error('setup_sock.setup_sock failed')
 	}
@@ -388,6 +393,7 @@ pub fn new(config Config) &Picoev {
 	$if linux {
 		pv.loop = create_epoll_loop(0) or { panic(err) }
 	} $else $if macos || freebsd {
+		pv.loop = create_kqueue_loop(0) or { panic(err) }
 	} $else {
 		pv.loop = create_select_loop(0) or { panic(err) }
 	}
