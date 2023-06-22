@@ -49,7 +49,7 @@ fn create_kqueue_loop(id int) !&KqueueLoop {
 
 [inline; direct_array_access]
 pub fn (mut pv Picoev) ev_set(fd int, operation int, events int) {
-	mut ev := pv.loop.events[fd]
+	mut ev := pv.loop.change_list[fd]
 	ev.filter = i16(pv.loop.changed_fds)
 
 	// vfmt off
@@ -93,6 +93,7 @@ fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 				pv.ev_set(total, C.EV_ADD | C.EV_ENABLE, int(target.events))
 				total++
 			}
+			eprintln('changed: ${}')
 			if total + 1 >= pv.loop.changelist.len {
 				nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, C.NULL, 0,
 					C.NULL)
