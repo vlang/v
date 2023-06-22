@@ -1,0 +1,7 @@
+vlib/v/checker/tests/diff_type_map_value_err.vv:10:44: error: invalid map value: expected `?MyStruct`, not `MyStruct`
+    8 | 
+    9 | fn empty() map[string]?MyStruct {
+   10 |   return {'key1': ?MyStruct(none), 'key2': MyStruct{field: 10}}
+      |                                            ~~~~~~~~~~~~~~~~~~~
+   11 | }
+   12 |
