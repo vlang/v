@@ -92,10 +92,10 @@ That means that the template automatically has access to that action's entire en
 
 ```html
 <html>
-  <header>
+  <head>
     <title>${page_title}</title>
     @css 'src/templates/page/home.css'
-  </header>
+  </head>
   <body>
     <h1 class="title">Hello, Vs.</h1>
     @for var in list_of_object
