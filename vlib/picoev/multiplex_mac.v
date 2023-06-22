@@ -63,6 +63,11 @@ pub fn (mut pv Picoev) ev_set(fd int, operation int, events int) {
 }
 
 [inline]
+fn backend_build(next_fd int, events int) int {
+	return ((next_fd << 8) | (events & 0xff))
+}
+
+[inline]
 fn backend_get_old_events(backend int) int {
 	return backend & 0xff
 }
@@ -128,6 +133,7 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 
 	// add to changed list if not yet being done
 	if target.backend == -1 {
+		target.backend = backend_build(fd, events)
 		pv.loop.changed_fds = fd
 	}
 
