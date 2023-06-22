@@ -31,7 +31,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	}
 	mut sym := g.table.final_sym(g.unwrap_generic(node.typ))
 	is_amp := g.is_amp
-	is_multiline := node.fields.len > 5
+	is_multiline := node.init_fields.len > 5
 	g.is_amp = false // reset the flag immediately so that other struct inits in this expr are handled correctly
 	if is_amp {
 		g.go_back(1) // delete the `&` already generated in `prefix_expr()
@@ -84,24 +84,24 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	// User set fields
 	mut initialized := false
 	mut old_is_shared := g.is_shared
-	for i, field in node.fields {
-		if !field.typ.has_flag(.shared_f) {
+	for i, init_field in node.init_fields {
+		if !init_field.typ.has_flag(.shared_f) {
 			g.is_shared = false
 		}
-		mut field_name := field.name
+		mut field_name := init_field.name
 		if node.no_keys && sym.kind == .struct_ {
 			info := sym.info as ast.Struct
-			if info.fields.len == node.fields.len {
+			if info.fields.len == node.init_fields.len {
 				field_name = info.fields[i].name
 			}
 		}
 		inited_fields[field_name] = i
 		if sym.kind != .struct_ {
-			if field.typ == 0 {
-				g.checker_bug('struct init, field.typ is 0', field.pos)
+			if init_field.typ == 0 {
+				g.checker_bug('struct init, field.typ is 0', init_field.pos)
 			}
-			g.struct_init_field(field, sym.language)
-			if i != node.fields.len - 1 {
+			g.struct_init_field(init_field, sym.language)
+			if i != node.init_fields.len - 1 {
 				if is_multiline {
 					g.writeln(',')
 				} else {
@@ -119,7 +119,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	if sym.kind == .struct_ {
 		mut info := sym.info as ast.Struct
 		nr_fields = info.fields.len
-		if info.is_union && node.fields.len > 1 {
+		if info.is_union && node.init_fields.len > 1 {
 			verror('union must not have more than 1 initializer')
 		}
 		if !info.is_union {
@@ -127,7 +127,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			mut used_embed_fields := []string{}
 			init_field_names := info.fields.map(it.name)
 			// fields that are initialized but belong to the embedding
-			init_fields_to_embed := node.fields.filter(it.name !in init_field_names)
+			init_fields_to_embed := node.init_fields.filter(it.name !in init_field_names)
 			for embed in info.embeds {
 				embed_sym := g.table.sym(embed)
 				embed_name := embed_sym.embed_name()
@@ -141,7 +141,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 						...node
 						typ: embed
 						is_update_embed: true
-						fields: init_fields_to_embed
+						init_fields: init_fields_to_embed
 					}
 					inside_cast_in_heap := g.inside_cast_in_heap
 					g.inside_cast_in_heap = 0 // prevent use of pointers in child structs
@@ -175,7 +175,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				}
 			}
 			if already_initalised_node_field_index := inited_fields[field.name] {
-				mut sfield := node.fields[already_initalised_node_field_index]
+				mut sfield := node.init_fields[already_initalised_node_field_index]
 				if sfield.typ == 0 {
 					continue
 				}
@@ -214,7 +214,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				}
 				if node.no_keys && sym.kind == .struct_ {
 					sym_info := sym.info as ast.Struct
-					if sym_info.fields.len == node.fields.len {
+					if sym_info.fields.len == node.init_fields.len {
 						sfield.name = sym_info.fields[already_initalised_node_field_index].name
 					}
 				}

@@ -460,7 +460,7 @@ pub mut:
 	update_expr_comments []Comment
 	is_update_embed      bool
 	has_update_expr      bool // has `...a`
-	fields               []StructInitField
+	init_fields          []StructInitField
 	generic_types        []Type
 }
 
@@ -2145,7 +2145,7 @@ pub fn (node Node) children() []Node {
 				return node.stmts.map(Node(it))
 			}
 			StructInit {
-				return node.fields.map(Node(it))
+				return node.init_fields.map(Node(it))
 			}
 			AnonFn {
 				children << Stmt(node.decl)

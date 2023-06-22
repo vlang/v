@@ -415,7 +415,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if node.has_update_expr {
 				w.expr(node.update_expr)
 			}
-			for sif in node.fields {
+			for sif in node.init_fields {
 				w.expr(sif.expr)
 			}
 		}

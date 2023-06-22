@@ -407,7 +407,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		p.check(.lcbr)
 	}
 	pre_comments := p.eat_comments()
-	mut fields := []ast.StructInitField{}
+	mut init_fields := []ast.StructInitField{}
 	mut i := 0
 	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr && p.tok.kind != .ellipsis // `Vec{a,b,c}
 	saved_is_amp := p.is_amp
@@ -423,7 +423,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		mut first_field_pos := token.Pos{}
 		mut comments := []ast.Comment{}
 		mut nline_comments := []ast.Comment{}
-		is_update_expr := fields.len == 0 && p.tok.kind == .ellipsis
+		is_update_expr := init_fields.len == 0 && p.tok.kind == .ellipsis
 		if no_keys {
 			// name will be set later in checker
 			expr = p.expr(0)
@@ -463,7 +463,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		comments << p.eat_comments(same_line: true)
 		nline_comments << p.eat_comments()
 		if !is_update_expr {
-			fields << ast.StructInitField{
+			init_fields << ast.StructInitField{
 				name: field_name
 				expr: expr
 				pos: field_pos
@@ -482,7 +482,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		unresolved: typ.has_flag(.generic)
 		typ_str: typ_str
 		typ: typ
-		fields: fields
+		init_fields: init_fields
 		update_expr: update_expr
 		update_expr_pos: update_expr_pos
 		update_expr_comments: update_expr_comments
