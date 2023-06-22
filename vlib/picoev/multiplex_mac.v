@@ -49,7 +49,7 @@ fn create_kqueue_loop(id int) !&KqueueLoop {
 
 [inline; direct_array_access]
 pub fn (mut pv Picoev) ev_set(fd int, operation int, events int) {
-	mut ev := pv.loop.change_list[fd]
+	mut ev := pv.loop.changelist[fd]
 	ev.ident = pv.loop.changed_fds
 
 	// vfmt off
