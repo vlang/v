@@ -99,7 +99,7 @@ fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 				pv.ev_set(total, C.EV_ADD | C.EV_ENABLE, int(target.events))
 				total++
 			}
-			eprintln('changed: ${total}: ${pv.loop.changelist[total]}')
+			eprintln('changed: ${total}: ${pv.loop.changelist[total-1]}')
 			if total + 1 >= pv.loop.changelist.len {
 				nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, C.NULL, 0,
 					C.NULL)
@@ -137,7 +137,7 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 
 	// return if nothing to do
 	if (events == picoev_del && target.backend == -1)
-		|| (events != picoev_add && events & picoev_readwrite == target.events) {
+		|| (events != picoev_del && events & picoev_readwrite == target.events) {
 		return 0
 	}
 
@@ -198,6 +198,7 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 					0
 				}
 			}
+			eprintln('matched: ${read_events}, real: ${event.filter}')
 
 			// do callback!
 			unsafe { target.cb(target.fd, read_events, &pv) }
