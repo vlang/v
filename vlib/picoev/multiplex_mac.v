@@ -8,14 +8,14 @@ fn C.kevent(kq_id int, changelist &C.Kevent, nchanges, int, eventlist &C.Kevent,
 [export: 'kevent']
 [typedef]
 struct C.Kevent {
-	ident  int
+	ident int
 	// uintptr_t
 	filter i16
 	flags  u16
 	fflags u32
 	data   voidptr
 	// intptr_t
-	udata  voidptr
+	udata voidptr
 }
 
 [heap]
@@ -50,11 +50,11 @@ fn (mut t Target) ev_set(operation int, events int) {
 	t.filter = pv.loop.changed_fds.i16()
 
 	// vfmt off
+	t.flags = u16(
 		(if events & picoev_read != 0 { C.EVFILT_READ } else { 0 })
 			|
 		(if events & picoev_write != 0 { C.EVFILT_WRITE } else { 0 })
 	)
-	// vfmt on
 	// vfmt on
 	t.fflags = 0
 }
