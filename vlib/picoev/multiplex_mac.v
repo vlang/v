@@ -67,8 +67,8 @@ pub fn (mut pv Picoev) ev_set(index int, operation int, events int) {
 }
 
 [inline]
-fn backend_build(next_fd int, events int) int {
-	return int(u32(((next_fd) << 8) | (events & 0xff)))
+fn backend_build(next_fd int, events u32) int {
+	return int((u32(next_fd) << 8) | (events & 0xff))
 }
 
 [inline]
