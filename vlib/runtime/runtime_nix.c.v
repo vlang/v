@@ -10,7 +10,13 @@ pub fn nr_cpus() int {
 // total_memory returns total physical memory found on the system.
 pub fn total_memory() usize {
 	$if macos {
-		return total_memory_macos()
+		mut hbi := C.host_basic_info{}
+		mut memsz := u32(C.HOST_BASIC_INFO_COUNT)
+		mut host := C.mach_host_self()
+		unsafe {
+			C.host_info(host, C.HOST_BASIC_INFO, &int(&hbi), &memsz)
+		}
+		return usize(hbi.max_mem)
 	}
 	page_size := usize(C.sysconf(C._SC_PAGESIZE))
 	phys_pages := usize(C.sysconf(C._SC_PHYS_PAGES))
@@ -20,7 +26,15 @@ pub fn total_memory() usize {
 // free_memory returns free physical memory found on the system.
 pub fn free_memory() usize {
 	$if macos {
-		return free_memory_macos()
+		mut hs := C.vm_statistics64_data_t{}
+		mut vmsz := u32(C.HOST_VM_INFO64_COUNT)
+		mut hps := u32(0)
+		mut host := C.mach_host_self()
+		unsafe {
+			C.host_statistics64(host, C.HOST_VM_INFO64, &int(&hs), &vmsz)
+			C.host_page_size(host, &C.vm_size_t(&hps))
+		}
+		return usize(u64(hs.free_count) * u64(hps))
 	}
 	$if linux {
 		page_size := usize(C.sysconf(C._SC_PAGESIZE))
