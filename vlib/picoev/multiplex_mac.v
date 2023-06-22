@@ -113,7 +113,7 @@ fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 		target.backend = -1
 	}
 
-	eprintln('total events: ${total}, apply: ${apply}')
+	eprintln('total events: ${total}, apply: ${apply_all}')
 	if apply_all && total != 0 {
 		nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, C.NULL, 0, C.NULL)
 		assert nevents == 0
