@@ -127,8 +127,12 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 	}
 
 	// add to changed list if not yet being done
-	target.events = u32(events & picoev_readwrite)
+	if target.backend == -1 {
+		pv.loop.changed_fds = fd
+	}
 
+	// update events
+	target.events = u32(events & picoev_readwrite)
 	// apply immediately if is a DELETE
 	if events & picoev_del != 0 {
 		pv.apply_pending_changes(true)
