@@ -35,6 +35,8 @@ mut:
 type LoopType = KqueueLoop
 
 fn create_kqueue_loop(id int) !&KqueueLoop {
+	eprintln('vals: dis ${C.EV_DISABLE}, add ${C.EV_ADD}, en ${C.EV_ENABLE}, r ${C.EVFILT_READ}, w ${C.EVFILT_WRITE}')
+
 	mut loop := &KqueueLoop{
 		id: id
 	}
@@ -49,7 +51,6 @@ fn create_kqueue_loop(id int) !&KqueueLoop {
 
 [inline; direct_array_access]
 pub fn (mut pv Picoev) ev_set(index int, operation int, events int) {
-	eprintln('ev_set ind: ${index}, op: ${operation}')
 	mut ev := pv.loop.changelist[index]
 	ev.ident = pv.loop.changed_fds
 
@@ -64,6 +65,7 @@ pub fn (mut pv Picoev) ev_set(index int, operation int, events int) {
 	ev.fflags = 0
 	ev.data = unsafe { nil }
 	ev.udata = unsafe { nil }
+	eprintln('ev_set ind: ${index} = ${ev}, op: ${operation}')
 }
 
 [inline]
@@ -97,7 +99,7 @@ fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 				pv.ev_set(total, C.EV_ADD | C.EV_ENABLE, int(target.events))
 				total++
 			}
-			eprintln('changed: ${}')
+			eprintln('changed: ${total}: ${pv.loop.changelist[total]}')
 			if total + 1 >= pv.loop.changelist.len {
 				nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, C.NULL, 0,
 					C.NULL)
@@ -111,7 +113,7 @@ fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 		target.backend = -1
 	}
 
-	eprintln('total events: ${total}')
+	eprintln('total events: ${total}, apply: ${apply}')
 	if apply_all && total != 0 {
 		nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, C.NULL, 0, C.NULL)
 		assert nevents == 0
