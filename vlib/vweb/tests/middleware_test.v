@@ -239,6 +239,13 @@ fn test_redirect_middleware() {
 	assert received.ends_with('302 Found')
 }
 
+// Context's
+
+fn test_middleware_with_context() {
+	x := http.get('http://${localserver}/with-context') or { panic(err) }
+	assert x.body == 'b'
+}
+
 fn testsuite_end() {
 	// This test is guaranteed to be called last.
 	// It sends a request to the server to shutdown.
