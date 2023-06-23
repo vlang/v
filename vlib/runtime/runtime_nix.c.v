@@ -9,15 +9,6 @@ pub fn nr_cpus() int {
 
 // total_memory returns total physical memory found on the system.
 pub fn total_memory() usize {
-	$if macos {
-		mut hbi := C.host_basic_info{}
-		mut memsz := u32(C.HOST_BASIC_INFO_COUNT)
-		mut host := C.mach_host_self()
-		unsafe {
-			C.host_info(host, C.HOST_BASIC_INFO, &int(&hbi), &memsz)
-		}
-		return usize(hbi.max_mem)
-	}
 	page_size := usize(C.sysconf(C._SC_PAGESIZE))
 	phys_pages := usize(C.sysconf(C._SC_PHYS_PAGES))
 	return page_size * phys_pages
