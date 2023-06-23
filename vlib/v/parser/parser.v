@@ -2605,24 +2605,26 @@ fn (mut p Parser) name_expr() ast.Expr {
 		&& p.peek_token(2).kind == .rsbr && (p.peek_token(4).kind == .lpar
 		|| p.peek_token(6).kind == .lpar)) {
 		// ?[]foo(), ?[1]foo, foo(), foo<int>() or type() cast
-		mut name := if is_array {
+		mut original_name := if is_array {
 			p.peek_token(if is_fixed_array { 3 } else { 2 }).lit
 		} else {
 			p.tok.lit
 		}
 		if is_fixed_array && p.peek_token(4).kind == .dot {
-			mod = name
-			name = p.peek_token(5).lit
+			mod = original_name
+			original_name = p.peek_token(5).lit
 		} else if is_array && p.peek_token(3).kind == .dot {
-			mod = name
-			name = p.peek_token(4).lit
+			mod = original_name
+			original_name = p.peek_token(4).lit
 		}
+		mut name := original_name
 		if mod.len > 0 {
 			name = '${mod}.${name}'
 		}
 		name_w_mod := p.prepend_mod(name)
 		is_c_pointer_cast := language == .c && prev_tok_kind == .amp // `&C.abc(x)` is *always* a cast
-		is_c_type_cast := language == .c && name in ['C.intptr_t', 'C.uintptr_t']
+		is_c_type_cast := language == .c && (original_name in ['intptr_t', 'uintptr_t']
+			|| (name in p.table.type_idxs && original_name[0].is_capital()))
 		is_js_cast := language == .js && name.all_after_last('.')[0].is_capital()
 		// type cast. TODO: finish
 		// if name in ast.builtin_type_names_to_idx {
