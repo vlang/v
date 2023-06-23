@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_where_clause_unsupported_field_types_err.vv:15:29: error: V ORM: select: field `example` has unsupported data type `[]u8`
+   13 |     bytes := [u8(0)]
+   14 |     e := sql db {
+   15 |         select from Example where example == bytes
+      |                                   ~~~~~~~
+   16 |     }!
+   17 |     print(e)
