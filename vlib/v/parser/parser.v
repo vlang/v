@@ -2622,12 +2622,13 @@ fn (mut p Parser) name_expr() ast.Expr {
 		}
 		name_w_mod := p.prepend_mod(name)
 		is_c_pointer_cast := language == .c && prev_tok_kind == .amp // `&C.abc(x)` is *always* a cast
+		is_c_type_cast := language == .c && name in ['C.intptr_t', 'C.uintptr_t']
 		is_js_cast := language == .js && name.all_after_last('.')[0].is_capital()
 		// type cast. TODO: finish
 		// if name in ast.builtin_type_names_to_idx {
 		// handle the easy cases first, then check for an already known V typename, not shadowed by a local variable
-		if is_mod_cast || is_c_pointer_cast || is_js_cast || is_generic_cast
-			|| (language == .v && name.len > 0 && (name[0].is_capital()
+		if is_mod_cast || is_c_pointer_cast || is_c_type_cast || is_js_cast
+			|| is_generic_cast || (language == .v && name.len > 0 && (name[0].is_capital()
 			|| (!known_var && (name in p.table.type_idxs
 			|| name_w_mod in p.table.type_idxs))
 			|| name.all_after_last('.')[0].is_capital())) {
