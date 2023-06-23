@@ -397,7 +397,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		if g.inside_return {
 			g.typ(val_type)
 		} else {
-			g.typ(val_type.clear_flags(.option, .result))
+			g.typ(val_type.clear_flags(.result))
 		}
 	}
 	get_and_set_types := val_sym.kind in [.struct_, .map, .array]
