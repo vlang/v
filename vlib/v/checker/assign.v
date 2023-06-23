@@ -164,6 +164,12 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		mut right := if i < node.right.len { node.right[i] } else { node.right[0] }
 		mut right_type := node.right_types[i]
 		if mut right is ast.Ident {
+			// resolve shared right vairable
+			if right_type.has_flag(.shared_f) {
+				if c.fail_if_unreadable(right, right_type, 'right-hand side of assignment') {
+					return
+				}
+			}
 			right_sym := c.table.sym(right_type)
 			if right_sym.info is ast.Struct {
 				if right_sym.info.generic_types.len > 0 {

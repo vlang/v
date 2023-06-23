@@ -4657,7 +4657,7 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
 	}
 }
 
-fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) {
+fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) bool {
 	mut pos := token.Pos{}
 	match expr {
 		ast.Ident {
@@ -4666,9 +4666,10 @@ fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) 
 					action := if what == 'argument' { 'passed' } else { 'used' }
 					c.error('`${expr.name}` is `shared` and must be `rlock`ed or `lock`ed to be ${action} as non-mut ${what}',
 						expr.pos)
+					return true
 				}
 			}
-			return
+			return false
 		}
 		ast.SelectorExpr {
 			pos = expr.pos
@@ -4678,31 +4679,42 @@ fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) 
 					action := if what == 'argument' { 'passed' } else { 'used' }
 					c.error('`${expr_name}` is `shared` and must be `rlock`ed or `lock`ed to be ${action} as non-mut ${what}',
 						expr.pos)
+					return true
 				}
-				return
+				return false
 			} else {
-				c.fail_if_unreadable(expr.expr, expr.expr_type, what)
+				if c.fail_if_unreadable(expr.expr, expr.expr_type, what) {
+					return true
+				}
 			}
 		}
 		ast.CallExpr {
 			pos = expr.pos
 			if expr.is_method {
-				c.fail_if_unreadable(expr.left, expr.left_type, what)
+				if c.fail_if_unreadable(expr.left, expr.left_type, what) {
+					return true
+				}
 			}
-			return
+			return false
 		}
 		ast.LockExpr {
 			// TODO: check expressions inside the lock by appending to c.(r)locked_names
-			return
+			return false
 		}
 		ast.IndexExpr {
 			pos = expr.left.pos().extend(expr.pos)
-			c.fail_if_unreadable(expr.left, expr.left_type, what)
+			if c.fail_if_unreadable(expr.left, expr.left_type, what) {
+				return true
+			}
 		}
 		ast.InfixExpr {
 			pos = expr.left.pos().extend(expr.pos)
-			c.fail_if_unreadable(expr.left, expr.left_type, what)
-			c.fail_if_unreadable(expr.right, expr.right_type, what)
+			if c.fail_if_unreadable(expr.left, expr.left_type, what) {
+				return true
+			}
+			if c.fail_if_unreadable(expr.right, expr.right_type, what) {
+				return true
+			}
 		}
 		else {
 			pos = expr.pos()
@@ -4711,7 +4723,9 @@ fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) 
 	if typ.has_flag(.shared_f) {
 		c.error('you have to create a handle and `rlock` it to use a `shared` element as non-mut ${what}',
 			pos)
+		return true
 	}
+	return false
 }
 
 fn (mut c Checker) fail_if_stack_struct_action_outside_unsafe(mut ident ast.Ident, failed_action string) {
