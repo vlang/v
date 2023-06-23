@@ -20,8 +20,8 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		if node.expr is ast.Ident {
 			// var
 			if node.expr.info is ast.IdentVar && node.expr.language == .v {
-				name = g.typ(g.unwrap_generic(node.expr.info.typ.clear_flag(.shared_f).clear_flag(.result))).replace('*',
-					'')
+				name = g.typ(g.unwrap_generic(node.expr.info.typ.clear_flags(.shared_f,
+					.result))).replace('*', '')
 			}
 		}
 	}
@@ -32,14 +32,14 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 				if node.expr.field_expr.expr.name == g.comptime_for_field_var
 					&& node.expr.field_expr.field_name == 'name' {
 					field, _ := g.get_comptime_selector_var_type(node.expr)
-					name = g.typ(g.unwrap_generic(field.typ.clear_flag(.shared_f).clear_flag(.result)))
+					name = g.typ(g.unwrap_generic(field.typ.clear_flags(.shared_f, .result)))
 					expr_type = field.typ
 				}
 			}
 		}
 	} else if node.expr is ast.Ident && g.inside_comptime_for_field && g.is_comptime_var(node.expr) {
 		expr_type = g.get_comptime_var_type(node.expr)
-		name = g.typ(g.unwrap_generic(expr_type.clear_flag(.shared_f).clear_flag(.result))).replace('*',
+		name = g.typ(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
 			'')
 	}
 
@@ -83,14 +83,15 @@ fn (mut g Gen) dump_expr_definitions() {
 		typ := ast.Type(dump_type)
 		is_ptr := typ.is_ptr()
 		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, dump_type)
-		to_string_fn_name := g.get_str_fn(typ.clear_flag(.shared_f).clear_flag(.result))
-		ptr_asterisk := if is_ptr { '*'.repeat(typ.nr_muls()) } else { '' }
+		to_string_fn_name := g.get_str_fn(typ.clear_flags(.shared_f, .result))
+		mut ptr_asterisk := if is_ptr { '*'.repeat(typ.nr_muls()) } else { '' }
 		mut str_dumparg_type := ''
 		if dump_sym.kind == .none_ {
 			str_dumparg_type = 'IError' + ptr_asterisk
 		} else {
 			if typ.has_flag(.option) {
 				str_dumparg_type += '_option_'
+				ptr_asterisk = ptr_asterisk.replace('*', '_ptr')
 			}
 			str_dumparg_type += g.cc_type(dump_type, true) + ptr_asterisk
 		}
@@ -118,8 +119,13 @@ fn (mut g Gen) dump_expr_definitions() {
 		} else if dump_sym.kind == .none_ {
 			surrounder.add('\tstring value = _SLIT("none");', '\tstring_free(&value);')
 		} else if is_ptr {
-			surrounder.add('\tstring value = (dump_arg == NULL) ? _SLIT("nil") : ${to_string_fn_name}(${deref}dump_arg);',
-				'\tstring_free(&value);')
+			if typ.has_flag(.option) {
+				surrounder.add('\tstring value = isnil(&dump_arg.data) ? _SLIT("nil") : ${to_string_fn_name}(${deref}dump_arg);',
+					'\tstring_free(&value);')
+			} else {
+				surrounder.add('\tstring value = (dump_arg == NULL) ? _SLIT("nil") : ${to_string_fn_name}(${deref}dump_arg);',
+					'\tstring_free(&value);')
+			}
 		} else {
 			surrounder.add('\tstring value = ${to_string_fn_name}(${deref}dump_arg);',
 				'\tstring_free(&value);')

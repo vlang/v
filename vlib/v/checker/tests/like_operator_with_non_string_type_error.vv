@@ -1,0 +1,16 @@
+struct User {
+	id   int    [primary]
+	name string
+}
+
+fn main() {
+	db := ''
+
+	println(sql db {
+		select from User where name like 10
+	}!)
+
+	println(sql db {
+		select from User where 10 like true
+	}!)
+}

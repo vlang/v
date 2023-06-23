@@ -9,7 +9,7 @@ V is a statically typed compiled programming language designed for building main
 It's similar to Go and its design has also been influenced by Oberon, Rust, Swift,
 Kotlin, and Python.
 
-V is a very simple language. Going through this documentation will take you about an hour,
+V is a very simple language. Going through this documentation will take you about a weekend,
 and by the end of it you will have pretty much learned the entire language.
 
 The language promotes writing simple and clear code with minimal abstraction.
@@ -1536,6 +1536,49 @@ num := 777
 s := if num % 2 == 0 { 'even' } else { 'odd' }
 println(s)
 // "odd"
+```
+
+Anywhere you can use `or {}`, you can also use "if unwrapping". This binds the unwrapped value
+of an expression to a variable when that expression is not none nor an error.
+
+```v
+m := {
+	'foo': 'bar'
+}
+
+// handle missing keys
+if v := m['foo'] {
+	println(v) // bar
+} else {
+	println('not found')
+}
+```
+
+```v
+fn res() !int {
+	return 42
+}
+
+// functions that return a result type
+if v := res() {
+	println(v)
+}
+```
+
+```v
+struct User {
+	name string
+}
+
+arr := [User{'John'}]
+
+// if unwrapping with assignment of a variable
+u_name := if v := arr[0] {
+	v.name
+} else {
+	'Unnamed'
+}
+println(u_name) // John
 ```
 
 #### Type checks and casts
@@ -6188,12 +6231,12 @@ fn my_callback(arg voidptr, howmany int, cvalues &&char, cnames &&char) int {
 }
 
 fn main() {
-	db := &C.sqlite3(0) // this means `sqlite3* db = 0`
+	db := &C.sqlite3(unsafe { nil }) // this means `sqlite3* db = 0`
 	// passing a string literal to a C function call results in a C string, not a V string
 	C.sqlite3_open(c'users.db', &db)
 	// C.sqlite3_open(db_path.str, &db)
 	query := 'select count(*) from users'
-	stmt := &C.sqlite3_stmt(0)
+	stmt := &C.sqlite3_stmt(unsafe { nil })
 	// Note: You can also use the `.str` field of a V string,
 	// to get its C style zero terminated representation
 	C.sqlite3_prepare_v2(db, &char(query.str), -1, &stmt, 0)

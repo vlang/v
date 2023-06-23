@@ -124,6 +124,26 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 	}
 }
 
+fn (e &Encoder) encode_map[T](value T, level int, mut wr io.Writer) ! {
+	wr.write(json2.curly_open)!
+	mut idx := 0
+	for k, v in value {
+		e.encode_newline(level, mut wr)!
+		e.encode_string(k.str(), mut wr)!
+		wr.write(json2.colon_bytes)!
+		if e.newline != 0 {
+			wr.write(json2.space_bytes)!
+		}
+		e.encode_value_with_level(v, level + 1, mut wr)!
+		if idx < value.len - 1 {
+			wr.write(json2.comma_bytes)!
+		}
+		idx++
+	}
+	e.encode_newline(level, mut wr)!
+	wr.write(json2.curly_close)!
+}
+
 fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) ! {
 	$if T is string {
 		e.encode_string(val, mut wr)!
@@ -133,7 +153,7 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) !
 		// weird quirk but val is destructured immediately to Any
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is $map {
-		// FIXME - `e.encode_struct` can not encode `map[string]map[string]int` type
+		e.encode_map(val, level, mut wr)!
 	} $else $if T is []Any {
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is Encodable {
@@ -261,23 +281,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			} $else $if field.typ is $struct {
 				e.encode_struct(value, level + 1, mut wr)!
 			} $else $if field.is_map {
-				wr.write(json2.curly_open)!
-				mut idx := 0
-				for k, v in value {
-					e.encode_newline(level, mut wr)!
-					e.encode_string(k.str(), mut wr)!
-					wr.write(json2.colon_bytes)!
-					if e.newline != 0 {
-						wr.write(json2.space_bytes)!
-					}
-					e.encode_value_with_level(v, level + 1, mut wr)!
-					if idx < value.len - 1 {
-						wr.write(json2.comma_bytes)!
-					}
-					idx++
-				}
-				e.encode_newline(level, mut wr)!
-				wr.write(json2.curly_close)!
+				e.encode_map(value, level + 1, mut wr)!
 			} $else $if field.is_enum {
 				// TODO - replace for `field.typ is $enum`
 				wr.write(int(val.$(field.name)).str().bytes())!

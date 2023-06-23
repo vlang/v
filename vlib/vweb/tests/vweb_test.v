@@ -124,14 +124,16 @@ fn test_http_client_index() {
 }
 
 fn test_http_client_404() {
+	server := 'http://${localserver}'
 	url_404_list := [
-		'http://${localserver}/zxcnbnm',
-		'http://${localserver}/JHKAJA',
-		'http://${localserver}/unknown',
+		'/zxcnbnm',
+		'/JHKAJA',
+		'/unknown',
 	]
 	for url in url_404_list {
-		res := http.get(url) or { panic(err) }
+		res := http.get('${server}${url}') or { panic(err) }
 		assert res.status() == .not_found
+		assert res.body == '404 on "${url}"'
 	}
 }
 
@@ -203,29 +205,37 @@ fn test_http_client_json_post() {
 }
 
 fn test_http_client_multipart_form_data() {
-	boundary := '6844a625b1f0b299'
-	name := 'foo'
-	ct := 'multipart/form-data; boundary=${boundary}'
-	contents := 'baz buzz'
-	data := '--${boundary}\r
-Content-Disposition: form-data; name="${name}"\r
-\r
-${contents}\r
---${boundary}--\r
-'
-	mut x := http.fetch(
-		url: 'http://${localserver}/form_echo'
-		method: .post
-		header: http.new_header(
-			key: .content_type
-			value: ct
-		)
-		data: data
-	)!
+	mut form_config := http.PostMultipartFormConfig{
+		form: {
+			'foo': 'baz buzz'
+		}
+	}
+
+	mut x := http.post_multipart_form('http://${localserver}/form_echo', form_config)!
+
 	$if debug_net_socket_client ? {
 		eprintln('/form_echo endpoint response: ${x}')
 	}
-	assert x.body == contents
+	assert x.body == form_config.form['foo']
+
+	mut files := []http.FileData{}
+	files << http.FileData{
+		filename: 'vweb'
+		content_type: 'text'
+		data: '"vweb test"'
+	}
+
+	mut form_config_files := http.PostMultipartFormConfig{
+		files: {
+			'file': files
+		}
+	}
+
+	x = http.post_multipart_form('http://${localserver}/file_echo', form_config_files)!
+	$if debug_net_socket_client ? {
+		eprintln('/form_echo endpoint response: ${x}')
+	}
+	assert x.body == files[0].data
 }
 
 fn test_http_client_shutdown_does_not_work_without_a_cookie() {
@@ -234,7 +244,6 @@ fn test_http_client_shutdown_does_not_work_without_a_cookie() {
 		return
 	}
 	assert x.status() == .not_found
-	assert x.body == '404 Not Found'
 }
 
 fn testsuite_end() {
@@ -265,7 +274,7 @@ struct SimpleTcpClientConfig {
 }
 
 fn simple_tcp_client(config SimpleTcpClientConfig) !string {
-	mut client := &net.TcpConn(0)
+	mut client := &net.TcpConn(unsafe { nil })
 	mut tries := 0
 	for tries < config.retries {
 		tries++

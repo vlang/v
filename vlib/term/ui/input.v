@@ -170,7 +170,7 @@ pub:
 pub struct Context {
 	ExtraContext // contains fields specific to an implementation
 pub:
-	cfg Config // adsasdas
+	cfg Config // the initial configuration, passed to ui.init()
 mut:
 	print_buf  []u8
 	paused     bool

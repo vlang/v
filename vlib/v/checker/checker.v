@@ -1116,7 +1116,7 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 		return
 	}
 	last_stmt := node.stmts.last()
-	c.check_or_last_stmt(last_stmt, ret_type, expr_return_type.clear_flag(.option).clear_flag(.result))
+	c.check_or_last_stmt(last_stmt, ret_type, expr_return_type.clear_flags(.option, .result))
 }
 
 fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_return_type ast.Type) {
@@ -1124,13 +1124,13 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 		match stmt {
 			ast.ExprStmt {
 				c.expected_type = ret_type
-				c.expected_or_type = ret_type.clear_flag(.option).clear_flag(.result)
+				c.expected_or_type = ret_type.clear_flags(.option, .result)
 				last_stmt_typ := c.expr(stmt.expr)
 
-				if ret_type.has_flag(.option)
-					&& (last_stmt_typ.has_flag(.option) || last_stmt_typ == ast.none_type) {
+				if last_stmt_typ.has_flag(.option) || last_stmt_typ == ast.none_type {
 					if stmt.expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr, ast.None] {
-						expected_type_name := c.table.type_to_str(ret_type.clear_flag(.option).clear_flag(.result))
+						expected_type_name := c.table.type_to_str(ret_type.clear_flags(.option,
+							.result))
 						got_type_name := c.table.type_to_str(last_stmt_typ)
 						c.error('`or` block must provide a value of type `${expected_type_name}`, not `${got_type_name}`',
 							stmt.expr.pos())
@@ -1161,7 +1161,8 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 						}
 						return
 					}
-					expected_type_name := c.table.type_to_str(ret_type.clear_flag(.option).clear_flag(.result))
+					expected_type_name := c.table.type_to_str(ret_type.clear_flags(.option,
+						.result))
 					c.error('`or` block must provide a default value of type `${expected_type_name}`, or return/continue/break or call a [noreturn] function like panic(err) or exit(1)',
 						stmt.expr.pos())
 				} else {
@@ -1173,7 +1174,8 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 						return
 					}
 					type_name := c.table.type_to_str(last_stmt_typ)
-					expected_type_name := c.table.type_to_str(ret_type.clear_flag(.option).clear_flag(.result))
+					expected_type_name := c.table.type_to_str(ret_type.clear_flags(.option,
+						.result))
 					c.error('wrong return type `${type_name}` in the `or {}` block, expected `${expected_type_name}`',
 						stmt.expr.pos())
 				}
@@ -1187,7 +1189,8 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 			}
 			ast.Return {}
 			else {
-				expected_type_name := c.table.type_to_str(ret_type.clear_flag(.option).clear_flag(.result))
+				expected_type_name := c.table.type_to_str(ret_type.clear_flags(.option,
+					.result))
 				c.error('last statement in the `or {}` block should be an expression of type `${expected_type_name}` or exit parent scope',
 					stmt.pos)
 			}
@@ -1434,8 +1437,9 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 		node.typ = field.typ
 		if node.or_block.kind == .block {
-			c.expected_or_type = node.typ.clear_flag(.option).clear_flag(.result)
+			c.expected_or_type = node.typ.clear_flags(.option, .result)
 			c.stmts_ending_with_expression(node.or_block.stmts)
+			c.check_or_expr(node.or_block, node.typ, c.expected_or_type, node)
 			c.expected_or_type = ast.void_type
 		}
 		return field.typ
@@ -1467,6 +1471,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		node.has_hidden_receiver = true
 		method.name = ''
 		fn_type := ast.new_type(c.table.find_or_register_fn_type(method, false, true))
+		node.typ = fn_type
 		return fn_type
 	}
 	if sym.kind !in [.struct_, .aggregate, .interface_, .sum_type] {
@@ -2234,7 +2239,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		else {
 			if node.kind == 'define' {
 				if !c.is_builtin_mod && !c.file.path.ends_with('.c.v')
-					&& !c.file.path.contains('vlib' + os.path_separator) {
+					&& !c.file.path.contains('vlib') {
 					c.error("#define can only be used in vlib (V's standard library) and *.c.v files",
 						node.pos)
 				}
@@ -2832,6 +2837,30 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		if from_sym.kind == .alias {
 			from_type = (from_sym.info as ast.Alias).parent_type.derive_add_muls(from_type)
 		}
+		if mut node.expr is ast.IntegerLiteral {
+			if node.expr.val.int() == 0 && !c.pref.translated && !c.file.is_translated {
+				c.error('cannot null cast a struct pointer, use &${to_sym.name}(unsafe { nil })',
+					node.pos)
+			} else if !c.inside_unsafe && !c.pref.translated && !c.file.is_translated {
+				c.error('cannot cast int to a struct pointer outside `unsafe`', node.pos)
+			}
+		} else if mut node.expr is ast.Ident {
+			match mut node.expr.obj {
+				ast.GlobalField, ast.ConstField, ast.Var {
+					if mut node.expr.obj.expr is ast.IntegerLiteral {
+						if node.expr.obj.expr.val.int() == 0 && !c.pref.translated
+							&& !c.file.is_translated {
+							c.error('cannot null cast a struct pointer, use &${to_sym.name}(unsafe { nil })',
+								node.pos)
+						} else if !c.inside_unsafe && !c.pref.translated && !c.file.is_translated {
+							c.error('cannot cast int to a struct pointer outside `unsafe`',
+								node.pos)
+						}
+					}
+				}
+				else {}
+			}
+		}
 		if from_type == ast.voidptr_type_idx && !c.inside_unsafe {
 			// TODO make this an error
 			c.warn('cannot cast voidptr to a struct outside `unsafe`', node.pos)
@@ -3170,22 +3199,32 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	// second use
 	if node.kind in [.constant, .global, .variable] {
 		info := node.info as ast.IdentVar
+		typ := if c.is_comptime_var(node) {
+			ctype := c.get_comptime_var_type(node)
+			if ctype != ast.void_type {
+				ctype
+			} else {
+				info.typ
+			}
+		} else {
+			info.typ
+		}
 		// Got a var with type T, return current generic type
 		if node.or_expr.kind != .absent {
-			if !info.typ.has_flag(.option) {
+			if !typ.has_flag(.option) {
 				if node.or_expr.kind == .propagate_option {
 					c.error('cannot use `?` on non-option variable', node.pos)
 				} else if node.or_expr.kind == .block {
 					c.error('cannot use `or {}` block on non-option variable', node.pos)
 				}
 			}
-			unwrapped_typ := info.typ.clear_flag(.option).clear_flag(.result)
+			unwrapped_typ := typ.clear_flags(.option, .result)
 			c.expected_or_type = unwrapped_typ
 			c.stmts_ending_with_expression(node.or_expr.stmts)
-			c.check_or_expr(node.or_expr, info.typ, c.expected_or_type, node)
+			c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
 			return unwrapped_typ
 		}
-		return info.typ
+		return typ
 	} else if node.kind == .function {
 		info := node.info as ast.IdentFn
 		return info.typ
@@ -3245,7 +3284,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 									}
 								}
 							} else {
-								typ = obj.expr.expr_type.clear_flag(.option).clear_flag(.result)
+								typ = obj.expr.expr_type.clear_flags(.option, .result)
 							}
 						} else if obj.expr is ast.EmptyExpr {
 							c.error('invalid variable `${node.name}`', node.pos)
@@ -3278,7 +3317,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 									node.pos)
 							}
 						}
-						unwrapped_typ := typ.clear_flag(.option).clear_flag(.result)
+						unwrapped_typ := typ.clear_flags(.option, .result)
 						c.expected_or_type = unwrapped_typ
 						c.stmts_ending_with_expression(node.or_expr.stmts)
 						c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
@@ -3323,7 +3362,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 
 						if mut obj.expr is ast.CallExpr {
 							if obj.expr.or_block.kind != .absent {
-								typ = typ.clear_flag(.option).clear_flag(.result)
+								typ = typ.clear_flags(.option, .result)
 							}
 						}
 					}
@@ -3607,9 +3646,10 @@ fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 }
 
 fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) ast.Type {
+	prev_unsafe := c.inside_unsafe
 	c.inside_unsafe = true
 	t := c.expr(node.expr)
-	c.inside_unsafe = false
+	c.inside_unsafe = prev_unsafe
 	return t
 }
 
@@ -3845,6 +3885,15 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		}
 		if right_type.is_voidptr() {
 			c.error('cannot dereference to void', node.pos)
+		}
+		if mut node.right is ast.Ident {
+			if var := node.right.scope.find_var('${node.right.name}') {
+				if var.expr is ast.UnsafeExpr {
+					if var.expr.expr is ast.Nil {
+						c.error('cannot deference a `nil` pointer', node.right.pos)
+					}
+				}
+			}
 		}
 	}
 	if node.op == .bit_not && !c.unwrap_generic(right_type).is_int() && !c.pref.translated

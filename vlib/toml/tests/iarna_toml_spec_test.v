@@ -60,7 +60,7 @@ def normalize: sorted_walk(if type == "array" then sort else . end);
 normalize'
 )
 
-fn run(args []string) ?string {
+fn run(args []string) !string {
 	res := os.execute(args.join(' '))
 	if res.exit_code != 0 {
 		return error('${args[0]} failed with return code ${res.exit_code}.\n${res.output}')

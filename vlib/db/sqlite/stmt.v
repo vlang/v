@@ -8,7 +8,7 @@ fn C.sqlite3_bind_text(&C.sqlite3_stmt, int, &char, int, voidptr) int
 // Only for V ORM
 fn (db &DB) init_stmt(query string) (&C.sqlite3_stmt, int) {
 	// println('init_stmt("$query")')
-	stmt := &C.sqlite3_stmt(0)
+	stmt := &C.sqlite3_stmt(unsafe { nil })
 	err := C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	return stmt, err
 }

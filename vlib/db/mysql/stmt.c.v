@@ -63,7 +63,7 @@ fn C.mysql_stmt_next_result(&C.MYSQL_STMT) int
 fn C.mysql_stmt_store_result(&C.MYSQL_STMT) int
 
 pub struct Stmt {
-	stmt  &C.MYSQL_STMT = &C.MYSQL_STMT(0)
+	stmt  &C.MYSQL_STMT = &C.MYSQL_STMT(unsafe { nil })
 	query string
 mut:
 	binds []C.MYSQL_BIND

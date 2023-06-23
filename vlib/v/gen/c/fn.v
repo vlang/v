@@ -779,11 +779,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	if gen_or {
 		g.or_block(tmp_opt, node.or_block, node.return_type)
-		mut unwrapped_typ := node.return_type.clear_flag(.option).clear_flag(.result)
+		mut unwrapped_typ := node.return_type.clear_flags(.option, .result)
 		if g.table.sym(unwrapped_typ).kind == .alias {
 			unaliased_type := g.table.unaliased_type(unwrapped_typ)
 			if unaliased_type.has_flag(.option) || unaliased_type.has_flag(.result) {
-				unwrapped_typ = unaliased_type.clear_flag(.option).clear_flag(.result)
+				unwrapped_typ = unaliased_type.clear_flags(.option, .result)
 			}
 		}
 		unwrapped_styp := g.typ(unwrapped_typ)
@@ -1027,6 +1027,7 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 			if !param.typ.has_flag(.generic) {
 				continue
 			}
+			param_typ := param.typ
 			if mut call_arg.expr is ast.Ident {
 				if mut call_arg.expr.obj is ast.Var {
 					node_.args[i].typ = call_arg.expr.obj.typ
@@ -1034,7 +1035,6 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 						mut ctyp := g.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := g.table.sym(ctyp)
-							param_typ := param.typ
 							if arg_sym.kind == .array && param_typ.has_flag(.generic)
 								&& g.table.final_sym(param_typ).kind == .array {
 								ctyp = (arg_sym.info as ast.Array).elem_type
@@ -1044,10 +1044,8 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 					} else if call_arg.expr.obj.ct_type_var == .generic_param {
 						mut ctyp := g.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
-							param_typ := param.typ
 							arg_sym := g.table.final_sym(call_arg.typ)
 							param_typ_sym := g.table.sym(param_typ)
-
 							if param_typ.has_flag(.variadic) {
 								ctyp = ast.mktyp(ctyp)
 								comptime_args[i] = ctyp
@@ -1096,8 +1094,22 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 						}
 					}
 				}
+			} else if mut call_arg.expr is ast.PrefixExpr {
+				if call_arg.expr.right is ast.ComptimeSelector {
+					comptime_args[i] = g.comptime_for_field_type
+					comptime_args[i] = comptime_args[i].deref()
+					if param_typ.nr_muls() > 0 && comptime_args[i].nr_muls() > 0 {
+						comptime_args[i] = comptime_args[i].set_nr_muls(0)
+					}
+				}
 			} else if mut call_arg.expr is ast.ComptimeSelector {
 				comptime_args[i] = g.comptime_for_field_type
+				if call_arg.expr.left.is_auto_deref_var() {
+					comptime_args[i] = comptime_args[i].deref()
+				}
+				if param_typ.nr_muls() > 0 && comptime_args[i].nr_muls() > 0 {
+					comptime_args[i] = comptime_args[i].set_nr_muls(0)
+				}
 			}
 		}
 	}
@@ -1156,6 +1168,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			unwrapped_rec_type = ast.Type(typ_idx)
 			typ_sym = g.table.sym(unwrapped_rec_type)
 		}
+	}
+	if node.from_embed_types.len > 0 && !typ_sym.has_method(node.name) {
+		unwrapped_rec_type = node.from_embed_types.last()
+		typ_sym = g.table.sym(unwrapped_rec_type)
 	}
 	rec_cc_type := g.cc_type(unwrapped_rec_type, false)
 	mut receiver_type_name := util.no_dots(rec_cc_type)

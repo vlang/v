@@ -1,0 +1,2 @@
+mut a := []array{}
+a.insert(4, '1')

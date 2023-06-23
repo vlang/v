@@ -839,6 +839,14 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string)
 				g.gen_print(str, fd)
 			}
 		}
+		ast.Nil {
+			str := '0x0'
+			if newline {
+				g.gen_print(str + '\n', fd)
+			} else {
+				g.gen_print(str, fd)
+			}
+		}
 		ast.CharLiteral {
 			str := g.eval_escape_codes(expr.val)
 			if newline {
@@ -945,13 +953,25 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string)
 	}
 }
 
+fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
+	mut used := true
+	if g.pref.skip_unused {
+		fkey := node.fkey()
+		used = g.table.used_fns[fkey]
+	}
+	return used
+}
+
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	name := if node.is_method {
 		'${g.table.get_type_name(node.receiver.typ)}.${node.name}'
 	} else {
 		node.name
 	}
-	if node.no_body {
+	if node.no_body || !g.is_used_by_main(node) {
+		if g.pref.is_verbose {
+			println(term.italic(term.green('\n-> skipping unused function `${name}`')))
+		}
 		return
 	}
 	if g.pref.is_verbose {
@@ -1184,7 +1204,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			words := node.val.split(' ')
 			for word in words {
 				if word.len != 2 {
-					g.n_error('opcodes format: xx xx xx xx')
+					g.n_error('opcodes format: xx xx xx xx\nhash statements are not allowed with the native backend, use the C backend for extended C interoperability.')
 				}
 				b := unsafe { C.strtol(&char(word.str), 0, 16) }
 				// b := word.u8()
@@ -1529,6 +1549,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.IntegerLiteral {
 			g.movabs(.rax, i64(node.val.u64()))
 			// g.gen_print_reg(.rax, 3, fd)
+		}
+		ast.Nil {
+			g.movabs(.rax, 0)
 		}
 		ast.PostfixExpr {
 			g.postfix_expr(node)

@@ -71,7 +71,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 		}
 		if mut branch.cond is ast.IfGuardExpr {
-			if branch.cond.expr_type.clear_flag(.option).clear_flag(.result) == ast.void_type
+			if branch.cond.expr_type.clear_flags(.option, .result) == ast.void_type
 				&& !(branch.cond.vars.len == 1 && branch.cond.vars[0].name == '_') {
 				c.error('if guard expects non-propagate option or result', branch.pos)
 				continue
@@ -161,6 +161,64 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							is_comptime_type_is_expr = true
 							left_type := c.unwrap_generic(left.typ)
 							skip_state = c.check_compatible_types(left_type, right as ast.TypeNode)
+						}
+					}
+				} else if branch.cond.op in [.eq, .ne] {
+					left := branch.cond.left
+					right := branch.cond.right
+					if left is ast.SelectorExpr && right is ast.IntegerLiteral {
+						comptime_field_name = left.expr.str()
+						is_comptime_type_is_expr = true
+						if comptime_field_name == c.comptime_for_field_var {
+							if left.field_name == 'indirections' {
+								skip_state = match branch.cond.op {
+									.gt {
+										if c.comptime_fields_default_type.nr_muls() > right.val.i64() {
+											ComptimeBranchSkipState.eval
+										} else {
+											ComptimeBranchSkipState.skip
+										}
+									}
+									.lt {
+										if c.comptime_fields_default_type.nr_muls() < right.val.i64() {
+											ComptimeBranchSkipState.eval
+										} else {
+											ComptimeBranchSkipState.skip
+										}
+									}
+									.ge {
+										if c.comptime_fields_default_type.nr_muls() >= right.val.i64() {
+											ComptimeBranchSkipState.eval
+										} else {
+											ComptimeBranchSkipState.skip
+										}
+									}
+									.le {
+										if c.comptime_fields_default_type.nr_muls() <= right.val.i64() {
+											ComptimeBranchSkipState.eval
+										} else {
+											ComptimeBranchSkipState.skip
+										}
+									}
+									.ne {
+										if c.comptime_fields_default_type.nr_muls() != right.val.i64() {
+											ComptimeBranchSkipState.eval
+										} else {
+											ComptimeBranchSkipState.skip
+										}
+									}
+									.eq {
+										if c.comptime_fields_default_type.nr_muls() == right.val.i64() {
+											ComptimeBranchSkipState.eval
+										} else {
+											ComptimeBranchSkipState.skip
+										}
+									}
+									else {
+										ComptimeBranchSkipState.skip
+									}
+								}
+							}
 						}
 					}
 				}

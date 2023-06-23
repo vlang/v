@@ -398,6 +398,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 	first_pos := (if kind == .short_syntax && p.prev_tok.kind == .lcbr { p.prev_tok } else { p.tok }).pos()
 	p.struct_init_generic_types = []ast.Type{}
 	mut typ := if kind == .short_syntax { ast.void_type } else { p.parse_type() }
+	struct_init_generic_types := p.struct_init_generic_types.clone()
 	if is_option {
 		typ = typ.set_flag(.option)
 	}
@@ -492,7 +493,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		is_short_syntax: kind == .short_syntax
 		is_anon: kind == .anon
 		pre_comments: pre_comments
-		generic_types: p.struct_init_generic_types
+		generic_types: struct_init_generic_types
 	}
 }
 

@@ -705,7 +705,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	mut mr_styp := g.typ(return_type.clear_flag(.result))
 	if node.right[0] is ast.CallExpr && (node.right[0] as ast.CallExpr).or_block.kind != .absent {
 		is_option = false
-		mr_styp = g.typ(return_type.clear_flag(.option).clear_flag(.result))
+		mr_styp = g.typ(return_type.clear_flags(.option, .result))
 	}
 	g.write('${mr_styp} ${mr_var_name} = ')
 	g.expr(node.right[0])
@@ -985,7 +985,10 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			g.write(')')
 		}
 		ast.CallExpr {
-			fn_name := val.name.replace('.', '__')
+			mut fn_name := val.name.replace('.', '__')
+			if val.concrete_types.len > 0 {
+				fn_name = g.generic_fn_name(val.concrete_types, fn_name)
+			}
 			g.write('${fn_name}(')
 			for i, arg in val.args {
 				g.gen_cross_tmp_variable(left, arg.expr)

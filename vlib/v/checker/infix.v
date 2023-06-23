@@ -457,6 +457,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					opt_comp_pos)
 			}
 		}
+		.key_like {
+			node.promoted_type = ast.bool_type
+
+			return c.check_like_operator(node)
+		}
 		.left_shift {
 			if left_final_sym.kind == .array {
 				if !node.is_stmt {
@@ -755,6 +760,19 @@ fn (mut c Checker) check_div_mod_by_zero(expr ast.Expr, op_kind token.Kind) {
 		}
 		else {}
 	}
+}
+
+fn (mut c Checker) check_like_operator(node &ast.InfixExpr) ast.Type {
+	if node.left !is ast.Ident || !node.left_type.is_string() {
+		c.error('the left operand of the `like` operator must be an identifier with a string type',
+			node.left.pos())
+	}
+
+	if !node.right_type.is_string() {
+		c.error('the right operand of the `like` operator must be a string type', node.right.pos())
+	}
+
+	return node.promoted_type
 }
 
 fn (mut c Checker) invalid_operator_error(op token.Kind, left_type ast.Type, right_type ast.Type, pos token.Pos) {

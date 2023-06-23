@@ -59,6 +59,7 @@ pub enum OperationKind {
 	lt // <
 	ge // >=
 	le // <=
+	orm_like // LIKE
 }
 
 pub enum MathOperationKind {
@@ -92,6 +93,7 @@ fn (kind OperationKind) to_str() string {
 		.lt { '<' }
 		.ge { '>=' }
 		.le { '<=' }
+		.orm_like { 'LIKE' }
 	}
 	return str
 }

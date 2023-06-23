@@ -46,32 +46,42 @@ fn main() {
 }
 
 ['/']
-fn (mut app App) home() vweb.Result {
+pub fn (mut app App) home() vweb.Result {
 	return app.text('App')
 }
 
 ['/path']
-fn (mut app App) app_path() vweb.Result {
+pub fn (mut app App) app_path() vweb.Result {
 	return app.text('App path')
 }
 
+pub fn (mut app App) not_found() vweb.Result {
+	app.set_status(404, 'Not Found')
+	return app.text('404 From App')
+}
+
 ['/']
-fn (mut app Admin) admin_home() vweb.Result {
+pub fn (mut app Admin) admin_home() vweb.Result {
 	return app.text('Admin')
 }
 
 ['/path']
-fn (mut app Admin) admin_path() vweb.Result {
+pub fn (mut app Admin) admin_path() vweb.Result {
 	return app.text('Admin path')
 }
 
+pub fn (mut app Admin) not_found() vweb.Result {
+	app.set_status(404, 'Not Found')
+	return app.text('404 From Admin')
+}
+
 ['/']
-fn (mut app Other) other_home() vweb.Result {
+pub fn (mut app Other) other_home() vweb.Result {
 	return app.text('Other')
 }
 
 ['/path']
-fn (mut app Other) other_path() vweb.Result {
+pub fn (mut app Other) other_path() vweb.Result {
 	return app.text('Other path')
 }
 
