@@ -651,6 +651,7 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 			far_var_offset := if is_far_var { 0x40 } else { 0 }
 			match reg {
 				.eax, .rax, .r8 { c.g.write8(0x45 + far_var_offset) }
+				.rbx { c.g.write8(0x5d + far_var_offset) }
 				.edi, .rdi { c.g.write8(0x7d + far_var_offset) }
 				.rsi { c.g.write8(0x75 + far_var_offset) }
 				.rdx { c.g.write8(0x55 + far_var_offset) }
@@ -1945,267 +1946,153 @@ fn (mut c Amd64) gen_concat_expr(node ast.ConcatExpr) {
 	c.lea_var_to_reg(c.main_reg(), var.offset)
 }
 
-// !!!!!
-// TODO: this *must* be done better and platform independant
-// !!!!!
-fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, name string, ident ast.Ident) {
-	match right {
-		ast.IntegerLiteral {
-			// c.allocate_var(name, 4, right.val.int())
-			match node.op {
-				.plus_assign {
-					c.mov_var_to_reg(Amd64Register.rax, ident)
-					c.add(.rax, right.val.int())
+fn (mut c Amd64) assign_struct_var(ident_var IdentVar, typ ast.Type, s int) {
+	// struct types bigger are passed around as a pointer in rax.
+	// we need to dereference and copy the contents one after the other
+	if ident_var !is LocalVar {
+		c.g.n_error('cannot assign struct to global var or register yet')
+	}
+
+	var := ident_var as LocalVar
+
+	mut size := s
+
+	mut offset := 0
+	for size >= 8 {
+		c.mov_deref(.rbx, .rax, ast.u64_type_idx)
+		c.mov_reg_to_var(var, Amd64Register.rbx,
+			offset: offset
+			typ: ast.u64_type_idx
+		)
+		c.add(.rax, 8)
+
+		size -= 8
+		offset += 8
+	}
+
+	if size >= 4 {
+		c.mov_deref(.rbx, .rax, ast.u32_type_idx)
+		c.mov_reg_to_var(var, Amd64Register.rbx,
+			offset: offset
+			typ: ast.u32_type_idx
+		)
+		c.add(.rax, 4)
+
+		size -= 4
+		offset += 4
+	}
+
+	if size >= 2 {
+		c.mov_deref(.rbx, .rax, ast.u16_type_idx)
+		c.mov_reg_to_var(var, Amd64Register.rbx,
+			offset: offset
+			typ: ast.u16_type_idx
+		)
+		c.add(.rax, 2)
+
+		size -= 2
+		offset += 2
+	}
+
+	if size == 1 {
+		c.mov_deref(.rbx, .rax, ast.u8_type_idx)
+		c.mov_reg_to_var(var, Amd64Register.rbx,
+			offset: offset
+			typ: ast.u8_type_idx
+		)
+		c.add(.rax, 1)
+
+		size--
+		offset++
+	}
+
+	assert size == 0
+}
+
+fn (mut c Amd64) assign_var(var IdentVar, typ ast.Type) {
+	size := c.g.get_type_size(typ)
+	if typ.is_pure_float() {
+		match var {
+			LocalVar { c.mov_ssereg_to_var(var as LocalVar, .xmm0) }
+			GlobalVar { c.mov_ssereg_to_var(var as GlobalVar, .xmm0) }
+			// Amd64Register { c.g.mov_ssereg(var as Amd64Register, .xmm0) }
+			else {}
+		}
+	}
+	else if c.g.table.sym(typ).info is ast.Struct && !typ.is_any_kind_of_pointer() {
+		c.assign_struct_var(var, typ, size)
+	}
+	else if size in [1, 2, 4, 8] {
+		match var {
+			LocalVar { c.mov_reg_to_var(var as LocalVar, Amd64Register.rax) }
+			GlobalVar { c.mov_reg_to_var(var as GlobalVar, Amd64Register.rax) }
+			Register { c.mov_reg(var as Amd64Register, Amd64Register.rax) }
+		}
+	}
+	else {
+		c.g.n_error("error assigning type ${typ} with size ${size}")
+	}
+}
+
+fn (mut c Amd64) assign_int(node ast.AssignStmt, i int, name string, ident ast.Ident, int_lit ast.IntegerLiteral) {
+	match node.op {
+		.plus_assign {
+			c.mov_var_to_reg(Amd64Register.rax, ident)
+			c.add(.rax, int_lit.val.int())
+			c.mov_reg_to_var(ident, Amd64Register.rax)
+		}
+		.minus_assign {
+			c.mov_var_to_reg(Amd64Register.rax, ident)
+			c.sub(.rax, int_lit.val.int())
+			c.mov_reg_to_var(ident, Amd64Register.rax)
+		}
+		.mult_assign {
+			c.mov_var_to_reg(Amd64Register.rax, ident)
+			c.mov64(Amd64Register.rdx, int_lit.val.int())
+			c.mul_reg(.rax, .rdx)
+			c.mov_reg_to_var(ident, Amd64Register.rax)
+		}
+		.div_assign {
+			c.mov_var_to_reg(Amd64Register.rax, ident)
+			c.mov64(Amd64Register.rdx, int_lit.val.int())
+			c.div_reg(.rax, .rdx)
+			c.mov_reg_to_var(ident, Amd64Register.rax)
+		}
+		.decl_assign {
+			c.allocate_var(name, 8, int_lit.val.int())
+		}
+		.assign {
+			match node.left[i] {
+				ast.Ident {
+					c.mov(Amd64Register.rax, int_lit.val.int())
 					c.mov_reg_to_var(ident, Amd64Register.rax)
-				}
-				.minus_assign {
-					c.mov_var_to_reg(Amd64Register.rax, ident)
-					c.sub(.rax, right.val.int())
-					c.mov_reg_to_var(ident, Amd64Register.rax)
-				}
-				.mult_assign {
-					c.mov_var_to_reg(Amd64Register.rax, ident)
-					c.mov64(Amd64Register.rdx, right.val.int())
-					c.mul_reg(.rax, .rdx)
-					c.mov_reg_to_var(ident, Amd64Register.rax)
-				}
-				.div_assign {
-					c.mov_var_to_reg(Amd64Register.rax, ident)
-					c.mov64(Amd64Register.rdx, right.val.int())
-					c.div_reg(.rax, .rdx)
-					c.mov_reg_to_var(ident, Amd64Register.rax)
-				}
-				.decl_assign {
-					c.allocate_var(name, 8, right.val.int())
-				}
-				.assign {
-					// dump(c.g.typ(node.left_types[i]))
-					match node.left[i] {
-						ast.Ident {
-							// lname := '${node.left[i]}'
-							// c.g.expr(node.right[i])
-							c.mov(Amd64Register.rax, right.val.int())
-							c.mov_reg_to_var(ident, Amd64Register.rax)
-						}
-						else {
-							tn := node.left[i].type_name()
-							dump(node.left_types)
-							c.g.n_error('unhandled assign type: ${tn}')
-						}
-					}
 				}
 				else {
-					eprintln('ERROR 2')
-					dump(node)
+					tn := node.left[i].type_name()
+					dump(node.left_types)
+					c.g.n_error('unhandled assign type: ${tn}')
 				}
 			}
 		}
-		ast.Ident {
-			// eprintln('identr') dump(node) dump(right)
-			match node.op {
-				.plus_assign {
-					c.mov_var_to_reg(Amd64Register.rax, ident)
-					c.mov_var_to_reg(Amd64Register.rbx, right as ast.Ident)
-					c.add_reg(.rax, .rbx)
-					c.mov_reg_to_var(ident, Amd64Register.rax)
-				}
-				.minus_assign {
-					c.mov_var_to_reg(Amd64Register.rax, ident)
-					c.mov_var_to_reg(Amd64Register.rbx, right as ast.Ident)
-					c.sub_reg(.rax, .rbx)
-					c.mov_reg_to_var(ident, Amd64Register.rax)
-				}
-				.div_assign {
-					// this should be called when `a /= b` but it's not :?
-					c.mov_var_to_reg(Amd64Register.rax, ident)
-					c.mov_var_to_reg(Amd64Register.rbx, right as ast.Ident)
-					c.div_reg(.rax, .rbx)
-					c.mov_reg_to_var(ident, Amd64Register.rax)
-				}
-				.decl_assign {
-					typ := node.left_types[i]
-					if typ.is_number() || typ.is_any_kind_of_pointer() || typ.is_bool() {
-						c.allocate_var(name, c.g.get_type_size(typ), 0)
-					} else {
-						ts := c.g.table.sym(typ)
-						match ts.info {
-							ast.Struct {
-								c.g.allocate_by_type(name, typ)
-							}
-							else {}
-						}
-					}
-					var_ := c.g.get_var_from_ident(ident)
-					// TODO global var
-					right_var := c.g.get_var_from_ident(right) as LocalVar
-					match var_ {
-						LocalVar {
-							var := var_ as LocalVar
-							if var.typ.is_number() || var.typ.is_any_kind_of_pointer()
-								|| var.typ.is_bool() {
-								c.mov_var_to_reg(Amd64Register.rax, right as ast.Ident)
-								c.mov_reg_to_var(ident, Amd64Register.rax)
-							} else {
-								ts := c.g.table.sym(var.typ)
-								match ts.info {
-									ast.Struct {
-										size := c.g.get_type_size(var.typ)
-										if size >= 8 {
-											for offset in 0 .. size / 8 {
-												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													offset: offset * 8
-													typ: ast.i64_type_idx
-												)
-												c.mov_reg_to_var(var, Amd64Register.rax,
-													offset: offset * 8
-													typ: ast.i64_type_idx
-												)
-											}
-											if size % 8 != 0 {
-												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													offset: size - 8
-													typ: ast.i64_type_idx
-												)
-												c.mov_reg_to_var(var, Amd64Register.rax,
-													offset: size - 8
-													typ: ast.i64_type_idx
-												)
-											}
-										} else {
-											mut left_size := if size >= 4 {
-												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													typ: ast.int_type_idx
-												)
-												c.mov_reg_to_var(var, Amd64Register.rax,
-													typ: ast.int_type_idx
-												)
-												size - 4
-											} else {
-												size
-											}
-											if left_size >= 2 {
-												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													offset: size - left_size
-													typ: ast.i16_type_idx
-												)
-												c.mov_reg_to_var(var, Amd64Register.rax,
-													offset: size - left_size
-													typ: ast.i16_type_idx
-												)
-												left_size -= 2
-											}
-											if left_size == 1 {
-												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													offset: size - left_size
-													typ: ast.i8_type_idx
-												)
-												c.mov_reg_to_var(var, Amd64Register.rax,
-													offset: size - left_size
-													typ: ast.i8_type_idx
-												)
-											}
-										}
-									}
-									else {
-										c.g.n_error('Unsupported variable type')
-									}
-								}
-							}
-						}
-						else {
-							c.g.n_error('Unsupported variable kind')
-						}
-					}
-				}
-				.assign {
-					var_ := c.g.get_var_from_ident(ident)
-					// TODO global var
-					right_var := c.g.get_var_from_ident(right) as LocalVar
-					match var_ {
-						LocalVar {
-							var := var_ as LocalVar
-							if var.typ.is_number() || var.typ.is_any_kind_of_pointer()
-								|| var.typ.is_bool() {
-								c.mov_var_to_reg(Amd64Register.rax, right as ast.Ident)
-								c.mov_reg_to_var(ident, Amd64Register.rax)
-							} else {
-								ts := c.g.table.sym(var.typ)
-								match ts.info {
-									ast.Struct {
-										size := c.g.get_type_size(var.typ)
-										if size >= 8 {
-											for offset in 0 .. size / 8 {
-												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													offset: offset * 8
-													typ: ast.i64_type_idx
-												)
-												c.mov_reg_to_var(var, Amd64Register.rax,
-													offset: offset * 8
-													typ: ast.i64_type_idx
-												)
-											}
-											if size % 8 != 0 {
-												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													offset: size - 8
-													typ: ast.i64_type_idx
-												)
-												c.mov_reg_to_var(var, Amd64Register.rax,
-													offset: size - 8
-													typ: ast.i64_type_idx
-												)
-											}
-										} else {
-											mut left_size := if size >= 4 {
-												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													typ: ast.int_type_idx
-												)
-												c.mov_reg_to_var(var, Amd64Register.rax,
-													typ: ast.int_type_idx
-												)
-												size - 4
-											} else {
-												size
-											}
-											if left_size >= 2 {
-												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													offset: size - left_size
-													typ: ast.i16_type_idx
-												)
-												c.mov_reg_to_var(var, Amd64Register.rax,
-													offset: size - left_size
-													typ: ast.i16_type_idx
-												)
-												left_size -= 2
-											}
-											if left_size == 1 {
-												c.mov_var_to_reg(Amd64Register.rax, right_var,
-													offset: size - left_size
-													typ: ast.i8_type_idx
-												)
-												c.mov_reg_to_var(var, Amd64Register.rax,
-													offset: size - left_size
-													typ: ast.i8_type_idx
-												)
-											}
-										}
-									}
-									else {
-										c.g.n_error('Unsupported variable type')
-									}
-								}
-							}
-						}
-						else {
-							c.g.n_error('Unsupported variable kind')
-						}
-					}
-				}
-				else {
-					eprintln('TODO: unhandled assign ident case')
-					dump(node)
-				}
-			}
-			// a += b
+		else {
+			c.g.n_error('unexpected assignment op ${node.op}')
+		}
+	}
+}
+
+fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, name string, ident ast.Ident) {	
+	match right {
+		ast.IntegerLiteral {
+			c.assign_int(node, i, name, ident, right)
+			return
+		}
+		ast.StringLiteral {
+			dest := c.allocate_var(name, 8, 0)
+			ie := right as ast.StringLiteral
+			str := c.g.eval_str_lit_escape_codes(ie)
+			c.learel(Amd64Register.rsi, c.g.allocate_string(str, 3, .rel32))
+			c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, Amd64Register.rsi)
+			return
 		}
 		ast.StructInit {
 			match node.op {
@@ -2217,32 +2104,97 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 					c.g.n_error('Unexpected operator `${node.op}`')
 				}
 			}
+			return
 		}
 		ast.ArrayInit {
-			// check if array is empty
-			mut pos := c.g.allocate_array(name, 8, right.exprs.len)
-			// allocate array of right.exprs.len vars
-			for e in right.exprs {
-				match e {
-					ast.IntegerLiteral {
-						c.mov(Amd64Register.rax, e.val.int())
-						c.mov_reg_to_var(LocalVar{pos, ast.i64_type_idx, ''}, Amd64Register.rax)
-						pos += 8
-					}
-					ast.StringLiteral {
-						// TODO: use learel
-						str := c.g.eval_str_lit_escape_codes(e)
-						c.mov64(Amd64Register.rsi, c.g.allocate_string(str, 2, .abs64)) // for rsi its 2
-						c.mov_reg_to_var(LocalVar{pos, ast.u64_type_idx, ''}, Amd64Register.rsi)
-						pos += 8
-					}
-					else {
-						dump(e)
-						c.g.n_error('unhandled array init type')
-					}
+			match node.op {
+				.decl_assign {
+					c.g.allocate_by_type(name, right.typ)
+					c.init_array(ident, right)
+				}
+				else {
+					c.g.n_error('Unexpected operator `${node.op}`')
 				}
 			}
+			return
 		}
+		ast.TypeOf {
+			c.g.gen_typeof_expr(right as ast.TypeOf, true)
+			c.mov_reg(Amd64Register.rsi, Amd64Register.rax)
+			return
+		}
+		ast.AtExpr {
+			dest := c.allocate_var(name, 8, 0)
+			c.learel(Amd64Register.rsi, c.g.allocate_string(c.g.comptime_at(right), 3,
+				.rel32))
+			c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, Amd64Register.rsi)
+			return
+		}
+		ast.IfExpr {
+			if right.is_comptime {
+				if stmts := c.g.comptime_conditional(right) {
+					for j, stmt in stmts {
+						if j + 1 != stmts.len {
+							c.g.stmt(stmt)
+							continue
+						}
+						
+						if stmt is ast.ExprStmt {
+							c.assign_right_expr(node, i, stmt.expr, name, ident)
+						} else {
+							c.g.n_error('last stmt must be expr')
+						}
+					}
+				} else {
+					c.g.n_error('missing value for assignment')
+				}
+				return
+			}
+		}
+		else {}
+	}
+
+	left_type := node.left_types[i]
+	if node.op == .decl_assign {
+		c.g.allocate_by_type(name, left_type)
+	}
+	
+	c.g.expr(right)
+
+	if node.op in [.assign, .decl_assign] {
+		var := c.g.get_var_from_ident(ident)
+		c.assign_var(var, left_type)
+	}
+	else if left_type.is_pure_float() {
+		c.mov_var_to_ssereg(.xmm1, ident)
+
+		match node.op {
+			.plus_assign { c.add_sse(.xmm1, .xmm0, left_type) }
+			.minus_assign { c.sub_sse(.xmm1, .xmm0, left_type) }
+			.mult_assign { c.mul_sse(.xmm1, .xmm0, left_type) }
+			.div_assign { c.div_sse(.xmm1, .xmm0, left_type) }
+			else { c.g.n_error('unexpected assignment operator ${node.op} for fp') }
+		}
+
+		c.mov_ssereg_to_var(ident, .xmm1)
+	}
+	else if left_type.is_int() {
+		c.mov_var_to_reg(Amd64Register.rbx, ident)
+		
+		match node.op {
+			.plus_assign { c.add_reg(.rbx, .rax) }
+			.minus_assign { c.sub_reg(.rbx, .rax) }
+			.div_assign { c.div_reg(.rbx, .rax) }
+			.mult_assign { c.mul_reg(.rbx, .rax) }
+			else { c.g.n_error('unexpected assignment operator ${node.op} for int') }
+		}
+
+		c.mov_reg_to_var(ident, Amd64Register.rbx)
+	}
+	else {
+		c.g.n_error('assignment arithmetic not implemented for type ${node.left_types[i]}')
+	}
+	/*
 		ast.IndexExpr {
 			// a := arr[0]
 			offset := c.allocate_var(name, c.g.get_sizeof_ident(ident), 0)
@@ -2271,73 +2223,7 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 			// TODO check if out of bounds access
 			c.mov_reg_to_var(ident, Amd64Register.eax)
 		}
-		ast.StringLiteral {
-			dest := c.allocate_var(name, 8, 0)
-			ie := right as ast.StringLiteral
-			str := c.g.eval_str_lit_escape_codes(ie)
-			c.learel(Amd64Register.rsi, c.g.allocate_string(str, 3, .rel32))
-			c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, Amd64Register.rsi)
-		}
-		ast.GoExpr {
-			c.g.v_error('threads not implemented for the native backend', node.pos)
-		}
-		ast.TypeOf {
-			c.g.gen_typeof_expr(right as ast.TypeOf, true)
-			c.mov_reg(Amd64Register.rsi, Amd64Register.rax)
-		}
-		ast.AtExpr {
-			dest := c.allocate_var(name, 8, 0)
-			c.learel(Amd64Register.rsi, c.g.allocate_string(c.g.comptime_at(right), 3,
-				.rel32))
-			c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, Amd64Register.rsi)
-		}
-		else {
-			if right is ast.IfExpr && (right as ast.IfExpr).is_comptime {
-				if stmts := c.g.comptime_conditional(right) {
-					for j, stmt in stmts {
-						if j + 1 == stmts.len {
-							if stmt is ast.ExprStmt {
-								c.assign_right_expr(node, i, stmt.expr, name, ident)
-							} else {
-								c.g.n_error('last stmt must be expr')
-							}
-						} else {
-							c.g.stmt(stmt)
-						}
-					}
-				} else {
-					c.g.n_error('missing value for assignment')
-				}
-				return
-			}
-
-			// dump(node)
-			size := c.g.get_type_size(node.left_types[i])
-			if size !in [1, 2, 4, 8] || node.op !in [.assign, .decl_assign] {
-				c.g.v_error('unhandled assign_stmt expression: ${right.type_name()}',
-					right.pos())
-			}
-			if node.op == .decl_assign {
-				c.allocate_var(name, size, 0)
-			}
-			c.g.expr(right)
-			var := c.g.get_var_from_ident(ident)
-			if node.left_types[i].is_pure_float() {
-				match var {
-					LocalVar { c.mov_ssereg_to_var(var as LocalVar, .xmm0) }
-					GlobalVar { c.mov_ssereg_to_var(var as GlobalVar, .xmm0) }
-					// Amd64Register { c.g.mov_ssereg(var as Amd64Register, .xmm0) }
-					else {}
-				}
-			} else {
-				match var {
-					LocalVar { c.mov_reg_to_var(var as LocalVar, Amd64Register.rax) }
-					GlobalVar { c.mov_reg_to_var(var as GlobalVar, Amd64Register.rax) }
-					Register { c.mov_reg(var as Amd64Register, Amd64Register.rax) }
-				}
-			}
-		}
-	}
+	}*/
 }
 
 fn (mut c Amd64) gen_type_promotion(from ast.Type, to ast.Type, option Amd64RegisterOption) {
@@ -3564,7 +3450,38 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 			}
 		}
 		GlobalVar {
-			// TODO
+			c.g.n_error('GlobalVar not implemented for ast.StructInit')
+		}
+	}
+}
+
+fn (mut c Amd64) init_array(var Var, node ast.ArrayInit) {
+	match var {
+		ast.Ident {
+			var_object := c.g.get_var_from_ident(var)
+			match var_object {
+				LocalVar {
+					c.init_array(var_object as LocalVar, node)
+				}
+				GlobalVar {
+					c.init_array(var_object as GlobalVar, node)
+				}
+				Register {
+					// TODO
+					// c.g.cmp()
+				}
+			}
+		}
+		LocalVar {
+			mut offset := var.offset
+			for expr in node.exprs {
+				c.g.expr(expr)
+				c.mov_reg_to_var(LocalVar{offset, ast.i64_type_idx, ''}, c.main_reg())
+				offset += 8
+			}
+		}
+		GlobalVar {
+			c.g.n_error('GlobalVar not implemented for ast.ArrayInit')
 		}
 	}
 }

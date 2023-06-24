@@ -442,6 +442,10 @@ fn (mut c Arm64) init_struct(var Var, init ast.StructInit) {
 	panic('Arm64.init_struct() not implemented')
 }
 
+fn (mut c Arm64) init_array(var Var, init ast.ArrayInit) {
+	panic('Arm64.init_array() not implemented')
+}
+
 fn (mut c Arm64) load_fp_var(var Var, config VarConfig) {
 	panic('Arm64.load_fp_var() not implemented')
 }

@@ -99,6 +99,7 @@ mut:
 	infix_expr(node ast.InfixExpr) // TODO: make platform-independant
 	infloop()
 	init_struct(var Var, init ast.StructInit)
+	init_array(var Var, init ast.ArrayInit)
 	jmp_back(start i64)
 	jmp(addr int) int
 	lea_var_to_reg(r Register, var_offset int)

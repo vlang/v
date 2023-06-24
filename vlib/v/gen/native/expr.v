@@ -11,7 +11,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.expr(node.expr)
 		}
 		ast.ArrayInit {
-			g.n_error('array init expr not supported yet')
+			pos := g.allocate_array('_anonarray', 8, node.exprs.len)
+			g.code_gen.init_array(LocalVar{ offset: pos, typ: node.typ }, node)
+			g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), pos)
 		}
 		ast.BoolLiteral {
 			g.code_gen.mov64(g.code_gen.main_reg(), if node.val {
@@ -75,10 +77,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.code_gen.infix_expr(node)
 		}
 		ast.IntegerLiteral {
-			g.code_gen.movabs(g.code_gen.main_reg(), i64(node.val.u64()))
+			g.code_gen.mov64(g.code_gen.main_reg(), i64(node.val.u64()))
 		}
 		ast.Nil {
-			g.code_gen.movabs(g.code_gen.main_reg(), 0)
+			g.code_gen.mov64(g.code_gen.main_reg(), 0)
 		}
 		ast.PostfixExpr {
 			g.postfix_expr(node)
