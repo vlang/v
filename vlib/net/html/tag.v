@@ -82,7 +82,7 @@ pub fn (tag &Tag) get_tag(name string) ?&Tag {
 	return none
 }
 
-// get_tags retrieves all the child tags recursively in the tag that has the given tag name.
+// get_tags retrieves all child tags recursively in the tag that have the given tag name.
 pub fn (tag &Tag) get_tags(name string) []&Tag {
 	mut res := []&Tag{}
 	for child in tag.children {
@@ -107,7 +107,7 @@ pub fn (tag &Tag) get_tag_by_attribute(name string) ?&Tag {
 	return none
 }
 
-// get_tags_by_attribute retrieves all the child tags recursively in the tag that has the given attribute name.
+// get_tags_by_attribute retrieves all child tags recursively in the tag that have the given attribute name.
 pub fn (tag &Tag) get_tags_by_attribute(name string) []&Tag {
 	mut res := []&Tag{}
 	for child in tag.children {
@@ -132,7 +132,7 @@ pub fn (tag &Tag) get_tag_by_attribute_value(name string, value string) ?&Tag {
 	return none
 }
 
-// get_tags_by_attribute_value retrieves all the child tags recursively in the tag that has the given attribute name and value.
+// get_tags_by_attribute_value retrieves all child tags recursively in the tag that have the given attribute name and value.
 pub fn (tag &Tag) get_tags_by_attribute_value(name string, value string) []&Tag {
 	mut res := []&Tag{}
 	for child in tag.children {
@@ -164,7 +164,7 @@ pub fn (tag &Tag) get_tag_by_class_name(names ...string) ?&Tag {
 	return none
 }
 
-// get_tags_by_class_name retrieves all the child tags recursively in the tag that has the given class name(s).
+// get_tags_by_class_name retrieves all child tags recursively in the tag that have the given class name(s).
 pub fn (tag &Tag) get_tags_by_class_name(names ...string) []&Tag {
 	mut res := []&Tag{}
 	for child in tag.children {
