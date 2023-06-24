@@ -2018,19 +2018,16 @@ fn (mut c Amd64) assign_var(var IdentVar, typ ast.Type) {
 			// Amd64Register { c.g.mov_ssereg(var as Amd64Register, .xmm0) }
 			else {}
 		}
-	}
-	else if c.g.table.sym(typ).info is ast.Struct && !typ.is_any_kind_of_pointer() {
+	} else if c.g.table.sym(typ).info is ast.Struct && !typ.is_any_kind_of_pointer() {
 		c.assign_struct_var(var, typ, size)
-	}
-	else if size in [1, 2, 4, 8] {
+	} else if size in [1, 2, 4, 8] {
 		match var {
 			LocalVar { c.mov_reg_to_var(var as LocalVar, Amd64Register.rax) }
 			GlobalVar { c.mov_reg_to_var(var as GlobalVar, Amd64Register.rax) }
 			Register { c.mov_reg(var as Amd64Register, Amd64Register.rax) }
 		}
-	}
-	else {
-		c.g.n_error("error assigning type ${typ} with size ${size}")
+	} else {
+		c.g.n_error('error assigning type ${typ} with size ${size}')
 	}
 }
 
@@ -2080,7 +2077,7 @@ fn (mut c Amd64) assign_int(node ast.AssignStmt, i int, name string, ident ast.I
 	}
 }
 
-fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, name string, ident ast.Ident) {	
+fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, name string, ident ast.Ident) {
 	match right {
 		ast.IntegerLiteral {
 			c.assign_int(node, i, name, ident, right)
@@ -2138,7 +2135,7 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 							c.g.stmt(stmt)
 							continue
 						}
-						
+
 						if stmt is ast.ExprStmt {
 							c.assign_right_expr(node, i, stmt.expr, name, ident)
 						} else {
@@ -2158,14 +2155,13 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 	if node.op == .decl_assign {
 		c.g.allocate_by_type(name, left_type)
 	}
-	
+
 	c.g.expr(right)
 
 	if node.op in [.assign, .decl_assign] {
 		var := c.g.get_var_from_ident(ident)
 		c.assign_var(var, left_type)
-	}
-	else if left_type.is_pure_float() {
+	} else if left_type.is_pure_float() {
 		c.mov_var_to_ssereg(.xmm1, ident)
 
 		match node.op {
@@ -2177,10 +2173,9 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 		}
 
 		c.mov_ssereg_to_var(ident, .xmm1)
-	}
-	else if left_type.is_int() {
+	} else if left_type.is_int() {
 		c.mov_var_to_reg(Amd64Register.rbx, ident)
-		
+
 		match node.op {
 			.plus_assign { c.add_reg(.rbx, .rax) }
 			.minus_assign { c.sub_reg(.rbx, .rax) }
@@ -2190,12 +2185,11 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 		}
 
 		c.mov_reg_to_var(ident, Amd64Register.rbx)
-	}
-	else {
+	} else {
 		c.g.n_error('assignment arithmetic not implemented for type ${node.left_types[i]}')
 	}
 	/*
-		ast.IndexExpr {
+	ast.IndexExpr {
 			// a := arr[0]
 			offset := c.allocate_var(name, c.g.get_sizeof_ident(ident), 0)
 			if c.g.pref.is_verbose {
