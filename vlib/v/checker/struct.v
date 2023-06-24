@@ -129,6 +129,12 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if sym.kind == .none_ {
 				c.error('cannot use `none` as field type', field.type_pos)
 			}
+			if sym.kind == .map {
+				info := sym.map_info()
+				if info.value_type.has_flag(.result) {
+					c.error('cannot use Result type as map value type', field.type_pos)
+				}
+			}
 
 			if field.has_default_expr {
 				c.expected_type = field.typ
