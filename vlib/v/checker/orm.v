@@ -346,10 +346,10 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, t
 		return []ast.StructField{}
 	}
 
-	mut field_pos := token.Pos{}
-	if sql_expr.where_expr is ast.InfixExpr {
+	field_pos := c.get_field_pos(sql_expr.where_expr)
+	/*if sql_expr.where_expr is ast.InfixExpr {
 		field_pos = sql_expr.where_expr.left.pos()
-	}
+	}*/
 	for field in info.fields {
 		if c.table.sym(field.typ).kind == .array
 			&& c.table.sym(c.table.sym(field.typ).array_info().elem_type).is_primitive() {
@@ -624,4 +624,18 @@ fn (_ &Checker) check_field_of_inserting_struct_is_uninitialized(node &ast.SqlSt
 	}
 
 	return false
+}
+
+fn (c &Checker) get_field_pos(expr &ast.Expr) token.Pos {
+	mut pos := token.Pos{}
+	if expr is ast.InfixExpr {
+		if expr.left is ast.Ident {
+			pos = expr.left.pos
+		}
+		else if expr.left is ast.InfixExpr || expr.left is ast.ParExpr
+		|| expr.left is ast.PrefixExpr {
+			pos = c.get_field_pos(expr.left)
+		}
+	}
+	return pos
 }
