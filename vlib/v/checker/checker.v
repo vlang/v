@@ -4035,8 +4035,8 @@ fn (mut c Checker) type_error_for_operator(op_label string, types_label string, 
 }
 
 fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_type ast.Type, pos token.Pos, range_index bool, is_gated bool) {
-	index_type_sym := c.table.sym(index_type)
 	if typ_sym.kind in [.array, .array_fixed, .string] {
+		index_type_sym := c.table.sym(index_type)
 		if !(index_type.is_int() || index_type_sym.kind == .enum_
 			|| (index_type_sym.kind == .alias
 			&& (index_type_sym.info as ast.Alias).parent_type.is_int())
@@ -4102,9 +4102,16 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		}
 		else {}
 	}
+	is_aggregate_arr := typ_sym.kind == .aggregate
+		&& (typ_sym.info as ast.Aggregate).types.filter(c.table.type_kind(it) !in [.array, .array_fixed, .string, .map]).len == 0
 	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr()
-		&& typ !in [ast.byteptr_type, ast.charptr_type] && !typ.has_flag(.variadic) {
+		&& typ !in [ast.byteptr_type, ast.charptr_type] && !typ.has_flag(.variadic)
+		&& !is_aggregate_arr {
 		c.error('type `${typ_sym.name}` does not support indexing', node.pos)
+	}
+	if is_aggregate_arr {
+		// treating indexexpr of sumtype of array types
+		typ = (typ_sym.info as ast.Aggregate).types[0]
 	}
 	if typ.has_flag(.option) {
 		if node.left is ast.Ident && (node.left as ast.Ident).or_expr.kind == .absent {
