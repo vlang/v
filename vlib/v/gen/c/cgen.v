@@ -1888,7 +1888,11 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		g.writeln('${g.typ(ret_typ)} ${tmp_var};')
 		if ret_typ.has_flag(.option) {
 			if expr_typ.has_flag(.option) && expr in [ast.StructInit, ast.ArrayInit, ast.MapInit] {
-				g.write('_option_none(&(${styp}[]) { ')
+				if expr is ast.StructInit && (expr as ast.StructInit).init_fields.len > 0 {
+					g.write('_option_ok(&(${styp}[]) { ')
+				} else {
+					g.write('_option_none(&(${styp}[]) { ')
+				}
 			} else {
 				is_ptr_to_ptr_assign = (expr is ast.SelectorExpr
 					|| (expr is ast.Ident && !(expr as ast.Ident).is_auto_heap()))
