@@ -14,5 +14,9 @@ fn main() {
 	e := sql db {
 		select from Example where example == bytes
 	}!
+	f := sql db {
+    		select from Example where (example == bytes)
+    	}!
 	print(e)
+	print(f)
 }

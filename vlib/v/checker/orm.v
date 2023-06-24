@@ -346,15 +346,14 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, t
 		return []ast.StructField{}
 	}
 
-	field_pos := c.get_field_pos(sql_expr.where_expr)
-	/*if sql_expr.where_expr is ast.InfixExpr {
-		field_pos = sql_expr.where_expr.left.pos()
-	}*/
+	field_pos := c.orm_get_field_pos(sql_expr.where_expr)
 	for field in info.fields {
 		if c.table.sym(field.typ).kind == .array
 			&& c.table.sym(c.table.sym(field.typ).array_info().elem_type).is_primitive() {
-			c.orm_error('select: field `${field.name}` has unsupported data type `${c.table.type_to_str(field.typ)}`',
-				field_pos)
+			c.add_error_detail('')
+			c.add_error_detail(' field name: `${field.name}`')
+			c.add_error_detail(' data type: `${c.table.type_to_str(field.typ)}`')
+			c.orm_error('does not support array of primitive types', field_pos)
 			return []ast.StructField{}
 		}
 	}
@@ -626,16 +625,19 @@ fn (_ &Checker) check_field_of_inserting_struct_is_uninitialized(node &ast.SqlSt
 	return false
 }
 
-fn (c &Checker) get_field_pos(expr &ast.Expr) token.Pos {
+fn (c &Checker) orm_get_field_pos(expr &ast.Expr) token.Pos {
 	mut pos := token.Pos{}
 	if expr is ast.InfixExpr {
 		if expr.left is ast.Ident {
 			pos = expr.left.pos
-		}
-		else if expr.left is ast.InfixExpr || expr.left is ast.ParExpr
-		|| expr.left is ast.PrefixExpr {
+		} else if expr.left is ast.InfixExpr || expr.left is ast.ParExpr
+			|| expr.left is ast.PrefixExpr {
 			pos = c.get_field_pos(expr.left)
+		} else {
+			pos = expr.left.pos()
 		}
+	} else {
+		pos = expr.pos()
 	}
 	return pos
 }
