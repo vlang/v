@@ -232,10 +232,10 @@ pub:
 
 type VectoredExceptionHandler = fn (&ExceptionPointers) int
 
-fn C.AddVectoredExceptionHandler(int, C.PVECTORED_EXCEPTION_HANDLER)
+fn C.AddVectoredExceptionHandler(int, voidptr)
 
 fn add_vectored_exception_handler(handler VectoredExceptionHandler) {
-	C.AddVectoredExceptionHandler(1, C.PVECTORED_EXCEPTION_HANDLER(handler))
+	C.AddVectoredExceptionHandler(1, voidptr(handler))
 }
 
 [callconv: stdcall]
