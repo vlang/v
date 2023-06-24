@@ -1,0 +1,5 @@
+vlib/v/checker/tests/map_with_result_value_err.vv:2:8: error: cannot use Result type as map value type
+    1 | fn main() {
+    2 |   dump(map[string]!string{})
+      |        ~~~~~~~~~~~~~~~~~~~~
+    3 | }
