@@ -4806,7 +4806,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					}
 				}
 				g.write_defer_stmts_when_needed()
-				g.writeln('return ${tmpvar}; //test')
+				g.writeln('return ${tmpvar};')
 			}
 			return
 		}
@@ -4834,7 +4834,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln(';')
 			if use_tmp_var {
 				g.write_defer_stmts_when_needed()
-				g.writeln('return ${tmpvar}; //test1')
+				g.writeln('return ${tmpvar};')
 			}
 			return
 		}
@@ -4942,7 +4942,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.writeln(';')
 			}
 			g.write_defer_stmts_when_needed()
-			g.writeln('return ${tmpvar}; //test2')
+			g.writeln('return ${tmpvar};')
 			has_semicolon = true
 		}
 	} else if node.exprs.len >= 1 {
@@ -4981,7 +4981,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln(' }, (${c.option_name}*)(&${tmpvar}), sizeof(${styp}));')
 			g.write_defer_stmts_when_needed()
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
-			g.writeln('return ${tmpvar}; //test4')
+			g.writeln('return ${tmpvar};')
 			return
 		}
 		expr_type_is_result := match expr0 {
@@ -5014,7 +5014,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln(' }, (${c.result_name}*)(&${tmpvar}), sizeof(${styp}));')
 			g.write_defer_stmts_when_needed()
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
-			g.writeln('return ${tmpvar}; //test 4')
+			g.writeln('return ${tmpvar};')
 			return
 		}
 		// autofree before `return`
@@ -5092,7 +5092,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if !g.is_builtin_mod {
 				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			}
-			g.write('return ${tmpvar} /* test5 */')
+			g.write('return ${tmpvar}')
 			has_semicolon = false
 		}
 	} else {
