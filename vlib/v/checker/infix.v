@@ -522,6 +522,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				} else if c.check_types(unwrapped_right_type, c.unwrap_generic(left_type)) {
 					return ast.void_type
 				}
+				if left_value_type.has_flag(.option) && right_type == ast.none_type {
+					return ast.void_type
+				}
 				c.error('cannot append `${right_sym.name}` to `${left_sym.name}`', right_pos)
 				return ast.void_type
 			} else {
