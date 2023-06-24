@@ -110,8 +110,15 @@ fn C.stbi_load(filename &char, x &int, y &int, channels_in_file &int, desired_ch
 fn C.stbi_load_from_file(f voidptr, x &int, y &int, channels_in_file &int, desired_channels int) &u8
 fn C.stbi_load_from_memory(buffer &u8, len int, x &int, y &int, channels_in_file &int, desired_channels int) &u8
 
+[params]
+pub struct LoadParams {
+	// the number of channels you expect the image to have.
+	// If set to 0 stbi will figure out the correct number of channels
+	desired_channels int = C.STBI_rgb_alpha
+}
+
 // load load an image from a path
-pub fn load(path string) !Image {
+pub fn load(path string, params LoadParams) !Image {
 	ext := path.all_after_last('.')
 	mut res := Image{
 		ok: true
@@ -119,7 +126,7 @@ pub fn load(path string) !Image {
 		data: 0
 	}
 	res.data = C.stbi_load(&char(path.str), &res.width, &res.height, &res.nr_channels,
-		C.STBI_rgb_alpha)
+		params.desired_channels)
 
 	if isnil(res.data) {
 		return error('stbi_image failed to load from "${path}"')

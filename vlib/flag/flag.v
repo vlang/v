@@ -307,6 +307,7 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand u8) !string {
 			}
 			if arg.len > 1 && arg[0] == `-` && arg[1] != `-` && arg.index_u8(shorthand) != -1 {
 				// -abc is equivalent to -a -b -c
+				fs.args[i] = arg.replace(shorthand.ascii_str(), '') // -abc -> -bc
 				return 'true'
 			}
 		}

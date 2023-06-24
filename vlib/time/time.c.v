@@ -18,7 +18,7 @@ fn C.time(t &C.time_t) C.time_t
 
 fn C.gmtime(t &C.time_t) &C.tm
 fn C.gmtime_r(t &C.time_t, res &C.tm) &C.tm
-fn C.strftime(buf &C.char, maxsize C.size_t, fmt &C.char, tm &C.tm) C.size_t
+fn C.strftime(buf &char, maxsize usize, const_format &char, const_tm &C.tm) usize
 
 // now returns current local time.
 pub fn now() Time {
@@ -129,8 +129,8 @@ pub fn (t Time) strftime(fmt string) string {
 	} $else {
 		C.gmtime_r(voidptr(&t.unix), tm)
 	}
-	mut buf := [1024]C.char{}
-	fmt_c := unsafe { &C.char(fmt.str) }
-	C.strftime(&buf[0], C.size_t(sizeof(buf)), fmt_c, tm)
+	mut buf := [1024]char{}
+	fmt_c := unsafe { &char(fmt.str) }
+	C.strftime(&buf[0], usize(sizeof(buf)), fmt_c, tm)
 	return unsafe { cstring_to_vstring(&char(&buf[0])) }
 }

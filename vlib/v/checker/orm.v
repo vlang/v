@@ -605,7 +605,7 @@ fn (_ &Checker) check_field_of_inserting_struct_is_uninitialized(node &ast.SqlSt
 	struct_scope := node.scope.find_var(node.object_var_name) or { return false }
 
 	if struct_scope.expr is ast.StructInit {
-		return struct_scope.expr.fields.filter(it.name == field_name).len == 0
+		return struct_scope.expr.init_fields.filter(it.name == field_name).len == 0
 	}
 
 	return false

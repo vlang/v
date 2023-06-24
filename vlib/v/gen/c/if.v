@@ -139,8 +139,8 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			if g.need_tmp_var_in_expr(expr.update_expr) {
 				return true
 			}
-			for field in expr.fields {
-				if g.need_tmp_var_in_expr(field.expr) {
+			for init_field in expr.init_fields {
+				if g.need_tmp_var_in_expr(init_field.expr) {
 					return true
 				}
 			}

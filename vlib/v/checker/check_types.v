@@ -694,7 +694,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 			for ft in sym.info.fields {
 				field_sym := c.table.sym(ft.typ)
 				if field_sym.name == gt_name {
-					for t in node.fields {
+					for t in node.init_fields {
 						if ft.name == t.name && t.typ != 0 {
 							concrete_types << ast.mktyp(t.typ)
 							continue gname
@@ -702,7 +702,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 					}
 				}
 				if field_sym.info is ast.Array {
-					for t in node.fields {
+					for t in node.init_fields {
 						if ft.name == t.name {
 							init_sym := c.table.sym(t.typ)
 							if init_sym.info is ast.Array {
@@ -730,7 +730,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 						}
 					}
 				} else if field_sym.info is ast.ArrayFixed {
-					for t in node.fields {
+					for t in node.init_fields {
 						if ft.name == t.name {
 							init_sym := c.table.sym(t.typ)
 							if init_sym.info is ast.ArrayFixed {
@@ -758,7 +758,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 						}
 					}
 				} else if field_sym.info is ast.Map {
-					for t in node.fields {
+					for t in node.init_fields {
 						if ft.name == t.name {
 							init_sym := c.table.sym(t.typ)
 							if init_sym.info is ast.Map {
@@ -786,7 +786,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 						}
 					}
 				} else if field_sym.info is ast.FnType {
-					for t in node.fields {
+					for t in node.init_fields {
 						if ft.name == t.name {
 							init_sym := c.table.sym(t.typ)
 							if init_sym.info is ast.FnType {

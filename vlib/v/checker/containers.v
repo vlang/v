@@ -440,8 +440,10 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 					c.error('invalid map value: ${msg}', val.pos())
 				}
 			}
-			if !c.check_types(val_type, val0_type) || (i == 0 && val_type.is_number()
-				&& val0_type.is_number() && val0_type != ast.mktyp(val_type)) {
+			if !c.check_types(val_type, val0_type)
+				|| val0_type.has_flag(.option) != val_type.has_flag(.option)
+				|| (i == 0 && val_type.is_number() && val0_type.is_number()
+				&& val0_type != ast.mktyp(val_type)) {
 				msg := c.expected_msg(val_type, val0_type)
 				c.error('invalid map value: ${msg}', val.pos())
 			}

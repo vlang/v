@@ -1,0 +1,7 @@
+vlib/v/parser/tests/match_multi_else_branch_err.vv:5:3: error: `match` can have only one `else` branch
+    3 |         true { 1 }
+    4 |         else { 3 }
+    5 |         else { 5 }
+      |         ~~~~
+    6 |     }
+    7 | }

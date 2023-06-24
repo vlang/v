@@ -449,7 +449,7 @@ pub type VectoredExceptionHandler = fn (&ExceptionPointers) u32
 // duplicate definitions from displeasing the compiler
 // fn C.AddVectoredExceptionHandler(u32, VectoredExceptionHandler)
 pub fn add_vectored_exception_handler(first bool, handler VectoredExceptionHandler) {
-	C.AddVectoredExceptionHandler(u32(first), C.PVECTORED_EXCEPTION_HANDLER(handler))
+	C.AddVectoredExceptionHandler(u32(first), voidptr(handler))
 }
 
 // uname returns information about the platform on which the program is running.
