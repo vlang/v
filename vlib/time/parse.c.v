@@ -141,11 +141,11 @@ pub fn parse_format(s string, format string) !Time {
 	return p.parse()
 }
 
-// parse_iso8601 parses rfc8601 time format yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd as local time
-// the fraction part is difference in milli seconds and the last part is offset
-// from UTC time and can be both +/- HH:mm
-// remarks: not all iso8601 is supported
-// also checks and support for leapseconds should be added in future PR
+// parse_iso8601 parses the ISO 8601 time format yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd as local time.
+// The fraction part is difference in milli seconds, and the last part is offset from UTC time.
+// Both can be +/- HH:mm .
+// See https://en.wikipedia.org/wiki/ISO_8601 .
+// Remarks: not all of ISO 8601 is supported; checks and support for leapseconds should be added.
 pub fn parse_iso8601(s string) !Time {
 	if s == '' {
 		return error_invalid_time(0, 'datetime string is empty')
