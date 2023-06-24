@@ -3698,14 +3698,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	// var?.field_opt
 	field_is_opt := (node.expr is ast.Ident && (node.expr as ast.Ident).is_auto_heap()
 		&& (node.expr as ast.Ident).or_expr.kind != .absent && field_typ.has_flag(.option))
-	// var.field_opt
-	only_field_is_opt := (node.expr is ast.Ident && !node.expr_type.is_ptr()
-		&& !node.expr_type.has_flag(.option) && field_typ.is_ptr() && field_typ.has_flag(.option))
-		&& g.inside_call
 	if field_is_opt {
 		g.write('((${g.base_type(field_typ)})')
-	} else if only_field_is_opt {
-		g.write('*((${g.base_type(field_typ)}*)&')
 	}
 	n_ptr := node.expr_type.nr_muls() - 1
 	if n_ptr > 0 {
@@ -3760,9 +3754,6 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	if sym.kind in [.interface_, .sum_type] {
 		g.write('))')
-	}
-	if only_field_is_opt {
-		g.write('.data)')
 	}
 }
 
