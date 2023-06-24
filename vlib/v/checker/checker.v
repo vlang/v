@@ -4657,6 +4657,7 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
 	}
 }
 
+// return true if a violation of a shared variable access rule is detected
 fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) bool {
 	mut pos := token.Pos{}
 	match expr {
