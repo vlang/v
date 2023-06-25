@@ -123,13 +123,7 @@ pub fn decode[T](src string) !T {
 					typ.$(field.name) = res[field.name]!.to_time()!
 				}
 			} $else $if field.is_array {
-				// typed_arr_element := new_empty_element_from(typ.$(field.name))
-
-				// for variable in res[field.name] or { []Any{} }.arr() {
-				// 	$if typed_arr_element is string {
-				// 		typ.$(field.name) << variable.str()
-				// 	}
-				// }
+				// typ.$(field.name) = res[field.name]!.arr()
 			} $else $if field.is_struct {
 			} $else $if field.is_alias {
 			} $else $if field.is_map {
@@ -156,11 +150,6 @@ pub fn decode[T](src string) !T {
 		return error("The type `${T.name}` can't be decoded.")
 	}
 	return typ
-}
-
-// new_empty_element_from usefull for `$if new_empty_element_from(typ.$(field.name)) is $Struct`
-fn new_empty_element_from[T](t []T) T {
-	return T{}
 }
 
 // encode is a generic function that encodes a type into a JSON string.
