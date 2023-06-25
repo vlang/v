@@ -349,6 +349,9 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 	if node.typ != 0 {
 		info := c.table.sym(node.typ).map_info()
 		if info.value_type != 0 {
+			if info.value_type.has_flag(.result) {
+				c.error('cannot use Result type as map value type', node.pos)
+			}
 			val_sym := c.table.sym(info.value_type)
 			if val_sym.kind == .struct_ {
 				val_info := val_sym.info as ast.Struct
