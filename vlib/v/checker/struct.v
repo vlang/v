@@ -135,6 +135,13 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					c.error('cannot use Result type as map value type', field.type_pos)
 				}
 			}
+			if sym.kind == .function {
+				fn_info := sym.info as ast.FnType
+				if !field.typ.has_flag(.option) && fn_info.is_anon {
+					c.warn('direct function declaration is not recommended, use Option instead (?fn ...)',
+						field.type_pos)
+				}
+			}
 
 			if field.has_default_expr {
 				c.expected_type = field.typ
