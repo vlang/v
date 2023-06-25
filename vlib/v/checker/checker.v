@@ -553,6 +553,9 @@ fn (mut c Checker) fn_type_decl(node ast.FnTypeDecl) {
 	if ret_sym.kind == .placeholder {
 		c.error('unknown type `${ret_sym.name}`', fn_info.return_type_pos)
 	}
+	if !node.typ.has_flag(.option) {
+		c.warn('you should declare it as Option instead', node.type_pos)
+	}
 	for arg in fn_info.params {
 		c.ensure_type_exists(arg.typ, arg.type_pos) or { return }
 		arg_sym := c.table.sym(arg.typ)

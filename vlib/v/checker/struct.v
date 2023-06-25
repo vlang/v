@@ -137,9 +137,13 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			}
 			if sym.kind == .function {
 				fn_info := sym.info as ast.FnType
-				if !field.typ.has_flag(.option) && fn_info.is_anon {
-					c.warn('direct function declaration is not recommended, use Option instead (?fn ...)',
-						field.type_pos)
+				if !field.typ.has_flag(.option) {
+					if fn_info.is_anon {
+						c.warn('you should declare it as Option instead (?fn ...)', field.type_pos)
+					} else {
+						c.warn('this is not recommended, you should use Option function instead',
+							field.type_pos)
+					}
 				}
 			}
 
