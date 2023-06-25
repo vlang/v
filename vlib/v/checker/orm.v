@@ -636,6 +636,10 @@ fn (c &Checker) orm_get_field_pos(expr &ast.Expr) token.Pos {
 		} else {
 			pos = expr.left.pos()
 		}
+	} else if expr is ast.ParExpr {
+		pos = c.orm_get_field_pos(expr.expr)
+	} else if expr is ast.PrefixExpr {
+		pos = c.orm_get_field_pos(expr.right)
 	} else {
 		pos = expr.pos()
 	}

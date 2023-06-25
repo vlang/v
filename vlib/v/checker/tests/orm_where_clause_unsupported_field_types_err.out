@@ -8,11 +8,11 @@ vlib/v/checker/tests/orm_where_clause_unsupported_field_types_err.vv:15:29: erro
 Details:
  field name: `example`
  data type: `[]u8`
-vlib/v/checker/tests/orm_where_clause_unsupported_field_types_err.vv:18:33: error: V ORM: does not support array of primitive types
+vlib/v/checker/tests/orm_where_clause_unsupported_field_types_err.vv:18:34: error: V ORM: does not support array of primitive types
    16 |     }!
    17 |     f := sql db {
    18 |             select from Example where (example == bytes)
-      |                                       ~~~~~~~~~~~~~~~~~~
+      |                                        ~~~~~~~
    19 |         }!
    20 |     print(e)
 Details:
