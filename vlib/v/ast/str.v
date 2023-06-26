@@ -382,7 +382,7 @@ pub fn (x Expr) str() string {
 				return '${x.name}(${sargs})${propagate_suffix}'
 			}
 			if x.name.contains('__static__') {
-				return '${x.mod}.${x.name}(${sargs})${propagate_suffix}1'
+				return '${x.mod}.${x.name}(${sargs})${propagate_suffix}'
 			}
 			return '${x.mod}.${x.name}(${sargs})${propagate_suffix}'
 		}

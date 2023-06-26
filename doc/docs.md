@@ -97,6 +97,7 @@ by using any of the following commands in a terminal:
     * [Trailing struct literal arguments](#trailing-struct-literal-arguments)
     * [Access modifiers](#access-modifiers)
     * [Anonymous structs](#anonymous-structs)
+	* [Static type methods](#static-type-methods)
     * [[noinit] structs](#noinit-structs)
     * [Methods](#methods)
     * [Embedded structs](#embedded-structs)
@@ -2429,6 +2430,19 @@ book := Book{
 }
 assert book.author.name == 'Samantha Black'
 assert book.author.age == 24
+```
+
+### Static type methods
+
+V now supports static type methods like `User.new()`. These are defined on a struct via
+`fn [Type name].[function name] and allow to organize all functions related to a struct:
+
+```v oksyntax
+struct User { }
+
+fn User.new() User { return User{} }
+
+user := User.new()
 ```
 
 ### `[noinit]` structs
