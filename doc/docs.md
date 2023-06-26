@@ -97,7 +97,7 @@ by using any of the following commands in a terminal:
     * [Trailing struct literal arguments](#trailing-struct-literal-arguments)
     * [Access modifiers](#access-modifiers)
     * [Anonymous structs](#anonymous-structs)
-	* [Static type methods](#static-type-methods)
+    * [Static type methods](#static-type-methods)
     * [[noinit] structs](#noinit-structs)
     * [Methods](#methods)
     * [Embedded structs](#embedded-structs)
@@ -2435,15 +2435,23 @@ assert book.author.age == 24
 ### Static type methods
 
 V now supports static type methods like `User.new()`. These are defined on a struct via
-`fn [Type name].[function name] and allow to organize all functions related to a struct:
+`fn [Type name].[function name]` and allow to organize all functions related to a struct:
 
 ```v oksyntax
 struct User { }
 
-fn User.new() User { return User{} }
+fn User.new() User {
+	return User{}
+}
 
 user := User.new()
 ```
+
+This is an alternative to factory functions like `fn new_user() User {}` and should be used
+instead.
+
+Note, that these are not constructors, but simple functions. V doesn't have constructors or
+classes.
 
 ### `[noinit]` structs
 

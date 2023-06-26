@@ -2593,7 +2593,6 @@ fn (mut p Parser) name_expr() ast.Expr {
 	is_generic_call := p.is_generic_call()
 	is_generic_cast := p.is_generic_cast()
 	is_generic_struct_init := p.is_generic_struct_init()
-	// mut is_static_type_method := false
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	same_line := p.tok.line_nr == p.peek_tok.line_nr
 	// `(` must be on same line as name token otherwise it's a ParExpr
@@ -2675,7 +2674,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 			return node
 		} else {
 			// fn call
-			// fn_call:
+			// fn_call
 			if is_option {
 				p.unexpected_with_pos(p.prev_tok.pos(),
 					got: '${p.prev_tok}'

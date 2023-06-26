@@ -1,6 +1,6 @@
 // Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
-// that ca be found in the LICENSE file.
+// that can be found in the LICENSE file.
 module parser
 
 import v.ast
@@ -299,7 +299,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			&& p.peek_tok.kind == .dot && language == .v // `fn Foo.bar() {}`
 		if is_static_type_method {
 			type_name := p.tok.lit // "Foo"
-			rec.typ = p.parse_type() //_with_mut(false) // ast.Type(p.table.find_type_idx(name))
+			rec.typ = p.parse_type()
 			p.check(.dot)
 			name = type_name.to_lower() + '__static__' + p.check_name() // "foo__bar"
 		} else {
