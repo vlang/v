@@ -65,10 +65,38 @@ pub interface Any {}
 pub interface Context {
 	deadline() ?time.Time
 	value(key Key) ?Any
-	str() string
 mut:
 	done() chan int
 	err() IError
+}
+
+pub fn (ctx Context) str() string {
+	// since `Context` is an interface we have to manually match every possible
+	// type that implements `Context` if we want to use a `Context` as a field in a struct
+	// since the `Context` interface has to implement its own `str` method.
+	match ctx {
+		BackgroundContext {
+			return ctx.str()
+		}
+		EmptyContext {
+			return ctx.str()
+		}
+		TodoContext {
+			return ctx.str()
+		}
+		CancelContext {
+			return ctx.str()
+		}
+		TimerContext {
+			return ctx.str()
+		}
+		ValueContext {
+			return ctx.str()
+		}
+		else {
+			return context_name(ctx)
+		}
+	}
 }
 
 fn context_name(ctx Context) string {

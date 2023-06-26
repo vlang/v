@@ -433,6 +433,24 @@ When you visit the index page the middleware function `get_session` will run fir
 This function sets a `User` value to a key `'user'`.
 We get this key in `index` and display it to the user if the `'user'` key exists.
 
+#### Changing Context values
+
+By default context values are immutable when retrieved with `get_value`. If you want to 
+change the value later you have to set it again with `set_value`.
+
+**Example:**
+```v ignore
+fn change_user(mut ctx vweb.Context) bool {
+	user := User{
+		session_id: '654321'
+		name: 'tester'
+	}
+
+	// set the user
+	ctx.set_value('user', user)
+	return true
+}
+```
 
 ### Redirect
 
