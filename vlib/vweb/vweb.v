@@ -12,6 +12,7 @@ import net.urllib
 import time
 import json
 import encoding.html
+import context
 
 // A type which don't get filtered inside templates
 pub type RawHtml = string
@@ -144,6 +145,7 @@ pub struct Context {
 mut:
 	content_type string = 'text/plain'
 	status       string = '200 OK'
+	ctx          context.Context = context.EmptyContext{}
 pub:
 	// HTTP Request
 	req http.Request
@@ -375,6 +377,30 @@ pub fn (mut ctx Context) add_header(key string, val string) {
 // Returns the header data from the key
 pub fn (ctx &Context) get_header(key string) string {
 	return ctx.req.header.get_custom(key) or { '' }
+}
+
+// set_value sets a value on the context
+pub fn (mut ctx Context) set_value(key context.Key, value context.Any) {
+	ctx.ctx = context.with_value(ctx.ctx, key, value)
+}
+
+// get_value gets a value from the context
+pub fn (ctx &Context) get_value[T](key context.Key) ?T {
+	if val := ctx.ctx.value(key) {
+		match val {
+			T {
+				// `context.value()` always returns a reference
+				// if we send back `val` the returntype becomes `?&T` and this can be problematic
+				// for end users since they won't be able to do something like
+				// `app.get_value[string]('a') or { '' }
+				// since V expects the value in the or block to be of type `&string`.
+				// And if a reference was allowed it would enable mutating the context directly
+				return *val
+			}
+			else {}
+		}
+	}
+	return none
 }
 
 pub type DatabasePool[T] = fn (tid int) T
@@ -642,6 +668,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route,
 
 	// Create Context with request data
 	ctx := Context{
+		ctx: context.background()
 		req: req
 		page_gen_start: page_gen_start
 		conn: conn
