@@ -59,9 +59,9 @@ pub fn (mut pv Picoev) ev_set(index int, operation int, events int) {
 		(if events & picoev_write != 0 { C.EVFILT_WRITE } else { 0 })
 	)
 	// vfmt on
-	C.EV_SET(&pv.loop.changeslist[index], pv.loop.changed_fds, filter, operation, 0, 0, C.NULL)
+	C.EV_SET(&pv.loop.changelist[index], pv.loop.changed_fds, filter, operation, 0, 0, C.NULL)
 
-	eprintln('ev_set ind: ${index} = ${ev}, op: ${operation}')
+	eprintln('ev_set ind: ${index} = ${pv.loop.changelist[index]}, op: ${operation}')
 }
 
 [inline]
