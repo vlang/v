@@ -898,7 +898,7 @@ pub fn (mut f Gen) fn_decl(node ast.FnDecl) {
 }
 
 pub fn (mut f Gen) anon_fn(node ast.AnonFn) {
-	f.write(node.stringify_fn_decl(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
+	f.write(node.stringify_anon_decl(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
 	f.fn_body(node.decl)
 }
 
