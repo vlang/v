@@ -70,7 +70,8 @@ mut:
 	err() IError
 }
 
-pub fn (ctx Context) str() string {
+// str returns the `str` method of the corresponding Context struct
+pub fn (ctx &Context) str() string {
 	// since `Context` is an interface we have to manually match every possible
 	// type that implements `Context` if we want to use a `Context` as a field in a struct
 	// since the `Context` interface has to implement its own `str` method.
