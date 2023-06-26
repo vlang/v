@@ -35,8 +35,6 @@ mut:
 type LoopType = KqueueLoop
 
 fn create_kqueue_loop(id int) !&KqueueLoop {
-	eprintln('vals: dis ${C.EV_DISABLE}, add ${C.EV_ADD}, en ${C.EV_ENABLE}, r ${C.EVFILT_READ}, w ${C.EVFILT_WRITE}')
-
 	mut loop := &KqueueLoop{
 		id: id
 	}
@@ -49,9 +47,8 @@ fn create_kqueue_loop(id int) !&KqueueLoop {
 	return loop
 }
 
-[inline; direct_array_access]
+[direct_array_access; inline]
 pub fn (mut pv Picoev) ev_set(index int, operation int, events int) {
-
 	// vfmt off
 	filter := i16(
 		(if events & picoev_read != 0 { C.EVFILT_READ } else { 0 })
@@ -59,9 +56,8 @@ pub fn (mut pv Picoev) ev_set(index int, operation int, events int) {
 		(if events & picoev_write != 0 { C.EVFILT_WRITE } else { 0 })
 	)
 	// vfmt on
-	C.EV_SET(&pv.loop.changelist[index], pv.loop.changed_fds, filter, operation, 0, 0, C.NULL)
-
-	eprintln('ev_set ind: ${index} = ${pv.loop.changelist[index]}, op: ${operation}')
+	C.EV_SET(&pv.loop.changelist[index], pv.loop.changed_fds, filter, operation, 0, 0,
+		C.NULL)
 }
 
 [inline]
@@ -85,7 +81,6 @@ fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 	for pv.loop.changed_fds != -1 {
 		mut target := pv.file_descriptors[pv.loop.changed_fds]
 		old_events := backend_get_old_events(target.backend)
-		eprintln('change from ${target.events}, old: ${old_events}')
 		if target.events != old_events {
 			if old_events != 0 {
 				pv.ev_set(total, C.EV_DISABLE, old_events)
@@ -96,19 +91,17 @@ fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 				total++
 			}
 			if total + 1 >= pv.loop.changelist.len {
-				nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, C.NULL, 0,
-					C.NULL)
+				nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, C.NULL,
+					0, C.NULL)
 				assert nevents == 0
 				total = 0
 			}
 		}
 
 		pv.loop.changed_fds = backend_get_next_fd(target.backend)
-		eprintln('next fd: ${pv.loop.changed_fds}')
 		target.backend = -1
 	}
 
-	eprintln('total events: ${total}, apply: ${apply_all}')
 	if apply_all && total != 0 {
 		nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, C.NULL, 0, C.NULL)
 		assert nevents == 0
@@ -121,7 +114,7 @@ fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 [direct_array_access]
 fn (mut pv Picoev) update_events(fd int, events int) int {
 	// check if fd is in range
-	assert fd < max_fds	
+	assert fd < max_fds
 
 	mut target := pv.file_descriptors[fd]
 
@@ -141,8 +134,6 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 		target.backend = backend_build(pv.loop.changed_fds, target.events)
 		pv.loop.changed_fds = fd
 	}
-
-	eprintln('updating ${target} ev: ${events}')
 
 	// update events
 	target.events = u32(events & picoev_readwrite)
@@ -166,7 +157,6 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 
 	nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, &pv.loop.events, pv.loop.events.len,
 		&ts)
-	eprintln('events: ${nevents}')
 	if nevents == -1 {
 		// the errors we can only rescue
 		assert C.errno == C.EACCES || C.errno == C.EFAULT || C.errno == C.EINTR
@@ -175,7 +165,6 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 
 	for i := 0; i < nevents; i++ {
 		event := pv.loop.events[i]
-		eprintln('event: ${event}')
 		target := pv.file_descriptors[event.ident]
 
 		// changelist errors are fatal
@@ -193,7 +182,6 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 					0
 				}
 			}
-			eprintln('matched: ${read_events}, real: ${event.filter}')
 
 			// do callback!
 			unsafe { target.cb(target.fd, read_events, &pv) }
