@@ -1,11 +1,10 @@
 module picoev
 
-#include <winsock2.h>
-#include <ws2tcpip.h>
-
-[inline]
-fn is_valid_socket(s int) bool {
-	return s != C.INVALID_SOCKET
+$if windows {
+	#include <winsock2.h>
+	#include <ws2tcpip.h>
+} $else {
+	#include <sys/select.h>
 }
 
 pub struct SelectLoop {
@@ -67,8 +66,6 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 	}
 	r := C.@select(maxfd + 1, &readfds, &writefds, &errorfds, &tv)
 	if r == -1 {
-		eprintln('Select error: ${C.WSAGetLastError()}')
-
 		// timeout
 		return -1
 	} else if r > 0 {

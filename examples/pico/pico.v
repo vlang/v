@@ -3,7 +3,7 @@ import picoev
 import picohttpparser
 
 const (
-	port = 8080
+	port = 8088
 )
 
 struct Message {
@@ -13,14 +13,14 @@ struct Message {
 [inline]
 fn json_response() string {
 	msg := Message{
-		message: 'Hello, World!'
+		message: 'Hello, World!\n'
 	}
 	return json.encode(msg)
 }
 
 [inline]
 fn hello_response() string {
-	return 'Hello, World!'
+	return 'Hello, World!\n'
 }
 
 fn callback(data voidptr, req picohttpparser.Request, mut res picohttpparser.Response) {
@@ -40,7 +40,7 @@ fn callback(data voidptr, req picohttpparser.Request, mut res picohttpparser.Res
 		} else {
 			res.http_ok()
 			res.html()
-			res.body('Hello Picoev!')
+			res.body('Hello Picoev!\n')
 			res.end()
 			res.end()
 		}
