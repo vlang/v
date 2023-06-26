@@ -164,15 +164,8 @@ fn (a Integer) mont_even(x Integer, m Integer) Integer {
 		assert !m.is_odd()
 	}
 
-	// first, get the trailing zeros in m
-	mut j := u32(0)
-	for m.digits[j] == 0 {
-		j++
-	}
-
-	j = j * 32 + u32(bits.trailing_zeros_32(m.digits[j]))
-
-	m1, m2 := m.rshift(j), one_int.lshift(j)
+	m1, j := m.rsh_to_set_bit()
+	m2 := one_int.lshift(j)
 
 	$if debug {
 		assert m1 * m2 == m
