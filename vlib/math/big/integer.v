@@ -947,7 +947,7 @@ pub fn (a Integer) gcd(b Integer) Integer {
 	if b.signum == 0 {
 		return a.abs()
 	}
-	if a == one_int || b == one_int {
+	if a.abs_cmp(one_int) == 0 || b.abs_cmp(one_int) == 0 {
 		return one_int
 	}
 
