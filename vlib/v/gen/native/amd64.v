@@ -451,10 +451,6 @@ fn (mut c Amd64) cset(op Amd64SetOp) {
 	c.g.println('set${op} al')
 }
 
-fn abs(a i64) i64 {
-	return if a < 0 { -a } else { a }
-}
-
 fn (mut c Amd64) tmp_jle(addr i64) {
 	// Calculate the relative offset to jump to
 	// (`addr` is absolute address)
