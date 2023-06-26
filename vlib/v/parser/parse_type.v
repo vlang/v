@@ -515,7 +515,7 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 		name = 'C.${name}'
 	} else if language == .js {
 		name = 'JS.${name}'
-	} else if p.peek_tok.kind == .dot && check_dot {
+	} else if p.peek_tok.kind == .dot && check_dot && !name[0].is_capital() {
 		// `module.Type`
 		mut mod := name
 		mut mod_pos := p.tok.pos()

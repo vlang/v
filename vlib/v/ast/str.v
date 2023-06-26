@@ -41,7 +41,7 @@ pub fn (node &CallExpr) fkey() string {
 }
 
 // These methods are used only by vfmt, vdoc, and for debugging.
-pub fn (node &AnonFn) stringify(t &Table, cur_mod string, m2a map[string]string) string {
+pub fn (node &AnonFn) stringify_anon_decl(t &Table, cur_mod string, m2a map[string]string) string {
 	mut f := strings.new_builder(30)
 	f.write_string('fn ')
 	if node.inherited_vars.len > 0 {
@@ -65,7 +65,7 @@ pub fn (node &AnonFn) stringify(t &Table, cur_mod string, m2a map[string]string)
 	return f.str()
 }
 
-pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string) string {
+pub fn (node &FnDecl) stringify_fn_decl(t &Table, cur_mod string, m2a map[string]string) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
 		f.write_string('pub ')
@@ -85,11 +85,18 @@ pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string)
 			styp = styp.trim('&')
 		}
 		f.write_string(styp + ') ')
+	} else if node.is_static_type_method {
+		mut styp := util.no_cur_mod(t.type_to_code(node.receiver.typ.clear_flag(.shared_f)),
+			cur_mod)
+		f.write_string(styp + '.')
 	}
-	name := if !node.is_method && node.language == .v {
+	mut name := if !node.is_method && node.language == .v {
 		node.name.all_after_last('.')
 	} else {
 		node.name
+	}
+	if node.is_static_type_method {
+		name = name.after('__static__')
 	}
 	f.write_string(name)
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
@@ -373,6 +380,9 @@ pub fn (x Expr) str() string {
 			}
 			if x.name.contains('.') {
 				return '${x.name}(${sargs})${propagate_suffix}'
+			}
+			if x.name.contains('__static__') {
+				return '${x.mod}.${x.name}(${sargs})${propagate_suffix}1'
 			}
 			return '${x.mod}.${x.name}(${sargs})${propagate_suffix}'
 		}

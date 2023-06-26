@@ -172,3 +172,31 @@ fn test_fn_return_fn() {
 	f := ff()
 	assert f() == 22
 }
+
+// Test new static methods
+
+struct Foo {
+	x int
+}
+
+struct Foo2 {
+	x int
+}
+
+fn (f Foo) normal_method() {
+}
+
+fn Foo.static_method() int {
+	return 7
+}
+
+fn Foo2.static_method() int {
+	return 8
+}
+
+fn test_static_method() {
+	x := Foo.static_method()
+	assert x == 7
+	x2 := Foo2.static_method()
+	assert x2 == 8
+}

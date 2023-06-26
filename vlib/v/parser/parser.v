@@ -1941,6 +1941,7 @@ fn (mut p Parser) note(s string) {
 }
 
 fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
+	// print_backtrace()
 	mut kind := 'error:'
 	if p.pref.fatal_errors {
 		util.show_compiler_message(kind, pos: pos, file_path: p.file_name, message: s)
@@ -2592,6 +2593,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 	is_generic_call := p.is_generic_call()
 	is_generic_cast := p.is_generic_cast()
 	is_generic_struct_init := p.is_generic_struct_init()
+	// mut is_static_type_method := false
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	same_line := p.tok.line_nr == p.peek_tok.line_nr
 	// `(` must be on same line as name token otherwise it's a ParExpr
@@ -2673,6 +2675,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 			return node
 		} else {
 			// fn call
+			// fn_call:
 			if is_option {
 				p.unexpected_with_pos(p.prev_tok.pos(),
 					got: '${p.prev_tok}'
@@ -2745,8 +2748,14 @@ fn (mut p Parser) name_expr() ast.Expr {
 			}
 		}
 		if p.peek_token(2).kind == .name && p.peek_token(3).kind == .lpar && !known_var {
-			p.error_with_pos('the receiver of the method call must be an instantiated object, e.g. `foo.bar()`',
-				p.tok.pos())
+			if lit0_is_capital && p.peek_tok.kind == .dot && language == .v {
+				// New static method call
+				p.expr_mod = ''
+				return p.call_expr(language, mod)
+			} else {
+				p.error_with_pos('${lit0_is_capital} the receiver of the method call must be an instantiated object, e.g. `foo.bar()`',
+					p.tok.pos())
+			}
 		}
 		// `Color.green`
 		mut enum_name := p.check_name()

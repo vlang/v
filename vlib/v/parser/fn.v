@@ -1,6 +1,6 @@
 // Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
+// that ca be found in the LICENSE file.
 module parser
 
 import v.ast
@@ -10,16 +10,22 @@ import os
 
 fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.pos()
+	mut name := if language == .js { p.check_js_name() } else { p.check_name() }
+	mut is_static_type_method := language == .v && name[0].is_capital() && p.tok.kind == .dot
+	if is_static_type_method {
+		p.check(.dot)
+		name = name.to_lower() + '__static__' + p.check_name()
+	}
 	mut fn_name := if language == .c {
-		'C.${p.check_name()}'
+		'C.${name}'
 	} else if language == .js {
-		'JS.${p.check_js_name()}'
+		'JS.${name}'
 	} else if language == .wasm {
-		'WASM.${p.check_name()}'
+		'WASM.${name}'
 	} else if mod.len > 0 {
-		'${mod}.${p.check_name()}'
+		'${mod}.${name}'
 	} else {
-		p.check_name()
+		name
 	}
 	if language != .v {
 		p.check_for_impure_v(language, first_pos)
@@ -271,6 +277,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		language: language
 	}
 	mut is_method := false
+	mut is_static_type_method := false
 	mut params := []ast.Param{}
 	if p.tok.kind == .lpar {
 		is_method = true
@@ -288,7 +295,16 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	name_pos := p.tok.pos()
 	if p.tok.kind == .name {
 		// TODO high order fn
-		name = if language == .js { p.check_js_name() } else { p.check_name() }
+		is_static_type_method = p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
+			&& p.peek_tok.kind == .dot && language == .v // `fn Foo.bar() {}`
+		if is_static_type_method {
+			type_name := p.tok.lit // "Foo"
+			rec.typ = p.parse_type() //_with_mut(false) // ast.Type(p.table.find_type_idx(name))
+			p.check(.dot)
+			name = type_name.to_lower() + '__static__' + p.check_name() // "foo__bar"
+		} else {
+			name = if language == .js { p.check_js_name() } else { p.check_name() }
+		}
 		if language == .v && !p.pref.translated && !p.is_translated && util.contains_capital(name)
 			&& !p.builtin_mod {
 			p.error_with_pos('function names cannot contain uppercase letters, use snake_case instead',
@@ -519,6 +535,8 @@ run them via `v file.v` instead',
 			is_test: is_test
 			is_keep_alive: is_keep_alive
 			is_method: false
+			is_static_type_method: is_static_type_method
+			receiver_type: rec.typ // used only if is static type method
 			is_file_translated: p.is_translated
 			//
 			attrs: p.attrs
@@ -588,6 +606,7 @@ run them via `v file.v` instead',
 		generic_names: generic_names
 		receiver_pos: rec.pos
 		is_method: is_method
+		is_static_type_method: is_static_type_method
 		method_type_pos: rec.type_pos
 		method_idx: type_sym_method_idx
 		rec_mut: rec.is_mut
