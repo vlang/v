@@ -47,7 +47,7 @@ fn create_kqueue_loop(id int) !&KqueueLoop {
 	return loop
 }
 
-[direct_array_access; inline]
+[inline]
 pub fn (mut pv Picoev) ev_set(index int, operation int, events int) {
 	// vfmt off
 	filter := i16(
