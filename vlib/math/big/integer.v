@@ -960,7 +960,7 @@ pub fn (a Integer) gcd(b Integer) Integer {
 // Inspired by the 2013-christmas-special by D. Lemire & R. Corderoy https://en.algorithmica.org/hpc/analyzing-performance/gcd/
 // For more information, refer to the Wikipedia article: https://en.wikipedia.org/wiki/Binary_GCD_algorithm
 // Discussion and further information: https://lemire.me/blog/2013/12/26/fastest-way-to-compute-the-greatest-common-divisor/
-pub fn gcd_binary(x Integer, y Integer) Integer {
+fn gcd_binary(x Integer, y Integer) Integer {
 	mut a, az := x.rsh_to_set_bit()
 	mut b, bz := y.rsh_to_set_bit()
 	shift := umin(az, bz)
