@@ -210,7 +210,6 @@ fn close_socket(fd int) {
 fn setup_sock(fd int) ! {
 	flag := 1
 
-
 	if C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_NODELAY, &flag, sizeof(int)) < 0 {
 		return error('setup_sock.setup_sock failed')
 	}
@@ -388,11 +387,11 @@ pub fn new(config Config) &Picoev {
 	}
 
 	// epoll for linux
-	// kqueue for macos and freebsd
+	// kqueue for macos and bsd
 	// select for windows and others
 	$if linux {
 		pv.loop = create_epoll_loop(0) or { panic(err) }
-	} $else $if macos || freebsd {
+	} $else $if freebsd {
 		pv.loop = create_kqueue_loop(0) or { panic(err) }
 	} $else {
 		pv.loop = create_select_loop(0) or { panic(err) }
