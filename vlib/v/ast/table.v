@@ -2368,7 +2368,7 @@ pub fn (t &Table) dependent_names_in_expr(expr Expr) []string {
 			names << t.dependent_names_in_expr(expr.expr)
 		}
 		StructInit {
-			for field in expr.fields {
+			for field in expr.init_fields {
 				names << t.dependent_names_in_expr(field.expr)
 			}
 		}

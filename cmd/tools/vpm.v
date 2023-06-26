@@ -88,24 +88,31 @@ fn main() {
 				manifest := vmod.from_file('./v.mod') or { panic(err) }
 				module_names = manifest.dependencies.clone()
 			}
-			mut source := Source.vpm
-			if module_names.all(it.starts_with('https://')) {
-				source = Source.git
-			}
+
 			if '--once' in options {
 				module_names = vpm_once_filter(module_names)
+
 				if module_names.len == 0 {
 					return
 				}
 			}
-			if '--git' in options {
-				source = Source.git
-			}
-			if '--hg' in options {
-				source = Source.hg
+
+			external_module_names := module_names.filter(it.starts_with('https://'))
+			vpm_module_names := module_names.filter(it !in external_module_names)
+
+			if vpm_module_names.len > 0 {
+				vpm_install(vpm_module_names, Source.vpm)
 			}
 
-			vpm_install(module_names, source)
+			if external_module_names.len > 0 {
+				mut external_source := Source.git
+
+				if '--hg' in options {
+					external_source = Source.hg
+				}
+
+				vpm_install(external_module_names, external_source)
+			}
 		}
 		'update' {
 			vpm_update(module_names)

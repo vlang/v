@@ -164,6 +164,12 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		mut right := if i < node.right.len { node.right[i] } else { node.right[0] }
 		mut right_type := node.right_types[i]
 		if mut right is ast.Ident {
+			// resolve shared right vairable
+			if right_type.has_flag(.shared_f) {
+				if c.fail_if_unreadable(right, right_type, 'right-hand side of assignment') {
+					return
+				}
+			}
 			right_sym := c.table.sym(right_type)
 			if right_sym.info is ast.Struct {
 				if right_sym.info.generic_types.len > 0 {
@@ -250,24 +256,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		if right_type.is_ptr() && left_type.is_ptr() {
 			if mut right is ast.Ident {
-				if mut right.obj is ast.Var {
-					mut obj := unsafe { &right.obj }
-					if c.fn_scope != unsafe { nil } {
-						obj = c.fn_scope.find_var(right.obj.name) or { obj }
-					}
-					if obj.is_stack_obj && !c.inside_unsafe {
-						type_sym := c.table.sym(obj.typ.set_nr_muls(0))
-						if !type_sym.is_heap() && !c.pref.translated && !c.file.is_translated {
-							suggestion := if type_sym.kind == .struct_ {
-								'declaring `${type_sym.name}` as `[heap]`'
-							} else {
-								'wrapping the `${type_sym.name}` object in a `struct` declared as `[heap]`'
-							}
-							c.error('`${right.name}` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
-								right.pos)
-						}
-					}
-				}
+				c.fail_if_stack_struct_action_outside_unsafe(mut right, 'assigned')
 			}
 		}
 		// Do not allow `a := 0; b := 0; a = &b`

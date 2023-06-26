@@ -21,6 +21,7 @@ import json
 enum UpdateSource {
 	github_releases
 	git_repo
+	local_file
 }
 
 enum SetupKind {
@@ -136,6 +137,17 @@ fn (upd VlsUpdater) get_last_updated_at() !time.Time {
 	return error('none')
 }
 
+fn (upd VlsUpdater) copy_local_file(exec_asset_file_path string, timestamp time.Time) ! {
+	exp_asset_name := upd.exec_asset_file_name()
+
+	new_exec_path := os.join_path(vls_bin_folder, exp_asset_name)
+	os.cp(exec_asset_file_path, new_exec_path)!
+	upd.update_manifest(new_exec_path, false, timestamp) or {
+		upd.log('Unable to update config but the executable was updated successfully.')
+	}
+	upd.print_new_vls_version(new_exec_path)
+}
+
 fn (upd VlsUpdater) download_prebuilt() ! {
 	mut has_last_updated_at := true
 	last_updated_at := upd.get_last_updated_at() or {
@@ -217,12 +229,7 @@ fn (upd VlsUpdater) download_prebuilt() ! {
 		}
 	}
 
-	new_exec_path := os.join_path(vls_bin_folder, exp_asset_name)
-	os.cp(exec_asset_file_path, new_exec_path)!
-	upd.update_manifest(new_exec_path, false, asset_last_updated_at) or {
-		upd.log('Unable to update config but the executable was updated successfully.')
-	}
-	upd.print_new_vls_version(new_exec_path)
+	upd.copy_local_file(exec_asset_file_path, asset_last_updated_at)!
 }
 
 fn (upd VlsUpdater) print_new_vls_version(new_vls_exec_path string) {
@@ -242,7 +249,7 @@ fn (upd VlsUpdater) compile_from_source() ! {
 
 	if !os.exists(vls_src_folder) {
 		upd.log('Cloning VLS repo...')
-		clone_result := os.execute('${git} clone https://github.com/nedpals/vls ${vls_src_folder}')
+		clone_result := os.execute('${git} clone https://github.com/vlang/vls ${vls_src_folder}')
 		if clone_result.exit_code != 0 {
 			return error('Failed to build VLS from source. Reason: ${clone_result.output}')
 		}
@@ -329,13 +336,15 @@ fn (mut upd VlsUpdater) parse(mut fp flag.FlagParser) ! {
 
 	upd.pass_to_ls = fp.bool('ls', ` `, false, 'Pass the arguments to the language server.')
 	if ls_path := fp.string_opt('path', `p`, 'Path to the language server executable.') {
-		if upd.setup_kind != .none_ {
-			return error('Cannot use --install or --update when --path is supplied.')
-		} else if !os.is_executable(ls_path) {
+		if !os.is_executable(ls_path) {
 			return server_not_found_err
 		}
 
 		upd.ls_path = ls_path
+
+		if upd.setup_kind != .none_ {
+			upd.update_source = .local_file // use local path if both -p and --source are used
+		}
 	}
 
 	upd.is_help = fp.bool('help', `h`, false, "Show this updater's help text. To show the help text for the language server, pass the `--ls` flag before it.")
@@ -454,6 +463,10 @@ fn (upd VlsUpdater) run(fp flag.FlagParser) ! {
 			}
 			.git_repo {
 				upd.compile_from_source()!
+			}
+			.local_file {
+				upd.log('Using local vls file to install or update..')
+				upd.copy_local_file(upd.ls_path, time.now())!
 			}
 		}
 	} else if upd.pass_to_ls {

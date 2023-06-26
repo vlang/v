@@ -1,0 +1,28 @@
+fn main() {
+	test_int()
+	test_fp()
+}
+
+fn test_int() {
+	a := 100
+	mut b := a
+	b += b
+	b += 50
+
+	assert b == 250
+
+	mut c := u8(b)
+	d := 4
+	c += u8(-d)
+	println(c)
+}
+
+fn test_fp() {
+	a := 1.0
+	mut b := a
+	b += 0.5
+	b *= 4
+	b /= 2
+
+	println(int(b))
+}

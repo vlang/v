@@ -252,24 +252,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		if exp_type.is_ptr() && got_type.is_ptr() {
 			mut r_expr := &node.exprs[expr_idxs[i]]
 			if mut r_expr is ast.Ident {
-				if mut r_expr.obj is ast.Var {
-					mut obj := unsafe { &r_expr.obj }
-					if c.fn_scope != unsafe { nil } {
-						obj = c.fn_scope.find_var(r_expr.obj.name) or { obj }
-					}
-					if obj.is_stack_obj && !c.inside_unsafe {
-						type_sym := c.table.sym(obj.typ.set_nr_muls(0))
-						if !type_sym.is_heap() && !c.pref.translated && !c.file.is_translated {
-							suggestion := if type_sym.kind == .struct_ {
-								'declaring `${type_sym.name}` as `[heap]`'
-							} else {
-								'wrapping the `${type_sym.name}` object in a `struct` declared as `[heap]`'
-							}
-							c.error('`${r_expr.name}` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
-								r_expr.pos)
-						}
-					}
-				}
+				c.fail_if_stack_struct_action_outside_unsafe(mut r_expr, 'returned')
 			}
 		}
 	}

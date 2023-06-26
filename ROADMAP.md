@@ -35,6 +35,7 @@
 - [ ] Parallel parser
 - [ ] Parallel checker
 - [ ] Parallel C compilation
+- [ ] Direct C/C++ interop without generating wrappers
 - [ ] `recover()` from panics
 - [ ] -usecache on by default
 - [ ] -skip-unused on by default

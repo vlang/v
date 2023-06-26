@@ -1569,7 +1569,7 @@ fn (t Tree) struct_init(node ast.StructInit) &Node {
 	obj.add('pos', t.pos(node.pos))
 	obj.add('name_pos', t.pos(node.name_pos))
 	obj.add('update_expr_comments', t.array_node_comment(node.update_expr_comments))
-	obj.add_terse('fields', t.array_node_struct_init_field(node.fields))
+	obj.add_terse('init_fields', t.array_node_struct_init_field(node.init_fields))
 	obj.add('pre_comments', t.array_node_comment(node.pre_comments))
 	return obj
 }

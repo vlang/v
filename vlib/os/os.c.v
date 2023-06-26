@@ -558,7 +558,7 @@ pub fn get_raw_line() string {
 			mut offset := 0
 			for {
 				pos := buf + offset
-				res := C.ReadFile(h_input, pos, 1, C.LPDWORD(&bytes_read), 0)
+				res := C.ReadFile(h_input, pos, 1, &u32(&bytes_read), 0)
 				if !res && offset == 0 {
 					return tos(buf, 0)
 				}
@@ -600,7 +600,7 @@ pub fn get_raw_stdin() []u8 {
 			mut offset := 0
 			for {
 				pos := buf + offset
-				res := C.ReadFile(h_input, pos, block_bytes, C.LPDWORD(&bytes_read), 0)
+				res := C.ReadFile(h_input, pos, block_bytes, &u32(&bytes_read), 0)
 				offset += bytes_read
 				if !res {
 					break

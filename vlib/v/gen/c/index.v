@@ -49,10 +49,17 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				}
 			}
 		} else {
-			g.expr(node.left)
-			g.write('[')
-			g.expr(node.index)
-			g.write(']')
+			if sym.kind == .aggregate
+				&& (sym.info as ast.Aggregate).types.filter(g.table.type_kind(it) !in [.array, .array_fixed, .string, .map]).len == 0 {
+				// treating sumtype of array types
+				unwrapped_got_type := (sym.info as ast.Aggregate).types[g.aggregate_type_idx]
+				g.index_expr(ast.IndexExpr{ ...node, left_type: unwrapped_got_type })
+			} else {
+				g.expr(node.left)
+				g.write('[')
+				g.expr(node.index)
+				g.write(']')
+			}
 		}
 	}
 }
@@ -397,7 +404,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		if g.inside_return {
 			g.typ(val_type)
 		} else {
-			g.typ(val_type.clear_flags(.option, .result))
+			g.typ(val_type.clear_flag(.result))
 		}
 	}
 	get_and_set_types := val_sym.kind in [.struct_, .map, .array]

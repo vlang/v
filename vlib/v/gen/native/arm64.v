@@ -1,3 +1,6 @@
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 module native
 
 import v.ast
@@ -437,6 +440,10 @@ fn (mut c Arm64) jmp_back(start i64) {
 
 fn (mut c Arm64) init_struct(var Var, init ast.StructInit) {
 	panic('Arm64.init_struct() not implemented')
+}
+
+fn (mut c Arm64) init_array(var Var, init ast.ArrayInit) {
+	panic('Arm64.init_array() not implemented')
 }
 
 fn (mut c Arm64) load_fp_var(var Var, config VarConfig) {
