@@ -8,7 +8,7 @@ fn C.kevent(int, changelist voidptr, nchanges int, eventlist voidptr, nevents in
 fn C.kqueue() int
 fn C.EV_SET(kev voidptr, ident int, filter i16, flags u16, fflags u32, data voidptr, udata voidptr)
 
-struct Kevent {
+struct C.kevent {
 pub mut:
 	ident int
 	// uintptr_t
@@ -28,8 +28,8 @@ mut:
 	kq_id int
 	// -1 if not changed
 	changed_fds int
-	events      [1024]Kevent
-	changelist  [256]Kevent
+	events      [1024]C.kevent
+	changelist  [256]C.kevent
 }
 
 type LoopType = KqueueLoop
