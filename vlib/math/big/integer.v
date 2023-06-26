@@ -1056,6 +1056,10 @@ fn (a Integer) mod_inv(m Integer) Integer {
 // we don't return `2^n`, because the caller may be able to use `n` without allocating an Integer
 [direct_array_access; inline]
 fn (x Integer) rsh_to_set_bit() (Integer, u32) {
+	if x.digits.len == 0 {
+		return zero_int, 0
+	}
+
 	mut n := u32(0)
 	for x.digits[n] == 0 {
 		n++
