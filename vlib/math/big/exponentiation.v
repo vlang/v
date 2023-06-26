@@ -4,7 +4,6 @@ module big
 for a detailed explanation on these internal functions and the algorithms they
 are based on refer to https://github.com/vlang/v/pull/18461
 */
-import math.bits
 
 // internal struct to make passing montgomery values simpler
 struct MontgomeryContext {

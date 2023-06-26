@@ -947,14 +947,11 @@ pub fn (a Integer) gcd(b Integer) Integer {
 	if b.signum == 0 {
 		return a.abs()
 	}
-	if a.signum < 0 {
-		return a.neg().gcd(b)
-	}
-	if b.signum < 0 {
-		return a.gcd(b.neg())
+	if a == one_int || b == one_int {
+		return one_int
 	}
 
-	return gcd_binary(a, b)
+	return gcd_binary(a.abs(), b.abs())
 }
 
 // Inspired by the 2013-christmas-special by D. Lemire & R. Corderoy https://en.algorithmica.org/hpc/analyzing-performance/gcd/
