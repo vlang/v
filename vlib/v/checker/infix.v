@@ -216,22 +216,22 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			left_sym = c.table.sym(unwrapped_left_type)
 			unwrapped_right_type := c.unwrap_generic(right_type)
 			right_sym = c.table.sym(unwrapped_right_type)
-			if right_sym.info is ast.Alias && (right_sym.info as ast.Alias).language != .c
+			if mut right_sym.info is ast.Alias && (right_sym.info as ast.Alias).language != .c
 				&& c.mod == c.table.type_to_str(unwrapped_right_type).split('.')[0]
 				&& c.table.sym((right_sym.info as ast.Alias).parent_type).is_primitive() {
-				right_sym = c.table.sym((right_sym.info as ast.Alias).parent_type)
+				right_sym = c.table.sym(right_sym.info.parent_type)
 			}
-			if left_sym.info is ast.Alias && (left_sym.info as ast.Alias).language != .c
+			if mut left_sym.info is ast.Alias && (left_sym.info as ast.Alias).language != .c
 				&& c.mod == c.table.type_to_str(unwrapped_left_type).split('.')[0]
 				&& c.table.sym((left_sym.info as ast.Alias).parent_type).is_primitive() {
-				left_sym = c.table.sym((left_sym.info as ast.Alias).parent_type)
+				left_sym = c.table.sym(left_sym.info.parent_type)
 			}
 
 			if c.pref.translated && node.op in [.plus, .minus, .mul]
 				&& unwrapped_left_type.is_any_kind_of_pointer()
 				&& unwrapped_right_type.is_any_kind_of_pointer() {
 				return_type = left_type
-			} else if !c.pref.translated && left_sym.kind == .alias && left_sym.info is ast.Alias
+			} else if !c.pref.translated && left_sym.info is ast.Alias
 				&& !(c.table.sym((left_sym.info as ast.Alias).parent_type).is_primitive()) {
 				if left_sym.has_method(node.op.str()) {
 					if method := left_sym.find_method(node.op.str()) {
@@ -256,7 +256,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							left_right_pos)
 					}
 				}
-			} else if !c.pref.translated && right_sym.kind == .alias && right_sym.info is ast.Alias
+			} else if !c.pref.translated && right_sym.info is ast.Alias
 				&& !(c.table.sym((right_sym.info as ast.Alias).parent_type).is_primitive()) {
 				if right_sym.has_method(node.op.str()) {
 					if method := right_sym.find_method(node.op.str()) {
@@ -603,8 +603,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				if typ_sym.kind == .placeholder {
 					c.error('${op}: type `${typ_sym.name}` does not exist', right_expr.pos())
 				}
-				if left_sym.kind == .aggregate {
-					parent_left_type := (left_sym.info as ast.Aggregate).sum_type
+				if mut left_sym.info is ast.Aggregate {
+					parent_left_type := left_sym.info.sum_type
 					left_sym = c.table.sym(parent_left_type)
 				}
 				if left_sym.kind !in [.interface_, .sum_type] {
