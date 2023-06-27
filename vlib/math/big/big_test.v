@@ -77,6 +77,30 @@ const integer_from_bytes_test_data = [
 	IntegerFromTest{ [u8(0x13), 0x37, 0xca, 0xfe, 0xba], '0x1337cafeba' },
 	IntegerFromTest{ [u8(0x13), 0x37, 0xca, 0xfe, 0xba, 0xbe], '0x1337cafebabe' },
 ]
+
+const integer_from_string_test_data = [
+	// use string
+	IntegerFromTest{ '00000000', '0' },
+	IntegerFromTest{ '00', '0' },
+	IntegerFromTest{ '0', '0' },
+	IntegerFromTest{ '1', '1' },
+	IntegerFromTest{ '0012', '12' },
+	IntegerFromTest{ '1349173614', '1349173614' },
+	IntegerFromTest{ '+24', '24' },
+	IntegerFromTest{ '-325', '-325' },
+	IntegerFromTest{ '-2147483648', '-2147483648' },
+	IntegerFromTest{ '2147483647', '2147483647' },
+]
+
+const integer_from_radix_test_data = [
+	// use IntegerRadix
+	IntegerFromTest{ IntegerRadix{ '101010', 2 }, '42' },
+	IntegerFromTest{ IntegerRadix{ '1010', 2 }, '10' },
+	IntegerFromTest{ IntegerRadix{ '-0000101', 2 }, '-5' },
+	IntegerFromTest{ IntegerRadix{ 'CAFE', 16 }, '0xcafe' },
+	IntegerFromTest{ IntegerRadix{ 'DED', 16 }, '0xded' },
+	IntegerFromTest{ IntegerRadix{ '-abcd', 16 }, '-43981' },
+]
 // vfmt on
 
 struct AddTest {
@@ -186,43 +210,6 @@ const comparison_test_data = [
 	ComparisonTest{ u32(52395), u32(52395), 0 },
 	ComparisonTest{ '574720348957234098573049571938519023857709',
 		'58745908123509182375091823601928385712908347298341752397182643294', -1 },
-]
-// vfmt on
-
-struct IntegerFromStringTest {
-	str_value string
-	expected  IntegerNumerical
-}
-
-// vfmt off
-const integer_from_string_test_data = [
-	IntegerFromStringTest{ '00000000', 0 },
-	IntegerFromStringTest{ '00', 0 },
-	IntegerFromStringTest{ '0', 0 },
-	IntegerFromStringTest{ '1', 1 },
-	IntegerFromStringTest{ '0012', 12 },
-	IntegerFromStringTest{ '1349173614', 1349173614 },
-	IntegerFromStringTest{ '+24', 24 },
-	IntegerFromStringTest{ '-325', -325 },
-	IntegerFromStringTest{ '-2147483648', -2147483648 },
-	IntegerFromStringTest{ '2147483647', 2147483647 },
-]
-// vfmt on
-
-struct IntegerFromRadixTest {
-	str_value string
-	radix     u32
-	expected  TestInteger
-}
-
-// vfmt off
-const integer_from_radix_test_data = [
-	IntegerFromRadixTest{ '101010', 2, 42 },
-	IntegerFromRadixTest{ '1010', 2, 10 },
-	IntegerFromRadixTest{ '-0000101', 2, -5 },
-	IntegerFromRadixTest{ 'CAFE', 16, 0xCAFE },
-	IntegerFromRadixTest{ 'DED', 16, 0xDED },
-	IntegerFromRadixTest{ '-abcd', 16, -0xabcd },
 ]
 // vfmt on
 
@@ -469,6 +456,8 @@ fn test_integer_from() {
 		integer_from_int_test_data,
 		integer_from_u64_test_data,
 		integer_from_bytes_test_data,
+		integer_from_string_test_data,
+		integer_from_radix_test_data,
 	] {
 		for t in test_data {
 			assert t.expected.trim_string_left('0x') == if t.expected.starts_with('0x') {
@@ -580,20 +569,6 @@ fn test_conversion() {
 	}
 
 	assert digits.reverse().string() == '18446744073709551615'
-}
-
-fn test_integer_from_string() {
-	for t in integer_from_string_test_data {
-		assert big.integer_from_string(t.str_value) or { panic('Cannot read decimal') } == t.expected.parse()
-	}
-}
-
-fn test_integer_from_radix() {
-	for t in integer_from_radix_test_data {
-		assert big.integer_from_radix(t.str_value, t.radix) or {
-			panic('Cannot read base ${t.radix}')
-		} == t.expected.parse()
-	}
 }
 
 fn test_from_and_to_hex() {
