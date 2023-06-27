@@ -6,6 +6,24 @@ module ast
 import v.util
 import strings
 
+// get_name returns the real name for the function declaration
+pub fn (f &FnDecl) get_name() string {
+	if f.is_static_type_method {
+		return f.name.all_after_last('__static__')
+	} else {
+		return f.name
+	}
+}
+
+// get_name returns the real name for the function calling
+pub fn (f &CallExpr) get_name() string {
+	if f.name.all_after_last('.')[0].is_capital() && f.name.contains('__static__') {
+		return f.name.replace('__static__', '.')
+	} else {
+		return f.name
+	}
+}
+
 pub fn (node &FnDecl) modname() string {
 	if node.mod != '' {
 		return node.mod
@@ -373,18 +391,18 @@ pub fn (x Expr) str() string {
 				return '${x.left.str()}.${x.name}(${sargs})${propagate_suffix}'
 			}
 			if x.name.starts_with('${x.mod}.') {
-				return util.strip_main_name('${x.name}(${sargs})${propagate_suffix}')
+				return util.strip_main_name('${x.get_name()}(${sargs})${propagate_suffix}')
 			}
 			if x.mod == '' && x.name == '' {
 				return x.left.str() + '(${sargs})${propagate_suffix}'
 			}
 			if x.name.contains('.') {
-				return '${x.name}(${sargs})${propagate_suffix}'
+				return '${x.get_name()}(${sargs})${propagate_suffix}'
 			}
 			if x.name.contains('__static__') {
-				return '${x.mod}.${x.name}(${sargs})${propagate_suffix}'
+				return '${x.mod}.${x.get_name()}(${sargs})${propagate_suffix}'
 			}
-			return '${x.mod}.${x.name}(${sargs})${propagate_suffix}'
+			return '${x.mod}.${x.get_name()}(${sargs})${propagate_suffix}'
 		}
 		CharLiteral {
 			return '`${x.val}`'
