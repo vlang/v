@@ -571,7 +571,7 @@ pub fn (f &FnDecl) get_name() string {
 }
 
 pub fn (f &CallExpr) get_name() string {
-	if f.name.is_capital() && f.name.contains('__static__') {
+	if f.name[0].is_capital() && f.name.contains('__static__') {
 		return f.name.replace('__static__', '.')
 	} else {
 		return f.name
