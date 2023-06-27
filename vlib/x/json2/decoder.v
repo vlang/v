@@ -61,17 +61,17 @@ pub fn (err UnknownTokenError) msg() string {
 struct Parser {
 pub mut:
 	scanner      &Scanner = unsafe { nil }
-	p_tok        Token
+	prev_tok     Token
 	tok          Token
-	n_tok        Token
+	next_tok     Token
 	n_level      int
 	convert_type bool = true
 }
 
 fn (mut p Parser) next() {
-	p.p_tok = p.tok
-	p.tok = p.n_tok
-	p.n_tok = p.scanner.scan()
+	p.prev_tok = p.tok
+	p.tok = p.next_tok
+	p.next_tok = p.scanner.scan()
 }
 
 fn (mut p Parser) next_with_err() ! {
@@ -87,6 +87,9 @@ fn (mut p Parser) next_with_err() ! {
 
 // TODO: copied from v.util to avoid the entire module and its functions
 // from being imported. remove later once -skip-unused is enabled by default.
+// skip_bom - skip Byte Order Mark (BOM)
+// The UTF-8 BOM is a sequence of Bytes at the start of a text-stream (EF BB BF or \ufeff)
+// that allows the reader to reliably determine if file is being encoded in UTF-8.
 fn skip_bom(file_content string) string {
 	mut raw_text := file_content
 	// BOM check
@@ -103,6 +106,7 @@ fn skip_bom(file_content string) string {
 	return raw_text
 }
 
+// new_parser - create a instance of Parser{}
 fn new_parser(srce string, convert_type bool) Parser {
 	src := skip_bom(srce)
 	return Parser{
@@ -113,7 +117,7 @@ fn new_parser(srce string, convert_type bool) Parser {
 	}
 }
 
-// decode decodes provided JSON
+// decode - decodes provided JSON
 pub fn (mut p Parser) decode() !Any {
 	p.next()
 	p.next_with_err()!
@@ -133,9 +137,11 @@ fn (mut p Parser) decode_value() !Any {
 		}
 	}
 	match p.tok.kind {
+		// `[`
 		.lsbr {
 			return p.decode_array()
 		}
+		// `{`
 		.lcbr {
 			return p.decode_object()
 		}
@@ -187,6 +193,7 @@ fn (mut p Parser) decode_array() !Any {
 	mut items := []Any{}
 	p.next_with_err()!
 	p.n_level++
+	// `]`
 	for p.tok.kind != .rsbr {
 		item := p.decode_value()!
 		items << item
@@ -213,7 +220,9 @@ fn (mut p Parser) decode_object() !Any {
 	mut fields := map[string]Any{}
 	p.next_with_err()!
 	p.n_level++
+	// `}`
 	for p.tok.kind != .rcbr {
+		// step 1 -> key
 		if p.tok.kind != .str_ {
 			return InvalidTokenError{
 				token: p.tok
@@ -223,6 +232,7 @@ fn (mut p Parser) decode_object() !Any {
 
 		cur_key := p.tok.lit.bytestr()
 		p.next_with_err()!
+		// step 2 -> colon separator
 		if p.tok.kind != .colon {
 			return InvalidTokenError{
 				token: p.tok
@@ -231,6 +241,7 @@ fn (mut p Parser) decode_object() !Any {
 		}
 
 		p.next_with_err()!
+		// step 3 -> value
 		fields[cur_key] = p.decode_value()!
 		if p.tok.kind != .comma && p.tok.kind != .rcbr {
 			return UnknownTokenError{
@@ -242,6 +253,7 @@ fn (mut p Parser) decode_object() !Any {
 		}
 	}
 	p.next_with_err()!
+	// step 4 -> eof (end)
 	p.n_level--
 	return Any(fields)
 }

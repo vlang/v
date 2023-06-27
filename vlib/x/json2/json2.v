@@ -146,6 +146,8 @@ pub fn decode[T](src string) !T {
 				else {}
 			}
 		}
+	} $else {
+		return error("The type `${T.name}` can't be decoded.")
 	}
 	return typ
 }
