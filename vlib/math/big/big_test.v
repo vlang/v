@@ -5,17 +5,7 @@ struct IntegerRadix {
 	radix        u32
 }
 
-type IntegerNumerical = i64 | int | u32 | u64
 type TestInteger = IntegerRadix | []u8 | big.Integer | i64 | int | string | u32 | u64
-
-fn (a IntegerNumerical) parse() big.Integer {
-	return match a {
-		int { big.integer_from_int(a) }
-		u32 { big.integer_from_u32(a) }
-		u64 { big.integer_from_u64(a) }
-		i64 { big.integer_from_i64(a) }
-	}
-}
 
 fn (a TestInteger) parse() big.Integer {
 	return match a {
@@ -25,8 +15,17 @@ fn (a TestInteger) parse() big.Integer {
 		string {
 			big.integer_from_string(a) or { panic('Cannot read decimal') }
 		}
-		int, u32, u64, i64 {
-			IntegerNumerical(a).parse()
+		int {
+			big.integer_from_int(a)
+		}
+		u32 {
+			big.integer_from_u32(a)
+		}
+		u64 {
+			big.integer_from_u64(a)
+		}
+		i64 {
+			big.integer_from_i64(a)
 		}
 		[]u8 {
 			big.integer_from_bytes(a)
