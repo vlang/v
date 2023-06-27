@@ -13,6 +13,24 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	node.left_type = left_type
 	c.expected_type = left_type
 
+	// `if n is ast.Ident && n.is_mut { ... }`
+	if node.op == .and {
+		mut left_node := node.left
+		for mut left_node is ast.InfixExpr {
+			if left_node.op == .key_is {
+				// search `n is ast.Ident`
+				from_type := c.expr(left_node.left)
+				to_type := c.expr(left_node.right)
+				c.autocast_in_if_conds(mut node.right, left_node.left, from_type, to_type)
+				break
+			} else if left_node.op == .and {
+				left_node = left_node.left
+			} else {
+				break
+			}
+		}
+	}
+
 	if node.op == .key_is {
 		c.inside_x_is_type = true
 	}
@@ -792,4 +810,26 @@ fn (mut c Checker) invalid_operator_error(op token.Kind, left_type ast.Type, rig
 	left_name := c.table.type_to_str(left_type)
 	right_name := c.table.type_to_str(right_type)
 	c.error('invalid operator `${op}` to `${left_name}` and `${right_name}`', pos)
+}
+
+// `if node is ast.Ident && node.is_mut { ... }` -> `if node is ast.Ident && (node as ast.Ident).is_mut { ... }`
+fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, from_type ast.Type, to_type ast.Type) {
+	match mut right {
+		ast.SelectorExpr {
+			if right.expr.str() == from_expr.str() {
+				right.expr = ast.ParExpr{
+					expr: ast.AsCast{
+						typ: to_type
+						expr: from_expr
+						expr_type: from_type
+					}
+				}
+			}
+		}
+		ast.InfixExpr {
+			c.autocast_in_if_conds(mut right.left, from_expr, from_type, to_type)
+			c.autocast_in_if_conds(mut right.right, from_expr, from_type, to_type)
+		}
+		else {}
+	}
 }
