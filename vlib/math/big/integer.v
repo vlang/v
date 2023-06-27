@@ -939,17 +939,6 @@ fn bi_max(a Integer, b Integer) Integer {
 	return if a > b { a } else { b }
 }
 
-[direct_array_access]
-fn (bi Integer) msb() u32 {
-	for idx := 0; idx < bi.digits.len; idx += 1 {
-		word := bi.digits[idx]
-		if word > 0 {
-			return u32((idx * 32) + bits.trailing_zeros_32(word))
-		}
-	}
-	return u32(32)
-}
-
 // gcd returns the greatest common divisor of the two integers `a` and `b`.
 pub fn (a Integer) gcd(b Integer) Integer {
 	if a.signum == 0 {
@@ -958,51 +947,27 @@ pub fn (a Integer) gcd(b Integer) Integer {
 	if b.signum == 0 {
 		return a.abs()
 	}
-	if a.signum < 0 {
-		return a.neg().gcd(b)
-	}
-	if b.signum < 0 {
-		return a.gcd(b.neg())
+	if a.abs_cmp(one_int) == 0 || b.abs_cmp(one_int) == 0 {
+		return one_int
 	}
 
-	if a.digits.len + b.digits.len <= 2 {
-		return gcd_euclid(a, b)
-	} else {
-		return gcd_binary(a, b)
-	}
-}
-
-fn gcd_euclid(x Integer, y Integer) Integer {
-	mut a := x
-	mut b := y
-	mut r := a % b
-	for r.signum != 0 {
-		a = b
-		b = r
-		r = a % b
-	}
-	return b
+	return gcd_binary(a.abs(), b.abs())
 }
 
 // Inspired by the 2013-christmas-special by D. Lemire & R. Corderoy https://en.algorithmica.org/hpc/analyzing-performance/gcd/
 // For more information, refer to the Wikipedia article: https://en.wikipedia.org/wiki/Binary_GCD_algorithm
 // Discussion and further information: https://lemire.me/blog/2013/12/26/fastest-way-to-compute-the-greatest-common-divisor/
 fn gcd_binary(x Integer, y Integer) Integer {
-	mut a := x
-	mut b := y
-
-	mut az := a.msb()
-	bz := b.msb()
+	mut a, az := x.rsh_to_set_bit()
+	mut b, bz := y.rsh_to_set_bit()
 	shift := umin(az, bz)
-	b = b.rshift(bz)
 
 	for a.signum != 0 {
-		a = a.rshift(az)
 		diff := b - a
-		az = diff.msb()
 		b = bi_min(a, b)
-		a = diff.abs()
+		a, _ = diff.abs().rsh_to_set_bit()
 	}
+
 	return b.lshift(shift)
 }
 
@@ -1084,6 +1049,23 @@ fn (a Integer) mod_inv(m Integer) Integer {
 	} else {
 		y % m
 	}
+}
+
+// rsh_to_set_bit returns the integer `x` shifted right until it is odd and an exponent satisfying
+// `x = x1 * 2^n`
+// we don't return `2^n`, because the caller may be able to use `n` without allocating an Integer
+[direct_array_access; inline]
+fn (x Integer) rsh_to_set_bit() (Integer, u32) {
+	if x.digits.len == 0 {
+		return zero_int, 0
+	}
+
+	mut n := u32(0)
+	for x.digits[n] == 0 {
+		n++
+	}
+	n = (n << 5) + u32(bits.trailing_zeros_32(x.digits[n]))
+	return x.rshift(n), n
 }
 
 [direct_array_access; inline]
