@@ -2630,7 +2630,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		// type cast. TODO: finish
 		// if name in ast.builtin_type_names_to_idx {
 		// handle the easy cases first, then check for an already known V typename, not shadowed by a local variable
-		if (is_option || p.peek_tok.kind == .lpar) && (is_mod_cast
+		if (is_option || p.peek_tok.kind in [.lsbr, .lpar]) && (is_mod_cast
 			|| is_c_pointer_cast || is_c_type_cast || is_js_cast || is_generic_cast
 			|| (language == .v && name.len > 0 && (name[0].is_capital()
 			|| (!known_var && (name in p.table.type_idxs
