@@ -1,4 +1,4 @@
-vlib/v/checker/tests/static_method_multi_return_err.vv:10:6: error: assignment mismatch: 1 variable(s) but `SomeStruct.static_method()` returns 2 1value(s)
+vlib/v/checker/tests/static_method_multi_return_err.vv:10:6: error: assignment mismatch: 1 variable(s) but `SomeStruct.static_method()` returns 2 value(s)
     8 | 
     9 | fn main() {
    10 |     val := SomeStruct.static_method()
