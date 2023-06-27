@@ -590,7 +590,7 @@ fn (mut g Gen) write_string_with_padding(s string, max int) {
 }
 
 fn (g &Gen) abs_to_rel_addr(addr i64) int {
-	return int(abs(addr - g.buf.len)) - 1
+	return int(mu.abs(addr - g.buf.len)) - 1
 }
 
 fn (mut g Gen) try_var_offset(var_name string) int {

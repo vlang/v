@@ -505,40 +505,41 @@ pub mut:
 [minify]
 pub struct FnDecl {
 pub:
-	name               string // 'math.bits.normalize'
-	short_name         string // 'normalize'
-	mod                string // 'math.bits'
-	is_deprecated      bool
-	is_pub             bool
-	is_variadic        bool
-	is_anon            bool
-	is_noreturn        bool        // true, when [noreturn] is used on a fn
-	is_manualfree      bool        // true, when [manualfree] is used on a fn
-	is_main            bool        // true for `fn main()`
-	is_test            bool        // true for `fn test_abcde() {}`, false for `fn test_abc(x int) {}`, or for fns that do not start with test_
-	is_conditional     bool        // true for `[if abc] fn abc(){}`
-	is_exported        bool        // true for `[export: 'exact_C_name']`
-	is_keep_alive      bool        // passed memory must not be freed (by GC) before function returns
-	is_unsafe          bool        // true, when [unsafe] is used on a fn
-	is_markused        bool        // true, when an explicit `[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
-	is_file_translated bool        // true, when the file it resides in is `[translated]`
-	receiver           StructField // TODO this is not a struct field
-	receiver_pos       token.Pos   // `(u User)` in `fn (u User) name()` position
-	is_method          bool
-	method_type_pos    token.Pos // `User` in ` fn (u User)` position
-	method_idx         int
-	rec_mut            bool // is receiver mutable
-	rec_share          ShareType
-	language           Language  // V, C, JS
-	file_mode          Language  // whether *the file*, where a function was a '.c.v', '.js.v' etc.
-	no_body            bool      // just a definition `fn C.malloc()`
-	is_builtin         bool      // this function is defined in builtin/strconv
-	body_pos           token.Pos // function bodys position
-	file               string
-	generic_names      []string
-	is_direct_arr      bool // direct array access
-	attrs              []Attr
-	ctdefine_idx       int = -1 // the index in fn.attrs of `[if xyz]`, when such attribute exists
+	name                  string // 'math.bits.normalize'
+	short_name            string // 'normalize'
+	mod                   string // 'math.bits'
+	is_deprecated         bool
+	is_pub                bool
+	is_variadic           bool
+	is_anon               bool
+	is_noreturn           bool        // true, when [noreturn] is used on a fn
+	is_manualfree         bool        // true, when [manualfree] is used on a fn
+	is_main               bool        // true for `fn main()`
+	is_test               bool        // true for `fn test_abcde() {}`, false for `fn test_abc(x int) {}`, or for fns that do not start with test_
+	is_conditional        bool        // true for `[if abc] fn abc(){}`
+	is_exported           bool        // true for `[export: 'exact_C_name']`
+	is_keep_alive         bool        // passed memory must not be freed (by GC) before function returns
+	is_unsafe             bool        // true, when [unsafe] is used on a fn
+	is_markused           bool        // true, when an explicit `[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
+	is_file_translated    bool        // true, when the file it resides in is `[translated]`
+	receiver              StructField // TODO this is not a struct field
+	receiver_pos          token.Pos   // `(u User)` in `fn (u User) name()` position
+	is_method             bool
+	is_static_type_method bool      // true for `fn Foo.bar() {}`
+	method_type_pos       token.Pos // `User` in ` fn (u User)` position
+	method_idx            int
+	rec_mut               bool // is receiver mutable
+	rec_share             ShareType
+	language              Language  // V, C, JS
+	file_mode             Language  // whether *the file*, where a function was a '.c.v', '.js.v' etc.
+	no_body               bool      // just a definition `fn C.malloc()`
+	is_builtin            bool      // this function is defined in builtin/strconv
+	body_pos              token.Pos // function bodys position
+	file                  string
+	generic_names         []string
+	is_direct_arr         bool // direct array access
+	attrs                 []Attr
+	ctdefine_idx          int = -1 // the index in fn.attrs of `[if xyz]`, when such attribute exists
 pub mut:
 	idx               int // index in an external container; can be used to refer to the function in a more efficient way, just by its integer index
 	params            []Param
@@ -578,25 +579,26 @@ pub fn (f &FnDecl) new_method_with_receiver_type(new_type Type) FnDecl {
 [minify]
 pub struct Fn {
 pub:
-	is_variadic        bool
-	language           Language
-	is_pub             bool
-	is_ctor_new        bool // `[use_new] fn JS.Array.prototype.constructor()`
-	is_deprecated      bool // `[deprecated] fn abc(){}`
-	is_noreturn        bool // `[noreturn] fn abc(){}`
-	is_unsafe          bool // `[unsafe] fn abc(){}`
-	is_placeholder     bool
-	is_main            bool // `fn main(){}`
-	is_test            bool // `fn test_abc(){}`
-	is_keep_alive      bool // passed memory must not be freed (by GC) before function returns
-	is_method          bool // true for `fn (x T) name()`, and for interface declarations (which are also for methods)
-	no_body            bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
-	is_file_translated bool // true, when the file it resides in is `[translated]`
-	mod                string
-	file               string
-	file_mode          Language
-	pos                token.Pos
-	return_type_pos    token.Pos
+	is_variadic           bool
+	language              Language
+	is_pub                bool
+	is_ctor_new           bool // `[use_new] fn JS.Array.prototype.constructor()`
+	is_deprecated         bool // `[deprecated] fn abc(){}`
+	is_noreturn           bool // `[noreturn] fn abc(){}`
+	is_unsafe             bool // `[unsafe] fn abc(){}`
+	is_placeholder        bool
+	is_main               bool // `fn main(){}`
+	is_test               bool // `fn test_abc(){}`
+	is_keep_alive         bool // passed memory must not be freed (by GC) before function returns
+	is_method             bool // true for `fn (x T) name()`, and for interface declarations (which are also for methods)
+	is_static_type_method bool // true for `fn Foo.bar() {}`
+	no_body               bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
+	is_file_translated    bool // true, when the file it resides in is `[translated]`
+	mod                   string
+	file                  string
+	file_mode             Language
+	pos                   token.Pos
+	return_type_pos       token.Pos
 pub mut:
 	return_type    Type
 	receiver_type  Type // != 0, when .is_method == true

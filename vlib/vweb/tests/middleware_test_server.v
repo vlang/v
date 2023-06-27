@@ -46,6 +46,7 @@ fn main() {
 			'/admin/':        [middleware1]
 			'/other/':        [middleware1, middleware2]
 			'/redirect':      [middleware_redirect]
+			'/with-context':  [context1]
 		}
 	}
 	eprintln('>> webserver: pid: ${os.getpid()}, started on http://localhost:${http_port}/ , with maximum runtime of ${app.timeout} milliseconds.')
@@ -220,6 +221,12 @@ pub fn (mut app App) redirect_route() vweb.Result {
 	return app.text('${result}should_never_reach!')
 }
 
+['/with-context']
+pub fn (mut app App) with_context() vweb.Result {
+	a := app.get_value[string]('a') or { 'none' }
+	return app.text(a)
+}
+
 // middleware functions:
 
 pub fn (mut app App) before_request() {
@@ -254,6 +261,11 @@ fn middleware_redirect(mut ctx vweb.Context) bool {
 	ctx.conn.write_string('m_redirect') or { panic(err) }
 	ctx.redirect('/')
 	return false
+}
+
+fn context1(mut ctx vweb.Context) bool {
+	ctx.set_value('a', 'b')
+	return true
 }
 
 // utility functions:

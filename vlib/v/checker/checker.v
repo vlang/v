@@ -3906,6 +3906,9 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 				c.error('unexpected `&`, expecting expression', node.right.pos)
 			}
 		} else if mut node.right is ast.SelectorExpr {
+			if node.right.expr.is_literal() {
+				c.error('cannot take the address of a literal value', node.pos.extend(node.right.pos))
+			}
 			right_sym := c.table.sym(right_type)
 			expr_sym := c.table.sym(node.right.expr_type)
 			if expr_sym.kind == .struct_ && (expr_sym.info as ast.Struct).is_minify
