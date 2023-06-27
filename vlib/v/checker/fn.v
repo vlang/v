@@ -87,7 +87,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	if node.language == .v && !c.is_builtin_mod && !node.is_anon {
-		c.check_valid_snake_case(node.name, 'function name', node.pos)
+		c.check_valid_snake_case(node.get_name(), 'function name', node.pos)
 		if !node.is_method && node.mod == 'main' && node.short_name in c.table.builtin_pub_fns {
 			c.error('cannot redefine builtin public function `${node.short_name}`', node.pos)
 		}
@@ -944,7 +944,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				return ast.void_type
 			}
 		}
-		c.error('unknown function: ${fn_name}', node.pos)
+		c.error('unknown function: ${node.get_name()}', node.pos)
 		return ast.void_type
 	}
 	node.is_file_translated = func.is_file_translated

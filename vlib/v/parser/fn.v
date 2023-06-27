@@ -14,7 +14,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	mut is_static_type_method := language == .v && name[0].is_capital() && p.tok.kind == .dot
 	if is_static_type_method {
 		p.check(.dot)
-		name = name.to_lower() + '__static__' + p.check_name()
+		name = name + '__static__' + p.check_name()
 	}
 	mut fn_name := if language == .c {
 		'C.${name}'
@@ -294,6 +294,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut type_sym := p.table.sym(rec.typ)
 	name_pos := p.tok.pos()
 	if p.tok.kind == .name {
+		mut check_name := ''
 		// TODO high order fn
 		is_static_type_method = p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
 			&& p.peek_tok.kind == .dot && language == .v // `fn Foo.bar() {}`
@@ -301,12 +302,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			type_name := p.tok.lit // "Foo"
 			rec.typ = p.parse_type()
 			p.check(.dot)
-			name = type_name.to_lower() + '__static__' + p.check_name() // "foo__bar"
+			check_name = p.check_name()
+			name = type_name + '__static__' + check_name // "foo__bar"
 		} else {
-			name = if language == .js { p.check_js_name() } else { p.check_name() }
+			check_name = if language == .js { p.check_js_name() } else { p.check_name() }
+			name = check_name
 		}
-		if language == .v && !p.pref.translated && !p.is_translated && util.contains_capital(name)
-			&& !p.builtin_mod {
+		if language == .v && !p.pref.translated && !p.is_translated
+			&& util.contains_capital(check_name) && !p.builtin_mod {
 			p.error_with_pos('function names cannot contain uppercase letters, use snake_case instead',
 				name_pos)
 			return ast.FnDecl{

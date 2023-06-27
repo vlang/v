@@ -562,6 +562,22 @@ pub mut:
 	pos         token.Pos // function declaration position
 }
 
+pub fn (f &FnDecl) get_name() string {
+	if f.is_static_type_method {
+		return f.name.all_after_last('__static__')
+	} else {
+		return f.name
+	}
+}
+
+pub fn (f &CallExpr) get_name() string {
+	if f.name.is_capital() && f.name.contains('__static__') {
+		return f.name.replace('__static__', '.')
+	} else {
+		return f.name
+	}
+}
+
 pub fn (f &FnDecl) new_method_with_receiver_type(new_type Type) FnDecl {
 	unsafe {
 		mut new_method := f
