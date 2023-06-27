@@ -536,7 +536,7 @@ run them via `v file.v` instead',
 			is_keep_alive: is_keep_alive
 			is_method: false
 			is_static_type_method: is_static_type_method
-			receiver_type: rec.typ // used only if is static type method
+			receiver_type: if is_static_type_method { rec.typ } else { 0 } // used only if is static type method
 			is_file_translated: p.is_translated
 			//
 			attrs: p.attrs

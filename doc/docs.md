@@ -2438,7 +2438,7 @@ V now supports static type methods like `User.new()`. These are defined on a str
 `fn [Type name].[function name]` and allow to organize all functions related to a struct:
 
 ```v oksyntax
-struct User { }
+struct User {}
 
 fn User.new() User {
 	return User{}
