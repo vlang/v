@@ -1,3 +1,0 @@
-type Abc = !int
-
-dump(Abc(5))

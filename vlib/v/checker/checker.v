@@ -462,10 +462,6 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 	}
 	c.ensure_type_exists(node.parent_type, node.type_pos) or { return }
 	mut parent_typ_sym := c.table.sym(node.parent_type)
-	if node.parent_type.has_flag(.result) {
-		c.add_error_detail('Result types cannot be stored and have to be unwrapped immediately')
-		c.error('cannot make an alias of Result type', node.type_pos)
-	}
 	match parent_typ_sym.kind {
 		.placeholder, .int_literal, .float_literal {
 			c.error('unknown aliased type `${parent_typ_sym.name}`', node.type_pos)
