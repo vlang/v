@@ -259,7 +259,8 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	if str_method_expects_ptr {
 		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(&it);')
 	} else {
-		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(it);')
+		deref, _ := deref_kind(str_method_expects_ptr, info.parent_type.is_ptr(), info.parent_type)
+		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(${deref}it);')
 	}
 	g.auto_str_funcs.writeln('\tstring res = str_intp(3, _MOV((StrIntpData[]){
 		{_SLIT0, ${c.si_s_code}, {.d_s = indents }},
