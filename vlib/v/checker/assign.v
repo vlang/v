@@ -87,14 +87,14 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				// If it's a void type, it's an unknown variable, already had an error earlier.
 				return
 			}
-			c.error('assignment mismatch: ${node.left.len} variable(s) but `${right_first.name}()` returns ${right_len} value(s)',
+			c.error('assignment mismatch: ${node.left.len} variable(s) but `${right_first.get_name()}()` returns ${right_len} value(s)',
 				node.pos)
 		} else if right_first is ast.ParExpr {
 			mut right_next := right_first
 			for {
 				if mut right_next.expr is ast.CallExpr {
 					if right_next.expr.return_type == ast.void_type {
-						c.error('assignment mismatch: expected ${node.left.len} value(s) but `${right_next.expr.name}()` returns ${right_len} value(s)',
+						c.error('assignment mismatch: expected ${node.left.len} value(s) but `${right_next.expr.get_name()}()` returns ${right_len} value(s)',
 							node.pos)
 					}
 					break
