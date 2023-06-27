@@ -17,7 +17,7 @@ pub fn (f &FnDecl) get_name() string {
 
 // get_name returns the real name for the function calling
 pub fn (f &CallExpr) get_name() string {
-	if f.name.all_after_last('.')[0].is_capital() && f.name.contains('__static__') {
+	if f.name != '' && f.name.all_after_last('.')[0].is_capital() && f.name.contains('__static__') {
 		return f.name.replace('__static__', '.')
 	} else {
 		return f.name

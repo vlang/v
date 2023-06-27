@@ -2674,7 +2674,6 @@ fn (mut p Parser) name_expr() ast.Expr {
 			p.expr_mod = ''
 			return node
 		} else {
-			// fn call
 			// fn_call
 			if is_option {
 				p.unexpected_with_pos(p.prev_tok.pos(),
