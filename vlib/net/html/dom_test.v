@@ -15,9 +15,9 @@ fn generate_temp_html() string {
 
 fn test_search_by_tag_type() {
 	dom := parse(generate_temp_html())
-	assert dom.get_tags('div').len == 4
-	assert dom.get_tags('head').len == 1
-	assert dom.get_tags('body').len == 1
+	assert dom.get_tags(name: 'div').len == 4
+	assert dom.get_tags(name: 'head').len == 1
+	assert dom.get_tags(name: 'body').len == 1
 }
 
 fn test_search_by_attribute_value() {
@@ -30,7 +30,7 @@ fn test_search_by_attribute_value() {
 
 fn test_access_parent() {
 	mut dom := parse(generate_temp_html())
-	div_tags := dom.get_tags('div')
+	div_tags := dom.get_tags(name: 'div')
 	parent := div_tags[0].parent
 	assert unsafe { parent != 0 }
 	for div_tag in div_tags {
@@ -45,7 +45,7 @@ fn test_search_by_attributes() {
 
 fn test_tags_used() {
 	dom := parse(generate_temp_html())
-	assert dom.get_all_tags().len == 9
+	assert dom.get_tags().len == 9
 }
 
 fn test_access_tag_fields() {

@@ -21,6 +21,11 @@ mut:
 	debug_file     os.File
 }
 
+[params]
+pub struct GetTagsOptions {
+	name string
+}
+
 [if debug_html ?]
 fn (mut dom DocumentObjectModel) print_debug(data string) {
 	if data.len > 0 {
@@ -174,9 +179,12 @@ pub fn (dom DocumentObjectModel) get_tag(name string) []&Tag {
 	return if name in dom.tag_type { dom.tag_type[name] } else { []&Tag{} }
 }
 
-// get_tags retrieves all tags in the document that have the given tag name.
-pub fn (dom DocumentObjectModel) get_tags(name string) []&Tag {
-	return if name in dom.tag_type { dom.tag_type[name] } else { []&Tag{} }
+// get_tags returns all tags stored in the document.
+pub fn (dom DocumentObjectModel) get_tags(options GetTagsOptions) []&Tag {
+	if options.name != '' {
+		return if options.name in dom.tag_type { dom.tag_type[options.name] } else { []&Tag{} }
+	}
+	return dom.all_tags
 }
 
 // get_tags_by_class_name retrieves all tags recursively in the document root that have the given class name(s).
@@ -214,9 +222,4 @@ pub fn (mut dom DocumentObjectModel) get_tag_by_attribute_value(name string, val
 	} else {
 		[]&Tag{}
 	}
-}
-
-// get_tags returns all tags stored in the document.
-pub fn (dom DocumentObjectModel) get_all_tags() []&Tag {
-	return dom.all_tags
 }
