@@ -347,8 +347,8 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, t
 	}
 
 	field_pos := c.orm_get_field_pos(sql_expr.where_expr)
-	for field in fields {
-		if c.table.sym(field.typ).kind == .array
+	for field in info.fields {
+		if c.table.sym(field.typ).kind == .array && !field.attrs.contains('skip')
 			&& c.table.sym(c.table.sym(field.typ).array_info().elem_type).is_primitive() {
 			c.add_error_detail('')
 			c.add_error_detail(' field name: `${field.name}`')
