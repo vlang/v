@@ -1344,116 +1344,119 @@ fn (mut c Amd64) lea(reg Amd64Register, val int) {
 	c.g.println('lea ${reg}, ${val}')
 }
 
+fn (mut c Amd64) mov_neg1(reg Amd64Register) {
+	match reg {
+		.rax {
+			c.g.write8(0x48)
+			c.g.write8(0xc7)
+			c.g.write8(0xc0)
+			c.g.write32(-1)
+		}
+		.rcx {
+			c.g.write8(0x48)
+			c.g.write8(0xc7)
+			c.g.write8(0xc1)
+			c.g.write32(-1)
+		}
+		else {
+			c.g.n_error('unhandled mov ${reg}, -1')
+		}
+	}
+	c.g.println('mov ${reg}, -1')
+}
+
+fn (mut c Amd64) clear_reg(reg Amd64Register) {
+	// Optimise to xor reg, reg when val is 0
+	match reg {
+		.eax, .rax {
+			c.g.write8(0x31)
+			c.g.write8(0xc0)
+		}
+		.edi, .rdi {
+			c.g.write8(0x31)
+			c.g.write8(0xff)
+		}
+		.rcx {
+			c.g.write8(0x48)
+			c.g.write8(0x31)
+			c.g.write8(0xc7)
+		}
+		.rdx {
+			c.g.write8(0x48)
+			c.g.write8(0x31)
+			c.g.write8(0xd2)
+		}
+		.edx {
+			c.g.write8(0x31)
+			c.g.write8(0xd2)
+		}
+		.rsi {
+			c.g.write8(0x48)
+			c.g.write8(0x31)
+			c.g.write8(0xf6)
+		}
+		.r12 {
+			c.g.write8(0x4d)
+			c.g.write8(0x31)
+			c.g.write8(0xe4)
+		}
+		else {
+			c.g.n_error('unhandled mov ${reg}, ${reg}')
+		}
+	}
+	c.g.println('xor ${reg}, ${reg}')
+}
+
 fn (mut c Amd64) mov(r Register, val int) {
 	reg := r as Amd64Register
-	if val == -1 {
-		match reg {
-			.rax {
-				c.g.write8(0x48)
-				c.g.write8(0xc7)
-				c.g.write8(0xc0)
-				c.g.write32(-1)
-				c.g.println('mov ${reg}, ${val}')
-			}
-			.rcx {
-				if val == -1 {
+	match val {
+		-1 {
+			c.mov_neg1(reg)
+		}
+		0 {
+			c.clear_reg(reg)
+		}
+		else {
+			match reg {
+				.eax, .rax {
+					c.g.write8(0xb8)
+				}
+				.edi, .rdi {
+					c.g.write8(0xbf)
+				}
+				.rcx {
 					c.g.write8(0x48)
 					c.g.write8(0xc7)
 					c.g.write8(0xc1)
-					c.g.write32(-1)
-				} else {
-					c.g.write8(0xff)
-					c.g.write8(0xff) // mov rcx 0xffff5
 				}
-				c.g.println('mov ${reg}, ${val}')
+				.r8 {
+					c.g.write8(0x41)
+					c.g.write8(0xb8)
+				}
+				.r9 {
+					c.g.write8(0xb9)
+				}
+				.rdx, .edx {
+					c.g.write8(0xba)
+				}
+				.rsi {
+					//	c.g.write8(0x48) // its 32bit!
+					c.g.write8(0xbe)
+				}
+				.r12 {
+					c.g.write8(0x41)
+					c.g.write8(0xbc) // r11 is 0xbb etc
+				}
+				.rbx {
+					c.g.write8(0xbb)
+				}
+				else {
+					c.g.n_error('unhandled mov ${reg}')
+				}
 			}
-			else {
-				c.g.n_error('unhandled mov ${reg}, -1')
-			}
+			c.g.write32(val)
+			c.g.println('mov ${reg}, ${val}')
 		}
-		c.g.println('mov ${reg}, ${val}')
-		return
-	}
-	if val == 0 {
-		// Optimise to xor reg, reg when val is 0
-		match reg {
-			.eax, .rax {
-				c.g.write8(0x31)
-				c.g.write8(0xc0)
-			}
-			.edi, .rdi {
-				c.g.write8(0x31)
-				c.g.write8(0xff)
-			}
-			.rcx {
-				c.g.write8(0x48)
-				c.g.write8(0x31)
-				c.g.write8(0xc7)
-			}
-			.rdx {
-				c.g.write8(0x48)
-				c.g.write8(0x31)
-				c.g.write8(0xd2)
-			}
-			.edx {
-				c.g.write8(0x31)
-				c.g.write8(0xd2)
-			}
-			.rsi {
-				c.g.write8(0x48)
-				c.g.write8(0x31)
-				c.g.write8(0xf6)
-			}
-			.r12 {
-				c.g.write8(0x4d)
-				c.g.write8(0x31)
-				c.g.write8(0xe4)
-			}
-			else {
-				c.g.n_error('unhandled mov ${reg}, ${reg}')
-			}
-		}
-		c.g.println('xor ${reg}, ${reg}')
-	} else {
-		match reg {
-			.eax, .rax {
-				c.g.write8(0xb8)
-			}
-			.edi, .rdi {
-				c.g.write8(0xbf)
-			}
-			.rcx {
-				c.g.write8(0x48)
-				c.g.write8(0xc7)
-				c.g.write8(0xc1)
-			}
-			.r8 {
-				c.g.write8(0x41)
-				c.g.write8(0xb8)
-			}
-			.r9 {
-				c.g.write8(0xb9)
-			}
-			.rdx, .edx {
-				c.g.write8(0xba)
-			}
-			.rsi {
-				//	c.g.write8(0x48) // its 32bit!
-				c.g.write8(0xbe)
-			}
-			.r12 {
-				c.g.write8(0x41)
-				c.g.write8(0xbc) // r11 is 0xbb etc
-			}
-			.rbx {
-				c.g.write8(0xbb)
-			}
-			else {
-				c.g.n_error('unhandled mov ${reg}')
-			}
-		}
-		c.g.write32(val)
-		c.g.println('mov ${reg}, ${val}')
 	}
 }
 
