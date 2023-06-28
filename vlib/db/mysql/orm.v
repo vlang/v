@@ -39,7 +39,7 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 			.type_longlong, .type_double {
 				data_pointers << unsafe { malloc(8) }
 			}
-			.type_time, .type_date, .type_datetime, .type_time2, .type_datetime2 {
+			.type_time, .type_date, .type_datetime, .type_time2, .type_datetime2, .type_timestamp {
 				data_pointers << unsafe { malloc(sizeof(C.MYSQL_TIME)) }
 			}
 			.type_string, .type_var_string, .type_blob, .type_tiny_blob, .type_medium_blob,
@@ -80,7 +80,7 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 					.type_long {
 						mysql_bind.buffer_type = C.MYSQL_TYPE_LONG
 					}
-					.type_time, .type_date, .type_datetime {
+					.type_time, .type_date, .type_datetime, .type_timestamp {
 						// FIXME: Allocate memory for blobs dynamically.
 						mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
 						mysql_bind.buffer_length = FieldType.type_blob.get_len()
@@ -303,7 +303,7 @@ fn data_pointers_to_primitives(data_pointers []&u8, types []int, field_types []F
 						timestamp := *(unsafe { &int(data) })
 						primitive = time.unix(timestamp)
 					}
-					.type_datetime {
+					.type_datetime, .type_timestamp {
 						string_time := unsafe { cstring_to_vstring(&char(data)) }
 						primitive = time.parse(string_time)!
 					}
@@ -366,7 +366,7 @@ fn (db DB) convert_query_data_to_primitives(table string, data orm.QueryData) ![
 
 	for i, field in data.fields {
 		if data.data[i].type_name() == 'time.Time' {
-			if column_type_map[field] == 'datetime' {
+			if column_type_map[field] in ['datetime', 'timestamp'] {
 				converted_data << orm.Primitive((data.data[i] as time.Time).str())
 			} else {
 				converted_data << data.data[i]
