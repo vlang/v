@@ -347,7 +347,7 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, t
 	}
 
 	field_pos := c.orm_get_field_pos(sql_expr.where_expr)
-	for field in info.fields {
+	for field in fields {
 		if c.table.sym(field.typ).kind == .array
 			&& c.table.sym(c.table.sym(field.typ).array_info().elem_type).is_primitive() {
 			c.add_error_detail('')
