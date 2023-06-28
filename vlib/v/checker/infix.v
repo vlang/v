@@ -824,6 +824,20 @@ fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, 
 						expr_type: from_type
 					}
 				}
+			} else {
+				c.autocast_in_if_conds(mut right.expr, from_expr, from_type, to_type)
+			}
+		}
+		ast.ParExpr {
+			c.autocast_in_if_conds(mut right.expr, from_expr, from_type, to_type)
+		}
+		ast.PrefixExpr {
+			c.autocast_in_if_conds(mut right.right, from_expr, from_type, to_type)
+		}
+		ast.CallExpr {
+			c.autocast_in_if_conds(mut right.left, from_expr, from_type, to_type)
+			for mut arg in right.args {
+				c.autocast_in_if_conds(mut arg.expr, from_expr, from_type, to_type)
 			}
 		}
 		ast.InfixExpr {
