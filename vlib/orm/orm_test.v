@@ -25,6 +25,7 @@ struct User {
 	skipped_string  string   [skip]
 	skipped_string2 string   [sql: '-']
 	skipped_array   []string [skip]
+	skipped_array2  []string [sql: '-']
 }
 
 struct Foo {
@@ -52,6 +53,7 @@ fn test_use_struct_field_as_limit() {
 		name: 'Sam'
 		skipped_string2: 'this should be ignored'
 		skipped_array: ['ignored', 'array']
+		skipped_array2: ['another', 'ignored', 'array']
 	}
 
 	sql db {
@@ -67,7 +69,8 @@ fn test_use_struct_field_as_limit() {
 	assert users[0].age == 29
 	assert users[0].skipped_string == ''
 	assert users[0].skipped_string2 == ''
-	assert users[0].skipped_array == []
+	assert users[0].skipped_array == [], 'skipped because of the [skip] tag, used for both sql and json'
+	assert users[0].skipped_array2 == [], "should be skipped, because of the sql specific [sql: '-'] tag"
 }
 
 fn test_orm() {
