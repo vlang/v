@@ -94,6 +94,10 @@ fn (mut c Amd64) main_reg() Register {
 	return Amd64Register.rax
 }
 
+fn (mut c Amd64) address_size() int {
+	return 8
+}
+
 fn (mut c Amd64) dec(reg Amd64Register) {
 	c.g.write16(0xff48)
 	match reg {
@@ -593,44 +597,46 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 		LocalVar {
 			offset := var.offset - config.offset
 			is_far_var := offset > 0x80 || offset < -0x7f
-			typ := if config.typ == 0 { var.typ } else { config.typ }
+			raw_type := if config.typ == 0 { var.typ } else { config.typ }
+			typ := c.g.unwrap(raw_type)
 
 			mut size_str := 'UNKNOWN'
 			is_extended_register := int(reg) >= int(Amd64Register.r8)
 				&& int(reg) <= int(Amd64Register.r15)
-			match typ {
-				ast.i64_type_idx, ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx,
-				ast.int_literal_type_idx {
-					c.g.write16(0x8948 + if is_extended_register { 4 } else { 0 })
-					size_str = 'QWORD'
-				}
-				ast.int_type_idx, ast.u32_type_idx, ast.rune_type_idx {
-					if is_extended_register {
-						c.g.write8(0x44)
-					}
-					c.g.write8(0x89)
-					size_str = 'DWORD'
-				}
-				ast.i16_type_idx, ast.u16_type_idx {
-					c.g.write8(0x66)
-					if is_extended_register {
-						c.g.write8(0x44)
-					}
-					c.g.write8(0x89)
-					size_str = 'WORD'
-				}
-				ast.i8_type_idx, ast.u8_type_idx, ast.char_type_idx, ast.bool_type_idx {
-					if is_extended_register {
-						c.g.write8(0x44)
-					}
-					c.g.write8(0x88)
-					size_str = 'BYTE'
-				}
-				else {
-					if typ.is_any_kind_of_pointer() {
+
+			if raw_type.is_any_kind_of_pointer() || typ.is_any_kind_of_pointer() {
+				c.g.write16(0x8948 + if is_extended_register { 4 } else { 0 })
+				size_str = 'QWORD'
+			} else {
+				match typ {
+					ast.i64_type_idx, ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx,
+					ast.int_literal_type_idx {
 						c.g.write16(0x8948 + if is_extended_register { 4 } else { 0 })
 						size_str = 'QWORD'
-					} else {
+					}
+					ast.int_type_idx, ast.u32_type_idx, ast.rune_type_idx {
+						if is_extended_register {
+							c.g.write8(0x44)
+						}
+						c.g.write8(0x89)
+						size_str = 'DWORD'
+					}
+					ast.i16_type_idx, ast.u16_type_idx {
+						c.g.write8(0x66)
+						if is_extended_register {
+							c.g.write8(0x44)
+						}
+						c.g.write8(0x89)
+						size_str = 'WORD'
+					}
+					ast.i8_type_idx, ast.u8_type_idx, ast.char_type_idx, ast.bool_type_idx {
+						if is_extended_register {
+							c.g.write8(0x44)
+						}
+						c.g.write8(0x88)
+						size_str = 'BYTE'
+					}
+					else {
 						ts := c.g.table.sym(typ.idx())
 						if ts.info is ast.Enum {
 							if is_extended_register {
@@ -639,7 +645,7 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 							c.g.write8(0x89)
 							size_str = 'DWORD'
 						} else {
-							c.g.n_error('unsupported type for mov_reg_to_var')
+							c.g.n_error('unsupported type for mov_reg_to_var ${ts.info}')
 						}
 					}
 				}
@@ -685,7 +691,7 @@ fn (mut c Amd64) mov_int_to_var(var Var, integer int, config VarConfig) {
 		}
 		LocalVar {
 			offset := var.offset - config.offset
-			typ := if config.typ == 0 { var.typ } else { config.typ }
+			typ := c.g.unwrap(if config.typ == 0 { var.typ } else { config.typ })
 			is_far_var := offset > 0x80 || offset < -0x7f
 
 			match typ {
@@ -2005,7 +2011,9 @@ fn (mut c Amd64) assign_struct_var(ident_var IdentVar, typ ast.Type, s int) {
 	assert size == 0
 }
 
-fn (mut c Amd64) assign_var(var IdentVar, typ ast.Type) {
+fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
+	typ := c.g.unwrap(raw_type)
+	info := c.g.table.sym(typ).info
 	size := c.g.get_type_size(typ)
 	if typ.is_pure_float() {
 		match var {
@@ -2014,7 +2022,8 @@ fn (mut c Amd64) assign_var(var IdentVar, typ ast.Type) {
 			// Amd64Register { c.g.mov_ssereg(var as Amd64Register, .xmm0) }
 			else {}
 		}
-	} else if c.g.table.sym(typ).info is ast.Struct && !typ.is_any_kind_of_pointer() {
+	} else if info is ast.Struct && !typ.is_any_kind_of_pointer()
+		&& !raw_type.is_any_kind_of_pointer() {
 		c.assign_struct_var(var, typ, size)
 	} else if size in [1, 2, 4, 8] {
 		match var {
@@ -2023,7 +2032,7 @@ fn (mut c Amd64) assign_var(var IdentVar, typ ast.Type) {
 			Register { c.mov_reg(var as Amd64Register, Amd64Register.rax) }
 		}
 	} else {
-		c.g.n_error('error assigning type ${typ} with size ${size}')
+		c.g.n_error('error assigning type ${typ} with size ${size}: ${info}')
 	}
 }
 
@@ -2361,7 +2370,7 @@ fn (mut c Amd64) return_stmt(node ast.Return) {
 			}
 		}
 	} else if node.exprs.len > 1 {
-		typ := c.g.return_type
+		typ := c.g.unwrap(c.g.return_type)
 		ts := c.g.table.sym(typ)
 		size := c.g.get_type_size(typ)
 		// construct a struct variable contains the return value
@@ -3385,7 +3394,8 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 			}
 		}
 		LocalVar {
-			size := c.g.get_type_size(var.typ)
+			typ := c.g.unwrap(var.typ)
+			size := c.g.get_type_size(typ)
 
 			// zero fill
 			mut left := if size >= 16 {
@@ -3414,12 +3424,12 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 				c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i8_type_idx)
 			}
 
-			ts := c.g.table.sym(var.typ)
+			ts := c.g.table.sym(typ)
 			match ts.info {
 				ast.Struct {
 					for i, f in ts.info.fields {
 						if f.has_default_expr && !init.init_fields.map(it.name).contains(f.name) {
-							offset := c.g.structs[var.typ.idx()].offsets[i]
+							offset := c.g.structs[typ.idx()].offsets[i]
 							c.g.expr(f.default_expr)
 							// TODO expr not on rax
 							c.mov_reg_to_var(var, Amd64Register.rax, offset: offset, typ: f.typ)
@@ -3430,9 +3440,9 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 			}
 			for f in init.init_fields {
 				field := ts.find_field(f.name) or {
-					c.g.n_error('Could not find field `${f.name}` on init')
+					c.g.n_error('Could not find field `${f.name}` on init (${ts.info})')
 				}
-				offset := c.g.structs[var.typ.idx()].offsets[field.i]
+				offset := c.g.structs[typ.idx()].offsets[field.i]
 
 				c.g.expr(f.expr)
 				// TODO expr not on rax
@@ -3777,7 +3787,7 @@ fn (mut c Amd64) mov_ssereg_to_var(var Var, reg Amd64SSERegister, config VarConf
 		LocalVar {
 			offset := var.offset - config.offset
 			is_far_var := offset > 0x80 || offset < -0x7f
-			typ := if config.typ == 0 { var.typ } else { config.typ }
+			typ := c.g.unwrap(if config.typ == 0 { var.typ } else { config.typ })
 
 			far_var_offset := if is_far_var { 0x40 } else { 0 }
 			c.g.write8(if typ == ast.f32_type_idx { 0xf3 } else { 0xf2 })
@@ -3821,7 +3831,7 @@ fn (mut c Amd64) mov_var_to_ssereg(reg Amd64SSERegister, var Var, config VarConf
 		LocalVar {
 			offset := var.offset - config.offset
 			is_far_var := offset > 0x80 || offset < -0x7f
-			typ := if config.typ == 0 { var.typ } else { config.typ }
+			typ := c.g.unwrap(if config.typ == 0 { var.typ } else { config.typ })
 
 			far_var_offset := if is_far_var { 0x40 } else { 0 }
 			c.g.write8(if typ == ast.f32_type_idx { 0xf3 } else { 0xf2 })

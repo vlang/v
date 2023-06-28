@@ -320,6 +320,10 @@ pub fn (mut c Arm64) gen_arm64_exit(expr ast.Expr) {
 	c.svc()
 }
 
+fn (mut c Arm64) address_size() int {
+	return 8
+}
+
 fn (mut c Arm64) gen_print(s string, fd int) {
 	panic('Arm64.gen_print() is not implemented')
 }
