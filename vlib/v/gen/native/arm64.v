@@ -517,3 +517,11 @@ fn (mut c Arm64) call_addr_at(addr int, at i64) i64 {
 fn (mut c Arm64) gen_concat_expr(expr ast.ConcatExpr) {
 	panic('Arm64.gen_concat_expr() not implemented')
 }
+
+fn (mut c Arm64) cmp_to_stack_top(reg Register) {
+	panic('Arm64.cmp_to_stack_top() not implemented')
+}
+
+fn (mut c Arm64) push_reg(reg Register) {
+	panic('Arm64.push_reg() not implemented')
+}

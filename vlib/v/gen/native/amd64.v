@@ -10,7 +10,7 @@ import v.token
 pub struct Amd64 {
 mut:
 	g &Gen = unsafe { nil }
-	// arm64 specific stuff for code generation
+	// amd64 specific stuff for code generation
 	is_16bit_aligned bool
 }
 
@@ -1005,6 +1005,10 @@ fn (mut c Amd64) push(reg Amd64Register) {
 	c.g.println('push ${reg}')
 }
 
+fn (mut c Amd64) push_reg(r Register) {
+	c.push(r as Amd64Register)
+}
+
 pub fn (mut c Amd64) pop(reg Amd64Register) {
 	if int(reg) >= int(Amd64Register.r8) && int(reg) <= int(Amd64Register.r15) {
 		c.g.write8(0x41)
@@ -1846,51 +1850,6 @@ fn (mut c Amd64) call_builtin(name Builtin) i64 {
 	call_addr := c.call(0)
 	c.g.println('call builtin `${name}`')
 	return call_addr
-}
-
-fn (mut c Amd64) for_in_stmt(node ast.ForInStmt) {
-	if node.is_range {
-		// for a in node.cond .. node.high {
-		i := c.allocate_var(node.val_var, 8, 0) // iterator variable
-		c.g.expr(node.cond)
-		c.mov_reg_to_var(LocalVar{i, ast.i64_type_idx, node.val_var}, Amd64Register.rax) // i = node.cond // initial value
-		start := c.g.pos() // label-begin:
-		start_label := c.g.labels.new_label()
-		c.mov_var_to_reg(Amd64Register.rbx, LocalVar{i, ast.i64_type_idx, node.val_var}) // rbx = iterator value
-		c.g.expr(node.high) // final value
-		c.cmp_reg(.rbx, .rax) // rbx = iterator, rax = max value
-		jump_addr := c.cjmp(.jge) // leave loop if i is beyond end
-		end_label := c.g.labels.new_label()
-		c.g.labels.patches << LabelPatch{
-			id: end_label
-			pos: jump_addr
-		}
-		c.g.println('; jump to label ${end_label}')
-		c.g.labels.branches << BranchLabel{
-			name: node.label
-			start: start_label
-			end: end_label
-		}
-		c.g.stmts(node.stmts)
-		c.g.labels.addrs[start_label] = c.g.pos()
-		c.g.println('; label ${start_label}')
-		c.inc_var(LocalVar{i, ast.i64_type_idx, node.val_var})
-		c.g.labels.branches.pop()
-		c.jmp_back(start)
-		c.g.labels.addrs[end_label] = c.g.pos()
-		c.g.println('; label ${end_label}')
-		/*
-		} else if node.kind == .array {
-	} else if node.kind == .array_fixed {
-	} else if node.kind == .map {
-	} else if node.kind == .string {
-	} else if node.kind == .struct_ {
-	} else if it.kind in [.array, .string] || it.cond_type.has_flag(.variadic) {
-	} else if it.kind == .map {
-		*/
-	} else {
-		c.g.v_error('for-in statement is not yet implemented', node.pos)
-	}
 }
 
 fn (mut c Amd64) gen_concat_expr(node ast.ConcatExpr) {
@@ -4145,6 +4104,11 @@ fn (mut c Amd64) gen_cast_expr(expr ast.CastExpr) {
 			c.mov_extend_reg(.rax, .rax, expr.typ)
 		}
 	}
+}
+
+fn (mut c Amd64) cmp_to_stack_top(reg Register) {
+	c.pop(.rbx)
+	c.cmp_reg(.rbx, reg as Amd64Register)
 }
 
 // Temporary!
