@@ -334,10 +334,11 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, t
 	mut fields := []ast.StructField{}
 	for field in info.fields {
 		is_primitive := field.typ.is_string() || field.typ.is_bool() || field.typ.is_number()
-		is_struct := c.table.type_symbols[int(field.typ)].kind == .struct_
-		is_array := c.table.sym(field.typ).kind == .array
+		fsym := c.table.sym(field.typ)
+		is_struct := fsym.kind == .struct_
+		is_array := fsym.kind == .array
 		elem_sym := if is_array {
-			c.table.sym(c.table.sym(field.typ).array_info().elem_type)
+			c.table.sym(fsym.array_info().elem_type)
 		} else {
 			ast.invalid_type_symbol
 		}
