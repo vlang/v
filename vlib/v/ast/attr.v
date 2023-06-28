@@ -54,6 +54,10 @@ pub fn (attrs []Attr) contains(str string) bool {
 	return attrs.any(it.name == str)
 }
 
+pub fn (attrs []Attr) contains_arg(str string, arg string) bool {
+	return attrs.any(it.has_arg && it.name == str && it.arg == arg)
+}
+
 [direct_array_access]
 pub fn (attrs []Attr) find_first(aname string) ?Attr {
 	for a in attrs {
