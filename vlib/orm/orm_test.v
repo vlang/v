@@ -18,13 +18,13 @@ struct Module {
 
 [table: 'userlist']
 struct User {
-	id              int    [primary; sql: serial]
+	id              int      [primary; sql: serial]
 	age             int
-	name            string [sql: 'username']
+	name            string   [sql: 'username']
 	is_customer     bool
-	skipped_string  string [skip]
-	skipped_string2 string [sql: '-']
-	skipped_array	[]string [skip]
+	skipped_string  string   [skip]
+	skipped_string2 string   [sql: '-']
+	skipped_array   []string [skip]
 }
 
 struct Foo {
