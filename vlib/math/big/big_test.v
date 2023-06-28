@@ -195,20 +195,26 @@ const div_mod_test_data = [
 ]
 // vfmt on
 
+enum Comparison {
+	less = -1
+	equal = 0
+	greater = 1
+}
+
 struct ComparisonTest {
-	a   TestInteger
-	b   TestInteger
-	cmp int // a < b == -1 | a > b == 1 | a = b == 0
+	lhs TestInteger
+	rhs TestInteger
+	cmp Comparison
 }
 
 // vfmt off
 const comparison_test_data = [
-	ComparisonTest{ -45, 35, -1 },
-	ComparisonTest{ -3, 13, -1 },
-	ComparisonTest{ u32(352395), u32(51830), 1 },
-	ComparisonTest{ u32(52395), u32(52395), 0 },
+	ComparisonTest{ -45, 35, .less },
+	ComparisonTest{ -3, 13, .less },
+	ComparisonTest{ u32(352395), u32(51830), .greater },
+	ComparisonTest{ u32(52395), u32(52395), .equal },
 	ComparisonTest{ '574720348957234098573049571938519023857709',
-		'58745908123509182375091823601928385712908347298341752397182643294', -1 },
+		'58745908123509182375091823601928385712908347298341752397182643294', .less },
 ]
 // vfmt on
 
@@ -533,8 +539,8 @@ fn test_div_mod() {
 
 fn test_comparison() {
 	for t in comparison_test_data {
-		a := t.a.parse()
-		b := t.b.parse()
+		a := t.lhs.parse()
+		b := t.rhs.parse()
 
 		assert a == a
 		assert a <= a
@@ -544,7 +550,9 @@ fn test_comparison() {
 		assert b <= b
 		assert b >= b
 
-		lt, gt, eq := t.cmp < 0, t.cmp > 0, t.cmp == 0
+		lt := t.cmp == Comparison.less
+		gt := t.cmp == Comparison.greater
+		eq := t.cmp == Comparison.equal
 
 		assert (a < b) == lt
 		assert (a > b) == gt
