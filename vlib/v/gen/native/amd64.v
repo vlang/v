@@ -1401,7 +1401,7 @@ fn (mut c Amd64) clear_reg(reg Amd64Register) {
 			c.g.write8(0xe4)
 		}
 		else {
-			c.g.n_error('unhandled mov ${reg}, ${reg}')
+			c.g.n_error('unhandled xor ${reg}, ${reg}')
 		}
 	}
 	c.g.println('xor ${reg}, ${reg}')
