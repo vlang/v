@@ -24,6 +24,7 @@ struct User {
 	is_customer     bool
 	skipped_string  string [skip]
 	skipped_string2 string [sql: '-']
+	skipped_array	[]string [skip]
 }
 
 struct Foo {
@@ -50,6 +51,7 @@ fn test_use_struct_field_as_limit() {
 		age: 29
 		name: 'Sam'
 		skipped_string2: 'this should be ignored'
+		skipped_array: ['ignored', 'array']
 	}
 
 	sql db {
@@ -65,6 +67,7 @@ fn test_use_struct_field_as_limit() {
 	assert users[0].age == 29
 	assert users[0].skipped_string == ''
 	assert users[0].skipped_string2 == ''
+	assert users[0].skipped_array == []
 }
 
 fn test_orm() {
