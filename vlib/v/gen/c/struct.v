@@ -22,7 +22,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		g.empty_line = false
 		g.write(s)
 	}
-	styp := g.typ(node.typ)
+	styp := g.typ(g.table.unaliased_type(node.typ)).replace('*', '')
 	mut shared_styp := '' // only needed for shared x := St{...
 	if styp in c.skip_struct_init {
 		// needed for c++ compilers
@@ -71,6 +71,10 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			g.write('{')
 		}
 	} else {
+		// alias to pointer type
+		if g.table.sym(node.typ).kind == .alias && g.table.unaliased_type(node.typ).is_ptr() {
+			g.write('&')
+		}
 		if is_multiline {
 			g.writeln('(${styp}){')
 		} else {
