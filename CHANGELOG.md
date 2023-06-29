@@ -12,9 +12,39 @@
 - Enum values now can have attributes.
 - Generic functions as function parameters are now supported: `fn f[T](x T, i int, f_ Fn[T]) T { `.
 - Anonymous structs can no longer have attributes.
+- Allow fixed array returns.
 
 ### Breaking changes
-- `byte` deprecated in favor of `u8` (`u8` is automatically converted to `byte` by vfmt).
+- `byte` deprecated in favor of `u8` (`byte` is automatically converted to `u8` by vfmt).
+
+### Checker improvements/fixes
+- Disallow `Result` type aliases (`type Foo = !Bar`) and `Result` in maps (`map[key]!Type`).
+- Add a missing check for taking address of literal value member.
+- Fixed map initialization for maps with option values.
+- Allow `a << none`, where `a` is `[]?&int`.
+- Disallow multiple `else` branches in a match.
+- Fix index expression with sumtype of array types.
+- Remove hardcoded check for function calls for `C.stat`, `C.sigaction`, etc.
+- Fix multiple embedded external module interface.
+- Fix missing check for diff type on map value declaration.
+- Simplify error handling in the checker (#18507).
+- Option alias fixes.
+- Fix alias to struct ptr on struct init.
+- Sumtypes can no longer hold references.
+- Fix a bug checking generic closures.
+- A hard to reach limit of 1 million iterations for resolving all generics.
+- Fix missing check for unwrapped shift operation.
+- Fix enum max value validation.
+- Add a missing mutability check for `array.delete` calls.
+- Disallow `_ = <- quit`.
+- Disallow type matching with primitive vars.
+- Warning instead of error for unnecessary brackets in if/match.
+- Include import aliases when checking for import duplicates.
+- Fix infering generic array type in nested call.
+- Allow casted `enum val` and `const` as fixed array size.
+- Disallow multiple return values in const declarations.
+- Fix contains() with array of interfaces.
+- Disallow mut for blank idents.
 
 ### Standard library
 - json: Enum value string serialization supports `[json:'alias']` to change its string values.
@@ -28,59 +58,13 @@
 - stbi: allow customization of number of channels in `stbi.load()`.
 - stbi: add a `resize_uint8` function for resizing images in memory.
 - time, x.json2: improve iso8601 time decoding.
-
-### Checker improvements/fixes
-- Fix alias to struct ptr on struct init.
-- Disallow `Result` type aliases (`type Foo = !Bar`) and `Result` in maps (`map[key]!Type`).
-- Add a missing check for taking address of literal value member.
-- Fixed map initialization for maps with option values.
-- Allow `a << none`, where `a` is `[]?&int`.
-- Disallow multiple `else` branches in a match.
-- Fix index expression with sumtype of array types.
-- Remove hardcoded check for function calls for `C.stat`, `C.sigaction`, etc.
-- Fix multiple embedded external module interface.
-- Fix missing check for diff type on map value declaration.
-- Simplify error handling in the checker (#18507).
-- Option alias fixes.
-- Sumtypes can no longer hold references.
-- Fix a bug checking generic closures.
-- A hard to reach limit of 1 million iterations for resolving all generics.
-- Fix missing check for unwrapped shift operation.
-- Fix enum max value validation.
-- Add a missing mutability check for `array.delete` calls.
-- Disallow `_ = <- quit`.
-- Disallow type matching with primitive vars.
-- Warning instead of error for unnecessary brackets in if/match.
-
-
-### ORM
-- Fixed a foreign key bug that could result in an extra insert.
-- Comptime bug with `[skip]` and `[sql:'-']` fixed.
-- Checker error for unsupported field types.
-- Allow structs without the id field, more flexible primary keys.
-- Improved docs and examples.
-- Uninitialized structs are no longer inserted into related tables.
-
-### Database drivers
-- mysql: TIMESTAMP support.
-- mysql: allocate memory for each string and blob dynamically depending on its value length.
-
-### Native backend
-- Refactoring, splitting large files into multiple.
-
-### C backend
-- Fix code generation for generic unions.
-- Fix `[N]chan`.
-
-### Comptime
-- A new `$res` comptime function to get returned value in defer block (#18382).
-- Fix comptimeselector option propagation.
-
-### Tools
-- A new VPM site: vpm.vlang.io. A better design, discoverability of packages, descriptions, most downloaded packages etc.
-- vpm: installation of mixed modules.
-- `v ls --install -p D:\path\vls.exe` to install a local vls executable.
-
+- builtin: zero out internal map/array pointers on m.free(), to reduce the work for the GC
+  mark phase for non escaping maps/arrays, used in hot loops.
+- time: add more detailed error descriptions, add custom format parsing with time.parse_format.
+- sync: add Mutex.destroy and RwMutex.destroy methods.
+- datatypes: add Bloom filter.
+- rand: add missing rand.u16(), update doc comments, add test.
+- builtin: speed up string methods with vmemcpy instead of `for` loop for copying data.
 
 ### Web
 - The builtin websocket library is now thread safe.
@@ -96,6 +80,46 @@
 - net.html: fixed text parsing for inline tags.
 - net.html: fix parsing of nested quoted strings in code tags.
 - picoev: FreeBSD support.
+
+### ORM
+- Fixed a foreign key bug that could result in an extra insert.
+- Comptime bug with `[skip]` and `[sql:'-']` fixed.
+- Checker error for unsupported field types.
+- Allow structs without the id field, more flexible primary keys.
+- Improved docs and examples.
+- Uninitialized structs are no longer inserted into related tables.
+
+### Database drivers
+- mysql: TIMESTAMP support.
+- mysql: allocate memory for each string and blob dynamically depending on its value length.
+- mysql: add the ability to commit transactions.
+
+### Native backend
+- Refactoring, splitting large files into multiple.
+
+### C backend
+- Fix code generation for generic unions.
+- Fix `[N]chan` (fixed arrays of channels).
+- Fix nested fixed array instantiation.
+- Fix fixed array of map.
+- Fix stringification of usize struct fields (before, they were treated as 32 bit *signed* numbers).
+
+### Comptime
+- A new `$res` comptime function to get returned value in defer block (#18382).
+- Fix comptimeselector option propagation.
+- A mutability check for comptime assignments.
+- Fix comptime assigning to sumtype or indexexpr.
+- Make comptime calls work with or-block.
+
+### Tools
+- A new VPM site: vpm.vlang.io. A better design, discoverability of packages, descriptions, most downloaded packages etc.
+- vpm: installation of mixed modules.
+- `v ls --install -p D:\path\vls.exe` to install a local vls executable.
+- vdoc: highlight comments with gray color.
+- vet: allow vetting files with global variables.
+- Make util.launch_tool/3 more robust, by recompiling V tools always in a known current working folder.
+
+
 
 ## V 0.3.4
 
