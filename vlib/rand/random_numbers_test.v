@@ -454,3 +454,17 @@ fn test_element2() {
 		assert 4 != e
 	}
 }
+
+fn test_proper_masking() {
+	a := []int{len: 10, init: index * 0 + rand.intn(1073741823)!}
+	assert a != [0].repeat(10)
+
+	b := []int{len: 10, init: index * 0 + rand.intn(1073741824)!}
+	assert b != [0].repeat(10)
+
+	c := []i64{len: 10, init: index * 0 + rand.i64n(i64(4611686018427387903))!}
+	assert c != [i64(0)].repeat(10)
+
+	d := []i64{len: 10, init: index * 0 + rand.i64n(i64(4611686018427387904))!}
+	assert d != [i64(0)].repeat(10)
+}
