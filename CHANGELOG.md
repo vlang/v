@@ -1,16 +1,101 @@
 ## V 0.3.5
-*not yet released*
-- A new VPM site: vpm.vlang.io. A better design, discoverability of packages, descriptions, most downloaded packages etc.
-- Struct fields can now be skipped during JSON/ORM serialization via `[json:'-']` and `[sql:'-']`,
- in addition to `[skip]`. This allows having custom behavior for different serialization methods.
-- ORM: fixed a foreign key bug that could result in an extra insert.
-- Generic functions as function parameters are now supported: `fn f[T](x T, i int, f_ Fn[T]) T { `.
-- Enum values now can have attributes.
-- json: Enum value string serialization supports `[json:'alias']` to change its string values.
+*29 June 2023*
+
+### Improvements in the language
+- **Coroutines with a scheduler**. Only Linux/macOS for now, requires `-use-coroutines` and
+  `coroutines.sleep()` instead of `time.sleep()`. They work with IO and net, but not with GC
+  for now.
+- `spawn` now spawns system threads, `go` spawns coroutines.
+- Static type methods: `Foo.new()` to replace factory functions like `new_foo()`.
+- Smartcasting with complex conditions:`if sum_type is Foo && !sum_type.is_info && get_name(sum_type.info.name) == 'foo' `.
 - Functions can now return fixed size arrays.
+- Enum values now can have attributes.
+- Generic functions as function parameters are now supported: `fn f[T](x T, i int, f_ Fn[T]) T { `.
+- Anonymous structs can no longer have attributes.
+
+### Breaking changes
+- `byte` deprecated in favor of `u8` (`u8` is automatically converted to `byte` by vfmt).
+
+### Standard library
+- json: Enum value string serialization supports `[json:'alias']` to change its string values.
+- Struct fields can now be skipped during JSON/ORM serialization via `[json:'-']` and `[sql:'-']`,
+  in addition to `[skip]`. This allows having custom behavior for different serialization methods.
+- builtin: heap usage API (gc_memory_use() and gc_heap_usage())
+- math.big: refactoring, gcd fixes/improvements, overflow fixes, `mod_inverse`.
+- flag: fix finalize with multiple shortargs.
+- runtime: add new functions total_memory/0 and free_memory/0.
+- time: small cleanup of parse_iso8601 comments, make the C.strftime declaration forwards compatible
+- stbi: allow customization of number of channels in `stbi.load()`.
+- stbi: add a `resize_uint8` function for resizing images in memory.
+- time, x.json2: improve iso8601 time decoding.
+
+### Checker improvements/fixes
+- Fix alias to struct ptr on struct init.
+- Disallow `Result` type aliases (`type Foo = !Bar`) and `Result` in maps (`map[key]!Type`).
+- Add a missing check for taking address of literal value member.
+- Fixed map initialization for maps with option values.
+- Allow `a << none`, where `a` is `[]?&int`.
+- Disallow multiple `else` branches in a match.
+- Fix index expression with sumtype of array types.
+- Remove hardcoded check for function calls for `C.stat`, `C.sigaction`, etc.
+- Fix multiple embedded external module interface.
+- Fix missing check for diff type on map value declaration.
+- Simplify error handling in the checker (#18507).
+- Option alias fixes.
+- Sumtypes can no longer hold references.
+- Fix a bug checking generic closures.
+- A hard to reach limit of 1 million iterations for resolving all generics.
+- Fix missing check for unwrapped shift operation.
+- Fix enum max value validation.
+- Add a missing mutability check for `array.delete` calls.
+- Disallow `_ = <- quit`.
+- Disallow type matching with primitive vars.
+- Warning instead of error for unnecessary brackets in if/match.
+
+
+### ORM
+- Fixed a foreign key bug that could result in an extra insert.
+- Comptime bug with `[skip]` and `[sql:'-']` fixed.
+- Checker error for unsupported field types.
+- Allow structs without the id field, more flexible primary keys.
+- Improved docs and examples.
+- Uninitialized structs are no longer inserted into related tables.
+
+### Database drivers
+- mysql: TIMESTAMP support.
+- mysql: allocate memory for each string and blob dynamically depending on its value length.
+
+### Native backend
+- Refactoring, splitting large files into multiple.
+
+### C backend
+- Fix code generation for generic unions.
+- Fix `[N]chan`.
+
+### Comptime
+- A new `$res` comptime function to get returned value in defer block (#18382).
+- Fix comptimeselector option propagation.
+
+### Tools
+- A new VPM site: vpm.vlang.io. A better design, discoverability of packages, descriptions, most downloaded packages etc.
+- vpm: installation of mixed modules.
+- `v ls --install -p D:\path\vls.exe` to install a local vls executable.
+
+
+### Web
 - The builtin websocket library is now thread safe.
 - Enhanced builtin csrf protection in vweb.
-- builtin: heap usage API (gc_memory_use() and gc_heap_usage())
+- vweb: ability to set and get values on vweb.Context.
+- vweb: support for host specific static files.
+- vweb: host option added to controller, and a new host attribute.
+- vweb: middleware docs improved; same with docs for `[vweb_global]` and `shared`.
+- vweb: return 404 on file not found.
+- net.http: copy IANA's list of methods to the http.Method enum.
+- net.conv: use a pure V implementation instead of C.hton etc.
+- net.html: `get_tag()` methods to find first tag occurrence.
+- net.html: fixed text parsing for inline tags.
+- net.html: fix parsing of nested quoted strings in code tags.
+- picoev: FreeBSD support.
 
 ## V 0.3.4
 
