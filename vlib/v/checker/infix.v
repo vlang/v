@@ -24,7 +24,6 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					to_type := c.expr(left_node.right.right)
 					c.autocast_in_if_conds(mut node.right, left_node.right.left, from_type,
 						to_type)
-					break
 				}
 			}
 			if left_node.op == .key_is {
@@ -823,8 +822,18 @@ fn (mut c Checker) invalid_operator_error(op token.Kind, left_type ast.Type, rig
 }
 
 // `if node is ast.Ident && node.is_mut { ... }` -> `if node is ast.Ident && (node as ast.Ident).is_mut { ... }`
-fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, from_type ast.Type, to_type ast.Type) {
+fn (mut c Checker) autocast_in_if_conds(mut right_ ast.Expr, from_expr ast.Expr, from_type ast.Type, to_type ast.Type) {
+	mut right := right_
 	match mut right {
+		ast.Ident {
+			if right.name == from_expr.str() {
+				right_ = ast.AsCast{
+					typ: to_type
+					expr: from_expr
+					expr_type: from_type
+				}
+			}
+		}
 		ast.SelectorExpr {
 			if right.expr.str() == from_expr.str() {
 				right.expr = ast.ParExpr{
@@ -855,7 +864,6 @@ fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, 
 					}
 				}
 			}
-			c.autocast_in_if_conds(mut right.left, from_expr, from_type, to_type)
 			for mut arg in right.args {
 				c.autocast_in_if_conds(mut arg.expr, from_expr, from_type, to_type)
 			}
