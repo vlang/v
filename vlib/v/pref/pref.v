@@ -228,6 +228,7 @@ pub mut:
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
 	thread_stack_size                     int = 8388608 // Change with `-thread-stack-size 4194304`. Note: on macos it was 524288, which is too small for more complex programs with many nested callexprs.
+	wasm_validate bool // validate webassembly code, by calling `wasm-validate`
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -303,6 +304,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		arg := args[i]
 		current_args := args[i..].clone()
 		match arg {
+			'-wasm-validate' {
+				res.wasm_validate = true
+			}
 			'-apk' {
 				res.is_apk = true
 				res.build_options << arg

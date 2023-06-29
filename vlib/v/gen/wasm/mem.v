@@ -6,13 +6,14 @@ module wasm
 import wasm
 import v.ast
 import v.serialise
+import encoding.binary
 
 struct Var {
 	name       string
 mut:
 	typ        ast.Type
 	idx        wasm.LocalIndex
-	is_pointer bool
+	is_address bool
 	is_global  bool
 	g_idx      wasm.GlobalIndex
 	offset     int
@@ -72,33 +73,42 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) ?Var {
 			return g.get_var_from_expr(node.expr)
 		}
 		ast.SelectorExpr {
-			addr := g.get_var_from_expr(node.expr) or {
-				g.field_offset(node.expr_type, node.field_name)
+			mut addr := g.get_var_from_expr(node.expr) or {
+				// if place {
+				// 	g.field_offset(node.expr_type, node.field_name)
+				// }
 				return none
 			}
+			addr.is_address = true
 
 			offset := g.get_field_offset(node.expr_type, node.field_name)
 			return g.offset(addr, node.typ, offset)
 		}
-		/* ast.SelectorExpr {
-			
-		}
-		ast.IndexExpr {
-
-		} */
-		/* ast.PrefixExpr {
-			// *p = expr
-			v := g.get_var_from_expr(node.expr) or {
-				return none
-			}
-			v.ref()
-			return none
-		} */
 		else {
 			//g.w_error('get_var_from_expr: unexpected `${node.type_name()}`')
 			return none
 		}
 	}
+}
+
+// ONLY call this with the LHS of an assign, an lvalue
+// use get_var_from_expr in all other cases
+fn (mut g Gen) get_var_or_make_from_expr(node ast.Expr, typ ast.Type) Var {
+	if v := g.get_var_from_expr(node) {
+		return v
+	}
+
+	mut v := g.new_local('__tmp', ast.voidptr_type)
+	g.needs_address = true
+	{
+		g.set_with_expr(node, v)
+	}
+	g.needs_address = false
+
+	v.typ = typ
+	v.is_address = true
+
+	return v
 }
 
 fn (mut g Gen) bp() wasm.LocalIndex {
@@ -132,17 +142,17 @@ fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
 		else {}
 	}
 	
-	is_pointer := typ.nr_muls() == 0 && !g.is_pure_type(typ)
+	is_address := !g.is_pure_type(typ)
 	wtyp := g.get_wasm_type(typ)
 
 	mut v := Var{
 		name: name
 		typ: typ
-		is_pointer: is_pointer
+		is_address: is_address
 	}
 
-	if !is_pointer {
-		g.func.new_local_named(wtyp, g.dbg_type_name(name, typ))
+	if !is_address {
+		v.idx = g.func.new_local_named(wtyp, g.dbg_type_name(name, typ))
 		g.local_vars << v
 		return v
 	}
@@ -214,7 +224,7 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_m
 	}
 
 	mut is_mut := false
-	is_pointer := typ.nr_muls() == 0 && !g.is_pure_type(typ)
+	is_address := !g.is_pure_type(typ)
 	mut init_expr := ?ast.Expr(none)
 
 	cexpr := if cexpr_v := g.literal_to_constant_expression(typ, init) {
@@ -222,7 +232,7 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_m
 		cexpr_v
 	} else {
 		// Isn't a literal ...
-		if is_pointer {
+		if is_address {
 			// ... allocate memory and append
 			pos, is_init := g.pool.append(init, typ)
 			if !is_init {
@@ -245,9 +255,9 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_m
 		v: Var{
 			name: name
 			typ: typ
-			is_pointer: is_pointer
+			is_address: is_address
 			is_global: true
-			g_idx: g.mod.new_global(name, false, g.get_wasm_type(typ), is_mut, cexpr)
+			g_idx: g.mod.new_global(g.dbg_type_name(name, typ), false, g.get_wasm_type(typ), is_mut, cexpr)
 		}
 	}
 
@@ -257,7 +267,7 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_m
 // is_pure_type(voidptr) == true
 // is_pure_type(&Struct) == false
 fn (g Gen) is_pure_type(typ ast.Type) bool {
-	if typ.is_pure_int() || typ.is_pure_float() || typ == ast.char_type_idx || typ.is_pointer()
+	if typ.is_pure_int() || typ.is_pure_float() || typ == ast.char_type_idx || typ.is_real_pointer()
 		|| typ.is_bool() {
 		return true
 	}
@@ -307,15 +317,15 @@ fn (mut g Gen) get(v Var) {
 		g.func.local_get(v.idx)
 	}
 
-	if v.is_pointer && g.is_pure_type(v.typ) {
+	if v.is_address && g.is_pure_type(v.typ) {
 		g.load(v.typ, v.offset)
-	} else if v.is_pointer && v.offset != 0 {
+	} else if v.is_address && v.offset != 0 {
 		g.func.i32_const(v.offset)
 		g.func.add(.i32_t)
 	}
 }
 
-fn (mut g Gen) deref_as_field(v Var) {
+/* fn (mut g Gen) deref_as_field(v Var) {
 	if v.is_global {
 		g.func.global_get(v.g_idx)
 	} else {
@@ -323,10 +333,10 @@ fn (mut g Gen) deref_as_field(v Var) {
 	}
 
 	g.load(v.typ, v.offset)
-}
+} */
 
 /* fn (mut g Gen) copy(to Var, v Var) {
-	if v.is_pointer && !g.is_pure_type(v.typ) {
+	if v.is_address && !g.is_pure_type(v.typ) {
 
 		return
 	}
@@ -336,8 +346,9 @@ fn (mut g Gen) deref_as_field(v Var) {
 } */
 
 fn (mut g Gen) mov(to Var, v Var) {
-	if !v.is_pointer || g.is_pure_type(v.typ) {
+	if !v.is_address || g.is_pure_type(v.typ) {
 		g.get(v)
+		g.cast(v.typ, to.typ)
 		g.set(to)
 		return
 	}
@@ -345,8 +356,8 @@ fn (mut g Gen) mov(to Var, v Var) {
 	size, _ := g.pool.type_size(v.typ)
 	
 	if size > 16 {
-		g.ref(v)
 		g.ref(to)
+		g.ref(v)
 		g.func.i32_const(size)
 		g.func.memory_copy()
 		return
@@ -358,42 +369,31 @@ fn (mut g Gen) mov(to Var, v Var) {
 		g.ref_ignore_offset(v)
 		g.ref_ignore_offset(to)
 		if sz - 8 >= 0 {
-			g.load(ast.u64_type_idx, to.offset + oz)
-			g.store(ast.u64_type_idx, v.offset + oz)
+			g.load(ast.u64_type_idx, v.offset + oz)
+			g.store(ast.u64_type_idx, to.offset + oz)
 			sz -= 8
 			oz += 8
 		} else if sz - 4 >= 0 {
-			g.load(ast.u32_type_idx, to.offset + oz)
-			g.store(ast.u32_type_idx, v.offset + oz)
+			g.load(ast.u32_type_idx, v.offset + oz)
+			g.store(ast.u32_type_idx, to.offset + oz)
 			sz -= 4
 			oz += 4
 		} else if sz - 2 >= 0 {
-			g.load(ast.u16_type_idx, to.offset + oz)
-			g.store(ast.u16_type_idx, v.offset + oz)
+			g.load(ast.u16_type_idx, v.offset + oz)
+			g.store(ast.u16_type_idx, to.offset + oz)
 			sz -= 2
 			oz += 2
 		} else if sz - 1 >= 0 {
-			g.load(ast.u8_type_idx, to.offset + oz)
-			g.store(ast.u8_type_idx, v.offset + oz)
+			g.load(ast.u8_type_idx, v.offset + oz)
+			g.store(ast.u8_type_idx, to.offset + oz)
 			sz -= 1
 			oz += 1
 		}
 	}
 }
 
-// set structures with pointer, memcpy
-// set pointers with value, get local, store value
-// set value, set local
-// -- set works with a single value present on the stack beforehand
-// -- not optimial for copying stack memory or shuffling structs
-// -- use mov instead
-fn (mut g Gen) set(v Var) {
-	if !v.is_pointer {
-		if v.is_global {
-			g.func.global_set(v.g_idx)
-		} else {
-			g.func.local_set(v.idx)
-		}
+fn (mut g Gen) set_prepare(v Var) {
+	if !v.is_address {
 		return
 	}
 
@@ -403,6 +403,62 @@ fn (mut g Gen) set(v Var) {
 		} else {
 			g.func.local_get(v.idx)
 		}
+		return
+	}
+}
+
+fn (mut g Gen) set_set(v Var) {
+	if !v.is_address {
+		if v.is_global {
+			g.func.global_set(v.g_idx)
+		} else {
+			g.func.local_set(v.idx)
+		}
+		return
+	}
+
+	if g.is_pure_type(v.typ) {
+		g.store(v.typ, v.offset)
+		return
+	}
+
+	to := Var{
+		typ: v.typ
+		idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')
+		is_address: v.is_address
+	}
+
+	g.func.local_set(to.idx)
+	g.mov(to, v)
+}
+
+// set structures with pointer, memcpy
+// set pointers with value, get local, store value
+// set value, set local
+// -- set works with a single value present on the stack beforehand
+// -- not optimial for copying stack memory or shuffling structs
+// -- use mov instead
+fn (mut g Gen) set(v Var) {
+	if !v.is_address {
+		if v.is_global {
+			g.func.global_set(v.g_idx)
+		} else {
+			g.func.local_set(v.idx)
+		}
+		return
+	}
+
+	if g.is_pure_type(v.typ) {
+		l := g.new_local('__tmp', v.typ)
+		g.func.local_set(l.idx)
+
+		if v.is_global {
+			g.func.global_get(v.g_idx)
+		} else {
+			g.func.local_get(v.idx)
+		}
+
+		g.func.local_get(l.idx)
 
 		g.store(v.typ, v.offset)
 		return
@@ -410,8 +466,8 @@ fn (mut g Gen) set(v Var) {
 
 	to := Var{
 		typ: v.typ
-		idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')//g.func.local_set(l)
-		is_pointer: v.is_pointer 
+		idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')
+		is_address: v.is_address
 	}
 
 	g.func.local_set(to.idx)
@@ -428,7 +484,7 @@ fn (mut g Gen) ref(v Var) {
 }
 
 fn (mut g Gen) ref_ignore_offset(v Var) {
-	if !v.is_pointer {
+	if !v.is_address {
 		panic('unreachable')
 	}
 
@@ -441,7 +497,7 @@ fn (mut g Gen) ref_ignore_offset(v Var) {
 
 // creates a new pointer variable with the offset `offset` and type `typ`
 fn (mut g Gen) offset(v Var, typ ast.Type, offset int) Var {
-	if !v.is_pointer {
+	if !v.is_address {
 		panic('unreachable')
 	}
 	
@@ -549,8 +605,7 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 					fsize, _ := g.pool.type_size(f.typ)
 					
 					if f.has_default_expr {
-						g.expr(f.default_expr, f.typ)
-						g.set(offset_var)
+						g.set_with_expr(f.default_expr, offset_var)
 					} else {
 						g.zero_fill(offset_var, fsize)
 					}						
@@ -565,8 +620,7 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 				offset := si.offsets[field.i]
 				offset_var := g.offset(v, f.expected_type, offset)
 
-				g.expr(f.expr, f.expected_type)
-				g.set(offset_var)
+				g.set_with_expr(f.expr, offset_var)
 			}
 		}
 		ast.StringLiteral {
@@ -575,8 +629,11 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 			
 			if v.typ != ast.string_type {
 				// c'str'
-				g.literalint(g.data_base + str_pos, ast.voidptr_type)
-				g.set(v)
+				g.set_prepare(v)
+				{
+					g.literalint(g.data_base + str_pos, ast.voidptr_type)
+				}
+				g.set_set(v)
 				return
 			}
 
@@ -598,9 +655,60 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 				g.set(v)
 			}
 		}
+		ast.ArrayInit {
+			if !init.is_fixed {
+				g.v_error('wasm backend does not support non fixed arrays yet', init.pos)
+			}
+
+			elm_typ := init.elem_type
+			elm_size, _ := g.pool.type_size(elm_typ)
+
+			if !init.has_val {
+				arr_size, _ := g.pool.type_size(v.typ)
+
+				g.zero_fill(v, arr_size)
+				return
+			}
+
+			mut voff := g.offset(v, elm_typ, 0) // index zero
+
+			for e in init.exprs {
+				g.set_with_expr(e, voff)
+				voff = g.offset(voff, elm_typ, elm_size)
+			}
+		}
 		else {
-			g.expr(init, v.typ)
-			g.set(v)
+			// impl of set but taken out
+
+			if !v.is_address {
+				g.expr(init, v.typ)
+				if v.is_global {
+					g.func.global_set(v.g_idx)
+				} else {
+					g.func.local_set(v.idx)
+				}
+				return
+			}
+
+			if g.is_pure_type(v.typ) {
+				if v.is_global {
+					g.func.global_get(v.g_idx)
+				} else {
+					g.func.local_get(v.idx)
+				}
+				g.expr(init, v.typ)
+				g.store(v.typ, v.offset)
+				return
+			}
+
+			to := Var{
+				typ: v.typ
+				idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')
+				is_address: v.is_address 
+			}
+
+			g.func.local_set(to.idx)
+			g.mov(to, v)
 		}
 	}
 }
@@ -636,23 +744,20 @@ fn (mut g Gen) make_vinit() {
 			if _ := g.table.find_fn(cleanup_fn_name) {
 				g.func.call(cleanup_fn_name)
 			}
-
-			for _, gv in g.global_vars {
-				if init := gv.init {
-					g.expr(init, gv.v.typ)
-					g.set(gv.v)
-				}
+		}
+		for _, gv in g.global_vars {
+			if init := gv.init {
+				g.set_with_expr(init, gv.v)
 			}
 		}
 		g.bare_function_frame(func_start)
 	}
-	g.mod.commit(g.func, true)
+	g.mod.commit(g.func, false)
 	g.bare_function_end()
 }
 
 fn (mut g Gen) housekeeping() {
 	g.make_vinit()
-	// TODO: g.pool.apply_constant_reloc(data_base)
 	
 	heap_base := calc_align(g.data_base + g.pool.buf.len, 16) // 16?
 	page_boundary := calc_align(g.data_base + g.pool.buf.len, 64 * 1024)
@@ -670,7 +775,12 @@ fn (mut g Gen) housekeeping() {
 	if g.sp_global != none || g.pool.buf.len > 0 {
 		g.mod.assign_memory('memory', true, u32(preallocated_pages), none)
 		if g.pool.buf.len > 0 {
-			g.mod.new_data_segment(none, g.data_base, g.pool.buf)
+			mut buf := g.pool.buf.clone()
+
+			for reloc in g.pool.relocs {
+				binary.little_endian_put_u32_at(mut buf, u32(g.data_base + reloc.offset), reloc.pos)
+			}
+			g.mod.new_data_segment(none, g.data_base, buf)
 		}
 	}
 	if hp := g.heap_base {

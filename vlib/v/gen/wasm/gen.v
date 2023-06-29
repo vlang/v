@@ -39,10 +39,10 @@ mut:
 	heap_base         ?wasm.GlobalIndex
 	stack_frame       int // Size of the current stack frame, if needed
 	is_leaf_function  bool = true
-	module_import_namespace string
 	loop_breakpoint_stack []LoopBreakpoint
 	stack_top int // position in linear memory
 	data_base int // position in linear memory
+	needs_address bool
 }
 
 struct Global {
@@ -112,9 +112,58 @@ fn (mut g Gen) dbg_type_name(name string, typ ast.Type) string {
 	return "${name}<${`&`.repeat(typ.nr_muls())}${*g.table.sym(typ)}>"
 }
 
+fn (g &Gen) get_ns_plus_name(default_name string, attrs []ast.Attr) (string, string) {
+	mut name := default_name
+	mut namespace := 'env'
+
+	if cattr := attrs.find_first('wasm_import_namespace') {
+		namespace = cattr.arg
+	}
+	if cattr := attrs.find_first('wasm_import_name') {
+		name = cattr.arg
+	}
+
+	return namespace, name
+}
+
+fn (mut g Gen) fn_external_import(node ast.FnDecl) {
+	if !node.no_body || node.is_method {
+		g.v_error('interop functions cannot have bodies', node.body_pos)
+	}
+	if node.language == .js && g.pref.os == .wasi {
+		g.v_error('javascript interop functions are not allowed in a `wasi` build', node.pos)
+	}
+	if node.return_type.has_flag(.option) || node.return_type.has_flag(.result) {
+		g.v_error('interop functions must not return option or result', node.pos)
+	}
+
+	mut paraml := []wasm.ValType{cap: node.params.len}
+	mut retl := []wasm.ValType{cap: 1}
+	for arg in node.params {
+		if !g.is_pure_type(arg.typ) {
+			g.v_error('interop functions do not support complex arguments',
+				arg.type_pos)
+		}
+		paraml << g.get_wasm_type(arg.typ)
+	}
+
+	is_ret := node.return_type != ast.void_type
+
+	if is_ret && !g.is_pure_type(node.return_type) {
+		g.v_error('interop functions do not support complex returns', node.return_type_pos)
+	}
+	if is_ret {
+		retl << g.get_wasm_type(node.return_type)
+	}
+
+	namespace, name := g.get_ns_plus_name(node.short_name, node.attrs)
+	g.mod.new_function_import(namespace, name, paraml, retl)
+}
+
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.language in [.js, .wasm] {
-		g.w_error('fn_decl: extern not implemented')
+		g.fn_external_import(node)
+		return
 	}
 
 	name := if node.is_method {
@@ -165,7 +214,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 					g.return_vars << Var{
 						typ: t
 						idx: g.return_vars.len
-						is_pointer: true
+						is_address: true
 					}
 				} else {
 					retl << wtyp
@@ -173,6 +222,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 				g.ret_types << t
 			}
 			if rt.has_flag(.option) {
+				g.v_error('option types are not implemented', node.return_type_pos)
 				retl << .i32_t // bool
 			}
 		}
@@ -184,7 +234,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 					paraml << wtyp
 					g.return_vars << Var{
 						typ: rt
-						is_pointer: true
+						is_address: true
 					}
 				} else {
 					retl << wtyp
@@ -196,6 +246,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		}
 	}
 	if rt.has_flag(.result) {
+		g.v_error('result types are not implemented', node.return_type_pos)
 		retl << .i32_t // &IError
 	}
 
@@ -205,11 +256,13 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			name: p.name
 			typ: p.typ
 			idx: g.local_vars.len + g.return_vars.len
-			is_pointer: p.typ.is_ptr() || !g.is_pure_type(p.typ)
+			is_address: !g.is_pure_type(p.typ)
 		}
 		paramdbg << g.dbg_type_name(p.name, p.typ)
 		paraml << typ
 	}
+
+	mut should_export := g.pref.os == .browser && node.is_pub && node.mod == 'main'
 	
 	g.func = g.mod.new_debug_function(name, wasm.FuncType{paraml, retl, none}, paramdbg)
 	func_start := g.func.patch_pos()
@@ -221,8 +274,14 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.func.c_end(g.ret_br)
 		g.bare_function_frame(func_start)
 	}
-	g.mod.commit(g.func, true)
+	if cattr := node.attrs.find_first('export') {
+		g.func.export_name(cattr.arg)
+		should_export = true
+	}
+	g.mod.commit(g.func, should_export)
 	g.bare_function_end()
+
+	// printfn is not implemented!
 }
 
 fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
@@ -246,7 +305,9 @@ fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
 		}
 		g.func.patch(func_start, prolouge)
 		if !g.is_leaf_function {
-			g.func.local_get(g.bp())
+			g.func.global_get(g.sp())
+			g.func.i32_const(g.stack_frame)
+			g.func.add(.i32_t)
 			g.func.global_set(g.sp())
 		}
 	}
@@ -316,7 +377,7 @@ fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type) {
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 	if node.op in [.logical_or, .and] {
-		temp := g.func.new_local_named(.i32_t, '<bool>')
+		temp := g.func.new_local_named(.i32_t, '__tmp<bool>')
 		{
 			g.expr(node.left, ast.bool_type)
 			g.func.local_set(temp)
@@ -336,6 +397,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 			g.func.local_get(temp)
 		}
 		g.func.c_end(blk)
+		return
 	}
 
 	{
@@ -343,7 +405,9 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 	}
 	{
 		g.expr_with_cast(node.right, node.right_type, node.left_type)
-		g.handle_ptr_arithmetic(node.left_type)
+		if node.op in [.plus, .minus] && node.left_type.is_ptr() {
+			g.handle_ptr_arithmetic(node.left_type.deref())
+		}
 	}
 	g.infix_from_typ(node.left_type, node.op)
 
@@ -356,7 +420,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 }
 
 const wasm_builtins = ['__memory_grow', '__memory_fill', '__memory_copy', '__memory_size',
-	'__heap_base']
+	'__heap_base', '__reinterpret_f32_u32', '__reinterpret_u32_f32', '__reinterpret_f64_u64', '__reinterpret_u64_f64']
 
 fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) {
 	for idx, arg in node.args {
@@ -383,6 +447,18 @@ fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) {
 			hp := g.mod.new_global('__heap_base', false, .i32_t, false, wasm.constexpr_value(0))
 			g.func.global_get(hp)
 			g.heap_base = hp
+		}
+		'__reinterpret_f32_u32' {
+			g.func.reinterpret(.f32_t)
+		}
+		'__reinterpret_u32_f32' {
+			g.func.reinterpret(.i32_t)
+		}
+		'__reinterpret_f64_u64' {
+			g.func.reinterpret(.f64_t)
+		}
+		'__reinterpret_u64_f64' {
+			g.func.reinterpret(.i64_t)
 		}
 		else {
 			panic('unreachable')
@@ -424,12 +500,23 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
 			g.func.b_xor(g.as_numtype(vt))
 		}
 		.amp {
-			v := g.get_var_from_expr(node.right) or { panic('unreachable') }
-			g.ref(v)
+			if v := g.get_var_from_expr(node.right) {
+				if !v.is_address {
+					g.v_error('cannot take the address of a value that doesn\'t live on the stack', node.pos)
+				}
+				g.ref(v)
+			} else {
+				g.needs_address = true
+				{
+					g.expr(node.right, node.right_type)
+				}
+				g.needs_address = false
+			}
 		}
 		.mul {
 			g.expr(node.right, node.right_type)
 			if g.is_pure_type(expected) {
+				// in a RHS context, not lvalue
 				g.load(expected, 0)
 			}
 		}
@@ -494,7 +581,7 @@ fn (mut g Gen) if_expr(ifexpr ast.IfExpr, expected ast.Type) {
 }
 
 fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []Var) {
-	g.is_leaf_function = false
+	mut wasm_ns := ?string(none)
 	mut name := node.name
 
 	is_print := name in ['panic', 'println', 'print', 'eprintln', 'eprint']
@@ -506,6 +593,23 @@ fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []
 
 	if node.is_method {
 		name = '${g.table.get_type_name(node.receiver_type)}.${node.name}'
+	}
+
+	if node.language in [.js, .wasm] {
+		cfn_attrs := g.table.fns[node.name].attrs
+
+		short_name := if node.language == .js {
+			node.name.all_after_last("JS.")
+		} else {
+			node.name.all_after_last("WASM.")
+		}
+
+		// setting a `?string` in a multireturn causes UNDEFINED BEHAVIOR AND STACK CORRUPTION
+		// best to use a workaround till that is fixed
+
+		mut wasm_ns_storage := ''
+		wasm_ns_storage, name = g.get_ns_plus_name(short_name, cfn_attrs)
+		wasm_ns = wasm_ns_storage
 	}
 
 	// callconv: {return structs} {method self} {arguments}
@@ -566,7 +670,16 @@ fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []
 		g.expr(expr, node.expected_arg_types[idx])
 	}
 
-	g.func.call(name)
+	if namespace := wasm_ns {
+		// import calls won't touch `__vsp` !
+
+		g.func.call_import(namespace, name)
+	} else {
+		// other calls may...
+		g.is_leaf_function = false
+
+		g.func.call(name)
+	}
 
 	if expected == ast.void_type && node.return_type != ast.void_type {
 		for rt in rts { // order doesn't matter
@@ -628,15 +741,11 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		ast.ParExpr, ast.UnsafeExpr {
 			g.expr(node.expr, expected)
 		}
-		/* ast.ArrayInit {
-			/* pos := g.allocate_local_var('_anonarray', node.typ)
-			expr := g.assign_expr_to_var(Var(Stack{ address: pos, ast_typ: node.typ }),
-				node, node.typ)
-			g.mknblock('EXPR(ARRAYINIT)', [expr, g.lea_address(pos)]) */
+		ast.ArrayInit {
 			v := g.new_local('', node.typ)
 			g.set_with_expr(node, v)
 			g.get(v)
-		} */
+		}
 		ast.GoExpr {
 			g.w_error('wasm backend does not support threads')
 		}
@@ -648,14 +757,21 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			}*/
 			
 			// ptr + index * size
-			size, _ := g.pool.type_size(expected)
+			mut typ := node.left_type
 
 			g.expr(node.left, node.left_type)
 			if node.left_type == ast.string_type {
 				// be pedantic...
 				g.load_field(ast.string_type, ast.voidptr_type, 'str')
+				typ = ast.u8_type
+			} else {
+				if typ.is_ptr() {
+					typ = typ.deref()
+				}
 			}
 			
+			size, _ := g.pool.type_size(typ)
+
 			g.expr(node.index, ast.int_type)
 			if size > 1 {
 				g.literalint(size, ast.int_type)
@@ -664,8 +780,11 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			
 			g.func.add(.i32_t)
 
-			// ptr
-			g.load(expected, 0)
+			if !g.needs_address {
+				// ptr
+				g.load(typ, 0)
+			}
+			g.cast(typ, expected)
 		}
 		ast.StructInit {
 			v := g.new_local('', node.typ)
@@ -673,9 +792,25 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			g.get(v)
 		}
 		ast.SelectorExpr {
-			v := g.get_var_from_expr(node) or { panic('unreachable') }
-			g.deref_as_field(v)
-			g.cast(v.typ, expected)
+			if v := g.get_var_from_expr(node) {
+				if g.needs_address {
+					if !v.is_address {
+						g.v_error('cannot take the address of a value that doesn\'t live on the stack', node.pos)
+					}
+
+					g.ref(v)
+				} else {
+					g.get(v)
+				}
+			} else {
+				g.expr(node, node.typ)
+				g.field_offset(node.expr_type, node.field_name)
+				if g.is_pure_type(node.typ) && !g.needs_address {
+					// expected to be a pointer
+					g.load(node.typ, 0)
+				}
+			}
+			g.cast(node.typ, expected)
 		}
 		ast.MatchExpr {
 			g.w_error('wasm backend does not support match expressions yet')
@@ -725,16 +860,19 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		}
 		ast.PostfixExpr {
 			kind := if node.op == .inc { token.Kind.plus } else { token.Kind.minus }
-			v := g.get_var_from_expr(node.expr) or { panic("unreachable") }
+			v := g.get_var_or_make_from_expr(node.expr, node.typ)
 
-			g.get(v)
-			g.literalint(1, node.typ)
-			g.handle_ptr_arithmetic(node.typ)
-			g.infix_from_typ(node.typ, kind)
-			g.set(v)
+			g.set_prepare(v)
+			{
+				g.get(v)
+				g.literalint(1, node.typ)
+				g.handle_ptr_arithmetic(node.typ)
+				g.infix_from_typ(node.typ, kind)
+			}
+			g.set_set(v)
 		}
 		ast.CharLiteral {
-			rns := node.val.runes()[0]
+			rns := serialise.eval_escape_codes_raw(node.val) or { panic('unreachable') }.runes()[0]
 			g.func.i32_const(rns)
 		}
 		ast.Ident {
@@ -817,13 +955,44 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 						g.expr(node.cond, ast.bool_type)
 						g.func.eqz(.i32_t)
 						g.func.c_br_if(block) // !cond, goto end
-						g.expr_stmts(node.stmts, ast.void_type)
-						g.func.c_br(loop) // goto loop
-					} else {
-						g.expr_stmts(node.stmts, ast.void_type)
-						g.func.c_br(loop)
+					}
+					g.expr_stmts(node.stmts, ast.void_type)
+					g.func.c_br(loop) // goto loop
+
+					g.loop_breakpoint_stack.pop()
+				}
+				g.func.c_end(loop)
+			}
+			g.func.c_end(block)
+		}
+		ast.ForCStmt {
+			block := g.func.c_block([], [])
+			{
+				if node.has_init {
+					g.expr_stmt(node.init, ast.void_type)
+				}
+
+				loop := g.func.c_loop([], [])
+				{
+					g.loop_breakpoint_stack << LoopBreakpoint{
+						c_continue: loop
+						c_break: block
+						name: node.label
 					}
 
+					if node.has_cond {
+						g.expr(node.cond, ast.bool_type)
+						g.func.eqz(.i32_t)
+						g.func.c_br_if(block) // !cond, goto end
+					}
+
+					g.expr_stmts(node.stmts, ast.void_type)
+
+					if node.has_inc {
+						g.expr_stmt(node.inc, ast.void_type)
+					}
+
+					g.func.c_br(loop)
 					g.loop_breakpoint_stack.pop()
 				}
 				g.func.c_end(loop)
@@ -906,11 +1075,8 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 							}
 						}
 
-						if v := g.get_var_from_expr(left) {
-							g.set(v)
-						} else {
-							panic("unimplemented")
-						}
+						v := g.get_var_or_make_from_expr(left, typ)
+						g.set(v)
 					}
 					return
 				}
@@ -942,24 +1108,34 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 						}
 					}
 
-					if lhs := g.get_var_from_expr(left) {
-						if node.op !in [.decl_assign, .assign] {
-							rop := token.assign_op_to_infix_op(node.op)
-							// name := '${g.table.get_type_name(expected)}.${rop}'
+					lhs := g.get_var_or_make_from_expr(left, typ)
+					if node.op !in [.decl_assign, .assign] {
+						rop := token.assign_op_to_infix_op(node.op)
+						if !g.is_pure_type(lhs.typ) {
+							// main.struct.+
+							name := '${g.table.get_type_name(lhs.typ)}.${rop}'
 
+							g.ref(lhs)
+							g.ref(lhs)
+							g.expr(right, lhs.typ)
+							g.func.call(name)
+							return
+						}
+
+
+						g.set_prepare(lhs)
+						{
 							g.get(lhs)
 							g.expr(right, lhs.typ)
 							g.infix_from_typ(lhs.typ, rop)
-							g.set(lhs)
-							return
 						}
-						if rhs := g.get_var_from_expr(right) {
-							g.mov(lhs, rhs)
-						} else {
-							g.set_with_expr(right, lhs)
-						}
+						g.set_set(lhs)
+						return
+					}
+					if rhs := g.get_var_from_expr(right) {
+						g.mov(lhs, rhs)
 					} else {
-						panic("unimplemented")
+						g.set_with_expr(right, lhs)
 					}
 				}
 			}
@@ -986,13 +1162,7 @@ fn (mut g Gen) toplevel_stmt(node ast.Stmt) {
 		ast.FnDecl {
 			g.fn_decl(node)
 		}
-		ast.Module {
-			if ns := node.attrs.find_first('wasm_import_namespace') {
-				g.module_import_namespace = ns.arg
-			} else {
-				g.module_import_namespace = 'env'
-			}
-		}
+		ast.Module {}
 		ast.GlobalDecl {}
 		ast.ConstDecl {}
 		ast.Import {}
@@ -1054,10 +1224,6 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 		g.mod.enable_debug(none)
 	}
 
-	if g.pref.os == .browser {
-		// eprintln('`-os browser` is experimental and will not live up to expectations...')
-	}
-
 	g.calculate_enum_fields()
 	for file in g.files {
 		g.file_path = file.path
@@ -1068,31 +1234,32 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 	}
 	g.housekeeping()
 
-	/* mut valid := binaryen.modulevalidate(g.mod)
-	if valid {
-		binaryen.setdebuginfo(w_pref.is_debug)
-		if w_pref.is_prod {
-			eprintln('`-prod` is not implemented')
-		}
-	} */
-
 	mod := g.mod.compile()
 
 	if out_name == '-' {
-		eprintln('pretty printing is not implemented')
+		eprintln('<stderr> stdout pretty printing is not implemented for the time being')
 		print(mod.bytestr())
-		/* if g.pref.is_verbose {
-			binaryen.moduleprint(g.mod)
-		} else {
-			binaryen.moduleprintstackir(g.mod, w_pref.is_prod)
-		} */
 	}
-
-	/* if !valid {
-		g.w_error('validation failed, this should not happen. report an issue with the above messages')
-	} */
 
 	if out_name != '-' {
 		os.write_file_array(out_name, mod) or { panic(err) }
+		if g.pref.wasm_validate {
+			if rt := os.find_abs_path_of_executable($if windows { 'wasm-validate.exe' } $else { 'wasm-validate' }) {
+				mut p := os.new_process(rt)
+				p.set_args([out_name])
+				p.set_redirect_stdio()
+				p.run()
+				err := p.stderr_slurp()
+				p.wait()
+				if p.code != 0 {
+					eprintln(err)
+					g.w_error('validation failed, this should not happen. report an issue with the above messages, the webassembly generated, and appropriate code.')
+				}
+			} else {
+				g.w_error('validation failed, this should not happen. report an issue with the above messages, the webassembly generated, and appropriate code.')
+			}
+		}
+	} else if g.pref.wasm_validate {
+		eprintln('stdout output, will not validate wasm')
 	}
 }

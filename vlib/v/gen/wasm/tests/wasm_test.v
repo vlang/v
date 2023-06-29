@@ -33,7 +33,7 @@ fn test_wasm() {
 		tmperrfile := '${dir}/${test}.tmperr'
 		outfile := '${dir}/${test}.out'
 		// force binaryen to print without colour
-		cmd := '${os.quoted_path(vexe)} -o - -b wasm ${os.quoted_path(full_test_path)} 2> ${os.quoted_path(tmperrfile)}'
+		cmd := '${os.quoted_path(vexe)} -b wasm run ${os.quoted_path(full_test_path)} 2> ${os.quoted_path(tmperrfile)}'
 		if is_verbose {
 			println(cmd)
 		}
@@ -65,6 +65,8 @@ fn test_wasm() {
 				bench.fail()
 				continue
 			}
+		} else {
+			os.write_file(outfile, expected_)
 		}
 		bench.ok()
 		eprintln(bench.step_message_ok(relative_test_path))

@@ -3,7 +3,7 @@ fn multi(a i16) i64 {
 	return one + two
 }
 
-pub fn multireturn(a int) (int, f64, i64) {
+pub fn multireturn(a int) (int, i64, i64) {
 	return 2, a + 2, 10 - a
 }
 
@@ -21,10 +21,29 @@ pub fn side_effect() int {
 	return 22
 }
 
-pub fn test_side_effect() int {
+pub fn run_side_effect() int {
 	mut a := 15
 
 	_, a = side_effect(), 10
 
 	return a
+}
+
+fn run_normal_stuff() {
+	println(multi(2))
+	{
+		a, b, c := multireturn(20)
+		println(a)
+		println(b)
+		println(c)
+	}
+	println(accept())
+	println(run_side_effect())
+}
+
+fn main() {
+	println('--- normal multi exprs')
+	run_normal_stuff()
+	println('--- struct based multi exprs')
+
 }

@@ -48,18 +48,18 @@ pub fn (mut p Pool) type_struct_info(typ ast.Type) ?StructInfo {
 		return none
 	}
 
-	if typ in p.structs {
-		return p.structs[typ]
+	if typ.idx() in p.structs {
+		return p.structs[typ.idx()]
 	}
 
 	// will cache inside `p.structs`
 	p.type_size(typ)
-	return p.structs[typ]
+	return p.structs[typ.idx()]
 }
 
 pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 	ts := p.table.sym(typ)
-	if ts.size != -1 && typ in p.structs {
+	if ts.size != -1 && typ.idx() in p.structs {
 		return ts.size, ts.align
 	}
 
@@ -126,8 +126,8 @@ fn (mut p Pool) alignment(align int) int {
 		p.highest_alignment = align
 	}
 	padding := (align - p.buf.len % align) % align
-	pos := p.buf.len
 	p.zero_fill(padding)
+	pos := p.buf.len
 	return pos
 }
 
@@ -185,12 +185,7 @@ fn (mut p Pool) append_struct(init ast.StructInit) ?int {
 	return pos
 }*/
 
-pub fn eval_escape_codes(str_lit ast.StringLiteral) !string {
-	if str_lit.is_raw {
-		return str_lit.val
-	}
-
-	str := str_lit.val
+pub fn eval_escape_codes_raw(str string) !string {
 	mut buffer := []u8{}
 
 	mut i := 0
@@ -259,6 +254,14 @@ pub fn eval_escape_codes(str_lit ast.StringLiteral) !string {
 	}
 
 	return buffer.bytestr()
+}
+
+pub fn eval_escape_codes(str_lit ast.StringLiteral) !string {
+	if str_lit.is_raw {
+		return str_lit.val
+	}
+
+	return eval_escape_codes_raw(str_lit.val)
 }
 
 pub fn (mut p Pool) append_string(val string) int {
@@ -338,7 +341,7 @@ pub fn (mut p Pool) append(init ast.Expr, typ ast.Type) (int, bool) {
 		}
 		ast.CharLiteral {
 			// 3 extra bytes for improved program correctness, thank me later
-			rne := u32(init.val.runes()[0])
+			rne := u32(eval_escape_codes_raw(init.val) or { panic('Pool.append: ${err}') }.runes()[0])
 			pos := p.alignment(4)
 			p.u32(rne)
 
@@ -414,7 +417,7 @@ fn (mut p Pool) u8(v u8) {
 
 fn (mut p Pool) ptr(offset int) int {
 	assert p.table.pointer_size in [1, 2, 4, 8]
-	pos := p.alignment(p.table.pointer_size)
+	pos := p.buf.len // p.alignment(p.table.pointer_size)
 
 	if p.store_relocs {
 		p.relocs << Reloc{

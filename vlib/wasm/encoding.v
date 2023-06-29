@@ -110,26 +110,22 @@ fn (mut mod Module) patch(ft Function) {
 	mod.buf << ft.code[ptr..]
 }
 
-// name
-pub fn (mut mod Module) name(name string) {
+fn (mut mod Module) name(name string) {
 	mod.u32(u32(name.len))
 	mod.buf << name.bytes()
 }
 
-// start_subsection
-pub fn (mut mod Module) start_subsection(sec Subsection) int {
+fn (mut mod Module) start_subsection(sec Subsection) int {
 	mod.buf << u8(sec)
 	return mod.patch_start()
 }
 
-// start_section
-pub fn (mut mod Module) start_section(sec Section) int {
+fn (mut mod Module) start_section(sec Section) int {
 	mod.buf << u8(sec)
 	return mod.patch_start()
 }
 
-// end_section
-pub fn (mut mod Module) end_section(tpatch int) {
+fn (mut mod Module) end_section(tpatch int) {
 	mod.patch_len(tpatch)
 }
 
@@ -160,18 +156,14 @@ pub fn (mut mod Module) compile() []u8 {
 		{
 			mod.u32(u32(mod.fn_imports.len + mod.global_imports.len))
 			for ft in mod.fn_imports {
-				mod.u32(u32(ft.mod.len))
-				mod.buf << ft.mod.bytes()
-				mod.u32(u32(ft.name.len))
-				mod.buf << ft.name.bytes()
+				mod.name(ft.mod)
+				mod.name(ft.name)
 				mod.buf << 0x00 // function
 				mod.u32(u32(ft.tidx))
 			}
 			for gt in mod.global_imports {
-				mod.u32(u32(gt.mod.len))
-				mod.buf << gt.mod.bytes()
-				mod.u32(u32(gt.name.len))
-				mod.buf << gt.name.bytes()
+				mod.name(gt.mod)
+				mod.name(gt.name)
 				mod.buf << 0x03 // global
 				mod.global_type(gt.typ, gt.is_mut)
 			}
@@ -244,7 +236,7 @@ pub fn (mut mod Module) compile() []u8 {
 					continue
 				}
 				lsz++
-				mod.name(ft.name)
+				mod.name(ft.export_name or { ft.name })
 				mod.buf << 0x00 // function
 				mod.u32(u32(ft.idx + mod.fn_imports.len))
 			}

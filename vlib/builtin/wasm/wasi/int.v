@@ -52,19 +52,16 @@ fn (nn int) str_l(max int) string {
 		}
 		diff := max - index
 		vmemmove(buf, voidptr(buf + index), diff + 1)
-		/*
-		// === manual memory move for bare metal ===
-		mut c:= 0
-		for c < diff {
-			buf[c] = buf[c+index]
-			c++
-		}
-		buf[c] = 0
-		*/
 		return tos(buf, diff)
 
 		// return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
+}
+
+// str returns the value of the `u8` as a `string`.
+// Example: assert u8(2).str() == '2'
+pub fn (n u8) str() string {
+	return int(n).str_l(5)
 }
 
 // str returns the value of the `i8` as a `string`.

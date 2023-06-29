@@ -82,12 +82,36 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	if !(b.pref.is_test || b.pref.is_run || b.pref.is_crun) {
 		exit(0)
 	}
-	compiled_file := os.real_path(b.pref.out_name)
+	mut compiled_file := b.pref.out_name
+	if b.pref.backend == .wasm && !compiled_file.ends_with('.wasm') {
+		compiled_file += '.wasm'
+	}
+	compiled_file = os.real_path(compiled_file)
+
+	mut run_args := []string{cap: b.pref.run_args.len + 1}
+
 	run_file := if b.pref.backend.is_js() {
 		node_basename := $if windows { 'node.exe' } $else { 'node' }
 		os.find_abs_path_of_executable(node_basename) or {
 			panic('Could not find `${node_basename}` in system path. Do you have Node.js installed?')
 		}
+	} else if b.pref.backend == .wasm {
+		mut actual_run := ['wasmer', 'wasmtime', 'wavm', 'wasm3']
+		mut actual_rf := ?string(none)
+
+		for runtime in actual_run {
+			basename := $if windows { runtime + '.exe' } $else { runtime }
+			
+			if rf := os.find_abs_path_of_executable(basename) {
+				if basename == 'wavm' {
+					run_args << 'run'
+				}
+				actual_rf = rf
+				break
+			}
+		}
+
+		actual_rf or { panic("Could not find `wasmer`, `wasmtime`, `wavm`, or `wasm3` in system path. Do you have any installed?") }
 	} else if b.pref.backend == .golang {
 		go_basename := $if windows { 'go.exe' } $else { 'go' }
 		os.find_abs_path_of_executable(go_basename) or {
@@ -96,8 +120,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	} else {
 		compiled_file
 	}
-	mut run_args := []string{cap: b.pref.run_args.len + 1}
-	if b.pref.backend.is_js() {
+	if b.pref.backend.is_js() || b.pref.backend == .wasm {
 		run_args << compiled_file
 	} else if b.pref.backend == .golang {
 		run_args << ['run', compiled_file]
