@@ -743,6 +743,14 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 
 	// Dual sides check (compatibility check)
 	if node.left !is ast.ComptimeCall && node.right !is ast.ComptimeCall {
+		if left_type.has_flag(.generic) {
+			left_type = c.unwrap_generic(left_type)
+			left_sym = c.table.sym(left_type)
+		}
+		if right_type.has_flag(.generic) {
+			right_type = c.unwrap_generic(right_type)
+			right_sym = c.table.sym(right_type)
+		}
 		if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))
 			&& !c.pref.translated && !c.file.is_translated && !node.left.is_auto_deref_var()
 			&& !node.right.is_auto_deref_var() {
