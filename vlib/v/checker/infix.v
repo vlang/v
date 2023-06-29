@@ -500,7 +500,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					c.error('array append cannot be used in an expression', node.pos)
 				}
 				if left_type.has_flag(.option) && node.left is ast.Ident
-					&& (node.left as ast.Ident).or_expr.kind == .absent {
+					&& node.left.or_expr.kind == .absent {
 					c.error('unwrapped Option cannot be used in an infix expression',
 						node.pos)
 				}

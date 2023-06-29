@@ -739,7 +739,7 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 		}
 
 		mut right_var := ''
-		if node.right is ast.Ident && (node.right as ast.Ident).or_expr.kind != .absent {
+		if node.right is ast.Ident && node.right.or_expr.kind != .absent {
 			cur_line := g.go_before_stmt(0).trim_space()
 			right_var = g.new_tmp_var()
 			g.write('${g.typ(right.typ)} ${right_var} = ')

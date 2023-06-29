@@ -1372,7 +1372,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		return node.expr_type
 	}
 	node.expr_type = typ
-	if !(node.expr is ast.Ident && (node.expr as ast.Ident).kind == .constant) {
+	if !(node.expr is ast.Ident && node.expr.kind == .constant) {
 		if node.expr_type.has_flag(.option) {
 			c.error('cannot access fields of an Option, handle the error with `or {...}` or propagate it with `?`',
 				node.pos)
@@ -3821,8 +3821,8 @@ fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 
 [inline]
 pub fn (mut c Checker) is_comptime_var(node ast.Expr) bool {
-	return node is ast.Ident
-		&& (node as ast.Ident).info is ast.IdentVar && (node as ast.Ident).kind == .variable && ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime
+	return node is ast.Ident && node.info is ast.IdentVar
+		&& (node as ast.Ident).kind == .variable && ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime
 }
 
 fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
@@ -4121,7 +4121,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		typ = (typ_sym.info as ast.Aggregate).types[0]
 	}
 	if typ.has_flag(.option) {
-		if node.left is ast.Ident && (node.left as ast.Ident).or_expr.kind == .absent {
+		if node.left is ast.Ident && node.left.or_expr.kind == .absent {
 			c.error('type `?${typ_sym.name}` is an Option, it must be unwrapped first; use `var?[]` to do it',
 				node.left.pos())
 		} else if node.left is ast.CallExpr {
