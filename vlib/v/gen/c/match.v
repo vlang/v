@@ -69,9 +69,8 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	}
 	if (node.cond in [ast.Ident, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral]
 		&& (node.cond !is ast.Ident || (node.cond is ast.Ident
-		&& (node.cond as ast.Ident).or_expr.kind == .absent)))
-		|| (node.cond is ast.SelectorExpr
-		&& (node.cond as ast.SelectorExpr).or_block.kind == .absent
+		&& node.cond.or_expr.kind == .absent))) || (node.cond is ast.SelectorExpr
+		&& node.cond.or_block.kind == .absent
 		&& ((node.cond as ast.SelectorExpr).expr !is ast.CallExpr
 		|| ((node.cond as ast.SelectorExpr).expr as ast.CallExpr).or_block.kind == .absent)) {
 		cond_var = g.expr_string(node.cond)

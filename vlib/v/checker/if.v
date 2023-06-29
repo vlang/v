@@ -117,7 +117,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							} else {
 								.skip
 							}
-						} else if left is ast.Ident && (left as ast.Ident).info is ast.IdentVar {
+						} else if left is ast.Ident && left.info is ast.IdentVar {
 							is_comptime_type_is_expr = true
 							if var := left.scope.find_var(left.name) {
 								checked_type = c.unwrap_generic(var.typ)
@@ -497,9 +497,8 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 						true
 					}
 					if is_variable {
-						if (node.left is ast.Ident && (node.left as ast.Ident).is_mut)
-							|| (node.left is ast.SelectorExpr
-							&& (node.left as ast.SelectorExpr).is_mut) {
+						if (node.left is ast.Ident && node.left.is_mut)
+							|| (node.left is ast.SelectorExpr && node.left.is_mut) {
 							c.fail_if_immutable(node.left)
 						}
 						// TODO: Add check for sum types in a way that it doesn't break a lot of compiler code

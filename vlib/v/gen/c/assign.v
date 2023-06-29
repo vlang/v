@@ -8,7 +8,7 @@ import v.util
 import v.token
 
 fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr ast.Expr, ret_typ ast.Type, in_heap bool) {
-	gen_or := expr is ast.Ident && (expr as ast.Ident).or_expr.kind != .absent
+	gen_or := expr is ast.Ident && expr.or_expr.kind != .absent
 	if gen_or {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
@@ -17,13 +17,13 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 			g.write('))')
 		}
 		g.writeln(';')
-		expr_var := if expr is ast.Ident && (expr as ast.Ident).is_auto_heap() {
+		expr_var := if expr is ast.Ident && expr.is_auto_heap() {
 			'(*${expr.name})'
 		} else {
 			'${expr}'
 		}
 		g.writeln('if (${expr_var}.state != 0) { // assign')
-		if expr is ast.Ident && (expr as ast.Ident).or_expr.kind == .propagate_option {
+		if expr is ast.Ident && expr.or_expr.kind == .propagate_option {
 			g.writeln('\tpanic_option_not_set(_SLIT("none"));')
 		} else {
 			g.inside_or_block = true
@@ -258,7 +258,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					key_str := '${val.method_name}.return_type'
 					var_type = g.comptime_var_type_map[key_str] or { var_type }
 					left.obj.typ = var_type
-				} else if is_decl && val is ast.Ident && (val as ast.Ident).info is ast.IdentVar {
+				} else if is_decl && val is ast.Ident && val.info is ast.IdentVar {
 					val_info := (val as ast.Ident).info
 					gen_or = val.or_expr.kind != .absent
 					if val_info.is_option && gen_or {
@@ -668,8 +668,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.write('{0}')
 						}
 					} else {
-						is_option_unwrapped := (val is ast.Ident
-							&& (val as ast.Ident).or_expr.kind != .absent)
+						is_option_unwrapped := (val is ast.Ident && val.or_expr.kind != .absent)
 						is_option_auto_heap := is_auto_heap && is_option_unwrapped
 						if is_auto_heap {
 							g.write('HEAP(${styp}, (')

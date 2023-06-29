@@ -157,7 +157,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	}
 	for i, exp_type in expected_types {
 		exprv := node.exprs[expr_idxs[i]]
-		if exprv is ast.Ident && (exprv as ast.Ident).or_expr.kind == .propagate_option {
+		if exprv is ast.Ident && exprv.or_expr.kind == .propagate_option {
 			if exp_type.has_flag(.option) {
 				c.warn('unwrapping option is redundant as the function returns option',
 					node.pos)

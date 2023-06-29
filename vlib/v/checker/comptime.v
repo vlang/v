@@ -11,7 +11,7 @@ import v.pkgconfig
 
 [inline]
 fn (mut c Checker) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
-	return if node is ast.Ident && (node as ast.Ident).obj is ast.Var {
+	return if node is ast.Ident && node.obj is ast.Var {
 		(node.obj as ast.Var).ct_type_var
 	} else {
 		.no_comptime
@@ -20,7 +20,7 @@ fn (mut c Checker) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
 
 [inline]
 fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
-	if node is ast.Ident && (node as ast.Ident).obj is ast.Var {
+	if node is ast.Ident && node.obj is ast.Var {
 		return match (node.obj as ast.Var).ct_type_var {
 			.generic_param {
 				// generic parameter from current function
@@ -917,14 +917,14 @@ fn (mut c Checker) get_comptime_selector_type(node ast.ComptimeSelector, default
 [inline]
 fn (mut c Checker) is_comptime_selector_field_name(node ast.SelectorExpr, field_name string) bool {
 	return c.inside_comptime_for_field && node.expr is ast.Ident
-		&& (node.expr as ast.Ident).name == c.comptime_for_field_var && node.field_name == field_name
+		&& node.expr.name == c.comptime_for_field_var && node.field_name == field_name
 }
 
 // is_comptime_selector_type checks if the SelectorExpr is related to $for variable accessing .typ field
 [inline]
 fn (mut c Checker) is_comptime_selector_type(node ast.SelectorExpr) bool {
 	if c.inside_comptime_for_field && node.expr is ast.Ident {
-		return (node.expr as ast.Ident).name == c.comptime_for_field_var && node.field_name == 'typ'
+		return node.expr.name == c.comptime_for_field_var && node.field_name == 'typ'
 	}
 	return false
 }
@@ -933,7 +933,7 @@ fn (mut c Checker) is_comptime_selector_type(node ast.SelectorExpr) bool {
 [inline]
 fn (mut c Checker) check_comptime_is_field_selector(node ast.SelectorExpr) bool {
 	if c.inside_comptime_for_field && node.expr is ast.Ident {
-		return (node.expr as ast.Ident).name == c.comptime_for_field_var
+		return node.expr.name == c.comptime_for_field_var
 	}
 	return false
 }
