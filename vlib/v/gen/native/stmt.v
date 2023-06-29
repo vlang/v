@@ -93,6 +93,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.Import {} // do nothing here
 		ast.StructDecl {}
 		ast.EnumDecl {}
+		ast.TypeDecl {}
 		else {
 			eprintln('native.stmt(): bad node: ' + node.type_name())
 		}

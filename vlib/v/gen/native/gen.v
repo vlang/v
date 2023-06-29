@@ -66,6 +66,7 @@ mut:
 interface CodeGen {
 mut:
 	g &Gen
+	address_size() int
 	adr(r Arm64Register, delta int) // Note: Temporary!
 	allocate_var(name string, size int, initial_val int) int
 	apicall(call ApiCall) // winapi calls
@@ -237,10 +238,9 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 	match obj {
 		ast.Var {
 			offset := g.get_var_offset(obj.name)
-			typ := obj.typ
 			return LocalVar{
 				offset: offset
-				typ: typ
+				typ: obj.typ
 				name: obj.name
 			}
 		}
@@ -609,17 +609,24 @@ fn (mut g Gen) get_var_offset(var_name string) int {
 	return r
 }
 
-fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
+fn (mut g Gen) get_field_offset(in_type ast.Type, name string) int {
+	typ := g.unwrap(in_type)
 	ts := g.table.sym(typ)
 	field := ts.find_field(name) or { g.n_error('Could not find field `${name}` on init') }
 	return g.structs[typ.idx()].offsets[field.i]
 }
 
+fn (mut g Gen) unwrap(typ ast.Type) ast.Type {
+	ts := g.table.sym(typ)
+	return if ts.info is ast.Alias { g.unwrap(ts.info.parent_type) } else { typ }
+}
+
 // get type size, and calculate size and align and store them to the cache when the type is struct
-fn (mut g Gen) get_type_size(typ ast.Type) int {
+fn (mut g Gen) get_type_size(raw_type ast.Type) int {
 	// TODO type flags
-	if typ.is_any_kind_of_pointer() {
-		return 8
+	typ := g.unwrap(raw_type)
+	if raw_type.is_any_kind_of_pointer() || typ.is_any_kind_of_pointer() {
+		return g.code_gen.address_size()
 	}
 	if typ in ast.number_type_idxs {
 		return match typ {
@@ -699,7 +706,7 @@ fn (mut g Gen) get_type_align(typ ast.Type) int {
 	if g.is_register_type(typ) || typ.is_pure_float() {
 		return size
 	}
-	ts := g.table.sym(typ)
+	ts := g.table.sym(g.unwrap(typ))
 	if ts.align != -1 {
 		return ts.align
 	}

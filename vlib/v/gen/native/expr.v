@@ -49,7 +49,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 					} else if var.typ.is_pure_float() {
 						g.code_gen.load_fp_var(node as ast.Ident)
 					} else {
-						ts := g.table.sym(var.typ)
+						ts := g.table.sym(g.unwrap(var.typ))
 						match ts.info {
 							ast.Struct {
 								g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), g.get_var_offset(node.name))
