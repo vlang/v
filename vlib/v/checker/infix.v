@@ -17,6 +17,16 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	if node.op == .and {
 		mut left_node := node.left
 		for mut left_node is ast.InfixExpr {
+			if left_node.op == .and && mut left_node.right is ast.InfixExpr {
+				if left_node.right.op == .key_is {
+					// search last `n is ast.Ident` in the left
+					from_type := c.expr(left_node.right.left)
+					to_type := c.expr(left_node.right.right)
+					c.autocast_in_if_conds(mut node.right, left_node.right.left, from_type,
+						to_type)
+					break
+				}
+			}
 			if left_node.op == .key_is {
 				// search `n is ast.Ident`
 				from_type := c.expr(left_node.left)
@@ -835,6 +845,16 @@ fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, 
 			c.autocast_in_if_conds(mut right.right, from_expr, from_type, to_type)
 		}
 		ast.CallExpr {
+			if right.left.str() == from_expr.str()
+				&& c.table.sym(to_type).has_method_with_generic_parent(right.name) {
+				right.left = ast.ParExpr{
+					expr: ast.AsCast{
+						typ: to_type
+						expr: from_expr
+						expr_type: from_type
+					}
+				}
+			}
 			c.autocast_in_if_conds(mut right.left, from_expr, from_type, to_type)
 			for mut arg in right.args {
 				c.autocast_in_if_conds(mut arg.expr, from_expr, from_type, to_type)
