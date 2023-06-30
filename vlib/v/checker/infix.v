@@ -864,6 +864,9 @@ fn (mut c Checker) autocast_in_if_conds(mut right_ ast.Expr, from_expr ast.Expr,
 					}
 				}
 			}
+			if right.left !is ast.Ident {
+				c.autocast_in_if_conds(mut right.left, from_expr, from_type, to_type)
+			}
 			for mut arg in right.args {
 				c.autocast_in_if_conds(mut arg.expr, from_expr, from_type, to_type)
 			}
