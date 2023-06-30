@@ -1828,7 +1828,12 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			name := f.short_module(node.name)
 			f.mark_import_as_used(name)
 			if node.name.contains('__static__') {
-				f.write(name.replace('__static__', '.').capitalize())
+				if name.contains('.') {
+					indx := name.index('.') or { -1 } + 1
+					f.write(name[0..indx] + name[indx..].replace('__static__', '.').capitalize())
+				} else {
+					f.write(name.replace('__static__', '.').capitalize())
+				}
 			} else {
 				f.write(name)
 			}
