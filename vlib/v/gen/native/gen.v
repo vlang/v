@@ -1002,7 +1002,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.patch_labels()
 
 	if g.stack_depth != 0 {
-		g.println("^^^ stack_depth != 0 (${g.stack_depth}) !!!")
+		g.println('^^^ stack_depth != 0 (${g.stack_depth}) !!!')
 	}
 }
 
