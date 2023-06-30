@@ -2021,7 +2021,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					fn_name := node.name.replace('.', '_')
 					// name := '_tt${g.tmp_count_af}_arg_expr_${fn_name}_$i'
 					name := '_arg_expr_${fn_name}_${i + 1}_${node.pos.pos}'
-					g.write('/*af arg*/' + name)
+					g.write('/*autofree arg*/' + name)
 				}
 			} else {
 				g.ref_or_deref_arg(arg, expected_types[i], node.language)
