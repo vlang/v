@@ -1,10 +1,10 @@
 type IntegerAlias = int
 
 struct Test {
-	a int
-	b &voidptr
-	c &Test
-	d map[int][3]string
+	a int = 0
+	b voidptr = voidptr(0)
+	c &Test = unsafe { 0 }
+	d map[int][3]string = {}
 }
 
 fn main() {
@@ -24,9 +24,9 @@ fn main() {
 	test_alias(0)
 
 	// pointers
-	t5 := typeof(unsafe { voidptr(0) })
+	t5 := typeof(voidptr(0))
 	println(t5)
-	t6 := typeof(unsafe { charptr(0) })
+	t6 := typeof(charptr(0))
 	println(t6)
 	t7 := typeof(&u8(3))
 	println(t7)

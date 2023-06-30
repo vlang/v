@@ -2099,8 +2099,14 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 		ast.StructInit {
 			match node.op {
 				.decl_assign {
-					c.g.allocate_by_type(name, right.typ)
-					c.init_struct(ident, right)
+					dest := c.g.allocate_by_type(name, right.typ)
+					if right.typ.is_any_kind_of_pointer()
+						|| c.g.unwrap(right.typ).is_any_kind_of_pointer() {
+						c.g.expr(right)
+						c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, Amd64Register.rax)
+					} else {
+						c.init_struct(ident, right)
+					}
 				}
 				else {
 					c.g.n_error('Unexpected operator `${node.op}`')
@@ -2770,6 +2776,9 @@ fn (mut c Amd64) gen_left_value(node ast.Expr) {
 				c.add(.rax, offset)
 			}
 		}
+		ast.StructInit, ast.ArrayInit {
+			c.g.expr(node)
+		}
 		ast.IndexExpr {} // TODO
 		ast.PrefixExpr {
 			if node.op != .mul {
@@ -2918,8 +2927,8 @@ fn (mut c Amd64) infix_expr(node ast.InfixExpr) {
 	}
 
 	if left_type !in ast.integer_type_idxs && left_type != ast.bool_type_idx
-		&& c.g.table.sym(left_type).info !is ast.Enum && !(left_type.is_any_kind_of_pointer()
-		|| node.left_type.is_any_kind_of_pointer()) {
+		&& c.g.table.sym(left_type).info !is ast.Enum && !left_type.is_any_kind_of_pointer()
+		&& node.left_type.is_any_kind_of_pointer() {
 		c.g.n_error('unsupported type for `${node.op}`: ${left_type}')
 	}
 
