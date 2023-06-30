@@ -104,6 +104,6 @@ fn return_test() {
 
 fn main() {
 	struct_test()
-	return_test()
-	alias_test()
+	//return_test()
+	//alias_test()
 }

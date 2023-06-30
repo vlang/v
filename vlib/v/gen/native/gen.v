@@ -41,6 +41,7 @@ mut:
 	var_offset           map[string]int // local var stack offset
 	var_alloc_size       map[string]int // local var allocation size
 	stack_var_pos        int
+	stack_depth          int
 	debug_pos            int
 	errors               []errors.Error
 	warnings             []errors.Warning
@@ -228,6 +229,11 @@ enum JumpOp {
 union F64I64 {
 	f f64
 	i i64
+}
+
+[inline]
+fn byt(n int, s int) u8 {
+	return u8((n >> (s * 8)) & 0xff)
 }
 
 fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
@@ -735,9 +741,15 @@ fn (mut g Gen) get_multi_return(types []ast.Type) MultiReturn {
 	return ret
 }
 
-fn (g Gen) is_register_type(typ ast.Type) bool {
-	return typ.is_pure_int() || typ == ast.char_type_idx || typ.is_any_kind_of_pointer()
-		|| typ.is_bool()
+fn (mut g Gen) is_register_type(typ ast.Type) bool {
+	return typ.is_pure_int() || typ == ast.char_type_idx
+		|| typ.is_any_kind_of_pointer() || typ.is_bool()
+		|| (g.table.sym(typ).info is ast.Alias && g.is_register_type(g.unwrap(typ)))
+}
+
+fn (mut g Gen) is_fp_type(typ ast.Type) bool {
+	return typ.is_pure_float()
+		|| (g.table.sym(typ).info is ast.Alias && g.is_fp_type(g.unwrap(typ)))
 }
 
 fn (mut g Gen) get_sizeof_ident(ident ast.Ident) int {
@@ -981,12 +993,17 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 
 	g.stack_var_pos = 0
+	g.stack_depth = 0
 	g.register_function_address(name)
 	g.labels = &LabelTable{}
 	g.defer_stmts.clear()
 	g.return_type = node.return_type
 	g.code_gen.fn_decl(node)
 	g.patch_labels()
+
+	if g.stack_depth != 0 {
+		g.n_error('mismatched `push()` and `pop()` calls for function `${name}`, depth = `${g.stack_depth}`')
+	}
 }
 
 pub fn (mut g Gen) register_function_address(name string) {
