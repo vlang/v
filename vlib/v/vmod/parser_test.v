@@ -8,7 +8,7 @@ fn test_ok() {
 	ok_source := "Module {
 	name: 'V'
 	description: 'The V programming language.'
-	version: '0.3.5'
+	version: '0.7.7'
 	license: 'MIT'
 	repo_url: 'https://github.com/vlang/v'
 	dependencies: []
@@ -18,7 +18,7 @@ fn test_ok() {
 		content := vmod.decode(s)?
 		assert content.name == 'V'
 		assert content.description == 'The V programming language.'
-		assert content.version == '0.3.5'
+		assert content.version == '0.7.7'
 		assert content.license == 'MIT'
 		assert content.repo_url == 'https://github.com/vlang/v'
 		assert content.dependencies == []
