@@ -1719,7 +1719,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 						info.func.params[i]
 					}
 					if c.table.sym(param.typ).kind == .interface_ {
-						earg_types << param.typ
+						// cannot hide interface expected type to make possible to pass its interface type automatically
+						earg_types << param.typ.set_nr_muls(targ.nr_muls())
 					} else {
 						earg_types << targ
 					}
