@@ -1,5 +1,5 @@
 fn test_match_aliases() {
-	a := byte(97)
+	a := u8(97)
 	ret := match a {
 		`0`...`9`, `a`...`f` { 'OK' }
 		else { 'NOT OK' }

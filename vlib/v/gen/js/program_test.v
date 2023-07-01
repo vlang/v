@@ -40,7 +40,7 @@ fn test_running_programs_compiled_with_the_js_backend() {
 	os.chdir(vroot) or {}
 	test_dir := 'vlib/v/gen/js/tests/testdata'
 	main_files := get_main_files_in_dir(test_dir)
-	fails := check_path(test_dir, main_files)?
+	fails := check_path(test_dir, main_files)!
 	assert fails == 0
 }
 
