@@ -112,11 +112,6 @@ fn (mut c Amd64) dec(reg Amd64Register) {
 	c.g.println('dec ${reg}')
 }
 
-[inline]
-fn byt(n int, s int) u8 {
-	return u8((n >> (s * 8)) & 0xff)
-}
-
 fn (mut c Amd64) inc(reg Amd64Register) {
 	c.g.write8(0x48)
 	c.g.write8(0xff)
@@ -1009,6 +1004,7 @@ fn (mut c Amd64) push(reg Amd64Register) {
 	}
 	c.is_16bit_aligned = !c.is_16bit_aligned
 	c.g.println('push ${reg}')
+	c.g.stack_depth++
 }
 
 pub fn (mut c Amd64) pop(reg Amd64Register) {
@@ -1018,6 +1014,7 @@ pub fn (mut c Amd64) pop(reg Amd64Register) {
 	c.g.write8(0x58 + int(reg) % 8)
 	c.is_16bit_aligned = !c.is_16bit_aligned
 	c.g.println('pop ${reg}')
+	c.g.stack_depth--
 }
 
 pub fn (mut c Amd64) sub8(reg Amd64Register, val int) {
@@ -2102,8 +2099,14 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 		ast.StructInit {
 			match node.op {
 				.decl_assign {
-					c.g.allocate_by_type(name, right.typ)
-					c.init_struct(ident, right)
+					dest := c.g.allocate_by_type(name, right.typ)
+					if right.typ.is_any_kind_of_pointer()
+						|| c.g.unwrap(right.typ).is_any_kind_of_pointer() {
+						c.g.expr(right)
+						c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, Amd64Register.rax)
+					} else {
+						c.init_struct(ident, right)
+					}
 				}
 				else {
 					c.g.n_error('Unexpected operator `${node.op}`')
@@ -2773,6 +2776,9 @@ fn (mut c Amd64) gen_left_value(node ast.Expr) {
 				c.add(.rax, offset)
 			}
 		}
+		ast.StructInit, ast.ArrayInit {
+			c.g.expr(node)
+		}
 		ast.IndexExpr {} // TODO
 		ast.PrefixExpr {
 			if node.op != .mul {
@@ -2825,6 +2831,58 @@ fn (mut c Amd64) prefix_expr(node ast.PrefixExpr) {
 	}
 }
 
+fn (mut c Amd64) fp_infix_expr(node ast.InfixExpr, left_type ast.Type) {
+	// optimize for ast.Ident
+	match node.left {
+		ast.Ident {
+			c.mov_ssereg(.xmm1, .xmm0)
+			c.mov_var_to_ssereg(.xmm0, node.left as ast.Ident)
+		}
+		else {
+			c.push_sse(.xmm0)
+			c.g.expr(node.left)
+			c.pop_sse(.xmm1)
+		}
+	}
+	match node.op {
+		.eq, .ne {
+			c.g.write32(0xc1c20ff3)
+			c.g.write8(if node.op == .eq { 0x00 } else { 0x04 })
+			inst := if node.op == .eq { 'cmpeqss' } else { 'cmpneqss' }
+			c.g.println('${inst} xmm0, xmm1')
+			c.mov_ssereg_to_reg(.rax, .xmm0, ast.f32_type_idx)
+			c.g.write([u8(0x83), 0xe0, 0x01])
+			c.g.println('and eax, 0x1')
+		}
+		.gt, .lt, .ge, .le {
+			c.cmp_sse(.xmm0, .xmm1, left_type)
+			// TODO mov_extend_reg
+			c.mov64(Amd64Register.rax, 0)
+			c.cset(match node.op {
+				.gt { .a }
+				.lt { .b }
+				.ge { .ae }
+				else { .be }
+			})
+		}
+		.plus {
+			c.add_sse(.xmm0, .xmm1, left_type)
+		}
+		.minus {
+			c.sub_sse(.xmm0, .xmm1, left_type)
+		}
+		.mul {
+			c.mul_sse(.xmm0, .xmm1, left_type)
+		}
+		.div {
+			c.div_sse(.xmm0, .xmm1, left_type)
+		}
+		else {
+			c.g.n_error('`${node.op}` expression is not supported right now')
+		}
+	}
+}
+
 fn (mut c Amd64) infix_expr(node ast.InfixExpr) {
 	if node.op in [.logical_or, .and] {
 		c.g.expr(node.left)
@@ -2838,163 +2896,115 @@ fn (mut c Amd64) infix_expr(node ast.InfixExpr) {
 		c.g.expr(node.right)
 		c.g.labels.addrs[label] = c.g.pos()
 		return
-	} else {
-		c.g.expr(node.right)
-		if node.left_type.is_pure_float() {
-			typ := node.left_type
-			// optimize for ast.Ident
-			match node.left {
-				ast.Ident {
-					c.mov_ssereg(.xmm1, .xmm0)
-					c.mov_var_to_ssereg(.xmm0, node.left as ast.Ident)
-				}
-				else {
-					c.push_sse(.xmm0)
-					c.g.expr(node.left)
-					c.pop_sse(.xmm1)
-				}
-			}
-			match node.op {
-				.eq, .ne {
-					c.g.write32(0xc1c20ff3)
-					c.g.write8(if node.op == .eq { 0x00 } else { 0x04 })
-					inst := if node.op == .eq { 'cmpeqss' } else { 'cmpneqss' }
-					c.g.println('${inst} xmm0, xmm1')
-					c.mov_ssereg_to_reg(.rax, .xmm0, ast.f32_type_idx)
-					c.g.write([u8(0x83), 0xe0, 0x01])
-					c.g.println('and eax, 0x1')
-				}
-				.gt, .lt, .ge, .le {
-					c.cmp_sse(.xmm0, .xmm1, typ)
-					// TODO mov_extend_reg
-					c.mov64(Amd64Register.rax, 0)
-					c.cset(match node.op {
-						.gt { .a }
-						.lt { .b }
-						.ge { .ae }
-						else { .be }
-					})
-				}
-				.plus {
-					c.add_sse(.xmm0, .xmm1, typ)
-				}
-				.minus {
-					c.sub_sse(.xmm0, .xmm1, typ)
-				}
-				.mul {
-					c.mul_sse(.xmm0, .xmm1, typ)
-				}
-				.div {
-					c.div_sse(.xmm0, .xmm1, typ)
-				}
-				else {
-					c.g.n_error('`${node.op}` expression is not supported right now')
-				}
-			}
-			return
+	}
+
+	c.g.expr(node.right)
+
+	left_type := c.g.unwrap(node.left_type)
+
+	if left_type.is_pure_float() {
+		c.fp_infix_expr(node, left_type)
+		return
+	}
+
+	// optimize for ast.Ident
+	match node.left {
+		ast.Ident {
+			c.mov_reg(match node.op {
+				.left_shift, .right_shift, .unsigned_right_shift, .div, .mod { Amd64Register.rcx }
+				else { Amd64Register.rdx }
+			}, Amd64Register.rax)
+			c.mov_var_to_reg(Amd64Register.rax, node.left as ast.Ident)
 		}
-		// optimize for ast.Ident
-		match node.left {
-			ast.Ident {
-				c.mov_reg(match node.op {
-					.left_shift, .right_shift, .unsigned_right_shift, .div, .mod { Amd64Register.rcx }
-					else { Amd64Register.rdx }
-				}, Amd64Register.rax)
-				c.mov_var_to_reg(Amd64Register.rax, node.left as ast.Ident)
-			}
-			else {
-				c.push(Amd64Register.rax)
-				c.g.expr(node.left)
-				c.pop(match node.op {
-					.left_shift, .right_shift, .unsigned_right_shift, .div, .mod { .rcx }
-					else { .rdx }
-				})
+		else {
+			c.push(Amd64Register.rax)
+			c.g.expr(node.left)
+			c.pop(match node.op {
+				.left_shift, .right_shift, .unsigned_right_shift, .div, .mod { .rcx }
+				else { .rdx }
+			})
+		}
+	}
+
+	if left_type !in ast.integer_type_idxs && left_type != ast.bool_type_idx
+		&& c.g.table.sym(left_type).info !is ast.Enum && !left_type.is_any_kind_of_pointer()
+		&& node.left_type.is_any_kind_of_pointer() {
+		c.g.n_error('unsupported type for `${node.op}`: ${left_type}')
+	}
+
+	// left: rax, right: rdx
+	match node.op {
+		.eq, .ne, .gt, .lt, .ge, .le {
+			c.cmp_reg(.rax, .rdx)
+			// TODO mov_extend_reg
+			c.mov64(Amd64Register.rax, 0)
+			c.cset_op(node.op)
+		}
+		.plus {
+			c.add_reg(.rax, .rdx)
+		}
+		.minus {
+			c.sub_reg(.rax, .rdx)
+		}
+		.mul {
+			c.g.write32(0xc2af0f48)
+			c.g.println('imul rax, rdx')
+		}
+		.div {
+			if left_type in ast.unsigned_integer_type_idxs {
+				c.g.write8(0xba)
+				c.g.write32(0)
+				c.g.println('mov edx, 0')
+				c.g.write([u8(0x48), 0xf7, 0xf1])
+				c.g.println('div rcx')
+			} else {
+				c.g.write16(0x9948)
+				c.g.println('cqo')
+				c.g.write([u8(0x48), 0xf7, 0xf9])
+				c.g.println('idiv rcx')
 			}
 		}
-		if node.left_type !in ast.integer_type_idxs && node.left_type != ast.bool_type_idx
-			&& c.g.table.sym(node.left_type).info !is ast.Enum && !node.left_type.is_ptr()
-			&& !node.left_type.is_voidptr() {
-			c.g.n_error('unsupported type for `${node.op}`: ${node.left_type}')
+		.mod {
+			if left_type in ast.unsigned_integer_type_idxs {
+				c.g.write8(0xba)
+				c.g.write32(0)
+				c.g.println('mov edx, 0')
+				c.g.write([u8(0x48), 0xf7, 0xf1])
+				c.g.println('div rcx')
+			} else {
+				c.g.write16(0x9948)
+				c.g.println('cqo')
+				c.g.write([u8(0x48), 0xf7, 0xf9])
+				c.g.println('idiv rcx')
+			}
+			c.mov_reg(Amd64Register.rax, Amd64Register.rdx)
 		}
-		// left: rax, right: rdx
-		match node.op {
-			.eq, .ne, .gt, .lt, .ge, .le {
-				c.cmp_reg(.rax, .rdx)
-				// TODO mov_extend_reg
-				c.mov64(Amd64Register.rax, 0)
-				c.cset_op(node.op)
-			}
-			.plus {
-				c.add_reg(.rax, .rdx)
-			}
-			.minus {
-				c.sub_reg(.rax, .rdx)
-			}
-			.mul {
-				c.g.write32(0xc2af0f48)
-				c.g.println('imul rax, rdx')
-			}
-			.div {
-				if node.left_type in ast.unsigned_integer_type_idxs {
-					c.g.write8(0xba)
-					c.g.write32(0)
-					c.g.println('mov edx, 0')
-					c.g.write([u8(0x48), 0xf7, 0xf1])
-					c.g.println('div rcx')
-				} else {
-					c.g.write16(0x9948)
-					c.g.println('cqo')
-					c.g.write([u8(0x48), 0xf7, 0xf9])
-					c.g.println('idiv rcx')
-				}
-			}
-			.mod {
-				if node.left_type in ast.unsigned_integer_type_idxs {
-					c.g.write8(0xba)
-					c.g.write32(0)
-					c.g.println('mov edx, 0')
-					c.g.write([u8(0x48), 0xf7, 0xf1])
-					c.g.println('div rcx')
-				} else {
-					c.g.write16(0x9948)
-					c.g.println('cqo')
-					c.g.write([u8(0x48), 0xf7, 0xf9])
-					c.g.println('idiv rcx')
-				}
-				c.mov_reg(Amd64Register.rax, Amd64Register.rdx)
-			}
-			.amp {
-				c.bitand_reg(.rax, .rdx)
-			}
-			.pipe {
-				c.bitor_reg(.rax, .rdx)
-			}
-			.xor {
-				c.bitxor_reg(.rax, .rdx)
-			}
-			.left_shift {
-				c.shl_reg(.rax, .rcx)
-			}
-			.right_shift {
-				c.sar_reg(.rax, .rcx)
-			}
-			.unsigned_right_shift {
-				c.shr_reg(.rax, .rcx)
-			}
-			else {
-				c.g.n_error('`${node.op}` expression is not supported right now')
-			}
+		.amp {
+			c.bitand_reg(.rax, .rdx)
+		}
+		.pipe {
+			c.bitor_reg(.rax, .rdx)
+		}
+		.xor {
+			c.bitxor_reg(.rax, .rdx)
+		}
+		.left_shift {
+			c.shl_reg(.rax, .rcx)
+		}
+		.right_shift {
+			c.sar_reg(.rax, .rcx)
+		}
+		.unsigned_right_shift {
+			c.shr_reg(.rax, .rcx)
+		}
+		else {
+			c.g.n_error('`${node.op}` expression is not supported right now')
 		}
 	}
 }
 
 fn (mut c Amd64) trap() {
-	// funnily works on x86 and arm64
-	if c.g.pref.arch == .arm64 {
-		c.g.write32(0xcccccccc)
-	} else {
-		c.g.write8(0xcc)
-	}
+	c.g.write8(0xcc)
 	c.g.println('trap')
 }
 
@@ -3993,6 +4003,7 @@ fn (mut c Amd64) push_sse(reg Amd64SSERegister) {
 	c.g.println('movsd [rsp], ${reg}')
 	c.is_16bit_aligned = !c.is_16bit_aligned
 	c.g.println('; push ${reg}')
+	c.g.stack_depth++
 }
 
 fn (mut c Amd64) pop_sse(reg Amd64SSERegister) {
@@ -4008,6 +4019,7 @@ fn (mut c Amd64) pop_sse(reg Amd64SSERegister) {
 	c.g.println('add rsp, 0x8')
 	c.is_16bit_aligned = !c.is_16bit_aligned
 	c.g.println('; pop ${reg}')
+	c.g.stack_depth--
 }
 
 fn (mut c Amd64) gen_cast_expr(expr ast.CastExpr) {
