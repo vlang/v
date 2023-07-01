@@ -3579,9 +3579,6 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		opt_base_typ := g.base_type(node.expr_type)
 		g.write('(*(${opt_base_typ}*)')
 	}
-	if sym.kind in [.interface_, .sum_type] {
-		g.write('(*(')
-	}
 	if sym.kind == .array_fixed {
 		if node.field_name != 'len' {
 			g.error('field_name should be `len`', node.pos)
@@ -3601,6 +3598,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if f := g.table.find_field_with_embeds(sym, node.field_name) {
 		field_sym := g.table.sym(f.typ)
 		field_typ = f.typ
+		if sym.kind in [.interface_, .sum_type] {
+			g.write('(*(')
+		}
 		if field_sym.kind in [.sum_type, .interface_] {
 			if !prevent_sum_type_unwrapping_once {
 				// check first if field is sum type because scope searching is expensive
@@ -3675,9 +3675,15 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					method_name = g.generic_fn_name(rec_sym.info.concrete_types, m.name)
 				}
 			}
-			sb.write_string('${expr_styp}_${method_name}(')
-			if !receiver.typ.is_ptr() {
-				sb.write_string('*')
+			if rec_sym.info is ast.Interface {
+				left_cc_type := g.cc_type(g.table.unaliased_type(receiver.typ), false)
+				left_type_name := util.no_dots(left_cc_type)
+				sb.write_string('${c_name(left_type_name)}_name_table[a0->_typ]._method_${method_name}(')
+			} else {
+				sb.write_string('${expr_styp}_${method_name}(')
+				if !receiver.typ.is_ptr() {
+					sb.write_string('*')
+				}
 			}
 			for i in 0 .. m.params.len {
 				if i != 0 {
@@ -3704,6 +3710,10 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			}
 			g.write(')')
 			return
+		}
+	} else {
+		if sym.kind in [.interface_, .sum_type] {
+			g.write('(*(')
 		}
 	}
 	// var?.field_opt
