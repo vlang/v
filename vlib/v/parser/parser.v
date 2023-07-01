@@ -330,7 +330,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		}
 		stmt := p.top_stmt()
 		// clear the attributes after each statement
-		if !(stmt is ast.ExprStmt && (stmt as ast.ExprStmt).expr is ast.Comment) {
+		if !(stmt is ast.ExprStmt && stmt.expr is ast.Comment) {
 			p.attrs = []
 		}
 		stmts << stmt
@@ -2103,7 +2103,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 			if (is_top_level || p.tok.kind != .rcbr)
 				&& node !in [ast.CallExpr, ast.PostfixExpr, ast.ComptimeCall, ast.SelectorExpr, ast.DumpExpr] {
 				is_complex_infix_expr := node is ast.InfixExpr
-					&& (node as ast.InfixExpr).op in [.left_shift, .right_shift, .unsigned_right_shift, .arrow]
+					&& node.op in [.left_shift, .right_shift, .unsigned_right_shift, .arrow]
 				if !is_complex_infix_expr {
 					return p.error_with_pos('expression evaluated but not used', node.pos())
 				}

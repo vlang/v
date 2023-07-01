@@ -346,7 +346,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 										left.obj.typ = c.comptime_fields_default_type
 									}
 								} else if mut right is ast.Ident && right.obj is ast.Var
-									&& (right as ast.Ident).or_expr.kind == .absent {
+									&& right.or_expr.kind == .absent {
 									if (right.obj as ast.Var).ct_type_var != .no_comptime {
 										ctyp := c.get_comptime_var_type(right)
 										if ctyp != ast.void_type {
@@ -705,8 +705,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 		}
-		if left_sym.kind == .struct_ && !(left_sym.info as ast.Struct).is_anon
-			&& right is ast.StructInit && (right as ast.StructInit).is_anon {
+		if left_sym.info is ast.Struct && !left_sym.info.is_anon && right is ast.StructInit
+			&& right.is_anon {
 			c.error('cannot assign anonymous `struct` to a typed `struct`', right.pos())
 		}
 		if right_sym.kind == .alias && right_sym.name == 'byte' {
