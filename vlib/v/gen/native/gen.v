@@ -322,6 +322,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref_ &pref.Pre
 		structs: []Struct{len: table.type_symbols.len}
 		eval: eval.new_eval(table, pref_)
 	}
+
 	g.code_gen.g = g
 	g.generate_header()
 	g.init_builtins()
@@ -976,9 +977,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	} else {
 		node.name
 	}
-	if node.no_body || !g.is_used_by_main(node) {
+	if node.no_body || !g.is_used_by_main(node) || g.is_blacklisted(name, node.is_builtin) {
 		if g.pref.is_verbose {
-			println(term.italic(term.green('\n-> skipping unused function `${name}`')))
+			println(term.italic(term.green('-> skipping unused function `${name}`')))
 		}
 		return
 	}
@@ -987,9 +988,6 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	if node.is_deprecated {
 		g.warning('fn_decl: ${name} is deprecated', node.pos)
-	}
-	if node.is_builtin {
-		g.warning('fn_decl: ${name} is builtin', node.pos)
 	}
 
 	g.stack_var_pos = 0
