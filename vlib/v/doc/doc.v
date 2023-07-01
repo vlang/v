@@ -446,15 +446,15 @@ pub fn (mut d Doc) generate() ! {
 		}
 		file_asts << parser.parse_file(file_path, d.table, comments_mode, d.prefs)
 	}
-	return d.file_asts(file_asts)
+	return d.file_asts(mut file_asts)
 }
 
 // file_asts has the same function as the `file_ast` function but
 // accepts an array of `ast.File` and throws an error if necessary.
-pub fn (mut d Doc) file_asts(file_asts []ast.File) ! {
+pub fn (mut d Doc) file_asts(mut file_asts []ast.File) ! {
 	mut fname_has_set := false
 	d.orig_mod_name = file_asts[0].mod.name
-	for i, file_ast in file_asts {
+	for i, mut file_ast in file_asts {
 		if d.filename.len > 0 && file_ast.path.contains(d.filename) && !fname_has_set {
 			d.filename = file_ast.path
 			fname_has_set = true
@@ -473,7 +473,7 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ! {
 			continue
 		}
 		if file_ast.path == d.filename {
-			d.checker.check(file_ast)
+			d.checker.check(mut file_ast)
 			d.scoped_contents = d.file_ast_with_pos(file_ast, d.pos)
 		}
 		contents := d.file_ast(file_ast)

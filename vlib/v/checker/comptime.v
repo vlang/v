@@ -126,7 +126,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		}
 		mut c2 := new_checker(c.table, pref2)
 		c2.comptime_call_pos = node.pos.pos
-		c2.check(node.vweb_tmpl)
+		c2.check(mut node.vweb_tmpl)
 		c.warnings << c2.warnings
 		c.errors << c2.errors
 		c.notices << c2.notices

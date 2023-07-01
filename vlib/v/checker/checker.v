@@ -166,8 +166,7 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.inside_if_guard = false
 }
 
-pub fn (mut c Checker) check(ast_file_ &ast.File) {
-	mut ast_file := unsafe { ast_file_ }
+pub fn (mut c Checker) check(mut ast_file ast.File) {
 	c.reset_checker_state_at_start_of_new_file()
 	c.change_current_file(ast_file)
 	for i, ast_import in ast_file.imports {
@@ -266,7 +265,7 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 }
 
 // not used right now
-pub fn (mut c Checker) check2(ast_file &ast.File) []errors.Error {
+pub fn (mut c Checker) check2(mut ast_file ast.File) []errors.Error {
 	c.change_current_file(ast_file)
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
@@ -290,7 +289,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 		for i in 0 .. ast_files.len {
 			mut file := ast_files[i]
 			c.timers.start('checker_check ${file.path}')
-			c.check(file)
+			c.check(mut file)
 			if file.mod.name == 'main' {
 				files_from_main_module << file
 				has_main_mod_file = true

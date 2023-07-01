@@ -1850,13 +1850,13 @@ pub:
 	scope        &Scope = unsafe { nil }
 	left         Expr
 	is_vweb      bool
-	vweb_tmpl    File
 	is_embed     bool
 	is_env       bool
 	env_pos      token.Pos
 	is_pkgconfig bool
 	or_block     OrExpr
 pub mut:
+	vweb_tmpl   File
 	left_type   Type
 	result_type Type
 	env_value   string
