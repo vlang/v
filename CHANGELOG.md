@@ -424,8 +424,6 @@ Final steps in making the Option type a first class type:
 ### ORM
 - Support parenthesized expressions like `select from User where (name == 'Sam' && is_customer == true) || id == 1`.
 
-### Database drivers
-
 ### Native backend
 - Lots of native backend improvements, including library calls, comptime conditionals, enums, method definitions/calls, structs.
 
@@ -453,49 +451,75 @@ Final steps in making the Option type a first class type:
 
 ## V 0.3.1
 *31 Aug 2022*
+
+### Improvements in the language
 - Anonymous structs.
 - Lots of bug fixes: 90% of all bugs ever submitted are closed.
-- Major improvements to the fast native backend including linking support on Linux. The goal is to be able to self host V soon.
-- Parallelized cc step. Speeds up -prod and clang/gcc compilation by 300-500% (depending on
-  the number of cores). Experimental and hidden behind a -parallel-cc flag, soon to be the default.
 - New keyword/type: `nil`. Only to be used inside `unsafe`. Replaces `voidptr(0)`.
 - V can now find code in the `src/` directory. This allows making V repos much cleaner.
-- Intel C compiler support.
-- Older macOS support (<10.12).
-- `os.mkdir()` now has an optional `mode` parameter.
-- Full termux support via `$if termux {`, more predictable logging on Android.
-- Go backend fixes.
-- More type checks.
-- DOOM is now translated/compiled and launched on CI servers. A screenshot of the running game
-  is made via `vgret` and is compared to the expected result.
-- VLS performance improvements, especially on Windows.
-- `v ls` tool for installing, for updating, and for launching VLS (V Language Server).
 - Support `assert condition, extra_message`, where the `extra_message` will be evaluated and shown if the assertion fails.
-- Anonymous sumtypes have been removed (deprecated for now) due to complicating the language and the compiler too much.
-- `encoding.csv` is now generic, supports bools, accepts a custom delimiter, and is compatible with io.Reader/io.Writer.
 - Operator overloading now works with aliases and generics.
+- Scanner optimizations.
+- Using C's #define is no longer allowed in normal V code, only in `.c.v` files.
+
+### Breaking changes
+- Anonymous sumtypes have been removed (deprecated for now) due to complicating the language and the compiler too much.
+
+### Checker improvements/fixes
+- More type checks.
+- Lots of fixes in `shared` types.
+
+### Standard library
+- `os.mkdir()` now has an optional `mode` parameter.
+- `encoding.csv` is now generic, supports bools, accepts a custom delimiter, and is compatible with io.Reader/io.Writer.
 - `datatypes` module now uses operator overloading.
 - All `datatypes` types can be converted to V arrays.
 - `smtp` improvements including multiple recipients and base64/utf8 support.
-- `v doc` now has syntax highlighting.
 - `arrays.carray_to_varray<T>()` for converting C arrays to V arrays.
 - `strconv.v_sprintf()` has been deprecated in favor of string interpolation.
 - TOML module now supports `[toml:...]` attributes, just like the JSON module.
 - `os.walk()` is no longer recursive (still works the same).
-- Windows code has been removed from `v.c` distributed on non-Windows systems. (`v_windows.c` is used on Windows.)
-- ORM functions now return `Result`, so the errors can be handled.
-- `#preinclude` for low level C interop.
-- `net.urllib` ipv6 support.
-- Lots of fixes in `shared` types.
 - `io` has been migrated to `Result`.
 - Third party window control in Sokol.
-- Scanner optimizations.
 - `string.replace_char()`, `math.round_sig()`.
 - Improved multiplication performance in `math.big`.
+
+### Web
+- `net.urllib` ipv6 support.
 - `net.Http.Response.text` renamed to `body`.
-- Using C's #define is no longer allowed in normal V code, only in `.c.v` files.
-- V interpreter improvements.
 - `net.websocket` timeout is now configurable.
+
+### ORM
+- ORM functions now return `Result`, so the errors can be handled.
+
+### Database drivers
+
+### Native backend
+- Major improvements to the fast native backend including linking support on Linux. The goal is to be able to self host V soon.
+
+### V interpreter
+- V interpreter improvements.
+
+### C backend
+- Parallelized cc step. Speeds up -prod and clang/gcc compilation by 300-500% (depending on
+  the number of cores). Experimental and hidden behind a -parallel-cc flag, soon to be the default.
+- Intel C compiler support.
+- Go backend fixes.
+- `#preinclude` for low level C interop.
+
+### OS support
+- Full termux support via `$if termux {`, more predictable logging on Android.
+- Older macOS support (<10.12).
+- Windows code has been removed from `v.c` distributed on non-Windows systems. (`v_windows.c` is used on Windows.)
+
+### Tools
+- DOOM is now translated/compiled and launched on CI servers. A screenshot of the running game
+  is made via `vgret` and is compared to the expected result.
+- VLS performance improvements, especially on Windows.
+- `v ls` tool for installing, for updating, and for launching VLS (V Language Server).
+- `v doc` now has syntax highlighting.
+
+
 
 
 ## V 0.3
