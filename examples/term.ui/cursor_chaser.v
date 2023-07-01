@@ -92,5 +92,5 @@ fn main() {
 		event_fn: event
 		hide_cursor: true
 	)
-	app.tui.run()?
+	app.tui.run()!
 }

@@ -646,5 +646,5 @@ fn main() {
 		event_fn: event
 		capture_events: true
 	)
-	a.tui.run()?
+	a.tui.run()!
 }
