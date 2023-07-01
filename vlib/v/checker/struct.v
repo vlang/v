@@ -596,6 +596,13 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 						inited_fields << struct_field.name
 					}
 				}
+				expected_type_sym := c.table.final_sym(init_field.expected_type)
+				if expected_type_sym.kind in [.string, .array, .map, .array_fixed, .chan]
+					&& init_field.expr.is_nil() && !init_field.expected_type.is_ptr()
+					&& mut init_field.expr is ast.UnsafeExpr {
+					c.error('cannot assign `nil` to struct field `${init_field.name}` with type `${expected_type_sym.name}`',
+						init_field.expr.pos.extend(init_field.expr.expr.pos()))
+				}
 			}
 			// Check uninitialized refs/sum types
 			// The variable `fields` contains two parts, the first part is the same as info.fields,
