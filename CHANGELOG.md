@@ -5,6 +5,8 @@ This release has a combined changelog from 0.3.1 to 0.3.5.
 
 You can read it here:
 
+https://github.com/vlang/v/blob/master/changelogs0.x/0.4.md
+
 ## V 0.3.5
 *29 June 2023*
 
