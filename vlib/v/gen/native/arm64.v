@@ -385,7 +385,8 @@ fn (mut c Arm64) apicall(call ApiCall) {
 }
 
 fn (mut c Arm64) trap() {
-	panic('Arm64.trap() not implemented')
+	c.g.write32(0xcccccccc)
+	c.g.println('trap')
 }
 
 fn (mut c Arm64) leave() {

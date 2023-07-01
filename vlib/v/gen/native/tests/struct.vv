@@ -56,6 +56,9 @@ fn struct_test() {
 	mut f := &e
 	f.a = 3
 	assert e.a == 3
+
+	g := &Mutable{2}
+	assert g.a == 2
 }
 
 type AliasedStruct = Mutable

@@ -23,7 +23,7 @@
 - [x] Recursive structs via options: `struct Node { next ?Node }`
 - [x] First class Option type
 - [x] Optional function struct fields
-- [ ] Handle function pointers safely, remove `if function == 0 {`
+- [x] Handle function pointers safely, remove `if function == 0 {`
 - [x] Bundle OpenSSL like GC
 - [x] Anonymous structs
 - [x] Improve vweb: allow separation of logic via "controllers", lots of other fixes
