@@ -268,7 +268,7 @@ fn test_token_with_app() {
 	res := http.get('http://${localserver}/') or { panic(err) }
 
 	mut doc := html.parse(res.body)
-	inputs := doc.get_tag_by_attribute_value('type', 'hidden')
+	inputs := doc.get_tags_by_attribute_value('type', 'hidden')
 	assert inputs.len == 1
 	assert csrf_config.token_name == inputs[0].attributes['name']
 }
@@ -277,7 +277,7 @@ fn test_token_with_middleware() {
 	res := http.get('http://${localserver}/middleware_index') or { panic(err) }
 
 	mut doc := html.parse(res.body)
-	inputs := doc.get_tag_by_attribute_value('type', 'hidden')
+	inputs := doc.get_tags_by_attribute_value('type', 'hidden')
 	assert inputs.len == 1
 	assert csrf_config.token_name == inputs[0].attributes['name']
 }
