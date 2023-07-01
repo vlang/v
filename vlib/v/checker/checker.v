@@ -524,9 +524,7 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 		}
 		// The rest of the parent symbol kinds are also allowed, since they are either primitive types,
 		// that in turn do not allow recursion, or are abstract enough so that they can not be checked at comptime:
-		else {
-			// dump(parent_typ_sym.kind)
-		}
+		else {}
 		/*
 		.voidptr, .byteptr, .charptr {}
 		.char, .rune, .bool {}
