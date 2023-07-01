@@ -4542,10 +4542,9 @@ fn (mut c Checker) trace(fbase string, message string) {
 	}
 }
 
-fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos token.Pos) ? {
+fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos token.Pos) {
 	if typ == 0 {
 		c.error('unknown type', pos)
-		return none
 	}
 
 	c.ensure_generic_type_level++
@@ -4555,7 +4554,6 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 	if c.ensure_generic_type_level > checker.expr_level_cutoff_limit {
 		c.error('checker: too many levels of Checker.ensure_generic_type_specify_type_names calls: ${c.ensure_generic_type_level} ',
 			pos)
-		return none
 	}
 
 	sym := c.table.final_sym(typ)
@@ -4568,23 +4566,23 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 	match sym.kind {
 		.function {
 			fn_info := sym.info as ast.FnType
-			c.ensure_generic_type_specify_type_names(fn_info.func.return_type, fn_info.func.return_type_pos)?
+			c.ensure_generic_type_specify_type_names(fn_info.func.return_type, fn_info.func.return_type_pos)
 			for param in fn_info.func.params {
-				c.ensure_generic_type_specify_type_names(param.typ, param.type_pos)?
+				c.ensure_generic_type_specify_type_names(param.typ, param.type_pos)
 			}
 		}
 		.array {
 			c.ensure_generic_type_specify_type_names((sym.info as ast.Array).elem_type,
-				pos)?
+				pos)
 		}
 		.array_fixed {
 			c.ensure_generic_type_specify_type_names((sym.info as ast.ArrayFixed).elem_type,
-				pos)?
+				pos)
 		}
 		.map {
 			info := sym.info as ast.Map
-			c.ensure_generic_type_specify_type_names(info.key_type, pos)?
-			c.ensure_generic_type_specify_type_names(info.value_type, pos)?
+			c.ensure_generic_type_specify_type_names(info.key_type, pos)
+			c.ensure_generic_type_specify_type_names(info.value_type, pos)
 		}
 		.sum_type {
 			info := sym.info as ast.SumType
