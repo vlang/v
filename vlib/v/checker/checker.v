@@ -4618,14 +4618,12 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) {
 	if !c.is_builtin_mod && sym.kind == .struct_ && !sym.is_pub && sym.mod != c.mod {
 		c.error('struct `${sym.name}` was declared as private to module `${sym.mod}`, so it can not be used inside module `${c.mod}`',
 			pos)
-		return
 	}
 	match sym.kind {
 		.placeholder {
 			if sym.language == .v && !sym.name.starts_with('C.') {
 				c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `${sym.name}`'),
 					pos)
-				return
 			}
 		}
 		.int_literal, .float_literal {
@@ -4638,7 +4636,6 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) {
 					'unknown type `${sym.name}`.\nDid you mean `f64`?'
 				}
 				c.error(msg, pos)
-				return
 			}
 		}
 		.function {
