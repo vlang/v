@@ -128,6 +128,17 @@ mut:
 
 type Register = Amd64Register | Arm64Register
 
+fn (r Register) str() string {
+	return match r {
+		Amd64Register {
+			'${r as Amd64Register}'
+		}
+		Arm64Register {
+			'${r as Arm64Register}'
+		}
+	}
+}
+
 enum RelocType {
 	rel8
 	rel16
@@ -978,9 +989,6 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		node.name
 	}
 	if node.no_body || !g.is_used_by_main(node) || g.is_blacklisted(name, node.is_builtin) {
-		if g.pref.is_verbose {
-			println(term.italic(term.green('-> skipping unused function `${name}`')))
-		}
 		return
 	}
 	if g.pref.is_verbose {

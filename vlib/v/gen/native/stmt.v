@@ -97,10 +97,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.AssertStmt {
 			g.code_gen.gen_assert(node)
 		}
+		ast.GlobalDecl {
+			g.warning('globals are not supported yet', node.pos)
+		}
 		ast.Import {} // do nothing here
 		ast.StructDecl {}
 		ast.EnumDecl {}
 		ast.TypeDecl {}
+		ast.InterfaceDecl {}
 		else {
 			eprintln('native.stmt(): bad node: ' + node.type_name())
 		}
