@@ -26,7 +26,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 		|| (node.cond is ast.SelectorExpr && node.cond.is_mut) {
 		c.fail_if_immutable(node.cond)
 	}
-	c.ensure_type_exists(node.cond_type, node.pos) or { return ast.void_type }
+	c.ensure_type_exists(node.cond_type, node.pos)
 	c.check_expr_opt_call(node.cond, cond_type)
 	cond_type_sym := c.table.sym(cond_type)
 	cond_is_option := cond_type.has_flag(.option)

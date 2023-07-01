@@ -211,7 +211,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .v {
 		// Make sure all types are valid
 		for mut param in node.params {
-			c.ensure_type_exists(param.typ, param.type_pos) or { return }
+			c.ensure_type_exists(param.typ, param.type_pos)
 			if reserved_type_names_chk.matches(param.name) {
 				c.error('invalid use of reserved type `${param.name}` as a parameter name',
 					param.pos)
@@ -279,7 +279,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		c.error('top level declaration cannot shadow builtin type', node.pos)
 	}
 	if node.return_type != ast.Type(0) {
-		c.ensure_type_exists(node.return_type, node.return_type_pos) or { return }
+		c.ensure_type_exists(node.return_type, node.return_type_pos)
 		if node.language == .v && node.is_method && node.name == 'str' {
 			if node.return_type != ast.string_type {
 				c.error('.str() methods should return `string`', node.pos)
@@ -980,7 +980,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			node.concrete_list_pos)
 	}
 	for concrete_type in node.concrete_types {
-		c.ensure_type_exists(concrete_type, node.concrete_list_pos) or {}
+		c.ensure_type_exists(concrete_type, node.concrete_list_pos)
 	}
 	if func.generic_names.len > 0 && node.args.len == 0 && node.concrete_types.len == 0 {
 		c.error('no argument generic function must add concrete types, e.g. foo[int]()',
@@ -1851,7 +1851,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			node.concrete_list_pos)
 	}
 	for concrete_type in node.concrete_types {
-		c.ensure_type_exists(concrete_type, node.concrete_list_pos) or {}
+		c.ensure_type_exists(concrete_type, node.concrete_list_pos)
 	}
 	if method.return_type == ast.void_type && method.is_conditional
 		&& method.ctdefine_idx != ast.invalid_type_idx {

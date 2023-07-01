@@ -26,7 +26,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 
 	// To avoid panics while working with `table_expr`,
 	// it is necessary to check if its type exists.
-	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return ast.void_type }
+	c.ensure_type_exists(node.table_expr.typ, node.pos)
 	table_sym := c.table.sym(node.table_expr.typ)
 
 	if !c.check_orm_table_expr_type(node.table_expr) {
@@ -175,7 +175,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 
 	// To avoid panics while working with `table_expr`,
 	// it is necessary to check if its type exists.
-	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return ast.void_type }
+	c.ensure_type_exists(node.table_expr.typ, node.pos)
 	table_sym := c.table.sym(node.table_expr.typ)
 
 	if !c.check_orm_table_expr_type(node.table_expr) {

@@ -460,7 +460,7 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 	if c.file.mod.name != 'builtin' {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 	}
-	c.ensure_type_exists(node.parent_type, node.type_pos) or { return }
+	c.ensure_type_exists(node.parent_type, node.type_pos)
 	mut parent_typ_sym := c.table.sym(node.parent_type)
 	if node.parent_type.has_flag(.result) {
 		c.add_error_detail('Result types cannot be stored and have to be unwrapped immediately')
@@ -524,7 +524,9 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 		}
 		// The rest of the parent symbol kinds are also allowed, since they are either primitive types,
 		// that in turn do not allow recursion, or are abstract enough so that they can not be checked at comptime:
-		else {}
+		else {
+			// dump(parent_typ_sym.kind)
+		}
 		/*
 		.voidptr, .byteptr, .charptr {}
 		.char, .rune, .bool {}
@@ -552,13 +554,13 @@ fn (mut c Checker) fn_type_decl(node ast.FnTypeDecl) {
 	typ_sym := c.table.sym(node.typ)
 	fn_typ_info := typ_sym.info as ast.FnType
 	fn_info := fn_typ_info.func
-	c.ensure_type_exists(fn_info.return_type, fn_info.return_type_pos) or {}
+	c.ensure_type_exists(fn_info.return_type, fn_info.return_type_pos)
 	ret_sym := c.table.sym(fn_info.return_type)
 	if ret_sym.kind == .placeholder {
 		c.error('unknown type `${ret_sym.name}`', fn_info.return_type_pos)
 	}
 	for arg in fn_info.params {
-		c.ensure_type_exists(arg.typ, arg.type_pos) or { return }
+		c.ensure_type_exists(arg.typ, arg.type_pos)
 		arg_sym := c.table.sym(arg.typ)
 		if arg_sym.kind == .placeholder {
 			c.error('unknown type `${arg_sym.name}`', arg.type_pos)
@@ -570,7 +572,7 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 	c.check_valid_pascal_case(node.name, 'sum type', node.pos)
 	mut names_used := []string{}
 	for variant in node.variants {
-		c.ensure_type_exists(variant.typ, variant.pos) or {}
+		c.ensure_type_exists(variant.typ, variant.pos)
 		sym := c.table.sym(variant.typ)
 		if variant.typ.is_ptr() {
 			variant_name := sym.name.all_after_last('.')
@@ -757,7 +759,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 				return '', expr.pos
 			}
 			// retrieve ast.Field
-			c.ensure_type_exists(expr.expr_type, expr.pos) or { return '', expr.pos }
+			c.ensure_type_exists(expr.expr_type, expr.pos)
 			mut typ_sym := c.table.final_sym(c.unwrap_generic(expr.expr_type))
 			match typ_sym.kind {
 				.struct_ {
@@ -2485,14 +2487,14 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			expr_type_sym := c.table.sym(node.expr_type)
 			type_sym := c.table.sym(node.typ)
 			if expr_type_sym.kind == .sum_type {
-				c.ensure_type_exists(node.typ, node.pos) or {}
+				c.ensure_type_exists(node.typ, node.pos)
 				if !c.table.sumtype_has_variant(node.expr_type, node.typ, true) {
 					addr := '&'.repeat(node.typ.nr_muls())
 					c.error('cannot cast `${expr_type_sym.name}` to `${addr}${type_sym.name}`',
 						node.pos)
 				}
 			} else if expr_type_sym.kind == .interface_ && type_sym.kind == .interface_ {
-				c.ensure_type_exists(node.typ, node.pos) or {}
+				c.ensure_type_exists(node.typ, node.pos)
 			} else if node.expr_type.clear_flag(.option) != node.typ.clear_flag(.option) {
 				mut s := 'cannot cast non-sum type `${expr_type_sym.name}` using `as`'
 				if type_sym.kind == .sum_type {
@@ -2857,7 +2859,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	}
 
 	if to_sym.language != .c {
-		c.ensure_type_exists(to_type, node.pos) or {}
+		c.ensure_type_exists(to_type, node.pos)
 
 		if to_sym.kind == .alias && (to_sym.info as ast.Alias).parent_type.has_flag(.option)
 			&& !to_type.has_flag(.option) {
@@ -4609,7 +4611,7 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 	}
 }
 
-fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
+fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) {
 	if typ == 0 {
 		c.error('unknown type', pos)
 		return
@@ -4643,26 +4645,26 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
 		}
 		.function {
 			fn_info := sym.info as ast.FnType
-			c.ensure_type_exists(fn_info.func.return_type, fn_info.func.return_type_pos)?
+			c.ensure_type_exists(fn_info.func.return_type, fn_info.func.return_type_pos)
 			for param in fn_info.func.params {
-				c.ensure_type_exists(param.typ, param.type_pos)?
+				c.ensure_type_exists(param.typ, param.type_pos)
 			}
 		}
 		.array {
-			c.ensure_type_exists((sym.info as ast.Array).elem_type, pos)?
+			c.ensure_type_exists((sym.info as ast.Array).elem_type, pos)
 		}
 		.array_fixed {
-			c.ensure_type_exists((sym.info as ast.ArrayFixed).elem_type, pos)?
+			c.ensure_type_exists((sym.info as ast.ArrayFixed).elem_type, pos)
 		}
 		.map {
 			info := sym.info as ast.Map
-			c.ensure_type_exists(info.key_type, pos)?
-			c.ensure_type_exists(info.value_type, pos)?
+			c.ensure_type_exists(info.key_type, pos)
+			c.ensure_type_exists(info.value_type, pos)
 		}
 		.sum_type {
 			info := sym.info as ast.SumType
 			for concrete_typ in info.concrete_types {
-				c.ensure_type_exists(concrete_typ, pos)?
+				c.ensure_type_exists(concrete_typ, pos)
 			}
 		}
 		else {}

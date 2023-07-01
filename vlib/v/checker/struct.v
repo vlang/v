@@ -366,7 +366,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		c.table.unwrap_generic_type(node.typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types)
 	}
 	if !is_field_zero_struct_init {
-		c.ensure_type_exists(node.typ, node.pos) or {}
+		c.ensure_type_exists(node.typ, node.pos)
 	}
 	type_sym := c.table.sym(node.typ)
 	if !c.inside_unsafe && type_sym.kind == .sum_type {

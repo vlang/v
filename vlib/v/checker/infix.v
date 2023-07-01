@@ -196,7 +196,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					} else {
 						if mut node.right is ast.ArrayInit {
 							for i, typ in node.right.expr_types {
-								c.ensure_type_exists(typ, node.right.exprs[i].pos()) or {}
+								c.ensure_type_exists(typ, node.right.exprs[i].pos())
 							}
 						}
 					}
