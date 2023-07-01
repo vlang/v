@@ -12,7 +12,6 @@
 - Enum values now can have attributes.
 - Generic functions as function parameters are now supported: `fn f[T](x T, i int, f_ Fn[T]) T { `.
 - Anonymous structs can no longer have attributes.
-- Allow fixed array returns.
 
 ### Breaking changes
 - `byte` deprecated in favor of `u8` (`byte` is automatically converted to `u8` by vfmt).
