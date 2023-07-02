@@ -103,6 +103,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				if branch.cond.op == .key_is {
 					left := branch.cond.left
 					right := branch.cond.right
+
 					if right !in [ast.TypeNode, ast.ComptimeType] {
 						c.error('invalid `\$if` condition: expected a type', branch.cond.right.pos())
 						return 0
@@ -161,6 +162,13 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							is_comptime_type_is_expr = true
 							left_type := c.unwrap_generic(left.typ)
 							skip_state = c.check_compatible_types(left_type, right as ast.TypeNode)
+						} else if left is ast.Ident {
+							is_comptime_type_is_expr = true
+							mut checked_type := ast.void_type
+							if var := left.scope.find_var(left.name) {
+								checked_type = c.unwrap_generic(var.typ)
+							}
+							skip_state = c.check_compatible_types(checked_type, right as ast.TypeNode)
 						}
 					}
 				} else if branch.cond.op in [.eq, .ne] {
