@@ -830,18 +830,17 @@ fn (mut c Checker) invalid_operator_error(op token.Kind, left_type ast.Type, rig
 }
 
 // `if node is ast.Ident && node.is_mut { ... }` -> `if node is ast.Ident && (node as ast.Ident).is_mut { ... }`
-fn (mut c Checker) autocast_in_if_conds(mut right_ ast.Expr, from_expr ast.Expr, from_type ast.Type, to_type ast.Type) {
-	mut right := right_
-	match mut right {
-		ast.Ident {
-			if right.name == from_expr.str() {
-				right_ = ast.AsCast{
-					typ: to_type
-					expr: from_expr
-					expr_type: from_type
-				}
-			}
+fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, from_type ast.Type, to_type ast.Type) {
+	if '${right}' == from_expr.str() {
+		right = ast.AsCast{
+			typ: to_type
+			expr: from_expr
+			expr_type: from_type
 		}
+		return
+	}
+
+	match mut right {
 		ast.SelectorExpr {
 			if right.expr.str() == from_expr.str() {
 				right.expr = ast.ParExpr{
