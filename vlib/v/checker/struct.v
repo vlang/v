@@ -597,7 +597,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					}
 				}
 				expected_type_sym := c.table.final_sym(init_field.expected_type)
-				if expected_type_sym.kind in [.string, .array, .map, .array_fixed, .chan]
+				if expected_type_sym.kind in [.string, .array, .map, .array_fixed, .chan, .struct_]
 					&& init_field.expr.is_nil() && !init_field.expected_type.is_ptr()
 					&& mut init_field.expr is ast.UnsafeExpr {
 					c.error('cannot assign `nil` to struct field `${init_field.name}` with type `${expected_type_sym.name}`',
