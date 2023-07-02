@@ -22,7 +22,12 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		g.empty_line = false
 		g.write(s)
 	}
-	styp := g.typ(g.table.unaliased_type(node.typ)).replace('*', '')
+	unalised_typ := g.table.unaliased_type(node.typ)
+	styp := if g.table.sym(unalised_typ).language == .v {
+		g.typ(unalised_typ).replace('*', '')
+	} else {
+		g.typ(node.typ)
+	}
 	mut shared_styp := '' // only needed for shared x := St{...
 	if styp in c.skip_struct_init {
 		// needed for c++ compilers
