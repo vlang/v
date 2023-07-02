@@ -23,7 +23,7 @@ enum State {
 	parse_operator
 }
 
-fn tokenise(args string) ?[]Value {
+fn tokenise(args string) ![]Value {
 	mut rv := []Value{}
 
 	mut state := State.expecting
@@ -34,7 +34,7 @@ fn tokenise(args string) ?[]Value {
 				match i {
 					`0`...`9` {
 						state = .parse_num
-						cur_value = int(i.str().parse_uint(10, 8)?)
+						cur_value = int(i.str().parse_uint(10, 8)!)
 					}
 					`+`, `-`, `*`, `/` {
 						state = .parse_operator
@@ -67,7 +67,7 @@ fn tokenise(args string) ?[]Value {
 			.parse_num {
 				match i {
 					`0`...`9` {
-						cur_value = 10 + int(i.str().parse_uint(10, 8)?)
+						cur_value = 10 + int(i.str().parse_uint(10, 8)!)
 					}
 					`+`, `-`, `*`, `/` {
 						state = .parse_operator
@@ -94,7 +94,7 @@ fn tokenise(args string) ?[]Value {
 					`0`...`9` {
 						state = .parse_num
 						rv << cur_value
-						cur_value = int(i.str().parse_uint(10, 8)?)
+						cur_value = int(i.str().parse_uint(10, 8)!)
 					}
 					` ` {
 						state = .expecting
@@ -111,11 +111,11 @@ fn tokenise(args string) ?[]Value {
 	return rv
 }
 
-fn parse_args(argv []string) ?Expression {
+fn parse_args(argv []string) !Expression {
 	rv := Expression{
 		val: 1
 	}
-	tokens := tokenise(argv.join(' '))?
+	tokens := tokenise(argv.join(' '))!
 
 	println(tokens)
 	assert '${tokens}' == '[Value(1), Value(add), Value(subtract), Value(multiply), Value(divide)]'
