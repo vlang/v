@@ -116,6 +116,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.TypeOf {
 			g.gen_typeof_expr(node, false)
 		}
+		ast.SizeOf {
+			g.gen_sizeof_expr(node)
+		}
 		else {
 			g.n_error('expr: unhandled node type: ${node.type_name()}')
 		}
@@ -281,6 +284,14 @@ fn (mut g Gen) gen_typeof_expr(node ast.TypeOf, newline bool) {
 	}
 
 	g.code_gen.learel(g.code_gen.main_reg(), g.allocate_string('${str}${nl}', 3, .rel32))
+}
+
+fn (mut g Gen) gen_sizeof_expr(node ast.SizeOf) {
+	ts := g.table.sym(node.typ)
+	if ts.language == .v && ts.kind in [.placeholder, .any] {
+		g.v_error('unknown type `${ts.name}`', node.pos)
+	}
+	g.code_gen.mov64(g.code_gen.main_reg(), g.get_type_size(node.typ))
 }
 
 fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {

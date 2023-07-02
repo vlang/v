@@ -2560,7 +2560,7 @@ fn (mut c Amd64) multi_assign_stmt(node ast.AssignStmt) {
 					})
 				}
 				else {
-					c.g.n_error('Unsupported assign instruction')
+					c.g.n_error('Unsupported assign instruction (${node.op})')
 				}
 			}
 		} else if left_type.is_pure_float() {
@@ -2640,7 +2640,7 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 					})
 				}
 				else {
-					c.g.n_error('Unsupported assign instruction')
+					c.g.n_error('Unsupported assign instruction (${node.op})')
 				}
 			}
 		} else if typ.is_pure_float() {
@@ -2679,7 +2679,7 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 			}
 		} else {
 			if node.op !in [.assign, .decl_assign] {
-				c.g.n_error('Unsupported assign instruction')
+				c.g.n_error('Unsupported assign instruction (${node.op})')
 			}
 			ts := c.g.table.sym(typ)
 			match ts.kind {

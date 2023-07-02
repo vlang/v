@@ -70,14 +70,21 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.HashStmt {
 			words := node.val.split(' ')
+			mut unsupported := false
 			for word in words {
 				if word.len != 2 {
-					g.n_error('opcodes format: xx xx xx xx\nhash statements are not allowed with the native backend, use the C backend for extended C interoperability.')
+					unsupported = true
+					break
 				}
 				b := unsafe { C.strtol(&char(word.str), 0, 16) }
 				// b := word.u8()
 				// println('"$word" $b')
 				g.write8(b)
+			}
+
+			if unsupported {
+				g.warning('opcodes format: xx xx xx xx\nhash statements are not allowed with the native backend, use the C backend for extended C interoperability.',
+					node.pos)
 			}
 		}
 		ast.Module {}
@@ -90,10 +97,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.AssertStmt {
 			g.code_gen.gen_assert(node)
 		}
+		ast.GlobalDecl {
+			g.warning('globals are not supported yet', node.pos)
+		}
 		ast.Import {} // do nothing here
 		ast.StructDecl {}
 		ast.EnumDecl {}
 		ast.TypeDecl {}
+		ast.InterfaceDecl {}
 		else {
 			eprintln('native.stmt(): bad node: ' + node.type_name())
 		}
@@ -119,8 +130,14 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 							.gt {
 								jump_addr = g.code_gen.cjmp(.jle)
 							}
+							.ge {
+								jump_addr = g.code_gen.cjmp(.jl)
+							}
 							.lt {
 								jump_addr = g.code_gen.cjmp(.jge)
+							}
+							.le {
+								jump_addr = g.code_gen.cjmp(.jg)
 							}
 							else {
 								g.n_error('unsupported conditional in for-c loop')

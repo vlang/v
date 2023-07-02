@@ -128,6 +128,17 @@ mut:
 
 type Register = Amd64Register | Arm64Register
 
+fn (r Register) str() string {
+	return match r {
+		Amd64Register {
+			'${r as Amd64Register}'
+		}
+		Arm64Register {
+			'${r as Arm64Register}'
+		}
+	}
+}
+
 enum RelocType {
 	rel8
 	rel16
@@ -322,6 +333,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref_ &pref.Pre
 		structs: []Struct{len: table.type_symbols.len}
 		eval: eval.new_eval(table, pref_)
 	}
+
 	g.code_gen.g = g
 	g.generate_header()
 	g.init_builtins()
@@ -976,10 +988,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	} else {
 		node.name
 	}
-	if node.no_body || !g.is_used_by_main(node) {
-		if g.pref.is_verbose {
-			println(term.italic(term.green('\n-> skipping unused function `${name}`')))
-		}
+	if node.no_body || !g.is_used_by_main(node) || g.is_blacklisted(name, node.is_builtin) {
 		return
 	}
 	if g.pref.is_verbose {
@@ -987,9 +996,6 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	if node.is_deprecated {
 		g.warning('fn_decl: ${name} is deprecated', node.pos)
-	}
-	if node.is_builtin {
-		g.warning('fn_decl: ${name} is builtin', node.pos)
 	}
 
 	g.stack_var_pos = 0
