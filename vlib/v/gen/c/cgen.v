@@ -49,7 +49,6 @@ pub struct Gen {
 	enum_data_type      ast.Type // cache her to avoid map lookups
 	module_built        string
 	timers_should_print bool
-	table               &ast.Table = unsafe { nil }
 mut:
 	out                       strings.Builder
 	cheaders                  strings.Builder
@@ -81,7 +80,8 @@ mut:
 	sql_buf                   strings.Builder // for writing exprs to args via `sqlite3_bind_int()` etc
 	global_const_defs         map[string]GlobalConstDef
 	sorted_global_const_names []string
-	file                      &ast.File = unsafe { nil }
+	file                      &ast.File  = unsafe { nil }
+	table                     &ast.Table = unsafe { nil }
 	unique_file_path_hash     u64 // a hash of file.path, used for making auxilary fn generation unique (like `compare_xyz`)
 	fn_decl                   &ast.FnDecl = unsafe { nil } // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name            string
