@@ -103,7 +103,6 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				if branch.cond.op == .key_is {
 					left := branch.cond.left
 					right := branch.cond.right
-
 					if right !in [ast.TypeNode, ast.ComptimeType] {
 						c.error('invalid `\$if` condition: expected a type', branch.cond.right.pos())
 						return 0
