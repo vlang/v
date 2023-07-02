@@ -91,7 +91,7 @@ fn (mut g Gen) insert_at(pos int, s string) {
 	// in the correct positions, considering the surgically made changes.
 	for index, stmt_pos in g.stmt_path_pos {
 		if stmt_pos >= pos {
-			g.stmt_path_pos[index] = stmt_pos + s.len + 1
+			g.stmt_path_pos[index] += s.len + 1
 		}
 	}
 }
