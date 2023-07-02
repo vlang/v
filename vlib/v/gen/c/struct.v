@@ -184,7 +184,6 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 					continue
 				}
 				if sfield.expected_type.has_flag(.generic) && g.cur_fn != unsafe { nil } {
-					mut mut_table := unsafe { &ast.Table(g.table) }
 					mut t_generic_names := g.table.cur_fn.generic_names.clone()
 					mut t_concrete_types := g.cur_concrete_types.clone()
 					ts := g.table.sym(node.typ)
@@ -202,15 +201,15 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 									t_concrete_types << g.cur_concrete_types[index]
 								}
 							} else {
-								if tt := mut_table.resolve_generic_to_concrete(t_typ,
-									g.table.cur_fn.generic_names, g.cur_concrete_types)
+								if tt := g.table.resolve_generic_to_concrete(t_typ, g.table.cur_fn.generic_names,
+									g.cur_concrete_types)
 								{
 									t_concrete_types << tt
 								}
 							}
 						}
 					}
-					if tt := mut_table.resolve_generic_to_concrete(sfield.expected_type,
+					if tt := g.table.resolve_generic_to_concrete(sfield.expected_type,
 						t_generic_names, t_concrete_types)
 					{
 						sfield.expected_type = tt
