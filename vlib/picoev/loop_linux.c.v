@@ -7,7 +7,7 @@ fn C.epoll_wait(int, voidptr, int, int) int
 fn C.epoll_ctl(int, int, int, voidptr) int
 
 [typedef]
-union C.epoll_data_t {
+pub union C.epoll_data_t {
 mut:
 	ptr voidptr
 	fd  int
@@ -16,7 +16,7 @@ mut:
 }
 
 [packed]
-struct C.epoll_event {
+pub struct C.epoll_event {
 mut:
 	events u32
 	data   C.epoll_data_t
@@ -33,7 +33,7 @@ mut:
 
 type LoopType = EpollLoop
 
-fn create_epoll_loop(id int) !&EpollLoop {
+pub fn create_epoll_loop(id int) !&EpollLoop {
 	mut loop := &EpollLoop{
 		id: id
 	}

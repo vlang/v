@@ -15,7 +15,7 @@ mut:
 
 type LoopType = SelectLoop
 
-fn create_select_loop(id int) !&SelectLoop {
+pub fn create_select_loop(id int) !&SelectLoop {
 	return &SelectLoop{
 		id: id
 	}

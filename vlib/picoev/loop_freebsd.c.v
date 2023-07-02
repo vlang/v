@@ -8,7 +8,7 @@ fn C.kevent(int, changelist voidptr, nchanges int, eventlist voidptr, nevents in
 fn C.kqueue() int
 fn C.EV_SET(kev voidptr, ident int, filter i16, flags u16, fflags u32, data voidptr, udata voidptr)
 
-struct C.kevent {
+pub struct C.kevent {
 pub mut:
 	ident int
 	// uintptr_t
@@ -21,7 +21,7 @@ pub mut:
 }
 
 [heap]
-struct KqueueLoop {
+pub struct KqueueLoop {
 mut:
 	id    int
 	now   i64
@@ -34,7 +34,7 @@ mut:
 
 type LoopType = KqueueLoop
 
-fn create_kqueue_loop(id int) !&KqueueLoop {
+pub fn create_kqueue_loop(id int) !&KqueueLoop {
 	mut loop := &KqueueLoop{
 		id: id
 	}
@@ -49,7 +49,7 @@ fn create_kqueue_loop(id int) !&KqueueLoop {
 
 // ev_set sets a new `kevent` with file descriptor `index`
 [inline]
-fn (mut pv Picoev) ev_set(index int, operation int, events int) {
+pub fn (mut pv Picoev) ev_set(index int, operation int, events int) {
 	// vfmt off
 	filter := i16(
 		(if events & picoev_read != 0 { C.EVFILT_READ } else { 0 })
