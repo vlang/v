@@ -1604,12 +1604,12 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 				first_stmts := field.expr.branches[0].stmts
 				second_stmts := field.expr.branches[1].stmts
 				if first_stmts.len > 0 && first_stmts.last() is ast.ExprStmt
-					&& (first_stmts.last() as ast.ExprStmt).typ != ast.void_type {
+					&& first_stmts.last().typ != ast.void_type {
 					field.expr.is_expr = true
 					field.expr.typ = (first_stmts.last() as ast.ExprStmt).typ
 					field.typ = field.expr.typ
 				} else if second_stmts.len > 0 && second_stmts.last() is ast.ExprStmt
-					&& (second_stmts.last() as ast.ExprStmt).typ != ast.void_type {
+					&& second_stmts.last().typ != ast.void_type {
 					field.expr.is_expr = true
 					field.expr.typ = (second_stmts.last() as ast.ExprStmt).typ
 					field.typ = field.expr.typ
@@ -2828,9 +2828,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	//        node.typ: `Outside`
 	node.expr_type = c.expr(node.expr) // type to be casted
 
-	if node.expr is ast.ComptimeSelector {
-		node.expr_type = c.get_comptime_selector_type(node.expr as ast.ComptimeSelector,
-			node.expr_type)
+	if mut node.expr is ast.ComptimeSelector {
+		node.expr_type = c.get_comptime_selector_type(node.expr, node.expr_type)
 	}
 
 	mut from_type := c.unwrap_generic(node.expr_type)
@@ -3821,8 +3820,8 @@ fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 
 [inline]
 pub fn (mut c Checker) is_comptime_var(node ast.Expr) bool {
-	return node is ast.Ident && node.info is ast.IdentVar
-		&& (node as ast.Ident).kind == .variable && ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime
+	return node is ast.Ident && node.info is ast.IdentVar && node.kind == .variable
+		&& ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime
 }
 
 fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {

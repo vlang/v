@@ -243,14 +243,14 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			left_sym = c.table.sym(unwrapped_left_type)
 			unwrapped_right_type := c.unwrap_generic(right_type)
 			right_sym = c.table.sym(unwrapped_right_type)
-			if mut right_sym.info is ast.Alias && (right_sym.info as ast.Alias).language != .c
+			if mut right_sym.info is ast.Alias && right_sym.info.language != .c
 				&& c.mod == c.table.type_to_str(unwrapped_right_type).split('.')[0]
-				&& c.table.sym((right_sym.info as ast.Alias).parent_type).is_primitive() {
+				&& c.table.sym(right_sym.info.parent_type).is_primitive() {
 				right_sym = c.table.sym(right_sym.info.parent_type)
 			}
-			if mut left_sym.info is ast.Alias && (left_sym.info as ast.Alias).language != .c
+			if mut left_sym.info is ast.Alias && left_sym.info.language != .c
 				&& c.mod == c.table.type_to_str(unwrapped_left_type).split('.')[0]
-				&& c.table.sym((left_sym.info as ast.Alias).parent_type).is_primitive() {
+				&& c.table.sym(left_sym.info.parent_type).is_primitive() {
 				left_sym = c.table.sym(left_sym.info.parent_type)
 			}
 
@@ -259,7 +259,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				&& unwrapped_right_type.is_any_kind_of_pointer() {
 				return_type = left_type
 			} else if !c.pref.translated && left_sym.info is ast.Alias
-				&& !(c.table.sym((left_sym.info as ast.Alias).parent_type).is_primitive()) {
+				&& !(c.table.sym(left_sym.info.parent_type).is_primitive()) {
 				if left_sym.has_method(node.op.str()) {
 					if method := left_sym.find_method(node.op.str()) {
 						return_type = method.return_type
@@ -284,7 +284,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 			} else if !c.pref.translated && right_sym.info is ast.Alias
-				&& !(c.table.sym((right_sym.info as ast.Alias).parent_type).is_primitive()) {
+				&& !(c.table.sym(right_sym.info.parent_type).is_primitive()) {
 				if right_sym.has_method(node.op.str()) {
 					if method := right_sym.find_method(node.op.str()) {
 						return_type = method.return_type
