@@ -1,4 +1,4 @@
-fn copy_string(s string) !string {
+fn return_string(s string) !string {
 	return s
 }
 
@@ -7,9 +7,9 @@ fn copy_string(s string) !string {
 fn get_hex_rgb_colors(color string) []string {
 	colors := color.replace('#', '')
 
-	return [copy_string(colors[0..2]) or { return ['', '', ''] },
-		copy_string(colors[2..4]) or { return ['', '', ''] },
-		copy_string(colors[4..6]) or { return ['', '', ''] }]
+	return [return_string(colors[0..2]) or { return ['', '', ''] },
+		return_string(colors[2..4]) or { return ['', '', ''] },
+		return_string(colors[4..6]) or { return ['', '', ''] }]
 }
 
 fn main() {
