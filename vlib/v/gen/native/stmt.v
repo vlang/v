@@ -268,7 +268,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 		start := g.pos() // label-begin:
 		start_label := g.labels.new_label()
 		g.code_gen.mov_var_to_reg(main_reg, LocalVar{i, ast.i64_type_idx, node.val_var})
-		g.code_gen.push_reg(main_reg) // put the iterator on the stack
+		g.code_gen.push(main_reg) // put the iterator on the stack
 		g.expr(node.high) // final value (upper bound) to the main reg
 		g.code_gen.cmp_to_stack_top(main_reg)
 		jump_addr := g.code_gen.cjmp(.jge) // leave loop i >= upper bound
