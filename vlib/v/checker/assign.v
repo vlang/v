@@ -393,7 +393,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						}
 					}
 				} else if left.op == .amp {
-					c.error('cannot deference on the left side of `${node.op}`', left.pos)
+					c.error('cannot use a reference on the left side of `${node.op}`', left.pos)
 				} else {
 					c.error('cannot use `${left.op}` on the left of `${node.op}`', left.pos)
 				}
