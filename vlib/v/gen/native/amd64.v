@@ -994,7 +994,8 @@ fn (mut c Amd64) ret() {
 	c.g.println('ret')
 }
 
-fn (mut c Amd64) push(reg Amd64Register) {
+fn (mut c Amd64) push(r Register) {
+	reg := r as Amd64Register
 	if int(reg) < int(Amd64Register.r8) {
 		c.g.write8(0x50 + int(reg))
 	} else {
@@ -1003,10 +1004,6 @@ fn (mut c Amd64) push(reg Amd64Register) {
 	}
 	c.is_16bit_aligned = !c.is_16bit_aligned
 	c.g.println('push ${reg}')
-}
-
-fn (mut c Amd64) push_reg(r Register) {
-	c.push(r as Amd64Register)
 }
 
 pub fn (mut c Amd64) pop(reg Amd64Register) {
@@ -2569,7 +2566,7 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 			c.g.allocate_by_type((left as ast.Ident).name, typ)
 		}
 		c.gen_left_value(left)
-		c.push(Amd64Register.rax)
+		c.push(.rax)
 		c.g.expr(right)
 		c.pop(.rdx)
 		c.gen_type_promotion(node.right_types[0], typ)
@@ -2850,7 +2847,7 @@ fn (mut c Amd64) infix_expr(node ast.InfixExpr) {
 				c.mov_var_to_reg(Amd64Register.rax, node.left as ast.Ident)
 			}
 			else {
-				c.push(Amd64Register.rax)
+				c.push(.rax)
 				c.g.expr(node.left)
 				c.pop(match node.op {
 					.left_shift, .right_shift, .unsigned_right_shift, .div, .mod { .rcx }
@@ -3232,7 +3229,7 @@ fn (mut c Amd64) fn_decl(node ast.FnDecl) {
 }
 
 pub fn (mut c Amd64) builtin_decl(builtin BuiltinFn) {
-	c.push(Amd64Register.rbp)
+	c.push(.rbp)
 	c.mov_reg(Amd64Register.rbp, Amd64Register.rsp)
 	local_alloc_pos := c.g.pos()
 	c.sub(.rsp, 0)
