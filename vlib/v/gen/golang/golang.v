@@ -1719,7 +1719,7 @@ pub fn (mut f Gen) infix_expr(node ast.InfixExpr) {
 	left_type_sym := f.table.final_sym(node.left_type)
 	is_array_push := left_type_sym.kind == .array && node.op == .left_shift
 	is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit
-		&& (node.right as ast.ArrayInit).exprs.len == 1
+		&& node.right.exprs.len == 1
 	if is_one_val_array_init {
 		// `var in [val]` => `var == val`
 		op := if node.op == .key_in { ' == ' } else { ' != ' }

@@ -8,23 +8,23 @@ fn test_ok() {
 	ok_source := "Module {
 	name: 'V'
 	description: 'The V programming language.'
-	version: '0.3.4'
+	version: '0.7.7'
 	license: 'MIT'
 	repo_url: 'https://github.com/vlang/v'
 	dependencies: []
 }"
 	for s in [ok_source, ok_source.replace(apos, quote), ok_source.replace('\n', '\r\n'),
 		ok_source.replace('\n', '\r\n '), ok_source.replace('\n', '\n ')] {
-		content := vmod.decode(s)?
+		content := vmod.decode(s)!
 		assert content.name == 'V'
 		assert content.description == 'The V programming language.'
-		assert content.version == '0.3.4'
+		assert content.version == '0.7.7'
 		assert content.license == 'MIT'
 		assert content.repo_url == 'https://github.com/vlang/v'
 		assert content.dependencies == []
 		assert content.unknown == {}
 	}
-	e := vmod.decode('Module{}')?
+	e := vmod.decode('Module{}')!
 	assert e.name == ''
 	assert e.description == ''
 	assert e.version == ''

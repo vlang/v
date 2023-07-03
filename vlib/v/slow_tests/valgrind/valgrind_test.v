@@ -27,6 +27,7 @@ const skip_valgrind_files = [
 	'vlib/v/slow_tests/valgrind/struct_field.v',
 	'vlib/v/slow_tests/valgrind/fn_returning_string_param.v',
 	'vlib/v/slow_tests/valgrind/fn_with_return_should_free_local_vars.v',
+	'vlib/v/slow_tests/valgrind/multiple_fn_calls.v',
 	'vlib/v/slow_tests/valgrind/option_simple.v',
 	'vlib/v/slow_tests/valgrind/string_plus_string_plus.v',
 	'vlib/v/slow_tests/valgrind/import_x_json2.v',

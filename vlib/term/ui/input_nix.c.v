@@ -44,7 +44,7 @@ fn load_title() {
 }
 
 // run sets up and starts the terminal.
-pub fn (mut ctx Context) run() ? {
+pub fn (mut ctx Context) run() ! {
 	if ctx.cfg.use_x11 {
 		ctx.fail('error: x11 backend not implemented yet')
 		exit(1)

@@ -2247,8 +2247,7 @@ fn (mut g JsGen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 				if branch.stmts[0] is ast.ExprStmt {
 					stmt := branch.stmts[0] as ast.ExprStmt
 					if stmt.expr in [ast.CallExpr, ast.IfExpr, ast.MatchExpr]
-						|| (stmt.expr is ast.IndexExpr
-						&& (stmt.expr as ast.IndexExpr).or_expr.kind != .absent) {
+						|| (stmt.expr is ast.IndexExpr && stmt.expr.or_expr.kind != .absent) {
 						return true
 					}
 				}

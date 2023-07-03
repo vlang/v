@@ -1,10 +1,10 @@
 import rand
 
-pub fn sample[T](arr []T, k int) ?[]T {
+pub fn sample[T](arr []T, k int) ![]T {
 	mut result := arr.clone()
 
 	rand.seed([u32(1), 2]) // set seed to produce same results in order
-	rand.shuffle[T](mut result)?
+	rand.shuffle[T](mut result)!
 
 	return result[0..k]
 }

@@ -101,7 +101,7 @@ pub fn init(cfg Config) &Context {
 }
 
 // run starts the windows console or restarts if it was paused.
-pub fn (mut ctx Context) run() ? {
+pub fn (mut ctx Context) run() ! {
 	frame_time := 1_000_000 / ctx.cfg.frame_rate
 	mut init_called := false
 	mut sw := time.new_stopwatch(auto_start: false)

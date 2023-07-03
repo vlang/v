@@ -1,6 +1,8 @@
 fn main() {
 	test_int()
 	test_fp()
+	test_unsafe()
+	test_alias(100, 9)
 }
 
 fn test_int() {
@@ -25,4 +27,21 @@ fn test_fp() {
 	b /= 2
 
 	println(int(b))
+}
+
+fn test_unsafe() {
+	a := 10
+
+	unsafe {
+		b := 4
+		println(a + b)
+	}
+}
+
+type Integer = int
+
+fn test_alias(a Integer, b Integer) {
+	e := a + b
+	assert e == a + b
+	println(e)
 }

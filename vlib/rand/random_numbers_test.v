@@ -454,3 +454,23 @@ fn test_element2() {
 		assert 4 != e
 	}
 }
+
+fn test_proper_masking() {
+	under32 := []int{len: 10, init: index * 0 + rand.intn(1073741823)!}
+	assert under32 != [0].repeat(10)
+
+	over32 := []int{len: 10, init: index * 0 + rand.intn(1073741824)!}
+	assert over32 != [0].repeat(10)
+
+	under64 := []i64{len: 10, init: index * 0 + rand.i64n(i64(4611686018427387903))!}
+	assert under64 != [i64(0)].repeat(10)
+
+	over64 := []i64{len: 10, init: index * 0 + rand.i64n(i64(4611686018427387904))!}
+	assert over64 != [i64(0)].repeat(10)
+
+	almost_full32 := []int{len: 10, init: index * 0 + rand.intn(2147483647)!}
+	assert almost_full32 != [0].repeat(10)
+
+	almost_full64 := []i64{len: 10, init: index * 0 + rand.i64n(i64(9223372036854775807))!}
+	assert almost_full64 != [i64(0)].repeat(10)
+}

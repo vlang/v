@@ -247,8 +247,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			// 	c.error('cannot assign a `none` value to a non-option variable', right.pos())
 			// }
 		}
-		if mut left is ast.Ident
-			&& (left as ast.Ident).info is ast.IdentVar && right is ast.Ident && (right as ast.Ident).name in c.global_names {
+		if mut left is ast.Ident && left.info is ast.IdentVar && right is ast.Ident
+			&& right.name in c.global_names {
 			ident_var_info := left.info as ast.IdentVar
 			if ident_var_info.share == .shared_t {
 				c.error('cannot assign global variable to shared variable', right.pos())
@@ -345,17 +345,17 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 										left.obj.ct_type_var = .field_var
 										left.obj.typ = c.comptime_fields_default_type
 									}
-								} else if right is ast.Ident
-									&& (right as ast.Ident).obj is ast.Var && (right as ast.Ident).or_expr.kind == .absent {
-									if ((right as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime {
+								} else if mut right is ast.Ident && right.obj is ast.Var
+									&& right.or_expr.kind == .absent {
+									if (right.obj as ast.Var).ct_type_var != .no_comptime {
 										ctyp := c.get_comptime_var_type(right)
 										if ctyp != ast.void_type {
-											left.obj.ct_type_var = ((right as ast.Ident).obj as ast.Var).ct_type_var
+											left.obj.ct_type_var = (right.obj as ast.Var).ct_type_var
 											left.obj.typ = ctyp
 										}
 									}
 								} else if right is ast.DumpExpr
-									&& (right as ast.DumpExpr).expr is ast.ComptimeSelector {
+									&& right.expr is ast.ComptimeSelector {
 									left.obj.ct_type_var = .field_var
 									left.obj.typ = c.comptime_fields_default_type
 								}
@@ -705,8 +705,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 		}
-		if left_sym.kind == .struct_ && !(left_sym.info as ast.Struct).is_anon
-			&& right is ast.StructInit && (right as ast.StructInit).is_anon {
+		if left_sym.info is ast.Struct && !left_sym.info.is_anon && right is ast.StructInit
+			&& right.is_anon {
 			c.error('cannot assign anonymous `struct` to a typed `struct`', right.pos())
 		}
 		if right_sym.kind == .alias && right_sym.name == 'byte' {

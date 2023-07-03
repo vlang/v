@@ -55,7 +55,7 @@ pub fn (mut rng PRNG) u32n(max u32) !u32 {
 	// the closest power of two. Then we loop until we find
 	// an int in the required range
 	bit_len := bits.len_32(max)
-	if bit_len == 32 {
+	if _unlikely_(bit_len == 32) {
 		for {
 			value := rng.u32()
 			if value < max {
@@ -63,7 +63,11 @@ pub fn (mut rng PRNG) u32n(max u32) !u32 {
 			}
 		}
 	} else {
-		mask := (u32(1) << (bit_len + 1)) - 1
+		mask := if _unlikely_(bit_len == 31) {
+			u32(0x7FFFFFFF)
+		} else {
+			(u32(1) << (bit_len + 1)) - 1
+		}
 		for {
 			value := rng.u32() & mask
 			if value < max {
@@ -81,7 +85,7 @@ pub fn (mut rng PRNG) u64n(max u64) !u64 {
 		return error('max must be positive integer')
 	}
 	bit_len := bits.len_64(max)
-	if bit_len == 64 {
+	if _unlikely_(bit_len == 64) {
 		for {
 			value := rng.u64()
 			if value < max {
@@ -89,7 +93,11 @@ pub fn (mut rng PRNG) u64n(max u64) !u64 {
 			}
 		}
 	} else {
-		mask := (u64(1) << (bit_len + 1)) - 1
+		mask := if _unlikely_(bit_len == 63) {
+			u64(0x7FFFFFFFFFFFFFFF)
+		} else {
+			(u64(1) << (bit_len + 1)) - 1
+		}
 		for {
 			value := rng.u64() & mask
 			if value < max {

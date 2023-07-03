@@ -56,8 +56,57 @@ fn struct_test() {
 	mut f := &e
 	f.a = 3
 	assert e.a == 3
+
+	g := &Mutable{2}
+	assert g.a == 2
+}
+
+type AliasedStruct = Mutable
+type AliasedPointer = &Mutable
+
+fn alias_test() {
+	mut a := AliasedStruct{1}
+	a.a = 2
+	assert a.a == 2
+	mut b := &a
+	b.a = 3
+	assert a.a == 3
+
+	c := AliasedPointer{2}
+	assert c.a == 2
+}
+
+fn init_size28() Size28 {
+	return Size28{1, 2, 3, 4, 5, 6, 7}
+}
+type AliasedSize28 = Size28
+
+fn init_aliased() AliasedSize28 {
+	return AliasedSize28{1, 2, 3, 4, 5, 6, 7}
+}
+
+fn return_test() {
+	a := init_size28()
+	assert a.a == 1
+	assert a.b == 2
+	assert a.c == 3
+	assert a.d == 4
+	assert a.e == 5
+	assert a.f == 6
+	assert a.g == 7
+
+	b := init_aliased()
+	assert b.a == 1
+	assert b.b == 2
+	assert b.c == 3
+	assert b.d == 4
+	assert b.e == 5
+	assert b.f == 6
+	assert b.g == 7
 }
 
 fn main() {
 	struct_test()
+	return_test()
+	alias_test()
 }

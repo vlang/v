@@ -182,12 +182,12 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 fn (c Checker) check_multiple_ptr_match(got ast.Type, expected ast.Type, param ast.Param, arg ast.CallArg) bool {
 	param_nr_muls := if param.is_mut && !expected.is_ptr() { 1 } else { expected.nr_muls() }
 	if got.is_ptr() && got.nr_muls() > 1 && got.nr_muls() != param_nr_muls {
-		if arg.expr is ast.PrefixExpr && (arg.expr as ast.PrefixExpr).op == .amp {
+		if arg.expr is ast.PrefixExpr && arg.expr.op == .amp {
 			return false
 		}
 		if arg.expr is ast.UnsafeExpr {
-			expr := (arg.expr as ast.UnsafeExpr).expr
-			if expr is ast.PrefixExpr && (expr as ast.PrefixExpr).op == .amp {
+			expr := arg.expr.expr
+			if expr is ast.PrefixExpr && expr.op == .amp {
 				return false
 			}
 		}
@@ -243,7 +243,7 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 	}
 	// check int signed/unsigned mismatch
 	if got == ast.int_literal_type_idx && expected in ast.unsigned_integer_type_idxs
-		&& arg.expr is ast.IntegerLiteral && (arg.expr as ast.IntegerLiteral).val.i64() < 0 {
+		&& arg.expr is ast.IntegerLiteral && arg.expr.val.i64() < 0 {
 		expected_typ_str := c.table.type_to_str(expected.clear_flag(.variadic))
 		return error('cannot use literal signed integer as `${expected_typ_str}`')
 	}
@@ -931,8 +931,8 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					}
 				}
 
-				if arg.expr.is_auto_deref_var() || (arg.expr is ast.ComptimeSelector
-					&& (arg.expr as ast.ComptimeSelector).left.is_auto_deref_var()) {
+				if arg.expr.is_auto_deref_var()
+					|| (arg.expr is ast.ComptimeSelector && arg.expr.left.is_auto_deref_var()) {
 					typ = typ.deref()
 				}
 				// resolve &T &&T ...
@@ -1044,7 +1044,7 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 				} else if arg_sym.kind == .any && c.table.cur_fn.generic_names.len > 0
 					&& c.table.cur_fn.params.len > 0 && func.generic_names.len > 0
 					&& arg.expr is ast.Ident && arg_i !in arg_inferred {
-					var_name := (arg.expr as ast.Ident).name
+					var_name := arg.expr.name
 					for k, cur_param in c.table.cur_fn.params {
 						if !cur_param.typ.has_flag(.generic) || k < gi || cur_param.name != var_name {
 							continue

@@ -4,6 +4,7 @@
 module native
 
 import v.ast
+import v.util
 
 fn (mut g Gen) expr(node ast.Expr) {
 	match node {
@@ -16,23 +17,24 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), pos)
 		}
 		ast.BoolLiteral {
-			g.code_gen.mov64(g.code_gen.main_reg(), if node.val {
-				1
-			} else {
-				0
-			})
+			g.code_gen.mov64(g.code_gen.main_reg(), int(node.val))
 		}
 		ast.CallExpr {
-			if node.name == 'C.syscall' {
-				g.code_gen.gen_syscall(node)
-			} else if node.name == 'exit' {
-				g.code_gen.gen_exit(node.args[0].expr)
-			} else if node.name in ['println', 'print', 'eprintln', 'eprint'] {
-				expr := node.args[0].expr
-				typ := node.args[0].typ
-				g.gen_print_from_expr(expr, typ, node.name)
-			} else {
-				g.code_gen.call_fn(node)
+			match node.name {
+				'C.syscall' {
+					g.code_gen.gen_syscall(node)
+				}
+				'exit' {
+					g.code_gen.gen_exit(node.args[0].expr)
+				}
+				'println', 'print', 'eprintln', 'eprint' {
+					expr := node.args[0].expr
+					typ := node.args[0].typ
+					g.gen_print_from_expr(expr, typ, node.name)
+				}
+				else {
+					g.code_gen.call_fn(node)
+				}
 			}
 		}
 		ast.FloatLiteral {
@@ -41,29 +43,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.Ident {
 			var := g.get_var_from_ident(node)
-			// XXX this is intel specific
 			match var {
 				LocalVar {
-					if g.is_register_type(var.typ) {
-						g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), node as ast.Ident)
-					} else if var.typ.is_pure_float() {
-						g.code_gen.load_fp_var(node as ast.Ident)
-					} else {
-						ts := g.table.sym(var.typ)
-						match ts.info {
-							ast.Struct {
-								g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), g.get_var_offset(node.name))
-							}
-							ast.Enum {
-								g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), node as ast.Ident,
-									typ: ast.int_type_idx
-								)
-							}
-							else {
-								g.n_error('Unsupported variable type')
-							}
-						}
-					}
+					g.local_var_ident(node, var)
 				}
 				else {
 					g.n_error('Unsupported variable kind')
@@ -131,8 +113,37 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.ConcatExpr {
 			g.code_gen.gen_concat_expr(node)
 		}
+		ast.TypeOf {
+			g.gen_typeof_expr(node, false)
+		}
+		ast.SizeOf {
+			g.gen_sizeof_expr(node)
+		}
 		else {
 			g.n_error('expr: unhandled node type: ${node.type_name()}')
+		}
+	}
+}
+
+fn (mut g Gen) local_var_ident(ident ast.Ident, var LocalVar) {
+	if g.is_register_type(var.typ) {
+		g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), ident)
+	} else if g.is_fp_type(var.typ) {
+		g.code_gen.load_fp_var(ident)
+	} else {
+		ts := g.table.sym(g.unwrap(var.typ))
+		match ts.info {
+			ast.Struct {
+				g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), g.get_var_offset(ident.name))
+			}
+			ast.Enum {
+				g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), ident,
+					typ: ast.int_type_idx
+				)
+			}
+			else {
+				g.n_error('Unsupported variable type')
+			}
 		}
 	}
 }
@@ -213,10 +224,74 @@ fn (mut g Gen) postfix_expr(node ast.PostfixExpr) {
 	}
 }
 
-fn (mut g Gen) gen_typeof_expr(it ast.TypeOf, newline bool) {
+fn (mut g Gen) fn_decl_str(info ast.FnType) string {
+	mut fn_str := 'fn ('
+	for i, arg in info.func.params {
+		if arg.is_mut {
+			fn_str += 'mut '
+		}
+		if i > 0 {
+			fn_str += ', '
+		}
+		fn_str += util.strip_main_name(g.table.get_type_name(arg.typ))
+	}
+	fn_str += ')'
+	if info.func.return_type == ast.ovoid_type {
+		fn_str += ' ?'
+	} else if info.func.return_type == ast.rvoid_type {
+		fn_str += ' !'
+	} else if info.func.return_type != ast.void_type {
+		x := util.strip_main_name(g.table.get_type_name(info.func.return_type))
+		if info.func.return_type.has_flag(.option) {
+			fn_str += ' ?${x}'
+		} else if info.func.return_type.has_flag(.result) {
+			fn_str += ' !${x}'
+		} else {
+			fn_str += ' ${x}'
+		}
+	}
+	return fn_str
+}
+
+fn (mut g Gen) gen_typeof_expr(node ast.TypeOf, newline bool) {
 	nl := if newline { '\n' } else { '' }
-	r := g.typ(it.typ).name
-	g.code_gen.learel(g.code_gen.main_reg(), g.allocate_string('${r}${nl}', 3, .rel32))
+	ts := g.table.sym(node.typ)
+	mut str := ''
+
+	match ts.kind {
+		.sum_type {
+			g.n_error('`typeof()` is not implemented for sum types yet')
+		}
+		.array_fixed {
+			fixed_info := ts.info as ast.ArrayFixed
+			typ_name := g.table.get_type_name(fixed_info.elem_type)
+			str = '[${fixed_info.size}]${util.strip_main_name(typ_name)}'
+		}
+		.function {
+			func_info := ts.info as ast.FnType
+			if node.typ.is_ptr() {
+				str = '&'
+			}
+			str += g.fn_decl_str(func_info)
+		}
+		else {
+			str = util.strip_main_name(if node.typ.has_flag(.variadic) {
+				g.table.sym(g.table.value_type(node.typ)).name
+			} else {
+				g.table.type_to_str(node.typ)
+			})
+		}
+	}
+
+	g.code_gen.learel(g.code_gen.main_reg(), g.allocate_string('${str}${nl}', 3, .rel32))
+}
+
+fn (mut g Gen) gen_sizeof_expr(node ast.SizeOf) {
+	ts := g.table.sym(node.typ)
+	if ts.language == .v && ts.kind in [.placeholder, .any] {
+		g.v_error('unknown type `${ts.name}`', node.pos)
+	}
+	g.code_gen.mov64(g.code_gen.main_reg(), g.get_type_size(node.typ))
 }
 
 fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {

@@ -330,26 +330,27 @@ fn (mut c Checker) check_orm_struct_field_attributes(field ast.StructField) {
 }
 
 fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, table_name string, sql_expr ast.SqlExpr) []ast.StructField {
-	fields := info.fields.filter(fn [mut c] (field ast.StructField) bool {
-		is_primitive := field.typ.is_string() || field.typ.is_bool() || field.typ.is_number()
-		is_struct := c.table.type_symbols[int(field.typ)].kind == .struct_
-		is_array := c.table.sym(field.typ).kind == .array
-		is_array_with_struct_elements := is_array
-			&& c.table.sym(c.table.sym(field.typ).array_info().elem_type).kind == .struct_
-		has_no_skip_attr := !field.attrs.contains('skip')
-
-		return (is_primitive || is_struct || is_array_with_struct_elements) && has_no_skip_attr
-	})
-
-	if fields.len == 0 {
-		c.orm_error('select: empty fields in `${table_name}`', pos)
-		return []ast.StructField{}
-	}
-
 	field_pos := c.orm_get_field_pos(sql_expr.where_expr)
+	mut fields := []ast.StructField{}
 	for field in info.fields {
-		if c.table.sym(field.typ).kind == .array
-			&& c.table.sym(c.table.sym(field.typ).array_info().elem_type).is_primitive() {
+		is_primitive := field.typ.is_string() || field.typ.is_bool() || field.typ.is_number()
+		fsym := c.table.sym(field.typ)
+		is_struct := fsym.kind == .struct_
+		is_array := fsym.kind == .array
+		elem_sym := if is_array {
+			c.table.sym(fsym.array_info().elem_type)
+		} else {
+			ast.invalid_type_symbol
+		}
+		is_array_with_struct_elements := is_array && elem_sym.kind == .struct_
+		has_skip_attr := field.attrs.contains('skip') || field.attrs.contains_arg('sql', '-')
+		if has_skip_attr {
+			continue
+		}
+		if is_primitive || is_struct || is_array_with_struct_elements {
+			fields << field
+		}
+		if is_array && elem_sym.is_primitive() {
 			c.add_error_detail('')
 			c.add_error_detail(' field name: `${field.name}`')
 			c.add_error_detail(' data type: `${c.table.type_to_str(field.typ)}`')
@@ -357,7 +358,9 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, t
 			return []ast.StructField{}
 		}
 	}
-
+	if fields.len == 0 {
+		c.orm_error('select: empty fields in `${table_name}`', pos)
+	}
 	return fields
 }
 

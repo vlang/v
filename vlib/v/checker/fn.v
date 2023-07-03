@@ -1712,12 +1712,17 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				for i, mut arg in node.args {
 					targ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 					arg.typ = targ
-					earg_types << targ
 
 					param := if info.func.is_variadic && i >= info.func.params.len - 1 {
 						info.func.params.last()
 					} else {
 						info.func.params[i]
+					}
+					if c.table.sym(param.typ).kind == .interface_ {
+						// cannot hide interface expected type to make possible to pass its interface type automatically
+						earg_types << param.typ.set_nr_muls(targ.nr_muls())
+					} else {
+						earg_types << targ
 					}
 					param_share := param.typ.share()
 					if param_share == .shared_t

@@ -2,7 +2,7 @@ module version
 
 import os
 
-pub const v_version = '0.3.4'
+pub const v_version = '0.4.0'
 
 // vhash() returns the build string C.V_COMMIT_HASH . See cmd/tools/gen_vc.v .
 pub fn vhash() string {

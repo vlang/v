@@ -41,6 +41,7 @@ mut:
 	var_offset           map[string]int // local var stack offset
 	var_alloc_size       map[string]int // local var allocation size
 	stack_var_pos        int
+	stack_depth          int
 	debug_pos            int
 	errors               []errors.Error
 	warnings             []errors.Warning
@@ -66,6 +67,7 @@ mut:
 interface CodeGen {
 mut:
 	g &Gen
+	address_size() int
 	adr(r Arm64Register, delta int) // Note: Temporary!
 	allocate_var(name string, size int, initial_val int) int
 	apicall(call ApiCall) // winapi calls
@@ -126,6 +128,17 @@ mut:
 }
 
 type Register = Amd64Register | Arm64Register
+
+fn (r Register) str() string {
+	return match r {
+		Amd64Register {
+			'${r as Amd64Register}'
+		}
+		Arm64Register {
+			'${r as Arm64Register}'
+		}
+	}
+}
 
 enum RelocType {
 	rel8
@@ -230,6 +243,11 @@ union F64I64 {
 	i i64
 }
 
+[inline]
+fn byt(n int, s int) u8 {
+	return u8((n >> (s * 8)) & 0xff)
+}
+
 fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 	mut obj := ident.obj
 	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
@@ -238,10 +256,9 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 	match obj {
 		ast.Var {
 			offset := g.get_var_offset(obj.name)
-			typ := obj.typ
 			return LocalVar{
 				offset: offset
-				typ: typ
+				typ: obj.typ
 				name: obj.name
 			}
 		}
@@ -317,6 +334,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref_ &pref.Pre
 		structs: []Struct{len: table.type_symbols.len}
 		eval: eval.new_eval(table, pref_)
 	}
+
 	g.code_gen.g = g
 	g.generate_header()
 	g.init_builtins()
@@ -610,17 +628,24 @@ fn (mut g Gen) get_var_offset(var_name string) int {
 	return r
 }
 
-fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
+fn (mut g Gen) get_field_offset(in_type ast.Type, name string) int {
+	typ := g.unwrap(in_type)
 	ts := g.table.sym(typ)
 	field := ts.find_field(name) or { g.n_error('Could not find field `${name}` on init') }
 	return g.structs[typ.idx()].offsets[field.i]
 }
 
+fn (mut g Gen) unwrap(typ ast.Type) ast.Type {
+	ts := g.table.sym(typ)
+	return if ts.info is ast.Alias { g.unwrap(ts.info.parent_type) } else { typ }
+}
+
 // get type size, and calculate size and align and store them to the cache when the type is struct
-fn (mut g Gen) get_type_size(typ ast.Type) int {
+fn (mut g Gen) get_type_size(raw_type ast.Type) int {
 	// TODO type flags
-	if typ.is_any_kind_of_pointer() {
-		return 8
+	typ := g.unwrap(raw_type)
+	if raw_type.is_any_kind_of_pointer() || typ.is_any_kind_of_pointer() {
+		return g.code_gen.address_size()
 	}
 	if typ in ast.number_type_idxs {
 		return match typ {
@@ -700,7 +725,7 @@ fn (mut g Gen) get_type_align(typ ast.Type) int {
 	if g.is_register_type(typ) || typ.is_pure_float() {
 		return size
 	}
-	ts := g.table.sym(typ)
+	ts := g.table.sym(g.unwrap(typ))
 	if ts.align != -1 {
 		return ts.align
 	}
@@ -729,9 +754,15 @@ fn (mut g Gen) get_multi_return(types []ast.Type) MultiReturn {
 	return ret
 }
 
-fn (g Gen) is_register_type(typ ast.Type) bool {
-	return typ.is_pure_int() || typ == ast.char_type_idx || typ.is_any_kind_of_pointer()
-		|| typ.is_bool()
+fn (mut g Gen) is_register_type(typ ast.Type) bool {
+	return typ.is_pure_int() || typ == ast.char_type_idx
+		|| typ.is_any_kind_of_pointer() || typ.is_bool()
+		|| (g.table.sym(typ).info is ast.Alias && g.is_register_type(g.unwrap(typ)))
+}
+
+fn (mut g Gen) is_fp_type(typ ast.Type) bool {
+	return typ.is_pure_float()
+		|| (g.table.sym(typ).info is ast.Alias && g.is_fp_type(g.unwrap(typ)))
 }
 
 fn (mut g Gen) get_sizeof_ident(ident ast.Ident) int {
@@ -958,10 +989,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	} else {
 		node.name
 	}
-	if node.no_body || !g.is_used_by_main(node) {
-		if g.pref.is_verbose {
-			println(term.italic(term.green('\n-> skipping unused function `${name}`')))
-		}
+	if node.no_body || !g.is_used_by_main(node) || g.is_blacklisted(name, node.is_builtin) {
 		return
 	}
 	if g.pref.is_verbose {
@@ -970,17 +998,19 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.is_deprecated {
 		g.warning('fn_decl: ${name} is deprecated', node.pos)
 	}
-	if node.is_builtin {
-		g.warning('fn_decl: ${name} is builtin', node.pos)
-	}
 
 	g.stack_var_pos = 0
+	g.stack_depth = 0
 	g.register_function_address(name)
 	g.labels = &LabelTable{}
 	g.defer_stmts.clear()
 	g.return_type = node.return_type
 	g.code_gen.fn_decl(node)
 	g.patch_labels()
+
+	if g.stack_depth != 0 {
+		g.println('^^^ stack_depth != 0 (${g.stack_depth}) !!!')
+	}
 }
 
 pub fn (mut g Gen) register_function_address(name string) {

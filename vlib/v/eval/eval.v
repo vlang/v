@@ -231,7 +231,7 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 						cond := branch.cond
 						match cond {
 							ast.Ident {
-								match (branch.cond as ast.Ident).name {
+								match cond.name {
 									'windows' {
 										do_if = e.pref.os == .windows
 									}
