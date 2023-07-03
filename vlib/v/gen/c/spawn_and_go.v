@@ -79,7 +79,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	wrapper_fn_name := name + '_thread_wrapper'
 	arg_tmp_var := 'arg_' + tmp
 	if is_spawn {
-		g.writeln('${wrapper_struct_name} *${arg_tmp_var} = _v_malloc(sizeof(thread_arg_${name}));')
+		g.writeln('${wrapper_struct_name} *${arg_tmp_var} = (${wrapper_struct_name} *) _v_malloc(sizeof(thread_arg_${name}));')
 	} else if is_go {
 		g.writeln('${wrapper_struct_name} ${arg_tmp_var};')
 	}
