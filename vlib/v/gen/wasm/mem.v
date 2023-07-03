@@ -325,26 +325,6 @@ fn (mut g Gen) get(v Var) {
 	}
 }
 
-/* fn (mut g Gen) deref_as_field(v Var) {
-	if v.is_global {
-		g.func.global_get(v.g_idx)
-	} else {
-		g.func.local_get(v.idx)
-	}
-
-	g.load(v.typ, v.offset)
-} */
-
-/* fn (mut g Gen) copy(to Var, v Var) {
-	if v.is_address && !g.is_pure_type(v.typ) {
-
-		return
-	}
-
-	g.get(v)
-	g.set(to)
-} */
-
 fn (mut g Gen) mov(to Var, v Var) {
 	if !v.is_address || g.is_pure_type(v.typ) {
 		g.get(v)
@@ -588,7 +568,7 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 			ts_info := ts.info as ast.Struct
 			si := g.pool.type_struct_info(v.typ) or { panic("unreachable") }
 			
-			if init.fields.len == 0 && !(ts_info.fields.any(it.has_default_expr)) {
+			if init.init_fields.len == 0 && !(ts_info.fields.any(it.has_default_expr)) {
 				// Struct definition contains no default initialisers
 				// AND struct init contains no set values.
 				g.zero_fill(v, size)
@@ -596,7 +576,7 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 			}
 
 			for i, f in ts_info.fields {
-				field_to_be_set := init.fields.map(it.name).contains(f.name)
+				field_to_be_set := init.init_fields.map(it.name).contains(f.name)
 
 				if !field_to_be_set {
 					offset := si.offsets[i]

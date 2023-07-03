@@ -22,7 +22,7 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
 	if typ == ast.void_type_idx {
 		g.w_error("get_wasm_type: called with 'void'")
 	}
-	if typ.is_real_pointer() {
+	if typ.is_ptr() || typ.is_pointer() {
 		return wasm.ValType.i32_t
 	}
 	if typ in ast.number_type_idxs {

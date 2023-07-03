@@ -45,6 +45,10 @@ mut:
 	needs_address bool
 }
 
+struct VarScope {
+	vars []Var
+}
+
 struct Global {
 mut:
 	init     ?ast.Expr
