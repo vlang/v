@@ -379,7 +379,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	c.fn_scope = node.scope
-	c.stmts(node.stmts)
+	c.stmts(mut node.stmts)
 	node_has_top_return := has_top_return(node.stmts)
 	node.has_return = c.returns || node_has_top_return
 	c.check_noreturn_fn_decl(mut node)
@@ -463,7 +463,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		c.error('generic closure fn must specify type parameter, e.g. fn [foo] [T]()',
 			node.decl.pos)
 	}
-	c.stmts(node.decl.stmts)
+	c.stmts(mut node.decl.stmts)
 	c.fn_decl(mut node.decl)
 	return node.typ
 }
@@ -514,7 +514,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		}
 	}
 	c.expected_or_type = node.return_type.clear_flag(.result)
-	c.stmts_ending_with_expression(node.or_block.stmts)
+	c.stmts_ending_with_expression(mut node.or_block.stmts)
 	c.expected_or_type = ast.void_type
 
 	if !c.inside_const && c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.is_main

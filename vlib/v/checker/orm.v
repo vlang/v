@@ -534,7 +534,8 @@ fn (mut c Checker) check_orm_or_expr(expr ORMExpr) {
 
 	if expr.or_expr.kind == .block {
 		c.expected_or_type = return_type.clear_flag(.result)
-		c.stmts_ending_with_expression(expr.or_expr.stmts)
+		mut expr_ := unsafe { expr }
+		c.stmts_ending_with_expression(mut expr_.or_expr.stmts)
 		c.expected_or_type = ast.void_type
 	}
 }

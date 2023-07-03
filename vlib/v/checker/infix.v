@@ -667,7 +667,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					c.error('cannot push non-reference `${right_sym.name}` on `${left_sym.name}`',
 						right_pos)
 				}
-				c.stmts_ending_with_expression(node.or_block.stmts)
+				c.stmts_ending_with_expression(mut node.or_block.stmts)
 			} else {
 				c.error('cannot push on non-channel `${left_sym.name}`', left_pos)
 			}
