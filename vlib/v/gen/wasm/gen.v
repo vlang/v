@@ -31,7 +31,7 @@ mut:
 	func              wasm.Function
 	local_vars        []Var
 	global_vars       map[string]Global
-	return_vars       []Var
+	scope_context       [][]Var
 	ret_types []ast.Type
 	ret_br wasm.LabelIndex
 	bp_idx            wasm.LocalIndex = -1 // Base pointer temporary's index for function, if needed (-1 for none)
@@ -43,10 +43,6 @@ mut:
 	stack_top int // position in linear memory
 	data_base int // position in linear memory
 	needs_address bool
-}
-
-struct VarScope {
-	vars []Var
 }
 
 struct Global {
@@ -206,6 +202,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	// TODO: PRESERVE `pub` modifer and `export` attrs
 	// TODO: READ THROUGH EVERYTHING AND SUPPORT EVERYTHING
 
+	mut return_var := []Var{}
 	rt := node.return_type
 	rts := g.table.sym(rt)
 	match rts.info {
@@ -213,11 +210,11 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			for t in rts.info.types {
 				wtyp := g.get_wasm_type(t)
 				if g.is_param_type(t) {
-					paramdbg << g.dbg_type_name('__rval${g.return_vars.len}', t)
+					paramdbg << g.dbg_type_name('__rval${return_var.len}', t)
 					paraml << wtyp
-					g.return_vars << Var{
+					return_var << Var{
 						typ: t
-						idx: g.return_vars.len
+						idx: return_var.len
 						is_address: true
 					}
 				} else {
@@ -236,7 +233,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 				if g.is_param_type(rt) {
 					paramdbg << g.dbg_type_name('__rval', rt)
 					paraml << wtyp
-					g.return_vars << Var{
+					return_var << Var{
 						typ: rt
 						is_address: true
 					}
@@ -259,12 +256,15 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.local_vars << Var{
 			name: p.name
 			typ: p.typ
-			idx: g.local_vars.len + g.return_vars.len
+			idx: g.local_vars.len + return_var.len
 			is_address: !g.is_pure_type(p.typ)
 		}
 		paramdbg << g.dbg_type_name(p.name, p.typ)
 		paraml << typ
 	}
+
+	// bottom scope
+	g.scope_context << return_var
 
 	mut should_export := g.pref.os == .browser && node.is_pub && node.mod == 'main'
 	
@@ -319,7 +319,7 @@ fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
 
 fn (mut g Gen) bare_function_end() {
 	g.local_vars.clear()
-	g.return_vars.clear()
+	g.scope_context.clear()
 	g.ret_types.clear()
 	g.bp_idx = -1
 	g.stack_frame = 0
@@ -919,8 +919,10 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 			g.expr_stmts(node.stmts, expected)
 		}
 		ast.Return {
+			return_vars := g.scope_context[0]
+			
 			if node.exprs.len == 1 && node.exprs[0] is ast.CallExpr {
-				g.call_expr(node.exprs[0] as ast.CallExpr, 0, g.return_vars)
+				g.call_expr(node.exprs[0] as ast.CallExpr, 0, return_vars)
 				g.func.c_br(g.ret_br)
 				return
 			}
@@ -930,9 +932,9 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 				typ := g.ret_types[idx] // node.types LIES
 				if g.is_param_type(typ) {
 					if rhs := g.get_var_from_expr(expr) {
-						g.mov(g.return_vars[r], rhs)
+						g.mov(return_vars[r], rhs)
 					} else {
-						g.set_with_expr(expr, g.return_vars[r])
+						g.set_with_expr(expr, return_vars[r])
 					}					
 					r++
 				} else {
