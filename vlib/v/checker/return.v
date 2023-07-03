@@ -303,6 +303,10 @@ fn has_top_return(stmts []ast.Stmt) bool {
 						|| (stmt.expr.is_method == false && stmt.expr.name == 'panic') {
 						return true
 					}
+				} else if stmt.expr is ast.ComptimeCall {
+					if stmt.expr.method_name == 'compile_error' {
+						return true
+					}
 				}
 			}
 			else {}
