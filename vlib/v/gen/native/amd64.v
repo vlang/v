@@ -1123,7 +1123,7 @@ fn (mut c Amd64) leave() {
 	c.g.println('; label 0: return')
 	if c.g.defer_stmts.len != 0 {
 		// save return value
-		c.push(.rax)
+		c.push(Amd64Register.rax)
 		for defer_stmt in c.g.defer_stmts.reverse() {
 			name := '_defer${defer_stmt.idx_in_fn}'
 			defer_var := c.g.get_var_offset(name)
@@ -1713,14 +1713,14 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 	is_16bit_aligned := c.is_16bit_aligned != (stack_size % 2 == 1)
 	if !is_16bit_aligned {
 		// dummy data
-		c.push(.rbp)
+		c.push(Amd64Register.rbp)
 	}
 	reg_args << ssereg_args
 	reg_args << stack_args
 	for i in reg_args.reverse() {
 		if i == 0 && is_struct_return {
 			c.lea_var_to_reg(Amd64Register.rax, return_pos)
-			c.push(.rax)
+			c.push(Amd64Register.rax)
 			continue
 		}
 		c.g.expr(args[i].expr)
@@ -1755,17 +1755,17 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 		} else {
 			match args_size[i] {
 				1...8 {
-					c.push(.rax)
+					c.push(Amd64Register.rax)
 				}
 				9...16 {
-					c.push(.rdx)
-					c.push(.rax)
+					c.push(Amd64Register.rdx)
+					c.push(Amd64Register.rax)
 				}
 				else {
 					c.add(.rax, args_size[i] - ((args_size[i] + 7) % 8 + 1))
 					for _ in 0 .. (args_size[i] + 7) / 8 {
 						c.mov_deref(.rdx, .rax, ast.i64_type_idx)
-						c.push(.rdx)
+						c.push(Amd64Register.rdx)
 						c.sub(.rax, 8)
 					}
 				}
@@ -2581,7 +2581,7 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 			c.g.allocate_by_type((left as ast.Ident).name, typ)
 		}
 		c.gen_left_value(left)
-		c.push(.rax)
+		c.push(Amd64Register.rax)
 		c.g.expr(right)
 		c.pop(.rdx)
 		c.gen_type_promotion(node.right_types[0], typ)
@@ -2873,7 +2873,7 @@ fn (mut c Amd64) infix_expr(node ast.InfixExpr) {
 			c.mov_var_to_reg(Amd64Register.rax, node.left as ast.Ident)
 		}
 		else {
-			c.push(.rax)
+			c.push(Amd64Register.rax)
 			c.g.expr(node.left)
 			c.pop(match node.op {
 				.left_shift, .right_shift, .unsigned_right_shift, .div, .mod { .rcx }
@@ -3142,7 +3142,7 @@ fn (mut c Amd64) infloop() {
 }
 
 fn (mut c Amd64) fn_decl(node ast.FnDecl) {
-	c.push(.rbp)
+	c.push(Amd64Register.rbp)
 	c.mov_reg(Amd64Register.rbp, Amd64Register.rsp)
 	local_alloc_pos := c.g.pos()
 	c.sub(.rsp, 0)
@@ -3251,7 +3251,7 @@ fn (mut c Amd64) fn_decl(node ast.FnDecl) {
 }
 
 pub fn (mut c Amd64) builtin_decl(builtin BuiltinFn) {
-	c.push(.rbp)
+	c.push(Amd64Register.rbp)
 	c.mov_reg(Amd64Register.rbp, Amd64Register.rsp)
 	local_alloc_pos := c.g.pos()
 	c.sub(.rsp, 0)
@@ -3572,7 +3572,7 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 	loop_start := c.g.pos()
 	c.g.println('; label ${loop_label}')
 
-	c.push(.rax)
+	c.push(Amd64Register.rax)
 
 	c.mov(Amd64Register.rdx, 0)
 	c.mov(Amd64Register.rbx, 10)
@@ -3675,7 +3675,7 @@ fn (mut c Amd64) gen_match_expr(expr ast.MatchExpr) {
 	} else {
 		c.g.expr(expr.cond)
 	}
-	c.push(.rax)
+	c.push(Amd64Register.rax)
 
 	mut else_label := 0
 	for i, branch in expr.branches {
@@ -3703,7 +3703,7 @@ fn (mut c Amd64) gen_match_expr(expr ast.MatchExpr) {
 							id: branch_labels[i]
 							pos: then_addr
 						}
-						c.push(.rdx)
+						c.push(Amd64Register.rdx)
 					}
 					else {
 						c.g.expr(cond)
@@ -3714,7 +3714,7 @@ fn (mut c Amd64) gen_match_expr(expr ast.MatchExpr) {
 							id: branch_labels[i]
 							pos: then_addr
 						}
-						c.push(.rdx)
+						c.push(Amd64Register.rdx)
 					}
 				}
 			}
