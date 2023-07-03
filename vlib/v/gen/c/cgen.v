@@ -3121,7 +3121,12 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 					g.writeln('(${shared_styp}*)__dup${shared_styp}(&(${shared_styp}){.mtx = {0}, .val =')
 				}
 			}
-			last_stmt_pos := if g.stmt_path_pos.len > 0 { g.stmt_path_pos.last() } else { 0 }
+			stmt_before_call_expr_pos := if g.stmt_path_pos.len > 0 {
+				g.stmt_path_pos.last()
+			} else {
+				0
+			}
+
 			g.call_expr(node)
 			if g.is_autofree && !g.is_builtin_mod && !g.is_js_call && g.strs_to_free0.len == 0
 				&& !g.inside_lambda {
@@ -3130,7 +3135,8 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				// so just skip it
 				g.autofree_call_pregen(node)
 				if g.strs_to_free0.len > 0 {
-					g.insert_at(last_stmt_pos, g.strs_to_free0.join('\n') + '/* inserted before */')
+					g.insert_at(stmt_before_call_expr_pos, g.strs_to_free0.join('\n') +
+						'/* inserted before */')
 				}
 				g.strs_to_free0 = []
 			}
