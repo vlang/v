@@ -116,7 +116,7 @@ mut:
 	mov64(r Register, val i64)
 	movabs(reg Register, val i64)
 	prefix_expr(node ast.PrefixExpr)
-	push_reg(r Register)
+	push(r Register)
 	ret()
 	return_stmt(node ast.Return)
 	reverse_string(r Register)
