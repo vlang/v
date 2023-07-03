@@ -617,7 +617,8 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 					}
 				}
 				.key_in, .not_in {
-					if cond.left in [ast.TypeNode, ast.SelectorExpr, ast.Ident] && cond.right is ast.ArrayInit {
+					if cond.left in [ast.TypeNode, ast.SelectorExpr, ast.Ident]
+						&& cond.right is ast.ArrayInit {
 						checked_type := g.get_expr_type(cond.left)
 
 						for expr in cond.right.exprs {

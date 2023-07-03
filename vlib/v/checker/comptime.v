@@ -746,7 +746,8 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 					if cond.left is ast.Ident {
 						c.expr(cond.left)
 					}
-					if cond.left in [ast.TypeNode, ast.SelectorExpr, ast.Ident] && cond.right is ast.ArrayInit {
+					if cond.left in [ast.TypeNode, ast.SelectorExpr, ast.Ident]
+						&& cond.right is ast.ArrayInit {
 						for expr in cond.right.exprs {
 							if expr !in [ast.ComptimeType, ast.TypeNode] {
 								c.error('invalid `\$if` condition, only types are allowed',
