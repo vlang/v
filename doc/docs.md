@@ -171,6 +171,7 @@ by using any of the following commands in a terminal:
         * [Compile time pseudo variables](#compile-time-pseudo-variables)
         * [Compile time reflection](#compile-time-reflection)
         * [Compile time code](#compile-time-code)
+        * [Compile time types](#compile-time-types)
         * [Environment specific files](#environment-specific-files)
     * [Memory-unsafe code](#memory-unsafe-code)
     * [Structs with reference fields](#structs-with-reference-fields)
@@ -5505,7 +5506,7 @@ eprintln('${vm.name} ${vm.version}\n ${vm.description}')
 
 ### Compile time reflection
 
-`$` is used as a prefix for compile time operations.
+`$` is used as a prefix for compile time (also referred to as 'comptime') operations.
 
 Having built-in JSON support is nice, but V also allows you to create efficient
 serializers for any data format. V has compile time `if` and `for` constructs:
@@ -5727,18 +5728,18 @@ the `.len` attribute in arrays.
 
 V supports the following compile time types:
 
-- `$map` => matches [Maps](#maps).
+- `$alias` => matches [Type aliases](#type-aliases).
+- `$array` => matches [Arrays](#arrays) and [Fixed Size Arrays](#fixed-size-arrays).
+- `$enum` => matches [Enums](#enums).
+- `$float` => matches `f32`, `f64` and float literals.
+- `$function` => matches [Function Types](#function-types).
 - `$int` => matches `int`, `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `isize`, `usize`
   and integer literals.
-- `$float` => matches `f32`, `f64` and float literals.
-- `$struct` => matches [Structs](#structs).
 - `$interface` => matches [Interfaces](#interfaces).
-- `$array` => matches [Arrays](#arrays) and [Fixed Size Arrays](#fixed-size-arrays).
-- `$sumtype` => matches [Sum Types](#sum-types).
-- `$enum` => matches [Enums](#enums).
-- `$alias` => matches [Type aliases](#type-aliases).
-- `$function` => matches [Function Types](#function-types).
+- `$map` => matches [Maps](#maps).
 - `$option` => matches [Option Types](#optionresult-types-and-error-handling).
+- `$struct` => matches [Structs](#structs).
+- `$sumtype` => matches [Sum Types](#sum-types).
 
 ### Environment specific files
 
