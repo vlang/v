@@ -273,9 +273,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 			if !c.skip_flags {
 				if node_is_expr {
-					c.stmts_ending_with_expression(branch.stmts)
+					c.stmts_ending_with_expression(mut branch.stmts)
 				} else {
-					c.stmts(branch.stmts)
+					c.stmts(mut branch.stmts)
 					c.check_non_expr_branch_last_stmt(branch.stmts)
 				}
 			} else if c.pref.output_cross_c {
@@ -290,9 +290,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					node.branches[i].stmts = []
 				}
 				if node_is_expr {
-					c.stmts_ending_with_expression(branch.stmts)
+					c.stmts_ending_with_expression(mut branch.stmts)
 				} else {
-					c.stmts(branch.stmts)
+					c.stmts(mut branch.stmts)
 					c.check_non_expr_branch_last_stmt(branch.stmts)
 				}
 			} else if !is_comptime_type_is_expr {
@@ -309,9 +309,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			// smartcast sumtypes and interfaces when using `is`
 			c.smartcast_if_conds(branch.cond, mut branch.scope)
 			if node_is_expr {
-				c.stmts_ending_with_expression(branch.stmts)
+				c.stmts_ending_with_expression(mut branch.stmts)
 			} else {
-				c.stmts(branch.stmts)
+				c.stmts(mut branch.stmts)
 				c.check_non_expr_branch_last_stmt(branch.stmts)
 			}
 			c.smartcast_mut_pos = token.Pos{}

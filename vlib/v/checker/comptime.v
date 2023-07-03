@@ -149,7 +149,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 			// check each arg expression
 			node.args[i].typ = c.expr(arg.expr)
 		}
-		c.stmts_ending_with_expression(node.or_block.stmts)
+		c.stmts_ending_with_expression(mut node.or_block.stmts)
 		// assume string for now
 		return ast.string_type
 	}
@@ -246,7 +246,7 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 	return ast.void_type
 }
 
-fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
+fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 	typ := c.unwrap_generic(node.typ)
 	sym := c.table.final_sym(typ)
 	if sym.kind == .placeholder || typ.has_flag(.generic) {
@@ -274,7 +274,7 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 				c.comptime_for_field_var = node.val_var
 				c.comptime_fields_type[node.val_var] = node.typ
 				c.comptime_fields_default_type = field.typ
-				c.stmts(node.stmts)
+				c.stmts(mut node.stmts)
 
 				unwrapped_expr_type := c.unwrap_generic(field.typ)
 				tsym := c.table.sym(unwrapped_expr_type)
@@ -294,11 +294,11 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 				c.comptime_enum_field_value = field
 				c.comptime_for_field_var = node.val_var
 				c.comptime_fields_type[node.val_var] = node.typ
-				c.stmts(node.stmts)
+				c.stmts(mut node.stmts)
 			}
 		}
 	} else {
-		c.stmts(node.stmts)
+		c.stmts(mut node.stmts)
 	}
 }
 

@@ -5,15 +5,15 @@ module checker
 import v.ast
 import v.token
 
-fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
+fn (mut c Checker) for_c_stmt(mut node ast.ForCStmt) {
 	c.in_for_count++
 	prev_loop_label := c.loop_label
 	if node.has_init {
-		c.stmt(node.init)
+		c.stmt(mut node.init)
 	}
 	c.expr(node.cond)
 	if node.has_inc {
-		if node.inc is ast.AssignStmt {
+		if mut node.inc is ast.AssignStmt {
 			assign := node.inc
 
 			if assign.op == .decl_assign {
@@ -29,10 +29,10 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 				}
 			}
 		}
-		c.stmt(node.inc)
+		c.stmt(mut node.inc)
 	}
 	c.check_loop_label(node.label, node.pos)
-	c.stmts(node.stmts)
+	c.stmts(mut node.stmts)
 	c.loop_label = prev_loop_label
 	c.in_for_count--
 }
@@ -270,7 +270,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		}
 	}
 	c.check_loop_label(node.label, node.pos)
-	c.stmts(node.stmts)
+	c.stmts(mut node.stmts)
 	c.loop_label = prev_loop_label
 	c.in_for_count--
 }
@@ -299,7 +299,7 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	// TODO: update loop var type
 	// how does this work currently?
 	c.check_loop_label(node.label, node.pos)
-	c.stmts(node.stmts)
+	c.stmts(mut node.stmts)
 	c.loop_label = prev_loop_label
 	c.in_for_count--
 	if c.smartcast_mut_pos != token.Pos{} {

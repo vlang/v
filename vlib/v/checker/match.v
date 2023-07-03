@@ -37,11 +37,11 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	mut ret_type := ast.void_type
 	mut nbranches_with_return := 0
 	mut nbranches_without_return := 0
-	for branch in node.branches {
+	for mut branch in node.branches {
 		if node.is_expr {
-			c.stmts_ending_with_expression(branch.stmts)
+			c.stmts_ending_with_expression(mut branch.stmts)
 		} else {
-			c.stmts(branch.stmts)
+			c.stmts(mut branch.stmts)
 		}
 		c.smartcast_mut_pos = token.Pos{}
 		c.smartcast_cond_pos = token.Pos{}

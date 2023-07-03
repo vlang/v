@@ -208,7 +208,7 @@ pub fn (mut c Checker) check(mut ast_file ast.File) {
 	for mut stmt in ast_file.stmts {
 		if stmt in [ast.ConstDecl, ast.ExprStmt] {
 			c.expr_level = 0
-			c.stmt(stmt)
+			c.stmt(mut stmt)
 		}
 		if c.should_abort {
 			return
@@ -219,7 +219,7 @@ pub fn (mut c Checker) check(mut ast_file ast.File) {
 	for mut stmt in ast_file.stmts {
 		if stmt is ast.GlobalDecl {
 			c.expr_level = 0
-			c.stmt(stmt)
+			c.stmt(mut stmt)
 		}
 		if c.should_abort {
 			return
@@ -230,7 +230,7 @@ pub fn (mut c Checker) check(mut ast_file ast.File) {
 	for mut stmt in ast_file.stmts {
 		if stmt !in [ast.ConstDecl, ast.GlobalDecl, ast.ExprStmt] {
 			c.expr_level = 0
-			c.stmt(stmt)
+			c.stmt(mut stmt)
 		}
 		if c.should_abort {
 			return
@@ -267,8 +267,8 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 // not used right now
 pub fn (mut c Checker) check2(mut ast_file ast.File) []errors.Error {
 	c.change_current_file(ast_file)
-	for stmt in ast_file.stmts {
-		c.stmt(stmt)
+	for mut stmt in ast_file.stmts {
+		c.stmt(mut stmt)
 	}
 	return c.errors
 }
@@ -1491,7 +1491,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		node.typ = field.typ
 		if node.or_block.kind == .block {
 			c.expected_or_type = node.typ.clear_flags(.option, .result)
-			c.stmts_ending_with_expression(node.or_block.stmts)
+			c.stmts_ending_with_expression(mut node.or_block.stmts)
 			c.check_or_expr(node.or_block, node.typ, c.expected_or_type, node)
 			c.expected_or_type = ast.void_type
 		}
@@ -1833,8 +1833,7 @@ fn (mut c Checker) check_loop_label(label string, pos token.Pos) {
 	c.loop_label = label
 }
 
-fn (mut c Checker) stmt(node_ ast.Stmt) {
-	mut node := unsafe { node_ }
+fn (mut c Checker) stmt(mut node ast.Stmt) {
 	$if trace_checker ? {
 		ntype := typeof(node).replace('v.ast.', '')
 		eprintln('checking: ${c.file.path:-30} | pos: ${node.pos.line_str():-39} | node: ${ntype} | ${node}')
@@ -1858,13 +1857,13 @@ fn (mut c Checker) stmt(node_ ast.Stmt) {
 			c.assign_stmt(mut node)
 		}
 		ast.Block {
-			c.block(node)
+			c.block(mut node)
 		}
 		ast.BranchStmt {
 			c.branch_stmt(node)
 		}
 		ast.ComptimeFor {
-			c.comptime_for(node)
+			c.comptime_for(mut node)
 		}
 		ast.ConstDecl {
 			c.inside_const = true
@@ -1898,7 +1897,7 @@ fn (mut c Checker) stmt(node_ ast.Stmt) {
 				}
 			}
 			c.inside_defer = true
-			c.stmts(node.stmts)
+			c.stmts(mut node.stmts)
 			c.inside_defer = false
 		}
 		ast.EnumDecl {
@@ -1941,7 +1940,7 @@ fn (mut c Checker) stmt(node_ ast.Stmt) {
 			c.fn_decl(mut node)
 		}
 		ast.ForCStmt {
-			c.for_c_stmt(node)
+			c.for_c_stmt(mut node)
 		}
 		ast.ForInStmt {
 			c.for_in_stmt(mut node)
@@ -2011,14 +2010,14 @@ fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 	c.expected_type = cur_exp_typ
 }
 
-fn (mut c Checker) block(node ast.Block) {
+fn (mut c Checker) block(mut node ast.Block) {
 	if node.is_unsafe {
 		prev_unsafe := c.inside_unsafe
 		c.inside_unsafe = true
-		c.stmts(node.stmts)
+		c.stmts(mut node.stmts)
 		c.inside_unsafe = prev_unsafe
 	} else {
-		c.stmts(node.stmts)
+		c.stmts(mut node.stmts)
 	}
 }
 
@@ -2366,10 +2365,10 @@ fn (mut c Checker) import_stmt(node ast.Import) {
 }
 
 // stmts should be used for processing normal statement lists (fn bodies, for loop bodies etc).
-fn (mut c Checker) stmts(stmts []ast.Stmt) {
+fn (mut c Checker) stmts(mut stmts []ast.Stmt) {
 	old_stmt_level := c.stmt_level
 	c.stmt_level = 0
-	c.stmts_ending_with_expression(stmts)
+	c.stmts_ending_with_expression(mut stmts)
 	c.stmt_level = old_stmt_level
 }
 
@@ -2378,7 +2377,7 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 //    `x := opt() or { stmt1 stmt2 ExprStmt }`,
 //    `x := if cond { stmt1 stmt2 ExprStmt } else { stmt2 stmt3 ExprStmt }`,
 //    `x := match expr { Type1 { stmt1 stmt2 ExprStmt } else { stmt2 stmt3 ExprStmt }`.
-fn (mut c Checker) stmts_ending_with_expression(stmts []ast.Stmt) {
+fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt) {
 	if stmts.len == 0 {
 		c.scope_returns = false
 		return
@@ -2392,14 +2391,14 @@ fn (mut c Checker) stmts_ending_with_expression(stmts []ast.Stmt) {
 		line_nr: -1
 	}
 	c.stmt_level++
-	for i, stmt in stmts {
+	for i, mut stmt in stmts {
 		c.is_last_stmt = i == stmts.len - 1
 		if c.scope_returns {
 			if unreachable.line_nr == -1 {
 				unreachable = stmt.pos
 			}
 		}
-		c.stmt(stmt)
+		c.stmt(mut stmt)
 		if stmt is ast.GotoLabel {
 			unreachable = token.Pos{
 				line_nr: -1
@@ -3297,7 +3296,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			}
 			unwrapped_typ := typ.clear_flags(.option, .result)
 			c.expected_or_type = unwrapped_typ
-			c.stmts_ending_with_expression(node.or_expr.stmts)
+			c.stmts_ending_with_expression(mut node.or_expr.stmts)
 			c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
 			return unwrapped_typ
 		}
@@ -3402,7 +3401,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						}
 						unwrapped_typ := typ.clear_flags(.option, .result)
 						c.expected_or_type = unwrapped_typ
-						c.stmts_ending_with_expression(node.or_expr.stmts)
+						c.stmts_ending_with_expression(mut node.or_expr.stmts)
 						c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
 						return unwrapped_typ
 					}
@@ -3655,9 +3654,9 @@ fn (mut c Checker) smartcast(expr_ ast.Expr, cur_type ast.Type, to_type_ ast.Typ
 fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 	node.is_expr = c.expected_type != ast.void_type
 	node.expected_type = c.expected_type
-	for branch in node.branches {
-		c.stmt(branch.stmt)
-		match branch.stmt {
+	for mut branch in node.branches {
+		c.stmt(mut branch.stmt)
+		match mut branch.stmt {
 			ast.ExprStmt {
 				if branch.is_timeout {
 					if !branch.stmt.typ.is_int() {
@@ -3666,7 +3665,7 @@ fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 							branch.stmt.pos)
 					}
 				} else {
-					if branch.stmt.expr is ast.InfixExpr {
+					if mut branch.stmt.expr is ast.InfixExpr {
 						if branch.stmt.expr.left !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
 							c.error('channel in `select` key must be predefined', branch.stmt.expr.left.pos())
 						}
@@ -3708,7 +3707,7 @@ fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 				}
 			}
 		}
-		c.stmts(branch.stmts)
+		c.stmts(mut branch.stmts)
 	}
 	return ast.bool_type
 }
@@ -3737,7 +3736,7 @@ fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 			c.locked_names << id_name
 		}
 	}
-	c.stmts(node.stmts)
+	c.stmts(mut node.stmts)
 	// handle `x := rlock a { a.getval() }`
 	mut ret_type := ast.void_type
 	if node.stmts.len > 0 {
@@ -4026,7 +4025,7 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	}
 	if node.op == .arrow {
 		if right_sym.kind == .chan {
-			c.stmts_ending_with_expression(node.or_block.stmts)
+			c.stmts_ending_with_expression(mut node.or_block.stmts)
 			return right_sym.chan_info().elem_type
 		}
 		c.type_error_for_operator('<-', '`chan`', right_sym.name, node.pos)
@@ -4209,7 +4208,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	if node.or_expr.stmts.len > 0 && node.or_expr.stmts.last() is ast.ExprStmt {
 		c.expected_or_type = typ
 	}
-	c.stmts_ending_with_expression(node.or_expr.stmts)
+	c.stmts_ending_with_expression(mut node.or_expr.stmts)
 	c.check_expr_opt_call(node, typ)
 	return typ
 }
