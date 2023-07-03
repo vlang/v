@@ -8,7 +8,7 @@ import strconv
 struct Scanner {
 mut:
 	text []u8
-	pos  int
+	pos  int // the position of the token in scanner text
 	line int
 	col  int
 }
@@ -22,19 +22,19 @@ enum TokenKind {
 	null
 	bool_
 	eof
-	comma = 44
-	colon = 58
-	lsbr = 91
-	rsbr = 93
-	lcbr = 123
-	rcbr = 125
+	comma = 44 // ,
+	colon = 58 // :
+	lsbr = 91 // [
+	rsbr = 93 // ]
+	lcbr = 123 // {
+	rcbr = 125 // }
 }
 
 pub struct Token {
-	lit  []u8
-	kind TokenKind
-	line int
-	col  int
+	lit  []u8      // literal representation of the token
+	kind TokenKind // the token number/enum; for quick comparisons
+	line int       // the line in the source where the token occured
+	col  int       // the column in the source where the token occured
 }
 
 // full_col returns the full column information which includes the length
@@ -256,6 +256,7 @@ fn (s Scanner) invalid_token() Token {
 }
 
 // scan returns a token based on the scanner's current position.
+// used to set the next token
 [manualfree]
 fn (mut s Scanner) scan() Token {
 	if s.pos < s.text.len && (s.text[s.pos] == ` ` || s.text[s.pos] in json2.newlines) {

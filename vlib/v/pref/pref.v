@@ -806,7 +806,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-use-coroutines' {
 				res.use_coroutines = true
-				$if macos {
+				$if macos || linux {
 					arch := $if arm64 { 'arm64' } $else { 'amd64' }
 					vexe := vexe_path()
 					vroot := os.dir(vexe)

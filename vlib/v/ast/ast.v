@@ -339,7 +339,7 @@ pub:
 	mod         string
 	name        string
 	is_pub      bool
-	is_markused bool // an explict `[markused]` tag; the const will NOT be removed by `-skip-unused`, no matter what
+	is_markused bool // an explicit `[markused]` tag; the const will NOT be removed by `-skip-unused`, no matter what
 	pos         token.Pos
 pub mut:
 	expr         Expr      // the value expr of field; everything after `=`
@@ -460,7 +460,7 @@ pub mut:
 	update_expr_comments []Comment
 	is_update_embed      bool
 	has_update_expr      bool // has `...a`
-	fields               []StructInitField
+	init_fields          []StructInitField
 	generic_types        []Type
 }
 
@@ -505,40 +505,41 @@ pub mut:
 [minify]
 pub struct FnDecl {
 pub:
-	name               string // 'math.bits.normalize'
-	short_name         string // 'normalize'
-	mod                string // 'math.bits'
-	is_deprecated      bool
-	is_pub             bool
-	is_variadic        bool
-	is_anon            bool
-	is_noreturn        bool        // true, when [noreturn] is used on a fn
-	is_manualfree      bool        // true, when [manualfree] is used on a fn
-	is_main            bool        // true for `fn main()`
-	is_test            bool        // true for `fn test_abcde() {}`, false for `fn test_abc(x int) {}`, or for fns that do not start with test_
-	is_conditional     bool        // true for `[if abc] fn abc(){}`
-	is_exported        bool        // true for `[export: 'exact_C_name']`
-	is_keep_alive      bool        // passed memory must not be freed (by GC) before function returns
-	is_unsafe          bool        // true, when [unsafe] is used on a fn
-	is_markused        bool        // true, when an explict `[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
-	is_file_translated bool        // true, when the file it resides in is `[translated]`
-	receiver           StructField // TODO this is not a struct field
-	receiver_pos       token.Pos   // `(u User)` in `fn (u User) name()` position
-	is_method          bool
-	method_type_pos    token.Pos // `User` in ` fn (u User)` position
-	method_idx         int
-	rec_mut            bool // is receiver mutable
-	rec_share          ShareType
-	language           Language  // V, C, JS
-	file_mode          Language  // whether *the file*, where a function was a '.c.v', '.js.v' etc.
-	no_body            bool      // just a definition `fn C.malloc()`
-	is_builtin         bool      // this function is defined in builtin/strconv
-	body_pos           token.Pos // function bodys position
-	file               string
-	generic_names      []string
-	is_direct_arr      bool // direct array access
-	attrs              []Attr
-	ctdefine_idx       int = -1 // the index in fn.attrs of `[if xyz]`, when such attribute exists
+	name                  string // 'math.bits.normalize'
+	short_name            string // 'normalize'
+	mod                   string // 'math.bits'
+	is_deprecated         bool
+	is_pub                bool
+	is_variadic           bool
+	is_anon               bool
+	is_noreturn           bool        // true, when [noreturn] is used on a fn
+	is_manualfree         bool        // true, when [manualfree] is used on a fn
+	is_main               bool        // true for `fn main()`
+	is_test               bool        // true for `fn test_abcde() {}`, false for `fn test_abc(x int) {}`, or for fns that do not start with test_
+	is_conditional        bool        // true for `[if abc] fn abc(){}`
+	is_exported           bool        // true for `[export: 'exact_C_name']`
+	is_keep_alive         bool        // passed memory must not be freed (by GC) before function returns
+	is_unsafe             bool        // true, when [unsafe] is used on a fn
+	is_markused           bool        // true, when an explicit `[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
+	is_file_translated    bool        // true, when the file it resides in is `[translated]`
+	receiver              StructField // TODO this is not a struct field
+	receiver_pos          token.Pos   // `(u User)` in `fn (u User) name()` position
+	is_method             bool
+	is_static_type_method bool      // true for `fn Foo.bar() {}`
+	method_type_pos       token.Pos // `User` in ` fn (u User)` position
+	method_idx            int
+	rec_mut               bool // is receiver mutable
+	rec_share             ShareType
+	language              Language  // V, C, JS
+	file_mode             Language  // whether *the file*, where a function was a '.c.v', '.js.v' etc.
+	no_body               bool      // just a definition `fn C.malloc()`
+	is_builtin            bool      // this function is defined in builtin/strconv
+	body_pos              token.Pos // function bodys position
+	file                  string
+	generic_names         []string
+	is_direct_arr         bool // direct array access
+	attrs                 []Attr
+	ctdefine_idx          int = -1 // the index in fn.attrs of `[if xyz]`, when such attribute exists
 pub mut:
 	idx               int // index in an external container; can be used to refer to the function in a more efficient way, just by its integer index
 	params            []Param
@@ -578,25 +579,26 @@ pub fn (f &FnDecl) new_method_with_receiver_type(new_type Type) FnDecl {
 [minify]
 pub struct Fn {
 pub:
-	is_variadic        bool
-	language           Language
-	is_pub             bool
-	is_ctor_new        bool // `[use_new] fn JS.Array.prototype.constructor()`
-	is_deprecated      bool // `[deprecated] fn abc(){}`
-	is_noreturn        bool // `[noreturn] fn abc(){}`
-	is_unsafe          bool // `[unsafe] fn abc(){}`
-	is_placeholder     bool
-	is_main            bool // `fn main(){}`
-	is_test            bool // `fn test_abc(){}`
-	is_keep_alive      bool // passed memory must not be freed (by GC) before function returns
-	is_method          bool // true for `fn (x T) name()`, and for interface declarations (which are also for methods)
-	no_body            bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
-	is_file_translated bool // true, when the file it resides in is `[translated]`
-	mod                string
-	file               string
-	file_mode          Language
-	pos                token.Pos
-	return_type_pos    token.Pos
+	is_variadic           bool
+	language              Language
+	is_pub                bool
+	is_ctor_new           bool // `[use_new] fn JS.Array.prototype.constructor()`
+	is_deprecated         bool // `[deprecated] fn abc(){}`
+	is_noreturn           bool // `[noreturn] fn abc(){}`
+	is_unsafe             bool // `[unsafe] fn abc(){}`
+	is_placeholder        bool
+	is_main               bool // `fn main(){}`
+	is_test               bool // `fn test_abc(){}`
+	is_keep_alive         bool // passed memory must not be freed (by GC) before function returns
+	is_method             bool // true for `fn (x T) name()`, and for interface declarations (which are also for methods)
+	is_static_type_method bool // true for `fn Foo.bar() {}`
+	no_body               bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
+	is_file_translated    bool // true, when the file it resides in is `[translated]`
+	mod                   string
+	file                  string
+	file_mode             Language
+	pos                   token.Pos
+	return_type_pos       token.Pos
 pub mut:
 	return_type    Type
 	receiver_type  Type // != 0, when .is_method == true
@@ -790,7 +792,7 @@ pub mut:
 	// (for setting the position after the or block for autofree)
 	is_or        bool // `x := foo() or { ... }`
 	is_tmp       bool // for tmp for loop vars, so that autofree can skip them
-	is_auto_heap bool // value whoes address goes out of scope
+	is_auto_heap bool // value whose address goes out of scope
 	is_stack_obj bool // may be pointer to stack value (`mut` or `&` arg and not [heap] struct)
 }
 
@@ -818,7 +820,7 @@ pub:
 	has_expr    bool
 	pos         token.Pos
 	typ_pos     token.Pos
-	is_markused bool // an explict `[markused]` tag; the global will NOT be removed by `-skip-unused`
+	is_markused bool // an explicit `[markused]` tag; the global will NOT be removed by `-skip-unused`
 	is_volatile bool
 pub mut:
 	expr     Expr
@@ -870,7 +872,7 @@ pub mut:
 	scope            &Scope = unsafe { nil }
 	stmts            []Stmt            // all the statements in the source file
 	imports          []Import          // all the imports
-	auto_imports     []string          // imports that were implicitely added
+	auto_imports     []string          // imports that were implicitly added
 	embedded_files   []EmbeddedFile    // list of files to embed in the binary
 	imported_symbols map[string]string // used for `import {symbol}`, it maps symbol => module.symbol
 	errors           []errors.Error    // all the checker errors in the file
@@ -1566,7 +1568,7 @@ pub mut:
 	index        AsmArg // gpr
 }
 
-// adressing modes:
+// addressing modes:
 pub enum AddressingMode {
 	invalid
 	displacement // displacement
@@ -1621,7 +1623,7 @@ pub const (
 	}
 	// no comments because maps do not support comments
 	// r#*: gp registers added in 64-bit extensions, can only be from 8-15 actually
-	// *mm#: vector/simd registors
+	// *mm#: vector/simd registers
 	// st#: floating point numbers
 	// cr#: control/status registers
 	// dr#: debug registers
@@ -1848,13 +1850,13 @@ pub:
 	scope        &Scope = unsafe { nil }
 	left         Expr
 	is_vweb      bool
-	vweb_tmpl    File
 	is_embed     bool
 	is_env       bool
 	env_pos      token.Pos
 	is_pkgconfig bool
 	or_block     OrExpr
 pub mut:
+	vweb_tmpl   File
 	left_type   Type
 	result_type Type
 	env_value   string
@@ -1945,7 +1947,7 @@ pub fn (expr Expr) is_blank_ident() bool {
 pub fn (expr Expr) pos() token.Pos {
 	// all uncommented have to be implemented
 	// Note: please do not print here. the language server will hang
-	// as it uses STDIO primarly to communicate ~Ned
+	// as it uses STDIO primarily to communicate ~Ned
 	match expr {
 		AnonFn {
 			return expr.decl.pos
@@ -2145,7 +2147,7 @@ pub fn (node Node) children() []Node {
 				return node.stmts.map(Node(it))
 			}
 			StructInit {
-				return node.fields.map(Node(it))
+				return node.init_fields.map(Node(it))
 			}
 			AnonFn {
 				children << Stmt(node.decl)
@@ -2400,8 +2402,7 @@ pub fn (expr Expr) is_literal() bool {
 			return expr.expr.is_literal()
 		}
 		CastExpr {
-			return !expr.has_arg && expr.expr.is_literal()
-				&& (expr.typ.is_ptr() || expr.typ.is_pointer()
+			return !expr.has_arg && expr.expr.is_literal() && (expr.typ.is_any_kind_of_pointer()
 				|| expr.typ in [i8_type, i16_type, int_type, i64_type, u8_type, u16_type, u32_type, u64_type, f32_type, f64_type, char_type, bool_type, rune_type])
 		}
 		SizeOf, IsRefType {

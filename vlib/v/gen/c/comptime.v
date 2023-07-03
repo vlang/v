@@ -80,6 +80,15 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		g.write('_SLIT("${val}")')
 		return
 	}
+	if node.method_name == 'res' {
+		if node.args_var != '' {
+			g.write('${g.defer_return_tmp_var}.arg${node.args_var}')
+			return
+		}
+
+		g.write('${g.defer_return_tmp_var}')
+		return
+	}
 	if node.is_vweb {
 		is_html := node.method_name == 'html'
 		mut cur_line := ''
@@ -686,7 +695,8 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 		}
 		ast.SelectorExpr {
 			if g.inside_comptime_for_field && cond.expr is ast.Ident
-				&& (cond.expr as ast.Ident).name == g.comptime_for_field_var && cond.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_option', 'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias', 'is_enum'] {
+				&& cond.expr.name == g.comptime_for_field_var
+				&& cond.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_option', 'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias', 'is_enum'] {
 				ret_bool := g.get_comptime_selector_bool_field(cond.field_name)
 				g.write(ret_bool.str())
 				return ret_bool, true
@@ -749,13 +759,13 @@ fn (mut g Gen) is_comptime_selector_field_name(node ast.SelectorExpr, field_name
 [inline]
 fn (mut g Gen) is_comptime_selector_type(node ast.SelectorExpr) bool {
 	if g.inside_comptime_for_field && node.expr is ast.Ident {
-		return (node.expr as ast.Ident).name == g.comptime_for_field_var && node.field_name == 'typ'
+		return node.expr.name == g.comptime_for_field_var && node.field_name == 'typ'
 	}
 	return false
 }
 
 fn (mut g Gen) get_comptime_var_type(node ast.Expr) ast.Type {
-	if node is ast.Ident && (node as ast.Ident).obj is ast.Var {
+	if node is ast.Ident && node.obj is ast.Var {
 		return match (node.obj as ast.Var).ct_type_var {
 			.generic_param {
 				// generic parameter from current function

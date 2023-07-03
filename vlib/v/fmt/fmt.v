@@ -767,7 +767,7 @@ fn expr_is_single_line(expr ast.Expr) bool {
 			}
 		}
 		ast.StructInit {
-			if !expr.no_keys && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
+			if !expr.no_keys && (expr.init_fields.len > 0 || expr.pre_comments.len > 0) {
 				return false
 			}
 		}
@@ -1007,7 +1007,7 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 
 pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	f.attrs(node.attrs)
-	f.write(node.stringify(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
+	f.write(node.stringify_fn_decl(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
 	// Handle trailing comments after fn header declarations
 	if node.no_body && node.end_comments.len > 0 {
 		first_comment := node.end_comments[0]
@@ -1032,7 +1032,7 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 }
 
 pub fn (mut f Fmt) anon_fn(node ast.AnonFn) {
-	f.write(node.stringify(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
+	f.write(node.stringify_anon_decl(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
 	f.fn_body(node.decl)
 }
 
@@ -1305,7 +1305,7 @@ pub fn (mut f Fmt) interface_field(field ast.StructField) {
 
 pub fn (mut f Fmt) interface_method(method ast.FnDecl) {
 	f.write('\t')
-	f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).all_after_first('fn '))
+	f.write(method.stringify_fn_decl(f.table, f.cur_mod, f.mod2alias).all_after_first('fn '))
 	f.comments(method.comments, inline: true, has_nl: false, level: .indent)
 	f.writeln('')
 	f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
@@ -1790,6 +1790,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	for arg in node.args {
 		f.comments(arg.comments)
 	}
+
 	mut is_method_newline := false
 	if node.is_method {
 		if node.name in ['map', 'filter', 'all', 'any'] {
@@ -1826,7 +1827,16 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		} else {
 			name := f.short_module(node.name)
 			f.mark_import_as_used(name)
-			f.write('${name}')
+			if node.name.contains('__static__') {
+				if name.contains('.') {
+					indx := name.index('.') or { -1 } + 1
+					f.write(name[0..indx] + name[indx..].replace('__static__', '.').capitalize())
+				} else {
+					f.write(name.replace('__static__', '.').capitalize())
+				}
+			} else {
+				f.write(name)
+			}
 		}
 	}
 	if node.mod == '' && node.name == '' {
@@ -1885,7 +1895,7 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 		if arg.is_mut {
 			f.write(arg.share.str() + ' ')
 		}
-		if i > 0 && !f.single_line_if {
+		if i > 0 && !f.single_line_if && !f.use_short_fn_args {
 			f.wrap_long_line(3, true)
 		}
 		f.expr(arg.expr)
@@ -1968,6 +1978,13 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 			}
 			node.method_name in ['compile_error', 'compile_warn'] {
 				f.write("\$${node.method_name}('${node.args_var}')")
+			}
+			node.method_name == 'res' {
+				if node.args_var != '' {
+					f.write('\$res(${node.args_var})')
+				} else {
+					f.write('\$res()')
+				}
 			}
 			else {
 				inner_args := if node.args_var != '' {
@@ -2599,14 +2616,14 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 }
 
 pub fn (mut f Fmt) par_expr(node ast.ParExpr) {
-	requires_paren := node.expr !is ast.Ident
-	if requires_paren {
-		f.par_level++
-		f.write('(')
-	}
 	mut expr := node.expr
 	for mut expr is ast.ParExpr {
 		expr = expr.expr
+	}
+	requires_paren := expr !is ast.Ident
+	if requires_paren {
+		f.par_level++
+		f.write('(')
 	}
 	f.expr(expr)
 	if requires_paren {

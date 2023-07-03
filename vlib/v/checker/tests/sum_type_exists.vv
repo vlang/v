@@ -1,1 +1,1 @@
-type Miscellaneous = Inexistant | Nope | int
+type Miscellaneous = Inexistent | Nope | int

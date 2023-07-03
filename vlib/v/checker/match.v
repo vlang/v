@@ -22,8 +22,8 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	// we setting this here rather than at the end of the method
 	// since it is used in c.match_exprs() it saves checking twice
 	node.cond_type = ast.mktyp(cond_type)
-	if (node.cond is ast.Ident && (node.cond as ast.Ident).is_mut)
-		|| (node.cond is ast.SelectorExpr && (node.cond as ast.SelectorExpr).is_mut) {
+	if (node.cond is ast.Ident && node.cond.is_mut)
+		|| (node.cond is ast.SelectorExpr && node.cond.is_mut) {
 		c.fail_if_immutable(node.cond)
 	}
 	c.ensure_type_exists(node.cond_type, node.pos) or { return ast.void_type }
@@ -90,7 +90,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
 					}
 				}
-			} else if stmt !is ast.Return {
+			} else if stmt !in [ast.Return, ast.BranchStmt] {
 				if node.is_expr && ret_type != ast.void_type {
 					c.error('`match` expression requires an expression as the last statement of every branch',
 						stmt.pos)
@@ -290,7 +290,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				// c.type_implements(expr_type, c.expected_type, expr.pos())
 				expr_pos := expr.pos()
 				if c.type_implements(expr_type, c.expected_type, expr_pos) {
-					if !expr_type.is_ptr() && !expr_type.is_pointer() && !c.inside_unsafe {
+					if !expr_type.is_any_kind_of_pointer() && !c.inside_unsafe {
 						if expr_type_sym.kind != .interface_ {
 							c.mark_as_referenced(mut &branch.exprs[k], true)
 						}

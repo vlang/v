@@ -153,7 +153,8 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 				}
 			}
 			if tokens.len > 0 {
-				return tokens[0].all_before('(')
+				function_name_with_generic_parameters := tokens[0].all_before('(')
+				return function_name_with_generic_parameters.all_before('[')
 			}
 			return ''
 		}

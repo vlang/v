@@ -213,6 +213,7 @@ fn (mut p Parser) is_only_array_type() bool {
 
 fn (mut p Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.pos()
+	mut else_count := 0
 	p.inside_match = true
 	p.check(.key_match)
 	mut is_sum_type := false
@@ -233,12 +234,13 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		mut is_else := false
 		if p.tok.kind == .key_else {
 			is_else = true
+			else_count += 1
 			p.next()
 		} else if (p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot)
 			&& (((ast.builtin_type_names_matcher.matches(p.tok.lit) || p.tok.lit[0].is_capital())
 			&& p.peek_tok.kind != .lpar) || (p.peek_tok.kind == .dot && p.peek_token(2).lit.len > 0
 			&& p.peek_token(2).lit[0].is_capital()))) || p.is_only_array_type()
-			|| p.tok.kind == .key_fn {
+			|| p.tok.kind == .key_fn || p.peek_token(2).kind == .amp {
 			mut types := []ast.Type{}
 			for {
 				// Sum type match
@@ -327,6 +329,9 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		}
 		if is_else && branches.len == 1 {
 			p.error_with_pos('`match` must have at least one non `else` branch', pos)
+		}
+		if else_count > 1 {
+			p.error_with_pos('`match` can have only one `else` branch', pos)
 		}
 		if p.tok.kind == .rcbr || (is_else && no_lcbr) {
 			break

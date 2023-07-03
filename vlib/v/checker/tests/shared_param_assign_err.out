@@ -1,0 +1,13 @@
+vlib/v/checker/tests/shared_param_assign_err.vv:2:10: error: `arr` is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut right-hand side of assignment
+    1 | fn foo(shared arr []string) {
+    2 |     arr2 := arr
+      |             ~~~
+    3 |     println(arr2)
+    4 | }
+vlib/v/checker/tests/shared_param_assign_err.vv:3:10: error: `arr2` is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut argument to print
+    1 | fn foo(shared arr []string) {
+    2 |     arr2 := arr
+    3 |     println(arr2)
+      |             ~~~~
+    4 | }
+    5 |

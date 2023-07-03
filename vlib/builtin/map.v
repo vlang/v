@@ -286,6 +286,9 @@ fn new_map_init(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_
 	return out
 }
 
+// move moves the map to a new location in memory.
+// It does this by copying to a new location, then setting the
+// old location to all `0` with `vmemset`
 pub fn (mut m map) move() map {
 	r := *m
 	unsafe {
@@ -728,11 +731,15 @@ pub fn (m &map) clone() map {
 [unsafe]
 pub fn (m &map) free() {
 	unsafe { free(m.metas) }
+	unsafe {
+		m.metas = nil
+	}
 	if m.key_values.deletes == 0 {
 		for i := 0; i < m.key_values.len; i++ {
 			unsafe {
 				pkey := m.key_values.key(i)
 				m.free_fn(pkey)
+				vmemset(pkey, 0, m.key_bytes)
 			}
 		}
 	} else {
@@ -743,12 +750,28 @@ pub fn (m &map) free() {
 			unsafe {
 				pkey := m.key_values.key(i)
 				m.free_fn(pkey)
+				vmemset(pkey, 0, m.key_bytes)
 			}
 		}
-		unsafe { free(m.key_values.all_deleted) }
 	}
 	unsafe {
-		free(m.key_values.keys)
-		free(m.key_values.values)
+		if m.key_values.all_deleted != nil {
+			free(m.key_values.all_deleted)
+			m.key_values.all_deleted = nil
+		}
+		if m.key_values.keys != nil {
+			free(m.key_values.keys)
+			m.key_values.keys = nil
+		}
+		if m.key_values.values != nil {
+			free(m.key_values.values)
+			m.key_values.values = nil
+		}
+		// TODO: the next lines assume that callback functions are static and independent from each particular
+		// map instance. Closures may invalidate that assumption, so revisit when RC for closures works.
+		m.hash_fn = nil
+		m.key_eq_fn = nil
+		m.clone_fn = nil
+		m.free_fn = nil
 	}
 }

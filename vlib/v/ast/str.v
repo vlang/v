@@ -6,6 +6,24 @@ module ast
 import v.util
 import strings
 
+// get_name returns the real name for the function declaration
+pub fn (f &FnDecl) get_name() string {
+	if f.is_static_type_method {
+		return f.name.all_after_last('__static__')
+	} else {
+		return f.name
+	}
+}
+
+// get_name returns the real name for the function calling
+pub fn (f &CallExpr) get_name() string {
+	if f.name != '' && f.name.all_after_last('.')[0].is_capital() && f.name.contains('__static__') {
+		return f.name.replace('__static__', '.')
+	} else {
+		return f.name
+	}
+}
+
 pub fn (node &FnDecl) modname() string {
 	if node.mod != '' {
 		return node.mod
@@ -41,7 +59,7 @@ pub fn (node &CallExpr) fkey() string {
 }
 
 // These methods are used only by vfmt, vdoc, and for debugging.
-pub fn (node &AnonFn) stringify(t &Table, cur_mod string, m2a map[string]string) string {
+pub fn (node &AnonFn) stringify_anon_decl(t &Table, cur_mod string, m2a map[string]string) string {
 	mut f := strings.new_builder(30)
 	f.write_string('fn ')
 	if node.inherited_vars.len > 0 {
@@ -65,7 +83,7 @@ pub fn (node &AnonFn) stringify(t &Table, cur_mod string, m2a map[string]string)
 	return f.str()
 }
 
-pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string) string {
+pub fn (node &FnDecl) stringify_fn_decl(t &Table, cur_mod string, m2a map[string]string) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
 		f.write_string('pub ')
@@ -85,11 +103,18 @@ pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string)
 			styp = styp.trim('&')
 		}
 		f.write_string(styp + ') ')
+	} else if node.is_static_type_method {
+		mut styp := util.no_cur_mod(t.type_to_code(node.receiver.typ.clear_flag(.shared_f)),
+			cur_mod)
+		f.write_string(styp + '.')
 	}
-	name := if !node.is_method && node.language == .v {
+	mut name := if !node.is_method && node.language == .v {
 		node.name.all_after_last('.')
 	} else {
 		node.name
+	}
+	if node.is_static_type_method {
+		name = name.after('__static__')
 	}
 	f.write_string(name)
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
@@ -366,15 +391,18 @@ pub fn (x Expr) str() string {
 				return '${x.left.str()}.${x.name}(${sargs})${propagate_suffix}'
 			}
 			if x.name.starts_with('${x.mod}.') {
-				return util.strip_main_name('${x.name}(${sargs})${propagate_suffix}')
+				return util.strip_main_name('${x.get_name()}(${sargs})${propagate_suffix}')
 			}
 			if x.mod == '' && x.name == '' {
 				return x.left.str() + '(${sargs})${propagate_suffix}'
 			}
 			if x.name.contains('.') {
-				return '${x.name}(${sargs})${propagate_suffix}'
+				return '${x.get_name()}(${sargs})${propagate_suffix}'
 			}
-			return '${x.mod}.${x.name}(${sargs})${propagate_suffix}'
+			if x.name.contains('__static__') {
+				return '${x.mod}.${x.get_name()}(${sargs})${propagate_suffix}'
+			}
+			return '${x.mod}.${x.get_name()}(${sargs})${propagate_suffix}'
 		}
 		CharLiteral {
 			return '`${x.val}`'

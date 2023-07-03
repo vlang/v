@@ -84,4 +84,14 @@ fn (mut g Gen) insert_at(pos int, s string) {
 	// g.out_parallel[g.out_idx].cut_to(pos)
 	g.writeln(s)
 	g.write(cur_line)
+
+	// After modifying the code in the buffer, we need to adjust the positions of the statements
+	// to account for the added line of code.
+	// This is necessary to ensure that autofree can properly insert string declarations
+	// in the correct positions, considering the surgically made changes.
+	for index, stmt_pos in g.stmt_path_pos {
+		if stmt_pos >= pos {
+			g.stmt_path_pos[index] += s.len + 1
+		}
+	}
 }

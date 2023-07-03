@@ -11,7 +11,7 @@ pub fn (t &Table) resolve_init(node StructInit, typ Type) Expr {
 			mut cap_expr := empty_expr
 			mut default_expr := empty_expr
 			mut exprs := []Expr{}
-			for field in node.fields {
+			for field in node.init_fields {
 				match field.name {
 					'len' {
 						has_len = true
@@ -48,7 +48,7 @@ pub fn (t &Table) resolve_init(node StructInit, typ Type) Expr {
 		Map {
 			mut keys := []Expr{}
 			mut vals := []Expr{}
-			for field in node.fields {
+			for field in node.init_fields {
 				keys << StringLiteral{
 					val: field.name
 				}

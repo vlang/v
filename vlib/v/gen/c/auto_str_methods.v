@@ -259,7 +259,8 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	if str_method_expects_ptr {
 		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(&it);')
 	} else {
-		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(it);')
+		deref, _ := deref_kind(str_method_expects_ptr, info.parent_type.is_ptr(), info.parent_type)
+		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(${deref}it);')
 	}
 	g.auto_str_funcs.writeln('\tstring res = str_intp(3, _MOV((StrIntpData[]){
 		{_SLIT0, ${c.si_s_code}, {.d_s = indents }},
@@ -578,10 +579,14 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 				deref, deref_label := deref_kind(str_method_expects_ptr, is_elem_ptr,
 					typ)
 				g.auto_str_funcs.writeln('\t\tstring x = _SLIT("nil");')
-				g.auto_str_funcs.writeln('\t\tif (it != 0) {')
+				if !typ.has_flag(.option) {
+					g.auto_str_funcs.writeln('\t\tif (it != 0) {')
+				}
 				g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write_string(&sb, _SLIT("${deref_label}"));')
 				g.auto_str_funcs.writeln('\t\t\tx = ${elem_str_fn_name}(${deref}it);')
-				g.auto_str_funcs.writeln('\t\t}')
+				if !typ.has_flag(.option) {
+					g.auto_str_funcs.writeln('\t\t}')
+				}
 			} else {
 				g.auto_str_funcs.writeln('\t\tstring x = indent_${elem_str_fn_name}(it, indent_count);')
 			}
@@ -610,10 +615,14 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 			deref, deref_label := deref_kind(str_method_expects_ptr, is_elem_ptr, typ)
 			if is_elem_ptr {
 				g.auto_str_funcs.writeln('\t\tstring x = _SLIT("nil");')
-				g.auto_str_funcs.writeln('\t\tif (it != 0) {')
+				if !typ.has_flag(.option) {
+					g.auto_str_funcs.writeln('\t\tif (it != 0) {')
+				}
 				g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write_string(&sb, _SLIT("${deref_label}"));')
 				g.auto_str_funcs.writeln('\t\t\tx = ${elem_str_fn_name}(${deref}it);')
-				g.auto_str_funcs.writeln('\t\t}')
+				if !typ.has_flag(.option) {
+					g.auto_str_funcs.writeln('\t\t}')
+				}
 			} else {
 				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _SLIT("${deref_label}"));')
 				g.auto_str_funcs.writeln('\t\tstring x = ${elem_str_fn_name}(${deref}it);')
@@ -821,7 +830,7 @@ fn (g &Gen) type_to_fmt(typ ast.Type) StrIntpType {
 		return .si_p
 	}
 	sym := g.table.sym(typ)
-	if typ.is_ptr() && (typ.is_int_valptr() || typ.is_float_valptr()) {
+	if typ.is_int_valptr() || typ.is_float_valptr() {
 		return .si_s
 	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_,
 		.sum_type, .function, .alias, .chan] {
@@ -1069,8 +1078,7 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 		}
 		if sym.kind == .bool {
 			return '${method_str} ? _SLIT("true") : _SLIT("false")', false
-		} else if (field_type.is_int_valptr() || field_type.is_float_valptr())
-			&& field_type.is_ptr() && !expects_ptr {
+		} else if (field_type.is_int_valptr() || field_type.is_float_valptr()) && !expects_ptr {
 			// ptr int can be "nil", so this needs to be casted to a string
 			if sym.kind == .f32 {
 				return 'str_intp(1, _MOV((StrIntpData[]){

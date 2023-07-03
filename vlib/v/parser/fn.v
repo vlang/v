@@ -10,16 +10,22 @@ import os
 
 fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.pos()
+	mut name := if language == .js { p.check_js_name() } else { p.check_name() }
+	mut is_static_type_method := language == .v && name[0].is_capital() && p.tok.kind == .dot
+	if is_static_type_method {
+		p.check(.dot)
+		name = name + '__static__' + p.check_name()
+	}
 	mut fn_name := if language == .c {
-		'C.${p.check_name()}'
+		'C.${name}'
 	} else if language == .js {
-		'JS.${p.check_js_name()}'
+		'JS.${name}'
 	} else if language == .wasm {
-		'WASM.${p.check_name()}'
+		'WASM.${name}'
 	} else if mod.len > 0 {
-		'${mod}.${p.check_name()}'
+		'${mod}.${name}'
 	} else {
-		p.check_name()
+		name
 	}
 	if language != .v {
 		p.check_for_impure_v(language, first_pos)
@@ -271,6 +277,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		language: language
 	}
 	mut is_method := false
+	mut is_static_type_method := false
 	mut params := []ast.Param{}
 	if p.tok.kind == .lpar {
 		is_method = true
@@ -287,10 +294,22 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut type_sym := p.table.sym(rec.typ)
 	name_pos := p.tok.pos()
 	if p.tok.kind == .name {
+		mut check_name := ''
 		// TODO high order fn
-		name = if language == .js { p.check_js_name() } else { p.check_name() }
-		if language == .v && !p.pref.translated && !p.is_translated && util.contains_capital(name)
-			&& !p.builtin_mod {
+		is_static_type_method = p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
+			&& p.peek_tok.kind == .dot && language == .v // `fn Foo.bar() {}`
+		if is_static_type_method {
+			type_name := p.tok.lit // "Foo"
+			rec.typ = p.parse_type()
+			p.check(.dot)
+			check_name = p.check_name()
+			name = type_name + '__static__' + check_name // "foo__bar"
+		} else {
+			check_name = if language == .js { p.check_js_name() } else { p.check_name() }
+			name = check_name
+		}
+		if language == .v && !p.pref.translated && !p.is_translated
+			&& util.contains_capital(check_name) && !p.builtin_mod {
 			p.error_with_pos('function names cannot contain uppercase letters, use snake_case instead',
 				name_pos)
 			return ast.FnDecl{
@@ -495,7 +514,7 @@ run them via `v file.v` instead',
 					if file_mode == .v && existing.file_mode != .v {
 						// a definition made in a .c.v file, should have a priority over a .v file definition of the same function
 						if !p.pref.is_fmt {
-							name = p.prepend_mod('pure_v_but_overriden_by_${existing.file_mode}_${short_fn_name}')
+							name = p.prepend_mod('pure_v_but_overridden_by_${existing.file_mode}_${short_fn_name}')
 						}
 					} else {
 						p.table.redefined_fns << name
@@ -519,6 +538,8 @@ run them via `v file.v` instead',
 			is_test: is_test
 			is_keep_alive: is_keep_alive
 			is_method: false
+			is_static_type_method: is_static_type_method
+			receiver_type: if is_static_type_method { rec.typ } else { 0 } // used only if is static type method
 			is_file_translated: p.is_translated
 			//
 			attrs: p.attrs
@@ -588,6 +609,7 @@ run them via `v file.v` instead',
 		generic_names: generic_names
 		receiver_pos: rec.pos
 		is_method: is_method
+		is_static_type_method: is_static_type_method
 		method_type_pos: rec.type_pos
 		method_idx: type_sym_method_idx
 		rec_mut: rec.is_mut
@@ -1138,7 +1160,7 @@ fn (mut p Parser) check_fn_mutable_arguments(typ ast.Type, pos token.Pos) {
 		.sum_type] {
 		return
 	}
-	if typ.is_ptr() || typ.is_pointer() {
+	if typ.is_any_kind_of_pointer() {
 		return
 	}
 	if sym.kind == .alias {

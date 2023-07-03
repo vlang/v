@@ -116,7 +116,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	}
 	// `a = []`
 	if node.exprs.len == 0 {
-		// `a := fn_returing_opt_array() or { [] }`
+		// `a := fn_returning_opt_array() or { [] }`
 		if c.expected_type == ast.void_type && c.expected_or_type != ast.void_type {
 			c.expected_type = c.expected_or_type
 		}
@@ -128,7 +128,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		}
 		array_info := type_sym.array_info()
 		node.elem_type = array_info.elem_type
-		// clear option flag incase of: `fn opt_arr() ?[]int { return [] }`
+		// clear option flag in case of: `fn opt_arr() ?[]int { return [] }`
 		return if c.expected_type.has_flag(.shared_f) {
 			c.expected_type.clear_flag(.shared_f).deref()
 		} else {
@@ -164,7 +164,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 					c.expected_type = elem_type
 					c.type_implements(typ, elem_type, expr.pos())
 				}
-				if !typ.is_ptr() && !typ.is_pointer() && !c.inside_unsafe {
+				if !typ.is_any_kind_of_pointer() && !c.inside_unsafe {
 					typ_sym := c.table.sym(typ)
 					if typ_sym.kind != .interface_ {
 						c.mark_as_referenced(mut &expr, true)
@@ -199,7 +199,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				c.expected_type = elem_type
 				continue
 			} else {
-				if !typ.is_real_pointer() && !typ.is_int() && is_first_elem_ptr {
+				if !typ.is_any_kind_of_pointer() && !typ.is_int() && is_first_elem_ptr {
 					c.error('cannot have non-pointer of type `${c.table.type_to_str(typ)}` in a pointer array of type `${c.table.type_to_str(elem_type)}`',
 						expr.pos())
 				}
@@ -349,6 +349,9 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 	if node.typ != 0 {
 		info := c.table.sym(node.typ).map_info()
 		if info.value_type != 0 {
+			if info.value_type.has_flag(.result) {
+				c.error('cannot use Result type as map value type', node.pos)
+			}
 			val_sym := c.table.sym(info.value_type)
 			if val_sym.kind == .struct_ {
 				val_info := val_sym.info as ast.Struct
@@ -440,8 +443,10 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 					c.error('invalid map value: ${msg}', val.pos())
 				}
 			}
-			if !c.check_types(val_type, val0_type) || (i == 0 && val_type.is_number()
-				&& val0_type.is_number() && val0_type != ast.mktyp(val_type)) {
+			if !c.check_types(val_type, val0_type)
+				|| val0_type.has_flag(.option) != val_type.has_flag(.option)
+				|| (i == 0 && val_type.is_number() && val0_type.is_number()
+				&& val0_type != ast.mktyp(val_type)) {
 				msg := c.expected_msg(val_type, val0_type)
 				c.error('invalid map value: ${msg}', val.pos())
 			}

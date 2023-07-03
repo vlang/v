@@ -92,10 +92,10 @@ That means that the template automatically has access to that action's entire en
 
 ```html
 <html>
-  <header>
+  <head>
     <title>${page_title}</title>
     @css 'src/templates/page/home.css'
-  </header>
+  </head>
   <body>
     <h1 class="title">Hello, Vs.</h1>
     @for var in list_of_object
@@ -376,6 +376,81 @@ The middleware is executed in the following order:
 If any function of step 2 or 3 returns `false` the middleware functions that would
 come after it are not executed and the app handler will also not be executed. You 
 can think of it as a chain.
+
+### Context values
+
+You can store a value pair in vweb's context. It is especially usefull for passing variables
+from a middleware function to the route handler.
+
+**Example**:
+```v oksyntax
+module main
+
+import vweb
+
+struct App {
+	vweb.Context
+	middlewares map[string][]vweb.Middleware
+}
+
+pub fn (mut app App) index() vweb.Result {
+	// get the user or return HTTP 401
+	user := app.get_value[User]('user') or {
+		app.set_status(401, '')
+		return app.text('HTTP 401: Unauthorized')
+	}
+
+	return app.text('welcome ${user.name}')
+}
+
+fn main() {
+	vweb.run(&App{
+		middlewares: {
+			'/': [get_session]
+		}
+	}, 8080)
+}
+
+struct User {
+	session_id string
+	name       string
+}
+
+fn get_session(mut ctx vweb.Context) bool {
+	// impelement your own logic to get the user
+	user := User{
+		session_id: '123456'
+		name: 'Vweb'
+	}
+
+	// set the user
+	ctx.set_value('user', user)
+	return true
+}
+```
+
+When you visit the index page the middleware function `get_session` will run first
+This function sets a `User` value to a key `'user'`.
+We get this key in `index` and display it to the user if the `'user'` key exists.
+
+#### Changing Context values
+
+By default context values are immutable when retrieved with `get_value`. If you want to 
+change the value later you have to set it again with `set_value`.
+
+**Example:**
+```v ignore
+fn change_user(mut ctx vweb.Context) bool {
+	user := User{
+		session_id: '654321'
+		name: 'tester'
+	}
+
+	// set the user
+	ctx.set_value('user', user)
+	return true
+}
+```
 
 ### Redirect
 

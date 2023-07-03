@@ -10,8 +10,17 @@ import v.util
 import v.pkgconfig
 
 [inline]
+fn (mut c Checker) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
+	return if node is ast.Ident && node.obj is ast.Var {
+		(node.obj as ast.Var).ct_type_var
+	} else {
+		.no_comptime
+	}
+}
+
+[inline]
 fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
-	if node is ast.Ident && (node as ast.Ident).obj is ast.Var {
+	if node is ast.Ident && node.obj is ast.Var {
 		return match (node.obj as ast.Var).ct_type_var {
 			.generic_param {
 				// generic parameter from current function
@@ -32,7 +41,7 @@ fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
 	} else if node is ast.ComptimeSelector {
 		// val.$(field.name)
 		return c.get_comptime_selector_type(node, ast.void_type)
-	} else if node is ast.SelectorExpr && c.is_comptime_selector_type(node as ast.SelectorExpr) {
+	} else if node is ast.SelectorExpr && c.is_comptime_selector_type(node) {
 		// field_var.typ from $for field
 		return c.comptime_fields_default_type
 	}
@@ -117,7 +126,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		}
 		mut c2 := new_checker(c.table, pref2)
 		c2.comptime_call_pos = node.pos.pos
-		c2.check(node.vweb_tmpl)
+		c2.check(mut node.vweb_tmpl)
 		c.warnings << c2.warnings
 		c.errors << c2.errors
 		c.notices << c2.notices
@@ -143,6 +152,40 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		c.stmts_ending_with_expression(node.or_block.stmts)
 		// assume string for now
 		return ast.string_type
+	}
+	if node.method_name == 'res' {
+		if !c.inside_defer {
+			c.error('`res` can only be used in defer blocks', node.pos)
+			return ast.void_type
+		}
+
+		if c.fn_return_type == ast.void_type {
+			c.error('`res` can only be used in functions that returns something', node.pos)
+			return ast.void_type
+		}
+
+		sym := c.table.sym(c.fn_return_type)
+
+		if c.fn_return_type.has_flag(.result) {
+			c.error('`res` cannot be used in functions that returns a Result', node.pos)
+			return ast.void_type
+		}
+
+		if sym.info is ast.MultiReturn {
+			if node.args_var == '' {
+				c.error('`res` requires an index of the returned value', node.pos)
+				return ast.void_type
+			}
+			idx := node.args_var.int()
+			if idx < 0 || idx >= sym.info.types.len {
+				c.error('index ${idx} out of range of ${sym.info.types.len} return types',
+					node.pos)
+				return ast.void_type
+			}
+			return sym.info.types[idx]
+		}
+
+		return c.fn_return_type
 	}
 	if node.is_vweb {
 		return ast.string_type
@@ -874,14 +917,14 @@ fn (mut c Checker) get_comptime_selector_type(node ast.ComptimeSelector, default
 [inline]
 fn (mut c Checker) is_comptime_selector_field_name(node ast.SelectorExpr, field_name string) bool {
 	return c.inside_comptime_for_field && node.expr is ast.Ident
-		&& (node.expr as ast.Ident).name == c.comptime_for_field_var && node.field_name == field_name
+		&& node.expr.name == c.comptime_for_field_var && node.field_name == field_name
 }
 
 // is_comptime_selector_type checks if the SelectorExpr is related to $for variable accessing .typ field
 [inline]
 fn (mut c Checker) is_comptime_selector_type(node ast.SelectorExpr) bool {
 	if c.inside_comptime_for_field && node.expr is ast.Ident {
-		return (node.expr as ast.Ident).name == c.comptime_for_field_var && node.field_name == 'typ'
+		return node.expr.name == c.comptime_for_field_var && node.field_name == 'typ'
 	}
 	return false
 }
@@ -890,7 +933,7 @@ fn (mut c Checker) is_comptime_selector_type(node ast.SelectorExpr) bool {
 [inline]
 fn (mut c Checker) check_comptime_is_field_selector(node ast.SelectorExpr) bool {
 	if c.inside_comptime_for_field && node.expr is ast.Ident {
-		return (node.expr as ast.Ident).name == c.comptime_for_field_var
+		return node.expr.name == c.comptime_for_field_var
 	}
 	return false
 }

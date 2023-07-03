@@ -84,8 +84,14 @@ fn setup_sock(fd int) ! {
 	if C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_NODELAY, &flag, sizeof(int)) < 0 {
 		return error('setup_sock.setup_sock failed')
 	}
-	if C.fcntl(fd, C.F_SETFL, C.O_NONBLOCK) != 0 {
-		return error('fcntl failed')
+	$if freebsd {
+		if C.fcntl(fd, C.F_SETFL, C.SOCK_NONBLOCK) != 0 {
+			return error('fcntl failed')
+		}
+	} $else {
+		if C.fcntl(fd, C.F_SETFL, C.O_NONBLOCK) != 0 {
+			return error('fcntl failed')
+		}
 	}
 }
 

@@ -2021,7 +2021,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					fn_name := node.name.replace('.', '_')
 					// name := '_tt${g.tmp_count_af}_arg_expr_${fn_name}_$i'
 					name := '_arg_expr_${fn_name}_${i + 1}_${node.pos.pos}'
-					g.write('/*af arg*/' + name)
+					g.write('/*autofree arg*/' + name)
 				}
 			} else {
 				g.ref_or_deref_arg(arg, expected_types[i], node.language)
@@ -2132,7 +2132,7 @@ fn (mut g Gen) keep_alive_call_pregen(node ast.CallExpr) int {
 fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 	g.writeln('// keep_alive_call_postgen()')
 	for i, expected_type in node.expected_arg_types {
-		if expected_type.is_ptr() || expected_type.is_pointer() {
+		if expected_type.is_any_kind_of_pointer() {
 			g.writeln('GC_reachable_here(__tmp_arg_${tmp_cnt_save + i});')
 		}
 	}
@@ -2142,8 +2142,8 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
 	arg_typ := g.unwrap_generic(arg.typ)
 	arg_sym := g.table.sym(arg_typ)
-	exp_is_ptr := expected_type.is_real_pointer()
-	arg_is_ptr := arg_typ.is_real_pointer()
+	exp_is_ptr := expected_type.is_any_kind_of_pointer()
+	arg_is_ptr := arg_typ.is_any_kind_of_pointer()
 	if expected_type == 0 {
 		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
 	}
@@ -2155,7 +2155,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		&& g.table.unaliased_type(arg_typ).is_pointer() && expected_type.is_pointer()) {
 		if arg.is_mut {
 			if exp_sym.kind == .array {
-				if (arg.expr is ast.Ident && (arg.expr as ast.Ident).kind == .variable)
+				if (arg.expr is ast.Ident && arg.expr.kind == .variable)
 					|| arg.expr is ast.SelectorExpr {
 					g.write('&/*arr*/')
 					g.expr(arg.expr)
@@ -2173,7 +2173,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				g.expr(arg.expr)
 				return
 			} else if arg_sym.kind == .interface_ && exp_sym.kind == .interface_
-				&& (arg.expr is ast.Ident || arg.expr is ast.SelectorExpr) {
+				&& arg.expr in [ast.Ident, ast.SelectorExpr] {
 				g.write('&/*iface*/')
 				g.expr(arg.expr)
 				return
@@ -2204,7 +2204,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 					if atype.has_flag(.generic) {
 						atype = g.unwrap_generic(atype)
 					}
-					if atype.has_flag(.generic) {
+					if atype.has_flag(.generic) || arg.expr is ast.StructInit {
 						g.write('(voidptr)&/*qq*/')
 					} else {
 						needs_closing = true

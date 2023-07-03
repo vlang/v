@@ -97,6 +97,7 @@ by using any of the following commands in a terminal:
     * [Trailing struct literal arguments](#trailing-struct-literal-arguments)
     * [Access modifiers](#access-modifiers)
     * [Anonymous structs](#anonymous-structs)
+    * [Static type methods](#static-type-methods)
     * [[noinit] structs](#noinit-structs)
     * [Methods](#methods)
     * [Embedded structs](#embedded-structs)
@@ -2119,6 +2120,42 @@ fn main() {
 }
 ```
 
+To access the result of the function inside a `defer` block the `$res()` expression can be used.
+`$res()` is only used when a single value is returned, while on multi-return the `$res(idx)`
+is parameterized.
+
+```v ignore
+fn (mut app App) auth_middleware() bool {
+	defer {
+		if !$res() {
+			app.response.status_code = 401
+			app.response.body = 'Unauthorized'
+		}
+	}
+	header := app.get_header('Authorization')
+	if header == '' {
+		return false
+	}
+	return true
+}
+
+fn (mut app App) auth_with_user_middleware() (bool, string) {
+	defer {
+		if !$res(0) {
+			app.response.status_code = 401
+			app.response.body = 'Unauthorized'
+		} else {
+			app.user = $res(1)
+		}
+	}
+	header := app.get_header('Authorization')
+	if header == '' {
+		return false, ''
+	}
+	return true, 'TestUser'
+}
+```
+
 ### Goto
 
 V allows unconditionally jumping to a label with `goto`. The label name must be contained
@@ -2395,6 +2432,27 @@ assert book.author.name == 'Samantha Black'
 assert book.author.age == 24
 ```
 
+### Static type methods
+
+V now supports static type methods like `User.new()`. These are defined on a struct via
+`fn [Type name].[function name]` and allow to organize all functions related to a struct:
+
+```v oksyntax
+struct User {}
+
+fn User.new() User {
+	return User{}
+}
+
+user := User.new()
+```
+
+This is an alternative to factory functions like `fn new_user() User {}` and should be used
+instead.
+
+Note, that these are not constructors, but simple functions. V doesn't have constructors or
+classes.
+
 ### `[noinit]` structs
 
 V supports `[noinit]` structs, which are structs that cannot be initialised outside the module
@@ -2473,7 +2531,7 @@ but a short, preferably one letter long, name.
 
 ### Embedded structs
 
-V support embedded structs .
+V supports embedded structs.
 
 ```v
 struct Size {

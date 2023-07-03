@@ -297,7 +297,7 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 		}
 	}
 	// TODO: update loop var type
-	// how does this work currenly?
+	// how does this work currently?
 	c.check_loop_label(node.label, node.pos)
 	c.stmts(node.stmts)
 	c.loop_label = prev_loop_label

@@ -157,7 +157,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	}
 	for i, exp_type in expected_types {
 		exprv := node.exprs[expr_idxs[i]]
-		if exprv is ast.Ident && (exprv as ast.Ident).or_expr.kind == .propagate_option {
+		if exprv is ast.Ident && exprv.or_expr.kind == .propagate_option {
 			if exp_type.has_flag(.option) {
 				c.warn('unwrapping option is redundant as the function returns option',
 					node.pos)
@@ -195,8 +195,8 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			} else {
 				if exp_type_sym.kind == .interface_ {
 					if c.type_implements(got_type, exp_type, node.pos) {
-						if !got_type.is_ptr() && !got_type.is_pointer()
-							&& got_type_sym.kind != .interface_ && !c.inside_unsafe {
+						if !got_type.is_any_kind_of_pointer() && got_type_sym.kind != .interface_
+							&& !c.inside_unsafe {
 							c.mark_as_referenced(mut &node.exprs[expr_idxs[i]], true)
 						}
 					}
@@ -229,8 +229,8 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					pos)
 			}
 		}
-		if got_type.is_real_pointer() && !exp_type.is_real_pointer()
-			&& !c.table.unaliased_type(exp_type).is_real_pointer() {
+		if got_type.is_any_kind_of_pointer() && !exp_type.is_any_kind_of_pointer()
+			&& !c.table.unaliased_type(exp_type).is_any_kind_of_pointer() {
 			pos := node.exprs[expr_idxs[i]].pos()
 			if node.exprs[expr_idxs[i]].is_auto_deref_var() {
 				continue
@@ -239,8 +239,8 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			c.error('fn `${c.table.cur_fn.name}` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_type)}` instead',
 				pos)
 		}
-		if exp_type.is_real_pointer() && !got_type.is_real_pointer()
-			&& !c.table.unaliased_type(got_type).is_real_pointer()
+		if exp_type.is_any_kind_of_pointer() && !got_type.is_any_kind_of_pointer()
+			&& !c.table.unaliased_type(got_type).is_any_kind_of_pointer()
 			&& got_type != ast.int_literal_type && !c.pref.translated && !c.file.is_translated {
 			pos := node.exprs[expr_idxs[i]].pos()
 			if node.exprs[expr_idxs[i]].is_auto_deref_var() {
@@ -252,24 +252,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		if exp_type.is_ptr() && got_type.is_ptr() {
 			mut r_expr := &node.exprs[expr_idxs[i]]
 			if mut r_expr is ast.Ident {
-				if mut r_expr.obj is ast.Var {
-					mut obj := unsafe { &r_expr.obj }
-					if c.fn_scope != unsafe { nil } {
-						obj = c.fn_scope.find_var(r_expr.obj.name) or { obj }
-					}
-					if obj.is_stack_obj && !c.inside_unsafe {
-						type_sym := c.table.sym(obj.typ.set_nr_muls(0))
-						if !type_sym.is_heap() && !c.pref.translated && !c.file.is_translated {
-							suggestion := if type_sym.kind == .struct_ {
-								'declaring `${type_sym.name}` as `[heap]`'
-							} else {
-								'wrapping the `${type_sym.name}` object in a `struct` declared as `[heap]`'
-							}
-							c.error('`${r_expr.name}` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
-								r_expr.pos)
-						}
-					}
-				}
+				c.fail_if_stack_struct_action_outside_unsafe(mut r_expr, 'returned')
 			}
 		}
 	}

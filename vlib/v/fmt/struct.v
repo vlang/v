@@ -43,7 +43,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 			if comment.pos.pos >= end_pos {
 				if comment.pos.line_nr == field.pos.line_nr {
 					comment_aligns.add_info(attrs_len, field_types[i].len, comment.pos.line_nr,
-						use_threshold: true)
+						use_threshold: true
+					)
 				}
 				continue
 			}
@@ -54,7 +55,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		field_aligns.add_info(comments_len + field.name.len, ft.len, field.pos.line_nr)
 		if field.has_default_expr {
 			default_expr_aligns.add_info(attrs_len, field_types[i].len, field.pos.line_nr,
-				use_threshold: true)
+				use_threshold: true
+			)
 		}
 	}
 	f.writeln(' {')
@@ -258,7 +260,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	if node.is_anon {
 		f.write('struct ')
 	}
-	if node.fields.len == 0 && !node.has_update_expr {
+	if node.init_fields.len == 0 && !node.has_update_expr {
 		// `Foo{}` on one line if there are no fields or comments
 		if node.pre_comments.len == 0 {
 			f.write('${name}{}')
@@ -277,9 +279,9 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			f.expr(node.update_expr)
 			f.write(', ')
 		}
-		for i, field in node.fields {
-			f.expr(field.expr)
-			if i < node.fields.len - 1 {
+		for i, init_field in node.init_fields {
+			f.expr(init_field.expr)
+			if i < node.init_fields.len - 1 {
 				f.write(', ')
 			}
 		}
@@ -318,7 +320,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				f.write('...')
 				f.expr(node.update_expr)
 				if single_line_fields {
-					if node.fields.len > 0 {
+					if node.init_fields.len > 0 {
 						f.write(', ')
 					}
 				} else {
@@ -326,21 +328,21 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				}
 				f.comments(node.update_expr_comments, inline: true, has_nl: true, level: .keep)
 			}
-			for i, field in node.fields {
-				f.write('${field.name}: ')
-				f.expr(field.expr)
-				f.comments(field.comments, inline: true, has_nl: false, level: .indent)
+			for i, init_field in node.init_fields {
+				f.write('${init_field.name}: ')
+				f.expr(init_field.expr)
+				f.comments(init_field.comments, inline: true, has_nl: false, level: .indent)
 				if single_line_fields {
-					if i < node.fields.len - 1 {
+					if i < node.init_fields.len - 1 {
 						f.write(', ')
 					}
 				} else {
 					f.writeln('')
 				}
-				f.comments(field.next_comments, inline: false, has_nl: true, level: .keep)
-				if single_line_fields && (field.comments.len > 0
-					|| field.next_comments.len > 0
-					|| !expr_is_single_line(field.expr)
+				f.comments(init_field.next_comments, inline: false, has_nl: true, level: .keep)
+				if single_line_fields && (init_field.comments.len > 0
+					|| init_field.next_comments.len > 0
+					|| !expr_is_single_line(init_field.expr)
 					|| f.line_len > max_len.last()) {
 					single_line_fields = false
 					f.out.go_back_to(fields_start)

@@ -163,9 +163,9 @@ fn color_highlight(code string, tb &ast.Table) string {
 			}
 			.comment {
 				lit = if tok.lit != '' && tok.lit[0] == 1 {
-					'//${tok.lit[1..]}'
+					term.gray('//${tok.lit[1..]}')
 				} else {
-					'//${tok.lit}'
+					term.gray('//${tok.lit}')
 				}
 			}
 			.keyword {

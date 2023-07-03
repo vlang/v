@@ -681,7 +681,7 @@ fn expr_is_single_line(expr ast.Expr) bool {
 			}
 		}
 		ast.StructInit {
-			if !expr.no_keys && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
+			if !expr.no_keys && (expr.init_fields.len > 0 || expr.pre_comments.len > 0) {
 				return false
 			}
 		}
@@ -893,12 +893,12 @@ pub fn (mut f Gen) enum_decl(node ast.EnumDecl) {
 
 pub fn (mut f Gen) fn_decl(node ast.FnDecl) {
 	f.attrs(node.attrs)
-	f.write(node.stringify(f.table, f.cur_mod, f.mod2alias).replace('fn ', 'func '))
+	f.write(node.stringify_fn_decl(f.table, f.cur_mod, f.mod2alias).replace('fn ', 'func '))
 	f.fn_body(node)
 }
 
 pub fn (mut f Gen) anon_fn(node ast.AnonFn) {
-	f.write(node.stringify(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
+	f.write(node.stringify_anon_decl(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
 	f.fn_body(node.decl)
 }
 
@@ -1123,7 +1123,7 @@ pub fn (mut f Gen) interface_field(field ast.StructField) {
 
 pub fn (mut f Gen) interface_method(method ast.FnDecl) {
 	f.write('\t')
-	f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
+	f.write(method.stringify_fn_decl(f.table, f.cur_mod, f.mod2alias).after('fn '))
 	f.writeln('')
 	for param in method.params {
 		f.mark_types_import_as_used(param.typ)
@@ -1719,7 +1719,7 @@ pub fn (mut f Gen) infix_expr(node ast.InfixExpr) {
 	left_type_sym := f.table.final_sym(node.left_type)
 	is_array_push := left_type_sym.kind == .array && node.op == .left_shift
 	is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit
-		&& (node.right as ast.ArrayInit).exprs.len == 1
+		&& node.right.exprs.len == 1
 	if is_one_val_array_init {
 		// `var in [val]` => `var == val`
 		op := if node.op == .key_in { ' == ' } else { ' != ' }

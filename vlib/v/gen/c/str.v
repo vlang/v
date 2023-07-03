@@ -105,7 +105,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 	} else if sym_has_str_method
 		|| sym.kind in [.array, .array_fixed, .map, .struct_, .multi_return, .sum_type, .interface_] {
-		unwrap_option := expr is ast.Ident && (expr as ast.Ident).or_expr.kind == .propagate_option
+		unwrap_option := expr is ast.Ident && expr.or_expr.kind == .propagate_option
 		exp_typ := if unwrap_option { typ.clear_flag(.option) } else { typ }
 		is_ptr := exp_typ.is_ptr()
 		is_var_mut := expr.is_auto_deref_var()

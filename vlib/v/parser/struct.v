@@ -407,7 +407,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		p.check(.lcbr)
 	}
 	pre_comments := p.eat_comments()
-	mut fields := []ast.StructInitField{}
+	mut init_fields := []ast.StructInitField{}
 	mut i := 0
 	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr && p.tok.kind != .ellipsis // `Vec{a,b,c}
 	saved_is_amp := p.is_amp
@@ -423,7 +423,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		mut first_field_pos := token.Pos{}
 		mut comments := []ast.Comment{}
 		mut nline_comments := []ast.Comment{}
-		is_update_expr := fields.len == 0 && p.tok.kind == .ellipsis
+		is_update_expr := init_fields.len == 0 && p.tok.kind == .ellipsis
 		if no_keys {
 			// name will be set later in checker
 			expr = p.expr(0)
@@ -463,7 +463,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		comments << p.eat_comments(same_line: true)
 		nline_comments << p.eat_comments()
 		if !is_update_expr {
-			fields << ast.StructInitField{
+			init_fields << ast.StructInitField{
 				name: field_name
 				expr: expr
 				pos: field_pos
@@ -482,7 +482,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		unresolved: typ.has_flag(.generic)
 		typ_str: typ_str
 		typ: typ
-		fields: fields
+		init_fields: init_fields
 		update_expr: update_expr
 		update_expr_pos: update_expr_pos
 		update_expr_comments: update_expr_comments
@@ -578,6 +578,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	mut is_mut := false
 	mut mut_pos := -1
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
+		// check embedded interface from internal module
 		if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
 			&& (p.peek_tok.line_nr != p.tok.line_nr
 			|| p.peek_tok.kind !in [.name, .amp, .lsbr, .lpar]
@@ -600,8 +601,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			}
 			continue
 		}
-
-		// Check embedded interface from external module
+		// check embedded interface from external module
 		if p.tok.kind == .name && p.peek_tok.kind == .dot {
 			if p.tok.lit !in p.imports {
 				p.error_with_pos('mod `${p.tok.lit}` not imported', p.tok.pos())
@@ -624,6 +624,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			if p.tok.kind == .rcbr {
 				break
 			}
+			continue
 		}
 
 		if p.tok.kind == .key_mut {
@@ -654,7 +655,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				p.error_with_pos('duplicate method `${name}`', method_start_pos)
 				return ast.InterfaceDecl{}
 			}
-			// field_names << name
 			args2, _, is_variadic := p.fn_args() // TODO merge ast.Param and ast.Arg to avoid this
 			mut args := [
 				ast.Param{
@@ -688,7 +688,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			method.comments = mcomments
 			method.next_comments = mnext_comments
 			methods << method
-			// println('register method $name')
 			tmethod := ast.Fn{
 				name: name
 				params: args

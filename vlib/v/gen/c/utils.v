@@ -15,9 +15,8 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 		// This should have already happened in the checker, since it also calls
 		// `resolve_generic_to_concrete`. `g.table` is made non-mut to make sure
 		// no one else can accidentally mutates the table.
-		mut mut_table := unsafe { &ast.Table(g.table) }
 		if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 {
-			if t_typ := mut_table.resolve_generic_to_concrete(typ, g.cur_fn.generic_names,
+			if t_typ := g.table.resolve_generic_to_concrete(typ, g.cur_fn.generic_names,
 				g.cur_concrete_types)
 			{
 				return t_typ
@@ -28,11 +27,30 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 				if sym.info is ast.Struct {
 					if sym.info.generic_types.len > 0 {
 						generic_names := sym.info.generic_types.map(g.table.sym(it).name)
-						if t_typ := mut_table.resolve_generic_to_concrete(typ, generic_names,
+						if t_typ := g.table.resolve_generic_to_concrete(typ, generic_names,
 							sym.info.concrete_types)
 						{
 							return t_typ
 						}
+					}
+				}
+			}
+		} else if typ.has_flag(.generic) && g.table.sym(typ).kind == .struct_ {
+			// resolve selector `a.foo` where `a` is struct[T] on non generic function	
+			sym := g.table.sym(typ)
+			if sym.info is ast.Struct {
+				if sym.info.generic_types.len > 0 {
+					generic_names := sym.info.generic_types.map(g.table.sym(it).name)
+					if t_typ := g.table.resolve_generic_to_concrete(typ, generic_names,
+						sym.info.concrete_types)
+					{
+						return t_typ
+					}
+
+					if t_typ := g.table.resolve_generic_to_concrete(typ, generic_names,
+						g.cur_concrete_types)
+					{
+						return t_typ
 					}
 				}
 			}

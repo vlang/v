@@ -119,8 +119,8 @@ fn (mut p Parser) check_undefined_variables(names []string, val ast.Expr) ! {
 			}
 		}
 		ast.StructInit {
-			for field in val.fields {
-				p.check_undefined_variables(names, field.expr)!
+			for init_field in val.init_fields {
+				p.check_undefined_variables(names, init_field.expr)!
 			}
 		}
 		ast.UnsafeExpr {

@@ -40,7 +40,8 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	}
 
 	info := table_sym.info as ast.Struct
-	mut fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
+	mut fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name,
+		node)
 	non_primitive_fields := c.get_orm_non_primitive_fields(fields)
 	mut sub_structs := map[int]ast.SqlExpr{}
 
@@ -215,7 +216,8 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	}
 
 	info := table_sym.info as ast.Struct
-	mut fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
+	mut fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name,
+		ast.SqlExpr{})
 	mut sub_structs := map[int]ast.SqlStmtLine{}
 	non_primitive_fields := c.get_orm_non_primitive_fields(fields)
 
@@ -327,23 +329,38 @@ fn (mut c Checker) check_orm_struct_field_attributes(field ast.StructField) {
 	}
 }
 
-fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, table_name string) []ast.StructField {
-	fields := info.fields.filter(fn [mut c] (field ast.StructField) bool {
+fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, table_name string, sql_expr ast.SqlExpr) []ast.StructField {
+	field_pos := c.orm_get_field_pos(sql_expr.where_expr)
+	mut fields := []ast.StructField{}
+	for field in info.fields {
 		is_primitive := field.typ.is_string() || field.typ.is_bool() || field.typ.is_number()
-		is_struct := c.table.type_symbols[int(field.typ)].kind == .struct_
-		is_array := c.table.sym(field.typ).kind == .array
-		is_array_with_struct_elements := is_array
-			&& c.table.sym(c.table.sym(field.typ).array_info().elem_type).kind == .struct_
-		has_no_skip_attr := !field.attrs.contains('skip')
-
-		return (is_primitive || is_struct || is_array_with_struct_elements) && has_no_skip_attr
-	})
-
+		fsym := c.table.sym(field.typ)
+		is_struct := fsym.kind == .struct_
+		is_array := fsym.kind == .array
+		elem_sym := if is_array {
+			c.table.sym(fsym.array_info().elem_type)
+		} else {
+			ast.invalid_type_symbol
+		}
+		is_array_with_struct_elements := is_array && elem_sym.kind == .struct_
+		has_skip_attr := field.attrs.contains('skip') || field.attrs.contains_arg('sql', '-')
+		if has_skip_attr {
+			continue
+		}
+		if is_primitive || is_struct || is_array_with_struct_elements {
+			fields << field
+		}
+		if is_array && elem_sym.is_primitive() {
+			c.add_error_detail('')
+			c.add_error_detail(' field name: `${field.name}`')
+			c.add_error_detail(' data type: `${c.table.type_to_str(field.typ)}`')
+			c.orm_error('does not support array of primitive types', field_pos)
+			return []ast.StructField{}
+		}
+	}
 	if fields.len == 0 {
 		c.orm_error('select: empty fields in `${table_name}`', pos)
-		return []ast.StructField{}
 	}
-
 	return fields
 }
 
@@ -605,8 +622,29 @@ fn (_ &Checker) check_field_of_inserting_struct_is_uninitialized(node &ast.SqlSt
 	struct_scope := node.scope.find_var(node.object_var_name) or { return false }
 
 	if struct_scope.expr is ast.StructInit {
-		return struct_scope.expr.fields.filter(it.name == field_name).len == 0
+		return struct_scope.expr.init_fields.filter(it.name == field_name).len == 0
 	}
 
 	return false
+}
+
+fn (c &Checker) orm_get_field_pos(expr &ast.Expr) token.Pos {
+	mut pos := token.Pos{}
+	if expr is ast.InfixExpr {
+		if expr.left is ast.Ident {
+			pos = expr.left.pos
+		} else if expr.left is ast.InfixExpr || expr.left is ast.ParExpr
+			|| expr.left is ast.PrefixExpr {
+			pos = c.orm_get_field_pos(expr.left)
+		} else {
+			pos = expr.left.pos()
+		}
+	} else if expr is ast.ParExpr {
+		pos = c.orm_get_field_pos(expr.expr)
+	} else if expr is ast.PrefixExpr {
+		pos = c.orm_get_field_pos(expr.right)
+	} else {
+		pos = expr.pos()
+	}
+	return pos
 }

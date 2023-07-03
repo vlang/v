@@ -173,7 +173,7 @@ pub fn (mut b Builder) parse_imports() {
 	// parsed (but not all of them), then this will cause a problem.
 	// we could add a list of parsed files instead, but I think
 	// there is a better solution all around, I will revisit this.
-	// NOTE: there is a very similar occurance with the way
+	// NOTE: there is a very similar occurrence with the way
 	// internal module test's work, and this was the reason there
 	// were issues with duplicate declarations, so we should sort
 	// that out in a similar way.
@@ -590,7 +590,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 				for stmt in file.stmts {
 					if stmt is ast.FnDecl {
 						if stmt.name == fn_name {
-							fheader := stmt.stringify(b.table, 'main', map[string]string{})
+							fheader := stmt.stringify_fn_decl(b.table, 'main', map[string]string{})
 							redefines << FunctionRedefinition{
 								fpath: file.path
 								fline: stmt.pos.line_nr

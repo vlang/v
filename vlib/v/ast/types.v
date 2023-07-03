@@ -311,6 +311,17 @@ pub fn (t Type) is_ptr() bool {
 }
 
 [inline]
+pub fn (typ Type) is_pointer() bool {
+	// builtin pointer types (voidptr, byteptr, charptr)
+	return typ.idx() in ast.pointer_type_idxs
+}
+
+[inline]
+pub fn (typ Type) is_voidptr() bool {
+	return typ.idx() == ast.voidptr_type_idx
+}
+
+[inline]
 pub fn (t Type) is_any_kind_of_pointer() bool {
 	return (int(t) >> 16) & 0xff > 0 || (u16(t) & 0xffff) in ast.pointer_type_idxs
 }
@@ -472,39 +483,23 @@ pub fn new_type_ptr(idx int, nr_muls int) Type {
 }
 
 [inline]
-pub fn (typ Type) is_pointer() bool {
-	// builtin pointer types (voidptr, byteptr, charptr)
-	return typ.idx() in ast.pointer_type_idxs
-}
-
-[inline]
-pub fn (typ Type) is_voidptr() bool {
-	return typ.idx() == ast.voidptr_type_idx
-}
-
-[inline]
-pub fn (typ Type) is_real_pointer() bool {
-	return typ.is_ptr() || typ.is_pointer()
-}
-
-[inline]
 pub fn (typ Type) is_float() bool {
-	return typ.clear_flags() in ast.float_type_idxs
+	return !typ.is_ptr() && typ.idx() in ast.float_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_int() bool {
-	return typ.clear_flags() in ast.integer_type_idxs
+	return !typ.is_ptr() && typ.idx() in ast.integer_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_int_valptr() bool {
-	return typ.idx() in ast.integer_type_idxs
+	return typ.is_ptr() && typ.idx() in ast.integer_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_float_valptr() bool {
-	return typ.idx() in ast.float_type_idxs
+	return typ.is_ptr() && typ.idx() in ast.float_type_idxs
 }
 
 [inline]
@@ -1218,7 +1213,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	}
 	// Note, that the duplication of code in some of the match branches here
 	// is VERY deliberate. DO NOT be tempted to use `else {}` instead, because
-	// that strongly reduces the usefullness of the exhaustive checking that
+	// that strongly reduces the usefulness of the exhaustive checking that
 	// match does.
 	//    Using else{} here led to subtle bugs in vfmt discovered *months*
 	// after the original code was written.
@@ -1406,7 +1401,7 @@ fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases 
 	} else {
 		// FIXME: clean this case and remove the following if
 		// because it is an hack to format well the type when
-		// there is a []modul.name
+		// there is a []mod.name
 		if res.contains('[]') {
 			idx := res.index('.') or { -1 }
 			return res[idx + 1..]

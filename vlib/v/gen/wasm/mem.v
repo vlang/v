@@ -267,8 +267,8 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_m
 // is_pure_type(voidptr) == true
 // is_pure_type(&Struct) == false
 fn (g Gen) is_pure_type(typ ast.Type) bool {
-	if typ.is_pure_int() || typ.is_pure_float() || typ == ast.char_type_idx || typ.is_real_pointer()
-		|| typ.is_bool() {
+	if typ.is_pure_int() || typ.is_pure_float() || typ == ast.char_type_idx
+		|| typ.is_any_kind_of_pointer() || typ.is_bool() {
 		return true
 	}
 	ts := g.table.sym(typ)
@@ -612,7 +612,7 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 				}
 			}
 
-			for f in init.fields {
+			for f in init.init_fields {
 				field := ts.find_field(f.name) or {
 					g.w_error('could not find field `${f.name}` on init')
 				}

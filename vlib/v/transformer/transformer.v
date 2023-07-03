@@ -659,8 +659,8 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		}
 		ast.StructInit {
 			node.update_expr = t.expr(mut node.update_expr)
-			for mut field in node.fields {
-				field.expr = t.expr(mut field.expr)
+			for mut init_field in node.init_fields {
+				init_field.expr = t.expr(mut init_field.expr)
 			}
 		}
 		ast.UnsafeExpr {
