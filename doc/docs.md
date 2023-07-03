@@ -169,7 +169,7 @@ by using any of the following commands in a terminal:
     * [Attributes](#attributes)
     * [Conditional compilation](#conditional-compilation)
         * [Compile time pseudo variables](#compile-time-pseudo-variables)
-        * [Compile-time reflection](#compile-time-reflection)
+        * [Compile time reflection](#compile-time-reflection)
         * [Compile time code](#compile-time-code)
         * [Environment specific files](#environment-specific-files)
     * [Memory-unsafe code](#memory-unsafe-code)
@@ -2957,7 +2957,7 @@ const (
 		g: 0
 		b: 0
 	}
-	// evaluate function call at compile-time*
+	// evaluate function call at compile time*
 	blue = rgb(0, 0, 255)
 )
 
@@ -5503,10 +5503,12 @@ vm := vmod.decode( @VMOD_FILE ) or { panic(err) }
 eprintln('${vm.name} ${vm.version}\n ${vm.description}')
 ```
 
-### Compile-time reflection
+### Compile time reflection
+
+`$` is used as a prefix for compile time operations.
 
 Having built-in JSON support is nice, but V also allows you to create efficient
-serializers for any data format. V has compile-time `if` and `for` constructs:
+serializers for any data format. V has compile time `if` and `for` constructs:
 
 ```v
 struct User {
@@ -5530,8 +5532,6 @@ See [`examples/compiletime/reflection.v`](/examples/compiletime/reflection.v)
 for a more complete example.
 
 ### Compile time code
-
-`$` is used as a prefix for compile-time operations.
 
 #### `$if` condition
 
@@ -5718,6 +5718,27 @@ x.v:4:5: error: Linux is not supported
     5 | }
     6 |
 ```
+
+### Compile time types
+
+Compile time types group multiple types into a general higher-level type. This is useful in
+functions with generic parameters, where the input type must have a specific property, for example
+the `.len` attribute in arrays.
+
+V supports the following compile time types:
+
+- `$map` => matches [Maps](#maps).
+- `$int` => matches `int`, `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `isize`, `usize`
+  and integer literals.
+- `$float` => matches `f32`, `f64` and float literals.
+- `$struct` => matches [Structs](#structs).
+- `$interface` => matches [Interfaces](#interfaces).
+- `$array` => matches [Arrays](#arrays) and [Fixed Size Arrays](#fixed-size-arrays).
+- `$sumtype` => matches [Sum Types](#sum-types).
+- `$enum` => matches [Enums](#enums).
+- `$alias` => matches [Type aliases](#type-aliases).
+- `$function` => matches [Function Types](#function-types).
+- `$option` => matches [Option Types](#optionresult-types-and-error-handling).
 
 ### Environment specific files
 
