@@ -392,6 +392,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							left.right.obj.is_used = true
 						}
 					}
+				} else if left.op == .amp {
+					c.error('cannot use a reference on the left side of `${node.op}`',
+						left.pos)
+				} else {
+					c.error('cannot use `${left.op}` on the left of `${node.op}`', left.pos)
 				}
 				if is_decl {
 					c.error('non-name on the left side of `:=`', left.pos)
