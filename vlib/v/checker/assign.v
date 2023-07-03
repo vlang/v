@@ -18,7 +18,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	right_first := node.right[0]
 	node.left_types = []
 	mut right_len := node.right.len
-	mut right_type0 := ast.void_type
+	mut right_first_type := ast.void_type
 	for i, mut right in node.right {
 		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr,
 			ast.SelectorExpr, ast.ParExpr] {
@@ -39,9 +39,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					info.size_expr, false)
 			}
 			if i == 0 {
-				right_type0 = right_type
+				right_first_type = right_type
 				node.right_types = [
-					c.check_expr_opt_call(right, right_type0),
+					c.check_expr_opt_call(right, right_first_type),
 				]
 			}
 			if right_type_sym.kind == .multi_return {
@@ -730,19 +730,14 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.expr(right_node.right)
 			c.inside_ref_lit = old_inside_ref_lit
 			if right_node.op == .amp {
-				expr := if right_node.right is ast.ParExpr {
-					mut expr_ := right_node.right.expr
-					for mut expr_ is ast.ParExpr {
-						expr_ = expr_.expr
-					}
-					expr_
-				} else {
-					right_node.right
+				mut expr := right_node.right
+				for mut expr is ast.ParExpr {
+					expr = expr.expr
 				}
-				if expr is ast.Ident {
-					if expr.obj is ast.Var {
+				if mut expr is ast.Ident {
+					if mut expr.obj is ast.Var {
 						v := expr.obj
-						right_type0 = v.typ
+						right_first_type = v.typ
 					}
 					if !c.inside_unsafe && assigned_var.is_mut() && !expr.is_mut() {
 						c.error('`${expr.name}` is immutable, cannot have a mutable reference to it',
@@ -752,7 +747,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			if right_node.op == .arrow {
 				if assigned_var.is_mut {
-					right_sym := c.table.sym(right_type0)
+					right_sym := c.table.sym(right_first_type)
 					if right_sym.kind == .chan {
 						chan_info := right_sym.chan_info()
 						if chan_info.elem_type.is_ptr() && !chan_info.is_mut {
