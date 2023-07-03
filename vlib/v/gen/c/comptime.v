@@ -617,7 +617,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 					}
 				}
 				.key_in, .not_in {
-					if cond.left in [ast.TypeNode, ast.SelectorExpr] && cond.right is ast.ArrayInit {
+					if cond.left in [ast.TypeNode, ast.SelectorExpr, ast.Ident] && cond.right is ast.ArrayInit {
 						checked_type := g.get_expr_type(cond.left)
 
 						for expr in cond.right.exprs {
@@ -632,9 +632,8 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 								}
 							} else if expr is ast.TypeNode {
 								got_type := g.unwrap_generic(expr.typ)
-								is_true := checked_type.idx() == got_type.idx()
-									&& checked_type.has_flag(.option) == got_type.has_flag(.option)
-								if is_true {
+								if checked_type.idx() == got_type.idx()
+									&& checked_type.has_flag(.option) == got_type.has_flag(.option) {
 									if cond.op == .key_in {
 										g.write('1')
 									} else {
@@ -650,9 +649,6 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 							g.write('0')
 						}
 						return cond.op == .not_in, true
-					} else {
-						g.write('1')
-						return true, true
 					}
 				}
 				.gt, .lt, .ge, .le {
