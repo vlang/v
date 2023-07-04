@@ -560,6 +560,35 @@ fn (mut g Gen) zero_fill(v Var, size int) {
 	}
 }
 
+fn (mut g Gen) set_with_multi_expr(init ast.Expr, expected ast.Type, existing_rvars []Var) {
+	// concatexpr?
+	match init {
+		ast.ConcatExpr{
+			mut r := 0
+			types := g.unpack_type(expected)
+			for idx, expr in init.vals {
+				typ := types[idx]
+				if g.is_param_type(typ) {
+					if rhs := g.get_var_from_expr(expr) {
+						g.mov(existing_rvars[r], rhs)
+					} else {
+						g.set_with_expr(expr, existing_rvars[r])
+					}					
+					r++
+				} else {
+					g.expr(expr, typ)
+				}
+			}
+		}
+		ast.IfExpr{
+			g.if_expr(init, expected, existing_rvars)
+		}
+		else {
+			g.w_error('wasm.set_with_multi_expr(): unhandled node: ' + init.type_name())
+		}
+	}
+}
+
 fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 	match init {
 		ast.StructInit {

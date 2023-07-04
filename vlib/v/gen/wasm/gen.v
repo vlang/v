@@ -32,6 +32,7 @@ mut:
 	local_vars        []Var
 	global_vars       map[string]Global
 	scope_context       [][]Var
+	ret ast.Type
 	ret_types []ast.Type
 	ret_br wasm.LabelIndex
 	bp_idx            wasm.LocalIndex = -1 // Base pointer temporary's index for function, if needed (-1 for none)
@@ -205,6 +206,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	mut return_var := []Var{}
 	rt := node.return_type
 	rts := g.table.sym(rt)
+	g.ret = rt
 	match rts.info {
 		ast.MultiReturn {
 			for t in rts.info.types {
@@ -531,31 +533,7 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
 	}
 }
 
-/* 
-
-fn (mut g Gen) new_for_label(node_label string) string {
-	g.lbl++
-	label := if node_label != '' {
-		node_label
-	} else {
-		g.lbl.str()
-	}
-	g.for_labels << label
-
-	return label
-}
-
-fn (mut g Gen) pop_for_label() {
-	g.for_labels.pop()
-}
-
-struct BlockPatch {
-mut:
-	idx   int
-	block binaryen.Expression
-} */
-
-fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, idx int) {
+fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, idx int, existing_rvars []Var) {
 	curr := ifexpr.branches[idx]
 	params := if expected == ast.void_type {
 		[]wasm.ValType{}
@@ -566,22 +544,22 @@ fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, idx int) {
 	g.expr(curr.cond, ast.bool_type)
 	blk := g.func.c_if([], params)
 	{
-		g.expr_stmts(curr.stmts, expected)
+		g.rvar_expr_stmts(curr.stmts, expected, existing_rvars)
 	}
 	{
 		if ifexpr.has_else && idx + 2 >= ifexpr.branches.len {
 			g.func.c_else(blk)
-			g.expr_stmts(ifexpr.branches[idx + 1].stmts, expected)
+			g.rvar_expr_stmts(ifexpr.branches[idx + 1].stmts, expected, existing_rvars)
 		} else if !(idx + 1 >= ifexpr.branches.len) {
 			g.func.c_else(blk)
-			g.if_branch(ifexpr, expected, idx + 1)
+			g.if_branch(ifexpr, expected, idx + 1, existing_rvars)
 		}
 	}
 	g.func.c_end(blk)
 }
 
-fn (mut g Gen) if_expr(ifexpr ast.IfExpr, expected ast.Type) {
-	g.if_branch(ifexpr, expected, 0)
+fn (mut g Gen) if_expr(ifexpr ast.IfExpr, expected ast.Type, existing_rvars []Var) {
+	g.if_branch(ifexpr, expected, 0, existing_rvars)
 }
 
 fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []Var) {
@@ -799,9 +777,8 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			if v := g.get_var_from_expr(node) {
 				if g.needs_address {
 					if !v.is_address {
-						g.v_error('cannot take the address of a value that doesn\'t live on the stack', node.pos)
+						g.v_error('cannot take the address of a value that doesn\'t live on the stack. this is a current limitation.', node.pos)
 					}
-
 					g.ref(v)
 				} else {
 					g.get(v)
@@ -891,7 +868,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			g.func.i32_const(0)
 		}
 		ast.IfExpr {
-			g.if_expr(node, expected)
+			g.if_expr(node, expected, [])
 		}
 		ast.CastExpr {
 			g.expr(node.expr, node.expr_type)
@@ -900,13 +877,13 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		ast.CallExpr {
 			g.call_expr(node, expected, [])
 		}
-		ast.ConcatExpr {
+		/* ast.ConcatExpr {
 			types := g.unpack_type(expected)
 
 			for idx, expr in node.vals {
 				g.expr(expr, types[idx])
 			}
-		}
+		} */
 		else {
 			g.w_error('wasm.expr(): unhandled node: ' + node.type_name())
 		}
@@ -926,6 +903,16 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 				g.func.c_br(g.ret_br)
 				return
 			}
+
+			if node.exprs.len != g.ret_types.len {
+				assert node.exprs.len == 1
+				g.set_with_multi_expr(node.exprs[0], g.ret, return_vars)
+				g.func.c_br(g.ret_br)
+				return
+			}
+
+			// TODO: generate an ast.Block{} to insert to rvar_expr_stmts?
+			//       ast.Return should be able to work with an if_expr
 
 			mut r := 0
 			for idx, expr in node.exprs {
@@ -1005,34 +992,6 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 			}
 			g.func.c_end(block)
 		}
-		/* ast.ForCStmt {
-			mut for_stmt := []binaryen.Expression{}
-			if node.has_init {
-				for_stmt << g.expr_stmt(node.init, ast.void_type)
-			}
-
-			lbl := g.new_for_label(node.label)
-			lpp_name := 'L${lbl}'
-			blk_name := 'B${lbl}'
-
-			mut loop_exprs := []binaryen.Expression{}
-			if node.has_cond {
-				condexpr := binaryen.unary(g.mod, binaryen.eqzint32(), g.expr(node.cond,
-					ast.bool_type))
-				loop_exprs << binaryen.br(g.mod, blk_name.str, condexpr, unsafe { nil })
-			}
-			loop_exprs << g.expr_stmts(node.stmts, ast.void_type)
-
-			if node.has_inc {
-				loop_exprs << g.expr_stmt(node.inc, ast.void_type)
-			}
-			loop_exprs << binaryen.br(g.mod, lpp_name.str, unsafe { nil }, unsafe { nil })
-			loop := binaryen.loop(g.mod, lpp_name.str, g.mkblock(loop_exprs))
-
-			for_stmt << binaryen.block(g.mod, blk_name.str, &loop, 1, type_none)
-			g.pop_for_label()
-			g.mkblock(for_stmt)
-		} */
 		ast.BranchStmt {
 			mut bp := g.loop_breakpoint_stack.last()
 			if node.label != '' {
@@ -1062,6 +1021,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 				// `a, b := if cond { 1, 2 } else { 3, 4 }`
 
 				if is_multireturn {
+					eprintln('multireturn')
 					g.expr(node.right[0], 0)
 
 					for i := node.left.len ; i > 0 ; {
@@ -1128,7 +1088,6 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 							return
 						}
 
-
 						g.set_prepare(lhs)
 						{
 							g.get(lhs)
@@ -1153,11 +1112,19 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 }
 
 pub fn (mut g Gen) expr_stmts(stmts []ast.Stmt, expected ast.Type) {
+	g.rvar_expr_stmts(stmts, expected, [])
+}
+
+pub fn (mut g Gen) rvar_expr_stmts(stmts []ast.Stmt, expected ast.Type, existing_rvars []Var) {
 	for idx, stmt in stmts {
 		rtyp := if idx + 1 == stmts.len {
 			expected
 		} else {
 			ast.void_type
+		}
+		if stmt is ast.ExprStmt {
+			g.set_with_multi_expr(stmt.expr, expected, existing_rvars)
+			return
 		}
 		g.expr_stmt(stmt, rtyp)
 	}
