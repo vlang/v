@@ -583,8 +583,19 @@ fn (mut g Gen) set_with_multi_expr(init ast.Expr, expected ast.Type, existing_rv
 		ast.IfExpr{
 			g.if_expr(init, expected, existing_rvars)
 		}
+		ast.CallExpr{
+			g.call_expr(init, expected, existing_rvars)
+		}
 		else {
-			g.w_error('wasm.set_with_multi_expr(): unhandled node: ' + init.type_name())
+			if existing_rvars.len > 1 {
+				g.w_error('wasm.set_with_multi_expr(): (existing_rvars.len > 1) node: ' + init.type_name())
+			}
+
+			if existing_rvars.len == 1 {
+				g.set_with_expr(init, existing_rvars[0])
+			} else {
+				g.expr(init, expected)
+			}
 		}
 	}
 }

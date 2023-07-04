@@ -533,16 +533,11 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
 	}
 }
 
-fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, idx int, existing_rvars []Var) {
+fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_params []wasm.ValType, idx int, existing_rvars []Var) {
 	curr := ifexpr.branches[idx]
-	params := if expected == ast.void_type {
-		[]wasm.ValType{}
-	} else {
-		g.unpack_type(expected).map(g.get_wasm_type(it))
-	}
 
 	g.expr(curr.cond, ast.bool_type)
-	blk := g.func.c_if([], params)
+	blk := g.func.c_if([], unpacked_params)
 	{
 		g.rvar_expr_stmts(curr.stmts, expected, existing_rvars)
 	}
@@ -552,14 +547,19 @@ fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, idx int, existing
 			g.rvar_expr_stmts(ifexpr.branches[idx + 1].stmts, expected, existing_rvars)
 		} else if !(idx + 1 >= ifexpr.branches.len) {
 			g.func.c_else(blk)
-			g.if_branch(ifexpr, expected, idx + 1, existing_rvars)
+			g.if_branch(ifexpr, expected, unpacked_params, idx + 1, existing_rvars)
 		}
 	}
 	g.func.c_end(blk)
 }
 
 fn (mut g Gen) if_expr(ifexpr ast.IfExpr, expected ast.Type, existing_rvars []Var) {
-	g.if_branch(ifexpr, expected, 0, existing_rvars)
+	params := if expected == ast.void_type {
+		[]wasm.ValType{}
+	} else {
+		g.unpack_type(expected).filter(!g.is_param_type(it)).map(g.get_wasm_type(it))
+	}
+	g.if_branch(ifexpr, expected, params, 0, existing_rvars)
 }
 
 fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []Var) {
@@ -897,36 +897,11 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 		}
 		ast.Return {
 			return_vars := g.scope_context[0]
-			
-			if node.exprs.len == 1 && node.exprs[0] is ast.CallExpr {
-				g.call_expr(node.exprs[0] as ast.CallExpr, 0, return_vars)
-				g.func.c_br(g.ret_br)
-				return
-			}
 
-			if node.exprs.len != g.ret_types.len {
-				assert node.exprs.len == 1
+			if node.exprs.len > 1 {
+				g.set_with_multi_expr(ast.ConcatExpr{vals: node.exprs}, g.ret, return_vars)
+			} else if node.exprs.len == 1 {
 				g.set_with_multi_expr(node.exprs[0], g.ret, return_vars)
-				g.func.c_br(g.ret_br)
-				return
-			}
-
-			// TODO: generate an ast.Block{} to insert to rvar_expr_stmts?
-			//       ast.Return should be able to work with an if_expr
-
-			mut r := 0
-			for idx, expr in node.exprs {
-				typ := g.ret_types[idx] // node.types LIES
-				if g.is_param_type(typ) {
-					if rhs := g.get_var_from_expr(expr) {
-						g.mov(return_vars[r], rhs)
-					} else {
-						g.set_with_expr(expr, return_vars[r])
-					}					
-					r++
-				} else {
-					g.expr(expr, typ)
-				}
 			}
 			g.func.c_br(g.ret_br)
 		}
