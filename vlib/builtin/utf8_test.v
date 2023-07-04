@@ -54,3 +54,24 @@ fn test_to_wide_cyrillic() {
 		assert w[5] == 0
 	}
 }
+
+const wide_serial_number = [u8(67), 0, 76, 0, 52, 0, 54, 0, 73, 0, 49, 0, 65, 0, 48, 0, 48, 0,
+	54, 0, 52, 0, 57, 0, 0, 0, 0]
+
+const swide_serial_number = 'CL46I1A00649'
+
+fn test_string_from_wide() {
+	z := unsafe { string_from_wide(wide_serial_number.data) }
+	assert z == swide_serial_number
+}
+
+fn test_string_from_wide2() {
+	z := unsafe { string_from_wide2(wide_serial_number.data, 12) }
+	assert z == swide_serial_number
+}
+
+fn test_reverse_cyrillic_with_string_from_wide() {
+	s := 'Проба'
+	z := unsafe { string_from_wide(s.to_wide()) }
+	assert z == s
+}

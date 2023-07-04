@@ -316,8 +316,8 @@ pub fn malloc(n isize) &u8 {
 		C.fprintf(C.stderr, c'_v_malloc %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
-	if n <= 0 {
-		panic('malloc(${n} <= 0)')
+	if n < 0 {
+		panic('malloc(${n} < 0)')
 	}
 	$if vplayground ? {
 		if n > 10000 {
@@ -359,8 +359,8 @@ pub fn malloc_noscan(n isize) &u8 {
 		C.fprintf(C.stderr, c'malloc_noscan %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
-	if n <= 0 {
-		panic('malloc_noscan(${n} <= 0)')
+	if n < 0 {
+		panic('malloc_noscan(${n} < 0)')
 	}
 	$if vplayground ? {
 		if n > 10000 {
@@ -418,8 +418,8 @@ pub fn malloc_uncollectable(n isize) &u8 {
 		C.fprintf(C.stderr, c'malloc_uncollectable %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
-	if n <= 0 {
-		panic('malloc_uncollectable(${n} <= 0)')
+	if n < 0 {
+		panic('malloc_uncollectable(${n} < 0)')
 	}
 	$if vplayground ? {
 		if n > 10000 {

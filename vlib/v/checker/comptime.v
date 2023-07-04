@@ -666,7 +666,6 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 						sym := c.table.sym(cond.right.typ)
 						if sym.kind != .interface_ {
 							c.expr(cond.left)
-							// c.error('`$sym.name` is not an interface', cond.right.pos())
 						}
 						return .unknown
 					} else if cond.left is ast.TypeNode && cond.right is ast.ComptimeType {
@@ -743,7 +742,8 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 					}
 				}
 				.key_in, .not_in {
-					if cond.left in [ast.SelectorExpr, ast.TypeNode] && cond.right is ast.ArrayInit {
+					if cond.left in [ast.TypeNode, ast.SelectorExpr, ast.Ident]
+						&& cond.right is ast.ArrayInit {
 						c.expr(cond.left)
 						for expr in cond.right.exprs {
 							if expr !in [ast.ComptimeType, ast.TypeNode] {

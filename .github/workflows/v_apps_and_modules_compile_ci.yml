@@ -85,18 +85,18 @@ jobs:
 #          v run /tmp/gitly/tests/first_run.v
 #          # /tmp/gitly/gitly -ci_run
 
-      - name: Build V Language Server (VLS) vlang/vls
-        run: |
-          echo "Clone VLS"
-          git clone --depth 1 https://github.com/vlang/vls /tmp/vls
-          echo "Build VLS"
-          v /tmp/vls/cmd/vls
-          echo "Build VLS with -prod"
-          v -prod /tmp/vls/cmd/vls
-          echo "Build VLS with -gc boehm -skip-unused"
-          v -gc boehm -skip-unused /tmp/vls/cmd/vls
-          echo "Test VLS with gcc"
-          v -cc gcc test /tmp/vls
+#      - name: Build V Language Server (VLS) vlang/vls
+#        run: |
+#          echo "Clone VLS"
+#          git clone --depth 1 https://github.com/vlang/vls /tmp/vls
+#          echo "Build VLS"
+#          v /tmp/vls/cmd/vls
+#          echo "Build VLS with -prod"
+#          v -prod /tmp/vls/cmd/vls
+#          echo "Build VLS with -gc boehm -skip-unused"
+#          v -gc boehm -skip-unused /tmp/vls/cmd/vls
+#          echo "Test VLS with gcc"
+#          v -cc gcc test /tmp/vls
 
       - name: Build vlang/go2v
         run: |

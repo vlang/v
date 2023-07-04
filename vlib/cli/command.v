@@ -294,10 +294,12 @@ fn (cmd Command) check_required_flags() {
 pub fn (cmd Command) execute_help() {
 	if cmd.commands.contains('help') {
 		help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
-		help_cmd.execute(help_cmd) or { panic(err) }
-	} else {
-		print(cmd.help_message())
+		if !isnil(help_cmd.execute) {
+			help_cmd.execute(help_cmd) or { panic(err) }
+			return
+		}
 	}
+	print(cmd.help_message())
 }
 
 // execute_help executes the callback registered
