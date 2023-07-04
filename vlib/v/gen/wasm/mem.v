@@ -561,7 +561,7 @@ fn (mut g Gen) zero_fill(v Var, size int) {
 }
 
 fn (mut g Gen) set_with_multi_expr(init ast.Expr, expected ast.Type, existing_rvars []Var) {
-	// concatexpr?
+	// misleading name: this doesn't really perform similar to `set_with_expr`
 	match init {
 		ast.ConcatExpr{
 			mut r := 0
@@ -573,7 +573,7 @@ fn (mut g Gen) set_with_multi_expr(init ast.Expr, expected ast.Type, existing_rv
 						g.mov(existing_rvars[r], rhs)
 					} else {
 						g.set_with_expr(expr, existing_rvars[r])
-					}					
+					}
 					r++
 				} else {
 					g.expr(expr, typ)
@@ -591,8 +591,12 @@ fn (mut g Gen) set_with_multi_expr(init ast.Expr, expected ast.Type, existing_rv
 				g.w_error('wasm.set_with_multi_expr(): (existing_rvars.len > 1) node: ' + init.type_name())
 			}
 
-			if existing_rvars.len == 1 {
-				g.set_with_expr(init, existing_rvars[0])
+			if existing_rvars.len == 1 && g.is_param_type(expected) {
+				if rhs := g.get_var_from_expr(init) {
+					g.mov(existing_rvars[0], rhs)
+				} else {
+					g.set_with_expr(init, existing_rvars[0])
+				}
 			} else {
 				g.expr(init, expected)
 			}

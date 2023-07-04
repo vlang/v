@@ -556,6 +556,8 @@ fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_params [
 fn (mut g Gen) if_expr(ifexpr ast.IfExpr, expected ast.Type, existing_rvars []Var) {
 	params := if expected == ast.void_type {
 		[]wasm.ValType{}
+	} else if existing_rvars.len == 0 {
+		g.unpack_type(expected).map(g.get_wasm_type(it))
 	} else {
 		g.unpack_type(expected).filter(!g.is_param_type(it)).map(g.get_wasm_type(it))
 	}
@@ -990,39 +992,79 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 				// `a, b = b, a`
 			} else {
 				// `a := 1` | `a, b := 1, 2`
-
-				is_multireturn := node.left.len > 1 && node.right.len == 1
 				// `a, b := foo()`
 				// `a, b := if cond { 1, 2 } else { 3, 4 }`
+				
+				assert node.op in [.decl_assign, .assign]
 
-				if is_multireturn {
-					eprintln('multireturn')
-					g.expr(node.right[0], 0)
-
-					for i := node.left.len ; i > 0 ; {
-						i--
-						left := node.left[i]
-						typ := node.left_types[i]
+				// similar code from `call_expr()`
+				mut rvars := []Var{cap: node.left_types.len}
+				for idx, rt in node.left_types {
+					if g.is_param_type(rt) {
+						left := node.left[idx]
 
 						if left is ast.Ident {
-							// `_ = expr`
 							if left.kind == .blank_ident {
-								// expression still may have side effect
-								g.func.drop()
-								continue
-							}
-							if node.op == .decl_assign {
-								g.new_local(left.name, typ)
+								rvars << g.new_local('_', rt)
+							} else if node.op == .decl_assign {
+								rvars << g.new_local(left.name, rt)
 							}
 						}
-
-						v := g.get_var_or_make_from_expr(left, typ)
-						g.set(v)
 					}
-					return
 				}
 
-				for i, left in node.left {
+				if node.right.len == 1 {
+					right := node.right[0]
+					match right {
+						ast.IfExpr {
+							params := node.left_types.filter(!g.is_param_type(it)).map(g.get_wasm_type(it))
+							g.if_branch(right, right.typ, params, 0, rvars)
+						}
+						ast.CallExpr {
+							g.call_expr(right, 0, rvars)
+						}
+						else {
+							g.w_error('unhandled node in ast.AssignStmt: ' + right.type_name())
+						}
+					}
+				} else {
+					assert node.left.len == node.right.len
+					mut ridx := 0
+					for idx, right in node.right {
+						typ := node.left_types[idx]
+						if g.is_param_type(typ) {
+							g.set_with_expr(right, rvars[ridx])								
+							ridx++
+						} else {
+							g.expr(right, typ)
+						}
+					}
+				}
+
+				for i := node.left.len ; i > 0 ; {
+					i--
+					left := node.left[i]
+					typ := node.left_types[i]
+
+					if g.is_param_type(typ) {
+						// is already set
+						continue
+					}
+
+					if left is ast.Ident {
+						// `_ = expr`
+						if left.kind == .blank_ident {
+							// expression still may have side effect
+							g.func.drop()
+							continue
+						}
+					}
+
+					v := g.get_var_or_make_from_expr(left, typ)
+					g.set(v)
+				}
+
+				/* for i, left in node.left {
 					right := node.right[i]
 					typ := node.left_types[i]
 
@@ -1077,7 +1119,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 					} else {
 						g.set_with_expr(right, lhs)
 					}
-				}
+				} */
 			}
 		}
 		else {

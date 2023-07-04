@@ -1,11 +1,5 @@
-fn multi_ret() (string, string) {
-	return 'hello', 'hello'
-}
-
-fn main() {
-	mut val := ''
-	mut oval := ?string(none)
-
-	oval, val = multi_ret() // order doesn't matter
-	val, oval = multi_ret() // order doesn't matter
+fn aa() {
+	mut a := 0
+	mut b := 0
+	a, b *= 10, 15
 }
