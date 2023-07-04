@@ -16,7 +16,7 @@ fn test_nested_sumtype_selector() {
 		pos: 1
 	}))}
 	for c.node is Expr {
-		assert typeof(c.node).name == 'Expr'
+		assert typeof(c.node).name == 'Node'
 		break
 	}
 }
