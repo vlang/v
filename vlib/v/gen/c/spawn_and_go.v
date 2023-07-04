@@ -79,7 +79,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	wrapper_fn_name := name + '_thread_wrapper'
 	arg_tmp_var := 'arg_' + tmp
 	if is_spawn {
-		g.writeln('${wrapper_struct_name} *${arg_tmp_var} = malloc(sizeof(thread_arg_${name}));')
+		g.writeln('${wrapper_struct_name} *${arg_tmp_var} = (${wrapper_struct_name} *) _v_malloc(sizeof(thread_arg_${name}));')
 	} else if is_go {
 		g.writeln('${wrapper_struct_name} ${arg_tmp_var};')
 	}
@@ -106,7 +106,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	}
 	s_ret_typ := g.typ(node.call_expr.return_type)
 	if g.pref.os == .windows && node.call_expr.return_type != ast.void_type {
-		g.writeln('${arg_tmp_var}->ret_ptr = malloc(sizeof(${s_ret_typ}));')
+		g.writeln('${arg_tmp_var}->ret_ptr = (void *) _v_malloc(sizeof(${s_ret_typ}));')
 	}
 	is_opt := node.call_expr.return_type.has_flag(.option)
 	is_res := node.call_expr.return_type.has_flag(.result)
@@ -201,7 +201,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			}
 			if node.call_expr.return_type != ast.void_type {
 				g.gowrappers.writeln('\t${s_ret_typ} ret = *ret_ptr;')
-				g.gowrappers.writeln('\tfree(ret_ptr);')
+				g.gowrappers.writeln('\t_v_free(ret_ptr);')
 				g.gowrappers.writeln('\treturn ret;')
 			}
 			g.gowrappers.writeln('}')
@@ -278,7 +278,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			if g.pref.os == .windows {
 				g.gowrappers.write_string('\t*((${s_ret_typ}*)(arg->ret_ptr)) = ')
 			} else {
-				g.gowrappers.writeln('\t${s_ret_typ}* ret_ptr = malloc(sizeof(${s_ret_typ}));')
+				g.gowrappers.writeln('\t${s_ret_typ}* ret_ptr = (${s_ret_typ}*) _v_malloc(sizeof(${s_ret_typ}));')
 				g.gowrappers.write_string('\t*ret_ptr = ')
 			}
 		} else {
@@ -359,7 +359,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			}
 		}
 		g.gowrappers.writeln(');')
-		g.gowrappers.writeln('\tfree(arg);')
+		g.gowrappers.writeln('\t_v_free(arg);')
 		if g.pref.os != .windows && node.call_expr.return_type != ast.void_type {
 			g.gowrappers.writeln('\treturn ret_ptr;')
 		} else {
