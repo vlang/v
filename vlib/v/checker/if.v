@@ -310,7 +310,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 		} else {
 			// smartcast sumtypes and interfaces when using `is`
-			c.smartcast_if_conds(branch.cond, mut branch.scope)
+			c.smartcast_if_conds(mut branch.cond, mut branch.scope)
 			if node_is_expr {
 				c.stmts_ending_with_expression(mut branch.stmts)
 			} else {
@@ -465,11 +465,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	return node.typ
 }
 
-fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
-	if node is ast.InfixExpr {
+fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
+	if mut node is ast.InfixExpr {
 		if node.op == .and {
-			c.smartcast_if_conds(node.left, mut scope)
-			c.smartcast_if_conds(node.right, mut scope)
+			c.smartcast_if_conds(mut node.left, mut scope)
+			c.smartcast_if_conds(mut node.right, mut scope)
 		} else if node.op == .key_is {
 			right_expr := node.right
 			right_type := match right_expr {
@@ -501,7 +501,7 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 					c.error('cannot use type `${expect_str}` as type `${expr_str}`', node.pos)
 				}
 				if node.left in [ast.Ident, ast.SelectorExpr] && node.right is ast.TypeNode {
-					is_variable := if node.left is ast.Ident {
+					is_variable := if mut node.left is ast.Ident {
 						node.left.kind == .variable
 					} else {
 						true
@@ -512,7 +512,7 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 							c.fail_if_immutable(node.left)
 						}
 						// TODO: Add check for sum types in a way that it doesn't break a lot of compiler code
-						if node.left is ast.Ident
+						if mut node.left is ast.Ident
 							&& (left_sym.kind == .interface_ && right_sym.kind != .interface_) {
 							v := scope.find_var(node.left.name) or { &ast.Var{} }
 							if v.is_mut && !node.left.is_mut {
@@ -521,14 +521,15 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 							}
 						}
 						if left_sym.kind in [.interface_, .sum_type] {
-							c.smartcast(node.left, node.left_type, right_type, mut scope)
+							c.smartcast(mut node.left, node.left_type, right_type, mut
+								scope)
 						}
 					}
 				}
 			}
 		}
-	} else if node is ast.Likely {
-		c.smartcast_if_conds(node.expr, mut scope)
+	} else if mut node is ast.Likely {
+		c.smartcast_if_conds(mut node.expr, mut scope)
 	}
 }
 
