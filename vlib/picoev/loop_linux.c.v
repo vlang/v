@@ -33,6 +33,8 @@ mut:
 
 type LoopType = EpollLoop
 
+// create_epoll_loop creates a new epoll instance for and returns an
+// `EpollLoop` struct with `id`
 pub fn create_epoll_loop(id int) !&EpollLoop {
 	mut loop := &EpollLoop{
 		id: id

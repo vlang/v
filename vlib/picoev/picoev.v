@@ -1,6 +1,7 @@
 module picoev
 
 import picohttpparser
+import time
 
 pub const (
 	max_fds          = 1024
@@ -58,6 +59,8 @@ mut:
 	buf &u8 = unsafe { nil }
 	idx [1024]int
 	out &u8 = unsafe { nil }
+
+	date string
 }
 
 // init fills the `file_descriptors` array
@@ -220,6 +223,7 @@ fn raw_callback(fd int, events int, context voidptr) {
 			fd: fd
 			buf_start: out
 			buf: out
+			date: pv.date
 		}
 
 		for {
@@ -241,7 +245,7 @@ fn raw_callback(fd int, events int, context voidptr) {
 			pv.idx[fd] += r
 
 			mut s := unsafe { tos(buf, pv.idx[fd]) }
-			pret := req.parse_request(s, pv.max_headers) // Parse request via picohttpparser
+			pret := req.parse_request(s) // Parse request via picohttpparser
 			if pret > 0 { // Success
 				break
 			} else if pret == -1 { // Parse error
@@ -250,7 +254,6 @@ fn raw_callback(fd int, events int, context voidptr) {
 			}
 
 			assert pret == -2
-
 			// request is incomplete, continue the loop
 			if pv.idx[fd] == sizeof(buf) {
 				pv.err_cb(pv.user_data, req, mut &res, error('RequestIsTooLongError'))
@@ -303,9 +306,24 @@ pub fn new(config Config) &Picoev {
 	return pv
 }
 
-// server starts the Picoev server
+// serve starts the Picoev server
 pub fn (mut pv Picoev) serve() {
+	spawn update_date(mut pv)
+
 	for {
 		pv.loop_once(1)
+	}
+}
+
+// update_date updates `date` on `pv` every second.
+fn update_date(mut pv Picoev) {
+	for {
+		// get GMT (UTC) time for the HTTP Date header
+		gmt := time.utc()
+		mut date := gmt.strftime('---, %d --- %Y %H:%M:%S GMT')
+		date = date.replace_once('---', gmt.weekday_str())
+		date = date.replace_once('---', gmt.smonth())
+		pv.date = date
+		time.sleep(time.second)
 	}
 }

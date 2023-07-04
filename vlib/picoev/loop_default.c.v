@@ -15,6 +15,7 @@ mut:
 
 type LoopType = SelectLoop
 
+// create_select_loop creates a `SelectLoop` struct with `id`
 pub fn create_select_loop(id int) !&SelectLoop {
 	return &SelectLoop{
 		id: id

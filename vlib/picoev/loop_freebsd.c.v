@@ -34,6 +34,7 @@ mut:
 
 type LoopType = KqueueLoop
 
+// create_kqueue_loop creates a new kernel event queue with loop_id=`id`
 pub fn create_kqueue_loop(id int) !&KqueueLoop {
 	mut loop := &KqueueLoop{
 		id: id
