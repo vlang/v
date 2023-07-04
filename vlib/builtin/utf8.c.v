@@ -1,5 +1,7 @@
 module builtin
 
+import strings
+
 const cp_utf8 = 65001
 
 // to_wide returns a pointer to an UTF-16 version of the string receiver.
@@ -34,7 +36,7 @@ pub fn (_str string) to_wide() &u16 {
 
 // string_from_wide creates a V string, encoded in UTF-8, given a windows
 // style string encoded in UTF-16.
-[unsafe]
+[manualfree; unsafe]
 pub fn string_from_wide(_wstr &u16) string {
 	$if windows {
 		unsafe {
@@ -42,7 +44,17 @@ pub fn string_from_wide(_wstr &u16) string {
 			return string_from_wide2(_wstr, wstr_len)
 		}
 	} $else {
-		return ''
+		mut len := 0
+		mut i := 0
+		for {
+			r := rune(unsafe { _wstr[i] })
+			if r == 0 {
+				break
+			}
+			len += r.length_in_bytes()
+			i++
+		}
+		return unsafe { string_from_wide2(_wstr, len) }
 	}
 }
 
@@ -50,7 +62,7 @@ pub fn string_from_wide(_wstr &u16) string {
 // style string, encoded in UTF-16. It is more efficient, compared to
 // string_from_wide, but it requires you to know the input string length,
 // and to pass it as the second argument.
-[unsafe]
+[manualfree; unsafe]
 pub fn string_from_wide2(_wstr &u16, len int) string {
 	$if windows {
 		unsafe {
@@ -64,6 +76,15 @@ pub fn string_from_wide2(_wstr &u16, len int) string {
 			return tos2(str_to)
 		}
 	} $else {
-		return ''
+		mut sb := strings.new_builder(len)
+		defer {
+			unsafe { sb.free() }
+		}
+		for i := 0; i < len; i++ {
+			u := unsafe { rune(_wstr[i]) }
+			sb.write_rune(u)
+		}
+		res := sb.str()
+		return res
 	}
 }
