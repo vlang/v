@@ -666,17 +666,6 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 						sym := c.table.sym(cond.right.typ)
 						if sym.kind != .interface_ {
 							c.expr(cond.left)
-							left_type := c.unwrap_generic((cond.left as ast.TypeNode).typ)
-							ret_val := if left_type == cond.right.typ {
-								ComptimeBranchSkipState.eval
-							} else {
-								ComptimeBranchSkipState.skip
-							}
-							if cond.op == .key_is {
-								return ret_val
-							} else {
-								return if ret_val == .eval { .skip } else { .eval }
-							}
 						}
 						return .unknown
 					} else if cond.left is ast.TypeNode && cond.right is ast.ComptimeType {

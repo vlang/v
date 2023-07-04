@@ -100,7 +100,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					is_comptime_type_is_expr = true
 				}
 			} else if mut branch.cond is ast.InfixExpr {
-				if branch.cond.op == .key_is {
+				if branch.cond.op in [.not_is, .key_is] {
 					left := branch.cond.left
 					right := branch.cond.right
 					if right !in [ast.TypeNode, ast.ComptimeType] {
@@ -170,7 +170,10 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							skip_state = c.check_compatible_types(checked_type, right as ast.TypeNode)
 						}
 					}
-				} else if branch.cond.op in [.eq, .ne] {
+					if branch.cond.op == .not_is && skip_state != .unknown {
+						skip_state = if skip_state == .eval { .skip } else { .eval }
+					}
+				} else if branch.cond.op in [.eq, .ne, .gt, .lt, .ge, .le] {
 					left := branch.cond.left
 					right := branch.cond.right
 					if left is ast.SelectorExpr && right is ast.IntegerLiteral {
