@@ -78,6 +78,7 @@ mut:
 	call_fn(node ast.CallExpr)
 	call(addr int) i64
 	cjmp(op JumpOp) int
+	cmp_to_stack_top(r Register)
 	cmp_var_reg(var Var, reg Register, config VarConfig)
 	cmp_var(var Var, val int, config VarConfig)
 	cmp_zero(reg Register)
@@ -86,7 +87,6 @@ mut:
 	convert_rune_to_string(r Register, buffer int, var Var, config VarConfig)
 	dec_var(var Var, config VarConfig)
 	fn_decl(node ast.FnDecl)
-	for_in_stmt(node ast.ForInStmt)
 	gen_asm_stmt(asm_node ast.AsmStmt)
 	gen_assert(assert_node ast.AssertStmt)
 	gen_cast_expr(expr ast.CastExpr)
@@ -118,6 +118,7 @@ mut:
 	mov64(r Register, val i64)
 	movabs(reg Register, val i64)
 	prefix_expr(node ast.PrefixExpr)
+	push(r Register)
 	ret()
 	return_stmt(node ast.Return)
 	reverse_string(r Register)
