@@ -69,3 +69,9 @@ fn test_string_from_wide2() {
 	z := unsafe { string_from_wide2(wide_serial_number.data, 12) }
 	assert z == swide_serial_number
 }
+
+fn test_reverse_cyrillic_with_string_from_wide() {
+	s := 'Проба'
+	z := unsafe { string_from_wide(s.to_wide()) }
+	assert z == s
+}

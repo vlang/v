@@ -44,17 +44,11 @@ pub fn string_from_wide(_wstr &u16) string {
 			return string_from_wide2(_wstr, wstr_len)
 		}
 	} $else {
-		mut len := 0
 		mut i := 0
-		for {
-			r := rune(unsafe { _wstr[i] })
-			if r == 0 {
-				break
-			}
-			len += r.length_in_bytes()
+		for unsafe { _wstr[i] } != 0 {
 			i++
 		}
-		return unsafe { string_from_wide2(_wstr, len) }
+		return unsafe { string_from_wide2(_wstr, i) }
 	}
 }
 
