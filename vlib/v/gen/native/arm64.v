@@ -527,6 +527,6 @@ fn (mut c Arm64) cmp_to_stack_top(reg Register) {
 	panic('Arm64.cmp_to_stack_top() not implemented')
 }
 
-fn (mut c Arm64) push(r Register){
+fn (mut c Arm64) push(r Register) {
 	panic('Arm64.push() not implemented')
 }
