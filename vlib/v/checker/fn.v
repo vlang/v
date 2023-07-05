@@ -1723,7 +1723,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					}
 					if c.table.sym(param.typ).kind == .interface_ {
 						// cannot hide interface expected type to make possible to pass its interface type automatically
-						earg_types << param.typ.set_nr_muls(targ.nr_muls())
+						earg_types << if targ.idx() != param.typ.idx() { param.typ } else { targ }
 					} else {
 						earg_types << targ
 					}

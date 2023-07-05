@@ -13,8 +13,8 @@ fn (t Test) test(a ITest) {}
 
 fn test(a ITest) {}
 
-fn get() Test {
-	return Test{}
+fn get() &Test {
+	return &Test{}
 }
 
 fn test_main() {
@@ -23,6 +23,14 @@ fn test_main() {
 	a.call(Test{})
 	test(Test{})
 	Test{}.test(a)
+
+	assert true
+}
+
+fn test_ptr() {
+	mut a := Cmdable{}
+	a.call = test
+	a.call(get())
 
 	assert true
 }
