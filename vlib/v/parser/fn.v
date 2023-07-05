@@ -764,6 +764,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			name: arg.name
 			typ: arg.typ
 			is_mut: arg.is_mut
+			is_auto_deref: arg.is_mut || arg.is_auto_rec
 			pos: arg.pos
 			is_used: true
 			is_arg: true
