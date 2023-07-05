@@ -57,12 +57,12 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		}
 		if !node.has_else || i < node.branches.len - 1 {
 			if node.is_comptime {
-				skip_state = c.comptime_if_branch(branch.cond, branch.pos)
+				skip_state = c.comptime_if_branch(mut branch.cond, branch.pos)
 				node.branches[i].pkg_exist = if skip_state == .eval { true } else { false }
 			} else {
 				// check condition type is boolean
 				c.expected_type = ast.bool_type
-				cond_typ := c.table.unaliased_type(c.unwrap_generic(c.expr(branch.cond)))
+				cond_typ := c.table.unaliased_type(c.unwrap_generic(c.expr(mut branch.cond)))
 				if (cond_typ.idx() != ast.bool_type_idx || cond_typ.has_flag(.option)
 					|| cond_typ.has_flag(.result)) && !c.pref.translated && !c.file.is_translated {
 					c.error('non-bool type `${c.table.type_to_str(cond_typ)}` used as if condition',
@@ -325,8 +325,8 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				mut stmt := branch.stmts.last()
 				if mut stmt is ast.ExprStmt {
 					if mut stmt.expr is ast.ConcatExpr {
-						for val in stmt.expr.vals {
-							c.check_expr_opt_call(val, c.expr(val))
+						for mut val in stmt.expr.vals {
+							c.check_expr_opt_call(val, c.expr(mut val))
 						}
 					}
 					c.expected_type = former_expected_type
@@ -348,7 +348,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						}
 						continue
 					}
-					stmt.typ = c.expr(stmt.expr)
+					stmt.typ = c.expr(mut stmt.expr)
 					if c.table.type_kind(c.expected_type) == .multi_return
 						&& c.table.type_kind(stmt.typ) == .multi_return {
 						if node.typ == ast.void_type {
@@ -487,7 +487,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 			if right_type != ast.Type(0) {
 				left_sym := c.table.sym(node.left_type)
 				right_sym := c.table.sym(right_type)
-				mut expr_type := c.expr(node.left)
+				mut expr_type := c.expr(mut node.left)
 				if left_sym.kind == .aggregate {
 					expr_type = (left_sym.info as ast.Aggregate).sum_type
 				}

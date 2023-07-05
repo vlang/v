@@ -9,7 +9,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	defer {
 		c.expected_type = former_expected_type
 	}
-	mut left_type := c.expr(node.left)
+	mut left_type := c.expr(mut node.left)
 	node.left_type = left_type
 	c.expected_type = left_type
 
@@ -20,16 +20,16 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			if left_node.op == .and && mut left_node.right is ast.InfixExpr {
 				if left_node.right.op == .key_is {
 					// search last `n is ast.Ident` in the left
-					from_type := c.expr(left_node.right.left)
-					to_type := c.expr(left_node.right.right)
+					from_type := c.expr(mut left_node.right.left)
+					to_type := c.expr(mut left_node.right.right)
 					c.autocast_in_if_conds(mut node.right, left_node.right.left, from_type,
 						to_type)
 				}
 			}
 			if left_node.op == .key_is {
 				// search `n is ast.Ident`
-				from_type := c.expr(left_node.left)
-				to_type := c.expr(left_node.right)
+				from_type := c.expr(mut left_node.left)
+				to_type := c.expr(mut left_node.right)
 				c.autocast_in_if_conds(mut node.right, left_node.left, from_type, to_type)
 				break
 			} else if left_node.op == .and {
@@ -43,7 +43,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	if node.op == .key_is {
 		c.inside_x_is_type = true
 	}
-	mut right_type := c.expr(node.right)
+	mut right_type := c.expr(mut node.right)
 	if node.op == .key_is {
 		c.inside_x_is_type = false
 	}

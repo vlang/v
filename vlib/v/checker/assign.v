@@ -15,7 +15,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		c.inside_assign = prev_inside_assign
 	}
 	is_decl := node.op == .decl_assign
-	right_first := node.right[0]
+	mut right_first := node.right[0]
 	node.left_types = []
 	mut right_len := node.right.len
 	mut right_first_type := ast.void_type
@@ -24,9 +24,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			ast.SelectorExpr, ast.ParExpr] {
 			if right in [ast.IfExpr, ast.MatchExpr] && node.left.len == node.right.len && !is_decl
 				&& node.left[i] in [ast.Ident, ast.SelectorExpr] && !node.left[i].is_blank_ident() {
-				c.expected_type = c.expr(node.left[i])
+				mut expr := node.left[i]
+				c.expected_type = c.expr(mut expr)
 			}
-			mut right_type := c.expr(right)
+			mut right_type := c.expr(mut right)
 			if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr] {
 				c.fail_if_unreadable(right, right_type, 'right-hand side of assignment')
 			}
@@ -82,14 +83,14 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 	}
 	if node.left.len != right_len {
-		if right_first is ast.CallExpr {
+		if mut right_first is ast.CallExpr {
 			if node.left_types.len > 0 && node.left_types[0] == ast.void_type {
 				// If it's a void type, it's an unknown variable, already had an error earlier.
 				return
 			}
 			c.error('assignment mismatch: ${node.left.len} variable(s) but `${right_first.get_name()}()` returns ${right_len} value(s)',
 				node.pos)
-		} else if right_first is ast.ParExpr {
+		} else if mut right_first is ast.ParExpr {
 			mut right_next := right_first
 			for {
 				if mut right_next.expr is ast.CallExpr {
@@ -138,7 +139,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			if left is ast.IndexExpr {
 				c.is_index_assign = true
 			}
-			left_type = c.expr(left)
+			left_type = c.expr(mut left)
 			c.is_index_assign = false
 			c.expected_type = c.unwrap_generic(left_type)
 		}
@@ -154,7 +155,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 			c.inside_decl_rhs = is_decl
-			right_type := c.expr(node.right[i])
+			mut expr := node.right[i]
+			right_type := c.expr(mut expr)
 			c.inside_decl_rhs = false
 			c.inside_ref_lit = old_inside_ref_lit
 			if node.right_types.len == i {
@@ -188,14 +190,14 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			// check generic struct init and return unwrap generic struct type
 			if mut right is ast.StructInit {
 				if right.typ.has_flag(.generic) {
-					c.expr(right)
+					c.expr(mut right)
 					right_type = right.typ
 				}
 			} else if mut right is ast.PrefixExpr {
 				if right.op == .amp && right.right is ast.StructInit {
-					right_type = c.expr(right)
+					right_type = c.expr(mut right)
 				} else if right.op == .arrow {
-					right_type = c.expr(right)
+					right_type = c.expr(mut right)
 					right_type_sym := c.table.sym(right_type)
 					if right_type_sym.kind == .array_fixed
 						&& (right_type_sym.info as ast.ArrayFixed).is_fn_ret {
@@ -206,7 +208,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			} else if mut right is ast.Ident {
 				if right.kind == .function {
-					c.expr(right)
+					c.expr(mut right)
 				}
 			}
 			if right.is_auto_deref_var() {
@@ -721,8 +723,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	// this needs to run after the assign stmt left exprs have been run through checker
 	// so that ident.obj is set
 	// Check `x := &y` and `mut x := <-ch`
-	if right_first is ast.PrefixExpr {
-		right_node := right_first
+	if mut right_first is ast.PrefixExpr {
+		mut right_node := right_first
 		left_first := node.left[0]
 		if left_first is ast.Ident {
 			assigned_var := left_first
@@ -732,7 +734,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			old_inside_ref_lit := c.inside_ref_lit
 			c.inside_ref_lit = c.inside_ref_lit || right_node.op == .amp || is_shared
-			c.expr(right_node.right)
+			c.expr(mut right_node.right)
 			c.inside_ref_lit = old_inside_ref_lit
 			if right_node.op == .amp {
 				mut expr := right_node.right

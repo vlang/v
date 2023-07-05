@@ -72,7 +72,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			}
 			if field.has_default_expr {
 				c.expected_type = field.typ
-				field.default_expr_typ = c.expr(field.default_expr)
+				field.default_expr_typ = c.expr(mut field.default_expr)
 				for mut symfield in struct_sym.info.fields {
 					if symfield.name == field.name {
 						symfield.default_expr_typ = field.default_expr_typ
@@ -427,7 +427,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		.any {
 			// `T{ foo: 22 }`
 			for mut init_field in node.init_fields {
-				init_field.typ = c.expr(init_field.expr)
+				init_field.typ = c.expr(mut init_field.expr)
 				init_field.expected_type = init_field.typ
 			}
 			sym := c.table.sym(c.unwrap_generic(node.typ))
@@ -510,7 +510,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				exp_type = field_info.typ
 				exp_type_sym := c.table.sym(exp_type)
 				c.expected_type = exp_type
-				got_type = c.expr(init_field.expr)
+				got_type = c.expr(mut init_field.expr)
 				got_type_sym := c.table.sym(got_type)
 				if got_type == ast.void_type {
 					c.error('`${init_field.expr}` (no value) used as value', init_field.pos)
@@ -716,7 +716,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		else {}
 	}
 	if node.has_update_expr {
-		update_type := c.expr(node.update_expr)
+		update_type := c.expr(mut node.update_expr)
 		node.update_expr_type = update_type
 		if node.update_expr is ast.ComptimeSelector {
 			c.error('cannot use struct update syntax in compile time expressions', node.update_expr_pos)

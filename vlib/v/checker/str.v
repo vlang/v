@@ -43,8 +43,8 @@ fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 	inside_println_arg_save := c.inside_println_arg
 	c.inside_println_arg = true
-	for i, expr in node.exprs {
-		mut ftyp := c.expr(expr)
+	for i, mut expr in node.exprs {
+		mut ftyp := c.expr(mut expr)
 		if c.is_comptime_var(expr) {
 			ctyp := c.get_comptime_var_type(expr)
 			if ctyp != ast.void_type {
@@ -114,7 +114,7 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 		}
 		// check recursive str
 		if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.is_method
-			&& c.table.cur_fn.name == 'str' && c.table.cur_fn.receiver.name == expr.str() {
+			&& c.table.cur_fn.name == 'str' && c.table.cur_fn.receiver.name == '${expr}' {
 			c.error('cannot call `str()` method recursively', expr.pos())
 		}
 	}

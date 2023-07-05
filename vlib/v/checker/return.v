@@ -64,14 +64,14 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	}
 	mut got_types := []ast.Type{}
 	mut expr_idxs := []int{}
-	for i, expr in node.exprs {
-		mut typ := c.expr(expr)
+	for i, mut expr in node.exprs {
+		mut typ := c.expr(mut expr)
 		if typ == 0 {
 			return
 		}
 		// Handle `return unsafe { none }`
-		if expr is ast.UnsafeExpr {
-			if expr.expr is ast.None {
+		if mut expr is ast.UnsafeExpr {
+			if mut expr.expr is ast.None {
 				c.error('cannot return `none` in unsafe block', expr.expr.pos)
 			}
 		}
@@ -90,8 +90,8 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				expr_idxs << i
 			}
 		} else {
-			if expr is ast.Ident {
-				if expr.obj is ast.Var {
+			if mut expr is ast.Ident {
+				if mut expr.obj is ast.Var {
 					if expr.obj.smartcasts.len > 0 {
 						typ = c.unwrap_generic(expr.obj.smartcasts.last())
 					}
@@ -134,7 +134,8 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	if expected_types.len > 0 && expected_types.len != got_types.len {
 		// `fn foo() !(int, string) { return Err{} }`
 		if (exp_is_option || exp_is_result) && node.exprs.len == 1 {
-			got_type := c.expr(node.exprs[0])
+			mut expr_ := node.exprs[0]
+			got_type := c.expr(mut expr_)
 			got_type_sym := c.table.sym(got_type)
 			if got_type_sym.kind == .struct_
 				&& c.type_implements(got_type, ast.error_type, node.pos) {
