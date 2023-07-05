@@ -33,12 +33,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			right_type_sym := c.table.sym(right_type)
 			// fixed array returns an struct, but when assigning it must be the array type
-			if right_type_sym.kind == .array_fixed
-				&& (right_type_sym.info as ast.ArrayFixed).is_fn_ret {
-				info := right_type_sym.info as ast.ArrayFixed
-				right_type = c.table.find_or_register_array_fixed(info.elem_type, info.size,
-					info.size_expr, false)
-			}
+			right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
 			if i == 0 {
 				right_first_type = right_type
 				node.right_types = [
@@ -198,13 +193,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					right_type = c.expr(mut right)
 				} else if right.op == .arrow {
 					right_type = c.expr(mut right)
-					right_type_sym := c.table.sym(right_type)
-					if right_type_sym.kind == .array_fixed
-						&& (right_type_sym.info as ast.ArrayFixed).is_fn_ret {
-						info := right_type_sym.info as ast.ArrayFixed
-						right_type = c.table.find_or_register_array_fixed(info.elem_type,
-							info.size, info.size_expr, false)
-					}
+					right_type = c.cast_fixed_array_ret(right_type, c.table.sym(right_type))
 				}
 			} else if mut right is ast.Ident {
 				if right.kind == .function {

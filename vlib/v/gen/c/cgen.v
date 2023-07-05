@@ -1410,16 +1410,12 @@ pub fn (mut g Gen) write_typedef_types() {
 					g.type_definitions.writeln('typedef chan ${sym.cname};')
 					chan_inf := sym.chan_info()
 					chan_elem_type := chan_inf.elem_type
+					is_fixed_arr := g.table.sym(chan_elem_type).kind == .array_fixed
 					if !chan_elem_type.has_flag(.generic) {
-						mut el_stype := g.typ(chan_elem_type)
-						is_fixed_arr := g.table.sym(chan_elem_type).kind == .array_fixed
+						el_stype := if is_fixed_arr { '_v_' } else { '' } + g.typ(chan_elem_type)
 						val_arg_pop := if is_fixed_arr { '&val.ret_arr' } else { '&val' }
 						val_arg_push := if is_fixed_arr { 'val' } else { '&val' }
-						push_arg := if is_fixed_arr {
-							el_stype.trim_string_left('_v_') + '*'
-						} else {
-							el_stype
-						}
+						push_arg := el_stype + if is_fixed_arr { '*' } else { '' }
 						g.channel_definitions.writeln('
 static inline ${el_stype} __${sym.cname}_popval(${sym.cname} ch) {
 	${el_stype} val;
