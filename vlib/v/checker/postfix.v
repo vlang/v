@@ -3,7 +3,7 @@ module checker
 import v.ast
 
 fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
-	typ := c.unwrap_generic(c.expr(node.expr))
+	typ := c.unwrap_generic(c.expr(mut node.expr))
 	typ_sym := c.table.sym(typ)
 	is_non_void_pointer := typ.is_any_kind_of_pointer() && typ_sym.kind != .voidptr
 

@@ -178,8 +178,8 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		g.write('${util.no_dots(sym.name)}_${g.comptime_for_method}(')
 
 		// try to see if we need to pass a pointer
-		if node.left is ast.Ident {
-			if node.left.obj is ast.Var {
+		if mut node.left is ast.Ident {
+			if mut node.left.obj is ast.Var {
 				if m.params[0].typ.is_ptr() && !node.left.obj.typ.is_ptr() {
 					g.write('&')
 				}
@@ -190,7 +190,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			g.write(', ')
 		}
 		for i in 1 .. m.params.len {
-			if node.left is ast.Ident {
+			if mut node.left is ast.Ident {
 				if m.params[i].name == node.left.name {
 					continue
 				}

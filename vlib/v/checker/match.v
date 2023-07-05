@@ -18,7 +18,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			c.expected_expr_type = ast.void_type
 		}
 	}
-	cond_type := c.expr(node.cond)
+	cond_type := c.expr(mut node.cond)
 	// we setting this here rather than at the end of the method
 	// since it is used in c.match_exprs() it saves checking twice
 	node.cond_type = ast.mktyp(cond_type)
@@ -58,7 +58,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				if node.is_expr {
 					c.expected_type = node.expected_type
 				}
-				expr_type := c.expr(stmt.expr)
+				expr_type := c.expr(mut stmt.expr)
 				if !branch.is_else && cond_is_option && branch.exprs[0] !is ast.None {
 					c.error('`match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`',
 						branch.pos)
@@ -170,7 +170,7 @@ fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
 
 		if mut obj := c.table.global_scope.find_const(expr_name) {
 			if obj.typ == 0 {
-				obj.typ = c.expr(obj.expr)
+				obj.typ = c.expr(mut obj.expr)
 			}
 			return c.get_comptime_number_value(mut obj.expr)
 		}
@@ -192,7 +192,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			// TODO: investigate why enums are different here:
 			if expr !is ast.EnumVal {
 				// ensure that the sub expressions of the branch are actually checked, before anything else:
-				_ := c.expr(expr)
+				_ := c.expr(mut expr)
 			}
 			if expr is ast.TypeNode && cond_sym.kind == .struct_ {
 				c.error('struct instances cannot be matched by type name, they can only be matched to other instances of the same struct type',
@@ -276,7 +276,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				c.error('match case `${key}` is handled more than once', branch.pos)
 			}
 			c.expected_type = node.cond_type
-			expr_type := c.expr(expr)
+			expr_type := c.expr(mut expr)
 			if expr_type.idx() == 0 {
 				// parser failed, stop checking
 				return
