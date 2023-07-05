@@ -664,3 +664,64 @@ pub fn carray_to_varray[T](c_array_data voidptr, items int) []T {
 	unsafe { vmemcpy(v_array.data, c_array_data, total_size) }
 	return v_array
 }
+
+// find_first returns the first element that matches the given predicate
+// returns an optional in case none of the elements match the predicate
+// Example: arrays.find_first([1, 2, 3, 4, 5], fn (arr int) bool { arr == 3}) // => 3
+pub fn find_first[T](array []T, predicate fn (elem T) bool) ?T {
+  if array.len == 0 {
+    return none
+  }
+  for item in array {
+    if predicate(item) {
+      return item
+    }
+  }
+  return none
+}
+
+// find_last returns the first element that matches the given predicate
+// returns an optional in case none of the elements match the predicate
+// Example: arrays.find_last([1, 2, 3, 4, 5], fn (arr int) bool { arr == 3}) // => 3
+pub fn find_last[T](array []T, predicate fn (elem T) bool) ?T {
+  if array.len == 0 {
+    return none
+  }
+  for idx := array.len - 1; idx >= 0; idx-- {
+    item := array[idx]
+    if predicate(item) {
+      return item
+    }
+  }
+  return none
+}
+
+// join_to_string takes in a custom transform function and joins all elements into a string with
+// the specified separator
+pub fn join_to_string[T](array []T, separator string, transform fn (elem T) string) string {
+  mut builder := []string{len: array.len, cap: array.len}
+  for i, item in array {
+    builder[i] = transform(item)
+  }
+  return builder.join(separator)
+}
+
+// any_of returns true if any of the elements in the array matches the predicate
+pub fn any_of[T](array []T, predicate fn (elem T) bool) bool {
+  for item in array {
+    if predicate(item) {
+      return true
+    }
+  }
+  return false
+}
+
+// all_of returns true if all of the elements in the array matches the predicate
+pub fn all_of[T](array []T, predicate fn (elem T) bool) bool {
+  for item in array {
+    if !predicate(item) {
+      return false
+    }
+  }
+  return true
+}

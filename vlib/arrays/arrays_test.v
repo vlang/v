@@ -404,3 +404,68 @@ fn test_map_of_counts() {
 	assert map_of_counts(['abc', 'def', 'abc']) == {'abc': 2, 'def': 1}
 	// vfmt on
 }
+
+struct FindTest{
+  name string
+  age int
+}
+const test_structs = [FindTest{'one', 1}, FindTest{'two', 2}, FindTest{'three', 3}, FindTest{'one', 4}]
+fn test_find_first() {
+  // element in array
+  a := [1, 2, 3, 4, 5]
+  assert find_first[int](a, fn (arr int) bool {
+    return arr == 3
+  })? == 3, 'find element couldnt find the right element'
+
+  // find struct
+  find_by_name := find_first(test_structs, fn (arr FindTest) bool {
+    return arr.name == 'one'
+  })?
+  assert find_by_name == FindTest{'one', 1}
+
+  // not found
+  find_none := find_first(test_structs, fn (arr FindTest) bool {
+    return arr.name == 'nothing'
+  }) or {
+    assert true
+    return
+  }
+}
+
+fn test_find_last() {
+  // // element in array
+  a := [1, 2, 3, 4, 5]
+  assert find_last[int](a, fn (arr int) bool {
+    return arr == 3
+  })? == 3, 'find element couldnt find the right element'
+
+  // find struct
+  find_by_name := find_last(test_structs, fn (arr FindTest) bool {
+    return arr.name == 'one'
+  })?
+  assert find_by_name == FindTest{'one', 4}
+
+  // not found
+  find_none := find_last(test_structs, fn (arr FindTest) bool {
+    return arr.name == 'nothing'
+  }) or {
+    assert true
+    return
+  }
+}
+
+fn test_join_to_string() {
+  assert join_to_string[FindTest](test_structs, ":", fn (it FindTest) string { return it.name }) == "one:two:three:one"
+  assert join_to_string[FindTest](test_structs, "", fn (it FindTest) string { return it.name }) == "onetwothreeone"
+  assert join_to_string[int]([]int{}, ":", fn (it int) string { return "1" }) == ""
+}
+
+fn test_any() {
+  assert any_of[int]([1, 2, 3, 4, 5], fn (elem int) bool { return elem == 5 }) == true
+  assert any_of[FindTest](test_structs, fn (elem FindTest) bool { return elem.age > 10 }) == false
+}
+
+fn test_all() {
+  assert all_of[int]([1, 2, 3, 4, 5], fn (elem int) bool { return elem == 5 }) == false
+  assert all_of[FindTest](test_structs, fn (elem FindTest) bool { return elem.age > 10 }) == false
+}
