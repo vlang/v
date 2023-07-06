@@ -110,7 +110,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.gen_plain_infix_expr(node)
 	} else if (left.typ.idx() == ast.string_type_idx || (!has_defined_eq_operator
 		&& left.unaliased.idx() == ast.string_type_idx)) && node.right is ast.StringLiteral
-		&& (node.right as ast.StringLiteral).val == '' {
+		&& node.right.val == '' {
 		// `str == ''` -> `str.len == 0` optimization
 		g.write('(')
 		g.expr(node.left)

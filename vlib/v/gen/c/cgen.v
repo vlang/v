@@ -3308,8 +3308,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			} else if node.op == .question {
 				cur_line := g.go_before_stmt(0).trim_space()
 				mut expr_str := ''
-				if mut node.expr is ast.ComptimeSelector
-					&& (node.expr as ast.ComptimeSelector).left is ast.Ident {
+				if mut node.expr is ast.ComptimeSelector && node.expr.left is ast.Ident {
 					// val.$(field.name)?
 					expr_str = '${node.expr.left.str()}.${g.comptime_for_field_value.name}'
 				} else if mut node.expr is ast.Ident && g.is_comptime_var(node.expr) {
@@ -3719,8 +3718,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		}
 	}
 	// var?.field_opt
-	field_is_opt := (node.expr is ast.Ident && node.expr.is_auto_heap()
-		&& node.expr.or_expr.kind != .absent && field_typ.has_flag(.option))
+	field_is_opt := node.expr is ast.Ident && node.expr.is_auto_heap()
+		&& node.expr.or_expr.kind != .absent && field_typ.has_flag(.option)
 	if field_is_opt {
 		g.write('((${g.base_type(field_typ)})')
 	}
@@ -4194,14 +4193,14 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 
 [inline]
 pub fn (mut g Gen) is_generic_param_var(node ast.Expr) bool {
-	return node is ast.Ident && node.info is ast.IdentVar
-		&& (node as ast.Ident).obj is ast.Var && ((node as ast.Ident).obj as ast.Var).ct_type_var == .generic_param
+	return node is ast.Ident && node.info is ast.IdentVar && node.obj is ast.Var
+		&& ((node as ast.Ident).obj as ast.Var).ct_type_var == .generic_param
 }
 
 [inline]
 pub fn (mut g Gen) is_comptime_var(node ast.Expr) bool {
-	return node is ast.Ident && node.info is ast.IdentVar
-		&& (node as ast.Ident).obj is ast.Var && ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime
+	return node is ast.Ident && node.info is ast.IdentVar && node.obj is ast.Var
+		&& ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime
 }
 
 fn (mut g Gen) ident(node ast.Ident) {
@@ -4733,7 +4732,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 
 	if node.exprs.len > 0 {
 		// skip `return $vweb.html()`
-		if node.exprs[0] is ast.ComptimeCall && (node.exprs[0] as ast.ComptimeCall).is_vweb {
+		if node.exprs[0] is ast.ComptimeCall && node.exprs[0].is_vweb {
 			g.inside_return_tmpl = true
 			g.expr(node.exprs[0])
 			g.inside_return_tmpl = false
@@ -5487,7 +5486,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			if g.pref.translated {
 				def_builder.write_string(' = ${g.expr_string(field.expr)}')
 			} else if (field.expr.is_literal() && should_init) || cinit
-				|| (field.expr is ast.ArrayInit && (field.expr as ast.ArrayInit).is_fixed)
+				|| (field.expr is ast.ArrayInit && field.expr.is_fixed)
 				|| (is_simple_unsafe_expr && should_init) {
 				// Simple literals can be initialized right away in global scope in C.
 				// e.g. `int myglobal = 10;`
@@ -6126,8 +6125,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			g.inside_or_block = false
 		}
 		stmts := or_block.stmts
-		if stmts.len > 0 && stmts.last() is ast.ExprStmt
-			&& (stmts.last() as ast.ExprStmt).typ != ast.void_type {
+		if stmts.len > 0 && stmts.last() is ast.ExprStmt && stmts.last().typ != ast.void_type {
 			g.gen_or_block_stmts(cvar_name, mr_styp, stmts, return_type, true)
 		} else {
 			g.stmts(stmts)

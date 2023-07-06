@@ -715,8 +715,8 @@ fn expr_is_single_line(expr ast.Expr) bool {
 pub fn (mut f Gen) assert_stmt(node ast.AssertStmt) {
 	f.write('assert ')
 	mut expr := node.expr
-	for expr is ast.ParExpr {
-		expr = (expr as ast.ParExpr).expr
+	for mut expr is ast.ParExpr {
+		expr = expr.expr
 	}
 	f.expr(expr)
 	f.writeln('')
