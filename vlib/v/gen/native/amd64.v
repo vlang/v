@@ -3323,7 +3323,7 @@ pub fn (mut c Amd64) allocate_var(name string, size int, initial_val int) int {
 	return c.g.stack_var_pos
 }
 
-fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {  // Maybe
+fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 	match var {
 		ast.Ident {
 			var_object := c.g.get_var_from_ident(var)
@@ -3402,7 +3402,7 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {  // Maybe
 	}
 }
 
-fn (mut c Amd64) init_array(var Var, node ast.ArrayInit) {  // Maybe
+fn (mut c Amd64) init_array(var Var, node ast.ArrayInit) {
 	match var {
 		ast.Ident {
 			var_object := c.g.get_var_from_ident(var)

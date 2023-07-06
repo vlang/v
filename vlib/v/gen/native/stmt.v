@@ -323,3 +323,19 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 		g.v_error('for-in statement is not yet implemented', node.pos)
 	}
 }
+
+fn (mut g Gen) gen_assert(assert_node ast.AssertStmt) {
+	mut cjmp_addr := 0
+	ane := assert_node.expr
+	label := g.labels.new_label()
+	cjmp_addr = g.condition(ane, true)
+	g.labels.patches << LabelPatch{
+		id: label
+		pos: cjmp_addr
+	}
+	g.println('; jump to label ${label}')
+	g.expr(assert_node.expr)
+	g.code_gen.trap()
+	g.labels.addrs[label] = g.pos()
+	g.println('; label ${label}')
+}

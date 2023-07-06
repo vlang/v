@@ -420,3 +420,11 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 		}
 	}
 }
+
+fn (mut g Gen) gen_selector_expr(expr ast.SelectorExpr) {
+	main_reg := g.code_gen.main_reg()
+	g.expr(expr.expr)
+	offset := g.get_field_offset(expr.expr_type, expr.field_name)
+	g.code_gen.add(main_reg, offset)
+	g.code_gen.mov_deref(main_reg, main_reg, expr.typ)
+}
