@@ -681,7 +681,7 @@ pub fn find_first[T](array []T, predicate fn (elem T) bool) ?T {
 }
 
 // find_last returns the last element that matches the given predicate
-// returns an optional in case none of the elements match the predicate
+// returns `none`, if there is no match found
 // Example: arrays.find_last([1, 2, 3, 4, 5], fn (arr int) bool { arr == 3}) // => 3
 pub fn find_last[T](array []T, predicate fn (elem T) bool) ?T {
   if array.len == 0 {
