@@ -20,6 +20,8 @@ pub fn (a Character) str() string {
 	return a.to_rune().str()
 }
 
+// == is an equality operator, to ease comparing Characters
+// TODO: the default == operator, that V generates, does not work for C.wchar_t .
 [inline]
 pub fn (a Character) == (b Character) bool {
 	return u64(a) == u64(b)
@@ -38,7 +40,8 @@ pub fn from_rune(r rune) Character {
 }
 
 // length_in_characters returns the length of the given wchar_t* wide C style L"" string.
-// See also length_in_bytes.
+// Example: assert unsafe { wchar.length_in_characters(wchar.from_string('abc')) } == 3
+// See also `length_in_bytes` .
 [unsafe]
 pub fn length_in_characters(p voidptr) int {
 	mut len := 0
@@ -49,6 +52,11 @@ pub fn length_in_characters(p voidptr) int {
 	return len
 }
 
+// length_in_bytes returns the length of the given wchar_t* wide C style L"" string in bytes.
+// Note that the size of wchar_t is different on the different platforms, thus the length in
+// bytes for the same data converted from UTF-8 to a &Character buffer, will be different as well.
+// i.e. unsafe { wchar.length_in_bytes(wchar.from_string('abc')) } will be 12 on unix, but
+// 6 on windows.
 [unsafe]
 pub fn length_in_bytes(p voidptr) int {
 	return unsafe { length_in_characters(p) } * int(sizeof(Character))
@@ -60,7 +68,8 @@ pub fn length_in_bytes(p voidptr) int {
 // Note, that the size of wchar_t is platform-dependent, and is *2 bytes* on windows,
 // while it is *4 bytes* on most everything else.
 // Unless you are interfacing with a C library, that does specifically use `wchar_t`,
-// consider using `string_from_wide` instead.
+// consider using `string_from_wide` instead, which will always assume that the input
+// data is in an UTF-16 encoding, no matter what the platform is.
 [unsafe]
 pub fn to_string(p voidptr) string {
 	unsafe {
@@ -73,7 +82,8 @@ pub fn to_string(p voidptr) string {
 // wide C style L"" string. Note, that the size of `C.wchar_t` is platform-dependent,
 // and is *2 bytes* on windows, while *4* on most everything else.
 // Unless you are interfacing with a C library, that does specifically use wchar_t,
-// consider using string_from_wide2 instead.
+// consider using string_from_wide2 instead, which will always assume that the input
+// data is in an UTF-16 encoding, no matter what the platform is.
 [manualfree; unsafe]
 pub fn to_string2(p voidptr, len int) string {
 	pc := &Character(p)
