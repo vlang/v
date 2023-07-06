@@ -424,12 +424,7 @@ fn test_find_first() {
   assert find_by_name == FindTest{'one', 1}
 
   // not found
-  find_none := find_first(test_structs, fn (arr FindTest) bool {
-    return arr.name == 'nothing'
-  }) or {
-    assert true
-    return
-  }
+  if _ := find_first(test_structs, fn (arr FindTest) bool { return arr.name == 'nothing' }) { assert false } else { assert true }
 }
 
 fn test_find_last() {
@@ -446,12 +441,7 @@ fn test_find_last() {
   assert find_by_name == FindTest{'one', 4}
 
   // not found
-  find_none := find_last(test_structs, fn (arr FindTest) bool {
-    return arr.name == 'nothing'
-  }) or {
-    assert true
-    return
-  }
+  if _ := find_last(test_structs, fn (arr FindTest) bool { return arr.name == 'nothing' }) { assert false } else { assert true }
 }
 
 fn test_join_to_string() {
