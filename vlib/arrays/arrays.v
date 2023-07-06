@@ -699,7 +699,7 @@ pub fn find_last[T](array []T, predicate fn (elem T) bool) ?T {
 // join_to_string takes in a custom transform function and joins all elements into a string with
 // the specified separator
 pub fn join_to_string[T](array []T, separator string, transform fn (elem T) string) string {
-  mut builder := []string{len: array.len, cap: array.len}
+  mut builder := []string{len: array.len}
   for i, item in array {
     builder[i] = transform(item)
   }
