@@ -1,4 +1,5 @@
 module arrays
+import strings
 
 // Common arrays functions:
 // - min / max - return the value of the minumum / maximum
@@ -698,11 +699,20 @@ pub fn find_last[T](array []T, predicate fn (elem T) bool) ?T {
 
 // join_to_string takes in a custom transform function and joins all elements into a string with
 // the specified separator
+[manualfree]
 pub fn join_to_string[T](array []T, separator string, transform fn (elem T) string) string {
-  mut builder := []string{len: array.len}
-  for i, item in array {
-    builder[i] = transform(item)
-  }
-  return builder.join(separator)
+    mut sb := strings.new_builder(array.len*2)
+    defer {
+        unsafe { sb.free() }
+    }
+    for i, item in array {
+        x := transform(item)
+        sb.write_string(x)
+        unsafe { x.free() }
+        if i < array.len - 1 {
+            sb.write_string(separator)
+        }
+    }
+    return sb.str()
 }
 
