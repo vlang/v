@@ -1856,7 +1856,7 @@ fn (mut c Amd64) call_builtin(name Builtin) i64 {  // Platf dependant ?
 	return call_addr
 }
 
-fn (mut c Amd64) gen_concat_expr(node ast.ConcatExpr) {  // Maybe later + zero fill
+fn (mut c Amd64) gen_concat_expr(node ast.ConcatExpr) {  // Maybe later 
 	typ := node.return_type
 	ts := c.g.table.sym(typ)
 	size := c.g.get_type_size(typ)
@@ -1865,32 +1865,9 @@ fn (mut c Amd64) gen_concat_expr(node ast.ConcatExpr) {  // Maybe later + zero f
 		offset: c.g.allocate_by_type('', typ)
 		typ: typ
 	}
-	// zero fill
-	mut left := if size >= 16 {
-		c.mov(Amd64Register.rax, 0)
-		c.mov(Amd64Register.rcx, size / 8)
-		c.lea_var_to_reg(Amd64Register.rdi, var.offset)
-		c.g.write([u8(0xf3), 0x48, 0xab])
-		c.g.println('rep stosq')
-		size % 8
-	} else {
-		size
-	}
-	if left >= 8 {
-		c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i64_type_idx)
-		left -= 8
-	}
-	if left >= 4 {
-		c.mov_int_to_var(var, 0, offset: size - left, typ: ast.int_type_idx)
-		left -= 4
-	}
-	if left >= 2 {
-		c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i16_type_idx)
-		left -= 2
-	}
-	if left == 1 {
-		c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i8_type_idx)
-	}
+
+	c.zero_fill(size, var)
+	
 	// store exprs to the variable
 	for i, expr in node.vals {
 		offset := c.g.structs[typ.idx()].offsets[i]
@@ -2341,32 +2318,9 @@ fn (mut c Amd64) return_stmt(node ast.Return) {
 			offset: c.g.allocate_by_type('', typ)
 			typ: typ
 		}
-		// zero fill
-		mut left := if size >= 16 {
-			c.mov(Amd64Register.rax, 0)
-			c.mov(Amd64Register.rcx, size / 8)
-			c.lea_var_to_reg(Amd64Register.rdi, var.offset)
-			c.g.write([u8(0xf3), 0x48, 0xab])
-			c.g.println('rep stosq')
-			size % 8
-		} else {
-			size
-		}
-		if left >= 8 {
-			c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i64_type_idx)
-			left -= 8
-		}
-		if left >= 4 {
-			c.mov_int_to_var(var, 0, offset: size - left, typ: ast.int_type_idx)
-			left -= 4
-		}
-		if left >= 2 {
-			c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i16_type_idx)
-			left -= 2
-		}
-		if left == 1 {
-			c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i8_type_idx)
-		}
+
+		c.zero_fill(size, var)
+
 		// store exprs to the variable
 		for i, expr in node.exprs {
 			offset := c.g.structs[typ.idx()].offsets[i]
@@ -2430,7 +2384,7 @@ fn (mut c Amd64) return_stmt(node ast.Return) {
 	c.g.println('; jump to label ${label}')
 }
 
-fn (mut c Amd64) multi_assign_stmt(node ast.AssignStmt) {  // Appeller la fonction de zero_fill ici
+fn (mut c Amd64) multi_assign_stmt(node ast.AssignStmt) {  // maybe
 	multi_return := c.g.get_multi_return(node.right_types)
 	if node.has_cross_var {
 		// `a, b = b, a`
@@ -2442,32 +2396,9 @@ fn (mut c Amd64) multi_assign_stmt(node ast.AssignStmt) {  // Appeller la foncti
 		var := LocalVar{
 			offset: c.g.stack_var_pos
 		}
-		// zero fill
-		mut left := if size >= 16 {
-			c.mov(Amd64Register.rax, 0)
-			c.mov(Amd64Register.rcx, size / 8)
-			c.lea_var_to_reg(Amd64Register.rdi, var.offset)
-			c.g.write([u8(0xf3), 0x48, 0xab])
-			c.g.println('rep stosq')
-			size % 8
-		} else {
-			size
-		}
-		if left >= 8 {
-			c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i64_type_idx)
-			left -= 8
-		}
-		if left >= 4 {
-			c.mov_int_to_var(var, 0, offset: size - left, typ: ast.int_type_idx)
-			left -= 4
-		}
-		if left >= 2 {
-			c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i16_type_idx)
-			left -= 2
-		}
-		if left == 1 {
-			c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i8_type_idx)
-		}
+
+		c.zero_fill(size, var)
+
 		// store exprs to the variable
 		for i, expr in node.right {
 			offset := multi_return.offsets[i]
@@ -3294,6 +3225,34 @@ pub fn (mut c Amd64) allocate_var(name string, size int, initial_val int) int {
 	return c.g.stack_var_pos
 }
 
+fn (mut c Amd64) zero_fill(size int, var LocalVar) {
+	mut left := if size >= 16 {
+		c.mov(Amd64Register.rax, 0)
+		c.mov(Amd64Register.rcx, size / 8)
+		c.lea_var_to_reg(Amd64Register.rdi, var.offset)
+		c.g.write([u8(0xf3), 0x48, 0xab])
+		c.g.println('rep stosq')
+		size % 8
+	} else {
+		size
+	}
+	if left >= 8 {
+		c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i64_type_idx)
+		left -= 8
+	}
+	if left >= 4 {
+		c.mov_int_to_var(var, 0, offset: size - left, typ: ast.int_type_idx)
+		left -= 4
+	}
+	if left >= 2 {
+		c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i16_type_idx)
+		left -= 2
+	}
+	if left == 1 {
+		c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i8_type_idx)
+	}
+}
+
 fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 	match var {
 		ast.Ident {
@@ -3315,32 +3274,7 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 			typ := c.g.unwrap(var.typ)
 			size := c.g.get_type_size(typ)
 
-			// zero fill
-			mut left := if size >= 16 {
-				c.mov(Amd64Register.rax, 0)
-				c.mov(Amd64Register.rcx, size / 8)
-				c.lea_var_to_reg(Amd64Register.rdi, var.offset)
-				c.g.write([u8(0xf3), 0x48, 0xab])
-				c.g.println('rep stosq')
-				size % 8
-			} else {
-				size
-			}
-			if left >= 8 {
-				c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i64_type_idx)
-				left -= 8
-			}
-			if left >= 4 {
-				c.mov_int_to_var(var, 0, offset: size - left, typ: ast.int_type_idx)
-				left -= 4
-			}
-			if left >= 2 {
-				c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i16_type_idx)
-				left -= 2
-			}
-			if left == 1 {
-				c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i8_type_idx)
-			}
+			c.zero_fill(size, var)
 
 			ts := c.g.table.sym(typ)
 			match ts.info {
