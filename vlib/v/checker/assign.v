@@ -454,8 +454,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		// TODO: and remove the less strict check from above.
 		if left_sym.kind == .array && !c.inside_unsafe && right_sym.kind == .array
 			&& left is ast.Ident && !left.is_blank_ident() && right in [ast.Ident, ast.SelectorExpr]
-			&& ((node.op == .decl_assign && (left as ast.Ident).is_mut)
-			|| node.op == .assign) {
+			&& ((node.op == .decl_assign && left.is_mut) || node.op == .assign) {
 			// no point to show the notice, if the old error was already shown:
 			if !old_assign_error_condition {
 				mut_str := if node.op == .decl_assign { 'mut ' } else { '' }
@@ -498,7 +497,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.error('unkown return type: cannot assign `${right}` as a function variable',
 					right.pos())
 			} else if (!right_sym.info.is_anon && return_sym.kind == .any)
-				|| (return_sym.info is ast.Struct && (return_sym.info as ast.Struct).is_generic) {
+				|| (return_sym.info is ast.Struct && return_sym.info.is_generic) {
 				c.error('cannot assign `${right}` as a generic function variable', right.pos())
 			}
 		}
