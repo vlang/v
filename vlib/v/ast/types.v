@@ -695,8 +695,7 @@ pub fn (t &Table) type_kind(typ Type) Kind {
 }
 
 pub fn (t &Table) type_is_for_pointer_arithmetic(typ Type) bool {
-	typ_sym := t.sym(typ)
-	if typ_sym.kind == .struct_ {
+	if t.sym(typ).kind == .struct_ {
 		return false
 	} else {
 		return typ.is_any_kind_of_pointer() || typ.is_int_valptr()
@@ -881,9 +880,8 @@ pub fn (t &TypeSymbol) sumtype_info() SumType {
 }
 
 pub fn (t &TypeSymbol) is_heap() bool {
-	if t.kind == .struct_ {
-		info := t.info as Struct
-		return info.is_heap
+	if t.info is Struct {
+		return t.info.is_heap
 	} else {
 		return false
 	}
@@ -1154,10 +1152,10 @@ pub fn (t &Table) type_to_str(typ Type) string {
 }
 
 // type name in code (for builtin)
-pub fn (mytable &Table) type_to_code(t Type) string {
-	match t {
-		ast.int_literal_type, ast.float_literal_type { return mytable.sym(t).kind.str() }
-		else { return mytable.type_to_str_using_aliases(t, map[string]string{}) }
+pub fn (t &Table) type_to_code(typ Type) string {
+	match typ {
+		ast.int_literal_type, ast.float_literal_type { return t.sym(typ).kind.str() }
+		else { return t.type_to_str_using_aliases(typ, map[string]string{}) }
 	}
 }
 
@@ -1507,7 +1505,7 @@ pub fn (t &TypeSymbol) embed_name() string {
 }
 
 pub fn (t &TypeSymbol) has_method(name string) bool {
-	for mut method in unsafe { t.methods } {
+	for method in t.methods {
 		if method.name == name {
 			return true
 		}
@@ -1521,7 +1519,7 @@ pub fn (t &TypeSymbol) has_method_with_generic_parent(name string) bool {
 }
 
 pub fn (t &TypeSymbol) find_method(name string) ?Fn {
-	for mut method in unsafe { t.methods } {
+	for method in t.methods {
 		if method.name == name {
 			return method
 		}
@@ -1633,7 +1631,7 @@ pub fn (t &TypeSymbol) has_field(name string) bool {
 }
 
 fn (a &Aggregate) find_field(name string) ?StructField {
-	for mut field in unsafe { a.fields } {
+	for field in a.fields {
 		if field.name == name {
 			return field
 		}
@@ -1642,7 +1640,7 @@ fn (a &Aggregate) find_field(name string) ?StructField {
 }
 
 pub fn (i &Interface) find_field(name string) ?StructField {
-	for mut field in unsafe { i.fields } {
+	for field in i.fields {
 		if field.name == name {
 			return field
 		}
@@ -1651,7 +1649,7 @@ pub fn (i &Interface) find_field(name string) ?StructField {
 }
 
 pub fn (i &Interface) find_method(name string) ?Fn {
-	for mut method in unsafe { i.methods } {
+	for method in i.methods {
 		if method.name == name {
 			return method
 		}
@@ -1660,7 +1658,7 @@ pub fn (i &Interface) find_method(name string) ?Fn {
 }
 
 pub fn (i &Interface) has_method(name string) bool {
-	for mut method in unsafe { i.methods } {
+	for method in i.methods {
 		if method.name == name {
 			return true
 		}
@@ -1669,7 +1667,7 @@ pub fn (i &Interface) has_method(name string) bool {
 }
 
 pub fn (s Struct) find_field(name string) ?StructField {
-	for mut field in unsafe { s.fields } {
+	for field in s.fields {
 		if field.name == name {
 			return field
 		}
@@ -1685,7 +1683,7 @@ pub fn (s Struct) get_field(name string) StructField {
 }
 
 pub fn (s &SumType) find_field(name string) ?StructField {
-	for mut field in unsafe { s.fields } {
+	for field in s.fields {
 		if field.name == name {
 			return field
 		}
@@ -1694,7 +1692,7 @@ pub fn (s &SumType) find_field(name string) ?StructField {
 }
 
 pub fn (i Interface) defines_method(name string) bool {
-	for mut method in unsafe { i.methods } {
+	for method in i.methods {
 		if method.name == name {
 			return true
 		}
