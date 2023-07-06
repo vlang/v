@@ -428,3 +428,32 @@ fn (mut g Gen) gen_selector_expr(expr ast.SelectorExpr) {
 	g.code_gen.add(main_reg, offset)
 	g.code_gen.mov_deref(main_reg, main_reg, expr.typ)
 }
+
+fn (mut g Gen) gen_left_value(node ast.Expr) {
+	match node {
+		ast.Ident {
+			offset := g.get_var_offset(node.name)
+			g.code_gen.lea_var_to_reg(Amd64Register.rax, offset)
+		}
+		ast.SelectorExpr {
+			g.expr(node.expr)
+			offset := g.get_field_offset(node.expr_type, node.field_name)
+			if offset != 0 {
+				g.code_gen.add(Amd64Register.rax, offset)
+			}
+		}
+		ast.StructInit, ast.ArrayInit {
+			g.expr(node)
+		}
+		ast.IndexExpr {} // TODO
+		ast.PrefixExpr {
+			if node.op != .mul {
+				g.n_error('Unsupported left value')
+			}
+			g.expr(node.right)
+		}
+		else {
+			g.n_error('Unsupported left value')
+		}
+	}
+}

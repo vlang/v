@@ -2497,7 +2497,7 @@ fn (mut c Amd64) multi_assign_stmt(node ast.AssignStmt) {  // Appeller la foncti
 			c.add(Amd64Register.rdx, offset - current_offset)
 			current_offset = offset
 		}
-		c.gen_left_value(node.left[i])
+		c.g.gen_left_value(node.left[i])
 		left_type := node.left_types[i]
 		right_type := node.right_types[i]
 		if c.g.is_register_type(right_type) {
@@ -2581,7 +2581,7 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 		if left is ast.Ident && node.op == .decl_assign {
 			c.g.allocate_by_type((left as ast.Ident).name, typ)
 		}
-		c.gen_left_value(left)
+		c.g.gen_left_value(left)
 		c.push(Amd64Register.rax)
 		c.g.expr(right)
 		c.pop(.rdx)
@@ -2720,35 +2720,6 @@ fn (mut c Amd64) cset_op(op token.Kind) {
 	}
 }
 
-fn (mut c Amd64) gen_left_value(node ast.Expr) {  // Maybe later
-	match node {
-		ast.Ident {
-			offset := c.g.get_var_offset(node.name)
-			c.lea_var_to_reg(Amd64Register.rax, offset)
-		}
-		ast.SelectorExpr {
-			c.g.expr(node.expr)
-			offset := c.g.get_field_offset(node.expr_type, node.field_name)
-			if offset != 0 {
-				c.add(Amd64Register.rax, offset)
-			}
-		}
-		ast.StructInit, ast.ArrayInit {
-			c.g.expr(node)
-		}
-		ast.IndexExpr {} // TODO
-		ast.PrefixExpr {
-			if node.op != .mul {
-				c.g.n_error('Unsupported left value')
-			}
-			c.g.expr(node.right)
-		}
-		else {
-			c.g.n_error('Unsupported left value')
-		}
-	}
-}
-
 fn (mut c Amd64) prefix_expr(node ast.PrefixExpr) {
 	match node.op {
 		.minus {
@@ -2767,7 +2738,7 @@ fn (mut c Amd64) prefix_expr(node ast.PrefixExpr) {
 			}
 		}
 		.amp {
-			c.gen_left_value(node.right)
+			c.g.gen_left_value(node.right)
 		}
 		.mul {
 			c.g.expr(node.right)
