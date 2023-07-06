@@ -295,7 +295,7 @@ fn C.SymCleanup(hProcess voidptr)
 
 fn C.MultiByteToWideChar(codePage u32, dwFlags u32, lpMultiMyteStr &char, cbMultiByte int, lpWideCharStr &u16, cchWideChar int) int
 
-fn C.wcslen(str &u16) int
+fn C.wcslen(str &u16) usize
 
 fn C.WideCharToMultiByte(codePage u32, dwFlags u32, lpWideCharStr &u16, cchWideChar int, lpMultiByteStr &char, cbMultiByte int, lpDefaultChar &char, lpUsedDefaultChar &int) int
 

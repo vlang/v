@@ -29,6 +29,7 @@ pub fn (_str string) to_wide() &u16 {
 			for i, r in srunes {
 				result[i] = u16(r)
 			}
+			result[srunes.len] = 0
 			return result
 		}
 	}
@@ -41,7 +42,7 @@ pub fn string_from_wide(_wstr &u16) string {
 	$if windows {
 		unsafe {
 			wstr_len := C.wcslen(_wstr)
-			return string_from_wide2(_wstr, wstr_len)
+			return string_from_wide2(_wstr, int(wstr_len))
 		}
 	} $else {
 		mut i := 0
