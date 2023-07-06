@@ -145,7 +145,7 @@ ${enc_fn_dec} {
 			enc.writeln(g.encode_map(utyp, m.key_type, m.value_type))
 		} else if sym.kind == .alias {
 			a := sym.info as ast.Alias
-			mut parent_typ := a.parent_type
+			parent_typ := a.parent_type
 			psym := g.table.sym(parent_typ)
 			if is_js_prim(g.typ(parent_typ)) {
 				if utyp.has_flag(.option) {
