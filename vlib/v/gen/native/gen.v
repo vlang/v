@@ -89,7 +89,6 @@ mut:
 	dec_var(var Var, config VarConfig)
 	fn_decl(node ast.FnDecl)
 	gen_asm_stmt(asm_node ast.AsmStmt)
-	gen_assert(assert_node ast.AssertStmt)
 	gen_cast_expr(expr ast.CastExpr)
 	gen_concat_expr(expr ast.ConcatExpr)
 	gen_exit(expr ast.Expr)
@@ -1091,4 +1090,20 @@ fn (mut g Gen) gen_selector_expr(expr ast.SelectorExpr) {  // Not sure if it's t
 	offset := g.get_field_offset(expr.expr_type, expr.field_name)
 	g.code_gen.add(main_reg, offset)
 	g.code_gen.mov_deref(main_reg, main_reg, expr.typ)
+}
+
+fn (mut g Gen) gen_assert(assert_node ast.AssertStmt) {  // Same
+	mut cjmp_addr := 0
+	ane := assert_node.expr
+	label := g.labels.new_label()
+	cjmp_addr = g.condition(ane, true)
+	g.labels.patches << LabelPatch{
+		id: label
+		pos: cjmp_addr
+	}
+	g.println('; jump to label ${label}')
+	g.expr(assert_node.expr)
+	g.code_gen.trap()
+	g.labels.addrs[label] = g.pos()
+	g.println('; label ${label}')
 }

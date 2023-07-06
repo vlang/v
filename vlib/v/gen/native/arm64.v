@@ -430,10 +430,6 @@ fn (mut c Arm64) gen_asm_stmt(asm_node ast.AsmStmt) {
 	panic('Arm64.gen_asm_stmt() not implemented')
 }
 
-fn (mut c Arm64) gen_assert(assert_node ast.AssertStmt) {
-	panic('Arm64.gen_assert() not implemented')
-}
-
 fn (mut c Arm64) infloop() {
 	c.g.write32(u8(0x14))
 	c.g.println('jmp $$')

@@ -3073,22 +3073,6 @@ fn (mut c Amd64) gen_asm_stmt(asm_node ast.AsmStmt) {
 	}
 }
 
-fn (mut c Amd64) gen_assert(assert_node ast.AssertStmt) {  // Maybe
-	mut cjmp_addr := 0
-	ane := assert_node.expr
-	label := c.g.labels.new_label()
-	cjmp_addr = c.g.condition(ane, true)
-	c.g.labels.patches << LabelPatch{
-		id: label
-		pos: cjmp_addr
-	}
-	c.g.println('; jump to label ${label}')
-	c.g.expr(assert_node.expr)
-	c.trap()
-	c.g.labels.addrs[label] = c.g.pos()
-	c.g.println('; label ${label}')
-}
-
 fn (mut c Amd64) cjmp_notop(op token.Kind) int {
 	return match op {
 		.gt {

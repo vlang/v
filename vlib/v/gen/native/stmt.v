@@ -95,7 +95,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.code_gen.gen_asm_stmt(node)
 		}
 		ast.AssertStmt {
-			g.code_gen.gen_assert(node)
+			g.gen_assert(node)
 		}
 		ast.GlobalDecl {
 			g.warning('globals are not supported yet', node.pos)
