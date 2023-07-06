@@ -666,7 +666,7 @@ pub fn carray_to_varray[T](c_array_data voidptr, items int) []T {
 }
 
 // find_first returns the first element that matches the given predicate
-// returns an optional in case none of the elements match the predicate
+// returns `none`, if there is no match found
 // Example: arrays.find_first([1, 2, 3, 4, 5], fn (arr int) bool { arr == 3}) // => 3
 pub fn find_first[T](array []T, predicate fn (elem T) bool) ?T {
   if array.len == 0 {
