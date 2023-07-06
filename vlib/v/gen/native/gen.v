@@ -67,6 +67,7 @@ mut:
 interface CodeGen {
 mut:
 	g &Gen
+	add(r Register, val int)
 	address_size() int
 	adr(r Arm64Register, delta int) // Note: Temporary!
 	allocate_var(name string, size int, initial_val int) int
@@ -95,7 +96,6 @@ mut:
 	gen_match_expr(expr ast.MatchExpr)
 	gen_print_reg(r Register, n int, fd int)
 	gen_print(s string, fd int)
-	gen_selector_expr(expr ast.SelectorExpr)
 	gen_syscall(node ast.CallExpr)
 	inc_var(var Var, config VarConfig)
 	infix_expr(node ast.InfixExpr) // TODO: make platform-independant
@@ -110,6 +110,7 @@ mut:
 	load_fp_var(var Var, config VarConfig)
 	load_fp(val f64)
 	main_reg() Register
+	mov_deref(reg Register, regptr Register, typ ast.Type)
 	mov_int_to_var(var Var, integer int, config VarConfig)
 	mov_reg_to_var(var Var, reg Register, config VarConfig)
 	mov_reg(r1 Register, r2 Register)
@@ -1082,4 +1083,12 @@ pub fn (mut g Gen) v_error(s string, pos token.Pos) {
 			message: s
 		}
 	}
+}
+
+fn (mut g Gen) gen_selector_expr(expr ast.SelectorExpr) {  // Not sure if it's the right file
+	main_reg := g.code_gen.main_reg()
+	g.expr(expr.expr)
+	offset := g.get_field_offset(expr.expr_type, expr.field_name)
+	g.code_gen.add(main_reg, offset)
+	g.code_gen.mov_deref(main_reg, main_reg, expr.typ)
 }

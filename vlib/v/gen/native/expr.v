@@ -98,7 +98,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.code_gen.gen_match_expr(node)
 		}
 		ast.SelectorExpr {
-			g.code_gen.gen_selector_expr(node)
+			g.gen_selector_expr(node)
 		}
 		ast.CastExpr {
 			g.code_gen.gen_cast_expr(node)

@@ -530,3 +530,11 @@ fn (mut c Arm64) cmp_to_stack_top(reg Register) {
 fn (mut c Arm64) push(r Register) {
 	panic('Arm64.push() not implemented')
 }
+
+pub fn (mut c Arm64) add(r Register, val int) {
+	panic('Arm64.add() not implemented')
+}
+
+fn (mut c Arm64) mov_deref(reg Register, regptr Register, typ ast.Type) {
+	panic('Arm64.mov_deref() not implemented')
+}
