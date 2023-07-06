@@ -460,12 +460,3 @@ fn test_join_to_string() {
   assert join_to_string[int]([]int{}, ":", fn (it int) string { return "1" }) == ""
 }
 
-fn test_any() {
-  assert any_of[int]([1, 2, 3, 4, 5], fn (elem int) bool { return elem == 5 }) == true
-  assert any_of[FindTest](test_structs, fn (elem FindTest) bool { return elem.age > 10 }) == false
-}
-
-fn test_all() {
-  assert all_of[int]([1, 2, 3, 4, 5], fn (elem int) bool { return elem == 5 }) == false
-  assert all_of[FindTest](test_structs, fn (elem FindTest) bool { return elem.age > 10 }) == false
-}

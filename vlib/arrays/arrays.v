@@ -706,22 +706,3 @@ pub fn join_to_string[T](array []T, separator string, transform fn (elem T) stri
   return builder.join(separator)
 }
 
-// any_of returns true if any of the elements in the array matches the predicate
-pub fn any_of[T](array []T, predicate fn (elem T) bool) bool {
-  for item in array {
-    if predicate(item) {
-      return true
-    }
-  }
-  return false
-}
-
-// all_of returns true if all of the elements in the array matches the predicate
-pub fn all_of[T](array []T, predicate fn (elem T) bool) bool {
-  for item in array {
-    if !predicate(item) {
-      return false
-    }
-  }
-  return true
-}
