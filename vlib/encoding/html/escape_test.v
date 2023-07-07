@@ -8,6 +8,9 @@ fn test_escape_html() {
 	assert html.escape("' onmouseover='alert(1)'") == '&apos;&nbsp;onmouseover=&apos;alert(1)&apos;'
 	assert html.escape("<a href='http://www.example.com'>link</a>") == '&lt;a&nbsp;href=&apos;http://www.example.com&apos;&gt;link&lt;/a&gt;'
 	assert html.escape("<script>alert('hello');</script>") == '&lt;script&gt;alert(&apos;hello&apos;);&lt;/script&gt;'
+	assert html.escape_symbol('<>&') == '&lt;&gt;&amp;'
+	assert html.escape_decimal('<img />') == '&#60;img&#160;/&#62;'
+	assert html.escape_hex('<b>Bold text</b>') == '&#x3C;b&#x3E;Bold&#xA0;text&#x3C;/b&#x3E;'
 	// Cases obtained from:
 	// https://github.com/apache/commons-lang/blob/master/src/test/java/org/apache/commons/lang3/StringEscapeUtilsTest.java
 	assert html.escape('plain text') == 'plain&nbsp;text'
