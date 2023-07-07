@@ -1101,7 +1101,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				call_arg.pos)
 		}
 		if call_arg.is_mut {
-			to_lock, pos := c.fail_if_immutable(call_arg.expr)
+			to_lock, pos := c.fail_if_immutable(mut call_arg.expr)
 			if !call_arg.expr.is_lvalue() {
 				if call_arg.expr is ast.StructInit {
 					c.error('cannot pass a struct initialization as `mut`, you may want to use a variable `mut var := ${call_arg.expr}`',
@@ -1744,7 +1744,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 							arg.pos)
 					}
 					if arg.is_mut {
-						to_lock, pos := c.fail_if_immutable(arg.expr)
+						to_lock, pos := c.fail_if_immutable(mut arg.expr)
 						if !param.is_mut {
 							tok := arg.share.str()
 							c.error('`${node.name}` parameter ${i + 1} is not `${tok}`, `${tok}` is not needed`',
@@ -1846,7 +1846,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			node.pos)
 	}
 	if method.params[0].is_mut {
-		to_lock, pos := c.fail_if_immutable(node.left)
+		to_lock, pos := c.fail_if_immutable(mut node.left)
 		if !node.left.is_lvalue() {
 			c.error('cannot pass expression as `mut`', node.left.pos())
 		}
@@ -1968,7 +1968,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				arg.pos)
 		}
 		if arg.is_mut {
-			to_lock, pos := c.fail_if_immutable(arg.expr)
+			to_lock, pos := c.fail_if_immutable(mut arg.expr)
 			if !param_is_mut {
 				tok := arg.share.str()
 				c.error('`${node.name}` parameter `${param.name}` is not `${tok}`, `${tok}` is not needed`',
@@ -2426,7 +2426,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 				c.error('`.${method_name}()` does not have any arguments', node.args[0].pos)
 			}
 			if method_name[0] == `m` {
-				c.fail_if_immutable(node.left)
+				c.fail_if_immutable(mut node.left)
 			}
 			if node.left.is_auto_deref_var() || ret_type.has_flag(.shared_f) {
 				ret_type = left_type.deref()
@@ -2454,7 +2454,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 			}
 		}
 		'delete' {
-			c.fail_if_immutable(node.left)
+			c.fail_if_immutable(mut node.left)
 			if node.args.len != 1 {
 				c.error('expected 1 argument, but got ${node.args.len}', node.pos)
 			}
@@ -2491,7 +2491,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			c.error('the `sort()` method can be called only on mutable receivers, but `${node.left}` is a call expression',
 				node.pos)
 		}
-		c.fail_if_immutable(node.left)
+		c.fail_if_immutable(mut node.left)
 		// position of `a` and `b` doesn't matter, they're the same
 		scope_register_a_b(mut node.scope, node.pos, elem_typ)
 
@@ -2635,13 +2635,13 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		}
 		node.return_type = array_info.elem_type
 		if method_name == 'pop' {
-			c.fail_if_immutable(node.left)
+			c.fail_if_immutable(mut node.left)
 			node.receiver_type = left_type.ref()
 		} else {
 			node.receiver_type = left_type
 		}
 	} else if method_name == 'delete' {
-		c.fail_if_immutable(node.left)
+		c.fail_if_immutable(mut node.left)
 		unwrapped_left_sym := c.table.sym(c.unwrap_generic(left_type))
 		if method := c.table.find_method(unwrapped_left_sym, method_name) {
 			node.receiver_type = method.receiver_type

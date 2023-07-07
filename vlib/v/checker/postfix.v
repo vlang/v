@@ -37,7 +37,7 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 		c.error('invalid operation: ${node.op.str()} (non-numeric type `${typ_str}`)',
 			node.pos)
 	} else {
-		node.auto_locked, _ = c.fail_if_immutable(node.expr)
+		node.auto_locked, _ = c.fail_if_immutable(mut node.expr)
 	}
 	node.typ = typ
 	return typ

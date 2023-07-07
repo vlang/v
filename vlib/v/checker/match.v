@@ -24,7 +24,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	node.cond_type = ast.mktyp(cond_type)
 	if (node.cond is ast.Ident && node.cond.is_mut)
 		|| (node.cond is ast.SelectorExpr && node.cond.is_mut) {
-		c.fail_if_immutable(node.cond)
+		c.fail_if_immutable(mut node.cond)
 	}
 	c.ensure_type_exists(node.cond_type, node.pos) or { return ast.void_type }
 	c.check_expr_opt_call(node.cond, cond_type)
