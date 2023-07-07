@@ -9,11 +9,10 @@ fn test_nested_or_expr_call() {
 		'unknown'
 	} else {
 		uid_map[uid] or {
-			name := get_name() or {
-				'unknown'
-			}
+			name := get_name() or { 'unknown' }
 			name
 		}
 	}
+	assert username == 'unknown'
 	println('${uid} is ${username}')
 }
