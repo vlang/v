@@ -65,6 +65,9 @@ fn (mut g Gen) gen_jsons() {
 				g.expr_with_tmp_var(ast.Expr(ast.StructInit{ typ: utyp, typ_str: styp }),
 					utyp, utyp, 'res')
 				init_styp = g.out.cut_to(pos).trim_space()
+			} else {
+				none_str := g.expr_string(ast.None{})
+				init_styp += ' = (${styp}){ .state=2, .err=${none_str}, .data={EMPTY_STRUCT_INITIALIZATION} }'
 			}
 		} else {
 			if sym.kind == .struct_ {
