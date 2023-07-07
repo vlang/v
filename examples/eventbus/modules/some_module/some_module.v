@@ -29,6 +29,6 @@ pub fn do_work() {
 	some_module.eb.publish('event_baz', &Duration{42}, &EventMetadata{'Additional data at the end.'})
 }
 
-pub fn get_subscriber[T]() eventbus.Subscriber[T] {
+pub fn get_subscriber() eventbus.Subscriber[string] {
 	return *some_module.eb.subscriber
 }
