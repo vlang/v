@@ -661,21 +661,21 @@ fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, ifac
 
 // returns name and position of variable that needs write lock
 // also sets `is_changed` to true (TODO update the name to reflect this?)
-fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
+fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 	mut to_lock := '' // name of variable that needs lock
 	mut pos := token.Pos{} // and its position
 	mut explicit_lock_needed := false
-	mut expr := unsafe { expr_ }
 	match mut expr {
 		ast.CastExpr {
 			// TODO
 			return '', expr.pos
 		}
 		ast.ComptimeSelector {
+			mut expr_left := expr.left
 			if mut expr.left is ast.Ident {
 				if mut expr.left.obj is ast.Var {
 					if expr.left.obj.ct_type_var != .generic_param {
-						c.fail_if_immutable(expr.left)
+						c.fail_if_immutable(mut expr_left)
 					}
 				}
 			}
@@ -735,21 +735,21 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 				c.error('you have to create a handle and `lock` it to modify `shared` ${kind} element',
 					expr.left.pos().extend(expr.pos))
 			}
-			to_lock, pos = c.fail_if_immutable(expr.left)
+			to_lock, pos = c.fail_if_immutable(mut expr.left)
 		}
 		ast.ParExpr {
-			to_lock, pos = c.fail_if_immutable(expr.expr)
+			to_lock, pos = c.fail_if_immutable(mut expr.expr)
 		}
 		ast.PrefixExpr {
 			if expr.op == .mul && expr.right is ast.Ident {
 				// Do not fail if dereference is immutable:
 				// `*x = foo()` doesn't modify `x`
 			} else {
-				to_lock, pos = c.fail_if_immutable(expr.right)
+				to_lock, pos = c.fail_if_immutable(mut expr.right)
 			}
 		}
 		ast.PostfixExpr {
-			to_lock, pos = c.fail_if_immutable(expr.expr)
+			to_lock, pos = c.fail_if_immutable(mut expr.expr)
 		}
 		ast.SelectorExpr {
 			if expr.expr_type == 0 {
@@ -792,7 +792,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 							c.error('field `${expr.field_name}` of struct `${type_str}` is immutable',
 								expr.pos)
 						}
-						to_lock, pos = c.fail_if_immutable(expr.expr)
+						to_lock, pos = c.fail_if_immutable(mut expr.expr)
 					}
 					if to_lock != '' {
 						// No automatic lock for struct access
@@ -812,7 +812,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 							expr.pos)
 						return '', expr.pos
 					}
-					c.fail_if_immutable(expr.expr)
+					c.fail_if_immutable(mut expr.expr)
 				}
 				.sum_type {
 					sumtype_info := typ_sym.info as ast.SumType
@@ -827,7 +827,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 							expr.pos)
 						return '', expr.pos
 					}
-					c.fail_if_immutable(expr.expr)
+					c.fail_if_immutable(mut expr.expr)
 				}
 				.array, .string {
 					// should only happen in `builtin` and unsafe blocks
@@ -838,7 +838,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 					}
 				}
 				.aggregate, .placeholder {
-					c.fail_if_immutable(expr.expr)
+					c.fail_if_immutable(mut expr.expr)
 				}
 				else {
 					c.error('unexpected symbol `${typ_sym.kind}`', expr.pos)
@@ -849,7 +849,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 		ast.CallExpr {
 			// TODO: should only work for builtin method
 			if expr.name == 'slice' {
-				to_lock, pos = c.fail_if_immutable(expr.left)
+				to_lock, pos = c.fail_if_immutable(mut expr.left)
 				if to_lock != '' {
 					// No automatic lock for array slicing (yet(?))
 					explicit_lock_needed = true
@@ -2153,7 +2153,7 @@ fn (mut c Checker) asm_ios(mut ios []ast.AsmIO, mut scope ast.Scope, output bool
 	for mut io in ios {
 		typ := c.expr(mut io.expr)
 		if output {
-			c.fail_if_immutable(io.expr)
+			c.fail_if_immutable(mut io.expr)
 		}
 		if io.alias != '' {
 			aliases << io.alias

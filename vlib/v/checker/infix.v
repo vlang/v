@@ -505,7 +505,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 				// `array << elm`
 				c.check_expr_opt_call(node.right, right_type)
-				node.auto_locked, _ = c.fail_if_immutable(node.left)
+				node.auto_locked, _ = c.fail_if_immutable(mut node.left)
 				left_value_type := c.table.value_type(c.unwrap_generic(left_type))
 				left_value_sym := c.table.sym(c.unwrap_generic(left_value_type))
 				if left_value_sym.kind == .interface_ {
@@ -661,7 +661,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 				if chan_info.is_mut {
 					// TODO: The error message of the following could be more specific...
-					c.fail_if_immutable(node.right)
+					c.fail_if_immutable(mut node.right)
 				}
 				if elem_type.is_ptr() && !right_type.is_ptr() {
 					c.error('cannot push non-reference `${right_sym.name}` on `${left_sym.name}`',

@@ -227,7 +227,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		} else {
 			// Make sure the variable is mutable
-			c.fail_if_immutable(left)
+			c.fail_if_immutable(mut left)
 
 			if !is_blank_ident && !left_type.has_flag(.option) && right_type.has_flag(.option) {
 				c.error('cannot assign an Option value to a non-option variable', right.pos())
