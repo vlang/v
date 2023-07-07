@@ -511,12 +511,12 @@ fn (mut c Arm64) call(addr int) i64 {
 	panic('Arm64.call() not implemented')
 }
 
-fn (mut c Arm64) call_addr_at(addr int, at i64) i64 {
-	panic('Arm64.call_addr_at() not implemented')
+fn (mut c Arm64) zero_fill(size int, var LocalVar) {
+	panic('Arm64.zero_fill() not implemented')
 }
 
-fn (mut c Arm64) gen_concat_expr(expr ast.ConcatExpr) {
-	panic('Arm64.gen_concat_expr() not implemented')
+fn (mut c Arm64) call_addr_at(addr int, at i64) i64 {
+	panic('Arm64.call_addr_at() not implemented')
 }
 
 fn (mut c Arm64) cmp_to_stack_top(reg Register) {

@@ -90,7 +90,6 @@ mut:
 	fn_decl(node ast.FnDecl)
 	gen_asm_stmt(asm_node ast.AsmStmt)
 	gen_cast_expr(expr ast.CastExpr)
-	gen_concat_expr(expr ast.ConcatExpr)
 	gen_exit(expr ast.Expr)
 	gen_match_expr(expr ast.MatchExpr)
 	gen_print_reg(r Register, n int, fd int)
@@ -125,6 +124,7 @@ mut:
 	svc()
 	syscall() // unix syscalls
 	trap()
+	zero_fill(size int, var LocalVar)
 }
 
 type Register = Amd64Register | Arm64Register
@@ -1082,4 +1082,30 @@ pub fn (mut g Gen) v_error(s string, pos token.Pos) {
 			message: s
 		}
 	}
+}
+
+fn (mut g Gen) gen_concat_expr(node ast.ConcatExpr) {  // Maybe later 
+	typ := node.return_type
+	ts := g.table.sym(typ)
+	size := g.get_type_size(typ)
+	// construct a struct variable contains the return value
+	var := LocalVar{
+		offset: g.allocate_by_type('', typ)
+		typ: typ
+	}
+
+	g.code_gen.zero_fill(size, var)
+	main_reg := g.code_gen.main_reg()
+	// store exprs to the variable
+	for i, expr in node.vals {
+		offset := g.structs[typ.idx()].offsets[i]
+		g.expr(expr)
+		// TODO expr not on rax
+		g.code_gen.mov_reg_to_var(var, main_reg,
+			offset: offset
+			typ: ts.mr_info().types[i]
+		)
+	}
+	// store the multi return struct value
+	g.code_gen.lea_var_to_reg(main_reg, var.offset)
 }

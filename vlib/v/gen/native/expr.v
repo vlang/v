@@ -111,7 +111,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.expr(node.expr)
 		}
 		ast.ConcatExpr {
-			g.code_gen.gen_concat_expr(node)
+			g.gen_concat_expr(node)
 		}
 		ast.TypeOf {
 			g.gen_typeof_expr(node, false)

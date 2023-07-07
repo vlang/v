@@ -1856,32 +1856,6 @@ fn (mut c Amd64) call_builtin(name Builtin) i64 {  // Platf dependant ?
 	return call_addr
 }
 
-fn (mut c Amd64) gen_concat_expr(node ast.ConcatExpr) {  // Maybe later 
-	typ := node.return_type
-	ts := c.g.table.sym(typ)
-	size := c.g.get_type_size(typ)
-	// construct a struct variable contains the return value
-	var := LocalVar{
-		offset: c.g.allocate_by_type('', typ)
-		typ: typ
-	}
-
-	c.zero_fill(size, var)
-	
-	// store exprs to the variable
-	for i, expr in node.vals {
-		offset := c.g.structs[typ.idx()].offsets[i]
-		c.g.expr(expr)
-		// TODO expr not on rax
-		c.mov_reg_to_var(var, c.main_reg(),
-			offset: offset
-			typ: ts.mr_info().types[i]
-		)
-	}
-	// store the multi return struct value
-	c.lea_var_to_reg(c.main_reg(), var.offset)
-}
-
 fn (mut c Amd64) assign_struct_var(ident_var IdentVar, typ ast.Type, s int) {
 	// struct types bigger are passed around as a pointer in rax.
 	// we need to dereference and copy the contents one after the other
@@ -1945,7 +1919,7 @@ fn (mut c Amd64) assign_struct_var(ident_var IdentVar, typ ast.Type, s int) {
 	assert size == 0
 }
 
-fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {  // Maybe later
+fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
 	typ := c.g.unwrap(raw_type)
 	info := c.g.table.sym(typ).info
 	size := c.g.get_type_size(typ)

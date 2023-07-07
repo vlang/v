@@ -29,6 +29,9 @@ fn charutil() {
 fn memory() {
 	$if linux {
 		// allocate some memory
+		println("beu")
+		C.malloc(100)
+		println("okay")
 		buf := &int(C.malloc(100))
 		assert buf != unsafe { nil }
 
