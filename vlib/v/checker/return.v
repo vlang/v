@@ -208,6 +208,13 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 						continue
 					}
 				}
+				if got_type_sym.kind == .alias && got_type_sym.is_array_fixed()
+					&& exp_type_sym.kind == .array_fixed {
+					final_sym := c.table.final_sym(got_type)
+					if (final_sym.info as ast.ArrayFixed).size == (exp_type_sym.info as ast.ArrayFixed).size && (final_sym.info as ast.ArrayFixed).elem_type == (exp_type_sym.info as ast.ArrayFixed).elem_type {
+						continue
+					}
+				}
 				// `fn foo() !int { return Err{} }`
 				if got_type_sym.kind == .struct_
 					&& c.type_implements(got_type, ast.error_type, node.pos) {

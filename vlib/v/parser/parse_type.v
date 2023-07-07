@@ -705,6 +705,16 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 					typ = ast.new_type(idx)
 				}
 			}
+			ast.Alias {
+				if p.inside_fn_return {
+					parent_sym := p.table.sym(sym.info.parent_type)
+					if parent_sym.kind == .array_fixed {
+						info := parent_sym.array_fixed_info()
+						typ = p.table.find_or_register_array_fixed(info.elem_type, info.size,
+							info.size_expr, p.inside_fn_return)
+					}
+				}
+			}
 			else {}
 		}
 		return typ
