@@ -6115,11 +6115,8 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 	}
 	if or_block.kind == .block {
 		g.or_expr_return_type = return_type.clear_flags(.option, .result)
-		if g.inside_or_block {
-			g.writeln('\terr = ${cvar_name}.err;')
-		} else {
-			g.writeln('\tIError err = ${cvar_name}.err;')
-		}
+		g.writeln('\tIError err = ${cvar_name}.err;')
+
 		g.inside_or_block = true
 		defer {
 			g.inside_or_block = false
