@@ -7,8 +7,7 @@ import picohttpparser
 $if windows {
 	#include <winsock2.h>
 	#include <ws2tcpip.h>
-} $else $if freebsd {
-	// TODO: should also be for all bsd's and macos
+} $else $if freebsd || macos {
 	#include <sys/types.h>
 	#include <sys/socket.h>
 	#include <netinet/in.h>
@@ -51,7 +50,6 @@ fn setup_sock(fd int) ! {
 	}
 
 	$if freebsd {
-		// TODO: also for all other bsd's
 		if C.fcntl(fd, C.F_SETFL, C.SOCK_NONBLOCK) != 0 {
 			return error('fcntl failed')
 		}

@@ -25,13 +25,13 @@ fn hello_response() string {
 
 fn callback(data voidptr, req picohttpparser.Request, mut res picohttpparser.Response) {
 	if req.method == 'GET' {
-		if req.path == '/text' {
+		if req.path == '/t' {
 			res.http_ok()
 			res.header_server()
 			res.header_date()
 			res.plain()
 			res.body(hello_response())
-		} else if req.path == '/json' {
+		} else if req.path == '/j' {
 			res.http_ok()
 			res.header_server()
 			res.header_date()
@@ -45,10 +45,7 @@ fn callback(data voidptr, req picohttpparser.Request, mut res picohttpparser.Res
 			res.body('Hello Picoev!\n')
 		}
 	} else {
-		res.http_ok()
-		res.header_date()
-		res.html()
-		res.body('Hello from other request type!\n')
+		res.http_405()
 	}
 	res.end()
 }

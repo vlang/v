@@ -67,8 +67,8 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 
 	// vfmt off
 	ev.events = u32(
-		(if events & picoev_read != 0 { C.EPOLLIN } else { 0 }) 
-			| 
+		(if events & picoev_read != 0 { C.EPOLLIN } else { 0 })
+			|
 		(if events & picoev_write != 0 { C.EPOLLOUT } else { 0 })
 	)
 	// vfmt on

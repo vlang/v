@@ -245,12 +245,13 @@ fn raw_callback(fd int, events int, context voidptr) {
 			pv.idx[fd] += r
 
 			mut s := unsafe { tos(buf, pv.idx[fd]) }
-			pret := req.parse_request(s) // Parse request via picohttpparser
+			pret := req.parse_request(s) or {
+				// Parse error
+				pv.err_cb(pv.user_data, req, mut &res, err)
+				return
+			}
 			if pret > 0 { // Success
 				break
-			} else if pret == -1 { // Parse error
-				pv.err_cb(pv.user_data, req, mut &res, error('ParseError'))
-				return
 			}
 
 			assert pret == -2
@@ -293,8 +294,7 @@ pub fn new(config Config) &Picoev {
 	// select for windows and others
 	$if linux {
 		pv.loop = create_epoll_loop(0) or { panic(err) }
-	} $else $if freebsd {
-		// TODO: should also be for all bsd's and macos
+	} $else $if freebsd || macos {
 		pv.loop = create_kqueue_loop(0) or { panic(err) }
 	} $else {
 		pv.loop = create_select_loop(0) or { panic(err) }
