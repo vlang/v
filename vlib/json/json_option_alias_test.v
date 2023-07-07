@@ -16,6 +16,7 @@ fn test_empty() {
 	test := Test{}
 	encoded := json.encode(test)
 	assert dump(encoded) == '{}'
+	assert json.decode(Test, '{}')! == test
 }
 
 fn test_value() {
@@ -24,6 +25,7 @@ fn test_value() {
 	}
 	encoded := json.encode(test)
 	assert dump(encoded) == '{"optional_alias":1}'
+	assert json.decode(Test, '{"optional_alias":1}')! == test
 }
 
 fn test_value_2() {
@@ -35,4 +37,5 @@ fn test_value_2() {
 	}
 	encoded := json.encode(test)
 	assert dump(encoded) == '{"optional_alias":1,"optional_struct":{"a":1}}'
+	assert json.decode(Test, '{"optional_alias":1,"optional_struct":{"a":1}}')! == test
 }
