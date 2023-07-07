@@ -1,20 +1,28 @@
 module html
 
 [params]
-pub struct EscapeConfig {
-	quote bool = true
+pub struct Config {
+	decimal bool
+	hex bool
 }
 
-// escape converts special characters in the input, specifically "<", ">", and "&"
-// to HTML-safe sequences. If `quote` is set to true (which is default), quotes in
-// HTML will also be translated. Both double and single quotes will be affected.
-// **Note:** escape() supports funky accents by doing nothing about them. V's UTF-8
-// support through `string` is robust enough to deal with these cases.
-pub fn escape(input string, config EscapeConfig) string {
-	tag_free_input := input.replace_each(['&', '&amp;', '<', '&lt;', '>', '&gt;'])
-	return if config.quote {
-		tag_free_input.replace_each(['"', '&quot;', "'", '&#x27;'])
+pub fn escape(input string, config Config) string {
+	// For adding more HTML Encode characters just add them to the lists below
+
+	// Symbolic HTML Encode
+	mut symbol := ['&', '&amp;', '<', '&lt;', '>', '&gt;', "'", '&apos;', '"', "&quot;" ,' ', '&nbsp;']
+	// Decimal HTML Encode
+	mut decimal := ['&', '&#38;', '<', '&#60;', '>', '&#62;', "'", '&#39;', '"', "&#34;" ,' ', '&#160;']
+	// Hexadecimal HTML Encode
+	mut hex := ['&', '&#x26;', '<', '&#x3C;', '>', '&#x3E;', "'", '&#x27;', '"', "&#x22;" ,' ', '&#xA0;']
+
+	return if config.decimal {
+		input.replace_each(decimal)
+
+	} else if config.hex {
+		input.replace_each(hex)
+
 	} else {
-		tag_free_input
+		input.replace_each(symbol)
 	}
 }
