@@ -152,6 +152,7 @@ const (
 		'vlib/net/smtp/smtp_test.v',
 		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 		'vlib/v/tests/fn_literal_type_test.v',
+		'vlib/v/tests/nested_or_expr_call_test.v',
 	]
 	skip_with_fsanitize_address   = [
 		'do_not_remove',
@@ -187,6 +188,7 @@ const (
 		'vlib/gg/draw_fns_api_test.v',
 		'vlib/v/tests/skip_unused/gg_code.vv',
 		'vlib/v/tests/c_struct_with_reserved_field_name_test.v',
+		'vlib/v/tests/nested_or_expr_call_test.v',
 	]
 	skip_on_ubuntu_musl           = [
 		'do_not_remove',
