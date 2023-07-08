@@ -749,7 +749,7 @@ fn (mut g Gen) pop_existing_comptime_values() {
 [inline]
 fn (mut g Gen) is_comptime_selector_field_name(node ast.SelectorExpr, field_name string) bool {
 	return g.inside_comptime_for_field && node.expr is ast.Ident
-		&& (node.expr as ast.Ident).name == g.comptime_for_field_var && node.field_name == field_name
+		&& node.expr.name == g.comptime_for_field_var && node.field_name == field_name
 }
 
 // check_comptime_is_field_selector checks if the SelectorExpr is related to $for variable accessing .typ field
@@ -786,7 +786,7 @@ fn (mut g Gen) get_comptime_var_type(node ast.Expr) ast.Type {
 		if key_str != '' {
 			return g.comptime_var_type_map[key_str] or { ast.void_type }
 		}
-	} else if node is ast.SelectorExpr && g.is_comptime_selector_type(node as ast.SelectorExpr) {
+	} else if node is ast.SelectorExpr && g.is_comptime_selector_type(node) {
 		// field_var.typ from $for field
 		return g.comptime_for_field_type
 	}

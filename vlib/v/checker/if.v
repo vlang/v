@@ -509,7 +509,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 					if is_variable {
 						if (node.left is ast.Ident && node.left.is_mut)
 							|| (node.left is ast.SelectorExpr && node.left.is_mut) {
-							c.fail_if_immutable(node.left)
+							c.fail_if_immutable(mut node.left)
 						}
 						// TODO: Add check for sum types in a way that it doesn't break a lot of compiler code
 						if mut node.left is ast.Ident

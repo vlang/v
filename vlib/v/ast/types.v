@@ -695,8 +695,7 @@ pub fn (t &Table) type_kind(typ Type) Kind {
 }
 
 pub fn (t &Table) type_is_for_pointer_arithmetic(typ Type) bool {
-	typ_sym := t.sym(typ)
-	if typ_sym.kind == .struct_ {
+	if t.sym(typ).kind == .struct_ {
 		return false
 	} else {
 		return typ.is_any_kind_of_pointer() || typ.is_int_valptr()
@@ -881,9 +880,8 @@ pub fn (t &TypeSymbol) sumtype_info() SumType {
 }
 
 pub fn (t &TypeSymbol) is_heap() bool {
-	if t.kind == .struct_ {
-		info := t.info as Struct
-		return info.is_heap
+	if t.info is Struct {
+		return t.info.is_heap
 	} else {
 		return false
 	}
@@ -1154,10 +1152,10 @@ pub fn (t &Table) type_to_str(typ Type) string {
 }
 
 // type name in code (for builtin)
-pub fn (mytable &Table) type_to_code(t Type) string {
-	match t {
-		ast.int_literal_type, ast.float_literal_type { return mytable.sym(t).kind.str() }
-		else { return mytable.type_to_str_using_aliases(t, map[string]string{}) }
+pub fn (t &Table) type_to_code(typ Type) string {
+	match typ {
+		ast.int_literal_type, ast.float_literal_type { return t.sym(typ).kind.str() }
+		else { return t.type_to_str_using_aliases(typ, map[string]string{}) }
 	}
 }
 

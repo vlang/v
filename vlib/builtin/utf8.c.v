@@ -10,6 +10,8 @@ const cp_utf8 = 65001
 // The returned pointer of .to_wide(), has a type of &u16, and is suitable
 // for passing to Windows APIs that expect LPWSTR or wchar_t* parameters.
 // See also MultiByteToWideChar ( https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar )
+// See also builtin.wchar.from_string/1, for a version, that produces a
+// platform dependant L"" C style wchar_t* wide string.
 pub fn (_str string) to_wide() &u16 {
 	$if windows {
 		unsafe {
@@ -29,19 +31,25 @@ pub fn (_str string) to_wide() &u16 {
 			for i, r in srunes {
 				result[i] = u16(r)
 			}
+			result[srunes.len] = 0
 			return result
 		}
 	}
 }
 
 // string_from_wide creates a V string, encoded in UTF-8, given a windows
-// style string encoded in UTF-16.
+// style string encoded in UTF-16. Note that this function first searches
+// for the string terminator 0 character, and is thus slower, while more
+// convenient compared to string_from_wide2/2 (you have to know the length
+// in advance to use string_from_wide2/2).
+// See also builtin.wchar.to_string/1, for a version that eases working with
+// the platform dependent &wchar_t L"" strings.
 [manualfree; unsafe]
 pub fn string_from_wide(_wstr &u16) string {
 	$if windows {
 		unsafe {
 			wstr_len := C.wcslen(_wstr)
-			return string_from_wide2(_wstr, wstr_len)
+			return string_from_wide2(_wstr, int(wstr_len))
 		}
 	} $else {
 		mut i := 0
@@ -56,6 +64,8 @@ pub fn string_from_wide(_wstr &u16) string {
 // style string, encoded in UTF-16. It is more efficient, compared to
 // string_from_wide, but it requires you to know the input string length,
 // and to pass it as the second argument.
+// See also builtin.wchar.to_string2/2, for a version that eases working
+// with the platform dependent &wchar_t L"" strings.
 [manualfree; unsafe]
 pub fn string_from_wide2(_wstr &u16, len int) string {
 	$if windows {

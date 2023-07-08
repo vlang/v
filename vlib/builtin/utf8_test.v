@@ -72,6 +72,7 @@ fn test_string_from_wide2() {
 
 fn test_reverse_cyrillic_with_string_from_wide() {
 	s := 'Проба'
-	z := unsafe { string_from_wide(s.to_wide()) }
+	ws := s.to_wide()
+	z := unsafe { string_from_wide(ws) }
 	assert z == s
 }
