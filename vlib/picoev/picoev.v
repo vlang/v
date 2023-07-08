@@ -223,7 +223,7 @@ fn raw_callback(fd int, events int, context voidptr) {
 			fd: fd
 			buf_start: out
 			buf: out
-			date: pv.date
+			date: pv.date.str
 		}
 
 		for {

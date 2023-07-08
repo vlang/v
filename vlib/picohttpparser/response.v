@@ -3,7 +3,7 @@ module picohttpparser
 pub struct Response {
 pub:
 	fd        int
-	date      string
+	date      &u8 = unsafe { nil }
 	buf_start &u8 = unsafe { nil }
 pub mut:
 	buf &u8 = unsafe { nil }
@@ -12,7 +12,7 @@ pub mut:
 [inline]
 pub fn (mut r Response) write_string(s string) {
 	unsafe {
-		vmemcpy(r.buf, s.str, s.len)
+		C.memcpy(r.buf, s.str, s.len)
 		r.buf += s.len
 	}
 }
@@ -34,7 +34,11 @@ pub fn (mut r Response) header(k string, v string) &Response {
 
 [inline]
 pub fn (mut r Response) header_date() &Response {
-	r.write_string('Date: ${r.date}')
+	r.write_string('Date: ')
+	unsafe {
+		C.memcpy(r.buf, r.date, 29)
+		r.buf += 29
+	}
 	r.write_string('\r\n')
 	return unsafe { r }
 }
