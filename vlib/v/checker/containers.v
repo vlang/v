@@ -409,6 +409,11 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		expecting_interface_map := map_value_sym.kind == .interface_
 		//
 		mut same_key_type := true
+
+		if node.keys.len == 1 && val0_type == ast.none_type {
+			c.error('map value cannot be only `none`', node.vals[0].pos())
+		}
+
 		for i, mut key in node.keys {
 			if i == 0 && !use_expected_type {
 				continue
@@ -444,6 +449,9 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 					msg := c.expected_msg(val_type, node.value_type)
 					c.error('invalid map value: ${msg}', val.pos())
 				}
+			}
+			if val_type == ast.none_type && val0_type.has_flag(.option) {
+				continue
 			}
 			if !c.check_types(val_type, val0_type)
 				|| val0_type.has_flag(.option) != val_type.has_flag(.option)
