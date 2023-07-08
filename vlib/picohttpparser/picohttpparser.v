@@ -15,11 +15,11 @@ const (
 		'\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0'
 )
 
-fn (mut r Request) phr_parse_request_path(buf_start &u8, buf_end &u8, mut pret Pret) ! {
+fn (mut r Request) phr_parse_request_path(buf_start &u8, buf_end &u8, mut pret Pret) {
 	mut buf := unsafe { buf_start + 0 }
 
 	// ADVANCE_TOKEN
-	method := advance_token(buf, buf_end, mut pret)!
+	method := advance_token(buf, buf_end, mut pret)
 	if pret.ret < 0 {
 		return
 	}
@@ -37,7 +37,7 @@ fn (mut r Request) phr_parse_request_path(buf_start &u8, buf_end &u8, mut pret P
 		}
 	}
 
-	path := advance_token(buf, buf_end, mut pret)!
+	path := advance_token(buf, buf_end, mut pret)
 	if pret.ret < 0 {
 		return
 	}
@@ -57,7 +57,8 @@ fn (mut r Request) phr_parse_request_path(buf_start &u8, buf_end &u8, mut pret P
 	// validate
 	if method.len == 0 || path.len == 0 {
 		pret.ret = -1
-		return error('error parsing request: invalid method or path')
+		pret.err = 'error parsing request: invalid method or path'
+		return
 	}
 	r.method = method
 	r.path = path
@@ -65,7 +66,7 @@ fn (mut r Request) phr_parse_request_path(buf_start &u8, buf_end &u8, mut pret P
 	pret.ret = unsafe { buf - buf_start }
 }
 
-fn (mut r Request) phr_parse_request_path_pipeline(buf_start &u8, buf_end &u8, mut pret Pret) ! {
+fn (mut r Request) phr_parse_request_path_pipeline(buf_start &u8, buf_end &u8, mut pret Pret) {
 	mut buf := unsafe { buf_start }
 	method := advance_token2(buf, buf_end, mut pret)
 	if pret.ret < 0 {
@@ -84,7 +85,8 @@ fn (mut r Request) phr_parse_request_path_pipeline(buf_start &u8, buf_end &u8, m
 	// validate
 	if method.len == 0 || path.len == 0 {
 		pret.ret = -1
-		return error('error parsing request: invalid method or path')
+		pret.err = 'error parsing request: invalid method or path'
+		return
 	}
 	r.method = method
 	r.path = path
@@ -102,10 +104,10 @@ fn (mut r Request) phr_parse_request_path_pipeline(buf_start &u8, buf_end &u8, m
 	}
 
 	pret.ret = -1
-	return error('error parsing request: no request foud')
+	pret.err = 'error parsing request: no request found'
 }
 
-fn (mut r Request) phr_parse_request(buf_start &u8, buf_end &u8, mut pret Pret) !&u8 {
+fn (mut r Request) phr_parse_request(buf_start &u8, buf_end &u8, mut pret Pret) &u8 {
 	// make copy of `buf_start` that can be mutated
 	mut buf := unsafe { buf_start }
 
@@ -124,19 +126,20 @@ fn (mut r Request) phr_parse_request(buf_start &u8, buf_end &u8, mut pret Pret) 
 		}
 		if *buf != `\n` {
 			pret.ret = -1
-			return error('error parsing request: expected "\n" after "\r"')
+			pret.err = 'error parsing request: expected "\n" after "\r"'
+			return unsafe { nil }
 		}
 	}
 
 	// parse request line
-	r.phr_parse_request_path(buf, buf_end, mut pret)!
+	r.phr_parse_request_path(buf, buf_end, mut pret)
 	if pret.ret < 0 {
 		return unsafe { nil }
 	}
 	unsafe {
 		buf += pret.ret
 	}
-	minor_version := parse_http_version(buf, buf_end, mut pret)!
+	minor_version := parse_http_version(buf, buf_end, mut pret)
 	if pret.ret < 0 {
 		return unsafe { nil }
 	}
@@ -160,21 +163,23 @@ fn (mut r Request) phr_parse_request(buf_start &u8, buf_end &u8, mut pret Pret) 
 		}
 		if *buf != `\n` {
 			pret.ret = -1
-			return error('error parsing request: expected "\n" after "\r"')
+			pret.err = 'error parsing request: expected "\n" after "\r"'
+			return unsafe { nil }
 		}
 		unsafe { buf++ }
 	} else if *buf == `\n` {
 		unsafe { buf++ }
 	} else {
 		pret.ret = -1
-		return error('error parsing request: no newline after http version')
+		pret.err = 'error parsing request: expecting "\r\n" after HTTP version'
+		return unsafe { nil }
 	}
 
 	return r.parse_headers(buf, buf_end, mut pret)
 }
 
 [direct_array_access]
-fn (mut r Request) parse_headers(buf_start &u8, buf_end &u8, mut pret Pret) !&u8 {
+fn (mut r Request) parse_headers(buf_start &u8, buf_end &u8, mut pret Pret) &u8 {
 	mut buf := unsafe { buf_start }
 
 	mut i := 0
@@ -194,7 +199,8 @@ fn (mut r Request) parse_headers(buf_start &u8, buf_end &u8, mut pret Pret) !&u8
 			}
 			if *buf != `\n` {
 				pret.ret = -1
-				return error('error parsing request: expected "\n" after "\r"')
+				pret.err = 'error parsing request: expected "\n" after "\r"'
+				return unsafe { nil }
 			}
 			unsafe { buf++ }
 
@@ -215,7 +221,8 @@ fn (mut r Request) parse_headers(buf_start &u8, buf_end &u8, mut pret Pret) !&u8
 						eprintln('invalid character! ${*buf}')
 					}
 					pret.ret = -1
-					return error('error parsing request: invalid character in header "${*buf}"')
+					pret.err = 'error parsing request: invalid character in header "${*buf}"'
+					return unsafe { nil }
 				}
 				unsafe { buf++ }
 
@@ -229,7 +236,8 @@ fn (mut r Request) parse_headers(buf_start &u8, buf_end &u8, mut pret Pret) !&u8
 			name_len := unsafe { buf - name_start }
 			if name_len == 0 {
 				pret.ret = -1
-				return error('error parsing request: invalid header name')
+				pret.err = 'error parsing request: invalid header name'
+				return unsafe { nil }
 			}
 			r.headers[i].name = unsafe { tos(name_start, name_len) }
 
@@ -248,7 +256,7 @@ fn (mut r Request) parse_headers(buf_start &u8, buf_end &u8, mut pret Pret) !&u8
 			r.headers[i].name = ''
 		}
 
-		mut value_len := get_token_length_to_eol(buf, buf_end, mut pret)!
+		mut value_len := get_token_length_to_eol(buf, buf_end, mut pret)
 		if pret.ret < 0 {
 			return unsafe { nil }
 		}
@@ -275,7 +283,8 @@ fn (mut r Request) parse_headers(buf_start &u8, buf_end &u8, mut pret Pret) !&u8
 		// too many headers
 		eprintln('Too many headers!')
 		pret.ret = -1
-		return error('error parsing request: too many headers!')
+		pret.err = 'error parsing request: too many headers!'
+		return unsafe { nil }
 	}
 
 	pret.ret = unsafe { buf - buf_start }
@@ -306,6 +315,7 @@ fn is_complete(buf_start &u8, buf_end &u8, last_len int, mut pret Pret) &u8 {
 			if *buf != `\n` {
 				// no '\n' after '\r' indicates a parse error
 				pret.ret = -1
+				pret.err = 'error parsing request: expected "\n" after "\r"'
 				return unsafe { nil }
 			}
 			unsafe { buf++ }
@@ -328,7 +338,7 @@ fn is_complete(buf_start &u8, buf_end &u8, last_len int, mut pret Pret) &u8 {
 	return unsafe { nil }
 }
 
-fn parse_http_version(buf_start &u8, buf_end &u8, mut pret Pret) !int {
+fn parse_http_version(buf_start &u8, buf_end &u8, mut pret Pret) int {
 	// we want at least [HTTP/1.<two chars>] to try to parse
 	if unsafe { buf_end - buf_start } < 9 {
 		pret.ret = -2
@@ -336,20 +346,22 @@ fn parse_http_version(buf_start &u8, buf_end &u8, mut pret Pret) !int {
 	}
 	if unsafe { tos(buf_start, 7) != 'HTTP/1.' } {
 		pret.ret = -1
-		return error('error parsing request: picohttpparser only supports HTTP/1.x')
+		pret.err = 'error parsing request: picohttpparser only supports HTTP/1.x'
+		return 0
 	}
 
 	// PARSE_INT
 	c := unsafe { *(buf_start + 7) }
 	if c < `0` || c > `9` {
 		pret.ret = -1
-		return error('error parsing request: invalid HTTP version')
+		pret.err = 'error parsing request: invalid HTTP version'
+		return 0
 	}
 	pret.ret = 8
 	return int(c - `0`)
 }
 
-fn get_token_length_to_eol(buf_start &u8, buf_end &u8, mut pret Pret) !int {
+fn get_token_length_to_eol(buf_start &u8, buf_end &u8, mut pret Pret) int {
 	mut buf := unsafe { buf_start }
 	mut token_len := 0
 
@@ -404,7 +416,8 @@ fn get_token_length_to_eol(buf_start &u8, buf_end &u8, mut pret Pret) !int {
 		if *buf != `\n` {
 			// no '\n' after '\r' indicates a parse error
 			pret.ret = -1
-			return error('error parsing request: expected "\n" after "\r"')
+			pret.err = 'error parsing request: expected "\n" after "\r"'
+			return 0
 		}
 		unsafe { buf++ }
 		token_len = unsafe { buf - 2 - buf_start }
@@ -413,7 +426,8 @@ fn get_token_length_to_eol(buf_start &u8, buf_end &u8, mut pret Pret) !int {
 		unsafe { buf++ }
 	} else {
 		pret.ret = -1
-		return error('error parsing request: expecting "\r\n" after header')
+		pret.err = 'error parsing request: expecting "\r\n" after header'
+		return 0
 	}
 
 	if token_len == 0 {
@@ -428,13 +442,14 @@ fn get_token_length_to_eol(buf_start &u8, buf_end &u8, mut pret Pret) !int {
 // following functions are #define in the C version, but inline here for better readability
 
 [inline]
-fn advance_token(tok_start &u8, tok_end &u8, mut pret Pret) !string {
+fn advance_token(tok_start &u8, tok_end &u8, mut pret Pret) string {
 	mut buf := unsafe { tok_start }
 	for *buf != ` ` {
 		if _unlikely_(!is_printable_ascii(*buf)) {
 			if *buf < ` ` || *buf == 127 {
 				pret.ret = -1
-				return error('error parsing request: invalid character "${*buf}"')
+				pret.err = 'error parsing request: invalid character "${*buf}"'
+				return ''
 			}
 		}
 		unsafe { buf++ }

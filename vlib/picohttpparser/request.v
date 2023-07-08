@@ -23,8 +23,8 @@ pub mut:
 
 // Pret contains the nr of bytes read, a negative number indicates an error
 struct Pret {
-	err ?IError
 pub mut:
+	err string
 	// -1 indicates a parse error and -2 means the request is parsed
 	ret int
 }
@@ -40,10 +40,17 @@ pub fn (mut r Request) parse_request(s string) !int {
 	// if prev_len != 0, check if the request is complete
 	// (a fast countermeasure against slowloris)
 	if r.prev_len != 0 && unsafe { is_complete(buf, buf_end, r.prev_len, mut pret) == nil } {
+		if pret.ret == -1 {
+			return error(pret.err)
+		}
 		return pret.ret
 	}
 
-	buf = r.phr_parse_request(buf, buf_end, mut pret)!
+	buf = r.phr_parse_request(buf, buf_end, mut pret)
+	if pret.ret == -1 {
+		return error(pret.err)
+	}
+
 	if unsafe { buf == nil } {
 		return pret.ret
 	}
@@ -64,7 +71,11 @@ pub fn (mut r Request) parse_request_path(s string) !int {
 	buf_end := unsafe { s.str + s.len }
 
 	mut pret := Pret{}
-	r.phr_parse_request_path(buf, buf_end, mut pret)!
+	r.phr_parse_request_path(buf, buf_end, mut pret)
+	if pret.ret == -1 {
+		return error(pret.err)
+	}
+
 	return pret.ret
 }
 
@@ -76,10 +87,13 @@ pub fn (mut r Request) parse_request_path_pipeline(s string) !int {
 	buf_end := unsafe { s.str + s.len }
 
 	mut pret := Pret{}
-	r.phr_parse_request_path_pipeline(buf, buf_end, mut pret)!
+	r.phr_parse_request_path_pipeline(buf, buf_end, mut pret)
+	if pret.ret == -1 {
+		return error(pret.err)
+	}
 
 	if pret.ret > 0 {
 		r.prev_len = pret.ret
 	}
-	return 0
+	return pret.ret
 }
