@@ -41,9 +41,56 @@ fn run_normal_stuff() {
 	println(run_side_effect())
 }
 
+fn if_cond(cond bool) (int, int) {
+	return if cond { 10, 15 } else { 30, 35 }
+}
+
+struct AA {
+	a int
+	b int
+}
+
+fn take_struct(test AA) int {
+	return test.a
+}
+
+fn give_two_struct(cond bool) (AA, AA) {
+	return if cond { AA{a: 15} } else  { AA{a: 20} }
+}
+
+fn give_struct() int {
+	return take_struct(AA{a: 15})
+}
+
+fn if_struct_test(cond bool) AA {
+	a := if cond { AA{} } else { AA{a: 125} }
+	return a
+}
+
+fn run_stmt_exprs() {
+	mut a := 0
+	mut b := 0
+	a, b = if_cond(true)
+	println(true)
+	println(a)
+	println(b)
+	a, b = if_cond(false)
+	println(false)
+	println(a)
+	println(b)
+	println(give_struct())
+	mut struc := if_struct_test(false)
+	println(struc.a)
+	struc = if_struct_test(true)
+	println(struc.a)
+	c, d := give_two_struct()
+	println(c.a)
+	println(d.a)
+}
+
 fn main() {
 	println('--- normal multi exprs')
 	run_normal_stuff()
-	println('--- struct based multi exprs')
-
+	println('--- struct based multi exprs/stmt exprs')
+	run_stmt_exprs()
 }

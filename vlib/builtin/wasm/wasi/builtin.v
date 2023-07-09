@@ -57,6 +57,5 @@ pub fn exit(code int) {
 pub fn panic(s string) {
 	eprint('V panic: ')
 	eprintln(s)
-	_ := *&u8(-1)
 	exit(1)
 }

@@ -995,49 +995,89 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 				// `a, b := foo()`
 				// `a, b := if cond { 1, 2 } else { 3, 4 }`
 				
-				assert node.op in [.decl_assign, .assign]
+				is_expr_assign := node.op !in [.decl_assign, .assign]
 
 				// similar code from `call_expr()`
+				// create variables or obtain them for use as rvals
 				mut rvars := []Var{cap: node.left_types.len}
 				for idx, rt in node.left_types {
+					left := node.left[idx]
+
+					mut var := Var{}
+					mut passed := false
+
+					if left is ast.Ident {
+						if left.kind == .blank_ident {
+							var = g.new_local('_', rt)
+							passed = true
+						} else if node.op == .decl_assign {
+							var = g.new_local(left.name, rt)
+							passed = true
+						}
+					}
+
+					if !passed && node.op == .assign {
+						if v := g.get_var_from_expr(left) {
+							var = v
+						}
+					}
+
 					if g.is_param_type(rt) {
-						left := node.left[idx]
-
-						mut passed := false
-
-						if left is ast.Ident {
-							if left.kind == .blank_ident {
-								rvars << g.new_local('_', rt)
-								passed = true
-							} else if node.op == .decl_assign {
-								rvars << g.new_local(left.name, rt)
-								passed = true
-							}
-						}
-
-						if !passed && node.op == .assign {
-							if var := g.get_var_from_expr(left) {
-								rvars << var
-							}
-						}
+						rvars << var
 					}
 				}
 
+				mut set := false
 				if node.right.len == 1 {
 					right := node.right[0]
 					match right {
 						ast.IfExpr {
 							params := node.left_types.filter(!g.is_param_type(it)).map(g.get_wasm_type(it))
 							g.if_branch(right, right.typ, params, 0, rvars)
+							set = true
 						}
 						ast.CallExpr {
 							g.call_expr(right, 0, rvars)
+							set = true
 						}
 						else {
-							g.w_error('unhandled node in ast.AssignStmt: ' + right.type_name())
+							// : set = false
+							// execute below instead
 						}
 					}
-				} else {
+				}
+
+				// will never be a multi expr
+				// assume len == 1 for left and right
+				if is_expr_assign {
+					left, right, typ := node.left[0], node.right[0], node.left_types[0]
+
+					rop := token.assign_op_to_infix_op(node.op)
+					lhs := g.get_var_or_make_from_expr(left, typ)
+
+					if !g.is_pure_type(lhs.typ) {
+						// main.struct.+
+						name := '${g.table.get_type_name(lhs.typ)}.${rop}'
+						g.ref(lhs)
+						g.ref(lhs)
+						g.expr(right, lhs.typ)
+						g.func.call(name)
+					} else {
+						g.set_prepare(lhs)
+						{
+							g.get(lhs)
+							g.expr(right, lhs.typ)
+							g.infix_from_typ(lhs.typ, rop)
+						}
+						g.set_set(lhs)
+					}
+
+					return
+				}
+				
+				// prepare variables using expr()
+				// if is an rvar, set it and ignore following
+				if !set {
 					assert node.left.len == node.right.len
 					mut ridx := 0
 					for idx, right in node.right {
@@ -1144,16 +1184,15 @@ pub fn (mut g Gen) expr_stmts(stmts []ast.Stmt, expected ast.Type) {
 
 pub fn (mut g Gen) rvar_expr_stmts(stmts []ast.Stmt, expected ast.Type, existing_rvars []Var) {
 	for idx, stmt in stmts {
-		rtyp := if idx + 1 == stmts.len {
-			expected
+		if idx + 1 >= stmts.len {
+			if stmt is ast.ExprStmt {
+				g.set_with_multi_expr(stmt.expr, expected, existing_rvars)
+			} else {
+				g.expr_stmt(stmt, expected)
+			}
 		} else {
-			ast.void_type
+			g.expr_stmt(stmt, ast.void_type)
 		}
-		if stmt is ast.ExprStmt {
-			g.set_with_multi_expr(stmt.expr, expected, existing_rvars)
-			return
-		}
-		g.expr_stmt(stmt, rtyp)
 	}
 }
 
