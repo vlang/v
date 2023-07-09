@@ -1003,11 +1003,21 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 					if g.is_param_type(rt) {
 						left := node.left[idx]
 
+						mut passed := false
+
 						if left is ast.Ident {
 							if left.kind == .blank_ident {
 								rvars << g.new_local('_', rt)
+								passed = true
 							} else if node.op == .decl_assign {
 								rvars << g.new_local(left.name, rt)
+								passed = true
+							}
+						}
+
+						if !passed && node.op == .assign {
+							if var := g.get_var_from_expr(left) {
+								rvars << var
 							}
 						}
 					}
