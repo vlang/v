@@ -3,5 +3,5 @@ fn main() {
 }
 
 fn return_item() int {
-	return $tmpl('./templates/index.html')
+	return $tmpl('./templates/template.md')
 }
