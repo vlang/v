@@ -4018,7 +4018,7 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 			}
 			if value_sym.kind == .sum_type {
 				g.expr_with_cast(expr, node.val_types[i], unwrap_val_typ)
-			} else if node.val_types[i].has_flag(.option) {
+			} else if node.val_types[i].has_flag(.option) || node.val_types[i] == ast.none_type {
 				g.expr_with_opt(expr, node.val_types[i], unwrap_val_typ)
 			} else {
 				g.expr(expr)
