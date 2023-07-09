@@ -179,6 +179,11 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			c.error('cannot use `${c.table.type_to_str(got_type)}` as ${c.error_type_name(exp_type)} in return argument',
 				pos)
 		}
+		if exprv is ast.ComptimeCall && exprv.method_name == 'tmpl'
+			&& c.table.final_sym(exp_type).kind != .string {
+			c.error('cannot use `string` as type `${c.table.type_to_str(exp_type)}` in return argument',
+				exprv.pos)
+		}
 		if node.exprs[expr_idxs[i]] !is ast.ComptimeCall {
 			got_type_sym := c.table.sym(got_type)
 			exp_type_sym := c.table.sym(exp_type)
