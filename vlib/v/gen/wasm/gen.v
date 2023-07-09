@@ -38,6 +38,7 @@ mut:
 	bp_idx            wasm.LocalIndex = -1 // Base pointer temporary's index for function, if needed (-1 for none)
 	sp_global         ?wasm.GlobalIndex
 	heap_base         ?wasm.GlobalIndex
+	fn_local_idx_end int
 	stack_frame       int // Size of the current stack frame, if needed
 	is_leaf_function  bool = true
 	loop_breakpoint_stack []LoopBreakpoint
@@ -254,10 +255,11 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 
 	for p in node.params {
-		typ := g.get_wasm_type(p.typ)
+		typ := g.get_wasm_type_int_literal(p.typ)
+		ntyp := if p.typ == ast.int_literal_type { ast.i64_type } else { p.typ }
 		g.local_vars << Var{
 			name: p.name
-			typ: p.typ
+			typ: ntyp
 			idx: g.local_vars.len + return_var.len
 			is_address: !g.is_pure_type(p.typ)
 		}
@@ -267,6 +269,8 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	// bottom scope
 	g.scope_context << return_var
+
+	g.fn_local_idx_end = (g.local_vars.len + return_var.len)
 
 	mut should_export := g.pref.os == .browser && node.is_pub && node.mod == 'main'
 	
@@ -350,8 +354,8 @@ fn (mut g Gen) literal(val string, expected ast.Type) {
 }
 
 fn (mut g Gen) cast(typ ast.Type, expected_type ast.Type) {
-	wtyp := g.as_numtype(g.get_wasm_type(ast.mktyp(typ)))
-	expected_wtype := g.as_numtype(g.get_wasm_type(expected_type))
+	wtyp := g.as_numtype(g.get_wasm_type_int_literal(typ))
+	expected_wtype := g.as_numtype(g.get_wasm_type_int_literal(expected_type))
 
 	g.func.cast(wtyp, typ.is_signed(), expected_wtype)
 }
@@ -625,7 +629,12 @@ fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []
 		} else {
 			node.left
 		}
-		g.expr(expr, node.receiver_type)
+		// hack alert!
+		if node.receiver_type == ast.int_literal_type && expr is ast.IntegerLiteral {
+			g.literal(expr.val, ast.i64_type)
+		} else {
+			g.expr(expr, node.receiver_type)
+		}
 	}
 	
 	// {arguments}
@@ -633,7 +642,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []
 	for idx, arg in node.args {
 		mut expr := arg.expr
 		
-		typ := arg.typ
+		mut typ := arg.typ
 		if is_print && typ != ast.string_type {
 			has_str, _, _ := g.table.sym(typ).str_method_info()
 			if typ != ast.string_type && !has_str {
@@ -651,7 +660,12 @@ fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []
 			}
 		}
 
-		g.expr(expr, node.expected_arg_types[idx])
+		// another hack alert!
+		if node.expected_arg_types[idx] == ast.int_literal_type && mut expr is ast.IntegerLiteral {
+			g.literal(expr.val, ast.i64_type)
+		} else {
+			g.expr(expr, node.expected_arg_types[idx])
+		}
 	}
 
 	if namespace := wasm_ns {
@@ -874,18 +888,25 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		}
 		ast.CastExpr {
 			g.expr(node.expr, node.expr_type)
-			g.func.cast(g.as_numtype(g.get_wasm_type(node.expr_type)), node.expr_type.is_signed(), g.as_numtype(g.get_wasm_type(node.typ)))
+			
+			// TODO: unbelievable colossal hack
+			// you don't understand how stupid this is, barely anyone will understand why it is here
+			// i hate the V compiler internals so much
+			// i feel horrible for anyone generating code for anything other than high level languages
+			// if you aren't generating C or JS, good fucking luck!
+			mut typ := node.expr_type
+			if node.expr is ast.Ident {
+				v := g.get_var_from_ident(node.expr)
+				if g.is_param(v) && node.expr_type == ast.int_literal_type {
+					typ = ast.i64_type
+				}
+			}
+
+			g.func.cast(g.as_numtype(g.get_wasm_type(typ)), typ.is_signed(), g.as_numtype(g.get_wasm_type(node.typ)))
 		}
 		ast.CallExpr {
 			g.call_expr(node, expected, [])
 		}
-		/* ast.ConcatExpr {
-			types := g.unpack_type(expected)
-
-			for idx, expr in node.vals {
-				g.expr(expr, types[idx])
-			}
-		} */
 		else {
 			g.w_error('wasm.expr(): unhandled node: ' + node.type_name())
 		}

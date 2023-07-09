@@ -15,6 +15,14 @@ fn (mut g Gen) as_numtype(a wasm.ValType) wasm.NumType {
 	return unsafe { wasm.NumType(a) }
 }
 
+// unwraps int_literal to i64_t
+fn (mut g Gen) get_wasm_type_int_literal(typ_ ast.Type) wasm.ValType {
+	if typ_ == ast.int_literal_type_idx {
+		return wasm.ValType.i64_t
+	}
+	return g.get_wasm_type(typ_)
+}
+
 // "Register size" types such as int, i64 and bool boil down to their WASM counterparts.
 // Structures and unions are pointers, i32.
 fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
@@ -32,13 +40,13 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
 			ast.int_type_idx, ast.u32_type_idx {
 				wasm.ValType.i32_t
 			}
-			ast.i64_type_idx, ast.u64_type_idx, ast.int_literal_type_idx {
+			ast.i64_type_idx, ast.u64_type_idx {
 				wasm.ValType.i64_t
 			}
 			ast.f32_type_idx {
 				wasm.ValType.f32_t
 			}
-			ast.f64_type_idx, ast.float_literal_type_idx {
+			ast.f64_type_idx {
 				wasm.ValType.f64_t
 			}
 			else {

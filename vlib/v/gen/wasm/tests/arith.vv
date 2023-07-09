@@ -104,6 +104,12 @@ pub fn sqrti(a i64) i64 {
 }
 
 fn main() {
+	println('--- test printing numbers')
+	println(-20)
+	println(0)
+	println(22)
+	println(-1000000022)
+
 	println('--- test powi')
 	println(powi(2, 62))
 	println(powi(0, -2))

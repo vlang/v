@@ -560,6 +560,14 @@ fn (mut g Gen) zero_fill(v Var, size int) {
 	}
 }
 
+fn (g &Gen) is_param(v Var) bool {
+	if v.is_global {
+		return false
+	}
+
+	return v.idx < g.fn_local_idx_end
+}
+
 fn (mut g Gen) set_with_multi_expr(init ast.Expr, expected ast.Type, existing_rvars []Var) {
 	// misleading name: this doesn't really perform similar to `set_with_expr`
 	match init {
