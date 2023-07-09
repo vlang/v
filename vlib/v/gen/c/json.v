@@ -65,6 +65,9 @@ fn (mut g Gen) gen_jsons() {
 				g.expr_with_tmp_var(ast.Expr(ast.StructInit{ typ: utyp, typ_str: styp }),
 					utyp, utyp, 'res')
 				init_styp = g.out.cut_to(pos).trim_space()
+			} else {
+				none_str := g.expr_string(ast.None{})
+				init_styp += ' = (${styp}){ .state=2, .err=${none_str}, .data={EMPTY_STRUCT_INITIALIZATION} }'
 			}
 		} else {
 			if sym.kind == .struct_ {
@@ -197,7 +200,9 @@ ${enc_fn_dec} {
 		dec.writeln('\t${result_name}_${ret_styp} ret;')
 		dec.writeln('\t_result_ok(&res, (${result_name}*)&ret, sizeof(res));')
 		if utyp.has_flag(.option) {
-			dec.writeln('\t_option_ok(&res.data, (${option_name}*)&ret.data, sizeof(${g.base_type(utyp)}));')
+			dec.writeln('\tif (res.state != 2) {')
+			dec.writeln('\t\t_option_ok(&res.data, (${option_name}*)&ret.data, sizeof(${g.base_type(utyp)}));')
+			dec.writeln('\t}')
 		}
 		dec.writeln('\treturn ret;\n}')
 		enc.writeln('\treturn o;\n}')
@@ -339,7 +344,11 @@ fn (mut g Gen) gen_option_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec
 	enc.writeln('\to = ${encode_name}(*(${type_str}*)val.data);')
 
 	dec_name := js_dec_name(type_str)
-	dec.writeln('\t_option_ok(&(${type_str}[]){ ${dec_name}(root) }, (${option_name}*)&res, sizeof(${type_str}));')
+	dec.writeln('\tif (!cJSON_IsNull(root)) {')
+	dec.writeln('\t\t_option_ok(&(${type_str}[]){ ${dec_name}(root) }, (${option_name}*)&res, sizeof(${type_str}));')
+	dec.writeln('\t} else {')
+	dec.writeln('\t\t_option_none(&(${type_str}[]){ {0} }, (${option_name}*)&res, sizeof(${type_str}));')
+	dec.writeln('\t}')
 }
 
 [inline]
@@ -637,6 +646,9 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				tmp := g.new_tmp_var()
 				gen_js_get(styp, tmp, name, mut dec, is_required)
 				dec.writeln('\tif (jsonroot_${tmp}) {')
+				if utyp.has_flag(.option) {
+					dec.writeln('\t\tres.state = 0;')
+				}
 				dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = ${dec_name}(jsonroot_${tmp});')
 				if field.has_default_expr {
 					dec.writeln('\t} else {')
@@ -819,7 +831,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 			if field_sym.name == 'time.Time' {
 				// time struct requires special treatment
 				// it has to be encoded as a unix timestamp number
-				enc.writeln('${indent}\tcJSON_AddItemToObject(o, "${name}", json__encode_u64(${prefix_enc}${op}${c_name(field.name)}._v_unix));')
+				enc.writeln('${indent}cJSON_AddItemToObject(o, "${name}", json__encode_u64(${prefix_enc}${op}${c_name(field.name)}._v_unix));')
 			} else {
 				if !field.typ.is_any_kind_of_pointer() {
 					if field_sym.kind == .alias && field.typ.has_flag(.option) {
@@ -832,11 +844,11 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 					arg_prefix := if field.typ.is_ptr() { '' } else { '*' }
 					sptr_value := '${prefix_enc}${op}${c_name(field.name)}'
 					if !field.typ.has_flag(.option) {
-						enc.writeln('${indent}\tif (${sptr_value} != 0) {')
-						enc.writeln('${indent}\t\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${arg_prefix}${sptr_value}));')
-						enc.writeln('${indent}\t}\n')
+						enc.writeln('${indent}if (${sptr_value} != 0) {')
+						enc.writeln('${indent}\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${arg_prefix}${sptr_value}));')
+						enc.writeln('${indent}}\n')
 					} else {
-						enc.writeln('${indent}\t\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${arg_prefix}${sptr_value}));')
+						enc.writeln('${indent}cJSON_AddItemToObject(o, "${name}", ${enc_name}(${arg_prefix}${sptr_value}));')
 					}
 				}
 			}
