@@ -152,7 +152,7 @@ fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
 	}
 
 	if !is_address {
-		v.idx = g.func.new_local_named(wtyp, g.dbg_type_name(name, typ))
+		v.idx = g.func.new_local_named(wtyp, g.dbg_type_name(name, typ_))
 		g.local_vars << v
 		return v
 	}
@@ -227,7 +227,7 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_m
 	is_address := !g.is_pure_type(typ)
 	mut init_expr := ?ast.Expr(none)
 
-	cexpr := if cexpr_v := g.literal_to_constant_expression(typ, init) {
+	cexpr := if cexpr_v := g.literal_to_constant_expression(unpack_literal_int(typ), init) {
 		is_mut = is_global_mut
 		cexpr_v
 	} else {
@@ -257,7 +257,7 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_m
 			typ: typ
 			is_address: is_address
 			is_global: true
-			g_idx: g.mod.new_global(g.dbg_type_name(name, typ), false, g.get_wasm_type(typ), is_mut, cexpr)
+			g_idx: g.mod.new_global(g.dbg_type_name(name, typ), false, g.get_wasm_type_int_literal(typ), is_mut, cexpr)
 		}
 	}
 
@@ -272,8 +272,14 @@ fn (g Gen) is_pure_type(typ ast.Type) bool {
 		return true
 	}
 	ts := g.table.sym(typ)
-	if ts.info is ast.Alias {
-		return g.is_pure_type(ts.info.parent_type)
+	match ts.info {
+		ast.Alias {
+			return g.is_pure_type(ts.info.parent_type)
+		}
+		ast.Enum {
+			return g.is_pure_type(ts.info.typ)
+		}
+		else {}
 	}
 	return false
 }

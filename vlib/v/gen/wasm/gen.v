@@ -115,6 +115,10 @@ fn (mut g Gen) dbg_type_name(name string, typ ast.Type) string {
 	return "${name}<${`&`.repeat(typ.nr_muls())}${*g.table.sym(typ)}>"
 }
 
+fn unpack_literal_int(typ ast.Type) ast.Type {
+	return if typ == ast.int_literal_type { ast.i64_type } else { typ }
+}
+
 fn (g &Gen) get_ns_plus_name(default_name string, attrs []ast.Attr) (string, string) {
 	mut name := default_name
 	mut namespace := 'env'
@@ -257,7 +261,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	for p in node.params {
 		typ := g.get_wasm_type_int_literal(p.typ)
-		ntyp := if p.typ == ast.int_literal_type { ast.i64_type } else { p.typ }
+		ntyp := unpack_literal_int(p.typ)
 		g.local_vars << Var{
 			name: p.name
 			typ: ntyp
@@ -900,12 +904,8 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		}
 		ast.CastExpr {
 			g.expr(node.expr, node.expr_type)
-			
+
 			// TODO: unbelievable colossal hack
-			// you don't understand how stupid this is, barely anyone will understand why it is here
-			// i hate the V compiler internals so much
-			// i feel horrible for anyone generating code for anything other than high level languages
-			// if you aren't generating C or JS, good fucking luck!
 			mut typ := node.expr_type
 			if node.expr is ast.Ident {
 				v := g.get_var_from_ident(node.expr)

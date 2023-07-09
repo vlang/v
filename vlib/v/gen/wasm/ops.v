@@ -63,8 +63,6 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
 			g.pool.type_size(typ)
 			return wasm.ValType.i32_t // pointer
 		}
-		ast.MultiReturn {
-		}
 		ast.Alias {
 			return g.get_wasm_type(ts.info.parent_type)
 		}
