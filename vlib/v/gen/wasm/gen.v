@@ -45,6 +45,7 @@ mut:
 	stack_top int // position in linear memory
 	data_base int // position in linear memory
 	needs_address bool
+	defer_vars []Var
 }
 
 struct Global {
@@ -213,7 +214,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			for t in rts.info.types {
 				wtyp := g.get_wasm_type(t)
 				if g.is_param_type(t) {
-					paramdbg << g.dbg_type_name('__rval${return_var.len}', t)
+					paramdbg << g.dbg_type_name('__rval(${return_var.len})', t)
 					paraml << wtyp
 					return_var << Var{
 						typ: t
@@ -234,7 +235,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			if rt.idx() != ast.void_type_idx {
 				wtyp := g.get_wasm_type(rt)
 				if g.is_param_type(rt) {
-					paramdbg << g.dbg_type_name('__rval', rt)
+					paramdbg << g.dbg_type_name('__rval(0)', rt)
 					paraml << wtyp
 					return_var << Var{
 						typ: rt
@@ -280,6 +281,16 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.ret_br = g.func.c_block([], retl)
 		{
 			g.expr_stmts(node.stmts, ast.void_type)
+		}
+		{
+			for idx, defer_stmt in node.defer_stmts {
+				g.get(g.defer_vars[idx])
+				lbl := g.func.c_if([], [])
+				{
+					g.expr_stmts(defer_stmt.stmts, ast.void_type)
+				}
+				g.func.c_end(lbl)
+			}
 		}
 		g.func.c_end(g.ret_br)
 		g.bare_function_frame(func_start)
@@ -327,6 +338,7 @@ fn (mut g Gen) bare_function_end() {
 	g.local_vars.clear()
 	g.scope_context.clear()
 	g.ret_types.clear()
+	g.defer_vars.clear()
 	g.bp_idx = -1
 	g.stack_frame = 0
 	g.is_leaf_function = true
@@ -1007,6 +1019,12 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 				g.func.c_br(bp.c_continue)
 			}
 		}
+		ast.DeferStmt {
+			v := g.new_local('__defer(${node.idx_in_fn})', ast.bool_type)
+			g.func.i32_const(1)
+			g.set(v)
+			g.defer_vars << v
+		}
 		ast.AssignStmt {
 			if node.has_cross_var {
 				g.w_error('complex assign statements are not implemented')
@@ -1134,63 +1152,6 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 					v := g.get_var_or_make_from_expr(left, typ)
 					g.set(v)
 				}
-
-				/* for i, left in node.left {
-					right := node.right[i]
-					typ := node.left_types[i]
-
-					// `_ = expr` must be evaluated even if the value is being dropped!
-					// The optimiser would remove expressions without side effects.
-
-					// a    =  expr
-					// b    *= expr
-					// _    =  expr
-					// a.b  =  expr
-					// *a   =  expr
-					// a[b] =  expr
-
-					if left is ast.Ident {
-						// `_ = expr`
-						if left.kind == .blank_ident {
-							// expression still may have side effect
-							g.expr(right, typ)
-							g.func.drop()
-							continue
-						}
-						if node.op == .decl_assign {
-							g.new_local(left.name, typ)
-						}
-					}
-
-					lhs := g.get_var_or_make_from_expr(left, typ)
-					if node.op !in [.decl_assign, .assign] {
-						rop := token.assign_op_to_infix_op(node.op)
-						if !g.is_pure_type(lhs.typ) {
-							// main.struct.+
-							name := '${g.table.get_type_name(lhs.typ)}.${rop}'
-
-							g.ref(lhs)
-							g.ref(lhs)
-							g.expr(right, lhs.typ)
-							g.func.call(name)
-							return
-						}
-
-						g.set_prepare(lhs)
-						{
-							g.get(lhs)
-							g.expr(right, lhs.typ)
-							g.infix_from_typ(lhs.typ, rop)
-						}
-						g.set_set(lhs)
-						return
-					}
-					if rhs := g.get_var_from_expr(right) {
-						g.mov(lhs, rhs)
-					} else {
-						g.set_with_expr(right, lhs)
-					}
-				} */
 			}
 		}
 		else {

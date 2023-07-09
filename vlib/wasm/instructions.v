@@ -930,7 +930,7 @@ pub fn (mut func Function) c_return() {
 	func.code << 0x0F // return
 }
 
-// c_end ends the block or loop with the label passed in at `label`.
+// c_end ends the block, loop or if expression with the label passed in at `label`.
 pub fn (mut func Function) c_end(label LabelIndex) {
 	assert func.label == label, 'c_end: called with an invalid label ${label}'
 	func.label--
@@ -954,11 +954,6 @@ pub fn (mut func Function) c_br_if(label LabelIndex) {
 	assert v >= 0, 'c_br_if: malformed label index'
 	func.code << 0x0D // br_if
 	func.u32(u32(v))
-}
-
-// c_end_if closes the current if expression.
-pub fn (mut func Function) c_end_if() {
-	func.code << 0x0B // END expression opcode
 }
 
 // call calls a locally defined function.
