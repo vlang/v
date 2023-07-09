@@ -203,15 +203,10 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					}
 					continue
 				}
-				if exp_type_sym.kind == .array_fixed && got_type_sym.kind == .array_fixed {
-					if (exp_type_sym.info as ast.ArrayFixed).size == (got_type_sym.info as ast.ArrayFixed).size && (exp_type_sym.info as ast.ArrayFixed).elem_type == (got_type_sym.info as ast.ArrayFixed).elem_type {
-						continue
-					}
-				}
-				if got_type_sym.kind == .alias && got_type_sym.is_array_fixed()
-					&& exp_type_sym.kind == .array_fixed {
-					final_sym := c.table.final_sym(got_type)
-					if (final_sym.info as ast.ArrayFixed).size == (exp_type_sym.info as ast.ArrayFixed).size && (final_sym.info as ast.ArrayFixed).elem_type == (exp_type_sym.info as ast.ArrayFixed).elem_type {
+				exp_final_sym := c.table.final_sym(exp_type)
+				got_final_sym := c.table.final_sym(got_type)
+				if exp_final_sym.kind == .array_fixed && got_final_sym.kind == .array_fixed {
+					if (exp_final_sym.info as ast.ArrayFixed).size == (got_final_sym.info as ast.ArrayFixed).size && (exp_final_sym.info as ast.ArrayFixed).elem_type == (got_final_sym.info as ast.ArrayFixed).elem_type {
 						continue
 					}
 				}
