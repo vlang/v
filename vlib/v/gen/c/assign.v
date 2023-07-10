@@ -889,7 +889,7 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 				}
 			}
 			ast.IndexExpr {
-				sym := g.table.sym(left.left_type)
+				sym := g.table.sym(g.table.unaliased_type(left.left_type))
 				if sym.kind == .array {
 					info := sym.info as ast.Array
 					elem_typ := g.table.sym(info.elem_type)
