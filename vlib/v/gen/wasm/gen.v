@@ -831,7 +831,11 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 					g.get(v)
 				}
 			} else {
-				g.expr(node, node.typ)
+				g.needs_address = true
+				{
+					g.expr(node.expr, node.typ)
+				}
+				g.needs_address = false
 				g.field_offset(node.expr_type, node.field_name)
 				if g.is_pure_type(node.typ) && !g.needs_address {
 					// expected to be a pointer
