@@ -767,10 +767,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.indent++
 			g.write('${tmp_opt} = ')
 		} else if !g.inside_curry_call {
-			if g.assign_ct_type != 0 {
-				if node.or_block.kind in [.propagate_option, .propagate_result] {
-					styp = g.typ(g.assign_ct_type.derive(ret_typ))
-				}
+			if g.assign_ct_type != 0 && node.or_block.kind in [.propagate_option, .propagate_result] {
+				styp = g.typ(g.assign_ct_type.derive(ret_typ))
 			}
 			g.write('${styp} ${tmp_opt} = ')
 			if node.left is ast.AnonFn {
