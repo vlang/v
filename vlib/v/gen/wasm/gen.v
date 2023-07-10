@@ -444,10 +444,6 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 	g.func.cast(g.as_numtype(g.get_wasm_type(res_typ)), res_typ.is_signed(), g.as_numtype(g.get_wasm_type(expected)))
 }
 
-const wasm_builtins = ['__memory_grow', '__memory_fill', '__memory_copy', '__memory_size',
-	'__heap_base', '__reinterpret_f32_u32', '__reinterpret_u32_f32', '__reinterpret_f64_u64',
-	'__reinterpret_u64_f64']
-
 fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) {
 	for idx, arg in node.args {
 		g.expr(arg.expr, node.expected_arg_types[idx])
@@ -591,7 +587,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []
 
 	is_print := name in ['panic', 'println', 'print', 'eprintln', 'eprint']
 
-	if name in wasm.wasm_builtins {
+	if name in ['__memory_grow', '__memory_fill', '__memory_copy', '__memory_size', '__heap_base',
+		'__reinterpret_f32_u32', '__reinterpret_u32_f32', '__reinterpret_f64_u64',
+		'__reinterpret_u64_f64'] {
 		g.wasm_builtin(node.name, node)
 		return
 	}
