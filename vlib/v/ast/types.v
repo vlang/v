@@ -345,6 +345,19 @@ pub fn (t Type) ref() Type {
 	return int(t) & 0xff00ffff | int(u32(nr_muls + 1) << 16)
 }
 
+// copy_flags copies the flags from origin type to a new type based on receiver type
+[inline]
+pub fn (t Type) copy_flags(orig Type) Type {
+	mut new_type := t.clear_flags()
+	if orig.has_flag(.option) {
+		new_type = new_type.set_flag(.option)
+	}
+	if orig.has_flag(.result) {
+		new_type = new_type.set_flag(.result)
+	}
+	return new_type
+}
+
 // decrement nr_muls on `t` and return it
 [inline]
 pub fn (t Type) deref() Type {
