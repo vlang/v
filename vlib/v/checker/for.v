@@ -5,15 +5,15 @@ module checker
 import v.ast
 import v.token
 
-fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
+fn (mut c Checker) for_c_stmt(mut node ast.ForCStmt) {
 	c.in_for_count++
 	prev_loop_label := c.loop_label
 	if node.has_init {
-		c.stmt(node.init)
+		c.stmt(mut node.init)
 	}
-	c.expr(node.cond)
+	c.expr(mut node.cond)
 	if node.has_inc {
-		if node.inc is ast.AssignStmt {
+		if mut node.inc is ast.AssignStmt {
 			assign := node.inc
 
 			if assign.op == .decl_assign {
@@ -29,10 +29,10 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 				}
 			}
 		}
-		c.stmt(node.inc)
+		c.stmt(mut node.inc)
 	}
 	c.check_loop_label(node.label, node.pos)
-	c.stmts(node.stmts)
+	c.stmts(mut node.stmts)
 	c.loop_label = prev_loop_label
 	c.in_for_count--
 }
@@ -40,7 +40,7 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	c.in_for_count++
 	prev_loop_label := c.loop_label
-	mut typ := c.expr(node.cond)
+	mut typ := c.expr(mut node.cond)
 	if node.key_var.len > 0 && node.key_var != '_' {
 		c.check_valid_snake_case(node.key_var, 'variable name', node.pos)
 		if reserved_type_names_chk.matches(node.key_var) {
@@ -55,7 +55,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	}
 	if node.is_range {
 		typ_idx := typ.idx()
-		high_type := c.expr(node.high)
+		high_type := c.expr(mut node.high)
 		high_type_idx := high_type.idx()
 		if typ_idx in ast.integer_type_idxs && high_type_idx !in ast.integer_type_idxs
 			&& high_type_idx != ast.void_type_idx {
@@ -270,7 +270,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		}
 	}
 	c.check_loop_label(node.label, node.pos)
-	c.stmts(node.stmts)
+	c.stmts(mut node.stmts)
 	c.loop_label = prev_loop_label
 	c.in_for_count--
 }
@@ -280,7 +280,7 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	prev_loop_label := c.loop_label
 	c.expected_type = ast.bool_type
 	if node.cond !is ast.EmptyExpr {
-		typ := c.expr(node.cond)
+		typ := c.expr(mut node.cond)
 		if !node.is_inf && typ.idx() != ast.bool_type_idx && !c.pref.translated
 			&& !c.file.is_translated {
 			c.error('non-bool used as for condition', node.pos)
@@ -290,7 +290,7 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 		if node.cond.op == .key_is {
 			if node.cond.right is ast.TypeNode && node.cond.left in [ast.Ident, ast.SelectorExpr] {
 				if c.table.type_kind(node.cond.left_type) in [.sum_type, .interface_] {
-					c.smartcast(node.cond.left, node.cond.left_type, node.cond.right_type, mut
+					c.smartcast(mut node.cond.left, node.cond.left_type, node.cond.right_type, mut
 						node.scope)
 				}
 			}
@@ -299,7 +299,7 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	// TODO: update loop var type
 	// how does this work currently?
 	c.check_loop_label(node.label, node.pos)
-	c.stmts(node.stmts)
+	c.stmts(mut node.stmts)
 	c.loop_label = prev_loop_label
 	c.in_for_count--
 	if c.smartcast_mut_pos != token.Pos{} {

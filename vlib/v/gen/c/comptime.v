@@ -178,8 +178,8 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		g.write('${util.no_dots(sym.name)}_${g.comptime_for_method}(')
 
 		// try to see if we need to pass a pointer
-		if node.left is ast.Ident {
-			if node.left.obj is ast.Var {
+		if mut node.left is ast.Ident {
+			if mut node.left.obj is ast.Var {
 				if m.params[0].typ.is_ptr() && !node.left.obj.typ.is_ptr() {
 					g.write('&')
 				}
@@ -190,7 +190,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			g.write(', ')
 		}
 		for i in 1 .. m.params.len {
-			if node.left is ast.Ident {
+			if mut node.left is ast.Ident {
 				if m.params[i].name == node.left.name {
 					continue
 				}
@@ -617,7 +617,8 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 					}
 				}
 				.key_in, .not_in {
-					if cond.left in [ast.TypeNode, ast.SelectorExpr] && cond.right is ast.ArrayInit {
+					if cond.left in [ast.TypeNode, ast.SelectorExpr, ast.Ident]
+						&& cond.right is ast.ArrayInit {
 						checked_type := g.get_expr_type(cond.left)
 
 						for expr in cond.right.exprs {
@@ -632,9 +633,8 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 								}
 							} else if expr is ast.TypeNode {
 								got_type := g.unwrap_generic(expr.typ)
-								is_true := checked_type.idx() == got_type.idx()
-									&& checked_type.has_flag(.option) == got_type.has_flag(.option)
-								if is_true {
+								if checked_type.idx() == got_type.idx()
+									&& checked_type.has_flag(.option) == got_type.has_flag(.option) {
 									if cond.op == .key_in {
 										g.write('1')
 									} else {
@@ -650,9 +650,6 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 							g.write('0')
 						}
 						return cond.op == .not_in, true
-					} else {
-						g.write('1')
-						return true, true
 					}
 				}
 				.gt, .lt, .ge, .le {
@@ -752,7 +749,7 @@ fn (mut g Gen) pop_existing_comptime_values() {
 [inline]
 fn (mut g Gen) is_comptime_selector_field_name(node ast.SelectorExpr, field_name string) bool {
 	return g.inside_comptime_for_field && node.expr is ast.Ident
-		&& (node.expr as ast.Ident).name == g.comptime_for_field_var && node.field_name == field_name
+		&& node.expr.name == g.comptime_for_field_var && node.field_name == field_name
 }
 
 // check_comptime_is_field_selector checks if the SelectorExpr is related to $for variable accessing .typ field
@@ -789,7 +786,7 @@ fn (mut g Gen) get_comptime_var_type(node ast.Expr) ast.Type {
 		if key_str != '' {
 			return g.comptime_var_type_map[key_str] or { ast.void_type }
 		}
-	} else if node is ast.SelectorExpr && g.is_comptime_selector_type(node as ast.SelectorExpr) {
+	} else if node is ast.SelectorExpr && g.is_comptime_selector_type(node) {
 		// field_var.typ from $for field
 		return g.comptime_for_field_type
 	}
@@ -799,6 +796,11 @@ fn (mut g Gen) get_comptime_var_type(node ast.Expr) ast.Type {
 fn (mut g Gen) resolve_comptime_type(node ast.Expr, default_type ast.Type) ast.Type {
 	if (node is ast.Ident && g.is_comptime_var(node)) || node is ast.ComptimeSelector {
 		return g.get_comptime_var_type(node)
+	} else if node is ast.SelectorExpr {
+		sym := g.table.sym(g.unwrap_generic(node.expr_type))
+		if f := g.table.find_field_with_embeds(sym, node.field_name) {
+			return f.typ
+		}
 	}
 	return default_type
 }

@@ -683,9 +683,12 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			tmp_var := g.new_tmp_var()
 			fn_type := g.fn_var_signature(node.left.decl.return_type, node.left.decl.params.map(it.typ),
 				tmp_var)
+			line := g.go_before_stmt(0).trim_space()
+			g.empty_line = true
 			g.write('${fn_type} = ')
 			g.expr(node.left)
 			g.writeln(';')
+			g.write(line)
 			g.write(tmp_var)
 		} else if node.or_block.kind == .absent {
 			g.expr(node.left)
@@ -1281,7 +1284,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		receiver_type_name = 'map'
 	}
 	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name))
-		&& node.name in ['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
+		&& node.name in ['clear', 'repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
 		if !(left_sym.info is ast.Alias && typ_sym.has_method(node.name)) {
 			// `array_Xyz_clone` => `array_clone`
 			receiver_type_name = 'array'

@@ -9,7 +9,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	defer {
 		c.expected_type = former_expected_type
 	}
-	mut left_type := c.expr(node.left)
+	mut left_type := c.expr(mut node.left)
 	node.left_type = left_type
 	c.expected_type = left_type
 
@@ -20,16 +20,16 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			if left_node.op == .and && mut left_node.right is ast.InfixExpr {
 				if left_node.right.op == .key_is {
 					// search last `n is ast.Ident` in the left
-					from_type := c.expr(left_node.right.left)
-					to_type := c.expr(left_node.right.right)
+					from_type := c.expr(mut left_node.right.left)
+					to_type := c.expr(mut left_node.right.right)
 					c.autocast_in_if_conds(mut node.right, left_node.right.left, from_type,
 						to_type)
 				}
 			}
 			if left_node.op == .key_is {
 				// search `n is ast.Ident`
-				from_type := c.expr(left_node.left)
-				to_type := c.expr(left_node.right)
+				from_type := c.expr(mut left_node.left)
+				to_type := c.expr(mut left_node.right)
 				c.autocast_in_if_conds(mut node.right, left_node.left, from_type, to_type)
 				break
 			} else if left_node.op == .and {
@@ -43,7 +43,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	if node.op == .key_is {
 		c.inside_x_is_type = true
 	}
-	mut right_type := c.expr(node.right)
+	mut right_type := c.expr(mut node.right)
 	if node.op == .key_is {
 		c.inside_x_is_type = false
 	}
@@ -505,7 +505,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 				// `array << elm`
 				c.check_expr_opt_call(node.right, right_type)
-				node.auto_locked, _ = c.fail_if_immutable(node.left)
+				node.auto_locked, _ = c.fail_if_immutable(mut node.left)
 				left_value_type := c.table.value_type(c.unwrap_generic(left_type))
 				left_value_sym := c.table.sym(c.unwrap_generic(left_value_type))
 				if left_value_sym.kind == .interface_ {
@@ -661,13 +661,13 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 				if chan_info.is_mut {
 					// TODO: The error message of the following could be more specific...
-					c.fail_if_immutable(node.right)
+					c.fail_if_immutable(mut node.right)
 				}
 				if elem_type.is_ptr() && !right_type.is_ptr() {
 					c.error('cannot push non-reference `${right_sym.name}` on `${left_sym.name}`',
 						right_pos)
 				}
-				c.stmts_ending_with_expression(node.or_block.stmts)
+				c.stmts_ending_with_expression(mut node.or_block.stmts)
 			} else {
 				c.error('cannot push on non-channel `${left_sym.name}`', left_pos)
 			}

@@ -783,24 +783,37 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 	if val_sym.kind == .function {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}());')
 	} else if val_sym.kind == .string {
-		tmp_str := str_intp_sq('*(${val_styp}*)DenseArray_value(&m.key_values, i)')
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
+		if val_typ.has_flag(.option) {
+			func := g.get_str_fn(val_typ)
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${func}(*(${val_styp}*)DenseArray_value(&m.key_values, i)));')
+		} else {
+			tmp_str := str_intp_sq('*(${val_styp}*)DenseArray_value(&m.key_values, i)')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
+		}
 	} else if should_use_indent_func(val_sym.kind) && fn_str.name != 'str' {
 		ptr_str := '*'.repeat(val_typ.nr_muls())
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, indent_${elem_str_fn_name}(*${ptr_str}(${val_styp}*)DenseArray_value(&m.key_values, i), indent_count));')
 	} else if val_sym.kind in [.f32, .f64] {
 		tmp_val := '*(${val_styp}*)DenseArray_value(&m.key_values, i)'
-		if val_sym.kind == .f32 {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_g32(tmp_val)});')
+		if val_typ.has_flag(.option) {
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${g.get_str_fn(val_typ)}(*(${val_styp}*)DenseArray_value(&m.key_values, i)));')
 		} else {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_g64(tmp_val)});')
+			if val_sym.kind == .f32 {
+				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_g32(tmp_val)});')
+			} else {
+				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_g64(tmp_val)});')
+			}
 		}
 	} else if val_sym.kind == .rune {
 		tmp_str := str_intp_rune('${elem_str_fn_name}(*(${val_styp}*)DenseArray_value(&m.key_values, i))')
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
 	} else {
 		ptr_str := '*'.repeat(if receiver_is_ptr { val_typ.nr_muls() - 1 } else { val_typ.nr_muls() })
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(*${ptr_str}(${val_styp}*)DenseArray_value(&m.key_values, i)));')
+		if val_typ.has_flag(.option) {
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${g.get_str_fn(val_typ)}(*${ptr_str}(${val_styp}*)DenseArray_value(&m.key_values, i)));')
+		} else {
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(*${ptr_str}(${val_styp}*)DenseArray_value(&m.key_values, i)));')
+		}
 	}
 	g.auto_str_funcs.writeln('\t\tis_first = false;')
 	g.auto_str_funcs.writeln('\t}')

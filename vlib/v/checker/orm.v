@@ -20,7 +20,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		c.inside_sql = false
 	}
 
-	if !c.check_db_expr(node.db_expr) {
+	if !c.check_db_expr(mut node.db_expr) {
 		return ast.void_type
 	}
 
@@ -112,7 +112,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	field_names := fields.map(it.name)
 
 	if node.has_where {
-		c.expr(node.where_expr)
+		c.expr(mut node.where_expr)
 		c.check_expr_has_no_fn_calls_with_non_orm_return_type(&node.where_expr)
 		c.check_where_expr_has_no_pointless_exprs(table_sym, field_names, &node.where_expr)
 	}
@@ -131,38 +131,38 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			return ast.void_type
 		}
 
-		c.expr(node.order_expr)
+		c.expr(mut node.order_expr)
 	}
 
 	if node.has_limit {
-		c.expr(node.limit_expr)
+		c.expr(mut node.limit_expr)
 		c.check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type(mut node.limit_expr,
 			'limit')
 	}
 
 	if node.has_offset {
-		c.expr(node.offset_expr)
+		c.expr(mut node.offset_expr)
 		c.check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type(mut node.offset_expr,
 			'offset')
 	}
-	c.expr(node.db_expr)
+	c.expr(mut node.db_expr)
 
-	c.check_orm_or_expr(node)
+	c.check_orm_or_expr(mut node)
 
 	return node.typ.clear_flag(.result)
 }
 
 fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
-	if !c.check_db_expr(node.db_expr) {
+	if !c.check_db_expr(mut node.db_expr) {
 		return ast.void_type
 	}
-	node.db_expr_type = c.table.unaliased_type(c.expr(node.db_expr))
+	node.db_expr_type = c.table.unaliased_type(c.expr(mut node.db_expr))
 
 	for mut line in node.lines {
 		c.sql_stmt_line(mut line)
 	}
 
-	c.check_orm_or_expr(node)
+	c.check_orm_or_expr(mut node)
 
 	return ast.void_type
 }
@@ -271,13 +271,13 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	}
 
 	if node.kind == .update {
-		for expr in node.update_exprs {
-			c.expr(expr)
+		for mut expr in node.update_exprs {
+			c.expr(mut expr)
 		}
 	}
 
 	if node.where_expr !is ast.EmptyExpr {
-		c.expr(node.where_expr)
+		c.expr(mut node.where_expr)
 	}
 
 	return ast.void_type
@@ -503,14 +503,14 @@ fn (_ &Checker) fn_return_type_flag_to_string(typ ast.Type) string {
 	}
 }
 
-fn (mut c Checker) check_orm_or_expr(expr ORMExpr) {
-	if expr is ast.SqlExpr {
+fn (mut c Checker) check_orm_or_expr(mut expr ORMExpr) {
+	if mut expr is ast.SqlExpr {
 		if expr.is_generated {
 			return
 		}
 	}
 
-	return_type := if expr is ast.SqlExpr {
+	return_type := if mut expr is ast.SqlExpr {
 		expr.typ
 	} else {
 		ast.void_type.set_flag(.result)
@@ -525,7 +525,7 @@ fn (mut c Checker) check_orm_or_expr(expr ORMExpr) {
 				expr.pos)
 		}
 	} else {
-		c.check_or_expr(expr.or_expr, return_type.clear_flag(.result), return_type, if expr is ast.SqlExpr {
+		c.check_or_expr(expr.or_expr, return_type.clear_flag(.result), return_type, if mut expr is ast.SqlExpr {
 			expr
 		} else {
 			ast.empty_expr
@@ -534,16 +534,16 @@ fn (mut c Checker) check_orm_or_expr(expr ORMExpr) {
 
 	if expr.or_expr.kind == .block {
 		c.expected_or_type = return_type.clear_flag(.result)
-		c.stmts_ending_with_expression(expr.or_expr.stmts)
+		c.stmts_ending_with_expression(mut expr.or_expr.stmts)
 		c.expected_or_type = ast.void_type
 	}
 }
 
 // check_db_expr checks the `db_expr` implements `orm.Connection` and has no `option` flag.
-fn (mut c Checker) check_db_expr(db_expr &ast.Expr) bool {
+fn (mut c Checker) check_db_expr(mut db_expr ast.Expr) bool {
 	connection_type_index := c.table.find_type_idx(checker.connection_interface_name)
 	connection_typ := ast.Type(connection_type_index)
-	db_expr_type := c.expr(db_expr)
+	db_expr_type := c.expr(mut db_expr)
 
 	// If we didn't find `orm.Connection`, we don't have any imported modules
 	// that depend on `orm` and implement the `orm.Connection` interface.

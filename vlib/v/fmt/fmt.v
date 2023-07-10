@@ -2248,7 +2248,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 		f.comments(node.before_op_comments, iembed: node.before_op_comments[0].is_inline)
 	}
 	is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit
-		&& (node.right as ast.ArrayInit).exprs.len == 1
+		&& node.right.exprs.len == 1
 	is_and := node.op == .amp && f.node_str(node.right).starts_with('&')
 	if is_one_val_array_init && !f.inside_comptime_if {
 		// `var in [val]` => `var == val`

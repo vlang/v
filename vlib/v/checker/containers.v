@@ -55,15 +55,15 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		}
 		if node.exprs.len == 0 {
 			if node.has_cap {
-				c.check_array_init_para_type('cap', node.cap_expr, node.pos)
+				c.check_array_init_para_type('cap', mut node.cap_expr, node.pos)
 			}
 			if node.has_len {
-				c.check_array_init_para_type('len', node.len_expr, node.pos)
+				c.check_array_init_para_type('len', mut node.len_expr, node.pos)
 			}
 		}
 		if node.has_default {
-			default_expr := node.default_expr
-			default_typ := c.check_expr_opt_call(default_expr, c.expr(default_expr))
+			mut default_expr := node.default_expr
+			default_typ := c.check_expr_opt_call(default_expr, c.expr(mut default_expr))
 			node.default_type = default_typ
 			if !node.elem_type.has_flag(.option) && default_typ.has_flag(.option) {
 				c.error('cannot use unwrapped Option as initializer', default_expr.pos())
@@ -73,7 +73,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 		}
 		if node.has_len {
-			len_typ := c.check_expr_opt_call(node.len_expr, c.expr(node.len_expr))
+			len_typ := c.check_expr_opt_call(node.len_expr, c.expr(mut node.len_expr))
 			if len_typ.has_flag(.option) {
 				c.error('cannot use unwrapped Option as length', node.len_expr.pos())
 			}
@@ -87,7 +87,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.ensure_sumtype_array_has_default_value(node)
 		}
 		if node.has_cap {
-			cap_typ := c.check_expr_opt_call(node.cap_expr, c.expr(node.cap_expr))
+			cap_typ := c.check_expr_opt_call(node.cap_expr, c.expr(mut node.cap_expr))
 			if cap_typ.has_flag(.option) {
 				c.error('cannot use unwrapped Option as capacity', node.cap_expr.pos())
 			}
@@ -152,7 +152,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 		}
 		for i, mut expr in node.exprs {
-			typ := c.check_expr_opt_call(expr, c.expr(expr))
+			typ := c.check_expr_opt_call(expr, c.expr(mut expr))
 			if typ == ast.void_type {
 				c.error('invalid void array element type', expr.pos())
 			}
@@ -235,9 +235,9 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	} else if node.is_fixed && node.exprs.len == 1 && node.elem_type != ast.void_type {
 		// `[50]u8`
 		mut fixed_size := i64(0)
-		init_expr := node.exprs[0]
-		c.expr(init_expr)
-		match init_expr {
+		mut init_expr := node.exprs[0]
+		c.expr(mut init_expr)
+		match mut init_expr {
 			ast.IntegerLiteral {
 				fixed_size = init_expr.val.int()
 			}
@@ -245,7 +245,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				if !init_expr.typ.is_pure_int() {
 					c.error('only integer types are allowed', init_expr.pos)
 				}
-				match init_expr.expr {
+				match mut init_expr.expr {
 					ast.IntegerLiteral {
 						fixed_size = init_expr.expr.val.int()
 					}
@@ -264,12 +264,12 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 					init_expr.pos)
 			}
 			ast.Ident {
-				if init_expr.obj is ast.ConstField {
-					if init_expr.obj.expr is ast.EnumVal {
+				if mut init_expr.obj is ast.ConstField {
+					if mut init_expr.obj.expr is ast.EnumVal {
 						c.error('${init_expr.obj.expr.enum_name}.${init_expr.obj.expr.val} has to be casted to integer to be used as size',
 							init_expr.pos)
 					}
-					if init_expr.obj.expr is ast.CastExpr {
+					if mut init_expr.obj.expr is ast.CastExpr {
 						if !init_expr.obj.expr.typ.is_pure_int() {
 							c.error('only integer types are allowed', init_expr.pos)
 						}
@@ -304,14 +304,14 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			node.typ = ast.new_type(idx)
 		}
 		if node.has_default {
-			c.expr(node.default_expr)
+			c.expr(mut node.default_expr)
 		}
 	}
 	return node.typ
 }
 
-fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos token.Pos) {
-	sym := c.table.sym(c.unwrap_generic(c.expr(expr)))
+fn (mut c Checker) check_array_init_para_type(para string, mut expr ast.Expr, pos token.Pos) {
+	sym := c.table.sym(c.unwrap_generic(c.expr(mut expr)))
 	if sym.kind !in [.int, .int_literal] {
 		c.error('array ${para} needs to be an int', pos)
 	}
@@ -387,11 +387,13 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			val0_type = c.unwrap_generic(info.value_type)
 		} else {
 			// `{'age': 20}`
-			key0_type = ast.mktyp(c.expr(node.keys[0]))
+			mut key_ := node.keys[0]
+			key0_type = ast.mktyp(c.expr(mut key_))
 			if node.keys[0].is_auto_deref_var() {
 				key0_type = key0_type.deref()
 			}
-			val0_type = ast.mktyp(c.expr(node.vals[0]))
+			mut val_ := node.vals[0]
+			val0_type = ast.mktyp(c.expr(mut val_))
 			if node.vals[0].is_auto_deref_var() {
 				val0_type = val0_type.deref()
 			}
@@ -407,15 +409,20 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		expecting_interface_map := map_value_sym.kind == .interface_
 		//
 		mut same_key_type := true
-		for i, key in node.keys {
+
+		if node.keys.len == 1 && val0_type == ast.none_type {
+			c.error('map value cannot be only `none`', node.vals[0].pos())
+		}
+
+		for i, mut key in node.keys {
 			if i == 0 && !use_expected_type {
 				continue
 			}
-			val := node.vals[i]
+			mut val := node.vals[i]
 			c.expected_type = key0_type
-			key_type := c.expr(key)
+			key_type := c.expr(mut key)
 			c.expected_type = val0_type
-			val_type := c.expr(val)
+			val_type := c.expr(mut val)
 			node.val_types << val_type
 			val_type_sym := c.table.sym(val_type)
 			if !c.check_types(key_type, key0_type) || (i == 0 && key_type.is_number()
@@ -442,6 +449,9 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 					msg := c.expected_msg(val_type, node.value_type)
 					c.error('invalid map value: ${msg}', val.pos())
 				}
+			}
+			if val_type == ast.none_type && val0_type.has_flag(.option) {
+				continue
 			}
 			if !c.check_types(val_type, val0_type)
 				|| val0_type.has_flag(.option) != val_type.has_flag(.option)

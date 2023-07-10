@@ -287,3 +287,29 @@ fn test_orm_insert_with_multiple_child_elements() {
 	assert parent.notes[1].text == 'Second note'
 	assert parent.notes[2].text == 'Third note'
 }
+
+[table: 'customers']
+struct Customer {
+	id   i64    [primary; sql: serial]
+	name string
+}
+
+fn test_i64_primary_field_works_with_insertions_of_id_0() {
+	db := sqlite.connect(':memory:')!
+	sql db {
+		create table Customer
+	}!
+	for i in ['Bob', 'Charlie'] {
+		new_customer := Customer{
+			name: i
+		}
+		sql db {
+			insert new_customer into Customer
+		}!
+	}
+	users := sql db {
+		select from Customer
+	}!
+	assert users.len == 2
+	// println("${users}")
+}

@@ -98,15 +98,11 @@ pub fn new_table() &Table {
 	}
 	t.register_builtin_type_symbols()
 	t.is_fmt = true
-	set_global_table(t)
+	global_table = t
 	return t
 }
 
 __global global_table = &Table(unsafe { nil })
-
-pub fn set_global_table(t &Table) {
-	global_table = t
-}
 
 // used to compare fn's & for naming anon fn's
 pub fn (t &Table) fn_type_signature(f &Fn) string {

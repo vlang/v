@@ -1,5 +1,7 @@
 module arrays
 
+import strings
+
 // Common arrays functions:
 // - min / max - return the value of the minumum / maximum
 // - idx_min / idx_max - return the index of the first minumum / maximum
@@ -663,4 +665,54 @@ pub fn carray_to_varray[T](c_array_data voidptr, items int) []T {
 	total_size := items * isize(sizeof(T))
 	unsafe { vmemcpy(v_array.data, c_array_data, total_size) }
 	return v_array
+}
+
+// find_first returns the first element that matches the given predicate
+// returns `none`, if there is no match found
+// Example: arrays.find_first([1, 2, 3, 4, 5], fn (arr int) bool { arr == 3}) // => 3
+pub fn find_first[T](array []T, predicate fn (elem T) bool) ?T {
+	if array.len == 0 {
+		return none
+	}
+	for item in array {
+		if predicate(item) {
+			return item
+		}
+	}
+	return none
+}
+
+// find_last returns the last element that matches the given predicate
+// returns `none`, if there is no match found
+// Example: arrays.find_last([1, 2, 3, 4, 5], fn (arr int) bool { arr == 3}) // => 3
+pub fn find_last[T](array []T, predicate fn (elem T) bool) ?T {
+	if array.len == 0 {
+		return none
+	}
+	for idx := array.len - 1; idx >= 0; idx-- {
+		item := array[idx]
+		if predicate(item) {
+			return item
+		}
+	}
+	return none
+}
+
+// join_to_string takes in a custom transform function and joins all elements into a string with
+// the specified separator
+[manualfree]
+pub fn join_to_string[T](array []T, separator string, transform fn (elem T) string) string {
+	mut sb := strings.new_builder(array.len * 2)
+	defer {
+		unsafe { sb.free() }
+	}
+	for i, item in array {
+		x := transform(item)
+		sb.write_string(x)
+		unsafe { x.free() }
+		if i < array.len - 1 {
+			sb.write_string(separator)
+		}
+	}
+	return sb.str()
 }

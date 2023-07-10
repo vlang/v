@@ -35,7 +35,16 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.infix_expr_arithmetic_op(node)
 		}
 		.left_shift {
+			// `a << b` can mean many things in V ...
+			// TODO: disambiguate everything in the checker; cgen should not decide all this.
+			// Instead it should be as simple, as the branch for .right_shift is.
+			// `array << val` should have its own separate operation internally.
 			g.infix_expr_left_shift_op(node)
+		}
+		.right_shift {
+			g.write('(')
+			g.gen_plain_infix_expr(node)
+			g.write(')')
 		}
 		.and, .logical_or {
 			g.infix_expr_and_or_op(node)
@@ -110,7 +119,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.gen_plain_infix_expr(node)
 	} else if (left.typ.idx() == ast.string_type_idx || (!has_defined_eq_operator
 		&& left.unaliased.idx() == ast.string_type_idx)) && node.right is ast.StringLiteral
-		&& (node.right as ast.StringLiteral).val == '' {
+		&& node.right.val == '' {
 		// `str == ''` -> `str.len == 0` optimization
 		g.write('(')
 		g.expr(node.left)
@@ -846,7 +855,9 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			}
 		}
 	} else {
+		g.write('(')
 		g.gen_plain_infix_expr(node)
+		g.write(')')
 	}
 }
 

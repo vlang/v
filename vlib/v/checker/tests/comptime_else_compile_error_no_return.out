@@ -1,0 +1,7 @@
+vlib/v/checker/tests/comptime_else_compile_error_no_return.vv:5:3: error: not an int
+    3 |         return val
+    4 |     } $else {
+    5 |         $compile_error('not an int')
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    6 |     }
+    7 | }

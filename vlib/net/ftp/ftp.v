@@ -227,8 +227,14 @@ pub fn (mut zftp FTP) dir() ![]string {
 	mut dir := []string{}
 	sdir := list_dir.bytestr()
 	for lfile in sdir.split('\n') {
+		if lfile.len > 56 {
+			dir << lfile#[56..lfile.len - 1]
+			continue
+		}
 		if lfile.len > 1 {
-			dir << lfile.after(' ').trim_space()
+			trimmed := lfile.after(':')
+			dir << trimmed#[3..trimmed.len - 1]
+			continue
 		}
 	}
 	return dir

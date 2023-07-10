@@ -10,7 +10,7 @@ import v.token
 pub struct Amd64 {
 mut:
 	g &Gen = unsafe { nil }
-	// arm64 specific stuff for code generation
+	// amd64 specific stuff for code generation
 	is_16bit_aligned bool
 }
 
@@ -995,7 +995,8 @@ fn (mut c Amd64) ret() {
 	c.g.println('ret')
 }
 
-fn (mut c Amd64) push(reg Amd64Register) {
+fn (mut c Amd64) push(r Register) {
+	reg := r as Amd64Register
 	if int(reg) < int(Amd64Register.r8) {
 		c.g.write8(0x50 + int(reg))
 	} else {
@@ -1122,7 +1123,7 @@ fn (mut c Amd64) leave() {
 	c.g.println('; label 0: return')
 	if c.g.defer_stmts.len != 0 {
 		// save return value
-		c.push(.rax)
+		c.push(Amd64Register.rax)
 		for defer_stmt in c.g.defer_stmts.reverse() {
 			name := '_defer${defer_stmt.idx_in_fn}'
 			defer_var := c.g.get_var_offset(name)
@@ -1712,14 +1713,14 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 	is_16bit_aligned := c.is_16bit_aligned != (stack_size % 2 == 1)
 	if !is_16bit_aligned {
 		// dummy data
-		c.push(.rbp)
+		c.push(Amd64Register.rbp)
 	}
 	reg_args << ssereg_args
 	reg_args << stack_args
 	for i in reg_args.reverse() {
 		if i == 0 && is_struct_return {
 			c.lea_var_to_reg(Amd64Register.rax, return_pos)
-			c.push(.rax)
+			c.push(Amd64Register.rax)
 			continue
 		}
 		c.g.expr(args[i].expr)
@@ -1754,17 +1755,17 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 		} else {
 			match args_size[i] {
 				1...8 {
-					c.push(.rax)
+					c.push(Amd64Register.rax)
 				}
 				9...16 {
-					c.push(.rdx)
-					c.push(.rax)
+					c.push(Amd64Register.rdx)
+					c.push(Amd64Register.rax)
 				}
 				else {
 					c.add(.rax, args_size[i] - ((args_size[i] + 7) % 8 + 1))
 					for _ in 0 .. (args_size[i] + 7) / 8 {
 						c.mov_deref(.rdx, .rax, ast.i64_type_idx)
-						c.push(.rdx)
+						c.push(Amd64Register.rdx)
 						c.sub(.rax, 8)
 					}
 				}
@@ -1852,51 +1853,6 @@ fn (mut c Amd64) call_builtin(name Builtin) i64 {
 	call_addr := c.call(0)
 	c.g.println('call builtin `${name}`')
 	return call_addr
-}
-
-fn (mut c Amd64) for_in_stmt(node ast.ForInStmt) {
-	if node.is_range {
-		// for a in node.cond .. node.high {
-		i := c.allocate_var(node.val_var, 8, 0) // iterator variable
-		c.g.expr(node.cond)
-		c.mov_reg_to_var(LocalVar{i, ast.i64_type_idx, node.val_var}, Amd64Register.rax) // i = node.cond // initial value
-		start := c.g.pos() // label-begin:
-		start_label := c.g.labels.new_label()
-		c.mov_var_to_reg(Amd64Register.rbx, LocalVar{i, ast.i64_type_idx, node.val_var}) // rbx = iterator value
-		c.g.expr(node.high) // final value
-		c.cmp_reg(.rbx, .rax) // rbx = iterator, rax = max value
-		jump_addr := c.cjmp(.jge) // leave loop if i is beyond end
-		end_label := c.g.labels.new_label()
-		c.g.labels.patches << LabelPatch{
-			id: end_label
-			pos: jump_addr
-		}
-		c.g.println('; jump to label ${end_label}')
-		c.g.labels.branches << BranchLabel{
-			name: node.label
-			start: start_label
-			end: end_label
-		}
-		c.g.stmts(node.stmts)
-		c.g.labels.addrs[start_label] = c.g.pos()
-		c.g.println('; label ${start_label}')
-		c.inc_var(LocalVar{i, ast.i64_type_idx, node.val_var})
-		c.g.labels.branches.pop()
-		c.jmp_back(start)
-		c.g.labels.addrs[end_label] = c.g.pos()
-		c.g.println('; label ${end_label}')
-		/*
-		} else if node.kind == .array {
-	} else if node.kind == .array_fixed {
-	} else if node.kind == .map {
-	} else if node.kind == .string {
-	} else if node.kind == .struct_ {
-	} else if it.kind in [.array, .string] || it.cond_type.has_flag(.variadic) {
-	} else if it.kind == .map {
-		*/
-	} else {
-		c.g.v_error('for-in statement is not yet implemented', node.pos)
-	}
 }
 
 fn (mut c Amd64) gen_concat_expr(node ast.ConcatExpr) {
@@ -3186,7 +3142,7 @@ fn (mut c Amd64) infloop() {
 }
 
 fn (mut c Amd64) fn_decl(node ast.FnDecl) {
-	c.push(.rbp)
+	c.push(Amd64Register.rbp)
 	c.mov_reg(Amd64Register.rbp, Amd64Register.rsp)
 	local_alloc_pos := c.g.pos()
 	c.sub(.rsp, 0)
@@ -3616,7 +3572,7 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 	loop_start := c.g.pos()
 	c.g.println('; label ${loop_label}')
 
-	c.push(.rax)
+	c.push(Amd64Register.rax)
 
 	c.mov(Amd64Register.rdx, 0)
 	c.mov(Amd64Register.rbx, 10)
@@ -3719,7 +3675,7 @@ fn (mut c Amd64) gen_match_expr(expr ast.MatchExpr) {
 	} else {
 		c.g.expr(expr.cond)
 	}
-	c.push(.rax)
+	c.push(Amd64Register.rax)
 
 	mut else_label := 0
 	for i, branch in expr.branches {
@@ -3747,7 +3703,7 @@ fn (mut c Amd64) gen_match_expr(expr ast.MatchExpr) {
 							id: branch_labels[i]
 							pos: then_addr
 						}
-						c.push(.rdx)
+						c.push(Amd64Register.rdx)
 					}
 					else {
 						c.g.expr(cond)
@@ -3758,7 +3714,7 @@ fn (mut c Amd64) gen_match_expr(expr ast.MatchExpr) {
 							id: branch_labels[i]
 							pos: then_addr
 						}
-						c.push(.rdx)
+						c.push(Amd64Register.rdx)
 					}
 				}
 			}
@@ -4170,6 +4126,11 @@ fn (mut c Amd64) gen_cast_expr(expr ast.CastExpr) {
 			c.mov_extend_reg(.rax, .rax, expr.typ)
 		}
 	}
+}
+
+fn (mut c Amd64) cmp_to_stack_top(reg Register) {
+	c.pop(.rbx)
+	c.cmp_reg(.rbx, reg as Amd64Register)
 }
 
 // Temporary!
