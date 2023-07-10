@@ -541,7 +541,7 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
 		}
 		.mul {
 			g.expr(node.right, node.right_type)
-			if g.is_pure_type(expected) {
+			if g.is_pure_type(expected) && !g.needs_address {
 				// in a RHS context, not lvalue
 				g.load(expected, 0)
 			}
