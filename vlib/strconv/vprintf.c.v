@@ -23,20 +23,24 @@ enum Char_parse_state {
 }
 
 // v_printf prints a sprintf-like formated `string` to the terminal.
-[deprecated: 'use string interpolation instead']
+// The format string `str` can be constructed at runtime.
+// Note, that this function is unsafe.
+// In most cases, you are better off using V's string interpolation,
+// when your format string is known at compile time.
 fn v_printf(str string, pt ...voidptr) {
 	print(v_sprintf(str, ...pt))
 }
 
 // v_sprintf returns a sprintf-like formated `string`.
-//
+// The format string `str` can be constructed at runtime.
+// Note, that this function is unsafe.
+// In most cases, you are better off using V's string interpolation,
+// when your format string is known at compile time.
 // Example:
 // ```v
 // x := 3.141516
 // assert strconv.v_sprintf('aaa %G', x) == 'aaa 3.141516'
 // ```
-[deprecated: 'use string interpolation instead']
-[deprecated_after: '2023-06-30']
 [direct_array_access; manualfree]
 pub fn v_sprintf(str string, pt ...voidptr) string {
 	mut res := strings.new_builder(pt.len * 16)
