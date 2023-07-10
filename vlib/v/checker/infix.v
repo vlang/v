@@ -857,6 +857,11 @@ fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, 
 		ast.ParExpr {
 			c.autocast_in_if_conds(mut right.expr, from_expr, from_type, to_type)
 		}
+		ast.AsCast {
+			if right.typ != to_type {
+				c.autocast_in_if_conds(mut right.expr, from_expr, from_type, to_type)
+			}
+		}
 		ast.PrefixExpr {
 			c.autocast_in_if_conds(mut right.right, from_expr, from_type, to_type)
 		}
