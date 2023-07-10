@@ -1284,7 +1284,8 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 	if out_name != '-' {
 		os.write_file_array(out_name, mod) or { panic(err) }
 		if g.pref.wasm_validate {
-			if rt := os.find_abs_path_of_executable($if windows { 'wasm-validate.exe' } $else { 'wasm-validate' }) {
+			exe := $if windows { 'wasm-validate.exe' } $else { 'wasm-validate' }
+			if rt := os.find_abs_path_of_executable(exe) {
 				mut p := os.new_process(rt)
 				p.set_args([out_name])
 				p.set_redirect_stdio()
@@ -1296,10 +1297,28 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 					g.w_error('validation failed, this should not happen. report an issue with the above messages, the webassembly generated, and appropriate code.')
 				}
 			} else {
-				g.w_error('validation failed, this should not happen. report an issue with the above messages, the webassembly generated, and appropriate code.')
+				g.w_error('${exe} not found! Try installing WABT (WebAssembly Binary Toolkit). Run `./cmd/tools/install_wabt.vsh`, to download a prebuilt executable for your platform.')
 			}
 		}
-	} else if g.pref.wasm_validate {
-		eprintln('stdout output, will not validate wasm')
+		if g.pref.is_prod {
+			exe := $if windows { 'wasm-opt.exe' } $else { 'wasm-opt' }
+			if rt := os.find_abs_path_of_executable(exe) {
+				mut p := os.new_process(rt)
+				p.set_args(['-all', '-lmu', '-c', '-O4', out_name, '-o', out_name])
+				// -lmu: low memory unused, very important optimisation
+				p.set_redirect_stdio()
+				p.run()
+				err := p.stderr_slurp()
+				p.wait()
+				if p.code != 0 {
+					eprintln(err)
+					g.w_error('${exe} failed, this should not happen. report an issue with the above messages, the webassembly generated, and appropriate code.')
+				}
+			} else {
+				g.w_error('${exe} not found! Try installing Binaryen. Run `./cmd/tools/install_binaryen.vsh`, to download a prebuilt executable for your platform.')
+			}
+		}
+	} else if g.pref.wasm_validate || g.pref.is_prod {
+		eprintln('stdout output, cannot validate or optimise wasm')
 	}
 }
