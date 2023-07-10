@@ -47,6 +47,7 @@ mut:
 	data_base int // position in linear memory
 	needs_address bool
 	defer_vars []Var
+	is_direct_array_access bool // inside a `[direct_array_access]` function
 }
 
 struct Global {
@@ -276,6 +277,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	// bottom scope
 	g.scope_context << return_var
 
+	g.is_direct_array_access = node.is_direct_arr || g.pref.no_bounds_checking
 	g.fn_local_idx_end = (g.local_vars.len + return_var.len)
 	g.fn_name = name
 
@@ -348,6 +350,7 @@ fn (mut g Gen) bare_function_end() {
 	g.bp_idx = -1
 	g.stack_frame = 0
 	g.is_leaf_function = true
+	g.is_direct_array_access = false
 	assert g.loop_breakpoint_stack.len == 0
 }
 
@@ -766,30 +769,37 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			g.w_error('wasm backend does not support threads')
 		}
 		ast.IndexExpr {
-			// TODO: IMPLICIT BOUNDS CHECKING
-			/*
-			if !node.is_direct {
-				g.w_error('implicit bounds checks are not implemented, create one manually')
-			}*/
+			mut direct_array_access := g.is_direct_array_access || node.is_direct
+			mut tmp_voidptr_var := wasm.LocalIndex(-1)
 
 			// ptr + index * size
 			mut typ := node.left_type
+			ts := g.table.sym(typ)
 
 			g.expr(node.left, node.left_type)
 			if node.left_type == ast.string_type {
+				if !direct_array_access {
+					tmp_voidptr_var = g.func.new_local_named(.i32_t, '__tmp<voidptr>')
+					g.func.local_tee(tmp_voidptr_var)
+				}
+
 				// be pedantic...
 				g.load_field(ast.string_type, ast.voidptr_type, 'str')
 				typ = ast.u8_type
 			} else if typ.is_ptr() {
 				typ = typ.deref()
+				direct_array_access = true
 			} else {
-				ts := g.table.sym(typ)
 				match ts.info {
 					ast.Array {
 						g.w_error('wasm backend does not support dynamic arrays')
 					}
 					ast.ArrayFixed {
 						typ = ts.info.elem_type
+						if node.index.is_pure_literal() {
+							// checker would have gotten this by now
+							direct_array_access = true
+						}
 					}
 					else {
 						g.w_error('ast.IndexExpr: unreachable')
@@ -800,6 +810,37 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			size, _ := g.pool.type_size(typ)
 
 			g.expr(node.index, ast.int_type)
+
+			if !direct_array_access {
+				g.is_leaf_function = false // calls panic()
+				
+				idx_temp := g.func.new_local_named(.i32_t, '__tmp<int>')
+				g.func.local_tee(idx_temp)
+
+				// .len
+				if node.left_type == ast.string_type {
+					g.func.local_get(tmp_voidptr_var)
+					g.load_field(ast.string_type, ast.int_type, 'len')
+				} else if ts.info is ast.ArrayFixed {
+					g.func.i32_const(ts.info.size)
+				} else {
+					panic('unreachable')
+				}
+
+				g.func.ge(.i32_t, false)
+				// is_signed: false, negative numbers will be reinterpreted as > 2^31 and will also trigger false
+				blk := g.func.c_if([], [])
+				{
+					g.expr(ast.StringLiteral{val: '${g.file_pos(node.pos)}: ${ast.Expr(node)}'}, ast.string_type)
+					g.func.call('eprintln')
+					g.expr(ast.StringLiteral{val: 'index out of range'}, ast.string_type)
+					g.func.call('panic')
+				}
+				g.func.c_end(blk)
+
+				g.func.local_get(idx_temp)
+			}
+			
 			if size > 1 {
 				g.literalint(size, ast.int_type)
 				g.func.mul(.i32_t)
@@ -946,6 +987,10 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 	}
 }
 
+fn (g &Gen) file_pos(pos token.Pos) string {
+	return '${g.file_path}:${pos.line_nr + 1}:${pos.col + 1}'
+}
+
 fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 	match node {
 		ast.Block {
@@ -1061,7 +1106,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 				// main.main: ${msg}
 				// V panic: Assertion failed...
 
-				mut msg := 'fn ${g.fn_name}: assert fail'
+				mut msg := '${g.file_pos(node.pos)}: fn ${g.fn_name}: ${ast.Expr(node)}'
 				if node.extra is ast.StringLiteral {
 					msg += ", '${node.extra.val}'"
 				}
