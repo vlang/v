@@ -739,6 +739,11 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 				return
 			}
 
+			if var := g.get_var_from_expr(init) {
+				g.mov(v, var)
+				return
+			}
+
 			to := Var{
 				typ: v.typ
 				idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')

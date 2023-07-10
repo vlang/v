@@ -142,7 +142,7 @@ struct Hello {
 }
 
 pub fn recurse() {
-	a := Hello{}
+	_ := Hello{}
 }
 
 struct DD {
@@ -176,4 +176,26 @@ fn postfix_test() {
 
 fn postfix_test_mut(mut a TEST) {
 	a.b++
+}
+
+fn main() {
+	zeroed()
+	field()
+	println(selector(0))
+	println(reassign(10))
+	println(give(42))
+	println(return_make(123))
+	accept()
+	println(accept_multi(5))
+	x, y := test(2, 3)
+	println(x)
+	println(y)
+	recurse()
+	z, w := valer()
+	println(z)
+	println(w)
+	postfix_test()
+	mut a := TEST{}
+	postfix_test_mut(mut a)
+	println(a.b)
 }
