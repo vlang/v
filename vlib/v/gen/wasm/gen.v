@@ -31,7 +31,7 @@ mut:
 	func              wasm.Function
 	local_vars        []Var
 	global_vars       map[string]Global
-	scope_context       [][]Var
+	ret_rvars       []Var
 	ret ast.Type
 	ret_types []ast.Type
 	ret_br wasm.LabelIndex
@@ -208,10 +208,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	// fn (...) !struct     | fn (_ &struct, ...) &IError
 	// fn (...) (...struct) | fn (...&struct, ...)
 
-	// TODO: PRESERVE `pub` modifer and `export` attrs
-	// TODO: READ THROUGH EVERYTHING AND SUPPORT EVERYTHING
-
-	mut return_var := []Var{}
+	g.ret_rvars = []Var{}
 	rt := node.return_type
 	rts := g.table.sym(rt)
 	g.ret = rt
@@ -220,11 +217,11 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			for t in rts.info.types {
 				wtyp := g.get_wasm_type(t)
 				if g.is_param_type(t) {
-					paramdbg << g.dbg_type_name('__rval(${return_var.len})', t)
+					paramdbg << g.dbg_type_name('__rval(${g.ret_rvars.len})', t)
 					paraml << wtyp
-					return_var << Var{
+					g.ret_rvars << Var{
 						typ: t
-						idx: return_var.len
+						idx: g.ret_rvars.len
 						is_address: true
 					}
 				} else {
@@ -243,7 +240,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 				if g.is_param_type(rt) {
 					paramdbg << g.dbg_type_name('__rval(0)', rt)
 					paraml << wtyp
-					return_var << Var{
+					g.ret_rvars << Var{
 						typ: rt
 						is_address: true
 					}
@@ -267,7 +264,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.local_vars << Var{
 			name: p.name
 			typ: ntyp
-			idx: g.local_vars.len + return_var.len
+			idx: g.local_vars.len + g.ret_rvars.len
 			is_address: !g.is_pure_type(p.typ)
 		}
 		paramdbg << g.dbg_type_name(p.name, p.typ)
@@ -275,10 +272,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 
 	// bottom scope
-	g.scope_context << return_var
 
 	g.is_direct_array_access = node.is_direct_arr || g.pref.no_bounds_checking
-	g.fn_local_idx_end = (g.local_vars.len + return_var.len)
+	g.fn_local_idx_end = (g.local_vars.len + g.ret_rvars.len)
 	g.fn_name = name
 
 	mut should_export := g.pref.os == .browser && node.is_pub && node.mod == 'main'
@@ -344,7 +340,7 @@ fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
 
 fn (mut g Gen) bare_function_end() {
 	g.local_vars.clear()
-	g.scope_context.clear()
+	g.ret_rvars.clear()
 	g.ret_types.clear()
 	g.defer_vars.clear()
 	g.bp_idx = -1
@@ -997,12 +993,10 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 			g.expr_stmts(node.stmts, expected)
 		}
 		ast.Return {
-			return_vars := g.scope_context[0]
-
 			if node.exprs.len > 1 {
-				g.set_with_multi_expr(ast.ConcatExpr{vals: node.exprs}, g.ret, return_vars)
+				g.set_with_multi_expr(ast.ConcatExpr{vals: node.exprs}, g.ret, g.ret_rvars)
 			} else if node.exprs.len == 1 {
-				g.set_with_multi_expr(node.exprs[0], g.ret, return_vars)
+				g.set_with_multi_expr(node.exprs[0], g.ret, g.ret_rvars)
 			}
 			g.func.c_br(g.ret_br)
 		}
@@ -1106,7 +1100,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 				// main.main: ${msg}
 				// V panic: Assertion failed...
 
-				mut msg := '${g.file_pos(node.pos)}: fn ${g.fn_name}: ${ast.Expr(node)}'
+				mut msg := '${g.file_pos(node.pos)}: fn ${g.fn_name}: ${ast.Stmt(node)}'
 				if node.extra is ast.StringLiteral {
 					msg += ", '${node.extra.val}'"
 				}
