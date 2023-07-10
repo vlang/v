@@ -90,6 +90,8 @@ jobs:
           echo "Clone v-analyzer"
           git clone --depth 1 https://github.com/v-analyzer/v-analyzer /tmp/v-analyzer
           cd /tmp/v-analyzer
+          echo "Installing dependencies"
+          v install
           echo "Build v-analyzer debug"
           v build.vsh debug
           echo "Build v-analyzer release"
