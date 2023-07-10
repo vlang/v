@@ -127,11 +127,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	is_decl := node.op == .decl_assign
 	g.assign_op = node.op
 	g.inside_assign = true
-	g.assign_ct_type = ast.void_type
+	g.assign_ct_type = 0
 	defer {
 		g.assign_op = .unknown
 		g.inside_assign = false
-		g.assign_ct_type = ast.void_type
+		g.assign_ct_type = 0
 	}
 	op := if is_decl { token.Kind.assign } else { node.op }
 	right_expr := node.right[0]
