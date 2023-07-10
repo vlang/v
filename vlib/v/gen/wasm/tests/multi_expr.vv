@@ -55,7 +55,7 @@ fn take_struct(test AA) int {
 }
 
 fn give_two_struct(cond bool) (AA, AA) {
-	return if cond { AA{a: 15} } else  { AA{a: 20} }
+	return if cond { AA{a: 15}, AA{a: 15} } else  { AA{a: 20}, AA{a: 592} }
 }
 
 fn give_struct() int {
@@ -83,7 +83,7 @@ fn run_stmt_exprs() {
 	println(struc.a)
 	struc = if_struct_test(true)
 	println(struc.a)
-	c, d := give_two_struct()
+	c, d := give_two_struct(false)
 	println(c.a)
 	println(d.a)
 }

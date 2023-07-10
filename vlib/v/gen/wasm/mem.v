@@ -607,7 +607,7 @@ fn (mut g Gen) set_with_multi_expr(init ast.Expr, expected ast.Type, existing_rv
 
 			if existing_rvars.len == 1 && g.is_param_type(expected) {
 				if rhs := g.get_var_from_expr(init) {
-					g.mov(existing_rvars[0], rhs)
+					g.mov(rhs, existing_rvars[0])
 				} else {
 					g.set_with_expr(init, existing_rvars[0])
 				}

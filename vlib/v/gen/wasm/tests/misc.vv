@@ -82,5 +82,6 @@ fn main() {
 	// println(float)
 	println(integer)
 	println('enums')
-	// println(enums())
+	println(int(enums()))
+	println(sizeof(Hello))
 }
