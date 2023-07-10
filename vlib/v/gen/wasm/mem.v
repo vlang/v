@@ -295,7 +295,7 @@ fn log2(size int) int {
 }
 
 fn (mut g Gen) load(typ ast.Type, offset int) {
-	size, align := g.table.type_size(typ)
+	size, align := g.pool.type_size(typ)
 	wtyp := g.as_numtype(g.get_wasm_type(typ))
 
 	match size {
@@ -306,7 +306,7 @@ fn (mut g Gen) load(typ ast.Type, offset int) {
 }
 
 fn (mut g Gen) store(typ ast.Type, offset int) {
-	size, align := g.table.type_size(typ)
+	size, align := g.pool.type_size(typ)
 	wtyp := g.as_numtype(g.get_wasm_type(typ))
 
 	match size {

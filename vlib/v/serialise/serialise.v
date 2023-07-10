@@ -63,6 +63,10 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 		return ts.size, ts.align
 	}
 
+	if ts.info is ast.Enum {
+		return p.table.type_size(ts.info.typ)
+	}
+
 	if ts.info !is ast.Struct {
 		return p.table.type_size(typ)
 	}

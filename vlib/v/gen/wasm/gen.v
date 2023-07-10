@@ -845,7 +845,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			if !g.table.known_type_idx(node.typ) {
 				g.v_error('unknown type `${*g.table.sym(node.typ)}`', node.pos)
 			}
-			size, _ := g.table.type_size(node.typ)
+			size, _ := g.pool.type_size(node.typ)
 			g.literalint(size, ast.u32_type)
 		}
 		ast.BoolLiteral {
