@@ -1277,8 +1277,13 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 	mod := g.mod.compile()
 
 	if out_name == '-' {
-		eprintln('<stderr> stdout pretty printing is not implemented for the time being')
-		print(mod.bytestr())
+		if os.is_atty(1) == 1 {
+			eprintln('pretty printing to stdout is not implemented for the time being')
+			eprintln('raw bytes can mess up your terminal, are you piping into a file?')
+			exit(1)
+		} else {
+			print(mod.bytestr())
+		}
 	}
 
 	if out_name != '-' {
