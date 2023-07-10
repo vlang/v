@@ -9,7 +9,7 @@ import v.util
 import v.token
 import v.errors
 import v.eval
-import v.serialise
+import v.gen.wasm.serialise
 import wasm
 import os
 

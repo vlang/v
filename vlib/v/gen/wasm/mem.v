@@ -5,7 +5,7 @@ module wasm
 
 import wasm
 import v.ast
-import v.serialise
+import v.gen.wasm.serialise
 import encoding.binary
 
 struct Var {
