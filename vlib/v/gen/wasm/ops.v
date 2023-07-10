@@ -83,27 +83,61 @@ fn (mut g Gen) infix_from_typ(typ ast.Type, op token.Kind) {
 		eprintln(*g.table.sym(typ))
 		panic('unimplemented')
 	}
-	
+
 	wasm_typ := g.as_numtype(g.get_wasm_type(typ))
 
 	match op {
-		.plus { g.func.add(wasm_typ) }
-		.minus { g.func.sub(wasm_typ)}
-		.mul { g.func.mul(wasm_typ) }
-		.mod { g.func.rem(wasm_typ, typ.is_signed()) }
-		.div { g.func.div(wasm_typ, typ.is_signed()) }
-		.eq { g.func.eq(wasm_typ) }
-		.ne { g.func.ne(wasm_typ) }
-		.gt { g.func.gt(wasm_typ, typ.is_signed()) }
-		.lt { g.func.lt(wasm_typ, typ.is_signed()) }
-		.ge { g.func.ge(wasm_typ, typ.is_signed()) }
-		.le { g.func.le(wasm_typ, typ.is_signed()) }
-		.xor { g.func.b_xor(wasm_typ) }
-		.pipe { g.func.b_or(wasm_typ) }
-		.amp { g.func.b_and(wasm_typ) }
-		.left_shift { g.func.b_shl(wasm_typ) }
-		.right_shift { g.func.b_shr(wasm_typ, true) }
-		.unsigned_right_shift { g.func.b_shr(wasm_typ, false) }
+		.plus {
+			g.func.add(wasm_typ)
+		}
+		.minus {
+			g.func.sub(wasm_typ)
+		}
+		.mul {
+			g.func.mul(wasm_typ)
+		}
+		.mod {
+			g.func.rem(wasm_typ, typ.is_signed())
+		}
+		.div {
+			g.func.div(wasm_typ, typ.is_signed())
+		}
+		.eq {
+			g.func.eq(wasm_typ)
+		}
+		.ne {
+			g.func.ne(wasm_typ)
+		}
+		.gt {
+			g.func.gt(wasm_typ, typ.is_signed())
+		}
+		.lt {
+			g.func.lt(wasm_typ, typ.is_signed())
+		}
+		.ge {
+			g.func.ge(wasm_typ, typ.is_signed())
+		}
+		.le {
+			g.func.le(wasm_typ, typ.is_signed())
+		}
+		.xor {
+			g.func.b_xor(wasm_typ)
+		}
+		.pipe {
+			g.func.b_or(wasm_typ)
+		}
+		.amp {
+			g.func.b_and(wasm_typ)
+		}
+		.left_shift {
+			g.func.b_shl(wasm_typ)
+		}
+		.right_shift {
+			g.func.b_shr(wasm_typ, true)
+		}
+		.unsigned_right_shift {
+			g.func.b_shr(wasm_typ, false)
+		}
 		else {
 			g.w_error('bad infix: op `${op}`')
 		}

@@ -19,40 +19,40 @@ pub struct Gen {
 	pref     &pref.Preferences = unsafe { nil } // Preferences shared from V struct
 	files    []&ast.File
 mut:
-	file_path     string // current ast.File path
-	warnings      []errors.Warning
-	errors        []errors.Error
-	table         &ast.Table = unsafe { nil }
-	eval          eval.Eval
-	enum_vals     map[string]Enum
+	file_path string // current ast.File path
+	warnings  []errors.Warning
+	errors    []errors.Error
+	table     &ast.Table = unsafe { nil }
+	eval      eval.Eval
+	enum_vals map[string]Enum
 	//
-	mod wasm.Module
-	pool serialise.Pool
-	func              wasm.Function
-	local_vars        []Var
-	global_vars       map[string]Global
-	ret_rvars       []Var
-	ret ast.Type
-	ret_types []ast.Type
-	ret_br wasm.LabelIndex
-	bp_idx            wasm.LocalIndex = -1 // Base pointer temporary's index for function, if needed (-1 for none)
-	sp_global         ?wasm.GlobalIndex
-	heap_base         ?wasm.GlobalIndex
-	fn_local_idx_end int
-	fn_name string
-	stack_frame       int // Size of the current stack frame, if needed
-	is_leaf_function  bool = true
-	loop_breakpoint_stack []LoopBreakpoint
-	stack_top int // position in linear memory
-	data_base int // position in linear memory
-	needs_address bool
-	defer_vars []Var
+	mod                    wasm.Module
+	pool                   serialise.Pool
+	func                   wasm.Function
+	local_vars             []Var
+	global_vars            map[string]Global
+	ret_rvars              []Var
+	ret                    ast.Type
+	ret_types              []ast.Type
+	ret_br                 wasm.LabelIndex
+	bp_idx                 wasm.LocalIndex = -1 // Base pointer temporary's index for function, if needed (-1 for none)
+	sp_global              ?wasm.GlobalIndex
+	heap_base              ?wasm.GlobalIndex
+	fn_local_idx_end       int
+	fn_name                string
+	stack_frame            int             // Size of the current stack frame, if needed
+	is_leaf_function       bool = true
+	loop_breakpoint_stack  []LoopBreakpoint
+	stack_top              int // position in linear memory
+	data_base              int // position in linear memory
+	needs_address          bool
+	defer_vars             []Var
 	is_direct_array_access bool // inside a `[direct_array_access]` function
 }
 
 struct Global {
 mut:
-	init     ?ast.Expr
+	init ?ast.Expr
 	v    Var
 }
 
@@ -114,7 +114,7 @@ fn (g Gen) is_param_type(typ ast.Type) bool {
 }
 
 fn (mut g Gen) dbg_type_name(name string, typ ast.Type) string {
-	return "${name}<${`&`.repeat(typ.nr_muls())}${*g.table.sym(typ)}>"
+	return '${name}<${`&`.repeat(typ.nr_muls())}${*g.table.sym(typ)}>'
 }
 
 fn unpack_literal_int(typ ast.Type) ast.Type {
@@ -150,8 +150,7 @@ fn (mut g Gen) fn_external_import(node ast.FnDecl) {
 	mut retl := []wasm.ValType{cap: 1}
 	for arg in node.params {
 		if !g.is_pure_type(arg.typ) {
-			g.v_error('interop functions do not support complex arguments',
-				arg.type_pos)
+			g.v_error('interop functions do not support complex arguments', arg.type_pos)
 		}
 		paraml << g.get_wasm_type(arg.typ)
 	}
@@ -203,7 +202,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	// fn ()!       | fn () &IError
 	// fn () ?(...) | fn () (..., bool)
 	// fn () !(...) | fn () (..., &IError)
-	// 
+	//
 	// fn (...) struct      | fn (_ &struct, ...)
 	// fn (...) !struct     | fn (_ &struct, ...) &IError
 	// fn (...) (...struct) | fn (...&struct, ...)
@@ -278,7 +277,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.fn_name = name
 
 	mut should_export := g.pref.os == .browser && node.is_pub && node.mod == 'main'
-	
+
 	g.func = g.mod.new_debug_function(name, wasm.FuncType{paraml, retl, none}, paramdbg)
 	func_start := g.func.patch_pos()
 	if node.stmts.len > 0 {
@@ -311,8 +310,8 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
 	// Setup stack frame.
-	// If the function does not call other functions, 
-	// a leaf function, the omission of setting the 
+	// If the function does not call other functions,
+	// a leaf function, the omission of setting the
 	// stack pointer is perfectly acceptable.
 	//
 	if g.stack_frame != 0 {
@@ -325,7 +324,7 @@ fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
 				g.func.local_tee(g.bp())
 				g.func.global_set(g.sp())
 			} else {
-				g.func.local_set(g.bp())					
+				g.func.local_set(g.bp())
 			}
 		}
 		g.func.patch(func_start, prolouge)
@@ -409,7 +408,6 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 			g.expr(node.left, ast.bool_type)
 			g.func.local_set(temp)
 		}
-
 		g.func.local_get(temp)
 		if node.op == .logical_or {
 			g.func.eqz(.i32_t)
@@ -447,7 +445,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 }
 
 const wasm_builtins = ['__memory_grow', '__memory_fill', '__memory_copy', '__memory_size',
-	'__heap_base', '__reinterpret_f32_u32', '__reinterpret_u32_f32', '__reinterpret_f64_u64', '__reinterpret_u64_f64']
+	'__heap_base', '__reinterpret_f32_u32', '__reinterpret_u32_f32', '__reinterpret_f64_u64',
+	'__reinterpret_u64_f64']
 
 fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) {
 	for idx, arg in node.args {
@@ -529,7 +528,8 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
 		.amp {
 			if v := g.get_var_from_expr(node.right) {
 				if !v.is_address {
-					g.v_error('cannot take the address of a value that doesn\'t live on the stack', node.pos)
+					g.v_error("cannot take the address of a value that doesn't live on the stack",
+						node.pos)
 				}
 				g.ref(v)
 			} else {
@@ -591,7 +591,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []
 
 	is_print := name in ['panic', 'println', 'print', 'eprintln', 'eprint']
 
-	if name in wasm_builtins {
+	if name in wasm.wasm_builtins {
 		g.wasm_builtin(node.name, node)
 		return
 	}
@@ -604,9 +604,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []
 		cfn_attrs := g.table.fns[node.name].attrs
 
 		short_name := if node.language == .js {
-			node.name.all_after_last("JS.")
+			node.name.all_after_last('JS.')
 		} else {
-			node.name.all_after_last("WASM.")
+			node.name.all_after_last('WASM.')
 		}
 
 		// setting a `?string` in a multireturn causes UNDEFINED BEHAVIOR AND STACK CORRUPTION
@@ -618,7 +618,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []
 	}
 
 	// callconv: {return structs} {method self} {arguments}
-	
+
 	// {return structs}
 	//
 	mut rvars := existing_rvars.clone()
@@ -653,12 +653,12 @@ fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []
 			g.expr(expr, node.receiver_type)
 		}
 	}
-	
+
 	// {arguments}
 	//
 	for idx, arg in node.args {
 		mut expr := arg.expr
-		
+
 		mut typ := arg.typ
 		if is_print && typ != ast.string_type {
 			has_str, _, _ := g.table.sym(typ).str_method_info()
@@ -729,7 +729,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []
 fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
 	ts := g.table.sym(typ)
 	field := ts.find_field(name) or { g.w_error('could not find field `${name}` on init') }
-	si := g.pool.type_struct_info(typ) or { panic("unreachable") }
+	si := g.pool.type_struct_info(typ) or { panic('unreachable') }
 	return si.offsets[field.i]
 }
 
@@ -809,7 +809,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 
 			if !direct_array_access {
 				g.is_leaf_function = false // calls panic()
-				
+
 				idx_temp := g.func.new_local_named(.i32_t, '__tmp<int>')
 				g.func.local_tee(idx_temp)
 
@@ -827,16 +827,17 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 				// is_signed: false, negative numbers will be reinterpreted as > 2^31 and will also trigger false
 				blk := g.func.c_if([], [])
 				{
-					g.expr(ast.StringLiteral{val: '${g.file_pos(node.pos)}: ${ast.Expr(node)}'}, ast.string_type)
+					g.expr(ast.StringLiteral{ val: '${g.file_pos(node.pos)}: ${ast.Expr(node)}' },
+						ast.string_type)
 					g.func.call('eprintln')
-					g.expr(ast.StringLiteral{val: 'index out of range'}, ast.string_type)
+					g.expr(ast.StringLiteral{ val: 'index out of range' }, ast.string_type)
 					g.func.call('panic')
 				}
 				g.func.c_end(blk)
 
 				g.func.local_get(idx_temp)
 			}
-			
+
 			if size > 1 {
 				g.literalint(size, ast.int_type)
 				g.func.mul(.i32_t)
@@ -863,7 +864,8 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			if v := g.get_var_from_expr(node) {
 				if g.needs_address {
 					if !v.is_address {
-						g.v_error('cannot take the address of a value that doesn\'t live on the stack. this is a current limitation.', node.pos)
+						g.v_error("cannot take the address of a value that doesn't live on the stack. this is a current limitation.",
+							node.pos)
 					}
 					g.ref(v)
 				} else {
@@ -994,7 +996,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 		}
 		ast.Return {
 			if node.exprs.len > 1 {
-				g.set_with_multi_expr(ast.ConcatExpr{vals: node.exprs}, g.ret, g.ret_rvars)
+				g.set_with_multi_expr(ast.ConcatExpr{ vals: node.exprs }, g.ret, g.ret_rvars)
 			} else if node.exprs.len == 1 {
 				g.set_with_multi_expr(node.exprs[0], g.ret, g.ret_rvars)
 			}
@@ -1065,7 +1067,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 		ast.BranchStmt {
 			mut bp := g.loop_breakpoint_stack.last()
 			if node.label != '' {
-				for i := g.loop_breakpoint_stack.len ; i > 0 ; {
+				for i := g.loop_breakpoint_stack.len; i > 0; {
 					i--
 					if g.loop_breakpoint_stack[i].name == node.label {
 						bp = g.loop_breakpoint_stack[i]
@@ -1092,7 +1094,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 
 			// calls builtin functions, don't want to corrupt stack frame!
 			g.is_leaf_function = false
-			
+
 			g.expr(node.expr, ast.bool_type)
 			g.func.eqz(.i32_t) // !expr
 			lbl := g.func.c_if([], [])
@@ -1105,9 +1107,9 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 					msg += ", '${node.extra.val}'"
 				}
 
-				g.expr(ast.StringLiteral{val: msg}, ast.string_type)
+				g.expr(ast.StringLiteral{ val: msg }, ast.string_type)
 				g.func.call('eprintln')
-				g.expr(ast.StringLiteral{val: 'Assertion failed...'}, ast.string_type)
+				g.expr(ast.StringLiteral{ val: 'Assertion failed...' }, ast.string_type)
 				g.func.call('panic')
 			}
 			g.func.c_end(lbl)
@@ -1120,7 +1122,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 				// `a := 1` | `a, b := 1, 2`
 				// `a, b := foo()`
 				// `a, b := if cond { 1, 2 } else { 3, 4 }`
-				
+
 				is_expr_assign := node.op !in [.decl_assign, .assign]
 
 				// similar code from `call_expr()`
@@ -1200,7 +1202,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 
 					return
 				}
-				
+
 				// prepare variables using expr()
 				// if is an rvar, set it and ignore following
 				if !set {
@@ -1209,7 +1211,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 					for idx, right in node.right {
 						typ := node.left_types[idx]
 						if g.is_param_type(typ) {
-							g.set_with_expr(right, rvars[ridx])								
+							g.set_with_expr(right, rvars[ridx])
 							ridx++
 						} else {
 							g.expr(right, typ)
@@ -1217,7 +1219,7 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 					}
 				}
 
-				for i := node.left.len ; i > 0 ; {
+				for i := node.left.len; i > 0; {
 					i--
 					left := node.left[i]
 					typ := node.left_types[i]
@@ -1326,7 +1328,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 		data_base: calc_align(stack_top + 1, 16)
 	}
 	g.table.pointer_size = 4
-	g.mod.assign_memory("memory", true, 1, none)
+	g.mod.assign_memory('memory', true, 1, none)
 
 	if g.pref.is_debug {
 		g.mod.enable_debug(none)

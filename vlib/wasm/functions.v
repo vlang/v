@@ -51,4 +51,3 @@ pub mut:
 pub fn (mut func Function) export_name(name string) {
 	func.export_name = name
 }
-

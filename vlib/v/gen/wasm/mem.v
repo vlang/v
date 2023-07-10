@@ -9,7 +9,7 @@ import v.gen.wasm.serialise
 import encoding.binary
 
 struct Var {
-	name       string
+	name string
 mut:
 	typ        ast.Type
 	idx        wasm.LocalIndex
@@ -85,7 +85,7 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) ?Var {
 			return g.offset(addr, node.typ, offset)
 		}
 		else {
-			//g.w_error('get_var_from_expr: unexpected `${node.type_name()}`')
+			// g.w_error('get_var_from_expr: unexpected `${node.type_name()}`')
 			return none
 		}
 	}
@@ -141,7 +141,7 @@ fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
 		}
 		else {}
 	}
-	
+
 	is_address := !g.is_pure_type(typ)
 	wtyp := g.get_wasm_type(typ)
 
@@ -159,7 +159,7 @@ fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
 	v.idx = g.bp()
 
 	// allocate memory, then assign an offset
-	// 
+	//
 	match ts.info {
 		ast.Struct, ast.ArrayFixed {
 			size, align := g.pool.type_size(typ)
@@ -257,7 +257,8 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_m
 			typ: typ
 			is_address: is_address
 			is_global: true
-			g_idx: g.mod.new_global(g.dbg_type_name(name, typ), false, g.get_wasm_type_int_literal(typ), is_mut, cexpr)
+			g_idx: g.mod.new_global(g.dbg_type_name(name, typ), false, g.get_wasm_type_int_literal(typ),
+				is_mut, cexpr)
 		}
 	}
 
@@ -290,7 +291,7 @@ fn log2(size int) int {
 		2 { 1 }
 		4 { 2 }
 		8 { 3 }
-		else { panic("unreachable") }
+		else { panic('unreachable') }
 	}
 }
 
@@ -338,9 +339,9 @@ fn (mut g Gen) mov(to Var, v Var) {
 		g.set(to)
 		return
 	}
-	
+
 	size, _ := g.pool.type_size(v.typ)
-	
+
 	if size > 16 {
 		g.ref(to)
 		g.ref(v)
@@ -486,8 +487,8 @@ fn (mut g Gen) offset(v Var, typ ast.Type, offset int) Var {
 	if !v.is_address {
 		panic('unreachable')
 	}
-	
-	nv := Var {
+
+	nv := Var{
 		...v
 		typ: typ
 		offset: v.offset + offset
@@ -521,7 +522,7 @@ fn (mut g Gen) zero_fill(v Var, size int) {
 	//  (local.get $0)
 	// )                    ;; /- join these together.
 	// (i32.store offset=8  ;;-\
-	//  (local.get $0)      ;; | 
+	//  (local.get $0)      ;; |
 	//  (i32.const 0)       ;; |
 	// )                    ;; |
 	// (i32.store offset=12 ;; |
@@ -577,7 +578,7 @@ fn (g &Gen) is_param(v Var) bool {
 fn (mut g Gen) set_with_multi_expr(init ast.Expr, expected ast.Type, existing_rvars []Var) {
 	// misleading name: this doesn't really perform similar to `set_with_expr`
 	match init {
-		ast.ConcatExpr{
+		ast.ConcatExpr {
 			mut r := 0
 			types := g.unpack_type(expected)
 			for idx, expr in init.vals {
@@ -594,15 +595,16 @@ fn (mut g Gen) set_with_multi_expr(init ast.Expr, expected ast.Type, existing_rv
 				}
 			}
 		}
-		ast.IfExpr{
+		ast.IfExpr {
 			g.if_expr(init, expected, existing_rvars)
 		}
-		ast.CallExpr{
+		ast.CallExpr {
 			g.call_expr(init, expected, existing_rvars)
 		}
 		else {
 			if existing_rvars.len > 1 {
-				g.w_error('wasm.set_with_multi_expr(): (existing_rvars.len > 1) node: ' + init.type_name())
+				g.w_error('wasm.set_with_multi_expr(): (existing_rvars.len > 1) node: ' +
+					init.type_name())
 			}
 
 			if existing_rvars.len == 1 && g.is_param_type(expected) {
@@ -624,8 +626,8 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 			size, _ := g.pool.type_size(v.typ)
 			ts := g.table.sym(v.typ)
 			ts_info := ts.info as ast.Struct
-			si := g.pool.type_struct_info(v.typ) or { panic("unreachable") }
-			
+			si := g.pool.type_struct_info(v.typ) or { panic('unreachable') }
+
 			if init.init_fields.len == 0 && !(ts_info.fields.any(it.has_default_expr)) {
 				// Struct definition contains no default initialisers
 				// AND struct init contains no set values.
@@ -641,12 +643,12 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 					offset_var := g.offset(v, f.typ, offset)
 
 					fsize, _ := g.pool.type_size(f.typ)
-					
+
 					if f.has_default_expr {
 						g.set_with_expr(f.default_expr, offset_var)
 					} else {
 						g.zero_fill(offset_var, fsize)
-					}						
+					}
 				}
 			}
 
@@ -654,7 +656,7 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 				field := ts.find_field(f.name) or {
 					g.w_error('could not find field `${f.name}` on init')
 				}
-				
+
 				offset := si.offsets[field.i]
 				offset_var := g.offset(v, f.expected_type, offset)
 
@@ -664,7 +666,7 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 		ast.StringLiteral {
 			val := serialise.eval_escape_codes(init) or { panic('unreachable') }
 			str_pos := g.pool.append_string(val)
-			
+
 			if v.typ != ast.string_type {
 				// c'str'
 				g.set_prepare(v)
@@ -764,7 +766,6 @@ fn calc_padding(value int, alignment int) int {
 	return (alignment - value % alignment) % alignment
 }
 
-
 fn calc_align(value int, alignment int) int {
 	if alignment == 0 {
 		return value
@@ -802,7 +803,7 @@ fn (mut g Gen) make_vinit() {
 
 fn (mut g Gen) housekeeping() {
 	g.make_vinit()
-	
+
 	heap_base := calc_align(g.data_base + g.pool.buf.len, 16) // 16?
 	page_boundary := calc_align(g.data_base + g.pool.buf.len, 64 * 1024)
 	preallocated_pages := page_boundary / (64 * 1024)
@@ -822,7 +823,8 @@ fn (mut g Gen) housekeeping() {
 			mut buf := g.pool.buf.clone()
 
 			for reloc in g.pool.relocs {
-				binary.little_endian_put_u32_at(mut buf, u32(g.data_base + reloc.offset), reloc.pos)
+				binary.little_endian_put_u32_at(mut buf, u32(g.data_base + reloc.offset),
+					reloc.pos)
 			}
 			g.mod.new_data_segment(none, g.data_base, buf)
 		}
