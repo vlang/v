@@ -352,8 +352,8 @@ fn (mut g Gen) mov(to Var, v Var) {
 	mut sz := size
 	mut oz := 0
 	for sz > 0 {
-		g.ref_ignore_offset(v)
 		g.ref_ignore_offset(to)
+		g.ref_ignore_offset(v)
 		if sz - 8 >= 0 {
 			g.load(ast.u64_type_idx, v.offset + oz)
 			g.store(ast.u64_type_idx, to.offset + oz)
@@ -408,14 +408,14 @@ fn (mut g Gen) set_set(v Var) {
 		return
 	}
 
-	to := Var{
+	from := Var{
 		typ: v.typ
 		idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')
 		is_address: v.is_address
 	}
 
-	g.func.local_set(to.idx)
-	g.mov(to, v)
+	g.func.local_set(from.idx)
+	g.mov(v, from)
 }
 
 // set structures with pointer, memcpy
@@ -450,14 +450,14 @@ fn (mut g Gen) set(v Var) {
 		return
 	}
 
-	to := Var{
+	from := Var{
 		typ: v.typ
 		idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')
 		is_address: v.is_address
 	}
 
-	g.func.local_set(to.idx)
-	g.mov(to, v)
+	g.func.local_set(from.idx)
+	g.mov(v, from)
 }
 
 fn (mut g Gen) ref(v Var) {
@@ -607,7 +607,7 @@ fn (mut g Gen) set_with_multi_expr(init ast.Expr, expected ast.Type, existing_rv
 
 			if existing_rvars.len == 1 && g.is_param_type(expected) {
 				if rhs := g.get_var_from_expr(init) {
-					g.mov(rhs, existing_rvars[0])
+					g.mov(existing_rvars[0], rhs)
 				} else {
 					g.set_with_expr(init, existing_rvars[0])
 				}
@@ -744,14 +744,15 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 				return
 			}
 
-			to := Var{
+			from := Var{
 				typ: v.typ
 				idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')
-				is_address: v.is_address 
+				is_address: v.is_address // true
 			}
 
-			g.func.local_set(to.idx)
-			g.mov(to, v)
+			g.expr(init, v.typ)
+			g.func.local_set(from.idx)
+			g.mov(v, from)
 		}
 	}
 }

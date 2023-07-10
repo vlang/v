@@ -769,7 +769,7 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			if !node.is_direct {
 				g.w_error('implicit bounds checks are not implemented, create one manually')
 			}*/
-			
+
 			// ptr + index * size
 			mut typ := node.left_type
 
@@ -778,12 +778,23 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 				// be pedantic...
 				g.load_field(ast.string_type, ast.voidptr_type, 'str')
 				typ = ast.u8_type
+			} else if typ.is_ptr() {
+				typ = typ.deref()
 			} else {
-				if typ.is_ptr() {
-					typ = typ.deref()
+				ts := g.table.sym(typ)
+				match ts.info {
+					ast.Array {
+						g.w_error('wasm backend does not support dynamic arrays')
+					}
+					ast.ArrayFixed {
+						typ = ts.info.elem_type
+					}
+					else {
+						g.w_error('ast.IndexExpr: unreachable')
+					}
 				}
 			}
-			
+
 			size, _ := g.pool.type_size(typ)
 
 			g.expr(node.index, ast.int_type)
@@ -791,8 +802,12 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 				g.literalint(size, ast.int_type)
 				g.func.mul(.i32_t)
 			}
-			
+
 			g.func.add(.i32_t)
+
+			if !g.is_pure_type(typ) {
+				return
+			}
 
 			if !g.needs_address {
 				// ptr
