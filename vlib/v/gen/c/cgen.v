@@ -150,11 +150,12 @@ mut:
 	loop_depth                int
 	ternary_names             map[string]string
 	ternary_level_names       map[string][]string
-	arraymap_set_pos          int   // map or array set value position
-	stmt_path_pos             []int // positions of each statement start, for inserting C statements before the current statement
-	skip_stmt_pos             bool  // for handling if expressions + autofree (since both prepend C statements)
-	left_is_opt               bool  // left hand side on assignment is an option
-	right_is_opt              bool  // right hand side on assignment is an option
+	arraymap_set_pos          int      // map or array set value position
+	stmt_path_pos             []int    // positions of each statement start, for inserting C statements before the current statement
+	skip_stmt_pos             bool     // for handling if expressions + autofree (since both prepend C statements)
+	left_is_opt               bool     // left hand side on assignment is an option
+	right_is_opt              bool     // right hand side on assignment is an option
+	assign_ct_type            ast.Type // left hand side resolved comptime type
 	indent                    int
 	empty_line                bool
 	assign_op                 token.Kind // *=, =, etc (for array_set)
