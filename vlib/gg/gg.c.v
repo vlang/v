@@ -530,8 +530,56 @@ pub fn (ctx &Context) begin() {
 	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
 }
 
-// end finishes drawing for the context.
-pub fn (ctx &Context) end() {
+pub enum EndEnum {
+	clear
+	passthru
+}
+
+[params]
+pub struct EndOptions {
+	how EndEnum
+}
+
+const dontcare_pass = gfx.PassAction{
+	colors: [
+		gfx.ColorAttachmentAction{
+			action: .dontcare
+			value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+		},
+		gfx.ColorAttachmentAction{
+			action: .dontcare
+			value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+		},
+		gfx.ColorAttachmentAction{
+			action: .dontcare
+			value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+		},
+		gfx.ColorAttachmentAction{
+			action: .dontcare
+			value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+		},
+	]!
+}
+
+// end finishes all the drawing for the context ctx.
+// All accumulated draw calls before ctx.end(), will be done in a separate Sokol pass.
+//
+// Note: each Sokol pass, has a limit on the number of draw calls, that can be done in it.
+// Once that limit is reached, the whole pass will not draw anything, which can be frustrating.
+//
+// To overcome this limitation, you may use *several passes*, when you want to make thousands
+// of draw calls (for example, if you need to draw thousands of circles/rectangles/sprites etc),
+// where each pass will render just a limited amount of primitives.
+//
+// In the context of the gg module (without dropping to using sgl and gfx directly), it means,
+// that you will need a new pair of ctx.begin() and ctx.end() calls, surrounding all the draw
+// calls, that should be done in each pass.
+//
+// The default ctx.end() is equivalent to ctx.end(how:.clear). It will erase the existing
+// rendered content with the background color, before drawing anything else.
+// You can call ctx.end(how:.passthru) for a pass, that *will not* erase the previously
+// rendered content in the context.
+pub fn (ctx &Context) end(options EndOptions) {
 	$if show_fps ? {
 		ctx.show_fps()
 	} $else {
@@ -539,7 +587,14 @@ pub fn (ctx &Context) end() {
 			ctx.show_fps()
 		}
 	}
-	gfx.begin_default_pass(ctx.clear_pass, sapp.width(), sapp.height())
+	match options.how {
+		.clear {
+			gfx.begin_default_pass(ctx.clear_pass, sapp.width(), sapp.height())
+		}
+		.passthru {
+			gfx.begin_default_pass(gg.dontcare_pass, sapp.width(), sapp.height())
+		}
+	}
 	sgl.draw()
 	gfx.end_pass()
 	gfx.commit()
