@@ -27,8 +27,9 @@ enum Char_parse_state {
 // Note, that this function is unsafe.
 // In most cases, you are better off using V's string interpolation,
 // when your format string is known at compile time.
-fn v_printf(str string, pt ...voidptr) {
-	print(v_sprintf(str, ...pt))
+[unsafe]
+pub fn v_printf(str string, pt ...voidptr) {
+	print(unsafe { v_sprintf(str, ...pt) })
 }
 
 // v_sprintf returns a sprintf-like formated `string`.
@@ -41,7 +42,7 @@ fn v_printf(str string, pt ...voidptr) {
 // x := 3.141516
 // assert strconv.v_sprintf('aaa %G', x) == 'aaa 3.141516'
 // ```
-[direct_array_access; manualfree]
+[direct_array_access; manualfree; unsafe]
 pub fn v_sprintf(str string, pt ...voidptr) string {
 	mut res := strings.new_builder(pt.len * 16)
 	defer {
