@@ -16,10 +16,18 @@ fn str_implicit() {
 	println(a + 10)
 }
 
+fn assertions() {
+	assert true, 'hello'
+	assert true
+
+	// assert false, 'no can do'
+}
+
 fn main() {
 	test()
 	str_methods()
 	str_implicit()
+	assertions()
 
 	// panic('nooo!')
 }

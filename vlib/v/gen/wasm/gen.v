@@ -39,6 +39,7 @@ mut:
 	sp_global         ?wasm.GlobalIndex
 	heap_base         ?wasm.GlobalIndex
 	fn_local_idx_end int
+	fn_name string
 	stack_frame       int // Size of the current stack frame, if needed
 	is_leaf_function  bool = true
 	loop_breakpoint_stack []LoopBreakpoint
@@ -276,6 +277,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.scope_context << return_var
 
 	g.fn_local_idx_end = (g.local_vars.len + return_var.len)
+	g.fn_name = name
 
 	mut should_export := g.pref.os == .browser && node.is_pub && node.mod == 'main'
 	
@@ -1043,6 +1045,33 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 			g.func.i32_const(1)
 			g.set(v)
 			g.defer_vars << v
+		}
+		ast.AssertStmt {
+			if !node.is_used {
+				return
+			}
+
+			// calls builtin functions, don't want to corrupt stack frame!
+			g.is_leaf_function = false
+			
+			g.expr(node.expr, ast.bool_type)
+			g.func.eqz(.i32_t) // !expr
+			lbl := g.func.c_if([], [])
+			{
+				// main.main: ${msg}
+				// V panic: Assertion failed...
+
+				mut msg := 'fn ${g.fn_name}: assert fail'
+				if node.extra is ast.StringLiteral {
+					msg += ", '${node.extra.val}'"
+				}
+
+				g.expr(ast.StringLiteral{val: msg}, ast.string_type)
+				g.func.call('eprintln')
+				g.expr(ast.StringLiteral{val: 'Assertion failed...'}, ast.string_type)
+				g.func.call('panic')
+			}
+			g.func.c_end(lbl)
 		}
 		ast.AssignStmt {
 			if node.has_cross_var {
