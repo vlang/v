@@ -13,9 +13,6 @@ import v.gen.wasm.serialise
 import wasm
 import os
 
-// create a sed regex to prepend 'pub' to every 'fn', but ignore if 'pub' is already prepended
-// sed -E 's/^(pub )?(fn)/pub \2/g'
-
 [heap; minify]
 pub struct Gen {
 	out_name string
