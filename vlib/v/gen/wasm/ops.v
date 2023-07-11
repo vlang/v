@@ -7,7 +7,7 @@ import v.ast
 import v.token
 import wasm
 
-fn (mut g Gen) as_numtype(a wasm.ValType) wasm.NumType {
+pub fn (mut g Gen) as_numtype(a wasm.ValType) wasm.NumType {
 	if a in [.funcref_t, .externref_t, .v128_t] {
 		g.w_error("as_numtype: called with '${a}'")
 	}
@@ -16,7 +16,7 @@ fn (mut g Gen) as_numtype(a wasm.ValType) wasm.NumType {
 }
 
 // unwraps int_literal to i64_t
-fn (mut g Gen) get_wasm_type_int_literal(typ_ ast.Type) wasm.ValType {
+pub fn (mut g Gen) get_wasm_type_int_literal(typ_ ast.Type) wasm.ValType {
 	if typ_ == ast.int_literal_type_idx {
 		return wasm.ValType.i64_t
 	}
@@ -25,7 +25,7 @@ fn (mut g Gen) get_wasm_type_int_literal(typ_ ast.Type) wasm.ValType {
 
 // "Register size" types such as int, i64 and bool boil down to their WASM counterparts.
 // Structures and unions are pointers, i32.
-fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
+pub fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
 	typ := ast.mktyp(typ_)
 	if typ == ast.void_type_idx {
 		g.w_error("get_wasm_type: called with 'void'")
@@ -78,7 +78,7 @@ fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
 	g.w_error("get_wasm_type: unreachable type '${*g.table.sym(typ)}' ${ts.info}")
 }
 
-fn (mut g Gen) infix_from_typ(typ ast.Type, op token.Kind) {
+pub fn (mut g Gen) infix_from_typ(typ ast.Type, op token.Kind) {
 	if g.is_param_type(typ) {
 		eprintln(*g.table.sym(typ))
 		panic('unimplemented')

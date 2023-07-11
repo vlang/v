@@ -19,7 +19,7 @@ mut:
 	offset     int
 }
 
-fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
+pub fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
 	mut obj := ident.obj
 	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
 		obj = ident.scope.find(ident.name) or { g.w_error('unknown variable ${ident.name}') }
@@ -64,7 +64,7 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
 	}
 }
 
-fn (mut g Gen) get_var_from_expr(node ast.Expr) ?Var {
+pub fn (mut g Gen) get_var_from_expr(node ast.Expr) ?Var {
 	match node {
 		ast.Ident {
 			return g.get_var_from_ident(node)
@@ -93,7 +93,7 @@ fn (mut g Gen) get_var_from_expr(node ast.Expr) ?Var {
 
 // ONLY call this with the LHS of an assign, an lvalue
 // use get_var_from_expr in all other cases
-fn (mut g Gen) get_var_or_make_from_expr(node ast.Expr, typ ast.Type) Var {
+pub fn (mut g Gen) get_var_or_make_from_expr(node ast.Expr, typ ast.Type) Var {
 	if v := g.get_var_from_expr(node) {
 		return v
 	}
@@ -111,14 +111,14 @@ fn (mut g Gen) get_var_or_make_from_expr(node ast.Expr, typ ast.Type) Var {
 	return v
 }
 
-fn (mut g Gen) bp() wasm.LocalIndex {
+pub fn (mut g Gen) bp() wasm.LocalIndex {
 	if g.bp_idx == -1 {
 		g.bp_idx = g.func.new_local_named(.i32_t, '__vbp')
 	}
 	return g.bp_idx
 }
 
-fn (mut g Gen) sp() wasm.GlobalIndex {
+pub fn (mut g Gen) sp() wasm.GlobalIndex {
 	if sp := g.sp_global {
 		return sp
 	}
@@ -128,7 +128,7 @@ fn (mut g Gen) sp() wasm.GlobalIndex {
 	return g.sp()
 }
 
-fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
+pub fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
 	mut typ := typ_
 	ts := g.table.sym(typ)
 
@@ -177,7 +177,7 @@ fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
 	return v
 }
 
-fn (mut g Gen) literal_to_constant_expression(typ_ ast.Type, init ast.Expr) ?wasm.ConstExpression {
+pub fn (mut g Gen) literal_to_constant_expression(typ_ ast.Type, init ast.Expr) ?wasm.ConstExpression {
 	typ := ast.mktyp(typ_)
 	match init {
 		ast.BoolLiteral {
@@ -209,7 +209,7 @@ fn (mut g Gen) literal_to_constant_expression(typ_ ast.Type, init ast.Expr) ?was
 	return none
 }
 
-fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_mut bool) Global {
+pub fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_mut bool) Global {
 	mut typ := typ_
 	ts := g.table.sym(typ)
 
@@ -267,7 +267,7 @@ fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_m
 
 // is_pure_type(voidptr) == true
 // is_pure_type(&Struct) == false
-fn (g Gen) is_pure_type(typ ast.Type) bool {
+pub fn (g Gen) is_pure_type(typ ast.Type) bool {
 	if typ.is_pure_int() || typ.is_pure_float() || typ == ast.char_type_idx
 		|| typ.is_any_kind_of_pointer() || typ.is_bool() {
 		return true
@@ -285,7 +285,7 @@ fn (g Gen) is_pure_type(typ ast.Type) bool {
 	return false
 }
 
-fn log2(size int) int {
+pub fn log2(size int) int {
 	return match size {
 		1 { 0 }
 		2 { 1 }
@@ -295,7 +295,7 @@ fn log2(size int) int {
 	}
 }
 
-fn (mut g Gen) load(typ ast.Type, offset int) {
+pub fn (mut g Gen) load(typ ast.Type, offset int) {
 	size, align := g.pool.type_size(typ)
 	wtyp := g.as_numtype(g.get_wasm_type(typ))
 
@@ -306,7 +306,7 @@ fn (mut g Gen) load(typ ast.Type, offset int) {
 	}
 }
 
-fn (mut g Gen) store(typ ast.Type, offset int) {
+pub fn (mut g Gen) store(typ ast.Type, offset int) {
 	size, align := g.pool.type_size(typ)
 	wtyp := g.as_numtype(g.get_wasm_type(typ))
 
@@ -317,7 +317,7 @@ fn (mut g Gen) store(typ ast.Type, offset int) {
 	}
 }
 
-fn (mut g Gen) get(v Var) {
+pub fn (mut g Gen) get(v Var) {
 	if v.is_global {
 		g.func.global_get(v.g_idx)
 	} else {
@@ -332,7 +332,7 @@ fn (mut g Gen) get(v Var) {
 	}
 }
 
-fn (mut g Gen) mov(to Var, v Var) {
+pub fn (mut g Gen) mov(to Var, v Var) {
 	if !v.is_address || g.is_pure_type(v.typ) {
 		g.get(v)
 		g.cast(v.typ, to.typ)
@@ -379,7 +379,7 @@ fn (mut g Gen) mov(to Var, v Var) {
 	}
 }
 
-fn (mut g Gen) set_prepare(v Var) {
+pub fn (mut g Gen) set_prepare(v Var) {
 	if !v.is_address {
 		return
 	}
@@ -394,7 +394,7 @@ fn (mut g Gen) set_prepare(v Var) {
 	}
 }
 
-fn (mut g Gen) set_set(v Var) {
+pub fn (mut g Gen) set_set(v Var) {
 	if !v.is_address {
 		if v.is_global {
 			g.func.global_set(v.g_idx)
@@ -425,7 +425,7 @@ fn (mut g Gen) set_set(v Var) {
 // -- set works with a single value present on the stack beforehand
 // -- not optimial for copying stack memory or shuffling structs
 // -- use mov instead
-fn (mut g Gen) set(v Var) {
+pub fn (mut g Gen) set(v Var) {
 	if !v.is_address {
 		if v.is_global {
 			g.func.global_set(v.g_idx)
@@ -461,7 +461,7 @@ fn (mut g Gen) set(v Var) {
 	g.mov(v, from)
 }
 
-fn (mut g Gen) ref(v Var) {
+pub fn (mut g Gen) ref(v Var) {
 	g.ref_ignore_offset(v)
 
 	if v.offset != 0 {
@@ -470,7 +470,7 @@ fn (mut g Gen) ref(v Var) {
 	}
 }
 
-fn (mut g Gen) ref_ignore_offset(v Var) {
+pub fn (mut g Gen) ref_ignore_offset(v Var) {
 	if !v.is_address {
 		panic('unreachable')
 	}
@@ -483,7 +483,7 @@ fn (mut g Gen) ref_ignore_offset(v Var) {
 }
 
 // creates a new pointer variable with the offset `offset` and type `typ`
-fn (mut g Gen) offset(v Var, typ ast.Type, offset int) Var {
+pub fn (mut g Gen) offset(v Var, typ ast.Type, offset int) Var {
 	if !v.is_address {
 		panic('unreachable')
 	}
@@ -497,7 +497,7 @@ fn (mut g Gen) offset(v Var, typ ast.Type, offset int) Var {
 	return nv
 }
 
-fn (mut g Gen) zero_fill(v Var, size int) {
+pub fn (mut g Gen) zero_fill(v Var, size int) {
 	assert size > 0
 
 	// TODO: support coalescing `zero_fill` calls together.
@@ -567,7 +567,7 @@ fn (mut g Gen) zero_fill(v Var, size int) {
 	}
 }
 
-fn (g &Gen) is_param(v Var) bool {
+pub fn (g &Gen) is_param(v Var) bool {
 	if v.is_global {
 		return false
 	}
@@ -575,7 +575,7 @@ fn (g &Gen) is_param(v Var) bool {
 	return v.idx < g.fn_local_idx_end
 }
 
-fn (mut g Gen) set_with_multi_expr(init ast.Expr, expected ast.Type, existing_rvars []Var) {
+pub fn (mut g Gen) set_with_multi_expr(init ast.Expr, expected ast.Type, existing_rvars []Var) {
 	// misleading name: this doesn't really perform similar to `set_with_expr`
 	match init {
 		ast.ConcatExpr {
@@ -620,7 +620,7 @@ fn (mut g Gen) set_with_multi_expr(init ast.Expr, expected ast.Type, existing_rv
 	}
 }
 
-fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
+pub fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 	match init {
 		ast.StructInit {
 			size, _ := g.pool.type_size(v.typ)
@@ -759,21 +759,21 @@ fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 	}
 }
 
-fn calc_padding(value int, alignment int) int {
+pub fn calc_padding(value int, alignment int) int {
 	if alignment == 0 {
 		return value
 	}
 	return (alignment - value % alignment) % alignment
 }
 
-fn calc_align(value int, alignment int) int {
+pub fn calc_align(value int, alignment int) int {
 	if alignment == 0 {
 		return value
 	}
 	return (value + alignment - 1) / alignment * alignment
 }
 
-fn (mut g Gen) make_vinit() {
+pub fn (mut g Gen) make_vinit() {
 	g.func = g.mod.new_function('_vinit', [], [])
 	func_start := g.func.patch_pos()
 	{
@@ -801,7 +801,7 @@ fn (mut g Gen) make_vinit() {
 	g.bare_function_end()
 }
 
-fn (mut g Gen) housekeeping() {
+pub fn (mut g Gen) housekeeping() {
 	g.make_vinit()
 
 	heap_base := calc_align(g.data_base + g.pool.buf.len, 16) // 16?

@@ -13,6 +13,9 @@ import v.gen.wasm.serialise
 import wasm
 import os
 
+// create a sed regex to prepend 'pub' to every 'fn', but ignore if 'pub' is already prepended
+// sed -E 's/^(pub )?(fn)/pub \2/g'
+
 [heap; minify]
 pub struct Gen {
 	out_name string
@@ -56,7 +59,7 @@ mut:
 	v    Var
 }
 
-struct LoopBreakpoint {
+pub struct LoopBreakpoint {
 	c_continue wasm.LabelIndex
 	c_break    wasm.LabelIndex
 	name       string
@@ -97,7 +100,7 @@ pub fn (mut g Gen) w_error(s string) {
 	util.verror('wasm error', s)
 }
 
-fn (g Gen) unpack_type(typ ast.Type) []ast.Type {
+pub fn (g Gen) unpack_type(typ ast.Type) []ast.Type {
 	ts := g.table.sym(typ)
 	return match ts.info {
 		ast.MultiReturn {
@@ -109,19 +112,19 @@ fn (g Gen) unpack_type(typ ast.Type) []ast.Type {
 	}
 }
 
-fn (g Gen) is_param_type(typ ast.Type) bool {
+pub fn (g Gen) is_param_type(typ ast.Type) bool {
 	return !typ.is_ptr() && !g.is_pure_type(typ)
 }
 
-fn (mut g Gen) dbg_type_name(name string, typ ast.Type) string {
+pub fn (mut g Gen) dbg_type_name(name string, typ ast.Type) string {
 	return '${name}<${`&`.repeat(typ.nr_muls())}${*g.table.sym(typ)}>'
 }
 
-fn unpack_literal_int(typ ast.Type) ast.Type {
+pub fn unpack_literal_int(typ ast.Type) ast.Type {
 	return if typ == ast.int_literal_type { ast.i64_type } else { typ }
 }
 
-fn (g &Gen) get_ns_plus_name(default_name string, attrs []ast.Attr) (string, string) {
+pub fn (g &Gen) get_ns_plus_name(default_name string, attrs []ast.Attr) (string, string) {
 	mut name := default_name
 	mut namespace := 'env'
 
@@ -135,7 +138,7 @@ fn (g &Gen) get_ns_plus_name(default_name string, attrs []ast.Attr) (string, str
 	return namespace, name
 }
 
-fn (mut g Gen) fn_external_import(node ast.FnDecl) {
+pub fn (mut g Gen) fn_external_import(node ast.FnDecl) {
 	if !node.no_body || node.is_method {
 		g.v_error('interop functions cannot have bodies', node.body_pos)
 	}
@@ -168,7 +171,7 @@ fn (mut g Gen) fn_external_import(node ast.FnDecl) {
 	g.mod.new_function_import(namespace, name, paraml, retl)
 }
 
-fn (mut g Gen) fn_decl(node ast.FnDecl) {
+pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.language in [.js, .wasm] {
 		g.fn_external_import(node)
 		return
@@ -308,7 +311,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	// printfn is not implemented!
 }
 
-fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
+pub fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
 	// Setup stack frame.
 	// If the function does not call other functions,
 	// a leaf function, the omission of setting the
@@ -337,7 +340,7 @@ fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
 	}
 }
 
-fn (mut g Gen) bare_function_end() {
+pub fn (mut g Gen) bare_function_end() {
 	g.local_vars.clear()
 	g.ret_rvars.clear()
 	g.ret_types.clear()
@@ -349,7 +352,7 @@ fn (mut g Gen) bare_function_end() {
 	assert g.loop_breakpoint_stack.len == 0
 }
 
-fn (mut g Gen) literalint(val i64, expected ast.Type) {
+pub fn (mut g Gen) literalint(val i64, expected ast.Type) {
 	match g.get_wasm_type(expected) {
 		.i32_t { g.func.i32_const(val) }
 		.i64_t { g.func.i64_const(val) }
@@ -359,7 +362,7 @@ fn (mut g Gen) literalint(val i64, expected ast.Type) {
 	}
 }
 
-fn (mut g Gen) literal(val string, expected ast.Type) {
+pub fn (mut g Gen) literal(val string, expected ast.Type) {
 	match g.get_wasm_type(expected) {
 		.i32_t { g.func.i32_const(val.int()) }
 		.i64_t { g.func.i64_const(val.i64()) }
@@ -369,14 +372,14 @@ fn (mut g Gen) literal(val string, expected ast.Type) {
 	}
 }
 
-fn (mut g Gen) cast(typ ast.Type, expected_type ast.Type) {
+pub fn (mut g Gen) cast(typ ast.Type, expected_type ast.Type) {
 	wtyp := g.as_numtype(g.get_wasm_type_int_literal(typ))
 	expected_wtype := g.as_numtype(g.get_wasm_type_int_literal(expected_type))
 
 	g.func.cast(wtyp, typ.is_signed(), expected_wtype)
 }
 
-fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) {
+pub fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) {
 	if expr is ast.IntegerLiteral {
 		g.literal(expr.val, expected_type)
 		return
@@ -393,7 +396,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	g.func.cast(got_wtype, got_type.is_signed(), expected_wtype)
 }
 
-fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type) {
+pub fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type) {
 	if typ.is_ptr() {
 		size, _ := g.pool.type_size(typ)
 		g.func.i32_const(size)
@@ -401,7 +404,7 @@ fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type) {
 	}
 }
 
-fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
+pub fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 	if node.op in [.logical_or, .and] {
 		temp := g.func.new_local_named(.i32_t, '__tmp<bool>')
 		{
@@ -444,7 +447,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 	g.func.cast(g.as_numtype(g.get_wasm_type(res_typ)), res_typ.is_signed(), g.as_numtype(g.get_wasm_type(expected)))
 }
 
-fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) {
+pub fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) {
 	for idx, arg in node.args {
 		g.expr(arg.expr, node.expected_arg_types[idx])
 	}
@@ -488,7 +491,7 @@ fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) {
 	}
 }
 
-fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
+pub fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
 	match node.op {
 		.minus {
 			if node.right_type.is_pure_float() {
@@ -550,7 +553,7 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
 	}
 }
 
-fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_params []wasm.ValType, idx int, existing_rvars []Var) {
+pub fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_params []wasm.ValType, idx int, existing_rvars []Var) {
 	curr := ifexpr.branches[idx]
 
 	g.expr(curr.cond, ast.bool_type)
@@ -570,7 +573,7 @@ fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_params [
 	g.func.c_end(blk)
 }
 
-fn (mut g Gen) if_expr(ifexpr ast.IfExpr, expected ast.Type, existing_rvars []Var) {
+pub fn (mut g Gen) if_expr(ifexpr ast.IfExpr, expected ast.Type, existing_rvars []Var) {
 	params := if expected == ast.void_type {
 		[]wasm.ValType{}
 	} else if existing_rvars.len == 0 {
@@ -581,7 +584,7 @@ fn (mut g Gen) if_expr(ifexpr ast.IfExpr, expected ast.Type, existing_rvars []Va
 	g.if_branch(ifexpr, expected, params, 0, existing_rvars)
 }
 
-fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []Var) {
+pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []Var) {
 	mut wasm_ns := ?string(none)
 	mut name := node.name
 
@@ -724,14 +727,14 @@ fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []
 	}
 }
 
-fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
+pub fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
 	ts := g.table.sym(typ)
 	field := ts.find_field(name) or { g.w_error('could not find field `${name}` on init') }
 	si := g.pool.type_struct_info(typ) or { panic('unreachable') }
 	return si.offsets[field.i]
 }
 
-fn (mut g Gen) field_offset(typ ast.Type, name string) {
+pub fn (mut g Gen) field_offset(typ ast.Type, name string) {
 	offset := g.get_field_offset(typ, name)
 	if offset != 0 {
 		g.func.i32_const(offset)
@@ -739,17 +742,17 @@ fn (mut g Gen) field_offset(typ ast.Type, name string) {
 	}
 }
 
-fn (mut g Gen) load_field(typ ast.Type, ftyp ast.Type, name string) {
+pub fn (mut g Gen) load_field(typ ast.Type, ftyp ast.Type, name string) {
 	offset := g.get_field_offset(typ, name)
 	g.load(ftyp, offset)
 }
 
-fn (mut g Gen) store_field(typ ast.Type, ftyp ast.Type, name string) {
+pub fn (mut g Gen) store_field(typ ast.Type, ftyp ast.Type, name string) {
 	offset := g.get_field_offset(typ, name)
 	g.store(ftyp, offset)
 }
 
-fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
+pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 	match node {
 		ast.ParExpr, ast.UnsafeExpr {
 			g.expr(node.expr, expected)
@@ -989,11 +992,11 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 	}
 }
 
-fn (g &Gen) file_pos(pos token.Pos) string {
+pub fn (g &Gen) file_pos(pos token.Pos) string {
 	return '${g.file_path}:${pos.line_nr + 1}:${pos.col + 1}'
 }
 
-fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
+pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 	match node {
 		ast.Block {
 			g.expr_stmts(node.stmts, expected)
@@ -1271,7 +1274,7 @@ pub fn (mut g Gen) rvar_expr_stmts(stmts []ast.Stmt, expected ast.Type, existing
 	}
 }
 
-fn (mut g Gen) toplevel_stmt(node ast.Stmt) {
+pub fn (mut g Gen) toplevel_stmt(node ast.Stmt) {
 	match node {
 		ast.FnDecl {
 			g.fn_decl(node)
