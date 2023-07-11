@@ -5,11 +5,10 @@ import encoding.base64
 // `decode` reads `data` and returns the first parsed PEM Block along with the rest of
 // the string. `none` is returned when a header is expected, but not present
 // or when a start of '-----BEGIN' or end of '-----END' can't be found in `data`
+[direct_array_access]
 pub fn decode(data string) ?(Block, string) {
 	mut rest := data[data.index(pem_begin)?..]
-	mut block := Block{
-		block_type: rest[pem_begin.len..].all_before(pem_eol)
-	}
+	mut block := Block.new(rest[pem_begin.len..].all_before(pem_eol))
 	block.headers, rest = parse_headers(rest[pem_begin.len..].all_after(pem_eol).trim_left(' \n\t\v\f\r'))?
 
 	block_end_index := rest.index(pem_end)?
@@ -23,6 +22,7 @@ pub fn decode(data string) ?(Block, string) {
 	return block, rest[rest.index(pem_end)? + pem_end.len..].all_after_first(pem_eol)
 }
 
+[direct_array_access]
 fn parse_headers(block string) ?(map[string][]string, string) {
 	headers_str := block.all_before(pem_end).all_before('\n\n')
 

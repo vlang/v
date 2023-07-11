@@ -9,6 +9,13 @@ const (
 	colon     = ':'
 )
 
+// returns a new `Block` with the specified block_type
+[deprecated: 'use Block.new instead']
+[inline]
+pub fn new(block_type string) Block {
+	return Block.new(block_type)
+}
+
 [params]
 pub struct EncodeConfig {
 pub mut:
@@ -62,6 +69,14 @@ pub mut:
 	data []u8
 }
 
+// returns a new `Block` with the specified block_type
+[inline]
+pub fn Block.new(block_type string) Block {
+	return Block{
+		block_type: block_type
+	}
+}
+
 // free the resources taken by the Block `block`
 [unsafe]
 pub fn (mut block Block) free() {
@@ -72,14 +87,6 @@ pub fn (mut block Block) free() {
 		block.block_type.free()
 		block.headers.free()
 		block.data.free()
-	}
-}
-
-// returns a new `Block` with the specified block_type
-[inline]
-pub fn new(block_type string) Block {
-	return Block{
-		block_type: block_type
 	}
 }
 
