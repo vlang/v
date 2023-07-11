@@ -47,21 +47,21 @@ fn test_stuff() &int {
 }
 
 fn main() {
-	println("--- static_arrays()")
+	println('--- static_arrays()')
 	a, b, c := static_arrays()
 	println(a)
 	println(b)
 	println(c)
 
-	println("--- index_expression()")
+	println('--- index_expression()')
 	index_expression()
 
-	println("--- test_this()")
+	println('--- test_this()')
 	println(test_this(2))
 	println(test_this(10))
 	println(test_this(-1))
 
-	println("--- test_stuff()")
+	println('--- test_stuff()')
 	v := test_stuff()
 	println(v)
 }

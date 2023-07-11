@@ -55,15 +55,33 @@ fn take_struct(test AA) int {
 }
 
 fn give_two_struct(cond bool) (AA, AA) {
-	return if cond { AA{a: 15}, AA{a: 15} } else  { AA{a: 20}, AA{a: 592} }
+	return if cond {
+		AA{
+			a: 15
+		}, AA{
+			a: 15
+		}
+	} else {
+		AA{
+			a: 20
+		}, AA{
+			a: 592
+		}
+	}
 }
 
 fn give_struct() int {
-	return take_struct(AA{a: 15})
+	return take_struct(AA{ a: 15 })
 }
 
 fn if_struct_test(cond bool) AA {
-	a := if cond { AA{} } else { AA{a: 125} }
+	a := if cond {
+		AA{}
+	} else {
+		AA{
+			a: 125
+		}
+	}
 	return a
 }
 

@@ -95,30 +95,30 @@ fn infcfor() int {
 }
 
 fn main() {
-	println("--- func()")
+	println('--- func()')
 	println(func(10, true))
 	println(func(0, false))
 	println(func(0, true))
 
-	println("--- test()")
+	println('--- test()')
 	println(test(true))
 	println(test(false))
 	println(test(true && false))
 
-	println("--- boolfor()")
+	println('--- boolfor()')
 	println(boolfor())
 
-	println("--- inffor()")
+	println('--- inffor()')
 	println(inffor())
 
-	println("--- addcfor()")
+	println('--- addcfor()')
 	println(addcfor())
 
-	println("--- labelcfor()")
+	println('--- labelcfor()')
 	a, b := labelcfor()
 	println(a)
 	println(b)
 
-	println("--- infcfor()")
+	println('--- infcfor()')
 	println(infcfor())
 }

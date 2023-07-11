@@ -60,13 +60,17 @@ fn ptr_arith() {
 
 fn defer_if(cond bool) {
 	if cond {
-		defer { println('defer_if: defer!') }
+		defer {
+			println('defer_if: defer!')
+		}
 	}
 	println('defer_if: start')
 }
 
 fn run_defer() {
-	defer { println('defer!') }
+	defer {
+		println('defer!')
+	}
 	println('before defer')
 	defer_if(true)
 	defer_if(false)
