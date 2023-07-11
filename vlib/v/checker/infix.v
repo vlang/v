@@ -779,9 +779,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 	}
 	/*
-	if (node.left is ast.InfixExpr &&
-		(node.left as ast.InfixExpr).op == .inc) ||
-		(node.right is ast.InfixExpr && (node.right as ast.InfixExpr).op == .inc) {
+	if (node.left is ast.InfixExpr && node.left.op == .inc) ||
+		(node.right is ast.InfixExpr && node.right.op == .inc) {
 		c.warn('`++` and `--` are statements, not expressions', node.pos)
 	}
 	*/

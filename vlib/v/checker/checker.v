@@ -3825,7 +3825,7 @@ fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 [inline]
 pub fn (mut c Checker) is_comptime_var(node ast.Expr) bool {
 	return node is ast.Ident && node.info is ast.IdentVar && node.kind == .variable
-		&& ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime
+		&& (node.obj as ast.Var).ct_type_var != .no_comptime
 }
 
 fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
