@@ -961,6 +961,12 @@ fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			g.if_expr(node, expected, [])
 		}
 		ast.CastExpr {
+			// don't want to handle ast.int_literal_type
+			if node.expr is ast.IntegerLiteral || node.expr is ast.FloatLiteral {
+				g.expr(node.expr, node.typ)
+				return
+			}
+
 			g.expr(node.expr, node.expr_type)
 
 			// TODO: unbelievable colossal hack

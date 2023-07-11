@@ -666,6 +666,8 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		ast.UnsafeExpr {
 			node.expr = t.expr(mut node.expr)
 		}
+		// segfaults with vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v
+		/*
 		ast.Ident {
 			mut obj := node.obj
 			if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
@@ -678,7 +680,7 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 				}
 				else {}
 			}
-		}
+		}*/
 		else {}
 	}
 	return node

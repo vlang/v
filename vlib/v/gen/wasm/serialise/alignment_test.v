@@ -1,5 +1,5 @@
 import v.ast
-import v.serialise
+import v.gen.wasm.serialise
 
 fn test_alignment() {
 	table := ast.new_table()

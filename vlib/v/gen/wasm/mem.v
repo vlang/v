@@ -8,7 +8,7 @@ import v.ast
 import v.gen.wasm.serialise
 import encoding.binary
 
-struct Var {
+pub struct Var {
 	name string
 mut:
 	typ        ast.Type
