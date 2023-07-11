@@ -670,13 +670,19 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				// allow literal values to auto deref var (e.g.`for mut v in values { v = 1.0 }`)
 				if left.is_auto_deref_var() || right.is_auto_deref_var() {
-					left_val := if left.is_auto_deref_var() { left_type.deref() } else { left_type }
-					right_val := if right.is_auto_deref_var() {
+					left_deref := if left.is_auto_deref_var() {
+						left_type.deref()
+					} else {
+						left_type
+					}
+					right_deref := if right.is_literal() {
+						right.get_pure_type()
+					} else if right.is_auto_deref_var() {
 						right_type.deref()
 					} else {
 						right_type
 					}
-					if c.check_types(left_val, right_val) {
+					if c.check_types(left_deref, right_deref) {
 						continue
 					}
 				}
