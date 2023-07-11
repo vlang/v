@@ -1519,6 +1519,16 @@ fn (mut c Checker) cast_fixed_array_ret(typ ast.Type, sym ast.TypeSymbol) ast.Ty
 	return typ
 }
 
+// cast_to_fixed_array_ret casts a ArrayFixed type created to do not return to a returning one
+fn (mut c Checker) cast_to_fixed_array_ret(typ ast.Type, sym ast.TypeSymbol) ast.Type {
+	if sym.kind == .array_fixed && !(sym.info as ast.ArrayFixed).is_fn_ret {
+		info := sym.info as ast.ArrayFixed
+		return c.table.find_or_register_array_fixed(info.elem_type, info.size, info.size_expr,
+			true)
+	}
+	return typ
+}
+
 fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	left_type := c.expr(mut node.left)
 	if left_type == ast.void_type {
