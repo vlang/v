@@ -97,7 +97,11 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 		}
 	} else if b.pref.backend == .wasm {
 		mut actual_run := ['wasmer', 'wasmtime', 'wavm', 'wasm3']
-		mut actual_rf := ?string(none)
+		mut actual_rf := ''
+
+		// -autofree bug
+		// error: cannot convert 'struct string' to 'struct _option_string'
+		// mut actual_rf := ?string(none)
 
 		for runtime in actual_run {
 			basename := $if windows { runtime + '.exe' } $else { runtime }
@@ -111,9 +115,11 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 			}
 		}
 
-		actual_rf or {
+		if actual_rf == '' {
 			panic('Could not find `wasmer`, `wasmtime`, `wavm`, or `wasm3` in system path. Do you have any installed?')
 		}
+
+		actual_rf
 	} else if b.pref.backend == .golang {
 		go_basename := $if windows { 'go.exe' } $else { 'go' }
 		os.find_abs_path_of_executable(go_basename) or {
