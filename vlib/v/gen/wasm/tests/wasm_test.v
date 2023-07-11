@@ -6,6 +6,23 @@ const is_verbose = os.getenv('VTEST_SHOW_CMD') != ''
 
 // TODO some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
 fn test_wasm() {
+	mut runtimes := ['wasmer', 'wasmtime', 'wavm', 'wasm3']
+	mut runtime_found := false
+
+	for runtime in runtimes {
+		basename := $if windows { runtime + '.exe' } $else { runtime }
+
+		if rf := os.find_abs_path_of_executable(basename) {
+			runtime_found = true
+			break
+		}
+	}
+
+	if runtime_found {
+		eprintln('cannot find suitable wasm runtime, exiting...')
+		exit(0)
+	}
+
 	mut bench := benchmark.new_benchmark()
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
