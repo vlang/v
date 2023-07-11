@@ -101,7 +101,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 
 		for runtime in actual_run {
 			basename := $if windows { runtime + '.exe' } $else { runtime }
-			
+
 			if rf := os.find_abs_path_of_executable(basename) {
 				if basename == 'wavm' {
 					run_args << 'run'
@@ -111,7 +111,9 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 			}
 		}
 
-		actual_rf or { panic("Could not find `wasmer`, `wasmtime`, `wavm`, or `wasm3` in system path. Do you have any installed?") }
+		actual_rf or {
+			panic('Could not find `wasmer`, `wasmtime`, `wavm`, or `wasm3` in system path. Do you have any installed?')
+		}
 	} else if b.pref.backend == .golang {
 		go_basename := $if windows { 'go.exe' } $else { 'go' }
 		os.find_abs_path_of_executable(go_basename) or {

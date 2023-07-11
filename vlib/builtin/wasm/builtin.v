@@ -10,10 +10,13 @@ fn __memory_copy(dest &u8, src &u8, size isize)
 
 // __reinterpret_f32_u32 converts a `u32` to a `f32` without changing the bit pattern.
 pub fn __reinterpret_f32_u32(v f32) u32
+
 // __reinterpret_u32_f32 converts a `f32` to a `u32` without changing the bit pattern.
 pub fn __reinterpret_u32_f32(v u32) f32
+
 // __reinterpret_f64_u64 converts a `u64` to a `f64` without changing the bit pattern.
 pub fn __reinterpret_f64_u64(v f64) u64
+
 // __reinterpret_u64_f64 converts a `f64` to a `u64` without changing the bit pattern.
 pub fn __reinterpret_u64_f64(v u64) f64
 
