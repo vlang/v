@@ -514,7 +514,7 @@ pub fn (typ Type) is_pure_float() bool {
 
 [inline]
 pub fn (typ Type) is_signed() bool {
-	return typ.idx() in ast.signed_integer_type_idxs || typ.is_int_literal()
+	return typ.idx() in ast.signed_integer_type_idxs
 }
 
 [inline]
