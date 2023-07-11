@@ -18,7 +18,7 @@ fn test_wasm() {
 		}
 	}
 
-	if runtime_found {
+	if !runtime_found {
 		eprintln('cannot find suitable wasm runtime, exiting...')
 		exit(0)
 	}
