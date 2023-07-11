@@ -701,8 +701,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					// var = &auto_heap_var
 					old_is_auto_heap := g.is_option_auto_heap
 					g.is_option_auto_heap = val_type.has_flag(.option) && val is ast.PrefixExpr
-						&& val.right is ast.Ident
-						&& ((val as ast.PrefixExpr).right as ast.Ident).is_auto_heap()
+						&& val.right is ast.Ident && (val.right as ast.Ident).is_auto_heap()
 					defer {
 						g.is_option_auto_heap = old_is_auto_heap
 					}
