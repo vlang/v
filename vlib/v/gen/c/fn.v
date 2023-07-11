@@ -757,7 +757,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 				ret_typ = unaliased_type
 			}
 		}
-		styp := g.typ(ret_typ)
+		mut styp := g.typ(ret_typ)
 		if gen_or && !is_gen_or_and_assign_rhs {
 			cur_line = g.go_before_stmt(0)
 		}
@@ -767,6 +767,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.indent++
 			g.write('${tmp_opt} = ')
 		} else if !g.inside_curry_call {
+			if g.assign_ct_type != 0 && node.or_block.kind in [.propagate_option, .propagate_result] {
+				styp = g.typ(g.assign_ct_type.derive(ret_typ))
+			}
 			g.write('${styp} ${tmp_opt} = ')
 			if node.left is ast.AnonFn {
 				g.expr(node.left)

@@ -127,9 +127,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	is_decl := node.op == .decl_assign
 	g.assign_op = node.op
 	g.inside_assign = true
+	g.assign_ct_type = 0
 	defer {
 		g.assign_op = .unknown
 		g.inside_assign = false
+		g.assign_ct_type = 0
 	}
 	op := if is_decl { token.Kind.assign } else { node.op }
 	right_expr := node.right[0]
@@ -241,6 +243,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							var_type = val_type.clear_flag(.option)
 						}
 						left.obj.typ = var_type
+						g.assign_ct_type = var_type
 					}
 				} else if val is ast.ComptimeSelector {
 					key_str := g.get_comptime_selector_key_type(val)
@@ -252,11 +255,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						} else {
 							val_type = g.comptime_var_type_map[key_str] or { var_type }
 						}
+						g.assign_ct_type = var_type
 					}
 				} else if val is ast.ComptimeCall {
 					key_str := '${val.method_name}.return_type'
 					var_type = g.comptime_var_type_map[key_str] or { var_type }
 					left.obj.typ = var_type
+					g.assign_ct_type = var_type
 				} else if is_decl && val is ast.Ident && val.info is ast.IdentVar {
 					val_info := (val as ast.Ident).info
 					gen_or = val.or_expr.kind != .absent
@@ -271,6 +276,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						val_type = var_type
 						left.obj.typ = var_type
 					}
+					g.assign_ct_type = var_type
 				} else if val is ast.IndexExpr {
 					if val.left is ast.Ident && g.is_generic_param_var(val.left) {
 						ctyp := g.unwrap_generic(g.get_gn_var_type(val.left as ast.Ident))
@@ -278,6 +284,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							var_type = ctyp
 							val_type = var_type
 							left.obj.typ = var_type
+							g.assign_ct_type = var_type
 						}
 					}
 				}
@@ -294,11 +301,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					val_type = g.comptime_var_type_map[key_str_right] or { var_type }
 				}
 			}
+			g.assign_ct_type = var_type
 		} else if mut left is ast.IndexExpr && val is ast.ComptimeSelector {
 			key_str := g.get_comptime_selector_key_type(val)
 			if key_str != '' {
 				val_type = g.comptime_var_type_map[key_str] or { var_type }
 			}
+			g.assign_ct_type = val_type
 		}
 		mut styp := g.typ(var_type)
 		mut is_fixed_array_init := false
@@ -692,8 +701,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					// var = &auto_heap_var
 					old_is_auto_heap := g.is_option_auto_heap
 					g.is_option_auto_heap = val_type.has_flag(.option) && val is ast.PrefixExpr
-						&& val.right is ast.Ident
-						&& ((val as ast.PrefixExpr).right as ast.Ident).is_auto_heap()
+						&& val.right is ast.Ident && (val.right as ast.Ident).is_auto_heap()
 					defer {
 						g.is_option_auto_heap = old_is_auto_heap
 					}
