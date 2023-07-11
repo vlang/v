@@ -2944,8 +2944,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			}
 		}
 		if from_type == ast.voidptr_type_idx && !c.inside_unsafe {
-			// TODO make this an error
-			c.warn('cannot cast voidptr to a struct outside `unsafe`', node.pos)
+			c.error('cannot cast voidptr to a struct outside `unsafe`', node.pos)
 		}
 		if !from_type.is_int() && final_from_sym.kind != .enum_
 			&& !from_type.is_any_kind_of_pointer() {
