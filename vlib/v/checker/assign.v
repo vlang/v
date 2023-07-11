@@ -669,10 +669,14 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				// allow literal values to auto deref var (e.g.`for mut v in values { v = 1.0 }`)
-				if left.is_auto_deref_var() {
-					if left_type.is_int_valptr() && right_type.is_int() {
-						continue
-					} else if left_type.is_float_valptr() && right_type.is_float() {
+				if left.is_auto_deref_var() || right.is_auto_deref_var() {
+					left_val := if left.is_auto_deref_var() { left_type.deref() } else { left_type }
+					right_val := if right.is_auto_deref_var() {
+						right_type.deref()
+					} else {
+						right_type
+					}
+					if c.check_types(left_val, right_val) {
 						continue
 					}
 				}
