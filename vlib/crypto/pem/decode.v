@@ -2,11 +2,36 @@ module pem
 
 import encoding.base64
 
-// `decode` reads `data` and returns the first parsed PEM Block along with the rest of
-// the string. `none` is returned when a header is expected, but not present
-// or when a start of '-----BEGIN' or end of '-----END' can't be found in `data`
-[direct_array_access]
+// see `decode_partial` or `Block.decode`
+[deprecated: 'use decode_partial or Block.decode instead']
+[inline]
 pub fn decode(data string) ?(Block, string) {
+	block, rest := decode_partial(data)?
+	return block, rest
+}
+
+// `decode` reads `data` and returns the first parsed PEM Block along with the rest
+// of the string
+// `none` is returned when a header is expected, but not present
+// or when a start of '-----BEGIN' or end of '-----END' can't be found in `data`
+pub fn decode_partial(data string) ?(Block, string) {
+	block, rest := decode_internal(data)?
+	return block, rest[rest.index(pem_end)? + pem_end.len..].all_after_first(pem_eol)
+}
+
+// `decode` reads `data` and returns the first parsed PEM Block
+// `none` is returned when a header is expected, but not present
+// or when a start of '-----BEGIN' or end of '-----END' can't be found in `data`
+pub fn Block.decode(data string) ?Block {
+	block, _ := decode_internal(data)?
+	return block
+}
+
+// an internal function to allow `decode` variations to deal with the rest of the data as
+// they want to. for example Block.decode could have hindered performance with the final
+// indexing into `rest` that `decode_partial` does.
+[direct_array_access]
+fn decode_internal(data string) ?(Block, string) {
 	mut rest := data[data.index(pem_begin)?..]
 	mut block := Block.new(rest[pem_begin.len..].all_before(pem_eol))
 	block.headers, rest = parse_headers(rest[pem_begin.len..].all_after(pem_eol).trim_left(' \n\t\v\f\r'))?
@@ -19,7 +44,7 @@ pub fn decode(data string) ?(Block, string) {
 	decoded_len := base64.decode_in_buffer(&b64_data, &block.data[0])
 	block.data = block.data[..decoded_len]
 
-	return block, rest[rest.index(pem_end)? + pem_end.len..].all_after_first(pem_eol)
+	return block, rest
 }
 
 [direct_array_access]
