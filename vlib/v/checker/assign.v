@@ -664,8 +664,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 		}
-		if !is_blank_ident && !left.is_auto_deref_var() && !right.is_auto_deref_var()
-			&& right_sym.kind != .placeholder && left_sym.kind != .interface_
+		// println('>>>> ${left} ${left.is_auto_deref_var()} ${right.is_auto_deref_var()}' )
+		// && !left.is_auto_deref_var() && !right.is_auto_deref_var()
+		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface_
 			&& !right_type.has_flag(.generic) && !left_type.has_flag(.generic) {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
