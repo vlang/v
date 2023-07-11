@@ -2358,7 +2358,7 @@ fn (mut c Amd64) return_stmt(node ast.Return) {
 	c.g.println('; jump to label ${label}')
 }
 
-fn (mut c Amd64) multi_assign_stmt(node ast.AssignStmt) {  // maybe
+fn (mut c Amd64) multi_assign_stmt(node ast.AssignStmt) {
 	multi_return := c.g.get_multi_return(node.right_types)
 	if node.has_cross_var {
 		// `a, b = b, a`
