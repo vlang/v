@@ -61,7 +61,7 @@ jobs:
         run: make -j4 && ./v symlink -githubci
 
       - name: Install wasmer to execute WASM modules
-        run: curl https://get.wasmer.io -sSfL | sh && source .wasmer/wasmer.sh
+        run: curl https://get.wasmer.io -sSfL | sh && source ~/.bashrc
 
       - name: Build the V WASM backend
         run: ./v -cc clang -showcc -v cmd/tools/builders/wasm_builder.v
@@ -83,7 +83,7 @@ jobs:
         run: make -j4 && ./v symlink -githubci
 
       - name: Install wasmer to execute WASM modules
-        run: curl https://get.wasmer.io -sSfL | sh && source ~/.wasmer/wasmer.sh
+        run: curl https://get.wasmer.io -sSfL | sh && source ~/.bashrc
 
       - name: Build the V WASM backend
         run: ./v -cc clang -showcc -v cmd/tools/builders/wasm_builder.v
