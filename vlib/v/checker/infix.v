@@ -779,9 +779,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 	}
 	/*
-	if (node.left is ast.InfixExpr &&
-		(node.left as ast.InfixExpr).op == .inc) ||
-		(node.right is ast.InfixExpr && (node.right as ast.InfixExpr).op == .inc) {
+	if (node.left is ast.InfixExpr && node.left.op == .inc) ||
+		(node.right is ast.InfixExpr && node.right.op == .inc) {
 		c.warn('`++` and `--` are statements, not expressions', node.pos)
 	}
 	*/
@@ -856,6 +855,11 @@ fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, 
 		}
 		ast.ParExpr {
 			c.autocast_in_if_conds(mut right.expr, from_expr, from_type, to_type)
+		}
+		ast.AsCast {
+			if right.typ != to_type {
+				c.autocast_in_if_conds(mut right.expr, from_expr, from_type, to_type)
+			}
 		}
 		ast.PrefixExpr {
 			c.autocast_in_if_conds(mut right.right, from_expr, from_type, to_type)

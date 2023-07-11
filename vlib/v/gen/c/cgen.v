@@ -150,11 +150,12 @@ mut:
 	loop_depth                int
 	ternary_names             map[string]string
 	ternary_level_names       map[string][]string
-	arraymap_set_pos          int   // map or array set value position
-	stmt_path_pos             []int // positions of each statement start, for inserting C statements before the current statement
-	skip_stmt_pos             bool  // for handling if expressions + autofree (since both prepend C statements)
-	left_is_opt               bool  // left hand side on assignment is an option
-	right_is_opt              bool  // right hand side on assignment is an option
+	arraymap_set_pos          int      // map or array set value position
+	stmt_path_pos             []int    // positions of each statement start, for inserting C statements before the current statement
+	skip_stmt_pos             bool     // for handling if expressions + autofree (since both prepend C statements)
+	left_is_opt               bool     // left hand side on assignment is an option
+	right_is_opt              bool     // right hand side on assignment is an option
+	assign_ct_type            ast.Type // left hand side resolved comptime type
 	indent                    int
 	empty_line                bool
 	assign_op                 token.Kind // *=, =, etc (for array_set)
@@ -1898,7 +1899,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		}
 		if ret_typ.has_flag(.option) {
 			if expr_typ.has_flag(.option) && expr in [ast.StructInit, ast.ArrayInit, ast.MapInit] {
-				if expr is ast.StructInit && (expr as ast.StructInit).init_fields.len > 0 {
+				if expr is ast.StructInit && expr.init_fields.len > 0 {
 					g.write('_option_ok(&(${styp}[]) { ')
 				} else {
 					g.write('_option_none(&(${styp}[]) { ')
@@ -4194,13 +4195,13 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 [inline]
 pub fn (mut g Gen) is_generic_param_var(node ast.Expr) bool {
 	return node is ast.Ident && node.info is ast.IdentVar && node.obj is ast.Var
-		&& ((node as ast.Ident).obj as ast.Var).ct_type_var == .generic_param
+		&& (node.obj as ast.Var).ct_type_var == .generic_param
 }
 
 [inline]
 pub fn (mut g Gen) is_comptime_var(node ast.Expr) bool {
 	return node is ast.Ident && node.info is ast.IdentVar && node.obj is ast.Var
-		&& ((node as ast.Ident).obj as ast.Var).ct_type_var != .no_comptime
+		&& (node.obj as ast.Var).ct_type_var != .no_comptime
 }
 
 fn (mut g Gen) ident(node ast.Ident) {
