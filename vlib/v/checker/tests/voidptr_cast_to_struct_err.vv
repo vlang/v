@@ -1,6 +1,6 @@
 struct Foo {}
 
 fn main() {
-	a := Foo(voidptr(0))
+	a := Foo(unsafe { nil })
 	println(a)
 }
