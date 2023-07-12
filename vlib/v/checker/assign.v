@@ -675,7 +675,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					} else {
 						left_type
 					}
-					right_deref := if right.is_literal() {
+					right_deref := if right.is_pure_literal() {
 						right.get_pure_type()
 					} else if right.is_auto_deref_var() {
 						right_type.deref()
