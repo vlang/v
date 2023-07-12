@@ -7,10 +7,12 @@ fn test_main() {
 	assert z == [[1, 2]!, [3, 4]!]!
 }
 
-fn (v Mat) foo() [2][2]int {
+// vfmt off
+fn (v Mat) foo() Mat {
 	return v
 }
 
-fn bar() [2][2]int {
+fn bar() Mat {
 	return Mat([[1, 2]!, [3, 4]!]!)
 }
+// vfmt on
