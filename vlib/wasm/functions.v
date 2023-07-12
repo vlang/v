@@ -43,4 +43,11 @@ mut:
 	locals  []FunctionLocal
 pub:
 	name string
+pub mut:
+	export_name ?string
+}
+
+// export_name sets the export name of the function to `name`
+pub fn (mut func Function) export_name(name string) {
+	func.export_name = name
 }

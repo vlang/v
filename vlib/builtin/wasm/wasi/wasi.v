@@ -1,4 +1,3 @@
-[wasm_import_namespace: 'wasi_snapshot_preview1']
 module builtin
 
 struct CIOVec {
@@ -9,6 +8,9 @@ struct CIOVec {
 type Errno = u16
 type FileDesc = int
 
+[wasm_import_namespace: 'wasi_snapshot_preview1']
 fn WASM.fd_write(fd FileDesc, iovs &CIOVec, iovs_len usize, retptr &usize) Errno
+
+[wasm_import_namespace: 'wasi_snapshot_preview1']
 [noreturn]
 fn WASM.proc_exit(rval int)

@@ -59,15 +59,17 @@ fn addcfor() int {
 	return val
 }
 
-fn labelcfor() {
+fn labelcfor() (int, int) {
+	mut idx := 0
 	mut val := 0
 
 	hello: for {
 		for {
+			val++
 			if val == 10 {
 				continue hello
 			}
-			val++
+			idx++
 
 			if val == 100 {
 				break hello
@@ -75,6 +77,8 @@ fn labelcfor() {
 		}
 		break
 	}
+
+	return val, idx
 }
 
 fn infcfor() int {
@@ -88,4 +92,33 @@ fn infcfor() int {
 	}
 
 	return 0
+}
+
+fn main() {
+	println('--- func()')
+	println(func(10, true))
+	println(func(0, false))
+	println(func(0, true))
+
+	println('--- test()')
+	println(test(true))
+	println(test(false))
+	println(test(true && false))
+
+	println('--- boolfor()')
+	println(boolfor())
+
+	println('--- inffor()')
+	println(inffor())
+
+	println('--- addcfor()')
+	println(addcfor())
+
+	println('--- labelcfor()')
+	a, b := labelcfor()
+	println(a)
+	println(b)
+
+	println('--- infcfor()')
+	println(infcfor())
 }

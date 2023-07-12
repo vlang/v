@@ -60,8 +60,10 @@ jobs:
       - name: Build V
         run: make -j4 && ./v symlink -githubci
 
-      - name: Install binaryen as build dependency for the V WASM backend
-        run: ./v cmd/tools/install_binaryen.vsh
+      - name: Install wasmer to execute WASM modules
+        run: |
+          curl https://get.wasmer.io -sSfL | sh
+          sudo ln -s ~/.wasmer/bin/wasmer /usr/local/bin
 
       - name: Build the V WASM backend
         run: ./v -cc clang -showcc -v cmd/tools/builders/wasm_builder.v
@@ -82,8 +84,10 @@ jobs:
       - name: Build V
         run: make -j4 && ./v symlink -githubci
 
-      - name: Install binaryen as build dependency for the V WASM backend
-        run: ./v cmd/tools/install_binaryen.vsh
+      - name: Install wasmer to execute WASM modules
+        run: |
+          curl https://get.wasmer.io -sSfL | sh
+          sudo ln -s ~/.wasmer/bin/wasmer /usr/local/bin
 
       - name: Build the V WASM backend
         run: ./v -cc clang -showcc -v cmd/tools/builders/wasm_builder.v
@@ -94,26 +98,26 @@ jobs:
       - name: Build examples
         run: VTEST_ONLY=wasm ./v build-examples
 
-  wasm-backend-windows:
-    runs-on: windows-2022
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
-    timeout-minutes: 121
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Build V
-        run: .\make.bat -msvc
-      - name: Symlink V
-        run: .\v.exe symlink -githubci
-
-      - name: Install binaryen as build dependency for the V WASM backend
-        run: v cmd/tools/install_binaryen.vsh
-
-      - name: Build the V WASM backend
-        run: v -cc msvc -showcc -v cmd/tools/builders/wasm_builder.v
-
-      - name: Test the WASM backend
-        run: v -stats test vlib/v/gen/wasm/tests/
-
-      - name: Build examples
-        run: $env:VTEST_ONLY='wasm'; v build-examples
+#  wasm-backend-windows:
+#    runs-on: windows-2022
+#    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+#    timeout-minutes: 121
+#    steps:
+#      - uses: actions/checkout@v3
+#
+#      - name: Build V
+#        run: .\make.bat -msvc
+#      - name: Symlink V
+#        run: .\v.exe symlink -githubci
+#
+#      - name: Install binaryen as build dependency for the V WASM backend
+#        run: v cmd/tools/install_binaryen.vsh
+#
+#      - name: Build the V WASM backend
+#        run: v -cc msvc -showcc -v cmd/tools/builders/wasm_builder.v
+#
+#      - name: Test the WASM backend
+#        run: v -stats test vlib/v/gen/wasm/tests/
+#
+#      - name: Build examples
+#        run: $env:VTEST_ONLY='wasm'; v build-examples

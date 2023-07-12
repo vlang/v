@@ -6,9 +6,10 @@ enum Hello as u64 {
 	e
 }
 
-fn enums() {
+fn enums() Hello {
 	mut a := Hello.a
 	a = .c
+	return a
 }
 
 struct AA {
@@ -19,6 +20,7 @@ struct AA {
 fn of() {
 	a := __offsetof(AA, b)
 	b := sizeof(AA)
+	_, _ := a, b
 }
 
 fn constant() int {
@@ -54,4 +56,36 @@ fn ptr_arith() {
 		*b = 102
 	}
 	println((*b).str())
+}
+
+fn defer_if(cond bool) {
+	if cond {
+		defer {
+			println('defer_if: defer!')
+		}
+	}
+	println('defer_if: start')
+}
+
+fn run_defer() {
+	defer {
+		println('defer!')
+	}
+	println('before defer')
+	defer_if(true)
+	defer_if(false)
+}
+
+fn main() {
+	println('ptr_arith')
+	ptr_arith()
+	run_defer()
+	println('constants')
+	println(runtime_init)
+	println(hello)
+	// println(float)
+	println(integer)
+	println('enums')
+	println(int(enums()))
+	println(sizeof(Hello))
 }

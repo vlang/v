@@ -1,103 +1,62 @@
+// Copyright (c) 2023 l-m.dev. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 module wasm
 
+import wasm
 import v.ast
-import v.gen.wasm.binaryen
-import strconv
+import v.gen.wasm.serialise
+import encoding.binary
 
-type Var = Global | Stack | Temporary | ast.Ident
-
-fn (v Var) ast_typ() int {
-	if v is Temporary {
-		return v.ast_typ
-	}
-	if v is Stack {
-		return v.ast_typ
-	}
-	if v is Global {
-		return v.ast_typ
-	}
-	panic('unreachable')
+pub struct Var {
+	name string
+mut:
+	typ        ast.Type
+	idx        wasm.LocalIndex
+	is_address bool
+	is_global  bool
+	g_idx      wasm.GlobalIndex
+	offset     int
 }
 
-fn (v Var) address() int {
-	return (v as Stack).address
-}
-
-struct Temporary {
-	name    string
-	typ     binaryen.Type
-	ast_typ ast.Type
-	//
-	idx int
-}
-
-struct Stack {
-	name    string
-	ast_typ ast.Type
-	//
-	address int
-}
-
-struct Global {
-	name    string
-	ast_typ ast.Type
-	//
-	abs_address int
-}
-
-fn (g Gen) is_pure_type(typ ast.Type) bool {
-	if typ.is_pure_int() || typ.is_pure_float() || typ == ast.char_type_idx
-		|| typ.is_any_kind_of_pointer() || typ.is_bool() {
-		return true
-	}
-	ts := g.table.sym(typ)
-	if ts.info is ast.Alias {
-		return g.is_pure_type(ts.info.parent_type)
-	}
-	return false
-}
-
-fn (mut g Gen) new_global_const(obj ast.ScopeObject) {
-	obj_expr := match obj {
-		ast.ConstField { obj.expr }
-		ast.GlobalField { obj.expr }
-		else { panic('unreachable') }
-	}
-	typ := ast.mktyp(obj.typ)
-
-	size, align := g.get_type_size_align(typ)
-	padding := (align - g.constant_data_offset % align) % align
-	g.globals[obj.name] = GlobalData{
-		init: obj_expr
-		ast_typ: typ
-		abs_address: g.constant_data_offset
-	}
-	g.constant_data_offset += size + padding
-}
-
-fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
+pub fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
 	mut obj := ident.obj
 	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
 		obj = ident.scope.find(ident.name) or { g.w_error('unknown variable ${ident.name}') }
 	}
+
 	match mut obj {
 		ast.Var {
-			if obj.name !in g.local_addresses {
-				return g.local_temporaries[g.get_local_temporary(obj.name)]
+			if g.local_vars.len == 0 {
+				g.w_error('get_var_from_ident: g.local_vars.len == 0')
 			}
-			return g.local_addresses[obj.name]
+			mut c := g.local_vars.len
+			for {
+				c--
+				if g.local_vars[c].name == obj.name {
+					return g.local_vars[c]
+				}
+				if c == 0 {
+					break
+				}
+			}
+			g.w_error('get_var_from_ident: unreachable, variable not found')
 		}
 		ast.ConstField {
-			if obj.name !in g.globals {
-				g.new_global_const(obj)
+			if gbl := g.global_vars[obj.name] {
+				return gbl.v
 			}
-			return g.globals[obj.name].to_var(obj.name)
+			gbl := g.new_global(obj.name, obj.typ, obj.expr, false)
+			g.global_vars[obj.name] = gbl
+			return gbl.v
 		}
 		ast.GlobalField {
-			if obj.name !in g.globals {
-				g.new_global_const(obj)
+			if gbl := g.global_vars[obj.name] {
+				return gbl.v
 			}
-			return g.globals[obj.name].to_var(obj.name)
+			gbl := g.new_global(obj.name, obj.typ, obj.expr, true)
+			g.global_vars[obj.name] = gbl
+			return gbl.v
 		}
 		else {
 			g.w_error('unsupported variable type type:${obj} name:${ident.name}')
@@ -105,644 +64,783 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
 	}
 }
 
-type LocalOrPointer = Var | binaryen.Expression
-
-fn (mut g Gen) get_or_lea_lop(lp LocalOrPointer, expected ast.Type) binaryen.Expression {
-	size, _ := g.table.type_size(expected)
-
-	mut offset := 0
-	mut parent_typ := expected
-	mut is_expr := false
-
-	expr := match lp {
-		binaryen.Expression {
-			is_expr = true
-			lp
-		}
-		Var {
-			match lp {
-				Temporary {
-					parent_typ = lp.ast_typ
-					binaryen.localget(g.mod, lp.idx, g.get_wasm_type(expected))
-				}
-				Stack {
-					parent_typ = lp.ast_typ
-					offset = lp.address
-					g.get_bp()
-				}
-				Global {
-					parent_typ = lp.ast_typ
-					is_expr = true
-					g.literalint(lp.abs_address, ast.int_type)
-				}
-				else {
-					panic('unreachable')
-				}
-			}
-		}
-	}
-
-	if (!is_expr && parent_typ == expected) || !g.is_pure_type(expected) {
-		return expr
-	}
-
-	return binaryen.load(g.mod, u32(size), g.is_signed(expected), u32(offset), 0, g.get_wasm_type(expected),
-		expr, c'memory')
-}
-
-fn (mut g Gen) lea_lop(lp LocalOrPointer, expected ast.Type) binaryen.Expression {
-	expr := match lp {
-		binaryen.Expression {
-			lp
-		}
-		Var {
-			match lp {
-				Temporary {
-					binaryen.localget(g.mod, lp.idx, g.get_wasm_type(expected))
-				}
-				Stack {
-					g.get_bp()
-				}
-				Global {
-					g.literalint(lp.abs_address, ast.int_type)
-				}
-				else {
-					panic('unreachable')
-				}
-			}
-		}
-	}
-
-	return expr
-}
-
-fn (mut g Gen) lea_var_from_expr(node ast.Expr) binaryen.Expression {
-	var := g.get_var_from_expr(node)
-
-	return match var {
-		binaryen.Expression {
-			var
-		}
-		Var {
-			match var {
-				Temporary {
-					if g.is_pure_type(var.ast_typ) {
-						g.w_error('lea_var_from_expr: you cannot take the address of a pure temporary')
-					}
-					binaryen.localget(g.mod, var.idx, type_i32)
-				}
-				Stack {
-					g.lea_address(var.address)
-				}
-				Global {
-					g.literalint(var.abs_address, ast.int_type)
-				}
-				else {
-					panic('unreachable')
-				}
-			}
-		}
-	}
-}
-
-fn (mut g Gen) local_or_pointer_add_offset(v Var, offset int) LocalOrPointer {
-	return match v {
-		Temporary {
-			binaryen.binary(g.mod, binaryen.addint32(), binaryen.localget(g.mod, v.idx,
-				type_i32), binaryen.constant(g.mod, binaryen.literalint32(offset)))
-		}
-		Stack {
-			Var(Stack{
-				...v
-				address: v.address + offset
-			})
-		}
-		Global {
-			Var(Global{
-				...v
-				abs_address: v.abs_address + offset
-			})
-		}
+pub fn (mut g Gen) get_var_from_expr(node ast.Expr) ?Var {
+	match node {
 		ast.Ident {
-			panic('unreachable')
-		}
-	}
-}
-
-// TODO: return `Var | binaryen.Expression`
-fn (mut g Gen) get_var_from_expr(node ast.Expr) LocalOrPointer {
-	return match node {
-		ast.Ident {
-			g.get_var_from_ident(node)
+			return g.get_var_from_ident(node)
 		}
 		ast.ParExpr {
-			g.get_var_from_expr(node.expr)
+			return g.get_var_from_expr(node.expr)
 		}
 		ast.SelectorExpr {
-			address := g.get_var_from_expr(node.expr)
+			mut addr := g.get_var_from_expr(node.expr) or {
+				// if place {
+				// 	g.field_offset(node.expr_type, node.field_name)
+				// }
+				return none
+			}
+			addr.is_address = true
+
 			offset := g.get_field_offset(node.expr_type, node.field_name)
-
-			match address {
-				binaryen.Expression {
-					binaryen.binary(g.mod, binaryen.addint32(), address, binaryen.constant(g.mod,
-						binaryen.literalint32(offset)))
-				}
-				Var {
-					g.local_or_pointer_add_offset(address, offset)
-				}
-			}
-		}
-		ast.IndexExpr {
-			address := g.get_var_from_expr(node.left)
-
-			ts := g.table.sym(node.left_type)
-			deref_type := if g.is_pure_type(node.left_type) {
-				node.left_type.set_nr_muls(node.left_type.nr_muls() - 1)
-			} else if ts.kind == .array_fixed {
-				(ts.info as ast.ArrayFixed).elem_type
-			} else {
-				node.left_type
-			}
-			size, _ := g.get_type_size_align(deref_type)
-
-			index := g.expr(node.index, ast.int_type)
-			mut ptr_address := binaryen.Expression(0)
-
-			if address is binaryen.Expression {
-				ptr_address = address
-			}
-			if address is Var {
-				ptr_address = g.get_var_t(address, ast.voidptr_type)
-			}
-
-			// ptr + index * size
-			binaryen.binary(g.mod, binaryen.addint32(), ptr_address, binaryen.binary(g.mod,
-				binaryen.mulint32(), index, g.literalint(size, ast.int_type)))
-		}
-		ast.PrefixExpr {
-			g.lea_lop(g.get_var_from_expr(node.right), ast.voidptr_type)
+			return g.offset(addr, node.typ, offset)
 		}
 		else {
-			g.w_error('get_var_from_expr: unexpected `${node.type_name()}`')
+			// g.w_error('get_var_from_expr: unexpected `${node.type_name()}`')
+			return none
 		}
 	}
 }
 
-fn (mut g Gen) get_local_temporary(name string) int {
-	if g.local_temporaries.len == 0 {
-		g.w_error('get_local: g.local_temporaries.len == 0')
+// ONLY call this with the LHS of an assign, an lvalue
+// use get_var_from_expr in all other cases
+pub fn (mut g Gen) get_var_or_make_from_expr(node ast.Expr, typ ast.Type) Var {
+	if v := g.get_var_from_expr(node) {
+		return v
 	}
-	mut c := g.local_temporaries.len
-	for {
-		c--
-		if g.local_temporaries[c].name == name {
-			return c
-		}
-		if c == 0 {
-			break
-		}
+
+	mut v := g.new_local('__tmp', ast.voidptr_type)
+	g.needs_address = true
+	{
+		g.set_with_expr(node, v)
 	}
-	g.w_error("get_local: cannot get '${name}'")
+	g.needs_address = false
+
+	v.typ = typ
+	v.is_address = true
+
+	return v
 }
 
-fn (mut g Gen) new_local_temporary_anon_wtyp(w_typ binaryen.Type) int {
-	ret := g.local_temporaries.len
-	g.local_temporaries << Temporary{
-		name: '_'
-		typ: w_typ
-		idx: ret
+pub fn (mut g Gen) bp() wasm.LocalIndex {
+	if g.bp_idx == -1 {
+		g.bp_idx = g.func.new_local_named(.i32_t, '__vbp')
 	}
-	return ret
+	return g.bp_idx
 }
 
-fn (mut g Gen) new_local_temporary_anon(typ ast.Type) int {
-	ret := g.local_temporaries.len
-	g.local_temporaries << Temporary{
-		name: '_'
-		typ: g.get_wasm_type(typ)
-		ast_typ: typ
-		idx: ret
+pub fn (mut g Gen) sp() wasm.GlobalIndex {
+	if sp := g.sp_global {
+		return sp
 	}
-	return ret
+	// (64KiB - 1KiB) of stack space, grows downwards.
+	// Memory addresses from 0 to 1024 are forbidden.
+	g.sp_global = g.mod.new_global('__vsp', false, .i32_t, true, wasm.constexpr_value(0))
+	return g.sp()
 }
 
-fn (mut g Gen) new_local_temporary(name string, typ ast.Type) Temporary {
-	idx := g.local_temporaries.len
-	var := Temporary{
-		name: name
-		typ: g.get_wasm_type(typ)
-		ast_typ: typ
-		idx: idx
-	}
-	g.local_temporaries << var
-	return var
-}
-
-fn (mut g Gen) new_local(var ast.Ident, typ ast.Type) {
-	if g.is_pure_type(typ) {
-		g.new_local_temporary(var.name, typ)
-		return
-	}
-
+pub fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
+	mut typ := typ_
 	ts := g.table.sym(typ)
+
+	match ts.info {
+		ast.Enum {
+			typ = ts.info.typ
+		}
+		ast.Alias {
+			typ = ts.info.parent_type
+		}
+		else {}
+	}
+
+	is_address := !g.is_pure_type(typ)
+	wtyp := g.get_wasm_type(typ)
+
+	mut v := Var{
+		name: name
+		typ: typ
+		is_address: is_address
+	}
+
+	if !is_address {
+		v.idx = g.func.new_local_named(wtyp, g.dbg_type_name(name, typ_))
+		g.local_vars << v
+		return v
+	}
+	v.idx = g.bp()
+
+	// allocate memory, then assign an offset
+	//
 	match ts.info {
 		ast.Struct, ast.ArrayFixed {
-			g.allocate_local_var(var.name, typ)
-		}
-		ast.Enum {
-			g.new_local_temporary(var.name, ts.info.typ)
+			size, align := g.pool.type_size(typ)
+			padding := calc_padding(g.stack_frame, align)
+			address := g.stack_frame
+			g.stack_frame += size + padding
+
+			v.offset = address
 		}
 		else {
 			g.w_error('new_local: type `${*ts}` (${ts.info.type_name()}) is not a supported local type')
 		}
 	}
+	g.local_vars << v
+	return v
 }
 
-fn (mut g Gen) deref(expr binaryen.Expression, expected ast.Type) binaryen.Expression {
-	size, _ := g.get_type_size_align(expected)
-	return binaryen.load(g.mod, u32(size), g.is_signed(expected), 0, 0, g.get_wasm_type(expected),
-		expr, c'memory')
-}
-
-fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
-	ts := g.table.sym(typ)
-	field := ts.find_field(name) or { g.w_error('could not find field `${name}` on init') }
-	if typ !in g.structs {
-		g.get_type_size_align(typ.idx())
-	}
-	return g.structs[typ.idx()].offsets[field.i]
-}
-
-fn (mut g Gen) get_type_size_align(typ ast.Type) (int, int) {
-	ts := g.table.sym(typ)
-	if ts.size != -1 && typ in g.structs {
-		return ts.size, ts.align
-	}
-
-	if ts.info !is ast.Struct {
-		return g.table.type_size(typ)
-	}
-
-	ti := ts.info as ast.Struct
-
-	// Code borrowed from native, hope you don't mind!
-
-	mut strc := StructInfo{}
-	mut size := 0
-	mut align := 1
-	for f in ti.fields {
-		f_size, f_align := g.table.type_size(f.typ)
-		if f_size == 0 {
-			strc.offsets << 0
-			continue
+pub fn (mut g Gen) literal_to_constant_expression(typ_ ast.Type, init ast.Expr) ?wasm.ConstExpression {
+	typ := ast.mktyp(typ_)
+	match init {
+		ast.BoolLiteral {
+			return wasm.constexpr_value(int(init.val))
 		}
-		padding := (f_align - size % f_align) % f_align
-		strc.offsets << size + padding
-		size += f_size + padding
-		if f_align > align {
-			align = f_align
+		ast.CharLiteral {
+			return wasm.constexpr_value(int(init.val.runes()[0]))
 		}
-	}
-	size = (size + align - 1) / align * align
-	g.structs[typ.idx()] = strc
-
-	mut ts_ := g.table.sym(typ)
-	ts_.size = size
-	ts_.align = align
-
-	return size, align
-}
-
-fn (mut g Gen) allocate_local_var(name string, typ ast.Type) int {
-	size, align := g.get_type_size_align(typ)
-	padding := (align - g.stack_frame % align) % align
-	address := g.stack_frame
-	g.stack_frame += size + padding
-	g.local_addresses[name] = Stack{
-		name: name
-		ast_typ: typ
-		address: address
-	}
-
-	return address
-}
-
-fn (mut g Gen) get_bp() binaryen.Expression {
-	return binaryen.localget(g.mod, g.bp_idx, type_i32)
-}
-
-fn (mut g Gen) lea_address(address int) binaryen.Expression {
-	return if address != 0 {
-		binaryen.binary(g.mod, binaryen.addint32(), g.get_bp(), binaryen.constant(g.mod,
-			binaryen.literalint32(address)))
-	} else {
-		g.get_bp()
-	}
-}
-
-// Will automatcally cast value from `var` to `ast_type`, will ignore if struct value.
-// TODO: When supporting base types on the stack, actually cast them.
-fn (mut g Gen) get_var_t(var Var, ast_typ ast.Type) binaryen.Expression {
-	return match var {
-		ast.Ident {
-			g.get_var_t(g.get_var_from_ident(var), ast_typ)
-		}
-		Temporary {
-			expr := binaryen.localget(g.mod, var.idx, var.typ)
-			g.cast_t(expr, var.ast_typ, ast_typ)
-		}
-		Stack {
-			address := if var.address != 0 {
-				binaryen.binary(g.mod, binaryen.addint32(), g.get_bp(), binaryen.constant(g.mod,
-					binaryen.literalint32(var.address)))
-			} else {
-				g.get_bp()
-			}
-
-			if g.is_pure_type(var.ast_typ) {
-				g.cast_t(g.deref(address, var.ast_typ), var.ast_typ, ast_typ)
-			} else {
-				address
+		ast.FloatLiteral {
+			if typ == ast.f32_type {
+				return wasm.constexpr_value(init.val.f32())
+			} else if typ == ast.f64_type {
+				return wasm.constexpr_value(init.val.f64())
 			}
 		}
-		Global {
-			address := g.literalint(var.abs_address, ast.int_type)
-			if g.is_pure_type(var.ast_typ) {
-				g.cast_t(g.deref(address, var.ast_typ), var.ast_typ, ast_typ)
-			} else {
-				address
+		ast.IntegerLiteral {
+			if !typ.is_pure_int() {
+				return none
 			}
-		}
-	}
-}
-
-[params]
-struct SetConfig {
-	offset  int
-	ast_typ ast.Type
-}
-
-fn (mut g Gen) set_to_address(address_expr binaryen.Expression, expr binaryen.Expression, ast_typ ast.Type) binaryen.Expression {
-	return if !g.is_pure_type(ast_typ) {
-		// `expr` is pointer
-		g.blit(expr, ast_typ, address_expr)
-	} else {
-		size, _ := g.table.type_size(ast_typ)
-		binaryen.store(g.mod, u32(size), 0, 0, address_expr, expr, g.get_wasm_type(ast_typ),
-			c'memory')
-	}
-}
-
-fn (mut g Gen) set_var_v(address Var, expr binaryen.Expression, cfg SetConfig) binaryen.Expression {
-	return g.set_var(address, expr, cfg)
-}
-
-fn (mut g Gen) set_var(address LocalOrPointer, expr binaryen.Expression, cfg SetConfig) binaryen.Expression {
-	ast_typ := if cfg.ast_typ != 0 {
-		cfg.ast_typ
-	} else {
-		(address as Var).ast_typ()
-	}
-	match address {
-		binaryen.Expression {
-			return g.set_to_address(address, expr, ast_typ)
-		}
-		Var {
-			var := address
-
-			return match var {
-				ast.Ident {
-					g.set_var(g.get_var_from_ident(var), expr, cfg)
-				}
-				Temporary {
-					binaryen.localset(g.mod, var.idx, expr)
-				}
-				Stack {
-					if !g.is_pure_type(ast_typ) {
-						// `expr` is pointer
-						g.blit_local(expr, ast_typ, var.address + cfg.offset)
-					} else {
-						size, _ := g.table.type_size(ast_typ)
-						// println("address: ${var.address}, offset: ${cfg.offset}")
-						binaryen.store(g.mod, u32(size), u32(var.address + cfg.offset),
-							0, g.get_bp(), expr, g.get_wasm_type(ast_typ), c'memory')
-					}
-				}
-				Global {
-					address_expr := g.literalint(var.abs_address + cfg.offset, ast.int_type)
-					g.set_to_address(address_expr, expr, ast_typ)
-				}
-			}
-		}
-	}
-}
-
-// zero out stack memory in known local `address`.
-fn (mut g Gen) zero_fill(ast_typ ast.Type, address int) binaryen.Expression {
-	size, _ := g.get_type_size_align(ast_typ)
-
-	if size <= 4 {
-		zero := g.literalint(0, ast.int_type)
-		return binaryen.store(g.mod, u32(size), u32(address), 0, g.get_bp(), zero, type_i32,
-			c'memory')
-	} else if size <= 8 {
-		zero := g.literalint(0, ast.i64_type)
-		return binaryen.store(g.mod, u32(size), u32(address), 0, g.get_bp(), zero, type_i64,
-			c'memory')
-	}
-	return binaryen.memoryfill(g.mod, g.lea_address(address), g.literalint(0, ast.int_type),
-		g.literalint(size, ast.int_type), c'memory')
-}
-
-// `memcpy` from `ptr` to known local `address` in stack memory.
-fn (mut g Gen) blit_local(ptr binaryen.Expression, ast_typ ast.Type, address int) binaryen.Expression {
-	size, _ := g.get_type_size_align(ast_typ)
-	return binaryen.memorycopy(g.mod, g.lea_address(address), ptr, binaryen.constant(g.mod,
-		binaryen.literalint32(size)), c'memory', c'memory')
-}
-
-// `memcpy` from `ptr` to `dest`
-fn (mut g Gen) blit(ptr binaryen.Expression, ast_typ ast.Type, dest binaryen.Expression) binaryen.Expression {
-	size, _ := g.get_type_size_align(ast_typ)
-	return binaryen.memorycopy(g.mod, dest, ptr, binaryen.constant(g.mod, binaryen.literalint32(size)),
-		c'memory', c'memory')
-}
-
-fn (mut g Gen) init_struct(var Var, init ast.StructInit) binaryen.Expression {
-	match var {
-		ast.Ident {
-			return g.init_struct(g.get_var_from_ident(var), init)
-		}
-		Stack {
-			mut exprs := []binaryen.Expression{}
-
-			ts := g.table.sym(var.ast_typ)
-			match ts.info {
-				ast.Struct {
-					if init.init_fields.len == 0 && !(ts.info.fields.any(it.has_default_expr)) {
-						// Struct definition contains no default initialisers
-						// AND struct init contains no set values.
-						return g.mknblock('STRUCTINIT(ZERO)', [
-							g.zero_fill(var.ast_typ, var.address),
-						])
-					}
-
-					for i, f in ts.info.fields {
-						field_to_be_set := init.init_fields.map(it.name).contains(f.name)
-						fts := g.table.sym(f.typ)
-						if !field_to_be_set {
-							g.get_type_size_align(var.ast_typ)
-							offset := g.structs[var.ast_typ.idx()].offsets[i]
-							if f.has_default_expr {
-								init_expr := g.expr(f.default_expr, f.typ) // or `unaliased_typ`?
-								exprs << g.set_var_v(var, init_expr, ast_typ: f.typ, offset: offset)
-							} else {
-								if fts.info is ast.Struct {
-									exprs << g.init_struct(Stack{
-										address: var.address + offset
-										ast_typ: f.typ
-									}, ast.StructInit{})
-								} else {
-									exprs << g.zero_fill(f.typ, var.address + offset)
-								}
-							}
-							// TODO: replace invocations of `set_var` with `assign_expr_to_var`?						
-						}
-					}
-				}
+			t := g.get_wasm_type(typ)
+			match t {
+				.i32_t { return wasm.constexpr_value(init.val.int()) }
+				.i64_t { return wasm.constexpr_value(init.val.i64()) }
 				else {}
+			}
+		}
+		else {}
+	}
+	return none
+}
+
+pub fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_mut bool) Global {
+	mut typ := typ_
+	ts := g.table.sym(typ)
+
+	match ts.info {
+		ast.Enum {
+			typ = ts.info.typ
+		}
+		ast.Alias {
+			typ = ts.info.parent_type
+		}
+		else {}
+	}
+
+	mut is_mut := false
+	is_address := !g.is_pure_type(typ)
+	mut init_expr := ?ast.Expr(none)
+
+	cexpr := if cexpr_v := g.literal_to_constant_expression(unpack_literal_int(typ), init) {
+		is_mut = is_global_mut
+		cexpr_v
+	} else {
+		// Isn't a literal ...
+		if is_address {
+			// ... allocate memory and append
+			pos, is_init := g.pool.append(init, typ)
+			if !is_init {
+				// ... AND wait for init in `_vinit`
+				init_expr = init
+			}
+			wasm.constexpr_value(g.data_base + pos)
+		} else {
+			// ... wait for init in `_vinit`
+			init_expr = init
+			is_mut = true
+
+			t := g.get_wasm_type(typ)
+			wasm.constexpr_value_zero(t)
+		}
+	}
+
+	mut glbl := Global{
+		init: init_expr
+		v: Var{
+			name: name
+			typ: typ
+			is_address: is_address
+			is_global: true
+			g_idx: g.mod.new_global(g.dbg_type_name(name, typ), false, g.get_wasm_type_int_literal(typ),
+				is_mut, cexpr)
+		}
+	}
+
+	return glbl
+}
+
+// is_pure_type(voidptr) == true
+// is_pure_type(&Struct) == false
+pub fn (g Gen) is_pure_type(typ ast.Type) bool {
+	if typ.is_pure_int() || typ.is_pure_float() || typ == ast.char_type_idx
+		|| typ.is_any_kind_of_pointer() || typ.is_bool() {
+		return true
+	}
+	ts := g.table.sym(typ)
+	match ts.info {
+		ast.Alias {
+			return g.is_pure_type(ts.info.parent_type)
+		}
+		ast.Enum {
+			return g.is_pure_type(ts.info.typ)
+		}
+		else {}
+	}
+	return false
+}
+
+pub fn log2(size int) int {
+	return match size {
+		1 { 0 }
+		2 { 1 }
+		4 { 2 }
+		8 { 3 }
+		else { panic('unreachable') }
+	}
+}
+
+pub fn (mut g Gen) load(typ ast.Type, offset int) {
+	size, align := g.pool.type_size(typ)
+	wtyp := g.as_numtype(g.get_wasm_type(typ))
+
+	match size {
+		1 { g.func.load8(wtyp, typ.is_signed(), log2(align), offset) }
+		2 { g.func.load16(wtyp, typ.is_signed(), log2(align), offset) }
+		else { g.func.load(wtyp, log2(align), offset) }
+	}
+}
+
+pub fn (mut g Gen) store(typ ast.Type, offset int) {
+	size, align := g.pool.type_size(typ)
+	wtyp := g.as_numtype(g.get_wasm_type(typ))
+
+	match size {
+		1 { g.func.store8(wtyp, log2(align), offset) }
+		2 { g.func.store16(wtyp, log2(align), offset) }
+		else { g.func.store(wtyp, log2(align), offset) }
+	}
+}
+
+pub fn (mut g Gen) get(v Var) {
+	if v.is_global {
+		g.func.global_get(v.g_idx)
+	} else {
+		g.func.local_get(v.idx)
+	}
+
+	if v.is_address && g.is_pure_type(v.typ) {
+		g.load(v.typ, v.offset)
+	} else if v.is_address && v.offset != 0 {
+		g.func.i32_const(v.offset)
+		g.func.add(.i32_t)
+	}
+}
+
+pub fn (mut g Gen) mov(to Var, v Var) {
+	if !v.is_address || g.is_pure_type(v.typ) {
+		g.get(v)
+		g.cast(v.typ, to.typ)
+		g.set(to)
+		return
+	}
+
+	size, _ := g.pool.type_size(v.typ)
+
+	if size > 16 {
+		g.ref(to)
+		g.ref(v)
+		g.func.i32_const(size)
+		g.func.memory_copy()
+		return
+	}
+
+	mut sz := size
+	mut oz := 0
+	for sz > 0 {
+		g.ref_ignore_offset(to)
+		g.ref_ignore_offset(v)
+		if sz - 8 >= 0 {
+			g.load(ast.u64_type_idx, v.offset + oz)
+			g.store(ast.u64_type_idx, to.offset + oz)
+			sz -= 8
+			oz += 8
+		} else if sz - 4 >= 0 {
+			g.load(ast.u32_type_idx, v.offset + oz)
+			g.store(ast.u32_type_idx, to.offset + oz)
+			sz -= 4
+			oz += 4
+		} else if sz - 2 >= 0 {
+			g.load(ast.u16_type_idx, v.offset + oz)
+			g.store(ast.u16_type_idx, to.offset + oz)
+			sz -= 2
+			oz += 2
+		} else if sz - 1 >= 0 {
+			g.load(ast.u8_type_idx, v.offset + oz)
+			g.store(ast.u8_type_idx, to.offset + oz)
+			sz -= 1
+			oz += 1
+		}
+	}
+}
+
+pub fn (mut g Gen) set_prepare(v Var) {
+	if !v.is_address {
+		return
+	}
+
+	if g.is_pure_type(v.typ) {
+		if v.is_global {
+			g.func.global_get(v.g_idx)
+		} else {
+			g.func.local_get(v.idx)
+		}
+		return
+	}
+}
+
+pub fn (mut g Gen) set_set(v Var) {
+	if !v.is_address {
+		if v.is_global {
+			g.func.global_set(v.g_idx)
+		} else {
+			g.func.local_set(v.idx)
+		}
+		return
+	}
+
+	if g.is_pure_type(v.typ) {
+		g.store(v.typ, v.offset)
+		return
+	}
+
+	from := Var{
+		typ: v.typ
+		idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')
+		is_address: v.is_address
+	}
+
+	g.func.local_set(from.idx)
+	g.mov(v, from)
+}
+
+// set structures with pointer, memcpy
+// set pointers with value, get local, store value
+// set value, set local
+// -- set works with a single value present on the stack beforehand
+// -- not optimial for copying stack memory or shuffling structs
+// -- use mov instead
+pub fn (mut g Gen) set(v Var) {
+	if !v.is_address {
+		if v.is_global {
+			g.func.global_set(v.g_idx)
+		} else {
+			g.func.local_set(v.idx)
+		}
+		return
+	}
+
+	if g.is_pure_type(v.typ) {
+		l := g.new_local('__tmp', v.typ)
+		g.func.local_set(l.idx)
+
+		if v.is_global {
+			g.func.global_get(v.g_idx)
+		} else {
+			g.func.local_get(v.idx)
+		}
+
+		g.func.local_get(l.idx)
+
+		g.store(v.typ, v.offset)
+		return
+	}
+
+	from := Var{
+		typ: v.typ
+		idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')
+		is_address: v.is_address
+	}
+
+	g.func.local_set(from.idx)
+	g.mov(v, from)
+}
+
+pub fn (mut g Gen) ref(v Var) {
+	g.ref_ignore_offset(v)
+
+	if v.offset != 0 {
+		g.func.i32_const(v.offset)
+		g.func.add(.i32_t)
+	}
+}
+
+pub fn (mut g Gen) ref_ignore_offset(v Var) {
+	if !v.is_address {
+		panic('unreachable')
+	}
+
+	if v.is_global {
+		g.func.global_get(v.g_idx)
+	} else {
+		g.func.local_get(v.idx)
+	}
+}
+
+// creates a new pointer variable with the offset `offset` and type `typ`
+pub fn (mut g Gen) offset(v Var, typ ast.Type, offset int) Var {
+	if !v.is_address {
+		panic('unreachable')
+	}
+
+	nv := Var{
+		...v
+		typ: typ
+		offset: v.offset + offset
+	}
+
+	return nv
+}
+
+pub fn (mut g Gen) zero_fill(v Var, size int) {
+	assert size > 0
+
+	// TODO: support coalescing `zero_fill` calls together.
+	//       maybe with some kind of context?
+	//
+	// ```v
+	// struct AA {
+	//     a bool
+	//     b int = 20
+	//     c int
+	//     d int
+	// }
+	// ```
+	//
+	// ```wast
+	// (i32.store8
+	//  (local.get $0)
+	//  (i32.const 0)
+	// )
+	// (i32.store offset=4
+	//  (i32.const 20)
+	//  (local.get $0)
+	// )                    ;; /- join these together.
+	// (i32.store offset=8  ;;-\
+	//  (local.get $0)      ;; |
+	//  (i32.const 0)       ;; |
+	// )                    ;; |
+	// (i32.store offset=12 ;; |
+	//  (local.get $0)      ;; |
+	//  (i32.const 0)       ;; |
+	// )                    ;;-/
+	// ```
+
+	if size > 16 {
+		g.ref(v)
+		g.func.i32_const(0)
+		g.func.i32_const(size)
+		g.func.memory_fill()
+		return
+	}
+
+	mut sz := size
+	mut oz := 0
+	for sz > 0 {
+		g.ref_ignore_offset(v)
+		if sz - 8 >= 0 {
+			g.func.i64_const(0)
+			g.store(ast.u64_type_idx, v.offset + oz)
+			sz -= 8
+			oz += 8
+		} else if sz - 4 >= 0 {
+			g.func.i32_const(0)
+			g.store(ast.u32_type_idx, v.offset + oz)
+			sz -= 4
+			oz += 4
+		} else if sz - 2 >= 0 {
+			g.func.i32_const(0)
+			g.store(ast.u16_type_idx, v.offset + oz)
+			sz -= 2
+			oz += 2
+		} else if sz - 1 >= 0 {
+			g.func.i32_const(0)
+			g.store(ast.u8_type_idx, v.offset + oz)
+			sz -= 1
+			oz += 1
+		}
+	}
+}
+
+pub fn (g &Gen) is_param(v Var) bool {
+	if v.is_global {
+		return false
+	}
+
+	return v.idx < g.fn_local_idx_end
+}
+
+pub fn (mut g Gen) set_with_multi_expr(init ast.Expr, expected ast.Type, existing_rvars []Var) {
+	// misleading name: this doesn't really perform similar to `set_with_expr`
+	match init {
+		ast.ConcatExpr {
+			mut r := 0
+			types := g.unpack_type(expected)
+			for idx, expr in init.vals {
+				typ := types[idx]
+				if g.is_param_type(typ) {
+					if rhs := g.get_var_from_expr(expr) {
+						g.mov(existing_rvars[r], rhs)
+					} else {
+						g.set_with_expr(expr, existing_rvars[r])
+					}
+					r++
+				} else {
+					g.expr(expr, typ)
+				}
+			}
+		}
+		ast.IfExpr {
+			g.if_expr(init, expected, existing_rvars)
+		}
+		ast.CallExpr {
+			g.call_expr(init, expected, existing_rvars)
+		}
+		else {
+			if existing_rvars.len > 1 {
+				g.w_error('wasm.set_with_multi_expr(): (existing_rvars.len > 1) node: ' +
+					init.type_name())
+			}
+
+			if existing_rvars.len == 1 && g.is_param_type(expected) {
+				if rhs := g.get_var_from_expr(init) {
+					g.mov(existing_rvars[0], rhs)
+				} else {
+					g.set_with_expr(init, existing_rvars[0])
+				}
+			} else {
+				g.expr(init, expected)
+			}
+		}
+	}
+}
+
+pub fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
+	match init {
+		ast.StructInit {
+			size, _ := g.pool.type_size(v.typ)
+			ts := g.table.sym(v.typ)
+			ts_info := ts.info as ast.Struct
+			si := g.pool.type_struct_info(v.typ) or { panic('unreachable') }
+
+			if init.init_fields.len == 0 && !(ts_info.fields.any(it.has_default_expr)) {
+				// Struct definition contains no default initialisers
+				// AND struct init contains no set values.
+				g.zero_fill(v, size)
+				return
+			}
+
+			for i, f in ts_info.fields {
+				field_to_be_set := init.init_fields.map(it.name).contains(f.name)
+
+				if !field_to_be_set {
+					offset := si.offsets[i]
+					offset_var := g.offset(v, f.typ, offset)
+
+					fsize, _ := g.pool.type_size(f.typ)
+
+					if f.has_default_expr {
+						g.set_with_expr(f.default_expr, offset_var)
+					} else {
+						g.zero_fill(offset_var, fsize)
+					}
+				}
 			}
 
 			for f in init.init_fields {
 				field := ts.find_field(f.name) or {
 					g.w_error('could not find field `${f.name}` on init')
 				}
-				offset := g.structs[var.ast_typ.idx()].offsets[field.i]
-				initexpr := g.expr(f.expr, f.expected_type)
 
-				exprs << g.set_var_v(var, initexpr, ast_typ: f.expected_type, offset: offset)
+				offset := si.offsets[field.i]
+				offset_var := g.offset(v, f.expected_type, offset)
+
+				g.set_with_expr(f.expr, offset_var)
 			}
-
-			return g.mknblock('STRUCTINIT', exprs)
 		}
-		else {}
-	}
-	panic('unreachable')
-}
+		ast.StringLiteral {
+			val := serialise.eval_escape_codes(init) or { panic('unreachable') }
+			str_pos := g.pool.append_string(val)
 
-// From native, this should be taken out into `StringLiteral.eval_escape_codes()`
-fn (mut g Gen) eval_escape_codes(str_lit ast.StringLiteral) string {
-	if str_lit.is_raw {
-		return str_lit.val
-	}
-
-	str := str_lit.val
-	mut buffer := []u8{}
-
-	mut i := 0
-	for i < str.len {
-		if str[i] != `\\` {
-			buffer << str[i]
-			i++
-			continue
-		}
-
-		// skip \
-		i++
-		match str[i] {
-			`\\`, `'`, `"` {
-				buffer << str[i]
-				i++
-			}
-			`a`, `b`, `f` {
-				buffer << str[i] - u8(90)
-				i++
-			}
-			`n` {
-				buffer << `\n`
-				i++
-			}
-			`r` {
-				buffer << `\r`
-				i++
-			}
-			`t` {
-				buffer << `\t`
-				i++
-			}
-			`u` {
-				i++
-				utf8 := strconv.parse_int(str[i..i + 4], 16, 16) or {
-					g.w_error('invalid \\u escape code (${str[i..i + 4]})')
-					0
+			if v.typ != ast.string_type {
+				// c'str'
+				g.set_prepare(v)
+				{
+					g.literalint(g.data_base + str_pos, ast.voidptr_type)
 				}
-				i += 4
-				buffer << u8(utf8)
-				buffer << u8(utf8 >> 8)
+				g.set_set(v)
+				return
 			}
-			`v` {
-				buffer << `\v`
-				i++
+
+			// init struct
+			// fields: str, len
+			g.ref(v)
+			g.literalint(g.data_base + str_pos, ast.voidptr_type)
+			g.store_field(ast.string_type, ast.voidptr_type, 'str')
+			g.ref(v)
+			g.literalint(val.len, ast.int_type)
+			g.store_field(ast.string_type, ast.int_type, 'len')
+		}
+		ast.CallExpr {
+			// `set_with_expr` is never called with a multireturn call expression
+			is_pt := g.is_param_type(v.typ)
+
+			g.call_expr(init, v.typ, if is_pt { [v] } else { []Var{} })
+			if !is_pt {
+				g.set(v)
 			}
-			`x` {
-				i++
-				c := strconv.parse_int(str[i..i + 2], 16, 8) or {
-					g.w_error('invalid \\x escape code (${str[i..i + 2]})')
-					0
+		}
+		ast.ArrayInit {
+			if !init.is_fixed {
+				g.v_error('wasm backend does not support non fixed arrays yet', init.pos)
+			}
+
+			elm_typ := init.elem_type
+			elm_size, _ := g.pool.type_size(elm_typ)
+
+			if !init.has_val {
+				arr_size, _ := g.pool.type_size(v.typ)
+
+				g.zero_fill(v, arr_size)
+				return
+			}
+
+			mut voff := g.offset(v, elm_typ, 0) // index zero
+
+			for e in init.exprs {
+				g.set_with_expr(e, voff)
+				voff = g.offset(voff, elm_typ, elm_size)
+			}
+		}
+		else {
+			// impl of set but taken out
+
+			if !v.is_address {
+				g.expr(init, v.typ)
+				if v.is_global {
+					g.func.global_set(v.g_idx)
+				} else {
+					g.func.local_set(v.idx)
 				}
-				i += 2
-				buffer << u8(c)
+				return
 			}
-			`0`...`7` {
-				c := strconv.parse_int(str[i..i + 3], 8, 8) or {
-					g.w_error('invalid escape code \\${str[i..i + 3]}')
-					0
+
+			if g.is_pure_type(v.typ) {
+				if v.is_global {
+					g.func.global_get(v.g_idx)
+				} else {
+					g.func.local_get(v.idx)
 				}
-				i += 3
-				buffer << u8(c)
+				g.expr(init, v.typ)
+				g.store(v.typ, v.offset)
+				return
 			}
-			else {
-				g.w_error('invalid escape code \\${str[i]}')
+
+			if var := g.get_var_from_expr(init) {
+				g.mov(v, var)
+				return
+			}
+
+			from := Var{
+				typ: v.typ
+				idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')
+				is_address: v.is_address // true
+			}
+
+			g.expr(init, v.typ)
+			g.func.local_set(from.idx)
+			g.mov(v, from)
+		}
+	}
+}
+
+pub fn calc_padding(value int, alignment int) int {
+	if alignment == 0 {
+		return value
+	}
+	return (alignment - value % alignment) % alignment
+}
+
+pub fn calc_align(value int, alignment int) int {
+	if alignment == 0 {
+		return value
+	}
+	return (value + alignment - 1) / alignment * alignment
+}
+
+pub fn (mut g Gen) make_vinit() {
+	g.func = g.mod.new_function('_vinit', [], [])
+	func_start := g.func.patch_pos()
+	{
+		for mod_name in g.table.modules {
+			if mod_name == 'v.reflection' {
+				g.w_error('the wasm backend does not implement `v.reflection` yet')
+			}
+			init_fn_name := if mod_name != 'builtin' { '${mod_name}.init' } else { 'init' }
+			if _ := g.table.find_fn(init_fn_name) {
+				g.func.call(init_fn_name)
+			}
+			cleanup_fn_name := if mod_name != 'builtin' { '${mod_name}.cleanup' } else { 'cleanup' }
+			if _ := g.table.find_fn(cleanup_fn_name) {
+				g.func.call(cleanup_fn_name)
 			}
 		}
+		for _, gv in g.global_vars {
+			if init := gv.init {
+				g.set_with_expr(init, gv.v)
+			}
+		}
+		g.bare_function_frame(func_start)
+	}
+	g.mod.commit(g.func, false)
+	g.bare_function_end()
+}
+
+pub fn (mut g Gen) housekeeping() {
+	g.make_vinit()
+
+	heap_base := calc_align(g.data_base + g.pool.buf.len, 16) // 16?
+	page_boundary := calc_align(g.data_base + g.pool.buf.len, 64 * 1024)
+	preallocated_pages := page_boundary / (64 * 1024)
+
+	if g.pref.is_verbose {
+		eprintln('housekeeping(): acceptable addresses are > 1024')
+		eprintln('housekeeping(): stack top: ${g.stack_top}, data_base: ${g.data_base} (size: ${g.pool.buf.len}), heap_base: ${heap_base}')
+		eprintln('housekeeping(): preallocated pages: ${preallocated_pages}')
 	}
 
-	return buffer.bytestr()
-}
+	if sp := g.sp_global {
+		g.mod.assign_global_init(sp, wasm.constexpr_value(g.stack_top))
+	}
+	if g.sp_global != none || g.pool.buf.len > 0 {
+		g.mod.assign_memory('memory', true, u32(preallocated_pages), none)
+		if g.pool.buf.len > 0 {
+			mut buf := g.pool.buf.clone()
 
-struct ConstantData {
-	offset int
-	data   []u8
-}
-
-fn (mut g Gen) constant_data_intern_offset(data []u8) ?(int, int) {
-	for d in g.constant_data {
-		if d.data == data {
-			return d.offset, d.data.len
+			for reloc in g.pool.relocs {
+				binary.little_endian_put_u32_at(mut buf, u32(g.data_base + reloc.offset),
+					reloc.pos)
+			}
+			g.mod.new_data_segment(none, g.data_base, buf)
 		}
 	}
-	return none
-}
+	if hp := g.heap_base {
+		g.mod.assign_global_init(hp, wasm.constexpr_value(heap_base))
+	}
 
-// (offset, len)
-fn (mut g Gen) allocate_string(node ast.StringLiteral) (int, int) {
-	data := g.eval_escape_codes(node).bytes()
-
-	// `-prod` will only intern strings.
-	if g.pref.is_prod {
-		if offset, len := g.constant_data_intern_offset(data) {
-			return offset, len
+	if g.pref.os == .wasi {
+		mut fn_start := g.mod.new_function('_start', [], [])
+		{
+			fn_start.call('_vinit')
+			fn_start.call('main.main')
 		}
+		g.mod.commit(fn_start, true)
+	} else {
+		g.mod.assign_start('_vinit')
 	}
-
-	offset := g.constant_data_offset
-	g.constant_data << ConstantData{
-		offset: offset
-		data: data
-	}
-
-	padding := (8 - offset % 8) % 8
-	g.constant_data_offset += data.len + padding
-
-	return offset, data.len
 }
