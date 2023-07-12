@@ -1394,7 +1394,12 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 					g.w_error('${exe} failed, this should not happen. report an issue with the above messages, the webassembly generated, and appropriate code.')
 				}
 			} else {
-				g.w_error('${exe} not found! Try installing Binaryen. Run `./cmd/tools/install_binaryen.vsh`, to download a prebuilt executable for your platform.')
+				g.w_error('${exe} not found! Try installing Binaryen.
+				|    Run `./cmd/tools/install_binaryen.vsh`, to download a prebuilt executable for your platform.
+				|    After that, either copy or symlink thirdparty/binaryen/bin/wasm-opt to a folder on your PATH,
+				|    or add thirdparty/binaryen/bin to your PATH.
+				|    Use `wasm-opt --version` to verify that it can be found.
+				'.strip_margin())
 			}
 		}
 	} else if g.pref.wasm_validate || g.pref.is_prod {
