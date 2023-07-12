@@ -891,10 +891,6 @@ pub fn (t &ArrayFixed) is_compatible(t2 ArrayFixed) bool {
 	return t.size == t2.size && t.elem_type == t2.elem_type
 }
 
-pub fn (t &ArrayFixed) is_array_fixed_ret() bool {
-	return t.is_fn_ret == true
-}
-
 pub fn (t &TypeSymbol) is_array_fixed() bool {
 	if t.info is ArrayFixed {
 		return true
