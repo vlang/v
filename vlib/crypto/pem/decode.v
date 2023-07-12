@@ -2,7 +2,10 @@ module pem
 
 import encoding.base64
 
-// see `decode_partial` or `Block.decode`
+// decode reads `data` and returns the first parsed PEM block along with the rest of
+// the string
+// `none` is returned when a header is expected, but not present
+// or when a start of '-----BEGIN' or end of '-----END' can't be found in `data`
 [deprecated: 'use decode_partial or Block.decode instead']
 [inline]
 pub fn decode(data string) ?(Block, string) {
@@ -10,7 +13,7 @@ pub fn decode(data string) ?(Block, string) {
 	return block, rest
 }
 
-// `decode` reads `data` and returns the first parsed PEM Block along with the rest
+// decode_partial reads `data` and returns the first parsed PEM Block along with the rest
 // of the string
 // `none` is returned when a header is expected, but not present
 // or when a start of '-----BEGIN' or end of '-----END' can't be found in `data`
@@ -19,7 +22,7 @@ pub fn decode_partial(data string) ?(Block, string) {
 	return block, rest[rest.index(pem_end)? + pem_end.len..].all_after_first(pem_eol)
 }
 
-// `decode` reads `data` and returns the first parsed PEM Block
+// Block.decode reads `data` and returns the first parsed PEM Block
 // `none` is returned when a header is expected, but not present
 // or when a start of '-----BEGIN' or end of '-----END' can't be found in `data`
 pub fn Block.decode(data string) ?Block {
@@ -27,7 +30,7 @@ pub fn Block.decode(data string) ?Block {
 	return block
 }
 
-// an internal function to allow `decode` variations to deal with the rest of the data as
+// decode_internal allows `decode` variations to deal with the rest of the data as
 // they want to. for example Block.decode could have hindered performance with the final
 // indexing into `rest` that `decode_partial` does.
 [direct_array_access]

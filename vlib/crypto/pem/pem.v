@@ -9,7 +9,7 @@ const (
 	colon     = ':'
 )
 
-// returns a new `Block` with the specified block_type
+// new returns a new `Block` with the specified block_type
 [deprecated: 'use Block.new instead']
 [inline]
 pub fn new(block_type string) Block {
@@ -69,7 +69,7 @@ pub mut:
 	data []u8
 }
 
-// returns a new `Block` with the specified block_type
+// Block.new returns a new `Block` with the specified block_type
 [inline]
 pub fn Block.new(block_type string) Block {
 	return Block{
@@ -90,7 +90,7 @@ pub fn (mut block Block) free() {
 	}
 }
 
-// returns the selected key using the Header enum
+// header_by_key returns the selected key using the Header enum
 //
 // same as `block.headers[key.str()]`
 [inline]
