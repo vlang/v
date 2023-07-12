@@ -3,7 +3,7 @@ import picoev
 import picohttpparser
 
 const (
-	port = 8088
+	port = 8089
 )
 
 struct Message {
@@ -24,21 +24,25 @@ fn hello_response() string {
 }
 
 fn callback(data voidptr, req picohttpparser.Request, mut res picohttpparser.Response) {
-	if picohttpparser.cmpn(req.method, 'GET ', 4) {
-		if picohttpparser.cmp(req.path, '/t') {
+	if req.method == 'GET' {
+		if req.path == '/t' {
 			res.http_ok()
 			res.header_server()
 			res.header_date()
 			res.plain()
 			res.body(hello_response())
-		} else if picohttpparser.cmp(req.path, '/j') {
+		} else if req.path == '/j' {
 			res.http_ok()
 			res.header_server()
 			res.header_date()
 			res.json()
 			res.body(json_response())
 		} else {
-			res.http_404()
+			res.http_ok()
+			res.header_server()
+			res.header_date()
+			res.html()
+			res.body('Hello Picoev!\n')
 		}
 	} else {
 		res.http_405()
@@ -48,5 +52,6 @@ fn callback(data voidptr, req picohttpparser.Request, mut res picohttpparser.Res
 
 fn main() {
 	println('Starting webserver on http://127.0.0.1:${port}/ ...')
-	picoev.new(port: port, cb: &callback).serve()
+	mut server := picoev.new(port: port, cb: callback)
+	server.serve()
 }

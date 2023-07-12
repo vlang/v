@@ -36,7 +36,8 @@ pub fn (mut r Response) header(k string, v string) &Response {
 pub fn (mut r Response) header_date() &Response {
 	r.write_string('Date: ')
 	unsafe {
-		r.buf += cpy(r.buf, r.date, 29)
+		C.memcpy(r.buf, r.date, 29)
+		r.buf += 29
 	}
 	r.write_string('\r\n')
 	return unsafe { r }
@@ -78,7 +79,7 @@ pub fn (mut r Response) json() &Response {
 pub fn (mut r Response) body(body string) {
 	r.write_string('Content-Length: ')
 	unsafe {
-		r.buf += C.u64toa(&char(r.buf), body.len)
+		r.buf += u64toa(r.buf, u64(body.len)) or { panic(err) }
 	}
 	r.write_string('\r\n\r\n')
 	r.write_string(body)
@@ -107,7 +108,8 @@ pub fn (mut r Response) raw(response string) {
 [inline]
 pub fn (mut r Response) end() int {
 	n := int(i64(r.buf) - i64(r.buf_start))
-	if C.write(r.fd, r.buf_start, n) != n {
+	// use send instead of write for windows compatibility
+	if C.send(r.fd, r.buf_start, n, 0) != n {
 		return -1
 	}
 	return n

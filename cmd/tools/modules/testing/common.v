@@ -625,9 +625,8 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 			continue
 		}
 		$if windows {
-			// skip pico and process/command examples on windows
-			if fnormalised.ends_with('examples/pico/pico.v')
-				|| fnormalised.ends_with('examples/process/command.v') {
+			// skip process/command examples on windows
+			if fnormalised.ends_with('examples/process/command.v') {
 				continue
 			}
 		}
