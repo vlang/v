@@ -3,7 +3,7 @@ module pem
 // example PEM structures from the RFC
 fn test_decode_rfc1421() {
 	for i in 0 .. pem.test_data_rfc1421.len {
-		decoded, rest := decode_partial(pem.test_data_rfc1421[i]) or { Block{}, '' }
+		decoded, rest := Block.decode_partial(pem.test_data_rfc1421[i]) or { Block{}, '' }
 		assert decoded == pem.expected_results_rfc1421[i]
 		assert rest == ''
 	}
@@ -11,7 +11,7 @@ fn test_decode_rfc1421() {
 
 fn test_decode() {
 	for i in 0 .. pem.test_data.len {
-		decoded, rest := decode_partial(pem.test_data[i]) or { Block{}, '' }
+		decoded, rest := Block.decode_partial(pem.test_data[i]) or { Block{}, '' }
 		assert decoded == pem.expected_results[i]
 		assert decoded == Block.decode(pem.test_data[i]) or { Block{} }
 		assert rest == pem.expected_rest[i]
@@ -21,7 +21,7 @@ fn test_decode() {
 fn test_encode_rfc1421() {
 	for i in 0 .. pem.test_data_rfc1421.len {
 		encoded := pem.expected_results_rfc1421[i].encode() or { '' }
-		decoded, rest := decode_partial(encoded) or { Block{}, '' }
+		decoded, rest := Block.decode_partial(encoded) or { Block{}, '' }
 		assert rest == ''
 		assert decoded == pem.expected_results_rfc1421[i]
 		assert decoded == Block.decode(encoded) or { Block{} }
@@ -31,7 +31,7 @@ fn test_encode_rfc1421() {
 fn test_encode() {
 	for i in 0 .. pem.test_data.len {
 		encoded := pem.expected_results[i].encode() or { '' }
-		decoded, rest := decode_partial(encoded) or { Block{}, '' }
+		decoded, rest := Block.decode_partial(encoded) or { Block{}, '' }
 		assert rest == ''
 		assert decoded == pem.expected_results[i]
 		assert decoded == Block.decode(pem.test_data[i]) or { Block{} }
@@ -41,7 +41,7 @@ fn test_encode() {
 fn test_encode_config() {
 	for i in 0 .. pem.test_data.len {
 		encoded := pem.expected_results[i].encode(EncodeConfig{31, '\r\n'}) or { '' }
-		decoded, rest := decode_partial(encoded) or { Block{}, '' }
+		decoded, rest := Block.decode_partial(encoded) or { Block{}, '' }
 		assert rest == ''
 		assert decoded == pem.expected_results[i]
 		assert decoded == Block.decode(encoded) or { Block{} }
@@ -50,8 +50,8 @@ fn test_encode_config() {
 
 fn test_decode_no_pem() {
 	for test in pem.test_data_no_pem {
-		if _, _ := decode_partial(test) {
-			assert false, 'decode_partial should return `none` on input without PEM data'
+		if _, _ := Block.decode_partial(test) {
+			assert false, 'Block.decode_partial should return `none` on input without PEM data'
 		} else {
 			assert true
 		}

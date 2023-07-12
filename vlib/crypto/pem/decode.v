@@ -6,18 +6,18 @@ import encoding.base64
 // the string
 // `none` is returned when a header is expected, but not present
 // or when a start of '-----BEGIN' or end of '-----END' can't be found in `data`
-[deprecated: 'use decode_partial or Block.decode instead']
+[deprecated: 'use Block.decode_partial or Block.decode instead']
 [inline]
 pub fn decode(data string) ?(Block, string) {
-	block, rest := decode_partial(data)?
+	block, rest := Block.decode_partial(data)?
 	return block, rest
 }
 
-// decode_partial reads `data` and returns the first parsed PEM Block along with the rest
+// Block.decode_partial reads `data` and returns the first parsed PEM Block along with the rest
 // of the string
 // `none` is returned when a header is expected, but not present
 // or when a start of '-----BEGIN' or end of '-----END' can't be found in `data`
-pub fn decode_partial(data string) ?(Block, string) {
+pub fn Block.decode_partial(data string) ?(Block, string) {
 	block, rest := decode_internal(data)?
 	return block, rest[rest.index(pem_end)? + pem_end.len..].all_after_first(pem_eol)
 }
