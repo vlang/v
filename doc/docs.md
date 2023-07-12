@@ -4551,9 +4551,9 @@ If a test function has an error return type, any propagated errors will fail the
 ```v
 import strconv
 
-fn test_atoi() ? {
-	assert strconv.atoi('1')? == 1
-	assert strconv.atoi('one')? == 1 // test will fail
+fn test_atoi() ! {
+	assert strconv.atoi('1')! == 1
+	assert strconv.atoi('one')! == 1 // test will fail
 }
 ```
 
@@ -6738,7 +6738,7 @@ fn sh(cmd string) {
 rmdir_all('build') or {}
 
 // Create build/, never fails as build/ does not exist
-mkdir('build')?
+mkdir('build')!
 
 // Move *.v files to build/
 result := execute('mv *.v build/')
@@ -6749,7 +6749,7 @@ if result.exit_code != 0 {
 sh('ls')
 
 // Similar to:
-// files := ls('.')?
+// files := ls('.')!
 // mut count := 0
 // if files.len > 0 {
 //     for file in files {
