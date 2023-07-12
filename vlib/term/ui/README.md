@@ -19,7 +19,7 @@ fn event(e &tui.Event, x voidptr) {
 }
 
 fn frame(x voidptr) {
-	mut app := &App(x)
+	mut app := unsafe { &App(x) }
 
 	app.tui.clear()
 	app.tui.set_bg_color(r: 63, g: 81, b: 181)
