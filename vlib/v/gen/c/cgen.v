@@ -1065,9 +1065,12 @@ fn (mut g Gen) expr_string_surround(prepend string, expr ast.Expr, append string
 // all unified in one place so that it doesnt break
 // if one location changes
 fn (mut g Gen) option_type_name(t ast.Type) (string, string) {
-	base := g.base_type(t)
+	mut base := g.base_type(t)
 	mut styp := ''
 	sym := g.table.sym(t)
+	if sym.info is ast.FnType {
+		base = 'anon_fn_${g.table.fn_type_signature(sym.info.func)}'
+	}
 	if sym.language == .c && sym.kind == .struct_ {
 		styp = '${c.option_name}_${base.replace(' ', '_')}'
 	} else {
@@ -1087,6 +1090,9 @@ fn (mut g Gen) result_type_name(t ast.Type) (string, string) {
 	}
 	mut styp := ''
 	sym := g.table.sym(t)
+	if sym.info is ast.FnType {
+		base = 'anon_fn_${g.table.fn_type_signature(sym.info.func)}'
+	}
 	if sym.language == .c && sym.kind == .struct_ {
 		styp = '${c.result_name}_${base.replace(' ', '_')}'
 	} else {
