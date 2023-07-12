@@ -1382,16 +1382,11 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Pr
 		if g.pref.is_prod {
 			exe := $if windows { 'wasm-opt.exe' } $else { 'wasm-opt' }
 			if rt := os.find_abs_path_of_executable(exe) {
-				mut p := os.new_process(rt)
-				p.set_args(['-all', '-lmu', '-c', '-O4', out_name, '-o', out_name])
 				// -lmu: low memory unused, very important optimisation
-				p.set_redirect_stdio()
-				p.run()
-				err := p.stderr_slurp()
-				p.wait()
-				if p.code != 0 {
-					eprintln(err)
-					g.w_error('${exe} failed, this should not happen. report an issue with the above messages, the webassembly generated, and appropriate code.')
+				res := os.execute('${os.quoted_path(rt)} -all -lmu -c -O4 ${os.quoted_path(out_name)} -o ${os.quoted_path(out_name)}')
+				if res.exit_code != 0 {
+					eprintln(res.output)
+					g.w_error('${rt} failed, this should not happen. Report an issue with the above messages, the webassembly generated, and appropriate code.')
 				}
 			} else {
 				g.w_error('${exe} not found! Try installing Binaryen.
