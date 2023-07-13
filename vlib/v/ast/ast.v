@@ -2013,6 +2013,17 @@ pub fn (expr Expr) is_expr() bool {
 	}
 }
 
+pub fn (expr Expr) get_pure_type() Type {
+	match expr {
+		BoolLiteral { return bool_type }
+		CharLiteral { return char_type }
+		FloatLiteral { return f64_type }
+		StringLiteral { return string_type }
+		IntegerLiteral { return i64_type }
+		else { return void_type }
+	}
+}
+
 pub fn (expr Expr) is_pure_literal() bool {
 	return match expr {
 		BoolLiteral, CharLiteral, FloatLiteral, StringLiteral, IntegerLiteral { true }

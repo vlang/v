@@ -664,11 +664,28 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 		}
-		if !is_blank_ident && !left.is_auto_deref_var() && !right.is_auto_deref_var()
-			&& right_sym.kind != .placeholder && left_sym.kind != .interface_
+		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface_
 			&& !right_type.has_flag(.generic) && !left_type.has_flag(.generic) {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
+				// allow literal values to auto deref var (e.g.`for mut v in values { v = 1.0 }`)
+				if left.is_auto_deref_var() || right.is_auto_deref_var() {
+					left_deref := if left.is_auto_deref_var() {
+						left_type.deref()
+					} else {
+						left_type
+					}
+					right_deref := if right.is_pure_literal() {
+						right.get_pure_type()
+					} else if right.is_auto_deref_var() {
+						right_type.deref()
+					} else {
+						right_type
+					}
+					if c.check_types(left_deref, right_deref) {
+						continue
+					}
+				}
 				// allow for ptr += 2
 				if left_type_unwrapped.is_ptr() && right_type_unwrapped.is_int()
 					&& node.op in [.plus_assign, .minus_assign] {
