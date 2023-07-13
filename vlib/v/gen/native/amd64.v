@@ -530,7 +530,7 @@ fn (mut c Amd64) movabs(r Register, val i64) {
 	c.g.println('movabs ${reg}, ${val}')
 }
 
-fn (mut c Amd64) mov_deref(r Register, rptr Register, typ ast.Type) { // CAUSES THE FAIL in libc.vv
+fn (mut c Amd64) mov_deref(r Register, rptr Register, typ ast.Type) {
 	reg := r as Amd64Register
 	regptr := rptr as Amd64Register
 	size := c.g.get_type_size(typ)
