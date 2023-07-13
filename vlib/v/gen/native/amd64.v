@@ -1559,9 +1559,9 @@ fn (mut c Amd64) add_reg(a Amd64Register, b Amd64Register) {
 	c.g.println('add ${a}, ${b}')
 }
 
-fn (mut c Amd64) mov_reg(r1 Register, r2 Register) {
-	a := r1 as Amd64Register
-	b := r2 as Amd64Register
+fn (mut c Amd64) mov_reg(a_reg Register, b_reg Register) {
+	a := a_reg as Amd64Register
+	b := b_reg as Amd64Register
 	if int(a) <= int(Amd64Register.r15) && int(b) <= int(Amd64Register.r15) {
 		c.g.write8(0x48 + if int(a) >= int(Amd64Register.r8) { 1 } else { 0 } +
 			if int(b) >= int(Amd64Register.r8) { 4 } else { 0 })
