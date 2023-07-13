@@ -1559,7 +1559,9 @@ fn (mut c Amd64) add_reg(a Amd64Register, b Amd64Register) {
 	c.g.println('add ${a}, ${b}')
 }
 
-fn (mut c Amd64) mov_reg_amd64(a Amd64Register, b Amd64Register) {
+fn (mut c Amd64) mov_reg(a_reg Register, b_reg Register) {
+	a := a_reg as Amd64Register
+	b := b_reg as Amd64Register
 	if int(a) <= int(Amd64Register.r15) && int(b) <= int(Amd64Register.r15) {
 		c.g.write8(0x48 + if int(a) >= int(Amd64Register.r8) { 1 } else { 0 } +
 			if int(b) >= int(Amd64Register.r8) { 4 } else { 0 })
@@ -1569,10 +1571,6 @@ fn (mut c Amd64) mov_reg_amd64(a Amd64Register, b Amd64Register) {
 		c.g.n_error('unhandled mov_reg combination for ${a} ${b}')
 	}
 	c.g.println('mov ${a}, ${b}')
-}
-
-fn (mut c Amd64) mov_reg(a Register, b Register) {
-	c.mov_reg_amd64(a as Amd64Register, b as Amd64Register)
 }
 
 fn (mut c Amd64) add_store(a Amd64Register, b Amd64Register, size Size) {
