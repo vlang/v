@@ -4785,6 +4785,19 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	} else if sym.kind == .alias && fn_return_is_fixed_array {
 		ret_typ = '_v_' + g.typ((sym.info as ast.Alias).parent_type)
 	}
+	if node.exprs.len == 1 {
+		// `return fn_call_opt()`
+		if (fn_return_is_option || fn_return_is_result) && node.exprs[0] is ast.CallExpr
+			&& node.exprs[0].return_type == g.fn_decl.return_type
+			&& node.exprs[0].or_block.kind == .absent {
+			g.write('${ret_typ} ${tmpvar} = ')
+			g.expr(node.exprs[0])
+			g.writeln(';')
+			g.write_defer_stmts_when_needed()
+			g.writeln('return ${tmpvar};')
+			return
+		}
+	}
 	mut use_tmp_var := g.defer_stmts.len > 0 || g.defer_profile_code.len > 0
 		|| g.cur_lock.lockeds.len > 0
 		|| (fn_return_is_multi && node.exprs.len >= 1 && fn_return_is_option)
