@@ -41,7 +41,7 @@ pub enum Header {
 	crl
 }
 
-// `str` returns the string representation of the header
+// str returns the string representation of the header
 pub fn (header Header) str() string {
 	return match header {
 		.proctype { 'Proc-Type' }
