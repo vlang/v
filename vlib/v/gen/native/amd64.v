@@ -530,7 +530,7 @@ fn (mut c Amd64) movabs(r Register, val i64) {
 	c.g.println('movabs ${reg}, ${val}')
 }
 
-fn (mut c Amd64) mov_deref(r Register, rptr Register, typ ast.Type) {  // CAUSES THE FAIL in libc.vv
+fn (mut c Amd64) mov_deref(r Register, rptr Register, typ ast.Type) { // CAUSES THE FAIL in libc.vv
 	reg := r as Amd64Register
 	regptr := rptr as Amd64Register
 	size := c.g.get_type_size(typ)
@@ -1850,7 +1850,7 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 	}
 }
 
-fn (mut c Amd64) call_builtin(name Builtin) i64 {  // Platf dependant ?
+fn (mut c Amd64) call_builtin(name Builtin) i64 { // Platf dependant ?
 	call_addr := c.call(0)
 	c.g.println('call builtin `${name}`')
 	return call_addr

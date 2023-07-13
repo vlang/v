@@ -1084,7 +1084,7 @@ pub fn (mut g Gen) v_error(s string, pos token.Pos) {
 	}
 }
 
-fn (mut g Gen) gen_concat_expr(node ast.ConcatExpr) {  // Maybe later 
+fn (mut g Gen) gen_concat_expr(node ast.ConcatExpr) { // Maybe later
 	typ := node.return_type
 	ts := g.table.sym(typ)
 	size := g.get_type_size(typ)
