@@ -685,8 +685,13 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 			if mut expr.obj is ast.Var {
 				if !expr.obj.is_mut && !c.pref.translated && !c.file.is_translated
 					&& !c.inside_unsafe {
-					c.error('`${expr.name}` is immutable, declare it with `mut` to make it mutable',
-						expr.pos)
+					if c.inside_anon_fn {
+						c.error('the closure copy of `${expr.name}` is immutable, declare it with `mut` to make it mutable',
+							expr.pos)
+					} else {
+						c.error('`${expr.name}` is immutable, declare it with `mut` to make it mutable',
+							expr.pos)
+					}
 				}
 				expr.obj.is_changed = true
 				if expr.obj.typ.share() == .shared_t {
