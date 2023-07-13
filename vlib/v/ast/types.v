@@ -887,6 +887,30 @@ pub fn (t &TypeSymbol) is_heap() bool {
 	}
 }
 
+pub fn (t &ArrayFixed) is_compatible(t2 ArrayFixed) bool {
+	return t.size == t2.size && t.elem_type == t2.elem_type
+}
+
+pub fn (t &TypeSymbol) is_array_fixed() bool {
+	if t.info is ArrayFixed {
+		return true
+	} else if t.info is Alias {
+		return global_table.final_sym(t.info.parent_type).is_array_fixed()
+	} else {
+		return false
+	}
+}
+
+pub fn (t &TypeSymbol) is_array_fixed_ret() bool {
+	if t.info is ArrayFixed {
+		return t.info.is_fn_ret
+	} else if t.info is Alias {
+		return global_table.final_sym(t.info.parent_type).is_array_fixed_ret()
+	} else {
+		return false
+	}
+}
+
 pub fn (mut t Table) register_builtin_type_symbols() {
 	// reserve index 0 so nothing can go there
 	// save index check, 0 will mean not found

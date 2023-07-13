@@ -1,7 +1,0 @@
-vlib/v/checker/tests/return_fixed_array.vv:11:25: error: fixed array cannot be returned by function using alias
-    9 | }
-   10 | 
-   11 | fn return_fixed_array() Abc {
-      |                         ~~~
-   12 |     return [1, 2, 3]!
-   13 | }

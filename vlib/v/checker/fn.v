@@ -129,8 +129,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 						node.return_type_pos)
 				}
 			}
-		} else if c.table.sym(node.return_type).kind == .alias && return_sym.kind == .array_fixed {
-			c.error('fixed array cannot be returned by function using alias', node.return_type_pos)
 		}
 		// Ensure each generic type of the parameter was declared in the function's definition
 		if node.return_type.has_flag(.generic) {
@@ -1517,6 +1515,16 @@ fn (mut c Checker) cast_fixed_array_ret(typ ast.Type, sym ast.TypeSymbol) ast.Ty
 		info := sym.info as ast.ArrayFixed
 		return c.table.find_or_register_array_fixed(info.elem_type, info.size, info.size_expr,
 			false)
+	}
+	return typ
+}
+
+// cast_to_fixed_array_ret casts a ArrayFixed type created to do not return to a returning one
+fn (mut c Checker) cast_to_fixed_array_ret(typ ast.Type, sym ast.TypeSymbol) ast.Type {
+	if sym.kind == .array_fixed && !(sym.info as ast.ArrayFixed).is_fn_ret {
+		info := sym.info as ast.ArrayFixed
+		return c.table.find_or_register_array_fixed(info.elem_type, info.size, info.size_expr,
+			true)
 	}
 	return typ
 }

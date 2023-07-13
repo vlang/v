@@ -578,9 +578,22 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							}
 						}
 						if !is_used_var_styp {
-							if !val_type.has_flag(.option) && left_sym.info is ast.ArrayFixed
-								&& left_sym.info.is_fn_ret {
-								g.write('${styp[3..]} ')
+							if !val_type.has_flag(.option) && left_sym.is_array_fixed() {
+								if left_sym.kind == .alias {
+									parent_sym := g.table.final_sym((left_sym.info as ast.Alias).parent_type)
+									styp = g.typ((left_sym.info as ast.Alias).parent_type)
+									if !parent_sym.is_array_fixed_ret() {
+										g.write('${styp} ')
+									} else {
+										g.write('${styp[3..]} ')
+									}
+								} else {
+									if !left_sym.is_array_fixed_ret() {
+										g.write('${styp} ')
+									} else {
+										g.write('${styp[3..]} ')
+									}
+								}
 							} else {
 								g.write('${styp} ')
 							}

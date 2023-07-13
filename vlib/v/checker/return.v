@@ -208,8 +208,11 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					}
 					continue
 				}
-				if exp_type_sym.kind == .array_fixed && got_type_sym.kind == .array_fixed {
-					if (exp_type_sym.info as ast.ArrayFixed).size == (got_type_sym.info as ast.ArrayFixed).size && (exp_type_sym.info as ast.ArrayFixed).elem_type == (got_type_sym.info as ast.ArrayFixed).elem_type {
+				exp_final_sym := c.table.final_sym(exp_type)
+				got_final_sym := c.table.final_sym(got_type)
+				if exp_final_sym.kind == .array_fixed && got_final_sym.kind == .array_fixed {
+					got_arr_sym := c.table.sym(c.cast_to_fixed_array_ret(got_type, got_final_sym))
+					if (exp_final_sym.info as ast.ArrayFixed).is_compatible(got_arr_sym.info as ast.ArrayFixed) {
 						continue
 					}
 				}
