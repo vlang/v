@@ -1850,7 +1850,7 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 	}
 }
 
-fn (mut c Amd64) call_builtin(name Builtin) i64 { // Platf dependant ?
+fn (mut c Amd64) call_builtin(name Builtin) i64 {
 	call_addr := c.call(0)
 	c.g.println('call builtin `${name}`')
 	return call_addr
