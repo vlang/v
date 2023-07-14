@@ -430,10 +430,6 @@ fn (mut c Arm64) gen_asm_stmt(asm_node ast.AsmStmt) {
 	panic('Arm64.gen_asm_stmt() not implemented')
 }
 
-fn (mut c Arm64) gen_assert(assert_node ast.AssertStmt) {
-	panic('Arm64.gen_assert() not implemented')
-}
-
 fn (mut c Arm64) infloop() {
 	c.g.write32(u8(0x14))
 	c.g.println('jmp $$')
@@ -515,12 +511,12 @@ fn (mut c Arm64) call(addr int) i64 {
 	panic('Arm64.call() not implemented')
 }
 
-fn (mut c Arm64) call_addr_at(addr int, at i64) i64 {
-	panic('Arm64.call_addr_at() not implemented')
+fn (mut c Arm64) zero_fill(size int, var LocalVar) {
+	panic('Arm64.zero_fill() not implemented')
 }
 
-fn (mut c Arm64) gen_concat_expr(expr ast.ConcatExpr) {
-	panic('Arm64.gen_concat_expr() not implemented')
+fn (mut c Arm64) call_addr_at(addr int, at i64) i64 {
+	panic('Arm64.call_addr_at() not implemented')
 }
 
 fn (mut c Arm64) cmp_to_stack_top(reg Register) {
@@ -529,4 +525,12 @@ fn (mut c Arm64) cmp_to_stack_top(reg Register) {
 
 fn (mut c Arm64) push(r Register) {
 	panic('Arm64.push() not implemented')
+}
+
+pub fn (mut c Arm64) add(r Register, val int) {
+	panic('Arm64.add() not implemented')
+}
+
+fn (mut c Arm64) mov_deref(reg Register, regptr Register, typ ast.Type) {
+	panic('Arm64.mov_deref() not implemented')
 }
