@@ -494,6 +494,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-autofree' {
 				res.autofree = true
+				res.gc_mode = .no_gc
 				res.build_options << arg
 			}
 			'-trace-calls' {
