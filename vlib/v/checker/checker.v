@@ -2867,7 +2867,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if to_sym.language != .c {
 		c.ensure_type_exists(to_type, node.pos) or {}
 
-		if to_sym.kind == .alias && (to_sym.info as ast.Alias).parent_type.has_flag(.option)
+		if to_sym.info is ast.Alias && to_sym.info.parent_type.has_flag(.option)
 			&& !to_type.has_flag(.option) {
 			c.error('alias to Option type requires to be used as Option type (?${to_sym.name}(...))',
 				node.pos)
@@ -2902,17 +2902,15 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			c.error('cannot cast `${ft}` to `${tt}` (alias to `${final_to_sym.name}`)',
 				node.pos)
 		}
-	} else if to_sym.kind == .struct_ && !to_type.is_ptr()
-		&& !(to_sym.info as ast.Struct).is_typedef {
+	} else if to_sym.kind == .struct_ && mut to_sym.info is ast.Struct && !to_sym.info.is_typedef
+		&& !to_type.is_ptr() {
 		// For now we ignore C typedef because of `C.Window(C.None)` in vlib/clipboard
-		if from_sym.kind == .struct_ && !from_type.is_ptr() {
+		if from_sym.kind == .struct_ && from_sym.info is ast.Struct && !from_type.is_ptr() {
 			if !to_type.has_flag(.option) {
 				c.warn('casting to struct is deprecated, use e.g. `Struct{...expr}` instead',
 					node.pos)
 			}
-			from_type_info := from_sym.info as ast.Struct
-			to_type_info := to_sym.info as ast.Struct
-			if !c.check_struct_signature(from_type_info, to_type_info) {
+			if !c.check_struct_signature(from_sym.info, to_sym.info) {
 				c.error('cannot convert struct `${from_sym.name}` to struct `${to_sym.name}`',
 					node.pos)
 			}
@@ -2921,8 +2919,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			c.error('cannot cast `${ft}` to struct', node.pos)
 		}
 	} else if to_sym.kind == .struct_ && to_type.is_ptr() {
-		if from_sym.kind == .alias {
-			from_type = (from_sym.info as ast.Alias).parent_type.derive_add_muls(from_type)
+		if from_sym.info is ast.Alias {
+			from_type = from_sym.info.parent_type.derive_add_muls(from_type)
 		}
 		if mut node.expr is ast.IntegerLiteral {
 			if node.expr.val.int() == 0 && !c.pref.translated && !c.file.is_translated {
@@ -2958,13 +2956,13 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `${ft}` to `${tt}`', node.pos)
 		}
-	} else if to_sym.kind == .interface_ {
+	} else if mut to_sym.info is ast.Interface {
 		if c.type_implements(from_type, to_type, node.pos) {
 			if !from_type.is_any_kind_of_pointer() && from_sym.kind != .interface_
 				&& !c.inside_unsafe {
 				c.mark_as_referenced(mut &node.expr, true)
 			}
-			if (to_sym.info as ast.Interface).is_generic {
+			if to_sym.info.is_generic {
 				inferred_type := c.resolve_generic_interface(from_type, to_type, node.pos)
 				if inferred_type != 0 {
 					to_type = inferred_type
