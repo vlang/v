@@ -891,6 +891,8 @@ fn (mut s Scanner) text_scan() token.Token {
 						at_error_msg += '\nAvailable compile time variables:\n${token.valid_at_tokens}'
 					}
 					s.error(at_error_msg)
+				} else {
+					// s.note('@keyword is being deprecated and then removed from V. Use `keyword_` or a different name (e.g. `typ` instead of `type`)')
 				}
 				return s.new_token(.name, name, name.len)
 			}
