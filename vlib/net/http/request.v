@@ -17,6 +17,7 @@ pub mut:
 	version    Version = .v1_1
 	method     Method
 	header     Header
+	host       string
 	cookies    map[string]string
 	data       string
 	url        string
@@ -224,6 +225,7 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 		method: method
 		url: target.str()
 		header: header
+		host: header.get(.host) or { '' }
 		version: version
 		cookies: request_cookies
 	}
