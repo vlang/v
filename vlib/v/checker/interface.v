@@ -118,7 +118,7 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			if node.language == .v {
 				c.check_valid_snake_case(method.name, 'method name', method.pos)
 			}
-			c.ensure_type_exists(method.return_type, method.return_type_pos) or { return }
+			c.ensure_type_exists(method.return_type, method.return_type_pos)
 			if is_js {
 				mtyp := c.table.sym(method.return_type)
 				if !mtyp.is_js_compatible() {
@@ -147,7 +147,7 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				if param.typ.has_flag(.generic) {
 					has_generic_types = true
 				}
-				c.ensure_type_exists(param.typ, param.pos) or { return }
+				c.ensure_type_exists(param.typ, param.pos)
 				if reserved_type_names_chk.matches(param.name) {
 					c.error('invalid use of reserved type `${param.name}` as a parameter name',
 						param.pos)
@@ -190,7 +190,7 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			if node.language == .v {
 				c.check_valid_snake_case(field.name, 'field name', field.pos)
 			}
-			c.ensure_type_exists(field.typ, field.pos) or { return }
+			c.ensure_type_exists(field.typ, field.pos)
 			if field.typ.has_flag(.generic) {
 				has_generic_types = true
 			}

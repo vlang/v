@@ -459,7 +459,9 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 	if c.file.mod.name != 'builtin' {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 	}
-	c.ensure_type_exists(node.parent_type, node.type_pos) or { return }
+	if !c.ensure_type_exists(node.parent_type, node.type_pos) {
+		return
+	}
 	mut parent_typ_sym := c.table.sym(node.parent_type)
 	if node.parent_type.has_flag(.result) {
 		c.add_error_detail('Result types cannot be stored and have to be unwrapped immediately')
@@ -551,13 +553,15 @@ fn (mut c Checker) fn_type_decl(node ast.FnTypeDecl) {
 	typ_sym := c.table.sym(node.typ)
 	fn_typ_info := typ_sym.info as ast.FnType
 	fn_info := fn_typ_info.func
-	c.ensure_type_exists(fn_info.return_type, fn_info.return_type_pos) or {}
+	c.ensure_type_exists(fn_info.return_type, fn_info.return_type_pos)
 	ret_sym := c.table.sym(fn_info.return_type)
 	if ret_sym.kind == .placeholder {
 		c.error('unknown type `${ret_sym.name}`', fn_info.return_type_pos)
 	}
 	for arg in fn_info.params {
-		c.ensure_type_exists(arg.typ, arg.type_pos) or { return }
+		if !c.ensure_type_exists(arg.typ, arg.type_pos) {
+			return
+		}
 		arg_sym := c.table.sym(arg.typ)
 		if arg_sym.kind == .placeholder {
 			c.error('unknown type `${arg_sym.name}`', arg.type_pos)
@@ -569,7 +573,7 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 	c.check_valid_pascal_case(node.name, 'sum type', node.pos)
 	mut names_used := []string{}
 	for variant in node.variants {
-		c.ensure_type_exists(variant.typ, variant.pos) or {}
+		c.ensure_type_exists(variant.typ, variant.pos)
 		sym := c.table.sym(variant.typ)
 		if variant.typ.is_ptr() {
 			variant_name := sym.name.all_after_last('.')
@@ -761,7 +765,9 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 				return '', expr.pos
 			}
 			// retrieve ast.Field
-			c.ensure_type_exists(expr.expr_type, expr.pos) or { return '', expr.pos }
+			if !c.ensure_type_exists(expr.expr_type, expr.pos) {
+				return '', expr.pos
+			}
 			mut typ_sym := c.table.final_sym(c.unwrap_generic(expr.expr_type))
 			match typ_sym.kind {
 				.struct_ {
@@ -2492,14 +2498,14 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			expr_type_sym := c.table.sym(node.expr_type)
 			type_sym := c.table.sym(node.typ)
 			if expr_type_sym.kind == .sum_type {
-				c.ensure_type_exists(node.typ, node.pos) or {}
+				c.ensure_type_exists(node.typ, node.pos)
 				if !c.table.sumtype_has_variant(node.expr_type, node.typ, true) {
 					addr := '&'.repeat(node.typ.nr_muls())
 					c.error('cannot cast `${expr_type_sym.name}` to `${addr}${type_sym.name}`',
 						node.pos)
 				}
 			} else if expr_type_sym.kind == .interface_ && type_sym.kind == .interface_ {
-				c.ensure_type_exists(node.typ, node.pos) or {}
+				c.ensure_type_exists(node.typ, node.pos)
 			} else if node.expr_type.clear_flag(.option) != node.typ.clear_flag(.option) {
 				mut s := 'cannot cast non-sum type `${expr_type_sym.name}` using `as`'
 				if type_sym.kind == .sum_type {
@@ -2865,7 +2871,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	}
 
 	if to_sym.language != .c {
-		c.ensure_type_exists(to_type, node.pos) or {}
+		c.ensure_type_exists(to_type, node.pos)
 
 		if to_sym.kind == .alias && (to_sym.info as ast.Alias).parent_type.has_flag(.option)
 			&& !to_type.has_flag(.option) {
@@ -4550,10 +4556,10 @@ fn (mut c Checker) trace(fbase string, message string) {
 	}
 }
 
-fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos token.Pos) ? {
+fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos token.Pos) bool {
 	if typ == 0 {
 		c.error('unknown type', pos)
-		return none
+		return false
 	}
 
 	c.ensure_generic_type_level++
@@ -4563,7 +4569,7 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 	if c.ensure_generic_type_level > checker.expr_level_cutoff_limit {
 		c.error('checker: too many levels of Checker.ensure_generic_type_specify_type_names calls: ${c.ensure_generic_type_level} ',
 			pos)
-		return none
+		return false
 	}
 
 	sym := c.table.final_sym(typ)
@@ -4576,29 +4582,42 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 	match sym.kind {
 		.function {
 			fn_info := sym.info as ast.FnType
-			c.ensure_generic_type_specify_type_names(fn_info.func.return_type, fn_info.func.return_type_pos)?
+			if !c.ensure_generic_type_specify_type_names(fn_info.func.return_type, fn_info.func.return_type_pos) {
+				return false
+			}
 			for param in fn_info.func.params {
-				c.ensure_generic_type_specify_type_names(param.typ, param.type_pos)?
+				if !c.ensure_generic_type_specify_type_names(param.typ, param.type_pos) {
+					return false
+				}
 			}
 		}
 		.array {
-			c.ensure_generic_type_specify_type_names((sym.info as ast.Array).elem_type,
-				pos)?
+			if !c.ensure_generic_type_specify_type_names((sym.info as ast.Array).elem_type,
+				pos) {
+				return false
+			}
 		}
 		.array_fixed {
-			c.ensure_generic_type_specify_type_names((sym.info as ast.ArrayFixed).elem_type,
-				pos)?
+			if !c.ensure_generic_type_specify_type_names((sym.info as ast.ArrayFixed).elem_type,
+				pos) {
+				return false
+			}
 		}
 		.map {
 			info := sym.info as ast.Map
-			c.ensure_generic_type_specify_type_names(info.key_type, pos)?
-			c.ensure_generic_type_specify_type_names(info.value_type, pos)?
+			if !c.ensure_generic_type_specify_type_names(info.key_type, pos) {
+				return false
+			}
+			if !c.ensure_generic_type_specify_type_names(info.value_type, pos) {
+				return false
+			}
 		}
 		.sum_type {
 			info := sym.info as ast.SumType
 			if info.generic_types.len > 0 && !typ.has_flag(.generic) && info.concrete_types.len == 0 {
 				c.error('`${sym.name}` type is generic sumtype, must specify the generic type names, e.g. ${sym.name}[T], ${sym.name}[int]',
 					pos)
+				return false
 			}
 		}
 		.struct_ {
@@ -4606,6 +4625,7 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 			if info.generic_types.len > 0 && !typ.has_flag(.generic) && info.concrete_types.len == 0 {
 				c.error('`${sym.name}` type is generic struct, must specify the generic type names, e.g. ${sym.name}[T], ${sym.name}[int]',
 					pos)
+				return false
 			}
 		}
 		.interface_ {
@@ -4613,29 +4633,31 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 			if info.generic_types.len > 0 && !typ.has_flag(.generic) && info.concrete_types.len == 0 {
 				c.error('`${sym.name}` type is generic interface, must specify the generic type names, e.g. ${sym.name}[T], ${sym.name}[int]',
 					pos)
+				return false
 			}
 		}
 		else {}
 	}
+	return true
 }
 
-fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
+fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 	if typ == 0 {
 		c.error('unknown type', pos)
-		return
+		return false
 	}
 	sym := c.table.sym(typ)
 	if !c.is_builtin_mod && sym.kind == .struct_ && !sym.is_pub && sym.mod != c.mod {
 		c.error('struct `${sym.name}` was declared as private to module `${sym.mod}`, so it can not be used inside module `${c.mod}`',
 			pos)
-		return
+		return false
 	}
 	match sym.kind {
 		.placeholder {
 			if sym.language == .v && !sym.name.starts_with('C.') {
 				c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `${sym.name}`'),
 					pos)
-				return
+				return false
 			}
 		}
 		.int_literal, .float_literal {
@@ -4648,35 +4670,50 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
 					'unknown type `${sym.name}`.\nDid you mean `f64`?'
 				}
 				c.error(msg, pos)
-				return
+				return false
 			}
 		}
 		.function {
 			fn_info := sym.info as ast.FnType
-			c.ensure_type_exists(fn_info.func.return_type, fn_info.func.return_type_pos)?
+			if !c.ensure_type_exists(fn_info.func.return_type, fn_info.func.return_type_pos) {
+				return false
+			}
 			for param in fn_info.func.params {
-				c.ensure_type_exists(param.typ, param.type_pos)?
+				if !c.ensure_type_exists(param.typ, param.type_pos) {
+					return false
+				}
 			}
 		}
 		.array {
-			c.ensure_type_exists((sym.info as ast.Array).elem_type, pos)?
+			if !c.ensure_type_exists((sym.info as ast.Array).elem_type, pos) {
+				return false
+			}
 		}
 		.array_fixed {
-			c.ensure_type_exists((sym.info as ast.ArrayFixed).elem_type, pos)?
+			if !c.ensure_type_exists((sym.info as ast.ArrayFixed).elem_type, pos) {
+				return false
+			}
 		}
 		.map {
 			info := sym.info as ast.Map
-			c.ensure_type_exists(info.key_type, pos)?
-			c.ensure_type_exists(info.value_type, pos)?
+			if !c.ensure_type_exists(info.key_type, pos) {
+				return false
+			}
+			if !c.ensure_type_exists(info.value_type, pos) {
+				return false
+			}
 		}
 		.sum_type {
 			info := sym.info as ast.SumType
 			for concrete_typ in info.concrete_types {
-				c.ensure_type_exists(concrete_typ, pos)?
+				if !c.ensure_type_exists(concrete_typ, pos) {
+					return false
+				}
 			}
 		}
 		else {}
 	}
+	return true
 }
 
 // return true if a violation of a shared variable access rule is detected
