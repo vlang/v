@@ -92,7 +92,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				c.error('cannot use unwrapped Option as capacity', node.cap_expr.pos())
 			}
 		}
-		c.ensure_type_exists(node.elem_type, node.elem_type_pos) or {}
+		c.ensure_type_exists(node.elem_type, node.elem_type_pos)
 		if node.typ.has_flag(.generic) && c.table.cur_fn != unsafe { nil }
 			&& c.table.cur_fn.generic_names.len == 0 {
 			c.error('generic struct cannot be used in non-generic function', node.pos)
@@ -108,7 +108,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 
 	if node.is_fixed {
 		c.ensure_sumtype_array_has_default_value(node)
-		c.ensure_type_exists(node.elem_type, node.elem_type_pos) or {}
+		c.ensure_type_exists(node.elem_type, node.elem_type_pos)
 		if node.elem_type.is_any_kind_of_pointer() && !c.inside_unsafe && !c.is_builtin_mod {
 			c.warn('fixed arrays of references need to be initialized right away (unless inside `unsafe`)',
 				node.pos)
@@ -367,8 +367,8 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				}
 			}
 		}
-		c.ensure_type_exists(info.key_type, node.pos) or {}
-		c.ensure_type_exists(info.value_type, node.pos) or {}
+		c.ensure_type_exists(info.key_type, node.pos)
+		c.ensure_type_exists(info.value_type, node.pos)
 		node.key_type = info.key_type
 		node.value_type = info.value_type
 		return node.typ
