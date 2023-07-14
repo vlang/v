@@ -506,10 +506,10 @@ fn (mut app App) service_auth(username string, password string) !string {
 	users := sql db {
 		select from User where username == username
 	}!
-	user := users.first()
-	if user.username != username {
+	if users.len == 0 {
 		return error('user not found')
 	}
+	user := users.first()
 
 	if !user.active {
 		return error('user is not active')
@@ -1010,16 +1010,16 @@ fn (mut app App) service_get_user(id int) !User {
 		println(err)
 		return err
 	}
-
 	defer {
 		db.close() or { panic(err) }
 	}
-
 	results := sql db {
 		select from User where id == id
 	}!
-
-	return results.first()
+	if results.len == 0 {
+		return error('no results')
+	}
+	return results[0]
 }
 "
 	}
