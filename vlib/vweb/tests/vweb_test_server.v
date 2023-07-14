@@ -89,6 +89,11 @@ pub fn (mut app App) json_echo() vweb.Result {
 	return app.ok(app.req.data)
 }
 
+['/login'; post]
+pub fn (mut app App) login_form(username string, password string) vweb.Result {
+	return app.html('username: x${username}x | password: x${password}x')
+}
+
 ['/form_echo'; post]
 pub fn (mut app App) form_echo() vweb.Result {
 	app.set_content_type(app.req.header.get(.content_type) or { '' })
