@@ -610,6 +610,16 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 				}
 			}
 		} else if sym.info is ast.FnType {
+			if sym.info.func.generic_names.len > 0 {
+				if !variant.typ.has_flag(.generic) {
+					c.error('generic fntype `${sym.name}` must specify generic type names, e.g. ${sym.name}[T]',
+						variant.pos)
+				}
+				if node.generic_types.len == 0 {
+					c.error('generic sumtype `${node.name}` must specify generic type names, e.g. ${node.name}[T]',
+						node.name_pos)
+				}
+			}
 			if c.table.sym(sym.info.func.return_type).name.ends_with('.${node.name}') {
 				c.error('sum type `${node.name}` cannot be defined recursively', variant.pos)
 			}
