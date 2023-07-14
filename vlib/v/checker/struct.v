@@ -89,10 +89,10 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				c.error('struct field does not support storing Result', field.option_pos)
 			}
 			if !c.ensure_type_exists(field.typ, field.type_pos) {
-				return
+				continue
 			}
 			if !c.ensure_generic_type_specify_type_names(field.typ, field.type_pos) {
-				return
+				continue
 			}
 			if field.typ.has_flag(.generic) {
 				has_generic_types = true

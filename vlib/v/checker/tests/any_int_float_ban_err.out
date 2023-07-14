@@ -16,6 +16,13 @@ vlib/v/checker/tests/any_int_float_ban_err.vv:5:7: error: unknown type `int_lite
       |       ~~~~~~~~~~~
     6 |     f float_literal
     7 | }
+vlib/v/checker/tests/any_int_float_ban_err.vv:6:7: error: unknown type `float_literal`
+    4 | struct Int {
+    5 |     i int_literal
+    6 |     f float_literal
+      |       ~~~~~~~~~~~~~
+    7 | }
+    8 |
 vlib/v/checker/tests/any_int_float_ban_err.vv:9:10: error: unknown type `int_literal`
     7 | }
     8 |
