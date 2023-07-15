@@ -2893,6 +2893,11 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if to_type.has_flag(.option) && from_type == ast.none_type {
 		// allow conversion from none to every option type
 	} else if to_sym.kind == .sum_type {
+		to_sym_info := to_sym.info as ast.SumType
+		if to_sym_info.generic_types.len > 0 && to_sym_info.concrete_types.len == 0 {
+			c.error('generic sumtype `${to_sym.name}` must specify type parameter, e.g. ${to_sym.name}[int]',
+				node.pos)
+		}
 		if from_type in [ast.int_literal_type, ast.float_literal_type] {
 			xx := if from_type == ast.int_literal_type { ast.int_type } else { ast.f64_type }
 			node.expr_type = c.promote_num(node.expr_type, xx)
