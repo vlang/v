@@ -1016,7 +1016,9 @@ fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 		g.write(' ')
 		g.write('${left_var}.state')
 	}
-	g.write(' ${node.op.str()} ')
+	g.write(' ')
+	g.write(node.op.str())
+	g.write(' ')
 	g.write('2') // none state
 }
 
@@ -1030,7 +1032,9 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		g.write('*')
 	}
 	g.expr(node.left)
-	g.write(' ${node.op.str()} ')
+	g.write(' ')
+	g.write(node.op.str())
+	g.write(' ')
 	if node.right_type.is_ptr() && node.right.is_auto_deref_var() {
 		g.write('*')
 		g.expr(node.right)

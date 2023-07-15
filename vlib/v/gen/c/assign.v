@@ -493,7 +493,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					concrete_types := (left_sym.info as ast.Struct).concrete_types
 					mut method_name := left_sym.cname + '_' + util.replace_op(extracted_op)
 					method_name = g.generic_fn_name(concrete_types, method_name)
-					g.write(' = ${method_name}(')
+					g.write(' = ')
+					g.write(method_name)
+					g.write('(')
 					g.expr(left)
 					g.write(', ')
 					g.expr(val)
@@ -504,7 +506,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					&& !left_sym.has_method(extracted_op) {
 					g.write(' = ')
 					g.expr(left)
-					g.write(' ${extracted_op} ')
+					g.write(' ')
+					g.write(extracted_op)
+					g.write(' ')
 					g.expr(val)
 					g.write(';')
 					return
@@ -631,7 +635,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					g.writeln(';')
 				}
 			} else if !g.is_arraymap_set && !str_add && !op_overloaded {
-				g.write(' ${op} ')
+				// ordinary `=` in `x = 2 * y;`
+				// Note, that this branch *deliberately does not use interpolation*
+				g.write(' ')
+				g.write(op.str())
+				g.write(' ')
 			} else if str_add || op_overloaded {
 				g.write(', ')
 			}

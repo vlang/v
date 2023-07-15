@@ -15,9 +15,7 @@ pub type ComptTimeConstValue = EmptyExpr
 	| u8
 	| voidptr
 
-pub fn empty_comptime_const_expr() ComptTimeConstValue {
-	return EmptyExpr(0)
-}
+pub const empty_comptime_const_expr = ComptTimeConstValue(EmptyExpr(0))
 
 pub fn (val ComptTimeConstValue) i8() ?i8 {
 	x := val.i64()?
