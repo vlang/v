@@ -272,12 +272,10 @@ pub fn (t Type) atomic_typename() string {
 	}
 }
 
-[inline]
 pub fn sharetype_from_flags(is_shared bool, is_atomic bool) ShareType {
 	return unsafe { ShareType(int(u32(is_atomic) << 1) | int(is_shared)) }
 }
 
-[inline]
 pub fn (t Type) share() ShareType {
 	return sharetype_from_flags(t.has_flag(.shared_f), t.has_flag(.atomic_f))
 }
@@ -285,7 +283,7 @@ pub fn (t Type) share() ShareType {
 // return TypeSymbol idx for `t`
 [inline]
 pub fn (t Type) idx() int {
-	return int(t) & 0xffff
+	return u16(t) & 0xffff
 }
 
 [inline]
@@ -309,14 +307,13 @@ pub fn (t Type) nr_muls() int {
 pub fn (t Type) is_ptr() bool {
 	// any normal pointer, i.e. &Type, &&Type etc;
 	// Note: voidptr, charptr and byteptr are NOT included!
-	return (int(t) >> 16) & 0xff != 0
+	return (int(t) >> 16) & 0xff > 0
 }
 
 [inline]
 pub fn (typ Type) is_pointer() bool {
 	// builtin pointer types (voidptr, byteptr, charptr)
-	return typ.idx() in [ast.voidptr_type_idx, ast.byteptr_type_idx, ast.charptr_type_idx,
-		ast.nil_type_idx]
+	return typ.idx() in ast.pointer_type_idxs
 }
 
 [inline]
@@ -326,8 +323,7 @@ pub fn (typ Type) is_voidptr() bool {
 
 [inline]
 pub fn (t Type) is_any_kind_of_pointer() bool {
-	return (int(t) >> 16) & 0xff != 0
-		|| u16(t) in [ast.voidptr_type_idx, ast.byteptr_type_idx, ast.charptr_type_idx, ast.nil_type_idx]
+	return (int(t) >> 16) & 0xff > 0 || (u16(t) & 0xffff) in ast.pointer_type_idxs
 }
 
 // set nr_muls on `t` and return it
@@ -388,7 +384,7 @@ pub fn (t Type) clear_flags(flags ...TypeFlag) Type {
 // return true if `flag` is set on `t`
 [inline]
 pub fn (t Type) has_flag(flag TypeFlag) bool {
-	return int(t) & (1 << (int(flag) + 24)) != 0
+	return int(t) & (1 << (int(flag) + 24)) > 0
 }
 
 // debug returns a verbose representation of the information in ts, useful for tracing/debugging
@@ -488,50 +484,42 @@ pub fn new_type_ptr(idx int, nr_muls int) Type {
 
 [inline]
 pub fn (typ Type) is_float() bool {
-	return !typ.is_ptr()
-		&& typ.idx() in [ast.f32_type_idx, ast.f64_type_idx, ast.float_literal_type_idx]
+	return !typ.is_ptr() && typ.idx() in ast.float_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_int() bool {
-	return !typ.is_ptr()
-		&& typ.idx() in [ast.i8_type_idx, ast.i16_type_idx, ast.int_type_idx, ast.i64_type_idx, ast.u8_type_idx, ast.u16_type_idx, ast.u32_type_idx, ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx, ast.int_literal_type_idx, ast.rune_type_idx]
+	return !typ.is_ptr() && typ.idx() in ast.integer_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_int_valptr() bool {
-	return typ.is_ptr()
-		&& typ.idx() in [ast.i8_type_idx, ast.i16_type_idx, ast.int_type_idx, ast.i64_type_idx, ast.u8_type_idx, ast.u16_type_idx, ast.u32_type_idx, ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx, ast.int_literal_type_idx, ast.rune_type_idx]
+	return typ.is_ptr() && typ.idx() in ast.integer_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_float_valptr() bool {
-	return typ.is_ptr()
-		&& typ.idx() in [ast.f32_type_idx, ast.f64_type_idx, ast.float_literal_type_idx]
+	return typ.is_ptr() && typ.idx() in ast.float_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_pure_int() bool {
-	return int(typ) in [ast.i8_type_idx, ast.i16_type_idx, ast.int_type_idx, ast.i64_type_idx,
-		ast.u8_type_idx, ast.u16_type_idx, ast.u32_type_idx, ast.u64_type_idx, ast.isize_type_idx,
-		ast.usize_type_idx, ast.int_literal_type_idx, ast.rune_type_idx]
+	return int(typ) in ast.integer_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_pure_float() bool {
-	return int(typ) in [ast.f32_type_idx, ast.f64_type_idx, ast.float_literal_type_idx]
+	return int(typ) in ast.float_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_signed() bool {
-	return typ.idx() in [ast.char_type_idx, ast.i8_type_idx, ast.i16_type_idx, ast.int_type_idx,
-		ast.i64_type_idx, ast.isize_type_idx]
+	return typ.idx() in ast.signed_integer_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_unsigned() bool {
-	return typ.idx() in [ast.u8_type_idx, ast.u16_type_idx, ast.u32_type_idx, ast.u64_type_idx,
-		ast.usize_type_idx]
+	return typ.idx() in ast.unsigned_integer_type_idxs
 }
 
 pub fn (typ Type) flip_signedness() Type {
@@ -557,10 +545,7 @@ pub fn (typ Type) is_int_literal() bool {
 
 [inline]
 pub fn (typ Type) is_number() bool {
-	return (int(typ) & 0xffffff) in [ast.i8_type_idx, ast.i16_type_idx, ast.int_type_idx,
-		ast.i64_type_idx, ast.u8_type_idx, ast.char_type_idx, ast.u16_type_idx, ast.u32_type_idx,
-		ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx, ast.f32_type_idx, ast.f64_type_idx,
-		ast.int_literal_type_idx, ast.float_literal_type_idx, ast.rune_type_idx]
+	return typ.clear_flags() in ast.number_type_idxs
 }
 
 [inline]
