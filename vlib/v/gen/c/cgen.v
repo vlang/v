@@ -6219,11 +6219,10 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 
 [inline]
 fn c_name(name_ string) string {
-	name := util.no_dots(name_)
-	if c.c_reserved_chk.matches(name) {
-		return '_v_${name}'
+	if c.c_reserved_chk.matches(name_) {
+		return '_v_${name_}'
 	}
-	return name
+	return util.no_dots(name_)
 }
 
 fn (mut g Gen) type_default(typ_ ast.Type) string {
@@ -6973,10 +6972,8 @@ pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
 }
 
 fn (mut g Gen) check_noscan(elem_typ ast.Type) string {
-	if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
-		if !g.contains_ptr(elem_typ) {
-			return '_noscan'
-		}
+	if !g.contains_ptr(elem_typ) {
+		return '_noscan'
 	}
 	return ''
 }
