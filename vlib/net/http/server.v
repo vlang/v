@@ -25,16 +25,17 @@ mut:
 
 pub struct Server {
 mut:
-	state    ServerStatus = .closed
-	listener net.TcpListener
+	state ServerStatus = .closed
 pub mut:
-	port               int           = 8080
+	addr               string = ':8080' // change to ':8080' when port is removed
+	port               int             [deprecated: 'use addr'] = 8080
 	handler            Handler       = DebugHandler{}
 	read_timeout       time.Duration = 30 * time.second
 	write_timeout      time.Duration = 30 * time.second
 	accept_timeout     time.Duration = 30 * time.second
 	pool_channel_slots int = 1024
 	worker_num         int = runtime.nr_jobs()
+	listener           net.TcpListener
 }
 
 // listen_and_serve listens on the server port `s.port` over TCP network and
@@ -43,10 +44,28 @@ pub fn (mut s Server) listen_and_serve() {
 	if s.handler is DebugHandler {
 		eprintln('Server handler not set, using debug handler')
 	}
-	s.listener = net.listen_tcp(.ip6, ':${s.port}') or {
-		eprintln('Listening on :${s.port} failed')
+
+	// remove when s.port is removed
+	addr := s.addr.split(':')
+	if addr.len > 1 && s.port != 8080 {
+		s.addr = '${addr[0]}:${s.port}'
+	}
+
+	mut l := s.listener.addr() or {
+		eprintln('Failed getting listener address')
 		return
 	}
+	if l.family() == net.AddrFamily.unspec {
+		s.listener = net.listen_tcp(.ip6, '${s.addr}') or {
+			eprintln('Listening on ${s.addr} failed')
+			return
+		}
+		l = s.listener.addr() or {
+			eprintln('Failed getting listener address')
+			return
+		}
+	}
+	s.addr = l.str()
 	s.listener.set_accept_timeout(s.accept_timeout)
 
 	// Create tcp connection channel
@@ -58,7 +77,7 @@ pub fn (mut s Server) listen_and_serve() {
 		ws << new_handler_worker(wid, ch, s.handler)
 	}
 
-	eprintln('Listening on :${s.port}')
+	eprintln('Listening on ${s.addr}')
 	s.state = .running
 	for {
 		// break if we have a stop signal
