@@ -410,13 +410,13 @@ pub fn (dividend Integer) div_mod(divisor Integer) (Integer, Integer) {
 
 // / returns the quotient of `dividend` divided by `divisor`.
 pub fn (dividend Integer) / (divisor Integer) Integer {
-	q, _ := a.div_mod(b)
+	q, _ := dividend.div_mod(divisor)
 	return q
 }
 
 // % returns the remainder of `dividend` divided by `divisor`.
 pub fn (dividend Integer) % (divisor Integer) Integer {
-	_, r := a.div_mod(b)
+	_, r := dividend.div_mod(divisor)
 	return r
 }
 
