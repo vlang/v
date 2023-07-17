@@ -93,7 +93,14 @@ fn (mut p DateTimeParser) must_be_valid_month() !int {
 			month_name := p.datetime[p.current_pos_datetime..p.current_pos_datetime + v.len]
 			if v == month_name {
 				p.current_pos_datetime += v.len
-				return long_months.index(month_name) + 1
+				mut idx := -1
+				for midx := 0; midx < long_months.len; midx++ {
+					if long_months[midx] == month_name {
+						idx = midx
+						break
+					}
+				}
+				return idx + 1
 			}
 		}
 	}
