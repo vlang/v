@@ -111,8 +111,14 @@ const (
 		u64(456719261665907162),
 		u64(365375409332725730),
 	]!
+)
 
-	pow5_split_64        = [
+const pow5_split_64 = [326]Uint128{}
+
+const pow5_inv_split_64 = [292]Uint128{}
+
+fn init() {
+	split_64 := [
 		Uint128{u64(0x0000000000000000), u64(0x0100000000000000)},
 		Uint128{u64(0x0000000000000000), u64(0x0140000000000000)},
 		Uint128{u64(0x0000000000000000), u64(0x0190000000000000)},
@@ -441,7 +447,7 @@ const (
 		Uint128{u64(0x278e1316e60a4831), u64(0x018b40a4eec437c5)},
 	]!
 
-	pow5_inv_split_64    = [
+	inv_split_64 := [
 		Uint128{u64(0x0000000000000001), u64(0x0400000000000000)},
 		Uint128{u64(0x3333333333333334), u64(0x0333333333333333)},
 		Uint128{u64(0x28f5c28f5c28f5c3), u64(0x028f5c28f5c28f5c)},
@@ -735,4 +741,7 @@ const (
 		Uint128{u64(0x775677d6e7bda891), u64(0x031e560c35d40e30)},
 		Uint128{u64(0xc5dec645863153a7), u64(0x027eab3cf7dcd826)},
 	]!
-)
+
+	unsafe { vmemcpy(&strconv.pow5_split_64, &split_64, sizeof(split_64)) }
+	unsafe { vmemcpy(&strconv.pow5_inv_split_64, &inv_split_64, sizeof(inv_split_64)) }
+}
