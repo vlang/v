@@ -34,9 +34,9 @@ fn binary_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 
 	// align
 	if lead_zer_remainder < lead_zer_divisor {
-		lshift_in_place(mut divisor, lead_zer_divisor - lead_zer_remainder)
+		left_shift_in_place(mut divisor, lead_zer_divisor - lead_zer_remainder)
 	} else if lead_zer_remainder > lead_zer_divisor {
-		lshift_in_place(mut remainder, lead_zer_remainder - lead_zer_divisor)
+		left_shift_in_place(mut remainder, lead_zer_remainder - lead_zer_divisor)
 	}
 
 	$if debug {
@@ -47,13 +47,13 @@ fn binary_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 			bit_set(mut quotient, bit_idx)
 			subtract_align_last_byte_in_place(mut remainder, divisor)
 		}
-		rshift_in_place(mut divisor, 1)
+		right_shift_in_place(mut divisor, 1)
 	}
 
 	// adjust
 	if lead_zer_remainder > lead_zer_divisor {
-		// rshift_in_place(mut quotient, lead_zer_remainder - lead_zer_divisor)
-		rshift_in_place(mut remainder, lead_zer_remainder - lead_zer_divisor)
+		// right_shift_in_place(mut quotient, lead_zer_remainder - lead_zer_divisor)
+		right_shift_in_place(mut remainder, lead_zer_remainder - lead_zer_divisor)
 	}
 	shrink_tail_zeros(mut remainder)
 	shrink_tail_zeros(mut quotient)
@@ -115,7 +115,7 @@ fn subtract_align_last_byte_in_place(mut a []u32, b []u32) {
 // there is no overflow. We know that the last bits are zero
 // and that n <= 32
 [direct_array_access; inline]
-fn lshift_in_place(mut a []u32, n u32) {
+fn left_shift_in_place(mut a []u32, n u32) {
 	mut carry := u32(0)
 	mut prec_carry := u32(0)
 	mask := ((u32(1) << n) - 1) << (32 - n)
@@ -130,7 +130,7 @@ fn lshift_in_place(mut a []u32, n u32) {
 // logical right shift without control because these digits have already been
 // shift left before
 [direct_array_access; inline]
-fn rshift_in_place(mut a []u32, n u32) {
+fn right_shift_in_place(mut a []u32, n u32) {
 	mut carry := u32(0)
 	mut prec_carry := u32(0)
 	mask := u32((1 << n) - 1)
