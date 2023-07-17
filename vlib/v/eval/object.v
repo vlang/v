@@ -4,6 +4,7 @@ const empty = Void{}
 
 // Note: i64 is an int_literal, NOT an i64 (same with f64)
 type Object = Array
+	| FixedArray
 	| Float
 	| Int
 	| Ptr
@@ -78,6 +79,16 @@ pub fn (o Object) string() string {
 			}
 			return res + ']'
 		}
+		FixedArray {
+			mut res := '['
+			for i, val in o.val {
+				res += val.string()
+				if i + 1 != o.val.len {
+					res += ', '
+				}
+			}
+			return res + ']!'
+		}
 		Ptr {
 			return o.val.str()
 		}
@@ -133,6 +144,11 @@ pub struct Float {
 pub mut:
 	val  f64
 	size i8 // 8/16/32/64
+}
+
+pub struct FixedArray {
+pub mut:
+	val []Object
 }
 
 pub struct Array {

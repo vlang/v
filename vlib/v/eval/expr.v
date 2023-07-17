@@ -21,6 +21,7 @@ fn (o Object) as_i64() !i64 {
 }
 
 pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
+	// eprintln('>>>>>>> expr: ${typeof(expr)}')
 	match expr {
 		ast.CallExpr {
 			// println(expr.is_method)
@@ -434,6 +435,16 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						}
 					}
 				}
+				FixedArray {
+					match expr.field_name {
+						'len' {
+							return Int{exp.val.len, 32}
+						}
+						else {
+							e.error('unknown selector to fixed array[${exp.val.len}]: ${expr.field_name}')
+						}
+					}
+				}
 				else {
 					e.error('unknown selector expression: ${exp.type_name()}')
 				}
@@ -460,7 +471,14 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 				}
 			}
 			if expr.is_fixed || expr.has_val {
-				e.error('fixed arrays are not supported')
+				mut res := FixedArray{
+					val: []Object{cap: expr.exprs.len}
+				}
+				elem_type := if expr.exprs.len > 0 { expr.expr_types[0] } else { 0 }
+				for exp in expr.exprs {
+					res.val << e.expr(exp, elem_type)
+				}
+				return res
 			}
 			mut res := Array{
 				val: []Object{cap: expr.exprs.len}
@@ -532,12 +550,31 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		ast.UnsafeExpr {
 			return e.expr(expr.expr, expecting)
 		}
+		ast.IndexExpr {
+			left := e.expr(expr.left, expr.left_type)
+			index := e.expr(expr.index, ast.int_type_idx)
+			if expr.is_farray {
+				if left is FixedArray {
+					if index is i64 {
+						return left.val[index]
+					}
+				}
+			}
+			if expr.is_array {
+				if left is Array {
+					if index is i64 {
+						return left.val[index]
+					}
+				}
+			}
+			e.error('unhandled index expression ${left}[ ${index} ]')
+		}
 		ast.AnonFn, ast.ArrayDecompose, ast.AsCast, ast.Assoc, ast.AtExpr, ast.CTempVar,
 		ast.ChanInit, ast.Comment, ast.ComptimeCall, ast.ComptimeSelector, ast.ComptimeType,
 		ast.ConcatExpr, ast.DumpExpr, ast.EmptyExpr, ast.EnumVal, ast.GoExpr, ast.SpawnExpr,
-		ast.IfGuardExpr, ast.IndexExpr, ast.IsRefType, ast.Likely, ast.LockExpr, ast.MapInit,
-		ast.MatchExpr, ast.Nil, ast.NodeError, ast.None, ast.OffsetOf, ast.OrExpr, ast.RangeExpr,
-		ast.SelectExpr, ast.SqlExpr, ast.TypeNode, ast.TypeOf {
+		ast.IfGuardExpr, ast.IsRefType, ast.Likely, ast.LockExpr, ast.MapInit, ast.MatchExpr,
+		ast.Nil, ast.NodeError, ast.None, ast.OffsetOf, ast.OrExpr, ast.RangeExpr, ast.SelectExpr,
+		ast.SqlExpr, ast.TypeNode, ast.TypeOf {
 			e.error('unhandled expression ${typeof(expr).name}')
 		}
 	}
