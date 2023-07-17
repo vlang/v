@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module time
 
+import strconv
+
 // parse_rfc3339 returns time from a date string in RFC 3339 datetime format.
 // See also https://ijmacd.github.io/rfc3339-iso8601/ for a visual reference of
 // the differences between ISO-8601 and RFC 3339.
@@ -79,12 +81,25 @@ pub fn parse(s string) !Time {
 	minute_ := hms[1]
 	second_ := hms[2]
 	//
-	iyear := ymd[0].int()
-	imonth := ymd[1].int()
-	iday := ymd[2].int()
-	ihour := hour_.int()
-	iminute := minute_.int()
-	isecond := second_.int()
+	iyear := strconv.atoi(ymd[0]) or {
+		return error_invalid_time(0, 'invalid year format: ${ymd[0]}')
+	}
+	imonth := strconv.atoi(ymd[1]) or {
+		return error_invalid_time(0, 'invalid month format: ${ymd[1]}')
+	}
+	iday := strconv.atoi(ymd[2]) or {
+		return error_invalid_time(0, 'invalid day format: ${ymd[2]}')
+	}
+	ihour := strconv.atoi(hour_) or {
+		return error_invalid_time(0, 'invalid hour format: ${hour_}')
+	}
+	iminute := strconv.atoi(minute_) or {
+		return error_invalid_time(0, 'invalid minute format: ${minute_}')
+	}
+	isecond := strconv.atoi(second_) or {
+		return error_invalid_time(0, 'invalid second format: ${second_}')
+	}
+
 	// eprintln('>> iyear: $iyear | imonth: $imonth | iday: $iday | ihour: $ihour | iminute: $iminute | isecond: $isecond')
 	if iyear > 9999 || iyear < -9999 {
 		return error_invalid_time(3, 'year must be between -10000 and 10000')
