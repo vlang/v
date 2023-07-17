@@ -265,59 +265,61 @@ fn integer_from_regular_string(characters string, radix u32) Integer {
 	}
 }
 
-// abs returns the absolute value of the integer.
-pub fn (integer Integer) abs() Integer {
-	return if integer.signum == 0 {
+// abs returns the absolute value of the integer `a`.
+pub fn (a Integer) abs() Integer {
+	return if a.signum == 0 {
 		zero_int
 	} else {
 		Integer{
-			digits: integer.digits.clone()
+			digits: a.digits.clone()
 			signum: 1
 		}
 	}
 }
 
-// neg returns the result of negation of the integer.
-pub fn (integer Integer) neg() Integer {
-	return if integer.signum == 0 {
+// neg returns the result of negation of the integer `a`.
+pub fn (a Integer) neg() Integer {
+	return if a.signum == 0 {
 		zero_int
 	} else {
 		Integer{
-			digits: integer.digits.clone()
-			signum: -integer.signum
+			digits: a.digits.clone()
+			signum: -a.signum
 		}
 	}
 }
 
-pub fn (integer Integer) + (addend Integer) Integer {
+// + returns the sum of the integers `augend` and `addend`.
+pub fn (augend Integer) + (addend Integer) Integer {
 	// Quick exits
-	if integer.signum == 0 {
+	if augend.signum == 0 {
 		return addend.clone()
 	}
 	if addend.signum == 0 {
-		return integer.clone()
+		return augend.clone()
 	}
 	// Non-zero cases
-	return if integer.signum == addend.signum {
-		integer.add(addend)
+	return if augend.signum == addend.signum {
+		augend.add(addend)
 	} else { // Unequal signs
-		integer.subtract(addend)
+		augend.subtract(addend)
 	}
 }
 
-pub fn (integer Integer) - (subtrahend Integer) Integer {
+// - returns the difference of the integers `minuend` and `subtrahend`
+pub fn (minuend Integer) - (subtrahend Integer) Integer {
 	// Quick exits
-	if integer.signum == 0 {
+	if minuend.signum == 0 {
 		return subtrahend.neg()
 	}
 	if subtrahend.signum == 0 {
-		return integer.clone()
+		return minuend.clone()
 	}
 	// Non-zero cases
-	return if integer.signum == subtrahend.signum {
-		integer.subtract(subtrahend)
+	return if minuend.signum == subtrahend.signum {
+		minuend.subtract(subtrahend)
 	} else {
-		integer.add(subtrahend)
+		minuend.add(subtrahend)
 	}
 }
 
@@ -346,44 +348,45 @@ fn (integer Integer) subtract(subtrahend Integer) Integer {
 	}
 }
 
-pub fn (integer Integer) * (multiplicand Integer) Integer {
+// * returns the product of the integers `multiplicand` and `multiplier`.
+pub fn (multiplicand Integer) * (multiplier Integer) Integer {
 	// Quick exits
-	if integer.signum == 0 || multiplicand.signum == 0 {
+	if multiplicand.signum == 0 || multiplier.signum == 0 {
 		return zero_int
 	}
-	if integer == one_int {
+	if multiplicand == one_int {
+		return multiplier.clone()
+	}
+	if multiplier == one_int {
 		return multiplicand.clone()
 	}
-	if multiplicand == one_int {
-		return integer.clone()
-	}
 	// The final sign is the product of the signs
-	mut storage := []u32{len: integer.digits.len + multiplicand.digits.len}
-	multiply_digit_array(integer.digits, multiplicand.digits, mut storage)
+	mut storage := []u32{len: multiplicand.digits.len + multiplier.digits.len}
+	multiply_digit_array(multiplicand.digits, multiplier.digits, mut storage)
 	return Integer{
-		signum: integer.signum * multiplicand.signum
+		signum: multiplicand.signum * multiplier.signum
 		digits: storage
 	}
 }
 
-// div_mod returns the quotient and remainder of the integer division.
-pub fn (integer Integer) div_mod(divisor Integer) (Integer, Integer) {
+// div_mod returns the quotient and remainder from the division of the integers `dividend` divided by `divisor`.
+pub fn (dividend Integer) div_mod(divisor Integer) (Integer, Integer) {
 	// Quick exits
 	if divisor.signum == 0 {
 		panic('Cannot divide by zero')
 	}
-	if integer.signum == 0 {
+	if dividend.signum == 0 {
 		return zero_int, zero_int
 	}
 	if divisor == one_int {
-		return integer.clone(), zero_int
+		return dividend.clone(), zero_int
 	}
 	if divisor.signum == -1 {
-		q, r := integer.div_mod(divisor.neg())
+		q, r := dividend.div_mod(divisor.neg())
 		return q.neg(), r
 	}
-	if integer.signum == -1 {
-		q, r := integer.neg().div_mod(divisor)
+	if dividend.signum == -1 {
+		q, r := dividend.neg().div_mod(divisor)
 		if r.signum == 0 {
 			return q.neg(), zero_int
 		} else {
@@ -391,9 +394,9 @@ pub fn (integer Integer) div_mod(divisor Integer) (Integer, Integer) {
 		}
 	}
 	// Division for positive integers
-	mut q := []u32{cap: integer.digits.len - divisor.digits.len + 1}
-	mut r := []u32{cap: integer.digits.len}
-	divide_digit_array(integer.digits, divisor.digits, mut q, mut r)
+	mut q := []u32{cap: dividend.digits.len - divisor.digits.len + 1}
+	mut r := []u32{cap: dividend.digits.len}
+	divide_digit_array(dividend.digits, divisor.digits, mut q, mut r)
 	quotient := Integer{
 		signum: if q.len == 0 { 0 } else { 1 }
 		digits: q
@@ -405,12 +408,14 @@ pub fn (integer Integer) div_mod(divisor Integer) (Integer, Integer) {
 	return quotient, remainder
 }
 
-pub fn (a Integer) / (b Integer) Integer {
+// / returns the quotient of `dividend` divided by `divisor`.
+pub fn (dividend Integer) / (divisor Integer) Integer {
 	q, _ := a.div_mod(b)
 	return q
 }
 
-pub fn (a Integer) % (b Integer) Integer {
+// % returns the remainder of `dividend` divided by `divisor`.
+pub fn (dividend Integer) % (divisor Integer) Integer {
 	_, r := a.div_mod(b)
 	return r
 }
@@ -454,7 +459,7 @@ fn (a Integer) mask_bits(n u32) Integer {
 	}
 }
 
-// pow returns the integer `a` raised to the power of the u32 `exponent`.
+// pow returns the integer `base` raised to the power of the u32 `exponent`.
 pub fn (base Integer) pow(exponent u32) Integer {
 	if exponent == 0 {
 		return one_int
@@ -475,7 +480,7 @@ pub fn (base Integer) pow(exponent u32) Integer {
 	return x * y
 }
 
-// mod_pow returns the integer `a` raised to the power of the u32 `exponent` modulo the integer `modulus`.
+// mod_pow returns the integer `base` raised to the power of the u32 `exponent` modulo the integer `modulus`.
 pub fn (base Integer) mod_pow(exponent u32, modulus Integer) Integer {
 	if exponent == 0 {
 		return one_int
@@ -545,16 +550,17 @@ pub fn (base Integer) big_mod_pow(exponent Integer, modulus Integer) !Integer {
 	}
 }
 
-// inc returns the integer `a` incremented by 1.
+// inc increments `a` by 1 in place.
 pub fn (mut a Integer) inc() {
 	a = a + one_int
 }
 
-// dec returns the integer `a` decremented by 1.
+// dec decrements `a` by 1 in place.
 pub fn (mut a Integer) dec() {
 	a = a - one_int
 }
 
+// == returns `true` if the integers `a` and `b` are equal in value and sign.
 pub fn (a Integer) == (b Integer) bool {
 	return a.signum == b.signum && a.digits.len == b.digits.len && a.digits == b.digits
 }
@@ -565,6 +571,7 @@ pub fn (a Integer) abs_cmp(b Integer) int {
 	return compare_digit_array(a.digits, b.digits)
 }
 
+// < returns `true` if the integer `a` is less than `b`.
 pub fn (a Integer) < (b Integer) bool {
 	// Quick exits based on signum value:
 	if a.signum < b.signum {
@@ -609,7 +616,7 @@ pub fn (mut a Integer) set_bit(i u32, value bool) {
 
 	if target_index >= a.digits.len {
 		if value {
-			a = one_int.lshift(i).bitwise_or(a)
+			a = one_int.left_shift(i).bitwise_or(a)
 		}
 		return
 	}
@@ -676,8 +683,14 @@ pub fn (a Integer) bitwise_xor(b Integer) Integer {
 }
 
 // lshift returns the integer `a` shifted left by `amount` bits.
-[direct_array_access]
+[deprecated: 'use a.Integer.left_shift(amount) instead'
 pub fn (a Integer) lshift(amount u32) Integer {
+	return a.left_shift(amount)
+}
+
+// left_shift returns the integer `a` shifted left by `amount` bits.
+[direct_array_access]
+pub fn (a Integer) left_shift(amount u32) Integer {
 	if a.signum == 0 {
 		return a
 	}
@@ -700,8 +713,14 @@ pub fn (a Integer) lshift(amount u32) Integer {
 }
 
 // rshift returns the integer `a` shifted right by `amount` bits.
-[direct_array_access]
+[deprecated: 'use a.Integer.right_shift(amount) instead'
 pub fn (a Integer) rshift(amount u32) Integer {
+	return a.right_shift(amount)
+}
+
+// right_shift returns the integer `a` shifted right by `amount` bits.
+[direct_array_access]
+pub fn (a Integer) right_shift(amount u32) Integer {
 	if a.signum == 0 {
 		return a
 	}
@@ -919,9 +938,9 @@ pub fn (a Integer) isqrt() Integer {
 	}
 	mut result := zero_int
 	for shift >= 0 {
-		result = result.lshift(1)
+		result = result.left_shift(1)
 		larger := result + one_int
-		if (larger * larger).abs_cmp(a.rshift(u32(shift))) <= 0 {
+		if (larger * larger).abs_cmp(a.right_shift(u32(shift))) <= 0 {
 			result = larger
 		}
 		shift -= 2
@@ -968,7 +987,7 @@ fn gcd_binary(x Integer, y Integer) Integer {
 		a, _ = diff.abs().rsh_to_set_bit()
 	}
 
-	return b.lshift(shift)
+	return b.left_shift(shift)
 }
 
 // mod_inverse calculates the multiplicative inverse of the integer `a` in the ring `ℤ/nℤ`.
@@ -1026,7 +1045,7 @@ fn (a Integer) mod_inv(m Integer) Integer {
 		tmp := if q == one_int {
 			x
 		} else if q.digits.len == 1 && q.digits[0] & (q.digits[0] - 1) == 0 {
-			x.lshift(u32(bits.trailing_zeros_32(q.digits[0])))
+			x.left_shift(u32(bits.trailing_zeros_32(q.digits[0])))
 		} else {
 			q * x
 		} + y
@@ -1065,7 +1084,7 @@ fn (x Integer) rsh_to_set_bit() (Integer, u32) {
 		n++
 	}
 	n = (n << 5) + u32(bits.trailing_zeros_32(x.digits[n]))
-	return x.rshift(n), n
+	return x.right_shift(n), n
 }
 
 [direct_array_access; inline]

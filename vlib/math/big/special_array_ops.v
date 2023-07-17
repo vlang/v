@@ -27,7 +27,7 @@ fn newton_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 		digits: operand_b
 	}
 
-	k := bit_length(a) + bit_length(b) // a*b < 2**k
+	k := a.bit_len() + b.bit_len() // a*b < 2**k
 	mut x := integer_from_int(2) //  0 < x < 2**(k+1)/b  // initial guess for convergence
 	// https://en.wikipedia.org/wiki/Division_algorithm#Newton%E2%80%93Raphson_division
 	// use 48/17 - 32/17.D (divisor)
@@ -61,7 +61,7 @@ fn newton_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 }
 
 // bit_length returns the number of bits needed to represent the absolute value of the integer a.
-[inline]
+[deprecated: 'use a.bit_len() instead'; inline]
 pub fn bit_length(a Integer) int {
 	return a.digits.len * 32 - bits.leading_zeros_32(a.digits.last())
 }
