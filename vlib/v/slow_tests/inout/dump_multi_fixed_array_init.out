@@ -1,0 +1,1 @@
+[vlib/v/slow_tests/inout/dump_multi_fixed_array_init.vv:2] [2][3]int{}: [[0, 0, 0], [0, 0, 0]]
