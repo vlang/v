@@ -1,5 +1,7 @@
 module time
 
+import strconv
+
 struct DateTimeParser {
 	datetime string
 	format   string
@@ -32,7 +34,7 @@ fn (mut p DateTimeParser) peek(length int) !string {
 
 fn (mut p DateTimeParser) must_be_int(length int) !int {
 	val := p.next(length) or { return err }
-	return val.int()
+	return strconv.atoi(val)!
 }
 
 fn (mut p DateTimeParser) must_be_int_with_minimum_length(min int, max int, allow_leading_zero bool) !int {
@@ -55,7 +57,7 @@ fn (mut p DateTimeParser) must_be_int_with_minimum_length(min int, max int, allo
 	if !allow_leading_zero && val.starts_with('0') {
 		return error('0 is not allowed for this format')
 	}
-	return val.int()
+	return strconv.atoi(val)!
 }
 
 fn (mut p DateTimeParser) must_be_single_int_with_optional_leading_zero() !int {
@@ -63,7 +65,7 @@ fn (mut p DateTimeParser) must_be_single_int_with_optional_leading_zero() !int {
 	if val == '0' {
 		val += p.next(1) or { '' }
 	}
-	return val.int()
+	return strconv.atoi(val)!
 }
 
 fn (mut p DateTimeParser) must_be_string(must string) ! {
