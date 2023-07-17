@@ -746,8 +746,14 @@ pub fn (a Integer) right_shift(amount u32) Integer {
 }
 
 // binary_str returns the binary string representation of the integer `a`.
-[direct_array_access]
+[deprecated: 'use integer.bin_str() instead']
 pub fn (integer Integer) binary_str() string {
+	return integer.bin_str()
+}
+
+// bin_str returns the binary string representation of the integer `a`.
+[direct_array_access]
+pub fn (integer Integer) bin_str() string {
 	// We have the zero integer
 	if integer.signum == 0 {
 		return '0'
