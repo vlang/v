@@ -159,7 +159,7 @@ fn (mut p DateTimeParser) parse() !Time {
 				}
 			}
 			'YY' {
-				year_ = p.must_be_int(2) or {
+				year_ = now().year / 100 * 100 + p.must_be_int(2) or {
 					return error_invalid_time(0, 'end of string reached before the full year was specified')
 				}
 			}
