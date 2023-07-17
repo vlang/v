@@ -357,10 +357,19 @@ pub fn (x Expr) str() string {
 			if x.has_default {
 				fields << 'init: ${x.default_expr.str()}'
 			}
+			typ_str := global_table.type_to_str(x.elem_type)
 			if fields.len > 0 {
-				return '[]T{${fields.join(', ')}}'
+				if x.is_fixed {
+					return '${x.exprs.str()}${typ_str}{${fields.join(', ')}}'
+				} else {
+					return '[]${typ_str}{${fields.join(', ')}}'
+				}
 			} else {
-				return x.exprs.str()
+				if x.is_fixed {
+					return '${x.exprs.str()}${typ_str}{}'
+				} else {
+					return x.exprs.str()
+				}
 			}
 		}
 		AsCast {
