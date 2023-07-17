@@ -81,7 +81,7 @@ fn (mut p DateTimeParser) must_be_string(must string) ! {
 }
 
 fn (mut p DateTimeParser) must_be_string_one_of(oneof []string) !string {
-	for _, must in oneof {
+	for must in oneof {
 		val := p.peek(must.len) or { continue }
 		if val == must {
 			return must
@@ -91,7 +91,7 @@ fn (mut p DateTimeParser) must_be_string_one_of(oneof []string) !string {
 }
 
 fn (mut p DateTimeParser) must_be_valid_month() !int {
-	for _, v in long_months {
+	for v in long_months {
 		if p.current_pos_datetime + v.len < p.datetime.len {
 			month_name := p.datetime[p.current_pos_datetime..p.current_pos_datetime + v.len]
 			if v == month_name {
@@ -105,7 +105,7 @@ fn (mut p DateTimeParser) must_be_valid_month() !int {
 
 fn (mut p DateTimeParser) must_be_valid_week_day(letters int) !string {
 	val := p.next(letters)!
-	for _, v in long_days {
+	for v in long_days {
 		if v[0..letters] == val {
 			return v
 		}
@@ -158,7 +158,7 @@ fn (mut p DateTimeParser) parse() !Time {
 	tokens := extract_tokens(p.format) or {
 		return error_invalid_time(0, 'malformed format string: ${err}')
 	}
-	for _, token in tokens {
+	for token in tokens {
 		match token {
 			'YYYY' {
 				year_ = p.must_be_int(4) or {
