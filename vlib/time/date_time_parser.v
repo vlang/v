@@ -33,7 +33,7 @@ fn (mut p DateTimeParser) peek(length int) !string {
 }
 
 fn (mut p DateTimeParser) must_be_int(length int) !int {
-	val := p.next(length) or { return err }
+	val := p.next(length)!
 	return strconv.atoi(val)!
 }
 
@@ -61,7 +61,7 @@ fn (mut p DateTimeParser) must_be_int_with_minimum_length(min int, max int, allo
 }
 
 fn (mut p DateTimeParser) must_be_single_int_with_optional_leading_zero() !int {
-	mut val := p.next(1) or { return err }
+	mut val := p.next(1)!
 	if val == '0' {
 		val += p.next(1) or { '' }
 	}
@@ -69,7 +69,7 @@ fn (mut p DateTimeParser) must_be_single_int_with_optional_leading_zero() !int {
 }
 
 fn (mut p DateTimeParser) must_be_string(must string) ! {
-	val := p.next(must.len) or { return err }
+	val := p.next(must.len)!
 	if val != must {
 		return error('invalid string: "${val}"!="${must}" at: ${p.current_pos_datetime}')
 	}
@@ -99,7 +99,7 @@ fn (mut p DateTimeParser) must_be_valid_month() !int {
 }
 
 fn (mut p DateTimeParser) must_be_valid_week_day(letters int) !string {
-	val := p.next(letters) or { return err }
+	val := p.next(letters)!
 	for _, v in long_days {
 		if v[0..letters] == val {
 			return v
