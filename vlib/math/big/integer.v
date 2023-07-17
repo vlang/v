@@ -683,7 +683,7 @@ pub fn (a Integer) bitwise_xor(b Integer) Integer {
 }
 
 // lshift returns the integer `a` shifted left by `amount` bits.
-[deprecated: 'use a.Integer.left_shift(amount) instead'
+[deprecated: 'use a.Integer.left_shift(amount) instead']
 pub fn (a Integer) lshift(amount u32) Integer {
 	return a.left_shift(amount)
 }
@@ -713,7 +713,7 @@ pub fn (a Integer) left_shift(amount u32) Integer {
 }
 
 // rshift returns the integer `a` shifted right by `amount` bits.
-[deprecated: 'use a.Integer.right_shift(amount) instead'
+[deprecated: 'use a.Integer.right_shift(amount) instead']
 pub fn (a Integer) rshift(amount u32) Integer {
 	return a.right_shift(amount)
 }
