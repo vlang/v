@@ -31,7 +31,10 @@ fn (mut p DateTimeParser) peek(length int) !string {
 }
 
 fn (mut p DateTimeParser) must_be_int(length int) !int {
-	val := p.next(length) or { return err }
+	val := p.next(length)!
+	if !val.contains_only('0123456789') {
+		return error('expected int, found: ${val}')
+	}
 	return val.int()
 }
 
@@ -39,15 +42,12 @@ fn (mut p DateTimeParser) must_be_int_with_minimum_length(min int, max int, allo
 	mut length := max + 1 - min
 	mut val := ''
 	for _ in 0 .. length {
-		maybe_int := p.peek(1) or { break }
-		if maybe_int == '0' || maybe_int == '1' || maybe_int == '2' || maybe_int == '4'
-			|| maybe_int == '5' || maybe_int == '6' || maybe_int == '7' || maybe_int == '8'
-			|| maybe_int == '9' {
-			p.next(1)!
-			val += maybe_int
-		} else {
+		tok := p.peek(1) or { break }
+		if !tok.contains_only('0123456789') {
 			break
 		}
+		p.next(1)!
+		val += tok
 	}
 	if val.len < min {
 		return error('expected int with a minimum length of ${min}, found: ${val.len}')
@@ -59,22 +59,26 @@ fn (mut p DateTimeParser) must_be_int_with_minimum_length(min int, max int, allo
 }
 
 fn (mut p DateTimeParser) must_be_single_int_with_optional_leading_zero() !int {
-	mut val := p.next(1) or { return err }
+	mut val := p.next(1)!
 	if val == '0' {
-		val += p.next(1) or { '' }
+		next := p.next(1) or { '' }
+		if !next.contains_only('0123456789') {
+			return error('expected int, found: ${next}')
+		}
+		val += next
 	}
 	return val.int()
 }
 
 fn (mut p DateTimeParser) must_be_string(must string) ! {
-	val := p.next(must.len) or { return err }
+	val := p.next(must.len)!
 	if val != must {
 		return error('invalid string: "${val}"!="${must}" at: ${p.current_pos_datetime}')
 	}
 }
 
 fn (mut p DateTimeParser) must_be_string_one_of(oneof []string) !string {
-	for _, must in oneof {
+	for must in oneof {
 		val := p.peek(must.len) or { continue }
 		if val == must {
 			return must
@@ -84,7 +88,7 @@ fn (mut p DateTimeParser) must_be_string_one_of(oneof []string) !string {
 }
 
 fn (mut p DateTimeParser) must_be_valid_month() !int {
-	for _, v in long_months {
+	for v in long_months {
 		if p.current_pos_datetime + v.len < p.datetime.len {
 			month_name := p.datetime[p.current_pos_datetime..p.current_pos_datetime + v.len]
 			if v == month_name {
@@ -97,8 +101,8 @@ fn (mut p DateTimeParser) must_be_valid_month() !int {
 }
 
 fn (mut p DateTimeParser) must_be_valid_week_day(letters int) !string {
-	val := p.next(letters) or { return err }
-	for _, v in long_days {
+	val := p.next(letters)!
+	for v in long_days {
 		if v[0..letters] == val {
 			return v
 		}
@@ -151,7 +155,7 @@ fn (mut p DateTimeParser) parse() !Time {
 	tokens := extract_tokens(p.format) or {
 		return error_invalid_time(0, 'malformed format string: ${err}')
 	}
-	for _, token in tokens {
+	for token in tokens {
 		match token {
 			'YYYY' {
 				year_ = p.must_be_int(4) or {
