@@ -304,16 +304,9 @@ pub fn (err MultiplePathAttributesError) msg() string {
 // HTTP request body. It is the inverse of parse_multipart_form. Returns
 // (body, boundary).
 // Note: Form keys should not contain quotes
-[manualfree]
 fn multipart_form_body(form map[string]string, files map[string][]FileData) (string, string) {
 	rboundary := rand.ulid()
-	defer {
-		unsafe { rboundary.free() }
-	}
 	mut sb := strings.new_builder(1024)
-	defer {
-		unsafe { sb.free() }
-	}
 	for name, value in form {
 		sb.write_string('\r\n--')
 		sb.write_string(rboundary)
