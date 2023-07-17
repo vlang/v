@@ -85,8 +85,8 @@ fn ordinal_suffix(n int) string {
 }
 
 const (
-	tokens_2 = ['MM', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ZZ', 'dd', 'Qo', 'QQ',
-		'wo', 'ww']
+	tokens_2 = ['MM', 'Mo', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ZZ', 'dd', 'Qo',
+		'QQ', 'wo', 'ww']
 	tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']
 	tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
 )
