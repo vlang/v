@@ -517,9 +517,9 @@ pub fn (mut app App) with_auth() bool {
 }
 ```
 
-### Fallback route
-You can implement a fallback `not_found` route that is called when a request is made and no
-matching route is found.
+### Cusom not found page
+You can implement a `not_found` route that is called when a request is made and no
+matching route is found to replace the default HTTP 404 not found page.
 
 **Example:**
 
