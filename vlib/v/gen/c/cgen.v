@@ -5868,7 +5868,6 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					}
 				}
 				g.type_definitions.writeln('};')
-				g.type_definitions.writeln('')
 			}
 			ast.ArrayFixed {
 				elem_sym := g.table.sym(sym.info.elem_type)
