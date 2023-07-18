@@ -19,6 +19,7 @@ fn test_main() {
 	dto := json.decode(Dto, raw_json)!
 
 	println(dto)
+	assert dto.data? == '{"test":1}'
 }
 
 fn test_none() {
@@ -30,6 +31,8 @@ fn test_none() {
 	dto := json.decode(Dto, raw_json)!
 
 	println(dto)
+	assert dto.data == none
+	assert dto.optional? == '"test"'
 }
 
 fn test_null() {
@@ -43,6 +46,8 @@ fn test_null() {
 	dto := json.decode(Dto, raw_json)!
 
 	println(dto)
+	assert dto.key2 == 'null'
+	assert dto.data? == 'null'
 }
 
 fn test_not_set() {
@@ -52,4 +57,6 @@ fn test_not_set() {
 	dto := json.decode(Dto, raw_json)!
 
 	println(dto)
+	assert dto.data == none
+	assert dto.optional == none
 }
