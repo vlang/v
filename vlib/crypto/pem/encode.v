@@ -3,7 +3,7 @@ module pem
 import encoding.base64
 import arrays
 
-// `encode_config` encodes the given block into a
+// encode encodes the given block into a
 // string using the EncodeConfig. It returns an error if `block_type` is undefined
 // or if a value in `headers` contains an invalid character ':'
 //
