@@ -234,6 +234,23 @@ header you want example. `app.req.header.get(.content_type)`. See `struct Header
 for all available methods (`v doc net.http Header`).
 It has, too, fields for the `query`, `form`, `files`.
 
+#### - Parameter Arrays
+
+If you want multiple parameters in your route and if you want to parse the parameters 
+yourself, or you want a wildcard route, you can add `...`  after the `:` and name,
+e.g. `['/:path...']`.
+
+This will match all routes after `'/'`. For example the url `/path/to/test` would give
+`path = '/path/to/test'`.
+
+```v ignore
+        vvv
+['/:path...']             vvvv
+fn (mut app App) wildcard(path string) vweb.Result {
+	return app.text('URL path = "${path}"')
+}
+```
+
 #### - Query
 To handle the query context, you just need use the  `query` field
 
