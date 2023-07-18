@@ -3650,6 +3650,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			mut smartcasts := []ast.Type{}
 			mut is_already_casted := false
 			mut orig_type := 0
+			mut is_inherited := false
 			if mut expr.obj is ast.Var {
 				is_mut = expr.obj.is_mut
 				smartcasts << expr.obj.smartcasts
@@ -3657,6 +3658,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 				if orig_type == 0 {
 					orig_type = expr.obj.typ
 				}
+				is_inherited = expr.obj.is_inherited
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
 			if (!is_mut || expr.is_mut) && !is_already_casted {
@@ -3667,6 +3669,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					pos: expr.pos
 					is_used: true
 					is_mut: expr.is_mut
+					is_inherited: is_inherited
 					smartcasts: smartcasts
 					orig_type: orig_type
 				})
