@@ -517,8 +517,6 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	} else {
 		g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
 	}
-	// g.type_definitions.writeln('} $name;\n')
-	//
 	ti_attrs := if !g.is_cc_msvc && s.attrs.contains('packed') {
 		'__attribute__((__packed__))'
 	} else {
@@ -528,8 +526,10 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	if !is_anon {
 		g.type_definitions.write_string(';')
 	}
-	g.type_definitions.writeln('\n')
-	g.type_definitions.writeln(post_pragma)
+	g.type_definitions.writeln('')
+	if post_pragma.len > 0 {
+		g.type_definitions.writeln(post_pragma)
+	}
 }
 
 fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Language) {
