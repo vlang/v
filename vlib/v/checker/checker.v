@@ -4076,9 +4076,9 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 			&& (index_type_sym.info as ast.Alias).parent_type.is_int())
 			|| (c.pref.translated && index_type.is_any_kind_of_pointer())) {
 			type_str := if typ_sym.kind == .string {
-				'non-integer string index `${index_type_sym.name}`'
+				'non-integer string index `${c.table.type_to_str(index_type)}`'
 			} else {
-				'non-integer index `${index_type_sym.name}` (array type `${typ_sym.name}`)'
+				'non-integer index `${c.table.type_to_str(index_type)}` (array type `${typ_sym.name}`)'
 			}
 			c.error('${type_str}', pos)
 		}
