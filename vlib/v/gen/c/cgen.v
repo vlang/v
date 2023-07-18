@@ -4348,6 +4348,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 						} else {
 							mut is_ptr := false
 							if i == 0 {
+								if node.obj.is_inherited {
+									g.write(closure_ctx + '->')
+								}
 								g.write(name)
 								if node.obj.orig_type.is_ptr() {
 									is_ptr = true
