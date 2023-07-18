@@ -310,7 +310,12 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		g.write('}, sizeof(${shared_styp}))')
 	} else if is_amp || g.inside_cast_in_heap > 0 {
-		g.write(', sizeof(${styp}))')
+		if node.typ.has_flag(.option) {
+			basetyp := g.base_type(node.typ)
+			g.write(', sizeof(${basetyp}))')
+		} else {
+			g.write(', sizeof(${styp}))')
+		}
 	}
 }
 
