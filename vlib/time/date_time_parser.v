@@ -203,7 +203,7 @@ fn (mut p DateTimeParser) parse() !Time {
 				}
 			}
 			'H' {
-				hour_ = p.must_be_int_with_minimum_length(1, 2, false) or {
+				hour_ = p.must_be_int_with_minimum_length(1, 2, true) or {
 					return error_invalid_time(0, 'end of string reached before hours where specified')
 				}
 				if hour_ < 0 || hour_ > 23 {
@@ -219,7 +219,7 @@ fn (mut p DateTimeParser) parse() !Time {
 				}
 			}
 			'h' {
-				hour_ = p.must_be_int_with_minimum_length(1, 2, false) or {
+				hour_ = p.must_be_int_with_minimum_length(1, 2, true) or {
 					return error_invalid_time(0, 'end of string reached before hours where specified')
 				}
 				if hour_ < 0 || hour_ > 23 {
