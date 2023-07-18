@@ -58,18 +58,6 @@ fn (mut p DateTimeParser) must_be_int_with_minimum_length(min int, max int, allo
 	return val.int()
 }
 
-fn (mut p DateTimeParser) must_be_single_int_with_optional_leading_zero() !int {
-	mut val := p.next(1)!
-	if val == '0' {
-		next := p.next(1) or { '' }
-		if !next.contains_only('0123456789') {
-			return error('expected int, found: ${next}')
-		}
-		val += next
-	}
-	return val.int()
-}
-
 fn (mut p DateTimeParser) must_be_string(must string) ! {
 	val := p.next(must.len)!
 	if val != must {
