@@ -209,7 +209,6 @@ fn test_parse_format() {
 		assert false
 		return
 	}
-
 	assert t.year == 2018 && t.month == 1 && t.day == 27 && t.hour == 12 && t.minute == 48
 		&& t.second == 34
 
@@ -222,8 +221,8 @@ fn test_parse_format() {
 	assert t.year == 2018 && t.month == 11 && t.day == 27 && t.hour == 12 && t.minute == 48
 		&& t.second == 20
 
-	s = '2018-1-2 1:8:2'
-	t = time.parse_format(s, 'YYYY-M-D H:m:s') or {
+	s = '18-1-2 1:8:2'
+	t = time.parse_format(s, 'YY-M-D H:m:s') or {
 		eprintln('> failing format: ${s} | err: ${err}')
 		assert false
 		return

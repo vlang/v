@@ -191,12 +191,14 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			info := array_type.unaliased_sym.info as ast.ArrayFixed
 			arr_info := elem_sym.array_fixed_info()
 			g.expr(ast.ArrayInit{
+				exprs: [ast.IntegerLiteral{}]
 				typ: node.elem_type
 				elem_type: arr_info.elem_type
 			})
 			for _ in 1 .. info.size {
 				g.write(', ')
 				g.expr(ast.ArrayInit{
+					exprs: [ast.IntegerLiteral{}]
 					typ: node.elem_type
 					elem_type: arr_info.elem_type
 				})
