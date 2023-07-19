@@ -1917,6 +1917,9 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 				// option ptr assignment simplification
 				if is_ptr_to_ptr_assign {
 					g.write('${tmp_var} = ')
+				} else if expr is ast.PrefixExpr && expr.right is ast.StructInit
+					&& (expr.right as ast.StructInit).init_fields.len == 0 {
+					g.write('_option_none(&(${styp}[]) { ')
 				} else {
 					g.write('_option_ok(&(${styp}[]) { ')
 				}
