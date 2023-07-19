@@ -6,7 +6,7 @@ import encoding.base64
 //  when a header is expected, but not present or when a start of '-----BEGIN' or end of '-----END'
 // can't be found.
 //
-// use decode if you still need the unparsed rest of the string
+// use decode if you still need the unparsed rest of the string.
 [inline]
 pub fn decode_only(data string) ?Block {
 	block, _ := decode_internal(data)?
@@ -17,8 +17,8 @@ pub fn decode_only(data string) ?Block {
 // the string. `none` is returned when a header is expected, but not present
 // or when a start of '-----BEGIN' or end of '-----END' can't be found.
 //
-// use decode_only if you do not need the unparsed rest of the string
-[inline; direct_array_access]
+// use decode_only if you do not need the unparsed rest of the string.
+[direct_array_access; inline]
 pub fn decode(data string) ?(Block, string) {
 	block, rest := decode_internal(data)?
 	return block, rest[rest.index(pem_end)? + pem_end.len..].all_after_first(pem_eol)
