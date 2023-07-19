@@ -1,0 +1,6 @@
+vlib/v/checker/tests/int_type_alises_unbounded_err.vv:15:10: error: cannot use `Int` (alias of `int`) as `u8` in argument 1 to `take_u8`
+   13 |         value: 10000
+   14 |     }
+   15 |     take_u8(foo.value)
+      |             ~~~~~~~~~
+   16 | }

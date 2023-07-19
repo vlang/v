@@ -272,6 +272,18 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 		}
 	}
 
+	got_typ_sym := c.table.sym(c.unwrap_generic(got))
+	expected_typ_sym := c.table.sym(c.unwrap_generic(expected_))
+	final_got_type := if got_typ_sym.kind == .alias {
+		(got_typ_sym.info as ast.Alias).parent_type
+	} else {
+		got
+	}
+	if !c.check_types(final_got_type, expected) {
+		got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
+		return error('cannot use `${got_typ_str}` (alias of `${c.table.type_to_str(final_got_type)}`) as `${expected_typ_str}`')
+	}
+
 	if c.check_types(got, expected) {
 		if language != .v || expected.is_ptr() == got.is_ptr() || arg.is_mut
 			|| arg.expr.is_auto_deref_var() || got.has_flag(.shared_f)
@@ -279,12 +291,9 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 			return
 		}
 	} else {
-		got_typ_sym := c.table.sym(c.unwrap_generic(got))
-		expected_typ_sym := c.table.sym(c.unwrap_generic(expected_))
 		if expected_typ_sym.kind == .interface_ && c.type_implements(got, expected_, token.Pos{}) {
 			return
 		}
-
 		// Check on Generics types, there are some case where we have the following case
 		// `&Type[int] == &Type[]`. This is a common case we are implementing a function
 		// with generic parameters like `compare(bst Bst[T] node) {}`
