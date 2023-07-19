@@ -234,6 +234,23 @@ header you want example. `app.req.header.get(.content_type)`. See `struct Header
 for all available methods (`v doc net.http Header`).
 It has, too, fields for the `query`, `form`, `files`.
 
+#### - Parameter Arrays
+
+If you want multiple parameters in your route and if you want to parse the parameters 
+yourself, or you want a wildcard route, you can add `...`  after the `:` and name,
+e.g. `['/:path...']`.
+
+This will match all routes after `'/'`. For example the url `/path/to/test` would give
+`path = '/path/to/test'`.
+
+```v ignore
+        vvv
+['/:path...']             vvvv
+fn (mut app App) wildcard(path string) vweb.Result {
+	return app.text('URL path = "${path}"')
+}
+```
+
 #### - Query
 To handle the query context, you just need use the  `query` field
 
@@ -500,9 +517,9 @@ pub fn (mut app App) with_auth() bool {
 }
 ```
 
-### Fallback route
-You can implement a fallback `not_found` route that is called when a request is made and no
-matching route is found.
+### Custom not found page
+You can implement a `not_found` route that is called when a request is made and no
+matching route is found to replace the default HTTP 404 not found page.
 
 **Example:**
 
