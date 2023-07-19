@@ -119,7 +119,7 @@ fn test_scalar_set_uniform_bytes() {
 	// mod, _ := new(big.Integer).SetString("27742317777372353535851937790883648493", 10)
 	mut mod := big.integer_from_string('27742317777372353535851937790883648493')!
 	// mod.Add(mod, new(big.Integer).Lsh(big.NewInt(1), 252))
-	mod = mod + big.integer_from_i64(1).lshift(252)
+	mod = mod + big.integer_from_i64(1).left_shift(252)
 
 	mut sc := generate_scalar(100)!
 	inp := rand.bytes(64)!

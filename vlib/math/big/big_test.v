@@ -389,7 +389,7 @@ const factorial_test_data = [
 ]
 // vfmt on
 
-// for lshift and rshift
+// for left_shift and right_shift
 struct ShiftTest {
 	base     TestInteger
 	amount   u32
@@ -397,7 +397,7 @@ struct ShiftTest {
 }
 
 // vfmt off
-const lshift_test_data = [
+const left_shift_test_data = [
 	ShiftTest{ 45, 2, 45 * 4 },
 	ShiftTest{ 45, 3, 45 * 8 },
 	ShiftTest{ 45, 4, 45 * 16 },
@@ -406,7 +406,7 @@ const lshift_test_data = [
 	ShiftTest{ [u8(1), 1, 1], 56, [u8(1), 1, 1, 0, 0, 0, 0, 0, 0, 0] },
 ]
 
-const rshift_test_data = [
+const right_shift_test_data = [
 	ShiftTest{ 45, 3, 5 },
 	ShiftTest{ 0x13374956, 16, 0x1337 },
 	ShiftTest{ [u8(1), 1, 1, 0, 0, 0, 0, 0, 0, 0], 56, [u8(1), 1, 1] },
@@ -435,7 +435,7 @@ const bit_len_test_data = [
 	BitLenTest{ big.zero_int, 0 },
 	BitLenTest{ big.one_int, 1 },
 	BitLenTest{ u32(0xffffffff), 32 },
-	BitLenTest{ big.one_int.lshift(1239), 1240 },
+	BitLenTest{ big.one_int.left_shift(1239), 1240 },
 	BitLenTest{ '4338476092346017364013796407961305761039463198075691378460917856', 212 },
 ]
 // vfmt on
@@ -639,15 +639,15 @@ fn test_inc_and_dec() {
 	assert b == c
 }
 
-fn test_lshift() {
-	for t in lshift_test_data {
-		assert t.base.parse().lshift(t.amount) == t.expected.parse()
+fn test_left_shift() {
+	for t in left_shift_test_data {
+		assert t.base.parse().left_shift(t.amount) == t.expected.parse()
 	}
 }
 
-fn test_rshift() {
-	for t in rshift_test_data {
-		assert t.base.parse().rshift(t.amount) == t.expected.parse()
+fn test_right_shift() {
+	for t in right_shift_test_data {
+		assert t.base.parse().right_shift(t.amount) == t.expected.parse()
 	}
 }
 
@@ -693,7 +693,7 @@ fn test_isqrt() {
 }
 
 fn test_bitwise_ops() {
-	a := big.integer_from_int(1).lshift(512)
+	a := big.integer_from_int(1).left_shift(512)
 	b := a - big.one_int
 	assert a.bitwise_and(b) == big.zero_int
 	assert b.bitwise_xor(b) == big.zero_int
@@ -732,7 +732,7 @@ fn test_set_bit() {
 	a.set_bit(3, true)
 	assert a.int() == 40
 	a.set_bit(50, true)
-	assert a == big.one_int.lshift(50) + big.integer_from_int(40)
+	assert a == big.one_int.left_shift(50) + big.integer_from_int(40)
 	b := a
 	a.set_bit(100, false)
 	assert a == b
